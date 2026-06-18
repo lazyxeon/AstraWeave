@@ -226,7 +226,8 @@ impl WarmStartSystem {
     pub fn for_solver(solver: SolverType) -> Self {
         let config = match solver {
             SolverType::PCISPH => WarmStartConfig::for_pcisph(),
-            SolverType::DFSPH => WarmStartConfig::for_dfsph(),
+            // (`for_dfsph` remains available for direct use; the DFSPH
+            // SolverType variant was removed in F.1 — never implemented.)
             _ => WarmStartConfig::default(),
         };
         Self::new(config)
@@ -513,7 +514,9 @@ mod tests {
         let pcisph = WarmStartSystem::for_solver(SolverType::PCISPH);
         assert!((pcisph.config().relaxation - 0.7).abs() < f32::EPSILON);
 
-        let dfsph = WarmStartSystem::for_solver(SolverType::DFSPH);
+        // DFSPH SolverType variant removed in F.1; the config preset remains
+        // directly constructible.
+        let dfsph = WarmStartSystem::new(WarmStartConfig::for_dfsph());
         assert!((dfsph.config().relaxation - 0.85).abs() < f32::EPSILON);
     }
 

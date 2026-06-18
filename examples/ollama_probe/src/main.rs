@@ -2,10 +2,12 @@ use futures_util::StreamExt;
 use reqwest::Client;
 use std::env;
 
+const DEFAULT_OLLAMA_MODEL: &str = "qwen3.5:4b";
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let url = env::var("OLLAMA_URL").unwrap_or_else(|_| "http://127.0.0.1:11434".to_string());
-    let model = env::var("OLLAMA_MODEL").unwrap_or_else(|_| "phi3:medium".to_string());
+    let model = env::var("OLLAMA_MODEL").unwrap_or_else(|_| DEFAULT_OLLAMA_MODEL.to_string());
     println!("Probe Ollama {} model {}", url, model);
 
     let client = Client::new();
@@ -41,7 +43,17 @@ Return ONLY JSON with no commentary.
         schema = schema
     );
 
-    let body = serde_json::json!({ "model": model, "messages": [{ "role": "user", "content": prompt }], "stream": true });
+    let body = serde_json::json!({
+        "model": model,
+        "messages": [{ "role": "user", "content": prompt }],
+        "stream": true,
+        "think": false,
+        "options": {
+            "num_predict": 192,
+            "temperature": 0.5,
+            "top_k": 20
+        }
+    });
     let resp = client
         .post(format!("{}/api/chat", url.trim_end_matches('/')))
         .json(&body)
@@ -65,6 +77,11 @@ Return ONLY JSON with no commentary.
                                 if let Some(msg) = v.get("message") {
                                     if let Some(c) = msg.get("content").and_then(|x| x.as_str()) {
                                         acc.push_str(c);
+                                    }
+                                    if let Some(c) = msg.get("thinking").and_then(|x| x.as_str()) {
+                                        if acc.is_empty() {
+                                            acc.push_str(c);
+                                        }
                                     }
                                 }
                                 if let Some(r) = v.get("response").and_then(|x| x.as_str()) {

@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 description = "Context management and conversation history for AI-native gaming"
 license = "MIT"
-repository = "https://github.com/lazyxeon/AstraWeave-AI-Native-Gaming-Engine"
+repository = "https://github.com/lazyxeon/AstraWeave"
 
 [dependencies]
 # Core dependencies

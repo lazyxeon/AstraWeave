@@ -1,4 +1,4 @@
-# Qwen3-8B Fast — Minimal Latency
+# Qwen Instruct Fast — Minimal Latency
 #
 # Optimized for lowest possible latency in tick-budget-critical paths.
 # Non-thinking mode, reduced context, tight token budget.
@@ -9,7 +9,7 @@
 #
 # Performance target: <1s latency, short responses
 
-FROM qwen3:8b
+FROM qwen3.5:4b
 
 # Aggressive fast-path sampling
 PARAMETER temperature 0.5

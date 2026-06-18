@@ -14,8 +14,8 @@ Get up and running with AstraWeave in minutes! This guide will help you install 
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/lazyxeon/AstraWeave-AI-Native-Gaming-Engine.git
-cd AstraWeave-AI-Native-Gaming-Engine
+git clone https://github.com/lazyxeon/AstraWeave.git
+cd AstraWeave
 ```
 
 ### 2. System Dependencies (Linux)

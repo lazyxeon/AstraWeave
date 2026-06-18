@@ -219,7 +219,7 @@
 - ⏸️ Screenshot thumbnails (deferred to Week 3, optional)
 - ⏸️ Background I/O (deferred to Week 3, not needed - saves already instant)
 
-**Verdict**: Production-ready save/load system, ship as-is for Phase 8.3 v1!
+**Verdict**: Planned save/load system scope for Phase 8.3 v1 (in-design; see persistence-ecs status).
 
 ---
 

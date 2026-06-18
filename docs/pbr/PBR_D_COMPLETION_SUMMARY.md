@@ -10,7 +10,7 @@
 
 ## Executive Summary
 
-Phase PBR-D successfully consolidated physically-based rendering (PBR) shader functions into a centralized `pbr_lib.wgsl` library, establishing a production-ready foundation for material-based rendering across all AstraWeave examples. This phase delivers:
+Phase PBR-D successfully consolidated physically-based rendering (PBR) shader functions into a centralized `pbr_lib.wgsl` library, establishing a foundation for material-based rendering across all AstraWeave examples. This phase delivers:
 
 ### Key Achievements
 
@@ -21,7 +21,7 @@ Phase PBR-D successfully consolidated physically-based rendering (PBR) shader fu
    - Physically accurate specular + diffuse (Lambertian) with energy conservation
 
 2. **✅ Consolidated Shader Library** (`pbr_lib.wgsl`)
-   - 350+ lines of production-ready WGSL shader code
+   - 350+ lines of WGSL shader code
    - 15+ utility functions for PBR lighting, IBL, material sampling, tone mapping
    - Properly documented with inline comments explaining theory
    - Zero compilation errors or warnings
@@ -413,7 +413,7 @@ let sky_ambient = sky_color(...) * 0.22 + sample_ibl_diffuse(N) * 0.18 * ibl_on;
 let spec_ibl = sample_ibl_specular(R, roughness, NdotV) * ibl_on;
 ```
 
-**Status**: The inline shader is already production-ready. It uses the IBL functions from `pbr_lib.wgsl` (via `concat!`) and has a more advanced implementation than the standalone `enhanced_shader.wgsl` file. No changes needed for Phase PBR-D.
+**Status**: The inline shader is already complete. It uses the IBL functions from `pbr_lib.wgsl` (via `concat!`) and has a more advanced implementation than the standalone `enhanced_shader.wgsl` file. No changes needed for Phase PBR-D.
 
 ---
 
@@ -421,7 +421,7 @@ let spec_ibl = sample_ibl_specular(R, roughness, NdotV) * ibl_on;
 
 ### 1. `examples/unified_showcase/src/shaders/pbr_lib.wgsl`
 **Lines Added**: ~250 new lines (total now ~350 lines)  
-**Status**: ✅ Production-ready, fully documented
+**Status**: ✅ Complete, fully documented
 
 **New Functions**:
 - `distribution_ggx()` - GGX/Trowbridge-Reitz NDF
@@ -593,7 +593,7 @@ Ensured by: kD = (1 - F) × (1 - metallic)
 | `sample_material()` | ~20 + 3× texture reads | Texture bandwidth-bound |
 | `evaluate_ibl()` | ~60 + 2× cubemap + 1× 2D texture | IBL bandwidth-bound |
 
-**Total per-pixel cost**: ~150-200 ALU ops (competitive with UE5/Unity HDRP)
+**Total per-pixel cost**: ~150-200 ALU ops
 
 ### Optimization Opportunities
 
@@ -872,7 +872,7 @@ fn test_normal_mapping() {
 
 ## Conclusion
 
-Phase PBR-D successfully delivered a **production-ready, physically-based rendering shader library** for AstraWeave. The consolidation of Cook-Torrance BRDF functions into `pbr_lib.wgsl` provides:
+Phase PBR-D successfully delivered a **physically-based rendering shader library** for AstraWeave. The consolidation of Cook-Torrance BRDF functions into `pbr_lib.wgsl` provides:
 
 1. **Correctness**: Full GGX+Smith+Fresnel with energy conservation
 2. **Reusability**: 15+ utility functions for all shaders

@@ -75,9 +75,9 @@ cargo run -p hello_companion --release --features llm -- --demo-both
 ### 🤖 Arbiter Mode (NEW - Zero-Latency Hybrid)
 - **Type**: GOAP+Qwen3 Hybrid Arbiter (`AIArbiter`)
 - **Latency**: **101.7 ns** GOAP control (instant tactical decisions)
-- **Intelligence**: Qwen3-8B LLM plans generate asynchronously (background)
+- **Intelligence**: LLM plans generate asynchronously (background); runtime default model is `phi3:medium`, with Qwen3 opt-in via `OLLAMA_MODEL`
 - **Reliability**: 100% (GOAP provides instant responses while LLM thinks)
-- **Use Case**: Production-ready AI with zero user-facing latency
+- **Use Case**: AI with zero user-facing latency
 
 **Key Innovation**: Agents respond instantly with GOAP tactical AI while LLM plans generate in the background. When LLM completes, agents smoothly transition to executing strategic plans, then return to GOAP for the next challenge.
 

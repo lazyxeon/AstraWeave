@@ -316,7 +316,7 @@ struct Render {
    - Diff old vs new material
    - Upload only changes
    - 80% bandwidth reduction
-   - **Optimization**: Production-ready
+   - **Optimization**: planned
 
 3. **Hot-Reload Profiler**:
    - Measure reload times

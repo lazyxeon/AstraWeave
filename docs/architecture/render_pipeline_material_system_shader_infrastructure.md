@@ -230,7 +230,7 @@ The render system has multiple entry points and parallel sub-pipelines. The thre
 | `astraweave-materials` | `Node` material-graph enum | Authored material graph data | `astraweave-materials/src/lib.rs:8-19` — currently used as foundation, not yet wired into runtime material instances. `renderer.rs:16` `use astraweave_materials::MaterialPackage;` |
 | `astraweave-terrain` | `WorldGenerator`, `TerrainChunk`, `Heightmap` | Heightmap geometry + biome assignment | Consumed by `astraweave-render/src/terrain.rs` (legacy single-`biome_id` path) and the canonical `terrain_material_manager` (32-layer path, see `docs/architecture/terrain_materials.md`) |
 | `astraweave-scene` | Scene partition data | Scene graph + streaming | Used by streaming-aware rendering paths |
-| `astraweave-fluids` | SPH water particle data | Water surface deformation | `water.rs` Gerstner-wave water; SPH integration via fluids crate |
+| ~~`astraweave-fluids`~~ | — | — | **Row corrected F.1 (2026-06-11): the previous entry ("SPH water particle data → water.rs") was aspirational.** `astraweave-render` has no Cargo dependency on and zero imports from `astraweave-fluids`; `water.rs` is a self-contained Gerstner-wave renderer. SPH render integration is future Fluids-Integration campaign work (seam mapped in `docs/campaigns/fluids-integration/F0_GROUND_TRUTH_AUDIT.md` §Seam 4). |
 | `astraweave-ecs` | `Entity`, `World`, components | Scene data source | Editor and example mains pull entity data and feed instance buffers |
 | `tools/aw_asset_cli` | Cooked asset blobs | Texture / mesh runtime assets | Build-time pipeline (cross-references in CLAUDE.md note this is a `tools/` dep) |
 

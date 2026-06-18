@@ -620,7 +620,7 @@ self.copy_texture_to_cpu(ui, &texture, size)?;
         TIGHT COUPLING - HARD TO TEST
 ```
 
-### Proposed Architecture (World-Class)
+### Proposed Architecture
 
 ```
 ┌─────────────────────────────────────────────┐

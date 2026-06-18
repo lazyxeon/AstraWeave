@@ -462,7 +462,7 @@ cargo kani setup
 
 ## Conclusion
 
-Kani verification will elevate AstraWeave from **Miri-validated** (no UB in tested paths) to **formally verified** (mathematical proofs of correctness). This positions AstraWeave as one of the most rigorously verified game engines in existence.
+Kani verification will elevate AstraWeave from **Miri-validated** (no UB in tested paths) to **formally verified** (mathematical proofs of correctness).
 
 **Combined Verification Stack**:
 - ✅ **Miri**: Runtime UB detection (977 tests, 0 violations)

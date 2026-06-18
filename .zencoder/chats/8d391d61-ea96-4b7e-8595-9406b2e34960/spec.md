@@ -11,7 +11,7 @@
 
 ### Language & Toolchain
 - **Language**: Rust 2021 (toolchain 1.89.0)
-- **Build System**: Cargo workspace (126 members)
+- **Build System**: Cargo workspace (130 members) <!-- Source: CLAIMS_REGISTRY.md#workspace-members -->
 - **Editor Package**: `tools/aw_editor` (workspace member)
 
 ### Primary Dependencies

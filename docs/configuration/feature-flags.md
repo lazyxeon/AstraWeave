@@ -78,12 +78,6 @@ This document lists all Cargo feature flags across the workspace.
 - **Requires**: Tracy viewer application
 - **Crates**: astraweave-profiling
 
-### `dev_unsigned_assets`
-- **Description**: Skip asset signature verification
-- **Default**: Disabled
-- **WARNING**: NEVER use in production
-- **Crates**: astraweave-asset
-
 ---
 
 ## Platform & Build
@@ -107,7 +101,6 @@ This document lists all Cargo feature flags across the workspace.
 | `msaa` | ✗ | ✓ | ✗ | ✓ | ✓ | +500KB |
 | `profiling` | ✗ | ✓ | ✗ | ✗ | ✗ | +3MB |
 | `gpu-tests` | ✗ | ✗ | ✗ | ✗ | ✗ | N/A |
-| `dev_unsigned_assets` | ✗ | ✓ | ✗ | ✗ | ✗ | 0 |
 
 ---
 
@@ -136,7 +129,7 @@ cargo build --features "nanite,megalights,ibl,msaa,advanced-post,llm_orchestrato
 ```bash
 cargo build --release --features "nanite,megalights,ibl,msaa"
 ```
-**Excludes**: profiling, dev_unsigned_assets, gpu-tests
+**Excludes**: profiling, gpu-tests
 
 ---
 

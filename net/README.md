@@ -2,7 +2,7 @@
 
 ## Overview
 
-The enhanced networking layer consists of three crates that provide production-ready multiplayer capabilities:
+The enhanced networking layer consists of three crates that provide multiplayer capabilities:
 
 - **`aw-net-proto`**: Versioned wire protocol with compression and the canonical HMAC-SHA256 signing surface (`SigningKey`, `sign`/`verify`, `input_frame_sig_payload`)
 - **`aw-net-server`**: Authoritative server with matchmaking, persistence, and anti-cheat
@@ -178,4 +178,4 @@ For production deployment, consider:
 
 ## Compatibility
 
-This enhanced networking layer runs alongside the existing `astraweave-net` and coop examples without conflicts. The original examples continue to work for simple scenarios, while this provides production-grade capabilities for serious multiplayer games.
+This enhanced networking layer runs alongside the existing `astraweave-net` and coop examples without conflicts. The original examples continue to work for simple scenarios, while this provides capabilities for serious multiplayer games.

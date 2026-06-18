@@ -1,5 +1,17 @@
 # AstraWeave Fluids — Mutation Testing Report
 
+> **⚠ STALENESS BANNER (added Fluids-Integration F.1, 2026-06-11).** This
+> report predates a major crate refactor: it references module files that no
+> longer exist (`surface_reconstruction.rs`, `buoyancy.rs`, `solver.rs`,
+> `grid.rs`, `sph_kernels.rs`, …), and F.1 subsequently deleted
+> `unified_solver.rs`, removed the `SolverType::DFSPH/IISPH` variants, gated
+> six modules behind the new `experimental` feature, and repaired the GPU
+> step path (which was excluded from mutation coverage as "GPU-dependent" —
+> 45 mutants — and turned out to contain five blocking defects the suite
+> could never have caught). The scores below no longer map 1:1 onto today's
+> module set. **A re-run is queued as future campaign work; do not cite these
+> numbers as current.**
+
 **Version**: 1.0.0  
 **Date**: March 1, 2026  
 **Crate**: `astraweave-fluids`  

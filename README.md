@@ -6,31 +6,31 @@
 
 <div align="center">
   
-[![Kani Formal Verification](https://github.com/lazyxeon/AstraWeave-AI-Native-Gaming-Engine/actions/workflows/kani.yml/badge.svg)](https://github.com/lazyxeon/AstraWeave-AI-Native-Gaming-Engine/actions/workflows/kani.yml) [![OpenSSF Scorecard](https://github.com/lazyxeon/AstraWeave-AI-Native-Gaming-Engine/actions/workflows/scorecard.yml/badge.svg)](https://github.com/lazyxeon/AstraWeave-AI-Native-Gaming-Engine/actions/workflows/scorecard.yml) [![Miri UB Detection](https://github.com/lazyxeon/AstraWeave-AI-Native-Gaming-Engine/actions/workflows/miri.yml/badge.svg)](https://github.com/lazyxeon/AstraWeave-AI-Native-Gaming-Engine/actions/workflows/miri.yml) [![Security Audit](https://github.com/lazyxeon/AstraWeave-AI-Native-Gaming-Engine/actions/workflows/security-audit.yml/badge.svg)](https://github.com/lazyxeon/AstraWeave-AI-Native-Gaming-Engine/actions/workflows/security-audit.yml) [![Mutation Testing](https://github.com/lazyxeon/AstraWeave-AI-Native-Gaming-Engine/actions/workflows/mutation-testing.yml/badge.svg)](https://github.com/lazyxeon/AstraWeave-AI-Native-Gaming-Engine/actions/workflows/mutation-testing.yml) [![Sanitizers](https://github.com/lazyxeon/AstraWeave-AI-Native-Gaming-Engine/actions/workflows/sanitizers.yml/badge.svg)](https://github.com/lazyxeon/AstraWeave-AI-Native-Gaming-Engine/actions/workflows/sanitizers.yml) [![CodeQL Analysis](https://github.com/lazyxeon/AstraWeave-AI-Native-Gaming-Engine/actions/workflows/codeql-analysis.yml/badge.svg)](https://github.com/lazyxeon/AstraWeave-AI-Native-Gaming-Engine/actions/workflows/codeql-analysis.yml) [![Clippy Lint (Unwrap Prevention)](https://github.com/lazyxeon/AstraWeave-AI-Native-Gaming-Engine/actions/workflows/clippy-unwrap-prevention.yml/badge.svg)](https://github.com/lazyxeon/AstraWeave-AI-Native-Gaming-Engine/actions/workflows/clippy-unwrap-prevention.yml)
+[![Kani Formal Verification](https://github.com/lazyxeon/AstraWeave/actions/workflows/kani.yml/badge.svg)](https://github.com/lazyxeon/AstraWeave/actions/workflows/kani.yml) [![OpenSSF Scorecard](https://github.com/lazyxeon/AstraWeave/actions/workflows/scorecard.yml/badge.svg)](https://github.com/lazyxeon/AstraWeave/actions/workflows/scorecard.yml) [![Miri UB Detection](https://github.com/lazyxeon/AstraWeave/actions/workflows/miri.yml/badge.svg)](https://github.com/lazyxeon/AstraWeave/actions/workflows/miri.yml) [![Security Audit](https://github.com/lazyxeon/AstraWeave/actions/workflows/security-audit.yml/badge.svg)](https://github.com/lazyxeon/AstraWeave/actions/workflows/security-audit.yml) [![Mutation Testing](https://github.com/lazyxeon/AstraWeave/actions/workflows/mutation-testing.yml/badge.svg)](https://github.com/lazyxeon/AstraWeave/actions/workflows/mutation-testing.yml) [![Sanitizers](https://github.com/lazyxeon/AstraWeave/actions/workflows/sanitizers.yml/badge.svg)](https://github.com/lazyxeon/AstraWeave/actions/workflows/sanitizers.yml) [![CodeQL Analysis](https://github.com/lazyxeon/AstraWeave/actions/workflows/codeql-analysis.yml/badge.svg)](https://github.com/lazyxeon/AstraWeave/actions/workflows/codeql-analysis.yml) [![Clippy Lint (Unwrap Prevention)](https://github.com/lazyxeon/AstraWeave/actions/workflows/clippy-unwrap-prevention.yml/badge.svg)](https://github.com/lazyxeon/AstraWeave/actions/workflows/clippy-unwrap-prevention.yml)
 
 </div>
 
   <p align="center">
-  <a href="https://github.com/lazyxeon/AstraWeave-AI-Native-Gaming-Engine/stargazers"><img src="https://img.shields.io/github/stars/lazyxeon/AstraWeave-AI-Native-Gaming-Engine?style=for-the-badge&logo=github" alt="GitHub stars" /></a>
-  <a href="https://github.com/lazyxeon/AstraWeave-AI-Native-Gaming-Engine/blob/main/LICENSE"><img src="https://img.shields.io/github/license/lazyxeon/AstraWeave-AI-Native-Gaming-Engine?style=for-the-badge" alt="License" /></a>
-  <a href="https://github.com/lazyxeon/AstraWeave-AI-Native-Gaming-Engine/blob/main/rust-toolchain.toml"><img src="https://img.shields.io/badge/rust-1.89.0-orange.svg?style=for-the-badge" alt="Rust toolchain" /></a>
+  <a href="https://github.com/lazyxeon/AstraWeave/stargazers"><img src="https://img.shields.io/github/stars/lazyxeon/AstraWeave?style=for-the-badge&logo=github" alt="GitHub stars" /></a>
+  <a href="https://github.com/lazyxeon/AstraWeave/blob/main/LICENSE"><img src="https://img.shields.io/github/license/lazyxeon/AstraWeave?style=for-the-badge" alt="License" /></a>
+  <a href="https://github.com/lazyxeon/AstraWeave/blob/main/rust-toolchain.toml"><img src="https://img.shields.io/badge/rust-1.89.0-orange.svg?style=for-the-badge" alt="Rust toolchain" /></a>
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-blue.svg?style=for-the-badge" alt="Platforms" />
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/github/repo-size/lazyxeon/AstraWeave-AI-Native-Gaming-Engine?style=flat-square" alt="Repo Size" />
-  <img src="https://img.shields.io/github/languages/code-size/lazyxeon/AstraWeave-AI-Native-Gaming-Engine?style=flat-square" alt="Code Size" />
-  <img src="https://img.shields.io/github/commit-activity/m/lazyxeon/AstraWeave-AI-Native-Gaming-Engine?style=flat-square" alt="Commit Activity" />
-  <img src="https://img.shields.io/github/issues/lazyxeon/AstraWeave-AI-Native-Gaming-Engine?style=flat-square" alt="Issues" />
-  <img src="https://img.shields.io/github/issues-pr/lazyxeon/AstraWeave-AI-Native-Gaming-Engine?style=flat-square" alt="Pull Requests" />
+  <img src="https://img.shields.io/github/repo-size/lazyxeon/AstraWeave?style=flat-square" alt="Repo Size" />
+  <img src="https://img.shields.io/github/languages/code-size/lazyxeon/AstraWeave?style=flat-square" alt="Code Size" />
+  <img src="https://img.shields.io/github/commit-activity/m/lazyxeon/AstraWeave?style=flat-square" alt="Commit Activity" />
+  <img src="https://img.shields.io/github/issues/lazyxeon/AstraWeave?style=flat-square" alt="Issues" />
+  <img src="https://img.shields.io/github/issues-pr/lazyxeon/AstraWeave?style=flat-square" alt="Pull Requests" />
 </p>
 
 <div align="center">
 
-**The world's first AI-native game engine with deterministic ECS architecture where AI agents are first‑class citizens.**  
-Built in Rust, designed for massive-scale intelligent worlds with production-grade performance.
+**An AI-native game engine with deterministic ECS architecture where AI agents are first‑class citizens.**  
+Built in Rust, designed for massive-scale intelligent worlds.
 
-📚 [Documentation](docs/) • 📊 [Benchmarks](docs/masters/MASTER_BENCHMARK_REPORT.md) • 🗺️ [Roadmap](docs/masters/MASTER_ROADMAP.md)• 🧪 [Coverage](docs/current/MASTER_COVERAGE_REPORT.md) • 🕸️ [Workspace Map](https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/architecture/) • ⚡ [Interactive Dashboard](https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/dashboard/benchmark_dashboard/) •  🌐  [Github Pages](https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/)  
+📚 [Documentation](docs/) • 📊 [Benchmarks](docs/masters/MASTER_BENCHMARK_REPORT.md) • 🗺️ [Roadmap](docs/masters/MASTER_ROADMAP.md)• 🧪 [Coverage](docs/current/MASTER_COVERAGE_REPORT.md) • 🕸️ [Workspace Map](https://lazyxeon.github.io/AstraWeave/architecture/) • ⚡ [Interactive Dashboard](https://lazyxeon.github.io/AstraWeave/dashboard/benchmark_dashboard/) •  🌐  [Github Pages](https://lazyxeon.github.io/AstraWeave/)  
 
 
 
@@ -74,7 +74,7 @@ Built in Rust, designed for massive-scale intelligent worlds with production-gra
 
 <!-- Source: ARCHITECTURE_MAP.md v0.7.0 revision history; §0 Trace Index;
      §5 Dormant-Code Inventory; §7 Documentation Hazards. -->
-> **What changed (May 2026)?** The **architecture trace campaign** completed 13 per-subsystem traces under `docs/architecture/` (terrain materials, render pipeline, physics, persistence-ECS, networking ×2, input, fluids, ECS/math/core/SDK foundation, audio, animation, AI pipeline, aw_editor). The [Architecture Map](docs/architecture/ARCHITECTURE_MAP.md) was reconciled to v0.7.0 against those traces, and the [Interactive Workspace Map](https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/architecture/) was deployed. Specific documentation hazards were surfaced and corrected: Fluids reclassified as research surface (no production game-loop dep), the runtime LLM model default identified as `phi3:medium` (not Qwen3 despite doc-comments), dual `World` coexistence (legacy `core::World` + ECS substrate) documented, four parallel animation type families catalogued, and the §7.7 wrapped-component resource identity trap promoted to a workspace-wide structural axiom.
+> **What changed (May 2026)?** The **architecture trace campaign** completed 13 per-subsystem traces under `docs/architecture/` (terrain materials, render pipeline, physics, persistence-ECS, networking ×2, input, fluids, ECS/math/core/SDK foundation, audio, animation, AI pipeline, aw_editor). The [Architecture Map](docs/architecture/ARCHITECTURE_MAP.md) was reconciled to v0.7.0 against those traces, and the [Interactive Workspace Map](https://lazyxeon.github.io/AstraWeave/architecture/) was deployed. Specific documentation hazards were surfaced and corrected: Fluids reclassified as research surface (no production game-loop dep), the runtime LLM default drift from Qwen to `phi3:medium` was identified and later replaced with `qwen3.5:4b`, dual `World` coexistence (legacy `core::World` + ECS substrate) documented, four parallel animation type families catalogued, and the §7.7 wrapped-component resource identity trap promoted to a workspace-wide structural axiom.
 >
 > **Why 59.3%?** The v5.0 methodology uses `cargo llvm-cov --lib --summary-only` which instruments all compiled code including inlined dependency generics. Large GPU-only and async code paths (rendering, terrain, audio) are untestable in headless mode. See [MASTER_COVERAGE_REPORT](docs/current/MASTER_COVERAGE_REPORT.md) for full analysis.
 >
@@ -91,13 +91,13 @@ Built in Rust, designed for massive-scale intelligent worlds with production-gra
 ## 🚀 Quick Start
 
 ```bash
-git clone https://github.com/lazyxeon/AstraWeave-AI-Native-Gaming-Engine.git
-cd AstraWeave-AI-Native-Gaming-Engine
+git clone https://github.com/lazyxeon/AstraWeave.git
+cd AstraWeave
 
 # Build core engine
 cargo build --release -p astraweave-core
 
-# Run the flagship AI companion demo (6 planning modes)
+# Run the flagship AI companion demo (7 planning modes, feature-gated)
 cargo run -p hello_companion --release
 
 # Run the rendering showcase (Island scene)
@@ -110,7 +110,7 @@ cargo run -p unified_showcase --release
 
 **Key Documentation**:
 - [Architecture Map](docs/architecture/ARCHITECTURE_MAP.md) — Crate relationships, editor viewport pipeline, data flow diagrams (v0.7.2; the v0.7.0 pass reconciled it against the 13 subsystem traces, v0.7.1–0.7.2 are incremental campaign reconciliations)
-- 🕸️ [**Interactive Workspace Map**](https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/architecture/) — Cytoscape.js-powered live visualization of 72 workspace nodes (50 production crates, 12 tools, 10 supporting members) and 190 dependency edges. Hover or click any node for crate detail (domain, status, LoC, trace link); click any edge for the load-bearing types flowing across the boundary. Toggle **blast-radius highlighting** to see what depends on a crate before you change it, or launch the **8-step guided tour** for a 10-minute architectural walk-through. Domain filter, focus mode, dependency-path finder, and shareable URL-hash state make it the fastest way to orient in the 850 K+ LoC workspace.
+- 🕸️ [**Interactive Workspace Map**](https://lazyxeon.github.io/AstraWeave/architecture/) — Cytoscape.js-powered live visualization of 72 workspace nodes (50 production crates, 12 tools, 10 supporting members) and 190 dependency edges. Hover or click any node for crate detail (domain, status, LoC, trace link); click any edge for the load-bearing types flowing across the boundary. Toggle **blast-radius highlighting** to see what depends on a crate before you change it, or launch the **8-step guided tour** for a 10-minute architectural walk-through. Domain filter, focus mode, dependency-path finder, and shareable URL-hash state make it the fastest way to orient in the 850 K+ LoC workspace.
 - [Editor Behavioral Audit](docs/current/EDITOR_BEHAVIORAL_CORRECTNESS_AUDIT.md) — 37-fix correctness audit with visual, data pipeline, and state machine verification
 - [Unified Pipeline Plan](docs/current/FIX27_UNIFIED_PIPELINE_CAMPAIGN.md) — 7-phase architectural refactor eliminating the dual rendering pipeline
 
@@ -126,7 +126,7 @@ AstraWeave's architecture is documented through a forensic trace campaign coveri
 The campaign produced three artifacts that together form the engine's navigational surface:
 
 -   **[Architecture Map](docs/architecture/ARCHITECTURE_MAP.md)** — the ~1,000-line consolidated synthesis. Crate dependency graph, structural axioms, dormant-code inventory (~200K LoC across six categories), integration seams with risk levels, data flow paths, 23 cross-cutting open questions (net-trio Q17 resolved 2026-06-10). v0.7.2 reconciled 2026-06-10.
--   **[Interactive Workspace Map](https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/architecture/)** — Cytoscape.js visualization of the 130-member workspace. Surfaces production-wired core (ECS, AI pipeline, rendering, terrain, editor) alongside ~200K LoC of dormant-but-designed surface. Click any node for crate detail, any edge for load-bearing types, or run the 8-step guided tour.
+-   **[Interactive Workspace Map](https://lazyxeon.github.io/AstraWeave/architecture/)** — Cytoscape.js visualization of the 130-member workspace. Surfaces production-wired core (ECS, AI pipeline, rendering, terrain, editor) alongside ~200K LoC of dormant-but-designed surface. Click any node for crate detail, any edge for load-bearing types, or run the 8-step guided tour.
 -   **[13 subsystem traces](docs/architecture/)** — terrain materials, render pipeline, physics, persistence-ECS, net, net-ECS, input, fluids, ECS/math/core/SDK foundation, audio, animation, AI pipeline, aw_editor. Each trace is forensic: §5 file map, §6 conflict map, §7 decision log, §8 invariants, §11 open questions.
 
 The methodology — applying forensic auditing as a counterweight to AI-generated documentation drift — is part of the **[Genesis Code Protocol (GCP)](CLAUDE.md)** approach to AI-augmented development. Cross-cutting structural rules surfaced by the campaign (the §7.7 wrapped-component resource identity trap, the no-second-implementation Fix-27 lesson, the "wired beats tested" axiom, the silent-failure policy) are documented in [`ARCHITECTURE_MAP.md`](docs/architecture/ARCHITECTURE_MAP.md) §4 and applied across the workspace.
@@ -183,10 +183,8 @@ Systems within a stage execute in registration order; stages execute in the orde
 ## ✨ Key Features
 
 ### 🧠 AI & Agents
-  <!-- Source: ai_pipeline.md §6 (runtime default is phi3:medium per
-       orchestrator.rs:488-490; Qwen3 supported via OLLAMA_MODEL but is not
-       the runtime default despite doc-comment phrasing). -->
-  **Multi-Modal Intelligence**: 6 validated AI modes (GOAP, Behavior Trees, LLM, Hybrid ensembles). Local LLM via Ollama — model configurable via `OLLAMA_MODEL` (defaults to `phi3:medium`, with Phi-3 / Hermes2Pro / Qwen3-8B clients all supported).
+  <!-- Source: active Ollama defaults in astraweave-llm/src/qwen3_ollama.rs and examples. -->
+  **Multi-Modal Intelligence**: 6 validated AI modes (GOAP, Behavior Trees, LLM, Hybrid ensembles). Local LLM via Ollama — model configurable via `OLLAMA_MODEL` and defaults to Qwen (`qwen3.5:4b`) for active examples and probes.
   
   <!-- Source: ai_pipeline.md §1 (12,700+ agents validated). Hardware context
        added per Correction 10. -->
@@ -264,7 +262,7 @@ Systems within a stage execute in registration order; stages execute in the orde
 | **Scripting** (`astraweave-scripting`) | ⚠️ Alpha | 128 tests (45 lib + 83 integration), functional Rhai integration. Authoring tooling layer (`astraweave-author`, `rhai_authoring`) now compiles clean (former Rhai `Sync` trait errors resolved — verified 2026-06-10). |
 | **UI Framework** | ✅ Production Ready | 751 tests (320 lib + 431 integration), functional coverage. |
 | **LLM Support** | ✅ Production Ready (core) / 🔬 Hardening Layer | 16,776 lines. Core inference pipeline + tool sandbox is production-wired. The ~15K LoC production-hardening surface (rate limiting, circuit breakers, A/B routing, 4-tier fallback) is dormant — Q4 in §14. |
-| **Fluids** | 🔬 Research Surface | 2,509 tests (2,410 lib + 99 integration), SPH/FLIP simulation with caustics and foam. **In-design, not production-wired** — only `examples/fluids_demo` consumes the crate; no production game-loop crate depends on `astraweave-fluids`. Five parallel solver/manager surfaces. Q12 in §14. See [`fluids.md`](docs/architecture/fluids.md). |
+| **Fluids** | 🔬 Research Surface | 2,560 test markers <!-- Source: CLAIMS_REGISTRY.md#fluids-test-markers -->, PBD fluid simulation with in-crate caustics/foam (no production consumer). **In-design, not production-wired** — only `examples/fluids_demo` consumes the crate; no production game-loop crate depends on `astraweave-fluids`. Three solver/manager surfaces (`FluidSystem` + `PcisphSystem` + `WaterEffectsManager`). Q12 in §14. See [`fluids.md`](docs/architecture/fluids.md). |
 | **Memory / Coordination / RAG** | 🔬 Research Surface | Memory pipeline ~11K, Coordination ~5.3K, RAG composite ~12.3K. Zero in-engine production consumers; HNSW vector index is currently a linear scan. Q11 in §14. |
 | **AI Generation** | 🧪 Orphan Source | `astraweave-ai-gen/` holds 4 loose source files with no `Cargo.toml` and no crate root — not a workspace member, cannot build as-is. See the dormant-code taxonomy in [`ARCHITECTURE_MAP.md`](docs/architecture/ARCHITECTURE_MAP.md) §5. |
 
@@ -301,7 +299,7 @@ AstraWeave is a modular workspace of **~51 production crates** organized into 7 
 
 ### 🧠 AI & Intelligence (14 crates)
 -   **`astraweave-ai`**: Core loop orchestration with GOAP planner and async LLM executor
--   **`astraweave-llm`**: Production LLM integration (Phi-3/Hermes2, Ollama, prompt caching, circuit breaker)
+-   **`astraweave-llm`**: Production LLM integration (Qwen via Ollama, prompt caching, circuit breaker; Phi-3/Hermes clients retained only as legacy comparison modules)
 -   **`astraweave-llm-eval`**: Automated LLM evaluation with multi-metric scoring
 -   **`astraweave-behavior`**: Behavior trees, HTN planning, GOAP with LRU plan caching
 -   **`astraweave-context`**: Conversation history with token-aware sliding windows and summarization
@@ -358,7 +356,7 @@ AstraWeave is a modular workspace of **~51 production crates** organized into 7 
      Asset Quality outcome doc records biome_showcase's GPU render path as a stub
      and unified_showcase as unstable. -->
 -   **Tools**: `aw_editor` (active mid-campaign, 9,425 test annotations), `aw_asset_cli`, `aw_texture_gen`, `aw_save_cli`, and ~8 other build/debugging utilities (12 tool crates total)
--   **Examples**: 59 example crates including `hello_companion` (6 AI modes), `unified_showcase` (rendering), `biome_showcase`, `adaptive_boss`, and physics/fluids demos
+-   **Examples**: 59 example crates including `hello_companion` (7 AI modes, feature-gated), `unified_showcase` (rendering), `biome_showcase`, `adaptive_boss`, and physics/fluids demos
 
 ---
 
@@ -375,7 +373,7 @@ AstraWeave is an experimental project being built **solo through AI-augmented de
      EDITOR_MULTI_TOOL_ARCHITECTURE_CAMPAIGN.md; campaign closeout docs under docs/audits/. -->
 -   **~51 production crates** across 130 workspace members with 59.3% weighted LLVM coverage (~39,000+ test annotations)
 -   **Editor**: Active mid-campaign with 9,425 test annotations (Multi-Tool Architecture Sub-phase 5 in flight; Sub-phases 3/4 complete)
--   **Architecture**: 13 subsystem traces under [`docs/architecture/`](docs/architecture/) + the [Architecture Map](docs/architecture/ARCHITECTURE_MAP.md) (v0.7.2) + the [Interactive Workspace Map](https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/architecture/)
+-   **Architecture**: 13 subsystem traces under [`docs/architecture/`](docs/architecture/) + the [Architecture Map](docs/architecture/ARCHITECTURE_MAP.md) (v0.7.2) + the [Interactive Workspace Map](https://lazyxeon.github.io/AstraWeave/architecture/)
 -   **Research surface (in-design, not runtime-wired)**: Fluids, Memory pipeline, Coordination, RAG composite, advanced GOAP, LLM production-hardening — see §5.1 of the architecture map
 -   **Active Phases**: Editor Multi-Tool Architecture Sub-phase 5 (5.C closeout, Mediator Removal, Sub-phase 6 pending). Phase 8.8 Physics Robustness paused since Feb 2026. Recently closed: Net-Trio-Remediation (Jun 10), Terrain Asset Quality (Jun 2), Unified Camera (Jun 1), Render Parity (May 17)
 

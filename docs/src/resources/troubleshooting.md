@@ -175,9 +175,9 @@ cargo test -p astraweave-input      # ✅ Tests pass
 **Workaround:**
 Focus on the working core components and use the provided aliases:
 ```bash
-cargo build-core                    # Build core components only
-cargo check-all                     # Check workspace (excluding problematic crates)
-cargo clippy-all                    # Run clippy on working crates
+cargo build -p astraweave-core -p astraweave-ecs -p astraweave-math -p astraweave-ai  # Build core components only
+cargo check --workspace             # Check workspace (130/130 members, 0 errors)
+cargo clippy --workspace --all-features -- -D warnings  # Run clippy across the workspace
 ```
 
 ## Runtime Issues

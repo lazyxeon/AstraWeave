@@ -2,7 +2,7 @@
 
 _Status: Draft (Nov 15, 2025)_
 
-Focus: replace placeholder authoring widgets (behavior graph, asset browser) with production-ready workflows that let designers build AI logic, bring assets into a scene, and manage prefabs gracefully.
+Focus: replace placeholder authoring widgets (behavior graph, asset browser) with workflows that let designers build AI logic, bring assets into a scene, and manage prefabs gracefully.
 
 ## 1. Behavior Graph Editor
 ### Goals

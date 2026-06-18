@@ -2,26 +2,37 @@ use glam::{Mat4, Vec3};
 use noise::{NoiseFn, Perlin};
 use wgpu::util::DeviceExt;
 
+/// Host mirror of `ocean.wgsl::Uniforms`.
+///
+/// F.1.2 (H-2): the pre-fix packed layout was 144 bytes while the WGSL
+/// uniform layout is 160 — `vec2<f32>` has 8-byte alignment in the uniform
+/// address space, inserting a 4-byte gap after `time_scale`, and the struct
+/// size rounds up to its 16-byte alignment. Every ocean draw failed
+/// validation ("bound with size 144 where the shader expects 160"), i.e.
+/// the ocean scenario had never rendered a single frame. The explicit pads
+/// below reproduce WGSL's implicit layout.
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 struct Uniforms {
-    view_proj: [[f32; 4]; 4],
-    ocean_pos: [f32; 3],
-    time: f32,
-    noise_scale: f32,
-    height_scale: f32,
-    time_scale: f32,
-    wave_direction: [f32; 2],
-    wave_direction2: [f32; 2],
-    beers_law: f32,
-    depth_offset: f32,
-    edge_scale: f32,
-    metallic: f32,
-    roughness: f32,
-    near: f32,
-    far: f32,
-    _pad0: f32,
-    _pad1: f32,
+    view_proj: [[f32; 4]; 4],  // offset   0
+    ocean_pos: [f32; 3],       // offset  64
+    time: f32,                 // offset  76
+    noise_scale: f32,          // offset  80
+    height_scale: f32,         // offset  84
+    time_scale: f32,           // offset  88
+    _pad_vec2_align: f32,      // offset  92 (vec2 8-byte alignment gap)
+    wave_direction: [f32; 2],  // offset  96
+    wave_direction2: [f32; 2], // offset 104
+    beers_law: f32,            // offset 112
+    depth_offset: f32,         // offset 116
+    edge_scale: f32,           // offset 120
+    metallic: f32,             // offset 124
+    roughness: f32,            // offset 128
+    near: f32,                 // offset 132
+    far: f32,                  // offset 136
+    _pad0: f32,                // offset 140
+    _pad1: f32,                // offset 144
+    _pad_tail: [f32; 3],       // offset 148 -> 160 (struct align round-up)
 }
 
 #[repr(C)]
@@ -101,6 +112,7 @@ impl OceanRenderer {
             noise_scale: 20.0,
             height_scale: 2.0,
             time_scale: 0.1,
+            _pad_vec2_align: 0.0,
             wave_direction: [0.5, -0.2],
             wave_direction2: [-0.5, 0.5],
             beers_law: 2.0,
@@ -112,6 +124,7 @@ impl OceanRenderer {
             far: 100.0,
             _pad0: 0.0,
             _pad1: 0.0,
+            _pad_tail: [0.0; 3],
         };
 
         let uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -303,9 +316,13 @@ impl OceanRenderer {
             cache: None,
         });
 
-        // Generate ocean tiles (17 tiles in a grid pattern)
+        // Generate ocean tiles (5x5 grid).
+        // F.1.4 (H-2): tile_size was 50 (total extent ±125, truncated even
+        // earlier by the old zfar=100). 160 gives ±400 of water; the shader's
+        // horizon fog (ocean.wgsl fs_main) blends the far water into the sky
+        // haze well before the mesh edge, so no hard edge is visible.
         let mut tiles = Vec::new();
-        let tile_size = 50.0;
+        let tile_size = 160.0;
         let subdivisions = 100;
 
         for x in -2..=2 {
@@ -484,21 +501,35 @@ impl OceanRenderer {
         queue: &wgpu::Queue,
         size: u32,
     ) -> (wgpu::Texture, wgpu::TextureView) {
+        // F.1.3 (H-2): pre-fix this wrote a DEGENERATE "normal map" — constant
+        // (128, 128, noise): zero x/y tilt with a noisy z, which after the
+        // shader's *2-1 decode normalizes to a flat (or sign-flipped) normal.
+        // The entire normal-perturbation path was inert — one ingredient of
+        // the owner's "gelatin" (no surface detail response to view/light).
+        // Now: a proper tangent-space normal map derived from the height
+        // field's finite differences.
         let perlin = Perlin::new(123);
         let mut data = vec![0u8; (size * size * 4) as usize];
 
-        for y in 0..size {
-            for x in 0..size {
-                let nx = x as f64 / size as f64 * 8.0;
-                let ny = y as f64 / size as f64 * 8.0;
+        let height = |x: i64, y: i64| -> f64 {
+            // Wrap for seamless tiling.
+            let xw = x.rem_euclid(size as i64) as f64;
+            let yw = y.rem_euclid(size as i64) as f64;
+            perlin.get([xw / size as f64 * 8.0, yw / size as f64 * 8.0])
+        };
+        let strength = 2.0_f64;
 
-                let value = perlin.get([nx, ny]);
-                let normalized = ((value + 1.0) / 2.0 * 255.0) as u8;
+        for y in 0..size as i64 {
+            for x in 0..size as i64 {
+                let dx = height(x - 1, y) - height(x + 1, y);
+                let dy = height(x, y - 1) - height(x, y + 1);
+                let len = (dx * dx + dy * dy + strength * strength).sqrt();
+                let n = [dx / len, dy / len, strength / len];
 
-                let idx = ((y * size + x) * 4) as usize;
-                data[idx] = 128;
-                data[idx + 1] = 128;
-                data[idx + 2] = normalized;
+                let idx = ((y as u32 * size + x as u32) * 4) as usize;
+                data[idx] = ((n[0] * 0.5 + 0.5) * 255.0) as u8;
+                data[idx + 1] = ((n[1] * 0.5 + 0.5) * 255.0) as u8;
+                data[idx + 2] = ((n[2] * 0.5 + 0.5) * 255.0) as u8;
                 data[idx + 3] = 255;
             }
         }
@@ -563,6 +594,7 @@ impl OceanRenderer {
             noise_scale: 20.0,
             height_scale: 2.0,
             time_scale: 0.1,
+            _pad_vec2_align: 0.0,
             wave_direction: [0.5, -0.2],
             wave_direction2: [-0.5, 0.5],
             beers_law: 2.0,
@@ -574,6 +606,7 @@ impl OceanRenderer {
             far: 100.0,
             _pad0: 0.0,
             _pad1: 0.0,
+            _pad_tail: [0.0; 3],
         };
 
         queue.write_buffer(&self.uniform_buffer, 0, bytemuck::cast_slice(&[uniforms]));

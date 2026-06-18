@@ -40,7 +40,7 @@ AstraWeave is a **scientific proof of concept**: a production-grade game engine 
 
 **DO:**
 - Build incrementally (`-p` flag for single crates)
-- Use cargo aliases (`check-all`, `build-core`, `test-all`, `clippy-all`)
+- Use the editor cargo aliases (`editor`, `editor-release`, `editor-dev`); for workspace operations use the explicit forms (`cargo check --workspace`, etc.) — no `check-all`-style aliases are defined
 - Use `--release` for examples
 - Run `cargo check -p <crate>` after every modification
 
@@ -64,11 +64,11 @@ AstraWeave is a **scientific proof of concept**: a production-grade game engine 
 
 ```powershell
 ./scripts/bootstrap.sh            # Setup
-cargo check-all                   # Workspace check
-cargo build-core                  # Core components
-cargo test-all                    # Working crate tests
-cargo clippy-all                  # Full linting
-cargo run -p hello_companion --release  # AI demo (6 modes)
+cargo check --workspace           # Workspace check
+cargo build -p astraweave-core -p astraweave-ecs -p astraweave-math -p astraweave-ai  # Core components
+cargo test --workspace            # Workspace tests
+cargo clippy --workspace --all-features -- -D warnings  # Full linting
+cargo run -p hello_companion --release  # AI demo (7 modes, feature-gated)
 cargo bench -p astraweave-core    # Benchmarks
 ```
 

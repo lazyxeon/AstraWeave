@@ -1,10 +1,10 @@
-//! hello_companion - Advanced AI Showcase with Qwen3-8B + Phase 7 Features
+//! hello_companion - Advanced AI Showcase with Qwen + Phase 7 Features
 //!
 //! Demonstrates 7 AI modes + Phase 7 enhancements:
 //! 1. Classical (RuleOrchestrator - baseline)
 //! 2. BehaviorTree (Hierarchical reasoning)
 //! 3. Utility (Score-based selection)
-//! 4. LLM (Qwen3-8B via Ollama with Phase 7 enhancements)
+//! 4. LLM (Qwen via Ollama with Phase 7 enhancements)
 //! 5. Hybrid (LLM with Classical fallback)
 //! 6. Ensemble (Voting across all modes)
 //! 7. Arbiter (GOAP + Qwen3 Hybrid - instant control + strategic planning)
@@ -15,11 +15,11 @@
 //! - Semantic cache similarity matching (Jaccard algorithm)
 //! - 5-stage JSON parsing with hallucination detection
 //! - Enhanced prompt engineering with few-shot learning
-//! - GOAP+Hermes Arbiter: Zero user-facing latency via async LLM planning
+//! - GOAP+Qwen Arbiter: Zero user-facing latency via async LLM planning
 //!
 //! Usage:
 //!   cargo run -p hello_companion --release                                        # Classical (default)
-//!   cargo run -p hello_companion --release --features llm,ollama                 # Qwen3-8B
+//!   cargo run -p hello_companion --release --features llm,ollama                 # Qwen
 //!   cargo run -p hello_companion --release --features llm,ollama -- --bt         # BehaviorTree
 //!   cargo run -p hello_companion --release --features llm,ollama -- --utility    # Utility AI
 //!   cargo run -p hello_companion --release --features llm,ollama -- --hybrid     # LLM + fallback
@@ -68,7 +68,7 @@ use astraweave_core::{ActionStep, ToolRegistry};
 use astraweave_llm::{plan_from_llm, PlanSource};
 
 #[cfg(feature = "ollama")]
-use astraweave_llm::qwen3_ollama::Qwen3Ollama;
+use astraweave_llm::qwen3_ollama::{Qwen3Ollama, DEFAULT_QWEN_INSTRUCT_MODEL};
 
 use anyhow::Result;
 
@@ -84,7 +84,7 @@ enum AIMode {
     #[cfg(feature = "llm")]
     Utility, // Score-based selection
     #[cfg(feature = "ollama")]
-    LLM, // Qwen3-8B via Ollama
+    LLM, // Qwen via Ollama
     #[cfg(feature = "ollama")]
     Hybrid, // LLM + Classical fallback
     #[cfg(feature = "llm")]
@@ -102,7 +102,7 @@ impl std::fmt::Display for AIMode {
             #[cfg(feature = "llm")]
             AIMode::Utility => write!(f, "Utility (Score-based)"),
             #[cfg(feature = "ollama")]
-            AIMode::LLM => write!(f, "LLM (Qwen3-8B via Ollama)"),
+            AIMode::LLM => write!(f, "LLM (Qwen via Ollama)"),
             #[cfg(feature = "ollama")]
             AIMode::Hybrid => write!(f, "Hybrid (LLM + Fallback)"),
             #[cfg(feature = "llm")]
@@ -594,7 +594,7 @@ fn select_ai_mode(args: &[String]) -> AIMode {
     #[cfg(all(feature = "llm", not(feature = "ollama")))]
     {
         println!("💡 LLM features enabled. Using BehaviorTree mode.");
-        println!("   Enable Ollama with --features llm,ollama for Qwen3-8B\n");
+        println!("   Enable Ollama with --features llm,ollama for Qwen\n");
         return AIMode::BehaviorTree;
     }
 
@@ -885,19 +885,19 @@ fn calculate_coverfire_score(snap: &WorldSnapshot) -> f32 {
 }
 
 // ============================================================================
-// LLM AI (Qwen3-8B via Ollama)
+// LLM AI (Qwen via Ollama)
 // ============================================================================
 
 #[cfg(feature = "ollama")]
 fn generate_llm_plan(snap: &WorldSnapshot) -> Result<PlanIntent> {
     use anyhow::Context;
-    println!("🧠 LLM AI (Qwen3-8B via Ollama)");
+    println!("🧠 LLM AI (Qwen via Ollama)");
 
     // Check Ollama availability first
     check_ollama_available()?;
 
-    // Create Qwen3Ollama client (5GB Q4_K_M - Qwen3-8B with dual thinking modes)
-    // Qwen3-8B has native tool calling and excellent structured output for AstraWeave's 37-tool system
+    // Create Qwen3Ollama client (Qwen with dual thinking modes)
+    // The Qwen instruct model has strong structured output for AstraWeave's tool system.
     // TEMPERATURE EXPERIMENT: Change this value to test different configurations
     // - 0.3 = Deterministic (high consistency, low creativity)
     // - 0.5 = Balanced (BASELINE - 100% success rate validated)
@@ -921,13 +921,14 @@ fn generate_llm_plan(snap: &WorldSnapshot) -> Result<PlanIntent> {
 
     match result {
         PlanSource::Llm(plan) => {
-            println!("   ✅ Qwen3-8B generated {} steps", plan.steps.len());
+            println!("   ✅ Qwen generated {} steps", plan.steps.len());
             Ok(plan)
         }
         PlanSource::Fallback { plan, reason } => {
-            println!("   ⚠️  Qwen3-8B returned fallback: {}", reason);
+            println!("   ⚠️  Qwen returned fallback: {}", reason);
             Ok(plan)
         }
+        _ => anyhow::bail!("Unsupported LLM plan source returned by astraweave-llm"),
     }
 }
 
@@ -964,16 +965,18 @@ fn check_ollama_available() -> Result<()> {
             .as_array()
             .context("No models found in Ollama response")?;
 
-        let has_phi3 = models.iter().any(|m| {
+        let has_qwen = models.iter().any(|m| {
             m["name"]
                 .as_str()
-                .map(|n| n.starts_with("phi"))
+                .map(|n| n == DEFAULT_QWEN_INSTRUCT_MODEL)
                 .unwrap_or(false)
         });
 
-        if !has_phi3 {
+        if !has_qwen {
             anyhow::bail!(
-                "phi3 model not found. Install with: ollama pull phi3\n   Available models: {:?}",
+                "Qwen model '{}' not found. Install with: ollama pull {}\n   Available models: {:?}",
+                DEFAULT_QWEN_INSTRUCT_MODEL,
+                DEFAULT_QWEN_INSTRUCT_MODEL,
                 models
                     .iter()
                     .filter_map(|m| m["name"].as_str())
@@ -981,7 +984,7 @@ fn check_ollama_available() -> Result<()> {
             );
         }
 
-        println!("   ✅ Ollama + phi3 confirmed");
+        println!("   ✅ Ollama + {} confirmed", DEFAULT_QWEN_INSTRUCT_MODEL);
         Ok(())
     })
 }
@@ -1215,6 +1218,9 @@ fn action_type_string(step: &ActionStep) -> String {
 
         // Terrain (1)
         ActionStep::ModifyTerrain { .. } => "modify_terrain".to_string(),
+
+        // Future-proof non-exhaustive enum variants.
+        _ => "unknown".to_string(),
     }
 }
 

@@ -1,7 +1,7 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/sitemap.xml
+Sitemap: https://lazyxeon.github.io/AstraWeave/sitemap.xml
 
 Disallow: /api/src/
 Disallow: /api/implementors/

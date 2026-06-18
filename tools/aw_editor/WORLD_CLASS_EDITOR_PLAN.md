@@ -1,10 +1,10 @@
-# AstraWeave Editor: Production Readiness & World-Class Implementation Plan
+# AstraWeave Editor: Production Readiness Implementation Plan
 
 **Document Version**: 2.1  
 **Created**: January 14, 2026  
 **Last Updated**: January 2026  
 **Status**: ACTIVE DEVELOPMENT  
-**Objective**: Transform aw_editor into a fully production-ready, world-class game editor
+**Objective**: Transform aw_editor into a fully production-ready game editor
 
 ---
 
@@ -82,7 +82,7 @@
 
 ## Executive Summary
 
-The AstraWeave Editor is at **82% production readiness** with a solid architectural foundation. To achieve world-class status capable of designing, building, and shipping AAA-quality games, we need to address **5 critical gaps**:
+The AstraWeave Editor is at **82% production readiness** with a solid architectural foundation. To reach a status capable of designing, building, and shipping AAA-quality games, we need to address **5 critical gaps**:
 
 1. **Viewport Mesh Rendering** (95% gap vs engine) - Currently renders cubes only
 2. **PBR Material Preview** - No real-time material visualization in 3D
@@ -90,7 +90,7 @@ The AstraWeave Editor is at **82% production readiness** with a solid architectu
 4. **Asset Pipeline Integration** - Import buttons don't fully integrate with viewport
 5. **Polish & Stability** - Error handling, progress feedback, save confirmation
 
-**Estimated Timeline**: 6-8 weeks to world-class status with focused development.
+**Estimated Timeline**: 6-8 weeks with focused development.
 
 ---
 
@@ -398,7 +398,7 @@ fn auto_save(&mut self) {
 
 ---
 
-## Success Criteria: World-Class Editor
+## Success Criteria: Editor
 
 ### Minimum Viable (Week 3)
 - [ ] Load and display glTF meshes
@@ -471,4 +471,4 @@ fn auto_save(&mut self) {
 
 **Document End**
 
-*This plan represents the critical path to a production-ready, world-class game editor capable of shipping AAA-quality games.*
+*This plan represents the critical path to a production-ready game editor capable of shipping AAA-quality games.*

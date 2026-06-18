@@ -70,7 +70,7 @@ pub trait OrchestratorAsync {
 | BehaviorTree | `BehaviorGraph` | 3.19 µs/1K nodes | Hierarchical decision trees |
 | Utility | `UtilityOrchestrator` | 460 ns | Dynamic priority scoring |
 | GOAP | `GOAPPlanner` | 3.46–3.56 ns (next_action) | Strategic goal planning |
-| LLM | Qwen3-8B (Ollama) | 2–8 s | Creative, emergent behavior |
+| LLM | Ollama (default `phi3:medium`; Qwen3-8B opt-in) | 2–8 s | Creative, emergent behavior |
 | Hybrid | LLM + fallback | 2–8 s with fallback | LLM with graceful degradation |
 | Arbiter | `AIArbiter` (GOAP + LLM) | 314 ns–8 s | GOAP for tactics, LLM for strategy |
 
@@ -140,7 +140,7 @@ In addition to Miri, critical code paths are formally verified with Kani:
 
 ## Mutation Testing
 
-Production-grade test quality validated through `cargo mutants`:
+Test quality validated through `cargo mutants`:
 
 - **Wave 1**: 767 manually-targeted mutation tests across 7 crates
 - **Wave 2**: 1,261+ automated mutants (astraweave-prompts: 792 mutants, 100% kill rate)
@@ -148,7 +148,7 @@ Production-grade test quality validated through `cargo mutants`:
 
 ## Determinism
 
-AstraWeave achieves industry-leading determinism:
+AstraWeave provides deterministic simulation:
 
 - Bit-identical replay across runs
 - Position tolerance: < 0.0001

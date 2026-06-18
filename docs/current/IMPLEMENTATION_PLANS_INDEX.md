@@ -7,7 +7,7 @@
 
 ## Overview
 
-This directory contains three comprehensive planning documents that form a complete roadmap for transforming AstraWeave from "compiles cleanly" to "production-ready AI-native game engine."
+This directory contains three planning documents that form a roadmap for transforming AstraWeave from "compiles cleanly" to "production-ready AI-native game engine."
 
 ---
 
@@ -29,7 +29,7 @@ This directory contains three comprehensive planning documents that form a compl
 - ⚠️ 2 confirmed `todo!()` / `unimplemented!()` in advertised features
 - ⚠️ 0/4 integration tests for skeletal animation
 - ⚠️ No LLM quality evaluation harness
-- ✅ Strong architectural foundation (82 workspace members)
+- ✅ Strong architectural foundation (130 workspace members) <!-- Source: CLAIMS_REGISTRY.md#workspace-members -->
 - ✅ AI-native design is well-implemented
 
 **Read this first to**: Understand where we are and where we need to go
@@ -251,7 +251,7 @@ COMPREHENSIVE_STRATEGIC_ANALYSIS.md (Strategic Vision)
 ## 🙏 Acknowledgments
 
 This planning suite was created through comprehensive analysis of the AstraWeave codebase, including:
-- 82 workspace members
+- 130 workspace members <!-- Source: CLAIMS_REGISTRY.md#workspace-members -->
 - 100+ documentation files
 - 50+ code searches
 - Benchmark analysis

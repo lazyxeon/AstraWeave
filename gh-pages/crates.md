@@ -5,7 +5,7 @@ title: Crate Index
 
 # Crate Index
 
-AstraWeave consists of **128 workspace packages** (69 non-example + 59 examples) with **~27,000+ tests** across the workspace.
+AstraWeave consists of **130 workspace packages** <!-- Source: CLAIMS_REGISTRY.md#workspace-members --> (~51 production crates plus tools and 59 examples) with **~39,900 test markers** <!-- Source: CLAIMS_REGISTRY.md#test-markers-total --> across the workspace.
 
 ## Tier 1: Core Engine
 
@@ -40,7 +40,7 @@ AstraWeave consists of **128 workspace packages** (69 non-example + 59 examples)
 | **astraweave-nav** | Navmesh baking and A* pathfinding | 216 | 93.11% |
 | **astraweave-terrain** | Procedural terrain: voxel/polygon, marching cubes, climate | 2,536 | 44.11% |
 | **astraweave-pcg** | Procedural content generation | 133 | 99.32% |
-| **astraweave-fluids** | SPH fluid simulation | 4,907 | 97.24% |
+| **astraweave-fluids** | PBD fluid simulation | 2,560 <!-- Source: CLAIMS_REGISTRY.md#fluids-test-markers --> | 97.24% |
 | **astraweave-materials** | Material definitions and shader cache | 282 | 98.55% |
 | **astraweave-quests** | Quest system, objectives, rewards | 218+ | — |
 | **astraweave-dialogue** | Dialogue trees, branching conversation | 291+ | Build error (Rhai Sync) |
@@ -95,7 +95,7 @@ AstraWeave consists of **128 workspace packages** (69 non-example + 59 examples)
 
 | Crate | Description | Tests |
 |-------|-------------|------:|
-| **aw_editor** | Level/encounter editor (GUI) | ~6,100+ |
+| **aw_editor** | Level/encounter editor (GUI) | 9,427 <!-- Source: CLAIMS_REGISTRY.md#editor-test-markers --> |
 | **aw_asset_cli** | Asset pipeline CLI | — |
 | **aw_build** | Build automation | 0 |
 | **aw_debug** | Debug utilities | — |

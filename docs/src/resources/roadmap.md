@@ -14,7 +14,7 @@
 This page reflects the engineering reality surfaced by the architecture trace
 campaign as of `ARCHITECTURE_MAP.md` v0.7.0 (2026-05-13). It supersedes earlier
 roadmap documents that framed designed-but-not-wired surface as shipping features.
-For navigation, the [interactive workspace map](https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/architecture/)
+For navigation, the [interactive workspace map](https://lazyxeon.github.io/AstraWeave/architecture/)
 visualises the same information.
 ```
 
@@ -72,10 +72,10 @@ otherwise accumulates in a 850K+ LoC workspace.
 * **Editor Multi-Tool Architecture Campaign (Sub-phase 3)** — Mediator Brush
   diagnostic, Round 8 closure. §7.7 wrapped-component resource identity trap
   surfaced at four layers; Real-Fix.A/B/C landed, Real-Fix.D pending. See
-  [`aw_editor.md`](https://github.com/lazyxeon/AstraWeave-AI-Native-Gaming-Engine/blob/main/docs/architecture/aw_editor.md) §1.
+  [`aw_editor.md`](https://github.com/lazyxeon/AstraWeave/blob/main/docs/architecture/aw_editor.md) §1.
 * **Editor Behavioral Correctness Audit remediation** — 37 fixes across 47
   commits shipped; per-audit open items still pending Andrew-gate. See
-  [`docs/current/EDITOR_BEHAVIORAL_CORRECTNESS_AUDIT.md`](https://github.com/lazyxeon/AstraWeave-AI-Native-Gaming-Engine/blob/main/docs/current/EDITOR_BEHAVIORAL_CORRECTNESS_AUDIT.md).
+  [`docs/current/EDITOR_BEHAVIORAL_CORRECTNESS_AUDIT.md`](https://github.com/lazyxeon/AstraWeave/blob/main/docs/current/EDITOR_BEHAVIORAL_CORRECTNESS_AUDIT.md).
 * **Architecture trace campaign** — 13 of N subsystems traced. Treated as part
   of the production contract by `CLAUDE.md`. Adding more traces as subsystems
   cross the non-trivial-surface threshold.
@@ -131,11 +131,11 @@ The list is exhaustive; the architecture map is the canonical reference.
 
 ## Further reading
 
-* [Interactive workspace map](https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/architecture/)
+* [Interactive workspace map](https://lazyxeon.github.io/AstraWeave/architecture/)
   — explore the engine.
-* [`ARCHITECTURE_MAP.md`](https://github.com/lazyxeon/AstraWeave-AI-Native-Gaming-Engine/blob/main/docs/architecture/ARCHITECTURE_MAP.md)
+* [`ARCHITECTURE_MAP.md`](https://github.com/lazyxeon/AstraWeave/blob/main/docs/architecture/ARCHITECTURE_MAP.md)
   — consolidated synthesis (2,500+ lines, version-controlled).
-* [13 per-subsystem traces](https://github.com/lazyxeon/AstraWeave-AI-Native-Gaming-Engine/tree/main/docs/architecture)
+* [13 per-subsystem traces](https://github.com/lazyxeon/AstraWeave/tree/main/docs/architecture)
   under `docs/architecture/`.
-* [Benchmark dashboard](https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/dashboard/benchmark_dashboard/)
+* [Benchmark dashboard](https://lazyxeon.github.io/AstraWeave/dashboard/benchmark_dashboard/)
   — performance measurements.

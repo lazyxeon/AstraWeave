@@ -2,7 +2,7 @@
 
 **Date**: November 22, 2025  
 **Status**: 🏗️ **IMPLEMENTATION IN PROGRESS** (Phase 1 Complete)  
-**Priority**: ⭐⭐⭐⭐⭐ **CRITICAL PATH** (Completes UE5-tier rendering stack)
+**Priority**: ⭐⭐⭐⭐⭐ **CRITICAL PATH** (dated plan, November 2025)
 
 ---
 
@@ -10,13 +10,13 @@
 
 ### Current State: "Nanite Without Lights"
 
-AstraWeave has **world-class geometry rendering** but **unmeasured, CPU-bound lighting**:
+AstraWeave has **geometry-virtualization (LOD + vertex compression)** but **unmeasured, CPU-bound lighting**:
 
 ✅ **Strengths** (Geometry Virtualization - UE5 Nanite Equivalent):
 - Nanite-like LOD: 68-2110 µs quadric simplification
 - Vertex compression: 16-29 ns, 37.5% memory reduction
 - GPU mesh optimization: 10-100× draw call reduction
-- 103k+ entity capacity @ 60 FPS (10.4× Unity, 2.1-5.2× Unreal)
+- entity-capacity figure superseded — see CLAIMS_REGISTRY.md#agents-capacity-60fps
 - GPU-driven frustum culling (Task 3 complete)
 
 ❌ **Critical Gap** (Dynamic Lighting):
@@ -885,17 +885,15 @@ pub fn build_clusters_gpu(...) {
 ✅ **Vertex Compression**:
 - 16-29 ns per vertex
 - 37.5% memory reduction
-- Octahedral normals (industry-leading)
+- Octahedral normals
 
 ✅ **GPU Mesh Optimization**:
 - 10-100× draw call reduction
 - Instancing + indirect draws
 - GPU frustum culling (Task 3)
 
-✅ **103k+ Entity Capacity**:
-- 10.4× Unity (9,900 entities)
-- 2.1-5.2× Unreal (20k-50k entities)
-- @ 60 FPS validated
+✅ **Entity Capacity**:
+- entity-capacity figure superseded — see CLAIMS_REGISTRY.md#agents-capacity-60fps
 
 ### Missing Piece (Dynamic Lighting)
 
@@ -913,17 +911,17 @@ UE5 Rendering Stack:
 └── Lumen (GI)            → ⏸️ Phase 8.4 (optional)
 ```
 
-**Result**: AstraWeave becomes **first AI-native engine with UE5-class rendering** (Nanite + MegaLights, minus Lumen).
+**Result**: AstraWeave adds **GPU-driven light culling (MegaLights) and virtualized geometry** (LOD + vertex compression).
 
 **Performance**:
 ```
 Before:
-- 103k entities @ 60 FPS
+- entity-capacity figure superseded — see CLAIMS_REGISTRY.md#agents-capacity-60fps
 - ~50 dynamic lights (CPU-bound)
 - No benchmarks for lighting
 
 After:
-- 103k entities @ 60 FPS (no change)
+- entity-capacity figure superseded — see CLAIMS_REGISTRY.md#agents-capacity-60fps (no change)
 - 250+ dynamic lights (GPU-accelerated, 68× speedup)
 - Full benchmark coverage (cluster_gpu_vs_cpu.rs)
 ```

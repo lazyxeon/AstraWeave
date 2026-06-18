@@ -131,7 +131,7 @@ Verified all major sections are NOT stubs:
 
 ### Potential Future Enhancements
 - Add remaining 60+ example projects to examples/index.md (as identified in discovery-report.md)
-- Per-crate API reference pages (47 crates)
+- Per-crate API reference pages (130 crates) <!-- Source: CLAIMS_REGISTRY.md#workspace-members -->
 - Performance benchmark methodology guide
 - Screenshots/GIFs for example walkthroughs
 

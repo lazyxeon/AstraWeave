@@ -263,7 +263,7 @@ Warnings: 5 (same non-blocking warnings)
 - Unused imports: `Vec2`, `Vec4` in `astraweave-render/src/material_extended.rs`
 - Dead code: 4 unused bloom constants in `astraweave-render/src/post.rs`
 
-**Verdict**: ✅ **PRODUCTION-READY COMPILATION**
+**Verdict**: ✅ **CLEAN COMPILATION** (zero errors, non-blocking warnings only)
 
 ---
 
@@ -493,7 +493,7 @@ cargo run -p unified_showcase --release
 - **Subsurface**: +30-50 ALU ops (wrapped diffuse)
 - **Sheen**: +20-30 ALU ops (Charlie distribution)
 - **Transmission**: +80-100 ALU ops (transparency blend)
-- **Total**: 370-510 ALU ops per pixel (competitive with UE5/Unity HDRP)
+- **Total**: 370-510 ALU ops per pixel
 
 ---
 
@@ -564,7 +564,7 @@ cargo run -p unified_showcase --release
 
 ## Conclusion
 
-**Phase PBR-E integration is CODE-COMPLETE and FULLY DOCUMENTED**. All infrastructure, shaders, controls, and testing procedures are implemented and ready for execution. The system is production-ready pending visual validation testing.
+**Phase PBR-E integration is CODE-COMPLETE and FULLY DOCUMENTED**. All infrastructure, shaders, controls, and testing procedures are implemented and ready for execution. The system is example-scoped (`unified_showcase`) and awaits visual validation testing.
 
 ### What's Done ✅
 

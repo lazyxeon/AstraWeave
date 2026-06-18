@@ -154,8 +154,8 @@ fn damage_system(
 ### How do I build from source?
 
 ```bash
-git clone https://github.com/lazyxeon/AstraWeave-AI-Native-Gaming-Engine
-cd AstraWeave-AI-Native-Gaming-Engine
+git clone https://github.com/lazyxeon/AstraWeave
+cd AstraWeave
 cargo build --release
 ```
 

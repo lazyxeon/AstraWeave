@@ -40,6 +40,9 @@ Provides authoritative multiplayer for the legacy `World`-based runtime (grid co
 **Status note:**
 Active and feature-complete for its grid-`World` data model. Co-exists with `astraweave-net-ecs` (the ECS-Plugin networking layer) which uses a different data model (`Vec3` positions, binary postcard wire format, matchmaking-room protocol). Both systems live in the workspace; neither imports the other.
 
+**Fluids determinism carve-out (Fluids-Integration F.1, 2026-06-11):**
+GPU particle fluid state (`astraweave-fluids` `FluidSystem`/`PcisphSystem`) is non-deterministic by construction (atomic neighbor-list ordering × float non-associativity) and is **permanently excluded** from `world_hash`, `ReplayEvent` logs, and replication — replicating live particle state is also infeasible by ~4 orders of magnitude (80 B/particle × 100k ≈ 8 MB/tick). Only fluid *authoring* data (volumes, emitters, seeds) may ever be hashed/replicated; gameplay-relevant water truth must come from deterministic CPU layers. See `docs/architecture/fluids.md` §0 for the binding policy.
+
 ---
 
 ## 2. Authoritative Pipeline

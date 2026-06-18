@@ -9,8 +9,8 @@ const DATA_SOURCES = [
     'static-data/history.jsonl',                 // Fallback: shipped static snapshot
     './benchmark-data/history.jsonl',            // Explicit relative fallback
     './static-data/history.jsonl',               // Explicit relative fallback (static)
-    'https://raw.githubusercontent.com/lazyxeon/AstraWeave-AI-Native-Gaming-Engine/main/tools/benchmark-dashboard/benchmark-data/history.jsonl',
-    'https://raw.githubusercontent.com/lazyxeon/AstraWeave-AI-Native-Gaming-Engine/main/tools/benchmark-dashboard/static-data/history.jsonl',
+    'https://raw.githubusercontent.com/lazyxeon/AstraWeave/main/tools/benchmark-dashboard/benchmark-data/history.jsonl',
+    'https://raw.githubusercontent.com/lazyxeon/AstraWeave/main/tools/benchmark-dashboard/static-data/history.jsonl',
     '../../target/benchmark-data/history.jsonl', // Local dev (from criterion benchmarks)
 ];
 

@@ -3,7 +3,7 @@
 **Version**: 2.0  
 **Date**: January 2026  
 **Status**: 📋 Comprehensive Audit & Roadmap (Revised with Expert Review)  
-**Target**: World-class water and fluids systems capable of research-grade simulations  
+**Target**: Water and fluids systems capable of research-grade simulations  
 **Reviewed By**: External AI review (Grok 4) with state-of-the-art 2024-2026 research
 
 ---

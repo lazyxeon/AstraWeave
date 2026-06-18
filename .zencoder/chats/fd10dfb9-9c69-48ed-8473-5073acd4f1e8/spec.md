@@ -65,11 +65,11 @@ tools/aw_editor/src/
 
 ## 5. Verification Approach
 - **Automated Testing**:
-    - `cargo test-all`: Ensure zero regressions.
+    - `cargo test --workspace`: Ensure zero regressions.
     - New unit tests for each decoupled Service.
     - Integration tests for mesh loading and scene synchronization.
 - **Linting**:
-    - `cargo clippy-all`: Enforce zero-warning policy and `clippy::unwrap_used`.
+    - `cargo clippy --workspace --all-features -- -D warnings`: Enforce zero-warning policy and `clippy::unwrap_used`.
 - **Manual Verification**:
     - "Veilweaver Playability Test": Verify end-to-end workflow from asset import to Play-in-Editor.
     - Long-run stability test: 4 hours of active editing without memory leaks or crashes.

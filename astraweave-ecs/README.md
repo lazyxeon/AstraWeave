@@ -2,7 +2,7 @@
 
 ## Overview
 
-AstraWeave ECS is a **production-ready, AI-native** Entity Component System designed for game engines on par with Unity, Unreal, and other state-of-the-art engines. Unlike traditional ECS implementations where AI is an afterthought, AstraWeave ECS embeds the **Perception → Reasoning → Planning → Action** loop directly into its architecture.
+AstraWeave ECS is a **production-ready, AI-native** Entity Component System designed for game engines. Unlike traditional ECS implementations where AI is an afterthought, AstraWeave ECS embeds the **Perception → Reasoning → Planning → Action** loop directly into its architecture.
 
 ## Key Features
 

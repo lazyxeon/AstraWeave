@@ -1346,9 +1346,9 @@ cargo run -p hello_companion --release
 cargo run -p unified_showcase --release
 
 # Full validation (per phase):
-cargo check-all
-cargo test-all
-cargo clippy-all
+cargo check --workspace
+cargo test --workspace
+cargo clippy --workspace --all-features -- -D warnings
 cargo fmt --all -- --check
 ```
 

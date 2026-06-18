@@ -1,4 +1,6 @@
 use astraweave_core::*;
+#[cfg(feature = "ollama")]
+use astraweave_llm::qwen3_ollama::DEFAULT_QWEN_INSTRUCT_MODEL;
 use astraweave_llm::{plan_from_llm, MockLlm, PlanSource};
 #[cfg(feature = "ollama")]
 use astraweave_llm::{LlmClient, LocalHttpClient};
@@ -7,15 +9,15 @@ use std::env;
 
 /// Comprehensive LLM integration example demonstrating multiple client types
 ///
-/// This example is configured to use Phi-3 Medium (locally downloaded) by default.
-/// To use Phi-3 Medium with Ollama:
+/// This example is configured to use Qwen by default.
+/// To use Qwen with Ollama:
 ///   1. Make sure Ollama is running: `ollama serve`
-///   2. Pull Phi-3 Medium: `ollama pull phi3:medium`
+///   2. Pull Qwen: `ollama pull qwen3.5:4b`
 ///   3. Run this example: `cargo run -p llm_integration --features ollama`
 ///
 /// Or set environment variables:
 ///   OLLAMA_URL=http://localhost:11434
-///   OLLAMA_MODEL=phi3:medium
+///   OLLAMA_MODEL=qwen3.5:4b
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     println!("AstraWeave LLM Integration Example");
@@ -36,14 +38,17 @@ async fn main() -> anyhow::Result<()> {
     println!("--------------------------");
     test_mock_client(&world_snapshot, &tool_registry).await?;
 
-    // 2. Test Ollama Chat client with Phi-3 Medium (default model for this project)
+    // 2. Test Ollama Chat client with Qwen (default model for this project)
     #[cfg(feature = "ollama")]
     {
         let ollama_url =
             env::var("OLLAMA_URL").unwrap_or_else(|_| "http://127.0.0.1:11434".to_string());
 
         println!("\n2. Testing Ollama Chat Client at {}", ollama_url);
-        println!("   Default Model: Phi-3 Medium (phi3:medium)");
+        println!(
+            "   Default Model: Qwen instruct ({})",
+            DEFAULT_QWEN_INSTRUCT_MODEL
+        );
         println!("-------------------------");
 
         // Quick health check: GET /api/tags is a safe, browser-friendly endpoint that lists available models.
@@ -60,7 +65,7 @@ async fn main() -> anyhow::Result<()> {
     #[cfg(not(feature = "ollama"))]
     {
         println!("\n2. Ollama Chat Client (Skipped - rebuild with --features ollama to enable)");
-        println!("   To use Phi-3 Medium: cargo run -p llm_integration --features ollama");
+        println!("   To use Qwen: cargo run -p llm_integration --features ollama");
     }
 
     // 3. Test LocalHttpClient (if URL provided)
@@ -81,14 +86,17 @@ async fn main() -> anyhow::Result<()> {
     }
 
     println!("\nExample completed successfully!");
-    println!("\n=== Phi-3 Medium Configuration ===");
-    println!("To use Phi-3 Medium (recommended for this project):");
+    println!("\n=== Qwen Configuration ===");
+    println!("To use Qwen (required local LLM for this project):");
     println!("  1. Install Ollama: https://ollama.ai/download");
-    println!("  2. Pull Phi-3 Medium: ollama pull phi3:medium");
+    println!(
+        "  2. Pull Qwen: ollama pull {}",
+        DEFAULT_QWEN_INSTRUCT_MODEL
+    );
     println!("  3. Run with features: cargo run -p llm_integration --features ollama");
     println!("\nEnvironment Variables:");
     println!("  OLLAMA_URL=http://localhost:11434 (default)");
-    println!("  OLLAMA_MODEL=phi3:medium (default)");
+    println!("  OLLAMA_MODEL={} (default)", DEFAULT_QWEN_INSTRUCT_MODEL);
     println!("  LOCAL_LLM_URL=<your-url> (for alternative endpoints)");
 
     Ok(())
@@ -119,63 +127,10 @@ async fn test_ollama_client(
     reg: &ToolRegistry,
     url: &str,
 ) -> anyhow::Result<()> {
-    // Choose a model: prefer OLLAMA_MODEL env var; if not set, query /api/tags and pick the first model.
-    let model = match env::var("OLLAMA_MODEL") {
-        Ok(m) => m,
-        Err(_) => {
-            // Try to pick the first available model from /api/tags
-            let tags_url = format!("{}/api/tags", url.trim_end_matches('/'));
-            let client = reqwest::Client::new();
-            match client
-                .get(&tags_url)
-                .timeout(std::time::Duration::from_secs(5))
-                .send()
-                .await
-            {
-                Ok(resp) => {
-                    if resp.status().is_success() {
-                        if let Ok(body) = resp.text().await {
-                            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&body) {
-                                if let Some(models) = v.get("models").and_then(|m| m.as_array()) {
-                                    if let Some(first) = models.get(0) {
-                                        if let Some(name) =
-                                            first.get("name").and_then(|n| n.as_str())
-                                        {
-                                            name.to_string()
-                                        } else if let Some(model) =
-                                            first.get("model").and_then(|n| n.as_str())
-                                        {
-                                            model.to_string()
-                                        } else {
-                                            "phi3:medium".to_string()
-                                        }
-                                    } else {
-                                        "phi3:medium".to_string()
-                                    }
-                                } else {
-                                    "phi3:medium".to_string()
-                                }
-                            } else {
-                                "phi3:medium".to_string()
-                            }
-                        } else {
-                            "phi3:medium".to_string()
-                        }
-                    } else {
-                        println!(
-                            "Warning: /api/tags returned {} - falling back to default model phi3:medium",
-                            resp.status()
-                        );
-                        "phi3:medium".to_string()
-                    }
-                }
-                Err(e) => {
-                    println!("Warning: failed to fetch /api/tags to select a model: {}. Using default 'phi3:medium'", e);
-                    "phi3:medium".to_string()
-                }
-            }
-        }
-    };
+    // Prefer explicit override, otherwise use the project default. Do not pick the
+    // first installed model: that silently reintroduced Phi-3 in prior integrations.
+    let model =
+        env::var("OLLAMA_MODEL").unwrap_or_else(|_| DEFAULT_QWEN_INSTRUCT_MODEL.to_string());
     println!("Using Ollama model: {}", model);
     let client = astraweave_llm::OllamaChatClient::new(url.to_string(), model);
 
@@ -214,6 +169,9 @@ async fn test_ollama_client(
                             println!("Ollama fell back: {}", reason);
                             p
                         }
+                        _ => {
+                            anyhow::bail!("Unsupported LLM plan source returned by astraweave-llm")
+                        }
                     };
                     println!("✓ Ollama generated plan (via plan_from_llm):");
                     println!("{}", serde_json::to_string_pretty(&plan)?);
@@ -249,6 +207,7 @@ async fn test_local_http_client(
             println!("Local HTTP client fell back: {}", reason);
             p
         }
+        _ => anyhow::bail!("Unsupported LLM plan source returned by astraweave-llm"),
     };
     println!("✓ Local HTTP client generated plan:");
     println!("{}", serde_json::to_string_pretty(&plan)?);

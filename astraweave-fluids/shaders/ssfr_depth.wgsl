@@ -72,17 +72,26 @@ fn vs_main(in: VertexInput) -> VertexOutput {
     // Project particle center to clip space.
     let clip_center = camera.view_proj * vec4<f32>(world_pos, 1.0);
     
-    // Compute perspective-correct projected radius by projecting an edge point.
-    let edge_world = world_pos + cam_right * particle_radius;
-    let clip_edge  = camera.view_proj * vec4<f32>(edge_world, 1.0);
+    // Compute perspective-correct projected radii by projecting edge points
+    // along BOTH camera axes. NDC x and y scale differently (the projection
+    // matrix divides x by the aspect ratio), so using the right-axis radius
+    // for both quad axes — the pre-F.1.2 code — stretched every impostor
+    // horizontally by the aspect ratio: visibly oblong spheres on any
+    // non-square window (the owner's "perfect oblong spheres" report).
     let ndc_center = clip_center.xy / clip_center.w;
-    let ndc_edge   = clip_edge.xy / clip_edge.w;
-    let ndc_radius = length(ndc_edge - ndc_center);
-    
+
+    let edge_right_world = world_pos + cam_right * particle_radius;
+    let clip_edge_right  = camera.view_proj * vec4<f32>(edge_right_world, 1.0);
+    let ndc_radius_x     = length(clip_edge_right.xy / clip_edge_right.w - ndc_center);
+
+    let edge_up_world = world_pos + cam_up * particle_radius;
+    let clip_edge_up  = camera.view_proj * vec4<f32>(edge_up_world, 1.0);
+    let ndc_radius_y  = length(clip_edge_up.xy / clip_edge_up.w - ndc_center);
+
     // Expand quad in clip space with 20% margin for anti-aliasing.
     out.clip_position = vec4<f32>(
-        clip_center.x + quad_offset.x * ndc_radius * clip_center.w * 1.2,
-        clip_center.y + quad_offset.y * ndc_radius * clip_center.w * 1.2,
+        clip_center.x + quad_offset.x * ndc_radius_x * clip_center.w * 1.2,
+        clip_center.y + quad_offset.y * ndc_radius_y * clip_center.w * 1.2,
         clip_center.z,
         clip_center.w
     );

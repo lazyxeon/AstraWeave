@@ -1,4 +1,4 @@
-# Qwen3-8B Strategic — Thinking Mode for Deep Planning
+# Qwen Instruct Strategic — Thinking Mode for Deep Planning
 #
 # Enables Qwen3's chain-of-thought reasoning via <think> blocks.
 # Used for background strategic planning by the AIArbiter.
@@ -10,7 +10,7 @@
 #
 # Performance target: 3-8s latency, ≥95% JSON success rate
 
-FROM qwen3:8b
+FROM qwen3.5:4b
 
 # Thinking mode sampling — Qwen3 docs recommend top_p 0.95 for thinking
 PARAMETER temperature 0.6

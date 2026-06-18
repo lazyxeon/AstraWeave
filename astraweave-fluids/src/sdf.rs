@@ -11,7 +11,9 @@ struct SdfConfig {
     resolution: u32,
     world_size: f32,
     triangle_count: u32,
-    padding: f32,
+    /// Number of valid entries in the dynamic-objects buffer (the buffer
+    /// itself is fixed-size). Must match the WGSL `SdfConfig.object_count`.
+    object_count: u32,
 }
 
 #[repr(C)]
@@ -39,6 +41,8 @@ pub struct SdfSystem {
     config_bind_group: wgpu::BindGroup,
     jfa_bind_group: wgpu::BindGroup,
     pub resolution: u32,
+    world_size: f32,
+    object_count: u32,
 }
 
 impl SdfSystem {
@@ -57,7 +61,7 @@ impl SdfSystem {
             resolution,
             world_size,
             triangle_count: 0,
-            padding: 0.0,
+            object_count: 0,
         };
 
         let config_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -86,7 +90,11 @@ impl SdfSystem {
             format: wgpu::TextureFormat::Rgba32Float,
             usage: wgpu::TextureUsages::STORAGE_BINDING
                 | wgpu::TextureUsages::TEXTURE_BINDING
-                | wgpu::TextureUsages::COPY_SRC,
+                | wgpu::TextureUsages::COPY_SRC
+                // COPY_DST: generate() may need a B->A blit when the JFA
+                // step count leaves the finalized field in texture B (the
+                // fluid shader samples texture A).
+                | wgpu::TextureUsages::COPY_DST,
             view_formats: &[],
         };
 
@@ -265,28 +273,74 @@ impl SdfSystem {
             config_bind_group,
             jfa_bind_group,
             resolution,
+            world_size,
+            object_count: 0,
         }
     }
 
+    /// Set how many entries of the (fixed-size) dynamic-objects buffer are
+    /// valid. The SDF init pass voxelizes exactly this many objects; zeroed
+    /// tail entries would otherwise read as "distance 0 everywhere" and
+    /// poison the whole field.
+    pub fn set_object_count(&mut self, queue: &wgpu::Queue, count: u32) {
+        self.object_count = count;
+        let config = SdfConfig {
+            resolution: self.resolution,
+            world_size: self.world_size,
+            triangle_count: 0,
+            object_count: count,
+        };
+        queue.write_buffer(&self.config_buffer, 0, bytemuck::bytes_of(&config));
+    }
+
     pub fn generate(&self, encoder: &mut wgpu::CommandEncoder, queue: &wgpu::Queue) {
+        self.generate_timed(encoder, queue, None);
+    }
+
+    /// `generate` with optional GPU timestamp bracketing: the init pass
+    /// records `begin_slot` at its start, the finalize pass records
+    /// `end_slot` at its end (the rare B→A blit is excluded from the span).
+    pub fn generate_timed(
+        &self,
+        encoder: &mut wgpu::CommandEncoder,
+        queue: &wgpu::Queue,
+        timing: Option<(&wgpu::QuerySet, u32, u32)>,
+    ) {
+        // Shader workgroup size is (8, 8, 4): z needs twice the workgroup
+        // count of x/y. (Pre-F.1 this dispatched res/8 in z too, leaving the
+        // upper half of the volume — world z > 0 — permanently unwritten.)
         let workgroups = self.resolution.div_ceil(8);
+        let workgroups_z = self.resolution.div_ceil(4);
 
         // 1. Init
         {
             let mut cpass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
                 label: Some("SDF Init"),
-                ..Default::default()
+                timestamp_writes: timing.map(|(qs, begin, _)| wgpu::ComputePassTimestampWrites {
+                    query_set: qs,
+                    beginning_of_pass_write_index: Some(begin),
+                    end_of_pass_write_index: None,
+                }),
             });
             cpass.set_pipeline(&self.init_pipeline);
             cpass.set_bind_group(0, &self.config_bind_group, &[]);
             cpass.set_bind_group(1, &self.bind_group_a, &[]); // Write to B
             cpass.set_bind_group(2, &self.jfa_bind_group, &[]); // Dummy
-            cpass.dispatch_workgroups(workgroups, workgroups, workgroups);
+            cpass.dispatch_workgroups(workgroups, workgroups, workgroups_z);
         }
 
         // 2. JFA Steps
+        //
+        // Bind-group orientation: bind_group_a = (read A, write B);
+        // bind_group_b = (read B, write A). Init wrote the seed into B, so
+        // the FIRST step must read B. (The pre-F.1 code started by reading A
+        // — an uninitialized, zero-filled texture whose texels decode as
+        // "valid seed at the origin" — destroying the seed and poisoning the
+        // whole field. With the also-then-broken object_count, the resulting
+        // garbage SDF slammed every particle into the world corner at
+        // ~2,900 m/s on frame 0.)
         let mut step_size = self.resolution / 2;
-        let mut current_read_a = false; // After init, texture_b has data, so next step reads B, writes A.
+        let mut data_in_b = true;
 
         while step_size >= 1 {
             let params = JfaParams {
@@ -303,41 +357,57 @@ impl SdfSystem {
                 });
                 cpass.set_pipeline(&self.step_pipeline);
                 cpass.set_bind_group(0, &self.config_bind_group, &[]);
-                if current_read_a {
-                    // Read B, Write A
+                if data_in_b {
+                    // Read B, write A
                     cpass.set_bind_group(1, &self.bind_group_b, &[]);
                 } else {
-                    // Read A, Write B
+                    // Read A, write B
                     cpass.set_bind_group(1, &self.bind_group_a, &[]);
                 }
                 cpass.set_bind_group(2, &self.jfa_bind_group, &[]);
 
-                cpass.dispatch_workgroups(workgroups, workgroups, workgroups);
+                cpass.dispatch_workgroups(workgroups, workgroups, workgroups_z);
             }
 
             step_size /= 2;
-            current_read_a = !current_read_a;
+            data_in_b = !data_in_b;
         }
 
-        // 3. Finalize
+        // 3. Finalize — read wherever the JFA result landed, write the other
+        // texture. Consumers (fluid.wgsl) sample texture A, so if finalize
+        // had to write into B, blit B -> A afterwards.
+        let finalize_writes_a = data_in_b; // reading B writes A
         {
             let mut cpass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
                 label: Some("SDF Finalize"),
-                ..Default::default()
+                timestamp_writes: timing.map(|(qs, _, end)| wgpu::ComputePassTimestampWrites {
+                    query_set: qs,
+                    beginning_of_pass_write_index: None,
+                    end_of_pass_write_index: Some(end),
+                }),
             });
             cpass.set_pipeline(&self.finalize_pipeline);
             cpass.set_bind_group(0, &self.config_bind_group, &[]);
-            if current_read_a {
-                // Final result was in A, so read A?
-                // Wait, if current_read_a is true, it means last step Read A, Wrote B.
-                // So result is in B.
+            if data_in_b {
                 cpass.set_bind_group(1, &self.bind_group_b, &[]);
             } else {
-                // Last step Read B, Wrote A. Result in A.
                 cpass.set_bind_group(1, &self.bind_group_a, &[]);
             }
             cpass.set_bind_group(2, &self.jfa_bind_group, &[]);
-            cpass.dispatch_workgroups(workgroups, workgroups, workgroups);
+            cpass.dispatch_workgroups(workgroups, workgroups, workgroups_z);
+        }
+
+        if !finalize_writes_a {
+            let extent = wgpu::Extent3d {
+                width: self.resolution,
+                height: self.resolution,
+                depth_or_array_layers: self.resolution,
+            };
+            encoder.copy_texture_to_texture(
+                self.texture_b.as_image_copy(),
+                self.texture_a.as_image_copy(),
+                extent,
+            );
         }
     }
 
@@ -391,7 +461,7 @@ impl SdfSystem {
             resolution: self.resolution,
             world_size,
             triangle_count: (vertices.len() / 3) as u32,
-            padding: 0.0,
+            object_count: 0,
         };
         queue.write_buffer(&self.config_buffer, 0, bytemuck::bytes_of(&config));
 
@@ -419,13 +489,13 @@ mod tests {
             resolution: 64,
             world_size: 20.0,
             triangle_count: 100,
-            padding: 0.0,
+            object_count: 0,
         };
 
         assert_eq!(config.resolution, 64);
         assert_eq!(config.world_size, 20.0);
         assert_eq!(config.triangle_count, 100);
-        assert_eq!(config.padding, 0.0);
+        assert_eq!(config.object_count, 0);
     }
 
     #[test]
@@ -434,7 +504,7 @@ mod tests {
             resolution: 128,
             world_size: 30.0,
             triangle_count: 500,
-            padding: 0.0,
+            object_count: 0,
         };
 
         let bytes: &[u8] = bytemuck::bytes_of(&config);
@@ -453,7 +523,7 @@ mod tests {
         assert_eq!(config.resolution, 0);
         assert_eq!(config.world_size, 0.0);
         assert_eq!(config.triangle_count, 0);
-        assert_eq!(config.padding, 0.0);
+        assert_eq!(config.object_count, 0);
     }
 
     #[test]
@@ -462,7 +532,7 @@ mod tests {
             resolution: 256,
             world_size: 50.0,
             triangle_count: 1000,
-            padding: 0.0,
+            object_count: 0,
         };
 
         let copied = config;
@@ -477,7 +547,7 @@ mod tests {
             resolution: 64,
             world_size: 10.0,
             triangle_count: 50,
-            padding: 0.0,
+            object_count: 0,
         };
 
         let cloned = config.clone();
@@ -490,7 +560,7 @@ mod tests {
             resolution: 32,
             world_size: 5.0,
             triangle_count: 10,
-            padding: 0.0,
+            object_count: 0,
         };
 
         let debug_str = format!("{:?}", config);

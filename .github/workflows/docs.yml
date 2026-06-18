@@ -162,7 +162,7 @@ jobs:
         run: |
           echo "### Documentation Deployed ✅" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Documentation URL**: https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/" >> $GITHUB_STEP_SUMMARY
-          echo "**API Docs URL**: https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/api/" >> $GITHUB_STEP_SUMMARY
+          echo "**Documentation URL**: https://lazyxeon.github.io/AstraWeave/" >> $GITHUB_STEP_SUMMARY
+          echo "**API Docs URL**: https://lazyxeon.github.io/AstraWeave/api/" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Last Updated**: $(date -u +'%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY

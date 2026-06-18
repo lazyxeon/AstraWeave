@@ -9,7 +9,7 @@
 
 ## Executive Summary
 
-AstraWeave contains **132 `.wgsl` shader files** totaling approximately **17,900 lines of WGSL**. Of these, **103 are active** (production engine, editor tools, examples, assets) and **29 are archived Bevy ports** in `docs/journey/archive/`. The shader codebase covers a comprehensive AAA-class rendering pipeline: PBR with Disney BRDF, volumetric fog/clouds/god rays, Bruneton atmosphere, Lumen-style GI, Nanite-style mesh rendering, cascaded shadow maps with PCSS, SPH/PBD fluid simulation, particles with GPU sort, TAA/SSGI/GTAO/SSR post-processing, and subgroup-optimized variants.
+AstraWeave contains **132 `.wgsl` shader files** totaling approximately **17,900 lines of WGSL**. Of these, **103 are active** (production engine, editor tools, examples, assets) and **29 are archived Bevy ports** in `docs/journey/archive/`. The shader codebase covers a rendering pipeline: PBR with Disney BRDF, volumetric fog/clouds/god rays, Bruneton atmosphere, Lumen-style GI, Nanite-style mesh rendering, cascaded shadow maps with PCSS, SPH/PBD fluid simulation, particles with GPU sort, TAA/SSGI/GTAO/SSR post-processing, and subgroup-optimized variants.
 
 ### Critical Findings Summary
 

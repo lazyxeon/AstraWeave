@@ -2,7 +2,7 @@
 
 **Version**: 1.0.0  
 **Date**: January 2025  
-**Status**: ✅ **PRODUCTION READY** - All major systems implemented  
+**Status**: Jan-2025 audit snapshot (file inventory stale; re-verify against HEAD)  
 
 ---
 
@@ -261,7 +261,7 @@ pub struct ColorGradingConfig {
 ## Recommendations
 
 ### Immediate (Before Game Demo)
-1. **No blockers** - Current rendering is production-ready for demo
+1. **No blockers** - Current rendering is ready for demo
 2. Run visual validation with `unified_showcase` example
 
 ### Short-Term (1-2 Weeks)

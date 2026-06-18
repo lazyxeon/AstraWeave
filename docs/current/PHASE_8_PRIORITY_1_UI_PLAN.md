@@ -10,7 +10,7 @@
 
 ## Executive Summary
 
-**Mission**: Build production-ready in-game UI system to enable playable Veilweaver demo
+**Mission**: Build in-game UI system to enable playable Veilweaver demo
 
 **Why This First**:
 - ✅ **Veilweaver needs menus RIGHT NOW** - Can't test gameplay without UI
@@ -1047,7 +1047,7 @@ fn main() {
 
 ## Conclusion
 
-Phase 8 Priority 1 delivers the **critical missing piece** for Veilweaver playability: a complete in-game UI system. After 5 weeks of focused development, AstraWeave will have production-ready menus, HUD, and settings that enable end-to-end gameplay testing.
+Phase 8 Priority 1 delivers the **critical missing piece** for Veilweaver playability: a complete in-game UI system. After 5 weeks of focused development, AstraWeave will have menus, HUD, and settings that enable end-to-end gameplay testing.
 
 **Key Wins**:
 - ✅ Veilweaver becomes playable (main menu → gameplay → pause → settings)

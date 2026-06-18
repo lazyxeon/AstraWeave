@@ -5,7 +5,7 @@ use astraweave_llm::hermes2pro_ollama::Hermes2ProOllama;
 #[cfg(feature = "ollama")]
 use astraweave_llm::phi3_ollama::Phi3Ollama;
 #[cfg(feature = "ollama")]
-use astraweave_llm::qwen3_ollama::Qwen3Ollama;
+use astraweave_llm::qwen3_ollama::{Qwen3Ollama, DEFAULT_QWEN_INSTRUCT_MODEL};
 
 #[test]
 fn test_prompt_compressor_ratio() {
@@ -111,7 +111,7 @@ fn test_hermes2pro_variants() {
 fn test_qwen3_variants() {
     // Test Fast variant
     let fast = Qwen3Ollama::fast();
-    assert_eq!(fast.model, "qwen3:8b");
+    assert_eq!(fast.model, DEFAULT_QWEN_INSTRUCT_MODEL);
     assert_eq!(fast.temperature, 0.5);
     assert_eq!(fast.max_tokens, 128);
     assert!(!fast.enable_thinking);
@@ -119,7 +119,7 @@ fn test_qwen3_variants() {
 
     // Test Strategic variant
     let strategic = Qwen3Ollama::strategic();
-    assert_eq!(strategic.model, "qwen3:8b");
+    assert_eq!(strategic.model, DEFAULT_QWEN_INSTRUCT_MODEL);
     assert_eq!(strategic.temperature, 0.6);
     assert_eq!(strategic.max_tokens, 1024);
     assert!(strategic.enable_thinking);
@@ -127,7 +127,7 @@ fn test_qwen3_variants() {
 
     // Test Localhost default
     let default = Qwen3Ollama::localhost();
-    assert_eq!(default.model, "qwen3:8b");
+    assert_eq!(default.model, DEFAULT_QWEN_INSTRUCT_MODEL);
     assert!(!default.enable_thinking);
     assert_eq!(default.context_length, 32768);
 }

@@ -2,10 +2,10 @@
 
 ## Executive Summary
 
-This document provides a comprehensive design for upgrading AstraWeave's asset signing system from ephemeral Ed25519 keys to a world-class, production-ready solution. The design draws from industry standards including Sigstore, The Update Framework (TUF), Docker Content Trust, and NPM provenance to create a secure, verifiable, and operationally sound asset signing infrastructure.
+This document provides a design for upgrading AstraWeave's asset signing system from ephemeral Ed25519 keys to a more robust solution. The design draws from industry standards including Sigstore, The Update Framework (TUF), Docker Content Trust, and NPM provenance to create a secure, verifiable, and operationally sound asset signing infrastructure.
 
 **Current State**: Ephemeral Ed25519 keys generated per-run (tools/aw_asset_cli/src/main.rs:476-487), no verification workflow
-**Target State**: Production-grade key hierarchy with persistent keys, verification at runtime/build-time, and transparency logging
+**Target State**: Key hierarchy with persistent keys, verification at runtime/build-time, and transparency logging
 
 ---
 
@@ -1031,7 +1031,7 @@ gh secret list
 
 ### Phase 5: Production Hardening (Weeks 9-12)
 
-**Goal**: Production-ready signing with YubiKey/HSM
+**Goal**: Signing with YubiKey/HSM
 
 **Tasks**:
 1. Acquire YubiKey or provision cloud HSM
@@ -1758,7 +1758,7 @@ pub fn generate_key(role: &str, output: Option<&Path>) -> anyhow::Result<()> {
 
 ## 16. Conclusion
 
-This design document provides a comprehensive, production-ready plan for upgrading AstraWeave's asset signing system from ephemeral keys to a world-class solution. The proposed architecture:
+This design document provides a plan for upgrading AstraWeave's asset signing system from ephemeral keys to a more robust solution. The proposed architecture:
 
 ✅ **Draws from industry best practices** (Sigstore, TUF, Docker, NPM)  
 ✅ **Balances security and usability** (OS keyring for devs, HSM for prod)  

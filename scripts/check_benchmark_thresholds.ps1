@@ -295,7 +295,7 @@ if ($CreateIssue -and $failedBenchmarks -gt 0) {
 
 ### Investigation Steps
 
-1. **Review Dashboard**: [View 30-day trends](https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/)
+1. **Review Dashboard**: [View 30-day trends](https://lazyxeon.github.io/AstraWeave/)
 2. **Run Local Benchmarks**: ``cargo bench``
 3. **Validate Thresholds**: ``./scripts/check_benchmark_thresholds.ps1 -ShowDetails``
 4. **Profile Hot Paths**: ``cargo flamegraph --bench <benchmark_name>``

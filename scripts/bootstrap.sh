@@ -391,7 +391,7 @@ Supported platforms:
 - macOS (with Homebrew)
 - Windows (via WSL)
 
-For more information, see: https://github.com/lazyxeon/AstraWeave-AI-Native-Gaming-Engine
+For more information, see: https://github.com/lazyxeon/AstraWeave
 EOF
 }
 

@@ -42,7 +42,7 @@ This roadmap sequences the work required to turn `tools/aw_editor` into a produc
 - After each week, log progress in `docs/journey/weekly/PHASE_8_UI_WEEK_[n]_REPORT.md` (or similar) to keep the experiment traceable.
 - Update benchmark/history JSONL files when editor metrics improve so dashboards stay accurate.
 
-This roadmap is the execution contract for bringing aw_editor up to world-class standards. Each referenced plan provides the detailed design for its workstream; this document keeps the sequence and validation visible across the project.
+This roadmap is the execution contract for bringing aw_editor up to standards. Each referenced plan provides the detailed design for its workstream; this document keeps the sequence and validation visible across the project.
 
 ## Week 1 Progress – Nov 17, 2025
 

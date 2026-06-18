@@ -354,7 +354,7 @@ All AstraWeave documentation has been updated to **research-grade quality** stan
 - ✅ **Professional polish** suitable for academic or industry review
 - ✅ **Clear maintenance protocols** for keeping docs current
 
-The documentation is now **production-ready** and suitable for external presentation, including academic publication, industry showcase, or investor review.
+The documentation is now suitable for external presentation, including academic publication, industry showcase, or investor review.
 
 ---
 

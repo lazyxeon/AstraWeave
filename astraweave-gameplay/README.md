@@ -4,7 +4,7 @@ High-level gameplay systems and mechanics for AstraWeave.
 
 ## Overview
 
-Production-ready game systems including combat, crafting, quests, dialogue, stats, inventory, biomes, and Veilweaver-specific mechanics.
+Game systems including combat, crafting, quests, dialogue, stats, inventory, biomes, and Veilweaver-specific mechanics.
 
 ## Modules
 

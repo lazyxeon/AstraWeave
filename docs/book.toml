@@ -19,9 +19,9 @@ command = "mdbook-mermaid"
 
 [output.html]
 no-section-label = false
-git-repository-url = "https://github.com/lazyxeon/AstraWeave-AI-Native-Gaming-Engine"
-edit-url-template = "https://github.com/lazyxeon/AstraWeave-AI-Native-Gaming-Engine/edit/main/docs/src/{path}"
-site-url = "/AstraWeave-AI-Native-Gaming-Engine/"
+git-repository-url = "https://github.com/lazyxeon/AstraWeave"
+edit-url-template = "https://github.com/lazyxeon/AstraWeave/edit/main/docs/src/{path}"
+site-url = "/AstraWeave/"
 cname = ""
 preferred-dark-theme = "navy"
 default-theme = "light"

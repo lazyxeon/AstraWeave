@@ -321,7 +321,7 @@ All crate names are prefixed with `astraweave-`.
 | AI Systems | `astraweave-ai/src/{orchestrator,tool_sandbox,core_loop}.rs` |
 | ECS Internals | `astraweave-ecs/src/{archetype,system_param,events}.rs` |
 | Rendering | `astraweave-render/src/{lib,material,skinning_gpu,vertex_compression}.rs` |
-| Physics | `astraweave-physics/src/{character_controller,spatial_hash}.rs` |
+| Physics | `astraweave-physics/src/{lib,spatial_hash}.rs` — the character controller lives in `lib.rs:424-535`; there is no `character_controller.rs` file |
 | Combat | `astraweave-gameplay/src/combat_physics.rs` |
 | SIMD Math | `astraweave-math/src/{simd_vec,simd_mat,simd_quat,simd_movement}.rs` |
 | Terrain | `astraweave-terrain/src/{voxel_mesh,biome_pack,biome,scatter}.rs` |

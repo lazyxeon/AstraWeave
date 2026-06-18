@@ -11,5 +11,5 @@
 - Interest filtering by region and proximity
 
 ## Transport
-- WebSockets default; QUIC/UDP optional for low-latency
+- WebSockets (tokio-tungstenite over TCP); QUIC/UDP not implemented
 - Server authoritative; client prediction for local movement (post-MVP)

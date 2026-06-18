@@ -1,6 +1,6 @@
 # astraweave-fluids
 
-A production-grade GPU-accelerated fluid simulation system for the AstraWeave game engine with world-class performance optimization.
+A GPU-accelerated, research-stage fluid simulation crate (PBD core solver) for the AstraWeave game engine. In-design: consumed only by examples/fluids_demo; no production game-loop crate depends on it yet.
 
 ## Features
 
@@ -14,9 +14,9 @@ A production-grade GPU-accelerated fluid simulation system for the AstraWeave ga
 ### Rendering (Screen-Space Fluid Rendering)
 - **Depth Smoothing** for smooth surfaces
 - **Beer-Lambert Absorption** for volumetric lighting
-- **Procedural Caustics** via Voronoi patterns
+- **Procedural Caustics** via Voronoi patterns — implemented in-crate (caustics.rs), not wired into any production renderer (zero consumers outside the crate)
 - **Temporal Reprojection** for anti-aliasing
-- **Whitewater & Foam** secondary particles
+- **Whitewater & Foam** secondary particles — implemented in-crate (foam.rs), not wired into a production consumer
 
 ### Infrastructure
 - **Dynamic Particle Management** (spawn/despawn at runtime)
@@ -54,9 +54,9 @@ fluid_system.step(&device, &mut encoder, &queue, dt);
 renderer.render(encoder, view, /* ... */);
 ```
 
-## Production-Ready Optimization
+## Optimization (Auto-Tuning)
 
-The `FluidOptimizationController` provides a complete auto-tuning system for production games:
+Auto-tuning surface (`FluidOptimizationController`) exists in-crate; not yet consumed by a production game.
 
 ### Basic Usage
 

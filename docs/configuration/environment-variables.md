@@ -23,7 +23,7 @@ This document lists all environment variables used across the AstraWeave codebas
 
 ### `OLLAMA_MODEL`
 - **Purpose**: Default Ollama model name
-- **Default**: `hermes2pro:latest`
+- **Default**: `phi3:medium`
 - **Example**: `set OLLAMA_MODEL=llama3:latest`
 
 ---
