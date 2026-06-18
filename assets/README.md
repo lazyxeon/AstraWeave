@@ -2,7 +2,7 @@
 
 > **Version**: 2.0 | **Total**: 1,445 files, 8.83 GB | **License**: Mixed (see per-asset)
 
-Production-ready asset library for the AstraWeave AI-Native Game Engine. Every biome defined in the engine has complete material coverage, PBR texture sets, and HDRI environment lighting.
+Asset library for the AstraWeave AI-Native Game Engine. Every biome defined in the engine has complete material coverage, PBR texture sets, and HDRI environment lighting.
 
 ---
 

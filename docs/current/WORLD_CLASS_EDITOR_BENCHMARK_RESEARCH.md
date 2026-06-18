@@ -1702,7 +1702,7 @@ Features categorized as:
 
 ## CONCLUSION
 
-AstraWeave Editor has achieved **world-class status** with **76 of 89 must-have features** (85%) implemented. The remaining gaps are primarily in:
+AstraWeave Editor implements **76 of 89 must-have features** (85%) from this benchmark. The remaining gaps are primarily in:
 1. **Visual Scripting** (mitigated by behavior trees)
 2. **Animation Timeline** (basic support exists)
 3. **Terrain Tools** (crate exists, needs UI)

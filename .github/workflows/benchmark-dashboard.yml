@@ -153,7 +153,7 @@ jobs:
           
           Live performance telemetry dashboard for the AstraWeave AI-native game engine.
           
-          **View Dashboard**: https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/dashboard/benchmark_dashboard/
+          **View Dashboard**: https://lazyxeon.github.io/AstraWeave/dashboard/benchmark_dashboard/
           
           ## Features
           - 30-day performance trends
@@ -192,7 +192,7 @@ jobs:
             One or more benchmarks exceeded the 10% regression threshold.
             
             ### Next Steps
-            1. Review benchmark results: [View Dashboard](https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/dashboard/benchmark_dashboard/)
+            1. Review benchmark results: [View Dashboard](https://lazyxeon.github.io/AstraWeave/dashboard/benchmark_dashboard/)
             2. Check recent commits for performance-impacting changes
             3. Run local benchmarks: \`cargo bench\`
             4. Validate thresholds: \`./scripts/check_benchmark_thresholds.ps1 -ShowDetails\`
@@ -234,7 +234,7 @@ jobs:
         run: |
           echo "### Benchmark Dashboard Updated ✅" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Dashboard URL**: https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/dashboard/benchmark_dashboard/" >> $GITHUB_STEP_SUMMARY
+          echo "**Dashboard URL**: https://lazyxeon.github.io/AstraWeave/dashboard/benchmark_dashboard/" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           
           if [ -f target/benchmark-data/history.jsonl ]; then

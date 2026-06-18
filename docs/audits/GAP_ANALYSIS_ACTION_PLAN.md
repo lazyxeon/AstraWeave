@@ -8,7 +8,7 @@
 
 ## Executive Summary
 
-AstraWeave has **world-class core systems** (A+ in AI, architecture, testing) but **critical tooling gaps** that block production use. This document prioritizes the **23 most impactful improvements** across 3 phases.
+AstraWeave has **strong core systems** (A+ in AI, architecture, testing) but **critical tooling gaps** that block production use. This document prioritizes the **23 most impactful improvements** across 3 phases.
 
 **Key Metrics**:
 - **Current Production Readiness**: 70%
@@ -59,7 +59,7 @@ AstraWeave has **world-class core systems** (A+ in AI, architecture, testing) bu
 5. **Week 6: Polish + Automated Tests** (1 week)
    - Add comprehensive smoke tests (15 tests minimum)
    - Write EDITOR_USER_GUIDE.md
-   - **Output**: Production-ready editor (basic features)
+   - **Output**: Functional editor (basic features)
 
 **Success Criteria**:
 - ✅ Editor launches without errors
@@ -94,7 +94,7 @@ AstraWeave has **world-class core systems** (A+ in AI, architecture, testing) bu
    - Add physics helpers (spawn rigid body, raycast)
    - Add AI helpers (set behavior tree, GOAP goal)
    - Write SCRIPTING_GUIDE.md
-   - **Output**: Production-ready scripting
+   - **Output**: Functional scripting runtime
 
 **Success Criteria**:
 - ✅ Rhai scripts can spawn entities, add components
@@ -191,7 +191,7 @@ AstraWeave has **world-class core systems** (A+ in AI, architecture, testing) bu
 
 2. **Week 2: Core Concepts Guide** (1 week)
    - Write ECS_GUIDE.md (entities, components, systems)
-   - Write AI_GUIDE.md (6 planning modes, when to use each)
+   - Write AI_GUIDE.md (7 planning modes (feature-gated), when to use each) <!-- Source: CLAIMS_REGISTRY.md#ai-modes -->
    - Write RENDERING_GUIDE.md (PBR pipeline, materials, lighting)
    - **Output**: Users understand architecture
 
@@ -328,7 +328,7 @@ AstraWeave has **world-class core systems** (A+ in AI, architecture, testing) bu
 3. **Weeks 7-8: Standard Nodes** (2 weeks)
    - Add 20+ nodes (math, logic, ECS, physics, AI)
    - Write VISUAL_SCRIPTING_GUIDE.md
-   - **Output**: Production-ready visual scripting
+   - **Output**: Functional visual scripting
 
 **Success Criteria**:
 - ✅ Graph editor works (create/delete/connect nodes)
@@ -367,7 +367,7 @@ AstraWeave has **world-class core systems** (A+ in AI, architecture, testing) bu
 - ✅ Assets optimized (BC7 textures, LODs)
 - ✅ Asset browser in editor (drag-and-drop)
 
-**ROI**: **HIGH** - Professional workflow (matches Unity/Godot)
+**ROI**: **HIGH** - Streamlined asset workflow
 
 ---
 
@@ -676,7 +676,7 @@ AstraWeave can achieve **production readiness in 3-4 months** with focused effor
 4. **Month 10-18**: Add Consoles + VR + Asset Store (AAA parity)
 
 **Total Investment**: $380-660k (18 months, 2-4 developers)  
-**Outcome**: World-class AI-native game engine with AAA feature parity
+**Outcome**: AI-native game engine targeting AAA feature parity
 
 ---
 

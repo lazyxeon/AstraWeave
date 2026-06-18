@@ -933,7 +933,7 @@ If Qwen3-8B non-thinking mode doesn't meet the ≥87% overall target, the strate
 
 1. **Baseline**: Run `astraweave-llm-eval` against Hermes 2 Pro — record all four sub-scores
 2. **Migration**: Apply code changes
-3. **Smoke Test**: `cargo check-all` + `cargo test-all`
+3. **Smoke Test**: `make check-all` + `make test-all` (Makefile targets; there are no `cargo check-all`/`test-all` aliases)
 4. **Verify Ollama think switch**: Run the 3 curl tests from Step 1.6 to determine the correct thinking mode control mechanism
 5. **Integration**: Run `hello_companion` in all 6 modes
 6. **Eval Comparison**: Run `astraweave-llm-eval` against Qwen3-8B (non-thinking + thinking)

@@ -15,7 +15,7 @@
 | **Godot 4** | 88/100 (B+) | 88/100 | 60/100 | 85/100 | 70/100 | 95/100 | 90/100 | 92/100 | MIT |
 | **Bevy 0.16** | 82/100 (B) | 95/100 | 65/100 | 75/100 | 80/100 | 70/100 | 65/100 | 60/100 | MIT/Apache |
 
-**Key Takeaway**: AstraWeave has **world-class core systems** but **lacks production tooling**.
+**Key Takeaway**: AstraWeave has **strong core systems** but **lacks production tooling**.
 
 ---
 
@@ -40,7 +40,7 @@
 | **Behavior Trees** | ✅ Visual | ✅ | ✅ | ✅ | ✅ 6 modes | All |
 | **GOAP Planning** | ❌ | ❌ | ❌ | ❌ | ✅ 0.20ms | **AstraWeave** |
 | **Utility AI** | ❌ | ❌ | ❌ | ❌ | ✅ Scoring | **AstraWeave** |
-| **LLM Integration** | ❌ | ❌ | ❌ | ❌ | ✅ Hermes 2 Pro | **AstraWeave** |
+| **LLM Integration** | ❌ | ❌ | ❌ | ❌ | ✅ Ollama (phi3:medium default; Hermes 2 Pro/Qwen3 opt-in via OLLAMA_MODEL) | **AstraWeave** |
 | **Hybrid Planning** | ❌ | ❌ | ❌ | ❌ | ✅ GOAP+LLM | **AstraWeave** |
 | **Agent Capacity** | 100-500 | 1,000-5,000 | 100-500 | Unknown | **12,700 @ 60 FPS** | **AstraWeave** |
 | **ML Training** | ❌ | ✅ Python | ❌ | ❌ | ❌ | **Unity** |
@@ -65,7 +65,7 @@
 | **Draw Calls @ 60 FPS** | 5k-10k | 3k-5k | 1k-3k | Unknown | 4.2k-5k | **Unreal** |
 | **Coverage** | Unknown | Unknown | Unknown | Unknown | 65.89% (350 tests) | **AstraWeave** |
 
-**Verdict**: AstraWeave **matches Unity HDRP** in feature parity, **exceeds Godot/Bevy**.
+**Verdict**: AstraWeave **matches Unity HDRP** in feature parity, **and Godot/Bevy**.
 
 ---
 
@@ -81,7 +81,7 @@
 | **A* Pathfinding** | ✅ | ✅ | ✅ | ✅ | ✅ 2.44µs short | All |
 | **Coverage** | Unknown | Unknown | Unknown | Unknown | Physics 95.07%, Nav 94.66% | **AstraWeave** |
 
-**Verdict**: AstraWeave **matches industry standards** (Rapier3D is production-ready).
+**Verdict**: AstraWeave builds on Rapier3D (a production-ready physics backend).
 
 ---
 
@@ -143,7 +143,7 @@
 | **Nightly Builds** | ✅ | ✅ | ✅ | ✅ | ❌ | All except AstraWeave |
 | **Changelogs** | ✅ Auto | ✅ Auto | ✅ Auto | ✅ Auto | ❌ Manual | All except AstraWeave |
 
-**Verdict**: AstraWeave has **world-class benchmarking**, **lacks crash reporting/CI**.
+**Verdict**: AstraWeave has **strong benchmarking**, **lacks crash reporting/CI**.
 
 ---
 
@@ -181,8 +181,8 @@
 
 | Feature | Unreal | Unity | Godot | Bevy | AstraWeave | Winner |
 |---------|--------|-------|-------|------|------------|--------|
-| **Network Encryption** | ✅ TLS 1.3 | ✅ TLS 1.3 | ✅ TLS 1.3 | ✅ | ✅ TLS 1.3 | All |
-| **Code Signing** | ✅ | ✅ | ⚠️ | ❌ | ✅ Ed25519 | Unreal/Unity/AstraWeave |
+| **Network Encryption** | ✅ TLS 1.3 | ✅ TLS 1.3 | ✅ TLS 1.3 | ✅ | ❌ WebSocket over TCP (no TLS) | Unreal/Unity/Godot |
+| **Code Signing** | ✅ | ✅ | ⚠️ | ❌ | ✅ HMAC-SHA256 (input-frame signing) | Unreal/Unity/AstraWeave |
 | **Input Validation** | ✅ | ✅ | ✅ | ⚠️ | ✅ 37-tool sandbox | All |
 | **Anti-Cheat (Client)** | ✅ EAC | ✅ | ❌ | ❌ | ❌ | **Unreal/Unity** |
 | **Anti-Cheat (Server)** | ✅ Heuristics | ✅ | ⚠️ | ❌ | ⚠️ Partial | Unreal/Unity |
@@ -210,7 +210,7 @@
 ## Use Case Recommendations
 
 ### Choose AstraWeave If:
-- ✅ You need **world-class AI** (12,700 agents, GOAP+LLM hybrid)
+- ✅ You need **AI-native architecture** (12,700 agents, GOAP+LLM hybrid)
 - ✅ You need **deterministic replay** (testing, esports)
 - ✅ You value **open-source** (MIT license, full source access)
 - ✅ You're comfortable with **Rust** (no scripting yet)

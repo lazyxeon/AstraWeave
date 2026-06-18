@@ -1,15 +1,15 @@
 # AstraWeave Competitive Analysis - Executive Summary
 
 **Date**: November 18, 2025  
-**Overall Grade**: **A- (92/100)** - Production-ready core with tooling gaps  
+**Status**: Functional core with tooling gaps  
 **Status**: 3-4 months from production release, 12-18 months from AAA parity
 
 ---
 
 ## TL;DR
 
-AstraWeave is a **world-class AI-native game engine** that:
-- ✅ **EXCEEDS** Bevy/Unity in AI orchestration (12,700 agents @ 60 FPS)
+AstraWeave is an **AI-native game engine** that:
+- ✅ AI orchestration (12,700 agents @ 60 FPS) <!-- Source: CLAIMS_REGISTRY.md#agents-capacity-60fps -->
 - ✅ **MATCHES** Unity HDRP in rendering quality (AAA features)
 - ✅ **EXCEEDS** industry standards in test coverage (71.37% vs 60-70%)
 - ⚠️ **FALLS SHORT** in editor/ecosystem (broken vs Unity/Unreal world-class)
@@ -36,11 +36,11 @@ AstraWeave is a **world-class AI-native game engine** that:
 ## Where AstraWeave Wins
 
 ### 1. AI Orchestration ⭐⭐⭐⭐⭐ (World-Leading)
-- **12,700 agents @ 60 FPS** (10× industry standard of 1,000-1,500)
-- **6 planning modes**: Classical, BehaviorTree, Utility, LLM, Hybrid, Ensemble
+- **12,700 agents @ 60 FPS** <!-- Source: CLAIMS_REGISTRY.md#agents-capacity-60fps -->
+- **7 modes (feature-gated)** <!-- Source: CLAIMS_REGISTRY.md#ai-modes -->: Classical, BehaviorTree, Utility, LLM, Hybrid, Ensemble
 - **GOAP+LLM Hybrid**: Fast tactical planning (0.20ms) + creative reasoning (3,462ms async)
-- **37-tool sandbox**: All AI actions validated (no competitor has this)
-- **Coverage**: 97.39% (103 tests) - world-class
+- **37-tool sandbox**: All AI actions validated
+- **Coverage**: 97.39% (103 tests)
 
 **Competitors**: Unity ML-Agents (training only), Unreal AI (behavior trees only), Bevy (basic AI)
 
@@ -79,10 +79,10 @@ AstraWeave is a **world-class AI-native game engine** that:
 
 ## Where AstraWeave Matches Industry
 
-### 1. Rendering Quality ⭐⭐⭐⭐⭐ (AAA-Grade)
+### 1. Rendering Quality
 - **Features**: PBR, VXGI GI, clustered lighting (100k+ lights), CSM shadows, TAA+MSAA
 - **Advanced**: Nanite-inspired virtualized geometry, GPU particles, volumetric fog, decals
-- **Performance**: 4,200-5,000 draw calls @ 60 FPS (matches Unity HDRP)
+- **Performance**: 4,200-5,000 draw calls @ 60 FPS
 - **Coverage**: 65.89% (350 tests) - excellent for GPU crate
 
 **Comparison**: Matches Unity HDRP, exceeds Godot 4, slightly behind Unreal 5
@@ -91,7 +91,7 @@ AstraWeave is a **world-class AI-native game engine** that:
 
 ### 2. ECS Architecture ⭐⭐⭐⭐⭐ (Matches Bevy)
 - **Archetype-based storage** (same as Bevy)
-- **7-stage scheduling**: Pre-Sim → Perception → Sim → AI → Physics → Post-Sim → Presentation
+- **8-stage (incl. SYNC) scheduling**: Pre-Sim → Perception → Sim → SYNC → AI → Physics → Post-Sim → Presentation
 - **Entity Capacity**: 192k estimated (not validated), 12,700 AI agents validated
 
 **Comparison**: Matches Bevy architecture, exceeds Unity GameObject model
@@ -214,10 +214,10 @@ AstraWeave is a **world-class AI-native game engine** that:
 
 ## Final Verdict
 
-**AstraWeave is a world-class AI-native game engine** with:
+**AstraWeave is an AI-native game engine** with:
 - ✅ **Exceptional core technology** (A+ in architecture, AI, testing)
-- ✅ **AAA rendering quality** (matches Unity HDRP)
-- ✅ **Production-ready performance** (84% frame time headroom)
+- ✅ **Rendering quality** (matches Unity HDRP)
+- ✅ **Performance** (84% frame time headroom)
 - ⚠️ **Critical tooling gaps** (broken editor, basic CI/CD)
 - ⚠️ **Pre-1.0 ecosystem** (no plugins, no asset store)
 

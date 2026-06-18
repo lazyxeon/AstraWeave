@@ -8,14 +8,14 @@
 
 ## Overview
 
-The Graph Panel provides a **production-ready node graph editor** using the **astract graph library**. It enables visual scripting for:
+The Graph Panel provides a **node graph editor** using the **astract graph library**. It enables visual scripting for:
 
 - **Behavior Trees** - AI logic and decision making
 - **Shader Graphs** - Material and rendering nodes
 - **Dialogue Systems** - Branching conversations
 - **Data Flow** - Signal processing and animation blending
 
-**Status:** ✅ **100% Functional** (Production-ready)
+**Status:** ✅ Functional (wired into the editor)
 
 ---
 
@@ -654,7 +654,7 @@ impl GraphExecutor {
 
 ## Conclusion
 
-The Graph Panel is a **production-ready visual scripting tool** that rivals Unity's Visual Scripting and Unreal's Blueprint system. It provides:
+The Graph Panel is a visual scripting tool. It provides:
 
 - ✅ Professional node graph editor
 - ✅ Type-safe port connections
@@ -674,6 +674,6 @@ The Graph Panel is a **production-ready visual scripting tool** that rivals Unit
 ---
 
 **Guide Version:** 1.0  
-**Panel Status:** ✅ Production-Ready  
+**Panel Status:** ✅ Functional (wired into the editor)  
 **Test Coverage:** 4 automated tests (all passing)  
-**Dependencies:** astract::graph (production-quality library)
+**Dependencies:** astract::graph

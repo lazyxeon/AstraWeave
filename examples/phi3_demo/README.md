@@ -39,7 +39,7 @@ This example shows how Phi-3 generates tactical plans for different AI personas 
 ### Run Demo
 
 ```bash
-cd AstraWeave-AI-Native-Gaming-Engine
+cd AstraWeave
 
 # Build and run (release mode recommended for speed)
 cargo run -p phi3_demo --release

@@ -90,7 +90,7 @@
 - **Notes**: Contains:
   - AI-First Loop diagram: KEEP (core conceptual anchor)
   - Key Concepts (4 bullets): KEEP
-  - ECS System Stages (7-stage list): KEEP
+  - ECS System Stages (8-stage list): KEEP
   - Rendering & Materials (~25 lines): RELOCATE detailed parts, keep 2-line summary
   - Performance Optimization — Week 8 (~20 lines): RELOCATE to reference
 

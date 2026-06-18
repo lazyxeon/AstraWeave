@@ -143,8 +143,8 @@ The following components will be installed automatically when needed:
 
 ### 1. Clone the Repository
 ```bash
-git clone https://github.com/lazyxeon/AstraWeave-AI-Native-Gaming-Engine.git
-cd AstraWeave-AI-Native-Gaming-Engine
+git clone https://github.com/lazyxeon/AstraWeave.git
+cd AstraWeave
 ```
 
 ### 2. Verify Rust Toolchain

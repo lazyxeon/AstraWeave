@@ -1,6 +1,6 @@
 # AstraWeave Benchmark Dashboard
 
-**Live Dashboard**: https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/ *(once deployed)*
+**Live Dashboard**: https://lazyxeon.github.io/AstraWeave/ *(once deployed)*
 
 Interactive performance telemetry dashboard for the AstraWeave AI-native game engine. Visualizes 30-day benchmark trends, detects regressions, and provides historical performance analysis.
 
@@ -84,7 +84,7 @@ cargo bench -p astraweave-physics --bench character_controller
 ```powershell
 # IMPORTANT: Start HTTP server from repository root (not from tools/benchmark-dashboard/)
 # This ensures relative paths work correctly for data loading
-cd /path/to/AstraWeave-AI-Native-Gaming-Engine  # Navigate to repo root
+cd /path/to/AstraWeave  # Navigate to repo root
 python -m http.server 8000
 
 # Open in browser
@@ -237,7 +237,7 @@ When a benchmark exceeds its threshold (defined in `.github/benchmark_thresholds
 .\scripts\check_benchmark_thresholds.ps1 -ShowDetails
 
 # 2. Check dashboard for trends
-# Open https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/
+# Open https://lazyxeon.github.io/AstraWeave/
 
 # 3. Run local benchmarks to reproduce
 cargo bench -p <crate> --bench <benchmark_name>
@@ -325,7 +325,7 @@ Edit `tools/benchmark-dashboard/dashboard.js` to:
 1. **Ensure HTTP server runs from repository root**:
    ```bash
    # CORRECT - serve from repo root
-   cd /path/to/AstraWeave-AI-Native-Gaming-Engine
+   cd /path/to/AstraWeave
    python -m http.server 8000
    # Then open: http://localhost:8000/tools/benchmark-dashboard/
    
@@ -450,7 +450,7 @@ cargo bench -p astraweave-behavior --bench goap_planning
 
 ## Resources
 
-- **Live Dashboard**: https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/
+- **Live Dashboard**: https://lazyxeon.github.io/AstraWeave/
 - **Threshold Config**: `.github/benchmark_thresholds.json`
 - **CI Workflow**: `.github/workflows/benchmark-dashboard.yml`
 - **Export Script**: `scripts/export_benchmark_jsonl.ps1`

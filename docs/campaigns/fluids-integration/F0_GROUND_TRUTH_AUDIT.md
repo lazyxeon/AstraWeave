@@ -1,5 +1,7 @@
 # F.0 Ground-Truth Audit — Fluids Integration Campaign
 
+> **Superseded by F.1 (2026-06-12):** UnifiedSolver was deleted (`c3f19e31e`), DFSPH/IISPH variants removed, and `FluidSystem::new` gained GPU-execution tests. The findings below are the F.0 ground-truth snapshot at commit `8e1505dd863845098d2c7b84f39d829a327a7da5`; read them as historical — see `F1_EXECUTION_REPORT.md`. `ResearchFluidSystem` never existed as a type (that finding stands).
+
 **Document version**: 1.0
 **Audit window**: 2026-06-10 → 2026-06-11
 **Commit audited**: `8e1505dd863845098d2c7b84f39d829a327a7da5` (HEAD, branch `main`, clean working tree)

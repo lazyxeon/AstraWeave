@@ -9,8 +9,8 @@ Thank you for your interest in helping advance the AstraWeave AI-Native Gaming E
 - Clone the repository and run `cargo fetch` to prime the workspace.
 
 ```bash
-git clone https://github.com/lazyxeon/AstraWeave-AI-Native-Gaming-Engine.git
-cd AstraWeave-AI-Native-Gaming-Engine
+git clone https://github.com/lazyxeon/AstraWeave.git
+cd AstraWeave
 rustup show
 ```
 

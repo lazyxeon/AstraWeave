@@ -18,7 +18,7 @@ In AstraWeave, AI agents cannot cheat. They must use the same validated game sys
 
 ```admonish warning title="Pipeline status: what is wired vs. what is in-design"
 The architecture trace campaign documented eight AI subsystems (per
-[`ai_pipeline.md`](https://github.com/lazyxeon/AstraWeave-AI-Native-Gaming-Engine/blob/main/docs/architecture/ai_pipeline.md) §13). Wired in the runtime today:
+[`ai_pipeline.md`](https://github.com/lazyxeon/AstraWeave/blob/main/docs/architecture/ai_pipeline.md) §13). Wired in the runtime today:
 
 * **`astraweave-ai`** — `AIArbiter`, `Orchestrator` trait, `LlmExecutor`, `tool_sandbox`.
   Validated at 12,700+ agents @ 60 FPS.
@@ -30,7 +30,7 @@ The architecture trace campaign documented eight AI subsystems (per
   the runtime default despite doc-comment phrasing like "GOAP+Qwen3 Hybrid."
 
 Dormant in-design (passes tests, zero production callers — per
-[`ai_pipeline.md`](https://github.com/lazyxeon/AstraWeave-AI-Native-Gaming-Engine/blob/main/docs/architecture/ai_pipeline.md) §13 and `ARCHITECTURE_MAP.md` §5.1):
+[`ai_pipeline.md`](https://github.com/lazyxeon/AstraWeave/blob/main/docs/architecture/ai_pipeline.md) §13 and `ARCHITECTURE_MAP.md` §5.1):
 
 * **Memory pipeline (~11K LoC)** — zero in-engine production consumers; only the
   legacy `persona::*` types are used.

@@ -161,8 +161,8 @@ ECS storage, entity lifecycle, and data structure performance.
 
 | Benchmark | Time | Notes |
 |-----------|------|-------|
-| entity_spawn/empty | 50 ns | Industry-leading |
-| entity_despawn/empty | 24 ns | Industry-leading |
+| entity_spawn/empty | 50 ns | |
+| entity_despawn/empty | 24 ns | |
 | entity_spawn/10K | 645 µs (post-fix) | 52% faster after v5.53 |
 | component_iteration/10K | 273 µs | 68-75% faster after v5.53 |
 | SparseSet insert/1K | 9.9 ns/entity | 13x faster than BTreeMap |

@@ -5,7 +5,7 @@ title: AI Subsystem
 
 # AI Orchestration (astraweave-ai)
 
-AstraWeave's AI system supports 7 reasoning modes — from nanosecond classical AI to creative LLM-driven behavior — unified behind the `Orchestrator` and `OrchestratorAsync` traits with a production-grade 4-tier fallback system.
+AstraWeave's AI system supports 7 reasoning modes — from nanosecond classical AI to creative LLM-driven behavior — unified behind the `Orchestrator` and `OrchestratorAsync` traits with a 4-tier fallback system.
 
 ## Architecture
 
@@ -14,7 +14,7 @@ WorldSnapshot ──► Orchestrator ──► PlanIntent ──► ToolRegistry
                    ▲
         ┌──────────┼──────────────────────┐
         │          │          │           │
-  RuleOrch    BehaviorTree  GOAP    Qwen3-8B LLM
+  RuleOrch    BehaviorTree  GOAP    phi3 LLM (def)
   (classical)  (3.19 µs)  (3.5 ns)    (2-8 s)
         │          │          │           │
         └──────────┼──────────┘           │
@@ -34,7 +34,7 @@ The `hello_companion` example demonstrates all 7 modes:
 | 1 | Classical | `RuleOrchestrator` | ~ns | Rule-based patrol, guard, combat |
 | 2 | BehaviorTree | `BehaviorGraph` | 3.19 µs/1K nodes | Hierarchical decision trees |
 | 3 | Utility | `UtilityOrchestrator` | 460 ns | Dynamic priority scoring with curves |
-| 4 | LLM | Qwen3-8B (Ollama) | 2–8 s | Creative, emergent behavior |
+| 4 | LLM | Ollama (default `phi3:medium`; Qwen3-8B opt-in) | 2–8 s | Creative, emergent behavior |
 | 5 | Hybrid | LLM + fallback chain | 2–8 s | LLM with graceful degradation |
 | 6 | Ensemble | All modes voting | ~2.4 s | Maximum accuracy (multiple backends vote) |
 | 7 | Arbiter | `AIArbiter` (GOAP + LLM) | 314 ns–8 s | GOAP for tactics, LLM for strategy |

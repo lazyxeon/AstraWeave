@@ -204,7 +204,7 @@ pub fn destroy_entity(&mut self, e: Entity) -> bool {
 2. **Robust Undo/Redo** - Command pattern is well-implemented and extensible
 3. **Deterministic Runtime** - Snapshot-based play mode is production-quality
 4. **Blender-Inspired Workflow** - Keyboard-driven gizmos are fast and efficient
-5. **Sophisticated Prefab System** - Override tracking rivals Unity/Unreal
+5. **Prefab System** - Override tracking modeled on Unity/Unreal prefab systems
 6. **Telemetry Foundation** - Ready for analytics and debugging
 
 ---

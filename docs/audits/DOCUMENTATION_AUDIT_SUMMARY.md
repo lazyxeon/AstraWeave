@@ -6,7 +6,7 @@
 
 ## TL;DR: Overall Grade **C+ (73/100)**
 
-**Strengths:** World-class development tracking (997 files), accurate test coverage, excellent Astract UI docs  
+**Strengths:** Thorough development tracking (997 files), accurate test coverage, detailed Astract UI docs  
 **Weaknesses:** No user onboarding, 56/60 examples lack READMEs, no API docs, documentation sprawl
 
 ---
@@ -46,7 +46,7 @@ Template:
 **Fix:** Deploy to GitHub Pages
 ```bash
 cargo doc --workspace --no-deps --document-private-items
-# Host at https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/docs/
+# Host at https://lazyxeon.github.io/AstraWeave/docs/
 ```
 **Time:** 1 hour
 
@@ -160,7 +160,7 @@ Known TODOs:
 - Test coverage: 71.37% (measured with llvm-cov) ✅
 - AI agents: 12,700+ @ 60 FPS ✅
 - Determinism: 100% bit-identical replay ✅
-- LLM integration: Hermes 2 Pro working ✅
+- LLM integration: Ollama working (phi3:medium runtime default; Hermes 2 Pro/Qwen3 opt-in via OLLAMA_MODEL) ✅
 - Test count: 1,376 tests ✅
 
 ### ⚠️ **OVERSTATED Claims**

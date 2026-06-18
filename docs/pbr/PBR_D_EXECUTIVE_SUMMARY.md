@@ -11,12 +11,12 @@
 ## Business Impact
 
 ### What Was Delivered
-**A production-ready, physically-based rendering (PBR) shader library** that consolidates lighting calculations across all AstraWeave examples, fixing visual artifacts and establishing a foundation for advanced material systems.
+**A physically-based rendering (PBR) shader library** that consolidates lighting calculations across all AstraWeave examples, fixing visual artifacts and establishing a foundation for advanced material systems.
 
 ### Key Benefits
 1. **Visual Quality**: Fixed over-bright specular highlights by adding missing Smith geometry term to BRDF
 2. **Code Reusability**: 10+ shader functions now shared across all examples (eliminates code duplication)
-3. **Performance**: 150-200 ALU ops per pixel (competitive with Unreal Engine 5 / Unity HDRP)
+3. **Performance**: 150-200 ALU ops per pixel
 4. **Extensibility**: Clear path to advanced materials (car paint, brushed metal, fabric, glass) in Phase PBR-E
 
 ---
@@ -62,7 +62,7 @@
 |------|-------------|---------|
 | `pbr_lib.wgsl` | +250 | Consolidated PBR shader library |
 | `enhanced_shader.wgsl` | Modified | Updated to use pbr_lib functions |
-| **Total** | **~250 new lines** | Production-ready WGSL shader code |
+| **Total** | **~250 new lines** | WGSL shader code |
 
 ### Documentation
 | Document | Lines | Content |
@@ -148,7 +148,7 @@
 - **Developer Productivity**: Reusable shader library (faster future development)
 
 ### Strategic Value
-- **Engine Credibility**: Industry-standard PBR (matches UE5/Unity quality)
+- **Engine Credibility**: Industry-standard PBR (Cook-Torrance BRDF)
 - **Extensibility**: Clear path to advanced materials (Phase PBR-E)
 - **Competitive Position**: Physically-based rendering is table stakes for modern game engines
 
@@ -172,17 +172,17 @@
 - ✅ Comparable shader library structure
 
 ### Key Differentiator
-AstraWeave now has **parity with AAA engines** for core PBR lighting. Next phases (PBR-E, PBR-F) will add advanced features.
+Next phases (PBR-E, PBR-F) will add advanced features.
 
 ---
 
 ## Stakeholder Questions
 
 ### Q: Is this production-ready?
-**A**: Yes. Build passes, zero errors, industry-standard implementation, comprehensive documentation.
+**A**: Partially. The build passes with zero errors and the implementation follows the Cook-Torrance model, but two validation steps remain outstanding (see Risk Assessment): visual-regression before/after screenshots and unit tests for the BRDF functions. It is not yet validated for ship.
 
 ### Q: What's the performance impact?
-**A**: Negligible. ~0.5ms per frame @ 1080p (3% of 60 FPS budget). Competitive with UE5/Unity.
+**A**: Negligible. ~0.5ms per frame @ 1080p (3% of 60 FPS budget).
 
 ### Q: Can we ship with this?
 **A**: Yes, with recommendation for visual testing (1-2 hours) to verify lighting quality unchanged.

@@ -336,7 +336,7 @@ Zero operations exceed 10 ms. All P2 crates are safe for real-time use.
 ❌ **No blocking operations found**  
 ❌ **No unbounded loops or recursion**  
 
-**Overall Risk**: 🟢 **LOW** - All P2 crates are production-ready for real-time use.
+**Overall Risk**: 🟢 **LOW** - All P2 crates stay within the real-time frame budget in these benchmarks.
 
 ---
 
@@ -393,7 +393,7 @@ Zero operations exceed 10 ms. All P2 crates are safe for real-time use.
 - ✅ **100+ agent capacity confirmed** - 1.9 ms for 100 agents (11.4% of frame)
 - ✅ **Linear scaling validated** - No algorithmic bottlenecks
 - ✅ **Zero-cost abstractions proven** - Rust performance guarantees hold
-- ✅ **Production-ready** - Can ship games with current performance
+- ✅ **Within frame budget** - Measured performance stays inside the real-time budget in these benchmarks
 
 **Capacity Summary**:
 - **Safe**: 100 agents @ 1.9 ms (58% margin)

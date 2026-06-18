@@ -41,7 +41,7 @@
 
 **Lesson**: Model selection matters. Instruction-tuned models > general chat models.
 
-**What worked instead**: Hermes 2 Pro (adrienbrault/nous-hermes2pro:Q4_K_M)
+**What worked instead**: Hermes 2 Pro (adrienbrault/nous-hermes2pro:Q4_K_M) as an opt-in model via `OLLAMA_MODEL`; note the runtime default remains `phi3:medium` (Hermes/Qwen3 are not the live default)
 
 ---
 
@@ -194,8 +194,8 @@
 - **Maintenance burden**: External dependency with breaking changes
 
 **Evidence**:
-- **Current status**: astraweave-author excluded from builds
-- **Examples broken**: rhai_authoring won't compile
+- **Current status**: astraweave-author compiles clean (`cargo check --workspace` passes 130/130, ci-excludes list empty)
+- **Examples**: rhai_authoring compiles clean
 
 **Lesson**: Don't add dependencies unless immediate need. Scripting can wait.
 
@@ -331,17 +331,17 @@
 **What we tried**: `cargo build --workspace` (no exclusions)
 
 **Why it failed**:
-- **Broken crates fail**: astraweave-author, rhai_authoring won't compile
+- **Broken crates fail**: (historical) some crates formerly failed to compile; astraweave-author and rhai_authoring now compile clean (`cargo check --workspace` passes 130/130)
 - **Wasted time**: Re-compile everything repeatedly
 - **CI failures**: Broken crates block CI
 
 **Evidence**:
 - **Phase 1**: Multiple failed build attempts
-- **Current**: cargo check-all alias with exclusions (works)
+- **Current**: editor aliases (`editor`, `editor-release`, `editor-dev`) plus explicit per-crate commands (`cargo check -p <crate>`) and `cargo check --workspace`
 
 **Lesson**: Exclude broken crates early (don't let them block development).
 
-**What worked instead**: cargo aliases with exclusions (check-all, build-core)
+**What worked instead**: editor cargo aliases (`editor`, `editor-release`, `editor-dev`) plus explicit `cargo check -p <crate>` / `cargo check --workspace`
 
 ---
 

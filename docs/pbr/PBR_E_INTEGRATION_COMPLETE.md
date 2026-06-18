@@ -592,7 +592,7 @@ PS> cargo check -p unified_showcase
 - **Subsurface**: +30-50 ALU ops (Burley diffusion, no screen-space blur)
 - **Sheen**: +20-30 ALU ops (Charlie distribution)
 - **Transmission**: +80-100 ALU ops (Fresnel, refraction, Beer-Lambert)
-- **Total**: 370-510 ALU ops per pixel (competitive with UE5/Unity HDRP)
+- **Total**: 370-510 ALU ops per pixel
 
 ### Expected Frame Times (1080p, RTX 3060 Ti equivalent)
 - **25 spheres (5x5)**: 1-2ms GPU time, >400 FPS
@@ -634,7 +634,7 @@ PS> cargo check -p unified_showcase
 
 ## Conclusion
 
-**Phase PBR-E integration is COMPLETE and PRODUCTION-READY**. All core infrastructure has been successfully implemented:
+**Phase PBR-E integration is COMPLETE** (example-scoped in `unified_showcase`). All core infrastructure has been successfully implemented:
 
 ✅ **GPU Infrastructure**: SSBO for materials, bind groups, pipeline layout  
 ✅ **Instance Generation**: Dynamic sphere grid with material_id indexing  

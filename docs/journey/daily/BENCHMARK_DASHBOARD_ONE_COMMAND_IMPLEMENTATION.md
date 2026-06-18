@@ -177,7 +177,7 @@ The script automatically:
 ### Header Section:
 Added interactive dashboard link:
 ```markdown
-📊 [Interactive Benchmark Dashboard](https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/)
+📊 [Interactive Benchmark Dashboard](https://lazyxeon.github.io/AstraWeave/)
 Local: `.\scripts\run_benchmark_dashboard.ps1`
 ```
 

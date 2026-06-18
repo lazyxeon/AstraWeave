@@ -169,7 +169,7 @@ Deterministic, ordered execution at **fixed 60Hz tick** with deterministic RNG:
   - WGSL bindings (group=1): albedo (0), sampler (1), normal (2), linear sampler (3), MRA (4)
 - **Shared Utilities**: `MaterialManager`, `IblManager`, `MeshRegistry`
 - **Feature Flags**: `textures`, `assets` gate loaders
-- **GPU Skinning**: Production-ready pipeline with dual bone influence
+- **GPU Skinning**: pipeline with dual bone influence
   - `astraweave-render/src/skinning_gpu.rs`
 - **GPU Mesh Optimization**:
   - `vertex_compression.rs` (octahedral normals, half-float UVs, 37.5% memory reduction)
@@ -186,7 +186,7 @@ Tracy 0.11.1 integrated for zero-overhead profiling. See `examples/profiling_dem
 
 ### Spatial Hash Collision
 
-O(n log n) grid-based spatial partitioning in `astraweave-physics/src/spatial_hash.rs`. 99.96% collision check reduction, cache locality cascade benefits.
+O(n log n) grid-based spatial partitioning in `astraweave-physics/src/spatial_hash.rs` (1,038 LoC), benchmarked at 99.96% collision check reduction with cache-locality cascade benefits. Dormant: the physics broadphase actually runs Rapier's `DefaultBroadPhase`; this `SpatialHash` has no production caller in the physics step (used only by terrain LOD blending, the profiling example, and tests).
 
 ### SIMD Movement
 
@@ -608,7 +608,6 @@ Any new `unsafe` code MUST:
 | Workspace deps | Root `Cargo.toml` |
 | Build config | `.cargo/config.toml` (aliases, profiles, sccache) |
 | CI tasks | `.vscode/tasks.json` |
-| Exclusions | `check-all` alias in `.cargo/config.toml` |
 | Miri validation | `docs/current/MIRI_VALIDATION_REPORT.md` |
 | Kani proofs | `astraweave-sdk/src/lib_kani.rs`, `astraweave-ecs/tests/mutation_resistant_comprehensive_tests.rs` |
 

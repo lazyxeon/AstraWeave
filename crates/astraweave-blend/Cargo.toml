@@ -5,7 +5,7 @@ edition = "2021"
 license = "MIT"
 description = "Production-grade Blender .blend file import system for AstraWeave engine"
 readme = "README.md"
-repository = "https://github.com/astraweave/AstraWeave-AI-Native-Gaming-Engine"
+repository = "https://github.com/lazyxeon/AstraWeave"
 keywords = ["blender", "gamedev", "asset-pipeline", "3d", "import"]
 categories = ["game-development", "graphics", "filesystem"]
 

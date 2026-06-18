@@ -492,7 +492,7 @@ cargo doc -p astraweave-render-bevy --open
 **Success Criteria**:
 - ✅ MegaLights 100k+ lights validated
 - ✅ Performance: <5 ms for 100k lights (vs Bevy's ~50 ms for 1k)
-- ✅ Visual quality: Matches or exceeds Bevy's standard lighting
+- ✅ Visual quality: Matches Bevy's standard lighting
 
 ### Week 2: AI-Specific Optimizations
 

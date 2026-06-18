@@ -160,9 +160,9 @@ Total: 16.67 ms per frame
 - Performance validated early (sub-microsecond planning)
 
 **Evidence**:
-- **6 AI modes functional** (Classical, BehaviorTree, Utility, LLM, Hybrid, Ensemble)
+- **7 AI modes (feature-gated)** (Classical, BehaviorTree, Utility, LLM, Hybrid, Ensemble) <!-- Source: CLAIMS_REGISTRY.md#ai-modes -->
 - **87-202 ns planning** (4.95-11.5M plans/sec)
-- **75-85% LLM success rate** (production-ready with Hermes 2 Pro)
+- **75-85% LLM success rate** (runtime default is phi3:medium; Hermes 2 Pro is opt-in via `OLLAMA_MODEL`)
 
 ---
 
@@ -299,7 +299,7 @@ mod gpu_tests;
 - Avoided premature optimization (measured first)
 
 **Evidence**:
-- **Spatial hash**: 99.96% collision reduction (499,500 → 180 checks)
+- **Spatial hash**: present but DORMANT — the live broadphase is Rapier `DefaultBroadPhase` (`astraweave-physics/src/lib.rs:907`); the 99.96% collision-reduction figure is not live engine behavior
 - **SIMD movement**: 2.08× speedup (20.588 µs → 9.879 µs)
 - **Frame time**: 3.09 ms → 2.70 ms (-12.6%)
 

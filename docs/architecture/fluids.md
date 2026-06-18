@@ -759,7 +759,7 @@ The fluids crate has gone through visible development phases captured in `docs/`
 
 4. **Visual effects layer** (`caustics.rs`, `foam.rs`, `god_rays.rs`, `water_reflections.rs`, `underwater.rs`, `underwater_particles.rs`, `waterfall.rs`, `water_effects.rs`) — coordinated by `WaterEffectsManager`. Inline-WGSL constants (`CAUSTICS_WGSL`, `GOD_RAYS_WGSL`, `SSR_WGSL`) suggest external shader-composition use cases.
 
-5. **Optimization + LOD + profiling** (`optimization.rs`, `lod.rs`, `profiling.rs`, `simd_ops.rs`) — production-grade tuning surface. GPU-vendor-aware workgroup sizing, adaptive iteration, simulation budget, batch spawning.
+5. **Optimization + LOD + profiling** (`optimization.rs`, `lod.rs`, `profiling.rs`, `simd_ops.rs`) — tuning surface. GPU-vendor-aware workgroup sizing, adaptive iteration, simulation budget, batch spawning.
 
 6. **Editor integration** (`editor.rs` at 5,823 LoC) — the largest non-SIMD file. Suggests significant authoring-tool integration effort.
 

@@ -7,7 +7,7 @@
 
 ## Overview
 
-Phase 2 transformed the AstraWeave editor from a functional prototype to a production-grade tool with **complete undo/redo**, **scene persistence**, **extensible component inspector**, and **comprehensive test coverage**.
+Phase 2 added **complete undo/redo**, **scene persistence**, **extensible component inspector**, and **test coverage** to the AstraWeave editor (still in-progress, not yet production-ready per the architectural audit).
 
 ---
 
@@ -346,5 +346,5 @@ Start with **Asset Browser (3.1)** because:
 ---
 
 **Status**: ✅ **PHASE 2 COMPLETE**  
-**Quality**: Production-ready with 90% test coverage  
+**Quality**: Phase 2 features complete with 90% test coverage (editor not yet production-ready overall)  
 **Next Phase**: Phase 3.1 - Asset Browser 🎯

@@ -2,7 +2,7 @@
 
 ## Overview
 
-This crate has a comprehensive testing and benchmarking infrastructure designed for **world-class coverage** with no happy-path-only tests. The test suite focuses on edge cases, error handling, security vulnerabilities, adversarial inputs, and property-based testing.
+This crate has a comprehensive testing and benchmarking infrastructure designed for **coverage** with no happy-path-only tests. The test suite focuses on edge cases, error handling, security vulnerabilities, adversarial inputs, and property-based testing.
 
 ## Test Summary
 

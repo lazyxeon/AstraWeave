@@ -531,7 +531,7 @@ pub fn generate_attribution_file(
 
 ## Conclusion
 
-The multi-source asset pipeline is **production-ready** and **fully integrated** into the AstraWeave workflow. The architecture is **extensible** (add new providers by implementing `AssetProvider`), **license-safe** (automatic validation and attribution), and **developer-friendly** (one-command fetch with filtering).
+The multi-source asset pipeline is **implemented** as a standalone CLI tool. The architecture is **extensible** (add new providers by implementing `AssetProvider`), **license-safe** (automatic validation and attribution), and **developer-friendly** (one-command fetch with filtering).
 
 **Key Achievements**:
 - ✅ **3 providers** supported (API + manual URLs)

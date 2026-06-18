@@ -618,7 +618,7 @@ let albedo = [
 Task 2.2 successfully implements the BrdfPreview module with comprehensive BRDF visualization capabilities. The software-rendered sphere provides real-time feedback on material appearance with physically accurate Cook-Torrance BRDF, interactive controls, and seamless integration with the Material Inspector.
 
 **Key Achievements**:
-- 280+ lines of production-ready BRDF rendering code
+- 280+ lines of BRDF rendering code
 - Cook-Torrance BRDF with GGX + Smith + Fresnel
 - Software sphere rasterization (256×256, 10-20ms)
 - ACES tone mapping + sRGB gamma correction

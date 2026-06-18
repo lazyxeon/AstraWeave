@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-BASE_URL="https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine"
+BASE_URL="https://lazyxeon.github.io/AstraWeave"
 BOOK_DIR="${1:-docs/book}"
 OUTPUT_FILE="${BOOK_DIR}/sitemap.xml"
 PRIORITY_HIGH="1.0"

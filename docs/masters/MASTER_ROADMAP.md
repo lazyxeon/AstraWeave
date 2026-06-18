@@ -23,7 +23,7 @@
 
 ### Mission
 
-AstraWeave is the **world's first AI-native game engine** where AI agents are first-class citizens, not bolted-on features. The entire codebase is developed iteratively by AI Agents (GitHub Copilot/Antigravity) with zero human-written code.
+AstraWeave is an **AI-native game engine** where AI agents are first-class citizens, not bolted-on features. The entire codebase is developed iteratively by AI Agents (GitHub Copilot/Antigravity) with zero human-written code.
 
 ### Current State (June 10, 2026)
 
@@ -35,7 +35,7 @@ AstraWeave is the **world's first AI-native game engine** where AI agents are fi
 | **Miri Validation** | ✅ **977 tests, 0 UB** |
 | **Kani Verification** | ✅ **69 proof harnesses, all passing** |
 | Workspace Packages | **130** (59 core + 71 examples/tools; `cargo metadata --no-deps`, 2026-06-10 — adds `astraweave-alloc` and `astraweave-camera`) |
-| Total Tests | **~27,000+** (measured) / **~39,973** `#[test]`/`#[tokio::test]` markers (live count 2026-06-10) |
+| Total Tests | **~39,900** `#[test]`/`#[tokio::test]` markers (live count 2026-06-10) <!-- Source: CLAIMS_REGISTRY.md#test-markers-total --> |
 | Integration Tests | **~9,081** |
 | Test Coverage (Overall) | **59.3%** weighted (LLVM source-based, v5.0 methodology) |
 | High-Coverage Crates (≥85%) | **14 of 28** measured (50%) |
@@ -61,7 +61,7 @@ AstraWeave is the **world's first AI-native game engine** where AI agents are fi
 ### What AstraWeave Is
 
 - ✅ A **working prototype** with solid foundations
-- ✅ The **world's first AI-native game engine** with unique architecture
+- ✅ An **AI-native game engine** with unique architecture
 - ✅ A **comprehensive experiment** proving AI can build complex systems
 - ✅ **Memory-safe**: All unsafe code Miri-validated
 - ✅ Approximately **3-12 months away** from production readiness
@@ -80,15 +80,15 @@ AstraWeave is the **world's first AI-native game engine** where AI agents are fi
 
 | System | Status | Key Features |
 |--------|--------|--------------|
-| **ECS** | Production | Archetype-based, BlobVec storage, deterministic, 7-stage pipeline, 728 tests (330 lib + 398 integration), **Miri-validated**, **Kani-verified** |
-| **AI** | Production | 6 planning modes, GOAP, Behavior Trees, LLM integration, 268 tests |
+| **ECS** | Production | Archetype-based, BlobVec storage, deterministic, 8-stage pipeline, 728 tests (330 lib + 398 integration), **Miri-validated**, **Kani-verified** |
+| **AI** | Production | 7 planning modes (feature-gated), GOAP, Behavior Trees, LLM integration, 268 tests <!-- Source: CLAIMS_REGISTRY.md#ai-modes --> |
 | **Rendering** | Production | wgpu 25, PBR/IBL, CSM shadows, post-processing, **Headless Support**, 806+ lib tests |
-| **Physics** | Production | Rapier3D, character controller, spatial hashing, fluids (4,907 tests), 1,244 tests |
+| **Physics** | Production | Rapier3D, character controller, spatial hashing, fluids (2,560 test markers), 1,244 tests <!-- Source: CLAIMS_REGISTRY.md#fluids-test-markers --> |
 | **Audio** | Production | Spatial audio, 4-bus mixer, rodio backend, 239 tests |
 | **Navigation** | Production | Navmesh, A*, portal graphs, 216 lib tests / 496 total |
 | **SDK** | Production | C ABI FFI, **Miri-validated**, **Kani-verified** |
 | **Prompts** | Production | Template engine, prompt library, 1,931 tests, 100% mutation kill rate |
-| **Fluids** | Production | SPH/FLIP simulation, 4,907 tests, A+ grade |
+| **Fluids** | In-design (zero consumers outside crate) | PBD solver, 2,560 test markers <!-- Source: CLAIMS_REGISTRY.md#fluids-test-markers --> |
 
 ### Recent Additions (February 2026)
 
@@ -99,14 +99,14 @@ AstraWeave is the **world's first AI-native game engine** where AI agents are fi
 | **✅ Wave 2 Automated Mutation Testing** | prompts (792), render (339), editor (130) | **1,261+** |
 | **✅ Miri Memory Safety Validation** | ecs, math, core, sdk | **977** |
 | **✅ Kani Formal Verification** | ecs, math, core, sdk | **69 proofs** |
-| **✅ Fluids System (A+ Grade)** | `astraweave-fluids` | **4,907** |
+| **✅ Fluids System** | `astraweave-fluids` | **2,560** <!-- Source: CLAIMS_REGISTRY.md#fluids-test-markers --> |
 | **✅ Prompt Engineering System** | `astraweave-prompts` | **1,931** |
 | Physics Robustness (Phase 8.8) | `astraweave-physics` | 1,244+ |
 | ECS BlobVec Optimization | `astraweave-ecs/src/archetype.rs` | 728 |
 | Headless Renderer & GPU Verification | `astraweave-render/src/renderer.rs` | 806+ |
 | AI-Orchestrated Dynamic Terrain | Multiple crates | 2,536 |
 | Memory System | `astraweave-memory` | 945 |
-| Editor (aw_editor) | `tools/aw_editor` | ~6,100+ |
+| Editor (aw_editor) | `tools/aw_editor` | ~9,427 <!-- Source: CLAIMS_REGISTRY.md#editor-test-markers --> |
 
 ### Test Coverage by Priority Tier
 
@@ -171,7 +171,7 @@ The **Arbiter** (`astraweave-ai/src/ai_arbiter.rs`) orchestrates the handshake b
 | **Classical** | Rule-based fallback | ~0.20ms |
 | **BehaviorTree** | Hierarchical state machines | ~0.17ms |
 | **Utility** | Weighted action scoring | ~0.46ms |
-| **LLM** | Hermes 2 Pro strategic planning | ~3.5s |
+| **LLM** | Strategic planning (runtime default phi3:medium; model set via `OLLAMA_MODEL`) | ~3.5s |
 | **Hybrid** | LLM strategy + GOAP execution | ~2.2s |
 | **Ensemble** | Multi-mode weighted voting | ~2.4s |
 
@@ -241,7 +241,7 @@ Key features:
 |--------|---------|-----------------|--------|
 | Test Coverage (Overall) | 59.3% (LLVM weighted) | 70%+ | 🟡 Below target (methodology change: v5.0 audit) |
 | Test Coverage (P0 top-5) | 85-96% (ECS, Physics, Math, Nav, Behavior) | 90%+ | ✅ Met (top 5 P0 crates) |
-| Total Tests | ~27,000+ | 20,000+ | ✅ Exceeded |
+| Total Tests | ~39,900 markers | 20,000+ | ✅ Exceeded <!-- Source: CLAIMS_REGISTRY.md#test-markers-total --> |
 | Integration Tests | ~9,081 | 5,000+ | ✅ Exceeded |
 | Mutation Kill Rate (prompts) | 100% (792 mutants) | 90%+ | ✅ Exceeded |
 | `.unwrap()` in Core | 0 | 0 | ✅ Complete |

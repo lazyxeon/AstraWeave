@@ -9,7 +9,7 @@
 
 ## 🎯 Mission Statement
 
-Transform AstraWeave's renderer from "prototype with world-class geometry" to **complete, production-ready rendering engine** matching or exceeding Unreal Engine 5 capabilities:
+Complete the AstraWeave renderer's lighting path (GPU light culling) and post-processing toward a **production-ready rendering engine**:
 
 ✅ **Nanite-class Geometry** (DONE)  
 🎯 **MegaLights GPU Lighting** (NEW)  
@@ -27,11 +27,11 @@ Transform AstraWeave's renderer from "prototype with world-class geometry" to **
 
 ### Current State Analysis
 
-**Strengths** (World-Class Geometry):
+**Strengths** (Geometry):
 - ✅ Nanite-like LOD: 68-2110 µs quadric simplification
 - ✅ Vertex compression: 16-29 ns, 37.5% memory reduction  
 - ✅ GPU-driven culling: Task 3 complete, production-ready
-- ✅ 103k+ entity capacity @ 60 FPS
+- ✅ Agent capacity @ 60 FPS (see CLAIMS_REGISTRY.md#agents-capacity-60fps)
 - ✅ Instancing + indirect draws: 10-100× draw call reduction
 
 **Critical Gaps** (Lighting & Post-Processing):

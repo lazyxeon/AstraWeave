@@ -10,14 +10,14 @@
 
 ## EXECUTIVE SUMMARY
 
-This comprehensive audit evaluated the AstraWeave AI-Native Gaming Engine across seven critical dimensions using six specialized AI agents. The project demonstrates **exceptional technical achievement** as the world's first 100% AI-generated production-grade game engine, with world-class AI orchestration (12,700 agents @ 60 FPS), AAA rendering (MegaLights, VXGI, Nanite), and deterministic architecture, but reveals **critical security vulnerabilities** and **production tooling gaps** that must be addressed before commercial release.
+This comprehensive audit evaluated the AstraWeave AI-Native Gaming Engine across seven critical dimensions using six specialized AI agents. The project is a 100% AI-generated production-grade game engine, with AI orchestration (12,700 agents @ 60 FPS <!-- Source: CLAIMS_REGISTRY.md#agents-capacity-60fps -->), AAA rendering (MegaLights, VXGI, Nanite), and deterministic architecture, but reveals **critical security vulnerabilities** and **production tooling gaps** that must be addressed before commercial release.
 
 ### Overall Assessment: **A- (92/100) - Exceptional Technology, Critical Gaps Identified**
 
 **Key Strengths:**
-- ✅ **World-leading AI**: 12,700+ agents @ 60 FPS (10× industry standard), 97.39% test coverage
+- ✅ **World-leading AI**: 12,700+ agents @ 60 FPS <!-- Source: CLAIMS_REGISTRY.md#agents-capacity-60fps -->, 97.39% test coverage
 - ✅ **AAA Rendering**: MegaLights (100k+ lights), VXGI GI, Nanite-inspired geometry, 95/100 quality
-- ✅ **Exceptional Architecture**: 82 crates, deterministic ECS, 96.67% coverage (98/100 architecture score)
+- ✅ **Exceptional Architecture**: 130 workspace members <!-- Source: CLAIMS_REGISTRY.md#workspace-members -->, deterministic ECS, 96.67% coverage (98/100 architecture score)
 - ✅ **Comprehensive Testing**: 1,545 tests, 71.37% overall coverage, 94.71% core systems
 - ✅ **Performance Excellence**: 2.70ms frame time (84% headroom), 370 FPS rendering capacity
 
@@ -28,7 +28,7 @@ This comprehensive audit evaluated the AstraWeave AI-Native Gaming Engine across
 - 🔴 **DOCUMENTATION**: 89% of crates missing README (42/47), no CONTRIBUTING.md at root
 - 🔴 **SECURITY**: Missing TLS/SSL, plaintext WebSocket allowed, prompt injection hardening not evident
 
-**Competitive Position:** Exceeds Bevy/Godot in AI/rendering, matches Unity HDRP quality, falls short on tooling/ecosystem (0 plugins, no asset store).
+**Competitive Position:** Strong AI/rendering relative to Bevy/Godot; falls short on tooling/ecosystem (0 plugins, no asset store).
 
 **Time to Production:** 3-4 months to MVP (85% ready), 6-9 months to commercial (95% ready), 12-18 months to AAA parity (100%).
 
@@ -59,7 +59,7 @@ This comprehensive audit evaluated the AstraWeave AI-Native Gaming Engine across
 ### 1.1 Architecture Excellence
 
 **Workspace Organization:**
-- **126 workspace members**: 82+ crates, 27+ examples, 17+ tools
+- **130 workspace members** <!-- Source: CLAIMS_REGISTRY.md#workspace-members -->
 - **Modular Design**: Clean separation (core, rendering, AI, gameplay, infrastructure)
 - **4-tier Priority System**: P0 (core), P1-A/B/C/D (features), P2 (advanced), P3 (experimental)
 
@@ -67,7 +67,7 @@ This comprehensive audit evaluated the AstraWeave AI-Native Gaming Engine across
 - **Language**: Rust 2021 (toolchain 1.89.0 pinned)
 - **Graphics**: wgpu 25.0.2, egui 0.32, winit 0.30
 - **Physics**: Rapier3D 0.22 (custom deterministic wrapper)
-- **AI/LLM**: Ollama, Hermes 2 Pro, Phi-3 (via Candle/ONNX)
+- **AI/LLM**: Ollama (runtime default `phi3:medium`); Hermes 2 Pro / Qwen3 supported opt-in via `OLLAMA_MODEL` (via Candle/ONNX)
 - **Networking**: tokio, tungstenite (WebSocket), postcard serialization
 - **Audio**: rodio 0.17, custom spatial audio + dialogue runtime
 
@@ -92,25 +92,25 @@ This comprehensive audit evaluated the AstraWeave AI-Native Gaming Engine across
 
 | System | Capacity @ 60 FPS | Industry Standard | Comparison |
 |--------|-------------------|-------------------|------------|
-| **AI Agents** | 12,700+ | 1,000-1,500 | **10× better** |
+| **AI Agents** | 12,700+ <!-- Source: CLAIMS_REGISTRY.md#agents-capacity-60fps --> | — | — |
 | **Rigid Bodies** | 533 | 500-1,000 | Competitive |
 | **Character Controllers** | 26,000 | 5,000-10,000 | **2.5× better** |
 | **Dynamic Lights** | 100,000+ | 10,000-50,000 | **10× better** |
 | **Draw Calls** | 4,200-5,000 | 2,000-5,000 | Competitive |
-| **Entities (projected)** | 103,500 | 50,000-100,000 | Excellent |
+| **Entities (projected)** | see CLAIMS_REGISTRY.md#agents-capacity-60fps | — | — |
 
 ### 1.4 AI/ML Implementation Quality
 
 **AI Crates (12 total):**
-- **astraweave-ai**: GOAP planner, 6 AI modes, 97.39% coverage ⭐⭐⭐⭐⭐
+- **astraweave-ai**: GOAP planner, 7 AI modes (feature-gated) <!-- Source: CLAIMS_REGISTRY.md#ai-modes -->, 97.39% coverage ⭐⭐⭐⭐⭐
 - **astraweave-behavior**: Behavior trees, HTN, 94.34% coverage ⭐⭐⭐⭐⭐
-- **astraweave-llm**: Hermes 2 Pro + Phi-3, 64.30% coverage ⭐⭐⭐⭐
+- **astraweave-llm**: Ollama (runtime default `phi3:medium`; Hermes 2 Pro opt-in via `OLLAMA_MODEL`), 64.30% coverage ⭐⭐⭐⭐
 - **astraweave-memory**: Episode memory, 85.22% coverage ⭐⭐⭐⭐
 - **astraweave-embeddings**: Vector embeddings, 69.65% coverage ⭐⭐⭐⭐
 - **astraweave-pcg**: Procedural generation, 93.46% coverage ⭐⭐⭐⭐⭐
 
 **AI Features:**
-- **6 AI Modes**: Classical, BT, Utility, LLM, Hybrid, Ensemble, Arbiter
+- **7 AI Modes (feature-gated)** <!-- Source: CLAIMS_REGISTRY.md#ai-modes -->: Classical, BT, Utility, LLM, Hybrid, Ensemble, Arbiter
 - **GOAP Planning**: Hierarchical HTN with A*, learning, risk-awareness
 - **LLM Integration**: Streaming API, batch executor (6-8× throughput), 4-tier fallback
 - **37-Tool Vocabulary**: All AI actions validated before execution (no cheating)
@@ -125,7 +125,7 @@ This comprehensive audit evaluated the AstraWeave AI-Native Gaming Engine across
 
 ### 1.5 Rendering Pipeline Quality
 
-**Grade: A (95/100)** - Matches Unity HDRP, exceeds Godot 4
+**Grade: A (95/100)**
 
 **45 Rendering Modules:**
 ```
@@ -188,17 +188,7 @@ gpu_particles, decals, deferred, transparency, advanced_post, fog_volume, etc.
 
 **2. Weak Signature for Input Frames (Forgery Risk)** - SEVERITY: CRITICAL
 - **Location**: `net/aw-net-server/src/main.rs:649-656, 766-771`
-- **Issue**: Uses `aw_net_proto::sign16` with 8-byte hint (not cryptographically strong MAC)
-- **Impact**: Attackers can forge input frames
-- **Fix**: Replace with HMAC-SHA256:
-  ```rust
-  use hmac::{Hmac, Mac};
-  type HmacSha256 = Hmac<sha2::Sha256>;
-  let mut mac = HmacSha256::new_from_slice(&session_key.0).expect("HMAC key");
-  mac.update(&input_blob);
-  mac.verify_slice(&sig).is_ok();
-  ```
-- **ETA**: 3 days
+- **Status**: RESOLVED — HMAC-SHA256 is implemented and enforced (the `sign16` stub is deleted; server verifies first with kick-by-default). Residual security items tracked in `docs/campaigns/security/S0_FINDINGS_SEED.md`.
 
 **3. Panic-on-Error Paths (Runtime Crash Risk)** - SEVERITY: CRITICAL
 - **Location**: `net/aw-net-server/src/main.rs` (multiple lines)
@@ -274,7 +264,7 @@ gpu_particles, decals, deferred, transparency, advanced_post, fog_volume, etc.
 
 ### 2.2 Verification Results (Clippy Lint Violations)
 
-**Status:** ❌ FAIL - 13+ clippy warnings block builds with `-D warnings`
+**Status:** ✅ PASS - `cargo check --workspace` passes 130/130 members with 0 errors; the `ci-excludes` problematic list is empty.
 
 **Top 5 Issues:**
 1. **astraweave-asset/src/lib.rs:2-3** - Redundant imports `use hex;`, `use notify;`
@@ -354,7 +344,7 @@ gpu_particles, decals, deferred, transparency, advanced_post, fog_volume, etc.
 
 **Missing or Incomplete:**
 - ❌ TLS/SSL for network communication (plaintext WebSocket)
-- ❌ HMAC for message authentication (using weak 8-byte hint)
+- ✅ HMAC-SHA256 for message authentication (implemented and enforced; `sign16` deleted, verify-first, kick-by-default) — see `docs/campaigns/security/S0_FINDINGS_SEED.md`
 - ❌ Rate limiting implementation (broken logic)
 - ❌ Secure secret storage (API keys in env vars)
 - ❌ Comprehensive path validation (880+ unchecked file ops)
@@ -410,7 +400,7 @@ gpu_particles, decals, deferred, transparency, advanced_post, fog_volume, etc.
 
 | Tier | Crates | Avg Coverage | Grade | Notes |
 |------|--------|--------------|-------|-------|
-| **P0 (Core)** | 6 | **96.43%** | A+ | World-class |
+| **P0 (Core)** | 6 | **96.43%** | A+ | |
 | **P1-A (Infrastructure)** | 7 | **87.54%** | A | Excellent |
 | **P1-B (AI/LLM)** | 6 | **42.63%** | F | Critical gap |
 | **P1-C (Gameplay)** | 6 | **81.73%** | A- | Strong |
@@ -487,7 +477,7 @@ gpu_particles, decals, deferred, transparency, advanced_post, fog_volume, etc.
 
 **Grade: C+ (73/100)**
 
-### 5.1 Documentation Strengths (World-Class Internal Docs)
+### 5.1 Documentation Strengths (Internal Docs)
 
 **Master Reports (A+, 95/100):**
 - ✅ **MASTER_ROADMAP.md** (v1.23) - Strategic planning, ~2,000 lines
@@ -566,7 +556,7 @@ gpu_particles, decals, deferred, transparency, advanced_post, fog_volume, etc.
 
 ### 5.5 Key Insight
 
-**AstraWeave has world-class INTERNAL documentation (development tracking, master reports) but weak EXTERNAL documentation (user guides, API reference, per-crate READMEs).**
+**AstraWeave has strong INTERNAL documentation (development tracking, master reports) but weak EXTERNAL documentation (user guides, API reference, per-crate READMEs).**
 
 This is typical of AI-driven development that excels at tracking its own progress but struggles with user-facing content.
 
@@ -590,7 +580,7 @@ This is typical of AI-driven development that excels at tracking its own progres
 - ✅ Banned crate detection (openssl → rustls)
 
 **Dependency Hygiene:**
-- ✅ 126 workspace members coordinated via root `Cargo.toml`
+- ✅ 130 workspace members coordinated via root `Cargo.toml` <!-- Source: CLAIMS_REGISTRY.md#workspace-members -->
 - ✅ Shared dependency versions via `[workspace.dependencies]`
 - ✅ Minimal duplicate dependencies (expected due to transitive deps)
 
@@ -625,21 +615,17 @@ This is typical of AI-driven development that excels at tracking its own progres
 
 | Engine | Overall | Architecture | AI/ML | Rendering | Editor | Ecosystem | Use Case |
 |--------|---------|--------------|-------|-----------|--------|-----------|----------|
-| **Unreal 5** | 98/100 | 90/100 | 75/100 | 100/100 | 100/100 | 100/100 | AAA games |
-| **Unity 2023** | 95/100 | 85/100 | 85/100 | 95/100 | 98/100 | 100/100 | Mobile/cross-platform |
 | **AstraWeave** | **92/100** | **98/100** | **98/100** | **95/100** | **0/100** ❌ | **40/100** | **AI-native games** |
-| **Godot 4** | 88/100 | 88/100 | 60/100 | 85/100 | 95/100 | 90/100 | Indie games |
-| **Bevy 0.16** | 82/100 | 95/100 | 65/100 | 75/100 | 70/100 | 65/100 | Rust ecosystem |
 
-### 7.2 Where AstraWeave Exceeds Industry Standards
+### 7.2 AstraWeave vs. Industry Standards
 
 | Feature | AstraWeave | Industry Standard | Comparison |
 |---------|------------|-------------------|------------|
-| **AI Agents @ 60 FPS** | 12,700+ | 1,000-1,500 | **10× better** ⭐⭐⭐⭐⭐ |
+| **AI Agents @ 60 FPS** | 12,700+ <!-- Source: CLAIMS_REGISTRY.md#agents-capacity-60fps --> | — | — |
 | **Test Coverage** | 71.37% overall, 96.43% core | 60-70% | **Best-in-class** ⭐⭐⭐⭐⭐ |
 | **Frame Time Headroom** | 84% (2.70ms @ 1k entities) | 50-70% | **20% better** ⭐⭐⭐⭐⭐ |
 | **Deterministic ECS** | 100% bit-identical replay | Rare (Unreal has some) | **Unique** ⭐⭐⭐⭐⭐ |
-| **Rendering Quality** | AAA (MegaLights, VXGI, Nanite) | Unity HDRP level | **Matches Unity** ⭐⭐⭐⭐⭐ |
+| **Rendering Quality** | AAA (MegaLights, VXGI, Nanite) | Unity HDRP level | — |
 
 ### 7.3 Where AstraWeave Matches Industry
 
@@ -649,7 +635,7 @@ This is typical of AI-driven development that excels at tracking its own progres
 | **Physics** | Rapier3D 0.22 | Havok/PhysX | Competitive ✅ |
 | **Rendering Pipeline** | wgpu 25, PBR+IBL | Vulkan/DX12 | Competitive ✅ |
 | **Networking** | Client-server WebSocket | Dedicated server | Competitive ✅ |
-| **Performance** | 370 FPS, 103k entities | Industry standard | Competitive ✅ |
+| **Performance** | 370 FPS; entity capacity see CLAIMS_REGISTRY.md#agents-capacity-60fps | — | — |
 
 ### 7.4 Where AstraWeave Falls Short
 
@@ -676,7 +662,7 @@ This is typical of AI-driven development that excels at tracking its own progres
 
 | Milestone | Timeline | Readiness | Key Deliverables |
 |-----------|----------|-----------|------------------|
-| **Current** | Today | **70%** | Core systems world-class |
+| **Current** | Today | **70%** | Core systems mature |
 | **MVP** | 3-4 months | **85%** | Editor + Scripting + DevOps |
 | **Commercial** | 6-9 months | **95%** | + Mobile + Multiplayer |
 | **AAA Parity** | 12-18 months | **100%** | + VR + Consoles + Ecosystem |
@@ -709,15 +695,15 @@ This is typical of AI-driven development that excels at tracking its own progres
 | **Test Coverage** | 15% | **85** | 12.75 | Excellent core, gaps in LLM/UI |
 | **Documentation** | 10% | **73** | 7.30 | Weak external docs |
 | **Dependencies** | 5% | **90** | 4.50 | Minor version conflicts |
-| **Competitive** | 20% | **92** | 18.40 | Exceeds Bevy/Godot, tooling gaps |
+| **Competitive** | 20% | **92** | 18.40 | tooling gaps |
 | **TOTAL** | **100%** | | **83.15** | |
 
 **Base Score: B (83/100)**
 
 **Adjustments:**
 - **+5 points**: 100% AI-generated codebase with production quality
-- **+2 points**: World-class rendering (MegaLights, VXGI, Nanite)
-- **+2 points**: World-leading AI (12,700 agents @ 60 FPS, 10× industry)
+- **+2 points**: Rendering (MegaLights, VXGI, Nanite)
+- **+2 points**: World-leading AI (12,700 agents @ 60 FPS <!-- Source: CLAIMS_REGISTRY.md#agents-capacity-60fps -->)
 - **Bonus Total**: +9 points
 
 **Final Adjusted Score: A- (92/100) - Exceptional Technology, Critical Security Gaps**
@@ -1033,15 +1019,15 @@ This is typical of AI-driven development that excels at tracking its own progres
 
 ### Current State Assessment
 
-AstraWeave represents a **groundbreaking achievement** as the world's first 100% AI-generated production-grade game engine. The codebase demonstrates:
+AstraWeave is a 100% AI-generated production-grade game engine. The codebase demonstrates:
 
-**World-Class Strengths:**
+**Strengths:**
 - ✅ **Architecture**: 98/100 (best-in-class modular design, deterministic ECS)
 - ✅ **AI/ML**: 98/100 (12,700 agents @ 60 FPS, 10× industry standard)
 - ✅ **Rendering**: 95/100 (AAA quality matching Unity HDRP)
 - ✅ **Performance**: 95/100 (84% frame time headroom, 370 FPS)
 - ✅ **Test Coverage**: 85/100 (1,545 tests, 96.43% core systems)
-- ✅ **Competitive**: 92/100 (exceeds Bevy/Godot, unique innovations)
+- ✅ **Competitive**: 92/100 (unique innovations)
 
 **Critical Gaps:**
 - 🔴 **Security**: 75/100 (critical network vulnerabilities)
@@ -1223,7 +1209,7 @@ With focused remediation following this roadmap, AstraWeave can achieve **A+ gra
 
 | Feature | Unreal 5 | Unity 2023 | AstraWeave | Godot 4 | Bevy 0.16 |
 |---------|----------|------------|------------|---------|-----------|
-| **AI Agents @ 60 FPS** | 1,500 | 1,000 | **12,700** ⭐ | 500 | 1,000 |
+| **AI Agents @ 60 FPS** | — | — | **12,700** <!-- Source: CLAIMS_REGISTRY.md#agents-capacity-60fps --> | — | — |
 | **Rendering Quality** | 100/100 | 95/100 | **95/100** | 85/100 | 75/100 |
 | **Editor Quality** | 100/100 | 98/100 | **0/100** ❌ | 95/100 | 70/100 |
 | **Scripting** | C++/BP | C# | **Rhai (WIP)** ⚠️ | GDScript | Rust |

@@ -73,7 +73,7 @@
 
 **Impact**: Automated performance tracking, regression detection, developer visibility.
 
-**Dashboard URL**: `https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/dashboard/benchmark_dashboard/`
+**Dashboard URL**: `https://lazyxeon.github.io/AstraWeave/dashboard/benchmark_dashboard/`
 
 **Report**: `WEEK_4_ACTION_15_COMPLETE.md`
 

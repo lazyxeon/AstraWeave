@@ -3,13 +3,13 @@
 **Document Version**: 1.0  
 **Date**: October 14, 2025  
 **Duration**: 12-16 weeks (3-4 months)  
-**Objective**: Coordinate all 4 Phase 8 priorities to deliver production-ready game engine
+**Objective**: Coordinate all 4 Phase 8 priorities to deliver a complete game engine
 
 ---
 
 ## Executive Summary
 
-**Mission**: Transform AstraWeave from "production-ready infrastructure" to "ship a complete game" by completing in-game UI, rendering pipeline, save/load system, and production audio.
+**Mission**: Transform AstraWeave from "in-progress infrastructure" to "ship a complete game" by completing in-game UI, rendering pipeline, save/load system, and production audio.
 
 **4 Parallel Workstreams**:
 1. **Phase 8.1**: In-Game UI Framework (5 weeks, Priority 1, CRITICAL)
@@ -337,7 +337,7 @@ Integr                                                   [======================
 
 **Team**: 1 FTE
 
-**Deliverable**: Production-ready codebase with zero unwraps, zero todos, 50%+ coverage
+**Deliverable**: Codebase with zero unwraps, zero todos, 50%+ coverage
 
 ---
 
@@ -694,7 +694,7 @@ Phase 8 is **achievable in 12-16 weeks** with careful planning and parallel exec
 - Strict scope control (defer optional features)
 - Early integration testing (Week 9-10)
 
-**Recommendation**: Aim for 14-week timeline (includes robustness + profiling, skip documentation/polish if time-constrained). This delivers production-ready Veilweaver Demo Level in **3.5 months**.
+**Recommendation**: Aim for 14-week timeline (includes robustness + profiling, skip documentation/polish if time-constrained). This delivers a Veilweaver Demo Level in **3.5 months**.
 
 **After Phase 8**: Proceed to Phase 9 (Distribution & Optimization) for asset pipeline, build packaging, and final polish before public release.
 
