@@ -182,7 +182,7 @@
 
 ### Fluids System ✅ (Jan 2026)
 - 2,404 tests, SPH/pressure/viscosity/surface tension
-- Grade: A+ (Production-ready, benchmark for all physics subsystems)
+- Grade: A+ (benchmark for all physics subsystems)
 
 ### Workspace Cleanup & WGPU 0.25 Migration ✅ (Nov 22, 2025)
 - 377+ warnings fixed, zero-warning policy enforced
@@ -200,7 +200,7 @@
 - 51 tests added for core HUD logic, state management, edge cases
 
 ### Determinism Validation ✅ (Nov 1, 2025)
-- Industry-leading: bit-identical replay, <0.0001 position tolerance
+- Bit-identical replay, <0.0001 position tolerance
 - 100-frame replay, 5-run consistency, 100 seeds tested
 
 ### Phase B Month 4: Integration Validation ✅ (Oct 31, 2025)
@@ -258,7 +258,7 @@ See `docs/current/MASTER_BENCHMARK_REPORT.md` for full data. Key numbers:
 ## Validation Status
 
 - `cargo check --workspace`: 130/130 members compile, 0 errors (verified 2026-06-10) — former known-build-issue crates (astraweave-author, rhai_authoring, ui_controls_demo, debug_overlay, astraweave-llm) all pass
-- `hello_companion` demonstrates all 6 AI modes (Phase 6+7)
+- `hello_companion` demonstrates all 7 AI modes (feature-gated) (Phase 6+7) <!-- Source: CLAIMS_REGISTRY.md#ai-modes -->
 - `cargo test -p astraweave-ecs` — comprehensive unit tests
 - Net trio: 104/104 tests green (proto 59, server 41, client 4); camera: 25/25; cinematics: 341/341 (2026-06-10)
 - CI validates SDK ABI, cinematics, and core crates

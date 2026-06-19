@@ -513,7 +513,7 @@ use astraweave_llm::hermes2pro_ollama::Hermes2ProOllama; // ✅ Module exists
 
 9. Create video tutorials for onboarding
 10. Deploy mdBook for user-facing documentation
-11. Add per-crate READMEs for all 47 crates
+11. Add per-crate READMEs for all ~51 production crates <!-- Source: CLAIMS_REGISTRY.md#production-crates -->
 12. Implement documentation versioning strategy
 
 ---
@@ -544,7 +544,7 @@ use astraweave_llm::hermes2pro_ollama::Hermes2ProOllama; // ✅ Module exists
 ❌ Documentation sprawl (D)
 
 ### Bottom Line
-AstraWeave has **world-class development documentation** but **fails end-users**. The project meticulously tracks its own progress but doesn't communicate effectively to newcomers. Fixing the "Critical Issues" would raise the grade to **B+** within weeks.
+AstraWeave has **extensive development documentation** but **fails end-users**. The project meticulously tracks its own progress but doesn't communicate effectively to newcomers. Fixing the "Critical Issues" would raise the grade to **B+** within weeks.
 
 ---
 

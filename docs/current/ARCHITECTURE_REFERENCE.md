@@ -38,7 +38,7 @@ WorldSnapshot  AI Model   PlanIntent  Tool Validation
 - `Orchestrator` trait: Abstracts AI planning (rule-based vs LLM)
 - **Tool Sandbox**: All AI actions validated by engine (no cheating possible)
 
-### GOAP+Hermes Hybrid Arbiter (Full Patterns)
+### GOAP+LLM Hybrid Arbiter (Full Patterns)
 
 ```rust
 // See astraweave-ai/src/arbiter.rs
@@ -80,7 +80,7 @@ impl Agent {
 
 // Pattern 2: Shared LLM executor (efficient for many agents)
 let llm_executor = Arc::new(LlmExecutor::new(
-    hermes_client,  // OllamaClient with Hermes 2 Pro model
+    qwen_client,  // Qwen via Ollama
     tool_registry,
 ));
 let agents: Vec<Agent> = (0..100)
@@ -169,7 +169,7 @@ Deterministic, ordered execution at **fixed 60Hz tick** with deterministic RNG:
   - WGSL bindings (group=1): albedo (0), sampler (1), normal (2), linear sampler (3), MRA (4)
 - **Shared Utilities**: `MaterialManager`, `IblManager`, `MeshRegistry`
 - **Feature Flags**: `textures`, `assets` gate loaders
-- **GPU Skinning**: Production-ready pipeline with dual bone influence
+- **GPU Skinning**: pipeline with dual bone influence
   - `astraweave-render/src/skinning_gpu.rs`
 - **GPU Mesh Optimization**:
   - `vertex_compression.rs` (octahedral normals, half-float UVs, 37.5% memory reduction)
@@ -186,7 +186,7 @@ Tracy 0.11.1 integrated for zero-overhead profiling. See `examples/profiling_dem
 
 ### Spatial Hash Collision
 
-O(n log n) grid-based spatial partitioning in `astraweave-physics/src/spatial_hash.rs`. 99.96% collision check reduction, cache locality cascade benefits.
+O(n log n) grid-based spatial partitioning in `astraweave-physics/src/spatial_hash.rs` (1,038 LoC), benchmarked at 99.96% collision check reduction with cache-locality cascade benefits. Dormant: the physics broadphase actually runs Rapier's `DefaultBroadPhase`; this `SpatialHash` has no production caller in the physics step (used only by terrain LOD blending, the profiling example, and tests).
 
 ### SIMD Movement
 
@@ -269,7 +269,7 @@ let status = graph.tick(&context);
 | Classical | 0.20 ms |
 | BehaviorTree | 0.17 ms |
 | Utility | 0.46 ms |
-| LLM (Hermes 2 Pro) | 3,462 ms |
+| LLM (Qwen) | 3,462 ms |
 | Hybrid | 2,155 ms |
 | Ensemble | 2,355 ms |
 
@@ -608,7 +608,6 @@ Any new `unsafe` code MUST:
 | Workspace deps | Root `Cargo.toml` |
 | Build config | `.cargo/config.toml` (aliases, profiles, sccache) |
 | CI tasks | `.vscode/tasks.json` |
-| Exclusions | `check-all` alias in `.cargo/config.toml` |
 | Miri validation | `docs/current/MIRI_VALIDATION_REPORT.md` |
 | Kani proofs | `astraweave-sdk/src/lib_kani.rs`, `astraweave-ecs/tests/mutation_resistant_comprehensive_tests.rs` |
 

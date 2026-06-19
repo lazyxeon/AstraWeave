@@ -107,17 +107,24 @@ struct State {
     show_debug_panel: bool,
 
     // Mouse interaction
+    // (F.1 removed dead UI state: right-drag force, target_particle_count
+    // quality buttons, and show_foam were settable but never read by any
+    // update path — audit findings, Integration Completeness #3.)
     mouse_pos: [f32; 2],
     last_mouse_pos: [f32; 2],
     mouse_left_pressed: bool,
-    mouse_right_pressed: bool,
     spawn_burst_size: u32,
-    drag_force_strength: f32,
 
-    // Performance controls
-    target_particle_count: u32,
-    quality_preset: u32, // 0=Low, 1=Medium, 2=High, 3=Ultra
-    show_foam: bool,
+    // F.1.2: frame capture + scripted-exercise driver
+    frame_counter: u64,
+    capture_frames: Vec<u64>,
+    capture_requested: bool,
+    exercise: bool,
+
+    // F.1.3: transient on-screen notice (message, visible-until-frame).
+    // Silent dead input is the defect class this campaign keeps paying for;
+    // anything that swallows a click must say so on screen.
+    notice: Option<(String, u64)>,
 }
 
 impl State {
@@ -158,12 +165,48 @@ impl State {
         Some(ray_origin + ray_dir * t)
     }
 
-    /// Spawn particles at mouse cursor position
+    /// Spawn particles at mouse cursor position.
+    ///
+    /// F.1.3: crate-level respawn was proven working by GPU readback
+    /// (`gpu_respawn_reactivates_particles`); the "click does nothing" report
+    /// was demo-side UX — invisible-by-similarity spawns (same blue as 18k
+    /// existing particles), silent sky-miss returns, and undefined behavior
+    /// in the ocean scenario (which doesn't render particles at all). All
+    /// three are addressed here: distinct orange burst, ray fallback, and a
+    /// visible notice instead of silently swallowing the click.
     fn spawn_particles_at_cursor(&mut self) {
+        // The ocean scenario never draws the particle system; spawning there
+        // would silently drain the pool with zero visible effect.
+        if self.scenario_manager.current_index() != 0 {
+            self.notice = Some((
+                "Particle spawning is Laboratory-only (this scenario doesn't render particles)"
+                    .to_string(),
+                self.frame_counter + 180,
+            ));
+            return;
+        }
+
         let (origin, dir) = self.screen_to_world_ray(self.mouse_pos[0], self.mouse_pos[1]);
 
-        // Intersect with Y=5 plane (fluid center height)
-        if let Some(hit_pos) = self.ray_plane_intersection(origin, dir, 5.0) {
+        // F.1.4 (H-1): spawn AT the cursor's hit point, period. The F.1.3
+        // +10 lift and 30-unit distance cap were visibility workarounds the
+        // owner rejected — the spec is "particles appear where I point".
+        // Ray ∩ y=5 (≈ pool surface) when it hits; the F.1.3 sky-aimed
+        // fallback (25 units along the ray) remains for above-horizon clicks.
+        //
+        // Accepted consequence, documented: until F.4's per-particle color,
+        // a burst into existing dense fluid reads only as displacement
+        // motion — that is the honest behavior, NOT a bug to work around
+        // with placement offsets.
+        let hit = self
+            .ray_plane_intersection(origin, dir, 5.0)
+            .unwrap_or_else(|| origin + dir * 25.0);
+        {
+            let hit_pos = Vec3::new(
+                hit.x.clamp(-29.0, 29.0),
+                hit.y.clamp(0.5, 55.0),
+                hit.z.clamp(-29.0, 29.0),
+            );
             let count = self.spawn_burst_size as usize;
             let mut positions = Vec::with_capacity(count);
             let mut velocities = Vec::with_capacity(count);
@@ -176,20 +219,44 @@ impl State {
                 let offset_x = angle.cos() * radius;
                 let offset_z = angle.sin() * radius;
 
-                positions.push([hit_pos.x + offset_x, hit_pos.y + 0.5, hit_pos.z + offset_z]);
+                // Clamp to the shader's hardcoded sim domain
+                // (|x|,|z| <= 29.5, 0 <= y <= 59.5).
+                positions.push([
+                    (hit_pos.x + offset_x).clamp(-29.0, 29.0),
+                    (hit_pos.y + 0.5).clamp(0.5, 59.0),
+                    (hit_pos.z + offset_z).clamp(-29.0, 29.0),
+                ]);
                 velocities.push([0.0, -2.0, 0.0]); // Slight downward velocity
-                colors.push([0.3, 0.6, 1.0, 1.0]); // Bright blue
+                                                   // F.1.3: distinct ORANGE so spawns are visible against the
+                                                   // 18k blue particles (the old blue-on-blue bursts were
+                                                   // unspottable — one root of "click does nothing").
+                colors.push([1.0, 0.45, 0.1, 1.0]);
             }
 
-            self.fluid_system
-                .spawn_particles(&self.queue, &positions, &velocities, Some(&colors));
+            let spawned = self.fluid_system.spawn_particles(
+                &self.queue,
+                &positions,
+                &velocities,
+                Some(&colors),
+            );
+            // Safe at the max_particles cap by construction: spawn_particles
+            // draws min(requested, free_list.len()) — zero spawns when the
+            // reserve pool is exhausted, never a panic or wrap.
             log::info!(
-                "Spawned {} particles at ({:.1}, {:.1}, {:.1})",
+                "Spawned {}/{} particles at ({:.1}, {:.1}, {:.1}); free pool now {}",
+                spawned,
                 count,
                 hit_pos.x,
                 hit_pos.y,
-                hit_pos.z
+                hit_pos.z,
+                self.fluid_system.max_particles - self.fluid_system.active_count
             );
+            if spawned == 0 {
+                self.notice = Some((
+                    "Spawn pool exhausted — switch scenarios (SPACE twice) to refill".to_string(),
+                    self.frame_counter + 180,
+                ));
+            }
         }
     }
 
@@ -212,7 +279,7 @@ impl State {
             .consumed
     }
 
-    async fn new(window: std::sync::Arc<winit::window::Window>) -> Self {
+    async fn new(window: std::sync::Arc<winit::window::Window>, opts: DemoOptions) -> Self {
         let size = window.inner_size();
 
         let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
@@ -251,7 +318,9 @@ impl State {
             .unwrap_or(surface_caps.formats[0]);
 
         let config = wgpu::SurfaceConfiguration {
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+            // COPY_SRC: the F.1.2 frame-capture path (F12 / --capture-frames)
+            // copies the pre-present swapchain texture to a readback buffer.
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
             format: surface_format,
             width: size.width,
             height: size.height,
@@ -289,7 +358,6 @@ impl State {
         // The fluid system parameters are public fields, so we can set them directly
         fluid_system.smoothing_radius = 0.5;
         fluid_system.target_density = 1.0;
-        fluid_system.pressure_multiplier = 100.0;
         fluid_system.viscosity = 0.01;
         fluid_system.gravity = -9.81;
         fluid_system.cell_size = 1.2;
@@ -311,6 +379,9 @@ impl State {
         if let Some(scenario) = scenario_manager.current() {
             scenario.init(&device, &queue, &mut fluid_system, &mut physics_world);
         }
+        if let Some(st) = opts.surface_tension {
+            fluid_system.surface_tension = st;
+        }
 
         // Initialize skybox renderer
         let skybox_path = "assets/hdri/polyhaven/kloppenheim_02_puresky_2k.hdr";
@@ -328,7 +399,8 @@ impl State {
         // Initialize fluid renderer
         let fluid_renderer = FluidRenderer::new(&device, size.width, size.height, surface_format);
 
-        // Scene background texture for refraction
+        // Scene background texture for refraction (filled per frame by a
+        // swapchain copy after the background passes — F.1.2 H-6b)
         let scene_texture = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("Scene Background Texture"),
             size: wgpu::Extent3d {
@@ -340,7 +412,9 @@ impl State {
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
             format: surface_format,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT
+                | wgpu::TextureUsages::TEXTURE_BINDING
+                | wgpu::TextureUsages::COPY_DST,
             view_formats: &[],
         });
         let scene_view = scene_texture.create_view(&wgpu::TextureViewDescriptor::default());
@@ -355,7 +429,12 @@ impl State {
             // C.6.D: fovy stores radians directly (was degrees pre-C.6.D).
             fovy: 45_f32.to_radians(),
             znear: 0.1,
-            zfar: 100.0,
+            // F.1.4 (H-2): was 100.0 — the far plane truncated the ocean mid-
+            // screen (the owner's "distance cutoff"; the mesh reaches ±125 but
+            // clipping ended at 100). 1500 gives an ocean vista; Depth32Float
+            // keeps ample precision at this range. Skybox radius (1200) and
+            // ocean fog distances are sized relative to this value.
+            zfar: 1500.0,
         };
 
         // Initialize Egui
@@ -427,14 +506,13 @@ impl State {
             mouse_pos: [0.0, 0.0],
             last_mouse_pos: [0.0, 0.0],
             mouse_left_pressed: false,
-            mouse_right_pressed: false,
             spawn_burst_size: 50,
-            drag_force_strength: 10.0,
 
-            // Performance controls
-            target_particle_count: 20000,
-            quality_preset: 2, // High
-            show_foam: true,
+            frame_counter: 0,
+            capture_frames: opts.capture_frames,
+            capture_requested: false,
+            exercise: opts.exercise,
+            notice: None,
         }
     }
 
@@ -461,6 +539,34 @@ impl State {
                     | wgpu::TextureUsages::TEXTURE_BINDING,
                 view_formats: &[],
             });
+            // F.1.2 (H-1): the view must be recreated too — pre-fix this kept
+            // viewing the ORIGINAL startup-sized texture, so after maximize
+            // every pass pairing depth_view with a swapchain attachment
+            // panicked with "Attachments have differing sizes" (the owner's
+            // captured crash, via the ocean scenario's swapchain+depth pass).
+            self.depth_view = self
+                .depth_texture
+                .create_view(&wgpu::TextureViewDescriptor::default());
+
+            // F.1.2 (H-1): scene_texture itself was never recreated either —
+            // only its view was refreshed, still pointing at the startup-sized
+            // texture (stale refraction source after resize).
+            self.scene_texture = self.device.create_texture(&wgpu::TextureDescriptor {
+                label: Some("Scene Background Texture"),
+                size: wgpu::Extent3d {
+                    width: new_size.width,
+                    height: new_size.height,
+                    depth_or_array_layers: 1,
+                },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: self.config.format,
+                usage: wgpu::TextureUsages::RENDER_ATTACHMENT
+                    | wgpu::TextureUsages::TEXTURE_BINDING
+                    | wgpu::TextureUsages::COPY_DST,
+                view_formats: &[],
+            });
             self.scene_view = self
                 .scene_texture
                 .create_view(&wgpu::TextureViewDescriptor::default());
@@ -470,8 +576,7 @@ impl State {
 
             // C.6.D: `.max(0.01)` aspect guard at resize per
             // CAMERA_CONVENTIONS.md §2.3.
-            self.camera.aspect =
-                (new_size.width as f32 / new_size.height as f32).max(0.01);
+            self.camera.aspect = (new_size.width as f32 / new_size.height as f32).max(0.01);
         }
     }
 
@@ -551,9 +656,10 @@ impl State {
                     camera_pos,
                 );
                 self.last_frame_time_ms = step_start.elapsed().as_secs_f32() * 1000.0;
-
-                // Auto-adjust quality preset based on controller tier
-                self.quality_preset = result.quality_tier as u32;
+                // (Auto-tune quality tier is surfaced via the controller
+                // status label; the former quality_preset mirror field was
+                // dead UI state, removed in F.1.)
+                let _ = result.quality_tier;
             } else {
                 // Traditional direct stepping
                 self.fluid_system
@@ -581,11 +687,63 @@ impl State {
     }
 
     fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
+        // F.1.2 (H-1): every screen-sized target must track the swapchain.
+        // This names the failure class at its source instead of a generic
+        // "Attachments have differing sizes" panic deep inside a pass.
+        debug_assert!(
+            self.depth_texture.width() == self.config.width
+                && self.depth_texture.height() == self.config.height,
+            "demo depth target {}x{} out of sync with swapchain {}x{} — resize() missed it",
+            self.depth_texture.width(),
+            self.depth_texture.height(),
+            self.config.width,
+            self.config.height,
+        );
+        debug_assert!(
+            self.scene_texture.width() == self.config.width
+                && self.scene_texture.height() == self.config.height,
+            "scene target {}x{} out of sync with swapchain {}x{} — resize() missed it",
+            self.scene_texture.width(),
+            self.scene_texture.height(),
+            self.config.width,
+            self.config.height,
+        );
+
         let output = self.surface.get_current_texture()?;
         let view = output
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
 
+        // F.1.2 (H-4): contain frame-encode panics. Pre-fix, a panic during
+        // encoding unwound through the live SurfaceTexture, whose teardown
+        // assert ("SurfaceSemaphores still in use") panicked AGAIN during
+        // unwind -> STATUS_STACK_BUFFER_OVERRUN abort burying the real error.
+        // Catching here lets us drop the SurfaceTexture in a controlled order
+        // and exit with exactly one diagnostic.
+        let frame = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            self.encode_frame(&view, &output.texture);
+        }));
+        match frame {
+            Ok(()) => {
+                self.capture_frame_if_requested(&output.texture);
+                output.present();
+                self.frame_counter += 1;
+                Ok(())
+            }
+            Err(payload) => {
+                drop(output);
+                let msg = payload
+                    .downcast_ref::<String>()
+                    .cloned()
+                    .or_else(|| payload.downcast_ref::<&str>().map(|s| s.to_string()))
+                    .unwrap_or_else(|| "<non-string panic payload>".to_string());
+                eprintln!("FATAL: frame encode panicked: {msg}");
+                std::process::exit(1);
+            }
+        }
+    }
+
+    fn encode_frame(&mut self, view: &wgpu::TextureView, surface_texture: &wgpu::Texture) {
         let mut encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
@@ -607,12 +765,18 @@ impl State {
             padding: [0.0; 19],
         };
 
-        // Render to scene texture (Background Pass)
+        // F.1.2 (H-6b): render the background to the SWAPCHAIN, then copy it
+        // into scene_texture as the refraction source. Pre-fix, the clear +
+        // skybox went ONLY into scene_texture and nothing ever drew a
+        // background on the swapchain — the SSFR shade pass discards where
+        // there is no fluid, so the visible background was zero-init black
+        // ("pearls in a void") in both scenarios, and the fluid could only
+        // ever composite against blackness.
         {
             let _rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Background Pass - Clear"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &self.scene_view,
+                    view,
                     resolve_target: None,
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(wgpu::Color {
@@ -637,17 +801,30 @@ impl State {
             // Drop _rpass here
         }
 
-        // Render skybox to scene texture
+        // Render skybox to the swapchain (visible background)
         if let Some(ref skybox) = self.skybox_renderer {
             skybox.render(
                 &mut encoder,
-                &self.scene_view,
+                view,
                 &self.depth_view,
                 &self.queue,
                 view_proj,
                 self.camera.eye,
             );
         }
+
+        // Snapshot the background into scene_texture: the SSFR shade pass
+        // samples it for refraction, so it must contain what is actually
+        // behind the fluid on screen.
+        encoder.copy_texture_to_texture(
+            surface_texture.as_image_copy(),
+            self.scene_texture.as_image_copy(),
+            wgpu::Extent3d {
+                width: self.config.width,
+                height: self.config.height,
+                depth_or_array_layers: 1,
+            },
+        );
 
         // Render current scenario to main view
         if let Some(scenario) = self.scenario_manager.current() {
@@ -659,7 +836,7 @@ impl State {
 
             scenario.render(
                 &mut encoder,
-                &view,
+                view,
                 &self.scene_view,
                 &self.depth_view, // Scene depth
                 &self.depth_view, // Fluid raw depth target
@@ -698,6 +875,21 @@ impl State {
                 .max(0.001);
 
         let full_output = self.egui_ctx.run(raw_input, |ctx| {
+            // F.1.3: transient notice (e.g. "spawning is Laboratory-only").
+            if let Some((msg, until)) = &self.notice {
+                if self.frame_counter < *until {
+                    egui::Area::new(egui::Id::new("f13_notice"))
+                        .anchor(egui::Align2::CENTER_TOP, [0.0, 24.0])
+                        .show(ctx, |ui| {
+                            egui::Frame::popup(ui.style()).show(ui, |ui| {
+                                ui.colored_label(egui::Color32::YELLOW, msg);
+                            });
+                        });
+                } else {
+                    self.notice = None;
+                }
+            }
+
             if self.show_debug_panel {
                 egui::Window::new("🎮 Fluids Demo")
                     .anchor(egui::Align2::RIGHT_TOP, [-10.0, 10.0])
@@ -728,7 +920,13 @@ impl State {
                         });
 
                         ui.horizontal(|ui| {
-                            ui.label("Viscosity:");
+                            // Honest label (F.1): this parameter scales the
+                            // vorticity-confinement gain in the shader; the
+                            // XSPH viscosity blend is hardcoded at 0.01.
+                            ui.label("Vorticity (\"viscosity\"):").on_hover_text(
+                                "Scales vorticity confinement. The XSPH viscosity \
+                                     blend itself is hardcoded in fluid.wgsl.",
+                            );
                             ui.add(egui::Slider::new(
                                 &mut self.fluid_system.viscosity,
                                 0.0..=100.0,
@@ -768,51 +966,10 @@ impl State {
                             ui.add(egui::Slider::new(&mut self.spawn_burst_size, 10..=200));
                         });
 
-                        ui.horizontal(|ui| {
-                            ui.label("Drag Force:");
-                            ui.add(egui::Slider::new(&mut self.drag_force_strength, 1.0..=50.0));
-                        });
-
-                        ui.checkbox(&mut self.show_foam, "Show Foam");
-
-                        ui.add_space(8.0);
-
-                        // Quality Presets
-                        ui.heading("🎨 Quality");
-                        ui.separator();
-
-                        ui.horizontal(|ui| {
-                            if ui
-                                .selectable_label(self.quality_preset == 0, "Low")
-                                .clicked()
-                            {
-                                self.quality_preset = 0;
-                                self.target_particle_count = 5000;
-                            }
-                            if ui
-                                .selectable_label(self.quality_preset == 1, "Med")
-                                .clicked()
-                            {
-                                self.quality_preset = 1;
-                                self.target_particle_count = 10000;
-                            }
-                            if ui
-                                .selectable_label(self.quality_preset == 2, "High")
-                                .clicked()
-                            {
-                                self.quality_preset = 2;
-                                self.target_particle_count = 20000;
-                            }
-                            if ui
-                                .selectable_label(self.quality_preset == 3, "Ultra")
-                                .clicked()
-                            {
-                                self.quality_preset = 3;
-                                self.target_particle_count = 50000;
-                            }
-                        });
-
-                        ui.label(format!("Target Particles: {}", self.target_particle_count));
+                        // (F.1 removed the "Drag Force" slider, "Show Foam"
+                        // checkbox, and the quality-preset buttons: none of
+                        // them were read by any update path — the buttons set
+                        // target_particle_count which was never applied.)
 
                         ui.add_space(8.0);
 
@@ -850,8 +1007,7 @@ impl State {
                         ui.small("WASD - Orbit camera");
                         ui.small("Q/E - Zoom in/out");
                         ui.small("SPACE - Switch scenario");
-                        ui.small("Left Click - Spawn particles");
-                        ui.small("Right Drag - Apply force");
+                        ui.small("Left Click - Spawn particles (Laboratory only)");
                         ui.small("F1 - Toggle this panel");
                         ui.small("F2 - Toggle optimization overlay");
                         ui.small("ESC - Exit");
@@ -1008,7 +1164,7 @@ impl State {
             let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Egui Pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &view,
+                    view,
                     resolve_target: None,
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Load,
@@ -1029,14 +1185,166 @@ impl State {
         }
 
         self.queue.submit(std::iter::once(encoder.finish()));
-        output.present();
+    }
 
-        Ok(())
+    /// F.1.2 (H-5): write the pre-present swapchain image to
+    /// `examples/fluids_demo/captures/` as PNG when this frame is in the
+    /// `--capture-frames` list or F12 was pressed. Blocking readback —
+    /// capture frames stutter by design.
+    fn capture_frame_if_requested(&mut self, texture: &wgpu::Texture) {
+        let due = self.capture_requested || self.capture_frames.contains(&self.frame_counter);
+        if !due {
+            return;
+        }
+        self.capture_requested = false;
+
+        let (w, h) = (texture.width(), texture.height());
+        let bytes_per_pixel = 4u32;
+        let unpadded = w * bytes_per_pixel;
+        let padded = unpadded.div_ceil(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT)
+            * wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
+        let buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("frame capture readback"),
+            size: (padded * h) as u64,
+            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+            mapped_at_creation: false,
+        });
+        let mut encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("frame capture"),
+            });
+        encoder.copy_texture_to_buffer(
+            texture.as_image_copy(),
+            wgpu::TexelCopyBufferInfo {
+                buffer: &buffer,
+                layout: wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(padded),
+                    rows_per_image: Some(h),
+                },
+            },
+            wgpu::Extent3d {
+                width: w,
+                height: h,
+                depth_or_array_layers: 1,
+            },
+        );
+        self.queue.submit(std::iter::once(encoder.finish()));
+
+        let slice = buffer.slice(..);
+        let (tx, rx) = std::sync::mpsc::channel();
+        slice.map_async(wgpu::MapMode::Read, move |res| {
+            let _ = tx.send(res);
+        });
+        let _ = self.device.poll(wgpu::MaintainBase::Wait);
+        if rx.recv().map(|r| r.is_err()).unwrap_or(true) {
+            log::error!("frame capture: readback mapping failed");
+            return;
+        }
+
+        let data = slice.get_mapped_range();
+        let mut rgba = Vec::with_capacity((unpadded * h) as usize);
+        let bgra = matches!(
+            self.config.format,
+            wgpu::TextureFormat::Bgra8Unorm | wgpu::TextureFormat::Bgra8UnormSrgb
+        );
+        for row in 0..h {
+            let start = (row * padded) as usize;
+            let row_bytes = &data[start..start + unpadded as usize];
+            if bgra {
+                for px in row_bytes.chunks_exact(4) {
+                    rgba.extend_from_slice(&[px[2], px[1], px[0], 255]);
+                }
+            } else {
+                for px in row_bytes.chunks_exact(4) {
+                    rgba.extend_from_slice(&[px[0], px[1], px[2], 255]);
+                }
+            }
+        }
+        drop(data);
+        buffer.unmap();
+
+        let dir = std::path::Path::new("examples/fluids_demo/captures");
+        let dir = if std::path::Path::new("examples/fluids_demo").exists() {
+            dir.to_path_buf()
+        } else {
+            std::path::PathBuf::from("captures") // launched from the demo dir
+        };
+        if let Err(e) = std::fs::create_dir_all(&dir) {
+            log::error!("frame capture: cannot create {dir:?}: {e}");
+            return;
+        }
+        let path = dir.join(format!("f{:04}_{}x{}.png", self.frame_counter, w, h));
+        match image::RgbaImage::from_raw(w, h, rgba) {
+            Some(img) => match img.save(&path) {
+                Ok(()) => log::info!("frame capture written: {path:?}"),
+                Err(e) => log::error!("frame capture: PNG write failed: {e}"),
+            },
+            None => log::error!("frame capture: buffer size mismatch"),
+        }
+    }
+
+    /// F.1.2 (H-2 driver): scripted resize/scenario-switch/click sequence,
+    /// exits 0 at the end. Frames: 80 maximize-ish resize, 140 -> ocean,
+    /// 200 -> back to lab, 230 second resize, 260 center click-spawn,
+    /// 440 exit.
+    fn run_exercise_step(&mut self, event_loop: &ActiveEventLoop) {
+        match self.frame_counter {
+            80 => {
+                let _ = self
+                    .window
+                    .request_inner_size(winit::dpi::PhysicalSize::new(1600u32, 900u32));
+            }
+            140 => self.toggle_render_mode(),
+            // Ocean at three pitches (H-2 horizon evidence):
+            // near-horizontal, ~30 deg, steep down. Captures 160/175/190.
+            150 => self.camera_pitch = 0.05,
+            165 => self.camera_pitch = 0.5,
+            180 => self.camera_pitch = 1.2,
+            199 => self.camera_pitch = 0.3,
+            200 => self.toggle_render_mode(),
+            230 => {
+                let _ = self
+                    .window
+                    .request_inner_size(winit::dpi::PhysicalSize::new(1100u32, 700u32));
+            }
+            // Click-spawns happen LATE, once the re-initialized dam (frame
+            // 200) has opened the view. F.1.4 evidence: one click onto open
+            // floor (lower-left), one INTO the existing fluid mass (center);
+            // the crosshair overlay marks the cursor in captures.
+            380 => {
+                self.spawn_burst_size = 150;
+                self.mouse_pos = [
+                    self.size.width as f32 * 0.22,
+                    self.size.height as f32 * 0.72,
+                ];
+                self.spawn_particles_at_cursor();
+            }
+            450 => {
+                let _ = self
+                    .window
+                    .request_inner_size(winit::dpi::PhysicalSize::new(800u32, 600u32));
+            }
+            480 => {
+                self.mouse_pos = [
+                    self.size.width as f32 * 0.45,
+                    self.size.height as f32 * 0.55,
+                ];
+                self.spawn_particles_at_cursor();
+            }
+            660 => {
+                eprintln!("EXERCISE COMPLETE: clean exit");
+                event_loop.exit();
+            }
+            _ => {}
+        }
     }
 }
 
 struct App {
     state: Option<Box<State>>,
+    opts: DemoOptions,
 }
 
 impl ApplicationHandler for App {
@@ -1049,7 +1357,10 @@ impl ApplicationHandler for App {
                     )
                     .unwrap(),
             );
-            self.state = Some(Box::new(pollster::block_on(State::new(window))));
+            self.state = Some(Box::new(pollster::block_on(State::new(
+                window,
+                self.opts.clone(),
+            ))));
         }
     }
 
@@ -1110,6 +1421,18 @@ impl ApplicationHandler for App {
                     } => {
                         state.show_optimization_overlay = !state.show_optimization_overlay;
                     }
+                    // F12 - Capture next frame to captures/ (F.1.2)
+                    WindowEvent::KeyboardInput {
+                        event:
+                            KeyEvent {
+                                state: ElementState::Pressed,
+                                physical_key: PhysicalKey::Code(KeyCode::F12),
+                                ..
+                            },
+                        ..
+                    } => {
+                        state.capture_requested = true;
+                    }
                     // R - Reset camera
                     WindowEvent::KeyboardInput {
                         event:
@@ -1149,29 +1472,29 @@ impl ApplicationHandler for App {
                     // Mouse button handling
                     WindowEvent::MouseInput {
                         state: button_state,
-                        button,
+                        button: winit::event::MouseButton::Left,
                         ..
                     } => {
-                        match button {
-                            winit::event::MouseButton::Left => {
-                                let pressed = button_state == ElementState::Pressed;
-                                // Spawn particles on left click
-                                if pressed && !state.mouse_left_pressed {
-                                    state.spawn_particles_at_cursor();
-                                }
-                                state.mouse_left_pressed = pressed;
-                            }
-                            winit::event::MouseButton::Right => {
-                                state.mouse_right_pressed = button_state == ElementState::Pressed;
-                            }
-                            _ => {}
+                        let pressed = button_state == ElementState::Pressed;
+                        // Spawn particles on left click
+                        if pressed && !state.mouse_left_pressed {
+                            state.spawn_particles_at_cursor();
                         }
+                        state.mouse_left_pressed = pressed;
                     }
                     WindowEvent::Resized(physical_size) => {
                         state.resize(physical_size);
                     }
                     WindowEvent::RedrawRequested => {
                         state.update();
+                        if state.exercise {
+                            state.run_exercise_step(event_loop);
+                            if !event_loop.exiting() {
+                                // fall through to render
+                            } else {
+                                return;
+                            }
+                        }
                         match state.render() {
                             Ok(_) => {}
                             Err(wgpu::SurfaceError::Lost) => state.resize(state.size),
@@ -1192,12 +1515,65 @@ impl ApplicationHandler for App {
     }
 }
 
+/// Demo launch options (F.1.2).
+///
+/// `--capture-frames N,M,...` writes PNGs of those frame indices to
+/// `examples/fluids_demo/captures/` (also bindable at runtime via F12,
+/// which captures the next frame). `--exercise` drives a scripted
+/// resize/scenario-switch/click sequence and exits with code 0 — the
+/// headless-ish regression driver used by the F.1.2 verification gate.
+#[derive(Clone, Default)]
+struct DemoOptions {
+    capture_frames: Vec<u64>,
+    exercise: bool,
+    /// Override the scenario's surface-tension default at startup (used to
+    /// produce the H-6d low/high comparison capture pair).
+    surface_tension: Option<f32>,
+}
+
+fn parse_options() -> DemoOptions {
+    let mut opts = DemoOptions::default();
+    let mut args = std::env::args().skip(1);
+    while let Some(arg) = args.next() {
+        if let Some(list) = arg.strip_prefix("--capture-frames=") {
+            opts.capture_frames = list
+                .split(',')
+                .filter_map(|s| s.trim().parse().ok())
+                .collect();
+        } else if arg == "--capture-frames" {
+            if let Some(list) = args.next() {
+                opts.capture_frames = list
+                    .split(',')
+                    .filter_map(|s| s.trim().parse().ok())
+                    .collect();
+            }
+        } else if arg == "--exercise" {
+            opts.exercise = true;
+        } else if let Some(v) = arg.strip_prefix("--surface-tension=") {
+            opts.surface_tension = v.trim().parse().ok();
+        }
+    }
+    // The exercise gate wants eyes at fixed points: startup, post-maximize,
+    // ocean scenario, back in lab post-click, second resize, settled.
+    if opts.exercise && opts.capture_frames.is_empty() {
+        // 30 baseline; 120 post-resize aspect check; 160/175/190 ocean at
+        // three pitches (near-horizontal / 30deg / steep); 381/440 floor-
+        // click pair @1600x900; 481/540 into-fluid click pair @800x600;
+        // 620 settled basin.
+        opts.capture_frames = vec![30, 120, 160, 175, 190, 381, 440, 481, 540, 620];
+    }
+    opts
+}
+
 fn main() {
     env_logger::init();
 
     let event_loop = EventLoop::new().unwrap();
     event_loop.set_control_flow(ControlFlow::Poll);
 
-    let mut app = App { state: None };
+    let mut app = App {
+        state: None,
+        opts: parse_options(),
+    };
     event_loop.run_app(&mut app).unwrap();
 }

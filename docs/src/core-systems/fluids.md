@@ -41,8 +41,6 @@ been unified:
 | Surface | Role |
 |---|---|
 | `FluidSystem` | `lib.rs` PBD GPU pipeline |
-| `UnifiedSolver` | High-level coordinator |
-| `ResearchFluidSystem` | Research-grade umbrella |
 | `PCISPHSystem` | Standalone PCISPH solver |
 | `WaterEffectsManager` | Visual coordinator |
 
@@ -87,8 +85,8 @@ This is the entire production exposure of the subsystem.
 
 ## Further reading
 
-* [`fluids.md`](https://github.com/lazyxeon/AstraWeave-AI-Native-Gaming-Engine/blob/main/docs/architecture/fluids.md) — full fluids trace.
-* [`ARCHITECTURE_MAP.md`](https://github.com/lazyxeon/AstraWeave-AI-Native-Gaming-Engine/blob/main/docs/architecture/ARCHITECTURE_MAP.md) §5.1 (dormant in-design inventory),
+* [`fluids.md`](https://github.com/lazyxeon/AstraWeave/blob/main/docs/architecture/fluids.md) — full fluids trace.
+* [`ARCHITECTURE_MAP.md`](https://github.com/lazyxeon/AstraWeave/blob/main/docs/architecture/ARCHITECTURE_MAP.md) §5.1 (dormant in-design inventory),
   §4.4 (wired-beats-tested axiom), §14 (Q12 open question).
 * **Interactive workspace map** — the *Dormant Surface Inventory* story preset
   highlights fluids along with the other ~200K LoC of dormant-but-designed surface.

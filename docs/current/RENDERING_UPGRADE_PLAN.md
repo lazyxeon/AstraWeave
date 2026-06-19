@@ -36,7 +36,7 @@
 A full cross-reference audit of the SOTA reference document against every rendering-related crate in the AstraWeave workspace reveals:
 
 - **65 SOTA techniques/practices** audited across 21 reference sections
-- **38 FOUND** (fully implemented, production-ready)
+- **38 FOUND** (fully implemented)
 - **11 PARTIAL** (present but incomplete or degraded)
 - **16 MISSING** (not implemented)
 - **17 anti-patterns** identified that degrade performance or correctness
@@ -66,7 +66,7 @@ Each technique from the SOTA reference was searched via exact string patterns, s
 ## 3. SOTA Cross-Reference Matrix
 
 ### Legend
-- ✅ **FOUND** — Fully implemented, production-ready
+- ✅ **FOUND** — Fully implemented
 - ⚠️ **PARTIAL** — Present but incomplete, degraded, or has anti-patterns
 - ❌ **MISSING** — Not implemented
 

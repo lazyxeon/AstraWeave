@@ -61,10 +61,7 @@ pub mod foam;
 pub mod god_rays;
 pub mod gpu_volume;
 pub mod lod;
-pub mod multi_phase;
 pub mod optimization;
-pub mod particle_shifting;
-pub mod pcisph_system;
 pub mod profiling;
 pub mod renderer;
 pub mod research;
@@ -72,18 +69,35 @@ pub mod sdf;
 pub mod serialization;
 pub mod simd_ops;
 pub mod terrain_integration;
-pub mod turbulence;
 pub mod underwater;
 pub mod underwater_particles;
-pub mod unified_solver;
 pub mod validation;
 pub mod viscosity;
-pub mod viscosity_gpu;
 pub mod volume_grid;
-pub mod warm_start;
 pub mod water_effects;
 pub mod water_reflections;
 pub mod waterfall;
+
+// ---------------------------------------------------------------------------
+// Experimental modules (feature = "experimental")
+//
+// Dormant-real solver inventory gated in Fluids-Integration F.1 per the
+// campaign owner's consolidation decision (gate Q3): these modules compile
+// and carry passing unit tests, but no production code path executes them.
+// `UnifiedSolver` (whose `step()` was a no-op) was DELETED rather than gated.
+// ---------------------------------------------------------------------------
+#[cfg(feature = "experimental")]
+pub mod multi_phase;
+#[cfg(feature = "experimental")]
+pub mod particle_shifting;
+#[cfg(feature = "experimental")]
+pub mod pcisph_system;
+#[cfg(feature = "experimental")]
+pub mod turbulence;
+#[cfg(feature = "experimental")]
+pub mod viscosity_gpu;
+#[cfg(feature = "experimental")]
+pub mod warm_start;
 
 pub use building::{
     FlowDirection, WaterBuildingManager, WaterBuildingStats, WaterDispenser,
@@ -183,10 +197,6 @@ pub use underwater_particles::{
     BubbleStream, GpuUnderwaterParticle, UnderwaterParticle, UnderwaterParticleConfig,
     UnderwaterParticleSystem, UnderwaterParticleType,
 };
-pub use unified_solver::{
-    FluidPhaseConfig, FluidType, QualityPreset, SolverStats, SolverType, UnifiedSolver,
-    UnifiedSolverConfig, ViscositySolverType,
-};
 pub use volume_grid::{
     CellFlags, MaterialType, WaterCell, WaterGridStats, WaterSimConfig, WaterVolumeGrid,
 };
@@ -231,7 +241,11 @@ pub struct DynamicObject {
 pub struct SimParams {
     pub smoothing_radius: f32,
     pub target_density: f32,
-    pub pressure_multiplier: f32,
+    /// Scales the vorticity-confinement gain in `integrate` — NOT the XSPH
+    /// viscosity blend, which is hardcoded at 0.01 in the shader. (A former
+    /// `pressure_multiplier` field was removed in F.1: no kernel ever read
+    /// it; PBF incompressibility comes from the lambda constraint, not a
+    /// pressure stiffness.)
     pub viscosity: f32,
     pub surface_tension: f32,
     pub gravity: f32,
@@ -245,14 +259,20 @@ pub struct SimParams {
     pub _pad0: f32,
     pub _pad1: f32,
     pub _pad2: f32,
+    pub _pad3: f32,
 }
 
 pub struct FluidSystem {
-    particle_buffers: Vec<wgpu::Buffer>,
+    /// The single particle storage buffer. All compute kernels mutate it in
+    /// place; dispatch boundaries act as barriers between pipeline stages.
+    /// (A vestigial second "ping-pong" buffer was removed in F.1: the shader
+    /// never wrote it, so alternating bind groups simulated two divergent
+    /// particle states on alternating frames.)
+    particle_buffer: wgpu::Buffer,
 
     // Optimized Bind Groups
     global_bind_group: wgpu::BindGroup,
-    particles_bind_groups: [wgpu::BindGroup; 2], // Ping-pong
+    particles_bind_group: wgpu::BindGroup,
     secondary_bind_group: wgpu::BindGroup,
     // Group 3 (Scene) is handled per-frame since SDF view can change
 
@@ -286,7 +306,6 @@ pub struct FluidSystem {
     // Sim constants
     pub smoothing_radius: f32,
     pub target_density: f32,
-    pub pressure_multiplier: f32,
     pub viscosity: f32,
     pub surface_tension: f32,
     pub gravity: f32,
@@ -300,12 +319,18 @@ pub struct FluidSystem {
 
     pub sdf_system: crate::sdf::SdfSystem,
     pub objects_buffer: wgpu::Buffer,
+    /// Number of valid entries in `objects_buffer` (set by `update_objects`).
+    object_count: u32,
     pub default_sampler: wgpu::Sampler,
     secondary_particle_buffer: wgpu::Buffer,
     secondary_counter: wgpu::Buffer,
     density_error_buffer: wgpu::Buffer,
     density_error_staging_buffers: [wgpu::Buffer; 2],
-    staging_mapped: [bool; 2],
+    staging_state: [StagingState; 2],
+    staging_map_result: [std::sync::Arc<std::sync::atomic::AtomicU8>; 2],
+
+    /// Optional GPU pass-timing instrumentation (see `enable_gpu_timing`).
+    gpu_timing: Option<GpuStepTiming>,
 
     // Dynamic Particle Management
     particle_flags: wgpu::Buffer, // 0=inactive, 1=active for each particle
@@ -336,6 +361,59 @@ pub struct FluidSystem {
     pub optimization_stats: OptimizationStats,
 }
 
+/// Lifecycle of a density-error staging buffer (see `FluidSystem::step`).
+///
+/// The map request is only ever issued for a buffer whose copy has already
+/// been *submitted* (i.e. at the start of a later `step()` call), so the
+/// mapping can never observe unsubmitted work.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum StagingState {
+    /// No copy in flight; safe to record a new copy into.
+    Idle,
+    /// A copy into this buffer was recorded; its encoder may not be
+    /// submitted yet. Do not map.
+    CopyRecorded,
+    /// `map_async` has been issued (strictly after the copy's encoder was
+    /// submitted, per the `step` contract). Harvest when the callback fires.
+    MapRequested,
+}
+
+/// `map_async` callback outcome for a staging buffer.
+const MAP_PENDING: u8 = 0;
+const MAP_OK: u8 = 1;
+const MAP_ERR: u8 = 2;
+
+/// Y coordinate that despawned particles are parked at. Inactive particles
+/// are skipped by every compute kernel (never simulated, never inserted into
+/// the neighbor grid); parking them far below the world keeps them out of
+/// any naive instanced render of the full buffer.
+const DESPAWN_PARK_Y: f32 = -10_000.0;
+
+/// Named GPU timing spans recorded by `FluidSystem::step` when
+/// `enable_gpu_timing` has been called (WI-6 instrumentation).
+///
+/// `pbd_iterations` covers the whole lambda/delta-pos loop (all iterations);
+/// `sdf` covers the SDF init→JFA→finalize chain (excluding the rare B→A
+/// blit). Two query slots (begin/end) per span.
+pub const GPU_TIMING_SPANS: [&str; 7] = [
+    "sdf",
+    "predict",
+    "clear_grid",
+    "build_grid",
+    "pbd_iterations",
+    "integrate",
+    "mix_dye",
+];
+
+/// GPU pass-timing state (timestamp query set + readback buffers).
+struct GpuStepTiming {
+    query_set: wgpu::QuerySet,
+    resolve_buffer: wgpu::Buffer,
+    staging_buffer: wgpu::Buffer,
+    /// Nanoseconds per timestamp tick (`Queue::get_timestamp_period`).
+    period_ns: f32,
+}
+
 /// Statistics from optimization systems
 #[derive(Clone, Debug, Default)]
 pub struct OptimizationStats {
@@ -360,6 +438,13 @@ pub struct SecondaryParticle {
 }
 
 impl FluidSystem {
+    /// Create a fluid system with `particle_count` particles arranged in a
+    /// cubic grid.
+    ///
+    /// # Device requirements
+    /// The internal SDF pipeline binds ReadOnly/WriteOnly storage textures on
+    /// `Rgba32Float`, so `device` must be created with
+    /// `wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES`.
     pub fn new(device: &wgpu::Device, particle_count: u32) -> Self {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Fluid Shader"),
@@ -390,28 +475,14 @@ impl FluidSystem {
             });
         }
 
-        let buffer_size = (particle_count as usize * std::mem::size_of::<Particle>()) as u64;
-
-        let buf0 = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Particle Buffer 0"),
+        let particle_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Particle Buffer"),
             contents: bytemuck::cast_slice(&initial_particles),
             usage: wgpu::BufferUsages::STORAGE
                 | wgpu::BufferUsages::VERTEX
                 | wgpu::BufferUsages::COPY_DST
                 | wgpu::BufferUsages::COPY_SRC,
         });
-
-        let buf1 = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("Particle Buffer 1"),
-            size: buffer_size,
-            usage: wgpu::BufferUsages::STORAGE
-                | wgpu::BufferUsages::VERTEX
-                | wgpu::BufferUsages::COPY_DST
-                | wgpu::BufferUsages::COPY_SRC,
-            mapped_at_creation: false,
-        });
-
-        let particle_buffers = vec![buf0, buf1];
 
         // Grid parameters
         let grid_width = 128u32;
@@ -424,7 +495,6 @@ impl FluidSystem {
             dt: 0.016,
             smoothing_radius: 1.0,
             target_density: 12.0,
-            pressure_multiplier: 300.0,
             viscosity: 10.0,
             surface_tension: 0.02,
             particle_count,
@@ -437,6 +507,7 @@ impl FluidSystem {
             _pad0: 0.0,
             _pad1: 0.0,
             _pad2: 0.0,
+            _pad3: 0.0,
         };
 
         let params_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -509,7 +580,7 @@ impl FluidSystem {
             ],
         });
 
-        // Group 1: Particles (Ping-Pong)
+        // Group 1: Particles (0: particle storage, 1: active flags)
         let particles_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("Fluid Particles Layout"),
             entries: &[
@@ -527,7 +598,7 @@ impl FluidSystem {
                     binding: 1,
                     visibility: wgpu::ShaderStages::COMPUTE,
                     ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Storage { read_only: false },
+                        ty: wgpu::BufferBindingType::Storage { read_only: true },
                         has_dynamic_offset: false,
                         min_binding_size: None,
                     },
@@ -697,36 +768,20 @@ impl FluidSystem {
             ],
         });
 
-        let particles_bind_groups = [
-            device.create_bind_group(&wgpu::BindGroupDescriptor {
-                label: Some("Particles BG 0"),
-                layout: &particles_layout,
-                entries: &[
-                    wgpu::BindGroupEntry {
-                        binding: 0,
-                        resource: particle_buffers[0].as_entire_binding(),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 1,
-                        resource: particle_buffers[1].as_entire_binding(),
-                    },
-                ],
-            }),
-            device.create_bind_group(&wgpu::BindGroupDescriptor {
-                label: Some("Particles BG 1"),
-                layout: &particles_layout,
-                entries: &[
-                    wgpu::BindGroupEntry {
-                        binding: 0,
-                        resource: particle_buffers[1].as_entire_binding(),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 1,
-                        resource: particle_buffers[0].as_entire_binding(),
-                    },
-                ],
-            }),
-        ];
+        let particles_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Particles BG"),
+            layout: &particles_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: particle_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: particle_flags.as_entire_binding(),
+                },
+            ],
+        });
 
         let secondary_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("Secondary BG"),
@@ -781,9 +836,9 @@ impl FluidSystem {
         let sdf_system = crate::sdf::SdfSystem::new(device, &objects_buffer, 64, 60.0);
 
         Self {
-            particle_buffers,
+            particle_buffer,
             global_bind_group,
-            particles_bind_groups,
+            particles_bind_group,
             secondary_bind_group,
             global_layout,
             particles_layout,
@@ -802,7 +857,6 @@ impl FluidSystem {
             frame_index: 0,
             smoothing_radius: 1.0,
             target_density: 12.0,
-            pressure_multiplier: 300.0,
             viscosity: 10.0,
             surface_tension: 0.02,
             gravity: -9.8,
@@ -813,12 +867,18 @@ impl FluidSystem {
             grid_depth,
             sdf_system,
             objects_buffer,
+            object_count: 0,
             default_sampler,
             secondary_particle_buffer,
             secondary_counter,
             density_error_buffer,
             density_error_staging_buffers,
-            staging_mapped: [false; 2],
+            staging_state: [StagingState::Idle; 2],
+            staging_map_result: [
+                std::sync::Arc::new(std::sync::atomic::AtomicU8::new(MAP_PENDING)),
+                std::sync::Arc::new(std::sync::atomic::AtomicU8::new(MAP_PENDING)),
+            ],
+            gpu_timing: None,
             mix_dye_pipeline,
             particle_flags,
             active_count: particle_count,
@@ -838,17 +898,122 @@ impl FluidSystem {
         }
     }
 
-    pub fn update_objects(&mut self, queue: &wgpu::Queue, objects: &[DynamicObject]) {
-        if !objects.is_empty() {
-            queue.write_buffer(&self.objects_buffer, 0, bytemuck::cast_slice(objects));
+    /// Enable per-pass GPU timestamp instrumentation (WI-6).
+    ///
+    /// Returns `false` (and stays disabled) if the device was not created
+    /// with `wgpu::Features::TIMESTAMP_QUERY`. Once enabled, every `step()`
+    /// records begin/end timestamps for the spans in [`GPU_TIMING_SPANS`]
+    /// and resolves them into a staging buffer; read them with
+    /// [`Self::read_gpu_timings`].
+    pub fn enable_gpu_timing(&mut self, device: &wgpu::Device, queue: &wgpu::Queue) -> bool {
+        if !device.features().contains(wgpu::Features::TIMESTAMP_QUERY) {
+            return false;
         }
+        let slot_count = (GPU_TIMING_SPANS.len() * 2) as u32;
+        let query_set = device.create_query_set(&wgpu::QuerySetDescriptor {
+            label: Some("Fluid Step Timing"),
+            ty: wgpu::QueryType::Timestamp,
+            count: slot_count,
+        });
+        let size = (slot_count as u64) * 8;
+        let resolve_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Fluid Timing Resolve"),
+            size,
+            usage: wgpu::BufferUsages::QUERY_RESOLVE | wgpu::BufferUsages::COPY_SRC,
+            mapped_at_creation: false,
+        });
+        let staging_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Fluid Timing Staging"),
+            size,
+            usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        self.gpu_timing = Some(GpuStepTiming {
+            query_set,
+            resolve_buffer,
+            staging_buffer,
+            period_ns: queue.get_timestamp_period(),
+        });
+        true
+    }
+
+    /// Read back the most recent step's per-pass GPU timings in milliseconds.
+    ///
+    /// **Blocking** (`device.poll(Wait)`): intended for benches, tests, and
+    /// diagnostics overlays — not the per-frame hot path. Call after the
+    /// `step()` encoder has been submitted. Returns `None` if timing was
+    /// never enabled or the mapping fails.
+    pub fn read_gpu_timings(&self, device: &wgpu::Device) -> Option<Vec<(&'static str, f32)>> {
+        let timing = self.gpu_timing.as_ref()?;
+        let slice = timing.staging_buffer.slice(..);
+        let (tx, rx) = std::sync::mpsc::channel();
+        slice.map_async(wgpu::MapMode::Read, move |res| {
+            let _ = tx.send(res);
+        });
+        let _ = device.poll(wgpu::MaintainBase::Wait);
+        rx.recv().ok()?.ok()?;
+        let timestamps: Vec<u64> = {
+            let data = slice.get_mapped_range();
+            bytemuck::cast_slice(&data).to_vec()
+        };
+        timing.staging_buffer.unmap();
+
+        let mut out = Vec::with_capacity(GPU_TIMING_SPANS.len());
+        for (i, name) in GPU_TIMING_SPANS.iter().enumerate() {
+            let begin = timestamps[i * 2];
+            let end = timestamps[i * 2 + 1];
+            let ms = if end > begin {
+                (end - begin) as f32 * timing.period_ns / 1.0e6
+            } else {
+                0.0
+            };
+            out.push((*name, ms));
+        }
+        Some(out)
+    }
+
+    /// Build `timestamp_writes` for span `i` of [`GPU_TIMING_SPANS`].
+    /// `begin`/`end` select which edge(s) this pass records (a multi-pass
+    /// span puts `begin` on its first pass and `end` on its last).
+    fn span_writes(
+        &self,
+        i: usize,
+        begin: bool,
+        end: bool,
+    ) -> Option<wgpu::ComputePassTimestampWrites<'_>> {
+        // wgpu rejects timestamp_writes with neither edge set (the interior
+        // passes of a multi-pass span request no writes at all).
+        if !begin && !end {
+            return None;
+        }
+        self.gpu_timing
+            .as_ref()
+            .map(|t| wgpu::ComputePassTimestampWrites {
+                query_set: &t.query_set,
+                beginning_of_pass_write_index: begin.then_some((i * 2) as u32),
+                end_of_pass_write_index: end.then_some((i * 2 + 1) as u32),
+            })
+    }
+
+    /// Upload dynamic collider objects. The objects buffer holds at most 128
+    /// entries; the count is propagated to both the SDF seed pass and the
+    /// per-frame `SimParams` so the shaders only read the valid prefix.
+    pub fn update_objects(&mut self, queue: &wgpu::Queue, objects: &[DynamicObject]) {
+        let count = objects.len().min(128);
+        if count > 0 {
+            queue.write_buffer(
+                &self.objects_buffer,
+                0,
+                bytemuck::cast_slice(&objects[..count]),
+            );
+        }
+        self.object_count = count as u32;
+        self.sdf_system.set_object_count(queue, self.object_count);
     }
 
     pub fn reset_particles(&mut self, queue: &wgpu::Queue, particles: &[Particle]) {
         assert_eq!(particles.len() as u32, self.particle_count);
-        for buf in &self.particle_buffers {
-            queue.write_buffer(buf, 0, bytemuck::cast_slice(particles));
-        }
+        queue.write_buffer(&self.particle_buffer, 0, bytemuck::cast_slice(particles));
         // Reset all flags to active
         let flags: Vec<u32> = vec![1u32; particles.len()];
         queue.write_buffer(&self.particle_flags, 0, bytemuck::cast_slice(&flags));
@@ -895,11 +1060,8 @@ impl FluidSystem {
                 color,
             };
 
-            // Write to both ping-pong buffers
             let offset = (idx * std::mem::size_of::<Particle>()) as u64;
-            for buf in &self.particle_buffers {
-                queue.write_buffer(buf, offset, bytemuck::bytes_of(&particle));
-            }
+            queue.write_buffer(&self.particle_buffer, offset, bytemuck::bytes_of(&particle));
 
             // Set flag to active
             let flag_offset = (idx * 4) as u64;
@@ -920,13 +1082,16 @@ impl FluidSystem {
     /// The actual despawn count is tracked internally and affects `active_count`.
     ///
     /// # Implementation Notes
-    /// Currently uses CPU-side position cache for region checks. Positions are
-    /// updated during spawn/reset operations and may drift slightly during
-    /// simulation due to GPU physics. For most culling use cases (e.g., removing
-    /// particles that leave a volume), this approximation is sufficient.
+    /// **Region membership is tested against the CPU-side position cache, which
+    /// is exact only at spawn/reset time and goes stale as GPU simulation moves
+    /// particles.** A particle that has drifted out of (or into) the AABB since
+    /// it was spawned may be missed (or wrongly culled). For culling volumes
+    /// much larger than the expected drift this is acceptable; for precise
+    /// despawn an exact GPU-side region test would be required (future work).
     ///
-    /// A future optimization could use a GPU compute shader for exact position
-    /// checking, but the current approach avoids GPU readback latency.
+    /// Once despawned, the effect IS exact: the particle's GPU flag is cleared,
+    /// every compute kernel skips it, `build_grid` never inserts it into the
+    /// neighbor grid, and it is parked far below the world.
     ///
     /// # Arguments
     /// * `_queue` - GPU queue (reserved for future GPU-accelerated implementation)
@@ -984,9 +1149,26 @@ impl FluidSystem {
             });
 
             if should_despawn {
-                // Mark as inactive on GPU
+                // Mark as inactive on GPU. Every compute kernel early-outs on
+                // flag==0 and build_grid never inserts inactive particles, so
+                // despawned particles stop participating in the simulation.
                 let flag_offset = (idx * 4) as u64;
                 queue.write_buffer(&self.particle_flags, flag_offset, bytemuck::bytes_of(&0u32));
+
+                // Park the particle far below the world so naive instanced
+                // renders of the full buffer don't draw a frozen ghost.
+                let parked = Particle {
+                    position: [0.0, DESPAWN_PARK_Y, 0.0, 0.0],
+                    velocity: [0.0; 4],
+                    predicted_position: [0.0, DESPAWN_PARK_Y, 0.0, 0.0],
+                    lambda: 0.0,
+                    density: 0.0,
+                    phase: 0,
+                    temperature: 293.0,
+                    color: [0.0; 4],
+                };
+                let offset = (idx * std::mem::size_of::<Particle>()) as u64;
+                queue.write_buffer(&self.particle_buffer, offset, bytemuck::bytes_of(&parked));
 
                 // Update CPU-side state
                 self.particle_active[idx] = false;
@@ -1006,6 +1188,24 @@ impl FluidSystem {
         despawned
     }
 
+    /// Record one simulation step into `encoder`.
+    ///
+    /// # Contract
+    /// The encoder passed to each `step()` call **must be submitted before the
+    /// next `step()` call** on the same `FluidSystem`. The density-error
+    /// readback relies on this: a buffer whose copy was recorded in step N has
+    /// its `map_async` issued at the start of step N+1 (i.e. strictly after
+    /// submission), and is harvested when the mapping completes — typically at
+    /// the start of step N+2.
+    ///
+    /// # Defined adaptive-iteration semantics
+    /// `self.iterations` for frame N is derived from the smoothed average
+    /// density error of the most recently *harvested* frame (normally N-2).
+    /// This two-frame lag is the defined behavior; it makes the feedback loop
+    /// race-free (no mapping of unsubmitted work). Note that the *particle
+    /// state itself* is non-deterministic per the engine's fluids determinism
+    /// carve-out (GPU atomic neighbor-list ordering), so the error value — and
+    /// therefore the iteration count — may differ between identical runs.
     pub fn step(
         &mut self,
         device: &wgpu::Device,
@@ -1013,6 +1213,11 @@ impl FluidSystem {
         queue: &wgpu::Queue,
         dt: f32,
     ) {
+        // Advance the density-error readback state machine: request mappings
+        // for buffers whose copies are now submitted, and harvest any buffer
+        // whose mapping has completed (updates `self.iterations`).
+        self.pump_density_error_readback(device);
+
         // Process any pending despawn regions first
         let _despawned = self.process_pending_despawns(queue);
 
@@ -1020,7 +1225,6 @@ impl FluidSystem {
         let params = SimParams {
             smoothing_radius: self.smoothing_radius,
             target_density: self.target_density,
-            pressure_multiplier: self.pressure_multiplier,
             viscosity: self.viscosity,
             surface_tension: self.surface_tension,
             gravity: self.gravity,
@@ -1030,22 +1234,26 @@ impl FluidSystem {
             grid_height: self.grid_height,
             grid_depth: self.grid_depth,
             cell_size: self.cell_size,
-            object_count: 0, // Placeholder, can be set by update_objects
+            object_count: self.object_count,
             _pad0: 0.0,
             _pad1: 0.0,
             _pad2: 0.0,
+            _pad3: 0.0,
         };
         queue.write_buffer(&self.params_buffer, 0, bytemuck::bytes_of(&params));
 
-        // 1. Generate SDF
-        self.sdf_system.generate(encoder, queue);
+        // 1. Generate SDF (timing span 0 brackets init -> finalize)
+        self.sdf_system.generate_timed(
+            encoder,
+            queue,
+            self.gpu_timing.as_ref().map(|t| (&t.query_set, 0u32, 1u32)),
+        );
 
         let particle_workgroups = self.particle_count.div_ceil(64);
-        let current_src = self.frame_index % 2;
 
         // --- Setup Bind Groups ---
         let global_bg = &self.global_bind_group;
-        let particles_bg = &self.particles_bind_groups[current_src];
+        let particles_bg = &self.particles_bind_group;
         let secondary_bg = &self.secondary_bind_group;
 
         // Group 3: Scene Data (Objects + SDF)
@@ -1082,11 +1290,12 @@ impl FluidSystem {
         {
             let mut cpass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
                 label: Some("Fluid::Predict"),
-                ..Default::default()
+                timestamp_writes: self.span_writes(1, true, true),
             });
             cpass.set_pipeline(&self.predict_pipeline);
             cpass.set_bind_group(0, global_bg, &[]);
             cpass.set_bind_group(1, particles_bg, &[]);
+            cpass.set_bind_group(2, secondary_bg, &[]);
             cpass.set_bind_group(3, &scene_bg, &[]);
             cpass.dispatch_workgroups(particle_workgroups, 1, 1);
         }
@@ -1094,10 +1303,13 @@ impl FluidSystem {
         {
             let mut cpass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
                 label: Some("Fluid::ClearGrid"),
-                ..Default::default()
+                timestamp_writes: self.span_writes(2, true, true),
             });
             cpass.set_pipeline(&self.clear_grid_pipeline);
             cpass.set_bind_group(0, global_bg, &[]);
+            cpass.set_bind_group(1, particles_bg, &[]);
+            cpass.set_bind_group(2, secondary_bg, &[]);
+            cpass.set_bind_group(3, &scene_bg, &[]);
             cpass.dispatch_workgroups(
                 (self.grid_width * self.grid_height * self.grid_depth).div_ceil(64),
                 1,
@@ -1109,35 +1321,40 @@ impl FluidSystem {
         {
             let mut cpass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
                 label: Some("Fluid::BuildGrid"),
-                ..Default::default()
+                timestamp_writes: self.span_writes(3, true, true),
             });
             cpass.set_pipeline(&self.build_grid_pipeline);
             cpass.set_bind_group(0, global_bg, &[]);
             cpass.set_bind_group(1, particles_bg, &[]);
+            cpass.set_bind_group(2, secondary_bg, &[]);
+            cpass.set_bind_group(3, &scene_bg, &[]);
             cpass.dispatch_workgroups(particle_workgroups, 1, 1);
         }
 
-        // 3. PBD Iterations
-        for _ in 0..self.iterations {
+        // 3. PBD Iterations (timing span 4 brackets the whole loop:
+        //    begin on the first lambda pass, end on the last delta pass)
+        for iter in 0..self.iterations {
             {
                 let mut cpass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
                     label: Some("Fluid::Lambda"),
-                    ..Default::default()
+                    timestamp_writes: self.span_writes(4, iter == 0, false),
                 });
                 cpass.set_pipeline(&self.lambda_pipeline);
                 cpass.set_bind_group(0, global_bg, &[]);
                 cpass.set_bind_group(1, particles_bg, &[]);
+                cpass.set_bind_group(2, secondary_bg, &[]);
                 cpass.set_bind_group(3, &scene_bg, &[]);
                 cpass.dispatch_workgroups(particle_workgroups, 1, 1);
             }
             {
                 let mut cpass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
                     label: Some("Fluid::DeltaPos"),
-                    ..Default::default()
+                    timestamp_writes: self.span_writes(4, false, iter + 1 == self.iterations),
                 });
                 cpass.set_pipeline(&self.delta_pos_pipeline);
                 cpass.set_bind_group(0, global_bg, &[]);
                 cpass.set_bind_group(1, particles_bg, &[]);
+                cpass.set_bind_group(2, secondary_bg, &[]);
                 cpass.set_bind_group(3, &scene_bg, &[]);
                 cpass.dispatch_workgroups(particle_workgroups, 1, 1);
             }
@@ -1147,11 +1364,12 @@ impl FluidSystem {
         {
             let mut cpass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
                 label: Some("Fluid::Integrate"),
-                ..Default::default()
+                timestamp_writes: self.span_writes(5, true, true),
             });
             cpass.set_pipeline(&self.integrate_pipeline);
             cpass.set_bind_group(0, global_bg, &[]);
             cpass.set_bind_group(1, particles_bg, &[]);
+            cpass.set_bind_group(2, secondary_bg, &[]);
             cpass.set_bind_group(3, &scene_bg, &[]);
             cpass.dispatch_workgroups(particle_workgroups, 1, 1);
         }
@@ -1160,74 +1378,123 @@ impl FluidSystem {
         {
             let mut cpass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
                 label: Some("Fluid::Dye&Whitewater"),
-                ..Default::default()
+                timestamp_writes: self.span_writes(6, true, true),
             });
             cpass.set_bind_group(0, global_bg, &[]);
             cpass.set_bind_group(1, particles_bg, &[]);
             cpass.set_bind_group(2, secondary_bg, &[]);
+            cpass.set_bind_group(3, &scene_bg, &[]);
 
             // Dye mixing
             cpass.set_pipeline(&self.mix_dye_pipeline);
             cpass.dispatch_workgroups(particle_workgroups, 1, 1);
         }
-        // 6. Copy error to staging for adaptive iterations (asynchronously)
-        let staging_idx = self.frame_index % 2;
-        let other_idx = 1 - staging_idx;
-
-        // Ensure the current staging buffer is unmapped before copy
-        if self.staging_mapped[staging_idx] {
-            self.density_error_staging_buffers[staging_idx].unmap();
-            self.staging_mapped[staging_idx] = false;
+        // Resolve GPU timing queries (if enabled) into the timing staging
+        // buffer; harvested by the blocking `read_gpu_timings`.
+        if let Some(t) = &self.gpu_timing {
+            let slots = (GPU_TIMING_SPANS.len() * 2) as u32;
+            encoder.resolve_query_set(&t.query_set, 0..slots, &t.resolve_buffer, 0);
+            encoder.copy_buffer_to_buffer(
+                &t.resolve_buffer,
+                0,
+                &t.staging_buffer,
+                0,
+                slots as u64 * 8,
+            );
         }
 
-        encoder.copy_buffer_to_buffer(
-            &self.density_error_buffer,
-            0,
-            &self.density_error_staging_buffers[staging_idx],
-            0,
-            4,
-        );
+        // 6. Record the density-error copy for later (post-submit) readback.
+        // We never map a buffer whose copy has not been submitted; the map is
+        // requested by `pump_density_error_readback` at the start of a later
+        // step() call, per the contract documented on this method.
+        let staging_idx = self.frame_index % 2;
+        if self.staging_state[staging_idx] == StagingState::Idle {
+            encoder.copy_buffer_to_buffer(
+                &self.density_error_buffer,
+                0,
+                &self.density_error_staging_buffers[staging_idx],
+                0,
+                4,
+            );
+            self.staging_state[staging_idx] = StagingState::CopyRecorded;
+        }
+        // else: the buffer is still in flight from an earlier frame (slow GPU
+        // or skipped submits). Skip this frame's copy; adaptive feedback just
+        // gets one frame staler.
 
         self.frame_index += 1;
-
-        // --- Adaptive Iteration Adjust (Non-Blocking) ---
-        // We read from the *other* buffer, which was submitted in the previous frame.
-        if self.staging_mapped[other_idx] {
-            let buffer_slice = self.density_error_staging_buffers[other_idx].slice(..);
-            {
-                let data = buffer_slice.get_mapped_range();
-                // Safe conversion: we know staging buffer is exactly 4 bytes
-                let mut bytes = [0u8; 4];
-                bytes.copy_from_slice(&data[0..4]);
-                let error_scaled = u32::from_ne_bytes(bytes);
-                let avg_error = (error_scaled as f32 / 1000.0) / self.particle_count as f32;
-
-                // Delegate to the smoothed AdaptiveIterations controller
-                // (replaces inline duplicate logic, gains error-history smoothing)
-                self.iterations = self.adaptive_iterations.update(avg_error);
-            }
-            self.density_error_staging_buffers[other_idx].unmap();
-            self.staging_mapped[other_idx] = false;
-        }
-
-        // Map the current buffer for retrieval in the next frame
-        let current_slice = self.density_error_staging_buffers[staging_idx].slice(..);
-        current_slice.map_async(wgpu::MapMode::Read, |_| {});
-        self.staging_mapped[staging_idx] = true;
-
-        // Poll to progress the mapping, but don't wait.
-        let _ = device.poll(wgpu::MaintainBase::Poll);
     }
 
+    /// Advance the density-error readback state machine (called at the start
+    /// of every `step()`).
+    ///
+    /// - A buffer in `CopyRecorded` state had its copy submitted by the caller
+    ///   (per the `step` contract), so it is now safe to request its mapping.
+    /// - A buffer in `MapRequested` state whose mapping completed is read,
+    ///   fed into the smoothed `AdaptiveIterations` controller, and unmapped.
+    fn pump_density_error_readback(&mut self, device: &wgpu::Device) {
+        use std::sync::atomic::Ordering;
+
+        // Non-blocking poll so completed mappings get their callbacks fired.
+        let _ = device.poll(wgpu::MaintainBase::Poll);
+
+        for i in 0..2 {
+            match self.staging_state[i] {
+                StagingState::Idle => {}
+                StagingState::CopyRecorded => {
+                    // The copy's encoder was submitted before this step()
+                    // call; request the mapping now.
+                    self.staging_map_result[i].store(MAP_PENDING, Ordering::Release);
+                    let result_flag = self.staging_map_result[i].clone();
+                    self.density_error_staging_buffers[i].slice(..).map_async(
+                        wgpu::MapMode::Read,
+                        move |res| {
+                            result_flag.store(
+                                if res.is_ok() { MAP_OK } else { MAP_ERR },
+                                Ordering::Release,
+                            );
+                        },
+                    );
+                    self.staging_state[i] = StagingState::MapRequested;
+                    let _ = device.poll(wgpu::MaintainBase::Poll);
+                }
+                StagingState::MapRequested => {
+                    match self.staging_map_result[i].load(Ordering::Acquire) {
+                        MAP_OK => {
+                            {
+                                let data = self.density_error_staging_buffers[i]
+                                    .slice(..)
+                                    .get_mapped_range();
+                                // Staging buffer is exactly 4 bytes.
+                                let mut bytes = [0u8; 4];
+                                bytes.copy_from_slice(&data[0..4]);
+                                let error_scaled = u32::from_ne_bytes(bytes);
+                                let avg_error =
+                                    (error_scaled as f32 / 1000.0) / self.particle_count as f32;
+                                // Smoothed controller; bounds configured at construction.
+                                self.iterations = self.adaptive_iterations.update(avg_error);
+                            }
+                            self.density_error_staging_buffers[i].unmap();
+                            self.staging_state[i] = StagingState::Idle;
+                        }
+                        MAP_ERR => {
+                            // Mapping failed (e.g. device loss); drop the sample.
+                            self.staging_state[i] = StagingState::Idle;
+                        }
+                        _ => {} // still pending — check again next step
+                    }
+                }
+            }
+        }
+    }
+
+    /// Returns the particle storage buffer.
+    ///
+    /// All compute kernels mutate the single particle buffer in place, so this
+    /// is always the current simulation state (i.e. the state after the most
+    /// recently *submitted* `step()` encoder executes).
     pub fn get_particle_buffer(&self) -> &wgpu::Buffer {
-        // The result is always in the "Dst" of the last pass (Integrate).
-        // Integrate used `bg_density` where Dst = `particle_buffers[1 - current_src]`.
-        // Since we incremented frame_index at end, we need to look back.
-        // Frame 0 (start 0): Integ writes to 1. Incr to 1.
-        // Frame 1 (start 1): Integ writes to 0. Incr to 2.
-        // So if frame_index is Odd, result is in 1.
-        // If frame_index is Even, result is in 0.
-        &self.particle_buffers[self.frame_index % 2]
+        &self.particle_buffer
     }
 
     pub fn secondary_particle_buffer(&self) -> &wgpu::Buffer {
@@ -2436,7 +2703,6 @@ mod tests {
         let _params = SimParams {
             smoothing_radius: 1.0,
             target_density: 1.0,
-            pressure_multiplier: 1.0,
             viscosity: 1.0,
             surface_tension: 1.0,
             gravity: -9.81,
@@ -2450,6 +2716,7 @@ mod tests {
             _pad0: 0.0,
             _pad1: 0.0,
             _pad2: 0.0,
+            _pad3: 0.0,
         };
     }
 
@@ -2464,7 +2731,6 @@ mod tests {
         let params = SimParams {
             smoothing_radius: 1.0,
             target_density: 1.0,
-            pressure_multiplier: 1.0,
             viscosity: 1.0,
             surface_tension: 1.0,
             gravity: -9.81,
@@ -2478,6 +2744,7 @@ mod tests {
             _pad0: 0.0,
             _pad1: 0.0,
             _pad2: 0.0,
+            _pad3: 0.0,
         };
         assert_eq!(params.grid_width, 64);
     }
@@ -2523,7 +2790,6 @@ mod tests {
         let params = SimParams {
             smoothing_radius: 1.0,
             target_density: 10.0,
-            pressure_multiplier: 250.0,
             viscosity: 50.0,
             surface_tension: 0.1,
             gravity: -9.8,
@@ -2537,6 +2803,7 @@ mod tests {
             _pad0: 0.0,
             _pad1: 0.0,
             _pad2: 0.0,
+            _pad3: 0.0,
         };
 
         let bytes: &[u8] = bytemuck::bytes_of(&params);
@@ -2866,7 +3133,6 @@ mod tests {
         let params_60fps = SimParams {
             smoothing_radius: 1.0,
             target_density: 1.0,
-            pressure_multiplier: 1.0,
             viscosity: 1.0,
             surface_tension: 1.0,
             gravity: -9.81,
@@ -2880,6 +3146,7 @@ mod tests {
             _pad0: 0.0,
             _pad1: 0.0,
             _pad2: 0.0,
+            _pad3: 0.0,
         };
 
         // dt for 60 FPS should be approximately 0.0167

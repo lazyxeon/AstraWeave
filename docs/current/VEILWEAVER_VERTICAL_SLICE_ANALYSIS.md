@@ -182,7 +182,7 @@ The gameplay logic crate is **production-complete** with:
 | System | Crate | Status | Tests |
 |--------|-------|--------|-------|
 | ECS | astraweave-ecs | ✅ Production, Miri-validated | 386 |
-| AI Orchestrator | astraweave-ai | ✅ Production | 6 planning modes |
+| AI Orchestrator | astraweave-ai | ✅ Production | 7 planning modes (feature-gated) <!-- Source: CLAIMS_REGISTRY.md#ai-modes --> |
 | Rendering | astraweave-render | ✅ wgpu 0.25, PBR/IBL/CSM | 369 |
 | Physics | astraweave-physics | ✅ Rapier3D | 500+ |
 | Audio | astraweave-audio | ✅ 4-bus mixer | Production |

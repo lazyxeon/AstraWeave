@@ -21,7 +21,7 @@ This research produced **4 comprehensive documents** analyzing AstraWeave's comp
 
 **Contents**:
 - Industry standards comparison (ECS, rendering, AI/ML, performance)
-- Performance benchmarks vs AAA standards (frame time, entity count, memory)
+- Performance benchmarks vs industry standards (frame time, entity count, memory)
 - Testing standards (coverage targets, visual regression, integration patterns)
 - Security standards (anti-cheat, network security, server authority)
 - Production readiness (CI/CD, crash reporting, versioning, documentation)
@@ -31,11 +31,11 @@ This research produced **4 comprehensive documents** analyzing AstraWeave's comp
 
 **Key Findings**:
 - ✅ **EXCEEDS**: AI orchestration (12,700 agents), test coverage (71.37%), determinism (100% replay)
-- ✅ **MATCHES**: Rendering quality (AAA-grade), ECS architecture (Bevy-level)
+- ✅ **MATCHES**: Rendering quality, ECS architecture (Bevy-level)
 - ⚠️ **FALLS SHORT**: Editor (broken), ecosystem (0 plugins), mobile (none)
 - 🚀 **UNIQUE**: GOAP+LLM hybrid, AI-first architecture, 37-tool sandbox
 
-**Verdict**: World-class core, critical tooling gaps, **3-4 months to production**.
+**Verdict**: Solid core technology, critical tooling gaps, **3-4 months to production**.
 
 ---
 
@@ -128,7 +128,7 @@ This research produced **4 comprehensive documents** analyzing AstraWeave's comp
 **Key Deliverables**:
 - **Phase 1**: Editor + Scripting + Crash Reporting + CI/CD + Docs → 85% production-ready
 - **Phase 2**: Mobile + Multiplayer + Visual Scripting + Asset Pipeline → 95% production-ready
-- **Phase 3**: VR + Asset Store + Consoles + Cloud → 100% production-ready (AAA parity)
+- **Phase 3**: VR + Asset Store + Consoles + Cloud → 100% production-ready
 
 **Use Case**: Use this for sprint planning, budget allocation, and hiring decisions.
 
@@ -154,7 +154,7 @@ This research produced **4 comprehensive documents** analyzing AstraWeave's comp
 1. **README.md**: Current status (70% production-ready), feature list, benchmarks
 2. **MASTER_COVERAGE_REPORT.md**: 71.37% overall, 96.43% infrastructure, 1,545 tests
 3. **MASTER_BENCHMARK_REPORT.md**: 182 active benchmarks, 2.70ms @ 1k entities, 12,700 agents @ 60 FPS
-4. **Cargo.toml**: 126 workspace members (82 crates + 27 examples + 17 tools/net/persistence)
+4. **Cargo.toml**: 130 workspace members (~51 production crates + examples + tools) <!-- Source: CLAIMS_REGISTRY.md#workspace-members -->
 
 **Industry Benchmarks** (derived):
 - **60 FPS Budget**: 16.67ms (AAA standard)
@@ -169,12 +169,12 @@ This research produced **4 comprehensive documents** analyzing AstraWeave's comp
 
 ### AstraWeave's Competitive Position
 
-**Strengths** (world-class):
+**Strengths**:
 1. **AI Orchestration**: 12,700 agents @ 60 FPS (10× industry standard)
 2. **Test Coverage**: 71.37% overall, 96.43% infrastructure (best-in-class)
 3. **Determinism**: 100% bit-identical replay (unique to AstraWeave)
 4. **Frame Time**: 2.70ms @ 1k entities (84% headroom, 6× margin)
-5. **Rendering**: AAA features (matches Unity HDRP, exceeds Godot 4)
+5. **Rendering**: PBR features (matches Unity HDRP, exceeds Godot 4)
 
 **Weaknesses** (critical gaps):
 1. **Editor**: Non-functional (4-6 weeks to fix, 3-6 months to Unity parity)
@@ -221,10 +221,10 @@ This research produced **4 comprehensive documents** analyzing AstraWeave's comp
 
 ## Final Verdict
 
-**AstraWeave is a world-class AI-native game engine** with:
+**AstraWeave is an AI-native game engine** with:
 - ✅ **Exceptional core technology** (A+ in AI, architecture, testing)
-- ✅ **AAA rendering quality** (matches Unity HDRP)
-- ✅ **Production-ready performance** (84% frame time headroom)
+- ✅ **Rendering quality** (matches Unity HDRP)
+- ✅ **Strong performance** (84% frame time headroom)
 - ⚠️ **Critical tooling gaps** (broken editor, basic CI/CD)
 - ⚠️ **Pre-1.0 ecosystem** (no plugins, no asset store)
 
@@ -237,7 +237,7 @@ This research produced **4 comprehensive documents** analyzing AstraWeave's comp
 
 **Investment Required**: $380-660k (18 months, 2-4 developers)
 
-**Strategic Recommendation**: Invest **3-4 months** in Editor + Scripting + Crash Reporting to unlock commercial viability. AstraWeave's core technology is **world-leading** in AI orchestration and **matches AAA standards** in rendering/performance. The tooling gaps are **solvable** with focused engineering effort.
+**Strategic Recommendation**: Invest **3-4 months** in Editor + Scripting + Crash Reporting to unlock commercial viability. AstraWeave's core technology is strong in AI orchestration and competitive in rendering/performance. The tooling gaps are **solvable** with focused engineering effort.
 
 ---
 
@@ -262,7 +262,7 @@ This research produced **4 comprehensive documents** analyzing AstraWeave's comp
 
 **Investor Pitch**:
 1. Use: `COMPETITIVE_ANALYSIS_SUMMARY.md` (executive summary)
-2. Highlight: A- grade (92/100), world-class AI, AAA rendering
+2. Highlight: A- grade (92/100), AI orchestration, rendering
 3. Address: Tooling gaps (3-4 months to fix)
 4. Showcase: Unique innovations (GOAP+LLM, determinism, 37-tool sandbox)
 

@@ -234,7 +234,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-AstraWeave is a **scientific proof of concept**: a production-grade AI-native game engine built **iteratively by AI with zero human-written code**. It uses a deterministic ECS architecture where AI agents are first-class citizens. The workspace contains 128 crates (49 production + examples + tools). Rust toolchain is pinned at 1.89.0.
+AstraWeave is a **scientific proof of concept**: an AI-native game engine built **iteratively by AI with zero human-written code**. It uses a deterministic ECS architecture where AI agents are first-class citizens. The workspace contains 130 crates (~51 production + examples + tools). <!-- Source: CLAIMS_REGISTRY.md#workspace-members --> Rust toolchain is pinned at 1.89.0.
 
 ### Mandate
 
@@ -293,7 +293,7 @@ A feature is incomplete until it is wired end-to-end. Before marking any task do
 
 **DO:**
 - Build incrementally (`-p` flag for single crates)
-- Use cargo aliases (`check-all`, `build-core`, `test-all`, `clippy-all`)
+- Use the editor cargo aliases (`editor`, `editor-release`, `editor-dev`); for workspace ops use explicit cargo commands
 - Use `--release` for examples
 - Run `cargo check -p <crate>` after every modification
 
@@ -315,11 +315,11 @@ cargo test -p <crate>               # Run tests for a crate
 cargo fmt --all                     # Format all code
 cargo clippy -p <crate> --all-features -- -D warnings  # Lint a crate
 
-# Workspace-wide aliases
-cargo check-all                     # Workspace check
-cargo build-core                    # Core components
-cargo test-all                      # Working crate tests
-cargo clippy-all                    # Full linting
+# Workspace-wide (no aliases defined — use the explicit forms)
+cargo check --workspace                                   # Workspace check
+cargo build -p astraweave-core -p astraweave-ecs -p astraweave-math -p astraweave-ai  # Core components
+cargo test --workspace                                    # Workspace tests
+cargo clippy --workspace --all-features -- -D warnings    # Full linting
 
 # Editor
 cargo editor                        # Run editor (release-fast profile)
@@ -327,7 +327,7 @@ cargo editor-release                # Run editor (full release)
 cargo editor-dev                    # Run editor (debug)
 
 # Examples
-cargo run -p hello_companion --release   # Flagship AI demo (6 modes)
+cargo run -p hello_companion --release   # Flagship AI demo (7 modes) <!-- Source: CLAIMS_REGISTRY.md#ai-modes -->
 cargo run -p unified_showcase --release  # Rendering showcase
 
 # Benchmarks & coverage
@@ -495,7 +495,7 @@ The ECS scheduler is **deterministic single-threaded** per tick. Systems within 
 - **Physics/World**: `physics`, `nav`, `terrain`, `fluids`, `scene` — Rapier3D, navmesh, procedural terrain
 - **Gameplay**: `gameplay`, `quests`, `weaving`, `cinematics`, `pcg` — combat, crafting, quest systems
 - **Networking**: `net`, `net-ecs`, `persistence-ecs` — snapshot networking, delta compression
-- **Tools**: `tools/aw_editor` (3,892+ tests, unified engine pipeline), `tools/aw_asset_cli`, `tools/aw_build`
+- **Tools**: `tools/aw_editor` (~9,427 test annotations, unified engine pipeline), `tools/aw_asset_cli`, `tools/aw_build` <!-- Source: CLAIMS_REGISTRY.md#editor-test-markers -->
 
 All crate names are prefixed with `astraweave-`.
 
@@ -509,7 +509,7 @@ All crate names are prefixed with `astraweave-`.
 | AI Systems | `astraweave-ai/src/{orchestrator,tool_sandbox,core_loop}.rs` |
 | ECS Internals | `astraweave-ecs/src/{archetype,system_param,events}.rs` |
 | Rendering | `astraweave-render/src/{lib,material,skinning_gpu,vertex_compression}.rs` |
-| Physics | `astraweave-physics/src/{character_controller,spatial_hash}.rs` |
+| Physics | `astraweave-physics/src/{lib,spatial_hash}.rs` — the character controller lives in `lib.rs:424-535`; there is no `character_controller.rs` file |
 | Combat | `astraweave-gameplay/src/combat_physics.rs` |
 | SIMD Math | `astraweave-math/src/{simd_vec,simd_mat,simd_quat,simd_movement}.rs` |
 | Terrain | `astraweave-terrain/src/{voxel_mesh,biome_pack,biome,scatter}.rs` |
@@ -542,9 +542,7 @@ Any new or modified `unsafe` code **MUST** pass both verification pipelines:
 
 ### Known Build Issues
 
-- **Graphics examples**: `ui_controls_demo`, `debug_overlay` won't compile (egui/winit version drift)
-- **Rhai crates**: `astraweave-author`, `rhai_authoring` have Sync trait errors
-- **LLM crates**: `astraweave-llm`, `llm_toolcall` excluded from standard builds
+- **All previously-listed build breakages are resolved**: `ui_controls_demo`, `debug_overlay` (former egui/winit drift), `astraweave-author`, `rhai_authoring` (former Rhai `Sync` trait errors), and `astraweave-llm` all compile clean. `cargo check --workspace` passes 130/130 members with 0 errors; the root `Cargo.toml` `[workspace.metadata.ci-excludes]` problematic list is empty.
 - **`.unwrap()` in test code only**: All `.unwrap()` calls are inside `#[cfg(test)]` modules — justified for test assertions. Zero production-path unwraps in engine runtime crates.
 
 ### Key Lessons (Apply to All Future Work)

@@ -169,8 +169,14 @@ impl SkyboxRenderer {
             ],
         });
 
-        // Create sphere mesh (large radius)
-        let (vertices, indices) = Self::create_sphere(1500.0, 32, 16);
+        // Create sphere mesh. History: originally radius 1500 with zfar=100 —
+        // every triangle far-plane-clipped, so the skybox never rendered once
+        // (F.1.2 finding). F.1.2 set radius 50 *relative to zfar=100*; F.1.4
+        // raised zfar to 1500 for the ocean vista, so the radius scales with
+        // it: 1200 sits inside the new far plane with margin. The sphere is
+        // camera-centered and depth-write-off, so scene geometry still draws
+        // over it. KEEP THIS INSIDE THE CAMERA FAR PLANE (main.rs Camera).
+        let (vertices, indices) = Self::create_sphere(1200.0, 32, 16);
 
         let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Skybox Vertex Buffer"),

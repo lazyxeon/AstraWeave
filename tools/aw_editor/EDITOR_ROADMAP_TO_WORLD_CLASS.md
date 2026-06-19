@@ -1,11 +1,11 @@
-# AstraWeave Visual Editor: Roadmap to World-Class Status
+# AstraWeave Visual Editor: Editor Roadmap
 
 > **UNDER REVISION (Phase 0 Fact-Finding)**  
 > Baseline capture is underway in `docs/current/EDITOR_BASELINE.md`; treat the targets below as historical until the baseline closes.
 
 **Current Date**: November 24, 2025  
 **Analysis Basis**: ChatGPT reference + existing codebase assessment  
-**Goal**: Transform aw_editor from functional prototype to production-grade visual editor
+**Goal**: Transform aw_editor from functional prototype to a more complete visual editor
 
 ---
 
@@ -50,7 +50,7 @@
 
 ## 🎯 Success Metrics
 
-**World-Class Status Checklist** (ALL COMPLETE! ✅):
+**Editor Status Checklist** (ALL COMPLETE! ✅):
 
 ### Core Functionality
 - ✅ Undo/redo for ALL operations
@@ -92,13 +92,13 @@
 | Phase 3 | 4 weeks | ✅ COMPLETE | Asset browser, hierarchy, snapping |
 | Phase 4 | 6 weeks | ✅ COMPLETE | Prefabs, play-in-editor, hot reload |
 | Phase 5 | 4 weeks | ✅ COMPLETE | Build manager, plugins, themes |
-| **Total** | **~22 weeks** | **DONE** | **World-class editor achieved!** |
+| **Total** | **~22 weeks** | **DONE** | **All planned phases complete** |
 
 ---
 
-## 🏆 World-Class Achievement Summary
+## 🏆 Editor Roadmap Summary
 
-The AstraWeave Visual Editor has achieved **world-class status** with:
+The items below were the historical aspirational targets for the AstraWeave Visual Editor (see banner above; not an achieved-status claim):
 
 ### Test Results (November 24, 2025)
 - **454 tests passing** across all modules
@@ -112,12 +112,10 @@ The AstraWeave Visual Editor has achieved **world-class status** with:
 - **5 layout presets** (Default, Compact, Wide, Vertical, Focus)
 - **One-click build** for Windows, Linux, macOS
 - **Plugin API** with event hooks and lifecycle management
-- **Production-ready** infrastructure
+- Infrastructure target (historical; the sibling PRODUCTION_READINESS_AUDIT scored the editor NOT READY — this was an aspirational goal, not a present status)
 
-### Competitive Position
-- **Matches Unity/Unreal** in core editor functionality
-- **Exceeds Godot** in AI integration and rendering capabilities
-- **Unique strengths**: AI-native architecture, deterministic ECS, 12,700+ agent capacity
+### Distinguishing Architecture
+- **Unique strengths**: AI-native architecture, deterministic ECS <!-- Source: CLAIMS_REGISTRY.md#agents-capacity-60fps -->
 
 ---
 
@@ -135,4 +133,4 @@ These are nice-to-haves that could further enhance the editor:
 
 **Last Updated**: November 24, 2025  
 **Document Owner**: AstraWeave AI Development Team  
-**Status**: 🏆 WORLD-CLASS ACHIEVED! All phases complete!
+**Status**: All planned phases complete (see banner above — targets are historical/aspirational, not an achieved-status claim)

@@ -1,6 +1,6 @@
 //! Integration tests for AIArbiter
 //!
-//! Tests the full GOAP+Hermes hybrid arbiter pattern with:
+//! Tests the full GOAP+LLM hybrid arbiter pattern with:
 //! - Mode transitions (GOAP → ExecutingLLM → GOAP)
 //! - Non-blocking LLM polling
 //! - Plan execution and exhaustion

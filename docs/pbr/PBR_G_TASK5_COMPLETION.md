@@ -285,8 +285,8 @@ echo "✅ Material validation passed!"
 
 ### Status Badges (README.md)
 ```markdown
-![Material Validation](https://github.com/lazyxeon/AstraWeave-AI-Native-Gaming-Engine/actions/workflows/material-validation.yml/badge.svg)
-![PBR Pipeline](https://github.com/lazyxeon/AstraWeave-AI-Native-Gaming-Engine/actions/workflows/pbr-pipeline-ci.yml/badge.svg)
+![Material Validation](https://github.com/lazyxeon/AstraWeave/actions/workflows/material-validation.yml/badge.svg)
+![PBR Pipeline](https://github.com/lazyxeon/AstraWeave/actions/workflows/pbr-pipeline-ci.yml/badge.svg)
 ```
 
 ---
@@ -403,7 +403,7 @@ passed=$(jq -r '.results[0].passed // false' validation.json 2>/dev/null || echo
 
 ## Conclusion
 
-Task 5 successfully implements **production-grade CI automation** for PBR materials:
+Task 5 successfully implements **CI automation** for PBR materials:
 - ✅ Automated validation on every PR
 - ✅ Multi-platform compatibility (Linux, Windows, macOS)
 - ✅ Fast feedback (2-5 min with caching)

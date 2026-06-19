@@ -44,5 +44,5 @@
 ## Next Steps
 
 1. Wire runtime metrics into the Performance/Console panels for historical graphs once Tracy streaming is enabled in the editor UI.
-2. Extend the ECS bootstrap to register physics/audio systems (currently only cooldown + movement) so play mode mirrors the full game loop specified in the World-Class Editor plan.
+2. Extend the ECS bootstrap to register physics/audio systems (currently only cooldown + movement) so play mode mirrors the full game loop specified in the Editor plan.
 3. Gate “Apply Simulation Changes” behind an explicit command by diffing the `sim_app` world against the restored edit snapshot.

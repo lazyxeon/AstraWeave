@@ -26,7 +26,7 @@
 
 ### 3. Shader Architecture Analysis
 - **Inline SHADER in main.rs**: Already optimal (full Cook-Torrance + IBL) ✅
-- **pbr_lib.wgsl**: Now production-ready library for all examples ✅
+- **pbr_lib.wgsl**: Now a shared library for all examples ✅
 - **enhanced_shader.wgsl**: Updated to use pbr_lib functions ✅
 
 ### 4. Comprehensive Documentation
@@ -84,7 +84,7 @@ k = (roughness + 1)² / 8  (direct lighting)
 
 | File | Lines Changed | Status |
 |------|---------------|--------|
-| `pbr_lib.wgsl` | +250 lines | ✅ Production-ready |
+| `pbr_lib.wgsl` | +250 lines | ✅ Complete |
 | `enhanced_shader.wgsl` | ~45 lines | ✅ Updated to use pbr_lib |
 | `main.rs` (inline SHADER) | 0 changes | ✅ Already optimal |
 | **New**: `PBR_D_COMPLETION_SUMMARY.md` | +600 lines | ✅ Comprehensive docs |
@@ -148,7 +148,7 @@ k = (roughness + 1)² / 8  (direct lighting)
 | Direct Lighting | ~75 | ALU |
 | Material Sampling | ~20 | Texture bandwidth |
 | IBL Evaluation | ~60 | Texture bandwidth |
-| **Total per-pixel** | **150-200** | Competitive with UE5 |
+| **Total per-pixel** | **150-200** | ALU ops |
 
 **Optimization**: Material batching (Task 6) will reduce bind group switches by 50-90% for scenes with 100+ unique materials.
 

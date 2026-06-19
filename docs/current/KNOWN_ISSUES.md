@@ -488,7 +488,7 @@ If you encounter a new issue:
    - System information (OS, Rust version, GPU)
 
 4. **Report** via:
-   - GitHub Issues: [Create Issue](https://github.com/lazyxeon/AstraWeave-AI-Native-Gaming-Engine/issues)
+   - GitHub Issues: [Create Issue](https://github.com/lazyxeon/AstraWeave/issues)
    - Email: [Maintainer contact]
    - Discord: [Community server]
 

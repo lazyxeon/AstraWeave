@@ -141,7 +141,7 @@ Same pipeline + per-stage timing and body/collision/solver count statistics.
 
 ### Subsystem Pages (11):
 - **ecs.md** — Archetypes, components, system stages, performance
-- **ai.md** — 6 AI modes, WorldSnapshot API, arbiter, tool sandbox, 4-tier fallback
+- **ai.md** — 7 AI modes (feature-gated), WorldSnapshot API, arbiter, tool sandbox, 4-tier fallback <!-- Source: CLAIMS_REGISTRY.md#ai-modes -->
 - **rendering.md** — wgpu 25, PBR, materials, GPU skinning, mesh optimization
 - **physics.md** — Rapier3D, spatial hash, async scheduler, character controller
 - **navigation.md** — NavMesh, A*, portal graphs, dynamic invalidation

@@ -2,7 +2,7 @@
 
 **Updated:** 2025-12-06  
 **Owner:** Security & Systems Engineering  
-**Goal:** Eliminate the currently exploitable gaps in networking, secret handling, LLM integration, and sandboxing so the AstraWeave codebase reaches a verifiable world-class security posture before Phase 9.
+**Goal:** Eliminate the currently exploitable gaps in networking, secret handling, LLM integration, and sandboxing so the AstraWeave codebase reaches a verifiable security posture before Phase 9.
 
 ---
 
@@ -17,24 +17,16 @@
 ## Critical Findings (P0)
 
 1. **No authentication or transport security on the in-engine WebSocket server.**  
-   - **Evidence:** `astraweave-net/src/lib.rs:525` (plaintext `TcpListener::bind(addr)`), `astraweave-net/src/lib.rs:701-714` (accepts any client token except literal `"dev"` warning, allows arbitrary role selection).  
-   - **Impact:** Any internet user can connect, masquerade as `player`/`enemy`, and receive filtered snapshots or push arbitrary plans into the authoritative world state. Replay log growth (`astraweave-net/src/lib.rs:491`, `:752`, `:783`) is unbounded, so attackers can also exhaust memory.  
-   - **Fix Direction:** Require TLS by default, replace the `token` placeholder with signed session tickets, restrict viewer roles to authenticated identities, and cap/stream the replay buffer with persistence plus back-pressure.
+   - **Status:** Live finding — owned by the security S-series. See `docs/campaigns/security/S0_FINDINGS_SEED.md` **S0-1** (plaintext `TcpListener::bind`, `token != "dev"` gate; evidence re-confirmed at HEAD `astraweave-net/src/lib.rs:535,786`). Scope-and-fix is S.1, not this doc.
 
-2. **Weak "signature" scheme leaks the session key and is trivially forgeable.**  
-   - **Evidence:** `net/aw-net-proto/src/lib.rs:146-160` (`sign16` XORs a public `session_key_hint` against a 64-bit hash). The hint is sent to every client (`net/aw-net-server/src/main.rs:354-365`, `:535-566`).  
-   - **Impact:** Inputs, reconciliation ACKs, and rate-limit responses can be spoofed; this defeats any anti-cheat or trust boundary and lets attackers impersonate other players.  
-   - **Fix Direction:** Replace `sign16` with HMAC-SHA256 over the full 32-byte `SessionKey`, deliver the key through an authenticated handshake (or mTLS), and delete the key hint from the wire protocol.
+2. **Weak "signature" scheme — RESOLVED.**  
+   - **Status:** RESOLVED (Net-Trio-Remediation, 2026-06). The `sign16` XOR stub is deleted; HMAC-SHA256 over the full `SessionKey` landed in `aw-net-proto` (`SigningKey` / `input_frame_sig_payload`), the server verifies first, and the default `SignatureFailurePolicy::Kick` closes the connection on a bad tag. No longer a live finding.
 
 3. **LLM clients log full prompts and responses, leaking proprietary data.**  
-   - **Evidence:** `astraweave-llm/src/lib.rs:163-213` prints every prompt/plan via `eprintln!`, including coordinates, objectives, and any red-teaming content.  
-   - **Impact:** Running the engine in shared environments exposes mission data, potential secrets, and user PII via stdout/stderr/log collectors.  
-   - **Fix Direction:** Gate all verbose logging behind a structured, scrubbed trace system with opt-in redaction; default to zero sensitive logging in production.
+   - **Status:** Live finding — owned by the security S-series. See `docs/campaigns/security/S0_FINDINGS_SEED.md` **S0-2** (`eprintln!` prompt/response dump; evidence re-confirmed at HEAD `astraweave-llm/src/lib.rs:176-184,215-222`). Scope-and-fix is S.1.
 
 4. **Script sandbox claims policy enforcement but allows arbitrary Rhai APIs.**  
-   - **Evidence:** `astraweave-security/src/lib.rs:62-75` defines `allowed_functions`, but the executor (`astraweave-security/src/lib.rs:365-418`) never consults it; the sandbox registers a full `rhai::Engine` (`astraweave-security/src/lib.rs:141-166`).  
-   - **Impact:** Any untrusted script can call any built-in function or newly registered host function, so "sandboxed" mod code can exfiltrate data or spin forever (timeouts are coarse).  
-   - **Fix Direction:** Register only the approved functions, add on-module whitelisting, enforce memory/op limits per script, and require capability tokens for host bindings.
+   - **Status:** Live finding — owned by the security S-series. See `docs/campaigns/security/S0_FINDINGS_SEED.md` **S0-3** (`allowed_functions` defined but never consulted; evidence re-confirmed at HEAD `astraweave-security/src/lib.rs:64`). Scope-and-fix is S.1.
 
 5. **HTTP admin surface for `aw-net-server` is wide open.**  
    - **Evidence:** `net/aw-net-server/src/main.rs:155-173` exposes `/healthz` and `/regions` on `0.0.0.0:8789` without authentication or TLS.  

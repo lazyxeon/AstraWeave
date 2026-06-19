@@ -28,7 +28,7 @@
 //! intact, so scatter visuals continue to render while the full
 //! replacement is wired in.
 //!
-//! [install]: https://github.com/lazyxeon/AstraWeave-AI-Native-Gaming-Engine
+//! [install]: https://github.com/lazyxeon/AstraWeave
 
 use anyhow::Result;
 use bytemuck::{Pod, Zeroable};

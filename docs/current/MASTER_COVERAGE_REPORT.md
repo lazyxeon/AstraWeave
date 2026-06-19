@@ -94,7 +94,7 @@ Coverage numbers represent LLVM **region coverage** (primary), **line coverage**
 
 ### Crate Analysis
 
-**astraweave-ecs** (96.39% line, 728 tests): Industry-leading for an ECS implementation. BlobVec, SparseSet, EntityAllocator, Archetype, SystemParam all thoroughly tested. 331 lib tests + 397 integration tests. Miri-validated (379 tests passed, 7 ignored), Kani-verified (27 proofs). 4,769 instrumented lines.
+**astraweave-ecs** (96.39% line, 728 tests): BlobVec, SparseSet, EntityAllocator, Archetype, SystemParam all thoroughly tested. 331 lib tests + 397 integration tests. Miri-validated (379 tests passed, 7 ignored), Kani-verified (27 proofs). 4,769 instrumented lines.
 
 **astraweave-physics** (94.38% line, 1,884 tests): Comprehensive coverage of character controllers, vehicles, ragdolls, cloth simulation, spatial hash. 18,324 instrumented lines with near-complete function coverage (99.65%). Largest well-covered P0 crate. 1,284 lib + 600 integration tests.
 
@@ -184,7 +184,7 @@ These crates are outside the primary tier system but have been measured:
 | Crate | Region Cov | Line Cov | Instr. Lines | Tests (Lib+Integ) | Notes |
 |-------|-----------|----------|-------------|-------------------|-------|
 | astraweave-prompts | 95.46% | **95.66%** | 5,968 | 1,375 (556+819) | Wave 2 mutation: 792 mutants, 100% kill rate |
-| astraweave-fluids | 91.57% | **89.27%** | 46,173 | 2,509 (2,410+99) | Largest crate; SPH/FLIP simulation |
+| astraweave-fluids | 91.57% | **89.27%** | 46,173 | 2,509 (2,410+99) | Largest crate; PBD solver |
 | astraweave-context | 30.74% | **25.71%** | 9,813 | 228 (101+127) | Large dependency footprint inflates denominator |
 | astraweave-persistence-ecs | 28.96% | **28.29%** | 3,287 | 132 (28+104) | Roundtrip serialization verified; async gaps |
 | astraweave-rag | 20.78% | **19.85%** | 9,957 | 235 (76+159) | Large dependency footprint; consolidation.rs high |

@@ -450,7 +450,7 @@ For each new test, verify:
 
 ## Conclusion
 
-The AstraWeave test suite has a **solid foundation** but requires significant investment to reach production-grade quality. The most critical gaps are:
+The AstraWeave test suite requires significant investment to reach production-grade quality. The most critical gaps are:
 
 1. **Error handling** — Most tests only cover happy paths
 2. **Resource cleanup** — Memory leaks and handle leaks not tested

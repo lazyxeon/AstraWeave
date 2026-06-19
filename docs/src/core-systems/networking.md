@@ -33,7 +33,7 @@ models, wire formats, and integration patterns. Neither imports the other.
 * **Tick:** 60 Hz fixed tick on `GameServer`. Broadcast cadence: full snapshot every 60
   ticks, deltas every 3 ticks.
 * **Interest filtering:** four `Interest` impls — `Full`, `RadiusTeam`, `Fov`, `FovLos`.
-* **Trace:** [`net.md`](https://github.com/lazyxeon/AstraWeave-AI-Native-Gaming-Engine/blob/main/docs/architecture/net.md) — file map, conflict map, decision log, invariants, open questions.
+* **Trace:** [`net.md`](https://github.com/lazyxeon/AstraWeave/blob/main/docs/architecture/net.md) — file map, conflict map, decision log, invariants, open questions.
 
 ## `astraweave-net-ecs` + standalone trio (`aw-net-{proto,client,server}`)
 
@@ -46,7 +46,7 @@ models, wire formats, and integration patterns. Neither imports the other.
 * **Status (per trace §1):** the standalone server/client trio is production-style; the
   ECS Plugin layer is **dormant** — `astraweave-stress-test` declares the crate as a
   dependency but never imports it.
-* **Trace:** [`net_ecs.md`](https://github.com/lazyxeon/AstraWeave-AI-Native-Gaming-Engine/blob/main/docs/architecture/net_ecs.md).
+* **Trace:** [`net_ecs.md`](https://github.com/lazyxeon/AstraWeave/blob/main/docs/architecture/net_ecs.md).
 
 ## Known integration hazards (surfaced by traces)
 
@@ -78,8 +78,8 @@ models, wire formats, and integration patterns. Neither imports the other.
 ## Further reading
 
 * **Interactive workspace map** — the
-  [Networking Coexistence](https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/architecture/#story=networking_coexistence)
+  [Networking Coexistence](https://lazyxeon.github.io/AstraWeave/architecture/#story=networking_coexistence)
   story preset highlights both subsystems side by side.
-* [`net.md`](https://github.com/lazyxeon/AstraWeave-AI-Native-Gaming-Engine/blob/main/docs/architecture/net.md) — snapshot-server trace.
-* [`net_ecs.md`](https://github.com/lazyxeon/AstraWeave-AI-Native-Gaming-Engine/blob/main/docs/architecture/net_ecs.md) — matchmaking-trio trace.
-* [`ARCHITECTURE_MAP.md`](https://github.com/lazyxeon/AstraWeave-AI-Native-Gaming-Engine/blob/main/docs/architecture/ARCHITECTURE_MAP.md) §8.8 — data-flow diagrams for both subsystems.
+* [`net.md`](https://github.com/lazyxeon/AstraWeave/blob/main/docs/architecture/net.md) — snapshot-server trace.
+* [`net_ecs.md`](https://github.com/lazyxeon/AstraWeave/blob/main/docs/architecture/net_ecs.md) — matchmaking-trio trace.
+* [`ARCHITECTURE_MAP.md`](https://github.com/lazyxeon/AstraWeave/blob/main/docs/architecture/ARCHITECTURE_MAP.md) §8.8 — data-flow diagrams for both subsystems.

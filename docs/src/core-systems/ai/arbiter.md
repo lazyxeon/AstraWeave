@@ -85,7 +85,7 @@ loop {
      │                    │                    │
      ▼                    ▼                    ▼
 ┌──────────┐      ┌──────────────┐     ┌──────────┐
-│   GOAP   │      │   Qwen3-8B    │     │    BT    │
+│   GOAP   │      │  LLM (Ollama) │     │    BT    │
 │ (3-5 ns) │      │ (13-21s async)│     │ Fallback │
 └──────────┘      └──────────────┘     └──────────┘
 ```
@@ -270,8 +270,8 @@ let arbiter = AIArbiter::new(executor, goap, bt)
 # Verify Ollama is running
 ollama list
 
-# Test model directly
-ollama run qwen3:8b
+# Test model directly (runtime default is phi3:medium; OLLAMA_MODEL overrides it)
+ollama run phi3:medium
 ```
 
 ### High Failure Rate
@@ -313,7 +313,7 @@ if plan.steps.len() > 50 {
 # GOAP-only mode
 cargo run -p hello_companion --release
 
-# Arbiter mode (GOAP + Qwen3-8B)
+# Arbiter mode (GOAP + LLM; runtime default model phi3:medium via Ollama)
 cargo run -p hello_companion --release --features llm_orchestrator -- --arbiter
 ```
 

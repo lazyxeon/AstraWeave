@@ -270,7 +270,7 @@ The AstraWeave engine has been **comprehensively validated** with Miri across al
 - Zero memory safety violations
 - Zero undefined behavior
 - All unsafe code paths validated
-- Production-ready status confirmed
+- Memory safety confirmed for all crates with unsafe code
 
 The engine's single-threaded, deterministic architecture contributes to its memory safety, as there are no data races or synchronization issues possible.
 

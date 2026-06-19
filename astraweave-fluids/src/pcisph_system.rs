@@ -2,17 +2,25 @@
 // PCISPH GPU System - Research-Grade Fluid Simulation
 // =============================================================================
 //
-// Production-quality PCISPH solver implementation using wgpu compute shaders.
+// PCISPH solver implementation using wgpu compute shaders (experimental).
 //
 // References:
 // - Solenthaler & Pajarola 2009: "Predictive-Corrective Incompressible SPH"
 // - Marrone et al. 2011: "δ-SPH model for simulating violent impact flows"
-// - Bender & Koschier 2015: "Divergence-Free SPH for Incompressible..."
 //
-// Performance Targets:
-// - 100-200k particles @ 60 FPS (Medium quality tier)
-// - <0.1% density error after convergence
-// - 3-8 pressure correction iterations typical
+// HONEST STATUS (corrected in Fluids-Integration F.1):
+// - The pressure loop runs a FIXED iteration count
+//   (config.max_iterations.min(MAX_PCISPH_ITERATIONS)). There is NO
+//   convergence check: the IterationState buffer is never written by any
+//   kernel, per-particle density_errors are never reduced or read back, and
+//   DEFAULT_DENSITY_THRESHOLD is unreachable config. The previous header
+//   claim of "<0.1% density error after convergence" had no implementing
+//   code path. Implementing real convergence readback is T4 (research-grade)
+//   work, out of F.1 scope.
+// - The PCISPH δ stiffness coefficient uses an empirically tuned sum term
+//   (see compute_pcisph_delta), not the analytically derived value.
+// - Aspirational performance target (unmeasured): 100-200k particles @ 60
+//   FPS (Medium quality tier), 3-8 pressure iterations.
 //
 // =============================================================================
 
@@ -861,8 +869,6 @@ impl PcisphSystem {
             solver_type: match self.config.solver {
                 SolverType::PBD => 0,
                 SolverType::PCISPH => 1,
-                SolverType::DFSPH => 2,
-                SolverType::IISPH => 3,
             },
             kernel_type: match self.config.kernel_type {
                 crate::research::KernelType::CubicSpline => 0,
@@ -898,7 +904,11 @@ impl PcisphSystem {
 
         let beta = dt * dt * mass * mass * 2.0 / (rho0 * rho0);
 
-        // Empirical sum term (would be computed properly in production)
+        // KNOWN APPROXIMATION (documented F.1): the analytically correct
+        // value is the kernel-gradient sum over a prototype filled
+        // neighborhood (Solenthaler & Pajarola 2009 eq. 8). This constant is
+        // an empirical stand-in tuned for a cubic lattice; replacing it with
+        // the real precomputation is T4 work.
         let sum_term = -0.5;
 
         -1.0 / (beta * sum_term + 1e-6)
@@ -1514,9 +1524,9 @@ mod tests {
 
     #[test]
     fn test_pcisph_error_invalid_solver() {
-        let error = PcisphError::InvalidSolverType(SolverType::DFSPH);
+        let error = PcisphError::InvalidSolverType(SolverType::PBD);
         let msg = format!("{}", error);
-        assert!(msg.contains("DFSPH"));
+        assert!(msg.contains("PBD"));
     }
 
     #[test]

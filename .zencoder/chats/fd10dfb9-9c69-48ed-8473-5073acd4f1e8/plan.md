@@ -1,4 +1,4 @@
-# AstraWeave Editor: World-Class Transformation Plan
+# AstraWeave Editor: Transformation Plan
 
 This plan tracks the end-to-end transformation of `aw_editor` into a professional-grade game engine editor.
 

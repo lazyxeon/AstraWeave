@@ -4,8 +4,8 @@
 //!
 //! ## Solvers
 //! - **PCISPH**: Predictive-Corrective Incompressible SPH (Solenthaler & Pajarola 2009)
-//! - **DFSPH**: Divergence-Free SPH (Bender & Koschier 2015, 2017)
-//! - **IISPH**: Implicit Incompressible SPH (Ihmsen et al. 2014)
+//! - (DFSPH / IISPH variants removed in F.1 - no implementation existed;
+//!   CPU building blocks remain in simd_ops for a future campaign)
 //!
 //! ## Stability Features
 //! - **δ-SPH Particle Shifting**: Fixes tensile instability (Marrone et al. 2011)
@@ -22,8 +22,15 @@
 //! - **Micropolar SPH**: Particle spin for fine turbulence (optional)
 //!
 //! ## Usage
+//!
+//! This module provides the *type family* (configs, GPU layouts, quality
+//! tiers) consumed by the experimental `PcisphSystem` solver
+//! (`pcisph_system` module, feature `experimental`). There is no
+//! `ResearchFluidSystem` type — earlier doc revisions referenced one that
+//! was never implemented (corrected in Fluids-Integration F.1).
+//!
 //! ```ignore
-//! use astraweave_fluids::research::{ResearchFluidSystem, ResearchFluidConfig, SolverType};
+//! use astraweave_fluids::research::{ResearchFluidConfig, SolverType};
 //!
 //! let config = ResearchFluidConfig {
 //!     solver: SolverType::PCISPH,
@@ -31,8 +38,7 @@
 //!     enable_warm_start: true,
 //!     ..Default::default()
 //! };
-//!
-//! let system = ResearchFluidSystem::new(device, config, particle_count)?;
+//! // Consumed by pcisph_system::PcisphSystem::new (feature = "experimental").
 //! ```
 
 // ============================================================================
@@ -40,19 +46,21 @@
 // ============================================================================
 
 /// Incompressibility solver selection
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+///
+/// Only solvers with an actual implementation in this crate are listed.
+/// `DFSPH` and `IISPH` variants were removed in Fluids-Integration F.1: no
+/// solver loop existed for either (the variants were aspirational), and per
+/// the engine's anti-vapor policy enum variants must not promise
+/// capabilities that don't exist. CPU building blocks for DFSPH/IISPH remain
+/// in `simd_ops` (tested, dormant) should a future campaign implement them.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
 pub enum SolverType {
     /// Position-Based Dynamics - Fast, visual (games)
     #[default]
     PBD,
-    /// Predictive-Corrective Incompressible SPH - Balanced, simpler than DFSPH
+    /// Predictive-Corrective Incompressible SPH - Balanced
     PCISPH,
-    /// Divergence-Free SPH - Accurate (AAA games, pre-viz)
-    DFSPH,
-    /// Implicit Incompressible SPH - Most stable (research, VFX)
-    IISPH,
 }
 
 impl SolverType {
@@ -62,21 +70,18 @@ impl SolverType {
         match self {
             Self::PBD => 4,
             Self::PCISPH => 5,
-            Self::DFSPH => 3,
-            Self::IISPH => 15,
         }
     }
 
     /// Returns whether this solver benefits from warm-starting
     #[inline]
     pub const fn supports_warm_start(self) -> bool {
-        matches!(self, Self::PCISPH | Self::DFSPH | Self::IISPH)
+        matches!(self, Self::PCISPH)
     }
 }
 
 /// Viscosity solver selection
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
 pub enum ViscositySolver {
     /// XSPH - Fast, artificial (games)
@@ -97,8 +102,7 @@ impl ViscositySolver {
 }
 
 /// Particle shifting method for tensile instability
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
 pub enum ShiftingMethod {
     /// No particle shifting
@@ -111,8 +115,7 @@ pub enum ShiftingMethod {
 }
 
 /// Shear rate estimation method for non-Newtonian fluids
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
 pub enum ShearRateMethod {
     /// Strain tensor - Accurate but noisy
@@ -135,8 +138,7 @@ pub enum ShearRateMethod {
 /// # References
 /// - Wendland (1995) "Piecewise polynomial, positive definite and compactly supported radial functions"
 /// - Dehnen & Aly (2012) "Improving convergence in SPH simulations without pairing instability"
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
 pub enum KernelType {
     /// Classic cubic spline kernel (legacy compatibility)
@@ -181,8 +183,7 @@ impl KernelType {
 }
 
 /// Boundary handling method
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
 pub enum BoundaryMethod {
     /// Traditional Akinci particle sampling
@@ -195,8 +196,7 @@ pub enum BoundaryMethod {
 }
 
 /// Quality tier for performance scaling
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
 pub enum ResearchQualityTier {
     /// 50-100k particles, 60 FPS, PBD + XSPH
@@ -204,7 +204,7 @@ pub enum ResearchQualityTier {
     /// 100-200k particles, 60 FPS, PCISPH + Morris
     #[default]
     Medium,
-    /// 200-350k particles, 60 FPS, DFSPH + δ-SPH + vorticity
+    /// 200-350k particles, 60 FPS, PCISPH + δ-SPH + vorticity (was DFSPH pre-F.1)
     High,
     /// 350-500k particles, 30 FPS, full features
     Ultra,
@@ -426,7 +426,8 @@ pub struct ResearchSimParams {
     pub sor_omega: f32,
 
     // ========== Flags (16 bytes) ==========
-    /// Solver type (0=PBD, 1=PCISPH, 2=DFSPH, 3=IISPH)
+    /// Solver type (0=PBD, 1=PCISPH; codes 2/3 reserved — the DFSPH/IISPH
+    /// variants were removed in F.1, no implementation existed)
     pub solver_type: u32,
     /// Kernel type (0=CubicSpline, 1=WendlandC2, 2=WendlandC4, 3=WendlandC6)
     pub kernel_type: u32,
@@ -488,8 +489,7 @@ impl Default for ResearchSimParams {
 // ============================================================================
 
 /// Configuration for research-grade fluid simulation
-#[derive(Clone, Debug)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct ResearchFluidConfig {
     // ========== Solver Selection ==========
     /// Incompressibility solver type
@@ -624,7 +624,8 @@ impl ResearchFluidConfig {
                 ..Default::default()
             },
             ResearchQualityTier::High => Self {
-                solver: SolverType::DFSPH,
+                // F.1: was SolverType::DFSPH (variant removed - never implemented).
+                solver: SolverType::PCISPH,
                 viscosity_solver: ViscositySolver::Morris,
                 quality_tier: tier,
                 max_iterations: 15,
@@ -636,7 +637,8 @@ impl ResearchFluidConfig {
                 ..Default::default()
             },
             ResearchQualityTier::Ultra => Self {
-                solver: SolverType::DFSPH,
+                // F.1: was SolverType::DFSPH (variant removed - never implemented).
+                solver: SolverType::PCISPH,
                 viscosity_solver: ViscositySolver::ImplicitJacobi,
                 quality_tier: tier,
                 max_iterations: 25,
@@ -650,7 +652,8 @@ impl ResearchFluidConfig {
                 ..Default::default()
             },
             ResearchQualityTier::Research => Self {
-                solver: SolverType::DFSPH,
+                // F.1: was SolverType::DFSPH (variant removed - never implemented).
+                solver: SolverType::PCISPH,
                 viscosity_solver: ViscositySolver::ImplicitJacobi,
                 quality_tier: tier,
                 kernel_type: KernelType::WendlandC4, // Higher fidelity for research
@@ -686,8 +689,6 @@ impl ResearchFluidConfig {
             solver_type: match self.solver {
                 SolverType::PBD => 0,
                 SolverType::PCISPH => 1,
-                SolverType::DFSPH => 2,
-                SolverType::IISPH => 3,
             },
             kernel_type: match self.kernel_type {
                 KernelType::CubicSpline => 0,
@@ -739,8 +740,7 @@ pub struct ValidationMetrics {
 // ============================================================================
 
 /// Fluid material preset with physical properties
-#[derive(Clone, Debug)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct FluidPhase {
     /// Phase identifier
     pub id: u32,
@@ -905,15 +905,16 @@ mod tests {
         assert_eq!(low.solver, SolverType::PBD);
         assert!(!low.enable_particle_shifting);
 
-        // High tier should use DFSPH with shifting
+        // High tier uses PCISPH with shifting (was DFSPH pre-F.1; that
+        // variant was removed — no solver loop ever existed for it)
         let high = ResearchFluidConfig::from_tier(ResearchQualityTier::High);
-        assert_eq!(high.solver, SolverType::DFSPH);
+        assert_eq!(high.solver, SolverType::PCISPH);
         assert!(high.enable_particle_shifting);
         assert!(high.enable_vorticity_confinement);
 
         // Research tier should have all features
         let research = ResearchFluidConfig::from_tier(ResearchQualityTier::Research);
-        assert_eq!(research.solver, SolverType::DFSPH);
+        assert_eq!(research.solver, SolverType::PCISPH);
         assert!(research.enable_vtk_export);
         assert!(research.enable_micropolar);
     }
@@ -922,8 +923,6 @@ mod tests {
     fn test_solver_warm_start_support() {
         assert!(!SolverType::PBD.supports_warm_start());
         assert!(SolverType::PCISPH.supports_warm_start());
-        assert!(SolverType::DFSPH.supports_warm_start());
-        assert!(SolverType::IISPH.supports_warm_start());
     }
 
     #[test]
@@ -955,7 +954,7 @@ mod tests {
         let params = config.to_sim_params(100000);
 
         assert_eq!(params.particle_count, 100000);
-        assert_eq!(params.solver_type, 2); // DFSPH
+        assert_eq!(params.solver_type, 1); // PCISPH (High tier post-F.1)
         assert_eq!(params.enable_shifting, 1);
         assert_eq!(params.enable_vorticity, 1);
         assert_eq!(params.enable_warm_start, 1);
@@ -967,8 +966,6 @@ mod tests {
     fn test_solver_type_typical_iterations() {
         assert_eq!(SolverType::PBD.typical_iterations(), 4);
         assert_eq!(SolverType::PCISPH.typical_iterations(), 5);
-        assert_eq!(SolverType::DFSPH.typical_iterations(), 3);
-        assert_eq!(SolverType::IISPH.typical_iterations(), 15);
     }
 
     #[test]
@@ -1017,7 +1014,7 @@ mod tests {
     #[test]
     fn test_quality_tier_ultra() {
         let ultra = ResearchFluidConfig::from_tier(ResearchQualityTier::Ultra);
-        assert_eq!(ultra.solver, SolverType::DFSPH);
+        assert_eq!(ultra.solver, SolverType::PCISPH); // was DFSPH pre-F.1
         assert!(ultra.enable_micropolar);
         assert!(ultra.enable_implicit_air);
         assert_eq!(ultra.shifting_method, ShiftingMethod::InterfaceAware);
@@ -1103,12 +1100,14 @@ mod tests {
     }
 
     #[test]
-    fn test_config_to_sim_params_iisph() {
+    fn test_config_to_sim_params_pcisph() {
+        // (Was test_config_to_sim_params_iisph; the IISPH variant was
+        // removed in F.1 — no solver loop existed for it.)
         let mut config = ResearchFluidConfig::default();
-        config.solver = SolverType::IISPH;
+        config.solver = SolverType::PCISPH;
         let params = config.to_sim_params(100);
 
-        assert_eq!(params.solver_type, 3); // IISPH
+        assert_eq!(params.solver_type, 1); // PCISPH
     }
 
     #[test]

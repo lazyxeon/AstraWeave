@@ -8,15 +8,15 @@ alwaysApply: true
 
 ## Summary
 
-**AstraWeave** is a deterministic, ECS-based game engine in Rust where AI agents are first-class citizens. Built entirely through AI-generated iterative prompting, it demonstrates production-ready infrastructure with 82+ crates, advanced rendering (wgpu 25.0.2), deterministic physics (Rapier3D with spatial hash), sophisticated AI orchestration (GOAP, behavior trees, Hermes 2 Pro LLM integration), and comprehensive testing (96.9% determinism validation, 166+ tests passing).
+**AstraWeave** is a deterministic, ECS-based game engine in Rust where AI agents are first-class citizens. Built entirely through AI-generated iterative prompting, it spans 130 workspace members <!-- Source: CLAIMS_REGISTRY.md#workspace-members -->, wgpu 25.0.2 rendering, Rapier3D physics, AI orchestration (GOAP, behavior trees, local LLM via Ollama with `phi3:medium` as the runtime default), and extensive testing (96.9% determinism validation, 166+ tests passing).
 
 ## Repository Structure
 
-### Core Engine (Production-Ready)
-- **astraweave-ecs**: Archetype-based ECS with 7 deterministic system stages
-- **astraweave-ai**: AI orchestrator, core loop, tool sandbox, 6 planning modes (Classical, BehaviorTree, Utility, LLM, Hybrid, Ensemble)
+### Core Engine
+- **astraweave-ecs**: Archetype-based ECS with 8 deterministic system stages (incl. SYNC)
+- **astraweave-ai**: AI orchestrator, core loop, tool sandbox, 7 planning modes (feature-gated) <!-- Source: CLAIMS_REGISTRY.md#ai-modes -->
 - **astraweave-render**: wgpu 25.0.2 renderer with PBR materials, GPU skinning, LODs, mesh optimization
-- **astraweave-physics**: Rapier3D integration, character controller, spatial hash (99.96% optimization)
+- **astraweave-physics**: Rapier3D integration, character controller; in-crate `SpatialHash` module is dormant (live broadphase is Rapier `DefaultBroadPhase`)
 - **astraweave-nav**: Navmesh pathfinding with A* and portal graphs
 - **astraweave-math**: SIMD-optimized vectors/matrices (2.08× speedup @ 10k entities)
 - **astraweave-terrain**: Hybrid voxel/polygon with marching cubes mesh generation
@@ -33,7 +33,7 @@ alwaysApply: true
 ### Tools & Examples
 - **tools/aw_editor**: 14-panel level/encounter editor (egui-wgpu)
 - **tools/aw_asset_cli**: Asset pipeline and material management
-- **tools/ollama_probe**: LLM connectivity validator (Hermes 2 Pro)
+- **tools/ollama_probe**: LLM connectivity validator (local LLM via Ollama)
 - **examples/**: 40+ working examples (hello_companion, profiling_demo, unified_showcase, astract_gallery)
 
 ### Recent Additions (Phase 8.1)
@@ -52,7 +52,7 @@ alwaysApply: true
 
 **Graphics**: wgpu 25.0.2, egui 0.32, winit 0.30, glam 0.30  
 **Physics**: rapier3d 0.22, rand/rand_chacha 0.9 (deterministic RNG)  
-**AI/LLM**: Hermes 2 Pro via Ollama, rhai 1.23 (scripting)  
+**AI/LLM**: local LLM via Ollama (`phi3:medium` runtime default; Hermes/Qwen opt-in via `OLLAMA_MODEL`), rhai 1.23 (scripting)  
 **Async**: tokio 1.x, tungstenite 0.28 (WebSocket)  
 **Serialization**: serde 1, serde_json 1, toml 0.9, zip 6.0  
 **Audio**: rodio 0.17 (spatial audio)  
@@ -68,10 +68,10 @@ alwaysApply: true
 
 # Core build (2-5 min first build, 8-15s incremental)
 cargo build -p astraweave-ecs -p astraweave-ai -p astraweave-physics -p astraweave-nav -p astraweave-render
-cargo build-working      # All working crates (alias)
+cargo build --workspace  # All crates
 
 # Development workflow
-cargo fmt --all && cargo clippy-all && cargo test-all
+cargo fmt --all && cargo clippy --workspace --all-features -- -D warnings && cargo test --workspace
 make dev                 # Comprehensive check
 ```
 
@@ -95,7 +95,7 @@ cargo bench -p astraweave-math         # Benchmarks (SIMD)
 ## Main Entry Points
 
 **Working Examples**:
-- `hello_companion` (Phase 6): All 6 AI modes + Hermes 2 Pro LLM
+- `hello_companion`: All 7 AI modes (feature-gated) <!-- Source: CLAIMS_REGISTRY.md#ai-modes --> + local LLM via Ollama
 - `profiling_demo`: Week 8 performance profiling with Tracy
 - `astract_gallery`: UI framework showcase (Astract Gizmo complete)
 - `unified_showcase`: Island + assets + rendering + physics
@@ -125,8 +125,8 @@ cargo build --target x86_64-unknown-linux-gnu --release
 
 **Version**: 0.4.0  
 **License**: MIT  
-**Status**: Production-ready infrastructure (Phase 6 complete, Phase 8 UI Framework in progress)  
-**Generation**: 100% AI-generated (82+ crates, ~150K LOC via iterative GitHub Copilot)  
+**Status**: Phase 6 complete, Phase 8 UI Framework in progress (dated Nov 2025; see `docs/current/PROJECT_STATUS.md` for current state)  
+**Generation**: 100% AI-generated — 130 workspace members <!-- Source: CLAIMS_REGISTRY.md#workspace-members --> via iterative AI development  
 **Updated**: November 10, 2025
 
 ## Documentation

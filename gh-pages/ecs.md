@@ -11,7 +11,7 @@ AstraWeave's ECS is an archetype-based system with deterministic execution order
 
 - **Archetype storage**: Components grouped by type-set for cache-friendly iteration
 - **Deterministic ordering**: Fixed 60 Hz tick with ordered entity iteration
-- **System stages**: 7 stages executed in strict sequence every frame
+- **System stages**: 8 stages executed in strict sequence every frame
 - **Events**: Typed event channels for decoupled inter-system communication
 - **Generation-based entity IDs**: Prevents use-after-free with generational indices
 - **Miri-validated**: 330 tests with zero undefined behavior

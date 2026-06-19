@@ -55,4 +55,4 @@ Additional observations:
 3. **Prefab hierarchy** – serialization ignores child graphs, so prefabs cannot yet satisfy “hierarchical overrides” requirements and will corrupt multi-entity selections.
 4. **Hot-reload coverage** - watcher/file-change tests remain disabled, so the editor's asset pipeline can regress without detection.
 
-These findings should remain pinned at the top of Phase 0 checklists; once the above four bullets are addressed, we can promote the world-class roadmap back to source-of-truth status.
+These findings should remain pinned at the top of Phase 0 checklists; once the above four bullets are addressed, we can promote the roadmap back to source-of-truth status.

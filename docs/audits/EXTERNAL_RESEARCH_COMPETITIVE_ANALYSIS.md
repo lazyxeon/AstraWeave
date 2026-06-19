@@ -8,15 +8,15 @@
 
 ## Executive Summary
 
-AstraWeave is a **world-class AI-native game engine** that **exceeds industry standards** in core systems (ECS, AI, Physics, Rendering) while having **critical gaps** in production tooling (Editor, CI/CD, Crash Reporting). This analysis compares AstraWeave against Bevy, Unreal, Unity, and Godot across 5 dimensions: Architecture, Performance, Testing, Security, and Production Readiness.
+AstraWeave is an **AI-native game engine** with mature core systems (ECS, AI, Physics, Rendering) while having **critical gaps** in production tooling (Editor, CI/CD, Crash Reporting). This analysis compares AstraWeave against Bevy, Unreal, Unity, and Godot across 5 dimensions: Architecture, Performance, Testing, Security, and Production Readiness.
 
-**Overall Grade**: **A- (92/100)** - Production-ready core with tooling gaps
+**Overall Grade**: **A- (92/100)** - mature core with tooling gaps
 
 **Key Findings**:
-- ✅ **Exceeds Standards**: ECS design (96.67%), AI orchestration (12,700 agents), rendering pipeline (AAA-grade)
+- ✅ **Exceeds Standards**: ECS design (96.67%), AI orchestration (12,700 agents), rendering pipeline
 - ✅ **Matches Standards**: Test coverage (71.37% vs 60-70% industry), performance (60 FPS @ 1k entities)
 - ⚠️ **Falls Short**: Editor (non-functional), CI/CD (basic), crash reporting (missing), mobile support (none)
-- 🚀 **Unique Innovations**: AI-first architecture, 6 planning modes, deterministic ECS with replay, GOAP+LLM hybrid
+- 🚀 **Unique Innovations**: AI-first architecture, 7 modes (feature-gated) <!-- Source: CLAIMS_REGISTRY.md#ai-modes -->, deterministic ECS with replay, GOAP+LLM hybrid
 
 ---
 
@@ -38,7 +38,7 @@ AstraWeave is a **world-class AI-native game engine** that **exceeds industry st
 | **Archetype Storage** | ✅ Yes | ✅ Yes | TIE |
 | **Determinism** | ❌ No | ✅ Yes (seeded RNG, replay) | **AstraWeave** |
 | **ECS Coverage** | ~60-70% (estimated) | 96.67% (measured) | **AstraWeave** |
-| **System Scheduling** | Flexible (Update/FixedUpdate) | 7-stage fixed pipeline | Bevy (more flexible) |
+| **System Scheduling** | Flexible (Update/FixedUpdate) | 8-stage pipeline (incl. SYNC) | Bevy (more flexible) |
 | **Event System** | ✅ Yes | ✅ Yes | TIE |
 | **Plugin Ecosystem** | 400+ plugins | ❌ None | **Bevy** |
 | **Editor** | ✅ Third-party (bevy_editor_pls) | ❌ Broken | **Bevy** |
@@ -90,7 +90,7 @@ AstraWeave is a **world-class AI-native game engine** that **exceeds industry st
 | **Draw Call Budget** | 5k-10k | 3k-5k | 1k-3k | 4.2k-5k (measured) | ⭐⭐⭐⭐⭐ |
 | **Frame Time** | <16.67ms | <16.67ms | <16.67ms | 1.2-1.4ms (84% headroom) | ⭐⭐⭐⭐⭐ |
 
-**Verdict**: AstraWeave rendering pipeline is **AAA-grade** and **matches/exceeds Unity HDRP** in feature parity. Slightly behind Unreal 5's GPU-driven rendering but **ahead of Godot 4**.
+**Verdict**: AstraWeave rendering pipeline implements a broad PBR feature set. It lacks Unreal 5's GPU-driven rendering.
 
 **Coverage**: 65.89% (350 tests) - **GOOD** for a GPU-heavy crate (industry standard is 50-70% for rendering systems)
 
@@ -125,16 +125,16 @@ AstraWeave is a **world-class AI-native game engine** that **exceeds industry st
 |---------|----------|-----------|----------|------------|-------|
 | **Behavior Trees** | ✅ | ✅ Visual | ✅ | ✅ 6 modes | ⭐⭐⭐⭐⭐ |
 | **GOAP Planning** | ❌ | ❌ | ❌ | ✅ 97.9% cache hit | ⭐⭐⭐⭐⭐ |
-| **LLM Integration** | ❌ | ❌ | ❌ | ✅ Hermes 2 Pro | **UNIQUE** |
+| **LLM Integration** | ❌ | ❌ | ❌ | ✅ phi3:medium default (Hermes opt-in) | ✅ |
 | **Utility AI** | ❌ | ❌ | ❌ | ✅ Scoring system | ⭐⭐⭐⭐⭐ |
 | **Hybrid Planning** | ❌ | ❌ | ❌ | ✅ GOAP+LLM | **UNIQUE** |
 | **Ensemble Mode** | ❌ | ❌ | ❌ | ✅ Multi-mode orchestration | **UNIQUE** |
-| **Agent Capacity** | 1,000-5,000 | 100-500 | 100-500 | 12,700 @ 60 FPS | ⭐⭐⭐⭐⭐ |
+| **Agent Capacity** | — | — | — | 12,700 @ 60 FPS <!-- Source: CLAIMS_REGISTRY.md#agents-capacity-60fps (PENDING-D2) --> | ✅ |
 | **Perception System** | ✅ Sensors | ✅ Sight/Hearing | ❌ | ✅ WorldSnapshot | ⭐⭐⭐⭐⭐ |
 | **ML Training** | ✅ Python | ❌ | ❌ | ❌ (runtime only) | Unity wins |
 | **Coverage** | Unknown | Unknown | Unknown | 97.39% (103 tests) | ⭐⭐⭐⭐⭐ |
 
-**Verdict**: AstraWeave has **world-leading AI orchestration** with unique LLM/GOAP hybrid modes. **Far exceeds** industry standards in runtime AI complexity. Missing offline training pipeline (planned).
+**Verdict**: AstraWeave provides LLM/GOAP hybrid runtime AI orchestration modes. Missing offline training pipeline (planned).
 
 ---
 
@@ -159,7 +159,7 @@ AstraWeave is a **world-class AI-native game engine** that **exceeds industry st
 | **Navigation** | <0.67ms | 2.44 µs | **99.64%** | ⭐⭐⭐⭐⭐ |
 | **TOTAL** | 16.67ms | **2.70ms @ 1k entities** | **84%** | ⭐⭐⭐⭐⭐ |
 
-**Verdict**: AstraWeave **vastly exceeds AAA standards** for frame time budget. 84% headroom allows 3-5× entity scaling or complex gameplay systems. **LLM mode requires async** (acknowledged, planned).
+**Verdict**: AstraWeave stays within the frame time budget, with 84% headroom reported. **LLM mode requires async** (acknowledged, planned).
 
 ---
 
@@ -248,7 +248,7 @@ AstraWeave is a **world-class AI-native game engine** that **exceeds industry st
 | **P1-C/D Support** | 72.02% | 50-60% | ✅ EXCEEDS |
 | **P2 LLM Support** | 42.63% | 60%+ | ⚠️ BELOW |
 
-**Verdict**: AstraWeave **exceeds industry standards** for test coverage in core systems (96.43% infrastructure is **world-class**). **Matches or exceeds Google/Microsoft** standards overall.
+**Verdict**: AstraWeave reports test coverage of 96.43% for infrastructure in core systems.
 
 ---
 
@@ -322,8 +322,8 @@ AstraWeave is a **world-class AI-native game engine** that **exceeds industry st
 **AstraWeave Security**:
 | Feature | Industry Standard | AstraWeave | Grade |
 |---------|-------------------|------------|-------|
-| **Network Encryption** | TLS 1.3 | ✅ TLS 1.3 | ⭐⭐⭐⭐⭐ |
-| **Signing** | Ed25519/RSA | ✅ Ed25519 | ⭐⭐⭐⭐⭐ |
+| **Network Encryption** | TLS 1.3 | ⚠️ WebSocket (tokio-tungstenite), no TLS termination in-engine | ⭐⭐⭐ |
+| **Signing** | Ed25519/RSA | ✅ HMAC-SHA256 (sign16 deleted) | ⭐⭐⭐⭐ |
 | **Input Validation** | Sanitize all | ✅ Sandbox validation (37 tools) | ⭐⭐⭐⭐⭐ |
 | **Path Validation** | Strict sandboxing | ✅ astraweave-security crate | ⭐⭐⭐⭐⭐ |
 | **Deserialization** | Limit depth/size | ✅ Postcard (safe binary format) | ⭐⭐⭐⭐⭐ |
@@ -347,11 +347,11 @@ AstraWeave is a **world-class AI-native game engine** that **exceeds industry st
 **AstraWeave Networking**:
 - ✅ **Delta Encoding**: 77.5 ns per entity
 - ✅ **LZ4 Compression**: 5.1 GB/s throughput
-- ✅ **TLS 1.3**: Encrypted WebSocket (tokio + tungstenite)
+- ✅ **WebSocket Transport**: tokio + tungstenite; signing via HMAC-SHA256 (no in-engine TLS termination)
 - ❌ **Rate Limiting**: Not implemented
 - ❌ **Server Authority**: Partial (client prediction exists)
 
-**Verdict**: AstraWeave networking is **production-ready** for compression/encryption, **missing rate limiting** and **full authority**.
+**Verdict**: AstraWeave networking is **functional** for compression/signing, **missing rate limiting** and **full authority**.
 
 ---
 
@@ -446,7 +446,7 @@ AstraWeave is a **world-class AI-native game engine** that **exceeds industry st
 | **Internal Docs** | 997 journey logs | ⭐⭐⭐⭐⭐ |
 | **Video Tutorials** | None | ❌ |
 
-**Verdict**: AstraWeave **internal docs are world-class**, **user-facing docs are weak**. Needs 4 weeks for user guides (planned in roadmap).
+**Verdict**: AstraWeave **internal docs are extensive**, **user-facing docs are weak**. Needs 4 weeks for user guides (planned in roadmap).
 
 ---
 
@@ -475,17 +475,17 @@ AstraWeave is a **world-class AI-native game engine** that **exceeds industry st
 ### 6.2 Strengths vs Competitors
 
 **AstraWeave Exceeds Standards**:
-1. **AI Orchestration**: 12,700 agents @ 60 FPS (10× industry standard)
+1. **AI Orchestration**: 12,700 agents @ 60 FPS <!-- Source: CLAIMS_REGISTRY.md#agents-capacity-60fps (PENDING-D2) -->
 2. **Test Coverage**: 71.37% overall, 96.43% infrastructure (best-in-class)
 3. **Determinism**: 100% replay capability (unique to AstraWeave)
 4. **ECS Performance**: 96.67% coverage, 192k entities estimated (matches Bevy)
-5. **Rendering Quality**: AAA features (matches Unity HDRP, exceeds Godot 4)
-6. **Frame Time**: 2.70ms @ 1k entities (84% headroom, world-class)
+5. **Rendering Quality**: broad PBR feature set (matches Unity HDRP, exceeds Godot 4)
+6. **Frame Time**: 2.70ms @ 1k entities (84% headroom)
 
 **AstraWeave Matches Standards**:
 1. **Physics**: Rapier3D integration (matches Unity/Godot, below Unreal)
 2. **Navigation**: A* pathfinding (standard implementation)
-3. **Security**: TLS 1.3, Ed25519 (industry standard)
+3. **Security**: WebSocket transport (no in-engine TLS), HMAC-SHA256 signing
 4. **Networking**: Delta encoding, LZ4 compression (standard practices)
 
 **AstraWeave Falls Short**:
@@ -528,8 +528,8 @@ AstraWeave is a **world-class AI-native game engine** that **exceeds industry st
 
 1. **AI-First Architecture** ⭐⭐⭐⭐⭐
    - Perception → Reasoning → Planning → Action → Validation pipeline
-   - 6 planning modes (Classical, BT, Utility, LLM, Hybrid, Ensemble)
-   - **No competitor has this** (Unity ML-Agents is training-only, not runtime)
+   - 7 modes (feature-gated) (Classical, BT, Utility, LLM, Hybrid, Ensemble) <!-- Source: CLAIMS_REGISTRY.md#ai-modes -->
+   - **No direct competitor equivalent identified** (Unity ML-Agents is training-only, not runtime)
 
 2. **Deterministic ECS with Replay** ⭐⭐⭐⭐⭐
    - 100% bit-identical replay (seeded RNG, fixed timestep)
@@ -539,17 +539,15 @@ AstraWeave is a **world-class AI-native game engine** that **exceeds industry st
 3. **GOAP+LLM Hybrid Planning** ⭐⭐⭐⭐⭐
    - GOAP for fast tactical planning (0.20ms)
    - LLM for creative reasoning (3,462ms, async)
-   - **World-first implementation** (no other engine has this)
 
 4. **37-Tool Sandbox Validation** ⭐⭐⭐⭐⭐
    - All AI actions validated before execution
    - Prevents invalid states (safety-first design)
    - **Unique security model** (Unity/Unreal don't sandbox AI)
 
-5. **Production-Grade Test Coverage** ⭐⭐⭐⭐⭐
+5. **Test Coverage** ⭐⭐⭐⭐⭐
    - 71.37% overall, 96.43% infrastructure
    - 1,545 tests, 182 benchmarks
-   - **Exceeds Bevy/Unity/Unreal** (they don't publish coverage)
 
 6. **Benchmark Dashboard** ⭐⭐⭐⭐
    - Interactive D3.js charts, regression detection
@@ -634,8 +632,8 @@ AstraWeave is a **world-class AI-native game engine** that **exceeds industry st
 | Category | Score | Grade | Reasoning |
 |----------|-------|-------|-----------|
 | **Architecture** | 98/100 | A+ | ECS design exceeds Bevy, determinism unique |
-| **Performance** | 95/100 | A | Frame time world-class, LLM async needed |
-| **Testing** | 96/100 | A+ | Coverage exceeds industry (71.37% vs 60-70%) |
+| **Performance** | 95/100 | A | Frame time within budget, LLM async needed |
+| **Testing** | 96/100 | A+ | Coverage 71.37% (vs typical 60-70%) |
 | **Security** | 92/100 | A- | Foundations excellent, anti-cheat missing |
 | **Production** | 65/100 | C | Editor broken, CI/CD basic, crash reporting missing |
 | **Ecosystem** | 40/100 | F | No plugins, no asset store, pre-1.0 |
@@ -655,7 +653,7 @@ AstraWeave is a **world-class AI-native game engine** that **exceeds industry st
 
 **Best-in-Class**:
 1. AI Orchestration (no competitor comes close)
-2. Test Coverage (96.43% infrastructure is world-class)
+2. Test Coverage (96.43% infrastructure)
 3. Determinism (unique to AstraWeave)
 4. Frame Time (84% headroom is exceptional)
 
@@ -693,12 +691,12 @@ AstraWeave is a **world-class AI-native game engine** that **exceeds industry st
 
 ## 10. Conclusion
 
-**AstraWeave is a world-class AI-native game engine** with **exceptional core systems** (ECS, AI, Rendering, Physics) and **critical tooling gaps** (Editor, Scripting, CI/CD). It **exceeds industry standards** in architecture quality, test coverage, and AI orchestration, while **falling short** in production readiness and ecosystem maturity.
+**AstraWeave is an AI-native game engine** with **mature core systems** (ECS, AI, Rendering, Physics) and **critical tooling gaps** (Editor, Scripting, CI/CD). It **exceeds industry standards** in architecture quality, test coverage, and AI orchestration, while **falling short** in production readiness and ecosystem maturity.
 
 **Key Takeaways**:
-1. ✅ **Core Engine**: Production-ready (96.43% infrastructure coverage, 60 FPS @ 12,700 agents)
-2. ✅ **Rendering**: AAA-grade (matches Unity HDRP, exceeds Godot 4)
-3. ✅ **AI**: World-leading (GOAP+LLM hybrid, 6 planning modes, unique to AstraWeave)
+1. ✅ **Core Engine**: Mature (96.43% infrastructure coverage, 60 FPS @ 12,700 agents)
+2. ✅ **Rendering**: broad PBR feature set (matches Unity HDRP, exceeds Godot 4)
+3. ✅ **AI**: GOAP+LLM hybrid, 7 modes (feature-gated), unique to AstraWeave <!-- Source: CLAIMS_REGISTRY.md#ai-modes -->
 4. ⚠️ **Editor**: Broken (4-6 weeks to fix, 3-6 months to match Unity)
 5. ⚠️ **Ecosystem**: Pre-1.0 (no plugins, no asset store, limited examples)
 
@@ -708,7 +706,7 @@ AstraWeave is a **world-class AI-native game engine** that **exceeds industry st
 3. **Mid-Term** (6-12 months): Mobile support, multiplayer authority, visual scripting
 4. **Long-Term** (12-24 months): VR/XR, asset store, console ports
 
-**Verdict**: AstraWeave is **3-4 months from production release** (with focused effort on Editor + Scripting), and **12-18 months from AAA parity** (with Mobile + VR + Ecosystem). The core technology is **world-class**, and the tooling gaps are **solvable** with engineering investment.
+**Verdict**: AstraWeave is **3-4 months from production release** (with focused effort on Editor + Scripting), and **12-18 months from AAA parity** (with Mobile + VR + Ecosystem). The core technology is **mature**, and the tooling gaps are **solvable** with engineering investment.
 
 ---
 

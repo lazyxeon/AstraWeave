@@ -39,7 +39,7 @@
 
 ## Week 1: Audio Mixer & Bus System
 
-**Goal**: Expose existing bus infrastructure as production-ready mixer
+**Goal**: Expose existing (in-design) bus infrastructure as a mixer
 
 ### Day 1-2: Audio Bus Architecture
 

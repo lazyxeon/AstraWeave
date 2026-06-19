@@ -18,8 +18,8 @@ title: Development Setup
 
 ```bash
 # Clone the repository
-git clone https://github.com/lazyxeon/AstraWeave-AI-Native-Gaming-Engine.git
-cd AstraWeave-AI-Native-Gaming-Engine
+git clone https://github.com/lazyxeon/AstraWeave.git
+cd AstraWeave
 
 # First build (15-45 min — wgpu + graphics dependencies)
 cargo build
@@ -81,9 +81,10 @@ cargo run -p weaving_playground --release
 To use LLM-powered AI features:
 
 1. Install [Ollama](https://ollama.ai)
-2. Pull the Qwen3-8B model:
+2. Pull a model. The runtime default is `phi3:medium`; Qwen3-8B is opt-in via `OLLAMA_MODEL`:
    ```bash
-   ollama pull qwen3:8b
+   ollama pull phi3:medium      # runtime default
+   ollama pull qwen3:8b         # opt-in: set OLLAMA_MODEL=qwen3:8b
    ```
 3. Run with LLM features:
    ```bash
@@ -144,7 +145,7 @@ rustflags = ["-C", "link-args=/STACK:16777216"]
 ## Project Structure
 
 ```
-AstraWeave-AI-Native-Gaming-Engine/
+AstraWeave/
 ├── astraweave-ai/          # AI orchestration (GOAP + BT + LLM)
 ├── astraweave-ai-gen/      # AI generation utilities
 ├── astraweave-asset/       # Asset loading and management

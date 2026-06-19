@@ -4,7 +4,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](../../LICENSE)
 [![Rust](https://img.shields.io/badge/rust-1.89%2B-orange.svg)](https://www.rust-lang.org/)
-[![Assets](https://img.shields.io/badge/Assets-183K%2B-green.svg)](https://github.com/lazyxeon/AstraWeave-AI-Native-Gaming-Engine)
+[![Assets](https://img.shields.io/badge/Assets-183K%2B-green.svg)](https://github.com/lazyxeon/AstraWeave)
 [![Tests](https://img.shields.io/badge/Tests-50%2F50-success.svg)](./tests/)
 
 ---
@@ -528,7 +528,7 @@ Issues and PRs welcome! This tool was built entirely by AI (GitHub Copilot) as p
 
 - **PolyHaven**: https://polyhaven.com/
 - **API Docs**: https://api.polyhaven.com/
-- **AstraWeave**: https://github.com/lazyxeon/AstraWeave-AI-Native-Gaming-Engine
+- **AstraWeave**: https://github.com/lazyxeon/AstraWeave
 
 ---
 

@@ -1,6 +1,6 @@
 # AstraWeave Blend Import System
 
-Production-grade Blender `.blend` file import system for the AstraWeave game engine.
+Blender `.blend` file import system for the AstraWeave game engine.
 
 ## Overview
 

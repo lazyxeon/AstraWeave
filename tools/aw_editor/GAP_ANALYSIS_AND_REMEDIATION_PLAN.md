@@ -10,7 +10,7 @@
 
 ## Executive Summary
 
-The AstraWeave visual editor (`tools/aw_editor/`) has been subjected to a comprehensive multi-agent analysis spanning architecture, rendering, testing, and industry benchmarking. While the editor achieves **76/89 (85%) feature parity** with world-class editors (Unity, Unreal, Godot), critical gaps in stability, viewport rendering, and asset pipeline integration prevent production readiness.
+The AstraWeave visual editor (`tools/aw_editor/`) has been subjected to a multi-agent analysis spanning architecture, rendering, testing, and industry benchmarking. While the editor achieves **76/89 (85%) feature parity** with world-class editors (Unity, Unreal, Godot), critical gaps in stability, viewport rendering, and asset pipeline integration prevent production readiness.
 
 ### Key Findings
 

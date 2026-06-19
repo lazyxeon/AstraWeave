@@ -8,7 +8,7 @@
 
 ## Executive Summary
 
-AstraWeave has an **exceptional documentation foundation** with 1,078+ files and 2M+ words of content, but the GitHub Pages deployment requires significant infrastructure improvements to achieve production-grade quality. This plan addresses:
+AstraWeave has a **documentation foundation** with 1,078+ files and 2M+ words of content, but the GitHub Pages deployment requires significant infrastructure improvements to achieve production-grade quality. This plan addresses:
 
 - **CRITICAL**: Deployment conflict between two workflows that destroys content
 - **Content Gaps**: 40-50% of mdBook pages are stubs
@@ -113,8 +113,8 @@ Critical Stubs (All Core Systems):
 ```
 
 **Result**:
-- mdBook docs at: `https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/`
-- Benchmarks at: `https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/benchmarks/`
+- mdBook docs at: `https://lazyxeon.github.io/AstraWeave/`
+- Benchmarks at: `https://lazyxeon.github.io/AstraWeave/benchmarks/`
 
 **Effort**: 15 minutes
 
@@ -177,8 +177,8 @@ Also fix line 85 (broken roadmap link):
 1. Push changes to main branch
 2. Wait for both workflows to complete
 3. Verify both URLs accessible:
-   - https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/
-   - https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/benchmarks/
+   - https://lazyxeon.github.io/AstraWeave/
+   - https://lazyxeon.github.io/AstraWeave/benchmarks/
 
 **Effort**: 30 minutes (including wait time)
 
@@ -241,7 +241,7 @@ The page you're looking for doesn't exist or has been moved.
 ## Need Help?
 - [FAQ](./resources/faq.md)
 - [Troubleshooting](./resources/troubleshooting.md)
-- [Report a broken link](https://github.com/lazyxeon/AstraWeave-AI-Native-Gaming-Engine/issues/new?labels=documentation)
+- [Report a broken link](https://github.com/lazyxeon/AstraWeave/issues/new?labels=documentation)
 ```
 
 **Update `docs/book.toml`**:
@@ -452,7 +452,7 @@ additional-css = ["theme/clipboard.css"]
 **Update `docs/book.toml`**:
 ```toml
 [output.html]
-description = "Comprehensive documentation for AstraWeave, the first AI-native game engine built in Rust with deterministic ECS architecture."
+description = "Comprehensive documentation for AstraWeave, an AI-native game engine built in Rust with deterministic ECS architecture."
 
 [output.html.search]
 enable = true
@@ -477,14 +477,14 @@ copy-js = true
 **Update `docs/book.toml`**:
 ```toml
 [output.sitemap]
-hostname = "https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine"
+hostname = "https://lazyxeon.github.io/AstraWeave"
 ```
 
 **Create `docs/src/robots.txt`**:
 ```
 User-agent: *
 Allow: /
-Sitemap: https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/sitemap.xml
+Sitemap: https://lazyxeon.github.io/AstraWeave/sitemap.xml
 ```
 
 **Effort**: 30 minutes
@@ -512,9 +512,9 @@ Or for self-hosted analytics, use Umami.
 **Create `docs/theme/head.hbs`** (custom template):
 ```html
 <meta property="og:title" content="AstraWeave Documentation">
-<meta property="og:description" content="The first AI-native game engine built in Rust">
-<meta property="og:image" content="https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/assets/og-image.png">
-<meta property="og:url" content="https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/">
+<meta property="og:description" content="An AI-native game engine built in Rust">
+<meta property="og:image" content="https://lazyxeon.github.io/AstraWeave/assets/og-image.png">
+<meta property="og:url" content="https://lazyxeon.github.io/AstraWeave/">
 <meta name="twitter:card" content="summary_large_image">
 ```
 
@@ -721,7 +721,7 @@ docs/src/
 
 ## Conclusion
 
-This plan transforms AstraWeave's GitHub Pages from a basic mdBook deployment with critical infrastructure conflicts into a **production-grade, world-class documentation site** comparable to the best Rust ecosystem projects.
+This plan transforms AstraWeave's GitHub Pages from a basic mdBook deployment with critical infrastructure conflicts into a **production-grade documentation site** comparable to the best Rust ecosystem projects.
 
 **Key Takeaways**:
 1. **Fix deployment conflict IMMEDIATELY** (15 min) - Prevents content destruction

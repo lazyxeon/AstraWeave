@@ -134,19 +134,19 @@ Use the convenient cargo aliases for local development:
 
 ```bash
 # Check workspace (excluding problematic crates)
-cargo check-all
+cargo check --workspace
 
 # Run tests on working components
-cargo test-all
+cargo test --workspace
 
 # Build core components
-cargo build-core
+cargo build -p astraweave-core -p astraweave-ecs -p astraweave-math -p astraweave-ai
 
 # Build working examples
-cargo build-working
+cargo build --workspace
 
 # Run clippy on all working code
-cargo clippy-all
+cargo clippy --workspace --all-features -- -D warnings
 ```
 
 ### Manual CI Triggers

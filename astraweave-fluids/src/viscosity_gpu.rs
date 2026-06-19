@@ -28,7 +28,10 @@ pub const DEFAULT_IMPLICIT_TOLERANCE: f32 = 1e-4;
 // =============================================================================
 
 /// GPU-side viscosity parameters uniform buffer
-/// Must match ViscosityParams in viscosity_morris.wgsl exactly
+///
+/// Intended layout for a future viscosity shader. (The previously referenced
+/// `viscosity_morris.wgsl` was an orphan with no consumer and was deleted in
+/// F.1; this module remains CPU-side scaffolding behind `experimental`.)
 #[repr(C)]
 #[derive(Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct ViscosityParamsGpu {

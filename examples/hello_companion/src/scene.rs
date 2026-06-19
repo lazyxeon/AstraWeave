@@ -42,7 +42,7 @@ impl DemoMode {
     /// Get display name for UI
     pub fn display_name(&self) -> &'static str {
         match self {
-            DemoMode::PureLlm => "Pure LLM (Qwen3-8B)",
+            DemoMode::PureLlm => "Pure LLM (Qwen)",
             DemoMode::PureGoap => "Pure GOAP (Scripted)",
             DemoMode::Arbiter => "Arbiter (GOAP + LLM Hybrid)",
         }

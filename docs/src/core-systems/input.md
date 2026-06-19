@@ -89,9 +89,9 @@ binding set with no diagnostic indication of what failed.
 
 ## Further reading
 
-* [`input.md`](https://github.com/lazyxeon/AstraWeave-AI-Native-Gaming-Engine/blob/main/docs/architecture/input.md) — full input-system trace (file map, conflict map, decision log,
+* [`input.md`](https://github.com/lazyxeon/AstraWeave/blob/main/docs/architecture/input.md) — full input-system trace (file map, conflict map, decision log,
   invariants, open questions).
-* [`ARCHITECTURE_MAP.md`](https://github.com/lazyxeon/AstraWeave-AI-Native-Gaming-Engine/blob/main/docs/architecture/ARCHITECTURE_MAP.md) §2.3 (anomaly 8), §7.1, §14 (Q21, Q22).
+* [`ARCHITECTURE_MAP.md`](https://github.com/lazyxeon/AstraWeave/blob/main/docs/architecture/ARCHITECTURE_MAP.md) §2.3 (anomaly 8), §7.1, §14 (Q21, Q22).
 * **Interactive workspace map** — select `astraweave-input` to see the
   declared-but-unused dependency edges from `astraweave-gameplay` and
   `astraweave-ui` rendered as dashed/tee-terminated lines.

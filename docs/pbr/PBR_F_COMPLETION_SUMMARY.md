@@ -9,7 +9,7 @@
 
 ## Executive Summary
 
-Phase PBR-F successfully implements a **production-ready terrain layering system** with multi-layer blending, triplanar projection, and advanced normal map blending. The system supports up to **4 material layers** per terrain patch with seamless transitions, height-based blending, and slope-adaptive projection.
+Phase PBR-F successfully implements a **terrain layering system** with multi-layer blending, triplanar projection, and advanced normal map blending. The system supports up to **4 material layers** per terrain patch with seamless transitions, height-based blending, and slope-adaptive projection.
 
 **Key Achievements**:
 - ✅ **36/36 tests passing** (100% success rate)
@@ -42,7 +42,7 @@ Phase PBR-F successfully implements a **production-ready terrain layering system
 
 ## Technical Accomplishments
 
-### 1. GPU Memory Layout (Production-Ready)
+### 1. GPU Memory Layout
 
 **TerrainLayerGpu** (64 bytes, Pod/Zeroable):
 - Texture indices: [albedo, normal, orm, height]
@@ -236,7 +236,7 @@ test result: ok. 36 passed; 0 failed; 0 ignored; 0 measured
 - [x] Per-layer UV scaling allows independent tiling
 - [x] TOML schema artist-friendly
 - [x] Comprehensive testing (36/36 tests passing)
-- [x] Production-ready documentation
+- [x] Comprehensive documentation
 
 ---
 
@@ -403,7 +403,7 @@ test result: ok. 36 passed; 0 failed; 0 ignored
 
 ## Phase PBR-F Status: ✅ COMPLETE
 
-**Core System**: Production-ready  
+**Core System**: Complete (core implementation)  
 **Documentation**: Comprehensive  
 **Testing**: 100% passing (36/36 tests)  
 **Integration**: Demo materials created  

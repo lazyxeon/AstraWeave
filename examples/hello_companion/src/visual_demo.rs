@@ -1,7 +1,7 @@
 //! Hello Companion Visual Demo
 //!
 //! A visual demo showcasing 3 AI modes with an interactive NPC:
-//! - Mode 1 (Pure LLM): Full conversation via Qwen3-8B
+//! - Mode 1 (Pure LLM): Full conversation via Qwen
 //! - Mode 2 (Pure GOAP): Pre-written scripted responses
 //! - Mode 3 (Arbiter): GOAP+LLM hybrid with organic filler dialogue
 //!
@@ -29,8 +29,8 @@ use astraweave_render::{Instance, Mesh, Renderer, Vertex, WaterRenderer};
 // Asset loading for GLB models
 use astraweave_asset::gltf_loader;
 
-// LLM integration for real Qwen3-8B chat
-use astraweave_llm::qwen3_ollama::Qwen3Ollama;
+// LLM integration for real Qwen chat
+use astraweave_llm::qwen3_ollama::{Qwen3Ollama, DEFAULT_QWEN_INSTRUCT_MODEL};
 
 use crate::chat_ui::{self, ChatUi};
 use crate::dialogue_bank::DialogueBank;
@@ -647,7 +647,7 @@ struct CompanionApp {
     // Demo scene instances (visible spheres)
     demo_instances: Vec<Instance>,
 
-    // LLM client for real Qwen3-8B integration
+    // LLM client for real Qwen integration
     llm_worker: LlmWorker,
     llm_response_receiver: Option<tokio::sync::oneshot::Receiver<String>>,
 
@@ -843,7 +843,7 @@ impl CompanionApp {
             llm_worker: LlmWorker::new(
                 Qwen3Ollama::new(
                     "http://localhost:11434",
-                    "qwen3:8b",
+                    DEFAULT_QWEN_INSTRUCT_MODEL,
                 )
                 .with_temperature(0.6)
                 .with_max_tokens(192)
@@ -1175,7 +1175,7 @@ impl CompanionApp {
                 };
             }
             DemoMode::PureLlm => {
-                // Start real LLM request via Qwen3-8B
+                // Start real LLM request via Qwen
                 self.llm_pending = true;
                 self.llm_request_time = Some(Instant::now());
                 self.chat_ui.set_npc_typing(true);
@@ -1323,7 +1323,7 @@ impl CompanionApp {
         self.renderer.tick_environment(dt);
     }
 
-    /// Start an async LLM request using Qwen3-8B (with modifiers from input).
+    /// Start an async LLM request using Qwen (with modifiers from input).
     fn start_llm_request(&mut self, user_input: &str) {
         // Build prompt with session context.
         let context = self.session_memory.to_context_prefix();

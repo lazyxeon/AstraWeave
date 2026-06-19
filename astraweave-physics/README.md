@@ -12,7 +12,7 @@ Provides rigid body dynamics, character controllers, broadphase spatial hashing,
 |------|-------------|
 | `PhysicsWorld` | Central simulation (bodies, colliders, joints, queries) |
 | `CharacterController` | Kinematic movement with ground detection |
-| `SpatialHash` | Grid-based O(n log n) broadphase (99.96% pair reduction) |
+| `SpatialHash` | Dormant in-crate grid (advertised "99.96% pair reduction"); the active broadphase is Rapier's `DefaultBroadPhase`, not `SpatialHash` |
 | `ProjectileManager` | Ballistic projectiles with penetration/explosions |
 | `Ragdoll` / `RagdollBuilder` | Multi-bone ragdoll creation |
 | `Vehicle` / `VehicleManager` | Vehicle dynamics with drivetrain |

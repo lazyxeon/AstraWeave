@@ -17,7 +17,7 @@ Browse the Rust API documentation for all AstraWeave crates.
 | [astraweave-nav](./nav.md) | Navigation and pathfinding | 72.1% | Production |
 | [astraweave-gameplay](./gameplay.md) | Combat physics, damage | 68.9% | Production |
 | [astraweave-terrain](./terrain.md) | Voxel terrain generation | 71.5% | Production |
-| [astraweave-llm](./llm.md) | LLM integration (Qwen3-8B) | 58.3% | Beta |
+| [astraweave-llm](./llm.md) | LLM integration (Ollama; runtime default phi3:medium) | 58.3% | Beta |
 | [astraweave-behavior](./behavior.md) | Behavior trees, utility AI | 74.2% | Production |
 
 ## Core Engine Crates
@@ -120,7 +120,7 @@ use astraweave_behavior::{BehaviorGraph, BehaviorNode, BehaviorContext, Behavior
 
 ### astraweave-llm (58.3% coverage)
 
-LLM integration (Qwen3-8B via Ollama):
+LLM integration via Ollama (runtime default model phi3:medium; set OLLAMA_MODEL to override):
 
 | Export | Description |
 |--------|-------------|
@@ -173,7 +173,7 @@ Rapier3D 0.22 integration:
 | `rigid_body` | — | Physics bodies and dynamics |
 | `collider` | — | Collision shapes and detection |
 | `character_controller` | 114ns/move | Player movement |
-| `spatial_hash` | 99.96% fewer checks | Broad-phase acceleration |
+| `spatial_hash` | dormant (test-only) | Dormant; actual broadphase is Rapier's `DefaultBroadPhase` |
 | `async_scheduler` | — | Parallel physics stepping |
 
 ```rust

@@ -59,7 +59,7 @@
 - **Export Script**: 250 LOC Bash (gh-pages → JSONL)
 - **Dashboard**: 550 LOC HTML/CSS/JS (d3.js v7, <50ms load)
 - **Alert Workflow**: 250 LOC YAML (GitHub issue automation)
-- **URL**: `https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/dashboard/benchmark_dashboard/`
+- **URL**: `https://lazyxeon.github.io/AstraWeave/dashboard/benchmark_dashboard/`
 - **Features**: 30-day trends, interactive charts, regression alerts
 
 ### Code Quality

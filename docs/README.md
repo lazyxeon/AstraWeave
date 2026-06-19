@@ -29,8 +29,8 @@ AstraWeave maintains **one of the most extensively documented codebases** for an
 
 ```bash
 # Clone and build
-git clone https://github.com/your-org/AstraWeave-AI-Native-Gaming-Engine.git
-cd AstraWeave-AI-Native-Gaming-Engine
+git clone https://github.com/your-org/AstraWeave.git
+cd AstraWeave
 cargo build --release
 
 # Run example

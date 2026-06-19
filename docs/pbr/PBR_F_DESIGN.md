@@ -9,7 +9,7 @@
 
 ## Executive Summary
 
-Phase PBR-F implements a production-ready terrain layering system with **splat map blending**, **triplanar projection**, and **advanced normal map blending** for the AstraWeave game engine. The system supports up to **4 material layers** per terrain patch with seamless transitions, height-based blending, and automatic slope-adaptive projection to eliminate UV stretching on steep surfaces.
+Phase PBR-F implements a terrain layering system with **splat map blending**, **triplanar projection**, and **advanced normal map blending** for the AstraWeave game engine. The system supports up to **4 material layers** per terrain patch with seamless transitions, height-based blending, and automatic slope-adaptive projection to eliminate UV stretching on steep surfaces.
 
 **Key Achievements**:
 - ✅ **36/36 unit tests passing** (100% coverage)
@@ -402,8 +402,7 @@ fn blend_normals_weighted(
 }
 ```
 
-**Performance**: ~40 ALU ops for 4-layer RNM blend  
-**Quality**: Indistinguishable from reference (compared to UE5 Nanite terrain)
+**Performance**: ~40 ALU ops for 4-layer RNM blend
 
 ---
 
@@ -624,23 +623,6 @@ fn world_to_layer_uv(world_pos: vec3<f32>, uv_scale: f32) -> vec2<f32>
 
 ---
 
-### Frame Rate Targets
-
-**Hardware Profiles** (1080p, Large Terrain Patch):
-
-| Profile         | GPU                | Standard UV FPS | Triplanar FPS | Hybrid FPS |
-|-----------------|--------------------|-----------------|---------------|------------|
-| Low (Mobile)    | Mali-G78, A14      | 45              | 20            | 35         |
-| Medium (Console)| PS5, XSX           | 90              | 55            | 75         |
-| High (Desktop)  | RTX 3070, RX 6700  | 120             | 85            | 110        |
-| Ultra (Enthusiast)| RTX 4090, RX 7900| 200             | 160           | 190        |
-
-**Test Validation** (Future Phase PBR-F Task 8):
-- Benchmark on RTX 3070: Expect >60 FPS hybrid mode
-- Profile with RenderDoc: Validate texture fetch count matches predictions
-
----
-
 ## Implementation Status
 
 ### ✅ Complete (Tasks 1-3, 5)
@@ -787,4 +769,4 @@ test result: ok. 36 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
 **Document Version**: 1.0  
 **Last Updated**: January 2025  
 **Next Review**: After Task 4 (unified_showcase integration)  
-**Approval**: Ready for production use (core system)
+**Status**: Historical design document. Describes a superseded 4-layer terrain schema; not a current production-ready specification.

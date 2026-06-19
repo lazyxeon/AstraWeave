@@ -57,7 +57,7 @@
           crossing the boundary.
         </p>
         <div class="astra-chip-row">
-          <a class="astra-chip" href="https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/architecture/">Open the interactive map</a>
+          <a class="astra-chip" href="https://lazyxeon.github.io/AstraWeave/architecture/">Open the interactive map</a>
         </div>
       </article>
       <article class="astra-card">
@@ -69,7 +69,7 @@
           §8 invariants, §11 open questions. Traces document how each subsystem
           <em>actually</em> works, separate from how older documentation aspirationally
           describes it. The consolidated synthesis is the
-          <a href="https://github.com/lazyxeon/AstraWeave-AI-Native-Gaming-Engine/blob/main/docs/architecture/ARCHITECTURE_MAP.md">2,500&#8209;line architecture map</a>.
+          <a href="https://github.com/lazyxeon/AstraWeave/blob/main/docs/architecture/ARCHITECTURE_MAP.md">2,500&#8209;line architecture map</a>.
         </p>
       </article>
       <article class="astra-card">
@@ -86,8 +86,8 @@
       </article>
     </div>
     <div class="astra-actions" style="justify-content:center;margin-top:1.5rem;">
-      <a class="astra-button astra-button--primary" href="https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/architecture/">Open the workspace map</a>
-      <a class="astra-button astra-button--secondary" href="https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/dashboard/benchmark_dashboard/">Open the benchmark dashboard</a>
+      <a class="astra-button astra-button--primary" href="https://lazyxeon.github.io/AstraWeave/architecture/">Open the workspace map</a>
+      <a class="astra-button astra-button--secondary" href="https://lazyxeon.github.io/AstraWeave/dashboard/benchmark_dashboard/">Open the benchmark dashboard</a>
     </div>
   </section>
   <section class="astra-proof-strip" aria-label="Key proof points">

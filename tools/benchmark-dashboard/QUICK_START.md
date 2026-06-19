@@ -94,7 +94,7 @@ cargo bench --package astraweave-math
 
 The benchmark dashboard is automatically updated on GitHub Pages via `.github/workflows/benchmark-dashboard.yml`:
 
-- **Live Dashboard**: https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/
+- **Live Dashboard**: https://lazyxeon.github.io/AstraWeave/
 - **Update Frequency**: Nightly (or on benchmark-related commits)
 - **Data Retention**: 30 days of historical data
 

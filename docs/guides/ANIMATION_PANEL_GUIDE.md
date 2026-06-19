@@ -15,7 +15,7 @@ The Animation Panel provides professional-grade animation tools using the **astr
 - **11 Easing Functions** - Industry-standard timing curves
 - **Interactive Demos** - Real-time visualization and testing
 
-**Status:** ✅ **100% Functional** (Production-ready)
+**Status:** ✅ Functional (wired into the editor)
 
 ---
 
@@ -393,7 +393,7 @@ cargo test -p aw_editor animation::tests
 
 ## Conclusion
 
-The Animation Panel is a **production-ready** tool for testing and demonstrating animation systems. It showcases the full capabilities of the `astract` animation library with interactive, real-time visualizations.
+The Animation Panel is a tool for testing and demonstrating animation systems. It showcases the capabilities of the `astract` animation library with interactive, real-time visualizations.
 
 **Use it to:**
 - Test easing functions for your game
@@ -404,5 +404,5 @@ The Animation Panel is a **production-ready** tool for testing and demonstrating
 ---
 
 **Guide Version:** 1.0  
-**Panel Status:** ✅ Production-Ready  
+**Panel Status:** ✅ Functional (wired into the editor)  
 **Test Coverage:** 4 automated tests (all passing)

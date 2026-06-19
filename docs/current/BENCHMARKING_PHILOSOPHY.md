@@ -3,7 +3,7 @@
 **Version**: 1.0.0  
 **Date**: January 2026  
 **Status**: CANONICAL REFERENCE  
-**Purpose**: Establish industry-leading benchmarking standards and transparency
+**Purpose**: Establish benchmarking standards and transparency
 
 ---
 
@@ -321,7 +321,7 @@ Before merging any benchmark file:
 
 ### Our Differentiators
 
-1. **Most comprehensive adversarial testing** in any open-source engine
+1. **Adversarial testing**
 2. **Full methodology transparency** - every claim is reproducible
 3. **Statistical rigor** - proper sample sizes, confidence intervals
 4. **Edge case focus** - pathological inputs tested by default

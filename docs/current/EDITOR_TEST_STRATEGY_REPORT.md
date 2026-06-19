@@ -577,7 +577,7 @@ The AstraWeave Editor has **exceptional test coverage** with:
 
 **Additional advanced testing (golden files, property-based, stress) would raise confidence from 95% to 99%, but current coverage is sufficient for production deployment.**
 
-**The editor is production-ready NOW.**
+**The editor's automated test suite is in place NOW.**
 
 ---
 

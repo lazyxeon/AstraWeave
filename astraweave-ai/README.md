@@ -12,7 +12,7 @@ Implements the engine's AI-native architecture: the `Orchestrator` trait abstrac
 |------|-------------|
 | `Orchestrator` | Trait abstracting AI planning backends |
 | `AiPlanningPlugin` | ECS plugin for AI system registration |
-| `AIArbiter` | GOAP + Hermes LLM hybrid controller |
+| `AIArbiter` | GOAP + Qwen-backed LLM hybrid controller |
 | `LlmExecutor` | Async LLM task execution |
 
 ## Modules

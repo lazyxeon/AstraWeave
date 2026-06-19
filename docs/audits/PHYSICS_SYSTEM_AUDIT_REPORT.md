@@ -1,4 +1,4 @@
-# AstraWeave Physics System: Complete World-Class Audit Report
+# AstraWeave Physics System: Complete Audit Report
 
 **Date**: November 28, 2025  
 **Auditor**: AI Copilot (Claude Opus 4.5)  

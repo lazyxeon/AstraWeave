@@ -36,7 +36,7 @@ This report provides a comprehensive baseline measurement of test coverage acros
 
 ### Tier 1: Excellent Coverage (≥90%)
 
-These crates meet or exceed production-ready coverage standards.
+These crates meet or exceed the coverage standards.
 
 | Crate | Line Coverage | Functions | Lines | Notes |
 |-------|--------------|-----------|-------|-------|

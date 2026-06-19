@@ -85,8 +85,8 @@ types are not in `astraweave-audio/src/lib.rs` re-exports.
 
 ## Further reading
 
-* [`audio.md`](https://github.com/lazyxeon/AstraWeave-AI-Native-Gaming-Engine/blob/main/docs/architecture/audio.md) — full audio-system trace (file map, conflict map, decision
+* [`audio.md`](https://github.com/lazyxeon/AstraWeave/blob/main/docs/architecture/audio.md) — full audio-system trace (file map, conflict map, decision
   log, invariants, open questions).
-* [`ARCHITECTURE_MAP.md`](https://github.com/lazyxeon/AstraWeave-AI-Native-Gaming-Engine/blob/main/docs/architecture/ARCHITECTURE_MAP.md) §7.1 — documentation-hazard inventory.
+* [`ARCHITECTURE_MAP.md`](https://github.com/lazyxeon/AstraWeave/blob/main/docs/architecture/ARCHITECTURE_MAP.md) §7.1 — documentation-hazard inventory.
 * **Interactive workspace map** — select `astraweave-audio` to see the
   panel detail with dormancy evidence and the §4.3 silent-failure shapes.

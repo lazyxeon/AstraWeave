@@ -85,7 +85,7 @@ Automated material validation and PBR pipeline testing in GitHub Actions CI. Thi
 ## Setup Instructions
 
 ### Prerequisites
-1. **GitHub Repository**: AstraWeave-AI-Native-Gaming-Engine
+1. **GitHub Repository**: AstraWeave
 2. **Permissions**: Workflows enabled in repository settings
 3. **Branch Protection**: Configure for `main` branch (optional but recommended)
 
@@ -330,8 +330,8 @@ Add notification step:
 
 Add to `README.md`:
 ```markdown
-![Material Validation](https://github.com/lazyxeon/AstraWeave-AI-Native-Gaming-Engine/actions/workflows/material-validation.yml/badge.svg)
-![PBR Pipeline](https://github.com/lazyxeon/AstraWeave-AI-Native-Gaming-Engine/actions/workflows/pbr-pipeline-ci.yml/badge.svg)
+![Material Validation](https://github.com/lazyxeon/AstraWeave/actions/workflows/material-validation.yml/badge.svg)
+![PBR Pipeline](https://github.com/lazyxeon/AstraWeave/actions/workflows/pbr-pipeline-ci.yml/badge.svg)
 ```
 
 **Result**:  

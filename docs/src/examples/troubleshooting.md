@@ -34,9 +34,9 @@ Some examples have compilation issues due to API evolution:
 Use these workspace aliases for safer builds:
 
 ```bash
-cargo build-core
-cargo check-all
-cargo clippy-all
+cargo build -p astraweave-core -p astraweave-ecs -p astraweave-math -p astraweave-ai
+cargo check --workspace
+cargo clippy --workspace --all-features -- -D warnings
 ```
 
 ## Common Errors

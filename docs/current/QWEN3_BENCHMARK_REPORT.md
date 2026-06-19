@@ -942,7 +942,7 @@ The Qwen3-8B migration is **performance-neutral** across the entire engine:
 4. **Live inference confirmed** — Qwen3-8B produces valid JSON tactical plans via both streaming and blocking modes
 5. **Engine performance preserved** — 1K entities in 100 µs, 100v100 battles in 55 µs, 100 animated characters in 281 µs
 
-The engine is ready for production use with Qwen3-8B as the local LLM backend.
+Qwen3-8B is a validated opt-in local LLM backend, selectable via `OLLAMA_MODEL=qwen3:8b`. It is not the runtime default — the live default remains `phi3:medium` (see `astraweave-ai/src/orchestrator.rs`).
 
 ---
 

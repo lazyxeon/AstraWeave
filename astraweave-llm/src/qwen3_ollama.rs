@@ -1,9 +1,9 @@
-//! Qwen3-8B Integration via Ollama
+//! Qwen instruct integration via Ollama
 //!
-//! This module provides a production-ready interface to Qwen3-8B via Ollama,
+//! This module provides a production-ready interface to Qwen instruct models via Ollama,
 //! which handles model management, quantization, and inference.
 //!
-//! # Why Qwen3-8B?
+//! # Why Qwen Instruct?
 //! - **Dual Thinking Modes**: Thinking (chain-of-thought) and non-thinking (fast) modes
 //! - **32K Native Context**: 32,768 tokens native (131K with YaRN)
 //! - **Tool Calling**: Hermes-style tool use built into the chat template
@@ -19,17 +19,17 @@
 //! # Quick Start
 //! ```bash
 //! # Install Ollama: https://ollama.ai
-//! ollama pull qwen3:8b           # Downloads Qwen3-8B Q4_K_M (~5GB)
+//! ollama pull qwen3.5:4b
 //! ollama serve                    # Start server on localhost:11434
 //! ```
 //!
 //! # Usage
 //! ```ignore
-//! use astraweave_llm::qwen3_ollama::Qwen3Ollama;
+//! use astraweave_llm::qwen3_ollama::{Qwen3Ollama, DEFAULT_QWEN_INSTRUCT_MODEL};
 //! use astraweave_llm::LlmClient;
 //!
 //! async fn example() -> anyhow::Result<()> {
-//!     let client = Qwen3Ollama::new("http://localhost:11434", "qwen3:8b");
+//!     let client = Qwen3Ollama::new("http://localhost:11434", DEFAULT_QWEN_INSTRUCT_MODEL);
 //!     let response = client.complete("You are a game AI. Plan your next action.").await?;
 //!     Ok(())
 //! }
@@ -43,6 +43,12 @@ use serde_json::json;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
+/// Primary local model for AstraWeave.
+///
+/// Keep active examples, probes, and modelfiles aligned to this value so the
+/// runtime default cannot drift back to Phi-3 or an older Qwen variant.
+pub const DEFAULT_QWEN_INSTRUCT_MODEL: &str = "qwen3.5:4b";
+
 /// Message in a chat conversation
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatMessage {
@@ -50,7 +56,7 @@ pub struct ChatMessage {
     pub content: String,
 }
 
-/// Stateful chat session for Qwen3-8B
+/// Stateful chat session for Qwen instruct models
 ///
 /// Manages conversation history and context window automatically.
 pub struct ChatSession {
@@ -110,13 +116,13 @@ impl ChatSession {
     }
 }
 
-/// Qwen3-8B client using Ollama backend
+/// Qwen instruct client using Ollama backend
 ///
-/// This is the **recommended** way to use Qwen3-8B in AstraWeave. Ollama handles
+/// This is the **recommended** way to use Qwen instruct models in AstraWeave. Ollama handles
 /// all the complexity of model loading, quantization, and GPU acceleration.
 ///
 /// ## Model Variant
-/// - `qwen3:8b` - 8.2B parameters, ~4.9-5.1GB (Q4_K_M) - **RECOMMENDED**
+/// - `qwen3.5:4b` - primary local instruct model for AstraWeave
 ///
 /// Qwen3-8B supports dual thinking modes:
 /// - **Non-thinking mode** (default): Fast, direct JSON responses for real-time game AI
@@ -139,7 +145,7 @@ pub struct Qwen3Ollama {
     /// Ollama API endpoint (default: http://localhost:11434)
     pub url: String,
 
-    /// Model name (default: "qwen3:8b")
+    /// Model name (default: `DEFAULT_QWEN_INSTRUCT_MODEL`)
     pub model: String,
 
     /// Temperature for sampling (0.5 minimum recommended by Qwen3 docs)
@@ -164,12 +170,12 @@ impl Qwen3Ollama {
     ///
     /// # Arguments
     /// * `url` - Ollama server URL (e.g., "http://localhost:11434")
-    /// * `model` - Model name (default: "qwen3:8b")
+    /// * `model` - Model name (default: `DEFAULT_QWEN_INSTRUCT_MODEL`)
     ///
     /// # Example
     /// ```no_run
-    /// # use astraweave_llm::qwen3_ollama::Qwen3Ollama;
-    /// let client = Qwen3Ollama::new("http://localhost:11434", "qwen3:8b");
+    /// # use astraweave_llm::qwen3_ollama::{Qwen3Ollama, DEFAULT_QWEN_INSTRUCT_MODEL};
+    /// let client = Qwen3Ollama::new("http://localhost:11434", DEFAULT_QWEN_INSTRUCT_MODEL);
     /// ```
     pub fn new(url: impl Into<String>, model: impl Into<String>) -> Self {
         Self {
@@ -183,17 +189,17 @@ impl Qwen3Ollama {
         }
     }
 
-    /// Create Qwen3-8B client for localhost (convenience method)
+    /// Create Qwen client for localhost (convenience method)
     ///
-    /// Uses the official `qwen3:8b` model tag with Q4_K_M quantization.
+    /// Uses `DEFAULT_QWEN_INSTRUCT_MODEL`.
     ///
     /// # Example
     /// ```no_run
     /// # use astraweave_llm::qwen3_ollama::Qwen3Ollama;
-    /// let client = Qwen3Ollama::localhost(); // Uses qwen3:8b
+    /// let client = Qwen3Ollama::localhost();
     /// ```
     pub fn localhost() -> Self {
-        Self::new("http://localhost:11434", "qwen3:8b")
+        Self::new("http://localhost:11434", DEFAULT_QWEN_INSTRUCT_MODEL)
     }
 
     /// Create optimized Qwen3-8B client for low-latency game AI
@@ -217,7 +223,7 @@ impl Qwen3Ollama {
     /// let client = Qwen3Ollama::fast(); // Low latency variant
     /// ```
     pub fn fast() -> Self {
-        let mut client = Self::new("http://localhost:11434", "qwen3:8b")
+        let mut client = Self::new("http://localhost:11434", DEFAULT_QWEN_INSTRUCT_MODEL)
             .with_temperature(0.5)
             .with_max_tokens(128)
             .with_thinking(false)
@@ -239,7 +245,7 @@ impl Qwen3Ollama {
     /// let client = Qwen3Ollama::strategic(); // Thinking mode for complex plans
     /// ```
     pub fn strategic() -> Self {
-        Self::new("http://localhost:11434", "qwen3:8b")
+        Self::new("http://localhost:11434", DEFAULT_QWEN_INSTRUCT_MODEL)
             .with_temperature(0.6)
             .with_max_tokens(1024)
             .with_thinking(true)
@@ -948,9 +954,9 @@ mod tests {
 
     #[test]
     fn test_qwen3_ollama_creation() {
-        let client = Qwen3Ollama::new("http://localhost:11434", "qwen3:8b");
+        let client = Qwen3Ollama::new("http://localhost:11434", DEFAULT_QWEN_INSTRUCT_MODEL);
         assert_eq!(client.url, "http://localhost:11434");
-        assert_eq!(client.model, "qwen3:8b");
+        assert_eq!(client.model, DEFAULT_QWEN_INSTRUCT_MODEL);
         assert_eq!(client.temperature, 0.7);
         assert_eq!(client.max_tokens, 512);
         assert!(!client.enable_thinking);
@@ -962,13 +968,13 @@ mod tests {
     fn test_localhost_convenience() {
         let client = Qwen3Ollama::localhost();
         assert_eq!(client.url, "http://localhost:11434");
-        assert_eq!(client.model, "qwen3:8b");
+        assert_eq!(client.model, DEFAULT_QWEN_INSTRUCT_MODEL);
     }
 
     #[test]
     fn test_fast_variant() {
         let client = Qwen3Ollama::fast();
-        assert_eq!(client.model, "qwen3:8b");
+        assert_eq!(client.model, DEFAULT_QWEN_INSTRUCT_MODEL);
         assert_eq!(client.temperature, 0.5);
         assert_eq!(client.max_tokens, 128);
         assert!(!client.enable_thinking);
@@ -978,7 +984,7 @@ mod tests {
     #[test]
     fn test_strategic_variant() {
         let client = Qwen3Ollama::strategic();
-        assert_eq!(client.model, "qwen3:8b");
+        assert_eq!(client.model, DEFAULT_QWEN_INSTRUCT_MODEL);
         assert_eq!(client.temperature, 0.6);
         assert_eq!(client.max_tokens, 1024);
         assert!(client.enable_thinking);
@@ -1096,7 +1102,7 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore] // Requires Ollama + qwen3:8b
+    #[ignore] // Requires Ollama + qwen3.5:4b
     async fn test_complete() {
         let client = Qwen3Ollama::localhost();
 
@@ -1127,7 +1133,7 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore] // Requires Ollama + qwen3:8b
+    #[ignore] // Requires Ollama + qwen3.5:4b
     async fn test_complete_streaming() {
         use futures_util::StreamExt;
 
@@ -1203,7 +1209,7 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore] // Requires Ollama + qwen3:8b
+    #[ignore] // Requires Ollama + qwen3.5:4b
     async fn test_streaming_vs_blocking_consistency() {
         use futures_util::StreamExt;
 

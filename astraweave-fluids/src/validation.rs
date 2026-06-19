@@ -28,9 +28,12 @@ pub struct ValidationMetrics {
     pub density_error_max: f32,
     /// Average density error
     pub density_error_avg: f32,
-    /// Maximum divergence error ∇·v
+    /// Maximum divergence error ∇·v.
+    /// `ValidationMetrics::compute` sets this to NaN — divergence is not
+    /// computed by the CPU metrics path (no neighbor lists). Check
+    /// `is_nan()` before trusting. (F.1: was silently 0.0, i.e. "perfect".)
     pub divergence_error_max: f32,
-    /// Average divergence error
+    /// Average divergence error (NaN from `compute`; see `divergence_error_max`).
     pub divergence_error_avg: f32,
     /// Energy conservation ratio E/E₀
     pub energy_conservation: f32,
@@ -78,10 +81,13 @@ impl ValidationMetrics {
         }
         let density_error_avg = density_error_sum / n as f32;
 
-        // Divergence (approximated from velocity differences)
-        // Full divergence would need neighbor computation
-        let divergence_error_max = 0.0; // Placeholder
-        let divergence_error_avg = 0.0;
+        // Divergence is NOT computed by this function (it would require
+        // neighbor lists, which this CPU metrics path does not have). NaN —
+        // not 0.0 — is used so a "perfect divergence" can never be reported
+        // by omission; consumers must check `is_nan()` before trusting these
+        // two fields. (Pre-F.1 this silently reported 0.0, i.e. perfect.)
+        let divergence_error_max = f32::NAN;
+        let divergence_error_avg = f32::NAN;
 
         // Energy conservation
         let mut kinetic_energy = 0.0f32;
@@ -363,10 +369,75 @@ impl ReferenceData {
         });
     }
 
-    /// Load from CSV file
-    pub fn load_csv(_path: &Path) -> Result<Self, std::io::Error> {
-        // Placeholder - would parse CSV
-        Ok(Self::default())
+    /// Load reference data from a CSV file.
+    ///
+    /// Expected columns per row: `t,x,y,z[,vx,vy,vz[,density]]`.
+    /// Lines starting with `#` and a non-numeric header line are skipped.
+    ///
+    /// (Pre-F.1 this was a placeholder that ignored the path and returned
+    /// `Ok(Self::default())` — faking a successful load.)
+    pub fn load_csv(path: &Path) -> Result<Self, std::io::Error> {
+        let content = std::fs::read_to_string(path)?;
+        let source = path
+            .file_stem()
+            .map(|s| s.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "csv".to_string());
+        let mut data = Self::new(&source);
+
+        for (line_no, line) in content.lines().enumerate() {
+            let line = line.trim();
+            if line.is_empty() || line.starts_with('#') {
+                continue;
+            }
+            let fields: Vec<&str> = line.split(',').map(str::trim).collect();
+            if fields.len() < 4 {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    format!(
+                        "line {}: expected at least 4 columns (t,x,y,z)",
+                        line_no + 1
+                    ),
+                ));
+            }
+            let parse = |s: &str| s.parse::<f32>();
+            let t = match parse(fields[0]) {
+                Ok(v) => v,
+                // Tolerate a single non-numeric header row.
+                Err(_) if line_no == 0 => continue,
+                Err(e) => {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidData,
+                        format!("line {}: bad t value: {e}", line_no + 1),
+                    ))
+                }
+            };
+            let num = |i: usize| -> Result<f32, std::io::Error> {
+                parse(fields[i]).map_err(|e| {
+                    std::io::Error::new(
+                        std::io::ErrorKind::InvalidData,
+                        format!("line {}: bad value in column {}: {e}", line_no + 1, i + 1),
+                    )
+                })
+            };
+            let position = [num(1)?, num(2)?, num(3)?];
+            let velocity = if fields.len() >= 7 {
+                Some([num(4)?, num(5)?, num(6)?])
+            } else {
+                None
+            };
+            let density = if fields.len() >= 8 {
+                Some(num(7)?)
+            } else {
+                None
+            };
+            data.points.push(ReferencePoint {
+                t,
+                position,
+                velocity,
+                density,
+            });
+        }
+        Ok(data)
     }
 }
 
@@ -797,6 +868,52 @@ mod tests {
             ..Default::default()
         };
         assert!(!bad.is_research_grade());
+    }
+
+    #[test]
+    fn test_reference_data_load_csv_roundtrip() {
+        let path = std::env::temp_dir().join("aw_fluids_f1_load_csv_test.csv");
+        std::fs::write(
+            &path,
+            "t,x,y,z,vx,vy,vz,density\n# comment\n0.0,1.0,2.0,3.0,0.1,0.2,0.3,1000.0\n0.5,1.5,2.5,3.5\n",
+        )
+        .expect("write temp csv");
+
+        let data = ReferenceData::load_csv(&path).expect("load_csv should parse valid file");
+        std::fs::remove_file(&path).ok();
+
+        assert_eq!(data.points.len(), 2);
+        assert_eq!(data.points[0].t, 0.0);
+        assert_eq!(data.points[0].position, [1.0, 2.0, 3.0]);
+        assert_eq!(data.points[0].velocity, Some([0.1, 0.2, 0.3]));
+        assert_eq!(data.points[0].density, Some(1000.0));
+        assert_eq!(data.points[1].t, 0.5);
+        assert_eq!(data.points[1].velocity, None);
+    }
+
+    #[test]
+    fn test_reference_data_load_csv_missing_file_errors() {
+        // Pre-F.1 the placeholder returned Ok(default) for ANY path.
+        let missing = std::path::Path::new("definitely/not/a/real/file.csv");
+        assert!(ReferenceData::load_csv(missing).is_err());
+    }
+
+    #[test]
+    fn test_compute_divergence_is_nan_not_fake_zero() {
+        // F.1: compute() must not silently report perfect (0.0) divergence.
+        let m = ValidationMetrics::compute(
+            &[1000.0],          // densities
+            &[[0.0, 0.0, 0.0]], // velocities
+            &[0.0],             // pressures
+            &[1.0],             // masses
+            1000.0,             // rest_density
+            1.0,                // initial_energy
+            [0.0, 0.0, 0.0],    // initial_momentum
+            1.0,                // initial_mass
+            0.0,                // time
+        );
+        assert!(m.divergence_error_max.is_nan());
+        assert!(m.divergence_error_avg.is_nan());
     }
 
     #[test]
