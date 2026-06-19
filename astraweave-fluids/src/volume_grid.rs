@@ -929,6 +929,23 @@ impl WaterVolumeGrid {
             self.dimensions.y as i32,
             self.dimensions.z as i32,
         );
+
+        // F.3.S WI-3 high-fill guard: when the box already covers most of the
+        // grid there is almost nothing to skip, and the box bookkeeping (the
+        // `bound_region` rescan) makes the sparse path SLOWER than dense. Fall
+        // back to the dense substep (bit-identical, and its `cleanup` keeps
+        // `active_cells`/`total_volume`) so sparse is never worse than dense.
+        let ext = self.dirty_max - self.dirty_min + IVec3::ONE;
+        let box_vol = (ext.x as i64) * (ext.y as i64) * (ext.z as i64);
+        if box_vol * 100 >= self.cells.len() as i64 * 85 {
+            self.simulate_substep(dt);
+            // Keep the box conservatively full; an external edit (active_dirty)
+            // re-tightens it via `rebuild_dirty_box`.
+            self.dirty_min = IVec3::ZERO;
+            self.dirty_max = IVec3::new(dx - 1, dy - 1, dz - 1);
+            self.has_dirty = !self.active_cells.is_empty();
+            return;
+        }
         // Working box = dirty box dilated to contain this tick's flow: +x/+z by
         // the cascade reach (forward sweep), 1 cell on the other faces (1-hop
         // backward/vertical receivers).
