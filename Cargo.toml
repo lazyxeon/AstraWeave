@@ -41,6 +41,7 @@ members = [
   "astraweave-asset-pipeline",
   "examples/visual_3d",
   "astraweave-physics",
+  "astraweave-water",
   "astraweave-nav",
   "astraweave-scene",
   "astraweave-terrain",

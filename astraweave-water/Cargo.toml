@@ -1,0 +1,12 @@
+[package]
+name = "astraweave-water"
+version = "0.1.0"
+edition = "2021"
+license.workspace = true
+description = "Gameplay water-truth facade: the single logical owner of where water is, how deep, and how dense — queried by physics/AI/gameplay. CPU-resident and deterministic (engine fluids determinism carve-out, gate Q1)."
+
+[dependencies]
+glam = { workspace = true }
+
+[dev-dependencies]
+# (none yet — unit tests live inline)

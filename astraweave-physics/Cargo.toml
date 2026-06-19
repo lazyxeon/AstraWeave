@@ -25,6 +25,11 @@ glam = { workspace = true }
 rapier3d = { workspace = true }
 rand = { workspace = true }
 bitflags = "2"
+# Gameplay water-truth facade (F.2). Physics is the facade's first consumer:
+# buoyancy queries WaterQuery instead of a private scalar plane. Dependency
+# direction is physics → water (water is a glam-only leaf), keeping the
+# physics→fluids→terrain→gameplay→physics cycle open.
+astraweave-water = { path = "../astraweave-water" }
 rayon = { version = "1.10", optional = true }
 serde = { version = "1.0", features = ["derive"], optional = true }
 astraweave-profiling = { path = "../astraweave-profiling", optional = true }
