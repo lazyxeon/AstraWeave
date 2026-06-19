@@ -691,7 +691,7 @@ mod tests {
         // All three must match — any arithmetic mutation in UV, noise, octave
         // loop, normalization, or depth falloff changes at least one.
         assert!((p1 - 0.22275063).abs() < 1e-5, "p1 mismatch: {p1}");
-        assert!((p2 - 0.16042350).abs() < 1e-5, "p2 mismatch: {p2}");
+        assert!((p2 - 0.1604235).abs() < 1e-5, "p2 mismatch: {p2}");
         assert!((p3 - 0.29726005).abs() < 1e-5, "p3 mismatch: {p3}");
 
         // Determinism check

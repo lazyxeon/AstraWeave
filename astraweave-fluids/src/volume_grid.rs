@@ -357,6 +357,74 @@ impl WaterVolumeGrid {
         }
     }
 
+    /// Apply a terrain heightfield as this volume's solid boundary (F.3 WI-4).
+    ///
+    /// **Deliberately terrain-agnostic**: takes a plain `&[f32]` heightfield
+    /// (world-space surface Y per sample, row-major `hres_x * hres_z`), NOT an
+    /// `astraweave-terrain` type. This is what keeps the dependency graph
+    /// acyclic — `astraweave-fluids`/`astraweave-water` must never depend on
+    /// `astraweave-terrain` (that would close
+    /// `water → terrain → gameplay → physics → water`). The consumer that has
+    /// both terrain and water passes `heightmap.data()` (itself a `&[f32]`,
+    /// F.0 Seam 3) into this method — a one-liner with no adapter.
+    ///
+    /// Cells whose top lies at or below the sampled terrain height become
+    /// `Stone` (solid, water removed); cells above that were terrain-`Stone`
+    /// are cleared to `Air`. Re-calling with a modified heightfield is the
+    /// carve-reactivity path (F.3 WI-5): lower the terrain and previously-solid
+    /// cells reopen, so water flows into the new channel on the next tick.
+    ///
+    /// Scope: a **bounded** volume over a terrain patch. World-scale
+    /// chunk-stitching and carve-driven re-sim at scale are F.3.S / future.
+    /// Deterministic (fixed iteration order, no RNG/hash).
+    ///
+    /// # Panics
+    /// If `heights.len() != hres_x * hres_z`.
+    pub fn apply_terrain_boundary(&mut self, heights: &[f32], hres_x: usize, hres_z: usize) {
+        assert_eq!(
+            heights.len(),
+            hres_x * hres_z,
+            "heightfield length must equal hres_x * hres_z"
+        );
+        if hres_x == 0 || hres_z == 0 {
+            return;
+        }
+        let (dx, dy, dz) = (
+            self.dimensions.x as i32,
+            self.dimensions.y as i32,
+            self.dimensions.z as i32,
+        );
+        for gz in 0..dz {
+            for gx in 0..dx {
+                // Nearest heightfield sample for this column.
+                let hx = ((gx as usize * hres_x) / dx as usize).min(hres_x - 1);
+                let hz = ((gz as usize * hres_z) / dz as usize).min(hres_z - 1);
+                let terrain_h = heights[hz * hres_x + hx];
+                for gy in 0..dy {
+                    let Some(idx) = self.to_index(IVec3::new(gx, gy, gz)) else {
+                        continue;
+                    };
+                    let cell_top_y = self.origin.y + (gy + 1) as f32 * self.cell_size;
+                    if cell_top_y <= terrain_h {
+                        // Below terrain → solid floor.
+                        self.cells[idx].material = MaterialType::Stone;
+                        self.cells[idx].level = 0.0;
+                    } else if self.cells[idx].material == MaterialType::Stone {
+                        // Above the (new) terrain but was terrain-solid → reopen.
+                        self.cells[idx].material = MaterialType::Air;
+                    }
+                }
+            }
+        }
+        // Water may have been removed from newly-solid cells.
+        self.total_volume = self
+            .cells
+            .iter()
+            .map(|c| c.level * self.cell_size.powi(3))
+            .sum();
+        self.dirty = true;
+    }
+
     /// Sample water submersion at world position
     ///
     /// Returns submersion ratio (0.0 = dry, 1.0 = fully submerged)
@@ -393,8 +461,48 @@ impl WaterVolumeGrid {
             .unwrap_or(0.0)
     }
 
-    /// Simulate one timestep of water flow
+    /// Maximum stable timestep (F.3 WI-3 dt-stability bound).
+    ///
+    /// Flow per tick is `flow_rate * 36 * dt`; at the default flow_rate of 1.0
+    /// a `dt` of 1/36 s already moves a full cell-worth of water in one tick.
+    /// Beyond that the explicit scheme oscillates (over-transfer then
+    /// back-transfer) rather than converging. `simulate` substeps any larger
+    /// `dt` into chunks no greater than this, so a caller passing a large or
+    /// spiky frame dt cannot corrupt state.
+    pub const MAX_STABLE_DT: f32 = 1.0 / 60.0;
+
+    /// Whether a cell blocks water flow through it — solid material OR a
+    /// special-state flag (F.3 WI-2, Must-Fix #6). A closed `GATE` cell, a
+    /// `FROZEN` (iced) cell, and an `EDITING` cell all act as flow barriers;
+    /// previously these flags were written by `building.rs`/editor code and
+    /// never read, so a "closed" gate let water through.
+    #[inline]
+    fn cell_flow_blocked(cell: &WaterCell) -> bool {
+        cell.material.blocks_flow()
+            || cell
+                .flags
+                .intersects(CellFlags::GATE | CellFlags::FROZEN | CellFlags::EDITING)
+    }
+
+    /// Simulate one timestep of water flow.
+    ///
+    /// `dt` is substepped to [`MAX_STABLE_DT`] so a large frame dt cannot
+    /// destabilize the explicit scheme (F.3 WI-3).
     pub fn simulate(&mut self, dt: f32) {
+        if dt <= 0.0 {
+            return;
+        }
+        // dt-stability: split a large dt into stable substeps.
+        let mut remaining = dt;
+        while remaining > 0.0 {
+            let step = remaining.min(Self::MAX_STABLE_DT);
+            self.simulate_substep(step);
+            remaining -= step;
+        }
+    }
+
+    /// One stable substep (dt already clamped to ≤ MAX_STABLE_DT by `simulate`).
+    fn simulate_substep(&mut self, dt: f32) {
         // Phase 1: Compute pressure from water columns
         self.compute_pressure();
 
@@ -463,13 +571,16 @@ impl WaterVolumeGrid {
 
                     let current_level = self.cells[idx].level;
                     let below_level = self.cells[below_idx].level;
-                    let below_material = self.cells[below_idx].material;
 
                     if current_level <= self.config.min_level {
                         continue;
                     }
 
-                    if below_material.blocks_flow() {
+                    // F.3 WI-2: a blocked source (frozen/editing/closed gate)
+                    // does not emit; a blocked target does not receive.
+                    if Self::cell_flow_blocked(&self.cells[idx])
+                        || Self::cell_flow_blocked(&self.cells[below_idx])
+                    {
                         continue;
                     }
 
@@ -500,9 +611,15 @@ impl WaterVolumeGrid {
             IVec3::new(0, 0, -1),
         ];
 
-        // Create a copy to read from while writing
-        let mut flow_deltas = vec![(0usize, 0.0f32); 0];
-
+        // F.3 WI-3 (conservation): apply transfers IMMEDIATELY against live
+        // levels rather than batching deltas and clamping. The previous
+        // batched scheme read all levels up front, then applied a list of
+        // deltas and `clamp(0,1)` — so a cell receiving from multiple
+        // neighbors in one tick could be pushed past 1.0 and the excess was
+        // silently lost (a water leak). Reading `1.0 - neighbor.level` live
+        // and applying at once bounds every transfer to the recipient's real
+        // free space, so total water is conserved exactly. Iteration order is
+        // fixed (y,x,z, then the fixed `directions` array) → deterministic.
         for y in 0..self.dimensions.y as i32 {
             for x in 0..self.dimensions.x as i32 {
                 for z in 0..self.dimensions.z as i32 {
@@ -511,42 +628,38 @@ impl WaterVolumeGrid {
                         continue;
                     };
 
-                    let current = &self.cells[idx];
-                    if current.level <= self.config.min_level {
+                    if self.cells[idx].level <= self.config.min_level {
                         continue;
                     }
-                    if current.material.blocks_flow() {
+                    // F.3 WI-2: blocked cells (frozen/editing/closed gate) do
+                    // not emit horizontal flow.
+                    if Self::cell_flow_blocked(&self.cells[idx]) {
                         continue;
                     }
 
-                    let current_level = current.level;
-                    let current_pressure = current.pressure;
-
-                    // Check each neighbor
                     for dir in directions {
-                        let neighbor_pos = pos + dir;
-                        let Some(neighbor_idx) = self.to_index(neighbor_pos) else {
+                        let Some(neighbor_idx) = self.to_index(pos + dir) else {
                             continue;
                         };
-
-                        let neighbor = &self.cells[neighbor_idx];
-                        if neighbor.material.blocks_flow() {
+                        // ...and do not receive into blocked cells.
+                        if Self::cell_flow_blocked(&self.cells[neighbor_idx]) {
                             continue;
                         }
 
-                        let neighbor_level = neighbor.level;
-                        let neighbor_pressure = neighbor.pressure;
+                        // Live levels/pressures (so the recipient free-space
+                        // bound below reflects transfers already applied this
+                        // tick — the conservation guarantee).
+                        let current_level = self.cells[idx].level;
+                        let neighbor_level = self.cells[neighbor_idx].level;
 
-                        // Flow based on level difference and pressure
                         let level_diff = current_level - neighbor_level;
                         let pressure_diff = if self.config.enable_pressure_flow {
-                            (current_pressure - neighbor_pressure) * 0.01
+                            (self.cells[idx].pressure - self.cells[neighbor_idx].pressure) * 0.01
                         } else {
                             0.0
                         };
 
                         let total_flow_potential = level_diff + pressure_diff;
-
                         if total_flow_potential > 0.0 {
                             let transfer = (total_flow_potential * 0.5)
                                 .min(flow_amount)
@@ -554,18 +667,13 @@ impl WaterVolumeGrid {
                                 .min(1.0 - neighbor_level);
 
                             if transfer > 0.0 {
-                                flow_deltas.push((idx, -transfer));
-                                flow_deltas.push((neighbor_idx, transfer));
+                                self.cells[idx].level -= transfer;
+                                self.cells[neighbor_idx].level += transfer;
                             }
                         }
                     }
                 }
             }
-        }
-
-        // Apply deltas
-        for (idx, delta) in flow_deltas {
-            self.cells[idx].level = (self.cells[idx].level + delta).clamp(0.0, 1.0);
         }
     }
 
@@ -573,6 +681,14 @@ impl WaterVolumeGrid {
     fn apply_absorption(&mut self, dt: f32) {
         for idx in 0..self.cells.len() {
             let cell = &mut self.cells[idx];
+            // F.3 WI-2: PERSISTENT cells "won't drain naturally" — exempt from
+            // material absorption; EDITING cells are frozen out of simulation.
+            if cell
+                .flags
+                .intersects(CellFlags::PERSISTENT | CellFlags::EDITING)
+            {
+                continue;
+            }
             if cell.level > 0.0 {
                 let absorption = cell.material.absorption_rate() * dt;
                 cell.level = (cell.level - absorption).max(0.0);
@@ -586,6 +702,11 @@ impl WaterVolumeGrid {
 
         for idx in 0..self.cells.len() {
             let cell = &mut self.cells[idx];
+
+            // F.3 WI-2: EDITING cells are frozen out of simulation entirely.
+            if cell.flags.contains(CellFlags::EDITING) {
+                continue;
+            }
 
             // Sources add water
             if cell.flags.contains(CellFlags::SOURCE) {

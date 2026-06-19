@@ -798,7 +798,7 @@ mod tests {
 
             // velocity * normal + jitter  (normal = [0, -1, 0])
             let expected_x = 1.0_f32 * 0.0 + jx;
-            let expected_y = 2.0_f32 * (-1.0) + jy;
+            let expected_y = -2.0_f32 + jy; // velocity 2.0 * normal -1.0
             let expected_z = 3.0_f32 * 0.0 + jz;
 
             assert!(
