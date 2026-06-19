@@ -1,6 +1,6 @@
 # Fluids Integration Campaign — Plan of Record (Path B)
 
-**Status**: ACTIVE — F.0 audit, F.1 (+hotfixes F.1.1–F.1.4), and F.2 complete; F.2 budget gate ratified 2026-06-12.
+**Status**: ACTIVE — F.0 audit, F.1 (+hotfixes F.1.1–F.1.4), F.2, and F.3 complete; F.2 budget gate ratified 2026-06-12 (Option A floor / Option C target); F.3 (voxel integration) ready for review; F.3.S (sparsity + budget conversion) next.
 **Canonical location**: `docs/campaigns/fluids-integration/CAMPAIGN_PLAN.md`
 **Basis**: `F0_GROUND_TRUTH_AUDIT.md` (commit `8e1505dd8`), `F1_EXECUTION_REPORT.md` v1.4, `F2_EXECUTION_REPORT.md` v1.0
 **Path decision**: **Path B — Layered facade** (deterministic CPU water core, pluggable backends, SPH demoted to visual backend)
@@ -52,14 +52,18 @@
 | **F.0** | Read-only ground-truth audit, path options | ✅ complete |
 | **F.1** (+F.1.1–F.1.4) | FluidSystem correctness repair, solver consolidation, first GPU tests + baselines, demo runtime defects, capture infra | ✅ complete, merged (PR #192) |
 | **F.2** | `astraweave-water` facade + `WaterQuery` (derived from physics need); buoyancy/drag reconciled onto it; determinism proof; budget ratification | ✅ complete, branch `campaign/fluids-f2` ready for review |
-| **F.3** | Voxel backend behind `WaterQuery`: `WaterVolumeGrid` conservation/hydrostatic/U-bend tests, gate-flag fix (Must-Fix #6), dt stability bound, terrain heightmap glue, dirty-chunk reactivity for bounded volumes. **Plus: active-cell sparsity + min-spec benchmarks (the budget-C conversion gate). Plus: promote the water resource out of `PhysicsWorld` to a standalone ECS resource when the second consumer (AI/gameplay) appears.** | next |
-| **F.4** | Rendering: SSFR `draw_into` integration (within the **ratified Option-A envelope**), per-particle color, ocean converge-vs-extend decision, XSPH-viscosity exposure. F.1 ledger. | queued |
+| **F.3** | Voxel backend behind `WaterQuery` (integration scope): `WaterVolumeGrid: WaterQuery`, gate-flag fix (Must-Fix #6), conservation/hydrostatic/U-bend/dt-stability tests, terrain heightmap glue (cycle-safe `&[f32]`), bounded carve reactivity, determinism proof. | ✅ complete, branch `campaign/fluids-f3` ready for review |
+| **F.3.S** | **Sparsity + budget-conversion gate** (carved out of F.3): implement active-cell sparsity (the grid is dense today); produce min-spec benchmarks. **Starting point: F.1's 64³ dense = 13.8 ms/tick. The A→C budget conversion happens ONLY when F.3.S demonstrates the ~1 ms sparse voxel budget on min-spec class hardware.** Conversion-cost benchmarks. | next |
+| **F.4** | Rendering: SSFR `draw_into` integration (within the **ratified Option-A envelope** unless F.3.S has converted to C), per-particle color, ocean converge-vs-extend decision, XSPH-viscosity exposure. F.1 ledger. | queued |
 | **F.5** | Editor: minimal FluidsPanel (PREREQ: Editor Multi-Tool SP5 landed) | queued |
 | **F.6** | Persistence of authoring data + determinism policy closeout + campaign-close methodology elevation | queued |
 
 ## Carried Open Items
 
 - **Character-controller ground-tolerance defect** (`character_controller_stays_on_ground`, `y≈0.1` vs ~0): pre-existing, F.2-unrelated, **but in the same controller F.2-followup's swim branch will modify** — tracked separately so it does not ambush swim work.
-- **`llm_integration` stale import** (`DEFAULT_QWEN_INSTRUCT_MODEL` path): pre-existing, trivial, fix when next in that crate.
-- **Swim** (`CharState::Swimming` + controller branch): F.2-followup / F.3-adjacent; `WaterQuery::sample` already covers its needs; do not start until the ground-tolerance defect above is resolved.
-- **ECS water-resource promotion**: co-located in `PhysicsWorld` for F.2 (single consumer); becomes a standalone resource in F.3 when a second consumer appears — written into F.3 scope above.
+- **`llm_integration` stale import** (`DEFAULT_QWEN_INSTRUCT_MODEL` path): pre-existing, trivial, fix when next in that crate. (Still failing `cargo check --workspace` as of F.3; unrelated to fluids — zero edges to water/fluids.)
+- **Swim** (`CharState::Swimming` + controller branch): F.2-followup / F.3-adjacent; `WaterQuery::sample` already covers its needs; do not start until the ground-tolerance defect above is resolved. **This is the most likely source of the second `WaterQuery` consumer that triggers the deferred resource promotion.**
+- **ECS water-resource promotion**: co-located in `PhysicsWorld`; F.3 confirmed NO second consumer exists yet (only physics buoyancy calls `sample`), so co-location correctly retained. Promote to standalone resource when a real second consumer (AI/gameplay/swim) appears — decided on call-graph evidence, never on prediction.
+- **Voxel backend production-install owes an end-to-end exercise** (F.3 deviation D2): the voxel backend is contract-proven through the `WaterQuery` trait (tests) but is NOT yet installed in any production consumer — physics holds a concrete `AnalyticWater`, and a voxel install needs polymorphic physics water (no driver today). When that install happens, it owes a full end-to-end run under real conditions, not just green trait tests — per Red Line 4, "run is not seen." The gap between trait-passing and production-running is exactly where this campaign's defects have historically hidden.
+- **Proportional gate throttle** (F.3 deviation D1): the voxel gate is binary-real (block/pass); `WaterGate::flow_multiplier()` computes a 0..1 throttle but `WaterCell` has no per-cell multiplier field to carry it. Adding one is a sim-data-model change deferred to a future phase.
+- **F.1 verification-gate blind spot** (F.3 deviation D3, minor): test-code clippy under specific feature combos wasn't linted by F.1's `--all-features` gate (four pre-existing errors surfaced and fixed in F.3). If F.4/F.5 touches `astraweave-fluids`, widen the clippy invocation as cheap insurance.
