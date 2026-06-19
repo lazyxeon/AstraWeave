@@ -918,8 +918,18 @@ pub struct PhysicsWorld {
     next_joint_id: u64,
     debug_render_pipeline: DebugRenderPipeline,
     pub buoyancy_bodies: HashMap<BodyId, BuoyancyData>,
+    /// Back-compat infinite-plane height. `NEG_INFINITY` = no plane. Since
+    /// F.2 this is a write-through input to [`water`](Self::water) (synced each
+    /// buoyancy tick), not an independent store — the facade is the single
+    /// owner of water sampling.
     pub water_level: f32,
+    /// Back-compat infinite-plane density, synced into [`water`](Self::water).
     pub fluid_density: f32,
+    /// The gameplay water-truth facade (F.2): the single owner of "where is
+    /// water, how deep, how dense". Buoyancy queries this; `add_water_aabb` /
+    /// `clear_water` register/clear bounded volumes on it. Deterministic,
+    /// CPU-only (gate Q1).
+    pub water: astraweave_water::AnalyticWater,
     pub wind: Vec3,
 
     /// Async physics scheduler (feature-gated)
@@ -958,6 +968,7 @@ impl PhysicsWorld {
             buoyancy_bodies: HashMap::new(),
             water_level: f32::NEG_INFINITY,
             fluid_density: 1000.0,
+            water: astraweave_water::AnalyticWater::new(),
             wind: Vec3::ZERO,
             #[cfg(feature = "async-physics")]
             async_scheduler: None,
@@ -999,6 +1010,7 @@ impl PhysicsWorld {
             buoyancy_bodies: HashMap::new(),
             water_level: f32::NEG_INFINITY,
             fluid_density: 1000.0,
+            water: astraweave_water::AnalyticWater::new(),
             wind: Vec3::ZERO,
             #[cfg(feature = "async-physics")]
             async_scheduler: None,
@@ -1416,37 +1428,66 @@ impl PhysicsWorld {
     }
 
     fn apply_buoyancy_forces(&mut self) {
+        use astraweave_water::WaterQuery;
+
+        // Back-compat: write-through-sync the retired scalar plane
+        // (water_level/fluid_density) into the facade so it participates in
+        // the single sampling path. NEG_INFINITY clears the plane.
+        self.water.set_plane(self.water_level, self.fluid_density);
+
+        // Impulse semantics (F.2 reset_forces resolution): buoyancy is applied
+        // as a one-shot impulse `force * dt`, NOT `add_force`. Rapier user
+        // forces persist until `reset_forces`, which has zero workspace call
+        // sites — re-adding `add_force` every tick would accumulate unbounded.
+        // `apply_impulse(force * dt)` reproduces a single step's `add_force`
+        // velocity change (Δv = F·dt/m) and is self-limiting across frames.
+        let dt = self.integration.dt;
+
         for (body_id, buoyancy_data) in &self.buoyancy_bodies {
-            if let Some(handle) = self.handle_of(*body_id) {
-                if let Some(rb) = self.bodies.get_mut(handle) {
-                    let pos = rb.position();
-                    let body_y = pos.translation.y;
-
-                    // Only apply buoyancy if body is below water level
-                    if body_y < self.water_level {
-                        // Buoyancy force = volume * fluid_density * gravity (upward)
-                        let buoyancy_force = buoyancy_data.volume * self.fluid_density * 9.81;
-
-                        // Drag force = -velocity * drag coefficient
-                        let velocity = rb.linvel();
-                        let drag_force = vector![
-                            -velocity.x * buoyancy_data.drag,
-                            -velocity.y * buoyancy_data.drag,
-                            -velocity.z * buoyancy_data.drag
-                        ];
-
-                        // Total force (buoyancy up + drag)
-                        let total_force =
-                            vector![drag_force.x, buoyancy_force + drag_force.y, drag_force.z];
-
-                        rb.add_force(total_force, true);
-                    }
+            let Some(handle) = self.handle_of(*body_id) else {
+                continue;
+            };
+            // Read body state first (immutable), then query the facade, then
+            // mutate — keeps field borrows disjoint.
+            let (pos, vel) = match self.bodies.get(handle) {
+                Some(rb) => {
+                    let t = rb.position().translation;
+                    let v = rb.linvel();
+                    (
+                        Vec3::new(t.x, t.y, t.z),
+                        Vec3::new(v.x, v.y, v.z),
+                    )
                 }
+                None => continue,
+            };
+
+            // Single source of water truth.
+            let Some(sample) = self.water.sample(pos) else {
+                continue;
+            };
+            // Preserve the wired semantics: buoyancy only below the surface.
+            if pos.y >= sample.surface_height {
+                continue;
+            }
+
+            let buoyancy_force = buoyancy_data.volume * sample.density * 9.81;
+            // Drag is per-body (unchanged): the water is not queried for it.
+            let drag = vel * buoyancy_data.drag;
+            let force = Vec3::new(-drag.x, buoyancy_force - drag.y, -drag.z);
+
+            if let Some(rb) = self.bodies.get_mut(handle) {
+                let impulse = force * dt;
+                rb.apply_impulse(vector![impulse.x, impulse.y, impulse.z], true);
             }
         }
     }
 
-    pub fn add_water_aabb(&mut self, _min: Vec3, _max: Vec3, _density: f32, _linear_damp: f32) {}
+    /// Register a bounded AABB water volume on the facade. Real since F.2
+    /// (was a no-op stub): bodies inside the box now receive buoyancy via
+    /// [`apply_buoyancy_forces`](Self::apply_buoyancy_forces).
+    pub fn add_water_aabb(&mut self, min: Vec3, max: Vec3, density: f32, linear_damp: f32) {
+        self.water.add_aabb(min, max, density, linear_damp);
+    }
 
     pub fn set_wind(&mut self, dir: Vec3, strength: f32) {
         self.wind = dir.normalize_or_zero() * strength;
@@ -1552,7 +1593,14 @@ impl PhysicsWorld {
             })
     }
 
-    pub fn clear_water(&mut self) {}
+    /// Remove all water from the facade — every registered AABB volume and
+    /// the back-compat infinite plane. Real since F.2 (was a no-op stub):
+    /// callers like `weaving.rs`'s `LowerWater` op now actually drain the
+    /// water.
+    pub fn clear_water(&mut self) {
+        self.water.clear();
+        self.water_level = f32::NEG_INFINITY;
+    }
     pub fn add_destructible_box(
         &mut self,
         pos: Vec3,
@@ -5213,6 +5261,98 @@ mod tests {
             "Buoyancy should push body upward: before_y={}, after_y={}",
             vel_before.y,
             vel_after.y
+        );
+    }
+
+    // ===== F.2: WaterQuery facade integration =====
+
+    /// WI-3 reset_forces resolution guard: buoyancy uses impulse semantics, so
+    /// re-applying it every tick on a fixed, fully-submerged, drag-free body
+    /// must NOT accumulate unbounded force. Under the old `add_force` pattern
+    /// (forces persist until a `reset_forces` nothing calls), velocity would
+    /// diverge; with `apply_impulse(force*dt)` it grows at a bounded,
+    /// roughly-constant per-tick rate. We assert the per-step velocity
+    /// increment does not itself grow over time (no accumulation).
+    #[test]
+    fn f2_buoyancy_impulse_does_not_accumulate() {
+        let mut pw = PhysicsWorld::new(Vec3::new(0.0, 0.0, 0.0)); // no gravity: isolate buoyancy
+        // Surface absurdly high so the body stays submerged the whole run
+        // (it flies upward; with a finite plane it would leave the water).
+        pw.water_level = 1.0e9;
+        pw.fluid_density = 1000.0;
+        let id = pw.add_dynamic_box(Vec3::new(0.0, 0.0, 0.0), Vec3::splat(0.5), 10.0, Layers::DEFAULT);
+        pw.add_buoyancy(id, 1.0, 0.0); // drag=0: pure constant buoyancy impulse each tick
+
+        // A constant force applied as `impulse = force*dt` each tick gives
+        // velocity LINEAR in step count: v(2N) ≈ 2·v(N). The old `add_force`
+        // pattern (persisting + re-added each tick → 1F,2F,3F,…) would give
+        // velocity QUADRATIC in step count: v(2N) ≈ 4·v(N). We distinguish the
+        // two by the doubling ratio — robust to the exact force/mass/dt.
+        for _ in 0..50 {
+            pw.step();
+        }
+        let v50 = pw.get_velocity(id).unwrap().y;
+        for _ in 0..50 {
+            pw.step();
+        }
+        let v100 = pw.get_velocity(id).unwrap().y;
+
+        assert!(v50 > 0.0, "buoyancy should accumulate upward velocity (v50={v50})");
+        let ratio = v100 / v50;
+        assert!(
+            ratio < 2.5,
+            "velocity grew quadratically (v50={v50}, v100={v100}, ratio={ratio}): \
+             buoyancy force is accumulating — impulse semantics broken"
+        );
+    }
+
+    /// New capability: a bounded `add_water_aabb` volume produces buoyancy for
+    /// a body inside it and none for a body laterally outside it — the
+    /// scalar-plane retirement's payoff. Real since F.2 (was a no-op stub).
+    #[test]
+    fn f2_add_water_aabb_is_real_and_bounded() {
+        let mut pw = PhysicsWorld::new(Vec3::new(0.0, -9.81, 0.0));
+        // A pool occupying x,z ∈ [-3,3], y ∈ [0,6].
+        pw.add_water_aabb(Vec3::new(-3.0, 0.0, -3.0), Vec3::new(3.0, 6.0, 3.0), 1000.0, 0.0);
+
+        let inside = pw.add_dynamic_box(Vec3::new(0.0, 2.0, 0.0), Vec3::splat(0.5), 5.0, Layers::DEFAULT);
+        let outside = pw.add_dynamic_box(Vec3::new(20.0, 2.0, 0.0), Vec3::splat(0.5), 5.0, Layers::DEFAULT);
+        pw.add_buoyancy(inside, 3.0, 0.0); // big volume → strong float
+        pw.add_buoyancy(outside, 3.0, 0.0);
+
+        for _ in 0..20 {
+            pw.step();
+        }
+        let yi = pw.body_transform(inside).unwrap().w_axis.y;
+        let yo = pw.body_transform(outside).unwrap().w_axis.y;
+        assert!(yi > 1.0, "body inside the pool should be buoyed up, y={yi}");
+        assert!(yo < 1.5, "body outside the pool should fall under gravity, y={yo}");
+    }
+
+    /// Regression: the flat-plane case routed through the facade reproduces the
+    /// retired scalar `water_level` behavior. `clear_water` then removes it.
+    #[test]
+    fn f2_flat_plane_via_facade_and_clear() {
+        let mut pw = PhysicsWorld::new(Vec3::new(0.0, -9.81, 0.0));
+        pw.water_level = 5.0;
+        pw.fluid_density = 1000.0;
+        let id = pw.add_dynamic_box(Vec3::new(0.0, 0.0, 0.0), Vec3::splat(0.5), 5.0, Layers::DEFAULT);
+        pw.add_buoyancy(id, 3.0, 0.5);
+        for _ in 0..15 {
+            pw.step();
+        }
+        assert!(pw.get_velocity(id).unwrap().y > 0.0, "submerged body floats up via the facade plane");
+
+        // clear_water drains everything; the body now falls.
+        pw.clear_water();
+        assert!(!pw.water.has_any(), "clear_water empties the facade");
+        let v_before = pw.get_velocity(id).unwrap().y;
+        for _ in 0..10 {
+            pw.step();
+        }
+        assert!(
+            pw.get_velocity(id).unwrap().y < v_before,
+            "after clear_water, gravity wins (no buoyancy)"
         );
     }
 
