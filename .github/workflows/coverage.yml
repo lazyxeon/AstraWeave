@@ -51,7 +51,7 @@ jobs:
           cargo tarpaulin --out Xml --output-dir coverage --exclude-files 'src/main.rs' --exclude-files 'tests/*'
       
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v7
         with:
           files: ./tools/astraweave-assets/coverage/cobertura.xml
           flags: astraweave-assets
