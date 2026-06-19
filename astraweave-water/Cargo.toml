@@ -9,4 +9,8 @@ description = "Gameplay water-truth facade: the single logical owner of where wa
 glam = { workspace = true }
 
 [dev-dependencies]
-# (none yet — unit tests live inline)
+criterion = { workspace = true }
+
+[[bench]]
+name = "water_query"
+harness = false

@@ -717,32 +717,6 @@ mod environment_coverage {
     }
 
     #[test]
-    fn test_water_volume_operations() {
-        let mut manager = EnvironmentManager::new();
-
-        let water_id =
-            manager.add_water_volume(Vec3::new(0.0, 0.0, 0.0), Vec3::new(50.0, 10.0, 50.0));
-
-        if let Some(water) = manager.get_water_volume_mut(water_id) {
-            water.current = Vec3::new(5.0, 0.0, 0.0);
-        }
-
-        let (linear, angular) = manager.water_drag_at(Vec3::new(0.0, -5.0, 0.0));
-        assert!(linear > 0.0);
-        assert!(angular > 0.0);
-
-        let current = manager.water_current_at(Vec3::new(0.0, -5.0, 0.0));
-        assert!((current.x - 5.0).abs() < 0.01);
-
-        let (linear2, angular2) = manager.water_drag_at(Vec3::new(0.0, 20.0, 0.0));
-        assert_eq!(linear2, 0.0);
-        assert_eq!(angular2, 0.0);
-
-        let current2 = manager.water_current_at(Vec3::new(0.0, 20.0, 0.0));
-        assert_eq!(current2, Vec3::ZERO);
-    }
-
-    #[test]
     fn test_wind_zone_shapes() {
         let mut manager = EnvironmentManager::new();
 
@@ -828,14 +802,11 @@ mod environment_coverage {
         let mut manager = EnvironmentManager::new();
 
         assert_eq!(manager.wind_zone_count(), 0);
-        assert_eq!(manager.water_volume_count(), 0);
 
         manager.add_wind_zone(WindZoneConfig::default());
         manager.add_wind_zone(WindZoneConfig::default());
-        manager.add_water_volume(Vec3::ZERO, Vec3::splat(10.0));
 
         assert_eq!(manager.wind_zone_count(), 2);
-        assert_eq!(manager.water_volume_count(), 1);
     }
 
     #[test]
@@ -850,14 +821,11 @@ mod environment_coverage {
             ..Default::default()
         });
 
-        manager.add_water_volume(Vec3::ZERO, Vec3::new(20.0, 5.0, 20.0));
-
         for _ in 0..100 {
             manager.update(0.016);
         }
 
         assert!(manager.wind_zone_count() > 0);
-        assert!(manager.water_volume_count() > 0);
     }
 }
 

@@ -4337,7 +4337,7 @@ mod tests {
         let (mut pw, mut vm, vid) = spawn_test_vehicle();
         settle_vehicle(&mut pw, &mut vm, vid);
 
-        let v_before = vm.get(vid).unwrap().clone();
+        let v_before = vm.get(vid).unwrap();
         let driven_before: Vec<f32> = v_before
             .wheels
             .iter()

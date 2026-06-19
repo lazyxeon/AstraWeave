@@ -161,8 +161,7 @@ pub use vehicle::{
 // Environmental physics (wind, water)
 pub mod environment;
 pub use environment::{
-    EnvironmentManager, GustEvent, WaterVolume, WaterVolumeId, WindType, WindZone, WindZoneConfig,
-    WindZoneId, WindZoneShape,
+    EnvironmentManager, GustEvent, WindType, WindZone, WindZoneConfig, WindZoneId, WindZoneShape,
 };
 
 // Destruction system

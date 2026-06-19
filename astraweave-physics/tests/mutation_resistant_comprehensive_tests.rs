@@ -939,101 +939,12 @@ mod environment_wind_mutations {
     }
 
     #[test]
-    fn water_volume_buoyancy_archimedes() {
-        // F = ρ * V * fraction * g
-        let w = WaterVolume::new(
-            WaterVolumeId(1),
-            Vec3::new(0.0, 5.0, 0.0),
-            Vec3::splat(10.0),
-        );
-        let force = w.buoyancy_force(Vec3::ZERO, 1.0, 0.5);
-        let expected = 1000.0 * 1.0 * 0.5 * 9.81;
-        assert!(
-            (force.y - expected).abs() < 0.1,
-            "Buoyancy: got {} expected {}",
-            force.y,
-            expected
-        );
-    }
-
-    #[test]
-    fn water_volume_defaults() {
-        let w = WaterVolume::new(
-            WaterVolumeId(1),
-            Vec3::new(0.0, 5.0, 0.0),
-            Vec3::splat(10.0),
-        );
-        assert_eq!(w.density, 1000.0);
-        assert_eq!(w.linear_drag, 0.5);
-        assert_eq!(w.angular_drag, 0.5);
-        assert_eq!(w.current, Vec3::ZERO);
-        assert_eq!(w.wave_amplitude, 0.0);
-        assert_eq!(w.wave_frequency, 1.0);
-    }
-
-    #[test]
-    fn sphere_submerged_fraction_fully_above() {
-        let w = WaterVolume::new(
-            WaterVolumeId(1),
-            Vec3::new(0.0, 0.0, 0.0),
-            Vec3::splat(100.0),
-        );
-        // surface_height = 0.0 + 100.0 = 100.0
-        // center at y=200, radius=1 → depth = 100-200 = -100 → -100 <= -1 → fully above
-        let frac = w.sphere_submerged_fraction(Vec3::new(0.0, 200.0, 0.0), 1.0);
-        assert_eq!(frac, 0.0);
-    }
-
-    #[test]
-    fn sphere_submerged_fraction_fully_below() {
-        let w = WaterVolume::new(
-            WaterVolumeId(1),
-            Vec3::new(0.0, 0.0, 0.0),
-            Vec3::splat(100.0),
-        );
-        // center at y=-100, radius=1 → depth = 100-(-100)=200 → 200>=1 → fully submerged
-        let frac = w.sphere_submerged_fraction(Vec3::new(0.0, -100.0, 0.0), 1.0);
-        assert_eq!(frac, 1.0);
-    }
-
-    #[test]
-    fn sphere_submerged_fraction_partial() {
-        let w = WaterVolume::new(
-            WaterVolumeId(1),
-            Vec3::new(0.0, 0.0, 0.0),
-            Vec3::splat(100.0),
-        );
-        // center at y=100 (at surface), radius=1 → depth=0 → h=0+1=1 → fraction=1/(2*1)=0.5
-        let frac = w.sphere_submerged_fraction(Vec3::new(0.0, 100.0, 0.0), 1.0);
-        assert!((frac - 0.5).abs() < 0.01, "Half-submerged: got {}", frac);
-    }
-
-    #[test]
-    fn water_volume_surface_height_no_waves() {
-        let w = WaterVolume::new(
-            WaterVolumeId(1),
-            Vec3::new(0.0, 5.0, 0.0),
-            Vec3::splat(10.0),
-        );
-        assert_eq!(w.surface_height_at(0.0, 0.0), 15.0); // pos.y + half_extents.y
-    }
-
-    #[test]
     fn environment_manager_wind_zone_lifecycle() {
         let mut mgr = EnvironmentManager::new();
         let id = mgr.add_wind_zone(WindZoneConfig::default());
         assert!(mgr.get_wind_zone(id).is_some());
         assert!(mgr.remove_wind_zone(id));
         assert!(mgr.get_wind_zone(id).is_none());
-    }
-
-    #[test]
-    fn environment_manager_water_volume_lifecycle() {
-        let mut mgr = EnvironmentManager::new();
-        let id = mgr.add_water_volume(Vec3::ZERO, Vec3::splat(10.0));
-        assert!(mgr.get_water_volume(id).is_some());
-        assert!(mgr.remove_water_volume(id));
-        assert!(mgr.get_water_volume(id).is_none());
     }
 }
 

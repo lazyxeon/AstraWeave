@@ -155,55 +155,6 @@ fn test_gust_events() {
 }
 
 // ============================================================================
-// Water / Buoyancy Integration Tests
-// ============================================================================
-
-/// Test water volume and buoyancy
-#[test]
-fn test_water_buoyancy() {
-    let mut env = EnvironmentManager::new();
-
-    env.add_water_volume(Vec3::new(0.0, 0.0, 0.0), Vec3::new(20.0, 10.0, 20.0));
-
-    // Submerged object should get upward force
-    let force = env.buoyancy_force_at(Vec3::new(0.0, 5.0, 0.0), 1.0, 0.5);
-    assert!(force.y > 0.0, "Buoyancy should push upward");
-
-    // Object above water should get no force
-    let force_above = env.buoyancy_force_at(Vec3::new(0.0, 20.0, 0.0), 1.0, 0.5);
-    assert_eq!(force_above.y, 0.0, "No buoyancy above water");
-}
-
-/// Test underwater detection
-#[test]
-fn test_underwater_detection() {
-    let mut env = EnvironmentManager::new();
-
-    env.add_water_volume(Vec3::new(0.0, 0.0, 0.0), Vec3::new(10.0, 5.0, 10.0));
-
-    // Surface is at y = 5
-    assert!(env.is_underwater(Vec3::new(0.0, 3.0, 0.0)));
-    assert!(!env.is_underwater(Vec3::new(0.0, 7.0, 0.0)));
-    assert!(!env.is_underwater(Vec3::new(20.0, 3.0, 0.0))); // Outside volume
-}
-
-/// Test water current
-#[test]
-fn test_water_current() {
-    let mut env = EnvironmentManager::new();
-
-    let id = env.add_water_volume(Vec3::new(0.0, 0.0, 0.0), Vec3::new(10.0, 5.0, 10.0));
-
-    if let Some(water) = env.get_water_volume_mut(id) {
-        water.current = Vec3::new(2.0, 0.0, 1.0);
-    }
-
-    let current = env.water_current_at(Vec3::new(0.0, 3.0, 0.0));
-    assert_eq!(current.x, 2.0);
-    assert_eq!(current.z, 1.0);
-}
-
-// ============================================================================
 // Destruction Integration Tests
 // ============================================================================
 

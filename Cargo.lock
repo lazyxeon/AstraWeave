@@ -1262,6 +1262,7 @@ dependencies = [
  "astraweave-ecs",
  "astraweave-profiling",
  "astraweave-scene",
+ "astraweave-water",
  "bitflags 2.9.4",
  "criterion 0.7.0",
  "glam",
@@ -1569,6 +1570,14 @@ dependencies = [
  "toml 0.9.8",
  "wgpu",
  "winit",
+]
+
+[[package]]
+name = "astraweave-water"
+version = "0.1.0"
+dependencies = [
+ "criterion 0.7.0",
+ "glam",
 ]
 
 [[package]]
