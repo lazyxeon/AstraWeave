@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"enum":["WindType","WindZoneShape"],"struct":["EnvironmentManager","GustEvent","WaterVolume","WaterVolumeId","WindZone","WindZoneConfig","WindZoneId"]};
+window.SIDEBAR_ITEMS = {"enum":["WindType","WindZoneShape"],"struct":["EnvironmentManager","GustEvent","WindZone","WindZoneConfig","WindZoneId"]};

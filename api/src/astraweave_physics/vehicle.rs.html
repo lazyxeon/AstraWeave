@@ -4337,7 +4337,7 @@
 <a href=#4337 id=4337 data-nosnippet>4337</a>        <span class="kw">let </span>(<span class="kw-2">mut </span>pw, <span class="kw-2">mut </span>vm, vid) = spawn_test_vehicle();
 <a href=#4338 id=4338 data-nosnippet>4338</a>        settle_vehicle(<span class="kw-2">&amp;mut </span>pw, <span class="kw-2">&amp;mut </span>vm, vid);
 <a href=#4339 id=4339 data-nosnippet>4339</a>
-<a href=#4340 id=4340 data-nosnippet>4340</a>        <span class="kw">let </span>v_before = vm.get(vid).unwrap().clone();
+<a href=#4340 id=4340 data-nosnippet>4340</a>        <span class="kw">let </span>v_before = vm.get(vid).unwrap();
 <a href=#4341 id=4341 data-nosnippet>4341</a>        <span class="kw">let </span>driven_before: Vec&lt;f32&gt; = v_before
 <a href=#4342 id=4342 data-nosnippet>4342</a>            .wheels
 <a href=#4343 id=4343 data-nosnippet>4343</a>            .iter()
