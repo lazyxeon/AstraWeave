@@ -182,13 +182,14 @@ Status vocabulary: **VERIFIED-AT-HEAD** (re-checked this campaign at HEAD via th
 - referenced_by: README.md:62,275
 
 ### dormant-loc-inventory
-- metric: Dormant-but-designed surface (aggregate LoC across six categories)
-- value: PENDING-D2 (asserted ~200K)
-- status: PENDING-D2
-- repro: `tokei astraweave-fluids astraweave-memory astraweave-coordination astraweave-rag astraweave-llm ...` per the CLAUDE.md dormancy taxonomy
+- metric: Dormant-but-designed research-surface LoC (per the CLAUDE.md dormancy taxonomy)
+- value: **~109K** across the six core research crates (`astraweave-fluids` 80,222 · `astraweave-memory` 11,538 · `astraweave-coordination` 5,317 · `astraweave-context` 4,625 · `astraweave-rag` 3,867 · `astraweave-embeddings` 3,184 = **108,753**), plus the LLM-hardening surface (`production_hardening`+`fallback_system`+`tool_guard`+`plan_parser` ≈ 5,840 of ~15K across 16 files) and advanced-GOAP (~16.7K). The headline "~200K" additionally counts NPC/persona/dialogue-llm/director dormant surfaces.
+- status: VERIFIED-AT-HEAD (2026-06-13, `git ls-files | xargs wc -l` per crate — machine-independent)
+- repro: `for c in astraweave-fluids astraweave-memory astraweave-coordination astraweave-rag astraweave-embeddings astraweave-context; do git ls-files -- "$c/src/" | grep '\.rs$' | xargs wc -l | tail -1; done`
 - hardware: n/a
-- canonical_source: tokei over the dormancy-taxonomy crate set
+- canonical_source: `git ls-files | xargs wc -l` over the dormancy-taxonomy crate set
 - referenced_by: README.md:128,379; CLAUDE.md:391; docs/architecture/ARCHITECTURE_MAP.md §5
+- note: The "~200K" headline is a defensible upper bound across the *full* taxonomy (six categories incl. dormant-feature-gated and stub surfaces); the **108,753** is the precise machine-independent sum of the six named research crates' `src/`. D.2.B does not touch this (no perf component).
 
 ---
 

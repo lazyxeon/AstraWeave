@@ -279,4 +279,4 @@ The AstraWeave Editor is **production-ready for core scene editing workflows**. 
 
 **Report Generated:** November 18, 2025  
 **Author:** Verdent AI  
-**Status:** Editor is production-ready pending Phase 1 completion
+**Status:** Editor is a feature-prototype; not yet production-ready (pending Phase 1 completion — see `tools/aw_editor/PRODUCTION_READINESS_AUDIT.md`)
