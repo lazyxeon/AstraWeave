@@ -97,7 +97,7 @@ The fate-weaving system — AstraWeave's signature game mechanic:
 |--------|-------|
 | Test coverage | 94.26% (line coverage) |
 | Tests | 407 (394 lib + 13 integration) |
-| Grade | A+ (production-ready) |
+| Grade | A+ |
 
 **Core Concept**: Players manipulate "threads of fate" that affect NPC destinies, unlocking branching narrative paths and emergent gameplay outcomes.
 
@@ -108,7 +108,7 @@ The fate-weaving system — AstraWeave's signature game mechanic:
 | Deterministic outcomes | All fate resolutions are reproducible |
 | AI integration | WorldSnapshot includes weaving state for AI reasoning |
 
-The Veilweaver foundation has been audited as production-ready, with an estimated 6–8 weeks to a 30-minute playable vertical slice.
+The Veilweaver foundation has been audited as a solid base, with an estimated 6–8 weeks to a 30-minute playable vertical slice.
 
 ## Integration Points
 

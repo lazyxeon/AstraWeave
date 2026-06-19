@@ -12,7 +12,7 @@ AstraWeave wraps **Rapier3D 0.22** with extensive additional subsystems for game
 | Subsystem | Grade | Tests | Description |
 |-----------|-------|-------|-------------|
 | **Core / Character Controller** | A | 110+ | Movement, gravity, NaN safety, ground detection |
-| **Spatial Hash** | A- | 41 | Grid broadphase with FxHashMap, 99.96% pair reduction |
+| **Spatial Hash** | A- | 41 | Grid structure with FxHashMap (dormant; active broadphase is Rapier's `DefaultBroadPhase`) |
 | **Async Scheduler** | B+ | 13+ | 3-stage parallel pipeline (rayon) with timing stats |
 | **Fluids (SPH)** | A+ | 2,404 | Reference SPH implementation (separate crate) |
 | **Environment** | A- | 55+ | Wind forces, buoyancy, environmental effects |

@@ -2,7 +2,7 @@
 
 Live performance telemetry dashboard for the AstraWeave AI-native game engine.
 
-**View Dashboard**: https://lazyxeon.github.io/AstraWeave-AI-Native-Gaming-Engine/dashboard/benchmark_dashboard/
+**View Dashboard**: https://lazyxeon.github.io/AstraWeave/dashboard/benchmark_dashboard/
 
 ## Features
 - 30-day performance trends
