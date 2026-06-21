@@ -79,6 +79,14 @@ iterations; F.4 builds the accent layer on it (not yet started).
 / hello_companion / editor); see the W.0 audit. This crate is now only the F.4 accent
 substrate plus the deferred effects/editor surface.
 
+**Audit-doc references are deprecated (W.2 Phase 2, 2026-06-21).** This trace
+references `docs/current/FLUIDS_RESEARCH_GRADE_ENHANCEMENT_PLAN.md` throughout as
+"the audit doc" / "the roadmap" (§1, §6, §7, §9, §10, §11, Appendix A/B). That doc
+was **deprecated** in W.2 Phase 2 — it roadmaps the multi-solver SPH inventory
+deleted in W.1 and now carries a staleness banner. Treat every such reference here
+as **historical**, not a live authority; the live authority for water scope is
+`docs/campaigns/water-successor/` (W0/W1/W2 records).
+
 ---
 
 ## 1. Executive Summary

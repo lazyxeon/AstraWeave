@@ -11,6 +11,14 @@
 > could never have caught). The scores below no longer map 1:1 onto today's
 > module set. **A re-run is queued as future campaign work; do not cite these
 > numbers as current.**
+>
+> **W.1 update (W-series, 2026-06-21):** the gap has since widened to *deletion* —
+> W.1 **removed** most of the scored modules outright (the voxel sim
+> `volume_grid`/`gpu_volume`/`building`/`terrain_integration`; the
+> research/experimental SPH inventory incl. `pcisph_system`/`viscosity`/
+> `particle_shifting`/`validation`/`boundary`; and `simd_ops`) in commit
+> `1a57fdd41`. The scored module set no longer exists. See
+> `docs/architecture/fluids.md` rev 1.6 and `docs/campaigns/water-successor/`.
 
 **Version**: 1.0.0  
 **Date**: March 1, 2026  

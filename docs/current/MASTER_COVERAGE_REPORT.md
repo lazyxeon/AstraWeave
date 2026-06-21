@@ -184,7 +184,7 @@ These crates are outside the primary tier system but have been measured:
 | Crate | Region Cov | Line Cov | Instr. Lines | Tests (Lib+Integ) | Notes |
 |-------|-----------|----------|-------------|-------------------|-------|
 | astraweave-prompts | 95.46% | **95.66%** | 5,968 | 1,375 (556+819) | Wave 2 mutation: 792 mutants, 100% kill rate |
-| astraweave-fluids | 91.57% | **89.27%** | 46,173 | 2,509 (2,410+99) | Largest crate; PBD solver |
+| astraweave-fluids | 91.57% | **89.27%** | 46,173 | 2,509 (2,410+99) | ⚠ Pre-W.1 — see note (crate cut to ~24K src) |
 | astraweave-context | 30.74% | **25.71%** | 9,813 | 228 (101+127) | Large dependency footprint inflates denominator |
 | astraweave-persistence-ecs | 28.96% | **28.29%** | 3,287 | 132 (28+104) | Roundtrip serialization verified; async gaps |
 | astraweave-rag | 20.78% | **19.85%** | 9,957 | 235 (76+159) | Large dependency footprint; consolidation.rs high |
@@ -193,7 +193,7 @@ These crates are outside the primary tier system but have been measured:
 
 **astraweave-prompts** (95.66%, 1,375 tests): Template engine, prompt library, optimization. 556 lib + 819 integration tests. Wave 2 mutation testing: 792 mutants with 100% kill rate on all killable mutants. Best-validated crate in the workspace.
 
-**astraweave-fluids** (89.27%, 2,509 tests): SPH fluid simulation, spatial hashing, GPU buffers. Largest crate by instrumented lines (46,173; ~67,800 actual source lines). 2,410 lib + 99 integration tests. Excellent coverage given domain complexity. **Wave 4 mutation testing**: 411 viable mutations, 405 caught, 6 equivalent, **100% adjusted kill rate**. See `docs/current/FLUIDS_MUTATION_TESTING_REPORT.md`.
+**astraweave-fluids** (89.27%, 2,509 tests): SPH fluid simulation, spatial hashing, GPU buffers. Largest crate by instrumented lines (46,173; ~67,800 actual source lines). 2,410 lib + 99 integration tests. Excellent coverage given domain complexity. **Wave 4 mutation testing**: 411 viable mutations, 405 caught, 6 equivalent, **100% adjusted kill rate**. See `docs/current/FLUIDS_MUTATION_TESTING_REPORT.md`. **⚠ STALE (pre-W.1, W-series 2026-06-21):** these numbers predate the W.1 removal (commit `1a57fdd41`, ~58K LoC deleted — the voxel sim, research/experimental SPH, and `simd_ops`); the crate is now ~24K src and most of the 2,509 tests lived in removed modules. Do not cite as current — a recount is deferred (out of W.2-Phase-2 doc scope).
 
 ---
 

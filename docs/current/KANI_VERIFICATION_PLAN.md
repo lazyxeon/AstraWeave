@@ -250,7 +250,16 @@ fn version_string_no_buffer_overflow() {
 - Position clamping respects world bounds
 - Collision response conserves momentum (where applicable)
 
-#### 11. Fluid Simulation (astraweave-fluids)
+#### 11. Fluid Simulation (astraweave-fluids) — ⚠ REMOVED in W.1
+
+> **⚠ STALENESS BANNER (added W-series W.2 Phase 2, 2026-06-21).** These targets
+> verify the SPH solver — particle density, pressure, SPH-kernel normalization —
+> which was **deleted** in W.1 (commit `1a57fdd41`; recovery tag
+> `w0-pre-deprecation`). The general fluid *simulation* no longer exists; water is
+> now a layered *rendering* system (`astraweave-render::WaterRenderer` + the
+> `astraweave-water` `WaterQuery` facade). This section targets removed code — do
+> not pursue. Current authority: `docs/campaigns/water-successor/`. (The other
+> tiers/sections in this plan are unaffected.)
 
 **Priority**: 🟡 MEDIUM
 
