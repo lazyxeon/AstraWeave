@@ -16,9 +16,10 @@
 //! the same query, and a sample depends only on the *set* of registered
 //! volumes and the query point — never on query order. GPU particle fluid
 //! state (`astraweave-fluids`) is explicitly **excluded** from this layer:
-//! it is presentation-only and non-deterministic. A future grid/voxel backend
-//! ([`WaterQuery`] is a trait precisely so F.3 can add one) must preserve this
-//! contract.
+//! it is presentation-only and non-deterministic. (A voxel `WaterQuery`
+//! backend was added in F.3 and removed in W.1 with the fluids voxel sim;
+//! [`WaterQuery`] stays a trait so a future backend can be added without
+//! changing this contract.)
 //!
 //! ## Scope (F.2)
 //!
@@ -33,15 +34,6 @@
 //! that needs them (swim/flow forces: F.2-followup/F.3).
 
 use glam::Vec3;
-
-/// Voxel [`WaterQuery`] backend (F.3) — `impl WaterQuery for WaterVolumeGrid`.
-/// Feature-gated (`voxel`) so consumers wanting only [`AnalyticWater`] do not
-/// pull the `astraweave-fluids` dependency. See [`voxel`] for the cycle-safety
-/// and determinism argument.
-#[cfg(feature = "voxel")]
-pub mod voxel;
-#[cfg(feature = "voxel")]
-pub use voxel::VOXEL_WATER_DENSITY;
 
 /// What a consumer learns about the water at a point.
 ///

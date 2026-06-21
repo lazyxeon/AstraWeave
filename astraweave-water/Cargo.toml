@@ -7,21 +7,16 @@ description = "Gameplay water-truth facade: the single logical owner of where wa
 
 [features]
 default = []
-# The voxel WaterQuery backend (F.3): `impl WaterQuery for WaterVolumeGrid`.
-# Gated so a consumer wanting only the analytic backend does not pull the
-# heavyweight astraweave-fluids dependency (wgpu et al.). Cycle-safe:
-# astraweave-fluids is a Cargo leaf (no terrain/physics/water edges), so
-# water → fluids → (leaf) cannot close physics→fluids→terrain→gameplay→physics.
-voxel = ["dep:astraweave-fluids"]
+# NOTE (W.1, 2026-06-20): the `voxel` feature and its optional astraweave-fluids
+# backend (impl WaterQuery for WaterVolumeGrid) were removed with the fluids
+# voxel sim per the W.0 salvage list. AnalyticWater is the sole backend; the
+# crate is once again a glam-only leaf below physics.
 
 [dependencies]
 glam = { workspace = true }
-astraweave-fluids = { path = "../astraweave-fluids", optional = true }
 
 [dev-dependencies]
 criterion = { workspace = true }
-# Voxel mapping/determinism tests are `#[cfg(feature = "voxel")]` and run with
-# `--features voxel`, which pulls the optional astraweave-fluids dep above.
 
 [[bench]]
 name = "water_query"
