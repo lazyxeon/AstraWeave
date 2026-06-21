@@ -719,8 +719,8 @@ mod tests {
             return;
         };
         let mut gpu = create_test_gpu(&device, UVec3::new(2, 2, 2));
-        gpu.set_wave_frequency(3.14);
-        assert_eq!(gpu.uniforms.animation[3], 3.14);
+        gpu.set_wave_frequency(3.5);
+        assert_eq!(gpu.uniforms.animation[3], 3.5);
     }
 
     // ---- generate_surface_mesh & helpers (need GPU device) ----

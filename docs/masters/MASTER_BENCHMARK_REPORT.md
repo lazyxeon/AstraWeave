@@ -1,6 +1,6 @@
 # AstraWeave Master Benchmark Report
 
-> **Version**: 5.58 | **Date**: 2026-06-11 | **Grade**: A+ | **Framework**: Criterion.rs (statistical)
+> **Version**: 5.59 | **Date**: 2026-06-19 | **Grade**: A+ | **Framework**: Criterion.rs (statistical)
 
 ---
 
@@ -63,6 +63,33 @@ Paired baseline-vs-mimalloc measurement (3 independent runs per cell, 2026-04-17
 - **Three** extant `alloc_measure` Criterion benches registered: `astraweave-ai`, `astraweave-physics`, `astraweave-render` (added 2026-04-17; the fourth, ecs, was deleted with ParallelSchedule).
 - `fast-alloc` (via the `astraweave-alloc` crate) is **default-on** in `examples/profiling_demo`, `examples/hello_companion`, and `tools/aw_editor`; library crates keep it opt-in. Opt-out verified: 855 FPS `--no-default-features` vs 1,458 FPS default.
 - Allocs/bytes/reallocs per frame identical across allocators (sanity check passed). Sources: `docs/audits/mimalloc_experiment_2026-04-17.md`, `docs/audits/allocation_measurement_plan_2026-04-17.md`.
+
+### Voxel-Water Sparsity vs Dense (v5.59, Fluids-Integration F.3.S)
+
+**Machine context** (same min-spec box as the F.1 baselines above; verified `Get-CimInstance`): Intel Core i5-10300H @ 2.50 GHz (4C/8T), 31.8 GB RAM, Windows 11, Rust 1.89.0. Bench: `astraweave-fluids/benches/voxel_sparsity.rs` (new in F.3.S). `WaterVolumeGrid::simulate` is **CPU-only**, so the CPU is what the ~1 ms gameplay-water budget measures (GPU irrelevant here). Captured 2026-06-19 on branch `campaign/fluids-f3s`. Sparse = `simulate` (dirty-AABB); dense = `simulate_reference` (the F.1 algorithm, **bit-identical** to sparse — proven by the lockstep suite). Median ms/tick, settled scenarios.
+
+**Basin** — flat settled water over the full x,z floor at depth = fill (every column wet ⇒ pressure cannot sparsify):
+
+| Grid | dense (≈, fill-dependent) | sparse 5 % | sparse 25 % | sparse 50 % | sparse 100 % |
+|---|---|---|---|---|---|
+| 32³ | 0.48–0.99 | **0.19** | **0.42** | **0.74** | 1.01 |
+| 64³ | 7.4–13.1 | 2.35 | 5.12 | 8.40 | 12.88 |
+| 128³ | 127–228 | 44.2 | 89.3 | 143.2 | 227.5 |
+
+**Pool** — localized stone-walled cube (few wet columns ⇒ pressure sparsifies), 64³:
+
+| Region | wet ≈ fill | sparse | dense | speedup |
+|---|---|---|---|---|
+| side 12 (12³) | ~0.7 % | **0.535** | 7.56 | 14.1× |
+| side 24 (24³) | ~5.3 % | 1.836 | 7.76 | 4.2× |
+| side 40 (40³) | ~24 % | 6.574 | 9.07 | 1.4× |
+
+**Decision-grade findings** (the F.3.S budget gate — full analysis in `docs/campaigns/fluids-integration/F3S_EXECUTION_REPORT.md`):
+
+1. **The ~1 ms voxel budget at 64³ is met ONLY for small grids (32³, ≤ ~50 % fill) or localized water ≲ 16³ ≈ 4 k cells** (pool side-12 = 0.535 ms). A **full-extent 64³ flood never reaches 1 ms** — 2.35 ms even at 5 % depth (2.3× over), 8.4 ms at 50 %.
+2. **Two structural walls.** (a) **Column-coupled pressure**: a cell's pressure is the weight of all water above it, so `compute_pressure` only skips *fully-dry columns* — full-extent water (every column wet) pays full pressure cost regardless of depth. (b) **The F.3 immediate-apply flow cascades water ~8 cells forward per tick**, forcing a cascade-margin bounding box (not a 1-hop active frontier) and growing the active region whenever water flows. The same order-dependence also blocks bit-identical CPU parallelism.
+3. **Budget verdict: PARTIAL → recommend STAY at Option A.** Do not convert A→C for general gameplay water. Option C's 1 ms is reachable only for small/localized volumes (tile the world into small bounded voxel grids), not for the full-extent Enshrouded-class flooding that motivated T3. Re-scope T3: larger budget, constrained volumes, or a future GPU-voxel campaign. Sparsity itself is bit-identical + deterministic and delivers real speedups (up to 14×) — it is correct, just budget-bound by the two walls above.
+4. **Cross-check**: this run's dense column reproduces the F.1 baselines within noise (64³ @ 100 % = 13.06 ms ≈ F.1's 13.83 ms).
 
 ### Qwen3-8B LLM Latency Breakthrough (v5.56)
 

@@ -159,10 +159,39 @@ pub struct WaterVolumeGrid {
     total_volume: f32,
     /// Dirty flag for GPU sync
     dirty: bool,
-    /// Active cells for sparse simulation
+    /// Active cells for sparse simulation (F.3.S): the maintained list of wet
+    /// cells, used for `stats()` and the wake/sleep semantics. Kept as a
+    /// `Vec<usize>` (deterministic order), never a `HashSet`.
     active_cells: Vec<usize>,
     /// Cells that need pressure recalculation
     pressure_dirty: Vec<usize>,
+    /// F.3.S **dirty-AABB sparsity**: inclusive min/max grid coords of the box
+    /// that bounds every NONZERO-water cell (plus the cells they can flow into).
+    /// `simulate` runs the dense phases restricted to this box — same loop order
+    /// as the dense reference, so the result is bit-identical, but cells outside
+    /// the box (provably all dry) are skipped. A per-cell active *set* cannot be
+    /// bit-identical here: the F.3 immediate-apply `flow_horizontal` cascades
+    /// water forward within a single pass, so the box (not a 1-hop frontier) is
+    /// what reproduces the cascade exactly. Not serialized (working state).
+    #[serde(skip)]
+    dirty_min: IVec3,
+    #[serde(skip)]
+    dirty_max: IVec3,
+    /// Whether `dirty_min`/`dirty_max` currently bound a non-empty water region.
+    #[serde(skip)]
+    has_dirty: bool,
+    /// F.3.S: set after any external mutation (set_level, set_material,
+    /// get_cell_mut, apply_terrain_boundary, …). Triggers a one-time O(n)
+    /// rebuild of the dirty box on the next `simulate`, after which pure ticks
+    /// maintain it incrementally. Defaults true so a freshly constructed or
+    /// deserialized grid rebuilds before its first tick.
+    #[serde(skip, default = "default_true")]
+    active_dirty: bool,
+}
+
+#[inline]
+fn default_true() -> bool {
+    true
 }
 
 impl WaterVolumeGrid {
@@ -184,6 +213,10 @@ impl WaterVolumeGrid {
             dirty: false,
             active_cells: Vec::with_capacity(cell_count / 10),
             pressure_dirty: Vec::new(),
+            dirty_min: IVec3::ZERO,
+            dirty_max: IVec3::ZERO,
+            has_dirty: false,
+            active_dirty: true,
         }
     }
 
@@ -291,10 +324,20 @@ impl WaterVolumeGrid {
         self.to_index(pos).map(|i| &self.cells[i])
     }
 
-    /// Get mutable water cell at grid position
+    /// Get mutable water cell at grid position.
+    ///
+    /// F.3.S: conservatively marks the active set dirty — the caller may change
+    /// level or flags through this handle, and we cannot observe the write, so
+    /// the next `simulate` does a one-time O(n) active-set rebuild to stay sound.
     #[inline]
     pub fn get_cell_mut(&mut self, pos: IVec3) -> Option<&mut WaterCell> {
-        self.to_index(pos).map(|i| &mut self.cells[i])
+        if let Some(i) = self.to_index(pos) {
+            self.active_dirty = true;
+            self.dirty = true;
+            Some(&mut self.cells[i])
+        } else {
+            None
+        }
     }
 
     /// Set water level at grid position
@@ -306,9 +349,12 @@ impl WaterVolumeGrid {
             self.total_volume += (new_level - old_level) * self.cell_size.powi(3);
             self.dirty = true;
 
-            // Track active cells
+            // F.3.S: a level edit changes the active set; force a resync.
             if new_level > self.config.min_level && old_level <= self.config.min_level {
                 self.active_cells.push(idx);
+                self.active_dirty = true;
+            } else if new_level <= self.config.min_level && old_level > self.config.min_level {
+                self.active_dirty = true;
             }
         }
     }
@@ -327,6 +373,7 @@ impl WaterVolumeGrid {
 
             if new_level > self.config.min_level && old_level <= self.config.min_level {
                 self.active_cells.push(idx);
+                self.active_dirty = true;
             }
         }
     }
@@ -339,6 +386,9 @@ impl WaterVolumeGrid {
             self.cells[idx].level = old_level - removed;
             self.total_volume -= removed * self.cell_size.powi(3);
             self.dirty = true;
+            if removed > 0.0 {
+                self.active_dirty = true;
+            }
             removed
         } else {
             0.0
@@ -354,7 +404,77 @@ impl WaterVolumeGrid {
                 self.cells[idx].level = 0.0;
             }
             self.dirty = true;
+            self.active_dirty = true;
         }
+    }
+
+    /// Apply a terrain heightfield as this volume's solid boundary (F.3 WI-4).
+    ///
+    /// **Deliberately terrain-agnostic**: takes a plain `&[f32]` heightfield
+    /// (world-space surface Y per sample, row-major `hres_x * hres_z`), NOT an
+    /// `astraweave-terrain` type. This is what keeps the dependency graph
+    /// acyclic — `astraweave-fluids`/`astraweave-water` must never depend on
+    /// `astraweave-terrain` (that would close
+    /// `water → terrain → gameplay → physics → water`). The consumer that has
+    /// both terrain and water passes `heightmap.data()` (itself a `&[f32]`,
+    /// F.0 Seam 3) into this method — a one-liner with no adapter.
+    ///
+    /// Cells whose top lies at or below the sampled terrain height become
+    /// `Stone` (solid, water removed); cells above that were terrain-`Stone`
+    /// are cleared to `Air`. Re-calling with a modified heightfield is the
+    /// carve-reactivity path (F.3 WI-5): lower the terrain and previously-solid
+    /// cells reopen, so water flows into the new channel on the next tick.
+    ///
+    /// Scope: a **bounded** volume over a terrain patch. World-scale
+    /// chunk-stitching and carve-driven re-sim at scale are F.3.S / future.
+    /// Deterministic (fixed iteration order, no RNG/hash).
+    ///
+    /// # Panics
+    /// If `heights.len() != hres_x * hres_z`.
+    pub fn apply_terrain_boundary(&mut self, heights: &[f32], hres_x: usize, hres_z: usize) {
+        assert_eq!(
+            heights.len(),
+            hres_x * hres_z,
+            "heightfield length must equal hres_x * hres_z"
+        );
+        if hres_x == 0 || hres_z == 0 {
+            return;
+        }
+        let (dx, dy, dz) = (
+            self.dimensions.x as i32,
+            self.dimensions.y as i32,
+            self.dimensions.z as i32,
+        );
+        for gz in 0..dz {
+            for gx in 0..dx {
+                // Nearest heightfield sample for this column.
+                let hx = ((gx as usize * hres_x) / dx as usize).min(hres_x - 1);
+                let hz = ((gz as usize * hres_z) / dz as usize).min(hres_z - 1);
+                let terrain_h = heights[hz * hres_x + hx];
+                for gy in 0..dy {
+                    let Some(idx) = self.to_index(IVec3::new(gx, gy, gz)) else {
+                        continue;
+                    };
+                    let cell_top_y = self.origin.y + (gy + 1) as f32 * self.cell_size;
+                    if cell_top_y <= terrain_h {
+                        // Below terrain → solid floor.
+                        self.cells[idx].material = MaterialType::Stone;
+                        self.cells[idx].level = 0.0;
+                    } else if self.cells[idx].material == MaterialType::Stone {
+                        // Above the (new) terrain but was terrain-solid → reopen.
+                        self.cells[idx].material = MaterialType::Air;
+                    }
+                }
+            }
+        }
+        // Water may have been removed from newly-solid cells.
+        self.total_volume = self
+            .cells
+            .iter()
+            .map(|c| c.level * self.cell_size.powi(3))
+            .sum();
+        self.dirty = true;
+        self.active_dirty = true;
     }
 
     /// Sample water submersion at world position
@@ -393,8 +513,77 @@ impl WaterVolumeGrid {
             .unwrap_or(0.0)
     }
 
-    /// Simulate one timestep of water flow
+    /// Maximum stable timestep (F.3 WI-3 dt-stability bound).
+    ///
+    /// Flow per tick is `flow_rate * 36 * dt`; at the default flow_rate of 1.0
+    /// a `dt` of 1/36 s already moves a full cell-worth of water in one tick.
+    /// Beyond that the explicit scheme oscillates (over-transfer then
+    /// back-transfer) rather than converging. `simulate` substeps any larger
+    /// `dt` into chunks no greater than this, so a caller passing a large or
+    /// spiky frame dt cannot corrupt state.
+    pub const MAX_STABLE_DT: f32 = 1.0 / 60.0;
+
+    /// Whether a cell blocks water flow through it — solid material OR a
+    /// special-state flag (F.3 WI-2, Must-Fix #6). A closed `GATE` cell, a
+    /// `FROZEN` (iced) cell, and an `EDITING` cell all act as flow barriers;
+    /// previously these flags were written by `building.rs`/editor code and
+    /// never read, so a "closed" gate let water through.
+    #[inline]
+    fn cell_flow_blocked(cell: &WaterCell) -> bool {
+        cell.material.blocks_flow()
+            || cell
+                .flags
+                .intersects(CellFlags::GATE | CellFlags::FROZEN | CellFlags::EDITING)
+    }
+
+    /// Simulate one timestep of water flow.
+    ///
+    /// `dt` is substepped to [`MAX_STABLE_DT`] so a large frame dt cannot
+    /// destabilize the explicit scheme (F.3 WI-3).
+    ///
+    /// F.3.S: runs the **sparse** path — the dense phases restricted to the
+    /// dirty-AABB that bounds all water, not the whole grid. The result is
+    /// **bit-identical** to [`simulate_reference`] (proven by the lockstep test);
+    /// sparsity changes only speed, never the water's behaviour. After any
+    /// external mutation a one-time O(n) box rebuild runs, then pure ticks
+    /// maintain the box incrementally.
     pub fn simulate(&mut self, dt: f32) {
+        if dt <= 0.0 {
+            return;
+        }
+        if self.active_dirty {
+            self.rebuild_dirty_box();
+            self.active_dirty = false;
+        }
+        let mut remaining = dt;
+        while remaining > 0.0 {
+            let step = remaining.min(Self::MAX_STABLE_DT);
+            self.simulate_substep_sparse(step);
+            remaining -= step;
+        }
+    }
+
+    /// Dense reference simulation (the pre-F.3.S algorithm, unchanged).
+    ///
+    /// Iterates the **full** grid every phase. This is the determinism/behaviour
+    /// reference the sparse [`simulate`] must match bit-for-bit (the F.3.S
+    /// lockstep proof) and the dense baseline the F.3.S benchmark compares
+    /// against. Production uses [`simulate`]; this exists for verification and
+    /// benchmarking.
+    pub fn simulate_reference(&mut self, dt: f32) {
+        if dt <= 0.0 {
+            return;
+        }
+        let mut remaining = dt;
+        while remaining > 0.0 {
+            let step = remaining.min(Self::MAX_STABLE_DT);
+            self.simulate_substep(step);
+            remaining -= step;
+        }
+    }
+
+    /// One stable substep (dt already clamped to ≤ MAX_STABLE_DT by `simulate`).
+    fn simulate_substep(&mut self, dt: f32) {
         // Phase 1: Compute pressure from water columns
         self.compute_pressure();
 
@@ -423,18 +612,24 @@ impl WaterVolumeGrid {
         // For each column, compute cumulative pressure from top to bottom
         for x in 0..self.dimensions.x as i32 {
             for z in 0..self.dimensions.z as i32 {
-                let mut accumulated_pressure = 0.0;
+                self.compute_pressure_column(x, z);
+            }
+        }
+    }
 
-                // Top to bottom
-                for y in (0..self.dimensions.y as i32).rev() {
-                    let pos = IVec3::new(x, y, z);
-                    if let Some(idx) = self.to_index(pos) {
-                        let level = self.cells[idx].level;
-                        accumulated_pressure += level * self.config.gravity * self.cell_size;
-                        self.cells[idx].pressure =
-                            accumulated_pressure.min(self.config.max_pressure);
-                    }
-                }
+    /// Accumulate hydrostatic pressure down one column (top→bottom). Shared by
+    /// the dense [`compute_pressure`] and the sparse path (F.3.S); the per-column
+    /// math is identical, only the *set* of columns visited differs. Columns are
+    /// independent, so visiting a subset in any order is bit-identical for the
+    /// visited columns.
+    #[inline]
+    fn compute_pressure_column(&mut self, x: i32, z: i32) {
+        let mut accumulated_pressure = 0.0;
+        for y in (0..self.dimensions.y as i32).rev() {
+            if let Some(idx) = self.to_index(IVec3::new(x, y, z)) {
+                let level = self.cells[idx].level;
+                accumulated_pressure += level * self.config.gravity * self.cell_size;
+                self.cells[idx].pressure = accumulated_pressure.min(self.config.max_pressure);
             }
         }
     }
@@ -447,125 +642,129 @@ impl WaterVolumeGrid {
         for y in 0..self.dimensions.y as i32 {
             for x in 0..self.dimensions.x as i32 {
                 for z in 0..self.dimensions.z as i32 {
-                    let pos = IVec3::new(x, y, z);
-                    let below = pos - IVec3::Y;
-
-                    if !self.is_valid(below) {
-                        continue;
-                    }
-
-                    let Some(idx) = self.to_index(pos) else {
-                        continue;
-                    };
-                    let Some(below_idx) = self.to_index(below) else {
-                        continue;
-                    };
-
-                    let current_level = self.cells[idx].level;
-                    let below_level = self.cells[below_idx].level;
-                    let below_material = self.cells[below_idx].material;
-
-                    if current_level <= self.config.min_level {
-                        continue;
-                    }
-
-                    if below_material.blocks_flow() {
-                        continue;
-                    }
-
-                    // Flow down based on available space
-                    let space_below = 1.0 - below_level;
-                    let transfer = current_level.min(space_below).min(flow_amount);
-
-                    if transfer > 0.0 {
-                        self.cells[idx].level -= transfer;
-                        self.cells[below_idx].level += transfer;
-
-                        // Update velocities for visual effects
-                        self.cells[idx].velocity.y = -transfer / dt;
-                        self.cells[below_idx].velocity.y = transfer / dt;
-                    }
+                    self.flow_vertical_at(IVec3::new(x, y, z), flow_amount, dt);
                 }
             }
         }
     }
 
+    /// Gravity flow for one cell → the cell below it. Shared verbatim by the
+    /// dense [`flow_vertical`] and the sparse path (F.3.S): identical per-cell
+    /// math, so the only difference is *which* cells are visited and in what
+    /// order. A dry/blocked cell is a no-op (early return), exactly as the dense
+    /// loop's `continue` — which is why visiting only the active frontier (in
+    /// dense y,x,z order) is bit-identical to the full dense sweep.
+    #[inline]
+    fn flow_vertical_at(&mut self, pos: IVec3, flow_amount: f32, dt: f32) {
+        let below = pos - IVec3::Y;
+        if !self.is_valid(below) {
+            return;
+        }
+        let Some(idx) = self.to_index(pos) else {
+            return;
+        };
+        let Some(below_idx) = self.to_index(below) else {
+            return;
+        };
+
+        let current_level = self.cells[idx].level;
+        let below_level = self.cells[below_idx].level;
+
+        if current_level <= self.config.min_level {
+            return;
+        }
+        // F.3 WI-2: a blocked source (frozen/editing/closed gate) does not
+        // emit; a blocked target does not receive.
+        if Self::cell_flow_blocked(&self.cells[idx])
+            || Self::cell_flow_blocked(&self.cells[below_idx])
+        {
+            return;
+        }
+
+        // Flow down based on available space.
+        let space_below = 1.0 - below_level;
+        let transfer = current_level.min(space_below).min(flow_amount);
+        if transfer > 0.0 {
+            self.cells[idx].level -= transfer;
+            self.cells[below_idx].level += transfer;
+            // Velocities for visual effects.
+            self.cells[idx].velocity.y = -transfer / dt;
+            self.cells[below_idx].velocity.y = transfer / dt;
+        }
+    }
+
     /// Horizontal flow (pressure-driven spreading)
+    ///
+    /// F.3 WI-3 (conservation): transfers apply IMMEDIATELY against live levels
+    /// rather than batching deltas + clamping (which silently lost multi-neighbor
+    /// inflow past 1.0). Because the result depends on the live state, the global
+    /// visit order MATTERS — which is exactly why the F.3.S sparse path must
+    /// visit active cells in this same fixed (y,x,z) order to stay bit-identical.
     fn flow_horizontal(&mut self, dt: f32) {
         let flow_amount = self.config.flow_rate * 36.0 * dt * 0.25; // Slower horizontal spread
-        let directions = [
+        for y in 0..self.dimensions.y as i32 {
+            for x in 0..self.dimensions.x as i32 {
+                for z in 0..self.dimensions.z as i32 {
+                    self.flow_horizontal_at(IVec3::new(x, y, z), flow_amount);
+                }
+            }
+        }
+    }
+
+    /// Horizontal spreading for one cell → its 4 lateral neighbors. Shared
+    /// verbatim by the dense [`flow_horizontal`] and the sparse path (F.3.S).
+    #[inline]
+    fn flow_horizontal_at(&mut self, pos: IVec3, flow_amount: f32) {
+        const DIRECTIONS: [IVec3; 4] = [
             IVec3::new(1, 0, 0),
             IVec3::new(-1, 0, 0),
             IVec3::new(0, 0, 1),
             IVec3::new(0, 0, -1),
         ];
-
-        // Create a copy to read from while writing
-        let mut flow_deltas = vec![(0usize, 0.0f32); 0];
-
-        for y in 0..self.dimensions.y as i32 {
-            for x in 0..self.dimensions.x as i32 {
-                for z in 0..self.dimensions.z as i32 {
-                    let pos = IVec3::new(x, y, z);
-                    let Some(idx) = self.to_index(pos) else {
-                        continue;
-                    };
-
-                    let current = &self.cells[idx];
-                    if current.level <= self.config.min_level {
-                        continue;
-                    }
-                    if current.material.blocks_flow() {
-                        continue;
-                    }
-
-                    let current_level = current.level;
-                    let current_pressure = current.pressure;
-
-                    // Check each neighbor
-                    for dir in directions {
-                        let neighbor_pos = pos + dir;
-                        let Some(neighbor_idx) = self.to_index(neighbor_pos) else {
-                            continue;
-                        };
-
-                        let neighbor = &self.cells[neighbor_idx];
-                        if neighbor.material.blocks_flow() {
-                            continue;
-                        }
-
-                        let neighbor_level = neighbor.level;
-                        let neighbor_pressure = neighbor.pressure;
-
-                        // Flow based on level difference and pressure
-                        let level_diff = current_level - neighbor_level;
-                        let pressure_diff = if self.config.enable_pressure_flow {
-                            (current_pressure - neighbor_pressure) * 0.01
-                        } else {
-                            0.0
-                        };
-
-                        let total_flow_potential = level_diff + pressure_diff;
-
-                        if total_flow_potential > 0.0 {
-                            let transfer = (total_flow_potential * 0.5)
-                                .min(flow_amount)
-                                .min(current_level)
-                                .min(1.0 - neighbor_level);
-
-                            if transfer > 0.0 {
-                                flow_deltas.push((idx, -transfer));
-                                flow_deltas.push((neighbor_idx, transfer));
-                            }
-                        }
-                    }
-                }
-            }
+        let Some(idx) = self.to_index(pos) else {
+            return;
+        };
+        if self.cells[idx].level <= self.config.min_level {
+            return;
+        }
+        // F.3 WI-2: blocked cells (frozen/editing/closed gate) do not emit.
+        if Self::cell_flow_blocked(&self.cells[idx]) {
+            return;
         }
 
-        // Apply deltas
-        for (idx, delta) in flow_deltas {
-            self.cells[idx].level = (self.cells[idx].level + delta).clamp(0.0, 1.0);
+        for dir in DIRECTIONS {
+            let Some(neighbor_idx) = self.to_index(pos + dir) else {
+                continue;
+            };
+            // ...and do not receive into blocked cells.
+            if Self::cell_flow_blocked(&self.cells[neighbor_idx]) {
+                continue;
+            }
+
+            // Live levels/pressures (so the recipient free-space bound below
+            // reflects transfers already applied this tick — conservation).
+            let current_level = self.cells[idx].level;
+            let neighbor_level = self.cells[neighbor_idx].level;
+
+            let level_diff = current_level - neighbor_level;
+            let pressure_diff = if self.config.enable_pressure_flow {
+                (self.cells[idx].pressure - self.cells[neighbor_idx].pressure) * 0.01
+            } else {
+                0.0
+            };
+
+            let total_flow_potential = level_diff + pressure_diff;
+            if total_flow_potential > 0.0 {
+                let transfer = (total_flow_potential * 0.5)
+                    .min(flow_amount)
+                    .min(current_level)
+                    .min(1.0 - neighbor_level);
+
+                if transfer > 0.0 {
+                    self.cells[idx].level -= transfer;
+                    self.cells[neighbor_idx].level += transfer;
+                }
+            }
         }
     }
 
@@ -573,6 +772,14 @@ impl WaterVolumeGrid {
     fn apply_absorption(&mut self, dt: f32) {
         for idx in 0..self.cells.len() {
             let cell = &mut self.cells[idx];
+            // F.3 WI-2: PERSISTENT cells "won't drain naturally" — exempt from
+            // material absorption; EDITING cells are frozen out of simulation.
+            if cell
+                .flags
+                .intersects(CellFlags::PERSISTENT | CellFlags::EDITING)
+            {
+                continue;
+            }
             if cell.level > 0.0 {
                 let absorption = cell.material.absorption_rate() * dt;
                 cell.level = (cell.level - absorption).max(0.0);
@@ -586,6 +793,11 @@ impl WaterVolumeGrid {
 
         for idx in 0..self.cells.len() {
             let cell = &mut self.cells[idx];
+
+            // F.3 WI-2: EDITING cells are frozen out of simulation entirely.
+            if cell.flags.contains(CellFlags::EDITING) {
+                continue;
+            }
 
             // Sources add water
             if cell.flags.contains(CellFlags::SOURCE) {
@@ -610,6 +822,242 @@ impl WaterVolumeGrid {
             .iter()
             .map(|c| c.level * self.cell_size.powi(3))
             .sum();
+    }
+
+    // =====================================================================
+    // F.3.S — dirty-AABB sparsity
+    //
+    // `simulate` runs the dense phases restricted to an axis-aligned box that
+    // bounds all water, in the SAME (y,x,z) order as the dense reference — so
+    // the output is bit-identical, but cells outside the box (provably dry) are
+    // skipped. Why a box and not a per-cell active set: the F.3 immediate-apply
+    // `flow_horizontal` cascades water FORWARD (+x/+z, the sweep directions)
+    // many cells in a single pass, so a 1-hop active frontier truncates the
+    // cascade and diverges. The box is dilated by `CASCADE_MARGIN` in +x/+z to
+    // contain the one-tick cascade exactly; vertical (bottom-up) and backward
+    // flow advance only one cell, so those faces need a 1-cell margin.
+    //
+    // Determinism (gate Q1): the box is two `IVec3`s; phases iterate fixed
+    // integer ranges in fixed order — no hash iteration, no RNG, no threads.
+    // =====================================================================
+
+    /// Upper bound on how far the immediate-apply horizontal flow can cascade
+    /// water in the forward (+x/+z) sweep directions in ONE tick. A full cell
+    /// (level 1.0) roughly halves its spill each hop down to `min_level`
+    /// (≈ log2(1/min_level) ≈ 10 hops), plus a margin for pressure-boosted early
+    /// hops. The box is grown by this much in +x/+z so the cascade always
+    /// completes inside it (bit-identity); larger is safe but less sparse.
+    const CASCADE_MARGIN: i32 = 16;
+
+    /// O(n) rebuild of the dirty box (and the wet `active_cells`/`total_volume`)
+    /// from the full grid. Runs once after any external mutation; pure ticks
+    /// then maintain the box incrementally from a local rescan.
+    fn rebuild_dirty_box(&mut self) {
+        let (dx, dy, dz) = (
+            self.dimensions.x as i32,
+            self.dimensions.y as i32,
+            self.dimensions.z as i32,
+        );
+        self.bound_region(IVec3::ZERO, IVec3::new(dx - 1, dy - 1, dz - 1));
+    }
+
+    /// Scan `[lo..=hi]` (clamped to the grid) for cells that are NONZERO or carry
+    /// a SOURCE/DRAIN flag, and set `dirty_min`/`dirty_max`/`has_dirty` to their
+    /// bounding box. Also refreshes `active_cells` (wet list, for `stats`) and
+    /// `total_volume` from the same scan. All water lives inside `[lo..=hi]` at
+    /// every call site, so this is exact, not approximate.
+    fn bound_region(&mut self, lo: IVec3, hi: IVec3) {
+        let (dx, dy, dz) = (
+            self.dimensions.x as i32,
+            self.dimensions.y as i32,
+            self.dimensions.z as i32,
+        );
+        let lo = IVec3::new(lo.x.max(0), lo.y.max(0), lo.z.max(0));
+        let hi = IVec3::new(hi.x.min(dx - 1), hi.y.min(dy - 1), hi.z.min(dz - 1));
+        let cs3 = self.cell_size.powi(3);
+
+        self.active_cells.clear();
+        let mut total = 0.0f32;
+        let mut found = false;
+        let (mut min, mut max) = (IVec3::ZERO, IVec3::ZERO);
+
+        for z in lo.z..=hi.z {
+            for y in lo.y..=hi.y {
+                for x in lo.x..=hi.x {
+                    let Some(idx) = self.to_index(IVec3::new(x, y, z)) else {
+                        continue;
+                    };
+                    let cell = &self.cells[idx];
+                    let nonzero = cell.level > 0.0;
+                    let special = cell.flags.intersects(CellFlags::SOURCE | CellFlags::DRAIN);
+                    if cell.level > self.config.min_level {
+                        self.active_cells.push(idx);
+                    }
+                    if nonzero {
+                        total += cell.level * cs3;
+                    }
+                    if nonzero || special {
+                        let p = IVec3::new(x, y, z);
+                        if !found {
+                            found = true;
+                            min = p;
+                            max = p;
+                        } else {
+                            min = min.min(p);
+                            max = max.max(p);
+                        }
+                    }
+                }
+            }
+        }
+
+        self.total_volume = total;
+        self.has_dirty = found;
+        if found {
+            self.dirty_min = min;
+            self.dirty_max = max;
+        }
+    }
+
+    /// One sparse substep — bit-identical to [`simulate_substep`].
+    fn simulate_substep_sparse(&mut self, dt: f32) {
+        if !self.has_dirty {
+            return;
+        }
+        let (dx, dy, dz) = (
+            self.dimensions.x as i32,
+            self.dimensions.y as i32,
+            self.dimensions.z as i32,
+        );
+
+        // F.3.S WI-3 high-fill guard: when the box already covers most of the
+        // grid there is almost nothing to skip, and the box bookkeeping (the
+        // `bound_region` rescan) makes the sparse path SLOWER than dense. Fall
+        // back to the dense substep (bit-identical, and its `cleanup` keeps
+        // `active_cells`/`total_volume`) so sparse is never worse than dense.
+        let ext = self.dirty_max - self.dirty_min + IVec3::ONE;
+        let box_vol = (ext.x as i64) * (ext.y as i64) * (ext.z as i64);
+        if box_vol * 100 >= self.cells.len() as i64 * 85 {
+            self.simulate_substep(dt);
+            // Keep the box conservatively full; an external edit (active_dirty)
+            // re-tightens it via `rebuild_dirty_box`.
+            self.dirty_min = IVec3::ZERO;
+            self.dirty_max = IVec3::new(dx - 1, dy - 1, dz - 1);
+            self.has_dirty = !self.active_cells.is_empty();
+            return;
+        }
+        // Working box = dirty box dilated to contain this tick's flow: +x/+z by
+        // the cascade reach (forward sweep), 1 cell on the other faces (1-hop
+        // backward/vertical receivers).
+        let lo = IVec3::new(
+            (self.dirty_min.x - 1).max(0),
+            (self.dirty_min.y - 1).max(0),
+            (self.dirty_min.z - 1).max(0),
+        );
+        let hi = IVec3::new(
+            (self.dirty_max.x + Self::CASCADE_MARGIN).min(dx - 1),
+            (self.dirty_max.y + 1).min(dy - 1),
+            (self.dirty_max.z + Self::CASCADE_MARGIN).min(dz - 1),
+        );
+
+        self.compute_pressure_box(lo, hi);
+        self.flow_vertical_box(lo, hi, dt);
+        self.flow_horizontal_box(lo, hi, dt);
+        if self.config.enable_absorption {
+            self.apply_absorption_box(lo, hi, dt);
+        }
+        self.process_sources_drains_box(lo, hi, dt);
+
+        // Rebound from the working box: all cells that could have become nonzero
+        // this tick are inside it (emitters live in the dirty box; the cascade
+        // reaches at most CASCADE_MARGIN; receivers at most 1 cell on the other
+        // faces). This also lets the box shrink as water drains.
+        self.bound_region(lo, hi);
+        self.dirty = true;
+    }
+
+    /// Dense `compute_pressure` restricted to the box columns. Pressure is
+    /// column-coupled (a cell's pressure is the weight of all water above it),
+    /// so each touched column is accumulated full-height — sparse in the number
+    /// of wet *columns*, not wet cells. (F.3.S finding: wide-shallow water has
+    /// many wet columns and therefore limited pressure sparsity.)
+    fn compute_pressure_box(&mut self, lo: IVec3, hi: IVec3) {
+        for x in lo.x..=hi.x {
+            for z in lo.z..=hi.z {
+                self.compute_pressure_column(x, z);
+            }
+        }
+    }
+
+    /// Dense `flow_vertical` restricted to the box (same y,x,z order).
+    fn flow_vertical_box(&mut self, lo: IVec3, hi: IVec3, dt: f32) {
+        let flow_amount = self.config.flow_rate * 36.0 * dt;
+        for y in lo.y..=hi.y {
+            for x in lo.x..=hi.x {
+                for z in lo.z..=hi.z {
+                    self.flow_vertical_at(IVec3::new(x, y, z), flow_amount, dt);
+                }
+            }
+        }
+    }
+
+    /// Dense `flow_horizontal` restricted to the box (same y,x,z order).
+    fn flow_horizontal_box(&mut self, lo: IVec3, hi: IVec3, dt: f32) {
+        let flow_amount = self.config.flow_rate * 36.0 * dt * 0.25;
+        for y in lo.y..=hi.y {
+            for x in lo.x..=hi.x {
+                for z in lo.z..=hi.z {
+                    self.flow_horizontal_at(IVec3::new(x, y, z), flow_amount);
+                }
+            }
+        }
+    }
+
+    /// Dense `apply_absorption` restricted to the box (per-cell, order-free).
+    fn apply_absorption_box(&mut self, lo: IVec3, hi: IVec3, dt: f32) {
+        for z in lo.z..=hi.z {
+            for y in lo.y..=hi.y {
+                for x in lo.x..=hi.x {
+                    let Some(idx) = self.to_index(IVec3::new(x, y, z)) else {
+                        continue;
+                    };
+                    if self.cells[idx]
+                        .flags
+                        .intersects(CellFlags::PERSISTENT | CellFlags::EDITING)
+                    {
+                        continue;
+                    }
+                    if self.cells[idx].level > 0.0 {
+                        let absorption = self.cells[idx].material.absorption_rate() * dt;
+                        self.cells[idx].level = (self.cells[idx].level - absorption).max(0.0);
+                    }
+                }
+            }
+        }
+    }
+
+    /// Dense `process_sources_and_drains` restricted to the box.
+    fn process_sources_drains_box(&mut self, lo: IVec3, hi: IVec3, dt: f32) {
+        let flow_rate = self.config.flow_rate * 36.0 * dt;
+        for z in lo.z..=hi.z {
+            for y in lo.y..=hi.y {
+                for x in lo.x..=hi.x {
+                    let Some(idx) = self.to_index(IVec3::new(x, y, z)) else {
+                        continue;
+                    };
+                    let flags = self.cells[idx].flags;
+                    if flags.contains(CellFlags::EDITING) {
+                        continue;
+                    }
+                    if flags.contains(CellFlags::SOURCE) {
+                        self.cells[idx].level = (self.cells[idx].level + flow_rate).min(1.0);
+                    }
+                    if flags.contains(CellFlags::DRAIN) {
+                        self.cells[idx].level = (self.cells[idx].level - flow_rate).max(0.0);
+                    }
+                }
+            }
+        }
     }
 
     /// Fill a region with water (flood fill from a point)
@@ -665,6 +1113,7 @@ impl WaterVolumeGrid {
         }
 
         self.dirty = true;
+        self.active_dirty = true;
     }
 
     /// Remove all water from a bounding box (Flame Altar feature)
@@ -688,6 +1137,7 @@ impl WaterVolumeGrid {
 
         if removed_count > 0 {
             self.dirty = true;
+            self.active_dirty = true;
         }
 
         removed_count
@@ -727,9 +1177,13 @@ impl WaterVolumeGrid {
         &self.cells
     }
 
-    /// Get mutable raw cells (marks dirty)
+    /// Get mutable raw cells (marks dirty).
+    ///
+    /// F.3.S: also marks the active set dirty — arbitrary level/flag writes
+    /// through this slice force a one-time O(n) active-set rebuild next tick.
     pub fn cells_mut(&mut self) -> &mut [WaterCell] {
         self.dirty = true;
+        self.active_dirty = true;
         &mut self.cells
     }
 }

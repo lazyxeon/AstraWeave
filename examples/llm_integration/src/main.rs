@@ -1,6 +1,11 @@
 use astraweave_core::*;
 #[cfg(feature = "ollama")]
 use astraweave_llm::qwen3_ollama::DEFAULT_QWEN_INSTRUCT_MODEL;
+// Display-only fallback for the help text below: the `qwen3_ollama` module is
+// `#[cfg(feature = "ollama")]`, but the help text that prints this name runs
+// unconditionally. Mirrors the canonical value in `qwen3_ollama.rs`.
+#[cfg(not(feature = "ollama"))]
+const DEFAULT_QWEN_INSTRUCT_MODEL: &str = "qwen3.5:4b";
 use astraweave_llm::{plan_from_llm, MockLlm, PlanSource};
 #[cfg(feature = "ollama")]
 use astraweave_llm::{LlmClient, LocalHttpClient};

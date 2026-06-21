@@ -34,6 +34,15 @@
 
 use glam::Vec3;
 
+/// Voxel [`WaterQuery`] backend (F.3) — `impl WaterQuery for WaterVolumeGrid`.
+/// Feature-gated (`voxel`) so consumers wanting only [`AnalyticWater`] do not
+/// pull the `astraweave-fluids` dependency. See [`voxel`] for the cycle-safety
+/// and determinism argument.
+#[cfg(feature = "voxel")]
+pub mod voxel;
+#[cfg(feature = "voxel")]
+pub use voxel::VOXEL_WATER_DENSITY;
+
 /// What a consumer learns about the water at a point.
 ///
 /// Returned by [`WaterQuery::sample`]. Carries exactly the two quantities the

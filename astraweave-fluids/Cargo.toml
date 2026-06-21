@@ -24,6 +24,10 @@ harness = false
 name = "fluid_baselines"
 harness = false
 
+[[bench]]
+name = "voxel_sparsity"
+harness = false
+
 [dependencies]
 wgpu = { workspace = true }
 glam = { workspace = true }
