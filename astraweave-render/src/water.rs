@@ -67,6 +67,12 @@ pub struct WaterUniforms {
     pub _pad2: f32,                    // 148-152
     pub _pad3: f32,                    // 152-156
     pub _pad4: f32,                    // 156-160
+    // W.2b — refraction + depth-foam. inv_view_proj sits at offset 160 (16-aligned)
+    // so the mat4 satisfies std140 alignment.
+    pub inv_view_proj: [[f32; 4]; 4],  // 160-224 — reconstruct scene world pos from depth
+    pub screen_size: [f32; 2],         // 224-232 — for frag → screen-UV
+    pub refraction_strength: f32,      // 232-236 — normal-driven scene-color distortion
+    pub foam_depth_band: f32,          // 236-240 — world-space shoreline foam width
 }
 
 impl Default for WaterUniforms {
@@ -89,6 +95,10 @@ impl Default for WaterUniforms {
             _pad2: 0.0,
             _pad3: 0.0,
             _pad4: 0.0,
+            inv_view_proj: Mat4::IDENTITY.to_cols_array_2d(),
+            screen_size: [1920.0, 1080.0],
+            refraction_strength: 0.02,
+            foam_depth_band: 1.5,
         }
     }
 }
@@ -156,9 +166,20 @@ struct LodMesh {
 /// Water rendering system
 pub struct WaterRenderer {
     pipeline: wgpu::RenderPipeline,
-    _bind_group_layout: wgpu::BindGroupLayout,
+    bind_group_layout: wgpu::BindGroupLayout,
     bind_group: wgpu::BindGroup,
     uniform_buffer: wgpu::Buffer,
+    /// Sampler for the scene-color refraction tap (linear, clamp).
+    sampler: wgpu::Sampler,
+    /// 1×1 dummy scene textures keep the initial bind group valid before the
+    /// renderer wires real scene-color/depth views (W.2b). Held alive (the bind
+    /// group Arc-clones the views, but per the crate convention textures are kept
+    /// explicitly) until the first `prepare_scene` swaps in real textures.
+    _dummy_scene_color: wgpu::Texture,
+    _dummy_depth: wgpu::Texture,
+    /// Resource generation the current `bind_group` was built against
+    /// (`u64::MAX` = built with dummy scene textures, not yet wired).
+    scene_gen: u64,
     /// One pre-baked mesh per LOD level (`LOD_SUBDIVS`).
     lod_meshes: Vec<LodMesh>,
     /// Per-LOD instance buffer (chunk offsets selected for that LOD this frame).
@@ -190,30 +211,99 @@ impl WaterRenderer {
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
 
-        // Bind group layout
+        // Bind group layout — W.2b: 4 entries (uniform + scene-color + scene-depth
+        // + sampler) so the fragment shader can refract the scene behind the water
+        // and compute the depth-delta shoreline foam.
         let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("water_bind_group_layout"),
-            entries: &[wgpu::BindGroupLayoutEntry {
-                binding: 0,
-                visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
-                ty: wgpu::BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Uniform,
-                    has_dynamic_offset: false,
-                    min_binding_size: None,
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
                 },
-                count: None,
-            }],
+                // @1 scene color (opaque HDR snapshot) — sampled for refraction.
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                // @2 scene depth — read via textureLoad for the foam delta.
+                wgpu::BindGroupLayoutEntry {
+                    binding: 2,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Depth,
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                // @3 sampler for the scene-color tap.
+                wgpu::BindGroupLayoutEntry {
+                    binding: 3,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    count: None,
+                },
+            ],
         });
 
-        // Bind group
-        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("water_bind_group"),
-            layout: &bind_group_layout,
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: uniform_buffer.as_entire_binding(),
-            }],
+        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("water_scene_sampler"),
+            address_mode_u: wgpu::AddressMode::ClampToEdge,
+            address_mode_v: wgpu::AddressMode::ClampToEdge,
+            address_mode_w: wgpu::AddressMode::ClampToEdge,
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            ..Default::default()
         });
+
+        // 1×1 dummy scene textures so the initial bind group is valid before the
+        // renderer wires real scene-color/depth views via `prepare_scene`.
+        let dummy_scene_color = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("water_dummy_scene_color"),
+            size: wgpu::Extent3d { width: 1, height: 1, depth_or_array_layers: 1 },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba16Float,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING,
+            view_formats: &[],
+        });
+        let dummy_scene_color_view =
+            dummy_scene_color.create_view(&wgpu::TextureViewDescriptor::default());
+        let dummy_depth = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("water_dummy_depth"),
+            size: wgpu::Extent3d { width: 1, height: 1, depth_or_array_layers: 1 },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Depth32Float,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING,
+            view_formats: &[],
+        });
+        let dummy_depth_view = dummy_depth.create_view(&wgpu::TextureViewDescriptor::default());
+
+        // Initial bind group references the dummy scene textures.
+        let bind_group = Self::build_bind_group(
+            device,
+            &bind_group_layout,
+            &uniform_buffer,
+            &dummy_scene_color_view,
+            &dummy_depth_view,
+            &sampler,
+        );
 
         // Pipeline layout
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -300,14 +390,51 @@ impl WaterRenderer {
 
         Self {
             pipeline,
-            _bind_group_layout: bind_group_layout,
+            bind_group_layout,
             bind_group,
             uniform_buffer,
+            sampler,
+            _dummy_scene_color: dummy_scene_color,
+            _dummy_depth: dummy_depth,
+            scene_gen: u64::MAX,
             lod_meshes,
             instance_buffers,
             instance_counts,
             uniforms,
         }
+    }
+
+    /// Build the 4-entry water bind group (uniform + scene-color + scene-depth + sampler).
+    fn build_bind_group(
+        device: &wgpu::Device,
+        layout: &wgpu::BindGroupLayout,
+        uniform_buffer: &wgpu::Buffer,
+        scene_color_view: &wgpu::TextureView,
+        scene_depth_view: &wgpu::TextureView,
+        sampler: &wgpu::Sampler,
+    ) -> wgpu::BindGroup {
+        device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("water_bind_group"),
+            layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: uniform_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::TextureView(scene_color_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: wgpu::BindingResource::TextureView(scene_depth_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: wgpu::BindingResource::Sampler(sampler),
+                },
+            ],
+        })
     }
 
     /// Generate a subdivided water plane (surface grid only, local Y = 0,
@@ -413,6 +540,13 @@ impl WaterRenderer {
         (vertices, indices)
     }
 
+    /// Whether any LOD band has chunks to draw this frame. False before the first
+    /// [`Self::update`] (e.g. the editor dormant-water case where `update_water`
+    /// is never called), letting the renderer skip the scene-color snapshot + pass.
+    pub fn has_visible_chunks(&self) -> bool {
+        self.instance_counts.iter().any(|&c| c > 0)
+    }
+
     /// Select an LOD band (index into `LOD_SUBDIVS`) for a camera→chunk distance.
     fn lod_for_distance(dist: f32) -> usize {
         LOD_DISTANCES
@@ -425,6 +559,9 @@ impl WaterRenderer {
     /// the camera position. Call once per frame before [`Self::render`].
     pub fn update(&mut self, queue: &wgpu::Queue, view_proj: Mat4, camera_pos: Vec3, time: f32) {
         self.uniforms.view_proj = view_proj.to_cols_array_2d();
+        // Inverse view-proj reconstructs the world position of the opaque scene
+        // behind the water from its sampled depth (W.2b depth-delta foam).
+        self.uniforms.inv_view_proj = view_proj.inverse().to_cols_array_2d();
         self.uniforms.camera_pos = camera_pos.into();
         self.uniforms.time = time;
         queue.write_buffer(&self.uniform_buffer, 0, bytemuck::bytes_of(&self.uniforms));
@@ -461,6 +598,38 @@ impl WaterRenderer {
                 );
             }
         }
+    }
+
+    /// Wire the scene-color snapshot + scene-depth views into the water bind group
+    /// and upload the screen size, immediately before the water pass (W.2b). The
+    /// bind group is only rebuilt when `resource_gen` changes (resize); the uniform
+    /// upload is cheap and unconditional. Must be called each frame before
+    /// [`Self::render`] in the split water pass.
+    pub fn prepare_scene(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        scene_color_view: &wgpu::TextureView,
+        scene_depth_view: &wgpu::TextureView,
+        screen_size: [f32; 2],
+        resource_gen: u64,
+    ) {
+        if self.scene_gen != resource_gen {
+            self.bind_group = Self::build_bind_group(
+                device,
+                &self.bind_group_layout,
+                &self.uniform_buffer,
+                scene_color_view,
+                scene_depth_view,
+                &self.sampler,
+            );
+            self.scene_gen = resource_gen;
+        }
+        // Patch only screen_size — the rest of the block was uploaded by `update()`
+        // this frame, so re-uploading all 240 B here would be redundant.
+        self.uniforms.screen_size = screen_size;
+        let off = std::mem::offset_of!(WaterUniforms, screen_size) as u64;
+        queue.write_buffer(&self.uniform_buffer, off, bytemuck::bytes_of(&self.uniforms.screen_size));
     }
 
     /// Set water level (world Y). Takes effect on the next [`Self::update`] or
@@ -563,7 +732,10 @@ mod tests {
     #[test]
     fn test_uniforms_size() {
         // Ensure uniform struct is properly aligned for GPU (16-byte multiple).
-        assert_eq!(std::mem::size_of::<WaterUniforms>(), 160);
+        // W.2b grew it to 240 B (inv_view_proj mat4 + screen_size + refraction
+        // params). inv_view_proj sits at offset 160 (16-aligned).
+        assert_eq!(std::mem::size_of::<WaterUniforms>(), 240);
+        assert_eq!(std::mem::offset_of!(WaterUniforms, inv_view_proj), 160);
     }
 
     #[test]

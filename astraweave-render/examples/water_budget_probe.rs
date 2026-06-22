@@ -318,6 +318,264 @@ fn drive_frames(r: &mut Renderer, tag: &str) -> Option<f32> {
     Some(median)
 }
 
+// Opaque sloped-ground scene shader for the refraction probe: a big quad whose
+// Y slopes with Z so it crosses the water level (creating a shoreline for the
+// depth-delta foam) and recedes below it (deep water for refraction). Writes
+// depth so the water pass can depth-test + sample it.
+const GROUND_WGSL: &str = r#"
+struct VP { mvp: mat4x4<f32> };
+@group(0) @binding(0) var<uniform> u: VP;
+struct VO { @builtin(position) pos: vec4<f32>, @location(0) world: vec3<f32> };
+@vertex fn vs(@location(0) p: vec3<f32>) -> VO {
+    var o: VO; o.pos = u.mvp * vec4<f32>(p, 1.0); o.world = p; return o;
+}
+@fragment fn fs(i: VO) -> @location(0) vec4<f32> {
+    // Distinct red/green checker so refraction tint is detectable on readback.
+    let c = step(0.5, fract(i.world.x * 0.05)) + step(0.5, fract(i.world.z * 0.05));
+    let chk = abs(c - 1.0);
+    return vec4<f32>(0.8 * chk + 0.1, 0.5 * (1.0 - chk) + 0.1, 0.08, 1.0);
+}
+"#;
+
+/// Probe C: real refraction — render an opaque sloped ground, snapshot it, then
+/// run the split water pass sampling that snapshot + depth. Reports the copy and
+/// water-pass costs and confirms refraction actually tints the water.
+fn probe_refraction(device: &wgpu::Device, queue: &wgpu::Queue, has_timestamps: bool) {
+    use wgpu::util::DeviceExt;
+    println!("\n=== PROBE C: refraction + depth-foam (opaque ground behind water) ===");
+
+    let mut water = WaterRenderer::new(device, COLOR_FMT, DEPTH_FMT);
+
+    let mk = |label, fmt, usage| {
+        device.create_texture(&wgpu::TextureDescriptor {
+            label: Some(label),
+            size: wgpu::Extent3d { width: W, height: H, depth_or_array_layers: 1 },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: fmt,
+            usage,
+            view_formats: &[],
+        })
+    };
+    let hdr = mk("probe_hdr", COLOR_FMT,
+        wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC | wgpu::TextureUsages::COPY_DST);
+    let hdr_view = hdr.create_view(&Default::default());
+    let depth = mk("probe_depth", DEPTH_FMT,
+        wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING);
+    let depth_view = depth.create_view(&Default::default());
+    let scene_color = mk("probe_scene_color", COLOR_FMT,
+        wgpu::TextureUsages::COPY_DST | wgpu::TextureUsages::TEXTURE_BINDING);
+    let scene_color_view = scene_color.create_view(&Default::default());
+
+    // Sloped ground quad: y = -z * 0.04 → crosses water level (2.0) near z=-50.
+    let g = |x: f32, z: f32| [x, -z * 0.04, z];
+    let verts: [[f32; 3]; 4] = [g(-400.0, -400.0), g(400.0, -400.0), g(-400.0, 400.0), g(400.0, 400.0)];
+    let idx: [u32; 6] = [0, 2, 1, 1, 2, 3];
+    let gvb = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("ground_vb"), contents: bytemuck::cast_slice(&verts), usage: wgpu::BufferUsages::VERTEX });
+    let gib = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("ground_ib"), contents: bytemuck::cast_slice(&idx), usage: wgpu::BufferUsages::INDEX });
+    let gubo = device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("ground_ubo"), size: 64, usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST, mapped_at_creation: false });
+    let gshader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+        label: Some("ground"), source: wgpu::ShaderSource::Wgsl(GROUND_WGSL.into()) });
+    let gbgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        label: Some("ground_bgl"),
+        entries: &[wgpu::BindGroupLayoutEntry {
+            binding: 0, visibility: wgpu::ShaderStages::VERTEX,
+            ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Uniform, has_dynamic_offset: false, min_binding_size: None }, count: None }] });
+    let gbg = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: Some("ground_bg"), layout: &gbgl,
+        entries: &[wgpu::BindGroupEntry { binding: 0, resource: gubo.as_entire_binding() }] });
+    let gpl = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+        label: Some("ground_pl"), bind_group_layouts: &[&gbgl], push_constant_ranges: &[] });
+    let gpipe = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        label: Some("ground_pipe"), layout: Some(&gpl),
+        vertex: wgpu::VertexState { module: &gshader, entry_point: Some("vs"),
+            buffers: &[wgpu::VertexBufferLayout { array_stride: 12, step_mode: wgpu::VertexStepMode::Vertex,
+                attributes: &[wgpu::VertexAttribute { offset: 0, shader_location: 0, format: wgpu::VertexFormat::Float32x3 }] }],
+            compilation_options: Default::default() },
+        fragment: Some(wgpu::FragmentState { module: &gshader, entry_point: Some("fs"),
+            targets: &[Some(wgpu::ColorTargetState { format: COLOR_FMT, blend: None, write_mask: wgpu::ColorWrites::ALL })],
+            compilation_options: Default::default() }),
+        primitive: wgpu::PrimitiveState { cull_mode: None, ..Default::default() },
+        depth_stencil: Some(wgpu::DepthStencilState { format: DEPTH_FMT, depth_write_enabled: true,
+            depth_compare: wgpu::CompareFunction::LessEqual, stencil: Default::default(), bias: Default::default() }),
+        multisample: Default::default(), multiview: None, cache: None });
+
+    let mut profiler = if has_timestamps { Some(GpuProfiler::new(device, queue)) } else { None };
+    let copy_ts = device.features().contains(wgpu::Features::TIMESTAMP_QUERY_INSIDE_ENCODERS);
+    // Dedicated 2-query set for the copy line item.
+    let copy_qset = device.create_query_set(&wgpu::QuerySetDescriptor {
+        label: Some("copy_qs"), ty: wgpu::QueryType::Timestamp, count: 2 });
+    let copy_resolve = device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("copy_resolve"), size: 16, usage: wgpu::BufferUsages::QUERY_RESOLVE | wgpu::BufferUsages::COPY_SRC, mapped_at_creation: false });
+    let copy_read = device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("copy_read"), size: 16, usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST, mapped_at_creation: false });
+    let ts_period = queue.get_timestamp_period();
+
+    let cams = [
+        CamCfg { name: "near", eye: Vec3::new(0.0, 14.0, 70.0), target: Vec3::new(0.0, 2.0, 0.0) },
+        CamCfg { name: "horizon", eye: Vec3::new(0.0, 4.0, 245.0), target: Vec3::new(0.0, 2.0, -120.0) },
+    ];
+
+    for cam in &cams {
+        let (vp, eye) = view_proj(cam.eye, cam.target);
+        queue.write_buffer(&gubo, 0, bytemuck::cast_slice(&vp.to_cols_array()));
+        let mut water_ms: Vec<f32> = Vec::with_capacity(FRAMES);
+        let mut copy_ms: Vec<f32> = Vec::with_capacity(FRAMES);
+
+        for frame in 0..(WARMUP + FRAMES) {
+            let time = frame as f32 * (1.0 / 60.0);
+            water.update(queue, vp, eye, time);
+            water.prepare_scene(device, queue, &scene_color_view, &depth_view, [W as f32, H as f32], 0);
+            if let Some(ref mut p) = profiler { p.begin_frame(); }
+            let mut enc = device.create_command_encoder(&Default::default());
+            // 1. Opaque ground into hdr + depth.
+            {
+                let mut rp = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
+                    label: Some("ground_pass"),
+                    color_attachments: &[Some(wgpu::RenderPassColorAttachment { view: &hdr_view, resolve_target: None,
+                        ops: wgpu::Operations { load: wgpu::LoadOp::Clear(wgpu::Color { r: 0.5, g: 0.7, b: 0.95, a: 1.0 }), store: wgpu::StoreOp::Store } })],
+                    depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment { view: &depth_view,
+                        depth_ops: Some(wgpu::Operations { load: wgpu::LoadOp::Clear(1.0), store: wgpu::StoreOp::Store }), stencil_ops: None }),
+                    timestamp_writes: None, occlusion_query_set: None });
+                rp.set_pipeline(&gpipe); rp.set_bind_group(0, &gbg, &[]);
+                rp.set_vertex_buffer(0, gvb.slice(..)); rp.set_index_buffer(gib.slice(..), wgpu::IndexFormat::Uint32);
+                rp.draw_indexed(0..6, 0, 0..1);
+            }
+            // 2. Snapshot hdr → scene_color (the copy line item).
+            if copy_ts { enc.write_timestamp(&copy_qset, 0); }
+            enc.copy_texture_to_texture(
+                wgpu::TexelCopyTextureInfo { texture: &hdr, mip_level: 0, origin: wgpu::Origin3d::ZERO, aspect: wgpu::TextureAspect::All },
+                wgpu::TexelCopyTextureInfo { texture: &scene_color, mip_level: 0, origin: wgpu::Origin3d::ZERO, aspect: wgpu::TextureAspect::All },
+                wgpu::Extent3d { width: W, height: H, depth_or_array_layers: 1 });
+            if copy_ts {
+                enc.write_timestamp(&copy_qset, 1);
+                enc.resolve_query_set(&copy_qset, 0..2, &copy_resolve, 0);
+                enc.copy_buffer_to_buffer(&copy_resolve, 0, &copy_read, 0, 16);
+            }
+            // 3. Water pass (read-only depth, samples scene_color + depth).
+            {
+                let ts = profiler.as_mut().and_then(|p| p.render_pass_timestamps("water"));
+                let mut wp = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
+                    label: Some("water_pass"),
+                    color_attachments: &[Some(wgpu::RenderPassColorAttachment { view: &hdr_view, resolve_target: None,
+                        ops: wgpu::Operations { load: wgpu::LoadOp::Load, store: wgpu::StoreOp::Store } })],
+                    depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment { view: &depth_view,
+                        depth_ops: None, stencil_ops: None }),
+                    timestamp_writes: ts, occlusion_query_set: None });
+                water.render(&mut wp);
+            }
+            if let Some(ref p) = profiler { p.end_frame(&mut enc); }
+            queue.submit(Some(enc.finish()));
+            let _ = device.poll(wgpu::PollType::Wait);
+            // read copy timestamps
+            if copy_ts {
+                let slice = copy_read.slice(..);
+                slice.map_async(wgpu::MapMode::Read, |_| {});
+                let _ = device.poll(wgpu::PollType::Wait);
+                let data = slice.get_mapped_range();
+                let t: &[u64] = bytemuck::cast_slice(&data);
+                let dt = (t[1].wrapping_sub(t[0])) as f64 * ts_period as f64 / 1_000_000.0;
+                drop(data); copy_read.unmap();
+                if frame >= WARMUP { copy_ms.push(dt as f32); }
+            }
+            if let Some(ref mut p) = profiler {
+                p.request_readback(); let _ = device.poll(wgpu::PollType::Wait); p.poll_readback(device);
+                if frame >= WARMUP { if let Some(ms) = p.results_map().get("water") { water_ms.push(*ms); } }
+            }
+        }
+        print_stats(&format!("[{}] water pass (refraction)", cam.name), water_ms);
+        print_stats(&format!("[{}] scene-color copy", cam.name), copy_ms);
+    }
+
+    // Render-correctness: confirm water rasterizes AND refraction tints it with the
+    // ground's red/green checker (vs the flat blue water body) — proves the scene-
+    // color tap is live, not a dummy/black sample.
+    {
+        let (vp, eye) = view_proj(cams[0].eye, cams[0].target);
+        queue.write_buffer(&gubo, 0, bytemuck::cast_slice(&vp.to_cols_array()));
+        water.update(queue, vp, eye, 1.0);
+        water.prepare_scene(device, queue, &scene_color_view, &depth_view, [W as f32, H as f32], 0);
+        let mut enc = device.create_command_encoder(&Default::default());
+        {
+            let mut rp = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("verify_ground"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment { view: &hdr_view, resolve_target: None,
+                    ops: wgpu::Operations { load: wgpu::LoadOp::Clear(wgpu::Color { r: 0.5, g: 0.7, b: 0.95, a: 1.0 }), store: wgpu::StoreOp::Store } })],
+                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment { view: &depth_view,
+                    depth_ops: Some(wgpu::Operations { load: wgpu::LoadOp::Clear(1.0), store: wgpu::StoreOp::Store }), stencil_ops: None }),
+                timestamp_writes: None, occlusion_query_set: None });
+            rp.set_pipeline(&gpipe); rp.set_bind_group(0, &gbg, &[]);
+            rp.set_vertex_buffer(0, gvb.slice(..)); rp.set_index_buffer(gib.slice(..), wgpu::IndexFormat::Uint32);
+            rp.draw_indexed(0..6, 0, 0..1);
+        }
+        enc.copy_texture_to_texture(
+            wgpu::TexelCopyTextureInfo { texture: &hdr, mip_level: 0, origin: wgpu::Origin3d::ZERO, aspect: wgpu::TextureAspect::All },
+            wgpu::TexelCopyTextureInfo { texture: &scene_color, mip_level: 0, origin: wgpu::Origin3d::ZERO, aspect: wgpu::TextureAspect::All },
+            wgpu::Extent3d { width: W, height: H, depth_or_array_layers: 1 });
+        {
+            let mut wp = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("verify_water"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment { view: &hdr_view, resolve_target: None,
+                    ops: wgpu::Operations { load: wgpu::LoadOp::Load, store: wgpu::StoreOp::Store } })],
+                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment { view: &depth_view, depth_ops: None, stencil_ops: None }),
+                timestamp_writes: None, occlusion_query_set: None });
+            water.render(&mut wp);
+        }
+        // readback hdr (bottom half = under-water region where ground is refracted)
+        let bpp = 8u32; let unpadded = W * bpp; let align = wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
+        let padded = unpadded.div_ceil(align) * align;
+        let buf = device.create_buffer(&wgpu::BufferDescriptor { label: Some("verify_rb"),
+            size: (padded * H) as u64, usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ, mapped_at_creation: false });
+        enc.copy_texture_to_buffer(
+            wgpu::TexelCopyTextureInfo { texture: &hdr, mip_level: 0, origin: wgpu::Origin3d::ZERO, aspect: wgpu::TextureAspect::All },
+            wgpu::TexelCopyBufferInfo { buffer: &buf, layout: wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(padded), rows_per_image: Some(H) } },
+            wgpu::Extent3d { width: W, height: H, depth_or_array_layers: 1 });
+        queue.submit(Some(enc.finish()));
+        let _ = device.poll(wgpu::PollType::Wait);
+        let slice = buf.slice(..); slice.map_async(wgpu::MapMode::Read, |_| {});
+        let _ = device.poll(wgpu::PollType::Wait);
+        let data = slice.get_mapped_range();
+        // Diagnostic: average colour + warm fraction across vertical bands, so a
+        // 0% can be told apart (blue=refraction off vs warm=working vs sky).
+        let mut warm = 0u64; let mut sampled = 0u64; let mut foam = 0u64;
+        for (lo, hi, label) in [(10u32, 40u32, "upper"), (40, 60, "mid"), (60, 90, "lower")] {
+            let (mut sr, mut sg, mut sb, mut n) = (0f64, 0f64, 0f64, 0u64);
+            let mut w = 0u64; let mut fm = 0u64;
+            for y in (H * lo / 100)..(H * hi / 100) {
+                let row = &data[y as usize * padded as usize..];
+                for x in (W * 25 / 100)..(W * 75 / 100) {
+                    let o = x as usize * 8;
+                    let r = half::f16::from_le_bytes([row[o], row[o + 1]]).to_f32();
+                    let g = half::f16::from_le_bytes([row[o + 2], row[o + 3]]).to_f32();
+                    let b = half::f16::from_le_bytes([row[o + 4], row[o + 5]]).to_f32();
+                    sr += r as f64; sg += g as f64; sb += b as f64; n += 1;
+                    if r > b * 1.05 { w += 1; warm += 1; }
+                    // Near-white = foam (wave-crest or depth-delta shoreline).
+                    if r > 0.7 && g > 0.7 && b > 0.7 { fm += 1; foam += 1; }
+                    sampled += 1;
+                }
+            }
+            let nn = n.max(1) as f64;
+            println!("    band {label:<6} avg rgb=({:.3},{:.3},{:.3})  warm={:.0}%  foam={:.1}%",
+                sr / nn, sg / nn, sb / nn, w as f64 / nn * 100.0, fm as f64 / nn * 100.0);
+        }
+        let foam_pct = foam as f64 / sampled.max(1) as f64 * 100.0;
+        println!("  foam-check: {:.2}% near-white foam pixels in water region — {}", foam_pct,
+            if foam > 0 { "FOAM RENDERS (wave-crest + depth-delta shoreline)" } else { "no foam detected" });
+        drop(data); buf.unmap();
+        let pct = warm as f64 / sampled.max(1) as f64 * 100.0;
+        println!(
+            "  refraction-check: {:.1}% warm overall — {}",
+            pct,
+            if pct > 5.0 { "REFRACTION LIVE (scene-color sampled, not dummy/flat)" } else { "!! no refraction tint — investigate scene-color binding" }
+        );
+    }
+}
+
 fn main() {
     pollster::block_on(async {
         let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
@@ -348,10 +606,16 @@ fn main() {
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor {
                 label: Some("probe_device"),
-                required_features: if has_timestamps {
-                    wgpu::Features::TIMESTAMP_QUERY
-                } else {
-                    wgpu::Features::empty()
+                required_features: {
+                    let mut f = wgpu::Features::empty();
+                    if has_timestamps {
+                        f |= wgpu::Features::TIMESTAMP_QUERY;
+                    }
+                    // Needed for encoder.write_timestamp around the scene-color copy.
+                    if adapter.features().contains(wgpu::Features::TIMESTAMP_QUERY_INSIDE_ENCODERS) {
+                        f |= wgpu::Features::TIMESTAMP_QUERY_INSIDE_ENCODERS;
+                    }
+                    f
                 },
                 required_limits: wgpu::Limits {
                     max_bind_groups: 8,
@@ -364,6 +628,7 @@ fn main() {
             .expect("device");
 
         probe_isolated(&device, &queue, has_timestamps);
+        probe_refraction(&device, &queue, has_timestamps);
         probe_full_frame(has_timestamps).await;
 
         println!("\n=== done ===");

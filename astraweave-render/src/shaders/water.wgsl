@@ -35,9 +35,18 @@ struct WaterUniforms {
     _pad3: f32,
     _pad4: f32,
     _pad5: f32,
+    // W.2b — refraction + depth-delta foam.
+    inv_view_proj: mat4x4<f32>,  // reconstruct scene world pos from sampled depth
+    screen_size: vec2<f32>,      // for @builtin(position) → screen-UV
+    refraction_strength: f32,    // normal-driven scene-color distortion
+    foam_depth_band: f32,        // world-space shoreline foam width
 };
 
 @group(0) @binding(0) var<uniform> uniforms: WaterUniforms;
+// W.2b — opaque scene snapshot + scene depth for refraction and shoreline foam.
+@group(0) @binding(1) var scene_color: texture_2d<f32>;
+@group(0) @binding(2) var scene_depth: texture_depth_2d;
+@group(0) @binding(3) var scene_samp: sampler;
 
 // ── Rain ripple normal perturbation ─────────────────────────────────────────
 // Procedural concentric ring pattern from multiple random "drop" origins.
@@ -107,7 +116,9 @@ fn gerstner_wave(
 ) -> vec3<f32> {
     let d = normalize(direction);
     let phase = frequency * (dot(d, pos) - speed * time);
-    let Q = steepness / (frequency * amplitude * f32(WAVE_COUNT));
+    // Profile A steepness guardrail: cap Q ≤ 1.0 to prevent normal inversion /
+    // mesh self-intersection at crests (the W-series Gemini-triage correctness cap).
+    let Q = min(steepness / (frequency * amplitude * f32(WAVE_COUNT)), 1.0);
     
     return vec3<f32>(
         Q * amplitude * d.x * cos(phase),
@@ -127,7 +138,9 @@ fn gerstner_normal(
 ) -> vec3<f32> {
     let d = normalize(direction);
     let phase = frequency * (dot(d, pos) - speed * time);
-    let Q = steepness / (frequency * amplitude * f32(WAVE_COUNT));
+    // Profile A steepness guardrail: cap Q ≤ 1.0 to prevent normal inversion /
+    // mesh self-intersection at crests (the W-series Gemini-triage correctness cap).
+    let Q = min(steepness / (frequency * amplitude * f32(WAVE_COUNT)), 1.0);
     let WA = frequency * amplitude;
     
     let s = sin(phase);
@@ -208,31 +221,62 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
     
     // Fresnel effect for reflection blend
     let fresnel = pow(1.0 - max(dot(N, V), 0.0), 3.0);
-    
+
     // Depth-based color blend (shallow vs deep)
     let depth_factor = clamp(input.wave_height * 2.0 + 0.5, 0.0, 1.0);
     let water_color = mix(uniforms.water_color_deep, uniforms.water_color_shallow, depth_factor);
-    
-    // Fake sky reflection (blue-ish)
+
+    // ── W.2b refraction + depth-delta foam (uniform control flow below) ──────────
+    // Screen UV of this water fragment (framebuffer origin top-left).
+    let screen_uv = input.clip_position.xy / uniforms.screen_size;
+
+    // Refraction: bend what's behind the water by the surface-normal XZ tilt.
+    let distort = N.xz * uniforms.refraction_strength;
+    let refr_uv = clamp(screen_uv + distort, vec2<f32>(0.0), vec2<f32>(1.0));
+    let refracted = textureSample(scene_color, scene_samp, refr_uv).rgb;
+
+    // Reconstruct the world position of the opaque scene behind the water from its
+    // depth, then measure water thickness = distance to the water surface.
+    // Undistorted fragment position → always within this fragment's own pixel, so
+    // in-bounds. textureLoad has no clamping: if a future change derives this coord
+    // from a distorted/offset value, clamp it to textureDimensions first.
+    let scene_d = textureLoad(scene_depth, vec2<i32>(input.clip_position.xy), 0);
+    let ndc = vec3<f32>(screen_uv.x * 2.0 - 1.0, 1.0 - screen_uv.y * 2.0, scene_d);
+    let world_h = uniforms.inv_view_proj * vec4<f32>(ndc, 1.0);
+    let scene_world = world_h.xyz / world_h.w;
+    let thickness = distance(scene_world, input.world_pos);
+
+    // Thin water (shoreline / over shallow terrain) is clear and shows the refracted
+    // scene; thicker water absorbs toward the body colour (Beer-Lambert-ish).
+    let water_opacity = clamp(thickness / 6.0, 0.0, 0.9);
+    let through = mix(refracted, water_color, water_opacity);
+
+    // Sky reflection blended over the through-water colour by Fresnel.
     let sky_color = vec3<f32>(0.6, 0.75, 0.95);
-    let reflected = mix(water_color, sky_color, fresnel * 0.6);
-    
+    let reflected = mix(through, sky_color, fresnel * 0.6);
+
     // Sun specular highlight
     let sun_dir = normalize(vec3<f32>(0.5, 0.8, 0.3));
     let H = normalize(V + sun_dir);
     let spec = pow(max(dot(N, H), 0.0), 128.0);
     let sun_color = vec3<f32>(1.0, 0.95, 0.8);
-    
-    // Foam on wave peaks
+
+    // Foam on wave peaks (existing).
     let foam_intensity = smoothstep(uniforms.foam_threshold, uniforms.foam_threshold + 0.2, input.wave_height);
-    let with_foam = mix(reflected, uniforms.foam_color, foam_intensity * 0.7);
-    
-    // Final color with specular
+    var with_foam = mix(reflected, uniforms.foam_color, foam_intensity * 0.7);
+
+    // Profile C — depth-delta intersection foam where water meets geometry.
+    // A scrolling mask animates the band so it reads as moving shoreline foam.
+    let shore = 1.0 - smoothstep(0.0, uniforms.foam_depth_band, thickness);
+    let foam_scroll = 0.5 + 0.5 * sin(input.world_pos.x * 0.6 + input.world_pos.z * 0.6 - uniforms.time * 2.5);
+    let shore_foam = shore * (0.55 + 0.45 * foam_scroll);
+    with_foam = mix(with_foam, uniforms.foam_color, shore_foam);
+
+    // Final color with specular.
     let final_color = with_foam + sun_color * spec * 0.8;
-    
-    // Slight transparency for water
-    let alpha = mix(0.85, 0.95, fresnel);
-    
-    // Final color with specular and alpha
-    return vec4<f32>(final_color, alpha);
+
+    // The water composites the (refracted) scene behind it itself, so it outputs
+    // opaque — its "see-through" comes from the refraction sample, not framebuffer
+    // alpha (which would double-count the background under ALPHA_BLENDING).
+    return vec4<f32>(final_color, 1.0);
 }
