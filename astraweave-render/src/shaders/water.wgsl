@@ -4,6 +4,8 @@
 struct VertexInput {
     @location(0) position: vec3<f32>,
     @location(1) uv: vec2<f32>,
+    // Per-instance chunk world-XZ center (added to local tile position).
+    @location(2) chunk_offset: vec2<f32>,
 };
 
 struct VertexOutput {
@@ -28,7 +30,11 @@ struct WaterUniforms {
     rain_intensity: f32,   // 0.0 = no rain, 1.0 = heavy rain
     ripple_scale: f32,     // UV tile scale for ripple pattern (default 4.0)
     ripple_strength: f32,  // Normal perturbation strength (default 0.15)
+    water_level: f32,      // World-space Y of the rest surface (W.2a)
+    skirt_depth: f32,      // Skirt vertices drop this far below the surface (W.2a)
     _pad3: f32,
+    _pad4: f32,
+    _pad5: f32,
 };
 
 @group(0) @binding(0) var<uniform> uniforms: WaterUniforms;
@@ -137,40 +143,49 @@ fn gerstner_normal(
 @vertex
 fn vs_main(input: VertexInput) -> VertexOutput {
     var output: VertexOutput;
-    
+
     let time = uniforms.time;
-    var pos = input.position;
-    
+    // World XZ for this vertex = local tile position + per-chunk world offset.
+    // Sampling the wave field at world XZ makes chunks world-stable (no swimming)
+    // and guarantees shared LOD-boundary vertices agree exactly.
+    let world_xz = input.position.xz + input.chunk_offset;
+    // Skirt vertices carry sentinel local Y = -1.0; surface vertices carry 0.
+    let is_skirt = select(0.0, 1.0, input.position.y < -0.5);
+
     // Apply 4 Gerstner waves with different parameters
     var displacement = vec3<f32>(0.0);
     var normal_accum = vec3<f32>(0.0, 1.0, 0.0);
-    
+
     // Wave 1: Primary swell (large, slow)
-    displacement += gerstner_wave(pos.xz, time, 0.8, 0.15, 2.0, vec2<f32>(1.0, 0.3), 0.5);
-    normal_accum += gerstner_normal(pos.xz, time, 0.8, 0.15, 2.0, vec2<f32>(1.0, 0.3), 0.5);
-    
+    displacement += gerstner_wave(world_xz, time, 0.8, 0.15, 2.0, vec2<f32>(1.0, 0.3), 0.5);
+    normal_accum += gerstner_normal(world_xz, time, 0.8, 0.15, 2.0, vec2<f32>(1.0, 0.3), 0.5);
+
     // Wave 2: Secondary swell (medium)
-    displacement += gerstner_wave(pos.xz, time, 0.5, 0.25, 2.5, vec2<f32>(-0.5, 1.0), 0.4);
-    normal_accum += gerstner_normal(pos.xz, time, 0.5, 0.25, 2.5, vec2<f32>(-0.5, 1.0), 0.4);
-    
+    displacement += gerstner_wave(world_xz, time, 0.5, 0.25, 2.5, vec2<f32>(-0.5, 1.0), 0.4);
+    normal_accum += gerstner_normal(world_xz, time, 0.5, 0.25, 2.5, vec2<f32>(-0.5, 1.0), 0.4);
+
     // Wave 3: Chop (small, fast)
-    displacement += gerstner_wave(pos.xz, time, 0.25, 0.5, 3.5, vec2<f32>(0.7, -0.7), 0.3);
-    normal_accum += gerstner_normal(pos.xz, time, 0.25, 0.5, 3.5, vec2<f32>(0.7, -0.7), 0.3);
-    
+    displacement += gerstner_wave(world_xz, time, 0.25, 0.5, 3.5, vec2<f32>(0.7, -0.7), 0.3);
+    normal_accum += gerstner_normal(world_xz, time, 0.25, 0.5, 3.5, vec2<f32>(0.7, -0.7), 0.3);
+
     // Wave 4: Ripples (tiny, very fast)
-    displacement += gerstner_wave(pos.xz, time, 0.1, 1.0, 4.0, vec2<f32>(-0.3, 0.9), 0.2);
-    normal_accum += gerstner_normal(pos.xz, time, 0.1, 1.0, 4.0, vec2<f32>(-0.3, 0.9), 0.2);
-    
-    pos.x += displacement.x;
-    pos.y += displacement.y;
-    pos.z += displacement.z;
-    
+    displacement += gerstner_wave(world_xz, time, 0.1, 1.0, 4.0, vec2<f32>(-0.3, 0.9), 0.2);
+    normal_accum += gerstner_normal(world_xz, time, 0.1, 1.0, 4.0, vec2<f32>(-0.3, 0.9), 0.2);
+
+    // Place the vertex in the world. Skirt vertices share their surface twin's
+    // horizontal displacement and drop straight down by skirt_depth, hanging from
+    // the displaced edge to cover any LOD-boundary crack.
+    var pos: vec3<f32>;
+    pos.x = world_xz.x + displacement.x;
+    pos.z = world_xz.y + displacement.z;
+    pos.y = uniforms.water_level + displacement.y - is_skirt * uniforms.skirt_depth;
+
     output.world_pos = pos;
     output.clip_position = uniforms.view_proj * vec4<f32>(pos, 1.0);
     output.uv = input.uv;
     output.normal = normalize(normal_accum);
     output.wave_height = displacement.y;
-    
+
     return output;
 }
 

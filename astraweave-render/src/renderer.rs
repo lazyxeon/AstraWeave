@@ -4549,6 +4549,18 @@ fn vs(input: VSIn) -> VSOut {
         }
     }
 
+    /// Set the water surface level (world Y) and upload it immediately.
+    ///
+    /// Uploads on the spot (rather than waiting for the next `update_water`) so
+    /// callers like the editor water-level knob see the change on the next frame
+    /// even when they do not drive `update_water` per frame.
+    pub fn set_water_level(&mut self, level: f32) {
+        if let Some(ref mut water) = self.water_renderer {
+            water.set_water_level(level);
+            water.write_uniforms(&self.queue);
+        }
+    }
+
     /// Acquire the current surface texture with robust error handling.
     ///
     /// Returns `Ok(None)` when no surface is configured or if the surface was

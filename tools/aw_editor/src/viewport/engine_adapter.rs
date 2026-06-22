@@ -3772,6 +3772,15 @@ impl EngineRenderAdapter {
         }
     }
 
+    /// Set the water surface level (world Y) on the engine renderer.
+    ///
+    /// Forwards to `Renderer::set_water_level`, which uploads the level uniform
+    /// immediately — so the editor water-level knob takes effect on the next
+    /// frame without depending on a per-frame `update_water` call.
+    pub fn set_water_level(&mut self, level: f32) {
+        self.renderer.set_water_level(level);
+    }
+
     /// Update water animation state each frame.
     ///
     /// C.3.B.1 migration: signature now accepts `&RenderView` directly,

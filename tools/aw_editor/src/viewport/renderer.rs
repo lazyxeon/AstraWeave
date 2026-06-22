@@ -1452,9 +1452,14 @@ impl ViewportRenderer {
         // Engine adapter manages lights through its own clustered lighting pipeline.
     }
 
-    /// Set water level for volumetric water plane
-    pub fn set_water_level(&mut self, _level: f32) {
-        // Water is now handled by engine adapter.
+    /// Set water level (world Y) for the engine water surface.
+    ///
+    /// W.2a: forwards to the engine adapter (was a dead stub that dropped the
+    /// value, leaving the editor water-level knob settable-but-unobserved).
+    pub fn set_water_level(&mut self, level: f32) {
+        if let Some(adapter) = &mut self.engine_adapter {
+            adapter.set_water_level(level);
+        }
     }
 
     /// Enable or disable the volumetric water plane

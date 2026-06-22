@@ -6,9 +6,9 @@
 |---|---|
 | **System name** | Render Pipeline + Material System + Shader Infrastructure |
 | **Primary crates** | `astraweave-render` (123 Rust files / ~78K LoC + 71 WGSL files), `astraweave-materials` (single-file material-graph crate), `tools/aw_editor/src/viewport/` (editor-side renderer + engine adapter) |
-| **Document version** | 1.0 |
-| **Last verified against commit** | `67c9de7e1` |
-| **Last verified date** | 2026-05-10 |
+| **Document version** | 1.1 |
+| **Last verified against commit** | `67c9de7e1` (full trace); water row W.2a (2026-06-22) |
+| **Last verified date** | 2026-05-10 (full trace) |
 | **Status** | **ACTIVE WORKZONE** — Editor Multi-Tool Architecture Campaign Sub-phase 3 (Mediator Brush) is in flight as of campaign-doc commit `e3d07f366` (2026-05-08, Round-8-Closure). Fix 27 Unified Pipeline Campaign is structurally complete (per CLAUDE.md) but deeper editor↔runtime unification continues. Treat this trace as a **navigational map**; per-subsystem detailed traces are follow-up work. |
 | **Owner notes** | This trace covers an unusually large system (~78K LoC source + 71 WGSL files + editor viewport). Per the template's "One last thing" rule on scale, this doc is intentionally structured as a **subsystem map + load-bearing-aggregator detail**, not an exhaustive per-file trace. Sub-systems like Lumen GI, MegaLights, Nanite, Atmosphere, GPU Particles, Volumetric Fog, IBL, and TAA each warrant their own dedicated trace if and when they enter focused work. The doc covers terrain materials by reference to `docs/architecture/terrain_materials.md`. |
 
@@ -383,7 +383,7 @@ This map enumerates the load-bearing files. Per-file traces of every subsystem a
 | File | Role | Status | Notes |
 |---|---|---|---|
 | `astraweave-render/src/decals.rs` | Screen-space decal system | Active (feature `decals`) | `DecalAtlas`, `DecalSystem`, `DecalBlendMode`, `GpuDecal`, `DECAL_SHADER` |
-| `astraweave-render/src/water.rs` | Animated ocean with Gerstner waves | Active | 369 LoC |
+| `astraweave-render/src/water.rs` | Chunked-LOD ocean surface (Gerstner waves) | Active | ~625 LoC. **W.2a**: camera-distance discrete chunk grid, per-LOD instanced tiles + crack-hiding skirts; world Y from a `water_level` uniform (no baked mesh Y); `set_water_level` live end-to-end (incl. editor knob). Was a single fixed 500-unit/128-subdiv plane with baked Y=2.0. See `docs/campaigns/water-successor/W2A_EXECUTION_REPORT.md`. |
 | `astraweave-render/src/deferred.rs` | Deferred rendering pipeline (`DeferredRenderer`, `GBuffer`, `GBufferFormats`) | Active (feature `deferred`) | |
 | `astraweave-render/src/debug_quad.rs`, `depth.rs` | Debug visualization + depth resources | Active | |
 | `astraweave-render/src/clipmap_terrain.rs` | Clipmap-based terrain rendering | Active | |
@@ -553,6 +553,7 @@ This map enumerates the load-bearing files. Per-file traces of every subsystem a
 | 11 | `astraweave-materials::Node` enum is `#[non_exhaustive]` so external adders cannot break exhaustive matches | Yes | `astraweave-materials/src/lib.rs:7` |
 | 12 | Editor `RenderMode::EnginePBR` is the default; `FastPreview` exists for fallback only | Yes | `engine_adapter.rs:31-34` `impl Default for RenderMode` returns `EnginePBR` |
 | 13 | All Sub-phase 3 Mediator Brush §7.7 fixes preserve visual parity with the canonical pipeline — i.e. Real-Fix.A/B/C/D each verified via Andrew-gate | Yes | Campaign-doc Status header at `docs/current/EDITOR_MULTI_TOOL_ARCHITECTURE_CAMPAIGN.md` records each gate verdict |
+| 14 | The water surface renders as a chunked-LOD discrete tile grid (per-LOD instanced tiles + skirts) with world Y from `WaterUniforms.water_level` — no baked mesh Y, no single fixed plane | Yes | `water.rs` `WaterRenderer::update`/`render` (camera-distance LOD assignment + per-LOD instanced draw) + `WaterUniforms.water_level`; `water.wgsl` `vs_main` applies the uniform; W.2a (`docs/campaigns/water-successor/W2A_EXECUTION_REPORT.md`) |
 
 ---
 

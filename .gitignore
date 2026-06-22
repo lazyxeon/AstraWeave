@@ -72,6 +72,8 @@ auth/
 /tmp/
 *.pid
 .cache/
+# GPU pipeline cache written at repo root by PipelineCacheManager (runtime artifact)
+/cache/
 
 # Build analysis outputs
 dependency-tree.txt

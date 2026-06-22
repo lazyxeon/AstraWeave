@@ -7606,6 +7606,7 @@ fn test_water_additional_wave18() {
         _pad1: 0.0,
         foam_color: [1.0, 1.0, 1.0],
         foam_threshold: 0.8,
+        ..Default::default()
     };
     assert_eq!(uniforms.time, 5.5);
     assert_eq!(uniforms.camera_pos[0], 100.0);
@@ -13481,6 +13482,7 @@ fn test_water_structs_wave26() {
         _pad1: 0.0,
         foam_color: [1.0, 1.0, 1.0],
         foam_threshold: 0.7,
+        ..Default::default()
     };
 
     assert!((uniforms.time - 1.5).abs() < 0.001);
