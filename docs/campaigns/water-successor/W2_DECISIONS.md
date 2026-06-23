@@ -92,6 +92,63 @@ authority.**
 
 ---
 
+## F. Research integration — ratified amendments
+
+**Source:** water-rendering deep-dive, **2026-06-22** (primary sources and full
+findings in [`WATER_RESEARCH_FINDINGS.md`](./WATER_RESEARCH_FINDINGS.md)).
+**Disposition:** the committed W-series techniques (Gerstner, chunked-LOD,
+scene-color refraction, depth-foam) are confirmed correct; the research **sharpens
+W.2c** and **closes the FFT fork** — it overturns nothing already shipped.
+
+### F.1 FFT fork — **CLOSED as Gerstner** (was "deferred" in §C)
+
+§C held FFT as a possible later drop-in "only if the visual bar demands it." That
+is now **resolved, not merely deferred — the fork is closed.** Reasoning:
+
+- FFT's **O(log N)** scaling wins only at **open-ocean scale we do not have**.
+- FFT's **fixed base cost** — the spectrum update is ≈ a full Gerstner displacement
+  map — **penalizes a bandwidth-limited card** (min-spec 1660 Ti Max-Q).
+- **Gerstner's linear-in-wave-count cost is precisely dial-able** against the 2.0 ms
+  budget (the budget probe already measures it directly).
+- **Decisive:** FFT would force maintaining **two water systems** (FFT for capable
+  hardware + a min-spec fallback) — a production cost a solo dev **developing on
+  min-spec** cannot justify.
+
+**Do not re-open this fork.** Gerstner is the surface math, full stop. (Supersedes
+the conditional FFT clause in §C.)
+
+### F.2 W.2c approach — **adopt the Horizon Forbidden West model**
+
+Weave-response (**part / freeze / raise**) = **authored, baked deformation
+profiles replayed view-side**, NOT runtime simulation. The AAA proof is Guerrilla's
+*Horizon Forbidden West* breaking waves: Houdini-baked localized deformation,
+cross-section stored as an **XYZ-offset-to-RGB deformation texture**, authored
+in-editor for art-directability and gameplay-driven parameter changes. This stays
+inside the §B ratification ("bounded authored vocabulary, NOT a general solver,"
+behind the `WaterQuery` facade).
+
+- **If boundary-aware shoreline behavior is wanted:** the **Water Surface Wavelets**
+  (Jeschke 2018) **pre-bake-and-interpolate** trick gives reflecting waves off
+  static boundaries with **no runtime solver** — the technique to reach for, not a
+  finite-difference solve.
+- **If runtime-reactive local waves are ever needed:** **Wave Particles** (Yuksel
+  2007) are the stable local layer; baked profiles remain the default.
+
+### F.3 River candidate (Profile B, §E) — **Tiled Directional Flow**
+
+When the B-profile river work is scoped, use **Tiled Directional Flow** (van Hoesel)
+over plain Valve-style flow maps — it rotates the texture so it **carries waves**
+rather than directionless noise, the better choice for non-turbulent flowing water.
+
+### F.4 Effects phase (deferred, §E) — aesthetic-driven, normal-map-forward
+
+For the deferred effects layer: **caustics aesthetic-driven** (look good cheaply,
+realism out), and **normal-map manipulation** for apparent far-water detail at
+near-zero vertex cost (reflection/refraction are functions of view + normal).
+
+---
+
 *This record is the W.2 construction authority. The recon evidence it rests on is
-in `W2_0_RECON.md`; the deprecation list it references is executed in W.2 Phase 2,
-not here.*
+in `W2_0_RECON.md`; the research evidence behind §F is in
+`WATER_RESEARCH_FINDINGS.md`; the deprecation list it references is executed in
+W.2 Phase 2, not here.*
