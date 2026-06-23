@@ -28,9 +28,42 @@ sole live constructive campaign.**
 | Capability | Ratified classification | Notes |
 |---|---|---|
 | **Real `set_water_level`** | **EXTEND-EXISTING** | `WaterUniforms` field + vertex-shader Y offset. Also **re-points the currently-dead editor water-level knob** (`tools/aw_editor/src/viewport/widget.rs:2814` → viewport stub → `astraweave-render/src/water.rs:271`). |
-| **Weave-response hooks (part / freeze / raise)** | **EXTEND-EXISTING behind the `WaterQuery` facade** | Bounded authored vocabulary, **NOT a general solver.** Registers behind `astraweave-water`'s `WaterQuery` (§7.7 single owner). |
+| **Weave-response hooks (part / freeze / raise)** | ~~**EXTEND-EXISTING behind the `WaterQuery` facade**~~ **⚠ CORRECTED — see §B.1** | ~~Registers behind `astraweave-water`'s `WaterQuery` (§7.7 single owner).~~ Bounded authored vocabulary, **NOT a general solver** (this part stands). **Owner is render-side — see §B.1.** |
 | **Camera-distance LOD / chunking** | **EXTEND renderer + NET-NEW LOD core** | Replaces the single hardcoded `generate_water_plane(500.0, 128)`. |
 | **Refraction / scene-color sampling** | **EXTEND existing render infra + NET-NEW shader texture bindings** | Reuse `astraweave-render/src/{depth.rs, frame_graph.rs, ssr.rs}`; add the net-new texture/sampler bindings to the water shader. |
+
+### B.1 Weave-response ownership — CORRECTION (W.2c.1 recon, 2026-06-22)
+
+The original §B row above (struck through, kept visible for decision history) said
+weave-response "registers behind `astraweave-water`'s `WaterQuery` (§7.7 single
+owner)." **The W.2c.1 recon (`W2C1_RECON.md`) proved this wrong**, on two grounds
+established from the code:
+
+1. **`astraweave-water` is a deterministic gameplay-truth facade whose own contract
+   excludes GPU/presentation state** (`astraweave-water/src/lib.rs:10-34`: "GPU
+   particle fluid state … is presentation-only and non-deterministic … excluded
+   from this layer"). A view-side heightfield deformation is exactly such
+   presentation state.
+2. **`astraweave-render` does not depend on `astraweave-water`** (only
+   `astraweave-physics` does). Putting the render-consumed weave list in the facade
+   would force a new `render → water` dependency, inverting the graph.
+
+**Corrected decision:** weave *presentation* (the part/freeze/raise deformation) is
+owned **render-side by `WaterRenderer`**, exactly as Gerstner / refraction /
+depth-foam already are. **This IS the §7.7 single owner for water *presentation*** —
+the render layer is the single owner of the rendered surface — **not a parallel
+system.** The facade stays the single owner of water *truth* and is untouched by the
+W.2c view-side work.
+
+Weave *truth* — if a parted corridor later affects buoyancy or a freeze becomes
+walkable — would be a **separate facade concern** (with the existing
+`WeaveOpKind::LowerWater` precedent in `astraweave-gameplay`), **out of W.2c
+view-side scope**. The §7.7 "single owner" principle is upheld; the correction only
+fixes *which* owner holds *which* concern (truth → facade, presentation → renderer).
+
+**Provenance:** §B was ratified at the W.2.0 gate (2026-06-21) and **predates the §F
+view-side clarification** (2026-06-22). §F.2 already names the Horizon view-side
+model; this correction makes §B consistent with it.
 
 ---
 

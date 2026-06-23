@@ -22,7 +22,7 @@
 //! covers. This replaces the former single hardcoded `generate_water_plane(500,128)`
 //! plane.
 
-use glam::{Mat4, Vec3};
+use glam::{Mat4, Vec2, Vec3};
 use wgpu::util::DeviceExt;
 
 // ── Chunked LOD configuration ────────────────────────────────────────────────
@@ -45,6 +45,107 @@ const SKIRT_DEPTH: f32 = 8.0;
 /// Default water level (world Y). Matches the former baked plane Y so existing
 /// consumers that never call [`WaterRenderer::set_water_level`] are unchanged.
 const DEFAULT_WATER_LEVEL: f32 = 2.0;
+
+// ── Weave-response deformation (W.2c) ────────────────────────────────────────
+
+/// Maximum simultaneously-active weave-deformation instances (W.2c #4 ratification).
+/// Built to 8 — trivially raisable later, but the shader loops to exactly this bound
+/// so unused slots cost nothing beyond a `kind == None` early-continue.
+pub const MAX_WEAVE_INSTANCES: usize = 8;
+
+/// Peak world-space displacement a single weave can apply, in units. Equals
+/// [`SKIRT_DEPTH`] so a `Part`/`Raise` at full intensity can never outrun the LOD
+/// skirt and re-expose a seam (W.2c.2 skirt constraint). `intensity ∈ [0,1]` scales
+/// against this; the shader bounds each instance's height contribution to ±this.
+pub const WEAVE_MAX_DEFORM: f32 = SKIRT_DEPTH;
+
+/// Which weave-response deformation a [`WeaveInstance`] applies. Encoded as `u32`
+/// in the GPU instance; `None` (0) marks an inactive slot the shader skips.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u32)]
+pub enum WeaveKind {
+    /// Inactive slot — identity (no deformation).
+    None = 0,
+    /// Displace the surface *down*, exposing a corridor/well (additive negative height).
+    Part = 1,
+    /// Lift the surface *up* — a dome/ridge (additive positive height).
+    Raise = 2,
+    /// Lock/flatten the surface (suppress waves) + frozen material look. A mask, not
+    /// a displacement.
+    Freeze = 3,
+}
+
+/// A runtime weave-deformation instance: a normalized analytical profile placed at a
+/// world location. **Location lives only here.** The profile (selected by
+/// [`kind`](Self::kind)) is a position-agnostic shape in *local* space; the shader
+/// maps `world → local = rotate(world_xz − position, −orientation) / radius`,
+/// evaluates the profile, and scales by [`intensity`](Self::intensity). A single
+/// authored `Part` profile therefore serves a part-*anywhere* verb — only the
+/// instance carries where / how-big / which-way / how-strong.
+///
+/// Representation-agnostic (W.2c #2): a future deformation-texture profile would add a
+/// `profile_id` atlas index here without changing position/radius/orientation/
+/// intensity or the shader-feeding interface.
+#[derive(Debug, Clone, Copy)]
+pub struct WeaveInstance {
+    /// Which deformation this is (also selects the analytical profile in W.2c.2).
+    pub kind: WeaveKind,
+    /// World-space XZ center where the effect is placed (runtime input).
+    pub position: Vec2,
+    /// World-space footprint radius in units (runtime input): local `r = 1` maps here.
+    pub radius: f32,
+    /// Yaw orientation in radians (runtime input) — orients directional profiles.
+    pub orientation: f32,
+    /// Normalized magnitude in `[0, 1]` (runtime input). For `Part`/`Raise` it scales
+    /// the height against [`WEAVE_MAX_DEFORM`]; for `Freeze` it is the mask strength.
+    pub intensity: f32,
+    /// Animation phase / age in seconds (runtime input) — drives shader-side ramps.
+    pub phase: f32,
+}
+
+impl WeaveInstance {
+    fn to_raw(self) -> WeaveInstanceRaw {
+        WeaveInstanceRaw {
+            position: self.position.into(),
+            radius: self.radius.max(0.0),
+            orientation: self.orientation,
+            // Bound magnitude to [0,1]; with WEAVE_MAX_DEFORM == SKIRT_DEPTH in the
+            // shader this keeps any single deformation within skirt tolerance.
+            intensity: self.intensity.clamp(0.0, 1.0),
+            phase: self.phase,
+            kind: self.kind as u32,
+            _pad: 0,
+        }
+    }
+}
+
+/// GPU-side weave instance (std140-compatible: 32 B = 2×vec4, 16-aligned so it packs
+/// cleanly into the `WaterUniforms` uniform array). Public only because it appears in
+/// the public `WaterUniforms` layout; its fields are private — construct weaves via
+/// [`WeaveInstance`] and [`WaterRenderer::set_weave_instances`].
+#[repr(C)]
+#[derive(Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct WeaveInstanceRaw {
+    position: [f32; 2], // 0..8
+    radius: f32,        // 8..12
+    orientation: f32,   // 12..16
+    intensity: f32,     // 16..20
+    phase: f32,         // 20..24
+    kind: u32,          // 24..28
+    _pad: u32,          // 28..32
+}
+
+impl WeaveInstanceRaw {
+    const ZERO: Self = Self {
+        position: [0.0, 0.0],
+        radius: 0.0,
+        orientation: 0.0,
+        intensity: 0.0,
+        phase: 0.0,
+        kind: 0,
+        _pad: 0,
+    };
+}
 
 /// Water uniforms for shader
 #[repr(C)]
@@ -73,6 +174,13 @@ pub struct WaterUniforms {
     pub screen_size: [f32; 2],         // 224-232 — for frag → screen-UV
     pub refraction_strength: f32,      // 232-236 — normal-driven scene-color distortion
     pub foam_depth_band: f32,          // 236-240 — world-space shoreline foam width
+    // W.2c — weave-response deformation. The `weave_instances` array is 16-aligned at
+    // offset 256 (std140 array-of-struct stride 32); 8 × 32 B = 256 B → 512 B total.
+    pub weave_count: u32,              // 240-244
+    pub _pad5: u32,                    // 244-248
+    pub _pad6: u32,                    // 248-252
+    pub _pad7: u32,                    // 252-256
+    pub weave_instances: [WeaveInstanceRaw; MAX_WEAVE_INSTANCES], // 256-512
 }
 
 impl Default for WaterUniforms {
@@ -99,6 +207,11 @@ impl Default for WaterUniforms {
             screen_size: [1920.0, 1080.0],
             refraction_strength: 0.02,
             foam_depth_band: 1.5,
+            weave_count: 0,
+            _pad5: 0,
+            _pad6: 0,
+            _pad7: 0,
+            weave_instances: [WeaveInstanceRaw::ZERO; MAX_WEAVE_INSTANCES],
         }
     }
 }
@@ -668,6 +781,35 @@ impl WaterRenderer {
         self.uniforms.rain_intensity = intensity.clamp(0.0, 1.0);
     }
 
+    /// Set the active weave-deformation instances (W.2c). At most
+    /// [`MAX_WEAVE_INSTANCES`] are honored; any beyond the ceiling are dropped. An
+    /// **empty slice clears all weaves** — the surface is then identical to the
+    /// no-weave surface (the deformation is additive-zero / identity at zero
+    /// instances). Instances ride in [`WaterUniforms`] and upload on the next
+    /// [`Self::update`].
+    pub fn set_weave_instances(&mut self, instances: &[WeaveInstance]) {
+        let n = instances.len().min(MAX_WEAVE_INSTANCES);
+        for (slot, inst) in self.uniforms.weave_instances.iter_mut().zip(&instances[..n]) {
+            *slot = inst.to_raw();
+        }
+        // Clear unused slots so a previously-set instance can't linger active.
+        for slot in self.uniforms.weave_instances.iter_mut().skip(n) {
+            *slot = WeaveInstanceRaw::ZERO;
+        }
+        self.uniforms.weave_count = n as u32;
+    }
+
+    /// Remove all active weave deformations (the surface returns to identity).
+    pub fn clear_weave_instances(&mut self) {
+        self.uniforms.weave_instances = [WeaveInstanceRaw::ZERO; MAX_WEAVE_INSTANCES];
+        self.uniforms.weave_count = 0;
+    }
+
+    /// Number of active weave instances this frame (diagnostics / tests).
+    pub fn weave_count(&self) -> u32 {
+        self.uniforms.weave_count
+    }
+
     /// Get current water colors (deep, shallow, foam).
     pub fn water_colors(&self) -> (Vec3, Vec3, Vec3) {
         (
@@ -733,9 +875,14 @@ mod tests {
     fn test_uniforms_size() {
         // Ensure uniform struct is properly aligned for GPU (16-byte multiple).
         // W.2b grew it to 240 B (inv_view_proj mat4 + screen_size + refraction
-        // params). inv_view_proj sits at offset 160 (16-aligned).
-        assert_eq!(std::mem::size_of::<WaterUniforms>(), 240);
+        // params); W.2c appended the weave array → 512 B. inv_view_proj stays at
+        // offset 160; the weave array is 16-aligned at offset 256 (8 × 32 B).
+        assert_eq!(std::mem::size_of::<WaterUniforms>(), 512);
         assert_eq!(std::mem::offset_of!(WaterUniforms, inv_view_proj), 160);
+        assert_eq!(std::mem::offset_of!(WaterUniforms, weave_count), 240);
+        assert_eq!(std::mem::offset_of!(WaterUniforms, weave_instances), 256);
+        // GPU instance must be 32 B (2×vec4) so the std140 array stride matches WGSL.
+        assert_eq!(std::mem::size_of::<WeaveInstanceRaw>(), 32);
     }
 
     #[test]
@@ -808,6 +955,36 @@ mod tests {
                 renderer.set_water_level(5.0);
                 assert_eq!(renderer.water_level(), 5.0);
                 assert_eq!(renderer.uniforms.water_level, 5.0);
+
+                // W.2c weave instance list: zero by default (surface = identity).
+                assert_eq!(renderer.weave_count(), 0);
+                let part = WeaveInstance {
+                    kind: WeaveKind::Part,
+                    position: Vec2::new(10.0, -4.0),
+                    radius: 20.0,
+                    orientation: 0.5,
+                    intensity: 2.0, // out-of-range — must clamp to 1.0 in to_raw
+                    phase: 0.0,
+                };
+                renderer.set_weave_instances(&[
+                    part,
+                    WeaveInstance { kind: WeaveKind::Raise, ..part },
+                    WeaveInstance { kind: WeaveKind::Freeze, ..part },
+                ]);
+                assert_eq!(renderer.weave_count(), 3);
+                // intensity clamped to [0,1] (skirt-tolerance guard).
+                assert_eq!(renderer.uniforms.weave_instances[0].intensity, 1.0);
+                assert_eq!(renderer.uniforms.weave_instances[0].kind, WeaveKind::Part as u32);
+
+                // Ceiling: more than MAX_WEAVE_INSTANCES are dropped.
+                let many = vec![part; MAX_WEAVE_INSTANCES + 5];
+                renderer.set_weave_instances(&many);
+                assert_eq!(renderer.weave_count() as usize, MAX_WEAVE_INSTANCES);
+
+                // Clear → back to identity.
+                renderer.clear_weave_instances();
+                assert_eq!(renderer.weave_count(), 0);
+                assert_eq!(renderer.uniforms.weave_instances[0].kind, WeaveKind::None as u32);
             }
         });
     }

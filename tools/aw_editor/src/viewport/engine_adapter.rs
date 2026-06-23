@@ -3766,6 +3766,39 @@ impl EngineRenderAdapter {
             };
             let mut water = water;
             water.set_water_colors(deep, shallow, foam);
+            // W.2c.2 TEST SCAFFOLDING — hardcoded part/raise/freeze instances near
+            // world origin so the deformation playback layer is visible on the
+            // editor's now-live water (W-FU-2). The pipeline is parameterized; these
+            // set-piece inputs are replaced by fate-weaving gameplay triggers in
+            // W.2c.3. Runtime consumers (veilweaver/hello_companion) set zero
+            // instances, so their surface is unchanged.
+            use astraweave_render::{WeaveInstance, WeaveKind};
+            water.set_weave_instances(&[
+                WeaveInstance {
+                    kind: WeaveKind::Part,
+                    position: glam::Vec2::new(0.0, 0.0),
+                    radius: 30.0,
+                    orientation: 0.0,
+                    intensity: 0.7,
+                    phase: 0.0,
+                },
+                WeaveInstance {
+                    kind: WeaveKind::Raise,
+                    position: glam::Vec2::new(90.0, 0.0),
+                    radius: 30.0,
+                    orientation: 0.0,
+                    intensity: 0.6,
+                    phase: 0.0,
+                },
+                WeaveInstance {
+                    kind: WeaveKind::Freeze,
+                    position: glam::Vec2::new(-90.0, 0.0),
+                    radius: 30.0,
+                    orientation: 0.0,
+                    intensity: 1.0,
+                    phase: 0.0,
+                },
+            ]);
             self.renderer.set_water_renderer(water);
         } else {
             self.renderer.clear_water_renderer();

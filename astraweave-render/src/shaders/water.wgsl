@@ -14,6 +14,22 @@ struct VertexOutput {
     @location(1) uv: vec2<f32>,
     @location(2) normal: vec3<f32>,
     @location(3) wave_height: f32,
+    // W.2c — accumulated freeze mask (0 = liquid, 1 = fully frozen). Drives the
+    // fragment-shader material-state blend toward the frozen look.
+    @location(4) freeze: f32,
+};
+
+// W.2c — one runtime weave-deformation instance. Mirrors `WeaveInstanceRaw` in
+// water.rs (32 B, std140). Location lives here only; the profile is a normalized
+// shape in local space.
+struct WeaveInstance {
+    position: vec2<f32>,   // world-XZ center
+    radius: f32,           // world footprint (local r=1 maps here)
+    orientation: f32,      // yaw radians
+    intensity: f32,        // 0..1 magnitude
+    phase: f32,            // animation phase / age (s)
+    kind: u32,             // 0 none, 1 part, 2 raise, 3 freeze
+    _pad: u32,
 };
 
 struct WaterUniforms {
@@ -40,7 +56,18 @@ struct WaterUniforms {
     screen_size: vec2<f32>,      // for @builtin(position) → screen-UV
     refraction_strength: f32,    // normal-driven scene-color distortion
     foam_depth_band: f32,        // world-space shoreline foam width
+    // W.2c — weave-response deformation (ceiling 8). Array is 16-aligned at offset 256.
+    weave_count: u32,
+    _pad6: u32,
+    _pad7: u32,
+    _pad8: u32,
+    weave_instances: array<WeaveInstance, 8>,
 };
+
+// Peak world-space displacement one weave can apply, in units. MUST equal
+// `SKIRT_DEPTH` / `WEAVE_MAX_DEFORM` in water.rs so a Part/Raise at full intensity
+// stays within the LOD skirt and never re-exposes a seam (W.2c.2 skirt constraint).
+const WEAVE_MAX_DEFORM: f32 = 8.0;
 
 @group(0) @binding(0) var<uniform> uniforms: WaterUniforms;
 // W.2b — opaque scene snapshot + scene depth for refraction and shoreline foam.
@@ -153,6 +180,52 @@ fn gerstner_normal(
     );
 }
 
+// ── W.2c weave-response deformation ──────────────────────────────────────────
+// Normalized analytical profile: 1 at the centre, smoothly → 0 at local r = 1, and
+// 0 beyond. Position-agnostic — the caller maps world → local first. This is the
+// representation-agnostic seam: a deformation-texture profile would replace this one
+// evaluation with `textureSample(profile_atlas, local*0.5+0.5)` and nothing else.
+fn weave_profile(local: vec2<f32>) -> f32 {
+    let r = length(local);
+    return 1.0 - smoothstep(0.0, 1.0, clamp(r, 0.0, 1.0));
+}
+
+struct WeaveResult {
+    height: f32,   // additive world-space height offset (part < 0, raise > 0)
+    freeze: f32,   // accumulated freeze mask 0..1
+};
+
+// Accumulate every active weave instance at this world-XZ point (ceiling 8).
+fn weave_accumulate(world_xz: vec2<f32>) -> WeaveResult {
+    var out: WeaveResult;
+    out.height = 0.0;
+    out.freeze = 0.0;
+    for (var i = 0u; i < uniforms.weave_count; i = i + 1u) {
+        let inst = uniforms.weave_instances[i];
+        if (inst.kind == 0u) { continue; }
+        // world → local: translate to the instance centre, un-rotate by the
+        // instance yaw, normalize by the world radius. Location lives only here.
+        let rel = world_xz - inst.position;
+        let c = cos(-inst.orientation);
+        let s = sin(-inst.orientation);
+        let rot = vec2<f32>(rel.x * c - rel.y * s, rel.x * s + rel.y * c);
+        let local = rot / max(inst.radius, 0.001);
+        let amp = inst.intensity * weave_profile(local);
+        if (inst.kind == 1u) {            // part: push the surface down
+            out.height = out.height - amp * WEAVE_MAX_DEFORM;
+        } else if (inst.kind == 2u) {     // raise: lift the surface up
+            out.height = out.height + amp * WEAVE_MAX_DEFORM;
+        } else if (inst.kind == 3u) {     // freeze: accumulate the lock mask
+            out.freeze = max(out.freeze, amp);
+        }
+    }
+    // Bound the net height to ±skirt tolerance so even overlapping part+raise can't
+    // outrun the skirt (W.2c.2 skirt constraint, defence-in-depth).
+    out.height = clamp(out.height, -WEAVE_MAX_DEFORM, WEAVE_MAX_DEFORM);
+    out.freeze = clamp(out.freeze, 0.0, 1.0);
+    return out;
+}
+
 @vertex
 fn vs_main(input: VertexInput) -> VertexOutput {
     var output: VertexOutput;
@@ -185,19 +258,36 @@ fn vs_main(input: VertexInput) -> VertexOutput {
     displacement += gerstner_wave(world_xz, time, 0.1, 1.0, 4.0, vec2<f32>(-0.3, 0.9), 0.2);
     normal_accum += gerstner_normal(world_xz, time, 0.1, 1.0, 4.0, vec2<f32>(-0.3, 0.9), 0.2);
 
+    // Gerstner crest height for foam / shallow tint — captured BEFORE the weave
+    // offset so a raise doesn't read as foam and a part doesn't read as deep shadow.
+    let gerstner_wave_height = displacement.y;
+
+    // ── W.2c weave deformation: composes AFTER the Gerstner sum, so the per-wave
+    // Q-cap (internal to each gerstner_wave/gerstner_normal) is untouched. ──
+    let weave = weave_accumulate(world_xz);
+    // Freeze locks the surface: damp the wave displacement toward rest and flatten
+    // the normal. Sampled at world XZ, so shared LOD-boundary vertices agree exactly
+    // (same guarantee as Gerstner) — no new seam mechanism.
+    displacement = displacement * (1.0 - weave.freeze);
+    normal_accum = mix(normal_accum, vec3<f32>(0.0, 1.0, 0.0), weave.freeze);
+
     // Place the vertex in the world. Skirt vertices share their surface twin's
     // horizontal displacement and drop straight down by skirt_depth, hanging from
     // the displaced edge to cover any LOD-boundary crack.
     var pos: vec3<f32>;
     pos.x = world_xz.x + displacement.x;
     pos.z = world_xz.y + displacement.z;
-    pos.y = uniforms.water_level + displacement.y - is_skirt * uniforms.skirt_depth;
+    // weave.height is added BEFORE the skirt drop so the skirt tracks the deformed
+    // edge; it is bounded to ±skirt_depth so it can never outrun the skirt.
+    pos.y = uniforms.water_level + displacement.y + weave.height - is_skirt * uniforms.skirt_depth;
 
     output.world_pos = pos;
     output.clip_position = uniforms.view_proj * vec4<f32>(pos, 1.0);
     output.uv = input.uv;
     output.normal = normalize(normal_accum);
-    output.wave_height = displacement.y;
+    // Frozen surface reads flat (no crest foam) → scale the foam driver by (1-freeze).
+    output.wave_height = gerstner_wave_height * (1.0 - weave.freeze);
+    output.freeze = weave.freeze;
 
     return output;
 }
@@ -273,7 +363,17 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
     with_foam = mix(with_foam, uniforms.foam_color, shore_foam);
 
     // Final color with specular.
-    let final_color = with_foam + sun_color * spec * 0.8;
+    var final_color = with_foam + sun_color * spec * 0.8;
+
+    // ── W.2c freeze material state ───────────────────────────────────────────────
+    // A frozen patch reads as ice/glass: cool the colour and reduce the apparent
+    // refraction (the icy tint overrides the see-through scene tap), then add sharp
+    // specular glints. `input.freeze` already gates this to frozen regions only.
+    if (input.freeze > 0.0) {
+        let frozen_tint = vec3<f32>(0.72, 0.85, 0.95);
+        final_color = mix(final_color, frozen_tint, input.freeze * 0.75);
+        final_color = final_color + sun_color * spec * input.freeze * 1.2;
+    }
 
     // The water composites the (refracted) scene behind it itself, so it outputs
     // opaque — its "see-through" comes from the refraction sample, not framebuffer

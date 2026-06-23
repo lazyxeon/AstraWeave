@@ -19,8 +19,8 @@
 //!
 //! Run: `cargo run -p astraweave-render --example water_budget_probe --release`
 
-use astraweave_render::{GpuProfiler, Renderer, WaterRenderer};
-use glam::{Mat4, Vec3};
+use astraweave_render::{GpuProfiler, Renderer, WaterRenderer, WeaveInstance, WeaveKind};
+use glam::{Mat4, Vec2, Vec3};
 
 const W: u32 = 1920;
 const H: u32 = 1080;
@@ -576,6 +576,215 @@ fn probe_refraction(device: &wgpu::Device, queue: &wgpu::Queue, has_timestamps: 
     }
 }
 
+/// Measure the median isolated-water-pass cost (ms) for the weave instances
+/// currently set on `water`, at the given camera. Mirrors PROBE A's loop.
+fn measure_water_pass(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    water: &mut WaterRenderer,
+    profiler: &mut Option<GpuProfiler>,
+    color_view: &wgpu::TextureView,
+    depth_view: &wgpu::TextureView,
+    vp: Mat4,
+    eye: Vec3,
+) -> Option<f32> {
+    let mut samples: Vec<f32> = Vec::with_capacity(FRAMES);
+    for frame in 0..(WARMUP + FRAMES) {
+        let time = frame as f32 * (1.0 / 60.0);
+        water.update(queue, vp, eye, time);
+        if let Some(p) = profiler.as_mut() {
+            p.begin_frame();
+        }
+        let mut enc = device.create_command_encoder(&Default::default());
+        {
+            let ts = profiler.as_mut().and_then(|p| p.render_pass_timestamps("water"));
+            let mut rp = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("weave_water_pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: color_view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color { r: 0.05, g: 0.1, b: 0.2, a: 1.0 }),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                    view: depth_view,
+                    depth_ops: Some(wgpu::Operations { load: wgpu::LoadOp::Clear(1.0), store: wgpu::StoreOp::Store }),
+                    stencil_ops: None,
+                }),
+                timestamp_writes: ts,
+                occlusion_query_set: None,
+            });
+            water.render(&mut rp);
+        }
+        if let Some(p) = profiler.as_ref() {
+            p.end_frame(&mut enc);
+        }
+        queue.submit(Some(enc.finish()));
+        let _ = device.poll(wgpu::PollType::Wait);
+        if let Some(p) = profiler.as_mut() {
+            p.request_readback();
+            let _ = device.poll(wgpu::PollType::Wait);
+            p.poll_readback(device);
+            if frame >= WARMUP {
+                if let Some(ms) = p.results_map().get("water") {
+                    samples.push(*ms);
+                }
+            }
+        }
+    }
+    if samples.is_empty() {
+        return None;
+    }
+    let (_, median, _, _, _) = stats(samples);
+    Some(median)
+}
+
+/// Probe D: weave-deformation cost (W.2c). Measures the isolated water pass at
+/// 0 / 1 / 8 active instances → per-instance cost + 8-instance total delta vs the
+/// W.2b.2 baseline (~0.18–0.20 ms) and the 2.0 ms ceiling. Then confirms the
+/// deformation actually changes rendered pixels (a raise vs no-weave diff).
+fn probe_weave(device: &wgpu::Device, queue: &wgpu::Queue, has_timestamps: bool) {
+    println!("\n=== PROBE D: weave-deformation cost (W.2c, ceiling 8) ===");
+    if !has_timestamps {
+        println!("  (no timestamp support — skipping deformation timing)");
+        return;
+    }
+
+    let mut water = WaterRenderer::new(device, COLOR_FMT, DEPTH_FMT);
+    let color = device.create_texture(&wgpu::TextureDescriptor {
+        label: Some("weave_color"),
+        size: wgpu::Extent3d { width: W, height: H, depth_or_array_layers: 1 },
+        mip_level_count: 1, sample_count: 1, dimension: wgpu::TextureDimension::D2,
+        format: COLOR_FMT,
+        usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
+        view_formats: &[],
+    });
+    let color_view = color.create_view(&Default::default());
+    let depth = device.create_texture(&wgpu::TextureDescriptor {
+        label: Some("weave_depth"),
+        size: wgpu::Extent3d { width: W, height: H, depth_or_array_layers: 1 },
+        mip_level_count: 1, sample_count: 1, dimension: wgpu::TextureDimension::D2,
+        format: DEPTH_FMT, usage: wgpu::TextureUsages::RENDER_ATTACHMENT, view_formats: &[],
+    });
+    let depth_view = depth.create_view(&Default::default());
+    let mut profiler = Some(GpuProfiler::new(device, queue));
+
+    // 8 test instances spread across the near chunk grid (mix of all three kinds).
+    let mk = |kind, x: f32, z: f32| WeaveInstance {
+        kind, position: Vec2::new(x, z), radius: 25.0, orientation: 0.0, intensity: 0.8, phase: 0.0,
+    };
+    let weaves = [
+        mk(WeaveKind::Part, 0.0, 0.0),
+        mk(WeaveKind::Raise, 35.0, 0.0),
+        mk(WeaveKind::Freeze, -35.0, 0.0),
+        mk(WeaveKind::Part, 0.0, 35.0),
+        mk(WeaveKind::Raise, 0.0, -35.0),
+        mk(WeaveKind::Part, 35.0, 35.0),
+        mk(WeaveKind::Raise, -35.0, 35.0),
+        mk(WeaveKind::Freeze, 35.0, -35.0),
+    ];
+
+    let cams = [
+        CamCfg { name: "near", eye: Vec3::new(0.0, 14.0, 70.0), target: Vec3::new(0.0, 2.0, 0.0) },
+        CamCfg { name: "horizon", eye: Vec3::new(0.0, 4.0, 245.0), target: Vec3::new(0.0, 2.0, -120.0) },
+    ];
+
+    for cam in &cams {
+        let (vp, eye) = view_proj(cam.eye, cam.target);
+        water.clear_weave_instances();
+        let t0 = measure_water_pass(device, queue, &mut water, &mut profiler, &color_view, &depth_view, vp, eye);
+        water.set_weave_instances(&weaves[..1]);
+        let t1 = measure_water_pass(device, queue, &mut water, &mut profiler, &color_view, &depth_view, vp, eye);
+        water.set_weave_instances(&weaves[..8]);
+        let t8 = measure_water_pass(device, queue, &mut water, &mut profiler, &color_view, &depth_view, vp, eye);
+        if let (Some(a), Some(b), Some(c)) = (t0, t1, t8) {
+            let per = (c - a) / 8.0;
+            println!(
+                "  [{:<7}] water pass  0-inst={a:.4}ms  1-inst={b:.4}ms  8-inst={c:.4}ms  |  per-instance≈{per:.5}ms  8-inst Δ={:.4}ms",
+                cam.name, c - a
+            );
+        }
+    }
+
+    // ── Deformation render-check ─────────────────────────────────────────────
+    // Render the near view with NO weaves and with a strong raise at the look-at
+    // point, over an identical black clear at the same time; count differing pixels.
+    // A nonzero fraction proves the deformation actually moved the surface (vs a
+    // shader that silently ignores the instances).
+    let (vp, eye) = view_proj(cams[0].eye, cams[0].target);
+    let read_surface = |water: &mut WaterRenderer| -> Vec<f32> {
+        water.update(queue, vp, eye, 1.0);
+        let mut enc = device.create_command_encoder(&Default::default());
+        {
+            let mut rp = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("weave_verify"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &color_view, resolve_target: None,
+                    ops: wgpu::Operations { load: wgpu::LoadOp::Clear(wgpu::Color::BLACK), store: wgpu::StoreOp::Store } })],
+                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                    view: &depth_view, depth_ops: Some(wgpu::Operations { load: wgpu::LoadOp::Clear(1.0), store: wgpu::StoreOp::Store }), stencil_ops: None }),
+                timestamp_writes: None, occlusion_query_set: None });
+            water.render(&mut rp);
+        }
+        let bpp = 8u32;
+        let unpadded = W * bpp;
+        let align = wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
+        let padded = unpadded.div_ceil(align) * align;
+        let buf = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("weave_rb"), size: (padded * H) as u64,
+            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ, mapped_at_creation: false });
+        enc.copy_texture_to_buffer(
+            wgpu::TexelCopyTextureInfo { texture: &color, mip_level: 0, origin: wgpu::Origin3d::ZERO, aspect: wgpu::TextureAspect::All },
+            wgpu::TexelCopyBufferInfo { buffer: &buf, layout: wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(padded), rows_per_image: Some(H) } },
+            wgpu::Extent3d { width: W, height: H, depth_or_array_layers: 1 });
+        queue.submit(Some(enc.finish()));
+        let _ = device.poll(wgpu::PollType::Wait);
+        let slice = buf.slice(..);
+        slice.map_async(wgpu::MapMode::Read, |_| {});
+        let _ = device.poll(wgpu::PollType::Wait);
+        let data = slice.get_mapped_range();
+        let mut out = Vec::with_capacity((W * H * 3) as usize);
+        for y in 0..H as usize {
+            let row = &data[y * padded as usize..];
+            for x in 0..W as usize {
+                let o = x * 8;
+                out.push(half::f16::from_le_bytes([row[o], row[o + 1]]).to_f32());
+                out.push(half::f16::from_le_bytes([row[o + 2], row[o + 3]]).to_f32());
+                out.push(half::f16::from_le_bytes([row[o + 4], row[o + 5]]).to_f32());
+            }
+        }
+        drop(data);
+        buf.unmap();
+        out
+    };
+
+    water.clear_weave_instances();
+    let base = read_surface(&mut water);
+    // A strong raise filling the near view so the displacement is unmissable.
+    water.set_weave_instances(&[WeaveInstance {
+        kind: WeaveKind::Raise, position: Vec2::new(0.0, 0.0), radius: 60.0, orientation: 0.0, intensity: 1.0, phase: 0.0,
+    }]);
+    let raised = read_surface(&mut water);
+    let mut diff = 0u64;
+    let n = base.len().min(raised.len()) / 3;
+    for i in 0..n {
+        let d = (base[i * 3] - raised[i * 3]).abs()
+            + (base[i * 3 + 1] - raised[i * 3 + 1]).abs()
+            + (base[i * 3 + 2] - raised[i * 3 + 2]).abs();
+        if d > 0.02 {
+            diff += 1;
+        }
+    }
+    let pct = diff as f64 / n.max(1) as f64 * 100.0;
+    println!(
+        "  deformation render-check (raise vs no-weave): {diff}/{n} pixels changed = {pct:.1}% — {}",
+        if pct > 1.0 { "DEFORMATION RENDERS (instances move the surface)" } else { "!! no change — instances ignored?" }
+    );
+    water.clear_weave_instances();
+}
+
 fn main() {
     pollster::block_on(async {
         let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
@@ -629,6 +838,7 @@ fn main() {
 
         probe_isolated(&device, &queue, has_timestamps);
         probe_refraction(&device, &queue, has_timestamps);
+        probe_weave(&device, &queue, has_timestamps);
         probe_full_frame(has_timestamps).await;
 
         println!("\n=== done ===");
