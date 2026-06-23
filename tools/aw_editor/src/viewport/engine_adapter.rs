@@ -3791,15 +3791,15 @@ impl EngineRenderAdapter {
     /// With this signature, callers feed the same canonical `RenderView` that
     /// `Renderer::update_view` consumed for the main pass.
     ///
-    /// **Reachability note**: as of C.3.B.1, this function has zero call
-    /// sites in the inspected workspace (verified via grep against
-    /// `tools/`, `examples/`, `astraweave-*/`; matches the C.0 audit §1.B #8
-    /// finding and the water-system-architecture audit's note). It remains
-    /// reachable code in case future editor states or external integrations
-    /// wire it up. Migration to `&RenderView` keeps the function canonical-
-    /// compliant. If it remains unreached after the Unified Camera campaign
-    /// closes (C.9), deletion is queued as a standalone follow-up — not
-    /// Unified Camera campaign scope.
+    /// **Reachability note (W-FU-2, 2026-06-22)**: now called once per frame
+    /// from [`crate::viewport::renderer::ViewportRenderer::render`], immediately
+    /// after `update_camera`, with the SAME canonical `RenderView` the opaque
+    /// pass consumed (so the water depth-foam's `inv_view_proj` matches the depth
+    /// buffer). This populates the camera-following water LOD chunks; without it
+    /// `WaterRenderer::has_visible_chunks()` stays false and the split water pass
+    /// in `Renderer::run_water_pass` cleanly skips. Was dormant from C.3.B.1
+    /// (canonical `&RenderView` migration) until this wiring — the earlier
+    /// "zero call sites / deletion queued" note is now obsolete.
     pub fn update_water(&mut self, view: &astraweave_camera::RenderView, time: f32) {
         let vp = view.view_proj;
         let pos = view.position;

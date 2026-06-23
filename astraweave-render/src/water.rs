@@ -774,11 +774,28 @@ mod tests {
                 // One pre-baked mesh per LOD band.
                 assert_eq!(renderer.lod_meshes.len(), LOD_SUBDIVS.len());
 
+                // W-FU-2 regression guard: before the first update() the renderer
+                // is dormant (no chunks) and run_water_pass must skip it. This is
+                // exactly the state the editor was stuck in until update_water was
+                // wired — a fresh WaterRenderer with has_visible_chunks() == false.
+                assert!(
+                    !renderer.has_visible_chunks(),
+                    "fresh WaterRenderer must report no visible chunks (dormant)"
+                );
+
                 let view_proj = Mat4::IDENTITY;
                 let camera_pos = Vec3::new(1.0, 2.0, 3.0);
                 let time = 10.0;
 
                 renderer.update(&queue, view_proj, camera_pos, time);
+
+                // After one update() (what update_water drives every frame) the
+                // chunk set is populated, so has_visible_chunks() flips true and
+                // the post-opaque water pass runs instead of early-returning.
+                assert!(
+                    renderer.has_visible_chunks(),
+                    "after update() the water renderer must have visible chunks"
+                );
 
                 assert_eq!(renderer.uniforms.time, 10.0);
                 assert_eq!(renderer.uniforms.camera_pos, [1.0, 2.0, 3.0]);
