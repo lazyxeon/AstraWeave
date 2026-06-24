@@ -45,6 +45,11 @@ pub enum WeaveOpKind {
     RedirectWind,
     LowerWater,
     RaisePlatform,
+    /// W.2c.3 — freeze the water surface at `a`. **Presentation-only** today: a
+    /// valid weave that consumes the weather budget and carries `a` for the render
+    /// layer's freeze deformation. The truth-bearing freeze (walkable ice / buoyancy
+    /// block) is deferred to the post-surface-arc gameplay-truth-coupling phase.
+    FreezeWater,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

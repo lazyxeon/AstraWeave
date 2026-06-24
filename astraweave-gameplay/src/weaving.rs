@@ -91,6 +91,18 @@ pub fn apply_weave_op(
             });
             budget.terrain_edits -= 1;
         }
+        WeaveOpKind::FreezeWater => {
+            if budget.weather_ops <= 0 {
+                anyhow::bail!("No weather budget");
+            }
+            // W.2c.3 presentation-only: a valid weave that consumes the weather
+            // budget and carries `op.a` for the render layer's freeze deformation.
+            // NO truth mutation — the walkable-ice / buoyancy-blocking freeze is
+            // deferred to the post-surface-arc gameplay-truth-coupling phase, so
+            // there is deliberately no physics/collision/traversal change here.
+            budget.weather_ops -= 1;
+            log("Weave: Waters frozen".into());
+        }
     }
 
     if !plan.ops.is_empty() {
@@ -126,6 +138,11 @@ pub fn apply_weave_op(
             drop_multiplier: 1.05,
             faction_disposition: 0,
             weather_shift: None,
+        },
+        WeaveOpKind::FreezeWater => WeaveConsequence {
+            drop_multiplier: 1.0,
+            faction_disposition: 0,
+            weather_shift: Some("frozen".into()),
         },
     };
 

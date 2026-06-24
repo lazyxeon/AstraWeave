@@ -4618,6 +4618,20 @@ fn vs(input: VSIn) -> VSOut {
         }
     }
 
+    /// Push the active weave-deformation instances onto the water surface (W.2c.3).
+    ///
+    /// Delegates to [`crate::water::WaterRenderer::set_weave_instances`] (replaces the
+    /// active list; at most `MAX_WEAVE_INSTANCES`, uploaded on the next `update_water`).
+    /// Takes a render-side [`crate::water::WeaveInstance`] slice — **no gameplay type
+    /// crosses into the renderer**, so `astraweave-render` stays independent of the
+    /// gameplay crates (the WeaveOp → WeaveInstance translation lives in the binary
+    /// glue). No-op when no water renderer is installed.
+    pub fn set_water_weave_instances(&mut self, instances: &[crate::water::WeaveInstance]) {
+        if let Some(ref mut water) = self.water_renderer {
+            water.set_weave_instances(instances);
+        }
+    }
+
     /// W.2b — the split water pass. Runs after the opaque main pass closes:
     /// snapshot the opaque HDR into `water_scene_color`, wire the snapshot + scene
     /// depth into the water bind group, then draw water into the HDR target with a

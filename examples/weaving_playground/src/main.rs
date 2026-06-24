@@ -5,7 +5,7 @@ use astraweave_nav::{NavMesh, Triangle};
 use astraweave_physics::PhysicsWorld;
 use astraweave_render::TerrainRenderer as RenderTerrainRenderer; // rename to avoid conflict
 use astraweave_camera::{CameraController, CameraProducer, FreeFly as Camera};
-use astraweave_render::{Instance, Renderer};
+use astraweave_render::{Instance, Renderer, WaterRenderer};
 use astraweave_terrain::{ChunkId, TerrainChunk, WorldConfig};
 use glam::{vec3, Vec2};
 use std::sync::Arc;
@@ -18,6 +18,9 @@ use winit::{
     keyboard::{KeyCode, PhysicalKey},
     window::{Window, WindowId},
 };
+
+mod weave_producer;
+use weave_producer::WaterWeaveProducer;
 
 struct WeavingApp {
     window: Option<Arc<Window>>,
@@ -34,6 +37,10 @@ struct WeavingApp {
     instances: Vec<Instance>,
     last_time: Instant,
     terr_cfg: WorldConfig,
+    /// W.2c.3 binary-glue producer: translates applied WeaveOps → render weaves.
+    weave_producer: WaterWeaveProducer,
+    /// Accumulated seconds, drives water wave animation (`update_water` time arg).
+    elapsed: f32,
 }
 
 impl WeavingApp {
@@ -88,6 +95,8 @@ impl WeavingApp {
             instances: vec![],
             last_time: Instant::now(),
             terr_cfg,
+            weave_producer: WaterWeaveProducer::new(),
+            elapsed: 0.0,
         }
     }
 }
@@ -116,6 +125,17 @@ impl ApplicationHandler for WeavingApp {
             let (_terrain_mesh, terrain_gpu_init) =
                 build_and_upload_terrain_mesh(&mut self.terr_renderer, &chunk, &renderer).unwrap();
             renderer.set_external_mesh(terrain_gpu_init);
+
+            // W.2c.3: install a water surface so gameplay-triggered weaves render.
+            // HDR water format (Rgba16Float surface + Depth32Float), matching the
+            // runtime demos. Per-frame `update_water` + the producer push are driven
+            // in `about_to_wait`.
+            let water = WaterRenderer::new(
+                renderer.device(),
+                wgpu::TextureFormat::Rgba16Float,
+                wgpu::TextureFormat::Depth32Float,
+            );
+            renderer.set_water_renderer(water);
 
             self.current_chunk = Some(chunk);
             self.renderer = Some(renderer);
@@ -289,6 +309,10 @@ impl ApplicationHandler for WeavingApp {
                                     &op,
                                     &mut log,
                                 );
+                                // W.2c.3: translate the applied op → a render water
+                                // weave (LowerWater → part). Presentation reads the op
+                                // in parallel with the truth-side clear_water (coexist).
+                                self.weave_producer.ingest(&op);
                                 apply_height_edit(
                                     current_chunk,
                                     op.a,
@@ -304,6 +328,52 @@ impl ApplicationHandler for WeavingApp {
                                     Ok((_cpu, mesh_gpu)) => renderer.set_external_mesh(mesh_gpu),
                                     Err(e) => eprintln!("terrain rebuild failed: {}", e),
                                 }
+                            }
+                        }
+                        KeyCode::Digit5 => {
+                            // RaisePlatform → water raise (W.2c.3). Terrain-Fortify
+                            // truth untouched (coexist); the render reads op.a.
+                            let op = WeaveOp {
+                                kind: WeaveOpKind::RaisePlatform,
+                                a: vec3(0.0, 0.0, 0.0),
+                                b: None,
+                                budget_cost: 1,
+                            };
+                            if apply_weave_op(
+                                &mut self.world,
+                                &mut self.phys,
+                                &self.tris,
+                                &mut self.budget,
+                                &op,
+                                &mut log,
+                            )
+                            .is_ok()
+                            {
+                                self.weave_producer.ingest(&op);
+                                println!("Weave: RaisePlatform → water raise at {:?}", op.a);
+                            }
+                        }
+                        KeyCode::Digit6 => {
+                            // FreezeWater → water freeze (W.2c.3, NEW presentation-only
+                            // op). Truth is minimal (budget only); walkable-ice deferred.
+                            let op = WeaveOp {
+                                kind: WeaveOpKind::FreezeWater,
+                                a: vec3(0.0, 0.0, 0.0),
+                                b: None,
+                                budget_cost: 1,
+                            };
+                            if apply_weave_op(
+                                &mut self.world,
+                                &mut self.phys,
+                                &self.tris,
+                                &mut self.budget,
+                                &op,
+                                &mut log,
+                            )
+                            .is_ok()
+                            {
+                                self.weave_producer.ingest(&op);
+                                println!("Weave: FreezeWater → water freeze at {:?}", op.a);
                             }
                         }
                         _ => {}
@@ -405,7 +475,18 @@ impl ApplicationHandler for WeavingApp {
             ));
         }
         renderer.update_instances(&self.instances);
-        renderer.update_view(&self.camera.to_render_view());
+        let render_view = self.camera.to_render_view();
+        renderer.update_view(&render_view);
+
+        // W.2c.3: age the active weaves, push the live set onto the water surface,
+        // then drive the per-frame water animation. The push MUST precede
+        // `update_water` (which uploads the weave instances in WaterUniforms). At
+        // zero active weaves the snapshot is empty → identity surface, no regression.
+        self.elapsed += dt;
+        self.weave_producer.tick(dt);
+        renderer.set_water_weave_instances(&self.weave_producer.snapshot());
+        renderer.update_water(render_view.view_proj, render_view.position, self.elapsed);
+
         let _ = renderer.render();
         window.request_redraw();
     }
