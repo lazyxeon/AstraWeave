@@ -736,4 +736,60 @@ impl FluidRenderer {
             rpass.draw(0..4, 0..secondary_particle_count);
         }
     }
+
+    /// F.4.2 — standalone additive-billboard accent render (the SSFR-chain split).
+    ///
+    /// Draws ONLY the secondary (accent) billboards — the depth → smooth → shade
+    /// SSFR *surface* passes are deliberately NOT invoked here. The W-series water
+    /// surface is rendered by `astraweave-render::WaterRenderer`; accents composite
+    /// *over* it. This is the render half of the binary-glue seam: the binary draws
+    /// the surface (render crate) then calls this to additively blend the accents
+    /// into the same post-opaque HDR target. `astraweave-render` and
+    /// `astraweave-fluids` stay independent — only `wgpu` types cross here.
+    ///
+    /// `depth_view` is the external scene depth (`Depth32Float`) the surface used,
+    /// so accents are occluded by geometry/water (depth-test only, no write — the
+    /// secondary pipeline has `depth_write_enabled: false`). At `secondary_count == 0`
+    /// this is a no-op: no render pass is begun, so the HDR target is byte-identical
+    /// (zero-accent identity).
+    #[allow(clippy::too_many_arguments)]
+    pub fn render_accents(
+        &self,
+        queue: &wgpu::Queue,
+        encoder: &mut wgpu::CommandEncoder,
+        target_view: &wgpu::TextureView,
+        depth_view: &wgpu::TextureView,
+        secondary_particle_buffer: &wgpu::Buffer,
+        secondary_count: u32,
+        camera: CameraUniform,
+    ) {
+        if secondary_count == 0 {
+            return; // zero-accent identity — target untouched, no pass recorded
+        }
+        // The billboard vertex shader reads the camera uniform (bind group 0).
+        queue.write_buffer(&self.camera_buffer, 0, bytemuck::cast_slice(&[camera]));
+
+        let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("Accent Billboard Pass"),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view: target_view,
+                resolve_target: None,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Load, // composite additively over the surface
+                    store: wgpu::StoreOp::Store,
+                },
+            })],
+            depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                view: depth_view,
+                depth_ops: None, // test only — occlude by scene/water, no depth write
+                stencil_ops: None,
+            }),
+            ..Default::default()
+        });
+
+        rpass.set_pipeline(&self.secondary_pipeline);
+        rpass.set_bind_group(0, &self.depth_bind_group, &[]); // group 0 = ViewParams (camera)
+        rpass.set_vertex_buffer(0, secondary_particle_buffer.slice(..));
+        rpass.draw(0..4, 0..secondary_count);
+    }
 }

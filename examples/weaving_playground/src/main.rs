@@ -1,10 +1,10 @@
+use astraweave_camera::{CameraController, CameraProducer, FreeFly as Camera};
 use astraweave_core::{IVec2, Team, World};
 use astraweave_gameplay::biome::generate_island_room;
 use astraweave_gameplay::*;
 use astraweave_nav::{NavMesh, Triangle};
 use astraweave_physics::PhysicsWorld;
 use astraweave_render::TerrainRenderer as RenderTerrainRenderer; // rename to avoid conflict
-use astraweave_camera::{CameraController, CameraProducer, FreeFly as Camera};
 use astraweave_render::{Instance, Renderer, WaterRenderer};
 use astraweave_terrain::{ChunkId, TerrainChunk, WorldConfig};
 use glam::{vec3, Vec2};
@@ -21,6 +21,8 @@ use winit::{
 
 mod weave_producer;
 use weave_producer::WaterWeaveProducer;
+mod weave_accent_producer;
+use weave_accent_producer::WaterAccentProducer;
 
 struct WeavingApp {
     window: Option<Arc<Window>>,
@@ -39,6 +41,9 @@ struct WeavingApp {
     terr_cfg: WorldConfig,
     /// W.2c.3 binary-glue producer: translates applied WeaveOps → render weaves.
     weave_producer: WaterWeaveProducer,
+    /// F.4.2 binary-glue accent producer: weave-impact splash/spray accents.
+    /// Fed the same ops as `weave_producer`; ages accent particles CPU-side.
+    accent_producer: WaterAccentProducer,
     /// Accumulated seconds, drives water wave animation (`update_water` time arg).
     elapsed: f32,
 }
@@ -96,6 +101,7 @@ impl WeavingApp {
             last_time: Instant::now(),
             terr_cfg,
             weave_producer: WaterWeaveProducer::new(),
+            accent_producer: WaterAccentProducer::new(),
             elapsed: 0.0,
         }
     }
@@ -313,6 +319,9 @@ impl ApplicationHandler for WeavingApp {
                                 // weave (LowerWater → part). Presentation reads the op
                                 // in parallel with the truth-side clear_water (coexist).
                                 self.weave_producer.ingest(&op);
+                                // F.4.2: same op feeds the accent producer
+                                // (LowerWater → Part spray).
+                                self.accent_producer.ingest(&op);
                                 apply_height_edit(
                                     current_chunk,
                                     op.a,
@@ -350,6 +359,7 @@ impl ApplicationHandler for WeavingApp {
                             .is_ok()
                             {
                                 self.weave_producer.ingest(&op);
+                                self.accent_producer.ingest(&op); // F.4.2: Raise lift-burst
                                 println!("Weave: RaisePlatform → water raise at {:?}", op.a);
                             }
                         }
@@ -373,6 +383,7 @@ impl ApplicationHandler for WeavingApp {
                             .is_ok()
                             {
                                 self.weave_producer.ingest(&op);
+                                self.accent_producer.ingest(&op); // F.4.2: Freeze one-shot shimmer
                                 println!("Weave: FreezeWater → water freeze at {:?}", op.a);
                             }
                         }
@@ -486,6 +497,13 @@ impl ApplicationHandler for WeavingApp {
         self.weave_producer.tick(dt);
         renderer.set_water_weave_instances(&self.weave_producer.snapshot());
         renderer.update_water(render_view.view_proj, render_view.position, self.elapsed);
+
+        // F.4.2: age the weave-impact accents from the same triggers. The spawn
+        // chain (ingest → tick) is live here; the GPU upload + in-frame additive
+        // composite (FluidSystem::set_secondary_particles + render_accents over
+        // the surface) is F.4.3 demo wiring — `render()` is monolithic and the
+        // post-water HDR injection point is added there.
+        self.accent_producer.tick(dt);
 
         let _ = renderer.render();
         window.request_redraw();

@@ -12002,6 +12002,7 @@ dependencies = [
  "anyhow",
  "astraweave-camera",
  "astraweave-core",
+ "astraweave-fluids",
  "astraweave-gameplay",
  "astraweave-nav",
  "astraweave-physics",

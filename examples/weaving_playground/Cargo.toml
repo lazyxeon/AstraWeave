@@ -13,6 +13,10 @@ pollster = { workspace = true }
 
 astraweave-core = { path = "../../astraweave-core" }
 astraweave-render = { path = "../../astraweave-render" }
+# F.4.2: weave-impact accents reuse the fluids secondary-particle billboard
+# machinery (SecondaryParticle + the additive accent render). The binary depends
+# on BOTH render and fluids; render and fluids stay independent of each other.
+astraweave-fluids = { path = "../../astraweave-fluids" }
 astraweave-camera = { path = "../../astraweave-camera" }
 astraweave-physics = { path = "../../astraweave-physics" }
 astraweave-nav = { path = "../../astraweave-nav" }

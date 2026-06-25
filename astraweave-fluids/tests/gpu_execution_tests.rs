@@ -10,7 +10,7 @@
 //! point is catching explosion/collapse/regression classes, not validating
 //! PBF physics to research grade (that is T4 work).
 
-use astraweave_fluids::{FluidSystem, Particle};
+use astraweave_fluids::{FluidSystem, Particle, SecondaryParticle};
 
 /// Serializes the GPU tests: running five simultaneous wgpu devices on one
 /// adapter distorts frame timing enough to shift the (timing-coupled)
@@ -399,6 +399,25 @@ fn gpu_renderer_smoke() {
     apply_demo_params(&mut system);
     run_step(&mut system, &device, &queue, DT);
 
+    // F.4.2: upload a few secondary particles so the `render()` secondary block
+    // still draws (the count default is now 0, not the old hardcoded 65536).
+    system.set_secondary_particles(
+        &queue,
+        &[
+            SecondaryParticle {
+                position: [0.0, 4.0, 0.0, 1.0],
+                velocity: [0.0; 4],
+                info: [0.0, 1.0, 1.0, 0.5],
+            },
+            SecondaryParticle {
+                position: [1.0, 4.0, 0.0, 1.0],
+                velocity: [0.0; 4],
+                info: [0.0, 0.0, 1.0, 0.5],
+            },
+        ],
+    );
+    assert_eq!(system.secondary_particle_count(), 2);
+
     // Renderer construction under a validation scope (this is where the
     // F.1.1 startup panics fired).
     device.push_error_scope(wgpu::ErrorFilter::Validation);
@@ -480,6 +499,142 @@ fn gpu_renderer_smoke() {
         render_err.is_none(),
         "FluidRenderer::render produced a validation error: {render_err:?}"
     );
+}
+
+/// F.4.2: the standalone additive-billboard accent render (`render_accents`).
+/// Proves the SSFR-chain split: accents draw WITHOUT the depth/smooth/shade
+/// surface passes (no FluidSystem step, no scene/skybox inputs), compositing
+/// additively over an HDR target with an external scene-depth view. Also
+/// exercises the per-kind tint/shape path (one particle of each kind) and the
+/// counter-readback fix (live count, not the old hardcoded 65536).
+#[test]
+fn gpu_render_accents_smoke() {
+    let _gpu = gpu_serial();
+    let Some((device, queue)) = try_create_test_device("gpu_render_accents_smoke") else {
+        return;
+    };
+    const W: u32 = 256;
+    const H: u32 = 256;
+    // HDR format, matching the W-series surface target the accents composite over.
+    let format = wgpu::TextureFormat::Rgba16Float;
+
+    // No simulation needed — accents are CPU-produced. A tiny system owns the
+    // secondary buffer + the count fix.
+    let mut system = FluidSystem::new(&device, 64);
+    // Counter-readback fix: zero until a producer uploads (was hardcoded 65536).
+    assert_eq!(system.secondary_particle_count(), 0);
+
+    let renderer = astraweave_fluids::FluidRenderer::new(&device, W, H, format);
+
+    // One accent of each kind (Part=0, Raise=1, Freeze=2) → exercises the LUT.
+    let accents = [
+        SecondaryParticle {
+            position: [-2.0, 4.0, 0.0, 1.0],
+            velocity: [0.0, 1.0, 0.0, 0.0],
+            info: [0.1, 0.0, 0.9, 0.5],
+        },
+        SecondaryParticle {
+            position: [0.0, 4.0, 0.0, 1.0],
+            velocity: [0.0, 2.0, 0.0, 0.0],
+            info: [0.1, 1.0, 0.9, 0.5],
+        },
+        SecondaryParticle {
+            position: [2.0, 4.0, 0.0, 1.0],
+            velocity: [0.0, 0.5, 0.0, 0.0],
+            info: [0.1, 2.0, 0.9, 0.5],
+        },
+    ];
+    system.set_secondary_particles(&queue, &accents);
+    assert_eq!(
+        system.secondary_particle_count(),
+        3,
+        "live count reflects upload"
+    );
+
+    let make_tex = |label: &str, fmt: wgpu::TextureFormat, usage: wgpu::TextureUsages| {
+        device.create_texture(&wgpu::TextureDescriptor {
+            label: Some(label),
+            size: wgpu::Extent3d {
+                width: W,
+                height: H,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: fmt,
+            usage,
+            view_formats: &[],
+        })
+    };
+    let target = make_tex(
+        "accent target",
+        format,
+        wgpu::TextureUsages::RENDER_ATTACHMENT,
+    );
+    // External scene depth (Depth32Float) — the surface pass's depth in production.
+    let scene_depth = make_tex(
+        "accent scene depth",
+        wgpu::TextureFormat::Depth32Float,
+        wgpu::TextureUsages::RENDER_ATTACHMENT,
+    );
+
+    let eye = glam::Vec3::new(0.0, 8.0, 25.0);
+    let view = glam::Mat4::look_at_rh(eye, glam::Vec3::new(0.0, 4.0, 0.0), glam::Vec3::Y);
+    let proj = glam::Mat4::perspective_rh(1.0, W as f32 / H as f32, 0.1, 200.0);
+    let view_proj = proj * view;
+    let camera = astraweave_fluids::renderer::CameraUniform {
+        view_proj: view_proj.to_cols_array_2d(),
+        inv_view_proj: view_proj.inverse().to_cols_array_2d(),
+        view_inv: view.inverse().to_cols_array_2d(),
+        cam_pos: [eye.x, eye.y, eye.z, 1.0],
+        light_dir: [0.3, 0.9, 0.2, 0.0],
+        time: 0.0,
+        padding: [0.0; 19],
+    };
+
+    device.push_error_scope(wgpu::ErrorFilter::Validation);
+    let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+        label: Some("accent render"),
+    });
+    // ONLY the billboard pass — no depth/smooth/shade SSFR surface render.
+    renderer.render_accents(
+        &queue,
+        &mut encoder,
+        &target.create_view(&Default::default()),
+        &scene_depth.create_view(&Default::default()),
+        system.secondary_particle_buffer(),
+        system.secondary_particle_count(),
+        camera,
+    );
+    queue.submit([encoder.finish()]);
+    let err = pollster::block_on(device.pop_error_scope());
+    let _ = device.poll(wgpu::MaintainBase::Wait);
+    assert!(
+        err.is_none(),
+        "render_accents produced a validation error: {err:?}"
+    );
+
+    // Zero-accent identity: with no particles, render_accents records no pass.
+    system.set_secondary_particles(&queue, &[]);
+    assert_eq!(system.secondary_particle_count(), 0);
+    device.push_error_scope(wgpu::ErrorFilter::Validation);
+    let mut encoder2 = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+        label: Some("accent render empty"),
+    });
+    renderer.render_accents(
+        &queue,
+        &mut encoder2,
+        &target.create_view(&Default::default()),
+        &scene_depth.create_view(&Default::default()),
+        system.secondary_particle_buffer(),
+        system.secondary_particle_count(),
+        camera,
+    );
+    queue.submit([encoder2.finish()]);
+    let err2 = pollster::block_on(device.pop_error_scope());
+    let _ = device.poll(wgpu::MaintainBase::Wait);
+    assert!(err2.is_none(), "render_accents (empty) error: {err2:?}");
 }
 
 /// F.1.3 (H-1): respawn reactivation — the path that despawn-freezing's
