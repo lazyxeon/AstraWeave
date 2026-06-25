@@ -6,10 +6,10 @@
 |---|---|
 | **System name** | Fluids (GPU PBD particle simulation + SSFR rendering + W.3+-deferred visual-effects layer + editor) — **post-W.1**: voxel-water sim, research/experimental SPH inventory, and `simd_ops` removed (§0.5) |
 | **Primary crates** | `astraweave-fluids` (19 source files / 7 WGSL shaders / ~24.2K src LoC — down from 34 src / 8 shaders / ~80.7K at F.3.S) |
-| **Document version** | 1.6 |
-| **Last verified against commit** | branch `campaign/water-successor` (W.1 ratified deprecation; pre-removal anchor tag `w0-pre-deprecation` @ `3a8296038`) |
-| **Last verified date** | 2026-06-20 |
-| **Status** | **Post-W.1 KEEP surface only.** W.1 (2026-06-20) removed the SPH research/experimental inventory + voxel sim + `simd_ops` (58,796 deletions). The "five parallel solver surfaces" conflict is **resolved**: `FluidSystem` (lib.rs PBD) is now the sole particle solver (`UnifiedSolver` was deleted in F.1, `ResearchFluidSystem` never existed, `PCISPHSystem` removed in W.1). Retained: the **F.4 Option-A GPU-particle accent substrate** (`FluidSystem`+`FluidRenderer`+optimization/sdf/lod/profiling/serialization/emitter; KEEP) and the **W.3+-deferred visual-effects layer + `editor.rs`** (DEFERRED, untouched). Consumers: `examples/fluids_demo` only — no game-loop crate depends on the crate, and `astraweave-water` no longer does (its `voxel` backend was removed in W.1; physics buoys against `AnalyticWater`). See §0.5. |
+| **Document version** | 1.8 |
+| **Last verified against commit** | `7c29b8182` (merge of `campaign/water-successor` into main; F.4.2 accent machinery @ `3357c0c7a`; pre-removal anchor tag `w0-pre-deprecation` @ `3a8296038`) |
+| **Last verified date** | 2026-06-25 |
+| **Status** | **Post-W.1 KEEP surface only; F.4.2 accent emission half landed.** This trace now scopes ONLY to (a) the deprecated PBD solver remnant + (b) the retained **F.4 GPU-particle accent substrate**. The canonical trace for the water **rendering** successor (Gerstner surface / weave-response deformation / LOD / query facade) is the NEW [`docs/architecture/water.md`](./water.md) — read it for anything about the visible water surface; this doc covers only the fluids-crate particle accent garnish that composites *over* that surface. See §0.6. W.1 (2026-06-20) removed the SPH research/experimental inventory + voxel sim + `simd_ops` (58,796 deletions). The "five parallel solver surfaces" conflict is **resolved**: `FluidSystem` (lib.rs PBD) is now the sole particle solver (`UnifiedSolver` was deleted in F.1, `ResearchFluidSystem` never existed, `PCISPHSystem` removed in W.1). Retained: the **F.4 Option-A GPU-particle accent substrate** (`FluidSystem`+`FluidRenderer`+optimization/sdf/lod/profiling/serialization/emitter; KEEP) and the **W.3+-deferred visual-effects layer + `editor.rs`** (DEFERRED, untouched). Consumers: `examples/fluids_demo` only — no game-loop crate depends on the crate, and `astraweave-water` no longer does (its `voxel` backend was removed in W.1; physics buoys against `AnalyticWater`). See §0.5. |
 | **Owner notes** | **Post-W.1 scale (2026-06-20, firsthand `wc -l`):** 19 src files, 7 WGSL shaders, 2 integration tests (`gpu_execution_tests.rs` 568, `mutation_resistant_comprehensive_tests.rs` 456), 2 benches (`fluids_adversarial` 1,678, `fluid_baselines` 149). Largest file is now `editor.rs` (5,823 LoC, DEFERRED); the former largest `simd_ops.rs` (39,554) was removed in W.1. The pre-W.1 forensic record below is retained as history and is recoverable at tag `w0-pre-deprecation`. _Historical (pre-W.1):_ Scale: 35 Rust source files, 8 WGSL compute shaders (7 in `shaders/` + 1 in `shaders/research/pcisph.wgsl`, 27.8 KB), 1 integration test file (`mutation_resistant_comprehensive_tests.rs`, 785 LoC), 1 benchmark (`fluids_adversarial`, 1,893 LoC). Largest single file is `simd_ops.rs` at 39,554 LoC (largely batch-operation surface for SIMD-friendly SPH primitives). Second largest is `editor.rs` at 5,823 LoC. The README + the audit doc at `docs/current/FLUIDS_RESEARCH_GRADE_ENHANCEMENT_PLAN.md` (v2.0, Jan 2026) document an explicit "research-grade enhancement" roadmap target of multi-solver SPH (PBD/PCISPH/DFSPH/IISPH). **Verification pass 2026-05-12 (version 1.1):** resolved 9 markers + 2 factual corrections — (a) zero unsafe blocks crate-wide (only 2 bytemuck unsafe-trait impls at `debug_viz.rs:479-480`); (b) `ResearchQualityTier` is 5-variant Low/Medium/High/Ultra/Research at `research.rs:198-213`; (c) `PhysicsConfig` (editor) has 9 fields at `editor.rs:2094-2113`; (d) `tools/aw_editor` does NOT consume `astraweave-fluids` (editor surface is forward-design only); (e) `CameraUniform` is **304 bytes** not 200 (corrected Invariant 6); (f) `FluidSystem.particle_buffers` confirmed 2-entry ping-pong at `lib.rs:414`; (g) `FluidOptimizationController` lives in `lib.rs:1433` NOT `optimization.rs` (corrected §5); (h) 8th WGSL shader discovered: `shaders/research/pcisph.wgsl`; (i) inline `#[test]` counts per file documented (140 in editor.rs, 79 in lib.rs, 78 in optimization.rs, etc., 600+ total inline tests). **Deep investigation pass 2026-05-12 (version 1.2):** closed 2 factual §11 Open Questions — (a) `ssfr_smooth.wgsl` v1 deletion confirmed via `git log --diff-filter=D`: deleted in commit `4af95b47c` "Implement rain splash particle system, shader permutation system, snow footprint stamping, and vegetation interaction system" (resolution moved to §5 file map + new §7 Decision Log entry); (b) Editor surface NOT wired into `tools/aw_editor` (workspace grep + Cargo.toml dep check both zero) — resolution captured in §5 file map editor.rs row. Resolved the new pcisph.wgsl include-path marker: `pcisph_system.rs:549` consumes it. Comprehensive shader-consumption audit confirmed all 8 WGSL shaders are consumed by Rust `include_str!` calls (`anisotropic.rs:80`, `lib.rs:366` for fluid.wgsl, `pcisph_system.rs:549`, `renderer.rs:61/65/69/370-371`, `sdf.rs:53`). Recovered Decision Log entry for SSFR shader refactor (commit `4af95b47c` "shader permutation system"). |
 
 ---
@@ -86,6 +86,75 @@ was **deprecated** in W.2 Phase 2 — it roadmaps the multi-solver SPH inventory
 deleted in W.1 and now carries a staleness banner. Treat every such reference here
 as **historical**, not a live authority; the live authority for water scope is
 `docs/campaigns/water-successor/` (W0/W1/W2 records).
+
+## 0.6 F.4.2 Revision Notice (2026-06-24) — READ AFTER §0.5
+
+**Scope split — read this first.** As of the W-series merge (`7c29b8182`) there is now a
+dedicated trace for the water **rendering** successor:
+[`docs/architecture/water.md`](./water.md) (v1.0) — canonical for the Gerstner heightfield
+surface, the part/freeze/raise weave-response deformation, chunked LOD, and the
+`astraweave-water::WaterQuery` gameplay-truth facade. **This `fluids.md` trace is now
+deliberately narrow:** it covers ONLY (1) the deprecated PBD particle-solver remnant
+(`FluidSystem` + `shaders/fluid.wgsl`, §2.1) and (2) the **F.4 GPU-particle accent
+substrate** (`SecondaryParticle` + `secondary.wgsl` + `FluidRenderer`'s billboard pass)
+that garnishes weave impacts. When a question is about the *visible water surface*, go to
+[`water.md`](./water.md); when it is about the *particle accent garnish* or the dormant PBD
+solver, stay here.
+
+**F.4.2 (`3357c0c7a`, 2026-06-24) — "weave-impact accent machinery" — landed the emission
+half of the accent substrate.** F.4.0 recon
+([`F4_0_RECON.md`](../campaigns/water-successor/F4_0_RECON.md)) found the accent substrate
+(struct + shader + buffer + renderer draw) present but with **one missing piece — no kernel
+or producer ever wrote `secondary_particles[]`**, and `secondary_particle_count()` returned
+the hardcoded buffer capacity `65536`, so any renderer of the secondary buffer drew 65,536
+**zeroed** billboards (an F.4.0 bug). F.4.2 closed the gap **on the CPU**, not via a GPU
+emission kernel. Fluids-crate deltas (the only crate code F.4.2 changed — per `git show
+--numstat 3357c0c7a`: `lib.rs +42/-1`, `renderer.rs +56/-0`, `secondary.wgsl +71/-19`
+rewritten):
+
+- **`FluidSystem::set_secondary_particles(&mut self, &Queue, &[SecondaryParticle])`** (new,
+  `lib.rs:1478-1497`): a CPU producer uploads a live set of accent particles via
+  `queue.write_buffer` (buffer is already `COPY_DST`), capped at capacity, and records the
+  live count. New private fields `secondary_capacity: u32` + `live_secondary_count: u32`
+  (`lib.rs:277-283`); both wired in `FluidSystem::new` (`lib.rs:831-832`).
+- **`FluidSystem::secondary_particle_count()` fixed** (`lib.rs:1463`): now returns
+  `self.live_secondary_count` (0 until a producer pushes) instead of the hardcoded `65536`.
+  This also stopped `fluids_demo` drawing 65k garbage billboards.
+- **`FluidRenderer::render_accents(...)`** (new, `renderer.rs:756-795`): a standalone
+  **additive-billboard-only** pass — the SSFR depth→smooth→shade *surface* chain is
+  deliberately NOT invoked (the W-series surface stays a `WaterRenderer` job; accents
+  composite *over* it). `LoadOp::Load` additive into the HDR target, depth-test read-only
+  (no write) against external scene depth. **Zero-accent identity:** at `secondary_count == 0`
+  it early-returns with no render pass recorded, so the target is byte-identical.
+- **`secondary.wgsl` rewritten**: `info.y` is re-purposed from `type (0=Foam,1=Bubble)` to
+  **weave kind** (0=Part, 1=Raise, 2=Freeze); drives a per-kind tint LUT
+  (`TINT_PART`/`TINT_RAISE`/`TINT_FREEZE`, values >1.0 bloom for free under additive blend) +
+  per-kind procedural shape mask (Part→streak, Freeze→teardrop, Raise/default→round soft
+  puff). No texture binding — the stylized character is UV math + the additive blend.
+
+**The CPU accent producer is binary glue, NOT in this crate.** `WaterAccentProducer`
+(`examples/weaving_playground/src/weave_accent_producer.rs`) translates `WeaveOp` triggers
+into ballistically-aged `SecondaryParticle`s; it is a sibling to the W.2c.3 weave producer
+and lives in the example layer. The crate boundary holds both ways: **`astraweave-render`
+and `astraweave-fluids` have no dependency on each other** — the binary depends on both and
+orchestrates the composition (the W.2c.3 binary-glue pattern). Only `wgpu` types cross
+`render_accents`'s signature.
+
+**F.4.3 (`f5d40a3c7`) did NOT touch this crate.** The "live in-frame composite" (the
+`astraweave-render::Renderer::hdr_overlay` stored callback that fires `render_accents` after
+the water pass, before tonemap) is entirely in `astraweave-render` + the `weaving_playground`
+binary — see [`water.md`](./water.md) and
+[`F4_3_EXECUTION_REPORT.md`](../campaigns/water-successor/F4_3_EXECUTION_REPORT.md). Verified
+via `git show --stat f5d40a3c7 -- astraweave-fluids/` (empty). So the fluids-crate accent
+delta is exactly F.4.2.
+
+**Wired status of the accent substrate (2026-06-24).** The accent path now has a real
+non-test, non-crate producer chain: `weaving_playground` uploads via `set_secondary_particles`
+each frame and composites via `render_accents` through the render-crate `hdr_overlay`
+callback (F.4.3). This is **example-layer wiring**, not a production game-loop crate — same
+shape as the rest of the fluids crate (still no `astraweave-*` game-loop crate depends on
+`astraweave-fluids`; the only consumers are `examples/fluids_demo` and
+`examples/weaving_playground`).
 
 ---
 
@@ -314,6 +383,63 @@ Per `astraweave-fluids/README.md:1`: "A production-grade GPU-accelerated fluid s
           WaterWheel rotates based on water flow (WheelAxis enum)
 ```
 
+> **§2.3–§2.6 are HISTORICAL (W.1).** The voxel water grid, voxel render, visual-effects
+> coordinator wiring, terrain-integration and building-integration paths described in
+> §2.3–§2.6 reference modules **removed in W.1** (`volume_grid.rs`, `gpu_volume.rs`,
+> `building.rs`, `terrain_integration.rs`) or **DEFERRED** (`water_effects.rs` and the seven
+> visual subsystems — untouched, no consumer). They are retained as forensic history.
+
+### 2.7 Weave-impact accent render pipeline (F.4.2, `FluidRenderer::render_accents`)
+
+This is the **current, wired** accent path — the CPU-producer + additive-billboard render
+half landed in F.4.2 (`3357c0c7a`). It is distinct from the §2.1 PBD solver (it does NOT run
+`FluidSystem::step`) and from §2.2 SSFR (it does NOT run the depth/smooth/shade surface
+chain).
+
+```text
+[Weave gameplay layer emits WeaveOp triggers]
+    │
+    │ binary glue: WaterAccentProducer::ingest + tick(dt)
+    │ file: examples/weaving_playground/src/weave_accent_producer.rs  (NOT in this crate)
+    ▼
+[A2: CPU accent producer translates triggers → ballistically-aged SecondaryParticle[]]
+    role: per weave kind — LowerWater→Part (outward+down silt spray),
+          RaisePlatform→Raise (upward lift-burst), FreezeWater→Freeze (one-shot frost
+          shimmer, then suppressed honouring the surface (1-freeze) foam suppression).
+          info.y carries the kind index (0=Part,1=Raise,2=Freeze).
+    │
+    │ FluidSystem::set_secondary_particles(&Queue, &[SecondaryParticle])
+    │ file: astraweave-fluids/src/lib.rs:1478-1497  (queue.write_buffer; caps at capacity;
+    │       records live_secondary_count)
+    ▼
+[A3: GPU secondary_particle_buffer now holds the live uploaded set]
+    role: secondary_particle_count() returns live_secondary_count (0 until a producer pushes)
+    file: lib.rs:1463
+    │
+    │ binary glue: register a per-frame hdr_overlay closure (F.4.3, render crate)
+    │ → astraweave-render::Renderer::set_hdr_overlay / fire_hdr_overlay (run_water_pass)
+    ▼
+[A4: FluidRenderer::render_accents(queue, encoder, target_view=HDR, depth_view=scene depth,
+     secondary_buffer, secondary_count, camera)]
+    file: astraweave-fluids/src/renderer.rs:756-795
+    shader: shaders/secondary.wgsl  (per-kind tint LUT + per-kind procedural shape mask)
+    pipeline: secondary_pipeline — additive blend (SrcAlpha, One, Add), depth-test
+              read-only (depth_write_enabled:false, Depth32Float), TriangleStrip billboards
+    blend target: LoadOp::Load into the HDR target (composite OVER the water surface)
+    role: draw ONLY the accent billboards — the SSFR surface chain is NOT invoked here.
+          At secondary_count==0: early-return, NO render pass recorded → byte-identical HDR
+          (zero-accent identity).
+    │
+    ▼
+[render order achieved by F.4.3: opaque → water surface → accents (additive, HDR) → tonemap]
+```
+
+**Why CPU-side and not a GPU emission kernel:** F.4.0 recon found the substrate's missing
+piece was the emission kernel, and chose the cheap accent-shaped path (ballistic, low-count,
+no PBF/SDF/heat). The CPU producer owns particle lifetime and re-uploads the live set each
+frame; the GPU holds no accent lifetime state — exactly the W.2c.3 weave-producer pattern.
+The GPU emission kernel remains a logged, deferred follow-on (`F4_0_RECON.md`).
+
 ---
 
 ## 3. Semantic Vocabulary
@@ -323,7 +449,12 @@ Per `astraweave-fluids/README.md:1`: "A production-grade GPU-accelerated fluid s
 | **`FluidSystem`** | The original PBD-based GPU fluid simulator. Holds 8 compute pipelines + ping-pong buffers + grid-linked-list. Constructor takes `&wgpu::Device, particle_count: u32`. | `lib.rs:250-415` |
 | **`Particle`** | GPU particle: `position: [f32; 4]`, `velocity: [f32; 4]`, `predicted_position: [f32; 4]`, `lambda: f32`, `density: f32`, `phase: u32` (0=water, 1=oil, 2=custom), `temperature: f32` (Kelvin), `color: [f32; 4]`. Total 80 bytes, `bytemuck::Pod + Zeroable`. | `lib.rs:208-219` |
 | **`SimParams`** | GPU uniform: `smoothing_radius`, `target_density`, `pressure_multiplier`, `viscosity`, `surface_tension`, `gravity`, `dt`, `particle_count: u32`, grid dimensions + cell_size, `object_count: u32` + 3 f32 pad fields. Total 64 bytes. | `lib.rs:221-248` |
-| **`SecondaryParticle`** | Foam/spray/bubble particle: position, velocity, info (lifetime, type, alpha, scale). Total 48 bytes. | `lib.rs:354-360` |
+| **`SecondaryParticle`** | Accent (foam/spray/splash) billboard particle: `position: vec4`, `velocity: vec4`, `info: vec4`. Total 48 bytes. **F.4.2 re-purposed `info`**: `x` = lifetime/age-alpha, **`y` = weave kind (0=Part, 1=Raise, 2=Freeze)** (was `type` 0=Foam/1=Bubble), `z` = alpha, `w` = scale. The CPU producer fills these; `secondary.wgsl` reads `info.y` for tint+shape. | `lib.rs:391`, `shaders/secondary.wgsl:32-35` |
+| **`FluidSystem::set_secondary_particles`** (F.4.2) | `&mut self, &wgpu::Queue, &[SecondaryParticle]` — CPU accent producer uploads a live set via `write_buffer`, caps at `secondary_capacity`, records `live_secondary_count`. The accent emission path (CPU-side; no GPU emission kernel). | `lib.rs:1478-1497` |
+| **`live_secondary_count` / `secondary_capacity`** (F.4.2) | Private `FluidSystem` fields. `secondary_capacity` = slot cap of `secondary_particle_buffer` (65536); `live_secondary_count` = count actually uploaded this frame (default 0). `secondary_particle_count()` returns the live count, NOT the capacity (the F.4.0 bug). | `lib.rs:277-283`, `:1463` |
+| **`FluidRenderer::render_accents`** (F.4.2) | Standalone additive-billboard accent pass (the SSFR-chain split). Draws ONLY accents over an external HDR target + scene depth; SSFR surface passes NOT invoked. Early-returns at count 0 (zero-accent identity). | `renderer.rs:756-795` |
+| **`WaterAccentProducer`** (F.4.2, example layer) | CPU producer translating `WeaveOp` triggers → ballistically-aged `SecondaryParticle`s with per-kind character (Part/Raise/Freeze). Binary glue, NOT in this crate. | `examples/weaving_playground/src/weave_accent_producer.rs` |
+| **`TINT_PART` / `TINT_RAISE` / `TINT_FREEZE` / `ACCENT_OPACITY`** (F.4.2) | `secondary.wgsl` named constants — the art-directable per-kind tint LUT (values >1.0 bloom under additive blend) + base opacity. The producer owns motion/spawn/lifetime; these own colour/silhouette. | `shaders/secondary.wgsl:46-51` |
 | **`UnifiedSolver`** | High-level interface combining research-grade SPH solvers (PBD/PCISPH/DFSPH/IISPH) + viscosity models + multi-phase + vorticity confinement + boundary handling. Includes built-in validation metrics. | `unified_solver.rs:1-…` |
 | **`UnifiedSolverConfig`** | Config selecting `SolverType`, `ViscositySolverType`, `BoundaryMethod`, phase configs, quality preset. | `unified_solver.rs:…` |
 | **`SolverType` (unified_solver.rs)** | `#[non_exhaustive]` enum: `Pbd`, `Pcisph` (default), `Dfsph`, `Iisph`. Note: lowercase variants. | `unified_solver.rs:50-60` |
@@ -397,6 +528,8 @@ Per `astraweave-fluids/README.md:1`: "A production-grade GPU-accelerated fluid s
 - **`PhysicsConfig` (in `editor.rs`)**: NOT the physics-side `astraweave_physics::PhysicsConfig`. This is the editor-side fluid physics config defined at `editor.rs:2094-2113` with 9 fields: `smoothing_radius: f32` (0.5-5.0), `target_density: f32` (1.0-50.0), `pressure_multiplier: f32` (10.0-1000.0), `viscosity: f32` (0.0-100.0), `surface_tension: f32` (0.0-1.0), `gravity: [f32; 3]`, `iterations: u32` (1-20), `enable_vorticity: bool`, `vorticity_strength: f32` (0.0-1.0). Derives `Clone, Debug, Serialize, Deserialize`.
 - **`LodConfig` aliased as `EditorLodConfig` (`lib.rs:136`) vs `FluidLodConfig` (`lod.rs`)**: Two LOD configs — editor-side and runtime-side. Lib.rs explicitly renames the editor one to `EditorLodConfig` to disambiguate.
 - **`SSFR` (Screen-Space Fluid Rendering)** vs **`SSR` (Screen-Space Reflection)**: Both used. SSFR is the surface reconstruction pipeline (`ssfr_depth.wgsl`, `ssfr_shade.wgsl`, `ssfr_smooth_v2.wgsl`). SSR is reflection (referenced by `SSR_WGSL` re-export at `lib.rs:198`).
+- **`SecondaryParticle.info.y` — `type` (legacy) vs `kind` (F.4.2)**: The field byte-layout is unchanged (48-byte struct), but its *meaning* changed. Pre-F.4.2 `info.y` was a particle `type` (0=Foam/Spray, 1=Bubble) and the fragment shader hardcoded a single near-white colour. Post-F.4.2 (`secondary.wgsl`) it is a **weave kind** index (0=Part, 1=Raise, 2=Freeze) driving the tint LUT + shape mask. Any external producer of `SecondaryParticle` must fill `info.y` with the kind, not the old type. The legacy GPU `mix_dye`/secondary-spawn path was never written (F.4.0), so no producer used the old meaning.
+- **`render` (legacy secondary draw) vs `render_accents` (F.4.2)**: `FluidRenderer::render` (`renderer.rs:591-737`) is the SSFR surface chain *including* an optional secondary billboard tail (`:713`). `render_accents` (`:756-795`) is the **accent-only** path — same `secondary_pipeline`, but NO surface passes and a no-op at count 0. The W-series uses `render_accents`; the surface comes from `astraweave-render::WaterRenderer`.
 
 ---
 
@@ -409,15 +542,17 @@ Per `astraweave-fluids/README.md:1`: "A production-grade GPU-accelerated fluid s
 | `wgpu::Device` (host) | `FluidSystem::new(&device, particle_count)` at `lib.rs:362` | Device handle | The crate is GPU-first; every solver/renderer takes `&wgpu::Device` |
 | `wgpu::Queue` (host) | Buffer writes (`queue.write_buffer(params_buffer, ...)`) | `SimParams` updates | Caller-driven per-frame parameter updates |
 | Terrain heightmap | `analyze_terrain_for_water(heightmap, TerrainFluidConfig)` at `terrain_integration.rs` | Heightmap data + flow detection config | Caller provides heightmap; output is `Vec<DetectedWaterBody>` |
-| Camera state | `CameraUniform { view_proj, inv_view_proj, view_inv, cam_pos, light_dir, time }` at `renderer.rs:7-16` | Camera matrices + time | 200-byte uniform consumed by all SSFR passes |
-| Editor / authoring layer | `FluidEditorConfig` + `ConfigHistory::push(...)` + `from_preset(WaterBodyPreset)` per `editor.rs:21-41` doc-comment | Config objects | Editor-driven workflow |
+| Camera state | `CameraUniform { view_proj, inv_view_proj, view_inv, cam_pos, light_dir, time }` at `renderer.rs:7-16` | Camera matrices + time | 304-byte uniform (Invariant 6) consumed by all SSFR passes + `render_accents` |
+| Weave gameplay (via binary glue) | `WaterAccentProducer` → `FluidSystem::set_secondary_particles(queue, &[SecondaryParticle])` (`lib.rs:1478`) | `&[SecondaryParticle]` accent set | F.4.2. The producer is in `examples/weaving_playground` (NOT this crate); fed the same `WeaveOp`s as the W.2c.3 weave producer. Re-uploaded each frame (CPU owns lifetime). |
+| Editor / authoring layer | `FluidEditorConfig` + `ConfigHistory::push(...)` + `from_preset(WaterBodyPreset)` per `editor.rs:21-41` doc-comment | Config objects | Editor-driven workflow (DEFERRED layer — `editor.rs` untouched, no consumer) |
 
 ### Downstream (what consumes this system's output)
 
 | Consumer system | Interface | Data | Notes |
 |---|---|---|---|
-| `examples/fluids_demo` | `use astraweave_fluids::{FluidSystem, FluidRenderer, FluidLodConfig, FluidLodManager, FluidOptimizationController}` at `examples/fluids_demo/src/main.rs:18-21` | All public surface | **The only workspace consumer** (verified 2026-05-12) |
-| **No game-loop crate** | n/a | n/a | Verified workspace grep: `use astraweave_fluids` returns only the fluids crate itself, the demo example, the mutation test, and the bench. Zero production engine consumers. |
+| `examples/fluids_demo` | `use astraweave_fluids::{FluidSystem, FluidRenderer, FluidLodConfig, FluidLodManager, FluidOptimizationController}` at `examples/fluids_demo/src/main.rs:18-21` | All public surface | A workspace consumer (verified 2026-05-12). Constructs `FluidSystem::new(&device, 20000)` and steps the PBD solver per frame. |
+| `examples/weaving_playground` (F.4.2/F.4.3) | `FluidSystem::set_secondary_particles(queue, &accents)` (`lib.rs:1478`) each frame + `FluidRenderer::render_accents(...)` (`renderer.rs:756`) via the render-crate `hdr_overlay` callback | `&[SecondaryParticle]` upload + additive billboard composite | The **accent** consumer (added F.4.2/F.4.3, 2026-06-24). Builds `FluidRenderer` (Rc) + `FluidSystem(2048)` against `renderer.hdr_format()` (Rgba16Float); the `WaterAccentProducer` binary glue feeds the accents. Does NOT run `FluidSystem::step` — accents only. |
+| **No game-loop crate** | n/a | n/a | Verified `git show --stat` + grep: the only `use astraweave_fluids` outside the crate are the two examples (`fluids_demo`, `weaving_playground`), the mutation test, the gpu_execution test, and the benches. Zero production `astraweave-*` engine consumers. |
 
 ### Bidirectional / Coupled
 
@@ -438,10 +573,26 @@ Per `astraweave-fluids/README.md:1`: "A production-grade GPU-accelerated fluid s
 > Current post-W.1 LoC + KEEP/DEFERRED disposition are in §0.5; the `Status` column
 > below retains the pre-W.1 "Active" labels and some kept-row LoC reflect the last
 > full measurement (minor pre-W.1 drift, not W.1-introduced).
+>
+> **Post-merge inventory confirmed (2026-06-24, `7c29b8182`, firsthand `ls`):** the
+> current `astraweave-fluids/src/` tree is exactly **19 files** — `anisotropic.rs`,
+> `caustics.rs`, `debug_viz.rs`, `editor.rs`, `emitter.rs`, `foam.rs`, `god_rays.rs`,
+> `lib.rs`, `lod.rs`, `optimization.rs`, `profiling.rs`, `renderer.rs`, `sdf.rs`,
+> `serialization.rs`, `underwater.rs`, `underwater_particles.rs`, `water_effects.rs`,
+> `water_reflections.rs`, `waterfall.rs`. The W.1-removed files (`research.rs`,
+> `pcisph_system.rs`, `simd_ops.rs`, `volume_grid.rs`, `gpu_volume.rs`, `building.rs`,
+> `terrain_integration.rs`, `viscosity.rs`, `viscosity_gpu.rs`, `turbulence.rs`,
+> `multi_phase.rs`, `warm_start.rs`, `particle_shifting.rs`, `validation.rs`,
+> `boundary.rs`) are **confirmed absent**. Shaders: exactly **7** — `anisotropic.wgsl`,
+> `fluid.wgsl`, `sdf_gen.wgsl`, `secondary.wgsl`, `ssfr_depth.wgsl`, `ssfr_shade.wgsl`,
+> `ssfr_smooth_v2.wgsl` (no `shaders/research/`). Tests: `gpu_execution_tests.rs` +
+> `mutation_resistant_comprehensive_tests.rs`. Benches: `fluid_baselines.rs` +
+> `fluids_adversarial.rs`. The §3 / §5 / §6 rows that still reference the removed
+> modules below are HISTORICAL and clearly marked as such.
 
 | File | LoC | Role | Status | Notes |
 |---|---|---|---|---|
-| `astraweave-fluids/src/lib.rs` | 3,810 | Re-exports + `Particle` / `SimParams` / `SecondaryParticle` GPU types + `FluidSystem` original PBD GPU pipeline + `OptimizationStats` | Active (in demo) | The example consumer constructs `FluidSystem::new(&device, particle_count)` (`fluids_demo/src/main.rs:19-21`). No production crate constructs `FluidSystem` directly. |
+| `astraweave-fluids/src/lib.rs` | 4,068 (F.4.2 net +41: +42/-1) | Re-exports + `Particle` / `SimParams` / `SecondaryParticle` GPU types + `FluidSystem` original PBD GPU pipeline + `OptimizationStats`. **F.4.2 added the accent emission API**: `set_secondary_particles` (`:1483`, fn signature), `secondary_capacity`/`live_secondary_count` fields (`:277-283`), and the `secondary_particle_count()` counter fix (`:1470`, fn). `SecondaryParticle` struct at `:391`. | Active (KEEP — F.4 accent substrate) | The two example consumers construct `FluidSystem::new(&device, …)` (`fluids_demo` 20000, `weaving_playground` 2048). No production crate constructs `FluidSystem` directly. |
 | `astraweave-fluids/src/anisotropic.rs` | 415 | Anisotropic kernel surface for sharper fluid surfaces | Active (module-level) | Companion shader at `shaders/anisotropic.wgsl` (86 LoC) |
 | `astraweave-fluids/src/caustics.rs` | 728 | `CausticsProjector` + `CausticsSystem` + `CausticsUniforms` + `CausticsConfig` + `CausticSample` + `CAUSTICS_WGSL` inline-WGSL | Active (module-level) | Voronoi-pattern caustics per README |
 | `astraweave-fluids/src/debug_viz.rs` | 665 | `DebugDrawList` + `DebugLine` + `DebugPoint` + `DebugVertex` + `ParticleDebugType` + `StatsFormatter` + `WaterDebugConfig` | Active (module-level) | Debug visualization |
@@ -452,7 +603,7 @@ Per `astraweave-fluids/README.md:1`: "A production-grade GPU-accelerated fluid s
 | `astraweave-fluids/src/lod.rs` | 1,269 | `FluidLodManager` + `FluidLodConfig` + `LodLevel` + `LodUpdateResult` + `OptimizedLodManager` + `OptimizedLodConfig` + `ParticleStreamingManager` + `StreamingOp` | Active (in demo) | Used by `fluids_demo` per imports |
 | `astraweave-fluids/src/optimization.rs` | 2,392 | `WorkgroupConfig` + `AdaptiveIterations` + `SimulationBudget` + `TemporalCoherence` + `BatchSpawner` + `OptimizationProfiler` + `MortonCode` + `GpuVendor` + `OptimizationPreset` + `OptimizationRecommendation` + `OptimizationMetrics` + `OptimizedSimParams` + `ParticleStateGpu` + `QualityTier` + `GpuShaderConfig` + `analyze_metrics` | Active (in demo) | **Correction (verified 2026-05-12):** the `FluidOptimizationController` struct that the demo imports is NOT defined in this file — it lives at `lib.rs:1418-…`, `lib.rs:1433` (struct decl), `lib.rs:1477` (Default impl), `lib.rs:1483` + `:2062` (inherent impl blocks). The previous trace claim that it lives in `optimization.rs` was incorrect. |
 | `astraweave-fluids/src/profiling.rs` | 527 | `FluidProfiler` + `FluidTimingStats` | Active (module-level) | Per-subsystem timing instrumentation |
-| `astraweave-fluids/src/renderer.rs` | 748 | `FluidRenderer` SSFR pipeline (depth + smooth + shade + secondary) + `CameraUniform` (200-byte) + `SmoothParams` | Active (in demo) | The only rendering surface |
+| `astraweave-fluids/src/renderer.rs` | 795 (F.4.2 +56/-0) | `FluidRenderer` SSFR pipeline (depth + smooth + shade + secondary) + `CameraUniform` (304-byte, see Invariant 6) + `SmoothParams`. **F.4.2 added `render_accents` (`:756-795`)** — the standalone additive-billboard accent pass (SSFR surface chain NOT invoked). `secondary_pipeline` uses additive blend (SrcAlpha/One/Add, `:409-414`), `depth_write_enabled:false` (`:426`). | Active (KEEP) | The crate's rendering surface; `render_accents` is the F.4 accent half. |
 | `astraweave-fluids/src/sdf.rs` | 750 | `SdfSystem` (Jump-Flood Algorithm per README) | Active (in `FluidSystem`) | Required by `FluidSystem.sdf_system` field at `lib.rs:301` |
 | `astraweave-fluids/src/serialization.rs` | 395 | `FluidSnapshot` + `SnapshotParams` save/load via bincode | Active (module-level) | |
 | `astraweave-fluids/src/underwater.rs` | 752 | `DepthZoneManager` + `UnderwaterConfig` + `UnderwaterState` + `UnderwaterUniforms` | Active (module-level) | Depth-zone fog/density transitions |
@@ -463,7 +614,7 @@ Per `astraweave-fluids/README.md:1`: "A production-grade GPU-accelerated fluid s
 | `astraweave-fluids/shaders/anisotropic.wgsl` | 86 | Anisotropic kernel | Active | Used by `anisotropic.rs` |
 | `astraweave-fluids/shaders/fluid.wgsl` | 481 | 8 PBD compute kernels: `clear_grid`, `build_grid`, `predict`, `lambda`, `delta_pos`, `integrate`, `mix_dye`, secondary spawn | Active | Loaded by `FluidSystem::new` at `lib.rs:366` via `include_str!` |
 | `astraweave-fluids/shaders/sdf_gen.wgsl` | 137 | SDF generation (Jump-Flood Algorithm) | Active | Used by `sdf.rs` |
-| `astraweave-fluids/shaders/secondary.wgsl` | 81 | Secondary particle (foam/spray/bubble) shader | Active | Used by `renderer.rs::secondary_pipeline` |
+| `astraweave-fluids/shaders/secondary.wgsl` | 133 (was 81; rewritten at F.4.2, +71/-19) | Secondary/accent billboard shader. **F.4.2 rewrote it**: `info.y` re-purposed to weave kind (0=Part/1=Raise/2=Freeze); per-kind tint LUT (`TINT_PART`/`RAISE`/`FREEZE`, `:46-48`) + per-kind procedural shape mask (`shape_mask`, streak/teardrop/round). No texture binding. | Active (KEEP) | Used by `renderer.rs::secondary_pipeline` (both the legacy `render` draw and F.4.2 `render_accents`) |
 | `astraweave-fluids/shaders/ssfr_depth.wgsl` | 125 | SSFR depth pass | Active | Used by `renderer.rs::depth_pipeline` |
 | `astraweave-fluids/shaders/ssfr_shade.wgsl` | 161 | SSFR shade pass | Active | Used by `renderer.rs::shade_pipeline` |
 | `astraweave-fluids/shaders/ssfr_smooth_v2.wgsl` | 61 | SSFR bilateral-blur smoothing pass | Active | Used by `renderer.rs:65` (`include_str!("../shaders/ssfr_smooth_v2.wgsl")`). The `_v2` suffix suggests a prior `_v1` was superseded — verified 2026-05-12: workspace `find` for `ssfr_smooth*` returned only this v2 file. Git log with `--diff-filter=D` did not surface an explicit deletion of `ssfr_smooth.wgsl` in recent commits. Either v1 was renamed-in-place before commit history or was deleted earlier than the available log. |
@@ -601,6 +752,14 @@ Per `astraweave-fluids/README.md:1`: "A production-grade GPU-accelerated fluid s
 - **Alternatives considered:** [Reasoning not recovered — commit message documents the what but not the why]
 - **Consequences:** Only `ssfr_smooth_v2.wgsl` exists in `shaders/` today. `renderer.rs:65` loads v2 directly. No v1 fallback.
 
+### Decision: CPU accent producer + standalone additive pass (F.4.2), not a GPU emission kernel
+- **Date:** 2026-06-24 (commit `3357c0c7a`; recon `F4_0_RECON.md`, design `F4_1_RECON.md`)
+- **Status:** Accepted
+- **Context:** F.4.0 recon found the W.1-kept accent substrate present at the struct/shader/buffer/renderer level but missing its emission half — **no kernel wrote `secondary_particles[]`** — and the W-series water *surface* is owned by `astraweave-render::WaterRenderer`, not this crate. Two options for the emission half: (a) write a GPU emission kernel (the "PBF-physics" path), or (b) a cheap CPU accent producer (ballistic, low-count, no PBF/SDF/heat) feeding the existing billboard renderer.
+- **Decision:** Take the CPU path (b). `FluidSystem::set_secondary_particles` uploads a CPU-built `&[SecondaryParticle]` each frame; `FluidRenderer::render_accents` draws ONLY those billboards additively over an external HDR target (the SSFR surface chain is split out). The producer (`WaterAccentProducer`) lives in the `weaving_playground` binary glue, mirroring the W.2c.3 weave-producer pattern. The render↔fluids Cargo edge is deliberately avoided (only `wgpu` types cross).
+- **Alternatives considered:** GPU emission kernel (deferred follow-on per `F4_0_RECON.md` — heavier, and the accent shape doesn't need PBF). Invoking the full SSFR surface chain for accents (rejected — the surface is `WaterRenderer`'s job; double-rendering it would conflict).
+- **Consequences:** The GPU holds no accent lifetime state; the CPU re-uploads every frame. `secondary_particle_count()` had to be fixed from the hardcoded `65536` to the live count (else 65k zeroed billboards). The legacy `info.y` `type` field was re-purposed to weave `kind`. A new example consumer (`weaving_playground`) exists, but no production game-loop crate — the substrate remains example-wired. The live in-frame composite (the render-crate `hdr_overlay` callback) is F.4.3, in `astraweave-render`, not this crate.
+
 ---
 
 ## 8. Known Invariants
@@ -632,6 +791,11 @@ Per `astraweave-fluids/README.md:1`: "A production-grade GPU-accelerated fluid s
 | 23 | `density_error_staging_buffers` has exactly 2 entries; `map_async` is issued ONLY for a buffer whose copy was already submitted (`StagingState` machine; two-frame-lag adaptive iterations are the defined semantics) | Yes (compile-time + state machine) | F.1 replaced the pre-submit `map_async` (F.0 Must-Fix #3) |
 | 24 | Crate does NOT declare `#![forbid(unsafe_code)]` | Yes (file inspection) | `lib.rs:1` is `//! # AstraWeave Fluids` doc-comment, not the forbid attribute |
 | 25–31 | **REMOVED in W.1 (2026-06-20).** Invariants 25–31 governed `WaterVolumeGrid` (F.3: gate-flag reads / conserving `flow_horizontal` / `MAX_STABLE_DT` substep / voxel `WaterQuery` determinism; F.3.S: bit-identical dirty-AABB `simulate` vs `simulate_reference` / `CASCADE_MARGIN` / high-fill guard). The voxel sim and its `astraweave-water` backend were removed in W.1, so these no longer apply. Full text recoverable at tag `w0-pre-deprecation`. | — | — |
+| 32 | **(F.4.2)** `FluidSystem::secondary_particle_count()` returns `live_secondary_count` (0 until a producer uploads), NOT the hardcoded buffer capacity `65536` | Yes (code) | `lib.rs:1463`; was the F.4.0 bug — fixed in `3357c0c7a` |
+| 33 | **(F.4.2)** `set_secondary_particles` caps the uploaded count at `secondary_capacity` (= buffer slot capacity, 65536); the overflow tail is dropped | Yes (code) | `lib.rs:1488` (`(particles.len() as u32).min(self.secondary_capacity)`) |
+| 34 | **(F.4.2)** `FluidRenderer::render_accents` at `secondary_count == 0` records NO render pass and returns — the target is byte-identical (zero-accent identity) | Yes (code + `gpu_render_accents_smoke` test) | `renderer.rs:766-768` early-return |
+| 35 | **(F.4.2)** `render_accents` uses additive blend (SrcAlpha/One/Add), `LoadOp::Load`, and `depth_write_enabled: false` (depth-test read-only) — it composites OVER an existing target and never invokes the SSFR depth/smooth/shade passes | Yes (code) | `renderer.rs:408-415` (blend), `:426` (no depth write), `:776-789` (Load + no SSFR dispatch) |
+| 36 | **(F.4.2)** `astraweave-render` and `astraweave-fluids` have NO Cargo dependency on each other; only `wgpu` types cross the `render_accents` signature | Yes (Cargo.toml inspection) | Verified in F.4.2 commit body; the binary (`weaving_playground`) depends on both |
 
 ---
 
@@ -694,7 +858,8 @@ Per README:
 - **Mutation testing:** Tracked in `docs/current/FLUIDS_MUTATION_TESTING_REPORT.md` (status out of scope for this trace).
 - **Miri validation:** Not formally tracked here. The crate does NOT declare `#![forbid(unsafe_code)]`, but verified 2026-05-12: only 2 unsafe occurrences exist crate-wide — both at `debug_viz.rs:479-480` (bytemuck Pod/Zeroable impls on `DebugVertex`). No `unsafe { ... }` blocks. Miri-relevant surface is therefore limited to bytemuck trait safety.
 - **Benchmarks:** Single file `astraweave-fluids/benches/fluids_adversarial.rs` (1,893 LoC). Imports include `simd_ops::parallel::par_batch_kernel_cubic`, `simd_ops::position_to_morton`, `simd_ops::parallel::par_compute_morton_codes`, plus broader `simd_ops::*` patterns (per grep at `:1749, :1774, :1785, :1810`). Configured as `[[bench]] name = "fluids_adversarial"` at `Cargo.toml:11-13`.
-- **Manual validation:** `examples/fluids_demo` is the sole interactive validation harness. Imports `FluidSystem`, `FluidRenderer`, `FluidLodConfig`, `FluidLodManager`, `FluidOptimizationController` per `fluids_demo/src/main.rs:18-21`. Uses `astraweave_fluids::renderer::CameraUniform` at `:18`.
+- **GPU execution tests (F.4.2):** `tests/gpu_execution_tests.rs` adds `gpu_render_accents_smoke` (`:511`) — proves `render_accents` dispatches without validation error AND the zero-accent identity (empty set records no pass). Guarded by `try_create_test_device` (skips on no GPU adapter).
+- **Manual validation:** `examples/fluids_demo` (PBD solver via SSFR) + `examples/weaving_playground` (F.4.2/F.4.3 weave-impact accents) are the interactive validation harnesses. Imports `FluidSystem`, `FluidRenderer`, `FluidLodConfig`, `FluidLodManager`, `FluidOptimizationController` per `fluids_demo/src/main.rs:18-21`. Uses `astraweave_fluids::renderer::CameraUniform` at `:18`.
 - **Audit document:** `docs/current/FLUIDS_RESEARCH_GRADE_ENHANCEMENT_PLAN.md` v2.0 (January 2026) — comprehensive audit + roadmap targeting research-grade simulation. Cited grade: "B (Good for games, insufficient for research)."
 
 ---
@@ -744,6 +909,8 @@ Per README:
 | 1.3 | 2026-06-11 | **F.1 revision** (§0): F.0 audit corrections (phantom `ResearchFluidSystem`, 9th orphan shader, ping-pong-defect invariants) + F.1 code deltas (FluidSystem repair, 5 SDF fixes, UnifiedSolver deletion, DFSPH/IISPH variant removal, `experimental` feature, serde unconditional, validation honesty, first GPU tests + baselines) + determinism carve-out policy. §8 invariants 21–23 rewritten; §11 closures. Body sections older than §0 should be read through the §0 corrections; a full re-verification pass is queued post-campaign. |
 | 1.4 | 2026-06-19 | **F.3 revision**: `WaterVolumeGrid` put behind the proven `WaterQuery` facade (new feature-gated `astraweave-water → astraweave-fluids` edge, cycle-safe). §8 invariants 25–28 added (gate flags READ — Must-Fix #6; conserving `flow_horizontal`; `MAX_STABLE_DT` substep; voxel `WaterQuery` determinism). §11 F.3 closures + the gate-flags/conservation questions resolved; `WaterVolumeGrid` now has its first non-demo consumer. §5/§6 updated (volume_grid.rs 928→1,049 LoC, new `apply_terrain_boundary`/`simulate_substep`/`cell_flow_blocked`). Scope held: NO sparsity, NO budget claim (→ F.3.S). See `F3_EXECUTION_REPORT.md`. |
 | 1.5 | 2026-06-19 | **F.3.S revision**: voxel sparsity + the budget-conversion benchmark. §8 invariants 29–31 added (bit-identical dirty-AABB `simulate` vs dense `simulate_reference`; `CASCADE_MARGIN` for the F.3 forward-cascade; high-fill dense guard). §5 updated (volume_grid.rs 1,049→1,382 LoC; sparse box machinery). §11 F.3.S closure: the "voxel sparsity (`active_cells`)" question is RESOLVED with a measured **PARTIAL** budget verdict — 1 ms met only at 32³ (≤50 %) or localized water ≲16³; full-extent 64³ flood = 2.35 ms even at 5 % (column-coupled pressure + forward-cascade are the walls). Benchmarks in `MASTER_BENCHMARK_REPORT.md` v5.59. See `F3S_EXECUTION_REPORT.md`. |
+| 1.8 | 2026-06-25 | **F.4.2 verification pass** (against `7c29b8182`). Confirmed firsthand: post-merge file inventory (19 src / 7 shaders; the W.1-removed `research`/`pcisph_system`/`simd_ops`/`volume_grid`/`gpu_volume`/`building`/`terrain_integration`/`viscosity*`/`turbulence`/`multi_phase`/`warm_start`/`particle_shifting`/`validation`/`boundary` are all GONE); the F.4.2 accent-emission claims (`set_secondary_particles` `lib.rs:1483`, fields `:277-283` + `new` wiring `:831-832`, `secondary_particle_count()` fix `:1470`, `render_accents` `renderer.rs:756-795` additive `LoadOp::Load`/depth read-only/zero-accent early-return `:766-768`, `secondary.wgsl` `info.y`→weave-kind LUT `:46-48` + per-kind `shape_mask`); the no-cross-Cargo-edge invariant (render↔fluids, both Cargo.toml); the pre-F.4.2 `secondary_particle_count()` 65536 bug (`git show 3357c0c7a^`); `weaving_playground` wiring (`set_secondary_particles` main.rs:543, `render_accents` via `set_hdr_overlay` :561-563); F.4.3 (`f5d40a3c7`) empty in this crate; the [`water.md`](./water.md) cross-link target exists. Corrections: F.4.2 numstat is `lib.rs +42/-1` (not "+93"), `renderer.rs +56/-0`, `secondary.wgsl +71/-19`; current file totals `lib.rs` 4,068, `renderer.rs` 795, `secondary.wgsl` 133; `SecondaryParticle` struct at `lib.rs:391` (was cited `:382`); tint LUT at `secondary.wgsl:46-48` (was `:43-45`); invariant 33 cite `:1488`, invariant 34 cite `:766-768`. No markers added/removed (none present in the F.4 surface). |
+| 1.7 | 2026-06-24 | **F.4.2 revision (Water Successor — weave-impact accent machinery)** + scope split. Verified against the W-series merge commit `7c29b8182` (F.4.2 @ `3357c0c7a`). Added §0.6 (F.4.2 notice + the new [`water.md`](./water.md) cross-link establishing that THIS doc now scopes only to the deprecated PBD solver remnant + the F.4 GPU-particle accent substrate; `water.md` is canonical for the surface/weave-response/LOD/query rendering successor). Documented the F.4.2 fluids-crate deltas: `FluidSystem::set_secondary_particles` + `secondary_capacity`/`live_secondary_count` fields (`lib.rs +93`), the `secondary_particle_count()` counter fix (65536→live), `FluidRenderer::render_accents` standalone additive-billboard split (`renderer.rs +56`), and the `secondary.wgsl` rewrite (`info.y` type→weave-kind LUT + per-kind shape mask). New §2.7 accent render pipeline; §3 vocabulary + "terms to not confuse" entries (accent API, `info.y` re-purpose, `render` vs `render_accents`); §4 upstream (accent producer) + downstream (`weaving_playground`) rows; §7 Decision Log (CPU-producer-not-GPU-kernel); §8 invariants 32–36; §10 `gpu_render_accents_smoke`. Confirmed the post-merge file inventory (19 src / 7 shaders) firsthand. Verified F.4.3 (`f5d40a3c7`) did NOT touch this crate (live composite is render-crate + binary). Prior history preserved. See `F4_0_RECON.md` / `F4_1_RECON.md` / `F4_3_EXECUTION_REPORT.md`. |
 | 1.6 | 2026-06-20 | **W.1 revision (Water Successor — ratified deprecation).** Crate cut to its KEEP + DEFERRED surface: removed the SPH research/experimental inventory (`research`, `pcisph_system`, `multi_phase`, `turbulence`, `warm_start`, `particle_shifting`, `viscosity_gpu`, `viscosity`, `boundary`, `validation` + `shaders/research/pcisph.wgsl` + the `experimental` feature), the voxel sim (`volume_grid`, `gpu_volume`, `building`, `terrain_integration` + their tests/bench + the `astraweave-water` `voxel` backend/feature/dep), and `simd_ops.rs` (39,554 LoC) — **58,796 deletions** total; pre-removal anchor tag `w0-pre-deprecation` @ `3a8296038`. Added §0.5 (W.1 notice); updated metadata, §5 file map (rows for removed files excised), §6 conflict map (five-solver conflict resolved → `FluidSystem` sole solver), §8 invariants 25–31 (removed with the voxel sim), §11 (W.1 closures + orphaned `parallel`/`rayon` janitorial item, ratification ④). KEEP = F.4 Option-A accent substrate (①); DEFERRED = effects layer (②) + `editor.rs` (③), untouched. Build green; kept tests pass (lib 677, gpu 7, mutation 53, water 9). See the W.0 audit + W.1 execution report. |
 
 ## 12. Maintenance Notes
@@ -758,6 +925,8 @@ Per README:
 - A production game-loop crate begins to depend on `astraweave-fluids` — touch §1 status note (dormancy), §4 Downstream, §11 first Open Question
 - The `parallel` or `serde` Cargo feature gating changes — touch §1 status, §5 file map
 - A new audit doc supersedes `FLUIDS_RESEARCH_GRADE_ENHANCEMENT_PLAN.md` — touch §7 Decision Log first entry, §11 first Open Question
+- The F.4 accent path changes (`set_secondary_particles` / `render_accents` / `secondary.wgsl` `info.y` semantics / `SecondaryParticle` layout) — touch §0.6, §2.7, §3, §8 invariants 32–36, and (if the surface/composite side moves) [`water.md`](./water.md)
+- A GPU accent emission kernel is added (the deferred F.4.0 follow-on) — touch §0.6, §2.7, §7 Decision Log (supersede the CPU-producer decision)
 
 **Verification process:**
 - Spot-check §2.1 PBD pipeline against `shaders/fluid.wgsl` kernel names + `lib.rs::FluidSystem::new` pipeline construction
@@ -774,7 +943,8 @@ Per README:
 
 **If you're working on this system, remember:**
 
-1. **The crate is dormant in production.** No engine game-loop crate consumes `astraweave-fluids`. Only `examples/fluids_demo` does (verified 2026-05-12).
+0. **(2026-06-24) Scope split — check which trace you need.** The visible water *surface* (Gerstner heightfield, weave-response part/freeze/raise deformation, LOD, `WaterQuery` truth facade) is now traced in [`docs/architecture/water.md`](./water.md), NOT here. This `fluids.md` trace covers only the deprecated PBD solver remnant + the **F.4 GPU-particle accent garnish** (`SecondaryParticle` / `secondary.wgsl` / `FluidRenderer::render_accents` / `set_secondary_particles`). The accent producer (`WaterAccentProducer`) is binary glue in `examples/weaving_playground`, not in this crate; `astraweave-render` and `astraweave-fluids` have no Cargo edge.
+1. **The crate has no production game-loop consumer.** Only the two examples consume it: `fluids_demo` (PBD solver) and `weaving_playground` (F.4.2 accents). No `astraweave-*` engine crate depends on `astraweave-fluids`.
 2. **Five parallel solver/manager surfaces coexist.** `FluidSystem` (lib.rs PBD), `UnifiedSolver`, `ResearchFluidSystem`, `PCISPHSystem`, `WaterEffectsManager`. The demo uses `FluidSystem`. The others are research-grade additions per the roadmap.
 3. **`SolverType` naming collision:** `unified_solver::SolverType` has `Pbd/Pcisph/Dfsph/Iisph` (lowercase). `research::SolverType` has `PBD/PCISPH/DFSPH/IISPH` (UPPERCASE). The crate root re-exports the lowercase version.
 4. **Quality enums proliferate:** `QualityPreset`, `WaterQualityPreset`, `QualityTier`, `ResearchQualityTier` — each scopes to a different subsystem. They are NOT interchangeable.

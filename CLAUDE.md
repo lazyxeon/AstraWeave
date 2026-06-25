@@ -66,7 +66,7 @@ A feature is incomplete until it is wired end-to-end. Before marking any task do
 
 The workspace has a per-subsystem architecture trace campaign under `docs/architecture/`. Each trace is the canonical forensic reference for one subsystem — authoritative pipeline, semantic vocabulary, file map, conflict map, decision log, invariants, open questions. **Trace docs are part of the production contract**: when you change code in a traced subsystem, you update the trace in the same commit.
 
-**Existing traces (as of 2026-05-12):**
+**Existing traces (as of 2026-06-25):**
 
 | Trace | Subsystem |
 |---|---|
@@ -83,6 +83,19 @@ The workspace has a per-subsystem architecture trace campaign under `docs/archit
 | `docs/architecture/animation.md` | Animation System |
 | `docs/architecture/ai_pipeline.md` | AI Pipeline (with 8 subsystem traces) |
 | `docs/architecture/aw_editor.md` | aw_editor (Visual Editor) |
+| `docs/architecture/water.md` | Water Successor — `WaterQuery` facade + render water surface + weave-response (part/freeze/raise/FreezeWater) + F.4 accents |
+| `docs/architecture/terrain.md` | Terrain System — voxel meshing, biomes, noise, scatter, streaming (complements `terrain_materials.md`, which is the material-splat slice) |
+| `docs/architecture/gameplay.md` | Gameplay — combat, crafting, Veilweaver slice, in-crate weave bridge |
+| `docs/architecture/weaving.md` | Weaving / Fate-Weaving — the Veilweaver mechanic (`astraweave-weaving`) |
+| `docs/architecture/scene.md` | Scene — scene graph, world partition, cell streaming, GPU resource manager |
+| `docs/architecture/asset.md` | Asset + Asset-Pipeline — loading, cell loader, Nanite preprocess, validator/texture/mesh |
+| `docs/architecture/nav.md` | Navigation / Pathfinding — navmesh (resolves the two-`nav`-crate conflict) |
+| `docs/architecture/ui.md` | UI — HUD, menus, panels (egui) |
+| `docs/architecture/camera.md` | Camera — freefly, projection, render-view, parity producer |
+| `docs/architecture/quests.md` | Quests — components, systems, LLM + terrain quests |
+| `docs/architecture/cinematics.md` | Cinematics — timeline / sequencer |
+| `docs/architecture/pcg.md` | PCG — WFC, layout, encounters, seeded RNG |
+| `docs/architecture/security.md` | Security + Secrets — script sandbox, anticheat, signatures, path validation, keyring |
 
 **The 5-prompt trace toolkit lives at `docs/architecture/_meta/`:**
 
@@ -316,7 +329,7 @@ All crate names are prefixed with `astraweave-`.
 
 | Need | Location |
 |------|----------|
-| **Architecture Traces** | **`docs/architecture/<system>.md`** — per-subsystem forensic reference (terrain, render, physics, persistence, net, net-ecs, input, fluids, ECS foundation, audio, animation, AI pipeline, aw_editor). Toolkit at `docs/architecture/_meta/`. |
+| **Architecture Traces** | **`docs/architecture/<system>.md`** — per-subsystem forensic reference (terrain + terrain-materials, render, physics, persistence, net, net-ecs, input, fluids, water, ECS foundation, audio, animation, AI pipeline, aw_editor, gameplay, weaving, scene, asset, nav, ui, camera, quests, cinematics, pcg, security). Toolkit at `docs/architecture/_meta/`. |
 | **Architecture Map** | **`docs/architecture/ARCHITECTURE_MAP.md`** — dependency graph, API surface, seams, data flows |
 | AI Systems | `astraweave-ai/src/{orchestrator,tool_sandbox,core_loop}.rs` |
 | ECS Internals | `astraweave-ecs/src/{archetype,system_param,events}.rs` |
@@ -424,7 +437,7 @@ Read these when you need deeper context. **Do not ask the user for information t
 
 | File | Contains |
 |------|----------|
-| `docs/architecture/<system>.md` | **Per-subsystem architecture traces** — forensic reference for traced subsystems (terrain, render, physics, persistence, net, net-ecs, input, fluids, ECS foundation, audio, animation, AI pipeline, aw_editor). Read the relevant trace before modifying a traced subsystem; update it in the same commit when you do. Toolkit at `docs/architecture/_meta/`. |
+| `docs/architecture/<system>.md` | **Per-subsystem architecture traces** — forensic reference for traced subsystems (terrain + terrain-materials, render, physics, persistence, net, net-ecs, input, fluids, water, ECS foundation, audio, animation, AI pipeline, aw_editor, gameplay, weaving, scene, asset, nav, ui, camera, quests, cinematics, pcg, security). Read the relevant trace before modifying a traced subsystem; update it in the same commit when you do. Toolkit at `docs/architecture/_meta/`. |
 | `docs/architecture/ARCHITECTURE_MAP.md` | **START HERE for cross-crate work.** Full dependency graph, public API surface, integration seams, editor viewport pipeline (unified post-Fix-27), data flow paths, unsafe code inventory. |
 | `docs/current/EDITOR_BEHAVIORAL_CORRECTNESS_AUDIT.md` | 37-fix behavioral correctness audit: visual math, data pipeline, undo system, silent failures, integration seams. Completed 2026-04-05. |
 | `docs/current/EDITOR_MULTI_TOOL_ARCHITECTURE_CAMPAIGN.md` | 8-round diagnostic narrowing that elevated the §7.7 wrapped-component resource identity trap to structural axiom. Sub-phases 3 (incl. Real-Fix.A–E) and 4 complete; Sub-phase 5 in flight (5.A/5.B landed 2026-06-06). |
