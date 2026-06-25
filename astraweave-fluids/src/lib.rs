@@ -4,8 +4,6 @@
 //!
 //! ## Core Systems
 //! - **Position-Based Dynamics (PBD)** - GPU-accelerated particle simulation
-//! - **Volumetric Grid** - Voxel-based water for building/terrain interaction
-//! - **Terrain Integration** - Automatic river, lake, and waterfall detection
 //!
 //! ## Visual Effects
 //! - **Caustics** - Underwater light refraction patterns
@@ -51,58 +49,24 @@
 )]
 
 pub mod anisotropic;
-pub mod boundary;
-pub mod building;
 pub mod caustics;
 pub mod debug_viz;
 pub mod editor;
 pub mod emitter;
 pub mod foam;
 pub mod god_rays;
-pub mod gpu_volume;
 pub mod lod;
 pub mod optimization;
 pub mod profiling;
 pub mod renderer;
-pub mod research;
 pub mod sdf;
 pub mod serialization;
-pub mod simd_ops;
-pub mod terrain_integration;
 pub mod underwater;
 pub mod underwater_particles;
-pub mod validation;
-pub mod viscosity;
-pub mod volume_grid;
 pub mod water_effects;
 pub mod water_reflections;
 pub mod waterfall;
 
-// ---------------------------------------------------------------------------
-// Experimental modules (feature = "experimental")
-//
-// Dormant-real solver inventory gated in Fluids-Integration F.1 per the
-// campaign owner's consolidation decision (gate Q3): these modules compile
-// and carry passing unit tests, but no production code path executes them.
-// `UnifiedSolver` (whose `step()` was a no-op) was DELETED rather than gated.
-// ---------------------------------------------------------------------------
-#[cfg(feature = "experimental")]
-pub mod multi_phase;
-#[cfg(feature = "experimental")]
-pub mod particle_shifting;
-#[cfg(feature = "experimental")]
-pub mod pcisph_system;
-#[cfg(feature = "experimental")]
-pub mod turbulence;
-#[cfg(feature = "experimental")]
-pub mod viscosity_gpu;
-#[cfg(feature = "experimental")]
-pub mod warm_start;
-
-pub use building::{
-    FlowDirection, WaterBuildingManager, WaterBuildingStats, WaterDispenser,
-    WaterDrain as VolumetricDrain, WaterGate, WaterWheel, WheelAxis,
-};
 pub use caustics::{
     CausticSample, CausticsConfig, CausticsProjector, CausticsSystem, CausticsUniforms,
     CAUSTICS_WGSL,
@@ -168,7 +132,6 @@ pub use editor::{
 pub use emitter::{EmitterShape, FluidDrain, FluidEmitter};
 pub use foam::{FoamConfig, FoamParticle, FoamSource, FoamSystem, FoamTrail, GpuFoamParticle};
 pub use god_rays::{GodRaysConfig, GodRaysSystem, GodRaysUniforms, LightShaft, GOD_RAYS_WGSL};
-pub use gpu_volume::{GpuWaterCell, WaterSurfaceVertex, WaterVolumeGpu, WaterVolumeUniforms};
 pub use lod::{
     FluidLodConfig, FluidLodManager, LodLevel, LodUpdateResult, OptimizedLodConfig,
     OptimizedLodManager, ParticleStreamingManager, StreamingOp,
@@ -182,23 +145,10 @@ pub use optimization::{
 pub use profiling::{FluidProfiler, FluidTimingStats};
 pub use renderer::FluidRenderer;
 pub use serialization::{FluidSnapshot, SnapshotParams};
-pub use simd_ops::{
-    accumulate_density_simple, accumulate_pressure_force, accumulate_viscosity_force,
-    aos_to_soa_positions, batch_apply_gravity, batch_distances, batch_integrate_positions,
-    batch_kernel_cubic, batch_kernel_gradient_cubic, cell_hash, position_to_cell,
-    soa_to_aos_positions, NEIGHBOR_OFFSETS,
-};
-pub use terrain_integration::{
-    analyze_terrain_for_water, DetectedWaterBody, LakeConfig, OceanConfig, RiverConfig,
-    TerrainFluidConfig, WaterBodyType, WaterfallConfig as TerrainWaterfallConfig,
-};
 pub use underwater::{DepthZoneManager, UnderwaterConfig, UnderwaterState, UnderwaterUniforms};
 pub use underwater_particles::{
     BubbleStream, GpuUnderwaterParticle, UnderwaterParticle, UnderwaterParticleConfig,
     UnderwaterParticleSystem, UnderwaterParticleType,
-};
-pub use volume_grid::{
-    CellFlags, MaterialType, WaterCell, WaterGridStats, WaterSimConfig, WaterVolumeGrid,
 };
 pub use water_effects::{
     WaterEffectsConfig, WaterEffectsError, WaterEffectsManager, WaterEffectsResult,
@@ -324,6 +274,13 @@ pub struct FluidSystem {
     pub default_sampler: wgpu::Sampler,
     secondary_particle_buffer: wgpu::Buffer,
     secondary_counter: wgpu::Buffer,
+    /// Slot capacity of `secondary_particle_buffer` — the upload cap.
+    secondary_capacity: u32,
+    /// Live count of CPU-uploaded secondary (accent) particles this frame.
+    /// `set_secondary_particles` writes it; `secondary_particle_count` reads it.
+    /// Default 0 — the W.1-kept GPU emission kernel was never written (F.4.0),
+    /// so until a producer uploads, there are zero accent particles to draw.
+    live_secondary_count: u32,
     density_error_buffer: wgpu::Buffer,
     density_error_staging_buffers: [wgpu::Buffer; 2],
     staging_state: [StagingState; 2],
@@ -871,6 +828,8 @@ impl FluidSystem {
             default_sampler,
             secondary_particle_buffer,
             secondary_counter,
+            secondary_capacity: secondary_particle_count as u32,
+            live_secondary_count: 0,
             density_error_buffer,
             density_error_staging_buffers,
             staging_state: [StagingState::Idle; 2],
@@ -1501,8 +1460,40 @@ impl FluidSystem {
         &self.secondary_particle_buffer
     }
 
+    /// Live count of secondary (accent) particles uploaded via
+    /// [`set_secondary_particles`](Self::set_secondary_particles).
+    ///
+    /// **F.4.2 fix:** this previously returned the hardcoded buffer *capacity*
+    /// (65536), so any renderer of the secondary buffer drew 65,536 zeroed
+    /// billboards (F.4.0 bug). It now returns what was actually uploaded —
+    /// 0 until a producer pushes a live set.
     pub fn secondary_particle_count(&self) -> u32 {
-        65536
+        self.live_secondary_count
+    }
+
+    /// Upload a CPU-built set of secondary (accent) particles for rendering and
+    /// record the live count.
+    ///
+    /// The F.4 accent path (A2 CPU producer — see `weave_accent_producer.rs` in
+    /// the binary glue) owns these particles' lifetime on the CPU and re-uploads
+    /// the live set each frame; the GPU holds no accent lifetime state, exactly
+    /// like the W.2c.3 weave producer. The buffer is already `COPY_DST`, so this
+    /// is a plain `write_buffer`. Caps at the buffer capacity (drops the overflow
+    /// tail — the producer is expected to stay well under it).
+    pub fn set_secondary_particles(
+        &mut self,
+        queue: &wgpu::Queue,
+        particles: &[SecondaryParticle],
+    ) {
+        let count = (particles.len() as u32).min(self.secondary_capacity);
+        if count > 0 {
+            queue.write_buffer(
+                &self.secondary_particle_buffer,
+                0,
+                bytemuck::cast_slice(&particles[..count as usize]),
+            );
+        }
+        self.live_secondary_count = count;
     }
 
     // ==================== OPTIMIZATION API ====================

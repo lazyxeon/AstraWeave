@@ -3766,10 +3766,52 @@ impl EngineRenderAdapter {
             };
             let mut water = water;
             water.set_water_colors(deep, shallow, foam);
+            // W.2c.2 TEST SCAFFOLDING — hardcoded part/raise/freeze instances near
+            // world origin so the deformation playback layer is visible on the
+            // editor's now-live water (W-FU-2). The pipeline is parameterized; these
+            // set-piece inputs are replaced by fate-weaving gameplay triggers in
+            // W.2c.3. Runtime consumers (veilweaver/hello_companion) set zero
+            // instances, so their surface is unchanged.
+            use astraweave_render::{WeaveInstance, WeaveKind};
+            water.set_weave_instances(&[
+                WeaveInstance {
+                    kind: WeaveKind::Part,
+                    position: glam::Vec2::new(0.0, 0.0),
+                    radius: 30.0,
+                    orientation: 0.0,
+                    intensity: 0.7,
+                    phase: 0.0,
+                },
+                WeaveInstance {
+                    kind: WeaveKind::Raise,
+                    position: glam::Vec2::new(90.0, 0.0),
+                    radius: 30.0,
+                    orientation: 0.0,
+                    intensity: 0.6,
+                    phase: 0.0,
+                },
+                WeaveInstance {
+                    kind: WeaveKind::Freeze,
+                    position: glam::Vec2::new(-90.0, 0.0),
+                    radius: 30.0,
+                    orientation: 0.0,
+                    intensity: 1.0,
+                    phase: 0.0,
+                },
+            ]);
             self.renderer.set_water_renderer(water);
         } else {
             self.renderer.clear_water_renderer();
         }
+    }
+
+    /// Set the water surface level (world Y) on the engine renderer.
+    ///
+    /// Forwards to `Renderer::set_water_level`, which uploads the level uniform
+    /// immediately — so the editor water-level knob takes effect on the next
+    /// frame without depending on a per-frame `update_water` call.
+    pub fn set_water_level(&mut self, level: f32) {
+        self.renderer.set_water_level(level);
     }
 
     /// Update water animation state each frame.
@@ -3782,15 +3824,15 @@ impl EngineRenderAdapter {
     /// With this signature, callers feed the same canonical `RenderView` that
     /// `Renderer::update_view` consumed for the main pass.
     ///
-    /// **Reachability note**: as of C.3.B.1, this function has zero call
-    /// sites in the inspected workspace (verified via grep against
-    /// `tools/`, `examples/`, `astraweave-*/`; matches the C.0 audit §1.B #8
-    /// finding and the water-system-architecture audit's note). It remains
-    /// reachable code in case future editor states or external integrations
-    /// wire it up. Migration to `&RenderView` keeps the function canonical-
-    /// compliant. If it remains unreached after the Unified Camera campaign
-    /// closes (C.9), deletion is queued as a standalone follow-up — not
-    /// Unified Camera campaign scope.
+    /// **Reachability note (W-FU-2, 2026-06-22)**: now called once per frame
+    /// from [`crate::viewport::renderer::ViewportRenderer::render`], immediately
+    /// after `update_camera`, with the SAME canonical `RenderView` the opaque
+    /// pass consumed (so the water depth-foam's `inv_view_proj` matches the depth
+    /// buffer). This populates the camera-following water LOD chunks; without it
+    /// `WaterRenderer::has_visible_chunks()` stays false and the split water pass
+    /// in `Renderer::run_water_pass` cleanly skips. Was dormant from C.3.B.1
+    /// (canonical `&RenderView` migration) until this wiring — the earlier
+    /// "zero call sites / deletion queued" note is now obsolete.
     pub fn update_water(&mut self, view: &astraweave_camera::RenderView, time: f32) {
         let vp = view.view_proj;
         let pos = view.position;

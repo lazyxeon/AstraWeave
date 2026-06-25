@@ -1,5 +1,15 @@
 # AstraWeave Fluids: Research-Grade Enhancement Plan
 
+> **⚠ STALENESS BANNER (added W-series W.2 Phase 2, 2026-06-21).** This roadmap
+> targets **research-grade multi-solver SPH** (DFSPH/PCISPH/IISPH, multi-phase,
+> non-Newtonian, turbulence, 500k–1M particles) — an inventory the W-series
+> **deleted** in W.1 (commit `1a57fdd41`; recovery tag `w0-pre-deprecation`). The
+> F→W deprecation re-scoped water from a general fluid *simulation* to a layered
+> *rendering* system; the only retained particle path is the F.4 Option-A accent
+> substrate. The roadmap below is **not pursued** — the current authority is
+> `docs/campaigns/water-successor/W2_0_RECON.md` and `W2_DECISIONS.md`. **Read
+> this as historical; do not cite its targets as current.**
+
 **Version**: 2.0  
 **Date**: January 2026  
 **Status**: 📋 Comprehensive Audit & Roadmap (Revised with Expert Review)  

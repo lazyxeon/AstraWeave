@@ -152,6 +152,11 @@ pub struct ViewportRenderer {
 
     /// Cached LDR target view (avoids per-frame GPU view creation)
     cached_ldr_view: Option<wgpu::TextureView>,
+
+    /// Monotonic clock seeding the water surface animation time (`update_water`).
+    /// Created once at startup; `elapsed()` feeds the Gerstner wave phase each
+    /// frame so the editor water animates without a per-frame `dt` plumbed in.
+    water_clock: std::time::Instant,
 }
 
 impl ViewportRenderer {
@@ -209,6 +214,7 @@ impl ViewportRenderer {
             brush_cursor_lines: Vec::new(),
             zone_overlay_lines: Vec::new(),
             cached_ldr_view: None,
+            water_clock: std::time::Instant::now(),
         })
     }
 
@@ -674,8 +680,22 @@ impl ViewportRenderer {
         // Editor overlays (grid, gizmo, physics debug) render on top.
         {
             astraweave_profiling::span!("engine_render");
+            // W-FU-2: water surface animation phase. Read before the &mut adapter
+            // borrow below (disjoint field, but kept explicit for clarity).
+            let water_time = self.water_clock.elapsed().as_secs_f32();
             if let Some(adapter) = self.engine_adapter.as_mut() {
                 adapter.update_camera(camera);
+                // W-FU-2: populate the camera-following water LOD chunks each
+                // frame so the post-opaque water pass has geometry to draw.
+                // Feeds the SAME canonical RenderView update_camera gave the
+                // opaque pass, so the depth-delta foam's inv_view_proj matches
+                // the depth buffer. No-op when no WaterRenderer is installed
+                // (non-water biome). Without this call the editor water pass
+                // cleanly skips (has_visible_chunks() == false) — no water.
+                {
+                    use astraweave_camera::CameraProducer;
+                    adapter.update_water(&camera.to_render_view(), water_time);
+                }
                 adapter.feed_entities(world, &self.entity_mesh_map, &self.selected_entities);
                 // Real-Fix.A per Round-5-Closure 569415a7a §12 Option (a):
                 // pass self.depth_view as the depth attachment so terrain + sky passes
@@ -1452,9 +1472,14 @@ impl ViewportRenderer {
         // Engine adapter manages lights through its own clustered lighting pipeline.
     }
 
-    /// Set water level for volumetric water plane
-    pub fn set_water_level(&mut self, _level: f32) {
-        // Water is now handled by engine adapter.
+    /// Set water level (world Y) for the engine water surface.
+    ///
+    /// W.2a: forwards to the engine adapter (was a dead stub that dropped the
+    /// value, leaving the editor water-level knob settable-but-unobserved).
+    pub fn set_water_level(&mut self, level: f32) {
+        if let Some(adapter) = &mut self.engine_adapter {
+            adapter.set_water_level(level);
+        }
     }
 
     /// Enable or disable the volumetric water plane

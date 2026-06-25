@@ -1,5 +1,16 @@
 # AstraWeave Advanced Water System Enhancement Plan
 
+> **⚠ STALENESS BANNER (added W-series W.2 Phase 2, 2026-06-21).** This plan
+> describes an **abandoned direction** — an Enshrouded-style hybrid **voxel water
+> grid** with swimming/diving/fishing/water-wheels and "500k+ particle" SPH.
+> F.3.S measured that CPU voxel water cannot carry general gameplay water at
+> interactive cost on min-spec (decline A→C), and the W-series (Water Successor)
+> **deleted** the voxel sim + SPH solver inventory in W.1 (commit `1a57fdd41`;
+> recovery tag `w0-pre-deprecation`), re-scoping water to a layered **rendering**
+> system. The plan below is **not pursued** — the current authority is
+> `docs/campaigns/water-successor/W2_0_RECON.md` and `W2_DECISIONS.md`. **Read
+> this as historical; do not cite its plan as current.**
+
 **Version**: 1.0.0  
 **Date**: January 22, 2026  
 **Status**: 🎯 PLANNED  

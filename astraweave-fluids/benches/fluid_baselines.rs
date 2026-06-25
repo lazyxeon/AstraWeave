@@ -4,9 +4,6 @@
 //! mock re-implementations — see the F.0 audit §1.4-D), every benchmark in
 //! this file measures PRODUCTION crate code:
 //!
-//! - `voxel_grid_simulate`: `WaterVolumeGrid::simulate` at 32³/64³/128³ with
-//!   a half-full basin — the first voxel-sim numbers ever recorded; these
-//!   gate F.3 scope sizing.
 //! - `fluid_system_step`: full `FluidSystem::step` GPU dispatch + submit +
 //!   wait at 10k/20k/50k particles (demo-canonical parameters). Skipped
 //!   (with a loud message) when no GPU adapter is available.
@@ -16,40 +13,9 @@
 //! same particle counts; record its output in MASTER_BENCHMARK_REPORT.md.
 
 use criterion::{criterion_group, BenchmarkId, Criterion};
-use glam::{IVec3, UVec3, Vec3};
-
-use astraweave_fluids::{FluidSystem, WaterVolumeGrid};
+use astraweave_fluids::FluidSystem;
 
 const DT: f32 = 1.0 / 60.0;
-
-// ---------------------------------------------------------------------------
-// Voxel grid
-// ---------------------------------------------------------------------------
-
-/// Half-full basin: stone floor, water filling the lower half of the volume.
-fn make_half_full_basin(n: u32) -> WaterVolumeGrid {
-    let mut grid = WaterVolumeGrid::new(UVec3::new(n, n, n), 1.0, Vec3::ZERO);
-    for x in 0..n as i32 {
-        for z in 0..n as i32 {
-            grid.set_material(IVec3::new(x, 0, z), astraweave_fluids::MaterialType::Stone);
-            for y in 1..=(n as i32 / 2) {
-                grid.set_level(IVec3::new(x, y, z), 1.0);
-            }
-        }
-    }
-    grid
-}
-
-fn bench_voxel_grid(c: &mut Criterion) {
-    let mut group = c.benchmark_group("voxel_grid_simulate");
-    for n in [32u32, 64, 128] {
-        group.bench_with_input(BenchmarkId::new("half_full_basin", n), &n, |b, &n| {
-            let mut grid = make_half_full_basin(n);
-            b.iter(|| grid.simulate(std::hint::black_box(DT)));
-        });
-    }
-    group.finish();
-}
 
 // ---------------------------------------------------------------------------
 // GPU FluidSystem step
@@ -174,7 +140,7 @@ fn print_gpu_pass_breakdown() {
     eprintln!();
 }
 
-criterion_group!(baselines, bench_voxel_grid, bench_fluid_system_step);
+criterion_group!(baselines, bench_fluid_system_step);
 
 fn main() {
     print_gpu_pass_breakdown();

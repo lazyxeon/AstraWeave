@@ -732,6 +732,21 @@ pub struct Renderer {
     hdr_tex: wgpu::Texture,
     hdr_view: wgpu::TextureView,
     hdr_sampler: wgpu::Sampler,
+    /// F.4.3 — optional post-water, pre-tonemap HDR overlay composite. Fired by
+    /// `run_water_pass` AFTER the water surface draws into `hdr_view` and AFTER
+    /// `water_renderer` is restored, BEFORE the tonemap/blit. Receives only `wgpu`
+    /// types `(encoder, hdr_view, scene_depth, device, queue)`, so `astraweave-render`
+    /// gains NO dependency on `astraweave-fluids` — the binary registers a closure
+    /// whose body calls `FluidRenderer::render_accents` for the weave-impact accents.
+    /// `None` (the default) records zero GPU work, preserving the prior frame exactly.
+    #[allow(clippy::type_complexity)]
+    hdr_overlay: Option<
+        Box<dyn FnMut(&mut wgpu::CommandEncoder, &wgpu::TextureView, &wgpu::TextureView, &wgpu::Device, &wgpu::Queue)>,
+    >,
+    /// W.2b — opaque scene-color snapshot the split water pass samples for
+    /// refraction (copied from `hdr_tex` after the opaque main pass closes).
+    water_scene_color: wgpu::Texture,
+    water_scene_color_view: wgpu::TextureView,
     // 1×1 black dummy texture used as AO/GI placeholder when SSAO/SSGI aren't active
     #[allow(dead_code)]
     _postfx_dummy_tex: wgpu::Texture,
@@ -1276,7 +1291,8 @@ impl Renderer {
             }],
         });
 
-        // HDR color target
+        // HDR color target. COPY_SRC (W.2b) so the opaque result can be snapshotted
+        // into `water_scene_color` for the split water refraction pass.
         let hdr_tex = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("hdr tex"),
             size: wgpu::Extent3d {
@@ -1288,9 +1304,29 @@ impl Renderer {
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
             format: wgpu::TextureFormat::Rgba16Float,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT
+                | wgpu::TextureUsages::TEXTURE_BINDING
+                | wgpu::TextureUsages::COPY_SRC,
             view_formats: &[],
         });
+
+        // W.2b — opaque scene-color snapshot the split water pass samples.
+        let water_scene_color = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("water scene color"),
+            size: wgpu::Extent3d {
+                width: config.width,
+                height: config.height,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba16Float,
+            usage: wgpu::TextureUsages::COPY_DST | wgpu::TextureUsages::TEXTURE_BINDING,
+            view_formats: &[],
+        });
+        let water_scene_color_view =
+            water_scene_color.create_view(&wgpu::TextureViewDescriptor::default());
         let _hdr_view = hdr_tex.create_view(&wgpu::TextureViewDescriptor::default());
         let hdr_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             label: Some("hdr sampler"),
@@ -1385,7 +1421,7 @@ impl Renderer {
         #[cfg(feature = "postfx")]
         let _hdr_view = fx_gi.create_view(&wgpu::TextureViewDescriptor::default());
         #[cfg(feature = "postfx")]
-        let fx_ao = device.create_texture(&wgpu::TextureDescriptor {
+        let _fx_ao = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("fx ao tex"),
             size: wgpu::Extent3d {
                 width: config.width,
@@ -1399,8 +1435,18 @@ impl Renderer {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
             view_formats: &[],
         });
+        // W.2b §7.7 consistency fix: back `hdr_view` with `hdr_tex` at construction
+        // too (resize already does this — renderer.rs ~3930). This makes `hdr_tex`
+        // the unambiguous main-pass target / copy source from frame 0, instead of
+        // the (otherwise dead) `fx_ao` aux texture. `fx_ao`/`hdr_aux`/`fx_gi` are
+        // pre-existing unused postfx scaffolding.
         #[cfg(feature = "postfx")]
-        let hdr_view = fx_ao.create_view(&wgpu::TextureViewDescriptor::default());
+        let hdr_view = hdr_tex.create_view(&wgpu::TextureViewDescriptor::default());
+        // Non-postfx path has no aux HDR textures; back hdr_view with hdr_tex too so
+        // the post bind group + struct init resolve (closes a pre-existing E0425
+        // under --no-default-features that lived in this region).
+        #[cfg(not(feature = "postfx"))]
+        let hdr_view = hdr_tex.create_view(&wgpu::TextureViewDescriptor::default());
 
         // Postprocess pipeline
         #[cfg(not(feature = "postfx"))]
@@ -3197,6 +3243,8 @@ fn vs(input: VSIn) -> VSOut {
             hdr_tex,
             hdr_view,
             hdr_sampler,
+            water_scene_color,
+            water_scene_color_view,
             _postfx_dummy_tex: postfx_dummy_tex,
             postfx_dummy_view,
             shadow_tex,
@@ -3296,6 +3344,7 @@ fn vs(input: VSIn) -> VSOut {
             cloud_shadow_pass,
             cloud_shadows_enabled: true,
             water_renderer: None,
+            hdr_overlay: None,
             biome_system: crate::biome_material::BiomeMaterialSystem::new(
                 crate::biome_material::BiomeMaterialConfig::default(),
             ),
@@ -3902,11 +3951,31 @@ fn vs(input: VSIn) -> VSOut {
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
             format: wgpu::TextureFormat::Rgba16Float,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT
+                | wgpu::TextureUsages::TEXTURE_BINDING
+                | wgpu::TextureUsages::COPY_SRC,
             view_formats: &[],
         });
         self.hdr_view = self
             .hdr_tex
+            .create_view(&wgpu::TextureViewDescriptor::default());
+        // W.2b — keep the scene-color snapshot sized to the surface.
+        self.water_scene_color = self.device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("water scene color"),
+            size: wgpu::Extent3d {
+                width: self.config.width,
+                height: self.config.height,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba16Float,
+            usage: wgpu::TextureUsages::COPY_DST | wgpu::TextureUsages::TEXTURE_BINDING,
+            view_formats: &[],
+        });
+        self.water_scene_color_view = self
+            .water_scene_color
             .create_view(&wgpu::TextureViewDescriptor::default());
         self.post_bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
             #[cfg(not(feature = "postfx"))]
@@ -4542,10 +4611,179 @@ fn vs(input: VSIn) -> VSOut {
         self.water_renderer = None;
     }
 
+    /// F.4.3 — register (or clear with `None`) the post-water, pre-tonemap HDR
+    /// overlay composite. Invoked once per frame inside `run_water_pass`, against
+    /// `hdr_view` (`Rgba16Float`) + the scene depth the water pass used, BEFORE the
+    /// tonemap/blit. The closure receives only `wgpu` types, so `astraweave-render`
+    /// gains no `astraweave-fluids` dependency — the binary's closure body calls
+    /// `FluidRenderer::render_accents`. Replaced each frame by the demo (it re-captures
+    /// the current accent buffer/count/camera). Used for the F.4.3 weave-impact accents.
+    #[allow(clippy::type_complexity)]
+    pub fn set_hdr_overlay(
+        &mut self,
+        overlay: Option<
+            Box<dyn FnMut(&mut wgpu::CommandEncoder, &wgpu::TextureView, &wgpu::TextureView, &wgpu::Device, &wgpu::Queue)>,
+        >,
+    ) {
+        self.hdr_overlay = overlay;
+    }
+
     /// Update water renderer state (call each frame before render)
     pub fn update_water(&mut self, view_proj: glam::Mat4, camera_pos: glam::Vec3, time: f32) {
         if let Some(ref mut water) = self.water_renderer {
             water.update(&self.queue, view_proj, camera_pos, time);
+        }
+    }
+
+    /// Set the water surface level (world Y) and upload it immediately.
+    ///
+    /// Uploads on the spot (rather than waiting for the next `update_water`) so
+    /// callers like the editor water-level knob see the change on the next frame
+    /// even when they do not drive `update_water` per frame.
+    pub fn set_water_level(&mut self, level: f32) {
+        if let Some(ref mut water) = self.water_renderer {
+            water.set_water_level(level);
+            water.write_uniforms(&self.queue);
+        }
+    }
+
+    /// Push the active weave-deformation instances onto the water surface (W.2c.3).
+    ///
+    /// Delegates to [`crate::water::WaterRenderer::set_weave_instances`] (replaces the
+    /// active list; at most `MAX_WEAVE_INSTANCES`, uploaded on the next `update_water`).
+    /// Takes a render-side [`crate::water::WeaveInstance`] slice — **no gameplay type
+    /// crosses into the renderer**, so `astraweave-render` stays independent of the
+    /// gameplay crates (the WeaveOp → WeaveInstance translation lives in the binary
+    /// glue). No-op when no water renderer is installed.
+    pub fn set_water_weave_instances(&mut self, instances: &[crate::water::WeaveInstance]) {
+        if let Some(ref mut water) = self.water_renderer {
+            water.set_weave_instances(instances);
+        }
+    }
+
+    /// W.2b — the split water pass. Runs after the opaque main pass closes:
+    /// snapshot the opaque HDR into `water_scene_color`, wire the snapshot + scene
+    /// depth into the water bind group, then draw water into the HDR target with a
+    /// **read-only** depth attachment so it can both depth-test against the scene
+    /// and sample that depth for refraction / the depth-delta shoreline foam.
+    ///
+    /// Takes the `WaterRenderer` out for the duration to keep `self`'s other fields
+    /// (device/queue/textures) freely borrowable, then restores it.
+    ///
+    /// `depth_view`: the SAME depth texture the opaque/sky passes wrote this frame.
+    /// `render()` passes `None` (internal `self.depth.view`); `draw_into()` passes
+    /// its caller-supplied depth so the editor water pass tests/samples the depth
+    /// that actually received the editor's opaque geometry — NOT `self.depth.view`.
+    /// The depth-stencil attachment view and the sampled `scene_depth` view MUST be
+    /// the same texture for the read-only-depth + sample trick to stay valid.
+    fn run_water_pass(
+        &mut self,
+        enc: &mut wgpu::CommandEncoder,
+        depth_view: Option<&wgpu::TextureView>,
+    ) {
+        let mut water = match self.water_renderer.take() {
+            Some(w) => w,
+            // F.4.3: accents are weave-driven, independent of water visibility, so
+            // the HDR overlay still fires even with no water installed.
+            None => {
+                self.fire_hdr_overlay(enc, depth_view);
+                return;
+            }
+        };
+        // Skip the full-res snapshot + pass when water has nothing to draw (e.g. the
+        // editor dormant case where `update_water` is never called → no chunks).
+        if !water.has_visible_chunks() {
+            self.water_renderer = Some(water);
+            self.fire_hdr_overlay(enc, depth_view);
+            return;
+        }
+
+        // The depth the opaque pass wrote this frame (internal for render(),
+        // caller-supplied for draw_into()). Used for BOTH the test attachment and
+        // the sampled binding so they reference the same texture.
+        let depth = depth_view.unwrap_or(&self.depth.view);
+
+        // 1. Snapshot the opaque scene color (hdr_tex is the authoritative main-pass
+        //    target — see the §7.7 consistency fix at construction).
+        enc.copy_texture_to_texture(
+            wgpu::TexelCopyTextureInfo {
+                texture: &self.hdr_tex,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            wgpu::TexelCopyTextureInfo {
+                texture: &self.water_scene_color,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            wgpu::Extent3d {
+                width: self.config.width,
+                height: self.config.height,
+                depth_or_array_layers: 1,
+            },
+        );
+
+        // 2. Wire scene-color + depth into the water bind group; upload screen size.
+        water.prepare_scene(
+            &self.device,
+            &self.queue,
+            &self.water_scene_color_view,
+            depth,
+            [self.config.width as f32, self.config.height as f32],
+            self.resource_generation,
+        );
+
+        // 3. Draw water into the HDR target. Read-only depth (depth_ops: None) lets
+        //    the same depth texture be the test attachment AND a sampled binding —
+        //    validated against wgpu 25 in W.2b.2 Step 0.
+        {
+            let mut wp = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("water pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &self.hdr_view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Load,
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                    view: depth,
+                    depth_ops: None, // read-only — preserve scene depth, allow sampling
+                    stencil_ops: None,
+                }),
+                timestamp_writes: None,
+                occlusion_query_set: None,
+            });
+            water.render(&mut wp);
+        }
+
+        self.water_renderer = Some(water);
+        // F.4.3: HDR accent composite fires AFTER water_renderer is restored, so a
+        // panic in the closure cannot drop the WaterRenderer (it is already back in
+        // self). Outside the take/restore window — see the W-FU-3 panic-gap note.
+        self.fire_hdr_overlay(enc, depth_view);
+    }
+
+    /// F.4.3 — invoke the registered post-water, pre-tonemap HDR overlay (the
+    /// weave-impact accent composite), if any. Fired by `run_water_pass` on every
+    /// exit path so accents render regardless of water visibility. Resolves the
+    /// depth identically to the water pass (`depth_view.unwrap_or(self.depth.view)`)
+    /// so accents depth-test against the same scene depth, read-only. The
+    /// `take()`/restore mirrors the `water_renderer` idiom to split the borrow of
+    /// `hdr_overlay` from `hdr_view`/`device`/`queue`. No-op (zero GPU work) when
+    /// no overlay is registered — preserving zero-accent frame identity.
+    fn fire_hdr_overlay(
+        &mut self,
+        enc: &mut wgpu::CommandEncoder,
+        depth_view: Option<&wgpu::TextureView>,
+    ) {
+        if let Some(mut overlay) = self.hdr_overlay.take() {
+            let depth = depth_view.unwrap_or(&self.depth.view);
+            overlay(enc, &self.hdr_view, depth, &self.device, &self.queue);
+            self.hdr_overlay = Some(overlay);
         }
     }
 
@@ -5032,11 +5270,13 @@ fn vs(input: VSIn) -> VSOut {
                 }
             }
 
-            // Render water (transparent, after all opaque objects)
-            if let Some(ref water) = self.water_renderer {
-                water.render(&mut rp);
-            }
+            // W.2b: water moved out of the main pass — see `run_water_pass` below.
         }
+
+        // W.2b — split water pass (after the opaque main pass closes) so water can
+        // sample the scene behind it for refraction + depth-delta shoreline foam.
+        // render() always uses the internal depth target.
+        self.run_water_pass(&mut enc, None);
 
         // Optional feature-gated post chain — gated by post_chain flags
         #[cfg(feature = "postfx")]
@@ -5664,10 +5904,9 @@ fn vs(input: VSIn) -> VSOut {
                 }
             }
 
-            // Render water (transparent, after all opaque objects) — aligned with render()
-            if let Some(ref water) = self.water_renderer {
-                water.render(&mut rp);
-            }
+            // W.2b: water moved out of the main pass — see `run_water_pass` below.
+            // (Weather now draws before water and is composited behind it; minor
+            // ordering change from the split, noted in the W.2b.2 report.)
 
             // Weather particles — render as instanced spheres after transparent objects.
             // Use dedicated weather material (bright white, non-metallic) and default
@@ -5685,6 +5924,12 @@ fn vs(input: VSIn) -> VSOut {
                 rp.draw_indexed(0..self.mesh_sphere.index_count, 0, 0..weather_count);
             }
         }
+
+        // W.2b — split water pass (after the opaque main pass closes), aligned with
+        // `render()`, so the editor viewport renders the same refracted water. Pass
+        // the caller-supplied depth so the water pass tests/samples the depth the
+        // editor's opaque geometry actually wrote (not the internal self.depth).
+        self.run_water_pass(enc, depth_view);
 
         // --- Post-processing: bloom compute pass (runs on HDR, before blit) ---
         let bloom_intensity = if self.post_chain.bloom_enabled {

@@ -145,7 +145,7 @@ pub use texture::Texture;
 pub use types::{Instance, Material, Mesh, SkinnedVertex, Vertex};
 
 pub mod water; // Animated ocean with Gerstner waves
-pub use water::WaterRenderer;
+pub use water::{WaterRenderer, WeaveInstance, WeaveKind, MAX_WEAVE_INSTANCES, WEAVE_MAX_DEFORM};
 
 pub mod advanced_post;
 pub mod decals; // Screen-space decal system

@@ -180,7 +180,17 @@
 - **Crates**: astraweave-ecs (386), astraweave-math (109), astraweave-core (465), astraweave-sdk (17)
 - **Report**: `docs/current/MIRI_VALIDATION_REPORT.md`
 
-### Fluids System ✅ (Jan 2026)
+### Fluids System — ⚠ STALE pre-W.1 (entry dated Jan 2026)
+
+> **⚠ STALE (pre-W.1, W-series 2026-06-21).** The SPH/pressure/viscosity/voxel
+> claims below describe code **deleted** in W.1 (commit `1a57fdd41`, ~58K LoC — the
+> SPH solver core, the `WaterVolumeGrid` voxel sim, and `simd_ops`). Water was
+> re-scoped from a general *simulation* to a layered *rendering* system: the
+> surviving surface is `astraweave-render::WaterRenderer` (Gerstner heightfield)
+> behind the `astraweave-water` `WaterQuery` facade. **Do not bootstrap from the
+> entry below.** Current authority: `docs/campaigns/water-successor/W2_0_RECON.md`
+> + `W2_DECISIONS.md`. (The rest of this status doc is unaffected.)
+
 - 2,404 tests, SPH/pressure/viscosity/surface tension
 - Grade: A+ (benchmark for all physics subsystems)
 

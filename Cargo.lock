@@ -1576,7 +1576,6 @@ dependencies = [
 name = "astraweave-water"
 version = "0.1.0"
 dependencies = [
- "astraweave-fluids",
  "criterion 0.7.0",
  "glam",
 ]
@@ -12003,6 +12002,7 @@ dependencies = [
  "anyhow",
  "astraweave-camera",
  "astraweave-core",
+ "astraweave-fluids",
  "astraweave-gameplay",
  "astraweave-nav",
  "astraweave-physics",

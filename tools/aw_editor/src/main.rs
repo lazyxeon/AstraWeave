@@ -359,6 +359,10 @@ struct EditorApp {
     cached_sky_colors: Option<([f32; 4], [f32; 4], [f32; 4])>,
     cached_lighting_params: Option<crate::viewport::types::TerrainLightingParams>,
     cached_weather_kind: Option<astraweave_render::WeatherKind>,
+    /// Cached water-biome flag. `set_water_enabled(true)` rebuilds the engine
+    /// `WaterRenderer` (pipeline + LOD meshes), so it must only fire when the
+    /// water-biome state flips — same cached pattern as fog/lighting/weather.
+    cached_water_biome: Option<bool>,
     /// Measured subsystem timings (from previous frame, in ms)
     measured_render_ms: f32,
     measured_tick_ms: f32,
@@ -620,6 +624,7 @@ impl Default for EditorApp {
             cached_fog_params: None,
             cached_lighting_params: None,
             cached_weather_kind: None,
+            cached_water_biome: None,
             cached_sky_colors: None,
             measured_render_ms: 0.0,
             measured_tick_ms: 0.0,
@@ -4105,10 +4110,17 @@ impl EditorApp {
                 viewport.tick_weather(ctx.input(|i| i.stable_dt));
             }
 
-            // Only enable water plane for water-related biomes
+            // Only enable water plane for water-related biomes. Cached: each
+            // `set_water_enabled(true)` reconstructs the engine WaterRenderer
+            // (pipeline + 4 LOD meshes + buffers), so only call it on a state
+            // flip — the per-frame chunk animation is driven separately by
+            // ViewportRenderer::render via `update_water` (W-FU-2).
             let biome = self.dock_tab_viewer.terrain_primary_biome();
             let water_biome = matches!(biome, "swamp" | "beach" | "river");
-            viewport.set_water_enabled(water_biome);
+            if self.cached_water_biome != Some(water_biome) {
+                viewport.set_water_enabled(water_biome);
+                self.cached_water_biome = Some(water_biome);
+            }
             if water_biome {
                 viewport.set_water_level(self.dock_tab_viewer.water_level());
             }

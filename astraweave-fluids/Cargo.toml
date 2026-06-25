@@ -5,13 +5,14 @@ edition = "2021"
 
 [features]
 default = []
-# CPU-side rayon-parallel helpers in simd_ops (deterministic: element-wise
-# maps only, no parallel float reductions).
+# ORPHANED by W.1 (2026-06-20): `simd_ops` — the sole consumer of these
+# rayon-parallel helpers — was removed with the SPH solver core, and the
+# `experimental` feature's gated modules (PcisphSystem, multi_phase, warm_start,
+# particle_shifting, turbulence, viscosity_gpu) were removed entirely. This
+# feature and the optional `rayon` dep below now gate nothing; retained because
+# W.1 removed only the explicitly-ratified set (the `parallel`/`rayon` cleanup
+# is the director's call).
 parallel = ["dep:rayon"]
-# Dormant-real solver inventory (PcisphSystem, multi_phase, warm_start,
-# particle_shifting, turbulence, viscosity_gpu). Tested but with zero
-# production callers; gated in Fluids-Integration F.1 per gate Q3.
-experimental = []
 # NOTE (F.1): the former `serde` feature gated nothing — five modules had
 # unconditional `use serde::` so --no-default-features could not compile.
 # serde is now an unconditional dependency.
@@ -22,10 +23,6 @@ harness = false
 
 [[bench]]
 name = "fluid_baselines"
-harness = false
-
-[[bench]]
-name = "voxel_sparsity"
 harness = false
 
 [dependencies]

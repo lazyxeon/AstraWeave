@@ -72,6 +72,11 @@ auth/
 /tmp/
 *.pid
 .cache/
+# GPU pipeline cache written by PipelineCacheManager (runtime artifact). The repo
+# root copy (/cache/) and any crate-local copy (e.g. astraweave-render/cache/) both
+# churn during example/probe runs — never source.
+/cache/
+**/cache/pipeline_cache.bin
 
 # Build analysis outputs
 dependency-tree.txt
