@@ -105,6 +105,8 @@ The workspace has a per-subsystem architecture trace campaign under `docs/archit
 - `DEEP_TRACE_INVESTIGATION_TEMPLATE.md` — close factual Open Questions / enrich decisional ones
 - `SUBSYSTEM_TRACE_EXPANSION_PROMPT_TEMPLATE.md` — additive subsystem expansion within a parent trace
 
+**Proposed automation (not yet implemented):** `TRACE_SYNC_PROPOSAL.md` — design for a deterministic `aw_trace_sync` tool that makes trace front-matter the single source of truth and regenerates the CLAUDE.md trace table + `workspace_map.html` data from it, gated by a CI `--check`. Until it lands, the trace table above and the map are updated by hand.
+
 **Workflow:**
 
 1. **Before** modifying code: read the trace's §6 Conflict Map, §7 Decision Log, §8 Invariants. If your change would break an invariant or contradict a decision, surface that explicitly.
