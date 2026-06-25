@@ -7,6 +7,7 @@ primary_crate: astraweave-ui
 domain: gameplay
 lifecycle_status: in_design
 integration_status: example_only
+summary: "HUD/menus/panels; menus_broken.rs & menus_backup2.rs are residue. ui.md §6"
 owns: [astraweave-ui]
 doc_version: "1.1"
 last_verified_commit: 7c29b8182

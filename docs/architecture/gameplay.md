@@ -7,6 +7,7 @@ primary_crate: astraweave-gameplay
 domain: gameplay
 lifecycle_status: active
 integration_status: mixed
+summary: "Wired TYPES (QuestLog/Stats/Inventory->ui; BiomeRule/ResourceNode->terrain; Dialogue->audio), but combat (perform_attack_sweep), apply_weave_op & the Combat/Crafting/Quest plugins are example-only; water_movement.rs fully dormant. gameplay.md §1,§6"
 owns: [astraweave-gameplay]
 doc_version: "1.1"
 last_verified_commit: 7c29b8182

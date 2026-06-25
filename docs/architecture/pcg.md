@@ -7,6 +7,7 @@ primary_crate: astraweave-pcg
 domain: gameplay
 lifecycle_status: active
 integration_status: partial
+summary: "WFC/layout/encounters; deterministic seed_rng. pcg.md"
 owns: [astraweave-pcg]
 doc_version: "1.1"
 last_verified_commit: 7c29b8182

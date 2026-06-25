@@ -7,6 +7,7 @@ primary_crate: astraweave-weaving
 domain: gameplay
 lifecycle_status: in_design
 integration_status: example_only
+summary: "Zero library consumers (only examples/advanced_content_demo + veilweaver_quest_demo); systems/* take Vec/slice params, not Query/Res — not registerable as ECS systems as written. weaving.md §1,§8"
 owns: [astraweave-weaving]
 doc_version: "1.1"
 last_verified_commit: 7c29b8182

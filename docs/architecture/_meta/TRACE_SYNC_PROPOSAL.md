@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| **Status** | **v1 IMPLEMENTED (2026-06-25)** — `tools/aw_trace_sync` + CI `.github/workflows/trace-sync.yml`. This doc remains the design-of-record; the §14 deferrals still apply. |
+| **Status** | **v1 + v1.1 IMPLEMENTED (2026-06-25)** — `tools/aw_trace_sync` + CI `.github/workflows/trace-sync.yml`. v1.1 added map status sync + `runtime_edges` (see notes below). This doc remains the design-of-record; cargo-topology + `map_overlay.json` (§14) remain deferred. |
 | **Target version** | Toolkit automation v1.0 (the "rung 2.5" sweet spot) — shipped |
 | **Author note** | Design ratified in discussion 2026-06-25, incorporating an external adversarial critique. Supersedes the ad-hoc manual sync performed during the 2026-06-25 trace campaign (commit `00bb1fac3`). |
 | **Owner decision** | Land as a proposal first; `runtime_edges` deferred to v1.1. |
@@ -14,6 +14,15 @@
 - **`--list-untraced`** excludes `examples/` crates (demos, not subsystems); it reports the genuinely untraced library/subsystem crates.
 - **`docs.yml` was intentionally NOT modified:** the `--check` gate guarantees the committed `workspace_map.html` is always in sync, so the existing "copy `workspace_map.html` → Pages" step already publishes a current map. A pre-build `--write` would be redundant.
 - **Determinism confirmed:** the Rust serializer (compact `serde_json` with `preserve_order` + `\uXXXX` non-ASCII escaping) reproduces the existing map blob byte-for-byte, so `--check` is clean and future edits produce minimal diffs.
+
+## v1.1 implementation notes (2026-06-25)
+
+- **Map status sync.** Two new optional front-matter fields are now map-owned: the tool maps `(lifecycle_status, integration_status)` → the map's `(status, statusCategory)` pair (`status_pair`) and writes `status`/`statusCategory` + `statusEvidence` (from `summary`) onto the node. Investigation revealed the map's `statusCategory` is a curated **single dimension** (`active`/`in-design`/`partial`), so the mapping emits only those values and **returns `None` for `unknown` inputs** (leaving the node curated). Eight nodes were corrected on first run (e.g. gameplay/scene/terrain/pcg/water → `partial` for mixed integration; security/ui/quests → `dormant` for test/example-only).
+- **Status is owned by the *owning* trace, not just `primary_crate`.** A trace drives its primary crate's status only when `primary_crate ∈ owns`. This was a real bug: `terrain.md` and `terrain_materials.md` both declare `primary_crate: astraweave-terrain`, so keying purely by `primary_crate` let the non-owning slice trace clobber the owner. Slice traces (`terrain_materials`, `animation`; `owns: []`) describe a crate owned elsewhere and must not drive it. (Regression test: `owning_trace_drives_status_not_slice_trace`.)
+- **Evidence is a *soft* sync.** `statusEvidence` is overwritten only when front-matter provides a `summary`; otherwise the node's curated evidence is left untouched (never wiped). The 14 traces whose primary already had curated evidence were bootstrapped from it (zero-loss), so they round-trip.
+- **`runtime_edges`** (optional `[{to, note}]`, from `primary_crate`): the tool **upgrades the matching cargo edge** by setting `runtime: true` (or adds a new edge if none exists), and the map JS gains one class hook (`${e.runtime ? ' runtime' : ''}`) + one `edge.runtime` style (teal triangle) — a one-time hand edit, since edge styling is JS, not data. Conservatively populated with the one verified edge (`astraweave-physics → astraweave-water`, buoyancy consumes `WaterQuery`); more are added as traces assert them.
+- **`schema_version` stays `1`** — both fields are optional, backward-compatible additions.
+- **Still deferred (§14):** cargo-`metadata`-derived topology and the curated `map_overlay.json` (both for a future *full-regeneration* model; the in-place surgery here doesn't need them). The map's multi-crate secondary-node statuses (e.g. the 12 non-primary crates under `ai_pipeline`) remain curated — per-crate status isn't expressible in per-trace front-matter.
 
 ---
 

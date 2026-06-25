@@ -7,6 +7,7 @@ primary_crate: astraweave-persistence-ecs
 domain: networking
 lifecycle_status: unknown
 integration_status: unknown
+summary: "Roundtrip works; auto_save_system body is comment-only TODO; replay_system never applies events. No production consumer. persistence_ecs.md §1"
 owns: [astraweave-persistence-ecs, aw-save]
 doc_version: "1.2"
 last_verified_commit: a2474c5b7

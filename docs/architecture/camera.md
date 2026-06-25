@@ -7,6 +7,7 @@ primary_crate: astraweave-camera
 domain: rendering
 lifecycle_status: active
 integration_status: wired
+summary: "Created Unified Camera C.2 (52b9e711c, 2026-05-18): canonical Projection/RenderView/CameraProducer types; sole renderer upload contract via Renderer::update_view; consumed by astraweave-render (non-optional), aw_editor, and 13 examples"
 owns: [astraweave-camera]
 doc_version: "1.1"
 last_verified_commit: 7c29b8182

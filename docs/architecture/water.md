@@ -7,6 +7,7 @@ primary_crate: astraweave-water
 domain: physics-world
 lifecycle_status: active
 integration_status: mixed
+summary: "Gameplay water-truth facade (WaterQuery/AnalyticWater) — sole backend after W.1 removed the voxel backend; physics buoyancy (astraweave-physics lib.rs:931) is the production consumer. Deterministic CPU truth (gate Q1). water.md §4,§5"
 owns: [astraweave-water]
 doc_version: "1.1"
 last_verified_commit: 7c29b8182

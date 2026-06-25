@@ -7,6 +7,7 @@ primary_crate: astraweave-quests
 domain: gameplay
 lifecycle_status: in_design
 integration_status: partial
+summary: "components/systems + LLM + terrain quests; overlaps the weaving quest layer. quests.md §6"
 owns: [astraweave-quests]
 doc_version: "1.1"
 last_verified_commit: 7c29b8182

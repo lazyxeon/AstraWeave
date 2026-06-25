@@ -7,6 +7,9 @@ primary_crate: astraweave-physics
 domain: physics-world
 lifecycle_status: active
 integration_status: wired
+runtime_edges:
+  - to: astraweave-water
+    note: "buoyancy (apply_buoyancy_forces, lib.rs:1464) consumes WaterQuery/AnalyticWater"
 owns: [astraweave-physics]
 doc_version: "1.2"
 last_verified_commit: 32afac52f

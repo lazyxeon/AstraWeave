@@ -6,9 +6,11 @@
 //! `docs/architecture/workspace_map.html` from that front-matter, and gates drift via
 //! `--check`. Design: `docs/architecture/_meta/TRACE_SYNC_PROPOSAL.md`.
 //!
-//! v1 scope: front-matter contract + validation + `--list-untraced` + CLAUDE.md trace
-//! table generation + map `trace`-link sync. Map *status* sync and `runtime_edges`
-//! are deferred to v1.1 (the map keeps its curated status fields untouched here).
+//! Scope: front-matter contract + validation + `--list-untraced` + CLAUDE.md trace
+//! table generation + map `trace`-link sync (v1). v1.1 adds map status sync (the
+//! primary crate's `status`/`statusCategory`/`statusEvidence`, driven by the owning
+//! trace) and `runtime_edges` (asserted runtime-integration edges, highlighted on the
+//! map). Cargo-derived topology + the curated `map_overlay.json` remain deferred.
 
 use anyhow::{bail, Context, Result};
 use clap::Parser;
@@ -79,6 +81,19 @@ enum Integration {
     Unknown,
 }
 
+/// An asserted architectural (runtime) integration edge from this trace's
+/// `primary_crate` to `to`. Distinct from a cargo dependency: it marks confirmed
+/// runtime wiring, surfaced on the map with a `runtime` highlight. (v1.1)
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RuntimeEdge {
+    to: String,
+    /// Captured for future map-tooltip rendering (not yet displayed).
+    #[serde(default)]
+    #[allow(dead_code)]
+    note: Option<String>,
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct FrontMatter {
@@ -90,10 +105,11 @@ struct FrontMatter {
     primary_crate: String,
     #[allow(dead_code)]
     domain: Domain,
-    #[allow(dead_code)]
     lifecycle_status: Lifecycle,
-    #[allow(dead_code)]
     integration_status: Integration,
+    /// One-line status evidence; synced to the map node's `statusEvidence` (v1.1).
+    #[serde(default)]
+    summary: Option<String>,
     #[serde(default)]
     owns: Vec<String>,
     #[allow(dead_code)]
@@ -107,6 +123,9 @@ struct FrontMatter {
     /// Crate references that intentionally live outside the cargo workspace.
     #[serde(default)]
     external: Vec<String>,
+    /// Asserted runtime-integration edges from `primary_crate` (v1.1).
+    #[serde(default)]
+    runtime_edges: Vec<RuntimeEdge>,
 }
 
 struct TraceDoc {
@@ -266,6 +285,20 @@ fn validate(traces: &[TraceDoc], crates: &[String]) -> Vec<String> {
                 ));
             }
         }
+        for e in &fm.runtime_edges {
+            if !resolves(&e.to) {
+                problems.push(format!(
+                    "{file}: runtime_edges target '{}' is not a workspace crate",
+                    e.to
+                ));
+            }
+            if e.to == fm.primary_crate {
+                problems.push(format!(
+                    "{file}: runtime_edges target '{}' is the primary_crate (self-edge)",
+                    e.to
+                ));
+            }
+        }
     }
     problems
 }
@@ -348,9 +381,32 @@ fn ownership_map(traces: &[TraceDoc]) -> BTreeMap<String, String> {
     m
 }
 
+/// Map (lifecycle, integration) -> the map's (status, statusCategory) pair, using only
+/// the values the map already styles {active, dormant/in-design, partial}. Returns None
+/// for unknown inputs (leave the node's curated status untouched). (v1.1)
+fn status_pair(lc: Lifecycle, ig: Integration) -> Option<(&'static str, &'static str)> {
+    if lc == Lifecycle::Unknown || ig == Integration::Unknown {
+        return None; // leave the node's curated status untouched
+    }
+    match (lc, ig) {
+        (Lifecycle::Active, Integration::Wired) => Some(("active", "active")),
+        (Lifecycle::Active, Integration::Partial) | (Lifecycle::Active, Integration::Mixed) => {
+            Some(("partial", "partial"))
+        }
+        // active-but-example/test/dormant integration, or any non-active lifecycle.
+        _ => Some(("dormant", "in-design")),
+    }
+}
+
+/// Per-primary-crate status to apply: the mapped (status, statusCategory) pair (None =
+/// leave curated) plus an optional statusEvidence override from front-matter `summary`.
+type StatusEntry = (Option<(&'static str, &'static str)>, Option<String>);
+
 struct MapRender {
     html: String,
     changed_links: Vec<(String, Option<String>, Option<String>)>, // (crate, old, new)
+    changed_status: Vec<(String, String, String)>,                // (crate, old_status, new_status)
+    runtime_edges: Vec<(String, String, bool)>,                   // (from, to, newly_added?)
 }
 
 fn render_map(current: &str, traces: &[TraceDoc]) -> Result<MapRender> {
@@ -372,35 +428,124 @@ fn render_map(current: &str, traces: &[TraceDoc]) -> Result<MapRender> {
         serde_json::from_str(json_str).context("parsing workspace-data JSON")?;
     let owners = ownership_map(traces);
 
-    let mut changed = Vec::new();
-    let nodes = data
-        .get_mut("nodes")
-        .and_then(|n| n.as_array_mut())
-        .context("workspace-data has no `nodes` array")?;
-    for node in nodes.iter_mut() {
-        let Some(id) = node
-            .get("id")
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string())
-        else {
-            continue;
-        };
-        let want: Option<String> = owners.get(&id).cloned();
-        let have: Option<String> = node
-            .get("trace")
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string());
-        if have != want {
-            changed.push((id.clone(), have, want.clone()));
+    // primary_crate -> (mapped status pair, statusEvidence-from-summary); + runtime edges
+    let mut prim: BTreeMap<String, StatusEntry> = BTreeMap::new();
+    let mut rt_edges: Vec<(String, String)> = Vec::new();
+    for t in traces {
+        if let Some(fm) = &t.fm {
+            // A trace drives its primary crate's status only when it OWNS that crate.
+            // Slice/cross-cutting traces (primary_crate not in `owns`, e.g. terrain_materials,
+            // animation) describe a crate owned by another trace and must not drive its status.
+            if fm.owns.iter().any(|c| c == &fm.primary_crate) {
+                prim.insert(
+                    fm.primary_crate.clone(),
+                    (
+                        status_pair(fm.lifecycle_status, fm.integration_status),
+                        fm.summary.clone(),
+                    ),
+                );
+            }
+            for e in &fm.runtime_edges {
+                rt_edges.push((fm.primary_crate.clone(), e.to.clone()));
+            }
         }
-        let obj = node.as_object_mut().context("node is not an object")?;
-        obj.insert(
-            "trace".to_string(),
-            match want {
-                Some(f) => serde_json::Value::String(f),
-                None => serde_json::Value::Null,
-            },
-        );
+    }
+
+    let mut changed_links = Vec::new();
+    let mut changed_status = Vec::new();
+    {
+        let nodes = data
+            .get_mut("nodes")
+            .and_then(|n| n.as_array_mut())
+            .context("workspace-data has no `nodes` array")?;
+        for node in nodes.iter_mut() {
+            let Some(id) = node
+                .get("id")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string())
+            else {
+                continue;
+            };
+            let want: Option<String> = owners.get(&id).cloned();
+            let have: Option<String> = node
+                .get("trace")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+            if have != want {
+                changed_links.push((id.clone(), have, want.clone()));
+            }
+            let obj = node.as_object_mut().context("node is not an object")?;
+            obj.insert(
+                "trace".to_string(),
+                want.map(serde_json::Value::String)
+                    .unwrap_or(serde_json::Value::Null),
+            );
+            // Status sync — primary crates only (secondary owned crates keep curated status).
+            if let Some((pair, summary)) = prim.get(&id) {
+                if let Some((status, cat)) = pair {
+                    let old = obj
+                        .get("status")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    if old != *status {
+                        changed_status.push((id.clone(), old, status.to_string()));
+                    }
+                    obj.insert(
+                        "status".into(),
+                        serde_json::Value::String(status.to_string()),
+                    );
+                    obj.insert(
+                        "statusCategory".into(),
+                        serde_json::Value::String(cat.to_string()),
+                    );
+                }
+                // statusEvidence is a soft sync: only set when front-matter provides a summary
+                // (so curated evidence is never wiped for traces without one).
+                if let Some(ev) = summary {
+                    obj.insert(
+                        "statusEvidence".into(),
+                        serde_json::Value::String(ev.clone()),
+                    );
+                }
+            }
+        }
+    }
+
+    // Runtime edges: upgrade the matching cargo edge (set `runtime: true`) or add a new one.
+    let mut rt_report = Vec::new();
+    {
+        let edges = data
+            .get_mut("edges")
+            .and_then(|e| e.as_array_mut())
+            .context("workspace-data has no `edges` array")?;
+        for (from, to) in &rt_edges {
+            let mut found = false;
+            for edge in edges.iter_mut() {
+                let s = edge.get("source").and_then(|v| v.as_str());
+                let t = edge.get("target").and_then(|v| v.as_str());
+                if s == Some(from.as_str()) && t == Some(to.as_str()) {
+                    let obj = edge.as_object_mut().context("edge is not an object")?;
+                    let already = obj
+                        .get("runtime")
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(false);
+                    if !already {
+                        obj.insert("runtime".into(), serde_json::Value::Bool(true));
+                        rt_report.push((from.clone(), to.clone(), false)); // upgraded existing
+                    }
+                    found = true;
+                    break;
+                }
+            }
+            if !found {
+                edges.push(serde_json::json!({
+                    "source": from, "target": to, "kind": "workspace-dep",
+                    "anomaly": null, "types": [], "risk": "LOW", "optional": false, "runtime": true
+                }));
+                rt_report.push((from.clone(), to.clone(), true)); // newly added
+            }
+        }
     }
 
     let new_json = escape_nonascii(&serde_json::to_string(&data)?);
@@ -412,7 +557,9 @@ fn render_map(current: &str, traces: &[TraceDoc]) -> Result<MapRender> {
     );
     Ok(MapRender {
         html,
-        changed_links: changed,
+        changed_links,
+        changed_status,
+        runtime_edges: rt_report,
     })
 }
 
@@ -543,6 +690,22 @@ fn main() -> Result<()> {
                         "  map link {cr}: {} -> {}",
                         old.as_deref().unwrap_or("null"),
                         new.as_deref().unwrap_or("null")
+                    );
+                }
+                for (cr, old, new) in &map_render.changed_status {
+                    eprintln!(
+                        "  map status {cr}: {} -> {new}",
+                        if old.is_empty() { "?" } else { old }
+                    );
+                }
+                for (from, to, added) in &map_render.runtime_edges {
+                    eprintln!(
+                        "  runtime edge {from} -> {to} ({})",
+                        if *added {
+                            "added"
+                        } else {
+                            "marked on existing dep"
+                        }
                     );
                 }
             }
@@ -719,5 +882,88 @@ mod tests {
         let out = render_claude_md(&current, &traces).unwrap();
         assert!(out.contains("alpha.md"));
         assert!(!out.contains('\r'), "LF file must not gain CR");
+    }
+
+    fn tdoc(stem: &str, yaml: &str) -> TraceDoc {
+        TraceDoc {
+            stem: stem.to_string(),
+            fm: Some(serde_yaml::from_str(yaml).expect("valid front-matter")),
+            fm_error: None,
+        }
+    }
+
+    #[test]
+    fn status_pair_mapping() {
+        use Integration as I;
+        use Lifecycle as L;
+        assert_eq!(status_pair(L::Active, I::Wired), Some(("active", "active")));
+        assert_eq!(
+            status_pair(L::Active, I::Mixed),
+            Some(("partial", "partial"))
+        );
+        assert_eq!(
+            status_pair(L::Active, I::Partial),
+            Some(("partial", "partial"))
+        );
+        assert_eq!(
+            status_pair(L::Active, I::ExampleOnly),
+            Some(("dormant", "in-design"))
+        );
+        assert_eq!(
+            status_pair(L::Active, I::TestOnly),
+            Some(("dormant", "in-design"))
+        );
+        assert_eq!(
+            status_pair(L::InDesign, I::Wired),
+            Some(("dormant", "in-design"))
+        );
+        assert_eq!(status_pair(L::Unknown, I::Wired), None);
+        assert_eq!(status_pair(L::Active, I::Unknown), None);
+    }
+
+    #[test]
+    fn runtime_edge_validation_flags_bad_targets() {
+        let y = "schema_version: 1\ntrace_id: a\ntitle: T\ndescription: D\nprimary_crate: astraweave-x\n\
+                 domain: core\nlifecycle_status: active\nintegration_status: wired\nowns: [astraweave-x]\n\
+                 doc_version: \"1\"\nlast_verified_commit: c\n\
+                 runtime_edges:\n  - to: astraweave-ghost\n  - to: astraweave-x\n";
+        let p = validate(&[tdoc("a", y)], &["astraweave-x".to_string()]);
+        assert!(
+            p.iter()
+                .any(|m| m.contains("runtime_edges target 'astraweave-ghost'")),
+            "got {p:?}"
+        );
+        assert!(p.iter().any(|m| m.contains("self-edge")), "got {p:?}");
+    }
+
+    #[test]
+    fn owning_trace_drives_status_not_slice_trace() {
+        // terrain.md owns astraweave-terrain (mixed -> partial); terrain_materials.md is a slice
+        // (same primary_crate, owns []) and must NOT drive the node's status.
+        let owner = tdoc(
+            "terrain",
+            "schema_version: 1\ntrace_id: terrain\ntitle: T\ndescription: D\nprimary_crate: astraweave-terrain\n\
+             domain: physics-world\nlifecycle_status: active\nintegration_status: mixed\nowns: [astraweave-terrain]\n\
+             doc_version: \"1\"\nlast_verified_commit: c\nruntime_edges:\n  - to: astraweave-physics\n",
+        );
+        let slice = tdoc(
+            "terrain_materials",
+            "schema_version: 1\ntrace_id: terrain_materials\ntitle: T\ndescription: D\nprimary_crate: astraweave-terrain\n\
+             domain: physics-world\nlifecycle_status: active\nintegration_status: wired\nowns: []\n\
+             doc_version: \"1\"\nlast_verified_commit: c\n",
+        );
+        let html = "<script id=\"workspace-data\">{\"nodes\":[{\"id\":\"astraweave-terrain\",\"status\":\"active\",\"statusCategory\":\"active\",\"statusEvidence\":null,\"trace\":null}],\"edges\":[{\"source\":\"astraweave-terrain\",\"target\":\"astraweave-physics\",\"kind\":\"workspace-dep\"}]}</script>";
+        let out = render_map(html, &[owner, slice]).unwrap();
+        let json = &out.html[out.html.find('>').unwrap() + 1..out.html.find("</script>").unwrap()];
+        let d: serde_json::Value = serde_json::from_str(json).unwrap();
+        assert_eq!(
+            d["nodes"][0]["status"], "partial",
+            "owning trace (mixed) must win, not slice (wired)"
+        );
+        assert_eq!(d["nodes"][0]["trace"], "terrain.md");
+        assert_eq!(
+            d["edges"][0]["runtime"], true,
+            "runtime edge must be marked on the cargo dep"
+        );
     }
 }

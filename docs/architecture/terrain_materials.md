@@ -7,6 +7,7 @@ primary_crate: astraweave-terrain
 domain: physics-world
 lifecycle_status: active
 integration_status: wired
+summary: "Voxel meshing/biome/noise/scatter/streaming (complements terrain_materials.md). terrain.md"
 owns: []
 doc_version: "1.1"
 last_verified_commit: 67c9de7e1

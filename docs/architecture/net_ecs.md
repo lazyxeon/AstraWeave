@@ -7,6 +7,7 @@ primary_crate: astraweave-net-ecs
 domain: networking
 lifecycle_status: unknown
 integration_status: unknown
+summary: "Working tests but ECS Plugin layer is dormant — no production consumer; stress-test declares dep but doesn't import. Wire format mismatch with standalone server. net_ecs.md §1"
 owns: [astraweave-net-ecs, aw-net-client, aw-net-proto, aw-net-server]
 doc_version: "1.3"
 last_verified_commit: eb9977b88

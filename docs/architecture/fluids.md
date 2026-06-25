@@ -7,6 +7,7 @@ primary_crate: astraweave-fluids
 domain: physics-world
 lifecycle_status: dormant
 integration_status: example_only
+summary: "Post-W.1: SPH/voxel/simd_ops removed (−58.8K LoC). Now the deprecated PBD remnant + retained F.4 GPU-particle accent substrate; only examples consume. Water rendering successor lives in water.md. fluids.md §0.5,§0.6"
 owns: [astraweave-fluids]
 doc_version: "1.8"
 last_verified_commit: 7c29b8182

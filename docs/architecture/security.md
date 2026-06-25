@@ -7,6 +7,7 @@ primary_crate: astraweave-security
 domain: core
 lifecycle_status: in_design
 integration_status: test_only
+summary: "script sandbox/anticheat/signatures/path validation; ed25519 surface distinct from net HMAC. security.md"
 owns: [astraweave-secrets, astraweave-security]
 doc_version: "1.1"
 last_verified_commit: 7c29b8182
