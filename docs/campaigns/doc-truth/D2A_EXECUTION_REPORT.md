@@ -5,10 +5,10 @@
 | | |
 |---|---|
 | Date | 2026-06-13 |
-| HEAD | `9693649d8` |
+| HEAD | `9693649d8` (workspace tip at execution — this is actually the `Fluids-Integration.F.1.4` commit, NOT a doc-truth commit, and is not an ancestor of `main`; the doc-truth edits landed separately as `20467eed2`, see Commit row — annotated by D.2.A.1, 2026-06-25) |
 | Doc edits | 1 REWRITE (`EDITOR_STATUS_REPORT.md:282`) + registry `dormant-loc-inventory` filled + allowlist re-emitted |
 | Cost boundary | counts / LoC / callers / code-existence only — **no** perf, coverage, miri, mutants |
-| Commit | NOT committed — awaiting review |
+| Commit | ~~NOT committed — awaiting review~~ → **Landed in `main` as cherry-pick `20467eed2` (2026-06-19), after review** (original "awaiting review" state preserved above — strikethrough, not rewrite, per the per-row resolution principle; confirmed by D.2.A.1, 2026-06-25) |
 
 ## 1. Resolution principle applied
 

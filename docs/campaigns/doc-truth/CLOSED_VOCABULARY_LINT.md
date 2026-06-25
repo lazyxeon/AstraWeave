@@ -15,7 +15,7 @@ Seeded from the `CLAIMS_REGISTRY.md` Retired table + D.0 §4 + D.0.1 §5. Each i
 ```
 # Retired entity-capacity / superseded counts
 103,500 | 103k | 610,000 | 610k
-4,907                      # fluids tests -> 2,560 (registry: fluids-test-markers)
+4,907 | 2,560              # fluids tests -> 738 (registry: fluids-test-markers; 2,560 superseded by W.1 deletion 2026-06-20)
 27,000+                    # workspace tests -> ~39,900 markers (registry: test-markers-total)
 3,892 | 6,100+             # editor tests -> 9,427 markers (registry: editor-test-markers)
 82+ crates | 128 members | 128 workspace | 126 members | 49 production | 47 crates | 44+ crates | 55 crates | 59 library crates

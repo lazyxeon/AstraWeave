@@ -48,12 +48,12 @@ Two dedicated verifier agents re-derived the contested workspace counts and capa
 | Workspace members | **130** (`cargo metadata --no-deps`); 53 names start `astraweave-`; "~51 production" is a judgment bucket | 128 / 49-production / 82+ / 129 |
 | Test markers (workspace) | **~39,900** `#[test]`+`#[tokio::test]` (38,803 + 1,102) | 27,000+ / 7,600+ / 166 / 800+ |
 | aw_editor markers | **9,427** (≈9,425, within tolerance) | 9,397 / 3,892 / ~6,100 |
-| astraweave-fluids markers | **2,560** (2,454 src + 106 tests/) | 4,907 / 2,509 / 2,404 |
-| Rust LoC | **~1.16M raw / ~892K code** (tokei) | 850K+ / 860K+ / ~150K |
-| astraweave-fluids LoC | **80,222 src / 83,651 crate** | 84.5K / 46,173 |
+| astraweave-fluids markers | **738** (post-W.1 2026-06-20; was 2,560 at D.2.A 2026-06-13) | 4,907 / 2,560 / 2,509 / 2,404 |
+| Rust LoC | **~1.10M raw / ~854K code** (tokei; post-W.1) | 850K+ / 860K+ / ~150K / ~1.16M (pre-W.1) |
+| astraweave-fluids LoC | **24,251 src / 27,257 crate** (post-W.1; was 80,222/83,651 at D.2.A) | 84.5K / 46,173 / 80,222 (pre-W.1) |
 | Toolchain | **1.89.0** (rust-toolchain.toml) | 1.73+ / 1.75.0 |
 | Kani proof harnesses | **~69** `kani::proof` across 5 files | 71+ |
-| Fluids solvers | **FluidSystem + PcisphSystem + WaterEffectsManager** (3). `unified_solver.rs` DELETED (`c3f19e31e`); `ResearchFluidSystem` never existed as a type | "five parallel surfaces", UnifiedSolver, ResearchFluidSystem, DFSPH/IISPH, SPH/FLIP solver |
+| Fluids solvers | **FluidSystem + WaterEffectsManager** (2; post-W.1). `PcisphSystem` + `simd_ops.rs` DELETED in W.1 (`1a57fdd41`, 2026-06-20); `unified_solver.rs` DELETED earlier (`c3f19e31e`); `ResearchFluidSystem` never existed as a type | "five parallel surfaces", UnifiedSolver, ResearchFluidSystem, DFSPH/IISPH, SPH/FLIP solver, PcisphSystem (post-W.1) |
 | Caustics & foam | **real** (`caustics.rs`/`foam.rs` + WGSL, owned by WaterEffectsManager) but **zero consumers outside the fluids crate** | "live production caustics and foam" |
 | HNSW | still a **linear scan** (`astraweave-embeddings/src/store.rs`); `hnsw_rs` declared default-on, never imported | "live HNSW indexing" |
 | SpatialHash | doc-comment still advertises it as broadphase; real broadphase is Rapier `DefaultBroadPhase` (`lib.rs:907`); only non-test caller is `profiling_demo` | "99.96% pair reduction" as a live physics benchmark |

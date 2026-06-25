@@ -55,33 +55,63 @@ Status vocabulary: **VERIFIED-AT-HEAD** (re-checked this campaign at HEAD via th
 
 ### fluids-test-markers
 - metric: `astraweave-fluids` `#[test]` + `#[tokio::test]` annotation count
-- value: 2,560 (2,454 src + 106 `tests/`)
-- status: VERIFIED-AT-HEAD (2026-06-13, `git grep -c` scoped to `astraweave-fluids`)
+- value: 738
+- status: VERIFIED-AT-HEAD (2026-06-25, D.2.A.1 re-resolution post-W.1; `git grep -c` scoped to `astraweave-fluids`)
 - repro: `git grep -E -c '#\[(tokio::)?test\]' -- 'astraweave-fluids' | awk -F: '{s+=$NF} END {print s}'`
 - hardware: n/a
 - canonical_source: `git grep` scoped to `astraweave-fluids`
-- referenced_by: README.md:267; docs/masters/MASTER_ROADMAP.md:86,91,102,474; docs/current/MASTER_COVERAGE_REPORT.md:187; gh-pages/crates.md:43
-- note: SUPERSEDES the poison value `4,907`. The mildly-stale `2,509` / `2,404` also resolve here.
+- referenced_by: README.md:265; docs/masters/MASTER_ROADMAP.md:86,91,102,474; docs/current/MASTER_COVERAGE_REPORT.md:187; gh-pages/crates.md:43
+- note: SUPERSEDES the poison value `4,907` AND the former D.2.A value `2,560` (2,454 src + 106 `tests/`, verified 2026-06-13), which W.1 (2026-06-20) invalidated by deleting the SPH/voxel solver and most test-bearing files. The mildly-stale `2,509` / `2,404` also resolve here.
 
 ### fluids-loc
 - metric: `astraweave-fluids` source lines
-- value: 80,222 (src) / 83,651 (whole crate incl. `tests/`)
-- status: VERIFIED-AT-HEAD (2026-06-13, `git ls-files | xargs wc -l`)
-- repro: `git ls-files 'astraweave-fluids/src/**/*.rs' | xargs wc -l | tail -1`
+- value: 24,251 (src, 19 files) / 27,257 (whole crate incl. `tests/`)
+- status: VERIFIED-AT-HEAD (2026-06-25, D.2.A.1 re-resolution post-W.1; `git ls-files | xargs wc -l`)
+- repro: `git ls-files -- 'astraweave-fluids/src/' | grep '\.rs$' | xargs wc -l | tail -1`
 - hardware: n/a
 - canonical_source: `wc -l` over `astraweave-fluids/src`
-- referenced_by: CLAUDE.md (84K); docs/audits/water_system_architecture_2026-04-20.md:128 (3,810 — STALE)
-- note: SUPERSEDES the poison `46,173`; the `84K`/`84.5K` figures are mildly stale.
+- referenced_by: CLAUDE.md (84K — STALE); docs/audits/water_system_architecture_2026-04-20.md:128 (3,810 — STALE)
+- note: SUPERSEDES the former D.2.A value `80,222 src / 83,651 crate` (verified 2026-06-13), which W.1 (2026-06-20) invalidated by deleting the SPH/voxel solver + `simd_ops.rs` (−58.8K LoC). Also supersedes the poison `46,173`; the `84K`/`84.5K` figures are now badly stale (true ~24.2K). **REPRO FIXED in D.2.A.1:** the prior `astraweave-fluids/src/**/*.rs` glob returned 0 at HEAD (git `**` pathspec does not match files directly under `src/`).
+
+### water-facade-loc
+- metric: `astraweave-water` source lines (gameplay water-truth facade; W.2–F.4 successor to the deleted fluids sim)
+- value: 350 (src, `lib.rs`) / 428 (whole crate incl. `benches/`); 9 test-markers
+- status: VERIFIED-AT-HEAD (2026-06-25, D.2.A.1; `git ls-files | xargs wc -l`)
+- repro: `git ls-files -- 'astraweave-water/src/' | grep '\.rs$' | xargs wc -l | tail -1`
+- hardware: n/a
+- canonical_source: `wc -l` over `astraweave-water/src`
+- referenced_by: docs/architecture/water.md §5; Cargo.toml:44 (workspace member)
+- note: The `WaterQuery` trait + `AnalyticWater` backend — CPU-resident, deterministic gameplay TRUTH layer. Kept strictly separate from the render-side presentation ([water-surface-loc](#water-surface-loc)) per the truth-vs-presentation split (water.md Appendix A). NEW in D.2.A.1.
+
+### water-surface-loc
+- metric: Render-side water surface LoC (the visible Gerstner/refraction/foam/weave presentation)
+- value: 1,373 (`astraweave-render/src/water.rs` 991 + `astraweave-render/src/shaders/water.wgsl` 382)
+- status: VERIFIED-AT-HEAD (2026-06-25, D.2.A.1; `git ls-files | xargs wc -l`)
+- repro: `git ls-files 'astraweave-render/src/water.rs' 'astraweave-render/src/shaders/water.wgsl' | xargs wc -l | tail -1`
+- hardware: n/a
+- canonical_source: `wc -l` over the two render water files
+- referenced_by: docs/architecture/water.md §1, §5
+- note: `WaterRenderer` — surface, screen-space refraction, depth-foam, weave-response presentation. The PRESENTATION half of the water system; the TRUTH half is [water-facade-loc](#water-facade-loc). NEW in D.2.A.1.
+
+### water-system
+- metric: Post-W.1 water system architecture (narrative; what replaced the deleted SPH/voxel fluids sim)
+- value: Rendering + truth-facade, **NOT simulation** — 5 components: (1) `WaterQuery` facade + `AnalyticWater` backend (CPU, deterministic truth); (2) chunked-LOD Gerstner render surface (`CHUNK_SIZE=64`, 4 Gerstner waves); (3) split water pass — screen-space refraction + depth-delta shoreline foam; (4) weave-response deformation Part/Raise/Freeze (≤`MAX_WEAVE_INSTANCES=8`, bounded ±`SKIRT_DEPTH`); (5) F.4 GPU-particle accent layer (the only retained `astraweave-fluids` surface). `FreezeWater` is presentation-only (no walkable-ice/buoyancy truth).
+- status: VERIFIED-AT-HEAD (2026-06-25, D.2.A.1; per `docs/architecture/water.md` §1/§2/§6 @ `7c29b8182`)
+- repro: read `docs/architecture/water.md` §1–§2 (component map) + §6 (weave variants)
+- hardware: n/a
+- canonical_source: `docs/architecture/water.md` (trace v1.1)
+- referenced_by: docs/architecture/water.md; docs/architecture/fluids.md §0.5
+- note: Supersedes the pre-W.1 "fluids = SPH/voxel simulation" framing across the corpus. The deleted SPH/voxel solver is preserved only at tag `w0-pre-deprecation @ 3a8296038`. NEW in D.2.A.1.
 
 ### rust-loc-total
 - metric: Total Rust lines across the workspace
-- value: ~1.16M raw / ~892K code-only (tokei, excludes comments/blanks)
-- status: VERIFIED-AT-HEAD (2026-06-13, tokei + `git ls-files` cross-check)
-- repro: `tokei --type Rust .` (code-only) or `git ls-files '*.rs' | xargs wc -l | tail -1` (raw)
+- value: ~1.10M raw (1,104,208) / ~854K code-only (853,992; tokei, excludes comments/blanks)
+- status: VERIFIED-AT-HEAD (2026-06-25, D.2.A.1 re-resolution post-W.1; tokei + `git ls-files` cross-check)
+- repro: `tokei --type Rust .` (code-only) or `git ls-files '*.rs' | xargs cat | wc -l` (raw)
 - hardware: n/a
 - canonical_source: tokei
 - referenced_by: README.md:113 (850 K+); gh-pages/index.md:18 (860,000+)
-- note: The `850K+` / `860K+` figures are stale lower bounds (understated).
+- note: SUPERSEDES the former D.2.A value `~1.16M raw / ~892K code` (verified 2026-06-13, pre-W.1); W.1 (2026-06-20) removed ~56K raw lines (fluids SPH/voxel solver). The `850K+` / `860K+` figures remain stale lower bounds. **REPRO FIXED in D.2.A.1:** the prior raw repro `git ls-files '*.rs' | xargs wc -l | tail -1` is machine-dependent — on a small-`ARG_MAX` shell `xargs` batches `wc` and `tail -1` returns only the last batch's subtotal (observed 364,809 of 1,104,208); `xargs cat | wc -l` sums correctly.
 
 ### kani-proofs
 - metric: Kani proof-harness count
@@ -181,15 +211,25 @@ Status vocabulary: **VERIFIED-AT-HEAD** (re-checked this campaign at HEAD via th
 - canonical_source: cargo-mutants run
 - referenced_by: README.md:62,275
 
+### water-budget
+- metric: Water system per-frame GPU budget (min-spec)
+- value: PENDING-D2 (measured ~0.26 ms combined surface+accents worst-case on GTX 1660 Ti Max-Q; ~8× under the **provisional** 2.0 ms ceiling — single-machine, not workspace-portable)
+- status: PENDING-D2
+- repro: TIMESTAMP_QUERY capture per `docs/architecture/water.md` §9 (`F4_3_EXECUTION_REPORT.md` §2/§4); re-measure and confirm the provisional 2.0 ms ceiling against a real-scene capture
+- hardware: GTX 1660 Ti Max-Q · Vulkan · driver 592.27 · 1920×1080 (water.md §9) — confirm at D.2.B measurement
+- canonical_source: real wgpu TIMESTAMP_QUERY medians (water.md §9)
+- referenced_by: docs/architecture/water.md §9
+- note: A real measurement, but single-machine and the 2.0 ms ceiling is self-described provisional — classified PENDING-D2 (NOT VERIFIED-AT-HEAD) per the D.2.A.1 director ruling on cited-but-single-machine GPU measurements. NEW in D.2.A.1.
+
 ### dormant-loc-inventory
 - metric: Dormant-but-designed research-surface LoC (per the CLAUDE.md dormancy taxonomy)
-- value: **~109K** across the six core research crates (`astraweave-fluids` 80,222 · `astraweave-memory` 11,538 · `astraweave-coordination` 5,317 · `astraweave-context` 4,625 · `astraweave-rag` 3,867 · `astraweave-embeddings` 3,184 = **108,753**), plus the LLM-hardening surface (`production_hardening`+`fallback_system`+`tool_guard`+`plan_parser` ≈ 5,840 of ~15K across 16 files) and advanced-GOAP (~16.7K). The headline "~200K" additionally counts NPC/persona/dialogue-llm/director dormant surfaces.
-- status: VERIFIED-AT-HEAD (2026-06-13, `git ls-files | xargs wc -l` per crate — machine-independent)
+- value: **~53K** across the six core research crates (`astraweave-fluids` 24,251 · `astraweave-memory` 11,538 · `astraweave-coordination` 5,317 · `astraweave-context` 4,625 · `astraweave-rag` 3,867 · `astraweave-embeddings` 3,184 = **52,782**), plus the LLM-hardening surface (`production_hardening`+`fallback_system`+`tool_guard`+`plan_parser` ≈ 5,840 of ~15K across 16 files) and advanced-GOAP (~16.7K). The former "~200K" headline counted the pre-W.1 fluids reservoir; post-W.1 the six-crate sum is ~53K.
+- status: VERIFIED-AT-HEAD (2026-06-25, D.2.A.1 re-resolution post-W.1; `git ls-files | xargs wc -l` per crate — machine-independent)
 - repro: `for c in astraweave-fluids astraweave-memory astraweave-coordination astraweave-rag astraweave-embeddings astraweave-context; do git ls-files -- "$c/src/" | grep '\.rs$' | xargs wc -l | tail -1; done`
 - hardware: n/a
 - canonical_source: `git ls-files | xargs wc -l` over the dormancy-taxonomy crate set
 - referenced_by: README.md:128,379; CLAUDE.md:391; docs/architecture/ARCHITECTURE_MAP.md §5
-- note: The "~200K" headline is a defensible upper bound across the *full* taxonomy (six categories incl. dormant-feature-gated and stub surfaces); the **108,753** is the precise machine-independent sum of the six named research crates' `src/`. D.2.B does not touch this (no perf component).
+- note: SUPERSEDES the former D.2.A value `108,753` (~109K, verified 2026-06-13). W.1 (2026-06-20) cut the `astraweave-fluids` term from 80,222 → 24,251 (−55,971); the five other crates re-measured byte-identical at HEAD (`memory` 11,538 · `coordination` 5,317 · `context` 4,625 · `rag` 3,867 · `embeddings` 3,184). The **52,782** is the precise machine-independent sum of the six named research crates' `src/`. D.2.B does not touch this (no perf component).
 
 ---
 
@@ -214,3 +254,4 @@ Status vocabulary: **VERIFIED-AT-HEAD** (re-checked this campaign at HEAD via th
 |---|---|---|
 | 0.1 (D.1.A skeleton) | 2026-06-13 | Created. 11 VERIFIED-AT-HEAD count/version rows; 7 PENDING-D2 benchmark/coverage rows; Retired table seeded. PENDING-D2 rows to be filled by D.2 measurement. |
 | 0.2 (D.1.B hygiene) | 2026-06-13 | Hygiene pass: `canonical_source` for agents-capacity-60fps / frame-time-1000-entities / coverage-weighted / miri-tests changed from doc-references to the bench/llvm-cov/miri **command** (doc-cites-doc break). Denominators confirmed named ("test markers", not "tests"). `referenced_by` lists are representative load-bearing sites, not exhaustive — D.1.B added registry-comment back-links across the long-tail corpus. |
+| 0.3 (D.2.A.1) | 2026-06-25 | **W.1-contamination re-resolution.** Re-resolved the 4 W.1-invalidated rows (fluids-loc 80,222→24,251 src; fluids-test-markers 2,560→738; rust-loc-total ~1.16M→~1.10M raw / ~892K→~854K code; dormant-loc-inventory 108,753→52,782). Fixed 2 broken repro commands (fluids-loc `**`-glob returned 0; rust-loc-total `xargs … wc -l \| tail -1` batching). Added 4 NEW rows for the W.2–F.4 water successor: water-facade-loc, water-surface-loc, water-system (narrative), water-budget (PENDING-D2, single-machine/provisional). Dated D.2.A snapshots in the execution reports left byte-identical (per-row resolution principle). Authority: `D_RESUME_0_RECON.md`. |

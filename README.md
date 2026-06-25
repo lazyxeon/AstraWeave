@@ -175,7 +175,7 @@ flowchart TB
 **8-Stage Deterministic ECS Pipeline** (executed in canonical order, single-threaded per tick):
 1. `PRE_SIMULATION` → 2. `PERCEPTION` → 3. `SIMULATION` → 4. `SYNC` (ECS ↔ legacy `core::World`) → 5. `AI_PLANNING` → 6. `PHYSICS` → 7. `POST_SIMULATION` → 8. `PRESENTATION`
 
-Systems within a stage execute in registration order; stages execute in the order above. `ParallelSchedule` was removed 2026-04-18 (see [`docs/audits/parallel_schedule_removal_2026-04-18.md`](docs/audits/parallel_schedule_removal_2026-04-18.md)); parallelism lives at the subsystem level (rayon for terrain meshing and SPH; tokio for I/O and LLM inference; GPU compute for rendering).
+Systems within a stage execute in registration order; stages execute in the order above. `ParallelSchedule` was removed 2026-04-18 (see [`docs/audits/parallel_schedule_removal_2026-04-18.md`](docs/audits/parallel_schedule_removal_2026-04-18.md)); parallelism lives at the subsystem level (rayon for terrain meshing; tokio for I/O and LLM inference; GPU compute for rendering).
 
 ---
 <div align="center">
@@ -204,7 +204,7 @@ Systems within a stage execute in registration order; stages execute in the orde
 ### ⚙️ Core Engine
   **Deterministic ECS**: Single-threaded archetype scheduler with 100% bit-identical replay validation and **Miri-validated memory safety**. Systems execute in a fixed stage order on one thread per tick; parallelism lives at the subsystem level, not inside the schedule. See [`docs/audits/parallel_schedule_removal_2026-04-18.md`](docs/audits/parallel_schedule_removal_2026-04-18.md) for the rationale behind the single-threaded-ECS choice.
 
-  **Subsystem parallelism**: rayon drives terrain chunk meshing ([`astraweave-terrain`](astraweave-terrain/)) and optional SPH fluid simulation ([`astraweave-fluids`](astraweave-fluids/)); tokio drives async asset streaming, LLM inference, and network I/O. GPU compute handles rendering and shader work. Where the engine spends multi-core budget today is these subsystems — not the ECS tick loop.
+  **Subsystem parallelism**: rayon drives terrain chunk meshing ([`astraweave-terrain`](astraweave-terrain/)); tokio drives async asset streaming, LLM inference, and network I/O. GPU compute handles rendering and shader work. Where the engine spends multi-core budget today is these subsystems — not the ECS tick loop. (The former SPH fluid simulation that also used rayon was removed in the W.1 water-successor deprecation, 2026-06-20.)
 
   **Memory Safety**: All unsafe code validated with Miri (977 tests, 0 UB).
 
@@ -262,7 +262,7 @@ Systems within a stage execute in registration order; stages execute in the orde
 | **Scripting** (`astraweave-scripting`) | ⚠️ Alpha | 128 tests (45 lib + 83 integration), functional Rhai integration. Authoring tooling layer (`astraweave-author`, `rhai_authoring`) now compiles clean (former Rhai `Sync` trait errors resolved — verified 2026-06-10). |
 | **UI Framework** | ✅ Production Ready | 751 tests (320 lib + 431 integration), functional coverage. |
 | **LLM Support** | ✅ Production Ready (core) / 🔬 Hardening Layer | 16,776 lines. Core inference pipeline + tool sandbox is production-wired. The ~15K LoC production-hardening surface (rate limiting, circuit breakers, A/B routing, 4-tier fallback) is dormant — Q4 in §14. |
-| **Fluids** | 🔬 Research Surface | 2,560 test markers <!-- Source: CLAIMS_REGISTRY.md#fluids-test-markers -->, PBD fluid simulation with in-crate caustics/foam (no production consumer). **In-design, not production-wired** — only `examples/fluids_demo` consumes the crate; no production game-loop crate depends on `astraweave-fluids`. Three solver/manager surfaces (`FluidSystem` + `PcisphSystem` + `WaterEffectsManager`). Q12 in §14. See [`fluids.md`](docs/architecture/fluids.md). |
+| **Fluids** | 🔬 Research Surface (deprecated sim) | 738 test markers <!-- Source: CLAIMS_REGISTRY.md#fluids-test-markers -->. W.1 (2026-06-20) removed the SPH/voxel solver (−58.8K LoC); the crate is now ~24.2K LoC — the deprecated PBD remnant plus the retained F.4 GPU-particle accent substrate (`FluidSystem` + `WaterEffectsManager`; `PcisphSystem`/`UnifiedSolver` deleted). Only `examples/` consume it; no production game-loop crate depends on `astraweave-fluids`. The live water system is the view-side successor — `astraweave-water` facade + `astraweave-render/src/water.rs`, see [`water.md`](docs/architecture/water.md). Q12 in §14. See [`fluids.md`](docs/architecture/fluids.md). |
 | **Memory / Coordination / RAG** | 🔬 Research Surface | Memory pipeline ~11K, Coordination ~5.3K, RAG composite ~12.3K. Zero in-engine production consumers; HNSW vector index is currently a linear scan. Q11 in §14. |
 | **AI Generation** | 🧪 Orphan Source | `astraweave-ai-gen/` holds 4 loose source files with no `Cargo.toml` and no crate root — not a workspace member, cannot build as-is. See the dormant-code taxonomy in [`ARCHITECTURE_MAP.md`](docs/architecture/ARCHITECTURE_MAP.md) §5. |
 
@@ -324,7 +324,7 @@ AstraWeave is a modular workspace of **~51 production crates** organized into 7 
 -   **`astraweave-physics`**: Rapier3D integration with spatial hash, projectiles, gravity zones, and ragdoll
 -   **`astraweave-nav`**: Navigation mesh with pathfinding and geometric utilities
 -   **`astraweave-terrain`**: Procedural terrain with erosion, biomes, LOD, and async streaming
--   **`astraweave-fluids`**: Position-based dynamics (PBD) fluid sim with caustics, foam, and screen-space rendering
+-   **`astraweave-fluids`**: Deprecated PBD/accent remnant — W.1 (2026-06-20) removed the SPH/voxel sim (−58.8K LoC); retains in-crate caustics/foam + the F.4 GPU-particle accent substrate. Live water is the view-side successor (`astraweave-water` + `astraweave-render/src/water.rs`)
 -   **`astraweave-scene`**: Scene management with world partitioning and GPU resource streaming
 
 ### 🎮 Gameplay Systems (5 crates)

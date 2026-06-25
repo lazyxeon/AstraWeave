@@ -5,6 +5,8 @@ Every KEEP occurrence from the closed-vocabulary triage (D.1.C), **updated by D.
 **266 distinct allowlist keys** covering 587 KEEP occurrences (588 − 1 rewritten by D.2.A: `EDITOR_STATUS_REPORT.md:282`). Re-running the lint with this allowlist applied returns zero un-allowlisted hits.
 
 > **D.2.A update:** the 58 `production-status-contested` entries (formerly pending-D2) are now resolved — 1 REWRITE (editor over-claim) and 57 permanent keeps (historical-dated audit assessments, future-target roadmaps, and genuinely-shipped surfaces: glam math, `perform_attack_sweep`, GPU skinning, Core/ECS). The `99.96%` SpatialHash figure is a **combinatorial ratio** (499,500→180 pairs), machine-independent, describing the *dormant* module — permanent honest-dormancy, not a D.2.B perf row.
+>
+> **D.2.A.1 update (W.1-contamination, 2026-06-25):** the fluids honest-dormancy keys — `ARCHITECTURE_MAP.md`→`ResearchFluidSystem`, and `fluids.md`→`ResearchFluidSystem`/`DFSPH`/`UnifiedSolver` — bless those strings ONLY as deleted/never-existed dormancy-debunking context (post-W.1/F.1), NOT as live-solver sanction. W.1 (2026-06-20) did not newly introduce them (they were already gone at F.1); the keys are RETAINED, but D.3's lint must treat them as honest-dormancy-only so it still flags any prose that re-asserts them as a *live* solver. See `D_RESUME_0_RECON.md` §2a.
 
 | File | Match | Reason | Lifetime |
 |---|---|---|:-:|

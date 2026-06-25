@@ -60,6 +60,8 @@ removed the dead-inventory below. Pre-removal anchor: annotated tag
 + 666 reconciliation); build green, all kept tests pass (lib 677, gpu_execution 7,
 mutation 53; `astraweave-water` 9).
 
+> **Doc-truth cross-reference (D.2.A.1, 2026-06-25):** the documentation-truth campaign re-resolved the W.1-invalidated LoC/marker figures in its ledger — see `docs/campaigns/doc-truth/CLAIMS_REGISTRY.md` (`#fluids-loc` 24,251 src · `#fluids-test-markers` 738 · `#dormant-loc-inventory` 52,782) plus the new water-successor rows (`#water-facade-loc`, `#water-surface-loc`, `#water-system`). Recon + scope: `docs/campaigns/doc-truth/D_RESUME_0_RECON.md`.
+
 **Removed in W.1 (gone from the tree):**
 - **Voxel water sim:** `volume_grid.rs`, `gpu_volume.rs`, `building.rs`,
   `terrain_integration.rs` (+ tests `voxel_water_f3.rs`, `sparse_lockstep_f3s.rs`,
