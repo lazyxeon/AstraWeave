@@ -1,3 +1,17 @@
+---
+schema_version: 1
+trace_id: ui
+title: "UI System (HUD, Menus, Panels)"
+description: "UI — HUD, menus, panels (egui)"
+primary_crate: astraweave-ui
+domain: gameplay
+lifecycle_status: in_design
+integration_status: example_only
+owns: [astraweave-ui]
+doc_version: "1.1"
+last_verified_commit: 7c29b8182
+---
+
 # Architecture Trace: UI System (HUD, Menus, Panels)
 
 ## Metadata

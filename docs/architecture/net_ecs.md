@@ -1,3 +1,17 @@
+---
+schema_version: 1
+trace_id: net_ecs
+title: "Net-ECS (ECS Plugin + Standalone Matchmaking Server)"
+description: "Net-ECS + standalone matchmaking"
+primary_crate: astraweave-net-ecs
+domain: networking
+lifecycle_status: unknown
+integration_status: unknown
+owns: [astraweave-net-ecs, aw-net-client, aw-net-proto, aw-net-server]
+doc_version: "1.3"
+last_verified_commit: eb9977b88
+---
+
 # Architecture Trace: Net-ECS (ECS Plugin + Standalone Matchmaking Server)
 
 > **Scope note:** This doc traces the **second** of three networking subsystems in AstraWeave: the ECS-Plugin layer (`astraweave-net-ecs`) plus the production-style standalone-binary trio (`net/aw-net-proto`, `net/aw-net-client`, `net/aw-net-server`) and their runtime artifact directory (`aw_net_server_db/`). Other networking subsystems:

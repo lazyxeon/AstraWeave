@@ -1,0 +1,51 @@
+name: Trace Sync
+
+# Drift gate for the architecture-trace registry/map. Trace front-matter is the
+# source of truth; this fails if the CLAUDE.md trace table or workspace_map.html
+# trace links are out of sync with it. Fix locally with:
+#   cargo run -p aw_trace_sync -- --write
+# Design: docs/architecture/_meta/TRACE_SYNC_PROPOSAL.md
+
+on:
+  push:
+    branches: [ "main" ]
+    paths:
+      - 'docs/architecture/**'
+      - '**/Cargo.toml'
+      - 'CLAUDE.md'
+      - 'tools/aw_trace_sync/**'
+      - '.github/workflows/trace-sync.yml'
+  pull_request:
+    paths:
+      - 'docs/architecture/**'
+      - '**/Cargo.toml'
+      - 'CLAUDE.md'
+      - 'tools/aw_trace_sync/**'
+      - '.github/workflows/trace-sync.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: trace registry/map in sync
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Install Rust (pinned 1.89.0)
+        uses: dtolnay/rust-toolchain@1.89.0
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "."
+          cache-on-failure: true
+
+      - name: Validate front-matter and report untraced subsystems
+        run: cargo run -p aw_trace_sync -- --validate-only --list-untraced
+
+      - name: Check registry/map are in sync with trace front-matter
+        run: cargo run -p aw_trace_sync -- --check

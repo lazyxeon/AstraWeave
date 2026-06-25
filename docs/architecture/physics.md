@@ -1,3 +1,17 @@
+---
+schema_version: 1
+trace_id: physics
+title: "Physics"
+description: "Physics (Rapier3D wrapping + subsystems)"
+primary_crate: astraweave-physics
+domain: physics-world
+lifecycle_status: active
+integration_status: wired
+owns: [astraweave-physics]
+doc_version: "1.2"
+last_verified_commit: 32afac52f
+---
+
 # Architecture Trace: Physics
 
 ## Metadata

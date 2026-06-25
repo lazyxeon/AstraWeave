@@ -1,3 +1,17 @@
+---
+schema_version: 1
+trace_id: pcg
+title: "PCG — Procedural Content Generation"
+description: "PCG — WFC, layout, encounters, seeded RNG"
+primary_crate: astraweave-pcg
+domain: gameplay
+lifecycle_status: active
+integration_status: partial
+owns: [astraweave-pcg]
+doc_version: "1.1"
+last_verified_commit: 7c29b8182
+---
+
 # Architecture Trace: PCG — Procedural Content Generation
 
 ## Metadata

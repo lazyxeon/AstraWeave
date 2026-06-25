@@ -2,10 +2,18 @@
 
 | Field | Value |
 |---|---|
-| **Status** | **PROPOSAL (not yet implemented)** |
-| **Target version** | Toolkit automation v1.0 (the "rung 2.5" sweet spot) |
+| **Status** | **v1 IMPLEMENTED (2026-06-25)** — `tools/aw_trace_sync` + CI `.github/workflows/trace-sync.yml`. This doc remains the design-of-record; the §14 deferrals still apply. |
+| **Target version** | Toolkit automation v1.0 (the "rung 2.5" sweet spot) — shipped |
 | **Author note** | Design ratified in discussion 2026-06-25, incorporating an external adversarial critique. Supersedes the ad-hoc manual sync performed during the 2026-06-25 trace campaign (commit `00bb1fac3`). |
 | **Owner decision** | Land as a proposal first; `runtime_edges` deferred to v1.1. |
+
+## v1 implementation notes (what shipped vs. this design)
+
+- **Shipped:** front-matter contract (schema below) on all 26 traces; `tools/aw_trace_sync` with `--validate-only` / `--list-untraced` / `--write` / `--check`; CLAUDE.md `TRACE-TABLE` marker-block generation; `workspace_map.html` per-crate `trace`-link sync (in-place, byte-stable); the two prose enumerations retired to pointers; CI `trace-sync.yml` `--check` gate; 9 unit tests.
+- **Scope refinement (deferred from §7):** v1 syncs the map's per-crate **`trace` link only**, NOT the map's `statusCategory`/`statusEvidence` — those stay curated. Map **status** sync is moved to **v1.1** (with the overlay + `runtime_edges`), because deriving the map's status taxonomy from `lifecycle_status`/`integration_status` is editorial and better done alongside the overlay extraction.
+- **`--list-untraced`** excludes `examples/` crates (demos, not subsystems); it reports the genuinely untraced library/subsystem crates.
+- **`docs.yml` was intentionally NOT modified:** the `--check` gate guarantees the committed `workspace_map.html` is always in sync, so the existing "copy `workspace_map.html` → Pages" step already publishes a current map. A pre-build `--write` would be redundant.
+- **Determinism confirmed:** the Rust serializer (compact `serde_json` with `preserve_order` + `\uXXXX` non-ASCII escaping) reproduces the existing map blob byte-for-byte, so `--check` is clean and future edits produce minimal diffs.
 
 ---
 

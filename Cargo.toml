@@ -60,7 +60,6 @@ members = [
   "examples/dialogue_voice_demo",
   "examples/dialogue_audio_cli",
   "examples/nav_physics_bridge",
-  "astraweave-npc",
   "examples/npc_town_demo",
   "astraweave-input",
   "astraweave-ui",
@@ -96,6 +95,7 @@ members = [
   "tools/asset_signing",
   "tools/aw_release",
   "tools/aw_demo_builder",
+  "tools/aw_trace_sync",  # architecture-trace registry/map synchronizer
   # persistence
   "persistence/aw-save",
   "tools/aw_save_cli",
@@ -109,7 +109,6 @@ members = [
   "crates/astraweave-blend",
   "crates/astraweave-alloc",
   "astraweave-stress-test",
-  "astraweave-security",
   "astraweave-observability",
   "astraweave-profiling",
   "astraweave-secrets",

@@ -1,3 +1,17 @@
+---
+schema_version: 1
+trace_id: aw_editor
+title: "aw_editor (Visual Editor)"
+description: "aw_editor (Visual Editor)"
+primary_crate: aw_editor
+domain: tools
+lifecycle_status: active
+integration_status: wired
+owns: [aw_editor]
+doc_version: "1.2"
+last_verified_commit: a2474c5b7
+---
+
 # Architecture Trace: aw_editor (Visual Editor)
 
 ## Metadata

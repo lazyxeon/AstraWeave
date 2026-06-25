@@ -1,3 +1,17 @@
+---
+schema_version: 1
+trace_id: render_pipeline_material_system_shader_infrastructure
+title: "Render Pipeline + Material System + Shader Infrastructure"
+description: "Render Pipeline + Material System + Shader Infrastructure"
+primary_crate: astraweave-render
+domain: rendering
+lifecycle_status: active
+integration_status: wired
+owns: [astraweave-materials, astraweave-render]
+doc_version: "1.8"
+last_verified_commit: 7c29b8182
+---
+
 # Architecture Trace: Render Pipeline + Material System + Shader Infrastructure
 
 ## Metadata

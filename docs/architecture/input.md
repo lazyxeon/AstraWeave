@@ -1,3 +1,17 @@
+---
+schema_version: 1
+trace_id: input
+title: "Input"
+description: "Input"
+primary_crate: astraweave-input
+domain: gameplay
+lifecycle_status: active
+integration_status: wired
+owns: [astraweave-input]
+doc_version: "1.2"
+last_verified_commit: a2474c5b7
+---
+
 # Architecture Trace: Input
 
 ## Metadata

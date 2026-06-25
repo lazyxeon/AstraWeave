@@ -1,3 +1,17 @@
+---
+schema_version: 1
+trace_id: water
+title: "Water (Successor) — Rendering, Query Facade & Weave-Response"
+description: "Water Successor — `WaterQuery` facade + render water surface + weave-response (part/freeze/raise/FreezeWater) + F.4 accents"
+primary_crate: astraweave-water
+domain: physics-world
+lifecycle_status: active
+integration_status: mixed
+owns: [astraweave-water]
+doc_version: "1.1"
+last_verified_commit: 7c29b8182
+---
+
 # Architecture Trace: Water (Successor) — Rendering, Query Facade & Weave-Response
 
 ## Metadata

@@ -1,3 +1,17 @@
+---
+schema_version: 1
+trace_id: security
+title: "Security System (script sandbox, anticheat, signatures, path validation, secrets)"
+description: "Security + Secrets — script sandbox, anticheat, signatures, path validation, keyring"
+primary_crate: astraweave-security
+domain: core
+lifecycle_status: in_design
+integration_status: test_only
+owns: [astraweave-secrets, astraweave-security]
+doc_version: "1.1"
+last_verified_commit: 7c29b8182
+---
+
 # Architecture Trace: Security System (script sandbox, anticheat, signatures, path validation, secrets)
 
 ## Metadata

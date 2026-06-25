@@ -1,3 +1,17 @@
+---
+schema_version: 1
+trace_id: cinematics
+title: "Cinematics System (Timeline / Sequencer)"
+description: "Cinematics — timeline / sequencer"
+primary_crate: astraweave-cinematics
+domain: rendering
+lifecycle_status: active
+integration_status: wired
+owns: [astraweave-cinematics]
+doc_version: "1.1"
+last_verified_commit: 7c29b8182
+---
+
 # Architecture Trace: Cinematics System (Timeline / Sequencer)
 
 ## Metadata

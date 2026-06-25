@@ -1,3 +1,17 @@
+---
+schema_version: 1
+trace_id: scene
+title: "Scene System (Scene Graph, World Partition, Streaming, GPU Resources)"
+description: "Scene — scene graph, world partition, cell streaming, GPU resource manager"
+primary_crate: astraweave-scene
+domain: physics-world
+lifecycle_status: active
+integration_status: partial
+owns: [astraweave-scene]
+doc_version: "1.1"
+last_verified_commit: 7c29b8182
+---
+
 # Architecture Trace: Scene System (Scene Graph, World Partition, Streaming, GPU Resources)
 
 ## Metadata

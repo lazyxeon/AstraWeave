@@ -1,3 +1,17 @@
+---
+schema_version: 1
+trace_id: nav
+title: "Navigation / Pathfinding System (navmesh)"
+description: "Navigation / Pathfinding — navmesh (resolves the two-`nav`-crate conflict)"
+primary_crate: astraweave-nav
+domain: physics-world
+lifecycle_status: active
+integration_status: wired
+owns: [astraweave-nav]
+doc_version: "1.1"
+last_verified_commit: 7c29b8182
+---
+
 # Architecture Trace: Navigation / Pathfinding System (navmesh)
 
 ## Metadata

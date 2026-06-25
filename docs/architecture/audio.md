@@ -1,3 +1,17 @@
+---
+schema_version: 1
+trace_id: audio
+title: "Audio"
+description: "Audio"
+primary_crate: astraweave-audio
+domain: gameplay
+lifecycle_status: active
+integration_status: wired
+owns: [astraweave-audio]
+doc_version: "1.2"
+last_verified_commit: a2474c5b7
+---
+
 # Architecture Trace: Audio
 
 ## Metadata

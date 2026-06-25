@@ -1,3 +1,17 @@
+---
+schema_version: 1
+trace_id: terrain
+title: "Terrain System (Generation, Voxels, Biomes, Noise, Scatter, Streaming)"
+description: "Terrain System — voxel meshing, biomes, noise, scatter, streaming (complements `terrain_materials.md`, which is the material-splat slice)"
+primary_crate: astraweave-terrain
+domain: physics-world
+lifecycle_status: active
+integration_status: mixed
+owns: [astraweave-terrain]
+doc_version: "1.1"
+last_verified_commit: 7c29b8182
+---
+
 # Architecture Trace: Terrain System (Generation, Voxels, Biomes, Noise, Scatter, Streaming)
 
 ## Metadata

@@ -1,3 +1,17 @@
+---
+schema_version: 1
+trace_id: persistence_ecs
+title: "Persistence-ECS (Save/Load + ECS Integration)"
+description: "Persistence (aw-save + persistence-ecs)"
+primary_crate: astraweave-persistence-ecs
+domain: networking
+lifecycle_status: unknown
+integration_status: unknown
+owns: [astraweave-persistence-ecs, aw-save]
+doc_version: "1.2"
+last_verified_commit: a2474c5b7
+---
+
 # Architecture Trace: Persistence-ECS (Save/Load + ECS Integration)
 
 > **Scope note:** This doc traces the **third** of three subsystems CLAUDE.md groups under "Networking": the save/load + replay persistence layer. The other two are:

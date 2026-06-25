@@ -1,3 +1,17 @@
+---
+schema_version: 1
+trace_id: terrain_materials
+title: "Terrain Material System"
+description: "Terrain Material System (canonical reference example)"
+primary_crate: astraweave-terrain
+domain: physics-world
+lifecycle_status: active
+integration_status: wired
+owns: []
+doc_version: "1.1"
+last_verified_commit: 67c9de7e1
+---
+
 # Architecture Trace: Terrain Material System
 
 ## Metadata

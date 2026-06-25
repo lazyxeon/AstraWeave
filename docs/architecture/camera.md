@@ -1,3 +1,17 @@
+---
+schema_version: 1
+trace_id: camera
+title: "Camera System"
+description: "Camera — freefly, projection, render-view, parity producer"
+primary_crate: astraweave-camera
+domain: rendering
+lifecycle_status: active
+integration_status: wired
+owns: [astraweave-camera]
+doc_version: "1.1"
+last_verified_commit: 7c29b8182
+---
+
 # Architecture Trace: Camera System
 
 ## Metadata

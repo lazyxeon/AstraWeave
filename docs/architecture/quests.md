@@ -1,3 +1,17 @@
+---
+schema_version: 1
+trace_id: quests
+title: "Quest System"
+description: "Quests — components, systems, LLM + terrain quests"
+primary_crate: astraweave-quests
+domain: gameplay
+lifecycle_status: in_design
+integration_status: partial
+owns: [astraweave-quests]
+doc_version: "1.1"
+last_verified_commit: 7c29b8182
+---
+
 # Architecture Trace: Quest System
 
 ## Metadata

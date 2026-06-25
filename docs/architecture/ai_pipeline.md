@@ -1,3 +1,17 @@
+---
+schema_version: 1
+trace_id: ai_pipeline
+title: "AI Pipeline + AI Core + GOAP + Behavior Trees + LLM Integration + Arbiter"
+description: "AI Pipeline (with 8 subsystem traces)"
+primary_crate: astraweave-ai
+domain: ai
+lifecycle_status: active
+integration_status: wired
+owns: [astraweave-ai, astraweave-behavior, astraweave-context, astraweave-coordination, astraweave-dialogue, astraweave-director, astraweave-embeddings, astraweave-llm, astraweave-memory, astraweave-npc, astraweave-persona, astraweave-prompts, astraweave-rag]
+doc_version: "1.11"
+last_verified_commit: 32afac52f
+---
+
 # Architecture Trace: AI Pipeline + AI Core + GOAP + Behavior Trees + LLM Integration + Arbiter
 
 ## Metadata

@@ -1,0 +1,17 @@
+[package]
+name = "aw_trace_sync"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Deterministic trace -> registry/map synchronizer: trace front-matter is the source of truth; regenerates the CLAUDE.md trace table and workspace_map.html trace links, gated by --check. See docs/architecture/_meta/TRACE_SYNC_PROPOSAL.md."
+
+[dependencies]
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+serde_yaml = "0.9"
+cargo_metadata = "0.18"
+
+[dev-dependencies]
+tempfile = "3"

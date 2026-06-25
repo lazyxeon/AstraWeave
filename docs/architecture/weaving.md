@@ -1,3 +1,17 @@
+---
+schema_version: 1
+trace_id: weaving
+title: "Weaving / Fate-Weaving System (`astraweave-weaving`)"
+description: "Weaving / Fate-Weaving — the Veilweaver mechanic (`astraweave-weaving`)"
+primary_crate: astraweave-weaving
+domain: gameplay
+lifecycle_status: in_design
+integration_status: example_only
+owns: [astraweave-weaving]
+doc_version: "1.1"
+last_verified_commit: 7c29b8182
+---
+
 # Architecture Trace: Weaving / Fate-Weaving System (`astraweave-weaving`)
 
 ## Metadata

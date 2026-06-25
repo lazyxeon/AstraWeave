@@ -1,3 +1,17 @@
+---
+schema_version: 1
+trace_id: gameplay
+title: "Gameplay System (Combat, Crafting, Veilweaver Slice, Weaving + Water Integration)"
+description: "Gameplay — combat, crafting, Veilweaver slice, in-crate weave bridge"
+primary_crate: astraweave-gameplay
+domain: gameplay
+lifecycle_status: active
+integration_status: mixed
+owns: [astraweave-gameplay]
+doc_version: "1.1"
+last_verified_commit: 7c29b8182
+---
+
 # Architecture Trace: Gameplay System (Combat, Crafting, Veilweaver Slice, Weaving + Water Integration)
 
 ## Metadata

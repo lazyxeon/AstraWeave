@@ -1,3 +1,17 @@
+---
+schema_version: 1
+trace_id: ecs_math_core_sdk_foundation
+title: "ECS Substrate + Math / Core / SDK Primitives"
+description: "ECS substrate + Math/Core/SDK"
+primary_crate: astraweave-core
+domain: core
+lifecycle_status: active
+integration_status: wired
+owns: [astraweave-alloc, astraweave-core, astraweave-ecs, astraweave-math, astraweave-sdk]
+doc_version: "1.2"
+last_verified_commit: 67c9de7e1
+---
+
 # Architecture Trace: ECS Substrate + Math / Core / SDK Primitives
 
 ## Metadata

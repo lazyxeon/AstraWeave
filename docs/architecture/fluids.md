@@ -1,3 +1,17 @@
+---
+schema_version: 1
+trace_id: fluids
+title: "Fluids"
+description: "Fluids"
+primary_crate: astraweave-fluids
+domain: physics-world
+lifecycle_status: dormant
+integration_status: example_only
+owns: [astraweave-fluids]
+doc_version: "1.8"
+last_verified_commit: 7c29b8182
+---
+
 # Architecture Trace: Fluids
 
 ## Metadata

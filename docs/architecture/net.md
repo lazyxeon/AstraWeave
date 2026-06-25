@@ -1,3 +1,17 @@
+---
+schema_version: 1
+trace_id: net
+title: "Net (Snapshot-Based Game Server)"
+description: "Net (snapshot-based game server)"
+primary_crate: astraweave-net
+domain: networking
+lifecycle_status: active
+integration_status: wired
+owns: [astraweave-net]
+doc_version: "1.2"
+last_verified_commit: a2474c5b7
+---
+
 # Architecture Trace: Net (Snapshot-Based Game Server)
 
 > **Scope note:** This doc traces the `astraweave-net` crate — the original snapshot-based networking implementation. AstraWeave's "networking" domain comprises three loosely-coupled subsystems; the other two have dedicated traces:

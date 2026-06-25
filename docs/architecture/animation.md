@@ -1,3 +1,17 @@
+---
+schema_version: 1
+trace_id: animation
+title: "Animation System"
+description: "Animation System"
+primary_crate: astraweave-render
+domain: rendering
+lifecycle_status: active
+integration_status: wired
+owns: []
+doc_version: "1.0"
+last_verified_commit: 32afac52f
+---
+
 # Architecture Trace: Animation System
 
 ## Metadata

@@ -1,3 +1,17 @@
+---
+schema_version: 1
+trace_id: asset
+title: "Asset System"
+description: "Asset + Asset-Pipeline — loading, cell loader, Nanite preprocess, validator/texture/mesh"
+primary_crate: astraweave-asset
+domain: rendering
+lifecycle_status: active
+integration_status: wired
+owns: [astraweave-asset, astraweave-asset-pipeline]
+doc_version: "1.1"
+last_verified_commit: 7c29b8182
+---
+
 # Architecture Trace: Asset System
 
 ## Metadata
