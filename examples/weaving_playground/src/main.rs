@@ -6,8 +6,10 @@ use astraweave_nav::{NavMesh, Triangle};
 use astraweave_physics::PhysicsWorld;
 use astraweave_render::TerrainRenderer as RenderTerrainRenderer; // rename to avoid conflict
 use astraweave_render::{Instance, Renderer, WaterRenderer};
+use astraweave_fluids::{FluidRenderer, FluidSystem};
 use astraweave_terrain::{ChunkId, TerrainChunk, WorldConfig};
 use glam::{vec3, Vec2};
+use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Instant;
 use winit::{
@@ -44,6 +46,11 @@ struct WeavingApp {
     /// F.4.2 binary-glue accent producer: weave-impact splash/spray accents.
     /// Fed the same ops as `weave_producer`; ages accent particles CPU-side.
     accent_producer: WaterAccentProducer,
+    /// F.4.3 accent GPU resources (built in `resumed`). `FluidRenderer` is behind
+    /// `Rc` so the per-frame HDR-overlay closure can own a shared handle (it is
+    /// `&self`); `FluidSystem` owns the secondary buffer the producer uploads into.
+    fluid_renderer: Option<Rc<FluidRenderer>>,
+    fluid_system: Option<FluidSystem>,
     /// Accumulated seconds, drives water wave animation (`update_water` time arg).
     elapsed: f32,
 }
@@ -102,6 +109,8 @@ impl WeavingApp {
             terr_cfg,
             weave_producer: WaterWeaveProducer::new(),
             accent_producer: WaterAccentProducer::new(),
+            fluid_renderer: None,
+            fluid_system: None,
             elapsed: 0.0,
         }
     }
@@ -143,6 +152,20 @@ impl ApplicationHandler for WeavingApp {
             );
             renderer.set_water_renderer(water);
 
+            // F.4.3: build the weave-impact accent GPU resources against the HDR
+            // target format (Rgba16Float — NOT the surface format), so the accent
+            // billboard pipeline's color attachment matches `hdr_view`.
+            let (w, h) = renderer.surface_size();
+            self.fluid_renderer = Some(Rc::new(FluidRenderer::new(
+                renderer.device(),
+                w,
+                h,
+                renderer.hdr_format(),
+            )));
+            self.fluid_system = Some(FluidSystem::new(renderer.device(), 2048));
+            // Accents spawn at the rendered water surface (demo water level 0.0).
+            self.accent_producer.set_water_level(0.0);
+
             self.current_chunk = Some(chunk);
             self.renderer = Some(renderer);
             self.last_time = Instant::now();
@@ -169,6 +192,15 @@ impl ApplicationHandler for WeavingApp {
             WindowEvent::Resized(s) => {
                 renderer.resize(s.width, s.height);
                 self.camera.aspect = s.width as f32 / s.height.max(1) as f32;
+                // F.4.3: the accent renderer owns size-dependent internal textures.
+                if self.fluid_renderer.is_some() {
+                    self.fluid_renderer = Some(Rc::new(FluidRenderer::new(
+                        renderer.device(),
+                        s.width,
+                        s.height,
+                        renderer.hdr_format(),
+                    )));
+                }
             }
             WindowEvent::KeyboardInput {
                 event:
@@ -498,12 +530,40 @@ impl ApplicationHandler for WeavingApp {
         renderer.set_water_weave_instances(&self.weave_producer.snapshot());
         renderer.update_water(render_view.view_proj, render_view.position, self.elapsed);
 
-        // F.4.2: age the weave-impact accents from the same triggers. The spawn
-        // chain (ingest → tick) is live here; the GPU upload + in-frame additive
-        // composite (FluidSystem::set_secondary_particles + render_accents over
-        // the surface) is F.4.3 demo wiring — `render()` is monolithic and the
-        // post-water HDR injection point is added there.
+        // F.4.3: age the accents, upload the live set, and register the post-water
+        // HDR composite. `render()` fires the overlay inside `run_water_pass` — after
+        // the surface pass, before tonemap, into the HDR target, additive, depth-tested
+        // read-only against the scene depth the water used. Zero active accents →
+        // `render_accents` early-returns → frame byte-identical (zero-accent identity).
         self.accent_producer.tick(dt);
+        if let (Some(fluid_system), Some(fluid_renderer)) =
+            (self.fluid_system.as_mut(), self.fluid_renderer.as_ref())
+        {
+            let accents = self.accent_producer.snapshot();
+            fluid_system.set_secondary_particles(renderer.queue(), &accents);
+            let buf = fluid_system.secondary_particle_buffer().clone();
+            let count = fluid_system.secondary_particle_count();
+            let fr = Rc::clone(fluid_renderer);
+            let cam = astraweave_fluids::renderer::CameraUniform {
+                view_proj: render_view.view_proj.to_cols_array_2d(),
+                inv_view_proj: render_view.inverse_view_proj.to_cols_array_2d(),
+                view_inv: render_view.inverse_view.to_cols_array_2d(),
+                cam_pos: [
+                    render_view.position.x,
+                    render_view.position.y,
+                    render_view.position.z,
+                    1.0,
+                ],
+                light_dir: [0.3, 0.9, 0.2, 0.0], // unused by secondary.wgsl
+                time: self.elapsed,
+                padding: [0.0; 19],
+            };
+            renderer.set_hdr_overlay(Some(Box::new(
+                move |enc, hdr_view, depth_view, _device, queue| {
+                    fr.render_accents(queue, enc, hdr_view, depth_view, &buf, count, cam);
+                },
+            )));
+        }
 
         let _ = renderer.render();
         window.request_redraw();
