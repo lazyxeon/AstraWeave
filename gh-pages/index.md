@@ -19,7 +19,7 @@ AstraWeave is a frontier experiment proving that AI (GitHub Copilot) can archite
 | **Core crates** | 69 engine/tool crates + 59 example crates |
 | **Tests** | ~39,900 test markers <!-- Source: CLAIMS_REGISTRY.md#test-markers-total --> (5,372 core validation suite) |
 | **Performance** | 12,700+ AI agents @ 60 FPS |
-| **Memory Safety** | Miri-validated (977 tests, 0 undefined behavior) |
+| **Memory Safety** | Miri-validated (1,059 tests, 0 undefined behavior) |
 | **Formal Proofs** | Kani-verified (69+ proof harnesses, 0 failures) |
 | **Determinism** | Bit-identical replay across runs |
 | **Build** | Zero warnings, zero errors workspace-wide |
@@ -92,7 +92,7 @@ Stable C ABI via cbindgen for embedding in non-Rust applications. Full world lif
 | Physics | Character move | 114 ns |
 | Physics | Full tick | 6.52 µs |
 | Physics | Collision pair reduction | 99.96% |
-| Rendering | Frame time (1K entities) | 2.70 ms (370 FPS) |
+| Frame (1K entities) | Total frame time | 0.71 ms / ~1,410 FPS (mimalloc; 0.97 ms / ~1,036 FPS on system alloc) — 2.70 ms was the Week-8 target |
 | Math | SIMD batch (10K entities) | 9.9 µs (2.08× speedup) |
 
 ---
@@ -152,7 +152,7 @@ cargo clippy --workspace --all-features -- -D warnings  # Full linting
 | Phase 9.2 | ✅ Complete | Scripting foundation (179 tests) |
 | Phase 10 | ✅ Complete | Advanced features |
 | Phase 10.4 | ✅ Complete | AI-orchestrated dynamic terrain (2,536 tests) |
-| Miri | ✅ Complete | 977 tests, 0 undefined behavior |
+| Miri | ✅ Complete | 1,059 tests, 0 undefined behavior |
 | Kani | ✅ Complete | 69+ proof harnesses, 0 failures |
 
 ---
@@ -161,7 +161,7 @@ cargo clippy --workspace --all-features -- -D warnings  # Full linting
 
 | Layer | Scope | Result |
 |-------|-------|--------|
-| **Miri** (UB detection) | 4 crates: ECS, Math, Core, SDK | 977 tests, **0 undefined behavior** |
+| **Miri** (UB detection) | 4 crates: ECS, Math, Core, SDK | 1,059 tests, **0 undefined behavior** |
 | **Kani** (formal proofs) | 4 crates: ECS, Math, Core, SDK | 69+ harnesses, **all passing** |
 | **Mutation testing** | 7+ crates | 2,000+ mutants tested |
 | **Coverage** | 28 measured crates | 14 crates at ≥85% line coverage |

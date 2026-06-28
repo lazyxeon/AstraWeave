@@ -56,7 +56,7 @@ Built in Rust, designed for massive-scale intelligent worlds.
 | **Build Health** | ✅ **0 errors, 130/130 members** | `cargo check --workspace` clean (2026-06-10); former known-build-issue crates (rhai authoring, egui demos, astraweave-llm) all compile |
 | **Coverage** | ✅ **59.3% weighted** (P0: 55.4%, P1: 58.9%, P2: 73.9%) | **29 crates measured** via `cargo llvm-cov` (last full measurement 2026-02-25) |
 | **Tests** | ✅ **~39,000+ annotations** | Core: 959, ECS: 728, Editor: 9,425 annotations, Render: 4,272+, Physics: 1,884, Net trio: 104 (all green 2026-06-10) |
-| **Memory Safety** | ✅ **Miri-Validated** | 977 tests, **0 undefined behavior** across 4 crates |
+| **Memory Safety** | ✅ **Miri-Validated** | 1,059 tests, **0 undefined behavior** across 4 crates |
 | **Formal Verification** | ✅ **Kani-Verified** | 71+ proof harnesses across safety-critical crates |
 | **Behavioral Correctness** | ✅ **37 fixes applied** | 8-phase audit: visual math, data pipeline, undo system, silent failures |
 | **Mutation Testing** | ✅ **~2,928 tests, 4 waves** | Wave 1: 767 manual + Wave 2: 1,261 automated + Wave 3: 489 targeted + Wave 4: 411 fluids; 100% kill rate on prompts (792 mutants) |
@@ -80,7 +80,7 @@ Built in Rust, designed for massive-scale intelligent worlds.
 >
 > **What changed (April 2026)?** The editor underwent a comprehensive [Behavioral Correctness Audit](docs/current/EDITOR_BEHAVIORAL_CORRECTNESS_AUDIT.md): 37 fixes across 48 commits addressing shader math (GGX NDF, Fresnel energy conservation, multi-scatter compensation), undo system completion (all 9 operations now undoable), silent failure resolution (60 patterns identified, critical ones fixed), and a [7-phase architectural refactor](docs/current/FIX27_UNIFIED_PIPELINE_CAMPAIGN.md) that eliminated the dual rendering pipeline (-4,669 LOC). Health grade upgraded from B+ to A- reflecting the correctness improvements.
 
-**Miri Validated**: astraweave-ecs (386 tests), astraweave-math (109 tests), astraweave-core (465→516 tests), astraweave-sdk (17 tests) — **ZERO undefined behavior** | [MIRI_VALIDATION_REPORT](docs/current/MIRI_VALIDATION_REPORT.md)
+**Miri Validated**: astraweave-ecs (419 tests), astraweave-math (109 tests), astraweave-core (503 tests), astraweave-sdk (28 tests) = **1,059** — **ZERO undefined behavior** | [MIRI_VALIDATION_REPORT](docs/current/MIRI_VALIDATION_REPORT.md)
 
 **Unsafe Code Validated**: BlobVec, SparseSet, EntityAllocator, SIMD intrinsics (SSE2), C ABI FFI functions — all memory-safe ✅
 
@@ -206,7 +206,7 @@ Systems within a stage execute in registration order; stages execute in the orde
 
   **Subsystem parallelism**: rayon drives terrain chunk meshing ([`astraweave-terrain`](astraweave-terrain/)); tokio drives async asset streaming, LLM inference, and network I/O. GPU compute handles rendering and shader work. Where the engine spends multi-core budget today is these subsystems — not the ECS tick loop. (The former SPH fluid simulation that also used rayon was removed in the W.1 water-successor deprecation, 2026-06-20.)
 
-  **Memory Safety**: All unsafe code validated with Miri (977 tests, 0 UB).
+  **Memory Safety**: All unsafe code validated with Miri (1,059 tests, 0 UB).
 
   **Sequential throughput**: at 1000 entities on the reference `profiling_demo` workload, sequential ECS median ~1 760 FPS with `fast-alloc` (mimalloc), ~1 200 FPS on the platform default allocator — measured with allocation-counter instrumentation active, across three runs each, per [`docs/audits/schedule_stage_fix_2026-04-18.md`](docs/audits/schedule_stage_fix_2026-04-18.md) §4. Scaling is approximately inverse to entity count (200e ≈ 10 k FPS, 2000e ≈ 940 FPS, 4000e ≈ 449 FPS). These numbers are measurement baselines, not shipping numbers.
 
@@ -271,7 +271,7 @@ Systems within a stage execute in registration order; stages execute in the orde
 -   **Test Coverage**: 59.3% weighted via `cargo llvm-cov` (29 crates measured, 14 at 85%+; last full measurement 2026-02-25)
 -   **Total Tests**: ~39,000+ test annotations across **130 workspace members** (live count 2026-06-10: 39,973 `#[test]`/`#[tokio::test]` markers; cargo metadata 130 members)
 -   **Mutation Testing**: 4 waves — Wave 1: 767 manual + Wave 2: 1,261 automated + Wave 3: 489 targeted + Wave 4: 411 fluids (100% kill rate on prompts, 792 mutants)
--   **Memory Safety**: Miri-validated (977 tests, 0 undefined behavior across 4 crates)
+-   **Memory Safety**: Miri-validated (1,059 tests, 0 undefined behavior across 4 crates)
 -   **Formal Verification**: Kani-verified (71+ proof harnesses across safety-critical crates)
 -   **Performance**: 60 FPS @ 12,700 agents on reference hardware (HP Pavilion Gaming Laptop — see [benchmark hardware spec](docs/masters/MASTER_BENCHMARK_REPORT.md#benchmark-hardware))
 -   **Security**: A- (92/100) — November 2025 network-security audit (aw-net-server scope); input signing since enforced end-to-end by Net-Trio-Remediation (June 2026)

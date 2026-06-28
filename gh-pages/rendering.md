@@ -507,11 +507,11 @@ Uses ping-pong buffers for GPU-side simulation.
 
 ## Frame Budget
 
-At 1,000 entities:
+At 1,000 entities (`profiling_demo`, measured 2026-06-27):
 
-- **Frame time**: 2.70 ms
-- **FPS**: 370
-- **Budget headroom**: 84% vs 60 FPS target
+- **Frame time**: 0.71 ms (default mimalloc) / 0.97 ms (system allocator)
+- **FPS**: ~1,410 (mimalloc) / ~1,036 (system)
+- **Budget headroom**: ~94–96% vs the 16.67 ms (60 FPS) budget. (The earlier "2.70 ms / 370 FPS" was the Week-8 *target*, not a measurement.)
 
 ## Test Coverage
 

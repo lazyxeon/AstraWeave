@@ -121,11 +121,11 @@ All unsafe code has been validated with Miri (symbolic alignment check, strict p
 
 | Crate | Tests | Unsafe Patterns Validated |
 |-------|-------|--------------------------|
-| astraweave-ecs | 330+ | BlobVec, SparseSet, EntityAllocator, SystemParam |
+| astraweave-ecs | 419 | BlobVec, SparseSet, EntityAllocator, SystemParam |
 | astraweave-math | 109 | SIMD intrinsics (SSE2), scalar fallback, edge cases |
-| astraweave-core | 505+ | Entity::from_raw, capture/replay, schema validation |
-| astraweave-sdk | 17 | C ABI FFI, raw pointer handling, handle lifecycle |
-| **Total** | **977** | **0 undefined behavior** |
+| astraweave-core | 503 | Entity::from_raw, capture/replay, schema validation |
+| astraweave-sdk | 28 | C ABI FFI, raw pointer handling, handle lifecycle |
+| **Total** | **1,059** | **0 undefined behavior** |
 
 Miri flags: `-Zmiri-symbolic-alignment-check -Zmiri-strict-provenance`
 

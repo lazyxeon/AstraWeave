@@ -29,7 +29,7 @@
           <span>Deterministic ECS, AI planning and validation, replay-safe simulation.</span>
           <div class="astra-hero__highlights" aria-label="Hero highlights">
             <span>12,700+ agents at 60 FPS</span>
-            <span>977 Miri tests, 0 undefined behavior</span>
+            <span>1,059 Miri tests, 0 undefined behavior</span>
             <span>71+ Kani proof harnesses</span>
           </div>
         </div>
@@ -107,12 +107,12 @@
       <span>workspace members with comprehensive test coverage</span>
     </article>
     <article class="astra-proof-tile">
-      <strong>977</strong>
+      <strong>1,059</strong>
       <span>Miri tests with zero undefined behavior</span>
     </article>
     <article class="astra-proof-tile">
-      <strong>2.70 ms</strong>
-      <span>frame time at 1,000 entities in the current benchmark baseline</span>
+      <strong>0.71 ms</strong>
+      <span>total frame time at 1,000 entities (profiling_demo; mimalloc default — 0.97 ms on system alloc). 2.70 ms was the Week-8 target.</span>
     </article>
     <article class="astra-proof-tile">
       <strong>71+</strong>
@@ -344,7 +344,7 @@
         <ul class="astra-list">
           <li><span>Agent capacity at 60 FPS</span><strong>12,700+</strong></li>
           <li><span>AI validation throughput</span><strong>6.48M checks/sec</strong></li>
-          <li><span>Frame time at 1,000 entities</span><strong>2.70 ms</strong></li>
+          <li><span>Frame time at 1,000 entities</span><strong>0.71 ms (mimalloc) / 0.97 ms (system)</strong></li>
           <li><span>ECS world creation</span><strong>25.8 ns</strong></li>
           <li><span>Character move cost</span><strong>114 ns</strong></li>
           <li><span>SIMD batch over 10k entities</span><strong>9.879 us</strong></li>
@@ -423,7 +423,7 @@
         <ul class="astra-list">
           <li><span>Weighted line coverage</span><strong>59.3% across measured crates</strong></li>
           <li><span>High-coverage crates</span><strong>14 crates at 85%+</strong></li>
-          <li><span>Miri validation</span><strong>977 tests, 0 UB</strong></li>
+          <li><span>Miri validation</span><strong>1,059 tests, 0 UB</strong></li>
           <li><span>Kani verification</span><strong>71+ harnesses</strong></li>
           <li><span>Prompt mutation testing</span><strong>100% adjusted kill rate</strong></li>
           <li><span>Desktop targets</span><strong>Windows, Linux, macOS</strong></li>
