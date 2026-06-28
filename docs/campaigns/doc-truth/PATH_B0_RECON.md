@@ -131,3 +131,13 @@ Path-B.0 stops here. Director ratifies before Path-B.1 touches source:
 - the coverage-rebaseline readiness (compile cleared; doctest + runtime residuals flagged), and the `--no-doctests`-first methodology.
 
 **Not started:** any source edit (Path-B.1) and the coverage re-baseline (Path-B.2).
+
+---
+
+## Path-B.1 outcome (2026-06-28) — appended on completion
+
+Path-B.1 applied the fixes; **8 → 0**, `cargo build --workspace --tests --keep-going` returns 0 failures (was 8 targets / 31 errors), `cargo check --workspace` still passes. **Test-only; zero library/source change.**
+
+**Diagnosis correction (Family A).** The recon's Family-A call ("test-only path swap; *not* removed functionality") was **half-wrong**. The `post::BloomConfig` → `bloom::BloomConfig` path swap resolved the *import* but unmasked that the tests targeted the **removed placeholder** `post::BloomConfig` (which had `validate()` + defaults 0.05/5), not the surviving real PBR `bloom::BloomConfig` (no `validate()`, defaults 0.3/6, extra fields). The error count rose 8→4-green/33-bloom-errors when the import resolved. Per director ratification (Option 2), the obsolete placeholder-bloom test sections were **deleted** (not rewritten) from the 4 BloomConfig targets — recorded in the render trace §10/§11 (v1.9). Families B/C/D/E were clean syncs as diagnosed. **Whether the real PBR `bloom::BloomConfig` warrants fresh coverage is logged as a render-trace §11 open question (test-authoring, deferred — Option 1, not executed).**
+
+**Family D — blend trace-candidate note.** The blend fix (`property_tests.rs` strategies gained `parallel_workers: 0` + `decomposition: SceneDecompositionOptions::default()`) is recorded here against **`astraweave-blend`, which remains UNTRACED** (on the `aw_trace_sync --list-untraced` backlog — no dedicated `docs/architecture/blend.md`). This is the trace-candidate marker: when the trace-completion effort reaches blend, this Path-B.1 test-target API-sync is part of its history. The finding was deliberately **not** misfiled into `asset.md`.

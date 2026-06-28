@@ -227,6 +227,7 @@ fn process_options_strategy() -> impl Strategy<Value = ProcessOptions> {
                 environment: Vec::new(),
                 capture_output: capture,
                 threads,
+                parallel_workers: 0,
             },
         )
 }
@@ -271,6 +272,7 @@ fn conversion_options_strategy() -> impl Strategy<Value = ConversionOptions> {
                 linked_libraries: linked,
                 process,
                 cache,
+                decomposition: SceneDecompositionOptions::default(),
             },
         )
 }

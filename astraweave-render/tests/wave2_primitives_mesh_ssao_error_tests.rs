@@ -203,6 +203,7 @@ fn cpu_mesh_aabb_single_vertex() {
             Vec2::ZERO,
         )],
         indices: vec![],
+        ..Default::default()
     };
     let (min, max) = mesh.aabb().unwrap();
     assert_eq!(min, Vec3::new(5.0, 10.0, -3.0));
@@ -218,6 +219,7 @@ fn cpu_mesh_aabb_multi_vertex() {
             MeshVertex::new(Vec3::new(0.0, -5.0, 1.0), Vec3::Y, Vec4::X, Vec2::ZERO),
         ],
         indices: vec![0, 1, 2],
+        ..Default::default()
     };
     let (min, max) = mesh.aabb().unwrap();
     assert_eq!(min, Vec3::new(-1.0, -5.0, 0.0));
@@ -248,6 +250,7 @@ fn compute_tangents_triangle() {
             ),
         ],
         indices: vec![0, 1, 2],
+        ..Default::default()
     };
     compute_tangents(&mut mesh);
     // After computing tangents, they should be non-zero
@@ -262,6 +265,7 @@ fn compute_tangents_non_divisible_by_3_is_noop() {
     let mut mesh = CpuMesh {
         vertices: vec![MeshVertex::new(Vec3::ZERO, Vec3::Y, Vec4::ZERO, Vec2::ZERO)],
         indices: vec![0, 1], // Not divisible by 3
+        ..Default::default()
     };
     compute_tangents(&mut mesh);
     // Should be a no-op (early return)
