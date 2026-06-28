@@ -158,68 +158,72 @@ Status vocabulary: **VERIFIED-AT-HEAD** (re-checked this campaign at HEAD via th
 
 ### agents-capacity-60fps
 - metric: AI-native agent capacity headline @ 60 FPS
-- value: PENDING-D2 (current headline asserts 12,700+; not re-measured this campaign)
-- status: PENDING-D2
-- repro: `cargo bench -p astraweave-ai` (+ `-p astraweave-stress-test`); divide 16.67 ms frame budget by per-agent cost
-- hardware: HP Pavilion Gaming Laptop 16-a0xxx (per MASTER_BENCHMARK_REPORT.md:99) — confirm at measurement
-- canonical_source: `cargo bench -p astraweave-ai` / `cargo bench -p astraweave-stress-test` (bench harness output)
+- value: **12,700+ CONFIRMED** as a defensible mid-complexity figure. Measured per-agent full end-to-end AI loop: 103 ns (simple) / 708 ns (moderate) / 1.617 µs (complex) → capacity = 16.67 ms ÷ cost = ~162K / ~23.5K / **~10.3K** agents @ 60 FPS. The asserted 12,700 (implies ~1.31 µs/agent) sits between the moderate and complex full-loop points — defensible, neither contradicted nor a single-bench match. (Orchestrator-plan-only throughput is lighter: ~128 ns/agent across 10/50/100/500 in "Multi-Agent Throughput" → ~130K at full budget — a different, lighter workload; do not conflate.)
+- status: VERIFIED-AT-HEAD (2026-06-27, D.2.B.A; cargo bench -p astraweave-ai)
+- repro: `cargo bench -p astraweave-ai --bench ai_core_loop -- full_end_to_end` (per-agent full loop) + `--bench ai_benchmarks -- "Multi-Agent Throughput"`; capacity = 16.67 ms ÷ per-agent cost
+- hardware: i5-10300H / GTX 1660 Ti Max-Q / rustc 1.89.0 / 2026-06-27 / **platform-default (System) allocator** (the ai benches install no `#[global_allocator]`, per D2B0_RECON)
+- canonical_source: `cargo bench -p astraweave-ai` (ai_core_loop + ai_benchmarks harness output)
 - referenced_by: README.md:148,193,259,278; CLAUDE.md; docs/architecture/ARCHITECTURE_MAP.md:27; docs/architecture/ai_pipeline.md; astraweave-ai/README.md:40; CHANGELOG.md:23; .zencoder/rules/repo.md:93; docs/current/RENDERER_DEEP_ANALYSIS_AND_MEGALIGHTS_PLAN.md; docs/current/RENDERER_MASTER_IMPLEMENTATION_PLAN.md
-- note: This entry SUPERSEDES the retired `103k` / `610k` entity-capacity figures (see §Retired). Entity-iteration capacity ≠ agent capacity; do not conflate.
+- note: SUPERSEDES the retired `103k` / `610k` entity-capacity figures (see §Retired). Entity-iteration capacity ≠ agent capacity; do not conflate. Capacity is **workload-dependent** — 12,700 (full-loop, complex-ish), ~130K (orchestrator-plan-only), and MASTER_BENCHMARK_REPORT's ~186K @ 10% budget (GOAP next_action only) are three different denominators of the same pipeline.
 
 ### frame-time-1000-entities
 - metric: Frame time / FPS at 1,000 entities (reference profiling workload)
-- value: PENDING-D2 (asserted 2.70 ms / 370 FPS; conflicting 1.14 ms also seen — resolve in D.2)
-- status: CONTESTED-PENDING-D2
-- repro: `cargo bench -p astraweave-ecs` (or the producing game-loop bench); cross-check `profiling_demo`
-- hardware: reference profiling laptop — confirm at measurement
-- canonical_source: `cargo bench -p astraweave-ecs` (bench harness output)
-- referenced_by: README.md:213; astraweave-render/README.md:41; gh-pages/rendering.md:510; gh-pages/benchmarks.md; docs/src/README.md:114 (conflicts: architecture/ecs.md:414 says 1.14 ms)
+- value: **System allocator: 0.965 ms avg (1,036 FPS); mimalloc (fast-alloc): 0.709 ms avg (1,410 FPS)** — 1,000 entities × 1,000 frames. **CONTEST RESOLVED:** the asserted "2.70 ms" is the demo's **Week-8 TARGET** (`profiling_demo` prints `Target (Week 8): 2.700 ms`), NOT a measured frame time — it was mis-recorded as a measurement. The "1.14 ms" is consistent with a System-allocator measured frame time (per-frame spread 0.86–1.22 ms). Allocator effect: mimalloc ~1.36× faster / ~36% more FPS — real but secondary.
+- status: VERIFIED-AT-HEAD (2026-06-27, D.2.B.A; contest resolved — 2.70 ms = target, not a measurement)
+- repro: **CORRECTED** (old `cargo bench -p astraweave-ecs` measured the wrong thing — ecs has no 1000-entity frame-time group): System = `cargo run -p profiling_demo --release --no-default-features --features alloc-counter -- -e 1000 -f 1000`; mimalloc = `cargo run -p profiling_demo --release --features alloc-counter,fast-alloc -- -e 1000 -f 1000`
+- hardware: i5-10300H / GTX 1660 Ti Max-Q / rustc 1.89.0 / 2026-06-27 / allocator stamped per value (System vs mimalloc)
+- canonical_source: `profiling_demo` binary (`-e 1000 -f 1000`) — "Average frame time" / "Average FPS" line
+- referenced_by: README.md:213; astraweave-render/README.md:41; gh-pages/rendering.md:510; gh-pages/benchmarks.md; docs/src/README.md:114; architecture/ecs.md:414 ("1.14 ms" ≈ System measured — was never a true conflict)
+- note: **META-DEFECT FIXED** — the prior repro `cargo bench -p astraweave-ecs` does not produce this figure. The 2.70-vs-1.14 "conflict" was a **target-vs-measurement confusion**, not two competing measurements; the recon's "2.37× ratio = allocator artifact" hypothesis is REFUTED (2.70 was never a measurement). Allocator config is a real but secondary axis (System 0.965 / mimalloc 0.709). Both measured configs are well under the 2.70 ms target.
 
 ### validation-checks-per-sec
 - metric: Tool-sandbox / anti-cheat validation throughput
-- value: PENDING-D2 (asserted 6.48M checks/sec)
-- status: PENDING-D2
-- repro: `cargo bench -p astraweave-ai` (tool-sandbox validation bench)
-- hardware: reference laptop — confirm at measurement
-- canonical_source: bench harness
+- value: **~6.3M checks/sec CONFIRMS the asserted 6.48M.** Measured `validate MoveTo` = 158 ns (range 145–171 ns → 5.8M–6.9M/sec); 6.48M ≡ 154 ns, inside the measured range. `validate CoverFire` is heavier (220 ns → ~4.5M/sec) — the 6.48M headline tracks the MoveTo path.
+- status: VERIFIED-AT-HEAD (2026-06-27, D.2.B.A; cargo bench -p astraweave-ai)
+- repro: `cargo bench -p astraweave-ai --bench ai_benchmarks -- "Tool Validation"`
+- hardware: i5-10300H / GTX 1660 Ti Max-Q / rustc 1.89.0 / 2026-06-27 / platform-default (System) allocator
+- canonical_source: `cargo bench -p astraweave-ai` (ai_benchmarks "Tool Validation" group)
 - referenced_by: README quality metrics; .zencoder/rules/repo.md:93; gh-pages/index.md:47; gh-pages/ai.md:199
 
 ### coverage-weighted
 - metric: Weighted line coverage across measured crates
-- value: PENDING-D2 (asserted 59.3%; last full measurement 2026-02-25)
-- status: PENDING-D2
-- repro: `cargo llvm-cov --workspace --summary-only`
-- hardware: n/a
-- canonical_source: `cargo llvm-cov --workspace --summary-only` (command output)
+- value: PENDING-D2 — **could not measure cleanly at HEAD (D.2.B.A, 2026-06-27).** `cargo llvm-cov --workspace` is BLOCKED by ≥3 pre-existing broken TEST targets: `astraweave-blend` property_tests (E0063 — `ProcessOptions` missing `parallel_workers`; `ConversionOptions` missing `decomposition`), `astraweave-render` memory_safety_tests (E0432 — `post::BloomConfig` unresolved; bloom split to `bloom.rs`) and wave2_culling_anim_misc_tests (E0063 — `CpuMesh` missing `albedo_image`/`texture_source_hint`). `cargo check --workspace` (130/130) MASKS these — it does not build test targets. Surgical `--exclude` is whack-a-mole and gutting the denominator (render is huge), so no comparable number was banked. The asserted 59.3% was a **29-curated-crate** subset, NOT full-workspace.
+- status: PENDING-D2 (blocked — couldn't measure cleanly; see blocker)
+- repro: `cargo llvm-cov --workspace --summary-only` — BLOCKED (broken test targets above; enumerate the full set with `cargo build --workspace --tests --keep-going`, fix, then re-attempt). NOTE: asserted 59.3% denominator = 29 curated crates, not `--workspace`.
+- hardware: i5-10300H / GTX 1660 Ti Max-Q / rustc 1.89.0 / 2026-06-27 (tool confirmed working on astraweave-core; headless GPU init works — hazard-2 REFUTED; the blocker is compile errors, not GPU)
+- canonical_source: `cargo llvm-cov --workspace --summary-only` (command output) — once test targets compile
 - referenced_by: README.md:52,57,79,273,376; docs/current/MASTER_COVERAGE_REPORT.md
+- note: **CODE-FINDING** — the workspace has ≥3 broken TEST targets (astraweave-blend ×1, astraweave-render ×2) uncaught by `cargo check --workspace`; they block full-workspace `cargo test`/`llvm-cov`. Routed to a follow-on test-target-fix beat (source changes, out of D.2.B.A docs-only scope). **METHODOLOGY-FINDING** — the asserted 59.3% (29 measured crates, 2026-02-25) and `--workspace` (130 crates) are different denominators. **RATIFIED RESOLUTION (D.2.B.A): Path B** — the test-target-fix beat (the D-series's first source work) fixes the broken targets, then re-baselines true `--workspace` coverage. Hazard-2 (headless GPU crash) REFUTED — failure was compile errors, not GPU init.
 
 ### miri-tests
 - metric: Miri-validated test count (0 undefined behavior)
-- value: PENDING-D2 (asserted 977 across ecs/math/core/sdk)
-- status: PENDING-D2
-- repro: `cargo +nightly miri test -p astraweave-ecs -p astraweave-math -p astraweave-core -p astraweave-sdk --lib -- --test-threads=1` (flags `-Zmiri-symbolic-alignment-check -Zmiri-strict-provenance`)
-- hardware: n/a
-- canonical_source: `cargo +nightly miri test` (the repro command above; command output)
+- value: **1,059 miri tests pass, 0 failed, 0 UB** across the four crates (ecs 419 · core 503 [+17 ignored under miri] · sdk 28 · math 109). The asserted **977 is SUPERSEDED (stale-low)** — the suites grew. Hazard-3 (SIMD abort) refuted live: math 109/109 incl. SSE2 intrinsics, no abort.
+- status: VERIFIED-AT-HEAD (2026-06-27, D.2.B.A; cargo +nightly miri test per-crate)
+- repro: `MIRIFLAGS="-Zmiri-disable-isolation" cargo +nightly miri test -p astraweave-ecs -p astraweave-math -p astraweave-core -p astraweave-sdk --lib` (run per-crate; on Windows `-Zmiri-disable-isolation` is the proven-working flag — the CI `-Zmiri-symbolic-alignment-check -Zmiri-strict-provenance` flags are also compatible)
+- hardware: rustc 1.89.0 host / nightly miri 0.1.0 (2300c2aef7, 2025-10-12) / 2026-06-27 / n/a (CPU interpreter, machine-independent)
+- canonical_source: `cargo +nightly miri test` per-crate (the "test result: ok" lines)
 - referenced_by: README.md:32,59,83,211,276; CLAUDE.md; gh-pages/index.md:22; gh-pages/ecs.md:17; gh-pages/math.md:8
+- note: SUPERSEDES the stale `977`. Per-crate passed: ecs 419 (270s), core 503 (237s; 17 ignored under miri), sdk 28 (9s), math 109 (24s) = **1,059**. math runs real SSE2 intrinsics under miri without abort (D2B0_RECON hazard-3 refuted; `simd_vec` falls to scalar, `simd_mat`/`simd_quat` run SSE2 which miri supports).
 
 ### mutation-kill-rate
 - metric: Mutation testing — total mutants and prompt kill rate
-- value: PENDING-D2 (asserted ~2,928 tests / 4 waves; 100% kill on 792 prompt mutants)
-- status: PENDING-D2
-- repro: `cargo mutants -p astraweave-prompts` (+ the wave shards in `docs/current/MUTATION_*`)
-- hardware: n/a
-- canonical_source: cargo-mutants run
+- value: **PROVENANCE-ACCEPTED** — 100% kill on **792** prompt mutants (count re-confirmed at HEAD via `cargo mutants --list -p astraweave-prompts`, D2B0_RECON). The 100%-kill RESULT is from the prior mutation campaign (`docs/current/MUTATION_TESTING_AUDIT.md`, 2026-03-13), NOT re-run this campaign. Prior workspace-wide figures: ~2,928 tests / 4 waves, 100% kill on the audited library crates.
+- status: PROVENANCE-ACCEPTED (measured-previously; re-measurement cost-deferred — NOT VERIFIED-AT-HEAD, NOT bare-asserted)
+- repro: `cargo mutants -p astraweave-prompts` — **deferred**. A full 792-mutant re-run is ~6–15 h on this machine: the baseline alone exceeded 10 min and NTFS lacks reflink, so cargo-mutants full-copies the ~1.1M-LoC workspace per run (D2B0_RECON §timing). A fresh re-stamp would need a **sharded, resumable** run (`--shard k/n`; Session B, specced-and-deferred).
+- hardware: prior-campaign machine (MUTATION_TESTING_AUDIT.md, 2026-03-13); a re-stamp would record i5-10300H / GTX 1660 Ti Max-Q / 2026-06
+- canonical_source: prior cargo-mutants campaign (`docs/current/MUTATION_TESTING_AUDIT.md`); mutant count re-confirmed by `cargo mutants --list` at HEAD
 - referenced_by: README.md:62,275
+- note: **Director decision (D.2.B.A): do NOT re-run this campaign** — the figure is recorded with provenance; the 6–15 h grind is cost-deferred. **Drift direction:** a 100% kill rate cannot drift UP, only down — a fresh sharded run (Session B) would only ever DETECT regression (un-killed mutants from code added since 2026-03-13), never improve the number. Until re-run, treat 100% as the prior-wave result, not a HEAD guarantee.
 
 ### water-budget
 - metric: Water system per-frame GPU budget (min-spec)
-- value: PENDING-D2 (measured ~0.26 ms combined surface+accents worst-case on GTX 1660 Ti Max-Q; ~8× under the **provisional** 2.0 ms ceiling — single-machine, not workspace-portable)
-- status: PENDING-D2
-- repro: TIMESTAMP_QUERY capture per `docs/architecture/water.md` §9 (`F4_3_EXECUTION_REPORT.md` §2/§4); re-measure and confirm the provisional 2.0 ms ceiling against a real-scene capture
-- hardware: GTX 1660 Ti Max-Q · Vulkan · driver 592.27 · 1920×1080 (water.md §9) — confirm at D.2.B measurement
-- canonical_source: real wgpu TIMESTAMP_QUERY medians (water.md §9)
+- value: PENDING-D2 (re-measured 2026-06-27, D.2.B.A: combined water surface + F.4 accents worst-case **0.2745 ms** [near cam; horizon 0.159 ms; surface 0.261 ms + accents 0.014 ms], ~7.3× under the **provisional** 2.0 ms ceiling — CONFIRMS the prior ~0.26 ms. Single-machine, not workspace-portable.)
+- status: PENDING-D2 (stays PENDING by classification — single-machine + provisional ceiling; NOT flipped to VERIFIED)
+- repro: `cargo run -p weaving_playground --example accent_budget_probe --release` (headless wgpu TIMESTAMP_QUERY, medians over 240 frames after 60-frame warmup); isolated water-pass via `cargo run -p astraweave-render --example water_budget_probe --release`
+- hardware: NVIDIA GTX 1660 Ti Max-Q · Vulkan · DiscreteGpu · driver 592.27 · 1920×1080 · 2026-06-27 (TIMESTAMP_QUERY + INSIDE_ENCODERS both present — exact match to water.md §9)
+- canonical_source: `accent_budget_probe` COMBINED median line (real wgpu TIMESTAMP_QUERY)
 - referenced_by: docs/architecture/water.md §9
-- note: A real measurement, but single-machine and the 2.0 ms ceiling is self-described provisional — classified PENDING-D2 (NOT VERIFIED-AT-HEAD) per the D.2.A.1 director ruling on cited-but-single-machine GPU measurements. NEW in D.2.A.1.
+- note: A real GPU-timestamp measurement, single-machine, the 2.0 ms ceiling self-described provisional — stays PENDING-D2 (NOT VERIFIED-AT-HEAD) per the D.2.A.1 director ruling. **Real-scene full-frame budget gap STANDS:** the windowed demo cannot run headless (W2A §2 / D2B0_RECON hazard-5 CONFIRMED); **no display-mocking/Xvfb attempted** (known-dead path). The isolated probe is the ceiling, not the full-frame headroom. NEW in D.2.A.1, re-measured D.2.B.A.
 
 ### dormant-loc-inventory
 - metric: Dormant-but-designed research-surface LoC (per the CLAUDE.md dormancy taxonomy)
@@ -255,3 +259,4 @@ Status vocabulary: **VERIFIED-AT-HEAD** (re-checked this campaign at HEAD via th
 | 0.1 (D.1.A skeleton) | 2026-06-13 | Created. 11 VERIFIED-AT-HEAD count/version rows; 7 PENDING-D2 benchmark/coverage rows; Retired table seeded. PENDING-D2 rows to be filled by D.2 measurement. |
 | 0.2 (D.1.B hygiene) | 2026-06-13 | Hygiene pass: `canonical_source` for agents-capacity-60fps / frame-time-1000-entities / coverage-weighted / miri-tests changed from doc-references to the bench/llvm-cov/miri **command** (doc-cites-doc break). Denominators confirmed named ("test markers", not "tests"). `referenced_by` lists are representative load-bearing sites, not exhaustive — D.1.B added registry-comment back-links across the long-tail corpus. |
 | 0.3 (D.2.A.1) | 2026-06-25 | **W.1-contamination re-resolution.** Re-resolved the 4 W.1-invalidated rows (fluids-loc 80,222→24,251 src; fluids-test-markers 2,560→738; rust-loc-total ~1.16M→~1.10M raw / ~892K→~854K code; dormant-loc-inventory 108,753→52,782). Fixed 2 broken repro commands (fluids-loc `**`-glob returned 0; rust-loc-total `xargs … wc -l \| tail -1` batching). Added 4 NEW rows for the W.2–F.4 water successor: water-facade-loc, water-surface-loc, water-system (narrative), water-budget (PENDING-D2, single-machine/provisional). Dated D.2.A snapshots in the execution reports left byte-identical (per-row resolution principle). Authority: `D_RESUME_0_RECON.md`. |
+| 0.4 (D.2.B.A) | 2026-06-27 | **Fast-tier measurement session** (hardware-stamped i5-10300H / GTX 1660 Ti Max-Q / rustc 1.89.0). Flipped 4 rows to VERIFIED-AT-HEAD: agents-capacity-60fps (12,700 confirmed, workload-dependent — ~10.3K complex / ~23.5K moderate full-loop / ~130K plan-only); frame-time-1000-entities (**CONTEST RESOLVED** — "2.70 ms" was the demo's Week-8 *target* mis-recorded as a measurement; real System 0.965 ms / mimalloc 0.709 ms; repro corrected to `profiling_demo`); validation-checks-per-sec (6.48M confirmed, 158 ns MoveTo); miri-tests (**1,059** vs stale-low 977; repro corrected to `-Zmiri-disable-isolation`). water-budget re-confirmed 0.2745 ms (stays PENDING-by-classification). coverage-weighted stays PENDING — **BLOCKED** by ≥3 pre-existing broken test targets (CODE-FINDING; Path-B fix beat ratified). mutation-kill-rate → **PROVENANCE-ACCEPTED** (100%/792, prior wave 2026-03-13; re-run cost-deferred). Docs/ledger only; no source changed. Authority: `D2B0_RECON.md`. |
