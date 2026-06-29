@@ -8,7 +8,7 @@ domain: core
 lifecycle_status: active
 integration_status: wired
 owns: [astraweave-alloc, astraweave-core, astraweave-ecs, astraweave-math, astraweave-sdk]
-doc_version: "1.2"
+doc_version: "1.3"
 last_verified_commit: 67c9de7e1
 ---
 
@@ -20,7 +20,7 @@ last_verified_commit: 67c9de7e1
 |---|---|
 | **System name** | ECS substrate + Math / Core / SDK primitives (foundation layer) |
 | **Primary crates** | `astraweave-ecs`, `astraweave-math`, `astraweave-core`, `astraweave-sdk` |
-| **Document version** | 1.2 |
+| **Document version** | 1.3 |
 | **Last verified against commit** | `67c9de7e1` |
 | **Last verified date** | 2026-05-10 |
 | **Status** | Active foundation. `astraweave-ecs` and `astraweave-math` are canonical; `astraweave-core` contains a canonical schema **plus** a transitional legacy `World` that bridges to ECS; `astraweave-sdk` is a stable C ABI surface with a single in-tree consumer (`examples/sdk_c_harness`) and an otherwise out-of-tree audience. |
@@ -400,7 +400,7 @@ There are several distinct flows through this layer. The first is the canonical 
 - **Date:** 2026-04-18 (removal of `ParallelSchedule`)
 - **Status:** Accepted; supersedes a prior opt-in `ParallelSchedule` scheduler
 - **Context:** A prior parallel scheduler (`ParallelSchedule`, `SystemAccess`, `SystemDescriptor`, plus `SendWorldPtr` for cross-thread world sharing) existed behind a `parallel` feature flag. The safety audit at `docs/audits/parallel_schedule_safety_audit_2026-04-18.md` and binary inventory at `docs/audits/parallel_schedule_binary_inventory_2026-04-18.md` found: zero default-features consumers, and the two opt-in consumers (`profiling_demo`, `ecs_ai_showcase`) produced observed-incorrect output under parallel mode.
-- **Decision:** Remove `ParallelSchedule` entirely. The deterministic single-threaded `Schedule` is the sole scheduler. Subsystem-level parallelism (rayon in `astraweave-terrain` meshing and `astraweave-fluids` SPH; tokio for async I/O, LLM, streaming; GPU compute in `astraweave-render`) is preserved.
+- **Decision:** Remove `ParallelSchedule` entirely. The deterministic single-threaded `Schedule` is the sole scheduler. Subsystem-level parallelism (rayon in `astraweave-terrain` meshing; tokio for async I/O, LLM, streaming; GPU compute in `astraweave-render`) is preserved. (The former `astraweave-fluids` SPH rayon path was removed in the W.1 water-successor deprecation, 2026-06-20.)
 - **Alternatives considered:** Documented in `docs/audits/parallel_schedule_safety_audit_2026-04-18.md` §5.3 (Framing X, Y, Z). The decision was Framing Y / Option E: full removal.
 - **Consequences:** ECS tick is single-threaded by contract. Determinism guarantees hold across runs. The bit-for-bit state checksums at frame 100 for both opt-in consumers matched the sequential path (per `docs/audits/parallel_schedule_removal_2026-04-18.md` §1).
 
@@ -450,7 +450,7 @@ There are several distinct flows through this layer. The first is the canonical 
 | 6 | Mutation of a component stamps the current change tick on that entity's row | Yes | `insert` and `each_mut` route through `add_entity_with_tick` / `stamp_change_tick::<T>` (`astraweave-ecs/src/lib.rs:308-310, 526-527`). `get_mut` also stamps (conservative Bevy-style change detection, `astraweave-ecs/src/lib.rs:446-447`) |
 | 7 | `EntityBridge::insert_pair` preserves bidirectional consistency: every entry in the forward map has a matching entry in the reverse map (and vice-versa) | Yes | `ecs_bridge.rs:17-34` removes any conflicting old forward/reverse mappings before insertion. Tested in `astraweave-core/tests/ecs_integration_tests.rs` |
 | 8 | LLM-facing JSON keys produced from `WorldSnapshot` remain stable. Top-level keys (`t`, `player`, `me`, `enemies`, `pois`, `obstacles`, `objective`) are emitted 1:1 with Rust field names; sub-level keys are **translated** by some serializers (e.g. `prompts.rs:212` emits `"position"` for `snapshot.player.pos`; `prompts.rs:229` emits `"points_of_interest"` for `snapshot.pois`; `prompts.rs:213` emits `"health"` for `snapshot.player.hp`) and preserved by others (`compression.rs:152` emits `"pois"`; `prompt_template.rs:227-251` uses `pos`/`hp` directly in few-shot example strings) | Partially | Rust-side compilation enforces struct shape and catches access-site renames. Cross-LLM-prompt alignment between Rust fields, the three serializers (`astraweave-llm/src/prompts.rs:209-238`, `astraweave-llm/src/compression.rs:139-300`, `astraweave-llm/src/prompt_template.rs:227-251`), and the LLM training corpus is doc-only — no build script, lint, or test compares serializer output keys to schema field names. Kani proof in `astraweave-core/src/schema_kani.rs` covers `IVec2` numerical properties and `WorldSnapshot` helper correctness (`schema_kani.rs:1-60+`), not field-name stability |
-| 9 | All `unsafe` in this layer has a corresponding Kani proof or Miri test | Partially | Miri CI weekly (`miri.yml`, `docs/architecture/ARCHITECTURE_MAP.md:577`): `ecs` (120m), `core` (90m). Kani CI weekly (`kani.yml`): `ecs` (120m), `math` (60m), `sdk` (60m), `core` (90m). 977 tests, 0 UB per CLAUDE.md and `MIRI_VALIDATION_REPORT.md` |
+| 9 | All `unsafe` in this layer has a corresponding Kani proof or Miri test | Partially | Miri CI weekly (`miri.yml`, `docs/architecture/ARCHITECTURE_MAP.md:577`): `ecs` (120m), `core` (90m). Kani CI weekly (`kani.yml`): `ecs` (120m), `math` (60m), `sdk` (60m), `core` (90m). 1,059 tests, 0 UB per `CLAIMS_REGISTRY.md` (the dated `MIRI_VALIDATION_REPORT.md` records the earlier 977) |
 | 10 | C ABI entry points reject NULL handles and NULL string pointers without UB | Yes | `astraweave-sdk/src/lib.rs:177, 245, 265, 389-393` explicit null checks; `astraweave-sdk/src/lib_kani.rs` proves FFI safety properties |
 | 11 | `Schedule::add_system` for an unregistered stage name does not panic — it either logs (debug) or silently drops (release) | Yes (behavioural) | `astraweave-ecs/src/lib.rs:708-724`. This is the documented behavioural contract — silent-drop is intentional for optional custom stages, while debug-mode logging surfaces typos |
 | 12 | `Component` and `Resource` traits are blanket-implemented for `'static + Send + Sync` types — any such type can be both | Yes (compile-time) | `astraweave-ecs/src/lib.rs:85-90` |
@@ -503,7 +503,7 @@ There are several distinct flows through this layer. The first is the canonical 
   - `astraweave-math/benches/`: `simd_benchmarks.rs`, `simd_mat_benchmarks.rs`, `simd_quat_benchmarks.rs`, `simd_movement.rs`
   - `astraweave-sdk/benches/`: `sdk_benchmarks.rs`, `sdk_adversarial.rs`
 - **Miri validation (UB detection):**
-  - CI workflow `.github/workflows/miri.yml`, weekly, nightly toolchain. Per `docs/architecture/ARCHITECTURE_MAP.md:577`: `ecs` (120m), `core` (90m). Per CLAUDE.md and `docs/current/MIRI_VALIDATION_REPORT.md`: 977 tests across `ecs`, `math`, `core`, `sdk` with ZERO undefined behaviour.
+  - CI workflow `.github/workflows/miri.yml`, weekly, nightly toolchain. Per `docs/architecture/ARCHITECTURE_MAP.md:577`: `ecs` (120m), `core` (90m). Per `docs/campaigns/doc-truth/CLAIMS_REGISTRY.md`: 1,059 tests across `ecs`, `math`, `core`, `sdk` with ZERO undefined behaviour (the dated `MIRI_VALIDATION_REPORT.md` records the earlier 977).
 - **Kani formal verification:**
   - CI workflow `.github/workflows/kani.yml`, weekly. Per `docs/architecture/ARCHITECTURE_MAP.md:578`: `ecs` (120m), `math` (60m), `sdk` (60m), `core` (90m).
   - Proof files (per `docs/architecture/ARCHITECTURE_MAP.md:546-550`):

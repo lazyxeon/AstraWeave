@@ -12,10 +12,11 @@
 
 Seeded from the `CLAIMS_REGISTRY.md` Retired table + D.0 §4 + D.0.1 §5. Each is a value that is FABRICATED (delete) or STALE/superseded (correct/retire) per `D0_CLAIMS_INVENTORY.md` §1.2 ground truth.
 
+<!-- VOCAB-A-START -->
 ```
 # Retired entity-capacity / superseded counts
 103,500 | 103k | 610,000 | 610k
-4,907                      # fluids tests -> 2,560 (registry: fluids-test-markers)
+4,907 | 2,560              # fluids tests -> 738 (registry: fluids-test-markers; 2,560 superseded by W.1 deletion 2026-06-20)
 27,000+                    # workspace tests -> ~39,900 markers (registry: test-markers-total)
 3,892 | 6,100+             # editor tests -> 9,427 markers (registry: editor-test-markers)
 82+ crates | 128 members | 128 workspace | 126 members | 49 production | 47 crates | 44+ crates | 55 crates | 59 library crates
@@ -39,10 +40,16 @@ TLS 1.3 | Ed25519          # (as live in-engine net security; real is HMAC-SHA25
 QUIC | quinn               # (as live transport; real is WebSocket / tokio-tungstenite)
 # Fabricated type names (do not exist in code)
 EntityView | HealthView | ObjectiveHint | HazardHint | MaterialGraph | ShaderTarget | CompileResult | dev_unsigned_assets
+# Stale measured metrics — minted by D.2.B (2026-06-27) / Path-B.2 (2026-06-29); see registry
+59.3% | 59.3 | 94.57% | 94.57   # coverage -> 57.35% whole-workspace (registry: coverage-weighted); 59.3 = 29-crate subset, 94.57 = v4.2.0 figure debunked by the v5.0.0 audit
+977                        # miri tests -> 1,059 (registry: miri-tests; 977 = the dated MIRI_VALIDATION_REPORT.md record)
+# (frame-time 2.70 ms / 370 FPS / 84% headroom are deliberately NOT listed — see "Frame-time carve-out" below)
 ```
+<!-- VOCAB-A-END -->
 
 ## Vocabulary B — provenance-free superlatives (forbidden as AstraWeave self-description)
 
+<!-- VOCAB-B-START -->
 ```
 world-class | world class
 world's first | first AI-native | first ... engine
@@ -55,6 +62,7 @@ no other engine | unique in industry | no competitor has this
 competitive with UE5 | competitive with Unity
 production-grade | production-ready          # status words — see keep-vs-act rule (NOT auto-delete)
 ```
+<!-- VOCAB-B-END -->
 
 ---
 
@@ -76,8 +84,29 @@ The union of acted + kept occurrences is the complete closed-vocabulary inventor
 
 ---
 
+## Frame-time carve-out (D.3.1) — why `2.70 ms` is NOT in Vocabulary A
+
+The frame-time poison generation (`2.70 ms` / `370 FPS` / `84% headroom`, **as-achieved** — superseded by the measured System **0.965 ms** / mimalloc **0.709 ms** @ 1,000 entities; `CLAIMS_REGISTRY.md#frame-time-1000-entities`) is **deliberately excluded** from the closed-vocabulary lint, per the D.3.0 ratification (Option A).
+
+**Why (it fails the closed-set test).** Unlike coverage/miri — whose superseded values (`59.3`, `94.57`, `977`) never legitimately recur except as a dated/superseded record — the string `2.70 ms` is, in the live corpus, *simultaneously*:
+
+1. the **sanctioned reframing** ("2.70 ms was the Week-8 *target*"), which must keep the string (≈10 sites: README, render README, gh-pages ×3, docs/src/README, MASTER_ROADMAP ×3, MASTER_BENCHMARK ×3);
+2. a **labeled target** (`gh-pages/benchmarks.md`);
+3. a **dated achievement record** (Week-8 sprint rows across `docs/lessons/**`, `docs/audits/**`);
+4. a **false positive** (Vec3-lerp `2.70 ns`, deserialize `2.70 ms` in `.bak`, `num_batch 2700ms`);
+5. genuine **present-tense poison**.
+
+A pure string match cannot separate (5) from (1)–(3). Listing it would either need ~30+ allowlist keys (mostly in dated docs → low signal) or chronically false-positive, eroding the warn→enforce credibility. So frame-time is **human-review-only**, not lint-enforced.
+
+**Baseline already established.** The present-tense frame-time survivors were one-time-corrected in D.3.1: `.zencoder/rules/repo.md:84` and `docs/lessons/WHAT_DIDNT.md:21` (the bare "**Current**:" claim). Dated Week-8 records (e.g. `docs/lessons/PERFORMANCE_PATTERNS.md` "Current Status (Week 8)" block at :62–73) were left byte-identical per the per-row principle (correcting a dated record falsifies history).
+
+**Documented alternative (Option B, not adopted).** A standing frame-time guard is possible via a *same-line-context* rule — flag `2.70 ms`/`2.7 ms`/`2.70ms` only on lines lacking `target`/`Week 8`/`Week-8` — at the cost of ~12 allowlist keys for the dated audits/lessons that assert it present-tense without those words. Revisit only if a frame-time regression recurs.
+
+---
+
 ## Revision history
 
 | Version | Date | Change |
 |---|---|---|
 | 0.1 (D.1.B) | 2026-06-13 | Created. Vocab A (poison) + Vocab B (superlative) sets seeded from the registry Retired table + D.0/D.0.1 dispositions; keep-vs-act rule + exclusion scope defined for D.3 lint consumption. Pre-edit occurrence totals: 501 A + 415 B across 202 files (see occurrences doc). |
+| 0.2 (D.3.1) | 2026-06-29 | **New poison generation + machine-readable markers.** Added the D.2.B/Path-B.2 measured-metric poison to Vocab A: coverage `59.3`/`59.3%` + `94.57`/`94.57%` (→ 57.35% whole-workspace) and miri `977` (→ 1,059). Added the **Frame-time carve-out** (ratified Option A — `2.70 ms`/`370 FPS` deliberately NOT linted; human-review-only; present-tense survivors one-time-corrected). Wrapped Vocab A / Vocab B in `<!-- VOCAB-A/B-START/END -->` markers (and the allowlist table in `<!-- ALLOWLIST-START/END -->`) so the D.3.2 lint reads this spec as its single source of truth. Companion allowlist additions: 14 keys (supersession-context / version-comparison / debunking-context / dated-record / report-description). Authority: `D3_0_RECON.md`. |

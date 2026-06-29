@@ -1,6 +1,6 @@
 # AstraWeave Architecture Map
 
-> **Generated**: 2026-05-07 | **Last reconciled**: 2026-06-10 | **Version**: 0.7.2 | **Rust**: 1.89.0
+> **Generated**: 2026-05-07 | **Last reconciled**: 2026-06-29 | **Version**: 0.7.4 | **Rust**: 1.89.0
 > Living document — used by all agents as the primary architectural reference.
 > **0.7.2 update (2026-06-10)**: Engine-health-audit reconciliation — workspace member count corrected 143 → **130** (root Cargo.toml members verified identical to `cargo metadata --no-deps`); `astraweave-camera` (Unified Camera C.2, `52b9e711c`, 2026-05-18) added to §1/§2.1 and to `astraweave-render`'s dep row; examples count corrected to 59; §0 editor/render trace rows updated for Multi-Tool Sub-phase 3/4 closeouts (SP5 in flight) and Render Parity P.1–P.7 closure.
 > **0.7.1 update (2026-06-10)**: Net-Trio-Remediation reconciliation — the standalone-trio HMAC-vs-XOR signature mismatch is RESOLVED (canonical HMAC-SHA256 signing enforced end-to-end, kick-by-default). Updated the net_ecs subsystem row (§0), the known-issues silent-failure row (§4.3), the documentation-hazards row (§7.2), the §8.8 network data-flow diagram, and §14 open-question 17. See `net_ecs.md` §6/§7 and `docs/audits/net_trio_signature_remediation_findings_2026-06.md`.
@@ -20,7 +20,7 @@
 | Net (snapshot-based server) | [`net.md`](net.md) | Active; 2D grid `IVec2` model; JSON over WebSocket; coexists with `astraweave-net-ecs` (different model entirely) |
 | Net-ECS + standalone matchmaking | [`net_ecs.md`](net_ecs.md) | Standalone server/client production-style; ECS Plugin layer **dormant** (zero production consumers despite declared dep); the former HMAC-vs-XOR sig mismatch is **RESOLVED** — HMAC-SHA256 signing now enforced end-to-end, kick-by-default (Net-Trio-Remediation; `net_ecs.md` §6/§7) |
 | Input | [`input.md`](input.md) | Pure facade over winit + gilrs; declared by `astraweave-gameplay` and `astraweave-ui` but neither imports the crate; editor reinvents the entire input domain in a 2,511-LoC panel that doesn't drain its action queue |
-| Fluids | [`fluids.md`](fluids.md) | **Dormant for runtime engine.** 84.5K LoC; only `examples/fluids_demo` consumes it; three real parallel solver/manager surfaces (`FluidSystem` / `PcisphSystem` / `WaterEffectsManager`; `UnifiedSolver` was deleted with `unified_solver.rs`, `ResearchFluidSystem` was never a type) |
+| Fluids | [`fluids.md`](fluids.md) | **Dormant/deprecated for runtime engine (post-W.1).** ~24.2K LoC after W.1 (2026-06-20) removed the SPH/voxel solver + `simd_ops.rs` (−58.8K LoC); only `examples/` consume it. Now the deprecated PBD remnant + retained F.4 GPU-particle accent substrate (`FluidSystem` / `WaterEffectsManager`; `PcisphSystem`/`UnifiedSolver`/`ResearchFluidSystem` absent). The live water system is the view-side successor — [`water.md`](water.md) |
 | ECS substrate + Math/Core/SDK | [`ecs_math_core_sdk_foundation.md`](ecs_math_core_sdk_foundation.md) | Active foundation; **two `World` types** and **two `Entity` types** coexist (legacy `core::World` bridged into ECS via `build_app`); `ParallelSchedule` removed 2026-04-18 |
 | Audio | [`audio.md`](audio.md) | Active rodio facade; **5 buses** (not 4 per stale lib.rs docstring); not an ECS Resource (rodio chain is `!Send`); 10+ editor panel knobs are no-op forward-design |
 | Animation System | [`animation.md`](animation.md) | Phase 2 Task 5 complete; **four parallel type families** (`render::Skeleton`/`asset::Skeleton`/`scene::CSkeleton`/`editor::GltfSkeleton`) — no shared types, no `From` impls; `MAX_JOINTS = 256` hard-coded in two places; CubicSpline falls back to Linear/Slerp |
@@ -237,10 +237,10 @@ There are no dependency cycles in the workspace graph as of 2026-05-13. The "rev
 - **Reconciliation note (v0.7.0)**: `PhysicsWorld` is `Send + Sync` (auto-derived; compile-time-proven by `astraweave-scripting/src/lib.rs:148, 336, 453, 506` using `World::get_resource<PhysicsWorld>` which requires `Send + Sync`). The prior trace claim "Send but NOT Sync" was wrong. See `physics.md` §8 Invariant 18.
 
 **astraweave-fluids**
-- 35 source files (~84.5K LoC), 8 WGSL shaders. Largest single file: `simd_ops.rs` at 39,554 LoC; second: `editor.rs` at 5,823 LoC.
-- Three real parallel solver/manager surfaces (**not unified**): `FluidSystem` (lib.rs PBD GPU pipeline), `PcisphSystem` (standalone PCISPH, module-only), `WaterEffectsManager` (visual coordinator). (`UnifiedSolver` was deleted with `unified_solver.rs`; `ResearchFluidSystem` was never a type — `research.rs` is a wgpu-free config/particle module.)
+- 19 source files (~24.2K LoC) after W.1 (2026-06-20) removed the SPH/voxel solver + `simd_ops.rs` (−58.8K LoC). Largest single file now: `editor.rs` at 5,823 LoC; second: `lib.rs` at 4,068 LoC. (`simd_ops.rs` — formerly 39,554 LoC — deleted in W.1.)
+- Post-W.1, the SPH/voxel solver is removed; the remaining surfaces are `FluidSystem` (lib.rs PBD remnant) and `WaterEffectsManager` (visual coordinator). `PcisphSystem` (formerly standalone PCISPH) and `simd_ops.rs` were deleted in W.1 (2026-06-20); `UnifiedSolver` was deleted earlier with `unified_solver.rs`; `ResearchFluidSystem` was never a type — `research.rs` is a wgpu-free config/particle module.
 - Types: `WaterBuildingManager`, `WaterEffectsManager`, `CausticsSystem`, `WaterQualityPreset` (Low/Medium/High/Ultra/Custom)
-- **Reconciliation note (v0.7.0 — runtime dormancy)**: `fluids.md` §1 verified 2026-05-12: the **only** workspace consumer of `astraweave-fluids` outside the crate itself is `examples/fluids_demo/src/main.rs:18-21`. **No production game-loop crate** (`astraweave-render`, `astraweave-gameplay`, `astraweave-physics`, `astraweave-scene`, `astraweave-terrain`, `astraweave-ecs`) depends on `astraweave-fluids`. The audit doc `docs/current/FLUIDS_RESEARCH_GRADE_ENHANCEMENT_PLAN.md` rates current state at "Grade B (Good for games, insufficient for research)." This is the single largest dormant-code reservoir in the workspace at ~84.5K LoC.
+- **Reconciliation note (v0.7.0 — runtime dormancy)**: `fluids.md` §1 verified 2026-05-12: the **only** workspace consumer of `astraweave-fluids` outside the crate itself is `examples/fluids_demo/src/main.rs:18-21`. **No production game-loop crate** (`astraweave-render`, `astraweave-gameplay`, `astraweave-physics`, `astraweave-scene`, `astraweave-terrain`, `astraweave-ecs`) depends on `astraweave-fluids`. The audit doc `docs/current/FLUIDS_RESEARCH_GRADE_ENHANCEMENT_PLAN.md` rates current state at "Grade B (Good for games, insufficient for research)." This was the single largest dormant-code reservoir in the workspace at ~84.5K LoC at v0.7.0; W.1 (2026-06-20) cut it to ~24.2K LoC by removing the SPH/voxel solver.
 - **Reconciliation note (v0.7.0 — `editor.rs` not wired)**: The 5,823-LoC `editor.rs` is forward-design infrastructure. Verified 2026-05-12: `tools/aw_editor/Cargo.toml` does not declare `astraweave-fluids` as a dependency; workspace grep for `use astraweave_fluids` inside `tools/aw_editor` returns zero matches. See `fluids.md` §5 file map editor.rs row.
 - **Reconciliation note (v0.7.0 — no `forbid(unsafe_code)`)**: Unlike sibling engine crates, `astraweave-fluids/src/lib.rs:1` does NOT declare `#![forbid(unsafe_code)]`. Only two unsafe occurrences crate-wide: `unsafe impl bytemuck::Pod for DebugVertex {}` + `unsafe impl bytemuck::Zeroable for DebugVertex {}` at `debug_viz.rs:479-480`. No `unsafe { ... }` blocks.
 
@@ -369,7 +369,7 @@ Reconciled from per-subsystem trace §11 / §13 sections. Each entry: subsystem,
 
 | Subsystem | LoC | Evidence | Source trace |
 |---|---|---|---|
-| **Fluids (entire crate)** | ~84.5K | `examples/fluids_demo` is the ONLY workspace consumer. No game-loop crate depends on `astraweave-fluids`. | `fluids.md` §1, §11 |
+| **Fluids (entire crate)** | ~24.2K (post-W.1; was ~84.5K) | `examples/` are the only workspace consumers; the SPH/voxel solver was removed in W.1 (2026-06-20). No game-loop crate depends on `astraweave-fluids`. | `fluids.md` §1, §11 |
 | **Memory pipeline (main)** | ~11K | Zero in-engine production consumers in `astraweave-ai`, `astraweave-behavior`, `astraweave-render`. Only `astraweave-persona` uses the legacy `persona::*` types. | `ai_pipeline.md` §13.1, §11 |
 | **Coordination crate** | ~5.3K | Zero workspace consumers (no examples, no tools, no game-loop crates). Explicit `#[allow(dead_code)]` "reserved for future..." markers on 7+ struct/field locations. Three commented-out `pub mod` declarations whose source files never existed. | `ai_pipeline.md` §13.5, §6 |
 | **Advanced GOAP** | ~16.7K | 22 files, feature `planner_advanced`. Zero production constructors outside tests + benches + three disabled CLI bins (`bin.disabled/{analyze-plan,validate-goals,visualize-plan}.rs`). | `ai_pipeline.md` §13.6, §11 |
@@ -798,7 +798,7 @@ Frame Start
 
 | Tier | Crates | Status |
 |------|--------|--------|
-| **Formally Verified** | ecs, math, core, sdk | Miri (977 tests, 0 UB) + Kani proofs |
+| **Formally Verified** | ecs, math, core, sdk | Miri (1,059 tests, 0 UB) + Kani proofs |
 | **A+ Grade** | fluids (2,404 tests / 600+ inline + integration suite) | Benchmark caliber — but the crate is **dormant in production** (`fluids.md` §11) |
 | **A Grade** | physics (110+ in core, 20 integration files, 10 benches), environment (55+), net (377), persistence-ecs+aw-save combined (179), audio (~80 inline + 14 integration files / 7,063 LoC) | Strong coverage |
 | **B+ Grade** | vehicle (50+), gravity (30+), animation (13+29 inline + 5 dedicated integration files / 1,921 LoC + Wave 2) | Good, missing edge cases |
@@ -924,7 +924,7 @@ These are decisional questions that cross subsystem boundaries or affect the bro
 
 11. **Memory subsystem dormancy — production-wire, prune, or rebrand?** ~11K LoC; zero in-engine production consumers. `ai_pipeline.md` §11, §13.1.
 
-12. **Fluids subsystem dormancy — when (and via which solver) does it become a runtime engine system?** ~84.5K LoC; only `examples/fluids_demo` consumes it. Five parallel solver/manager surfaces. `fluids.md` §11.
+12. **Fluids subsystem dormancy — superseded by the view-side water successor (W.1/W.2, 2026-06-20).** W.1 removed the SPH/voxel solver (−58.8K LoC); the crate is now ~24.2K LoC (deprecated PBD remnant + F.4 accent substrate). The live water system is `astraweave-water` + render `water.rs` (see `water.md`). Remaining question: prune or rebrand the deprecated remnant. `fluids.md` §11.
 
 13. **Four parallel `Skeleton`/`Joint`/`Transform`/`AnimationClip` type families — unify into a shared `astraweave-animation` crate?** `animation.md` §11.
 
@@ -951,6 +951,14 @@ These are decisional questions that cross subsystem boundaries or affect the bro
 ---
 
 ## Revision History
+
+### v0.7.4 (2026-06-29)
+D.2.B-Prop-Final miri-count propagation (doc-truth campaign): the §"Formally Verified" tier row corrected **Miri 977 → 1,059** (current count, per `CLAIMS_REGISTRY.md` `miri-tests` VERIFIED-AT-HEAD; supersedes the stale-low 977). Single factual sync; no other content changed.
+
+### v0.7.3 (2026-06-25)
+D.2.A.1 W.1-contamination correction (doc-truth campaign), driven by `docs/campaigns/doc-truth/D_RESUME_0_RECON.md`:
+- **astraweave-fluids fluids surfaces** (§0 trace row, §5 source-file/solver bullets + dormant-LoC table, §11 open-question 12): W.1 (2026-06-20, `1a57fdd41`) deleted the SPH/voxel solver + `simd_ops.rs` (−58.8K LoC). Corrected from "84.5K LoC / 35 files / `simd_ops.rs` 39,554 / `PcisphSystem` / five solver surfaces" to **~24.2K LoC / 19 files / `FluidSystem` + `WaterEffectsManager` only** (`PcisphSystem`/`UnifiedSolver`/`ResearchFluidSystem` absent) — the deprecated PBD remnant + F.4 GPU-particle accent substrate. The live water system is the view-side successor (`astraweave-water` + render `water.rs`); see `water.md`.
+- Present-tense corrections of deleted code on the canonical cross-crate map; registry source-of-truth is `CLAIMS_REGISTRY.md` (`fluids-loc` / `water-facade-loc` / `water-surface-loc` / `water-system`). These were the only broad docs W.2 Phase 2 left fully contaminated.
 
 ### v0.7.2 (2026-06-10)
 Engine-health-audit reconciliation pass (doc-only), driven by the 2026-06-10 full workspace audit:

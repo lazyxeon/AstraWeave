@@ -5,21 +5,20 @@
 //!   - validate_material_pack (all 6 error branches + happy paths)
 //!   - validate_array_layout (duplicate indices, gaps, happy path)
 //!   - MaterialLoadStats::concise_summary (format token verification)
-//!   - BloomConfig (default + validate boundary tests)
+//!   - (BloomConfig placeholder tests removed — superseded by the real PBR `bloom::BloomConfig`)
 //!   - TaaConfig, MotionBlurConfig, DofConfig, ColorGradingConfig (defaults)
 //!   - TextureStreamingManager (budget, request, stats, eviction)
 
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-use astraweave_render::advanced_post::{
+use astraweave_render::{
     ColorGradingConfig, DofConfig, MotionBlurConfig, TaaConfig,
 };
 use astraweave_render::material::{
     validate_array_layout, validate_material_pack, ArrayLayout, MaterialGpu, MaterialLayerDesc,
     MaterialLoadStats, MaterialPackDesc,
 };
-use astraweave_render::post::BloomConfig;
 use astraweave_render::texture_streaming::TextureStreamingManager;
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -660,142 +659,6 @@ fn concise_summary_all_fields_in_order() {
     assert!(pos_albedo < pos_normal, "albedo before normal");
     assert!(pos_normal < pos_mra, "normal before mra");
     assert!(pos_mra < pos_gpu, "mra before gpu");
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-//  BloomConfig
-// ═══════════════════════════════════════════════════════════════════════════════
-
-#[test]
-fn bloom_config_default_threshold() {
-    let c = BloomConfig::default();
-    assert!((c.threshold - 1.0).abs() < 1e-6);
-}
-
-#[test]
-fn bloom_config_default_intensity() {
-    let c = BloomConfig::default();
-    assert!((c.intensity - 0.05).abs() < 1e-6);
-}
-
-#[test]
-fn bloom_config_default_mip_count() {
-    let c = BloomConfig::default();
-    assert_eq!(c.mip_count, 5);
-}
-
-#[test]
-fn bloom_config_default_validates() {
-    let c = BloomConfig::default();
-    assert!(c.validate().is_ok());
-}
-
-#[test]
-fn bloom_config_threshold_below_range_fails() {
-    let c = BloomConfig {
-        threshold: -0.1,
-        ..Default::default()
-    };
-    assert!(c.validate().is_err());
-}
-
-#[test]
-fn bloom_config_threshold_above_range_fails() {
-    let c = BloomConfig {
-        threshold: 10.1,
-        ..Default::default()
-    };
-    assert!(c.validate().is_err());
-}
-
-#[test]
-fn bloom_config_threshold_at_zero_passes() {
-    let c = BloomConfig {
-        threshold: 0.0,
-        ..Default::default()
-    };
-    assert!(c.validate().is_ok());
-}
-
-#[test]
-fn bloom_config_threshold_at_ten_passes() {
-    let c = BloomConfig {
-        threshold: 10.0,
-        ..Default::default()
-    };
-    assert!(c.validate().is_ok());
-}
-
-#[test]
-fn bloom_config_intensity_below_range_fails() {
-    let c = BloomConfig {
-        intensity: -0.01,
-        ..Default::default()
-    };
-    assert!(c.validate().is_err());
-}
-
-#[test]
-fn bloom_config_intensity_above_range_fails() {
-    let c = BloomConfig {
-        intensity: 1.01,
-        ..Default::default()
-    };
-    assert!(c.validate().is_err());
-}
-
-#[test]
-fn bloom_config_intensity_at_zero_passes() {
-    let c = BloomConfig {
-        intensity: 0.0,
-        ..Default::default()
-    };
-    assert!(c.validate().is_ok());
-}
-
-#[test]
-fn bloom_config_intensity_at_one_passes() {
-    let c = BloomConfig {
-        intensity: 1.0,
-        ..Default::default()
-    };
-    assert!(c.validate().is_ok());
-}
-
-#[test]
-fn bloom_config_mip_count_zero_fails() {
-    let c = BloomConfig {
-        mip_count: 0,
-        ..Default::default()
-    };
-    assert!(c.validate().is_err());
-}
-
-#[test]
-fn bloom_config_mip_count_nine_fails() {
-    let c = BloomConfig {
-        mip_count: 9,
-        ..Default::default()
-    };
-    assert!(c.validate().is_err());
-}
-
-#[test]
-fn bloom_config_mip_count_one_passes() {
-    let c = BloomConfig {
-        mip_count: 1,
-        ..Default::default()
-    };
-    assert!(c.validate().is_ok());
-}
-
-#[test]
-fn bloom_config_mip_count_eight_passes() {
-    let c = BloomConfig {
-        mip_count: 8,
-        ..Default::default()
-    };
-    assert!(c.validate().is_ok());
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

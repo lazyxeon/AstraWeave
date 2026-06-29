@@ -2,7 +2,7 @@
 //!
 //! Targets pure CPU functions with golden values for mutation killing.
 
-use astraweave_render::advanced_post::{
+use astraweave_render::{
     ColorGradingConfig, DofConfig, MotionBlurConfig, TaaConfig,
 };
 use astraweave_render::biome_material::{BiomeMaterialConfig, BiomeMaterialSystem};

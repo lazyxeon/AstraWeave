@@ -35,6 +35,7 @@ async fn test_mesh_registry_pruning() {
     let cpu_mesh = CpuMesh {
         vertices: vec![MeshVertex::new(Vec3::ZERO, Vec3::Y, Vec4::ONE, Vec2::ZERO)],
         indices: vec![0, 0, 0],
+        ..Default::default()
     };
     let key = MeshKey("test_mesh".to_string());
 

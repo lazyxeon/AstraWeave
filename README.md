@@ -49,14 +49,14 @@ Built in Rust, designed for massive-scale intelligent worlds.
      --no-deps 2026-06-10 = 130 (astraweave-camera added 2026-05-18, 52b9e711c).
      Editor count: 9,425 annotations (4,103 inline + 5,322 in tests/), live count
      2026-06-10, supersedes aw_editor.md §10's ~9,397 of 2026-05-12. -->
-**🏆 Production-Grade Quality**: AstraWeave has **~39,000+ test annotations** across **~51 production crates** (130 workspace members via `cargo metadata`) with **59.3% weighted coverage** — 14 crates at 85%+ including ECS (96.39%), Physics (94.38%), and Nav (93.11%). The full 130-member workspace compiles with **zero errors** (`cargo check --workspace`, verified 2026-06-10). All unsafe code is **Miri-validated** and **Kani-verified**. The editor has undergone a **37-fix behavioral correctness audit** with a unified rendering pipeline now protected by a bit-identical editor↔engine parity harness.
+**🏆 Production-Grade Quality**: AstraWeave has **~39,000+ test annotations** across **~51 production crates** (130 workspace members via `cargo metadata`) with **57.35% whole-workspace line coverage** (`cargo llvm-cov --workspace`, measured 2026-06-29; well-covered core crates such as ECS, Physics, and Nav exceed 85%). The full 130-member workspace compiles with **zero errors** (`cargo check --workspace`, verified 2026-06-10). All unsafe code is **Miri-validated** and **Kani-verified**. The editor has undergone a **37-fix behavioral correctness audit** with a unified rendering pipeline now protected by a bit-identical editor↔engine parity harness.
 
 | Metric | Status | Details |
 |--------|--------|---------|
 | **Build Health** | ✅ **0 errors, 130/130 members** | `cargo check --workspace` clean (2026-06-10); former known-build-issue crates (rhai authoring, egui demos, astraweave-llm) all compile |
-| **Coverage** | ✅ **59.3% weighted** (P0: 55.4%, P1: 58.9%, P2: 73.9%) | **29 crates measured** via `cargo llvm-cov` (last full measurement 2026-02-25) |
+| **Coverage** | ✅ **57.35% whole-workspace line** | `cargo llvm-cov --workspace` across 130 members (measured 2026-06-29, Path-B.2 — supersedes the prior 29-crate-subset 59.3%) |
 | **Tests** | ✅ **~39,000+ annotations** | Core: 959, ECS: 728, Editor: 9,425 annotations, Render: 4,272+, Physics: 1,884, Net trio: 104 (all green 2026-06-10) |
-| **Memory Safety** | ✅ **Miri-Validated** | 977 tests, **0 undefined behavior** across 4 crates |
+| **Memory Safety** | ✅ **Miri-Validated** | 1,059 tests, **0 undefined behavior** across 4 crates |
 | **Formal Verification** | ✅ **Kani-Verified** | 71+ proof harnesses across safety-critical crates |
 | **Behavioral Correctness** | ✅ **37 fixes applied** | 8-phase audit: visual math, data pipeline, undo system, silent failures |
 | **Mutation Testing** | ✅ **~2,928 tests, 4 waves** | Wave 1: 767 manual + Wave 2: 1,261 automated + Wave 3: 489 targeted + Wave 4: 411 fluids; 100% kill rate on prompts (792 mutants) |
@@ -76,11 +76,11 @@ Built in Rust, designed for massive-scale intelligent worlds.
      §5 Dormant-Code Inventory; §7 Documentation Hazards. -->
 > **What changed (May 2026)?** The **architecture trace campaign** completed 13 per-subsystem traces under `docs/architecture/` (terrain materials, render pipeline, physics, persistence-ECS, networking ×2, input, fluids, ECS/math/core/SDK foundation, audio, animation, AI pipeline, aw_editor). The [Architecture Map](docs/architecture/ARCHITECTURE_MAP.md) was reconciled to v0.7.0 against those traces, and the [Interactive Workspace Map](https://lazyxeon.github.io/AstraWeave/architecture/) was deployed. Specific documentation hazards were surfaced and corrected: Fluids reclassified as research surface (no production game-loop dep), the runtime LLM default drift from Qwen to `phi3:medium` was identified and later replaced with `qwen3.5:4b`, dual `World` coexistence (legacy `core::World` + ECS substrate) documented, four parallel animation type families catalogued, and the §7.7 wrapped-component resource identity trap promoted to a workspace-wide structural axiom.
 >
-> **Why 59.3%?** The v5.0 methodology uses `cargo llvm-cov --lib --summary-only` which instruments all compiled code including inlined dependency generics. Large GPU-only and async code paths (rendering, terrain, audio) are untestable in headless mode. See [MASTER_COVERAGE_REPORT](docs/current/MASTER_COVERAGE_REPORT.md) for full analysis.
+> **Why 57.35%?** The whole-workspace measurement (`cargo llvm-cov --workspace`) counts all ~51 production + bin/tool crate source — including large GPU-only and async code paths (rendering, terrain, audio) that are hard to exercise in headless mode. It supersedes the earlier 59.3%, which measured only a 29-crate curated subset (a higher number because it excluded the lower-coverage crates — a denominator change, not a regression). See [MASTER_COVERAGE_REPORT](docs/current/MASTER_COVERAGE_REPORT.md) for full analysis.
 >
 > **What changed (April 2026)?** The editor underwent a comprehensive [Behavioral Correctness Audit](docs/current/EDITOR_BEHAVIORAL_CORRECTNESS_AUDIT.md): 37 fixes across 48 commits addressing shader math (GGX NDF, Fresnel energy conservation, multi-scatter compensation), undo system completion (all 9 operations now undoable), silent failure resolution (60 patterns identified, critical ones fixed), and a [7-phase architectural refactor](docs/current/FIX27_UNIFIED_PIPELINE_CAMPAIGN.md) that eliminated the dual rendering pipeline (-4,669 LOC). Health grade upgraded from B+ to A- reflecting the correctness improvements.
 
-**Miri Validated**: astraweave-ecs (386 tests), astraweave-math (109 tests), astraweave-core (465→516 tests), astraweave-sdk (17 tests) — **ZERO undefined behavior** | [MIRI_VALIDATION_REPORT](docs/current/MIRI_VALIDATION_REPORT.md)
+**Miri Validated**: astraweave-ecs (419 tests), astraweave-math (109 tests), astraweave-core (503 tests), astraweave-sdk (28 tests) = **1,059** — **ZERO undefined behavior** | [MIRI_VALIDATION_REPORT](docs/current/MIRI_VALIDATION_REPORT.md)
 
 **Unsafe Code Validated**: BlobVec, SparseSet, EntityAllocator, SIMD intrinsics (SSE2), C ABI FFI functions — all memory-safe ✅
 
@@ -175,7 +175,7 @@ flowchart TB
 **8-Stage Deterministic ECS Pipeline** (executed in canonical order, single-threaded per tick):
 1. `PRE_SIMULATION` → 2. `PERCEPTION` → 3. `SIMULATION` → 4. `SYNC` (ECS ↔ legacy `core::World`) → 5. `AI_PLANNING` → 6. `PHYSICS` → 7. `POST_SIMULATION` → 8. `PRESENTATION`
 
-Systems within a stage execute in registration order; stages execute in the order above. `ParallelSchedule` was removed 2026-04-18 (see [`docs/audits/parallel_schedule_removal_2026-04-18.md`](docs/audits/parallel_schedule_removal_2026-04-18.md)); parallelism lives at the subsystem level (rayon for terrain meshing and SPH; tokio for I/O and LLM inference; GPU compute for rendering).
+Systems within a stage execute in registration order; stages execute in the order above. `ParallelSchedule` was removed 2026-04-18 (see [`docs/audits/parallel_schedule_removal_2026-04-18.md`](docs/audits/parallel_schedule_removal_2026-04-18.md)); parallelism lives at the subsystem level (rayon for terrain meshing; tokio for I/O and LLM inference; GPU compute for rendering).
 
 ---
 <div align="center">
@@ -204,9 +204,9 @@ Systems within a stage execute in registration order; stages execute in the orde
 ### ⚙️ Core Engine
   **Deterministic ECS**: Single-threaded archetype scheduler with 100% bit-identical replay validation and **Miri-validated memory safety**. Systems execute in a fixed stage order on one thread per tick; parallelism lives at the subsystem level, not inside the schedule. See [`docs/audits/parallel_schedule_removal_2026-04-18.md`](docs/audits/parallel_schedule_removal_2026-04-18.md) for the rationale behind the single-threaded-ECS choice.
 
-  **Subsystem parallelism**: rayon drives terrain chunk meshing ([`astraweave-terrain`](astraweave-terrain/)) and optional SPH fluid simulation ([`astraweave-fluids`](astraweave-fluids/)); tokio drives async asset streaming, LLM inference, and network I/O. GPU compute handles rendering and shader work. Where the engine spends multi-core budget today is these subsystems — not the ECS tick loop.
+  **Subsystem parallelism**: rayon drives terrain chunk meshing ([`astraweave-terrain`](astraweave-terrain/)); tokio drives async asset streaming, LLM inference, and network I/O. GPU compute handles rendering and shader work. Where the engine spends multi-core budget today is these subsystems — not the ECS tick loop. (The former SPH fluid simulation that also used rayon was removed in the W.1 water-successor deprecation, 2026-06-20.)
 
-  **Memory Safety**: All unsafe code validated with Miri (977 tests, 0 UB).
+  **Memory Safety**: All unsafe code validated with Miri (1,059 tests, 0 UB).
 
   **Sequential throughput**: at 1000 entities on the reference `profiling_demo` workload, sequential ECS median ~1 760 FPS with `fast-alloc` (mimalloc), ~1 200 FPS on the platform default allocator — measured with allocation-counter instrumentation active, across three runs each, per [`docs/audits/schedule_stage_fix_2026-04-18.md`](docs/audits/schedule_stage_fix_2026-04-18.md) §4. Scaling is approximately inverse to entity count (200e ≈ 10 k FPS, 2000e ≈ 940 FPS, 4000e ≈ 449 FPS). These numbers are measurement baselines, not shipping numbers.
 
@@ -262,16 +262,16 @@ Systems within a stage execute in registration order; stages execute in the orde
 | **Scripting** (`astraweave-scripting`) | ⚠️ Alpha | 128 tests (45 lib + 83 integration), functional Rhai integration. Authoring tooling layer (`astraweave-author`, `rhai_authoring`) now compiles clean (former Rhai `Sync` trait errors resolved — verified 2026-06-10). |
 | **UI Framework** | ✅ Production Ready | 751 tests (320 lib + 431 integration), functional coverage. |
 | **LLM Support** | ✅ Production Ready (core) / 🔬 Hardening Layer | 16,776 lines. Core inference pipeline + tool sandbox is production-wired. The ~15K LoC production-hardening surface (rate limiting, circuit breakers, A/B routing, 4-tier fallback) is dormant — Q4 in §14. |
-| **Fluids** | 🔬 Research Surface | 2,560 test markers <!-- Source: CLAIMS_REGISTRY.md#fluids-test-markers -->, PBD fluid simulation with in-crate caustics/foam (no production consumer). **In-design, not production-wired** — only `examples/fluids_demo` consumes the crate; no production game-loop crate depends on `astraweave-fluids`. Three solver/manager surfaces (`FluidSystem` + `PcisphSystem` + `WaterEffectsManager`). Q12 in §14. See [`fluids.md`](docs/architecture/fluids.md). |
+| **Fluids** | 🔬 Research Surface (deprecated sim) | 738 test markers <!-- Source: CLAIMS_REGISTRY.md#fluids-test-markers -->. W.1 (2026-06-20) removed the SPH/voxel solver (−58.8K LoC); the crate is now ~24.2K LoC — the deprecated PBD remnant plus the retained F.4 GPU-particle accent substrate (`FluidSystem` + `WaterEffectsManager`; `PcisphSystem`/`UnifiedSolver` deleted). Only `examples/` consume it; no production game-loop crate depends on `astraweave-fluids`. The live water system is the view-side successor — `astraweave-water` facade + `astraweave-render/src/water.rs`, see [`water.md`](docs/architecture/water.md). Q12 in §14. See [`fluids.md`](docs/architecture/fluids.md). |
 | **Memory / Coordination / RAG** | 🔬 Research Surface | Memory pipeline ~11K, Coordination ~5.3K, RAG composite ~12.3K. Zero in-engine production consumers; HNSW vector index is currently a linear scan. Q11 in §14. |
 | **AI Generation** | 🧪 Orphan Source | `astraweave-ai-gen/` holds 4 loose source files with no `Cargo.toml` and no crate root — not a workspace member, cannot build as-is. See the dormant-code taxonomy in [`ARCHITECTURE_MAP.md`](docs/architecture/ARCHITECTURE_MAP.md) §5. |
 
 ### 🏆 Quality Metrics
 -   **Build Health**: `cargo check --workspace` clean — 130/130 members, 0 errors (verified 2026-06-10)
--   **Test Coverage**: 59.3% weighted via `cargo llvm-cov` (29 crates measured, 14 at 85%+; last full measurement 2026-02-25)
+-   **Test Coverage**: 57.35% whole-workspace line via `cargo llvm-cov --workspace` (130 members; measured 2026-06-29, supersedes the prior 29-crate-subset 59.3%)
 -   **Total Tests**: ~39,000+ test annotations across **130 workspace members** (live count 2026-06-10: 39,973 `#[test]`/`#[tokio::test]` markers; cargo metadata 130 members)
 -   **Mutation Testing**: 4 waves — Wave 1: 767 manual + Wave 2: 1,261 automated + Wave 3: 489 targeted + Wave 4: 411 fluids (100% kill rate on prompts, 792 mutants)
--   **Memory Safety**: Miri-validated (977 tests, 0 undefined behavior across 4 crates)
+-   **Memory Safety**: Miri-validated (1,059 tests, 0 undefined behavior across 4 crates)
 -   **Formal Verification**: Kani-verified (71+ proof harnesses across safety-critical crates)
 -   **Performance**: 60 FPS @ 12,700 agents on reference hardware (HP Pavilion Gaming Laptop — see [benchmark hardware spec](docs/masters/MASTER_BENCHMARK_REPORT.md#benchmark-hardware))
 -   **Security**: A- (92/100) — November 2025 network-security audit (aw-net-server scope); input signing since enforced end-to-end by Net-Trio-Remediation (June 2026)
@@ -324,7 +324,7 @@ AstraWeave is a modular workspace of **~51 production crates** organized into 7 
 -   **`astraweave-physics`**: Rapier3D integration with spatial hash, projectiles, gravity zones, and ragdoll
 -   **`astraweave-nav`**: Navigation mesh with pathfinding and geometric utilities
 -   **`astraweave-terrain`**: Procedural terrain with erosion, biomes, LOD, and async streaming
--   **`astraweave-fluids`**: Position-based dynamics (PBD) fluid sim with caustics, foam, and screen-space rendering
+-   **`astraweave-fluids`**: Deprecated PBD/accent remnant — W.1 (2026-06-20) removed the SPH/voxel sim (−58.8K LoC); retains in-crate caustics/foam + the F.4 GPU-particle accent substrate. Live water is the view-side successor (`astraweave-water` + `astraweave-render/src/water.rs`)
 -   **`astraweave-scene`**: Scene management with world partitioning and GPU resource streaming
 
 ### 🎮 Gameplay Systems (5 crates)
@@ -371,7 +371,7 @@ AstraWeave is an experimental project being built **solo through AI-augmented de
 **Current Development Status:**
 <!-- Source: cargo metadata + live counts 2026-06-10; MASTER_COVERAGE_REPORT v5.3.0;
      EDITOR_MULTI_TOOL_ARCHITECTURE_CAMPAIGN.md; campaign closeout docs under docs/audits/. -->
--   **~51 production crates** across 130 workspace members with 59.3% weighted LLVM coverage (~39,000+ test annotations)
+-   **~51 production crates** across 130 workspace members with 57.35% whole-workspace LLVM line coverage (~39,000+ test annotations)
 -   **Editor**: Active mid-campaign with 9,425 test annotations (Multi-Tool Architecture Sub-phase 5 in flight; Sub-phases 3/4 complete)
 -   **Architecture**: 13 subsystem traces under [`docs/architecture/`](docs/architecture/) + the [Architecture Map](docs/architecture/ARCHITECTURE_MAP.md) (v0.7.2) + the [Interactive Workspace Map](https://lazyxeon.github.io/AstraWeave/architecture/)
 -   **Research surface (in-design, not runtime-wired)**: Fluids, Memory pipeline, Coordination, RAG composite, advanced GOAP, LLM production-hardening — see §5.1 of the architecture map

@@ -2,9 +2,15 @@
 
 Every KEEP occurrence from the closed-vocabulary triage (D.1.C), **updated by D.2.A** (the 58 `production-status-contested` entries resolved by caller-check; the `99.96%`-family resolved as combinatorial/dormant). The D.3 regression lint must honor these. Keyed on **(file + match-string + reason)** to survive line drift. `lifetime`: **permanent** · **pending-D2.B** (a perf/coverage number; re-evaluated when D.2.B measures it).
 
-**266 distinct allowlist keys** covering 587 KEEP occurrences (588 − 1 rewritten by D.2.A: `EDITOR_STATUS_REPORT.md:282`). Re-running the lint with this allowlist applied returns zero un-allowlisted hits.
+**301 distinct allowlist keys** (266 original + 14 added in D.3.1 for the coverage/miri poison generation + 21 added in D.3.2 reconciling the `aw_doc_lint` tool's full-vocab sweep) covering ~670 KEEP occurrences. The D.3.2 keys cleared the legit allowlist-drift the tool surfaced (sibling literal forms + corpus growth since the 2026-06-13 D.1.C baseline; K=63→11). The `aw_doc_lint` tool now reports **K=11 residual un-allowlisted occurrences** — genuine contamination (fluids `2,560` present-tense, `44+ crates`, `industry precedent` superlatives, the fluids.md stale README citation) ratified for correction in **D.3.2b**, NOT blessed here. (588 − 1 rewritten by D.2.A: `EDITOR_STATUS_REPORT.md:282`.)
 
 > **D.2.A update:** the 58 `production-status-contested` entries (formerly pending-D2) are now resolved — 1 REWRITE (editor over-claim) and 57 permanent keeps (historical-dated audit assessments, future-target roadmaps, and genuinely-shipped surfaces: glam math, `perform_attack_sweep`, GPU skinning, Core/ECS). The `99.96%` SpatialHash figure is a **combinatorial ratio** (499,500→180 pairs), machine-independent, describing the *dormant* module — permanent honest-dormancy, not a D.2.B perf row.
+>
+> **D.2.A.1 update (W.1-contamination, 2026-06-25):** the fluids honest-dormancy keys — `ARCHITECTURE_MAP.md`→`ResearchFluidSystem`, and `fluids.md`→`ResearchFluidSystem`/`DFSPH`/`UnifiedSolver` — bless those strings ONLY as deleted/never-existed dormancy-debunking context (post-W.1/F.1), NOT as live-solver sanction. W.1 (2026-06-20) did not newly introduce them (they were already gone at F.1); the keys are RETAINED, but D.3's lint must treat them as honest-dormancy-only so it still flags any prose that re-asserts them as a *live* solver. See `D_RESUME_0_RECON.md` §2a.
+>
+> **D.3.1 update (new poison generation, 2026-06-29):** added 14 keys for the coverage/miri poison minted by D.2.B/Path-B.2 — `59.3%` (supersession-context / dated-revision / version-comparison), `94.57%` (debunking-context / version-comparison), and `977` (dated-record / historical-dated / report-description / supersession-context). These bless the **legitimately superseded / dated / report-describing** occurrences (the corrections that cite the old value, the dated `MIRI_VALIDATION_REPORT.md` record, the master-report dated rows, the report-description index rows, and the two architecture-trace supersession mentions). The two **present-tense** survivors (`KANI_VERIFICATION_PLAN.md:479` 94.57%; `.zencoder/rules/repo.md:84` + `docs/lessons/WHAT_DIDNT.md:21` frame-time) were **corrected**, not allowlisted. Frame-time (`2.70 ms`/`370 FPS`) is **not** poison-listed (carve-out — see `CLOSED_VOCABULARY_LINT.md`). New `reason` categories: `supersession-context`, `version-comparison`, `debunking-context`, `dated-record`, `report-description`. Keys verified against HEAD `135e9915b`. Authority: `D3_0_RECON.md` + `CLAIMS_REGISTRY.md`.
+
+<!-- ALLOWLIST-START -->
 
 | File | Match | Reason | Lifetime |
 |---|---|---|:-:|
@@ -176,7 +182,6 @@ Every KEEP occurrence from the closed-vocabulary triage (D.1.C), **updated by D.
 | `docs/architecture/fluids.md` | `ResearchFluidSystem` | honest-dormancy | permanent |
 | `docs/architecture/fluids.md` | `DFSPH` | honest-dormancy | permanent |
 | `docs/architecture/fluids.md` | `UnifiedSolver` | honest-dormancy | permanent |
-| `docs/architecture/fluids.md` | `world-class` | honest-dormancy | permanent |
 | `docs/architecture/net.md` | `QUIC` | honest-dormancy | permanent |
 | `docs/architecture/net_ecs.md` | `production-grade` | honest-dormancy | permanent |
 | `docs/architecture/net_ecs.md` | `production-ready` | honest-dormancy | permanent |
@@ -272,7 +277,46 @@ Every KEEP occurrence from the closed-vocabulary triage (D.1.C), **updated by D.
 | `docs/current/FLUIDS_RESEARCH_GRADE_ENHANCEMENT_PLAN.md` | `DFSPH` | subject-doc-roadmap | permanent |
 | `docs/current/FLUIDS_RESEARCH_GRADE_ENHANCEMENT_PLAN.md` | `IISPH` | subject-doc-roadmap | permanent |
 | `docs/reference/RENDERING_SOTA_REFERENCE.md` | `production-ready` | technical-reference | permanent |
-| `docs/audits/terrain_scale_diagnostic_2026-04-24.md` | `3-6` | terrain-measurement | permanent |
+| `docs/audits/terrain_scale_diagnostic_2026-04-24.md` | `3-6×` | terrain-measurement | permanent |
 | `docs/current/WORLD_CLASS_EDITOR_BENCHMARK_RESEARCH.md` | `production-ready` | tier-definition | permanent |
+<!-- D.3.1 additions — the coverage/miri poison generation (59.3/94.57/977) minted by D.2.B/Path-B.2. Keys verified against HEAD 135e9915b. See D3_0_RECON.md §Deliverable 1. -->
+| `README.md` | `59.3%` | supersession-context | permanent |
+| `docs/masters/MASTER_ROADMAP.md` | `59.3%` | supersession-context + dated-revision | permanent |
+| `docs/current/MASTER_COVERAGE_REPORT.md` | `59.3%` | supersession-context + version-comparison | permanent |
+| `docs/current/MASTER_COVERAGE_REPORT.md` | `94.57%` | debunking-context + version-comparison | permanent |
+| `docs/current/MIRI_VALIDATION_REPORT.md` | `977` | dated-record | permanent |
+| `docs/masters/MASTER_ROADMAP.md` | `977` | historical-dated | permanent |
+| `docs/current/MASTER_COVERAGE_REPORT.md` | `977` | historical-dated | permanent |
+| `docs/current/PROJECT_STATUS.md` | `977` | historical-dated | permanent |
+| `docs/current/DOCUMENTATION_INDEX.md` | `977` | report-description | permanent |
+| `.github/copilot-instructions.md` | `977` | report-description | permanent |
+| `CLAUDE.md` | `977` | report-description | permanent |
+| `docs/current/CLAUDE_MD_HARDENING_PROPOSAL.md` | `977` | report-description | permanent |
+| `docs/architecture/ARCHITECTURE_MAP.md` | `977` | supersession-context | permanent |
+| `docs/architecture/ecs_math_core_sdk_foundation.md` | `977` | dated-record | permanent |
+<!-- D.3.2 additions — full-vocab K=0 reconciliation: legit occurrences the aw_doc_lint tool surfaced (allowlist drift since the 2026-06-13 D.1.C baseline — sibling literal forms + corpus growth in fluids/water-successor/qwen docs). Keys verified against HEAD. See the D.3.2 report. (Genuine residual contamination — fluids `2,560` present-tense, `44+ crates`, `industry precedent` superlatives — is NOT keyed here; it is reported for correction, not blessed.) -->
+| `docs/architecture/fluids.md` | `IISPH` | honest-dormancy | permanent |
+| `docs/architecture/ARCHITECTURE_MAP.md` | `UnifiedSolver` | honest-dormancy | permanent |
+| `docs/architecture/ARCHITECTURE_MAP.md` | `quinn` | honest-dormancy | permanent |
+| `docs/architecture/net.md` | `quinn` | honest-dormancy | permanent |
+| `docs/architecture/ai_pipeline.md` | `qwen3:8b` | honest-dormancy | permanent |
+| `docs/campaigns/fluids-integration/F0_GROUND_TRUTH_AUDIT.md` | `IISPH` | honest-dormancy | permanent |
+| `docs/campaigns/fluids-integration/F1_EXECUTION_REPORT.md` | `DFSPH` | honest-dormancy | permanent |
+| `docs/campaigns/fluids-integration/F1_EXECUTION_REPORT.md` | `IISPH` | honest-dormancy | permanent |
+| `docs/campaigns/water-successor/W2_0_RECON.md` | `DFSPH` | honest-dormancy | permanent |
+| `docs/campaigns/water-successor/W2_0_RECON.md` | `IISPH` | honest-dormancy | permanent |
+| `docs/current/FLUIDS_MUTATION_TESTING_REPORT.md` | `IISPH` | honest-dormancy | permanent |
+| `README.md` | `UnifiedSolver` | honest-dormancy | permanent |
+| `docs/current/QWEN3_LATENCY_OPTIMIZATION_REPORT.md` | `qwen3:8b` | subject-doc | permanent |
+| `docs/masters/MASTER_BENCHMARK_REPORT.md` | `qwen3:8b` | benchmark/api-subject | permanent |
+| `docs/current/QWEN3_MIGRATION_PLAN.md` | `test-all` | make-target | permanent |
+| `docs/lessons/WHAT_DIDNT.md` | `hermes2pro` | honest-dormancy | permanent |
+| `docs/current/GAME_ENGINE_READINESS_ROADMAP.md` | `quinn` | competitor-cited | permanent |
+| `docs/current/WORLD_CLASS_EDITOR_DELIVERY_PLAN.md` | `production-grade` | future-target | permanent |
+| `docs/current/MUTATION_TESTING_AUDIT.md` | `59 library crates` | historical-audit-denominator | permanent |
+| `docs/current/RENDERING_AUDIT_REPORT.md` | `55 crates` | historical-audit-denominator | permanent |
+| `docs/current/RENDERING_UPGRADE_PLAN.md` | `55 crates` | historical-audit-denominator | permanent |
+
+<!-- ALLOWLIST-END -->
 
 *Full per-line evidence in [`CLOSED_VOCABULARY_TRIAGE.md`](CLOSED_VOCABULARY_TRIAGE.md). pending-D2.B entries are listed in `D2A_EXECUTION_REPORT.md` §PENDING-D2.B.*

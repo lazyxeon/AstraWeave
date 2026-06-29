@@ -1,0 +1,53 @@
+name: Doc-Truth Lint
+
+# Closed-vocabulary prose guard for the Documentation-Truth (D-series) campaign.
+# Vocab A (poison) + Vocab B (superlative) literals and the allowlist are read from
+# the spec itself (docs/campaigns/doc-truth/CLOSED_VOCABULARY_LINT.md and
+# CLOSED_VOCABULARY_ALLOWLIST.md) — spec-as-source, no duplication in the tool.
+#
+# Phase: WARN-MODE (D.3.2b). Annotates un-allowlisted occurrences but never blocks
+# (the >=2-week soak). The enforce-flip (exit nonzero on any un-allowlisted hit) is
+# D.3.3, after a clean soak. Baseline at wiring: K=0 un-allowlisted (tool-verified).
+#
+# Complementary to trace-sync.yml: that gate owns the CLAUDE.md trace table +
+# workspace_map.html (a disjoint surface); this scans tracked prose for poison.
+# Fix locally with: cargo run -p aw_doc_lint -- --mode warn
+
+on:
+  push:
+    branches: [ "main" ]
+    paths:
+      - '**/*.md'
+      - 'gh-pages/**'
+      - 'tools/aw_doc_lint/**'
+      - '.github/workflows/doc-truth-lint.yml'
+  pull_request:
+    paths:
+      - '**/*.md'
+      - 'gh-pages/**'
+      - 'tools/aw_doc_lint/**'
+      - '.github/workflows/doc-truth-lint.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: closed-vocabulary prose lint (warn)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Install Rust (pinned 1.89.0)
+        uses: dtolnay/rust-toolchain@1.89.0
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "."
+          cache-on-failure: true
+
+      - name: Run doc-truth lint (warn-mode)
+        run: cargo run -p aw_doc_lint -- --mode warn

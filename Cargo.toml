@@ -96,6 +96,7 @@ members = [
   "tools/aw_release",
   "tools/aw_demo_builder",
   "tools/aw_trace_sync",  # architecture-trace registry/map synchronizer
+  "tools/aw_doc_lint",  # closed-vocabulary documentation-truth lint (doc-truth campaign D.3)
   # persistence
   "persistence/aw-save",
   "tools/aw_save_cli",

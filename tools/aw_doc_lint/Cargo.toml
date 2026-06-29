@@ -1,0 +1,10 @@
+[package]
+name = "aw_doc_lint"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Closed-vocabulary documentation-truth lint: Vocab A (poison) / Vocab B (superlative) literals read from CLOSED_VOCABULARY_LINT.md, suppressed by CLOSED_VOCABULARY_ALLOWLIST.md (spec-as-source). warn/enforce CI gate over tracked prose. See docs/campaigns/doc-truth/CLOSED_VOCABULARY_LINT.md."
+
+[dependencies]
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }

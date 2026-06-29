@@ -1,6 +1,6 @@
 # AstraWeave Master Benchmark Report
 
-> **Version**: 5.59 | **Date**: 2026-06-19 | **Grade**: A+ | **Framework**: Criterion.rs (statistical)
+> **Version**: 5.60 | **Date**: 2026-06-29 | **Grade**: A+ | **Framework**: Criterion.rs (statistical)
 
 ---
 
@@ -12,7 +12,7 @@
 | **Crates Benchmarked** | 40+ |
 | **Framework** | Criterion.rs (statistical confidence intervals) |
 | **Overall Grade** | A+ (Production Ready) |
-| **Frame Time** | 2.70 ms @ 1,000 entities (84% headroom vs 60 FPS) |
+| **Frame Time** | ~0.97 ms (system) / ~0.71 ms (mimalloc) @ 1,000 entities (~94–96% headroom vs 60 FPS) — 2.70 ms was the Week-8 target |
 | **Agent Capacity** | 12,700+ @ 60 FPS (18.8x over initial target) |
 | **Validation Throughput** | 6.48M checks/sec |
 | **Determinism** | 100% bit-identical across runs |
@@ -171,13 +171,13 @@ Per-crate: `cargo bench -p <crate-name>` (see individual sections below).
 | Physics | 3 ms (18%) | ~2.0 ms | +33% | GOOD |
 | Rendering | 6 ms (36%) | ~5-8 ms (est.) | ~3k draws | ESTIMATED |
 | Misc | 0.67 ms (4%) | ~0.2 ms | +70% | GOOD |
-| **TOTAL** | **16.67 ms** | **~2.70 ms** | **+84%** | **EXCELLENT** |
+| **TOTAL** | **16.67 ms** | **~0.97 ms (system) / ~0.71 ms (mimalloc)** | **~94–96%** | **EXCELLENT** (2.70 ms was the Week-8 target) |
 
 ### Scalability Projections
 
 | Scale | Frame Time | FPS | Status |
 |-------|-----------|-----|--------|
-| 1,000 entities | 2.70 ms | 370 | Validated |
+| 1,000 entities | ~0.97 ms (system) / ~0.71 ms (mimalloc) | ~1,036 / ~1,410 | Validated (2.70 ms / 370 FPS was the Week-8 target) |
 | 10,000 entities | ~22 ms (est.) | ~45 | Playable (optimization path identified) |
 
 10K @ 60 FPS achievable with: parallel ECS scheduling (-30%), LLM batch inference (-50%), GPU culling (-40%).
@@ -803,7 +803,7 @@ Sub-nanosecond operations discovered: 998 ps, 999 ps, 929 ps. DOF focus plane op
 | ECS world tick | <2 ms | ~0.5 ms | MET |
 | AI planning | <5 ms | ~0.3 ms | MET |
 | Physics full tick | <3 ms | ~2.0 ms | MET |
-| Frame time total | <16.67 ms | ~2.7 ms | MET |
+| Frame time total | <16.67 ms | ~0.97 ms (system) / ~0.71 ms (mimalloc) | MET |
 
 ### P1: Important
 
@@ -880,6 +880,7 @@ Frame time optimization: **-12.6%** (3.09 ms to 2.70 ms, +47 FPS to 370 FPS).
 
 | Version | Date | Type | Summary | Impact |
 |:-------:|:----:|:----:|:--------|:------:|
+| 5.60 | 2026-06-29 | Update | D-series Path-B.2: corrected the present-tense frame-time headline + budget/scalability/requirements rows from "2.70 ms" (the Week-8 *target*, mis-recorded as achieved) to the measured System ~0.97 ms / mimalloc ~0.71 ms @ 1,000 entities. The dated "Week 8 Performance Sprint" record (3.09 ms → 2.70 ms) retained byte-identical. Source: CLAIMS_REGISTRY.md `frame-time-1000-entities` (VERIFIED-AT-HEAD). | Significant |
 | 5.57 | 2026-06-10 | Update | mimalloc/fast-alloc merge recorded (back-fill of 2026-04-17 results): ai.goap.plan −52%, profiling_demo FPS +43%; 3 alloc_measure benches registered; ecs harness figure marked historical (deleted with ParallelSchedule) | Significant |
 | 5.56 | 2026-02-28 | Major | Qwen3-8B LLM latency: 4 rounds, 3.60× faster than Hermes, TTFC 160ms | Significant |
 | 5.55 | 2026-01-13 | Audit | Engine validation: 5,372 tests, RAG deadlock fixed | Critical |

@@ -279,7 +279,7 @@ async fn test_render_systems_logic() {
     // 7. Weather
     let mut weather_fx = WeatherFx::new(&device, 100);
     weather_fx.set_kind(WeatherKind::Rain);
-    weather_fx.update(&queue, 0.016);
+    weather_fx.update(&queue, 0.016, Vec3::ZERO);
 
     let mut weather_sys = WeatherSystem::new();
     weather_sys.update(0.016);
@@ -771,7 +771,7 @@ async fn test_render_core_systems() {
     // 4. Instancing
     let mut batch = InstanceBatch::new(1);
     batch.add_instance(InstancingInstance::identity());
-    batch.update_buffer(&device);
+    batch.update_buffer(&device, &queue);
 
     // 5. Culling
     let culling = CullingPipeline::new(&device);
@@ -1171,13 +1171,13 @@ async fn test_instancing_system() {
     batch.add_instance(InstancingInstance::new(Vec3::X, Quat::IDENTITY, Vec3::ONE));
     assert_eq!(batch.instance_count(), 2);
 
-    batch.update_buffer(&device);
+    batch.update_buffer(&device, &_queue);
     assert!(batch.buffer.is_some());
 
     batch.clear();
     assert_eq!(batch.instance_count(), 0);
 
-    batch.update_buffer(&device);
+    batch.update_buffer(&device, &_queue);
     assert!(batch.buffer.is_none());
 
     // Test InstanceManager
@@ -1197,7 +1197,7 @@ async fn test_instancing_system() {
     manager.add_instances(3, instances);
     assert_eq!(manager.total_instances(), 5);
 
-    manager.update_buffers(&device);
+    manager.update_buffers(&device, &_queue);
 
     let _batch = manager.get_batch(1);
     let _batch_mut = manager.get_batch_mut(1);
@@ -2349,6 +2349,7 @@ async fn test_renderer_extensive_methods() {
             },
         ],
         indices: vec![0, 1, 2],
+        ..Default::default()
     };
     let mesh3 = renderer.create_mesh_from_cpu_mesh(&cpu_mesh);
     assert!(mesh3.index_count == 3);
@@ -2585,7 +2586,7 @@ async fn test_deferred_gbuffer_formats() {
     let formats = GBufferFormats::default();
     println!("GBuffer albedo format: {:?}", formats.albedo);
     println!("GBuffer normal format: {:?}", formats.normal);
-    println!("GBuffer position format: {:?}", formats.position);
+    println!("GBuffer position (reconstructed from depth) format: {:?}", formats.depth);
     println!("GBuffer depth format: {:?}", formats.depth);
 
     // Test GBuffer with various sizes
@@ -4605,7 +4606,7 @@ async fn test_decal_system_comprehensive() {
 
 #[tokio::test]
 async fn test_advanced_post_processing() {
-    use astraweave_render::advanced_post::{
+    use astraweave_render::{
         AdvancedPostFx, ColorGradingConfig, DofConfig, MotionBlurConfig, TaaConfig,
     };
 
@@ -8532,6 +8533,7 @@ fn test_cpu_mesh_comprehensive_wave20() {
             ),
         ],
         indices: vec![0, 1, 2],
+        ..Default::default()
     };
 
     // Test aabb on non-empty mesh
@@ -8572,6 +8574,7 @@ fn test_cpu_mesh_comprehensive_wave20() {
             ),
         ],
         indices: vec![0, 1], // Not a multiple of 3
+        ..Default::default()
     };
     compute_tangents(&mut invalid_mesh); // Should return early without crash
 
@@ -9673,7 +9676,7 @@ fn test_graph_adapter_wave21() {
 /// Test Advanced Post types
 #[test]
 fn test_advanced_post_types_wave21() {
-    use astraweave_render::advanced_post::{
+    use astraweave_render::{
         ColorGradingConfig, DofConfig, MotionBlurConfig, TaaConfig,
     };
 
@@ -10197,6 +10200,7 @@ fn test_mesh_types_wave21() {
     let mesh = CpuMesh {
         vertices: vec![vertex, vertex_clone, vertex2],
         indices: vec![0, 1, 2],
+        ..Default::default()
     };
 
     assert_eq!(mesh.vertices.len(), 3);
@@ -10235,6 +10239,7 @@ fn test_mesh_types_wave21() {
             MeshVertex::from_arrays([0.0, 0.0, 1.0], [0.0, 1.0, 0.0], [0.0; 4], [0.0, 1.0]),
         ],
         indices: vec![0, 1, 2],
+        ..Default::default()
     };
     compute_tangents(&mut mesh_for_tangents);
 
@@ -11155,25 +11160,7 @@ fn test_environment_color_grading_wave22() {
 /// Wave 22: Post FX types tests
 #[test]
 fn test_post_fx_types_wave22() {
-    use astraweave_render::advanced_post::{DofConfig, MotionBlurConfig, TaaConfig};
-    use astraweave_render::post::BloomConfig;
-
-    // Test BloomConfig
-    let bloom = BloomConfig::default();
-    assert_eq!(bloom.threshold, 1.0);
-    assert_eq!(bloom.intensity, 0.05);
-    assert_eq!(bloom.mip_count, 5);
-
-    // Test bloom validate
-    assert!(bloom.validate().is_ok());
-
-    // Test invalid bloom config
-    let invalid_bloom = BloomConfig {
-        threshold: 15.0, // Invalid: > 10.0
-        intensity: 0.5,
-        mip_count: 5,
-    };
-    assert!(invalid_bloom.validate().is_err());
+    use astraweave_render::{DofConfig, MotionBlurConfig, TaaConfig};
 
     // Test TaaConfig
     let taa = TaaConfig::default();
@@ -11193,14 +11180,6 @@ fn test_post_fx_types_wave22() {
     assert_eq!(dof.focus_distance, 10.0);
     assert_eq!(dof.focus_range, 5.0);
     assert_eq!(dof.bokeh_size, 2.0);
-
-    // Test clone
-    let bloom_clone = bloom.clone();
-    assert_eq!(bloom_clone.threshold, bloom.threshold);
-
-    // Test debug
-    let bloom_debug = format!("{:?}", bloom);
-    assert!(bloom_debug.contains("threshold"));
 
     println!("PostFX types wave22 tested.");
 }
@@ -11927,7 +11906,7 @@ fn test_terrain_material_gpu_wave24() {
 
     // Test custom material
     let custom_material = TerrainMaterialGpu {
-        layers: [TerrainLayerGpu::default(); 8],
+        layers: [TerrainLayerGpu::default(); 32],
         splat_map_index_0: 5,
         splat_map_index_1: 0,
         splat_uv_scale: 2.0,

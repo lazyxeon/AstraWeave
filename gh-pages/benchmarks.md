@@ -11,14 +11,14 @@ All benchmarks run using Criterion.rs. Values represent median latencies. **~2,8
 
 | Metric | Value |
 |--------|-------|
-| Frame time (1K entities) | 2.70 ms |
-| FPS (1K entities) | 370 |
+| Frame time (1K entities) | 0.97 ms (system) / 0.71 ms (mimalloc) — 2.70 ms was the target |
+| FPS (1K entities) | ~1,036 (system) / ~1,410 (mimalloc) |
 | p50 frame time | 1.27 ms |
 | p99 frame time | 2.42 ms (85% under budget) |
 | Agent capacity @ 60 FPS | **12,700+** (18.8× over target) |
 | Anti-cheat validation | 6.48M checks/sec |
 | Determinism | 100% bit-identical |
-| Budget headroom vs 60 FPS | 84% |
+| Budget headroom vs 60 FPS | ~94–96% |
 
 ## ECS (astraweave-ecs)
 
@@ -217,7 +217,7 @@ At 60 FPS, each frame has 16.67 ms of budget:
 |--------|------|----------|
 | Physics (full tick) | 6.52 µs | 0.04% |
 | AI (12,700 agents) | ~4 ms | 24% |
-| Rendering (1K entities) | 2.70 ms | 16% |
+| Rendering (1K entities) | 2.70 ms (target — rendering-only cost not separately measured) | 16% |
 | **Total** | **~6.7 ms** | **40%** |
 | **Remaining headroom** | **~10 ms** | **60%** |
 

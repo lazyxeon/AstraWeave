@@ -238,7 +238,7 @@ Any new or modified `unsafe` code **MUST** pass both verification pipelines:
 1. **Miri** (UB detection): `cargo +nightly miri test -p <crate> --lib -- --test-threads=1`
    - Flags: `-Zmiri-symbolic-alignment-check -Zmiri-strict-provenance`
    - CI: `.github/workflows/miri.yml` (weekly, nightly toolchain)
-   - Validated crates: `ecs`, `math`, `core`, `sdk` — 977 tests, ZERO undefined behavior
+   - Validated crates: `ecs`, `math`, `core`, `sdk` — 1,059 tests, ZERO undefined behavior
 
 2. **Kani** (formal proof): `cargo kani --package <crate>`
    - CI: `.github/workflows/kani.yml`

@@ -60,6 +60,8 @@ removed the dead-inventory below. Pre-removal anchor: annotated tag
 + 666 reconciliation); build green, all kept tests pass (lib 677, gpu_execution 7,
 mutation 53; `astraweave-water` 9).
 
+> **Doc-truth cross-reference (D.2.A.1, 2026-06-25):** the documentation-truth campaign re-resolved the W.1-invalidated LoC/marker figures in its ledger — see `docs/campaigns/doc-truth/CLAIMS_REGISTRY.md` (`#fluids-loc` 24,251 src · `#fluids-test-markers` 738 · `#dormant-loc-inventory` 52,782) plus the new water-successor rows (`#water-facade-loc`, `#water-surface-loc`, `#water-system`). Recon + scope: `docs/campaigns/doc-truth/D_RESUME_0_RECON.md`.
+
 **Removed in W.1 (gone from the tree):**
 - **Voxel water sim:** `volume_grid.rs`, `gpu_volume.rs`, `building.rs`,
   `terrain_integration.rs` (+ tests `voxel_water_f3.rs`, `sparse_lockstep_f3s.rs`,
@@ -179,7 +181,7 @@ shape as the rest of the fluids crate (still no `astraweave-*` game-loop crate d
 Provides GPU-accelerated fluid simulation through multiple coexisting solvers (PBD, PCISPH, DFSPH, IISPH per `research.rs:42-68`), plus a voxel-based volumetric water grid for terrain/building interaction (`volume_grid.rs`), plus visual effects (caustics, god rays, foam, reflections, underwater fog, waterfall, anisotropic surface — all coordinated by `WaterEffectsManager` at `water_effects.rs:1-100`), plus terrain integration (river/lake/waterfall detection from heightmaps in `terrain_integration.rs`), plus building integration (water dispensers/drains/gates/wheels in `building.rs`), plus a comprehensive editor integration layer (`editor.rs`, 5,823 LoC).
 
 **Why it exists:**
-Per `astraweave-fluids/README.md:1`: "A production-grade GPU-accelerated fluid simulation system for the AstraWeave game engine with world-class performance optimization." Per `docs/current/FLUIDS_RESEARCH_GRADE_ENHANCEMENT_PLAN.md` v2.0 (Jan 2026): the system is the engine's intended path to "research-grade fluid simulation" — multi-fluid types (water/oil/honey), multi-phase interactions, non-Newtonian flows, turbulent simulations.
+Per `astraweave-fluids/README.md:3`: "A GPU-accelerated, research-stage fluid simulation crate (PBD core solver) for the AstraWeave game engine. In-design: consumed only by examples/fluids_demo; no production game-loop crate depends on it yet." Per `docs/current/FLUIDS_RESEARCH_GRADE_ENHANCEMENT_PLAN.md` v2.0 (Jan 2026): the system is the engine's intended path to "research-grade fluid simulation" — multi-fluid types (water/oil/honey), multi-phase interactions, non-Newtonian flows, turbulent simulations.
 
 **Where it primarily lives:**
 - **Core SPH/PBD simulator:** `astraweave-fluids/src/lib.rs` (3,810 LoC) — `FluidSystem` GPU pipeline with PBD compute pass (clear_grid / build_grid / predict / lambda / delta_pos / integrate / mix_dye), `Particle`/`SimParams`/`SecondaryParticle` GPU types
@@ -674,7 +676,7 @@ The GPU emission kernel remains a logged, deferred follow-on (`F4_0_RECON.md`).
 
 ### Known cognitive traps
 
-- **Trap**: Reading `astraweave-fluids/README.md` (which advertises "production-grade" + "world-class") and assuming the crate is wired into the engine.
+- **Trap**: Assuming `astraweave-fluids` is wired into the engine because the crate exists and is feature-rich. (The README now correctly self-describes as "research-stage" with "no production game-loop crate depends on it yet"; the prior over-claim was corrected.)
   **What's actually true**: Verified 2026-05-12 workspace grep: only `examples/fluids_demo` consumes the crate. No production game-loop crate depends on it. The audit doc at `docs/current/FLUIDS_RESEARCH_GRADE_ENHANCEMENT_PLAN.md` documents the current state as "Overall Current Grade: B (Good for games, insufficient for research)" and lists explicit gaps.
 - **Trap**: Choosing `astraweave_fluids::SolverType` and getting `Pbd / Pcisph / Dfsph / Iisph` (lowercase).
   **What's actually true**: That's the `unified_solver::SolverType` re-export at `lib.rs:187`. The `research::SolverType` has UPPERCASE acronyms (`PBD / PCISPH / DFSPH / IISPH`). To use the research version, fully-qualify: `astraweave_fluids::research::SolverType::PCISPH`.

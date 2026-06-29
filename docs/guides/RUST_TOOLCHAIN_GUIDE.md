@@ -4,7 +4,7 @@ This document describes the bespoke Rust toolchain and advanced caching workflow
 
 ## Overview
 
-The Veilweaver project uses a sophisticated build system optimized for a large Rust workspace containing 44+ crates. The caching and toolchain system provides:
+The Veilweaver project uses a sophisticated build system optimized for a large Rust workspace containing 130 crates. <!-- Source: CLAIMS_REGISTRY.md#workspace-members --> The caching and toolchain system provides:
 
 - **50-80% faster CI builds** through advanced multi-level caching
 - **Cross-platform compatibility** (Linux, Windows, macOS)

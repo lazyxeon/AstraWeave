@@ -14,7 +14,6 @@ use astraweave_render::culling::{
 use astraweave_render::gpu_memory::{GpuMemoryBudget, MemoryCategory};
 use astraweave_render::hdri_catalog::DayPeriod;
 use astraweave_render::lod_generator::LODConfig;
-use astraweave_render::post::BloomConfig;
 use astraweave_render::transparency::{create_blend_state, BlendMode, TransparencyManager};
 use astraweave_render::vertex_compression::{
     CompressedVertex, HalfFloatEncoder, OctahedralEncoder,
@@ -448,56 +447,6 @@ fn biome_detector_config_default_hysteresis() {
 // ═══════════════════════════════════════════════════════════════════════
 // IblQuality size methods
 // ═══════════════════════════════════════════════════════════════════════
-// BloomConfig defaults and validation
-// ═══════════════════════════════════════════════════════════════════════
-#[test]
-fn bloom_config_default_threshold() {
-    assert_eq!(BloomConfig::default().threshold, 1.0);
-}
-#[test]
-fn bloom_config_default_intensity() {
-    assert_eq!(BloomConfig::default().intensity, 0.05);
-}
-#[test]
-fn bloom_config_default_mip_count() {
-    assert_eq!(BloomConfig::default().mip_count, 5);
-}
-#[test]
-fn bloom_config_validate_ok() {
-    assert!(BloomConfig::default().validate().is_ok());
-}
-#[test]
-fn bloom_config_validate_threshold_too_high() {
-    let c = BloomConfig {
-        threshold: 11.0,
-        ..Default::default()
-    };
-    assert!(c.validate().is_err());
-}
-#[test]
-fn bloom_config_validate_intensity_too_high() {
-    let c = BloomConfig {
-        intensity: 1.5,
-        ..Default::default()
-    };
-    assert!(c.validate().is_err());
-}
-#[test]
-fn bloom_config_validate_mip_count_zero() {
-    let c = BloomConfig {
-        mip_count: 0,
-        ..Default::default()
-    };
-    assert!(c.validate().is_err());
-}
-#[test]
-fn bloom_config_validate_mip_count_too_high() {
-    let c = BloomConfig {
-        mip_count: 9,
-        ..Default::default()
-    };
-    assert!(c.validate().is_err());
-}
 
 // ═══════════════════════════════════════════════════════════════════════
 // WaterUniforms defaults

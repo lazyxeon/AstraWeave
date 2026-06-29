@@ -73,12 +73,12 @@
                             <span>workspace tests across 128 packages</span>
                         </article>
                         <article class="proof-tile">
-                            <strong>977</strong>
+                            <strong>1,059</strong>
                             <span>Miri tests with zero undefined behavior</span>
                         </article>
                         <article class="proof-tile">
-                            <strong>2.70 ms</strong>
-                            <span>frame time at 1,000 entities in the current benchmark baseline</span>
+                            <strong>0.71 ms</strong>
+                            <span>total frame time at 1,000 entities (profiling_demo; mimalloc default — 0.97 ms on system alloc). 2.70 ms was the Week-8 target.</span>
                         </article>
                         <article class="proof-tile">
                             <strong>71+</strong>
@@ -264,7 +264,7 @@
                             </li>
                             <li>
                                 <span class="metric-label">Frame time at 1,000 entities</span>
-                                <span class="metric-value">2.70 ms</span>
+                                <span class="metric-value">0.71 ms (mimalloc) / 0.97 ms (system)</span>
                             </li>
                             <li>
                                 <span class="metric-label">ECS world creation</span>
@@ -301,7 +301,7 @@
                         <ul class="detail-list">
                             <li>
                                 <span class="detail-label">Weighted line coverage</span>
-                                <span class="detail-value">59.3% across measured crates</span>
+                                <span class="detail-value">57.35% whole-workspace line</span>
                             </li>
                             <li>
                                 <span class="detail-label">High-coverage crates</span>
@@ -309,7 +309,7 @@
                             </li>
                             <li>
                                 <span class="detail-label">Miri validation</span>
-                                <span class="detail-value">977 tests, 0 UB</span>
+                                <span class="detail-value">1,059 tests, 0 UB</span>
                             </li>
                             <li>
                                 <span class="detail-label">Kani verification</span>

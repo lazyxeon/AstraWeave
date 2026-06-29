@@ -38,7 +38,7 @@ Complete rendering solution with PBR materials, clustered forward lighting, casc
 
 ## Performance
 
-- Frame time: 2.70 ms @ 1,000 entities (370 FPS)
+- Frame time: 0.965 ms @ 1,000 entities (~1,036 FPS, System allocator); 0.709 ms (~1,410 FPS) with mimalloc. The 2.70 ms / 370 FPS figure was the Week-8 target.
 - Vertex compression: 37.5% memory reduction
 - GPU mesh instancing: 10–100× draw call reduction
 
