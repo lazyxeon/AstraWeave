@@ -543,7 +543,7 @@ Update loop → process_blueprint_actions()
 | Physics | 114 ns char move, 6.52 µs full tick, 2.97 µs rigid body step | |
 | GPU Mesh | 21 ns vertex compression, 37.5% memory reduction | |
 | SIMD Math | 2.08× speedup (20.588 µs → 9.879 µs @ 10k entities) | |
-| Frame Time | 2.70 ms @ 1,000 entities, 370 FPS | Week 8 |
+| Frame Time | 0.965 ms @ 1,000 entities (~1,036 FPS) System alloc; 0.709 ms (~1,410 FPS) mimalloc | 2.70 ms was the Week-8 target |
 | AI-Native | 12,700+ agents @ 60 FPS, 6.48M checks/sec | 100% determinism |
 
 **See also**: `docs/current/MASTER_BENCHMARK_REPORT.md`
@@ -554,13 +554,13 @@ Update loop → process_blueprint_actions()
 
 ### Miri UB Detection
 
-**Status**: All unsafe code validated — 977 tests, **ZERO undefined behavior**.
+**Status**: All unsafe code validated — 1,059 tests, **ZERO undefined behavior**.
 
 **Validated crates** (4):
-- `astraweave-ecs` (386 tests): BlobVec, SparseSet, EntityAllocator, SystemParam
+- `astraweave-ecs` (419 tests): BlobVec, SparseSet, EntityAllocator, SystemParam
 - `astraweave-math` (109 tests): SIMD vec/mat/quat, SSE2 scalar fallback
-- `astraweave-core` (465 tests): Entity::from_raw, capture/replay
-- `astraweave-sdk` (17 tests): C ABI FFI, raw pointer handling
+- `astraweave-core` (503 tests): Entity::from_raw, capture/replay
+- `astraweave-sdk` (28 tests): C ABI FFI, raw pointer handling
 
 **CI**: `.github/workflows/miri.yml` (weekly, nightly toolchain)
 

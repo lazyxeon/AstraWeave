@@ -1,6 +1,6 @@
 # AstraWeave Architecture Map
 
-> **Generated**: 2026-05-07 | **Last reconciled**: 2026-06-25 | **Version**: 0.7.3 | **Rust**: 1.89.0
+> **Generated**: 2026-05-07 | **Last reconciled**: 2026-06-29 | **Version**: 0.7.4 | **Rust**: 1.89.0
 > Living document — used by all agents as the primary architectural reference.
 > **0.7.2 update (2026-06-10)**: Engine-health-audit reconciliation — workspace member count corrected 143 → **130** (root Cargo.toml members verified identical to `cargo metadata --no-deps`); `astraweave-camera` (Unified Camera C.2, `52b9e711c`, 2026-05-18) added to §1/§2.1 and to `astraweave-render`'s dep row; examples count corrected to 59; §0 editor/render trace rows updated for Multi-Tool Sub-phase 3/4 closeouts (SP5 in flight) and Render Parity P.1–P.7 closure.
 > **0.7.1 update (2026-06-10)**: Net-Trio-Remediation reconciliation — the standalone-trio HMAC-vs-XOR signature mismatch is RESOLVED (canonical HMAC-SHA256 signing enforced end-to-end, kick-by-default). Updated the net_ecs subsystem row (§0), the known-issues silent-failure row (§4.3), the documentation-hazards row (§7.2), the §8.8 network data-flow diagram, and §14 open-question 17. See `net_ecs.md` §6/§7 and `docs/audits/net_trio_signature_remediation_findings_2026-06.md`.
@@ -798,7 +798,7 @@ Frame Start
 
 | Tier | Crates | Status |
 |------|--------|--------|
-| **Formally Verified** | ecs, math, core, sdk | Miri (977 tests, 0 UB) + Kani proofs |
+| **Formally Verified** | ecs, math, core, sdk | Miri (1,059 tests, 0 UB) + Kani proofs |
 | **A+ Grade** | fluids (2,404 tests / 600+ inline + integration suite) | Benchmark caliber — but the crate is **dormant in production** (`fluids.md` §11) |
 | **A Grade** | physics (110+ in core, 20 integration files, 10 benches), environment (55+), net (377), persistence-ecs+aw-save combined (179), audio (~80 inline + 14 integration files / 7,063 LoC) | Strong coverage |
 | **B+ Grade** | vehicle (50+), gravity (30+), animation (13+29 inline + 5 dedicated integration files / 1,921 LoC + Wave 2) | Good, missing edge cases |
@@ -951,6 +951,9 @@ These are decisional questions that cross subsystem boundaries or affect the bro
 ---
 
 ## Revision History
+
+### v0.7.4 (2026-06-29)
+D.2.B-Prop-Final miri-count propagation (doc-truth campaign): the §"Formally Verified" tier row corrected **Miri 977 → 1,059** (current count, per `CLAIMS_REGISTRY.md` `miri-tests` VERIFIED-AT-HEAD; supersedes the stale-low 977). Single factual sync; no other content changed.
 
 ### v0.7.3 (2026-06-25)
 D.2.A.1 W.1-contamination correction (doc-truth campaign), driven by `docs/campaigns/doc-truth/D_RESUME_0_RECON.md`:

@@ -141,7 +141,7 @@ These crates contain `unsafe` code, SIMD, or are foundational to engine determin
 
 **Result**: 97.56% raw kill rate, 97.60% adjusted. All 8 remaining misses are genuinely equivalent (BlobVec layout arithmetic, Entity bit operations). Created ~130 new tests across 12 modules. Added `capacity()` accessor to `SparseSetData` and `generations_capacity()` to `EntityAllocator`.
 
-**Miri Status**: ✅ Validated (977 tests, 0 UB)  
+**Miri Status**: ✅ Validated (1,059 tests, 0 UB)  
 **Kani Status**: ✅ Proofs exist in `mutation_resistant_comprehensive_tests.rs`
 
 ---
@@ -2392,7 +2392,7 @@ Target: All remaining Tier 3-4 crates, focused on low-density hotspots first.
                     │   Formal    │  Kani proofs (ecs, sdk, math)
                     │  Proofs     │  100% of unsafe code
                     ├─────────────┤
-                    │    Miri     │  977 tests, 0 UB
+                    │    Miri     │  1,059 tests, 0 UB
                     │  Validation │  All unsafe crates
                     ├─────────────┤
                     │  Mutation   │  ≥97% kill rate

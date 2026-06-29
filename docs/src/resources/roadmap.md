@@ -58,7 +58,7 @@ otherwise accumulates in a 850K+ LoC workspace.
   post-Fix-27.
 * **Physics** — `astraweave-physics` wrapping Rapier3D 0.22.
   `PhysicsWorld` + `CharacterController`. `Send + Sync`.
-* **Foundation verification** — Miri (977 tests across `ecs`, `math`, `core`,
+* **Foundation verification** — Miri (1,059 tests across `ecs`, `math`, `core`,
   `sdk` with zero undefined behavior) + Kani proofs (71+ harnesses across
   safety-critical crates).
 

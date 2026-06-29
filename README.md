@@ -49,12 +49,12 @@ Built in Rust, designed for massive-scale intelligent worlds.
      --no-deps 2026-06-10 = 130 (astraweave-camera added 2026-05-18, 52b9e711c).
      Editor count: 9,425 annotations (4,103 inline + 5,322 in tests/), live count
      2026-06-10, supersedes aw_editor.md §10's ~9,397 of 2026-05-12. -->
-**🏆 Production-Grade Quality**: AstraWeave has **~39,000+ test annotations** across **~51 production crates** (130 workspace members via `cargo metadata`) with **59.3% weighted coverage** — 14 crates at 85%+ including ECS (96.39%), Physics (94.38%), and Nav (93.11%). The full 130-member workspace compiles with **zero errors** (`cargo check --workspace`, verified 2026-06-10). All unsafe code is **Miri-validated** and **Kani-verified**. The editor has undergone a **37-fix behavioral correctness audit** with a unified rendering pipeline now protected by a bit-identical editor↔engine parity harness.
+**🏆 Production-Grade Quality**: AstraWeave has **~39,000+ test annotations** across **~51 production crates** (130 workspace members via `cargo metadata`) with **57.35% whole-workspace line coverage** (`cargo llvm-cov --workspace`, measured 2026-06-29; well-covered core crates such as ECS, Physics, and Nav exceed 85%). The full 130-member workspace compiles with **zero errors** (`cargo check --workspace`, verified 2026-06-10). All unsafe code is **Miri-validated** and **Kani-verified**. The editor has undergone a **37-fix behavioral correctness audit** with a unified rendering pipeline now protected by a bit-identical editor↔engine parity harness.
 
 | Metric | Status | Details |
 |--------|--------|---------|
 | **Build Health** | ✅ **0 errors, 130/130 members** | `cargo check --workspace` clean (2026-06-10); former known-build-issue crates (rhai authoring, egui demos, astraweave-llm) all compile |
-| **Coverage** | ✅ **59.3% weighted** (P0: 55.4%, P1: 58.9%, P2: 73.9%) | **29 crates measured** via `cargo llvm-cov` (last full measurement 2026-02-25) |
+| **Coverage** | ✅ **57.35% whole-workspace line** | `cargo llvm-cov --workspace` across 130 members (measured 2026-06-29, Path-B.2 — supersedes the prior 29-crate-subset 59.3%) |
 | **Tests** | ✅ **~39,000+ annotations** | Core: 959, ECS: 728, Editor: 9,425 annotations, Render: 4,272+, Physics: 1,884, Net trio: 104 (all green 2026-06-10) |
 | **Memory Safety** | ✅ **Miri-Validated** | 1,059 tests, **0 undefined behavior** across 4 crates |
 | **Formal Verification** | ✅ **Kani-Verified** | 71+ proof harnesses across safety-critical crates |
@@ -76,7 +76,7 @@ Built in Rust, designed for massive-scale intelligent worlds.
      §5 Dormant-Code Inventory; §7 Documentation Hazards. -->
 > **What changed (May 2026)?** The **architecture trace campaign** completed 13 per-subsystem traces under `docs/architecture/` (terrain materials, render pipeline, physics, persistence-ECS, networking ×2, input, fluids, ECS/math/core/SDK foundation, audio, animation, AI pipeline, aw_editor). The [Architecture Map](docs/architecture/ARCHITECTURE_MAP.md) was reconciled to v0.7.0 against those traces, and the [Interactive Workspace Map](https://lazyxeon.github.io/AstraWeave/architecture/) was deployed. Specific documentation hazards were surfaced and corrected: Fluids reclassified as research surface (no production game-loop dep), the runtime LLM default drift from Qwen to `phi3:medium` was identified and later replaced with `qwen3.5:4b`, dual `World` coexistence (legacy `core::World` + ECS substrate) documented, four parallel animation type families catalogued, and the §7.7 wrapped-component resource identity trap promoted to a workspace-wide structural axiom.
 >
-> **Why 59.3%?** The v5.0 methodology uses `cargo llvm-cov --lib --summary-only` which instruments all compiled code including inlined dependency generics. Large GPU-only and async code paths (rendering, terrain, audio) are untestable in headless mode. See [MASTER_COVERAGE_REPORT](docs/current/MASTER_COVERAGE_REPORT.md) for full analysis.
+> **Why 57.35%?** The whole-workspace measurement (`cargo llvm-cov --workspace`) counts all ~51 production + bin/tool crate source — including large GPU-only and async code paths (rendering, terrain, audio) that are hard to exercise in headless mode. It supersedes the earlier 59.3%, which measured only a 29-crate curated subset (a higher number because it excluded the lower-coverage crates — a denominator change, not a regression). See [MASTER_COVERAGE_REPORT](docs/current/MASTER_COVERAGE_REPORT.md) for full analysis.
 >
 > **What changed (April 2026)?** The editor underwent a comprehensive [Behavioral Correctness Audit](docs/current/EDITOR_BEHAVIORAL_CORRECTNESS_AUDIT.md): 37 fixes across 48 commits addressing shader math (GGX NDF, Fresnel energy conservation, multi-scatter compensation), undo system completion (all 9 operations now undoable), silent failure resolution (60 patterns identified, critical ones fixed), and a [7-phase architectural refactor](docs/current/FIX27_UNIFIED_PIPELINE_CAMPAIGN.md) that eliminated the dual rendering pipeline (-4,669 LOC). Health grade upgraded from B+ to A- reflecting the correctness improvements.
 
@@ -268,7 +268,7 @@ Systems within a stage execute in registration order; stages execute in the orde
 
 ### 🏆 Quality Metrics
 -   **Build Health**: `cargo check --workspace` clean — 130/130 members, 0 errors (verified 2026-06-10)
--   **Test Coverage**: 59.3% weighted via `cargo llvm-cov` (29 crates measured, 14 at 85%+; last full measurement 2026-02-25)
+-   **Test Coverage**: 57.35% whole-workspace line via `cargo llvm-cov --workspace` (130 members; measured 2026-06-29, supersedes the prior 29-crate-subset 59.3%)
 -   **Total Tests**: ~39,000+ test annotations across **130 workspace members** (live count 2026-06-10: 39,973 `#[test]`/`#[tokio::test]` markers; cargo metadata 130 members)
 -   **Mutation Testing**: 4 waves — Wave 1: 767 manual + Wave 2: 1,261 automated + Wave 3: 489 targeted + Wave 4: 411 fluids (100% kill rate on prompts, 792 mutants)
 -   **Memory Safety**: Miri-validated (1,059 tests, 0 undefined behavior across 4 crates)
@@ -371,7 +371,7 @@ AstraWeave is an experimental project being built **solo through AI-augmented de
 **Current Development Status:**
 <!-- Source: cargo metadata + live counts 2026-06-10; MASTER_COVERAGE_REPORT v5.3.0;
      EDITOR_MULTI_TOOL_ARCHITECTURE_CAMPAIGN.md; campaign closeout docs under docs/audits/. -->
--   **~51 production crates** across 130 workspace members with 59.3% weighted LLVM coverage (~39,000+ test annotations)
+-   **~51 production crates** across 130 workspace members with 57.35% whole-workspace LLVM line coverage (~39,000+ test annotations)
 -   **Editor**: Active mid-campaign with 9,425 test annotations (Multi-Tool Architecture Sub-phase 5 in flight; Sub-phases 3/4 complete)
 -   **Architecture**: 13 subsystem traces under [`docs/architecture/`](docs/architecture/) + the [Architecture Map](docs/architecture/ARCHITECTURE_MAP.md) (v0.7.2) + the [Interactive Workspace Map](https://lazyxeon.github.io/AstraWeave/architecture/)
 -   **Research surface (in-design, not runtime-wired)**: Fluids, Memory pipeline, Coordination, RAG composite, advanced GOAP, LLM production-hardening — see §5.1 of the architecture map

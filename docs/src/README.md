@@ -421,8 +421,8 @@
         <span class="astra-kicker">Quality posture</span>
         <h3>Verification and testing across the stack.</h3>
         <ul class="astra-list">
-          <li><span>Weighted line coverage</span><strong>59.3% across measured crates</strong></li>
-          <li><span>High-coverage crates</span><strong>14 crates at 85%+</strong></li>
+          <li><span>Whole-workspace line coverage</span><strong>57.35% (cargo llvm-cov --workspace)</strong></li>
+          <li><span>High-coverage crates</span><strong>core crates (ECS, Physics, Nav) &ge;85%</strong></li>
           <li><span>Miri validation</span><strong>1,059 tests, 0 UB</strong></li>
           <li><span>Kani verification</span><strong>71+ harnesses</strong></li>
           <li><span>Prompt mutation testing</span><strong>100% adjusted kill rate</strong></li>

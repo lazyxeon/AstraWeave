@@ -474,7 +474,7 @@ cargo kani setup
 Kani verification will elevate AstraWeave from **Miri-validated** (no UB in tested paths) to **formally verified** (mathematical proofs of correctness).
 
 **Combined Verification Stack**:
-- ✅ **Miri**: Runtime UB detection (977 tests, 0 violations)
+- ✅ **Miri**: Runtime UB detection (1,059 tests, 0 violations)
 - 🎯 **Kani**: Formal correctness proofs (25-32 properties planned)
 - ✅ **Tests**: 3,040+ passing tests (94.57% coverage)
 - ✅ **Clippy**: Zero warnings across workspace

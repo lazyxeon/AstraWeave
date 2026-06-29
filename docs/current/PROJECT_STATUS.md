@@ -257,7 +257,9 @@ See `docs/current/MASTER_BENCHMARK_REPORT.md` for full data. Key numbers:
 | Physics | Full tick | 6.52 µs |
 | GPU Mesh | Vertex compression | 21 ns |
 | SIMD Math | 10k entities | 9.879 µs (2.08× faster) |
-| Frame (1k entities) | Total | 2.70 ms (370 FPS) |
+| Frame (1k entities) | Total (System alloc) | 0.965 ms (~1,036 FPS) |
+| Frame (1k entities) | Total (mimalloc) | 0.709 ms (~1,410 FPS) |
+| Frame (1k entities) | Week-8 target | 2.70 ms (370 FPS) — target, not a measurement |
 | AI-Native | Agent capacity @ 60 FPS | 12,700+ |
 | hello_companion | Classical mode | 0.20 ms |
 | hello_companion | BehaviorTree mode | 0.17 ms |
@@ -272,7 +274,7 @@ See `docs/current/MASTER_BENCHMARK_REPORT.md` for full data. Key numbers:
 - `cargo test -p astraweave-ecs` — comprehensive unit tests
 - Net trio: 104/104 tests green (proto 59, server 41, client 4); camera: 25/25; cinematics: 341/341 (2026-06-10)
 - CI validates SDK ABI, cinematics, and core crates
-- **Miri**: 977 tests, 0 UB across 4 crates (ecs, math, core, sdk)
+- **Miri**: 1,059 tests, 0 UB across 4 crates (ecs, math, core, sdk)
 - **Determinism**: Bit-identical replay proven
 - **Memory safety**: All unsafe code Miri-validated
 

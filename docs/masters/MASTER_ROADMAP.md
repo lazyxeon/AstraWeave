@@ -1,7 +1,7 @@
 # AstraWeave: Master Strategic Roadmap
 
-**Version**: 1.51  
-**Last Updated**: June 10, 2026  
+**Version**: 1.52  
+**Last Updated**: June 29, 2026  
 **Status**: Authoritative Source  
 **Validation**: ✅ PASS — [Full Report](../current/ENGINE_VALIDATION_2026_01_13.md)
 
@@ -32,14 +32,14 @@ AstraWeave is an **AI-native game engine** where AI agents are first-class citiz
 | **Validation Status** | ✅ **A+ Grade (95/100)** |
 | **Tests Passing** | **5,372/5,383 (99.8%)** (core validation suite) |
 | **Compilation** | **17/17 core crates** (0 errors, 0 warnings) |
-| **Miri Validation** | ✅ **977 tests, 0 UB** |
+| **Miri Validation** | ✅ **1,059 tests, 0 UB** |
 | **Kani Verification** | ✅ **69 proof harnesses, all passing** |
 | Workspace Packages | **130** (59 core + 71 examples/tools; `cargo metadata --no-deps`, 2026-06-10 — adds `astraweave-alloc` and `astraweave-camera`) |
 | Total Tests | **~39,900** `#[test]`/`#[tokio::test]` markers (live count 2026-06-10) <!-- Source: CLAIMS_REGISTRY.md#test-markers-total --> |
 | Integration Tests | **~9,081** |
-| Test Coverage (Overall) | **59.3%** weighted (LLVM source-based, v5.0 methodology) |
-| High-Coverage Crates (≥85%) | **14 of 28** measured (50%) |
-| Frame Time (p95) | ~2.70ms |
+| Test Coverage (Overall) | **57.35%** whole-workspace line (`cargo llvm-cov --workspace`, 2026-06-29; supersedes the 59.3% 29-crate subset) |
+| High-Coverage Crates (≥85%) | **14 of 28** in the prior 2026-02-25 subset run (whole-workspace per-crate not re-broken-out) |
+| Frame Time (1K entities) | ~0.97 ms (system) / ~0.71 ms (mimalloc) — 2.70 ms was the Week-8 target |
 | Agent Capacity | 12,700+ @ 60 FPS |
 | **Determinism** | **100% validated** |
 | **Memory Safety** | ✅ **Miri-verified** |
@@ -97,7 +97,7 @@ AstraWeave is an **AI-native game engine** where AI agents are first-class citiz
 | **✅ Blueprint Zone Editor** | `astraweave-terrain`, `astraweave-blend`, `aw_editor` | **125+** |
 | **✅ Master Coverage Audit v5.0** | 28 crates measured via `cargo llvm-cov` | **~18,200** |
 | **✅ Wave 2 Automated Mutation Testing** | prompts (792), render (339), editor (130) | **1,261+** |
-| **✅ Miri Memory Safety Validation** | ecs, math, core, sdk | **977** |
+| **✅ Miri Memory Safety Validation** | ecs, math, core, sdk | **1,059** |
 | **✅ Kani Formal Verification** | ecs, math, core, sdk | **69 proofs** |
 | **✅ Fluids System** | `astraweave-fluids` | **2,560** <!-- Source: CLAIMS_REGISTRY.md#fluids-test-markers --> |
 | **✅ Prompt Engineering System** | `astraweave-prompts` | **1,931** |
@@ -239,13 +239,13 @@ Key features:
 
 | Metric | Current | 12-Month Target | Status |
 |--------|---------|-----------------|--------|
-| Test Coverage (Overall) | 59.3% (LLVM weighted) | 70%+ | 🟡 Below target (methodology change: v5.0 audit) |
+| Test Coverage (Overall) | 57.35% (whole-workspace line) | 70%+ | 🟡 Below target (whole-workspace re-baseline 2026-06-29; supersedes 59.3% subset) |
 | Test Coverage (P0 top-5) | 85-96% (ECS, Physics, Math, Nav, Behavior) | 90%+ | ✅ Met (top 5 P0 crates) |
 | Total Tests | ~39,900 markers | 20,000+ | ✅ Exceeded <!-- Source: CLAIMS_REGISTRY.md#test-markers-total --> |
 | Integration Tests | ~9,081 | 5,000+ | ✅ Exceeded |
 | Mutation Kill Rate (prompts) | 100% (792 mutants) | 90%+ | ✅ Exceeded |
 | `.unwrap()` in Core | 0 | 0 | ✅ Complete |
-| Frame Time (p95) | ~2.70ms | <10ms | ✅ Exceeded |
+| Frame Time (1K entities) | ~0.97 ms (system) / ~0.71 ms (mimalloc) | <10ms | ✅ Exceeded (2.70 ms was the Week-8 target) |
 | Agent Capacity | 12,700+ | 10,000+ | ✅ Exceeded |
 | Kani Proofs | 69 | 50+ | ✅ Exceeded |
 | LLM Quality Score | 75-85% | 95%+ | 🟠 In Progress |
@@ -260,7 +260,7 @@ Key features:
 | GOAP | Cache hit | 1.01 µs |
 | Behavior Trees | Tick | 57-253 ns |
 | Physics | Full tick | 6.52 µs |
-| Frame Time | Overall | 2.70 ms @ 1,000 entities |
+| Frame Time | Overall | ~0.97 ms (system) / ~0.71 ms (mimalloc) @ 1,000 entities — 2.70 ms was the Week-8 target |
 
 ---
 
@@ -376,6 +376,7 @@ Key achievements:
 
 | Ver | Date | Type | Impact | Summary (≤80 chars) |
 |-----|------|------|--------|---------------------|
+| **1.52** | Jun 29 | 🔍 | 🟡 | D-series Path-B.2: coverage 57.35% whole-workspace (was 59.3% subset); miri 1,059 |
 | **1.49** | Mar 25 | 🔷 | 🟡 | Blueprint Zone Editor: 9 phases, polygon zones, Replica/Inspired, 125+ tests |
 | **1.48** | Feb 27 | 🔷 | 🟡 | Blend Import Pipeline: 7 phases, BiomePack, editor panel, 97 tests |
 | **1.47** | Feb 26 | 🔍 | 🟡 | Roadmap audit: corrected metrics, 128 pkgs, ~27K tests, v5.0 coverage |
