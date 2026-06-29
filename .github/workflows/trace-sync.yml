@@ -36,7 +36,7 @@ jobs:
         uses: actions/checkout@v5
 
       - name: Install Rust (pinned 1.89.0)
-        uses: dtolnay/rust-toolchain@1.89.0
+        uses: dtolnay/rust-toolchain@1.100.0
 
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
