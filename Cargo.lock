@@ -2109,6 +2109,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "aw_doc_lint"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+]
+
+[[package]]
 name = "aw_editor"
 version = "0.1.0"
 dependencies = [

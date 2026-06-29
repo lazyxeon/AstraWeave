@@ -2,7 +2,7 @@
 
 Every KEEP occurrence from the closed-vocabulary triage (D.1.C), **updated by D.2.A** (the 58 `production-status-contested` entries resolved by caller-check; the `99.96%`-family resolved as combinatorial/dormant). The D.3 regression lint must honor these. Keyed on **(file + match-string + reason)** to survive line drift. `lifetime`: **permanent** · **pending-D2.B** (a perf/coverage number; re-evaluated when D.2.B measures it).
 
-**280 distinct allowlist keys** (266 original + 14 added in D.3.1 for the coverage/miri poison generation) covering ~617 KEEP occurrences (587 + ~30 from the new generation; 588 − 1 rewritten by D.2.A: `EDITOR_STATUS_REPORT.md:282`). Re-running the lint with this allowlist applied returns zero un-allowlisted hits.
+**301 distinct allowlist keys** (266 original + 14 added in D.3.1 for the coverage/miri poison generation + 21 added in D.3.2 reconciling the `aw_doc_lint` tool's full-vocab sweep) covering ~670 KEEP occurrences. The D.3.2 keys cleared the legit allowlist-drift the tool surfaced (sibling literal forms + corpus growth since the 2026-06-13 D.1.C baseline; K=63→11). The `aw_doc_lint` tool now reports **K=11 residual un-allowlisted occurrences** — genuine contamination (fluids `2,560` present-tense, `44+ crates`, `industry precedent` superlatives, the fluids.md stale README citation) ratified for correction in **D.3.2b**, NOT blessed here. (588 − 1 rewritten by D.2.A: `EDITOR_STATUS_REPORT.md:282`.)
 
 > **D.2.A update:** the 58 `production-status-contested` entries (formerly pending-D2) are now resolved — 1 REWRITE (editor over-claim) and 57 permanent keeps (historical-dated audit assessments, future-target roadmaps, and genuinely-shipped surfaces: glam math, `perform_attack_sweep`, GPU skinning, Core/ECS). The `99.96%` SpatialHash figure is a **combinatorial ratio** (499,500→180 pairs), machine-independent, describing the *dormant* module — permanent honest-dormancy, not a D.2.B perf row.
 >
@@ -278,7 +278,7 @@ Every KEEP occurrence from the closed-vocabulary triage (D.1.C), **updated by D.
 | `docs/current/FLUIDS_RESEARCH_GRADE_ENHANCEMENT_PLAN.md` | `DFSPH` | subject-doc-roadmap | permanent |
 | `docs/current/FLUIDS_RESEARCH_GRADE_ENHANCEMENT_PLAN.md` | `IISPH` | subject-doc-roadmap | permanent |
 | `docs/reference/RENDERING_SOTA_REFERENCE.md` | `production-ready` | technical-reference | permanent |
-| `docs/audits/terrain_scale_diagnostic_2026-04-24.md` | `3-6` | terrain-measurement | permanent |
+| `docs/audits/terrain_scale_diagnostic_2026-04-24.md` | `3-6×` | terrain-measurement | permanent |
 | `docs/current/WORLD_CLASS_EDITOR_BENCHMARK_RESEARCH.md` | `production-ready` | tier-definition | permanent |
 <!-- D.3.1 additions — the coverage/miri poison generation (59.3/94.57/977) minted by D.2.B/Path-B.2. Keys verified against HEAD 135e9915b. See D3_0_RECON.md §Deliverable 1. -->
 | `README.md` | `59.3%` | supersession-context | permanent |
@@ -295,6 +295,28 @@ Every KEEP occurrence from the closed-vocabulary triage (D.1.C), **updated by D.
 | `docs/current/CLAUDE_MD_HARDENING_PROPOSAL.md` | `977` | report-description | permanent |
 | `docs/architecture/ARCHITECTURE_MAP.md` | `977` | supersession-context | permanent |
 | `docs/architecture/ecs_math_core_sdk_foundation.md` | `977` | dated-record | permanent |
+<!-- D.3.2 additions — full-vocab K=0 reconciliation: legit occurrences the aw_doc_lint tool surfaced (allowlist drift since the 2026-06-13 D.1.C baseline — sibling literal forms + corpus growth in fluids/water-successor/qwen docs). Keys verified against HEAD. See the D.3.2 report. (Genuine residual contamination — fluids `2,560` present-tense, `44+ crates`, `industry precedent` superlatives — is NOT keyed here; it is reported for correction, not blessed.) -->
+| `docs/architecture/fluids.md` | `IISPH` | honest-dormancy | permanent |
+| `docs/architecture/ARCHITECTURE_MAP.md` | `UnifiedSolver` | honest-dormancy | permanent |
+| `docs/architecture/ARCHITECTURE_MAP.md` | `quinn` | honest-dormancy | permanent |
+| `docs/architecture/net.md` | `quinn` | honest-dormancy | permanent |
+| `docs/architecture/ai_pipeline.md` | `qwen3:8b` | honest-dormancy | permanent |
+| `docs/campaigns/fluids-integration/F0_GROUND_TRUTH_AUDIT.md` | `IISPH` | honest-dormancy | permanent |
+| `docs/campaigns/fluids-integration/F1_EXECUTION_REPORT.md` | `DFSPH` | honest-dormancy | permanent |
+| `docs/campaigns/fluids-integration/F1_EXECUTION_REPORT.md` | `IISPH` | honest-dormancy | permanent |
+| `docs/campaigns/water-successor/W2_0_RECON.md` | `DFSPH` | honest-dormancy | permanent |
+| `docs/campaigns/water-successor/W2_0_RECON.md` | `IISPH` | honest-dormancy | permanent |
+| `docs/current/FLUIDS_MUTATION_TESTING_REPORT.md` | `IISPH` | honest-dormancy | permanent |
+| `README.md` | `UnifiedSolver` | honest-dormancy | permanent |
+| `docs/current/QWEN3_LATENCY_OPTIMIZATION_REPORT.md` | `qwen3:8b` | subject-doc | permanent |
+| `docs/masters/MASTER_BENCHMARK_REPORT.md` | `qwen3:8b` | benchmark/api-subject | permanent |
+| `docs/current/QWEN3_MIGRATION_PLAN.md` | `test-all` | make-target | permanent |
+| `docs/lessons/WHAT_DIDNT.md` | `hermes2pro` | honest-dormancy | permanent |
+| `docs/current/GAME_ENGINE_READINESS_ROADMAP.md` | `quinn` | competitor-cited | permanent |
+| `docs/current/WORLD_CLASS_EDITOR_DELIVERY_PLAN.md` | `production-grade` | future-target | permanent |
+| `docs/current/MUTATION_TESTING_AUDIT.md` | `59 library crates` | historical-audit-denominator | permanent |
+| `docs/current/RENDERING_AUDIT_REPORT.md` | `55 crates` | historical-audit-denominator | permanent |
+| `docs/current/RENDERING_UPGRADE_PLAN.md` | `55 crates` | historical-audit-denominator | permanent |
 
 <!-- ALLOWLIST-END -->
 
