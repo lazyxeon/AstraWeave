@@ -9,7 +9,7 @@
 
 ## Mission Statement
 
-> AstraWeave aims to set the **industry precedent** for game engine benchmarking transparency. Every performance claim is backed by reproducible measurements, every edge case is tested adversarially, and every optimization is validated scientifically.
+> AstraWeave commits to rigorous, transparent game-engine benchmarking. Every performance claim is backed by reproducible measurements, every edge case is tested adversarially, and every optimization is validated scientifically.
 
 ---
 
@@ -392,7 +392,7 @@ AstraWeave's benchmarking philosophy prioritizes:
 3. **Adversarial** - Worst cases tested explicitly
 4. **Honesty** - Regressions documented, limitations acknowledged
 
-This approach sets the industry precedent for how game engines should validate and communicate performance. We believe the gaming community deserves better than marketing benchmarks - they deserve truth.
+This approach reflects how we believe game engines should validate and communicate performance. We believe the gaming community deserves better than marketing benchmarks - they deserve truth.
 
 ---
 

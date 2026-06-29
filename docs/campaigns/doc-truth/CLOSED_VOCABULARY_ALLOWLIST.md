@@ -182,7 +182,6 @@ Every KEEP occurrence from the closed-vocabulary triage (D.1.C), **updated by D.
 | `docs/architecture/fluids.md` | `ResearchFluidSystem` | honest-dormancy | permanent |
 | `docs/architecture/fluids.md` | `DFSPH` | honest-dormancy | permanent |
 | `docs/architecture/fluids.md` | `UnifiedSolver` | honest-dormancy | permanent |
-| `docs/architecture/fluids.md` | `world-class` | honest-dormancy | permanent |
 | `docs/architecture/net.md` | `QUIC` | honest-dormancy | permanent |
 | `docs/architecture/net_ecs.md` | `production-grade` | honest-dormancy | permanent |
 | `docs/architecture/net_ecs.md` | `production-ready` | honest-dormancy | permanent |

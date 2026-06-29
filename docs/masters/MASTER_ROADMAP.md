@@ -1,6 +1,6 @@
 # AstraWeave: Master Strategic Roadmap
 
-**Version**: 1.52  
+**Version**: 1.53  
 **Last Updated**: June 29, 2026  
 **Status**: Authoritative Source  
 **Validation**: ✅ PASS — [Full Report](../current/ENGINE_VALIDATION_2026_01_13.md)
@@ -83,12 +83,12 @@ AstraWeave is an **AI-native game engine** where AI agents are first-class citiz
 | **ECS** | Production | Archetype-based, BlobVec storage, deterministic, 8-stage pipeline, 728 tests (330 lib + 398 integration), **Miri-validated**, **Kani-verified** |
 | **AI** | Production | 7 planning modes (feature-gated), GOAP, Behavior Trees, LLM integration, 268 tests <!-- Source: CLAIMS_REGISTRY.md#ai-modes --> |
 | **Rendering** | Production | wgpu 25, PBR/IBL, CSM shadows, post-processing, **Headless Support**, 806+ lib tests |
-| **Physics** | Production | Rapier3D, character controller, spatial hashing, fluids (2,560 test markers), 1,244 tests <!-- Source: CLAIMS_REGISTRY.md#fluids-test-markers --> |
+| **Physics** | Production | Rapier3D, character controller, spatial hashing, fluids (738 test markers), 1,244 tests <!-- Source: CLAIMS_REGISTRY.md#fluids-test-markers --> |
 | **Audio** | Production | Spatial audio, 4-bus mixer, rodio backend, 239 tests |
 | **Navigation** | Production | Navmesh, A*, portal graphs, 216 lib tests / 496 total |
 | **SDK** | Production | C ABI FFI, **Miri-validated**, **Kani-verified** |
 | **Prompts** | Production | Template engine, prompt library, 1,931 tests, 100% mutation kill rate |
-| **Fluids** | In-design (zero consumers outside crate) | PBD solver, 2,560 test markers <!-- Source: CLAIMS_REGISTRY.md#fluids-test-markers --> |
+| **Fluids** | In-design (zero consumers outside crate) | PBD solver, 738 test markers <!-- Source: CLAIMS_REGISTRY.md#fluids-test-markers --> |
 
 ### Recent Additions (February 2026)
 
@@ -99,7 +99,7 @@ AstraWeave is an **AI-native game engine** where AI agents are first-class citiz
 | **✅ Wave 2 Automated Mutation Testing** | prompts (792), render (339), editor (130) | **1,261+** |
 | **✅ Miri Memory Safety Validation** | ecs, math, core, sdk | **1,059** |
 | **✅ Kani Formal Verification** | ecs, math, core, sdk | **69 proofs** |
-| **✅ Fluids System** | `astraweave-fluids` | **2,560** <!-- Source: CLAIMS_REGISTRY.md#fluids-test-markers --> |
+| **✅ Fluids System** | `astraweave-fluids` | **738** <!-- Source: CLAIMS_REGISTRY.md#fluids-test-markers --> |
 | **✅ Prompt Engineering System** | `astraweave-prompts` | **1,931** |
 | Physics Robustness (Phase 8.8) | `astraweave-physics` | 1,244+ |
 | ECS BlobVec Optimization | `astraweave-ecs/src/archetype.rs` | 728 |
@@ -376,6 +376,7 @@ Key achievements:
 
 | Ver | Date | Type | Impact | Summary (≤80 chars) |
 |-----|------|------|--------|---------------------|
+| **1.53** | Jun 29 | 🔍 | 🟡 | D.3.2b doc-truth cleanup: fluids test markers corrected to 738 (post-W.1; rows :86/:91/:102) |
 | **1.52** | Jun 29 | 🔍 | 🟡 | D-series Path-B.2: coverage 57.35% whole-workspace (was 59.3% subset); miri 1,059 |
 | **1.49** | Mar 25 | 🔷 | 🟡 | Blueprint Zone Editor: 9 phases, polygon zones, Replica/Inspired, 125+ tests |
 | **1.48** | Feb 27 | 🔷 | 🟡 | Blend Import Pipeline: 7 phases, BiomePack, editor panel, 97 tests |
