@@ -73,7 +73,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-376ce25d.js";
+            window.path_to_searchindex_js = "searchindex-bd6d870a.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-3cd98da5.js"></script>
@@ -265,7 +265,7 @@
           
 <div class="astra-hero__highlights" aria-label="Hero highlights">
             <span>12,700+ agents at 60 FPS</span>
-            <span>977 Miri tests, 0 undefined behavior</span>
+            <span>1,059 Miri tests, 0 undefined behavior</span>
             <span>71+ Kani proof harnesses</span>
           </div>
 
@@ -369,12 +369,12 @@
       <span>workspace members with comprehensive test coverage</span>
     </article>
     <article class="astra-proof-tile">
-      <strong>977</strong>
+      <strong>1,059</strong>
       <span>Miri tests with zero undefined behavior</span>
     </article>
     <article class="astra-proof-tile">
-      <strong>2.70 ms</strong>
-      <span>frame time at 1,000 entities in the current benchmark baseline</span>
+      <strong>0.71 ms</strong>
+      <span>total frame time at 1,000 entities (profiling_demo; mimalloc default — 0.97 ms on system alloc). 2.70 ms was the Week-8 target.</span>
     </article>
     <article class="astra-proof-tile">
       <strong>71+</strong>
@@ -759,7 +759,7 @@
 <li><span>AI validation throughput</span><strong>6.48M checks/sec</strong></li>
 
           
-<li><span>Frame time at 1,000 entities</span><strong>2.70 ms</strong></li>
+<li><span>Frame time at 1,000 entities</span><strong>0.71 ms (mimalloc) / 0.97 ms (system)</strong></li>
 
           
 <li><span>ECS world creation</span><strong>25.8 ns</strong></li>
@@ -862,13 +862,13 @@
         
 <ul class="astra-list">
           
-<li><span>Weighted line coverage</span><strong>59.3% across measured crates</strong></li>
+<li><span>Whole-workspace line coverage</span><strong>57.35% (cargo llvm-cov --workspace)</strong></li>
 
           
-<li><span>High-coverage crates</span><strong>14 crates at 85%+</strong></li>
+<li><span>High-coverage crates</span><strong>core crates (ECS, Physics, Nav) ≥85%</strong></li>
 
           
-<li><span>Miri validation</span><strong>977 tests, 0 UB</strong></li>
+<li><span>Miri validation</span><strong>1,059 tests, 0 UB</strong></li>
 
           
 <li><span>Kani verification</span><strong>71+ harnesses</strong></li>
