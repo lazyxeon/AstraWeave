@@ -81,7 +81,7 @@ make dev                 # Comprehensive check
 
 **Framework**: Rust cargo test + criterion benchmarks  
 **Test Coverage**: 96.9% determinism (31/32 tests), 166/166 Astract tests, 42/42 HUD tests  
-**Benchmarks**: ECS (25.8 ns spawn), AI (184 ns – 2.10 µs), Physics (114 ns character move), Frame time (2.70 ms @ 1000 entities)
+**Benchmarks**: ECS (25.8 ns spawn), AI (184 ns – 2.10 µs), Physics (114 ns character move), Frame time (~0.97 ms system / ~0.71 ms mimalloc @ 1000 entities; 2.70 ms was the Week-8 target) <!-- Source: CLAIMS_REGISTRY.md#frame-time-1000-entities -->
 
 **Run Tests**:
 ```bash

@@ -2,11 +2,15 @@
 
 Every KEEP occurrence from the closed-vocabulary triage (D.1.C), **updated by D.2.A** (the 58 `production-status-contested` entries resolved by caller-check; the `99.96%`-family resolved as combinatorial/dormant). The D.3 regression lint must honor these. Keyed on **(file + match-string + reason)** to survive line drift. `lifetime`: **permanent** · **pending-D2.B** (a perf/coverage number; re-evaluated when D.2.B measures it).
 
-**266 distinct allowlist keys** covering 587 KEEP occurrences (588 − 1 rewritten by D.2.A: `EDITOR_STATUS_REPORT.md:282`). Re-running the lint with this allowlist applied returns zero un-allowlisted hits.
+**280 distinct allowlist keys** (266 original + 14 added in D.3.1 for the coverage/miri poison generation) covering ~617 KEEP occurrences (587 + ~30 from the new generation; 588 − 1 rewritten by D.2.A: `EDITOR_STATUS_REPORT.md:282`). Re-running the lint with this allowlist applied returns zero un-allowlisted hits.
 
 > **D.2.A update:** the 58 `production-status-contested` entries (formerly pending-D2) are now resolved — 1 REWRITE (editor over-claim) and 57 permanent keeps (historical-dated audit assessments, future-target roadmaps, and genuinely-shipped surfaces: glam math, `perform_attack_sweep`, GPU skinning, Core/ECS). The `99.96%` SpatialHash figure is a **combinatorial ratio** (499,500→180 pairs), machine-independent, describing the *dormant* module — permanent honest-dormancy, not a D.2.B perf row.
 >
 > **D.2.A.1 update (W.1-contamination, 2026-06-25):** the fluids honest-dormancy keys — `ARCHITECTURE_MAP.md`→`ResearchFluidSystem`, and `fluids.md`→`ResearchFluidSystem`/`DFSPH`/`UnifiedSolver` — bless those strings ONLY as deleted/never-existed dormancy-debunking context (post-W.1/F.1), NOT as live-solver sanction. W.1 (2026-06-20) did not newly introduce them (they were already gone at F.1); the keys are RETAINED, but D.3's lint must treat them as honest-dormancy-only so it still flags any prose that re-asserts them as a *live* solver. See `D_RESUME_0_RECON.md` §2a.
+>
+> **D.3.1 update (new poison generation, 2026-06-29):** added 14 keys for the coverage/miri poison minted by D.2.B/Path-B.2 — `59.3%` (supersession-context / dated-revision / version-comparison), `94.57%` (debunking-context / version-comparison), and `977` (dated-record / historical-dated / report-description / supersession-context). These bless the **legitimately superseded / dated / report-describing** occurrences (the corrections that cite the old value, the dated `MIRI_VALIDATION_REPORT.md` record, the master-report dated rows, the report-description index rows, and the two architecture-trace supersession mentions). The two **present-tense** survivors (`KANI_VERIFICATION_PLAN.md:479` 94.57%; `.zencoder/rules/repo.md:84` + `docs/lessons/WHAT_DIDNT.md:21` frame-time) were **corrected**, not allowlisted. Frame-time (`2.70 ms`/`370 FPS`) is **not** poison-listed (carve-out — see `CLOSED_VOCABULARY_LINT.md`). New `reason` categories: `supersession-context`, `version-comparison`, `debunking-context`, `dated-record`, `report-description`. Keys verified against HEAD `135e9915b`. Authority: `D3_0_RECON.md` + `CLAIMS_REGISTRY.md`.
+
+<!-- ALLOWLIST-START -->
 
 | File | Match | Reason | Lifetime |
 |---|---|---|:-:|
@@ -276,5 +280,22 @@ Every KEEP occurrence from the closed-vocabulary triage (D.1.C), **updated by D.
 | `docs/reference/RENDERING_SOTA_REFERENCE.md` | `production-ready` | technical-reference | permanent |
 | `docs/audits/terrain_scale_diagnostic_2026-04-24.md` | `3-6` | terrain-measurement | permanent |
 | `docs/current/WORLD_CLASS_EDITOR_BENCHMARK_RESEARCH.md` | `production-ready` | tier-definition | permanent |
+<!-- D.3.1 additions — the coverage/miri poison generation (59.3/94.57/977) minted by D.2.B/Path-B.2. Keys verified against HEAD 135e9915b. See D3_0_RECON.md §Deliverable 1. -->
+| `README.md` | `59.3%` | supersession-context | permanent |
+| `docs/masters/MASTER_ROADMAP.md` | `59.3%` | supersession-context + dated-revision | permanent |
+| `docs/current/MASTER_COVERAGE_REPORT.md` | `59.3%` | supersession-context + version-comparison | permanent |
+| `docs/current/MASTER_COVERAGE_REPORT.md` | `94.57%` | debunking-context + version-comparison | permanent |
+| `docs/current/MIRI_VALIDATION_REPORT.md` | `977` | dated-record | permanent |
+| `docs/masters/MASTER_ROADMAP.md` | `977` | historical-dated | permanent |
+| `docs/current/MASTER_COVERAGE_REPORT.md` | `977` | historical-dated | permanent |
+| `docs/current/PROJECT_STATUS.md` | `977` | historical-dated | permanent |
+| `docs/current/DOCUMENTATION_INDEX.md` | `977` | report-description | permanent |
+| `.github/copilot-instructions.md` | `977` | report-description | permanent |
+| `CLAUDE.md` | `977` | report-description | permanent |
+| `docs/current/CLAUDE_MD_HARDENING_PROPOSAL.md` | `977` | report-description | permanent |
+| `docs/architecture/ARCHITECTURE_MAP.md` | `977` | supersession-context | permanent |
+| `docs/architecture/ecs_math_core_sdk_foundation.md` | `977` | dated-record | permanent |
+
+<!-- ALLOWLIST-END -->
 
 *Full per-line evidence in [`CLOSED_VOCABULARY_TRIAGE.md`](CLOSED_VOCABULARY_TRIAGE.md). pending-D2.B entries are listed in `D2A_EXECUTION_REPORT.md` §PENDING-D2.B.*

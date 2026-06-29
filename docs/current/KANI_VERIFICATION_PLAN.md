@@ -476,7 +476,7 @@ Kani verification will elevate AstraWeave from **Miri-validated** (no UB in test
 **Combined Verification Stack**:
 - ✅ **Miri**: Runtime UB detection (1,059 tests, 0 violations)
 - 🎯 **Kani**: Formal correctness proofs (25-32 properties planned)
-- ✅ **Tests**: 3,040+ passing tests (94.57% coverage)
+- ✅ **Tests**: 3,040+ passing tests (57.35% whole-workspace line coverage) <!-- Source: CLAIMS_REGISTRY.md#coverage-weighted -->
 - ✅ **Clippy**: Zero warnings across workspace
 
 ---

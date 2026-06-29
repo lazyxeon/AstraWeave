@@ -18,7 +18,7 @@
 
 **Evidence**:
 - **Week 8 analysis**: 516 µs → 416 µs best case (-19%), but overhead makes it slower
-- **Current**: Single-threaded execution validated (2.70 ms, 370 FPS)
+- **Current**: Single-threaded execution validated (~0.97 ms system / ~0.71 ms mimalloc @ 1,000 entities; 2.70 ms / 370 FPS was the Week-8 target) <!-- Source: CLAIMS_REGISTRY.md#frame-time-1000-entities -->
 
 **Lesson**: Don't parallelize small workloads (<5 ms). Overhead dominates.
 
