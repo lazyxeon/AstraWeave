@@ -7868,8 +7868,9 @@ mod tests {
     }
 
     /// Ensures the force_shadow_override field doesn't affect the WGSL shader source.
-    /// The shader checks `uLight.extras.x < 0.0` — this test validates that the main
-    /// PBR shader string contains the conditional (not a hardcoded override).
+    /// SHADER_SRC gates shadow sampling on `uLight.extras.x >= 0.0` (the negative
+    /// sentinel disables shadows) — this test validates the main PBR shader keeps
+    /// that conditional (not a hardcoded override).
     #[test]
     fn test_shader_has_conditional_shadow_not_hardcoded() {
         let shader = SHADER_SRC;
@@ -7878,10 +7879,12 @@ mod tests {
             !shader.contains("// DEBUG: Force shadows off"),
             "hardcoded shadow override should have been removed"
         );
-        // Must contain the conditional sentinel check
+        // Must keep the conditional sentinel gate. SHADER_SRC defaults shadow=1.0
+        // and runs PCF only when `uLight.extras.x >= 0.0`; the negative sentinel
+        // (set by force_shadow_override) disables shadows — conditional, not hardcoded.
         assert!(
-            shader.contains("uLight.extras.x < 0.0"),
-            "shader should check sentinel for debug shadow override"
+            shader.contains("uLight.extras.x >= 0.0"),
+            "shader should gate shadows on the extras.x sentinel (conditional, not hardcoded)"
         );
     }
 

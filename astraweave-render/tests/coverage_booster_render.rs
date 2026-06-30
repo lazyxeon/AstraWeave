@@ -1178,7 +1178,19 @@ async fn test_instancing_system() {
     assert_eq!(batch.instance_count(), 0);
 
     batch.update_buffer(&device, &_queue);
-    assert!(batch.buffer.is_none());
+    // Grow-on-demand reuse contract (instancing.rs::update_buffer): on an empty
+    // batch it early-returns WITHOUT freeing self.buffer, so a previously-allocated
+    // buffer is intentionally retained (avoids GPU buffer churn). instance_count()
+    // — not buffer presence — is the authoritative "nothing to draw" signal.
+    assert!(
+        batch.buffer.is_some(),
+        "update_buffer must not free the GPU buffer on an empty batch (grow-on-demand reuse)"
+    );
+    assert_eq!(
+        batch.instance_count(),
+        0,
+        "instance_count must still report 0 after clear(), independent of buffer retention"
+    );
 
     // Test InstanceManager
     let mut manager = InstanceManager::new();
