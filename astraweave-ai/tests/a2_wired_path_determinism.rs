@@ -127,6 +127,15 @@ fn a2_wired_path_determinism() {
                 !goap_ref.steps.is_empty(),
                 "scenario {i}: GoapOrchestrator should produce a non-empty plan when an enemy exists"
             );
+        } else {
+            assert!(
+                rule_ref.steps.is_empty(),
+                "scenario {i}: RuleOrchestrator should return an empty PlanIntent when no enemies exist"
+            );
+            assert!(
+                goap_ref.steps.is_empty(),
+                "scenario {i}: GoapOrchestrator should return an empty PlanIntent when no enemies exist"
+            );
         }
 
         // A2: identical snapshot => identical full PlanIntent, every run.
