@@ -327,6 +327,70 @@ fn compute_tangents_degenerate_triangle_no_crash() {
     }
 }
 
+#[test]
+fn compute_tangents_mixed_valid_and_degenerate_keeps_valid_tangents() {
+    // Pins the M1.5 fix's correctness property: a single zero-area (coincident-
+    // position) triangle must NOT crash AND must NOT demote the whole mesh — the
+    // valid triangle's vertices still receive real (finite, non-zero) tangents.
+    // (Distinguishes the fix from a whole-mesh no-op, which would leave them zero.)
+    let mut mesh = CpuMesh::default();
+    // Valid triangle in the XZ plane with proper UVs (verts 0,1,2).
+    mesh.vertices.push(MeshVertex::from_arrays(
+        [0.0, 0.0, 0.0],
+        [0.0, 1.0, 0.0],
+        [0.0; 4],
+        [0.0, 0.0],
+    ));
+    mesh.vertices.push(MeshVertex::from_arrays(
+        [1.0, 0.0, 0.0],
+        [0.0, 1.0, 0.0],
+        [0.0; 4],
+        [1.0, 0.0],
+    ));
+    mesh.vertices.push(MeshVertex::from_arrays(
+        [0.0, 0.0, 1.0],
+        [0.0, 1.0, 0.0],
+        [0.0; 4],
+        [0.0, 1.0],
+    ));
+    // Fully-coincident degenerate triangle, offset so the mesh box has extent
+    // (verts 3,4,5 — distinct indices, identical positions).
+    for _ in 0..3 {
+        mesh.vertices.push(MeshVertex::from_arrays(
+            [5.0, 5.0, 5.0],
+            [0.0, 1.0, 0.0],
+            [0.0; 4],
+            [0.5, 0.5],
+        ));
+    }
+    mesh.indices = vec![0, 1, 2, 3, 4, 5];
+    compute_tangents(&mut mesh);
+
+    // Valid triangle: finite AND real (non-zero) tangents — not abandoned.
+    for v in &mesh.vertices[0..3] {
+        assert!(
+            v.tangent.iter().all(|c| c.is_finite()),
+            "valid-triangle tangent must be finite, got {:?}",
+            v.tangent
+        );
+        let len_sq =
+            v.tangent[0] * v.tangent[0] + v.tangent[1] * v.tangent[1] + v.tangent[2] * v.tangent[2];
+        assert!(
+            len_sq > 0.25,
+            "valid-triangle tangent must be real (non-zero), got {:?}",
+            v.tangent
+        );
+    }
+    // Degenerate triangle: must be finite (default/zero is acceptable).
+    for v in &mesh.vertices[3..6] {
+        assert!(
+            v.tangent.iter().all(|c| c.is_finite()),
+            "degenerate-triangle tangent must be finite, got {:?}",
+            v.tangent
+        );
+    }
+}
+
 // ============================================================================
 // CpuMesh — Default + Clone
 // ============================================================================

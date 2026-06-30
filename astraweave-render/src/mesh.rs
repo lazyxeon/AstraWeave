@@ -152,6 +152,32 @@ pub fn compute_tangents(mesh: &mut CpuMesh) {
         return;
     }
 
+    // MikkTSpace also panics when the mesh collapses to zero spatial extent —
+    // every referenced vertex position coincident, even via DISTINCT indices
+    // (which the index check above misses). Its vertex-weld spatial hash
+    // (mikktspace-0.3.0 generated.rs:1597) divides by the bounding-box extent in
+    // FindGridCell, so a zero-extent box yields 0/0 = NaN, saturating every vertex
+    // into hash cell 0 and overflowing the per-cell offset table — in the hashing
+    // pre-pass, *before* MikkTSpace's own per-triangle degeneracy skip can run.
+    // A mesh with any positional spread keeps a non-degenerate box and is handled
+    // correctly (MikkTSpace's internal skip drops individual zero-area triangles),
+    // so we reroute only when EVERY triangle is geometrically degenerate. The
+    // Lengyel fallback is finite-by-construction (`.max(1e-8)` UV-determinant clamp
+    // + `normalize_or_zero`), so it yields finite tangents for this input. A
+    // non-finite position would likewise poison FindGridCell, so treat it as
+    // degenerate too.
+    let all_zero_area = mesh.indices.chunks_exact(3).all(|tri| {
+        let p0 = Vec3::from_array(mesh.vertices[tri[0] as usize].position);
+        let p1 = Vec3::from_array(mesh.vertices[tri[1] as usize].position);
+        let p2 = Vec3::from_array(mesh.vertices[tri[2] as usize].position);
+        let area_sq = (p1 - p0).cross(p2 - p0).length_squared();
+        !area_sq.is_finite() || area_sq <= 1e-20
+    });
+    if all_zero_area {
+        compute_tangents_lengyel(mesh);
+        return;
+    }
+
     let mut adapter = MikkTSpaceAdapter {
         vertices: &mut mesh.vertices,
         indices: &mesh.indices,
