@@ -1355,10 +1355,19 @@ impl PhysicsWorld {
                     let slope = ground_normal.dot(glam::Vec3::Y).acos().to_degrees();
                     let ground_y = cast_origin.y - hit.time_of_impact;
 
+                    // The capsule origin (rigid-body translation) is its CENTER, but
+                    // the controller rests on the surface via its BOTTOM tip. The tip
+                    // sits `half_total` below the center, where
+                    // half_total = half_height + radius (= ctrl.height/2 + ctrl.radius).
+                    // Snapping the center to `ground_y` (the old behavior) buried the
+                    // capsule; snap the center to `ground_y + half_total` so the bottom
+                    // rests on the surface, and test the bottom against the surface.
+                    let half_total = ctrl.height * 0.5 + ctrl.radius;
+
                     if slope <= ctrl.max_climb_angle_deg + 1e-2 {
-                        // Snap to ground if close enough
-                        if new_pos.y <= ground_y + 0.05 {
-                            new_pos.y = ground_y;
+                        // Snap to ground if the capsule bottom is close enough.
+                        if new_pos.y - half_total <= ground_y + 0.05 {
+                            new_pos.y = ground_y + half_total;
                             ctrl.vertical_velocity = 0.0;
                             ctrl.time_since_grounded = 0.0;
                         }
@@ -4865,10 +4874,12 @@ mod tests {
         }
 
         let y = pw.body_transform(ch).unwrap().w_axis.y;
-        // Should have settled near the ground (y ~ 0.0 to 0.5)
+        // The capsule rests with its BOTTOM on the surface, so its center (the
+        // rigid-body translation) sits half_total above the surface:
+        // ground_surface(0.1) + half_total(half_height 0.8 + radius 0.3 = 1.1) = 1.2.
         assert!(
-            y < 1.0,
-            "Character should have settled near ground: y={}",
+            (y - 1.2).abs() < 0.05,
+            "Grounded character center should rest at y=1.2 (bottom on surface): y={}",
             y
         );
         // Vertical velocity should be 0 when grounded

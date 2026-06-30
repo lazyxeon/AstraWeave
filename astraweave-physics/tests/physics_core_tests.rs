@@ -277,10 +277,18 @@ fn character_controller_stays_on_ground() {
 
     let final_y = world.body_transform(char_id).unwrap().w_axis.y;
 
-    // Character should remain on ground (not fall through or float)
+    // The capsule rests with its BOTTOM on the surface, so its center (the
+    // rigid-body translation) sits half_total above the surface:
+    //   center = ground_surface + half_total(half_height 0.9 + radius 0.4 = 1.3).
+    // NOTE: this test passes half.y=0.5, but `create_ground_plane` currently
+    // hardcodes the ground's y half-extent to 0.1 (a separate latent bug,
+    // deferred to its own beat), so the surface is at 0.1 and the resting
+    // center = 0.1 + 1.3 = 1.4. When create_ground_plane is fixed to honor
+    // half.y (=0.5), update this expected value to 0.5 + 1.3 = 1.8.
+    // Pinned (not a loose band) so a future grounding-convention drift is caught.
     assert!(
-        final_y > 0.5 && final_y < 2.0,
-        "Character should stay on ground, y={}",
+        (final_y - 1.4).abs() < 0.05,
+        "Character should rest on the surface (center y=1.4), y={}",
         final_y
     );
 }
