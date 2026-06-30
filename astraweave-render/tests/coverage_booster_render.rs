@@ -7629,7 +7629,7 @@ fn test_water_additional_wave18() {
 
     // Test Pod/Zeroable sizes
     assert_eq!(std::mem::size_of::<WaterVertex>(), 20);
-    assert_eq!(std::mem::size_of::<WaterUniforms>(), 128);
+    assert_eq!(std::mem::size_of::<WaterUniforms>(), 512);
 
     println!("Water additional wave18 tested.");
 }
@@ -11935,8 +11935,8 @@ fn test_terrain_material_gpu_wave24() {
     let debug_str = format!("{:?}", default_material);
     assert!(debug_str.contains("TerrainMaterialGpu"));
 
-    // Test bytemuck - size should be 576 bytes
-    assert_eq!(std::mem::size_of::<TerrainMaterialGpu>(), 576);
+    // Test bytemuck - size should be 2112 bytes (32 layers * 64 + 64 common)
+    assert_eq!(std::mem::size_of::<TerrainMaterialGpu>(), 2112);
 
     println!("TerrainMaterialGpu wave24 tested.");
 }

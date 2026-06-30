@@ -515,8 +515,8 @@ fn terrain_layer_gpu_default_values() {
 // ═══════════════════════════════════════════════════════════════════════════
 
 #[test]
-fn terrain_material_gpu_size_576() {
-    assert_eq!(std::mem::size_of::<TerrainMaterialGpu>(), 576);
+fn terrain_material_gpu_size_2112() {
+    assert_eq!(std::mem::size_of::<TerrainMaterialGpu>(), 2112);
 }
 
 #[test]

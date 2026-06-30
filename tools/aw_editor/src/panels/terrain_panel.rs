@@ -2642,7 +2642,8 @@ mod tests {
         let panel = TerrainPanel::new();
         assert_eq!(panel.seed, 12345);
         assert_eq!(panel.primary_biome, "grassland");
-        assert_eq!(panel.chunk_radius, 5);
+        // Default chunk_radius is 10 (Phase 1.6-F.4.B.2.C: radius 5->10 world extent).
+        assert_eq!(panel.chunk_radius, 10);
     }
 
     #[test]

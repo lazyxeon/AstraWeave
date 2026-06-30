@@ -500,16 +500,15 @@ fn camera_view_matrix_determinant_nonzero() {
 }
 
 #[test]
-fn camera_view_matrix_uses_negative_y_up() {
-    // The engine uses -Y as the up vector. When looking straight ahead (+X)
-    // with up=-Y, the view matrix should flip Y coordinates.
+fn camera_view_matrix_uses_positive_y_up() {
+    // The engine uses +Y as the up vector (the prior -Y caused negative clip-space
+    // w — a deliberate bug-fix in freefly.rs). Looking straight ahead (+X) with
+    // up=+Y, world Y maps to positive view-space Y.
     let cam = make_camera();
     let view = cam.view_matrix();
-    // Transform a point at (0, 1, 0) world space — with -Y up,
-    // this should appear at negative Y in view space
     let world_up = view.transform_vector3(Vec3::Y);
-    // With -Y up convention, world Y should map to negative view Y
-    assert!(world_up.y < 0.0, "Y should be flipped, got {}", world_up.y);
+    // With +Y up convention, world Y should map to positive view Y.
+    assert!(world_up.y > 0.0, "Y should map to +view-Y, got {}", world_up.y);
 }
 
 // ── Camera::proj_matrix() ──────────────────────────────────────────

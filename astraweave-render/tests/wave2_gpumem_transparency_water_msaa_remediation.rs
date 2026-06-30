@@ -582,8 +582,8 @@ fn blend_state_multiplicative_alpha_factors() {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 #[test]
-fn water_uniforms_size_128_bytes() {
-    assert_eq!(std::mem::size_of::<WaterUniforms>(), 128);
+fn water_uniforms_size_512_bytes() {
+    assert_eq!(std::mem::size_of::<WaterUniforms>(), 512);
 }
 
 #[test]
@@ -635,7 +635,7 @@ fn water_uniforms_default_foam_threshold() {
 fn water_uniforms_bytemuck_roundtrip() {
     let u = WaterUniforms::default();
     let bytes = bytemuck::bytes_of(&u);
-    assert_eq!(bytes.len(), 128);
+    assert_eq!(bytes.len(), 512);
     let back: &WaterUniforms = bytemuck::from_bytes(bytes);
     assert_eq!(back.camera_pos, u.camera_pos);
     assert!((back.foam_threshold - u.foam_threshold).abs() < 1e-6);

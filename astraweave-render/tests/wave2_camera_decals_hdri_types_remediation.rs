@@ -152,12 +152,13 @@ mod camera_tests {
     }
 
     #[test]
-    fn view_matrix_uses_negative_y_up() {
-        // Camera uses -Y as up (flipped). Looking at +X from origin:
-        // The view matrix should be look_to_rh(pos, dir, -Y)
+    fn view_matrix_uses_positive_y_up() {
+        // Camera uses +Y as up (the prior -Y caused negative clip-space w — a
+        // deliberate bug-fix in freefly.rs). Looking at +X from origin:
+        // the view matrix should be look_to_rh(pos, dir, +Y).
         let cam = make_camera();
         let v = cam.view_matrix();
-        let expected = Mat4::look_to_rh(cam.position, Camera::dir(cam.yaw, cam.pitch), -Vec3::Y);
+        let expected = Mat4::look_to_rh(cam.position, Camera::dir(cam.yaw, cam.pitch), Vec3::Y);
         for i in 0..4 {
             for j in 0..4 {
                 assert!(

@@ -60,7 +60,8 @@ fn terrain_vertex_pod_roundtrip() {
 fn terrain_renderer_new_default_config() {
     let config = WorldConfig::default();
     let renderer = TerrainRenderer::new(config);
-    assert_eq!(renderer.world_generator().config().chunk_size, 256.0);
+    // Canonical WorldConfig::default().chunk_size is 512.0 (astraweave-terrain/src/lib.rs).
+    assert_eq!(renderer.world_generator().config().chunk_size, 512.0);
 }
 
 #[test]

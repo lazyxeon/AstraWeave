@@ -501,8 +501,8 @@ fn compute_tangents_handedness_positive_for_standard_winding() {
 // ──────────────────────────────────────────────────────────────────
 
 #[test]
-fn water_uniforms_size_128_bytes() {
-    assert_eq!(std::mem::size_of::<WaterUniforms>(), 128);
+fn water_uniforms_size_512_bytes() {
+    assert_eq!(std::mem::size_of::<WaterUniforms>(), 512);
 }
 
 #[test]

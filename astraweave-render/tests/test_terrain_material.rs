@@ -29,11 +29,12 @@ mod terrain_material_tests {
 
     #[test]
     fn test_terrain_material_size_and_alignment() {
-        // Verify TerrainMaterialGpu is exactly 576 bytes (8*64 + 64)
+        // Verify TerrainMaterialGpu is exactly 2112 bytes (32*64 + 64); the
+        // canonical layer cap is MAX_TERRAIN_LAYERS=32, matched by pbr_terrain.wgsl.
         assert_eq!(
             std::mem::size_of::<TerrainMaterialGpu>(),
-            576,
-            "TerrainMaterialGpu must be 576 bytes (8 layers + common params)"
+            2112,
+            "TerrainMaterialGpu must be 2112 bytes (32 layers + common params)"
         );
         assert_eq!(
             std::mem::align_of::<TerrainMaterialGpu>(),
@@ -56,7 +57,7 @@ mod terrain_material_tests {
     #[test]
     fn test_pod_zeroable_terrain_material() {
         // Verify TerrainMaterialGpu implements Pod and Zeroable
-        let bytes = [0u8; 576];
+        let bytes = [0u8; 2112];
         let material: TerrainMaterialGpu = bytemuck::cast(bytes);
 
         assert_eq!(material.splat_uv_scale, 0.0);

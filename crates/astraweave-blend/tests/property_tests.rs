@@ -483,8 +483,8 @@ proptest! {
         let opts = ConversionOptions::game_runtime();
         // Game runtime should prefer binary format
         prop_assert_eq!(opts.format, OutputFormat::GlbBinary);
-        // Should enable draco for smaller files
-        prop_assert!(opts.gltf.draco_compression);
+        // Draco is DISABLED (the Rust gltf crate cannot decode Draco)
+        prop_assert!(!opts.gltf.draco_compression);
         // Should triangulate meshes
         prop_assert!(opts.mesh.triangulate);
         // Should have reasonable texture limits

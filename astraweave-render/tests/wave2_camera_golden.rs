@@ -179,14 +179,14 @@ fn vp_equals_proj_times_view() {
 }
 
 #[test]
-fn view_matrix_uses_negative_y_up() {
-    // Flipped up vector means the view matrix is built with -Vec3::Y as up
+fn view_matrix_uses_positive_y_up() {
+    // FreeFly::view_matrix is built with +Vec3::Y as up (freefly.rs): the prior
+    // -Vec3::Y caused clip-space w to go negative — a deliberate bug-fix.
     let mut c = make_camera();
     c.position = Vec3::new(0.0, 0.0, 5.0);
     let v = c.view_matrix();
-    // With -Y up and looking along +X (yaw=0, pitch=0), the up vector in view space
-    // should flip the vertical. Verify this is look_to_rh with -Y up:
-    let expected = Mat4::look_to_rh(c.position, Camera::dir(c.yaw, c.pitch), -Vec3::Y);
+    // Verify this is look_to_rh with +Y up:
+    let expected = Mat4::look_to_rh(c.position, Camera::dir(c.yaw, c.pitch), Vec3::Y);
     let diff = (v - expected).abs();
     for col in 0..4 {
         for row in 0..4 {

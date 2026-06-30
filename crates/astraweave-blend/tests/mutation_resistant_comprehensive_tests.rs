@@ -1421,9 +1421,10 @@ mod options_tests {
 
     // ---- Preset factories ----
     #[test]
-    fn game_runtime_draco_enabled() {
+    fn game_runtime_draco_disabled() {
         let opts = ConversionOptions::game_runtime();
-        assert!(opts.gltf.draco_compression);
+        // Draco disabled: the Rust gltf crate cannot decode Draco.
+        assert!(!opts.gltf.draco_compression);
     }
 
     #[test]
@@ -1663,7 +1664,8 @@ mod options_tests {
     #[test]
     fn default_gltf_options_draco() {
         let opts = GltfExportOptions::default();
-        assert!(opts.draco_compression);
+        // Draco disabled by default: the Rust gltf crate cannot decode Draco.
+        assert!(!opts.draco_compression);
         assert_eq!(opts.draco_compression_level, 6);
     }
 

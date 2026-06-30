@@ -277,7 +277,8 @@ mod tests {
     fn test_terrain_renderer_creation() {
         let config = WorldConfig::default();
         let renderer = TerrainRenderer::new(config);
-        assert_eq!(renderer.chunk_size, 256.0);
+        // Canonical WorldConfig::default().chunk_size is 512.0 (astraweave-terrain/src/lib.rs).
+        assert_eq!(renderer.chunk_size, 512.0);
     }
 
     #[test]

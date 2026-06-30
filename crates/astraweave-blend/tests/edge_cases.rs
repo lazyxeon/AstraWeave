@@ -573,8 +573,9 @@ fn default_options_sensible() {
 fn game_runtime_preset_optimized() {
     let opts = ConversionOptions::game_runtime();
 
-    // Game runtime should have draco compression enabled
-    assert!(opts.gltf.draco_compression);
+    // Game runtime has Draco DISABLED (the Rust gltf crate cannot decode Draco;
+    // enabling it would emit assets the engine's own loader cannot read).
+    assert!(!opts.gltf.draco_compression);
 
     // Should use binary format for smaller size
     assert_eq!(opts.format, OutputFormat::GlbBinary);

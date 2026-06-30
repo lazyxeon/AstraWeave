@@ -233,8 +233,10 @@ fn clustered_z_far_fraction_in_last_slice() {
 }
 
 #[test]
-fn clustered_z_near_fraction_in_first_slice() {
-    // Light near the near plane should be in first z-slice
+fn clustered_z_near_light_lands_in_log_slice_one() {
+    // Under LOGARITHMIC z-slicing (clustered.rs), z = near+1.0 = 1.1 (11x the near
+    // plane) lands in slice 1, not slice 0: iz = floor(ln(z/near)/ln(far/near) * 4).
+    // zmin=0.6 -> floor(ln(6)/ln(1000)*4)=floor(1.04)=1; zmax=1.6 -> floor(1.60)=1.
     let dims = ClusterDims { x: 1, y: 1, z: 4 };
     let near = 0.1;
     let lights = vec![CpuLight {
@@ -243,8 +245,8 @@ fn clustered_z_near_fraction_in_first_slice() {
     }];
     let (counts, _indices, _offsets) = bin_lights_cpu(&lights, dims, (800, 600), near, 100.0, 1.0);
     assert!(
-        counts[0] >= 1,
-        "Light near near-plane should be in first z-slice"
+        counts[1] >= 1,
+        "z=1.1 (11x near) lands in log z-slice 1, not slice 0"
     );
 }
 

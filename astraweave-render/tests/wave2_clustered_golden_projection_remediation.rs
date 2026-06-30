@@ -547,9 +547,10 @@ fn golden_z_slice_far_plane_light() {
 
 #[test]
 fn golden_z_slice_mid_range_light() {
-    // z=50, r=0.5: zmin=49.5, zmax=50.5
-    // iz0 = ((49.4)/99.9)*4 ≈ 1.978 → 1
-    // iz1 = ((50.4)/99.9)*4 ≈ 2.018 → 2
+    // z=50, r=0.5: zmin=49.5, zmax=50.5 (NEAR=0.1, FAR=100, 4 z-slices).
+    // LOGARITHMIC slicing (clustered.rs): iz = floor(ln(z/near)/ln(far/near) * 4)
+    // iz0 = floor(ln(495)/ln(1000)*4) = floor(3.59) = 3
+    // iz1 = floor(ln(505)/ln(1000)*4) = floor(3.60) = 3  -> slice 3
     let dims = ClusterDims { x: 4, y: 4, z: 4 };
     let lights = vec![CpuLight {
         pos: Vec3::new(0.0, 0.0, 50.0),
@@ -558,8 +559,8 @@ fn golden_z_slice_mid_range_light() {
     let (counts, _, _) = bin_lights_cpu(&lights, dims, SCREEN, NEAR, FAR, FOV_Y);
     let slices = hit_z_slices(&counts, &dims);
     assert!(
-        slices.contains(&1) || slices.contains(&2),
-        "Mid-range light in z-slice 1 or 2, got {:?}",
+        slices.contains(&3),
+        "Mid-range light z=50 in log z-slice 3, got {:?}",
         slices,
     );
     assert!(!slices.contains(&0), "Not in z-slice 0; got {:?}", slices);
