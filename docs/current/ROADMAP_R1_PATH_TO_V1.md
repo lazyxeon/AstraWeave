@@ -29,7 +29,9 @@ The roadmap's **done state** is both halves of the conjunction: the verdict boar
 
 ## 2. Starting position — the verified present (R.0.B)
 
-**The honest framing: the AI pillar is largely done; the editor pillar is the real work.** The audit found the foundation and AI pipelines at VERIFIED-PRODUCTION across the board; the v1.0 gaps cluster in the editor.
+**The honest framing: the AI pillar is largely done; the editor pillar is the real work.** The audit found the foundation and the **wired deterministic AI path** (`RuleOrchestrator` + `GoapOrchestrator`) at VERIFIED-PRODUCTION; the v1.0 gaps cluster in the editor.
+
+> **"AI pillar SOLID" — what it means (and does not).** It means the **wired deterministic AI path** (`RuleOrchestrator` + `GoapOrchestrator`) is VERIFIED-PRODUCTION and is what v1.0's "stable AI pipeline" rests on. It does **NOT** mean the full AI pipeline including the LLM ships in v1.0 — the hybrid LLM `AIArbiter` and its dormant ~15K-LoC hardening surface are **consciously post-v1.0** (M1.3 A2 recon, `992793c41`). A1 (core loop), A4 (determinism), A6 (stability) hold for the wired deterministic path; A2 is the determinism-consolidation test; A5 is the honesty constraint (§2.1). The AI pillar is production *for what v1.0 requires* (deterministic planning) — the LLM capability is **deferred, not shipped**.
 
 ### 2.1 Already green (record, don't re-do)
 
@@ -37,8 +39,8 @@ The roadmap's **done state** is both halves of the conjunction: the verdict boar
 |---|---|---|
 | **A1** core loop | `ai` ✅VP | **MET** |
 | **A4** determinism | `ecs`, `core` ✅VP | **MET** |
-| **A5** LLM honesty | `llm` ✅VP | **MET** (minor: the `OLLAMA_MODEL` default `phi3:medium` vs documented Qwen3 doc-drift — a tiny clarifying item, M1 non-feature) |
-| **A6** stability bar | `ai`, `behavior`, `llm`, `ecs`, `core` all ✅VP | **MET** — zero island/stub/hollow on the AI path |
+| **A5** LLM honesty *(capability deferred, honesty required)* | `llm` ✅VP (crate); LLM *path* dormant/post-v1.0 | **HONESTY-MET when no v1.0 doc overclaims the LLM as production.** The LLM capability defers post-v1.0 with the arbiter; A5 requires only that docs/traces not claim a wired LLM path the engine lacks. The `phi3:medium`-vs-Qwen3 doc-drift folds in: don't document a dormant LLM path as live. |
+| **A6** stability bar | `ai`, `behavior`, `llm`, `ecs`, `core` all ✅VP | **MET** for the wired deterministic path — zero island/stub/hollow on it (the LLM arbiter is consciously post-v1.0, not a regression). |
 | **E6** camera | `camera` ✅VP, `cinematics` ✅VP | **MET** |
 | Foundation gate | `core`, `ecs` ✅VP; `sdk` ✅VP (R3 boundary) | **MET** |
 
@@ -52,7 +54,7 @@ So the roadmap **starts with the AI pillar and the foundation largely closed.** 
 | E2 WYSIWYG parity | `render` | PRODUCTION-CAPABLE-FAILING-TESTS (1277/2) | VP | **M1** |
 | (asset import) | `blend` | PRODUCTION-CAPABLE-FAILING-TESTS (52/1) | VP | **M1** |
 | (physics defect) | `physics` | PRODUCTION-CAPABLE-FAILING-TESTS (1693/1) | VP | **M1** (pulled forward — Rapier-integration fix, §5.1) |
-| A2 arbiter | `ai`, `behavior` (✅VP) | criterion test not yet written | A2 test green | **M1** |
+| A2 wired-path determinism | `ai`/`RuleOrchestrator`+`GoapOrchestrator` (✅VP) | determinism test not yet written | A2 determinism test green | **M1** |
 | E3 terrain/material | `terrain` | PRODUCTION-CAPABLE-FAILING-TESTS (936/**8**) | VP | **M2** |
 | E4 asset cook path | `asset-pipeline` | FALSE-PRODUCTION-READY (hollow) | VP-or-relabel | **M2** (lead capability item) |
 | E7 save/load | `persistence-ecs` | COMPILES-BUT-ORPHANED (auto_save/replay stubs) | VP / live path | **M3** |
@@ -72,7 +74,7 @@ From §2.2, the gaps sort into three engineering classes + a non-feature track:
 - **Class 1 — test-rot (cheap, clears verification noise):** the *stale-assertion* failures in PCFT crates — `render` (2 stale: the `terrain` `chunk_size` 256→512 drift; the shader-string refactor — parity SHA-256 passes), `aw_editor` (1 stale), `blend` (1 stale). Near-free; moves 3 crates toward VP; greens E1/E2.
 - **Class 2 — real defects + coverage (genuine but bounded):** `physics` — the **character-controller grounding regression** (capsule grounds at y=0.1 instead of resting on the surface) — *the serious one, pulled into M1, re-characterized as a Rapier-integration fix in §5.1*; `terrain` (8 failing tests — real correctness/coverage gap, E3, stays in M2). Localized (the audit pinpointed them) but real fixes.
 - **Class 3 — capability gaps + hollow/over-claim (the largest; the v1.0-defining work):** `asset-pipeline` (cook-path wiring — E4 blocker, leads M2), `persistence-ecs` (live persistence path — E7 blocker, M3), the play-in-editor seam (E5, M3), `input` (wire-or-relabel, M3). This is what makes "an editor a game can be authored on" *true*.
-- **Non-feature tracks (cheap, clarifying — all M1):** the **10-crate CLAIM-MISMATCH trace-correction backlog** (R.0.B §6) **+ the `net`-cluster relabel** (§5.1); **folding the v1.1 taxonomy split into the canonical R.0.A §1.2**; the A5 `phi3`/Qwen3 default doc-drift.
+- **Non-feature tracks (cheap, clarifying — all M1):** the **10-crate CLAIM-MISMATCH trace-correction backlog** (R.0.B §6, now **+ the arbiter-as-post-v1.0 mismatch**, §6.1) **+ the `net`-cluster relabel** (§5.1); **folding the v1.1 taxonomy split into the canonical R.0.A §1.2**; **the A2/A5 wording sync** (§4.1, done this beat); the **A5 honesty** note (`phi3`/Qwen3 — don't document the dormant LLM path as live).
 
 > **Observation — dependency-drift / Path-B staleness (a future hygiene beat).** A recurring class surfaced across M1: code or tests **lagging a changed API/dependency**. Confirmed cases + their scope:
 >
@@ -91,13 +93,13 @@ From §2.2, the gaps sort into three engineering classes + a non-feature track:
 
 ## 4. The two AI stability-bar criteria — resolved
 
-### 4.1 A2 (arbiter) — a concrete test spec (settable now)
+### 4.1 A2 — wired-path determinism *(RATIFIED, revised — M1.3 A2 recon `992793c41`)*
 
-**A2 is met when a test asserts both:**
-1. **Determinism** — identical `WorldSnapshot` ⇒ identical `PlanIntent` across repeated runs.
-2. **Transition correctness** — the GOAP↔BT↔LLM mode transitions fire on their documented trigger conditions, **each transition individually feature-tested** (not a smoke test).
+The original A2 phrasing ("GOAP↔BT↔LLM mode transitions fire on documented triggers") was **mis-targeted**: it described the hybrid `AIArbiter`, which the A2 recon found is **tested-but-not-production-wired**, feature-gated (`llm_orchestrator` off by default), and live-LLM-requiring. The **wired** production AI path is the deterministic `RuleOrchestrator` (+ `GoapOrchestrator` in `hello_companion`). Revised criterion:
 
-**No latency/fallback contract in v1.0.** **Recorded assumption (a deliberate scoping, not an oversight):** the LLM arbiter path is **not on the per-tick hot path** — it runs off-tick / slow-cadence / at Veilweaver's current agent scale, so it does not threaten the 60 Hz tick. Therefore A2 needs no latency bound for v1.0. *If* future Veilweaver wants per-frame LLM planning at scale, A2 would need a latency bound added — but for v1.0 it does not. A2 is a **test-writing task** on already-VP crates (`ai`/`behavior`); it carries no dependency and is in M1.
+> **A2 (v1.0) is met when the wired deterministic production AI path is provably deterministic:** identical `WorldSnapshot` ⇒ identical `PlanIntent` across repeated runs, for `RuleOrchestrator::propose_plan` (the `ecs_ai_plugin` production path) and `GoapOrchestrator` (the deterministic GOAP path used by the flagship `hello_companion` demo). **No latency bound** — the wired path is synchronous and off any LLM dependency for v1.0.
+
+**The hybrid `AIArbiter` is post-v1.0.** Its real GOAP↔ExecutingLLM transitions (+ GOAP→BT one-way sink) are **already test-covered** ("Phase 7 complete"); wiring it (enable `llm_orchestrator` by default, accept the live-LLM dependency, connect the dormant ~15K-LoC LLM hardening, fix the BT-stub / dead-`fast_executor` / one-way-BT) is a **post-v1.0 capability build** (§6.1 backlog), not a v1.0 A2 requirement. A2 is now a small **determinism-consolidation** test on already-VP crates — both halves were already substantially tested (`goap/tests.rs:92`, `orchestrator.rs:992`).
 
 ### 4.2 A3 (validation throughput) — a scheduled measurement task, NOT a declared number
 
@@ -119,8 +121,8 @@ Each milestone lists **what it closes** (crates → VP, criteria met), the **rat
 **Closes:**
 - `render` → VP, `aw_editor` → VP, `blend` → VP (Class-1 test-rot: 4 stale assertions across the three).
 - **`physics` → VP** — the Rapier-integration fix (§5.1); `npc`'s inherited defect resolved as a side effect.
-- **A2** met (write the determinism + transition-correctness test on `ai`/`behavior`).
-- Non-feature trace honesty: the 10-crate CLAIM-MISMATCH trace re-status **+ relabel the `net`-cluster trace(s) to example-only**; fold the v1.1 split into R.0.A §1.2; the A5 `phi3`/Qwen3 doc-drift note; (optionally) `alloc` coverage → VP.
+- **A2** met (write the **wired-path determinism** test — `RuleOrchestrator` + `GoapOrchestrator`, §4.1; a small consolidation of existing determinism tests under a named A2 contract).
+- Non-feature trace honesty: the 10-crate CLAIM-MISMATCH trace re-status (now **+ the arbiter-as-post-v1.0 mismatch in `ai_pipeline.md`**, §6.1) **+ relabel the `net`-cluster trace(s) to example-only**; fold the v1.1 split into R.0.A §1.2; sync the A2/A5 wording (§4.1, this beat done); the **A5 honesty** note (`phi3`/Qwen3 — don't document the dormant LLM path as live); (optionally) `alloc` coverage → VP.
 - **E1** (scene authoring) green (`aw_editor` VP + `scene` VP); **E2** (parity) green (`render` VP + `aw_editor` VP); **A2** met.
 
 **Rationale:** M1 **banks the verified half** of the conjunction and **fixes the one propagating defect** before any capability work builds on it. The test-rot is near-free and clears the verification noise; the physics fix is pulled forward because it is the **highest-propagation-risk defect** (`npc` inherits it, and M2/M3 should not build on broken character grounding); A2 closes the last AI criterion; the trace-corrections (including the `net` relabel) make every future state-check cleaner. A legible, verified base.
@@ -177,6 +179,17 @@ The strawman offered two orderings; **the director chose the difficulty ladder, 
 
 **Why (the rationale):** the v1.0 definition is **conjunctive** (clean+verified **and** authorable), so a **verified base first** is favored — clear the board and fix the one *propagating* defect (the physics regression `npc` inherits) before capability work builds on it. The **biggest-blocker-first** alternative (front-loading the cook path) was considered and **partially adopted**: the cook path does not wait until last — it **leads M2**, the very next milestone — so the biggest authoring blocker is addressed early, but on a verified, physics-correct base rather than on top of a known character-grounding regression. Pulling physics into M1 is the one deviation from the pure difficulty ladder, justified by its propagation risk. Networking out of v1.0 (§5.3) shrinks M3 and removes an undecided scope question.
 
+### 6.1 Post-v1.0 backlog — the hybrid LLM `AIArbiter` (deferred, not dropped)
+
+The A2 recon (`992793c41`) established the hybrid GOAP+LLM `AIArbiter` as **tested-but-dormant** and **consciously post-v1.0**. Recorded so the post-v1.0 arbiter-wiring beat has the full list:
+
+- **Wire the arbiter** — enable `llm_orchestrator` by default, accept the live-LLM (Ollama) dependency, connect the dormant ~15K-LoC LLM hardening surface (rate limiting / circuit breaking / retry / ToolGuard / 4-tier fallback — all currently bypassed), and a production constructor (none exists today).
+- **Honesty gaps the recon found** (wire / relabel / remove each — arbiter-scope, NOT v1.0 blockers):
+  - `PlannerMode::BehaviorTree` is a **stub** — `dispatch_bt` → `bail!("BehaviorTree integration not yet implemented")` (`core_loop.rs:278`).
+  - `fast_executor` is **dead** — stored at construction, never read (`ai_arbiter.rs:209`).
+  - The arbiter's **BT is a one-way terminal sink** — `GOAP→BT` on empty-plan, but no recovery edge out of BT.
+- **Trace CLAIM-MISMATCH (logged to the M1 trace-honesty track, not done here):** `ai_pipeline.md` should record the `AIArbiter` as **in-design/post-v1.0** (tested-but-not-wired) — the "stable AI pipeline" v1.0 claim rests on `RuleOrchestrator`/`GoapOrchestrator`, not the arbiter. Add to the 10-crate CLAIM-MISMATCH backlog.
+
 ---
 
 ## 7. v1.0 done-state checklist (both halves of the conjunction)
@@ -193,9 +206,10 @@ The strawman offered two orderings; **the director chose the difficulty ladder, 
 - [ ] E3 terrain/material · E4 asset cook path (M2)
 - [ ] E5 play-in-editor · E7 save/load (M3)
 - [x] E6 camera (already met)
-- [ ] A2 arbiter test (M1) · A3 throughput measured + bar set (M3)
-- [x] A1, A4, A5, A6 (already met)
-- **(networking: NOT a v1.0 criterion — v1.1)**
+- [ ] A2 **wired-path determinism** test (M1) · A3 throughput measured + bar set (M3)
+- [x] A1, A4, A6 (wired deterministic path — already met)
+- [ ] A5 = **honesty constraint** (no v1.0 doc overclaims the LLM as production) — capability deferred post-v1.0
+- **(networking: NOT a v1.0 criterion — v1.1; the hybrid LLM `AIArbiter`: NOT a v1.0 criterion — post-v1.0, §6.1)**
 
 v1.0 is reached when every box is checked — the board green on the (networking-excluded) critical path **and** every E/A criterion met.
 
