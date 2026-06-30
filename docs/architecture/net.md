@@ -6,7 +6,8 @@ description: "Net (snapshot-based game server)"
 primary_crate: astraweave-net
 domain: networking
 lifecycle_status: active
-integration_status: wired
+integration_status: example_only
+summary: "FALSE-PRODUCTION-READY (R.0.B 2026-06-30): the prior active/wired front-matter was example-only reality — astraweave-net::GameServer/Msg/Snapshot has no non-example engine/tool caller (ex-only). Real multiplayer wire-up is DEFERRED to v1.1 (a conscious deferral, not a drop). net.md §1"
 owns: [astraweave-net]
 doc_version: "1.2"
 last_verified_commit: a2474c5b7
@@ -17,6 +18,8 @@ last_verified_commit: a2474c5b7
 > **Scope note:** This doc traces the `astraweave-net` crate — the original snapshot-based networking implementation. AstraWeave's "networking" domain comprises three loosely-coupled subsystems; the other two have dedicated traces:
 > - `docs/architecture/net_ecs.md` — `astraweave-net-ecs` + `net/aw-net-{proto,client,server}` (ECS-Plugin + matchmaking + standalone binaries)
 > - `docs/architecture/persistence_ecs.md` — `astraweave-persistence-ecs` (save/load)
+>
+> **v1.0 status (R-series M1 trace-honesty, 2026-06-30):** this crate is **example-only**, not production-wired — `GameServer`/`Msg`/`Snapshot` have no non-example engine or tool caller (the R.0.B `FALSE-PRODUCTION-READY` verdict). **Real multiplayer wire-up is deferred to v1.1** — a conscious deferral recorded here, *not* a silent drop. The sibling `net_ecs.md` trace (`astraweave-net-ecs` + the `aw-net-{proto,client,server}` trio) is already honestly labelled (`unknown`/dormant ECS-Plugin layer); no relabel needed there.
 
 ## Metadata
 

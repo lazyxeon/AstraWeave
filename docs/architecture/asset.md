@@ -23,7 +23,7 @@ last_verified_commit: 7c29b8182
 | **Document version** | 1.1 |
 | **Last verified against commit** | `7c29b8182` |
 | **Last verified date** | 2026-06-25 |
-| **Status** | Active (mixed): glTF CPU loaders + cell loader + AssetDatabase are wired; Nanite preprocess and the entire `astraweave-asset-pipeline` crate are in-design / dormant scaffolding |
+| **Status** | Active (mixed): glTF CPU loaders + cell loader + AssetDatabase are wired (`astraweave-asset` is VERIFIED-PRODUCTION); Nanite preprocess and the entire `astraweave-asset-pipeline` crate are in-design / dormant scaffolding. **R-series M1 trace-honesty (2026-06-30):** `astraweave-asset-pipeline` is individually **FALSE-PRODUCTION-READY** (R.0.B) — a present-tense production-status over-claim at `lib.rs:4` over an ISLAND crate (no live caller). The BC7/KTX2 cook path is the **E4 v1.0 blocker**: wire it to a live caller (e.g. `aw_asset_cli` or the editor asset import), or drop the `lib.rs` claim + the unused editor dep. |
 | **Owner notes** | First trace for this subsystem. `astraweave-asset` is one of the most-consumed untraced crates (9+ Cargo consumers). Derived from forensic data-flow analysis on 2026-06-24. |
 
 ---
