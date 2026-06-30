@@ -51,13 +51,15 @@ The R.0.A methodology's rank-2 FALSE-PRODUCTION-READY rule fired on **any** prod
 
 These are the dangerous false-positives R.0.A was built to catch: a production claim contradicted by reality.
 
+> **[RESOLUTION — 2026-06-30, R-series M2/E4 relabel-and-defer]** One of these three — **`astraweave-asset-pipeline`** — has since been **resolved by relabel-and-defer**: the `lib.rs:4` over-claim was rewritten to honest in-design status and the unused `aw_editor` dep (`Cargo.toml:99`) dropped, moving it **FALSE-PRODUCTION-READY → DORMANT-HONEST**. The BC7/KTX2 cook **build** is deferred post-v1.0 (v1.0 authors on raw PNG/glTF; the render path has no GPU-compressed-upload path, so cooking is a non-blocking optimization). The §2 distribution + §4 tables below are preserved **as audited (2026-06-29)**; this banner records the post-audit resolution. See `docs/audits/e4_cook_path_recon_2026-06.md` and `ROADMAP_R1_PATH_TO_V1.md` §6.2. The other two (`astraweave-input`, `astraweave-net`) remain open per their milestones.
+
 | crate | reach | tests | the contradiction | gap |
 |---|---|---|---|---|
 | **astraweave-asset-pipeline** | ISLAND | 0/0 | claim active/wired (role O) vs orphaned reality | Wire BC7/ASTC texture compression + mesh optimize_mesh + validator into at least one non-test production path (e.g. aw_asset_cli or aw_editor asset import), OR remove the present-tense production clai |
 | **astraweave-input** | ISLAND | 305/0 | claim active/wired (role P) vs orphaned reality | Add >=1 real non-example source caller: have astraweave-ui or astraweave-gameplay (which already declare the dep) actually `use astraweave_input::{InputManager, BindingSet}` and drive the per-frame in |
 | **astraweave-net** | ex-only | 357/0 | claim active/wired (role P) vs orphaned reality | Wire astraweave-net::GameServer/Msg/Snapshot into a non-example binary (engine runtime or tool), OR re-status the net.md trace to integration=example_only to make the honest label match reality. Curre |
 
-- **`astraweave-asset-pipeline` is the cleanest catch** — and the ratified present-tense sharpening is what nailed it: `src/lib.rs:4` literally says *"This crate provides production-ready asset processing"* (present-tense own-docs claim) while the crate is a **caller-less island** (the editor declares the dep, uses nothing).
+- **`astraweave-asset-pipeline` is the cleanest catch** — and the ratified present-tense sharpening is what nailed it: `src/lib.rs:4` said *"This crate provides production-ready asset processing"* (present-tense own-docs claim) while the crate is a **caller-less island** (the editor declares the dep, uses nothing). **[Resolved 2026-06-30, M2/E4: claim removed — relabeled to in-design; dep dropped; verdict → DORMANT-HONEST. See the §3a resolution banner + §7.]**
 - **`astraweave-input`** (305 green tests) and **`astraweave-net`** (357 green tests) *look* healthy on the test axis but are orphaned/example-only against an `active/wired` trace claim — the green-test trap (R2) firing as designed. `net.md`'s own body even admits "only example consumers exist."
 
 ### 3b. PRODUCTION-CAPABLE-FAILING-TESTS (v1.1) — 5 wired products with a failing test
@@ -227,7 +229,7 @@ Note: `astraweave-memory/embeddings/rag/persona` are VERIFIED-PRODUCTION yet fla
 | E1 scene authoring | `aw_editor` PRODUCTION-CAPABLE-FAILING-TESTS (9323/1), `scene` ✅VP | fix 1 stale editor test; thin feature coverage |
 | E2 WYSIWYG parity | `render` PCFT (1277/2 — **stale tests**), `aw_editor` PCFT | parity SHA-256 tests already pass; near-met once 2 render assertions fixed |
 | E3 terrain/material | `terrain` PCFT (936/**8 failing**), `materials` ✅VP | **8 failing terrain tests** — real correctness/coverage gap |
-| E4 asset cook path | `asset` ✅VP, **`asset-pipeline` FALSE-PRODUCTION-READY (hollow)** | wire the pipeline to a live caller OR drop the 'production-ready' lib.rs claim + unused editor dep; the BC7/KTX2 cook path remains the known blocker |
+| E4 asset cook path | `asset` ✅VP, ~~`asset-pipeline` FALSE-PRODUCTION-READY~~ → **DORMANT-HONEST** | ✅ **RESOLVED 2026-06-30 via relabel-and-defer** — the `lib.rs:4` over-claim was rewritten to honest in-design status + the unused editor dep dropped; the BC7/KTX2 cook path is **NOT a v1.0 blocker** (render consumes raw PNG→RGBA8, no GPU-compressed-upload path) and its build is deferred post-v1.0. See `docs/audits/e4_cook_path_recon_2026-06.md` |
 | E5 play-in-editor | seam not yet a single crate | locate/define the editor↔AI play-mode seam |
 | E6 camera | `camera` ✅VP, `cinematics` ✅VP | **met** |
 | E7 save/load | `aw-save` ✅VP, **`persistence-ecs` COMPILES-BUT-ORPHANED** (auto_save/replay stubs) | wire a live persistence path — the confirmed gap |

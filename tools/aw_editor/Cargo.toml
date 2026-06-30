@@ -96,7 +96,10 @@ log = "0.4"
 zstd = "0.13"
 lz4_flex = "0.11"
 crc32fast = "1.4"
-astraweave-asset-pipeline = { path = "../../astraweave-asset-pipeline" }
+# astraweave-asset-pipeline: dep removed 2026-06-30 (R-series M2/E4, relabel-and-defer) —
+# in-design / caller-less crate the editor never referenced (zero `use`). Re-add only when
+# the post-v1.0 cook-path build wires it to a live editor-import caller. See
+# docs/audits/e4_cook_path_recon_2026-06.md.
 tokio = { workspace = true }
 mp4 = "0.14"
 openh264 = "0.6"

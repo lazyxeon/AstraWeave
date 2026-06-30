@@ -56,7 +56,7 @@ So the roadmap **starts with the AI pillar and the foundation largely closed.** 
 | (physics defect) | `physics` | PRODUCTION-CAPABLE-FAILING-TESTS (1693/1) | VP | **M1** (pulled forward — Rapier-integration fix, §5.1) |
 | A2 wired-path determinism | `ai`/`RuleOrchestrator`+`GoapOrchestrator` (✅VP) | determinism test not yet written | A2 determinism test green | **M1** |
 | E3 terrain/material | `terrain` | PRODUCTION-CAPABLE-FAILING-TESTS (936/**8**) | VP | **M2** |
-| E4 asset cook path | `asset-pipeline` | FALSE-PRODUCTION-READY (hollow) | VP-or-relabel | **M2** (lead capability item) |
+| E4 asset cook path | `asset-pipeline` | ✅ **RESOLVED via relabel-and-defer (2026-06-30)** | relabeled → DORMANT-HONEST; cook build deferred post-v1.0 (§6.2) | **M2** ✅ |
 | E7 save/load | `persistence-ecs` | COMPILES-BUT-ORPHANED (auto_save/replay stubs) | VP / live path | **M3** |
 | E5 play-in-editor | `aw_editor`↔AI seam | not yet a single crate | seam defined + wired | **M3** |
 | (input) | `input` | FALSE-PRODUCTION-READY (hollow) | VP-or-relabel | **M3** |
@@ -73,7 +73,7 @@ From §2.2, the gaps sort into three engineering classes + a non-feature track:
 
 - **Class 1 — test-rot (cheap, clears verification noise):** the *stale-assertion* failures in PCFT crates — `render` (2 stale: the `terrain` `chunk_size` 256→512 drift; the shader-string refactor — parity SHA-256 passes), `aw_editor` (1 stale), `blend` (1 stale). Near-free; moves 3 crates toward VP; greens E1/E2.
 - **Class 2 — real defects + coverage (genuine but bounded):** `physics` — the **character-controller grounding regression** (capsule grounds at y=0.1 instead of resting on the surface) — *the serious one, pulled into M1, re-characterized as a Rapier-integration fix in §5.1*; `terrain` (8 failing tests — real correctness/coverage gap, E3, stays in M2). Localized (the audit pinpointed them) but real fixes.
-- **Class 3 — capability gaps + hollow/over-claim (the largest; the v1.0-defining work):** `asset-pipeline` (cook-path wiring — E4 blocker, leads M2), `persistence-ecs` (live persistence path — E7 blocker, M3), the play-in-editor seam (E5, M3), `input` (wire-or-relabel, M3). This is what makes "an editor a game can be authored on" *true*.
+- **Class 3 — capability gaps + hollow/over-claim (the largest; the v1.0-defining work):** `asset-pipeline` (cook-path — **E4 RESOLVED via relabel-and-defer 2026-06-30; v1.0 authors on raw assets, cook build deferred post-v1.0, §6.2**), `persistence-ecs` (live persistence path — E7 blocker, M3), the play-in-editor seam (E5, M3), `input` (wire-or-relabel, M3). This is what makes "an editor a game can be authored on" *true*.
 - **Non-feature tracks (cheap, clarifying — all M1):** the **10-crate CLAIM-MISMATCH trace-correction backlog** (R.0.B §6, now **+ the arbiter-as-post-v1.0 mismatch**, §6.1) **+ the `net`-cluster relabel** (§5.1); **folding the v1.1 taxonomy split into the canonical R.0.A §1.2**; **the A2/A5 wording sync** (§4.1, done this beat); the **A5 honesty** note (`phi3`/Qwen3 — don't document the dormant LLM path as live).
 
 > **Observation — dependency-drift / Path-B staleness (a future hygiene beat).** A recurring class surfaced across M1: code or tests **lagging a changed API/dependency**. Confirmed cases + their scope:
@@ -143,7 +143,7 @@ Each milestone lists **what it closes** (crates → VP, criteria met), the **rat
 ### M2 — Capability, led by the biggest blocker
 
 **Closes:**
-- `asset-pipeline` → VP-or-relabel — **the lead item:** wire the BC7/KTX2 cook path to a live caller (e.g. `aw_asset_cli` or the editor's asset import) OR drop the present-tense `lib.rs:4` claim + the unused editor dep. **E4** (asset cook path) green — the biggest single Veilweaver authoring blocker.
+- `asset-pipeline` → **RESOLVED (relabel-and-defer, 2026-06-30):** the E4 recon (`docs/audits/e4_cook_path_recon_2026-06.md`) established the cook path is **partly-real-but-wholly-unwired** (3 fragmented impls) and **v1.0 does not require it** — the render path consumes raw PNG→RGBA8 with no GPU-compressed-upload path; the closed TAQ campaign already verdicted the uncompressed footprint ACCEPTABLE. So the **relabel route** was taken (not the build): the present-tense `lib.rs:4` claim was rewritten to honest in-design status and the unused editor dep (`aw_editor/Cargo.toml:99`) dropped, moving the crate **FALSE-PRODUCTION-READY → DORMANT-HONEST**. **E4** (asset cook path) green — v1.0 authors on raw assets; the cook **build** is **deferred post-v1.0** (§6.2).
 - `terrain` → VP (fix the 8 failing tests). **E3** (terrain/material) green (`terrain` VP + `materials` VP).
 
 **Rationale:** with the board clean and physics correct (M1), M2 leads with the **cook path** — the biggest authoring unblock — on a now-verified base. `terrain`'s 8 failing tests ride alongside (E3 is the terrain/material criterion, adjacent to the cook-path/asset work).
@@ -191,20 +191,30 @@ The A2 recon (`992793c41`) established the hybrid GOAP+LLM `AIArbiter` as **test
   - The arbiter's **BT is a one-way terminal sink** — `GOAP→BT` on empty-plan, but no recovery edge out of BT.
 - **Trace CLAIM-MISMATCH (logged to the M1 trace-honesty track, not done here):** `ai_pipeline.md` should record the `AIArbiter` as **in-design/post-v1.0** (tested-but-not-wired) — the "stable AI pipeline" v1.0 claim rests on `RuleOrchestrator`/`GoapOrchestrator`, not the arbiter. Add to the 10-crate CLAIM-MISMATCH backlog.
 
+### 6.2 Post-v1.0 backlog — the BC7/KTX2 cook path (deferred, not dropped)
+
+E4 was resolved by **relabel-and-defer** (M2, 2026-06-30; recon `docs/audits/e4_cook_path_recon_2026-06.md`): cooking is a **VRAM/load-time optimization, not a v1.0 correctness requirement** — the v1.0 render path consumes raw PNG→RGBA8, and the closed TAQ campaign already verdicted the uncompressed footprint ACCEPTABLE (80 MiB/active pack = 31% of the soft texture budget). The cook **build** is deferred to a post-v1.0 engine/compression-pipeline owner (TAQ §5.1 already named it). Recorded so that beat has the full scope:
+
+- **Unify the 3 fragmented cook implementations** into one path: the real `intel_tex` BC7 in `astraweave-asset-pipeline::texture` (island, emits a raw block stream with no container), the placeholder BC encoder + hand-rolled KTX2 writer in `aw_asset_cli/texture_baker.rs`, and the external `toktx`/`basisu` shell-out in `aw_asset_cli/main.rs` (never invoked live). Resolves a pre-existing CLAUDE.md "never build a second implementation" violation.
+- **Fix the DFD sRGB bug** — `aw_asset_cli/texture_baker.rs:393` hardcodes the KTX2 transfer function to sRGB regardless of `ColorSpace::Linear`, mislabeling normal/data maps.
+- **Add a GPU-compressed-upload path to `astraweave-render`** — today `material_loader.rs` decodes even cooked KTX2/BC back to RGBA8 and uploads uncompressed at a hardcoded 1024²; without a `Bc7RgbaUnorm`-class upload, cooking yields zero runtime VRAM win. This is the load-bearing consume-side half.
+- **Wire a live caller** — editor asset-import or a build step that runs the cook and produces the manifest the render path reads.
+- **Then** re-status `astraweave-asset-pipeline` DORMANT-HONEST → VERIFIED-PRODUCTION once it has a live caller.
+
 ---
 
 ## 7. v1.0 done-state checklist (both halves of the conjunction)
 
 **Clean/verified half — the critical-path board is green:**
 - [ ] `render`, `aw_editor`, `blend`, `physics` → VERIFIED-PRODUCTION (M1)
-- [ ] `asset-pipeline`, `terrain` → VERIFIED-PRODUCTION-or-relabeled (M2)
+- [ ] `asset-pipeline` ✅ **relabeled DORMANT-HONEST (M2/E4 relabel-and-defer, 2026-06-30)** · `terrain` → VERIFIED-PRODUCTION (M2)
 - [ ] `persistence-ecs`, `input` → VERIFIED-PRODUCTION-or-relabeled (M3)
 - [ ] `net` cluster → trace relabeled to example-only (M1) — **not a critical-path-green requirement (v1.1)**
 - [ ] (already green: `core`, `ecs`, `sdk`, `ai`, `behavior`, `llm`, `scene`, `materials`, `camera`, `cinematics`, `asset`, `aw-save`)
 
 **Authorable-editor + stable-AI half — E/A criteria met:**
 - [ ] E1 scene authoring · E2 parity (M1)
-- [ ] E3 terrain/material · E4 asset cook path (M2)
+- [ ] E3 terrain/material (M2) · E4 asset cook path ✅ **RESOLVED (relabel-and-defer, 2026-06-30)**
 - [ ] E5 play-in-editor · E7 save/load (M3)
 - [x] E6 camera (already met)
 - [ ] A2 **wired-path determinism** test (M1) · A3 throughput measured + bar set (M3)

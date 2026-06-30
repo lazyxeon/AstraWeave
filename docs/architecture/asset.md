@@ -8,7 +8,7 @@ domain: rendering
 lifecycle_status: active
 integration_status: wired
 owns: [astraweave-asset, astraweave-asset-pipeline]
-doc_version: "1.1"
+doc_version: "1.2"
 last_verified_commit: 7c29b8182
 ---
 
@@ -20,10 +20,10 @@ last_verified_commit: 7c29b8182
 |---|---|
 | **System name** | Asset System (loading, cell loader, Nanite preprocess, asset pipeline) |
 | **Primary crates** | `astraweave-asset`, `astraweave-asset-pipeline` |
-| **Document version** | 1.1 |
+| **Document version** | 1.2 |
 | **Last verified against commit** | `7c29b8182` |
-| **Last verified date** | 2026-06-25 |
-| **Status** | Active (mixed): glTF CPU loaders + cell loader + AssetDatabase are wired (`astraweave-asset` is VERIFIED-PRODUCTION); Nanite preprocess and the entire `astraweave-asset-pipeline` crate are in-design / dormant scaffolding. **R-series M1 trace-honesty (2026-06-30):** `astraweave-asset-pipeline` is individually **FALSE-PRODUCTION-READY** (R.0.B) — a present-tense production-status over-claim at `lib.rs:4` over an ISLAND crate (no live caller). The BC7/KTX2 cook path is the **E4 v1.0 blocker**: wire it to a live caller (e.g. `aw_asset_cli` or the editor asset import), or drop the `lib.rs` claim + the unused editor dep. |
+| **Last verified date** | 2026-06-30 |
+| **Status** | Active (mixed): glTF CPU loaders + cell loader + AssetDatabase are wired (`astraweave-asset` is VERIFIED-PRODUCTION); Nanite preprocess and the entire `astraweave-asset-pipeline` crate are in-design / dormant scaffolding. **R-series M1 trace-honesty (2026-06-30):** `astraweave-asset-pipeline` was individually **FALSE-PRODUCTION-READY** (R.0.B) — a present-tense over-claim at `lib.rs:4` over an ISLAND crate (no live caller). **R-series M2/E4 relabel-and-defer (2026-06-30):** E4 **resolved by relabel** — the `lib.rs:4` over-claim was rewritten to honest in-design status and the unused editor dep (`aw_editor/Cargo.toml:99`) was dropped, moving the crate **FALSE-PRODUCTION-READY → DORMANT-HONEST**. The BC7/KTX2 **cook path is NOT a v1.0 blocker** — the v1.0 render path consumes raw PNG→RGBA8 with no GPU-compressed-upload path, so cooking is a deferrable optimization **deferred to a post-v1.0 engine/compression-pipeline owner**. See `docs/audits/e4_cook_path_recon_2026-06.md`. |
 | **Owner notes** | First trace for this subsystem. `astraweave-asset` is one of the most-consumed untraced crates (9+ Cargo consumers). Derived from forensic data-flow analysis on 2026-06-24. |
 
 ---
@@ -359,8 +359,8 @@ Cargo consumers of `astraweave-asset` (excluding the crate itself, its `fuzz` me
 
 ## 11. Open Questions / Parked Decisions
 
-- **Is `astraweave-asset-pipeline` intended to replace `tools/aw_asset_cli`'s in-house compression/validation, or are both intentional?** Currently the pipeline crate has zero production callers and the CLI duplicates its function. (Context: §6 coexisting abstractions.)
-- **Why does `tools/aw_editor` depend on `astraweave-asset-pipeline` (`Cargo.toml:99`) with no `use`?** Either a planned-but-unwired integration or a stale dependency line.
+- **[RESOLVED 2026-06-30, R-series M2/E4]** ~~Is `astraweave-asset-pipeline` intended to replace `tools/aw_asset_cli`'s in-house compression/validation, or are both intentional?~~ **Neither is wired.** The E4 recon found the cook capability fragmented across **three** caller-less/standalone implementations — real `intel_tex` BC7 in `astraweave-asset-pipeline::texture` (island, no container), the placeholder BC encoder + KTX2 writer in `aw_asset_cli/texture_baker.rs` (DFD sRGB bug at `:393`), and the external `toktx`/`basisu` path in `aw_asset_cli/main.rs` (never invoked live). Unifying them (the CLAUDE.md "never build a second implementation" resolution) is scope for the **deferred post-v1.0 cook build**, not v1.0. See `docs/audits/e4_cook_path_recon_2026-06.md`.
+- **[RESOLVED 2026-06-30, R-series M2/E4]** ~~Why does `tools/aw_editor` depend on `astraweave-asset-pipeline` (`Cargo.toml:99`) with no `use`?~~ **Stale / planned-but-unwired dep — now dropped** (relabel-and-defer beat). The editor authors via `astraweave-asset` (`Cargo.toml:82`, load-bearing: `AssetDatabase`, `gltf_loader`, `blend_import`); it never referenced the pipeline crate.
 - **Why does `astraweave-scripting` depend on `astraweave-asset` with no `use` (`Cargo.toml:19`)?** Declared-but-unused; candidate for the CLAUDE.md Key-Lesson-8 inventory.
 - **Will the CPU `nanite_preprocess` output ever feed the render crate's GPU Nanite path?** No shared on-disk format connects `MeshletHierarchy` (RON) to `GpuMeshlet` today; the bridge, if intended, is not implemented.
 - **Should `astraweave-scene/src/streaming.rs:193` discard the asset-load Result (`let _ = …`)?** CLAUDE.md flags this pattern on fallible asset I/O. Surfaced as a question for the scene/streaming owner.
@@ -411,3 +411,13 @@ Cargo consumers of `astraweave-asset` (excluding the crate itself, its `fuzz` me
 ## Appendix B: Historical context
 
 The crate carries explicit "Phase 0 / Phase 2 foundations" markers (lib.rs:302, 316, 1812, 1817), indicating an incremental build-out where header-only validators and GUID/cache scaffolding landed before full decoders. The glTF decoders, cell loader, and `AssetDatabase` matured into wired runtime use; `nanite_preprocess` and `astraweave-asset-pipeline` were built to completeness and tested but never adopted by a runtime consumer, while `tools/aw_asset_cli` grew its own independent compression/validation. The `render → aw_asset_cli` Cargo dependency (`astraweave-render/Cargo.toml:61`; the `astraweave-asset` dep is the adjacent line 60 — verified at commit `7c29b8182`) is an unusual production→tool direction flagged in ARCHITECTURE_MAP.md (anomaly #2; ARCHITECTURE_MAP.md still cites the dep as Cargo.toml:60, which is the `astraweave-asset` line) and is orthogonal to this crate, but it is the reason the CLI's compression path — rather than `astraweave-asset-pipeline` — is reachable from the render-side asset story.
+
+---
+
+## Revision History
+
+| Version | Date | Change |
+|---|---|---|
+| 1.0 | 2026-06-24 | First trace for the Asset System (forensic data-flow analysis). |
+| 1.1 | 2026-06-25 | Verification pass; §11 pipeline-default-feature note; R-series M1 trace-honesty FALSE-PRODUCTION-READY annotation for `astraweave-asset-pipeline`. |
+| 1.2 | 2026-06-30 | **R-series M2/E4 — relabel-and-defer.** Recorded E4 resolution: `astraweave-asset-pipeline` `lib.rs:4` over-claim relabeled to honest in-design status; the unused `aw_editor` dep (`Cargo.toml:99`) dropped; verdict **FALSE-PRODUCTION-READY → DORMANT-HONEST**; BC7/KTX2 cook build **deferred post-v1.0** (the v1.0 render path consumes raw PNG→RGBA8, no GPU-compressed-upload path — cooking is a non-blocking optimization). Closed §11 Q1 (asset-pipeline-vs-CLI duplication — found 3 fragmented cook impls) + Q2 (unused editor dep — dropped). Updated Metadata Status. Source: `docs/audits/e4_cook_path_recon_2026-06.md`. |
