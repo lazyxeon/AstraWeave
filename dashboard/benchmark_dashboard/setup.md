@@ -119,7 +119,7 @@ make ci               # Clean build + test + lint + audit
 ## Formal Verification
 
 ```bash
-# Miri (undefined behavior detection — 977 tests, 0 UB)
+# Miri (undefined behavior detection — 1,059 tests, 0 UB)
 cargo +nightly miri test -p astraweave-ecs --lib -- --test-threads=1
 cargo +nightly miri test -p astraweave-core --lib -- --test-threads=1
 cargo +nightly miri test -p astraweave-math --lib -- --test-threads=1

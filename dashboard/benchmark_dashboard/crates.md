@@ -40,7 +40,7 @@ AstraWeave consists of **130 workspace packages** <!-- Source: CLAIMS_REGISTRY.m
 | **astraweave-nav** | Navmesh baking and A* pathfinding | 216 | 93.11% |
 | **astraweave-terrain** | Procedural terrain: voxel/polygon, marching cubes, climate | 2,536 | 44.11% |
 | **astraweave-pcg** | Procedural content generation | 133 | 99.32% |
-| **astraweave-fluids** | PBD fluid simulation | 2,560 <!-- Source: CLAIMS_REGISTRY.md#fluids-test-markers --> | 97.24% |
+| **astraweave-fluids** | PBD fluid simulation | 738 <!-- Source: CLAIMS_REGISTRY.md#fluids-test-markers --> | 97.24% |
 | **astraweave-materials** | Material definitions and shader cache | 282 | 98.55% |
 | **astraweave-quests** | Quest system, objectives, rewards | 218+ | — |
 | **astraweave-dialogue** | Dialogue trees, branching conversation | 291+ | Build error (Rhai Sync) |
