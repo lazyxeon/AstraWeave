@@ -9,6 +9,8 @@ Every KEEP occurrence from the closed-vocabulary triage (D.1.C), **updated by D.
 > **D.2.A.1 update (W.1-contamination, 2026-06-25):** the fluids honest-dormancy keys — `ARCHITECTURE_MAP.md`→`ResearchFluidSystem`, and `fluids.md`→`ResearchFluidSystem`/`DFSPH`/`UnifiedSolver` — bless those strings ONLY as deleted/never-existed dormancy-debunking context (post-W.1/F.1), NOT as live-solver sanction. W.1 (2026-06-20) did not newly introduce them (they were already gone at F.1); the keys are RETAINED, but D.3's lint must treat them as honest-dormancy-only so it still flags any prose that re-asserts them as a *live* solver. See `D_RESUME_0_RECON.md` §2a.
 >
 > **D.3.1 update (new poison generation, 2026-06-29):** added 14 keys for the coverage/miri poison minted by D.2.B/Path-B.2 — `59.3%` (supersession-context / dated-revision / version-comparison), `94.57%` (debunking-context / version-comparison), and `977` (dated-record / historical-dated / report-description / supersession-context). These bless the **legitimately superseded / dated / report-describing** occurrences (the corrections that cite the old value, the dated `MIRI_VALIDATION_REPORT.md` record, the master-report dated rows, the report-description index rows, and the two architecture-trace supersession mentions). The two **present-tense** survivors (`KANI_VERIFICATION_PLAN.md:479` 94.57%; `.zencoder/rules/repo.md:84` + `docs/lessons/WHAT_DIDNT.md:21` frame-time) were **corrected**, not allowlisted. Frame-time (`2.70 ms`/`370 FPS`) is **not** poison-listed (carve-out — see `CLOSED_VOCABULARY_LINT.md`). New `reason` categories: `supersession-context`, `version-comparison`, `debunking-context`, `dated-record`, `report-description`. Keys verified against HEAD `135e9915b`. Authority: `D3_0_RECON.md` + `CLAIMS_REGISTRY.md`.
+>
+> **R-series update (R.0.B close, 2026-06-30):** added **5 keys** (→ 306 total) for the R-series roadmap docs' legitimate closed-vocabulary meta-discussion — the audit methodology must contain the literal `production-ready` to *define detecting* it, and the state map *quotes* `astraweave-asset-pipeline`'s false `production-ready` `lib.rs:4` claim as the textbook catch; `55 crates` is the prompt figure the recon *corrects* to 74 (the opposite of contamination); `977` is the *measured* `astraweave-core` unit-test count. New `reason` categories: `audit-meta-discussion`, `corrected-figure`, `audit-measurement`. These set the precedent for all future R-series docs (which by nature discuss production-status). Authority: `ROADMAP_R0A_RECON.md` + `ROADMAP_R0B_STATE_MAP.md`.
 
 <!-- ALLOWLIST-START -->
 
@@ -316,6 +318,11 @@ Every KEEP occurrence from the closed-vocabulary triage (D.1.C), **updated by D.
 | `docs/current/MUTATION_TESTING_AUDIT.md` | `59 library crates` | historical-audit-denominator | permanent |
 | `docs/current/RENDERING_AUDIT_REPORT.md` | `55 crates` | historical-audit-denominator | permanent |
 | `docs/current/RENDERING_UPGRADE_PLAN.md` | `55 crates` | historical-audit-denominator | permanent |
+| `docs/current/ROADMAP_R0A_RECON.md` | `production-ready` | audit-meta-discussion | permanent |
+| `docs/current/ROADMAP_R0A_RECON.md` | `55 crates` | corrected-figure | permanent |
+| `docs/current/ROADMAP_R0B_STATE_MAP.md` | `production-ready` | audit-meta-discussion | permanent |
+| `docs/current/ROADMAP_R0B_STATE_MAP.md` | `55 crates` | corrected-figure | permanent |
+| `docs/current/ROADMAP_R0B_STATE_MAP.md` | `977` | audit-measurement | permanent |
 
 <!-- ALLOWLIST-END -->
 
