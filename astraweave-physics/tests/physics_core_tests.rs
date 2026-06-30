@@ -291,6 +291,15 @@ fn character_controller_stays_on_ground() {
         "Character should rest on the surface (center y=1.4), y={}",
         final_y
     );
+
+    let final_vel = world
+        .get_velocity(char_id)
+        .expect("Character body should still exist after settling");
+    assert!(
+        final_vel.y.abs() < 0.1,
+        "Character should have ~0 vertical velocity after settling, vy={}",
+        final_vel.y
+    );
 }
 
 #[test]
