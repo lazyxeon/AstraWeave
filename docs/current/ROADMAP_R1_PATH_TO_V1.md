@@ -201,6 +201,19 @@ E4 was resolved by **relabel-and-defer** (M2, 2026-06-30; recon `docs/audits/e4_
 - **Wire a live caller** — editor asset-import or a build step that runs the cook and produces the manifest the render path reads.
 - **Then** re-status `astraweave-asset-pipeline` DORMANT-HONEST → VERIFIED-PRODUCTION once it has a live caller.
 
+### 6.3 Post-v1.0 backlog — terrain scatter seed-scheme hardening (deferred, real-but-latent)
+
+Surfaced by the E3.c mechanism probe (2026-06-30, `docs/audits/e3_terrain_test_surface_recon_2026-06.md` A.7/Bucket B). **Not a v1.0 blocker** — E3.c's ratified "scatter Z-insensitivity real-defect" was *falsified* (the scatter code is correct; Z-variation confirmed empirically). But the scatter seed scheme `self.config.seed + x*1000 + z` (`astraweave-terrain/src/lib.rs:244,252`) has two genuine robustness flaws:
+
+- **(a) Diagonal collisions:** `(x,z) ≡ (x+1, z−1000)` *always* (probe: `(0,1000)` and `(1,0)` share seed 13345). Manifests in worlds spanning ≥1000 chunks in Z (~64,000 world units); masked by terrain in smaller worlds.
+- **(b) Negative-Z wrapping (the more-concerning):** `chunk.id().z as u64` for z<0 wraps to a huge u64 — a latent correctness smell worth a cheap guard (i64/hash arithmetic) whenever the hardening happens.
+
+**Fix:** replace the linear seed with a spatial hash of `(seed, x, z)` (a proper mixing hash), preserving the vegetation-vs-resource salt distinction (currently the ×1000 vs ×2000). Kills both flaws. Deferred; low priority.
+
+### 6.4 Roadmap tuning question — Target-B amplitude vegetation-suppression (content, not a defect)
+
+Also surfaced by the E3.c probe: the Target-B amplitude increase (base 50→150, mountains 80→480, `noise_gen.rs`) **suppresses vegetation** in low/steep chunks (probe: veg **0** vs **16** at adjacent chunks — the scatter altitude-ceiling filter now rejects everything on the steeper terrain). **Is this intended** (steep terrain correctly has no trees) **or over-suppression** (the ceiling filter is now too aggressive for Target-B amplitudes)? A **content/tuning question for the roadmap**, not E3 test work. **It reinforces the E3.a amplitude-finality gate:** before re-baking the ~16 golden snapshots (and before strengthening the scatter tests to depend on vegetation presence), confirm the Target-B amplitudes *and* their vegetation consequence are the intended final tuning — else the goldens rot again.
+
 ---
 
 ## 7. v1.0 done-state checklist (both halves of the conjunction)
