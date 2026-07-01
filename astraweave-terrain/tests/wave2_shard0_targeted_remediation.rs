@@ -1276,24 +1276,52 @@ fn scatter_different_chunks_different_vegetation() {
 
 #[test]
 fn scatter_different_z_different_result() {
-    let config = fast_scatter_config();
+    // E3.a redesign (2026-06-30) — see docs/audits/e3_terrain_test_surface_recon_2026-06.md A.7.
+    // FLAT terrain isolates the Z-seeded RNG (the only per-chunk difference);
+    // compare CHUNK-LOCAL positions (offset-independent) over vegetation +
+    // resources. Fails iff the Z term stops affecting the scatter.
+    fn local_fp(
+        chunk: &astraweave_terrain::TerrainChunk,
+        s: &astraweave_terrain::ScatterResult,
+        chunk_size: f32,
+    ) -> Vec<(i32, i32, i32)> {
+        let o = chunk.id().to_world_pos(chunk_size);
+        let q = |px: f32, py: f32, pz: f32| {
+            (((px - o.x) * 100.0) as i32, (py * 100.0) as i32, ((pz - o.z) * 100.0) as i32)
+        };
+        let mut v: Vec<(i32, i32, i32)> = s
+            .vegetation
+            .iter()
+            .map(|i| q(i.position.x, i.position.y, i.position.z))
+            .collect();
+        v.extend(s.resources.iter().map(|r| q(r.pos.x, r.pos.y, r.pos.z)));
+        v.sort_unstable();
+        v
+    }
+
+    let mut config = fast_scatter_config();
+    config.noise.base_elevation.amplitude = 0.0;
+    config.noise.mountains.amplitude = 0.0;
+    config.noise.detail.amplitude = 0.0;
+    config.noise.erosion_enabled = false;
+    let chunk_size = config.chunk_size;
     let mut gen = WorldGenerator::new(config);
 
     let chunk_a = gen.generate_and_register_chunk(ChunkId::new(0, 0)).unwrap();
     let chunk_b = gen.generate_and_register_chunk(ChunkId::new(0, 1)).unwrap();
-
     let scatter_a = gen.scatter_chunk_content(&chunk_a).unwrap();
     let scatter_b = gen.scatter_chunk_content(&chunk_b).unwrap();
+    let fp_a = local_fp(&chunk_a, &scatter_a, chunk_size);
+    let fp_b = local_fp(&chunk_b, &scatter_b, chunk_size);
 
-    // The Z-component also affects the seed → results should differ
-    let differs = scatter_a.vegetation.len() != scatter_b.vegetation.len()
-        || scatter_a.resources.len() != scatter_b.resources.len()
-        || (scatter_a.vegetation.len() > 0
-            && scatter_b.vegetation.len() > 0
-            && scatter_a.vegetation[0].position != scatter_b.vegetation[0].position);
     assert!(
-        differs,
-        "Chunks at different Z should have different scatter"
+        !fp_a.is_empty() || !fp_b.is_empty(),
+        "scatter produced nothing on either chunk — cannot assess Z-variation"
+    );
+    assert_ne!(
+        fp_a, fp_b,
+        "Chunks at different Z must produce a different local scatter pattern \
+         (the Z term seeds the RNG). Diagonal-collision hardening deferred — ROADMAP_R1 §6.3."
     );
 }
 

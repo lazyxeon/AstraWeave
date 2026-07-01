@@ -668,8 +668,34 @@ fn structure_height_matches_terrain_at_position() {
 /// Catches * → / in resolution formula (always index 0 → same height).
 #[test]
 fn structure_heights_are_varied() {
-    let chunk = make_chunk(0, 0);
-    let chunk_size = 256.0;
+    // E3.a redesign (2026-06-30) — see docs/audits/e3_terrain_test_surface_recon_2026-06.md.
+    // The original drove structures over REAL Target-B terrain, whose large flat
+    // 0.0-clamped floor clustered every slope-filtered structure at height 0 →
+    // uniform, making the outcome amplitude/terrain-dependent. This genuine,
+    // amplitude-INDEPENDENT guard uses a CONTROLLED heightmap of locally-flat
+    // tiles at globally-varied heights: structures place on the flat tiles
+    // (passing the slope filter) and land at varied heights iff the
+    // structures.rs index formula maps position → cell correctly (the `* → /`
+    // mutation collapses every index to (0,0) → one height → caught).
+    use astraweave_terrain::{ChunkId, Heightmap, TerrainChunk};
+    let res = 64u32;
+    let chunk_size = 512.0;
+    // 16×16-cell flat tiles at distinct heights (step 8.0): locally flat (slope
+    // 0 within a tile ⇒ passes is_suitable_location + can_place_on_slope),
+    // globally varied across the 4×4 tile grid.
+    let mut data = vec![0.0f32; (res * res) as usize];
+    for z in 0..res {
+        for x in 0..res {
+            let tile = (x / 16) + (z / 16) * 4; // 0..=15
+            data[(z * res + x) as usize] = tile as f32 * 8.0;
+        }
+    }
+    let heightmap = Heightmap::from_data(data, res).unwrap();
+    let chunk = TerrainChunk::new(
+        ChunkId::new(0, 0),
+        heightmap,
+        vec![BiomeType::Forest; (res * res) as usize],
+    );
     let mut heights = Vec::new();
 
     for seed in 0..20u64 {

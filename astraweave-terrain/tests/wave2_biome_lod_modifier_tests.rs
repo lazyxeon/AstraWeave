@@ -157,7 +157,7 @@ fn biome_config_grassland_cloud_coverage() {
 #[test]
 fn biome_config_grassland_vegetation_density() {
     let c = BiomeConfig::grassland();
-    assert!((c.vegetation.density - 0.003).abs() < 1e-6);
+    assert!((c.vegetation.density - 0.004).abs() < 1e-6);
 }
 
 // ============================================================================

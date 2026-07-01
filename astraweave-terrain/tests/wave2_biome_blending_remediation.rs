@@ -42,11 +42,12 @@ fn packed_blend_normalizes_weights() {
     assert!(packed.weights[0] > packed.weights[1]);
 }
 
-/// Empty weights should fall back to grassland with weight 1.0.
+/// Empty weights should fall back to Desert with weight 1.0
+/// (biome_blending.rs:72-73 — "Desert is a safer default than Grassland for arid scenes").
 #[test]
 fn packed_blend_empty_fallback_grassland() {
     let packed = PackedBiomeBlend::from_weights(&[]);
-    assert_eq!(packed.biome_ids[0], BiomeType::Grassland as u8);
+    assert_eq!(packed.biome_ids[0], BiomeType::Desert as u8);
     assert_eq!(packed.weights[0], 1.0);
 }
 
@@ -64,8 +65,8 @@ fn packed_blend_filters_tiny_weights() {
         },
     ];
     let packed = PackedBiomeBlend::from_weights(&weights);
-    // Both below threshold, should fall back to grassland
-    assert_eq!(packed.biome_ids[0], BiomeType::Grassland as u8);
+    // Both below threshold → total≈0 → documented Desert fallback (biome_blending.rs:72-73)
+    assert_eq!(packed.biome_ids[0], BiomeType::Desert as u8);
     assert_eq!(packed.weights[0], 1.0);
 }
 
@@ -261,8 +262,8 @@ fn blend_weights_outside_radius_zero() {
     ];
     let packed = blender.calculate_blend_weights(Vec2::ZERO, 0.0, &neighbors);
 
-    // Should fall back to grassland (no valid neighbors)
-    assert_eq!(packed.dominant_biome(), BiomeType::Grassland);
+    // No valid neighbors → total≈0 → documented Desert fallback (biome_blending.rs:72-73)
+    assert_eq!(packed.dominant_biome(), BiomeType::Desert);
 }
 
 /// Closer neighbors should have higher weight (falloff).

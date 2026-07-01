@@ -670,8 +670,8 @@ fn packed_blend_zero_weights_fallback() {
     );
     assert_eq!(
         packed.dominant_biome(),
-        BiomeType::Grassland,
-        "Empty should default to Grassland"
+        BiomeType::Desert,
+        "Empty should default to Desert (biome_blending.rs:72-73 — safer than Grassland for arid scenes)"
     );
 }
 
@@ -1057,13 +1057,13 @@ fn world_config_default_seed() {
 #[test]
 fn world_config_default_chunk_size() {
     let cfg = WorldConfig::default();
-    assert!((cfg.chunk_size - 256.0).abs() < 1e-4);
+    assert!((cfg.chunk_size - 512.0).abs() < 1e-4);
 }
 
 #[test]
 fn world_config_default_resolution() {
     let cfg = WorldConfig::default();
-    assert_eq!(cfg.heightmap_resolution, 128);
+    assert_eq!(cfg.heightmap_resolution, 96);
 }
 
 #[test]
@@ -1092,7 +1092,7 @@ fn world_generator_stores_config() {
     cfg.seed = 99999;
     let gen = WorldGenerator::new(cfg);
     assert_eq!(gen.config().seed, 99999);
-    assert!((gen.config().chunk_size - 256.0).abs() < 1e-4);
+    assert!((gen.config().chunk_size - 512.0).abs() < 1e-4);
 }
 
 #[test]

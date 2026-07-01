@@ -1015,11 +1015,12 @@ mod splatting_mutations {
     #[test]
     fn from_weights_empty_fallback_to_first() {
         let w = SplatWeights::from_weights(&[]);
-        // Total = 0 → fallback: weights_0.x = 1.0
+        // Total = 0 → documented fallback: weights_0.y = 1.0 (layer 1 / sand),
+        // per texture_splatting.rs:169-170 ("avoids grass bleed in non-grassland biomes").
         assert!(
-            (w.get_weight(0) - 1.0).abs() < 1e-4,
-            "Empty weights fallback: layer 0 = 1.0, got {}",
-            w.get_weight(0)
+            (w.get_weight(1) - 1.0).abs() < 1e-4,
+            "Empty weights fallback: layer 1 (sand) = 1.0, got {}",
+            w.get_weight(1)
         );
     }
 
@@ -1027,8 +1028,8 @@ mod splatting_mutations {
     fn from_weights_zero_total_fallback() {
         let w = SplatWeights::from_weights(&[0.0, 0.0, 0.0]);
         assert!(
-            (w.get_weight(0) - 1.0).abs() < 1e-4,
-            "All-zero weights fallback: layer 0 = 1.0"
+            (w.get_weight(1) - 1.0).abs() < 1e-4,
+            "All-zero weights fallback: layer 1 (sand) = 1.0"
         );
     }
 
@@ -1089,13 +1090,13 @@ mod splatting_mutations {
 
     #[test]
     fn normalization_threshold_is_00001() {
-        // If total < 0.0001, fallback to first layer.
+        // If total <= 0.0001, fallback to the documented sand layer (layer 1).
         // So weights [0.00005, 0.00005] should trigger fallback
         let w = SplatWeights::from_weights(&[0.00005, 0.00005]);
-        // total = 0.0001 which is NOT > 0.0001, so fallback
+        // total = 0.0001 which is NOT > 0.0001, so fallback to layer 1 (sand)
         assert!(
-            (w.get_weight(0) - 1.0).abs() < 1e-4,
-            "Total=0.0001 should trigger fallback"
+            (w.get_weight(1) - 1.0).abs() < 1e-4,
+            "Total=0.0001 should trigger fallback to layer 1 (sand)"
         );
     }
 }
@@ -1216,8 +1217,8 @@ mod chunk_world_mutations {
     #[test]
     fn world_config_defaults() {
         let w = WorldConfig::default();
-        assert!((w.chunk_size - 256.0).abs() < 1e-3);
-        assert_eq!(w.heightmap_resolution, 128);
+        assert!((w.chunk_size - 512.0).abs() < 1e-3);
+        assert_eq!(w.heightmap_resolution, 96);
     }
 
     #[test]

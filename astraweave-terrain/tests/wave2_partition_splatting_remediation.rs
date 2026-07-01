@@ -294,10 +294,11 @@ fn splat_weights_from_weights_normalization() {
 #[test]
 fn splat_weights_from_weights_zero_fallback() {
     let sw = SplatWeights::from_weights(&[0.0, 0.0, 0.0]);
-    // All zero → fallback: first layer = 1.0
+    // All zero → documented fallback: weights_0.y = 1.0 (layer 1 / sand),
+    // texture_splatting.rs:169-170 ("avoids grass bleed in non-grassland biomes").
     assert!(
-        (sw.weights_0.x - 1.0).abs() < 1e-6,
-        "Zero weights fallback to layer 0"
+        (sw.weights_0.y - 1.0).abs() < 1e-6,
+        "Zero weights fallback to layer 1 (sand)"
     );
 }
 
