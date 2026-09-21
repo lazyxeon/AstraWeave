@@ -242,7 +242,7 @@ jobs:
           retention-days: 30
 
       - name: Store benchmark results for tracking
-        uses: benchmark-action/github-action-benchmark@v1.20.7
+        uses: benchmark-action/github-action-benchmark@v1.22.2
         if: >-
           steps.merge.outputs.healthy == 'true' &&
           github.event_name == 'push' &&
@@ -263,7 +263,7 @@ jobs:
           gh-repository: ${{ github.repository }}
           
       - name: Comment benchmark results on PR
-        uses: benchmark-action/github-action-benchmark@v1.20.7
+        uses: benchmark-action/github-action-benchmark@v1.22.2
         if: >-
           steps.merge.outputs.healthy == 'true' &&
           github.event_name == 'pull_request' &&
