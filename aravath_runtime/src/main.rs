@@ -30,6 +30,7 @@ struct App {
     last_time: Instant,
     player_mesh_ready: bool,
     lock_toggle: bool,
+    place_toggle: bool,
 }
 
 impl App {
@@ -49,6 +50,7 @@ impl App {
             last_time: Instant::now(),
             player_mesh_ready: false,
             lock_toggle: false,
+            place_toggle: false,
         }
     }
 }
@@ -176,6 +178,18 @@ impl ApplicationHandler for App {
         {
             self.lock_toggle = true;
         }
+        if let WindowEvent::KeyboardInput {
+            event:
+                KeyEvent {
+                    physical_key: PhysicalKey::Code(KeyCode::KeyR),
+                    state: ElementState::Pressed,
+                    ..
+                },
+            ..
+        } = &event
+        {
+            self.place_toggle = true;
+        }
         self.input.process_window_event(&event);
 
         let Some(renderer) = self.renderer.as_mut() else {
@@ -237,6 +251,9 @@ impl ApplicationHandler for App {
         }
         let dig_uploads = if self.input.just_pressed(Action::Interact) {
             Some(self.sim.dig_ahead(2.5))
+        } else if self.place_toggle {
+            self.place_toggle = false;
+            Some(self.sim.place_ahead(1.1))
         } else {
             None
         };

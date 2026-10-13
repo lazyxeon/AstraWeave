@@ -345,11 +345,16 @@ dependencies = [
  "anyhow",
  "astraweave-camera",
  "astraweave-input",
+ "astraweave-nav",
  "astraweave-physics",
  "astraweave-render",
  "astraweave-terrain",
+ "aw-save",
  "glam",
  "pollster",
+ "tempfile",
+ "time",
+ "uuid",
  "winit",
 ]
 

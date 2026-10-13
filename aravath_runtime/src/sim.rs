@@ -1,6 +1,7 @@
 //! Headless greybox simulation. The window binary only displays this.
 
 use astraweave_camera::ThirdPersonCamera;
+use astraweave_nav::{Aabb, NavMesh};
 use astraweave_physics::PhysicsWorld;
 use astraweave_terrain::VoxelGrid;
 use glam::Vec3;
@@ -20,6 +21,7 @@ pub struct Greybox {
     pub motor: Motor,
     pub graph: LocomotionGraph,
     pub combat: Combat,
+    pub nav: NavMesh,
     /// Meshes from the first sync, moved out by the window once a device exists.
     pub initial_uploads: Vec<ChunkUpload>,
 }
@@ -41,6 +43,7 @@ impl Greybox {
             motor: Motor::default(),
             graph: LocomotionGraph::default(),
             combat: Combat::default(),
+            nav: NavMesh::bake(&[], 0.5, 55.0),
             initial_uploads,
         }
     }
@@ -102,6 +105,20 @@ impl Greybox {
         let (forward, _) = player::flat_basis(self.player.facing_yaw);
         let center = pos + forward * 1.5 + Vec3::new(0.0, -1.2, 0.0);
         self.ground.dig_sphere(center, radius);
+        self.nav
+            .invalidate_region(Aabb::from_center_half_extents(center, Vec3::splat(radius)));
+        let uploads = self.ground.sync_dirty(&mut self.physics);
+        self.physics.step();
+        uploads
+    }
+
+    pub fn place_ahead(&mut self, radius: f32) -> Vec<ChunkUpload> {
+        let pos = self.player_pos();
+        let (forward, _) = player::flat_basis(self.player.facing_yaw);
+        let center = pos + forward * 1.8;
+        self.ground.place_sphere(center, radius, 1);
+        self.nav
+            .invalidate_region(Aabb::from_center_half_extents(center, Vec3::splat(radius)));
         let uploads = self.ground.sync_dirty(&mut self.physics);
         self.physics.step();
         uploads

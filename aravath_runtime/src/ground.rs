@@ -19,14 +19,25 @@ pub struct ChunkUpload {
 
 pub struct Ground {
     pub grid: VoxelGrid,
+    pub edits: Vec<VoxelEdit>,
     mesher: DualContouring,
     bodies: HashMap<ChunkCoord, u64>,
+}
+
+#[derive(Clone, Debug)]
+pub struct VoxelEdit {
+    pub x: i32,
+    pub y: i32,
+    pub z: i32,
+    pub density: f32,
+    pub material: u16,
 }
 
 impl Ground {
     pub fn from_grid(grid: VoxelGrid) -> Self {
         Self {
             grid,
+            edits: Vec::new(),
             mesher: DualContouring::new(),
             bodies: HashMap::new(),
         }
@@ -81,10 +92,75 @@ impl Ground {
                     );
                     if p.distance(center) <= radius {
                         self.grid.set_voxel(p, Voxel::new(0.0, 0));
+                        self.remember(p, 0.0, 0);
                     }
                 }
             }
         }
+    }
+
+    /// Write solid voxels that touch an existing solid neighbor, or sit on the floor.
+    /// Returns false when every sample was rejected.
+    pub fn place_sphere(&mut self, center: Vec3, radius: f32, material: u16) -> bool {
+        let r = radius.ceil() as i32;
+        let origin = IVecFloor::from_vec(center);
+        let mut spots = Vec::new();
+        for x in -r..=r {
+            for y in -r..=r {
+                for z in -r..=r {
+                    let p = Vec3::new(
+                        (origin.x + x) as f32,
+                        (origin.y + y) as f32,
+                        (origin.z + z) as f32,
+                    );
+                    if p.distance(center) <= radius {
+                        spots.push((origin.y + y, p));
+                    }
+                }
+            }
+        }
+        spots.sort_by_key(|(y, _)| *y);
+        let mut placed = false;
+        for (_, p) in spots {
+            if self.supported(p) {
+                self.grid.set_voxel(p, Voxel::new(1.0, material));
+                self.remember(p, 1.0, material);
+                placed = true;
+            }
+        }
+        placed
+    }
+
+    pub fn replay(&mut self, edits: &[VoxelEdit]) {
+        for edit in edits {
+            let p = Vec3::new(edit.x as f32, edit.y as f32, edit.z as f32);
+            self.grid
+                .set_voxel(p, Voxel::new(edit.density, edit.material));
+        }
+        self.edits.extend(edits.iter().cloned());
+    }
+
+    fn supported(&self, p: Vec3) -> bool {
+        let y = p.y.round() as i32;
+        if y <= 0 {
+            return true;
+        }
+        let neighbors = [Vec3::X, -Vec3::X, Vec3::Y, -Vec3::Y, Vec3::Z, -Vec3::Z];
+        neighbors.into_iter().any(|offset| {
+            self.grid
+                .get_voxel(p + offset)
+                .is_some_and(|voxel| voxel.is_solid())
+        })
+    }
+
+    fn remember(&mut self, p: Vec3, density: f32, material: u16) {
+        self.edits.push(VoxelEdit {
+            x: p.x.round() as i32,
+            y: p.y.round() as i32,
+            z: p.z.round() as i32,
+            density,
+            material,
+        });
     }
 
     fn replace_body(&mut self, physics: &mut PhysicsWorld, coord: ChunkCoord, mesh: &ChunkMesh) {
