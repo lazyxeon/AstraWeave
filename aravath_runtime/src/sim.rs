@@ -6,9 +6,8 @@ use astraweave_terrain::VoxelGrid;
 use glam::Vec3;
 
 use crate::ground::{ChunkUpload, Ground};
+use crate::motor::{Motor, MotorInput};
 use crate::player::{self, Player};
-
-pub const WALK_SPEED: f32 = 4.5;
 pub const FIXED_DT: f32 = 1.0 / 60.0;
 
 pub struct Greybox {
@@ -16,6 +15,7 @@ pub struct Greybox {
     pub ground: Ground,
     pub player: Player,
     pub camera: ThirdPersonCamera,
+    pub motor: Motor,
     /// Meshes from the first sync, moved out by the window once a device exists.
     pub initial_uploads: Vec<ChunkUpload>,
 }
@@ -34,6 +34,7 @@ impl Greybox {
             ground,
             player,
             camera,
+            motor: Motor::default(),
             initial_uploads,
         }
     }
@@ -55,10 +56,16 @@ impl Greybox {
         self.camera.pivot = self.player_pos();
     }
 
-    pub fn tick_camera_relative(&mut self, move_x: f32, move_y: f32) {
-        let (forward, right) = player::flat_basis(self.camera.yaw);
-        let wish = player::wish_from_axes(forward, right, move_x, move_y, WALK_SPEED);
-        self.tick_wish(wish);
+    pub fn tick_controls(&mut self, input: MotorInput) {
+        self.motor.tick(
+            &mut self.physics,
+            &mut self.player,
+            self.camera.yaw,
+            input,
+            FIXED_DT,
+        );
+        self.physics.step();
+        self.camera.pivot = self.player_pos();
     }
 
     /// Dig just in front of the feet. Returns chunk uploads for the renderer.

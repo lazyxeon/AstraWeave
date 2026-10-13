@@ -6,7 +6,7 @@
 use std::sync::Arc;
 use std::time::Instant;
 
-use astraweave_input::{Action, BindingSet, InputContext, InputManager};
+use astraweave_input::{Action, Binding, BindingSet, InputContext, InputManager};
 use astraweave_render::{Instance, Renderer};
 use glam::{Mat4, Vec3};
 use winit::{
@@ -37,7 +37,7 @@ impl App {
             window: None,
             renderer: None,
             sim: Greybox::island(),
-            input: InputManager::new(InputContext::Gameplay, BindingSet::default()),
+            input: demo_input(),
             last_cursor: None,
             last_time: Instant::now(),
             player_mesh_ready: false,
@@ -175,16 +175,29 @@ impl ApplicationHandler for App {
         let dt = (now - self.last_time).as_secs_f32().min(0.05);
         self.last_time = now;
         let steps = ((dt / aravath_runtime::sim::FIXED_DT).round() as u32).clamp(1, 4);
-        let move_x = axis(
-            self.input.is_down(Action::MoveRight),
-            self.input.is_down(Action::MoveLeft),
-        );
-        let move_y = axis(
-            self.input.is_down(Action::MoveForward),
-            self.input.is_down(Action::MoveBackward),
-        );
-        for _ in 0..steps {
-            self.sim.tick_camera_relative(move_x, move_y);
+        let input = aravath_runtime::motor::MotorInput {
+            move_x: axis(
+                self.input.is_down(Action::MoveRight),
+                self.input.is_down(Action::MoveLeft),
+            ),
+            move_y: axis(
+                self.input.is_down(Action::MoveForward),
+                self.input.is_down(Action::MoveBackward),
+            ),
+            jump: self.input.just_pressed(Action::Jump),
+            sprint: self.input.is_down(Action::Sprint),
+            crouch: self.input.is_down(Action::Crouch),
+            roll: self.input.just_pressed(Action::Ability1),
+            fly_toggle: self.input.just_pressed(Action::Ability2),
+        };
+        for step in 0..steps {
+            let mut step_input = input;
+            if step > 0 {
+                step_input.jump = false;
+                step_input.roll = false;
+                step_input.fly_toggle = false;
+            }
+            self.sim.tick_controls(step_input);
         }
         let dig_uploads = if self.input.just_pressed(Action::Interact) {
             Some(self.sim.dig_ahead(2.5))
@@ -240,6 +253,25 @@ fn upload_chunks(renderer: &mut Renderer, uploads: &[ChunkUpload]) {
             }],
         );
     }
+}
+
+fn demo_input() -> InputManager {
+    let mut bindings = BindingSet::default();
+    bindings.actions.insert(
+        Action::Ability1,
+        Binding {
+            key: Some(winit::keyboard::KeyCode::KeyQ),
+            ..Binding::default()
+        },
+    );
+    bindings.actions.insert(
+        Action::Ability2,
+        Binding {
+            key: Some(winit::keyboard::KeyCode::KeyF),
+            ..Binding::default()
+        },
+    );
+    InputManager::new(InputContext::Gameplay, bindings)
 }
 
 fn axis(positive: bool, negative: bool) -> f32 {

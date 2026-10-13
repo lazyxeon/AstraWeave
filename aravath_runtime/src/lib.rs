@@ -8,6 +8,7 @@
 pub mod bridge_agent;
 pub mod ground;
 pub mod island;
+pub mod motor;
 pub mod player;
 pub mod sim;
 
