@@ -200,11 +200,16 @@ impl Figure {
     }
 
     pub fn skin(&self, clip_name: &str, time: f32) -> Result<Vec<PosedPrimitive>> {
-        let clip = self
-            .clips
-            .get(clip_name)
-            .with_context(|| format!("missing clip {clip_name}"))?;
-        let locals = clip.sample(time.rem_euclid(clip.duration.max(0.001)), &self.skeleton);
+        self.skin_at(clip_name, time, true)
+    }
+
+    pub fn skin_at(
+        &self,
+        clip_name: &str,
+        time: f32,
+        looping: bool,
+    ) -> Result<Vec<PosedPrimitive>> {
+        let locals = self.locals_at(clip_name, time, looping)?;
         let joints = compute_joint_matrices(&self.skeleton, &locals)?;
         let mut posed = Vec::new();
         for primitive in &self.primitives {
@@ -245,16 +250,44 @@ impl Figure {
 
     /// World matrices of the two hands in model space. Columns are the joint axes.
     pub fn hand_frames(&self, clip_name: &str, time: f32) -> Result<(Mat4, Mat4)> {
-        let clip = self
-            .clips
-            .get(clip_name)
-            .with_context(|| format!("missing clip {clip_name}"))?;
-        let locals = clip.sample(time.rem_euclid(clip.duration.max(0.001)), &self.skeleton);
+        self.hand_frames_at(clip_name, time, true)
+    }
+
+    pub fn hand_frames_at(
+        &self,
+        clip_name: &str,
+        time: f32,
+        looping: bool,
+    ) -> Result<(Mat4, Mat4)> {
+        let locals = self.locals_at(clip_name, time, looping)?;
         let joints = compute_joint_matrices(&self.skeleton, &locals)?;
         Ok((
             joint_world(&self.skeleton, &joints, self.hand_l),
             joint_world(&self.skeleton, &joints, self.hand_r),
         ))
+    }
+
+    pub fn duration(&self, clip_name: &str) -> Option<f32> {
+        self.clips.get(clip_name).map(|clip| clip.duration)
+    }
+
+    fn locals_at(
+        &self,
+        clip_name: &str,
+        time: f32,
+        looping: bool,
+    ) -> Result<Vec<astraweave_render::animation::Transform>> {
+        let clip = self
+            .clips
+            .get(clip_name)
+            .with_context(|| format!("missing clip {clip_name}"))?;
+        let duration = clip.duration.max(0.001);
+        let t = if looping {
+            time.rem_euclid(duration)
+        } else {
+            time.clamp(0.0, duration - 0.001)
+        };
+        Ok(clip.sample(t, &self.skeleton))
     }
 }
 

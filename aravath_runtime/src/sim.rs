@@ -8,7 +8,7 @@ use glam::Vec3;
 
 use crate::combat::Combat;
 use crate::ground::{ChunkUpload, Ground};
-use crate::locomotion::LocomotionGraph;
+use crate::locomotion::{clip_name, visual_time, LocomotionGraph, PoseInput};
 use crate::motor::{Motor, MotorInput};
 use crate::player::{self, Player};
 pub const FIXED_DT: f32 = 1.0 / 60.0;
@@ -91,6 +91,9 @@ impl Greybox {
 
     pub fn tick_controls(&mut self, input: MotorInput) {
         let mut input = input;
+        if self.combat.player_hp <= 0.0 {
+            input = MotorInput::default();
+        }
         input.feet_locked = self.combat.attack.locks_feet();
         self.motor.tick(
             &mut self.physics,
@@ -111,7 +114,21 @@ impl Greybox {
             }
         }
         let moving = input.move_x.abs() + input.move_y.abs() > 0.05;
-        self.graph.sync(&self.motor, moving, FIXED_DT);
+        self.graph.sync(
+            PoseInput {
+                mode: self.motor.mode,
+                grounded: self.motor.grounded,
+                crouching: self.motor.crouching,
+                sprinting: self.motor.sprinting,
+                walking: self.motor.walking,
+                moving,
+                attacking: self.combat.attack.swinging,
+                blocking: self.combat.blocking,
+                hit: self.combat.hit_react > 0.0,
+                dead: self.combat.player_hp <= 0.0,
+            },
+            FIXED_DT,
+        );
         self.camera.pivot = self.player_pos();
         let focus = self.player_pos();
         let streamed = self.ground.stream_around(&mut self.physics, focus, 1);
@@ -120,12 +137,7 @@ impl Greybox {
 
     pub fn spawn_enemy(&mut self, pos: Vec3) {
         let body = self.physics.add_character(pos, Vec3::new(0.35, 0.8, 0.35));
-        self.combat.enemies.push(crate::combat::Enemy {
-            body,
-            health: 40.0,
-            attack: crate::combat::Attack::default(),
-            stagger: 0.0,
-        });
+        self.combat.enemies.push(crate::combat::Enemy::new(body));
     }
     pub fn dig_ahead(&mut self, radius: f32) -> Vec<ChunkUpload> {
         let pos = self.player_pos();
@@ -152,6 +164,27 @@ impl Greybox {
     }
 
     /// Eye distance after a ray from the pivot toward the camera eye.
+    /// Clip name and the sample clock for the player mesh.
+    pub fn player_visual(&self, clip_duration: f32) -> (&'static str, f32, bool) {
+        let state = self.graph.state;
+        let name = clip_name(state);
+        let duration = clip_duration;
+        let phase = match state {
+            crate::locomotion::LocoState::Roll => {
+                self.motor.roll_time / crate::motor::ROLL_DURATION
+            }
+            crate::locomotion::LocoState::Attack => {
+                self.combat.attack.time / crate::combat::ATTACK_WINDOW
+            }
+            crate::locomotion::LocoState::Hit => {
+                1.0 - (self.combat.hit_react / crate::combat::HIT_REACT).clamp(0.0, 1.0)
+            }
+            _ => 0.0,
+        };
+        let (time, looping) = visual_time(state, self.graph.time, phase, duration);
+        (name, time, looping)
+    }
+
     pub fn occluded_camera_distance(&self) -> f32 {
         let dir = self.camera.eye_offset_dir();
         let hit = self
@@ -244,5 +277,16 @@ mod tests {
         let resolved = camera.distance_after_hit(hit);
         assert!(resolved < camera.distance, "resolved {resolved}");
         assert!(resolved > 0.4);
+    }
+
+    #[test]
+    fn attacking_selects_the_sword_clip() {
+        let mut sim = Greybox::island();
+        sim.combat.attack.start();
+        sim.tick_controls(MotorInput::default());
+        let (name, time, looping) = sim.player_visual(1.5);
+        assert_eq!(name, "Sword_Attack");
+        assert!(!looping);
+        assert!(time >= 0.0);
     }
 }

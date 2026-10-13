@@ -117,12 +117,25 @@ impl NodeActor {
         self.clips.contains_key(name)
     }
 
+    pub fn duration(&self, clip_name: &str) -> Option<f32> {
+        self.clips.get(clip_name).map(|clip| clip.duration)
+    }
+
     pub fn pose(&self, clip_name: &str, time: f32) -> Result<CpuMesh> {
+        self.pose_at(clip_name, time, true)
+    }
+
+    pub fn pose_at(&self, clip_name: &str, time: f32, looping: bool) -> Result<CpuMesh> {
         let clip = self
             .clips
             .get(clip_name)
             .with_context(|| format!("missing clip {clip_name}"))?;
-        let t = time.rem_euclid(clip.duration.max(0.001));
+        let duration = clip.duration.max(0.001);
+        let t = if looping {
+            time.rem_euclid(duration)
+        } else {
+            time.clamp(0.0, duration - 0.001)
+        };
         let locals = self.locals_at(clip, t);
         let mut vertices = Vec::new();
         let mut indices = Vec::new();

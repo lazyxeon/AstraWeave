@@ -15,6 +15,8 @@ pub const RECOVERY: f32 = 0.22;
 pub const SWORD_REACH: f32 = 1.8;
 pub const SWORD_DAMAGE: f32 = 25.0;
 pub const ENEMY_DAMAGE: f32 = 12.0;
+pub const HIT_REACT: f32 = 0.4;
+pub const ATTACK_WINDOW: f32 = STARTUP + ACTIVE + RECOVERY;
 
 #[derive(Clone, Debug)]
 pub struct Attack {
@@ -70,11 +72,69 @@ pub struct Enemy {
     pub health: f32,
     pub attack: Attack,
     pub stagger: f32,
+    /// True while this enemy is stepping toward the player.
+    pub closing: bool,
+    pub anim_time: f32,
+    pub down_time: f32,
+}
+
+/// Which figurine clip to bake, and how to read the clock.
+pub enum EnemyPose {
+    Loop {
+        clip: &'static str,
+        time: f32,
+    },
+    /// `phase` is 0..1 across the clip.
+    Fraction {
+        clip: &'static str,
+        phase: f32,
+    },
+    /// Seconds from the start, held at the last frame.
+    Hold {
+        clip: &'static str,
+        time: f32,
+    },
 }
 
 impl Enemy {
+    pub fn new(body: u64) -> Self {
+        Self {
+            body,
+            health: 40.0,
+            attack: Attack::default(),
+            stagger: 0.0,
+            closing: false,
+            anim_time: 0.0,
+            down_time: 0.0,
+        }
+    }
+
     pub fn alive(&self) -> bool {
         self.health > 0.0
+    }
+
+    pub fn pose(&self) -> EnemyPose {
+        if !self.alive() {
+            EnemyPose::Hold {
+                clip: "die",
+                time: self.down_time,
+            }
+        } else if self.attack.swinging {
+            EnemyPose::Fraction {
+                clip: "attack-melee-right",
+                phase: self.attack.time / ATTACK_WINDOW,
+            }
+        } else if self.closing {
+            EnemyPose::Loop {
+                clip: "walk",
+                time: self.anim_time,
+            }
+        } else {
+            EnemyPose::Loop {
+                clip: "idle",
+                time: self.anim_time,
+            }
+        }
     }
 }
 
@@ -85,6 +145,7 @@ pub struct Combat {
     pub blocking: bool,
     pub enemies: Vec<Enemy>,
     pub lock: Option<usize>,
+    pub hit_react: f32,
 }
 
 impl Default for Combat {
@@ -95,6 +156,7 @@ impl Default for Combat {
             blocking: false,
             enemies: Vec::new(),
             lock: None,
+            hit_react: 0.0,
         }
     }
 }
@@ -134,12 +196,17 @@ impl Combat {
         let player_pos = body_pos(physics, player.body).unwrap_or(Vec3::ZERO);
         let blocking = self.blocking;
         let player_body = player.body;
+        let hp_before = self.player_hp;
         for enemy in &mut self.enemies {
+            enemy.anim_time += dt;
             if !enemy.alive() {
+                enemy.closing = false;
+                enemy.down_time += dt;
                 continue;
             }
             if enemy.stagger > 0.0 {
                 enemy.stagger = (enemy.stagger - dt).max(0.0);
+                enemy.closing = false;
                 enemy.attack.advance(dt);
                 continue;
             }
@@ -150,6 +217,7 @@ impl Combat {
             let flat = Vec3::new(to_player.x, 0.0, to_player.z);
             let dist = flat.length();
             if dist > 1.7 {
+                enemy.closing = true;
                 let wish = if dist > 0.01 {
                     flat.normalize() * 3.0
                 } else {
@@ -157,9 +225,10 @@ impl Combat {
                 };
                 physics.control_character(enemy.body, wish, dt, false);
             } else {
+                enemy.closing = false;
                 enemy.attack.start();
                 if enemy.attack.active() && !enemy.attack.hit_landed && dist > 0.01 {
-                    let origin = pos + Vec3::Y * 0.8;
+                    let origin = pos + Vec3::Y * 0.6 + flat.normalize() * 0.7;
                     if let Some((_, _, Some(id), _)) =
                         physics.raycast(origin, flat.normalize(), 1.6)
                     {
@@ -172,6 +241,11 @@ impl Combat {
                 }
             }
             enemy.attack.advance(dt);
+        }
+        if self.player_hp < hp_before {
+            self.hit_react = HIT_REACT;
+        } else {
+            self.hit_react = (self.hit_react - dt).max(0.0);
         }
         if self
             .lock
@@ -212,12 +286,7 @@ mod tests {
             physics.add_character(Vec3::new(1.3, 1.5, 0.0), Vec3::new(0.35, 0.8, 0.35));
         physics.step();
         let combat = Combat {
-            enemies: vec![Enemy {
-                body: enemy_body,
-                health: 40.0,
-                attack: Attack::default(),
-                stagger: 0.0,
-            }],
+            enemies: vec![Enemy::new(enemy_body)],
             ..Combat::default()
         };
         (physics, player, combat)
@@ -257,6 +326,35 @@ mod tests {
         physics.step();
         let after = body_pos(&physics, combat.enemies[0].body).unwrap();
         assert!((after.x - before.x).abs() < 0.08, "{before:?} -> {after:?}");
+    }
+
+    #[test]
+    fn enemy_pose_follows_closing_attack_and_death() {
+        let mut enemy = Enemy::new(1);
+        assert!(matches!(enemy.pose(), EnemyPose::Loop { clip: "idle", .. }));
+        enemy.closing = true;
+        assert!(matches!(enemy.pose(), EnemyPose::Loop { clip: "walk", .. }));
+        enemy.attack.swinging = true;
+        assert!(matches!(
+            enemy.pose(),
+            EnemyPose::Fraction {
+                clip: "attack-melee-right",
+                ..
+            }
+        ));
+        enemy.health = 0.0;
+        assert!(matches!(enemy.pose(), EnemyPose::Hold { clip: "die", .. }));
+    }
+
+    #[test]
+    fn a_landed_enemy_hit_starts_hit_react() {
+        let (mut physics, player, mut combat) = arena();
+        combat.enemies[0].attack.swinging = true;
+        combat.enemies[0].attack.time = STARTUP;
+        let before = combat.player_hp;
+        combat.tick(&mut physics, &player, &Motor::default(), 0.0);
+        assert!(combat.player_hp < before, "ray missed the player");
+        assert!((combat.hit_react - HIT_REACT).abs() < 0.01);
     }
 
     #[test]

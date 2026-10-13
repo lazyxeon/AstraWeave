@@ -18,6 +18,7 @@ use winit::{
     window::{Window, WindowId},
 };
 
+use aravath_runtime::combat::EnemyPose;
 use aravath_runtime::figure::{actor_transform, Figure};
 use aravath_runtime::ground::{material_tint, ChunkUpload};
 use aravath_runtime::props::{self, figurine_transform, NodeActor, TexturedMesh};
@@ -33,12 +34,12 @@ struct App {
     player_mesh_ready: bool,
     lock_toggle: bool,
     place_toggle: bool,
+    walk_held: bool,
     albedo: Option<(u32, u32, Vec<u8>)>,
     figure: Figure,
     sword: TexturedMesh,
     shield: TexturedMesh,
     figurine: NodeActor,
-    foe_ready: bool,
 }
 
 impl App {
@@ -59,12 +60,12 @@ impl App {
             player_mesh_ready: false,
             lock_toggle: false,
             place_toggle: false,
+            walk_held: false,
             albedo: load_ground_albedo(),
             figure: Figure::load(&Figure::library_path()).expect("load CC0 character"),
             sword: props::load_rigid(&props::sword_path()).expect("load CC0 sword"),
             shield: props::load_rigid(&props::shield_path()).expect("load CC0 shield"),
             figurine: NodeActor::load(&NodeActor::figurine_path()).expect("load CC0 enemy"),
-            foe_ready: false,
         }
     }
 }
@@ -127,14 +128,19 @@ impl ApplicationHandler for App {
         if let WindowEvent::KeyboardInput {
             event:
                 KeyEvent {
-                    physical_key: PhysicalKey::Code(KeyCode::Tab),
-                    state: ElementState::Pressed,
+                    physical_key: PhysicalKey::Code(code),
+                    state,
                     ..
                 },
             ..
         } = &event
         {
-            self.lock_toggle = true;
+            if matches!(code, KeyCode::AltLeft | KeyCode::AltRight) {
+                self.walk_held = *state == ElementState::Pressed;
+            }
+            if *code == KeyCode::Tab && *state == ElementState::Pressed {
+                self.lock_toggle = true;
+            }
         }
         if let WindowEvent::KeyboardInput {
             event:
@@ -186,6 +192,7 @@ impl ApplicationHandler for App {
             crouch: self.input.is_down(Action::Crouch),
             roll: self.input.just_pressed(Action::Ability1),
             fly_toggle: self.input.just_pressed(Action::Ability2),
+            walk: self.walk_held,
             feet_locked: false,
         };
         if self.input.just_pressed(Action::AttackLight) {
@@ -222,25 +229,18 @@ impl ApplicationHandler for App {
         let view = self.sim.camera.to_render_view_at(distance);
         let pos = self.sim.player_pos();
         let yaw = self.sim.player.facing_yaw;
-        let posed = self.figure.skin("Idle_Loop", 0.0).expect("pose character");
+        let clip = aravath_runtime::locomotion::clip_name(self.sim.graph.state);
+        let duration = self.figure.duration(clip).unwrap_or(1.0);
+        let (clip, time, looping) = self.sim.player_visual(duration);
+        let posed = self
+            .figure
+            .skin_at(clip, time, looping)
+            .expect("pose character");
         let (hand_l, hand_r) = self
             .figure
-            .hand_frames("Idle_Loop", 0.0)
+            .hand_frames_at(clip, time, looping)
             .expect("hand joints");
         let player_xform = actor_transform(pos, yaw);
-        let mut foe_xforms = Vec::new();
-        for enemy in &self.sim.combat.enemies {
-            if !enemy.alive() {
-                continue;
-            }
-            if let Some(enemy_pos) =
-                aravath_runtime::combat::body_pos(&self.sim.physics, enemy.body)
-            {
-                let to_player = pos - enemy_pos;
-                let yaw = to_player.z.atan2(to_player.x);
-                foe_xforms.push(figurine_transform(enemy_pos, yaw));
-            }
-        }
         let sword_xform = player_xform * props::sword_on_hand(hand_r);
         let shield_xform = player_xform * props::shield_on_hand(hand_l);
 
@@ -276,37 +276,59 @@ impl ApplicationHandler for App {
             renderer.update_model_instances("sword", &sword);
             renderer.update_model_instances("shield", &shield);
         }
-        let foe_pose = self.figurine.pose("idle", 0.0).expect("pose enemy");
-        let foe_instances: Vec<Instance> = foe_xforms
-            .iter()
-            .map(|transform| Instance {
-                transform: *transform,
+        for (index, enemy) in self.sim.combat.enemies.iter().enumerate() {
+            let Some(enemy_pos) = aravath_runtime::combat::body_pos(&self.sim.physics, enemy.body)
+            else {
+                continue;
+            };
+            let to_player = pos - enemy_pos;
+            let foe_yaw = to_player.z.atan2(to_player.x);
+            let (foe_clip, foe_time, foe_loop) = sample_enemy(&self.figurine, enemy);
+            let foe_pose = self
+                .figurine
+                .pose_at(foe_clip, foe_time, foe_loop)
+                .expect("pose enemy");
+            let instance = [Instance {
+                transform: figurine_transform(enemy_pos, foe_yaw),
                 color: [1.0, 1.0, 1.0, 1.0],
                 material_id: 0,
-            })
-            .collect();
-        if foe_instances.is_empty() {
-            renderer.clear_model("enemies");
-            self.foe_ready = false;
-        } else if !self.foe_ready {
+            }];
+            let name = format!("enemy{index}");
             if let Some(albedo) = &self.figurine.albedo {
                 renderer.add_model_with_texture(
-                    "enemies",
+                    name,
                     renderer.create_mesh_from_cpu_mesh(&foe_pose),
-                    &foe_instances,
+                    &instance,
                     albedo.width,
                     albedo.height,
                     &albedo.pixels,
                 );
+            } else {
+                renderer.add_model(
+                    name,
+                    renderer.create_mesh_from_cpu_mesh(&foe_pose),
+                    &instance,
+                );
             }
-            self.foe_ready = true;
-        } else {
-            renderer.update_model_instances("enemies", &foe_instances);
         }
         if let Err(err) = renderer.render() {
             eprintln!("render error: {err:?}");
         }
         window.request_redraw();
+    }
+}
+
+fn sample_enemy(
+    actor: &NodeActor,
+    enemy: &aravath_runtime::combat::Enemy,
+) -> (&'static str, f32, bool) {
+    let duration = |name| actor.duration(name).unwrap_or(1.0);
+    match enemy.pose() {
+        EnemyPose::Loop { clip, time } => (clip, time, true),
+        EnemyPose::Fraction { clip, phase } => {
+            (clip, phase.clamp(0.0, 1.0) * duration(clip), false)
+        }
+        EnemyPose::Hold { clip, time } => (clip, time, false),
     }
 }
 

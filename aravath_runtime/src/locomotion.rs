@@ -6,7 +6,7 @@ use astraweave_render::animation::{
 };
 use glam::Vec3;
 
-use crate::motor::{Motor, MotorMode};
+use crate::motor::MotorMode;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum LocoState {
@@ -14,10 +14,30 @@ pub enum LocoState {
     Walk,
     Run,
     Sprint,
-    Crouch,
+    CrouchIdle,
+    CrouchMove,
     Jump,
     Roll,
     Fly,
+    Attack,
+    Block,
+    Hit,
+    Death,
+}
+
+/// What the motor and combat are doing this step. The graph only reads this.
+#[derive(Clone, Copy, Debug)]
+pub struct PoseInput {
+    pub mode: MotorMode,
+    pub grounded: bool,
+    pub crouching: bool,
+    pub sprinting: bool,
+    pub walking: bool,
+    pub moving: bool,
+    pub attacking: bool,
+    pub blocking: bool,
+    pub hit: bool,
+    pub dead: bool,
 }
 
 pub struct LocomotionGraph {
@@ -35,16 +55,8 @@ impl Default for LocomotionGraph {
 }
 
 impl LocomotionGraph {
-    pub fn sync(&mut self, motor: &Motor, moving: bool, dt: f32) {
-        let next = match motor.mode {
-            MotorMode::Fly => LocoState::Fly,
-            MotorMode::Roll => LocoState::Roll,
-            _ if motor.jumps_used > 0 && !moving => LocoState::Jump,
-            _ if motor.crouching => LocoState::Crouch,
-            _ if motor.sprinting && moving => LocoState::Sprint,
-            _ if moving => LocoState::Run,
-            _ => LocoState::Idle,
-        };
+    pub fn sync(&mut self, pose: PoseInput, dt: f32) {
+        let next = choose_state(pose);
         if next != self.state {
             self.state = next;
             self.time = 0.0;
@@ -62,6 +74,71 @@ impl LocomotionGraph {
             0.0
         };
         clip.sample(t, skeleton)
+    }
+}
+
+pub fn choose_state(pose: PoseInput) -> LocoState {
+    if pose.dead {
+        LocoState::Death
+    } else if pose.attacking {
+        LocoState::Attack
+    } else if pose.hit {
+        LocoState::Hit
+    } else if pose.blocking {
+        LocoState::Block
+    } else if pose.mode == MotorMode::Fly {
+        LocoState::Fly
+    } else if pose.mode == MotorMode::Roll {
+        LocoState::Roll
+    } else if !pose.grounded {
+        LocoState::Jump
+    } else if pose.crouching && pose.moving {
+        LocoState::CrouchMove
+    } else if pose.crouching {
+        LocoState::CrouchIdle
+    } else if pose.sprinting && pose.moving {
+        LocoState::Sprint
+    } else if pose.walking && pose.moving {
+        LocoState::Walk
+    } else if pose.moving {
+        LocoState::Run
+    } else {
+        LocoState::Idle
+    }
+}
+
+pub fn clip_name(state: LocoState) -> &'static str {
+    match state {
+        LocoState::Idle => "Idle_Loop",
+        LocoState::Walk => "Walk_Loop",
+        LocoState::Run => "Jog_Fwd_Loop",
+        LocoState::Sprint => "Sprint_Loop",
+        LocoState::CrouchIdle => "Crouch_Idle_Loop",
+        LocoState::CrouchMove => "Crouch_Fwd_Loop",
+        LocoState::Jump | LocoState::Fly => "Jump_Loop",
+        LocoState::Roll => "Roll",
+        LocoState::Attack => "Sword_Attack",
+        LocoState::Block => "Sword_Idle",
+        LocoState::Hit => "Hit_Chest",
+        LocoState::Death => "Death01",
+    }
+}
+
+/// Seconds into the clip. One-shots take `phase` in 0..1 across the clip.
+/// Looping states wrap `graph_time`. Death holds the last frame.
+pub fn visual_time(
+    state: LocoState,
+    graph_time: f32,
+    phase: f32,
+    clip_duration: f32,
+) -> (f32, bool) {
+    let duration = clip_duration.max(0.001);
+    match state {
+        LocoState::Roll | LocoState::Attack | LocoState::Hit => {
+            (phase.clamp(0.0, 1.0) * duration, false)
+        }
+        LocoState::Death => ((graph_time).min(duration - 0.001), false),
+        _ => (graph_time.rem_euclid(duration), true),
     }
 }
 
@@ -108,15 +185,140 @@ mod tests {
     #[test]
     fn graph_enters_roll_from_the_motor() {
         let mut graph = LocomotionGraph::default();
-        let motor = Motor {
+        let pose = PoseInput {
             mode: MotorMode::Roll,
-            ..Motor::default()
+            moving: true,
+            grounded: true,
+            ..idle_pose()
         };
-        graph.sync(&motor, true, 0.016);
+        graph.sync(pose, 0.016);
         assert_eq!(graph.state, LocoState::Roll);
-        graph.sync(&motor, true, 0.016);
+        graph.sync(pose, 0.016);
         assert!(graph.time > 0.0);
-        graph.state = LocoState::Walk;
-        assert_eq!(graph.state, LocoState::Walk);
+    }
+
+    #[test]
+    fn every_action_maps_to_a_distinct_clip() {
+        let cases = [
+            (LocoState::Idle, "Idle_Loop"),
+            (LocoState::Walk, "Walk_Loop"),
+            (LocoState::Run, "Jog_Fwd_Loop"),
+            (LocoState::Sprint, "Sprint_Loop"),
+            (LocoState::Jump, "Jump_Loop"),
+            (LocoState::Fly, "Jump_Loop"),
+            (LocoState::CrouchIdle, "Crouch_Idle_Loop"),
+            (LocoState::CrouchMove, "Crouch_Fwd_Loop"),
+            (LocoState::Roll, "Roll"),
+            (LocoState::Attack, "Sword_Attack"),
+            (LocoState::Block, "Sword_Idle"),
+            (LocoState::Hit, "Hit_Chest"),
+            (LocoState::Death, "Death01"),
+        ];
+        for (state, name) in cases {
+            assert_eq!(clip_name(state), name);
+        }
+        assert_eq!(
+            choose_state(PoseInput {
+                dead: true,
+                attacking: true,
+                ..idle_pose()
+            }),
+            LocoState::Death
+        );
+        assert_eq!(
+            choose_state(PoseInput {
+                attacking: true,
+                ..idle_pose()
+            }),
+            LocoState::Attack
+        );
+        assert_eq!(
+            choose_state(PoseInput {
+                hit: true,
+                blocking: true,
+                ..idle_pose()
+            }),
+            LocoState::Hit
+        );
+        assert_eq!(
+            choose_state(PoseInput {
+                blocking: true,
+                ..idle_pose()
+            }),
+            LocoState::Block
+        );
+        assert_eq!(
+            choose_state(PoseInput {
+                mode: MotorMode::Fly,
+                ..idle_pose()
+            }),
+            LocoState::Fly
+        );
+        assert_eq!(
+            choose_state(PoseInput {
+                walking: true,
+                moving: true,
+                grounded: true,
+                ..idle_pose()
+            }),
+            LocoState::Walk
+        );
+        assert_eq!(
+            choose_state(PoseInput {
+                sprinting: true,
+                moving: true,
+                grounded: true,
+                ..idle_pose()
+            }),
+            LocoState::Sprint
+        );
+        assert_eq!(
+            choose_state(PoseInput {
+                moving: true,
+                grounded: true,
+                ..idle_pose()
+            }),
+            LocoState::Run
+        );
+        assert_eq!(
+            choose_state(PoseInput {
+                crouching: true,
+                moving: true,
+                grounded: true,
+                ..idle_pose()
+            }),
+            LocoState::CrouchMove
+        );
+        assert_eq!(
+            choose_state(PoseInput {
+                grounded: false,
+                ..idle_pose()
+            }),
+            LocoState::Jump
+        );
+        let (death_time, death_loops) = visual_time(LocoState::Death, 9.0, 0.0, 2.375);
+        assert!(!death_loops);
+        assert!(death_time < 2.375);
+        let (swing, swing_loops) = visual_time(LocoState::Attack, 0.0, 0.5, 1.5);
+        assert!(!swing_loops);
+        assert!((swing - 0.75).abs() < 1e-4);
+        let (idle, idle_loops) = visual_time(LocoState::Idle, 2.6, 0.0, 2.5);
+        assert!(idle_loops);
+        assert!(idle < 2.5);
+    }
+
+    fn idle_pose() -> PoseInput {
+        PoseInput {
+            mode: MotorMode::Locomotion,
+            grounded: true,
+            crouching: false,
+            sprinting: false,
+            walking: false,
+            moving: false,
+            attacking: false,
+            blocking: false,
+            hit: false,
+            dead: false,
+        }
     }
 }
