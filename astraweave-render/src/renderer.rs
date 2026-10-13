@@ -992,10 +992,10 @@ pub struct Renderer {
 
     /// Post-processing chain configuration (controls which effects are active).
     post_chain: crate::hdr_pipeline::PostProcessChain,
-    /// Froxel fog. Disabled until a caller turns it on.
-    volumetric_fog: crate::volumetric_fog::VolumetricFogPass,
-    /// Screen-space light shafts. Disabled until a caller turns them on.
-    god_rays: crate::god_rays::GodRayPass,
+    /// Froxel fog. Built on first enable so a shader failure cannot block startup.
+    volumetric_fog: Option<crate::volumetric_fog::VolumetricFogPass>,
+    /// Screen-space light shafts. Built on first enable.
+    god_rays: Option<crate::god_rays::GodRayPass>,
 
     /// Bloom compute pass (created lazily when bloom is first enabled).
     bloom_pass: Option<crate::bloom::BloomPass>,
@@ -1068,16 +1068,25 @@ impl Renderer {
             })
     }
     pub async fn new(window: std::sync::Arc<winit::window::Window>) -> Result<Self> {
+        let boot = std::time::Instant::now();
         let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
         let surface = instance.create_surface(window.clone())?;
         let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions {
                 power_preference: wgpu::PowerPreference::HighPerformance,
                 compatible_surface: Some(&surface),
-                force_fallback_adapter: false,
+                force_fallback_adapter: warp_requested(),
             })
             .await
             .context("No adapter")?;
+        let info = adapter.get_info();
+        log::info!(
+            "adapter '{}' backend {:?} warp={} {} ms",
+            info.name,
+            info.backend,
+            warp_requested(),
+            boot.elapsed().as_millis()
+        );
 
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor {
@@ -1128,17 +1137,29 @@ impl Renderer {
             .copied()
             .find(|f| f.is_srgb())
             .unwrap_or(caps.formats[0]);
+        let present_mode = caps
+            .present_modes
+            .iter()
+            .copied()
+            .find(|mode| *mode == wgpu::PresentMode::Fifo)
+            .unwrap_or(caps.present_modes[0]);
         let size = window.inner_size();
         let config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
             format,
             width: size.width.max(1),
             height: size.height.max(1),
-            present_mode: caps.present_modes[0],
+            present_mode,
             alpha_mode: caps.alpha_modes[0],
             view_formats: vec![],
             desired_maximum_frame_latency: 2,
         };
+        log::info!(
+            "surface format {format:?} present {present_mode:?} {}x{} {} ms",
+            config.width,
+            config.height,
+            boot.elapsed().as_millis()
+        );
         surface.configure(&device, &config);
 
         Self::new_from_device_monitored(device, queue, Some(surface), config, device_lost).await
@@ -1150,7 +1171,7 @@ impl Renderer {
             .request_adapter(&wgpu::RequestAdapterOptions {
                 power_preference: wgpu::PowerPreference::HighPerformance,
                 compatible_surface: None,
-                force_fallback_adapter: false,
+                force_fallback_adapter: warp_requested(),
             })
             .await
             .context("No adapter")?;
@@ -1221,6 +1242,8 @@ impl Renderer {
         config: wgpu::SurfaceConfiguration,
         device_lost: std::sync::Arc<std::sync::atomic::AtomicBool>,
     ) -> Result<Self> {
+        let boot = std::time::Instant::now();
+        log::info!("renderer device init");
         #[cfg(feature = "gpu-tests")]
         let timestamp_query_set = device.create_query_set(&wgpu::QuerySetDescriptor {
             label: Some("timestamps"),
@@ -3365,26 +3388,7 @@ fn vs(input: VSIn) -> VSOut {
             queue.write_buffer(&scene_env_buf, 0, bytemuck::bytes_of(&default_ubo));
         }
 
-        let mut fog_config = crate::volumetric_fog::VolumetricFogPass::gameplay_config();
-        fog_config.enabled = false;
-        let volumetric_fog = crate::volumetric_fog::VolumetricFogPass::new(
-            &device,
-            config.width,
-            config.height,
-            fog_config,
-        );
-        let ray_config = crate::god_rays::GodRayConfig {
-            enabled: false,
-            half_res: true,
-            num_samples: 32,
-            ..crate::god_rays::GodRayConfig::default()
-        };
-        let god_rays = crate::god_rays::GodRayPass::with_config(
-            &device,
-            config.width,
-            config.height,
-            ray_config,
-        );
+        log::info!("renderer pipelines ready {} ms", boot.elapsed().as_millis());
 
         Ok(Self {
             surface,
@@ -3545,8 +3549,8 @@ fn vs(input: VSIn) -> VSOut {
             scene_env_bg,
             material_manager: crate::material::MaterialManager::new(),
             post_chain: crate::hdr_pipeline::PostProcessChain::default(),
-            volumetric_fog,
-            god_rays,
+            volumetric_fog: None,
+            god_rays: None,
             bloom_pass: None,
             pending_bloom_config: None,
             postfx_params_buf,
@@ -4222,10 +4226,12 @@ fn vs(input: VSIn) -> VSOut {
         self.hdr_view = self
             .hdr_tex
             .create_view(&wgpu::TextureViewDescriptor::default());
-        self.volumetric_fog
-            .resize(&self.device, self.config.width, self.config.height);
-        self.god_rays
-            .resize(&self.device, self.config.width, self.config.height);
+        if let Some(fog) = self.volumetric_fog.as_mut() {
+            fog.resize(&self.device, self.config.width, self.config.height);
+        }
+        if let Some(rays) = self.god_rays.as_mut() {
+            rays.resize(&self.device, self.config.width, self.config.height);
+        }
         // W.2b — keep the scene-color snapshot sized to the surface.
         self.water_scene_color = self.device.create_texture(&wgpu::TextureDescriptor {
             label: Some("water scene color"),
@@ -5052,42 +5058,66 @@ fn vs(input: VSIn) -> VSOut {
         &mut self,
         config: crate::volumetric_fog::VolumetricFogConfig,
     ) {
-        if config.froxel_dims != self.volumetric_fog.config().froxel_dims {
+        let started = std::time::Instant::now();
+        let rebuild = self
+            .volumetric_fog
+            .as_ref()
+            .is_none_or(|fog| fog.config().froxel_dims != config.froxel_dims);
+        if rebuild {
             let device = self.device.clone();
-            self.volumetric_fog = crate::volumetric_fog::VolumetricFogPass::new(
+            self.volumetric_fog = Some(crate::volumetric_fog::VolumetricFogPass::new(
                 &device,
                 self.config.width,
                 self.config.height,
                 config,
-            );
-        } else {
-            self.volumetric_fog.set_config(config);
+            ));
+        } else if let Some(fog) = self.volumetric_fog.as_mut() {
+            fog.set_config(config);
         }
+        log::info!(
+            "volumetric fog {} in {} ms",
+            if rebuild { "built" } else { "updated" },
+            started.elapsed().as_millis()
+        );
     }
 
     pub fn volumetric_fog_enabled(&self) -> bool {
-        self.volumetric_fog.config().enabled
+        self.volumetric_fog
+            .as_ref()
+            .is_some_and(|fog| fog.config().enabled)
     }
 
     /// Turn screen-space light shafts on or off.
     ///
     /// Half-resolution changes rebuild the shaft target.
     pub fn set_god_ray_config(&mut self, config: crate::god_rays::GodRayConfig) {
-        if config.half_res != self.god_rays.config().half_res {
+        let started = std::time::Instant::now();
+        let rebuild = self
+            .god_rays
+            .as_ref()
+            .is_none_or(|rays| rays.config().half_res != config.half_res);
+        if rebuild {
             let device = self.device.clone();
-            self.god_rays = crate::god_rays::GodRayPass::with_config(
+            self.god_rays = Some(crate::god_rays::GodRayPass::with_config(
                 &device,
                 self.config.width,
                 self.config.height,
                 config,
-            );
-        } else {
-            self.god_rays.set_config(config);
+            ));
+        } else if let Some(rays) = self.god_rays.as_mut() {
+            rays.set_config(config);
         }
+        log::info!(
+            "light shafts {} in {} ms",
+            if rebuild { "built" } else { "updated" },
+            started.elapsed().as_millis()
+        );
     }
 
     pub fn god_rays_enabled(&self) -> bool {
-        self.god_rays.config().enabled
+        self.god_rays
+            .as_ref()
+            .is_some_and(|rays| rays.config().enabled)
     }
 
     /// Composite engine volumetric fog, then screen-space light shafts, into HDR.
@@ -5117,7 +5147,7 @@ fn vs(input: VSIn) -> VSOut {
         let ambient = self.sky.time_of_day().get_ambient_color();
         let intensity = self.camera_ubo.light_dir_pad[3].max(0.15);
 
-        if self.volumetric_fog.config().enabled {
+        if self.volumetric_fog_enabled() {
             let splits = [
                 self.split0,
                 self.split1,
@@ -5130,9 +5160,15 @@ fn vs(input: VSIn) -> VSOut {
                     split: splits[index],
                     _pad: [0.0; 3],
                 });
-            self.volumetric_fog.upload_cascades(&self.queue, &cascades);
-            self.volumetric_fog.prepare_frame(
-                &self.queue,
+            let device = self.device.clone();
+            let queue = self.queue.clone();
+            let shadow = self.shadow_view.clone();
+            let hdr = self.hdr_view.clone();
+            let generation = self.resource_generation;
+            let fog = self.volumetric_fog.as_mut().expect("fog enabled");
+            fog.upload_cascades(&queue, &cascades);
+            fog.prepare_frame(
+                &queue,
                 inv_view_proj,
                 camera_pos,
                 toward_sun,
@@ -5144,17 +5180,10 @@ fn vs(input: VSIn) -> VSOut {
                 far,
                 1.0 / 60.0,
             );
-            self.volumetric_fog.execute(
-                &self.device,
-                enc,
-                depth,
-                &self.shadow_view,
-                &self.hdr_view,
-                self.resource_generation,
-            );
-            self.volumetric_fog.copy_scatter_to_history(enc);
+            fog.execute(&device, enc, depth, &shadow, &hdr, generation);
+            fog.copy_scatter_to_history(enc);
             enc.copy_texture_to_texture(
-                self.volumetric_fog.output_texture().as_image_copy(),
+                fog.output_texture().as_image_copy(),
                 self.hdr_tex.as_image_copy(),
                 wgpu::Extent3d {
                     width: self.config.width,
@@ -5164,21 +5193,21 @@ fn vs(input: VSIn) -> VSOut {
             );
         }
 
-        if self.god_rays.config().enabled {
-            self.god_rays
-                .update_params(&self.queue, view_proj, toward_sun, sun_color);
-            self.god_rays.execute(
-                &self.device,
-                enc,
-                depth,
-                &self.hdr_view,
-                self.resource_generation,
-            );
+        if self.god_rays_enabled() {
+            let device = self.device.clone();
+            let queue = self.queue.clone();
+            let hdr = self.hdr_view.clone();
+            let generation = self.resource_generation;
+            let rays = self.god_rays.as_mut().expect("shafts enabled");
+            rays.update_params(&queue, view_proj, toward_sun, sun_color);
+            rays.execute(&device, enc, depth, &hdr, generation);
             let storage = self
                 .hdr_tex
                 .create_view(&wgpu::TextureViewDescriptor::default());
             self.god_rays
-                .add_into(&self.device, enc, &storage, self.resource_generation);
+                .as_mut()
+                .expect("shafts enabled")
+                .add_into(&device, enc, &storage, generation);
         }
     }
 
@@ -8572,6 +8601,13 @@ impl Drop for Renderer {
     fn drop(&mut self) {
         self.save_pipeline_cache();
     }
+}
+
+fn warp_requested() -> bool {
+    matches!(
+        std::env::var("ARAVATH_WARP").ok().as_deref(),
+        Some("1") | Some("true")
+    )
 }
 
 fn clip_planes(proj: glam::Mat4) -> (f32, f32) {
