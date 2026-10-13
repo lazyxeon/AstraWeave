@@ -15,7 +15,7 @@ Demo finish (the systems pass above is not the playable demo):
 - [x] State-driven clips — idle, walk, run, sprint, jump, crouch, roll, attack, block, hit, death, fly
 - [x] Open-world read — materials, textures, biomes, trees, rocks, foliage, sky, 1660 draw distance
 - [x] HUD — health, stamina, lock-on reticle, selected block, save/load feedback
-- [ ] Tight controls and simple believable enemy AI
+- [x] Tight controls and simple believable enemy AI
 
 Notes:
 

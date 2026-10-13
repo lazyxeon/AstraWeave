@@ -132,6 +132,7 @@ impl ApplicationHandler for App {
             state: egui_state,
             renderer: egui_renderer,
         });
+        capture_mouse(&window);
         self.renderer = Some(renderer);
         self.window = Some(window);
         self.last_time = Instant::now();
@@ -707,6 +708,19 @@ struct EguiHud {
     ctx: egui::Context,
     state: egui_winit::State,
     renderer: egui_wgpu::Renderer,
+}
+
+fn capture_mouse(window: &Window) {
+    window.set_cursor_visible(false);
+    match window.set_cursor_grab(winit::window::CursorGrabMode::Locked) {
+        Ok(()) => {}
+        Err(locked) => match window.set_cursor_grab(winit::window::CursorGrabMode::Confined) {
+            Ok(()) => {}
+            Err(confined) => {
+                eprintln!("cursor stays free: locked {locked}; confined {confined}");
+            }
+        },
+    }
 }
 
 fn save_root() -> std::path::PathBuf {
