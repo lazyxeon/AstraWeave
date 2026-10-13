@@ -36,6 +36,8 @@ pub struct Motor {
     pub jumps_used: u8,
     pub crouching: bool,
     pub sprinting: bool,
+    pub walking: bool,
+    pub grounded: bool,
     pub invulnerable: bool,
 }
 
@@ -50,6 +52,8 @@ impl Default for Motor {
             jumps_used: 0,
             crouching: false,
             sprinting: false,
+            walking: false,
+            grounded: true,
             invulnerable: false,
         }
     }
@@ -64,6 +68,7 @@ pub struct MotorInput {
     pub crouch: bool,
     pub roll: bool,
     pub fly_toggle: bool,
+    pub walk: bool,
     pub feet_locked: bool,
 }
 
@@ -105,6 +110,7 @@ impl Motor {
         }
 
         let grounded = on_ground(physics, player.body);
+        self.grounded = grounded;
         if grounded && self.mode != MotorMode::Roll {
             self.jumps_used = 0;
         }
@@ -128,6 +134,7 @@ impl Motor {
         self.crouching = input.crouch && self.mode != MotorMode::Fly;
         let moving = input.move_x.abs() + input.move_y.abs() > 0.05;
         self.sprinting = input.sprint && moving && self.stamina > 0.0 && !self.crouching;
+        self.walking = input.walk && moving && !self.sprinting && !self.crouching;
 
         if input.roll && self.mode != MotorMode::Fly && self.stamina >= ROLL_COST {
             self.stamina -= ROLL_COST;
@@ -174,10 +181,12 @@ impl Motor {
             CROUCH_SPEED
         } else if self.sprinting {
             SPRINT_SPEED
+        } else if self.walking {
+            WALK_SPEED
         } else if moving {
             RUN_SPEED
         } else {
-            WALK_SPEED
+            0.0
         };
         let (forward, right) = player::flat_basis(camera_yaw);
         let mut wish = player::wish_from_axes(forward, right, input.move_x, input.move_y, speed);
@@ -260,6 +269,36 @@ mod tests {
         );
         assert_ne!(dry.mode, MotorMode::Roll);
         assert!((dry.stamina - 10.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn walk_is_slower_than_run() {
+        let (mut physics, mut player) = grounded_player();
+        let mut walking = Motor::default();
+        let walk = walking.tick(
+            &mut physics,
+            &mut player,
+            0.0,
+            MotorInput {
+                move_y: 1.0,
+                walk: true,
+                ..MotorInput::default()
+            },
+            0.016,
+        );
+        let mut running = Motor::default();
+        let run = running.tick(
+            &mut physics,
+            &mut player,
+            0.0,
+            MotorInput {
+                move_y: 1.0,
+                ..MotorInput::default()
+            },
+            0.016,
+        );
+        assert!((walk.length() - WALK_SPEED).abs() < 0.05, "{walk:?}");
+        assert!((run.length() - RUN_SPEED).abs() < 0.05, "{run:?}");
     }
 
     #[test]

@@ -28,7 +28,8 @@ cargo run -p aravath_runtime --bin aravath_greybox
 
 | Input | Action |
 | --- | --- |
-| WASD | Move |
+| WASD | Move (run) |
+| Alt | Walk |
 | Mouse | Orbit camera |
 | Shift | Sprint |
 | Space | Jump, double jump, or fly up |
