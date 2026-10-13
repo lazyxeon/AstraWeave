@@ -52,6 +52,7 @@ struct App {
     notice: Option<(String, f32)>,
     save_toggle: bool,
     load_toggle: bool,
+    respawn_toggle: bool,
     hud: Option<EguiHud>,
 }
 
@@ -86,6 +87,7 @@ impl App {
             notice: None,
             save_toggle: false,
             load_toggle: false,
+            respawn_toggle: false,
             hud: None,
         }
     }
@@ -189,6 +191,7 @@ impl ApplicationHandler for App {
                     KeyCode::Tab => self.lock_toggle = true,
                     KeyCode::F5 => self.save_toggle = true,
                     KeyCode::F9 => self.load_toggle = true,
+                    KeyCode::Enter => self.respawn_toggle = true,
                     KeyCode::Digit1 => self.selected = 1,
                     KeyCode::Digit2 => self.selected = 2,
                     KeyCode::Digit3 => self.selected = 3,
@@ -284,6 +287,13 @@ impl ApplicationHandler for App {
         } else {
             None
         };
+        if self.respawn_toggle {
+            self.respawn_toggle = false;
+            if self.sim.combat.player_hp <= 0.0 {
+                self.sim.respawn();
+                self.notice = Some(("Respawned".into(), 2.5));
+            }
+        }
         if self.save_toggle {
             self.save_toggle = false;
             self.notice = Some(
@@ -349,6 +359,7 @@ impl ApplicationHandler for App {
                 &mut self.foliage_ready,
             );
         }
+        renderer.tick_environment(dt);
         renderer.update_view(&view);
         upload_posed(
             renderer,
@@ -418,6 +429,7 @@ impl ApplicationHandler for App {
             locked: self.sim.combat.lock.is_some(),
             block: hud::block_name(self.selected),
             notice: self.notice.as_ref().map(|(text, _)| text.clone()),
+            downed: self.sim.combat.player_hp <= 0.0,
         };
         let mut hud = self.hud.take();
         let scale = window.scale_factor() as f32;
@@ -590,8 +602,8 @@ impl TerrainMaps {
 }
 
 fn load_jpg(file: &str) -> Rgba {
-    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../assets/aravath/textures")
+    let path = aravath_runtime::assets::asset_dir()
+        .join("textures")
         .join(file);
     let image = image::open(&path)
         .unwrap_or_else(|err| panic!("load {path:?}: {err}"))
@@ -616,8 +628,8 @@ struct Foliage {
 impl Foliage {
     fn load() -> Self {
         let path = |name: &str| {
-            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-                .join("../assets/aravath/models/nature")
+            aravath_runtime::assets::asset_dir()
+                .join("models/nature")
                 .join(name)
         };
         Self {
@@ -724,7 +736,7 @@ fn capture_mouse(window: &Window) {
 }
 
 fn save_root() -> std::path::PathBuf {
-    std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../saves")
+    aravath_runtime::assets::save_dir()
 }
 
 struct HudFrame<'a> {
@@ -774,6 +786,13 @@ fn paint_hud(hud: &mut EguiHud, frame: HudFrame<'_>) {
         .show(&hud.ctx, |ui| {
             ui.label(format!("Block: {}  (1-5)", model.block));
         });
+    if let Some(hint) = hud::respawn_hint(model.downed) {
+        egui::Area::new(egui::Id::new("downed"))
+            .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 48.0))
+            .show(&hud.ctx, |ui| {
+                ui.label(hint);
+            });
+    }
     if let Some(text) = &model.notice {
         egui::Area::new(egui::Id::new("notice"))
             .anchor(egui::Align2::CENTER_TOP, egui::vec2(0.0, 24.0))
@@ -836,25 +855,35 @@ fn paint_hud(hud: &mut EguiHud, frame: HudFrame<'_>) {
 }
 
 fn light_the_world(renderer: &mut Renderer) {
+    renderer.set_shadows_enabled(true);
+    renderer.set_cloud_shadows_enabled(false);
     renderer
         .scene_environment_mut()
         .set_biome(BiomeType::Grassland);
     {
         let env = renderer.scene_environment_mut();
-        env.visuals.fog_density = 0.005;
-        env.visuals.fog_color = Vec3::new(0.64, 0.76, 0.88);
-        env.visuals.ambient_intensity = 0.5;
-        env.sun_intensity = 2.4;
+        env.visuals.fog_density = 0.0012;
+        env.visuals.fog_color = Vec3::new(0.64, 0.74, 0.86);
+        env.visuals.ambient_intensity = 0.45;
     }
-    renderer.set_light_direction_override(Vec3::new(-0.35, 0.82, 0.28).normalize(), 2.4);
     let clock = renderer.time_of_day_mut();
-    clock.current_time = 11.0;
-    clock.time_scale = 0.0;
+    clock.current_time = 16.4;
+    clock.time_scale = 90.0;
     renderer.set_sky_config(SkyConfig {
-        cloud_coverage: 0.32,
-        day_color_top: Vec3::new(0.28, 0.52, 0.92),
-        day_color_horizon: Vec3::new(0.72, 0.82, 0.92),
+        cloud_coverage: 0.28,
+        day_color_top: Vec3::new(0.25, 0.48, 0.92),
+        day_color_horizon: Vec3::new(0.95, 0.62, 0.38),
         ..SkyConfig::default()
+    });
+    renderer.set_volumetric_fog_config(
+        astraweave_render::volumetric_fog::VolumetricFogPass::gameplay_config(),
+    );
+    renderer.set_god_ray_config(astraweave_render::GodRayConfig {
+        enabled: true,
+        half_res: true,
+        num_samples: 32,
+        exposure: 0.22,
+        ..astraweave_render::GodRayConfig::default()
     });
 }
 

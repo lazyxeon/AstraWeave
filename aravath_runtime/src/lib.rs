@@ -5,6 +5,7 @@
 //! are not dependencies of this crate. `bridge_agent` is the companion
 //! route across the span. The window does not draw that body yet.
 
+pub mod assets;
 pub mod bridge_agent;
 pub mod combat;
 pub mod figure;

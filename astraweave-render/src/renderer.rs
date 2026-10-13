@@ -992,6 +992,10 @@ pub struct Renderer {
 
     /// Post-processing chain configuration (controls which effects are active).
     post_chain: crate::hdr_pipeline::PostProcessChain,
+    /// Froxel fog. Disabled until a caller turns it on.
+    volumetric_fog: crate::volumetric_fog::VolumetricFogPass,
+    /// Screen-space light shafts. Disabled until a caller turns them on.
+    god_rays: crate::god_rays::GodRayPass,
 
     /// Bloom compute pass (created lazily when bloom is first enabled).
     bloom_pass: Option<crate::bloom::BloomPass>,
@@ -1377,7 +1381,9 @@ impl Renderer {
             format: wgpu::TextureFormat::Rgba16Float,
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT
                 | wgpu::TextureUsages::TEXTURE_BINDING
-                | wgpu::TextureUsages::COPY_SRC,
+                | wgpu::TextureUsages::COPY_SRC
+                | wgpu::TextureUsages::COPY_DST
+                | wgpu::TextureUsages::STORAGE_BINDING,
             view_formats: &[],
         });
 
@@ -3359,6 +3365,27 @@ fn vs(input: VSIn) -> VSOut {
             queue.write_buffer(&scene_env_buf, 0, bytemuck::bytes_of(&default_ubo));
         }
 
+        let mut fog_config = crate::volumetric_fog::VolumetricFogPass::gameplay_config();
+        fog_config.enabled = false;
+        let volumetric_fog = crate::volumetric_fog::VolumetricFogPass::new(
+            &device,
+            config.width,
+            config.height,
+            fog_config,
+        );
+        let ray_config = crate::god_rays::GodRayConfig {
+            enabled: false,
+            half_res: true,
+            num_samples: 32,
+            ..crate::god_rays::GodRayConfig::default()
+        };
+        let god_rays = crate::god_rays::GodRayPass::with_config(
+            &device,
+            config.width,
+            config.height,
+            ray_config,
+        );
+
         Ok(Self {
             surface,
             device,
@@ -3518,6 +3545,8 @@ fn vs(input: VSIn) -> VSOut {
             scene_env_bg,
             material_manager: crate::material::MaterialManager::new(),
             post_chain: crate::hdr_pipeline::PostProcessChain::default(),
+            volumetric_fog,
+            god_rays,
             bloom_pass: None,
             pending_bloom_config: None,
             postfx_params_buf,
@@ -4185,12 +4214,18 @@ fn vs(input: VSIn) -> VSOut {
             format: wgpu::TextureFormat::Rgba16Float,
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT
                 | wgpu::TextureUsages::TEXTURE_BINDING
-                | wgpu::TextureUsages::COPY_SRC,
+                | wgpu::TextureUsages::COPY_SRC
+                | wgpu::TextureUsages::COPY_DST
+                | wgpu::TextureUsages::STORAGE_BINDING,
             view_formats: &[],
         });
         self.hdr_view = self
             .hdr_tex
             .create_view(&wgpu::TextureViewDescriptor::default());
+        self.volumetric_fog
+            .resize(&self.device, self.config.width, self.config.height);
+        self.god_rays
+            .resize(&self.device, self.config.width, self.config.height);
         // W.2b — keep the scene-color snapshot sized to the surface.
         self.water_scene_color = self.device.create_texture(&wgpu::TextureDescriptor {
             label: Some("water scene color"),
@@ -5010,6 +5045,143 @@ fn vs(input: VSIn) -> VSOut {
     }
 
     /// Enable or disable shadow rendering
+    /// Turn froxel fog on or off and replace its settings.
+    ///
+    /// A froxel-dimension change rebuilds the volumes. Density changes do not.
+    pub fn set_volumetric_fog_config(
+        &mut self,
+        config: crate::volumetric_fog::VolumetricFogConfig,
+    ) {
+        if config.froxel_dims != self.volumetric_fog.config().froxel_dims {
+            let device = self.device.clone();
+            self.volumetric_fog = crate::volumetric_fog::VolumetricFogPass::new(
+                &device,
+                self.config.width,
+                self.config.height,
+                config,
+            );
+        } else {
+            self.volumetric_fog.set_config(config);
+        }
+    }
+
+    pub fn volumetric_fog_enabled(&self) -> bool {
+        self.volumetric_fog.config().enabled
+    }
+
+    /// Turn screen-space light shafts on or off.
+    ///
+    /// Half-resolution changes rebuild the shaft target.
+    pub fn set_god_ray_config(&mut self, config: crate::god_rays::GodRayConfig) {
+        if config.half_res != self.god_rays.config().half_res {
+            let device = self.device.clone();
+            self.god_rays = crate::god_rays::GodRayPass::with_config(
+                &device,
+                self.config.width,
+                self.config.height,
+                config,
+            );
+        } else {
+            self.god_rays.set_config(config);
+        }
+    }
+
+    pub fn god_rays_enabled(&self) -> bool {
+        self.god_rays.config().enabled
+    }
+
+    /// Composite engine volumetric fog, then screen-space light shafts, into HDR.
+    ///
+    /// Both passes no-op while their configs are disabled. Fog samples the
+    /// cascaded shadow map. Shafts are added before the tonemap blit.
+    fn composite_atmosphere(&mut self, enc: &mut wgpu::CommandEncoder, depth: &wgpu::TextureView) {
+        let light = glam::Vec3::new(
+            self.camera_ubo.light_dir_pad[0],
+            self.camera_ubo.light_dir_pad[1],
+            self.camera_ubo.light_dir_pad[2],
+        );
+        let toward_sun = if light.length_squared() > 1e-6 {
+            -light.normalize()
+        } else {
+            glam::Vec3::Y
+        };
+        let camera_pos = glam::Vec3::new(
+            self.camera_ubo.camera_pos_pad[0],
+            self.camera_ubo.camera_pos_pad[1],
+            self.camera_ubo.camera_pos_pad[2],
+        );
+        let view_proj = self.cached_proj * self.cached_view;
+        let inv_view_proj = view_proj.inverse();
+        let (near, far) = clip_planes(self.cached_proj);
+        let sun_color = self.sky.time_of_day().get_light_color();
+        let ambient = self.sky.time_of_day().get_ambient_color();
+        let intensity = self.camera_ubo.light_dir_pad[3].max(0.15);
+
+        if self.volumetric_fog.config().enabled {
+            let splits = [
+                self.split0,
+                self.split1,
+                self.split2,
+                far.max(self.split2 + 1.0),
+            ];
+            let cascades: [crate::volumetric_fog::CascadeData; 4] =
+                std::array::from_fn(|index| crate::volumetric_fog::CascadeData {
+                    vp: self.cascades[index].to_cols_array_2d(),
+                    split: splits[index],
+                    _pad: [0.0; 3],
+                });
+            self.volumetric_fog.upload_cascades(&self.queue, &cascades);
+            self.volumetric_fog.prepare_frame(
+                &self.queue,
+                inv_view_proj,
+                camera_pos,
+                toward_sun,
+                sun_color,
+                intensity,
+                ambient,
+                0.35,
+                near,
+                far,
+                1.0 / 60.0,
+            );
+            self.volumetric_fog.execute(
+                &self.device,
+                enc,
+                depth,
+                &self.shadow_view,
+                &self.hdr_view,
+                self.resource_generation,
+            );
+            self.volumetric_fog.copy_scatter_to_history(enc);
+            enc.copy_texture_to_texture(
+                self.volumetric_fog.output_texture().as_image_copy(),
+                self.hdr_tex.as_image_copy(),
+                wgpu::Extent3d {
+                    width: self.config.width,
+                    height: self.config.height,
+                    depth_or_array_layers: 1,
+                },
+            );
+        }
+
+        if self.god_rays.config().enabled {
+            self.god_rays
+                .update_params(&self.queue, view_proj, toward_sun, sun_color);
+            self.god_rays.execute(
+                &self.device,
+                enc,
+                depth,
+                &self.hdr_view,
+                self.resource_generation,
+            );
+            let storage = self
+                .hdr_tex
+                .create_view(&wgpu::TextureViewDescriptor::default());
+            self.god_rays
+                .add_into(&self.device, enc, &storage, self.resource_generation);
+        }
+    }
+
     pub fn set_shadows_enabled(&mut self, enabled: bool) {
         self.shadows_enabled = enabled;
         // When shadows are disabled, set the force_shadow_override sentinel so
@@ -5822,6 +5994,8 @@ fn vs(input: VSIn) -> VSOut {
         // sample the scene behind it for refraction + depth-delta shoreline foam.
         // render() always uses the internal depth target.
         self.run_water_pass(&mut enc, None);
+        let depth = self.depth.view.clone();
+        self.composite_atmosphere(&mut enc, &depth);
 
         // Optional feature-gated post chain — gated by post_chain flags
         #[cfg(feature = "postfx")]
@@ -6632,6 +6806,12 @@ fn vs(input: VSIn) -> VSOut {
         // the caller-supplied depth so the water pass tests/samples the depth the
         // editor's opaque geometry actually wrote (not the internal self.depth).
         self.run_water_pass(enc, depth_view);
+        if let Some(external_depth) = depth_view {
+            self.composite_atmosphere(enc, external_depth);
+        } else {
+            let depth = self.depth.view.clone();
+            self.composite_atmosphere(enc, &depth);
+        }
 
         // --- Post-processing: bloom compute pass (runs on HDR, before blit) ---
         let bloom_intensity = if self.post_chain.bloom_enabled {
@@ -8391,6 +8571,34 @@ fn vs(input: VSIn) -> VSOut {
 impl Drop for Renderer {
     fn drop(&mut self) {
         self.save_pipeline_cache();
+    }
+}
+
+fn clip_planes(proj: glam::Mat4) -> (f32, f32) {
+    let c = proj.z_axis.z;
+    let d = proj.w_axis.z;
+    if c.abs() < 1e-5 {
+        return (0.1, 500.0);
+    }
+    let near = (d / c).abs().clamp(0.01, 50.0);
+    let far = if (1.0 + c).abs() < 1e-4 {
+        500.0
+    } else {
+        (c * near / (1.0 + c)).abs().clamp(near + 1.0, 20000.0)
+    };
+    (near, far)
+}
+
+#[cfg(test)]
+mod atmosphere_tests {
+    use super::clip_planes;
+
+    #[test]
+    fn clip_planes_match_a_perspective_matrix() {
+        let proj = glam::Mat4::perspective_rh(1.0, 1.5, 0.1, 500.0);
+        let (near, far) = clip_planes(proj);
+        assert!((near - 0.1).abs() < 0.02, "near {near}");
+        assert!((far - 500.0).abs() < 5.0, "far {far}");
     }
 }
 

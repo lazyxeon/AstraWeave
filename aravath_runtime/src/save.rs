@@ -15,6 +15,7 @@ pub struct Checkpoint {
     pub position: Vec3,
     pub yaw: f32,
     pub stamina: f32,
+    pub player_hp: f32,
 }
 
 pub fn save_checkpoint(root: &Path, checkpoint: &Checkpoint) -> Result<()> {
@@ -24,12 +25,13 @@ pub fn save_checkpoint(root: &Path, checkpoint: &Checkpoint) -> Result<()> {
     meta.insert(
         "player".into(),
         format!(
-            "{},{},{},{},{}",
+            "{},{},{},{},{},{}",
             checkpoint.position.x,
             checkpoint.position.y,
             checkpoint.position.z,
             checkpoint.yaw,
-            checkpoint.stamina
+            checkpoint.stamina,
+            checkpoint.player_hp
         ),
     );
     let bundle = SaveBundleV2 {
@@ -78,11 +80,16 @@ pub fn load_checkpoint(root: &Path) -> Result<Checkpoint> {
         .context("stamina")?
         .parse()
         .context("stamina")?;
+    let player_hp = match parts.next() {
+        Some(text) => text.parse().context("player hp")?,
+        None => 100.0,
+    };
     Ok(Checkpoint {
         edits,
         position,
         yaw,
         stamina,
+        player_hp,
     })
 }
 
@@ -148,6 +155,7 @@ mod tests {
                 position,
                 yaw: 0.4,
                 stamina: 77.0,
+                player_hp: 100.0,
             },
         )
         .unwrap();

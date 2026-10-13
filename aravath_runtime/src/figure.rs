@@ -191,8 +191,7 @@ impl Figure {
     }
 
     pub fn library_path() -> std::path::PathBuf {
-        Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../assets/aravath/models/AnimationLibrary_Godot_Standard.gltf")
+        crate::assets::asset_dir().join("models/AnimationLibrary_Godot_Standard.gltf")
     }
 
     pub fn clip<'a>(&'a self, name: &str) -> Option<&'a AnimationClip> {
