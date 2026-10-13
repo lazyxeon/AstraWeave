@@ -23,6 +23,7 @@ use winit::{
 use aravath_runtime::combat::EnemyPose;
 use aravath_runtime::figure::{actor_transform, Figure};
 use aravath_runtime::ground::{ChunkPart, ChunkUpload, PropKind, PropSpot};
+use aravath_runtime::hud::{self, HudModel};
 use aravath_runtime::props::{
     self, figurine_transform, ColoredMesh, NodeActor, Rgba, TexturedMesh,
 };
@@ -47,6 +48,11 @@ struct App {
     foliage: Foliage,
     props: HashMap<(i32, i32, i32), Vec<PropSpot>>,
     foliage_ready: bool,
+    selected: u16,
+    notice: Option<(String, f32)>,
+    save_toggle: bool,
+    load_toggle: bool,
+    hud: Option<EguiHud>,
 }
 
 impl App {
@@ -76,6 +82,11 @@ impl App {
             foliage: Foliage::load(),
             props: HashMap::new(),
             foliage_ready: false,
+            selected: 1,
+            notice: None,
+            save_toggle: false,
+            load_toggle: false,
+            hud: None,
         }
     }
 }
@@ -105,6 +116,22 @@ impl ApplicationHandler for App {
             &self.props,
             &mut self.foliage_ready,
         );
+        let ctx = egui::Context::default();
+        let egui_state = egui_winit::State::new(
+            ctx.clone(),
+            egui::ViewportId::default(),
+            window.as_ref(),
+            Some(window.scale_factor() as f32),
+            None,
+            None,
+        );
+        let egui_renderer =
+            egui_wgpu::Renderer::new(renderer.device(), renderer.surface_format(), None, 1, false);
+        self.hud = Some(EguiHud {
+            ctx,
+            state: egui_state,
+            renderer: egui_renderer,
+        });
         self.renderer = Some(renderer);
         self.window = Some(window);
         self.last_time = Instant::now();
@@ -130,6 +157,10 @@ impl ApplicationHandler for App {
             return;
         }
 
+        if let (Some(hud), Some(window)) = (self.hud.as_mut(), self.window.as_ref()) {
+            let _ = hud.state.on_window_event(window, &event);
+        }
+
         if let WindowEvent::CursorMoved { position, .. } = &event {
             let x = position.x as f32;
             let y = position.y as f32;
@@ -152,8 +183,18 @@ impl ApplicationHandler for App {
             if matches!(code, KeyCode::AltLeft | KeyCode::AltRight) {
                 self.walk_held = *state == ElementState::Pressed;
             }
-            if *code == KeyCode::Tab && *state == ElementState::Pressed {
-                self.lock_toggle = true;
+            if *state == ElementState::Pressed {
+                match code {
+                    KeyCode::Tab => self.lock_toggle = true,
+                    KeyCode::F5 => self.save_toggle = true,
+                    KeyCode::F9 => self.load_toggle = true,
+                    KeyCode::Digit1 => self.selected = 1,
+                    KeyCode::Digit2 => self.selected = 2,
+                    KeyCode::Digit3 => self.selected = 3,
+                    KeyCode::Digit4 => self.selected = 4,
+                    KeyCode::Digit5 => self.selected = 5,
+                    _ => {}
+                }
             }
         }
         if let WindowEvent::KeyboardInput {
@@ -191,6 +232,12 @@ impl ApplicationHandler for App {
         let now = Instant::now();
         let dt = (now - self.last_time).as_secs_f32().min(0.05);
         self.last_time = now;
+        if let Some((_, left)) = self.notice.as_mut() {
+            *left -= dt;
+        }
+        if self.notice.as_ref().is_some_and(|(_, left)| *left <= 0.0) {
+            self.notice = None;
+        }
         let steps = ((dt / aravath_runtime::sim::FIXED_DT).round() as u32).clamp(1, 4);
         let input = aravath_runtime::motor::MotorInput {
             move_x: axis(
@@ -232,7 +279,31 @@ impl ApplicationHandler for App {
             Some(self.sim.dig_ahead(2.5))
         } else if self.place_toggle {
             self.place_toggle = false;
-            Some(self.sim.place_ahead(1.1))
+            Some(self.sim.place_ahead(1.1, self.selected))
+        } else {
+            None
+        };
+        if self.save_toggle {
+            self.save_toggle = false;
+            self.notice = Some(
+                match aravath_runtime::save::save_checkpoint(&save_root(), &self.sim.checkpoint()) {
+                    Ok(()) => ("Saved".into(), 2.5),
+                    Err(err) => (format!("Save failed: {err}"), 3.5),
+                },
+            );
+        }
+        let restore_uploads = if self.load_toggle {
+            self.load_toggle = false;
+            match aravath_runtime::save::load_checkpoint(&save_root()) {
+                Ok(checkpoint) => {
+                    self.notice = Some(("Loaded".into(), 2.5));
+                    Some(self.sim.restore(checkpoint))
+                }
+                Err(err) => {
+                    self.notice = Some((format!("Load failed: {err}"), 3.5));
+                    None
+                }
+            }
         } else {
             None
         };
@@ -265,7 +336,11 @@ impl ApplicationHandler for App {
         }
         upload_chunks(renderer, &streamed, &self.terrain);
         note_props(&mut self.props, &streamed);
-        if dig_uploads.is_some() || !streamed.is_empty() {
+        if let Some(uploads) = restore_uploads.as_deref() {
+            upload_chunks(renderer, uploads, &self.terrain);
+            note_props(&mut self.props, uploads);
+        }
+        if dig_uploads.is_some() || !streamed.is_empty() || restore_uploads.is_some() {
             sync_foliage(
                 renderer,
                 &self.foliage,
@@ -334,9 +409,39 @@ impl ApplicationHandler for App {
                 );
             }
         }
-        if let Err(err) = renderer.render() {
-            eprintln!("render error: {err:?}");
+        let model = HudModel {
+            health: self.sim.combat.player_hp,
+            health_max: 100.0,
+            stamina: self.sim.motor.stamina,
+            stamina_max: self.sim.motor.stamina_max,
+            locked: self.sim.combat.lock.is_some(),
+            block: hud::block_name(self.selected),
+            notice: self.notice.as_ref().map(|(text, _)| text.clone()),
+        };
+        let mut hud = self.hud.take();
+        let scale = window.scale_factor() as f32;
+        if let Some(renderer) = self.renderer.as_mut() {
+            if let Err(err) = renderer.render_with(|view, encoder, device, queue, size| {
+                if let Some(hud) = hud.as_mut() {
+                    paint_hud(
+                        hud,
+                        HudFrame {
+                            window: &window,
+                            view,
+                            encoder,
+                            device,
+                            queue,
+                            size,
+                            scale,
+                            model: &model,
+                        },
+                    );
+                }
+            }) {
+                eprintln!("render error: {err:?}");
+            }
         }
+        self.hud = hud;
         window.request_redraw();
     }
 }
@@ -596,6 +701,124 @@ fn sync_foliage(
         }
     }
     *ready = true;
+}
+
+struct EguiHud {
+    ctx: egui::Context,
+    state: egui_winit::State,
+    renderer: egui_wgpu::Renderer,
+}
+
+fn save_root() -> std::path::PathBuf {
+    std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../saves")
+}
+
+struct HudFrame<'a> {
+    window: &'a Window,
+    view: &'a wgpu::TextureView,
+    encoder: &'a mut wgpu::CommandEncoder,
+    device: &'a wgpu::Device,
+    queue: &'a wgpu::Queue,
+    size: (u32, u32),
+    scale: f32,
+    model: &'a HudModel,
+}
+
+fn paint_hud(hud: &mut EguiHud, frame: HudFrame<'_>) {
+    let HudFrame {
+        window,
+        view,
+        encoder,
+        device,
+        queue,
+        size,
+        scale,
+        model,
+    } = frame;
+    let screen = egui_wgpu::ScreenDescriptor {
+        size_in_pixels: [size.0, size.1],
+        pixels_per_point: scale,
+    };
+    let input = hud.state.take_egui_input(window);
+    hud.ctx.begin_pass(input);
+    egui::Area::new(egui::Id::new("vitals"))
+        .anchor(egui::Align2::LEFT_BOTTOM, egui::vec2(16.0, -16.0))
+        .show(&hud.ctx, |ui| {
+            ui.label(format!("Health {:.0}", model.health.max(0.0)));
+            ui.add(
+                egui::ProgressBar::new(hud::health_fraction(model))
+                    .fill(egui::Color32::from_rgb(176, 48, 42)),
+            );
+            ui.label(format!("Stamina {:.0}", model.stamina.max(0.0)));
+            ui.add(
+                egui::ProgressBar::new(hud::stamina_fraction(model))
+                    .fill(egui::Color32::from_rgb(46, 140, 72)),
+            );
+        });
+    egui::Area::new(egui::Id::new("block"))
+        .anchor(egui::Align2::RIGHT_BOTTOM, egui::vec2(-16.0, -16.0))
+        .show(&hud.ctx, |ui| {
+            ui.label(format!("Block: {}  (1-5)", model.block));
+        });
+    if let Some(text) = &model.notice {
+        egui::Area::new(egui::Id::new("notice"))
+            .anchor(egui::Align2::CENTER_TOP, egui::vec2(0.0, 24.0))
+            .show(&hud.ctx, |ui| {
+                ui.label(text);
+            });
+    }
+    let center = egui::pos2(size.0 as f32 / scale * 0.5, size.1 as f32 / scale * 0.5);
+    let painter = hud.ctx.layer_painter(egui::LayerId::new(
+        egui::Order::Foreground,
+        egui::Id::new("reticle"),
+    ));
+    let color = if model.locked {
+        egui::Color32::from_rgb(220, 70, 60)
+    } else {
+        egui::Color32::from_rgba_premultiplied(255, 255, 255, 180)
+    };
+    let radius = if model.locked { 16.0 } else { 6.0 };
+    painter.circle_stroke(center, radius, egui::Stroke::new(2.0, color));
+    if model.locked {
+        painter.text(
+            center + egui::vec2(22.0, -8.0),
+            egui::Align2::LEFT_CENTER,
+            hud::reticle_label(true),
+            egui::FontId::proportional(14.0),
+            color,
+        );
+    }
+    let output = hud.ctx.end_pass();
+    let clipped = hud.ctx.tessellate(output.shapes, output.pixels_per_point);
+    for (id, image) in &output.textures_delta.set {
+        hud.renderer.update_texture(device, queue, *id, image);
+    }
+    let _ = hud
+        .renderer
+        .update_buffers(device, queue, encoder, &clipped, &screen);
+    {
+        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("aravath hud"),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view,
+                resolve_target: None,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Load,
+                    store: wgpu::StoreOp::Store,
+                },
+            })],
+            depth_stencil_attachment: None,
+            timestamp_writes: None,
+            occlusion_query_set: None,
+        });
+        // SAFETY: egui-wgpu 0.32 takes a 'static render pass. The pass is not
+        // used after this call, and it does not outlive `encoder`.
+        let pass: &mut wgpu::RenderPass<'static> = unsafe { std::mem::transmute(&mut pass) };
+        hud.renderer.render(pass, &clipped, &screen);
+    }
+    for id in &output.textures_delta.free {
+        hud.renderer.free_texture(id);
+    }
 }
 
 fn light_the_world(renderer: &mut Renderer) {

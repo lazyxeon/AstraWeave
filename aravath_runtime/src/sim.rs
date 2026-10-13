@@ -146,6 +146,27 @@ impl Greybox {
         }
     }
 
+    pub fn checkpoint(&self) -> crate::save::Checkpoint {
+        crate::save::Checkpoint {
+            edits: self.ground.edits.clone(),
+            position: self.player_pos(),
+            yaw: self.player.facing_yaw,
+            stamina: self.motor.stamina,
+        }
+    }
+
+    pub fn restore(&mut self, checkpoint: crate::save::Checkpoint) -> Vec<ChunkUpload> {
+        self.motor.stamina = checkpoint.stamina.clamp(0.0, self.motor.stamina_max);
+        self.player.facing_yaw = checkpoint.yaw;
+        self.physics
+            .set_body_position(self.player.body, checkpoint.position);
+        self.camera.pivot = checkpoint.position;
+        self.ground.restore_edits(checkpoint.edits);
+        let uploads = self.ground.sync_dirty(&mut self.physics);
+        self.physics.step();
+        uploads
+    }
+
     pub fn spawn_enemy(&mut self, pos: Vec3) {
         let body = self.physics.add_character(pos, Vec3::new(0.35, 0.8, 0.35));
         self.combat.enemies.push(crate::combat::Enemy::new(body));
@@ -162,11 +183,11 @@ impl Greybox {
         uploads
     }
 
-    pub fn place_ahead(&mut self, radius: f32) -> Vec<ChunkUpload> {
+    pub fn place_ahead(&mut self, radius: f32, material: u16) -> Vec<ChunkUpload> {
         let pos = self.player_pos();
         let (forward, _) = player::flat_basis(self.player.facing_yaw);
         let center = pos + forward * 1.8;
-        self.ground.place_sphere(center, radius, 1);
+        self.ground.place_sphere(center, radius, material);
         self.nav
             .invalidate_region(Aabb::from_center_half_extents(center, Vec3::splat(radius)));
         let uploads = self.ground.sync_dirty(&mut self.physics);

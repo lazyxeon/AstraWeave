@@ -262,6 +262,18 @@ impl Ground {
         });
     }
 
+    /// Replace the edit log and rebuild every loaded chunk from the heightfield
+    /// plus that log. Used when a save is loaded.
+    pub fn restore_edits(&mut self, edits: Vec<VoxelEdit>) {
+        self.edits = edits;
+        let coords: Vec<ChunkCoord> = self.generated.iter().copied().collect();
+        for coord in coords {
+            self.grid.remove_chunk(coord);
+            fill_height_chunk(&mut self.grid, coord);
+            self.reapply_edits(coord);
+        }
+    }
+
     fn visible_props(&self, coord: ChunkCoord) -> Vec<PropSpot> {
         self.scatter
             .get(&coord)
@@ -551,5 +563,33 @@ mod tests {
             "expected trees or rocks"
         );
         assert!(uploads.iter().any(|chunk| chunk.vertex_count() > 100));
+    }
+
+    #[test]
+    fn restore_edits_refills_a_dug_hole() {
+        let mut physics = PhysicsWorld::new(Vec3::new(0.0, -9.81, 0.0));
+        let mut ground = Ground::from_grid(VoxelGrid::new());
+        let _ = ground.stream_around(&mut physics, Vec3::new(16.0, 10.0, 16.0), 0);
+        let spot = Vec3::new(16.0, island::surface_height(16, 16) as f32, 16.0);
+        assert!(ground
+            .grid
+            .get_voxel(spot)
+            .is_some_and(|voxel| voxel.is_solid()));
+        ground.dig_sphere(spot, 1.5);
+        let _ = ground.sync_dirty(&mut physics);
+        assert!(ground
+            .grid
+            .get_voxel(spot)
+            .is_some_and(|voxel| !voxel.is_solid()));
+        ground.restore_edits(Vec::new());
+        let _ = ground.sync_dirty(&mut physics);
+        assert!(
+            ground
+                .grid
+                .get_voxel(spot)
+                .is_some_and(|voxel| voxel.is_solid()),
+            "load with an empty edit log should rebuild the column"
+        );
+        assert!(ground.edits.is_empty());
     }
 }
