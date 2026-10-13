@@ -5,6 +5,7 @@ use astraweave_physics::PhysicsWorld;
 use astraweave_terrain::VoxelGrid;
 use glam::Vec3;
 
+use crate::combat::Combat;
 use crate::ground::{ChunkUpload, Ground};
 use crate::locomotion::LocomotionGraph;
 use crate::motor::{Motor, MotorInput};
@@ -18,6 +19,7 @@ pub struct Greybox {
     pub camera: ThirdPersonCamera,
     pub motor: Motor,
     pub graph: LocomotionGraph,
+    pub combat: Combat,
     /// Meshes from the first sync, moved out by the window once a device exists.
     pub initial_uploads: Vec<ChunkUpload>,
 }
@@ -38,6 +40,7 @@ impl Greybox {
             camera,
             motor: Motor::default(),
             graph: LocomotionGraph::default(),
+            combat: Combat::default(),
             initial_uploads,
         }
     }
@@ -60,6 +63,8 @@ impl Greybox {
     }
 
     pub fn tick_controls(&mut self, input: MotorInput) {
+        let mut input = input;
+        input.feet_locked = self.combat.attack.locks_feet();
         self.motor.tick(
             &mut self.physics,
             &mut self.player,
@@ -68,12 +73,30 @@ impl Greybox {
             FIXED_DT,
         );
         self.physics.step();
+        self.combat
+            .tick(&mut self.physics, &self.player, &self.motor, FIXED_DT);
+        if let Some(index) = self.combat.lock {
+            if let Some(enemy) = self.combat.enemies.get(index) {
+                if let Some(pos) = crate::combat::body_pos(&self.physics, enemy.body) {
+                    let to = pos - self.player_pos();
+                    self.camera.yaw = to.z.atan2(to.x);
+                }
+            }
+        }
         let moving = input.move_x.abs() + input.move_y.abs() > 0.05;
         self.graph.sync(&self.motor, moving, FIXED_DT);
         self.camera.pivot = self.player_pos();
     }
 
-    /// Dig just in front of the feet. Returns chunk uploads for the renderer.
+    pub fn spawn_enemy(&mut self, pos: Vec3) {
+        let body = self.physics.add_character(pos, Vec3::new(0.35, 0.8, 0.35));
+        self.combat.enemies.push(crate::combat::Enemy {
+            body,
+            health: 40.0,
+            attack: crate::combat::Attack::default(),
+            stagger: 0.0,
+        });
+    }
     pub fn dig_ahead(&mut self, radius: f32) -> Vec<ChunkUpload> {
         let pos = self.player_pos();
         let (forward, _) = player::flat_basis(self.player.facing_yaw);

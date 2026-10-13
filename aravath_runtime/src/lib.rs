@@ -6,6 +6,7 @@
 //! route across the span. The window does not draw that body yet.
 
 pub mod bridge_agent;
+pub mod combat;
 pub mod ground;
 pub mod island;
 pub mod locomotion;
