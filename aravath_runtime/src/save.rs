@@ -170,3 +170,30 @@ mod tests {
         assert!(nav.dirty_region_count() >= 1);
     }
 }
+
+#[cfg(test)]
+mod stream_tests {
+    use astraweave_physics::PhysicsWorld;
+    use glam::Vec3;
+
+    use crate::ground::Ground;
+    use astraweave_terrain::VoxelGrid;
+
+    #[test]
+    fn streaming_loads_a_ring_and_unloads_the_origin() {
+        let mut physics = PhysicsWorld::new(Vec3::new(0.0, -9.81, 0.0));
+        let mut ground = Ground::from_grid(VoxelGrid::new());
+        let first = ground.stream_around(&mut physics, Vec3::ZERO, 1);
+        assert!(first.iter().any(|chunk| !chunk.removed));
+        assert!(ground.body_ids().keys().any(|coord| coord.x == 0));
+        let _ = ground.stream_around(&mut physics, Vec3::new(220.0, 12.0, 0.0), 1);
+        assert!(
+            ground.body_ids().keys().any(|coord| coord.x >= 5),
+            "far chunks missing"
+        );
+        assert!(
+            !ground.body_ids().keys().any(|coord| coord.x == 0),
+            "origin chunk was not unloaded"
+        );
+    }
+}
