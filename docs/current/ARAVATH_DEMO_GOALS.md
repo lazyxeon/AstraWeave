@@ -22,7 +22,7 @@ cargo run -p aravath_runtime --bin aravath_greybox
 5. Placement, support, and save. `place_sphere` writes solid voxels through the same dirty-chunk sync. A voxel with no solid 6-neighbor and above the floor is rejected. Edits, position, facing, and stamina go through `aw-save` as a `SaveBundleV2` built directly. Load replays the edit log onto a fresh world. The edited bounds are marked dirty on `astraweave-nav`. No nav agents spawn.
 6. Open world. Chunks generate from a deterministic height around the player and unload past the radius. Digging and placing use the same voxel grid. The phase 1 island remains the fast test fixture.
 7. Assets. Download CC0 textures or models from Poly Haven, Kenney, or itch.io when the host answers. Record the URL and license. Where a download is not viable, keep geometric primitives and say so in the credits file.
-8. Windows check. `cargo check` the greybox for a Windows target when the toolchain can do it, and record the result in this file. The runtime must not assume a Linux window system.
+8. Windows check, recorded here. `cargo check -p aravath_runtime --target x86_64-pc-windows-msvc` on this Linux VM stops in `cc-rs` with `failed to find tool "lib.exe"`. The MSVC librarian is not installed here, and `basis-universal` (pulled in by `astraweave-render`) compiles C++. The greybox Rust does not call a Linux window system. `wgpu` selects DX12 or Vulkan on Windows from the same sources. On this VM the demo process stayed up under Vulkan/EGL until it was stopped.
 
 ## Controls
 
