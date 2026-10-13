@@ -1616,9 +1616,12 @@ impl PhysicsWorld {
     ) -> BodyId {
         self.add_dynamic_box(pos, half, mass, Layers::DEFAULT)
     }
-    pub fn break_destructible(&mut self, id: BodyId) {
+    /// Remove a rigid body, its colliders, and every engine-side mapping for `id`.
+    ///
+    /// Chunk replacement in `aravath_runtime` uses this to drop a stale trimesh
+    /// before inserting the remeshed one. Missing ids are a no-op.
+    pub fn remove_body(&mut self, id: BodyId) {
         if let Some(h) = self.handle_of(id) {
-            // Remove from Rapier sets
             self.bodies.remove(
                 h,
                 &mut self.island_mgr,
@@ -1627,13 +1630,15 @@ impl PhysicsWorld {
                 &mut self.multibody_joints,
                 true,
             );
-
-            // Remove from our mappings
             self.body_ids.remove(&h);
             self.body_kinds.remove(&h);
             self.char_map.remove(&id);
             self.buoyancy_bodies.remove(&id);
         }
+    }
+
+    pub fn break_destructible(&mut self, id: BodyId) {
+        self.remove_body(id);
     }
 
     #[allow(dead_code)]
@@ -1708,6 +1713,31 @@ impl PhysicsWorld {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn remove_body_drops_transform_and_break_destructible_delegates() {
+        let mut pw = PhysicsWorld::new(Vec3::new(0.0, -9.81, 0.0));
+        let id = pw.add_dynamic_box(
+            Vec3::new(0.0, 2.0, 0.0),
+            Vec3::new(0.3, 0.3, 0.3),
+            1.0,
+            Layers::DEFAULT,
+        );
+        assert!(pw.body_transform(id).is_some());
+        pw.remove_body(id);
+        assert!(pw.body_transform(id).is_none());
+        pw.remove_body(id);
+
+        let other = pw.add_destructible_box(
+            Vec3::new(1.0, 2.0, 0.0),
+            Vec3::new(0.3, 0.3, 0.3),
+            1.0,
+            10.0,
+            5.0,
+        );
+        pw.break_destructible(other);
+        assert!(pw.body_transform(other).is_none());
+    }
 
     #[test]
     fn character_position_updates() {

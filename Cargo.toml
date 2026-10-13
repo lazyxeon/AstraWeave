@@ -127,6 +127,7 @@ members = [
   "examples/veilweaver_demo",
   "examples/veilweaver_slice_loader",
   "veilweaver_slice_runtime",
+  "aravath_runtime",
   "examples/world_partition_demo",
   "examples/profiling_demo",
   # Phase 8 demos

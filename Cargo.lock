@@ -339,6 +339,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "aravath_runtime"
+version = "0.4.0"
+dependencies = [
+ "anyhow",
+ "astraweave-camera",
+ "astraweave-input",
+ "astraweave-physics",
+ "astraweave-render",
+ "astraweave-terrain",
+ "glam",
+ "pollster",
+ "winit",
+]
+
+[[package]]
 name = "arbitrary"
 version = "1.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
