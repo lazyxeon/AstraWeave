@@ -18,6 +18,7 @@ Demo finish (the systems pass above is not the playable demo):
 - [x] Tight controls and simple believable enemy AI
 - [x] Hardening — save/load round trip, dig under the player, respawn, fly across a chunk edge, lock clears on a killing blow
 - [x] Engine showcase — time-of-day sun, cascaded shadows, volumetric fog, light shafts (`docs/current/ARAVATH_DEMO.md`)
+- [x] Windows startup — logs and a message box beside the exe, loading paint before shader compile, `--no-volumetrics`, staged smoke test
 
 Notes:
 

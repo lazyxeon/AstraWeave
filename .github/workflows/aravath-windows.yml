@@ -56,8 +56,16 @@ jobs:
           mkdir -p dist/aravath_greybox/assets
           cp target/release/aravath_greybox.exe dist/aravath_greybox/
           cp -a assets/aravath dist/aravath_greybox/assets/
+          cp docs/current/ARAVATH_WINDOWS_README.txt dist/aravath_greybox/README.txt
           test -f dist/aravath_greybox/aravath_greybox.exe
-          test -f dist/aravath_greybox/assets/aravath/rock_wall_02_diff_1k.jpg
+          test -f dist/aravath_greybox/README.txt
+          test -f dist/aravath_greybox/assets/aravath/models/AnimationLibrary_Godot_Standard.gltf
+          test -f dist/aravath_greybox/assets/aravath/textures/grass_diff_1k.jpg
+          find dist/aravath_greybox -maxdepth 3 -type d -o -type f | sort
+
+      - name: Smoke test the staged exe
+        working-directory: dist/aravath_greybox
+        run: ./aravath_greybox.exe --smoke-test --no-volumetrics
 
       - name: Upload greybox artifact
         uses: actions/upload-artifact@v4

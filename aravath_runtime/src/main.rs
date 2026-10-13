@@ -3,6 +3,8 @@
 //! WASD moves the body. Mouse look orbits the third-person camera. E digs
 //! a hole in front of the feet. Escape quits.
 
+mod startup;
+
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Instant;
@@ -54,20 +56,25 @@ struct App {
     load_toggle: bool,
     respawn_toggle: bool,
     hud: Option<EguiHud>,
+    volumetrics: bool,
 }
 
 impl App {
-    fn new() -> Self {
-        Self {
+    fn new(volumetrics: bool) -> anyhow::Result<Self> {
+        startup::stage("mesh world");
+        let sim = {
+            let mut sim = Greybox::open(aravath_runtime::sim::VIEW_RADIUS);
+            sim.spawn_enemy(Vec3::new(28.0, 16.0, 16.0));
+            sim.spawn_enemy(Vec3::new(10.0, 16.0, 28.0));
+            sim.spawn_enemy(Vec3::new(24.0, 16.0, 30.0));
+            sim
+        };
+        startup::stage("world meshed");
+        startup::stage("load assets");
+        Ok(Self {
             window: None,
             renderer: None,
-            sim: {
-                let mut sim = Greybox::open(aravath_runtime::sim::VIEW_RADIUS);
-                sim.spawn_enemy(Vec3::new(28.0, 16.0, 16.0));
-                sim.spawn_enemy(Vec3::new(10.0, 16.0, 28.0));
-                sim.spawn_enemy(Vec3::new(24.0, 16.0, 30.0));
-                sim
-            },
+            sim,
             input: demo_input(),
             last_cursor: None,
             last_time: Instant::now(),
@@ -75,12 +82,12 @@ impl App {
             lock_toggle: false,
             place_toggle: false,
             walk_held: false,
-            terrain: TerrainMaps::load(),
-            figure: Figure::load(&Figure::library_path()).expect("load CC0 character"),
-            sword: props::load_rigid(&props::sword_path()).expect("load CC0 sword"),
-            shield: props::load_rigid(&props::shield_path()).expect("load CC0 shield"),
-            figurine: NodeActor::load(&NodeActor::figurine_path()).expect("load CC0 enemy"),
-            foliage: Foliage::load(),
+            terrain: TerrainMaps::load()?,
+            figure: Figure::load(&Figure::library_path())?,
+            sword: props::load_rigid(&props::sword_path())?,
+            shield: props::load_rigid(&props::shield_path())?,
+            figurine: NodeActor::load(&NodeActor::figurine_path())?,
+            foliage: Foliage::load()?,
             props: HashMap::new(),
             foliage_ready: false,
             selected: 1,
@@ -89,7 +96,8 @@ impl App {
             load_toggle: false,
             respawn_toggle: false,
             hud: None,
-        }
+            volumetrics,
+        })
     }
 }
 
@@ -98,17 +106,23 @@ impl ApplicationHandler for App {
         if self.window.is_some() {
             return;
         }
-        let window = Arc::new(
-            event_loop
-                .create_window(
-                    Window::default_attributes()
-                        .with_title("Aravath greybox")
-                        .with_inner_size(PhysicalSize::new(1280, 720)),
-                )
-                .expect("create window"),
-        );
-        let mut renderer = pollster::block_on(Renderer::new(window.clone())).expect("renderer");
-        light_the_world(&mut renderer);
+        let window = match event_loop.create_window(
+            Window::default_attributes()
+                .with_title("Aravath")
+                .with_inner_size(PhysicalSize::new(1280, 720)),
+        ) {
+            Ok(window) => Arc::new(window),
+            Err(err) => startup::fatal("Aravath", &format!("Could not open a window: {err}")),
+        };
+        startup::paint_loading(&window, "Loading Aravath… compiling shaders");
+        startup::stage("window shown");
+        let mut renderer = match pollster::block_on(Renderer::new(window.clone())) {
+            Ok(renderer) => renderer,
+            Err(err) => startup::fatal("Aravath", &format!("Renderer failed to start:\n{err:#}")),
+        };
+        startup::stage("renderer ready");
+        light_the_world(&mut renderer, self.volumetrics);
+        startup::stage("lighting configured");
         let uploads = std::mem::take(&mut self.sim.initial_uploads);
         upload_chunks(&mut renderer, &uploads, &self.terrain);
         note_props(&mut self.props, &uploads);
@@ -434,6 +448,12 @@ impl ApplicationHandler for App {
         let mut hud = self.hud.take();
         let scale = window.scale_factor() as f32;
         if let Some(renderer) = self.renderer.as_mut() {
+            if renderer.is_device_lost() {
+                startup::fatal(
+                    "Aravath",
+                    "The GPU device was lost. Details are in aravath.log next to the exe.",
+                );
+            }
             if let Err(err) = renderer.render_with(|view, encoder, device, queue, size| {
                 if let Some(hud) = hud.as_mut() {
                     paint_hud(
@@ -451,7 +471,13 @@ impl ApplicationHandler for App {
                     );
                 }
             }) {
-                eprintln!("render error: {err:?}");
+                startup::line(&format!("render error: {err:#}"));
+                if renderer.is_device_lost() {
+                    startup::fatal(
+                        "Aravath",
+                        &format!("Render failed and the GPU device was lost:\n{err:#}"),
+                    );
+                }
             }
         }
         self.hud = hud;
@@ -580,14 +606,14 @@ struct TerrainMaps {
 }
 
 impl TerrainMaps {
-    fn load() -> Self {
-        Self {
-            stone: load_jpg("stone_diff_1k.jpg"),
-            dirt: load_jpg("dirt_diff_1k.jpg"),
-            grass: load_jpg("grass_diff_1k.jpg"),
-            sand: load_jpg("sand_diff_1k.jpg"),
-            wood: load_jpg("wood_diff_1k.jpg"),
-        }
+    fn load() -> anyhow::Result<Self> {
+        Ok(Self {
+            stone: load_jpg("stone_diff_1k.jpg")?,
+            dirt: load_jpg("dirt_diff_1k.jpg")?,
+            grass: load_jpg("grass_diff_1k.jpg")?,
+            sand: load_jpg("sand_diff_1k.jpg")?,
+            wood: load_jpg("wood_diff_1k.jpg")?,
+        })
     }
 
     fn for_material(&self, material: u16) -> &Rgba {
@@ -601,19 +627,13 @@ impl TerrainMaps {
     }
 }
 
-fn load_jpg(file: &str) -> Rgba {
-    let path = aravath_runtime::assets::asset_dir()
-        .join("textures")
-        .join(file);
-    let image = image::open(&path)
-        .unwrap_or_else(|err| panic!("load {path:?}: {err}"))
-        .to_rgba8();
-    let (width, height) = image.dimensions();
-    Rgba {
+fn load_jpg(file: &str) -> anyhow::Result<Rgba> {
+    let (width, height, pixels) = aravath_runtime::assets::read_texture(file)?;
+    Ok(Rgba {
         width,
         height,
-        pixels: image.into_raw(),
-    }
+        pixels,
+    })
 }
 
 struct Foliage {
@@ -626,20 +646,20 @@ struct Foliage {
 }
 
 impl Foliage {
-    fn load() -> Self {
+    fn load() -> anyhow::Result<Self> {
         let path = |name: &str| {
             aravath_runtime::assets::asset_dir()
                 .join("models/nature")
                 .join(name)
         };
-        Self {
-            oak: props::load_colored(&path("tree_oak.glb")).expect("oak"),
-            pine: props::load_colored(&path("tree_pineDefaultA.glb")).expect("pine"),
-            palm: props::load_colored(&path("tree_palmShort.glb")).expect("palm"),
-            rock: props::load_colored(&path("rock_largeA.glb")).expect("rock"),
-            grass: props::load_colored(&path("grass.glb")).expect("grass"),
-            bush: props::load_colored(&path("plant_bush.glb")).expect("bush"),
-        }
+        Ok(Self {
+            oak: props::load_colored(&path("tree_oak.glb"))?,
+            pine: props::load_colored(&path("tree_pineDefaultA.glb"))?,
+            palm: props::load_colored(&path("tree_palmShort.glb"))?,
+            rock: props::load_colored(&path("rock_largeA.glb"))?,
+            grass: props::load_colored(&path("grass.glb"))?,
+            bush: props::load_colored(&path("plant_bush.glb"))?,
+        })
     }
 
     fn parts(&self, kind: PropKind) -> &[ColoredMesh] {
@@ -854,7 +874,7 @@ fn paint_hud(hud: &mut EguiHud, frame: HudFrame<'_>) {
     }
 }
 
-fn light_the_world(renderer: &mut Renderer) {
+fn light_the_world(renderer: &mut Renderer, volumetrics: bool) {
     renderer.set_shadows_enabled(true);
     renderer.set_cloud_shadows_enabled(false);
     renderer
@@ -875,16 +895,30 @@ fn light_the_world(renderer: &mut Renderer) {
         day_color_horizon: Vec3::new(0.95, 0.62, 0.38),
         ..SkyConfig::default()
     });
-    renderer.set_volumetric_fog_config(
-        astraweave_render::volumetric_fog::VolumetricFogPass::gameplay_config(),
-    );
-    renderer.set_god_ray_config(astraweave_render::GodRayConfig {
-        enabled: true,
-        half_res: true,
-        num_samples: 32,
-        exposure: 0.22,
-        ..astraweave_render::GodRayConfig::default()
-    });
+    if !volumetrics {
+        startup::line("volumetrics off (--no-volumetrics, --safe, or aravath.cfg)");
+        return;
+    }
+    startup::stage("build volumetrics");
+    let built = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        renderer.set_volumetric_fog_config(
+            astraweave_render::volumetric_fog::VolumetricFogPass::gameplay_config(),
+        );
+        renderer.set_god_ray_config(astraweave_render::GodRayConfig {
+            enabled: true,
+            half_res: true,
+            num_samples: 32,
+            exposure: 0.22,
+            ..astraweave_render::GodRayConfig::default()
+        });
+    }));
+    if built.is_err() {
+        startup::line(
+            "volumetrics panicked during setup; continuing without fog and light shafts. Relaunch with --no-volumetrics.",
+        );
+    } else {
+        startup::stage("volumetrics ready");
+    }
 }
 
 fn demo_input() -> InputManager {
@@ -914,9 +948,92 @@ fn axis(positive: bool, negative: bool) -> f32 {
     }
 }
 
+struct Launch {
+    smoke: bool,
+    volumetrics: bool,
+}
+
+fn launch_options() -> Launch {
+    let mut volumetrics = true;
+    let cfg = startup::exe_dir().join("aravath.cfg");
+    if let Ok(text) = std::fs::read_to_string(&cfg) {
+        startup::line(&format!("read {}", cfg.display()));
+        for line in text.lines() {
+            let key = line.split('#').next().unwrap_or("").replace(' ', "");
+            if key == "volumetrics=off" {
+                volumetrics = false;
+            } else if key == "volumetrics=on" {
+                volumetrics = true;
+            }
+        }
+    }
+    let mut smoke = false;
+    for arg in std::env::args().skip(1) {
+        match arg.as_str() {
+            "--smoke-test" => smoke = true,
+            "--no-volumetrics" | "--safe" => volumetrics = false,
+            "--volumetrics" => volumetrics = true,
+            other => startup::line(&format!("ignored argument {other}")),
+        }
+    }
+    Launch { smoke, volumetrics }
+}
+
+fn smoke_test(volumetrics: bool) -> anyhow::Result<()> {
+    startup::stage("verify assets");
+    let root = aravath_runtime::assets::verify()?;
+    startup::line(&format!("assets {}", root.display()));
+    startup::stage("load models");
+    let _figure = Figure::load(&Figure::library_path())?;
+    let _sword = props::load_rigid(&props::sword_path())?;
+    let _shield = props::load_rigid(&props::shield_path())?;
+    let _figurine = NodeActor::load(&NodeActor::figurine_path())?;
+    let _foliage = Foliage::load()?;
+    let _terrain = TerrainMaps::load()?;
+    startup::stage("mesh one chunk");
+    let _sim = Greybox::open(0);
+    std::env::set_var("ARAVATH_WARP", "1");
+    startup::stage("headless renderer");
+    let mut renderer = pollster::block_on(Renderer::new_headless(64, 64))?;
+    startup::stage("headless renderer ready");
+    if volumetrics {
+        startup::stage("volumetrics on warp");
+        renderer.set_volumetric_fog_config(
+            astraweave_render::volumetric_fog::VolumetricFogPass::gameplay_config(),
+        );
+        renderer.set_god_ray_config(astraweave_render::GodRayConfig {
+            enabled: true,
+            half_res: true,
+            num_samples: 32,
+            exposure: 0.22,
+            ..astraweave_render::GodRayConfig::default()
+        });
+        startup::stage("volumetrics ready");
+    }
+    startup::stage("smoke ok");
+    Ok(())
+}
+
 fn main() -> anyhow::Result<()> {
+    startup::install();
+    let launch = launch_options();
+    startup::line(&format!(
+        "exe {} volumetrics {}",
+        std::env::current_exe()
+            .map(|path| path.display().to_string())
+            .unwrap_or_else(|_| "(unknown)".into()),
+        launch.volumetrics
+    ));
+    if let Err(err) = aravath_runtime::assets::verify() {
+        startup::fatal("Aravath assets", &format!("{err:#}"));
+    }
+    startup::stage("assets verified");
+    if launch.smoke {
+        return smoke_test(launch.volumetrics);
+    }
     let event_loop = EventLoop::new()?;
-    let mut app = App::new();
+    let mut app = App::new(launch.volumetrics)?;
+    startup::stage("enter event loop");
     event_loop.run_app(&mut app)?;
     Ok(())
 }

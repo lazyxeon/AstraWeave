@@ -30,6 +30,8 @@ egui.workspace = true
 egui-winit.workspace = true
 egui-wgpu.workspace = true
 wgpu.workspace = true
+raw-window-handle = "0.6"
+log = "0.4"
 
 [dev-dependencies]
 tempfile = "3"

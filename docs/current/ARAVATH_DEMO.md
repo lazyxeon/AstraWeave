@@ -10,7 +10,9 @@ The machine needs Rust 1.89 and an NVIDIA GPU from a GTX 1660 through an RTX 407
 cargo run -p aravath_runtime --bin aravath_greybox --release
 ```
 
-`cargo run` finds `assets/aravath` from the crate path. The GitHub artifact `aravath_greybox-windows` is the release exe with `assets/aravath` copied beside it. That layout is the other search path: `assets/aravath` next to the exe. Saves go to `saves/` next to the exe in that layout, and to `saves/` at the repo root for `cargo run`.
+`cargo run` finds `assets/aravath` because the binary is under `target/`. The GitHub artifact is a folder: `aravath_greybox.exe`, `README.txt`, and `assets/aravath` beside the exe. Extract the whole zip and start the exe from that folder. Saves and `aravath.log` / `aravath_crash.log` are written next to the exe. A fatal error also opens a Windows message box.
+
+If the window fails while compiling shaders or turning on fog, relaunch with `aravath_greybox.exe --no-volumetrics`, or put `volumetrics=off` in `aravath.cfg` next to the exe. `--safe` is the same switch. The stage timings are in `aravath.log`.
 
 The workflow `.github/workflows/aravath-windows.yml` builds that exe and runs `cargo test -p aravath_runtime --lib`. It does not launch the window.
 
@@ -52,7 +54,7 @@ Three enemies hold still past 18 m, steer apart as they close, wait through a sh
 - **Cascaded shadow maps.** `set_shadows_enabled(true)`. The demo's models are shadow casters in the engine's cascade passes, and the PBR shader samples those maps. The separate low-resolution cloud-shadow texture stays off so the cascades are the shadow you see.
 - **Sky.** `SkyRenderer` with a `SkyConfig` (day colors and cloud cover), drawn into the HDR target before the meshes.
 - **Fog.** A light exponential term from `SceneEnvironment`, plus `VolumetricFogPass` at the low froxel preset (80×45×32). Scatter reads the cascade shadow array. The result is copied back into the HDR target before tonemap.
-- **Light shafts.** `GodRayPass` at half resolution, 32 radial samples, added onto the HDR target after the fog.
+- **Light shafts.** `GodRayPass` at half resolution, 32 radial samples, added onto the HDR target after the fog. `--no-volumetrics` leaves both the fog pass and the shafts off. The pipelines are built only when those effects are enabled, after the window has already been painted.
 - **Camera, physics, terrain, input, save.** `ThirdPersonCamera`, the Rapier character controller, `DualContouring` chunk meshes, `astraweave-input`, and `aw-save` `SaveBundleV2`.
 
 The egui overlay is the HUD only. It is drawn after the engine frame.
