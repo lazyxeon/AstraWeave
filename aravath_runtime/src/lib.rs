@@ -6,6 +6,7 @@
 
 pub mod ground;
 pub mod island;
+pub mod locomotion;
 pub mod motor;
 pub mod player;
 pub mod sim;

@@ -6,6 +6,7 @@ use astraweave_terrain::VoxelGrid;
 use glam::Vec3;
 
 use crate::ground::{ChunkUpload, Ground};
+use crate::locomotion::LocomotionGraph;
 use crate::motor::{Motor, MotorInput};
 use crate::player::{self, Player};
 pub const FIXED_DT: f32 = 1.0 / 60.0;
@@ -16,6 +17,7 @@ pub struct Greybox {
     pub player: Player,
     pub camera: ThirdPersonCamera,
     pub motor: Motor,
+    pub graph: LocomotionGraph,
     /// Meshes from the first sync, moved out by the window once a device exists.
     pub initial_uploads: Vec<ChunkUpload>,
 }
@@ -35,6 +37,7 @@ impl Greybox {
             player,
             camera,
             motor: Motor::default(),
+            graph: LocomotionGraph::default(),
             initial_uploads,
         }
     }
@@ -65,6 +68,8 @@ impl Greybox {
             FIXED_DT,
         );
         self.physics.step();
+        let moving = input.move_x.abs() + input.move_y.abs() > 0.05;
+        self.graph.sync(&self.motor, moving, FIXED_DT);
         self.camera.pivot = self.player_pos();
     }
 
