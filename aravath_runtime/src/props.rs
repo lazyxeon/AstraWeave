@@ -190,6 +190,69 @@ impl NodeActor {
     }
 }
 
+pub struct ColoredMesh {
+    pub mesh: CpuMesh,
+    pub color: [f32; 4],
+}
+
+/// One mesh per primitive so a trunk and a canopy keep their own colors.
+pub fn load_colored(path: &Path) -> Result<Vec<ColoredMesh>> {
+    let (doc, buffers, _) = gltf::import(path).with_context(|| format!("import {path:?}"))?;
+    let mut parents = vec![None; doc.nodes().len()];
+    let mut locals = Vec::with_capacity(doc.nodes().len());
+    for node in doc.nodes() {
+        for child in node.children() {
+            parents[child.index()] = Some(node.index());
+        }
+    }
+    for node in doc.nodes() {
+        let (t, r, s) = node.transform().decomposed();
+        locals.push(Mat4::from_scale_rotation_translation(
+            Vec3::from(s),
+            Quat::from_array(r),
+            Vec3::from(t),
+        ));
+    }
+    let mut parts = Vec::new();
+    for node in doc.nodes() {
+        let Some(mesh) = node.mesh() else {
+            continue;
+        };
+        let world = world_matrix(node.index(), &locals, &parents);
+        for primitive in mesh.primitives() {
+            let Some((prim_vertices, prim_indices)) = read_primitive(&primitive, &buffers) else {
+                continue;
+            };
+            let mut vertices = Vec::with_capacity(prim_vertices.len());
+            for vertex in prim_vertices {
+                let position = world.transform_point3(Vec3::from(vertex.position));
+                let normal = world
+                    .transform_vector3(Vec3::from(vertex.normal))
+                    .normalize_or_zero();
+                vertices.push(MeshVertex::new(
+                    position,
+                    normal,
+                    Vec4::from(vertex.tangent),
+                    Vec2::from(vertex.uv),
+                ));
+            }
+            parts.push(ColoredMesh {
+                mesh: CpuMesh {
+                    vertices,
+                    indices: prim_indices,
+                    albedo_image: None,
+                    texture_source_hint: None,
+                },
+                color: primitive
+                    .material()
+                    .pbr_metallic_roughness()
+                    .base_color_factor(),
+            });
+        }
+    }
+    Ok(parts)
+}
+
 pub fn load_rigid(path: &Path) -> Result<TexturedMesh> {
     let (doc, buffers, images) = gltf::import(path).with_context(|| format!("import {path:?}"))?;
     let mut parents = vec![None; doc.nodes().len()];
@@ -453,5 +516,18 @@ mod tests {
             "grip {grip_w:?} hand {:?}",
             hand.w_axis.truncate()
         );
+    }
+
+    #[test]
+    fn oak_keeps_separate_leaf_and_bark_colors() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../assets/aravath/models/nature/tree_oak.glb");
+        let parts = load_colored(&path).unwrap();
+        assert!(parts.len() >= 2);
+        assert!(parts.iter().all(|part| part.mesh.vertices.len() > 10));
+        let a = parts[0].color;
+        let b = parts[1].color;
+        let delta = (a[0] - b[0]).abs() + (a[1] - b[1]).abs() + (a[2] - b[2]).abs();
+        assert!(delta > 0.2, "{a:?} vs {b:?}");
     }
 }

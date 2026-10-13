@@ -3,11 +3,13 @@
 //! WASD moves the body. Mouse look orbits the third-person camera. E digs
 //! a hole in front of the feet. Escape quits.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Instant;
 
 use astraweave_input::{Action, Binding, BindingSet, InputContext, InputManager};
-use astraweave_render::{Instance, Renderer};
+use astraweave_render::{Instance, Renderer, SkyConfig};
+use astraweave_terrain::BiomeType;
 use glam::{Mat4, Vec3};
 use winit::{
     application::ApplicationHandler,
@@ -20,8 +22,10 @@ use winit::{
 
 use aravath_runtime::combat::EnemyPose;
 use aravath_runtime::figure::{actor_transform, Figure};
-use aravath_runtime::ground::{material_tint, ChunkUpload};
-use aravath_runtime::props::{self, figurine_transform, NodeActor, TexturedMesh};
+use aravath_runtime::ground::{ChunkPart, ChunkUpload, PropKind, PropSpot};
+use aravath_runtime::props::{
+    self, figurine_transform, ColoredMesh, NodeActor, Rgba, TexturedMesh,
+};
 use aravath_runtime::Greybox;
 
 struct App {
@@ -35,11 +39,14 @@ struct App {
     lock_toggle: bool,
     place_toggle: bool,
     walk_held: bool,
-    albedo: Option<(u32, u32, Vec<u8>)>,
+    terrain: TerrainMaps,
     figure: Figure,
     sword: TexturedMesh,
     shield: TexturedMesh,
     figurine: NodeActor,
+    foliage: Foliage,
+    props: HashMap<(i32, i32, i32), Vec<PropSpot>>,
+    foliage_ready: bool,
 }
 
 impl App {
@@ -48,7 +55,7 @@ impl App {
             window: None,
             renderer: None,
             sim: {
-                let mut sim = Greybox::open(1);
+                let mut sim = Greybox::open(aravath_runtime::sim::VIEW_RADIUS);
                 sim.spawn_enemy(Vec3::new(28.0, 16.0, 16.0));
                 sim.spawn_enemy(Vec3::new(10.0, 16.0, 28.0));
                 sim.spawn_enemy(Vec3::new(24.0, 16.0, 30.0));
@@ -61,17 +68,16 @@ impl App {
             lock_toggle: false,
             place_toggle: false,
             walk_held: false,
-            albedo: load_ground_albedo(),
+            terrain: TerrainMaps::load(),
             figure: Figure::load(&Figure::library_path()).expect("load CC0 character"),
             sword: props::load_rigid(&props::sword_path()).expect("load CC0 sword"),
             shield: props::load_rigid(&props::shield_path()).expect("load CC0 shield"),
             figurine: NodeActor::load(&NodeActor::figurine_path()).expect("load CC0 enemy"),
+            foliage: Foliage::load(),
+            props: HashMap::new(),
+            foliage_ready: false,
         }
     }
-}
-
-fn chunk_name(x: i32, y: i32, z: i32) -> String {
-    format!("chunk_{x}_{y}_{z}")
 }
 
 impl ApplicationHandler for App {
@@ -89,8 +95,16 @@ impl ApplicationHandler for App {
                 .expect("create window"),
         );
         let mut renderer = pollster::block_on(Renderer::new(window.clone())).expect("renderer");
+        light_the_world(&mut renderer);
         let uploads = std::mem::take(&mut self.sim.initial_uploads);
-        upload_chunks(&mut renderer, &uploads, self.albedo.as_ref());
+        upload_chunks(&mut renderer, &uploads, &self.terrain);
+        note_props(&mut self.props, &uploads);
+        sync_foliage(
+            &mut renderer,
+            &self.foliage,
+            &self.props,
+            &mut self.foliage_ready,
+        );
         self.renderer = Some(renderer);
         self.window = Some(window);
         self.last_time = Instant::now();
@@ -244,12 +258,21 @@ impl ApplicationHandler for App {
         let sword_xform = player_xform * props::sword_on_hand(hand_r);
         let shield_xform = player_xform * props::shield_on_hand(hand_l);
 
-        let albedo = self.albedo.clone();
         let renderer = self.renderer.as_mut().expect("renderer");
         if let Some(uploads) = dig_uploads.as_deref() {
-            upload_chunks(renderer, uploads, albedo.as_ref());
+            upload_chunks(renderer, uploads, &self.terrain);
+            note_props(&mut self.props, uploads);
         }
-        upload_chunks(renderer, &streamed, albedo.as_ref());
+        upload_chunks(renderer, &streamed, &self.terrain);
+        note_props(&mut self.props, &streamed);
+        if dig_uploads.is_some() || !streamed.is_empty() {
+            sync_foliage(
+                renderer,
+                &self.foliage,
+                &self.props,
+                &mut self.foliage_ready,
+            );
+        }
         renderer.update_view(&view);
         upload_posed(
             renderer,
@@ -380,37 +403,222 @@ fn upload_posed(
     }
 }
 
-fn upload_chunks(
-    renderer: &mut Renderer,
-    uploads: &[ChunkUpload],
-    albedo: Option<&(u32, u32, Vec<u8>)>,
-) {
+fn upload_chunks(renderer: &mut Renderer, uploads: &[ChunkUpload], terrain: &TerrainMaps) {
     for chunk in uploads {
-        let name = chunk_name(chunk.coord.x, chunk.coord.y, chunk.coord.z);
-        if chunk.removed || chunk.mesh.vertices.is_empty() {
-            renderer.clear_model(&name);
+        for material in [1, 2, 3, 4, 5] {
+            renderer.clear_model(&chunk_name(
+                chunk.coord.x,
+                chunk.coord.y,
+                chunk.coord.z,
+                material,
+            ));
+        }
+        if chunk.removed {
             continue;
         }
-        let gpu = renderer.create_mesh_from_cpu_mesh(&chunk.mesh);
-        let instance = [Instance {
-            transform: Mat4::IDENTITY,
-            color: material_tint(chunk.material),
-            material_id: 0,
-        }];
-        if let Some((width, height, pixels)) = albedo {
-            renderer.add_model_with_texture(name, gpu, &instance, *width, *height, pixels);
-        } else {
-            renderer.add_model(name, gpu, &instance);
+        for part in &chunk.parts {
+            upload_part(renderer, chunk, part, terrain);
         }
     }
 }
 
-fn load_ground_albedo() -> Option<(u32, u32, Vec<u8>)> {
+fn upload_part(
+    renderer: &mut Renderer,
+    chunk: &ChunkUpload,
+    part: &ChunkPart,
+    terrain: &TerrainMaps,
+) {
+    if part.mesh.vertices.is_empty() {
+        return;
+    }
+    let name = chunk_name(chunk.coord.x, chunk.coord.y, chunk.coord.z, part.material);
+    let gpu = renderer.create_mesh_from_cpu_mesh(&part.mesh);
+    let instance = [Instance {
+        transform: Mat4::IDENTITY,
+        color: [1.0, 1.0, 1.0, 1.0],
+        material_id: 0,
+    }];
+    let albedo = terrain.for_material(part.material);
+    renderer.add_model_with_texture(
+        name,
+        gpu,
+        &instance,
+        albedo.width,
+        albedo.height,
+        &albedo.pixels,
+    );
+}
+
+fn chunk_name(x: i32, y: i32, z: i32, material: u16) -> String {
+    format!("chunk_{x}_{y}_{z}_{material}")
+}
+
+struct TerrainMaps {
+    stone: Rgba,
+    dirt: Rgba,
+    grass: Rgba,
+    sand: Rgba,
+    wood: Rgba,
+}
+
+impl TerrainMaps {
+    fn load() -> Self {
+        Self {
+            stone: load_jpg("stone_diff_1k.jpg"),
+            dirt: load_jpg("dirt_diff_1k.jpg"),
+            grass: load_jpg("grass_diff_1k.jpg"),
+            sand: load_jpg("sand_diff_1k.jpg"),
+            wood: load_jpg("wood_diff_1k.jpg"),
+        }
+    }
+
+    fn for_material(&self, material: u16) -> &Rgba {
+        match material {
+            2 => &self.dirt,
+            3 => &self.grass,
+            4 => &self.sand,
+            5 => &self.wood,
+            _ => &self.stone,
+        }
+    }
+}
+
+fn load_jpg(file: &str) -> Rgba {
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../assets/aravath/rock_wall_02_diff_1k.jpg");
-    let image = image::open(path).ok()?.to_rgba8();
+        .join("../assets/aravath/textures")
+        .join(file);
+    let image = image::open(&path)
+        .unwrap_or_else(|err| panic!("load {path:?}: {err}"))
+        .to_rgba8();
     let (width, height) = image.dimensions();
-    Some((width, height, image.into_raw()))
+    Rgba {
+        width,
+        height,
+        pixels: image.into_raw(),
+    }
+}
+
+struct Foliage {
+    oak: Vec<ColoredMesh>,
+    pine: Vec<ColoredMesh>,
+    palm: Vec<ColoredMesh>,
+    rock: Vec<ColoredMesh>,
+    grass: Vec<ColoredMesh>,
+    bush: Vec<ColoredMesh>,
+}
+
+impl Foliage {
+    fn load() -> Self {
+        let path = |name: &str| {
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../assets/aravath/models/nature")
+                .join(name)
+        };
+        Self {
+            oak: props::load_colored(&path("tree_oak.glb")).expect("oak"),
+            pine: props::load_colored(&path("tree_pineDefaultA.glb")).expect("pine"),
+            palm: props::load_colored(&path("tree_palmShort.glb")).expect("palm"),
+            rock: props::load_colored(&path("rock_largeA.glb")).expect("rock"),
+            grass: props::load_colored(&path("grass.glb")).expect("grass"),
+            bush: props::load_colored(&path("plant_bush.glb")).expect("bush"),
+        }
+    }
+
+    fn parts(&self, kind: PropKind) -> &[ColoredMesh] {
+        match kind {
+            PropKind::Oak => &self.oak,
+            PropKind::Pine => &self.pine,
+            PropKind::Palm => &self.palm,
+            PropKind::Rock => &self.rock,
+            PropKind::Grass => &self.grass,
+            PropKind::Bush => &self.bush,
+        }
+    }
+}
+
+fn note_props(map: &mut HashMap<(i32, i32, i32), Vec<PropSpot>>, uploads: &[ChunkUpload]) {
+    for chunk in uploads {
+        let key = (chunk.coord.x, chunk.coord.y, chunk.coord.z);
+        if chunk.removed {
+            map.remove(&key);
+        } else {
+            map.insert(key, chunk.props.clone());
+        }
+    }
+}
+
+fn sync_foliage(
+    renderer: &mut Renderer,
+    foliage: &Foliage,
+    props: &HashMap<(i32, i32, i32), Vec<PropSpot>>,
+    ready: &mut bool,
+) {
+    let kinds = [
+        PropKind::Oak,
+        PropKind::Pine,
+        PropKind::Palm,
+        PropKind::Rock,
+        PropKind::Grass,
+        PropKind::Bush,
+    ];
+    for kind in kinds {
+        let instances: Vec<Instance> = props
+            .values()
+            .flatten()
+            .filter(|spot| spot.kind == kind)
+            .map(|spot| Instance {
+                transform: Mat4::from_translation(spot.position)
+                    * Mat4::from_rotation_y(spot.yaw)
+                    * Mat4::from_scale(Vec3::splat(spot.scale)),
+                color: [1.0, 1.0, 1.0, 1.0],
+                material_id: 0,
+            })
+            .collect();
+        for (index, part) in foliage.parts(kind).iter().enumerate() {
+            let name = format!("{kind:?}{index}");
+            let colored: Vec<Instance> = instances
+                .iter()
+                .cloned()
+                .map(|mut instance| {
+                    instance.color = part.color;
+                    instance
+                })
+                .collect();
+            if !*ready {
+                renderer.add_model(
+                    name,
+                    renderer.create_mesh_from_cpu_mesh(&part.mesh),
+                    &colored,
+                );
+            } else {
+                renderer.update_model_instances(&name, &colored);
+            }
+        }
+    }
+    *ready = true;
+}
+
+fn light_the_world(renderer: &mut Renderer) {
+    renderer
+        .scene_environment_mut()
+        .set_biome(BiomeType::Grassland);
+    {
+        let env = renderer.scene_environment_mut();
+        env.visuals.fog_density = 0.005;
+        env.visuals.fog_color = Vec3::new(0.64, 0.76, 0.88);
+        env.visuals.ambient_intensity = 0.5;
+        env.sun_intensity = 2.4;
+    }
+    renderer.set_light_direction_override(Vec3::new(-0.35, 0.82, 0.28).normalize(), 2.4);
+    let clock = renderer.time_of_day_mut();
+    clock.current_time = 11.0;
+    clock.time_scale = 0.0;
+    renderer.set_sky_config(SkyConfig {
+        cloud_coverage: 0.32,
+        day_color_top: Vec3::new(0.28, 0.52, 0.92),
+        day_color_horizon: Vec3::new(0.72, 0.82, 0.92),
+        ..SkyConfig::default()
+    });
 }
 
 fn demo_input() -> InputManager {
