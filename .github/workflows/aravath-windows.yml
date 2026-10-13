@@ -1,0 +1,68 @@
+name: Aravath Windows
+
+# Windows desktop build of the Aravath greybox. The Linux cloud VM cannot link
+# the MSVC build of basis-universal (no lib.exe), so this job is the check.
+
+on:
+  push:
+    branches:
+      - "cursor/aravath-*"
+  pull_request:
+
+concurrency:
+  group: aravath-windows-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_NET_RETRY: 10
+  RUST_BACKTRACE: short
+
+jobs:
+  windows:
+    name: Build, test, and upload greybox
+    runs-on: windows-latest
+    timeout-minutes: 180
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.89.0
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "."
+          key: aravath-windows-v1
+          cache-all-crates: true
+
+      - name: Build aravath_greybox (release)
+        run: cargo build -p aravath_runtime --bin aravath_greybox --release
+
+      - name: Test aravath_runtime lib
+        run: cargo test -p aravath_runtime --lib
+
+      - name: Stage exe and assets
+        run: |
+          mkdir -p dist/aravath_greybox/assets
+          cp target/release/aravath_greybox.exe dist/aravath_greybox/
+          cp -a assets/aravath dist/aravath_greybox/assets/
+          test -f dist/aravath_greybox/aravath_greybox.exe
+          test -f dist/aravath_greybox/assets/aravath/rock_wall_02_diff_1k.jpg
+
+      - name: Upload greybox artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: aravath_greybox-windows
+          path: dist/aravath_greybox
+          if-no-files-found: error
+          retention-days: 14
