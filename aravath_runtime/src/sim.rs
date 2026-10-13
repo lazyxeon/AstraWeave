@@ -12,6 +12,9 @@ use crate::locomotion::{clip_name, visual_time, LocomotionGraph, PoseInput};
 use crate::motor::{Motor, MotorInput};
 use crate::player::{self, Player};
 pub const FIXED_DT: f32 = 1.0 / 60.0;
+/// Chebyshev chunk radius. 3 keeps about 224 m of terrain loaded, which stays
+/// comfortable on a GTX 1660 with these low-poly chunks and props.
+pub const VIEW_RADIUS: i32 = 3;
 
 pub struct Greybox {
     pub physics: PhysicsWorld,
@@ -25,6 +28,8 @@ pub struct Greybox {
     pub pending_uploads: Vec<ChunkUpload>,
     /// Meshes from the first sync, moved out by the window once a device exists.
     pub initial_uploads: Vec<ChunkUpload>,
+    /// Negative skips streaming so a hand-built island is left alone.
+    view_radius: i32,
 }
 
 impl Greybox {
@@ -47,6 +52,7 @@ impl Greybox {
             nav: NavMesh::bake(&[], 0.5, 55.0),
             pending_uploads: Vec::new(),
             initial_uploads,
+            view_radius: -1,
         }
     }
 
@@ -69,6 +75,7 @@ impl Greybox {
             nav: NavMesh::bake(&[], 0.5, 55.0),
             pending_uploads: Vec::new(),
             initial_uploads,
+            view_radius: radius,
         }
     }
 
@@ -130,9 +137,13 @@ impl Greybox {
             FIXED_DT,
         );
         self.camera.pivot = self.player_pos();
-        let focus = self.player_pos();
-        let streamed = self.ground.stream_around(&mut self.physics, focus, 1);
-        self.pending_uploads.extend(streamed);
+        if self.view_radius >= 0 {
+            let focus = self.player_pos();
+            let streamed = self
+                .ground
+                .stream_around(&mut self.physics, focus, self.view_radius);
+            self.pending_uploads.extend(streamed);
+        }
     }
 
     pub fn spawn_enemy(&mut self, pos: Vec3) {

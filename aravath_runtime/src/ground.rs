@@ -7,14 +7,42 @@ use astraweave_render::mesh::{CpuMesh, MeshVertex as RenderVertex};
 use astraweave_terrain::{ChunkCoord, ChunkMesh, DualContouring, MeshVertex, Voxel, VoxelGrid};
 use glam::{Vec2, Vec3, Vec4};
 
-use crate::island;
+use crate::island::{self, biome_at, column_material, Biome, MAT_WOOD};
+
+pub struct ChunkPart {
+    pub material: u16,
+    pub mesh: CpuMesh,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PropKind {
+    Oak,
+    Pine,
+    Palm,
+    Rock,
+    Grass,
+    Bush,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct PropSpot {
+    pub kind: PropKind,
+    pub position: Vec3,
+    pub yaw: f32,
+    pub scale: f32,
+}
 
 pub struct ChunkUpload {
     pub coord: ChunkCoord,
-    pub mesh: CpuMesh,
-    /// Dominant solid material, used as the chunk's instance tint.
-    pub material: u16,
+    pub parts: Vec<ChunkPart>,
+    pub props: Vec<PropSpot>,
     pub removed: bool,
+}
+
+impl ChunkUpload {
+    pub fn vertex_count(&self) -> usize {
+        self.parts.iter().map(|part| part.mesh.vertices.len()).sum()
+    }
 }
 
 pub struct Ground {
@@ -23,6 +51,7 @@ pub struct Ground {
     mesher: DualContouring,
     bodies: HashMap<ChunkCoord, u64>,
     generated: HashSet<ChunkCoord>,
+    scatter: HashMap<ChunkCoord, Vec<PropSpot>>,
 }
 
 #[derive(Clone, Debug)]
@@ -42,6 +71,7 @@ impl Ground {
             mesher: DualContouring::new(),
             bodies: HashMap::new(),
             generated: HashSet::new(),
+            scatter: HashMap::new(),
         }
     }
 
@@ -69,6 +99,7 @@ impl Ground {
                 if self.generated.insert(coord) {
                     fill_height_chunk(&mut self.grid, coord);
                     self.reapply_edits(coord);
+                    self.scatter.insert(coord, scatter_chunk(coord));
                 }
             }
         }
@@ -81,14 +112,15 @@ impl Ground {
         let mut removed = Vec::new();
         for coord in stale {
             self.generated.remove(&coord);
+            self.scatter.remove(&coord);
             self.grid.remove_chunk(coord);
             if let Some(id) = self.bodies.remove(&coord) {
                 physics.remove_body(id);
             }
             removed.push(ChunkUpload {
                 coord,
-                mesh: chunk_mesh_to_cpu(&ChunkMesh::empty(coord)),
-                material: 0,
+                parts: Vec::new(),
+                props: Vec::new(),
                 removed: true,
             });
         }
@@ -135,11 +167,10 @@ impl Ground {
             self.grid.mark_chunk_clean(coord);
             self.replace_body(physics, coord, &mesh);
             let removed = mesh.is_empty();
-            let material = dominant_material(&mesh);
             uploads.push(ChunkUpload {
                 coord,
-                mesh: chunk_mesh_to_cpu(&mesh),
-                material,
+                parts: chunk_parts(&mesh),
+                props: self.visible_props(coord),
                 removed,
             });
         }
@@ -231,6 +262,24 @@ impl Ground {
         });
     }
 
+    fn visible_props(&self, coord: ChunkCoord) -> Vec<PropSpot> {
+        self.scatter
+            .get(&coord)
+            .map(|spots| {
+                spots
+                    .iter()
+                    .copied()
+                    .filter(|spot| {
+                        let below = spot.position - Vec3::Y * 0.6;
+                        self.grid
+                            .get_voxel(below)
+                            .is_some_and(|voxel| voxel.is_solid())
+                    })
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
     fn replace_body(&mut self, physics: &mut PhysicsWorld, coord: ChunkCoord, mesh: &ChunkMesh) {
         if let Some(old) = self.bodies.remove(&coord) {
             physics.remove_body(old);
@@ -271,15 +320,123 @@ fn fill_height_chunk(grid: &mut VoxelGrid, coord: ChunkCoord) {
             let wx = origin.x as i32 + x;
             let wz = origin.z as i32 + z;
             let h = island::surface_height(wx, wz).clamp(1, 24);
+            let biome = biome_at(wx, wz);
             for y in 0..=h {
-                let material = if y < h { 1 } else { 3 };
                 grid.set_voxel(
                     Vec3::new(wx as f32, y as f32, wz as f32),
-                    Voxel::new(1.0, material),
+                    Voxel::new(1.0, column_material(y, h, biome)),
                 );
+            }
+            if biome == Biome::Grass
+                && mix(wx, wz) % 53 == 0
+                && x + 3 < astraweave_terrain::CHUNK_SIZE
+            {
+                for step in 0..3 {
+                    grid.set_voxel(
+                        Vec3::new((wx + step) as f32, (h + 1) as f32, wz as f32),
+                        Voxel::new(1.0, MAT_WOOD),
+                    );
+                }
             }
         }
     }
+}
+
+fn scatter_chunk(coord: ChunkCoord) -> Vec<PropSpot> {
+    let origin = coord.to_world_pos();
+    let mut spots = Vec::new();
+    let size = astraweave_terrain::CHUNK_SIZE;
+    let mut x = 2;
+    while x < size - 2 {
+        let mut z = 2;
+        while z < size - 2 {
+            let wx = origin.x as i32 + x;
+            let wz = origin.z as i32 + z;
+            let h = island::surface_height(wx, wz);
+            let n = mix(wx, wz);
+            let yaw = (n & 255) as f32 / 255.0 * std::f32::consts::TAU;
+            let position = Vec3::new(wx as f32 + 0.5, h as f32 + 0.55, wz as f32 + 0.5);
+            match biome_at(wx, wz) {
+                Biome::Grass => {
+                    if n % 5 == 0 {
+                        spots.push(PropSpot {
+                            kind: PropKind::Grass,
+                            position,
+                            yaw,
+                            scale: 1.6,
+                        });
+                    }
+                    if n % 9 == 0 {
+                        spots.push(PropSpot {
+                            kind: PropKind::Bush,
+                            position,
+                            yaw,
+                            scale: 2.2,
+                        });
+                    }
+                    if n % 7 == 0 {
+                        spots.push(PropSpot {
+                            kind: if n % 2 == 0 {
+                                PropKind::Oak
+                            } else {
+                                PropKind::Pine
+                            },
+                            position,
+                            yaw,
+                            scale: 3.2,
+                        });
+                    }
+                }
+                Biome::Sand => {
+                    if n % 6 == 0 {
+                        spots.push(PropSpot {
+                            kind: PropKind::Palm,
+                            position,
+                            yaw,
+                            scale: 3.0,
+                        });
+                    }
+                    if n % 8 == 0 {
+                        spots.push(PropSpot {
+                            kind: PropKind::Rock,
+                            position,
+                            yaw,
+                            scale: 1.8,
+                        });
+                    }
+                }
+                Biome::Rock => {
+                    if n % 4 == 0 {
+                        spots.push(PropSpot {
+                            kind: PropKind::Rock,
+                            position,
+                            yaw,
+                            scale: 2.4,
+                        });
+                    }
+                    if n % 11 == 0 {
+                        spots.push(PropSpot {
+                            kind: PropKind::Pine,
+                            position,
+                            yaw,
+                            scale: 2.6,
+                        });
+                    }
+                }
+            }
+            z += 5;
+        }
+        x += 5;
+    }
+    spots
+}
+
+fn mix(x: i32, z: i32) -> u32 {
+    let mut n = (x as u32)
+        .wrapping_mul(374761393)
+        .wrapping_add((z as u32).wrapping_mul(668265263));
+    n = (n ^ (n >> 13)).wrapping_mul(1274126177);
+    n
 }
 
 fn triangle_list(indices: &[u32]) -> Vec<[u32; 3]> {
@@ -289,22 +446,51 @@ fn triangle_list(indices: &[u32]) -> Vec<[u32; 3]> {
         .collect()
 }
 
-fn dominant_material(mesh: &ChunkMesh) -> u16 {
-    mesh.vertices
-        .iter()
-        .map(|v| v.material)
-        .find(|m| *m != 0)
-        .unwrap_or(0)
-}
-
-pub fn chunk_mesh_to_cpu(mesh: &ChunkMesh) -> CpuMesh {
-    let vertices = mesh.vertices.iter().map(render_vertex).collect();
-    CpuMesh {
-        vertices,
-        indices: mesh.indices.clone(),
-        albedo_image: None,
-        texture_source_hint: None,
+fn chunk_parts(mesh: &ChunkMesh) -> Vec<ChunkPart> {
+    let mut faces: HashMap<u16, Vec<[u32; 3]>> = HashMap::new();
+    for tri in mesh.indices.chunks_exact(3) {
+        let Some(vertex) = mesh.vertices.get(tri[0] as usize) else {
+            continue;
+        };
+        faces
+            .entry(vertex.material)
+            .or_default()
+            .push([tri[0], tri[1], tri[2]]);
     }
+    let mut parts = Vec::new();
+    for (material, tris) in faces {
+        let mut remap: HashMap<u32, u32> = HashMap::new();
+        let mut vertices = Vec::new();
+        let mut indices = Vec::new();
+        for face in tris {
+            for index in face {
+                let mapped = if let Some(existing) = remap.get(&index) {
+                    *existing
+                } else {
+                    let id = vertices.len() as u32;
+                    if let Some(vertex) = mesh.vertices.get(index as usize) {
+                        vertices.push(render_vertex(vertex));
+                    }
+                    remap.insert(index, id);
+                    id
+                };
+                indices.push(mapped);
+            }
+        }
+        if vertices.is_empty() {
+            continue;
+        }
+        parts.push(ChunkPart {
+            material,
+            mesh: CpuMesh {
+                vertices,
+                indices,
+                albedo_image: None,
+                texture_source_hint: None,
+            },
+        });
+    }
+    parts
 }
 
 fn render_vertex(v: &MeshVertex) -> RenderVertex {
@@ -315,19 +501,55 @@ fn render_vertex(v: &MeshVertex) -> RenderVertex {
     };
     let helper = if n.y.abs() < 0.99 { Vec3::Y } else { Vec3::X };
     let tangent = n.cross(helper).normalize_or_zero();
+    let (u, t) = if n.y.abs() >= n.x.abs() && n.y.abs() >= n.z.abs() {
+        (v.position.x, v.position.z)
+    } else if n.x.abs() >= n.z.abs() {
+        (v.position.z, v.position.y)
+    } else {
+        (v.position.x, v.position.y)
+    };
     RenderVertex::new(
         v.position,
         n,
         Vec4::new(tangent.x, tangent.y, tangent.z, 1.0),
-        Vec2::new(v.position.x * 0.05, v.position.z * 0.05),
+        Vec2::new(u * 0.12, t * 0.12),
     )
 }
 
 pub fn material_tint(material: u16) -> [f32; 4] {
     match material {
+        5 => [0.55, 0.36, 0.18, 1.0],
+        4 => [0.76, 0.70, 0.45, 1.0],
         3 => [0.35, 0.55, 0.28, 1.0],
         2 => [0.45, 0.32, 0.18, 1.0],
         1 => [0.55, 0.55, 0.58, 1.0],
         _ => [0.7, 0.7, 0.72, 1.0],
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use astraweave_physics::PhysicsWorld;
+    use astraweave_terrain::VoxelGrid;
+
+    #[test]
+    fn one_streamed_chunk_splits_materials_and_scatters_props() {
+        let mut physics = PhysicsWorld::new(Vec3::new(0.0, -9.81, 0.0));
+        let mut ground = Ground::from_grid(VoxelGrid::new());
+        let uploads = ground.stream_around(&mut physics, Vec3::new(16.0, 10.0, 16.0), 0);
+        let materials: std::collections::HashSet<u16> = uploads
+            .iter()
+            .flat_map(|chunk| chunk.parts.iter().map(|part| part.material))
+            .collect();
+        assert!(
+            materials.len() >= 2,
+            "expected layered materials, got {materials:?}"
+        );
+        assert!(
+            uploads.iter().any(|chunk| !chunk.props.is_empty()),
+            "expected trees or rocks"
+        );
+        assert!(uploads.iter().any(|chunk| chunk.vertex_count() > 100));
     }
 }

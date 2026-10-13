@@ -136,7 +136,7 @@ mod tests {
         assert!(ground.place_sphere(Vec3::new(3.0, 4.0, 3.0), 0.6, 2));
         let mut physics = PhysicsWorld::new(Vec3::new(0.0, -9.81, 0.0));
         let first = ground.sync_dirty(&mut physics);
-        let verts: usize = first.iter().map(|chunk| chunk.mesh.vertices.len()).sum();
+        let verts: usize = first.iter().map(|chunk| chunk.vertex_count()).sum();
         assert!(verts > 0);
 
         let dir = tempfile::tempdir().unwrap();
@@ -159,7 +159,7 @@ mod tests {
         fresh.replay(&loaded.edits);
         let mut physics_b = PhysicsWorld::new(Vec3::new(0.0, -9.81, 0.0));
         let second = fresh.sync_dirty(&mut physics_b);
-        let verts_b: usize = second.iter().map(|chunk| chunk.mesh.vertices.len()).sum();
+        let verts_b: usize = second.iter().map(|chunk| chunk.vertex_count()).sum();
         assert_eq!(verts, verts_b);
 
         let mut nav = NavMesh::bake(&[], 0.5, 55.0);
