@@ -2,8 +2,8 @@
 
 - [x] Phase 1 — island, ground sync, third-person camera, dig, headless tests, window stayed up
 - [x] Phase 2 — walk, run, sprint, jump, double jump, crouch, roll i-frames, fly toggle
-- [ ] Phase 3 — locomotion graph
-- [ ] Phase 4 — sword, shield, lock-on, enemies
+- [x] Phase 3 — locomotion graph
+- [x] Phase 4 — sword, shield, lock-on, enemies
 - [ ] Phase 5 — place, support, save/load, nav dirty region
 - [ ] Phase 6 — open-world chunk streaming
 - [ ] Phase 7 — CC0 assets and credits

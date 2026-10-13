@@ -64,6 +64,7 @@ pub struct MotorInput {
     pub crouch: bool,
     pub roll: bool,
     pub fly_toggle: bool,
+    pub feet_locked: bool,
 }
 
 impl Motor {
@@ -181,6 +182,9 @@ impl Motor {
         let (forward, right) = player::flat_basis(camera_yaw);
         let mut wish = player::wish_from_axes(forward, right, input.move_x, input.move_y, speed);
         if !moving {
+            wish = Vec3::ZERO;
+        }
+        if input.feet_locked && self.mode != MotorMode::Fly {
             wish = Vec3::ZERO;
         }
         if wish.length_squared() > 1e-6 {

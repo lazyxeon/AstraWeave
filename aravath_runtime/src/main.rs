@@ -29,6 +29,7 @@ struct App {
     last_cursor: Option<(f32, f32)>,
     last_time: Instant,
     player_mesh_ready: bool,
+    lock_toggle: bool,
 }
 
 impl App {
@@ -36,11 +37,18 @@ impl App {
         Self {
             window: None,
             renderer: None,
-            sim: Greybox::island(),
+            sim: {
+                let mut sim = Greybox::island();
+                sim.spawn_enemy(Vec3::new(30.0, 14.0, 22.0));
+                sim.spawn_enemy(Vec3::new(18.0, 14.0, 30.0));
+                sim.spawn_enemy(Vec3::new(34.0, 14.0, 30.0));
+                sim
+            },
             input: demo_input(),
             last_cursor: None,
             last_time: Instant::now(),
             player_mesh_ready: false,
+            lock_toggle: false,
         }
     }
 }
@@ -49,10 +57,15 @@ fn chunk_name(x: i32, y: i32, z: i32) -> String {
     format!("chunk_{x}_{y}_{z}")
 }
 
+fn box_mesh(hx: f32, hy: f32, hz: f32) -> astraweave_render::mesh::CpuMesh {
+    unit_box_scaled(hx, hy, hz)
+}
+
 fn unit_box() -> astraweave_render::mesh::CpuMesh {
-    let hx = 0.35;
-    let hy = 0.9;
-    let hz = 0.35;
+    unit_box_scaled(0.35, 0.9, 0.35)
+}
+
+fn unit_box_scaled(hx: f32, hy: f32, hz: f32) -> astraweave_render::mesh::CpuMesh {
     let corners = [
         Vec3::new(-hx, -hy, -hz),
         Vec3::new(hx, -hy, -hz),
@@ -151,6 +164,18 @@ impl ApplicationHandler for App {
             self.last_cursor = Some((x, y));
         }
 
+        if let WindowEvent::KeyboardInput {
+            event:
+                KeyEvent {
+                    physical_key: PhysicalKey::Code(KeyCode::Tab),
+                    state: ElementState::Pressed,
+                    ..
+                },
+            ..
+        } = &event
+        {
+            self.lock_toggle = true;
+        }
         self.input.process_window_event(&event);
 
         let Some(renderer) = self.renderer.as_mut() else {
@@ -189,7 +214,18 @@ impl ApplicationHandler for App {
             crouch: self.input.is_down(Action::Crouch),
             roll: self.input.just_pressed(Action::Ability1),
             fly_toggle: self.input.just_pressed(Action::Ability2),
+            feet_locked: false,
         };
+        if self.input.just_pressed(Action::AttackLight) {
+            self.sim.combat.attack.start();
+        }
+        self.sim.combat.blocking = self.input.is_down(Action::AttackHeavy);
+        if self.lock_toggle {
+            self.sim
+                .combat
+                .toggle_lock(&self.sim.physics, &self.sim.player);
+            self.lock_toggle = false;
+        }
         for step in 0..steps {
             let mut step_input = input;
             if step > 0 {
@@ -209,6 +245,8 @@ impl ApplicationHandler for App {
         let distance = self.sim.occluded_camera_distance();
         let view = self.sim.camera.to_render_view_at(distance);
         let pos = self.sim.player_pos();
+        let yaw = self.sim.player.facing_yaw;
+        let foes = enemy_instances(&self.sim);
         let spawn_player = !self.player_mesh_ready;
         self.player_mesh_ready = true;
 
@@ -225,8 +263,33 @@ impl ApplicationHandler for App {
         if spawn_player {
             let mesh = renderer.create_mesh_from_cpu_mesh(&unit_box());
             renderer.add_model("player", mesh, &instance);
+            let sword = renderer.create_mesh_from_cpu_mesh(&box_mesh(0.08, 0.5, 0.08));
+            renderer.add_model(
+                "sword",
+                sword,
+                &[Instance {
+                    transform: Mat4::IDENTITY,
+                    color: [0.75, 0.78, 0.82, 1.0],
+                    material_id: 0,
+                }],
+            );
+            let shield = renderer.create_mesh_from_cpu_mesh(&box_mesh(0.4, 0.5, 0.06));
+            renderer.add_model(
+                "shield",
+                shield,
+                &[Instance {
+                    transform: Mat4::IDENTITY,
+                    color: [0.45, 0.28, 0.16, 1.0],
+                    material_id: 0,
+                }],
+            );
+            let foe = renderer.create_mesh_from_cpu_mesh(&unit_box());
+            renderer.add_model("enemies", foe, &foes);
         } else {
             renderer.update_model_instances("player", &instance);
+            renderer.update_model_instances("sword", &[weapon_instance(pos, yaw, 0.9, 0.2)]);
+            renderer.update_model_instances("shield", &[weapon_instance(pos, yaw, -0.45, 0.1)]);
+            renderer.update_model_instances("enemies", &foes);
         }
         if let Err(err) = renderer.render() {
             eprintln!("render error: {err:?}");
@@ -253,6 +316,29 @@ fn upload_chunks(renderer: &mut Renderer, uploads: &[ChunkUpload]) {
             }],
         );
     }
+}
+
+fn weapon_instance(pos: Vec3, yaw: f32, side: f32, forward: f32) -> Instance {
+    let (fwd, right) = aravath_runtime::player::flat_basis(yaw);
+    Instance {
+        transform: Mat4::from_translation(pos + right * side + fwd * forward + Vec3::Y * 0.2),
+        color: [0.8, 0.8, 0.85, 1.0],
+        material_id: 0,
+    }
+}
+
+fn enemy_instances(sim: &Greybox) -> Vec<Instance> {
+    sim.combat
+        .enemies
+        .iter()
+        .filter(|enemy| enemy.alive())
+        .filter_map(|enemy| aravath_runtime::combat::body_pos(&sim.physics, enemy.body))
+        .map(|pos| Instance {
+            transform: Mat4::from_translation(pos),
+            color: [0.75, 0.2, 0.2, 1.0],
+            material_id: 0,
+        })
+        .collect()
 }
 
 fn demo_input() -> InputManager {
