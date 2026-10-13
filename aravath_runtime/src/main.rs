@@ -18,7 +18,9 @@ use winit::{
     window::{Window, WindowId},
 };
 
+use aravath_runtime::figure::{actor_transform, Figure};
 use aravath_runtime::ground::{material_tint, ChunkUpload};
+use aravath_runtime::props::{self, figurine_transform, NodeActor, TexturedMesh};
 use aravath_runtime::Greybox;
 
 struct App {
@@ -32,6 +34,11 @@ struct App {
     lock_toggle: bool,
     place_toggle: bool,
     albedo: Option<(u32, u32, Vec<u8>)>,
+    figure: Figure,
+    sword: TexturedMesh,
+    shield: TexturedMesh,
+    figurine: NodeActor,
+    foe_ready: bool,
 }
 
 impl App {
@@ -53,68 +60,17 @@ impl App {
             lock_toggle: false,
             place_toggle: false,
             albedo: load_ground_albedo(),
+            figure: Figure::load(&Figure::library_path()).expect("load CC0 character"),
+            sword: props::load_rigid(&props::sword_path()).expect("load CC0 sword"),
+            shield: props::load_rigid(&props::shield_path()).expect("load CC0 shield"),
+            figurine: NodeActor::load(&NodeActor::figurine_path()).expect("load CC0 enemy"),
+            foe_ready: false,
         }
     }
 }
 
 fn chunk_name(x: i32, y: i32, z: i32) -> String {
     format!("chunk_{x}_{y}_{z}")
-}
-
-fn box_mesh(hx: f32, hy: f32, hz: f32) -> astraweave_render::mesh::CpuMesh {
-    unit_box_scaled(hx, hy, hz)
-}
-
-fn unit_box() -> astraweave_render::mesh::CpuMesh {
-    unit_box_scaled(0.35, 0.9, 0.35)
-}
-
-fn unit_box_scaled(hx: f32, hy: f32, hz: f32) -> astraweave_render::mesh::CpuMesh {
-    let corners = [
-        Vec3::new(-hx, -hy, -hz),
-        Vec3::new(hx, -hy, -hz),
-        Vec3::new(hx, hy, -hz),
-        Vec3::new(-hx, hy, -hz),
-        Vec3::new(-hx, -hy, hz),
-        Vec3::new(hx, -hy, hz),
-        Vec3::new(hx, hy, hz),
-        Vec3::new(-hx, hy, hz),
-    ];
-    let faces: [[u32; 6]; 6] = [
-        [0, 1, 2, 0, 2, 3],
-        [5, 4, 7, 5, 7, 6],
-        [4, 0, 3, 4, 3, 7],
-        [1, 5, 6, 1, 6, 2],
-        [3, 2, 6, 3, 6, 7],
-        [4, 5, 1, 4, 1, 0],
-    ];
-    let mut vertices = Vec::new();
-    let mut indices = Vec::new();
-    for face in faces {
-        let a = corners[face[0] as usize];
-        let b = corners[face[1] as usize];
-        let c = corners[face[2] as usize];
-        let n = (b - a).cross(c - a).normalize_or_zero();
-        let helper = if n.y.abs() < 0.99 { Vec3::Y } else { Vec3::X };
-        let tangent = n.cross(helper).normalize_or_zero();
-        let base = vertices.len() as u32;
-        for (offset, corner) in face.into_iter().enumerate() {
-            let p = corners[corner as usize];
-            vertices.push(astraweave_render::mesh::MeshVertex::new(
-                p,
-                n,
-                glam::Vec4::new(tangent.x, tangent.y, tangent.z, 1.0),
-                glam::Vec2::ZERO,
-            ));
-            indices.push(base + offset as u32);
-        }
-    }
-    astraweave_render::mesh::CpuMesh {
-        vertices,
-        indices,
-        albedo_image: None,
-        texture_source_hint: None,
-    }
 }
 
 impl ApplicationHandler for App {
@@ -266,9 +222,27 @@ impl ApplicationHandler for App {
         let view = self.sim.camera.to_render_view_at(distance);
         let pos = self.sim.player_pos();
         let yaw = self.sim.player.facing_yaw;
-        let foes = enemy_instances(&self.sim);
-        let spawn_player = !self.player_mesh_ready;
-        self.player_mesh_ready = true;
+        let posed = self.figure.skin("Idle_Loop", 0.0).expect("pose character");
+        let (hand_l, hand_r) = self
+            .figure
+            .hand_frames("Idle_Loop", 0.0)
+            .expect("hand joints");
+        let player_xform = actor_transform(pos, yaw);
+        let mut foe_xforms = Vec::new();
+        for enemy in &self.sim.combat.enemies {
+            if !enemy.alive() {
+                continue;
+            }
+            if let Some(enemy_pos) =
+                aravath_runtime::combat::body_pos(&self.sim.physics, enemy.body)
+            {
+                let to_player = pos - enemy_pos;
+                let yaw = to_player.z.atan2(to_player.x);
+                foe_xforms.push(figurine_transform(enemy_pos, yaw));
+            }
+        }
+        let sword_xform = player_xform * props::sword_on_hand(hand_r);
+        let shield_xform = player_xform * props::shield_on_hand(hand_l);
 
         let albedo = self.albedo.clone();
         let renderer = self.renderer.as_mut().expect("renderer");
@@ -277,46 +251,110 @@ impl ApplicationHandler for App {
         }
         upload_chunks(renderer, &streamed, albedo.as_ref());
         renderer.update_view(&view);
-        let instance = [Instance {
-            transform: Mat4::from_translation(pos),
-            color: [0.85, 0.55, 0.25, 1.0],
+        upload_posed(
+            renderer,
+            "player",
+            &posed,
+            player_xform,
+            [1.0, 1.0, 1.0, 1.0],
+        );
+        let sword = [Instance {
+            transform: sword_xform,
+            color: [1.0, 1.0, 1.0, 1.0],
             material_id: 0,
         }];
-        if spawn_player {
-            let mesh = renderer.create_mesh_from_cpu_mesh(&unit_box());
-            renderer.add_model("player", mesh, &instance);
-            let sword = renderer.create_mesh_from_cpu_mesh(&box_mesh(0.08, 0.5, 0.08));
-            renderer.add_model(
-                "sword",
-                sword,
-                &[Instance {
-                    transform: Mat4::IDENTITY,
-                    color: [0.75, 0.78, 0.82, 1.0],
-                    material_id: 0,
-                }],
-            );
-            let shield = renderer.create_mesh_from_cpu_mesh(&box_mesh(0.4, 0.5, 0.06));
-            renderer.add_model(
-                "shield",
-                shield,
-                &[Instance {
-                    transform: Mat4::IDENTITY,
-                    color: [0.45, 0.28, 0.16, 1.0],
-                    material_id: 0,
-                }],
-            );
-            let foe = renderer.create_mesh_from_cpu_mesh(&unit_box());
-            renderer.add_model("enemies", foe, &foes);
+        let shield = [Instance {
+            transform: shield_xform,
+            color: [1.0, 1.0, 1.0, 1.0],
+            material_id: 0,
+        }];
+        if !self.player_mesh_ready {
+            upload_textured(renderer, "sword", &self.sword, &sword);
+            upload_textured(renderer, "shield", &self.shield, &shield);
+            self.player_mesh_ready = true;
         } else {
-            renderer.update_model_instances("player", &instance);
-            renderer.update_model_instances("sword", &[weapon_instance(pos, yaw, 0.9, 0.2)]);
-            renderer.update_model_instances("shield", &[weapon_instance(pos, yaw, -0.45, 0.1)]);
-            renderer.update_model_instances("enemies", &foes);
+            renderer.update_model_instances("sword", &sword);
+            renderer.update_model_instances("shield", &shield);
+        }
+        let foe_pose = self.figurine.pose("idle", 0.0).expect("pose enemy");
+        let foe_instances: Vec<Instance> = foe_xforms
+            .iter()
+            .map(|transform| Instance {
+                transform: *transform,
+                color: [1.0, 1.0, 1.0, 1.0],
+                material_id: 0,
+            })
+            .collect();
+        if foe_instances.is_empty() {
+            renderer.clear_model("enemies");
+            self.foe_ready = false;
+        } else if !self.foe_ready {
+            if let Some(albedo) = &self.figurine.albedo {
+                renderer.add_model_with_texture(
+                    "enemies",
+                    renderer.create_mesh_from_cpu_mesh(&foe_pose),
+                    &foe_instances,
+                    albedo.width,
+                    albedo.height,
+                    &albedo.pixels,
+                );
+            }
+            self.foe_ready = true;
+        } else {
+            renderer.update_model_instances("enemies", &foe_instances);
         }
         if let Err(err) = renderer.render() {
             eprintln!("render error: {err:?}");
         }
         window.request_redraw();
+    }
+}
+
+fn upload_textured(
+    renderer: &mut Renderer,
+    name: &str,
+    mesh: &TexturedMesh,
+    instances: &[Instance],
+) {
+    let gpu = renderer.create_mesh_from_cpu_mesh(&mesh.mesh);
+    if let Some(albedo) = &mesh.albedo {
+        renderer.add_model_with_texture(
+            name,
+            gpu,
+            instances,
+            albedo.width,
+            albedo.height,
+            &albedo.pixels,
+        );
+    } else {
+        renderer.add_model(name, gpu, instances);
+    }
+}
+
+fn upload_posed(
+    renderer: &mut Renderer,
+    name: &str,
+    posed: &[aravath_runtime::figure::PosedPrimitive],
+    transform: Mat4,
+    tint: [f32; 4],
+) {
+    for (index, primitive) in posed.iter().enumerate() {
+        let gpu = renderer.create_mesh_from_cpu_mesh(&primitive.mesh);
+        let color = [
+            primitive.color[0] * tint[0],
+            primitive.color[1] * tint[1],
+            primitive.color[2] * tint[2],
+            1.0,
+        ];
+        renderer.add_model(
+            format!("{name}_{index}"),
+            gpu,
+            &[Instance {
+                transform,
+                color,
+                material_id: 0,
+            }],
+        );
     }
 }
 
@@ -351,29 +389,6 @@ fn load_ground_albedo() -> Option<(u32, u32, Vec<u8>)> {
     let image = image::open(path).ok()?.to_rgba8();
     let (width, height) = image.dimensions();
     Some((width, height, image.into_raw()))
-}
-
-fn weapon_instance(pos: Vec3, yaw: f32, side: f32, forward: f32) -> Instance {
-    let (fwd, right) = aravath_runtime::player::flat_basis(yaw);
-    Instance {
-        transform: Mat4::from_translation(pos + right * side + fwd * forward + Vec3::Y * 0.2),
-        color: [0.8, 0.8, 0.85, 1.0],
-        material_id: 0,
-    }
-}
-
-fn enemy_instances(sim: &Greybox) -> Vec<Instance> {
-    sim.combat
-        .enemies
-        .iter()
-        .filter(|enemy| enemy.alive())
-        .filter_map(|enemy| aravath_runtime::combat::body_pos(&sim.physics, enemy.body))
-        .map(|pos| Instance {
-            transform: Mat4::from_translation(pos),
-            color: [0.75, 0.2, 0.2, 1.0],
-            material_id: 0,
-        })
-        .collect()
 }
 
 fn demo_input() -> InputManager {

@@ -7,11 +7,13 @@
 
 pub mod bridge_agent;
 pub mod combat;
+pub mod figure;
 pub mod ground;
 pub mod island;
 pub mod locomotion;
 pub mod motor;
 pub mod player;
+pub mod props;
 pub mod save;
 pub mod sim;
 
