@@ -157,6 +157,7 @@ unsafe extern "system" {
 #[cfg(windows)]
 pub fn paint_loading(window: &winit::window::Window, text: &str) {
     use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+    use std::os::windows::ffi::OsStrExt;
     let Ok(handle) = window.window_handle() else {
         return;
     };
