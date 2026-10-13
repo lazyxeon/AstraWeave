@@ -350,6 +350,9 @@ dependencies = [
  "astraweave-render",
  "astraweave-terrain",
  "aw-save",
+ "egui",
+ "egui-wgpu",
+ "egui-winit",
  "glam",
  "gltf",
  "image",
@@ -357,6 +360,7 @@ dependencies = [
  "tempfile",
  "time",
  "uuid",
+ "wgpu",
  "winit",
 ]
 

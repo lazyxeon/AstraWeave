@@ -7,6 +7,7 @@
 pub mod combat;
 pub mod figure;
 pub mod ground;
+pub mod hud;
 pub mod island;
 pub mod locomotion;
 pub mod motor;

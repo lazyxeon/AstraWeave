@@ -37,7 +37,10 @@ cargo run -p aravath_runtime --bin aravath_greybox
 | Q | Dodge roll |
 | F | Toggle creative flight |
 | E | Dig |
-| R | Place |
+| R | Place the selected block |
+| 1-5 | Select stone, dirt, grass, sand, or wood |
+| F5 | Save |
+| F9 | Load |
 | Left mouse | Sword |
 | Right mouse | Shield |
 | Tab | Lock on |
