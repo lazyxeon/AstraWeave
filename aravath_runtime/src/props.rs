@@ -110,7 +110,7 @@ impl NodeActor {
     }
 
     pub fn figurine_path() -> std::path::PathBuf {
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("../assets/aravath/models/figurine.glb")
+        crate::assets::asset_dir().join("models/figurine.glb")
     }
 
     pub fn has_clip(&self, name: &str) -> bool {
@@ -309,11 +309,11 @@ pub fn load_rigid(path: &Path) -> Result<TexturedMesh> {
 }
 
 pub fn sword_path() -> std::path::PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../assets/aravath/models/weapon-sword.glb")
+    crate::assets::asset_dir().join("models/weapon-sword.glb")
 }
 
 pub fn shield_path() -> std::path::PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../assets/aravath/models/weapon-shield.glb")
+    crate::assets::asset_dir().join("models/weapon-shield.glb")
 }
 
 /// Grip sits on the hand origin. The Kenney blade runs along local +X and
@@ -520,8 +520,7 @@ mod tests {
 
     #[test]
     fn oak_keeps_separate_leaf_and_bark_colors() {
-        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../assets/aravath/models/nature/tree_oak.glb");
+        let path = crate::assets::asset_dir().join("models/nature/tree_oak.glb");
         let parts = load_colored(&path).unwrap();
         assert!(parts.len() >= 2);
         assert!(parts.iter().all(|part| part.mesh.vertices.len() > 10));

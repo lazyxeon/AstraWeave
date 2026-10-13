@@ -37,6 +37,7 @@ pub struct Greybox {
     pub initial_uploads: Vec<ChunkUpload>,
     /// Negative skips streaming so a hand-built island is left alone.
     view_radius: i32,
+    spawn: Vec3,
 }
 
 impl Greybox {
@@ -60,6 +61,7 @@ impl Greybox {
             pending_uploads: Vec::new(),
             initial_uploads,
             view_radius: -1,
+            spawn,
         }
     }
 
@@ -83,6 +85,7 @@ impl Greybox {
             pending_uploads: Vec::new(),
             initial_uploads,
             view_radius: radius,
+            spawn,
         }
     }
 
@@ -159,11 +162,13 @@ impl Greybox {
             position: self.player_pos(),
             yaw: self.player.facing_yaw,
             stamina: self.motor.stamina,
+            player_hp: self.combat.player_hp,
         }
     }
 
     pub fn restore(&mut self, checkpoint: crate::save::Checkpoint) -> Vec<ChunkUpload> {
         self.motor.stamina = checkpoint.stamina.clamp(0.0, self.motor.stamina_max);
+        self.combat.player_hp = checkpoint.player_hp.max(0.0);
         self.player.facing_yaw = checkpoint.yaw;
         self.physics
             .set_body_position(self.player.body, checkpoint.position);
@@ -172,6 +177,21 @@ impl Greybox {
         let uploads = self.ground.sync_dirty(&mut self.physics);
         self.physics.step();
         uploads
+    }
+
+    /// Full health at the original spawn. The edit log stays.
+    pub fn respawn(&mut self) {
+        self.combat.player_hp = 100.0;
+        self.combat.hit_react = 0.0;
+        self.combat.attack = crate::combat::Attack::default();
+        self.motor = Motor::default();
+        self.graph = LocomotionGraph::default();
+        if let Some(ctrl) = self.physics.char_map.get_mut(&self.player.body) {
+            ctrl.gravity_scale = 1.0;
+            ctrl.vertical_velocity = 0.0;
+        }
+        self.physics.set_body_position(self.player.body, self.spawn);
+        self.camera.pivot = self.spawn;
     }
 
     pub fn spawn_enemy(&mut self, pos: Vec3) {
@@ -327,5 +347,110 @@ mod tests {
         assert_eq!(name, "Sword_Attack");
         assert!(!looping);
         assert!(time >= 0.0);
+    }
+
+    #[test]
+    fn save_and_load_round_trip_keeps_the_hole_and_the_body() {
+        let mut sim = Greybox::open(0);
+        let feet = sim.player_pos();
+        sim.ground.dig_sphere(Vec3::new(feet.x, 4.0, feet.z), 1.2);
+        let _ = sim.ground.sync_dirty(&mut sim.physics);
+        sim.combat.player_hp = 41.0;
+        sim.motor.stamina = 18.0;
+        sim.player.facing_yaw = 0.7;
+        let dir = tempfile::tempdir().unwrap();
+        crate::save::save_checkpoint(dir.path(), &sim.checkpoint()).unwrap();
+        sim.ground.dig_sphere(Vec3::new(20.0, 4.0, 16.0), 1.0);
+        sim.combat.player_hp = 0.0;
+        let loaded = crate::save::load_checkpoint(dir.path()).unwrap();
+        let _ = sim.restore(loaded);
+        assert!((sim.combat.player_hp - 41.0).abs() < 1e-3);
+        assert!((sim.motor.stamina - 18.0).abs() < 1e-3);
+        assert!((sim.player.facing_yaw - 0.7).abs() < 1e-3);
+        let hole = sim.ground.grid.get_voxel(Vec3::new(feet.x, 4.0, feet.z));
+        assert!(hole.is_some_and(|voxel| !voxel.is_solid()));
+        let later = sim.ground.grid.get_voxel(Vec3::new(20.0, 4.0, 16.0));
+        assert!(
+            later.is_some_and(|voxel| voxel.is_solid()),
+            "a dig made after the save must not survive the load"
+        );
+        crate::save::save_checkpoint(dir.path(), &sim.checkpoint()).unwrap();
+        let again = crate::save::load_checkpoint(dir.path()).unwrap();
+        assert!((again.player_hp - 41.0).abs() < 1e-3);
+        let missing = dir.path().join("missing");
+        assert!(crate::save::load_checkpoint(&missing).is_err());
+    }
+
+    #[test]
+    fn digging_under_a_streamed_player_stays_finite() {
+        let mut sim = Greybox::open(0);
+        for _ in 0..40 {
+            sim.tick_controls(MotorInput::default());
+        }
+        let pos = sim.player_pos();
+        assert!(pos.is_finite(), "{pos:?}");
+        sim.ground
+            .dig_sphere(Vec3::new(pos.x, pos.y - 1.2, pos.z), 5.0);
+        let _ = sim.ground.sync_dirty(&mut sim.physics);
+        sim.physics.step();
+        for _ in 0..40 {
+            sim.tick_controls(MotorInput::default());
+            sim.ground.dig_sphere(
+                Vec3::new(
+                    sim.player_pos().x,
+                    sim.player_pos().y - 2.0,
+                    sim.player_pos().z,
+                ),
+                1.5,
+            );
+            let _ = sim.ground.sync_dirty(&mut sim.physics);
+        }
+        let fallen = sim.player_pos();
+        assert!(fallen.is_finite(), "{fallen:?}");
+        assert!(pos.y - fallen.y > 0.5, "{pos:?} -> {fallen:?}");
+    }
+
+    #[test]
+    fn death_respawn_returns_to_the_spawn() {
+        let mut sim = Greybox::open(0);
+        let spawn = sim.player_pos();
+        sim.combat.player_hp = 0.0;
+        sim.motor.mode = crate::motor::MotorMode::Fly;
+        sim.physics
+            .set_body_position(sim.player.body, Vec3::new(8.0, -40.0, 8.0));
+        sim.respawn();
+        assert!((sim.combat.player_hp - 100.0).abs() < 1e-3);
+        assert_eq!(sim.motor.mode, crate::motor::MotorMode::Locomotion);
+        let back = sim.player_pos();
+        assert!(
+            (back - spawn).length() < 0.2,
+            "respawn {back:?} spawn {spawn:?}"
+        );
+        sim.tick_controls(MotorInput::default());
+        let (clip, _, _) = sim.player_visual(2.0);
+        assert_ne!(clip, "Death01");
+    }
+
+    #[test]
+    fn flying_across_a_chunk_edge_stays_airborne() {
+        let mut sim = Greybox::open(1);
+        let start = sim.player_pos();
+        sim.tick_controls(MotorInput {
+            fly_toggle: true,
+            ..MotorInput::default()
+        });
+        for _ in 0..180 {
+            sim.tick_controls(MotorInput {
+                move_y: 1.0,
+                ..MotorInput::default()
+            });
+        }
+        let end = sim.player_pos();
+        assert!(end.is_finite(), "{end:?}");
+        assert!(end.x > start.x + 16.0, "{start:?} -> {end:?}");
+        assert!(
+            (end.y - start.y).abs() < 3.0,
+            "fly should not fall through a chunk seam {start:?} -> {end:?}"
+        );
     }
 }

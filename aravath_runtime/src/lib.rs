@@ -4,6 +4,7 @@
 //! rebuilt from dirty chunks. Fate-weaving, the editor, and the LLM stack
 //! are not dependencies of this crate.
 
+pub mod assets;
 pub mod combat;
 pub mod figure;
 pub mod ground;

@@ -38,7 +38,7 @@ struct CascadeData {
 
 @group(0) @binding(0) var<uniform>         params:      ScatterParams;
 @group(0) @binding(1) var                  t_density:   texture_3d<f32>;    // fog density froxel
-@group(0) @binding(2) var                  t_shadow:    texture_depth_2d;   // CSM shadow atlas
+@group(0) @binding(2) var                  t_shadow:    texture_depth_2d_array; // CSM layers
 @group(0) @binding(3) var<storage, read>   cascades:    array<CascadeData>; // 4 cascades
 @group(0) @binding(4) var                  s_linear:    sampler;
 @group(0) @binding(5) var                  s_shadow:    sampler_comparison;
@@ -92,9 +92,14 @@ fn sample_shadow(world_pos: vec3<f32>) -> f32 {
 
     let compare_depth = shadow_ndc.z;
 
-    // Single comparison sample for volumetric (performance-critical)
-    // Use textureSampleCompareLevel (explicit LOD 0) as textureSampleCompare is fragment-only
-    return textureSampleCompareLevel(t_shadow, s_shadow, shadow_uv, compare_depth);
+    // One comparison sample per froxel. The array layer is the cascade.
+    return textureSampleCompareLevel(
+        t_shadow,
+        s_shadow,
+        shadow_uv,
+        i32(cascade_idx),
+        compare_depth,
+    );
 }
 
 // ---- Temporal jitter (Halton-like offset for temporal stability) ----

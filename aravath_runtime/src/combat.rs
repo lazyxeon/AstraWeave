@@ -269,7 +269,7 @@ impl Combat {
                     {
                         if id == player_body {
                             let scale = motor.apply_damage_multiplier(blocking);
-                            self.player_hp -= ENEMY_DAMAGE * scale;
+                            self.player_hp = (self.player_hp - ENEMY_DAMAGE * scale).max(0.0);
                             enemy.attack.hit_landed = true;
                         }
                     }
@@ -463,6 +463,22 @@ mod tests {
         assert!(combat.lock.is_some());
         combat.enemies[0].health = 0.0;
         combat.tick(&mut physics, &player, &Motor::default(), 0.016);
+        assert!(combat.lock.is_none());
+    }
+
+    #[test]
+    fn a_killing_blow_drops_the_lock_and_a_stale_index_does_not_panic() {
+        let (mut physics, player, mut combat) = arena();
+        combat.toggle_lock(&physics, &player);
+        combat.enemies[0].health = 10.0;
+        combat.attack.swinging = true;
+        combat.attack.time = STARTUP;
+        combat.tick(&mut physics, &player, &Motor::default(), 0.0);
+        assert!(combat.enemies[0].health <= 0.0);
+        assert!(combat.lock.is_none());
+
+        combat.lock = Some(9);
+        combat.tick(&mut physics, &player, &Motor::default(), 0.0);
         assert!(combat.lock.is_none());
     }
 }

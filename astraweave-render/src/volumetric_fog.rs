@@ -284,7 +284,9 @@ impl VolumetricFogPass {
                 sample_count: 1,
                 dimension: wgpu::TextureDimension::D2,
                 format: froxel_fmt,
-                usage: wgpu::TextureUsages::STORAGE_BINDING | wgpu::TextureUsages::TEXTURE_BINDING,
+                usage: wgpu::TextureUsages::STORAGE_BINDING
+                    | wgpu::TextureUsages::TEXTURE_BINDING
+                    | wgpu::TextureUsages::COPY_SRC,
                 view_formats: &[],
             });
             let view = tex.create_view(&wgpu::TextureViewDescriptor::default());
@@ -459,6 +461,28 @@ impl VolumetricFogPass {
     /// Get the final composited output.
     pub fn output_view(&self) -> &wgpu::TextureView {
         &self.applied_view
+    }
+
+    pub fn output_texture(&self) -> &wgpu::Texture {
+        &self.applied_texture
+    }
+
+    /// Fog for a few hundred metres of view. The froxel grid is the low
+    /// preset so a GTX 1660 can run it beside cascaded shadows.
+    pub fn gameplay_config() -> VolumetricFogConfig {
+        VolumetricFogConfig {
+            enabled: true,
+            froxel_dims: VolumetricQuality::Low.froxel_dims(),
+            base_density: 0.004,
+            height_fog_density: 0.012,
+            height_fog_falloff: 0.14,
+            height_fog_offset: 8.0,
+            noise_intensity: 0.4,
+            noise_scale: 0.07,
+            anisotropy: 0.62,
+            scatter_strength: 1.2,
+            ..VolumetricFogConfig::default()
+        }
     }
 
     /// Get the integrated volumetric result (before apply).
@@ -928,7 +952,7 @@ fn bgl_depth_texture(binding: u32) -> wgpu::BindGroupLayoutEntry {
         visibility: wgpu::ShaderStages::COMPUTE,
         ty: wgpu::BindingType::Texture {
             sample_type: wgpu::TextureSampleType::Depth,
-            view_dimension: wgpu::TextureViewDimension::D2,
+            view_dimension: wgpu::TextureViewDimension::D2Array,
             multisampled: false,
         },
         count: None,
@@ -1005,6 +1029,10 @@ mod tests {
         // 50% opacity at ~2310 m (21% of world extent), matching AAA
         // horizon-fog behavior.
         assert!((c.base_density - 0.0003).abs() < 1e-6);
+        let game = VolumetricFogPass::gameplay_config();
+        assert!(game.enabled);
+        assert_eq!(game.froxel_dims, VolumetricQuality::Low.froxel_dims());
+        assert!(game.base_density > c.base_density);
     }
 
     #[test]

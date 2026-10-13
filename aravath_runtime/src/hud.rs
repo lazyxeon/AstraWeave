@@ -10,6 +10,7 @@ pub struct HudModel {
     pub locked: bool,
     pub block: &'static str,
     pub notice: Option<String>,
+    pub downed: bool,
 }
 
 pub fn block_name(material: u16) -> &'static str {
@@ -38,6 +39,14 @@ pub fn stamina_fraction(model: &HudModel) -> f32 {
     }
 }
 
+pub fn respawn_hint(downed: bool) -> Option<&'static str> {
+    if downed {
+        Some("Press Enter to respawn")
+    } else {
+        None
+    }
+}
+
 pub fn reticle_label(locked: bool) -> &'static str {
     if locked {
         "Locked"
@@ -62,7 +71,10 @@ mod tests {
             locked: true,
             block: block_name(4),
             notice: Some("Saved".into()),
+            downed: true,
         };
+        assert_eq!(respawn_hint(model.downed), Some("Press Enter to respawn"));
+        assert!(respawn_hint(false).is_none());
         assert!((health_fraction(&model) - 1.0).abs() < 1e-4);
         assert!((stamina_fraction(&model) - 0.25).abs() < 1e-4);
         assert_eq!(reticle_label(model.locked), "Locked");
