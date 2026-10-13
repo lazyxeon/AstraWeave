@@ -196,6 +196,9 @@ impl Motor {
         if input.feet_locked && self.mode != MotorMode::Fly {
             wish = Vec3::ZERO;
         }
+        if !grounded && self.mode == MotorMode::Locomotion {
+            wish *= 0.4;
+        }
         if wish.length_squared() > 1e-6 {
             player.facing_yaw = wish.z.atan2(wish.x);
         }
@@ -269,6 +272,52 @@ mod tests {
         );
         assert_ne!(dry.mode, MotorMode::Roll);
         assert!((dry.stamina - 10.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn air_control_is_only_a_fraction_of_the_run() {
+        let (mut physics, mut player) = grounded_player();
+        let mut motor = Motor::default();
+        motor.tick(
+            &mut physics,
+            &mut player,
+            0.0,
+            MotorInput {
+                jump: true,
+                move_y: 1.0,
+                ..MotorInput::default()
+            },
+            1.0 / 60.0,
+        );
+        physics.step();
+        for _ in 0..10 {
+            motor.tick(
+                &mut physics,
+                &mut player,
+                0.0,
+                MotorInput {
+                    move_y: 1.0,
+                    ..MotorInput::default()
+                },
+                1.0 / 60.0,
+            );
+            physics.step();
+        }
+        assert!(!motor.grounded);
+        let air = motor.tick(
+            &mut physics,
+            &mut player,
+            0.0,
+            MotorInput {
+                move_y: 1.0,
+                ..MotorInput::default()
+            },
+            1.0 / 60.0,
+        );
+        assert!(
+            air.length() < RUN_SPEED * 0.5,
+            "air wish {air:?} should be well under run speed"
+        );
     }
 
     #[test]

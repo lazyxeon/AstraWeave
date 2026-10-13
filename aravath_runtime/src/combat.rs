@@ -17,6 +17,11 @@ pub const SWORD_DAMAGE: f32 = 25.0;
 pub const ENEMY_DAMAGE: f32 = 12.0;
 pub const HIT_REACT: f32 = 0.4;
 pub const ATTACK_WINDOW: f32 = STARTUP + ACTIVE + RECOVERY;
+/// Past this distance an enemy loses interest and holds still.
+pub const AGGRO_RANGE: f32 = 18.0;
+pub const MELEE_RANGE: f32 = 2.05;
+pub const ATTACK_WINDUP: f32 = 0.32;
+pub const ATTACK_COOLDOWN: f32 = 0.75;
 
 #[derive(Clone, Debug)]
 pub struct Attack {
@@ -76,6 +81,9 @@ pub struct Enemy {
     pub closing: bool,
     pub anim_time: f32,
     pub down_time: f32,
+    /// Time spent in melee range before the next swing.
+    pub windup: f32,
+    pub attack_cooldown: f32,
 }
 
 /// Which figurine clip to bake, and how to read the clock.
@@ -106,6 +114,8 @@ impl Enemy {
             closing: false,
             anim_time: 0.0,
             down_time: 0.0,
+            windup: 0.0,
+            attack_cooldown: 0.0,
         }
     }
 
@@ -197,17 +207,17 @@ impl Combat {
         let blocking = self.blocking;
         let player_body = player.body;
         let hp_before = self.player_hp;
+        let spots: Vec<(u64, Vec3)> = self
+            .enemies
+            .iter()
+            .filter(|enemy| enemy.alive())
+            .filter_map(|enemy| body_pos(physics, enemy.body).map(|pos| (enemy.body, pos)))
+            .collect();
         for enemy in &mut self.enemies {
             enemy.anim_time += dt;
             if !enemy.alive() {
                 enemy.closing = false;
                 enemy.down_time += dt;
-                continue;
-            }
-            if enemy.stagger > 0.0 {
-                enemy.stagger = (enemy.stagger - dt).max(0.0);
-                enemy.closing = false;
-                enemy.attack.advance(dt);
                 continue;
             }
             let Some(pos) = body_pos(physics, enemy.body) else {
@@ -216,17 +226,42 @@ impl Combat {
             let to_player = player_pos - pos;
             let flat = Vec3::new(to_player.x, 0.0, to_player.z);
             let dist = flat.length();
-            if dist > 1.7 {
+            if enemy.stagger > 0.0 {
+                enemy.stagger = (enemy.stagger - dt).max(0.0);
+                enemy.closing = false;
+                enemy.windup = 0.0;
+                if dist > 0.01 {
+                    physics.control_character(enemy.body, -flat.normalize() * 2.4, dt, false);
+                }
+                enemy.attack.advance(dt);
+                continue;
+            }
+            if dist > AGGRO_RANGE {
+                enemy.closing = false;
+                enemy.windup = 0.0;
+                enemy.attack.advance(dt);
+                continue;
+            }
+            if dist > MELEE_RANGE {
                 enemy.closing = true;
-                let wish = if dist > 0.01 {
-                    flat.normalize() * 3.0
-                } else {
-                    Vec3::ZERO
-                };
+                enemy.windup = 0.0;
+                let speed = if dist < 7.0 { 4.6 } else { 3.2 };
+                let wish = steer(flat, pos, &spots, enemy.body) * speed;
                 physics.control_character(enemy.body, wish, dt, false);
             } else {
                 enemy.closing = false;
-                enemy.attack.start();
+                if !enemy.attack.swinging {
+                    if enemy.attack_cooldown > 0.0 {
+                        enemy.attack_cooldown = (enemy.attack_cooldown - dt).max(0.0);
+                    } else {
+                        enemy.windup += dt;
+                        if enemy.windup >= ATTACK_WINDUP {
+                            enemy.attack.start();
+                            enemy.windup = 0.0;
+                            enemy.attack_cooldown = ATTACK_COOLDOWN;
+                        }
+                    }
+                }
                 if enemy.attack.active() && !enemy.attack.hit_landed && dist > 0.01 {
                     let origin = pos + Vec3::Y * 0.6 + flat.normalize() * 0.7;
                     if let Some((_, _, Some(id), _)) =
@@ -265,6 +300,31 @@ pub fn sword_target(combat: &Combat, physics: &PhysicsWorld, player: &Player) ->
         .enemies
         .iter()
         .position(|enemy| enemy.alive() && enemy.body == id)
+}
+
+/// Approach direction with a push away from nearby allies.
+pub fn steer(to_target: Vec3, self_pos: Vec3, others: &[(u64, Vec3)], self_body: u64) -> Vec3 {
+    let flat = Vec3::new(to_target.x, 0.0, to_target.z);
+    if flat.length_squared() < 1e-6 {
+        return Vec3::ZERO;
+    }
+    let mut wish = flat.normalize();
+    let mut push = Vec3::ZERO;
+    for (id, pos) in others {
+        if *id == self_body {
+            continue;
+        }
+        let away = Vec3::new(self_pos.x - pos.x, 0.0, self_pos.z - pos.z);
+        let distance = away.length();
+        if distance < 1.6 && distance > 1e-3 {
+            push += away.normalize() * (1.6 - distance);
+        }
+    }
+    let mixed = wish + push;
+    if mixed.length_squared() > 1e-6 {
+        wish = mixed.normalize();
+    }
+    wish
 }
 
 pub fn body_pos(physics: &PhysicsWorld, id: u64) -> Option<Vec3> {
@@ -325,7 +385,46 @@ mod tests {
         combat.tick(&mut physics, &player, &Motor::default(), 0.05);
         physics.step();
         let after = body_pos(&physics, combat.enemies[0].body).unwrap();
-        assert!((after.x - before.x).abs() < 0.08, "{before:?} -> {after:?}");
+        assert!(
+            after.x > before.x + 0.04,
+            "stagger should step away from the player, {before:?} -> {after:?}"
+        );
+    }
+
+    #[test]
+    fn a_distant_enemy_holds_and_a_near_one_waits_before_swinging() {
+        let (mut physics, player, mut combat) = arena();
+        physics.set_body_position(combat.enemies[0].body, Vec3::new(22.0, 1.5, 0.0));
+        physics.step();
+        let before = body_pos(&physics, combat.enemies[0].body).unwrap();
+        assert!(before.x > AGGRO_RANGE, "teleport did not stick {before:?}");
+        combat.tick(&mut physics, &player, &Motor::default(), 0.1);
+        physics.step();
+        let after = body_pos(&physics, combat.enemies[0].body).unwrap();
+        assert!(
+            (after - before).length() < 0.2,
+            "leash failed {before:?} -> {after:?}"
+        );
+
+        let (mut physics, player, mut combat) = arena();
+        combat.tick(&mut physics, &player, &Motor::default(), 0.05);
+        assert!(!combat.enemies[0].attack.swinging);
+        for _ in 0..8 {
+            combat.tick(&mut physics, &player, &Motor::default(), 0.05);
+        }
+        assert!(combat.enemies[0].attack.swinging);
+    }
+
+    #[test]
+    fn steer_slides_off_a_neighbor() {
+        let wish = steer(
+            Vec3::X * 10.0,
+            Vec3::ZERO,
+            &[(1, Vec3::ZERO), (2, Vec3::new(0.0, 0.0, 1.0))],
+            1,
+        );
+        assert!(wish.x > 0.5, "{wish:?}");
+        assert!(wish.z < -0.2, "{wish:?}");
     }
 
     #[test]

@@ -12,6 +12,13 @@ use crate::locomotion::{clip_name, visual_time, LocomotionGraph, PoseInput};
 use crate::motor::{Motor, MotorInput};
 use crate::player::{self, Player};
 pub const FIXED_DT: f32 = 1.0 / 60.0;
+
+fn frame_camera(pivot: Vec3) -> ThirdPersonCamera {
+    let mut camera = ThirdPersonCamera::new(pivot);
+    camera.distance = 4.2;
+    camera.pitch = -0.25;
+    camera
+}
 /// Chebyshev chunk radius. 3 keeps about 224 m of terrain loaded, which stays
 /// comfortable on a GTX 1660 with these low-poly chunks and props.
 pub const VIEW_RADIUS: i32 = 3;
@@ -40,7 +47,7 @@ impl Greybox {
         // Query pipeline only sees the new trimeshes after a step.
         physics.step();
         let player = Player::spawn(&mut physics, spawn);
-        let camera = ThirdPersonCamera::new(spawn);
+        let camera = frame_camera(spawn);
         Self {
             physics,
             ground,
@@ -63,7 +70,7 @@ impl Greybox {
         let initial_uploads = ground.stream_around(&mut physics, spawn, radius);
         physics.step();
         let player = Player::spawn(&mut physics, spawn);
-        let camera = ThirdPersonCamera::new(spawn);
+        let camera = frame_camera(spawn);
         Self {
             physics,
             ground,
