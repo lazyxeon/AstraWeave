@@ -5,9 +5,9 @@
 - [x] Phase 3 — locomotion graph
 - [x] Phase 4 — sword, shield, lock-on, enemies
 - [x] Phase 5 — place, support, save/load, nav dirty region
-- [ ] Phase 6 — open-world chunk streaming
-- [ ] Phase 7 — CC0 assets and credits
-- [ ] Phase 8 — Windows target check
+- [x] Phase 6 — open-world chunk streaming
+- [x] Phase 7 — CC0 assets and credits
+- [x] Phase 8 — Windows target check (blocked on lib.exe in this VM; recorded in the goals doc)
 
 Notes:
 
