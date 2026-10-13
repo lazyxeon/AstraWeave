@@ -31,6 +31,7 @@ struct App {
     player_mesh_ready: bool,
     lock_toggle: bool,
     place_toggle: bool,
+    albedo: Option<(u32, u32, Vec<u8>)>,
 }
 
 impl App {
@@ -51,6 +52,7 @@ impl App {
             player_mesh_ready: false,
             lock_toggle: false,
             place_toggle: false,
+            albedo: load_ground_albedo(),
         }
     }
 }
@@ -131,7 +133,7 @@ impl ApplicationHandler for App {
         );
         let mut renderer = pollster::block_on(Renderer::new(window.clone())).expect("renderer");
         let uploads = std::mem::take(&mut self.sim.initial_uploads);
-        upload_chunks(&mut renderer, &uploads);
+        upload_chunks(&mut renderer, &uploads, self.albedo.as_ref());
         self.renderer = Some(renderer);
         self.window = Some(window);
         self.last_time = Instant::now();
@@ -268,11 +270,12 @@ impl ApplicationHandler for App {
         let spawn_player = !self.player_mesh_ready;
         self.player_mesh_ready = true;
 
+        let albedo = self.albedo.clone();
         let renderer = self.renderer.as_mut().expect("renderer");
         if let Some(uploads) = dig_uploads.as_deref() {
-            upload_chunks(renderer, uploads);
+            upload_chunks(renderer, uploads, albedo.as_ref());
         }
-        upload_chunks(renderer, &streamed);
+        upload_chunks(renderer, &streamed, albedo.as_ref());
         renderer.update_view(&view);
         let instance = [Instance {
             transform: Mat4::from_translation(pos),
@@ -317,7 +320,11 @@ impl ApplicationHandler for App {
     }
 }
 
-fn upload_chunks(renderer: &mut Renderer, uploads: &[ChunkUpload]) {
+fn upload_chunks(
+    renderer: &mut Renderer,
+    uploads: &[ChunkUpload],
+    albedo: Option<&(u32, u32, Vec<u8>)>,
+) {
     for chunk in uploads {
         let name = chunk_name(chunk.coord.x, chunk.coord.y, chunk.coord.z);
         if chunk.removed || chunk.mesh.vertices.is_empty() {
@@ -325,16 +332,25 @@ fn upload_chunks(renderer: &mut Renderer, uploads: &[ChunkUpload]) {
             continue;
         }
         let gpu = renderer.create_mesh_from_cpu_mesh(&chunk.mesh);
-        renderer.add_model(
-            name,
-            gpu,
-            &[Instance {
-                transform: Mat4::IDENTITY,
-                color: material_tint(chunk.material),
-                material_id: 0,
-            }],
-        );
+        let instance = [Instance {
+            transform: Mat4::IDENTITY,
+            color: material_tint(chunk.material),
+            material_id: 0,
+        }];
+        if let Some((width, height, pixels)) = albedo {
+            renderer.add_model_with_texture(name, gpu, &instance, *width, *height, pixels);
+        } else {
+            renderer.add_model(name, gpu, &instance);
+        }
     }
+}
+
+fn load_ground_albedo() -> Option<(u32, u32, Vec<u8>)> {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../assets/aravath/rock_wall_02_diff_1k.jpg");
+    let image = image::open(path).ok()?.to_rgba8();
+    let (width, height) = image.dimensions();
+    Some((width, height, image.into_raw()))
 }
 
 fn weapon_instance(pos: Vec3, yaw: f32, side: f32, forward: f32) -> Instance {
