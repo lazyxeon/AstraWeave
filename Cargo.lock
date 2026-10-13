@@ -351,6 +351,7 @@ dependencies = [
  "astraweave-terrain",
  "aw-save",
  "glam",
+ "gltf",
  "image",
  "pollster",
  "tempfile",

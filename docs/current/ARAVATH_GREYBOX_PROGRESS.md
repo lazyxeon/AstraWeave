@@ -9,6 +9,14 @@
 - [x] Phase 7 — CC0 assets and credits
 - [x] Phase 8 — Windows target check (blocked on lib.exe in this VM; recorded in the goals doc)
 
+Demo finish (the systems pass above is not the playable demo):
+
+- [x] Real models — rigged player, Kenney sword, shield, and enemy figurine
+- [ ] State-driven clips — idle, walk, run, sprint, jump, crouch, roll, attack, block, hit, death, fly
+- [ ] Open-world read — materials, textures, biomes, trees, rocks, foliage, sky, 1660 draw distance
+- [ ] HUD — health, stamina, lock-on reticle, selected block, save/load feedback
+- [ ] Tight controls and simple believable enemy AI
+
 Notes:
 
 - `c++` on this machine is Clang 18, which selects a GCC 14 toolchain whose libstdc++ headers are not installed. Cargo builds of `basis-universal-sys` (pulled in by `astraweave-render`) need `CXX=g++`.
