@@ -12,6 +12,7 @@ pub mod island;
 pub mod locomotion;
 pub mod motor;
 pub mod player;
+pub mod save;
 pub mod sim;
 
 pub use bridge_agent::BridgeAgent;

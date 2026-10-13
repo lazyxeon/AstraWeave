@@ -21,6 +21,12 @@ astraweave-camera = { path = "../astraweave-camera" }
 astraweave-render = { path = "../astraweave-render" }
 astraweave-input = { path = "../astraweave-input" }
 astraweave-nav = { workspace = true }
+aw-save = { path = "../persistence/aw-save" }
+uuid = { version = "1", features = ["v4"] }
+time = { version = "0.3", features = ["macros"] }
+
+[dev-dependencies]
+tempfile = "3"
 
 [[bin]]
 name = "aravath_greybox"
