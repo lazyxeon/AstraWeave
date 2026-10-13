@@ -35,8 +35,10 @@ pub mod freefly;
 pub mod producer;
 pub mod projection;
 pub mod render_view;
+pub mod third_person;
 
 pub use freefly::{CameraController, CameraMode, FreeFly};
 pub use producer::CameraProducer;
 pub use projection::Projection;
 pub use render_view::RenderView;
+pub use third_person::ThirdPersonCamera;

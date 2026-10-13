@@ -184,8 +184,8 @@ impl EdgeKey {
 /// Dual Contouring mesh generator
 #[derive(Clone)]
 pub struct DualContouring {
-    /// Vertex cache for deduplication
-    vertex_cache: HashMap<IVec3, u32>,
+    /// Vertex cache for deduplication, keyed by the crossed cell edge.
+    vertex_cache: HashMap<EdgeKey, u32>,
     /// Edge intersection cache
     edge_cache: HashMap<EdgeKey, Vec3>,
 }
@@ -253,9 +253,6 @@ impl DualContouring {
             return;
         }
 
-        // Find surface crossing edges and compute vertex position
-        let vertex_pos = self.compute_vertex_position(chunk, cell_pos, &corners);
-        let vertex_normal = self.compute_vertex_normal(chunk, cell_pos);
         let material = corners
             .iter()
             .flatten()
@@ -263,98 +260,22 @@ impl DualContouring {
             .map(|v| v.material)
             .unwrap_or(0);
 
-        // Add vertex to cache
-        let vertex_index = vertices.len() as u32;
-        self.vertex_cache.insert(cell_pos, vertex_index);
-
-        let world_pos = chunk.coord().to_world_pos() + vertex_pos;
-        vertices.push(MeshVertex {
-            position: world_pos,
-            normal: vertex_normal,
-            material,
-        });
-
-        // Generate triangles for this cell
-        self.generate_cell_triangles(cell_pos, config, indices);
+        self.generate_cell_triangles(chunk, cell_pos, config, material, vertices, indices);
     }
 
-    /// Get the 8 corner voxels of a cell
+    /// Bourke marching-cubes corner order. Must match `EDGE_ENDPOINTS` and
+    /// `MC_EDGE_TABLE` / `MC_TRI_TABLE`.
     fn get_cell_corners(&self, chunk: &VoxelChunk, cell_pos: IVec3) -> [Option<Voxel>; 8] {
         [
             chunk.get_voxel(cell_pos + IVec3::new(0, 0, 0)),
             chunk.get_voxel(cell_pos + IVec3::new(1, 0, 0)),
-            chunk.get_voxel(cell_pos + IVec3::new(1, 1, 0)),
-            chunk.get_voxel(cell_pos + IVec3::new(0, 1, 0)),
-            chunk.get_voxel(cell_pos + IVec3::new(0, 0, 1)),
             chunk.get_voxel(cell_pos + IVec3::new(1, 0, 1)),
+            chunk.get_voxel(cell_pos + IVec3::new(0, 0, 1)),
+            chunk.get_voxel(cell_pos + IVec3::new(0, 1, 0)),
+            chunk.get_voxel(cell_pos + IVec3::new(1, 1, 0)),
             chunk.get_voxel(cell_pos + IVec3::new(1, 1, 1)),
             chunk.get_voxel(cell_pos + IVec3::new(0, 1, 1)),
         ]
-    }
-
-    /// Compute vertex position using QEF (Quadratic Error Function) minimization
-    /// Simplified version: use average of edge intersections
-    fn compute_vertex_position(
-        &mut self,
-        _chunk: &VoxelChunk,
-        cell_pos: IVec3,
-        corners: &[Option<Voxel>; 8],
-    ) -> Vec3 {
-        let mut sum = Vec3::ZERO;
-        let mut count = 0;
-
-        // Check all 12 edges of the cube
-        let edges = [
-            (0, 1),
-            (1, 2),
-            (2, 3),
-            (3, 0), // Bottom face
-            (4, 5),
-            (5, 6),
-            (6, 7),
-            (7, 4), // Top face
-            (0, 4),
-            (1, 5),
-            (2, 6),
-            (3, 7), // Vertical edges
-        ];
-
-        for (i, j) in edges.iter() {
-            if let (Some(v1), Some(v2)) = (corners[*i], corners[*j]) {
-                // Check if edge crosses surface (one solid, one empty)
-                if v1.is_solid() != v2.is_solid() {
-                    let p1 = self.corner_offset(*i);
-                    let p2 = self.corner_offset(*j);
-
-                    // Linear interpolation based on density
-                    let t = if (v1.density - v2.density).abs() > 0.001 {
-                        (0.5 - v1.density) / (v2.density - v1.density)
-                    } else {
-                        0.5
-                    };
-                    let t = t.clamp(0.0, 1.0);
-
-                    let intersection = p1 + (p2 - p1) * t;
-                    sum += intersection;
-                    count += 1;
-                }
-            }
-        }
-
-        if count > 0 {
-            cell_pos.as_vec3() + sum / count as f32
-        } else {
-            // Fallback to cell center
-            cell_pos.as_vec3() + Vec3::splat(0.5)
-        }
-    }
-
-    /// Get offset for corner index (0-7)
-    fn corner_offset(&self, index: usize) -> Vec3 {
-        let x = if index & 1 != 0 { 1.0 } else { 0.0 };
-        let y = if index & 2 != 0 { 1.0 } else { 0.0 };
-        let z = if index & 4 != 0 { 1.0 } else { 0.0 };
-        Vec3::new(x, y, z)
     }
 
     /// Compute vertex normal using central differences
@@ -379,42 +300,72 @@ impl DualContouring {
         chunk.get_voxel(pos).map(|v| v.density).unwrap_or(0.0)
     }
 
-    /// Generate triangles for a cell based on configuration
-    /// Uses proper Marching Cubes lookup tables for watertight meshes
-    fn generate_cell_triangles(&self, cell_pos: IVec3, config: u8, indices: &mut Vec<u32>) {
-        // Get the edge table value for this configuration
-        let edge_flags = MC_EDGE_TABLE[config as usize];
+    /// Bourke corner offsets. Index matches [`Self::get_cell_corners`].
+    const BOURKE_CORNERS: [IVec3; 8] = [
+        IVec3::new(0, 0, 0),
+        IVec3::new(1, 0, 0),
+        IVec3::new(1, 0, 1),
+        IVec3::new(0, 0, 1),
+        IVec3::new(0, 1, 0),
+        IVec3::new(1, 1, 0),
+        IVec3::new(1, 1, 1),
+        IVec3::new(0, 1, 1),
+    ];
 
-        // If no edges have vertices, skip this cell
+    fn edge_vertex(
+        &mut self,
+        chunk: &VoxelChunk,
+        cell_pos: IVec3,
+        edge_idx: usize,
+        material: u16,
+        vertices: &mut Vec<MeshVertex>,
+    ) -> u32 {
+        let (c0, c1) = EDGE_ENDPOINTS[edge_idx];
+        let p0 = cell_pos + Self::BOURKE_CORNERS[c0];
+        let p1 = cell_pos + Self::BOURKE_CORNERS[c1];
+        let key = EdgeKey::new(p0, p1);
+        if let Some(&index) = self.vertex_cache.get(&key) {
+            return index;
+        }
+        let d0 = self.sample_density(chunk, p0);
+        let d1 = self.sample_density(chunk, p1);
+        let t = if (d1 - d0).abs() > 0.001 {
+            ((0.5 - d0) / (d1 - d0)).clamp(0.0, 1.0)
+        } else {
+            0.5
+        };
+        let local = p0.as_vec3() + (p1.as_vec3() - p0.as_vec3()) * t;
+        let world = chunk.coord().to_world_pos() + local;
+        let index = vertices.len() as u32;
+        vertices.push(MeshVertex {
+            position: world,
+            normal: self.compute_vertex_normal(chunk, cell_pos),
+            material,
+        });
+        self.vertex_cache.insert(key, index);
+        index
+    }
+
+    /// Generate triangles for a cell based on configuration.
+    /// Uses the marching-cubes lookup tables. One vertex is stored per crossed edge.
+    fn generate_cell_triangles(
+        &mut self,
+        chunk: &VoxelChunk,
+        cell_pos: IVec3,
+        config: u8,
+        material: u16,
+        vertices: &mut Vec<MeshVertex>,
+        indices: &mut Vec<u32>,
+    ) {
+        let edge_flags = MC_EDGE_TABLE[config as usize];
         if edge_flags == 0 {
             return;
         }
 
-        // Build list of edge vertices (up to 12 edges)
         let mut edge_vertices = [None; 12];
-        for edge_idx in 0..12 {
+        for (edge_idx, slot) in edge_vertices.iter_mut().enumerate() {
             if (edge_flags & (1 << edge_idx)) != 0 {
-                // This edge has a vertex on the isosurface
-                let (c0_idx, c1_idx) = EDGE_ENDPOINTS[edge_idx];
-
-                // Compute corner positions
-                let corner_offsets = [
-                    IVec3::new(0, 0, 0), // 0
-                    IVec3::new(1, 0, 0), // 1
-                    IVec3::new(1, 0, 1), // 2
-                    IVec3::new(0, 0, 1), // 3
-                    IVec3::new(0, 1, 0), // 4
-                    IVec3::new(1, 1, 0), // 5
-                    IVec3::new(1, 1, 1), // 6
-                    IVec3::new(0, 1, 1), // 7
-                ];
-
-                let p0 = cell_pos + corner_offsets[c0_idx];
-                let p1 = cell_pos + corner_offsets[c1_idx];
-                let edge_key = EdgeKey::new(p0, p1);
-
-                // Look up the vertex index (should already exist from process_cell)
-                edge_vertices[edge_idx] = self.vertex_cache.get(&edge_key.min).copied();
+                *slot = Some(self.edge_vertex(chunk, cell_pos, edge_idx, material, vertices));
             }
         }
 

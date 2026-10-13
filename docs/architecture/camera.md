@@ -9,7 +9,7 @@ lifecycle_status: active
 integration_status: wired
 summary: "Created Unified Camera C.2 (52b9e711c, 2026-05-18): canonical Projection/RenderView/CameraProducer types; sole renderer upload contract via Renderer::update_view; consumed by astraweave-render (non-optional), aw_editor, and 13 examples"
 owns: [astraweave-camera]
-doc_version: "1.1"
+doc_version: "1.2"
 last_verified_commit: 7c29b8182
 ---
 
@@ -21,10 +21,10 @@ last_verified_commit: 7c29b8182
 |---|---|
 | **System name** | Camera System |
 | **Primary crates** | [`astraweave-camera`](../../astraweave-camera) (canonical types + FreeFly producer); consumed by [`astraweave-render`](../../astraweave-render) and [`tools/aw_editor`](../../tools/aw_editor) (OrbitCamera producer) |
-| **Document version** | 1.1 |
+| **Document version** | 1.2 |
 | **Last verified against commit** | `7c29b8182` |
-| **Last verified date** | 2026-06-25 |
-| **Status** | Active. Unified Camera campaign (C.0→C.9) closed 2026-06-01 — single upload contract, two producers, hardened cinematics path. |
+| **Last verified date** | 2026-10-13 |
+| **Status** | Active. Unified Camera campaign (C.0→C.9) closed 2026-06-01 — single upload contract, hardened cinematics path. 1.2 adds `ThirdPersonCamera` as a third producer (world-relative `to_render_view`, camera-relative method beside it, same split as `FreeFly`). |
 | **Owner notes** | Product of the Unified Camera campaign. Canonical convention reference: [`docs/current/CAMERA_CONVENTIONS.md`](../current/CAMERA_CONVENTIONS.md). Campaign outcome: [`docs/audits/unified_camera_outcome_2026-06.md`](../audits/unified_camera_outcome_2026-06.md). |
 
 ---
@@ -174,6 +174,7 @@ The campaign is **closed and immutable** as recorded in the outcome doc; the con
 | [`astraweave-camera/src/render_view.rs`](../../astraweave-camera/src/render_view.rs) | `RenderView` upload contract + `RenderView::new` | Active | Computes inverse matrices once. TAA/basis fields deferred. |
 | [`astraweave-camera/src/producer.rs`](../../astraweave-camera/src/producer.rs) | `CameraProducer` trait (one method `to_render_view`) | Active | Minimal trait; renderer update path is NOT generic over it. |
 | [`astraweave-camera/src/freefly.rs`](../../astraweave-camera/src/freefly.rs) | `FreeFly` producer + `CameraController` + `CameraMode` + `sanitize()` | Active | The bulk of the crate (771 LoC; ~370 are tests). |
+| [`astraweave-camera/src/third_person.rs`](../../astraweave-camera/src/third_person.rs) | `ThirdPersonCamera` follow producer | Active | Eye sits behind `FreeFly::dir`. `distance_after_hit` shortens that distance; the physics ray lives in `aravath_runtime` so this crate stays glam-only. |
 | [`tools/aw_editor/src/viewport/camera.rs`](../../tools/aw_editor/src/viewport/camera.rs) | `OrbitCamera` — the second `CameraProducer` (editor) | Active | Lives in the editor, not `astraweave-camera`. Owns picking surface, serde shadow type. |
 | [`astraweave-render/src/renderer.rs`](../../astraweave-render/src/renderer.rs) | `update_view` (consumer), `tick_cinematics`/`apply_camera_key` (cinematics bridge) | Active | `apply_camera_key` is private. |
 | [`astraweave-render/tests/camera_conventions.rs`](../../astraweave-render/tests/camera_conventions.rs) | Contract tests asserting the production camera obeys §2 conventions | Active | The convention's structural protection (§2.4 negative test, bench-mock check). |

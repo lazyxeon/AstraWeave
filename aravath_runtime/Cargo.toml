@@ -5,11 +5,23 @@ edition.workspace = true
 license.workspace = true
 publish.workspace = true
 rust-version.workspace = true
-description = "Aravath companion route across a collapsing span"
+description = "Aravath greybox: one voxel island, a third-person body, and a dig kernel."
 
 [dependencies]
+anyhow.workspace = true
+glam.workspace = true
+winit.workspace = true
+pollster.workspace = true
 astraweave-causality = { workspace = true }
 astraweave-destruction = { workspace = true }
 astraweave-math = { workspace = true }
+astraweave-terrain = { path = "../astraweave-terrain" }
+astraweave-physics = { path = "../astraweave-physics" }
+astraweave-camera = { path = "../astraweave-camera" }
+astraweave-render = { path = "../astraweave-render" }
+astraweave-input = { path = "../astraweave-input" }
 astraweave-nav = { workspace = true }
-glam = { workspace = true }
+
+[[bin]]
+name = "aravath_greybox"
+path = "src/main.rs"
