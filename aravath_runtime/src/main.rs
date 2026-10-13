@@ -39,10 +39,10 @@ impl App {
             window: None,
             renderer: None,
             sim: {
-                let mut sim = Greybox::island();
-                sim.spawn_enemy(Vec3::new(30.0, 14.0, 22.0));
-                sim.spawn_enemy(Vec3::new(18.0, 14.0, 30.0));
-                sim.spawn_enemy(Vec3::new(34.0, 14.0, 30.0));
+                let mut sim = Greybox::open(1);
+                sim.spawn_enemy(Vec3::new(28.0, 16.0, 16.0));
+                sim.spawn_enemy(Vec3::new(10.0, 16.0, 28.0));
+                sim.spawn_enemy(Vec3::new(24.0, 16.0, 30.0));
                 sim
             },
             input: demo_input(),
@@ -257,6 +257,7 @@ impl ApplicationHandler for App {
         } else {
             None
         };
+        let streamed = std::mem::take(&mut self.sim.pending_uploads);
         self.input.clear_frame();
 
         let distance = self.sim.occluded_camera_distance();
@@ -271,6 +272,7 @@ impl ApplicationHandler for App {
         if let Some(uploads) = dig_uploads.as_deref() {
             upload_chunks(renderer, uploads);
         }
+        upload_chunks(renderer, &streamed);
         renderer.update_view(&view);
         let instance = [Instance {
             transform: Mat4::from_translation(pos),

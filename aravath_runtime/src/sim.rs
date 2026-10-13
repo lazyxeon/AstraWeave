@@ -22,6 +22,7 @@ pub struct Greybox {
     pub graph: LocomotionGraph,
     pub combat: Combat,
     pub nav: NavMesh,
+    pub pending_uploads: Vec<ChunkUpload>,
     /// Meshes from the first sync, moved out by the window once a device exists.
     pub initial_uploads: Vec<ChunkUpload>,
 }
@@ -44,6 +45,29 @@ impl Greybox {
             graph: LocomotionGraph::default(),
             combat: Combat::default(),
             nav: NavMesh::bake(&[], 0.5, 55.0),
+            pending_uploads: Vec::new(),
+            initial_uploads,
+        }
+    }
+
+    pub fn open(radius: i32) -> Self {
+        let spawn = Vec3::new(16.0, 20.0, 16.0);
+        let mut physics = PhysicsWorld::new(Vec3::new(0.0, -9.81, 0.0));
+        let mut ground = Ground::from_grid(VoxelGrid::new());
+        let initial_uploads = ground.stream_around(&mut physics, spawn, radius);
+        physics.step();
+        let player = Player::spawn(&mut physics, spawn);
+        let camera = ThirdPersonCamera::new(spawn);
+        Self {
+            physics,
+            ground,
+            player,
+            camera,
+            motor: Motor::default(),
+            graph: LocomotionGraph::default(),
+            combat: Combat::default(),
+            nav: NavMesh::bake(&[], 0.5, 55.0),
+            pending_uploads: Vec::new(),
             initial_uploads,
         }
     }
@@ -89,6 +113,9 @@ impl Greybox {
         let moving = input.move_x.abs() + input.move_y.abs() > 0.05;
         self.graph.sync(&self.motor, moving, FIXED_DT);
         self.camera.pivot = self.player_pos();
+        let focus = self.player_pos();
+        let streamed = self.ground.stream_around(&mut self.physics, focus, 1);
+        self.pending_uploads.extend(streamed);
     }
 
     pub fn spawn_enemy(&mut self, pos: Vec3) {

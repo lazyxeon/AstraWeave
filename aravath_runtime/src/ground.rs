@@ -1,6 +1,6 @@
 //! Voxel grid is the only ground. Meshes and trimeshes are derived.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use astraweave_physics::{Layers, PhysicsWorld};
 use astraweave_render::mesh::{CpuMesh, MeshVertex as RenderVertex};
@@ -22,6 +22,7 @@ pub struct Ground {
     pub edits: Vec<VoxelEdit>,
     mesher: DualContouring,
     bodies: HashMap<ChunkCoord, u64>,
+    generated: HashSet<ChunkCoord>,
 }
 
 #[derive(Clone, Debug)]
@@ -40,11 +41,78 @@ impl Ground {
             edits: Vec::new(),
             mesher: DualContouring::new(),
             bodies: HashMap::new(),
+            generated: HashSet::new(),
         }
     }
 
     pub fn small_island() -> Self {
         Self::from_grid(island::small())
+    }
+
+    /// Generate or drop y=0 chunks so the player stands in a finite loaded ring
+    /// of an otherwise unbounded heightfield.
+    pub fn stream_around(
+        &mut self,
+        physics: &mut PhysicsWorld,
+        focus: Vec3,
+        radius: i32,
+    ) -> Vec<ChunkUpload> {
+        let center = ChunkCoord::from_world_pos(Vec3::new(focus.x, 0.0, focus.z));
+        let mut keep = HashSet::new();
+        for dz in -radius..=radius {
+            for dx in -radius..=radius {
+                if dx.abs().max(dz.abs()) > radius {
+                    continue;
+                }
+                let coord = ChunkCoord::new(center.x + dx, 0, center.z + dz);
+                keep.insert(coord);
+                if self.generated.insert(coord) {
+                    fill_height_chunk(&mut self.grid, coord);
+                    self.reapply_edits(coord);
+                }
+            }
+        }
+        let stale: Vec<ChunkCoord> = self
+            .generated
+            .iter()
+            .copied()
+            .filter(|coord| coord.y == 0 && !keep.contains(coord))
+            .collect();
+        let mut removed = Vec::new();
+        for coord in stale {
+            self.generated.remove(&coord);
+            self.grid.remove_chunk(coord);
+            if let Some(id) = self.bodies.remove(&coord) {
+                physics.remove_body(id);
+            }
+            removed.push(ChunkUpload {
+                coord,
+                mesh: chunk_mesh_to_cpu(&ChunkMesh::empty(coord)),
+                material: 0,
+                removed: true,
+            });
+        }
+        let mut uploads = self.sync_dirty(physics);
+        uploads.extend(removed);
+        uploads
+    }
+
+    fn reapply_edits(&mut self, coord: ChunkCoord) {
+        let edits: Vec<VoxelEdit> = self
+            .edits
+            .iter()
+            .filter(|edit| {
+                ChunkCoord::from_world_pos(Vec3::new(edit.x as f32, edit.y as f32, edit.z as f32))
+                    == coord
+            })
+            .cloned()
+            .collect();
+        for edit in edits {
+            self.grid.set_voxel(
+                Vec3::new(edit.x as f32, edit.y as f32, edit.z as f32),
+                Voxel::new(edit.density, edit.material),
+            );
+        }
     }
 
     pub fn body_ids(&self) -> HashMap<ChunkCoord, u64> {
@@ -192,6 +260,24 @@ impl IVecFloor {
             x: v.x.floor() as i32,
             y: v.y.floor() as i32,
             z: v.z.floor() as i32,
+        }
+    }
+}
+
+fn fill_height_chunk(grid: &mut VoxelGrid, coord: ChunkCoord) {
+    let origin = coord.to_world_pos();
+    for x in 0..astraweave_terrain::CHUNK_SIZE {
+        for z in 0..astraweave_terrain::CHUNK_SIZE {
+            let wx = origin.x as i32 + x;
+            let wz = origin.z as i32 + z;
+            let h = island::surface_height(wx, wz).clamp(1, 24);
+            for y in 0..=h {
+                let material = if y < h { 1 } else { 3 };
+                grid.set_voxel(
+                    Vec3::new(wx as f32, y as f32, wz as f32),
+                    Voxel::new(1.0, material),
+                );
+            }
         }
     }
 }
