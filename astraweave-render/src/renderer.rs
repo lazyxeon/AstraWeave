@@ -5158,7 +5158,9 @@ fn vs(input: VSIn) -> VSOut {
                 std::array::from_fn(|index| crate::volumetric_fog::CascadeData {
                     vp: self.cascades[index].to_cols_array_2d(),
                     split: splits[index],
+                    _align: [0.0; 3],
                     _pad: [0.0; 3],
+                    _tail: 0.0,
                 });
             let device = self.device.clone();
             let queue = self.queue.clone();
