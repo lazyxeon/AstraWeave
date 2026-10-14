@@ -348,13 +348,19 @@ fn fill_height_chunk(grid: &mut VoxelGrid, coord: ChunkCoord) {
             let wz = origin.z as i32 + z;
             let h = island::surface_height(wx, wz).clamp(1, 24);
             let biome = biome_at(wx, wz);
+            let road = island::on_yaqar_road(wx, wz);
             for y in 0..=h {
+                let mut material = column_material(y, h, biome);
+                if road && y >= h.saturating_sub(1) {
+                    material = crate::island::MAT_DIRT;
+                }
                 grid.set_voxel(
                     Vec3::new(wx as f32, y as f32, wz as f32),
-                    Voxel::new(1.0, column_material(y, h, biome)),
+                    Voxel::new(1.0, material),
                 );
             }
             if biome == Biome::Grass
+                && !road
                 && mix(wx, wz) % 53 == 0
                 && x + 3 < astraweave_terrain::CHUNK_SIZE
             {
@@ -379,6 +385,10 @@ fn scatter_chunk(coord: ChunkCoord) -> Vec<PropSpot> {
         while z < size - 2 {
             let wx = origin.x as i32 + x;
             let wz = origin.z as i32 + z;
+            if island::on_yaqar_road(wx, wz) {
+                z += 5;
+                continue;
+            }
             let h = island::surface_height(wx, wz);
             let n = mix(wx, wz);
             let yaw = (n & 255) as f32 / 255.0 * std::f32::consts::TAU;
@@ -554,8 +564,8 @@ pub fn material_tint(material: u16) -> [f32; 4] {
     match material {
         5 => [0.55, 0.36, 0.18, 1.0],
         4 => [0.76, 0.70, 0.45, 1.0],
-        3 => [0.35, 0.55, 0.28, 1.0],
-        2 => [0.45, 0.32, 0.18, 1.0],
+        3 => [0.28, 0.46, 0.22, 1.0],
+        2 => [0.42, 0.30, 0.16, 1.0],
         1 => [0.55, 0.55, 0.58, 1.0],
         _ => [0.7, 0.7, 0.72, 1.0],
     }
@@ -585,6 +595,20 @@ mod tests {
             "expected trees or rocks"
         );
         assert!(uploads.iter().any(|chunk| chunk.vertex_count() > 100));
+    }
+
+    #[test]
+    fn the_road_toward_yaqar_is_dirt_without_changing_height() {
+        let mut physics = PhysicsWorld::new(Vec3::new(0.0, -9.81, 0.0));
+        let mut ground = Ground::from_grid(VoxelGrid::new());
+        let _ = ground.stream_around(&mut physics, Vec3::new(16.0, 10.0, 16.0), 0);
+        let height = island::surface_height(20, 16);
+        let road = ground.grid.get_voxel(Vec3::new(20.0, height as f32, 16.0));
+        assert!(
+            road.is_some_and(|voxel| voxel.is_solid() && voxel.material == crate::island::MAT_DIRT),
+            "road surface should be dirt"
+        );
+        assert!(!island::on_yaqar_road(20, 24));
     }
 
     #[test]

@@ -421,7 +421,7 @@ impl ApplicationHandler for App {
                 .expect("pose enemy");
             let instance = [Instance {
                 transform: figurine_transform(enemy_pos, foe_yaw),
-                color: [1.0, 1.0, 1.0, 1.0],
+                color: foe_tint(index),
                 material_id: 0,
             }];
             let name = format!("enemy{index}");
@@ -448,6 +448,7 @@ impl ApplicationHandler for App {
             stamina: self.sim.motor.stamina,
             stamina_max: self.sim.motor.stamina_max,
             locked: self.sim.combat.lock.is_some(),
+            locked_name: self.sim.combat.lock.map(hud::foe_name),
             block: hud::block_name(self.selected),
             notice: self.notice.as_ref().map(|(text, _)| text.clone()),
             downed: self.sim.combat.player_hp <= 0.0,
@@ -489,6 +490,14 @@ impl ApplicationHandler for App {
         }
         self.hud = hud;
         window.request_redraw();
+    }
+}
+
+fn foe_tint(index: usize) -> [f32; 4] {
+    match index {
+        0 => [0.42, 0.24, 0.12, 1.0],
+        2 => [0.78, 0.58, 0.28, 1.0],
+        _ => [0.55, 0.62, 0.40, 1.0],
     }
 }
 
@@ -805,7 +814,7 @@ fn paint_hud(hud: &mut EguiHud, frame: HudFrame<'_>) {
             ui.label(format!("Stamina {:.0}", model.stamina.max(0.0)));
             ui.add(
                 egui::ProgressBar::new(hud::stamina_fraction(model))
-                    .fill(egui::Color32::from_rgb(46, 140, 72)),
+                    .fill(egui::Color32::from_rgb(196, 142, 42)),
             );
         });
     egui::Area::new(egui::Id::new("block"))
@@ -843,7 +852,7 @@ fn paint_hud(hud: &mut EguiHud, frame: HudFrame<'_>) {
         painter.text(
             center + egui::vec2(22.0, -8.0),
             egui::Align2::LEFT_CENTER,
-            hud::reticle_label(true),
+            hud::reticle_label(model.locked_name),
             egui::FontId::proportional(14.0),
             color,
         );
@@ -889,17 +898,18 @@ fn light_the_world(renderer: &mut Renderer, volumetrics: bool) {
         .set_biome(BiomeType::Grassland);
     {
         let env = renderer.scene_environment_mut();
-        env.visuals.fog_density = 0.0012;
-        env.visuals.fog_color = Vec3::new(0.64, 0.74, 0.86);
-        env.visuals.ambient_intensity = 0.45;
+        env.visuals.fog_density = 0.0014;
+        env.visuals.fog_color = Vec3::new(0.55, 0.58, 0.36);
+        env.visuals.ambient_color = Vec3::new(0.62, 0.46, 0.26);
+        env.visuals.ambient_intensity = 0.5;
     }
     let clock = renderer.time_of_day_mut();
     clock.current_time = 16.4;
     clock.time_scale = 90.0;
     renderer.set_sky_config(SkyConfig {
-        cloud_coverage: 0.28,
-        day_color_top: Vec3::new(0.25, 0.48, 0.92),
-        day_color_horizon: Vec3::new(0.95, 0.62, 0.38),
+        cloud_coverage: 0.22,
+        day_color_top: Vec3::new(0.20, 0.36, 0.48),
+        day_color_horizon: Vec3::new(0.96, 0.72, 0.30),
         ..SkyConfig::default()
     });
     if !volumetrics {

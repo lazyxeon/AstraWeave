@@ -16,6 +16,12 @@ pub enum Biome {
     Rock,
 }
 
+/// Dirt track running east through the western hills, toward Yaqar.
+/// Occupancy stays the heightfield. Only the surface material changes.
+pub fn on_yaqar_road(x: i32, z: i32) -> bool {
+    (z - 16).abs() <= 1 && x >= 8
+}
+
 pub fn biome_at(x: i32, z: i32) -> Biome {
     let n =
         crate::detmath::sin(x as f32 * 0.012) * 0.65 + crate::detmath::cos(z as f32 * 0.015) * 0.45;
