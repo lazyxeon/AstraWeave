@@ -193,7 +193,7 @@ glam = { version = "0.30", features = ["serde"] }
 wgpu = "25.0.2"
 winit = { version = "0.30", features = ["serde"] }
 pollster = "0.4"
-rapier3d = { version = "0.22", features = ["debug-render"] }
+rapier3d = { version = "0.22", features = ["debug-render", "enhanced-determinism"] }
 bitflags = "2.4"
 rodio = "0.17"
 egui-winit = "0.32"

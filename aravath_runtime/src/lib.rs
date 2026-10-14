@@ -4,8 +4,14 @@
 //! rebuilt from dirty chunks. Fate-weaving, the editor, and the LLM stack
 //! are not dependencies of this crate.
 
+const _: () = assert!(
+    !cfg!(target_feature = "fma"),
+    "aravath_runtime must be compiled without the fma target feature"
+);
+
 pub mod assets;
 pub mod combat;
+pub mod detmath;
 pub mod figure;
 pub mod ground;
 pub mod hud;

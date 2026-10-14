@@ -176,7 +176,7 @@ impl Greybox {
 
     pub fn tick_wish(&mut self, wish: Vec3) {
         if wish.length_squared() > 1e-6 {
-            self.player.facing_yaw = wish.z.atan2(wish.x);
+            self.player.facing_yaw = crate::detmath::atan2(wish.z, wish.x);
         }
         self.player.tick(&mut self.physics, wish, FIXED_DT);
         self.camera.pivot = self.player_pos();
@@ -342,7 +342,7 @@ impl Greybox {
             if let Some(enemy) = self.combat.enemies.get(index) {
                 if let Some(pos) = crate::combat::body_pos(&self.physics, enemy.body) {
                     let to = pos - self.player_pos();
-                    self.camera.yaw = to.z.atan2(to.x);
+                    self.camera.yaw = crate::detmath::atan2(to.z, to.x);
                 }
             }
         }
@@ -798,7 +798,34 @@ mod tests {
                 ..TickInput::default()
             });
         }
+        script.push(TickInput {
+            motor: MotorInput {
+                fly_toggle: true,
+                ..MotorInput::default()
+            },
+            ..TickInput::default()
+        });
+        for _ in 0..160 {
+            script.push(TickInput {
+                motor: MotorInput {
+                    move_y: 1.0,
+                    ..MotorInput::default()
+                },
+                ..TickInput::default()
+            });
+        }
         script
+    }
+
+    #[test]
+    fn replay_matches_golden_hash() {
+        let sim = play(&recorded_script());
+        let got = format!("{:016x}", sim.state_hash());
+        let golden = include_str!("../golden/replay.hash").trim();
+        assert_eq!(
+            got, golden,
+            "replay state hash {got} does not match the checked-in golden {golden}"
+        );
     }
 
     #[test]

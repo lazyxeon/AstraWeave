@@ -356,6 +356,7 @@ dependencies = [
  "glam",
  "gltf",
  "image",
+ "libm",
  "log",
  "pollster",
  "raw-window-handle",
@@ -1294,6 +1295,7 @@ dependencies = [
  "bitflags 2.9.4",
  "criterion 0.7.0",
  "glam",
+ "libm",
  "rand 0.9.2",
  "rapier3d",
  "rayon",
@@ -5401,6 +5403,7 @@ version = "0.30.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e12d847aeb25f41be4c0ec9587d624e9cd631bc007a8fd7ce3f5851e064c6460"
 dependencies = [
+ "libm",
  "serde_core",
 ]
 
@@ -6230,6 +6233,8 @@ checksum = "4b0f83760fb341a774ed326568e19f5a863af4a952def8c39f9ab92fd95b88e5"
 dependencies = [
  "equivalent",
  "hashbrown 0.16.0",
+ "serde",
+ "serde_core",
 ]
 
 [[package]]
@@ -8344,6 +8349,7 @@ dependencies = [
  "downcast-rs 1.2.1",
  "either",
  "ena",
+ "indexmap",
  "log",
  "nalgebra 0.33.2",
  "num-derive",
@@ -10173,6 +10179,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c99284beb21666094ba2b75bbceda012e610f5479dfcc2d6e2426f53197ffd95"
 dependencies = [
  "approx 0.5.1",
+ "libm",
  "num-complex 0.4.6",
  "num-traits",
  "paste",
