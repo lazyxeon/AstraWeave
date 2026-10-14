@@ -1,3 +1,6 @@
+#[path = "support/gpu_capability.rs"]
+mod gpu_capability;
+
 // no extra imports needed
 
 fn aces_tonemap(x: [f32; 3]) -> [f32; 3] {
@@ -77,12 +80,21 @@ fn golden_postfx_compose_matches_cpu() {
     let h = 32u32;
     // Init wgpu (headless)
     let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
-    let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
+    let adapter = match pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
         power_preference: wgpu::PowerPreference::LowPower,
         compatible_surface: None,
         force_fallback_adapter: false,
-    }))
-    .expect("No adapter");
+    })) {
+        Ok(adapter) => adapter,
+        Err(err) => {
+            let reason = format!("no wgpu adapter: {err}");
+            if gpu_capability::skip_if_unavailable() {
+                gpu_capability::note_skip(&reason);
+                return;
+            }
+            panic!("Failed to find adapter: {reason}");
+        }
+    };
     let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
         label: Some("golden-postfx device"),
         required_features: wgpu::Features::empty(),

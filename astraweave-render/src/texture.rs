@@ -605,37 +605,24 @@ pub fn validate_texture_assets(asset_paths: &[&str]) -> Result<()> {
 mod tests {
     use super::*;
 
-    async fn create_test_device() -> (wgpu::Device, wgpu::Queue) {
-        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
-            backends: wgpu::Backends::all(),
-            ..Default::default()
-        });
-
-        let adapter = instance
-            .request_adapter(&wgpu::RequestAdapterOptions {
-                power_preference: wgpu::PowerPreference::default(),
-                force_fallback_adapter: true,
-                compatible_surface: None,
-            })
-            .await
-            .expect("Failed to find adapter");
-
-        adapter
-            .request_device(&wgpu::DeviceDescriptor {
-                label: Some("test_device"),
-                required_features: wgpu::Features::empty(),
-                required_limits: wgpu::Limits::downlevel_defaults(),
-                memory_hints: wgpu::MemoryHints::default(),
-                trace: Default::default(),
-            })
-            .await
-            .expect("Failed to create device")
+    async fn create_test_device() -> Option<(wgpu::Device, wgpu::Queue)> {
+        crate::gpu_capability::request_headless(
+            "test_device",
+            wgpu::Features::empty(),
+            wgpu::Limits::downlevel_defaults(),
+            wgpu::PowerPreference::default(),
+            true,
+        )
+        .await
+        .map(|gpu| (gpu.device, gpu.queue))
     }
 
     #[test]
     fn test_create_default_white() {
         pollster::block_on(async {
-            let (device, queue) = create_test_device().await;
+            let Some((device, queue)) = create_test_device().await else {
+                return;
+            };
             let result = Texture::create_default_white(&device, &queue, "test_white");
 
             assert!(result.is_ok(), "Should create white texture successfully");
@@ -654,7 +641,9 @@ mod tests {
     #[test]
     fn test_create_default_normal() {
         pollster::block_on(async {
-            let (device, queue) = create_test_device().await;
+            let Some((device, queue)) = create_test_device().await else {
+                return;
+            };
             let result = Texture::create_default_normal(&device, &queue, "test_normal");
 
             assert!(result.is_ok(), "Should create normal texture successfully");
@@ -673,7 +662,9 @@ mod tests {
     #[test]
     fn test_white_and_normal_different_labels() {
         pollster::block_on(async {
-            let (device, queue) = create_test_device().await;
+            let Some((device, queue)) = create_test_device().await else {
+                return;
+            };
 
             let white = Texture::create_default_white(&device, &queue, "white").unwrap();
             let normal = Texture::create_default_normal(&device, &queue, "normal").unwrap();
@@ -688,7 +679,9 @@ mod tests {
     #[test]
     fn test_from_bytes_valid_png() {
         pollster::block_on(async {
-            let (device, queue) = create_test_device().await;
+            let Some((device, queue)) = create_test_device().await else {
+                return;
+            };
 
             // Create a simple 2x2 PNG in memory using image crate
             let mut img = image::RgbaImage::new(2, 2);
@@ -709,7 +702,9 @@ mod tests {
     #[test]
     fn test_from_bytes_invalid_data() {
         pollster::block_on(async {
-            let (device, queue) = create_test_device().await;
+            let Some((device, queue)) = create_test_device().await else {
+                return;
+            };
             let invalid_data = vec![0, 1, 2, 3, 4, 5]; // Not a valid image
 
             let result = Texture::from_bytes(&device, &queue, &invalid_data, "invalid");

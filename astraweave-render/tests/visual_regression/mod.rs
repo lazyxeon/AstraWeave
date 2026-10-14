@@ -2,6 +2,9 @@
 //!
 //! Provides utilities for rendering to buffers and comparing against golden images.
 
+#[path = "../support/gpu_capability.rs"]
+mod gpu_capability;
+
 pub struct VisualTestContext {
     pub device: wgpu::Device,
     pub queue: wgpu::Queue,
@@ -11,38 +14,22 @@ pub struct VisualTestContext {
 
 impl VisualTestContext {
     /// Create a new visual test context with specified dimensions
-    pub async fn new(width: u32, height: u32) -> Self {
-        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
-            backends: wgpu::Backends::all(),
-            ..Default::default()
-        });
+    pub async fn new(width: u32, height: u32) -> Option<Self> {
+        let gpu = gpu_capability::request_headless(
+            "Visual Test Device",
+            wgpu::Features::empty(),
+            wgpu::Limits::default(),
+            wgpu::PowerPreference::default(),
+            false,
+        )
+        .await?;
 
-        let adapter = instance
-            .request_adapter(&wgpu::RequestAdapterOptions {
-                power_preference: wgpu::PowerPreference::default(),
-                force_fallback_adapter: false,
-                compatible_surface: None,
-            })
-            .await
-            .expect("Failed to find adapter");
-
-        let (device, queue) = adapter
-            .request_device(&wgpu::DeviceDescriptor {
-                label: Some("Visual Test Device"),
-                required_features: wgpu::Features::empty(),
-                required_limits: wgpu::Limits::default(),
-                memory_hints: wgpu::MemoryHints::default(),
-                trace: wgpu::Trace::Off,
-            })
-            .await
-            .expect("Failed to create device");
-
-        Self {
-            device,
-            queue,
+        Some(Self {
+            device: gpu.device,
+            queue: gpu.queue,
             width,
             height,
-        }
+        })
     }
 
     /// Render using the provided render function and return the pixel buffer

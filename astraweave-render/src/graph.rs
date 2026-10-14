@@ -925,12 +925,22 @@ mod tests {
     #[test]
     fn resource_table_transient_texture() {
         let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
-        let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::LowPower,
-            compatible_surface: None,
-            force_fallback_adapter: false,
-        }))
-        .expect("adapter");
+        let adapter =
+            match pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
+                power_preference: wgpu::PowerPreference::LowPower,
+                compatible_surface: None,
+                force_fallback_adapter: false,
+            })) {
+                Ok(adapter) => adapter,
+                Err(err) => {
+                    let reason = format!("no wgpu adapter: {err}");
+                    if crate::gpu_capability::skip_if_unavailable() {
+                        crate::gpu_capability::note_skip(&reason);
+                        return;
+                    }
+                    panic!("Failed to find adapter: {reason}");
+                }
+            };
         let (device, _queue) =
             pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
                 .expect("device");
@@ -1018,12 +1028,22 @@ mod tests {
     #[test]
     fn target_view_returns_primary_for_surface_key() {
         let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
-        let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::LowPower,
-            compatible_surface: None,
-            force_fallback_adapter: false,
-        }))
-        .expect("adapter");
+        let adapter =
+            match pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
+                power_preference: wgpu::PowerPreference::LowPower,
+                compatible_surface: None,
+                force_fallback_adapter: false,
+            })) {
+                Ok(adapter) => adapter,
+                Err(err) => {
+                    let reason = format!("no wgpu adapter: {err}");
+                    if crate::gpu_capability::skip_if_unavailable() {
+                        crate::gpu_capability::note_skip(&reason);
+                        return;
+                    }
+                    panic!("Failed to find adapter: {reason}");
+                }
+            };
         let (device, _queue) =
             pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
                 .expect("device");
@@ -1336,12 +1356,22 @@ mod tests {
         assert!(table.is_empty());
 
         let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
-        let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::LowPower,
-            compatible_surface: None,
-            force_fallback_adapter: false,
-        }))
-        .expect("adapter");
+        let adapter =
+            match pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
+                power_preference: wgpu::PowerPreference::LowPower,
+                compatible_surface: None,
+                force_fallback_adapter: false,
+            })) {
+                Ok(adapter) => adapter,
+                Err(err) => {
+                    let reason = format!("no wgpu adapter: {err}");
+                    if crate::gpu_capability::skip_if_unavailable() {
+                        crate::gpu_capability::note_skip(&reason);
+                        return;
+                    }
+                    panic!("Failed to find adapter: {reason}");
+                }
+            };
         let (device, _queue) =
             pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
                 .expect("device");

@@ -60,7 +60,9 @@ fn unit_quad_mesh() -> SimplificationMesh {
 
 #[test]
 fn impostor_baker_creation_allocates_atlas() {
-    let (device, _queue) = pollster::block_on(test_utils::create_headless_device());
+    let Some((device, _queue)) = pollster::block_on(test_utils::create_headless_device()) else {
+        return;
+    };
     let baker = ImpostorBaker::new(
         &device,
         ImpostorBakerConfig {
@@ -78,7 +80,9 @@ fn impostor_baker_creation_allocates_atlas() {
 
 #[test]
 fn impostor_baker_rejects_zero_atlas_dimensions() {
-    let (device, _queue) = pollster::block_on(test_utils::create_headless_device());
+    let Some((device, _queue)) = pollster::block_on(test_utils::create_headless_device()) else {
+        return;
+    };
     assert!(ImpostorBaker::new(
         &device,
         ImpostorBakerConfig {
@@ -101,7 +105,9 @@ fn impostor_baker_rejects_zero_atlas_dimensions() {
 
 #[test]
 fn impostor_baker_rejects_unsupported_msaa() {
-    let (device, _queue) = pollster::block_on(test_utils::create_headless_device());
+    let Some((device, _queue)) = pollster::block_on(test_utils::create_headless_device()) else {
+        return;
+    };
     let result = ImpostorBaker::new(
         &device,
         ImpostorBakerConfig {
@@ -115,7 +121,9 @@ fn impostor_baker_rejects_unsupported_msaa() {
 
 #[test]
 fn impostor_baker_readback_is_zero_before_any_draw() {
-    let (device, queue) = pollster::block_on(test_utils::create_headless_device());
+    let Some((device, queue)) = pollster::block_on(test_utils::create_headless_device()) else {
+        return;
+    };
     let baker = ImpostorBaker::new(
         &device,
         ImpostorBakerConfig {
@@ -136,7 +144,9 @@ fn impostor_baker_readback_is_zero_before_any_draw() {
 
 #[test]
 fn impostor_baker_draws_quad_produces_non_zero_pixels_in_region() {
-    let (device, queue) = pollster::block_on(test_utils::create_headless_device());
+    let Some((device, queue)) = pollster::block_on(test_utils::create_headless_device()) else {
+        return;
+    };
     let atlas_width = 128u32;
     let atlas_height = 128u32;
     let baker = ImpostorBaker::new(
@@ -232,7 +242,9 @@ fn impostor_baker_second_draw_preserves_first_cell() {
     // Ensures the load-vs-clear load-op choice keeps cells from previous
     // draws intact — the contract that makes multi-species / multi-angle
     // baking work in a single atlas.
-    let (device, queue) = pollster::block_on(test_utils::create_headless_device());
+    let Some((device, queue)) = pollster::block_on(test_utils::create_headless_device()) else {
+        return;
+    };
     let baker = ImpostorBaker::new(
         &device,
         ImpostorBakerConfig {

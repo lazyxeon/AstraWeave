@@ -36,37 +36,24 @@ impl Depth {
 mod tests {
     use super::*;
 
-    async fn create_test_device() -> (wgpu::Device, wgpu::Queue) {
-        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
-            backends: wgpu::Backends::all(),
-            ..Default::default()
-        });
-
-        let adapter = instance
-            .request_adapter(&wgpu::RequestAdapterOptions {
-                power_preference: wgpu::PowerPreference::default(),
-                force_fallback_adapter: true,
-                compatible_surface: None,
-            })
-            .await
-            .expect("Failed to find adapter");
-
-        adapter
-            .request_device(&wgpu::DeviceDescriptor {
-                label: Some("test_device"),
-                required_features: wgpu::Features::empty(),
-                required_limits: wgpu::Limits::downlevel_defaults(),
-                memory_hints: wgpu::MemoryHints::default(),
-                trace: Default::default(),
-            })
-            .await
-            .expect("Failed to create device")
+    async fn create_test_device() -> Option<(wgpu::Device, wgpu::Queue)> {
+        crate::gpu_capability::request_headless(
+            "test_device",
+            wgpu::Features::empty(),
+            wgpu::Limits::downlevel_defaults(),
+            wgpu::PowerPreference::default(),
+            true,
+        )
+        .await
+        .map(|gpu| (gpu.device, gpu.queue))
     }
 
     #[test]
     fn test_depth_create() {
         pollster::block_on(async {
-            let (device, _queue) = create_test_device().await;
+            let Some((device, _queue)) = create_test_device().await else {
+                return;
+            };
             let config = wgpu::SurfaceConfiguration {
                 usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
                 format: wgpu::TextureFormat::Bgra8UnormSrgb,
@@ -92,7 +79,9 @@ mod tests {
     #[test]
     fn test_depth_create_different_sizes() {
         pollster::block_on(async {
-            let (device, _queue) = create_test_device().await;
+            let Some((device, _queue)) = create_test_device().await else {
+                return;
+            };
 
             let configs = vec![(1920, 1080), (1280, 720), (640, 480), (256, 256)];
 
@@ -118,7 +107,9 @@ mod tests {
     #[test]
     fn test_depth_format_consistent() {
         pollster::block_on(async {
-            let (device, _queue) = create_test_device().await;
+            let Some((device, _queue)) = create_test_device().await else {
+                return;
+            };
             let config = wgpu::SurfaceConfiguration {
                 usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
                 format: wgpu::TextureFormat::Bgra8UnormSrgb,

@@ -3,6 +3,9 @@
 //! Validates renderer output across different GPU backends (DX12, Vulkan, Metal)
 //! to ensure consistent, deterministic rendering.
 
+#[path = "support/gpu_capability.rs"]
+mod gpu_capability;
+
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
@@ -75,48 +78,34 @@ mod tests {
     use super::*;
 
     /// Create test device and queue for GPU tests (copied from renderer_tests.rs)
-    async fn create_test_device() -> (wgpu::Device, wgpu::Queue) {
-        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
-            backends: wgpu::Backends::all(),
-            ..Default::default()
-        });
-
-        let adapter = instance
-            .request_adapter(&wgpu::RequestAdapterOptions {
-                power_preference: wgpu::PowerPreference::default(),
-                force_fallback_adapter: true, // Software adapter for CI
-                compatible_surface: None,
-            })
-            .await
-            .expect("Failed to find adapter");
-
-        adapter
-            .request_device(&wgpu::DeviceDescriptor {
-                label: Some("test_device"),
-                required_features: wgpu::Features::empty(),
-                required_limits: wgpu::Limits::downlevel_defaults(),
-                memory_hints: wgpu::MemoryHints::default(),
-                trace: Default::default(),
-            })
-            .await
-            .expect("Failed to create device")
+    async fn create_test_device() -> Option<(wgpu::Device, wgpu::Queue)> {
+        gpu_capability::request_headless(
+            "test_device",
+            wgpu::Features::empty(),
+            wgpu::Limits::downlevel_defaults(),
+            wgpu::PowerPreference::default(),
+            true,
+        )
+        .await
+        .map(|gpu| (gpu.device, gpu.queue))
     }
 
     #[test]
     fn test_backend_detection() {
         pollster::block_on(async {
-            let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
+            let Some(gpu) = gpu_capability::request_headless(
+                "backend-detect",
+                wgpu::Features::empty(),
+                wgpu::Limits::downlevel_defaults(),
+                wgpu::PowerPreference::LowPower,
+                true,
+            )
+            .await
+            else {
+                return;
+            };
 
-            let adapter = instance
-                .request_adapter(&wgpu::RequestAdapterOptions {
-                    power_preference: wgpu::PowerPreference::LowPower,
-                    compatible_surface: None,
-                    force_fallback_adapter: true,
-                })
-                .await
-                .expect("adapter");
-
-            let backend = GpuBackend::detect(&adapter);
+            let backend = GpuBackend::detect(&gpu.adapter);
             println!(
                 "Detected backend: {:?} (suffix: {})",
                 backend,
@@ -128,7 +117,9 @@ mod tests {
     #[test]
     fn golden_triangle_render() {
         pollster::block_on(async {
-            let (device, queue) = create_test_device().await;
+            let Some((device, queue)) = create_test_device().await else {
+                return;
+            };
 
             let width = 64u32;
             let height = 64u32;
@@ -298,7 +289,9 @@ mod tests {
     #[test]
     fn golden_determinism_check() {
         pollster::block_on(async {
-            let (device, queue) = create_test_device().await;
+            let Some((device, queue)) = create_test_device().await else {
+                return;
+            };
 
             let width = 32u32;
             let height = 32u32;

@@ -24,7 +24,9 @@ fn make_atlas_pixels(width: u32, height: u32, fill: [u8; 4]) -> Vec<u8> {
 #[test]
 fn lod3_pipeline_builds_on_headless_device() {
     pollster::block_on(async {
-        let (device, _queue) = test_utils::create_headless_device().await;
+        let Some((device, _queue)) = test_utils::create_headless_device().await else {
+            return;
+        };
         let pipeline = build_lod3_pipeline(
             &device,
             wgpu::TextureFormat::Rgba8UnormSrgb,
@@ -38,7 +40,9 @@ fn lod3_pipeline_builds_on_headless_device() {
 #[test]
 fn lod3_resources_upload_round_trips_spec_to_gpu() {
     pollster::block_on(async {
-        let (device, queue) = test_utils::create_headless_device().await;
+        let Some((device, queue)) = test_utils::create_headless_device().await else {
+            return;
+        };
         let pipeline = build_lod3_pipeline(
             &device,
             wgpu::TextureFormat::Rgba8UnormSrgb,
@@ -72,7 +76,9 @@ fn lod3_resources_upload_round_trips_spec_to_gpu() {
 #[test]
 fn lod3_resources_upload_rejects_wrong_sized_buffer() {
     pollster::block_on(async {
-        let (device, queue) = test_utils::create_headless_device().await;
+        let Some((device, queue)) = test_utils::create_headless_device().await else {
+            return;
+        };
         let pipeline =
             build_lod3_pipeline(&device, wgpu::TextureFormat::Rgba8UnormSrgb, None).unwrap();
 
@@ -92,7 +98,9 @@ fn lod3_resources_upload_rejects_wrong_sized_buffer() {
 #[test]
 fn lod3_resources_upload_rejects_zero_dimension_atlas() {
     pollster::block_on(async {
-        let (device, queue) = test_utils::create_headless_device().await;
+        let Some((device, queue)) = test_utils::create_headless_device().await else {
+            return;
+        };
         let pipeline =
             build_lod3_pipeline(&device, wgpu::TextureFormat::Rgba8UnormSrgb, None).unwrap();
 
@@ -116,7 +124,9 @@ fn lod3_resources_upload_rejects_zero_dimension_atlas() {
 #[test]
 fn lod3_resources_rows_match_cpu_lookup_after_upload() {
     pollster::block_on(async {
-        let (device, queue) = test_utils::create_headless_device().await;
+        let Some((device, queue)) = test_utils::create_headless_device().await else {
+            return;
+        };
         let pipeline =
             build_lod3_pipeline(&device, wgpu::TextureFormat::Rgba8UnormSrgb, None).unwrap();
 

@@ -283,3 +283,7 @@ pub use skinning_gpu::{JointPaletteHandle, JointPaletteManager, SKINNING_GPU_SHA
 // Comprehensive renderer tests (Phase 1: Foundation)
 #[cfg(test)]
 mod renderer_tests;
+
+#[cfg(test)]
+#[path = "../tests/support/gpu_capability.rs"]
+mod gpu_capability;

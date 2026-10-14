@@ -1,5 +1,19 @@
 use std::fs;
 
+#[path = "support/gpu_capability.rs"]
+mod gpu_capability;
+
+fn headless_device(label: &'static str) -> Option<(wgpu::Device, wgpu::Queue)> {
+    pollster::block_on(gpu_capability::request_headless(
+        label,
+        wgpu::Features::empty(),
+        wgpu::Limits::downlevel_webgl2_defaults(),
+        wgpu::PowerPreference::LowPower,
+        false,
+    ))
+    .map(|gpu| (gpu.device, gpu.queue))
+}
+
 fn write_file(path: &std::path::Path, contents: &str) {
     if let Some(p) = path.parent() {
         fs::create_dir_all(p).unwrap();
@@ -51,22 +65,9 @@ fn parses_materials_and_arrays_and_orders_layers() {
     "#,
     );
 
-    // Headless WGPU
-    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
-    let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
-        power_preference: wgpu::PowerPreference::LowPower,
-        compatible_surface: None,
-        force_fallback_adapter: false,
-    }))
-    .expect("adapter");
-    let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
-        label: Some("materials-test device"),
-        required_features: wgpu::Features::empty(),
-        required_limits: wgpu::Limits::downlevel_webgl2_defaults(),
-        memory_hints: wgpu::MemoryHints::default(),
-        trace: wgpu::Trace::Off,
-    }))
-    .expect("device");
+    let Some((device, queue)) = headless_device("materials-test device") else {
+        return;
+    };
 
     let mut mm = astraweave_render::MaterialManager::new();
     let (gpu, stats) = pollster::block_on(mm.load_pack_from_toml(
@@ -140,19 +141,9 @@ fn packs_mra_from_separate_planes_when_missing_mra() {
     "#,
     );
 
-    // WGPU headless
-    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
-    let adapter =
-        pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))
-            .expect("adapter");
-    let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
-        label: Some("materials-test device"),
-        required_features: wgpu::Features::empty(),
-        required_limits: wgpu::Limits::downlevel_webgl2_defaults(),
-        memory_hints: wgpu::MemoryHints::default(),
-        trace: wgpu::Trace::Off,
-    }))
-    .expect("device");
+    let Some((device, queue)) = headless_device("materials-test device") else {
+        return;
+    };
 
     let mut mm = astraweave_render::MaterialManager::new();
     let (_gpu, stats) = pollster::block_on(mm.load_pack_from_toml(
@@ -201,18 +192,9 @@ fn path_resolution_uses_base_dir_and_normalizes() {
     "#,
     );
 
-    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
-    let adapter =
-        pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))
-            .expect("adapter");
-    let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
-        label: Some("materials-test device"),
-        required_features: wgpu::Features::empty(),
-        required_limits: wgpu::Limits::downlevel_webgl2_defaults(),
-        memory_hints: wgpu::MemoryHints::default(),
-        trace: wgpu::Trace::Off,
-    }))
-    .expect("device");
+    let Some((device, queue)) = headless_device("materials-test device") else {
+        return;
+    };
 
     let mut mm = astraweave_render::MaterialManager::new();
     // Should not error: joins resolve against base_dir and normalize

@@ -2,44 +2,27 @@
 //!
 //! Provides wgpu context initialization for CI-safe headless tests
 
+#[path = "support/gpu_capability.rs"]
+mod gpu_capability;
+
 use wgpu::{Device, Queue};
 
 /// Initialize headless wgpu device for testing
 /// Uses software adapter for CI compatibility
 #[allow(dead_code)]
-pub async fn create_headless_device() -> (Device, Queue) {
-    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
-        backends: wgpu::Backends::all(),
-        ..Default::default()
-    });
-
-    // Request adapter with fallback preference for CI
-    let adapter = instance
-        .request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::default(),
-            force_fallback_adapter: true, // Use software adapter for CI
-            compatible_surface: None,
-        })
-        .await
-        .expect("Failed to find adapter");
-
-    // L.3: the terrain-forward pipeline layout has 5 bind groups (camera,
-    // terrain, splat, IBL, shadow) — downlevel_defaults' max_bind_groups is 4,
-    // so raise it (same approach as headless_integration.rs).
+pub async fn create_headless_device() -> Option<(wgpu::Device, wgpu::Queue)> {
+    // Terrain-forward layouts use 5 bind groups. downlevel_defaults allows 4.
     let mut limits = wgpu::Limits::downlevel_defaults();
     limits.max_bind_groups = limits.max_bind_groups.max(5);
-    let (device, queue) = adapter
-        .request_device(&wgpu::DeviceDescriptor {
-            label: Some("test_device"),
-            required_features: wgpu::Features::empty(),
-            required_limits: limits,
-            memory_hints: wgpu::MemoryHints::default(),
-            trace: Default::default(),
-        })
-        .await
-        .expect("Failed to create device");
-
-    (device, queue)
+    gpu_capability::request_headless(
+        "test_device",
+        wgpu::Features::empty(),
+        limits,
+        wgpu::PowerPreference::default(),
+        true,
+    )
+    .await
+    .map(|gpu| (gpu.device, gpu.queue))
 }
 
 /// Helper to create a simple test skeleton
