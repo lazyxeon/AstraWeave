@@ -63,8 +63,10 @@ impl PersistencePlugin {
 impl Plugin for PersistencePlugin {
     fn build(&self, app: &mut App) {
         // Add persistence systems
-        app.add_system("post_simulation", auto_save_system);
-        app.add_system("pre_simulation", replay_system);
+        app.add_system("post_simulation", auto_save_system)
+            .expect("registered schedule stage");
+        app.add_system("pre_simulation", replay_system)
+            .expect("registered schedule stage");
     }
 }
 

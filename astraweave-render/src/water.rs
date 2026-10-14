@@ -1362,6 +1362,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::assertions_on_constants)]
     fn test_wave_fade_flat_before_shell_seam() {
         // The camera can sit up to 32·√2 from its snapped chunk center; the
         // shell's inner edge is HORIZON_INNER_HALF_EXTENT from that center.

@@ -31,20 +31,46 @@ pub struct MusicTrack {
 }
 
 struct MusicChannel {
-    a: Sink,
-    b: Sink,
+    a: Option<Sink>,
+    b: Option<Sink>,
     using_a: bool,
     crossfade_time: f32,
     crossfade_left: f32,
     target_vol: f32,
 }
 
+fn sink_set_volume(sink: &Option<Sink>, volume: f32) {
+    if let Some(sink) = sink {
+        sink.set_volume(volume);
+    }
+}
+
+fn sink_stop(sink: &Option<Sink>) {
+    if let Some(sink) = sink {
+        sink.stop();
+    }
+}
+
+macro_rules! append_and_play {
+    ($sink:expr, $source:expr) => {
+        if let Some(sink) = &$sink {
+            sink.append($source);
+            sink.play();
+        }
+    };
+}
+
 impl MusicChannel {
-    fn new(handle: &OutputStreamHandle, vol: f32) -> Result<Self> {
-        let a = Sink::try_new(handle)?;
-        let b = Sink::try_new(handle)?;
-        a.set_volume(vol);
-        b.set_volume(0.0);
+    fn new(handle: Option<&OutputStreamHandle>, vol: f32) -> Result<Self> {
+        let (a, b) = if let Some(handle) = handle {
+            let a = Sink::try_new(handle)?;
+            let b = Sink::try_new(handle)?;
+            a.set_volume(vol);
+            b.set_volume(0.0);
+            (Some(a), Some(b))
+        } else {
+            (None, None)
+        };
         Ok(Self {
             a,
             b,
@@ -55,9 +81,14 @@ impl MusicChannel {
         })
     }
 
+    fn stop_playback(&self) {
+        sink_stop(&self.a);
+        sink_stop(&self.b);
+    }
+
     fn play(
         &mut self,
-        handle: &OutputStreamHandle,
+        handle: Option<&OutputStreamHandle>,
         track: &MusicTrack,
         crossfade: f32,
     ) -> Result<()> {
@@ -72,20 +103,24 @@ impl MusicChannel {
 
         // start on the inactive sink
         if self.using_a {
-            self.b.stop(); // clear previous
-            let b = Sink::try_new(handle)?;
-            b.set_volume(0.0);
-            b.append(src);
-            b.play();
-            self.b = b;
+            sink_stop(&self.b);
+            if let Some(handle) = handle {
+                let b = Sink::try_new(handle)?;
+                b.set_volume(0.0);
+                b.append(src);
+                b.play();
+                self.b = Some(b);
+            }
             self.using_a = false;
         } else {
-            self.a.stop();
-            let a = Sink::try_new(handle)?;
-            a.set_volume(0.0);
-            a.append(src);
-            a.play();
-            self.a = a;
+            sink_stop(&self.a);
+            if let Some(handle) = handle {
+                let a = Sink::try_new(handle)?;
+                a.set_volume(0.0);
+                a.append(src);
+                a.play();
+                self.a = Some(a);
+            }
             self.using_a = true;
         }
         self.crossfade_time = crossfade.max(0.01);
@@ -104,19 +139,19 @@ impl MusicChannel {
             let (vol_new, vol_old) = (k * self.target_vol, (1.0 - k) * self.target_vol);
             // apply
             if self.using_a {
-                self.a.set_volume(self.target_vol);
-                self.b.set_volume(0.0);
+                sink_set_volume(&self.a, self.target_vol);
+                sink_set_volume(&self.b, 0.0);
             } else {
-                self.a.set_volume(vol_old);
-                self.b.set_volume(vol_new);
+                sink_set_volume(&self.a, vol_old);
+                sink_set_volume(&self.b, vol_new);
             }
         } else {
             // steady state
             if self.using_a {
-                self.a.set_volume(self.target_vol);
-                self.b.set_volume(0.0);
+                sink_set_volume(&self.a, self.target_vol);
+                sink_set_volume(&self.b, 0.0);
             } else {
-                self.a.set_volume(self.target_vol);
+                sink_set_volume(&self.a, self.target_vol);
             }
         }
     }
@@ -124,26 +159,64 @@ impl MusicChannel {
     fn duck(&mut self, factor: f32) {
         self.target_vol = (self.target_vol * factor).clamp(0.0, 1.0);
         if self.using_a {
-            self.a.set_volume(self.target_vol);
+            sink_set_volume(&self.a, self.target_vol);
         } else {
-            self.b.set_volume(self.target_vol);
+            sink_set_volume(&self.b, self.target_vol);
+        }
+    }
+}
+
+/// Spatial output. `Null` keeps emitter identity when the machine has no device.
+enum SpatialOut {
+    Live(SpatialSink),
+    Null,
+}
+
+impl SpatialOut {
+    fn set_volume(&self, volume: f32) {
+        if let SpatialOut::Live(sink) = self {
+            sink.set_volume(volume);
+        }
+    }
+
+    fn stop(&self) {
+        if let SpatialOut::Live(sink) = self {
+            sink.stop();
+        }
+    }
+
+    fn set_left_ear_position(&self, position: [f32; 3]) {
+        if let SpatialOut::Live(sink) = self {
+            sink.set_left_ear_position(position);
+        }
+    }
+
+    fn set_right_ear_position(&self, position: [f32; 3]) {
+        if let SpatialOut::Live(sink) = self {
+            sink.set_right_ear_position(position);
+        }
+    }
+
+    fn set_emitter_position(&self, position: [f32; 3]) {
+        if let SpatialOut::Live(sink) = self {
+            sink.set_emitter_position(position);
         }
     }
 }
 
 pub struct AudioEngine {
-    // core device
-    _stream: OutputStream,
-    handle: OutputStreamHandle,
+    // core device. None when the host has no output device (headless CI).
+    _stream: Option<OutputStream>,
+    handle: Option<OutputStreamHandle>,
 
     // channels
     music: MusicChannel,
     ambient: MusicChannel, // biome ambient loops (same A/B crossfade pattern)
-    voice: Sink,
-    sfx_bus: Sink, // non-spatial SFX bus
+    voice: Option<Sink>,
+    sfx_bus: Option<Sink>, // non-spatial SFX bus
 
     // spatial sfx per emitter
-    spat: HashMap<EmitterId, SpatialSink>,
+    spat: HashMap<EmitterId, SpatialOut>,
 
     // global state
     pub master_volume: f32,
@@ -164,15 +237,48 @@ pub struct AudioEngine {
 
 impl AudioEngine {
     pub fn new() -> Result<Self> {
-        let (stream, handle) = OutputStream::try_default()?;
+        match OutputStream::try_default() {
+            Ok((stream, handle)) => Self::from_device(Some(stream), Some(handle)),
+            Err(err) => {
+                eprintln!("astraweave-audio: no output device ({err}); using a null backend");
+                Self::null()
+            }
+        }
+    }
 
-        let music = MusicChannel::new(&handle, 0.8)?;
-        let ambient = MusicChannel::new(&handle, 0.5)?;
-        let voice = Sink::try_new(&handle)?;
-        voice.set_volume(1.0);
+    /// Mixer state with no OS audio device. Playback methods succeed and drop samples.
+    pub fn null() -> Result<Self> {
+        Self::from_device(None, None)
+    }
 
-        let sfx = Sink::try_new(&handle)?;
-        sfx.set_volume(1.0);
+    /// True when samples are delivered to an OS device.
+    pub fn has_output_device(&self) -> bool {
+        self.handle.is_some()
+    }
+
+    fn from_device(
+        stream: Option<OutputStream>,
+        handle: Option<OutputStreamHandle>,
+    ) -> Result<Self> {
+        let handle_ref = handle.as_ref();
+        let music = MusicChannel::new(handle_ref, 0.8)?;
+        let ambient = MusicChannel::new(handle_ref, 0.5)?;
+        let voice = match &handle {
+            Some(handle) => {
+                let voice = Sink::try_new(handle)?;
+                voice.set_volume(1.0);
+                Some(voice)
+            }
+            None => None,
+        };
+        let sfx = match &handle {
+            Some(handle) => {
+                let sfx = Sink::try_new(handle)?;
+                sfx.set_volume(1.0);
+                Some(sfx)
+            }
+            None => None,
+        };
 
         Ok(Self {
             _stream: stream,
@@ -205,8 +311,8 @@ impl AudioEngine {
         let m = self.master_volume;
         self.music.set_volume(self.music_base_volume * m);
         self.ambient.set_volume(self.ambient_base_volume * m);
-        self.voice.set_volume(self.voice_base_volume * m);
-        self.sfx_bus.set_volume(self.sfx_base_volume * m);
+        sink_set_volume(&self.voice, self.voice_base_volume * m);
+        sink_set_volume(&self.sfx_bus, self.sfx_base_volume * m);
         for sink in self.spat.values() {
             sink.set_volume(m);
         }
@@ -226,15 +332,13 @@ impl AudioEngine {
     /// Set the base volume for the voice bus (0.0 – 1.0).
     pub fn set_voice_volume(&mut self, v: f32) {
         self.voice_base_volume = v.clamp(0.0, 1.0);
-        self.voice
-            .set_volume(self.voice_base_volume * self.master_volume);
+        sink_set_volume(&self.voice, self.voice_base_volume * self.master_volume);
     }
 
     /// Set the base volume for the SFX bus (0.0 – 1.0).
     pub fn set_sfx_volume(&mut self, v: f32) {
         self.sfx_base_volume = v.clamp(0.0, 1.0);
-        self.sfx_bus
-            .set_volume(self.sfx_base_volume * self.master_volume);
+        sink_set_volume(&self.sfx_bus, self.sfx_base_volume * self.master_volume);
     }
 
     /// Set ear separation distance for spatial audio (meters).
@@ -301,13 +405,11 @@ impl AudioEngine {
     pub fn play_music(&mut self, track: MusicTrack, crossfade_sec: f32) -> Result<()> {
         self.music
             .set_volume(self.music_base_volume * self.master_volume);
-        self.music.play(&self.handle, &track, crossfade_sec)
+        self.music.play(self.handle.as_ref(), &track, crossfade_sec)
     }
 
     pub fn stop_music(&self) {
-        // let sinks finish; not strictly required to stop
-        self.music.a.stop();
-        self.music.b.stop();
+        self.music.stop_playback();
     }
 
     // ── Ambient loop (biome atmosphere) ──────────────────────────
@@ -319,13 +421,13 @@ impl AudioEngine {
     pub fn play_ambient(&mut self, track: MusicTrack, crossfade_sec: f32) -> Result<()> {
         self.ambient
             .set_volume(self.ambient_base_volume * self.master_volume);
-        self.ambient.play(&self.handle, &track, crossfade_sec)
+        self.ambient
+            .play(self.handle.as_ref(), &track, crossfade_sec)
     }
 
     /// Stop ambient playback.
     pub fn stop_ambient(&self) {
-        self.ambient.a.stop();
-        self.ambient.b.stop();
+        self.ambient.stop_playback();
     }
 
     /// Set the base volume for the ambient bus (0.0 – 1.0).
@@ -354,8 +456,7 @@ impl AudioEngine {
             // fallback heuristic
             self.duck_timer = 2.5;
         }
-        self.voice.append(src);
-        self.voice.play();
+        append_and_play!(self.voice, src);
         Ok(())
     }
 
@@ -366,15 +467,13 @@ impl AudioEngine {
             .amplify(0.2);
         self.music.duck(self.duck_factor);
         self.duck_timer = dur + 0.2;
-        self.voice.append(beep);
-        self.voice.play();
+        append_and_play!(self.voice, beep);
     }
 
     pub fn play_sfx_file(&mut self, path: &str) -> Result<()> {
         let file = File::open(path).map_err(|e| anyhow!("open sfx {}: {}", path, e))?;
         let src = Decoder::new(BufReader::new(file))?;
-        self.sfx_bus.append(src);
-        self.sfx_bus.play();
+        append_and_play!(self.sfx_bus, src);
         Ok(())
     }
 
@@ -382,8 +481,7 @@ impl AudioEngine {
         let beep = SineWave::new(hz)
             .take_duration(Duration::from_secs_f32(sec))
             .amplify(gain);
-        self.sfx_bus.append(beep);
-        self.sfx_bus.play();
+        append_and_play!(self.sfx_bus, beep);
     }
 
     pub fn play_sfx_3d_file(&mut self, emitter: EmitterId, path: &str, pos: Vec3) -> Result<()> {
@@ -392,8 +490,10 @@ impl AudioEngine {
         self.ensure_spatial_sink(emitter)?;
         if let Some(s) = self.spat.get_mut(&emitter) {
             s.set_emitter_position(pos.to_array());
-            s.append(src);
-            s.play();
+            if let SpatialOut::Live(sink) = s {
+                sink.append(src);
+                sink.play();
+            }
         }
         Ok(())
     }
@@ -412,19 +512,25 @@ impl AudioEngine {
             .amplify(gain);
         if let Some(s) = self.spat.get_mut(&emitter) {
             s.set_emitter_position(pos.to_array());
-            s.append(src);
-            s.play();
+            if let SpatialOut::Live(sink) = s {
+                sink.append(src);
+                sink.play();
+            }
         }
         Ok(())
     }
 
     fn ensure_spatial_sink(&mut self, emitter: EmitterId) -> Result<()> {
         if !self.spat.contains_key(&emitter) {
-            let (le, re) = self.compute_ears();
-            let sink =
-                SpatialSink::try_new(&self.handle, le, re, self.listener.position.to_array())?;
-            sink.set_volume(self.master_volume);
-            self.spat.insert(emitter, sink);
+            let out = if let Some(handle) = &self.handle {
+                let (le, re) = self.compute_ears();
+                let sink = SpatialSink::try_new(handle, le, re, self.listener.position.to_array())?;
+                sink.set_volume(self.master_volume);
+                SpatialOut::Live(sink)
+            } else {
+                SpatialOut::Null
+            };
+            self.spat.insert(emitter, out);
         }
         Ok(())
     }
@@ -485,6 +591,21 @@ impl AudioEngine {
 mod tests {
     use super::*;
     use glam::vec3;
+
+    #[test]
+    fn null_backend_keeps_mixer_state_without_a_device() {
+        let mut engine = AudioEngine::null().expect("null backend");
+        assert!(!engine.has_output_device());
+        engine.set_master_volume(0.5);
+        assert_eq!(engine.master_volume, 0.5);
+        engine.play_voice_beep(20);
+        assert!((engine.test_duck_timer() - 1.2).abs() < 1e-4);
+        engine
+            .play_sfx_3d_beep(7, vec3(1.0, 0.0, 0.0), 440.0, 0.1, 0.2)
+            .expect("null spatial beep");
+        assert_eq!(engine.active_emitter_count(), 1);
+        engine.tick(0.016);
+    }
 
     #[test]
     fn test_music_channel_initialization() {

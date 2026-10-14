@@ -84,6 +84,7 @@ enum AIMode {
     #[cfg(feature = "llm")]
     Utility, // Score-based selection
     #[cfg(feature = "ollama")]
+    #[allow(clippy::upper_case_acronyms)]
     LLM, // Qwen via Ollama
     #[cfg(feature = "ollama")]
     Hybrid, // LLM + Classical fallback
@@ -588,7 +589,7 @@ fn select_ai_mode(args: &[String]) -> AIMode {
     {
         println!("💡 Ollama features enabled. Using Hybrid mode (LLM + fallback).");
         println!("   Use --llm for pure LLM, --bt for BehaviorTree, etc.\n");
-        return AIMode::Hybrid;
+        AIMode::Hybrid
     }
 
     #[cfg(all(feature = "llm", not(feature = "ollama")))]
@@ -1182,9 +1183,9 @@ fn action_type_string(step: &ActionStep) -> String {
         ActionStep::Charge { .. } => "charge".to_string(),
 
         // Defensive (6)
-        ActionStep::Block { .. } => "block".to_string(),
+        ActionStep::Block => "block".to_string(),
         ActionStep::Dodge { .. } => "dodge".to_string(),
-        ActionStep::Parry { .. } => "parry".to_string(),
+        ActionStep::Parry => "parry".to_string(),
         ActionStep::ThrowSmoke { .. } => "throw_smoke".to_string(),
         ActionStep::Heal { .. } => "heal".to_string(),
         ActionStep::UseDefensiveAbility { .. } => "use_defensive_ability".to_string(),
@@ -1227,10 +1228,7 @@ fn action_type_string(step: &ActionStep) -> String {
 // Extract list of tool names from plan for Phase 7 metrics
 #[cfg(feature = "llm")]
 fn extract_tools_used(plan: &PlanIntent) -> Vec<String> {
-    plan.steps
-        .iter()
-        .map(|step| action_type_string(step))
-        .collect()
+    plan.steps.iter().map(action_type_string).collect()
 }
 
 // ============================================================================
@@ -1334,6 +1332,7 @@ fn print_metrics_table(metrics: &[AIMetrics]) {
 
 #[cfg(feature = "metrics")]
 fn export_metrics_to_files(metrics: &[AIMetrics]) -> Result<()> {
+    use anyhow::Context;
     use std::fs::File;
     use std::io::Write;
 

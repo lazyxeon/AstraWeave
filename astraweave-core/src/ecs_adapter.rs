@@ -215,14 +215,19 @@ pub fn build_app(legacy_world: World, dt: f32) -> ecs::App {
 
     // Now insert the legacy world as a resource so systems can access it.
     app.world.insert_resource::<World>(legacy_world);
-    app.add_system("simulation", sys_sim as ecs::SystemFn);
-    app.add_system("simulation", sys_move as ecs::SystemFn);
+    app.add_system("simulation", sys_sim as ecs::SystemFn)
+        .expect("registered schedule stage");
+    app.add_system("simulation", sys_move as ecs::SystemFn)
+        .expect("registered schedule stage");
     // Bridge sync runs after simulation so mappings are reflected into components
-    app.add_system("sync", sys_bridge_sync as ecs::SystemFn);
+    app.add_system("sync", sys_bridge_sync as ecs::SystemFn)
+        .expect("registered schedule stage");
     // Sync back to legacy world so legacy systems see updates
-    app.add_system("sync", sys_sync_to_legacy as ecs::SystemFn);
+    app.add_system("sync", sys_sync_to_legacy as ecs::SystemFn)
+        .expect("registered schedule stage");
     // AI planning system is registered from astraweave-ai crate to avoid a dependency cycle.
-    app.add_system("perception", sys_refresh_los as ecs::SystemFn);
+    app.add_system("perception", sys_refresh_los as ecs::SystemFn)
+        .expect("registered schedule stage");
     app
 }
 

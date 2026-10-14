@@ -1,3 +1,4 @@
+#![allow(unused, clippy::all)]
 //! W-series W.2a — Water surface render-budget probe (measurement harness).
 //!
 //! Measures the *real* GPU cost of the water surface pass on the local adapter

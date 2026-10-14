@@ -1,3 +1,4 @@
+#![allow(unused, clippy::all)]
 //! Wave 2 mutation-resistant remediation tests for scene_environment.rs, material_extended.rs,
 //! and clustered_forward.rs pure-CPU types.
 //!

@@ -507,7 +507,7 @@ mod tests {
     fn test_fract_hash_range() {
         for i in 0..1000 {
             let h = fract_hash(i as f32 * 0.1);
-            assert!(h >= 0.0 && h <= 1.0, "hash out of range: {h}");
+            assert!((0.0..=1.0).contains(&h), "hash out of range: {h}");
         }
     }
 

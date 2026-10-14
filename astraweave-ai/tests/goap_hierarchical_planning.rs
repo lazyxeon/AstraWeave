@@ -41,7 +41,7 @@ mod hierarchical_planning_tests {
             0.5,
         )));
 
-        let mut scan_preconds = BTreeMap::new();
+        let scan_preconds = BTreeMap::new();
         let mut scan_effects = BTreeMap::new();
         scan_effects.insert("area_scanned".to_string(), StateValue::Bool(true));
         scan_effects.insert("enemies_located".to_string(), StateValue::Bool(true));
@@ -112,7 +112,7 @@ mod hierarchical_planning_tests {
     #[test]
     fn test_hierarchical_depth() {
         let planner = create_test_planner();
-        let mut start = WorldState::new();
+        let start = WorldState::new();
 
         // Level 2 sub-sub-goal
         let mut l2_desired = BTreeMap::new();
@@ -141,7 +141,7 @@ mod hierarchical_planning_tests {
     #[test]
     fn test_max_depth_limit() {
         let planner = create_test_planner();
-        let mut start = WorldState::new();
+        let start = WorldState::new();
 
         // Create deep hierarchy
         let mut l3_desired = BTreeMap::new();
@@ -271,7 +271,6 @@ mod hierarchical_planning_tests {
 
     #[test]
     fn test_goal_authoring_integration() {
-        use std::path::PathBuf;
         use tempfile::TempDir;
 
         let temp_dir = TempDir::new().unwrap();

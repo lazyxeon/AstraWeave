@@ -1242,12 +1242,9 @@ mod counting_alloc_tests {
         // After reset, both should be 0 (or close, since test framework may allocate)
         let a = counting_alloc::allocs();
         let d = counting_alloc::deallocs();
-        // We can't assert exact 0 since the test framework allocates,
-        // but net_allocs should be well-defined
-        let _net = counting_alloc::net_allocs();
-        // At minimum, verify the functions return consistent types
-        assert!(a >= 0_usize);
-        assert!(d >= 0_usize);
+        // The test harness may allocate, so the counters are not required to be
+        // zero. They still have to agree with net_allocs.
+        assert_eq!(counting_alloc::net_allocs(), a as isize - d as isize);
     }
 
     #[test]
@@ -1697,7 +1694,9 @@ mod schedule_mutation_tests {
         fn dummy(_w: &mut World) {}
 
         let mut schedule = Schedule::default().with_stage("sim");
-        schedule.add_system("sim", dummy);
+        schedule
+            .add_system("sim", dummy)
+            .expect("registered schedule stage");
         assert_eq!(schedule.stages[0].systems.len(), 1);
     }
 
@@ -1706,8 +1705,8 @@ mod schedule_mutation_tests {
         fn dummy(_w: &mut World) {}
 
         let mut schedule = Schedule::default().with_stage("sim");
-        schedule.add_system("nonexistent", dummy);
-        // No panic, just ignored
+        let missing = schedule.add_system("nonexistent", dummy);
+        assert!(missing.is_err());
         assert_eq!(schedule.stages[0].systems.len(), 0);
     }
 
@@ -1722,8 +1721,12 @@ mod schedule_mutation_tests {
         }
 
         let mut schedule = Schedule::default().with_stage("a").with_stage("b");
-        schedule.add_system("a", sys1);
-        schedule.add_system("b", sys2);
+        schedule
+            .add_system("a", sys1)
+            .expect("registered schedule stage");
+        schedule
+            .add_system("b", sys2)
+            .expect("registered schedule stage");
 
         let mut world = World::new();
         schedule.run(&mut world);
@@ -1768,7 +1771,8 @@ mod schedule_mutation_tests {
         }
 
         let mut app = App::new();
-        app.add_system("simulation", counter);
+        app.add_system("simulation", counter)
+            .expect("registered schedule stage");
         let app = app.run_fixed(5);
         assert_eq!(
             *app.world.get_resource::<u32>().unwrap(),

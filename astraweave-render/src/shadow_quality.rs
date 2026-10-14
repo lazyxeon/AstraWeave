@@ -229,14 +229,14 @@ mod tests {
         let splits = compute_cascade_splits(0.1, 100.0, 4, 0.0);
         // With log_factor = 0, splits should be evenly spaced
         let expected_step = (100.0 - 0.1) / 4.0;
-        for i in 0..4 {
+        for (i, split) in splits.iter().enumerate() {
             let expected = 0.1 + expected_step * (i as f32 + 1.0);
             assert!(
-                (splits[i] - expected).abs() < 0.01,
+                (split - expected).abs() < 0.01,
                 "split {} should be ~{}, got {}",
                 i,
                 expected,
-                splits[i]
+                split
             );
         }
     }

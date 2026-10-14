@@ -263,9 +263,9 @@ mod tests {
             GOAPOrchestrator::plan_to_intent(vec!["approach_enemy".into()], &snap, "t".into());
         match &intent.steps[0] {
             ActionStep::MoveTo { x, y, .. } => {
-                // signum(15-5)=1, signum(3-5)=-1
-                assert_eq!(*x, 5 + 1 * 2); // 7
-                assert_eq!(*y, 5 + (-1) * 2); // 3
+                // signum(15-5)=1, signum(3-5)=-1 → (7, 3)
+                assert_eq!(*x, 7);
+                assert_eq!(*y, 3);
             }
             other => panic!("expected MoveTo, got {:?}", other),
         }

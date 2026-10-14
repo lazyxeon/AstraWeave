@@ -877,7 +877,7 @@ mod tests {
     fn test_hash_to_float_range() {
         for i in 0..1000 {
             let f = hash_to_float(pcg_hash(i));
-            assert!(f >= 0.0 && f <= 1.0, "hash_to_float out of range: {f}");
+            assert!((0.0..=1.0).contains(&f), "hash_to_float out of range: {f}");
         }
     }
 

@@ -1,3 +1,4 @@
+#![allow(unused, clippy::all)]
 //! Wave 2 Proactive Remediation — clustered.rs + biome_transition.rs
 //!
 //! Targets: bin_lights_cpu (251 mutants), TransitionEffect + EasingFunction +

@@ -185,6 +185,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::const_is_empty)]
     fn subgroup_shader_sources_are_nonempty() {
         assert!(!AUTO_EXPOSURE_SUBGROUP_WGSL.is_empty());
         assert!(!PREFIX_SUM_SUBGROUP_WGSL.is_empty());

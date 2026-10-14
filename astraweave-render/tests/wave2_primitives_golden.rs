@@ -1,3 +1,4 @@
+#![allow(unused, clippy::all)]
 //! Wave 2 – Golden-value tests for primitives.rs (123 mutants)
 //!
 //! Targets: cube(), plane(), sphere() — exact vertex positions, normals,

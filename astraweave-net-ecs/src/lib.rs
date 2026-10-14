@@ -61,8 +61,10 @@ impl NetworkClientPlugin {
 impl Plugin for NetworkClientPlugin {
     fn build(&self, app: &mut App) {
         // Add client systems
-        app.add_system("simulation", client_input_system);
-        app.add_system("presentation", client_reconciliation_system);
+        app.add_system("simulation", client_input_system)
+            .expect("registered schedule stage");
+        app.add_system("presentation", client_reconciliation_system)
+            .expect("registered schedule stage");
     }
 }
 
@@ -81,8 +83,10 @@ impl NetworkServerPlugin {
 impl Plugin for NetworkServerPlugin {
     fn build(&self, app: &mut App) {
         // Add server systems
-        app.add_system("simulation", server_snapshot_system);
-        app.add_system("simulation", server_input_processing_system);
+        app.add_system("simulation", server_snapshot_system)
+            .expect("registered schedule stage");
+        app.add_system("simulation", server_input_processing_system)
+            .expect("registered schedule stage");
     }
 }
 

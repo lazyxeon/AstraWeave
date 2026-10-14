@@ -1,3 +1,4 @@
+#![allow(unused, clippy::all)]
 //! Wave 2 remediation: material (validation+gpu), biome_material, advanced_post config, error types
 //!
 //! Targets pure CPU functions with golden values for mutation killing.

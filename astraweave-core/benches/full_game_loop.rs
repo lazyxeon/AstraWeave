@@ -224,6 +224,11 @@ fn perception_stage(world: &World, ai_agents: &[u32]) -> Vec<WorldSnapshot> {
                 rotation_x: 0.0,
                 rotation_z: 0.0,
                 scale: 1.0,
+                scale_y: 1.0,
+                scale_z: 1.0,
+                float_x: 0.0,
+                float_z: 0.0,
+                use_float_pos: false,
             });
             let agent_ammo = world.ammo(agent_id).map(|a| a.rounds).unwrap_or(0);
             let agent_health = world.health(agent_id).map(|h| h.hp).unwrap_or(100);

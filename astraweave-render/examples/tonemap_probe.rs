@@ -1,3 +1,4 @@
+#![allow(unused, clippy::all)]
 //! Tonemap double-application diagnostic.
 //!
 //! **Purpose**: determine, with GPU-observed pixel values, whether

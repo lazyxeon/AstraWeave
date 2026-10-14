@@ -6,7 +6,7 @@ mod profiling_enabled_tests {
     fn test_tracy_client_running() {
         // When profiling is enabled, Tracy client should be available
         // Note: Tracy client may not connect in test environment, but API should work
-        assert!(true); // Placeholder - Tracy client initialization is implicit
+        assert!(cfg!(feature = "profiling"));
     }
 
     #[test]

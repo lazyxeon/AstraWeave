@@ -734,7 +734,7 @@ mod tests {
     #[test]
     fn test_player_stance_and_positions() {
         let mut snap = make_test_snapshot();
-        snap.player.stance = "crouch".to_string();
+        snap.player.stance = Stance::Crouch;
         snap.player.pos = IVec2 { x: 7, y: 3 };
 
         let s = SnapshotAdapter::to_world_state(&snap);

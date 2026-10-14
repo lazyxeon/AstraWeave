@@ -183,8 +183,10 @@ fn flag_constants_golden_values() {
 
 #[test]
 fn has_feature_checks_exact_bit() {
-    let mut m = MaterialGpuExtended::default();
-    m.flags = MATERIAL_FLAG_CLEARCOAT | MATERIAL_FLAG_SHEEN; // 0x01 | 0x08 = 0x09
+    let m = MaterialGpuExtended {
+        flags: MATERIAL_FLAG_CLEARCOAT | MATERIAL_FLAG_SHEEN, // 0x01 | 0x08 = 0x09
+        ..Default::default()
+    };
     assert!(m.has_feature(MATERIAL_FLAG_CLEARCOAT));
     assert!(m.has_feature(MATERIAL_FLAG_SHEEN));
     assert!(!m.has_feature(MATERIAL_FLAG_ANISOTROPY));
@@ -204,8 +206,10 @@ fn enable_feature_sets_bit_without_clearing_others() {
 
 #[test]
 fn disable_feature_clears_only_target_bit() {
-    let mut m = MaterialGpuExtended::default();
-    m.flags = 0x1F; // All 5 flags set
+    let mut m = MaterialGpuExtended {
+        flags: 0x1F, // All 5 flags set
+        ..Default::default()
+    };
     m.disable_feature(MATERIAL_FLAG_ANISOTROPY);
     assert_eq!(m.flags, 0x1D); // 0x1F & !0x02
     assert!(m.has_feature(MATERIAL_FLAG_CLEARCOAT)); // still set

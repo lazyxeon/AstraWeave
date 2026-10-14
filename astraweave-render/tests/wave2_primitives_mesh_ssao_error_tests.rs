@@ -1,3 +1,4 @@
+#![allow(unused, clippy::all)]
 //! Wave 2 Mutation Remediation — Primitives, Mesh, SSAO, Error Types,
 //! Terrain Materials, Biome Audio, and MSAA tests.
 //!

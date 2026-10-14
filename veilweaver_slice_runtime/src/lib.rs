@@ -433,11 +433,16 @@ impl VeilweaverRuntime {
             .collect()
     }
 
-    /// Registers a system to run once after the initial ECS setup.
+    /// Registers a tutorial system on the `veilweaver_post_setup` stage.
+    ///
+    /// The stage is created on first use and then runs with the rest of the
+    /// schedule. A missing stage used to drop the system in release builds.
     pub fn add_post_setup_system(&mut self, system: fn(&mut World)) {
+        self.app.schedule.add_stage("veilweaver_post_setup");
         self.app
             .schedule
-            .add_system("veilweaver_post_setup", system);
+            .add_system("veilweaver_post_setup", system)
+            .expect("veilweaver_post_setup stage was just registered");
     }
 
     /// Advances the ECS world by one fixed tick.

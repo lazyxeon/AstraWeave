@@ -425,7 +425,7 @@ impl WorkingMemoryComponent {
             id: task_id.clone(),
             description,
             added_at: chrono::Utc::now(),
-            priority: priority.max(0.0).min(1.0),
+            priority: priority.clamp(0.0, 1.0),
             data,
             active: true,
         };
@@ -493,9 +493,8 @@ impl SocialMemoryComponent {
 
                 // Adjust relationship strength based on interaction valence
                 let strength_adjustment = interaction.valence * 0.1;
-                relationship.strength = (relationship.strength + strength_adjustment)
-                    .max(0.0)
-                    .min(1.0);
+                relationship.strength =
+                    (relationship.strength + strength_adjustment).clamp(0.0, 1.0);
             }
         }
 
@@ -547,6 +546,6 @@ impl LearningMemoryComponent {
 
         // Update proficiency based on performance
         let learning_adjustment = performance_score * self.learning_rate;
-        domain.proficiency = (domain.proficiency + learning_adjustment).max(0.0).min(1.0);
+        domain.proficiency = (domain.proficiency + learning_adjustment).clamp(0.0, 1.0);
     }
 }

@@ -8923,6 +8923,7 @@ mod tests {
     /// This is the same silent-drift class as the `match idx { _ => last }` the
     /// L.3.C inventory caught, so it gets a contract test.
     #[test]
+    #[allow(clippy::assertions_on_constants)]
     fn c3_prev_layer_index_matches_shader() {
         let src = include_str!("../shaders/shadow_common.wgsl");
         let expected = format!("const C3_PREV_LAYER: i32 = {};", C3_PREV_LAYER);

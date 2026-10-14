@@ -117,7 +117,9 @@ fn test_schedule_add_system() {
 
     fn test_system(_world: &mut World) {}
 
-    schedule.add_system("simulation", test_system);
+    schedule
+        .add_system("simulation", test_system)
+        .expect("registered schedule stage");
 
     assert_eq!(schedule.stages[0].systems.len(), 1);
 }
@@ -128,8 +130,8 @@ fn test_schedule_add_system_nonexistent_stage() {
 
     fn test_system(_world: &mut World) {}
 
-    // Add system to non-existent stage (should be silently ignored)
-    schedule.add_system("nonexistent", test_system);
+    let missing = schedule.add_system("nonexistent", test_system);
+    assert!(missing.is_err());
 
     assert_eq!(schedule.stages[0].systems.len(), 0); // No system added
 }
@@ -152,8 +154,12 @@ fn test_schedule_run() {
     }
 
     let mut schedule = Schedule::default().with_stage("simulation");
-    schedule.add_system("simulation", increment_score);
-    schedule.add_system("simulation", decrement_lives);
+    schedule
+        .add_system("simulation", increment_score)
+        .expect("registered schedule stage");
+    schedule
+        .add_system("simulation", decrement_lives)
+        .expect("registered schedule stage");
 
     // Run schedule
     schedule.run(&mut world);
@@ -206,7 +212,8 @@ fn test_app_add_system() {
 
     fn test_system(_world: &mut World) {}
 
-    app.add_system("simulation", test_system);
+    app.add_system("simulation", test_system)
+        .expect("registered schedule stage");
 
     // Find simulation stage and verify system added
     let sim_stage = app
@@ -239,7 +246,8 @@ fn test_app_run_fixed() {
         }
     }
 
-    app.add_system("simulation", increment_score);
+    app.add_system("simulation", increment_score)
+        .expect("registered schedule stage");
 
     // Run 10 ticks
     app = app.run_fixed(10);
@@ -261,7 +269,8 @@ fn test_app_run_fixed_zero_steps() {
         }
     }
 
-    app.add_system("simulation", increment_score);
+    app.add_system("simulation", increment_score)
+        .expect("registered schedule stage");
 
     // Run 0 ticks
     app = app.run_fixed(0);
@@ -430,7 +439,8 @@ fn test_full_app_lifecycle() {
     }
 
     let mut app = App::new();
-    app.add_system("simulation", movement_system);
+    app.add_system("simulation", movement_system)
+        .expect("registered schedule stage");
 
     // Create entity
     let entity = app.world.spawn();
@@ -471,9 +481,12 @@ fn test_multiple_stages_execution_order() {
 
     let mut app = App::new();
     app.world.insert_resource(ExecutionOrder(vec![]));
-    app.add_system("perception", perception_system);
-    app.add_system("simulation", simulation_system);
-    app.add_system("physics", physics_system);
+    app.add_system("perception", perception_system)
+        .expect("registered schedule stage");
+    app.add_system("simulation", simulation_system)
+        .expect("registered schedule stage");
+    app.add_system("physics", physics_system)
+        .expect("registered schedule stage");
 
     // Run one tick
     app = app.run_fixed(1);

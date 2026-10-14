@@ -180,6 +180,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[allow(clippy::const_is_empty)]
     fn brdf_wgsl_not_empty() {
         assert!(!DISNEY_BRDF_WGSL.is_empty());
         assert!(DISNEY_BRDF_WGSL.contains("evaluate_disney_brdf"));
@@ -207,6 +208,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::const_is_empty)]
     fn brdf_lut_wgsl_not_empty() {
         assert!(!BRDF_LUT_WGSL.is_empty());
         assert!(BRDF_LUT_WGSL.contains("brdf_lut_main"));
@@ -230,9 +232,11 @@ mod tests {
 
     #[test]
     fn metallic_material_no_diffuse() {
-        let mut mat = MaterialGpuExtended::default();
-        mat.metallic_factor = 1.0;
-        mat.roughness_factor = 0.3;
+        let mat = MaterialGpuExtended {
+            metallic_factor: 1.0,
+            roughness_factor: 0.3,
+            ..Default::default()
+        };
         let n = Vec3::Y;
         let v = Vec3::new(0.0, 1.0, 0.0);
         let l = Vec3::new(0.0, 1.0, 0.0);
@@ -274,7 +278,7 @@ mod tests {
         let v = Vec3::new(0.5, 0.5, 0.0).normalize();
         let l = Vec3::new(-0.5, 0.5, 0.0).normalize();
 
-        let r_plain = evaluate_disney_brdf(&plain, n, v, l, Vec3::X, Vec3::Z);
+        let _r_plain = evaluate_disney_brdf(&plain, n, v, l, Vec3::X, Vec3::Z);
         let r_velvet = evaluate_disney_brdf(&velvet, n, v, l, Vec3::X, Vec3::Z);
 
         // Sheen adds to diffuse component

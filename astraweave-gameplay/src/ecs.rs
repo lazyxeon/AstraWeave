@@ -189,7 +189,8 @@ pub struct CombatPlugin;
 
 impl astraweave_ecs::Plugin for CombatPlugin {
     fn build(&self, app: &mut astraweave_ecs::App) {
-        app.add_system("simulation", combat_system);
+        app.add_system("simulation", combat_system)
+            .expect("registered schedule stage");
     }
 }
 
@@ -198,7 +199,8 @@ pub struct CraftingPlugin;
 
 impl astraweave_ecs::Plugin for CraftingPlugin {
     fn build(&self, app: &mut astraweave_ecs::App) {
-        app.add_system("simulation", crafting_system);
+        app.add_system("simulation", crafting_system)
+            .expect("registered schedule stage");
     }
 }
 
@@ -207,7 +209,8 @@ pub struct QuestPlugin;
 
 impl astraweave_ecs::Plugin for QuestPlugin {
     fn build(&self, app: &mut astraweave_ecs::App) {
-        app.add_system("simulation", quest_system);
+        app.add_system("simulation", quest_system)
+            .expect("registered schedule stage");
     }
 }
 

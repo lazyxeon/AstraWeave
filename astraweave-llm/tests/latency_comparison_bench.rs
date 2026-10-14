@@ -33,6 +33,7 @@ const NUM_RUNS: usize = 3;
 
 #[derive(Debug)]
 struct LatencyResult {
+    #[allow(dead_code)] // printed by Debug when a bench run is inspected
     model_name: String,
     warmup_time: Duration,
     blocking_times: Vec<Duration>,

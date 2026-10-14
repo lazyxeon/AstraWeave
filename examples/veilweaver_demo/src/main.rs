@@ -1,3 +1,7 @@
+#![cfg_attr(
+    any(feature = "visual", feature = "veilweaver_slice"),
+    allow(dead_code)
+)]
 // Veilweaver Demo - Showcase of AstraWeave AI-Native Game Engine
 // Demonstrates: Qwen3-8B LLM integration, telemetry, rich terminal HUD
 // Use `--features visual` for full 3D windowed mode with terrain, water, and egui HUD.
@@ -25,7 +29,7 @@ mod telemetry_hud;
 #[cfg(not(feature = "visual"))]
 use telemetry_hud::{TelemetryHud, TelemetryMetrics};
 
-#[cfg(feature = "visual")]
+#[cfg(all(feature = "visual", not(feature = "veilweaver_slice")))]
 mod visual_renderer;
 
 // ==================== ANSI COLOR HELPERS ====================
@@ -319,7 +323,7 @@ pub(crate) fn simulate_events(state: &mut GameState, elapsed: f32, app: &mut App
     let alive_before: usize = state
         .enemy_entities
         .iter()
-        .filter(|&&e| app.world.get::<Health>(e).map_or(false, |h| h.is_alive()))
+        .filter(|&&e| app.world.get::<Health>(e).is_some_and(|h| h.is_alive()))
         .count();
     if elapsed > 6.0 && alive_before > 0 {
         // Defeat one enemy every ~5 seconds after zone 2 starts
@@ -436,15 +440,15 @@ fn main() -> Result<()> {
     #[cfg(feature = "veilweaver_slice")]
     {
         run_slice_runtime()?;
-        return Ok(());
+        Ok(())
     }
 
-    #[cfg(feature = "visual")]
+    #[cfg(all(feature = "visual", not(feature = "veilweaver_slice")))]
     {
         return visual_renderer::run_visual_demo();
     }
 
-    #[cfg(not(feature = "visual"))]
+    #[cfg(not(any(feature = "visual", feature = "veilweaver_slice")))]
     {
         run_headless_demo()
     }
@@ -546,7 +550,7 @@ fn run_headless_demo() -> Result<()> {
         let enemies_alive = game_state
             .enemy_entities
             .iter()
-            .filter(|&&e| app.world.get::<Health>(e).map_or(false, |h| h.is_alive()))
+            .filter(|&&e| app.world.get::<Health>(e).is_some_and(|h| h.is_alive()))
             .count() as u32;
 
         // Update metrics

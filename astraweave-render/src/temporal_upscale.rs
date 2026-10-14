@@ -664,8 +664,10 @@ mod tests {
 
     #[test]
     fn internal_resolution_minimum() {
-        let mut cfg = UpscaleConfig::default();
-        cfg.render_scale = 0.01; // Absurdly low
+        let cfg = UpscaleConfig {
+            render_scale: 0.01, // Absurdly low
+            ..Default::default()
+        };
         let (w, h) = cfg.internal_resolution(100, 100);
         // Clamped to 0.25 minimum
         assert_eq!(w, 25);

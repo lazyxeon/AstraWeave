@@ -151,104 +151,36 @@ impl EmbeddingClient for MockEmbeddingClient {
     }
 }
 
-/// Local embedding client using ONNX Runtime
+/// Local embedding client using ONNX Runtime.
+///
+/// ort 2 moved `Session`/`Tensor` off the crate root. This type stays in the
+/// public feature surface and reports that the loader is not wired, instead of
+/// failing the workspace build.
 #[cfg(feature = "onnx")]
 pub struct OnnxEmbeddingClient {
     dimensions: usize,
     model_path: String,
-    session: Arc<ort::Session>,
-    tokenizer: Arc<tokenizers::Tokenizer>,
 }
 
 #[cfg(feature = "onnx")]
 impl OnnxEmbeddingClient {
-    /// Create a new ONNX embedding client
-    pub async fn new(model_path: String, tokenizer_path: String) -> Result<Self> {
-        // Load ONNX model
-        let session = ort::Session::builder()?
-            .with_optimization_level(ort::GraphOptimizationLevel::All)?
-            .commit_from_file(&model_path)?;
-
-        // Load tokenizer
-        let tokenizer = tokenizers::Tokenizer::from_file(&tokenizer_path)
-            .map_err(|e| anyhow!("Failed to load tokenizer: {}", e))?;
-
-        // Infer dimensions from model output
-        let dimensions = 384; // Default for all-MiniLM-L6-v2
-
-        Ok(Self {
-            dimensions,
-            model_path,
-            session: Arc::new(session),
-            tokenizer: Arc::new(tokenizer),
-        })
-    }
-
-    /// Tokenize text for model input
-    fn tokenize(&self, text: &str) -> Result<(Vec<i64>, Vec<i64>)> {
-        let encoding = self
-            .tokenizer
-            .encode(text, true)
-            .map_err(|e| anyhow!("Tokenization failed: {}", e))?;
-
-        let input_ids: Vec<i64> = encoding.get_ids().iter().map(|&id| id as i64).collect();
-        let attention_mask: Vec<i64> = encoding
-            .get_attention_mask()
-            .iter()
-            .map(|&mask| mask as i64)
-            .collect();
-
-        Ok((input_ids, attention_mask))
-    }
-
-    /// Run inference on tokenized input
-    fn run_inference(&self, input_ids: Vec<i64>, attention_mask: Vec<i64>) -> Result<Vec<f32>> {
-        use ort::{Tensor, Value};
-
-        // Create input tensors
-        let input_ids_tensor =
-            Tensor::from_array(([1, input_ids.len()], input_ids.into_boxed_slice()))?;
-        let attention_mask_tensor =
-            Tensor::from_array(([1, attention_mask.len()], attention_mask.into_boxed_slice()))?;
-
-        // Run inference
-        let outputs = self.session.run([
-            Value::from(input_ids_tensor),
-            Value::from(attention_mask_tensor),
-        ])?;
-
-        // Extract embeddings from output
-        let output_tensor = &outputs[0];
-        let embedding: Vec<f32> = output_tensor
-            .try_extract_raw_tensor()?
-            .as_slice()?
-            .iter()
-            .map(|&x| x as f32)
-            .collect();
-
-        Ok(embedding)
+    /// Create a new ONNX embedding client.
+    pub async fn new(model_path: String, _tokenizer_path: String) -> Result<Self> {
+        anyhow::bail!(
+            "ONNX embeddings are not wired to ort 2 (Session/Tensor left the crate root). model={model_path}"
+        )
     }
 }
 
 #[cfg(feature = "onnx")]
 #[async_trait]
 impl EmbeddingClient for OnnxEmbeddingClient {
-    async fn embed(&self, text: &str) -> Result<Vec<f32>> {
-        let (input_ids, attention_mask) = self.tokenize(text)?;
-        let embedding = self.run_inference(input_ids, attention_mask)?;
-        Ok(embedding)
+    async fn embed(&self, _text: &str) -> Result<Vec<f32>> {
+        anyhow::bail!("ONNX embeddings are not wired to ort 2")
     }
 
-    async fn embed_batch(&self, texts: &[String]) -> Result<Vec<Vec<f32>>> {
-        let mut results = Vec::with_capacity(texts.len());
-
-        // For now, process sequentially
-        // TODO: Implement true batching with padded inputs
-        for text in texts {
-            results.push(self.embed(text).await?);
-        }
-
-        Ok(results)
+    async fn embed_batch(&self, _texts: &[String]) -> Result<Vec<Vec<f32>>> {
+        anyhow::bail!("ONNX embeddings are not wired to ort 2")
     }
 
     fn dimensions(&self) -> usize {
@@ -266,96 +198,35 @@ impl EmbeddingClient for OnnxEmbeddingClient {
     }
 }
 
-/// Candle-based embedding client for pure Rust inference
+/// Candle-based embedding client for pure Rust inference.
+///
+/// The pinned candle-transformers 0.8 `BertModel::forward` takes token-type ids
+/// and this crate does not depend on `tokenizers` or `hf-hub`. Construction
+/// reports that instead of failing the workspace build.
 #[cfg(feature = "candle")]
 pub struct CandleEmbeddingClient {
     dimensions: usize,
-    model: Arc<parking_lot::RwLock<candle_transformers::models::bert::BertModel>>,
-    tokenizer: Arc<tokenizers::Tokenizer>,
-    device: candle_core::Device,
 }
 
 #[cfg(feature = "candle")]
 impl CandleEmbeddingClient {
-    /// Create a new Candle embedding client
-    pub async fn new(model_path: String, tokenizer_path: String) -> Result<Self> {
-        use candle_core::Device;
-        use candle_nn::VarBuilder;
-        use candle_transformers::models::bert::{BertModel, Config};
-
-        // Determine device (CPU/CUDA)
-        let device = Device::cuda_if_available(0).unwrap_or(Device::Cpu);
-
-        // Load tokenizer
-        let tokenizer = tokenizers::Tokenizer::from_file(&tokenizer_path)
-            .map_err(|e| anyhow!("Failed to load tokenizer: {}", e))?;
-
-        // Load model weights and config
-        let api = hf_hub::api::tokio::Api::new()?;
-        let repo = api.model("sentence-transformers/all-MiniLM-L6-v2".parse()?);
-        let config_filename = repo.get("config.json").await?;
-        let weights_filename = repo.get("pytorch_model.bin").await?;
-
-        // Load configuration
-        let config: Config = serde_json::from_slice(&std::fs::read(config_filename)?)?;
-        let dimensions = config.hidden_size;
-
-        // Load weights
-        let weights = candle_core::safetensors::load(weights_filename, &device)?;
-        let var_builder = VarBuilder::from_tensors(weights, candle_core::DType::F32, &device);
-
-        // Create model
-        let model = BertModel::load(&var_builder, &config)?;
-
-        Ok(Self {
-            dimensions,
-            model: Arc::new(parking_lot::RwLock::new(model)),
-            tokenizer: Arc::new(tokenizer),
-            device,
-        })
+    /// Create a new Candle embedding client.
+    pub async fn new(_model_path: String, _tokenizer_path: String) -> Result<Self> {
+        anyhow::bail!(
+            "Candle embeddings are not wired: BertModel::forward needs token type ids, and tokenizers/hf-hub are not feature dependencies"
+        )
     }
 }
 
 #[cfg(feature = "candle")]
 #[async_trait]
 impl EmbeddingClient for CandleEmbeddingClient {
-    async fn embed(&self, text: &str) -> Result<Vec<f32>> {
-        use candle_core::Tensor;
-
-        // Tokenize input
-        let encoding = self
-            .tokenizer
-            .encode(text, true)
-            .map_err(|e| anyhow!("Tokenization failed: {}", e))?;
-
-        let input_ids: Vec<u32> = encoding.get_ids().to_vec();
-        let attention_mask: Vec<u32> = encoding.get_attention_mask().to_vec();
-
-        // Convert to tensors
-        let input_ids = Tensor::new(&input_ids[..], &self.device)?.unsqueeze(0)?; // Add batch dimension
-        let attention_mask = Tensor::new(&attention_mask[..], &self.device)?.unsqueeze(0)?; // Add batch dimension
-
-        // Run forward pass
-        let model = self.model.read();
-        let output = model.forward(&input_ids, &attention_mask)?;
-
-        // Mean pooling to get sentence embeddings
-        let embeddings = output.mean(1)?; // Average over sequence length
-
-        // Convert to Vec<f32>
-        let embedding_vec: Vec<f32> = embeddings.to_vec1()?;
-
-        Ok(embedding_vec)
+    async fn embed(&self, _text: &str) -> Result<Vec<f32>> {
+        anyhow::bail!("Candle embeddings are not wired")
     }
 
-    async fn embed_batch(&self, texts: &[String]) -> Result<Vec<Vec<f32>>> {
-        let mut results = Vec::with_capacity(texts.len());
-
-        for text in texts {
-            results.push(self.embed(text).await?);
-        }
-
-        Ok(results)
+    async fn embed_batch(&self, _texts: &[String]) -> Result<Vec<Vec<f32>>> {
+        anyhow::bail!("Candle embeddings are not wired")
     }
 
     fn dimensions(&self) -> usize {
@@ -445,7 +316,7 @@ impl EmbeddingClient for RemoteEmbeddingClient {
 
         let mut req = self
             .client
-            .post(&format!("{}/embeddings", self.api_url))
+            .post(format!("{}/embeddings", self.api_url))
             .header("Content-Type", "application/json")
             .json(&request);
 
@@ -456,7 +327,7 @@ impl EmbeddingClient for RemoteEmbeddingClient {
         let response = req.send().await?;
 
         if !response.status().is_success() {
-            return Err(anyhow!("API request failed: {}", response.status()));
+            return Err(anyhow::anyhow!("API request failed: {}", response.status()));
         }
 
         let response_data: EmbeddingResponse = response.json().await?;

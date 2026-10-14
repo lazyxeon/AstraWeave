@@ -142,8 +142,8 @@ fn oct_encoded_values_range() {
             continue;
         }
         let [x, y] = OctahedralEncoder::encode(n);
-        assert!(x >= -32767 && x <= 32767, "x={x} out of range");
-        assert!(y >= -32767 && y <= 32767, "y={y} out of range");
+        assert!(x >= -32767, "x={x} out of range");
+        assert!(y >= -32767, "y={y} out of range");
     }
 }
 

@@ -355,7 +355,8 @@ fn test_schedule_run_bounded_allocs() {
         }
     }
 
-    app.add_system("simulation", movement_system);
+    app.add_system("simulation", movement_system)
+        .expect("registered schedule stage");
 
     // Spawn test entities
     for i in 0..100 {

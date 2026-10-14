@@ -8,6 +8,9 @@ edition = "2021"
 default = []
 tls = ["tokio-rustls", "rustls", "rustls-pemfile", "webpki-roots"]
 
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(feature, values("dangerous-testing"))'] }
+
 [dependencies]
 anyhow = { workspace = true }
 thiserror = { workspace = true }

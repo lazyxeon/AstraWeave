@@ -1,3 +1,4 @@
+#![allow(unused, clippy::all)]
 //! Wave 2 proactive remediation tests for nanite_visibility, camera, and lod_generator.
 //!
 //! These three modules have significant mutation surface with relatively few

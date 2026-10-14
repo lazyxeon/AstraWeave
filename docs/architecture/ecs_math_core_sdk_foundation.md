@@ -8,7 +8,7 @@ domain: core
 lifecycle_status: active
 integration_status: wired
 owns: [astraweave-alloc, astraweave-core, astraweave-ecs, astraweave-math, astraweave-sdk]
-doc_version: "1.3"
+doc_version: "1.4"
 last_verified_commit: 67c9de7e1
 ---
 
@@ -444,7 +444,8 @@ There are several distinct flows through this layer. The first is the canonical 
 |---|---|---|---|
 | 1 | An `Entity` handle returned by `World::spawn` is unique for the lifetime of the allocator: even after `despawn` and slot reuse, the `(id, generation)` pair never repeats | Yes | `entity_allocator.rs`: generation is incremented on every reuse (`despawn` increments, `spawn` returns the new generation). Kani proof in `entity_allocator_kani.rs` |
 | 2 | Stale entity handles never read or write live data | Yes | Every accessor on `World` checks `entity_allocator.is_alive(entity)` first (`astraweave-ecs/src/lib.rs:261, 409, 437, 603, 641`). Stale handles return `None` / no-op / `false` |
-| 3 | `Schedule::run` executes stages in registration order; systems within a stage execute in registration order | Yes | `astraweave-ecs/src/lib.rs:726-735`. Tests in `astraweave-ecs/tests/world_app_tests.rs` (`test_app_new`, `test_app_default`) assert canonical eight-stage order (updated 2026-04-18) |
+| 3 | `Schedule::run` executes stages in registration order; systems within a stage execute in registration order. `Schedule::add_system` returns `Err(UnknownStage)` in every profile when the stage was not registered; it does not silent-drop | Yes | `astraweave-ecs/src/lib.rs`. Tests `test_add_system_with_unknown_stage_is_still_dropped` and `schedule_add_system_to_nonexistent_stage_is_noop` |
+| 3b | Sim draws that use `astraweave_core::SimRng` are keyed by `(world_seed, tick, system_id)` via `mix_sim_seed`. The mix of `(1, 2, 3)` is `0x5991_344E_4904_5002` | Yes | `astraweave-core/src/sim.rs` test `mix_sim_seed_locked` |
 | 4 | The ECS tick is deterministic single-threaded — same inputs produce same outputs across runs and platforms | Yes | Single-threaded scheduler (`Schedule::run`). RNG is seeded (`astraweave-ecs/src/rng.rs`). Determinism tests in `astraweave-ecs/src/determinism_tests.rs` and `astraweave-core/tests/full_system_determinism.rs` |
 | 5 | `ArchetypeSignature` is sorted and deduplicated | Yes | `ArchetypeSignature::new` calls `sort_unstable` and `dedup` (`astraweave-ecs/src/archetype.rs:26-29`). Two signatures with the same component set hash and compare equal |
 | 6 | Mutation of a component stamps the current change tick on that entity's row | Yes | `insert` and `each_mut` route through `add_entity_with_tick` / `stamp_change_tick::<T>` (`astraweave-ecs/src/lib.rs:308-310, 526-527`). `get_mut` also stamps (conservative Bevy-style change detection, `astraweave-ecs/src/lib.rs:446-447`) |

@@ -1,3 +1,4 @@
+#![allow(unused, clippy::all)]
 //! Comprehensive mutation-resistant tests for astraweave-render
 //!
 //! Targets all critical numeric constants, comparison operators, formulas,

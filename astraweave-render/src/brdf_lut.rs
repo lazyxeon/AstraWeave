@@ -245,7 +245,7 @@ mod tests {
     fn hammersley_cpu_validation() {
         // Validate the radical inverse Van der Corput sequence
         fn radical_inverse_vdc(mut bits: u32) -> f32 {
-            bits = (bits << 16) | (bits >> 16);
+            bits = bits.rotate_right(16);
             bits = ((bits & 0x55555555) << 1) | ((bits & 0xAAAAAAAA) >> 1);
             bits = ((bits & 0x33333333) << 2) | ((bits & 0xCCCCCCCC) >> 2);
             bits = ((bits & 0x0F0F0F0F) << 4) | ((bits & 0xF0F0F0F0) >> 4);
@@ -257,9 +257,9 @@ mod tests {
         let v0 = radical_inverse_vdc(0);
         let v1 = radical_inverse_vdc(1);
         let v2 = radical_inverse_vdc(2);
-        assert!(v0 >= 0.0 && v0 < 1.0);
-        assert!(v1 >= 0.0 && v1 < 1.0);
-        assert!(v2 >= 0.0 && v2 < 1.0);
+        assert!((0.0..1.0).contains(&v0));
+        assert!((0.0..1.0).contains(&v1));
+        assert!((0.0..1.0).contains(&v2));
         // They should be different
         assert!((v0 - v1).abs() > 0.01);
         assert!((v1 - v2).abs() > 0.01);

@@ -1359,6 +1359,7 @@ mod tests {
     ///
     /// Extend the list when a new archetype factory is added.
     #[test]
+    #[allow(clippy::type_complexity)]
     fn bootstrap_spline_sets_are_well_formed() {
         let factories: [(&str, fn() -> BootstrapSplineSet); 8] = [
             (

@@ -354,6 +354,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::assertions_on_constants)]
     fn test_max_entities_reasonable() {
         // 64 entities × 8 bytes = 512 bytes storage buffer
         assert!(MAX_ENTITIES >= 16 && MAX_ENTITIES <= 256);

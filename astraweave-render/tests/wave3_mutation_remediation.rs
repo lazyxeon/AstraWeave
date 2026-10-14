@@ -1,3 +1,4 @@
+#![allow(unused, clippy::all)]
 //! Wave 3 mutation-resistant remediation tests for astraweave-render.
 //!
 //! Targets specific mutation survivors identified by cargo-mutants analysis.

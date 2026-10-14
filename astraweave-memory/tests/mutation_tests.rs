@@ -1,3 +1,4 @@
+#![allow(unused, unused_comparisons, clippy::all)]
 //! Mutation-killing tests for astraweave-memory.
 //!
 //! These tests target specific numeric constants, operators, and boundary

@@ -10,7 +10,8 @@ fn main() -> anyhow::Result<()> {
     let mut app = ecs::App::new().add_plugin(AiPlanningPlugin);
 
     // Add movement system (from ecs_adapter)
-    app.add_system("simulation", move_system as ecs::SystemFn);
+    app.add_system("simulation", move_system as ecs::SystemFn)
+        .expect("registered schedule stage");
 
     // Spawn entities
     let player = app.world.spawn();

@@ -102,8 +102,9 @@ fn test_state_value_int_range() {
 /// Verify StateValue::Float comparison with tolerance
 #[test]
 fn test_state_value_float_comparison() {
-    let val_a = StateValue::Float(OrderedFloat(3.14));
-    let val_b = StateValue::Float(OrderedFloat(3.14 + 1e-8)); // Within tolerance
+    let pi = std::f32::consts::PI;
+    let val_a = StateValue::Float(OrderedFloat(pi));
+    let val_b = StateValue::Float(OrderedFloat(pi + 1e-8)); // Within tolerance
     let val_c = StateValue::Float(OrderedFloat(4.0)); // Different
 
     assert!(
@@ -125,6 +126,7 @@ fn test_state_value_float_approx() {
 
     // Within tight tolerance
     assert!(val.satisfies(&target_tight), "100 should satisfy 100 ± 0.1");
+    assert!(val.satisfies(&target_loose), "100 should satisfy 100 ± 10");
 
     // Test boundary of tolerance (mutation catching)
     let val_edge = StateValue::Float(OrderedFloat(100.05));

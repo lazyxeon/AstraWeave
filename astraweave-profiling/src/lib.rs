@@ -174,12 +174,15 @@ macro_rules! message {
 /// ```
 #[macro_export]
 macro_rules! alloc {
-    ($ptr:expr, $size:expr) => {
+    ($ptr:expr, $size:expr) => {{
+        let _ptr = $ptr as *const u8;
+        let _size = $size;
+        // tracy-client 0.18 tracks allocations through `ProfiledAllocator`,
+        // not `Client::alloc`. Keep the call site so callers still name the
+        // pointer and size.
         #[cfg(feature = "profiling")]
-        $crate::tracy_client::Client::running()
-            .expect("Tracy client should be running")
-            .alloc($ptr as *const u8, $size);
-    };
+        let _ = $crate::tracy_client::Client::running();
+    }};
 }
 
 /// Memory deallocation tracking macro
@@ -196,12 +199,11 @@ macro_rules! alloc {
 /// ```
 #[macro_export]
 macro_rules! free {
-    ($ptr:expr) => {
+    ($ptr:expr) => {{
+        let _ptr = $ptr as *const u8;
         #[cfg(feature = "profiling")]
-        $crate::tracy_client::Client::running()
-            .expect("Tracy client should be running")
-            .free($ptr as *const u8);
-    };
+        let _ = $crate::tracy_client::Client::running();
+    }};
 }
 
 /// Colored span macro - creates a span with a custom color

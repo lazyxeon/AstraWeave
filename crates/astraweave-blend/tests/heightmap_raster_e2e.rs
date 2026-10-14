@@ -183,7 +183,7 @@ fn test_is_terrain_name() {
 fn test_fixed_placement_serde_roundtrip() {
     let placement = FixedPlacement {
         position: [10.5, 3.2, -7.8],
-        rotation: [0.0, 1.5707, 0.0],
+        rotation: [0.0, std::f64::consts::FRAC_PI_2, 0.0],
         scale: [1.0, 1.0, 1.0],
         mesh_path: "meshes/pine_tree.glb".into(),
         category: "vegetation".into(),
@@ -196,7 +196,7 @@ fn test_fixed_placement_serde_roundtrip() {
     assert_eq!(deserialized.name, "Pine_Tree.003");
     assert_eq!(deserialized.mesh_path, "meshes/pine_tree.glb");
     assert!((deserialized.position[0] - 10.5).abs() < 1e-6);
-    assert!((deserialized.rotation[1] - 1.5707).abs() < 1e-4);
+    assert!((deserialized.rotation[1] - std::f64::consts::FRAC_PI_2).abs() < 1e-4);
 }
 
 // ============================================================================

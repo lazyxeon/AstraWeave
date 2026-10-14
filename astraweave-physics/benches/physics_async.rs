@@ -22,7 +22,7 @@
 
 use astraweave_physics::{Layers, PhysicsWorld};
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
-use glam::{vec3, Mat4};
+use glam::vec3;
 use rand::{Rng, SeedableRng};
 use std::hint::black_box;
 
@@ -64,26 +64,18 @@ fn assert_world_valid_after_step(world: &PhysicsWorld, sample_ids: &[u64], conte
 
 /// CORRECTNESS: Validate telemetry data is valid
 #[inline]
-fn assert_telemetry_valid(profile: &astraweave_physics::PhysicsProfile, context: &str) {
-    // All timing values must be non-negative
+fn assert_telemetry_valid(profile: &astraweave_physics::PhysicsStepProfile, context: &str) {
     assert!(
-        profile.step_time_ms >= 0.0,
-        "[CORRECTNESS FAILURE] {}: negative step_time_ms {}",
-        context,
-        profile.step_time_ms
+        profile.active_body_count < 10_000_000,
+        "{context}: active body count is implausible ({})",
+        profile.active_body_count
     );
     assert!(
-        profile.broad_phase_ms >= 0.0,
-        "[CORRECTNESS FAILURE] {}: negative broad_phase_ms {}",
-        context,
-        profile.broad_phase_ms
+        profile.collision_pair_count < 100_000_000,
+        "{context}: collision pair count is implausible ({})",
+        profile.collision_pair_count
     );
-    assert!(
-        profile.narrow_phase_ms >= 0.0,
-        "[CORRECTNESS FAILURE] {}: negative narrow_phase_ms {}",
-        context,
-        profile.narrow_phase_ms
-    );
+    let _ = profile.total_duration;
 }
 
 /// Create a world with N characters for benchmarking
@@ -129,9 +121,9 @@ fn create_world_with_rigid_bodies(body_count: usize) -> (PhysicsWorld, Vec<u64>)
     let mut body_ids = Vec::with_capacity(body_count);
 
     for _ in 0..body_count {
-        let x = rng.gen_range(-40.0..40.0);
-        let y = rng.gen_range(5.0..15.0);
-        let z = rng.gen_range(-40.0..40.0);
+        let x = rng.random_range(-40.0..40.0);
+        let y = rng.random_range(5.0..15.0);
+        let z = rng.random_range(-40.0..40.0);
 
         let id = world.add_dynamic_box(vec3(x, y, z), vec3(0.5, 0.5, 0.5), 1.0, Layers::DEFAULT);
         body_ids.push(id);
@@ -278,14 +270,15 @@ fn physics_async_telemetry_overhead(c: &mut Criterion) {
     const NPC_COUNT: usize = 1000;
 
     c.bench_function("physics_async_telemetry_overhead", |b| {
-        let (mut world, char_ids) = create_world_with_characters(NPC_COUNT);
+        let (mut world, _char_ids) = create_world_with_characters(NPC_COUNT);
         world.enable_async_physics(4);
 
         b.iter(|| {
             world.step();
             // Get telemetry (should be very fast)
-            let profile = world.get_last_profile();
-            // CORRECTNESS: Telemetry must be valid
+            let profile = world
+                .get_last_profile()
+                .expect("physics step records a profile");
             assert_telemetry_valid(&profile, "telemetry_overhead");
             black_box(profile)
         });
@@ -343,9 +336,9 @@ fn physics_async_mixed_workload(c: &mut Criterion) {
         // Add rigid bodies
         let mut rng = rand::rngs::StdRng::seed_from_u64(54321);
         for _ in 0..*body_count {
-            let x = rng.gen_range(-40.0..40.0);
-            let y = rng.gen_range(5.0..15.0);
-            let z = rng.gen_range(-40.0..40.0);
+            let x = rng.random_range(-40.0..40.0);
+            let y = rng.random_range(5.0..15.0);
+            let z = rng.random_range(-40.0..40.0);
             let id =
                 world.add_dynamic_box(vec3(x, y, z), vec3(0.5, 0.5, 0.5), 1.0, Layers::DEFAULT);
             all_body_ids.push(id);

@@ -1,3 +1,4 @@
+#![allow(unused, clippy::all)]
 //! Wave 2 — Golden-value LOD generator tests targeting 168 mutants.
 //!
 //! Focuses on: Quadric error metric (tested indirectly through simplification
