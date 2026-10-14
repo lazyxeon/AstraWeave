@@ -1406,6 +1406,11 @@ impl EditorTabViewer {
         self.terrain_panel.terrain_state().seed()
     }
 
+    /// Integer columns captured the last time terrain was generated.
+    pub fn saved_ground(&self) -> &[u8] {
+        self.terrain_panel.terrain_state().saved_ground()
+    }
+
     /// Ensure terrain chunks exist, generating with the specified biome if empty.
     /// Used by blueprint zone generation to create terrain matching the zone's biome.
     pub fn ensure_terrain_exists_with_biome(&mut self, biome: &str, seed: u64) -> usize {

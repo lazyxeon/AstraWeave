@@ -88,6 +88,8 @@ pub struct HdriEntry {
     pub intensity: f32,
     /// Sky color hint \[R, G, B\] for procedural blending
     pub sky_color: [f32; 3],
+    /// SHA-256 of the file bytes. Checked by `catalog_files_match_sha256`.
+    pub sha256: String,
 }
 
 /// Raw TOML structure (private, for deserialization only)
@@ -113,6 +115,7 @@ struct HdriRaw {
     biomes: Vec<String>,
     intensity: f32,
     sky_color: [f32; 3],
+    sha256: String,
 }
 
 /// Loaded HDRI catalog providing biome × time-of-day lookups
@@ -162,6 +165,7 @@ impl HdriCatalog {
                     biomes: raw.biomes,
                     intensity: raw.intensity,
                     sky_color: raw.sky_color,
+                    sha256: raw.sha256,
                 },
             );
         }
@@ -357,5 +361,26 @@ mod tests {
             path.to_str().unwrap().contains("hdri"),
             "Path should contain hdri directory"
         );
+    }
+
+    #[test]
+    fn catalog_files_match_sha256() {
+        use sha2::{Digest, Sha256};
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../assets/hdri");
+        let catalog =
+            HdriCatalog::load(&root.join("hdri_catalog.toml"), &root).expect("hdri catalog");
+        assert!(catalog.get("sky_equirect").is_none());
+        assert!(catalog.get("spruit_sunrise").is_some());
+        for entry in catalog.entries() {
+            let path = root.join(&entry.file);
+            let bytes =
+                std::fs::read(&path).unwrap_or_else(|err| panic!("{}: {err}", path.display()));
+            let digest = Sha256::digest(&bytes);
+            let hex = digest
+                .iter()
+                .map(|byte| format!("{byte:02x}"))
+                .collect::<String>();
+            assert_eq!(hex, entry.sha256, "{}", entry.name);
+        }
     }
 }

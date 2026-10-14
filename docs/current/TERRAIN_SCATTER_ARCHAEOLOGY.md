@@ -297,28 +297,28 @@ The Aravath gameplay golden moved from `9b607d1a840ecd64` to `fd303f2adf402881` 
 
 ---
 
-## 13. Unification plan (not started)
+## 13. Unification plan
 
-P5 as “leave the dormant stacks dormant” is rejected. Each surface below has a decision. U1–U4 are follow-on phases after this branch. They are not in the current diff.
+P5 as “leave the dormant stacks dormant” is rejected. U1, U2, and U4 are in this branch. U3 binds voxel materials through `ModelSurfaceMaps`. KayKit props are still the greybox meshes.
 
 One pipeline means one function from `(seed, x, z)` to a column, one mesher, one scatter record, and one LOD predicate. The editor and the demo both call it. `WorldGenerator`’s f32 path remains an authoring preview until U2 replaces its saved output.
 
 | Surface | Decision | Phase |
 |---|---|---|
-| `column_gen` | Becomes the sim and save ground | done in this branch; U2 is the only writer |
+| `column_gen` | Sim and save ground. Editor scene save writes `worldgen_record()` plus `erosion.txt` saying the preview is not saved | U2 done |
 | `DualContouring` edge cache | The only voxel mesher | done |
 | `WorldGenerator` / `noise` crate f64 Perlin | Editor preview only. Not written to saves and not in the replay hash. U2 either replaces `sample_height` with the integer field or adds a three-OS bit lock before any save reads it | U2 |
-| Demo `stream_around` | Promote into `astraweave-terrain` as `ColumnStream` (sorted eviction, already the rule). `aravath_runtime` calls it | U1 |
-| `BackgroundChunkLoader`, `LodManager`, `MorphingLodManager`, `StreamingDiagnostics` | Delete after `ColumnStream` has a caller and a test. They stream heightmap `ChunkId`s and have no production caller | U1, same commit as the caller |
-| `clipmap_terrain.rs` | Delete. It is not a module. Distance LOD is `lod_keeps`, shared with the editor scatter upload in U3 | U3 |
+| Demo `stream_around` | `ColumnStream` in `astraweave-terrain`. `aravath_runtime` calls it | U1 done |
+| Heightmap async loader, LOD hysteresis, LOD morph, streaming diagnostics | Deleted in the same change as `ColumnStream` | U1 done |
+| Geometry clipmap | Deleted. Distance LOD is `lod_keeps` | U4 done |
 | Droplet erosion | Offline bake into the integer height field for the editor’s “generate” button. Not a per-frame sim step | U2 |
 | `VegetationScatter` Poisson + `StdRng` | Editor keeps it until U3, then it places from `column_gen` prop records for forest biomes and keeps Poisson only for authored densities. Yaw already has to be `SimRng` if a new caller appears | U3 |
 | `ZoneScatterGenerator` | Stays for `.blend` polygons. Seed is the world seed (done). U3 adds it to the replay hash if a save stores the placements | U3 |
-| `astraweave-pcg` | The editor `pcg_panel` does not call it. U4 wires `SeedRng` through `WfcGrid` (today WFC takes raw `Rng`) and adds one editor action with a test, **or** deletes `wfc` / `layout` / `encounters` and the unused `astraweave-weaving` dependency. No third state | U4 |
-| `RegionalArchetypeMask` Some-branch | Wire to the generator in the editor **or** delete the branch and the panel’s claim that it generates. Default in U4 is delete unless a designer tool is in the same change | U4 |
-| GPU erosion / `WgpuTerrainAccelerator` | Delete the trait and the render impl in U4. Erosion is the CPU bake above | U4 |
-| Phase 10 solver / modifier / persistence / compressed voxels | `TerrainSolver` already takes `SIM_SYSTEM_TERRAIN_SOLVER`. The rest are deleted in U4 unless U1’s stream needs the persistence format, in which case the save blob is the edit log already used by Aravath, not a second format | U4 |
-| Poly Haven 2k set | Bind `diff` / `nor_gl` / `arm` on the five voxel materials in the demo material path. Manifest hashes stay the check | U3 |
+| `astraweave-pcg` | Wired. `SeedRng: RngCore`, `WfcGrid::collapse_seeded`, editor dungeon button calls `seeded_dungeon_tile_count` | U4 done |
+| `RegionalArchetypeMask` Some-branch | Deleted. The panel can store a mask. Generation uses the selected archetype. Painted and unpainted heights match | U4 done |
+| GPU erosion / the accelerator trait | Deleted, with the render impl and shader. CPU erosion preview is not the save | U4 done |
+| Phase 10 solver / modifier / persistence / compressed voxels | Solver kept. Modifier, persistence format, and compressed voxels deleted. Aravath save is the edit log plus the integer record | U4 done |
+| Poly Haven 2k set | Voxel materials 1–5 load `diff` / `nor_gl` / `arm` through `pbr_maps::split_polyhaven_arm` and `Renderer::add_model_with_pbr_textures`. KayKit props stay colored meshes | U3 plumbing done |
 
 ### U1 — one streamer
 
@@ -358,7 +358,9 @@ Acceptance: `rg` for each deleted type is empty. `cargo test -p astraweave-terra
 | P4 dig (`E`) and place (`R`) on density 0/1 voxels, save/replay | Done. `aravath_runtime` lib tests cover dig, place, and the replay golden `fd303f2adf402881` |
 | Game-ready scatter meshes | Done. `gltfpack` 1.3, command in `build_game_lod.py` and `manifest.json`. LOD0 is under 15k triangles (`pine_tree_01` 14,790). LOD1, LOD2, and a 4-triangle KTX2 cross billboard are committed with SHA-256. The 949 MB source buffer stays a build input |
 | Greybox still draws KayKit | Remaining. `load_colored` reads vertex colors and ignores images. The new glbs are textured KTX2. Swapping them in without a texture bind would draw flat white trees. That bind is U3, with the render agent’s IBL bind of `spruit_sunrise` (PR #216) |
-| U1 `ColumnStream` and deletion of the unused heightmap streamer | Not started |
-| U2 integer height as the only saved editor ground, erosion bake | Not started |
-| U3 editor scatter reads `prop_at`, voxel materials sample the manifest, GPU frame time | Not started |
-| U4 wire or delete `astraweave-pcg`, clipmap, GPU erosion, Phase 10 leftovers | Not started |
+| U1 `ColumnStream` and deletion of the unused heightmap streamer | Done. Negative-chunk eviction test. `worldgen_columns` still matches |
+| U2 integer height as the saved ground | Done. Editor `.columns` file and Aravath meta `ground`. Erosion preview writes `erosion.txt` and is not the ground bytes |
+| U3 textured voxel materials via `ModelSurfaceMaps` | Plumbing done. KayKit scatter meshes are still the greybox draw |
+| U3 GPU frame time | `--frame-times` writes `aravath_frame_times.csv` beside the exe (`frame,cpu_ms`). This host has no Vulkan device, so the RTX 4060 Ti number is still the owner's |
+| U4 wire or delete dormant stacks | Done. Decisions are the table in §13 |
+| Editor forest scatter still uses `VegetationScatter` for non-forest authoring | Remaining. Forest props in the demo already come from `prop_at` |

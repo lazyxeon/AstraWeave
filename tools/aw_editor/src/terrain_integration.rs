@@ -52,6 +52,8 @@ pub struct TerrainState {
     stroke_pre_snapshots: HashMap<ChunkId, Vec<f32>>,
     /// Cached BiomePack for pack: selections (avoids re-loading on every configure call)
     cached_pack: Option<(std::path::PathBuf, astraweave_terrain::BiomePack)>,
+    /// Integer columns written by scene save. The climate mesh above is a preview.
+    saved_ground: Vec<u8>,
 }
 
 pub struct GeneratedChunk {
@@ -128,6 +130,7 @@ impl Default for TerrainState {
             is_stroking: false,
             stroke_pre_snapshots: HashMap::new(),
             cached_pack: None,
+            saved_ground: Vec::new(),
         }
     }
 }
@@ -138,6 +141,11 @@ impl TerrainState {
     }
 
     /// Return the currently cached BiomePack (if any).
+    /// Integer ground last captured by [`Self::generate_terrain`].
+    pub fn saved_ground(&self) -> &[u8] {
+        &self.saved_ground
+    }
+
     pub fn cached_biome_pack(&self) -> Option<&astraweave_terrain::BiomePack> {
         self.cached_pack.as_ref().map(|(_, pack)| pack)
     }
@@ -433,6 +441,9 @@ impl TerrainState {
         self.chunk_order
             .sort_by(|a, b| a.x.cmp(&b.x).then(a.z.cmp(&b.z)));
         self.dirty_chunk_indices.clear();
+        // U2: the preview mesh stays on the climate heightmap. The bytes a
+        // scene save writes are the integer columns, not sample_height.
+        self.saved_ground = astraweave_terrain::column_gen::worldgen_record();
 
         // ── Stamp .blend terrain heightmap onto procedural chunks ─────
         // NOTE: stamp_blend_heightmap is disabled for now.

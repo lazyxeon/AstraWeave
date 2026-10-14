@@ -412,4 +412,15 @@ mod tests {
         assert!(!lod_keeps(ForestProp::Oak, 0, 0, 100, 0, 1));
         assert!(lod_keeps(ForestProp::Oak, 0, 0, 100, 0, 2));
     }
+
+    #[test]
+    fn saved_columns_round_trip_into_the_record() {
+        let record = worldgen_record();
+        let path =
+            std::env::temp_dir().join(format!("awcol-roundtrip-{}.columns", std::process::id()));
+        std::fs::write(&path, &record).expect("write columns");
+        let loaded = std::fs::read(&path).expect("read columns");
+        std::fs::remove_file(&path).expect("remove columns");
+        assert_eq!(loaded, worldgen_record());
+    }
 }

@@ -22,6 +22,7 @@ pub mod hud;
 pub mod ik;
 pub mod island;
 pub mod locomotion;
+pub mod materials;
 pub mod motor;
 pub mod play_input;
 pub mod player;

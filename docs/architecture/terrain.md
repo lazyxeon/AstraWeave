@@ -24,7 +24,7 @@ last_verified_commit: cdea968c
 | **Document version** | 1.9 |
 | **Last verified against commit** | ED-3 working tree over `aca627436` (v1.7: amplitude Open Question closed); prior `d4c4479d4` (v1.6), prior `03f9d9a2d` (v1.5: T.2d third pass, two new §11 Open Questions), prior `611c8edc7` (v1.3/v1.4: T.2a boreal band + `expect()` retirement), `8232b150b`. Note: v1.4 bumped the front-matter `doc_version` and the revision table only, leaving this row at 1.3 — corrected here. |
 | **Last verified date** | 2026-07-26 (v1.7) |
-| **Status** | Active (editor heightmap path wired; voxel-meshing, streaming/LOD, and multi-archetype paths are in-design-but-tested / dormant — see §5, §6). 1.8: `DualContouring` stores one vertex per crossed edge in Bourke corner order so `MC_TRI_TABLE` emits a real surface. `aravath_runtime` is the first caller that collides with that mesh. |
+| **Status** | Active. Editor preview is the climate heightmap. Saved ground is the integer column record. The async heightmap loader, clipmap, GPU erosion trait, voxel modifier, and Phase 10 persistence format are removed. `DualContouring` stores one vertex per crossed edge. `aravath_runtime` collides with that mesh. |
 | **Owner notes** | Complements [`terrain_materials.md`](terrain_materials.md), which covers ONLY the material/splat-weight slice. This trace covers the REST: noise → heightmap → biome → erosion → chunk generation, voxel meshing, scatter/vegetation, and chunk streaming. Where the two overlap (biome semantics, `astraweave-render` terrain paths) this doc cross-references rather than duplicates. |
 
 ---
@@ -41,7 +41,7 @@ Provides the world substrate — heightfield + biome + vegetation — that the e
 - `astraweave-terrain/src/` — the entire generation, voxel, biome, noise, scatter, and streaming surface (42 source modules, ~35K LoC incl. tests).
 - `tools/aw_editor/src/terrain_integration.rs` + `panels/terrain_panel.rs` + `panels/regional_archetype_panel.rs` — the production consumer of the **heightmap** generation path.
 - `examples/hybrid_voxel_demo/src/main.rs` — the only production consumer of the **voxel meshing** path (`DualContouring`, `LodMeshGenerator`).
-- `astraweave-render/src/{terrain.rs, clipmap_terrain.rs, terrain_gpu_bridge.rs}` — render-side terrain consumers (traced in [`render_pipeline_material_system_shader_infrastructure.md`](render_pipeline_material_system_shader_infrastructure.md); see §4).
+- `astraweave-render/src/terrain.rs` — render-side terrain consumer (traced in [`render_pipeline_material_system_shader_infrastructure.md`](render_pipeline_material_system_shader_infrastructure.md); see §4). Clipmap terrain and the GPU erosion bridge were removed.
 
 **Status note:**
 This is **not one system but several loosely-coupled subsystems** sharing a crate. The wired-into-the-editor path is the **heightmap** path (`WorldGenerator::generate_chunk_with_climate` → `TerrainChunk` → editor splat/mesh conversion). The **voxel** path (`VoxelChunk` / `DualContouring`) is wired only into one example. The **async streaming/LOD** subsystems (`BackgroundChunkLoader`, `LodManager`, `StreamingDiagnostics`, `MorphingLodManager`) and the **multi-archetype** data path (`RegionalArchetypeMask` Some-branch) are present and tested but have **no production caller** that exercises them end-to-end (§5, §6, §11). Treat per-subsystem wiredness as the load-bearing honesty signal.
@@ -250,22 +250,15 @@ Wiredness verified by workspace grep for non-test/non-example production callers
 | `zone_scatter.rs` | `ZoneScatterGenerator`, `.blend` replica/inspired scatter, heightmap injection | Active | Wired via editor `main.rs:7458` (blueprint zones) |
 | `blueprint_zone.rs` | `BlueprintZone`, `ZoneRegistry`, polygon math | Active | Backing data for zone_scatter |
 | `structures.rs` | `StructureGenerator`, `StructureType`, structure scatter | Active | Wired via `scatter_chunk_content` (lib.rs:256) |
-| `regional_archetype_mask.rs` | `RegionalArchetypeMask` (paint + I/O), `RegionalArchetypeBlend` sampler, `blend_bootstrap_params` | Active type / **dormant data path** | Type wired into editor `RegionalArchetypePanel`; the generation `Some`-branch (lib.rs:600-626) is unreachable because no caller assigns the mask (§6, §11) |
+| `regional_archetype_mask.rs` | `RegionalArchetypeMask` (paint + I/O), `RegionalArchetypeBlend` sampler, `blend_bootstrap_params` | Active type / **dormant data path** | Type wired into editor `RegionalArchetypePanel`; the generation `Some`-branch is unreachable because no caller assigns the mask (§6, §11) |
 | `meshing.rs` | `DualContouring`, `LodMeshGenerator`, `AsyncMeshGenerator`, `ChunkMesh`, `MeshVertex` | Active | Callers: `examples/hybrid_voxel_demo` and `aravath_runtime/src/ground.rs`. One vertex per crossed edge (`EdgeKey`) |
 | `column_gen.rs` | Integer forest columns, road, scatter, LOD keep, `worldgen_record` | Active (determinism gate) | `SimRng` stream `SIM_SYSTEM_FOREST_SCATTER`. No libm. Hash case `worldgen_columns` |
+| `column_stream.rs` | `ColumnStream`, `StreamDelta` | Active (demo) | Sorted Chebyshev keep/evict. `Ground::stream_around` is the caller. Test `eviction_order_is_sorted_including_negative_chunks`. |
 | `voxel_data.rs` | `VoxelChunk` (SVO), `Voxel`, `ChunkCoord`, `VoxelGrid`, `CHUNK_SIZE=32` | Active | Same callers as `meshing.rs` |
-| `marching_cubes_tables.rs` | MC edge/tri tables for dual contouring | Active in example only | Data tables for `meshing.rs` |
-| `compressed_voxels.rs` | Palette + RLE compression for voxel chunks | In-design-but-tested | P4-8; no production caller found |
+| `marching_cubes_tables.rs` | MC edge/tri tables for dual contouring | Active | Data tables for `meshing.rs` |
 | `collision.rs` | `collision_mesh_from_chunk` / `_from_heightmap`, `CollisionMesh` | In-design-but-tested | No non-test production caller found |
-| `lod_manager.rs` | `LodManager` (hysteresis), `LodLevel`, `ViewParams`, `compute_pixel_error` | In-design-but-tested | No production caller; `clipmap_terrain.rs` mentions it only in a doc-comment |
-| `lod_blending.rs` | `MorphingLodManager`, `LodBlender`, `MorphedMesh` | In-design-but-tested | Same — doc-comment reference only |
-| `background_loader.rs` | `BackgroundChunkLoader`, `StreamingConfig`, `StreamingStats` (tokio async streaming) | In-design-but-tested | No production caller; editor uses synchronous `generate_chunk_with_climate` instead |
-| `streaming_diagnostics.rs` | `StreamingDiagnostics`, `HitchDetector`, `DiagnosticReport` | In-design-but-tested | No production caller found |
-| `partition_integration.rs` | `VoxelPartitionManager`, World-Partition streaming events | In-design-but-tested | No production caller in examples/tools/scene/render |
-| `gpu_bridge.rs` | `TerrainGpuAccelerator` trait + GPU request/result types | Trait active, caller dormant | Impl `WgpuTerrainAccelerator` exists in `astraweave-render/src/terrain_gpu_bridge.rs` but has no production caller (§11) |
-| `solver.rs` | `TerrainSolver` (Phase 10 AI-orchestrated terrain), `ResolvedLocation` | In-design-but-tested | No production caller found |
-| `terrain_modifier.rs` | `TerrainModifier`, batched `VoxelOp` updates | In-design-but-tested | Phase 10; no production caller found |
-| `terrain_persistence.rs` | Terrain save/load (Phase 10) | In-design-but-tested | No production caller found |
+| `partition_integration.rs` | `VoxelPartitionManager`, World-Partition streaming events | In-design-but-tested | Left in place. Not the demo streamer. |
+| `solver.rs` | `TerrainSolver` (Phase 10), `ResolvedLocation` | Kept | `SIM_SYSTEM_TERRAIN_SOLVER`. The modifier, compressed-voxel, and second save format were removed. |
 | `texture_splatting.rs` | 8-layer procedural splat (`MAX_SPLAT_LAYERS`) | Deprecated (test-only) | See `terrain_materials.md` §5/§11 — zero production callers |
 | `mutation_tests.rs` / `chunk_tests.rs` / `voxel_data_tests.rs` | `#[cfg(test)]` mutation/comprehensive suites | Test-only | 3,670 + 532 + 532 LoC |
 
@@ -290,14 +283,13 @@ Wiredness verified by workspace grep for non-test/non-example production callers
 | Simple CA erosion (`apply_erosion`) | `chunk.rs:204` | Active (legacy `generate_chunk` path) | Bypassed by the climate path |
 | Droplet erosion (`AdvancedErosionSimulator`) | `advanced_erosion.rs` | Active (climate path) | Both erosion algorithms coexist |
 | Synchronous chunk gen (editor) | `lib.rs` + `terrain_integration.rs` | Active (wired) | What the editor actually uses |
-| Async streaming (`BackgroundChunkLoader` + `LodManager` + `StreamingDiagnostics`) | `background_loader.rs`, `lod_manager.rs`, `streaming_diagnostics.rs` | In-design-but-tested | A complete alternative loading subsystem with no production caller |
-| Single-archetype gen (mask = None) | `lib.rs:618-619` (arm), splines cached `lib.rs:568-577` | Active (wired) | Evaluates the SELECTED archetype's splines (E3 Phase A.2; pre-E3 this was CT-hardcoded — the v1.1 statement is superseded) |
-| Multi-archetype gen (mask = Some) | `lib.rs:620-643`, `regional_archetype_mask.rs` | Dormant data path | Reachable only if a caller assigns `WorldGenerator.regional_archetype_mask`; none does (re-verified at `8232b150b` — Multi-Tool SP5 wired panel paint→mask, NOT mask→generator) |
+| Column stream | `column_stream.rs`, `aravath_runtime/src/ground.rs` | Active | The only chunk keep/evict. Eviction order is a `BTreeSet` difference. |
+| Single-archetype gen | `lib.rs` climate path | Active | A stored mask does not change heights. |
 
 ### Naming collisions
 
 - **`ChunkId` vs `ChunkCoord`:** 2D heightmap chunk id vs 3D voxel chunk coord. Both named "chunk". Always check the type.
-- **`LodConfig`:** `meshing::LodConfig` (voxel mesh LOD) vs `lod_manager::LodConfig` (re-exported as `LodHysteresisConfig` in lib.rs:71 to disambiguate). The re-export rename is the existing mitigation.
+- **`LodConfig`:** `meshing::LodConfig` is the voxel mesh LOD. `ViewParams` lives next to it. The old hysteresis LOD type was removed with the unused loader.
 - **`MeshVertex` (meshing.rs:18) vs render/editor terrain vertex formats:** the voxel `MeshVertex{position,normal,material:u16}` is distinct from the editor `TerrainVertex` (see `terrain_materials.md`). Do not cross-wire.
 - **"Erosion":** four modules touch erosion (`erosion.rs`, `advanced_erosion.rs`, `runevision_erosion.rs`, `chunk.rs::apply_erosion`). Specify which.
 
@@ -485,6 +477,7 @@ Wiredness verified by workspace grep for non-test/non-example production callers
 |---|---|---|
 | 1.9 | 2026-10-15 | **Edge-keyed isosurface.** `DualContouring` again stores one vertex per crossed marching-cubes edge (`HashMap<EdgeKey, u32>`, Bourke corner order). A cell-position cache left triangle lookups empty, so the Aravath island collider did not hold the character. `aravath_runtime` is a caller of `generate_mesh` via `Ground::sync_dirty`. Invariant 10. |
 | 1.8 | 2026-10-14 | **WS-D2.** `TerrainSolver::new` requires an explicit `u64` seed. `SystemTime` is gone from the solver and from terrain save headers/filenames (`timestamp` is a sim tick, default 0). `meshing.rs` was not modified. |
+| 1.9 | 2026-10-14 | **U1, U2, U4.** `ColumnStream` is the demo streamer. Scene save and the Aravath checkpoint store `worldgen_record()`; erosion preview is not that file. Deleted: async heightmap loader, LOD hysteresis, LOD morph, streaming diagnostics, clipmap, GPU erosion trait and render impl, compressed voxels, voxel modifier, Phase 10 terrain persistence. `astraweave-pcg` `SeedRng` drives `WfcGrid::collapse_seeded`, called from the editor dungeon button. Mask generation branch removed. Solver kept. |
 | 1.8 | 2026-10-14 | **WS-RENDER-ENV-B P1–P2.** `DualContouring` stores one vertex per crossed edge (`vertex_cache: HashMap<EdgeKey, u32>`). `column_gen` is the integer forest/road/scatter record hashed as `worldgen_columns`. The f32 `WorldGenerator` path is unchanged and is not the sim ground. |
 | 1.7 | 2026-07-26 | **ED-3 — the Base-Amplitude Open Question is CLOSED.** New `NoiseConfig::base_amplitude_scale` (serde-default 1.0, bit-identical; consumed once in `sample_height_with_params` as a multiplier on the spline-derived `base_elevation_amplitude`); panel slider re-plumbed as "Amplitude x (spline scale)" via `TerrainState::set_amplitude_scale`. Regression + render proof cited in §11. T.3's amplitude-finality gate is actionable. See `docs/audits/ED3_OUTCOME.md`. |
 | 1.6 | 2026-07-25 | **T.2d.F — the `compute_material_lod` Open Question is CLOSED** (director-ratified deletion, executed same day). §11 entry struck through with the measured outcome (boundary signature + dithering gone, close range 1 LSB, far field +≤9.5%, min-spec −1.0%); the Base-Amplitude-slider question REMAINS OPEN and now blocks T.3's amplitude-finality gate (see `docs/audits/T2DF_OUTCOME.md` §8). Shader-side details live in the render trace (v1.12, Invariant 19) — no `astraweave-terrain` code changed. |

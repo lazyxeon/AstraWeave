@@ -133,6 +133,22 @@ fn phase_1_x_f4_unpainted_mask_byte_identical_to_none() {
 /// (synthetic differentiation) which forces non-baseline splines per
 /// archetype to verify the wiring blends them.
 #[test]
+fn phase_1_x_f4_painted_mask_matches_the_selected_archetype() {
+    let gen_none = make_generator(12345);
+    let mut gen_painted = make_generator(12345);
+    let mut mask =
+        RegionalArchetypeMask::new_unpainted(256, RegionalArchetypeMask::DEFAULT_WORLD_EXTENT_WU);
+    mask = mask.with_painted_circle(128, 128, 64, WorldArchetypeId::BorealSubarctic.to_mask_id());
+    mask.recompute_falloff();
+    gen_painted.regional_archetype_mask = Some(mask);
+    assert_eq!(
+        chunk_heights(&gen_none, ChunkId::new(0, 0)),
+        chunk_heights(&gen_painted, ChunkId::new(0, 0)),
+        "a painted mask is stored and does not change generation"
+    );
+}
+
+#[test]
 fn phase_1_x_f4_painted_circle_produces_terrain() {
     let mut gen = make_generator(12345);
     let mut mask =

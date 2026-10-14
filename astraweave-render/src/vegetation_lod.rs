@@ -165,6 +165,10 @@ impl BillboardMesh {
             indices: self.indices.clone(),
             albedo_image: None,
             texture_source_hint: None,
+            normal_image: None,
+            metallic_roughness_image: None,
+            occlusion_image: None,
+            emissive_image: None,
         }
     }
 }

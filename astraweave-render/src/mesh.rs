@@ -66,6 +66,15 @@ pub struct CpuMesh {
     pub indices: Vec<u32>,
     /// Base color texture from the glTF material (if present).
     pub albedo_image: Option<CpuImage>,
+    /// glTF / `nor_gl` tangent-space normal (OpenGL Y-up). Not DirectX-flipped.
+    pub normal_image: Option<CpuImage>,
+    /// glTF metallic-roughness bytes (G = roughness, B = metallic), before the
+    /// engine R/G conversion in [`crate::pbr_maps`].
+    pub metallic_roughness_image: Option<CpuImage>,
+    /// glTF occlusion (R = AO) or a map produced from Poly Haven ARM.
+    pub occlusion_image: Option<CpuImage>,
+    /// glTF emissive texture.
+    pub emissive_image: Option<CpuImage>,
     /// Hint for external texture discovery: the filename stem of the
     /// glTF image source URI (e.g. `"island_tree_01_leaves_diff"`).
     /// Populated even when the image data itself failed to load, so

@@ -1279,12 +1279,14 @@ impl PcgPanel {
                 % (self.dungeon_settings.room_count.1 - self.dungeon_settings.room_count.0 + 1)
                     as u64) as u32;
 
+        let tiles = astraweave_pcg::seeded_dungeon_tile_count(self.current_seed);
         let summary = format!(
-            "Generated dungeon: {}x{} tiles, {} rooms, corridor width {}",
+            "Generated dungeon: {}x{} tiles, {} rooms, corridor width {}, wfc {}",
             self.dungeon_settings.width,
             self.dungeon_settings.height,
             room_count,
-            self.dungeon_settings.corridor_width
+            self.dungeon_settings.corridor_width,
+            tiles
         );
 
         self.preview = Some(GenerationPreview {

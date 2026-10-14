@@ -2,7 +2,7 @@
 
 use rand::distr::uniform::{SampleRange, SampleUniform};
 use rand::rngs::StdRng;
-use rand::{Rng, SeedableRng};
+use rand::{Rng, RngCore, SeedableRng};
 
 /// Deterministic random number generator with layer tracking
 pub struct SeedRng {
@@ -83,6 +83,20 @@ impl SeedRng {
     /// Generate a random f64 in [0, 1)
     pub fn gen_f64(&mut self) -> f64 {
         self.inner.random()
+    }
+}
+
+impl RngCore for SeedRng {
+    fn next_u32(&mut self) -> u32 {
+        self.inner.next_u32()
+    }
+
+    fn next_u64(&mut self) -> u64 {
+        self.inner.next_u64()
+    }
+
+    fn fill_bytes(&mut self, dest: &mut [u8]) {
+        self.inner.fill_bytes(dest)
     }
 }
 

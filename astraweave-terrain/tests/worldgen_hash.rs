@@ -109,7 +109,11 @@ fn pine_forest_manifest_matches_downloaded_bytes() {
                 panic!("missing {rel}: {err}");
             });
             let digest = sha256_hex(&bytes);
-            assert_eq!(digest, file["sha256"].as_str().unwrap(), "{rel} hash drifted");
+            assert_eq!(
+                digest,
+                file["sha256"].as_str().unwrap(),
+                "{rel} hash drifted"
+            );
         }
         if let Some(remote) = asset.get("remote_files").and_then(|value| value.as_array()) {
             for file in remote {
@@ -155,7 +159,10 @@ fn pine_forest_manifest_matches_downloaded_bytes() {
         "opening_sky_ibl",
         "greybox_forest_props",
     ] {
-        assert!(roles.iter().any(|role| role == required), "missing {required}");
+        assert!(
+            roles.iter().any(|role| role == required),
+            "missing {required}"
+        );
     }
     assert_eq!(
         manifest["conifer"]["source_url"].as_str(),

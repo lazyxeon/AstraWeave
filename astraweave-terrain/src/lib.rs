@@ -5,7 +5,6 @@
 //! heightmaps, and biome classification for the AstraWeave engine.
 
 pub mod advanced_erosion; // Production-ready erosion simulation
-pub mod background_loader; // Week 4 Action 14: Async chunk streaming
 pub mod biome;
 pub mod biome_blending; // Production-ready biome blending
 pub mod biome_lookup; // Phase 1.6-F.4.B.3.D.2: Whittaker biome lookup (climate × elevation → BiomeId)
@@ -17,13 +16,10 @@ pub mod chunk;
 pub mod climate;
 pub mod collision;
 pub mod column_gen;
-pub mod compressed_voxels; // P4-8: Palette compression + RLE for voxel chunks
+pub mod column_stream;
 pub mod elevation_biome; // Phase 1.5: heightmap-driven multi-biome generation
 pub mod erosion;
-pub mod gpu_bridge; // GPU acceleration bridge (TerrainGpuAccelerator trait)
 pub mod heightmap;
-pub mod lod_blending;
-pub mod lod_manager; // Week 4 Action 14: LOD with hysteresis
 pub mod marching_cubes_tables;
 pub mod meshing;
 pub mod noise_gen;
@@ -35,10 +31,7 @@ pub mod runevision_erosion; // Phase 1.6-F.4.B.3.C: gradient-aligned gully extru
 pub mod scatter;
 pub mod solver; // Phase 10: AI-Orchestrated Dynamic Terrain
 pub mod spline_types; // Phase 1.X-F.1.A: PvFold + Spline1D + BootstrapParam (regional archetype variation)
-pub mod streaming_diagnostics; // Week 4 Action 14: Diagnostics overlay
 pub mod structures;
-pub mod terrain_modifier; // Phase 10: Batched voxel updates
-pub mod terrain_persistence; // Phase 10: Terrain save/load
 pub mod texture_splatting; // Production-ready terrain texture splatting
 pub mod voxel_data;
 pub mod world_archetypes; // Phase 1.6-F.4.B.3.D.5: world archetype catalog (6 climate envelope presets)
@@ -48,7 +41,6 @@ pub use advanced_erosion::{
     erosion_preset_for_climate, AdvancedErosionSimulator, ErosionPreset, ErosionStats,
     HydraulicErosionConfig, ThermalErosionConfig, WindErosionConfig,
 }; // Advanced erosion
-pub use background_loader::{BackgroundChunkLoader, StreamingConfig, StreamingStats}; // Week 4
 pub use biome::{Biome, BiomeConfig, BiomeType, BiomeVegetation, VegetationType};
 pub use biome_blending::{BiomeBlendConfig, BiomeBlender, BiomeWeight, PackedBiomeBlend}; // Biome blending
 pub use biome_pack::{BiomePack, BiomePackAsset, BiomePackScatter};
@@ -58,22 +50,12 @@ pub use blueprint_zone::{
 pub use chunk::{smooth_shared_vertices, ChunkId, ChunkManager, TerrainChunk};
 pub use climate::{ClimateConfig, ClimateMap};
 pub use collision::{collision_mesh_from_chunk, collision_mesh_from_heightmap, CollisionMesh};
-pub use compressed_voxels::{
-    CompressedVoxelChunk, PaletteEntry, RleRun, VoxelPalette, CHUNK_VOLUME,
-};
+pub use column_stream::{ColumnStream, StreamDelta};
 pub use elevation_biome::{elevation_to_biome_weights, ClimateBias, SEA_LEVEL}; // Phase 1.5
-pub use gpu_bridge::{
-    GpuErosionRequest, GpuHeightmapRequest, GpuHeightmapResult, GpuNoiseRequest,
-    TerrainGpuAccelerator,
-};
 pub use heightmap::{Heightmap, HeightmapConfig};
-pub use lod_blending::{LodBlender, MorphConfig, MorphedMesh, MorphingLodManager};
-pub use lod_manager::{
-    compute_pixel_error, ChunkLodState, LodConfig as LodHysteresisConfig, LodLevel, LodManager,
-    LodStats, ViewParams,
-}; // Week 4
 pub use meshing::{
     AsyncMeshGenerator, ChunkMesh, DualContouring, LodConfig, LodMeshGenerator, MeshVertex,
+    ViewParams,
 };
 pub use noise_gen::{domain_warped_fbm, DomainWarpConfig, NoiseConfig, NoiseType, TerrainNoise};
 pub use noise_simd::SimdHeightmapGenerator; // Week 3 Action 8: SIMD optimization
@@ -86,15 +68,9 @@ pub use scatter::{
     VegetationScatter,
 };
 pub use solver::{ResolvedLocation, SolverError, TerrainSolver, ValidationStatus};
-pub use streaming_diagnostics::{
-    ChunkLoadState, DiagnosticReport, FrameStats, HitchDetector, MemoryStats, StreamingDiagnostics,
-}; // Week 4
 pub use structures::{
     StructureConfig, StructureGenerator, StructureInstance, StructureResult, StructureType,
 };
-pub use terrain_modifier::{
-    ModifierStats, NavMeshRegion, TerrainModifier, TerrainModifierConfig, VoxelOp, VoxelOpType,
-}; // Phase 10
 pub use texture_splatting::{
     SplatConfig, SplatMapGenerator, SplatRule, SplatWeights, TerrainMaterial, TerrainSplatVertex,
     TriplanarWeights, MAX_SPLAT_LAYERS,
@@ -534,42 +510,11 @@ impl WorldGenerator {
         // archetype_splines closure passed to blend_bootstrap_params is
         // a simple match returning a reference to the cached entry.
         // Avoids per-vertex factory calls.
-        let archetype_splines_continental =
-            crate::spline_types::bootstrap_splines_continental_temperate();
-        let archetype_splines_tropical =
-            crate::spline_types::bootstrap_splines_equatorial_tropical();
-        let archetype_splines_boreal = crate::spline_types::bootstrap_splines_boreal_subarctic();
-        let archetype_splines_mediterranean =
-            crate::spline_types::bootstrap_splines_mediterranean();
-        let archetype_splines_desert = crate::spline_types::bootstrap_splines_desert();
-        let archetype_splines_custom = crate::spline_types::bootstrap_splines_custom();
-        let lookup_splines =
-            |id: crate::world_archetypes::WorldArchetypeId| -> crate::spline_types::BootstrapSplineSet {
-                match id {
-                    crate::world_archetypes::WorldArchetypeId::ContinentalTemperate => {
-                        archetype_splines_continental.clone()
-                    }
-                    crate::world_archetypes::WorldArchetypeId::EquatorialTropical => {
-                        archetype_splines_tropical.clone()
-                    }
-                    crate::world_archetypes::WorldArchetypeId::BorealSubarctic => {
-                        archetype_splines_boreal.clone()
-                    }
-                    crate::world_archetypes::WorldArchetypeId::Mediterranean => {
-                        archetype_splines_mediterranean.clone()
-                    }
-                    crate::world_archetypes::WorldArchetypeId::Desert => {
-                        archetype_splines_desert.clone()
-                    }
-                    crate::world_archetypes::WorldArchetypeId::Custom => {
-                        archetype_splines_custom.clone()
-                    }
-                }
-            };
-        let regional_blend = self
-            .regional_archetype_mask
-            .as_ref()
-            .map(crate::regional_archetype_mask::RegionalArchetypeBlend::new);
+        // U4: the multi-archetype mask branch is removed. The panel can still
+        // hold a mask, but generation always uses the selected archetype.
+        // The mask stays on the generator so the editor panel can hold a paint,
+        // but chunk heights do not read it.
+        let _ = &self.regional_archetype_mask;
 
         // E3-terrain Phase A.2: the None-mask (single-archetype) height path
         // uses the SELECTED archetype's bootstrap splines, not hardcoded
@@ -621,33 +566,7 @@ impl WorldGenerator {
                 // archetype's splines, blend per §2.5. Elevation-independent, so
                 // sampled at sea level (elevation 0.0).
                 let climate_sample = self.climate.sample(wx, wz, 0.0);
-                let bootstrap_params = match &regional_blend {
-                    None => none_path_splines.evaluate(&climate_sample),
-                    Some(blend) => {
-                        let contributors = blend.sample_at(wx_f32, wz_f32);
-                        // F.4.E empty-contributor guard: sampler invariants
-                        // guarantee non-empty (per F.4.C tests), but defensive
-                        // fallback to Continental Temperate solo prevents
-                        // all-zero BootstrapParams from reaching the noise
-                        // pipeline if a future change breaks the invariant.
-                        if contributors.is_empty() {
-                            debug_assert!(
-                                false,
-                                "RegionalArchetypeBlend::sample_at returned empty \
-                                 contributors at world ({}, {}); F.4.C invariant \
-                                 should prevent this",
-                                wx_f32, wz_f32
-                            );
-                            archetype_splines_continental.evaluate(&climate_sample)
-                        } else {
-                            crate::regional_archetype_mask::blend_bootstrap_params(
-                                &contributors,
-                                &lookup_splines,
-                                &climate_sample,
-                            )
-                        }
-                    }
-                };
+                let bootstrap_params = none_path_splines.evaluate(&climate_sample);
 
                 // Params-based provisional elevation — same spline regime as the
                 // final render height. Replaces the legacy halo height for

@@ -9240,6 +9240,26 @@ impl MenuActionHandler for EditorApp {
                     ));
                     self.console_logs.push(format!("Scene saved: {:?}", path));
                     self.last_auto_save = std::time::Instant::now();
+                    let columns = path.with_extension("columns");
+                    let record = astraweave_terrain::column_gen::worldgen_record();
+                    match fs::write(&columns, &record) {
+                        Ok(()) => self
+                            .console_logs
+                            .push(format!("integer ground saved: {:?}", columns)),
+                        Err(err) => self
+                            .console_logs
+                            .push(format!("integer ground save failed: {err}")),
+                    }
+                    let banner = path.with_extension("erosion.txt");
+                    match fs::write(
+                        &banner,
+                        "erosion preview is not saved; the ground file is integer columns\n",
+                    ) {
+                        Ok(()) => {}
+                        Err(err) => self
+                            .console_logs
+                            .push(format!("erosion banner save failed: {err}")),
+                    }
                 }
                 Err(e) => {
                     self.status = format!("Scene save failed: {}", e);

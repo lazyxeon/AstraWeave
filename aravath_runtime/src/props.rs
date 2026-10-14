@@ -160,6 +160,7 @@ impl NodeActor {
             indices,
             albedo_image: None,
             texture_source_hint: None,
+            ..Default::default()
         })
     }
 
@@ -241,6 +242,7 @@ pub fn load_colored(path: &Path) -> Result<Vec<ColoredMesh>> {
                     indices: prim_indices,
                     albedo_image: None,
                     texture_source_hint: None,
+                    ..Default::default()
                 },
                 color: primitive
                     .material()
@@ -302,6 +304,7 @@ pub fn load_rigid(path: &Path) -> Result<TexturedMesh> {
             indices,
             albedo_image: None,
             texture_source_hint: None,
+            ..Default::default()
         },
         albedo: rgba_from_images(&images),
     })

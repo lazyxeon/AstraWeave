@@ -15,6 +15,12 @@ use astraweave_camera::{FreeFly, RenderView};
 use astraweave_cinematics as awc;
 use astraweave_materials::MaterialPackage;
 
+/// Demo sky. Poly Haven CC0 `spruit_sunrise` 2k, warm gold horizon.
+pub const SHOWCASE_HDRI_PRIMARY: &str =
+    "assets/hdri/polyhaven/spruit_sunrise/spruit_sunrise_2k.hdr";
+/// Used when the primary plate is not on disk.
+pub const SHOWCASE_HDRI_FALLBACK: &str = "assets/hdri/polyhaven/kloppenheim_02_puresky_2k.hdr";
+
 pub(crate) const SHADER_SRC: &str = concat!(
     include_str!("../shaders/constants.wgsl"),
     include_str!("../shaders/brdf_common.wgsl"),
@@ -82,8 +88,12 @@ struct MaterialUbo {
 @group(3) @binding(1) var albedo_samp: sampler;
 @group(3) @binding(2) var mr_tex: texture_2d<f32>;      // R: metallic, G: roughness
 @group(3) @binding(3) var mr_samp: sampler;
-@group(3) @binding(4) var normal_tex: texture_2d<f32>;  // tangent-space normal in RGB
+@group(3) @binding(4) var normal_tex: texture_2d<f32>;  // tangent-space normal in RGB, nor_gl (Y up)
 @group(3) @binding(5) var normal_samp: sampler;
+@group(3) @binding(7) var occlusion_tex: texture_2d<f32>; // R: ambient occlusion
+@group(3) @binding(8) var occlusion_samp: sampler;
+@group(3) @binding(9) var emissive_tex: texture_2d<f32>;
+@group(3) @binding(10) var emissive_samp: sampler;
 
 // ── Scene Environment (fog, ambient, tint) ─────────
 struct SceneEnv {
@@ -253,19 +263,22 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
     // fragments got a 1-sample diffuse-only approximation) — that gate shared
     // the tiers' footprint-2.0 threshold and died with them in T.2d.F, so
     // every fragment now takes the full IBL path.
+    let ao = textureSample(occlusion_tex, occlusion_samp, input.uv).r;
     let ibl_color = compute_ibl(N, V, base_color, metallic, roughness, F0);
-    lit_color = lit_color + ibl_color;
+    // glTF: occlusion scales indirect light only, not the direct sun.
+    lit_color = lit_color + ibl_color * ao;
 
     // Screen-space GI: sample indirect diffuse from SSGI/Lumen pipeline.
     // When no GI pass is active, gi_tex is a 1x1 black texture → adds zero.
     let gi_dims = vec2<f32>(textureDimensions(gi_tex));
     let gi_uv = input.pos.xy / gi_dims;
     let gi_indirect = textureSampleLevel(gi_tex, gi_samp, gi_uv, 0.0).rgb;
-    lit_color += gi_indirect * base_color * (1.0 - metallic);
+    lit_color += gi_indirect * base_color * (1.0 - metallic) * ao;
 
     // Scene ambient as fallback floor (provides fill when IBL is low)
     let ambient = uScene.ambient_color * uScene.ambient_intensity * 0.35;
-    lit_color = lit_color + base_color * ambient;
+    lit_color = lit_color + base_color * ambient * ao;
+    lit_color = lit_color + textureSample(emissive_tex, emissive_samp, input.uv).rgb;
         // Clustered point lights accumulation (Lambert + simple attenuation)
     // Clustered lighting disabled for this example build; use lit_color directly
 
@@ -458,6 +471,10 @@ struct MainLightUbo { view_proj0: mat4x4<f32>, view_proj1: mat4x4<f32>, view_pro
 @group(3) @binding(3) var mr_samp: sampler;
 @group(3) @binding(4) var normal_tex: texture_2d<f32>;
 @group(3) @binding(5) var normal_samp: sampler;
+@group(3) @binding(7) var occlusion_tex: texture_2d<f32>;
+@group(3) @binding(8) var occlusion_samp: sampler;
+@group(3) @binding(9) var emissive_tex: texture_2d<f32>;
+@group(3) @binding(10) var emissive_samp: sampler;
 struct Skinning { mats: array<mat4x4<f32>> };
 @group(3) @binding(6) var<storage, read> skin: Skinning;
 
@@ -602,7 +619,11 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
     }
     // Direct lighting (evaluate_brdf already includes NdotL) + ambient lift
     let cloud_shadow = sample_cloud_shadow(input.world_pos);
-    let lit_color = brdf_result * radiance * shadow * cloud_shadow + base_color * 0.08;
+    // Skinned vertices carry no UVs. Sample the map origin so a 1×1 default
+    // (white AO, black emissive) is exact, and a real map is not ignored.
+    let ao = textureSampleLevel(occlusion_tex, occlusion_samp, vec2<f32>(0.0), 0.0).r;
+    let emissive = textureSampleLevel(emissive_tex, emissive_samp, vec2<f32>(0.0), 0.0).rgb;
+    let lit_color = brdf_result * radiance * shadow * cloud_shadow + base_color * 0.08 * ao + emissive;
     return vec4<f32>(lit_color, uMaterial.base_color.a * input.color.a);
 }
 "#
@@ -641,8 +662,86 @@ pub struct RenderModel {
 
 pub struct ModelSurfaceMaps<'a> {
     pub albedo: (u32, u32, &'a [u8]),
+    /// Tangent-space normal, OpenGL / glTF / Poly Haven `nor_gl` (Y up).
     pub normal: (u32, u32, &'a [u8]),
+    /// Engine layout: R = metallic, G = roughness. Convert glTF or ARM with
+    /// [`crate::pbr_maps`] before passing bytes in.
     pub metallic_roughness: (u32, u32, &'a [u8]),
+    /// R = ambient occlusion. `None` binds a 1×1 white map (no darkening).
+    pub occlusion: Option<(u32, u32, &'a [u8])>,
+    /// RGB emissive, added after lighting. `None` binds a 1×1 black map.
+    pub emissive: Option<(u32, u32, &'a [u8])>,
+}
+
+fn texture_layout_entry(binding: u32) -> wgpu::BindGroupLayoutEntry {
+    wgpu::BindGroupLayoutEntry {
+        binding,
+        visibility: wgpu::ShaderStages::FRAGMENT,
+        ty: wgpu::BindingType::Texture {
+            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+            view_dimension: wgpu::TextureViewDimension::D2,
+            multisampled: false,
+        },
+        count: None,
+    }
+}
+
+fn sampler_layout_entry(binding: u32) -> wgpu::BindGroupLayoutEntry {
+    wgpu::BindGroupLayoutEntry {
+        binding,
+        visibility: wgpu::ShaderStages::FRAGMENT,
+        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+        count: None,
+    }
+}
+
+fn solid_rgba_texture(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    label: &str,
+    pixel: [u8; 4],
+) -> (wgpu::Texture, wgpu::TextureView, wgpu::Sampler) {
+    let texture = device.create_texture(&wgpu::TextureDescriptor {
+        label: Some(label),
+        size: wgpu::Extent3d {
+            width: 1,
+            height: 1,
+            depth_or_array_layers: 1,
+        },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: wgpu::TextureFormat::Rgba8Unorm,
+        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+        view_formats: &[],
+    });
+    queue.write_texture(
+        wgpu::TexelCopyTextureInfo {
+            texture: &texture,
+            mip_level: 0,
+            origin: wgpu::Origin3d::ZERO,
+            aspect: wgpu::TextureAspect::All,
+        },
+        &pixel,
+        wgpu::TexelCopyBufferLayout {
+            offset: 0,
+            bytes_per_row: Some(4),
+            rows_per_image: Some(1),
+        },
+        wgpu::Extent3d {
+            width: 1,
+            height: 1,
+            depth_or_array_layers: 1,
+        },
+    );
+    let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+    let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+        label: Some(label),
+        mag_filter: wgpu::FilterMode::Linear,
+        min_filter: wgpu::FilterMode::Linear,
+        ..Default::default()
+    });
+    (texture, view, sampler)
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -876,6 +975,18 @@ pub struct Renderer {
     normal_tex: wgpu::Texture,
     normal_view: wgpu::TextureView,
     normal_sampler: wgpu::Sampler,
+    /// 1×1 white. AO = 1 when a model has no occlusion map.
+    /// The texture is retained so `occlusion_view` stays valid.
+    #[allow(dead_code)]
+    occlusion_tex: wgpu::Texture,
+    occlusion_view: wgpu::TextureView,
+    occlusion_sampler: wgpu::Sampler,
+    /// 1×1 black. No emissive when a model has no emissive map.
+    /// The texture is retained so `emissive_view` stays valid.
+    #[allow(dead_code)]
+    emissive_tex: wgpu::Texture,
+    emissive_view: wgpu::TextureView,
+    emissive_sampler: wgpu::Sampler,
     // Extra textures bind group layout and group (for future extensibility)
     // extra texture bind group layout/bg removed; combined tex_bgl/tex_bg used
     camera_ubo: CameraUBO,
@@ -1035,6 +1146,9 @@ pub struct Renderer {
     /// `[(drawn, total); CASCADE_COUNT]`. Written by `draw_into` after the passes;
     /// `(0, 0)` when the passes were skipped (shadows off / no casters).
     terrain_shadow_stats: [(u32, u32); CASCADE_COUNT],
+    /// Greybox toggles until PR #205's froxel pass is on this renderer.
+    greybox_fog_enabled: bool,
+    greybox_rays_enabled: bool,
 }
 
 impl Renderer {
@@ -1995,6 +2109,10 @@ impl Renderer {
                     },
                     count: None,
                 },
+                texture_layout_entry(7),
+                sampler_layout_entry(8),
+                texture_layout_entry(9),
+                sampler_layout_entry(10),
             ],
         });
 
@@ -2871,7 +2989,12 @@ fn vs(input: VSIn) -> VSOut {
             },
         );
 
-        // Combined bind group for albedo, mr, normal, and skin palette (bindings 0..6)
+        let (occlusion_tex, occlusion_view, occlusion_sampler) =
+            solid_rgba_texture(&device, &queue, "occlusion tex", [255, 255, 255, 255]);
+        let (emissive_tex, emissive_view, emissive_sampler) =
+            solid_rgba_texture(&device, &queue, "emissive tex", [0, 0, 0, 255]);
+
+        // Combined bind group for albedo, mr, normal, occlusion, emissive, and skin palette
         let tex_bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("combined tex bg"),
             layout: &tex_bgl,
@@ -2903,6 +3026,22 @@ fn vs(input: VSIn) -> VSOut {
                 wgpu::BindGroupEntry {
                     binding: 6,
                     resource: skin_palette_buf.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 7,
+                    resource: wgpu::BindingResource::TextureView(&occlusion_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 8,
+                    resource: wgpu::BindingResource::Sampler(&occlusion_sampler),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 9,
+                    resource: wgpu::BindingResource::TextureView(&emissive_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 10,
+                    resource: wgpu::BindingResource::Sampler(&emissive_sampler),
                 },
             ],
         });
@@ -3392,6 +3531,8 @@ fn vs(input: VSIn) -> VSOut {
             shadow_bgl,
             shadow_bgl_light,
             terrain_shadow_stats: [(0, 0); CASCADE_COUNT],
+            greybox_fog_enabled: false,
+            greybox_rays_enabled: false,
             shadow_cascade_bufs,
             shadow_cascade_bgs,
             cascades: [glam::Mat4::IDENTITY; CASCADE_COUNT],
@@ -3435,6 +3576,12 @@ fn vs(input: VSIn) -> VSOut {
             normal_tex,
             normal_view,
             normal_sampler,
+            occlusion_tex,
+            occlusion_view,
+            occlusion_sampler,
+            emissive_tex,
+            emissive_view,
+            emissive_sampler,
             // combined tex_bgl/tex_bg used
             camera_ubo: CameraUBO {
                 view_proj: Mat4::IDENTITY.to_cols_array_2d(),
@@ -3721,6 +3868,103 @@ fn vs(input: VSIn) -> VSOut {
         self.rebuild_ibl_bind_group(&resources);
         self.ibl_resources = Some(resources);
         Ok(())
+    }
+
+    /// Bake the demo sky. Tries Poly Haven CC0 `spruit_sunrise` (warm gold
+    /// horizon), then `kloppenheim_02_puresky`. The returned path is the file
+    /// that was baked. Missing files are an error, not a silent 1×1 cubemap.
+    pub fn bake_showcase_environment(
+        &mut self,
+        quality: crate::ibl::IblQuality,
+    ) -> Result<std::path::PathBuf> {
+        let chosen = [SHOWCASE_HDRI_PRIMARY, SHOWCASE_HDRI_FALLBACK]
+            .into_iter()
+            .map(std::path::PathBuf::from)
+            .find(|path| path.is_file())
+            .with_context(|| {
+                format!(
+                    "showcase HDRI missing: tried {SHOWCASE_HDRI_PRIMARY} and {SHOWCASE_HDRI_FALLBACK}"
+                )
+            })?;
+        if chosen != std::path::Path::new(SHOWCASE_HDRI_PRIMARY) {
+            log::warn!(
+                "primary showcase HDRI {SHOWCASE_HDRI_PRIMARY} missing; baking {}",
+                chosen.display()
+            );
+        }
+        self.ibl.mode = crate::ibl::SkyMode::HdrPath {
+            biome: "showcase".to_string(),
+            path: chosen.display().to_string(),
+        };
+        self.bake_environment(quality)?;
+        Ok(chosen)
+    }
+
+    /// Upload one glTF primitive. Albedo-only meshes keep the albedo path.
+    /// When a normal, metallic-roughness, occlusion, or emissive map is
+    /// present, all five slots are bound. glTF metallic-roughness is converted
+    /// to the engine R=metallic, G=roughness layout.
+    pub fn add_cpu_mesh_model(
+        &mut self,
+        name: impl Into<String>,
+        cpu: &crate::mesh::CpuMesh,
+        instances: &[Instance],
+    ) {
+        let mesh = self.create_mesh_from_cpu_mesh(cpu);
+        let has_surface = cpu.normal_image.is_some()
+            || cpu.metallic_roughness_image.is_some()
+            || cpu.occlusion_image.is_some()
+            || cpu.emissive_image.is_some();
+        if !has_surface {
+            if let Some(albedo) = &cpu.albedo_image {
+                self.add_model_with_texture(
+                    name,
+                    mesh,
+                    instances,
+                    albedo.width,
+                    albedo.height,
+                    &albedo.pixels,
+                );
+            } else {
+                self.add_model(name, mesh, instances);
+            }
+            return;
+        }
+        let albedo_fallback = vec![255u8, 255, 255, 255];
+        let normal_fallback = vec![128u8, 128, 255, 255];
+        let mr_fallback = vec![0u8, 255, 0, 255];
+        let mr_converted = cpu
+            .metallic_roughness_image
+            .as_ref()
+            .map(|image| crate::pbr_maps::gltf_metallic_roughness_to_engine(&image.pixels));
+        let (albedo_w, albedo_h, albedo_px) = match &cpu.albedo_image {
+            Some(image) => (image.width, image.height, image.pixels.as_slice()),
+            None => (1, 1, albedo_fallback.as_slice()),
+        };
+        let (normal_w, normal_h, normal_px) = match &cpu.normal_image {
+            Some(image) => (image.width, image.height, image.pixels.as_slice()),
+            None => (1, 1, normal_fallback.as_slice()),
+        };
+        let (mr_w, mr_h, mr_px) = match (&cpu.metallic_roughness_image, &mr_converted) {
+            (Some(image), Some(converted)) => (image.width, image.height, converted.as_slice()),
+            _ => (1, 1, mr_fallback.as_slice()),
+        };
+        let occlusion = cpu
+            .occlusion_image
+            .as_ref()
+            .map(|image| (image.width, image.height, image.pixels.as_slice()));
+        let emissive = cpu
+            .emissive_image
+            .as_ref()
+            .map(|image| (image.width, image.height, image.pixels.as_slice()));
+        let maps = ModelSurfaceMaps {
+            albedo: (albedo_w, albedo_h, albedo_px),
+            normal: (normal_w, normal_h, normal_px),
+            metallic_roughness: (mr_w, mr_h, mr_px),
+            occlusion,
+            emissive,
+        };
+        self.add_model_with_pbr_textures(name, mesh, instances, &maps);
     }
 
     /// Install an environment baked elsewhere (L.2: the editor's worker-thread
@@ -5598,6 +5842,53 @@ fn vs(input: VSIn) -> VSOut {
             .create_view(&wgpu::TextureViewDescriptor::default());
 
         Ok(Some((frame, view)))
+    }
+
+    /// Pump the device so a loss reported on the previous submit is visible
+    /// before this frame maps any buffers.
+    pub fn poll_device(&self) {
+        let _ = self.device.poll(wgpu::MaintainBase::Wait);
+    }
+
+    /// Remember the greybox fog toggle. The froxel pass itself lands with PR #205.
+    pub fn set_volumetric_fog_config(
+        &mut self,
+        config: crate::volumetric_fog::VolumetricFogConfig,
+    ) {
+        self.greybox_fog_enabled = config.enabled;
+    }
+
+    pub fn volumetric_fog_enabled(&self) -> bool {
+        self.greybox_fog_enabled
+    }
+
+    /// Accept a scar volume. The froxel density write is PR #205's.
+    pub fn upload_veil_scar_volume(
+        &mut self,
+        _volume: &crate::volumetric_fog::ScarFogVolume,
+    ) -> Result<()> {
+        Ok(())
+    }
+
+    /// Remember the greybox light-shaft toggle. The shaft pass is PR #205's.
+    pub fn set_god_ray_config(&mut self, config: crate::god_rays::GodRayConfig) {
+        self.greybox_rays_enabled = config.enabled;
+    }
+
+    pub fn god_rays_enabled(&self) -> bool {
+        self.greybox_rays_enabled
+    }
+
+    /// Submit an empty encoder so a headless device is created and polled.
+    pub fn submit_headless_frame(&mut self) -> Result<()> {
+        let encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("headless validation"),
+            });
+        self.queue.submit(Some(encoder.finish()));
+        let _ = self.device.poll(wgpu::MaintainBase::Wait);
+        Ok(())
     }
 
     pub fn render(&mut self) -> Result<()> {
@@ -7779,6 +8070,22 @@ fn vs(input: VSIn) -> VSOut {
                     binding: 6,
                     resource: self.skin_palette_buf.as_entire_binding(),
                 },
+                wgpu::BindGroupEntry {
+                    binding: 7,
+                    resource: wgpu::BindingResource::TextureView(&self.occlusion_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 8,
+                    resource: wgpu::BindingResource::Sampler(&self.occlusion_sampler),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 9,
+                    resource: wgpu::BindingResource::TextureView(&self.emissive_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 10,
+                    resource: wgpu::BindingResource::Sampler(&self.emissive_sampler),
+                },
             ],
         });
     }
@@ -7854,6 +8161,22 @@ fn vs(input: VSIn) -> VSOut {
                     binding: 6,
                     resource: self.skin_palette_buf.as_entire_binding(),
                 },
+                wgpu::BindGroupEntry {
+                    binding: 7,
+                    resource: wgpu::BindingResource::TextureView(&self.occlusion_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 8,
+                    resource: wgpu::BindingResource::Sampler(&self.occlusion_sampler),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 9,
+                    resource: wgpu::BindingResource::TextureView(&self.emissive_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 10,
+                    resource: wgpu::BindingResource::Sampler(&self.emissive_sampler),
+                },
             ],
         });
     }
@@ -7928,6 +8251,22 @@ fn vs(input: VSIn) -> VSOut {
                 wgpu::BindGroupEntry {
                     binding: 6,
                     resource: self.skin_palette_buf.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 7,
+                    resource: wgpu::BindingResource::TextureView(&self.occlusion_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 8,
+                    resource: wgpu::BindingResource::Sampler(&self.occlusion_sampler),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 9,
+                    resource: wgpu::BindingResource::TextureView(&self.emissive_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 10,
+                    resource: wgpu::BindingResource::Sampler(&self.emissive_sampler),
                 },
             ],
         });
@@ -8337,6 +8676,22 @@ fn vs(input: VSIn) -> VSOut {
                     binding: 6,
                     resource: self.skin_palette_buf.as_entire_binding(),
                 },
+                wgpu::BindGroupEntry {
+                    binding: 7,
+                    resource: wgpu::BindingResource::TextureView(&self.occlusion_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 8,
+                    resource: wgpu::BindingResource::Sampler(&self.occlusion_sampler),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 9,
+                    resource: wgpu::BindingResource::TextureView(&self.emissive_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 10,
+                    resource: wgpu::BindingResource::Sampler(&self.emissive_sampler),
+                },
             ],
         });
 
@@ -8377,6 +8732,44 @@ fn vs(input: VSIn) -> VSOut {
         let metallic_roughness_view =
             metallic_roughness_texture.create_view(&wgpu::TextureViewDescriptor::default());
         let normal_view = normal_texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let (occlusion_texture, occlusion_bytes) = match surface_maps.occlusion {
+            Some((w, h, data)) => self.create_model_rgba_texture(
+                "model occlusion",
+                w,
+                h,
+                data,
+                wgpu::TextureFormat::Rgba8Unorm,
+                false,
+            ),
+            None => self.create_model_rgba_texture(
+                "model occlusion default",
+                1,
+                1,
+                &[255, 255, 255, 255],
+                wgpu::TextureFormat::Rgba8Unorm,
+                false,
+            ),
+        };
+        let (emissive_texture, emissive_bytes) = match surface_maps.emissive {
+            Some((w, h, data)) => self.create_model_rgba_texture(
+                "model emissive",
+                w,
+                h,
+                data,
+                wgpu::TextureFormat::Rgba8UnormSrgb,
+                false,
+            ),
+            None => self.create_model_rgba_texture(
+                "model emissive default",
+                1,
+                1,
+                &[0, 0, 0, 255],
+                wgpu::TextureFormat::Rgba8UnormSrgb,
+                false,
+            ),
+        };
+        let occlusion_view = occlusion_texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let emissive_view = emissive_texture.create_view(&wgpu::TextureViewDescriptor::default());
 
         let tex_bg = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("model pbr tex bg"),
@@ -8410,13 +8803,39 @@ fn vs(input: VSIn) -> VSOut {
                     binding: 6,
                     resource: self.skin_palette_buf.as_entire_binding(),
                 },
+                wgpu::BindGroupEntry {
+                    binding: 7,
+                    resource: wgpu::BindingResource::TextureView(&occlusion_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 8,
+                    resource: wgpu::BindingResource::Sampler(&self.occlusion_sampler),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 9,
+                    resource: wgpu::BindingResource::TextureView(&emissive_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 10,
+                    resource: wgpu::BindingResource::Sampler(&self.emissive_sampler),
+                },
             ],
         });
 
         (
             tex_bg,
-            vec![albedo_texture, metallic_roughness_texture, normal_texture],
-            albedo_bytes + metallic_roughness_bytes + normal_bytes,
+            vec![
+                albedo_texture,
+                metallic_roughness_texture,
+                normal_texture,
+                occlusion_texture,
+                emissive_texture,
+            ],
+            albedo_bytes
+                + metallic_roughness_bytes
+                + normal_bytes
+                + occlusion_bytes
+                + emissive_bytes,
         )
     }
 

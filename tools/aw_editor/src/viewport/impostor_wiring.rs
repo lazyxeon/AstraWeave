@@ -259,6 +259,7 @@ mod tests {
             indices: vec![0, 1, 2],
             albedo_image: None,
             texture_source_hint: None,
+            ..Default::default()
         }
     }
 

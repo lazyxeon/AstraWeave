@@ -267,6 +267,10 @@ fn load_species(path: &std::path::Path, name: &str) -> Result<LoadedSpecies> {
         indices: Vec::new(),
         albedo_image: None,
         texture_source_hint: None,
+        normal_image: None,
+        metallic_roughness_image: None,
+        occlusion_image: None,
+        emissive_image: None,
     };
     for prim in primitives {
         let offset = merged.vertices.len() as u32;

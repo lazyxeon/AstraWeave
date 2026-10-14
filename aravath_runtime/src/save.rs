@@ -27,6 +27,10 @@ pub fn save_checkpoint(root: &Path, checkpoint: &Checkpoint) -> Result<()> {
     meta.insert("edits".into(), encode_edits(&checkpoint.edits));
     insert_into_meta(&mut meta, &checkpoint.scars).context("encode veil scars")?;
     meta.insert(
+        "ground".into(),
+        encode_hex(&astraweave_terrain::column_gen::worldgen_record()),
+    );
+    meta.insert(
         "player".into(),
         format!(
             "{},{},{},{},{},{}",
@@ -88,6 +92,7 @@ pub fn load_checkpoint(root: &Path) -> Result<Checkpoint> {
         Some(text) => finite_limited(text, "player hp", 10_000.0)?,
         None => 100.0,
     };
+    require_saved_ground(&bundle.meta)?;
     let scars = read_from_meta(&bundle.meta).context("decode veil scars")?;
     Ok(Checkpoint {
         edits,
@@ -127,6 +132,54 @@ fn finite_limited(text: &str, name: &str, limit: f32) -> Result<f32> {
         bail!("{name} is outside the allowed range");
     }
     Ok(value)
+}
+
+fn encode_hex(bytes: &[u8]) -> String {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let mut out = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        out.push(HEX[(byte >> 4) as usize] as char);
+        out.push(HEX[(byte & 0x0f) as usize] as char);
+    }
+    out
+}
+
+fn decode_hex(text: &str) -> Result<Vec<u8>> {
+    if text.len() % 2 != 0 {
+        bail!("ground record is not hex");
+    }
+    let raw = text.as_bytes();
+    let mut out = Vec::with_capacity(text.len() / 2);
+    let mut index = 0;
+    while index < raw.len() {
+        let hi = hex_nibble(raw[index])?;
+        let lo = hex_nibble(raw[index + 1])?;
+        out.push((hi << 4) | lo);
+        index += 2;
+    }
+    Ok(out)
+}
+
+fn hex_nibble(byte: u8) -> Result<u8> {
+    match byte {
+        b'0'..=b'9' => Ok(byte - b'0'),
+        b'a'..=b'f' => Ok(byte - b'a' + 10),
+        b'A'..=b'F' => Ok(byte - b'A' + 10),
+        _ => bail!("ground record is not hex"),
+    }
+}
+
+/// Old saves omit `ground`. A present key must be the integer columns.
+fn require_saved_ground(meta: &std::collections::HashMap<String, String>) -> Result<()> {
+    let Some(text) = meta.get("ground") else {
+        return Ok(());
+    };
+    let stored = decode_hex(text).context("ground record")?;
+    let fresh = astraweave_terrain::column_gen::worldgen_record();
+    if stored != fresh {
+        bail!("saved ground does not match the integer columns");
+    }
+    Ok(())
 }
 
 fn encode_edits(edits: &[VoxelEdit]) -> String {
@@ -299,6 +352,35 @@ mod tests {
                 .to_bits(),
             0.5f32.to_bits()
         );
+    }
+
+    #[test]
+    fn saved_ground_is_the_integer_record() {
+        let dir = tempfile::tempdir().unwrap();
+        save_checkpoint(
+            dir.path(),
+            &Checkpoint {
+                edits: Vec::new(),
+                position: Vec3::ZERO,
+                yaw: 0.0,
+                stamina: 1.0,
+                player_hp: 1.0,
+                scars: astraweave_veil::ScarField::new(),
+            },
+        )
+        .unwrap();
+        let loaded = load_checkpoint(dir.path()).unwrap();
+        assert!(loaded.edits.is_empty());
+        let (bundle, _) = aw_save::SaveManager::new(dir.path())
+            .load_latest_slot("aravath", 0)
+            .unwrap();
+        let mut mismatched = bundle.meta.clone();
+        mismatched.insert("ground".into(), "00".into());
+        let err = require_saved_ground(&mismatched).unwrap_err();
+        assert!(err.to_string().contains("integer columns"), "{err}");
+        let mut legacy = bundle.meta.clone();
+        legacy.remove("ground");
+        require_saved_ground(&legacy).unwrap();
     }
 }
 
