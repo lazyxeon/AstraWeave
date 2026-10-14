@@ -6,6 +6,7 @@
 use glam::Vec3;
 use std::collections::HashMap;
 
+use crate::sim_rng::{SimRng, SIM_SYSTEM_SPAWNER};
 use crate::{Anchor, AnchorVfxState};
 
 /// Enemy spawner managing waves and spawn points.
@@ -29,6 +30,10 @@ pub struct EnemySpawner {
     active_enemy_count: usize,
     /// Max concurrent enemies
     max_concurrent_enemies: usize,
+    /// World seed mixed into each spawn draw.
+    world_seed: u64,
+    /// Spawns drawn so far. The next enemy uses this as the `SimRng` tick.
+    draw_index: u64,
 }
 
 /// Spawn point configuration.
@@ -88,7 +93,14 @@ impl EnemySpawner {
             difficulty_multiplier: 1.0,
             active_enemy_count: 0,
             max_concurrent_enemies: 20,
+            world_seed: 0,
+            draw_index: 0,
         }
+    }
+
+    /// Sets the world seed used for spawn position and archetype.
+    pub fn set_world_seed(&mut self, world_seed: u64) {
+        self.world_seed = world_seed;
     }
 
     /// Creates a spawner with custom settings.
@@ -247,11 +259,9 @@ impl EnemySpawner {
                 }
             };
 
-            // Generate position (immutable borrow of self)
-            let position = self.generate_spawn_position(spawn_position, spawn_radius);
-
-            // Determine archetype based on wave number
-            let archetype = self.determine_archetype();
+            let mut rng = self.next_spawn_rng();
+            let position = Self::generate_spawn_position(spawn_position, spawn_radius, &mut rng);
+            let archetype = self.determine_archetype(&mut rng);
 
             requests.push(SpawnRequest {
                 position,
@@ -329,6 +339,8 @@ impl EnemySpawner {
             })
             .map(|sp| sp.id)
             .collect();
+        // HashMap walk order is per-process. Spawn ids are the stable order.
+        active_spawns.sort_unstable();
 
         // If no broken-anchor spawns available, use any active spawn
         if active_spawns.is_empty() {
@@ -338,20 +350,22 @@ impl EnemySpawner {
                 .filter(|sp| sp.active && sp.cooldown <= 0.0)
                 .map(|sp| sp.id)
                 .collect();
+            active_spawns.sort_unstable();
         }
 
         active_spawns
     }
 
-    /// Generates a random spawn position within radius.
-    fn generate_spawn_position(&self, center: Vec3, radius: f32) -> Vec3 {
-        use rand::Rng;
-        let mut rng = rand::rng();
+    fn next_spawn_rng(&mut self) -> SimRng {
+        let rng = SimRng::new(self.world_seed, self.draw_index, SIM_SYSTEM_SPAWNER);
+        self.draw_index = self.draw_index.wrapping_add(1);
+        rng
+    }
 
-        let angle = rng.random_range(0.0..std::f32::consts::TAU);
-        let distance = rng.random_range(0.0..radius);
-
-        center + Vec3::new(angle.cos() * distance, 0.0, angle.sin() * distance)
+    /// Spawn offset inside the disk. Seeded; no `sin`/`cos`.
+    fn generate_spawn_position(center: Vec3, radius: f32, rng: &mut SimRng) -> Vec3 {
+        let (x, z) = rng.disk_xz(radius);
+        center + Vec3::new(x, 0.0, z)
     }
 
     /// Determines enemy archetype based on wave number and difficulty.
@@ -360,13 +374,10 @@ impl EnemySpawner {
     /// Wave 3-5: Standard + Riftstalkers (fast flankers)
     /// Wave 6-9: Standard + Riftstalkers + Sentinels (tanky AOE)
     /// Wave 10+: All types including VoidBoss (25% chance on wave 10, 15, 20...)
-    fn determine_archetype(&self) -> crate::enemy_types::EnemyArchetype {
-        use rand::Rng;
-        let mut rng = rand::rng();
-
+    fn determine_archetype(&self, rng: &mut SimRng) -> crate::enemy_types::EnemyArchetype {
         // Boss waves (every 5 waves starting at wave 10)
         if self.current_wave >= 10 && self.current_wave % 5 == 0 {
-            let boss_chance = rng.random_range(0.0..1.0);
+            let boss_chance = rng.unit_f32();
             if boss_chance < 0.25 {
                 return crate::enemy_types::EnemyArchetype::VoidBoss;
             }
@@ -377,7 +388,7 @@ impl EnemySpawner {
             1..=2 => crate::enemy_types::EnemyArchetype::Standard,
             3..=5 => {
                 // 70% Standard, 30% Riftstalker
-                if rng.random_range(0.0..1.0) < 0.3 {
+                if rng.unit_f32() < 0.3 {
                     crate::enemy_types::EnemyArchetype::Riftstalker
                 } else {
                     crate::enemy_types::EnemyArchetype::Standard
@@ -385,7 +396,7 @@ impl EnemySpawner {
             }
             6..=9 => {
                 // 50% Standard, 30% Riftstalker, 20% Sentinel
-                let roll = rng.random_range(0.0..1.0);
+                let roll = rng.unit_f32();
                 if roll < 0.2 {
                     crate::enemy_types::EnemyArchetype::Sentinel
                 } else if roll < 0.5 {
@@ -396,7 +407,7 @@ impl EnemySpawner {
             }
             _ => {
                 // Wave 10+: 40% Standard, 35% Riftstalker, 25% Sentinel
-                let roll = rng.random_range(0.0..1.0);
+                let roll = rng.unit_f32();
                 if roll < 0.25 {
                     crate::enemy_types::EnemyArchetype::Sentinel
                 } else if roll < 0.60 {
@@ -419,6 +430,7 @@ impl EnemySpawner {
         self.wave_timer = self.wave_interval;
         self.difficulty_multiplier = 1.0;
         self.active_enemy_count = 0;
+        self.draw_index = 0;
 
         for spawn_point in self.spawn_points.values_mut() {
             spawn_point.cooldown = 0.0;
@@ -736,5 +748,34 @@ mod tests {
         assert!(spawner.set_spawn_point_active(id, true));
         let requests = spawner.update(30.1, &anchors);
         assert_eq!(requests.len(), 4); // Wave 4
+    }
+
+    fn first_wave(seed: u64) -> Vec<SpawnRequest> {
+        let mut spawner = EnemySpawner::new();
+        spawner.set_world_seed(seed);
+        spawner.add_spawn_point(Vec3::new(3.0, 0.0, 4.0), 5.0, None);
+        let anchor = Anchor::new(1.0, 50, None);
+        spawner.force_spawn_wave(&[(0, &anchor)])
+    }
+
+    #[test]
+    fn spawn_positions_are_bit_identical_for_the_same_seed() {
+        let a = first_wave(0xA11C);
+        let b = first_wave(0xA11C);
+        assert_eq!(a.len(), b.len());
+        assert!(!a.is_empty());
+        for (left, right) in a.iter().zip(b.iter()) {
+            assert_eq!(left.position.x.to_bits(), right.position.x.to_bits());
+            assert_eq!(left.position.y.to_bits(), right.position.y.to_bits());
+            assert_eq!(left.position.z.to_bits(), right.position.z.to_bits());
+            assert_eq!(left.archetype, right.archetype);
+            let d = left.position.distance(Vec3::new(3.0, 0.0, 4.0));
+            assert!(d <= 5.0);
+        }
+        let p = a[0].position;
+        assert_eq!(
+            (p.x.to_bits(), p.y.to_bits(), p.z.to_bits()),
+            (3_205_979_728, 0, 1_082_688_523)
+        );
     }
 }

@@ -9,7 +9,7 @@ lifecycle_status: active
 integration_status: mixed
 summary: "Wired TYPES (QuestLog/Stats/Inventory->ui; BiomeRule/ResourceNode->terrain; Dialogue->audio), but combat (perform_attack_sweep), apply_weave_op & the Combat/Crafting/Quest plugins are example-only; water_movement.rs fully dormant. gameplay.md §1,§6"
 owns: [astraweave-gameplay]
-doc_version: "1.1"
+doc_version: "1.2"
 last_verified_commit: 7c29b8182
 ---
 
@@ -309,6 +309,7 @@ WeaveTutorialState mutated (anchors stabilized, triggers active)
 | 6 | `WaterPlayerState::update` clamps `submersion` to `[0,1]` before mode selection | Yes | `water_movement.rs:207`; tests `update_threshold_boundaries_exact` and others |
 | 7 | ECS `combat_system` uses Manhattan distance (`|dx|+|dy|`), not Euclidean | Yes | Tests `combat_distance_check_with_offset_positions`, `combat_system_distance_subtraction_matters` (`ecs.rs`) |
 | 8 | `CombatPlugin`/`CraftingPlugin`/`QuestPlugin` register into the `"simulation"` stage | Yes (inspect `ecs.rs:188-212`) | Doc-only |
+| 9 | Craft item ids and harvest respawn amounts come only from `SimRng` / `craft_seeded` / `tick_seeded`. There is no `rand::random` on those paths | Yes | `crafting.rs` `craft_with_seed`, `harvesting.rs` `tick_with_seed`; tests `gameplay_rng_craft_id_is_seed_locked` and `gameplay_rng_harvest_amount_is_seed_locked` |
 
 ---
 

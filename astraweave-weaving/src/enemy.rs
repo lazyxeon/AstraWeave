@@ -6,6 +6,8 @@
 
 use glam::Vec3;
 
+use crate::sim_rng::{SimRng, SIM_SYSTEM_ENEMY_PATROL};
+
 /// AI-driven enemy that disrupts anchors and attacks the player.
 #[derive(Debug, Clone)]
 pub struct Enemy {
@@ -37,6 +39,11 @@ pub struct Enemy {
     patrol_target: Vec3,
     /// Time until next patrol target update
     patrol_retarget_timer: f32,
+    /// World seed mixed into each patrol retarget.
+    world_seed: u64,
+    /// How many patrol targets this enemy has drawn. The next draw is
+    /// `SimRng::new(world_seed, draw_index, SIM_SYSTEM_ENEMY_PATROL)`.
+    draw_index: u64,
 }
 
 /// AI state machine for enemy behavior.
@@ -108,7 +115,15 @@ impl Enemy {
             flee_health: 20.0,
             patrol_target: position,
             patrol_retarget_timer: 0.0,
+            world_seed: 0,
+            draw_index: 0,
         }
+    }
+
+    /// Sets the world seed used for patrol targets. Draw index is left as-is
+    /// so a seed change does not replay earlier targets.
+    pub fn set_world_seed(&mut self, world_seed: u64) {
+        self.world_seed = world_seed;
     }
 
     /// Creates a new enemy with custom stats.
@@ -253,17 +268,17 @@ impl Enemy {
         EnemyBehavior::MoveTo(self.patrol_target)
     }
 
-    /// Generates a random patrol target within patrol radius.
-    fn generate_patrol_target(&self) -> Vec3 {
-        use rand::Rng;
-        let mut rng = rand::rng();
+    fn next_patrol_rng(&mut self) -> SimRng {
+        let rng = SimRng::new(self.world_seed, self.draw_index, SIM_SYSTEM_ENEMY_PATROL);
+        self.draw_index = self.draw_index.wrapping_add(1);
+        rng
+    }
 
-        let angle = rng.random_range(0.0..std::f32::consts::TAU);
-        let distance = rng.random_range(0.0..self.patrol_radius);
-
-        let offset = Vec3::new(angle.cos() * distance, 0.0, angle.sin() * distance);
-
-        self.patrol_center + offset
+    /// Patrol target inside the patrol disk. Seeded; no `sin`/`cos`.
+    fn generate_patrol_target(&mut self) -> Vec3 {
+        let mut rng = self.next_patrol_rng();
+        let (x, z) = rng.disk_xz(self.patrol_radius);
+        self.patrol_center + Vec3::new(x, 0.0, z)
     }
 
     /// Attack anchor behavior: move toward target anchor and attack when in range.
@@ -620,5 +635,30 @@ mod tests {
 
         // Should engage player despite broken anchor nearby
         assert_eq!(enemy.state, EnemyState::EngagePlayer);
+    }
+
+    fn first_patrol_target(seed: u64) -> Vec3 {
+        let mut enemy = Enemy::new(Vec3::new(10.0, 0.0, 5.0), 5.0);
+        enemy.set_world_seed(seed);
+        let behavior = enemy.update(0.1, enemy.patrol_center, Vec3::new(100.0, 0.0, 0.0), &[]);
+        match behavior {
+            EnemyBehavior::MoveTo(target) => target,
+            other => panic!("expected patrol MoveTo, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn patrol_target_is_bit_identical_for_the_same_seed() {
+        let a = first_patrol_target(0xA11C);
+        let b = first_patrol_target(0xA11C);
+        assert_eq!(a.x.to_bits(), b.x.to_bits());
+        assert_eq!(a.y.to_bits(), b.y.to_bits());
+        assert_eq!(a.z.to_bits(), b.z.to_bits());
+        assert!(a.distance(Vec3::new(10.0, 0.0, 5.0)) <= 5.0);
+        // Locked after the first seeded run. A libm sin/cos port would miss these bits.
+        assert_eq!(
+            (a.x.to_bits(), a.y.to_bits(), a.z.to_bits()),
+            (1_094_187_435, 0, 1_080_845_884)
+        );
     }
 }

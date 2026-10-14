@@ -23,6 +23,7 @@ pub mod particles;
 pub mod patterns;
 pub mod quest;
 pub mod quest_types;
+pub mod sim_rng;
 pub mod spawner;
 pub mod starter_quests;
 pub mod systems;
@@ -44,6 +45,9 @@ pub use level::{Camera, LevelStats, Player, VeilweaverLevel};
 pub use particles::{AnchorParticleEmitter, AnchorParticleSystem, Particle, ParticleType};
 pub use patterns::{Pattern, PatternDetector, PatternStrength};
 pub use quest::{ObjectiveType, Quest, QuestManager, QuestReward, QuestState};
+pub use sim_rng::{
+    mix_sim_seed, SimRng, SIM_SYSTEM_ANCHOR_PARTICLES, SIM_SYSTEM_ENEMY_PATROL, SIM_SYSTEM_SPAWNER,
+};
 pub use spawner::{EnemySpawner, SpawnPoint, SpawnRequest};
 pub use starter_quests::{
     all_starter_quests, quest_clear_corruption, quest_restore_beacon, quest_stabilize_anchors,

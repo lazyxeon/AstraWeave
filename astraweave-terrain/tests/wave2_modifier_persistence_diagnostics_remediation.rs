@@ -396,7 +396,7 @@ fn save_header_new() {
     assert_eq!(h.version, TERRAIN_SAVE_VERSION);
     assert_eq!(h.world_seed, 12345);
     assert_eq!(h.chunk_count, 10);
-    assert!(h.timestamp > 0);
+    assert_eq!(h.timestamp, 0);
     assert!(h.description.is_none());
 }
 

@@ -64,12 +64,17 @@ impl TerrainSaveHeader {
             version: TERRAIN_SAVE_VERSION,
             world_seed,
             chunk_count,
-            timestamp: std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_secs())
-                .unwrap_or(0),
+            // Tick 0 until the caller passes a sim tick via `at_tick`.
+            // Wall-clock seconds must not enter a save that replay will hash.
+            timestamp: 0,
             description: None,
         }
+    }
+
+    /// Header whose timestamp is a simulation tick, not `SystemTime`.
+    pub fn at_tick(mut self, tick: u64) -> Self {
+        self.timestamp = tick;
+        self
     }
 
     /// Create header with description
@@ -202,20 +207,6 @@ impl TerrainPersistence {
         // Ensure save directory exists
         fs::create_dir_all(&self.config.save_directory)?;
 
-        // Generate save filename
-        let filename = save_name
-            .map(|s| format!("{}.terrain", s))
-            .unwrap_or_else(|| {
-                format!(
-                    "terrain_{}.terrain",
-                    std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .map(|d| d.as_secs())
-                        .unwrap_or(0)
-                )
-            });
-        let path = self.config.save_directory.join(&filename);
-
         // Collect dirty chunks to save
         let chunks_to_save: Vec<_> = self
             .dirty_chunks
@@ -224,6 +215,12 @@ impl TerrainPersistence {
             .collect();
 
         let chunk_count = chunks_to_save.len() as u32;
+
+        // Filename is a function of the seed and chunk count, not the wall clock.
+        let filename = save_name
+            .map(|s| format!("{}.terrain", s))
+            .unwrap_or_else(|| format!("terrain_{world_seed}_{chunk_count}.terrain"));
+        let path = self.config.save_directory.join(&filename);
 
         // Create header
         let header = TerrainSaveHeader::new(world_seed, chunk_count);
@@ -491,7 +488,7 @@ mod tests {
         assert_eq!(header.version, TERRAIN_SAVE_VERSION);
         assert_eq!(header.world_seed, 12345);
         assert_eq!(header.chunk_count, 10);
-        assert!(header.timestamp > 0);
+        assert_eq!(header.timestamp, 0);
     }
 
     #[test]

@@ -9,7 +9,7 @@ lifecycle_status: active
 integration_status: mixed
 summary: "Voxel meshing/biome/noise/scatter/streaming (complements terrain_materials.md). terrain.md"
 owns: [astraweave-terrain]
-doc_version: "1.7"
+doc_version: "1.8"
 last_verified_commit: d4c4479d4
 ---
 
@@ -480,6 +480,7 @@ Wiredness verified by workspace grep for non-test/non-example production callers
 
 | Version | Date | Change |
 |---|---|---|
+| 1.8 | 2026-10-14 | **WS-D2.** `TerrainSolver::new` requires an explicit `u64` seed. `SystemTime` is gone from the solver and from terrain save headers/filenames (`timestamp` is a sim tick, default 0). `meshing.rs` was not modified. |
 | 1.7 | 2026-07-26 | **ED-3 — the Base-Amplitude Open Question is CLOSED.** New `NoiseConfig::base_amplitude_scale` (serde-default 1.0, bit-identical; consumed once in `sample_height_with_params` as a multiplier on the spline-derived `base_elevation_amplitude`); panel slider re-plumbed as "Amplitude x (spline scale)" via `TerrainState::set_amplitude_scale`. Regression + render proof cited in §11. T.3's amplitude-finality gate is actionable. See `docs/audits/ED3_OUTCOME.md`. |
 | 1.6 | 2026-07-25 | **T.2d.F — the `compute_material_lod` Open Question is CLOSED** (director-ratified deletion, executed same day). §11 entry struck through with the measured outcome (boundary signature + dithering gone, close range 1 LSB, far field +≤9.5%, min-spec −1.0%); the Base-Amplitude-slider question REMAINS OPEN and now blocks T.3's amplitude-finality gate (see `docs/audits/T2DF_OUTCOME.md` §8). Shader-side details live in the render trace (v1.12, Invariant 19) — no `astraweave-terrain` code changed. |
 | 1.5 | 2026-07-25 | **T.2d third pass — two new Open Questions, no code change.** (1) The Terrain panel's *Base Amplitude* slider is **inert**: it reaches `config.noise.base_elevation.amplitude`, but `noise_gen.rs:575` documents that read as replaced by `params.base_elevation_amplitude` (applied `:663`), which `regional_archetype_mask.rs:469` blends from archetype splines and never from `config`. Octaves/lacunarity/persistence are still read; amplitude alone is dead, and `terrain_panel.rs:2004-2005`'s comment claiming all four "flow through" is doc-drift. Proven by `t2d_camera_light.rs` Experiment F rendering amplitudes 50/20/6 **byte-identical**. (2) `compute_material_lod`'s hard tiers are convicted of the director-observed terrain boundary (LOD1\|2 at footprint 2.0, matched to 4 px in two frames) and of 40-55% of far-field high-frequency energy as per-pixel tier dithering — `fwidth(world_pos)` includes the height derivative, so the tier flickers over rough ground. Cross-material fix, parked as a STOP-with-options: `docs/audits/T2D_CAMERA_LIGHT.md` §10. |

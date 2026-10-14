@@ -54,10 +54,9 @@ fn main() -> anyhow::Result<()> {
         ],
     };
 
-    // Craft blade
-    #[allow(deprecated)]
+    // Craft blade from an explicit sim stream (world seed 1, tick 0).
     let mut blade = book
-        .craft("Echo Blade", &mut inv)
+        .craft_with_seed("Echo Blade", &mut inv, 1, 0)
         .expect("craft echo blade");
     println!("Crafted: {}", blade.name);
 

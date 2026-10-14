@@ -12,7 +12,7 @@
 //!
 //! # Example
 //! ```ignore
-//! let solver = TerrainSolver::new(&chunk_manager, camera_pos, camera_dir, 256.0);
+//! let solver = TerrainSolver::new(&chunk_manager, camera_pos, camera_dir, 256.0, world_seed);
 //! let resolved = solver.resolve_location(&terrain_request)?;
 //! if resolved.is_valid() {
 //!     // Proceed with terrain modification at resolved.pos
@@ -93,24 +93,20 @@ impl<'a> TerrainSolver<'a> {
     /// * `camera_pos` - Current camera/player position
     /// * `camera_dir` - Current camera/player look direction (normalized)
     /// * `chunk_size` - Size of terrain chunks in world units
+    /// * `seed` - Explicit world seed. There is no wall-clock default.
     pub fn new(
         chunk_manager: &'a ChunkManager,
         camera_pos: Vec3,
         camera_dir: Vec3,
         chunk_size: f32,
+        seed: u64,
     ) -> Self {
-        // Generate a world time seed based on system time
-        let world_time_seed = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_secs())
-            .unwrap_or(42);
-
         Self {
             chunk_manager,
             camera_pos,
             camera_dir: camera_dir.normalize_or_zero(),
             chunk_size,
-            world_time_seed,
+            world_time_seed: seed,
         }
     }
 
@@ -351,7 +347,7 @@ mod tests {
         let camera_pos = Vec3::new(128.0, 50.0, 128.0);
         let camera_dir = Vec3::new(1.0, 0.0, 0.0);
 
-        let solver = TerrainSolver::new(&manager, camera_pos, camera_dir, 256.0);
+        let solver = TerrainSolver::new(&manager, camera_pos, camera_dir, 256.0, 1);
 
         assert_eq!(solver.camera_pos(), camera_pos);
         assert_eq!(solver.chunk_size(), 256.0);
@@ -362,7 +358,7 @@ mod tests {
         let manager = create_test_chunk_manager();
         let camera_pos = Vec3::new(128.0, 50.0, 128.0);
         let camera_dir = Vec3::new(1.0, 0.0, 0.0);
-        let solver = TerrainSolver::new(&manager, camera_pos, camera_dir, 256.0);
+        let solver = TerrainSolver::new(&manager, camera_pos, camera_dir, 256.0, 1);
 
         let request = TerrainGenerationRequest {
             request_id: "test-001".to_string(),
@@ -391,7 +387,8 @@ mod tests {
         let manager = create_test_chunk_manager();
         let camera_pos = Vec3::new(128.0, 50.0, 128.0);
         let camera_dir = Vec3::new(1.0, 0.0, 0.0);
-        let solver = TerrainSolver::new(&manager, camera_pos, camera_dir, 256.0).with_seed(12345);
+        let solver =
+            TerrainSolver::new(&manager, camera_pos, camera_dir, 256.0, 1).with_seed(12345);
 
         let request = create_test_request(RelativeLocation::DirectionFrom {
             cardinal: CardinalDirection::North,
@@ -412,7 +409,7 @@ mod tests {
         let manager = create_test_chunk_manager();
         let camera_pos = Vec3::new(128.0, 50.0, 128.0);
         let camera_dir = Vec3::new(1.0, 0.0, 0.0);
-        let solver = TerrainSolver::new(&manager, camera_pos, camera_dir, 256.0);
+        let solver = TerrainSolver::new(&manager, camera_pos, camera_dir, 256.0, 1);
 
         let request = TerrainGenerationRequest {
             request_id: "test-001".to_string(),
@@ -439,7 +436,7 @@ mod tests {
         let manager = create_test_chunk_manager();
         let camera_pos = Vec3::new(128.0, 50.0, 128.0);
         let camera_dir = Vec3::new(1.0, 0.0, 0.0);
-        let solver = TerrainSolver::new(&manager, camera_pos, camera_dir, 256.0);
+        let solver = TerrainSolver::new(&manager, camera_pos, camera_dir, 256.0, 1);
 
         let request = TerrainGenerationRequest {
             request_id: "test-001".to_string(),
@@ -469,7 +466,7 @@ mod tests {
         let manager = create_test_chunk_manager();
         let camera_pos = Vec3::new(128.0, 50.0, 128.0);
         let camera_dir = Vec3::new(1.0, 0.0, 0.0);
-        let solver = TerrainSolver::new(&manager, camera_pos, camera_dir, 256.0);
+        let solver = TerrainSolver::new(&manager, camera_pos, camera_dir, 256.0, 1);
 
         let request = TerrainGenerationRequest {
             request_id: "test-001".to_string(),
@@ -496,7 +493,7 @@ mod tests {
         let manager = create_test_chunk_manager();
         let camera_pos = Vec3::new(128.0, 50.0, 128.0);
         let camera_dir = Vec3::new(1.0, 0.0, 0.0);
-        let solver = TerrainSolver::new(&manager, camera_pos, camera_dir, 256.0);
+        let solver = TerrainSolver::new(&manager, camera_pos, camera_dir, 256.0, 1);
 
         let request = TerrainGenerationRequest {
             request_id: "test-001".to_string(),
@@ -523,8 +520,10 @@ mod tests {
         let camera_pos = Vec3::new(128.0, 50.0, 128.0);
         let camera_dir = Vec3::new(1.0, 0.0, 0.0);
 
-        let solver1 = TerrainSolver::new(&manager, camera_pos, camera_dir, 256.0).with_seed(12345);
-        let solver2 = TerrainSolver::new(&manager, camera_pos, camera_dir, 256.0).with_seed(12345);
+        let solver1 =
+            TerrainSolver::new(&manager, camera_pos, camera_dir, 256.0, 1).with_seed(12345);
+        let solver2 =
+            TerrainSolver::new(&manager, camera_pos, camera_dir, 256.0, 1).with_seed(12345);
 
         let request = TerrainGenerationRequest {
             request_id: "test-001".to_string(),
@@ -552,7 +551,7 @@ mod tests {
         let manager = create_test_chunk_manager();
         let camera_pos = Vec3::new(128.0, 50.0, 128.0);
         let camera_dir = Vec3::new(1.0, 0.0, 0.0);
-        let solver = TerrainSolver::new(&manager, camera_pos, camera_dir, 256.0).with_seed(42);
+        let solver = TerrainSolver::new(&manager, camera_pos, camera_dir, 256.0, 1).with_seed(42);
 
         // Test North (should move in -Z direction)
         let request_north = create_test_request(RelativeLocation::DirectionFrom {
@@ -592,7 +591,7 @@ mod tests {
         let manager = create_test_chunk_manager();
         let camera_pos = Vec3::new(128.0, 100.0, 128.0); // High above terrain
         let camera_dir = Vec3::new(1.0, 0.0, 0.0); // Looking horizontally
-        let solver = TerrainSolver::new(&manager, camera_pos, camera_dir, 256.0);
+        let solver = TerrainSolver::new(&manager, camera_pos, camera_dir, 256.0, 1);
 
         let request = create_test_request(RelativeLocation::LineOfSight {
             look_distance: 50.0,

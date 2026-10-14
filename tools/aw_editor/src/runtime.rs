@@ -479,6 +479,10 @@ pub struct EditorRuntime {
 
     /// Input captured from the viewport during play mode
     game_input: GameInput,
+
+    /// Fixed-step counts for this play session, in call order.
+    /// Replay feeds this sequence. It is not derived from wall-clock `dt`.
+    recorded_fixed_steps: Vec<u32>,
 }
 
 impl Default for EditorRuntime {
@@ -501,7 +505,17 @@ impl EditorRuntime {
             fixed_dt: 1.0 / 60.0,
             time_accumulator: 0.0,
             game_input: GameInput::default(),
+            recorded_fixed_steps: Vec::new(),
         }
+    }
+
+    /// Fixed-step counts recorded during the current play session.
+    ///
+    /// `tick(dt)` appends the integer number of 60 Hz steps that `dt` produced,
+    /// including zero. `step_frame` appends 1. Replay passes this slice back
+    /// instead of measuring wall time again.
+    pub fn recorded_fixed_steps(&self) -> &[u32] {
+        &self.recorded_fixed_steps
     }
 
     /// Get current runtime state
@@ -567,6 +581,7 @@ impl EditorRuntime {
         self.edit_snapshot = Some(snapshot);
         self.sim_app = Some(sim_app);
         self.tick_count = 0;
+        self.recorded_fixed_steps.clear();
         self.state = RuntimeState::Playing;
         self.last_frame_time = Some(Instant::now());
         self.time_accumulator = 0.0;
@@ -667,6 +682,7 @@ impl EditorRuntime {
         self.sim_app = None;
         self.edit_snapshot = None;
         self.tick_count = 0;
+        self.recorded_fixed_steps.clear();
         self.state = RuntimeState::Editing;
         self.stats = RuntimeStats::default();
         self.frame_times.clear();
@@ -677,6 +693,7 @@ impl EditorRuntime {
     }
 
     fn run_fixed_steps(&mut self, steps: u32) -> Result<()> {
+        self.recorded_fixed_steps.push(steps);
         if steps == 0 {
             return Ok(());
         }
@@ -1238,6 +1255,20 @@ mod tests {
         runtime.enter_play(&world).expect("enter play");
         runtime.tick(1.0 / 60.0).expect("tick");
         assert_eq!(runtime.tick_count(), 1);
+    }
+
+    #[test]
+    fn play_session_records_fixed_step_counts() {
+        let mut runtime = EditorRuntime::new();
+        let world = World::new();
+        runtime.enter_play(&world).expect("enter play");
+        runtime.tick(0.0).expect("empty frame");
+        runtime.tick(1.0 / 60.0).expect("one step");
+        runtime.tick(2.0 / 60.0).expect("two steps");
+        runtime.step_frame().expect("single step");
+        assert_eq!(runtime.recorded_fixed_steps(), &[0, 1, 2, 1]);
+        runtime.exit_play().expect("exit");
+        assert!(runtime.recorded_fixed_steps().is_empty());
     }
 
     #[test]
