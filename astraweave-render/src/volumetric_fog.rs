@@ -25,6 +25,9 @@ pub struct FogDensityParams {
     pub view_pos: [f32; 3],
     pub near_plane: f32,
     pub far_plane: f32,
+    /// WGSL `vec3` is 16-byte aligned, so `froxel_dims` starts at byte 96.
+    /// Same padding as the scar branch (PR #209).
+    pub _pad_froxel: [f32; 3],
     pub froxel_dims: [u32; 3],
     pub base_density: f32,
     pub height_fog_density: f32,
@@ -34,6 +37,8 @@ pub struct FogDensityParams {
     pub noise_intensity: f32,
     pub noise_speed: f32,
     pub time: f32,
+    /// `wind_dir` is a `vec3` and starts at byte 144.
+    pub _pad_wind: f32,
     pub wind_dir: [f32; 3],
     pub _pad: f32,
 }
@@ -46,6 +51,9 @@ pub struct ScatterParams {
     pub view_pos: [f32; 3],
     pub near_plane: f32,
     pub far_plane: f32,
+    /// WGSL `vec3` alignment. `froxel_dims` starts at byte 96.
+    /// Same padding as the scar branch (PR #209).
+    pub _pad_froxel: [f32; 3],
     pub froxel_dims: [u32; 3],
     pub anisotropy: f32,
     pub sun_dir: [f32; 3],
@@ -89,7 +97,10 @@ pub struct ApplyParams {
 pub struct CascadeData {
     pub vp: [[f32; 4]; 4],
     pub split: f32,
+    /// WGSL `vec3` alignment puts `_pad` at byte 80. Storage size rounds to 96.
+    pub _align: [f32; 3],
     pub _pad: [f32; 3],
+    pub _tail: f32,
 }
 
 // ---------------------------------------------------------------------------
@@ -532,6 +543,7 @@ impl VolumetricFogPass {
             view_pos: view_pos.to_array(),
             near_plane: near,
             far_plane: far,
+            _pad_froxel: [0.0; 3],
             froxel_dims: [fx, fy, fz],
             base_density: self.config.base_density,
             height_fog_density: self.config.height_fog_density,
@@ -541,6 +553,7 @@ impl VolumetricFogPass {
             noise_intensity: self.config.noise_intensity,
             noise_speed: self.config.noise_speed,
             time: self.time,
+            _pad_wind: 0.0,
             wind_dir: self.config.wind_dir.to_array(),
             _pad: 0.0,
         };
@@ -556,6 +569,7 @@ impl VolumetricFogPass {
             view_pos: view_pos.to_array(),
             near_plane: near,
             far_plane: far,
+            _pad_froxel: [0.0; 3],
             froxel_dims: [fx, fy, fz],
             anisotropy: self.config.anisotropy,
             sun_dir: sun_dir.to_array(),
@@ -991,15 +1005,16 @@ mod tests {
 
     #[test]
     fn fog_density_params_size() {
-        // mat4(64) + vec3+f32(16) + f32+uvec3(16) + 4×f32(16) + 4×f32(16) + vec3+f32(16) = 144
-        assert_eq!(std::mem::size_of::<FogDensityParams>(), 144);
+        assert_eq!(std::mem::size_of::<FogDensityParams>(), 160);
+        assert_eq!(std::mem::offset_of!(FogDensityParams, froxel_dims), 96);
+        assert_eq!(std::mem::offset_of!(FogDensityParams, wind_dir), 144);
     }
 
     #[test]
     fn scatter_params_size() {
-        // mat4(64) + vec3+f32(16) + f32+uvec3(16) + f32+vec3+f32(16) + vec3+f32(16)
-        // + vec3+f32(16) + u32+3×f32(16) = 164 (Rust alignment padding)
-        assert_eq!(std::mem::size_of::<ScatterParams>(), 164);
+        assert_eq!(std::mem::size_of::<ScatterParams>(), 176);
+        assert_eq!(std::mem::offset_of!(ScatterParams, froxel_dims), 96);
+        assert_eq!(std::mem::offset_of!(ScatterParams, ambient_color), 144);
     }
 
     #[test]
@@ -1015,7 +1030,9 @@ mod tests {
 
     #[test]
     fn cascade_data_size() {
-        assert_eq!(std::mem::size_of::<CascadeData>(), 80);
+        assert_eq!(std::mem::size_of::<CascadeData>(), 96);
+        assert_eq!(std::mem::offset_of!(CascadeData, split), 64);
+        assert_eq!(std::mem::offset_of!(CascadeData, _pad), 80);
     }
 
     #[test]
