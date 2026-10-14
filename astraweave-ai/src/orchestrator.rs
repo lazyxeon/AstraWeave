@@ -258,8 +258,16 @@ impl OrchestratorAsync for UtilityOrchestrator {
     }
 }
 
-/// Minimal GOAP-style orchestrator for MoveTo -> CoverFire chain towards first enemy.
-/// Preconditions: enemy exists. Goal: be within 2 cells and apply CoverFire for 1.5s.
+/// Heuristic MoveTo / CoverFire chain toward the first enemy in the snapshot.
+///
+/// This is not the symbolic A* planner (`GoapPlanner` in the behavior crate).
+/// That planner breaks equal costs with `(f_cost, depth, action name)`. This
+/// type keeps the name `GoapOrchestrator` because the A2 wired-path contract
+/// and `hello_companion` call it by that name. The ECS tick uses
+/// [`RuleOrchestrator`] for every companion.
+///
+/// Preconditions: an enemy exists. Within 2 cells the plan is CoverFire for
+/// 1.5s; otherwise it is one step closer.
 pub struct GoapOrchestrator;
 
 impl std::fmt::Display for GoapOrchestrator {

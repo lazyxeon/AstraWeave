@@ -31,8 +31,8 @@ clap = { version = "4.4", features = ["derive"] }
 default = []
 # Enabling llm_orchestrator will also enable the Ollama client in astraweave-llm and a tokio runtime for background warmup
 llm_orchestrator = ["astraweave-llm", "astraweave-llm/ollama", "dep:tokio", "dep:futures"]
-ai-goap = []
-ai-bt = []
+ai-goap = ["dep:astraweave-behavior"]
+ai-bt = ["dep:astraweave-behavior"]
 # Advanced GOAP planner with learning, risk-awareness, and multi-goal support
 planner_advanced = []
 rag = []

@@ -14,8 +14,11 @@ use astraweave_core::{PlanIntent, WorldSnapshot};
 #[cfg(feature = "ai-goap")]
 use astraweave_behavior::goap::{GoapAction, GoapGoal, GoapPlanner, WorldState};
 
-#[cfg(feature = "ai-goap")]
+#[cfg(any(feature = "ai-goap", feature = "ai-bt"))]
 use astraweave_core::ActionStep;
+
+#[cfg(feature = "ai-bt")]
+use astraweave_behavior::{BehaviorContext, BehaviorGraph, BehaviorNode, BehaviorStatus};
 
 use crate::orchestrator::{Orchestrator, RuleOrchestrator};
 
@@ -268,14 +271,89 @@ pub fn dispatch_planner(
     }
 }
 
-/// Dispatch to behavior tree planner (feature-gated).
+/// Typed failure from behavior-tree dispatch.
+///
+/// Returned when `ai-bt` is enabled and the controller does not name a graph
+/// this dispatcher can tick. The default policy `"default"` ticks the built-in
+/// companion tree inside `dispatch_planner`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BehaviorDispatchError {
+    message: String,
+}
+
+impl BehaviorDispatchError {
+    #[cfg(any(test, feature = "ai-bt"))]
+    fn new(message: impl Into<String>) -> Self {
+        Self {
+            message: message.into(),
+        }
+    }
+}
+
+impl std::fmt::Display for BehaviorDispatchError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.message)
+    }
+}
+
+impl std::error::Error for BehaviorDispatchError {}
+
+/// Dispatch to the behavior-tree planner.
+///
+/// Policy `"default"` ticks a selector: advance toward `enemies.first()` when
+/// an enemy is present, otherwise hold. Any other policy is a typed error.
+/// The graph walk is the behavior runtime; it does not call the model.
 #[cfg(feature = "ai-bt")]
-fn dispatch_bt(_controller: &CAiController, _snapshot: &WorldSnapshot) -> Result<PlanIntent> {
-    // TODO: Implement BT integration
-    // 1. Set up Blackboard from WorldSnapshot
-    // 2. Tick behavior tree
-    // 3. Convert BT outputs → ActionStep sequence
-    anyhow::bail!("BehaviorTree integration not yet implemented")
+fn dispatch_bt(controller: &CAiController, snapshot: &WorldSnapshot) -> Result<PlanIntent> {
+    match controller.policy.as_deref() {
+        Some("default") => Ok(tick_default_companion_tree(snapshot)),
+        Some(policy) => Err(BehaviorDispatchError::new(format!(
+            "no behavior graph is bound for policy '{policy}'"
+        ))
+        .into()),
+        None => {
+            Err(BehaviorDispatchError::new("no behavior graph is bound to this controller").into())
+        }
+    }
+}
+
+#[cfg(feature = "ai-bt")]
+fn tick_default_companion_tree(snapshot: &WorldSnapshot) -> PlanIntent {
+    use std::sync::{Arc, Mutex};
+
+    let steps = Arc::new(Mutex::new(Vec::<ActionStep>::new()));
+    let enemy = snapshot.enemies.first().cloned();
+    let me = snapshot.me.pos;
+    let enemy_present = enemy.is_some();
+
+    let mut context = BehaviorContext::new();
+    context.register_condition("enemy_present", move || enemy_present);
+    let advance_steps = Arc::clone(&steps);
+    context.register_action("advance", move || {
+        if let Some(enemy) = &enemy {
+            let x = me.x.saturating_add((enemy.pos.x - me.x).signum());
+            let y = me.y.saturating_add((enemy.pos.y - me.y).signum());
+            if let Ok(mut recorded) = advance_steps.lock() {
+                recorded.push(ActionStep::MoveTo { x, y, speed: None });
+            }
+        }
+        BehaviorStatus::Success
+    });
+    context.register_action("hold", || BehaviorStatus::Success);
+
+    let root = BehaviorNode::Selector(vec![
+        BehaviorNode::Sequence(vec![
+            BehaviorNode::Condition("enemy_present".into()),
+            BehaviorNode::Action("advance".into()),
+        ]),
+        BehaviorNode::Action("hold".into()),
+    ]);
+    let _status = BehaviorGraph::new(root).tick(&context);
+    let recorded = steps.lock().map(|guard| guard.clone()).unwrap_or_default();
+    PlanIntent {
+        plan_id: format!("bt-{}", (snapshot.t * 1000.0) as i64),
+        steps: recorded,
+    }
 }
 
 /// Dispatch to GOAP planner (feature-gated).
@@ -448,6 +526,39 @@ mod tests {
         assert!(result.is_ok());
         let plan = result.unwrap();
         assert!(!plan.steps.is_empty());
+    }
+
+    #[test]
+    fn behavior_dispatch_error_names_the_missing_graph() {
+        let err = BehaviorDispatchError::new("no behavior graph is bound to this controller");
+        assert!(err.to_string().contains("no behavior graph"));
+    }
+
+    #[cfg(feature = "ai-bt")]
+    #[test]
+    fn dispatch_bt_default_policy_emits_move() {
+        let controller = CAiController {
+            mode: PlannerMode::BehaviorTree,
+            policy: Some("default".to_string()),
+        };
+        let plan = dispatch_planner(&controller, &make_test_snapshot()).expect("default tree");
+        assert!(
+            plan.steps
+                .iter()
+                .any(|step| matches!(step, astraweave_core::ActionStep::MoveTo { .. })),
+            "default behavior tree should advance toward the enemy"
+        );
+    }
+
+    #[cfg(feature = "ai-bt")]
+    #[test]
+    fn dispatch_bt_unknown_policy_is_typed_error() {
+        let controller = CAiController {
+            mode: PlannerMode::BehaviorTree,
+            policy: Some("missing-graph".to_string()),
+        };
+        let err = dispatch_planner(&controller, &make_test_snapshot()).expect_err("unbound");
+        assert!(err.downcast_ref::<BehaviorDispatchError>().is_some());
     }
 
     #[test]

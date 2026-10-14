@@ -568,3 +568,4 @@ Sequence constraints (still parallel until the join):
 | Version | Date | Notes |
 |---|---|---|
 | 0.1 | 2026-10-14 | Whole-engine audit at `a3fe3ecd`. Determinism gate and replay-hash CI specified. Local suite: 6676 passed, 14 failed (`astraweave-ai` ecs integration), 41 ignored. Physics `tests/determinism.rs` ran 0 tests on default features. |
+| 0.2 | 2026-10-14 | WS-D0, WS-D1, and WS-AI-1 implemented. `determinism-replay` hashes `planner_pure` and `perception_world` (both required). Perception queries are ordered. `sys_ai_planning` plans every companion. |

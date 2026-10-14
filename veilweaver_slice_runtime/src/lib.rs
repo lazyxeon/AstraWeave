@@ -403,7 +403,10 @@ impl VeilweaverRuntime {
     pub fn new(config: VeilweaverSliceConfig, partition: WorldPartition) -> Result<Self> {
         let legacy_world = LegacyWorld::new();
         let dt = config.dt.max(0.0001);
-        let app = ecs_adapter::build_app(legacy_world, dt);
+        let mut app = ecs_adapter::build_app(legacy_world, dt);
+        // Behavior graphs tick inside this runtime's fixed step. Entities
+        // without `CBehaviorGraph` are skipped.
+        app = app.add_plugin(astraweave_behavior::ecs::BehaviorPlugin);
 
         let metadata = Self::gather_metadata(&partition);
         let mut runtime = Self {
@@ -503,5 +506,44 @@ impl VeilweaverRuntime {
         self.add_post_setup_system(tutorial_anchor_sync);
         self.add_post_setup_system(tutorial_anchor_events);
         self.add_post_setup_system(tutorial_trigger_system);
+    }
+}
+
+#[cfg(test)]
+mod behavior_tick_tests {
+    use super::*;
+    use astraweave_behavior::ecs::CBehaviorGraph;
+    use astraweave_behavior::{BehaviorContext, BehaviorGraph, BehaviorNode, BehaviorStatus};
+    use astraweave_scene::world_partition::GridConfig;
+
+    #[test]
+    fn behavior_tick_runs_inside_fixed_step() {
+        let config = VeilweaverSliceConfig {
+            dt: 1.0 / 60.0,
+            initial_cell: None,
+            camera_start: None,
+        };
+        let mut runtime =
+            VeilweaverRuntime::new(config, WorldPartition::new(GridConfig::default()))
+                .expect("runtime");
+        let mut context = BehaviorContext::new();
+        context.register_action("succeed", || BehaviorStatus::Success);
+        let entity = runtime.app.world.spawn();
+        runtime.app.world.insert(
+            entity,
+            CBehaviorGraph {
+                graph: BehaviorGraph::new(BehaviorNode::Action("succeed".into())),
+                context,
+                status: BehaviorStatus::Running,
+                running_node: None,
+            },
+        );
+        runtime.run_tick();
+        let graph = runtime
+            .app
+            .world
+            .get::<CBehaviorGraph>(entity)
+            .expect("behavior component");
+        assert_eq!(graph.status, BehaviorStatus::Success);
     }
 }

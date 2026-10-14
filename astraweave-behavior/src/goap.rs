@@ -178,12 +178,13 @@ impl PartialOrd for PlanNode {
 
 impl Ord for PlanNode {
     fn cmp(&self, other: &Self) -> Ordering {
-        // Reverse ordering for min-heap (lower f_cost is better)
+        // Reverse ordering for min-heap (lower f_cost is better).
+        // `total_cmp` is a total order: NaN sorts above every finite value
+        // and equal costs do not collapse through `partial_cmp`'s None.
+        // Tie-break is (f_cost, depth, action name).
         other
             .f_cost()
-            .partial_cmp(&self.f_cost())
-            .unwrap_or(Ordering::Equal)
-            // Deterministic tie-breaking: fewer actions first
+            .total_cmp(&self.f_cost())
             .then_with(|| other.depth.cmp(&self.depth))
             // Then by last action name (lexicographic) - comparing other to self for correct min-heap order
             .then_with(|| match (&other.action, &self.action) {

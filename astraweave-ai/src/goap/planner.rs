@@ -21,8 +21,7 @@ impl PlanNode {
 
 impl PartialEq for PlanNode {
     fn eq(&self, other: &Self) -> bool {
-        // For priority queue, compare by default risk weight
-        self.f_cost(5.0) == other.f_cost(5.0)
+        self.cmp(other) == Ordering::Equal
     }
 }
 
@@ -36,11 +35,13 @@ impl PartialOrd for PlanNode {
 
 impl Ord for PlanNode {
     fn cmp(&self, other: &Self) -> Ordering {
-        // Reverse ordering for min-heap (BinaryHeap is max-heap by default)
+        // Reverse ordering for min-heap (BinaryHeap is max-heap by default).
+        // `total_cmp` orders NaN above every finite value. Equal f_cost breaks
+        // ties on the action-name path so insertion order cannot change the plan.
         other
             .f_cost(5.0)
-            .partial_cmp(&self.f_cost(5.0))
-            .unwrap_or(Ordering::Equal)
+            .total_cmp(&self.f_cost(5.0))
+            .then_with(|| other.path.cmp(&self.path))
     }
 }
 
