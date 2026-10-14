@@ -1,3 +1,5 @@
+pub use astraweave_security::sandbox::MOD_COMMAND_API_VERSION as SCRIPT_COMMAND_API_VERSION;
+
 use astraweave_nav::NavMesh;
 use astraweave_physics::PhysicsWorld;
 use glam::{IVec2, Quat, Vec3};

@@ -5,12 +5,12 @@ title: "Security System (script sandbox, anticheat, signatures, path validation,
 description: "Security + Secrets — script sandbox, anticheat, signatures, path validation, keyring"
 primary_crate: astraweave-security
 domain: core
-lifecycle_status: in_design
-integration_status: test_only
-summary: "script sandbox/anticheat/signatures/path validation; ed25519 surface distinct from net HMAC. security.md"
+lifecycle_status: active
+integration_status: partial
+summary: "path validation plus the deterministic Rhai sandbox and mod loader are wired; anticheat, async script helper, signatures, and secrets stay dormant. security.md"
 owns: [astraweave-secrets, astraweave-security]
-doc_version: "1.3"
-last_verified_commit: 7c29b8182
+doc_version: "1.2"
+last_verified_commit: b47fb566
 ---
 
 # Architecture Trace: Security System (script sandbox, anticheat, signatures, path validation, secrets)
@@ -21,11 +21,11 @@ last_verified_commit: 7c29b8182
 |---|---|
 | **System name** | Security System (script sandbox, anticheat, signatures, path/deserialization validation, secrets) |
 | **Primary crates** | [`astraweave-security`](../../astraweave-security), [`astraweave-secrets`](../../astraweave-secrets) |
-| **Document version** | 1.3 |
-| **Last verified against commit** | `7c29b8182` |
-| **Last verified date** | 2026-06-25 |
-| **Status** | Transitional — one surface (path validation) is wired; the rest is in-design-but-tested / dormant scaffolding |
-| **Owner notes** | 1.3 (2026-10-15): `default_allowed_llm_domains` is `localhost` only. `SecurityPlugin::build` uses that list. `sanitize_llm_prompt` still prefixes `SAFE:`. Crates originate from a 2025 "Phase 1 Week 2" remediation effort (see [`docs/archive/remediation/PHASE1_WEEK2_COMPLETE.md`](../../docs/archive/remediation/PHASE1_WEEK2_COMPLETE.md)). Active follow-up work is owned by the S-series security campaign ([`docs/campaigns/security/S0_FINDINGS_SEED.md`](../../docs/campaigns/security/S0_FINDINGS_SEED.md)) and the hardening plan ([`docs/current/SECURITY_AUDIT_AND_HARDENING_PLAN.md`](../../docs/current/SECURITY_AUDIT_AND_HARDENING_PLAN.md)). |
+| **Document version** | 1.2 |
+| **Last verified against commit** | `b47fb566` |
+| **Last verified date** | 2026-10-15 |
+| **Status** | Path validation and the deterministic Rhai sandbox are wired. Anticheat, the async script helper, signatures, and secrets remain dormant. |
+| **Owner notes** | Crates originate from a 2025 "Phase 1 Week 2" remediation effort (see [`docs/archive/remediation/PHASE1_WEEK2_COMPLETE.md`](../../docs/archive/remediation/PHASE1_WEEK2_COMPLETE.md)). Active follow-up work is owned by the S-series security campaign ([`docs/campaigns/security/S0_FINDINGS_SEED.md`](../../docs/campaigns/security/S0_FINDINGS_SEED.md)) and the hardening plan ([`docs/current/SECURITY_AUDIT_AND_HARDENING_PLAN.md`](../../docs/current/SECURITY_AUDIT_AND_HARDENING_PLAN.md)). |
 
 ---
 
@@ -44,7 +44,7 @@ It was created to close a set of remediation findings (insecure secret storage, 
 - [`astraweave-secrets/src/`](../../astraweave-secrets/src) — `SecretManager`, `SecretBackend`, `KeyringBackend`, `SecretValue`, and the `aw_secrets` CLI bin
 
 **Status note — read this first.**
-This is **not one cohesive runtime system**. Path validation (`astraweave_security::path::safe_under` / `validate_extension`) is the wired surface. Callers are the three tool sites plus, as of 2026-10-15, glTF file URIs, cell asset loads, and script loads. The original three were: [`tools/aw_editor/src/scene_serialization.rs`](../../tools/aw_editor/src/scene_serialization.rs), [`tools/aw_texture_gen/src/main.rs`](../../tools/aw_texture_gen/src/main.rs), and [`tools/aw_demo_builder/src/main.rs`](../../tools/aw_demo_builder/src/main.rs). **Everything else** — `SecurityPlugin`, `ScriptSandbox`/`execute_script_sandboxed`, `CAntiCheat` + the three ECS systems, `sanitize_llm_prompt`, `generate_signature`/`verify_signature`/`hash_data`, the `parse_*_limited` deserialization limiters, and the entire `astraweave-secrets` public API — has **zero production callers** and lives only behind test suites and benchmarks. See §5 and §6 for the per-surface wired/dormant breakdown; this is the single most important fact in this doc.
+This is **not one cohesive runtime system**. Path validation (`safe_under`) is wired at the tool sites, glTF URIs, cell loads, and script loads. The deterministic Rhai sandbox in [`sandbox.rs`](../../astraweave-security/src/sandbox.rs) has production callers: `astraweave-author` (`run_author_source`), `astraweave-scripting` (`ScriptEngineResource::default`, `sim_mod::mod_script_system`), and `tools/aw_editor` (`rhai_reload`). **Still dormant:** `SecurityPlugin`, the async `execute_script_sandboxed` helper, `CAntiCheat`, `sanitize_llm_prompt`, ed25519 helpers, `parse_*_limited`, and `astraweave-secrets`. See §5 and §6.
 
 ---
 
@@ -181,8 +181,8 @@ There is no single pipeline. The system is a set of independent utility surfaces
 | `tools/aw_texture_gen` | `path::safe_under` | validated output path | **WIRED.** [`tools/aw_texture_gen/src/main.rs:2,32`](../../tools/aw_texture_gen/src/main.rs). |
 | `tools/aw_demo_builder` | `path::safe_under` | validated output path | **WIRED.** [`tools/aw_demo_builder/src/main.rs:2,78`](../../tools/aw_demo_builder/src/main.rs). |
 | `astraweave-asset` glTF URI and cell `load_asset` | `path::safe_under` | asset bytes under a base directory | **WIRED** (2026-10-15). File URIs and cell paths. No second jail. |
-| `astraweave-scripting` `ScriptLoader` and script hot reload | `path::safe_under` | script source under the process current directory | **WIRED** (2026-10-15). |
-| `astraweave-scripting` | (Cargo dep only) | — | Declares `astraweave-security.workspace = true` in [`astraweave-scripting/Cargo.toml:18`](../../astraweave-scripting/Cargo.toml) but **no `use astraweave_security` appears in its source** — only a comment "Security: Configure limits" at `astraweave-scripting/src/lib.rs:73` where it sets its *own* rhai limits (`src/lib.rs:74-78`). This is a declared-but-unused dependency. Verified — a workspace `rg 'astraweave[_-]security'` over `astraweave-scripting/` returns only `Cargo.toml:18`; there is no `#[cfg(feature)]`-gated `use astraweave_security` anywhere in its source. |
+| `astraweave-scripting` `ScriptLoader` | `path::safe_under` | script source under the process current directory | **WIRED** (2026-10-15). The tick itself does not stat files. |
+| `astraweave-scripting` | `sandbox::{SandboxEngine, execute_deterministic, ScriptReloadQueue}` | gameplay engine, mod tick, script reload | **WIRED (WS-MOD).** `ScriptEngineResource::default` builds `SandboxProfile::gameplay`. `sim_mod::mod_script_system` calls `execute_deterministic`. |
 | `astraweave-secrets` consumers | — | — | **NONE.** No non-test, non-bin `use astraweave_secrets` exists in the workspace (the only `use` is in `aw_secrets.rs`). |
 
 ### Bidirectional / Coupled
@@ -196,7 +196,8 @@ There is no single pipeline. The system is a set of independent utility surfaces
 | File | Role | Status | Notes |
 |---|---|---|---|
 | [`astraweave-security/src/path.rs`](../../astraweave-security/src/path.rs) | Path-traversal + extension validation | **Active (WIRED)** | The only surface with production callers (3 sites). `#![forbid(unsafe_code)]` at crate root. |
-| [`astraweave-security/src/lib.rs`](../../astraweave-security/src/lib.rs) | `SecurityPlugin`, `ScriptSandbox`, anti-cheat, `LLMValidator`, crypto | **In-design-but-tested (DORMANT)** | All public symbols here lack production callers. Heavy test coverage (lib tests + 9 external test files). |
+| [`astraweave-security/src/sandbox.rs`](../../astraweave-security/src/sandbox.rs) | Deterministic Rhai engine, capability allowlist, mod manifest, path-capped script reads, reload queue | **Active (WIRED)** | Callers: `astraweave-author`, `astraweave-scripting`, `tools/aw_editor/src/rhai_reload.rs`. No wall clock on the sim executor. |
+| [`astraweave-security/src/lib.rs`](../../astraweave-security/src/lib.rs) | `SecurityPlugin`, `ScriptSandbox`, anti-cheat, `LLMValidator`, crypto | **Mixed** | `ScriptSandbox` is now filled by `sandbox::SandboxEngine::into_script_sandbox` for production. `SecurityPlugin`, `execute_script_sandboxed`, anticheat, and crypto helpers still have no production caller. |
 | [`astraweave-security/src/deserialization.rs`](../../astraweave-security/src/deserialization.rs) | `parse_{json,toml,ron}_limited`, `ReadLimiter` | **In-design-but-tested (DORMANT)** | Zero production callers; only own crate + 2 test files. |
 | [`astraweave-secrets/src/manager.rs`](../../astraweave-secrets/src/manager.rs) | `SecretManager`, lazy `global()` singleton | **In-design-but-tested (DORMANT)** | Used only by the `aw_secrets` bin and tests. |
 | [`astraweave-secrets/src/backend.rs`](../../astraweave-secrets/src/backend.rs) | `SecretBackend` trait, `SecretValue`, `MockBackend` (test-cfg) | **In-design-but-tested (DORMANT)** | `MockBackend` is `#[cfg(test)]`. `SecretValue` zeroizes on drop. |
@@ -223,13 +224,13 @@ There is no single pipeline. The system is a set of independent utility surfaces
 ### Naming collisions
 
 - **"signature":** In `astraweave-security`, means an ed25519 `Signature` (`lib.rs:405`). In the net stack (`aw-net-proto`), means an HMAC-SHA256 tag over an input frame. These are unrelated; an agent searching "signature" will hit both.
-- **"sandbox":** `ScriptSandbox` here (Rhai) is distinct from any GPU/process sandbox. `astraweave-scripting` has its *own* rhai limit configuration (`astraweave-scripting/src/lib.rs:73`) that does **not** use `ScriptSandbox`.
+- **"sandbox":** `ScriptSandbox` here (Rhai) is distinct from any GPU/process sandbox. The sim path is `sandbox::execute_deterministic`. `execute_script_sandboxed` is the older async helper and is not that path.
 
 ### Known cognitive traps
 
-- **Trap: `ScriptSandbox.allowed_functions` is defined but never consulted.**
-  - **Why it's confusing:** The field name implies an allowlist enforced at execution time.
-  - **What's actually true:** It is constructed empty (`lib.rs:145,514,830,852`) and **never read** in `execute_script_sandboxed` (`lib.rs:369-403`), which compiles and evals arbitrary Rhai limited only by `max_operations`/`max_string_size`/timeout. This is a *live* security finding: S0-3 in [`S0_FINDINGS_SEED.md:26-31`](../../docs/campaigns/security/S0_FINDINGS_SEED.md).
+- **Trap: `execute_script_sandboxed` still does not read `allowed_functions`.**
+  - **Why it's confusing:** `ScriptSandbox.allowed_functions` looks like it gates every executor.
+  - **What's actually true:** `sandbox::execute_deterministic` refuses an empty map, and `call_deterministic` requires the function name to be in it. `execute_script_sandboxed` (`lib.rs`) still compiles and evals whatever the engine contains, under a tokio timeout. Production sim and author paths do not call that async helper. `SecurityPlugin` still constructs an empty allowlist. S0-3 remains open for the async helper.
 
 - **Trap: `sanitize_llm_prompt` does not sanitize.**
   - **Why it's confusing:** The name and `enable_content_filtering` flag imply prompt-injection defense.
@@ -240,7 +241,7 @@ There is no single pipeline. The system is a set of independent utility surfaces
   - **What's actually true:** keyring has no enumeration API; the impl returns empty unconditionally and stores no metadata index (`keyring_backend.rs:34-38`). The `aw_secrets list` subcommand prints "Listing not yet implemented" (`aw_secrets.rs:46`). Flagged in [`SECURITY_AUDIT_AND_HARDENING_PLAN.md:77-79`](../../docs/current/SECURITY_AUDIT_AND_HARDENING_PLAN.md) (P2 finding 4).
 
 - **Trap: `astraweave-scripting` depends on `astraweave-security` but doesn't use it.**
-  - **What's actually true:** Cargo dep present (`astraweave-scripting/Cargo.toml:18`); no `use astraweave_security` in source. Declared-but-unused, in the sense of CLAUDE.md Key Lesson 8.
+  - **CLOSED (WS-MOD, 2026-10-14).** `ScriptEngineResource::default` and `sim_mod` call `astraweave_security::sandbox`. The dependency is no longer vestigial.
 
 - **Trap: `aw_secrets get` echoes the secret to stdout.**
   - **What's actually true:** `aw_secrets.rs:39` does `println!("{}", value.as_str()?)` with no redaction/`--show` gate. P1 finding 1 in the hardening plan.
@@ -294,8 +295,14 @@ There is no single pipeline. The system is a set of independent utility surfaces
 | 7 | `validate_player_input` is `is_valid` iff `trust_score > 0.2` (strict). | Yes | Tests `lib.rs:664-708,917-954`. |
 | 8 | Neither crate contains `unsafe`. | Yes | `#![forbid(unsafe_code)]` (compiler-enforced). |
 | 9 | `KeyringBackend::list_keys` returns an empty Vec (no enumeration). | Yes | `keyring_backend.rs:34-38`. (This is a limitation, recorded as an invariant so callers don't rely on it.) |
+| 10 | The deterministic sandbox is `Engine::new_raw` plus arithmetic, logic, array, map, string, and iterator packages. It does not register the time package or language-core `sleep`. `import` / `eval` are disabled and `max_modules` is 0. | Yes | `sandbox.rs` tests `sandbox_rejects_filesystem_network_process_and_clock`. |
+| 11 | `execute_deterministic` rejects an empty allowlist and a zero operation budget. Default budget is 50_000 operations. String / array / map / variable caps are the memory ceiling. | Yes | `empty_allowlist_is_refused`, `operation_budget_stops_a_loop`, `string_cap_rejects_oversized_literal`. |
+| 12 | Manifest script paths are relative, end in `.rhai`, and contain no `..`, backslash, or absolute prefix. `read_rhai_under_root` canonicalizes and requires the result to stay under the root. | Yes | `validate_manifest_script_path`, `read_rhai_rejects_escape`, `tests/mod_manifest_props.rs`. |
+| 13 | Mod load order is a Kahn sort. Ready nodes are a `BTreeSet`, so ties break by mod id. Cycles and missing dependencies error. | Yes | `load_order_is_stable_and_rejects_cycles`. |
+| 14 | Manifest `data.traps` / `terrain_edits` / `spawns` must sit in `0..=64` / `0..=256` / `0..=128` (the default ceilings). | Yes | `budget_ceiling_rejects_oversize_data`. |
+| 15 | `ScriptReloadQueue::stage` does not publish bytes. `take_boundary` is the only drain, and it yields paths in sorted order. | Yes | `reload_queue_apply_is_sorted_and_not_mid_write`. |
 
-> **Anti-invariant (explicitly NOT true):** `ScriptSandbox` does **not** restrict which Rhai functions a script may call; `sanitize_llm_prompt` does **not** block injection. Do not assume these enforce policy (see §6).
+> **Anti-invariant (explicitly NOT true):** `execute_script_sandboxed` does **not** consult `allowed_functions`. `sanitize_llm_prompt` does **not** block injection. The sim path is `execute_deterministic`, not the async helper.
 
 ---
 
@@ -325,8 +332,8 @@ Performance is largely irrelevant for the wired surface (path validation runs at
 ## 11. Open Questions / Parked Decisions
 
 - **Is the dormant surface intended to ship, or is it design scaffolding?** `SecurityPlugin`, `ScriptSandbox`, `CAntiCheat`, the deserialization limiters, and the ed25519 helpers have zero callers. The hardening plan (Phases 2-4) describes *intended* integration, but as of `7c29b8182` none has landed. Resolution belongs to the S-series; until then this is in-design-but-tested code.
-- **Should `astraweave-scripting` actually use `astraweave-security`?** The dep is declared but unused; `astraweave-scripting` configures its own rhai limits. Is the declared dep vestigial, or a planned-but-unwired integration? [NEEDS VERIFICATION.] (Verification note: the *fact* of non-use is now confirmed in §4 — no `use astraweave_security`, feature-gated or otherwise, exists in the crate. What remains open is the *intent*: whether the dep is vestigial or a planned integration; that is the parked decision.)
-- **Should the three live S-series findings (S0-1 net plaintext, S0-2 LLM log leak, S0-3 sandbox allowlist) gate any use of this crate's sandbox?** S0-3 in particular means `execute_script_sandboxed` provides no API-allowlisting; any future wiring must not assume it does. See [`S0_FINDINGS_SEED.md`](../../docs/campaigns/security/S0_FINDINGS_SEED.md).
+- ~~**Should `astraweave-scripting` actually use `astraweave-security`?**~~ **CLOSED (WS-MOD).** The gameplay engine and `mod_script_system` call `sandbox`. The async helper is still unused.
+- **Should the three live S-series findings (S0-1 net plaintext, S0-2 LLM log leak, S0-3 sandbox allowlist) gate any use of this crate's sandbox?** S0-3 still describes `execute_script_sandboxed`: that helper does not read `allowed_functions`. The WS-MOD sim path does. Do not route new sim work through the async helper. See [`S0_FINDINGS_SEED.md`](../../docs/campaigns/security/S0_FINDINGS_SEED.md).
 - **Does ed25519 `generate_keypair` use a CSPRNG?** It calls `SigningKey::from_bytes(&rand::random())` (`lib.rs:417`). `rand::random()` uses the thread RNG (ChaCha-based). The sibling net-proto finding (P2 finding 3) raised RNG-source concerns for `SessionKey`; whether the same scrutiny applies here is unexamined. [NEEDS VERIFICATION.] (Verification note: the crate depends on `rand = "0.9"` (`Cargo.toml:21` → workspace `Cargo.toml:172`); in rand 0.9 the global `rand::random()`/`rng()` is `ThreadRng`, a CSPRNG seeded from the OS and backed by ChaCha12 — so the *generation* is cryptographically sound. The open part is whether the net-proto RNG-source scrutiny needs to be formally applied here; that judgment is parked.)
 - **Path-validation adoption gap:** Only 3 of many file-I/O sites route through `safe_under`. Whether broader adoption is intended (per the editor production-readiness audit recommendation) is a parked decision.
 
@@ -368,6 +375,13 @@ Performance is largely irrelevant for the wired surface (path validation runs at
 - **Adding a second path-validator or signing surface.** Extend `path.rs` / reuse `aw-net-proto`; do not duplicate (CLAUDE.md "never build a second implementation").
 
 ---
+
+## Revision history
+
+| Version | Date | Notes |
+|---|---|---|
+| 1.2 | 2026-10-14 | WS-MOD. Deterministic sandbox, mod manifests, and the reload queue are wired. Async `execute_script_sandboxed` remains unconsulted for the allowlist. |
+| 1.1 | 2026-06-25 | Prior verification at `7c29b8182`. Path validation wired; other surfaces dormant. |
 
 ## Appendix B: Historical context
 

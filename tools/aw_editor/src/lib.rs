@@ -29,6 +29,7 @@ pub mod plugin;
 pub mod polish;
 pub mod prefab;
 pub mod recent_files;
+pub mod rhai_reload;
 pub mod runtime;
 pub mod scene_serialization;
 pub mod scene_state;

@@ -11,6 +11,7 @@
 
 pub mod deserialization;
 pub mod path;
+pub mod sandbox;
 
 use anyhow::Result;
 use astraweave_ecs::{App, Plugin, World};

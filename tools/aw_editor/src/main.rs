@@ -69,6 +69,8 @@ mod prefab; // Phase 4.1 - Prefab System
 #[allow(dead_code)]
 mod recent_files; // Phase 3 - Recent files tracking
 #[allow(dead_code)]
+mod rhai_reload; // .rhai hot reload staged until the next tick boundary
+#[allow(dead_code)]
 mod runtime; // Week 4 - Deterministic runtime integration
 #[allow(dead_code)]
 mod scene_serialization; // Phase 2.2 - Scene Save/Load
@@ -383,6 +385,8 @@ struct EditorApp {
     editor_mode: EditorMode,
     // Hot-reload file watcher
     file_watcher: Option<file_watcher::FileWatcher>,
+    /// `.rhai` bytes staged by the watcher and published at the next tick boundary.
+    rhai_hot_reload: rhai_reload::RhaiHotReload,
     // Phase 6: Dirty flag for unsaved changes
     is_dirty: bool,
     show_quit_dialog: bool,
@@ -651,6 +655,7 @@ impl Default for EditorApp {
             // Defer file watcher setup — recursively watching 112K files is expensive.
             // It will be created lazily on first frame instead.
             file_watcher: None,
+            rhai_hot_reload: rhai_reload::RhaiHotReload::default(),
             // Phase 6: Dirty flag for unsaved changes
             is_dirty: false,
             show_quit_dialog: false,
@@ -10016,6 +10021,27 @@ impl eframe::App for EditorApp {
                         self.console_logs
                             .push(format!("Hot-reload: Model changed: {}", path_display));
                     }
+                    file_watcher::ReloadEvent::Script(path) => {
+                        match self
+                            .rhai_hot_reload
+                            .stage_file(std::path::Path::new("assets"), path)
+                        {
+                            Ok(()) => {
+                                self.console_logs.push(format!(
+                                    "Hot-reload: staged .rhai for the next tick boundary: {}",
+                                    path_display
+                                ));
+                            }
+                            Err(err) => {
+                                tracing::error!(
+                                    "rhai hot-reload rejected {}: {err}",
+                                    path.display()
+                                );
+                                self.console_logs
+                                    .push(format!("Hot-reload rejected: {err}"));
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -10138,6 +10164,15 @@ impl eframe::App for EditorApp {
         let measured_audio_ms = self.tick_audio_subsystem(frame_time);
         self.tick_animation_subsystem(frame_time);
         self.tick_movement_scripts(frame_time);
+
+        let applied_scripts = self.rhai_hot_reload.apply_at_tick_boundary();
+        for script in &applied_scripts {
+            self.console_logs.push(format!(
+                "Hot-reload: applied .rhai at tick boundary: {} ({} bytes)",
+                script.path,
+                script.source.len()
+            ));
+        }
 
         let tick_start = std::time::Instant::now();
         {

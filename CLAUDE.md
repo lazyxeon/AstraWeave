@@ -94,6 +94,7 @@ The workspace has a per-subsystem architecture trace campaign under `docs/archit
 | `docs/architecture/quests.md` | Quests — components, systems, LLM + terrain quests |
 | `docs/architecture/render_pipeline_material_system_shader_infrastructure.md` | Render Pipeline + Material System + Shader Infrastructure |
 | `docs/architecture/scene.md` | Scene — scene graph, world partition, cell streaming, GPU resource manager |
+| `docs/architecture/scripting.md` | Sandboxed Rhai gameplay scripts, the mod loader, and tick-boundary reload |
 | `docs/architecture/security.md` | Security + Secrets — script sandbox, anticheat, signatures, path validation, keyring |
 | `docs/architecture/terrain.md` | Terrain System — voxel meshing, biomes, noise, scatter, streaming (complements `terrain_materials.md`, which is the material-splat slice) |
 | `docs/architecture/terrain_materials.md` | Terrain Material System (canonical reference example) |

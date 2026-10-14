@@ -10,6 +10,7 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 rhai = { workspace = true }
 astraweave-core = { path = "../astraweave-core" }
+astraweave-security = { path = "../astraweave-security" }
 
 [dev-dependencies]
 criterion = "0.5"
