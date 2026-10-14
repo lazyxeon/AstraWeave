@@ -15,6 +15,12 @@ fn main() {
     embed_resource::compile("windows/aravath.rc", embed_resource::NONE)
         .manifest_required()
         .expect("embed Windows version resource and asInvoker manifest");
+    let target_env = std::env::var("CARGO_CFG_TARGET_ENV").unwrap_or_default();
+    if target_env == "msvc" {
+        // rustc-link-arg-bins keeps these off the library test binaries.
+        println!("cargo:rustc-link-arg-bins=/EXPORT:NvOptimusEnablement,DATA");
+        println!("cargo:rustc-link-arg-bins=/EXPORT:AmdPowerXpressRequestHighPerformance,DATA");
+    }
 }
 
 fn refuse_native_and_fma(crate_name: &str) {

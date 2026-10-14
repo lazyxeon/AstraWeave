@@ -69,6 +69,25 @@ impl InputManager {
         self.just_pressed.clear();
     }
 
+    /// Apply one physical key. Window events and synthetic tests share this.
+    pub fn set_physical_key(&mut self, code: winit::keyboard::KeyCode, pressed: bool) {
+        let actions: Vec<_> = self
+            .bindings
+            .actions
+            .iter()
+            .filter_map(|(action, binding)| {
+                if binding.key == Some(code) {
+                    Some(*action)
+                } else {
+                    None
+                }
+            })
+            .collect();
+        for action in actions {
+            self.set_action(action, pressed);
+        }
+    }
+
     pub fn process_window_event(&mut self, ev: &WindowEvent) {
         match ev {
             WindowEvent::KeyboardInput {
@@ -80,22 +99,7 @@ impl InputManager {
                     },
                 ..
             } => {
-                let actions: Vec<_> = self
-                    .bindings
-                    .actions
-                    .iter()
-                    .filter_map(|(action, b)| {
-                        if b.key == Some(*code) {
-                            Some(*action)
-                        } else {
-                            None
-                        }
-                    })
-                    .collect();
-
-                for action in actions {
-                    self.set_action(action, *state == ElementState::Pressed);
-                }
+                self.set_physical_key(*code, *state == ElementState::Pressed);
             }
             WindowEvent::MouseInput { state, button, .. } => {
                 let actions: Vec<_> = self

@@ -20,6 +20,7 @@ pub mod hud;
 pub mod island;
 pub mod locomotion;
 pub mod motor;
+pub mod play_input;
 pub mod player;
 pub mod props;
 pub mod save;

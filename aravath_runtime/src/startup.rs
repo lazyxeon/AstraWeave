@@ -8,33 +8,130 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 use std::time::Instant;
 
-static LOG: Mutex<Option<std::fs::File>> = Mutex::new(None);
+struct LogFiles {
+    primary: std::fs::File,
+    copy: Option<std::fs::File>,
+    primary_path: PathBuf,
+    copy_path: Option<PathBuf>,
+}
+
+static LOG: Mutex<Option<LogFiles>> = Mutex::new(None);
 static START: Mutex<Option<Instant>> = Mutex::new(None);
 
 pub fn install() {
-    let dir = aravath_runtime::assets::log_dir();
+    let user_path = aravath_runtime::assets::log_dir().join("aravath.log");
+    let beside_path = aravath_runtime::assets::exe_dir().join("aravath.log");
+    let primary = open_log(&user_path);
+    let copy = if user_path == beside_path {
+        None
+    } else {
+        open_log(&beside_path).map(|file| (file, beside_path.clone()))
+    };
+    let logs = match (primary, copy) {
+        (Some(file), Some((copy, path))) => Some(LogFiles {
+            primary: file,
+            copy: Some(copy),
+            primary_path: user_path.clone(),
+            copy_path: Some(path),
+        }),
+        (Some(file), None) => Some(LogFiles {
+            primary: file,
+            copy: None,
+            primary_path: user_path.clone(),
+            copy_path: None,
+        }),
+        (None, Some((file, path))) => Some(LogFiles {
+            primary: file,
+            copy: None,
+            primary_path: path,
+            copy_path: None,
+        }),
+        (None, None) => {
+            eprintln!(
+                "aravath: could not create {} or {}",
+                user_path.display(),
+                beside_path.display()
+            );
+            None
+        }
+    };
+    if let Ok(mut slot) = LOG.lock() {
+        *slot = logs;
+    }
+    line(&format!("log {}", displayed_path(&user_path)));
+    if user_path != beside_path {
+        if beside_path.exists() {
+            line(&format!("log copy {}", displayed_path(&beside_path)));
+        } else {
+            eprintln!(
+                "aravath: could not create the log copy at {}",
+                beside_path.display()
+            );
+        }
+    }
+    finish_install();
+}
+
+fn open_log(path: &std::path::Path) -> Option<std::fs::File> {
+    let dir = path.parent().unwrap_or(std::path::Path::new("."));
+    let name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("aravath.log");
     match aravath_runtime::assets::open_capped_log(
-        &dir,
-        "aravath.log",
+        dir,
+        name,
         aravath_runtime::assets::MAX_LOG_BYTES,
     ) {
-        Ok(file) => {
-            if let Ok(mut slot) = LOG.lock() {
-                *slot = Some(file);
-            }
+        Ok(file) => Some(file),
+        Err(err) => {
+            eprintln!("aravath: could not open {}: {err}", path.display());
+            None
         }
-        Err(err) => eprintln!("aravath: could not open log in {}: {err}", dir.display()),
     }
+}
+
+fn displayed_path(path: &std::path::Path) -> String {
+    path.canonicalize()
+        .unwrap_or_else(|_| path.to_path_buf())
+        .display()
+        .to_string()
+}
+
+pub fn log_locations() -> String {
+    if let Ok(slot) = LOG.lock() {
+        if let Some(logs) = slot.as_ref() {
+            let mut text = format!("Log: {}", logs.primary_path.display());
+            if let Some(copy) = &logs.copy_path {
+                text.push_str(&format!("\nLog copy: {}", copy.display()));
+            }
+            return text;
+        }
+    }
+    format!(
+        "Log: {}\nLog copy: {}",
+        aravath_runtime::assets::log_dir()
+            .join("aravath.log")
+            .display(),
+        aravath_runtime::assets::exe_dir()
+            .join("aravath.log")
+            .display()
+    )
+}
+
+fn finish_install() {
     if let Ok(mut start) = START.lock() {
         *start = Some(Instant::now());
     }
     let previous = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
         let message = format!(
-            "panic: {info}\n{}",
+            "{}\n\npanic: {info}\n{}",
+            log_locations(),
             std::backtrace::Backtrace::force_capture()
         );
         record_crash(&message);
+        flush_logs();
         message_box("Aravath crashed", &message);
         previous(info);
     }));
@@ -76,35 +173,69 @@ pub fn line(text: &str) {
     let text = aravath_runtime::assets::bounded_text(text, 16 * 1024);
     eprintln!("{text}");
     if let Ok(mut slot) = LOG.lock() {
-        if let Some(file) = slot.as_mut() {
-            if let Err(err) = aravath_runtime::assets::write_log_line(file, &text) {
+        if let Some(logs) = slot.as_mut() {
+            if let Err(err) = aravath_runtime::assets::write_log_line(&mut logs.primary, &text) {
                 eprintln!("aravath: log write failed: {err}");
+            }
+            if let Some(copy) = logs.copy.as_mut() {
+                if let Err(err) = aravath_runtime::assets::write_log_line(copy, &text) {
+                    eprintln!("aravath: log copy write failed: {err}");
+                }
+            }
+        }
+    }
+}
+
+fn flush_logs() {
+    if let Ok(mut slot) = LOG.lock() {
+        if let Some(logs) = slot.as_mut() {
+            if let Err(err) = logs.primary.sync_all() {
+                eprintln!("aravath: log flush failed: {err}");
+            }
+            if let Some(copy) = logs.copy.as_mut() {
+                if let Err(err) = copy.sync_all() {
+                    eprintln!("aravath: log copy flush failed: {err}");
+                }
             }
         }
     }
 }
 
 pub fn fatal(title: &str, message: &str) -> ! {
-    record_crash(message);
-    message_box(title, message);
+    let full = format!("{}\n\n{message}", log_locations());
+    record_crash(&full);
+    flush_logs();
+    message_box(title, &full);
     std::process::exit(1);
 }
 
 fn record_crash(message: &str) {
     let message = aravath_runtime::assets::bounded_text(message, 64 * 1024);
     line(&message);
-    let dir = aravath_runtime::assets::log_dir();
-    match aravath_runtime::assets::open_capped_log(
-        &dir,
-        "aravath_crash.log",
-        aravath_runtime::assets::MAX_LOG_BYTES,
-    ) {
-        Ok(mut file) => {
-            if let Err(err) = aravath_runtime::assets::write_log_line(&mut file, &message) {
-                eprintln!("aravath: crash log write failed: {err}");
+    let mut dirs = vec![
+        aravath_runtime::assets::log_dir(),
+        aravath_runtime::assets::exe_dir(),
+    ];
+    dirs.dedup();
+    for dir in dirs {
+        match aravath_runtime::assets::open_capped_log(
+            &dir,
+            "aravath_crash.log",
+            aravath_runtime::assets::MAX_LOG_BYTES,
+        ) {
+            Ok(mut file) => {
+                if let Err(err) = aravath_runtime::assets::write_log_line(&mut file, &message) {
+                    eprintln!("aravath: crash log write failed: {err}");
+                }
+                if let Err(err) = file.sync_all() {
+                    eprintln!("aravath: crash log flush failed: {err}");
+                }
             }
+            Err(err) => eprintln!(
+                "aravath: could not open crash log in {}: {err}",
+                dir.display()
+            ),
         }
-        Err(err) => eprintln!("aravath: could not open crash log: {err}"),
     }
 }
 

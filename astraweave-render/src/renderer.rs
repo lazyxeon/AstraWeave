@@ -1069,23 +1069,13 @@ impl Renderer {
     }
     pub async fn new(window: std::sync::Arc<winit::window::Window>) -> Result<Self> {
         let boot = std::time::Instant::now();
-        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
+        let instance = gpu_instance();
         let surface = instance.create_surface(window.clone())?;
-        let adapter = instance
-            .request_adapter(&wgpu::RequestAdapterOptions {
-                power_preference: wgpu::PowerPreference::HighPerformance,
-                compatible_surface: Some(&surface),
-                force_fallback_adapter: warp_requested(),
-            })
-            .await
-            .context("No adapter")?;
-        let info = adapter.get_info();
+        let adapter = choose_adapter(&instance, Some(&surface)).await?;
         log::info!(
-            "adapter '{}' backend {:?} warp={} {} ms",
-            info.name,
-            info.backend,
-            warp_requested(),
-            boot.elapsed().as_millis()
+            "adapter selected after {} ms warp={}",
+            boot.elapsed().as_millis(),
+            warp_requested()
         );
 
         let (device, queue) = adapter
@@ -1114,21 +1104,10 @@ impl Renderer {
             })
             .await?;
 
+        log_gpu(&adapter, &device);
         // Register GPU error callback for validation errors and device loss.
         let device_lost = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-        {
-            let dl = device_lost.clone();
-            device.on_uncaptured_error(Box::new(move |error| {
-                log::error!("wgpu device error: {error}");
-                // Internal errors typically signal GPU device loss (TDR, driver
-                // crash, device removed).  Flag the renderer so the application
-                // can recreate it instead of continuing to submit broken work.
-                if matches!(error, wgpu::Error::Internal { .. }) {
-                    dl.store(true, std::sync::atomic::Ordering::SeqCst);
-                    log::error!("GPU device loss detected — renderer must be recreated");
-                }
-            }));
-        }
+        install_device_error_handler(&device, device_lost.clone());
 
         let caps = surface.get_capabilities(&adapter);
         let format = caps
@@ -1166,15 +1145,8 @@ impl Renderer {
     }
 
     pub async fn new_headless(width: u32, height: u32) -> Result<Self> {
-        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
-        let adapter = instance
-            .request_adapter(&wgpu::RequestAdapterOptions {
-                power_preference: wgpu::PowerPreference::HighPerformance,
-                compatible_surface: None,
-                force_fallback_adapter: warp_requested(),
-            })
-            .await
-            .context("No adapter")?;
+        let instance = gpu_instance();
+        let adapter = choose_adapter(&instance, None).await?;
 
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor {
@@ -1198,18 +1170,9 @@ impl Renderer {
             })
             .await?;
 
-        // Register GPU error callback for validation errors and device loss.
+        log_gpu(&adapter, &device);
         let device_lost = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-        {
-            let dl = device_lost.clone();
-            device.on_uncaptured_error(Box::new(move |error| {
-                log::error!("wgpu device error (headless): {error}");
-                if matches!(error, wgpu::Error::Internal { .. }) {
-                    dl.store(true, std::sync::atomic::Ordering::SeqCst);
-                    log::error!("GPU device loss detected — renderer must be recreated");
-                }
-            }));
-        }
+        install_device_error_handler(&device, device_lost.clone());
 
         let config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
@@ -3569,6 +3532,18 @@ fn vs(input: VSIn) -> VSOut {
     /// create a new one.
     pub fn is_device_lost(&self) -> bool {
         self.device_lost.load(std::sync::atomic::Ordering::SeqCst)
+            || crate::gpu_fault::device_lost()
+    }
+
+    /// Pump the device so a loss reported on the previous submit is visible
+    /// before this frame maps any buffers.
+    pub fn poll_device(&self) {
+        if self.device.poll(wgpu::PollType::Poll).is_err() {
+            self.device_lost
+                .store(true, std::sync::atomic::Ordering::SeqCst);
+            crate::gpu_fault::mark_device_lost();
+            log::error!("device.poll failed; treating the GPU as lost");
+        }
     }
 
     /// Returns a reference to the pipeline cache, if available (Vulkan backends only).
@@ -4776,6 +4751,9 @@ fn vs(input: VSIn) -> VSOut {
         normals: &[[f32; 3]],
         indices: &[u32],
     ) -> Mesh {
+        if self.is_device_lost() {
+            return self.unmapped_mesh();
+        }
         // Interleave into Vertex, derive simple defaults for tangent (+X) and uv (planar XZ)
         let verts: Vec<crate::types::Vertex> = vertices
             .iter()
@@ -4787,20 +4765,16 @@ fn vs(input: VSIn) -> VSOut {
                 uv: [p[0] * 0.5 + 0.5, p[2] * 0.5 + 0.5],
             })
             .collect();
-        let vbuf = self
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("ext v"),
-                contents: bytemuck::cast_slice(&verts),
-                usage: wgpu::BufferUsages::VERTEX,
-            });
-        let ibuf = self
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("ext i"),
-                contents: bytemuck::cast_slice(indices),
-                usage: wgpu::BufferUsages::INDEX,
-            });
+        let vbuf = self.upload_bytes(
+            "ext v",
+            bytemuck::cast_slice(&verts),
+            wgpu::BufferUsages::VERTEX,
+        );
+        let ibuf = self.upload_bytes(
+            "ext i",
+            bytemuck::cast_slice(indices),
+            wgpu::BufferUsages::INDEX,
+        );
         Mesh {
             vertex_buf: vbuf,
             index_buf: ibuf,
@@ -4816,6 +4790,9 @@ fn vs(input: VSIn) -> VSOut {
         uvs: &[[f32; 2]],
         indices: &[u32],
     ) -> Mesh {
+        if self.is_device_lost() {
+            return self.unmapped_mesh();
+        }
         assert!(
             positions.len() == normals.len()
                 && positions.len() == tangents.len()
@@ -4842,20 +4819,16 @@ fn vs(input: VSIn) -> VSOut {
                 uv: [0.0; 2],
             }; 3];
             let placeholder_idx: [u32; 3] = [0, 1, 2];
-            let vbuf = self
-                .device
-                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                    label: Some("ext v (full) placeholder"),
-                    contents: bytemuck::cast_slice(&placeholder_verts),
-                    usage: wgpu::BufferUsages::VERTEX,
-                });
-            let ibuf = self
-                .device
-                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                    label: Some("ext i (full) placeholder"),
-                    contents: bytemuck::cast_slice(&placeholder_idx),
-                    usage: wgpu::BufferUsages::INDEX,
-                });
+            let vbuf = self.upload_bytes(
+                "ext v (full) placeholder",
+                bytemuck::cast_slice(&placeholder_verts),
+                wgpu::BufferUsages::VERTEX,
+            );
+            let ibuf = self.upload_bytes(
+                "ext i (full) placeholder",
+                bytemuck::cast_slice(&placeholder_idx),
+                wgpu::BufferUsages::INDEX,
+            );
             return Mesh {
                 vertex_buf: vbuf,
                 index_buf: ibuf,
@@ -4875,20 +4848,16 @@ fn vs(input: VSIn) -> VSOut {
                 uv: *uv,
             })
             .collect();
-        let vbuf = self
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("ext v (full)"),
-                contents: bytemuck::cast_slice(&verts),
-                usage: wgpu::BufferUsages::VERTEX,
-            });
-        let ibuf = self
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("ext i (full)"),
-                contents: bytemuck::cast_slice(indices),
-                usage: wgpu::BufferUsages::INDEX,
-            });
+        let vbuf = self.upload_bytes(
+            "ext v (full)",
+            bytemuck::cast_slice(&verts),
+            wgpu::BufferUsages::VERTEX,
+        );
+        let ibuf = self.upload_bytes(
+            "ext i (full)",
+            bytemuck::cast_slice(indices),
+            wgpu::BufferUsages::INDEX,
+        );
         Mesh {
             vertex_buf: vbuf,
             index_buf: ibuf,
@@ -5066,12 +5035,20 @@ fn vs(input: VSIn) -> VSOut {
         let timestamp_period = self.queue.get_timestamp_period();
         if rebuild {
             let device = self.device.clone();
-            self.volumetric_fog = Some(crate::volumetric_fog::VolumetricFogPass::new(
+            match crate::volumetric_fog::VolumetricFogPass::new(
                 &device,
                 self.config.width,
                 self.config.height,
                 config,
-            ));
+            ) {
+                Ok(pass) => self.volumetric_fog = Some(pass),
+                Err(err) => {
+                    log::error!("volumetric fog disabled: {err}");
+                    self.volumetric_fog = None;
+                    self.note_scope_device_loss();
+                    return;
+                }
+            }
         } else if let Some(fog) = self.volumetric_fog.as_mut() {
             fog.set_config(config);
         }
@@ -5147,12 +5124,20 @@ fn vs(input: VSIn) -> VSOut {
             .is_none_or(|rays| rays.config().half_res != config.half_res);
         if rebuild {
             let device = self.device.clone();
-            self.god_rays = Some(crate::god_rays::GodRayPass::with_config(
+            match crate::god_rays::GodRayPass::with_config(
                 &device,
                 self.config.width,
                 self.config.height,
                 config,
-            ));
+            ) {
+                Ok(pass) => self.god_rays = Some(pass),
+                Err(err) => {
+                    log::error!("light shafts disabled: {err}");
+                    self.god_rays = None;
+                    self.note_scope_device_loss();
+                    return;
+                }
+            }
         } else if let Some(rays) = self.god_rays.as_mut() {
             rays.set_config(config);
         }
@@ -5231,17 +5216,19 @@ fn vs(input: VSIn) -> VSOut {
                 far,
                 1.0 / 60.0,
             );
-            fog.execute(&device, enc, depth, &shadow, &hdr, generation);
-            fog.copy_scatter_to_history(enc);
-            enc.copy_texture_to_texture(
-                fog.output_texture().as_image_copy(),
-                self.hdr_tex.as_image_copy(),
-                wgpu::Extent3d {
-                    width: self.config.width,
-                    height: self.config.height,
-                    depth_or_array_layers: 1,
-                },
-            );
+            let ran = fog.execute(&device, enc, depth, &shadow, &hdr, generation);
+            if ran {
+                fog.copy_scatter_to_history(enc);
+                enc.copy_texture_to_texture(
+                    fog.output_texture().as_image_copy(),
+                    self.hdr_tex.as_image_copy(),
+                    wgpu::Extent3d {
+                        width: self.config.width,
+                        height: self.config.height,
+                        depth_or_array_layers: 1,
+                    },
+                );
+            }
         }
 
         if self.god_rays_enabled() {
@@ -5249,16 +5236,30 @@ fn vs(input: VSIn) -> VSOut {
             let queue = self.queue.clone();
             let hdr = self.hdr_view.clone();
             let generation = self.resource_generation;
-            let rays = self.god_rays.as_mut().expect("shafts enabled");
-            rays.update_params(&queue, view_proj, toward_sun, sun_color);
-            rays.execute(&device, enc, depth, &hdr, generation);
-            let storage = self
-                .hdr_tex
-                .create_view(&wgpu::TextureViewDescriptor::default());
-            self.god_rays
-                .as_mut()
-                .expect("shafts enabled")
-                .add_into(&device, enc, &storage, generation);
+            let scene_width = self.config.width;
+            let scene_height = self.config.height;
+            let composite = {
+                let rays = self.god_rays.as_mut().expect("shafts enabled");
+                rays.update_params(&queue, view_proj, toward_sun, sun_color);
+                let ran = rays.execute(&device, enc, depth, &hdr, generation);
+                let added = ran && rays.add_into(&device, enc, &hdr, generation);
+                if added {
+                    rays.composite_texture().cloned()
+                } else {
+                    None
+                }
+            };
+            if let Some(composite) = composite {
+                enc.copy_texture_to_texture(
+                    composite.as_image_copy(),
+                    self.hdr_tex.as_image_copy(),
+                    wgpu::Extent3d {
+                        width: scene_width,
+                        height: scene_height,
+                        depth_or_array_layers: 1,
+                    },
+                );
+            }
         }
     }
 
@@ -6129,7 +6130,7 @@ fn vs(input: VSIn) -> VSOut {
         }
 
         // --- GPU profiler: resolve timestamp queries into readback buffer ---
-        if let Some(ref p) = self.gpu_profiler {
+        if let Some(ref mut p) = self.gpu_profiler {
             p.end_frame(&mut enc);
         }
 
@@ -6990,7 +6991,7 @@ fn vs(input: VSIn) -> VSOut {
         }
 
         // --- GPU profiler: resolve timestamp queries into readback buffer ---
-        if let Some(ref p) = self.gpu_profiler {
+        if let Some(ref mut p) = self.gpu_profiler {
             p.end_frame(enc);
         }
 
@@ -7347,6 +7348,57 @@ fn vs(input: VSIn) -> VSOut {
         }
         self.request_fog_timestamps();
 
+        Ok(())
+    }
+
+    /// Record one frame without a window and fail if wgpu validation reported an error.
+    ///
+    /// The greybox smoke test calls this with volumetrics enabled. Headless
+    /// `render_with` returns before drawing, so it cannot see a bad pass.
+    pub fn submit_headless_frame(&mut self) -> Result<()> {
+        if self.is_device_lost() {
+            anyhow::bail!("GPU device lost before the validation frame");
+        }
+        let target = self.device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("headless validation target"),
+            size: wgpu::Extent3d {
+                width: self.config.width.max(1),
+                height: self.config.height.max(1),
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: self.config.format,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+            view_formats: &[],
+        });
+        let view = target.create_view(&wgpu::TextureViewDescriptor::default());
+        self.device.push_error_scope(wgpu::ErrorFilter::Validation);
+        let mut enc = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("headless validation"),
+            });
+        self.draw_into(&view, None, &mut enc)?;
+        self.queue.submit(std::iter::once(enc.finish()));
+        if let Some(profiler) = self.gpu_profiler.as_mut() {
+            profiler.request_readback();
+        }
+        self.device
+            .poll(wgpu::PollType::Wait)
+            .map_err(|err| anyhow::anyhow!("device poll: {err}"))?;
+        if let Some(err) = crate::gpu_fault::finish_scope(&self.device) {
+            self.note_scope_device_loss();
+            anyhow::bail!("wgpu validation: {err}");
+        }
+        if let Some(err) = crate::gpu_fault::take() {
+            self.note_scope_device_loss();
+            anyhow::bail!("wgpu validation: {err}");
+        }
+        if self.is_device_lost() {
+            anyhow::bail!("GPU device lost during the validation frame");
+        }
         Ok(())
     }
 
@@ -8656,6 +8708,209 @@ impl Drop for Renderer {
     fn drop(&mut self) {
         self.save_pipeline_cache();
     }
+}
+
+fn note_scope_device_loss_on(flag: &std::sync::atomic::AtomicBool) {
+    if crate::gpu_fault::device_lost() {
+        flag.store(true, std::sync::atomic::Ordering::SeqCst);
+    }
+}
+
+impl Renderer {
+    fn note_scope_device_loss(&self) {
+        note_scope_device_loss_on(&self.device_lost);
+    }
+
+    /// Upload bytes without mapping the buffer. `create_buffer_init` calls
+    /// `get_mapped_range` and panics when the buffer is invalid.
+    fn upload_bytes(
+        &self,
+        label: &str,
+        contents: &[u8],
+        usage: wgpu::BufferUsages,
+    ) -> wgpu::Buffer {
+        let mut padded = contents.to_vec();
+        while padded.len() % 4 != 0 {
+            padded.push(0);
+        }
+        if padded.is_empty() {
+            padded.resize(4, 0);
+        }
+        let buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some(label),
+            size: padded.len() as u64,
+            usage: usage | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        if !self.is_device_lost() {
+            self.queue.write_buffer(&buffer, 0, &padded);
+        } else {
+            log::error!("skipped upload of {label}; the GPU device is lost");
+        }
+        buffer
+    }
+
+    fn unmapped_mesh(&self) -> Mesh {
+        log::error!("GPU device is lost; refusing to map a mesh buffer");
+        let vertex_size = std::mem::size_of::<crate::types::Vertex>() as u64;
+        let vbuf = self.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("ext v (device lost)"),
+            size: vertex_size.max(4) * 3,
+            usage: wgpu::BufferUsages::VERTEX,
+            mapped_at_creation: false,
+        });
+        let ibuf = self.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("ext i (device lost)"),
+            size: 12,
+            usage: wgpu::BufferUsages::INDEX,
+            mapped_at_creation: false,
+        });
+        Mesh {
+            vertex_buf: vbuf,
+            index_buf: ibuf,
+            index_count: 0,
+        }
+    }
+}
+
+fn gpu_instance() -> wgpu::Instance {
+    wgpu::Instance::new(&wgpu::InstanceDescriptor::from_env_or_default())
+}
+
+const NVIDIA_VENDOR: u32 = 0x10DE;
+
+fn is_nvidia(info: &wgpu::AdapterInfo) -> bool {
+    info.vendor == NVIDIA_VENDOR || info.name.to_ascii_lowercase().contains("nvidia")
+}
+
+async fn choose_adapter(
+    instance: &wgpu::Instance,
+    compatible_surface: Option<&wgpu::Surface<'_>>,
+) -> Result<wgpu::Adapter> {
+    if warp_requested() {
+        log::info!("requesting the fallback adapter (ARAVATH_WARP) at HighPerformance");
+        return instance
+            .request_adapter(&wgpu::RequestAdapterOptions {
+                power_preference: wgpu::PowerPreference::HighPerformance,
+                compatible_surface,
+                force_fallback_adapter: true,
+            })
+            .await
+            .context("No adapter");
+    }
+
+    let backends = wgpu::Backends::from_env().unwrap_or(wgpu::Backends::all());
+    let adapters = instance.enumerate_adapters(backends);
+    for adapter in &adapters {
+        let info = adapter.get_info();
+        let surface_ok = compatible_surface
+            .map(|surface| adapter.is_surface_supported(surface))
+            .unwrap_or(true);
+        log::info!(
+            "adapter candidate '{}' backend {:?} type {:?} vendor {:#06x} device {:#06x} driver '{}' info '{}' surface_ok={surface_ok}",
+            info.name,
+            info.backend,
+            info.device_type,
+            info.vendor,
+            info.device,
+            info.driver,
+            info.driver_info,
+        );
+    }
+    let usable: Vec<&wgpu::Adapter> = adapters
+        .iter()
+        .filter(|adapter| {
+            compatible_surface
+                .map(|surface| adapter.is_surface_supported(surface))
+                .unwrap_or(true)
+        })
+        .collect();
+    let nvidia_discrete = usable.iter().find(|adapter| {
+        let info = adapter.get_info();
+        is_nvidia(&info) && info.device_type == wgpu::DeviceType::DiscreteGpu
+    });
+    let any_discrete = usable
+        .iter()
+        .find(|adapter| adapter.get_info().device_type == wgpu::DeviceType::DiscreteGpu);
+    let any_nvidia = usable.iter().find(|adapter| is_nvidia(&adapter.get_info()));
+    let (adapter, reason) = if let Some(adapter) = nvidia_discrete {
+        (*adapter, "discrete NVIDIA")
+    } else if let Some(adapter) = any_discrete {
+        (*adapter, "discrete GPU")
+    } else if let Some(adapter) = any_nvidia {
+        (*adapter, "NVIDIA adapter")
+    } else {
+        log::info!("no enumerated discrete adapter; requesting HighPerformance");
+        return instance
+            .request_adapter(&wgpu::RequestAdapterOptions {
+                power_preference: wgpu::PowerPreference::HighPerformance,
+                compatible_surface,
+                force_fallback_adapter: false,
+            })
+            .await
+            .context("No adapter");
+    };
+    log::info!("chose adapter '{}' ({reason})", adapter.get_info().name);
+    Ok(adapter.clone())
+}
+
+fn log_gpu(adapter: &wgpu::Adapter, device: &wgpu::Device) {
+    let info = adapter.get_info();
+    let limits = device.limits();
+    let features = adapter.features();
+    let rgba16 = wgpu::TextureFormat::Rgba16Float.guaranteed_format_features(features);
+    log::info!(
+        "adapter '{}' backend {:?} type {:?} vendor {:#06x} device {:#06x} driver '{}' info '{}'",
+        info.name,
+        info.backend,
+        info.device_type,
+        info.vendor,
+        info.device,
+        info.driver,
+        info.driver_info
+    );
+    log::info!(
+        "limits bind_groups={} bindings_per_group={} sampled_textures={} samplers={} storage_textures={} storage_buffers={} uniform_buffers={} tex2d={} tex3d={} buffer_bytes={}",
+        limits.max_bind_groups,
+        limits.max_bindings_per_bind_group,
+        limits.max_sampled_textures_per_shader_stage,
+        limits.max_samplers_per_shader_stage,
+        limits.max_storage_textures_per_shader_stage,
+        limits.max_storage_buffers_per_shader_stage,
+        limits.max_uniform_buffers_per_shader_stage,
+        limits.max_texture_dimension_2d,
+        limits.max_texture_dimension_3d,
+        limits.max_buffer_size,
+    );
+    log::info!(
+        "Rgba16Float storage_write={} storage_read_write={} adapter_specific_formats={} timestamp_query={}",
+        rgba16
+            .flags
+            .contains(wgpu::TextureFormatFeatureFlags::STORAGE_WRITE_ONLY),
+        rgba16
+            .flags
+            .contains(wgpu::TextureFormatFeatureFlags::STORAGE_READ_WRITE),
+        features.contains(wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES),
+        features.contains(wgpu::Features::TIMESTAMP_QUERY),
+    );
+}
+
+fn install_device_error_handler(
+    device: &wgpu::Device,
+    device_lost: std::sync::Arc<std::sync::atomic::AtomicBool>,
+) {
+    device.on_uncaptured_error(Box::new(move |error| {
+        let text = error.to_string();
+        log::error!("wgpu device error: {text}");
+        if matches!(error, wgpu::Error::Validation { .. }) {
+            crate::gpu_fault::record(&text);
+        }
+        if crate::gpu_fault::error_means_device_lost(&error, &text) {
+            device_lost.store(true, std::sync::atomic::Ordering::SeqCst);
+            crate::gpu_fault::mark_device_lost();
+            log::error!("GPU device loss detected — renderer must be recreated");
+        }
+    }));
 }
 
 fn warp_requested() -> bool {

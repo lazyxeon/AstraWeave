@@ -15,7 +15,7 @@ The exe:
 - does not link an HTTP client (`reqwest`, `hyper`, `ureq`, `openssl`) and does not enable `tokio`'s `net` feature
 - does not contain an updater
 - reads `assets/aravath` and `aravath.cfg` only from the folder that contains the exe
-- writes saves, `aravath.log`, and `aravath_crash.log` under `%LOCALAPPDATA%\Aravath`
+- writes saves under `%LOCALAPPDATA%\Aravath`, and writes `aravath.log` / `aravath_crash.log` there and next to the exe
 
 `aravath.cfg` is a small UTF-8 text file. The only keys that do anything are `volumetrics=on` and `volumetrics=off`. The file must be a regular file of at most 16 KiB. A symlink is refused.
 
@@ -151,4 +151,4 @@ Pick one:
 3. Apply to SignPath Foundation and, after approval, add their signing step.
 4. Ship the unsigned Release anyway, and expect the warning until you do one of the above.
 
-Until one of those is in place, the honest label on the download is: open-source demo, unsigned, no network, writes only under `%LOCALAPPDATA%\Aravath`.
+Until one of those is in place, the honest label on the download is: open-source demo, unsigned, no network, writes saves under `%LOCALAPPDATA%\Aravath` and writes its log both there and next to the exe.

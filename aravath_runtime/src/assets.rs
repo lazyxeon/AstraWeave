@@ -539,6 +539,31 @@ mod tests {
     }
 
     #[test]
+    fn opening_a_log_creates_the_directory_and_flushes_the_line() {
+        let dir = tempfile::tempdir().unwrap();
+        let nested = dir.path().join("Aravath");
+        let mut file = open_capped_log(&nested, "aravath.log", 4096).unwrap();
+        write_log_line(&mut file, "created").unwrap();
+        file.sync_all().unwrap();
+        let text = fs::read_to_string(nested.join("aravath.log")).unwrap();
+        assert!(nested.is_dir());
+        assert!(text.contains("created"));
+    }
+
+    #[test]
+    fn discrete_gpu_export_is_requested_for_the_windows_exe() {
+        let build = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/build.rs"));
+        assert!(build.contains("/EXPORT:NvOptimusEnablement,DATA"));
+        assert!(build.contains("/EXPORT:AmdPowerXpressRequestHighPerformance,DATA"));
+        let prefs = include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/src/gpu_preference.rs"
+        ));
+        assert!(prefs.contains("static NvOptimusEnablement: u32 = 1"));
+        assert!(prefs.contains("static AmdPowerXpressRequestHighPerformance: i32 = 1"));
+    }
+
+    #[test]
     fn windows_manifest_requests_as_invoker() {
         let manifest =
             PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("windows/aravath.exe.manifest");

@@ -290,6 +290,7 @@ pub struct VolumetricFogPass {
     timestamp_period_ns: f32,
     timestamp_readback_pending: bool,
     timestamp_map_ready: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    timestamp_map_failed: std::sync::Arc<std::sync::atomic::AtomicBool>,
     last_gpu_sample: Option<VolumetricGpuSample>,
 }
 
@@ -299,7 +300,19 @@ impl VolumetricFogPass {
         width: u32,
         height: u32,
         config: VolumetricFogConfig,
-    ) -> Self {
+    ) -> Result<Self, String> {
+        if !crate::gpu_fault::storage_write_supported(device, wgpu::TextureFormat::Rgba16Float) {
+            let msg = "Rgba16Float write-only storage is not supported; volumetric fog stays off"
+                .to_string();
+            log::error!("{msg}");
+            return Err(msg);
+        }
+        crate::gpu_fault::scope(device, "volumetric fog", || {
+            Self::build(device, width, height, config)
+        })
+    }
+
+    fn build(device: &wgpu::Device, width: u32, height: u32, config: VolumetricFogConfig) -> Self {
         let [fx, fy, fz] = config.froxel_dims;
         let froxel_fmt = wgpu::TextureFormat::Rgba16Float;
 
@@ -316,7 +329,10 @@ impl VolumetricFogPass {
                 sample_count: 1,
                 dimension: wgpu::TextureDimension::D3,
                 format: froxel_fmt,
-                usage: wgpu::TextureUsages::STORAGE_BINDING | wgpu::TextureUsages::TEXTURE_BINDING,
+                usage: wgpu::TextureUsages::STORAGE_BINDING
+                    | wgpu::TextureUsages::TEXTURE_BINDING
+                    | wgpu::TextureUsages::COPY_SRC
+                    | wgpu::TextureUsages::COPY_DST,
                 view_formats: &[],
             });
             let view = tex.create_view(&wgpu::TextureViewDescriptor::default());
@@ -456,8 +472,8 @@ impl VolumetricFogPass {
             label: Some("vol_integrate_bgl"),
             entries: &[
                 bgl_uniform(0),
-                bgl_texture_3d(1), // scatter
-                bgl_texture_2d(2), // depth
+                bgl_texture_3d(1),  // scatter
+                bgl_scene_depth(2), // scene depth (Depth32Float)
                 bgl_sampler(3),
                 bgl_storage_2d_rw(4, froxel_fmt),
             ],
@@ -570,6 +586,7 @@ impl VolumetricFogPass {
             timestamp_period_ns: 0.0,
             timestamp_readback_pending: false,
             timestamp_map_ready: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            timestamp_map_failed: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
             last_gpu_sample: None,
         }
     }
@@ -652,10 +669,15 @@ impl VolumetricFogPass {
         self.timestamp_map_ready
             .store(false, std::sync::atomic::Ordering::Release);
         let flag = self.timestamp_map_ready.clone();
+        let failed = self.timestamp_map_failed.clone();
         readback
             .slice(..)
-            .map_async(wgpu::MapMode::Read, move |_result| {
-                flag.store(true, std::sync::atomic::Ordering::Release);
+            .map_async(wgpu::MapMode::Read, move |result| {
+                if result.is_ok() {
+                    flag.store(true, std::sync::atomic::Ordering::Release);
+                } else {
+                    failed.store(true, std::sync::atomic::Ordering::Release);
+                }
             });
     }
 
@@ -664,7 +686,21 @@ impl VolumetricFogPass {
         if !self.timestamp_readback_pending {
             return None;
         }
-        let _ = device.poll(wgpu::PollType::Poll);
+        if device.poll(wgpu::PollType::Poll).is_err() {
+            self.timestamp_readback_pending = false;
+            log::error!("device poll failed during volumetric timestamp readback");
+            return None;
+        }
+        if self
+            .timestamp_map_failed
+            .load(std::sync::atomic::Ordering::Acquire)
+        {
+            self.timestamp_readback_pending = false;
+            self.timestamp_map_failed
+                .store(false, std::sync::atomic::Ordering::Release);
+            log::error!("volumetric timestamp map failed; not reading the buffer");
+            return None;
+        }
         if !self
             .timestamp_map_ready
             .load(std::sync::atomic::Ordering::Acquire)
@@ -862,9 +898,9 @@ impl VolumetricFogPass {
         shadow_view: &wgpu::TextureView,
         scene_color_view: &wgpu::TextureView,
         resource_gen: crate::bind_group_cache::Generation,
-    ) {
+    ) -> bool {
         if !self.config.enabled {
-            return;
+            return false;
         }
 
         let [fx, fy, fz] = self.config.froxel_dims;
@@ -873,140 +909,178 @@ impl VolumetricFogPass {
 
         // Density (only internal resources — could be gen 0, but keep uniform for simplicity)
         if !self.cached_density_bg.is_valid(resource_gen) {
-            let bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
-                label: Some("vol_density_bg"),
-                layout: &self.density_bgl,
-                entries: &[
-                    wgpu::BindGroupEntry {
-                        binding: 0,
-                        resource: self.density_params_buf.as_entire_binding(),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 1,
-                        resource: wgpu::BindingResource::TextureView(&self.density_view),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 2,
-                        resource: wgpu::BindingResource::TextureView(&self.scar_view),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 3,
-                        resource: wgpu::BindingResource::Sampler(&self.linear_sampler),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 4,
-                        resource: self.scar_params_buf.as_entire_binding(),
-                    },
-                ],
-            });
+            let bg = match crate::gpu_fault::scope(device, "vol_density_bg", || {
+                device.create_bind_group(&wgpu::BindGroupDescriptor {
+                    label: Some("vol_density_bg"),
+                    layout: &self.density_bgl,
+                    entries: &[
+                        wgpu::BindGroupEntry {
+                            binding: 0,
+                            resource: self.density_params_buf.as_entire_binding(),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 1,
+                            resource: wgpu::BindingResource::TextureView(&self.density_view),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 2,
+                            resource: wgpu::BindingResource::TextureView(&self.scar_view),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 3,
+                            resource: wgpu::BindingResource::Sampler(&self.linear_sampler),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 4,
+                            resource: self.scar_params_buf.as_entire_binding(),
+                        },
+                    ],
+                })
+            }) {
+                Ok(bg) => bg,
+                Err(err) => {
+                    log::error!("disabling volumetric fog: {err}");
+                    self.config.enabled = false;
+                    return false;
+                }
+            };
             self.cached_density_bg =
                 crate::bind_group_cache::CachedBindGroup::with_bind_group(bg, resource_gen);
         }
 
         // Scatter (references external shadow_view)
         if !self.cached_scatter_bg.is_valid(resource_gen) {
-            let bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
-                label: Some("vol_scatter_bg"),
-                layout: &self.scatter_bgl,
-                entries: &[
-                    wgpu::BindGroupEntry {
-                        binding: 0,
-                        resource: self.scatter_params_buf.as_entire_binding(),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 1,
-                        resource: wgpu::BindingResource::TextureView(&self.density_view),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 2,
-                        resource: wgpu::BindingResource::TextureView(shadow_view),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 3,
-                        resource: self.cascade_buf.as_entire_binding(),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 4,
-                        resource: wgpu::BindingResource::Sampler(&self.linear_sampler),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 5,
-                        resource: wgpu::BindingResource::Sampler(&self.shadow_sampler),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 6,
-                        resource: wgpu::BindingResource::TextureView(&self.scatter_history_view),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 7,
-                        resource: wgpu::BindingResource::TextureView(&self.scatter_view),
-                    },
-                ],
-            });
+            let bg = match crate::gpu_fault::scope(device, "vol_scatter_bg", || {
+                device.create_bind_group(&wgpu::BindGroupDescriptor {
+                    label: Some("vol_scatter_bg"),
+                    layout: &self.scatter_bgl,
+                    entries: &[
+                        wgpu::BindGroupEntry {
+                            binding: 0,
+                            resource: self.scatter_params_buf.as_entire_binding(),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 1,
+                            resource: wgpu::BindingResource::TextureView(&self.density_view),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 2,
+                            resource: wgpu::BindingResource::TextureView(shadow_view),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 3,
+                            resource: self.cascade_buf.as_entire_binding(),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 4,
+                            resource: wgpu::BindingResource::Sampler(&self.linear_sampler),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 5,
+                            resource: wgpu::BindingResource::Sampler(&self.shadow_sampler),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 6,
+                            resource: wgpu::BindingResource::TextureView(
+                                &self.scatter_history_view,
+                            ),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 7,
+                            resource: wgpu::BindingResource::TextureView(&self.scatter_view),
+                        },
+                    ],
+                })
+            }) {
+                Ok(bg) => bg,
+                Err(err) => {
+                    log::error!("disabling volumetric fog: {err}");
+                    self.config.enabled = false;
+                    return false;
+                }
+            };
             self.cached_scatter_bg =
                 crate::bind_group_cache::CachedBindGroup::with_bind_group(bg, resource_gen);
         }
 
         // Integrate (references external depth_view)
         if !self.cached_integrate_bg.is_valid(resource_gen) {
-            let bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
-                label: Some("vol_integrate_bg"),
-                layout: &self.integrate_bgl,
-                entries: &[
-                    wgpu::BindGroupEntry {
-                        binding: 0,
-                        resource: self.integrate_params_buf.as_entire_binding(),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 1,
-                        resource: wgpu::BindingResource::TextureView(&self.scatter_view),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 2,
-                        resource: wgpu::BindingResource::TextureView(depth_view),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 3,
-                        resource: wgpu::BindingResource::Sampler(&self.linear_sampler),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 4,
-                        resource: wgpu::BindingResource::TextureView(&self.integrated_view),
-                    },
-                ],
-            });
+            let bg = match crate::gpu_fault::scope(device, "vol_integrate_bg", || {
+                device.create_bind_group(&wgpu::BindGroupDescriptor {
+                    label: Some("vol_integrate_bg"),
+                    layout: &self.integrate_bgl,
+                    entries: &[
+                        wgpu::BindGroupEntry {
+                            binding: 0,
+                            resource: self.integrate_params_buf.as_entire_binding(),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 1,
+                            resource: wgpu::BindingResource::TextureView(&self.scatter_view),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 2,
+                            resource: wgpu::BindingResource::TextureView(depth_view),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 3,
+                            resource: wgpu::BindingResource::Sampler(&self.linear_sampler),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 4,
+                            resource: wgpu::BindingResource::TextureView(&self.integrated_view),
+                        },
+                    ],
+                })
+            }) {
+                Ok(bg) => bg,
+                Err(err) => {
+                    log::error!("disabling volumetric fog: {err}");
+                    self.config.enabled = false;
+                    return false;
+                }
+            };
             self.cached_integrate_bg =
                 crate::bind_group_cache::CachedBindGroup::with_bind_group(bg, resource_gen);
         }
 
         // Apply (references external scene_color_view)
         if !self.cached_apply_bg.is_valid(resource_gen) {
-            let bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
-                label: Some("vol_apply_bg"),
-                layout: &self.apply_bgl,
-                entries: &[
-                    wgpu::BindGroupEntry {
-                        binding: 0,
-                        resource: self.apply_params_buf.as_entire_binding(),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 1,
-                        resource: wgpu::BindingResource::TextureView(scene_color_view),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 2,
-                        resource: wgpu::BindingResource::TextureView(&self.integrated_view),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 3,
-                        resource: wgpu::BindingResource::Sampler(&self.linear_sampler),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 4,
-                        resource: wgpu::BindingResource::TextureView(&self.applied_view),
-                    },
-                ],
-            });
+            let bg = match crate::gpu_fault::scope(device, "vol_apply_bg", || {
+                device.create_bind_group(&wgpu::BindGroupDescriptor {
+                    label: Some("vol_apply_bg"),
+                    layout: &self.apply_bgl,
+                    entries: &[
+                        wgpu::BindGroupEntry {
+                            binding: 0,
+                            resource: self.apply_params_buf.as_entire_binding(),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 1,
+                            resource: wgpu::BindingResource::TextureView(scene_color_view),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 2,
+                            resource: wgpu::BindingResource::TextureView(&self.integrated_view),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 3,
+                            resource: wgpu::BindingResource::Sampler(&self.linear_sampler),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 4,
+                            resource: wgpu::BindingResource::TextureView(&self.applied_view),
+                        },
+                    ],
+                })
+            }) {
+                Ok(bg) => bg,
+                Err(err) => {
+                    log::error!("disabling volumetric fog: {err}");
+                    self.config.enabled = false;
+                    return false;
+                }
+            };
             self.cached_apply_bg =
                 crate::bind_group_cache::CachedBindGroup::with_bind_group(bg, resource_gen);
         }
@@ -1100,6 +1174,7 @@ impl VolumetricFogPass {
             }
             self.timestamp_query = Some(query);
         }
+        true
     }
 
     /// Copy scatter output to history for next frame's temporal blend.
@@ -1133,8 +1208,16 @@ impl VolumetricFogPass {
         }
         let period = self.timestamp_period_ns;
         let config = self.config.clone();
-        *self = Self::new(device, width, height, config);
-        self.timestamp_period_ns = period;
+        match Self::new(device, width, height, config) {
+            Ok(mut next) => {
+                next.timestamp_period_ns = period;
+                *self = next;
+            }
+            Err(err) => {
+                log::error!("volumetric fog resize failed: {err}");
+                self.config.enabled = false;
+            }
+        }
     }
 }
 
@@ -1176,6 +1259,19 @@ fn bgl_uniform(binding: u32) -> wgpu::BindGroupLayoutEntry {
             ty: wgpu::BufferBindingType::Uniform,
             has_dynamic_offset: false,
             min_binding_size: None,
+        },
+        count: None,
+    }
+}
+
+fn bgl_scene_depth(binding: u32) -> wgpu::BindGroupLayoutEntry {
+    wgpu::BindGroupLayoutEntry {
+        binding,
+        visibility: wgpu::ShaderStages::COMPUTE,
+        ty: wgpu::BindingType::Texture {
+            sample_type: wgpu::TextureSampleType::Depth,
+            view_dimension: wgpu::TextureViewDimension::D2,
+            multisampled: false,
         },
         count: None,
     }
@@ -1282,6 +1378,13 @@ mod tests {
     use super::*;
 
     #[test]
+    fn integrate_shader_samples_depth() {
+        let src = include_str!("../shaders/volumetrics/integrate.wgsl");
+        assert!(src.contains("texture_depth_2d"));
+        assert!(!src.contains("texture_2d<f32>"));
+    }
+
+    #[test]
     fn scar_params_size() {
         assert_eq!(std::mem::size_of::<ScarFogParams>(), 32);
     }
@@ -1378,7 +1481,7 @@ mod tests {
             froxel_dims: [8, 8, 8],
             ..Default::default()
         };
-        let pass = VolumetricFogPass::new(&device, 320, 240, config);
+        let pass = VolumetricFogPass::new(&device, 320, 240, config).expect("fog");
         assert_eq!(pass.dimensions(), (320, 240));
     }
 
@@ -1433,7 +1536,7 @@ mod tests {
             froxel_dims: VolumetricQuality::Low.froxel_dims(),
             ..VolumetricFogPass::gameplay_config()
         };
-        let mut pass = VolumetricFogPass::new(&device, 64, 64, config);
+        let mut pass = VolumetricFogPass::new(&device, 64, 64, config).expect("fog");
         pass.set_timestamp_period_ns(queue.get_timestamp_period());
         let dim = SCAR_VOLUME_DIM as usize;
         let mut rgba = vec![[0.0_f32; 4]; dim * dim * dim];
@@ -1461,7 +1564,7 @@ mod tests {
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::Rgba16Float,
+            format: wgpu::TextureFormat::Depth32Float,
             usage: wgpu::TextureUsages::TEXTURE_BINDING,
             view_formats: &[],
         });
@@ -1516,13 +1619,17 @@ mod tests {
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("veil_fog_timing"),
         });
-        pass.execute(
-            &device,
-            &mut encoder,
-            &depth_view,
-            &shadow_view,
-            &scene_view,
-            1,
+        assert!(
+            pass.execute(
+                &device,
+                &mut encoder,
+                &depth_view,
+                &shadow_view,
+                &scene_view,
+                1,
+            ),
+            "fog execute recorded a wgpu error: {:?}",
+            crate::gpu_fault::take()
         );
         queue.submit(Some(encoder.finish()));
         pass.request_timestamp_readback();
