@@ -1,0 +1,130 @@
+# Required status check on pull requests: `determinism-replay / compare`.
+# Branch protection is a repository setting. This workflow is the check it must require.
+# Both `planner_pure` (WS-D0) and `perception_world` (WS-D1) fail the compare job on any mismatch.
+
+name: determinism-replay
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  CARGO_NET_RETRY: 10
+
+jobs:
+  hash:
+    name: hash (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.89.0
+
+      - name: Pin baseline CPU
+        run: |
+          host=$(rustc -vV | sed -n 's/^host: //p')
+          case "$host" in
+            x86_64-*)
+              echo "RUSTFLAGS=-C target-cpu=x86-64" >> "$GITHUB_ENV"
+              ;;
+            aarch64-*)
+              echo "aarch64 uses the default baseline CPU (target-cpu=native is forbidden)."
+              ;;
+            *)
+              echo "unsupported host $host" >&2
+              exit 1
+              ;;
+          esac
+
+      - name: Cache cargo dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: determinism-replay
+
+      - name: Replay hash
+        run: cargo test -p astraweave-core --test replay_hash -- --nocapture
+
+      - name: Upload replay hash
+        uses: actions/upload-artifact@v4
+        with:
+          name: replay-hash-${{ runner.os }}
+          path: target/replay-hash.json
+          if-no-files-found: error
+
+  compare:
+    name: compare
+    needs: hash
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Download replay hashes
+        uses: actions/download-artifact@v4
+        with:
+          pattern: replay-hash-*
+          path: replay-artifacts
+          merge-multiple: false
+
+      - name: Compare replay hashes
+        run: |
+          python3 - <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          required = {"planner_pure", "perception_world"}
+          root = Path("replay-artifacts")
+          files = sorted(root.glob("*/replay-hash.json"))
+          print(f"artifacts: {[str(p) for p in files]}")
+          if len(files) != 3:
+              print(f"expected 3 replay-hash artifacts, found {len(files)}")
+              sys.exit(1)
+
+          by_os = {}
+          for path in files:
+              os_name = path.parent.name.removeprefix("replay-hash-")
+              rows = json.loads(path.read_text(encoding="utf-8"))
+              by_os[os_name] = {row["case"]: row["sha256"] for row in rows}
+
+          cases = set()
+          for digests in by_os.values():
+              cases.update(digests)
+
+          failed = False
+          for case in sorted(cases | required):
+              digests = {os_name: mapping.get(case) for os_name, mapping in sorted(by_os.items())}
+              present = {value for value in digests.values() if value is not None}
+              missing = [os_name for os_name, value in digests.items() if value is None]
+              if missing or len(present) != 1:
+                  print(f"MISMATCH {case}: {digests}")
+                  if case in required:
+                      failed = True
+                  else:
+                      print(f"{case} differs and is not a required case")
+              else:
+                  digest = next(iter(present))
+                  print(f"OK {case} {digest}")
+
+          if failed:
+              sys.exit(1)
+          PY

@@ -13,6 +13,7 @@ tracing = { workspace = true }
 
 astraweave-core = { path = "../astraweave-core" }
 astraweave-ecs = { path = "../astraweave-ecs" }
+astraweave-behavior = { path = "../astraweave-behavior" }
 astraweave-ai = { path = "../astraweave-ai", optional = true, features = ["veilweaver_slice"] }
 astraweave-director = { path = "../astraweave-director", optional = true, features = ["veilweaver_slice"] }
 astraweave-scene = { path = "../astraweave-scene" }

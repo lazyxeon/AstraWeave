@@ -322,27 +322,44 @@ impl World {
     }
 
     pub fn all_of_team(&self, team_id: u8) -> Vec<Entity> {
-        self.team
-            .iter()
-            .filter_map(|(e, t)| if t.id == team_id { Some(*e) } else { None })
-            .collect()
+        sorted_entities(self.team.iter().filter_map(
+            |(e, t)| {
+                if t.id == team_id {
+                    Some(*e)
+                } else {
+                    None
+                }
+            },
+        ))
     }
     pub fn enemies_of(&self, team_id: u8) -> Vec<Entity> {
-        self.team
-            .iter()
-            .filter_map(|(e, t)| if t.id != team_id { Some(*e) } else { None })
-            .collect()
+        sorted_entities(self.team.iter().filter_map(
+            |(e, t)| {
+                if t.id != team_id {
+                    Some(*e)
+                } else {
+                    None
+                }
+            },
+        ))
     }
     pub fn pos_of(&self, e: Entity) -> Option<IVec2> {
         self.poses.get(&e).map(|p| p.pos)
     }
-    /// Return a list of all entity ids currently present in the world.
+    /// Return every live entity id, sorted by id.
+    ///
+    /// The underlying store is a `HashMap`. Callers that feed a snapshot or a
+    /// plan must use this sorted list (or [`Self::all_of_team`] /
+    /// [`Self::enemies_of`]) so two worlds built with the same spawns agree.
     pub fn entities(&self) -> Vec<Entity> {
-        self.poses.keys().copied().collect()
+        sorted_entities(self.poses.keys().copied())
     }
 
-    /// Iterate over all entity ids without allocating a Vec.
-    /// Prefer this over `entities()` on hot paths.
+    /// Iterate entity ids in `HashMap` order.
+    ///
+    /// This does not allocate. It is not a simulation output: `HashMap`
+    /// iteration order is not stable across processes. Use [`Self::entities`]
+    /// when the order is observed by a plan, a hash, or a save.
     pub fn iter_entities(&self) -> impl Iterator<Item = Entity> + '_ {
         self.poses.keys().copied()
     }
@@ -362,12 +379,7 @@ impl World {
         if let Some(ref cached) = self.obstacles_cache {
             return Arc::clone(cached);
         }
-        let vec: Vec<IVec2> = self
-            .obstacles
-            .iter()
-            .map(|&(x, y)| IVec2 { x, y })
-            .collect();
-        let arc = Arc::new(vec);
+        let arc = Arc::new(self.sorted_obstacles());
         self.obstacles_cache = Some(Arc::clone(&arc));
         arc
     }
@@ -376,6 +388,26 @@ impl World {
     pub fn invalidate_obstacles_cache(&mut self) {
         self.obstacles_cache = None;
     }
+
+    /// Obstacle cells sorted by `(x, y)`.
+    ///
+    /// `obstacles` is a `HashSet`. The copy that enters a snapshot is sorted
+    /// so the iteration order is not part of the simulation result.
+    pub fn sorted_obstacles(&self) -> Vec<IVec2> {
+        let mut vec: Vec<IVec2> = self
+            .obstacles
+            .iter()
+            .map(|&(x, y)| IVec2 { x, y })
+            .collect();
+        vec.sort_unstable_by(|a, b| a.x.cmp(&b.x).then(a.y.cmp(&b.y)));
+        vec
+    }
+}
+
+fn sorted_entities(ids: impl Iterator<Item = Entity>) -> Vec<Entity> {
+    let mut ids: Vec<Entity> = ids.collect();
+    ids.sort_unstable();
+    ids
 }
 
 #[cfg(test)]
@@ -426,6 +458,31 @@ mod tests {
         assert_eq!(e3, 3);
         assert_eq!(w.next_id, 4);
         assert_eq!(w.entities().len(), 3);
+    }
+
+    #[test]
+    fn team_queries_and_entities_are_sorted_by_id() {
+        let mut w = World::new();
+        w.spawn_with_id(10, "p", IVec2 { x: 0, y: 0 }, Team { id: 0 }, 1, 0);
+        w.spawn_with_id(4, "c", IVec2 { x: 1, y: 0 }, Team { id: 1 }, 1, 0);
+        w.spawn_with_id(7, "e", IVec2 { x: 2, y: 0 }, Team { id: 2 }, 1, 0);
+        w.spawn_with_id(2, "e2", IVec2 { x: 3, y: 0 }, Team { id: 2 }, 1, 0);
+        assert_eq!(w.all_of_team(1), vec![4]);
+        assert_eq!(w.all_of_team(0), vec![10]);
+        assert_eq!(w.enemies_of(1), vec![2, 7, 10]);
+        assert_eq!(w.entities(), vec![2, 4, 7, 10]);
+    }
+
+    #[test]
+    fn obstacles_as_ivec2_sorted_by_coordinate() {
+        let mut w = World::new();
+        w.obstacles.insert((2, 1));
+        w.obstacles.insert((1, 9));
+        w.obstacles.insert((1, 2));
+        let coords: Vec<(i32, i32)> = w.sorted_obstacles().iter().map(|p| (p.x, p.y)).collect();
+        assert_eq!(coords, vec![(1, 2), (1, 9), (2, 1)]);
+        let cached: Vec<(i32, i32)> = w.obstacles_as_ivec2().iter().map(|p| (p.x, p.y)).collect();
+        assert_eq!(cached, coords);
     }
 
     #[test]

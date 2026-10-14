@@ -814,6 +814,7 @@ dependencies = [
  "rand 0.9.2",
  "serde",
  "serde_json",
+ "sha2",
  "thiserror 2.0.17",
 ]
 
@@ -11741,6 +11742,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "astraweave-ai",
+ "astraweave-behavior",
  "astraweave-cinematics",
  "astraweave-core",
  "astraweave-dialogue",

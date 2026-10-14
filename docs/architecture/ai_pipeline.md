@@ -8,7 +8,7 @@ domain: ai
 lifecycle_status: active
 integration_status: wired
 owns: [astraweave-ai, astraweave-behavior, astraweave-context, astraweave-coordination, astraweave-dialogue, astraweave-director, astraweave-embeddings, astraweave-llm, astraweave-memory, astraweave-npc, astraweave-persona, astraweave-prompts, astraweave-rag]
-doc_version: "1.11"
+doc_version: "1.12"
 last_verified_commit: 32afac52f
 ---
 
@@ -20,7 +20,7 @@ last_verified_commit: 32afac52f
 |---|---|
 | **System name** | AI Pipeline (Perception → Reasoning → Planning → Action) — foundational AI-first substrate |
 | **Primary crates** | `astraweave-ai` (39 files / 30.5K LoC), `astraweave-behavior` (6 / 5K), `astraweave-llm` (29 / 23.5K), `astraweave-memory` (17 / 11.5K), `astraweave-director` (6 / 3.3K), `astraweave-npc` (6 / 1.7K), `astraweave-dialogue` (4 / 5K), `astraweave-coordination` (5 / 5.3K) — **8 crates, 112 files, ~85K LoC total** |
-| **Document version** | 1.11 |
+| **Document version** | 1.12 |
 | **Last verified against commit** | `32afac52f` |
 | **Last verified date** | 2026-05-12 |
 | **Status** | **Active foundation — AI-first citizen of the engine.** The canonical loop is stable and validated for 12,700+ agents @ 60 FPS (per `astraweave-ai/src/lib.rs:27`). The Arbiter / dual-executor / LLM fallback chain has shipped multiple iterations and is hardening continuously. Subsystems like Memory, Director, NPC, Dialogue, Coordination are each large enough to warrant per-system follow-up traces. |
@@ -370,10 +370,10 @@ This section enumerates the load-bearing files. Per-file enumeration of all 112 
 | File | Role | Status | Notes |
 |---|---|---|---|
 | `astraweave-ai/src/lib.rs` | Module declarations + re-exports; performance summary at lines 22-27 | Active | 70 LoC |
-| `astraweave-ai/src/core_loop.rs` | `PlannerMode`, `CAiController`, `dispatch_planner`; the canonical loop dispatcher | Active | Re-exported via `lib.rs:54` |
+| `astraweave-ai/src/core_loop.rs` | `PlannerMode`, `CAiController`, `dispatch_planner`; the canonical loop dispatcher | Active | With `ai-bt`, policy `default` ticks a behavior graph and other policies return `BehaviorDispatchError`. `ai-goap` / `ai-bt` enable the behavior crate |
 | `astraweave-ai/src/orchestrator.rs` | `Orchestrator` trait, `OrchestratorAsync` trait, `RuleOrchestrator` | Active | The trait surface is the single contract every planner implements |
 | `astraweave-ai/src/tool_sandbox.rs` | `ToolVerb` enum (10 verbs), `ValidationCategory`, sandbox helpers | Active | Re-exported via `lib.rs:57` |
-| `astraweave-ai/src/ecs_ai_plugin.rs` | `AiPlanningPlugin`, `build_app_with_ai()`, `sys_ai_planning` system | Active | Registers in stage `"ai_planning"` |
+| `astraweave-ai/src/ecs_ai_plugin.rs` | `AiPlanningPlugin`, `build_app_with_ai()`, `sys_ai_planning` system | Active | Plans every team-1 companion on the tick (legacy ids sorted, then ECS companions not already handled). A plan without `MoveTo`, or `try_build_snapshot`'s `SnapshotError`, records `AiPlanningFailedEvent` |
 | `astraweave-ai/src/ai_arbiter.rs` | `AIArbiter`, `AIControlMode`; the hybrid GOAP+LLM controller | Active (feature `llm_orchestrator`) | Lines 1-46 contain the canonical ASCII architecture diagram |
 | `astraweave-ai/src/llm_executor.rs` | `LlmExecutor` (`generate_plan_async`, `generate_plan_sync`) | Active (feature `llm_orchestrator`) | Wraps `Arc<dyn OrchestratorAsync>` + tokio `Handle` |
 | `astraweave-ai/src/async_task.rs` | `AsyncTask<T>` non-blocking poll wrapper around `JoinHandle<T>` | Active (feature `llm_orchestrator`) | Drop aborts the underlying task |
@@ -390,10 +390,10 @@ This section enumerates the load-bearing files. Per-file enumeration of all 112 
 | File | Role | Status | Notes |
 |---|---|---|---|
 | `astraweave-behavior/src/lib.rs` | `BehaviorNode`, `BehaviorGraph`, `DecoratorType`, `BehaviorContext`, `BehaviorStatus` | Active | `#![forbid(unsafe_code)]` at line 1; `#[non_exhaustive]` on `BehaviorNode` and `DecoratorType` |
-| `astraweave-behavior/src/goap.rs` | Canonical engine GOAP: `WorldState`, `GoapAction`, `GoapGoal`, `GoapPlanner` | Active | `WorldState` uses `BTreeMap<u32, bool>` with interned keys for determinism |
+| `astraweave-behavior/src/goap.rs` | Canonical engine GOAP: `WorldState`, `GoapAction`, `GoapGoal`, `GoapPlanner` | Active | A* orders nodes with `f32::total_cmp`, then depth, then action name. `WorldState` uses `BTreeMap<u32, bool>` |
 | `astraweave-behavior/src/goap_cache.rs` | LRU cache for GOAP plans (Week 3 Action 9) | Active | Powers the 1.01 µs cache-hit performance |
 | `astraweave-behavior/src/interner.rs` | String → u32 interner for GOAP fact keys | Active | Determinism aid |
-| `astraweave-behavior/src/ecs.rs` | `CBehaviorGraph`, `behavior_tick_system`, `BehaviorPlugin` | Active | Plugin registers `behavior_tick_system` in stage `"simulation"` |
+| `astraweave-behavior/src/ecs.rs` | `CBehaviorGraph`, `behavior_tick_system`, `BehaviorPlugin` | Active | `VeilweaverRuntime::new` adds `BehaviorPlugin`, so `run_tick` → `App::run_fixed` ticks behavior graphs |
 | `astraweave-behavior/src/mutation_tests.rs` | Mutation-killing inline tests | Active (test gate) | |
 | `astraweave-behavior/tests/*` | 4 integration test files: `behavior`, `fuzz_planner`, `mutation_resistant_comprehensive_tests`, `mutation_resistant_tests` | Active | |
 
@@ -558,6 +558,15 @@ This section enumerates the load-bearing files. Per-file enumeration of all 112 
 
 ## 7. Decision Log
 
+### D-2026-10-14 — Every companion is planned on the tick
+
+- **Context:** `sys_ai_planning` returned after the first legacy companion, and a plan without `MoveTo` left that companion with no recorded outcome. `core_loop` behavior-tree dispatch bailed with a TODO. The behavior plugin had no non-example `App::run_fixed` caller.
+- **Decision:** The tick plans every team-1 companion. `RuleOrchestrator` stays the wired heuristic (the A2 contract). `GoapOrchestrator` keeps its name and is documented as that heuristic, distinct from `astraweave-behavior`'s A* `GoapPlanner`. Equal A* costs use `total_cmp` plus a stable tie-break. `ai-bt` policy `default` ticks a behavior graph; any other policy returns `BehaviorDispatchError`. `VeilweaverRuntime` registers `BehaviorPlugin`.
+- **Alternatives considered:** Routing the tick through symbolic GOAP would change the plans the ECS integration tests observe. Renaming `GoapOrchestrator` would break the A2 test, which names that type.
+- **Consequences:** `cargo test -p astraweave-ai --test ecs_integration_tests` covers 100 companions and two-run determinism. A missing snapshot component is `AiPlanningFailedEvent`, not a panic, on this path.
+
+
+
 ### Decision: Four-stage canonical loop (Perception → Reasoning → Planning → Action)
 - **Date:** [Reasoning not recovered from available sources — predates current trace; visible as foundational framing in CLAUDE.md and `astraweave-ai/src/lib.rs:1-12`]
 - **Status:** Accepted (in active code; **foundational**)
@@ -648,6 +657,7 @@ This section enumerates the load-bearing files. Per-file enumeration of all 112 
 | 18 | `AIArbiter` records mode transitions in `mode_transitions: u32` | Yes | `ai_arbiter.rs:235-251` field declarations; incremented on every `transition_to_*` call |
 | 19 | `AIArbiter` is `!Send + !Sync` — must be used per-agent, never shared across threads | Yes (compile-time via auto-traits + doc-comment at `ai_arbiter.rs:194-195`) | **Closed from §11 via deep investigation 2026-05-12:** workspace grep for `Arc<AIArbiter>` or bare type name `AIArbiter` outside `astraweave-ai/src/ai_arbiter.rs`, tests, and benches returned zero matches. No external production consumers exist today, so the non-`Send` constraint is not currently violated anywhere. |
 | 20 | No production code stubs in AI surface (no `*_stub` naming convention) | Yes (workspace grep) | **Closed from §11 via deep investigation 2026-05-12:** workspace grep for `_stub` across `astraweave-ai/src`, `astraweave-llm/src`, `astraweave-behavior/src`, `astraweave-memory/src` returned exactly one match: `test_phi3_stub_without_feature` at `astraweave-llm/src/phi3.rs:494` — a test function name, NOT a production stub. (Note: `astraweave-llm/src/llm_adapter.rs` is itself described as a "stub" in its file-header comment per §13.7.7, but does not use the `_stub` naming convention.) |
+| 21 | The AI tick records an outcome for every team-1 companion. A* node order is a total order (`f32::total_cmp`), not `partial_cmp` collapsing NaN to `Equal` | Yes | `sys_ai_planning` loops legacy companions sorted by id, then ECS companions not already handled. `astraweave-behavior` `PlanNode::cmp` and `astraweave-ai` `goap/planner.rs` `PlanNode::cmp`. `ecs_integration_tests` `test_multi_agent_100_agents` and `test_multi_agent_determinism` |
 
 ---
 

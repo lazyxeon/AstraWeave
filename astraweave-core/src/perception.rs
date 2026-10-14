@@ -5,7 +5,31 @@ pub struct PerceptionConfig {
     pub los_max: i32,
 }
 
-#[allow(clippy::expect_used)] // These world queries are preconditions — caller guarantees entities have required components
+/// A snapshot could not be built because a required component is absent.
+///
+/// The AI tick records this as `AiPlanningFailedEvent` instead of aborting
+/// the process. Callers that have just spawned the entities and treat a
+/// missing component as a programmer error use [`build_snapshot`], which
+/// still panics.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SnapshotError {
+    pub entity: Entity,
+    pub component: &'static str,
+}
+
+impl std::fmt::Display for SnapshotError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "entity {} is missing the {} component",
+            self.entity, self.component
+        )
+    }
+}
+
+impl std::error::Error for SnapshotError {}
+
+#[allow(clippy::expect_used)] // Programmer-error path. The tick uses `try_build_snapshot`.
 pub fn build_snapshot(
     w: &World,
     t_player: Entity,
@@ -14,72 +38,34 @@ pub fn build_snapshot(
     objective: Option<String>,
     cfg: &PerceptionConfig,
 ) -> WorldSnapshot {
-    let ppos = w
-        .pos_of(t_player)
-        .expect("Player entity should have Position component");
-    let cpos = w
-        .pos_of(t_companion)
-        .expect("Companion entity should have Position component");
-    let player = PlayerState {
-        hp: w
-            .health(t_player)
-            .expect("Player entity should have Health component")
-            .hp,
-        pos: ppos,
-        stance: Stance::Crouch,
-        orders: vec!["hold_east".into()],
-    };
-    let me = CompanionState {
-        ammo: w
-            .ammo(t_companion)
-            .expect("Companion entity should have Ammo component")
-            .rounds,
-        // Direct clone — World now uses BTreeMap, matching schema. No conversion needed.
-        cooldowns: w
-            .cooldowns(t_companion)
-            .expect("Companion entity should have Cooldowns component")
-            .map
-            .clone(),
-        morale: 0.8,
-        pos: cpos,
-    };
-    let enemies = enemies
-        .iter()
-        .filter_map(|&e| {
-            let pos = w.pos_of(e)?;
-            let hp = w.health(e)?.hp;
-            // LOS consider simple radius; real LOS in validator
-            let cover = if (pos.x - ppos.x).abs() + (pos.y - ppos.y).abs() > cfg.los_max {
-                CoverType::Unknown
-            } else {
-                CoverType::Low
-            };
-            Some(EnemyState {
-                id: e,
-                pos,
-                hp,
-                cover,
-                last_seen: w.t,
-            })
-        })
-        .collect::<Vec<_>>();
+    try_build_snapshot(w, t_player, t_companion, enemies, objective, cfg)
+        .expect("snapshot entities must carry position, health, ammo, and cooldowns")
+}
 
-    WorldSnapshot {
-        t: w.t,
-        player,
-        me,
+/// Fallible snapshot builder. A missing component is an error, not a panic.
+pub fn try_build_snapshot(
+    w: &World,
+    t_player: Entity,
+    t_companion: Entity,
+    enemies: &[Entity],
+    objective: Option<String>,
+    cfg: &PerceptionConfig,
+) -> Result<WorldSnapshot, SnapshotError> {
+    assemble_snapshot(
+        w,
+        t_player,
+        t_companion,
         enemies,
-        pois: vec![Poi {
-            k: "breach_door".into(),
-            pos: IVec2 { x: 15, y: 8 },
-        }],
-        obstacles: w.obstacles.iter().map(|&(x, y)| IVec2 { x, y }).collect(),
         objective,
-    }
+        cfg,
+        w.sorted_obstacles(),
+    )
 }
 
 /// Build a snapshot with pre-computed obstacles to avoid redundant conversion
 /// when building multiple snapshots per frame (e.g., one per AI agent).
+///
+/// The obstacle list is sorted by `(x, y)` before it is stored.
 #[allow(clippy::expect_used)]
 pub fn build_snapshot_shared_obstacles(
     w: &World,
@@ -90,16 +76,63 @@ pub fn build_snapshot_shared_obstacles(
     cfg: &PerceptionConfig,
     obstacles: Vec<IVec2>,
 ) -> WorldSnapshot {
-    let ppos = w
-        .pos_of(t_player)
-        .expect("Player entity should have Position component");
-    let cpos = w
-        .pos_of(t_companion)
-        .expect("Companion entity should have Position component");
+    try_build_snapshot_shared_obstacles(
+        w,
+        t_player,
+        t_companion,
+        enemies,
+        objective,
+        cfg,
+        obstacles,
+    )
+    .expect("snapshot entities must carry position, health, ammo, and cooldowns")
+}
+
+/// Fallible form of [`build_snapshot_shared_obstacles`].
+pub fn try_build_snapshot_shared_obstacles(
+    w: &World,
+    t_player: Entity,
+    t_companion: Entity,
+    enemies: &[Entity],
+    objective: Option<String>,
+    cfg: &PerceptionConfig,
+    obstacles: Vec<IVec2>,
+) -> Result<WorldSnapshot, SnapshotError> {
+    assemble_snapshot(
+        w,
+        t_player,
+        t_companion,
+        enemies,
+        objective,
+        cfg,
+        sort_obstacles(obstacles),
+    )
+}
+
+fn assemble_snapshot(
+    w: &World,
+    t_player: Entity,
+    t_companion: Entity,
+    enemies: &[Entity],
+    objective: Option<String>,
+    cfg: &PerceptionConfig,
+    obstacles: Vec<IVec2>,
+) -> Result<WorldSnapshot, SnapshotError> {
+    let ppos = w.pos_of(t_player).ok_or(SnapshotError {
+        entity: t_player,
+        component: "Position",
+    })?;
+    let cpos = w.pos_of(t_companion).ok_or(SnapshotError {
+        entity: t_companion,
+        component: "Position",
+    })?;
     let player = PlayerState {
         hp: w
             .health(t_player)
-            .expect("Player entity should have Health component")
+            .ok_or(SnapshotError {
+                entity: t_player,
+                component: "Health",
+            })?
             .hp,
         pos: ppos,
         stance: Stance::Crouch,
@@ -108,48 +141,61 @@ pub fn build_snapshot_shared_obstacles(
     let me = CompanionState {
         ammo: w
             .ammo(t_companion)
-            .expect("Companion entity should have Ammo component")
+            .ok_or(SnapshotError {
+                entity: t_companion,
+                component: "Ammo",
+            })?
             .rounds,
         cooldowns: w
             .cooldowns(t_companion)
-            .expect("Companion entity should have Cooldowns component")
+            .ok_or(SnapshotError {
+                entity: t_companion,
+                component: "Cooldowns",
+            })?
             .map
             .clone(),
         morale: 0.8,
         pos: cpos,
     };
-    let enemies = enemies
-        .iter()
-        .filter_map(|&e| {
-            let pos = w.pos_of(e)?;
-            let hp = w.health(e)?.hp;
-            let cover = if (pos.x - ppos.x).abs() + (pos.y - ppos.y).abs() > cfg.los_max {
-                CoverType::Unknown
-            } else {
-                CoverType::Low
-            };
-            Some(EnemyState {
-                id: e,
-                pos,
-                hp,
-                cover,
-                last_seen: w.t,
-            })
-        })
-        .collect::<Vec<_>>();
+    let mut seen = Vec::with_capacity(enemies.len());
+    for &e in enemies {
+        let Some(pos) = w.pos_of(e) else {
+            continue;
+        };
+        let Some(health) = w.health(e) else {
+            continue;
+        };
+        let cover = if (pos.x - ppos.x).abs() + (pos.y - ppos.y).abs() > cfg.los_max {
+            CoverType::Unknown
+        } else {
+            CoverType::Low
+        };
+        seen.push(EnemyState {
+            id: e,
+            pos,
+            hp: health.hp,
+            cover,
+            last_seen: w.t,
+        });
+    }
 
-    WorldSnapshot {
+    Ok(WorldSnapshot {
         t: w.t,
         player,
         me,
-        enemies,
+        enemies: seen,
         pois: vec![Poi {
             k: "breach_door".into(),
             pos: IVec2 { x: 15, y: 8 },
         }],
         obstacles,
         objective,
-    }
+    })
+}
+
+fn sort_obstacles(mut obstacles: Vec<IVec2>) -> Vec<IVec2> {
+    obstacles.sort_unstable_by(|a, b| a.x.cmp(&b.x).then(a.y.cmp(&b.y)));
+    obstacles
 }
 
 #[cfg(test)]
@@ -563,5 +609,29 @@ mod tests {
             CoverType::Low,
             "Negative dir subtraction must work"
         );
+    }
+
+    #[test]
+    fn test_build_snapshot_obstacles_sorted_by_coordinate() {
+        let mut w = World::new();
+        w.obstacles.insert((4, 1));
+        w.obstacles.insert((1, 8));
+        w.obstacles.insert((1, 2));
+        let player = w.spawn("player", iv2(0, 0), Team { id: 1 }, 100, 0);
+        let companion = w.spawn("companion", iv2(1, 1), Team { id: 1 }, 100, 10);
+        let cfg = PerceptionConfig { los_max: 20 };
+        let snap = build_snapshot(&w, player, companion, &[], None, &cfg);
+        let coords: Vec<(i32, i32)> = snap.obstacles.iter().map(|p| (p.x, p.y)).collect();
+        assert_eq!(coords, vec![(1, 2), (1, 8), (4, 1)]);
+    }
+
+    #[test]
+    fn test_try_build_snapshot_missing_companion_is_error() {
+        let mut w = World::new();
+        let player = w.spawn("player", iv2(0, 0), Team { id: 0 }, 100, 0);
+        let err = try_build_snapshot(&w, player, 99, &[], None, &PerceptionConfig { los_max: 10 })
+            .expect_err("missing companion");
+        assert_eq!(err.entity, 99);
+        assert_eq!(err.component, "Position");
     }
 }
