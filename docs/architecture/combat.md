@@ -7,10 +7,10 @@ primary_crate: astraweave-combat
 domain: gameplay
 lifecycle_status: active
 integration_status: partial
-summary: "Resolver, ECS tick, and save meta are in astraweave-combat. Demo combat still uses its own flat hits."
+summary: "Resolver re-exports core SimRng. Fixed64 stays in this crate. combat_resolve is a required determinism-replay case. The demo still uses its own flat hits."
 owns: [astraweave-combat]
-doc_version: "1.0"
-last_verified_commit: 57b689c2
+doc_version: "1.1"
+last_verified_commit: 9f75e245
 runtime_edges:
   - to: astraweave-ecs
     note: CombatPlugin registers combat_resolve_system on the simulation stage
@@ -24,8 +24,8 @@ runtime_edges:
 |---|---|
 | **System name** | Combat damage |
 | **Primary crates** | `astraweave-combat` |
-| **Document version** | 1.0 |
-| **Last verified against commit** | `57b689c2` |
+| **Document version** | 1.1 |
+| **Last verified against commit** | `9f75e245` |
 | **Last verified date** | 2026-10-14 |
 | **Status** | Active, partial. The demo does not call it yet. |
 | **Owner notes** | Formula spec: `docs/current/COMBAT_DAMAGE_SYSTEM_DESIGN.md`. Gate Pass, 2026-10-14. |
