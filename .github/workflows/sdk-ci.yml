@@ -87,6 +87,9 @@ jobs:
             return 0;
           }
           '@
+          # staticlib embeds Rust std objects. Those reference Winsock, the
+          # user profile directory, and ntdll. A cdylib would already carry
+          # them; the .lib archive does not.
           cl /I. c_harness.c /link /LIBPATH:target\release astraweave_sdk.lib ws2_32.lib userenv.lib ntdll.lib
           if (Test-Path target\release\astraweave_sdk.dll) { Copy-Item target\release\astraweave_sdk.dll . }
           .\c_harness.exe | Tee-Object -FilePath harness_out.txt | Out-Null
