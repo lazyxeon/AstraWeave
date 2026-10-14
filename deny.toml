@@ -21,6 +21,9 @@ allow = [
     "BSL-1.0",  # Boost Software License 1.0 - used by clipboard-win and error-code
     "NCSA",     # University of Illinois/NCSA Open Source License - used by libfuzzer-sys
     "LicenseRef-UFL-1.0",  # Ubuntu Font License - used by epaint/egui fonts
+    "Ubuntu-font-1.0",     # SPDX id used by newer egui font metadata
+    "MIT-0",               # MIT No Attribution - borrow-or-share
+    "bzip2-1.0.6",         # bzip2 crate
 ]
 
 # The confidence threshold for detecting a license from a license text.
@@ -93,20 +96,49 @@ db-urls = ["https://github.com/rustsec/advisory-db"]
 # The maximum number of days that can pass before failing CI due to stale advisory db
 maximum-db-staleness = "P90D"
 
+# cargo-deny 0.20: these fields are scopes ("all" / "workspace" / "transitive" / "none").
+# Vulnerabilities always fail unless listed in `ignore`. "all" fails on an
+# unmaintained or unsound advisory that is not ignored.
+unmaintained = "all"
+unsound = "all"
+# bevy_platform 0.17.3 still depends on yanked spin 0.10.0. warn, don't fail.
+yanked = "warn"
+
 # A list of advisory IDs to ignore. Note that ignored advisories will still
 # output a note when they are encountered.
 ignore = [
-    # Known issues that we accept for now - these are maintenance warnings, not security vulnerabilities
-    "RUSTSEC-2024-0388",  # derivative crate is unmaintained - used by transitive deps
-    "RUSTSEC-2024-0384",  # instant crate is unmaintained - used by transitive deps  
-    "RUSTSEC-2024-0436",  # paste crate is unmaintained - used by transitive deps
-    "RUSTSEC-2025-0052",  # async-std has been discontinued - used by orchestrator_async_tick example
-    "RUSTSEC-2023-0089",  # atomic-polyfill is unmaintained - used by heapless -> postcard
-    "RUSTSEC-2025-0057",  # fxhash no longer maintained - used by sled -> aw-net-server
-    
-    # RESOLVED VULNERABILITIES (historical record):
-    # RUSTSEC-2021-0070 - nalgebra 0.26.2 memory corruption - FIXED by removing mikktspace dependency (2025-10-12)
-    # RUSTSEC-2024-0437 - protobuf 2.28.0 DoS vulnerability - FIXED by updating prometheus to 0.14 (2025-10-12)
+    # paste 1.0.15 is unmaintained and has no successor release. nalgebra/simba
+    # (pulled by rapier3d) and texture2ddecoder still depend on it.
+    "RUSTSEC-2024-0436",
+    # instant and fxhash are unmaintained transitive deps of sled 0.34
+    # (aw-net-client / aw-net-server only). Not in the greybox graph.
+    "RUSTSEC-2024-0384",
+    "RUSTSEC-2025-0057",
+    # bincode 1 and 2 are unmaintained with no patched release. Replacing them
+    # changes on-disk formats in terrain, ai, and persistence-ecs.
+    "RUSTSEC-2025-0141",
+    # No patched release. Transitive or optional, not in the greybox graph.
+    "RUSTSEC-2025-0119", # number_prefix
+    "RUSTSEC-2025-0134", # rustls-pemfile, used by aw-net-server cert loading
+    "RUSTSEC-2026-0249", # smartstring
+    "RUSTSEC-2026-0192", # ttf-parser, via fonts
+    "RUSTSEC-2024-0449", # unsafe-libyaml, via deprecated serde_yaml
+    # nalgebra 0.26.2 Deserialize length invariant. Only mikktspace 0.3.0
+    # (latest) pulls it, for tangent generation. That path does not
+    # deserialize nalgebra. No newer mikktspace release exists.
+    "RUSTSEC-2021-0070",
+    # quick-xml <0.41. Pulled by wayland-scanner (winit) and zbus_xml
+    # (accesskit), which parse protocol XML, not save files. No
+    # semver-compatible upgrade inside winit 0.30 / accesskit_winit 0.27.
+    "RUSTSEC-2026-0194",
+    "RUSTSEC-2026-0195",
+    # rustls-webpki 0.102 via rustls 0.22 / tokio-rustls 0.25 in aw-net-server.
+    # Not linked into aravath_greybox. Moving the server to tokio-rustls 0.26
+    # changes the ServerCertVerifier trait the TLS tests implement.
+    "RUSTSEC-2026-0104",
+    "RUSTSEC-2026-0098",
+    "RUSTSEC-2026-0099",
+    "RUSTSEC-2026-0049",
 ]
 
 # Threshold for security vulnerabilities, any vulnerability with a CVSS score

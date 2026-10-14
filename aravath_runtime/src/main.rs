@@ -973,16 +973,13 @@ struct Launch {
 fn launch_options() -> Launch {
     let mut volumetrics = true;
     let cfg = startup::exe_dir().join("aravath.cfg");
-    if let Ok(text) = std::fs::read_to_string(&cfg) {
-        startup::line(&format!("read {}", cfg.display()));
-        for line in text.lines() {
-            let key = line.split('#').next().unwrap_or("").replace(' ', "");
-            if key == "volumetrics=off" {
-                volumetrics = false;
-            } else if key == "volumetrics=on" {
-                volumetrics = true;
-            }
+    match aravath_runtime::assets::read_volumetrics_cfg(&cfg) {
+        Ok(Some(enabled)) => {
+            startup::line(&format!("read {}", cfg.display()));
+            volumetrics = enabled;
         }
+        Ok(None) => {}
+        Err(err) => startup::fatal("Aravath config", &format!("{err:#}")),
     }
     let mut smoke = false;
     for arg in std::env::args().skip(1) {
@@ -990,7 +987,10 @@ fn launch_options() -> Launch {
             "--smoke-test" => smoke = true,
             "--no-volumetrics" | "--safe" => volumetrics = false,
             "--volumetrics" => volumetrics = true,
-            other => startup::line(&format!("ignored argument {other}")),
+            other => startup::line(&format!(
+                "ignored argument {}",
+                aravath_runtime::assets::bounded_text(other, 80)
+            )),
         }
     }
     Launch { smoke, volumetrics }

@@ -282,3 +282,13 @@ print_stdout = "allow"
 print_stderr = "allow"
 result_large_err = "allow"
 
+# Shipped aravath_greybox.exe. Symbols are stripped. panic stays unwind so the
+# demo can still catch a volumetrics setup failure and continue. overflow
+# checks stay off so this binary matches the release arithmetic the engine
+# tests. There is no self-updater in this profile.
+[profile.dist]
+inherits = "release"
+strip = true
+debug = false
+incremental = false
+

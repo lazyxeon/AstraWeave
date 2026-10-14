@@ -18,7 +18,7 @@ hex = { workspace = true }
 which = "8"
 glob = "0.3"
 gltf = "1"
-image = "0.25"
+image = { version = "0.25", default-features = false, features = ["bmp", "dds", "exr", "gif", "hdr", "ico", "jpeg", "png", "pnm", "qoi", "tga", "tiff", "webp"] }
 astraweave-asset = { path = "../../astraweave-asset" }
 astraweave-security = { workspace = true }
 tokio = { version = "1", features = ["full"] }

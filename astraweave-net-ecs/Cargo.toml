@@ -14,7 +14,7 @@ tokio-tungstenite = "0.28"
 aw-net-proto = { path = "../net/aw-net-proto" }
 astraweave-ecs = { workspace = true }
 astraweave-core = { workspace = true }
-postcard = "1.0"
+postcard = { version = "1.0", default-features = false, features = ["alloc"] }
 lz4_flex = "0.11"
 crc32fast = "1.4"
 glam = { workspace = true }
