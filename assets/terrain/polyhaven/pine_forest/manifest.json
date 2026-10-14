@@ -482,7 +482,52 @@
           "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/tree_small_02/tree_small_02.bin",
           "note": "Photogrammetry mesh buffer. Not vendored; the public repo keeps the glTF and 1k maps."
         }
-      ]
+      ],
+      "game_ready": {
+        "tool": "gltfpack",
+        "tool_version": "1.3",
+        "tool_url": "https://github.com/zeux/meshoptimizer/releases/download/v1.3/gltfpack-ubuntu.zip",
+        "tool_zip_sha256": "0666d9dc40d60fe5b9a45f3fc24f8e6ca87112974bd5de9ca57152aa13d06017",
+        "tool_binary_sha256": "595441045457bf3d069ec14fa807b1034d324db003bd66ac6377977cc11e7da3",
+        "command": "gltfpack -i <source.gltf> -o <out.glb> -sa -si <ratio> -tc -vp 14 -vt 12 -vn 8",
+        "source_tris": 2062487,
+        "lod0_triangle_budget": 15000,
+        "note": "Aggressive simplify (-sa) is required to reach the budget from the photogrammetry source. Output glb is byte-identical across two runs of this binary. Billboard is a two-quad cross packed with the same flags from a generated glTF.",
+        "lods": [
+          {
+            "level": "lod0",
+            "path": "assets/terrain/polyhaven/pine_forest/game/tree_small_02_lod0.glb",
+            "bytes": 2231640,
+            "sha256": "385cc89d4c334d8f854e15f02e071ef3967d7a80585920b7917f78ce0506dd5c",
+            "ratio": "0.007273",
+            "textures": "KTX2"
+          },
+          {
+            "level": "lod1",
+            "path": "assets/terrain/polyhaven/pine_forest/game/tree_small_02_lod1.glb",
+            "bytes": 1949176,
+            "sha256": "38324c8540206159d9ba346ac73cd26af4b09ac164a7a1c6eaba316e59967365",
+            "ratio": "0.002424",
+            "textures": "KTX2"
+          },
+          {
+            "level": "lod2",
+            "path": "assets/terrain/polyhaven/pine_forest/game/tree_small_02_lod2.glb",
+            "bytes": 1831300,
+            "sha256": "fc82a090bef0d359f2ba60be128984bfc02782ccf4cbc4865270143fe0fb6c95",
+            "ratio": "0.000727",
+            "textures": "KTX2"
+          },
+          {
+            "level": "billboard",
+            "path": "assets/terrain/polyhaven/pine_forest/game/tree_small_02_billboard.glb",
+            "bytes": 127032,
+            "sha256": "db5162691c21c0c599c1bad2f556caf3af07688913c2d0a927e35f24e8d88642",
+            "ratio": null,
+            "textures": "KTX2"
+          }
+        ]
+      }
     },
     {
       "role": "island_tree",
@@ -574,7 +619,52 @@
           "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/island_tree_01/island_tree_01.bin",
           "note": "Photogrammetry mesh buffer. Not vendored; the public repo keeps the glTF and 1k maps."
         }
-      ]
+      ],
+      "game_ready": {
+        "tool": "gltfpack",
+        "tool_version": "1.3",
+        "tool_url": "https://github.com/zeux/meshoptimizer/releases/download/v1.3/gltfpack-ubuntu.zip",
+        "tool_zip_sha256": "0666d9dc40d60fe5b9a45f3fc24f8e6ca87112974bd5de9ca57152aa13d06017",
+        "tool_binary_sha256": "595441045457bf3d069ec14fa807b1034d324db003bd66ac6377977cc11e7da3",
+        "command": "gltfpack -i <source.gltf> -o <out.glb> -sa -si <ratio> -tc -vp 14 -vt 12 -vn 8",
+        "source_tris": 1599403,
+        "lod0_triangle_budget": 15000,
+        "note": "Aggressive simplify (-sa) is required to reach the budget from the photogrammetry source. Output glb is byte-identical across two runs of this binary. Billboard is a two-quad cross packed with the same flags from a generated glTF.",
+        "lods": [
+          {
+            "level": "lod0",
+            "path": "assets/terrain/polyhaven/pine_forest/game/island_tree_01_lod0.glb",
+            "bytes": 2360548,
+            "sha256": "5431981b08a19627dc6ed84a1875ffe129f5ca09615eeeef51e6f77b816fed7b",
+            "ratio": "0.009378",
+            "textures": "KTX2"
+          },
+          {
+            "level": "lod1",
+            "path": "assets/terrain/polyhaven/pine_forest/game/island_tree_01_lod1.glb",
+            "bytes": 1943724,
+            "sha256": "195ba618db38f3f8496ca29bb9884e410e1af53000d423769a8c7f562677bf28",
+            "ratio": "0.003126",
+            "textures": "KTX2"
+          },
+          {
+            "level": "lod2",
+            "path": "assets/terrain/polyhaven/pine_forest/game/island_tree_01_lod2.glb",
+            "bytes": 1802596,
+            "sha256": "03b871782411c1ac5765fde7fcc442ff1d7c560e5eafdbe6cee7e8e68f8b2f0e",
+            "ratio": "0.000938",
+            "textures": "KTX2"
+          },
+          {
+            "level": "billboard",
+            "path": "assets/terrain/polyhaven/pine_forest/game/island_tree_01_billboard.glb",
+            "bytes": 79980,
+            "sha256": "0c8e4778dc65017169ef3b804533365918197cf56a93eaa748adca02db0130bd",
+            "ratio": null,
+            "textures": "KTX2"
+          }
+        ]
+      }
     },
     {
       "role": "dead_branches",
@@ -621,7 +711,52 @@
           "sha256": "62f5205bfec599000bb7a430e003bbada939bc8d7976a7d3ab7709fd5893413c",
           "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/dry_branches_medium_01/dry_branches_medium_01_nor_gl_1k.jpg"
         }
-      ]
+      ],
+      "game_ready": {
+        "tool": "gltfpack",
+        "tool_version": "1.3",
+        "tool_url": "https://github.com/zeux/meshoptimizer/releases/download/v1.3/gltfpack-ubuntu.zip",
+        "tool_zip_sha256": "0666d9dc40d60fe5b9a45f3fc24f8e6ca87112974bd5de9ca57152aa13d06017",
+        "tool_binary_sha256": "595441045457bf3d069ec14fa807b1034d324db003bd66ac6377977cc11e7da3",
+        "command": "gltfpack -i <source.gltf> -o <out.glb> -sa -si <ratio> -tc -vp 14 -vt 12 -vn 8",
+        "source_tris": 16803,
+        "lod0_triangle_budget": 15000,
+        "note": "Aggressive simplify (-sa) is required to reach the budget from the photogrammetry source. Output glb is byte-identical across two runs of this binary. Billboard is a two-quad cross packed with the same flags from a generated glTF.",
+        "lods": [
+          {
+            "level": "lod0",
+            "path": "assets/terrain/polyhaven/pine_forest/game/dry_branches_medium_01_lod0.glb",
+            "bytes": 948816,
+            "sha256": "45d778f667dba73312005c23e2ab395334e832a514a3b22e657b26d764411a04",
+            "ratio": "0.892697",
+            "textures": "KTX2"
+          },
+          {
+            "level": "lod1",
+            "path": "assets/terrain/polyhaven/pine_forest/game/dry_branches_medium_01_lod1.glb",
+            "bytes": 799552,
+            "sha256": "01d17ab7687cc903ed59d073067c5ef21ca77a1c42064a7f0ea54cd5c72542cc",
+            "ratio": "0.297565",
+            "textures": "KTX2"
+          },
+          {
+            "level": "lod2",
+            "path": "assets/terrain/polyhaven/pine_forest/game/dry_branches_medium_01_lod2.glb",
+            "bytes": 734508,
+            "sha256": "cc82cd06b5e019da4478286e544f9cc5f7e2bafe2e67fd3c09be6d7599becc1f",
+            "ratio": "0.089271",
+            "textures": "KTX2"
+          },
+          {
+            "level": "billboard",
+            "path": "assets/terrain/polyhaven/pine_forest/game/dry_branches_medium_01_billboard.glb",
+            "bytes": 227224,
+            "sha256": "9df747badf96a3f16417a4f663d2d9990a3e591ecd2ae687e48bc59d89961b2d",
+            "ratio": null,
+            "textures": "KTX2"
+          }
+        ]
+      }
     },
     {
       "role": "conifer",
@@ -734,7 +869,52 @@
           "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/pine_tree_01/pine_tree_01.bin",
           "note": "Photogrammetry mesh buffer. Not vendored; the public repo keeps the glTF and 1k maps."
         }
-      ]
+      ],
+      "game_ready": {
+        "tool": "gltfpack",
+        "tool_version": "1.3",
+        "tool_url": "https://github.com/zeux/meshoptimizer/releases/download/v1.3/gltfpack-ubuntu.zip",
+        "tool_zip_sha256": "0666d9dc40d60fe5b9a45f3fc24f8e6ca87112974bd5de9ca57152aa13d06017",
+        "tool_binary_sha256": "595441045457bf3d069ec14fa807b1034d324db003bd66ac6377977cc11e7da3",
+        "command": "gltfpack -i <source.gltf> -o <out.glb> -sa -si <ratio> -tc -vp 14 -vt 12 -vn 8",
+        "source_tris": 17182252,
+        "lod0_triangle_budget": 15000,
+        "note": "Aggressive simplify (-sa) is required to reach the budget from the photogrammetry source. Output glb is byte-identical across two runs of this binary. Billboard is a two-quad cross packed with the same flags from a generated glTF.",
+        "lods": [
+          {
+            "level": "lod0",
+            "path": "assets/terrain/polyhaven/pine_forest/game/pine_tree_01_lod0.glb",
+            "bytes": 2763864,
+            "sha256": "b7859193a3947236e4af006a53ed7ea3b2ba8124143516576deea4f524e39d4f",
+            "ratio": "0.000873",
+            "textures": "KTX2"
+          },
+          {
+            "level": "lod1",
+            "path": "assets/terrain/polyhaven/pine_forest/game/pine_tree_01_lod1.glb",
+            "bytes": 2541664,
+            "sha256": "73f5aff419db6222b3543bd95f17f89b3041ce51708fdccf663e28305ac1395a",
+            "ratio": "0.000291",
+            "textures": "KTX2"
+          },
+          {
+            "level": "lod2",
+            "path": "assets/terrain/polyhaven/pine_forest/game/pine_tree_01_lod2.glb",
+            "bytes": 2457040,
+            "sha256": "b6a7d03323cc4ce788bf7d12990d7e06c7d9ce009f58be69c80d5bab5b5c9cc4",
+            "ratio": "0.000087",
+            "textures": "KTX2"
+          },
+          {
+            "level": "billboard",
+            "path": "assets/terrain/polyhaven/pine_forest/game/pine_tree_01_billboard.glb",
+            "bytes": 171908,
+            "sha256": "9700a461851f270c61672eb6a806fd37e49810134a4e436fd6bc855203426a6b",
+            "ratio": null,
+            "textures": "KTX2"
+          }
+        ]
+      }
     },
     {
       "role": "opening_sky_ibl",
@@ -814,5 +994,9 @@
     "source_url": "https://polyhaven.com/a/pine_tree_01",
     "license": "CC0",
     "license_url": "https://polyhaven.com/license"
+  },
+  "game_lod_pipeline": {
+    "script": "assets/terrain/polyhaven/pine_forest/build_game_lod.py",
+    "gltfpack": "1.3"
   }
 }

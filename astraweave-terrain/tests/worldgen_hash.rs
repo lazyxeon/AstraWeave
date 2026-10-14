@@ -8,6 +8,24 @@ use std::path::PathBuf;
 use astraweave_terrain::column_gen::worldgen_record;
 use sha2::{Digest, Sha256};
 
+fn glb_triangles(bytes: &[u8]) -> usize {
+    assert_eq!(&bytes[0..4], b"glTF");
+    let json_len = u32::from_le_bytes(bytes[12..16].try_into().unwrap()) as usize;
+    let json: serde_json::Value =
+        serde_json::from_slice(&bytes[20..20 + json_len]).expect("glb json");
+    let accessors = json["accessors"].as_array().expect("accessors");
+    json["meshes"]
+        .as_array()
+        .expect("meshes")
+        .iter()
+        .flat_map(|mesh| mesh["primitives"].as_array().into_iter().flatten())
+        .map(|prim| {
+            let index = prim["indices"].as_u64().expect("indices") as usize;
+            accessors[index]["count"].as_u64().expect("count") as usize / 3
+        })
+        .sum()
+}
+
 fn sha256_hex(bytes: &[u8]) -> String {
     let digest = Sha256::digest(bytes);
     let mut hex = String::with_capacity(digest.len() * 2);
@@ -97,6 +115,30 @@ fn pine_forest_manifest_matches_downloaded_bytes() {
             for file in remote {
                 assert_eq!(file["vendored"], false, "{role} remote file");
                 assert_eq!(file["sha256"].as_str().unwrap().len(), 64);
+            }
+        }
+        if let Some(lods) = asset
+            .get("game_ready")
+            .and_then(|ready| ready.get("lods"))
+            .and_then(|value| value.as_array())
+        {
+            assert_eq!(
+                asset["game_ready"]["tool_version"].as_str(),
+                Some("1.3"),
+                "{role} gltfpack pin"
+            );
+            for lod in lods {
+                let rel = lod["path"].as_str().expect("lod path");
+                let bytes = std::fs::read(repo.join(rel)).expect(rel);
+                assert_eq!(sha256_hex(&bytes), lod["sha256"].as_str().unwrap(), "{rel}");
+                let level = lod["level"].as_str().unwrap();
+                let tris = glb_triangles(&bytes);
+                if level == "lod0" {
+                    assert!(tris <= 15_000, "{rel} has {tris} triangles");
+                }
+                if level == "billboard" {
+                    assert_eq!(tris, 4, "{rel} cross billboard");
+                }
             }
         }
     }

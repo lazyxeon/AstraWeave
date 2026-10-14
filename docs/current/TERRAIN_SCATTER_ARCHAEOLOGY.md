@@ -343,3 +343,22 @@ Acceptance: opening census test still has trees, no palms, an empty dirt road. A
 For each row in the table that says “or”: the change either adds a non-test caller and a test, or deletes the file. `astraweave-pcg` is the first of these. `clipmap_terrain.rs` is a delete.
 
 Acceptance: `rg` for each deleted type is empty. `cargo test -p astraweave-terrain --lib` passes. The determinism workflow stays required for `worldgen_columns`.
+
+---
+
+## 14. Done and remaining (2026-10-14)
+
+| Item | Status |
+|---|---|
+| P1 mesher, edge-keyed `vertex_cache`, byte-identity regression | Done |
+| P2 `worldgen_columns` required in `determinism-replay.yml` | Done |
+| P2 sorted foliage upload, `SimRng` yaw quanta, editor zone seed is `terrain_seed()` | Done |
+| P0 integer columns, dirt road, forest opening, no palms in the opening | Done |
+| P3 scatter LOD and instancing. 2009 props, 727 kept, 1.54 ms CPU | Done on CPU. RTX 4060 Ti frame time is still unmeasured: this host has no Vulkan device |
+| P4 dig (`E`) and place (`R`) on density 0/1 voxels, save/replay | Done. `aravath_runtime` lib tests cover dig, place, and the replay golden `fd303f2adf402881` |
+| Game-ready scatter meshes | Done. `gltfpack` 1.3, command in `build_game_lod.py` and `manifest.json`. LOD0 is under 15k triangles (`pine_tree_01` 14,790). LOD1, LOD2, and a 4-triangle KTX2 cross billboard are committed with SHA-256. The 949 MB source buffer stays a build input |
+| Greybox still draws KayKit | Remaining. `load_colored` reads vertex colors and ignores images. The new glbs are textured KTX2. Swapping them in without a texture bind would draw flat white trees. That bind is U3, with the render agent’s IBL bind of `spruit_sunrise` (PR #216) |
+| U1 `ColumnStream` and deletion of the unused heightmap streamer | Not started |
+| U2 integer height as the only saved editor ground, erosion bake | Not started |
+| U3 editor scatter reads `prop_at`, voxel materials sample the manifest, GPU frame time | Not started |
+| U4 wire or delete `astraweave-pcg`, clipmap, GPU erosion, Phase 10 leftovers | Not started |
