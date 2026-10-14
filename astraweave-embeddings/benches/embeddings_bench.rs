@@ -9,7 +9,7 @@
 //!
 //! Run with: `cargo bench -p astraweave-embeddings`
 
-use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+use criterion::{criterion_group, criterion_main, BatchSize, BenchmarkId, Criterion, Throughput};
 use std::collections::HashMap;
 use std::hint::black_box;
 
@@ -200,39 +200,51 @@ fn bench_vector_store_operations(c: &mut Criterion) {
     let mut group = c.benchmark_group("vector_store_operations");
 
     // Insert operations
+    // One insert into an empty store per sample. A store reused across
+    // Criterion's millions of iterations hits max_vectors (100_000) and the
+    // capacity error is not an insert-cost measurement.
     group.bench_function("insert_single", |b| {
-        let store = astraweave_embeddings::VectorStore::new(dims);
-        let mut idx = 0u64;
-        b.iter(|| {
-            let vector = generate_vector(dims, idx);
-            let id = format!("bench_{}", idx);
-            let result = store.insert(black_box(id), black_box(vector), "test text".to_string());
-            assert!(result.is_ok(), "Insert should succeed");
-            idx += 1;
-        })
+        b.iter_batched(
+            || astraweave_embeddings::VectorStore::new(dims),
+            |store| {
+                let vector = generate_vector(dims, 0);
+                let result = store.insert(
+                    black_box("bench_0".to_string()),
+                    black_box(vector),
+                    "test text".to_string(),
+                );
+                assert!(result.is_ok(), "Insert should succeed: {result:?}");
+                result
+            },
+            BatchSize::SmallInput,
+        )
     });
 
     // Insert with metadata
     group.bench_function("insert_with_metadata", |b| {
-        let store = astraweave_embeddings::VectorStore::new(dims);
-        let mut idx = 0u64;
         let mut metadata = HashMap::new();
         metadata.insert("category".to_string(), "benchmark".to_string());
         metadata.insert("priority".to_string(), "high".to_string());
 
-        b.iter(|| {
-            let vector = generate_vector(dims, idx);
-            let id = format!("bench_{}", idx);
-            let result = store.insert_with_metadata(
-                black_box(id),
-                black_box(vector),
-                "test text".to_string(),
-                0.8,
-                metadata.clone(),
-            );
-            assert!(result.is_ok(), "Insert with metadata should succeed");
-            idx += 1;
-        })
+        b.iter_batched(
+            || astraweave_embeddings::VectorStore::new(dims),
+            |store| {
+                let vector = generate_vector(dims, 0);
+                let result = store.insert_with_metadata(
+                    black_box("bench_0".to_string()),
+                    black_box(vector),
+                    "test text".to_string(),
+                    0.8,
+                    metadata.clone(),
+                );
+                assert!(
+                    result.is_ok(),
+                    "Insert with metadata should succeed: {result:?}"
+                );
+                result
+            },
+            BatchSize::SmallInput,
+        )
     });
 
     // Get by ID

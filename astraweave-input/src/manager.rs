@@ -35,7 +35,10 @@ pub struct InputManager {
 
 impl InputManager {
     pub fn new(context: InputContext, bindings: BindingSet) -> Self {
-        let gilrs = Gilrs::new().ok();
+        // Gilrs::new() spawns a detached udev hotplug thread and drops the
+        // JoinHandle, so the thread lives until process exit. Constructing a
+        // manager per benchmark iteration exhausts the thread limit and the
+        // gilrs spawn then panics. Open the backend on the first poll instead.
         Self {
             context,
             bindings,
@@ -44,7 +47,7 @@ impl InputManager {
             move_axis: Axis2::default(),
             look_axis: Axis2::default(),
             look_sensitivity: 0.12,
-            gilrs,
+            gilrs: None,
             touch_active: false,
             touch_id: None,
             touch_origin: None,
@@ -151,6 +154,12 @@ impl InputManager {
     }
 
     pub fn poll_gamepads(&mut self) {
+        if self.gilrs.is_none() {
+            // `.ok()` does not catch a panic inside Gilrs::new. Spawn failure
+            // is a process-limit problem, not a missing pad; leave gilrs empty
+            // so a later poll can try again only when construction returns Err.
+            self.gilrs = Gilrs::new().ok();
+        }
         // Collect events first to avoid borrowing conflicts
         let mut events = Vec::new();
         if let Some(g) = self.gilrs.as_mut() {
