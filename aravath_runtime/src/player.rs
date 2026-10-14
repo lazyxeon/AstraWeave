@@ -47,7 +47,7 @@ pub fn wish_from_axes(forward: Vec3, right: Vec3, x: f32, y: f32, speed: f32) ->
 }
 
 pub fn flat_basis(yaw: f32) -> (Vec3, Vec3) {
-    let forward = Vec3::new(yaw.cos(), 0.0, yaw.sin());
-    let right = Vec3::new(-yaw.sin(), 0.0, yaw.cos());
+    let forward = Vec3::new(crate::detmath::cos(yaw), 0.0, crate::detmath::sin(yaw));
+    let right = Vec3::new(-crate::detmath::sin(yaw), 0.0, crate::detmath::cos(yaw));
     (forward, right)
 }

@@ -399,7 +399,7 @@ impl ApplicationHandler for App {
                 continue;
             };
             let to_player = pos - enemy_pos;
-            let foe_yaw = to_player.z.atan2(to_player.x);
+            let foe_yaw = aravath_runtime::detmath::atan2(to_player.z, to_player.x);
             let (foe_clip, foe_time, foe_loop) = sample_enemy(&self.figurine, enemy);
             let foe_pose = self
                 .figurine

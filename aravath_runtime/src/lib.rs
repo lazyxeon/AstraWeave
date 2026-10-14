@@ -5,9 +5,15 @@
 //! are not dependencies of this crate. `bridge_agent` is the companion
 //! route across the span. The window does not draw that body yet.
 
+const _: () = assert!(
+    !cfg!(target_feature = "fma"),
+    "aravath_runtime must be compiled without the fma target feature"
+);
+
 pub mod assets;
 pub mod bridge_agent;
 pub mod combat;
+pub mod detmath;
 pub mod figure;
 pub mod ground;
 pub mod hud;

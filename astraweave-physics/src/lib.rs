@@ -109,6 +109,13 @@ pub use rapier3d::prelude::{point, vector};
 
 use std::collections::HashMap;
 
+const _: () = assert!(
+    !cfg!(target_feature = "fma"),
+    "astraweave-physics must be compiled without the fma target feature"
+);
+
+mod detmath;
+
 #[cfg(feature = "profiling")]
 use astraweave_profiling::{plot, span};
 
@@ -1271,7 +1278,7 @@ impl PhysicsWorld {
         if let Some(ctrl) = self.char_map.get_mut(&id) {
             ctrl.jump_buffer_timer = ctrl.jump_buffer_limit;
             let g = 9.81 * ctrl.gravity_scale;
-            ctrl.pending_jump_velocity = (2.0 * g * height).sqrt();
+            ctrl.pending_jump_velocity = detmath::sqrt(2.0 * g * height);
         }
     }
 
@@ -1372,7 +1379,7 @@ impl PhysicsWorld {
                 ) {
                     let ground_normal =
                         glam::Vec3::new(hit.normal.x, hit.normal.y, hit.normal.z).normalize();
-                    let slope = ground_normal.dot(glam::Vec3::Y).acos().to_degrees();
+                    let slope = detmath::acos(ground_normal.dot(glam::Vec3::Y)).to_degrees();
                     let ground_y = cast_origin.y - hit.time_of_impact;
 
                     // The capsule origin (rigid-body translation) is its CENTER, but

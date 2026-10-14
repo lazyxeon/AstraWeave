@@ -9,7 +9,8 @@ description = "Aravath greybox: one voxel island, a third-person body, and a dig
 
 [dependencies]
 anyhow.workspace = true
-glam.workspace = true
+glam = { workspace = true, features = ["libm"] }
+libm = { version = "0.2", default-features = false }
 winit.workspace = true
 pollster.workspace = true
 astraweave-causality = { workspace = true }

@@ -11,7 +11,7 @@ runtime_edges:
   - to: astraweave-water
     note: "buoyancy (apply_buoyancy_forces, lib.rs:1464) consumes WaterQuery/AnalyticWater"
 owns: [astraweave-physics]
-doc_version: "1.3"
+doc_version: "1.4"
 last_verified_commit: d6b07fc8
 ---
 
@@ -23,7 +23,7 @@ last_verified_commit: d6b07fc8
 |---|---|
 | **System name** | Physics (Rigid Body Simulation + Subsystems) |
 | **Primary crates** | `astraweave-physics` (12 source files / ~31K LoC), wraps `rapier3d 0.22` |
-| **Document version** | 1.3 |
+| **Document version** | 1.4 |
 | **Last verified against commit** | `d6b07fc8` |
 | **Last verified date** | 2026-10-15 |
 | **Status** | **Active core** (`PhysicsWorld` + `CharacterController` + Rapier broadphase) **with feature-gated and dormant subsystems** (async-physics, ECS plugin, in-house SpatialHash). The core rigid-body / character / raycast surface is production-wired through `astraweave-gameplay` and `astraweave-npc`. 1.3: `PhysicsWorld::remove_body` is the shared removal path; `break_destructible` delegates to it. `aravath_runtime` uses it to replace chunk trimeshes. Several subsystems (projectile, gravity zones, ragdoll, vehicle, environment, destruction, cloth) are independent managers with rich APIs but limited production wiring — most have tests + benches but no game-loop consumer yet. The `SpatialHash` module is **dormant** despite being advertised in the crate doc-comment. |
@@ -272,7 +272,9 @@ Note: This path requires `astraweave-physics/features = ["ecs"]` to be enabled b
 
 | File | Role | Status | Notes |
 |---|---|---|---|
-| `astraweave-physics/src/lib.rs` (5,381 LoC) | `PhysicsWorld`, `CharacterController`, `PhysicsConfig`, `BodyId`, `ActorKind`, `Layers`, `JointType`, `JointId`, `DebugLine`, `BuoyancyData`, `LineCollector`, step + raycast + character + joint + buoyancy + body-add APIs | Active | `#![forbid(unsafe_code)]` at line 1. The crate's central state-owning module. |
+| `astraweave-physics/src/lib.rs` | `PhysicsWorld`, `CharacterController`, `PhysicsConfig`, `BodyId`, `ActorKind`, `Layers`, `JointType`, `JointId`, `DebugLine`, `BuoyancyData`, `LineCollector`, step + raycast + character + joint + buoyancy + body-add APIs | Active | `#![forbid(unsafe_code)]` at line 1. The crate's central state-owning module. Workspace `rapier3d` enables `enhanced-determinism`. |
+| `astraweave-physics/src/detmath.rs` | `sqrt` and `acos` via pure-Rust `libm` for the jump impulse and the slope test | Active | The character controller calls these instead of `f32` methods. |
+| `astraweave-physics/build.rs` | Refuses `target-cpu=native` and the `fma` target feature | Active | Same guard as `aravath_runtime`. |
 | `astraweave-physics/src/spatial_hash.rs` (1,038 LoC) | Standalone `SpatialHash<T>` + `AABB` grid-broadphase data structure | **Dormant** | Verified 2026-05-12: workspace grep for `use astraweave_physics::SpatialHash` or `use astraweave_physics::spatial_hash` outside the crate's own `src` + `tests` returned zero matches. The crate doc-comment at `lib.rs:25-26` advertises it as "Grid-based broadphase for O(n log n) collision culling (99.96% pair reduction vs brute-force)" but `PhysicsWorld` uses Rapier's `DefaultBroadPhase` (`lib.rs:907`), not `SpatialHash`. The module has 3 dedicated tests (`tests/behavioral_correctness_tests.rs:22`, `tests/coverage_boost_tests.rs:870`, plus its own inline test module). |
 | `astraweave-physics/src/async_scheduler.rs` (979 LoC) | `AsyncPhysicsScheduler`, `PhysicsStepProfile` (per-step telemetry) | Active (feature `async-physics`); dormant in production | Cargo.toml gates the entire module on `#[cfg(feature = "async-physics")]`. Verified 2026-05-12: only `astraweave-physics/Cargo.toml:55` (`physics_async` bench `required-features = ["async-physics"]`) enables the feature; no production consumer enables it. |
 | `astraweave-physics/src/ecs.rs` (84 LoC) | `PhysicsPlugin` (`Plugin`), `PhysicsBodyComponent`, `physics_step_system`, `sync_physics_to_transform_system` | Active (feature `ecs`); dormant in production | Gated on `#[cfg(feature = "ecs")]`. Verified 2026-05-12: workspace grep for `astraweave-physics.*features.*ecs` or `astraweave-physics/features = ["ecs"]` returned zero matches in `.toml` files. No consumer enables the `ecs` feature. |
@@ -355,6 +357,14 @@ Note: This path requires `astraweave-physics/features = ["ecs"]` to be enabled b
 
 ## 7. Decision Log
 
+### Decision: Enable Rapier `enhanced-determinism` and route character transcendentals through `libm`
+- **Date:** 2026-10-14
+- **Status:** Accepted
+- **Context:** Aravath's replay must match bit-for-bit on Linux and Windows. Rapier without `enhanced-determinism` uses the platform math library. The character controller also computed jump speed with `f32::sqrt` and slope with `f32::acos`.
+- **Decision:** The workspace `rapier3d` dependency enables `enhanced-determinism`. `detmath` wraps `libm` for the jump impulse and the slope test. `build.rs` refuses `target-cpu=native` and the `fma` target feature.
+- **Alternatives considered:** Leave Rapier on the platform libm and only wrap Aravath's own calls. That still lets the solver diverge across CRT implementations.
+- **Consequences:** Every consumer of workspace `rapier3d` gets the deterministic solver. A build that opts into FMA or `target-cpu=native` fails in this crate.
+
 ### Decision: Wrap Rapier3D 0.22 behind `PhysicsWorld` rather than expose it directly
 - **Date:** [Reasoning not recovered from available sources]
 - **Status:** Accepted
@@ -436,7 +446,8 @@ Note: This path requires `astraweave-physics/features = ["ecs"]` to be enabled b
 | 17 | `add_water_aabb` is a no-op stub (function body is `{}`) | Yes (code) | `lib.rs:1449`: `pub fn add_water_aabb(&mut self, _min: Vec3, _max: Vec3, _density: f32, _linear_damp: f32) {}` |
 | 18 | `PhysicsWorld` is `Send + Sync` (auto-derived) — must hold for use as `astraweave-ecs::World` resource | Yes (compile-time, transitively proven) | Verified 2026-05-12: `astraweave-ecs::World::get_resource<T>` / `insert_resource<T>` require `T: 'static + Send + Sync` (per `astraweave-ecs/src/lib.rs:466, 482, 486`). Multiple call sites compile: `astraweave-scripting/src/lib.rs:148, 336, 453, 506` (`world.get_resource::<PhysicsWorld>()`) and `astraweave-physics/tests/ecs_integration_test.rs:20` (`app.world.get_resource_mut::<PhysicsWorld>().unwrap()`). Therefore `PhysicsWorld` MUST be `Send + Sync`. The previous trace claim "Send but NOT Sync" was incorrect. |
 | 19 | `process_destructible_hits` is a no-op stub with `#[allow(dead_code)]` | Yes (code) | `lib.rs:1586-1587`: `#[allow(dead_code)] fn process_destructible_hits(&mut self) {}` |
-| 20 | Crate uses `#![forbid(unsafe_code)]`; no unsafe blocks in any of the 12 source files | Yes (compile-time + grep) | `lib.rs:1`; workspace grep within `astraweave-physics/src/*.rs` for `unsafe` returned no matches outside `forbid_unsafe_code` itself (verified 2026-05-12 indirectly via the absence of `unsafe` in surveyed files) |
+| 20 | Crate uses `#![forbid(unsafe_code)]`; no unsafe blocks in any of the source files | Yes (compile-time + grep) | `lib.rs:1` |
+| 21 | Rapier is built with `enhanced-determinism`, and the character jump impulse and slope angle use `libm` | Yes (Cargo.toml + `detmath.rs`) | Root `Cargo.toml` `rapier3d` features include `enhanced-determinism` (`simba/libm_force`, `parry3d/enhanced-determinism`). `jump` calls `detmath::sqrt`. The ground snap calls `detmath::acos`. `build.rs` rejects `target-cpu=native` and `fma`. |
 
 ---
 
@@ -499,7 +510,7 @@ Per inline `lib.rs:1071-1075`: "Allocation-measurement instrumentation (audit 20
   - `physics_async` (`required-features = ["async-physics"]`, the only consumer of the async feature)
 - **NaN/Infinity safety tests:** `tests/nan_infinity_tests.rs` exercises pathological inputs to verify no panics or NaN-propagation through the API
 - **Panic safety tests:** `tests/panic_safety_tests.rs` exercises invalid `BodyId` / `JointId` cases to verify graceful failure (no panics)
-- **Determinism tests:** `tests/determinism.rs` exercises reproducibility (same seed + same inputs → same outputs)
+- **Determinism tests:** `tests/determinism.rs` exercises reproducibility (same seed + same inputs → same outputs). As of 1.4 the solver is Rapier's `enhanced-determinism` build. The Aravath golden replay (`.github/workflows/aravath-determinism.yml`) is the cross-machine check.
 - **Cross-subsystem validation:** `tests/cross_subsystem_validation.rs` exercises interactions between subsystems (e.g. projectile + character)
 - **Manual validation:** Examples (`physics_demo3d`, `combat_physics_demo`, `npc_town_demo`, `veilweaver_demo`, etc.) provide visual playthrough validation
 
