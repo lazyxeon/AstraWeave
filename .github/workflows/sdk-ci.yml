@@ -98,9 +98,13 @@ jobs:
           cmake_minimum_required(VERSION 3.15)
           project(aw_cmake_example C)
           add_executable(aw_cmake_example main.c)
-          include_directories(${CMAKE_SOURCE_DIR}/..)
-          link_directories(${CMAKE_SOURCE_DIR}/../target/release)
-          target_link_libraries(aw_cmake_example astraweave_sdk)
+          target_include_directories(aw_cmake_example PRIVATE ${CMAKE_SOURCE_DIR}/..)
+          target_link_directories(aw_cmake_example PRIVATE ${CMAKE_SOURCE_DIR}/../target/release)
+          if(UNIX)
+            target_link_libraries(aw_cmake_example PRIVATE astraweave_sdk pthread dl m)
+          else()
+            target_link_libraries(aw_cmake_example PRIVATE astraweave_sdk)
+          endif()
           EOF
           cat > cmake_example/main.c << 'EOF'
           #include <stdio.h>
@@ -119,9 +123,9 @@ jobs:
           cmake_minimum_required(VERSION 3.15)
           project(aw_cmake_example C)
           add_executable(aw_cmake_example main.c)
-          include_directories(${CMAKE_SOURCE_DIR}/..)
-          link_directories(${CMAKE_SOURCE_DIR}/..\target\release)
-          target_link_libraries(aw_cmake_example astraweave_sdk)
+          target_include_directories(aw_cmake_example PRIVATE ${CMAKE_SOURCE_DIR}/..)
+          target_link_directories(aw_cmake_example PRIVATE ${CMAKE_SOURCE_DIR}/../target/release)
+          target_link_libraries(aw_cmake_example PRIVATE astraweave_sdk)
           '@
           Set-Content -Path cmake_example/main.c -Value @'
           #include <stdio.h>
