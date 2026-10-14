@@ -117,7 +117,7 @@ What was actually removed or narrowed:
 - `astraweave-scene` no longer inherits the workspace `tokio` feature set (`full`, which includes `net`). `aw_asset_cli` declared `tokio` with `full` and never called it; that dependency is gone. `scripts/check-aravath-network.sh` is the regression check.
 - Workspace `reqwest` and `aw-net-client`'s WebSocket client use rustls instead of native-tls, so `openssl` is not in the lockfile. `deny.toml` still bans it.
 
-Patched in this pass (lockfile bumps, still inside the existing semver ranges unless noted): `bytes` 1.12.1, `crossbeam-epoch` 0.9.21, `h2` 0.4.20, `lz4_flex` 0.11.6, `quinn-proto` 0.11.19, `rustls` 0.23.45 with `rustls-webpki` 0.103.15, `tar` 0.4.46, `thin-vec` 0.2.21, `time` 0.3.55, `webbrowser` 1.2.4, `anyhow` 1.0.104, `event-listener` 5.4.2, `memmap2` 0.9.11, `rand` 0.8.8 and 0.9.5, `lru` 0.18.5, `steamworks` 0.13.1, `openh264` 0.8.1, `serial_test` 3.5 (drops vulnerable `scc` 2.4). `lz4_flex` is the one the greybox save loader actually calls.
+Patched in this pass (lockfile bumps, still inside the existing semver ranges unless noted): `bytes` 1.12.1, `crossbeam-epoch` 0.9.21, `h2` 0.4.20, `lz4_flex` 0.11.6, `quinn-proto` 0.11.19, `rustls` 0.23.46 with `rustls-webpki` 0.103.15, `tar` 0.4.46, `thin-vec` 0.2.21, `time` 0.3.55, `webbrowser` 1.2.4, `anyhow` 1.0.104, `event-listener` 5.4.2, `memmap2` 0.9.11, `rand` 0.8.8 and 0.9.5, `lru` 0.18.5, `steamworks` 0.13.1, `openh264` 0.8.1, `serial_test` 3.5 (drops vulnerable `scc` 2.4). `lz4_flex` is the one the greybox save loader actually calls.
 
 What cannot be upgraded away. `deny.toml` and `.cargo/audit.toml` ignore these IDs, with the reason:
 
@@ -130,6 +130,7 @@ What cannot be upgraded away. `deny.toml` and `.cargo/audit.toml` ignore these I
 | `RUSTSEC-2021-0070` | `nalgebra` 0.26.2 | Deserialize can break a length invariant. The only crate that still pulls 0.26 is `mikktspace` 0.3.0, which is the latest release of that crate. The renderer uses it to generate tangents. It does not deserialize `nalgebra`. |
 | `RUSTSEC-2026-0194`, `RUSTSEC-2026-0195` | `quick-xml` 0.36 and 0.37 | DoS in XML parsing. Reached through `wayland-scanner` (winit) and `zbus_xml` (accesskit). They parse protocol XML. No upgrade fits inside `winit` 0.30. |
 | `RUSTSEC-2026-0049`, `RUSTSEC-2026-0098`, `RUSTSEC-2026-0099`, `RUSTSEC-2026-0104` | `rustls-webpki` 0.102.8 | Old webpki used by `rustls` 0.22 / `tokio-rustls` 0.25 in `aw-net-server`. Not linked into `aravath_greybox`. The patched line is 0.103.13+, which needs `tokio-rustls` 0.26 and a different `ServerCertVerifier` than the net TLS tests implement. |
+| `RUSTSEC-2026-0346`, `RUSTSEC-2026-0349` | `rustls` 0.22.4 | Same server pin. The advisory's fix is `rustls` >= 0.23.46. The reqwest line is on 0.23.46. `aravath_greybox` does not link this crate. |
 
 Duplicate crate versions are reported (`multiple-versions = "warn"`) and do not fail the build. The duplicates are mostly `windows-sys` / `windows-targets` stacks pulled by different wgpu and winit versions, and collapsing them means upgrading wgpu. `spin` 0.10.0 is yanked and still required by `bevy_platform` 0.17.3; `cargo update -p bevy_platform` does not remove it. `cargo deny` warns on that yank and does not fail.
 
