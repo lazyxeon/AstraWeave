@@ -1,6 +1,6 @@
 # Aravath demo
 
-One window on the AstraWeave engine: a streamed voxel island, a rigged character, sword and shield combat, and three enemies. The 3D image is the engine renderer. `aravath_runtime` uploads meshes and drives simulation. It does not contain a shader, a shadow map, a fog volume, or a post chain. Enemy deaths write a fate-scar through `astraweave-veil`. The engine fog pass samples that scar. The enemies read it through `astraweave-ai`.
+One window on the AstraWeave engine: a streamed voxel island, a rigged character, sword and shield combat, and three enemies. Names and flavor for this demo come from `github.com/lazyxeon/Aravath-Lore`, not from `docs/Veilweaver/lore_bible.md`. The 3D image is the engine renderer. `aravath_runtime` uploads meshes and drives simulation. It does not contain a shader, a shadow map, a fog volume, or a post chain. Enemy deaths write a fate-scar through `astraweave-veil`. The engine fog pass samples that scar. The enemies read it through `astraweave-ai`.
 
 ## Run it on Windows
 
