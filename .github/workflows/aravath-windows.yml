@@ -64,7 +64,11 @@ jobs:
 
       - name: cargo audit
         run: |
+          # cargo-deny leaves ~/.cargo/advisory-db in a state cargo-audit's
+          # clone refuses ("failed to prepare clone"). Start from an empty dir.
+          db="${CARGO_HOME:-$HOME/.cargo}/advisory-db"
           for attempt in 1 2 3 4; do
+            rm -rf "$db"
             if cargo audit; then
               exit 0
             fi
