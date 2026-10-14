@@ -82,7 +82,9 @@ jobs:
           $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
           $install = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
           $devcmd = Join-Path $install "Common7\Tools\VsDevCmd.bat"
-          cmd /c "`"$devcmd`" -no_logo -arch=x64 && cl /nologo /I. c_harness.c /link /LIBPATH:target\release astraweave_sdk.lib"
+          # Link the cdylib import library. The staticlib needs ws2_32, ntdll,
+          # and userenv, which rustc already recorded in the dll.
+          cmd /c "`"$devcmd`" -no_logo -arch=x64 && cl /nologo /I. c_harness.c /link /LIBPATH:target\release astraweave_sdk.dll.lib"
           if ($LASTEXITCODE -ne 0) { throw "cl failed with exit code $LASTEXITCODE" }
           if (Test-Path target\release\astraweave_sdk.dll) { Copy-Item target\release\astraweave_sdk.dll . }
           .\c_harness.exe | Tee-Object -FilePath harness_out.txt | Out-Null
@@ -128,8 +130,7 @@ jobs:
           project(aw_cmake_example C)
           add_executable(aw_cmake_example main.c)
           target_include_directories(aw_cmake_example PRIVATE ${CMAKE_SOURCE_DIR}/..)
-          target_link_directories(aw_cmake_example PRIVATE ${CMAKE_SOURCE_DIR}/../target/release)
-          target_link_libraries(aw_cmake_example astraweave_sdk)
+          target_link_libraries(aw_cmake_example ${CMAKE_SOURCE_DIR}/../target/release/astraweave_sdk.dll.lib)
           '@
           Set-Content -Path cmake_example/main.c -Value @'
           #include <stdio.h>
