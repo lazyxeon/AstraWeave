@@ -96,6 +96,10 @@ pub struct UnifiedAssetEntry {
     /// Source URL (original page where asset was found)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub source_url: Option<String>,
+
+    /// SHA-256 of the checked-in file, when the bytes live in the repo.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sha256: Option<String>,
 }
 
 impl UnifiedManifest {

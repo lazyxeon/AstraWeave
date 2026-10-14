@@ -139,7 +139,10 @@ pub use environment::{
     SkyConfig, SkyRenderer, TimeOfDay, WeatherParticles, WeatherSystem, WeatherType,
 };
 pub use error::{RenderError, RenderResult};
-pub use renderer::{CascadeFit, FarCascadePolicy, ModelSurfaceMaps, Renderer};
+pub use renderer::{
+    CascadeFit, FarCascadePolicy, ModelSurfaceMaps, Renderer, SHOWCASE_HDRI_FALLBACK,
+    SHOWCASE_HDRI_PRIMARY,
+};
 pub use terrain::{TerrainMesh, TerrainRenderer, TerrainVertex, VegetationRenderInstance};
 pub use texture::Texture;
 pub use types::{Instance, Material, Mesh, SkinnedVertex, Vertex};
@@ -165,6 +168,7 @@ pub mod material_bindless; // Bindless texture array material system
 pub mod msaa; // MSAA anti-aliasing resources
 pub mod oit; // Weighted Blended Order-Independent Transparency
 pub mod overlay; // NEW (for cutscene fades/letterbox later)
+pub mod pbr_maps;
 pub mod puddle_accumulation; // Rain-driven puddle formation in terrain concavities
 pub mod rain_occlusion; // GPU rain/weather particle occlusion via depth buffer
 pub mod rain_splash; // Rain impact splash particle spawner

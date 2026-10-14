@@ -330,9 +330,41 @@ Phase 1 does not change runtime behavior, so these are not fixed here. The three
 - `vol_integrate_bg` given `Depth32Float`.
 - `gpu_profiler_readback` copied while mapped, and `map_async` failure still calling `get_mapped_range`.
 
+## Decisions (approved) and what landed
+
+Reviewed against `main` @ `85d09a2c`. The demo crate is still only on PR #205, so the engine API is what that branch should call.
+
+| Decision | Landed |
+|---|---|
+| Primary sky is Poly Haven CC0 `spruit_sunrise` 2k. `kloppenheim_02` is the fallback. | `SHOWCASE_HDRI_PRIMARY` / `SHOWCASE_HDRI_FALLBACK`. `Renderer::bake_showcase_environment` bakes one of them. `hello_companion` calls it at startup and returns the error instead of keeping the 1×1 cubemap. |
+| HDR resize must not clamp radiance above 1. | `prepare_hdr_image` resizes `Rgb32F` / `Rgba32F` in float. Test `hdr_resize_keeps_radiance_above_one`. |
+| Missing catalog paths: fetch CC0 or remove. Hashes in the manifest. | Six Poly Haven CC0 2k `.hdr` files fetched. `sky_equirect.png` removed (not a Poly Haven asset, not on disk). SHA-256 on every catalog entry and in `assets/asset_manifest.toml`. Test `catalog_files_match_sha256`. `resolve_sky_mode` refuses a missing file. |
+| PBR maps in `astraweave-render`, no third parser. | `ModelSurfaceMaps` gained occlusion and emissive. The forward shader samples AO on indirect light and adds emissive. `pbr_maps` converts glTF MR and Poly Haven ARM. `nor_gl` is not Y-flipped. `load_gltf` reads base color, normal, MR, occlusion, and emissive. Float glTF images decode to RGBA8 or return an error. `Renderer::add_cpu_mesh_model` is the call the demo should use. |
+| Time of day from the sim tick. | `TimeOfDay` no longer stores `Instant`. `update(dt_seconds)` and `SkyRenderer::update` honor `dt`. Test `fixed_dt_is_replay_stable`. |
+| Cloud-shadow validation without duplicating #205. | `tests/created_pass_validation.rs` submits one `draw_into` from `Renderer::new_headless` (that constructor builds `CloudShadowPass`). Workflow `.github/workflows/render-device-validation.yml` runs it on lavapipe and on `windows-latest`. It does not construct `VolumetricFogPass` or `GodRayPass`. |
+
+DF-1 through DF-4 are fixed in this branch. The issue text below is the ledger of what was wrong, for filing if a label is still wanted. PR #217's CI ledger already covers the audio device, SDK `cstdarg` / `cl` PATH, `CpuImage` import, candle `phi3`, and bench timeouts. Those are not refiled here.
+
+## Dormant pass decisions
+
+Wiring waits until the depth-as-filterable-float layouts are fixed. #205 owns `volumetric_fog` integrate and the god-ray composite. This branch does not edit those files.
+
+| Pass | Decision | Why |
+|---|---|---|
+| `AtmospherePass` | Wire as a selectable sky mode next to HDRI, after its aerial-perspective depth binding is `texture_depth_2d`. | Approved. Do not composite it on top of the HDRI. |
+| `VolumetricFogPass` | Wire stays on PR #205. Do not add a second caller here. | That branch already has the gameplay toggle and the depth fix. |
+| `GodRayPass` | Same as fog. Owned by #205. | |
+| `VolumetricCloudsPass` (raymarch) | Deprecate the composite until its depth binding is fixed, then wire behind `cloud_quality`. `CloudShadowPass` stays; it is the live pass. | The 512² shadow map is the production cloud shadow. The raymarch is a second cloud. |
+| SSGI, TAA, DoF, temporal upscale, aerial perspective | Do not wire until each depth binding is `TextureSampleType::Depth` and the shader uses `texture_depth_2d` + `textureLoad`. | Same validation class as `vol_integrate`. |
+| Frame-graph `SkyPassNode` / `VolumetricFogNode` | Remove in a later commit once `Renderer::draw_into` is the only frame path. | They return `Ok(())` and are not called. |
+| `BrdfLutPass`, `weather_system`, `weather_gpu`, `shadow_csm.rs` | Deprecate. Production owners are `IblManager`, `effects::WeatherFx` + `SceneEnvironment`, and the CSM inside `renderer.rs`. | Second implementations. |
+
+## Frame time
+
+Target class: Windows, Vulkan, RTX 4060 Ti, 1920×1080, 30 warmup frames, median of 120 frames of `draw_into` after `bake_showcase_environment(Medium)`, cloud shadows at their default, volumetrics off (those are #205).
+
+This VM has no RTX 4060 Ti. A lavapipe submit proves the passes are legal. It does not estimate that GPU. The L.2 editor note measured a cold Kloppenheim bake at about 2.5 s. That is bake time, not frame time. Do not treat it as a 4060 Ti frame time. After #205's profiler fix, the same scene should log `gpu_profiler` medians on the target machine. Until that run exists, there is no honest frame-time number.
+
 ## What Phase 2 needs from review
 
-1. Confirm P1's sky plate is `kloppenheim_02_puresky_2k.hdr` (already on disk, already the editor default), not a new EXR the repo does not have yet.
-2. Confirm P3 should extend `astraweave-render`'s loader and have the demo call it, rather than extend `aravath_runtime`'s parser in this branch. The demo branch is owned by another agent.
-3. Confirm P5 stays "do not wire `AtmospherePass`."
-4. Approve filing DF-1..DF-4 with the label `deferred-failure`.
+The four review questions are decided. Next code, after this branch is green, is the selectable `AtmospherePass` once its depth binding matches `water.rs`, then the dormant-pass table above.

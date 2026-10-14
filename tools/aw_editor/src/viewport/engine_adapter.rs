@@ -2428,6 +2428,8 @@ impl EngineRenderAdapter {
                 surface_set.metallic_roughness.1,
                 &surface_set.metallic_roughness.2,
             ),
+            occlusion: None,
+            emissive: None,
         };
         self.renderer.add_model_with_pbr_textures(
             &prototype_name,
