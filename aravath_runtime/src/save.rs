@@ -283,6 +283,15 @@ mod tests {
         let err = finite_limited("NaN", "x", 10.0).unwrap_err();
         assert!(err.to_string().contains("range"), "{err}");
         let _ = poisoned;
+        let edits = vec![crate::ground::VoxelEdit {
+            x: 1,
+            y: 2,
+            z: -3,
+            density: 0.5,
+            material: 4,
+        }];
+        assert_eq!(encode_edits(&edits), "1:2:-3:0.500:4");
+        assert_eq!(decode_edits("1:2:-3:0.500:4").unwrap()[0].material, 4);
     }
 }
 

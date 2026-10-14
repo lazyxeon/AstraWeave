@@ -481,6 +481,48 @@ mod tests {
     /// as over the cap. Today it allocates the declared buffer and then fails
     /// the short read.
     #[test]
+
+    fn fixed_bundle() -> SaveBundleV2 {
+        SaveBundleV2 {
+            schema: SAVE_SCHEMA_VERSION,
+            save_id: Uuid::parse_str("11111111-2222-3333-4444-555555555555").unwrap(),
+            created_at: OffsetDateTime::from_unix_timestamp(1_700_000_000).unwrap(),
+            player_id: "aravath".into(),
+            slot: 0,
+            world: WorldState {
+                tick: 7,
+                ecs_blob: vec![1, 2, 3, 4],
+                state_hash: 0x0a0b,
+            },
+            companions: Vec::new(),
+            inventory: PlayerInventory {
+                credits: 0,
+                items: Vec::new(),
+            },
+            meta: HashMap::new(),
+        }
+    }
+
+    #[test]
+    fn postcard_and_lz4_bytes_are_stable() {
+        let bytes = postcard::to_allocvec(&fixed_bundle()).unwrap();
+        let again = postcard::to_allocvec(&fixed_bundle()).unwrap();
+        assert_eq!(bytes, again, "postcard encoding drifted");
+        assert_eq!(
+            hex::encode(&bytes),
+            "021011111111222233334444555555555555ce1fbe02160d14000000000761726176617468000704010203048b1400000000"
+        );
+        let compressed = lz4_flex::compress_prepend_size(&bytes);
+        let compressed_again = lz4_flex::compress_prepend_size(&bytes);
+        assert_eq!(compressed, compressed_again, "lz4 output drifted");
+        assert_eq!(
+            hex::encode(&compressed),
+            "32000000d1021011111111222233334444550100f011ce1fbe02160d14000000000761726176617468000704010203048b1400000000"
+        );
+        let restored = decompress_lz4_capped(&compressed).unwrap();
+        assert_eq!(restored, bytes);
+    }
+
     fn poc_awsv_rejects_oversized_declared_payload() {
         let dir = tempfile::tempdir().expect("tempdir");
         let path = dir.path().join("hostile.awsv");
