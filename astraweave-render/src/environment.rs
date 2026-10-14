@@ -15,11 +15,12 @@ use wgpu::util::DeviceExt;
 pub struct TimeOfDay {
     /// Current time in game hours (0.0 - 24.0)
     pub current_time: f32,
-    /// How fast time progresses (1.0 = real time, 60.0 = 1 minute = 1 hour)
+    /// How fast time progresses. `1.0` adds one game-second per `dt` second.
+    /// `60.0` adds one game-minute per `dt` second. The caller supplies `dt`.
+    /// This clock does not read wall time.
     pub time_scale: f32,
-    /// When the day started in real time
-    start_time: Instant,
-    /// Length of a full day-night cycle in real seconds
+    /// Authored day length in seconds at `time_scale == 1`. Advancement is
+    /// `dt * time_scale / 3600` hours, not a read of this field.
     pub day_length: f32,
 }
 
@@ -27,9 +28,8 @@ impl Default for TimeOfDay {
     fn default() -> Self {
         Self {
             current_time: 12.0, // Start at noon
-            time_scale: 60.0,   // 1 real minute = 1 game hour
-            start_time: Instant::now(),
-            day_length: 1440.0, // 24 real minutes = 1 game day
+            time_scale: 60.0,   // 1 caller-second = 1 game minute
+            day_length: 1440.0, // 24 real minutes = 1 game day at scale 1
         }
     }
 }
@@ -38,19 +38,21 @@ impl TimeOfDay {
     /// Create a new time system starting at the specified time
     pub fn new(start_time: f32, time_scale: f32) -> Self {
         Self {
-            current_time: start_time,
+            current_time: start_time.rem_euclid(24.0),
             time_scale,
-            start_time: Instant::now(),
             day_length: 1440.0,
         }
     }
 
-    /// Update the time based on real elapsed time
-    pub fn update(&mut self) {
-        let elapsed = self.start_time.elapsed().as_secs_f32();
-        let game_hours = (elapsed * self.time_scale) / 3600.0;
-        self.current_time = (self.current_time + game_hours) % 24.0;
-        self.start_time = Instant::now();
+    /// Advance the clock by `dt_seconds`.
+    ///
+    /// `dt_seconds` must be the simulation step (the fixed 60 Hz tick, or a
+    /// sum of those ticks), not a wall-clock measurement. Two calls with the
+    /// same `dt` from the same hour produce the same hour. Game hours added
+    /// are `dt_seconds * time_scale / 3600`, wrapped into `[0, 24)`.
+    pub fn update(&mut self, dt_seconds: f32) {
+        let game_hours = (dt_seconds * self.time_scale) / 3600.0;
+        self.current_time = (self.current_time + game_hours).rem_euclid(24.0);
     }
 
     /// Get the sun position in the sky (-1 to 1 range)
@@ -520,9 +522,9 @@ impl SkyRenderer {
         Ok(())
     }
 
-    /// Update the time of day and sky state
-    pub fn update(&mut self, _delta_time: f32) {
-        self.time_of_day.update();
+    /// Advance the sky clock by the simulation step `delta_time` (seconds).
+    pub fn update(&mut self, delta_time: f32) {
+        self.time_of_day.update(delta_time);
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -1027,6 +1029,39 @@ mod tests {
         let time = TimeOfDay::new(12.0, 60.0);
         assert_eq!(time.current_time, 12.0);
         assert_eq!(time.time_scale, 60.0);
+    }
+
+    #[test]
+    fn fixed_dt_is_replay_stable() {
+        // 60 Hz sim tick. time_scale 3600 adds one game-hour per real second,
+        // so one tick of 1/60 s advances exactly 1/60 hour.
+        let step = 1.0 / 60.0;
+        let mut a = TimeOfDay::new(16.4, 3600.0);
+        let mut b = TimeOfDay::new(16.4, 3600.0);
+        for _ in 0..180 {
+            a.update(step);
+            b.update(step);
+        }
+        assert_eq!(a.current_time.to_bits(), b.current_time.to_bits());
+        let expected = (16.4_f32 + 180.0 / 60.0).rem_euclid(24.0);
+        assert!((a.current_time - expected).abs() < 1e-4);
+
+        let mut sky_a = SkyRenderer::new(SkyConfig::default());
+        let mut sky_b = SkyRenderer::new(SkyConfig::default());
+        sky_a.time_of_day_mut().current_time = 8.0;
+        sky_a.time_of_day_mut().time_scale = 3600.0;
+        sky_b.time_of_day_mut().current_time = 8.0;
+        sky_b.time_of_day_mut().time_scale = 3600.0;
+        sky_a.update(step);
+        sky_b.update(step);
+        assert_eq!(
+            sky_a.time_of_day().current_time.to_bits(),
+            sky_b.time_of_day().current_time.to_bits()
+        );
+        // A zero step does not move the sun, even if wall time passes.
+        let frozen = sky_a.time_of_day().current_time;
+        sky_a.update(0.0);
+        assert_eq!(sky_a.time_of_day().current_time.to_bits(), frozen.to_bits());
     }
 
     #[test]

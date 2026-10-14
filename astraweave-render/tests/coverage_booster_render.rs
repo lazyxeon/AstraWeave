@@ -2075,7 +2075,7 @@ async fn test_sky_and_time_comprehensive() {
 
     // Progress time
     for _ in 0..1000 {
-        tod.update();
+        tod.update(1.0);
     }
 
     // Get positions at different times
@@ -2121,7 +2121,7 @@ async fn test_sky_and_time_comprehensive() {
     // Test time_of_day accessors
     let _tod_ref = sky.time_of_day();
     let tod_mut = sky.time_of_day_mut();
-    tod_mut.update();
+    tod_mut.update(1.0 / 60.0);
 
     // Initialize GPU resources
     let init_result = sky.init_gpu_resources(&device, wgpu::TextureFormat::Rgba16Float);
@@ -2545,7 +2545,7 @@ async fn test_environment_weather_comprehensive() {
     // Test update - takes no args
     tod.current_time = 0.0;
     for _ in 0..100 {
-        tod.update(); // Simulate time passing
+        tod.update(1.0); // Simulate time passing
     }
     assert!(tod.current_time > 0.0);
 
@@ -4839,7 +4839,7 @@ async fn test_environment_time_of_day_detailed() {
     assert_eq!(tod.time_scale, 1.0);
 
     // Test update
-    tod.update();
+    tod.update(1.0);
 
     // Test sun position at various times
     let times = [0.0f32, 6.0, 12.0, 18.0, 23.99];
@@ -5400,7 +5400,7 @@ async fn test_environment_additional_coverage() {
     // Test TimeOfDay update across day boundary
     tod.current_time = 23.9;
     tod.time_scale = 100.0; // Fast forward
-    tod.update(); // Should wrap around
+    tod.update(1.0); // Should wrap around
 
     // Test SkyConfig variations
     let config1 = SkyConfig {
@@ -6090,7 +6090,7 @@ fn test_sky_renderer_extended() {
 
     // Test TimeOfDay update
     let mut time = TimeOfDay::default();
-    time.update();
+    time.update(1.0 / 60.0);
 
     println!("Sky renderer extended tested.");
 }
@@ -6382,7 +6382,7 @@ fn test_environment_full_coverage() {
     assert!(ambient.x >= 0.0);
 
     // Test update
-    tod.update();
+    tod.update(1.0);
 
     // Test WeatherSystem exhaustively
     let mut weather = WeatherSystem::new();
@@ -6632,7 +6632,7 @@ fn test_renderer_more_accessors_wave14() {
 
         // Test time_of_day_mut
         let tod = renderer.time_of_day_mut();
-        tod.update();
+        tod.update(1.0);
 
         // Test ibl_mut
         let _ibl = renderer.ibl_mut();
@@ -11437,16 +11437,16 @@ fn test_time_of_day_extended_wave23() {
 
     // Test time update with different speeds
     let mut fast_day = TimeOfDay::new(0.0, 10.0); // 10x speed
-    fast_day.update(); // Update uses internal timing
-                       // Time should have advanced
+    fast_day.update(1.0); // One simulated second at the caller's dt.
+                          // Time should have advanced
 
     let mut slow_day = TimeOfDay::new(0.0, 0.1); // 0.1x speed
-    slow_day.update(); // Update uses internal timing
+    slow_day.update(1.0);
 
     // Test paused time
     let mut paused = TimeOfDay::new(12.0, 0.0); // Zero speed = paused at noon
     let initial_pos = paused.get_sun_position();
-    paused.update(); // Should not change much with zero speed
+    paused.update(5.0); // Zero scale must not move the hour.
     let final_pos = paused.get_sun_position();
     // With zero time_scale, position should be essentially the same
     let dist = ((final_pos.x - initial_pos.x).powi(2)
@@ -13211,7 +13211,7 @@ fn test_time_of_day_update_cycle_wave26() {
 
     // Simulate many frames to advance past midnight
     for _ in 0..100 {
-        tod.update();
+        tod.update(1.0);
     }
 
     // After updates, sun position changes
@@ -13225,7 +13225,7 @@ fn test_time_of_day_update_cycle_wave26() {
     let dawn_sun = tod_fast.get_sun_position();
 
     for _ in 0..100 {
-        tod_fast.update();
+        tod_fast.update(1.0 / 60.0);
     }
 
     // Sun position should have changed
