@@ -10,7 +10,7 @@ integration_status: example_only
 summary: "FALSE-PRODUCTION-READY (R.0.B 2026-06-30): the prior active/wired front-matter was example-only reality — astraweave-gameplay/astraweave-ui declare the dep but never `use astraweave_input`; the sole consumer is examples/ui_controls_demo. Wire >=1 real engine caller to reach production. input.md"
 owns: [astraweave-input]
 doc_version: "1.3"
-last_verified_commit: pending-ci-burndown
+last_verified_commit: d4d753c6
 ---
 
 # Architecture Trace: Input
@@ -22,7 +22,7 @@ last_verified_commit: pending-ci-burndown
 | **System name** | Input |
 | **Primary crates** | `astraweave-input` (sole production crate; pure facade over `winit` + `gilrs`) |
 | **Document version** | 1.3 |
-| **Last verified against commit** | pending-ci-burndown |
+| **Last verified against commit** | d4d753c6 |
 | **Last verified date** | 2026-10-14 |
 | **Revision history** | 1.3 (2026-10-14): `InputManager::new` no longer calls `Gilrs::new()`. gilrs-core's Linux backend spawns a detached udev hotplug thread and drops the `JoinHandle`, so each construction leaks a thread until `spawn` returns `EAGAIN` and panics. The backend now opens on the first `poll_gamepads` call. Keyboard, mouse, and touch paths are unchanged.<br><br>1.2 (2026-05-12): Deep investigation pass. **Discovered a major parallel implementation**: `tools/aw_editor/src/panels/input_bindings_panel.rs` (2511 lines) reinvents the entire input domain — its own `InputBindingAction`, `InputDevice`, `ActionCategory`, `BindingPreset`, `GamepadButton`, `KeyboardKey`, `MouseButton`, `ActionBinding`, `AxisBinding`, `InputTarget`, `InputBindingsPanel` types — with zero use of `astraweave_input` (the editor's `Cargo.toml` doesn't even declare the dep). Documented in §6 as a coexisting abstraction; added new §11 question. Also discovered the editor panel's `pending_actions` queue is never drained externally — confirmed via comprehensive grep showing `input_bindings_panel.take_actions()` has no call site. Enriched §11 Q1, Q2, Q5, Q8, Q9 with comprehensive evidence (commit dates, `git log -p --follow`, complete gilrs `Button` variant enumeration). Corrected §11 Q9: gilrs 0.10.10 has exactly 3 unmapped buttons (`C`, `Z`, `Mode`) — the prior "paddles" speculation was inaccurate (gilrs 0.10 does not define paddle buttons).<br><br>1.1 (2026-05-12): Verification pass. Resolved `[INFERRED]` on Miri workflow absence (direct workspace-grep confirmed). Recovered creation dates (2025-09-05 / 2026-02-09) for all six §7 Decision Log entries — every commit has an empty body, so "Alternatives considered" markers stand. Sharpened §2 Stage 1 and §11 `look_sensitivity` claims to acknowledge `bench_sensitivity_access` (benches/input_benchmarks.rs:153-160) does read the field while no production-path method does. Sharpened §9 hot-paths bench claim — `bench_process_window_event` is verified absent from `benches/input_benchmarks.rs:1-180`. Verified `gilrs::Button::LeftTrigger` ↔ bumper mapping via gilrs 0.10.10 source (`mapping/mod.rs:211-214`: `BTN_LT → leftshoulder`). |
 | **Status** | Active crate, **example-only integration** (R-series M1 trace-honesty, 2026-06-30): the front-matter `integration_status` was corrected `wired → example_only` — the R.0.B `FALSE-PRODUCTION-READY` verdict (the active/wired claim vs the orphaned-but-for-one-example reality below). To reach production, wire ≥1 real engine caller. |
