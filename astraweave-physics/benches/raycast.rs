@@ -88,6 +88,8 @@ fn setup_world_with_obstacles(obstacle_count: usize) -> PhysicsWorld {
         world.add_dynamic_box(vec3(x, 2.0, z), vec3(0.5, 0.5, 0.5), 1.0, Layers::DEFAULT);
     }
 
+    // Colliders are invisible to QueryPipeline until a step updates it.
+    world.step();
     world
 }
 
@@ -128,6 +130,9 @@ fn raycast_empty_scene(c: &mut Criterion) {
 fn raycast_ground_plane(c: &mut Criterion) {
     let mut world = PhysicsWorld::new(vec3(0.0, -9.8, 0.0));
     world.create_ground_plane(vec3(50.0, 0.5, 50.0), 0.9);
+    // QueryPipeline stays empty until step() updates it, so a ray cast
+    // before that misses the ground that was just inserted.
+    world.step();
 
     c.bench_function("raycast_ground_plane", |b| {
         b.iter(|| {
