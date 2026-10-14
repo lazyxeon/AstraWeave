@@ -139,6 +139,11 @@ ignore = [
     "RUSTSEC-2026-0098",
     "RUSTSEC-2026-0099",
     "RUSTSEC-2026-0049",
+    # rustls 0.22.4 has no patched release. RUSTSEC-2026-0346 and
+    # RUSTSEC-2026-0349 are fixed in rustls 0.23.46, which the reqwest
+    # line already uses. The 0.22 copy is aw-net-server only.
+    "RUSTSEC-2026-0346",
+    "RUSTSEC-2026-0349",
 ]
 
 # Threshold for security vulnerabilities, any vulnerability with a CVSS score
