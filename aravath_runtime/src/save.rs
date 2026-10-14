@@ -8,6 +8,8 @@ use glam::Vec3;
 use time::OffsetDateTime;
 use uuid::Uuid;
 
+use astraweave_veil::{insert_into_meta, read_from_meta, ScarField};
+
 use crate::ground::VoxelEdit;
 
 pub struct Checkpoint {
@@ -16,12 +18,14 @@ pub struct Checkpoint {
     pub yaw: f32,
     pub stamina: f32,
     pub player_hp: f32,
+    pub scars: ScarField,
 }
 
 pub fn save_checkpoint(root: &Path, checkpoint: &Checkpoint) -> Result<()> {
     let manager = SaveManager::new(root);
     let mut meta = std::collections::HashMap::new();
     meta.insert("edits".into(), encode_edits(&checkpoint.edits));
+    insert_into_meta(&mut meta, &checkpoint.scars).context("encode veil scars")?;
     meta.insert(
         "player".into(),
         format!(
@@ -80,12 +84,14 @@ pub fn load_checkpoint(root: &Path) -> Result<Checkpoint> {
         Some(text) => decode_f32(text).context("player hp")?,
         None => 100.0,
     };
+    let scars = read_from_meta(&bundle.meta).context("decode veil scars")?;
     Ok(Checkpoint {
         edits,
         position,
         yaw,
         stamina,
         player_hp,
+        scars,
     })
 }
 
@@ -168,6 +174,7 @@ mod tests {
                 yaw: 0.4,
                 stamina: 77.0,
                 player_hp: 100.0,
+                scars: astraweave_veil::ScarField::new(),
             },
         )
         .unwrap();

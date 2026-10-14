@@ -8,7 +8,7 @@ domain: ai
 lifecycle_status: active
 integration_status: wired
 owns: [astraweave-ai, astraweave-behavior, astraweave-context, astraweave-coordination, astraweave-dialogue, astraweave-director, astraweave-embeddings, astraweave-llm, astraweave-memory, astraweave-npc, astraweave-persona, astraweave-prompts, astraweave-rag]
-doc_version: "1.11"
+doc_version: "1.12"
 last_verified_commit: 32afac52f
 ---
 
@@ -20,7 +20,7 @@ last_verified_commit: 32afac52f
 |---|---|
 | **System name** | AI Pipeline (Perception → Reasoning → Planning → Action) — foundational AI-first substrate |
 | **Primary crates** | `astraweave-ai` (39 files / 30.5K LoC), `astraweave-behavior` (6 / 5K), `astraweave-llm` (29 / 23.5K), `astraweave-memory` (17 / 11.5K), `astraweave-director` (6 / 3.3K), `astraweave-npc` (6 / 1.7K), `astraweave-dialogue` (4 / 5K), `astraweave-coordination` (5 / 5.3K) — **8 crates, 112 files, ~85K LoC total** |
-| **Document version** | 1.11 |
+| **Document version** | 1.12 |
 | **Last verified against commit** | `32afac52f` |
 | **Last verified date** | 2026-05-12 |
 | **Status** | **Active foundation — AI-first citizen of the engine.** The canonical loop is stable and validated for 12,700+ agents @ 60 FPS (per `astraweave-ai/src/lib.rs:27`). The Arbiter / dual-executor / LLM fallback chain has shipped multiple iterations and is hardening continuously. Subsystems like Memory, Director, NPC, Dialogue, Coordination are each large enough to warrant per-system follow-up traces. |
@@ -372,6 +372,7 @@ This section enumerates the load-bearing files. Per-file enumeration of all 112 
 | `astraweave-ai/src/lib.rs` | Module declarations + re-exports; performance summary at lines 22-27 | Active | 70 LoC |
 | `astraweave-ai/src/core_loop.rs` | `PlannerMode`, `CAiController`, `dispatch_planner`; the canonical loop dispatcher | Active | Re-exported via `lib.rs:54` |
 | `astraweave-ai/src/orchestrator.rs` | `Orchestrator` trait, `OrchestratorAsync` trait, `RuleOrchestrator` | Active | The trait surface is the single contract every planner implements |
+| `astraweave-ai/src/scar_sense.rs` | `sense`, `stance_at`, `ScarStance` for a fate-scar percept | Active | Fixed-point only. Cross-run hash `0x0eb14da1efc9e7b2`. Re-exported from `lib.rs` |
 | `astraweave-ai/src/tool_sandbox.rs` | `ToolVerb` enum (10 verbs), `ValidationCategory`, sandbox helpers | Active | Re-exported via `lib.rs:57` |
 | `astraweave-ai/src/ecs_ai_plugin.rs` | `AiPlanningPlugin`, `build_app_with_ai()`, `sys_ai_planning` system | Active | Registers in stage `"ai_planning"` |
 | `astraweave-ai/src/ai_arbiter.rs` | `AIArbiter`, `AIControlMode`; the hybrid GOAP+LLM controller | Active (feature `llm_orchestrator`) | Lines 1-46 contain the canonical ASCII architecture diagram |
@@ -648,6 +649,7 @@ This section enumerates the load-bearing files. Per-file enumeration of all 112 
 | 18 | `AIArbiter` records mode transitions in `mode_transitions: u32` | Yes | `ai_arbiter.rs:235-251` field declarations; incremented on every `transition_to_*` call |
 | 19 | `AIArbiter` is `!Send + !Sync` — must be used per-agent, never shared across threads | Yes (compile-time via auto-traits + doc-comment at `ai_arbiter.rs:194-195`) | **Closed from §11 via deep investigation 2026-05-12:** workspace grep for `Arc<AIArbiter>` or bare type name `AIArbiter` outside `astraweave-ai/src/ai_arbiter.rs`, tests, and benches returned zero matches. No external production consumers exist today, so the non-`Send` constraint is not currently violated anywhere. |
 | 20 | No production code stubs in AI surface (no `*_stub` naming convention) | Yes (workspace grep) | **Closed from §11 via deep investigation 2026-05-12:** workspace grep for `_stub` across `astraweave-ai/src`, `astraweave-llm/src`, `astraweave-behavior/src`, `astraweave-memory/src` returned exactly one match: `test_phi3_stub_without_feature` at `astraweave-llm/src/phi3.rs:494` — a test function name, NOT a production stub. (Note: `astraweave-llm/src/llm_adapter.rs` is itself described as a "stub" in its file-header comment per §13.7.7, but does not use the `_stub` naming convention.) |
+| 21 | Scar perception is bit-exact: `sense` / `stance_at` read `ScarField` integers only. The published stance hash is `0x0eb14da1efc9e7b2`. | Yes | `astraweave-ai/src/scar_sense.rs` `cross_run_stance_matches_the_golden_hash`. The field hash lives in `astraweave-veil` (`0xb1cc29cc42401e83`). |
 
 ---
 
