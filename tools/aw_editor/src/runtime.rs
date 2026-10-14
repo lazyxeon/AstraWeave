@@ -7,6 +7,7 @@ use astraweave_core::ecs_adapter::build_app;
 use astraweave_core::World;
 use astraweave_ecs::App as SimulationApp;
 use astraweave_profiling::{frame_mark, plot, span};
+use astraweave_security::sandbox::{ScriptReloadQueue, ScriptReplayLog};
 use std::time::Instant;
 
 use crate::scene_serialization::SceneData;
@@ -483,6 +484,12 @@ pub struct EditorRuntime {
     /// Fixed-step counts for this play session, in call order.
     /// Replay feeds this sequence. It is not derived from wall-clock `dt`.
     recorded_fixed_steps: Vec<u32>,
+
+    /// Script bytes queued by the editor, not yet assigned a tick.
+    pending_script_swaps: Vec<(String, String)>,
+
+    /// Script swaps committed at a tick boundary. Replay feeds this log.
+    script_replay_log: ScriptReplayLog,
 }
 
 impl Default for EditorRuntime {
@@ -506,6 +513,35 @@ impl EditorRuntime {
             time_accumulator: 0.0,
             game_input: GameInput::default(),
             recorded_fixed_steps: Vec::new(),
+            pending_script_swaps: Vec::new(),
+            script_replay_log: ScriptReplayLog::default(),
+        }
+    }
+
+    /// Queue a script body. The tick is assigned in [`Self::commit_pending_script_swaps`],
+    /// which `tick` and `step_frame` call immediately before fixed steps.
+    pub fn queue_script_swap(&mut self, path: impl Into<String>, source: impl Into<String>) {
+        self.pending_script_swaps.push((path.into(), source.into()));
+    }
+
+    /// Replay log of swaps committed so far, in commit order.
+    pub fn script_replay_log(&self) -> &ScriptReplayLog {
+        &self.script_replay_log
+    }
+
+    fn commit_pending_script_swaps(&mut self) {
+        if self.pending_script_swaps.is_empty() {
+            return;
+        }
+        let tick = self.tick_count;
+        let pending = std::mem::take(&mut self.pending_script_swaps);
+        for (path, source) in pending {
+            if let Some(app) = self.sim_app.as_mut() {
+                if let Some(queue) = app.world.get_resource_mut::<ScriptReloadQueue>() {
+                    queue.stage(path.clone(), source.clone());
+                }
+            }
+            self.script_replay_log.record(tick, path, source);
         }
     }
 
@@ -683,6 +719,8 @@ impl EditorRuntime {
         self.edit_snapshot = None;
         self.tick_count = 0;
         self.recorded_fixed_steps.clear();
+        self.pending_script_swaps.clear();
+        self.script_replay_log.swaps.clear();
         self.state = RuntimeState::Editing;
         self.stats = RuntimeStats::default();
         self.frame_times.clear();
@@ -697,6 +735,7 @@ impl EditorRuntime {
         if steps == 0 {
             return Ok(());
         }
+        self.commit_pending_script_swaps();
 
         if let Some(app) = self.sim_app.take() {
             let mut app_slot = Some(app);
@@ -1269,6 +1308,26 @@ mod tests {
         assert_eq!(runtime.recorded_fixed_steps(), &[0, 1, 2, 1]);
         runtime.exit_play().expect("exit");
         assert!(runtime.recorded_fixed_steps().is_empty());
+    }
+
+    #[test]
+    fn script_swap_commits_on_the_tick_that_runs() {
+        let mut runtime = EditorRuntime::new();
+        let world = World::new();
+        runtime.enter_play(&world).expect("enter play");
+        runtime.queue_script_swap("scripts/tick.rhai", "moves.move_to(1, 0);");
+        runtime.tick(0.0).expect("no step");
+        assert!(
+            runtime.script_replay_log().swaps.is_empty(),
+            "a frame with zero fixed steps must not assign a tick"
+        );
+        runtime.tick(1.0 / 60.0).expect("one step");
+        let swap = &runtime.script_replay_log().swaps[0];
+        assert_eq!(swap.tick, 0);
+        assert_eq!(swap.path, "scripts/tick.rhai");
+        assert!(swap.hash_matches());
+        runtime.exit_play().expect("exit");
+        assert!(runtime.script_replay_log().swaps.is_empty());
     }
 
     #[test]

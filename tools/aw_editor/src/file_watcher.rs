@@ -477,71 +477,34 @@ mod tests {
     use std::io::Write;
 
     #[test]
-    #[ignore] // Requires assets/materials directory
     fn test_watcher_creation() {
-        let watcher = FileWatcher::new("assets/materials");
-        assert!(watcher.is_ok(), "Failed to create watcher");
+        let dir = tempfile::tempdir().unwrap();
+        assert!(FileWatcher::new(dir.path()).is_ok());
+        assert!(FileWatcher::new(dir.path().join("missing")).is_err());
     }
 
     #[test]
-    #[ignore] // Integration test (requires file system changes)
     fn test_material_reload() {
-        let temp_dir = std::env::temp_dir().join("astraweave_test_materials");
-        fs::create_dir_all(&temp_dir).unwrap();
-
-        let watcher = FileWatcher::new(&temp_dir).unwrap();
-
-        // Create a test material file
-        let test_material = temp_dir.join("test.toml");
-        let mut file = fs::File::create(&test_material).unwrap();
-        writeln!(file, "[material]").unwrap();
-        writeln!(file, "name = \"test\"").unwrap();
-        drop(file);
-
-        // Wait for debounce + processing
-        std::thread::sleep(Duration::from_millis(700));
-
-        // Check for reload event
-        let event = watcher.try_recv();
-        assert!(event.is_ok(), "Expected reload event");
-
-        if let Ok(ReloadEvent::Material(path)) = event {
-            assert_eq!(path, test_material);
-        } else {
-            panic!("Expected Material reload event");
-        }
-
-        // Cleanup
-        fs::remove_dir_all(&temp_dir).ok();
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("test.toml");
+        fs::write(&path, "[material]\nname = \"test\"\n").unwrap();
+        let _watcher = FileWatcher::new(dir.path()).unwrap();
+        assert_eq!(
+            classify_reload_path(&path),
+            Some(ReloadEvent::Material(path))
+        );
     }
 
     #[test]
-    #[ignore] // Integration test (requires file system changes)
     fn test_texture_reload() {
-        let temp_dir = std::env::temp_dir().join("astraweave_test_textures");
-        fs::create_dir_all(&temp_dir).unwrap();
-
-        let watcher = FileWatcher::new(&temp_dir).unwrap();
-
-        // Create a test texture file (empty PNG)
-        let test_texture = temp_dir.join("test.png");
-        fs::File::create(&test_texture).unwrap();
-
-        // Wait for debounce + processing
-        std::thread::sleep(Duration::from_millis(700));
-
-        // Check for reload event
-        let event = watcher.try_recv();
-        assert!(event.is_ok(), "Expected reload event");
-
-        if let Ok(ReloadEvent::Texture(path)) = event {
-            assert_eq!(path, test_texture);
-        } else {
-            panic!("Expected Texture reload event");
-        }
-
-        // Cleanup
-        fs::remove_dir_all(&temp_dir).ok();
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("test.png");
+        fs::write(&path, b"").unwrap();
+        let _watcher = FileWatcher::new(dir.path()).unwrap();
+        assert_eq!(
+            classify_reload_path(&path),
+            Some(ReloadEvent::Texture(path))
+        );
     }
 
     #[test]

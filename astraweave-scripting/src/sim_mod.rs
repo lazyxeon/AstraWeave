@@ -9,7 +9,7 @@
 use crate::ScriptReloadQueue;
 use astraweave_ecs::{App, Entity, Plugin, SystemStage, World};
 use astraweave_security::sandbox::{
-    execute_deterministic, roll_i64, sha256_bytes, SandboxEngine, SandboxProfile,
+    execute_deterministic, roll_i64, sha256_bytes, SandboxEngine, SandboxProfile, ScriptReplayLog,
     DEFAULT_MAX_MOVE_DELTA,
 };
 use astraweave_security::ScriptSandbox;
@@ -85,8 +85,11 @@ struct ModEngine(ScriptSandbox);
 pub struct ModReloadQueue(pub ScriptReloadQueue);
 
 #[derive(Clone)]
-struct SimRng {
-    seed: u64,
+struct ScriptDrawRng {
+    world_seed: u64,
+    tick: u64,
+    system_id: u64,
+    entity: u64,
     draw: u64,
 }
 
@@ -113,17 +116,26 @@ impl Plugin for ModScriptPlugin {
             app.world.insert_resource(ModReloadQueue::default());
         }
         app.world.insert_resource(ModScriptErrors::default());
-        app.add_system(SystemStage::SIMULATION, mod_script_system);
+        app.add_system(SystemStage::SIMULATION, mod_script_system)
+            .expect("registered schedule stage");
     }
 }
 
 fn register_sim_host(engine: &mut Engine) {
     engine
-        .register_type_with_name::<SimRng>("SimRng")
+        .register_type_with_name::<ScriptDrawRng>("SimRng")
         .register_fn(
             "sim_roll",
-            |rng: &mut SimRng, bound: i64| -> Result<i64, Box<rhai::EvalAltResult>> {
-                let value = roll_i64(rng.seed, rng.draw, bound).map_err(|err| {
+            |rng: &mut ScriptDrawRng, bound: i64| -> Result<i64, Box<rhai::EvalAltResult>> {
+                let value = roll_i64(
+                    rng.world_seed,
+                    rng.tick,
+                    rng.system_id,
+                    rng.entity,
+                    rng.draw,
+                    bound,
+                )
+                .map_err(|err| {
                     Box::new(rhai::EvalAltResult::ErrorRuntime(
                         err.to_string().into(),
                         rhai::Position::NONE,
@@ -153,6 +165,10 @@ fn register_sim_host(engine: &mut Engine) {
 
 /// One simulation step of every mod script.
 pub fn mod_script_system(world: &mut World) {
+    if let Some(slot) = world.get_resource_mut::<ModScriptErrors>() {
+        slot.messages.clear();
+    }
+    apply_logged_swaps(world);
     apply_program_reloads(world);
 
     let sandbox = match world.get_resource::<ModEngine>() {
@@ -200,12 +216,53 @@ pub fn mod_script_system(world: &mut World) {
         }
     }
 
-    errors.sort();
     if let Some(slot) = world.get_resource_mut::<ModScriptErrors>() {
-        slot.messages = errors;
+        slot.messages.extend(errors);
+        slot.messages.sort();
     }
     if let Some(clock) = world.get_resource_mut::<ModClock>() {
         clock.tick = clock.tick.wrapping_add(1);
+    }
+}
+
+/// Stage every [`ScriptReplayLog`] entry for this tick. A record whose bytes
+/// do not match `content_sha256` is an error and is not applied.
+fn apply_logged_swaps(world: &mut World) {
+    let tick = world
+        .get_resource::<ModClock>()
+        .map(|clock| clock.tick)
+        .unwrap_or(0);
+    let (staged, errors) = {
+        let Some(log) = world.get_resource::<ScriptReplayLog>() else {
+            return;
+        };
+        let mut staged: Vec<(String, String)> = Vec::new();
+        let mut errors = Vec::new();
+        for swap in log.at_tick(tick) {
+            if !swap.hash_matches() {
+                errors.push(format!(
+                    "script swap at tick {tick} for {} failed its content hash",
+                    swap.path
+                ));
+                continue;
+            }
+            staged.push((swap.path.clone(), swap.source.clone()));
+        }
+        (staged, errors)
+    };
+    if !errors.is_empty() {
+        if let Some(slot) = world.get_resource_mut::<ModScriptErrors>() {
+            slot.messages.extend(errors);
+        }
+    }
+    if staged.is_empty() {
+        return;
+    }
+    let Some(queue) = world.get_resource_mut::<ModReloadQueue>() else {
+        return;
+    };
+    for (path, source) in staged {
+        queue.0.stage(path, source);
     }
 }
 
@@ -236,13 +293,16 @@ fn run_one(
     agent: CModAgent,
 ) -> Result<Option<(i32, i32)>, String> {
     let mut scope = Scope::new();
-    let seed = astraweave_security::sandbox::mix_seed(
-        clock.world_seed,
-        clock.tick,
-        MOD_SYSTEM_ID,
-        entity_raw,
+    scope.push(
+        "rng",
+        ScriptDrawRng {
+            world_seed: clock.world_seed,
+            tick: clock.tick,
+            system_id: MOD_SYSTEM_ID,
+            entity: entity_raw,
+            draw: 0,
+        },
     );
-    scope.push("rng", SimRng { seed, draw: 0 });
     scope.push("moves", MoveBuf::default());
     scope.push("pos_x", i64::from(agent.x));
     scope.push("pos_y", i64::from(agent.y));
@@ -379,6 +439,41 @@ mod tests {
             mod_state_digest(&first.world),
             mod_state_digest(&replay.world)
         );
+    }
+
+    #[test]
+    fn reload_mid_run_replays_to_the_identical_hash() {
+        const SWAP_TICK: u64 = 4;
+        const TOTAL: u64 = 12;
+        const PATH: &str = "scripts/tick.rhai";
+        const NEXT: &str = "moves.move_to(5, 7);\n";
+        let seed = 0xA11C_E5E0;
+
+        let mut log = ScriptReplayLog::default();
+        let mut live = world_with_two_agents(seed);
+        for _ in 0..TOTAL {
+            let tick = live.world.get_resource::<ModClock>().unwrap().tick;
+            if tick == SWAP_TICK {
+                log.record(tick, PATH, NEXT);
+                live.world
+                    .get_resource_mut::<ModReloadQueue>()
+                    .unwrap()
+                    .0
+                    .stage(PATH, NEXT);
+            }
+            mod_script_system(&mut live.world);
+        }
+        let live_hash = mod_state_digest(&live.world);
+        assert_eq!(log.swaps.len(), 1);
+        assert_eq!(log.swaps[0].tick, SWAP_TICK);
+        assert!(log.swaps[0].hash_matches());
+
+        let mut replay = world_with_two_agents(seed);
+        replay.world.insert_resource(log);
+        for _ in 0..TOTAL {
+            mod_script_system(&mut replay.world);
+        }
+        assert_eq!(live_hash, mod_state_digest(&replay.world));
     }
 
     #[test]

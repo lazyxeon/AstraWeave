@@ -11,7 +11,8 @@
 
 use crate::{ExecutionLimits, ScriptSandbox};
 use anyhow::{bail, Context, Result};
-use rand::SeedableRng;
+use astraweave_core::sim::{mix_sim_seed, SimRng};
+use rand::Rng;
 use rhai::packages::{
     ArithmeticPackage, BasicArrayPackage, BasicIteratorPackage, BasicMapPackage,
     BasicStringPackage, LogicPackage, Package,
@@ -405,28 +406,72 @@ pub fn call_deterministic<A: rhai::FuncArgs>(
         .map_err(|err| anyhow::anyhow!("call {fn_name}: {err}"))
 }
 
-/// SplitMix64. Same inputs always produce the same `u64` on every OS.
-pub fn mix_seed(world_seed: u64, tick: u64, system_id: u64, entity: u64) -> u64 {
-    let mut z = world_seed
-        .wrapping_mul(0x9E37_79B9_7F4A_7C15)
-        .wrapping_add(tick)
-        .wrapping_mul(0xBF58_476D_1CE4_E5B9)
-        .wrapping_add(system_id)
-        .wrapping_mul(0x94D0_49BB_1331_11EB)
-        .wrapping_add(entity);
-    z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
-    z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
-    z ^ (z >> 31)
-}
-
-/// One deterministic draw in `0..bound`. `draw` selects the stream position.
-pub fn roll_i64(seed: u64, draw: u64, bound: i64) -> Result<i64> {
+/// One draw in `0..bound` from the canonical [`SimRng`].
+///
+/// `StdRng` is not stable across `rand` releases, so this crate does not
+/// construct one. The stream id is [`mix_sim_seed`]`(system_id, entity, draw)`,
+/// then [`SimRng::new`]`(world_seed, tick, stream)`. The same six inputs always
+/// produce the same `i64`.
+pub fn roll_i64(
+    world_seed: u64,
+    tick: u64,
+    system_id: u64,
+    entity: u64,
+    draw: u64,
+    bound: i64,
+) -> Result<i64> {
     if bound <= 0 || bound > MAX_SIM_ROLL_BOUND {
         bail!("sim_roll bound {bound} is outside 1..={MAX_SIM_ROLL_BOUND}");
     }
-    let mixed = mix_seed(seed, draw, 0x524E_475F, 0);
-    let mut rng = rand::rngs::StdRng::seed_from_u64(mixed);
-    Ok(rand::Rng::random_range(&mut rng, 0..bound))
+    let stream = mix_sim_seed(system_id, entity, draw);
+    let mut rng = SimRng::new(world_seed, tick, stream);
+    Ok(rng.random_range(0..bound))
+}
+
+/// One script replacement applied at a simulation tick.
+///
+/// `content_sha256` is SHA-256 of `source` bytes. Replay refuses a record
+/// whose bytes do not match that hash.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ScriptSwapRecord {
+    pub tick: u64,
+    pub path: String,
+    pub content_sha256: [u8; 32],
+    pub source: String,
+}
+
+impl ScriptSwapRecord {
+    pub fn new(tick: u64, path: impl Into<String>, source: impl Into<String>) -> Self {
+        let source = source.into();
+        let content_sha256 = sha256_bytes(source.as_bytes());
+        Self {
+            tick,
+            path: path.into(),
+            content_sha256,
+            source,
+        }
+    }
+
+    pub fn hash_matches(&self) -> bool {
+        sha256_bytes(self.source.as_bytes()) == self.content_sha256
+    }
+}
+
+/// Ordered script swaps for one play session. Replay feeds this log back.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct ScriptReplayLog {
+    pub swaps: Vec<ScriptSwapRecord>,
+}
+
+impl ScriptReplayLog {
+    pub fn record(&mut self, tick: u64, path: impl Into<String>, source: impl Into<String>) {
+        self.swaps.push(ScriptSwapRecord::new(tick, path, source));
+    }
+
+    /// Swaps whose tick equals `tick`, in record order.
+    pub fn at_tick(&self, tick: u64) -> impl Iterator<Item = &ScriptSwapRecord> {
+        self.swaps.iter().filter(move |swap| swap.tick == tick)
+    }
 }
 
 pub fn sha256_bytes(data: &[u8]) -> [u8; 32] {
@@ -954,19 +999,18 @@ scripts = ["scripts/configure.rhai"]
     }
 
     #[test]
-    fn mix_seed_is_stable() {
-        assert_eq!(mix_seed(1, 2, 3, 4), mix_seed(1, 2, 3, 4));
-        assert_ne!(mix_seed(1, 2, 3, 4), mix_seed(1, 2, 3, 5));
-    }
-
-    #[test]
-    fn roll_is_deterministic_and_bounded() {
-        let a = roll_i64(9, 0, 4).unwrap();
-        let b = roll_i64(9, 0, 4).unwrap();
+    fn roll_uses_canonical_sim_rng_and_is_bounded() {
+        let a = roll_i64(9, 3, 0x4D4F_4453, 1, 0, 4).unwrap();
+        let b = roll_i64(9, 3, 0x4D4F_4453, 1, 0, 4).unwrap();
         assert_eq!(a, b);
         assert!((0..4).contains(&a));
-        assert!(roll_i64(9, 0, 0).is_err());
-        assert!(roll_i64(9, 0, -1).is_err());
+        assert_ne!(
+            roll_i64(9, 3, 0x4D4F_4453, 1, 0, 1_000_000).unwrap(),
+            roll_i64(9, 3, 0x4D4F_4453, 2, 0, 1_000_000).unwrap(),
+            "entity id selects a different SimRng stream"
+        );
+        assert!(roll_i64(9, 0, 1, 0, 0, 0).is_err());
+        assert!(roll_i64(9, 0, 1, 0, 0, -1).is_err());
     }
 
     #[test]

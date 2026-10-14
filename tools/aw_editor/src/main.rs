@@ -10167,8 +10167,11 @@ impl eframe::App for EditorApp {
 
         let applied_scripts = self.rhai_hot_reload.apply_at_tick_boundary();
         for script in &applied_scripts {
+            self.runtime
+                .queue_script_swap(script.path.clone(), script.source.clone());
             self.console_logs.push(format!(
-                "Hot-reload: applied .rhai at tick boundary: {} ({} bytes)",
+                "Hot-reload: queued .rhai for tick {}: {} ({} bytes)",
+                self.runtime.tick_count(),
                 script.path,
                 script.source.len()
             ));

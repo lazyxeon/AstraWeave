@@ -70,7 +70,7 @@ Mods need a single sandboxed command set whose results are sim inputs. A second 
     │
     └─ sim: mod_script_system                         sim_mod.rs
           entities sorted by id
-          sim_roll from mix_seed(world_seed, tick, MOD_SYSTEM_ID, entity)
+          sim_roll from astraweave_core::sim::SimRng (mix_sim_seed stream, no private StdRng)
           move_to rejected outside ±100_000
           digest via mod_state_digest (SHA-256, little-endian)
 
@@ -120,7 +120,7 @@ Mods need a single sandboxed command set whose results are sim inputs. A second 
 | `astraweave-scripting/src/api.rs` | `ScriptCommand` set | Active | Re-exports `SCRIPT_COMMAND_API_VERSION`. |
 | `astraweave-scripting/src/loader.rs` | Async relative `.rhai` load | Active | Rejects absolute paths and `..`. Size-capped. |
 | `astraweave-scripting/src/sim_mod.rs` | Mod tick + digest | Active | `MOD_SYSTEM_ID = 0x4D4F4453`. |
-| `astraweave-scripting/tests/script_replay_hash.rs` | `scripted_system` SHA-256 | Active | Writes `target/script-replay-hash.json`. |
+| `astraweave-scripting/tests/script_replay_hash.rs` | `scripted_system` SHA-256 | Active | Appends the case to `target/replay-hash.json`. |
 | `astraweave-author/src/lib.rs` | `configure` | Active | Floats in hints are rejected. |
 | `tools/aw_editor/src/rhai_reload.rs` | Editor boundary | Active | |
 | `tools/aw_plugin_template/` | Scaffold | Non-runtime | README says so. |
@@ -168,10 +168,11 @@ Mods need a single sandboxed command set whose results are sim inputs. A second 
 |---|---|---|---|
 | 1 | Gameplay `script_system` iterates `CScript` entities in `Entity` order and does not call `std::fs` or `SystemTime`. | Yes | `script_reload_applies_on_the_next_tick_only` |
 | 2 | Host scope keys (`commands`, `physics`, `nav`, `entity_id`, `position`, `health`, `delta_time`) are not stored in `script_state`. | Yes | `is_host_scope_key` |
-| 3 | `mod_script_system` draws with `roll_i64(mix_seed(world_seed, tick, MOD_SYSTEM_ID, entity), draw, bound)`. | Yes | `two_runs_match_and_reload_waits_for_the_next_tick` |
+| 3 | `mod_script_system` draws with `roll_i64`, which calls `SimRng::new(world_seed, tick, mix_sim_seed(system_id, entity, draw))`. | Yes | `roll_uses_canonical_sim_rng_and_is_bounded`, `two_runs_match_and_reload_waits_for_the_next_tick` |
 | 4 | `move_to` outside `±DEFAULT_MAX_MOVE_DELTA` (100_000) leaves the agent in place and records an error. | Yes | `over_ceiling_move_does_not_change_position` |
-| 5 | `scripted_system` SHA-256 is `5a54c6f435f4d43e15bcd97548f33e15fd2f5fc4e4d2b7cc8fb3af209079dfd2` for seed `0xA11CE5E0`, 32 ticks, three agents, and the checked-in script. | Yes | `tests/script_replay_hash.rs` |
-| 6 | Author `configure` output that exceeds the director ceilings is an error. Hints cannot contain floats. | Yes | `sandboxed_configure_is_deterministic_and_capped` |
+| 5 | `scripted_system` SHA-256 is `362e4c6d3085d2a95d1219b988326beb4cbe898408de4a91e5b2abe3c3294d78` for seed `0xA11CE5E0`, 32 ticks, three agents, and the checked-in script. | Yes | `tests/script_replay_hash.rs` |
+| 6 | A script swap recorded as `(tick, path, content hash, source)` and replayed from `ScriptReplayLog` matches the live digest. | Yes | `reload_mid_run_replays_to_the_identical_hash` |
+| 7 | Author `configure` output that exceeds the director ceilings is an error. Hints cannot contain floats. | Yes | `sandboxed_configure_is_deterministic_and_capped` |
 
 ---
 
@@ -189,13 +190,13 @@ Each mod script is compiled on the tick it runs. The replay case is 32 ticks of 
 - `cargo test -p astraweave-scripting --lib`
 - `cargo test -p astraweave-scripting --test script_replay_hash`
 - `cargo test -p aw_editor --lib -- file_watcher:: rhai_reload::`
-- CI: `.github/workflows/determinism-replay-mod.yml` diffs `scripted_system` across Linux, Windows, and macOS. `target-cpu=native` is not set. Apple Silicon uses the default aarch64 baseline.
+- CI: `.github/workflows/determinism-replay.yml` requires `scripted_system` along with `planner_pure` and `perception_world`. `target-cpu=native` is not set. Apple Silicon uses the default aarch64 baseline.
 
 ---
 
 ## 11. Open Questions / Parked Decisions
 
-- **Editor play mode does not execute the staged `.rhai` sources.** The bytes are published on `RhaiHotReload` before `runtime.tick`. Inserting `CScript` or `ModPrograms` into the play world is a later join with WS-WORLD, which owns system registration in `runtime.rs`.
+- **Play mode records the swap, then commits it on the tick that runs.** `EditorRuntime::queue_script_swap` stores the bytes. `run_fixed_steps` writes `(tick_count, path, sha256, source)` into `ScriptReplayLog` and stages `ScriptReloadQueue` on the sim app immediately before the fixed steps. A frame that runs zero steps does not assign a tick. The play app from `build_app` does not register `ModScriptPlugin`; the log is what replay consumes.
 - **`execute_script_sandboxed` remains the async helper** and still ignores `allowed_functions`. New sim calls must use `execute_deterministic`.
 
 ---
@@ -205,7 +206,7 @@ Each mod script is compiled on the tick it runs. The replay case is 32 ticks of 
 **Update this doc when:**
 - A command is added to `COMMANDS` (bump `MOD_COMMAND_API_VERSION` and invariant 5 if the replay script changes).
 - The editor starts applying staged scripts onto the play world.
-- WS-D0 absorbs `scripted_system` into `determinism-replay.yml`.
+- `scripted_system` is a required case in `determinism-replay.yml`.
 
 ## Revision history
 
