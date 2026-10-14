@@ -38,7 +38,7 @@ jobs:
         uses: dtolnay/rust-toolchain@1.89.0
 
       - name: Install lavapipe
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends mesa-vulkan-drivers libvulkan1
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends pkg-config libudev-dev libasound2-dev mesa-vulkan-drivers libvulkan1
 
       - name: Cache Cargo
         uses: Swatinem/rust-cache@v2
