@@ -1,11 +1,10 @@
 //! Crash log, stage timings, and a native error dialog.
 //!
 //! A windowed double-click has no console. Fatal failures write
-//! `aravath_crash.log` next to the exe and, on Windows, open a message box.
+//! `aravath_crash.log` under the user data directory and, on Windows, open a
+//! message box. The demo does not open a network connection or update itself.
 
-use std::fs::OpenOptions;
-use std::io::Write;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Mutex;
 use std::time::Instant;
 
@@ -13,16 +12,18 @@ static LOG: Mutex<Option<std::fs::File>> = Mutex::new(None);
 static START: Mutex<Option<Instant>> = Mutex::new(None);
 
 pub fn install() {
-    let dir = exe_dir();
-    let _ = std::fs::create_dir_all(&dir);
-    if let Ok(file) = OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(dir.join("aravath.log"))
-    {
-        if let Ok(mut slot) = LOG.lock() {
-            *slot = Some(file);
+    let dir = aravath_runtime::assets::log_dir();
+    match aravath_runtime::assets::open_capped_log(
+        &dir,
+        "aravath.log",
+        aravath_runtime::assets::MAX_LOG_BYTES,
+    ) {
+        Ok(file) => {
+            if let Ok(mut slot) = LOG.lock() {
+                *slot = Some(file);
+            }
         }
+        Err(err) => eprintln!("aravath: could not open log in {}: {err}", dir.display()),
     }
     if let Ok(mut start) = START.lock() {
         *start = Some(Instant::now());
@@ -59,10 +60,7 @@ impl log::Log for FileLogger {
 }
 
 pub fn exe_dir() -> PathBuf {
-    std::env::current_exe()
-        .ok()
-        .and_then(|path| path.parent().map(Path::to_path_buf))
-        .unwrap_or_else(|| PathBuf::from("."))
+    aravath_runtime::assets::exe_dir()
 }
 
 pub fn stage(name: &str) {
@@ -75,12 +73,13 @@ pub fn stage(name: &str) {
 }
 
 pub fn line(text: &str) {
-    let stamped = format!("{text}\n");
+    let text = aravath_runtime::assets::bounded_text(text, 16 * 1024);
     eprintln!("{text}");
     if let Ok(mut slot) = LOG.lock() {
         if let Some(file) = slot.as_mut() {
-            let _ = file.write_all(stamped.as_bytes());
-            let _ = file.flush();
+            if let Err(err) = aravath_runtime::assets::write_log_line(file, &text) {
+                eprintln!("aravath: log write failed: {err}");
+            }
         }
     }
 }
@@ -92,11 +91,20 @@ pub fn fatal(title: &str, message: &str) -> ! {
 }
 
 fn record_crash(message: &str) {
-    line(message);
-    let path = exe_dir().join("aravath_crash.log");
-    if let Ok(mut file) = OpenOptions::new().create(true).append(true).open(path) {
-        let _ = writeln!(file, "----\n{message}");
-        let _ = file.flush();
+    let message = aravath_runtime::assets::bounded_text(message, 64 * 1024);
+    line(&message);
+    let dir = aravath_runtime::assets::log_dir();
+    match aravath_runtime::assets::open_capped_log(
+        &dir,
+        "aravath_crash.log",
+        aravath_runtime::assets::MAX_LOG_BYTES,
+    ) {
+        Ok(mut file) => {
+            if let Err(err) = aravath_runtime::assets::write_log_line(&mut file, &message) {
+                eprintln!("aravath: crash log write failed: {err}");
+            }
+        }
+        Err(err) => eprintln!("aravath: could not open crash log: {err}"),
     }
 }
 
@@ -120,8 +128,8 @@ fn win_message_box(title: &str, message: &str) {
             .chain(std::iter::once(0))
             .collect()
     }
-    let title = wide(title);
-    let body = wide(&truncate(message, 1200));
+    let title = wide(&aravath_runtime::assets::bounded_text(title, 120));
+    let body = wide(&aravath_runtime::assets::bounded_text(message, 1200));
     // SAFETY: MessageBoxW is the Win32 modal dialog. Pointers are null-terminated
     // UTF-16 buffers that live for the duration of the call. A null hwnd is the desktop.
     unsafe {
@@ -131,15 +139,6 @@ fn win_message_box(title: &str, message: &str) {
             title.as_ptr(),
             0x00000010,
         );
-    }
-}
-
-#[cfg(windows)]
-fn truncate(text: &str, max: usize) -> String {
-    if text.len() <= max {
-        text.to_string()
-    } else {
-        format!("{}…", &text[..max])
     }
 }
 

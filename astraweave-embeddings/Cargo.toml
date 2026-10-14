@@ -31,7 +31,7 @@ candle-transformers = { version = "0.8", optional = true }
 hnsw_rs = { version = "0.3", optional = true }
 
 # HTTP client for embeddings API
-reqwest = { version = "0.12", features = ["json"], optional = true }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"], optional = true }
 
 # Concurrent data structures
 dashmap = "6.1"

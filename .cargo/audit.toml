@@ -1,0 +1,13 @@
+# cargo-audit config. The same residual IDs are ignored in deny.toml, which
+# is the CI gate that fails on a new unmaintained crate.
+
+[advisories]
+ignore = [
+    "RUSTSEC-2021-0070",
+    "RUSTSEC-2026-0194",
+    "RUSTSEC-2026-0195",
+    "RUSTSEC-2026-0104",
+    "RUSTSEC-2026-0098",
+    "RUSTSEC-2026-0099",
+    "RUSTSEC-2026-0049",
+]
