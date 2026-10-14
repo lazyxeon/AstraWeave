@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"fn":["step"],"struct":["SimConfig"]};
+window.SIDEBAR_ITEMS = {"constant":["SIM_SYSTEM_ANCHOR_PARTICLES","SIM_SYSTEM_CRAFT","SIM_SYSTEM_ENEMY_PATROL","SIM_SYSTEM_HARVEST","SIM_SYSTEM_SPAWNER","SIM_SYSTEM_TERRAIN_SOLVER"],"fn":["mix_sim_seed","step"],"struct":["SimConfig","SimRng"]};

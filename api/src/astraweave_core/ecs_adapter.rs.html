@@ -215,14 +215,14 @@
 <a href=#215 id=215 data-nosnippet>215</a>
 <a href=#216 id=216 data-nosnippet>216</a>    <span class="comment">// Now insert the legacy world as a resource so systems can access it.
 <a href=#217 id=217 data-nosnippet>217</a>    </span>app.world.insert_resource::&lt;World&gt;(legacy_world);
-<a href=#218 id=218 data-nosnippet>218</a>    app.add_system(<span class="string">"simulation"</span>, sys_sim <span class="kw">as </span>ecs::SystemFn);
-<a href=#219 id=219 data-nosnippet>219</a>    app.add_system(<span class="string">"simulation"</span>, sys_move <span class="kw">as </span>ecs::SystemFn);
+<a href=#218 id=218 data-nosnippet>218</a>    app.add_system_known_stage(<span class="string">"simulation"</span>, sys_sim <span class="kw">as </span>ecs::SystemFn);
+<a href=#219 id=219 data-nosnippet>219</a>    app.add_system_known_stage(<span class="string">"simulation"</span>, sys_move <span class="kw">as </span>ecs::SystemFn);
 <a href=#220 id=220 data-nosnippet>220</a>    <span class="comment">// Bridge sync runs after simulation so mappings are reflected into components
-<a href=#221 id=221 data-nosnippet>221</a>    </span>app.add_system(<span class="string">"sync"</span>, sys_bridge_sync <span class="kw">as </span>ecs::SystemFn);
+<a href=#221 id=221 data-nosnippet>221</a>    </span>app.add_system_known_stage(<span class="string">"sync"</span>, sys_bridge_sync <span class="kw">as </span>ecs::SystemFn);
 <a href=#222 id=222 data-nosnippet>222</a>    <span class="comment">// Sync back to legacy world so legacy systems see updates
-<a href=#223 id=223 data-nosnippet>223</a>    </span>app.add_system(<span class="string">"sync"</span>, sys_sync_to_legacy <span class="kw">as </span>ecs::SystemFn);
+<a href=#223 id=223 data-nosnippet>223</a>    </span>app.add_system_known_stage(<span class="string">"sync"</span>, sys_sync_to_legacy <span class="kw">as </span>ecs::SystemFn);
 <a href=#224 id=224 data-nosnippet>224</a>    <span class="comment">// AI planning system is registered from astraweave-ai crate to avoid a dependency cycle.
-<a href=#225 id=225 data-nosnippet>225</a>    </span>app.add_system(<span class="string">"perception"</span>, sys_refresh_los <span class="kw">as </span>ecs::SystemFn);
+<a href=#225 id=225 data-nosnippet>225</a>    </span>app.add_system_known_stage(<span class="string">"perception"</span>, sys_refresh_los <span class="kw">as </span>ecs::SystemFn);
 <a href=#226 id=226 data-nosnippet>226</a>    app
 <a href=#227 id=227 data-nosnippet>227</a>}
 <a href=#228 id=228 data-nosnippet>228</a>

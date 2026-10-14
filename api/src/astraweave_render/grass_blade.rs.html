@@ -507,7 +507,7 @@
 <a href=#507 id=507 data-nosnippet>507</a>    </span><span class="kw">fn </span>test_fract_hash_range() {
 <a href=#508 id=508 data-nosnippet>508</a>        <span class="kw">for </span>i <span class="kw">in </span><span class="number">0</span>..<span class="number">1000 </span>{
 <a href=#509 id=509 data-nosnippet>509</a>            <span class="kw">let </span>h = fract_hash(i <span class="kw">as </span>f32 * <span class="number">0.1</span>);
-<a href=#510 id=510 data-nosnippet>510</a>            <span class="macro">assert!</span>(h &gt;= <span class="number">0.0 </span>&amp;&amp; h &lt;= <span class="number">1.0</span>, <span class="string">"hash out of range: {h}"</span>);
+<a href=#510 id=510 data-nosnippet>510</a>            <span class="macro">assert!</span>((<span class="number">0.0</span>..=<span class="number">1.0</span>).contains(<span class="kw-2">&amp;</span>h), <span class="string">"hash out of range: {h}"</span>);
 <a href=#511 id=511 data-nosnippet>511</a>        }
 <a href=#512 id=512 data-nosnippet>512</a>    }
 <a href=#513 id=513 data-nosnippet>513</a>

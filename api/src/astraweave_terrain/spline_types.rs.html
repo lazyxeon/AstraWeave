@@ -1359,65 +1359,66 @@
 <a href=#1359 id=1359 data-nosnippet>1359</a>    ///
 <a href=#1360 id=1360 data-nosnippet>1360</a>    /// Extend the list when a new archetype factory is added.
 <a href=#1361 id=1361 data-nosnippet>1361</a>    </span><span class="attr">#[test]
-<a href=#1362 id=1362 data-nosnippet>1362</a>    </span><span class="kw">fn </span>bootstrap_spline_sets_are_well_formed() {
-<a href=#1363 id=1363 data-nosnippet>1363</a>        <span class="kw">let </span>factories: [(<span class="kw-2">&amp;</span>str, <span class="kw">fn</span>() -&gt; BootstrapSplineSet); <span class="number">8</span>] = [
-<a href=#1364 id=1364 data-nosnippet>1364</a>            (
-<a href=#1365 id=1365 data-nosnippet>1365</a>                <span class="string">"continental_temperate"</span>,
-<a href=#1366 id=1366 data-nosnippet>1366</a>                bootstrap_splines_continental_temperate,
-<a href=#1367 id=1367 data-nosnippet>1367</a>            ),
-<a href=#1368 id=1368 data-nosnippet>1368</a>            (<span class="string">"equatorial_tropical"</span>, bootstrap_splines_equatorial_tropical),
-<a href=#1369 id=1369 data-nosnippet>1369</a>            (<span class="string">"boreal_subarctic"</span>, bootstrap_splines_boreal_subarctic),
-<a href=#1370 id=1370 data-nosnippet>1370</a>            (<span class="string">"mediterranean"</span>, bootstrap_splines_mediterranean),
-<a href=#1371 id=1371 data-nosnippet>1371</a>            (<span class="string">"desert"</span>, bootstrap_splines_desert),
-<a href=#1372 id=1372 data-nosnippet>1372</a>            (<span class="string">"custom"</span>, bootstrap_splines_custom),
-<a href=#1373 id=1373 data-nosnippet>1373</a>            (<span class="string">"climate_driven"</span>, climate_driven_spline_set),
-<a href=#1374 id=1374 data-nosnippet>1374</a>            (<span class="string">"d5fix_baseline"</span>, d5fix_baseline_spline_set),
-<a href=#1375 id=1375 data-nosnippet>1375</a>        ];
-<a href=#1376 id=1376 data-nosnippet>1376</a>        <span class="kw">for </span>(name, factory) <span class="kw">in </span>factories {
-<a href=#1377 id=1377 data-nosnippet>1377</a>            <span class="kw">let </span>set = factory();
-<a href=#1378 id=1378 data-nosnippet>1378</a>            <span class="kw">for </span>(label, param) <span class="kw">in </span>[
-<a href=#1379 id=1379 data-nosnippet>1379</a>                (<span class="string">"mountains_amplitude"</span>, <span class="kw-2">&amp;</span>set.mountains_amplitude),
-<a href=#1380 id=1380 data-nosnippet>1380</a>                (<span class="string">"continental_scale"</span>, <span class="kw-2">&amp;</span>set.continental_scale),
-<a href=#1381 id=1381 data-nosnippet>1381</a>                (<span class="string">"base_elevation_amplitude"</span>, <span class="kw-2">&amp;</span>set.base_elevation_amplitude),
-<a href=#1382 id=1382 data-nosnippet>1382</a>                (<span class="string">"base_elevation_floor"</span>, <span class="kw-2">&amp;</span>set.base_elevation_floor),
-<a href=#1383 id=1383 data-nosnippet>1383</a>            ] {
-<a href=#1384 id=1384 data-nosnippet>1384</a>                <span class="kw">let </span>pts = <span class="kw-2">&amp;</span>param.spline.control_points;
-<a href=#1385 id=1385 data-nosnippet>1385</a>                <span class="macro">assert!</span>(
-<a href=#1386 id=1386 data-nosnippet>1386</a>                    Spline1D::literal_table_is_well_formed(pts),
-<a href=#1387 id=1387 data-nosnippet>1387</a>                    <span class="string">"{name}::{label} control points must be non-empty, finite                      and ascending in input; got {pts:?}"
-<a href=#1388 id=1388 data-nosnippet>1388</a>                </span>);
-<a href=#1389 id=1389 data-nosnippet>1389</a>                <span class="comment">// The same table must also satisfy the validated constructor —
-<a href=#1390 id=1390 data-nosnippet>1390</a>                // proof the infallible path accepts exactly what the fallible
-<a href=#1391 id=1391 data-nosnippet>1391</a>                // one does, so nothing was loosened by retiring the expect()s.
-<a href=#1392 id=1392 data-nosnippet>1392</a>                </span><span class="macro">assert!</span>(
-<a href=#1393 id=1393 data-nosnippet>1393</a>                    Spline1D::from_control_points(pts.clone()).is_ok(),
-<a href=#1394 id=1394 data-nosnippet>1394</a>                    <span class="string">"{name}::{label} must also pass from_control_points"
-<a href=#1395 id=1395 data-nosnippet>1395</a>                </span>);
-<a href=#1396 id=1396 data-nosnippet>1396</a>            }
-<a href=#1397 id=1397 data-nosnippet>1397</a>        }
-<a href=#1398 id=1398 data-nosnippet>1398</a>    }
-<a href=#1399 id=1399 data-nosnippet>1399</a>
-<a href=#1400 id=1400 data-nosnippet>1400</a>    <span class="attr">#[test]
-<a href=#1401 id=1401 data-nosnippet>1401</a>    </span><span class="kw">fn </span>literal_table_predicate_rejects_the_same_inputs_as_the_validator() {
-<a href=#1402 id=1402 data-nosnippet>1402</a>        <span class="comment">// Empty, descending, NaN, infinite — the four SplineError conditions.
-<a href=#1403 id=1403 data-nosnippet>1403</a>        </span><span class="kw">for </span>bad <span class="kw">in </span>[
-<a href=#1404 id=1404 data-nosnippet>1404</a>            <span class="macro">vec!</span>[],
-<a href=#1405 id=1405 data-nosnippet>1405</a>            <span class="macro">vec!</span>[(<span class="number">1.0_f32</span>, <span class="number">0.0_f32</span>), (<span class="number">0.0</span>, <span class="number">1.0</span>)],
-<a href=#1406 id=1406 data-nosnippet>1406</a>            <span class="macro">vec!</span>[(<span class="number">0.0_f32</span>, f32::NAN)],
-<a href=#1407 id=1407 data-nosnippet>1407</a>            <span class="macro">vec!</span>[(<span class="number">0.0_f32</span>, f32::INFINITY)],
-<a href=#1408 id=1408 data-nosnippet>1408</a>        ] {
-<a href=#1409 id=1409 data-nosnippet>1409</a>            <span class="macro">assert!</span>(
-<a href=#1410 id=1410 data-nosnippet>1410</a>                !Spline1D::literal_table_is_well_formed(<span class="kw-2">&amp;</span>bad),
-<a href=#1411 id=1411 data-nosnippet>1411</a>                <span class="string">"predicate should reject {bad:?}"
-<a href=#1412 id=1412 data-nosnippet>1412</a>            </span>);
-<a href=#1413 id=1413 data-nosnippet>1413</a>            <span class="macro">assert!</span>(
-<a href=#1414 id=1414 data-nosnippet>1414</a>                Spline1D::from_control_points(bad.clone()).is_err(),
-<a href=#1415 id=1415 data-nosnippet>1415</a>                <span class="string">"validator should reject {bad:?}"
-<a href=#1416 id=1416 data-nosnippet>1416</a>            </span>);
-<a href=#1417 id=1417 data-nosnippet>1417</a>        }
-<a href=#1418 id=1418 data-nosnippet>1418</a>        <span class="comment">// Equal inputs encode a sharp step and are legal for both.
-<a href=#1419 id=1419 data-nosnippet>1419</a>        </span><span class="kw">let </span>step = <span class="macro">vec!</span>[(<span class="number">0.0_f32</span>, <span class="number">0.0_f32</span>), (<span class="number">0.5</span>, <span class="number">1.0</span>), (<span class="number">0.5</span>, <span class="number">2.0</span>), (<span class="number">1.0</span>, <span class="number">3.0</span>)];
-<a href=#1420 id=1420 data-nosnippet>1420</a>        <span class="macro">assert!</span>(Spline1D::literal_table_is_well_formed(<span class="kw-2">&amp;</span>step));
-<a href=#1421 id=1421 data-nosnippet>1421</a>        <span class="macro">assert!</span>(Spline1D::from_control_points(step).is_ok());
-<a href=#1422 id=1422 data-nosnippet>1422</a>    }
-<a href=#1423 id=1423 data-nosnippet>1423</a>}</code></pre></div></section></main></body></html>
+<a href=#1362 id=1362 data-nosnippet>1362</a>    #[allow(clippy::type_complexity)]
+<a href=#1363 id=1363 data-nosnippet>1363</a>    </span><span class="kw">fn </span>bootstrap_spline_sets_are_well_formed() {
+<a href=#1364 id=1364 data-nosnippet>1364</a>        <span class="kw">let </span>factories: [(<span class="kw-2">&amp;</span>str, <span class="kw">fn</span>() -&gt; BootstrapSplineSet); <span class="number">8</span>] = [
+<a href=#1365 id=1365 data-nosnippet>1365</a>            (
+<a href=#1366 id=1366 data-nosnippet>1366</a>                <span class="string">"continental_temperate"</span>,
+<a href=#1367 id=1367 data-nosnippet>1367</a>                bootstrap_splines_continental_temperate,
+<a href=#1368 id=1368 data-nosnippet>1368</a>            ),
+<a href=#1369 id=1369 data-nosnippet>1369</a>            (<span class="string">"equatorial_tropical"</span>, bootstrap_splines_equatorial_tropical),
+<a href=#1370 id=1370 data-nosnippet>1370</a>            (<span class="string">"boreal_subarctic"</span>, bootstrap_splines_boreal_subarctic),
+<a href=#1371 id=1371 data-nosnippet>1371</a>            (<span class="string">"mediterranean"</span>, bootstrap_splines_mediterranean),
+<a href=#1372 id=1372 data-nosnippet>1372</a>            (<span class="string">"desert"</span>, bootstrap_splines_desert),
+<a href=#1373 id=1373 data-nosnippet>1373</a>            (<span class="string">"custom"</span>, bootstrap_splines_custom),
+<a href=#1374 id=1374 data-nosnippet>1374</a>            (<span class="string">"climate_driven"</span>, climate_driven_spline_set),
+<a href=#1375 id=1375 data-nosnippet>1375</a>            (<span class="string">"d5fix_baseline"</span>, d5fix_baseline_spline_set),
+<a href=#1376 id=1376 data-nosnippet>1376</a>        ];
+<a href=#1377 id=1377 data-nosnippet>1377</a>        <span class="kw">for </span>(name, factory) <span class="kw">in </span>factories {
+<a href=#1378 id=1378 data-nosnippet>1378</a>            <span class="kw">let </span>set = factory();
+<a href=#1379 id=1379 data-nosnippet>1379</a>            <span class="kw">for </span>(label, param) <span class="kw">in </span>[
+<a href=#1380 id=1380 data-nosnippet>1380</a>                (<span class="string">"mountains_amplitude"</span>, <span class="kw-2">&amp;</span>set.mountains_amplitude),
+<a href=#1381 id=1381 data-nosnippet>1381</a>                (<span class="string">"continental_scale"</span>, <span class="kw-2">&amp;</span>set.continental_scale),
+<a href=#1382 id=1382 data-nosnippet>1382</a>                (<span class="string">"base_elevation_amplitude"</span>, <span class="kw-2">&amp;</span>set.base_elevation_amplitude),
+<a href=#1383 id=1383 data-nosnippet>1383</a>                (<span class="string">"base_elevation_floor"</span>, <span class="kw-2">&amp;</span>set.base_elevation_floor),
+<a href=#1384 id=1384 data-nosnippet>1384</a>            ] {
+<a href=#1385 id=1385 data-nosnippet>1385</a>                <span class="kw">let </span>pts = <span class="kw-2">&amp;</span>param.spline.control_points;
+<a href=#1386 id=1386 data-nosnippet>1386</a>                <span class="macro">assert!</span>(
+<a href=#1387 id=1387 data-nosnippet>1387</a>                    Spline1D::literal_table_is_well_formed(pts),
+<a href=#1388 id=1388 data-nosnippet>1388</a>                    <span class="string">"{name}::{label} control points must be non-empty, finite                      and ascending in input; got {pts:?}"
+<a href=#1389 id=1389 data-nosnippet>1389</a>                </span>);
+<a href=#1390 id=1390 data-nosnippet>1390</a>                <span class="comment">// The same table must also satisfy the validated constructor —
+<a href=#1391 id=1391 data-nosnippet>1391</a>                // proof the infallible path accepts exactly what the fallible
+<a href=#1392 id=1392 data-nosnippet>1392</a>                // one does, so nothing was loosened by retiring the expect()s.
+<a href=#1393 id=1393 data-nosnippet>1393</a>                </span><span class="macro">assert!</span>(
+<a href=#1394 id=1394 data-nosnippet>1394</a>                    Spline1D::from_control_points(pts.clone()).is_ok(),
+<a href=#1395 id=1395 data-nosnippet>1395</a>                    <span class="string">"{name}::{label} must also pass from_control_points"
+<a href=#1396 id=1396 data-nosnippet>1396</a>                </span>);
+<a href=#1397 id=1397 data-nosnippet>1397</a>            }
+<a href=#1398 id=1398 data-nosnippet>1398</a>        }
+<a href=#1399 id=1399 data-nosnippet>1399</a>    }
+<a href=#1400 id=1400 data-nosnippet>1400</a>
+<a href=#1401 id=1401 data-nosnippet>1401</a>    <span class="attr">#[test]
+<a href=#1402 id=1402 data-nosnippet>1402</a>    </span><span class="kw">fn </span>literal_table_predicate_rejects_the_same_inputs_as_the_validator() {
+<a href=#1403 id=1403 data-nosnippet>1403</a>        <span class="comment">// Empty, descending, NaN, infinite — the four SplineError conditions.
+<a href=#1404 id=1404 data-nosnippet>1404</a>        </span><span class="kw">for </span>bad <span class="kw">in </span>[
+<a href=#1405 id=1405 data-nosnippet>1405</a>            <span class="macro">vec!</span>[],
+<a href=#1406 id=1406 data-nosnippet>1406</a>            <span class="macro">vec!</span>[(<span class="number">1.0_f32</span>, <span class="number">0.0_f32</span>), (<span class="number">0.0</span>, <span class="number">1.0</span>)],
+<a href=#1407 id=1407 data-nosnippet>1407</a>            <span class="macro">vec!</span>[(<span class="number">0.0_f32</span>, f32::NAN)],
+<a href=#1408 id=1408 data-nosnippet>1408</a>            <span class="macro">vec!</span>[(<span class="number">0.0_f32</span>, f32::INFINITY)],
+<a href=#1409 id=1409 data-nosnippet>1409</a>        ] {
+<a href=#1410 id=1410 data-nosnippet>1410</a>            <span class="macro">assert!</span>(
+<a href=#1411 id=1411 data-nosnippet>1411</a>                !Spline1D::literal_table_is_well_formed(<span class="kw-2">&amp;</span>bad),
+<a href=#1412 id=1412 data-nosnippet>1412</a>                <span class="string">"predicate should reject {bad:?}"
+<a href=#1413 id=1413 data-nosnippet>1413</a>            </span>);
+<a href=#1414 id=1414 data-nosnippet>1414</a>            <span class="macro">assert!</span>(
+<a href=#1415 id=1415 data-nosnippet>1415</a>                Spline1D::from_control_points(bad.clone()).is_err(),
+<a href=#1416 id=1416 data-nosnippet>1416</a>                <span class="string">"validator should reject {bad:?}"
+<a href=#1417 id=1417 data-nosnippet>1417</a>            </span>);
+<a href=#1418 id=1418 data-nosnippet>1418</a>        }
+<a href=#1419 id=1419 data-nosnippet>1419</a>        <span class="comment">// Equal inputs encode a sharp step and are legal for both.
+<a href=#1420 id=1420 data-nosnippet>1420</a>        </span><span class="kw">let </span>step = <span class="macro">vec!</span>[(<span class="number">0.0_f32</span>, <span class="number">0.0_f32</span>), (<span class="number">0.5</span>, <span class="number">1.0</span>), (<span class="number">0.5</span>, <span class="number">2.0</span>), (<span class="number">1.0</span>, <span class="number">3.0</span>)];
+<a href=#1421 id=1421 data-nosnippet>1421</a>        <span class="macro">assert!</span>(Spline1D::literal_table_is_well_formed(<span class="kw-2">&amp;</span>step));
+<a href=#1422 id=1422 data-nosnippet>1422</a>        <span class="macro">assert!</span>(Spline1D::from_control_points(step).is_ok());
+<a href=#1423 id=1423 data-nosnippet>1423</a>    }
+<a href=#1424 id=1424 data-nosnippet>1424</a>}</code></pre></div></section></main></body></html>

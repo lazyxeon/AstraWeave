@@ -245,7 +245,7 @@
 <a href=#245 id=245 data-nosnippet>245</a>    </span><span class="kw">fn </span>hammersley_cpu_validation() {
 <a href=#246 id=246 data-nosnippet>246</a>        <span class="comment">// Validate the radical inverse Van der Corput sequence
 <a href=#247 id=247 data-nosnippet>247</a>        </span><span class="kw">fn </span>radical_inverse_vdc(<span class="kw-2">mut </span>bits: u32) -&gt; f32 {
-<a href=#248 id=248 data-nosnippet>248</a>            bits = (bits &lt;&lt; <span class="number">16</span>) | (bits &gt;&gt; <span class="number">16</span>);
+<a href=#248 id=248 data-nosnippet>248</a>            bits = bits.rotate_right(<span class="number">16</span>);
 <a href=#249 id=249 data-nosnippet>249</a>            bits = ((bits &amp; <span class="number">0x55555555</span>) &lt;&lt; <span class="number">1</span>) | ((bits &amp; <span class="number">0xAAAAAAAA</span>) &gt;&gt; <span class="number">1</span>);
 <a href=#250 id=250 data-nosnippet>250</a>            bits = ((bits &amp; <span class="number">0x33333333</span>) &lt;&lt; <span class="number">2</span>) | ((bits &amp; <span class="number">0xCCCCCCCC</span>) &gt;&gt; <span class="number">2</span>);
 <a href=#251 id=251 data-nosnippet>251</a>            bits = ((bits &amp; <span class="number">0x0F0F0F0F</span>) &lt;&lt; <span class="number">4</span>) | ((bits &amp; <span class="number">0xF0F0F0F0</span>) &gt;&gt; <span class="number">4</span>);
@@ -257,9 +257,9 @@
 <a href=#257 id=257 data-nosnippet>257</a>        </span><span class="kw">let </span>v0 = radical_inverse_vdc(<span class="number">0</span>);
 <a href=#258 id=258 data-nosnippet>258</a>        <span class="kw">let </span>v1 = radical_inverse_vdc(<span class="number">1</span>);
 <a href=#259 id=259 data-nosnippet>259</a>        <span class="kw">let </span>v2 = radical_inverse_vdc(<span class="number">2</span>);
-<a href=#260 id=260 data-nosnippet>260</a>        <span class="macro">assert!</span>(v0 &gt;= <span class="number">0.0 </span>&amp;&amp; v0 &lt; <span class="number">1.0</span>);
-<a href=#261 id=261 data-nosnippet>261</a>        <span class="macro">assert!</span>(v1 &gt;= <span class="number">0.0 </span>&amp;&amp; v1 &lt; <span class="number">1.0</span>);
-<a href=#262 id=262 data-nosnippet>262</a>        <span class="macro">assert!</span>(v2 &gt;= <span class="number">0.0 </span>&amp;&amp; v2 &lt; <span class="number">1.0</span>);
+<a href=#260 id=260 data-nosnippet>260</a>        <span class="macro">assert!</span>((<span class="number">0.0</span>..<span class="number">1.0</span>).contains(<span class="kw-2">&amp;</span>v0));
+<a href=#261 id=261 data-nosnippet>261</a>        <span class="macro">assert!</span>((<span class="number">0.0</span>..<span class="number">1.0</span>).contains(<span class="kw-2">&amp;</span>v1));
+<a href=#262 id=262 data-nosnippet>262</a>        <span class="macro">assert!</span>((<span class="number">0.0</span>..<span class="number">1.0</span>).contains(<span class="kw-2">&amp;</span>v2));
 <a href=#263 id=263 data-nosnippet>263</a>        <span class="comment">// They should be different
 <a href=#264 id=264 data-nosnippet>264</a>        </span><span class="macro">assert!</span>((v0 - v1).abs() &gt; <span class="number">0.01</span>);
 <a href=#265 id=265 data-nosnippet>265</a>        <span class="macro">assert!</span>((v1 - v2).abs() &gt; <span class="number">0.01</span>);

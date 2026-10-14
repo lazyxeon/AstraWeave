@@ -354,8 +354,9 @@
 <a href=#354 id=354 data-nosnippet>354</a>    }
 <a href=#355 id=355 data-nosnippet>355</a>
 <a href=#356 id=356 data-nosnippet>356</a>    <span class="attr">#[test]
-<a href=#357 id=357 data-nosnippet>357</a>    </span><span class="kw">fn </span>test_max_entities_reasonable() {
-<a href=#358 id=358 data-nosnippet>358</a>        <span class="comment">// 64 entities × 8 bytes = 512 bytes storage buffer
-<a href=#359 id=359 data-nosnippet>359</a>        </span><span class="macro">assert!</span>(MAX_ENTITIES &gt;= <span class="number">16 </span>&amp;&amp; MAX_ENTITIES &lt;= <span class="number">256</span>);
-<a href=#360 id=360 data-nosnippet>360</a>    }
-<a href=#361 id=361 data-nosnippet>361</a>}</code></pre></div></section></main></body></html>
+<a href=#357 id=357 data-nosnippet>357</a>    #[allow(clippy::assertions_on_constants)]
+<a href=#358 id=358 data-nosnippet>358</a>    </span><span class="kw">fn </span>test_max_entities_reasonable() {
+<a href=#359 id=359 data-nosnippet>359</a>        <span class="comment">// 64 entities × 8 bytes = 512 bytes storage buffer
+<a href=#360 id=360 data-nosnippet>360</a>        </span><span class="macro">assert!</span>(MAX_ENTITIES &gt;= <span class="number">16 </span>&amp;&amp; MAX_ENTITIES &lt;= <span class="number">256</span>);
+<a href=#361 id=361 data-nosnippet>361</a>    }
+<a href=#362 id=362 data-nosnippet>362</a>}</code></pre></div></section></main></body></html>

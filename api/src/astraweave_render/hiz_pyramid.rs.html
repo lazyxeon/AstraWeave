@@ -256,13 +256,13 @@
 <a href=#256 id=256 data-nosnippet>256</a>
 <a href=#257 id=257 data-nosnippet>257</a>    <span class="attr">#[test]
 <a href=#258 id=258 data-nosnippet>258</a>    </span><span class="kw">fn </span>hiz_mip_count_1920x1080() {
-<a href=#259 id=259 data-nosnippet>259</a>        <span class="kw">let </span>mip_count = (<span class="number">1920_u32</span>.max(<span class="number">1080</span>) <span class="kw">as </span>f32).log2().ceil() <span class="kw">as </span>u32;
+<a href=#259 id=259 data-nosnippet>259</a>        <span class="kw">let </span>mip_count = <span class="number">1920_f32</span>.log2().ceil() <span class="kw">as </span>u32;
 <a href=#260 id=260 data-nosnippet>260</a>        <span class="macro">assert_eq!</span>(mip_count, <span class="number">11</span>); <span class="comment">// 1920 → ceil(log2(1920)) = 11
 <a href=#261 id=261 data-nosnippet>261</a>    </span>}
 <a href=#262 id=262 data-nosnippet>262</a>
 <a href=#263 id=263 data-nosnippet>263</a>    <span class="attr">#[test]
 <a href=#264 id=264 data-nosnippet>264</a>    </span><span class="kw">fn </span>hiz_mip_count_power_of_two() {
-<a href=#265 id=265 data-nosnippet>265</a>        <span class="kw">let </span>mip_count = (<span class="number">1024_u32</span>.max(<span class="number">1024</span>) <span class="kw">as </span>f32).log2().ceil() <span class="kw">as </span>u32;
+<a href=#265 id=265 data-nosnippet>265</a>        <span class="kw">let </span>mip_count = <span class="number">1024_f32</span>.log2().ceil() <span class="kw">as </span>u32;
 <a href=#266 id=266 data-nosnippet>266</a>        <span class="macro">assert_eq!</span>(mip_count, <span class="number">10</span>); <span class="comment">// 1024 → log2(1024) = 10
 <a href=#267 id=267 data-nosnippet>267</a>    </span>}
 <a href=#268 id=268 data-nosnippet>268</a>

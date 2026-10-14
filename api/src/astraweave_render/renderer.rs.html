@@ -8923,99 +8923,100 @@
 <a href=#8923 id=8923 data-nosnippet>8923</a>    /// This is the same silent-drift class as the `match idx { _ =&gt; last }` the
 <a href=#8924 id=8924 data-nosnippet>8924</a>    /// L.3.C inventory caught, so it gets a contract test.
 <a href=#8925 id=8925 data-nosnippet>8925</a>    </span><span class="attr">#[test]
-<a href=#8926 id=8926 data-nosnippet>8926</a>    </span><span class="kw">fn </span>c3_prev_layer_index_matches_shader() {
-<a href=#8927 id=8927 data-nosnippet>8927</a>        <span class="kw">let </span>src = <span class="macro">include_str!</span>(<span class="string">"../shaders/shadow_common.wgsl"</span>);
-<a href=#8928 id=8928 data-nosnippet>8928</a>        <span class="kw">let </span>expected = <span class="macro">format!</span>(<span class="string">"const C3_PREV_LAYER: i32 = {};"</span>, C3_PREV_LAYER);
-<a href=#8929 id=8929 data-nosnippet>8929</a>        <span class="macro">assert!</span>(
-<a href=#8930 id=8930 data-nosnippet>8930</a>            src.contains(<span class="kw-2">&amp;</span>expected),
-<a href=#8931 id=8931 data-nosnippet>8931</a>            <span class="string">"shadow_common.wgsl must declare `{expected}` to match the Rust-side \
-<a href=#8932 id=8932 data-nosnippet>8932</a>             C3_PREV_LAYER ({C3_PREV_LAYER}); the shader currently declares something else"
-<a href=#8933 id=8933 data-nosnippet>8933</a>        </span>);
-<a href=#8934 id=8934 data-nosnippet>8934</a>        <span class="comment">// And the spare layer must actually exist in the array.
-<a href=#8935 id=8935 data-nosnippet>8935</a>        </span><span class="macro">assert!</span>(
-<a href=#8936 id=8936 data-nosnippet>8936</a>            C3_PREV_LAYER &lt; SHADOW_LAYER_COUNT,
-<a href=#8937 id=8937 data-nosnippet>8937</a>            <span class="string">"C3_PREV_LAYER {C3_PREV_LAYER} is outside the {SHADOW_LAYER_COUNT}-layer shadow array"
-<a href=#8938 id=8938 data-nosnippet>8938</a>        </span>);
-<a href=#8939 id=8939 data-nosnippet>8939</a>    }
-<a href=#8940 id=8940 data-nosnippet>8940</a>
-<a href=#8941 id=8941 data-nosnippet>8941</a>    <span class="doccomment">/// T.2d.F (2026-07-25, director-ratified): the material-LOD tiers are
-<a href=#8942 id=8942 data-nosnippet>8942</a>    /// RETIRED. `compute_material_lod`'s LOD1|2 threshold (pixel footprint
-<a href=#8943 id=8943 data-nosnippet>8943</a>    /// 2.0) was convicted as a visible camera-anchored detail boundary
-<a href=#8944 id=8944 data-nosnippet>8944</a>    /// (matched to 4 px in two independent frames), and the per-pixel tier
-<a href=#8945 id=8945 data-nosnippet>8945</a>    /// selection dithered over rough ground — 40-55% of far-field
-<a href=#8946 id=8946 data-nosnippet>8946</a>    /// high-frequency energy was tier flicker. Full trail:
-<a href=#8947 id=8947 data-nosnippet>8947</a>    /// `docs/audits/T2D_CAMERA_LIGHT.md` §10, `docs/audits/T2DF_OUTCOME.md`.
-<a href=#8948 id=8948 data-nosnippet>8948</a>    ///
-<a href=#8949 id=8949 data-nosnippet>8949</a>    /// This test asserts the ABSENCE of the tier machinery in every shader
-<a href=#8950 id=8950 data-nosnippet>8950</a>    /// that carried it — it fails on pre-T.2d.F code by construction, and it
-<a href=#8951 id=8951 data-nosnippet>8951</a>    /// fails again if anyone reintroduces a stepped shading tier. The ratified
-<a href=#8952 id=8952 data-nosnippet>8952</a>    /// fallback for any future perf need is a falloff CONTINUOUS in footprint,
-<a href=#8953 id=8953 data-nosnippet>8953</a>    /// never a threshold.
-<a href=#8954 id=8954 data-nosnippet>8954</a>    /// ED-3: the viewport shading dropdown must reach the shaders. The
-<a href=#8955 id=8955 data-nosnippet>8955</a>    /// scene-env UBO carries `debug_mode` (a commandeered pad float, layout
-<a href=#8956 id=8956 data-nosnippet>8956</a>    /// unchanged at 96 B), and every surface the editor shades — static PBR,
-<a href=#8957 id=8957 data-nosnippet>8957</a>    /// skinned, terrain-forward — branches on it. This test fails on
-<a href=#8958 id=8958 data-nosnippet>8958</a>    /// pre-ED-3 code (no `debug_mode` existed anywhere) and fails again if
-<a href=#8959 id=8959 data-nosnippet>8959</a>    /// a shader loses the branch while the UI still offers the modes.
-<a href=#8960 id=8960 data-nosnippet>8960</a>    </span><span class="attr">#[test]
-<a href=#8961 id=8961 data-nosnippet>8961</a>    </span><span class="kw">fn </span>ed3_debug_shading_reaches_every_shader_surface() {
-<a href=#8962 id=8962 data-nosnippet>8962</a>        <span class="kw">let </span>terrain_src = <span class="macro">include_str!</span>(<span class="string">"../shaders/pbr_terrain_forward.wgsl"</span>);
-<a href=#8963 id=8963 data-nosnippet>8963</a>        <span class="kw">for </span>(name, src) <span class="kw">in </span>[
-<a href=#8964 id=8964 data-nosnippet>8964</a>            (<span class="string">"SHADER_SRC (static PBR)"</span>, SHADER_SRC),
-<a href=#8965 id=8965 data-nosnippet>8965</a>            (<span class="string">"SKINNED_SHADER_SRC"</span>, SKINNED_SHADER_SRC),
-<a href=#8966 id=8966 data-nosnippet>8966</a>            (<span class="string">"pbr_terrain_forward.wgsl"</span>, terrain_src),
-<a href=#8967 id=8967 data-nosnippet>8967</a>        ] {
-<a href=#8968 id=8968 data-nosnippet>8968</a>            <span class="macro">assert!</span>(
-<a href=#8969 id=8969 data-nosnippet>8969</a>                src.contains(<span class="string">"debug_mode: f32"</span>),
-<a href=#8970 id=8970 data-nosnippet>8970</a>                <span class="string">"{name}: SceneEnv must declare debug_mode (the shading dropdown's uniform)"
-<a href=#8971 id=8971 data-nosnippet>8971</a>            </span>);
-<a href=#8972 id=8972 data-nosnippet>8972</a>            <span class="macro">assert!</span>(
-<a href=#8973 id=8973 data-nosnippet>8973</a>                src.contains(<span class="string">"uScene.debug_mode"</span>),
-<a href=#8974 id=8974 data-nosnippet>8974</a>                <span class="string">"{name}: the fragment shader must branch on uScene.debug_mode —                  without it the viewport shading dropdown is inert again (the ED-3 defect)"
-<a href=#8975 id=8975 data-nosnippet>8975</a>            </span>);
-<a href=#8976 id=8976 data-nosnippet>8976</a>        }
-<a href=#8977 id=8977 data-nosnippet>8977</a>        <span class="comment">// The UBO stays 96 bytes — debug_mode occupies a former pad float.
-<a href=#8978 id=8978 data-nosnippet>8978</a>        </span><span class="macro">assert_eq!</span>(
-<a href=#8979 id=8979 data-nosnippet>8979</a>            std::mem::size_of::&lt;<span class="kw">crate</span>::scene_environment::SceneEnvironmentUBO&gt;(),
-<a href=#8980 id=8980 data-nosnippet>8980</a>            <span class="number">96</span>,
-<a href=#8981 id=8981 data-nosnippet>8981</a>            <span class="string">"SceneEnvironmentUBO layout must not grow: debug_mode replaces padding"
-<a href=#8982 id=8982 data-nosnippet>8982</a>        </span>);
-<a href=#8983 id=8983 data-nosnippet>8983</a>    }
-<a href=#8984 id=8984 data-nosnippet>8984</a>
-<a href=#8985 id=8985 data-nosnippet>8985</a>    <span class="attr">#[test]
-<a href=#8986 id=8986 data-nosnippet>8986</a>    </span><span class="kw">fn </span>material_lod_tiers_are_retired() {
-<a href=#8987 id=8987 data-nosnippet>8987</a>        <span class="kw">let </span>brdf_src = <span class="macro">include_str!</span>(<span class="string">"../shaders/brdf_common.wgsl"</span>);
-<a href=#8988 id=8988 data-nosnippet>8988</a>        <span class="kw">let </span>terrain_src = <span class="macro">include_str!</span>(<span class="string">"../shaders/pbr_terrain_forward.wgsl"</span>);
-<a href=#8989 id=8989 data-nosnippet>8989</a>        <span class="kw">for </span>(name, src) <span class="kw">in </span>[
-<a href=#8990 id=8990 data-nosnippet>8990</a>            (<span class="string">"brdf_common.wgsl"</span>, brdf_src),
-<a href=#8991 id=8991 data-nosnippet>8991</a>            (<span class="string">"SHADER_SRC (static PBR)"</span>, SHADER_SRC),
-<a href=#8992 id=8992 data-nosnippet>8992</a>            (<span class="string">"SKINNED_SHADER_SRC"</span>, SKINNED_SHADER_SRC),
-<a href=#8993 id=8993 data-nosnippet>8993</a>            (<span class="string">"pbr_terrain_forward.wgsl"</span>, terrain_src),
-<a href=#8994 id=8994 data-nosnippet>8994</a>        ] {
-<a href=#8995 id=8995 data-nosnippet>8995</a>            <span class="macro">assert!</span>(
-<a href=#8996 id=8996 data-nosnippet>8996</a>                !src.contains(<span class="string">"compute_material_lod"</span>),
-<a href=#8997 id=8997 data-nosnippet>8997</a>                <span class="string">"{name}: compute_material_lod is retired (T.2d.F) and must not reappear"
-<a href=#8998 id=8998 data-nosnippet>8998</a>            </span>);
-<a href=#8999 id=8999 data-nosnippet>8999</a>            <span class="macro">assert!</span>(
-<a href=#9000 id=9000 data-nosnippet>9000</a>                !src.contains(<span class="string">"evaluate_brdf_lod"</span>),
-<a href=#9001 id=9001 data-nosnippet>9001</a>                <span class="string">"{name}: evaluate_brdf_lod is retired (T.2d.F); use evaluate_brdf"
-<a href=#9002 id=9002 data-nosnippet>9002</a>            </span>);
-<a href=#9003 id=9003 data-nosnippet>9003</a>            <span class="macro">assert!</span>(
-<a href=#9004 id=9004 data-nosnippet>9004</a>                !src.contains(<span class="string">"mat_lod"</span>),
-<a href=#9005 id=9005 data-nosnippet>9005</a>                <span class="string">"{name}: no mat_lod plumbing may remain after the tier retirement"
-<a href=#9006 id=9006 data-nosnippet>9006</a>            </span>);
-<a href=#9007 id=9007 data-nosnippet>9007</a>        }
-<a href=#9008 id=9008 data-nosnippet>9008</a>        <span class="comment">// The single unified BRDF survives, multiscatter included — deleting
-<a href=#9009 id=9009 data-nosnippet>9009</a>        // the tiers must not have deleted the full-quality path itself.
-<a href=#9010 id=9010 data-nosnippet>9010</a>        </span><span class="macro">assert!</span>(
-<a href=#9011 id=9011 data-nosnippet>9011</a>            brdf_src.contains(<span class="string">"fn evaluate_brdf("</span>),
-<a href=#9012 id=9012 data-nosnippet>9012</a>            <span class="string">"brdf_common.wgsl must keep the unified evaluate_brdf"
-<a href=#9013 id=9013 data-nosnippet>9013</a>        </span>);
-<a href=#9014 id=9014 data-nosnippet>9014</a>        <span class="macro">assert!</span>(
-<a href=#9015 id=9015 data-nosnippet>9015</a>            brdf_src.contains(<span class="string">"multiscatter"</span>),
-<a href=#9016 id=9016 data-nosnippet>9016</a>            <span class="string">"the Kulla-Conty multiscatter term must survive the tier removal"
-<a href=#9017 id=9017 data-nosnippet>9017</a>        </span>);
-<a href=#9018 id=9018 data-nosnippet>9018</a>    }
-<a href=#9019 id=9019 data-nosnippet>9019</a>}
-<a href=#9020 id=9020 data-nosnippet>9020</a>
-<a href=#9021 id=9021 data-nosnippet>9021</a><span class="comment">// End of file</span></code></pre></div></section></main></body></html>
+<a href=#8926 id=8926 data-nosnippet>8926</a>    #[allow(clippy::assertions_on_constants)]
+<a href=#8927 id=8927 data-nosnippet>8927</a>    </span><span class="kw">fn </span>c3_prev_layer_index_matches_shader() {
+<a href=#8928 id=8928 data-nosnippet>8928</a>        <span class="kw">let </span>src = <span class="macro">include_str!</span>(<span class="string">"../shaders/shadow_common.wgsl"</span>);
+<a href=#8929 id=8929 data-nosnippet>8929</a>        <span class="kw">let </span>expected = <span class="macro">format!</span>(<span class="string">"const C3_PREV_LAYER: i32 = {};"</span>, C3_PREV_LAYER);
+<a href=#8930 id=8930 data-nosnippet>8930</a>        <span class="macro">assert!</span>(
+<a href=#8931 id=8931 data-nosnippet>8931</a>            src.contains(<span class="kw-2">&amp;</span>expected),
+<a href=#8932 id=8932 data-nosnippet>8932</a>            <span class="string">"shadow_common.wgsl must declare `{expected}` to match the Rust-side \
+<a href=#8933 id=8933 data-nosnippet>8933</a>             C3_PREV_LAYER ({C3_PREV_LAYER}); the shader currently declares something else"
+<a href=#8934 id=8934 data-nosnippet>8934</a>        </span>);
+<a href=#8935 id=8935 data-nosnippet>8935</a>        <span class="comment">// And the spare layer must actually exist in the array.
+<a href=#8936 id=8936 data-nosnippet>8936</a>        </span><span class="macro">assert!</span>(
+<a href=#8937 id=8937 data-nosnippet>8937</a>            C3_PREV_LAYER &lt; SHADOW_LAYER_COUNT,
+<a href=#8938 id=8938 data-nosnippet>8938</a>            <span class="string">"C3_PREV_LAYER {C3_PREV_LAYER} is outside the {SHADOW_LAYER_COUNT}-layer shadow array"
+<a href=#8939 id=8939 data-nosnippet>8939</a>        </span>);
+<a href=#8940 id=8940 data-nosnippet>8940</a>    }
+<a href=#8941 id=8941 data-nosnippet>8941</a>
+<a href=#8942 id=8942 data-nosnippet>8942</a>    <span class="doccomment">/// T.2d.F (2026-07-25, director-ratified): the material-LOD tiers are
+<a href=#8943 id=8943 data-nosnippet>8943</a>    /// RETIRED. `compute_material_lod`'s LOD1|2 threshold (pixel footprint
+<a href=#8944 id=8944 data-nosnippet>8944</a>    /// 2.0) was convicted as a visible camera-anchored detail boundary
+<a href=#8945 id=8945 data-nosnippet>8945</a>    /// (matched to 4 px in two independent frames), and the per-pixel tier
+<a href=#8946 id=8946 data-nosnippet>8946</a>    /// selection dithered over rough ground — 40-55% of far-field
+<a href=#8947 id=8947 data-nosnippet>8947</a>    /// high-frequency energy was tier flicker. Full trail:
+<a href=#8948 id=8948 data-nosnippet>8948</a>    /// `docs/audits/T2D_CAMERA_LIGHT.md` §10, `docs/audits/T2DF_OUTCOME.md`.
+<a href=#8949 id=8949 data-nosnippet>8949</a>    ///
+<a href=#8950 id=8950 data-nosnippet>8950</a>    /// This test asserts the ABSENCE of the tier machinery in every shader
+<a href=#8951 id=8951 data-nosnippet>8951</a>    /// that carried it — it fails on pre-T.2d.F code by construction, and it
+<a href=#8952 id=8952 data-nosnippet>8952</a>    /// fails again if anyone reintroduces a stepped shading tier. The ratified
+<a href=#8953 id=8953 data-nosnippet>8953</a>    /// fallback for any future perf need is a falloff CONTINUOUS in footprint,
+<a href=#8954 id=8954 data-nosnippet>8954</a>    /// never a threshold.
+<a href=#8955 id=8955 data-nosnippet>8955</a>    /// ED-3: the viewport shading dropdown must reach the shaders. The
+<a href=#8956 id=8956 data-nosnippet>8956</a>    /// scene-env UBO carries `debug_mode` (a commandeered pad float, layout
+<a href=#8957 id=8957 data-nosnippet>8957</a>    /// unchanged at 96 B), and every surface the editor shades — static PBR,
+<a href=#8958 id=8958 data-nosnippet>8958</a>    /// skinned, terrain-forward — branches on it. This test fails on
+<a href=#8959 id=8959 data-nosnippet>8959</a>    /// pre-ED-3 code (no `debug_mode` existed anywhere) and fails again if
+<a href=#8960 id=8960 data-nosnippet>8960</a>    /// a shader loses the branch while the UI still offers the modes.
+<a href=#8961 id=8961 data-nosnippet>8961</a>    </span><span class="attr">#[test]
+<a href=#8962 id=8962 data-nosnippet>8962</a>    </span><span class="kw">fn </span>ed3_debug_shading_reaches_every_shader_surface() {
+<a href=#8963 id=8963 data-nosnippet>8963</a>        <span class="kw">let </span>terrain_src = <span class="macro">include_str!</span>(<span class="string">"../shaders/pbr_terrain_forward.wgsl"</span>);
+<a href=#8964 id=8964 data-nosnippet>8964</a>        <span class="kw">for </span>(name, src) <span class="kw">in </span>[
+<a href=#8965 id=8965 data-nosnippet>8965</a>            (<span class="string">"SHADER_SRC (static PBR)"</span>, SHADER_SRC),
+<a href=#8966 id=8966 data-nosnippet>8966</a>            (<span class="string">"SKINNED_SHADER_SRC"</span>, SKINNED_SHADER_SRC),
+<a href=#8967 id=8967 data-nosnippet>8967</a>            (<span class="string">"pbr_terrain_forward.wgsl"</span>, terrain_src),
+<a href=#8968 id=8968 data-nosnippet>8968</a>        ] {
+<a href=#8969 id=8969 data-nosnippet>8969</a>            <span class="macro">assert!</span>(
+<a href=#8970 id=8970 data-nosnippet>8970</a>                src.contains(<span class="string">"debug_mode: f32"</span>),
+<a href=#8971 id=8971 data-nosnippet>8971</a>                <span class="string">"{name}: SceneEnv must declare debug_mode (the shading dropdown's uniform)"
+<a href=#8972 id=8972 data-nosnippet>8972</a>            </span>);
+<a href=#8973 id=8973 data-nosnippet>8973</a>            <span class="macro">assert!</span>(
+<a href=#8974 id=8974 data-nosnippet>8974</a>                src.contains(<span class="string">"uScene.debug_mode"</span>),
+<a href=#8975 id=8975 data-nosnippet>8975</a>                <span class="string">"{name}: the fragment shader must branch on uScene.debug_mode —                  without it the viewport shading dropdown is inert again (the ED-3 defect)"
+<a href=#8976 id=8976 data-nosnippet>8976</a>            </span>);
+<a href=#8977 id=8977 data-nosnippet>8977</a>        }
+<a href=#8978 id=8978 data-nosnippet>8978</a>        <span class="comment">// The UBO stays 96 bytes — debug_mode occupies a former pad float.
+<a href=#8979 id=8979 data-nosnippet>8979</a>        </span><span class="macro">assert_eq!</span>(
+<a href=#8980 id=8980 data-nosnippet>8980</a>            std::mem::size_of::&lt;<span class="kw">crate</span>::scene_environment::SceneEnvironmentUBO&gt;(),
+<a href=#8981 id=8981 data-nosnippet>8981</a>            <span class="number">96</span>,
+<a href=#8982 id=8982 data-nosnippet>8982</a>            <span class="string">"SceneEnvironmentUBO layout must not grow: debug_mode replaces padding"
+<a href=#8983 id=8983 data-nosnippet>8983</a>        </span>);
+<a href=#8984 id=8984 data-nosnippet>8984</a>    }
+<a href=#8985 id=8985 data-nosnippet>8985</a>
+<a href=#8986 id=8986 data-nosnippet>8986</a>    <span class="attr">#[test]
+<a href=#8987 id=8987 data-nosnippet>8987</a>    </span><span class="kw">fn </span>material_lod_tiers_are_retired() {
+<a href=#8988 id=8988 data-nosnippet>8988</a>        <span class="kw">let </span>brdf_src = <span class="macro">include_str!</span>(<span class="string">"../shaders/brdf_common.wgsl"</span>);
+<a href=#8989 id=8989 data-nosnippet>8989</a>        <span class="kw">let </span>terrain_src = <span class="macro">include_str!</span>(<span class="string">"../shaders/pbr_terrain_forward.wgsl"</span>);
+<a href=#8990 id=8990 data-nosnippet>8990</a>        <span class="kw">for </span>(name, src) <span class="kw">in </span>[
+<a href=#8991 id=8991 data-nosnippet>8991</a>            (<span class="string">"brdf_common.wgsl"</span>, brdf_src),
+<a href=#8992 id=8992 data-nosnippet>8992</a>            (<span class="string">"SHADER_SRC (static PBR)"</span>, SHADER_SRC),
+<a href=#8993 id=8993 data-nosnippet>8993</a>            (<span class="string">"SKINNED_SHADER_SRC"</span>, SKINNED_SHADER_SRC),
+<a href=#8994 id=8994 data-nosnippet>8994</a>            (<span class="string">"pbr_terrain_forward.wgsl"</span>, terrain_src),
+<a href=#8995 id=8995 data-nosnippet>8995</a>        ] {
+<a href=#8996 id=8996 data-nosnippet>8996</a>            <span class="macro">assert!</span>(
+<a href=#8997 id=8997 data-nosnippet>8997</a>                !src.contains(<span class="string">"compute_material_lod"</span>),
+<a href=#8998 id=8998 data-nosnippet>8998</a>                <span class="string">"{name}: compute_material_lod is retired (T.2d.F) and must not reappear"
+<a href=#8999 id=8999 data-nosnippet>8999</a>            </span>);
+<a href=#9000 id=9000 data-nosnippet>9000</a>            <span class="macro">assert!</span>(
+<a href=#9001 id=9001 data-nosnippet>9001</a>                !src.contains(<span class="string">"evaluate_brdf_lod"</span>),
+<a href=#9002 id=9002 data-nosnippet>9002</a>                <span class="string">"{name}: evaluate_brdf_lod is retired (T.2d.F); use evaluate_brdf"
+<a href=#9003 id=9003 data-nosnippet>9003</a>            </span>);
+<a href=#9004 id=9004 data-nosnippet>9004</a>            <span class="macro">assert!</span>(
+<a href=#9005 id=9005 data-nosnippet>9005</a>                !src.contains(<span class="string">"mat_lod"</span>),
+<a href=#9006 id=9006 data-nosnippet>9006</a>                <span class="string">"{name}: no mat_lod plumbing may remain after the tier retirement"
+<a href=#9007 id=9007 data-nosnippet>9007</a>            </span>);
+<a href=#9008 id=9008 data-nosnippet>9008</a>        }
+<a href=#9009 id=9009 data-nosnippet>9009</a>        <span class="comment">// The single unified BRDF survives, multiscatter included — deleting
+<a href=#9010 id=9010 data-nosnippet>9010</a>        // the tiers must not have deleted the full-quality path itself.
+<a href=#9011 id=9011 data-nosnippet>9011</a>        </span><span class="macro">assert!</span>(
+<a href=#9012 id=9012 data-nosnippet>9012</a>            brdf_src.contains(<span class="string">"fn evaluate_brdf("</span>),
+<a href=#9013 id=9013 data-nosnippet>9013</a>            <span class="string">"brdf_common.wgsl must keep the unified evaluate_brdf"
+<a href=#9014 id=9014 data-nosnippet>9014</a>        </span>);
+<a href=#9015 id=9015 data-nosnippet>9015</a>        <span class="macro">assert!</span>(
+<a href=#9016 id=9016 data-nosnippet>9016</a>            brdf_src.contains(<span class="string">"multiscatter"</span>),
+<a href=#9017 id=9017 data-nosnippet>9017</a>            <span class="string">"the Kulla-Conty multiscatter term must survive the tier removal"
+<a href=#9018 id=9018 data-nosnippet>9018</a>        </span>);
+<a href=#9019 id=9019 data-nosnippet>9019</a>    }
+<a href=#9020 id=9020 data-nosnippet>9020</a>}
+<a href=#9021 id=9021 data-nosnippet>9021</a>
+<a href=#9022 id=9022 data-nosnippet>9022</a><span class="comment">// End of file</span></code></pre></div></section></main></body></html>
