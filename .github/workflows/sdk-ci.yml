@@ -47,9 +47,13 @@ jobs:
           }
           EOF
           cc -I. -L target/release -o c_harness c_harness.c -lastraweave_sdk -lpthread -ldl -lm
-          ./c_harness | tee harness_out.txt
-          # Semantic version gate: compare printed version to Cargo.toml version
+          LD_LIBRARY_PATH=target/release ./c_harness | tee harness_out.txt
+          # Semantic version gate: compare printed version to Cargo.toml version.
+          # The crate inherits version.workspace, so fall back to the workspace package.
           VER=$(sed -n 's/^version\s*=\s*"\([^"]\+\)"/\1/p' astraweave-sdk/Cargo.toml | head -n1)
+          if [ -z "$VER" ]; then
+            VER=$(sed -n 's/^version\s*=\s*"\([^"]\+\)"/\1/p' Cargo.toml | head -n1)
+          fi
           OUT=$(head -n1 harness_out.txt)
           echo "SDK Crate Version: $VER; Runtime: $OUT"
           test "$OUT" = "$VER"
@@ -79,7 +83,10 @@ jobs:
           if (Test-Path target\release\astraweave_sdk.dll) { Copy-Item target\release\astraweave_sdk.dll . }
           .\c_harness.exe | Tee-Object -FilePath harness_out.txt | Out-Null
           # Semantic version gate (Windows)
-          $ver = (Select-String -Path astraweave-sdk/Cargo.toml -Pattern '^version\s*=\s*"([^"]+)"' | ForEach-Object { $_.Matches[0].Groups[1].Value })[0]
+          $ver = (Select-String -Path astraweave-sdk/Cargo.toml -Pattern '^version\s*=\s*"([^"]+)"' | ForEach-Object { $_.Matches[0].Groups[1].Value } | Select-Object -First 1)
+          if (-not $ver) {
+            $ver = (Select-String -Path Cargo.toml -Pattern '^version\s*=\s*"([^"]+)"' | ForEach-Object { $_.Matches[0].Groups[1].Value } | Select-Object -First 1)
+          }
           $out = Get-Content harness_out.txt | Select-Object -First 1
           Write-Host "SDK Crate Version: $ver; Runtime: $out"
           if ($out -ne $ver) { throw "Version mismatch: $out vs $ver" }
