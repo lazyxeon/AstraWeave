@@ -129,6 +129,99 @@ impl LlmAdapter for MockLlm {
     }
 }
 
+/// Planner used on the simulation tick.
+///
+/// Same role table as [`MockLlm`], with the `rand::rng` branches replaced by
+/// a fixed line. No float draws, no wall clock.
+pub struct RulePlanner;
+
+impl LlmAdapter for RulePlanner {
+    fn plan_dialogue_and_behaviour(
+        &self,
+        profile: &NpcProfile,
+        view: &NpcWorldView,
+        player_utterance: Option<&str>,
+    ) -> Result<NpcPlan> {
+        let mut actions = Vec::new();
+        let said = player_utterance.unwrap_or("").to_lowercase();
+        match profile.role {
+            Role::Merchant => {
+                if said.contains("buy") || said.contains("shop") {
+                    actions.push(NpcAction::Say {
+                        text: "Take a look—finest wares this side of the veil.".into(),
+                    });
+                    actions.push(NpcAction::OpenShop);
+                } else if !said.is_empty() {
+                    actions.push(NpcAction::Say {
+                        text: "Greetings, traveler. Looking for supplies?".into(),
+                    });
+                    actions.push(NpcAction::Emote {
+                        kind: EmoteKind::Nod,
+                    });
+                } else {
+                    actions.push(NpcAction::Say {
+                        text: "Greetings, traveler. Looking for supplies?".into(),
+                    });
+                }
+            }
+            Role::Guard => {
+                if view.nearby_threat {
+                    actions.push(NpcAction::Say {
+                        text: "Stay back—this area isn’t safe.".into(),
+                    });
+                    actions.push(NpcAction::CallGuards {
+                        reason: "Threat detected".into(),
+                    });
+                } else if said.contains("danger") || said.contains("help") {
+                    actions.push(NpcAction::Say {
+                        text: "I’ll alert the watch. Keep your distance.".into(),
+                    });
+                    actions.push(NpcAction::CallGuards {
+                        reason: "Player reported danger".into(),
+                    });
+                } else if !said.is_empty() {
+                    actions.push(NpcAction::Say {
+                        text: "Move along. Keep the peace.".into(),
+                    });
+                } else {
+                    actions.push(NpcAction::Say {
+                        text: "Holding the watch.".into(),
+                    });
+                }
+            }
+            Role::Civilian => {
+                if said.contains("hello") {
+                    actions.push(NpcAction::Say {
+                        text: "Oh! Hello there.".into(),
+                    });
+                    actions.push(NpcAction::Emote {
+                        kind: EmoteKind::Wave,
+                    });
+                } else if !said.is_empty() {
+                    actions.push(NpcAction::Say {
+                        text: "Sorry—busy day.".into(),
+                    });
+                }
+            }
+            Role::QuestGiver => {
+                if said.contains("quest") || said.contains("work") {
+                    actions.push(NpcAction::Say {
+                        text: "There is something you can do...".into(),
+                    });
+                    actions.push(NpcAction::GiveQuest {
+                        id: "q_tutorial".into(),
+                    });
+                } else if !said.is_empty() {
+                    actions.push(NpcAction::Say {
+                        text: "The threads whisper to those who listen.".into(),
+                    });
+                }
+            }
+        }
+        Ok(NpcPlan { actions })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

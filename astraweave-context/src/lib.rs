@@ -207,6 +207,22 @@ impl Message {
         }
     }
 
+    /// Message whose id and timestamp are functions of the sim tick.
+    ///
+    /// `Message::new` draws a UUID and reads the wall clock. The tick must
+    /// not call it.
+    pub fn recorded(tick: u64, seq: u32, role: Role, content: String) -> Self {
+        Self {
+            id: format!("m-{tick}-{seq}"),
+            role,
+            timestamp: tick,
+            token_count: content.len(),
+            content,
+            metadata: HashMap::new(),
+            preserve: true,
+        }
+    }
+
     /// Create a preserved message (won't be pruned)
     pub fn new_preserved(role: Role, content: String) -> Self {
         Self {

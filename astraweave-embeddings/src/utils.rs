@@ -411,6 +411,29 @@ fn text_similarity(a: &str, b: &str) -> f32 {
     SimilarityMetrics::jaccard_similarity(&words_a, &words_b)
 }
 
+/// Integer embedding for the simulation tick.
+///
+/// Each component is an exact `f32` integer in `-1000..=1000`. Manhattan
+/// distance of two such vectors is an exact integer and does not call libm,
+/// so the same text yields the same bits on every OS.
+pub fn embed_sim(text: &str, dimensions: usize) -> Vec<f32> {
+    let mut hash: u64 = 0xcbf29ce484222325;
+    for byte in text.as_bytes() {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(0x100000001b3);
+    }
+    let mut out = Vec::with_capacity(dimensions);
+    for index in 0..dimensions {
+        let mut mixed = hash ^ (index as u64).wrapping_mul(0x9E3779B97F4A7C15);
+        mixed ^= mixed >> 30;
+        mixed = mixed.wrapping_mul(0xBF58476D1CE4E5B9);
+        mixed ^= mixed >> 27;
+        let value = (mixed % 2001) as i32 - 1000;
+        out.push(value as f32);
+    }
+    out
+}
+
 /// Get current Unix timestamp in seconds
 pub fn current_timestamp() -> u64 {
     std::time::SystemTime::now()

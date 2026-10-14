@@ -97,6 +97,25 @@ impl NpcManager {
         id
     }
 
+    /// Spawn an NPC that does not touch the physics world.
+    ///
+    /// The sim tick uses this so a plan can be recorded without stepping Rapier.
+    pub fn spawn_logical(&mut self, prof: NpcProfile) -> NpcId {
+        let id = self.alloc_id();
+        self.npcs.insert(
+            id,
+            Npc {
+                id,
+                profile: prof,
+                body: 0,
+                mode: NpcMode::Idle,
+                pending: Vec::new(),
+                cooldown_talk: 0.0,
+            },
+        );
+        id
+    }
+
     pub fn update(
         &mut self,
         dt: f32,
@@ -106,7 +125,13 @@ impl NpcManager {
         // Collect actions to execute to avoid borrowing issues
         let mut actions_to_execute = Vec::new();
 
-        for (_id, npc) in self.npcs.iter_mut() {
+        let mut ids: Vec<NpcId> = self.npcs.keys().copied().collect();
+        ids.sort_unstable();
+        for id in ids {
+            let npc = match self.npcs.get_mut(&id) {
+                Some(npc) => npc,
+                None => continue,
+            };
             // cooldowns
             npc.cooldown_talk = (npc.cooldown_talk - dt).max(0.0);
 

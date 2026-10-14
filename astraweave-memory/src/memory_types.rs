@@ -268,6 +268,11 @@ pub enum PrivacyLevel {
     Secret,   // Highly protected
 }
 
+fn sim_time(tick: u64) -> DateTime<Utc> {
+    let secs = i64::try_from(tick).unwrap_or(0);
+    DateTime::<Utc>::from_timestamp(secs, 0).unwrap_or(DateTime::<Utc>::UNIX_EPOCH)
+}
+
 impl Memory {
     /// Create a new memory
     pub fn new(memory_type: MemoryType, content: MemoryContent) -> Self {
@@ -333,6 +338,52 @@ impl Memory {
         let mut memory = Self::new(MemoryType::Episodic, content);
         memory.metadata.importance = 0.7; // Episodic memories are more important
         memory
+    }
+
+    /// Episodic memory stamped with a sim tick.
+    ///
+    /// Does not draw a UUID or read the wall clock. `id` is the caller's
+    /// stable key. `tick` is seconds since the unix epoch.
+    pub fn episodic_at_tick(
+        id: impl Into<String>,
+        text: String,
+        participants: Vec<String>,
+        location: Option<String>,
+        tick: u64,
+    ) -> Self {
+        let content = MemoryContent {
+            text,
+            data: serde_json::Value::Null,
+            sensory_data: None,
+            emotional_context: None,
+            context: SpatialTemporalContext {
+                location,
+                time_period: Some("sim".to_string()),
+                duration: None,
+                participants,
+                related_events: Vec::new(),
+            },
+        };
+        let time = sim_time(tick);
+        Self {
+            id: id.into(),
+            memory_type: MemoryType::Episodic,
+            content,
+            metadata: MemoryMetadata {
+                created_at: time,
+                last_accessed: time,
+                access_count: 0,
+                importance: 0.5,
+                confidence: 1.0,
+                source: MemorySource::DirectExperience,
+                tags: Vec::new(),
+                permanent: false,
+                strength: 1.0,
+                decay_factor: 1.0,
+            },
+            associations: Vec::new(),
+            embedding: None,
+        }
     }
 
     /// Create a semantic memory

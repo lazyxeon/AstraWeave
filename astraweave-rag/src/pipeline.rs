@@ -10,7 +10,9 @@ use crate::{
 };
 use anyhow::{anyhow, Result};
 use astraweave_context::TokenCounter;
-use astraweave_embeddings::{EmbeddingClient, Memory, MemoryCategory, SearchResult, VectorStore};
+use astraweave_embeddings::{
+    EmbeddingClient, Memory, MemoryCategory, SearchResult, StoredVector, VectorStore,
+};
 use astraweave_llm::LlmClient;
 use dashmap::DashMap;
 use parking_lot::RwLock;
@@ -74,6 +76,71 @@ impl VectorStoreWrapper {
     pub fn new(store: VectorStore) -> Self {
         Self { inner: store }
     }
+
+    /// Every stored memory, sorted by id.
+    ///
+    /// This is the synchronous form of [`VectorStoreInterface::get_all_memories`].
+    /// Consolidation reads it so a non-empty store is no longer a no-op.
+    pub fn memories_sorted(&self) -> Vec<Memory> {
+        self.inner
+            .get_all_ids()
+            .into_iter()
+            .filter_map(|id| self.inner.get(&id).map(memory_from_stored))
+            .collect()
+    }
+
+    pub fn search_sync(&self, query_vector: &[f32], k: usize) -> Result<Vec<SearchResult>> {
+        self.inner.search(query_vector, k)
+    }
+
+    pub fn insert_at(
+        &self,
+        id: String,
+        vector: Vec<f32>,
+        text: String,
+        timestamp: u64,
+    ) -> Result<()> {
+        self.inner
+            .insert_with_timestamp(id, vector, text, timestamp)
+    }
+}
+
+fn memory_from_stored(stored: StoredVector) -> Memory {
+    let entities: Vec<String> = stored
+        .metadata
+        .get("entities")
+        .and_then(|value| serde_json::from_str(value).ok())
+        .unwrap_or_default();
+    let category: MemoryCategory = stored
+        .metadata
+        .get("category")
+        .and_then(|value| serde_json::from_str(value).ok())
+        .unwrap_or(MemoryCategory::Gameplay);
+    let valence: f32 = stored
+        .metadata
+        .get("valence")
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(0.0);
+    let mut context = std::collections::BTreeMap::new();
+    for (key, value) in &stored.metadata {
+        if let Some(stripped) = key.strip_prefix("ctx_") {
+            context.insert(stripped.to_string(), value.clone());
+        }
+    }
+    let mut context_map = HashMap::new();
+    for (key, value) in context {
+        context_map.insert(key, value);
+    }
+    Memory {
+        id: stored.id,
+        text: stored.text,
+        timestamp: stored.timestamp,
+        importance: stored.importance,
+        valence,
+        category,
+        entities,
+        context: context_map,
+    }
 }
 
 #[async_trait::async_trait]
@@ -107,43 +174,7 @@ impl VectorStoreInterface for VectorStoreWrapper {
     }
 
     async fn get(&self, id: &str) -> Option<Memory> {
-        self.inner.get(id).map(|stored| {
-            let entities: Vec<String> = stored
-                .metadata
-                .get("entities")
-                .and_then(|s| serde_json::from_str(s).ok())
-                .unwrap_or_default();
-
-            let category: MemoryCategory = stored
-                .metadata
-                .get("category")
-                .and_then(|s| serde_json::from_str(s).ok())
-                .unwrap_or(MemoryCategory::Gameplay);
-
-            let valence: f32 = stored
-                .metadata
-                .get("valence")
-                .and_then(|s| s.parse().ok())
-                .unwrap_or(0.0);
-
-            let mut context = HashMap::new();
-            for (k, v) in &stored.metadata {
-                if let Some(key) = k.strip_prefix("ctx_") {
-                    context.insert(key.to_string(), v.clone());
-                }
-            }
-
-            Memory {
-                id: stored.id,
-                text: stored.text,
-                timestamp: stored.timestamp,
-                importance: stored.importance,
-                valence,
-                category,
-                entities,
-                context,
-            }
-        })
+        self.inner.get(id).map(memory_from_stored)
     }
 
     async fn remove(&self, id: &str) -> Option<Memory> {
@@ -164,9 +195,7 @@ impl VectorStoreInterface for VectorStoreWrapper {
     }
 
     async fn get_all_memories(&self) -> Vec<Memory> {
-        // This is a simplified implementation
-        // In practice, you'd iterate through all stored vectors
-        vec![]
+        self.memories_sorted()
     }
 }
 

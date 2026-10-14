@@ -131,6 +131,18 @@ impl ConversationHistory {
         Ok(context)
     }
 
+    /// Append a message that was already stamped by the sim.
+    ///
+    /// Does not read the wall clock, allocate a UUID, or prune. Pruning and
+    /// summarization stay on the async path, outside the tick.
+    pub fn push_recorded(&self, message: Message) -> String {
+        let id = message.id.clone();
+        self.messages.write().push_back(message);
+        let mut metrics = self.metrics.write();
+        metrics.total_messages = self.messages.read().len();
+        id
+    }
+
     /// Get recent messages up to a limit
     pub fn get_recent_messages(&self, limit: usize) -> Vec<Message> {
         let messages = self.messages.read();

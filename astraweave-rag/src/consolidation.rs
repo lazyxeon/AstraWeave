@@ -163,13 +163,17 @@ impl ConsolidationEngine {
         // Take the most recent timestamp
         merged.timestamp = memory1.timestamp.max(memory2.timestamp);
 
-        // Merge context
-        for (key, value) in &memory2.context {
-            merged.context.insert(key.clone(), value.clone());
+        // Merge context in key order so the map's insertion sequence is stable.
+        let mut keys: Vec<&String> = memory2.context.keys().collect();
+        keys.sort();
+        for key in keys {
+            if let Some(value) = memory2.context.get(key) {
+                merged.context.insert(key.clone(), value.clone());
+            }
         }
 
-        // Generate new ID
-        merged.id = format!("merged_{}", uuid::Uuid::new_v4());
+        // Content-addressed id. Uuid::v4 made every consolidation replay diverge.
+        merged.id = format!("merged_{}_{}", memory1.id, memory2.id);
 
         Ok(merged)
     }

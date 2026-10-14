@@ -99,9 +99,18 @@ pub fn load_persona_zip(path: &str) -> Result<CompanionProfile> {
             .collect();
     }
 
-    // Sign the profile (no-op placeholder)
+    // Integrity hash over the canonical profile bytes.
     p.sign();
     Ok(p)
+}
+
+/// Sign `profile` and return the hex digest.
+///
+/// This is the persona entry the simulation tick calls. The digest is a pure
+/// function of the profile contents.
+pub fn seal_profile(profile: &mut astraweave_memory::CompanionProfile) -> String {
+    profile.sign();
+    profile.signature.clone()
 }
 
 #[cfg(test)]

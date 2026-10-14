@@ -5,6 +5,7 @@
 use anyhow::Result;
 use astraweave_core::ecs_adapter::build_app;
 use astraweave_core::World;
+use astraweave_dialogue::depth_tick;
 use astraweave_ecs::App as SimulationApp;
 use astraweave_profiling::{frame_mark, plot, span};
 use std::time::Instant;
@@ -576,7 +577,10 @@ impl EditorRuntime {
 
         // Clone world for simulation via snapshot and boot the ECS app
         let sim_world = snapshot.to_world();
-        let sim_app = build_app(sim_world, self.fixed_dt);
+        let mut sim_app = build_app(sim_world, self.fixed_dt);
+        // WS-AI-2: memory, RAG, embeddings, persona, NPC, and coordination
+        // advance on the same fixed steps as the rest of play mode.
+        depth_tick::install(&mut sim_app);
 
         self.edit_snapshot = Some(snapshot);
         self.sim_app = Some(sim_app);

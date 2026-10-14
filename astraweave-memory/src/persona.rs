@@ -49,6 +49,9 @@ pub struct CompanionProfile {
     pub player_prefs: serde_json::Value,
     /// Companion skills
     pub skills: Vec<Skill>,
+    /// Lower-case hex SHA-256 of the canonical profile bytes. Empty until [`Self::sign`].
+    #[serde(default)]
+    pub signature: String,
 }
 
 impl CompanionProfile {
@@ -60,6 +63,7 @@ impl CompanionProfile {
             facts: Vec::new(),
             player_prefs: serde_json::Value::Null,
             skills: Vec::new(),
+            signature: String::new(),
         }
     }
 
@@ -78,10 +82,15 @@ impl CompanionProfile {
         Ok(CompanionProfile::new_default())
     }
 
-    /// Sign the profile (placeholder for integrity/signature logic)
+    /// Replace `signature` with the SHA-256 of the canonical profile bytes.
+    ///
+    /// The digest does not include the previous signature. Facts, skills, and
+    /// episodes are hashed in sorted order so `HashMap` or `Vec` order cannot
+    /// change the bytes.
     pub fn sign(&mut self) {
-        // no-op placeholder; in production this would compute a signature
-        // or integrity hash for the profile
+        self.signature.clear();
+        let digest = sha256(&canonical_profile_bytes(self));
+        self.signature = hex_encode(&digest);
     }
 
     /// Save the profile to a file (placeholder)
@@ -90,10 +99,17 @@ impl CompanionProfile {
         Ok(())
     }
 
-    /// Verify the profile integrity (placeholder)
+    /// True when `signature` matches a fresh digest of the canonical bytes.
+    ///
+    /// An empty signature does not verify.
     pub fn verify(&self) -> bool {
-        // Simplified: always true for the example
-        true
+        if self.signature.is_empty() {
+            return false;
+        }
+        let mut unsigned = self.clone();
+        let expected = std::mem::take(&mut unsigned.signature);
+        let digest = sha256(&canonical_profile_bytes(&unsigned));
+        hex_encode(&digest) == expected
     }
 
     /// Check if profile has any episodes
@@ -150,6 +166,164 @@ impl CompanionProfile {
     pub fn get_fact(&self, key: &str) -> Option<&Fact> {
         self.facts.iter().find(|f| f.k == key)
     }
+}
+
+fn canonical_profile_bytes(profile: &CompanionProfile) -> Vec<u8> {
+    let mut bytes = Vec::new();
+    push_str(&mut bytes, &profile.id);
+    push_str(&mut bytes, &profile.persona.name);
+    push_str(&mut bytes, &profile.persona.tone);
+    push_str(&mut bytes, &profile.persona.risk);
+    push_str(&mut bytes, &profile.persona.humor);
+    push_str(&mut bytes, &profile.persona.voice);
+    push_str(&mut bytes, &profile.persona.backstory);
+    let mut likes = profile.persona.likes.clone();
+    likes.sort();
+    for like in likes {
+        push_str(&mut bytes, &like);
+    }
+    let mut dislikes = profile.persona.dislikes.clone();
+    dislikes.sort();
+    for dislike in dislikes {
+        push_str(&mut bytes, &dislike);
+    }
+    let mut goals = profile.persona.goals.clone();
+    goals.sort();
+    for goal in goals {
+        push_str(&mut bytes, &goal);
+    }
+    let mut episodes = profile.episodes.clone();
+    episodes.sort_by(|a, b| (&a.title, &a.summary, &a.ts).cmp(&(&b.title, &b.summary, &b.ts)));
+    for episode in episodes {
+        push_str(&mut bytes, &episode.title);
+        push_str(&mut bytes, &episode.summary);
+        push_str(&mut bytes, &episode.ts);
+        let mut tags = episode.tags.clone();
+        tags.sort();
+        for tag in tags {
+            push_str(&mut bytes, &tag);
+        }
+    }
+    let mut facts = profile.facts.clone();
+    facts.sort_by(|a, b| (&a.k, &a.v, &a.t).cmp(&(&b.k, &b.v, &b.t)));
+    for fact in facts {
+        push_str(&mut bytes, &fact.k);
+        push_str(&mut bytes, &fact.v);
+        push_str(&mut bytes, &fact.t);
+    }
+    let mut skills = profile.skills.clone();
+    skills.sort_by(|a, b| (&a.name, a.level, &a.notes).cmp(&(&b.name, b.level, &b.notes)));
+    for skill in skills {
+        push_str(&mut bytes, &skill.name);
+        bytes.extend_from_slice(&skill.level.to_le_bytes());
+        push_str(&mut bytes, &skill.notes);
+    }
+    let prefs = serde_json::to_string(&profile.player_prefs).unwrap_or_else(|_| "null".to_string());
+    push_str(&mut bytes, &prefs);
+    bytes
+}
+
+fn push_str(bytes: &mut Vec<u8>, value: &str) {
+    let len = u32::try_from(value.len()).unwrap_or(u32::MAX);
+    bytes.extend_from_slice(&len.to_le_bytes());
+    let take = len as usize;
+    bytes.extend_from_slice(&value.as_bytes()[..take.min(value.len())]);
+}
+
+fn hex_encode(bytes: &[u8]) -> String {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let mut out = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        out.push(HEX[(byte >> 4) as usize] as char);
+        out.push(HEX[(byte & 0x0f) as usize] as char);
+    }
+    out
+}
+
+fn sha256(message: &[u8]) -> [u8; 32] {
+    const K: [u32; 64] = [
+        0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4,
+        0xab1c5ed5, 0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe,
+        0x9bdc06a7, 0xc19bf174, 0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f,
+        0x4a7484aa, 0x5cb0a9dc, 0x76f988da, 0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7,
+        0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967, 0x27b70a85, 0x2e1b2138, 0x4d2c6dfc,
+        0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85, 0xa2bfe8a1, 0xa81a664b,
+        0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070, 0x19a4c116,
+        0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+        0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7,
+        0xc67178f2,
+    ];
+    let mut state: [u32; 8] = [
+        0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab,
+        0x5be0cd19,
+    ];
+    let bit_len = (message.len() as u64).wrapping_mul(8);
+    let mut padded = message.to_vec();
+    padded.push(0x80);
+    while (padded.len() % 64) != 56 {
+        padded.push(0);
+    }
+    padded.extend_from_slice(&bit_len.to_be_bytes());
+    for chunk in padded.chunks_exact(64) {
+        let mut w = [0u32; 64];
+        for i in 0..16 {
+            w[i] = u32::from_be_bytes([
+                chunk[i * 4],
+                chunk[i * 4 + 1],
+                chunk[i * 4 + 2],
+                chunk[i * 4 + 3],
+            ]);
+        }
+        for i in 16..64 {
+            let s0 = w[i - 15].rotate_right(7) ^ w[i - 15].rotate_right(18) ^ (w[i - 15] >> 3);
+            let s1 = w[i - 2].rotate_right(17) ^ w[i - 2].rotate_right(19) ^ (w[i - 2] >> 10);
+            w[i] = w[i - 16]
+                .wrapping_add(s0)
+                .wrapping_add(w[i - 7])
+                .wrapping_add(s1);
+        }
+        let mut a = state[0];
+        let mut b = state[1];
+        let mut c = state[2];
+        let mut d = state[3];
+        let mut e = state[4];
+        let mut f = state[5];
+        let mut g = state[6];
+        let mut h = state[7];
+        for i in 0..64 {
+            let s1 = e.rotate_right(6) ^ e.rotate_right(11) ^ e.rotate_right(25);
+            let ch = (e & f) ^ ((!e) & g);
+            let temp1 = h
+                .wrapping_add(s1)
+                .wrapping_add(ch)
+                .wrapping_add(K[i])
+                .wrapping_add(w[i]);
+            let s0 = a.rotate_right(2) ^ a.rotate_right(13) ^ a.rotate_right(22);
+            let maj = (a & b) ^ (a & c) ^ (b & c);
+            let temp2 = s0.wrapping_add(maj);
+            h = g;
+            g = f;
+            f = e;
+            e = d.wrapping_add(temp1);
+            d = c;
+            c = b;
+            b = a;
+            a = temp1.wrapping_add(temp2);
+        }
+        state[0] = state[0].wrapping_add(a);
+        state[1] = state[1].wrapping_add(b);
+        state[2] = state[2].wrapping_add(c);
+        state[3] = state[3].wrapping_add(d);
+        state[4] = state[4].wrapping_add(e);
+        state[5] = state[5].wrapping_add(f);
+        state[6] = state[6].wrapping_add(g);
+        state[7] = state[7].wrapping_add(h);
+    }
+    let mut out = [0u8; 32];
+    for (i, word) in state.iter().enumerate() {
+        out[i * 4..i * 4 + 4].copy_from_slice(&word.to_be_bytes());
+    }
+    out
 }
 
 #[cfg(test)]
@@ -597,8 +771,50 @@ mod tests {
 
     #[test]
     fn test_companion_profile_verify() {
-        let profile = CompanionProfile::new_default();
+        let mut profile = CompanionProfile::new_default();
+        assert!(!profile.verify());
+        profile.sign();
         assert!(profile.verify());
+        profile.persona.name = "tampered".to_string();
+        assert!(!profile.verify());
+    }
+
+    #[test]
+    fn test_sha256_abc() {
+        let digest = sha256(b"abc");
+        assert_eq!(
+            hex_encode(&digest),
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
+    }
+
+    #[test]
+    fn test_sign_ignores_fact_order() {
+        let mut left = CompanionProfile::new_default();
+        left.add_fact(Fact {
+            k: "b".into(),
+            v: "2".into(),
+            t: "n".into(),
+        });
+        left.add_fact(Fact {
+            k: "a".into(),
+            v: "1".into(),
+            t: "n".into(),
+        });
+        left.sign();
+        let mut right = CompanionProfile::new_default();
+        right.add_fact(Fact {
+            k: "a".into(),
+            v: "1".into(),
+            t: "n".into(),
+        });
+        right.add_fact(Fact {
+            k: "b".into(),
+            v: "2".into(),
+            t: "n".into(),
+        });
+        right.sign();
+        assert_eq!(left.signature, right.signature);
     }
 
     // ====================================================================

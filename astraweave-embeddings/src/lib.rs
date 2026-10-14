@@ -6,7 +6,7 @@ High-performance embeddings and vector search for AI-native gaming. This crate p
 
 - **Embedding Clients**: Trait-based abstraction for different embedding models
 - **Vector Store**: Efficient storage and retrieval of high-dimensional vectors
-- **Semantic Search**: Fast similarity search using HNSW indexing
+- **Semantic Search**: Hierarchical navigable small world (HNSW) search. The index lives in this crate (`hnsw.rs`) and is deterministic: integer level draws, id tie-breaks, exact top-k when the search beam covers every node. The optional `hnsw_rs` dependency is not used; its construction RNG is outside the sim contract.
 - **Memory Management**: Batching, caching, and memory optimization
 
 ## Quick Start
@@ -39,6 +39,7 @@ async fn main() -> anyhow::Result<()> {
 */
 
 pub mod client;
+mod hnsw;
 pub mod store;
 pub mod utils;
 

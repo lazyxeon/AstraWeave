@@ -11,6 +11,9 @@ pub use agent::*;
 pub mod coordination;
 pub use coordination::*;
 
+pub mod sim_tick;
+pub use sim_tick::*;
+
 // pub mod social_graph;     // Source file does not exist on disk
 // pub use social_graph::*;
 

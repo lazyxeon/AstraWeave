@@ -1869,7 +1869,9 @@ mod persona_tests {
 
     #[test]
     fn companion_profile_verify() {
-        let profile = CompanionProfile::new_default();
+        let mut profile = CompanionProfile::new_default();
+        assert!(!profile.verify());
+        profile.sign();
         assert!(profile.verify());
     }
 
