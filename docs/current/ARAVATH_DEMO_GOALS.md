@@ -1,6 +1,6 @@
 # Aravath demo goals
 
-This is the campaign after the greybox island. The original phase plan stays as it was. This document is the end state the rest of the branch builds toward. The Veilweaver lore bible in `docs/Veilweaver/lore_bible.md` is the fiction reference. The Aravath-Lore repository is not required.
+This is the campaign after the greybox island. The original phase plan stays as it was. This document is the end state the rest of the branch builds toward. Demo lore, names, enemies, and flavor text come from the Aravath lore bible at `github.com/lazyxeon/Aravath-Lore`. `docs/Veilweaver/lore_bible.md` is not a source for this demo.
 
 The demo is one playable loop: an open, mineable world, Enshrouded-style digging and placement, free movement, a few simple enemies, sword and shield combat with lock-on and invincible dodge rolls, and save/load of edits plus the player. Visuals use CC0 assets where a download is viable, and geometric primitives where it is not. Every borrowed file is listed in `assets/aravath/CREDITS.md`.
 
