@@ -1,0 +1,42 @@
+name: Determinism profile check
+
+# Release-profile bit locks. The PR tier (see cursor/ci-optimization) runs
+# debug tests only and a release *build*. A debug-only suite cannot see a
+# profile split, so these locks also run nightly on all three OS.
+# The cron sits an hour after that workflow's 04:30 UTC schedule.
+
+on:
+  schedule:
+    - cron: "30 5 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  terrain-bit-locks:
+    name: Terrain bits (${{ matrix.os }}, release)
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.89.0
+
+      - name: Terrain bit-identity
+        run: |
+          cargo test -p astraweave-terrain --lib --release --locked -- temperature_golden_value_default_config -- --exact
+          cargo test -p astraweave-terrain --lib --release --locked -- fbm_persistence_affects_output -- --exact
+          cargo test -p astraweave-terrain --lib --release --locked -- fbm_lacunarity_affects_output -- --exact
+          cargo test -p astraweave-terrain --lib --release --locked -- bootstrap_splines_continental_temperate_at_median_climate_matches_d5fix_baseline -- --exact
+          cargo test -p astraweave-terrain --lib --release --locked -- bootstrap_splines_all_six_archetypes_reproduce_baseline_at_median_climate -- --exact
+          cargo test -p astraweave-terrain --lib --release --locked -- bootstrap_splines_evaluate_independent_of_input_dimension_assignment -- --exact
+          cargo test -p astraweave-terrain --lib --release --locked -- phase_1_6_f2_t_highland_regions_reach_f1_target -- --exact
