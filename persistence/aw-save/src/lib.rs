@@ -669,6 +669,79 @@ mod tests {
         assert!(err.to_string().contains("limit"), "{err}");
     }
 
+    fn fixed_bundle() -> SaveBundleV2 {
+        SaveBundleV2 {
+            schema: SAVE_SCHEMA_VERSION,
+            save_id: Uuid::parse_str("11111111-2222-3333-4444-555555555555").unwrap(),
+            created_at: OffsetDateTime::from_unix_timestamp(1_700_000_000).unwrap(),
+            player_id: "aravath".into(),
+            slot: 0,
+            world: WorldState {
+                tick: 7,
+                ecs_blob: vec![1, 2, 3, 4],
+                state_hash: 0x0a0b,
+            },
+            companions: Vec::new(),
+            inventory: PlayerInventory {
+                credits: 0,
+                items: Vec::new(),
+            },
+            meta: HashMap::new(),
+        }
+    }
+
+    #[test]
+    fn postcard_and_lz4_bytes_are_stable() {
+        let bytes = postcard::to_allocvec(&fixed_bundle()).unwrap();
+        let again = postcard::to_allocvec(&fixed_bundle()).unwrap();
+        assert_eq!(bytes, again, "postcard encoding drifted");
+        // Locked against postcard 1.1 + time 0.3 binary OffsetDateTime tuple.
+        // A dependency bump that changes this hex changes the save format.
+        assert_eq!(
+            hex::encode(&bytes),
+            "021011111111222233334444555555555555ce1fbe02160d14000000000761726176617468000704010203048b1400000000"
+        );
+        let compressed = lz4_flex::compress_prepend_size(&bytes);
+        let compressed_again = lz4_flex::compress_prepend_size(&bytes);
+        assert_eq!(compressed, compressed_again, "lz4 output drifted");
+        // lz4_flex 0.11.6 rejects invalid match offsets on decode. The
+        // compressor for valid input is the same block format as 0.11.5.
+        assert_eq!(
+            hex::encode(&compressed),
+            "32000000d1021011111111222233334444550100f011ce1fbe02160d14000000000761726176617468000704010203048b1400000000"
+        );
+        let restored = decompress_capped(&compressed).unwrap();
+        assert_eq!(restored, bytes);
+    }
+
+    #[test]
+    fn march_2026_awsv_files_still_decode() {
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let mut found = 0u32;
+        for entry in fs::read_dir(&root).unwrap() {
+            let path = entry.unwrap().path();
+            if path.extension().and_then(|ext| ext.to_str()) != Some("awsv") {
+                continue;
+            }
+            found += 1;
+            let bundle = read_awsv(&path).unwrap_or_else(|err| {
+                panic!(
+                    "historical save {} no longer decodes: {err}",
+                    path.display()
+                )
+            });
+            assert_eq!(bundle.schema, SAVE_SCHEMA_VERSION);
+            assert!(!bundle.player_id.is_empty());
+            let again = read_awsv(&path).unwrap();
+            assert_eq!(bundle.world.ecs_blob, again.world.ecs_blob);
+            assert_eq!(bundle.world.tick, again.world.tick);
+            assert_eq!(bundle.world.state_hash, again.world.state_hash);
+            assert_eq!(bundle.save_id, again.save_id);
+            assert_eq!(bundle.created_at, again.created_at);
+        }
+        assert!(found >= 5, "expected the checked-in March 2026 saves");
+    }
+
     #[cfg(unix)]
     #[test]
     fn symlinked_save_is_refused() {
