@@ -29,6 +29,7 @@ use aravath_runtime::hud::{self, HudModel};
 use aravath_runtime::props::{
     self, figurine_transform, ColoredMesh, NodeActor, Rgba, TexturedMesh,
 };
+use aravath_runtime::sim::{FrameLatch, TickInput};
 use aravath_runtime::Greybox;
 
 struct App {
@@ -37,6 +38,9 @@ struct App {
     sim: Greybox,
     input: InputManager,
     last_cursor: Option<(f32, f32)>,
+    look_dx: f32,
+    look_dy: f32,
+    latch: FrameLatch,
     last_time: Instant,
     player_mesh_ready: bool,
     lock_toggle: bool,
@@ -77,6 +81,9 @@ impl App {
             sim,
             input: demo_input(),
             last_cursor: None,
+            look_dx: 0.0,
+            look_dy: 0.0,
+            latch: FrameLatch::default(),
             last_time: Instant::now(),
             player_mesh_ready: false,
             lock_toggle: false,
@@ -182,7 +189,8 @@ impl ApplicationHandler for App {
             let x = position.x as f32;
             let y = position.y as f32;
             if let Some((px, py)) = self.last_cursor {
-                self.sim.camera.apply_look(x - px, y - py, 0.005);
+                self.look_dx += x - px;
+                self.look_dy += y - py;
             }
             self.last_cursor = Some((x, y));
         }
@@ -248,67 +256,56 @@ impl ApplicationHandler for App {
         let window = self.window.clone().expect("window");
 
         let now = Instant::now();
-        let dt = (now - self.last_time).as_secs_f32().min(0.05);
+        let frame_dt = (now - self.last_time).as_secs_f32();
         self.last_time = now;
+        let present_dt = frame_dt.clamp(0.0, 0.05);
         if let Some((_, left)) = self.notice.as_mut() {
-            *left -= dt;
+            *left -= present_dt;
         }
         if self.notice.as_ref().is_some_and(|(_, left)| *left <= 0.0) {
             self.notice = None;
         }
-        let steps = ((dt / aravath_runtime::sim::FIXED_DT).round() as u32).clamp(1, 4);
-        let input = aravath_runtime::motor::MotorInput {
-            move_x: axis(
-                self.input.is_down(Action::MoveRight),
-                self.input.is_down(Action::MoveLeft),
-            ),
-            move_y: axis(
-                self.input.is_down(Action::MoveForward),
-                self.input.is_down(Action::MoveBackward),
-            ),
-            jump: self.input.just_pressed(Action::Jump),
-            sprint: self.input.is_down(Action::Sprint),
-            crouch: self.input.is_down(Action::Crouch),
-            roll: self.input.just_pressed(Action::Ability1),
-            fly_toggle: self.input.just_pressed(Action::Ability2),
-            walk: self.walk_held,
-            feet_locked: false,
-        };
-        if self.input.just_pressed(Action::AttackLight) {
-            self.sim.combat.attack.start();
+        let lock_on = self.lock_toggle;
+        self.lock_toggle = false;
+        let place = self.place_toggle;
+        self.place_toggle = false;
+        let respawn = self.respawn_toggle;
+        self.respawn_toggle = false;
+        self.latch.sample(TickInput {
+            motor: aravath_runtime::motor::MotorInput {
+                move_x: axis(
+                    self.input.is_down(Action::MoveRight),
+                    self.input.is_down(Action::MoveLeft),
+                ),
+                move_y: axis(
+                    self.input.is_down(Action::MoveForward),
+                    self.input.is_down(Action::MoveBackward),
+                ),
+                jump: self.input.just_pressed(Action::Jump),
+                sprint: self.input.is_down(Action::Sprint),
+                crouch: self.input.is_down(Action::Crouch),
+                roll: self.input.just_pressed(Action::Ability1),
+                fly_toggle: self.input.just_pressed(Action::Ability2),
+                walk: self.walk_held,
+                feet_locked: false,
+            },
+            attack: self.input.just_pressed(Action::AttackLight),
+            block: self.input.is_down(Action::AttackHeavy),
+            lock_on,
+            dig: self.input.just_pressed(Action::Interact),
+            place,
+            place_material: self.selected,
+            look_dx: self.look_dx,
+            look_dy: self.look_dy,
+            respawn,
+        });
+        self.look_dx = 0.0;
+        self.look_dy = 0.0;
+        let caught = self.latch.catch_up(&mut self.sim, frame_dt);
+        if caught.respawned {
+            self.notice = Some(("Respawned".into(), 2.5));
         }
-        self.sim.combat.blocking = self.input.is_down(Action::AttackHeavy);
-        if self.lock_toggle {
-            self.sim
-                .combat
-                .toggle_lock(&self.sim.physics, &self.sim.player);
-            self.lock_toggle = false;
-        }
-        for step in 0..steps {
-            let mut step_input = input;
-            if step > 0 {
-                step_input.jump = false;
-                step_input.roll = false;
-                step_input.fly_toggle = false;
-            }
-            self.sim.tick_controls(step_input);
-        }
-        let dig_uploads = if self.input.just_pressed(Action::Interact) {
-            Some(self.sim.dig_ahead(2.5))
-        } else if self.place_toggle {
-            self.place_toggle = false;
-            Some(self.sim.place_ahead(1.1, self.selected))
-        } else {
-            None
-        };
-        if self.respawn_toggle {
-            self.respawn_toggle = false;
-            if self.sim.combat.player_hp <= 0.0 {
-                self.sim.respawn();
-                self.notice = Some(("Respawned".into(), 2.5));
-            }
-        }
-        if self.save_toggle {
+        if caught.steps > 0 && self.save_toggle {
             self.save_toggle = false;
             self.notice = Some(
                 match aravath_runtime::save::save_checkpoint(&save_root(), &self.sim.checkpoint()) {
@@ -317,7 +314,7 @@ impl ApplicationHandler for App {
                 },
             );
         }
-        let restore_uploads = if self.load_toggle {
+        let restore_uploads = if caught.steps > 0 && self.load_toggle {
             self.load_toggle = false;
             match aravath_runtime::save::load_checkpoint(&save_root()) {
                 Ok(checkpoint) => {
@@ -355,17 +352,13 @@ impl ApplicationHandler for App {
         let shield_xform = player_xform * props::shield_on_hand(hand_l);
 
         let renderer = self.renderer.as_mut().expect("renderer");
-        if let Some(uploads) = dig_uploads.as_deref() {
-            upload_chunks(renderer, uploads, &self.terrain);
-            note_props(&mut self.props, uploads);
-        }
         upload_chunks(renderer, &streamed, &self.terrain);
         note_props(&mut self.props, &streamed);
         if let Some(uploads) = restore_uploads.as_deref() {
             upload_chunks(renderer, uploads, &self.terrain);
             note_props(&mut self.props, uploads);
         }
-        if dig_uploads.is_some() || !streamed.is_empty() || restore_uploads.is_some() {
+        if !streamed.is_empty() || restore_uploads.is_some() {
             sync_foliage(
                 renderer,
                 &self.foliage,
@@ -373,7 +366,7 @@ impl ApplicationHandler for App {
                 &mut self.foliage_ready,
             );
         }
-        renderer.tick_environment(dt);
+        renderer.tick_environment(present_dt);
         renderer.update_view(&view);
         upload_posed(
             renderer,

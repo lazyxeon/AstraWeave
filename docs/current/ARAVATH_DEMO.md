@@ -41,6 +41,10 @@ The workflow `.github/workflows/aravath-windows.yml` builds that exe and runs `c
 
 Airborne runs keep 40% of ground speed. Flight keeps full speed and no gravity.
 
+## Determinism
+
+Movement, stamina, combat, enemy steering, and voxel edits advance at a fixed 60 Hz. The window accumulates real frame time and spends it in slices of 1/60 s, at most eight slices in one frame. A short frame does not step the simulation. A jump, swing, or dig pressed during that frame waits for the next slice. The same recorded inputs produce the same state hash on independent runs, including the player and the edit log after a save and load. The save file's id and timestamp are not part of that hash. The sun clock and the HUD notice still follow the rendered frame.
+
 ## What it shows
 
 You stand on a heightfield that streams a Chebyshev radius of 3 chunks (32 m each, about 224 m across). Grass, sand, and rock biomes use Poly Haven albedo maps. Kenney trees, rocks, and grass tufts sit on the surface. Digging and placing write the same voxel grid. The body is the Quaternius rig. The sword, shield, and enemies are Kenney meshes. Clips follow walk, run, sprint, jump, crouch, roll, attack, block, hit, death, and flight.

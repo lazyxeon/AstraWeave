@@ -26,12 +26,12 @@ pub fn save_checkpoint(root: &Path, checkpoint: &Checkpoint) -> Result<()> {
         "player".into(),
         format!(
             "{},{},{},{},{},{}",
-            checkpoint.position.x,
-            checkpoint.position.y,
-            checkpoint.position.z,
-            checkpoint.yaw,
-            checkpoint.stamina,
-            checkpoint.player_hp
+            encode_f32(checkpoint.position.x),
+            encode_f32(checkpoint.position.y),
+            encode_f32(checkpoint.position.z),
+            encode_f32(checkpoint.yaw),
+            encode_f32(checkpoint.stamina),
+            encode_f32(checkpoint.player_hp)
         ),
     );
     let bundle = SaveBundleV2 {
@@ -70,18 +70,14 @@ pub fn load_checkpoint(root: &Path) -> Result<Checkpoint> {
         .context("save is missing the player")?;
     let mut parts = player.split(',');
     let position = Vec3::new(
-        parts.next().context("x")?.parse().context("x")?,
-        parts.next().context("y")?.parse().context("y")?,
-        parts.next().context("z")?.parse().context("z")?,
+        decode_f32(parts.next().context("x")?).context("x")?,
+        decode_f32(parts.next().context("y")?).context("y")?,
+        decode_f32(parts.next().context("z")?).context("z")?,
     );
-    let yaw = parts.next().context("yaw")?.parse().context("yaw")?;
-    let stamina = parts
-        .next()
-        .context("stamina")?
-        .parse()
-        .context("stamina")?;
+    let yaw = decode_f32(parts.next().context("yaw")?).context("yaw")?;
+    let stamina = decode_f32(parts.next().context("stamina")?).context("stamina")?;
     let player_hp = match parts.next() {
-        Some(text) => text.parse().context("player hp")?,
+        Some(text) => decode_f32(text).context("player hp")?,
         None => 100.0,
     };
     Ok(Checkpoint {
@@ -93,13 +89,29 @@ pub fn load_checkpoint(root: &Path) -> Result<Checkpoint> {
     })
 }
 
+fn encode_f32(value: f32) -> String {
+    format!("{:08x}", value.to_bits())
+}
+
+fn decode_f32(text: &str) -> Result<f32> {
+    if text.len() == 8 && text.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        let bits = u32::from_str_radix(text, 16).context("f32 bits")?;
+        return Ok(f32::from_bits(bits));
+    }
+    text.parse().context("f32")
+}
+
 fn encode_edits(edits: &[VoxelEdit]) -> String {
     edits
         .iter()
         .map(|edit| {
             format!(
-                "{}:{}:{}:{:.3}:{}",
-                edit.x, edit.y, edit.z, edit.density, edit.material
+                "{}:{}:{}:{}:{}",
+                edit.x,
+                edit.y,
+                edit.z,
+                encode_f32(edit.density),
+                edit.material
             )
         })
         .collect::<Vec<_>>()
@@ -117,7 +129,7 @@ fn decode_edits(text: &str) -> Vec<VoxelEdit> {
                 x: parts.next()?.parse().ok()?,
                 y: parts.next()?.parse().ok()?,
                 z: parts.next()?.parse().ok()?,
-                density: parts.next()?.parse().ok()?,
+                density: decode_f32(parts.next()?).ok()?,
                 material: parts.next()?.parse().ok()?,
             })
         })
