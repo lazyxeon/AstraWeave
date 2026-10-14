@@ -10,7 +10,7 @@ integration_status: partial
 summary: "Resolver, ECS tick, and save meta are in astraweave-combat. Demo combat still uses its own flat hits."
 owns: [astraweave-combat]
 doc_version: "1.0"
-last_verified_commit: 5108fa83
+last_verified_commit: 57b689c2
 runtime_edges:
   - to: astraweave-ecs
     note: CombatPlugin registers combat_resolve_system on the simulation stage
@@ -25,7 +25,7 @@ runtime_edges:
 | **System name** | Combat damage |
 | **Primary crates** | `astraweave-combat` |
 | **Document version** | 1.0 |
-| **Last verified against commit** | `5108fa83` (design); implementation is the commit that adds this trace's crate |
+| **Last verified against commit** | `57b689c2` |
 | **Last verified date** | 2026-10-14 |
 | **Status** | Active, partial. The demo does not call it yet. |
 | **Owner notes** | Formula spec: `docs/current/COMBAT_DAMAGE_SYSTEM_DESIGN.md`. Gate Pass, 2026-10-14. |
