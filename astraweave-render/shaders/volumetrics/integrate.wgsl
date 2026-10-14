@@ -18,7 +18,7 @@ struct IntegrateParams {
 
 @group(0) @binding(0) var<uniform>         params:    IntegrateParams;
 @group(0) @binding(1) var                  t_scatter: texture_3d<f32>;   // in-scattered light + density
-@group(0) @binding(2) var                  t_depth:   texture_2d<f32>;   // scene depth
+@group(0) @binding(2) var                  t_depth:   texture_depth_2d; // scene depth
 @group(0) @binding(3) var                  s_linear:  sampler;
 @group(0) @binding(4) var                  t_output:  texture_storage_2d<rgba16float, write>;
 
@@ -51,7 +51,7 @@ fn integrate_main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let uv = (vec2<f32>(gid.xy) + 0.5) * params.inv_resolution;
 
     // Scene depth determines how far to integrate
-    let scene_depth_raw = textureLoad(t_depth, pixel, 0).r;
+    let scene_depth_raw = textureLoad(t_depth, pixel, 0);
     let scene_depth_linear = linearize_depth(scene_depth_raw);
 
     // Front-to-back accumulation along view ray through froxel slices

@@ -13,6 +13,15 @@ pub struct HudModel {
     pub block: &'static str,
     pub notice: Option<String>,
     pub downed: bool,
+    pub mouse_hint: &'static str,
+}
+
+pub fn mouse_hint(captured: bool) -> &'static str {
+    if captured {
+        "Esc to release"
+    } else {
+        "Click to capture mouse / Esc to release"
+    }
 }
 
 pub fn block_name(material: u16) -> &'static str {
@@ -82,7 +91,10 @@ mod tests {
             block: block_name(4),
             notice: Some("Saved".into()),
             downed: true,
+            mouse_hint: mouse_hint(false),
         };
+        assert_eq!(model.mouse_hint, "Click to capture mouse / Esc to release");
+        assert_eq!(mouse_hint(true), "Esc to release");
         assert_eq!(respawn_hint(model.downed), Some("Press Enter to respawn"));
         assert!(respawn_hint(false).is_none());
         assert!((health_fraction(&model) - 1.0).abs() < 1e-4);

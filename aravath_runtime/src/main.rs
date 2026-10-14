@@ -1,22 +1,23 @@
 //! Windowed Aravath greybox.
 //!
 //! WASD moves the body. Mouse look orbits the third-person camera. E digs
-//! a hole in front of the feet. Escape quits.
+//! a hole in front of the feet. Escape releases the mouse, then quits.
 
+mod gpu_preference;
 mod startup;
 
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Instant;
 
-use astraweave_input::{Action, Binding, BindingSet, InputContext, InputManager};
+use astraweave_input::Action;
 use astraweave_render::{Instance, Renderer, SkyConfig};
 use astraweave_terrain::BiomeType;
 use glam::{Mat4, Vec3};
 use winit::{
     application::ApplicationHandler,
     dpi::PhysicalSize,
-    event::{ElementState, KeyEvent, WindowEvent},
+    event::{DeviceEvent, DeviceId, ElementState, KeyEvent, WindowEvent},
     event_loop::{ActiveEventLoop, EventLoop},
     keyboard::{KeyCode, PhysicalKey},
     window::{Window, WindowId},
@@ -26,26 +27,23 @@ use aravath_runtime::combat::EnemyPose;
 use aravath_runtime::figure::{actor_transform, Figure};
 use aravath_runtime::ground::{ChunkPart, ChunkUpload, PropKind, PropSpot};
 use aravath_runtime::hud::{self, HudModel};
+use aravath_runtime::play_input::{InputTransition, PlayInput};
 use aravath_runtime::props::{
     self, figurine_transform, ColoredMesh, NodeActor, Rgba, TexturedMesh,
 };
-use aravath_runtime::sim::{FrameLatch, TickInput};
+use aravath_runtime::sim::FrameLatch;
 use aravath_runtime::Greybox;
 
 struct App {
     window: Option<Arc<Window>>,
     renderer: Option<Renderer>,
     sim: Greybox,
-    input: InputManager,
-    last_cursor: Option<(f32, f32)>,
-    look_dx: f32,
-    look_dy: f32,
+    play: PlayInput,
     latch: FrameLatch,
     last_time: Instant,
     player_mesh_ready: bool,
     lock_toggle: bool,
     place_toggle: bool,
-    walk_held: bool,
     terrain: TerrainMaps,
     figure: Figure,
     sword: TexturedMesh,
@@ -79,16 +77,12 @@ impl App {
             window: None,
             renderer: None,
             sim,
-            input: demo_input(),
-            last_cursor: None,
-            look_dx: 0.0,
-            look_dy: 0.0,
+            play: PlayInput::new(),
             latch: FrameLatch::default(),
             last_time: Instant::now(),
             player_mesh_ready: false,
             lock_toggle: false,
             place_toggle: false,
-            walk_held: false,
             terrain: TerrainMaps::load()?,
             figure: Figure::load(&Figure::library_path())?,
             sword: props::load_rigid(&props::sword_path())?,
@@ -155,7 +149,8 @@ impl ApplicationHandler for App {
             state: egui_state,
             renderer: egui_renderer,
         });
-        capture_mouse(&window);
+        window.focus_window();
+        startup::line("input waiting for focus; click captures the mouse, Esc releases it");
         self.renderer = Some(renderer);
         self.window = Some(window);
         self.last_time = Instant::now();
@@ -167,32 +162,78 @@ impl ApplicationHandler for App {
         _window_id: WindowId,
         event: WindowEvent,
     ) {
+        if let WindowEvent::Focused(focused) = &event {
+            if *focused {
+                self.play.set_focused(true);
+                if self.play.wants_capture() {
+                    if let Some(window) = self.window.clone() {
+                        let grabbed = sync_cursor(&window, true);
+                        self.play.set_captured(grabbed);
+                        startup::line(&format!(
+                            "input focused; cursor {}",
+                            if grabbed { "captured" } else { "visible" }
+                        ));
+                    }
+                } else {
+                    startup::line("input focused; cursor free");
+                }
+            } else if let Some(transition) = self.play.on_focus(false) {
+                if let Some(window) = self.window.as_ref() {
+                    sync_cursor(window, false);
+                }
+                log_input(transition, "focus lost");
+            }
+        }
+
         if let WindowEvent::KeyboardInput {
             event:
                 KeyEvent {
                     physical_key: PhysicalKey::Code(KeyCode::Escape),
                     state: ElementState::Pressed,
+                    repeat: false,
                     ..
                 },
             ..
         } = &event
         {
-            event_loop.exit();
+            match self.play.on_escape() {
+                InputTransition::Released => {
+                    if let Some(window) = self.window.as_ref() {
+                        sync_cursor(window, false);
+                    }
+                    log_input(InputTransition::Released, "escape");
+                    return;
+                }
+                InputTransition::Quit => {
+                    log_input(InputTransition::Quit, "escape");
+                    event_loop.exit();
+                    return;
+                }
+                InputTransition::Captured => {}
+            }
+        }
+
+        if !self.play.captured() && aravath_runtime::play_input::mouse_button_pressed(&event) {
+            self.play.on_click_capture();
+            if let Some(window) = self.window.clone() {
+                let grabbed = sync_cursor(&window, true);
+                self.play.set_captured(grabbed);
+                log_input(
+                    InputTransition::Captured,
+                    if grabbed {
+                        "click"
+                    } else {
+                        "click, grab declined"
+                    },
+                );
+            }
             return;
         }
 
+        // The HUD has no text field. egui may still mark a pointer event consumed;
+        // gameplay keys are applied afterwards so the panels cannot swallow WASD.
         if let (Some(hud), Some(window)) = (self.hud.as_mut(), self.window.as_ref()) {
             let _ = hud.state.on_window_event(window, &event);
-        }
-
-        if let WindowEvent::CursorMoved { position, .. } = &event {
-            let x = position.x as f32;
-            let y = position.y as f32;
-            if let Some((px, py)) = self.last_cursor {
-                self.look_dx += x - px;
-                self.look_dy += y - py;
-            }
-            self.last_cursor = Some((x, y));
         }
 
         if let WindowEvent::KeyboardInput {
@@ -205,9 +246,6 @@ impl ApplicationHandler for App {
             ..
         } = &event
         {
-            if matches!(code, KeyCode::AltLeft | KeyCode::AltRight) {
-                self.walk_held = *state == ElementState::Pressed;
-            }
             if *state == ElementState::Pressed {
                 match code {
                     KeyCode::Tab => self.lock_toggle = true,
@@ -235,7 +273,7 @@ impl ApplicationHandler for App {
         {
             self.place_toggle = true;
         }
-        self.input.process_window_event(&event);
+        self.play.on_window_event(&event);
 
         let Some(renderer) = self.renderer.as_mut() else {
             return;
@@ -249,9 +287,27 @@ impl ApplicationHandler for App {
         }
     }
 
+    fn device_event(
+        &mut self,
+        _event_loop: &ActiveEventLoop,
+        _device_id: DeviceId,
+        event: DeviceEvent,
+    ) {
+        self.play.on_device_event(&event);
+    }
+
     fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
         if self.renderer.is_none() || self.window.is_none() {
             return;
+        }
+        if let Some(renderer) = self.renderer.as_ref() {
+            renderer.poll_device();
+            if renderer.is_device_lost() {
+                startup::fatal(
+                    "Aravath",
+                    "The GPU device was lost before this frame. Details are in the log paths below.",
+                );
+            }
         }
         let window = self.window.clone().expect("window");
 
@@ -271,36 +327,35 @@ impl ApplicationHandler for App {
         self.place_toggle = false;
         let respawn = self.respawn_toggle;
         self.respawn_toggle = false;
-        self.latch.sample(TickInput {
+        let (look_dx, look_dy) = self.play.take_look();
+        self.latch.sample(aravath_runtime::sim::TickInput {
             motor: aravath_runtime::motor::MotorInput {
                 move_x: axis(
-                    self.input.is_down(Action::MoveRight),
-                    self.input.is_down(Action::MoveLeft),
+                    self.play.is_down(Action::MoveRight),
+                    self.play.is_down(Action::MoveLeft),
                 ),
                 move_y: axis(
-                    self.input.is_down(Action::MoveForward),
-                    self.input.is_down(Action::MoveBackward),
+                    self.play.is_down(Action::MoveForward),
+                    self.play.is_down(Action::MoveBackward),
                 ),
-                jump: self.input.just_pressed(Action::Jump),
-                sprint: self.input.is_down(Action::Sprint),
-                crouch: self.input.is_down(Action::Crouch),
-                roll: self.input.just_pressed(Action::Ability1),
-                fly_toggle: self.input.just_pressed(Action::Ability2),
-                walk: self.walk_held,
+                jump: self.play.just_pressed(Action::Jump),
+                sprint: self.play.is_down(Action::Sprint),
+                crouch: self.play.is_down(Action::Crouch),
+                roll: self.play.just_pressed(Action::Ability1),
+                fly_toggle: self.play.just_pressed(Action::Ability2),
+                walk: self.play.walk_held(),
                 feet_locked: false,
             },
-            attack: self.input.just_pressed(Action::AttackLight),
-            block: self.input.is_down(Action::AttackHeavy),
+            attack: self.play.just_pressed(Action::AttackLight),
+            block: self.play.is_down(Action::AttackHeavy),
             lock_on,
-            dig: self.input.just_pressed(Action::Interact),
+            dig: self.play.just_pressed(Action::Interact),
             place,
             place_material: self.selected,
-            look_dx: self.look_dx,
-            look_dy: self.look_dy,
+            look_dx,
+            look_dy,
             respawn,
         });
-        self.look_dx = 0.0;
-        self.look_dy = 0.0;
         let caught = self.latch.catch_up(&mut self.sim, frame_dt);
         if caught.respawned {
             self.notice = Some(("Respawned".into(), 2.5));
@@ -330,7 +385,7 @@ impl ApplicationHandler for App {
             None
         };
         let streamed = std::mem::take(&mut self.sim.pending_uploads);
-        self.input.clear_frame();
+        self.play.clear_frame();
 
         let distance = self.sim.occluded_camera_distance();
         let view = self.sim.camera.to_render_view_at(distance);
@@ -452,6 +507,7 @@ impl ApplicationHandler for App {
             block: hud::block_name(self.selected),
             notice: self.notice.as_ref().map(|(text, _)| text.clone()),
             downed: self.sim.combat.player_hp <= 0.0,
+            mouse_hint: hud::mouse_hint(self.play.captured()),
         };
         let mut hud = self.hud.take();
         let scale = window.scale_factor() as f32;
@@ -758,17 +814,36 @@ struct EguiHud {
     renderer: egui_wgpu::Renderer,
 }
 
-fn capture_mouse(window: &Window) {
-    window.set_cursor_visible(false);
-    match window.set_cursor_grab(winit::window::CursorGrabMode::Locked) {
-        Ok(()) => {}
-        Err(locked) => match window.set_cursor_grab(winit::window::CursorGrabMode::Confined) {
-            Ok(()) => {}
-            Err(confined) => {
-                eprintln!("cursor stays free: locked {locked}; confined {confined}");
-            }
-        },
+fn sync_cursor(window: &Window, captured: bool) -> bool {
+    if !captured {
+        if let Err(err) = window.set_cursor_grab(winit::window::CursorGrabMode::None) {
+            startup::line(&format!("cursor release failed: {err}"));
+        }
+        window.set_cursor_visible(true);
+        return false;
     }
+    for mode in PlayInput::grab_attempts() {
+        match window.set_cursor_grab(*mode) {
+            Ok(()) => {
+                window.set_cursor_visible(false);
+                startup::line(&format!("cursor grab {mode:?}"));
+                return true;
+            }
+            Err(err) => startup::line(&format!("cursor grab {mode:?} declined: {err}")),
+        }
+    }
+    let _ = window.set_cursor_grab(winit::window::CursorGrabMode::None);
+    window.set_cursor_visible(true);
+    false
+}
+
+fn log_input(transition: InputTransition, why: &str) {
+    let word = match transition {
+        InputTransition::Captured => "captured",
+        InputTransition::Released => "released",
+        InputTransition::Quit => "quit",
+    };
+    startup::line(&format!("input {word} ({why})"));
 }
 
 fn save_root() -> std::path::PathBuf {
@@ -821,6 +896,11 @@ fn paint_hud(hud: &mut EguiHud, frame: HudFrame<'_>) {
         .anchor(egui::Align2::RIGHT_BOTTOM, egui::vec2(-16.0, -16.0))
         .show(&hud.ctx, |ui| {
             ui.label(format!("Block: {}  (1-5)", model.block));
+        });
+    egui::Area::new(egui::Id::new("mouse"))
+        .anchor(egui::Align2::CENTER_TOP, egui::vec2(0.0, 8.0))
+        .show(&hud.ctx, |ui| {
+            ui.label(model.mouse_hint);
         });
     if let Some(hint) = hud::respawn_hint(model.downed) {
         egui::Area::new(egui::Id::new("downed"))
@@ -938,25 +1018,6 @@ fn light_the_world(renderer: &mut Renderer, volumetrics: bool) {
     }
 }
 
-fn demo_input() -> InputManager {
-    let mut bindings = BindingSet::default();
-    bindings.actions.insert(
-        Action::Ability1,
-        Binding {
-            key: Some(winit::keyboard::KeyCode::KeyQ),
-            ..Binding::default()
-        },
-    );
-    bindings.actions.insert(
-        Action::Ability2,
-        Binding {
-            key: Some(winit::keyboard::KeyCode::KeyF),
-            ..Binding::default()
-        },
-    );
-    InputManager::new(InputContext::Gameplay, bindings)
-}
-
 fn axis(positive: bool, negative: bool) -> f32 {
     match (positive, negative) {
         (true, false) => 1.0,
@@ -997,6 +1058,9 @@ fn launch_options() -> Launch {
 }
 
 fn smoke_test(volumetrics: bool) -> anyhow::Result<()> {
+    if std::env::var_os("WGPU_VALIDATION").is_none() {
+        std::env::set_var("WGPU_VALIDATION", "1");
+    }
     startup::stage("verify assets");
     let root = aravath_runtime::assets::verify()?;
     startup::line(&format!("assets {}", root.display()));
@@ -1009,12 +1073,29 @@ fn smoke_test(volumetrics: bool) -> anyhow::Result<()> {
     let _terrain = TerrainMaps::load()?;
     startup::stage("mesh one chunk");
     let _sim = Greybox::open(0);
-    std::env::set_var("ARAVATH_WARP", "1");
+    if std::env::var("ARAVATH_WARP").ok().as_deref() != Some("0") {
+        std::env::set_var("ARAVATH_WARP", "1");
+    }
     startup::stage("headless renderer");
-    let mut renderer = pollster::block_on(Renderer::new_headless(64, 64))?;
+    let mut renderer = match pollster::block_on(Renderer::new_headless(64, 64)) {
+        Ok(renderer) => renderer,
+        Err(err)
+            if std::env::var("ARAVATH_ALLOW_MISSING_ADAPTER")
+                .ok()
+                .as_deref()
+                == Some("1")
+                && format!("{err:#}").to_ascii_lowercase().contains("adapter") =>
+        {
+            startup::line(&format!(
+                "no adapter for this backend; skipping the validation frame ({err:#})"
+            ));
+            return Ok(());
+        }
+        Err(err) => return Err(err),
+    };
     startup::stage("headless renderer ready");
     if volumetrics {
-        startup::stage("volumetrics on warp");
+        startup::stage("volumetrics on");
         renderer.set_volumetric_fog_config(
             astraweave_render::volumetric_fog::VolumetricFogPass::gameplay_config(),
         );
@@ -1025,6 +1106,21 @@ fn smoke_test(volumetrics: bool) -> anyhow::Result<()> {
             exposure: 0.22,
             ..astraweave_render::GodRayConfig::default()
         });
+        if !renderer.volumetric_fog_enabled() || !renderer.god_rays_enabled() {
+            anyhow::bail!(
+                "volumetrics or light shafts did not stay enabled. {}",
+                startup::log_locations()
+            );
+        }
+        startup::stage("submit validation frame");
+        renderer.submit_headless_frame()?;
+        renderer.submit_headless_frame()?;
+        if !renderer.volumetric_fog_enabled() || !renderer.god_rays_enabled() {
+            anyhow::bail!(
+                "volumetrics or light shafts were disabled while drawing. {}",
+                startup::log_locations()
+            );
+        }
         startup::stage("volumetrics ready");
     }
     startup::stage("smoke ok");
@@ -1033,6 +1129,11 @@ fn smoke_test(volumetrics: bool) -> anyhow::Result<()> {
 
 fn main() -> anyhow::Result<()> {
     startup::install();
+    if std::env::var_os("WGPU_VALIDATION").is_none() {
+        // Creation failures have to be visible or a bad volumetric pass is
+        // submitted and the window stays black. WGPU_VALIDATION=0 opts out.
+        std::env::set_var("WGPU_VALIDATION", "1");
+    }
     let launch = launch_options();
     startup::line(&format!(
         "exe {} volumetrics {}",

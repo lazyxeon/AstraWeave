@@ -179,6 +179,7 @@ pub mod weather_gpu; // GPU-accelerated weather particle emitter configurations
 
 // GPU memory management
 pub mod bind_group_cache; // Generation-tracked bind group cache
+pub mod gpu_fault; // First wgpu validation error, for aravath.log
 pub mod gpu_memory; // GPU memory budget tracking and enforcement
 pub mod gpu_profiler; // GPU timestamp profiler for per-pass performance analysis
 pub mod staging_ring; // Per-frame ring buffer for transient GPU allocations

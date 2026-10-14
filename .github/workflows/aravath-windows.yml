@@ -24,6 +24,35 @@ env:
   RUST_BACKTRACE: short
 
 jobs:
+  vulkan-validation:
+    name: Volumetrics validation on lavapipe
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.89.0
+
+      - name: Install lavapipe
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends mesa-vulkan-drivers libvulkan1
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "."
+          key: aravath-vulkan-validation-v1
+          cache-all-crates: true
+
+      - name: Validate volumetrics pipelines
+        env:
+          WGPU_VALIDATION: "1"
+          WGPU_BACKEND: vulkan
+        run: cargo test -p astraweave-render --test volumetric_validation -- --nocapture
+
   supply-chain:
     name: cargo-audit, cargo-deny, SBOM
     runs-on: ubuntu-latest
@@ -145,6 +174,22 @@ jobs:
       - name: Smoke test the staged exe
         working-directory: dist/aravath_greybox
         run: ./aravath_greybox.exe --smoke-test --no-volumetrics
+
+      - name: Smoke test volumetrics on DX12
+        working-directory: dist/aravath_greybox
+        env:
+          WGPU_VALIDATION: "1"
+          WGPU_BACKEND: dx12
+        run: ./aravath_greybox.exe --smoke-test --volumetrics
+
+      - name: Smoke test volumetrics on Vulkan
+        working-directory: dist/aravath_greybox
+        env:
+          WGPU_VALIDATION: "1"
+          WGPU_BACKEND: vulkan
+          ARAVATH_WARP: "0"
+          ARAVATH_ALLOW_MISSING_ADAPTER: "1"
+        run: ./aravath_greybox.exe --smoke-test --volumetrics
 
       # Authenticode is not wired. Add it after a signing option is chosen.
       # scripts/sign-aravath.ps1 is the PFX path; Azure Artifact Signing is

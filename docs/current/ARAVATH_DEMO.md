@@ -10,7 +10,7 @@ The machine needs Rust 1.89 and an NVIDIA GPU from a GTX 1660 through an RTX 407
 cargo run -p aravath_runtime --bin aravath_greybox --release
 ```
 
-`cargo run` finds `assets/aravath` because the binary is under `target/`. The GitHub artifact is a folder: `aravath_greybox.exe`, `README.txt`, `LICENSE`, and `assets/aravath` beside the exe. Extract the whole zip and start the exe from that folder. Saves and `aravath.log` / `aravath_crash.log` are written under `%LOCALAPPDATA%\Aravath`, not next to the exe. `aravath.cfg` is read from the exe folder. A fatal error also opens a Windows message box. The exe does not open a network connection or update itself. Distribution limits, checksums, and code signing are in `docs/current/ARAVATH_DISTRIBUTION.md`.
+`cargo run` finds `assets/aravath` because the binary is under `target/`. The GitHub artifact is a folder: `aravath_greybox.exe`, `README.txt`, `LICENSE`, and `assets/aravath` beside the exe. Extract the whole zip and start the exe from that folder. Saves are written under `%LOCALAPPDATA%\Aravath`. `aravath.log` and `aravath_crash.log` are written there and copied next to the exe. Startup prints both full paths. `aravath.cfg` is read from the exe folder. A fatal error also opens a Windows message box. The exe does not open a network connection or update itself. Distribution limits, checksums, and code signing are in `docs/current/ARAVATH_DISTRIBUTION.md`.
 
 If the window fails while compiling shaders or turning on fog, relaunch with `aravath_greybox.exe --no-volumetrics`, or put `volumetrics=off` in `aravath.cfg` next to the exe. `--safe` is the same switch. The stage timings are in `aravath.log`.
 
@@ -37,7 +37,7 @@ The workflow `.github/workflows/aravath-windows.yml` builds that exe and runs `c
 | F5 | Save slot 0 |
 | F9 | Load slot 0 |
 | Enter | Respawn at the opening spawn after death |
-| Escape | Quit |
+| Escape | Release the mouse. Press again to quit |
 
 Airborne runs keep 40% of ground speed. Flight keeps full speed and no gravity.
 
