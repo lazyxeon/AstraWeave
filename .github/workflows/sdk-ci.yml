@@ -21,7 +21,7 @@ jobs:
       - name: Install cbindgen
         run: cargo install cbindgen
       - name: Generate header
-        run: cbindgen astraweave-sdk -o astraweave-sdk/aw_sdk.h
+        run: cbindgen --lang c astraweave-sdk -o astraweave-sdk/aw_sdk.h
       - name: Upload header artifact
         uses: actions/upload-artifact@v4
         with:
