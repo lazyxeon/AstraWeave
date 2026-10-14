@@ -40,7 +40,7 @@ pub struct Figure {
 
 impl Figure {
     pub fn load(path: &Path) -> Result<Self> {
-        let (doc, buffers, _) = gltf::import(path).with_context(|| format!("import {path:?}"))?;
+        let (doc, buffers, _) = crate::assets::import_model(path)?;
         let skin = doc.skins().next().context("gltf has no skin")?;
         let joint_nodes: Vec<usize> = skin.joints().map(|node| node.index()).collect();
         let node_to_joint: HashMap<usize, usize> = joint_nodes

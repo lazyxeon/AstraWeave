@@ -60,8 +60,7 @@ pub struct NodeActor {
 
 impl NodeActor {
     pub fn load(path: &Path) -> Result<Self> {
-        let (doc, buffers, images) =
-            gltf::import(path).with_context(|| format!("import {path:?}"))?;
+        let (doc, buffers, images) = crate::assets::import_model(path)?;
         let albedo = first_rgba(&images);
         let mut parents = vec![None; doc.nodes().len()];
         for node in doc.nodes() {
@@ -197,7 +196,7 @@ pub struct ColoredMesh {
 
 /// One mesh per primitive so a trunk and a canopy keep their own colors.
 pub fn load_colored(path: &Path) -> Result<Vec<ColoredMesh>> {
-    let (doc, buffers, _) = gltf::import(path).with_context(|| format!("import {path:?}"))?;
+    let (doc, buffers, _) = crate::assets::import_model(path)?;
     let mut parents = vec![None; doc.nodes().len()];
     let mut locals = Vec::with_capacity(doc.nodes().len());
     for node in doc.nodes() {
@@ -254,7 +253,7 @@ pub fn load_colored(path: &Path) -> Result<Vec<ColoredMesh>> {
 }
 
 pub fn load_rigid(path: &Path) -> Result<TexturedMesh> {
-    let (doc, buffers, images) = gltf::import(path).with_context(|| format!("import {path:?}"))?;
+    let (doc, buffers, images) = crate::assets::import_model(path)?;
     let mut parents = vec![None; doc.nodes().len()];
     let mut locals = Vec::with_capacity(doc.nodes().len());
     for node in doc.nodes() {

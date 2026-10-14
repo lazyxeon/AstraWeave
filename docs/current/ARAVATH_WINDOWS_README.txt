@@ -3,7 +3,8 @@ Aravath demo
 Keep this file, aravath_greybox.exe, and the assets folder together.
 Double-click aravath_greybox.exe from this folder after extracting the whole zip.
 
-If the window fails, read aravath.log and aravath_crash.log in this folder.
+If the window fails, read aravath.log and aravath_crash.log in
+%LOCALAPPDATA%\Aravath (the same folder holds saves\).
 A message box should also appear.
 
 Start without volumetric fog and light shafts:

@@ -9,7 +9,7 @@ lifecycle_status: unknown
 integration_status: unknown
 summary: "Roundtrip works; auto_save_system body is comment-only TODO; replay_system never applies events. No production consumer. persistence_ecs.md §1"
 owns: [astraweave-persistence-ecs, aw-save]
-doc_version: "1.2"
+doc_version: "1.3"
 last_verified_commit: a2474c5b7
 ---
 
@@ -25,11 +25,11 @@ last_verified_commit: a2474c5b7
 |---|---|
 | **System name** | Persistence-ECS (save / load / migrate / replay) |
 | **Primary crates** | `astraweave-persistence-ecs` (ECS Plugin + world serialization + hashing); `persistence/aw-save` (file format, atomic I/O, versioning, migration) |
-| **Document version** | 1.2 |
+| **Document version** | 1.3 |
 | **Last verified against commit** | `a2474c5b7` |
-| **Last verified date** | 2026-05-12 |
+| **Last verified date** | 2026-10-13 |
 | **Status** | Active (mixed maturity: file format + serialization + hashing are production-grade; ECS Plugin layer's `auto_save_system` and replay event apply are TODO stubs) |
-| **Revision history** | 1.2 (2026-05-12): Deep investigation pass. **Closed Open Question 13** (CLI tools location) — purely factual question, comprehensively answered (`tools/aw_save_cli/` exists, was created in the same commit as `aw-save` itself). Resolution moved to §4 / §6. **New emergent finding**: a separate sibling crate `crates/astraweave-persistence-player` exists for player-profile persistence (TOML-based, distinct data model). Has zero dependency relationship with this subsystem; only a single doc-comment reference. Added to §6 as a coexisting-but-disjoint abstraction so future agents don't conflate them. Enriched §11 Q1, Q2, Q11 with commit-date provenance: the `astraweave-stress-test` declaration of both `astraweave-net-ecs` and `astraweave-persistence-ecs` and the `astraweave-memory` declaration in `astraweave-persistence-ecs/Cargo.toml` all landed in the **same commit** `08befc6ec` (2025-10-01, "phase 6 implementation"); test artifacts (`slot*.awsv`, `savegame.bin`) were committed in unrelated subsequent commits with misleading titles.<br><br>1.1 (2026-05-12): Verification pass. **Major corrections**: (1) The §4 `[INFERRED]` claim that CLI tools "may live elsewhere or be planned" was wrong — `tools/aw_save_cli/src/main.rs` (110 lines, clap-based) is a real binary that consumes `aw-save`. Added to §4 downstream table; resolved the marker. (2) Discovered second `aw-save` consumer not previously documented: `examples/save_integration/src/main.rs` (234 lines) imports `aw-save` types directly. Added to §4. (3) Resolved §9 `[INFERRED]` about auto-pruning absence — direct grep `fs::remove\|remove_file\|tokio::fs::remove persistence/aw-save/src` returns zero matches, conclusively confirming no auto-prune path exists. (4) Verified `Entity::to_raw()` layout claim in §3 against actual source at `astraweave-ecs/src/entity_allocator.rs:95-103` — claim is exact. |
+| **Revision history** | 1.3 (2026-10-13): Save-file bounds. `read_any_version` rejects a compressed length above `MAX_COMPRESSED_BYTES` (32 MiB) before allocating, and rejects an LZ4 size prefix above `MAX_UNCOMPRESSED_BYTES` (64 MiB) before `decompress_size_prepended`. `index.json` is capped (`MAX_INDEX_BYTES`, `MAX_INDEX_ENTRIES`) and is not followed if it is a symlink. `validate_player_id` rejects empty ids, path separators, non-ASCII, and Windows device names (`CON`, `COM1`, …). Symlinked `.awsv` files and a symlinked player directory are refused. New invariants 17–20. The Aravath greybox (`aravath_runtime`) is now a production caller of `SaveManager` (slot 0, player id `aravath`). The on-disk schema is unchanged: the five March 2026 `.awsv` files still decode, and `postcard_and_lz4_bytes_are_stable` locks the postcard 1.1 + time 0.3 binary `OffsetDateTime` tuple and the lz4_flex 0.11 block bytes. `lz4_flex` 0.11.6 only rejects invalid match offsets on decode.<br><br>1.2 (2026-05-12): Deep investigation pass. **Closed Open Question 13** (CLI tools location) — purely factual question, comprehensively answered (`tools/aw_save_cli/` exists, was created in the same commit as `aw-save` itself). Resolution moved to §4 / §6. **New emergent finding**: a separate sibling crate `crates/astraweave-persistence-player` exists for player-profile persistence (TOML-based, distinct data model). Has zero dependency relationship with this subsystem; only a single doc-comment reference. Added to §6 as a coexisting-but-disjoint abstraction so future agents don't conflate them. Enriched §11 Q1, Q2, Q11 with commit-date provenance: the `astraweave-stress-test` declaration of both `astraweave-net-ecs` and `astraweave-persistence-ecs` and the `astraweave-memory` declaration in `astraweave-persistence-ecs/Cargo.toml` all landed in the **same commit** `08befc6ec` (2025-10-01, "phase 6 implementation"); test artifacts (`slot*.awsv`, `savegame.bin`) were committed in unrelated subsequent commits with misleading titles.<br><br>1.1 (2026-05-12): Verification pass. **Major corrections**: (1) The §4 `[INFERRED]` claim that CLI tools "may live elsewhere or be planned" was wrong — `tools/aw_save_cli/src/main.rs` (110 lines, clap-based) is a real binary that consumes `aw-save`. Added to §4 downstream table; resolved the marker. (2) Discovered second `aw-save` consumer not previously documented: `examples/save_integration/src/main.rs` (234 lines) imports `aw-save` types directly. Added to §4. (3) Resolved §9 `[INFERRED]` about auto-pruning absence — direct grep `fs::remove\|remove_file\|tokio::fs::remove persistence/aw-save/src` returns zero matches, conclusively confirming no auto-prune path exists. (4) Verified `Entity::to_raw()` layout claim in §3 against actual source at `astraweave-ecs/src/entity_allocator.rs:95-103` — claim is exact. |
 | **Owner notes** | `aw-save` (file format and SaveManager) is fully production-shaped: atomic writes via tmp+fsync+rename, CRC32 + LZ4, explicit V1→V2 migration, 256 slots per player. `astraweave-persistence-ecs` (ECS integration) is partly stub: the ECS `auto_save_system` function body is a comment-only TODO; replay event application is a TODO; `CPersistenceManager::save_game` hardcodes inventory (`credits: 1000`, `items: []`) and emits zero companions. **`astraweave-stress-test/Cargo.toml:21` declares `astraweave-persistence-ecs` as a dep but no source file imports anything from it** — same pattern as `net-ecs` (declared-but-unused). The companion `astraweave-memory` workspace dep declared at `astraweave-persistence-ecs/Cargo.toml:20` is also never imported in the crate's source. |
 
 ---
@@ -53,7 +53,7 @@ Saving game state across crashes and version upgrades is hard. The two-layer spl
 - `astraweave-persistence-ecs/savegame.bin` — 2-byte test artifact at the crate root.
 
 **Status note:**
-The disk-format layer (`aw-save`) is fully production-grade and CI-covered. The ECS integration layer (`astraweave-persistence-ecs`) has working roundtrip serialization but several systems and helpers are TODO-stubs (see §6 cognitive traps). **No production code outside the crates' own tests uses `astraweave-persistence-ecs`.** It is scaffolding ready to be wired.
+The disk-format layer (`aw-save`) is fully production-grade and CI-covered, and as of 2026-10-13 it refuses oversize payloads, symlinks, and player ids that are path components. The Aravath greybox calls `SaveManager` directly. The ECS integration layer (`astraweave-persistence-ecs`) has working roundtrip serialization but several systems and helpers are TODO-stubs (see §6 cognitive traps). **No production code outside the crates' own tests uses `astraweave-persistence-ecs`.** It is scaffolding ready to be wired.
 
 ---
 
@@ -413,7 +413,7 @@ Auto-save path (scaffolded, empty body):
 
 | File | Role | Status | Notes |
 |---|---|---|---|
-| `persistence/aw-save/src/lib.rs` | All public types + atomic file format + V1→V2 migration + SaveManager | Active | 403 lines. `#![forbid(unsafe_code)]` (line 1). |
+| `persistence/aw-save/src/lib.rs` | All public types + atomic file format + V1→V2 migration + SaveManager + size and path limits | Active | `#![forbid(unsafe_code)]`. Caps: `MAX_COMPRESSED_BYTES`, `MAX_UNCOMPRESSED_BYTES`, `MAX_INDEX_BYTES`, `MAX_PLAYER_ID_LEN`. |
 | `persistence/aw-save/tests/integration_test.rs` | Save/load roundtrip and corruption integration tests | Active (tests) | 3 tests. |
 | `persistence/aw-save/tests/migration_test.rs` | V1→V2 migration tests | Active (tests) | 2 tests. |
 | `persistence/aw-save/tests/mutation_resistant_comprehensive_tests.rs` | Mutation-resistance harness for aw-save | Active (tests) | 38 tests. |
@@ -622,7 +622,11 @@ Auto-save path (scaffolded, empty body):
 | 13 | Atomic write uses tmp file + sync_all + rename | Yes | `aw-save/lib.rs:275-286`. |
 | 14 | `index.json` is sorted by `(slot, created_at)` after each save | Yes | `aw-save/lib.rs:225`. |
 | 15 | Sanitized player_id only contains `[A-Za-z0-9_-]` | Yes | `aw-save/lib.rs:342-352` — all other characters become `_`. |
-| 16 | Save bundle's `save_id` is unique per save call (new `Uuid::v4()`) | Yes (probabilistic) | `persistence-ecs/lib.rs:138`, `aw-save/lib.rs:186` (migration). Uuid v4 collision probability is negligible. |
+| 16 | Save bundle's `save_id` is unique per save call (new `Uuid::v4()`) | Yes (probabilistic) | `persistence-ecs/lib.rs:138`, `aw-save/lib.rs` (migration). Uuid v4 collision probability is negligible. |
+| 17 | Compressed payload length is `<= MAX_COMPRESSED_BYTES` and the file itself is no larger than the header plus that cap | Yes | `read_any_version` bails before `vec![0u8; len]`. Test `oversized_compressed_length_is_rejected_before_use`. |
+| 18 | LZ4 uncompressed size prefix is `<= MAX_UNCOMPRESSED_BYTES` | Yes | `decompress_capped` bails before `lz4_flex::decompress_size_prepended`. Test `lz4_size_prefix_cannot_request_a_huge_buffer`. |
+| 19 | `save` / `load_latest_slot` / `list_saves` accept only a validated player id (ASCII `[A-Za-z0-9_-]`, not a Windows device name, no `..` or separators) | Yes | `validate_player_id`. Test `player_ids_cannot_escape_the_save_root`. `player_dir` still sanitizes for callers that only need a directory name. |
+| 20 | Save reads do not follow a symlink for the player directory, the `.awsv` file, or `index.json` | Yes | `reject_symlink`. Unix test `symlinked_save_is_refused`. |
 
 ---
 

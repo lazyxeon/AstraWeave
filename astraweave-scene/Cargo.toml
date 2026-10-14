@@ -11,7 +11,9 @@ anyhow = { workspace = true }
 thiserror = { workspace = true }
 astraweave-ecs = { path = "../astraweave-ecs" }
 astraweave-asset = { path = "../astraweave-asset" }
-tokio = { workspace = true, features = ["sync", "rt", "fs"] }
+# Explicit features, not the workspace `tokio` which enables `full` (including
+# `net`). The greybox links this crate and must not pull in a network stack.
+tokio = { version = "1", default-features = false, features = ["sync", "rt", "rt-multi-thread", "fs", "macros", "time"] }
 wgpu = { workspace = true }
 
 [dev-dependencies]

@@ -21,7 +21,7 @@ jobs:
       - name: Install cbindgen
         run: cargo install cbindgen
       - name: Generate header
-        run: cbindgen astraweave-sdk -o astraweave-sdk/aw_sdk.h
+        run: cbindgen --lang c astraweave-sdk -o astraweave-sdk/aw_sdk.h
       - name: Upload header artifact
         uses: actions/upload-artifact@v4
         with:
@@ -47,9 +47,13 @@ jobs:
           }
           EOF
           cc -I. -L target/release -o c_harness c_harness.c -lastraweave_sdk -lpthread -ldl -lm
-          ./c_harness | tee harness_out.txt
-          # Semantic version gate: compare printed version to Cargo.toml version
+          LD_LIBRARY_PATH=target/release ./c_harness | tee harness_out.txt
+          # Semantic version gate: compare printed version to Cargo.toml version.
+          # The crate inherits version.workspace, so fall back to the workspace package.
           VER=$(sed -n 's/^version\s*=\s*"\([^"]\+\)"/\1/p' astraweave-sdk/Cargo.toml | head -n1)
+          if [ -z "$VER" ]; then
+            VER=$(sed -n 's/^version\s*=\s*"\([^"]\+\)"/\1/p' Cargo.toml | head -n1)
+          fi
           OUT=$(head -n1 harness_out.txt)
           echo "SDK Crate Version: $VER; Runtime: $OUT"
           test "$OUT" = "$VER"
@@ -75,11 +79,20 @@ jobs:
             return 0;
           }
           '@
-          cl /I. c_harness.c /link /LIBPATH:target\release astraweave_sdk.lib
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $install = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          $devcmd = Join-Path $install "Common7\Tools\VsDevCmd.bat"
+          # Link the cdylib import library. The staticlib needs ws2_32, ntdll,
+          # and userenv, which rustc already recorded in the dll.
+          cmd /c "`"$devcmd`" -no_logo -arch=x64 && cl /nologo /I. c_harness.c /link /LIBPATH:target\release astraweave_sdk.dll.lib"
+          if ($LASTEXITCODE -ne 0) { throw "cl failed with exit code $LASTEXITCODE" }
           if (Test-Path target\release\astraweave_sdk.dll) { Copy-Item target\release\astraweave_sdk.dll . }
           .\c_harness.exe | Tee-Object -FilePath harness_out.txt | Out-Null
           # Semantic version gate (Windows)
-          $ver = (Select-String -Path astraweave-sdk/Cargo.toml -Pattern '^version\s*=\s*"([^"]+)"' | ForEach-Object { $_.Matches[0].Groups[1].Value })[0]
+          $ver = (Select-String -Path astraweave-sdk/Cargo.toml -Pattern '^version\s*=\s*"([^"]+)"' | ForEach-Object { $_.Matches[0].Groups[1].Value } | Select-Object -First 1)
+          if (-not $ver) {
+            $ver = (Select-String -Path Cargo.toml -Pattern '^version\s*=\s*"([^"]+)"' | ForEach-Object { $_.Matches[0].Groups[1].Value } | Select-Object -First 1)
+          }
           $out = Get-Content harness_out.txt | Select-Object -First 1
           Write-Host "SDK Crate Version: $ver; Runtime: $out"
           if ($out -ne $ver) { throw "Version mismatch: $out vs $ver" }
@@ -95,8 +108,8 @@ jobs:
           cmake_minimum_required(VERSION 3.15)
           project(aw_cmake_example C)
           add_executable(aw_cmake_example main.c)
-          include_directories(${CMAKE_SOURCE_DIR}/..)
-          link_directories(${CMAKE_SOURCE_DIR}/../target/release)
+          target_include_directories(aw_cmake_example PRIVATE ${CMAKE_SOURCE_DIR}/..)
+          target_link_directories(aw_cmake_example PRIVATE ${CMAKE_SOURCE_DIR}/../target/release)
           target_link_libraries(aw_cmake_example astraweave_sdk)
           EOF
           cat > cmake_example/main.c << 'EOF'
@@ -116,9 +129,8 @@ jobs:
           cmake_minimum_required(VERSION 3.15)
           project(aw_cmake_example C)
           add_executable(aw_cmake_example main.c)
-          include_directories(${CMAKE_SOURCE_DIR}/..)
-          link_directories(${CMAKE_SOURCE_DIR}/..\target\release)
-          target_link_libraries(aw_cmake_example astraweave_sdk)
+          target_include_directories(aw_cmake_example PRIVATE ${CMAKE_SOURCE_DIR}/..)
+          target_link_libraries(aw_cmake_example ${CMAKE_SOURCE_DIR}/../target/release/astraweave_sdk.dll.lib)
           '@
           Set-Content -Path cmake_example/main.c -Value @'
           #include <stdio.h>

@@ -1,5 +1,6 @@
 [package]
 name = "advanced_content_demo"
+license.workspace = true
 version = "0.1.0"
 edition = "2021"
 

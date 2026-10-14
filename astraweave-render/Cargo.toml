@@ -39,7 +39,7 @@ thiserror = { workspace = true }
 wgpu = { workspace = true }
 glam = { workspace = true }
 winit = { workspace = true }
-image = { version = "0.25", optional = true }
+image = { version = "0.25", optional = true, default-features = false, features = ["rayon", "bmp", "dds", "exr", "ff", "gif", "hdr", "ico", "jpeg", "png", "pnm", "qoi", "tga", "tiff", "webp"] }
 bytemuck = { workspace = true }
 astraweave-core = { path = "../astraweave-core" }
 astraweave-camera = { path = "../astraweave-camera" }

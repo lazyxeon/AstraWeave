@@ -188,7 +188,7 @@ eframe = { version = "0.32", default-features = false, features = ["default_font
 egui_dock = "0.17"
 egui_plot = "0.33"
 petgraph = "0.6"
-reqwest = { version = "0.12", default-features = false, features = ["json", "native-tls", "stream"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
 bytemuck = { version = "1", features = ["derive"] }
 glam = { version = "0.30", features = ["serde"] }
 wgpu = "25.0.2"
@@ -257,4 +257,14 @@ opt-level = 3
 lto = "thin"          # Much faster than "fat" LTO, still good size/perf gains
 codegen-units = 16    # More parallelism during codegen
 strip = "debuginfo"   # Smaller binary, keep symbols for backtraces
+
+# Shipped aravath_greybox.exe. Symbols are stripped. panic stays unwind so the
+# demo can still catch a volumetrics setup failure and continue. overflow
+# checks stay off so this binary matches the release arithmetic the engine
+# tests. There is no self-updater in this profile.
+[profile.dist]
+inherits = "release"
+strip = true
+debug = false
+incremental = false
 

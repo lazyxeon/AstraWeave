@@ -9,7 +9,7 @@ lifecycle_status: active
 integration_status: wired
 summary: "Deaths write a sparse fixed-point scar. Fog and agents read it."
 owns: [astraweave-veil]
-doc_version: "1.0"
+doc_version: "1.1"
 last_verified_commit: 79fcf579
 runtime_edges:
   - to: astraweave-ai
@@ -26,7 +26,7 @@ runtime_edges:
 |---|---|
 | **System name** | Fate-scars (veil) |
 | **Primary crates** | `astraweave-veil` |
-| **Document version** | 1.0 |
+| **Document version** | 1.1 |
 | **Last verified against commit** | `79fcf579` (parent of the feature; the code landed on `cursor/aravath-veil-scars-7098`) |
 | **Last verified date** | 2026-10-14 |
 | **Status** | Active |
@@ -126,6 +126,7 @@ The froxel grid stays the engine preset (80×45×32 in this demo). The scar text
 - **Feed the existing pass.** A 16×9×24 pass would have duplicated `VolumetricFogPass` and ignored the demo's 80×45×32 low preset.
 - **No spillway.** The demo has no city and no water network. Hydraulic grounding was not implemented.
 - **Save via meta, schema stays 2.** `SaveBundleV2.meta["veil_scars"]` holds the hex postcard. Old saves omit the key and load an empty field. `ecs_blob` remains the edit log the demo already writes.
+- **Postcard alloc only.** `astraweave-veil` depends on postcard with `default-features = false` and `features = ["alloc"]`, the same line as `aw-save`. `to_allocvec` / `from_bytes` of `Vec` do not use the `heapless` feature, so the scar bytes stay on the locked postcard 1.1 encoding and the yanked `spin` 0.9 pull stays out of the graph.
 
 ---
 

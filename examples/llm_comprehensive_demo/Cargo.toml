@@ -1,5 +1,6 @@
 [package]
 name = "llm_comprehensive_demo"
+license.workspace = true
 version = "0.1.0"
 edition = "2021"
 description = "Comprehensive demonstration of AstraWeave's LLM integration capabilities"
