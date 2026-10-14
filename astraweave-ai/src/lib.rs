@@ -29,6 +29,7 @@
 pub mod core_loop;
 pub mod ecs_ai_plugin;
 pub mod orchestrator;
+pub mod scar_sense;
 pub mod tool_sandbox;
 
 #[cfg(test)]
@@ -54,6 +55,7 @@ pub mod goap;
 pub use core_loop::*;
 pub use ecs_ai_plugin::{build_app_with_ai, AiPlanningPlugin};
 pub use orchestrator::*;
+pub use scar_sense::{sense, stance_at, ScarStance};
 pub use tool_sandbox::*;
 
 #[cfg(feature = "llm_orchestrator")]

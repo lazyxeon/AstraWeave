@@ -125,9 +125,11 @@ fn scatter_main(@builtin(global_invocation_id) gid: vec3<u32>) {
 
     let world_pos = froxel_to_world(gid);
 
-    // Read density from density volume
+    // Read density from density volume. G/B are the scar weights written
+    // by the density pass (forward scatter, amber-violet tint).
     let density_uvw = (vec3<f32>(gid) + 0.5) / vec3<f32>(dims);
-    let density = textureSampleLevel(t_density, s_linear, density_uvw, 0.0).r;
+    let packed = textureSampleLevel(t_density, s_linear, density_uvw, 0.0);
+    let density = packed.r;
 
     // Skip near-zero density froxels (optimization)
     if (density < 0.0001) {
@@ -135,19 +137,27 @@ fn scatter_main(@builtin(global_invocation_id) gid: vec3<u32>) {
         return;
     }
 
-    // View direction for phase function
+    // View direction for phase function. Scar weight pulls g toward a
+    // tighter forward lobe. Zero weight leaves the config anisotropy.
     let view_dir = normalize(world_pos - params.view_pos);
     let cos_theta = dot(view_dir, params.sun_dir);
-    let phase = phase_hg(cos_theta, params.anisotropy);
+    let anisotropy = mix(params.anisotropy, 0.86, packed.g);
+    let phase = phase_hg(cos_theta, anisotropy);
 
     // Shadow visibility
     let shadow = sample_shadow(world_pos);
 
+    // Amber-violet tint. Weight 0 leaves the light color unchanged.
+    let amber = vec3<f32>(1.0, 0.45, 0.12);
+    let violet = vec3<f32>(0.42, 0.16, 0.72);
+    let scar_tint = mix(amber, violet, 0.55);
+    let tint = mix(vec3<f32>(1.0), scar_tint, packed.b);
+
     // In-scattered light from sun
-    let sun_scatter = params.sun_color * params.sun_intensity * phase * shadow * density;
+    let sun_scatter = params.sun_color * tint * params.sun_intensity * phase * shadow * density;
 
     // Ambient in-scattering (isotropic, no phase needed)
-    let ambient_scatter = params.ambient_color * params.ambient_intensity * density * 0.25;
+    let ambient_scatter = params.ambient_color * tint * params.ambient_intensity * density * 0.25;
 
     let total_scatter = sun_scatter + ambient_scatter;
 

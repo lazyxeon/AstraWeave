@@ -84,6 +84,8 @@ pub struct Enemy {
     /// Time spent in melee range before the next swing.
     pub windup: f32,
     pub attack_cooldown: f32,
+    /// This death has already been written into the scar field.
+    pub scarred: bool,
 }
 
 /// Which figurine clip to bake, and how to read the clock.
@@ -116,6 +118,7 @@ impl Enemy {
             down_time: 0.0,
             windup: 0.0,
             attack_cooldown: 0.0,
+            scarred: false,
         }
     }
 
@@ -190,7 +193,14 @@ impl Combat {
             .map(|(index, _)| index);
     }
 
-    pub fn tick(&mut self, physics: &mut PhysicsWorld, player: &Player, motor: &Motor, dt: f32) {
+    pub fn tick(
+        &mut self,
+        physics: &mut PhysicsWorld,
+        player: &Player,
+        motor: &Motor,
+        dt: f32,
+        mut scars: Option<&mut astraweave_veil::ScarField>,
+    ) {
         let was_active = self.attack.active();
         if was_active && !self.attack.hit_landed {
             if let Some(index) = sword_target(self, physics, player) {
@@ -213,6 +223,19 @@ impl Combat {
             .filter(|enemy| enemy.alive())
             .filter_map(|enemy| body_pos(physics, enemy.body).map(|pos| (enemy.body, pos)))
             .collect();
+        if let Some(field) = scars.as_deref_mut() {
+            for enemy in &mut self.enemies {
+                if enemy.alive() || enemy.scarred {
+                    continue;
+                }
+                let Some(pos) = body_pos(physics, enemy.body) else {
+                    continue;
+                };
+                let metres = world_metres(pos);
+                field.inject_death(metres[0], metres[1], metres[2]);
+                enemy.scarred = true;
+            }
+        }
         for enemy in &mut self.enemies {
             enemy.anim_time += dt;
             if !enemy.alive() {
@@ -236,6 +259,24 @@ impl Combat {
                 enemy.attack.advance(dt);
                 continue;
             }
+            let mut wary = false;
+            if let Some(field) = scars.as_deref() {
+                match astraweave_ai::stance_at(field, world_metres(pos)) {
+                    astraweave_ai::ScarStance::Avoid { retreat, .. } => {
+                        enemy.windup = 0.0;
+                        enemy.attack.swinging = false;
+                        let wish = retreat_wish(retreat);
+                        enemy.closing = wish.length_squared() > 0.0;
+                        if enemy.closing {
+                            physics.control_character(enemy.body, wish * 3.4, dt, false);
+                        }
+                        enemy.attack.advance(dt);
+                        continue;
+                    }
+                    astraweave_ai::ScarStance::Wary { .. } => wary = true,
+                    astraweave_ai::ScarStance::Clear => {}
+                }
+            }
             if dist > AGGRO_RANGE {
                 enemy.closing = false;
                 enemy.windup = 0.0;
@@ -245,12 +286,17 @@ impl Combat {
             if dist > MELEE_RANGE {
                 enemy.closing = true;
                 enemy.windup = 0.0;
-                let speed = if dist < 7.0 { 4.6 } else { 3.2 };
+                let mut speed = if dist < 7.0 { 4.6 } else { 3.2 };
+                if wary {
+                    speed *= 0.5;
+                }
                 let wish = steer(flat, pos, &spots, enemy.body) * speed;
                 physics.control_character(enemy.body, wish, dt, false);
             } else {
                 enemy.closing = false;
-                if !enemy.attack.swinging {
+                if wary && !enemy.attack.swinging {
+                    enemy.windup = 0.0;
+                } else if !enemy.attack.swinging {
                     if enemy.attack_cooldown > 0.0 {
                         enemy.attack_cooldown = (enemy.attack_cooldown - dt).max(0.0);
                     } else {
@@ -288,6 +334,35 @@ impl Combat {
         {
             self.lock = None;
         }
+    }
+}
+
+/// Whole metres for the scar field. This is the physics boundary: the field
+/// itself stores only integers. Non-finite components become 0.
+pub fn world_metres(pos: Vec3) -> [i32; 3] {
+    fn quantize(component: f32) -> i32 {
+        if !component.is_finite() {
+            return 0;
+        }
+        let rounded = component.round();
+        if rounded >= i32::MAX as f32 {
+            i32::MAX
+        } else if rounded <= i32::MIN as f32 {
+            i32::MIN
+        } else {
+            rounded as i32
+        }
+    }
+    [quantize(pos.x), quantize(pos.y), quantize(pos.z)]
+}
+
+/// Actuator for an integer retreat step. Only -1, 0, and 1 are expected.
+fn retreat_wish(retreat: [i32; 3]) -> Vec3 {
+    let wish = Vec3::new(retreat[0] as f32, 0.0, retreat[2] as f32);
+    if wish.length_squared() < 1e-6 {
+        Vec3::ZERO
+    } else {
+        wish.normalize()
     }
 }
 
@@ -358,7 +433,7 @@ mod tests {
         combat.attack.swinging = true;
         combat.attack.time = 0.02;
         let before = combat.enemies[0].health;
-        combat.tick(&mut physics, &player, &Motor::default(), 0.0);
+        combat.tick(&mut physics, &player, &Motor::default(), 0.0, None);
         assert!((combat.enemies[0].health - before).abs() < 0.01);
     }
 
@@ -367,13 +442,13 @@ mod tests {
         let (mut physics, player, mut combat) = arena();
         combat.attack.swinging = true;
         combat.attack.time = STARTUP;
-        combat.tick(&mut physics, &player, &Motor::default(), 0.0);
+        combat.tick(&mut physics, &player, &Motor::default(), 0.0, None);
         assert!(combat.attack.hit_landed);
         assert!((combat.enemies[0].health - (40.0 - SWORD_DAMAGE)).abs() < 0.01);
         assert!(combat.enemies[0].stagger > 0.0);
         let health = combat.enemies[0].health;
         combat.attack.time = STARTUP;
-        combat.tick(&mut physics, &player, &Motor::default(), 0.0);
+        combat.tick(&mut physics, &player, &Motor::default(), 0.0, None);
         assert!((combat.enemies[0].health - health).abs() < 0.01);
     }
 
@@ -382,7 +457,7 @@ mod tests {
         let (mut physics, player, mut combat) = arena();
         combat.enemies[0].stagger = 0.3;
         let before = body_pos(&physics, combat.enemies[0].body).unwrap();
-        combat.tick(&mut physics, &player, &Motor::default(), 0.05);
+        combat.tick(&mut physics, &player, &Motor::default(), 0.05, None);
         physics.step();
         let after = body_pos(&physics, combat.enemies[0].body).unwrap();
         assert!(
@@ -398,7 +473,7 @@ mod tests {
         physics.step();
         let before = body_pos(&physics, combat.enemies[0].body).unwrap();
         assert!(before.x > AGGRO_RANGE, "teleport did not stick {before:?}");
-        combat.tick(&mut physics, &player, &Motor::default(), 0.1);
+        combat.tick(&mut physics, &player, &Motor::default(), 0.1, None);
         physics.step();
         let after = body_pos(&physics, combat.enemies[0].body).unwrap();
         assert!(
@@ -407,10 +482,10 @@ mod tests {
         );
 
         let (mut physics, player, mut combat) = arena();
-        combat.tick(&mut physics, &player, &Motor::default(), 0.05);
+        combat.tick(&mut physics, &player, &Motor::default(), 0.05, None);
         assert!(!combat.enemies[0].attack.swinging);
         for _ in 0..8 {
-            combat.tick(&mut physics, &player, &Motor::default(), 0.05);
+            combat.tick(&mut physics, &player, &Motor::default(), 0.05, None);
         }
         assert!(combat.enemies[0].attack.swinging);
     }
@@ -451,7 +526,7 @@ mod tests {
         combat.enemies[0].attack.swinging = true;
         combat.enemies[0].attack.time = STARTUP;
         let before = combat.player_hp;
-        combat.tick(&mut physics, &player, &Motor::default(), 0.0);
+        combat.tick(&mut physics, &player, &Motor::default(), 0.0, None);
         assert!(combat.player_hp < before, "ray missed the player");
         assert!((combat.hit_react - HIT_REACT).abs() < 0.01);
     }
@@ -462,7 +537,7 @@ mod tests {
         combat.toggle_lock(&physics, &player);
         assert!(combat.lock.is_some());
         combat.enemies[0].health = 0.0;
-        combat.tick(&mut physics, &player, &Motor::default(), 0.016);
+        combat.tick(&mut physics, &player, &Motor::default(), 0.016, None);
         assert!(combat.lock.is_none());
     }
 
@@ -473,12 +548,97 @@ mod tests {
         combat.enemies[0].health = 10.0;
         combat.attack.swinging = true;
         combat.attack.time = STARTUP;
-        combat.tick(&mut physics, &player, &Motor::default(), 0.0);
+        combat.tick(&mut physics, &player, &Motor::default(), 0.0, None);
         assert!(combat.enemies[0].health <= 0.0);
         assert!(combat.lock.is_none());
 
         combat.lock = Some(9);
-        combat.tick(&mut physics, &player, &Motor::default(), 0.0);
+        combat.tick(&mut physics, &player, &Motor::default(), 0.0, None);
         assert!(combat.lock.is_none());
+    }
+
+    #[test]
+    fn world_metres_rounds_finite_components_and_rejects_nan() {
+        assert_eq!(world_metres(Vec3::new(1.4, -1.5, 4.0)), [1, -2, 4]);
+        assert_eq!(
+            world_metres(Vec3::new(f32::NAN, 2.2, f32::INFINITY)),
+            [0, 2, 0]
+        );
+    }
+
+    #[test]
+    fn a_strong_scar_pushes_the_enemy_off_the_cell() {
+        let (mut physics, player, mut combat) = arena();
+        physics.set_body_position(combat.enemies[0].body, Vec3::new(8.0, 1.5, 8.0));
+        physics.step();
+        let mut scars = astraweave_veil::ScarField::new();
+        scars.inject_death(8, 2, 8);
+        let before = body_pos(&physics, combat.enemies[0].body).unwrap();
+        combat.tick(
+            &mut physics,
+            &player,
+            &Motor::default(),
+            0.05,
+            Some(&mut scars),
+        );
+        physics.step();
+        let after = body_pos(&physics, combat.enemies[0].body).unwrap();
+        assert!(
+            after.x < before.x - 0.05,
+            "tie-break retreat is -X, {before:?} -> {after:?}"
+        );
+        assert!(!combat.enemies[0].attack.swinging);
+    }
+
+    #[test]
+    fn a_moderate_scar_keeps_a_melee_enemy_from_swinging() {
+        let (mut physics, player, mut combat) = arena();
+        let pos = body_pos(&physics, combat.enemies[0].body).unwrap();
+        let metres = world_metres(pos);
+        let mut scars = astraweave_veil::ScarField::new();
+        scars.inject_energy(
+            metres[0],
+            metres[1],
+            metres[2],
+            astraweave_veil::Fixed64::from_int(16),
+        );
+        for _ in 0..10 {
+            combat.tick(
+                &mut physics,
+                &player,
+                &Motor::default(),
+                0.05,
+                Some(&mut scars),
+            );
+        }
+        assert!(
+            !combat.enemies[0].attack.swinging,
+            "wary enemy started a swing"
+        );
+    }
+
+    #[test]
+    fn a_death_writes_one_scar() {
+        let (mut physics, player, mut combat) = arena();
+        combat.enemies[0].health = 0.0;
+        let mut scars = astraweave_veil::ScarField::new();
+        combat.tick(
+            &mut physics,
+            &player,
+            &Motor::default(),
+            0.016,
+            Some(&mut scars),
+        );
+        assert!(combat.enemies[0].scarred);
+        assert!(scars.occupied_count() >= 1);
+        let hash = scars.state_hash();
+        combat.tick(
+            &mut physics,
+            &player,
+            &Motor::default(),
+            0.016,
+            Some(&mut scars),
+        );
+        assert_eq!(scars.state_hash(), hash, "a corpse must not inject twice");
     }
 }
