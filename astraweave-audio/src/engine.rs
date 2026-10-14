@@ -235,8 +235,41 @@ pub struct AudioEngine {
     duck_factor: f32,
 }
 
+/// Whether `AudioEngine::new` may call `OutputStream::try_default`.
+///
+/// `AW_AUDIO_NULL` forces the null backend. On Windows CI the WASAPI
+/// default-device probe has aborted the process (`STATUS_ACCESS_VIOLATION`,
+/// step exit 139) instead of returning `Err`, so that call is skipped unless
+/// `AW_AUDIO_DEVICE` is set.
+pub(crate) fn default_output_probe_allowed(
+    audio_null: bool,
+    windows: bool,
+    ci: bool,
+    audio_device: bool,
+) -> bool {
+    if audio_null {
+        return false;
+    }
+    if windows && ci && !audio_device {
+        return false;
+    }
+    true
+}
+
 impl AudioEngine {
     pub fn new() -> Result<Self> {
+        let probe = default_output_probe_allowed(
+            std::env::var_os("AW_AUDIO_NULL").is_some(),
+            cfg!(windows),
+            std::env::var_os("CI").is_some(),
+            std::env::var_os("AW_AUDIO_DEVICE").is_some(),
+        );
+        if !probe {
+            eprintln!(
+                "astraweave-audio: skipping the OS default-device probe; using a null backend"
+            );
+            return Self::null();
+        }
         match OutputStream::try_default() {
             Ok((stream, handle)) => Self::from_device(Some(stream), Some(handle)),
             Err(err) => {
@@ -591,6 +624,14 @@ impl AudioEngine {
 mod tests {
     use super::*;
     use glam::vec3;
+
+    #[test]
+    fn windows_ci_does_not_probe_the_default_device() {
+        assert!(!default_output_probe_allowed(false, true, true, false));
+        assert!(default_output_probe_allowed(false, true, true, true));
+        assert!(default_output_probe_allowed(false, false, true, false));
+        assert!(!default_output_probe_allowed(true, false, false, true));
+    }
 
     #[test]
     fn null_backend_keeps_mixer_state_without_a_device() {
