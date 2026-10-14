@@ -102,7 +102,10 @@ pub enum RoutingAction {
     Block,
     Redirect(String),       // Redirect to different agent
     Broadcast(Vec<String>), // Send to multiple agents
-    Transform(String),      // Transform message content (placeholder)
+    /// Prefix the message body with this string on the sim tick
+    /// (`SimCoordinator::tick`). The async router still treats any
+    /// non-`Allow` action as a drop.
+    Transform(String),
 }
 
 /// Resource management for coordinated agents

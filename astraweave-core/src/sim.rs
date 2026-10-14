@@ -14,6 +14,10 @@ pub const SIM_SYSTEM_ENEMY_PATROL: u64 = 0xAE11_7002;
 pub const SIM_SYSTEM_SPAWNER: u64 = 0xAE11_7003;
 /// Terrain solver distance rolls. The solver stores the mixed `u64`.
 pub const SIM_SYSTEM_TERRAIN_SOLVER: u64 = 0x7E22_7001;
+/// HNSW layer assignment. The insert ordinal is the `tick` argument.
+pub const SIM_SYSTEM_HNSW: u64 = 0xA1DE_7001;
+/// LLM dialogue draws. Callers mix the entity id into this system id.
+pub const SIM_SYSTEM_LLM_DIALOGUE: u64 = 0xD1A1_7001;
 
 /// Mix `(world_seed, tick, system_id)` into one `StdRng` seed.
 ///

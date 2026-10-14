@@ -6,7 +6,7 @@
 use anyhow::{anyhow, Result};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 
 use crate::{Memory, MemoryCluster, MemoryType, RetrievalContext};
 
@@ -171,6 +171,33 @@ impl MemoryManager {
         results.truncate(context.limit);
 
         Ok(results)
+    }
+
+    /// Retrieve memory ids with an integer overlap score.
+    ///
+    /// This is the sim-tick scorer. It does not read `Utc::now` or
+    /// `SystemTime`. Ties break by id. `calculate_relevance` still uses the
+    /// wall clock and must not feed a plan.
+    pub fn retrieve_sorted(&self, query: &str, limit: usize) -> Vec<String> {
+        let query_words: BTreeSet<&str> = query.split_whitespace().collect();
+        let mut ranked: Vec<(usize, String)> = self
+            .memories
+            .iter()
+            .map(|(id, memory)| {
+                let overlap = memory
+                    .content
+                    .text
+                    .split_whitespace()
+                    .filter(|word| query_words.contains(word))
+                    .count();
+                (overlap, id.clone())
+            })
+            .collect();
+        ranked.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.cmp(&b.1)));
+        if limit < ranked.len() {
+            ranked.truncate(limit);
+        }
+        ranked.into_iter().map(|(_, id)| id).collect()
     }
 
     /// Delete a memory

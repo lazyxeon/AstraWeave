@@ -2,9 +2,12 @@
 # Vector Store
 
 Efficient storage and retrieval of high-dimensional embedding vectors.
-Uses HNSW indexing for fast approximate nearest neighbor search.
+Search walks the in-crate deterministic HNSW graph (`crate::hnsw`).
+The default beam covers every node, so the returned top-k matches a
+full scan. `search_ef` lowers the beam for approximate search.
 */
 
+use crate::hnsw::HnswIndex;
 use crate::{DistanceMetric, EmbeddingConfig, SearchResult, StoredVector};
 use anyhow::{anyhow, Result};
 use dashmap::DashMap;
@@ -13,7 +16,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 
-/// High-performance vector store with HNSW indexing (simplified implementation)
+/// Vector store backed by a deterministic HNSW graph.
 pub struct VectorStore {
     /// Configuration
     config: EmbeddingConfig,
@@ -23,6 +26,10 @@ pub struct VectorStore {
 
     /// Next available index
     next_index: Arc<parking_lot::Mutex<usize>>,
+
+    /// HNSW graph. Locked separately from `vectors` so a search can copy
+    /// hit ids and then read metadata without nesting the two locks.
+    index: Arc<parking_lot::Mutex<HnswIndex>>,
 
     /// Metrics tracking
     metrics: Arc<RwLock<VectorStoreMetrics>>,
@@ -51,22 +58,25 @@ impl VectorStore {
 
     /// Create a vector store with custom configuration
     pub fn with_config(config: EmbeddingConfig) -> Self {
+        let dist = distance_fn(config.distance_metric);
         Self {
             config,
             vectors: Arc::new(DashMap::new()),
             next_index: Arc::new(parking_lot::Mutex::new(0)),
+            index: Arc::new(parking_lot::Mutex::new(HnswIndex::new(dist))),
             metrics: Arc::new(RwLock::new(VectorStoreMetrics::default())),
         }
     }
 
+    /// Number of directed edges in the HNSW graph.
+    pub fn hnsw_edge_count(&self) -> usize {
+        self.index.lock().edge_count()
+    }
+
     /// Get the distance function for the configured metric
+    #[cfg(test)]
     fn get_distance_func(&self) -> fn(&[f32], &[f32]) -> f32 {
-        match self.config.distance_metric {
-            DistanceMetric::Cosine => cosine_distance,
-            DistanceMetric::Euclidean => euclidean_distance,
-            DistanceMetric::Manhattan => manhattan_distance,
-            DistanceMetric::DotProduct => dot_product_distance,
-        }
+        distance_fn(self.config.distance_metric)
     }
 
     /// Insert a vector into the store
@@ -87,25 +97,71 @@ impl VectorStore {
             ));
         }
 
-        let stored_vector = StoredVector {
-            id: id.clone(),
-            vector: vector.clone(),
+        self.store_vector(StoredVector {
+            id,
+            vector,
             text,
             timestamp: current_timestamp(),
             importance: 1.0,
             metadata: HashMap::new(),
-        };
+        })
+    }
 
-        // Store vector
-        self.vectors.insert(id, stored_vector);
-
-        // Update metrics
-        {
-            let mut metrics = self.metrics.write();
-            metrics.total_vectors = self.vectors.len();
+    /// Insert a vector with an explicit sim timestamp.
+    ///
+    /// The tick path uses this so scores do not read `SystemTime`.
+    pub fn insert_with_timestamp(
+        &self,
+        id: String,
+        vector: Vec<f32>,
+        text: String,
+        timestamp: u64,
+    ) -> Result<()> {
+        if vector.len() != self.config.dimensions {
+            return Err(anyhow!(
+                "Vector dimension {} doesn't match expected {}",
+                vector.len(),
+                self.config.dimensions
+            ));
         }
+        if self.vectors.len() >= self.config.max_vectors && !self.vectors.contains_key(&id) {
+            return Err(anyhow!(
+                "Vector store at capacity: {}",
+                self.config.max_vectors
+            ));
+        }
+        self.store_vector(StoredVector {
+            id,
+            vector,
+            text,
+            timestamp,
+            importance: 1.0,
+            metadata: HashMap::new(),
+        })
+    }
 
+    fn store_vector(&self, stored: StoredVector) -> Result<()> {
+        let id = stored.id.clone();
+        let vector = stored.vector.clone();
+        let replaced = self.vectors.insert(id.clone(), stored).is_some();
+        if replaced {
+            self.reindex();
+        } else {
+            self.index.lock().insert(id, vector);
+        }
+        let mut metrics = self.metrics.write();
+        metrics.total_vectors = self.vectors.len();
         Ok(())
+    }
+
+    fn reindex(&self) {
+        let mut pairs: Vec<(String, Vec<f32>)> = self
+            .vectors
+            .iter()
+            .map(|entry| (entry.key().clone(), entry.value().vector.clone()))
+            .collect();
+        pairs.sort_by(|a, b| a.0.cmp(&b.0));
+        self.index.lock().rebuild(pairs);
     }
 
     /// Insert a vector with metadata
@@ -134,14 +190,7 @@ impl VectorStore {
             metadata,
         };
 
-        self.vectors.insert(id, stored_vector);
-
-        {
-            let mut metrics = self.metrics.write();
-            metrics.total_vectors = self.vectors.len();
-        }
-
-        Ok(())
+        self.store_vector(stored_vector)
     }
 
     /// Search for similar vectors
@@ -156,7 +205,7 @@ impl VectorStore {
             ));
         }
 
-        let results = self.brute_force_search(query, k)?;
+        let results = self.hnsw_search(query, k, self.vectors.len())?;
 
         // Update metrics
         let search_time = start_time.elapsed().as_millis() as f32;
@@ -171,7 +220,49 @@ impl VectorStore {
         Ok(results)
     }
 
-    /// Brute force search (used when index is not available)
+    /// Search with an explicit HNSW beam width.
+    ///
+    /// `ef >= len` scores every vector (exact top-k). A smaller `ef` returns
+    /// the graph beam only.
+    pub fn search_ef(&self, query: &[f32], k: usize, ef: usize) -> Result<Vec<SearchResult>> {
+        if query.len() != self.config.dimensions {
+            return Err(anyhow!(
+                "Query dimension {} doesn't match expected {}",
+                query.len(),
+                self.config.dimensions
+            ));
+        }
+        self.hnsw_search(query, k, ef)
+    }
+
+    fn hnsw_search(&self, query: &[f32], k: usize, ef: usize) -> Result<Vec<SearchResult>> {
+        let hits = self.index.lock().search(query, k, ef);
+        let mut results = Vec::with_capacity(hits.len());
+        for (id, distance) in hits {
+            let Some(stored_vector) = self.get(&id) else {
+                continue;
+            };
+            let score = match self.config.distance_metric {
+                DistanceMetric::Cosine => 1.0 - distance,
+                DistanceMetric::DotProduct => -distance,
+                _ => 1.0 / (1.0 + distance),
+            };
+            results.push(SearchResult {
+                vector: stored_vector,
+                score,
+                distance,
+            });
+        }
+        results.sort_by(|a, b| {
+            a.distance
+                .total_cmp(&b.distance)
+                .then_with(|| a.vector.id.cmp(&b.vector.id))
+        });
+        Ok(results)
+    }
+
+    /// Full scan kept for tests that compare the graph against every vector.
+    #[cfg(test)]
     fn brute_force_search(&self, query: &[f32], k: usize) -> Result<Vec<SearchResult>> {
         let distance_func = self.get_distance_func();
         let mut results = Vec::new();
@@ -192,11 +283,10 @@ impl VectorStore {
             });
         }
 
-        // Sort by distance and take top k
         results.sort_by(|a, b| {
             a.distance
-                .partial_cmp(&b.distance)
-                .unwrap_or(std::cmp::Ordering::Equal)
+                .total_cmp(&b.distance)
+                .then_with(|| a.vector.id.cmp(&b.vector.id))
         });
         results.truncate(k);
 
@@ -205,11 +295,11 @@ impl VectorStore {
 
     /// Remove a vector from the store
     pub fn remove(&self, id: &str) -> Option<StoredVector> {
-        if let Some((_, stored_vector)) = self.vectors.remove(id) {
-            Some(stored_vector)
-        } else {
-            None
-        }
+        let removed = self.vectors.remove(id).map(|(_, stored)| stored)?;
+        self.reindex();
+        let mut metrics = self.metrics.write();
+        metrics.total_vectors = self.vectors.len();
+        Some(removed)
     }
 
     /// Get a vector by ID
@@ -219,10 +309,13 @@ impl VectorStore {
 
     /// Get all vector IDs
     pub fn get_all_ids(&self) -> Vec<String> {
-        self.vectors
+        let mut ids: Vec<String> = self
+            .vectors
             .iter()
             .map(|entry| entry.key().clone())
-            .collect()
+            .collect();
+        ids.sort();
+        ids
     }
 
     /// Get number of stored vectors
@@ -238,16 +331,19 @@ impl VectorStore {
     /// Clear all vectors
     pub fn clear(&self) {
         self.vectors.clear();
+        self.index.lock().clear();
 
         {
             let mut next_idx = self.next_index.lock();
             *next_idx = 0;
         }
+        let mut metrics = self.metrics.write();
+        metrics.total_vectors = 0;
     }
 
-    /// Rebuild index (simplified stub - no HNSW in this version)
+    /// Rebuild the HNSW graph from the stored vectors, in id order.
     pub fn rebuild_index(&self) -> Result<()> {
-        // Simplified implementation - no actual indexing
+        self.reindex();
         Ok(())
     }
 
@@ -275,7 +371,7 @@ impl VectorStore {
         }
 
         // Sort by score (ascending, so lowest scores are first)
-        scored_vectors.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+        scored_vectors.sort_by(|a, b| a.1.total_cmp(&b.1).then_with(|| a.0.cmp(&b.0)));
 
         // Remove lowest-scoring vectors
         let to_remove = self.vectors.len() - target_count;
@@ -338,17 +434,21 @@ impl VectorStore {
     pub fn from_json(json: &str) -> Result<Self> {
         let snapshot: VectorStoreSnapshot = serde_json::from_str(json)?;
 
+        let dist = distance_fn(snapshot.config.distance_metric);
         let vectors = DashMap::new();
         for (k, v) in snapshot.vectors {
             vectors.insert(k, v);
         }
 
-        Ok(Self {
+        let store = Self {
             config: snapshot.config,
             vectors: Arc::new(vectors),
-            next_index: Arc::new(parking_lot::Mutex::new(0)), // Reset index
+            next_index: Arc::new(parking_lot::Mutex::new(0)),
+            index: Arc::new(parking_lot::Mutex::new(HnswIndex::new(dist))),
             metrics: Arc::new(RwLock::new(snapshot.metrics)),
-        })
+        };
+        store.reindex();
+        Ok(store)
     }
 }
 
@@ -361,6 +461,15 @@ struct VectorStoreSnapshot {
 }
 
 /// Distance functions for different metrics
+fn distance_fn(metric: DistanceMetric) -> fn(&[f32], &[f32]) -> f32 {
+    match metric {
+        DistanceMetric::Cosine => cosine_distance,
+        DistanceMetric::Euclidean => euclidean_distance,
+        DistanceMetric::Manhattan => manhattan_distance,
+        DistanceMetric::DotProduct => dot_product_distance,
+    }
+}
+
 fn cosine_distance(a: &[f32], b: &[f32]) -> f32 {
     let dot_product: f32 = a.iter().zip(b.iter()).map(|(x, y)| x * y).sum();
     let norm_a: f32 = a.iter().map(|x| x * x).sum::<f32>().sqrt();
@@ -710,6 +819,10 @@ mod tests {
 
         assert_eq!(results.len(), 2);
         assert_eq!(results[0].vector.id, "v1"); // Should be most similar
+        let brute = store.brute_force_search(&query, 2).unwrap();
+        assert_eq!(results[0].vector.id, brute[0].vector.id);
+        assert_eq!(results[1].vector.id, brute[1].vector.id);
+        assert!(store.hnsw_edge_count() > 0);
     }
 
     #[test]

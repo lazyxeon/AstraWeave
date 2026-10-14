@@ -1,8 +1,14 @@
 #![forbid(unsafe_code)]
-//! Dialogue system: branching dialogue graphs, validation, and execution
+//! Dialogue system: branching dialogue graphs, validation, and execution.
+//!
+//! The live LLM file `llm_dialogue.rs` is not a module. It calls
+//! `rand::thread_rng` and a live model client, so it cannot sit on the
+//! simulation tick. [`depth_tick`] is the deterministic caller: recorded
+//! lines in, scripted prompt echo when the log has no entry.
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
+pub mod depth_tick;
 pub mod runner;
 pub mod toml_loader;
 

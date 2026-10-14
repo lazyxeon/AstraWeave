@@ -17,9 +17,19 @@ toml = { workspace = true }
 rand = { workspace = true }
 glam = { workspace = true }
 
-astraweave-physics = { path = "../astraweave-physics" }
-astraweave-audio   = { path = "../astraweave-audio" }
-astraweave-gameplay = { path = "../astraweave-gameplay" }   # for dialogue/quests types if needed
+astraweave-physics = { path = "../astraweave-physics", optional = true }
+astraweave-audio = { path = "../astraweave-audio", optional = true }
+# Gamepad (gilrs) enters through astraweave-gameplay → astraweave-input.
+# The crate does not call it. Keep the edge opt-in so the AI tick and the
+# editor do not build libudev.
+astraweave-gameplay = { path = "../astraweave-gameplay", optional = true }
+
+[features]
+default = ["engine"]
+engine = ["physics", "audio"]
+physics = ["dep:astraweave-physics"]
+audio = ["dep:astraweave-audio"]
+gamepad = ["dep:astraweave-gameplay"]
 
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }

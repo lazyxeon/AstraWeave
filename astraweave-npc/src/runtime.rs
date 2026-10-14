@@ -1,9 +1,18 @@
 use anyhow::Result;
-use glam::{vec3, Vec3};
+use glam::Vec3;
 use std::collections::HashMap;
 
+#[cfg(feature = "physics")]
+pub use astraweave_physics::BodyId;
+#[cfg(not(feature = "physics"))]
+pub type BodyId = u64;
+
+#[cfg(all(feature = "physics", feature = "audio"))]
 use astraweave_audio::AudioEngine;
-use astraweave_physics::{BodyId, PhysicsWorld};
+#[cfg(feature = "physics")]
+use astraweave_physics::PhysicsWorld;
+#[cfg(feature = "physics")]
+use glam::vec3;
 
 use crate::{llm::LlmAdapter, profile::NpcProfile, NpcAction, NpcMode, NpcWorldView};
 
@@ -17,11 +26,13 @@ pub trait CommandSink {
     fn give_quest(&mut self, npc_id: NpcId, quest_id: &str);
 }
 
+#[cfg(all(feature = "physics", feature = "audio"))]
 pub struct EngineCommandSink<'a> {
     pub phys: &'a mut PhysicsWorld,
     pub audio: &'a mut AudioEngine,
 }
 
+#[cfg(all(feature = "physics", feature = "audio"))]
 impl<'a> CommandSink for EngineCommandSink<'a> {
     fn move_character(&mut self, body: BodyId, dir: Vec3, speed: f32) {
         let v = if dir.length_squared() > 1e-4 {
@@ -78,6 +89,7 @@ impl NpcManager {
         }
     }
 
+    #[cfg(feature = "physics")]
     pub fn spawn_from_profile(&mut self, phys: &mut PhysicsWorld, prof: NpcProfile) -> NpcId {
         // convert home to spawn pos; capsule half extents similar to character
         let pos = prof.home_vec3();
@@ -97,6 +109,25 @@ impl NpcManager {
         id
     }
 
+    /// Spawn an NPC that does not touch the physics world.
+    ///
+    /// The sim tick uses this so a plan can be recorded without stepping Rapier.
+    pub fn spawn_logical(&mut self, prof: NpcProfile) -> NpcId {
+        let id = self.alloc_id();
+        self.npcs.insert(
+            id,
+            Npc {
+                id,
+                profile: prof,
+                body: 0,
+                mode: NpcMode::Idle,
+                pending: Vec::new(),
+                cooldown_talk: 0.0,
+            },
+        );
+        id
+    }
+
     pub fn update(
         &mut self,
         dt: f32,
@@ -106,7 +137,13 @@ impl NpcManager {
         // Collect actions to execute to avoid borrowing issues
         let mut actions_to_execute = Vec::new();
 
-        for (_id, npc) in self.npcs.iter_mut() {
+        let mut ids: Vec<NpcId> = self.npcs.keys().copied().collect();
+        ids.sort_unstable();
+        for id in ids {
+            let npc = match self.npcs.get_mut(&id) {
+                Some(npc) => npc,
+                None => continue,
+            };
             // cooldowns
             npc.cooldown_talk = (npc.cooldown_talk - dt).max(0.0);
 

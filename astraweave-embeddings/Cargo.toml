@@ -9,6 +9,7 @@ repository = "https://github.com/lazyxeon/AstraWeave"
 [dependencies]
 # Core dependencies
 anyhow = "1.0"
+astraweave-core = { path = "../astraweave-core" }
 async-trait = "0.1"
 tokio = { version = "1.48", features = ["full"] }
 serde = { version = "1.0", features = ["derive"] }

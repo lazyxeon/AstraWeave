@@ -19,6 +19,13 @@ astraweave-context = { path = "../astraweave-context" }
 astraweave-prompts = { path = "../astraweave-prompts" }
 astraweave-rag = { path = "../astraweave-rag" }
 astraweave-persona = { path = "../astraweave-persona" }
+astraweave-memory = { path = "../astraweave-memory" }
+astraweave-npc = { path = "../astraweave-npc", default-features = false }
+astraweave-coordination = { path = "../astraweave-coordination" }
+astraweave-core = { path = "../astraweave-core" }
+astraweave-ecs = { workspace = true }
+glam = { workspace = true }
+sha2 = { workspace = true }
 
 # Async runtime
 tokio = { version = "1.48", features = ["full"] }
