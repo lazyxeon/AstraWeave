@@ -759,6 +759,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "astraweave-combat"
+version = "0.1.0"
+dependencies = [
+ "astraweave-ecs",
+ "aw-save",
+ "criterion 0.7.0",
+ "proptest",
+ "rand 0.9.2",
+ "ron 0.8.1",
+ "serde",
+ "sha2",
+ "thiserror 2.0.17",
+ "time",
+ "uuid",
+]
+
+[[package]]
 name = "astraweave-context"
 version = "0.1.0"
 dependencies = [

@@ -64,6 +64,7 @@ members = [
   "astraweave-input",
   "astraweave-ui",
   "astraweave-cinematics",
+  "astraweave-combat",
   "examples/skinning_demo",
   "examples/ui_controls_demo",
   "examples/debug_toolkit_demo",

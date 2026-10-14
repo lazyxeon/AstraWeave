@@ -1,0 +1,27 @@
+[package]
+name = "astraweave-combat"
+version = "0.1.0"
+license.workspace = true
+edition = "2021"
+rust-version.workspace = true
+publish.workspace = true
+description = "Deterministic Q32.32 damage dealt and damage received"
+
+[dependencies]
+astraweave-ecs = { path = "../astraweave-ecs" }
+rand = { workspace = true }
+ron = "0.8"
+serde = { workspace = true }
+sha2 = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+aw-save = { path = "../persistence/aw-save" }
+criterion = { workspace = true }
+proptest = "1.5"
+time = { version = "0.3", features = ["macros"] }
+uuid = { version = "1", features = ["v4"] }
+
+[[bench]]
+name = "resolve_hit"
+harness = false

@@ -981,24 +981,25 @@ No attack in this pass remains without a resolution or a residual-risk id. R1–
 gate:
   name: "Combat damage system design — approve before implementation"
   tier: r3
-  status: Needs-human
+  status: Pass
   rationale: >
-    The design locks a single Q32.32 resolver with tested integer identities
-    (Armor == K is half, EHP linear below a continuous 75% cap, 40%+20% is 48%
-    taken, cooldown percents cannot reach zero because of an independent floor).
-    It matches the determinism gate, the SimRng triple, and the veil fixed-point
-    contract, and it does not wrap the four legacy formulas. Implementation is
-    not authorized by this run. R1 (no three-OS hash yet), R2 (SimRng not on
-    main), and R3 (Fixed64 still on the Aravath branch) are real blockers a
-    human has to accept or sequence, not details an agent should skip.
+    The user (human authority) and the orchestrator both reviewed this
+    document and approved it on 2026-10-14. The design locks a single Q32.32
+    resolver with tested integer identities (Armor == K is half, EHP linear
+    below a continuous 75% cap, 40%+20% is 48% taken, cooldown percents cannot
+    reach zero because of an independent floor). Residual risks R1–R6 stay
+    open and are accepted for implementation: SimRng and Fixed64 are local
+    seams until their branches land, and the three-OS replay job is still absent.
+    A later lore steer (same day) keeps schools data-driven, changes only the
+    shipped default labels, masks AI queries, and adds an unused thread-strain hook.
   residual_risks:
     - "R1 cross-OS replay workflow not on main"
-    - "R2 SimRng only on cursor/engine-ws-d2-stab"
-    - "R3 Fixed64 only on cursor/aravath-greybox-b3de"
+    - "R2 SimRng only on cursor/engine-ws-d2-stab; local seam until PR 211"
+    - "R3 Fixed64 only on cursor/aravath-greybox-b3de; local seam"
     - "R4 WorldSnapshot EHP deferred so planner hashes stay put"
     - "R5 default K and caps are content, not a balance pass"
     - "R6 physics hit detection remains outside the resolver"
-  next_action: stop
+  next_action: proceed
   reviewer: both
   date: 2026-10-14
 ```
@@ -1023,3 +1024,20 @@ No GPU, no WoW client, and no three-OS runner were used. That is why H1 is not m
 | Version | Date | Note |
 |---|---|---|
 | 0.1 | 2026-10-14 | Design only. r3. Gate Needs-human. No engine code. |
+| 0.2 | 2026-10-14 | Human and orchestrator sign-off. Gate Pass. Lore steer recorded in §21. Implementation started. |
+
+---
+
+## 21. Lore steer (implementation, same day)
+
+The school pipeline stays generic: a mod may add any school id. The shipped default table does not present elemental magic.
+
+- Physical attacks and the Bleed flag stay.
+- Fire, frost, and poison ship as mundane `hazard` schools, not spell schools.
+- Shock is absent from the default table. A mod can add a school; the engine does not name one.
+- The non-physical causal school is named `weave`. The labels `Veil` and `Echo` are not in the default table.
+- A sword-and-shield combatant with only Might, Armor, and Bulwark can deal and receive damage. No other school rating is required.
+- `resolve_hit` is the world. It uses the true components. `expected_hit` and `effective_health` are the AI queries. They take a `StatKnowledge` mask and do not read a stat the mask hides. Hidden armor cannot change the estimate.
+- `ThreadStrain` { capacity, reserve, coherence, strain } is stored and saved. The damage formula does not read it.
+
+These are deliberate deviations from the hardcoded Focus / Heat / Rime / Volt / Toxin fields in §8. Resistances and non-physical ratings are small id-keyed arrays so a new school does not need a new component field.
