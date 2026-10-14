@@ -215,7 +215,7 @@ impl Plugin for CombatPlugin {
         app.world.insert_resource(CombatScratch::default());
         app.world.insert_resource(CombatWriteGate::default());
         app.world.insert_resource(LoadedTables::default());
-        app.add_system("simulation", combat_resolve_system);
+        app.add_system_known_stage("simulation", combat_resolve_system);
     }
 }
 

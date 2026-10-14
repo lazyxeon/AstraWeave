@@ -1,7 +1,8 @@
 //! Seeded multi-entity battle. The digest is SHA-256 of little-endian
 //! Q32.32 raw bits (the integer form of `to_bits`) after entity ids are sorted.
 //!
-//! Writes `target/replay-hash.json` for the three-OS compare job.
+//! Writes `target/replay-hash-combat.json`. The determinism-replay job
+//! merges that file with core's `replay-hash.json` before the three-OS compare.
 
 use std::path::PathBuf;
 
@@ -169,12 +170,12 @@ fn digest(fighters: &[Fighter]) -> String {
 
 fn replay_path() -> PathBuf {
     if let Ok(dir) = std::env::var("CARGO_TARGET_DIR") {
-        return PathBuf::from(dir).join("replay-hash.json");
+        return PathBuf::from(dir).join("replay-hash-combat.json");
     }
     let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     path.pop();
     path.push("target");
-    path.push("replay-hash.json");
+    path.push("replay-hash-combat.json");
     path
 }
 

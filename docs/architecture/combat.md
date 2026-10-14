@@ -45,7 +45,8 @@ The repo had four flat or `f32` damage paths. This crate is the single productio
 - `astraweave-combat/src/tables.rs` — RON load, ceilings, mod overrides, semantic hash
 - `astraweave-combat/src/ecs.rs` — components and `combat_resolve_system`
 - `astraweave-combat/src/save.rs` — `combat_tables` and `combat_vitals` meta keys
-- `astraweave-combat/src/fixed.rs` and `sim_rng.rs` — local seams until Fixed64 and core `SimRng` are on `main`
+- `astraweave-combat/src/sim_rng.rs` — `hit_rng` on `astraweave_core::SimRng`
+- `astraweave-combat/src/fixed.rs` — local Q32.32 type. `main` at `85d09a2c` has no `Fixed64`
 
 **Status note:**
 Schools are data. The shipped table is physical, weave, and the mundane hazards fire, frost, and poison. Shock is not shipped. The labels Echo and Veil are rejected. A sword and shield with only Might, Armor, and Bulwark is a complete build. AI queries take a `StatKnowledge` mask. `CThreadStrain` is saved and is not read by the formula.
@@ -99,8 +100,8 @@ CVitals.hp / poise            ecs.rs apply_hp_delta
 
 | File | Role | Status | Notes |
 |---|---|---|---|
-| `astraweave-combat/src/fixed.rs` | `Fixed64` | Active seam | Delete when math/veil owns the type |
-| `astraweave-combat/src/sim_rng.rs` | `SimRng`, `hit_rng` | Active seam | Delete when PR #211 is on main |
+| `astraweave-combat/src/fixed.rs` | `Fixed64` | Active seam | PR #211 did not add this type. Delete when one definition exists on `main` |
+| `astraweave-combat/src/sim_rng.rs` | `hit_rng` | Active | Re-exports `astraweave_core::SimRng`. One extra fold, then `SimRng::new` |
 | `astraweave-combat/src/tables.rs` | Load, validate, hash | Active | `DEFAULT_TABLE_RON` |
 | `astraweave-combat/src/resolve.rs` | Hit and heal math | Active | No `Vec` on the hit path |
 | `astraweave-combat/src/ecs.rs` | Tick system | Active | Simulation stage |
@@ -112,7 +113,7 @@ CVitals.hp / poise            ecs.rs apply_hp_delta
 
 - Do not wrap `astraweave-gameplay::Stats::apply_damage`. It remains the legacy flat formula until a later port.
 - Do not put a second damage product in `astraweave-weaving` or `aravath_runtime`.
-- Do not merge `cursor/engine-ws-d2-stab` or `cursor/aravath-greybox-b3de` to obtain `SimRng` or `Fixed64`.
+- Do not merge `cursor/aravath-greybox-b3de` to obtain `Fixed64`. `SimRng` is already `astraweave_core::sim`.
 - Do not add shock, Echo, or Veil to the default table.
 - Do not let `expected_hit` or `effective_health` ignore `StatKnowledge`.
 
@@ -120,7 +121,7 @@ CVitals.hp / poise            ecs.rs apply_hp_delta
 
 ## 7. Decision Log
 
-- **Local seams.** Fixed64 and SimRng are copied with locked tests (`one * one`, `mix_sim_seed(1,2,3)`).
+- **RNG seam closed.** `SimRng` and `mix_sim_seed` come from core. `hit_rng` still folds ordinal and attack id into `SIM_SYSTEM_COMBAT` and calls `SimRng::new` once. `Fixed64` stays in this crate because `main` has no Q32.32 type. Arithmetic was not changed when the RNG moved.
 - **Generic resists.** Ratings and resistances are id-keyed arrays, not Heat/Rime/Volt/Toxin fields.
 - **AI mask.** The world resolver sees true components. The estimate functions do not.
 - **K is the attacker's tier.** The table row is selected with `AttackerView.tier`.
@@ -134,7 +135,7 @@ CVitals.hp / poise            ecs.rs apply_hp_delta
 | 1 | Crate is unsafe-free | Yes | `#![forbid(unsafe_code)]` |
 | 2 | Resolver modules do not mention `f32`, `f64`, `HashMap`, `SystemTime`, `Instant` | Yes | `sim_modules_have_no_float_or_hashmap` |
 | 3 | Canonical seven stages hash to `071dc70e116987782a8a8b137a6cce648d390a82967726775308946f1e69da71` | Yes | `canonical_hit_matches_the_golden_hash` |
-| 3b | 48-tick 8-fighter battle hashes to `975aae72e3c83a2335be05142eea2bf2ae4413d621fc5009ed6019f89e2a6e52` | Yes | `tests/replay_hash.rs`, compared across OS by `combat-replay.yml` |
+| 3b | 48-tick 8-fighter battle hashes to `975aae72e3c83a2335be05142eea2bf2ae4413d621fc5009ed6019f89e2a6e52` | Yes | `tests/replay_hash.rs`. `determinism-replay.yml` requires `combat_resolve` on three OS |
 | 4 | Armor 400, K 400, 1000 HP → EHP 2000 | Yes | `armor_equal_k_is_exactly_half` |
 | 5 | Default table has no veil, echo, shock, or spell | Yes | `default_table_is_lore_safe_and_physical_viable` |
 | 6 | Sword 25 through an 8000 bp bulwark is 5 and still positive | Yes | same test |
@@ -161,11 +162,12 @@ CVitals.hp / poise            ecs.rs apply_hp_delta
 
 - Demo sword, shield, roll, and scar injection still live in `aravath_runtime`. Wiring them is a later step.
 - `WorldSnapshot` does not grow an EHP field until planner hashes are versioned.
-- Three-OS replay of `combat_resolve` waits on `determinism-replay.yml`.
 - Raising the 8-modifier ceiling needs a new overflow proof.
 
 ---
 
 ## 12. Maintenance Notes
 
-When `SimRng` or `Fixed64` lands on `main`, delete the seam file in the same commit and keep the lock tests. When the default school list changes, re-run the lore-name test. Bump `doc_version` if the stage order or the golden hash changes.
+When a single `Fixed64` lands on `main`, delete `fixed.rs` in that commit and keep the lock tests. The golden stage hash and the battle digest are the check that the move did not change a bit. When the default school list changes, re-run the lore-name test. Bump `doc_version` if the stage order or the golden hash changes.
+
+`combat_resolve` is a required case of `.github/workflows/determinism-replay.yml`. The combat test writes `replay-hash-combat.json` so it does not replace core's `replay-hash.json`. The workflow merges the two files before upload.

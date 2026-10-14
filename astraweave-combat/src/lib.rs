@@ -9,9 +9,9 @@
 //!
 //! # Seams
 //!
-//! [`fixed`] copies veil `Fixed64` until that type lives in one crate.
-//! [`sim_rng`] copies `astraweave_core::sim::SimRng` from PR #211 until that
-//! API is on `main`. Neither branch is merged here.
+//! [`sim_rng`] re-exports `astraweave_core::SimRng` (PR #211, `main` `85d09a2c`).
+//! [`fixed`] is still local: that merge did not add a Q32.32 type. The
+//! arithmetic is unchanged, so the golden hashes are the same bytes.
 
 mod ecs;
 mod fixed;

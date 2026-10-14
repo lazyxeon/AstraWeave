@@ -11,6 +11,7 @@ use crate::tables::{
     USER_MOD_ID_LIMIT,
 };
 use crate::CombatError;
+use rand::RngCore;
 
 pub const DRAW_COUNT: usize = 4;
 const STEP_CAP: usize = 20;

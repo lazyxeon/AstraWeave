@@ -2,15 +2,15 @@
 //!
 //! # Seam
 //!
-//! This is a local copy of `astraweave-veil`'s `Fixed64` on
-//! `cursor/aravath-greybox-b3de` (`fixed.rs`). That crate is not on `main`,
-//! and this change does not merge it. Arithmetic is the veil contract:
-//! `SCALE = 1 << 32`, multiply through `i128`, division truncates toward
-//! zero, `den == 0` yields zero, overflow saturates to `i64`.
+//! PR #211 (`main` `85d09a2c`) added `astraweave_core::SimRng` and did not
+//! add a fixed-point type. This module remains the Q32.32 implementation.
+//! Arithmetic is unchanged from the previous local copy, which matched the
+//! veil contract: `SCALE = 1 << 32`, multiply through `i128`, division
+//! truncates toward zero, `den == 0` yields zero, overflow saturates to `i64`.
 //!
-//! When one `Fixed64` exists in `astraweave-math` (or veil re-exports that
-//! type), delete this module and re-export it. Do not let the two copies drift.
-//! The lock tests below are the drift alarm.
+//! When one `Fixed64` exists on `main`, delete this module and re-export it.
+//! The golden stage hash and the battle digest are the check that the move
+//! did not change a bit. The lock tests below are the drift alarm.
 
 use serde::{Deserialize, Serialize};
 

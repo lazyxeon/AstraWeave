@@ -1,5 +1,7 @@
 use std::collections::{BTreeMap, HashMap};
 
+use rand::RngCore;
+
 use super::*;
 use crate::resolve::{AttackerView, BlockGate, DefenderView, ImmuneGate, Modifier, ModifierKind};
 

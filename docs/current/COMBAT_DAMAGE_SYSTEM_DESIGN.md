@@ -311,7 +311,7 @@ mitigated = max(amount as f32 - defense as f32 * 0.5, 1.0) as i32
 
 **Items.** `ItemKind::Weapon { base_damage: i32, dtype }` and `Armor { defense: i32 }`, plus `EchoMod { power_mult: f32, dtype_override }`. The bridge into combat is `Fixed64::from_int` on the integers. `power_mult` becomes a modifier id with a basis-point value validated at load. The `f32` field stays on the legacy item until the item schema migrates; the resolver never reads it.
 
-**Determinism gate the new case must join.** Roadmap §0 (not yet on main) defines `determinism-replay.yml`: three OS runners, SHA-256 of a canonical encoding, baseline CPU. Combat adds the case `combat_resolve` when the resolver exists. This design locks the first vector in §7.5 so the implementation has a number to hit.
+**Determinism gate the new case joins.** `determinism-replay.yml` is on `main` (PR #210, head `85d09a2c`). It runs three OS runners, hashes a canonical encoding, and pins the baseline CPU. `combat_resolve` is a required case beside `planner_pure` and `perception_world`. The separate `combat-replay.yml` was removed so the two jobs do not upload the same artifact name. This design locks the first vector in §7.5.
 
 ---
 
@@ -778,7 +778,7 @@ Resolver tests do not boot physics or a GPU.
 | Bleed tag | `Bleed` without `Periodic`, or `Bleed` on Poison, fails load |
 | Double writer | A second system writing `CVitals.hp` in the same tick trips the apply counter |
 | Source scan | Sim modules contain no `f32`, `f64`, `HashMap`, `SystemTime`, `Instant`, `unit_f32` |
-| Cross-OS | `combat_resolve` case in `determinism-replay.yml` once that workflow exists; until then the golden SHA-256 is a single-machine lock and the gap is residual risk R1 |
+| Cross-OS | `combat_resolve` is a required case in `determinism-replay.yml` (three OS). R1 is closed |
 | Property | For all `A` in `0..3K` step `K/4`, EHP step equals `HP/4` when `K` divides `HP*K/4` |
 | AI | `expected_hit` with a 0% crit and a `[10000,10000]` band equals `resolve_hit` |
 | Save | Table hash mismatch refuses resolve; matching hash round-trips `CVitals` raw |
@@ -793,7 +793,7 @@ Each milestone is a later change with its own review. This document does not aut
 
 | Milestone | What lands | Done when |
 |---|---|---|
-| **M0** | Move `Fixed64` to `astraweave-math`. Veil, when it is on main, re-exports it. Add `SIM_SYSTEM_COMBAT` next to the d2 constants. If `SimRng` is not on main yet, M0 stops after `Fixed64` and records the block. | Veil's existing golden hashes still match. `Fixed64` has one definition. |
+| **M0** | `SIM_SYSTEM_COMBAT` is next to the d2 constants in `astraweave-core`. `SimRng` is that crate's type. `Fixed64` stays in `astraweave-combat` until one Q32.32 type exists on `main` (PR #211 did not add one). Moving it must keep the golden hashes. | Veil's existing golden hashes still match once it re-exports the single type. `Fixed64` has one definition. |
 | **M1** | `astraweave-combat` library: load, validate, `resolve_hit`, `resolve_heal`, `effective_health`, `expected_hit`, golden tests, source scan. No ECS. | `cargo test -p astraweave-combat` green. Clippy `-D warnings`. The three golden digests match §7.5. |
 | **M2** | ECS components and `combat_resolve_system` in `simulation`. Reused event buffer. Death event. | A headless 100-hit batch is allocation-stable after warm-up (`alloc_plot` or a counting allocator already in `astraweave-ecs`). Sort-order test from §12. |
 | **M3** | AI calls `effective_health` / `expected_hit` from a non-snapshot helper. | `planner_pure` bytes unchanged. A unit test shows time-to-kill prefers the lower-EHP target. |
@@ -845,16 +845,25 @@ The design is acceptable for implementation planning when all of the following a
 ```yaml
 residual_risks:
   - id: R1
+    status: closed
     text: "combat_resolve golden digest is specified but cannot be compared across Windows/macOS until determinism-replay.yml exists. Single-OS equality is necessary and not sufficient for H1."
+    closed: "PR #210 is on main. combat_resolve is required in determinism-replay.yml. The combat test writes replay-hash-combat.json and the workflow merges it with the core cases."
   - id: R2
+    status: closed
     text: "SimRng is not on main (a3fe3ecd). It is on cursor/engine-ws-d2-stab. M1 blocks if that API changes or does not merge."
+    closed: "PR #211 is on main at 85d09a2c. astraweave-combat re-exports astraweave_core::SimRng. hit_rng still folds ordinal and attack id, then calls SimRng::new once. The mix vector and both golden hashes were re-checked and did not move."
   - id: R3
+    status: open
     text: "Veil's Fixed64 is on the Aravath branch, not main. M0 is a cross-branch extract. A divergent copy would split the fixed-point contract."
+    note: "PR #211's description said SimRng and Fixed64. The merge added astraweave-core/src/sim.rs only. rg finds no Fixed64 type on main. Combat keeps fixed.rs. Its arithmetic was not edited in the rebase, so the golden hashes stay the previous bytes. Do not merge cursor/aravath-greybox-b3de to fill this gap."
   - id: R4
+    status: open
     text: "AI target choice does not see EHP inside WorldSnapshot until a later hash-versioned change. Planners keep using raw hp until that lands."
   - id: R5
+    status: open
     text: "Default K=100, 75% cap, 5% floor, and ±5% variance are content defaults chosen for Aravath-scale integers. They are not a balance pass."
   - id: R6
+    status: open
     text: "Rapier hit detection can still disagree across OS. This design keeps that disagreement outside the resolver. A full-frame combat hash will move until WS-D3 is closed, even if resolve_hit is stable."
 ```
 
@@ -1004,6 +1013,8 @@ gate:
   date: 2026-10-14
 ```
 
+Status after the rebase onto `main` `85d09a2c`: R1 and R2 are closed. R3 stays open because that merge has `SimRng` and no `Fixed64`. The register in §15 is the current text. The card above is the approval record and is not rewritten.
+
 ---
 
 ## 19. Reproducibility note
@@ -1026,6 +1037,7 @@ No GPU, no WoW client, and no three-OS runner were used. That is why H1 is not m
 | 0.1 | 2026-10-14 | Design only. r3. Gate Needs-human. No engine code. |
 | 0.2 | 2026-10-14 | Human and orchestrator sign-off. Gate Pass. Lore steer recorded in §21. Implementation started. |
 | 0.3 | 2026-10-14 | Property tests, combat replay-hash workflow, migration plan §22. Legacy paths stay. |
+| 0.4 | 2026-10-14 | Rebased onto `85d09a2c`. `SimRng` is core (R2 closed). `Fixed64` stays local because that merge has no Q32.32 type (R3 open). `combat_resolve` is a required case of `determinism-replay.yml` (R1 closed). Golden hashes unchanged. |
 
 ---
 

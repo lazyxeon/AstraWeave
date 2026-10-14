@@ -5,6 +5,7 @@
 
 use proptest::prelude::*;
 use proptest::test_runner::{Config, RngSeed, TestRunner};
+use rand::RngCore;
 
 use super::*;
 use crate::resolve::{AttackerView, BlockGate, DefenderView, ImmuneGate, Modifier, ModifierKind};

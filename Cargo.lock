@@ -762,6 +762,7 @@ dependencies = [
 name = "astraweave-combat"
 version = "0.1.0"
 dependencies = [
+ "astraweave-core",
  "astraweave-ecs",
  "aw-save",
  "criterion 0.7.0",
