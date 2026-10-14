@@ -55,6 +55,10 @@ required-features = ["ollama"]
 default = ["llm_cache"]
 ollama = ["dep:reqwest"]
 phi3 = ["candle-core", "candle-nn", "candle-transformers", "tokenizers", "hf-hub"]
+# Known cfgs for the device gates in phi3.rs. Empty until a candle GPU
+# backend is actually wired; declaring them keeps `unexpected_cfgs` quiet.
+cuda = []
+metal = []
 debug_io = []
 llm_cache = []
 
