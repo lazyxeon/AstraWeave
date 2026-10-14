@@ -542,8 +542,8 @@ mod tests {
         // Jitter values should be in [-0.5, 0.5] range (at scale 1.0)
         for i in 0..16 {
             let (jx, jy) = get_jitter(i, 8, 1.0);
-            assert!(jx >= -0.5 && jx <= 0.5, "jx={} out of range", jx);
-            assert!(jy >= -0.5 && jy <= 0.5, "jy={} out of range", jy);
+            assert!((-0.5..=0.5).contains(&jx), "jx={jx} out of range");
+            assert!((-0.5..=0.5).contains(&jy), "jy={jy} out of range");
         }
     }
 

@@ -98,9 +98,9 @@ impl PromptCache {
     }
 
     fn put(&mut self, key: String, value: String) {
-        if self.map.contains_key(&key) {
+        if let Some(slot) = self.map.get_mut(&key) {
             // Keep existing insertion order stable; update value.
-            self.map.insert(key, value);
+            *slot = value;
             return;
         }
 

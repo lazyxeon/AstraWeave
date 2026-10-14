@@ -1,3 +1,4 @@
+#![allow(unused, clippy::all)]
 //! GPU integration tests for the terrain splat-array pipeline manager.
 //!
 //! Gated behind BOTH the `terrain-splat-arrays` feature (exposes the manager)

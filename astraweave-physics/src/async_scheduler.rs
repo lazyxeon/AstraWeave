@@ -317,7 +317,7 @@ pub mod parallel {
         T: Send + Sync + Clone,
         F: Fn(&T) -> T + Send + Sync,
     {
-        bodies.par_iter().map(|body| f(body)).collect()
+        bodies.par_iter().map(f).collect()
     }
 
     /// Process collision pairs in parallel
@@ -328,7 +328,7 @@ pub mod parallel {
         T: Send + Sync,
         F: Fn(&T) + Send + Sync,
     {
-        pairs.par_iter().for_each(|pair| f(pair));
+        pairs.par_iter().for_each(f);
     }
 }
 
@@ -478,7 +478,7 @@ mod tests {
             solver_iterations: 4,
         };
 
-        let cloned = profile.clone();
+        let cloned = profile;
         assert_eq!(cloned.total_duration, profile.total_duration);
         assert_eq!(cloned.active_body_count, profile.active_body_count);
     }

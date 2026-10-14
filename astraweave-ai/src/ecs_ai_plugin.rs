@@ -266,8 +266,7 @@ impl ecs::Plugin for AiPlanningPlugin {
     fn build(&self, app: &mut ecs::App) {
         app.world
             .insert_resource(Events::<AiPlanningFailedEvent>::default());
-        app.schedule
-            .add_system("ai_planning", sys_ai_planning as ecs::SystemFn);
+        app.add_system_known_stage("ai_planning", sys_ai_planning as ecs::SystemFn);
     }
 }
 
@@ -1222,7 +1221,8 @@ mod tests {
         // Don't add plugin (to test event initialization in sys_ai_planning)
         // Manually add system
         app.schedule
-            .add_system("ai_planning", sys_ai_planning as ecs::SystemFn);
+            .add_system("ai_planning", sys_ai_planning as ecs::SystemFn)
+            .expect("registered schedule stage");
 
         // Spawn companion
         let ally = app.world.spawn();

@@ -1,3 +1,4 @@
+#![allow(unused, clippy::all)]
 //! Wave 2 Golden-Value Projection Tests: clustered.rs bin_lights_cpu
 //!
 //! These tests verify EXACT cluster assignments using manually computed

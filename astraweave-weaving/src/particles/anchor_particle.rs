@@ -3,8 +3,24 @@
 // This module provides CPU-side particle spawning and update logic for Anchor VFX.
 // Integrates with anchor_vfx.wgsl shader and Anchor.vfx_state enum.
 
+use crate::sim_rng::{SimRng, SIM_SYSTEM_ANCHOR_PARTICLES};
 use glam::Vec3;
 use std::collections::VecDeque;
+
+/// Unit direction from three dyadic draws. `sqrt` is correctly rounded, so the
+/// bit pattern matches across OS. No `sin`/`cos`.
+fn unit_direction(rng: &mut SimRng) -> Vec3 {
+    let x = rng.signed_unit_f32();
+    let y = rng.signed_unit_f32();
+    let z = rng.signed_unit_f32();
+    let len2 = x * x + y * y + z * z;
+    if len2 > 1.0e-12 {
+        let inv = 1.0 / len2.sqrt();
+        Vec3::new(x * inv, y * inv, z * inv)
+    } else {
+        Vec3::Y
+    }
+}
 
 /// Maximum particles per anchor (performance limit)
 const MAX_PARTICLES_PER_ANCHOR: usize = 500;
@@ -223,28 +239,20 @@ impl AnchorParticleEmitter {
         }
     }
 
-    /// Spawn a single particle at random position on anchor sphere
-    fn spawn_particle(&mut self, particle_type: ParticleType) {
+    /// Spawn a single particle at a seeded position on the anchor sphere.
+    fn spawn_particle(&mut self, particle_type: ParticleType, rng: &mut SimRng) {
         // Check particle limit
         if self.particles.len() >= MAX_PARTICLES_PER_ANCHOR {
             // Remove oldest particle to make room
             self.particles.pop_front();
         }
 
-        // Random position on sphere surface (radius = 1.5 units)
-        let theta = rand::random::<f32>() * std::f32::consts::TAU; // 0-2π
-        let phi = rand::random::<f32>() * std::f32::consts::PI; // 0-π
+        let direction = unit_direction(rng);
         let radius = 1.5;
+        let position = self.anchor_position + direction * radius;
 
-        let x = radius * phi.sin() * theta.cos();
-        let y = radius * phi.sin() * theta.sin();
-        let z = radius * phi.cos();
-
-        let position = self.anchor_position + Vec3::new(x, y, z);
-
-        // Random velocity (outward from center, with variation)
-        let direction = Vec3::new(x, y, z).normalize();
-        let speed = 0.5 + rand::random::<f32>() * 1.0; // 0.5-1.5 units/sec
+        // Outward speed in [0.5, 1.5).
+        let speed = 0.5 + rng.unit_f32();
         let velocity = direction * speed;
 
         let particle = Particle::new(particle_type, position, velocity);
@@ -252,25 +260,28 @@ impl AnchorParticleEmitter {
     }
 
     /// Spawn restoration particles (for repair animation)
-    fn spawn_restoration_particles(&mut self, count: usize) {
+    fn spawn_restoration_particles(&mut self, count: usize, rng: &mut SimRng) {
         for _ in 0..count {
-            // Spawn at anchor base, rise upward
-            let offset_x = (rand::random::<f32>() - 0.5) * 0.5; // ±0.25 units
-            let offset_z = (rand::random::<f32>() - 0.5) * 0.5;
+            // Spawn at anchor base, rise upward. Offsets are in [-0.25, 0.25).
+            let offset_x = rng.signed_unit_f32() * 0.25;
+            let offset_z = rng.signed_unit_f32() * 0.25;
             let position = self.anchor_position + Vec3::new(offset_x, -0.5, offset_z);
 
-            // Upward velocity with slight horizontal variation
-            let vx = (rand::random::<f32>() - 0.5) * 0.2;
-            let vz = (rand::random::<f32>() - 0.5) * 0.2;
-            let velocity = Vec3::new(vx, 2.0, vz); // Strong upward
+            // Upward velocity with slight horizontal variation in [-0.1, 0.1).
+            let vx = rng.signed_unit_f32() * 0.1;
+            let vz = rng.signed_unit_f32() * 0.1;
+            let velocity = Vec3::new(vx, 2.0, vz);
 
             let particle = Particle::new(ParticleType::Restoration, position, velocity);
             self.particles.push_back(particle);
         }
     }
 
-    /// Update emitter (spawn new particles, update existing)
-    pub fn update(&mut self, delta_time: f32) {
+    /// Update emitter (spawn new particles, update existing).
+    ///
+    /// `rng` is the sim stream for this tick. Callers reseed it from
+    /// `(world_seed, tick, SIM_SYSTEM_ANCHOR_PARTICLES)` before the first emitter.
+    pub fn update(&mut self, delta_time: f32, rng: &mut SimRng) {
         // Update existing particles (remove expired)
         self.particles.retain_mut(|p| p.update(delta_time));
 
@@ -283,7 +294,7 @@ impl AnchorParticleEmitter {
             // Spawn whole particles
             while self.emission_accumulator >= 1.0 {
                 let particle_type = self.particle_type_for_state();
-                self.spawn_particle(particle_type);
+                self.spawn_particle(particle_type, rng);
                 self.emission_accumulator -= 1.0;
             }
         }
@@ -291,7 +302,7 @@ impl AnchorParticleEmitter {
         // Emit restoration particles if repairing
         if self.is_repairing {
             // 10 restoration particles per frame during repair (burst effect)
-            self.spawn_restoration_particles(10);
+            self.spawn_restoration_particles(10, rng);
         }
     }
 
@@ -319,14 +330,26 @@ impl AnchorParticleEmitter {
 /// Manages particle emitters for all anchors in scene
 pub struct AnchorParticleSystem {
     emitters: Vec<AnchorParticleEmitter>,
+    world_seed: u64,
+    tick: u64,
 }
 
 impl AnchorParticleSystem {
-    /// Create new particle system
-    pub fn new() -> Self {
+    /// Create a particle system whose spawns come from `world_seed`.
+    pub fn new(world_seed: u64) -> Self {
         Self {
             emitters: Vec::new(),
+            world_seed,
+            tick: 0,
         }
+    }
+
+    pub fn world_seed(&self) -> u64 {
+        self.world_seed
+    }
+
+    pub fn tick(&self) -> u64 {
+        self.tick
     }
 
     /// Add emitter for anchor
@@ -355,10 +378,12 @@ impl AnchorParticleSystem {
         }
     }
 
-    /// Update all emitters (spawn and update particles)
+    /// Update all emitters from one stream reseeded for this tick.
     pub fn update(&mut self, delta_time: f32) {
+        self.tick = self.tick.wrapping_add(1);
+        let mut rng = SimRng::new(self.world_seed, self.tick, SIM_SYSTEM_ANCHOR_PARTICLES);
         for emitter in &mut self.emitters {
-            emitter.update(delta_time);
+            emitter.update(delta_time, &mut rng);
         }
     }
 
@@ -388,7 +413,7 @@ impl AnchorParticleSystem {
 
 impl Default for AnchorParticleSystem {
     fn default() -> Self {
-        Self::new()
+        Self::new(0)
     }
 }
 
@@ -399,6 +424,10 @@ impl Default for AnchorParticleSystem {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn test_rng() -> SimRng {
+        SimRng::new(1, 1, SIM_SYSTEM_ANCHOR_PARTICLES)
+    }
 
     #[test]
     fn test_particle_creation() {
@@ -485,7 +514,7 @@ mod tests {
         let mut emitter = AnchorParticleEmitter::new(1, Vec3::ZERO, 2); // Unstable
 
         // Update 1 second (20 particles expected @ 20 particles/sec)
-        emitter.update(1.0);
+        emitter.update(1.0, &mut test_rng());
 
         assert!(emitter.particle_count() > 15); // At least 15 particles (some randomness)
         assert!(emitter.particle_count() <= 25); // At most 25 particles
@@ -498,12 +527,12 @@ mod tests {
         // Update rapidly to hit limit (0.016s per frame @ 60 FPS, 10 frames)
         // Void particles live for 3s, so won't expire during this test
         for _ in 0..10 {
-            emitter.update(0.016); // 60 FPS frame time
+            emitter.update(0.016, &mut test_rng()); // 60 FPS frame time
         }
 
         // Should have spawned ~16 particles (100/sec × 0.016s × 10 frames)
         // But more importantly, test the limit by spawning many at once
-        emitter.update(10.0); // Spawn 1000 particles at once (100/sec × 10s)
+        emitter.update(10.0, &mut test_rng()); // Spawn 1000 particles at once (100/sec × 10s)
 
         // Should cap at MAX_PARTICLES_PER_ANCHOR
         assert_eq!(emitter.particle_count(), MAX_PARTICLES_PER_ANCHOR);
@@ -515,14 +544,14 @@ mod tests {
         emitter.is_repairing = true;
 
         // Update 1 frame (10 restoration particles per frame)
-        emitter.update(0.016); // ~60 FPS
+        emitter.update(0.016, &mut test_rng()); // ~60 FPS
 
         assert!(emitter.particle_count() >= 10); // At least 10 restoration particles
     }
 
     #[test]
     fn test_particle_system_manager() {
-        let mut system = AnchorParticleSystem::new();
+        let mut system = AnchorParticleSystem::new(1);
 
         // Add 3 emitters
         system.add_emitter(1, Vec3::ZERO, 1);
@@ -538,7 +567,7 @@ mod tests {
 
     #[test]
     fn test_particle_system_remove_emitter() {
-        let mut system = AnchorParticleSystem::new();
+        let mut system = AnchorParticleSystem::new(1);
 
         system.add_emitter(1, Vec3::ZERO, 2);
         system.add_emitter(2, Vec3::new(5.0, 0.0, 0.0), 2);
@@ -560,7 +589,7 @@ mod tests {
 
     #[test]
     fn test_particle_system_clear_all() {
-        let mut system = AnchorParticleSystem::new();
+        let mut system = AnchorParticleSystem::new(1);
 
         system.add_emitter(1, Vec3::ZERO, 4); // Broken (lots of particles)
         system.update(1.0);
@@ -570,5 +599,33 @@ mod tests {
         system.clear_all();
 
         assert_eq!(system.total_particle_count(), 0);
+    }
+
+    #[test]
+    fn particle_spawn_state_is_bit_identical_for_the_same_seed() {
+        let run = || {
+            let mut system = AnchorParticleSystem::new(0x5EED);
+            system.add_emitter(7, Vec3::new(1.0, 2.0, 3.0), 2);
+            system.update(0.1);
+            system
+                .all_particles()
+                .into_iter()
+                .map(|(p, id)| {
+                    (
+                        id,
+                        p.position.x.to_bits(),
+                        p.position.y.to_bits(),
+                        p.position.z.to_bits(),
+                        p.velocity.x.to_bits(),
+                        p.velocity.y.to_bits(),
+                        p.velocity.z.to_bits(),
+                    )
+                })
+                .collect::<Vec<_>>()
+        };
+        let a = run();
+        let b = run();
+        assert!(!a.is_empty());
+        assert_eq!(a, b);
     }
 }

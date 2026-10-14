@@ -1,3 +1,4 @@
+#![allow(unused, clippy::all)]
 //! Wave 2 remediation: gpu_memory, transparency, biome_audio, terrain_material, decals
 //!
 //! Targets pure CPU functions with exact golden values to kill arithmetic mutations.

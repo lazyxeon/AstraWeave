@@ -1,3 +1,4 @@
+#![allow(unused, clippy::all)]
 //! Wave 2 proactive remediation tests for camera.rs (155 mutants, 7 existing tests).
 //!
 //! Targets:
@@ -9,7 +10,7 @@
 //!   - Speed modifiers (sprint/precision)
 
 use astraweave_camera::{CameraController, CameraMode, FreeFly as Camera};
-use glam::{Mat4, Vec2, Vec3};
+use glam::{Vec2, Vec3};
 
 fn default_camera() -> Camera {
     Camera {

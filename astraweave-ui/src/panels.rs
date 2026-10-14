@@ -61,9 +61,22 @@ fn colorblind_mode_from_index(idx: usize) -> Option<String> {
     }
 }
 
-#[allow(deprecated)] // UI crafting uses legacy method; determinism not required for preview
+fn recipe_world_seed(name: &str) -> u64 {
+    // FNV-1a. The UI has no world clock; the recipe name is the seed so the
+    // same button press writes the same item id.
+    let mut h = 0xcbf2_9ce4_8422_2325u64;
+    for b in name.bytes() {
+        h ^= b as u64;
+        h = h.wrapping_mul(0x0000_0100_0000_01B3);
+    }
+    h
+}
+
 fn craft_and_push(book: &RecipeBook, recipe_name: &str, inventory: &mut Inventory) -> bool {
-    if let Some(it) = book.craft(recipe_name, inventory) {
+    let tick = inventory.items.len() as u64;
+    if let Some(it) =
+        book.craft_with_seed(recipe_name, inventory, recipe_world_seed(recipe_name), tick)
+    {
         inventory.items.push(it.clone());
         true
     } else {

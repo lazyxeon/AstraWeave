@@ -659,7 +659,7 @@ mod tests {
             assert!(v.is_finite(), "LTC matrix LUT contains non-finite value");
         }
         // At roughness=0, cos_theta=1 (top-right corner): should be near identity
-        let mirror = &data[63 * 64 + 0]; // cos_theta≈1, roughness≈0
+        let mirror = &data[63 * 64]; // cos_theta≈1, roughness≈0
         assert!(
             mirror[0] > 0.5,
             "Mirror-like config should have 'a' near 1.0, got {}",

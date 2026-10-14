@@ -199,8 +199,9 @@ impl CausticsProjector {
         intensity = (intensity * 0.5 + 0.5).clamp(0.0, 1.0);
         intensity *= config.intensity;
 
-        // Depth falloff
-        let depth_factor = 1.0 - (depth / config.max_depth).powf(config.depth_falloff);
+        // Depth falloff. det_powf is integer-range-reduced so the bit pattern
+        // does not depend on the host libm.
+        let depth_factor = 1.0 - det_powf(depth / config.max_depth, config.depth_falloff);
         intensity *= depth_factor;
 
         intensity
@@ -220,8 +221,8 @@ impl CausticsProjector {
     /// Simple noise function for caustics pattern
     fn caustic_noise(&self, uv: Vec2, time: f32) -> f32 {
         // Voronoi-like pattern for caustics
-        let cell = Vec2::new(uv.x.floor(), uv.y.floor());
-        let frac = Vec2::new(uv.x.fract(), uv.y.fract());
+        let cell = Vec2::new(det_floor(uv.x), det_floor(uv.y));
+        let frac = Vec2::new(uv.x - cell.x, uv.y - cell.y);
 
         let mut min_dist = 1.0f32;
 
@@ -240,12 +241,113 @@ impl CausticsProjector {
         caustic * caustic // Square for sharper edges
     }
 
-    /// Hash function for procedural points
+    /// Hash function for procedural points.
+    ///
+    /// Integer mix of the IEEE bits. The previous `sin` hash was a host-libm
+    /// value, so the macOS golden diverged from Linux at 1e-5.
     fn hash_2d(&self, p: Vec2, time: f32) -> Vec2 {
-        let x = (p.x * 127.1 + p.y * 311.7 + time * 0.5).sin() * 43758.545;
-        let y = (p.x * 269.5 + p.y * 183.3 + time * 0.7).sin() * 43758.545;
-        Vec2::new(x.fract() * 0.5 + 0.25, y.fract() * 0.5 + 0.25)
+        fn mix(mut x: u32) -> u32 {
+            x ^= x >> 16;
+            x = x.wrapping_mul(0x7FEB_352D);
+            x ^= x >> 15;
+            x = x.wrapping_mul(0x846C_A68B);
+            x ^= x >> 16;
+            x
+        }
+        let t = det_floor(time * 256.0) as i32 as u32;
+        let hx = mix(p.x.to_bits() ^ t.wrapping_mul(0x9E37_79B9) ^ p.y.to_bits().rotate_left(7));
+        let hy = mix(p.y.to_bits() ^ t.wrapping_mul(0x85EB_CA6B) ^ p.x.to_bits().rotate_left(11));
+        let ux = ((hx >> 8) as f32) * (1.0 / 16_777_216.0);
+        let uy = ((hy >> 8) as f32) * (1.0 / 16_777_216.0);
+        Vec2::new(ux * 0.5 + 0.25, uy * 0.5 + 0.25)
     }
+}
+
+/// Floor via bit truncation. Does not call libm.
+fn det_floor(x: f32) -> f32 {
+    if !x.is_finite() {
+        return x;
+    }
+    let bits = x.to_bits();
+    let exp = ((bits >> 23) & 0xff) as i32 - 127;
+    if exp < 0 {
+        return if x < 0.0 { -1.0 } else { 0.0 };
+    }
+    if exp >= 23 {
+        return x;
+    }
+    let mask = !((1u32 << (23 - exp)) - 1);
+    let truncated = f32::from_bits(bits & mask);
+    if x < 0.0 && truncated != x {
+        truncated - 1.0
+    } else {
+        truncated
+    }
+}
+
+/// `base.powf(exp)` using only IEEE add/mul/div and bit operations.
+fn det_powf(base: f32, exp: f32) -> f32 {
+    if exp == 0.0 || base == 1.0 {
+        return 1.0;
+    }
+    if exp == 1.0 {
+        return base;
+    }
+    if base <= 0.0 || !exp.is_finite() {
+        return 0.0;
+    }
+    let bits = base.to_bits();
+    let raw_exp = ((bits >> 23) & 0xff) as i32;
+    if raw_exp == 0 || raw_exp == 255 {
+        return 0.0;
+    }
+    let e = raw_exp - 127;
+    let mantissa = f32::from_bits((bits & 0x007f_ffff) | 0x3f80_0000);
+    let log2 = e as f32 + log2_mantissa(mantissa);
+    det_exp2(exp * log2)
+}
+
+fn log2_mantissa(m: f32) -> f32 {
+    // m is in [1, 2). Series for ln(1+x) / ln(2).
+    let x = m - 1.0;
+    let x2 = x * x;
+    let x3 = x2 * x;
+    let x4 = x2 * x2;
+    let x5 = x4 * x;
+    let ln = x - x2 * 0.5 + x3 * (1.0 / 3.0) - x4 * 0.25 + x5 * 0.2;
+    ln * std::f32::consts::LOG2_E
+}
+
+fn det_exp2(y: f32) -> f32 {
+    if y > 128.0 {
+        return f32::INFINITY;
+    }
+    if y < -150.0 {
+        return 0.0;
+    }
+    let yi = det_floor(y);
+    let frac = y - yi;
+    let pow_i = exp2_int(yi as i32);
+    pow_i * exp2_frac(frac)
+}
+
+fn exp2_int(e: i32) -> f32 {
+    if e <= -127 {
+        return 0.0;
+    }
+    if e >= 128 {
+        return f32::INFINITY;
+    }
+    f32::from_bits(((e + 127) as u32) << 23)
+}
+
+fn exp2_frac(f: f32) -> f32 {
+    let ln2 = std::f32::consts::LN_2;
+    let z = f * ln2;
+    let z2 = z * z;
+    let z3 = z2 * z;
+    let z4 = z2 * z2;
+    1.0 + z + z2 * 0.5 + z3 * (1.0 / 6.0) + z4 * (1.0 / 24.0)
 }
 
 /// Manager for multiple caustics projectors
@@ -362,10 +464,25 @@ fn caustic_noise(uv: vec2<f32>, time: f32) -> f32 {
     return caustic * caustic;
 }
 
+fn hash_u32(x_in: u32) -> u32 {
+    var x = x_in;
+    x = x ^ (x >> 16u);
+    x = x * 0x7feb352du;
+    x = x ^ (x >> 15u);
+    x = x * 0x846ca68bu;
+    x = x ^ (x >> 16u);
+    return x;
+}
+
 fn hash_2d(p: vec2<f32>, time: f32) -> vec2<f32> {
-    let x = sin(p.x * 127.1 + p.y * 311.7 + time * 0.5) * 43758.5453;
-    let y = sin(p.x * 269.5 + p.y * 183.3 + time * 0.7) * 43758.5453;
-    return vec2<f32>(fract(x) * 0.5 + 0.25, fract(y) * 0.5 + 0.25);
+    let t = u32(floor(time * 256.0));
+    let px = bitcast<u32>(p.x);
+    let py = bitcast<u32>(p.y);
+    let hx = hash_u32(px ^ (t * 0x9e3779b9u) ^ (py << 7u));
+    let hy = hash_u32(py ^ (t * 0x85ebca6bu) ^ (px << 11u));
+    let ux = f32(hx >> 8u) / 16777216.0;
+    let uy = f32(hy >> 8u) / 16777216.0;
+    return vec2<f32>(ux * 0.5 + 0.25, uy * 0.5 + 0.25);
 }
 
 // Sample caustics at world position
@@ -685,18 +802,17 @@ mod tests {
         let p2 = proj.sample(Vec3::new(-3.0, 10.0, 25.0), &config); // depth=40
         let p3 = proj.sample(Vec3::new(15.0, 45.0, -5.0), &config); // depth=5
 
-        eprintln!("GOLDEN p1={p1} p2={p2} p3={p3}");
+        // Bit-identical golden. The pattern is an integer hash plus a software
+        // pow, so Linux, Windows, and macOS share one pattern. A tolerance
+        // would hide a libm difference instead of removing it.
+        assert_eq!(
+            (p1.to_bits(), p2.to_bits(), p3.to_bits()),
+            (1_050_907_696, 1_041_034_631, 1_050_301_147),
+            "p1={p1} p2={p2} p3={p3}"
+        );
 
-        // Golden values from verified correct implementation (tolerance 1e-5).
-        // All three must match — any arithmetic mutation in UV, noise, octave
-        // loop, normalization, or depth falloff changes at least one.
-        assert!((p1 - 0.22275063).abs() < 1e-5, "p1 mismatch: {p1}");
-        assert!((p2 - 0.1604235).abs() < 1e-5, "p2 mismatch: {p2}");
-        assert!((p3 - 0.29726005).abs() < 1e-5, "p3 mismatch: {p3}");
-
-        // Determinism check
         let p1b = proj.sample(Vec3::new(5.0, 30.0, 10.0), &config);
-        assert!((p1 - p1b).abs() < 1e-6, "non-deterministic");
+        assert_eq!(p1.to_bits(), p1b.to_bits(), "non-deterministic");
     }
 
     #[test]

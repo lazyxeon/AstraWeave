@@ -134,6 +134,7 @@ impl ImpostorPass {
     ///
     /// The instance buffer starts with a small default capacity; the first
     /// [`ImpostorPass::upload_instances`] call grows it as needed.
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         device: &wgpu::Device,
         queue: &wgpu::Queue,

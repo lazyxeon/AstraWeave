@@ -443,7 +443,7 @@ impl DialogueBank {
         // Look for patterns like "X, Y, or Z" or "X or Y or Z"
         let items: Vec<String> = if input.contains(',') {
             input
-                .split(|c| c == ',' || c == '/')
+                .split([',', '/'])
                 .map(|s| s.trim().trim_start_matches("or ").trim().to_string())
                 .filter(|s| !s.is_empty() && s.len() < 50)
                 .collect()

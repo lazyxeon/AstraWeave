@@ -1,3 +1,4 @@
+#![allow(unused, clippy::all)]
 //! Wave 2 Mutation Remediation — Scene Environment, Clustered Lighting,
 //! Instancing, and Decal tests.
 //!

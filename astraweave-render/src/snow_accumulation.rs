@@ -362,15 +362,19 @@ mod tests {
 
     #[test]
     fn snow_config_dispatch_size_exact_multiple() {
-        let mut c = SnowAccumulationConfig::default();
-        c.map_resolution = 64;
+        let c = SnowAccumulationConfig {
+            map_resolution: 64,
+            ..Default::default()
+        };
         assert_eq!(c.dispatch_size(), (8, 8));
     }
 
     #[test]
     fn snow_config_dispatch_size_one() {
-        let mut c = SnowAccumulationConfig::default();
-        c.map_resolution = 1;
+        let c = SnowAccumulationConfig {
+            map_resolution: 1,
+            ..Default::default()
+        };
         assert_eq!(c.dispatch_size(), (1, 1));
     }
 }

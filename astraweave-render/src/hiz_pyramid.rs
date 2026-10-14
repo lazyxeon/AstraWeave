@@ -256,13 +256,13 @@ mod tests {
 
     #[test]
     fn hiz_mip_count_1920x1080() {
-        let mip_count = (1920_u32.max(1080) as f32).log2().ceil() as u32;
+        let mip_count = 1920_f32.log2().ceil() as u32;
         assert_eq!(mip_count, 11); // 1920 → ceil(log2(1920)) = 11
     }
 
     #[test]
     fn hiz_mip_count_power_of_two() {
-        let mip_count = (1024_u32.max(1024) as f32).log2().ceil() as u32;
+        let mip_count = 1024_f32.log2().ceil() as u32;
         assert_eq!(mip_count, 10); // 1024 → log2(1024) = 10
     }
 

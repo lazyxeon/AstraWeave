@@ -264,9 +264,18 @@ pub struct SaveSlot {
 mod tests {
     use super::*;
 
+    /// Workspace `cargo test` shares a cwd. A relative save dir left behind by
+    /// an earlier run makes `next_available_slot` look full.
+    fn isolated_saves(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("aw_save_slots_{name}_{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        dir
+    }
+
     #[test]
     fn test_save_load_roundtrip() {
-        let manager = SaveSlotManager::new(10, PathBuf::from("test_saves"));
+        let dir = isolated_saves("roundtrip");
+        let manager = SaveSlotManager::new(10, dir.clone());
         let profile = PlayerProfile::default();
 
         // Save to slot 0
@@ -290,12 +299,13 @@ mod tests {
 
         // Cleanup
         manager.delete_slot(0).unwrap();
-        fs::remove_dir_all("test_saves").unwrap();
+        fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]
     fn test_list_slots() {
-        let manager = SaveSlotManager::new(10, PathBuf::from("test_saves2"));
+        let dir = isolated_saves("list");
+        let manager = SaveSlotManager::new(10, dir.clone());
         let profile = PlayerProfile::default();
 
         // Save to slots 0, 1, 2
@@ -313,12 +323,13 @@ mod tests {
         for i in 0..3 {
             manager.delete_slot(i).unwrap();
         }
-        fs::remove_dir_all("test_saves2").unwrap();
+        fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]
     fn test_next_available_slot() {
-        let manager = SaveSlotManager::new(3, PathBuf::from("test_saves3"));
+        let dir = isolated_saves("next");
+        let manager = SaveSlotManager::new(3, dir.clone());
         let profile = PlayerProfile::default();
 
         // Initially, slot 0 should be available
@@ -347,6 +358,6 @@ mod tests {
         for i in 0..3 {
             manager.delete_slot(i).unwrap();
         }
-        fs::remove_dir_all("test_saves3").unwrap();
+        fs::remove_dir_all(&dir).unwrap();
     }
 }

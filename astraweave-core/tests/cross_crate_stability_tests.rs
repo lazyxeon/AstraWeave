@@ -37,7 +37,9 @@ fn test_ecs_app_api() {
 
     fn test_system(_world: &mut World) {}
 
-    app.add_system("test", test_system);
+    app.schedule.add_stage("test");
+    app.add_system("test", test_system)
+        .expect("registered schedule stage");
     app.schedule.run(&mut app.world);
 }
 

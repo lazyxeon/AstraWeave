@@ -166,3 +166,6 @@ harness = false
 [[bench]]
 name = "biome_transition"
 harness = false
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(feature, values("bloom", "ssao"))'] }

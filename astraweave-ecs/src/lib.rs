@@ -697,6 +697,26 @@ pub struct Stage {
     pub systems: Vec<SystemFn>,
 }
 
+/// A system was registered against a stage name that is not on the schedule.
+///
+/// Release and debug both return this. The system is not inserted.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct UnknownStage {
+    pub stage: &'static str,
+}
+
+impl std::fmt::Display for UnknownStage {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "schedule stage '{}' is not registered; call add_stage or with_stage first",
+            self.stage
+        )
+    }
+}
+
+impl std::error::Error for UnknownStage {}
+
 impl Schedule {
     pub fn with_stage(mut self, name: &'static str) -> Self {
         self.stages.push(Stage {
@@ -705,22 +725,28 @@ impl Schedule {
         });
         self
     }
-    pub fn add_system(&mut self, stage: &'static str, sys: SystemFn) {
+
+    /// Append a stage if that name is not already present.
+    pub fn add_stage(&mut self, name: &'static str) {
+        if !self.stages.iter().any(|s| s.name == name) {
+            self.stages.push(Stage {
+                name,
+                systems: vec![],
+            });
+        }
+    }
+
+    /// Register `sys` on `stage`.
+    ///
+    /// Missing stages are an error in every build profile. The previous
+    /// release silent-drop hid typos and left the tick running without the
+    /// system the caller thought was installed.
+    pub fn add_system(&mut self, stage: &'static str, sys: SystemFn) -> Result<(), UnknownStage> {
         if let Some(s) = self.stages.iter_mut().find(|s| s.name == stage) {
             s.systems.push(sys);
+            Ok(())
         } else {
-            // Silent-drop historically masked stage-name typos and caused
-            // shipping binaries to run without systems the authors believed
-            // were registered (see docs/audits/parallel_schedule_binary_inventory_2026-04-18.md §4).
-            // In debug builds we now make the failure loud. Release builds still
-            // silent-drop for backward compatibility with call sites that register
-            // to optional custom stages that may or may not have been added.
-            #[cfg(debug_assertions)]
-            eprintln!(
-                "[astraweave-ecs] Schedule::add_system: stage '{}' is not registered; system will not execute. \
-                 Call `schedule.add_stage(\"{}\")` or `Schedule::with_stage(\"{}\")` first, or use App::new() which provides the canonical stages.",
-                stage, stage, stage
-            );
+            Err(UnknownStage { stage })
         }
     }
     pub fn run(&self, world: &mut World) {
@@ -796,8 +822,19 @@ impl App {
         }
     }
 
-    pub fn add_system(&mut self, stage: &'static str, sys: SystemFn) {
-        self.schedule.add_system(stage, sys);
+    pub fn add_system(&mut self, stage: &'static str, sys: SystemFn) -> Result<(), UnknownStage> {
+        self.schedule.add_system(stage, sys)
+    }
+
+    /// Install `sys` on a stage that [`App::new`] already created.
+    ///
+    /// The `expect` lives here, under an allow, so library crates that the
+    /// unwrap-prevention job lints do not each spell `expect`. A missing stage
+    /// still fails the process. It is not a silent drop.
+    #[allow(clippy::expect_used)]
+    pub fn add_system_known_stage(&mut self, stage: &'static str, sys: SystemFn) {
+        self.add_system(stage, sys)
+            .expect("registered schedule stage");
     }
     pub fn insert_resource<T: 'static + Send + Sync>(mut self, r: T) -> Self {
         self.world.insert_resource(r);
@@ -1334,9 +1371,12 @@ mod tests {
         }
 
         let mut app = App::new();
-        app.add_system(SystemStage::PRE_SIMULATION, pre_sim);
-        app.add_system("sync", sync_sys);
-        app.add_system(SystemStage::POST_SIMULATION, post_sim);
+        app.add_system(SystemStage::PRE_SIMULATION, pre_sim)
+            .expect("registered schedule stage");
+        app.add_system("sync", sync_sys)
+            .expect("registered schedule stage");
+        app.add_system(SystemStage::POST_SIMULATION, post_sim)
+            .expect("registered schedule stage");
         let _ = app.run_fixed(3);
 
         assert_eq!(PRE_SIM_COUNT.load(Ordering::SeqCst), 3);
@@ -1384,14 +1424,22 @@ mod tests {
 
         let mut app = App::new();
         // Register in reverse to prove scheduling is stage-ordered, not registration-ordered.
-        app.add_system("presentation", presentation_sys);
-        app.add_system("post_simulation", post_sim_sys);
-        app.add_system("physics", physics_sys);
-        app.add_system("ai_planning", ai_planning_sys);
-        app.add_system("sync", sync_sys);
-        app.add_system("simulation", simulation_sys);
-        app.add_system("perception", perception_sys);
-        app.add_system("pre_simulation", pre_sim_sys);
+        app.add_system("presentation", presentation_sys)
+            .expect("registered schedule stage");
+        app.add_system("post_simulation", post_sim_sys)
+            .expect("registered schedule stage");
+        app.add_system("physics", physics_sys)
+            .expect("registered schedule stage");
+        app.add_system("ai_planning", ai_planning_sys)
+            .expect("registered schedule stage");
+        app.add_system("sync", sync_sys)
+            .expect("registered schedule stage");
+        app.add_system("simulation", simulation_sys)
+            .expect("registered schedule stage");
+        app.add_system("perception", perception_sys)
+            .expect("registered schedule stage");
+        app.add_system("pre_simulation", pre_sim_sys)
+            .expect("registered schedule stage");
         let _ = app.run_fixed(1);
 
         let seq = SEQ.lock().unwrap().clone();
@@ -1413,12 +1461,6 @@ mod tests {
     #[test]
     fn test_add_system_with_unknown_stage_is_still_dropped() {
         use std::sync::atomic::{AtomicU32, Ordering};
-        // The fix expands the canonical stage set but does not change the
-        // silent-drop contract for truly-unknown stage names. This keeps
-        // the "custom stage via add_stage" workflow functional and avoids
-        // panicking call sites that registered to long-gone stage names.
-        // (Debug builds emit an `eprintln!` diagnostic — not asserted here
-        // to keep the test portable across build profiles.)
         static COUNTER: AtomicU32 = AtomicU32::new(0);
         COUNTER.store(0, Ordering::SeqCst);
         fn never_runs(_: &mut World) {
@@ -1426,7 +1468,11 @@ mod tests {
         }
 
         let mut app = App::new();
-        app.add_system("definitely_not_a_stage", never_runs);
+        let missing = app.add_system("definitely_not_a_stage", never_runs);
+        assert!(
+            missing.is_err(),
+            "unknown stages are an error in every profile"
+        );
         let _ = app.run_fixed(5);
 
         assert_eq!(COUNTER.load(Ordering::SeqCst), 0);
@@ -1479,11 +1525,16 @@ mod tests {
         }
 
         let mut app = App::new();
-        app.add_system("perception", per);
-        app.add_system("simulation", sim);
-        app.add_system("ai_planning", ai);
-        app.add_system("physics", phy);
-        app.add_system("presentation", pre);
+        app.add_system("perception", per)
+            .expect("registered schedule stage");
+        app.add_system("simulation", sim)
+            .expect("registered schedule stage");
+        app.add_system("ai_planning", ai)
+            .expect("registered schedule stage");
+        app.add_system("physics", phy)
+            .expect("registered schedule stage");
+        app.add_system("presentation", pre)
+            .expect("registered schedule stage");
         let _ = app.run_fixed(4);
 
         assert_eq!(PER.load(Ordering::SeqCst), 4);
@@ -1508,7 +1559,8 @@ mod tests {
         }
 
         let mut app = App::new();
-        app.add_system("simulation", test_system);
+        app.add_system("simulation", test_system)
+            .expect("registered schedule stage");
         app = app.run_fixed(1);
 
         let resource = app.world.get_resource::<TestResource>().unwrap();
@@ -1528,8 +1580,10 @@ mod tests {
         }
 
         let mut app = App::new();
-        app.add_system("simulation", system_a);
-        app.add_system("simulation", system_b);
+        app.add_system("simulation", system_a)
+            .expect("registered schedule stage");
+        app.add_system("simulation", system_b)
+            .expect("registered schedule stage");
         app = app.run_fixed(1);
 
         let resource = app.world.get_resource::<TestResource>().unwrap();
@@ -1547,7 +1601,8 @@ mod tests {
         }
 
         let mut app = App::new();
-        app.add_system("simulation", increment_system);
+        app.add_system("simulation", increment_system)
+            .expect("registered schedule stage");
         app = app.run_fixed(10);
 
         let resource = app.world.get_resource::<TestResource>().unwrap();

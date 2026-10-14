@@ -1272,6 +1272,7 @@ dependencies = [
  "rayon",
  "rustc-hash 2.1.1",
  "serde",
+ "serde_json",
  "tracy-client",
 ]
 
@@ -11698,9 +11699,11 @@ dependencies = [
  "astraweave-camera",
  "astraweave-director",
  "astraweave-ecs",
+ "astraweave-gameplay",
  "astraweave-llm",
  "astraweave-physics",
  "astraweave-render",
+ "astraweave-scene",
  "bytemuck",
  "egui",
  "egui-wgpu",

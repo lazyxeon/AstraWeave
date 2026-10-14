@@ -47,7 +47,7 @@ fn extract_state_snapshot(world: &PhysicsWorld) -> HashMap<u64, Vec3> {
     let mut positions = HashMap::new();
 
     // Get all body positions
-    for (idx, (h, rb)) in world.bodies.iter().enumerate() {
+    for (idx, (_h, rb)) in world.bodies.iter().enumerate() {
         let iso = rb.position();
         let pos = vec3(iso.translation.x, iso.translation.y, iso.translation.z);
         // Use index as key since we need consistent ordering

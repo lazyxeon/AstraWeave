@@ -190,12 +190,18 @@ impl GameState {
         let mut app = App::new();
 
         // Register systems
-        app.add_system(SystemStage::PRE_SIMULATION, ai_perception_system);
-        app.add_system(SystemStage::AI_PLANNING, ai_planning_system);
-        app.add_system(SystemStage::SIMULATION, movement_system);
-        app.add_system(SystemStage::PHYSICS, physics_system);
-        app.add_system(SystemStage::POST_SIMULATION, cleanup_system);
-        app.add_system(SystemStage::PRESENTATION, rendering_system);
+        app.add_system(SystemStage::PRE_SIMULATION, ai_perception_system)
+            .expect("registered schedule stage");
+        app.add_system(SystemStage::AI_PLANNING, ai_planning_system)
+            .expect("registered schedule stage");
+        app.add_system(SystemStage::SIMULATION, movement_system)
+            .expect("registered schedule stage");
+        app.add_system(SystemStage::PHYSICS, physics_system)
+            .expect("registered schedule stage");
+        app.add_system(SystemStage::POST_SIMULATION, cleanup_system)
+            .expect("registered schedule stage");
+        app.add_system(SystemStage::PRESENTATION, rendering_system)
+            .expect("registered schedule stage");
 
         // Spawn entities
         message!("Spawning {} entities", entity_count);

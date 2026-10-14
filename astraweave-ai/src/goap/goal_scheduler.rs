@@ -187,7 +187,8 @@ impl GoalScheduler {
         })
     }
 
-    /// Calculate effective urgency for a goal
+    /// Calculate effective urgency for a goal. Test-only: production uses `Goal::urgency`.
+    #[cfg(test)]
     fn calculate_urgency(&self, goal: &Goal, current_time: f32) -> f32 {
         goal.urgency(current_time)
     }

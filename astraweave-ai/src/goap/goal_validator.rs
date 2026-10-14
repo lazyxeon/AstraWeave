@@ -388,6 +388,7 @@ impl GoalValidator {
         self.check_circular_recursive(goal, &mut visited, &mut path, result);
     }
 
+    #[allow(clippy::only_used_in_recursion)]
     fn check_circular_recursive(
         &self,
         goal: &GoalDefinition,
@@ -522,6 +523,7 @@ impl GoalValidator {
         }
     }
 
+    #[allow(clippy::only_used_in_recursion)]
     fn calculate_depth(&self, goal: &GoalDefinition) -> usize {
         if let Some(ref sub_goals) = goal.sub_goals {
             if sub_goals.is_empty() {
@@ -538,6 +540,7 @@ impl GoalValidator {
         }
     }
 
+    #[allow(clippy::only_used_in_recursion)]
     fn count_total_goals(&self, goal: &GoalDefinition) -> usize {
         1 + if let Some(ref sub_goals) = goal.sub_goals {
             sub_goals.iter().map(|g| self.count_total_goals(g)).sum()
@@ -1681,7 +1684,7 @@ mod tests {
         assert!(result.errors.iter().any(|e| {
             e.field
                 .as_ref()
-                .map_or(false, |f| f.starts_with("sub_goals[0]"))
+                .is_some_and(|f| f.starts_with("sub_goals[0]"))
         }));
     }
 

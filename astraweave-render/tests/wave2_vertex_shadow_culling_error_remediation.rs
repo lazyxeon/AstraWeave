@@ -1,3 +1,4 @@
+#![allow(unused, clippy::all)]
 //! Batch 8: Vertex compression, shadow CSM, nanite GPU culling, megalights, errors
 //! Mutation-resistant integration tests targeting:
 //!   - OctahedralEncoder: encode/decode roundtrip, axis vectors, error bounds

@@ -399,8 +399,10 @@ fn effective_direction_non_gusty_is_normalized_dominant() {
 #[test]
 fn effective_direction_default_at_zero_length() {
     // Create default, zero dominant direction — should return Vec3::X
-    let mut profile = BiomeWindProfile::default();
-    profile.dominant_direction = Vec3::ZERO;
+    let profile = BiomeWindProfile {
+        dominant_direction: Vec3::ZERO,
+        ..Default::default()
+    };
     let dir = profile.effective_direction(0.0);
     assert!((dir - Vec3::X).length() < 0.01);
 }

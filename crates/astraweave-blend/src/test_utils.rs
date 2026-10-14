@@ -397,7 +397,7 @@ pub mod generators {
     use crate::options::{
         AnimationOptions, CacheOptions, ConversionOptions, GltfExportOptions, LinkedLibraryOptions,
         MaterialOptions, MeshOptions, MissingLibraryAction, OutputFormat, ProcessOptions,
-        TextureFormat, TextureOptions,
+        SceneDecompositionOptions, TextureFormat, TextureOptions,
     };
     use rand::distributions::{Alphanumeric, DistString};
     use rand::prelude::*;
@@ -430,6 +430,7 @@ pub mod generators {
             linked_libraries: random_linked_library_options(rng),
             process: random_process_options(rng),
             cache: random_cache_options(rng),
+            decomposition: SceneDecompositionOptions::default(),
         }
     }
 
@@ -561,6 +562,7 @@ pub mod generators {
             environment: Vec::new(),
             capture_output: rng.gen_bool(0.9),
             threads: rng.gen_range(0..16),
+            parallel_workers: rng.gen_range(0..8),
         }
     }
 
@@ -591,8 +593,8 @@ pub mod generators {
             .as_secs();
 
         CacheEntry {
-            source_hash: hex::encode(&random_sha256(rng)),
-            options_hash: hex::encode(&random_sha256(rng)),
+            source_hash: hex::encode(random_sha256(rng)),
+            options_hash: hex::encode(random_sha256(rng)),
             blender_version: random_blender_version(rng),
             output_path: PathBuf::from(format!("{}.glb", Alphanumeric.sample_string(rng, 16))),
             source_path: PathBuf::from(format!("{}.blend", Alphanumeric.sample_string(rng, 16))),

@@ -418,7 +418,7 @@ mod tests {
         for _ in 0..100 {
             let pos = shape.sample(&mut rng);
             let r = (pos.x * pos.x + pos.z * pos.z).sqrt();
-            assert!(r >= 2.99 && r <= 5.01, "Ring radius violated: {r}");
+            assert!((2.99..=5.01).contains(&r), "Ring radius violated: {r}");
             assert!(pos.y.abs() < 0.01, "Ring should be flat");
         }
     }
@@ -437,7 +437,7 @@ mod tests {
         let mut rng = SimpleRng::new(999);
         for _ in 0..1000 {
             let v = rng.next_f32();
-            assert!(v >= 0.0 && v <= 1.0, "Out of range: {v}");
+            assert!((0.0..=1.0).contains(&v), "Out of range: {v}");
         }
     }
 

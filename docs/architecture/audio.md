@@ -8,7 +8,7 @@ domain: gameplay
 lifecycle_status: active
 integration_status: wired
 owns: [astraweave-audio]
-doc_version: "1.2"
+doc_version: "1.3"
 last_verified_commit: a2474c5b7
 ---
 
@@ -387,6 +387,7 @@ Dialogue path: DialoguePlayer::speak_current(dlg, st)  (dialogue_runtime.rs:33-1
 | 10 | `compute_ears` produces ears at distance exactly `ear_sep` for non-degenerate forward/up | Yes (with floating tolerance) | `engine.rs:276-285`. Mutation test asserts within `0.01` of `0.2m` (`engine.rs:1821-1836`). |
 | 11 | Dialogue `speak_current` returns `Ok(false)` iff the node has no `line` | Yes | `dialogue_runtime.rs:34-37`. Tested by `test_dialogue_player_no_line` (`dialogue_runtime.rs:178-206`). |
 | 12 | Dialogue `speak_current` emits the subtitle callback before any audio resolution attempt | Yes | `dialogue_runtime.rs:41-43`. Tested by `test_dialogue_player_subtitle_callback`. |
+| 13 | `AudioEngine::new` falls back to a null backend when the host has no output device. Mixer state (volumes, duck timer, emitter map) still updates; samples are dropped. `has_output_device()` is false on that path | Yes | `engine.rs` `new` / `null`; test `null_backend_keeps_mixer_state_without_a_device`. Headless CI (no ALSA card) uses this path |
 | 13 | All voice-file/sfx-file/3d-sfx-file `Result`s are propagated to caller (not silently discarded) | Yes | `engine.rs:344, 374, 390` all use `?` with `anyhow!()` context. Editor caller logs via `tracing::warn!` (`audio_bridge.rs:151-153, 193-195`). NPC caller uses `let _ =` for `call_guards` 3D beep (`runtime.rs:49`) — this is an exception, intentional. |
 | 14 | `AudioEngine::new()` failure is non-fatal in the editor — falls back to `engine: None` and runs without audio | Yes | `audio_bridge.rs:67-75`. |
 | 15 | TTS is only available when the `mock_tts` feature is enabled (in this crate's bundled adapter) | Yes (compile-time) | `voice.rs:43, 49, 59` all `#[cfg(feature = "mock_tts")]`. The `TtsAdapter` trait is unconditional; only the bundled implementation is gated. |

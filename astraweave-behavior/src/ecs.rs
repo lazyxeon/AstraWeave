@@ -41,7 +41,8 @@ impl astraweave_ecs::Plugin for BehaviorPlugin {
         app.add_system(
             SIMULATION_STAGE,
             behavior_tick_system as astraweave_ecs::SystemFn,
-        );
+        )
+        .expect("registered schedule stage");
     }
 }
 

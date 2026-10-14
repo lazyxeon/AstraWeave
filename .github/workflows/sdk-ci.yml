@@ -16,12 +16,15 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@1.89.0
+      - name: MSVC developer environment
+        if: matrix.os == 'windows-latest'
+        uses: ilammy/msvc-dev-cmd@v1
       - name: Build SDK
         run: cargo build -p astraweave-sdk --release
       - name: Install cbindgen
         run: cargo install cbindgen
       - name: Generate header
-        run: cbindgen astraweave-sdk -o astraweave-sdk/aw_sdk.h
+        run: cbindgen astraweave-sdk --lang c -o astraweave-sdk/aw_sdk.h
       - name: Upload header artifact
         uses: actions/upload-artifact@v4
         with:
@@ -46,8 +49,8 @@ jobs:
             return 0;
           }
           EOF
-          cc -I. -L target/release -o c_harness c_harness.c -lastraweave_sdk -lpthread -ldl -lm
-          ./c_harness | tee harness_out.txt
+          cc -I. -L target/release -Wl,-rpath,'$ORIGIN/target/release' -o c_harness c_harness.c -lastraweave_sdk -lpthread -ldl -lm
+          LD_LIBRARY_PATH=target/release ./c_harness | tee harness_out.txt
           # Semantic version gate: compare printed version to Cargo.toml version
           VER=$(sed -n 's/^version\s*=\s*"\([^"]\+\)"/\1/p' astraweave-sdk/Cargo.toml | head -n1)
           OUT=$(head -n1 harness_out.txt)
@@ -95,9 +98,13 @@ jobs:
           cmake_minimum_required(VERSION 3.15)
           project(aw_cmake_example C)
           add_executable(aw_cmake_example main.c)
-          include_directories(${CMAKE_SOURCE_DIR}/..)
-          link_directories(${CMAKE_SOURCE_DIR}/../target/release)
-          target_link_libraries(aw_cmake_example astraweave_sdk)
+          target_include_directories(aw_cmake_example PRIVATE ${CMAKE_SOURCE_DIR}/..)
+          target_link_directories(aw_cmake_example PRIVATE ${CMAKE_SOURCE_DIR}/../target/release)
+          if(UNIX)
+            target_link_libraries(aw_cmake_example PRIVATE astraweave_sdk pthread dl m)
+          else()
+            target_link_libraries(aw_cmake_example PRIVATE astraweave_sdk)
+          endif()
           EOF
           cat > cmake_example/main.c << 'EOF'
           #include <stdio.h>
@@ -116,9 +123,9 @@ jobs:
           cmake_minimum_required(VERSION 3.15)
           project(aw_cmake_example C)
           add_executable(aw_cmake_example main.c)
-          include_directories(${CMAKE_SOURCE_DIR}/..)
-          link_directories(${CMAKE_SOURCE_DIR}/..\target\release)
-          target_link_libraries(aw_cmake_example astraweave_sdk)
+          target_include_directories(aw_cmake_example PRIVATE ${CMAKE_SOURCE_DIR}/..)
+          target_link_directories(aw_cmake_example PRIVATE ${CMAKE_SOURCE_DIR}/../target/release)
+          target_link_libraries(aw_cmake_example PRIVATE astraweave_sdk)
           '@
           Set-Content -Path cmake_example/main.c -Value @'
           #include <stdio.h>

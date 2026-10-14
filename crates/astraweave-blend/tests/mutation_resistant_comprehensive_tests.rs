@@ -2060,7 +2060,7 @@ mod cache_mutation_kill_tests {
         let cache_dir = temp.path().join("cache");
         for entry in fs::read_dir(&cache_dir).unwrap() {
             let path = entry.unwrap().path();
-            if path.extension().map_or(false, |e| e == "glb") {
+            if path.extension().is_some_and(|e| e == "glb") {
                 fs::remove_file(&path).unwrap();
             }
         }
@@ -2096,9 +2096,7 @@ mod cache_mutation_kill_tests {
         let manifest_text = fs::read_to_string(&manifest_path).unwrap();
         // Replace the created_at timestamp (which is a recent epoch seconds value)
         // with 0 so the entry appears very old.
-        let backdated = manifest_text.replacen("created_at:", "created_at: 0, // was:", 1);
-        // Actually, RON has field: value format, so we need to replace the entire line.
-        // Let's use a regex to replace created_at: <number> with created_at: 0
+        // RON stores `created_at: <number>`. Replace that number with 0.
         let re = regex::Regex::new(r"created_at:\s*\d+").unwrap();
         let backdated = re.replace_all(&manifest_text, "created_at: 0");
         fs::write(&manifest_path, backdated.as_ref()).unwrap();

@@ -703,37 +703,37 @@ mod tests {
     #[test]
     fn test_report_exact_values() {
         let snap = make_test_snapshot();
-        let mut comparisons = Vec::new();
 
-        // Comparison 1: rule faster, 2 rule steps, 1 goap step, identical action
-        comparisons.push(PlanComparison::new(
-            &snap,
-            PlanIntent {
-                plan_id: "r1".to_string(),
-                steps: vec![ActionStep::Reload, ActionStep::Reload],
-            },
-            1.0,
-            PlanIntent {
-                plan_id: "g1".to_string(),
-                steps: vec![ActionStep::Reload],
-            },
-            3.0,
-        ));
-
-        // Comparison 2: goap faster, 1 rule step, 2 goap steps
-        comparisons.push(PlanComparison::new(
-            &snap,
-            PlanIntent {
-                plan_id: "r2".to_string(),
-                steps: vec![ActionStep::Reload],
-            },
-            5.0,
-            PlanIntent {
-                plan_id: "g2".to_string(),
-                steps: vec![ActionStep::Reload, ActionStep::Reload],
-            },
-            2.0,
-        ));
+        // Comparison 1: rule faster, 2 rule steps, 1 goap step, identical action.
+        // Comparison 2: goap faster, 1 rule step, 2 goap steps.
+        let comparisons = vec![
+            PlanComparison::new(
+                &snap,
+                PlanIntent {
+                    plan_id: "r1".to_string(),
+                    steps: vec![ActionStep::Reload, ActionStep::Reload],
+                },
+                1.0,
+                PlanIntent {
+                    plan_id: "g1".to_string(),
+                    steps: vec![ActionStep::Reload],
+                },
+                3.0,
+            ),
+            PlanComparison::new(
+                &snap,
+                PlanIntent {
+                    plan_id: "r2".to_string(),
+                    steps: vec![ActionStep::Reload],
+                },
+                5.0,
+                PlanIntent {
+                    plan_id: "g2".to_string(),
+                    steps: vec![ActionStep::Reload, ActionStep::Reload],
+                },
+                2.0,
+            ),
+        ];
 
         let report = ShadowModeReport::from_comparisons(&comparisons);
 

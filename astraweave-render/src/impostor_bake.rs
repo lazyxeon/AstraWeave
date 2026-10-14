@@ -565,7 +565,7 @@ impl ImpostorBaker {
         let bytes_per_pixel: u32 = 4;
         let unpadded_bpr = w * bytes_per_pixel;
         let align = 256u32;
-        let padded_bpr = ((unpadded_bpr + align - 1) / align) * align;
+        let padded_bpr = unpadded_bpr.div_ceil(align) * align;
         let total = padded_bpr as u64 * h as u64;
 
         let staging = device.create_buffer(&wgpu::BufferDescriptor {

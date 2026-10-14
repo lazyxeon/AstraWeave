@@ -1,5 +1,5 @@
 #[cfg(feature = "planner_advanced")]
-use astraweave_behavior::goap::*;
+use astraweave_ai::goap::*;
 #[cfg(feature = "planner_advanced")]
 use criterion::BenchmarkId;
 use criterion::{criterion_group, criterion_main, Criterion};
@@ -200,7 +200,7 @@ fn bench_action_history(c: &mut Criterion) {
 #[cfg(feature = "planner_advanced")]
 fn bench_learning_manager(c: &mut Criterion) {
     let config = GOAPConfig::default();
-    let manager = LearningManager::new(config);
+    let mut manager = LearningManager::new(config);
     let mut history = ActionHistory::new();
 
     // Add some history

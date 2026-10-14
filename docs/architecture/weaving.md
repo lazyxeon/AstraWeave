@@ -9,7 +9,7 @@ lifecycle_status: in_design
 integration_status: example_only
 summary: "Zero library consumers (only examples/advanced_content_demo + veilweaver_quest_demo); systems/* take Vec/slice params, not Query/Res — not registerable as ECS systems as written. weaving.md §1,§8"
 owns: [astraweave-weaving]
-doc_version: "1.1"
+doc_version: "1.2"
 last_verified_commit: 7c29b8182
 ---
 
@@ -21,7 +21,7 @@ last_verified_commit: 7c29b8182
 |---|---|
 | **System name** | Weaving / Fate-Weaving System (the Veilweaver signature mechanic) |
 | **Primary crates** | `astraweave-weaving` |
-| **Document version** | 1.1 |
+| **Document version** | 1.2 |
 | **Last verified against commit** | `7c29b8182` |
 | **Last verified date** | 2026-06-25 |
 | **Status** | In-Design-but-tested (heavily unit-tested; consumed only by two non-runtime examples) |
@@ -351,6 +351,8 @@ This crate hosts **two distinct pipelines** that do not call each other. Both ar
 | 6 | Intent proposal is deterministic given the same patterns + seed. | Yes | `intents.rs` seed usage; `test_scavenger_patrol_deterministic`. |
 | 7 | The crate compiles without `unsafe`. | Yes | `#![forbid(unsafe_code)]` in `lib.rs:1`. |
 | 8 | An anchor repair only reports an ability unlock when the anchor's pre-repair stability was `< 0.7`. | Yes | `anchor_repair_system.rs:91-99`; `test_ability_not_unlocked_if_stable`. |
+| 9 | Anchor particle positions and velocities are a function of `(world_seed, tick, SIM_SYSTEM_ANCHOR_PARTICLES)` via `SimRng`. Draws are dyadic `f32`s plus IEEE `sqrt`; no `rand::random` and no `sin`/`cos`. | Yes | `sim_rng.rs`, `particles/anchor_particle.rs`; test `particle_spawn_state_is_bit_identical_for_the_same_seed`. |
+| 10 | Enemy patrol targets and wave spawn positions are a function of `(world_seed, draw_index, SIM_SYSTEM_ENEMY_PATROL \| SIM_SYSTEM_SPAWNER)`. Offsets are rejection samples in the disk (`disk_xz`); no `thread_rng` and no `sin`/`cos`. Active spawn ids are sorted before round-robin. | Yes | `enemy.rs`, `spawner.rs`; tests `patrol_target_is_bit_identical_for_the_same_seed`, `spawn_positions_are_bit_identical_for_the_same_seed`. |
 
 ---
 
@@ -389,7 +391,7 @@ This is a pure-CPU logic crate; performance is benchmark-tracked but not a runti
 - **Two `AbilityType` enums** (`anchor.rs` vs `abilities.rs`) and **two `CombatEvent` types** (`combat.rs` vs `systems`) — is the overlap deliberate domain separation or accidental drift?
 - **Relationship to `veilweaver_slice_runtime`:** A separate `veilweaver_slice_runtime` crate exists and references "veilweaver"/anchor/echo concepts but does **not** depend on `astraweave-weaving` (verified: no `astraweave_weaving` import). Is `astraweave-weaving` superseded by the slice runtime, or are they parallel tracks? This determines whether this crate is in-design or effectively legacy.
 - **`CWeaveAgent`/`CWeaveSignal`/`WeaveIntentEvent`** (declared in `lib.rs:56-94`) have no in-crate consumer. Are these intended ECS components for a future host integration?
-- **`astraweave-pcg` usage scope:** confirm exactly which PCG symbols `enemy.rs`/`spawner.rs` consume and whether spawn determinism is fully seed-driven. *(Verification note 2026-06-24: investigated and found `astraweave-pcg` is a declared-but-unused Cargo dep — zero `use`/`pcg` references in `astraweave-weaving/src`. Spawn/enemy randomness instead uses `rand::rng()` thread-RNG (`spawner.rs:349,365`, `enemy.rs:259`), which is non-deterministic and not seed-driven. The open decision — whether spawning SHOULD be made deterministic/seed-driven (and pcg actually wired or the dep removed) — remains parked.)*
+- **`astraweave-pcg` usage scope:** `astraweave-pcg` is a declared-but-unused Cargo dep — zero `use`/`pcg` references in `astraweave-weaving/src` (verified 2026-06-24). Whether to wire it or drop the dep remains parked. Spawn positions, archetypes, and patrol targets are seed-driven as of WS-D2 (`SimRng` + `disk_xz`, system ids `SIM_SYSTEM_SPAWNER` / `SIM_SYSTEM_ENEMY_PATROL`). Default `world_seed` is 0. Callers that want a world-specific stream call `set_world_seed` before `update`.
 
 ---
 

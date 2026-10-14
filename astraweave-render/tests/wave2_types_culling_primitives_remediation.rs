@@ -1,3 +1,4 @@
+#![allow(unused, clippy::all)]
 //! Wave 2 mutation-resistant remediation tests for types.rs, culling.rs, and primitives.rs
 //!
 //! Targets golden-value assertions for:

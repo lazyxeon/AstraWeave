@@ -6,7 +6,7 @@
 use astraweave_ui::{
     get_health_colors,
     hud::{easing, HealthAnimation},
-    to_egui_color, transform_color, ColorblindMode, HudManager,
+    to_egui_color, transform_color, ColorblindMode,
 };
 
 // ============================================================================
@@ -550,7 +550,7 @@ fn mutation_combo_tracker_cleanup_removes_old() {
 // hud.rs — QuestNotification mutation-killing tests
 // ============================================================================
 
-use astraweave_ui::hud::{NotificationType, QuestNotification};
+use astraweave_ui::hud::QuestNotification;
 
 /// Catches L598 delete match arm QuestComplete in calculate_slide_offset:
 /// QuestComplete notifications should use a 0.5s ease-out (vs 0.3s for others).

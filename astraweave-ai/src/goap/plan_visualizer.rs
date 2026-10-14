@@ -321,6 +321,7 @@ impl PlanVisualizer {
     }
 
     /// Render goal hierarchy as tree
+    #[allow(clippy::only_used_in_recursion)]
     fn render_goal_tree(&self, goal: &Goal, depth: usize, is_last: bool) -> String {
         let mut output = String::new();
 
@@ -374,6 +375,7 @@ impl PlanVisualizer {
         output
     }
 
+    #[allow(clippy::only_used_in_recursion)]
     fn render_goal_dot_recursive(
         &self,
         goal: &Goal,
@@ -407,6 +409,7 @@ impl PlanVisualizer {
     }
 
     /// Render goal as text
+    #[allow(clippy::only_used_in_recursion)]
     fn render_goal_text(&self, goal: &Goal, depth: usize) -> String {
         let mut output = String::new();
 
@@ -870,7 +873,7 @@ mod tests {
         // At least first closing brace has comma
         assert!(
             output.contains("},"),
-            "First action should have trailing comma"
+            "First action should have trailing comma; braces={closing_braces:?}"
         );
     }
 

@@ -33,7 +33,7 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 
 #[cfg(feature = "phi3")]
-use candle_core::{DType, Device, Tensor};
+use candle_core::{Device, Tensor};
 #[cfg(feature = "phi3")]
 use candle_transformers::models::phi3 as phi3_model;
 #[cfg(feature = "phi3")]
@@ -147,18 +147,15 @@ impl Phi3Medium {
             let path = model_path.as_ref().to_path_buf();
             let device_clone = device.clone();
             move || -> Result<phi3_model::Model> {
-                // For candle 0.8, we use the standard Phi-3 model loading
-                // Note: This is a placeholder - actual GGUF loading requires
-                // additional setup from candle_quantized crate
-
-                // Load model config
-                let config = phi3_model::Config::v3_mini();
-
-                // For now, return error prompting user to provide safetensors
+                // candle-transformers 0.8 Config has no v3_mini constructor, and
+                // GGUF loading is not wired. Fail before any weight decode.
                 anyhow::bail!(
-                    "Phi-3 Q4 GGUF loading requires additional setup.\n\
-                     Please use safetensors format or wait for full GGUF support.\n\
-                     See: https://github.com/huggingface/candle/tree/main/candle-transformers/src/models/phi3"
+                    "Phi-3 Q4 GGUF loading is not available for {} on {:?}.\n\
+                     candle-transformers 0.8 has no Config::v3_mini and no GGUF loader here.\n\
+                     Provide safetensors or wait for a reviewed loader change.\n\
+                     See: https://github.com/huggingface/candle/tree/main/candle-transformers/src/models/phi3",
+                    path.display(),
+                    device_clone
                 )
             }
         })
@@ -208,14 +205,15 @@ impl Phi3Medium {
     fn select_device(device_pref: Phi3Device) -> Result<Device> {
         match device_pref {
             Phi3Device::Auto => {
-                // Try CUDA first, then Metal, fallback to CPU
-                #[cfg(feature = "cuda")]
+                // candle's helpers return CPU when that backend was not built.
                 if let Ok(device) = Device::cuda_if_available(0) {
-                    tracing::info!("Auto-selected CUDA device 0");
-                    return Ok(device);
+                    if device.is_cuda() {
+                        tracing::info!("Auto-selected CUDA device 0");
+                        return Ok(device);
+                    }
                 }
 
-                #[cfg(all(target_os = "macos", feature = "metal"))]
+                #[cfg(target_os = "macos")]
                 if let Ok(device) = Device::new_metal(0) {
                     tracing::info!("Auto-selected Metal device");
                     return Ok(device);
@@ -302,11 +300,12 @@ impl Phi3Medium {
 
             // Create deterministic RNG from seed (derived from prompt hash for reproducibility)
             use rand::SeedableRng;
-            use std::collections::hash_map::DefaultHasher;
-            use std::hash::{Hash, Hasher};
-            let mut hasher = DefaultHasher::new();
-            prompt_owned.hash(&mut hasher);
-            let seed = hasher.finish();
+            // FNV-1a. DefaultHasher is not stable across rustc versions.
+            let mut seed = 0xcbf2_9ce4_8422_2325u64;
+            for byte in prompt_owned.as_bytes() {
+                seed ^= *byte as u64;
+                seed = seed.wrapping_mul(0x0000_0100_0000_01B3);
+            }
             let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
 
             for _ in 0..config.max_tokens {
@@ -314,7 +313,7 @@ impl Phi3Medium {
                 let input_tensor = Tensor::new(&tokens[..], &device)?.unsqueeze(0)?; // Add batch dimension
 
                 // Forward pass
-                let logits = model_guard.forward(&input_tensor)?;
+                let logits = model_guard.forward(&input_tensor, tokens.len().saturating_sub(1))?;
 
                 // Sample next token
                 let next_token = Self::sample_token(
@@ -408,8 +407,7 @@ impl Phi3Medium {
         }
 
         // Sample from nucleus using provided RNG for determinism
-        use rand::Rng;
-        let sample_val: f32 = rng.gen_range(0.0..cumulative);
+        let sample_val: f32 = rand::Rng::random_range(rng, 0.0..cumulative);
 
         let mut acc = 0.0;
         for &idx in indices.iter().take(nucleus_size) {
@@ -437,10 +435,10 @@ impl Phi3Medium {
 /// Implement LlmClient trait for seamless integration
 #[async_trait]
 impl LlmClient for Phi3Medium {
-    async fn complete(&self, prompt: String) -> Result<String> {
+    async fn complete(&self, prompt: &str) -> Result<String> {
         #[cfg(feature = "phi3")]
         {
-            self.generate(&prompt).await
+            self.generate(prompt).await
         }
 
         #[cfg(not(feature = "phi3"))]
@@ -612,7 +610,7 @@ mod config_tests {
     #[test]
     fn test_phi3_device_clone() {
         let device = Phi3Device::Cpu;
-        let cloned = device.clone();
+        let cloned = device;
         assert_eq!(device, cloned);
     }
 

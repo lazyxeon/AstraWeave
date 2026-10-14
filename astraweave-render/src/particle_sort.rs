@@ -262,8 +262,7 @@ mod tests {
 
     #[test]
     fn prepare_entries_distances() {
-        let positions = vec![[0.0, 0.0, 0.0], [10.0, 0.0, 0.0], [5.0, 0.0, 0.0]];
-        let camera = Vec3::ZERO;
+        let positions = [[0.0, 0.0, 0.0], [10.0, 0.0, 0.0], [5.0, 0.0, 0.0]];
 
         // Just verify the distances are computed correctly
         let entries: Vec<SortEntry> = positions

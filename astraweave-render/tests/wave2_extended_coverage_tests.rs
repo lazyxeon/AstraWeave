@@ -1,3 +1,4 @@
+#![allow(unused, clippy::all)]
 //! Wave 2 Mutation Remediation — Extended Coverage Tests
 //!
 //! Targets functions with zero / inline-only test coverage from wave2:

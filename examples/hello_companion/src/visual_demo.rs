@@ -955,7 +955,7 @@ impl CompanionApp {
                         .to_string()
                 });
             self.chat_ui
-                .add_npc_message(&format!("[GOAP] {}", goap_response));
+                .add_npc_message(format!("[GOAP] {}", goap_response));
 
             // Mode 2: Note about LLM
             self.chat_ui.add_system_message("─── Mode 1 (Pure LLM) ───");
@@ -1034,7 +1034,7 @@ impl CompanionApp {
                     "trusted" => "I feel like we really understand each other.",
                     _ => "",
                 };
-                self.chat_ui.add_npc_message(&format!(
+                self.chat_ui.add_npc_message(format!(
                     "Here's what I remember about you:\n• {}\n\n{}",
                     info.join("\n• "),
                     rapport_comment
@@ -1087,20 +1087,18 @@ impl CompanionApp {
                     });
 
                 // If follow-up and we have context, acknowledge it.
-                if is_followup {
-                    if self.session_memory.recent_turns.last().is_some() {
-                        // Reference previous context.
-                        let prefix = if text.to_lowercase().contains("why") {
-                            "Building on that — "
-                        } else if text.to_lowercase().contains("how") {
-                            "To elaborate — "
-                        } else if text.to_lowercase().contains("more") {
-                            "Adding more detail — "
-                        } else {
-                            "Continuing from before — "
-                        };
-                        response = format!("{}{}", prefix, response);
-                    }
+                if is_followup && self.session_memory.recent_turns.last().is_some() {
+                    // Reference previous context.
+                    let prefix = if text.to_lowercase().contains("why") {
+                        "Building on that — "
+                    } else if text.to_lowercase().contains("how") {
+                        "To elaborate — "
+                    } else if text.to_lowercase().contains("more") {
+                        "Adding more detail — "
+                    } else {
+                        "Continuing from before — "
+                    };
+                    response = format!("{}{}", prefix, response);
                 }
 
                 // Add mood-aware prefix for emotional attunement.

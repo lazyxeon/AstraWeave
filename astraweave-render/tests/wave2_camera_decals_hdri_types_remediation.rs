@@ -1,3 +1,4 @@
+#![allow(unused, clippy::all)]
 //! Wave 2 – Batch 4: Camera, Decals, HDRI Catalog, Types, BiomeAudio, SceneEnvironment
 //! Proactive mutation-resistant integration tests for uncovered CPU-testable render modules.
 

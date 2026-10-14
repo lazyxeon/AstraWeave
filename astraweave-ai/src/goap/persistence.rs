@@ -422,9 +422,8 @@ mod tests {
         let path = temp_dir.path().join("future_version.json");
 
         // Manually write JSON with a future version
-        let json = format!(
-            r#"{{"version": 999, "timestamp": 0, "checksum": 0, "history": {{"stats": {{}}}}}}"#
-        );
+        let json = r#"{"version": 999, "timestamp": 0, "checksum": 0, "history": {"stats": {}}}"#
+            .to_string();
         fs::write(&path, json).unwrap();
 
         let result = HistoryPersistence::load(&path, PersistenceFormat::Json);

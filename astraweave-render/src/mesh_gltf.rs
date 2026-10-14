@@ -1,6 +1,6 @@
+use crate::mesh::CpuMesh;
 #[cfg(feature = "gltf-assets")]
-use crate::mesh::{compute_tangents, MeshVertex};
-use crate::mesh::{CpuImage, CpuMesh};
+use crate::mesh::{compute_tangents, CpuImage, MeshVertex};
 use anyhow::{anyhow, Result};
 
 pub struct GltfOptions {

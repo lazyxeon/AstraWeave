@@ -257,10 +257,14 @@ pub fn create_stress_test_app(config: StressTestConfig) -> Result<App> {
     println!("Generated {} network entities", network_entities.len());
 
     // Add systems
-    app.add_system("simulation", physics_stress_system);
-    app.add_system("simulation", ai_stress_system);
-    app.add_system("simulation", network_stress_system);
-    app.add_system("post_simulation", results_tracking_system);
+    app.add_system("simulation", physics_stress_system)
+        .expect("registered schedule stage");
+    app.add_system("simulation", ai_stress_system)
+        .expect("registered schedule stage");
+    app.add_system("simulation", network_stress_system)
+        .expect("registered schedule stage");
+    app.add_system("post_simulation", results_tracking_system)
+        .expect("registered schedule stage");
 
     Ok(app)
 }

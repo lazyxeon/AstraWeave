@@ -630,8 +630,10 @@ mod tests {
 
     #[test]
     fn config_validation_rejects_invalid() {
-        let mut config = VirtualTextureConfig::default();
-        config.page_size = 100; // not power of 2
+        let mut config = VirtualTextureConfig {
+            page_size: 100, // not power of 2
+            ..Default::default()
+        };
         assert!(config.validate().is_err());
 
         config.page_size = 128;

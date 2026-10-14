@@ -2353,7 +2353,7 @@ mod sun_position_targeted {
         // At time=6.0, sun_height.abs() = ~0.0 which satisfies both < 0.01 and == 0.01 (not exactly)
         // Let's test time=7.0 where sun_height.abs() is clearly > 0.01
         let time = TimeOfDay::new(7.0, 1.0);
-        let pos = time.get_sun_position();
+        let _pos = time.get_sun_position();
         // sun_angle = (7-6)*π/12 = π/12 → sin(π/12) ≈ 0.259 → clearly > 0.01
         // With `< replaced by ==`: 0.259 == 0.01 is false, would wrongly take else
         // Both original and mutant take the else branch for this input.

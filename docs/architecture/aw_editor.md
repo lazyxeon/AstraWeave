@@ -8,7 +8,7 @@ domain: tools
 lifecycle_status: active
 integration_status: wired
 owns: [aw_editor]
-doc_version: "1.16"
+doc_version: "1.17"
 last_verified_commit: 154d723aa
 ---
 
@@ -627,6 +627,7 @@ The editor has accumulated dozens of small architectural decisions over 8 months
 | 3 | Movement scripts only tick when `runtime.is_playing()` | Yes | `subsystems/audio_animation.rs:92-96` early-return. |
 | 4 | `editor_mode` is updated in lock-step with `runtime_state` transitions: roughly `Edit` ↔ `RuntimeState::Editing`; `Play` ↔ `RuntimeState::{Playing, SteppingOneFrame}`; `Paused` ↔ `RuntimeState::Paused`. Naming differs between the two enums but the two transition together. | Yes (by-call-site convention; no compile-time assertion) | `main.rs:2370, 2390` set `EditorMode::Play` alongside runtime play-start; `main.rs:2402, 2451` set `EditorMode::Paused`; `main.rs:2423` sets `EditorMode::Edit` on stop. No central `debug_assert!` enforces consistency at transition points, but every transition call site updates both. |
 | 5 | `UndoStack` push must happen in the same `EditorApp::update` frame as the mutation | Yes (by construction) | Commands are pushed inside event-handler arms in `tab_viewer/mod.rs` and `main.rs`. |
+| 5b | Play mode records the integer 60 Hz step count of every `tick` / `step_frame` call, including zero. Replay reads `recorded_fixed_steps()` instead of re-deriving steps from wall-clock `dt`. `Instant` in this file measures frame cost only | Yes | `runtime.rs` `run_fixed_steps`; test `play_session_records_fixed_step_counts` |
 | 6 | Auto-save triggered only when `auto_save_enabled` AND `now - last_auto_save >= auto_save_interval_secs` | Yes | `main.rs:9441-9445` (check inside `EditorApp::update`); fires `perform_auto_save` at `main.rs:1063-1111`. |
 | 7 | `viewport: Option<ViewportWidget>` is `None` only if wgpu init failed at startup | Yes | `main.rs:276` field type. `EditorApp::new` populates it on success. |
 | 8 | `egui` version across the editor matches `egui-wgpu = 0.32.0` (Cargo.toml:40) and `egui_kittest = 0.32` (Cargo.toml:96) | Yes (compile-time) | Cargo version resolution. |

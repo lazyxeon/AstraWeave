@@ -53,9 +53,19 @@ visual = [
 veilweaver_slice = [
     "astraweave-ai/veilweaver_slice",
     "astraweave-director/veilweaver_slice",
-    "dep:veilweaver_slice_runtime"
+    "dep:veilweaver_slice_runtime",
+    "dep:astraweave-gameplay",
+    "dep:astraweave-scene",
 ]
 
 [dependencies.veilweaver_slice_runtime]
 path = "../../veilweaver_slice_runtime"
+optional = true
+
+[dependencies.astraweave-gameplay]
+path = "../../astraweave-gameplay"
+optional = true
+
+[dependencies.astraweave-scene]
+path = "../../astraweave-scene"
 optional = true

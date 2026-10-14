@@ -22,17 +22,11 @@ impl ResourceNode {
         take
     }
 
-    /// Non-deterministic tick (legacy compatibility).
-    /// For deterministic behavior, use `tick_seeded` instead.
-    #[deprecated(note = "Use tick_seeded for deterministic behavior")]
-    pub fn tick(&mut self, dt: f32) {
-        if self.amount == 0 {
-            self.timer -= dt;
-            if self.timer <= 0.0 {
-                self.amount = 1 + (3 * rand::random::<u8>() as u32 % 5);
-                self.timer = 0.0;
-            }
-        }
+    /// Advance respawn with the sim stream for `(world_seed, tick, SIM_SYSTEM_HARVEST)`.
+    pub fn tick_with_seed(&mut self, dt: f32, world_seed: u64, tick: u64) {
+        let mut rng =
+            astraweave_core::SimRng::new(world_seed, tick, astraweave_core::SIM_SYSTEM_HARVEST);
+        self.tick_seeded(dt, &mut rng);
     }
 
     /// Deterministic tick using seeded RNG.
@@ -169,13 +163,14 @@ mod tests {
         node.amount = 0;
         node.timer = 1.0;
 
-        #[allow(deprecated)]
-        node.tick(1.5); // Tick past respawn time
+        let mut rng = StdRng::seed_from_u64(12345);
+        node.tick_seeded(1.5, &mut rng);
 
         assert!(node.amount > 0, "Should respawn resources");
         assert!(
-            node.amount >= 1 && node.amount <= 15,
-            "Should respawn 1-15 resources (1 + rand % 5)"
+            [1, 4, 7, 10, 13].contains(&node.amount),
+            "Should respawn one of 1,4,7,10,13, got {}",
+            node.amount
         );
         assert_eq!(node.timer, 0.0, "Timer should reset");
     }
@@ -207,24 +202,17 @@ mod tests {
 
     #[test]
     fn tick_legacy_respawn_formula_exact_values() {
-        // tick: self.amount = 1 + (3 * rand::random::<u8>() as u32 % 5)
-        // Operator precedence: `as` first, then * and % left-to-right:
-        //   = 1 + ((3 * (random as u32)) % 5)
-        // (3 * byte) % 5 covers all residues 0..4, so result is always in 1..=5
-        // Catches: + → -, + → * at the `1 +` (would give 0 or out of range)
-        #[allow(deprecated)]
-        {
-            let mut node = create_test_node();
-            node.amount = 0;
-            node.timer = 0.5;
-            node.tick(1.0); // timer -> -0.5, triggers respawn
-                            // Result must be in 1..=5
-            assert!(
-                node.amount >= 1 && node.amount <= 5,
-                "Legacy tick respawn must be in 1..=5, got {}",
-                node.amount
-            );
-        }
+        // tick_seeded: 1 + (byte % 5) * 3 ∈ {1, 4, 7, 10, 13}
+        let mut node = create_test_node();
+        node.amount = 0;
+        node.timer = 0.5;
+        let mut rng = StdRng::seed_from_u64(7);
+        node.tick_seeded(1.0, &mut rng);
+        assert!(
+            [1, 4, 7, 10, 13].contains(&node.amount),
+            "Seeded tick respawn must be in {{1,4,7,10,13}}, got {}",
+            node.amount
+        );
     }
 
     #[test]
@@ -288,32 +276,25 @@ mod tests {
     }
 
     #[test]
-    fn tick_legacy_formula_statistical_catches_mutations() {
-        // tick: self.amount = 1 + (3 * rand::random::<u8>() as u32 % 5)
-        // = 1 + ((3 * byte) % 5) → values {1,2,3,4,5} each with equal probability
-        //
-        // Mutations to catch:
-        //   + → * : gives (3*byte)%5 = {0,1,2,3,4} → amount=0 possible → fails >= 1
-        //   * → + : gives 1+(3+byte%5) = {4,5,6,7,8} → amount>5 possible → fails <= 5
-        //   * → / : gives 1+((3/byte)%5) = {1,2,4} only → never produces 3 or 5
-        #[allow(deprecated)]
-        {
-            let mut seen = std::collections::HashSet::new();
-            for _ in 0..200 {
-                let mut node = create_test_node();
-                node.amount = 0;
-                node.timer = 0.5;
-                node.tick(1.0);
-                assert!(node.amount >= 1, "amount must be >= 1, got {}", node.amount);
-                assert!(node.amount <= 5, "amount must be <= 5, got {}", node.amount);
-                seen.insert(node.amount);
-            }
-            // Over 200 trials, must see 3 or 5 (impossible with * → / mutation)
-            assert!(
-                seen.contains(&3) || seen.contains(&5),
-                "Expected to see value 3 or 5 in 200 trials; saw {:?}",
-                seen
-            );
-        }
+    fn gameplay_rng_harvest_amount_is_seed_locked() {
+        let mut node = create_test_node();
+        node.amount = 0;
+        node.timer = 1.0;
+        node.tick_with_seed(1.5, 0xA11C, 3);
+        let mut again = create_test_node();
+        again.amount = 0;
+        again.timer = 1.0;
+        again.tick_with_seed(1.5, 0xA11C, 3);
+        assert_eq!(node.amount, again.amount);
+        assert!(
+            [1, 4, 7, 10, 13].contains(&node.amount),
+            "got {}",
+            node.amount
+        );
+        assert_eq!(node.amount, gameplay_rng_locked_harvest_amount());
+    }
+
+    fn gameplay_rng_locked_harvest_amount() -> u32 {
+        4
     }
 }

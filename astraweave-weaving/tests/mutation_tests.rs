@@ -2328,6 +2328,11 @@ mod anchor_audio_tests {
 // ============================================================================
 mod particle_tests {
     use astraweave_weaving::particles::anchor_particle::*;
+    use astraweave_weaving::{SimRng, SIM_SYSTEM_ANCHOR_PARTICLES};
+
+    fn particle_rng() -> SimRng {
+        SimRng::new(1, 1, SIM_SYSTEM_ANCHOR_PARTICLES)
+    }
     use glam::Vec3;
 
     // ---- ParticleType::color — exact RGB per variant (kills Default::default()) ----
@@ -2859,7 +2864,7 @@ mod particle_tests {
     #[test]
     fn test_unstable_emitter_produces_glitch_particles() {
         let mut emitter = AnchorParticleEmitter::new(0, Vec3::ZERO, 2); // Unstable
-        emitter.update(1.0); // spawn some particles
+        emitter.update(1.0, &mut particle_rng()); // spawn some particles
         assert!(emitter.particle_count() > 0);
         // All particles should be Glitch type
         for p in emitter.particles() {
@@ -2875,7 +2880,7 @@ mod particle_tests {
     #[test]
     fn test_critical_emitter_produces_tear_particles() {
         let mut emitter = AnchorParticleEmitter::new(0, Vec3::ZERO, 3); // Critical
-        emitter.update(0.5); // don't exceed Tear lifetime (2.0s)
+        emitter.update(0.5, &mut particle_rng()); // don't exceed Tear lifetime (2.0s)
         assert!(emitter.particle_count() > 0);
         for p in emitter.particles() {
             assert_eq!(
@@ -2890,7 +2895,7 @@ mod particle_tests {
     #[test]
     fn test_broken_emitter_produces_void_particles() {
         let mut emitter = AnchorParticleEmitter::new(0, Vec3::ZERO, 4); // Broken
-        emitter.update(0.5);
+        emitter.update(0.5, &mut particle_rng());
         assert!(emitter.particle_count() > 0);
         for p in emitter.particles() {
             assert_eq!(
@@ -2913,7 +2918,7 @@ mod particle_tests {
 
     #[test]
     fn test_system_update_emitter_state() {
-        let mut sys = AnchorParticleSystem::new();
+        let mut sys = AnchorParticleSystem::new(1);
         sys.add_emitter(42, Vec3::ZERO, 0); // Perfect, no emission
         sys.update(1.0);
         assert_eq!(sys.total_particle_count(), 0, "Perfect emits nothing");

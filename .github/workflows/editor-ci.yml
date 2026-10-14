@@ -38,11 +38,12 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            libxcb-shape0-dev \
-            libxcb-xfixes0-dev \
-            libxkbcommon-dev \
-            libegl1-mesa-dev \
-            libwayland-dev
+            build-essential pkg-config cmake \
+            libx11-dev libxi-dev libxcursor-dev libxrandr-dev libxinerama-dev \
+            libxkbcommon-dev libxkbcommon-x11-dev libx11-xcb-dev \
+            libxcb1-dev libxcb-randr0-dev libxcb-xfixes0-dev libxcb-shape0-dev libxcb-xkb-dev \
+            libgl1-mesa-dev libegl1-mesa-dev wayland-protocols libwayland-dev \
+            libasound2-dev libpulse-dev libudev-dev
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.89.0

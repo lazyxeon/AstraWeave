@@ -20,37 +20,20 @@ pub struct RecipeBook {
 }
 
 impl RecipeBook {
-    /// Non-deterministic craft (legacy compatibility).
-    /// For deterministic behavior, use `craft_seeded` instead.
-    #[deprecated(note = "Use craft_seeded for deterministic behavior")]
-    pub fn craft(&self, name: &str, inv: &mut Inventory) -> Option<Item> {
-        let r = self.recipes.iter().find(|r| r.name == name)?;
-        // check costs
-        for c in &r.costs {
-            let have = inv
-                .resources
-                .iter()
-                .find(|(k, _)| *k == c.kind)
-                .map(|(_, n)| *n)
-                .unwrap_or(0);
-            if have < c.count {
-                return None;
-            }
-        }
-        // pay costs
-        for c in &r.costs {
-            if !inv.remove_resource(c.kind, c.count) {
-                return None;
-            }
-        }
-        // create item
-        let itm = Item {
-            id: rand::random::<u32>(),
-            name: r.name.clone(),
-            kind: r.output_item.clone(),
-            echo: None,
-        };
-        Some(itm)
+    /// Craft with the sim stream for `(world_seed, tick, SIM_SYSTEM_CRAFT)`.
+    ///
+    /// Item ids are a pure function of that triple and of how many `u32` draws
+    /// this call consumes (one).
+    pub fn craft_with_seed(
+        &self,
+        name: &str,
+        inv: &mut Inventory,
+        world_seed: u64,
+        tick: u64,
+    ) -> Option<Item> {
+        let mut rng =
+            astraweave_core::SimRng::new(world_seed, tick, astraweave_core::SIM_SYSTEM_CRAFT);
+        self.craft_seeded(name, inv, &mut rng)
     }
 
     /// Deterministic craft using seeded RNG.
@@ -470,10 +453,9 @@ mod tests {
         assert!(item.is_some());
     }
 
-    // ===== Mutation-resistant tests for RecipeBook::craft (deprecated but still code) =====
+    // ===== Mutation-resistant tests for RecipeBook::craft_seeded =====
 
     #[test]
-    #[allow(deprecated)]
     fn craft_legacy_returns_some_on_success() {
         // Catches: replace RecipeBook::craft -> Option<Item> with None
         let book = RecipeBook {
@@ -488,7 +470,8 @@ mod tests {
         };
         let mut inv = Inventory::default();
         inv.add_resource(ResourceKind::Fiber, 5);
-        let result = book.craft("Potion", &mut inv);
+        let mut rng = seeded_rng();
+        let result = book.craft_seeded("Potion", &mut inv, &mut rng);
         assert!(
             result.is_some(),
             "craft() must return Some on valid recipe with resources"
@@ -498,7 +481,6 @@ mod tests {
     }
 
     #[test]
-    #[allow(deprecated)]
     fn craft_legacy_finds_correct_recipe_by_name() {
         // Catches: replace == with != in RecipeBook::craft (line 27 name match)
         let book = RecipeBook {
@@ -516,7 +498,8 @@ mod tests {
             ],
         };
         let mut inv = Inventory::default();
-        let result = book.craft("Beta", &mut inv);
+        let mut rng = seeded_rng();
+        let result = book.craft_seeded("Beta", &mut inv, &mut rng);
         assert!(result.is_some());
         assert_eq!(
             result.unwrap().name,
@@ -526,7 +509,6 @@ mod tests {
     }
 
     #[test]
-    #[allow(deprecated)]
     fn craft_legacy_checks_resource_kind_equality() {
         // Catches: replace == with != in cost kind check (line 33)
         let book = RecipeBook {
@@ -544,7 +526,8 @@ mod tests {
         };
         let mut inv = Inventory::default();
         inv.add_resource(ResourceKind::Wood, 10); // Wrong resource
-        let result = book.craft("Sword", &mut inv);
+        let mut rng = seeded_rng();
+        let result = book.craft_seeded("Sword", &mut inv, &mut rng);
         assert!(
             result.is_none(),
             "Must not craft when resource kind doesn't match"
@@ -552,7 +535,6 @@ mod tests {
     }
 
     #[test]
-    #[allow(deprecated)]
     fn craft_legacy_exact_resource_count_boundary() {
         // Catches: replace < with ==, >, <= in have < c.count (line 36)
         // With exact count (have == count), < is false, so craft should succeed
@@ -568,7 +550,8 @@ mod tests {
         };
         let mut inv = Inventory::default();
         inv.add_resource(ResourceKind::Ore, 3); // Exactly enough
-        let result = book.craft("Shield", &mut inv);
+        let mut rng = seeded_rng();
+        let result = book.craft_seeded("Shield", &mut inv, &mut rng);
         assert!(
             result.is_some(),
             "Exact resource count must allow crafting (have==cost)"
@@ -584,7 +567,6 @@ mod tests {
     }
 
     #[test]
-    #[allow(deprecated)]
     fn craft_legacy_one_short_fails() {
         // Catches: replace < with <= (have < count vs have <= count)
         let book = RecipeBook {
@@ -599,12 +581,12 @@ mod tests {
         };
         let mut inv = Inventory::default();
         inv.add_resource(ResourceKind::Ore, 2); // One short
-        let result = book.craft("Shield", &mut inv);
+        let mut rng = seeded_rng();
+        let result = book.craft_seeded("Shield", &mut inv, &mut rng);
         assert!(result.is_none(), "Must fail when have < cost");
     }
 
     #[test]
-    #[allow(deprecated)]
     fn craft_legacy_remove_resource_failure_returns_none() {
         // Catches: delete ! in `if !inv.remove_resource(...)` (line 42)
         // If ! is deleted, the branch executes on successful removal → returns None early
@@ -620,7 +602,8 @@ mod tests {
         };
         let mut inv = Inventory::default();
         inv.add_resource(ResourceKind::Crystal, 5);
-        let result = book.craft("Gem", &mut inv);
+        let mut rng = seeded_rng();
+        let result = book.craft_seeded("Gem", &mut inv, &mut rng);
         assert!(
             result.is_some(),
             "Successful remove_resource must not return None"
@@ -652,5 +635,35 @@ mod tests {
         let mut rng2 = seeded_rng();
         let result2 = book.craft_seeded("Ring", &mut inv2, &mut rng2);
         assert!(result2.is_none(), "One short must fail in craft_seeded");
+    }
+
+    #[test]
+    fn gameplay_rng_craft_id_is_seed_locked() {
+        let book = RecipeBook {
+            recipes: vec![CraftRecipe {
+                name: "Blade".into(),
+                output_item: ItemKind::Consumable { heal: 1 },
+                costs: vec![CraftCost {
+                    kind: ResourceKind::Ore,
+                    count: 1,
+                }],
+            }],
+        };
+        let craft = |tick: u64| {
+            let mut inv = Inventory::default();
+            inv.add_resource(ResourceKind::Ore, 5);
+            book.craft_with_seed("Blade", &mut inv, 0xA11C, tick)
+                .expect("craft")
+                .id
+        };
+        let id = craft(3);
+        assert_eq!(id, craft(3), "same seed and tick must repeat the item id");
+        assert_ne!(id, craft(4), "the next tick is a different stream");
+        // Cross-platform lock. StdRng(ChaCha12) of mix_sim_seed(0xA11C, 3, SIM_SYSTEM_CRAFT).
+        assert_eq!(id, gameplay_rng_locked_craft_id());
+    }
+
+    fn gameplay_rng_locked_craft_id() -> u32 {
+        2_289_146_845
     }
 }
