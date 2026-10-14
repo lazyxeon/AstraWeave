@@ -51,10 +51,27 @@ jobs:
           cargo install cargo-cyclonedx --locked --version 0.5.9
 
       - name: cargo deny
-        run: cargo deny check --hide-inclusion-graph advisories bans licenses sources
+        run: |
+          # The advisory database clone flakes on a cold runner.
+          for attempt in 1 2 3 4; do
+            if cargo deny check --hide-inclusion-graph advisories bans licenses sources; then
+              exit 0
+            fi
+            echo "cargo deny attempt ${attempt} failed; retrying"
+            sleep $((attempt * 15))
+          done
+          exit 1
 
       - name: cargo audit
-        run: cargo audit
+        run: |
+          for attempt in 1 2 3 4; do
+            if cargo audit; then
+              exit 0
+            fi
+            echo "cargo audit attempt ${attempt} failed; retrying"
+            sleep $((attempt * 15))
+          done
+          exit 1
 
       - name: Greybox has no network client
         run: bash scripts/check-aravath-network.sh

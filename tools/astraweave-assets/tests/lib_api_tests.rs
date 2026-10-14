@@ -206,8 +206,10 @@ async fn test_ensure_asset_with_permission_denied_directory() {
             "test_texture".to_string(),
             TextureAsset {
                 id: "rock_001".to_string(),
+                kind: "texture".to_string(),
                 res: "1k".to_string(),
                 maps: vec!["albedo".to_string()],
+                tags: vec![],
             },
         );
 
