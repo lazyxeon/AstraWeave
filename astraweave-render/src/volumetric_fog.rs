@@ -25,6 +25,8 @@ pub struct FogDensityParams {
     pub view_pos: [f32; 3],
     pub near_plane: f32,
     pub far_plane: f32,
+    /// WGSL `vec3` is 16-byte aligned, so `froxel_dims` starts at byte 96.
+    pub _pad_froxel: [f32; 3],
     pub froxel_dims: [u32; 3],
     pub base_density: f32,
     pub height_fog_density: f32,
@@ -34,6 +36,8 @@ pub struct FogDensityParams {
     pub noise_intensity: f32,
     pub noise_speed: f32,
     pub time: f32,
+    /// `wind_dir` is a `vec3` and starts at byte 144.
+    pub _pad_wind: f32,
     pub wind_dir: [f32; 3],
     pub _pad: f32,
 }
@@ -46,6 +50,8 @@ pub struct ScatterParams {
     pub view_pos: [f32; 3],
     pub near_plane: f32,
     pub far_plane: f32,
+    /// WGSL `vec3` alignment. `froxel_dims` starts at byte 96.
+    pub _pad_froxel: [f32; 3],
     pub froxel_dims: [u32; 3],
     pub anisotropy: f32,
     pub sun_dir: [f32; 3],
@@ -57,6 +63,7 @@ pub struct ScatterParams {
     pub frame_index: u32,
     pub _pad0: f32,
     pub _pad1: f32,
+    /// Rounds the uniform up to the WGSL struct size, 176.
     pub _pad2: f32,
 }
 
@@ -83,13 +90,51 @@ pub struct ApplyParams {
     pub inv_resolution: [f32; 2],
 }
 
+/// World-space window of the scar volume sampled by the density pass.
+///
+/// Matches `ScarFogParams` in `fog_density.wgsl`. `vec3+f32` is 16 bytes,
+/// the same packing as [`FogDensityParams`].
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Pod, Zeroable)]
+pub struct ScarFogParams {
+    pub origin: [f32; 3],
+    pub enabled: f32,
+    pub extent: [f32; 3],
+    pub _pad: f32,
+}
+
+/// Edge of the scar texture, in texels. 32³ RGBA16F is 256 KiB.
+pub const SCAR_VOLUME_DIM: u32 = 32;
+
+/// CPU-baked scar volume. The renderer converts `rgba` to RGBA16F.
+#[derive(Clone, Debug)]
+pub struct ScarFogVolume {
+    pub origin_metres: [i32; 3],
+    pub extent_metres: [i32; 3],
+    pub dims: [u32; 3],
+    /// `x + y*dim + z*dim*dim`. R density, G forward weight, B tint weight, A unused.
+    pub rgba: Vec<[f32; 4]>,
+    pub any: bool,
+}
+
+/// Density and scatter GPU times for one submitted frame, when the device
+/// exposes `TIMESTAMP_QUERY`.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct VolumetricGpuSample {
+    pub density_ms: f32,
+    pub scatter_ms: f32,
+}
+
 /// Cascade shadow data for volumetric scatter.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Pod, Zeroable)]
 pub struct CascadeData {
     pub vp: [[f32; 4]; 4],
     pub split: f32,
+    /// WGSL `vec3` alignment puts `_pad` at byte 80. Storage size rounds to 96.
+    pub _align: [f32; 3],
     pub _pad: [f32; 3],
+    pub _tail: f32,
 }
 
 // ---------------------------------------------------------------------------
@@ -236,6 +281,16 @@ pub struct VolumetricFogPass {
     cached_scatter_bg: crate::bind_group_cache::CachedBindGroup,
     cached_integrate_bg: crate::bind_group_cache::CachedBindGroup,
     cached_apply_bg: crate::bind_group_cache::CachedBindGroup,
+    scar_params_buf: wgpu::Buffer,
+    scar_texture: wgpu::Texture,
+    scar_view: wgpu::TextureView,
+    timestamp_query: Option<wgpu::QuerySet>,
+    timestamp_resolve: Option<wgpu::Buffer>,
+    timestamp_readback: Option<wgpu::Buffer>,
+    timestamp_period_ns: f32,
+    timestamp_readback_pending: bool,
+    timestamp_map_ready: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    last_gpu_sample: Option<VolumetricGpuSample>,
 }
 
 impl VolumetricFogPass {
@@ -322,11 +377,65 @@ impl VolumetricFogPass {
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
+        let scar_params_buf = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("vol_scar_params"),
+            contents: bytemuck::bytes_of(&ScarFogParams {
+                origin: [0.0; 3],
+                enabled: 0.0,
+                extent: [1.0; 3],
+                _pad: 0.0,
+            }),
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        });
+        let scar_texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("vol_scar"),
+            size: wgpu::Extent3d {
+                width: SCAR_VOLUME_DIM,
+                height: SCAR_VOLUME_DIM,
+                depth_or_array_layers: SCAR_VOLUME_DIM,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D3,
+            format: froxel_fmt,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+        let scar_view = scar_texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let timestamps = if device.features().contains(wgpu::Features::TIMESTAMP_QUERY) {
+            let query = device.create_query_set(&wgpu::QuerySetDescriptor {
+                label: Some("vol_fog_timestamps"),
+                ty: wgpu::QueryType::Timestamp,
+                count: 4,
+            });
+            let bytes = 4 * std::mem::size_of::<u64>() as u64;
+            let resolve = device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("vol_fog_ts_resolve"),
+                size: bytes,
+                usage: wgpu::BufferUsages::QUERY_RESOLVE | wgpu::BufferUsages::COPY_SRC,
+                mapped_at_creation: false,
+            });
+            let readback = device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("vol_fog_ts_readback"),
+                size: bytes,
+                usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+                mapped_at_creation: false,
+            });
+            Some((query, resolve, readback))
+        } else {
+            None
+        };
 
         // --- Bind group layouts ---
         let density_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("vol_density_bgl"),
-            entries: &[bgl_uniform(0), bgl_storage_3d_rw(1, froxel_fmt)],
+            entries: &[
+                bgl_uniform(0),
+                bgl_storage_3d_rw(1, froxel_fmt),
+                bgl_texture_3d(2),
+                bgl_sampler(3),
+                bgl_uniform(4),
+            ],
         });
 
         let scatter_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -398,6 +507,11 @@ impl VolumetricFogPass {
             "apply_main",
         );
 
+        let (timestamp_query, timestamp_resolve, timestamp_readback) = match timestamps {
+            Some((query, resolve, readback)) => (Some(query), Some(resolve), Some(readback)),
+            None => (None, None, None),
+        };
+
         Self {
             config,
             density_pipeline,
@@ -447,7 +561,136 @@ impl VolumetricFogPass {
             cached_scatter_bg: crate::bind_group_cache::CachedBindGroup::new(),
             cached_integrate_bg: crate::bind_group_cache::CachedBindGroup::new(),
             cached_apply_bg: crate::bind_group_cache::CachedBindGroup::new(),
+            scar_params_buf,
+            scar_texture,
+            scar_view,
+            timestamp_query,
+            timestamp_resolve,
+            timestamp_readback,
+            timestamp_period_ns: 0.0,
+            timestamp_readback_pending: false,
+            timestamp_map_ready: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            last_gpu_sample: None,
         }
+    }
+
+    /// Nanoseconds per timestamp tick. `0` leaves samples unread.
+    pub fn set_timestamp_period_ns(&mut self, period_ns: f32) {
+        self.timestamp_period_ns = period_ns;
+    }
+
+    /// Upload a 32³ scar volume into the density pass. No extra froxel pass.
+    pub fn upload_scar_volume(
+        &self,
+        queue: &wgpu::Queue,
+        volume: &ScarFogVolume,
+    ) -> Result<(), String> {
+        if volume.dims != [SCAR_VOLUME_DIM; 3] {
+            return Err(format!(
+                "scar volume dims {:?}, the fog pass is {SCAR_VOLUME_DIM}³",
+                volume.dims
+            ));
+        }
+        let expected = (SCAR_VOLUME_DIM as usize).pow(3);
+        if volume.rgba.len() != expected {
+            return Err(format!(
+                "scar volume has {} texels, expected {expected}",
+                volume.rgba.len()
+            ));
+        }
+        let mut packed = Vec::with_capacity(expected * 8);
+        for texel in &volume.rgba {
+            for channel in texel {
+                let bits = half::f16::from_f32(*channel).to_bits().to_le_bytes();
+                packed.extend_from_slice(&bits);
+            }
+        }
+        let row_bytes = SCAR_VOLUME_DIM * 8;
+        queue.write_texture(
+            wgpu::TexelCopyTextureInfo {
+                texture: &self.scar_texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            &packed,
+            wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(row_bytes),
+                rows_per_image: Some(SCAR_VOLUME_DIM),
+            },
+            wgpu::Extent3d {
+                width: SCAR_VOLUME_DIM,
+                height: SCAR_VOLUME_DIM,
+                depth_or_array_layers: SCAR_VOLUME_DIM,
+            },
+        );
+        let params = ScarFogParams {
+            origin: volume.origin_metres.map(|v| v as f32),
+            enabled: if volume.any { 1.0 } else { 0.0 },
+            extent: volume.extent_metres.map(|v| v as f32),
+            _pad: 0.0,
+        };
+        queue.write_buffer(&self.scar_params_buf, 0, bytemuck::bytes_of(&params));
+        Ok(())
+    }
+
+    pub fn last_gpu_sample(&self) -> Option<VolumetricGpuSample> {
+        self.last_gpu_sample
+    }
+
+    /// Map the timestamp readback. Call after the encoder that ran [`Self::execute`]
+    /// has been submitted.
+    pub fn request_timestamp_readback(&mut self) {
+        let Some(readback) = self.timestamp_readback.as_ref() else {
+            return;
+        };
+        if self.timestamp_readback_pending || self.timestamp_period_ns <= 0.0 {
+            return;
+        }
+        self.timestamp_readback_pending = true;
+        self.timestamp_map_ready
+            .store(false, std::sync::atomic::Ordering::Release);
+        let flag = self.timestamp_map_ready.clone();
+        readback
+            .slice(..)
+            .map_async(wgpu::MapMode::Read, move |_result| {
+                flag.store(true, std::sync::atomic::Ordering::Release);
+            });
+    }
+
+    /// Poll a completed timestamp readback. Returns the new sample when one lands.
+    pub fn poll_timestamps(&mut self, device: &wgpu::Device) -> Option<VolumetricGpuSample> {
+        if !self.timestamp_readback_pending {
+            return None;
+        }
+        let _ = device.poll(wgpu::PollType::Poll);
+        if !self
+            .timestamp_map_ready
+            .load(std::sync::atomic::Ordering::Acquire)
+        {
+            return None;
+        }
+        let readback = self.timestamp_readback.as_ref()?;
+        let slice = readback.slice(..);
+        let data = slice.get_mapped_range();
+        let timestamps: &[u64] = bytemuck::cast_slice(&data);
+        let ns = self.timestamp_period_ns as f64;
+        let millis = |begin: usize, end: usize| {
+            let delta = timestamps[end].wrapping_sub(timestamps[begin]) as f64 * ns;
+            (delta / 1_000_000.0) as f32
+        };
+        let sample = VolumetricGpuSample {
+            density_ms: millis(0, 1),
+            scatter_ms: millis(2, 3),
+        };
+        drop(data);
+        readback.unmap();
+        self.timestamp_readback_pending = false;
+        self.timestamp_map_ready
+            .store(false, std::sync::atomic::Ordering::Release);
+        self.last_gpu_sample = Some(sample);
+        Some(sample)
     }
 
     pub fn config(&self) -> &VolumetricFogConfig {
@@ -532,6 +775,7 @@ impl VolumetricFogPass {
             view_pos: view_pos.to_array(),
             near_plane: near,
             far_plane: far,
+            _pad_froxel: [0.0; 3],
             froxel_dims: [fx, fy, fz],
             base_density: self.config.base_density,
             height_fog_density: self.config.height_fog_density,
@@ -541,6 +785,7 @@ impl VolumetricFogPass {
             noise_intensity: self.config.noise_intensity,
             noise_speed: self.config.noise_speed,
             time: self.time,
+            _pad_wind: 0.0,
             wind_dir: self.config.wind_dir.to_array(),
             _pad: 0.0,
         };
@@ -556,6 +801,7 @@ impl VolumetricFogPass {
             view_pos: view_pos.to_array(),
             near_plane: near,
             far_plane: far,
+            _pad_froxel: [0.0; 3],
             froxel_dims: [fx, fy, fz],
             anisotropy: self.config.anisotropy,
             sun_dir: sun_dir.to_array(),
@@ -638,6 +884,18 @@ impl VolumetricFogPass {
                     wgpu::BindGroupEntry {
                         binding: 1,
                         resource: wgpu::BindingResource::TextureView(&self.density_view),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 2,
+                        resource: wgpu::BindingResource::TextureView(&self.scar_view),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 3,
+                        resource: wgpu::BindingResource::Sampler(&self.linear_sampler),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 4,
+                        resource: self.scar_params_buf.as_entire_binding(),
                     },
                 ],
             });
@@ -755,11 +1013,24 @@ impl VolumetricFogPass {
 
         // --- Dispatch compute passes using cached bind groups ---
 
+        let query = if self.timestamp_readback_pending {
+            None
+        } else {
+            self.timestamp_query.take()
+        };
+
         // Pass 1: Density
         {
+            let density_ts = query
+                .as_ref()
+                .map(|query_set| wgpu::ComputePassTimestampWrites {
+                    query_set,
+                    beginning_of_pass_write_index: Some(0),
+                    end_of_pass_write_index: Some(1),
+                });
             let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
                 label: Some("vol_density"),
-                timestamp_writes: None,
+                timestamp_writes: density_ts,
             });
             pass.set_pipeline(&self.density_pipeline);
             let bg = self
@@ -771,9 +1042,16 @@ impl VolumetricFogPass {
 
         // Pass 2: Scatter
         {
+            let scatter_ts = query
+                .as_ref()
+                .map(|query_set| wgpu::ComputePassTimestampWrites {
+                    query_set,
+                    beginning_of_pass_write_index: Some(2),
+                    end_of_pass_write_index: Some(3),
+                });
             let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
                 label: Some("vol_scatter"),
-                timestamp_writes: None,
+                timestamp_writes: scatter_ts,
             });
             pass.set_pipeline(&self.scatter_pipeline);
             let bg = self
@@ -810,6 +1088,18 @@ impl VolumetricFogPass {
             pass.set_bind_group(0, bg, &[]);
             pass.dispatch_workgroups(self.width.div_ceil(8), self.height.div_ceil(8), 1);
         }
+
+        if let Some(query) = query {
+            if let (Some(resolve), Some(readback)) = (
+                self.timestamp_resolve.as_ref(),
+                self.timestamp_readback.as_ref(),
+            ) {
+                encoder.resolve_query_set(&query, 0..4, resolve, 0);
+                let bytes = 4 * std::mem::size_of::<u64>() as u64;
+                encoder.copy_buffer_to_buffer(resolve, 0, readback, 0, bytes);
+            }
+            self.timestamp_query = Some(query);
+        }
     }
 
     /// Copy scatter output to history for next frame's temporal blend.
@@ -841,8 +1131,10 @@ impl VolumetricFogPass {
         if self.width == width && self.height == height {
             return;
         }
+        let period = self.timestamp_period_ns;
         let config = self.config.clone();
         *self = Self::new(device, width, height, config);
+        self.timestamp_period_ns = period;
     }
 }
 
@@ -990,16 +1282,37 @@ mod tests {
     use super::*;
 
     #[test]
+    fn scar_params_size() {
+        assert_eq!(std::mem::size_of::<ScarFogParams>(), 32);
+    }
+
+    #[test]
+    fn scar_shader_samples_world_space_and_has_no_i64() {
+        let density = include_str!("../shaders/volumetrics/fog_density.wgsl");
+        let scatter = include_str!("../shaders/volumetrics/scatter.wgsl");
+        assert!(!density.contains("i64"), "WGSL has no i64");
+        assert!(!scatter.contains("i64"));
+        assert!(density.contains("t_scar"));
+        assert!(density.contains("world_pos"));
+        assert!(!density.contains("% 64"));
+        assert!(scatter.contains("packed.g"));
+        assert!(scatter.contains("packed.b"));
+        assert_eq!(VolumetricQuality::Low.froxel_dims(), [80, 45, 32]);
+        assert_eq!(SCAR_VOLUME_DIM, 32);
+    }
+
+    #[test]
     fn fog_density_params_size() {
-        // mat4(64) + vec3+f32(16) + f32+uvec3(16) + 4×f32(16) + 4×f32(16) + vec3+f32(16) = 144
-        assert_eq!(std::mem::size_of::<FogDensityParams>(), 144);
+        assert_eq!(std::mem::size_of::<FogDensityParams>(), 160);
+        assert_eq!(std::mem::offset_of!(FogDensityParams, froxel_dims), 96);
+        assert_eq!(std::mem::offset_of!(FogDensityParams, wind_dir), 144);
     }
 
     #[test]
     fn scatter_params_size() {
-        // mat4(64) + vec3+f32(16) + f32+uvec3(16) + f32+vec3+f32(16) + vec3+f32(16)
-        // + vec3+f32(16) + u32+3×f32(16) = 164 (Rust alignment padding)
-        assert_eq!(std::mem::size_of::<ScatterParams>(), 164);
+        assert_eq!(std::mem::size_of::<ScatterParams>(), 176);
+        assert_eq!(std::mem::offset_of!(ScatterParams, froxel_dims), 96);
+        assert_eq!(std::mem::offset_of!(ScatterParams, ambient_color), 144);
     }
 
     #[test]
@@ -1015,7 +1328,9 @@ mod tests {
 
     #[test]
     fn cascade_data_size() {
-        assert_eq!(std::mem::size_of::<CascadeData>(), 80);
+        assert_eq!(std::mem::size_of::<CascadeData>(), 96);
+        assert_eq!(std::mem::offset_of!(CascadeData, split), 64);
+        assert_eq!(std::mem::offset_of!(CascadeData, _pad), 80);
     }
 
     #[test]
@@ -1087,6 +1402,158 @@ mod tests {
             forward > backward,
             "Forward should dominate: f={forward} b={backward}"
         );
+    }
+
+    #[test]
+    fn scar_upload_is_timed_on_the_low_froxel_grid_when_the_device_can() {
+        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
+        let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
+            power_preference: wgpu::PowerPreference::LowPower,
+            compatible_surface: None,
+            force_fallback_adapter: true,
+        }));
+        let Ok(adapter) = adapter else {
+            eprintln!("veil fog timing: no adapter");
+            return;
+        };
+        let mut features = wgpu::Features::empty();
+        if adapter.features().contains(wgpu::Features::TIMESTAMP_QUERY) {
+            features |= wgpu::Features::TIMESTAMP_QUERY;
+        }
+        let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
+            label: Some("veil-fog-timing"),
+            required_features: features,
+            required_limits: wgpu::Limits::default(),
+            memory_hints: Default::default(),
+            trace: Default::default(),
+        }))
+        .expect("device");
+
+        let config = VolumetricFogConfig {
+            froxel_dims: VolumetricQuality::Low.froxel_dims(),
+            ..VolumetricFogPass::gameplay_config()
+        };
+        let mut pass = VolumetricFogPass::new(&device, 64, 64, config);
+        pass.set_timestamp_period_ns(queue.get_timestamp_period());
+        let dim = SCAR_VOLUME_DIM as usize;
+        let mut rgba = vec![[0.0_f32; 4]; dim * dim * dim];
+        let center = dim / 2;
+        rgba[center + center * dim + center * dim * dim] = [0.06, 1.0, 1.0, 0.0];
+        pass.upload_scar_volume(
+            &queue,
+            &ScarFogVolume {
+                origin_metres: [-64, -64, -64],
+                extent_metres: [128, 128, 128],
+                dims: [SCAR_VOLUME_DIM; 3],
+                rgba,
+                any: true,
+            },
+        )
+        .expect("upload");
+
+        let depth = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("test_depth"),
+            size: wgpu::Extent3d {
+                width: 64,
+                height: 64,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba16Float,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING,
+            view_formats: &[],
+        });
+        let depth_view = depth.create_view(&Default::default());
+        let scene = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("test_scene"),
+            size: wgpu::Extent3d {
+                width: 64,
+                height: 64,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba16Float,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING,
+            view_formats: &[],
+        });
+        let scene_view = scene.create_view(&Default::default());
+        let shadow = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("test_shadow"),
+            size: wgpu::Extent3d {
+                width: 16,
+                height: 16,
+                depth_or_array_layers: 4,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Depth32Float,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING,
+            view_formats: &[],
+        });
+        let shadow_view = shadow.create_view(&wgpu::TextureViewDescriptor {
+            dimension: Some(wgpu::TextureViewDimension::D2Array),
+            ..Default::default()
+        });
+
+        pass.prepare_frame(
+            &queue,
+            glam::Mat4::IDENTITY,
+            glam::Vec3::ZERO,
+            glam::Vec3::Y,
+            glam::Vec3::ONE,
+            1.0,
+            glam::Vec3::ONE,
+            0.2,
+            0.1,
+            200.0,
+            1.0 / 60.0,
+        );
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("veil_fog_timing"),
+        });
+        pass.execute(
+            &device,
+            &mut encoder,
+            &depth_view,
+            &shadow_view,
+            &scene_view,
+            1,
+        );
+        queue.submit(Some(encoder.finish()));
+        pass.request_timestamp_readback();
+
+        let mut sample = None;
+        for _ in 0..40 {
+            let _ = device.poll(wgpu::PollType::Wait);
+            if let Some(got) = pass.poll_timestamps(&device) {
+                sample = Some(got);
+                break;
+            }
+        }
+        let path = std::path::Path::new("/opt/cursor/artifacts/veil_fog_cost.log");
+        let line = match sample {
+            Some(sample) => format!(
+                "low preset 80x45x32 density_ms={:.4} scatter_ms={:.4} sum_ms={:.4} timestamps=yes\n",
+                sample.density_ms,
+                sample.scatter_ms,
+                sample.density_ms + sample.scatter_ms
+            ),
+            None => "low preset 80x45x32 timestamps=unavailable\n".to_string(),
+        };
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).expect("artifacts dir");
+        }
+        std::fs::write(path, &line).expect("write timing log");
+        eprintln!("{line}");
+        if let Some(sample) = sample {
+            assert!(sample.density_ms.is_finite() && sample.density_ms >= 0.0);
+            assert!(sample.scatter_ms.is_finite() && sample.scatter_ms >= 0.0);
+        }
     }
 
     /// CPU implementation of Henyey-Greenstein for test validation.

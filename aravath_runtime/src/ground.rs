@@ -103,12 +103,15 @@ impl Ground {
                 }
             }
         }
-        let stale: Vec<ChunkCoord> = self
+        let mut stale: Vec<ChunkCoord> = self
             .generated
             .iter()
             .copied()
             .filter(|coord| coord.y == 0 && !keep.contains(coord))
             .collect();
+        // HashSet iteration follows the process hasher. Removal order is part
+        // of the physics step, so it has to be the same on every run.
+        sort_coords(&mut stale);
         let mut removed = Vec::new();
         for coord in stale {
             self.generated.remove(&coord);
@@ -149,6 +152,17 @@ impl Ground {
 
     pub fn body_ids(&self) -> HashMap<ChunkCoord, u64> {
         self.bodies.clone()
+    }
+
+    /// Body ids in chunk-coordinate order. The map itself does not iterate stably.
+    pub fn sorted_body_ids(&self) -> Vec<(i32, i32, i32, u64)> {
+        let mut rows: Vec<(i32, i32, i32, u64)> = self
+            .bodies
+            .iter()
+            .map(|(coord, id)| (coord.x, coord.y, coord.z, *id))
+            .collect();
+        rows.sort_unstable();
+        rows
     }
 
     /// Remesh dirty chunks, replace their trimesh bodies, and return CPU meshes
@@ -266,7 +280,8 @@ impl Ground {
     /// plus that log. Used when a save is loaded.
     pub fn restore_edits(&mut self, edits: Vec<VoxelEdit>) {
         self.edits = edits;
-        let coords: Vec<ChunkCoord> = self.generated.iter().copied().collect();
+        let mut coords: Vec<ChunkCoord> = self.generated.iter().copied().collect();
+        sort_coords(&mut coords);
         for coord in coords {
             self.grid.remove_chunk(coord);
             fill_height_chunk(&mut self.grid, coord);
@@ -443,6 +458,10 @@ fn scatter_chunk(coord: ChunkCoord) -> Vec<PropSpot> {
     spots
 }
 
+fn sort_coords(coords: &mut [ChunkCoord]) {
+    coords.sort_by_key(|coord| (coord.x, coord.y, coord.z));
+}
+
 fn mix(x: i32, z: i32) -> u32 {
     let mut n = (x as u32)
         .wrapping_mul(374761393)
@@ -469,13 +488,16 @@ fn chunk_parts(mesh: &ChunkMesh) -> Vec<ChunkPart> {
             .or_default()
             .push([tri[0], tri[1], tri[2]]);
     }
+    let mut materials: Vec<u16> = faces.keys().copied().collect();
+    materials.sort_unstable();
     let mut parts = Vec::new();
-    for (material, tris) in faces {
+    for material in materials {
+        let tris = &faces[&material];
         let mut remap: HashMap<u32, u32> = HashMap::new();
         let mut vertices = Vec::new();
         let mut indices = Vec::new();
         for face in tris {
-            for index in face {
+            for &index in face {
                 let mapped = if let Some(existing) = remap.get(&index) {
                     *existing
                 } else {

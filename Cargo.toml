@@ -86,6 +86,7 @@ members = [
   "astraweave-behavior",
   "astraweave-pcg",
   "astraweave-weaving",
+  "astraweave-veil",
   "tools/aw_debug",
   "tools/aw_build",
   "tools/aw_texture_gen",
@@ -193,7 +194,7 @@ glam = { version = "0.30", features = ["serde"] }
 wgpu = "25.0.2"
 winit = { version = "0.30", features = ["serde"] }
 pollster = "0.4"
-rapier3d = { version = "0.22", features = ["debug-render"] }
+rapier3d = { version = "0.22", features = ["debug-render", "enhanced-determinism"] }
 bitflags = "2.4"
 rodio = "0.17"
 egui-winit = "0.32"
@@ -220,6 +221,7 @@ astraweave-security = { path = "astraweave-security" }
 astraweave-observability = { path = "astraweave-observability" }
 astraweave-profiling = { path = "astraweave-profiling" }
 astraweave-scripting = { path = "astraweave-scripting" }
+astraweave-veil = { path = "astraweave-veil" }
 astraweave-alloc = { path = "crates/astraweave-alloc" }
 # mimalloc as an optional workspace dep so astraweave-alloc and any binary can
 # reference it via the `fast-alloc` feature cascade. MIT-licensed; Microsoft-

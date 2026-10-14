@@ -8,7 +8,8 @@ description = "Aravath greybox: one voxel island, a third-person body, and a dig
 
 [dependencies]
 anyhow.workspace = true
-glam.workspace = true
+glam = { workspace = true, features = ["libm"] }
+libm = { version = "0.2", default-features = false }
 winit.workspace = true
 pollster.workspace = true
 astraweave-terrain = { path = "../astraweave-terrain" }
@@ -17,6 +18,8 @@ astraweave-camera = { path = "../astraweave-camera" }
 astraweave-render = { path = "../astraweave-render" }
 astraweave-input = { path = "../astraweave-input" }
 astraweave-nav = { path = "../astraweave-nav" }
+astraweave-ai = { workspace = true }
+astraweave-veil = { workspace = true }
 aw-save = { path = "../persistence/aw-save" }
 uuid = { version = "1", features = ["v4"] }
 time = { version = "0.3", features = ["macros"] }

@@ -125,7 +125,7 @@ impl Motor {
                 self.invulnerable = false;
                 self.roll_time = 0.0;
             }
-            player.facing_yaw = wish.z.atan2(wish.x);
+            player.facing_yaw = crate::detmath::atan2(wish.z, wish.x);
             physics.control_character(player.body, wish, dt, false);
             return wish;
         }
@@ -161,7 +161,7 @@ impl Motor {
                 self.jumps_used = 1;
             } else if self.jumps_used == 1 {
                 if let Some(ctrl) = physics.char_map.get_mut(&player.body) {
-                    ctrl.vertical_velocity = (2.0 * 9.81 * JUMP_HEIGHT).sqrt();
+                    ctrl.vertical_velocity = crate::detmath::sqrt(2.0 * 9.81 * JUMP_HEIGHT);
                 }
                 self.jumps_used = 2;
             }
@@ -200,7 +200,7 @@ impl Motor {
             wish *= 0.4;
         }
         if wish.length_squared() > 1e-6 {
-            player.facing_yaw = wish.z.atan2(wish.x);
+            player.facing_yaw = crate::detmath::atan2(wish.z, wish.x);
         }
 
         if self.sprinting {

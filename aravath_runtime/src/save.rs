@@ -8,6 +8,8 @@ use glam::Vec3;
 use time::OffsetDateTime;
 use uuid::Uuid;
 
+use astraweave_veil::{insert_into_meta, read_from_meta, ScarField};
+
 use crate::ground::VoxelEdit;
 
 pub struct Checkpoint {
@@ -16,22 +18,24 @@ pub struct Checkpoint {
     pub yaw: f32,
     pub stamina: f32,
     pub player_hp: f32,
+    pub scars: ScarField,
 }
 
 pub fn save_checkpoint(root: &Path, checkpoint: &Checkpoint) -> Result<()> {
     let manager = SaveManager::new(root);
     let mut meta = std::collections::HashMap::new();
     meta.insert("edits".into(), encode_edits(&checkpoint.edits));
+    insert_into_meta(&mut meta, &checkpoint.scars).context("encode veil scars")?;
     meta.insert(
         "player".into(),
         format!(
             "{},{},{},{},{},{}",
-            checkpoint.position.x,
-            checkpoint.position.y,
-            checkpoint.position.z,
-            checkpoint.yaw,
-            checkpoint.stamina,
-            checkpoint.player_hp
+            encode_f32(checkpoint.position.x),
+            encode_f32(checkpoint.position.y),
+            encode_f32(checkpoint.position.z),
+            encode_f32(checkpoint.yaw),
+            encode_f32(checkpoint.stamina),
+            encode_f32(checkpoint.player_hp)
         ),
     );
     let bundle = SaveBundleV2 {
@@ -84,12 +88,14 @@ pub fn load_checkpoint(root: &Path) -> Result<Checkpoint> {
         Some(text) => finite_limited(text, "player hp", 10_000.0)?,
         None => 100.0,
     };
+    let scars = read_from_meta(&bundle.meta).context("decode veil scars")?;
     Ok(Checkpoint {
         edits,
         position,
         yaw,
         stamina,
         player_hp,
+        scars,
     })
 }
 
@@ -97,15 +103,26 @@ const MAX_EDITS: usize = 16_384;
 const MAX_EDIT_COORD: i32 = 2_048;
 const MAX_EDIT_TEXT: usize = 2 * 1024 * 1024;
 
+/// Eight lowercase hex digits of `f32::to_bits`. Decimal text stays readable
+/// so saves written before the bit encoding still load.
+fn encode_f32(value: f32) -> String {
+    format!("{:08x}", value.to_bits())
+}
+
+fn decode_f32(text: &str) -> Result<f32> {
+    if text.len() == 8 && text.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        let bits = u32::from_str_radix(text, 16).context("f32 bits")?;
+        return Ok(f32::from_bits(bits));
+    }
+    text.parse().context("f32")
+}
+
 fn finite_coord(text: &str, name: &str) -> Result<f32> {
-    let value = finite_limited(text, name, MAX_EDIT_COORD as f32)?;
-    Ok(value)
+    finite_limited(text, name, MAX_EDIT_COORD as f32)
 }
 
 fn finite_limited(text: &str, name: &str, limit: f32) -> Result<f32> {
-    let value: f32 = text
-        .parse()
-        .with_context(|| format!("{name} is not a number"))?;
+    let value = decode_f32(text).with_context(|| format!("{name} is not a number"))?;
     if !value.is_finite() || value.abs() > limit {
         bail!("{name} is outside the allowed range");
     }
@@ -117,8 +134,12 @@ fn encode_edits(edits: &[VoxelEdit]) -> String {
         .iter()
         .map(|edit| {
             format!(
-                "{}:{}:{}:{:.3}:{}",
-                edit.x, edit.y, edit.z, edit.density, edit.material
+                "{}:{}:{}:{}:{}",
+                edit.x,
+                edit.y,
+                edit.z,
+                encode_f32(edit.density),
+                edit.material
             )
         })
         .collect::<Vec<_>>()
@@ -141,11 +162,7 @@ fn decode_edits(text: &str) -> Result<Vec<VoxelEdit>> {
         let x: i32 = parts.next().context("edit x")?.parse().context("edit x")?;
         let y: i32 = parts.next().context("edit y")?.parse().context("edit y")?;
         let z: i32 = parts.next().context("edit z")?.parse().context("edit z")?;
-        let density: f32 = parts
-            .next()
-            .context("edit density")?
-            .parse()
-            .context("edit density")?;
+        let density = decode_f32(parts.next().context("edit density")?).context("edit density")?;
         let material: u16 = parts
             .next()
             .context("edit material")?
@@ -203,6 +220,7 @@ mod tests {
                 yaw: 0.4,
                 stamina: 77.0,
                 player_hp: 100.0,
+                scars: astraweave_veil::ScarField::new(),
             },
         )
         .unwrap();
@@ -250,6 +268,7 @@ mod tests {
                 yaw: 0.0,
                 stamina: 1.0,
                 player_hp: 1.0,
+                scars: astraweave_veil::ScarField::new(),
             },
         )
         .unwrap();
@@ -264,6 +283,10 @@ mod tests {
         // covered by parse rejection below.
         let err = finite_limited("NaN", "x", 10.0).unwrap_err();
         assert!(err.to_string().contains("range"), "{err}");
+        let err = finite_limited("7fc00000", "x", 10.0).unwrap_err();
+        assert!(err.to_string().contains("range"), "{err}");
+        let err = decode_edits("1:2:3:7f800000:1").unwrap_err();
+        assert!(err.to_string().contains("density"), "{err}");
         let _ = poisoned;
         let edits = vec![crate::ground::VoxelEdit {
             x: 1,
@@ -272,8 +295,12 @@ mod tests {
             density: 0.5,
             material: 4,
         }];
-        assert_eq!(encode_edits(&edits), "1:2:-3:0.500:4");
-        assert_eq!(decode_edits("1:2:-3:0.500:4").unwrap()[0].material, 4);
+        assert_eq!(encode_edits(&edits), "1:2:-3:3f000000:4");
+        let legacy = decode_edits("1:2:-3:0.500:4").unwrap();
+        assert_eq!(legacy[0].material, 4);
+        assert!((legacy[0].density - 0.5).abs() < 1e-6);
+        let current = decode_edits("1:2:-3:3f000000:4").unwrap();
+        assert!((current[0].density - 0.5).abs() < 1e-6);
     }
 }
 

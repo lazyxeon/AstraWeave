@@ -1,0 +1,19 @@
+[package]
+name = "astraweave-veil"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Deterministic Q32.32 fate-scar field. Deaths leave a permanent spatial memory."
+
+[dependencies]
+anyhow.workspace = true
+serde.workspace = true
+postcard = { version = "1", default-features = false, features = ["alloc"] }
+hex.workspace = true
+aw-save = { path = "../persistence/aw-save" }
+
+[dev-dependencies]
+tempfile.workspace = true
+time = { version = "0.3", features = ["macros"] }
+uuid = { version = "1", features = ["v4"] }

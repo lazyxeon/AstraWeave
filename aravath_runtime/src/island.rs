@@ -17,7 +17,8 @@ pub enum Biome {
 }
 
 pub fn biome_at(x: i32, z: i32) -> Biome {
-    let n = (x as f32 * 0.012).sin() * 0.65 + (z as f32 * 0.015).cos() * 0.45;
+    let n =
+        crate::detmath::sin(x as f32 * 0.012) * 0.65 + crate::detmath::cos(z as f32 * 0.015) * 0.45;
     if n > 0.55 {
         Biome::Sand
     } else if n < -0.42 {
@@ -73,8 +74,8 @@ pub fn small() -> VoxelGrid {
 }
 
 pub fn surface_height(x: i32, z: i32) -> i32 {
-    let wave = (x as f32 * 0.15).sin() * (z as f32 * 0.15).cos();
-    let broad = (x as f32 * 0.02).sin() * (z as f32 * 0.018).cos();
+    let wave = crate::detmath::sin(x as f32 * 0.15) * crate::detmath::cos(z as f32 * 0.15);
+    let broad = crate::detmath::sin(x as f32 * 0.02) * crate::detmath::cos(z as f32 * 0.018);
     (8.0 + 2.0 * wave + 2.5 * broad).floor() as i32
 }
 

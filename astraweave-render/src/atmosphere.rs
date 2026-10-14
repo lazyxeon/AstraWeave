@@ -21,26 +21,27 @@ use wgpu::util::DeviceExt;
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Pod, Zeroable)]
 pub struct AtmosphereParams {
-    pub planet_radius: f32,         // 4
-    pub atmosphere_height: f32,     // 8
-    pub rayleigh_scale_h: f32,      // 12
-    pub _pad0: f32,                 // 16 (align rayleigh_scatter to 16)
-    pub rayleigh_scatter: [f32; 3], // 28
-    pub mie_scale_h: f32,           // 32
-    pub mie_scatter: f32,           // 36
-    pub mie_absorption: f32,        // 40
-    pub mie_g: f32,                 // 44
-    pub _pad1: f32,                 // 48 (align ozone block)
-    pub ozone_center_h: f32,        // 52
-    pub ozone_width: f32,           // 56
-    pub ozone_absorption: [f32; 3], // 68
-    pub _pad2: f32,                 // 72
-    pub lut_width: u32,             // 76
-    pub lut_height: u32,            // 80
-    pub _pad3: u32,                 // 84
-    pub _pad4: u32,                 // 88
-    pub _pad5: u32,                 // 92
-    pub _pad6: u32,                 // 96
+    pub planet_radius: f32,
+    pub atmosphere_height: f32,
+    pub rayleigh_scale_h: f32,
+    /// WGSL aligns `rayleigh_scatter` to 16, so this gap is byte 12.
+    pub _align_rayleigh: f32,
+    pub rayleigh_scatter: [f32; 3],
+    pub _pad0: f32,
+    pub mie_scale_h: f32,
+    pub mie_scatter: f32,
+    pub mie_absorption: f32,
+    pub mie_g: f32,
+    pub ozone_center_h: f32,
+    pub ozone_width: f32,
+    /// WGSL aligns `ozone_absorption` to 16, so these two floats fill bytes 56..64.
+    pub _align_ozone: [f32; 2],
+    pub ozone_absorption: [f32; 3],
+    pub _pad1: f32,
+    pub lut_width: u32,
+    pub lut_height: u32,
+    pub _pad2: u32,
+    pub _pad3: u32,
 }
 
 /// Sky render pass parameters.
@@ -469,23 +470,22 @@ impl AtmospherePass {
                 planet_radius: c.planet_radius,
                 atmosphere_height: c.atmosphere_height,
                 rayleigh_scale_h: c.rayleigh_scale_h,
-                _pad0: 0.0,
+                _align_rayleigh: 0.0,
                 rayleigh_scatter: c.rayleigh_scatter.to_array(),
+                _pad0: 0.0,
                 mie_scale_h: c.mie_scale_h,
                 mie_scatter: c.mie_scatter,
                 mie_absorption: c.mie_absorption,
                 mie_g: c.mie_g,
-                _pad1: 0.0,
                 ozone_center_h: c.ozone_center_h,
                 ozone_width: c.ozone_width,
+                _align_ozone: [0.0; 2],
                 ozone_absorption: c.ozone_absorption.to_array(),
-                _pad2: 0.0,
+                _pad1: 0.0,
                 lut_width: c.lut_width,
                 lut_height: c.lut_height,
+                _pad2: 0,
                 _pad3: 0,
-                _pad4: 0,
-                _pad5: 0,
-                _pad6: 0,
             };
             queue.write_buffer(&self.lut_params_buf, 0, bytemuck::bytes_of(&lut_params));
         }

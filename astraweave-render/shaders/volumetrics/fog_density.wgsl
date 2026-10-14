@@ -1,12 +1,13 @@
 // Volumetric Fog — Froxel Density Generation
 //
 // Writes per-froxel fog density into a 3D RGBA16Float texture.
-// R = density, G = unused, B = unused, A = unused.
+// R = density, G = scar forward-scatter weight, B = scar tint weight, A = 0.
 //
 // Density sources:
 //   - Uniform base density (constant fog everywhere)
 //   - Height-based exponential falloff (ground fog / atmospheric)
 //   - 3D noise (animated, turbulent detail)
+//   - World-space scar volume (extra density, sampled by world position)
 
 struct FogDensityParams {
     // Camera / projection
@@ -30,8 +31,29 @@ struct FogDensityParams {
     _pad:                f32,
 };
 
+struct ScarFogParams {
+    origin:   vec3<f32>,
+    enabled:  f32,
+    extent:   vec3<f32>,
+    _pad:     f32,
+};
+
 @group(0) @binding(0) var<uniform>          params:     FogDensityParams;
 @group(0) @binding(1) var                   t_output:   texture_storage_3d<rgba16float, write>;
+@group(0) @binding(2) var                   t_scar:     texture_3d<f32>;
+@group(0) @binding(3) var                   s_scar:     sampler;
+@group(0) @binding(4) var<uniform>          scar:       ScarFogParams;
+
+fn sample_scar(world_pos: vec3<f32>) -> vec4<f32> {
+    let extent = max(scar.extent, vec3<f32>(1.0));
+    let uvw = (world_pos - scar.origin) / extent;
+    let inside = select(0.0, 1.0, uvw.x >= 0.0 && uvw.x <= 1.0)
+        * select(0.0, 1.0, uvw.y >= 0.0 && uvw.y <= 1.0)
+        * select(0.0, 1.0, uvw.z >= 0.0 && uvw.z <= 1.0);
+    let mask = inside * scar.enabled;
+    let clamped = clamp(uvw, vec3<f32>(0.0), vec3<f32>(1.0));
+    return textureSampleLevel(t_scar, s_scar, clamped, 0.0) * mask;
+}
 
 // ---- Noise functions ----
 
@@ -138,8 +160,13 @@ fn fog_density_main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let noise = fbm(noise_pos);
     density += (noise - 0.5) * 2.0 * params.noise_intensity;
 
+    // World-space scar volume. Outside the window the mask is zero, so the
+    // edge texel is not smeared across the rest of the frustum.
+    let scar_sample = sample_scar(world_pos);
+    density += scar_sample.r;
+
     // Clamp to non-negative
     density = max(density, 0.0);
 
-    textureStore(t_output, vec3<i32>(gid), vec4<f32>(density, 0.0, 0.0, 0.0));
+    textureStore(t_output, vec3<i32>(gid), vec4<f32>(density, scar_sample.g, scar_sample.b, scar_sample.a));
 }

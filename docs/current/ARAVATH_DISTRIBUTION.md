@@ -19,7 +19,7 @@ The exe:
 
 `aravath.cfg` is a small UTF-8 text file. The only keys that do anything are `volumetrics=on` and `volumetrics=off`. The file must be a regular file of at most 16 KiB. A symlink is refused.
 
-Save files (`.awsv`) are length-capped before allocation (32 MiB compressed, 64 MiB after LZ4), checksummed, and refused when the file or `index.json` is a symlink. Player ids used as directory names must be ASCII `[A-Za-z0-9_-]` and must not be Windows device names (`CON`, `COM1`, and the rest). The greybox edit log rejects non-finite numbers, coordinates outside ±2048, and more than 16384 edits.
+Save files (`.awsv`) are length-capped before allocation (32 MiB compressed, 64 MiB after LZ4), checksummed, and refused when the file or `index.json` is a symlink. Player ids used as directory names must be ASCII `[A-Za-z0-9_-]` and must not be Windows device names (`CON`, `COM1`, and the rest). The greybox edit log stores densities and the player record as eight hex digits of `f32::to_bits`. Decimal text from older saves still loads. The loader rejects non-finite numbers, including NaN and infinity written as those bits, coordinates outside ±2048, and more than 16384 edits.
 
 ## What still triggers the warning
 

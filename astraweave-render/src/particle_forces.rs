@@ -31,6 +31,8 @@ pub struct SimParams {
     pub turbulence_freq: f32,
     pub turbulence_speed: f32,
     pub time: f32,
+    /// WGSL aligns `attractor_pos` to 16.
+    pub _align_attractor: f32,
     pub attractor_pos: [f32; 3],
     pub attractor_str: f32,
     pub color0: [f32; 4],
@@ -305,6 +307,7 @@ impl ParticleSimPass {
             turbulence_freq: forces.turbulence_frequency,
             turbulence_speed: forces.turbulence_speed,
             time: self.time,
+            _align_attractor: 0.0,
             attractor_pos: forces.attractor_pos.to_array(),
             attractor_str: forces.attractor_strength,
             color0: gradient.color0,
@@ -352,7 +355,8 @@ mod tests {
 
     #[test]
     fn sim_params_size() {
-        assert_eq!(std::mem::size_of::<SimParams>(), 172);
+        assert_eq!(std::mem::size_of::<SimParams>(), 176);
+        assert_eq!(std::mem::offset_of!(SimParams, attractor_pos), 64);
     }
 
     #[test]
