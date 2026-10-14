@@ -338,6 +338,24 @@ Editor forest scatter reads `prop_at`. `lod_keeps` is the editor’s distance te
 
 Acceptance: opening census test still has trees, no palms, an empty dirt road. A headless frame on a real GPU records frame time for the 727-instance LOD set. The manifest test still checks SHA-256.
 
+### Deletion ledger
+
+Each removed file is one row. The replacement lives on the integer column pipeline. Worker results commit in `(x, z)` order, not completion order.
+
+| Removed | What it did | Why it was removed | What replaces it |
+|---|---|---|---|
+| `background_loader.rs` | Tokio task that streamed heightmap `ChunkId`s into a `HashMap` | Duplicate of the demo stream. No production caller. `HashMap` eviction order is not deterministic | `ColumnStream::around` plus `build_chunks_sorted`. Rayon fills columns; the caller writes them sorted by `(x, z)` |
+| `lod_manager.rs` | Screen-space LOD with hysteresis for heightmap chunks | No production caller. Keyed off the heightmap path, not the column ground | `lod_step` on `ColumnStream`. Integer Chebyshev distance, a one-chunk hold so a wobble does not flip, same result for the same camera path |
+| `lod_blending.rs` | Vertex morph between heightmap LOD meshes | No production caller. Morph clocks were not tied to the sim seed | `morphed_height`. `morph_milli` 0..1000 blends a column toward its coarser anchor (step 1, 2, or 4). Distant render meshes use that height. Physics keeps the full column. Edited chunks stay on the full mesh so digs remain visible |
+| `streaming_diagnostics.rs` | Frame-time hitch and memory counters for the unused loader | Counted a loader nothing ran. Hitch samples were not a sim input | `--frame-times` writes `frame,cpu_ms` beside the exe. It is not hashed |
+| `clipmap_terrain.rs` and `clipmap_terrain.wgsl` | GPU geometry clipmap for a height field. Not a module | Orphan. A second terrain mesh next to the column mesher | Distant column LOD above. There is one mesher |
+| `gpu_bridge.rs`, `terrain_gpu_bridge.rs`, `gpu_erosion.rs`, `gpu_erosion.wgsl` | GPU noise and shallow-water erosion trait, with no caller | GPU floats are not bit-identical across vendors. The trait was never called | `erode_chunk_heights`: integer droplets, fixed neighbor order (north, east, south, west), `SimRng` system `SIM_SYSTEM_COLUMN_EROSION`. The editor Apply Erosion button writes `eroded_worldgen_record`. Zero droplets stays the raw `worldgen_record` |
+| `compressed_voxels.rs` | Palette and RLE for voxel chunks | No caller. A second storage format beside the edit log | The Aravath save is the edit log plus the integer column record |
+| `terrain_modifier.rs` | Batched `VoxelOp` queue | No caller. Dig and place already write the edit log | `Ground::dig_sphere` / `place_sphere` and the checkpoint edit list |
+| `terrain_persistence.rs` | A second terrain file format with wall-clock names | No caller. Wall-clock names are not deterministic | `*.columns` is `worldgen_record` or the integer bake. The f32 preview is named in `*.erosion.txt` and is not the ground |
+
+`TerrainSolver` stays. It already draws from `SIM_SYSTEM_TERRAIN_SOLVER`.
+
 ### U4 — delete or wire the rest
 
 For each row in the table that says “or”: the change either adds a non-test caller and a test, or deletes the file. `astraweave-pcg` is the first of these. `clipmap_terrain.rs` is a delete.
@@ -362,5 +380,7 @@ Acceptance: `rg` for each deleted type is empty. `cargo test -p astraweave-terra
 | U2 integer height as the saved ground | Done. Editor `.columns` file and Aravath meta `ground`. Erosion preview writes `erosion.txt` and is not the ground bytes |
 | U3 textured voxel materials via `ModelSurfaceMaps` | Plumbing done. KayKit scatter meshes are still the greybox draw |
 | U3 GPU frame time | `--frame-times` writes `aravath_frame_times.csv` beside the exe (`frame,cpu_ms`). This host has no Vulkan device, so the RTX 4060 Ti number is still the owner's |
-| U4 wire or delete dormant stacks | Done. Decisions are the table in §13 |
+| U4 wire or delete dormant stacks | Done. The deletion ledger in §13 names the replacement for each file |
+| Seven pre-E3 terrain lib goldens | Re-locked to the shared debug/release bits (PR #217). Persistence and lacunarity tests force 4 octaves |
+| Off-thread generation, distant LOD, integer erosion | Restored on the column pipeline: `build_chunks_sorted`, `lod_step` / `morphed_height`, `erode_chunk_heights` |
 | Editor forest scatter still uses `VegetationScatter` for non-forest authoring | Remaining. Forest props in the demo already come from `prop_at` |

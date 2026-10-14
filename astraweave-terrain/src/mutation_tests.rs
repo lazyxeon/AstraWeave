@@ -2088,42 +2088,36 @@ mod noise_fbm_indirect_targeted {
 
     #[test]
     fn fbm_persistence_affects_output() {
+        // E3 C.1 default temperature is one octave, so persistence is never
+        // read. A second-and-later octave is what this mutation test guards.
         let mut config1 = ClimateConfig::default();
+        config1.temperature.octaves = 4;
         config1.temperature.persistence = 0.1;
-        let climate1 = ClimateMap::new(&config1, 42);
-
         let mut config2 = ClimateConfig::default();
+        config2.temperature.octaves = 4;
         config2.temperature.persistence = 0.9;
-        let climate2 = ClimateMap::new(&config2, 42);
 
-        let t1 = climate1.sample_temperature(300.0, 300.0, 0.0);
-        let t2 = climate2.sample_temperature(300.0, 300.0, 0.0);
-        assert!(
-            t1 != t2,
-            "Different persistence should affect temperature: t1={}, t2={}",
-            t1,
-            t2
-        );
+        let t1 = ClimateMap::new(&config1, 42).sample_temperature(300.0, 300.0, 0.0);
+        let t2 = ClimateMap::new(&config2, 42).sample_temperature(300.0, 300.0, 0.0);
+        // rustc 1.89.0, debug opt-level 0 and release opt-level 3 + thin LTO.
+        assert_eq!(t1.to_bits(), 1_051_743_661, "persistence 0.1");
+        assert_eq!(t2.to_bits(), 1_057_537_545, "persistence 0.9");
     }
 
     #[test]
     fn fbm_lacunarity_affects_output() {
+        // Same as persistence: the default one-octave field ignores lacunarity.
         let mut config1 = ClimateConfig::default();
+        config1.temperature.octaves = 4;
         config1.temperature.lacunarity = 1.1;
-        let climate1 = ClimateMap::new(&config1, 42);
-
         let mut config2 = ClimateConfig::default();
+        config2.temperature.octaves = 4;
         config2.temperature.lacunarity = 4.0;
-        let climate2 = ClimateMap::new(&config2, 42);
 
-        let t1 = climate1.sample_temperature(400.0, 400.0, 0.0);
-        let t2 = climate2.sample_temperature(400.0, 400.0, 0.0);
-        assert!(
-            t1 != t2,
-            "Different lacunarity should affect temperature: t1={}, t2={}",
-            t1,
-            t2
-        );
+        let t1 = ClimateMap::new(&config1, 42).sample_temperature(400.0, 400.0, 0.0);
+        let t2 = ClimateMap::new(&config2, 42).sample_temperature(400.0, 400.0, 0.0);
+        assert_eq!(t1.to_bits(), 1_044_132_904, "lacunarity 1.1");
+        assert_eq!(t2.to_bits(), 1_056_061_964, "lacunarity 4.0");
     }
 
     #[test]
@@ -3417,30 +3411,19 @@ mod golden_value_tests {
 
     #[test]
     fn temperature_golden_value_default_config() {
-        // Golden values for temperature — kills fbm sign/operator mutations
-        let config = ClimateConfig::default();
-        let climate = ClimateMap::new(&config, 42);
-
-        let t1 = climate.sample_temperature(300.0, 300.0, 0.0);
-        assert!(
-            (t1 - 0.640202).abs() < 0.001,
-            "Temperature at (300,300) should be 0.640202, got {}",
-            t1
-        );
-
-        let t2 = climate.sample_temperature(100.0, 100.0, 0.0);
-        assert!(
-            (t2 - 0.333779).abs() < 0.001,
-            "Temperature at (100,100) should be 0.333779, got {}",
-            t2
-        );
-
-        let t3 = climate.sample_temperature(1000.0, 1000.0, 0.0);
-        assert!(
-            (t3 - 0.508000).abs() < 0.001,
-            "Temperature at (1000,1000) should be 0.508000, got {}",
-            t3
-        );
+        // E3 C.1 temperature is one octave (scale 0.0005). The old literals
+        // 0.640202 / 0.333779 / 0.508000 were the 3-octave field. Bits below
+        // matched in debug and release on rustc 1.89.0 (x86_64, Linux).
+        let climate = ClimateMap::new(&ClimateConfig::default(), 42);
+        let samples = [
+            (300.0_f64, 300.0, 1_051_886_291_u32),
+            (100.0, 100.0, 1_055_063_251),
+            (1000.0, 1000.0, 1_064_363_571),
+        ];
+        for (x, z, bits) in samples {
+            let t = climate.sample_temperature(x, z, 0.0);
+            assert_eq!(t.to_bits(), bits, "temperature at ({x}, {z})");
+        }
     }
 
     #[test]

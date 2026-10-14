@@ -1155,102 +1155,124 @@ mod tests {
         assert!((sample.pv() - 0.0).abs() < 1e-6);
     }
 
-    /// Continental Temperate at median climate reproduces F.4.B.3.D.5-fix
-    /// baseline byte-identically. F.2's load-bearing regression contract:
-    /// 6 catalog archetypes ship at this baseline; F.3 wires the splines
-    /// into the noise pipeline expecting these values.
+    /// Continental Temperate at the median climate sample. E3 replaced the
+    /// single-point D5FIX constants with the erosion spline, so erosion 0
+    /// interpolates to 30, not 480. `d5fix_baseline_spline_set` still holds
+    /// the old constants. Bits matched in debug and release on rustc 1.89.
     #[test]
     fn bootstrap_splines_continental_temperate_at_median_climate_matches_d5fix_baseline() {
-        let splines = bootstrap_splines_continental_temperate();
-        let sample = median_climate_sample();
-        let params = splines.evaluate(&sample);
+        let params = bootstrap_splines_continental_temperate().evaluate(&median_climate_sample());
         assert_eq!(
             params.mountains_amplitude.to_bits(),
-            D5FIX_BASELINE_MOUNTAINS_AMPLITUDE.to_bits(),
-            "mountains_amplitude must byte-identical match F.4.B.3.D.5-fix \
-             baseline (480.0)"
+            1_106_247_680,
+            "erosion 0 maps to 30, not the retired D5FIX 480"
         );
         assert_eq!(
             params.mountains_scale.to_bits(),
-            D5FIX_BASELINE_MOUNTAINS_SCALE.to_bits(),
-            "mountains_scale must byte-identical match F.4.B.3.D.5-fix \
-             baseline (0.002)"
+            D5FIX_BASELINE_MOUNTAINS_SCALE.to_bits()
         );
         assert_eq!(
             params.continental_scale.to_bits(),
-            D5FIX_BASELINE_CONTINENTAL_SCALE.to_bits(),
-            "continental_scale must byte-identical match F.4.B.3.D.5-fix \
-             baseline (0.0003)"
+            D5FIX_BASELINE_CONTINENTAL_SCALE.to_bits()
         );
-        assert_eq!(
-            params.base_elevation_amplitude.to_bits(),
-            D5FIX_BASELINE_BASE_ELEVATION_AMPLITUDE.to_bits(),
-            "base_elevation_amplitude must byte-identical match \
-             F.4.B.3.D.5-fix baseline (150.0)"
-        );
+        assert_eq!(params.base_elevation_amplitude.to_bits(), 1_106_846_866);
+        assert_eq!(params.base_elevation_floor.to_bits(), 1_096_810_496);
     }
 
-    /// All 6 catalog archetypes ship F.2-default with byte-identical
-    /// baseline `BootstrapParams` at median climate. F.7 differentiates
-    /// per archetype with multi-control-point splines + possibly
-    /// different climate_input dimensions; F.2 ships infrastructure.
+    /// Each catalog archetype's median-climate output. E3 gave them
+    /// distinct curves; Custom still aliases Continental Temperate.
+    /// `mountains_scale` bits are the authored f64 literals.
     #[test]
     fn bootstrap_splines_all_six_archetypes_reproduce_baseline_at_median_climate() {
         type BootstrapSplineFactory = fn() -> BootstrapSplineSet;
-        let factories: &[(&str, BootstrapSplineFactory)] = &[
+        // (name, factory, mountains_amplitude, mountains_scale, base_amp, floor)
+        let expected: &[(&str, BootstrapSplineFactory, u32, u64, u32, u32)] = &[
             (
                 "Continental Temperate",
                 bootstrap_splines_continental_temperate,
+                1_106_247_680,
+                4_566_758_108_544_739_836,
+                1_106_846_866,
+                1_096_810_496,
             ),
-            ("Equatorial Tropical", bootstrap_splines_equatorial_tropical),
-            ("Boreal/Subarctic", bootstrap_splines_boreal_subarctic),
-            ("Mediterranean", bootstrap_splines_mediterranean),
-            ("Desert", bootstrap_splines_desert),
-            ("Custom", bootstrap_splines_custom),
+            (
+                "Equatorial Tropical",
+                bootstrap_splines_equatorial_tropical,
+                1_108_973_978,
+                4_565_021_520_528_425_773,
+                1_108_344_832,
+                1_094_014_294,
+            ),
+            (
+                "Boreal/Subarctic",
+                bootstrap_splines_boreal_subarctic,
+                1_115_772_245,
+                4_568_141_614_350_268_052,
+                1_105_798_290,
+                1_096_810_496,
+            ),
+            (
+                "Mediterranean",
+                bootstrap_splines_mediterranean,
+                1_108_344_832,
+                4_566_758_108_544_739_836,
+                1_107_296_256,
+                1_096_810_496,
+            ),
+            (
+                "Desert",
+                bootstrap_splines_desert,
+                1_093_245_338,
+                4_567_680_445_748_425_313,
+                1_105_898_155,
+                1_106_247_680,
+            ),
+            (
+                "Custom",
+                bootstrap_splines_custom,
+                1_106_247_680,
+                4_566_758_108_544_739_836,
+                1_106_846_866,
+                1_096_810_496,
+            ),
         ];
         let sample = median_climate_sample();
-        for (name, factory) in factories {
-            let splines = factory();
-            let params = splines.evaluate(&sample);
+        for (name, factory, ma, ms, ba, floor) in expected {
+            let params = factory().evaluate(&sample);
             assert_eq!(
                 params.mountains_amplitude.to_bits(),
-                D5FIX_BASELINE_MOUNTAINS_AMPLITUDE.to_bits(),
-                "{}: mountains_amplitude drift",
-                name
+                *ma,
+                "{name} mountains"
             );
             assert_eq!(
                 params.mountains_scale.to_bits(),
-                D5FIX_BASELINE_MOUNTAINS_SCALE.to_bits(),
-                "{}: mountains_scale drift",
-                name
+                *ms,
+                "{name} mountains_scale"
             );
             assert_eq!(
                 params.continental_scale.to_bits(),
                 D5FIX_BASELINE_CONTINENTAL_SCALE.to_bits(),
-                "{}: continental_scale drift",
-                name
+                "{name} continental_scale"
             );
             assert_eq!(
                 params.base_elevation_amplitude.to_bits(),
-                D5FIX_BASELINE_BASE_ELEVATION_AMPLITUDE.to_bits(),
-                "{}: base_elevation_amplitude drift",
-                name
+                *ba,
+                "{name} base"
+            );
+            assert_eq!(
+                params.base_elevation_floor.to_bits(),
+                *floor,
+                "{name} floor"
             );
         }
     }
 
-    /// F.2's catalog defaults are single-control-point splines, so the
-    /// climate_input dimension assignment shouldn't affect the output —
-    /// the spline returns its constant regardless of which climate field
-    /// is read. This test confirms the property by varying the climate
-    /// sample fields independently.
+    /// Single-control-point output is invariant. That factory is
+    /// `d5fix_baseline_spline_set`. Catalog splines are multi-point, so
+    /// the same samples must move. Endpoints are the authored control
+    /// points (no interpolation).
     #[test]
     fn bootstrap_splines_evaluate_independent_of_input_dimension_assignment() {
-        let splines = bootstrap_splines_continental_temperate();
-
-        // Three diverse climate samples with intentionally varied
-        // continentalness, erosion, weirdness. With single-control-point
-        // splines, all should produce identical BootstrapParams.
         let samples = [
             ClimateSample {
                 temperature_c: 12.0,
@@ -1275,16 +1297,26 @@ mod tests {
             },
         ];
 
-        let baseline_params = splines.evaluate(&samples[0]);
+        let baseline = d5fix_baseline_spline_set();
+        let baseline_params = baseline.evaluate(&samples[0]);
         for (i, sample) in samples.iter().enumerate().skip(1) {
-            let params = splines.evaluate(sample);
             assert_eq!(
-                params, baseline_params,
-                "single-point spline output should be invariant across \
-                 climate samples; differs at sample {}",
-                i
+                baseline.evaluate(sample),
+                baseline_params,
+                "single-point D5FIX output drifted at sample {i}"
             );
         }
+
+        let driven = bootstrap_splines_continental_temperate();
+        let low = driven.evaluate(&samples[0]);
+        let high = driven.evaluate(&samples[1]);
+        assert_eq!(low.mountains_amplitude.to_bits(), 750.0f32.to_bits());
+        assert_eq!(low.base_elevation_amplitude.to_bits(), 10.0f32.to_bits());
+        assert_eq!(low.base_elevation_floor.to_bits(), (-25.0f32).to_bits());
+        assert_eq!(high.mountains_amplitude.to_bits(), 8.0f32.to_bits());
+        assert_eq!(high.base_elevation_amplitude.to_bits(), 48.0f32.to_bits());
+        assert_eq!(high.base_elevation_floor.to_bits(), 28.0f32.to_bits());
+        assert_ne!(low, high);
     }
 
     /// `BootstrapParams` derives Clone + Copy + Debug; smoke test.

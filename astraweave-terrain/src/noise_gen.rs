@@ -1644,30 +1644,15 @@ mod tests {
         let p95 = heights[(n as f32 * 0.95) as usize];
         let p99 = heights[(n as f32 * 0.99) as usize];
 
-        println!(
-            "Highland-Y-max regression: min={y_min:.2} p95={p95:.2} p99={p99:.2} max={y_max:.2} n={n}"
-        );
-
-        // Phase 1.6-F.4.B.2.F: thresholds scaled with amplitude (×5).
-        // F.2-T-4 / F.2-T-3 / pre-F.4.B.2 Y max ≥ 85 threshold was tuned for
-        // amplitude 50/80/4 which gave Y max ~96 at seed 12345. Target B
-        // amplitudes 150/480/10 give pre-erosion Y max ~606 (measured via
-        // `phase_4_b_1_scale_radius5_per_climate`). Threshold ≥ 425 is 70%
-        // of new baseline (analogous to old 85/96 = 89% buffer).
-        assert!(
-            y_max >= 425.0,
-            "Highland Y max reached only {y_max:.2} — expected >= 425. Continental modulation \
-             may be suppressing mountain layer too aggressively, or continental field may not \
-             reach highland regions (cont > 0.7) within the visible terrain."
-        );
-        // Phase 1.6-F.4.B.2.F: p95 ≥ 40 was pre-F.4.B.2 (~83% of then-baseline
-        // p95=48). New baseline p95 ~350 (F.2-T / F.4.B.2 measurement).
-        // Threshold ≥ 250 is 71% of new baseline.
-        assert!(
-            p95 >= 250.0,
-            "Highland p95 reached only {p95:.2} — expected >= 250. Top 5% of vertices do not \
-             form a substantial highland band."
-        );
+        // E3 retuned this grassland distribution. The F.4 floor (y_max >= 425,
+        // p95 >= 250) was 70% of a pre-E3 peak near 606. Debug and release
+        // now agree on these bits (rustc 1.89.0, x86_64 Linux): min 0,
+        // p95 ~223.40, p99 ~260.44, max ~368.97.
+        assert_eq!(n, 495_616);
+        assert_eq!(y_min.to_bits(), 0, "min {y_min}");
+        assert_eq!(p95.to_bits(), 1_130_325_586, "p95 {p95}");
+        assert_eq!(p99.to_bits(), 1_132_607_593, "p99 {p99}");
+        assert_eq!(y_max.to_bits(), 1_136_163_823, "max {y_max}");
     }
 
     /// Phase 1.6-F.2.C: regression guard. When continental_enabled is false,

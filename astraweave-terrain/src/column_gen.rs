@@ -5,9 +5,12 @@
 //! Species and yaw come from [`astraweave_core::sim::SimRng`]. Nothing in
 //! this module iterates a `HashMap`, and nothing calls libm.
 
-use astraweave_core::sim::{SimRng, SIM_SYSTEM_FOREST_SCATTER};
+use std::collections::BTreeMap;
+
+use astraweave_core::sim::{SimRng, SIM_SYSTEM_COLUMN_EROSION, SIM_SYSTEM_FOREST_SCATTER};
 use glam::Vec3;
 use rand::RngCore;
+use rayon::prelude::*;
 
 use crate::voxel_data::{Voxel, VoxelGrid, CHUNK_SIZE};
 
@@ -144,16 +147,26 @@ pub fn column_material(y: i32, height: i32, biome: ColumnBiome, road: bool) -> u
     }
 }
 
-pub fn write_column(grid: &mut VoxelGrid, x: i32, z: i32) {
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ColumnVoxel {
+    pub x: i32,
+    pub y: i32,
+    pub z: i32,
+    pub material: u16,
+}
+
+pub fn column_voxels(x: i32, z: i32) -> Vec<ColumnVoxel> {
     let height = surface_height(x, z);
     let biome = biome_at(x, z);
     let road = on_yaqar_road(x, z);
+    let mut cells = Vec::with_capacity(height.max(0) as usize + 4);
     for y in 0..=height {
-        let material = column_material(y, height, biome, road);
-        grid.set_voxel(
-            Vec3::new(x as f32, y as f32, z as f32),
-            Voxel::new(1.0, material),
-        );
+        cells.push(ColumnVoxel {
+            x,
+            y,
+            z,
+            material: column_material(y, height, biome, road),
+        });
     }
     if biome == ColumnBiome::Grass
         && !road
@@ -161,12 +174,132 @@ pub fn write_column(grid: &mut VoxelGrid, x: i32, z: i32) {
         && x.rem_euclid(CHUNK_SIZE) + 3 < CHUNK_SIZE
     {
         for step in 0..3 {
-            grid.set_voxel(
-                Vec3::new((x + step) as f32, (height + 1) as f32, z as f32),
-                Voxel::new(1.0, MAT_WOOD),
-            );
+            cells.push(ColumnVoxel {
+                x: x + step,
+                y: height + 1,
+                z,
+                material: MAT_WOOD,
+            });
         }
     }
+    cells
+}
+
+pub fn write_column(grid: &mut VoxelGrid, x: i32, z: i32) {
+    for cell in column_voxels(x, z) {
+        grid.set_voxel(
+            Vec3::new(cell.x as f32, cell.y as f32, cell.z as f32),
+            Voxel::new(1.0, cell.material),
+        );
+    }
+}
+
+/// One chunk of columns. Workers return these; callers commit in `(x, z)` order.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BuiltChunk {
+    pub x: i32,
+    pub z: i32,
+    pub cells: Vec<ColumnVoxel>,
+}
+
+/// Build chunks on worker threads, then sort by `(x, z)` before returning.
+///
+/// Rayon may finish chunks in any order. The sort is the commit order, so
+/// two runs with the same coordinates write the same sequence.
+pub fn build_chunks_sorted(coords: &[(i32, i32)]) -> Vec<BuiltChunk> {
+    let mut built: Vec<BuiltChunk> = coords
+        .par_iter()
+        .copied()
+        .map(|(cx, cz)| {
+            let mut cells = Vec::new();
+            for lx in 0..CHUNK_SIZE {
+                for lz in 0..CHUNK_SIZE {
+                    cells.extend(column_voxels(cx * CHUNK_SIZE + lx, cz * CHUNK_SIZE + lz));
+                }
+            }
+            BuiltChunk {
+                x: cx,
+                z: cz,
+                cells,
+            }
+        })
+        .collect();
+    built.sort_by_key(|chunk| (chunk.x, chunk.z));
+    built
+}
+
+/// Blend `surface_height` toward the coarser anchor for this LOD level.
+///
+/// `morph_milli` is 0..1000. Zero keeps the column height. 1000 snaps to the
+/// anchor used by the next coarser step (1, 2, or 4 metres).
+pub fn morphed_height(x: i32, z: i32, level: u8, morph_milli: u16) -> i32 {
+    let fine = surface_height(x, z);
+    let step = 1i32 << level.min(2);
+    let coarse = surface_height(x.div_euclid(step) * step, z.div_euclid(step) * step);
+    let morph = i32::from(morph_milli.min(1000));
+    fine + (coarse - fine) * morph / 1000
+}
+
+/// Integer downhill droplets inside one chunk. Neighbor ties break in the
+/// fixed order north, east, south, west. `droplets == 0` returns the raw heights.
+pub fn erode_chunk_heights(cx: i32, cz: i32, droplets: u32) -> Vec<i32> {
+    let n = CHUNK_SIZE as i32;
+    let mut heights = vec![0i32; (n * n) as usize];
+    for lz in 0..n {
+        for lx in 0..n {
+            heights[(lz * n + lx) as usize] =
+                surface_height(cx * CHUNK_SIZE + lx, cz * CHUNK_SIZE + lz);
+        }
+    }
+    if droplets == 0 {
+        return heights;
+    }
+    let mut rng = SimRng::new(
+        FOREST_WORLD_SEED,
+        u64::from(droplets),
+        SIM_SYSTEM_COLUMN_EROSION,
+    );
+    for _ in 0..droplets {
+        let mut x = (rng.next_u32() as i32).rem_euclid(n);
+        let mut z = (rng.next_u32() as i32).rem_euclid(n);
+        let mut sediment = 0i32;
+        for _step in 0..8 {
+            let here = heights[(z * n + x) as usize];
+            let mut lowest = here;
+            let mut best: Option<(i32, i32)> = None;
+            for (dx, dz) in [(0, -1), (1, 0), (0, 1), (-1, 0)] {
+                let nx = x + dx;
+                let nz = z + dz;
+                if nx < 0 || nz < 0 || nx >= n || nz >= n {
+                    continue;
+                }
+                let neighbor = heights[(nz * n + nx) as usize];
+                if neighbor < lowest {
+                    lowest = neighbor;
+                    best = Some((nx, nz));
+                }
+            }
+            let Some((nx, nz)) = best else {
+                heights[(z * n + x) as usize] += sediment;
+                sediment = 0;
+                break;
+            };
+            if heights[(z * n + x) as usize] > 1 {
+                heights[(z * n + x) as usize] -= 1;
+                sediment += 1;
+            }
+            x = nx;
+            z = nz;
+            if sediment > 2 {
+                heights[(z * n + x) as usize] += 1;
+                sediment -= 1;
+            }
+        }
+        if sediment > 0 {
+            heights[(z * n + x) as usize] += sediment;
+        }
+    }
+    heights
 }
 
 pub fn prop_at(x: i32, z: i32) -> Option<PropPlacement> {
@@ -259,6 +392,34 @@ pub fn lod_keeps(kind: ForestProp, cam_x: i32, cam_z: i32, x: i32, z: i32, yaw_q
 /// Little-endian record of three chunks, including a negative coordinate and
 /// a road chunk. Sorted by construction. This is the `worldgen_columns` case.
 pub fn worldgen_record() -> Vec<u8> {
+    encode_record(|x, z| surface_height(x, z))
+}
+
+/// Same record as [`worldgen_record`] after the integer droplet bake.
+/// Zero droplets is the raw record, byte for byte.
+pub fn eroded_worldgen_record(droplets: u32) -> Vec<u8> {
+    if droplets == 0 {
+        return worldgen_record();
+    }
+    let mut eroded = BTreeMap::new();
+    for (cx, cz) in [(-1i32, 2i32), (0, 0), (8, 0)] {
+        let heights = erode_chunk_heights(cx, cz, droplets);
+        let n = CHUNK_SIZE as i32;
+        for (index, height) in heights.into_iter().enumerate() {
+            let lx = (index as i32) % n;
+            let lz = (index as i32) / n;
+            eroded.insert((cx * CHUNK_SIZE + lx, cz * CHUNK_SIZE + lz), height);
+        }
+    }
+    encode_record(|x, z| {
+        eroded
+            .get(&(x, z))
+            .copied()
+            .unwrap_or_else(|| surface_height(x, z))
+    })
+}
+
+fn encode_record(height_at: impl Fn(i32, i32) -> i32) -> Vec<u8> {
     let mut out = Vec::new();
     out.extend_from_slice(b"AWCOL1");
     out.extend_from_slice(&FOREST_WORLD_SEED.to_le_bytes());
@@ -269,7 +430,7 @@ pub fn worldgen_record() -> Vec<u8> {
             for lz in 0..CHUNK_SIZE {
                 let x = cx * CHUNK_SIZE + lx;
                 let z = cz * CHUNK_SIZE + lz;
-                let height = surface_height(x, z);
+                let height = height_at(x, z);
                 let material = column_material(height, height, biome_at(x, z), on_yaqar_road(x, z));
                 out.extend_from_slice(&(height as i16).to_le_bytes());
                 out.extend_from_slice(&material.to_le_bytes());
@@ -422,5 +583,50 @@ mod tests {
         let loaded = std::fs::read(&path).expect("read columns");
         std::fs::remove_file(&path).expect("remove columns");
         assert_eq!(loaded, worldgen_record());
+    }
+
+    #[test]
+    fn parallel_chunks_commit_in_sorted_order() {
+        let coords = [(1, 0), (-1, 2), (0, -1), (0, 0)];
+        let parallel = build_chunks_sorted(&coords);
+        assert_eq!(
+            parallel
+                .iter()
+                .map(|chunk| (chunk.x, chunk.z))
+                .collect::<Vec<_>>(),
+            vec![(-1, 2), (0, -1), (0, 0), (1, 0)]
+        );
+        let reversed = build_chunks_sorted(&[coords[3], coords[2], coords[1], coords[0]]);
+        assert_eq!(parallel, reversed);
+        let origin = &parallel[2];
+        assert_eq!(origin.x, 0);
+        assert_eq!(origin.z, 0);
+        assert_eq!(origin.cells, {
+            let mut cells = Vec::new();
+            for lx in 0..CHUNK_SIZE {
+                for lz in 0..CHUNK_SIZE {
+                    cells.extend(column_voxels(lx, lz));
+                }
+            }
+            cells
+        });
+    }
+
+    #[test]
+    fn morph_endpoints_are_the_fine_and_coarse_heights() {
+        let fine = surface_height(3, 5);
+        assert_eq!(morphed_height(3, 5, 1, 0), fine);
+        assert_eq!(morphed_height(3, 5, 1, 1000), surface_height(2, 4));
+    }
+
+    #[test]
+    fn integer_erosion_is_stable_and_not_the_raw_record() {
+        assert_eq!(eroded_worldgen_record(0), worldgen_record());
+        let once = eroded_worldgen_record(32);
+        let twice = eroded_worldgen_record(32);
+        assert_eq!(once, twice);
+        assert_ne!(once, worldgen_record());
+        let heights = erode_chunk_heights(0, 0, 32);
+        assert!(heights.iter().all(|height| *height >= 1));
     }
 }

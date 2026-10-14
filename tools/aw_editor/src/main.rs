@@ -9241,7 +9241,13 @@ impl MenuActionHandler for EditorApp {
                     self.console_logs.push(format!("Scene saved: {:?}", path));
                     self.last_auto_save = std::time::Instant::now();
                     let columns = path.with_extension("columns");
-                    let record = astraweave_terrain::column_gen::worldgen_record();
+                    let baked = self.dock_tab_viewer.saved_ground();
+                    let record = if baked.is_empty() {
+                        astraweave_terrain::column_gen::worldgen_record()
+                    } else {
+                        baked.to_vec()
+                    };
+                    let droplets = self.dock_tab_viewer.erosion_droplets();
                     match fs::write(&columns, &record) {
                         Ok(()) => self
                             .console_logs
@@ -9251,10 +9257,12 @@ impl MenuActionHandler for EditorApp {
                             .push(format!("integer ground save failed: {err}")),
                     }
                     let banner = path.with_extension("erosion.txt");
-                    match fs::write(
-                        &banner,
-                        "erosion preview is not saved; the ground file is integer columns\n",
-                    ) {
+                    let note = if droplets == 0 {
+                        "erosion preview is not saved; the ground file is integer columns\n"
+                    } else {
+                        "integer droplet bake is in the columns file; the f32 preview is not the save\n"
+                    };
+                    match fs::write(&banner, note) {
                         Ok(()) => {}
                         Err(err) => self
                             .console_logs

@@ -54,6 +54,8 @@ pub struct TerrainState {
     cached_pack: Option<(std::path::PathBuf, astraweave_terrain::BiomePack)>,
     /// Integer columns written by scene save. The climate mesh above is a preview.
     saved_ground: Vec<u8>,
+    /// Droplets in the integer bake. Zero means the raw `worldgen_record`.
+    erosion_droplets: u32,
 }
 
 pub struct GeneratedChunk {
@@ -131,6 +133,7 @@ impl Default for TerrainState {
             stroke_pre_snapshots: HashMap::new(),
             cached_pack: None,
             saved_ground: Vec::new(),
+            erosion_droplets: 0,
         }
     }
 }
@@ -141,9 +144,20 @@ impl TerrainState {
     }
 
     /// Return the currently cached BiomePack (if any).
-    /// Integer ground last captured by [`Self::generate_terrain`].
+    /// Integer ground last captured by [`Self::generate_terrain`] or the erosion bake.
     pub fn saved_ground(&self) -> &[u8] {
         &self.saved_ground
+    }
+
+    pub fn erosion_droplets(&self) -> u32 {
+        self.erosion_droplets
+    }
+
+    /// Replace the saved columns with the deterministic integer droplet bake.
+    /// The f32 preview mesh is left as it is.
+    pub fn bake_integer_erosion(&mut self, droplets: u32) {
+        self.erosion_droplets = droplets;
+        self.saved_ground = astraweave_terrain::column_gen::eroded_worldgen_record(droplets);
     }
 
     pub fn cached_biome_pack(&self) -> Option<&astraweave_terrain::BiomePack> {
