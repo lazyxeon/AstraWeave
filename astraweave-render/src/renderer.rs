@@ -5063,6 +5063,7 @@ fn vs(input: VSIn) -> VSOut {
             .volumetric_fog
             .as_ref()
             .is_none_or(|fog| fog.config().froxel_dims != config.froxel_dims);
+        let timestamp_period = self.queue.get_timestamp_period();
         if rebuild {
             let device = self.device.clone();
             self.volumetric_fog = Some(crate::volumetric_fog::VolumetricFogPass::new(
@@ -5073,6 +5074,9 @@ fn vs(input: VSIn) -> VSOut {
             ));
         } else if let Some(fog) = self.volumetric_fog.as_mut() {
             fog.set_config(config);
+        }
+        if let Some(fog) = self.volumetric_fog.as_mut() {
+            fog.set_timestamp_period_ns(timestamp_period);
         }
         log::info!(
             "volumetric fog {} in {} ms",
@@ -5085,6 +5089,51 @@ fn vs(input: VSIn) -> VSOut {
         self.volumetric_fog
             .as_ref()
             .is_some_and(|fog| fog.config().enabled)
+    }
+
+    /// Feed a world-space scar volume into the existing froxel density pass.
+    ///
+    /// A no-op while volumetric fog is off, including `--no-volumetrics`.
+    pub fn upload_veil_scar_volume(
+        &mut self,
+        volume: &crate::volumetric_fog::ScarFogVolume,
+    ) -> Result<()> {
+        let Some(fog) = self.volumetric_fog.as_mut() else {
+            return Ok(());
+        };
+        if !fog.config().enabled {
+            return Ok(());
+        }
+        let queue = self.queue.clone();
+        fog.upload_scar_volume(&queue, volume)
+            .map_err(|err| anyhow::anyhow!(err))?;
+        Ok(())
+    }
+
+    /// Latest density and scatter GPU times, when timestamp queries are available.
+    pub fn volumetric_gpu_sample(&self) -> Option<crate::volumetric_fog::VolumetricGpuSample> {
+        self.volumetric_fog
+            .as_ref()
+            .and_then(|fog| fog.last_gpu_sample())
+    }
+
+    fn poll_fog_timestamps(&mut self) {
+        let device = self.device.clone();
+        if let Some(fog) = self.volumetric_fog.as_mut() {
+            if let Some(sample) = fog.poll_timestamps(&device) {
+                log::debug!(
+                    "volumetric fog gpu density {:.3} ms scatter {:.3} ms",
+                    sample.density_ms,
+                    sample.scatter_ms
+                );
+            }
+        }
+    }
+
+    fn request_fog_timestamps(&mut self) {
+        if let Some(fog) = self.volumetric_fog.as_mut() {
+            fog.request_timestamp_readback();
+        }
     }
 
     /// Turn screen-space light shafts on or off.
@@ -5571,6 +5620,7 @@ fn vs(input: VSIn) -> VSOut {
             p.poll_readback(&self.device);
             p.begin_frame();
         }
+        self.poll_fog_timestamps();
         // Advance the staging ring buffer for this frame.
         self.staging_ring.begin_frame();
 
@@ -6090,6 +6140,7 @@ fn vs(input: VSIn) -> VSOut {
         if let Some(ref mut p) = self.gpu_profiler {
             p.request_readback();
         }
+        self.request_fog_timestamps();
 
         Ok(())
     }
@@ -6112,6 +6163,7 @@ fn vs(input: VSIn) -> VSOut {
             p.poll_readback(&self.device);
             p.begin_frame();
         }
+        self.poll_fog_timestamps();
         // Advance the staging ring buffer for this frame.
         self.staging_ring.begin_frame();
 
@@ -7293,6 +7345,7 @@ fn vs(input: VSIn) -> VSOut {
         if let Some(ref mut p) = self.gpu_profiler {
             p.request_readback();
         }
+        self.request_fog_timestamps();
 
         Ok(())
     }

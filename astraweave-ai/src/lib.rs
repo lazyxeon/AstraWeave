@@ -32,6 +32,7 @@ pub mod decision_trace;
 pub mod ecs_ai_plugin;
 pub mod htn;
 pub mod orchestrator;
+pub mod scar_sense;
 pub mod tool_sandbox;
 
 /// Record a decision. With `decision-trace` off, the tokens are discarded.
@@ -70,6 +71,7 @@ pub use core_loop::*;
 pub use ecs_ai_plugin::{build_app_with_ai, AiPlanningPlugin};
 pub use htn::{SpatialTick, HTN_EXPANSIONS_PER_TICK};
 pub use orchestrator::*;
+pub use scar_sense::{sense, stance_at, ScarStance};
 pub use tool_sandbox::*;
 
 #[cfg(feature = "llm_orchestrator")]

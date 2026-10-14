@@ -368,6 +368,20 @@ impl ApplicationHandler for App {
         }
         renderer.tick_environment(present_dt);
         renderer.update_view(&view);
+        if self.volumetrics {
+            let focus = aravath_runtime::combat::world_metres(pos);
+            let baked = self.sim.scars.bake_gpu_volume(focus);
+            let volume = astraweave_render::ScarFogVolume {
+                origin_metres: baked.origin_metres,
+                extent_metres: baked.extent_metres,
+                dims: baked.dims,
+                rgba: baked.rgba,
+                any: baked.any,
+            };
+            if let Err(err) = renderer.upload_veil_scar_volume(&volume) {
+                startup::line(&format!("scar upload failed: {err:#}"));
+            }
+        }
         upload_posed(
             renderer,
             "player",

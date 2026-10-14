@@ -266,7 +266,10 @@ pub use texture_streaming::{TextureStreamingManager, TextureStreamingStats};
 pub use transparency::{create_blend_state, BlendMode, TransparencyManager, TransparentInstance};
 pub use virtual_texture::{PageCache, PageRequest, VirtualTextureConfig, VirtualTextureFeedback};
 pub use volumetric_clouds::{CloudConfig, CloudQuality, VolumetricCloudsPass};
-pub use volumetric_fog::{VolumetricFogConfig, VolumetricFogPass, VolumetricQuality};
+pub use volumetric_fog::{
+    ScarFogVolume, VolumetricFogConfig, VolumetricFogPass, VolumetricGpuSample, VolumetricQuality,
+    SCAR_VOLUME_DIM,
+};
 
 // Phase 2 Task 5: Skeletal Animation exports
 pub use animation::{

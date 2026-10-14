@@ -11,6 +11,7 @@ use crate::ground::{ChunkUpload, Ground};
 use crate::locomotion::{clip_name, visual_time, LocomotionGraph, PoseInput};
 use crate::motor::{Motor, MotorInput};
 use crate::player::{self, Player};
+use astraweave_veil::ScarField;
 pub const FIXED_DT: f32 = 1.0 / 60.0;
 /// Wall time longer than this is not fed into the accumulator.
 pub const MAX_FRAME_DT: f32 = 0.25;
@@ -101,6 +102,8 @@ pub struct Greybox {
     pub combat: Combat,
     pub nav: NavMesh,
     pub pending_uploads: Vec<ChunkUpload>,
+    /// Fate-scars. Fixed-point, ticked once per simulation step.
+    pub scars: ScarField,
     /// Meshes from the first sync, moved out by the window once a device exists.
     pub initial_uploads: Vec<ChunkUpload>,
     /// Negative skips streaming so a hand-built island is left alone.
@@ -134,6 +137,7 @@ impl Greybox {
             initial_uploads,
             view_radius: -1,
             spawn,
+            scars: ScarField::new(),
             accumulator: 0.0,
             tick: 0,
         }
@@ -160,6 +164,7 @@ impl Greybox {
             initial_uploads,
             view_radius: radius,
             spawn,
+            scars: ScarField::new(),
             accumulator: 0.0,
             tick: 0,
         }
@@ -336,8 +341,14 @@ impl Greybox {
             FIXED_DT,
         );
         self.physics.step();
-        self.combat
-            .tick(&mut self.physics, &self.player, &self.motor, FIXED_DT);
+        self.combat.tick(
+            &mut self.physics,
+            &self.player,
+            &self.motor,
+            FIXED_DT,
+            Some(&mut self.scars),
+        );
+        self.scars.tick();
         if let Some(index) = self.combat.lock {
             if let Some(enemy) = self.combat.enemies.get(index) {
                 if let Some(pos) = crate::combat::body_pos(&self.physics, enemy.body) {
@@ -379,6 +390,7 @@ impl Greybox {
             yaw: self.player.facing_yaw,
             stamina: self.motor.stamina,
             player_hp: self.combat.player_hp,
+            scars: self.scars.clone(),
         }
     }
 
@@ -386,6 +398,7 @@ impl Greybox {
         self.motor.stamina = checkpoint.stamina.clamp(0.0, self.motor.stamina_max);
         self.combat.player_hp = checkpoint.player_hp.max(0.0);
         self.player.facing_yaw = checkpoint.yaw;
+        self.scars = checkpoint.scars;
         self.physics
             .set_body_position(self.player.body, checkpoint.position);
         self.camera.pivot = checkpoint.position;
@@ -968,5 +981,23 @@ mod tests {
         assert!(a.player_pos().x > 32.0, "did not leave the spawn chunk");
         assert_eq!(a.ground.sorted_body_ids(), b.ground.sorted_body_ids());
         assert_eq!(a.state_hash(), b.state_hash());
+    }
+
+    #[test]
+    fn an_enemy_death_saves_and_loads_the_same_scar_hash() {
+        let mut sim = Greybox::open(0);
+        sim.spawn_enemy(Vec3::new(8.0, 6.0, 8.0));
+        sim.physics.step();
+        sim.combat.enemies[0].health = 0.0;
+        sim.tick_controls(MotorInput::default());
+        assert!(sim.scars.occupied_count() >= 1);
+        assert!(sim.combat.enemies[0].scarred);
+        let hash = sim.scars.state_hash();
+        let dir = tempfile::tempdir().unwrap();
+        crate::save::save_checkpoint(dir.path(), &sim.checkpoint()).unwrap();
+        sim.scars = astraweave_veil::ScarField::new();
+        let loaded = crate::save::load_checkpoint(dir.path()).unwrap();
+        let _ = sim.restore(loaded);
+        assert_eq!(sim.scars.state_hash(), hash);
     }
 }

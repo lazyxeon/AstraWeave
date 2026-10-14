@@ -93,6 +93,7 @@ members = [
   "astraweave-behavior",
   "astraweave-pcg",
   "astraweave-weaving",
+  "astraweave-veil",
   "tools/aw_debug",
   "tools/aw_decision",
   "tools/aw_build",
@@ -229,6 +230,7 @@ astraweave-security = { path = "astraweave-security" }
 astraweave-observability = { path = "astraweave-observability" }
 astraweave-profiling = { path = "astraweave-profiling" }
 astraweave-scripting = { path = "astraweave-scripting" }
+astraweave-veil = { path = "astraweave-veil" }
 astraweave-alloc = { path = "crates/astraweave-alloc" }
 # mimalloc as an optional workspace dep so astraweave-alloc and any binary can
 # reference it via the `fast-alloc` feature cascade. MIT-licensed; Microsoft-
