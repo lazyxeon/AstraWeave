@@ -8,7 +8,7 @@ domain: core
 lifecycle_status: active
 integration_status: wired
 owns: [astraweave-alloc, astraweave-core, astraweave-ecs, astraweave-math, astraweave-sdk]
-doc_version: "1.3"
+doc_version: "1.4"
 last_verified_commit: 67c9de7e1
 ---
 
@@ -20,7 +20,7 @@ last_verified_commit: 67c9de7e1
 |---|---|
 | **System name** | ECS substrate + Math / Core / SDK primitives (foundation layer) |
 | **Primary crates** | `astraweave-ecs`, `astraweave-math`, `astraweave-core`, `astraweave-sdk` |
-| **Document version** | 1.3 |
+| **Document version** | 1.4 |
 | **Last verified against commit** | `67c9de7e1` |
 | **Last verified date** | 2026-05-10 |
 | **Status** | Active foundation. `astraweave-ecs` and `astraweave-math` are canonical; `astraweave-core` contains a canonical schema **plus** a transitional legacy `World` that bridges to ECS; `astraweave-sdk` is a stable C ABI surface with a single in-tree consumer (`examples/sdk_c_harness`) and an otherwise out-of-tree audience. |
@@ -306,12 +306,12 @@ There are several distinct flows through this layer. The first is the canonical 
 |---|---|---|---|
 | `astraweave-core/src/lib.rs` | Top-level: module declarations, re-exports, `default_tool_registry()` | Active | `pub mod` at lines 28-43; `pub use` re-exports at lines 51-62 |
 | `astraweave-core/src/schema.rs` | `IVec2`, `WorldSnapshot`, `PlayerState`, `CompanionState`, `EnemyState`, `Poi`, `PlanIntent`, `ActionStep`, `Stance`, `CoverType`, plus `pub type Entity = u32` | Active | Canonical AI-perception schema. **CRITICAL** — names hardcoded in LLM prompts |
-| `astraweave-core/src/world.rs` | Legacy `World` struct with HashMap-per-component-type (poses, health, team, ammo, cds, names, behavior_graphs, parents/children_map) | Transitional | Bridged into ECS via `ecs_adapter::build_app`. Long-term role is the open question in §11 |
+| `astraweave-core/src/world.rs` | Legacy `World` struct with HashMap-per-component-type (poses, health, team, ammo, cds, names, behavior_graphs, parents/children_map) | Transitional | Bridged into ECS via `ecs_adapter::build_app`. `entities`, `all_of_team`, and `enemies_of` return ids sorted by entity id. `sorted_obstacles` / `obstacles_as_ivec2` sort by `(x, y)`. `iter_entities` stays unordered and is not a sim output |
 | `astraweave-core/src/ecs_adapter.rs` | `build_app(legacy_world, dt) -> ecs::App`, plus `sys_sim`, `sys_move`, `sys_bridge_sync`, `sys_sync_to_legacy`, `sys_refresh_los` | Transitional | Bridge layer between legacy World and ECS substrate |
 | `astraweave-core/src/ecs_bridge.rs` | `EntityBridge` bidirectional `legacy::Entity ↔ ecs::Entity` map | Active | Reverse index maintained on every insert/remove |
 | `astraweave-core/src/ecs_components.rs` | `CPos`, `CHealth`, `CTeam`, `CAmmo`, `CCooldowns`, `CDesiredPos`, `CAiAgent`, `CLegacyId`, plus placeholders `CompanionProfile`, `Fact` | Transitional | Module header: "Phase 1 incremental migration" (line 1) |
 | `astraweave-core/src/ecs_events.rs` | `Events<E>` bridge type, `MovedEvent` | Active | Used by `ecs_adapter` for `sys_move` |
-| `astraweave-core/src/perception.rs` | `astar_path`, `find_cover_positions`, `los_clear` AI perception helpers | Active | Re-exported via `pub use perception::*` (`lib.rs:51`) |
+| `astraweave-core/src/perception.rs` | `build_snapshot`, `try_build_snapshot`, shared-obstacle variant | Active | Obstacle copies are sorted by `(x, y)`. `try_build_snapshot` returns `SnapshotError` when the player or companion is missing a required component; `build_snapshot` still panics for callers that treat that as a programmer error. Re-exported via `pub use perception::*` |
 | `astraweave-core/src/tools.rs` | `astar_path`, `find_cover_positions`, `los_clear`, `path_exists`, `glam_to_schema`, `schema_to_glam` | Active | Some helpers also re-exported via `pub use tools::{…}` (`lib.rs:58-60`); see also §6 naming-collision note on `Poi` |
 | `astraweave-core/src/tool_sandbox.rs` | `ToolBlock`, `ToolBlockReason`, `map_engine_error` | Active | Maps engine errors to a stable tool taxonomy |
 | `astraweave-core/src/tool_vocabulary.rs` | Vocabulary used by AI tool sandbox | Active | Re-exported via `pub use tool_vocabulary::*` (`lib.rs:57`) |
@@ -455,6 +455,7 @@ There are several distinct flows through this layer. The first is the canonical 
 | 11 | `Schedule::add_system` for an unregistered stage name does not panic — it either logs (debug) or silently drops (release) | Yes (behavioural) | `astraweave-ecs/src/lib.rs:708-724`. This is the documented behavioural contract — silent-drop is intentional for optional custom stages, while debug-mode logging surfaces typos |
 | 12 | `Component` and `Resource` traits are blanket-implemented for `'static + Send + Sync` types — any such type can be both | Yes (compile-time) | `astraweave-ecs/src/lib.rs:85-90` |
 | 13 | SIMD math functions handle NaN/Inf input — `debug_assert!(a.is_finite())` in debug; production paths fall through to scalar `glam` for non-x86_64 | Yes (debug) | E.g. `astraweave-math/src/simd_vec.rs:62-63`, `simd_quat.rs:33-34`. Release builds do not check finiteness |
+| 14 | Perception queries that feed a snapshot are ordered. `all_of_team`, `enemies_of`, and `entities` sort by entity id. Obstacle snapshots sort by `(x, y)`. The replay hash does not re-sort those lists | Yes | `world.rs` `sorted_entities` / `sorted_obstacles`; `perception.rs` `assemble_snapshot`. `astraweave-core/tests/perception_order.rs` builds two worlds and compares enemy ids, the first-enemy plan, and SHA-256 |
 
 ---
 
