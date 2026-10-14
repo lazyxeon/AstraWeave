@@ -1,12 +1,12 @@
 # Terrain, Worldgen, and Scatter Archaeology
 
-**Workstream:** WS-RENDER-ENV-B, phase 1 (exploratory). No feature code in this change.
-**Evidence commit (engine `main`):** `a3fe3ecd` (2026-08-05).
-**Demo evidence:** PR [#205](https://github.com/lazyxeon/astraweave/pull/205), branch `cursor/aravath-greybox-b3de` at `9e548c18`. That branch is owned by another agent. This document reads it; it does not edit it.
+**Workstream:** WS-RENDER-ENV-B. §1–§11 are the survey. §12 is what P0–P4 implemented. §13 is the unification plan (not started).
+**Evidence commit (engine `main` at rebase):** `85d09a2c`.
+**Demo evidence:** PR [#205](https://github.com/lazyxeon/astraweave/pull/205). Terrain edits here are written to merge into that branch. The demo agent still owns the rest of #205.
 **Date:** 2026-10-14.
 **Authority already on disk:** `docs/architecture/terrain.md` (v1.7, verified 2026-07-26), `docs/architecture/terrain_materials.md`, `docs/architecture/pcg.md` (v1.1), `docs/architecture/scene.md` (v1.1). This note is the cross-check of those traces against `main` and against the Aravath greybox. Where a trace and the code disagree, the code citation below wins.
 
-Phase 1 stops here. The plan in §10 is a proposal for review. Nothing in it is implemented.
+Phase 1 was the survey. After review, P0–P4 were approved with the amendments in §12. P5 as written (leave the dormant stacks untouched) was rejected. §13 is the unification plan. The f32 `WorldGenerator` path is still the editor heightmap. The sim ground is `column_gen`.
 
 ---
 
@@ -273,3 +273,73 @@ New noise, a second voxel format, GPU grass, impostor bakes for KayKit, Block Bi
 | No `deferred-failure` issues | `gh issue list --label deferred-failure` empty |
 | PCG dormant | `docs/architecture/pcg.md` §1 and a workspace grep for `astraweave_pcg::` outside the crate |
 | KayKit paths | `astraweave-terrain/src/biome.rs` model_path strings; PR #205 `assets/aravath/models/nature/*.glb` |
+
+---
+
+## 12. What landed after approval
+
+Rebased onto `main` at `85d09a2c` (#210 replay gate, #211 `SimRng`). `Fixed64` is not on `main`. It lives in `astraweave-veil` on PR #205 (`Q32.32`). Yaw uses `astraweave_core::sim::SimRng`, which is on `main`.
+
+| Item | Where |
+|---|---|
+| P1 mesher | `astraweave-terrain/src/meshing.rs`. `vertex_cache` is `HashMap<EdgeKey, u32>`. `edge_midpoint_is_stored_and_two_runs_match_bits` requires the midpoint `(3, 0, 0.5)` and identical position bits across two runs |
+| P0/P3 ground | `column_gen.rs`. Opening `[-96, 128)` is grass. Road `\|z-16\|<=1 && x>=8` is dirt and has no props. Palms only outside the opening. `aravath_runtime` fills and scatters through this module |
+| P2 hash | Required case `worldgen_columns` in `determinism-replay.yml`. Test `astraweave-terrain/tests/worldgen_hash.rs` appends the row after the core replay cases |
+| Foliage order | `sync_foliage` sorts by `(kind, grid_x, grid_z, yaw_quanta)` before upload |
+| Yaw | `SimRng` stream `SIM_SYSTEM_FOREST_SCATTER` (`0x7E22_7101`). The record stores `yaw_quanta: u8`. The render yaw is `quanta * (TAU/256)` and is not hashed |
+| Zone scatter seed | `tools/aw_editor/src/main.rs` passes `zone_seed` (`terrain_seed()`), not `SystemTime` |
+| LOD | `column_gen::lod_keeps`. From spawn `(16, 16)`, a radius-3 ring produced **2009** props and kept **727** after LOD. CPU generation of that ring was **1.54 ms** (`view_ring_lod_keeps_the_forest_under_budget`). This host has no Vulkan device, so there is no RTX 4060 Ti frame time in this change |
+| PBR set | `assets/terrain/polyhaven/pine_forest/`. 2k JPG, `diff` + `nor_gl` + `arm`, SHA-256 in `manifest.json`. Roles: forest floor `forest_ground_04` (pine_forest collection), gravel road `gravel`, rock face `rock_wall_02`, cliff `cliff_side`, grass `grass_ground`, pebbles `floor_pebbles_01`. The greybox still tints with its 1k demo maps; the manifest is the slot map for the PBR bind |
+
+`TerrainNoise::sample_height` takes `f64` and returns `f32` (`noise_gen.rs`). On rustc 1.89.0, debug and release both return exactly `477.0` for `sample_height(0.0, 0.0)` with seed 42 and the default config. The checked-in golden `35.8488` is the pre-E3 number, and it fails in both profiles the same way. That sample is not an opt-level split on this host. The sim and the replay hash do not call it. A later unification that saves `WorldGenerator` output has to stop using this f64 Perlin or prove the bits in the three-OS job. Until then it stays off `worldgen_columns`.
+
+The Aravath gameplay golden moved from `9b607d1a840ecd64` to `fd303f2adf402881` because the ground under the recorded script changed. Two independent runs of that script match.
+
+---
+
+## 13. Unification plan (not started)
+
+P5 as “leave the dormant stacks dormant” is rejected. Each surface below has a decision. U1–U4 are follow-on phases after this branch. They are not in the current diff.
+
+One pipeline means one function from `(seed, x, z)` to a column, one mesher, one scatter record, and one LOD predicate. The editor and the demo both call it. `WorldGenerator`’s f32 path remains an authoring preview until U2 replaces its saved output.
+
+| Surface | Decision | Phase |
+|---|---|---|
+| `column_gen` | Becomes the sim and save ground | done in this branch; U2 is the only writer |
+| `DualContouring` edge cache | The only voxel mesher | done |
+| `WorldGenerator` / `noise` crate f64 Perlin | Editor preview only. Not written to saves and not in the replay hash. U2 either replaces `sample_height` with the integer field or adds a three-OS bit lock before any save reads it | U2 |
+| Demo `stream_around` | Promote into `astraweave-terrain` as `ColumnStream` (sorted eviction, already the rule). `aravath_runtime` calls it | U1 |
+| `BackgroundChunkLoader`, `LodManager`, `MorphingLodManager`, `StreamingDiagnostics` | Delete after `ColumnStream` has a caller and a test. They stream heightmap `ChunkId`s and have no production caller | U1, same commit as the caller |
+| `clipmap_terrain.rs` | Delete. It is not a module. Distance LOD is `lod_keeps`, shared with the editor scatter upload in U3 | U3 |
+| Droplet erosion | Offline bake into the integer height field for the editor’s “generate” button. Not a per-frame sim step | U2 |
+| `VegetationScatter` Poisson + `StdRng` | Editor keeps it until U3, then it places from `column_gen` prop records for forest biomes and keeps Poisson only for authored densities. Yaw already has to be `SimRng` if a new caller appears | U3 |
+| `ZoneScatterGenerator` | Stays for `.blend` polygons. Seed is the world seed (done). U3 adds it to the replay hash if a save stores the placements | U3 |
+| `astraweave-pcg` | The editor `pcg_panel` does not call it. U4 wires `SeedRng` through `WfcGrid` (today WFC takes raw `Rng`) and adds one editor action with a test, **or** deletes `wfc` / `layout` / `encounters` and the unused `astraweave-weaving` dependency. No third state | U4 |
+| `RegionalArchetypeMask` Some-branch | Wire to the generator in the editor **or** delete the branch and the panel’s claim that it generates. Default in U4 is delete unless a designer tool is in the same change | U4 |
+| GPU erosion / `WgpuTerrainAccelerator` | Delete the trait and the render impl in U4. Erosion is the CPU bake above | U4 |
+| Phase 10 solver / modifier / persistence / compressed voxels | `TerrainSolver` already takes `SIM_SYSTEM_TERRAIN_SOLVER`. The rest are deleted in U4 unless U1’s stream needs the persistence format, in which case the save blob is the edit log already used by Aravath, not a second format | U4 |
+| Poly Haven 2k set | Bind `diff` / `nor_gl` / `arm` on the five voxel materials in the demo material path. Manifest hashes stay the check | U3 |
+
+### U1 — one streamer
+
+Move `Ground::stream_around`’s keep/evict/sort into `ColumnStream` in `astraweave-terrain`. `aravath_runtime` calls it. Delete `background_loader.rs`, `lod_manager.rs`, `lod_blending.rs`, and `streaming_diagnostics.rs` in that change, with their tests rewritten against `ColumnStream` or removed with the files.
+
+Acceptance: `rg BackgroundChunkLoader` is empty outside git history. A test streams to a negative chunk and back without `HashMap` iteration in the eviction order. `worldgen_columns` still matches.
+
+### U2 — one height
+
+`surface_height` is the only height the editor writes into a chunk it saves. The climate path may still draw a preview, but the save stores the integer columns. Erosion, if enabled, is a deterministic bake over those integers (fixed-point droplet or an explicit “not saved” banner). `sample_height`’s f64 path is not in the save.
+
+Acceptance: a save/load round trip of a chunk hashes into `worldgen_columns` or a sibling required case. Debug and release on the three-OS job match.
+
+### U3 — one scatter and one material bind
+
+Editor forest scatter reads `prop_at`. `lod_keeps` is the editor’s distance test too. Voxel materials 1–5 sample the pine-forest manifest (`nor_gl`, `arm`, `diff`). KayKit props stay instanced and sorted.
+
+Acceptance: opening census test still has trees, no palms, an empty dirt road. A headless frame on a real GPU records frame time for the 727-instance LOD set. The manifest test still checks SHA-256.
+
+### U4 — delete or wire the rest
+
+For each row in the table that says “or”: the change either adds a non-test caller and a test, or deletes the file. `astraweave-pcg` is the first of these. `clipmap_terrain.rs` is a delete.
+
+Acceptance: `rg` for each deleted type is empty. `cargo test -p astraweave-terrain --lib` passes. The determinism workflow stays required for `worldgen_columns`.

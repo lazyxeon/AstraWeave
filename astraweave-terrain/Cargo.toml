@@ -29,6 +29,7 @@ simd-noise = [] # Week 3 Action 8: SIMD-optimized noise generation (20-30% speed
 [dev-dependencies]
 criterion.workspace = true
 serde_json.workspace = true
+sha2.workspace = true
 tokio = { version = "1", features = ["rt", "rt-multi-thread", "sync", "macros"] }
 tempfile = "3"            # Phase 10: Terrain persistence tests
 

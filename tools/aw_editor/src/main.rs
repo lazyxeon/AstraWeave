@@ -7851,10 +7851,9 @@ impl EditorApp {
             terrain_chunks.iter().copied().collect();
 
         let generator = ZoneScatterGenerator::new(64.0, 65);
-        let seed = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_secs())
-            .unwrap_or(42);
+        // Same seed the terrain panel used. A clock seed made every zone
+        // scatter unreproducible across editor runs.
+        let seed = zone_seed;
 
         match generator.generate_zone_scatter(&bz, &chunk_refs, seed) {
             Ok(result) => {

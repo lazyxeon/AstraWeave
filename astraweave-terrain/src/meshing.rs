@@ -580,6 +580,43 @@ mod tests {
     }
 
     #[test]
+    fn edge_midpoint_is_stored_and_two_runs_match_bits() {
+        let coord = ChunkCoord::new(0, 0, 0);
+        let mut chunk = VoxelChunk::new(coord);
+        // Corner (3,0,0) is not the origin of cell (2,0,0). The old cache
+        // keyed vertices by cell position and looked them up with
+        // `edge_key.min`, so this edge's midpoint never became a vertex.
+        chunk.set_voxel(IVec3::new(3, 0, 0), Voxel::new(1.0, 1));
+
+        let mut first = DualContouring::new();
+        let mut second = DualContouring::new();
+        let a = first.generate_mesh(&chunk);
+        let b = second.generate_mesh(&chunk);
+        assert!(!a.indices.is_empty());
+        assert_eq!(a.indices, b.indices);
+        assert_eq!(a.vertices.len(), b.vertices.len());
+        for (left, right) in a.vertices.iter().zip(b.vertices.iter()) {
+            assert_eq!(left.position.x.to_bits(), right.position.x.to_bits());
+            assert_eq!(left.position.y.to_bits(), right.position.y.to_bits());
+            assert_eq!(left.position.z.to_bits(), right.position.z.to_bits());
+            assert_eq!(left.material, right.material);
+        }
+        let midpoint = a.vertices.iter().any(|vertex| {
+            vertex.position.x.to_bits() == 3.0f32.to_bits()
+                && vertex.position.y.to_bits() == 0.0f32.to_bits()
+                && vertex.position.z.to_bits() == 0.5f32.to_bits()
+        });
+        assert!(
+            midpoint,
+            "expected the crossed edge midpoint (3, 0, 0.5), got {:?}",
+            a.vertices
+                .iter()
+                .map(|vertex| vertex.position)
+                .collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
     fn test_edge_key_ordering() {
         let p1 = IVec3::new(0, 0, 0);
         let p2 = IVec3::new(1, 0, 0);

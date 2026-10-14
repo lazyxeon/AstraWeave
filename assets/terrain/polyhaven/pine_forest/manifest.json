@@ -1,0 +1,180 @@
+{
+  "license": "CC0",
+  "source": "https://polyhaven.com",
+  "resolution": "2k",
+  "maps": [
+    "diff",
+    "nor_gl",
+    "arm"
+  ],
+  "assets": [
+    {
+      "role": "forest_floor",
+      "polyhaven_id": "forest_ground_04",
+      "note": "Pine-forest collection ground. Role: forest floor.",
+      "files": [
+        {
+          "map": "diff",
+          "path": "assets/terrain/polyhaven/pine_forest/forest_ground_04_diff_2k.jpg",
+          "bytes": 4529321,
+          "sha256": "24b8aaf4c8547305d80b0e029ec365219ab1b90748d4ca5651bdc9e75bfde5e6",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/forest_ground_04/forest_ground_04_diff_2k.jpg"
+        },
+        {
+          "map": "nor_gl",
+          "path": "assets/terrain/polyhaven/pine_forest/forest_ground_04_nor_gl_2k.jpg",
+          "bytes": 5288849,
+          "sha256": "b37ac799ed410976541e0011c246fca254e74eaa3f096ae7a7d74178db5a6d9b",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/forest_ground_04/forest_ground_04_nor_gl_2k.jpg"
+        },
+        {
+          "map": "arm",
+          "path": "assets/terrain/polyhaven/pine_forest/forest_ground_04_arm_2k.jpg",
+          "bytes": 3418726,
+          "sha256": "a6086cb5611fabcc3dd4c9ac74bcf6cf8ed5d07e136ebe51255a5a3bea9e42c6",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/forest_ground_04/forest_ground_04_arm_2k.jpg"
+        }
+      ]
+    },
+    {
+      "role": "gravel_road",
+      "polyhaven_id": "gravel",
+      "note": "Gravel. Role: dirt-road surface.",
+      "files": [
+        {
+          "map": "diff",
+          "path": "assets/terrain/polyhaven/pine_forest/gravel_diff_2k.jpg",
+          "bytes": 3449100,
+          "sha256": "5eb5eec5af1fb33aa572279ad2aafb4ac31f15bd8222b4e2b1361bd9a1007d76",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/gravel/gravel_diff_2k.jpg"
+        },
+        {
+          "map": "nor_gl",
+          "path": "assets/terrain/polyhaven/pine_forest/gravel_nor_gl_2k.jpg",
+          "bytes": 5709278,
+          "sha256": "a6d6155ed388c45833c021f91c59b05c2a1364d195f619263c4561d71e03fb98",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/gravel/gravel_nor_gl_2k.jpg"
+        },
+        {
+          "map": "arm",
+          "path": "assets/terrain/polyhaven/pine_forest/gravel_arm_2k.jpg",
+          "bytes": 3589193,
+          "sha256": "e36d64a14975250ec258f529b2aac5bdcfe6a481109b3eb212973735b717f822",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/gravel/gravel_arm_2k.jpg"
+        }
+      ]
+    },
+    {
+      "role": "rock_face",
+      "polyhaven_id": "rock_wall_02",
+      "note": "Rock wall. Role: rock face.",
+      "files": [
+        {
+          "map": "diff",
+          "path": "assets/terrain/polyhaven/pine_forest/rock_wall_02_diff_2k.jpg",
+          "bytes": 1209071,
+          "sha256": "55aa5fd7f309501aeb343a9bbdff09a2643b9c012521452878e76ddc6dffe8ef",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/rock_wall_02/rock_wall_02_diff_2k.jpg"
+        },
+        {
+          "map": "nor_gl",
+          "path": "assets/terrain/polyhaven/pine_forest/rock_wall_02_nor_gl_2k.jpg",
+          "bytes": 763948,
+          "sha256": "ef5d7df77085827dc68cffeaf1e417185358f303dd5c11a99cf039b49f8e8ef6",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/rock_wall_02/rock_wall_02_nor_gl_2k.jpg"
+        },
+        {
+          "map": "arm",
+          "path": "assets/terrain/polyhaven/pine_forest/rock_wall_02_arm_2k.jpg",
+          "bytes": 848763,
+          "sha256": "335eec4cd08caa1b49009a93302a0cdf71a150711b439460d99b392bcb21df43",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/rock_wall_02/rock_wall_02_arm_2k.jpg"
+        }
+      ]
+    },
+    {
+      "role": "cliff",
+      "polyhaven_id": "cliff_side",
+      "note": "Cliff side. Role: cliff.",
+      "files": [
+        {
+          "map": "diff",
+          "path": "assets/terrain/polyhaven/pine_forest/cliff_side_diff_2k.jpg",
+          "bytes": 3387348,
+          "sha256": "bc6f92d72eb6383ecc3a1094ed9f5b37efb36ccf83cf29699bb5990e6775afee",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/cliff_side/cliff_side_diff_2k.jpg"
+        },
+        {
+          "map": "nor_gl",
+          "path": "assets/terrain/polyhaven/pine_forest/cliff_side_nor_gl_2k.jpg",
+          "bytes": 3585856,
+          "sha256": "eec5c0bb3daa1ad72f0f9c1d19caf78e84dfedcf3283b35b5a5dcf163718025f",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/cliff_side/cliff_side_nor_gl_2k.jpg"
+        },
+        {
+          "map": "arm",
+          "path": "assets/terrain/polyhaven/pine_forest/cliff_side_arm_2k.jpg",
+          "bytes": 2130381,
+          "sha256": "4c7eda3983f14892717baea852690840e6b4f6e7f30fb95f4f2c7c25b1856230",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/cliff_side/cliff_side_arm_2k.jpg"
+        }
+      ]
+    },
+    {
+      "role": "grass",
+      "polyhaven_id": "grass_ground",
+      "note": "Grass ground. Role: grass.",
+      "files": [
+        {
+          "map": "diff",
+          "path": "assets/terrain/polyhaven/pine_forest/grass_ground_diff_2k.jpg",
+          "bytes": 3787330,
+          "sha256": "4272bddc71a7fa659d1deeb13a9df8c42e68a5ac8cde7523187e4a081e028258",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/grass_ground/grass_ground_diff_2k.jpg"
+        },
+        {
+          "map": "nor_gl",
+          "path": "assets/terrain/polyhaven/pine_forest/grass_ground_nor_gl_2k.jpg",
+          "bytes": 5968024,
+          "sha256": "effa95c06af273c974476d9a74a234668a1c9292f60fffb4fa40348d638ee7f3",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/grass_ground/grass_ground_nor_gl_2k.jpg"
+        },
+        {
+          "map": "arm",
+          "path": "assets/terrain/polyhaven/pine_forest/grass_ground_arm_2k.jpg",
+          "bytes": 3850286,
+          "sha256": "79554d3cb2c1cbf4351960e16bc6bba004fa3112d256ff1b500ac994694b5673",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/grass_ground/grass_ground_arm_2k.jpg"
+        }
+      ]
+    },
+    {
+      "role": "pebbles",
+      "polyhaven_id": "floor_pebbles_01",
+      "note": "Floor pebbles. Role: pebbles.",
+      "files": [
+        {
+          "map": "diff",
+          "path": "assets/terrain/polyhaven/pine_forest/floor_pebbles_01_diff_2k.jpg",
+          "bytes": 2227964,
+          "sha256": "2ae79eca983e17255455af66fe35f64fe408bebe32a1e60f6a84dcaf4eb3596c",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/floor_pebbles_01/floor_pebbles_01_diff_2k.jpg"
+        },
+        {
+          "map": "nor_gl",
+          "path": "assets/terrain/polyhaven/pine_forest/floor_pebbles_01_nor_gl_2k.jpg",
+          "bytes": 3397270,
+          "sha256": "b2f6ecc9e8e252006b0763c83331b3733417b1df6aff9b4873d4b6c9161d4ca3",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/floor_pebbles_01/floor_pebbles_01_nor_gl_2k.jpg"
+        },
+        {
+          "map": "arm",
+          "path": "assets/terrain/polyhaven/pine_forest/floor_pebbles_01_arm_2k.jpg",
+          "bytes": 906788,
+          "sha256": "ec2eb50085b37e6cd918e8dc091d5d486f21f06e8da6f4e25a12ca1ed6571a0f",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/floor_pebbles_01/floor_pebbles_01_arm_2k.jpg"
+        }
+      ]
+    }
+  ]
+}

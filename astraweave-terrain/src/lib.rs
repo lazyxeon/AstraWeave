@@ -16,6 +16,7 @@ pub mod blueprint_zone;
 pub mod chunk;
 pub mod climate;
 pub mod collision;
+pub mod column_gen;
 pub mod compressed_voxels; // P4-8: Palette compression + RLE for voxel chunks
 pub mod elevation_biome; // Phase 1.5: heightmap-driven multi-biome generation
 pub mod erosion;
