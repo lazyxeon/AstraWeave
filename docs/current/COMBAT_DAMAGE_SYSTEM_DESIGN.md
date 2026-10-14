@@ -1038,6 +1038,7 @@ No GPU, no WoW client, and no three-OS runner were used. That is why H1 is not m
 | 0.2 | 2026-10-14 | Human and orchestrator sign-off. Gate Pass. Lore steer recorded in §21. Implementation started. |
 | 0.3 | 2026-10-14 | Property tests, combat replay-hash workflow, migration plan §22. Legacy paths stay. |
 | 0.4 | 2026-10-14 | Rebased onto `85d09a2c`. `SimRng` is core (R2 closed). `Fixed64` stays local because that merge has no Q32.32 type (R3 open). `combat_resolve` is a required case of `determinism-replay.yml` (R1 closed). Golden hashes unchanged. |
+| 0.5 | 2026-10-14 | §23 logs CI failures from the rebase run that PR #217's ledger does not cover. Benchmark aggregation now expects 49 packages because this crate has a bench. |
 
 ---
 
@@ -1070,3 +1071,26 @@ Do not delete these until the demo calls `astraweave-combat`. The order is the d
 | 5 | Retire | `Stats::apply_damage` and the weaving `f32` writer become `#[deprecated]` wrappers that are unreachable from the tick. Examples either use the crate or are marked legacy. Update `docs/architecture/gameplay.md` and `docs/architecture/combat.md` in that commit. | `rg apply_damage` under `astraweave-gameplay/src` and `astraweave-weaving/src` shows no production caller. |
 
 `CHealth` in `astraweave-core` stays until step 3 has a reader. Do not write both `CHealth` and `CVitals` from two formulas. The demo step is the first production caller. Steps 2–5 do not start before that caller exists.
+
+---
+
+## 23. CI failures outside the #217 ledger
+
+Recorded from PR #212 after the rebase onto `85d09a2c`. `determinism-replay / compare` passed. Linux, Windows, and macOS agreed:
+
+- `combat_resolve` `975aae72e3c83a2335be05142eea2bf2ae4413d621fc5009ed6019f89e2a6e52`
+- `perception_world` `ad6f87b69a97ed5c86fec18a5028b2750648fe330f7c8dc9e7d074830eedaa80`
+- `planner_pure` `60991deb005d8e6185db21520edc1e38b23c2db6fa91ce656385fad0bab97781`
+
+The seven-stage hash is still `071dc70e116987782a8a8b137a6cce648d390a82967726775308946f1e69da71`.
+
+PR #217 (`cursor/ci-failure-burndown`, open, not merged) already explains cargo-deny on `openssl` 0.10.73, the ubuntu editor job's missing `libudev.pc`, the Windows SDK `LNK2019`/`WSAStartup` link, the Windows debug audio failure, and benchmark shards 0–11 timing out at 600s. Shard 8's only execution failure was `astraweave-render` with no Criterion directory. `astraweave-combat` on that shard finished in 63s (`resolve_hit` 216.30–219.87 ns, `resolve_hit_batch_10k` 2.0874–2.1126 ms).
+
+These failures are not that ledger:
+
+1. `editor-ci`, `Test AW Editor (windows-latest)`, and `Test AW Editor (macos-latest)` fail compiling `egui-winit` 0.32.3: `error[E0027]`, pattern missing `accesskit_update` on `egui::PlatformOutput`. `editor-ci` got past `libudev-sys` and then hit this. The ledger's editor rows are the missing `libudev.pc` failure.
+2. Toolchain Validation (`stable`, `1.89.0`, `1.88.0`, `beta`, `nightly`) reached `astraweave-render`. 107 tests failed with wgpu `adapter: NotFound` and empty `active_backends`. The ledger says these jobs die in `astraweave-audio` before a later crate runs.
+3. `Test (ubuntu-latest, debug)` and Rust Cache `Build & Test (ubuntu)` stopped in `astraweave-terrain` (800 passed, 7 failed). One assertion is `bootstrap_splines_evaluate_independent_of_input_dimension_assignment`: `mountains_amplitude` 8.0 versus 750.0. The ledger describes these jobs as 202 audio failures.
+4. `Test (macos-latest, debug)` stopped in `astraweave-render` (1232 passed, 59 failed) with the same missing adapter (`supported_backends: METAL`).
+5. `Coverage (Linux)` panicked in `astraweave-fluids` GPU tests (`Device::create_compute_pipeline`, label `SSFR Smooth Pipeline`: WGSL `textureLoad` from depth textures is not supported in GLSL) and in `astraweave-persistence-ecs` `test_large_world_1000_entities` (serialize took 83 ms against a 50 ms debug budget). The job was then canceled. The ledger's caustics note is a different fluids test.
+6. Benchmark aggregation required 48 package records. This branch has 49 because `astraweave-combat` has a bench, so `complete` was false. `benchmark.yml` and `benchmark_alert.yml` now expect 49. Shard timeouts still leave the aggregate unhealthy, and that part is the ledger.
