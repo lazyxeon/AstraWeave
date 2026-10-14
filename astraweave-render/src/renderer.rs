@@ -5181,7 +5181,11 @@ fn vs(input: VSIn) -> VSOut {
         let ambient = self.sky.time_of_day().get_ambient_color();
         let intensity = self.camera_ubo.light_dir_pad[3].max(0.15);
 
-        if self.volumetric_fog_enabled() {
+        if let Some(fog) = self
+            .volumetric_fog
+            .as_mut()
+            .filter(|fog| fog.config().enabled)
+        {
             let splits = [
                 self.split0,
                 self.split1,
@@ -5201,7 +5205,6 @@ fn vs(input: VSIn) -> VSOut {
             let shadow = self.shadow_view.clone();
             let hdr = self.hdr_view.clone();
             let generation = self.resource_generation;
-            let fog = self.volumetric_fog.as_mut().expect("fog enabled");
             fog.upload_cascades(&queue, &cascades);
             fog.prepare_frame(
                 &queue,
@@ -5231,7 +5234,7 @@ fn vs(input: VSIn) -> VSOut {
             }
         }
 
-        if self.god_rays_enabled() {
+        if let Some(rays) = self.god_rays.as_mut().filter(|rays| rays.config().enabled) {
             let device = self.device.clone();
             let queue = self.queue.clone();
             let hdr = self.hdr_view.clone();
@@ -5239,7 +5242,6 @@ fn vs(input: VSIn) -> VSOut {
             let scene_width = self.config.width;
             let scene_height = self.config.height;
             let composite = {
-                let rays = self.god_rays.as_mut().expect("shafts enabled");
                 rays.update_params(&queue, view_proj, toward_sun, sun_color);
                 let ran = rays.execute(&device, enc, depth, &hdr, generation);
                 let added = ran && rays.add_into(&device, enc, &hdr, generation);
