@@ -1,0 +1,6 @@
+# The C harness and CMake example compile this header as C.
+# cbindgen 0.29 defaults to C++, which emits `#include <cstdarg>` and fails `cc`.
+language = "C"
+header = "// AstraWeave SDK — generated header\n// Do not edit manually\n"
+include_version = true
+cpp_compat = true

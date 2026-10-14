@@ -257,9 +257,7 @@ impl ecs::Plugin for AiPlanningPlugin {
     fn build(&self, app: &mut ecs::App) {
         app.world
             .insert_resource(Events::<AiPlanningFailedEvent>::default());
-        app.schedule
-            .add_system("ai_planning", sys_ai_planning as ecs::SystemFn)
-            .expect("registered schedule stage");
+        app.add_system_known_stage("ai_planning", sys_ai_planning as ecs::SystemFn);
     }
 }
 

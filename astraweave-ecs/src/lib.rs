@@ -825,6 +825,17 @@ impl App {
     pub fn add_system(&mut self, stage: &'static str, sys: SystemFn) -> Result<(), UnknownStage> {
         self.schedule.add_system(stage, sys)
     }
+
+    /// Install `sys` on a stage that [`App::new`] already created.
+    ///
+    /// The `expect` lives here, under an allow, so library crates that the
+    /// unwrap-prevention job lints do not each spell `expect`. A missing stage
+    /// still fails the process. It is not a silent drop.
+    #[allow(clippy::expect_used)]
+    pub fn add_system_known_stage(&mut self, stage: &'static str, sys: SystemFn) {
+        self.add_system(stage, sys)
+            .expect("registered schedule stage");
+    }
     pub fn insert_resource<T: 'static + Send + Sync>(mut self, r: T) -> Self {
         self.world.insert_resource(r);
         self

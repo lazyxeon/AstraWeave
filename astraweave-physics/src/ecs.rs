@@ -17,10 +17,8 @@ impl Plugin for PhysicsPlugin {
             .insert_resource(PhysicsWorld::new(Vec3::new(0.0, -9.81, 0.0)));
 
         // Register systems in physics stage
-        app.add_system(SystemStage::PHYSICS, physics_step_system)
-            .expect("registered schedule stage");
-        app.add_system(SystemStage::PHYSICS, sync_physics_to_transform_system)
-            .expect("registered schedule stage");
+        app.add_system_known_stage(SystemStage::PHYSICS, physics_step_system);
+        app.add_system_known_stage(SystemStage::PHYSICS, sync_physics_to_transform_system);
     }
 }
 
