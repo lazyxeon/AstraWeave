@@ -42,7 +42,9 @@ jobs:
             libxcb-xfixes0-dev \
             libxkbcommon-dev \
             libegl1-mesa-dev \
-            libwayland-dev
+            libwayland-dev \
+            libudev-dev \
+            pkg-config
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.89.0
