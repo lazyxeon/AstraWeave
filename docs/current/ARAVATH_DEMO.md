@@ -1,6 +1,6 @@
 # Aravath demo
 
-One window on the AstraWeave engine: a streamed voxel island, a rigged character, sword and shield combat, and three enemies. Names and flavor for this demo come from `github.com/lazyxeon/Aravath-Lore`, not from `docs/Veilweaver/lore_bible.md`. The 3D image is the engine renderer. `aravath_runtime` uploads meshes and drives simulation. It does not contain a shader, a shadow map, a fog volume, or a post chain. Enemy deaths write a fate-scar through `astraweave-veil`. The engine fog pass samples that scar. The enemies read it through `astraweave-ai`.
+One window on the AstraWeave engine: a streamed voxel island, a rigged character, sword and shield combat, and three foes. Names and flavor follow Aravath world lore (internal brief). The 3D image is the engine renderer. `aravath_runtime` uploads meshes and drives simulation. It does not contain a shader, a shadow map, a fog volume, or a post chain. A death leaves a seepage mark where the Aravath is weak. The engine fog pass samples that mark. The foes read it through `astraweave-ai`. The field still lives in the `astraweave-veil` crate.
 
 ## Run it on Windows
 
@@ -49,11 +49,11 @@ The replay is also checked across machines. Rapier is built with `enhanced-deter
 
 ## What it shows
 
-You stand on a heightfield that streams a Chebyshev radius of 3 chunks (32 m each, about 224 m across). Grass, sand, and rock biomes use Poly Haven albedo maps. Kenney trees, rocks, and grass tufts sit on the surface. Digging and placing write the same voxel grid. The body is the Quaternius rig. The sword, shield, and enemies are Kenney meshes. Clips follow walk, run, sprint, jump, crouch, roll, attack, block, hit, death, and flight.
+You stand in forested hill country on the western frontier, streamed at a Chebyshev radius of 3 chunks (32 m each, about 224 m across). A dirt road runs east, toward the village of Yaqar, which is not built here. Grass, sand, and rock biomes use Poly Haven albedo maps. The road reuses the dirt material. Kenney trees, rocks, and grass tufts sit off the road. Digging and placing write the same voxel grid. Blocks stay Stone, Dirt, Grass, Sand, and Wood. Void-amber is not a placeable block. The body is the Quaternius rig. The sword, shield, and the three foes are Kenney meshes. Clips follow walk, run, sprint, jump, crouch, roll, attack, block, hit, death, and flight.
 
-Three enemies hold still past 18 m, steer apart as they close, wait through a short windup, then swing. A stagger steps them back. Lock-on drops when the target dies. Death freezes the body on `Death01` until Enter puts you back at the spawn with full health. The edit log is kept. F5 stores edits, position, facing, stamina, health, and the fate-scars. F9 rebuilds the loaded chunks from the heightfield and that log, and puts the scars back.
+The foes are PLACEHOLDER seepage-touched beast, PLACEHOLDER hollow-eyed wildlife, and PLACEHOLDER roadside brigand. They hold still past 18 m, steer apart as they close, wait through a short windup, then swing. A stagger steps them back. Lock-on names the target and drops when it dies. Death freezes the body on `Death01` until Enter puts you back at the spawn with full health. The edit log is kept. F5 stores edits, position, facing, stamina, health, and the seepage marks. F9 rebuilds the loaded chunks from the heightfield and that log, and puts the marks back.
 
-A death writes Q32.32 energy into a 4 m cell and a quarter of that energy into the six neighboring cells. Each simulation step (not each wall-clock frame) decays the surge and keeps one third of the decayed slice as a permanent floor. While the surge is high, living enemies step away from it and do not swing. Once it has settled, an enemy standing on the floor is wary: it approaches at half speed and does not start a new attack. The scar field is a `BTreeMap` of fixed-point cells. Its cross-run FNV-1a hash for the scripted history in `astraweave-veil` is `0xb1cc29cc42401e83`. The AI stance hash for a death at the origin is `0x0eb14da1efc9e7b2`.
+A death writes Q32.32 energy into a 4 m cell and a quarter of that energy into the six neighboring cells. Each simulation step (not each wall-clock frame) decays the surge and keeps one third of the decayed slice as a permanent floor. While the surge is high, living foes step away from it and do not swing. Once it has settled, a foe standing on the floor is wary: it approaches at half speed and does not start a new attack. The field is a `BTreeMap` of fixed-point cells in `astraweave-veil`. Its cross-run FNV-1a hash for the scripted history is `0xb1cc29cc42401e83`. The AI stance hash for a death at the origin is `0x0eb14da1efc9e7b2`.
 
 ## Engine systems the demo exercises
 
@@ -61,7 +61,7 @@ A death writes Q32.32 energy into a 4 m cell and a quarter of that energy into t
 - **Time-of-day sun.** `tick_environment` advances `TimeOfDay`. The demo starts at 16:40 and does not pin a light-direction override, so the sun direction and color come from the engine clock.
 - **Cascaded shadow maps.** `set_shadows_enabled(true)`. The demo's models are shadow casters in the engine's cascade passes, and the PBR shader samples those maps. The separate low-resolution cloud-shadow texture stays off so the cascades are the shadow you see.
 - **Sky.** `SkyRenderer` with a `SkyConfig` (day colors and cloud cover), drawn into the HDR target before the meshes.
-- **Fog.** A light exponential term from `SceneEnvironment`, plus `VolumetricFogPass` at the low froxel preset (80×45×32). Scatter reads the cascade shadow array. The result is copied back into the HDR target before tonemap. Fate-scars are a 32³ world-space texture (256 KiB, RGBA16F) sampled by that same density pass at the froxel's world position. They add density, pull the Henyey-Greenstein `g` toward 0.86, and tint the in-scatter amber-violet. There is no second volumetric pass. `--no-volumetrics` still builds neither the fog pass nor the scar texture.
+- **Fog.** A light exponential term from `SceneEnvironment`, plus `VolumetricFogPass` at the low froxel preset (80×45×32). Scatter reads the cascade shadow array. The result is copied back into the HDR target before tonemap. Seepage marks are a 32³ world-space texture (256 KiB, RGBA16F) sampled by that same density pass at the froxel's world position. They add density, pull the Henyey-Greenstein `g` toward 0.86, and tint the in-scatter amber-violet. Violet is an engine choice, not a world color. There is no second volumetric pass. `--no-volumetrics` still builds neither the fog pass nor the mark texture.
 - **Light shafts.** `GodRayPass` at half resolution, 32 radial samples, added onto the HDR target after the fog. `--no-volumetrics` leaves both the fog pass and the shafts off. The pipelines are built only when those effects are enabled, after the window has already been painted.
 - **Camera, physics, terrain, input, save.** `ThirdPersonCamera`, the Rapier character controller, `DualContouring` chunk meshes, `astraweave-input`, and `aw-save` `SaveBundleV2`.
 
@@ -79,15 +79,15 @@ Stay inside this box on a GTX 1660 at 1080p, and do not treat an RTX 4070 as a r
 
 ## Known limitations
 
-- Enemy positions are not in the save. Load restores the island edits, the player, and the fate-scars, then the three enemies are the ones spawned at startup. A scar is still there if you walk back to the death.
+- Foe positions are not in the save. Load restores the island edits, the player, and the seepage marks, then the three foes are the ones spawned at startup. A mark is still there if you walk back to the death.
 - Respawn is the opening spawn, not the last save point.
 - One slot.
 - The window test is not part of CI. Linux cannot link the MSVC `basis-universal` build (`lib.exe` is absent), which is why the Windows workflow exists.
 - Cursor capture can fail on a remote desktop. The demo prints that and leaves the cursor free.
 - Sword and shield are parented to the hand joints. They are not skinned as part of the body mesh.
-- The nav mesh records a dirty region and does not path the enemies. They steer in a straight line with a separation push, and they sidestep a strong scar using the integer retreat step from `astraweave-ai`.
+- The nav mesh records a dirty region and does not path the foes. They steer in a straight line with a separation push, and they sidestep a strong seepage mark using the integer retreat step from `astraweave-ai`.
 
-## Fate-scars, and what was left out of the Chevel note
+## Seepage marks, and what was left out of the Chevel note
 
 The note called Project Chevel is the inspiration for the scar, not a drop-in patch.
 
@@ -101,4 +101,4 @@ The note called Project Chevel is the inspiration for the scar, not a drop-in pa
 | Perception and planning stubs, with no decay | Transient energy decays onto a raised floor. `sense` / `stance_at` are the perception query. |
 | Spillways, floodgates, guild wardens | The demo has no city and no water system. Those systems were not added. |
 
-The scar simulation does not read the wall clock and does not iterate a `HashMap`. A save written before this system has no `veil_scars` meta entry and loads an empty field.
+The seepage-mark simulation does not read the wall clock and does not iterate a `HashMap`. A save written before this system has no `veil_scars` meta entry and loads an empty field. `veil_scars` is the save key. The player-facing word is seepage mark.

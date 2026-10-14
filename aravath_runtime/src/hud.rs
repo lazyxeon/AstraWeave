@@ -8,6 +8,8 @@ pub struct HudModel {
     pub stamina: f32,
     pub stamina_max: f32,
     pub locked: bool,
+    /// Set when lock-on has a foe. The string is a PLACEHOLDER from the brief.
+    pub locked_name: Option<&'static str>,
     pub block: &'static str,
     pub notice: Option<String>,
     pub downed: bool,
@@ -47,12 +49,19 @@ pub fn respawn_hint(downed: bool) -> Option<&'static str> {
     }
 }
 
-pub fn reticle_label(locked: bool) -> &'static str {
-    if locked {
-        "Locked"
-    } else {
-        ""
-    }
+/// Spawn order in the greybox window. Index 0 is the first `spawn_enemy`.
+pub const FOE_NAMES: [&str; 3] = [
+    "PLACEHOLDER seepage-touched beast",
+    "PLACEHOLDER hollow-eyed wildlife",
+    "PLACEHOLDER roadside brigand",
+];
+
+pub fn foe_name(index: usize) -> &'static str {
+    FOE_NAMES.get(index).copied().unwrap_or("PLACEHOLDER foe")
+}
+
+pub fn reticle_label(locked_name: Option<&str>) -> &str {
+    locked_name.unwrap_or("")
 }
 
 #[cfg(test)]
@@ -69,6 +78,7 @@ mod tests {
             stamina: 25.0,
             stamina_max: 100.0,
             locked: true,
+            locked_name: Some(foe_name(2)),
             block: block_name(4),
             notice: Some("Saved".into()),
             downed: true,
@@ -77,7 +87,10 @@ mod tests {
         assert!(respawn_hint(false).is_none());
         assert!((health_fraction(&model) - 1.0).abs() < 1e-4);
         assert!((stamina_fraction(&model) - 0.25).abs() < 1e-4);
-        assert_eq!(reticle_label(model.locked), "Locked");
+        assert_eq!(reticle_label(model.locked_name), foe_name(2));
+        assert_eq!(foe_name(0), "PLACEHOLDER seepage-touched beast");
+        assert_eq!(foe_name(1), "PLACEHOLDER hollow-eyed wildlife");
+        assert!(reticle_label(None).is_empty());
         assert_eq!(model.block, "Sand");
         assert_eq!(model.notice.as_deref(), Some("Saved"));
     }
