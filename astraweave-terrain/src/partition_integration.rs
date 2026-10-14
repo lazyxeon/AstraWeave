@@ -514,15 +514,22 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore = "slow test - skip for mutation testing"]
     async fn test_camera_update() {
-        let mut manager = VoxelPartitionManager::new(VoxelPartitionConfig::default());
-        let camera_pos = Vec3::new(128.0, 0.0, 128.0); // Center of cell (0,0,0)
+        // One 32 m cell is one voxel chunk. The old 300 m / 256 m setup
+        // meshed every chunk in the neighborhood (~28 s) and was ignored
+        // for that reason. The assertion is only that the camera cell loads.
+        let config = VoxelPartitionConfig {
+            cell_size: 32.0,
+            auto_mesh: false,
+            ..VoxelPartitionConfig::default()
+        };
+        let mut manager = VoxelPartitionManager::new(config);
+        let camera_pos = Vec3::new(16.0, 16.0, 16.0);
 
-        manager.update_from_camera(camera_pos, 300.0).await.unwrap();
+        manager.update_from_camera(camera_pos, 1.0).await.unwrap();
 
-        // Should have activated the cell containing the camera
         let stats = manager.get_stats();
-        assert!(stats.active_cells > 0);
+        assert_eq!(stats.active_cells, 1);
+        assert!(stats.loaded_chunks > 0);
     }
 }
