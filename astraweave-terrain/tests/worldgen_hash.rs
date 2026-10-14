@@ -72,25 +72,55 @@ fn pine_forest_manifest_matches_downloaded_bytes() {
             .expect("pine forest manifest"),
     )
     .expect("parse manifest");
+    let blob = serde_json::to_string(&manifest).expect("manifest text");
+    assert!(
+        !blob.to_ascii_lowercase().contains("assetstore.unity"),
+        "Unity Asset Store URLs are excluded"
+    );
     let assets = manifest["assets"].as_array().expect("assets");
-    assert_eq!(assets.len(), 6);
+    let mut roles = Vec::new();
     for asset in assets {
+        let role = asset["role"].as_str().expect("role");
+        roles.push(role.to_string());
+        assert_eq!(asset["license"].as_str(), Some("CC0"), "{role} license");
+        let source = asset["source_url"].as_str().expect("source_url");
+        assert!(source.starts_with("https://"), "{role} source");
         for file in asset["files"].as_array().expect("files") {
             let rel = file["path"].as_str().expect("path");
             let bytes = std::fs::read(repo.join(rel)).unwrap_or_else(|err| {
                 panic!("missing {rel}: {err}");
             });
             let digest = sha256_hex(&bytes);
-            assert_eq!(
-                digest,
-                file["sha256"].as_str().unwrap(),
-                "{rel} hash drifted"
-            );
-            let map = file["map"].as_str().unwrap();
-            assert!(
-                map == "diff" || map == "nor_gl" || map == "arm",
-                "unexpected map {map}"
-            );
+            assert_eq!(digest, file["sha256"].as_str().unwrap(), "{rel} hash drifted");
+        }
+        if let Some(remote) = asset.get("remote_files").and_then(|value| value.as_array()) {
+            for file in remote {
+                assert_eq!(file["vendored"], false, "{role} remote file");
+                assert_eq!(file["sha256"].as_str().unwrap().len(), 64);
+            }
         }
     }
+    for required in [
+        "forest_floor",
+        "aerial_rocks_01",
+        "coast_land_rocks_01",
+        "leafy_grass",
+        "forest_leaves_02",
+        "broadleaf_tree",
+        "island_tree",
+        "dead_branches",
+        "conifer",
+        "opening_sky_ibl",
+        "greybox_forest_props",
+    ] {
+        assert!(roles.iter().any(|role| role == required), "missing {required}");
+    }
+    assert_eq!(
+        manifest["conifer"]["source_url"].as_str(),
+        Some("https://polyhaven.com/a/pine_tree_01")
+    );
+    assert_eq!(
+        manifest["conifer"]["license_url"].as_str(),
+        Some("https://polyhaven.com/license")
+    );
 }
