@@ -10,7 +10,7 @@ integration_status: partial
 summary: "Gameplay and mod scripts run on the security sandbox. Author scripts and editor .rhai reload call the same loader. Native plugin template is not a runtime."
 owns: [astraweave-scripting, astraweave-author]
 doc_version: "1.0"
-last_verified_commit: pending-ws-mod
+last_verified_commit: 85d09a2c
 runtime_edges:
   - to: astraweave-security
     note: "ScriptEngineResource and mod_script_system call sandbox::SandboxEngine / execute_deterministic"
@@ -25,7 +25,7 @@ runtime_edges:
 | **System name** | Scripting and mod API |
 | **Primary crates** | `astraweave-scripting`, `astraweave-author` |
 | **Document version** | 1.0 |
-| **Last verified against commit** | `pending-ws-mod` |
+| **Last verified against commit** | `85d09a2c` |
 | **Last verified date** | 2026-10-14 |
 | **Status** | Active for the sandboxed Rhai path. Examples still exercise `ScriptingPlugin`. The editor stages `.rhai` but does not feed `CScript` entities. |
 | **Owner notes** | WS-MOD. One sandbox implementation lives in `astraweave-security::sandbox`. This trace is the caller side. |
