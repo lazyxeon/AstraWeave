@@ -1,8 +1,9 @@
 //! Cross-process replay hash for the AI depth tick.
 //!
 //! Two worlds built with the same seed produce the same SHA-256 of the
-//! canonical tick trace. The digest is also written to `target/replay-hash.json`
-//! so the `ai-depth-replay` workflow can compare Linux, Windows, and macOS.
+//! canonical tick trace. The digest is upserted into `target/replay-hash.json`
+//! so `determinism-replay` can compare it with `planner_pure` and
+//! `perception_world` across Linux, Windows, and macOS.
 
 use std::fs;
 use std::path::PathBuf;
@@ -64,10 +65,19 @@ fn ai_depth_tick_replay_hash_is_stable() {
         "{recorded_trace}"
     );
 
-    let path = replay_json_path();
+    upsert_replay_case(&replay_json_path(), "ai_depth_tick", &left_hash);
+}
+
+fn upsert_replay_case(path: &std::path::Path, case: &str, sha256: &str) {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).expect("replay hash directory");
     }
-    let json = format!("[\n  {{\"case\": \"ai_depth_tick\", \"sha256\": \"{left_hash}\"}}\n]\n");
-    fs::write(&path, json).expect("write replay hash");
+    let mut rows: Vec<serde_json::Value> = match fs::read(path) {
+        Ok(bytes) => serde_json::from_slice(&bytes).unwrap_or_default(),
+        Err(_) => Vec::new(),
+    };
+    rows.retain(|row| row.get("case").and_then(|value| value.as_str()) != Some(case));
+    rows.push(serde_json::json!({ "case": case, "sha256": sha256 }));
+    let body = serde_json::to_vec_pretty(&rows).expect("encode replay-hash json");
+    fs::write(path, body).expect("write replay hash");
 }

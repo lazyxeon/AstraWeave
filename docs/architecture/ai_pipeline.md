@@ -2638,8 +2638,12 @@ Each fixed step, in order, calls one production function in each previously dorm
 | `astraweave-npc` | `RulePlanner` (no `rand::rng`) via `NpcManager::spawn_logical` + `handle_player_utterance` + id-sorted `update`. The sink records action labels and does not step Rapier. `MockLlm` remains for the town demo and is not on this tick. |
 | `astraweave-coordination` | `SimCoordinator::tick` applies `RoutingAction`, including `Transform` as a body prefix. `AgentCoordinator` stays off the tick (tokio, UUID, wall clock). |
 
-LLM text enters only through `AiDepthState::record_line`. A tick with no recorded line uses `scripted:` plus the rendered prompt. `llm_dialogue.rs` is still not a module: it imports `rand::thread_rng`, which does not exist on rand 0.9, and it calls a live model.
+LLM text enters only through `AiDepthState::record_line`. A tick with no recorded line uses `scripted:` plus the rendered prompt. The tick seeds `astraweave_core::SimRng` with `(world_seed, tick, SIM_SYSTEM_LLM_DIALOGUE + entity)` and does not draw. HNSW layer assignment uses `SimRng::new(LEVEL_SEED, insert_ordinal, SIM_SYSTEM_HNSW)`.
 
-The replay case is `ai_depth_tick` in `astraweave-dialogue/tests/ai_depth_replay_hash.rs`. It writes `target/replay-hash.json`. `.github/workflows/ai-depth-replay.yml` runs that test on Linux, Windows, and macOS (Rust 1.89.0, `target-cpu=x86-64` on x86_64, default aarch64 baseline on Apple Silicon) and fails if the digest differs. This workflow is separate from `determinism-replay.yml`, which WS-D0 owns.
+`astraweave-npc` features: `engine` (default) = `physics` + `audio`. `gamepad` opts into `astraweave-gameplay` (and therefore `gilrs` / `libudev`). The depth tick depends on `astraweave-npc` with `default-features = false`, so the editor graph does not gain that stack from this system.
+
+`llm_dialogue.rs` is still not a module. Declaring it produces 69 compile errors against current crate APIs (missing fields, wrong call arity, tests that name enum variants the file does not define) in addition to `rand::thread_rng`, which rand 0.9 removed. Tracked as deferred-failure issue #225. The recorded-line function above is the tick boundary that file will own once it compiles. Live `generate_response` stays off the fixed step.
+
+The replay case `ai_depth_tick` is upserted into `target/replay-hash.json` by `astraweave-dialogue/tests/ai_depth_replay_hash.rs`. `.github/workflows/determinism-replay.yml` runs that test after `astraweave-core`'s `replay_hash` and requires the digest to match on Linux, Windows, and macOS.
 
 `CompanionProfile::sign` is no longer a no-op. Unsigned profiles do not verify. `load_persona_zip` still signs before return, so a loaded pack verifies.

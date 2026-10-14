@@ -6,6 +6,7 @@
 //! count scores every stored vector, so the top-k matches a full scan.
 //! A smaller `ef` walks only the graph and is still deterministic.
 
+use rand::RngCore;
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -257,12 +258,10 @@ fn cmp_hit(a: (u32, f32), b: (u32, f32), nodes: &[Node]) -> Ordering {
 }
 
 fn level_for(ordinal: u64) -> usize {
-    let mut x = LEVEL_SEED ^ ordinal.wrapping_mul(0x9E3779B97F4A7C15);
-    x ^= x >> 30;
-    x = x.wrapping_mul(0xBF58476D1CE4E5B9);
-    x ^= x >> 27;
+    let mut rng =
+        astraweave_core::SimRng::new(LEVEL_SEED, ordinal, astraweave_core::SIM_SYSTEM_HNSW);
     let mut level = 0usize;
-    let mut bits = x;
+    let mut bits = rng.next_u64();
     while level < MAX_LEVEL && (bits & 0b11) == 0 {
         level += 1;
         bits >>= 2;

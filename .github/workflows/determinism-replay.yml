@@ -1,6 +1,7 @@
 # Required status check on pull requests: `determinism-replay / compare`.
 # Branch protection is a repository setting. This workflow is the check it must require.
-# Both `planner_pure` (WS-D0) and `perception_world` (WS-D1) fail the compare job on any mismatch.
+# `planner_pure` (WS-D0), `perception_world` (WS-D1), and `ai_depth_tick` (WS-AI-2)
+# fail the compare job on any mismatch.
 
 name: determinism-replay
 
@@ -63,7 +64,9 @@ jobs:
           shared-key: determinism-replay
 
       - name: Replay hash
-        run: cargo test -p astraweave-core --test replay_hash -- --nocapture
+        run: |
+          cargo test -p astraweave-core --test replay_hash -- --nocapture
+          cargo test -p astraweave-dialogue --test ai_depth_replay_hash -- --nocapture
 
       - name: Upload replay hash
         uses: actions/upload-artifact@v4
@@ -92,7 +95,7 @@ jobs:
           import sys
           from pathlib import Path
 
-          required = {"planner_pure", "perception_world"}
+          required = {"planner_pure", "perception_world", "ai_depth_tick"}
           root = Path("replay-artifacts")
           files = sorted(root.glob("*/replay-hash.json"))
           print(f"artifacts: {[str(p) for p in files]}")

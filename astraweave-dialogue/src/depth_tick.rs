@@ -46,7 +46,7 @@ pub fn install(app: &mut App) {
     if app.world.get_resource::<AiDepthState>().is_none() {
         app.world.insert_resource(AiDepthState::new(1));
     }
-    app.add_system("ai_planning", sys_ai_depth);
+    app.add_system_known_stage("ai_planning", sys_ai_depth);
 }
 
 fn sys_ai_depth(world: &mut World) {
@@ -55,11 +55,31 @@ fn sys_ai_depth(world: &mut World) {
     }
 }
 
-/// Recorded model text, keyed by tick. Absent ticks use the scripted prompt.
-pub fn apply_recorded_line(log: &BTreeMap<u64, String>, tick: u64, prompt: &str) -> String {
-    log.get(&tick)
-        .cloned()
-        .unwrap_or_else(|| format!("scripted:{prompt}"))
+/// Recorded model text for one tick.
+///
+/// The line is the log entry when present, otherwise the rendered prompt.
+/// `SimRng` is seeded with `(world_seed, tick, SIM_SYSTEM_LLM_DIALOGUE + entity)`
+/// and is not drawn. `llm_dialogue.rs` is not a module yet: wiring it in
+/// currently fails to compile (see the deferred-failure issue). This function
+/// is the tick boundary that module will own.
+pub fn apply_recorded_line(
+    world_seed: u64,
+    tick: u64,
+    entity: u64,
+    recorded: Option<&str>,
+    prompt: &str,
+) -> String {
+    let stream = astraweave_core::SimRng::new(
+        world_seed,
+        tick,
+        astraweave_core::SIM_SYSTEM_LLM_DIALOGUE.wrapping_add(entity),
+    );
+    debug_assert_eq!(stream.tick(), tick);
+    let _ = (stream.world_seed(), stream.system_id());
+    match recorded {
+        Some(line) => line.to_string(),
+        None => format!("scripted:{prompt}"),
+    }
 }
 
 /// State the depth system advances once per fixed step.
@@ -360,7 +380,8 @@ impl AiDepthState {
             .map(|delivery| (delivery.to, delivery.body))
             .collect();
 
-        let dialogue = apply_recorded_line(&self.recorded_lines, tick, &prompt);
+        let recorded = self.recorded_lines.get(&tick).cloned();
+        let dialogue = apply_recorded_line(self.seed, tick, 1, recorded.as_deref(), &prompt);
 
         self.trace.push(TickTrace {
             tick,
