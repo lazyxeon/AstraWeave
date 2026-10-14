@@ -42,7 +42,7 @@ A publicly trusted Authenticode signature gives SmartScreen a publisher to attac
 
 Chrome's "Dangerous download" verdict is separate. Google does not publish a way to pre-register a new exe. Signing and hosting on a stable URL help over time. They do not guarantee the next download is clean.
 
-The workflow signs only when secrets exist. With none of the secrets below, both signing steps are skipped and the job stays green. The published exe is then unsigned, and the warnings above still apply.
+Signing is not in the workflow yet. The published exe is unsigned, and the warnings above still apply. After you pick an option below, the matching step can be added. `scripts/sign-aravath.ps1` is the PFX helper and is not called by CI.
 
 ### Option A — Azure Artifact Signing (formerly Trusted Signing)
 
@@ -73,7 +73,7 @@ Secrets (all of them, or the step is skipped):
 | `AZURE_CODESIGN_ACCOUNT` | Artifact Signing account name |
 | `AZURE_CODESIGN_PROFILE` | Certificate profile name |
 
-The app registration needs the Artifact Signing Certificate Profile Signer role on that profile. The workflow step is `azure/artifact-signing-action@v2`. It runs only when `AZURE_CLIENT_ID` is set and `WINDOWS_PFX_BASE64` is empty.
+The app registration needs the Artifact Signing Certificate Profile Signer role on that profile. When this option is chosen, add `azure/artifact-signing-action@v2` to the Windows job with those secrets. It is not in the workflow today.
 
 ### Option B — your own OV or EV certificate (PFX)
 
@@ -86,7 +86,7 @@ Export the cert as a PFX (if the CA allows export; a token-backed EV key often c
 | `WINDOWS_PFX_BASE64` | Base64 of the `.pfx` file, one line, no extra whitespace |
 | `WINDOWS_PFX_PASSWORD` | Password for that PFX |
 
-`scripts/sign-aravath.ps1` runs `signtool sign /fd SHA256 /td SHA256` with the DigiCert RFC 3161 timestamp server. If this secret is set, the Azure step is skipped so the file is not signed twice.
+`scripts/sign-aravath.ps1` runs `signtool sign /fd SHA256 /td SHA256` with the DigiCert RFC 3161 timestamp server when `WINDOWS_PFX_BASE64` and `WINDOWS_PFX_PASSWORD` are set, and exits 0 when they are absent. CI does not call it until this option is chosen.
 
 ### Option C — SignPath Foundation (free for open source)
 

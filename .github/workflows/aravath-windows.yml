@@ -14,9 +14,6 @@ concurrency:
   group: aravath-windows-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-permissions:
-  contents: read
-
 defaults:
   run:
     shell: bash
@@ -31,6 +28,8 @@ jobs:
     name: cargo-audit, cargo-deny, SBOM
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    permissions:
+      contents: read
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -82,6 +81,8 @@ jobs:
     name: Build, test, and upload greybox
     runs-on: windows-latest
     timeout-minutes: 180
+    permissions:
+      contents: read
 
     steps:
       - name: Checkout
@@ -124,30 +125,9 @@ jobs:
         working-directory: dist/aravath_greybox
         run: ./aravath_greybox.exe --smoke-test --no-volumetrics
 
-      - name: Authenticode (PFX)
-        if: ${{ secrets.WINDOWS_PFX_BASE64 != '' }}
-        shell: pwsh
-        env:
-          WINDOWS_PFX_BASE64: ${{ secrets.WINDOWS_PFX_BASE64 }}
-          WINDOWS_PFX_PASSWORD: ${{ secrets.WINDOWS_PFX_PASSWORD }}
-        run: pwsh -File scripts/sign-aravath.ps1 dist/aravath_greybox/aravath_greybox.exe
-
-      - name: Authenticode (Azure Artifact Signing)
-        if: ${{ secrets.WINDOWS_PFX_BASE64 == '' && secrets.AZURE_CLIENT_ID != '' }}
-        uses: azure/artifact-signing-action@v2
-        with:
-          endpoint: ${{ secrets.AZURE_CODESIGN_ENDPOINT }}
-          signing-account-name: ${{ secrets.AZURE_CODESIGN_ACCOUNT }}
-          certificate-profile-name: ${{ secrets.AZURE_CODESIGN_PROFILE }}
-          azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
-          files-folder: ${{ github.workspace }}\dist\aravath_greybox
-          files-folder-filter: exe
-          files-folder-recurse: false
-          file-digest: SHA256
-          timestamp-rfc3161: http://timestamp.acs.microsoft.com
-          timestamp-digest: SHA256
+      # Authenticode is not wired. Add it after a signing option is chosen.
+      # scripts/sign-aravath.ps1 is the PFX path; Azure Artifact Signing is
+      # documented in docs/current/ARAVATH_DISTRIBUTION.md.
 
       - name: SHA-256 checksums
         run: bash scripts/aravath-sha256.sh dist/aravath_greybox
