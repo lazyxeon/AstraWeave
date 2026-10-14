@@ -451,15 +451,16 @@ format = "png"
 # Checked-in Poly Haven CC0 HDRIs (2k Radiance). sha256 is the file bytes.
 # sky_equirect.png was removed: it was not a Poly Haven asset and was not on disk.
 
+# Bytes live in the terrain pack (PR #215). Not copied here.
 [[assets]]
 handle = "hdri_spruit_sunrise"
 provider = "polyhaven"
 type = "hdri"
 id = "spruit_sunrise"
 resolution = "2k"
-format = "hdr"
+format = "exr"
 license = "CC0-1.0"
-sha256 = "be35af1e825dc7506df48bf86568f9c05f8a8552cf57edf36beb16e54534ec57"
+sha256 = "6db7045b78c3872843aa42563b851d4792f828082f2e5d9df6b3b510806103b7"
 
 [[assets]]
 handle = "hdri_kloppenheim_02"

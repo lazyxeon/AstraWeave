@@ -671,8 +671,9 @@ impl CompanionApp {
             tod.time_scale = 0.0; // Freeze time for consistent lighting
         }
 
-        // Bake spruit_sunrise (kloppenheim_02 if that file is absent). A missing
-        // plate is a startup error: the 1×1 fallback cubemap is not a sky.
+        // Bake the terrain pack's spruit_sunrise EXR (kloppenheim_02 if that
+        // file is absent). A missing plate is a startup error: the 1×1
+        // fallback cubemap is not a sky.
         let baked = renderer
             .bake_showcase_environment(astraweave_render::ibl::IblQuality::Medium)
             .context("bake showcase IBL")?;

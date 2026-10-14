@@ -375,12 +375,22 @@ mod tests {
             .get("sky_equirect")
             .expect("main catalog includes sky_equirect");
         assert_eq!(equirect.file, "sky_equirect.png");
-        assert!(catalog.get("spruit_sunrise").is_some());
+        let spruit = catalog.get("spruit_sunrise").expect("spruit entry");
+        assert!(
+            spruit
+                .file
+                .ends_with("pine_forest/hdri/spruit_sunrise_2k.exr"),
+            "spruit must use the terrain pack EXR, not a second copy"
+        );
         for entry in catalog.entries() {
             if entry.sha256.is_empty() {
                 continue;
             }
             let path = root.join(&entry.file);
+            // The EXR bytes are vendored by the terrain pack (PR #215), not this branch.
+            if entry.name == "spruit_sunrise" && !path.is_file() {
+                continue;
+            }
             let bytes =
                 std::fs::read(&path).unwrap_or_else(|err| panic!("{}: {err}", path.display()));
             let digest = Sha256::digest(&bytes);

@@ -1583,6 +1583,30 @@ mod tests {
 
     #[cfg(feature = "textures")]
     #[test]
+    fn exr_equirect_decode_keeps_radiance_above_one() {
+        let path = std::env::temp_dir().join(format!("aw-exr-probe-{}.exr", std::process::id()));
+        let mut buf = image::Rgba32FImage::new(2, 1);
+        let hot = image::Rgba([3.5, 1.25, 0.5, 1.0]);
+        buf.put_pixel(0, 0, hot);
+        buf.put_pixel(1, 0, hot);
+        image::DynamicImage::ImageRgba32F(buf)
+            .save(&path)
+            .expect("image crate must write OpenEXR");
+        let loaded = load_hdr_equirectangular(&path).expect("decode exr through the HDRI loader");
+        let _ = std::fs::remove_file(&path);
+        let px = match &loaded {
+            image::DynamicImage::ImageRgba32F(image) => image.get_pixel(0, 0).0,
+            image::DynamicImage::ImageRgb32F(image) => {
+                let rgb = image.get_pixel(0, 0).0;
+                [rgb[0], rgb[1], rgb[2], 1.0]
+            }
+            other => panic!("EXR decoded as {other:?}; the loader must keep a float image"),
+        };
+        assert!(px[0] > 1.0, "EXR radiance above 1 collapsed to {}", px[0]);
+    }
+
+    #[cfg(feature = "textures")]
+    #[test]
     fn hdr_resize_keeps_radiance_above_one() {
         let mut buf = image::Rgb32FImage::new(9000, 2);
         for pixel in buf.pixels_mut() {

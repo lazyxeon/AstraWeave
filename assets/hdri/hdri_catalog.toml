@@ -66,12 +66,13 @@ sha256 = "3fcc1574bd6b07bddc2c946a7025d47d48aa4ec84e8454b1ffb22c0c996ec5b3"
 
 [[hdri]]
 name = "spruit_sunrise"
-file = "polyhaven/spruit_sunrise/spruit_sunrise_2k.hdr"
+# Same bytes as the terrain pack. Path is relative to assets/hdri.
+file = "../../terrain/polyhaven/pine_forest/hdri/spruit_sunrise_2k.exr"
 time_of_day = "morning"
 biomes = ["grassland", "forest", "beach", "river"]
 intensity = 0.8
 sky_color = [0.93, 0.73, 0.48]  # Warm orange
-sha256 = "be35af1e825dc7506df48bf86568f9c05f8a8552cf57edf36beb16e54534ec57"
+sha256 = "6db7045b78c3872843aa42563b851d4792f828082f2e5d9df6b3b510806103b7"
 
 [[hdri]]
 name = "venice_sunset"

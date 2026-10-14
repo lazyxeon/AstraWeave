@@ -15,9 +15,10 @@ use astraweave_camera::{FreeFly, RenderView};
 use astraweave_cinematics as awc;
 use astraweave_materials::MaterialPackage;
 
-/// Demo sky. Poly Haven CC0 `spruit_sunrise` 2k, warm gold horizon.
+/// Demo sky. The terrain pack already vendors this Poly Haven CC0 plate.
+/// Do not add a second copy under `assets/hdri`.
 pub const SHOWCASE_HDRI_PRIMARY: &str =
-    "assets/hdri/polyhaven/spruit_sunrise/spruit_sunrise_2k.hdr";
+    "assets/terrain/polyhaven/pine_forest/hdri/spruit_sunrise_2k.exr";
 /// Used when the primary plate is not on disk.
 pub const SHOWCASE_HDRI_FALLBACK: &str = "assets/hdri/polyhaven/kloppenheim_02_puresky_2k.hdr";
 
@@ -3865,9 +3866,9 @@ fn vs(input: VSIn) -> VSOut {
         Ok(())
     }
 
-    /// Bake the demo sky. Tries Poly Haven CC0 `spruit_sunrise` (warm gold
-    /// horizon), then `kloppenheim_02_puresky`. The returned path is the file
-    /// that was baked. Missing files are an error, not a silent 1×1 cubemap.
+    /// Bake the demo sky. Tries the terrain pack's `spruit_sunrise` EXR, then
+    /// `kloppenheim_02_puresky`. The returned path is the file that was baked.
+    /// Missing files are an error, not a silent 1×1 cubemap.
     pub fn bake_showcase_environment(
         &mut self,
         quality: crate::ibl::IblQuality,
