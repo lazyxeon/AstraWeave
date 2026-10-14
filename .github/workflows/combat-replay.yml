@@ -1,0 +1,79 @@
+name: Combat replay hash
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  hash:
+    name: Hash (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@1.89.0
+
+      - name: Baseline CPU
+        run: |
+          host=$(rustc -vV | sed -n 's/host: //p')
+          case "$host" in
+            *x86_64*) echo 'RUSTFLAGS=-C target-cpu=x86-64' >> "$GITHUB_ENV" ;;
+            *) echo 'RUSTFLAGS=' >> "$GITHUB_ENV" ;;
+          esac
+
+      - name: Replay hash
+        run: cargo test -p astraweave-combat --test replay_hash -- --nocapture
+
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: replay-hash-${{ runner.os }}
+          path: target/replay-hash.json
+          retention-days: 14
+
+  compare:
+    name: Compare three OS
+    needs: hash
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download
+        uses: actions/download-artifact@v4
+        with:
+          pattern: replay-hash-*
+          path: hashes
+
+      - name: Diff the digests
+        run: |
+          python3 - << 'PY'
+          import json, pathlib, sys
+          files = sorted(pathlib.Path("hashes").rglob("replay-hash.json"))
+          if len(files) != 3:
+              print(f"expected 3 replay files, found {len(files)}: {files}")
+              sys.exit(1)
+          parsed = []
+          for path in files:
+              data = json.loads(path.read_text())
+              case = next(row for row in data if row["case"] == "combat_resolve")
+              parsed.append((str(path), case["sha256"]))
+              print(f"{path}: {case['sha256']}")
+          digest = parsed[0][1]
+          bad = [row for row in parsed if row[1] != digest]
+          if bad:
+              print("combat_resolve digest differs across OS")
+              sys.exit(1)
+          print("combat_resolve matches on all three OS")
+          PY

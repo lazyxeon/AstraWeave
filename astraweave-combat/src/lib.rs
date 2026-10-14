@@ -97,6 +97,8 @@ pub enum CombatError {
 
 #[cfg(test)]
 mod logic_tests;
+#[cfg(test)]
+mod property_tests;
 
 #[cfg(test)]
 mod tests {

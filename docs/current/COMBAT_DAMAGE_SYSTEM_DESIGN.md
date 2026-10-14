@@ -1025,6 +1025,7 @@ No GPU, no WoW client, and no three-OS runner were used. That is why H1 is not m
 |---|---|---|
 | 0.1 | 2026-10-14 | Design only. r3. Gate Needs-human. No engine code. |
 | 0.2 | 2026-10-14 | Human and orchestrator sign-off. Gate Pass. Lore steer recorded in §21. Implementation started. |
+| 0.3 | 2026-10-14 | Property tests, combat replay-hash workflow, migration plan §22. Legacy paths stay. |
 
 ---
 
@@ -1041,3 +1042,19 @@ The school pipeline stays generic: a mod may add any school id. The shipped defa
 - `ThreadStrain` { capacity, reserve, coherence, strain } is stored and saved. The damage formula does not read it.
 
 These are deliberate deviations from the hardcoded Focus / Heat / Rime / Volt / Toxin fields in §8. Resistances and non-physical ratings are small id-keyed arrays so a new school does not need a new component field.
+
+---
+
+## 22. Migration plan for the four legacy damage paths
+
+Do not delete these until the demo calls `astraweave-combat`. The order is the dependency order.
+
+| Step | Path | What changes | Done when |
+|---|---|---|---|
+| 1 | Aravath greybox (`aravath_runtime` combat and motor) | Sword, swipe, block, and roll i-frames enqueue `HitEvent`s. `apply_damage_multiplier` is deleted in that crate only. Death still calls `ScarField::inject_death`. | One unblocked sword removes 25 whole HP. An 8000 bp block keeps 20%. An i-frame keeps all of it. |
+| 2 | `astraweave-gameplay` physics sweep | `perform_attack_sweep` still does the ray, parry, and i-frame gates, then submits a hit instead of `Stats::apply_damage`. | `combat_physics_demo` health matches a scripted `resolve_hit`. |
+| 3 | `astraweave-gameplay` combo ticker and ECS `combat_system` | The combo owns timing and reach. Damage is `attack_id`, not `step.damage` subtracted from `CHealth`. | Manhattan reach still gates the event. HP moves only through `CVitals`. |
+| 4 | `astraweave-weaving` `CombatSystem` and `enemy_types` | Flat `f32` health and Sentinel's `armor: 0.3` become table rows and `CVitals`. | `effective_health` on a Sentinel-shaped row matches `health / (1 - 0.3)` within one whole unit, using the hyperbola with K chosen so 30% is the operating point. |
+| 5 | Retire | `Stats::apply_damage` and the weaving `f32` writer become `#[deprecated]` wrappers that are unreachable from the tick. Examples either use the crate or are marked legacy. Update `docs/architecture/gameplay.md` and `docs/architecture/combat.md` in that commit. | `rg apply_damage` under `astraweave-gameplay/src` and `astraweave-weaving/src` shows no production caller. |
+
+`CHealth` in `astraweave-core` stays until step 3 has a reader. Do not write both `CHealth` and `CVitals` from two formulas. The demo step is the first production caller. Steps 2–5 do not start before that caller exists.

@@ -95,6 +95,19 @@ fn bench_resolve(c: &mut Criterion) {
             black_box(resolve_hit(&tables, &atk, &def, 1, &mut rng).unwrap())
         })
     });
+    c.bench_function("resolve_hit_batch_10k", |b| {
+        b.iter(|| {
+            let mut last = 0i64;
+            for ordinal in 0..10_000u64 {
+                let mut rng = hit_rng(1, 9, ordinal, 1);
+                last = resolve_hit(&tables, &atk, &def, 1, &mut rng)
+                    .unwrap()
+                    .hp_delta
+                    .raw();
+            }
+            black_box(last)
+        })
+    });
 }
 
 criterion_group!(benches, bench_resolve);

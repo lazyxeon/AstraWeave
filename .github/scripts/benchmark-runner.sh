@@ -64,7 +64,7 @@ BENCHMARK_SHARD_GROUPS=(
     "astraweave-net-ecs astraweave-asset-pipeline astraweave-prompts astraweave-audio"
     "astraweave-persistence-ecs astraweave-weaving astraweave-observability astraweave-input"
     "astraweave-rag astraweave-llm-eval astraweave-secrets astraweave-physics"
-    "astraweave-render astraweave-npc astraweave-materials astraweave-gameplay"
+    "astraweave-render astraweave-npc astraweave-materials astraweave-gameplay astraweave-combat"
     "astraweave-scene astraweave-optimization astraweave-director astraweave-nav"
     "astraweave-sdk astraweave-coordination astraweave-persona astraweave-behavior"
     "astraweave-ui astraweave-pcg astraweave-security astraweave-stress-test"

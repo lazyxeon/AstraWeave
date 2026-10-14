@@ -682,29 +682,3 @@ fn parry_zeroes_damage_and_is_consumed() {
     );
     assert_eq!(app.world.get::<CImmune>(foe).unwrap().parry_ticks, 0);
 }
-
-proptest::proptest! {
-    #[test]
-    fn ehp_step_matches_when_k_divides(step in 0i64..4) {
-        let tables = canonical_tables().unwrap();
-        let armor = step * 400;
-        let mods = [];
-        let def = DefenderView {
-            hp: Fixed64::from_int(1_000),
-            hp_max: Fixed64::from_int(1_000),
-            poise: Fixed64::ZERO,
-            poise_max: Fixed64::ZERO,
-            armor,
-            resists: &[],
-            evasion_bp: 0,
-            bulwark_bp: 0,
-            bulwark_flat: 0,
-            modifiers: &mods,
-            block: BlockGate::default(),
-            immune: ImmuneGate::default(),
-        };
-        let ehp = effective_health(&tables, 0, &def, 1, sheet()).unwrap();
-        let expect = if armor > 1_200 { 4_000 } else { 1_000 + armor * 1_000 / 400 };
-        assert_eq!(ehp.value, Fixed64::from_int(expect));
-    }
-}

@@ -3,6 +3,9 @@
 
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Mutex;
+
+static MEASURE: Mutex<()> = Mutex::new(());
 
 use astraweave_combat::{
     canonical_tables, hit_rng, resolve_hit, AttackerView, BlockGate, DefenderView, ImmuneGate,
@@ -29,6 +32,7 @@ static GLOBAL: CountAlloc = CountAlloc;
 
 #[test]
 fn resolve_hit_does_not_allocate() {
+    let _guard = MEASURE.lock().expect("measure lock");
     let tables = canonical_tables().expect("fixture");
     let atk_mods = [
         Modifier {
@@ -90,4 +94,40 @@ fn resolve_hit_does_not_allocate() {
         assert!(outcome.hp_delta.raw() > 0);
     }
     assert_eq!(ALLOCS.load(Ordering::Relaxed), before);
+}
+
+#[test]
+fn timer_walk_does_not_allocate_after_warmup() {
+    let _guard = MEASURE.lock().expect("measure lock");
+    use astraweave_combat::{
+        combat_resolve_system, install, load_default, CImmune, CVitals, CombatPlugin, LoadedTables,
+    };
+    use astraweave_ecs::App;
+
+    let mut app = App::new().add_plugin(CombatPlugin);
+    install(
+        &mut app.world.get_resource_mut::<LoadedTables>().unwrap().0,
+        load_default(),
+    )
+    .unwrap();
+    for _ in 0..6 {
+        let entity = app.world.spawn();
+        app.world.insert(entity, CVitals::default());
+        app.world.insert(
+            entity,
+            CImmune {
+                iframe_ticks: 3,
+                parry_ticks: 1,
+            },
+        );
+    }
+    combat_resolve_system(&mut app.world);
+    combat_resolve_system(&mut app.world);
+    let before = ALLOCS.load(Ordering::Relaxed);
+    combat_resolve_system(&mut app.world);
+    assert_eq!(
+        ALLOCS.load(Ordering::Relaxed),
+        before,
+        "timer walk allocated after the scratch buffer was warm"
+    );
 }

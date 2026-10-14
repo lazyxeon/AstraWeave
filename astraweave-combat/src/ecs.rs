@@ -4,9 +4,10 @@
 //! query iteration order. The queue `Vec` is recycled. `resolve_hit` itself
 //! does not allocate.
 
+use std::any::TypeId;
 use std::sync::Arc;
 
-use astraweave_ecs::{App, Entity, Plugin, Query, World};
+use astraweave_ecs::{App, Entity, Plugin, World};
 
 use crate::fixed::Fixed64;
 use crate::resolve::{
@@ -484,20 +485,12 @@ fn decrement_timers(world: &mut World) {
         .map(|s| std::mem::take(&mut s.ids))
         .unwrap_or_default();
     ids.clear();
-    {
-        let q = Query::<CImmune>::new(world);
-        for (entity, _) in q {
-            ids.push(entity);
-        }
-    }
-    {
-        let q = Query::<CVitals>::new(world);
-        for (entity, vitals) in q {
-            if vitals.stagger_left > 0 {
-                ids.push(entity);
-            }
-        }
-    }
+    world
+        .archetypes()
+        .append_entities_with_component(TypeId::of::<CImmune>(), &mut ids);
+    world
+        .archetypes()
+        .append_entities_with_component(TypeId::of::<CVitals>(), &mut ids);
     ids.sort();
     ids.dedup();
     for entity in &ids {

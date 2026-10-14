@@ -134,6 +134,7 @@ CVitals.hp / poise            ecs.rs apply_hp_delta
 | 1 | Crate is unsafe-free | Yes | `#![forbid(unsafe_code)]` |
 | 2 | Resolver modules do not mention `f32`, `f64`, `HashMap`, `SystemTime`, `Instant` | Yes | `sim_modules_have_no_float_or_hashmap` |
 | 3 | Canonical seven stages hash to `071dc70e116987782a8a8b137a6cce648d390a82967726775308946f1e69da71` | Yes | `canonical_hit_matches_the_golden_hash` |
+| 3b | 48-tick 8-fighter battle hashes to `975aae72e3c83a2335be05142eea2bf2ae4413d621fc5009ed6019f89e2a6e52` | Yes | `tests/replay_hash.rs`, compared across OS by `combat-replay.yml` |
 | 4 | Armor 400, K 400, 1000 HP → EHP 2000 | Yes | `armor_equal_k_is_exactly_half` |
 | 5 | Default table has no veil, echo, shock, or spell | Yes | `default_table_is_lore_safe_and_physical_viable` |
 | 6 | Sword 25 through an 8000 bp bulwark is 5 and still positive | Yes | same test |
@@ -144,7 +145,7 @@ CVitals.hp / poise            ecs.rs apply_hp_delta
 
 ## 9. Performance & Resource Profile
 
-`resolve_hit` is a stack-only function. The ECS queue `Vec` is recycled. `Query::new` for the end-of-tick timer walk allocates an archetype-id list; that cost is once per tick, not once per hit.
+`resolve_hit` is a stack-only function. The ECS queue `Vec` is recycled. The timer walk appends into `CombatScratch.ids` through `ArchetypeStorage::append_entities_with_component`. After the first tick that sized that buffer, the walk does not allocate.
 
 ---
 
