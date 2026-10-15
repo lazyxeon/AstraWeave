@@ -1351,7 +1351,7 @@ impl EntityCatalogState {
                 let available_width = ui.available_width();
                 let cell_width = thumb_size + 8.0;
                 let columns = ((available_width / cell_width).floor() as usize).max(1);
-                let rows = (pack_entries.len() + columns - 1) / columns;
+                let rows = pack_entries.len().div_ceil(columns);
 
                 for row_idx in 0..rows {
                     ui.horizontal(|ui| {
