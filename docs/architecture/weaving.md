@@ -10,7 +10,7 @@ integration_status: example_only
 summary: "Modifier graph and casts live here and write SimModifier records into the local-sim field trait. Gameplay apply_weave_op compiles the legacy ops. The anchor slice systems are still plain functions. weaving.md §5,§8"
 owns: [astraweave-weaving]
 doc_version: "1.4"
-last_verified_commit: 7c29b8182
+last_verified_commit: f87e8750
 ---
 
 # Architecture Trace: Weaving / Fate-Weaving System (`astraweave-weaving`)
@@ -22,8 +22,8 @@ last_verified_commit: 7c29b8182
 | **System name** | Weaving / Fate-Weaving System (the Veilweaver signature mechanic) |
 | **Primary crates** | `astraweave-weaving` |
 | **Document version** | 1.4 |
-| **Last verified against commit** | `7c29b8182` |
-| **Last verified date** | 2026-06-25 |
+| **Last verified against commit** | `f87e8750` |
+| **Last verified date** | 2026-10-15 |
 | **Status** | In-Design-but-tested (heavily unit-tested; consumed only by two non-runtime examples) |
 | **Owner notes** | Built during the Veilweaver vertical-slice "Weeks 1-5" campaign (see `docs/journey/weeks/WEEK_*` and `docs/archive/projects/veilweaver/`). Naming is heavily overloaded across three independent "weaving" surfaces in the workspace — see §3 and §6. |
 
