@@ -1519,7 +1519,7 @@ impl ViewportRenderer {
     pub fn physics_debug_enabled(&self) -> bool {
         self.physics_renderer
             .as_ref()
-            .map_or(false, |p| p.options.show_colliders)
+            .is_some_and(|p| p.options.show_colliders)
     }
 
     /// Enable/disable physics debug rendering
