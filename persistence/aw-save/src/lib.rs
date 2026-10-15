@@ -400,4 +400,30 @@ mod tests {
             stamp
         );
     }
+
+    /// SEC-POC SEC-SAVE-1. A hostile `.awsv` header can name a multi-megabyte
+    /// payload that is not in the file. The loader must reject that length
+    /// as over the cap. Today it allocates the declared buffer and then fails
+    /// the short read.
+    #[test]
+    fn poc_awsv_rejects_oversized_declared_payload() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("hostile.awsv");
+        let claimed: u32 = 8 * 1024 * 1024;
+        let mut header = Vec::new();
+        header.extend_from_slice(b"ASVS");
+        header.extend_from_slice(&2u16.to_le_bytes());
+        header.push(CODEC_LZ4);
+        header.push(0);
+        header.extend_from_slice(&claimed.to_le_bytes());
+        header.extend_from_slice(&0u32.to_le_bytes());
+        std::fs::write(&path, &header).expect("write header");
+
+        let err = read_awsv(&path).expect_err("hostile header must not load");
+        let msg = format!("{err:#}");
+        assert!(
+            msg.contains("too large") || msg.contains("exceeds"),
+            "declared payload length was not rejected by a size cap: {msg}"
+        );
+    }
 }

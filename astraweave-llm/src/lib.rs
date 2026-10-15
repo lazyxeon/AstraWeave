@@ -1774,6 +1774,24 @@ mod tests {
         assert_eq!(plan.steps.len(), 4);
     }
 
+    /// SEC-POC SEC-LLM-1. Constructors must refuse a non-loopback model URL.
+    /// `LocalHttpClient` speaks the chat-completions shape and stores whatever
+    /// string it is given, including a cloud host.
+    #[cfg(feature = "ollama")]
+    #[test]
+    fn poc_local_http_client_rejects_non_loopback_url() {
+        let client =
+            LocalHttpClient::new("https://api.openai.com".to_string(), "gpt-4".to_string());
+        let host = client.url.to_ascii_lowercase();
+        let loopback =
+            host.contains("127.0.0.1") || host.contains("localhost") || host.contains("[::1]");
+        assert!(
+            loopback,
+            "model client stored a non-loopback endpoint: {}",
+            client.url
+        );
+    }
+
     #[cfg(feature = "ollama")]
     #[test]
     fn test_ollama_client_creation() {
