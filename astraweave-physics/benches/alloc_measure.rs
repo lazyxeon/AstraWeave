@@ -54,8 +54,10 @@ use criterion::{criterion_group, criterion_main, Criterion};
 use glam::Vec3;
 use std::hint::black_box;
 
-/// Placeholder threshold — tighten after first real capture. See measurement plan.
-const MAX_ALLOCS_PER_STEP: usize = 10_000;
+/// 2026-04-17 capture: 8 allocs after 30 warmup steps. 50% margin, rounded up.
+const MAX_ALLOCS_EARLY: usize = 12;
+/// 2026-04-17 capture: 34 allocs after 230 warmup steps. 50% margin, rounded up.
+const MAX_ALLOCS_LATE: usize = 51;
 
 fn setup_world_with_bodies(count: usize) -> PhysicsWorld {
     let mut w = PhysicsWorld::new(Vec3::new(0.0, -9.81, 0.0));
@@ -117,16 +119,16 @@ fn bench_physics_step(c: &mut Criterion) {
         );
 
         assert!(
-            early.allocs <= MAX_ALLOCS_PER_STEP,
+            early.allocs <= MAX_ALLOCS_EARLY,
             "physics.step (early) regression: {} allocs > threshold {}",
             early.allocs,
-            MAX_ALLOCS_PER_STEP
+            MAX_ALLOCS_EARLY
         );
         assert!(
-            late.allocs <= MAX_ALLOCS_PER_STEP,
+            late.allocs <= MAX_ALLOCS_LATE,
             "physics.step (late) regression: {} allocs > threshold {}",
             late.allocs,
-            MAX_ALLOCS_PER_STEP
+            MAX_ALLOCS_LATE
         );
     }
 }

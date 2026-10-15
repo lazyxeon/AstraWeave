@@ -293,6 +293,7 @@ jobs:
   mutants-summary:
     name: Mutation Summary
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     needs: [mutants-ecs, mutants-core, mutants-ai, mutants-behavior, mutants-nav]
     if: always()
     steps:

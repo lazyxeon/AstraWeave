@@ -23,6 +23,10 @@ on:
   pull_request:
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 permissions:
   contents: read
 
@@ -30,18 +34,13 @@ jobs:
   guard:
     name: pack-managed paths untracked + ignore surfaces current
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: Checkout repository (no LFS smudge)
         uses: actions/checkout@v5
 
-      - name: Install Rust (pinned 1.89.0)
-        uses: dtolnay/rust-toolchain@1.89.0
-
-      - name: Cache Rust dependencies
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: "."
-          cache-on-failure: true
+      - name: Rust CI setup
+        uses: ./.github/actions/rust-ci-setup
 
       - name: Run the pack guard
         run: cargo run -p xtask -- ci-guard

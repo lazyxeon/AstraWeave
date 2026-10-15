@@ -4,38 +4,31 @@ on:
   schedule:
     - cron: '0 0 * * 0' # Run at midnight every Sunday
   push:
-    paths:
-      - '**/Cargo.toml'
-      - '**/Cargo.lock'
-      - '.github/workflows/security-audit.yml'
-      - 'deny.toml'
+    branches: [main, develop]
   pull_request:
-    paths:
-      - '**/Cargo.toml'
-      - '**/Cargo.lock'
-      - 'deny.toml'
+    branches: [main, develop]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
 
 jobs:
   cargo-deny:
     name: Cargo Deny Check
     runs-on: ubuntu-latest
-    # Security audit may timeout or have advisories - non-blocking
-    continue-on-error: true
+    timeout-minutes: 20
     permissions:
       contents: read
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
 
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@1.89.0
-
-      - name: Cache cargo registry
-        uses: actions/cache@v4
-        with:
-          path: ~/.cargo/registry
-          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-cargo-registry-
+      - name: Rust CI setup
+        uses: ./.github/actions/rust-ci-setup
 
       - name: Cache cargo-deny
         uses: actions/cache@v4
@@ -97,23 +90,15 @@ jobs:
   security-audit:
     name: Security Audit (cargo-audit)
     runs-on: ubuntu-latest
-    # Security audit may timeout or have advisories - non-blocking
-    continue-on-error: true
+    timeout-minutes: 20
     permissions:
       contents: read
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
 
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@1.89.0
-
-      - name: Cache cargo registry
-        uses: actions/cache@v4
-        with:
-          path: ~/.cargo/registry
-          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-cargo-registry-
+      - name: Rust CI setup
+        uses: ./.github/actions/rust-ci-setup
 
       - name: Cache cargo-audit
         uses: actions/cache@v4

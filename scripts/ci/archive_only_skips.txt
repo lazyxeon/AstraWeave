@@ -1,0 +1,17 @@
+# Failures that showed up only when a Windows partition ran the nextest
+# archive. They are not in scripts/ci/deferred_pr_tests.txt, so Linux
+# profile ci-pr still runs them. Profile ci-pr-archive adds these on top.
+#
+# GPU / hang (owner: CI-cleanup agent, PR #217). Linux passed these on
+# 0a8ffcec. Windows runners crash or hit the 240s slow-timeout.
+# Nightly profile ci still runs them.
+test astraweave-render coverage_booster_render test_renderer_bake_environment_wave16
+test astraweave-fluids gpu_execution_tests gpu_containment_invariant_120_frames
+test astraweave-fluids gpu_execution_tests gpu_settling_envelope_300_frames
+#
+# These integration tests spawn `env!("CARGO_BIN_EXE_aw-net-client")`.
+# That path is the build runner's target directory. The partition runner
+# only has the extracted archive, so the spawn cannot find the exe.
+# The archive build job runs the two test targets on the build machine.
+binary aw-net-client family1_client_binary
+binary aw-net-client family3_client_binary_wrong_key

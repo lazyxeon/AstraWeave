@@ -15,6 +15,7 @@ jobs:
   build:
     name: Build (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
@@ -89,6 +90,7 @@ jobs:
 
   release:
     name: Create GitHub Release
+    timeout-minutes: 20
     needs: build
     runs-on: ubuntu-latest
     steps:

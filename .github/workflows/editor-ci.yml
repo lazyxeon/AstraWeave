@@ -9,15 +9,15 @@ on:
       - 'Cargo.toml'
       - 'Cargo.lock'
       - 'llvm-cov.toml'
-  pull_request:
-    branches: [ main ]
-    paths:
-      - 'tools/aw_editor/**'
-      - '.github/workflows/editor-ci.yml'
-      - 'Cargo.toml'
-      - 'Cargo.lock'
-      - 'llvm-cov.toml'
+  schedule:
+    # Not on pull_request. Editor clippy is optional and must not queue
+    # ahead of the required PR checks.
+    - cron: "50 6 * * *"
   workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   CARGO_TERM_COLOR: always
@@ -27,6 +27,7 @@ jobs:
   editor-ci:
     name: editor-ci
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     # Skip if editor has known compilation issues
     continue-on-error: true
 
@@ -34,26 +35,8 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            build-essential pkg-config cmake \
-            libx11-dev libxi-dev libxcursor-dev libxrandr-dev libxinerama-dev \
-            libxkbcommon-dev libxkbcommon-x11-dev libx11-xcb-dev \
-            libxcb1-dev libxcb-randr0-dev libxcb-xfixes0-dev libxcb-shape0-dev libxcb-xkb-dev \
-            libgl1-mesa-dev libegl1-mesa-dev wayland-protocols libwayland-dev \
-            libasound2-dev libpulse-dev libudev-dev
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.89.0
-        with:
-          components: clippy, rustfmt
-
-      - name: Cache build artifacts
-        uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: aw-editor
+      - name: Rust CI setup
+        uses: ./.github/actions/rust-ci-setup
 
       - name: Install cargo-llvm-cov
         uses: taiki-e/install-action@cargo-llvm-cov
@@ -62,7 +45,7 @@ jobs:
         run: cargo fmt -p aw_editor -- --check
 
       - name: Clippy (aw_editor)
-        run: cargo clippy -p aw_editor --all-features -- -D warnings
+        run: cargo clippy -p aw_editor --all-features --no-deps -- -D warnings
 
       - name: Cargo check (aw_editor)
         run: cargo check -p aw_editor --all-features

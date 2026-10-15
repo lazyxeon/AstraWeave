@@ -26,7 +26,7 @@ candle-core = { version = "0.8", optional = true }
 candle-nn = { version = "0.8", optional = true }
 candle-transformers = { version = "0.8", optional = true }
 tokenizers = { version = "0.22", optional = true }
-hf-hub = { version = "0.4", optional = true, features = ["tokio"] }
+hf-hub = { version = "0.4", optional = true, default-features = false, features = ["tokio", "rustls-tls"] }
 
 [dev-dependencies]
 tokio = { workspace = true }
@@ -57,3 +57,12 @@ ollama = ["dep:reqwest"]
 phi3 = ["candle-core", "candle-nn", "candle-transformers", "tokenizers", "hf-hub"]
 debug_io = []
 llm_cache = []
+
+# Production-lib unwrap gate. Enforced by the single workspace clippy --lib pass.
+# Tests are not part of --lib, so test unwraps stay allowed.
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+todo = "deny"
+result_large_err = "allow"

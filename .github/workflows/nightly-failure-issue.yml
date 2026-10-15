@@ -1,0 +1,108 @@
+name: Nightly Failure Issue
+
+# Opens or updates one GitHub issue per failing nightly (or main) workflow so a
+# red schedule cannot sit unnoticed. workflow_run only fires from the default
+# branch copy of this file, after this workflow has been merged.
+
+on:
+  workflow_run:
+    workflows:
+      - Comprehensive CI Pipeline
+      - Determinism Replay
+      - Performance Benchmarks
+      - Sanitizers
+      - Code Coverage
+      - CodeQL Analysis
+      - Rust Toolchain Management
+      - Integration Tests
+      - PBR Pipeline CI
+      - AW Editor Tests
+      - SDK Header and C Harness CI
+      - Editor CI
+      - Allocation Measurement
+    types: [completed]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  report:
+    name: Open or update nightly failure issue
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: >-
+      github.event.workflow_run.conclusion == 'failure' &&
+      (github.event.workflow_run.event == 'schedule' ||
+       github.event.workflow_run.head_branch == 'main')
+    steps:
+      - name: Open or update the issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const run = context.payload.workflow_run;
+            const title = `Nightly CI failure: ${run.name}`;
+            const body = [
+              `Workflow **${run.name}** failed.`,
+              ``,
+              `- Event: \`${run.event}\``,
+              `- Branch: \`${run.head_branch}\``,
+              `- SHA: \`${run.head_sha}\``,
+              `- Conclusion: \`${run.conclusion}\``,
+              `- Run: ${run.html_url}`,
+              ``,
+              `Opened by \`.github/workflows/nightly-failure-issue.yml\`. Close this issue when the workflow is green.`,
+            ].join("\n");
+
+            let labelReady = false;
+            try {
+              await github.rest.issues.createLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                name: "ci-nightly",
+                color: "b60205",
+                description: "Nightly or main CI failure that must not be ignored",
+              });
+              labelReady = true;
+            } catch (error) {
+              const status = error.status || (error.response && error.response.status);
+              if (status === 422) {
+                labelReady = true;
+              } else if (status !== 403) {
+                throw error;
+              }
+            }
+
+            const listParams = {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: "open",
+              per_page: 100,
+            };
+            if (labelReady) {
+              listParams.labels = "ci-nightly";
+            }
+            const existing = await github.paginate(github.rest.issues.listForRepo, listParams);
+            const match = existing.find((issue) => issue.title === title);
+            if (match) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: match.number,
+                body,
+              });
+              core.notice(`Updated issue #${match.number}`);
+            } else {
+              const created = await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                body,
+                labels: labelReady ? ["ci-nightly"] : [],
+              });
+              core.notice(`Opened issue #${created.data.number}`);
+            }

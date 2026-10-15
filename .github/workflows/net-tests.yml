@@ -4,14 +4,23 @@ on:
   push:
     branches: [ main ]
   pull_request:
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'gh-pages/**'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   net-tests:
+    name: net-tests
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
-      - uses: dtolnay/rust-toolchain@1.89.0
-      - name: Cache cargo
-        uses: Swatinem/rust-cache@v2
+      - name: Rust CI setup
+        uses: ./.github/actions/rust-ci-setup
       - name: Unit tests (astraweave-net)
         run: cargo test -p astraweave-net --all-features --verbose

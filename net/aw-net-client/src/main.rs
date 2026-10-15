@@ -29,7 +29,7 @@ async fn main() -> anyhow::Result<()> {
         }
     };
 
-    // Connect with native-tls (supports both ws:// and wss://)
+    // Connect with rustls (supports both ws:// and wss://). OpenSSL is banned.
     // For development with self-signed certs, you may need to disable certificate validation
     let (mut ws, _resp) = tokio_tungstenite::connect_async(&url).await.map_err(|e| {
         anyhow::anyhow!("Connection failed: {}. If using self-signed certs, this is expected. Use ws:// or set AW_WS_URL=ws://127.0.0.1:8788", e)

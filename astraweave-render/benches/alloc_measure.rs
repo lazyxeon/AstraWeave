@@ -59,8 +59,8 @@ use criterion::{criterion_group, criterion_main, Criterion};
 use glam::Vec3;
 use std::hint::black_box;
 
-/// Placeholder — raise if the first real capture exceeds this.
-const MAX_ALLOCS_BIN_LIGHTS: usize = 1_000;
+/// 2026-04-17 capture: 4 allocs for 128 lights. 50% margin, rounded up.
+const MAX_ALLOCS_BIN_LIGHTS: usize = 6;
 
 fn make_lights(count: usize) -> Vec<CpuLight> {
     (0..count)

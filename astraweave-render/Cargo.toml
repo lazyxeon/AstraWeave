@@ -169,3 +169,12 @@ harness = false
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(feature, values("bloom", "ssao"))'] }
+
+# Production-lib unwrap gate. Enforced by the single workspace clippy --lib pass.
+# Tests are not part of --lib, so test unwraps stay allowed.
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+todo = "deny"
+result_large_err = "allow"
