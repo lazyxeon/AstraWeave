@@ -809,11 +809,8 @@ dependencies = [
  "astraweave-ai",
  "astraweave-behavior",
  "astraweave-ecs",
-<<<<<<< HEAD
  "astraweave-gameplay",
-=======
  "astraweave-math",
->>>>>>> 27f9b6c2 (chore: lock astraweave-math serde dependency)
  "criterion 0.7.0",
  "glam",
  "rand 0.9.2",
