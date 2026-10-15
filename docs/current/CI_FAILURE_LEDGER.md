@@ -77,6 +77,18 @@ Owned here. 95 unique failures, each retried twice. Groups:
 | #241 toolchain render tests, no GPU adapter | **Fixed on this branch.** Toolchain Ubuntu jobs install lavapipe. macOS sets `AW_GPU_SKIP_IF_UNAVAILABLE` and writes the reason into the job summary. On `002af2d9`, toolchain 1.88, beta, and nightly succeeded. The later Ubuntu stable failure was the SDK last-error race, fixed in `17750cdc`. |
 | #248 `aw_editor` clippy, 62 `-D warnings` | **Fixed on this branch, one lint per commit, no allows.** The same clippy invocation also lints the `aw_editor` binary, which repeats the modules; those lints are fixed the same way. The viewport renderer is `Rc<RefCell<_>>` because every borrow is on the UI thread (`App::update`, dock subsystems, the widget paint path) and `ViewportRenderer` is not `Send`. The IBL bake thread owns a separate `IblManager` and does not receive this renderer. `eframe::App` does not require `Send`. A failed borrow skips the operation instead of panicking. |
 
+## Settled head `3df64936` (compared with `a5e0adfe`)
+
+`a5e0adfe` unique check names: 112. 88 success, 15 failure, 6 skipped, 2 cancelled, 1 neutral.
+
+`3df64936` unique check runs: 25. 16 success, 5 failure, 3 skipped, 1 neutral. CodeRabbit status: success. Main's tiered pipeline replaced the old matrix, so the name set is smaller. The five failures are `PR Rust checks`, `Test (ubuntu, affected)`, and `Test (windows, 1/3)`, `2/3`, and `3/3`. `PR Rust checks` fails because those test jobs failed.
+
+| Failure | Disposition |
+|---|---|
+| `ShadingMode` tests (`all` length 6 vs 5, cycle stops before `CascadeIndex`) | **Fixed after this tally.** `CascadeIndex` is already in `all`, `cycle`, and `to_u32`. The tests now lock that sixth mode. |
+| `modifier_drain_completed_requests` (`completed.len() >= 2`) | **Fixed after this tally.** One tick uses a 1 ms wall-clock budget and deferred the second op on the Ubuntu runner. The test now gives that tick 60 s so both request ids drain. The production default stays 1 ms. |
+| `editor_engine_render_parity` | **Deferred.** https://github.com/lazyxeon/AstraWeave/issues/273. Stable llvmpipe hashes `034f46c7…` vs `3cae37d4…`. Formats match and overlay isolation passes. The label could not be applied from this token. |
+
 ## What was not done
 
 - Benchmark targets whose measurement itself exceeds 600s are tracked in https://github.com/lazyxeon/AstraWeave/issues/224, labeled `deferred-failure`. The caustics golden matches on rustc 1.89.0 once the workspace test run is allowed to reach it.
