@@ -7,10 +7,10 @@ primary_crate: astraweave-combat
 domain: gameplay
 lifecycle_status: active
 integration_status: partial
-summary: "Resolver re-exports core SimRng and astraweave-math Fixed64. whole_raw stays here. combat_resolve is a required determinism-replay case. The demo still uses its own flat hits."
+summary: "Cover hits enqueue destruction impacts. Weave schools are data. run_aravath_slice is the Aravath caller. Fixed64 is astraweave-math."
 owns: [astraweave-combat]
-doc_version: "1.2"
-last_verified_commit: be413626
+doc_version: "1.3"
+last_verified_commit: df4b07bc
 runtime_edges:
   - to: astraweave-ecs
     note: CombatPlugin registers combat_resolve_system on the simulation stage
@@ -26,10 +26,10 @@ runtime_edges:
 |---|---|
 | **System name** | Combat damage |
 | **Primary crates** | `astraweave-combat` |
-| **Document version** | 1.2 |
-| **Last verified against commit** | `be413626` |
+| **Document version** | 1.3 |
+| **Last verified against commit** | `df4b07bc` |
 | **Last verified date** | 2026-10-15 |
-| **Status** | Active, partial. The demo does not call it yet. |
+| **Status** | Active, partial. `run_aravath_slice` is the caller. PR #205's greybox runtime does not call it yet. |
 | **Owner notes** | Formula spec: `docs/current/COMBAT_DAMAGE_SYSTEM_DESIGN.md`. Gate Pass, 2026-10-14. |
 
 ---
