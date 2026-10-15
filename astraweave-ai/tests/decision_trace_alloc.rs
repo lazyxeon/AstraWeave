@@ -39,19 +39,21 @@ fn traced_plan_route_allocates_nothing_after_warmup() {
     }
 
     reset_allocs();
-    let mut budget = 64u32;
-    let mut plan = AgentPlan::empty();
-    let _guard = astraweave_ai::htn::attach_trace(&mut trace, 1);
-    plan_route(
-        &tiles,
-        &mut scratch,
-        [1_000, 0, 1_000],
-        [1_000, 0, 46_000],
-        &hooks,
-        4,
-        &mut plan,
-        &mut budget,
-    );
-    assert_eq!(allocs(), 0, "traced plan_route allocated");
+    {
+        let mut budget = 64u32;
+        let mut plan = AgentPlan::empty();
+        let _guard = astraweave_ai::htn::attach_trace(&mut trace, 1);
+        plan_route(
+            &tiles,
+            &mut scratch,
+            [1_000, 0, 1_000],
+            [1_000, 0, 46_000],
+            &hooks,
+            4,
+            &mut plan,
+            &mut budget,
+        );
+        assert_eq!(allocs(), 0, "traced plan_route allocated");
+    }
     assert!(trace.count_of(1) > 4);
 }

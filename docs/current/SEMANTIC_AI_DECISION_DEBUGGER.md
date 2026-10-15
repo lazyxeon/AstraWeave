@@ -1,6 +1,6 @@
 # Semantic AI decision debugger
 
-Approved 2026-10-15. Every question in §14 was accepted as proposed. The implementation is stacked on PR #251 at `fe349aa0`, which keeps all six required replay cases (`planner_pure`, `perception_world`, `gameplay_rng`, `fixed64`, `combat_resolve`, `nav_reroute`). `NavChangeKind` on that head matches PR #263. `perception_world` on that head is `6e52e721ceb8a96413a7ae0ba1ad3f88adaeb37c56ba520c3a3cb9f6f0bf7ebb` because `4172ed01` stopped `build_snapshot` from inserting a breach POI. Tracing does not change that digest.
+Approved 2026-10-15. Every question in §14 was accepted as proposed. The implementation is restacked on `main` at `e894d019` after PR #251 and PR #263 merged. The required replay set is eight cases: `planner_pure`, `perception_world`, `gameplay_rng`, `fixed64`, `combat_resolve`, `destruction`, `gameplay_qa_aravath_slice`, and `nav_reroute`. `perception_world` is `6e52e721ceb8a96413a7ae0ba1ad3f88adaeb37c56ba520c3a3cb9f6f0bf7ebb` because `4172ed01` stopped `build_snapshot` from inserting a breach POI. Tracing does not change that digest.
 
 The survey below was taken at `main` `f1109340` and on the #251 draft before that rebase. It stays as the map. The code that landed from this approval is `astraweave-ai/src/decision_trace.rs` (feature `decision-trace`, default off), the record sites in the hierarchical tick and the grid planners, and the headless `tools/aw_decision` binary. No editor panel. No new asset.
 
@@ -9,9 +9,9 @@ The survey below was taken at `main` `f1109340` and on the #251 draft before tha
 1. Feature-off is the zero-cost mode. `decision_record!` compiles to nothing unless `decision-trace` is on. The default replay build leaves the feature off.
 2. The determinism proof is the in-process null-sink versus ring-sink plan digest (`decision_trace_hash_matches_when_the_ring_is_off`). Trace bytes are not a required replay case.
 3. `tools/aw_decision` is the inspector. The editor panel stays later, after issues #265 and #273 close.
-4. The #251 rebase rule stands. This branch starts at `fe349aa0` and does not drop a required case.
+4. The #251 rebase rule stands. This branch is on `main` at `e894d019` and keeps all eight required cases.
 
-`rerun` takes `&mut PlannerView` so the caller-owned nav scratch can be borrowed mutably. `DecisionTrace::new` allocates the agent rings once; `push` does not. The `aravath-bridge` script uses `bridge_and_ford` and a detach at tick 30. It does not call `BridgeAgent`, which still lives on PR #263.
+`rerun` takes `&mut PlannerView` so the caller-owned nav scratch can be borrowed mutably. `DecisionTrace::new` allocates the agent rings once; `push` does not. The `aravath-bridge` script uses `bridge_and_ford` and a detach at tick 30. `BridgeAgent` is now on `main` in `aravath_runtime`; the inspector still does not call it.
 
 ## 1. What a user can select
 
