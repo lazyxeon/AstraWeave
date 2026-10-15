@@ -199,14 +199,18 @@ Numbers are from the Actions job timestamps. Runner-minutes exclude skipped jobs
 | #210 `8ae54ce8` | 100 (7) | 1062.6 | 30.3% | 25.9 min | 8.3 min | 17.5 min | `compare` success |
 | #211 `05c2bff0` | 102 (7) | 1033.4 | 33.3% | 6.5 min | 3.2 min | 3.3 min | `Cargo Deny Check` failure; replay absent |
 | #223 `7839f930` | 28 (4) | 336.2 | 0% | 140.2 min | 53.1 min | 87.1 min | `PR Rust checks` failure |
+| #223 `7512c86a` | 22 (3) | 147.9 | 0% | 51.7 min | 49.3 min | 2.5 min | `PR Rust checks` success |
 
-Replay compare, which both `#210` and `#223` ran:
+Replay compare, which `#210` and this pull request both ran:
 
 | SHA | Wall to `compare` | Execution-only (slowest hash + compare) | Slowest hash execution |
 |---|---:|---:|---|
 | #210 `8ae54ce8` | 25.9 min | 8.3 min | Windows 8.3 min |
 | #223 `7839f930` | 64.5 min | 11.5 min | Windows 11.4 min |
+| #223 `7512c86a` | 30.3 min | 10.8 min | Windows 10.7 min |
 
-On `7839f930` the execution chain to `PR Rust checks` is 53.1 minutes because each Windows partition compiled the workspace and ran until the 45 minute cap. Queue plus scheduling slack on top of that chain is 87.1 minutes. The repo had on the order of 150 queued runs at the time. Replay execution grew by about 3 minutes; the rest of the replay wall (64.5 versus 25.9) is queue.
+On `7839f930` the execution chain to `PR Rust checks` is 53.1 minutes because each Windows partition compiled the workspace and was cancelled at 45 minutes. Queue plus slack on that chain is 87.1 minutes.
 
-The archive rerun is the next row. It is filled from that SHA's job timestamps after the required checks finish. A docs-only pull request runs determinism on three OS plus the non-Rust checks, and does not compile the workspace. This pull request is a full-workspace diff, so its runner-minutes are the expensive path, not the narrow one.
+On `7512c86a` the same chain is 49.3 minutes and the queue plus slack is 2.5 minutes. The Windows archive build ran 36.3 minutes and succeeded. The three partitions ran 4.6, 5.0, and 5.1 minutes and succeeded. They did not hit the cap. `PR Rust checks`, the Linux test, MSRV, deny, audit, pack guard, scorecard, and `determinism-replay` / `compare` all succeeded. Bench share is 0%.
+
+`#210`'s last required check is `compare` (8.3 minutes of execution). This pull request's last required check is `PR Rust checks`, which now includes that Windows archive. Replay execution is 10.8 minutes against `#210`'s 8.3. The extra is the Windows hash (10.7 versus 8.3). A docs-only pull request runs determinism on three OS plus the non-Rust checks, and does not compile the workspace. This pull request is a full-workspace diff, so its runner-minutes are the expensive path, not the narrow one.
