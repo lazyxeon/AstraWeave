@@ -661,7 +661,7 @@ pub struct EngineRenderAdapter {
 
 /// Atlas bake size for one impostor pass.
 #[cfg(feature = "impostor-bake")]
-struct ImpostorAtlasSize {
+pub struct ImpostorAtlasSize {
     width: u32,
     height: u32,
     angle_count: u32,
