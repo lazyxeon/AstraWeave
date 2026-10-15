@@ -1009,7 +1009,7 @@ pub struct UiEditorPanel {
 
 impl Default for UiEditorPanel {
     fn default() -> Self {
-        let panel = Self {
+        Self {
             active_tab: UiEditorTab::Hierarchy,
 
             canvases: Vec::new(),
@@ -1040,9 +1040,7 @@ impl Default for UiEditorPanel {
             next_animation_id: 1,
 
             pending_actions: Vec::new(),
-        };
-
-        panel
+        }
     }
 }
 

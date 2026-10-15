@@ -963,7 +963,7 @@ pub struct LightingPanel {
 
 impl Default for LightingPanel {
     fn default() -> Self {
-        let panel = Self {
+        Self {
             active_tab: LightingTab::Lights,
 
             lights: Vec::new(),
@@ -986,9 +986,7 @@ impl Default for LightingPanel {
             next_probe_id: 1,
 
             pending_actions: Vec::new(),
-        };
-
-        panel
+        }
     }
 }
 

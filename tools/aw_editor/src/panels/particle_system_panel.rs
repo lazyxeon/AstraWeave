@@ -1008,7 +1008,7 @@ pub struct ParticleSystemPanel {
 
 impl Default for ParticleSystemPanel {
     fn default() -> Self {
-        let panel = Self {
+        Self {
             active_tab: ParticleTab::Emitter,
 
             particle_systems: Vec::new(),
@@ -1034,9 +1034,7 @@ impl Default for ParticleSystemPanel {
             next_id: 1,
 
             pending_actions: Vec::new(),
-        };
-
-        panel
+        }
     }
 }
 

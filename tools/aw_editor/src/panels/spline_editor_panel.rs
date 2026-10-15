@@ -742,7 +742,7 @@ pub struct SplineEditorPanel {
 
 impl Default for SplineEditorPanel {
     fn default() -> Self {
-        let panel = Self {
+        Self {
             active_tab: SplineTab::Splines,
 
             current_tool: SplineTool::Select,
@@ -765,9 +765,7 @@ impl Default for SplineEditorPanel {
             next_point_id: 1,
 
             pending_actions: Vec::new(),
-        };
-
-        panel
+        }
     }
 }
 

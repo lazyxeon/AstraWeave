@@ -458,7 +458,7 @@ pub struct LocalizationPanel {
 
 impl Default for LocalizationPanel {
     fn default() -> Self {
-        let panel = Self {
+        Self {
             active_tab: LocalizationTab::Strings,
 
             strings: Vec::new(),
@@ -485,9 +485,7 @@ impl Default for LocalizationPanel {
             import_path: String::new(),
 
             actions: Vec::new(),
-        };
-
-        panel
+        }
     }
 }
 

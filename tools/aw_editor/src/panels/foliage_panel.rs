@@ -643,7 +643,7 @@ pub struct FoliagePanel {
 
 impl Default for FoliagePanel {
     fn default() -> Self {
-        let panel = Self {
+        Self {
             active_tab: FoliageTab::Paint,
 
             current_tool: BrushTool::Paint,
@@ -670,9 +670,7 @@ impl Default for FoliagePanel {
             next_rule_id: 1,
 
             pending_actions: Vec::new(),
-        };
-
-        panel
+        }
     }
 }
 

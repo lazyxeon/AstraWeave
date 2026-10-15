@@ -827,7 +827,7 @@ pub struct DialogueEditorPanel {
 
 impl Default for DialogueEditorPanel {
     fn default() -> Self {
-        let panel = Self {
+        Self {
             active_tab: DialogueTab::Graph,
 
             graphs: Vec::new(),
@@ -887,9 +887,7 @@ impl Default for DialogueEditorPanel {
             next_id: 1,
 
             pending_actions: Vec::new(),
-        };
-
-        panel
+        }
     }
 }
 

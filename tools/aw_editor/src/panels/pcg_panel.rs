@@ -537,7 +537,7 @@ pub struct PcgPanel {
 
 impl Default for PcgPanel {
     fn default() -> Self {
-        let panel = Self {
+        Self {
             active_tab: PcgTab::Seeds,
 
             current_seed: 12345,
@@ -558,9 +558,7 @@ impl Default for PcgPanel {
             generation_history: Vec::new(),
 
             next_id: 1,
-        };
-
-        panel
+        }
     }
 }
 

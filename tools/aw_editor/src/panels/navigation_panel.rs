@@ -603,7 +603,7 @@ pub struct NavigationPanel {
 
 impl Default for NavigationPanel {
     fn default() -> Self {
-        let panel = Self {
+        Self {
             active_tab: NavigationTab::Mesh,
 
             regions: Vec::new(),
@@ -631,9 +631,7 @@ impl Default for NavigationPanel {
             next_id: 1,
 
             pending_actions: Vec::new(),
-        };
-
-        panel
+        }
     }
 }
 
