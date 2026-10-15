@@ -2225,8 +2225,8 @@ impl ViewportWidget {
         // Lock renderer to create texture and resize
         let mut renderer = self
             .renderer
-            .lock()
-            .map_err(|e| anyhow::anyhow!("Renderer lock poisoned: {}", e))?;
+            .try_borrow_mut()
+            .map_err(|_| anyhow::anyhow!("Renderer already borrowed on the UI thread"))?;
 
         // Create new render texture
         let texture = renderer
@@ -2719,8 +2719,8 @@ impl ViewportWidget {
         let name = name.into();
         let mut renderer = self
             .renderer
-            .lock()
-            .map_err(|_| anyhow::anyhow!("Renderer mutex poisoned"))?;
+            .try_borrow_mut()
+            .map_err(|_| anyhow::anyhow!("Renderer already borrowed on the UI thread"))?;
 
         // Lazily initialize engine adapter if not already done
         if !renderer.engine_adapter_initialized() {
@@ -2754,8 +2754,8 @@ impl ViewportWidget {
     ) -> anyhow::Result<()> {
         let mut renderer = self
             .renderer
-            .lock()
-            .map_err(|_| anyhow::anyhow!("Renderer mutex poisoned"))?;
+            .try_borrow_mut()
+            .map_err(|_| anyhow::anyhow!("Renderer already borrowed on the UI thread"))?;
 
         if let Some(adapter) = renderer.engine_adapter_mut() {
             adapter.set_material_params(base_color, metallic, roughness);
@@ -2769,8 +2769,8 @@ impl ViewportWidget {
     pub fn get_time_of_day(&self) -> anyhow::Result<f32> {
         let renderer = self
             .renderer
-            .lock()
-            .map_err(|_| anyhow::anyhow!("Renderer mutex poisoned"))?;
+            .try_borrow()
+            .map_err(|_| anyhow::anyhow!("Renderer already borrowed on the UI thread"))?;
 
         if let Some(adapter) = renderer.engine_adapter() {
             Ok(adapter.get_time_of_day())
@@ -2783,8 +2783,8 @@ impl ViewportWidget {
     pub fn set_time_of_day(&self, hour: f32) -> anyhow::Result<()> {
         let mut renderer = self
             .renderer
-            .lock()
-            .map_err(|_| anyhow::anyhow!("Renderer mutex poisoned"))?;
+            .try_borrow_mut()
+            .map_err(|_| anyhow::anyhow!("Renderer already borrowed on the UI thread"))?;
 
         if let Some(adapter) = renderer.engine_adapter_mut() {
             adapter.set_time_of_day(hour);
@@ -2798,8 +2798,8 @@ impl ViewportWidget {
     pub fn get_time_scale(&self) -> anyhow::Result<f32> {
         let renderer = self
             .renderer
-            .lock()
-            .map_err(|_| anyhow::anyhow!("Renderer mutex poisoned"))?;
+            .try_borrow()
+            .map_err(|_| anyhow::anyhow!("Renderer already borrowed on the UI thread"))?;
 
         if let Some(adapter) = renderer.engine_adapter() {
             Ok(adapter.get_time_scale())
@@ -2812,8 +2812,8 @@ impl ViewportWidget {
     pub fn set_time_scale(&self, scale: f32) -> anyhow::Result<()> {
         let mut renderer = self
             .renderer
-            .lock()
-            .map_err(|_| anyhow::anyhow!("Renderer mutex poisoned"))?;
+            .try_borrow_mut()
+            .map_err(|_| anyhow::anyhow!("Renderer already borrowed on the UI thread"))?;
 
         if let Some(adapter) = renderer.engine_adapter_mut() {
             adapter.set_time_scale(scale);
@@ -2827,8 +2827,8 @@ impl ViewportWidget {
     pub fn get_time_period(&self) -> anyhow::Result<&'static str> {
         let renderer = self
             .renderer
-            .lock()
-            .map_err(|_| anyhow::anyhow!("Renderer mutex poisoned"))?;
+            .try_borrow()
+            .map_err(|_| anyhow::anyhow!("Renderer already borrowed on the UI thread"))?;
 
         if let Some(adapter) = renderer.engine_adapter() {
             Ok(adapter.get_time_period())
@@ -2841,8 +2841,8 @@ impl ViewportWidget {
     pub fn shadows_enabled(&self) -> anyhow::Result<bool> {
         let renderer = self
             .renderer
-            .lock()
-            .map_err(|_| anyhow::anyhow!("Renderer mutex poisoned"))?;
+            .try_borrow()
+            .map_err(|_| anyhow::anyhow!("Renderer already borrowed on the UI thread"))?;
 
         if let Some(adapter) = renderer.engine_adapter() {
             Ok(adapter.shadows_enabled())
@@ -2855,8 +2855,8 @@ impl ViewportWidget {
     pub fn set_shadows_enabled(&self, enabled: bool) -> anyhow::Result<()> {
         let mut renderer = self
             .renderer
-            .lock()
-            .map_err(|_| anyhow::anyhow!("Renderer mutex poisoned"))?;
+            .try_borrow_mut()
+            .map_err(|_| anyhow::anyhow!("Renderer already borrowed on the UI thread"))?;
 
         if let Some(adapter) = renderer.engine_adapter_mut() {
             adapter.set_shadows_enabled(enabled);

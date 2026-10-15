@@ -5358,7 +5358,7 @@ impl EditorApp {
                 }
                 tab_viewer::PanelEvent::HdriLoaded { ref path } => {
                     if let Some(viewport) = &self.viewport {
-                        if let Ok(mut renderer) = viewport.renderer().borrow_mut() {
+                        if let Ok(mut renderer) = viewport.renderer().try_borrow_mut() {
                             match renderer.load_hdri(path) {
                                 Ok(()) => {
                                     self.status = format!(
@@ -5378,7 +5378,7 @@ impl EditorApp {
                 }
                 tab_viewer::PanelEvent::HdriCleared => {
                     if let Some(viewport) = &self.viewport {
-                        if let Ok(mut renderer) = viewport.renderer().borrow_mut() {
+                        if let Ok(mut renderer) = viewport.renderer().try_borrow_mut() {
                             renderer.clear_hdri();
                         }
                     }
@@ -5391,7 +5391,7 @@ impl EditorApp {
 
                         // Verify engine adapter is initialized (terrain upload
                         // auto-inits, but surface the result for diagnostics).
-                        if let Ok(mut renderer) = viewport.renderer().borrow_mut() {
+                        if let Ok(mut renderer) = viewport.renderer().try_borrow_mut() {
                             if !renderer.engine_adapter_initialized() {
                                 self.console_logs.push(
                                     "Engine adapter not ready after terrain upload — initializing explicitly...".into(),
@@ -5521,7 +5521,9 @@ impl EditorApp {
                                         });
 
                                     if let Some(viewport) = &self.viewport {
-                                        if let Ok(mut renderer) = viewport.renderer().borrow_mut() {
+                                        if let Ok(mut renderer) =
+                                            viewport.renderer().try_borrow_mut()
+                                        {
                                             if let Some(adapter) = renderer.engine_adapter_mut() {
                                                 adapter.set_terrain_surface_maps(
                                                     (albedo_width, albedo_height, &albedo),
@@ -5569,7 +5571,7 @@ impl EditorApp {
                             .join("materials")
                             .join("biomes");
                         if let Some(viewport) = &self.viewport {
-                            if let Ok(mut renderer) = viewport.renderer().borrow_mut() {
+                            if let Ok(mut renderer) = viewport.renderer().try_borrow_mut() {
                                 if let Some(adapter) = renderer.engine_adapter_mut() {
                                     adapter.set_biome_pack(Some(biome_dir));
                                 }
@@ -5597,7 +5599,7 @@ impl EditorApp {
                         // TDR timeout because ~200 MB of terrain + scatter buffer
                         // writes accumulate and are only flushed at the next present.
                         if let Some(viewport) = &self.viewport {
-                            if let Ok(renderer) = viewport.renderer().borrow() {
+                            if let Ok(renderer) = viewport.renderer().try_borrow() {
                                 if let Some(adapter) = renderer.engine_adapter() {
                                     adapter.renderer().queue().submit(std::iter::empty());
                                     tracing::debug!(
@@ -5615,7 +5617,7 @@ impl EditorApp {
                             ));
                         }
                         if let Some(viewport) = &self.viewport {
-                            if let Ok(mut renderer) = viewport.renderer().borrow_mut() {
+                            if let Ok(mut renderer) = viewport.renderer().try_borrow_mut() {
                                 // Diagnostic: verify adapter status before scatter
                                 let adapter_ready = renderer.engine_adapter_initialized();
                                 self.console_logs.push(format!(
@@ -5707,7 +5709,7 @@ impl EditorApp {
                             pack.root_dir
                         );
                         if let Some(viewport) = &self.viewport {
-                            if let Ok(mut renderer) = viewport.renderer().borrow_mut() {
+                            if let Ok(mut renderer) = viewport.renderer().try_borrow_mut() {
                                 let root = pack.root_dir.clone();
                                 let mut next_custom_layer = 12u32;
                                 for gt in pack.ground_textures.iter() {
@@ -6083,9 +6085,9 @@ impl EditorApp {
                             ui.separator();
 
                             // Engine PBR Rendering toggle
-                            let mut use_pbr = viewport.renderer().borrow().map(|r| r.use_engine_rendering()).unwrap_or(false);
+                            let mut use_pbr = viewport.renderer().try_borrow().map(|r| r.use_engine_rendering()).unwrap_or(false);
                             if ui.checkbox(&mut use_pbr, "Engine PBR").on_hover_text("Enable full PBR mesh rendering instead of cube placeholders").changed() {
-                                if let Ok(mut renderer) = viewport.renderer().borrow_mut() {
+                                if let Ok(mut renderer) = viewport.renderer().try_borrow_mut() {
                                     renderer.set_use_engine_rendering(use_pbr);
                                 }
                             }
@@ -9602,7 +9604,7 @@ impl MenuActionHandler for EditorApp {
 
     fn on_toggle_engine_rendering(&mut self) {
         if let Some(viewport) = &self.viewport {
-            if let Ok(mut renderer) = viewport.renderer().borrow_mut() {
+            if let Ok(mut renderer) = viewport.renderer().try_borrow_mut() {
                 let current = renderer.use_engine_rendering();
                 renderer.set_use_engine_rendering(!current);
                 let state = if !current { "enabled" } else { "disabled" };
@@ -9615,7 +9617,7 @@ impl MenuActionHandler for EditorApp {
 
     fn on_show_engine_info(&mut self) {
         if let Some(viewport) = &self.viewport {
-            if let Ok(renderer) = viewport.renderer().borrow() {
+            if let Ok(renderer) = viewport.renderer().try_borrow() {
                 let engine_active = renderer.use_engine_rendering();
                 let adapter_init = renderer.engine_adapter_initialized();
                 self.console_logs.push(format!(
