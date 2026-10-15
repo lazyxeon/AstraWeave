@@ -715,6 +715,10 @@ struct Foliage {
     rock: Vec<ColoredMesh>,
     grass: Vec<ColoredMesh>,
     bush: Vec<ColoredMesh>,
+    forest_trees: Vec<TexturedMesh>,
+    forest_bushes: Vec<TexturedMesh>,
+    forest_tufts: Vec<TexturedMesh>,
+    forest_rocks: Vec<TexturedMesh>,
 }
 
 impl Foliage {
@@ -724,6 +728,12 @@ impl Foliage {
                 .join("models/nature")
                 .join(name)
         };
+        let kaykit = |name: &str| {
+            aravath_runtime::assets::asset_dir()
+                .join("models/kaykit_forest")
+                .join(name)
+        };
+        let textured = |name: &str| props::load_rigid(&kaykit(name));
         Ok(Self {
             oak: props::load_colored(&path("tree_oak.glb"))?,
             pine: props::load_colored(&path("tree_pineDefaultA.glb"))?,
@@ -731,6 +741,24 @@ impl Foliage {
             rock: props::load_colored(&path("rock_largeA.glb"))?,
             grass: props::load_colored(&path("grass.glb"))?,
             bush: props::load_colored(&path("plant_bush.glb"))?,
+            forest_trees: vec![
+                textured("Tree_1_A_Color1.gltf")?,
+                textured("Tree_2_A_Color1.gltf")?,
+                textured("Tree_3_A_Color1.gltf")?,
+                textured("Tree_4_A_Color1.gltf")?,
+            ],
+            forest_bushes: vec![
+                textured("Bush_1_A_Color1.gltf")?,
+                textured("Bush_2_A_Color1.gltf")?,
+            ],
+            forest_tufts: vec![
+                textured("Grass_1_A_Color1.gltf")?,
+                textured("Grass_2_A_Color1.gltf")?,
+            ],
+            forest_rocks: vec![
+                textured("Rock_1_A_Color1.gltf")?,
+                textured("Rock_2_A_Color1.gltf")?,
+            ],
         })
     }
 
@@ -742,6 +770,20 @@ impl Foliage {
             PropKind::Rock => &self.rock,
             PropKind::Grass => &self.grass,
             PropKind::Bush => &self.bush,
+            PropKind::ForestTree
+            | PropKind::ForestBush
+            | PropKind::ForestTuft
+            | PropKind::ForestRock => &[],
+        }
+    }
+
+    fn forest(&self, kind: PropKind) -> &[TexturedMesh] {
+        match kind {
+            PropKind::ForestTree => &self.forest_trees,
+            PropKind::ForestBush => &self.forest_bushes,
+            PropKind::ForestTuft => &self.forest_tufts,
+            PropKind::ForestRock => &self.forest_rocks,
+            _ => &[],
         }
     }
 }
@@ -770,6 +812,12 @@ fn sync_foliage(
         PropKind::Rock,
         PropKind::Grass,
         PropKind::Bush,
+    ];
+    let forest = [
+        PropKind::ForestTree,
+        PropKind::ForestBush,
+        PropKind::ForestTuft,
+        PropKind::ForestRock,
     ];
     for kind in kinds {
         let instances: Vec<Instance> = props
@@ -802,6 +850,33 @@ fn sync_foliage(
                 );
             } else {
                 renderer.update_model_instances(&name, &colored);
+            }
+        }
+    }
+    for kind in forest {
+        let meshes = foliage.forest(kind);
+        for (index, mesh) in meshes.iter().enumerate() {
+            let instances: Vec<Instance> = props
+                .values()
+                .flatten()
+                .filter(|spot| {
+                    spot.kind == kind
+                        && !meshes.is_empty()
+                        && spot.variant as usize % meshes.len() == index
+                })
+                .map(|spot| Instance {
+                    transform: Mat4::from_translation(spot.position)
+                        * Mat4::from_rotation_y(spot.yaw)
+                        * Mat4::from_scale(Vec3::splat(spot.scale)),
+                    color: [1.0, 1.0, 1.0, 1.0],
+                    material_id: 0,
+                })
+                .collect();
+            let name = format!("{kind:?}{index}");
+            if !*ready {
+                upload_textured(renderer, &name, mesh, &instances);
+            } else {
+                renderer.update_model_instances(&name, &instances);
             }
         }
     }
