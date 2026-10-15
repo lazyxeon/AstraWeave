@@ -339,7 +339,7 @@ Reviewed against `main` @ `85d09a2c`. The demo crate is still only on PR #205, s
 | Primary sky is Poly Haven CC0 `spruit_sunrise`. `kloppenheim_02` is the fallback. | The bytes are the terrain pack's `assets/terrain/polyhaven/pine_forest/hdri/spruit_sunrise_2k.exr` (PR #215, SHA-256 `6db7045b…`). This branch does not vendor a second copy. `bake_showcase_environment` loads that path, then the kloppenheim `.hdr`. `exr_equirect_decode_keeps_radiance_above_one` writes a tiny EXR and reads it back through the HDRI loader as float above 1. |
 | HDR resize must not clamp radiance above 1. | `prepare_hdr_image` resizes `Rgb32F` / `Rgba32F` in float. Test `hdr_resize_keeps_radiance_above_one`. |
 | Missing catalog paths: fetch CC0 or remove. Hashes in the manifest. | Six Poly Haven CC0 2k `.hdr` files fetched. `sky_equirect.png` removed (not a Poly Haven asset, not on disk). SHA-256 on every catalog entry and in `assets/asset_manifest.toml`. Test `catalog_files_match_sha256`. `resolve_sky_mode` refuses a missing file. |
-| PBR maps in `astraweave-render`, no third parser. | `ModelSurfaceMaps` gained occlusion and emissive. The forward shader samples AO on indirect light and adds emissive. `pbr_maps` converts glTF MR and Poly Haven ARM. `nor_gl` is not Y-flipped. `load_gltf` reads base color, normal, MR, occlusion, and emissive. Float glTF images decode to RGBA8 or return an error. `Renderer::add_cpu_mesh_model` is the call the demo should use. |
+| PBR maps in `astraweave-render`, no third parser. | `ModelSurfaceMaps` gained occlusion and emissive. The forward shader samples AO on indirect light and adds emissive. `pbr_maps` converts glTF MR and Poly Haven ARM. `nor_gl` is not Y-flipped. `load_gltf` reads base color, normal, MR, occlusion, and emissive, then attaches sibling `*nor_gl*` and `*_arm*` files that share the model stem (`arm_to_gltf_mr_and_occlusion`, stored in glTF layout so upload converts once). `add_composite_model` — the KayKit / Poly Haven / editor path — uploads those maps through `pack_gltf_surface`. Albedo-only primitives stay on the albedo bind group. Scatter LOD0 uses the same pack when a primitive has surface maps; later scatter LODs stay albedo because the simplified and billboard meshes do not carry the maps. |
 | Time of day from the sim tick. | `TimeOfDay` no longer stores `Instant`. `update(dt_seconds)` and `SkyRenderer::update` honor `dt`. Test `fixed_dt_is_replay_stable`. |
 | Cloud-shadow validation without duplicating #205. | `tests/created_pass_validation.rs` submits one `draw_into` from `Renderer::new_headless` (that constructor builds `CloudShadowPass`). Workflow `.github/workflows/render-device-validation.yml` runs it on lavapipe and on `windows-latest`. It does not construct `VolumetricFogPass` or `GodRayPass`. |
 
@@ -347,17 +347,23 @@ DF-1 through DF-4 are fixed in this branch. The issue text below is the ledger o
 
 ## Dormant pass decisions
 
-Wiring waits until the depth-as-filterable-float layouts are fixed. #205 owns `volumetric_fog` integrate and the god-ray composite. This branch does not edit those files.
+Each pass is wired, deleted with the live path already covering it, or deferred. Nothing below is wired on this branch: the depth slots still use filterable `texture_2d<f32>` against `Depth32Float`, or the live owner is another branch or another module. Nothing below is deleted: the live path does not implement that capability, or tests still construct the dormant type, so a delete is not parity. Issues are labeled `deferred-failure`.
 
-| Pass | Decision | Why |
+| Pass | Decision | Issue |
 |---|---|---|
-| `AtmospherePass` | Wire as a selectable sky mode next to HDRI, after its aerial-perspective depth binding is `texture_depth_2d`. | Approved. Do not composite it on top of the HDRI. |
-| `VolumetricFogPass` | Wire stays on PR #205. Do not add a second caller here. | That branch already has the gameplay toggle and the depth fix. |
-| `GodRayPass` | Same as fog. Owned by #205. | |
-| `VolumetricCloudsPass` (raymarch) | Deprecate the composite until its depth binding is fixed, then wire behind `cloud_quality`. `CloudShadowPass` stays; it is the live pass. | The 512² shadow map is the production cloud shadow. The raymarch is a second cloud. |
-| SSGI, TAA, DoF, temporal upscale, aerial perspective | Do not wire until each depth binding is `TextureSampleType::Depth` and the shader uses `texture_depth_2d` + `textureLoad`. | Same validation class as `vol_integrate`. |
-| Frame-graph `SkyPassNode` / `VolumetricFogNode` | Remove in a later commit once `Renderer::draw_into` is the only frame path. | They return `Ok(())` and are not called. |
-| `BrdfLutPass`, `weather_system`, `weather_gpu`, `shadow_csm.rs` | Deprecate. Production owners are `IblManager`, `effects::WeatherFx` + `SceneEnvironment`, and the CSM inside `renderer.rs`. | Second implementations. |
+| `AtmospherePass` and its aerial-perspective depth sample | Deferred. Selectable sky mode beside HDRI only after the depth binding is `texture_depth_2d`. Do not composite it on the HDRI. | #226 |
+| `VolumetricFogPass` | Deferred. Wiring stays on PR #205. This branch does not edit the file. | #227 |
+| `GodRayPass` | Deferred. Wiring stays on PR #205. This branch does not edit the file. | #228 |
+| `VolumetricCloudsPass` raymarch | Deferred. `CloudShadowPass` stays live and is in the startup validation submit. The raymarch is not deleted: a shadow map is not a cloud volume. | #229 |
+| SSGI | Deferred until its depth slots are `TextureSampleType::Depth` and the shader uses `textureLoad`. | #230 |
+| TAA | Deferred. Same depth-binding gate. History stays presentation-only. | #231 |
+| DoF (`advanced_post.rs`) | Deferred. `depth_tex` is `texture_2d<f32>` today. | #232 |
+| Temporal upscale | Deferred. Depth at binding 3 is filterable float. | #233 |
+| Frame-graph `SkyPassNode` / `VolumetricFogNode` | Deferred deletion. Both `run` methods return `Ok(())`. Live sky is `SkyRenderer`. | #234 |
+| `BrdfLutPass` | Deferred deletion. Production LUT is `IblManager::bake_environment`. | #235 |
+| `weather_system.rs` | Deferred deletion. Live weather is `effects::WeatherFx` + `SceneEnvironment`. | #236 |
+| `weather_gpu.rs` | Deferred deletion. No production caller. | #237 |
+| `shadow_csm.rs`, `shadow_quality.rs`, `shadow_sampling.wgsl` | Deferred deletion. Live CSM is `renderer.rs` + `shadow_common.wgsl`. | #238 |
 
 ## Frame time
 
@@ -367,4 +373,4 @@ This VM has no RTX 4060 Ti. A lavapipe submit proves the passes are legal. It do
 
 ## What Phase 2 needs from review
 
-The four review questions are decided. Next code, after this branch is green, is the selectable `AtmospherePass` once its depth binding matches `water.rs`, then the dormant-pass table above.
+The four review questions are decided. Dormant passes are tracked by #226–#238. The next atmosphere change is the depth-binding fix in #226, on a branch that is not racing PR #205's fog and god-ray files.

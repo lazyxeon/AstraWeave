@@ -3896,71 +3896,18 @@ fn vs(input: VSIn) -> VSOut {
         Ok(chosen)
     }
 
-    /// Upload one glTF primitive. Albedo-only meshes keep the albedo path.
-    /// When a normal, metallic-roughness, occlusion, or emissive map is
-    /// present, all five slots are bound. glTF metallic-roughness is converted
-    /// to the engine R=metallic, G=roughness layout.
+    /// Upload one glTF primitive through the same path as
+    /// [`Self::add_composite_model`]. Albedo-only meshes keep the albedo bind
+    /// group. A normal, metallic-roughness, occlusion, or emissive map binds
+    /// all five slots. glTF metallic-roughness is converted to engine layout
+    /// (R = metallic, G = roughness) inside [`crate::pbr_maps::pack_gltf_surface`].
     pub fn add_cpu_mesh_model(
         &mut self,
         name: impl Into<String>,
         cpu: &crate::mesh::CpuMesh,
         instances: &[Instance],
     ) {
-        let mesh = self.create_mesh_from_cpu_mesh(cpu);
-        let has_surface = cpu.normal_image.is_some()
-            || cpu.metallic_roughness_image.is_some()
-            || cpu.occlusion_image.is_some()
-            || cpu.emissive_image.is_some();
-        if !has_surface {
-            if let Some(albedo) = &cpu.albedo_image {
-                self.add_model_with_texture(
-                    name,
-                    mesh,
-                    instances,
-                    albedo.width,
-                    albedo.height,
-                    &albedo.pixels,
-                );
-            } else {
-                self.add_model(name, mesh, instances);
-            }
-            return;
-        }
-        let albedo_fallback = vec![255u8, 255, 255, 255];
-        let normal_fallback = vec![128u8, 128, 255, 255];
-        let mr_fallback = vec![0u8, 255, 0, 255];
-        let mr_converted = cpu
-            .metallic_roughness_image
-            .as_ref()
-            .map(|image| crate::pbr_maps::gltf_metallic_roughness_to_engine(&image.pixels));
-        let (albedo_w, albedo_h, albedo_px) = match &cpu.albedo_image {
-            Some(image) => (image.width, image.height, image.pixels.as_slice()),
-            None => (1, 1, albedo_fallback.as_slice()),
-        };
-        let (normal_w, normal_h, normal_px) = match &cpu.normal_image {
-            Some(image) => (image.width, image.height, image.pixels.as_slice()),
-            None => (1, 1, normal_fallback.as_slice()),
-        };
-        let (mr_w, mr_h, mr_px) = match (&cpu.metallic_roughness_image, &mr_converted) {
-            (Some(image), Some(converted)) => (image.width, image.height, converted.as_slice()),
-            _ => (1, 1, mr_fallback.as_slice()),
-        };
-        let occlusion = cpu
-            .occlusion_image
-            .as_ref()
-            .map(|image| (image.width, image.height, image.pixels.as_slice()));
-        let emissive = cpu
-            .emissive_image
-            .as_ref()
-            .map(|image| (image.width, image.height, image.pixels.as_slice()));
-        let maps = ModelSurfaceMaps {
-            albedo: (albedo_w, albedo_h, albedo_px),
-            normal: (normal_w, normal_h, normal_px),
-            metallic_roughness: (mr_w, mr_h, mr_px),
-            occlusion,
-            emissive,
-        };
-        self.add_model_with_pbr_textures(name, mesh, instances, &maps);
+        self.add_composite_model(name, vec![cpu.clone()], instances);
     }
 
     /// Install an environment baked elsewhere (L.2: the editor's worker-thread
@@ -8314,8 +8261,10 @@ fn vs(input: VSIn) -> VSOut {
     /// Add or replace a named model composed of multiple primitives.
     ///
     /// Each CPU mesh becomes a separate draw within the model while sharing
-    /// the same instance buffer. Embedded albedo textures are preserved on a
-    /// per-primitive basis.
+    /// the same instance buffer. KayKit and Poly Haven GLBs land here.
+    /// Albedo-only primitives keep the albedo bind group. A primitive with a
+    /// normal, metallic-roughness, occlusion, or emissive map uses
+    /// [`ModelSurfaceMaps`] (engine metallic-roughness layout).
     pub fn add_composite_model(
         &mut self,
         name: impl Into<String>,
@@ -8388,7 +8337,34 @@ fn vs(input: VSIn) -> VSOut {
 
         for cpu_mesh in cpu_meshes {
             let mesh = self.create_mesh_from_cpu_mesh(&cpu_mesh);
-            if let Some(img) = cpu_mesh.albedo_image.as_ref() {
+            if let Some(packed) = crate::pbr_maps::pack_gltf_surface(&cpu_mesh) {
+                let occlusion = packed
+                    .occlusion
+                    .as_ref()
+                    .map(|(w, h, px)| (*w, *h, px.as_slice()));
+                let emissive = packed
+                    .emissive
+                    .as_ref()
+                    .map(|(w, h, px)| (*w, *h, px.as_slice()));
+                let maps = ModelSurfaceMaps {
+                    albedo: (packed.albedo_size.0, packed.albedo_size.1, &packed.albedo),
+                    normal: (packed.normal_size.0, packed.normal_size.1, &packed.normal),
+                    metallic_roughness: (
+                        packed.metallic_roughness_size.0,
+                        packed.metallic_roughness_size.1,
+                        &packed.metallic_roughness,
+                    ),
+                    occlusion,
+                    emissive,
+                };
+                let (tex_bg, textures, bytes) = self.create_model_pbr_bind_group(&maps);
+                tex_gpu_bytes += bytes;
+                primitives.push(RenderModelPrimitive {
+                    mesh,
+                    tex_bind_group: Some(tex_bg),
+                    _retained_textures: textures,
+                });
+            } else if let Some(img) = cpu_mesh.albedo_image.as_ref() {
                 let (tex_bg, textures, bytes) =
                     self.create_model_albedo_bind_group(img.width, img.height, &img.pixels);
                 tex_gpu_bytes += bytes;
