@@ -43,6 +43,7 @@ members = [
   "astraweave-physics",
   "astraweave-water",
   "astraweave-nav",
+  "aravath_runtime",
   "astraweave-scene",
   "astraweave-terrain",
   "astraweave-math",
