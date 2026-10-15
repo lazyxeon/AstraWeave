@@ -40,7 +40,7 @@ runs:
           libxkbcommon-dev libxkbcommon-x11-dev libx11-xcb-dev \
           libxcb1-dev libxcb-randr0-dev libxcb-xfixes0-dev libxcb-shape0-dev libxcb-xkb-dev \
           libgl1-mesa-dev libegl1-mesa-dev wayland-protocols libwayland-dev \
-          libasound2-dev libpulse-dev libudev-dev
+          libasound2-dev libpulse-dev libudev-dev mesa-vulkan-drivers libvulkan1 vulkan-tools
 
     - name: Install system dependencies (macOS)
       if: runner.os == 'macOS'
