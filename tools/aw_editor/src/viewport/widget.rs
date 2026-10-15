@@ -2450,7 +2450,7 @@ impl ViewportWidget {
         let mut lines = Vec::new();
         let segments = 32;
 
-        for (_, entity) in entity_manager.entities() {
+        for entity in entity_manager.entities().values() {
             let pos = [entity.position.x, entity.position.y, entity.position.z];
 
             // Light: yellow wireframe sphere at light range
