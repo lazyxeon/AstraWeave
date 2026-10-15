@@ -1,6 +1,9 @@
 # Required status check on pull requests: `determinism-replay / compare`.
 # Branch protection is a repository setting. This workflow is the check it must require.
-# `planner_pure`, `perception_world`, `fixed64`, and `destruction` fail the compare job on any mismatch.
+# `planner_pure` (WS-D0), `perception_world` (WS-D1), `gameplay_rng` (WS-D2),
+# `fixed64`, `combat_resolve`, and `destruction` fail the compare job on any
+# mismatch or if the case is missing. No path filter. cargo test has no retry
+# loop (no-retry). Do not switch this job to nextest.
 
 name: determinism-replay
 
@@ -11,7 +14,7 @@ on:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -38,8 +41,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.89.0
+      - name: Rust CI setup
+        uses: ./.github/actions/rust-ci-setup
+        with:
+          install-nextest: "false"
 
       - name: Pin baseline CPU
         run: |
@@ -57,13 +62,39 @@ jobs:
               ;;
           esac
 
-      - name: Cache cargo dependencies
-        uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: determinism-replay
-
       - name: Replay hash
-        run: cargo test -p astraweave-core --test replay_hash -- --nocapture
+        run: |
+          cargo test -p astraweave-core --test replay_hash -- --nocapture
+          cargo test -p astraweave-combat --test replay_hash -- --nocapture
+
+      - name: Merge replay hashes
+        run: |
+          node <<'JS'
+          const fs = require("fs");
+          const path = require("path");
+          const root = process.env.CARGO_TARGET_DIR || "target";
+          const core = JSON.parse(fs.readFileSync(path.join(root, "replay-hash.json"), "utf8"));
+          const combat = JSON.parse(fs.readFileSync(path.join(root, "replay-hash-combat.json"), "utf8"));
+          const seen = new Set(core.map((row) => row.case));
+          const merged = core.slice();
+          for (const row of combat) {
+            if (seen.has(row.case)) {
+              console.error(`duplicate replay case ${row.case}`);
+              process.exit(1);
+            }
+            merged.push(row);
+          }
+          const required = ["planner_pure", "perception_world", "gameplay_rng", "fixed64", "combat_resolve", "destruction"];
+          const names = new Set(merged.map((row) => row.case));
+          for (const name of required) {
+            if (!names.has(name)) {
+              console.error(`missing required case ${name}`);
+              process.exit(1);
+            }
+          }
+          fs.writeFileSync(path.join(root, "replay-hash.json"), JSON.stringify(merged, null, 2) + "\n");
+          console.log("merged", merged.map((row) => `${row.case} ${row.sha256}`).join("\n"));
+          JS
 
       - name: Upload replay hash
         uses: actions/upload-artifact@v4
@@ -92,7 +123,7 @@ jobs:
           import sys
           from pathlib import Path
 
-          required = {"planner_pure", "perception_world", "fixed64", "destruction"}
+          required = {"planner_pure", "perception_world", "gameplay_rng", "fixed64", "combat_resolve", "destruction"}
           root = Path("replay-artifacts")
           files = sorted(root.glob("*/replay-hash.json"))
           print(f"artifacts: {[str(p) for p in files]}")

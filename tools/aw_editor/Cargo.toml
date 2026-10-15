@@ -25,7 +25,9 @@ editor-full = ["editor-graphs", "editor-materials", "editor-terrain", "editor-na
 profiling = ["astraweave-profiling/profiling"]
 # Replace the global allocator with mimalloc. Off by default.
 fast-alloc = ["dep:astraweave-alloc", "astraweave-alloc/fast-alloc"]
-kittest = ["dep:egui_kittest"]
+# egui_kittest's default features enable egui/accesskit without egui-winit/accesskit,
+# so PlatformOutput has accesskit_update and egui-winit's match does not.
+kittest = ["dep:egui_kittest", "eframe/accesskit"]
 # Phase 2.2: enable the 8-layer splat-array terrain material pipeline.
 terrain-splat-arrays = ["astraweave-render/terrain-splat-arrays"]
 # Phase 5.3 T7: enable the LOD3 impostor bake / draw pipeline. Flipped into

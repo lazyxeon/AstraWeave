@@ -66,6 +66,8 @@ members = [
   "astraweave-input",
   "astraweave-ui",
   "astraweave-cinematics",
+  "astraweave-combat",
+  "astraweave-destruction",
   "examples/skinning_demo",
   "examples/ui_controls_demo",
   "examples/debug_toolkit_demo",
@@ -188,7 +190,7 @@ eframe = { version = "0.32", default-features = false, features = ["default_font
 egui_dock = "0.17"
 egui_plot = "0.33"
 petgraph = "0.6"
-reqwest = { version = "0.12", default-features = false, features = ["json", "native-tls", "stream"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
 bytemuck = { version = "1", features = ["derive"] }
 glam = { version = "0.30", features = ["serde"] }
 wgpu = "25.0.2"
@@ -257,4 +259,19 @@ opt-level = 3
 lto = "thin"          # Much faster than "fat" LTO, still good size/perf gains
 codegen-units = 16    # More parallelism during codegen
 strip = "debuginfo"   # Smaller binary, keep symbols for backtraces
+
+# Allow baseline for a member that sets only `[lints] workspace = true`.
+# Cargo 1.89 rejects mixing that inheritance with per-lint overrides, so the
+# P0 and P1 crates set `[lints.clippy]` directly (deny and warn). One
+# `cargo clippy --workspace --lib` pass in ci.yml enforces those levels.
+# Test targets are outside `--lib`.
+[workspace.lints.clippy]
+unwrap_used = "allow"
+expect_used = "allow"
+panic = "allow"
+todo = "allow"
+dbg_macro = "allow"
+print_stdout = "allow"
+print_stderr = "allow"
+result_large_err = "allow"
 

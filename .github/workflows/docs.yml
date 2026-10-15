@@ -27,6 +27,10 @@ on:
         default: false
         type: boolean
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 permissions:
   contents: write
   pages: write
@@ -39,6 +43,7 @@ jobs:
   build-and-deploy:
     name: Build and Deploy Docs
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
@@ -89,7 +94,9 @@ jobs:
         continue-on-error: true
         uses: Swatinem/rust-cache@v2
         with:
-          cache-on-failure: true
+          shared-key: ${{ runner.os }}-astraweave
+          cache-targets: false
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Build API documentation
         continue-on-error: true

@@ -12,8 +12,10 @@
 pub mod abilities;
 pub mod adjudicator;
 pub mod anchor;
+pub mod aravath;
 pub mod audio;
 pub mod combat;
+pub mod damage;
 pub mod echo_currency;
 pub mod enemy;
 pub mod enemy_types;
@@ -36,8 +38,10 @@ mod mutation_tests;
 
 pub use adjudicator::{WeaveAdjudicator, WeaveConfig};
 pub use anchor::{AbilityType, Anchor, AnchorVfxState};
+pub use aravath::{run_aravath_slice, AravathSlice};
 pub use audio::{echo_pickup_audio_command, AnchorAudioState, AnchorAudioSystem, AudioCommand};
 pub use combat::{CombatEvent, CombatSystem, Killer};
+pub use damage::{apply_element_schools, ElementSchool};
 pub use echo_currency::{EchoCurrency, Transaction, TransactionReason};
 pub use enemy::{AttackTarget, Enemy, EnemyBehavior, EnemyState};
 pub use intents::{IntentProposer, WeaveIntent};

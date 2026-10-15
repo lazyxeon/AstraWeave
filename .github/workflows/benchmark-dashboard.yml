@@ -38,7 +38,9 @@ jobs:
       - name: Cache Rust Dependencies
         uses: Swatinem/rust-cache@v2
         with:
-          cache-on-failure: true
+          shared-key: ${{ runner.os }}-astraweave
+          cache-targets: false
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       
       - name: Run Benchmarks (Subset)
         run: |

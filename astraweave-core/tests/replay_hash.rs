@@ -9,7 +9,8 @@ mod replay_support;
 use astraweave_destruction::demolition_bytes;
 use astraweave_math::fixed64_contract_bytes;
 use replay_support::{
-    perception_world_bytes, planner_pure_bytes, replay_hash_json_path, sha256_hex,
+    gameplay_rng_bytes, perception_world_bytes, planner_pure_bytes, replay_hash_json_path,
+    sha256_hex,
 };
 
 #[test]
@@ -22,6 +23,12 @@ fn replay_hash_cases_are_stable_and_written() {
     );
 
     let perception = perception_world_bytes();
+    let gameplay_a = gameplay_rng_bytes();
+    let gameplay_b = gameplay_rng_bytes();
+    assert_eq!(
+        gameplay_a, gameplay_b,
+        "gameplay_rng diverged inside one process"
+    );
     let fixed_a = fixed64_contract_bytes();
     let fixed_b = fixed64_contract_bytes();
     assert_eq!(fixed_a, fixed_b, "fixed64 diverged inside one process");
@@ -34,6 +41,7 @@ fn replay_hash_cases_are_stable_and_written() {
     let cases = [
         ("destruction".to_string(), sha256_hex(&destruction_a)),
         ("fixed64".to_string(), sha256_hex(&fixed_a)),
+        ("gameplay_rng".to_string(), sha256_hex(&gameplay_a)),
         ("perception_world".to_string(), sha256_hex(&perception)),
         ("planner_pure".to_string(), sha256_hex(&planner_a)),
     ];

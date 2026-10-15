@@ -9,14 +9,15 @@ on:
       - 'tools/aw_editor/**'
       - 'shaders/**'
       - '.github/workflows/pbr-pipeline-ci.yml'
-  pull_request:
-    branches: [ main, develop ]
-    paths:
-      - 'astraweave-render/**'
-      - 'tools/aw_asset_cli/**'
-      - 'tools/aw_editor/**'
-      - 'shaders/**'
-      - '.github/workflows/pbr-pipeline-ci.yml'
+  schedule:
+    # Not on pull_request. This compile is optional and was taking runners
+    # ahead of determinism-replay and the PR Rust checks.
+    - cron: "20 6 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   CARGO_TERM_COLOR: always
@@ -24,43 +25,20 @@ env:
 
 jobs:
   build-pbr-components:
-    name: Build PBR Components
+    name: Build PBR Components (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
     continue-on-error: true  # Allow workflow to pass if editor/platform issues occur
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
-        include:
-          - os: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
-          - os: windows-latest
-            target: x86_64-pc-windows-msvc
-          - os: macos-latest
-            target: x86_64-apple-darwin
     
     steps:
     - name: Checkout repository
       uses: actions/checkout@v5
     
-    - name: Install Rust toolchain
-      uses: dtolnay/rust-toolchain@1.89.0
-      with:
-        target: ${{ matrix.target }}
-        components: rustfmt, clippy
-    
-    - name: Cache Cargo dependencies
-      uses: actions/cache@v4
-      with:
-        path: |
-          ~/.cargo/bin/
-          ~/.cargo/registry/index/
-          ~/.cargo/registry/cache/
-          ~/.cargo/git/db/
-          target/
-        key: ${{ runner.os }}-cargo-pbr-${{ hashFiles('**/Cargo.lock') }}
-        restore-keys: |
-          ${{ runner.os }}-cargo-pbr-
-          ${{ runner.os }}-cargo-
+    - name: Rust CI setup
+      uses: ./.github/actions/rust-ci-setup
     
     - name: Install system dependencies (Linux)
       if: runner.os == 'Linux'
@@ -70,6 +48,9 @@ jobs:
           libasound2-dev mesa-vulkan-drivers libvulkan1 libudev-dev pkg-config
     
     - name: Check formatting
+      # cargo fmt --all exceeds the Windows command-length limit (os error 206).
+      # The Linux gate already checks formatting for the workspace.
+      if: runner.os != 'Windows'
       run: cargo fmt --all -- --check
     
     - name: Build astraweave-render
@@ -107,28 +88,16 @@ jobs:
   test-pbr-features:
     name: Test PBR Features
     runs-on: ubuntu-latest
+    timeout-minutes: 40
     continue-on-error: true  # Allow workflow to pass if tests have platform issues
     needs: build-pbr-components
     
     steps:
     - name: Checkout repository
       uses: actions/checkout@v5
-    
-    - name: Install Rust toolchain
-      uses: dtolnay/rust-toolchain@1.89.0
-    
-    - name: Cache Cargo dependencies
-      uses: actions/cache@v4
-      with:
-        path: |
-          ~/.cargo/bin/
-          ~/.cargo/registry/index/
-          ~/.cargo/registry/cache/
-          ~/.cargo/git/db/
-          target/
-        key: ${{ runner.os }}-cargo-test-${{ hashFiles('**/Cargo.lock') }}
-        restore-keys: |
-          ${{ runner.os }}-cargo-test-
+
+    - name: Rust CI setup
+      uses: ./.github/actions/rust-ci-setup
     
     - name: Install system dependencies
       run: |
@@ -169,6 +138,7 @@ jobs:
   validate-shaders:
     name: Validate WGSL Shaders
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     continue-on-error: true  # wgsl-analyzer is optional
     
     steps:

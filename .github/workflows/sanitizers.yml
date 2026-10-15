@@ -22,10 +22,8 @@ name: Sanitizers
 on:
   push:
     branches: [main, develop]
-  pull_request:
-    branches: [main, develop]
   schedule:
-    # Run full sanitizer suite at 3 AM UTC daily
+    # Full sanitizer suite nightly. Not on pull requests.
     - cron: '0 3 * * *'
   workflow_dispatch:
     inputs:
@@ -37,7 +35,7 @@ on:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # Harden token scope (least-privilege)
 permissions:

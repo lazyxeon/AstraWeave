@@ -3,44 +3,28 @@ name: Code Coverage
 on:
   push:
     branches: [main]
-    paths:
-      - 'tools/astraweave-assets/**'
-      - '.github/workflows/coverage.yml'
-  pull_request:
-    paths:
-      - 'tools/astraweave-assets/**'
+  schedule:
+    - cron: "10 6 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   coverage:
     name: Generate Code Coverage
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     # Coverage may fail on some configurations - non-blocking
     continue-on-error: true
     
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
-      
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.89.0
-      
-      - name: Cache cargo registry
-        uses: actions/cache@v4
-        with:
-          path: ~/.cargo/registry
-          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
-      
-      - name: Cache cargo index
-        uses: actions/cache@v4
-        with:
-          path: ~/.cargo/git
-          key: ${{ runner.os }}-cargo-index-${{ hashFiles('**/Cargo.lock') }}
-      
-      - name: Cache cargo build
-        uses: actions/cache@v4
-        with:
-          path: tools/astraweave-assets/target
-          key: ${{ runner.os }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Rust CI setup
+        uses: ./.github/actions/rust-ci-setup
       
       - name: Install cargo-tarpaulin
         run: cargo install cargo-tarpaulin --version 0.35.2 --locked

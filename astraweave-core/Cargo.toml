@@ -9,6 +9,11 @@ publish = { workspace = true }
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(kani)'] }
 
+[features]
+# Test-only. Turns on CountingAlloc for tests/zero_alloc_tick.rs.
+# The test is ignored, so a default `cargo test` / PR nextest does not run it.
+alloc-counter = ["astraweave-ecs/alloc-counter"]
+
 [dependencies]
 anyhow = { workspace = true }
 thiserror = { workspace = true }
@@ -22,6 +27,7 @@ astraweave-behavior = { workspace = true }
 [dev-dependencies]
 criterion = { workspace = true }
 astraweave-ai = { workspace = true }
+astraweave-gameplay = { path = "../astraweave-gameplay" }
 astraweave-math = { workspace = true }
 astraweave-destruction = { workspace = true }
 sha2 = { workspace = true }
@@ -33,3 +39,12 @@ harness = false
 [[bench]]
 name = "full_game_loop"
 harness = false
+
+# Production-lib unwrap gate. Enforced by the single workspace clippy --lib pass.
+# Tests are not part of --lib, so test unwraps stay allowed.
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+todo = "deny"
+result_large_err = "allow"

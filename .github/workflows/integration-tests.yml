@@ -3,16 +3,15 @@ name: Integration Tests
 on:
   push:
     branches: [main, develop]
-  pull_request:
-    branches: [main, develop]
   schedule:
-    # Run nightly at 4 AM UTC
+    # Nightly. Pull requests use Determinism Replay for the cross-OS hash check
+    # and ci.yml for affected-crate tests.
     - cron: '0 4 * * *'
+  workflow_dispatch:
 
-# Prevent multiple CI runs on same PR/branch
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -42,6 +41,14 @@ jobs:
         
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.89.0
+
+      - name: Install sccache
+        uses: mozilla-actions/sccache-action@v0.0.9
+
+      - name: Enable sccache
+        run: |
+          echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
+          echo "SCCACHE_GHA_ENABLED=true" >> "$GITHUB_ENV"
         
       - name: Install system dependencies (Linux)
         run: |
@@ -57,7 +64,9 @@ jobs:
       - name: Cache cargo dependencies
         uses: Swatinem/rust-cache@v2
         with:
-          shared-key: "integration-tests"
+          shared-key: ${{ runner.os }}-astraweave
+          cache-targets: false
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       
       - name: Run ECS full pipeline integration tests
         run: cargo test -p astraweave-ecs --test full_pipeline_integration -- --nocapture
@@ -76,6 +85,14 @@ jobs:
         
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.89.0
+
+      - name: Install sccache
+        uses: mozilla-actions/sccache-action@v0.0.9
+
+      - name: Enable sccache
+        run: |
+          echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
+          echo "SCCACHE_GHA_ENABLED=true" >> "$GITHUB_ENV"
         
       - name: Install system dependencies (Linux)
         run: |
@@ -85,7 +102,9 @@ jobs:
       - name: Cache cargo dependencies
         uses: Swatinem/rust-cache@v2
         with:
-          shared-key: "integration-tests"
+          shared-key: ${{ runner.os }}-astraweave
+          cache-targets: false
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       
       - name: Run Network snapshot sync tests
         run: cargo test -p astraweave-net --test integration_tests -- --nocapture
@@ -104,6 +123,14 @@ jobs:
         
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.89.0
+
+      - name: Install sccache
+        uses: mozilla-actions/sccache-action@v0.0.9
+
+      - name: Enable sccache
+        run: |
+          echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
+          echo "SCCACHE_GHA_ENABLED=true" >> "$GITHUB_ENV"
         
       - name: Install system dependencies (Linux)
         run: |
@@ -113,7 +140,9 @@ jobs:
       - name: Cache cargo dependencies
         uses: Swatinem/rust-cache@v2
         with:
-          shared-key: "integration-tests"
+          shared-key: ${{ runner.os }}-astraweave
+          cache-targets: false
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       
       - name: Run LLM fallback chain integration tests
         run: cargo test -p astraweave-llm --test fallback_chain_integration -- --nocapture --test-threads=1
@@ -132,11 +161,21 @@ jobs:
         
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.89.0
+
+      - name: Install sccache
+        uses: mozilla-actions/sccache-action@v0.0.9
+
+      - name: Enable sccache
+        run: |
+          echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
+          echo "SCCACHE_GHA_ENABLED=true" >> "$GITHUB_ENV"
         
       - name: Cache cargo dependencies
         uses: Swatinem/rust-cache@v2
         with:
-          shared-key: "integration-tests"
+          shared-key: ${{ runner.os }}-astraweave
+          cache-targets: false
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       
       - name: Run save/load integration tests
         run: cargo test -p aw-save --tests -- --nocapture
@@ -155,6 +194,14 @@ jobs:
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.89.0
+
+      - name: Install sccache
+        uses: mozilla-actions/sccache-action@v0.0.9
+
+      - name: Enable sccache
+        run: |
+          echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
+          echo "SCCACHE_GHA_ENABLED=true" >> "$GITHUB_ENV"
         
       - name: Install system dependencies (Linux)
         run: |
@@ -164,60 +211,15 @@ jobs:
       - name: Cache cargo dependencies
         uses: Swatinem/rust-cache@v2
         with:
-          shared-key: "integration-tests"
+          shared-key: ${{ runner.os }}-astraweave
+          cache-targets: false
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       
       - name: Run asset pipeline integration tests
         run: cargo test -p astraweave-asset --tests -- --nocapture
 
-  # ===========================================================================
-  # Cross-Platform Determinism Tests
-  # ===========================================================================
-  determinism-cross-platform:
-    name: Determinism (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 20
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-    
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-        
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.89.0
-        
-      - name: Install system dependencies (Linux)
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update -q
-          sudo apt-get install -y -q \
-            build-essential pkg-config cmake \
-            libx11-dev libxi-dev libxcursor-dev libxrandr-dev libxinerama-dev \
-            libxkbcommon-dev libxkbcommon-x11-dev libx11-xcb-dev \
-            libxcb1-dev libxcb-randr0-dev libxcb-xfixes0-dev libxcb-shape0-dev libxcb-xkb-dev \
-            libgl1-mesa-dev libegl1-mesa-dev wayland-protocols libwayland-dev \
-            libasound2-dev libpulse-dev libudev-dev
-        
-      - name: Cache cargo dependencies
-        uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: "integration-tests-${{ matrix.os }}"
-      
-      - name: Run determinism tests
-        run: |
-          # Run all tests that include "determinism" in their name
-          cargo test -p astraweave-ecs --test full_pipeline_integration -- determinism --nocapture
-      
-      - name: Upload determinism artifacts
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: determinism-results-${{ matrix.os }}
-          path: target/test-results/
-          if-no-files-found: ignore
-          retention-days: 7
+  # Cross-OS replay hashes live in determinism-replay.yml so every pull request
+  # runs them on Ubuntu, Windows, and macOS with no path filter.
 
   # ===========================================================================
   # Integration Test Summary
@@ -225,8 +227,9 @@ jobs:
   integration-summary:
     name: Integration Test Summary
     runs-on: ubuntu-latest
-    needs: [core-pipeline, network-integration, llm-integration, persistence-integration, asset-integration, determinism-cross-platform]
+    needs: [core-pipeline, network-integration, llm-integration, persistence-integration, asset-integration]
     if: always()
+    timeout-minutes: 10
     
     steps:
       - name: Check all integration test results
@@ -238,7 +241,6 @@ jobs:
           echo "LLM Integration: ${{ needs.llm-integration.result }}"
           echo "Persistence Integration: ${{ needs.persistence-integration.result }}"
           echo "Asset Integration: ${{ needs.asset-integration.result }}"
-          echo "Determinism Cross-Platform: ${{ needs.determinism-cross-platform.result }}"
           echo ""
           
           # Fail if any required job failed
@@ -246,8 +248,7 @@ jobs:
              [[ "${{ needs.network-integration.result }}" == "failure" ]] || \
              [[ "${{ needs.llm-integration.result }}" == "failure" ]] || \
              [[ "${{ needs.persistence-integration.result }}" == "failure" ]] || \
-             [[ "${{ needs.asset-integration.result }}" == "failure" ]] || \
-             [[ "${{ needs.determinism-cross-platform.result }}" == "failure" ]]; then
+             [[ "${{ needs.asset-integration.result }}" == "failure" ]]; then
             echo "❌ One or more integration tests failed!"
             exit 1
           fi

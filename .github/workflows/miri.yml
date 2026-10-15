@@ -175,6 +175,7 @@ jobs:
   miri-summary:
     name: Miri Summary
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     needs: [miri-ecs, miri-core, miri-physics, miri-ai]
     if: always()
     steps:

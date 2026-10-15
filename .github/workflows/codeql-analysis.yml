@@ -3,15 +3,19 @@ name: "CodeQL Analysis"
 on:
   push:
     branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
   schedule:
-    - cron: '0 3 * * 0' # Run at 3 AM UTC every Sunday
+    # Weekly, plus every push to main. Not on pull requests.
+    - cron: '0 3 * * 0'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   analyze:
     name: Analyze
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     permissions:
       actions: read
       contents: read

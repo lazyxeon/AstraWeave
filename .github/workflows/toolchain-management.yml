@@ -3,18 +3,9 @@ name: Rust Toolchain Management
 on:
   push:
     branches: [ main ]
-    paths:
-      - 'rust-toolchain.toml'
-      - '.cargo/config.toml'
-      - 'Cargo.toml'
-      - 'Cargo.lock'
-  pull_request:
-    branches: [ main ]
-    paths:
-      - 'rust-toolchain.toml'
-      - '.cargo/config.toml'
-      - 'Cargo.toml'
-      - 'Cargo.lock'
+  schedule:
+    # Six toolchains, nightly. MSRV stays on pull requests inside ci.yml.
+    - cron: "40 5 * * *"
   workflow_dispatch:
     inputs:
       toolchain_version:
@@ -32,6 +23,10 @@ on:
           - performance
           - nightly-features
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 permissions:
   contents: read
 
@@ -46,6 +41,7 @@ jobs:
   toolchain-validation:
     name: Toolchain Validation (${{ matrix.toolchain }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
@@ -120,9 +116,9 @@ jobs:
       - name: Set up toolchain-specific cache
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: "."
-          key: toolchain-${{ matrix.os }}-${{ matrix.toolchain }}-v3
-          cache-all-crates: true
+          shared-key: ${{ runner.os }}-astraweave
+          cache-targets: false
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Check workspace compatibility
         run: |
@@ -152,6 +148,7 @@ jobs:
   msrv-check:
     name: Minimum Supported Rust Version Check
     runs-on: ubuntu-latest
+    timeout-minutes: 40
     
     steps:
       - name: Checkout repository
@@ -185,8 +182,9 @@ jobs:
       - name: Set up MSRV cache
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: "."
-          key: msrv-${{ env.MSRV }}-v3
+          shared-key: ${{ runner.os }}-astraweave
+          cache-targets: false
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Check MSRV compatibility
         run: |
@@ -195,6 +193,7 @@ jobs:
   performance-benchmarking:
     name: Toolchain Performance Comparison
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     if: github.event.inputs.test_mode == 'performance' || github.event_name == 'push'
     
     strategy:
@@ -229,8 +228,9 @@ jobs:
       - name: Set up performance cache
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: "."
-          key: perf-${{ matrix.toolchain }}-v3
+          shared-key: ${{ runner.os }}-astraweave
+          cache-targets: false
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Benchmark compilation time
         run: |
@@ -266,6 +266,7 @@ jobs:
   toolchain-report:
     name: Generate Toolchain Report
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     needs: [toolchain-validation, msrv-check]
     if: always()
     

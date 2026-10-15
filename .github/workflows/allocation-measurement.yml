@@ -1,32 +1,41 @@
 name: Allocation Measurement
 
-# Non-blocking measurement job. Runs allocation-count benches with
-# `--features alloc-counter` and uploads the output as an artifact so
-# regressions can be spotted manually. Intentionally NOT part of the
-# required check set — the goal is "detect regression," not "force optimization,"
-# until enough baseline data exists to pick tight thresholds.
-#
-# See `docs/audits/allocation_measurement_plan_2026-04-17.md` for the
-# current thresholds per path.
+# Nightly and push to main. Not a pull-request check.
+# alloc_measure benches fail the job when a count exceeds the tightened
+# ceiling (measured count plus a 50% margin). There is no continue-on-error.
+# The zero-alloc tests assert exactly 0. A non-zero result fails this
+# workflow; it is not a reason to raise the assertion.
+# CPU tick time is uploaded as an artifact and is not compared to 11 ms.
+# The 11 ms GTX 1660 Ti budget runs only on workflow_dispatch, on a
+# self-hosted runner labeled `gpu`.
 
 on:
   push:
-    branches:
-      - measurement
-      - 'measurement/**'
+    branches: [main]
+  schedule:
+    - cron: "45 5 * * *"
   workflow_dispatch:
+    inputs:
+      gpu_frame_budget:
+        description: Run the 11 ms frame-budget check on a self-hosted GPU runner
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
 
 jobs:
   alloc-benches:
     name: Allocation-count benches (${{ matrix.crate }})
     runs-on: ubuntu-latest
-    continue-on-error: true
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
         include:
-          - crate: astraweave-ecs
-            features: alloc-counter
+          # astraweave-ecs has no benches/alloc_measure.rs (the April 2026
+          # file is gone). ECS zero-alloc coverage lives in
+          # astraweave-ecs/tests/zero_alloc_tests.rs and is not this matrix.
           - crate: astraweave-physics
             features: alloc-counter
           - crate: astraweave-render
@@ -34,27 +43,16 @@ jobs:
           - crate: astraweave-ai
             features: alloc-counter,planner_advanced
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v5
 
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.89.0
-        with:
-          toolchain: 1.89.0
-
-      - name: Cache cargo
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-alloc-bench-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-alloc-bench-
+      - name: Rust CI setup
+        uses: ./.github/actions/rust-ci-setup
 
       - name: Run allocation benches
-        id: bench
         shell: bash
         run: |
+          set -euo pipefail
           mkdir -p bench-output
           cargo bench \
             -p ${{ matrix.crate }} \
@@ -78,11 +76,56 @@ jobs:
           path: bench-output/
           retention-days: 30
 
-  # Aggregates summaries from each crate so a reviewer sees a single diff.
+  zero-alloc:
+    name: Zero-alloc hot paths
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Rust CI setup
+        uses: ./.github/actions/rust-ci-setup
+
+      - name: One sim tick and one physics step
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo test -p astraweave-core --features alloc-counter --test zero_alloc_tick -- --ignored --test-threads=1 --nocapture
+          cargo test -p astraweave-physics --features alloc-counter --test zero_alloc_step -- --ignored --test-threads=1 --nocapture
+
+  cpu-tick-time:
+    name: CPU tick time
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Rust CI setup
+        uses: ./.github/actions/rust-ci-setup
+
+      - name: Record one sim tick
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p bench-output
+          cargo test -p astraweave-core --release --test sim_tick_time -- --ignored --nocapture \
+            | tee bench-output/sim-tick-time.txt
+
+      - name: Upload tick time
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sim-tick-time
+          path: bench-output/sim-tick-time.txt
+          retention-days: 30
+
   summarise:
     name: Summarise allocation measurements
     runs-on: ubuntu-latest
-    needs: alloc-benches
+    timeout-minutes: 10
+    needs: [alloc-benches, zero-alloc, cpu-tick-time]
     if: always()
     steps:
       - uses: actions/download-artifact@v4
@@ -92,19 +135,26 @@ jobs:
       - name: Collate summaries
         shell: bash
         run: |
+          set -euo pipefail
           echo "# Allocation Measurement Summary" > summary.md
           echo "" >> summary.md
           echo "Triggered by: ${{ github.event_name }} @ ${{ github.sha }}" >> summary.md
           echo "" >> summary.md
-          for f in artifacts/**/*-summary.txt; do
-            crate="$(basename "$(dirname "$f")")"
-            echo "## $crate" >> summary.md
+          shopt -s globstar nullglob
+          for f in artifacts/**/*-summary.txt artifacts/**/sim-tick-time.txt; do
+            echo "## $f" >> summary.md
             echo '```' >> summary.md
             cat "$f" >> summary.md
             echo '```' >> summary.md
             echo "" >> summary.md
           done
           cat summary.md
+          if [ "${{ needs.alloc-benches.result }}" != "success" ] || \
+             [ "${{ needs.zero-alloc.result }}" != "success" ] || \
+             [ "${{ needs.cpu-tick-time.result }}" != "success" ]; then
+            echo "alloc-benches=${{ needs.alloc-benches.result }} zero-alloc=${{ needs.zero-alloc.result }} cpu-tick-time=${{ needs.cpu-tick-time.result }}"
+            exit 1
+          fi
 
       - name: Upload combined summary
         uses: actions/upload-artifact@v4
@@ -112,3 +162,16 @@ jobs:
           name: alloc-measure-summary
           path: summary.md
           retention-days: 90
+
+  gpu-frame-budget:
+    name: GPU frame budget (1660 Ti class)
+    if: github.event_name == 'workflow_dispatch' && inputs.gpu_frame_budget
+    runs-on: [self-hosted, gpu]
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Compare captured frame times to 11 ms
+        shell: bash
+        run: bash scripts/ci/gpu_frame_budget.sh
