@@ -65,7 +65,7 @@ fn validate_loader_path(path: &Path) -> Result<()> {
         match component {
             Component::Normal(_) => {}
             Component::CurDir => {}
-            Component::ParentDir => bail!("script path contains '..'"),
+            Component::ParentDir => bail!("path traversal rejected"),
             Component::RootDir | Component::Prefix(_) => {
                 bail!("absolute script paths are rejected")
             }
