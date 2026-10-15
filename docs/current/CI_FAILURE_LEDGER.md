@@ -94,7 +94,7 @@ Owned here. 95 unique failures, each retried twice. Groups:
 
 The branch is rebased onto main after #243, #290, and the design docs. #273 stays open: `editor_engine_render_parity` is still the tracked failure.
 
-#219's rustls switch is already on this branch. #303 is the follow-on gate: `unknown-git = "deny"` in `deny.toml`, and `cargo deny check advisories` / `cargo deny check licenses` fail the Cargo Deny job instead of warning. A 300s advisory-db timeout still warns. `cargo-audit` is unchanged. The deny tool in that job is 0.20.2 so the advisory database's CVSS 4.0 entries parse. `cargo deny check bans sources licenses` is ok. Advisories are not ok: the database reports unsound and vulnerability findings, so that job is expected to fail until those are fixed. They are not added to the ignore list.
+#219's rustls switch is already on this branch. #303 is the follow-on gate: `unknown-git = "deny"` in `deny.toml`, and `cargo deny check advisories` / `cargo deny check licenses` fail the Cargo Deny job instead of warning. `cargo deny check advisories` fails the job. The deny tool in that job is 0.20.2. After the version bumps, `cargo deny check advisories bans sources licenses` prints ok. Advisories with no patched release, or whose patched release is pinned by egui, winit, rhai, mikktspace, or indicatif, are ignored one ID at a time on https://github.com/lazyxeon/AstraWeave/issues/305 through https://github.com/lazyxeon/AstraWeave/issues/311.
 
 ## What was not done
 
