@@ -69,6 +69,7 @@ members = [
   "astraweave-cinematics",
   "astraweave-combat",
   "astraweave-destruction",
+  "astraweave-causality",
   "examples/skinning_demo",
   "examples/ui_controls_demo",
   "examples/debug_toolkit_demo",
@@ -217,6 +218,7 @@ astraweave-llm = { path = "astraweave-llm" }
 astraweave-physics = { path = "astraweave-physics" }
 astraweave-math = { path = "astraweave-math" }
 astraweave-destruction = { path = "astraweave-destruction" }
+astraweave-causality = { path = "astraweave-causality" }
 astraweave-render = { path = "astraweave-render" }
 astraweave-asset = { path = "astraweave-asset" }
 astraweave-net-ecs = { path = "astraweave-net-ecs" }

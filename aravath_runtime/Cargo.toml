@@ -8,5 +8,8 @@ rust-version.workspace = true
 description = "Aravath companion route across a collapsing span"
 
 [dependencies]
+astraweave-causality = { workspace = true }
+astraweave-destruction = { workspace = true }
+astraweave-math = { workspace = true }
 astraweave-nav = { workspace = true }
 glam = { workspace = true }
