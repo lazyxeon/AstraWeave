@@ -178,8 +178,17 @@ impl Qwen3Ollama {
     /// let client = Qwen3Ollama::new("http://localhost:11434", DEFAULT_QWEN_INSTRUCT_MODEL);
     /// ```
     pub fn new(url: impl Into<String>, model: impl Into<String>) -> Self {
+        Self::assemble(url, model, false)
+    }
+
+    /// Keep a non-loopback URL. `new` replaces one with `http://127.0.0.1:11434`.
+    pub fn allowing_remote(url: impl Into<String>, model: impl Into<String>) -> Self {
+        Self::assemble(url, model, true)
+    }
+
+    fn assemble(url: impl Into<String>, model: impl Into<String>, allow_remote: bool) -> Self {
         Self {
-            url: url.into(),
+            url: crate::loopback_model_url(url.into(), allow_remote),
             model: model.into(),
             temperature: 0.7,
             max_tokens: 512,

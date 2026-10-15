@@ -15,8 +15,17 @@ pub async fn run_ws_server(addr: &str) -> Result<()> {
     Ok(())
 }
 
+pub const MAX_IPC_MESSAGE: usize = 1024 * 1024;
+
+pub fn ipc_ws_config() -> tokio_tungstenite::tungstenite::protocol::WebSocketConfig {
+    let mut config = tokio_tungstenite::tungstenite::protocol::WebSocketConfig::default();
+    config.max_message_size = Some(MAX_IPC_MESSAGE);
+    config.max_frame_size = Some(MAX_IPC_MESSAGE);
+    config
+}
+
 async fn handle_conn(stream: tokio::net::TcpStream) -> Result<()> {
-    let ws = tokio_tungstenite::accept_async(stream).await?;
+    let ws = tokio_tungstenite::accept_async_with_config(stream, Some(ipc_ws_config())).await?;
     let (mut tx, mut rx) = ws.split();
     let orch = RuleOrchestrator;
 
@@ -36,7 +45,8 @@ async fn handle_conn(stream: tokio::net::TcpStream) -> Result<()> {
 }
 
 pub async fn ws_client_roundtrip(addr: &str, snapshot: &WorldSnapshot) -> Result<PlanIntent> {
-    let (ws, _) = tokio_tungstenite::connect_async(addr).await?;
+    let (ws, _) =
+        tokio_tungstenite::connect_async_with_config(addr, Some(ipc_ws_config()), false).await?;
     let (mut tx, mut rx) = ws.split();
     let js = serde_json::to_string(snapshot)?;
     tx.send(Message::Text(js.into())).await?;

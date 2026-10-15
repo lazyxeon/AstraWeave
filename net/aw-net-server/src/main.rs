@@ -87,6 +87,10 @@ fn parse_args(args: &[String]) -> Result<ServerConfig> {
                     .parse()
                     .map_err(|e| anyhow!("invalid --http-listen address '{value}': {e}"))?;
             }
+            "--admin-token" => {
+                let value = take_value(args, &mut i, "--admin-token")?;
+                config.admin_token = Some(value.to_string());
+            }
             "--db-path" => {
                 let value = take_value(args, &mut i, "--db-path")?;
                 config.db_path = PathBuf::from(value);

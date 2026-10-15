@@ -202,11 +202,7 @@ fn make_validator() -> LLMValidator {
             "eval(".to_string(),
             "import ".to_string(),
         ],
-        allowed_domains: vec![
-            "openai.com".to_string(),
-            "anthropic.com".to_string(),
-            "localhost".to_string(),
-        ],
+        allowed_domains: astraweave_security::default_allowed_llm_domains(),
         max_prompt_length: 10000,
         enable_content_filtering: true,
     }
@@ -524,10 +520,10 @@ fn llm_validator_default_banned_patterns() {
 #[test]
 fn llm_validator_default_domains() {
     let v = make_validator();
-    assert_eq!(v.allowed_domains.len(), 3);
-    assert!(v.allowed_domains.contains(&"openai.com".to_string()));
-    assert!(v.allowed_domains.contains(&"anthropic.com".to_string()));
+    assert_eq!(v.allowed_domains.len(), 1);
     assert!(v.allowed_domains.contains(&"localhost".to_string()));
+    assert!(!v.allowed_domains.iter().any(|d| d.contains("openai")));
+    assert!(!v.allowed_domains.iter().any(|d| d.contains("anthropic")));
 }
 
 #[test]

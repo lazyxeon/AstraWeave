@@ -1621,15 +1621,30 @@ fn sha256_of_file(path: &Path) -> Result<String> {
     Ok(hex::encode(hasher.finalize()))
 }
 
+pub const MAX_PACK_ENTRIES: usize = 10_000;
+pub const MAX_PACK_UNCOMPRESSED_BYTES: u64 = 512 * 1024 * 1024;
+
 fn unpack_zip(zip_path: &Path, dest: &Path) -> Result<()> {
     let mut archive = zip::ZipArchive::new(File::open(zip_path)?)
         .with_context(|| format!("not a readable zip: {}", zip_path.display()))?;
+    if archive.len() > MAX_PACK_ENTRIES {
+        bail!(
+            "zip entry count exceeds cap ({} > {MAX_PACK_ENTRIES})",
+            archive.len()
+        );
+    }
     fs::create_dir_all(dest)?;
+    let mut total = 0u64;
     for i in 0..archive.len() {
         let mut member = archive.by_index(i)?;
         let raw_name = member.name().to_string();
         if !is_safe_relative(&raw_name) {
             bail!("path traversal rejected: zip member '{raw_name}'");
+        }
+        let claimed = member.size();
+        total = total.saturating_add(claimed);
+        if total > MAX_PACK_UNCOMPRESSED_BYTES {
+            bail!("zip uncompressed size exceeds cap ({total} > {MAX_PACK_UNCOMPRESSED_BYTES})");
         }
         let out_path = dest.join(&raw_name);
         if member.is_dir() {
@@ -1640,8 +1655,35 @@ fn unpack_zip(zip_path: &Path, dest: &Path) -> Result<()> {
             }
             let mut out = File::create(&out_path)
                 .with_context(|| format!("failed to create {}", out_path.display()))?;
-            std::io::copy(&mut member, &mut out)?;
+            let copied = std::io::copy(&mut member, &mut out)?;
+            if copied > claimed {
+                bail!("zip member '{raw_name}' wrote more bytes than its declared size");
+            }
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod pack_cap_tests {
+    use super::*;
+
+    #[test]
+    fn zip_with_too_many_entries_is_rejected() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let zip_path = dir.path().join("many.zip");
+        let file = File::create(&zip_path).expect("zip file");
+        let mut zip = zip::ZipWriter::new(file);
+        let opts = zip::write::SimpleFileOptions::default();
+        for index in 0..(MAX_PACK_ENTRIES + 1) {
+            zip.start_file(format!("assets/x/f{index}.txt"), opts)
+                .expect("start");
+            zip.write_all(b"x").expect("write");
+        }
+        zip.finish().expect("finish");
+        let dest = dir.path().join("out");
+        let err = unpack_zip(&zip_path, &dest).expect_err("over-cap zip");
+        let msg = format!("{err:#}");
+        assert!(msg.contains("exceeds cap"), "{msg}");
+    }
 }

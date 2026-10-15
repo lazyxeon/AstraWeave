@@ -167,7 +167,8 @@ async fn spawn_tls_test_server(key: SigningKey, policy: SignatureFailurePolicy) 
         db_path: db_dir.path().join("sled-db"),
         signing_key: key,
         sig_failure_policy: policy,
-        // All eight ServerConfig fields are set explicitly above — no
+        admin_token: None,
+        // Every ServerConfig field is set explicitly — no
         // `..ServerConfig::default()` (clippy::needless_update), and it keeps
         // the TLS config from silently inheriting the 127.0.0.1:8788 default
         // listen addrs.

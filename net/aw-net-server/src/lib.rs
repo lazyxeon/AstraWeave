@@ -19,6 +19,9 @@ use std::{
 };
 
 use anyhow::{anyhow, Context, Result};
+use axum::extract::State;
+use axum::http::{HeaderMap, StatusCode};
+use axum::response::IntoResponse;
 use axum::{routing::get, Router};
 use futures::{SinkExt, StreamExt};
 use parking_lot::Mutex;
@@ -38,6 +41,61 @@ use aw_net_proto::{
 
 type PlayerId = String;
 type RoomId = String;
+
+/// `/healthz` and `/regions` accept only this bearer token.
+pub fn admin_router(admin_token: Option<String>) -> Router {
+    Router::new()
+        .route("/healthz", get(healthz))
+        .route("/regions", get(regions))
+        .with_state(admin_token)
+}
+
+async fn healthz(State(token): State<Option<String>>, headers: HeaderMap) -> impl IntoResponse {
+    if !admin_authorized(token.as_deref(), &headers) {
+        return (StatusCode::UNAUTHORIZED, "unauthorized");
+    }
+    (StatusCode::OK, "ok")
+}
+
+async fn regions(State(token): State<Option<String>>, headers: HeaderMap) -> impl IntoResponse {
+    if !admin_authorized(token.as_deref(), &headers) {
+        return (StatusCode::UNAUTHORIZED, "unauthorized");
+    }
+    (StatusCode::OK, r#"["us-east","us-west","eu-central"]"#)
+}
+
+fn admin_authorized(expected: Option<&str>, headers: &HeaderMap) -> bool {
+    let Some(expected) = expected else {
+        return false;
+    };
+    if expected.is_empty() {
+        return false;
+    }
+    let Some(presented) = headers
+        .get("authorization")
+        .and_then(|value| value.to_str().ok())
+    else {
+        return false;
+    };
+    let Some(token) = presented
+        .strip_prefix("Bearer ")
+        .or_else(|| presented.strip_prefix("bearer "))
+    else {
+        return false;
+    };
+    constant_time_eq(token.as_bytes(), expected.as_bytes())
+}
+
+fn constant_time_eq(left: &[u8], right: &[u8]) -> bool {
+    if left.len() != right.len() {
+        return false;
+    }
+    let mut diff = 0u8;
+    for (a, b) in left.iter().zip(right.iter()) {
+        diff |= a ^ b;
+    }
+    diff == 0
+}
 
 /// What the server does when an [`ClientToServer::InputFrame`] signature
 /// fails verification against the shared [`SigningKey`].
@@ -88,6 +146,8 @@ pub struct ServerConfig {
     pub signing_key: SigningKey,
     /// Policy applied when an `InputFrame` signature fails verification.
     pub sig_failure_policy: SignatureFailurePolicy,
+    /// Bearer token required by `/healthz` and `/regions`. `None` rejects every admin request.
+    pub admin_token: Option<String>,
 }
 
 impl Default for ServerConfig {
@@ -101,6 +161,7 @@ impl Default for ServerConfig {
             db_path: PathBuf::from("aw_net_server_db"),
             signing_key: SigningKey::dev_default(),
             sig_failure_policy: SignatureFailurePolicy::default(),
+            admin_token: None,
         }
     }
 }
@@ -240,17 +301,8 @@ pub async fn spawn_server(config: ServerConfig) -> Result<RunningServer> {
         sig_failure_policy: config.sig_failure_policy,
     };
 
-    // Health check and region info (HTTP)
-    let http_app = {
-        let app_state = state.clone();
-        Router::new()
-            .route("/healthz", get(|| async { "ok" }))
-            .route(
-                "/regions",
-                get(|| async { r#"["us-east","us-west","eu-central"]"# }),
-            )
-            .with_state(app_state)
-    };
+    // Health check and region info (HTTP). Every request needs admin_token.
+    let http_app = admin_router(config.admin_token.clone());
 
     let http_listener = TcpListener::bind(config.http_listen)
         .await
@@ -1084,4 +1136,39 @@ async fn on_client_msg_tls(
         _ => { /* ignore other in-session messages */ }
     }
     Ok(MsgOutcome::Continue)
+}
+
+#[cfg(test)]
+mod admin_auth_tests {
+    use super::admin_router;
+    use axum::body::Body;
+    use axum::http::{Request, StatusCode};
+    use tower::ServiceExt;
+
+    async fn status(token: Option<&str>, header: Option<&str>) -> StatusCode {
+        let app = admin_router(token.map(str::to_string));
+        let mut builder = Request::builder().uri("/healthz");
+        if let Some(value) = header {
+            builder = builder.header("authorization", value);
+        }
+        let response = app
+            .oneshot(builder.body(Body::empty()).expect("request"))
+            .await
+            .expect("router");
+        response.status()
+    }
+
+    #[tokio::test]
+    async fn healthz_without_a_token_is_unauthorized() {
+        assert_eq!(status(None, None).await, StatusCode::UNAUTHORIZED);
+        assert_eq!(status(Some("s3cret"), None).await, StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn healthz_accepts_the_configured_bearer() {
+        assert_eq!(
+            status(Some("s3cret"), Some("Bearer s3cret")).await,
+            StatusCode::OK
+        );
+    }
 }

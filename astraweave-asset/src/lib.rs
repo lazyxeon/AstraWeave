@@ -830,8 +830,22 @@ pub mod gltf_loader {
         }
     }
 
+    /// Checked-in CC0 maps are 1024². 4096 is four times that edge.
+    /// 4096² RGBA8 is 64 MiB, which is also the allocation cap.
+    const MAX_IMAGE_EDGE: u32 = 4096;
+    const MAX_IMAGE_ALLOC: u64 = 64 * 1024 * 1024;
+
     fn decode_image_bytes(bytes: &[u8]) -> Result<ImageData> {
-        let img = image::load_from_memory(bytes)?;
+        use std::io::Cursor;
+        let mut limits = image::Limits::default();
+        limits.max_image_width = Some(MAX_IMAGE_EDGE);
+        limits.max_image_height = Some(MAX_IMAGE_EDGE);
+        limits.max_alloc = Some(MAX_IMAGE_ALLOC);
+        let mut reader = image::ImageReader::new(Cursor::new(bytes))
+            .with_guessed_format()
+            .context("guess image format")?;
+        reader.limits(limits);
+        let img = reader.decode()?;
         let rgba = img.to_rgba8();
         let (w, h) = rgba.dimensions();
         Ok(ImageData {
@@ -839,6 +853,29 @@ pub mod gltf_loader {
             height: h,
             rgba8: rgba.into_raw(),
         })
+    }
+
+    #[cfg(test)]
+    mod image_limit_tests {
+        use super::*;
+
+        #[test]
+        fn png_wider_than_the_measured_pack_is_rejected() {
+            let image = image::RgbImage::from_pixel(5_000, 1, image::Rgb([0, 0, 0]));
+            let mut bytes = Vec::new();
+            image
+                .write_to(
+                    &mut std::io::Cursor::new(&mut bytes),
+                    image::ImageFormat::Png,
+                )
+                .expect("encode png");
+            let err = decode_image_bytes(&bytes).expect_err("wide image must be rejected");
+            let msg = format!("{err:#}").to_lowercase();
+            assert!(
+                msg.contains("limit") || msg.contains("dimension") || msg.contains("4096"),
+                "{msg}"
+            );
+        }
     }
 
     #[inline]

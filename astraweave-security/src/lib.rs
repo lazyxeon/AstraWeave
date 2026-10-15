@@ -160,11 +160,7 @@ impl Plugin for SecurityPlugin {
                 "eval(".to_string(),
                 "import ".to_string(),
             ],
-            allowed_domains: vec![
-                "openai.com".to_string(),
-                "anthropic.com".to_string(),
-                "localhost".to_string(),
-            ],
+            allowed_domains: default_allowed_llm_domains(),
             max_prompt_length: 10000,
             enable_content_filtering: true,
         };
@@ -334,6 +330,11 @@ pub fn validate_player_input(anti_cheat: &CAntiCheat) -> ValidationResult {
         warnings,
         anomalies,
     }
+}
+
+/// Domains the dormant LLM validator allows. Local only.
+pub fn default_allowed_llm_domains() -> Vec<String> {
+    vec!["localhost".to_string()]
 }
 
 /// Sanitize LLM prompt for security

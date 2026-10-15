@@ -137,7 +137,14 @@ async fn test_ollama_client(
     let model =
         env::var("OLLAMA_MODEL").unwrap_or_else(|_| DEFAULT_QWEN_INSTRUCT_MODEL.to_string());
     println!("Using Ollama model: {}", model);
-    let client = astraweave_llm::OllamaChatClient::new(url.to_string(), model);
+    let allow_remote = env::var("LOCAL_LLM_ALLOW_REMOTE")
+        .map(|value| value == "1" || value.eq_ignore_ascii_case("true"))
+        .unwrap_or(false);
+    let client = if allow_remote {
+        astraweave_llm::OllamaChatClient::allowing_remote(url.to_string(), model)
+    } else {
+        astraweave_llm::OllamaChatClient::new(url.to_string(), model)
+    };
 
     // Helpful link guidance: GET /api/tags is safe to open in a browser and will list models.
     // The chat endpoint (/api/chat) requires POST and clicking it in a browser (GET) will return 405 Method Not Allowed.
