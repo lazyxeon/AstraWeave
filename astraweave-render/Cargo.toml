@@ -24,6 +24,7 @@ camera-relative = []  # Camera-relative rendering for large-world precision
 terrain-splat-arrays = []  # Phase 2.2: 8-layer splat-array terrain pipeline (Issue #9 fix)
 impostor-bake = []  # Phase 5.3: offline/lazy impostor atlas bake pipeline (Issue #8 fix)
 impostor-bake-cli = ["impostor-bake", "gltf-assets", "textures", "dep:clap", "dep:pollster"]  # Phase 5.3 T2: CLI binary for baking atlases from glTF
+gpu-frame-budget = ["gltf-assets", "textures", "dep:pollster"]
 gltf-assets = ["gltf", "assets", "dep:astraweave-security"]
 obj-assets = ["tobj", "assets"]
 profiling = ["astraweave-profiling/profiling", "tracy-client", "tracy-client/enable"]
@@ -85,6 +86,11 @@ glob = "0.3"
 image = "0.25"
 sha2 = { workspace = true }
 astraweave-ecs = { path = "../astraweave-ecs" }
+
+[[bin]]
+name = "gpu_frame_budget"
+path = "src/bin/gpu_frame_budget.rs"
+required-features = ["gpu-frame-budget"]
 
 [[bench]]
 name = "alloc_measure"

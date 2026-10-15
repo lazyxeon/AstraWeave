@@ -12,6 +12,43 @@ Status: **steps 1–7 are on this branch**. Step 8 (GTX 1660 Ti capture) is not 
 6. `set_particle_emitter` turns on `GpuParticleSystem::update` and `particle_render` from `draw_into`. Emit fills dead slots. Seed and `dt` come from the caller. `tests/particle_present.rs` checks the readback fingerprint. That fingerprint is not in the world hash. With no emitter, the alloc samples stay on the floor above.
 7. `TextureStreamingManager::tick` uploads at most one decoded image per frame from a ring reserved in `new`. A tokio worker decodes off the sim tick. `request_streamed_albedo` keeps a 1×1 fallback bind until the image is resident. Load failures are recorded, not discarded. `tests/stream_fallback.rs` measured the fallback frame at `[219, 217, 217, 216]`.
 
+## Follow-ups after steps 1–7
+
+### Particles repeat for one seed
+
+`tests/particle_present.rs` runs seed 7 twice and seed 9 twice. Each call is a new device and two updates. Buffers are zero-filled at creation. The emit and update shaders have no atomics. Seed and `dt` are uniforms. Seed 9 matching seed 7 is a failure. Seed 9 differing from a second seed-9 run is a failure. An earlier report said "seed 9 does not" and meant "does not match seed 7".
+
+### Allocation floor (#269 correction)
+
+The pre-pyramid gate was 100–120. Measured samples were `[113, 111, 111, 110, 111, 110]`. That text is what #269 still says, and it is stale.
+
+Cause of the jump: `HizPyramid::build` opens one compute pass per mip. At the 64×64 gate, `ceil(log2(64)) = 6` (copy plus five downsamples). `wgpu-core` 25 `BasePass::new` (`command/mod.rs`) allocates a command `Vec` and copies the pass label for every pass. Barriers are inserted at pass boundaries, not between dispatches, so the mip chain cannot be one pass without a storage-texture race. Six passes at about 18 allocations each are about +108. The steady samples are `[219, 217, 217, 216, 217, 216]`. `tests/frame_alloc.rs` keeps 200–230 for that reason. `update_instances` stays at 0.
+
+Reusing the command encoder does not remove those allocations. The encoder is created before `reset_allocs`. The `Vec`s are born inside `draw_into` when each pass starts.
+
+Plan, owner `astraweave-render`:
+
+1. Keep the 6-pass pyramid until wgpu can barrier a storage texture inside one compute pass. Then the chain is one pass and N dispatches, and the gate drops by about five passes.
+2. Merge the live shadow cascades into one layered depth pass (`render_layer` / `gl_Layer`). That removes one `BasePass` per cascade that still records after the far-cascade cache settles. Do this without a second CSM.
+3. Do not fork wgpu-core for a command recycler unless (1) and (2) are still above the budget after the 1660 Ti capture.
+
+### GPU culling after bindless shading
+
+Owner: `astraweave-render`. Not done in this change. Group 3 is still what the forward shader samples, and each model has its own group 3. `CullingPipeline` can write indirect args, but one indirect buffer cannot bind those groups.
+
+Order:
+
+1. A forward-shader permutation samples the bindless array when `supports_bindless` is on and the caller has not forced it off. Group 3 stays the compiled fallback. One shared bind group for every bindless model.
+2. Per model, a power-of-two indirect command (`index_count`, `instance_count`). `CullingPipeline` writes `instance_count` from the same AABBs as `FrustumPlanes::test_aabb`. The previous frame's `HizPyramid` may zero `instance_count`. The first frame skips occlusion. The CPU does not read the list back.
+3. The model loop binds the mesh and the shared bindless group, then `draw_indexed_indirect`. When bindless is off, the loop keeps today's CPU `test_aabb` and `draw_indexed`.
+4. `gpu_frame_budget` prints `gpu_cull=cpu_fallback` until step 3 is the draw path.
+
+### Step 8 capture
+
+`cargo run -p astraweave-render --release --features gpu-frame-budget --bin gpu_frame_budget -- --glb "assets/The Complete KayKit Collection v4/KayKit Adventurers 2.0/Characters/gltf/Rogue.glb"`
+
+The binary is 1920×1080, 30 warmup frames, median of 120 `draw_into` calls, showcase IBL at `IblQuality::Medium`, that GLB through `add_composite_model`, particles on, cloud shadows left at the default, volumetrics not called. It prints `median_draw_into_ms` and `budget_11ms=not_decided`. `.github/workflows/gpu-frame-budget.yml` is `workflow_dispatch` on a self-hosted Windows GPU runner and runs that command. This VM does not print a 1660 Ti number.
+
 This phase is the rendering slice of the 2026-10-15 user directives. It does not start the weaving, AI, traversal, or fluid directives. Those stay out of scope until their own archaeology lands.
 
 ## What already exists

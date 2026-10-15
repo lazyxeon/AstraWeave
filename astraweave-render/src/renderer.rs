@@ -3820,6 +3820,14 @@ fn vs(input: VSIn) -> VSOut {
         }
     }
 
+    /// Map the timestamp buffer after `queue.submit`. The next `draw_into`
+    /// copies the result into [`GpuProfiler::results`].
+    pub fn request_gpu_profiler_readback(&mut self) {
+        if let Some(profiler) = self.gpu_profiler.as_mut() {
+            profiler.request_readback();
+        }
+    }
+
     pub fn gpu_profiler(&self) -> Option<&crate::gpu_profiler::GpuProfiler> {
         self.gpu_profiler.as_ref()
     }

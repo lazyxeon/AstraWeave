@@ -111,15 +111,19 @@ fn draw_into_allocates_nothing_after_warmup() {
         eprintln!("draw_into alloc samples: {samples:?}");
         let min = *samples.iter().min().unwrap();
         let max = *samples.iter().max().unwrap();
-        // wgpu-core allocates a fresh command Vec for every recorded pass
-        // (`wgpu-core` `command/mod.rs`). With the shared Hi-Z pyramid the
-        // lavapipe floor is about 216-219 and jitters by a few counts.
-        // Engine scratch (visible instances, profiler names, repeated instance
-        // uploads) adds nothing: `update_instances` above is zero, and the
-        // draw_into count does not climb across the window.
+        // #269 measured this scene at 110-120 before the Hi-Z pyramid
+        // (samples [113, 111, 111, 110, 111, 110]). `BasePass::new` in
+        // wgpu-core 25 allocates a command Vec and a label String for every
+        // render or compute pass. The pyramid at 64×64 has
+        // ceil(log2(64)) = 6 passes (one depth copy plus one downsample per
+        // coarser mip). wgpu barriers only at pass boundaries, so those mips
+        // cannot share a pass. 6 passes × ~18 allocations is about +108, which
+        // is the jump to [219, 217, 217, 216, 217, 216]. The band is that
+        // sum, not a silent widen of the old 100-120 gate. A new pass moves
+        // the band. Engine scratch stays at zero (`update_instances` above).
         assert!(
             max <= 230 && min >= 200 && max - min <= 4,
-            "draw_into allocs left the wgpu recording floor: {samples:?}"
+            "draw_into allocs left the explained Hi-Z floor: {samples:?}"
         );
     });
 }
