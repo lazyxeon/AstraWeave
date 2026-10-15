@@ -426,7 +426,7 @@ Validation Criteria:
             .map_err(|e| anyhow!("Quest generation failed: {}", e))?;
 
         // Parse generated quest
-        let mut quest: LlmQuest = serde_json::from_str(&response)
+        let mut quest: LlmQuest = astraweave_llm::parse_bounded_model_json(&response)
             .map_err(|e| anyhow!("Failed to parse generated quest: {}", e))?;
 
         // Add metadata
@@ -502,7 +502,7 @@ Validation Criteria:
             .await
             .map_err(|e| anyhow!("Quest branching failed: {}", e))?;
 
-        let branch: QuestBranch = serde_json::from_str(&response)
+        let branch: QuestBranch = astraweave_llm::parse_bounded_model_json(&response)
             .map_err(|e| anyhow!("Failed to parse quest branch: {}", e))?;
 
         Ok(branch)
@@ -539,7 +539,7 @@ Validation Criteria:
             .await
             .map_err(|e| anyhow!("Quest validation failed: {}", e))?;
 
-        let validation: QuestValidation = serde_json::from_str(&response)
+        let validation: QuestValidation = astraweave_llm::parse_bounded_model_json(&response)
             .map_err(|e| anyhow!("Failed to parse validation result: {}", e))?;
 
         Ok(validation)

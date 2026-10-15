@@ -1,5 +1,26 @@
 #![forbid(unsafe_code)]
 use anyhow::{bail, Result};
+
+/// Model text above this is rejected before `serde_json` allocates a document.
+pub const MAX_MODEL_JSON_BYTES: usize = 64 * 1024;
+
+/// Parse JSON that came from a local model. Hostile lengths never reach `serde_json`.
+pub fn parse_bounded_model_json<T: serde::de::DeserializeOwned>(text: &str) -> Result<T> {
+    if text.len() > MAX_MODEL_JSON_BYTES {
+        bail!("model text exceeds 64 KiB cap ({} bytes)", text.len());
+    }
+    serde_json::from_str(text).map_err(|err| anyhow::anyhow!("model json: {err}"))
+}
+
+/// Keep a loopback model URL. A non-loopback URL is replaced unless the caller opted in.
+#[cfg(feature = "ollama")]
+pub(crate) fn loopback_model_url(url: String, allow_remote: bool) -> String {
+    if allow_remote || is_loopback_http_url(&url) {
+        url
+    } else {
+        "http://127.0.0.1:11434".to_string()
+    }
+}
 use astraweave_core::{ActionStep, PlanIntent, ToolRegistry, WorldSnapshot};
 use tracing::{debug, info};
 
@@ -172,17 +193,6 @@ impl LlmClient for OllamaClient {
             response: String,
         }
 
-        // ═══ PHASE 7 DEBUG LOGGING ═══
-        eprintln!("\n╔═══════════════════════════════════════════════════════════════╗");
-        eprintln!("║           PROMPT SENT TO LOCAL LLM (via Ollama)              ║");
-        eprintln!("╠═══════════════════════════════════════════════════════════════╣");
-        eprintln!("Model: {}", self.model);
-        eprintln!("URL: {}", self.url);
-        eprintln!("Prompt Length: {} chars", prompt.len());
-        eprintln!("╠═══════════════════════════════════════════════════════════════╣");
-        eprintln!("{}", prompt);
-        eprintln!("╚═══════════════════════════════════════════════════════════════╝\n");
-
         let body = Req {
             model: &self.model,
             prompt,
@@ -190,7 +200,6 @@ impl LlmClient for OllamaClient {
         };
 
         let client = reqwest::Client::new();
-        let start = std::time::Instant::now();
 
         let response = client
             .post(format!("{}/api/generate", self.url))
@@ -208,18 +217,6 @@ impl LlmClient for OllamaClient {
             .json()
             .await
             .map_err(|e| anyhow::anyhow!("Failed to parse Ollama response: {}", e))?;
-
-        let duration = start.elapsed();
-
-        // ═══ PHASE 7 DEBUG LOGGING ═══
-        eprintln!("\n╔═══════════════════════════════════════════════════════════════╗");
-        eprintln!("║           LOCAL LLM RAW RESPONSE (via Ollama)                ║");
-        eprintln!("╠═══════════════════════════════════════════════════════════════╣");
-        eprintln!("Response Time: {:.2}s", duration.as_secs_f32());
-        eprintln!("Response Length: {} chars", parsed.response.len());
-        eprintln!("╠═══════════════════════════════════════════════════════════════╣");
-        eprintln!("{}", parsed.response);
-        eprintln!("╚═══════════════════════════════════════════════════════════════╝\n");
 
         Ok(parsed.response)
     }
@@ -243,6 +240,15 @@ pub struct OllamaChatClient {
 #[cfg(feature = "ollama")]
 impl OllamaChatClient {
     pub fn new(url: String, model: String) -> Self {
+        Self::assemble(url, model, false)
+    }
+
+    /// Keep a non-loopback URL. [`Self::new`] replaces one with `http://127.0.0.1:11434`.
+    pub fn allowing_remote(url: String, model: String) -> Self {
+        Self::assemble(url, model, true)
+    }
+
+    fn assemble(url: String, model: String, allow_remote: bool) -> Self {
         // Build a tuned reqwest client for local low-latency usage
         let client = reqwest::Client::builder()
             .tcp_nodelay(true)
@@ -263,7 +269,7 @@ impl OllamaChatClient {
             .unwrap_or(true);
 
         Self {
-            url,
+            url: loopback_model_url(url, allow_remote),
             model,
             client,
             low_latency,
@@ -868,11 +874,7 @@ impl LocalHttpClient {
     }
 
     fn assemble(url: String, model: String, api_key: Option<String>, allow_remote: bool) -> Self {
-        let url = if allow_remote || is_loopback_http_url(&url) {
-            url
-        } else {
-            "http://127.0.0.1:11434".to_string()
-        };
+        let url = loopback_model_url(url, allow_remote);
         Self {
             url,
             model,
@@ -1509,6 +1511,43 @@ pub fn get_cache_stats() -> () {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn model_json_over_64_kib_is_rejected() {
+        let text = "x".repeat(MAX_MODEL_JSON_BYTES + 1);
+        let err = parse_bounded_model_json::<serde_json::Value>(&text).expect_err("over cap");
+        let msg = format!("{err:#}");
+        assert!(msg.contains("64 KiB"), "{msg}");
+    }
+
+    #[test]
+    fn ollama_client_source_does_not_dump_the_prompt() {
+        let src = include_str!("lib.rs");
+        let (prod, _) = src.split_once("mod tests").expect("test module");
+        let prompt_banner = format!("{}{}", "PROMPT SENT TO ", "LOCAL LLM");
+        let response_banner = format!("{}{}", "LOCAL LLM RAW ", "RESPONSE");
+        assert!(!prod.contains(prompt_banner.as_str()));
+        assert!(!prod.contains(response_banner.as_str()));
+        assert!(!prod.contains("eprintln!"));
+    }
+
+    #[cfg(feature = "ollama")]
+    #[test]
+    fn other_ollama_clients_keep_only_loopback_urls() {
+        let remote = "https://api.openai.com";
+        let qwen = qwen3_ollama::Qwen3Ollama::new(remote, "qwen");
+        let phi = phi3_ollama::Phi3Ollama::new(remote, "phi3");
+        let hermes = hermes2pro_ollama::Hermes2ProOllama::new(remote, "hermes");
+        let chat = OllamaChatClient::new(remote.to_string(), "chat".to_string());
+        for url in [qwen.url, phi.url, hermes.url, chat.url] {
+            assert!(
+                url.contains("127.0.0.1") || url.contains("localhost") || url.contains("[::1]"),
+                "stored a non-loopback endpoint: {url}"
+            );
+        }
+        let opted = qwen3_ollama::Qwen3Ollama::allowing_remote(remote, "qwen");
+        assert_eq!(opted.url, remote);
+    }
     use astraweave_core::{
         CompanionState, Constraints, EnemyState, IVec2, PlayerState, ToolSpec, WorldSnapshot,
     };

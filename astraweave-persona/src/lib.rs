@@ -18,7 +18,6 @@ use anyhow::{anyhow, Result};
 // persona types live in the `persona` module of `astraweave_memory`
 use astraweave_memory::persona::{CompanionProfile, Fact, Skill};
 use serde::Deserialize;
-use std::io::Read;
 
 // Phase 2 LLM Integration
 pub mod llm_persona;
@@ -50,15 +49,43 @@ struct FactEntry {
     t: String,
 }
 
+const MAX_PERSONA_ZIP_ENTRIES: usize = 10_000;
+const MAX_PERSONA_UNCOMPRESSED_BYTES: u64 = 512 * 1024 * 1024;
+const MAX_PERSONA_MANIFEST_BYTES: u64 = 1024 * 1024;
+
 pub fn load_persona_zip(path: &str) -> Result<CompanionProfile> {
     let file = std::fs::File::open(path)?;
     let mut zip = zip::ZipArchive::new(file)?;
+    if zip.len() > MAX_PERSONA_ZIP_ENTRIES {
+        return Err(anyhow!(
+            "zip entry count exceeds cap ({} > {MAX_PERSONA_ZIP_ENTRIES})",
+            zip.len()
+        ));
+    }
+    let mut total = 0u64;
+    for index in 0..zip.len() {
+        let member = zip.by_index(index)?;
+        total = total.saturating_add(member.size());
+        if total > MAX_PERSONA_UNCOMPRESSED_BYTES {
+            return Err(anyhow!(
+                "zip uncompressed size exceeds cap ({total} > {MAX_PERSONA_UNCOMPRESSED_BYTES})"
+            ));
+        }
+    }
     let mut manifest_txt = String::new();
     {
-        let mut mf = zip
+        let mf = zip
             .by_name("persona_manifest.toml")
             .map_err(|_| anyhow!("persona_manifest.toml missing"))?;
-        mf.read_to_string(&mut manifest_txt)?;
+        if mf.size() > MAX_PERSONA_MANIFEST_BYTES {
+            return Err(anyhow!(
+                "persona manifest exceeds cap ({} > {MAX_PERSONA_MANIFEST_BYTES})",
+                mf.size()
+            ));
+        }
+        use std::io::Read;
+        mf.take(MAX_PERSONA_MANIFEST_BYTES)
+            .read_to_string(&mut manifest_txt)?;
     }
     let m: Manifest = toml::from_str(&manifest_txt)?;
     let mut p = CompanionProfile::new_default();
@@ -300,5 +327,24 @@ prefs_json = 'invalid json {'
 
         // Test that invalid JSON is handled gracefully in load_persona_zip
         // (it returns Value::Null on error)
+    }
+
+    #[test]
+    fn persona_zip_with_too_many_entries_is_rejected() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("persona.zip");
+        let file = std::fs::File::create(&path).expect("zip");
+        let mut zip = zip::ZipWriter::new(file);
+        use std::io::Write;
+        let opts = zip::write::SimpleFileOptions::default();
+        for index in 0..(MAX_PERSONA_ZIP_ENTRIES + 1) {
+            zip.start_file(format!("f{index}.txt"), opts)
+                .expect("start");
+            zip.write_all(b"x").expect("write");
+        }
+        zip.finish().expect("finish");
+        let err = load_persona_zip(path.to_str().expect("utf8")).expect_err("over-cap zip");
+        let msg = format!("{err:#}");
+        assert!(msg.contains("exceeds cap"), "{msg}");
     }
 }

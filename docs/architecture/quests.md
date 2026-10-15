@@ -9,7 +9,7 @@ lifecycle_status: in_design
 integration_status: partial
 summary: "components/systems + LLM + terrain quests; overlaps the weaving quest layer. quests.md §6"
 owns: [astraweave-quests]
-doc_version: "1.1"
+doc_version: "1.2"
 last_verified_commit: 7c29b8182
 ---
 
@@ -21,11 +21,11 @@ last_verified_commit: 7c29b8182
 |---|---|
 | **System name** | Quest System |
 | **Primary crates** | `astraweave-quests` (LLM + terrain + ECS quest layer), `astraweave-weaving` (Veilweaver gameplay quest layer) |
-| **Document version** | 1.1 |
+| **Document version** | 1.2 |
 | **Last verified against commit** | `7c29b8182` |
 | **Last verified date** | 2026-06-25 |
 | **Status** | Mixed: `astraweave-weaving::quest` is Active (wired via `VeilweaverLevel`); `astraweave-quests` LLM/terrain/ECS layer is In-Design-but-tested (no production callers); the basic `astraweave-quests::{Quest, QuestStep}` struct pair is Active (used by `aw_editor`). |
-| **Owner notes** | Two physically separate quest implementations coexist (see §6). The richer, AI-facing one (`astraweave-quests`) is largely dormant; the actually-shipped gameplay one lives in `astraweave-weaving`. |
+| **Owner notes** | 1.2 (2026-10-15): quest, branch, and validation model text go through `parse_bounded_model_json` (64 KiB). `validation_script` stays data and is not evaluated. `QuestLlmSystem` is still not on a schedule. Two physically separate quest implementations coexist (see §6). The richer, AI-facing one (`astraweave-quests`) is largely dormant; the actually-shipped gameplay one lives in `astraweave-weaving`. |
 
 ---
 

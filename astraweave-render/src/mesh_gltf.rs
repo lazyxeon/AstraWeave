@@ -16,8 +16,37 @@ impl Default for GltfOptions {
 }
 
 #[cfg(feature = "gltf-assets")]
+fn jail_gltf_uri(base: &std::path::Path, uri: &str) -> Result<()> {
+    if uri.starts_with("data:") {
+        return Ok(());
+    }
+    let path_part = uri.split('?').next().unwrap_or(uri);
+    astraweave_security::path::safe_under(base, std::path::Path::new(path_part))
+        .map_err(|err| anyhow!("path traversal rejected: {err}"))?;
+    Ok(())
+}
+
+#[cfg(feature = "gltf-assets")]
+fn reject_escaping_gltf_uris(path: &std::path::Path) -> Result<()> {
+    let base = path.parent().unwrap_or_else(|| std::path::Path::new("."));
+    let doc = gltf::Gltf::open(path)?;
+    for buffer in doc.buffers() {
+        if let gltf::buffer::Source::Uri(uri) = buffer.source() {
+            jail_gltf_uri(base, uri)?;
+        }
+    }
+    for image in doc.images() {
+        if let gltf::image::Source::Uri { uri, .. } = image.source() {
+            jail_gltf_uri(base, uri)?;
+        }
+    }
+    Ok(())
+}
+
+#[cfg(feature = "gltf-assets")]
 pub fn load_gltf(path: &std::path::Path, opts: &GltfOptions) -> Result<Vec<CpuMesh>> {
     use gltf::mesh::util::ReadIndices;
+    reject_escaping_gltf_uris(path)?;
     let (doc, buffers, images) = gltf::import(path)?;
     let mut meshes_out = Vec::new();
     for mesh in doc.meshes() {
@@ -119,6 +148,31 @@ pub fn load_gltf(path: &std::path::Path, opts: &GltfOptions) -> Result<Vec<CpuMe
         }
     }
     Ok(meshes_out)
+}
+
+#[cfg(all(test, feature = "gltf-assets"))]
+mod jail_tests {
+    use super::*;
+
+    #[test]
+    fn gltf_buffer_parent_uri_is_rejected() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("hostile.gltf");
+        std::fs::write(
+            &path,
+            r#"{
+                "asset": {"version": "2.0"},
+                "buffers": [{"uri": "../secret.bin", "byteLength": 4}]
+            }"#,
+        )
+        .expect("write gltf");
+        let err = load_gltf(&path, &GltfOptions::default()).expect_err("hostile gltf");
+        let msg = format!("{err:#}").to_lowercase();
+        assert!(
+            msg.contains("traversal") || msg.contains("rejected"),
+            "{msg}"
+        );
+    }
 }
 
 #[cfg(feature = "gltf-assets")]

@@ -586,7 +586,7 @@ Focus on narrative consistency, logical causation, and player engagement opportu
             branching_points: Vec<serde_json::Value>,
         }
 
-        let storyline_data: StorylineData = serde_json::from_str(&response)
+        let storyline_data: StorylineData = astraweave_llm::parse_bounded_model_json(&response)
             .map_err(|e| anyhow!("Failed to parse storyline: {}", e))?;
 
         let storyline = Storyline {
@@ -824,8 +824,8 @@ Focus on narrative consistency, logical causation, and player engagement opportu
             narrative_context: Option<String>,
         }
 
-        let event_data: EventData =
-            serde_json::from_str(&response).map_err(|e| anyhow!("Failed to parse event: {}", e))?;
+        let event_data: EventData = astraweave_llm::parse_bounded_model_json(&response)
+            .map_err(|e| anyhow!("Failed to parse event: {}", e))?;
 
         let severity = match event_data.severity.as_str() {
             "Trivial" => EventSeverity::Trivial,
@@ -916,7 +916,7 @@ Focus on narrative consistency, logical causation, and player engagement opportu
             coherence_score: f32,
         }
 
-        let result: CoherenceResult = serde_json::from_str(&response)
+        let result: CoherenceResult = astraweave_llm::parse_bounded_model_json(&response)
             .map_err(|e| anyhow!("Failed to parse coherence result: {}", e))?;
 
         Ok(result.coherence_score)
@@ -1058,3 +1058,19 @@ mod tests {
     }
 }
 */
+
+#[cfg(test)]
+mod cap_tests {
+    #[test]
+    fn world_event_model_text_uses_the_64_kib_parser() {
+        let src = include_str!("world_events.rs");
+        let (prod, _) = src.split_once("mod cap_tests").expect("test module");
+        let needle = format!("{}{}", "parse_bounded_", "model_json");
+        assert_eq!(prod.matches(needle.as_str()).count(), 3);
+        assert!(!prod.contains("serde_json::from_str"));
+        let huge = "x".repeat(64 * 1024 + 1);
+        let err = astraweave_llm::parse_bounded_model_json::<serde_json::Value>(&huge)
+            .expect_err("over cap");
+        assert!(format!("{err:#}").contains("64 KiB"));
+    }
+}

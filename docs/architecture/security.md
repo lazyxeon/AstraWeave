@@ -9,7 +9,7 @@ lifecycle_status: in_design
 integration_status: test_only
 summary: "script sandbox/anticheat/signatures/path validation; ed25519 surface distinct from net HMAC. security.md"
 owns: [astraweave-secrets, astraweave-security]
-doc_version: "1.2"
+doc_version: "1.3"
 last_verified_commit: 7c29b8182
 ---
 
@@ -21,11 +21,11 @@ last_verified_commit: 7c29b8182
 |---|---|
 | **System name** | Security System (script sandbox, anticheat, signatures, path/deserialization validation, secrets) |
 | **Primary crates** | [`astraweave-security`](../../astraweave-security), [`astraweave-secrets`](../../astraweave-secrets) |
-| **Document version** | 1.2 |
+| **Document version** | 1.3 |
 | **Last verified against commit** | `7c29b8182` |
 | **Last verified date** | 2026-06-25 |
 | **Status** | Transitional — one surface (path validation) is wired; the rest is in-design-but-tested / dormant scaffolding |
-| **Owner notes** | Crates originate from a 2025 "Phase 1 Week 2" remediation effort (see [`docs/archive/remediation/PHASE1_WEEK2_COMPLETE.md`](../../docs/archive/remediation/PHASE1_WEEK2_COMPLETE.md)). Active follow-up work is owned by the S-series security campaign ([`docs/campaigns/security/S0_FINDINGS_SEED.md`](../../docs/campaigns/security/S0_FINDINGS_SEED.md)) and the hardening plan ([`docs/current/SECURITY_AUDIT_AND_HARDENING_PLAN.md`](../../docs/current/SECURITY_AUDIT_AND_HARDENING_PLAN.md)). |
+| **Owner notes** | 1.3 (2026-10-15): `default_allowed_llm_domains` is `localhost` only. `SecurityPlugin::build` uses that list. `sanitize_llm_prompt` still prefixes `SAFE:`. Crates originate from a 2025 "Phase 1 Week 2" remediation effort (see [`docs/archive/remediation/PHASE1_WEEK2_COMPLETE.md`](../../docs/archive/remediation/PHASE1_WEEK2_COMPLETE.md)). Active follow-up work is owned by the S-series security campaign ([`docs/campaigns/security/S0_FINDINGS_SEED.md`](../../docs/campaigns/security/S0_FINDINGS_SEED.md)) and the hardening plan ([`docs/current/SECURITY_AUDIT_AND_HARDENING_PLAN.md`](../../docs/current/SECURITY_AUDIT_AND_HARDENING_PLAN.md)). |
 
 ---
 

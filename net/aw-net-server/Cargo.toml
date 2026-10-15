@@ -30,6 +30,7 @@ aw-net-proto = { path = "../aw-net-proto" }
 
 [dev-dependencies]
 tempfile = "3"
+tower = { version = "0.5", features = ["util"] }
 # TLS test-client plumbing for the family5 wss:// signature-path tests. Versions
 # mirror the normal deps EXACTLY (tokio-rustls 0.25 / rustls 0.22) so there is no
 # second rustls in the graph. rcgen generates an ephemeral self-signed cert at

@@ -182,8 +182,17 @@ impl Hermes2ProOllama {
     /// let client = Hermes2ProOllama::new("http://localhost:11434", "adrienbrault/nous-hermes2pro:Q4_K_M");
     /// ```
     pub fn new(url: impl Into<String>, model: impl Into<String>) -> Self {
+        Self::assemble(url, model, false)
+    }
+
+    /// Keep a non-loopback URL. `new` replaces one with `http://127.0.0.1:11434`.
+    pub fn allowing_remote(url: impl Into<String>, model: impl Into<String>) -> Self {
+        Self::assemble(url, model, true)
+    }
+
+    fn assemble(url: impl Into<String>, model: impl Into<String>, allow_remote: bool) -> Self {
         Self {
-            url: url.into(),
+            url: crate::loopback_model_url(url.into(), allow_remote),
             model: model.into(),
             temperature: 0.7,
             max_tokens: 512,

@@ -593,7 +593,8 @@ impl GameServer {
     }
 
     async fn handle_conn(self: std::sync::Arc<Self>, stream: tokio::net::TcpStream) -> Result<()> {
-        let ws = tokio_tungstenite::accept_async(stream).await?;
+        let ws =
+            tokio_tungstenite::accept_async_with_config(stream, Some(engine_ws_config())).await?;
         let (mut tx, mut rx) = ws.split();
         let mut rx_bcast = self.tx.subscribe();
 
@@ -944,6 +945,16 @@ fn constant_time_eq(left: &[u8], right: &[u8]) -> bool {
         diff |= a ^ b;
     }
     diff == 0
+}
+
+/// Application cap for one WebSocket message or frame on [`GameServer`].
+pub const MAX_ENGINE_WS_MESSAGE: usize = 1024 * 1024;
+
+pub fn engine_ws_config() -> tokio_tungstenite::tungstenite::protocol::WebSocketConfig {
+    let mut config = tokio_tungstenite::tungstenite::protocol::WebSocketConfig::default();
+    config.max_message_size = Some(MAX_ENGINE_WS_MESSAGE);
+    config.max_frame_size = Some(MAX_ENGINE_WS_MESSAGE);
+    config
 }
 
 pub fn replay_from(mut world: World, events: &[ReplayEvent]) -> Result<u64> {
