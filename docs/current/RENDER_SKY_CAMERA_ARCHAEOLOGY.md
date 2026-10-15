@@ -374,3 +374,5 @@ This VM has no RTX 4060 Ti. A lavapipe submit proves the passes are legal. It do
 ## What Phase 2 needs from review
 
 The four review questions are decided. Dormant passes are tracked by #226–#238. The next atmosphere change is the depth-binding fix in #226, on a branch that is not racing PR #205's fog and god-ray files.
+
+The next rendering phase is planned in `docs/current/RENDER_ARCHITECTURE_PHASE_PLAN.md` (bindless with fallback, one pipeline-creation function, compute particles, GPU frustum and Hi-Z occlusion, async streaming, mutable meshes, an 11 ms 1660 Ti budget). That document is a plan. It is not built.
