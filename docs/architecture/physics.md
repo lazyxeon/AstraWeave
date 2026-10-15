@@ -11,8 +11,8 @@ runtime_edges:
   - to: astraweave-water
     note: "buoyancy (apply_buoyancy_forces, lib.rs:1464) consumes WaterQuery/AnalyticWater"
 owns: [astraweave-physics]
-doc_version: "1.4"
-last_verified_commit: d6b07fc8
+doc_version: "1.5"
+last_verified_commit: cdea968c
 ---
 
 # Architecture Trace: Physics
@@ -273,7 +273,8 @@ Note: This path requires `astraweave-physics/features = ["ecs"]` to be enabled b
 | File | Role | Status | Notes |
 |---|---|---|---|
 | `astraweave-physics/src/lib.rs` | `PhysicsWorld`, `CharacterController`, `PhysicsConfig`, `BodyId`, `ActorKind`, `Layers`, `JointType`, `JointId`, `DebugLine`, `BuoyancyData`, `LineCollector`, step + raycast + character + joint + buoyancy + body-add APIs | Active | `#![forbid(unsafe_code)]` at line 1. The crate's central state-owning module. Workspace `rapier3d` enables `enhanced-determinism`. |
-| `astraweave-physics/src/detmath.rs` | `sqrt` and `acos` via pure-Rust `libm` for the jump impulse and the slope test | Active | The character controller calls these instead of `f32` methods. |
+| `astraweave-physics/src/detmath.rs` | `sqrt`, `acos`, `sin`, `cos`, `atan2` via pure-Rust `libm` | Active | The traversal sim and the character controller call these instead of `f32` methods. |
+| `astraweave-physics/src/traversal.rs` | Tick-based ground, jump, and roll sim (`TICK_DT = 1/60`). `replay_bytes` is the `traversal` determinism case. | Active | Displacement is code-driven. Rapier probes are inputs. |
 | `astraweave-physics/build.rs` | Refuses `target-cpu=native` and the `fma` target feature | Active | Same guard as `aravath_runtime`. |
 | `astraweave-physics/src/spatial_hash.rs` (1,038 LoC) | Standalone `SpatialHash<T>` + `AABB` grid-broadphase data structure | **Dormant** | Verified 2026-05-12: workspace grep for `use astraweave_physics::SpatialHash` or `use astraweave_physics::spatial_hash` outside the crate's own `src` + `tests` returned zero matches. The crate doc-comment at `lib.rs:25-26` advertises it as "Grid-based broadphase for O(n log n) collision culling (99.96% pair reduction vs brute-force)" but `PhysicsWorld` uses Rapier's `DefaultBroadPhase` (`lib.rs:907`), not `SpatialHash`. The module has 3 dedicated tests (`tests/behavioral_correctness_tests.rs:22`, `tests/coverage_boost_tests.rs:870`, plus its own inline test module). |
 | `astraweave-physics/src/async_scheduler.rs` (979 LoC) | `AsyncPhysicsScheduler`, `PhysicsStepProfile` (per-step telemetry) | Active (feature `async-physics`); dormant in production | Cargo.toml gates the entire module on `#[cfg(feature = "async-physics")]`. Verified 2026-05-12: only `astraweave-physics/Cargo.toml:55` (`physics_async` bench `required-features = ["async-physics"]`) enables the feature; no production consumer enables it. |
@@ -435,6 +436,7 @@ Note: This path requires `astraweave-physics/features = ["ecs"]` to be enabled b
 | 6 | `add_character` always inserts a `CharacterController` entry into `char_map` keyed by the new `BodyId` | Yes (code) | `lib.rs:1218-1235`: `self.char_map.insert(id, CharacterController { ... })` |
 | 7 | `break_destructible(id)` removes the body from ALL internal maps (`body_ids`, `body_kinds`, `char_map`, `buoyancy_bodies`) | Yes (code) | `lib.rs:1566-1584`: explicit 4-line cleanup after Rapier `bodies.remove` |
 | 8 | `PhysicsConfig::default()` time_step = `1.0/60.0` (60 Hz target) | Yes (code) | `lib.rs:618` |
+| 8b | `traversal::step` advances exactly one `TICK_DT` and does not read `Instant` | Yes (code) | `traversal.rs` `TICK_DT`; replay test `traversal_replay` |
 | 9 | `PhysicsConfig::default()` gravity = `(0.0, -9.81, 0.0)` (Earth-like) | Yes (code) | `lib.rs:615` |
 | 10 | `PhysicsConfig::default()` water_level = `f32::NEG_INFINITY` (water disabled by default) | Yes (code) | `lib.rs:619` |
 | 11 | `PhysicsConfig::default()` ccd_enabled = `false`, max_ccd_substeps = `1` | Yes (code) | `lib.rs:616-617` |

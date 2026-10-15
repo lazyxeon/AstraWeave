@@ -1,6 +1,6 @@
 # Traversal archaeology and upgrade plan
 
-**Status:** review gate. No traversal feature code in this change.
+**Status:** approved. Phase 0 is in tree. Later phases follow. Stacked on PR #205. Merge #205 first, then rebase this branch onto main and keep `planner_pure` plus `perception_world` in the replay required set.
 **Branch:** `feat/traversal-archaeology`
 **Base:** `85d09a2c` (`main`, 2026-10-15)
 **Survey date:** 2026-10-15

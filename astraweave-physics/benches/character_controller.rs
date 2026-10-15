@@ -51,6 +51,17 @@ fn assert_transform_valid(transform: Option<Mat4>, context: &str) {
     }
 }
 
+/// Put the capsule back on the finite ground and clear the fall velocity.
+fn reset_character_for_tick(world: &mut PhysicsWorld, id: astraweave_physics::BodyId) {
+    world.set_body_position(id, vec3(0.0, 1.0, 0.0));
+    if let Some(ctrl) = world.char_map.get_mut(&id) {
+        ctrl.vertical_velocity = 0.0;
+        ctrl.time_since_grounded = 0.0;
+        ctrl.jump_buffer_timer = 0.0;
+        ctrl.pending_jump_velocity = 0.0;
+    }
+}
+
 /// Setup a simple test world with ground
 fn setup_simple_world() -> PhysicsWorld {
     let mut world = PhysicsWorld::new(vec3(0.0, -9.8, 0.0));
@@ -213,10 +224,12 @@ fn character_full_tick(c: &mut Criterion) {
 
     c.bench_function("character_full_tick", |b| {
         b.iter(|| {
+            // The ground plane is 100 m across. Criterion repeats this body, so
+            // each sample starts at the origin. The y > -10 assertion stays.
+            reset_character_for_tick(&mut world, char_id);
             let desired_move = black_box(vec3(1.0, 0.0, 0.0));
             world.control_character(char_id, desired_move, 1.0 / 60.0, false);
             world.step();
-            // CORRECTNESS: Full tick must produce consistent physics state
             let transform = world.body_transform(char_id);
             assert_transform_valid(transform, "character_full_tick");
             black_box(transform)

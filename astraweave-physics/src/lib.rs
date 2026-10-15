@@ -116,6 +116,8 @@ const _: () = assert!(
 
 mod detmath;
 
+/// Tick-based traversal sim. The Aravath motor and the replay gate both call it.
+pub mod traversal;
 #[cfg(feature = "profiling")]
 use astraweave_profiling::{plot, span};
 
