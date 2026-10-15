@@ -856,14 +856,13 @@ impl NodeGraphWidget {
     pub fn auto_layout(&self, doc: &mut BehaviorGraphDocument) {
         let root_id = doc.root_id();
         let mut visited = std::collections::HashSet::new();
-        self.compute_subtree_width(doc, root_id, &mut visited);
+        Self::compute_subtree_width(doc, root_id, &mut visited);
 
         visited.clear();
-        self.layout_subtree(doc, root_id, &mut visited, 0, 0.0);
+        Self::layout_subtree(doc, root_id, &mut visited, 0, 0.0);
     }
 
     fn compute_subtree_width(
-        &self,
         doc: &BehaviorGraphDocument,
         node_id: NodeId,
         visited: &mut std::collections::HashSet<NodeId>,
@@ -888,13 +887,12 @@ impl NodeGraphWidget {
 
         let total: f32 = children
             .iter()
-            .map(|&cid| self.compute_subtree_width(doc, cid, visited))
+            .map(|&cid| Self::compute_subtree_width(doc, cid, visited))
             .sum();
         total.max(NODE_WIDTH + 20.0)
     }
 
     fn layout_subtree(
-        &self,
         doc: &mut BehaviorGraphDocument,
         node_id: NodeId,
         visited: &mut std::collections::HashSet<NodeId>,
@@ -931,8 +929,7 @@ impl NodeGraphWidget {
         let mut child_widths: Vec<f32> = Vec::new();
         let mut temp_visited = visited.clone();
         for &cid in &children {
-            let w =
-                self.compute_subtree_width(doc, cid, &mut temp_visited, &mut Vec::new(), depth + 1);
+            let w = Self::compute_subtree_width(doc, cid, &mut temp_visited);
             child_widths.push(w);
         }
 
@@ -942,7 +939,7 @@ impl NodeGraphWidget {
         for (i, &cid) in children.iter().enumerate() {
             let w = child_widths[i];
             let child_center = cx + w / 2.0;
-            self.layout_subtree(doc, cid, visited, depth + 1, child_center);
+            Self::layout_subtree(doc, cid, visited, depth + 1, child_center);
             cx += w;
         }
     }
