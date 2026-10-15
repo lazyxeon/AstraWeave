@@ -1,0 +1,16 @@
+[package]
+name = "aw_decision"
+version = "0.1.0"
+license.workspace = true
+edition = "2021"
+publish = false
+description = "Headless inspector for one agent decision at one tick."
+
+[dependencies]
+astraweave-ai = { path = "../../astraweave-ai", features = ["decision-trace"] }
+astraweave-nav = { path = "../../astraweave-nav" }
+clap = { version = "4.4", features = ["derive"] }
+
+[lib]
+name = "aw_decision"
+path = "src/lib.rs"

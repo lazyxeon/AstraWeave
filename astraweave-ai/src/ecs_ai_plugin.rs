@@ -70,6 +70,8 @@ fn record_plan_outcome(
 }
 
 fn sys_ai_planning(world: &mut ecs::World) {
+    #[cfg(feature = "decision-trace")]
+    let mut held = world.take_resource::<crate::decision_trace::DecisionTrace>();
     // One planner tick for every companion. Legacy `World` companions and
     // ECS-only companions are both covered. A missing component or a plan
     // without MoveTo records `AiPlanningFailedEvent` and does not abort.
@@ -152,6 +154,9 @@ fn sys_ai_planning(world: &mut ecs::World) {
                             &mut planned_events,
                             &mut failed_events,
                         );
+                        crate::decision_record!({
+                            trace_grid(&mut held, u64::from(comp), &snap, &plan);
+                        });
                     }
                 }
             }
@@ -243,6 +248,9 @@ fn sys_ai_planning(world: &mut ecs::World) {
             &mut planned_events,
             &mut failed_events,
         );
+        crate::decision_record!({
+            trace_grid(&mut held, ecs_entity_key(entity), &snap, &plan);
+        });
     }
 
     for (entity, desired) in updates {
@@ -260,17 +268,69 @@ fn sys_ai_planning(world: &mut ecs::World) {
             writer.send(event);
         }
     }
+    #[cfg(feature = "decision-trace")]
+    if let Some(held) = held {
+        world.restore_resource(held);
+    }
+}
+
+#[cfg(feature = "decision-trace")]
+fn ecs_entity_key(entity: ecs::Entity) -> u64 {
+    (u64::from(entity.generation()) << 32) | u64::from(entity.id())
+}
+
+#[cfg(feature = "decision-trace")]
+fn trace_grid(
+    held: &mut Option<Box<crate::decision_trace::DecisionTrace>>,
+    entity_id: u64,
+    snap: &WorldSnapshot,
+    plan: &PlanIntent,
+) {
+    let Some(trace) = held.as_mut() else {
+        return;
+    };
+    let tick = crate::decision_trace::tick_from_time(snap.t);
+    if !trace.bind(entity_id) {
+        return;
+    }
+    crate::decision_trace::record_rule(trace, entity_id, tick, snap, plan);
+    let code = if move_target(plan).is_some() {
+        crate::decision_trace::FailCode::Pending
+    } else {
+        crate::decision_trace::FailCode::InvalidAction
+    };
+    let _ = trace.store_outcome(entity_id, tick, code);
 }
 
 /// Spatial HTN tick. No work unless [`crate::htn::SpatialTick`] was inserted.
 fn sys_spatial_tick(world: &mut ecs::World) {
+    #[cfg(feature = "decision-trace")]
+    let mut held = world.take_resource::<crate::decision_trace::DecisionTrace>();
     let Some(tick) = world.get_resource_mut::<crate::htn::SpatialTick>() else {
+        #[cfg(feature = "decision-trace")]
+        if let Some(held) = held {
+            world.restore_resource(held);
+        }
         return;
     };
     let mut scratch = astraweave_nav::NavScratch::new();
     let sim_tick = tick.clock;
     tick.clock = tick.clock.saturating_add(1);
+    #[cfg(not(feature = "decision-trace"))]
     crate::htn::tick_agents(tick, &mut scratch, sim_tick);
+    #[cfg(feature = "decision-trace")]
+    {
+        if let Some(ref mut trace) = held {
+            crate::htn::tick_agents(tick, &mut scratch, sim_tick, trace.as_mut());
+        } else {
+            let mut null = crate::decision_trace::NullSink;
+            crate::htn::tick_agents(tick, &mut scratch, sim_tick, &mut null);
+        }
+    }
+    #[cfg(feature = "decision-trace")]
+    if let Some(held) = held {
+        world.restore_resource(held);
+    }
 }
 
 impl ecs::Plugin for AiPlanningPlugin {

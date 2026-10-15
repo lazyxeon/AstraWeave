@@ -24,6 +24,10 @@ fn bench_htn_expansions(c: &mut Criterion) {
                     1,
                     &mut plan,
                     &mut budget,
+                    #[cfg(feature = "decision-trace")]
+                    &mut astraweave_ai::decision_trace::NullSink,
+                    #[cfg(feature = "decision-trace")]
+                    1u64,
                 );
                 if budget == before {
                     break;
