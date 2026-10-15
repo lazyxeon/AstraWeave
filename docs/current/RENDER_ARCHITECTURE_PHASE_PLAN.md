@@ -104,7 +104,7 @@ Each step is one commit series, with `cargo check` and the tests named here. Lat
 
 - It will not merge.
 - It will not edit `volumetric_fog.rs` or `god_rays.rs`.
-- It will not wire Atmosphere, SSGI, TAA, DoF, or the cloud raymarch. Those stay #226–#233.
+- Atmosphere, SSGI, TAA, DoF, temporal upscale, and the cloud raymarch are gated presentation passes. They stay off in `draw_into` unless a setter enables them. #227 and #228 stay on PR #205.
 - It will not feed GPU readback into the replay hash.
 - It will not add a second renderer, a second culling AABB layout, or a second texture cache beside `TextureStreamingManager`.
 - It will not claim an 11 ms frame time without the 1660 Ti capture in step 8.

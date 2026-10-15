@@ -82,7 +82,7 @@ const SHADER_VALIDATION_SKIPS: &[(&str, &str)] = &[
     ("shaders/gtao.wgsl", "modular-fragment: needs constants.wgsl PI (gtao.rs)"),
     ("shaders/ssgi.wgsl", "modular-fragment: needs constants.wgsl PI (ssgi.rs)"),
     ("shaders/pbr/disney_brdf.wgsl", "modular-fragment: needs constants.wgsl PI (see disney_brdf_wgsl_parses_naga)"),
-    ("shaders/pbr/brdf_lut.wgsl", "modular-fragment: needs constants.wgsl PI (brdf_lut.rs)"),
+    ("shaders/pbr/brdf_lut.wgsl", "modular-fragment: needs constants.wgsl PI (IblManager LUT)"),
     ("shaders/lumen/final_gather.wgsl", "modular-fragment: needs constants.wgsl INV_PI (final_gather.rs)"),
     ("shaders/lumen/surface_cache_update.wgsl", "modular-fragment: needs constants.wgsl INV_PI/PI (surface_cache.rs)"),
     ("shaders/atmosphere/sky_render.wgsl", "modular-fragment: needs constants.wgsl PI (atmosphere.rs)"),

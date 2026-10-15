@@ -62,7 +62,6 @@ pub mod biome_detector;
 pub mod biome_material;
 pub mod biome_transition;
 pub mod bloom; // Physically-based bloom with 13-tap downsample and tent upsample
-pub mod brdf_lut; // BRDF integration LUT for split-sum IBL (Phase 9)
 pub mod culling; // GPU-driven frustum culling (Phase 2 Task 3)
 pub mod culling_node; // Culling node for render graph
 pub mod disney_material; // Disney principled BRDF evaluation + WGSL source (Phase 9)
@@ -178,7 +177,6 @@ pub mod transparency; // Transparency depth sorting and render pass // Advanced 
 pub mod vegetation_gpu; // GPU-instanced vegetation scatter and frustum cull pipeline
 pub mod vegetation_interaction; // Entity proximity grass bending stamp system
 pub mod vegetation_lod; // Tree LOD chain with billboard/impostor support
-pub mod weather_gpu; // GPU-accelerated weather particle emitter configurations
 
 // GPU memory management
 pub mod bind_group_cache; // Generation-tracked bind group cache
@@ -194,7 +192,6 @@ pub use bind_group_cache::{CachedBindGroup, CachedBindGroupSet, Generation};
 pub use biome_detector::{BiomeDetector, BiomeDetectorConfig, BiomeTransition};
 pub use biome_material::{BiomeMaterialConfig, BiomeMaterialSystem};
 pub use biome_transition::{BiomeVisuals, EasingFunction, TransitionConfig, TransitionEffect};
-pub use brdf_lut::{BrdfLutConfig, BrdfLutPass};
 pub use compute_noise::{GpuNoiseConfig, GpuNoisePipeline, GpuNoiseType};
 pub use culling::{
     batch_visible_instances, build_indirect_commands_cpu, cpu_frustum_cull,
