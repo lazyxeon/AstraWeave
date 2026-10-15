@@ -1,6 +1,8 @@
 //! `weave_eval` must not allocate. The field is [`NullField`], which stores no cells.
 
-use astraweave_weaving::{weave_tick, NullField, WeaveScratch, TEMPLATE_HEAT};
+use astraweave_weaving::{
+    queue_weave, weave_tick, NullField, WeaveFrame, WeaveScratch, TEMPLATE_HEAT,
+};
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -25,13 +27,12 @@ static GLOBAL: Counting = Counting(System);
 #[test]
 fn weave_tick_does_not_allocate() {
     let mut scratch = WeaveScratch::new();
+    let mut frame = WeaveFrame::new();
     let mut field = NullField;
-    scratch
-        .enqueue(0, 8, 0, 1, TEMPLATE_HEAT, [0, 0, 0])
-        .unwrap();
+    queue_weave(&mut scratch, 0, 8, 0, 1, TEMPLATE_HEAT, [0, 0, 0]).unwrap();
     ALLOCS.store(0, Ordering::Relaxed);
     for tick in 0..8 {
-        weave_tick(&mut scratch, &mut field, tick);
+        weave_tick(&scratch, &mut frame, &mut field, tick);
     }
     assert_eq!(ALLOCS.load(Ordering::Relaxed), 0, "weave_tick allocated");
 }

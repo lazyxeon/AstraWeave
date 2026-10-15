@@ -193,6 +193,14 @@ impl WeaveScratch {
         self.command_count = self.command_count.saturating_add(1);
         Ok(())
     }
+
+    pub(crate) fn loaded(&self, id: u16) -> Option<WeaveTemplate> {
+        let count = self.loaded_count as usize;
+        self.loaded[..count]
+            .iter()
+            .copied()
+            .find(|template| template.id == id)
+    }
 }
 
 /// Mod command entry. The sandbox calls this with host-filled tick fields.

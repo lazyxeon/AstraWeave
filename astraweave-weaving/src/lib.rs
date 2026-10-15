@@ -50,10 +50,7 @@ pub use combat::{CombatEvent, CombatSystem, Killer};
 pub use damage::{apply_element_schools, ElementSchool};
 pub use echo_currency::{EchoCurrency, Transaction, TransactionReason};
 pub use enemy::{AttackTarget, Enemy, EnemyBehavior, EnemyState};
-pub use eval::{
-    queue_weave, weave_eval, weave_tick, weaving_case_bytes, weaving_case_on, IceSheet, QueueError,
-    WeaveCommand, WeaveScratch,
-};
+pub use eval::{weave_eval, weave_tick, weaving_case_bytes, weaving_case_on, IceSheet, WeaveFrame};
 pub use field::{
     gravity_mm_s2, meters_to_cell, FieldEvent, FieldWrite, NullField, Shape, SimField, WriteOp,
     CELL_MM, FLAG_ICE, MAX_FIELD_WRITES, PHASE_BURN, PHASE_ICE, WORLD_GRAVITY_MILLI_G,
@@ -77,8 +74,8 @@ pub use starter_quests::{
     all_starter_quests, quest_clear_corruption, quest_restore_beacon, quest_stabilize_anchors,
 };
 pub use templates::{
-    parse_template_toml, TEMPLATE_DECAY, TEMPLATE_DENSITY, TEMPLATE_FREEZE, TEMPLATE_GRAVITY,
-    TEMPLATE_HEAT, TEMPLATE_LOWER_WATER, TEMPLATE_WIND,
+    TEMPLATE_DECAY, TEMPLATE_DENSITY, TEMPLATE_FREEZE, TEMPLATE_GRAVITY, TEMPLATE_HEAT,
+    TEMPLATE_LOWER_WATER, TEMPLATE_WIND,
 };
 pub use ui::{
     AbilityUnlockNotification, AnchorInspectionModal, EchoFeedbackFloat, EchoHud,

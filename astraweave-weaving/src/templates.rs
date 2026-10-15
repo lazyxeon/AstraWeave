@@ -177,65 +177,6 @@ pub fn writes_for(
     (out, template.node_count)
 }
 
-/// TOML loader for extra templates. Unknown keys fail. This runs at load, not in the tick.
-pub fn parse_template_toml(text: &str) -> Result<Template, String> {
-    let value: toml::Value = toml::from_str(text).map_err(|err| err.to_string())?;
-    let id = value
-        .get("id")
-        .and_then(|v| v.as_integer())
-        .ok_or_else(|| "template id".to_string())? as u16;
-    if builtin(id).is_some() {
-        return Err(format!("template {id} is an engine id"));
-    }
-    let mut template = Template::empty(id);
-    let nodes = value
-        .get("nodes")
-        .and_then(|v| v.as_array())
-        .ok_or_else(|| "nodes".to_string())?;
-    if nodes.len() > MAX_NODES {
-        return Err("too many nodes".to_string());
-    }
-    for (i, node) in nodes.iter().enumerate() {
-        let kind = node
-            .get("kind")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| "kind".to_string())?;
-        let radius = node.get("radius").and_then(|v| v.as_integer()).unwrap_or(0) as u8;
-        let a = node.get("a").and_then(|v| v.as_integer()).unwrap_or(0) as i16;
-        let op = match kind {
-            "heat" => WriteOp::AddTemp {
-                delta: a,
-                stack: false,
-            },
-            "wind" => WriteOp::SetWind {
-                x: a as i8,
-                y: 0,
-                z: 0,
-            },
-            "gravity" => WriteOp::SetGravity { index: a as u16 },
-            "phase" => WriteOp::SetPhase { phase: a as u8 },
-            "volume" => WriteOp::AddVolume { delta: a },
-            "density" => WriteOp::AddDensity {
-                delta: a.clamp(-128, 127) as i8,
-                stack: false,
-            },
-            _ => return Err(format!("unknown kind {kind}")),
-        };
-        let shape = if radius == 0 {
-            Shape::Point
-        } else {
-            Shape::Sphere
-        };
-        template.nodes[i] = Node { shape, radius, op };
-    }
-    template.node_count = nodes.len() as u8;
-    template.ice_radius = value
-        .get("ice_radius")
-        .and_then(|v| v.as_integer())
-        .unwrap_or(0) as u8;
-    Ok(template)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -245,27 +186,5 @@ mod tests {
         assert!(builtin(0).is_none());
         assert_eq!(builtin(TEMPLATE_FREEZE).unwrap().ice_radius, 2);
         assert!(builtin(TEMPLATE_HEAT).unwrap().node_count >= 1);
-    }
-
-    #[test]
-    fn toml_rejects_engine_id() {
-        let text = "id = 1\nnodes = []\n";
-        assert!(parse_template_toml(text).is_err());
-    }
-
-    #[test]
-    fn toml_loads_a_density_row() {
-        let text = r#"
-id = 40
-ice_radius = 0
-nodes = [{ kind = "density", radius = 1, a = 120 }]
-"#;
-        let template = parse_template_toml(text).unwrap();
-        assert_eq!(template.id, 40);
-        assert_eq!(template.node_count, 1);
-        assert!(matches!(
-            template.nodes[0].op,
-            WriteOp::AddDensity { delta: 120, .. }
-        ));
     }
 }
