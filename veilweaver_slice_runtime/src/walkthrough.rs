@@ -645,9 +645,9 @@ impl SliceOrchestrator {
             pois: vec![],
             obstacles: vec![],
             objective: Some(format!("{}", self.current_beat)),
+            hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+            hazard_count: 0,
         }
-        hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
-        hazard_count: 0,
     }
 
     /// Builds a minimal enemy list from combat encounter state.
