@@ -6,22 +6,13 @@
 
 #![cfg(feature = "decision-trace")]
 
-use astraweave_ai::decision_trace::{DecisionSink, DecisionTrace, NullSink, Patch, PlannerView};
+use astraweave_ai::decision_trace::{DecisionTrace, Patch, PlannerView};
 use astraweave_ai::htn::{plan_route, AgentPlan, SpatialHooks};
 use astraweave_nav::{bridge_and_ford, nav_change_from_kind, NavChangeKind, NavScratch};
 use sha2::{Digest, Sha256};
 
-struct RingSink {
-    trace: DecisionTrace,
-}
-
-impl DecisionSink for RingSink {
-    fn record(&mut self, record: &astraweave_ai::decision_trace::DecisionRecord) {
-        let _ = self.trace.push(record);
-    }
-}
-
-fn script_bytes<S: DecisionSink>(sink: &mut S) -> Vec<u8> {
+fn script_bytes(trace: Option<&mut DecisionTrace>) -> Vec<u8> {
+    let _guard = trace.map(|trace| astraweave_ai::htn::attach_trace(trace, 1));
     let mut tiles = bridge_and_ford();
     let mut scratch = NavScratch::new();
     let hooks = SpatialHooks::none();
@@ -48,8 +39,6 @@ fn script_bytes<S: DecisionSink>(sink: &mut S) -> Vec<u8> {
             tick,
             &mut plan,
             &mut budget,
-            sink,
-            1,
         );
         out.extend_from_slice(&tick.to_le_bytes());
         out.extend_from_slice(&committed.to_le_bytes());
@@ -86,36 +75,27 @@ fn sha256(bytes: &[u8]) -> [u8; 32] {
 
 #[test]
 fn decision_trace_hash_matches_when_the_ring_is_off() {
-    let mut null_sink = NullSink;
-    let silent = script_bytes(&mut null_sink);
+    let silent = script_bytes(None);
 
-    let mut ring = RingSink {
-        trace: DecisionTrace::new(),
-    };
-    assert!(ring.trace.bind(1));
-    let traced = script_bytes(&mut ring);
+    let mut ring = DecisionTrace::new();
+    assert!(ring.bind(1));
+    let traced = script_bytes(Some(&mut ring));
 
     assert_eq!(sha256(&silent), sha256(&traced));
     assert_eq!(silent, traced);
-    assert!(ring.trace.count_of(1) > 0);
+    assert!(ring.count_of(1) > 0);
 }
 
 #[test]
 fn decision_trace_rerun_leaves_the_script_hash() {
-    let mut ring = RingSink {
-        trace: DecisionTrace::new(),
-    };
-    assert!(ring.trace.bind(1));
-    let before = script_bytes(&mut ring);
+    let mut ring = DecisionTrace::new();
+    assert!(ring.bind(1));
+    let before = script_bytes(Some(&mut ring));
     let digest = sha256(&before);
 
     let mut tiles = bridge_and_ford();
     let mut scratch = NavScratch::new();
-    let record = ring
-        .trace
-        .find_tick(1, 1)
-        .copied()
-        .expect("tick 1 was recorded");
+    let record = ring.find_tick(1, 1).copied().expect("tick 1 was recorded");
     let mut sample = astraweave_ai::decision_trace::TickSample::from_record(record);
     sample.pos_milli = [1_000, 0, 1_000];
     sample.goal_milli = [1_000, 0, 46_000];
@@ -136,11 +116,9 @@ fn decision_trace_rerun_leaves_the_script_hash() {
     let _ = diff;
     let _ = tiles.commit_tick();
 
-    let mut again = RingSink {
-        trace: DecisionTrace::new(),
-    };
-    assert!(again.trace.bind(1));
-    let after = script_bytes(&mut again);
+    let mut again = DecisionTrace::new();
+    assert!(again.bind(1));
+    let after = script_bytes(Some(&mut again));
     assert_eq!(sha256(&before), digest);
     assert_eq!(sha256(&after), digest);
 }

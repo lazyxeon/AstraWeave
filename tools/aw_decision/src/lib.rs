@@ -120,6 +120,7 @@ fn simulate_through(last_tick: u64) -> (DecisionTrace, NavTiles) {
         let _ = tiles.commit_tick();
         let mut budget = 64u32;
         let mut plan = AgentPlan::empty();
+        let _guard = astraweave_ai::htn::attach_trace(&mut trace, ENTITY);
         plan_route(
             &tiles,
             &mut scratch,
@@ -129,8 +130,6 @@ fn simulate_through(last_tick: u64) -> (DecisionTrace, NavTiles) {
             tick,
             &mut plan,
             &mut budget,
-            &mut trace,
-            ENTITY,
         );
     }
     (trace, tiles)

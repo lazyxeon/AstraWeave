@@ -211,14 +211,103 @@ pub fn fill_observation(tiles: &NavTiles, buf: &mut ObservationBuf) {
     }
 }
 
+#[cfg(feature = "decision-trace")]
+std::thread_local! {
+    static TRACE_ACTIVE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    static TRACE_ENTITY: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+    static TRACE_HOLDER: std::cell::RefCell<Option<crate::decision_trace::DecisionTrace>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+/// Swaps `trace` into thread-local storage until the guard drops.
+///
+/// `plan_route` keeps the same eight arguments with the feature on or off,
+/// so the replay harness compiles either way and writes the same plan bytes.
+/// With the feature off this function does not exist, and `plan_route` does
+/// not touch the thread local.
+#[cfg(feature = "decision-trace")]
+pub struct TraceGuard {
+    trace: *mut crate::decision_trace::DecisionTrace,
+    prev_active: bool,
+    prev_entity: u64,
+}
+
+#[cfg(feature = "decision-trace")]
+#[must_use]
+pub fn attach_trace(
+    trace: &mut crate::decision_trace::DecisionTrace,
+    entity_id: u64,
+) -> TraceGuard {
+    let prev_active = TRACE_ACTIVE.with(|cell| cell.replace(true));
+    let prev_entity = TRACE_ENTITY.with(|cell| cell.replace(entity_id));
+    let trace_ptr = trace as *mut crate::decision_trace::DecisionTrace;
+    swap_holder(trace);
+    TraceGuard {
+        trace: trace_ptr,
+        prev_active,
+        prev_entity,
+    }
+}
+
+#[cfg(feature = "decision-trace")]
+fn swap_holder(trace: &mut crate::decision_trace::DecisionTrace) {
+    TRACE_HOLDER.with(|cell| {
+        let mut slot = cell.borrow_mut();
+        if slot.is_none() {
+            *slot = Some(crate::decision_trace::DecisionTrace::new());
+        }
+        if let Some(held) = slot.as_mut() {
+            std::mem::swap(trace, held);
+        }
+    });
+}
+
+#[cfg(feature = "decision-trace")]
+impl Drop for TraceGuard {
+    fn drop(&mut self) {
+        if !self.trace.is_null() {
+            // SAFETY: `attach_trace` created this pointer from the caller's
+            // `&mut DecisionTrace`, and this guard is dropped before that
+            // borrow ends. The swap returns the caller's rings.
+            unsafe { swap_holder(&mut *self.trace) }
+        }
+        TRACE_ACTIVE.with(|cell| cell.set(self.prev_active));
+        TRACE_ENTITY.with(|cell| cell.set(self.prev_entity));
+    }
+}
+
+#[cfg(feature = "decision-trace")]
+fn set_trace_entity(entity_id: u64) {
+    TRACE_ENTITY.with(|cell| cell.set(entity_id));
+}
+
+#[cfg(feature = "decision-trace")]
+fn emit_record(record: &crate::decision_trace::DecisionRecord) {
+    if !TRACE_ACTIVE.with(|cell| cell.get()) {
+        return;
+    }
+    TRACE_HOLDER.with(|cell| {
+        if let Some(trace) = cell.borrow_mut().as_mut() {
+            let _ = trace.push(record);
+        }
+    });
+}
+
+#[cfg(feature = "decision-trace")]
+fn emit_band(entity_id: u64, tick: u64, band: u8) {
+    if !TRACE_ACTIVE.with(|cell| cell.get()) {
+        return;
+    }
+    TRACE_HOLDER.with(|cell| {
+        if let Some(trace) = cell.borrow_mut().as_mut() {
+            trace.amend_band(entity_id, tick, band);
+        }
+    });
+}
+
 /// Advance every agent. Sort key is `(band, entity_id)`.
 #[allow(clippy::needless_range_loop)]
-pub fn tick_agents(
-    tick: &mut SpatialTick,
-    scratch: &mut NavScratch,
-    sim_tick: u64,
-    #[cfg(feature = "decision-trace")] sink: &mut dyn crate::decision_trace::DecisionSink,
-) {
+pub fn tick_agents(tick: &mut SpatialTick, scratch: &mut NavScratch, sim_tick: u64) {
     let wlen = tick.weaving_len as usize;
     let hlen = tick.hazard_len as usize;
     let mut weave_buf = [WeaveEffectHook {
@@ -281,6 +370,8 @@ pub fn tick_agents(
         agent.ticks_since_plan = agent.ticks_since_plan.saturating_add(1);
         match band {
             0 if agent.ticks_since_plan >= REPLAN_TICKS || agent.plan.len == 0 => {
+                #[cfg(feature = "decision-trace")]
+                set_trace_entity(agent.entity_id);
                 plan_route(
                     nav,
                     scratch,
@@ -290,17 +381,15 @@ pub fn tick_agents(
                     sim_tick,
                     &mut agent.plan,
                     &mut budget,
-                    #[cfg(feature = "decision-trace")]
-                    sink,
-                    #[cfg(feature = "decision-trace")]
-                    agent.entity_id,
                 );
                 agent.plan.band = 0;
                 agent.ticks_since_plan = 0;
                 #[cfg(feature = "decision-trace")]
-                sink.amend_band(agent.entity_id, sim_tick, 0);
+                emit_band(agent.entity_id, sim_tick, 0);
             }
             1 => {
+                #[cfg(feature = "decision-trace")]
+                set_trace_entity(agent.entity_id);
                 plan_route(
                     nav,
                     scratch,
@@ -310,15 +399,11 @@ pub fn tick_agents(
                     sim_tick,
                     &mut agent.plan,
                     &mut budget,
-                    #[cfg(feature = "decision-trace")]
-                    sink,
-                    #[cfg(feature = "decision-trace")]
-                    agent.entity_id,
                 );
                 agent.plan.band = 1;
                 agent.ticks_since_plan = 0;
                 #[cfg(feature = "decision-trace")]
-                sink.amend_band(agent.entity_id, sim_tick, 1);
+                emit_band(agent.entity_id, sim_tick, 1);
             }
             2 if agent.plan.len == 0 => {
                 agent.plan.slots[0] = ActionSlot::MoveTo {
@@ -341,7 +426,7 @@ pub fn tick_agents(
                         &crate::decision_trace::AltList::new(),
                         0,
                     );
-                    sink.record(&record);
+                    emit_record(&record);
                 }
             }
             _ => {
@@ -363,8 +448,6 @@ pub fn plan_route(
     sim_tick: u64,
     out: &mut AgentPlan,
     budget: &mut u32,
-    #[cfg(feature = "decision-trace")] sink: &mut dyn crate::decision_trace::DecisionSink,
-    #[cfg(feature = "decision-trace")] entity_id: u64,
 ) {
     #[cfg(feature = "decision-trace")]
     clear_alts();
@@ -427,10 +510,11 @@ pub fn plan_route(
         let perceived = perceived_for_route(tiles, pos_milli);
         let alts = copy_alts();
         let score = route_score(tiles, out);
+        let entity_id = TRACE_ENTITY.with(|cell| cell.get());
         let record = crate::decision_trace::route_record(
             entity_id, sim_tick, 0, pos_milli, out, perceived, &alts, score,
         );
-        sink.record(&record);
+        emit_record(&record);
     }
 }
 
@@ -824,10 +908,6 @@ mod tests {
                 1,
                 &mut plan,
                 &mut budget,
-                #[cfg(feature = "decision-trace")]
-                &mut crate::decision_trace::NullSink,
-                #[cfg(feature = "decision-trace")]
-                1u64,
             );
             if budget == before {
                 break;
@@ -857,10 +937,6 @@ mod tests {
             1,
             &mut plan,
             &mut budget,
-            #[cfg(feature = "decision-trace")]
-            &mut crate::decision_trace::NullSink,
-            #[cfg(feature = "decision-trace")]
-            1u64,
         );
         let before = move_cell(&plan);
         tiles.mark(astraweave_nav::nav_change_from_kind(
@@ -880,10 +956,6 @@ mod tests {
             31,
             &mut plan,
             &mut budget,
-            #[cfg(feature = "decision-trace")]
-            &mut crate::decision_trace::NullSink,
-            #[cfg(feature = "decision-trace")]
-            1u64,
         );
         let after = move_cell(&plan);
         assert!(before < 8, "bridge path cell {before}");

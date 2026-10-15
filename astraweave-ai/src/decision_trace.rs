@@ -455,63 +455,6 @@ fn outcome_byte(code: FailCode) -> u8 {
     }
 }
 
-pub trait DecisionSink {
-    fn record(&mut self, record: &DecisionRecord);
-    fn amend_band(&mut self, entity_id: u64, tick: u64, band: u8) {
-        let _ = (entity_id, tick, band);
-    }
-}
-
-/// Sink that drops the record. The planner result does not read it.
-pub struct NullSink;
-
-impl DecisionSink for NullSink {
-    #[inline(always)]
-    fn record(&mut self, _record: &DecisionRecord) {}
-}
-
-impl DecisionSink for DecisionTrace {
-    fn record(&mut self, record: &DecisionRecord) {
-        let _ = self.push(record);
-    }
-
-    fn amend_band(&mut self, entity_id: u64, tick: u64, band: u8) {
-        DecisionTrace::amend_band(self, entity_id, tick, band);
-    }
-}
-
-/// One-record sink used by [`rerun`] so the live ring stays put.
-pub struct CaptureSink {
-    pub record: DecisionRecord,
-    pub wrote: bool,
-}
-
-impl DecisionSink for CaptureSink {
-    fn record(&mut self, record: &DecisionRecord) {
-        self.record = *record;
-        self.wrote = true;
-    }
-}
-
-impl Default for CaptureSink {
-    fn default() -> Self {
-        Self {
-            record: DecisionRecord::EMPTY,
-            wrote: false,
-        }
-    }
-}
-
-impl CaptureSink {
-    #[must_use]
-    pub const fn new() -> Self {
-        Self {
-            record: DecisionRecord::EMPTY,
-            wrote: false,
-        }
-    }
-}
-
 #[must_use]
 pub fn tick_from_time(t: f32) -> u64 {
     if t.is_finite() && t >= 0.0 {
@@ -570,7 +513,7 @@ pub fn record_rule(
     plan: &astraweave_core::PlanIntent,
 ) {
     let _ = trace.bind(entity_id);
-    trace.record(&grid_record(
+    let _ = trace.push(&grid_record(
         entity_id,
         tick,
         PlannerId::Rule as u8,
@@ -583,7 +526,7 @@ pub fn record_rule(
 
 pub fn record_utility(trace: &mut DecisionTrace, entity_id: u64, tick: u64, snap: &WorldSnapshot) {
     let _ = trace.bind(entity_id);
-    trace.record(&utility_decision(entity_id, tick, snap));
+    let _ = trace.push(&utility_decision(entity_id, tick, snap));
 }
 
 fn grid_record(
@@ -821,7 +764,9 @@ fn rerun_htn(
     };
     let mut plan = AgentPlan::empty();
     let mut budget = htn::HTN_EXPANSIONS_PER_TICK as u32;
-    let mut capture = CaptureSink::default();
+    let mut capture = DecisionTrace::new();
+    let _ = capture.bind(sample.record.entity_id);
+    let _guard = htn::attach_trace(&mut capture, sample.record.entity_id);
     plan_route(
         view.tiles,
         view.scratch,
@@ -831,14 +776,11 @@ fn rerun_htn(
         sample.record.tick,
         &mut plan,
         &mut budget,
-        &mut capture,
-        sample.record.entity_id,
     );
-    if capture.wrote {
-        capture.record
-    } else {
-        DecisionRecord::EMPTY
-    }
+    capture
+        .find_tick(sample.record.entity_id, sample.record.tick)
+        .copied()
+        .unwrap_or(DecisionRecord::EMPTY)
 }
 
 fn snapshot_from_perceived(tick: u64, perceived: &PerceivedView, goal: u16) -> WorldSnapshot {

@@ -316,16 +316,12 @@ fn sys_spatial_tick(world: &mut ecs::World) {
     let mut scratch = astraweave_nav::NavScratch::new();
     let sim_tick = tick.clock;
     tick.clock = tick.clock.saturating_add(1);
-    #[cfg(not(feature = "decision-trace"))]
-    crate::htn::tick_agents(tick, &mut scratch, sim_tick);
-    #[cfg(feature = "decision-trace")]
     {
-        if let Some(ref mut trace) = held {
-            crate::htn::tick_agents(tick, &mut scratch, sim_tick, trace.as_mut());
-        } else {
-            let mut null = crate::decision_trace::NullSink;
-            crate::htn::tick_agents(tick, &mut scratch, sim_tick, &mut null);
-        }
+        #[cfg(feature = "decision-trace")]
+        let _guard = held
+            .as_mut()
+            .map(|trace| crate::htn::attach_trace(trace.as_mut(), 0));
+        crate::htn::tick_agents(tick, &mut scratch, sim_tick);
     }
     #[cfg(feature = "decision-trace")]
     if let Some(held) = held {

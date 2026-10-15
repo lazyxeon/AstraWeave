@@ -24,13 +24,7 @@ fn htn_tick_and_tile_commit_allocate_nothing_after_warmup() {
     let mut scratch = NavScratch::new();
     for step in 0..4u64 {
         let _ = tick.nav.commit_tick();
-        tick_agents(
-            &mut tick,
-            &mut scratch,
-            step,
-            #[cfg(feature = "decision-trace")]
-            &mut astraweave_ai::decision_trace::NullSink,
-        );
+        tick_agents(&mut tick, &mut scratch, step);
     }
     let collapse = GeometryNotice {
         tick: 8,
@@ -45,13 +39,7 @@ fn htn_tick_and_tile_commit_allocate_nothing_after_warmup() {
     let warmup = nav_change_from_geometry_notice(&collapse, 0).expect("notice");
     tick.nav.mark(warmup);
     let _ = tick.nav.commit_tick();
-    tick_agents(
-        &mut tick,
-        &mut scratch,
-        8,
-        #[cfg(feature = "decision-trace")]
-        &mut astraweave_ai::decision_trace::NullSink,
-    );
+    tick_agents(&mut tick, &mut scratch, 8);
 
     reset_allocs();
     let again = nav_change_from_geometry_notice(&collapse, 1).expect("notice");
@@ -60,13 +48,7 @@ fn htn_tick_and_tile_commit_allocate_nothing_after_warmup() {
     let commit_allocs = allocs();
 
     reset_allocs();
-    tick_agents(
-        &mut tick,
-        &mut scratch,
-        9,
-        #[cfg(feature = "decision-trace")]
-        &mut astraweave_ai::decision_trace::NullSink,
-    );
+    tick_agents(&mut tick, &mut scratch, 9);
     let tick_allocs = allocs();
 
     assert!(committed >= 1, "warmup left a dirty tile to commit");
