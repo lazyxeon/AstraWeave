@@ -8,7 +8,7 @@ domain: gameplay
 lifecycle_status: active
 integration_status: wired
 owns: [astraweave-audio]
-doc_version: "1.6"
+doc_version: "1.7"
 last_verified_commit: 634889e0f
 ---
 
@@ -20,10 +20,10 @@ last_verified_commit: 634889e0f
 |---|---|
 | **System name** | Audio |
 | **Primary crates** | `astraweave-audio` (sole production crate); `tools/aw_editor` (editor integration via `audio_bridge.rs`); `astraweave-npc` (single direct consumer in runtime) |
-| **Document version** | 1.6 |
+| **Document version** | 1.7 |
 | **Last verified against commit** | `634889e0f` |
 | **Last verified date** | 2026-10-15 |
-| **Revision history** | 1.6 (2026-10-15): Test fixtures only. Each nextest process writes WAVs under `target/audio-test-assets/<pid>` so `cleanup_test_assets` cannot delete another process's files. The playback path is unchanged.<br><br>1.2 (2026-05-12): Deep investigation pass. Closed factual portion of Open Question 4 (aspirational docs origin) — git log identifies commit `28bc94f21` "Create comprehensive bespoke wiki with 51-section documentation structure (#34)" authored by GitHub Copilot bot on 2025-09-08; resolution moved to §6. Enriched §11 Open Questions 2 (PanMode), 8 (hardcoded AudioStats), and 9 (veilweaver_demo) with comprehensive git/source evidence. Corrected §9 hot-paths bench-name reference (`listener_movement_*` exercises `tick`, not a separate `audio_tick_per_frame` bench). Added new cognitive trap in §6: `EmitterId` collision silently reuses the existing `SpatialSink` and overwrites its emitter position. Added new §11 Open Question on the `EmitterId` allocator-less design.<br><br>1.1 (2026-05-12): Verification pass. Confirmed rodio→cpal `!Send + !Sync` chain via `cpal-0.15.3/src/platform/mod.rs:73, 736` (`NotSendSyncAcrossAllPlatforms(PhantomData<*mut ()>)` marker). Corrected Sink/SpatialSink Send/Sync claim — only `OutputStream` is the `!Send` blocker, not the sinks themselves. Confirmed `astraweave-audio` is absent from `miri.yml`, `kani.yml`, `mutation-testing.yml`, `coverage.yml` workflows (CI presence only in `ci.yml`). Recovered partial rationale for 5th bus from commit `745c100a8` ("audio ambient" alongside biome materials). Corrected Appendix A `#[non_exhaustive]` claim (irrelevant within same crate). |
+| **Revision history** | 1.7 (2026-10-15): Fixture path strings use `/` so a Windows `D:\a\...` root can be embedded in a TOML basic string. Playback is unchanged.<br><br>1.6 (2026-10-15): Test fixtures only. Each nextest process writes WAVs under `target/audio-test-assets/<pid>` so `cleanup_test_assets` cannot delete another process's files. The playback path is unchanged.<br><br>1.2 (2026-05-12): Deep investigation pass. Closed factual portion of Open Question 4 (aspirational docs origin) — git log identifies commit `28bc94f21` "Create comprehensive bespoke wiki with 51-section documentation structure (#34)" authored by GitHub Copilot bot on 2025-09-08; resolution moved to §6. Enriched §11 Open Questions 2 (PanMode), 8 (hardcoded AudioStats), and 9 (veilweaver_demo) with comprehensive git/source evidence. Corrected §9 hot-paths bench-name reference (`listener_movement_*` exercises `tick`, not a separate `audio_tick_per_frame` bench). Added new cognitive trap in §6: `EmitterId` collision silently reuses the existing `SpatialSink` and overwrites its emitter position. Added new §11 Open Question on the `EmitterId` allocator-less design.<br><br>1.1 (2026-05-12): Verification pass. Confirmed rodio→cpal `!Send + !Sync` chain via `cpal-0.15.3/src/platform/mod.rs:73, 736` (`NotSendSyncAcrossAllPlatforms(PhantomData<*mut ()>)` marker). Corrected Sink/SpatialSink Send/Sync claim — only `OutputStream` is the `!Send` blocker, not the sinks themselves. Confirmed `astraweave-audio` is absent from `miri.yml`, `kani.yml`, `mutation-testing.yml`, `coverage.yml` workflows (CI presence only in `ci.yml`). Recovered partial rationale for 5th bus from commit `745c100a8` ("audio ambient" alongside biome materials). Corrected Appendix A `#[non_exhaustive]` claim (irrelevant within same crate). |
 | **Status** | Active |
 | **Owner notes** | Pure facade crate. No ECS plugin, no system stage registration. Forward-designed editor UI exposes features (HRTF, Doppler, distance model, reverb) that the underlying engine does not yet implement. |
 

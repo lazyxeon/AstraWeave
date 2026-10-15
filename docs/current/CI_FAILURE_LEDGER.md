@@ -88,6 +88,7 @@ Owned here. 95 unique failures, each retried twice. Groups:
 | `ShadingMode` tests (`all` length 6 vs 5, cycle stops before `CascadeIndex`) | **Fixed after this tally.** `CascadeIndex` is already in `all`, `cycle`, and `to_u32`. The tests now lock that sixth mode. |
 | `modifier_drain_completed_requests` (`completed.len() >= 2`) | **Fixed after this tally.** One tick uses a 1 ms wall-clock budget and deferred the second op on the Ubuntu runner. The test now gives that tick 60 s so both request ids drain. The production default stays 1 ms. |
 | `editor_engine_render_parity` | **Deferred.** https://github.com/lazyxeon/AstraWeave/issues/273. Stable llvmpipe hashes `034f46c7…` vs `3cae37d4…`. Formats match and overlay isolation passes. The label could not be applied from this token. |
+| Windows dialogue TOML (`D:\a\...` in a basic string) | **Fixed after `94d6adb2`.** Those tests parse the fixture path as TOML. `\` starts an escape, and `\a` is not one. Fixture path strings now use `/`. |
 
 ## What was not done
 

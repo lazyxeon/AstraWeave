@@ -13,8 +13,14 @@ use std::sync::OnceLock;
 /// lets one process remove files another process just created.
 #[allow(dead_code)]
 pub fn assets_root_str() -> &'static str {
-    let owned = assets_root().to_string_lossy().into_owned();
+    let owned = toml_path(assets_root());
     Box::leak(owned.into_boxed_str())
+}
+
+/// Path string safe to embed in a TOML basic string. Windows `\` would be
+/// read as an escape (`\a` in `D:\a\...` is a parse error).
+fn toml_path(path: &Path) -> String {
+    path.to_string_lossy().replace('\\', "/")
 }
 
 pub fn assets_root() -> &'static Path {
@@ -36,7 +42,7 @@ pub fn asset_path(rel: &str) -> &'static str {
             panic!("create audio test dir {}: {err}", parent.display());
         });
     }
-    let owned = path.to_string_lossy().into_owned();
+    let owned = toml_path(&path);
     Box::leak(owned.into_boxed_str())
 }
 
@@ -249,6 +255,12 @@ pub fn cleanup_test_assets() -> Result<()> {
 mod tests {
     use super::*;
     use serial_test::serial;
+
+    #[test]
+    fn windows_separators_are_toml_safe() {
+        let path = Path::new(r"D:\a\AstraWeave\AstraWeave\target");
+        assert_eq!(toml_path(path), "D:/a/AstraWeave/AstraWeave/target");
+    }
 
     #[test]
     #[serial]
