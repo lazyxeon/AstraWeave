@@ -164,7 +164,13 @@ class WorkflowPolicyTest(unittest.TestCase):
             self.assertIn(f"test(={test})", profile)
             if binary == package:
                 self.fail(f"lib binary should be the underscore target name, got {binary}")
-        for replay in ("planner_pure", "perception_world", "gameplay_rng", "replay_hash"):
+        for replay in (
+            "planner_pure",
+            "perception_world",
+            "gameplay_rng",
+            "replay_hash",
+            "gameplay_qa_aravath_slice",
+        ):
             self.assertNotIn(replay, profile)
             self.assertNotIn(replay, (ROOT / "scripts" / "ci" / "deferred_pr_tests.txt").read_text(encoding="utf-8"))
 

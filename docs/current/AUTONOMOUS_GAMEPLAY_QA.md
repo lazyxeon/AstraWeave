@@ -1,11 +1,22 @@
 # Autonomous gameplay QA
 
-> **Status**: design for review. Nothing in this document is implemented.
+> **Status**: scenario 1 is implemented. Later scenarios are still design.
 > **Date**: 2026-10-15
-> **Branch**: `cursor/gameplay-qa-design-0073` (draft, not for merge)
-> **Read against**: `main` at `b7ffb358`, plus the open pull requests named below
+> **Branch**: `cursor/gameplay-qa-slice-0073` (rebased onto current `main`, draft, not for merge)
+> **Read against**: `main` after #212, #243, #277, and #290
 
-Synthetic players will attempt objectives in headless, fixed-tick runs and report softlocks, unreachable objectives, save/reload breakage, and simple exploits. Every failure writes one artifact that replays to the same hash trace on Linux, Windows, and macOS. This pass maps the code those runs have to sit on, and stops before any runner, scenario file, or workflow is added.
+## Recorded decisions
+
+Approved 2026-10-15, with two answers applied as written:
+
+1. Scenario 1 stays the one-tick slice resolve. `run_scenario` calls `run_aravath_slice` once per trace. The scripted policy is the RON edge list. The goal policy `slice_sword_then_weave` emits the same edges from code. The trace hash covers those edges plus the slice fields (`sword_hp`, `weave_hp`, `cover_intact`, `cover_damage`). The function is not split into a tick loop.
+2. `run_aravath_slice` is on `main`. #243 has landed, and `destruction` stays a required replay case next to `gameplay_qa_aravath_slice`.
+
+`SaveReload` and `SameSeqTwice` stay specified below and are not in `scenarios/aravath_slice_sword.ron`. Both need the world the one-tick function does not return.
+
+The minimizer runs only when `QA_MINIMIZE=1` and `GITHUB_EVENT_NAME` is not `pull_request`. The Linux test and `determinism-replay.yml` do not set `QA_MINIMIZE`. The required case `gameplay_qa_aravath_slice` is the SHA-256 of the passing scripted trace, `ef7e38b580f2d157041d2d58bc0cac41dcf1442ac0ff6064d6ba52039adfc089`, emitted by `replay_aravath_slice_scenario`. Required cases are `planner_pure`, `perception_world`, `gameplay_rng`, `fixed64`, `combat_resolve`, `destruction`, and `gameplay_qa_aravath_slice`.
+
+Synthetic players will attempt objectives in headless, fixed-tick runs and report softlocks, unreachable objectives, save/reload breakage, and simple exploits. Every failure writes one artifact that replays to the same hash trace on Linux, Windows, and macOS. Scenario 1 is the runner. Later scenarios are still design.
 
 Learning-based exploit search is out of scope. The first bots are scripted and goal-driven.
 
@@ -156,9 +167,9 @@ pub enum Bot {
 
 The runner:
 
-1. Builds the world with the scenario seed by running the same table install and spawns as `run_aravath_slice`. The function stays the reference for the unsplit end state. The tickable session is that function's steps pulled apart, still calling `install`, `combat_resolve_system`, `enqueue_weave`, and `DestructionWorld::tick`. It is not a new resolver.
-2. For each tick, takes `decide`, applies actions in `seq` order, runs the existing systems once, appends the state hash.
-3. Evaluates predicates. On failure, writes the artifact and, off the pull-request path, minimizes.
+1. Scenario 1 does not rebuild the world. It calls `run_aravath_slice` once for the scripted trace and once for the goal trace. The edges are recorded in the trace. They are not applied as a second resolver.
+2. The trace hash is the canonical bytes of those edges plus the slice fields.
+3. On failure, the runner builds the JSON artifact. ddmin runs only when `minimize_enabled` is true.
 
 `Greybox` adapter, when it exists, maps `Motor` onto `TickInput` and calls `Greybox::step`. `Hit` is not remapped onto the greybox sword: #275 already does that inside `Combat::tick` by calling the whole slice. A greybox scenario that also emits `Hit` would resolve the slice twice. Greybox scenarios use `Motor` only.
 
@@ -173,26 +184,23 @@ Scenario(
     schema: 1,
     id: "aravath_slice_sword",
     seed: 0xA11C_E5EE,
-    max_ticks: 4,
+    max_ticks: 1,
     setup: Slice,
     bot: Script(steps: [
         (edges: [
             Hit(attack_id: 1, defender: Cover, seq: 0, heal: false),
             Hit(attack_id: 3, defender: Woven, seq: 1, heal: false),
-            WeaveDecay(),
+            WeaveDecay,
         ]),
     ]),
+    goal: (objective: "cover_broken", policy: "slice_sword_then_weave"),
     checks: [
         Reach(by_tick: 1, sword_hp: 15, weave_hp: 25, cover_intact: false, min_cover_damage: 25),
-        SaveReload(at_tick: 1, during: Combat),
-        SameSeqTwice(attack_id: 1, defender: Cover, seq: 0),
     ],
 )
 ```
 
-`setup: Slice` is the only setup the first implementation accepts. `setup: Greybox` is reserved and fails load until the greybox adapter exists. `setup: CoreWorld` is not a value: the core replay cases already cover that world.
-
-`Goal` uses the same file with `bot: Goal(objective: "cover_broken", policy: "slice_sword_then_weave")`.
+`setup: Slice` is the only setup the loader accepts. The checked-in file is `astraweave-weaving/scenarios/aravath_slice_sword.ron`. The goal block is required. Its policy emits `slice_program()` in code, and the script above must hash to the same trace.
 
 Checks, and the failure condition each one writes:
 
@@ -264,26 +272,24 @@ No new required workflow. No LFS checkout. No renderer. No minimizer on pull req
 
 After the slice is on the branch under test:
 
-1. **Pull request, Linux, inside the crate test that already compiles weaving.** One scenario, one seed, `max_ticks: 4`. Test name contains `replay` so profile `ci-pr` does not retry it. Expected time is the combat resolve, well under a second once the crate is built. This is the fast signal. It does not by itself prove macOS.
-2. **Three OS, inside `determinism-replay.yml`, one extra case.** Name: `gameplay_qa_aravath_slice`. Value: SHA-256 of the canonical hash trace of the successful scripted run (a passing run still writes the trace; the artifact file is for failures). Emit it the way #212 emits `combat_resolve`: a small JSON file merged into `replay-hash.json` before upload, duplicate case names are an error. The case joins the required set. It does not add a job, a runner, or a path filter. The Windows hash job is already the slow required replay (10.7 minutes on `7512c86a`, compile included). A Q32.32 resolve on top of the combat test #212 already runs is noise next to that compile.
+1. **Pull request, Linux, inside the weaving lib tests.** `replay_aravath_slice_scenario` loads the RON, checks Reach, and requires the scripted and goal traces to match. The name contains `replay`, so profile `ci-pr` does not retry it. This is the fast signal. It does not by itself prove macOS.
+2. **Three OS, inside `determinism-replay.yml`, one extra case.** Name: `gameplay_qa_aravath_slice`. Value: SHA-256 of the canonical hash trace of the successful scripted run. Emit it the way `combat_resolve` is emitted: `target/replay-hash-gameplay-qa.json` is merged into `replay-hash.json` before upload. Duplicate case names are an error. The required set also keeps `destruction`.
 3. **Nightly / `main`, not `pull_request`.** The scenario directory, the goal-bot twin, save/reload twins, and the minimizer when a predicate fails. Hang it on the same schedule as `integration-tests.yml` (push and 04:00 UTC), timeout 30 minutes, `retries = 0`. Three OS compare of those traces. This is where softlock windows of 600 ticks and quest scripts are allowed to live.
 
-Docs-only pulls, including this one, stay docs-only. Determinism on `main` keeps running the four current cases and does not look for `gameplay_qa_aravath_slice` until the implementation PR adds it. Adding the case to the required set before the test exists would fail every pull request.
+`replay_aravath_slice_scenario` writes `target/replay-hash-gameplay-qa.json`. The merge step appends that file next to the combat file. Core's replay test still emits `destruction`.
 
 The greybox workflow on #205 stays as it is. QA does not call `aravath_greybox`, does not fetch KayKit blobs, and does not take its 90 minute budget.
 
 ## First scenario
 
-File, when implementation is allowed: `astraweave-weaving/scenarios/aravath_slice_sword.ron`.
+Shipped file: `astraweave-weaving/scenarios/aravath_slice_sword.ron`. Seed `0xA11C_E5EE` (`ARAVATH_SLICE_SEED`).
 
-- Seed `0xA11C_E5EE`, the seed already in `run_aravath_slice`.
-- Scripted bot emits the two `HitEvent`s the function already pushes (`sword_light` id 1 at the cover, `weave_bolt` id 3 at the woven target) and the weave-decay command, in one tick, seq order 0 then 1.
-- `Reach` matches the unit test: sword hp 15, weave hp 25, cover not intact, cover damage at least 25.
-- `SaveReload` at that tick writes `combat_vitals` plus `DestructionWorld::state_hash` through the combat and destruction helpers, loads them into a new app with the same seed and table, and requires the twin hash. It does not call `SaveManager::save`, so `Uuid` and the clock stay out of the trace.
-- `SameSeqTwice` replays the sword hit with seq 0 a second time in that tick. The predicate fails if vitals or the destruction hash move. If today's resolver applies the hit twice, the run fails and the artifact is the finding. The design does not pre-decide a resolver change.
-- A goal-bot twin of the same file must finish on the same hash trace. A difference is `TerminalMismatch` with detail `goal_bot_diverged`, which means the policy is wrong. It is not a game defect until the scripted run also fails.
+- One scripted tick: sword hit id 1, weave hit id 3, then weave decay. `max_ticks` is 1.
+- `Reach`: sword hp 15, weave hp 25, cover not intact, cover damage at least 25.
+- The goal policy emits that same edge list. A difference writes `goal_bot_diverged`.
+- `examples/aravath_slice.rs` calls `load_bundled_scenario` and `run_scenario`.
 
-What this scenario does not claim: a softlock search, a quest, a dialogue, or a greybox fight. Those need a world that can fail to make progress. The slice cannot.
+`SaveReload` and `SameSeqTwice` are not in this file. What this scenario does not claim: a softlock search, a quest, a dialogue, a greybox fight, or a save round-trip. Those need a world the one-tick function does not return.
 
 ## Later scenarios (specified, not built)
 
@@ -301,8 +307,8 @@ Player-facing strings in those scenarios say Aravath, never the retired product 
 This pull request is the design. It does not merge as part of the work that wrote it.
 
 1. **#223 is already on `main`.** QA fits its tiers. Do not add a required job, and do not cancel `main` pushes.
-2. **#243 lands destruction**, including required case `destruction`, only after its workflow is rebased onto current `determinism-replay.yml`. The rebase keeps `gameplay_rng` and `fixed64`, keeps `cancel-in-progress` limited to `pull_request`, and keeps `rust-ci-setup`. #212's destruction crate is a copy waiting to be deleted when that happens.
-3. **#212 then keeps combat, `run_aravath_slice`, and `combat_resolve`**, and drops the vendored destruction crate. Head inspected: `5bc00302`. `astraweave-weaving/src/aravath.rs` matches #275 byte for byte. The branch name `cursor/combat-damage-design` is not on the remote; the pull ref is the source of truth.
+2. **#243 and #212 are on `main`.** `destruction` and `combat_resolve` stay required. This rebase keeps both and adds `gameplay_qa_aravath_slice`.
+3. **#290 is on `main`.** It does not own the slice replay case.
 4. **Scenario 1 is implemented on top of that main-line slice**, in a new branch, still not merged from this design. It adds `gameplay_qa_aravath_slice` to the required set in the same commit as the test that emits it.
 5. **#205 stays the greybox.** #275 should shrink to the `Combat::tick` call site once #212 and #243 own the crates on `main`. Until then, #275 vendors those crates onto #205 and will conflict with both. Do not start the QA runner on #275 and on #212 at once.
 6. **#244, #263, and #264** sit on #205 and change traversal, bridge collapse, and the local field. Greybox goal bots wait until that stack is quiet. A hash recorded against a moving motor is not a regression test.
@@ -322,12 +328,12 @@ These block a claim that "gameplay replay" is already cross-OS. They are not fix
 | Greybox checkpoint omits enemies, motor mode, attack phase, lock, tick, and `cover_broken` | PR #275 / #205 | `greybox_combat_save` is expected to fail until the checkpoint stores those fields. Implement the fields with the scenario, or accept the deferred issue and skip the check |
 | `auto_save_system` is empty and `replay_system` does not apply events | `astraweave-persistence-ecs` | QA does not call `PersistencePlugin` |
 | `astraweave-quests` stamps `Utc::now()` and `Instant::now()` | quests trace, crate `astraweave-quests` | Quest scenarios use `astraweave-weaving::QuestManager` and tick counts. The LLM quest layer stays out of the hashed sim until its clocks are tick fields |
-| #243's workflow head drops `gameplay_rng` and sets `cancel-in-progress: true` unconditionally | PR #243 | Rebase the workflow as in the merge order before that PR lands. Do not take its required-set as the new baseline |
+| The audio rapid-volume test shared `tests/assets` with cleanup | this branch, same fix as #289 | The beep is written in a private temp directory |
 | Two dialogue graphs (crate runner and editor panel) and two quest crates | quests trace | Bots bind the crate types named above. No third graph and no third quest type |
 
 ## Non-goals
 
-- Implementing the runner, the RON loader, the workflow case, or a bot in this pull request.
+- Splitting `run_aravath_slice` into a tick loop. Scenario 1 calls it once.
 - A learned or fuzzing exploit hunter.
 - Driving the legacy slice game loop, the editor play mode, or the net headless example.
 - Replacing `recorded_script` or moving the golden hash.

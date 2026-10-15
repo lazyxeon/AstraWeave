@@ -335,27 +335,24 @@ n0 = "tests/assets/override_test/NONEXISTENT.wav"
 #[serial]
 fn test_rapid_master_volume_changes() -> Result<()> {
     let mut engine = AudioEngine::new()?;
+    // Private directory. A shared `tests/assets` path races with
+    // `cleanup_test_assets`, which deletes that tree from another test.
+    let dir = tempfile::tempdir()?;
+    let wav = dir.path().join("rapid.wav");
+    let wav_str = wav
+        .to_str()
+        .ok_or_else(|| anyhow::anyhow!("temp wav path is not utf-8"))?;
 
-    test_asset_generator::generate_test_beep(
-        "tests/assets/test_beep_rapid.wav",
-        440.0,
-        1.0,
-        22050,
-    )?;
+    test_asset_generator::generate_test_beep(wav_str, 440.0, 1.0, 22050)?;
 
-    // Play a long sound
-    engine.play_sfx_file("tests/assets/test_beep_rapid.wav")?;
+    engine.play_sfx_file(wav_str)?;
 
-    // Rapidly change master volume
     for i in 0..20 {
         let volume = (i as f32 / 20.0).clamp(0.0, 1.0);
         engine.set_master_volume(volume);
         engine.tick(0.02);
         thread::sleep(Duration::from_millis(10));
     }
-
-    // Cleanup
-    fs::remove_file("tests/assets/test_beep_rapid.wav")?;
 
     Ok(())
 }
