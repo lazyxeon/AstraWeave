@@ -11,6 +11,8 @@ Approved answers:
 3. Tests use `FlatColumnBase`. The #215 adapter waits until that PR merges (issue #249).
 4. `astraweave-core`'s replay test dev-depends on this crate.
 
+Core directives from 2026-10-15 are folded in as section 15. Where section 2 still describes `Fixed64` as living only on PR #212, that sentence is historical: the type is in `astraweave-math` (PR #245), and this crate does not depend on combat.
+
 ---
 
 ## 1. Decision
@@ -482,9 +484,36 @@ Known limitations to keep in the PR until they are done: Rapier is not in the ha
 
 ---
 
+## 15. Core directives (2026-10-15)
+
+These constraints sit on top of the approved design. Simulation results stay bit-identical across operating systems.
+
+### Spatial partition
+
+Edited chunks live in a sparse voxel DAG (`VoxelDag` in `octree.rs`). Identical leaves and identical branches share a node. A brush or weave rebuilds that chunk from the integer density slab. Cells with no edit answer from `TerrainBase::column_top`. Today that base is `FlatColumnBase`. When #215 merges, the same trait calls `surface_height` (issue #249). The DAG does not replace the column generator.
+
+### Queries off the sim thread
+
+`QueryPool` starts two workers when the world is created. A tick publishes a DAG image and a fixed list of points. Each worker claims an index, walks the image, and writes that slot. The main thread reads the slots in index order. The walk does not take a lock; the publish barrier is the only wait, and it is quiet while the walk runs. Thread count does not change the merged bytes. Those bytes are in the world hash, and `parallel_queries_match_the_dag_walk` checks them against a direct walk.
+
+GPU compute is not on the simulation path. An integer GPU solve would need its own three-OS replay proof before it could write simulation state. Until then, GPU work stays on meshes, particles, and other derived data.
+
+The 8-iteration load push stays on the sim thread. Inside one structure the push order is the result. Independent structures can later be separate jobs with the same merge rule. The node cap is what keeps a collapse inside the tick.
+
+### No heap and no lock contention on the tick
+
+Brush edits, the DAG, notices, and the per-tick command batch sit in buffers reserved when the world is created. Graph scratch for the load push is reserved in `Graph::new`. Workers are not spawned from `tick`. The job body does not take a lock.
+
+### Persistence
+
+`SpawnNode` and `SpawnBond` are commands, so the gate is in the log rather than only in the constructor. `persist_bytes` writes the seed, the tick, and every command. `restore` builds an empty world and replays the log up to that tick. `command_log_restores_the_gate_and_the_crater` checks the hash, the crater, and the fallen lintel.
+
+### Weaving and navigation hooks
+
+`enqueue_weave` records a `Weave` command: an integer density delta and a `Fixed64` decay inside a radius. Decay adds bond damage. The command is replayed with the rest of the log. Weaving calls this hook; destruction does not depend on the weaving crate.
+
+`GeometryNotice` records an integer box and a reason (brush, collapse, weave). `drain_geometry_notices` hands them to navigation in record order. Destruction does not depend on the nav crate, which is `f32`. Navigation reads the notices and rebuilds its own graph outside the hashed tick.
+
 ## 14. Review questions
 
-1. Is the `Fixed64` home `astraweave-math` (preferred) or a dependency on `astraweave-combat` until #212 moves it?
-2. Is Tier B's fixed 8-iteration load push enough for the first demo, with a direct solve deferred?
-3. Should the #215 adapter wait until that PR merges, with `FlatColumnBase` covering tests meanwhile?
-4. Is the dev-dependency from `astraweave-core`'s replay test onto `astraweave-destruction` acceptable, or should the workflow invoke a second test binary that appends the same JSON?
+Answered at the top of this document. `Fixed64` is in `astraweave-math`. The load push stays at 8 iterations. `FlatColumnBase` remains until #215 (issue #249). The core replay test dev-depends on this crate.

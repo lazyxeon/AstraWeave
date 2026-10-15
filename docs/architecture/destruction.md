@@ -9,7 +9,7 @@ lifecycle_status: active
 integration_status: wired
 summary: "Ordered destruction commands, an 8-iteration load push, and a 300-tick replay case."
 owns: [astraweave-destruction]
-doc_version: "1.0"
+doc_version: "1.1"
 last_verified_commit: 9ad8001a
 runtime_edges:
   - to: astraweave-core
@@ -26,7 +26,7 @@ runtime_edges:
 |---|---|
 | **System name** | Deterministic destruction |
 | **Primary crates** | `astraweave-destruction` |
-| **Document version** | 1.0 |
+| **Document version** | 1.1 |
 | **Last verified against commit** | `9ad8001a` |
 | **Last verified date** | 2026-10-15 |
 | **Status** | Active. Headless showcase and the required replay case. The Aravath runtime on PR #205 is not on this branch. |
@@ -104,7 +104,9 @@ Floats do not enter this pipeline. Rapier is not called.
 | `astraweave-destruction/src/command.rs` | Command types, validation, canonical bytes | Active | Serde on the command types |
 | `astraweave-destruction/src/graph.rs` | Nodes, bonds, Tier A, Tier B, climb flags | Active | `Vec` sorted by id. No `HashMap` |
 | `astraweave-destruction/src/fracture.rs` | Planar cut, seeded Voronoi, `bake_gate` | Active | Bake bytes are the manifest input |
-| `astraweave-destruction/src/terrain.rs` | Flat columns, brush log, unload/reload | Active | `i32` height, `i8` density |
+| `astraweave-destruction/src/terrain.rs` | Fixed-capacity brush slab, unload/reload | Active | `i32` height, `i8` density. No map alloc on apply |
+| `astraweave-destruction/src/octree.rs` | Sparse voxel DAG for an edited chunk | Active | Shared leaves and branches. Base column fills unedited cells |
+| `astraweave-destruction/src/jobs.rs` | Two query workers, ordered slot merge | Active | Started in `QueryPool::new`. GPU is not a sim writer |
 | `astraweave-destruction/src/debris.rs` | 256-slot pool, sleep, eviction | Active | Array, no steady-state alloc |
 | `astraweave-destruction/src/rng.rs` | `destruction_rng` | Active | One `SimRng::new` per call |
 | `astraweave-destruction/benches/destruction.rs` | graph, fracture, brush, debris | Active | Not a pull-request check |
@@ -158,6 +160,8 @@ Floats do not enter this pipeline. Rapier is not called.
 | 6 | `ANTI_CLIMB` wins over `CLIMBABLE` | Yes | `allows_climb` |
 | 7 | Sim sources contain no `f32`, `f64`, `HashMap`, `Instant`, or `thread_rng` | Yes | `tests/source_scan.rs` |
 | 8 | `demolition_bytes` is stable and is a required replay case | Yes | `determinism-replay.yml` |
+| 9 | Restoring `persist_bytes` matches the live hash | Yes | `command_log_restores_the_gate_and_the_crater` |
+| 10 | Parallel occupancy queries match a direct DAG walk | Yes | `parallel_queries_match_the_dag_walk` |
 
 ---
 
@@ -191,3 +195,4 @@ Update this trace when the command set, the stress iteration count, the pool siz
 | Version | Date | Notes |
 |---|---|---|
 | 1.0 | 2026-10-15 | Initial trace for the crate, the replay case, and the headless Aravath showcase |
+| 1.1 | 2026-10-15 | Sparse voxel DAG, ordered query jobs, command-log persistence, weave and navigation notices |

@@ -51,16 +51,31 @@ pub struct Graph {
     pub dirty: bool,
     next_node: u64,
     next_bond: u64,
+    /// Scratch reserved at creation so a tick does not allocate.
+    bond_load: Vec<Fixed64>,
+    relieved: Vec<bool>,
+    seen: Vec<bool>,
+    stack: Vec<usize>,
+    members: Vec<usize>,
+    incident: Vec<usize>,
+    broken: Vec<u64>,
 }
 
 impl Graph {
     pub fn new() -> Self {
         Self {
-            nodes: Vec::new(),
-            bonds: Vec::new(),
+            nodes: Vec::with_capacity(64),
+            bonds: Vec::with_capacity(64),
             dirty: false,
             next_node: 1,
             next_bond: 1,
+            bond_load: vec![Fixed64::ZERO; 1024],
+            relieved: vec![false; 1024],
+            seen: vec![false; 1024],
+            stack: Vec::with_capacity(1024),
+            members: Vec::with_capacity(1024),
+            incident: Vec::with_capacity(32),
+            broken: Vec::with_capacity(64),
         }
     }
 
@@ -153,27 +168,32 @@ impl Graph {
     }
 
     /// Bonds whose pushed load exceeds remaining strength after `iters` passes.
-    pub fn overloaded_bonds(&self, iters: u32, max_nodes: usize) -> Vec<u64> {
-        let count = self.nodes.len().min(max_nodes);
-        let mut bond_load = vec![Fixed64::ZERO; self.bonds.len()];
-        let mut relieved = vec![false; self.nodes.len()];
+    pub fn overloaded_bonds(&mut self, iters: u32, max_nodes: usize) {
+        let count = self.nodes.len().min(max_nodes).min(self.relieved.len());
+        for value in &mut self.bond_load {
+            *value = Fixed64::ZERO;
+        }
+        for value in &mut self.relieved {
+            *value = false;
+        }
+        let bond_limit = self.bonds.len().min(self.bond_load.len());
         for (index, node) in self.nodes.iter().enumerate() {
-            if node.flags.contains(PieceFlags::ANCHOR) {
-                relieved[index] = true;
+            if index < self.relieved.len() && node.flags.contains(PieceFlags::ANCHOR) {
+                self.relieved[index] = true;
             }
         }
         for _ in 0..iters {
-            let receivers = relieved.clone();
-            // Several parallel arrays are indexed together.
-            #[allow(clippy::needless_range_loop)]
             for index in 0..count {
-                if relieved[index] {
+                self.seen[index] = self.relieved[index];
+            }
+            for index in 0..count {
+                if self.relieved[index] {
                     continue;
                 }
                 let node_id = self.nodes[index].id;
-                let mut incident = Vec::new();
+                self.incident.clear();
                 for (bond_index, bond) in self.bonds.iter().enumerate() {
-                    if !bond.intact {
+                    if bond_index >= bond_limit || !bond.intact {
                         continue;
                     }
                     let other = if bond.a == node_id {
@@ -187,21 +207,22 @@ impl Graph {
                     else {
                         continue;
                     };
-                    if receivers[other_index] {
-                        incident.push(bond_index);
+                    if other_index < count && self.seen[other_index] {
+                        self.incident.push(bond_index);
                     }
                 }
-                if incident.is_empty() {
+                if self.incident.is_empty() {
                     continue;
                 }
-                incident.sort_by_key(|bond_index| self.bonds[*bond_index].id);
-                let total_area = incident.iter().fold(Fixed64::ZERO, |sum, bond_index| {
+                self.incident
+                    .sort_by_key(|bond_index| self.bonds[*bond_index].id);
+                let total_area = self.incident.iter().fold(Fixed64::ZERO, |sum, bond_index| {
                     sum.saturating_add(self.bonds[*bond_index].area)
                 });
                 let carried = self.nodes[index].mass;
                 let mut remaining = carried;
-                let last = incident.len() - 1;
-                for (nth, bond_index) in incident.iter().copied().enumerate() {
+                let last = self.incident.len() - 1;
+                for (nth, bond_index) in self.incident.iter().copied().enumerate() {
                     let given = if nth == last {
                         remaining
                     } else {
@@ -209,28 +230,33 @@ impl Graph {
                         remaining = remaining.saturating_sub(portion);
                         portion
                     };
-                    bond_load[bond_index] = bond_load[bond_index].saturating_add(given);
+                    self.bond_load[bond_index] = self.bond_load[bond_index].saturating_add(given);
                 }
-                relieved[index] = true;
+                self.relieved[index] = true;
             }
         }
-        let mut broken = Vec::new();
+        self.broken.clear();
         for (bond_index, bond) in self.bonds.iter().enumerate() {
-            if !bond.intact {
+            if bond_index >= bond_limit || !bond.intact {
                 continue;
             }
             let remain = bond.strength.saturating_sub(bond.damage);
-            if bond_load[bond_index] > remain {
-                broken.push(bond.id);
+            if self.bond_load[bond_index] > remain {
+                self.broken.push(bond.id);
             }
         }
-        broken.sort_unstable();
-        broken
+        self.broken.sort_unstable();
+    }
+
+    pub fn broken_ids(&self) -> &[u64] {
+        &self.broken
     }
 
     pub fn solve(&mut self) {
-        let broken = self.overloaded_bonds(STRESS_ITERS, MAX_NODES_PER_TICK);
-        for bond_id in broken {
+        self.overloaded_bonds(STRESS_ITERS, MAX_NODES_PER_TICK);
+        let broken = self.broken.len();
+        for index in 0..broken {
+            let bond_id = self.broken[index];
             self.detach(bond_id);
         }
         self.assign_islands();
@@ -238,21 +264,23 @@ impl Graph {
     }
 
     pub fn assign_islands(&mut self) {
-        let mut seen = vec![false; self.nodes.len()];
-        let mut order: Vec<usize> = (0..self.nodes.len()).collect();
-        order.sort_by_key(|index| self.nodes[*index].id);
-        for start in order {
-            if seen[start] {
+        let count = self.nodes.len().min(self.seen.len());
+        for index in 0..count {
+            self.seen[index] = false;
+        }
+        for start in 0..count {
+            if self.seen[start] {
                 continue;
             }
-            let mut stack = vec![start];
-            seen[start] = true;
-            let mut members = Vec::new();
-            while let Some(index) = stack.pop() {
-                members.push(index);
+            self.stack.clear();
+            self.members.clear();
+            self.stack.push(start);
+            self.seen[start] = true;
+            while let Some(index) = self.stack.pop() {
+                self.members.push(index);
                 let node_id = self.nodes[index].id;
-                let mut neighbors = Vec::new();
-                for bond in &self.bonds {
+                self.incident.clear();
+                for (bond_index, bond) in self.bonds.iter().enumerate() {
                     if !bond.intact {
                         continue;
                     }
@@ -263,33 +291,44 @@ impl Graph {
                     } else {
                         None
                     };
-                    if let Some(other) = other {
-                        if let Some(other_index) =
-                            self.nodes.iter().position(|node| node.id == other)
-                        {
-                            neighbors.push((bond.id, other_index));
-                        }
+                    if other.is_some() {
+                        self.incident.push(bond_index);
                     }
                 }
-                neighbors.sort_by_key(|(bond_id, _)| *bond_id);
-                for (_, other_index) in neighbors {
-                    if !seen[other_index] {
-                        seen[other_index] = true;
-                        stack.push(other_index);
+                self.incident
+                    .sort_by_key(|bond_index| self.bonds[*bond_index].id);
+                let links = self.incident.len();
+                for link in 0..links {
+                    let bond = &self.bonds[self.incident[link]];
+                    let other = if bond.a == node_id { bond.b } else { bond.a };
+                    let Some(other_index) = self.nodes.iter().position(|node| node.id == other)
+                    else {
+                        continue;
+                    };
+                    if other_index < count && !self.seen[other_index] {
+                        self.seen[other_index] = true;
+                        self.stack.push(other_index);
                     }
                 }
             }
-            let supported = members
+            if self.members.is_empty() {
+                continue;
+            }
+            let supported = self
+                .members
                 .iter()
                 .any(|index| self.nodes[*index].flags.contains(PieceFlags::ANCHOR));
-            let lowest = members
+            let lowest = self
+                .members
                 .iter()
                 .map(|index| self.nodes[*index].id)
                 .min()
                 .unwrap_or(0);
-            let structure = self.nodes[members[0]].structure;
+            let structure = self.nodes[self.members[0]].structure;
             let island = mix_sim_seed(structure, lowest, SIM_SYSTEM_DESTRUCTION);
-            for index in members {
+            let member_count = self.members.len();
+            for member in 0..member_count {
+                let index = self.members[member];
                 self.nodes[index].island = island;
                 if supported || self.nodes[index].flags.contains(PieceFlags::ANTI_DESTROY) {
                     self.nodes[index].flags.remove(PieceFlags::DYNAMIC);
@@ -392,11 +431,12 @@ mod tests {
 
     #[test]
     fn intact_gate_holds_and_matches_a_long_solve() {
-        let graph = gate();
-        let short = graph.overloaded_bonds(STRESS_ITERS, MAX_NODES_PER_TICK);
-        let long = graph.overloaded_bonds(64, MAX_NODES_PER_TICK);
+        let mut graph = gate();
+        graph.overloaded_bonds(STRESS_ITERS, MAX_NODES_PER_TICK);
+        let short = graph.broken_ids().to_vec();
+        graph.overloaded_bonds(64, MAX_NODES_PER_TICK);
         assert!(short.is_empty());
-        assert_eq!(short, long);
+        assert_eq!(short, graph.broken_ids());
     }
 
     #[test]
@@ -404,10 +444,11 @@ mod tests {
         let mut graph = gate();
         graph.add_damage(1, Fixed64::from_int(80));
         graph.add_damage(2, Fixed64::from_int(80));
-        let short = graph.overloaded_bonds(STRESS_ITERS, MAX_NODES_PER_TICK);
-        let long = graph.overloaded_bonds(64, MAX_NODES_PER_TICK);
+        graph.overloaded_bonds(STRESS_ITERS, MAX_NODES_PER_TICK);
+        let short = graph.broken_ids().to_vec();
+        graph.overloaded_bonds(64, MAX_NODES_PER_TICK);
         assert_eq!(short, vec![1, 2]);
-        assert_eq!(short, long);
+        assert_eq!(short, graph.broken_ids());
     }
 
     #[test]
@@ -480,8 +521,9 @@ mod tests {
                 Fixed64::from_int(1),
             );
         }
-        let short = graph.overloaded_bonds(STRESS_ITERS, MAX_NODES_PER_TICK);
-        let long = graph.overloaded_bonds(64, MAX_NODES_PER_TICK);
-        assert!(short.len() < long.len());
+        graph.overloaded_bonds(STRESS_ITERS, MAX_NODES_PER_TICK);
+        let short = graph.broken_ids().len();
+        graph.overloaded_bonds(64, MAX_NODES_PER_TICK);
+        assert!(short < graph.broken_ids().len());
     }
 }

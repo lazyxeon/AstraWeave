@@ -20,6 +20,11 @@ pub enum CommandKind {
     Brush(Brush),
     Detach(Detach),
     Anchor(Anchor),
+    /// Authored chunk. Replayed from the log so a structure can be restored.
+    SpawnNode(SpawnNode),
+    SpawnBond(SpawnBond),
+    /// Weaving modifier: density shift plus structural decay inside a radius.
+    Weave(Weave),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -70,6 +75,32 @@ pub struct Anchor {
     pub anchored: bool,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SpawnNode {
+    pub structure: u64,
+    pub mass: Fixed64,
+    pub pos: [Fixed64; 3],
+    pub half: [Fixed64; 3],
+    pub flags: u32,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SpawnBond {
+    pub a: u64,
+    pub b: u64,
+    pub strength: Fixed64,
+    pub area: Fixed64,
+}
+
+/// Programmable world modifier. Density is an integer step. Decay is bond damage.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Weave {
+    pub origin: [i32; 3],
+    pub radius: u16,
+    pub density_delta: i8,
+    pub decay: Fixed64,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CommandError {
     ZeroExtent,
@@ -83,6 +114,7 @@ pub fn validate(cmd: &DestructionCommand) -> Result<(), CommandError> {
         CommandKind::Explosion(explosion) if explosion.radius.raw() <= 0 => {
             Err(CommandError::ZeroExtent)
         }
+        CommandKind::Weave(weave) if weave.radius == 0 => Err(CommandError::ZeroExtent),
         _ => Ok(()),
     }
 }
@@ -166,6 +198,30 @@ pub fn push_command(out: &mut Vec<u8>, cmd: &DestructionCommand) {
             out.push(5);
             out.extend_from_slice(&anchor.node_id.to_le_bytes());
             out.push(u8::from(anchor.anchored));
+        }
+        CommandKind::SpawnNode(node) => {
+            out.push(6);
+            out.extend_from_slice(&node.structure.to_le_bytes());
+            push_fixed(out, node.mass);
+            push_fixed3(out, node.pos);
+            push_fixed3(out, node.half);
+            out.extend_from_slice(&node.flags.to_le_bytes());
+        }
+        CommandKind::SpawnBond(bond) => {
+            out.push(7);
+            out.extend_from_slice(&bond.a.to_le_bytes());
+            out.extend_from_slice(&bond.b.to_le_bytes());
+            push_fixed(out, bond.strength);
+            push_fixed(out, bond.area);
+        }
+        CommandKind::Weave(weave) => {
+            out.push(8);
+            for value in weave.origin {
+                out.extend_from_slice(&value.to_le_bytes());
+            }
+            out.extend_from_slice(&weave.radius.to_le_bytes());
+            out.extend_from_slice(&weave.density_delta.to_le_bytes());
+            push_fixed(out, weave.decay);
         }
     }
 }

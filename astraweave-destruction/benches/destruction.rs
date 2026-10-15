@@ -40,9 +40,12 @@ fn chain(nodes: u64) -> Graph {
 fn graph_solve(c: &mut Criterion) {
     let mut group = c.benchmark_group("graph_solve");
     for nodes in [64u64, 256, 1024] {
-        let graph = chain(nodes);
+        let mut graph = chain(nodes);
         group.bench_function(nodes.to_string(), |b| {
-            b.iter(|| black_box(graph.overloaded_bonds(STRESS_ITERS, nodes as usize)));
+            b.iter(|| {
+                graph.overloaded_bonds(STRESS_ITERS, nodes as usize);
+                black_box(graph.broken_ids().len());
+            });
         });
     }
     group.finish();
