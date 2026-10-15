@@ -4,7 +4,6 @@ KayKit files are a CC0 subset. Credit: Kay Lousberg, www.kaylousberg.com.
 
 | File | Source | License |
 | --- | --- | --- |
-| `rock_wall_02_diff_1k.jpg` | Poly Haven, “Rock Wall 02” diffuse, 1k JPG. https://polyhaven.com/a/rock_wall_02 | CC0 |
 | `textures/grass_diff_1k.jpg` | Poly Haven, “Aerial Grass Rock” diffuse, 1k JPG. https://polyhaven.com/a/aerial_grass_rock | CC0 |
 | `textures/dirt_diff_1k.jpg` | Poly Haven, “Brown Mud 03” diffuse, 1k JPG. https://polyhaven.com/a/brown_mud_03 | CC0 |
 | `textures/stone_diff_1k.jpg` | Poly Haven, “Rock Face” diffuse, 1k JPG. https://polyhaven.com/a/rock_face | CC0 |
