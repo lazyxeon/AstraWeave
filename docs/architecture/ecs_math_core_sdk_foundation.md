@@ -329,7 +329,7 @@ There are several distinct flows through this layer. The first is the canonical 
 
 | File | Role | Status | Notes |
 |---|---|---|---|
-| `astraweave-sdk/src/lib.rs` | C ABI: `aw_version`, `aw_version_string`, `aw_world_create/destroy/tick`, `aw_world_set_snapshot_callback`, `aw_world_set_delta_callback`, `aw_world_snapshot_json`, `aw_world_submit_intent_json`, `aw_last_error_string`. Plus `Version`, `AWVersion`, `SdkError`, `GameAdapter` Rust-side types | Active | All entry points either `extern "C"` or `unsafe extern "C"` with documented SAFETY contracts (`lib.rs:27-32, 106-109, 169-172, 191-198, 229-232, 376-381`) |
+| `astraweave-sdk/src/lib.rs` | C ABI: `aw_version`, `aw_version_string`, `aw_world_create/destroy/tick`, `aw_world_set_snapshot_callback`, `aw_world_set_delta_callback`, `aw_world_snapshot_json`, `aw_world_submit_intent_json`, `aw_last_error_string` (per-thread slot). Plus `Version`, `AWVersion`, `SdkError`, `GameAdapter` Rust-side types | Active | All entry points either `extern "C"` or `unsafe extern "C"` with documented SAFETY contracts (`lib.rs` module header and each `unsafe extern "C"` block) |
 | `astraweave-sdk/src/lib_kani.rs` | Kani proofs for FFI safety (null pointer, buffer overflow) | Active (kani gate) | `#[cfg(kani)]` (`lib.rs:46-47`) |
 | `astraweave-sdk/tests/mutation_resistant_comprehensive_tests.rs` | Integration test file | Active | Only test file for this crate |
 | `astraweave-sdk/benches/{sdk_benchmarks,sdk_adversarial}.rs` | Bench harnesses | Active | |
@@ -437,6 +437,14 @@ There are several distinct flows through this layer. The first is the canonical 
 - **Alternatives considered:** AVX2 (Intel Haswell+ 2013 / AMD Excavator+ 2015) was evaluated for theoretical 8× speedup but rejected in favour of broader baseline compatibility — see `WEEK_8_DAY_3_SIMD_MOVEMENT_PLAN.md:32-41` for the SIMD-architecture trade-off discussion. CLAUDE.md item 5 in "Key Lessons" captures the post-hoc principle: "Trust glam auto-vectorization (80-85% of hand-written AVX2)". Manual AVX2 intrinsics were not adopted; SSE2 plus glam-fallback was retained.
 - **Consequences:** Portable across x86_64/ARM/other with predictable performance. `debug_assert!(a.is_finite(), …)` checks NaN/Inf inputs in debug builds (e.g. `simd_vec.rs:62-63`). All SIMD entry points are `unsafe` from the intrinsics perspective; SAFETY comments at each call site cite the cfg-gate target-feature guarantee (e.g. `simd_vec.rs:64-69`).
 
+### Decision: SDK last-error is per calling thread
+- **Date:** 2026-10-15
+- **Status:** Accepted
+- **Context:** `Toolchain Validation (stable)` on Ubuntu failed `last_error_is_set_on_intent_parse_error` with `n > 1` after `aw_world_submit_intent_json` had already returned `AW_ERR_PARSE`. `LAST_ERROR` was one `OnceLock<Mutex<String>>` for the process. Lib tests run in parallel, and a sibling test's `set_last_error("")` replaced the parse message before the asserting thread read it. The same slot would drop a message when two C threads submit at once.
+- **Decision:** Store the message in a `thread_local` `RefCell<String>`. `aw_last_error_string` reads the calling thread's slot. Single-threaded hosts see the same string they set.
+- **Alternatives considered:** A test-only mutex would hide the race from CI and leave a multi-threaded host clobbering the message. Keeping the process-global slot and running SDK tests with `--test-threads=1` would do the same.
+- **Consequences:** A host must read the error on the thread that submitted. Simulation and replay outputs are unchanged; this slot is not world state.
+
 ### Decision: C ABI as the embedding interface
 - **Date:** Date of original introduction not recovered. The SDK's MVP completion is documented in `docs/journey/weeks/PHASE_0_WEEK_2_COMPLETE.md:201-214` (Phase 0 Week 2: "Crate 6: astraweave-sdk (C ABI Exports)"). Subsequent hardening: `a8ff30337`, `080121891`, `92899b0c4` added mutation-killing tests for delta change/removal detection and destroy.
 - **Status:** Accepted (in active code)
@@ -468,6 +476,7 @@ There are several distinct flows through this layer. The first is the canonical 
 | 14 | Perception queries that feed a snapshot are ordered. `all_of_team`, `enemies_of`, and `entities` sort by entity id. Obstacle snapshots sort by `(x, y)`. The replay hash does not re-sort those lists | Yes | `world.rs` `sorted_entities` / `sorted_obstacles`; `perception.rs` `assemble_snapshot`. `astraweave-core/tests/perception_order.rs` builds two worlds and compares enemy ids, the first-enemy plan, and SHA-256 |
 | 15 | `Fixed64` is Q32.32 (`SCALE = 1 << 32`). `from_ratio` truncates toward zero and yields zero when `den == 0`. `mul_ratio` uses `div_euclid`. Mul and the saturating add/sub clamp to `i64`. The sim path has no float conversion | Yes | `astraweave-math/src/fixed64.rs`. `fixed64_contract_bytes` is hashed as the required `fixed64` case in `determinism-replay.yml` |
 | 16 | `build_app` installs sim extensions recorded with `register_sim_extension` before `sys_sim`, and records each function pointer once. With no registration, `build_app` is the legacy bridge only | Yes | `astraweave-scripting` test `mod_loaded_through_build_app_replays_identically` |
+| 17 | `aw_last_error_string` returns the message set by the calling thread. Another thread's `set_last_error` does not replace it. A single-threaded host still sees the message from its own last `aw_world_submit_intent_json` | Yes | `LAST_ERROR` is `thread_local`. `last_error_is_set_on_intent_parse_error` and `last_error_survives_another_thread_clearing_its_own_slot` |
 
 ---
 
@@ -493,7 +502,7 @@ There are several distinct flows through this layer. The first is the canonical 
 - **`astraweave_core::World`**: Used as a Resource inside `astraweave_ecs::World` when `ecs_adapter::build_app` is used. Otherwise constructed standalone (e.g. by SDK or examples).
 - **`EntityBridge`**: Resource inside ECS World; populated by `build_app`. Lifetime = App lifetime.
 - **`AWWorld`**: Heap-allocated `Box<AwWorldWrap>` owned by the C host. Lifetime is host-managed; `aw_world_destroy` is the single deallocation point (`astraweave-sdk/src/lib.rs:163-173`).
-- **`LAST_ERROR`**: Global `OnceLock<Mutex<String>>` for SDK error messages (`astraweave-sdk/src/lib.rs:357`).
+- **`LAST_ERROR`**: Per-calling-thread `thread_local` `RefCell<String>` for SDK error messages (`astraweave-sdk/src/lib.rs`). A process-global slot was racy under `cargo test`'s parallel threads and under a multi-threaded C host.
 
 ---
 
@@ -544,6 +553,13 @@ There are several distinct flows through this layer. The first is the canonical 
 ---
 
 ## 12. Maintenance Notes
+
+**Revision history:**
+
+| Version | Date | Change |
+|---|---|---|
+| 1.5 | 2026-10-15 | `aw_last_error_string` is per calling thread (invariant 17). The process-global slot raced under parallel lib tests. |
+| 1.4 | 2026-05-10 | Deep-investigation pass recorded in the metadata owner notes. |
 
 **Update this doc when:**
 - A new module is added to any of the four crates, or an existing module's role changes
