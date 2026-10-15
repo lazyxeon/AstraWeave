@@ -12,6 +12,7 @@ toml = { workspace = true }
 tracing = { workspace = true }
 
 astraweave-core = { path = "../astraweave-core" }
+astraweave-scripting = { path = "../astraweave-scripting" }
 astraweave-ecs = { path = "../astraweave-ecs" }
 astraweave-behavior = { path = "../astraweave-behavior" }
 astraweave-ai = { path = "../astraweave-ai", optional = true, features = ["veilweaver_slice"] }

@@ -90,6 +90,7 @@ astraweave-quests = { path = "../../astraweave-quests" }
 astraweave-nav = { path = "../../astraweave-nav" }
 astraweave-observability = { path = "../../astraweave-observability" }
 astraweave-physics = { path = "../../astraweave-physics" }
+astraweave-scripting = { path = "../../astraweave-scripting" }
 astraweave-security = { path = "../../astraweave-security" }
 astraweave-terrain = { path = "../../astraweave-terrain" }
 clap = { version = "4", features = ["derive"] }

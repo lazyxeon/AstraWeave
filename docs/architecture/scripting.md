@@ -6,14 +6,16 @@ description: "Sandboxed Rhai gameplay scripts, the mod loader, and tick-boundary
 primary_crate: astraweave-scripting
 domain: gameplay
 lifecycle_status: active
-integration_status: partial
-summary: "Gameplay and mod scripts run on the security sandbox. Author scripts and editor .rhai reload call the same loader. Native plugin template is not a runtime."
+integration_status: wired
+summary: "Gameplay and mod scripts run on the security sandbox. build_app installs ModScriptPlugin after register_mod_runtime, so the editor and game tick mods on the logged sandbox path. Native plugin template is not a runtime."
 owns: [astraweave-scripting, astraweave-author]
-doc_version: "1.0"
+doc_version: "1.1"
 last_verified_commit: 85d09a2c
 runtime_edges:
   - to: astraweave-security
     note: "ScriptEngineResource and mod_script_system call sandbox::SandboxEngine / execute_deterministic"
+  - to: astraweave-core
+    note: "register_mod_runtime records ModScriptPlugin; build_app installs it before the legacy sim systems"
 ---
 
 # Architecture Trace: Scripting and mod API
@@ -24,10 +26,10 @@ runtime_edges:
 |---|---|
 | **System name** | Scripting and mod API |
 | **Primary crates** | `astraweave-scripting`, `astraweave-author` |
-| **Document version** | 1.0 |
+| **Document version** | 1.1 |
 | **Last verified against commit** | `85d09a2c` |
 | **Last verified date** | 2026-10-14 |
-| **Status** | Active for the sandboxed Rhai path. Examples still exercise `ScriptingPlugin`. The editor stages `.rhai` but does not feed `CScript` entities. |
+| **Status** | Active for the sandboxed Rhai path. `register_mod_runtime` plus `build_app` is how the editor, Veilweaver runtime, and `hello_companion` run mods. Examples still exercise `ScriptingPlugin`. The editor does not feed `CScript` entities. |
 | **Owner notes** | WS-MOD. One sandbox implementation lives in `astraweave-security::sandbox`. This trace is the caller side. |
 
 ---
@@ -105,7 +107,7 @@ Mods need a single sandboxed command set whose results are sim inputs. A second 
 |---|---|---|
 | `examples/rhai_authoring` | `run_author_script` | Example. Path must stay under the working directory. |
 | `ScriptingPlugin` | `script_system` | Gameplay `CScript` tick. Engine is the gameplay sandbox plus `register_api`. |
-| `ModScriptPlugin` | `mod_script_system` | Integer agent sim. Replay case `scripted_system`. |
+| `ModScriptPlugin` | `mod_script_system` | Integer agent sim. Replay case `scripted_system`. Installed by `build_app` after `register_mod_runtime`. |
 | `aw_editor` `main.rs` | `RhaiHotReload` | Stages `.rhai` and applies before `runtime.tick`. |
 | `tools/aw_plugin_template` | README | Non-runtime scaffold. Not a loadable mod. |
 
@@ -119,7 +121,7 @@ Mods need a single sandboxed command set whose results are sim inputs. A second 
 | `astraweave-scripting/src/lib.rs` | `CScript`, `script_system` | Active | Entity iteration is sorted. `script_state` is a `BTreeMap`. No `SystemTime` on the tick. |
 | `astraweave-scripting/src/api.rs` | `ScriptCommand` set | Active | Re-exports `SCRIPT_COMMAND_API_VERSION`. |
 | `astraweave-scripting/src/loader.rs` | Async relative `.rhai` load | Active | Rejects absolute paths and `..`. Size-capped. |
-| `astraweave-scripting/src/sim_mod.rs` | Mod tick + digest | Active | `MOD_SYSTEM_ID = 0x4D4F4453`. |
+| `astraweave-scripting/src/sim_mod.rs` | Mod tick + digest | Active | `MOD_SYSTEM_ID = 0x4D4F4453`. `register_mod_runtime` is the engine-app installer. |
 | `astraweave-scripting/tests/script_replay_hash.rs` | `scripted_system` SHA-256 | Active | Appends the case to `target/replay-hash.json`. |
 | `astraweave-author/src/lib.rs` | `configure` | Active | Floats in hints are rejected. |
 | `tools/aw_editor/src/rhai_reload.rs` | Editor boundary | Active | |
@@ -172,6 +174,7 @@ Mods need a single sandboxed command set whose results are sim inputs. A second 
 | 4 | `move_to` outside `±DEFAULT_MAX_MOVE_DELTA` (100_000) leaves the agent in place and records an error. | Yes | `over_ceiling_move_does_not_change_position` |
 | 5 | `scripted_system` SHA-256 is `362e4c6d3085d2a95d1219b988326beb4cbe898408de4a91e5b2abe3c3294d78` for seed `0xA11CE5E0`, 32 ticks, three agents, and the checked-in script. | Yes | `tests/script_replay_hash.rs` |
 | 6 | A script swap recorded as `(tick, path, content hash, source)` and replayed from `ScriptReplayLog` matches the live digest. | Yes | `reload_mid_run_replays_to_the_identical_hash` |
+| 8 | `build_app` installs `ModScriptPlugin` after `register_mod_runtime`. A mod loaded onto that app, including a mid-run swap in `ScriptReplayLog`, replays to the same digest. Manifest script map keys are the relative manifest paths. | Yes | `mod_loaded_through_build_app_replays_identically`, `load_mod_dir_keys_are_manifest_paths` |
 | 7 | Author `configure` output that exceeds the director ceilings is an error. Hints cannot contain floats. | Yes | `sandboxed_configure_is_deterministic_and_capped` |
 
 ---
@@ -189,6 +192,7 @@ Each mod script is compiled on the tick it runs. The replay case is 32 ticks of 
 - `cargo test -p astraweave-author --lib`
 - `cargo test -p astraweave-scripting --lib`
 - `cargo test -p astraweave-scripting --test script_replay_hash`
+- `cargo test -p astraweave-scripting --lib mod_loaded_through_build_app_replays_identically`
 - `cargo test -p aw_editor --lib -- file_watcher:: rhai_reload::`
 - CI: `.github/workflows/determinism-replay.yml` requires `scripted_system` along with `planner_pure` and `perception_world`. `target-cpu=native` is not set. Apple Silicon uses the default aarch64 baseline.
 
@@ -196,7 +200,7 @@ Each mod script is compiled on the tick it runs. The replay case is 32 ticks of 
 
 ## 11. Open Questions / Parked Decisions
 
-- **Play mode records the swap, then commits it on the tick that runs.** `EditorRuntime::queue_script_swap` stores the bytes. `run_fixed_steps` writes `(tick_count, path, sha256, source)` into `ScriptReplayLog` and stages `ScriptReloadQueue` on the sim app immediately before the fixed steps. A frame that runs zero steps does not assign a tick. The play app from `build_app` does not register `ModScriptPlugin`; the log is what replay consumes.
+- **Play mode records the swap, then the mod system applies it on that tick.** `EditorRuntime::enter_play` calls `register_mod_runtime` and then `build_app`, which installs `ModScriptPlugin` before `sys_sim`. `queue_script_swap` stores the bytes. `run_fixed_steps` writes `(tick_count, path, sha256, source)` into the runtime log and the sim app's `ScriptReplayLog` only when `steps > 0`. `mod_script_system` stages `ModReloadQueue` from that log when `ModClock.tick` matches. A frame that runs zero steps does not assign a tick. Core does not name the plugin: scripting depends on core, so the installer is a function pointer recorded before `build_app`.
 - **`execute_script_sandboxed` remains the async helper** and still ignores `allowed_functions`. New sim calls must use `execute_deterministic`.
 
 ---
@@ -213,3 +217,4 @@ Each mod script is compiled on the tick it runs. The replay case is 32 ticks of 
 | Version | Date | Notes |
 |---|---|---|
 | 1.0 | 2026-10-14 | WS-MOD. Sandbox, mod loader, tick-boundary reload, `scripted_system` hash. |
+| 1.1 | 2026-10-14 | `build_app` installs `ModScriptPlugin` via `register_mod_runtime`. Editor, Veilweaver, and `hello_companion` call it. |

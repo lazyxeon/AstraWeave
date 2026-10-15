@@ -100,8 +100,24 @@ struct MoveBuf {
 
 pub struct ModScriptPlugin;
 
+/// Install [`ModScriptPlugin`] on the engine app `build_app` creates.
+///
+/// Call this once before `astraweave_core::ecs_adapter::build_app`. Core cannot
+/// name this plugin (scripting depends on core), so `build_app` runs the
+/// installer recorded here. A second call is a no-op.
+pub fn register_mod_runtime() {
+    astraweave_core::ecs_adapter::register_sim_extension(install_mod_script_plugin);
+}
+
+fn install_mod_script_plugin(app: &mut App) {
+    ModScriptPlugin.build(app);
+}
+
 impl Plugin for ModScriptPlugin {
     fn build(&self, app: &mut App) {
+        if app.world.get_resource::<ModEngine>().is_some() {
+            return;
+        }
         let mut built = SandboxEngine::build(&SandboxProfile::sim());
         register_sim_host(built.engine_mut());
         let sandbox = built.into_script_sandbox();
@@ -114,6 +130,9 @@ impl Plugin for ModScriptPlugin {
         }
         if app.world.get_resource::<ModReloadQueue>().is_none() {
             app.world.insert_resource(ModReloadQueue::default());
+        }
+        if app.world.get_resource::<ScriptReplayLog>().is_none() {
+            app.world.insert_resource(ScriptReplayLog::default());
         }
         app.world.insert_resource(ModScriptErrors::default());
         app.add_system(SystemStage::SIMULATION, mod_script_system)
@@ -491,6 +510,113 @@ mod tests {
         assert_eq!(agents(&app.world), before);
         let errors = app.world.get_resource::<ModScriptErrors>().unwrap();
         assert!(!errors.messages.is_empty());
+    }
+
+    #[test]
+    fn mod_loaded_through_build_app_replays_identically() {
+        use astraweave_core::ecs_adapter::build_app;
+        use astraweave_core::World as LegacyWorld;
+        use astraweave_security::sandbox::{load_mod_dir, EngineCeilings, LoadedMod};
+
+        const SWAP_TICK: u64 = 4;
+        const TOTAL: u32 = 12;
+        const PATH: &str = "scripts/tick.rhai";
+        const NEXT: &str = "moves.move_to(5, 7);\n";
+        let seed = 0xA11C_E5E0;
+
+        register_mod_runtime();
+        let loaded = load_fixture_mod();
+        assert_eq!(loaded.scripts.len(), 1);
+        assert!(loaded.scripts.contains_key(PATH));
+
+        let mut live = app_with_loaded_mod(&loaded, seed);
+        assert!(
+            live.world.get_resource::<ModReloadQueue>().is_some(),
+            "build_app must install ModScriptPlugin"
+        );
+        let mut recorded = ScriptReplayLog::default();
+        for _ in 0..TOTAL {
+            let tick = live.world.get_resource::<ModClock>().expect("clock").tick;
+            if tick == SWAP_TICK {
+                recorded.record(tick, PATH, NEXT);
+                live.world
+                    .get_resource_mut::<ScriptReplayLog>()
+                    .expect("replay log")
+                    .record(tick, PATH, NEXT);
+            }
+            live = live.run_fixed(1);
+        }
+        let live_hash = mod_state_digest(&live.world);
+        assert!(
+            agents(&live.world)
+                .iter()
+                .all(|(_, x, y)| *x == 5 && *y == 7),
+            "the swapped script must run inside the build_app schedule"
+        );
+        assert_eq!(recorded.swaps.len(), 1);
+        assert!(recorded.swaps[0].hash_matches());
+
+        let mut replay = app_with_loaded_mod(&loaded, seed);
+        replay.world.insert_resource(recorded);
+        replay = replay.run_fixed(TOTAL);
+        assert_eq!(live_hash, mod_state_digest(&replay.world));
+
+        fn load_fixture_mod() -> LoadedMod {
+            let root = std::env::temp_dir().join(format!(
+                "aw-mod-build-app-{}-{}",
+                std::process::id(),
+                SWAP_TICK
+            ));
+            if root.exists() {
+                std::fs::remove_dir_all(&root).expect("cleanup stale mod dir");
+            }
+            std::fs::create_dir_all(root.join("scripts")).expect("mod dir");
+            std::fs::write(
+                root.join("mod.toml"),
+                r#"
+schema = 1
+id = "demo.mod"
+name = "Demo"
+version = "1.0.0"
+api = 1
+capabilities = ["move_entity", "sim_rng"]
+scripts = ["scripts/tick.rhai"]
+"#,
+            )
+            .expect("manifest");
+            std::fs::write(root.join(PATH), SCRIPT).expect("script");
+            let loaded = load_mod_dir(&root, &EngineCeilings::default()).expect("load mod");
+            std::fs::remove_dir_all(&root).expect("cleanup");
+            loaded
+        }
+
+        fn app_with_loaded_mod(loaded: &LoadedMod, seed: u64) -> App {
+            let mut app = build_app(LegacyWorld::new(), 1.0 / 60.0);
+            app.world.insert_resource(ModClock::new(seed));
+            app.world.insert_resource(ModPrograms {
+                scripts: loaded
+                    .manifest
+                    .scripts
+                    .iter()
+                    .map(|path| {
+                        ModScriptSource::new(
+                            loaded.manifest.id.clone(),
+                            path.clone(),
+                            loaded
+                                .scripts
+                                .get(path)
+                                .expect("manifest path is the script key")
+                                .clone(),
+                        )
+                    })
+                    .collect(),
+            });
+            for (x, y) in [(0, 0), (3, 1)] {
+                let entity = app.world.spawn();
+                app.world.insert(entity, CModAgent { x, y });
+            }
+            app
+        }
     }
 
     fn agents(world: &World) -> Vec<(u64, i32, i32)> {

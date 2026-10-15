@@ -9,7 +9,7 @@ lifecycle_status: active
 integration_status: partial
 summary: "path validation plus the deterministic Rhai sandbox and mod loader are wired; anticheat, async script helper, signatures, and secrets stay dormant. security.md"
 owns: [astraweave-secrets, astraweave-security]
-doc_version: "1.2"
+doc_version: "1.3"
 last_verified_commit: b47fb566
 ---
 
@@ -21,10 +21,10 @@ last_verified_commit: b47fb566
 |---|---|
 | **System name** | Security System (script sandbox, anticheat, signatures, path/deserialization validation, secrets) |
 | **Primary crates** | [`astraweave-security`](../../astraweave-security), [`astraweave-secrets`](../../astraweave-secrets) |
-| **Document version** | 1.2 |
+| **Document version** | 1.3 |
 | **Last verified against commit** | `b47fb566` |
 | **Last verified date** | 2026-10-15 |
-| **Status** | Path validation and the deterministic Rhai sandbox are wired. Anticheat, the async script helper, signatures, and secrets remain dormant. |
+| **Status** | Path validation, the deterministic Rhai sandbox, and the mod loader are wired. Anticheat, the async script helper, signatures, and secrets remain dormant. |
 | **Owner notes** | Crates originate from a 2025 "Phase 1 Week 2" remediation effort (see [`docs/archive/remediation/PHASE1_WEEK2_COMPLETE.md`](../../docs/archive/remediation/PHASE1_WEEK2_COMPLETE.md)). Active follow-up work is owned by the S-series security campaign ([`docs/campaigns/security/S0_FINDINGS_SEED.md`](../../docs/campaigns/security/S0_FINDINGS_SEED.md)) and the hardening plan ([`docs/current/SECURITY_AUDIT_AND_HARDENING_PLAN.md`](../../docs/current/SECURITY_AUDIT_AND_HARDENING_PLAN.md)). |
 
 ---
@@ -196,7 +196,7 @@ There is no single pipeline. The system is a set of independent utility surfaces
 | File | Role | Status | Notes |
 |---|---|---|---|
 | [`astraweave-security/src/path.rs`](../../astraweave-security/src/path.rs) | Path-traversal + extension validation | **Active (WIRED)** | The only surface with production callers (3 sites). `#![forbid(unsafe_code)]` at crate root. |
-| [`astraweave-security/src/sandbox.rs`](../../astraweave-security/src/sandbox.rs) | Deterministic Rhai engine, capability allowlist, mod manifest, path-capped script reads, reload queue | **Active (WIRED)** | Callers: `astraweave-author`, `astraweave-scripting`, `tools/aw_editor/src/rhai_reload.rs`. No wall clock on the sim executor. |
+| [`astraweave-security/src/sandbox.rs`](../../astraweave-security/src/sandbox.rs) | Deterministic Rhai engine, capability allowlist, mod manifest, path-capped script reads, reload queue | **Active (WIRED)** | Callers: `astraweave-author`, `astraweave-scripting`, `tools/aw_editor/src/rhai_reload.rs`. `load_mod_dir` keys scripts by the manifest path. No wall clock on the sim executor. |
 | [`astraweave-security/src/lib.rs`](../../astraweave-security/src/lib.rs) | `SecurityPlugin`, `ScriptSandbox`, anti-cheat, `LLMValidator`, crypto | **Mixed** | `ScriptSandbox` is now filled by `sandbox::SandboxEngine::into_script_sandbox` for production. `SecurityPlugin`, `execute_script_sandboxed`, anticheat, and crypto helpers still have no production caller. |
 | [`astraweave-security/src/deserialization.rs`](../../astraweave-security/src/deserialization.rs) | `parse_{json,toml,ron}_limited`, `ReadLimiter` | **In-design-but-tested (DORMANT)** | Zero production callers; only own crate + 2 test files. |
 | [`astraweave-secrets/src/manager.rs`](../../astraweave-secrets/src/manager.rs) | `SecretManager`, lazy `global()` singleton | **In-design-but-tested (DORMANT)** | Used only by the `aw_secrets` bin and tests. |
@@ -297,7 +297,7 @@ There is no single pipeline. The system is a set of independent utility surfaces
 | 9 | `KeyringBackend::list_keys` returns an empty Vec (no enumeration). | Yes | `keyring_backend.rs:34-38`. (This is a limitation, recorded as an invariant so callers don't rely on it.) |
 | 10 | The deterministic sandbox is `Engine::new_raw` plus arithmetic, logic, array, map, string, and iterator packages. It does not register the time package or language-core `sleep`. `import` / `eval` are disabled and `max_modules` is 0. | Yes | `sandbox.rs` tests `sandbox_rejects_filesystem_network_process_and_clock`. |
 | 11 | `execute_deterministic` rejects an empty allowlist and a zero operation budget. Default budget is 50_000 operations. String / array / map / variable caps are the memory ceiling. | Yes | `empty_allowlist_is_refused`, `operation_budget_stops_a_loop`, `string_cap_rejects_oversized_literal`. |
-| 12 | Manifest script paths are relative, end in `.rhai`, and contain no `..`, backslash, or absolute prefix. `read_rhai_under_root` canonicalizes and requires the result to stay under the root. | Yes | `validate_manifest_script_path`, `read_rhai_rejects_escape`, `tests/mod_manifest_props.rs`. |
+| 12 | Manifest script paths are relative, end in `.rhai`, and contain no `..`, backslash, or absolute prefix. `read_rhai_under_root` canonicalizes and requires the result to stay under the root. `load_mod_dir` stores bytes under the manifest path, not the canonical absolute path. | Yes | `validate_manifest_script_path`, `read_rhai_rejects_escape`, `load_mod_dir_keys_are_manifest_paths`, `tests/mod_manifest_props.rs`. |
 | 13 | Mod load order is a Kahn sort. Ready nodes are a `BTreeSet`, so ties break by mod id. Cycles and missing dependencies error. | Yes | `load_order_is_stable_and_rejects_cycles`. |
 | 14 | Manifest `data.traps` / `terrain_edits` / `spawns` must sit in `0..=64` / `0..=256` / `0..=128` (the default ceilings). | Yes | `budget_ceiling_rejects_oversize_data`. |
 | 15 | `ScriptReloadQueue::stage` does not publish bytes. `take_boundary` is the only drain, and it yields paths in sorted order. | Yes | `reload_queue_apply_is_sorted_and_not_mid_write`. |
@@ -381,6 +381,7 @@ Performance is largely irrelevant for the wired surface (path validation runs at
 | Version | Date | Notes |
 |---|---|---|
 | 1.2 | 2026-10-14 | WS-MOD. Deterministic sandbox, mod manifests, and the reload queue are wired. Async `execute_script_sandboxed` remains unconsulted for the allowlist. |
+| 1.3 | 2026-10-14 | `load_mod_dir` script map keys are the relative manifest paths. |
 | 1.1 | 2026-06-25 | Prior verification at `7c29b8182`. Path validation wired; other surfaces dormant. |
 
 ## Appendix B: Historical context

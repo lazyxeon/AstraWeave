@@ -403,6 +403,7 @@ impl VeilweaverRuntime {
     pub fn new(config: VeilweaverSliceConfig, partition: WorldPartition) -> Result<Self> {
         let legacy_world = LegacyWorld::new();
         let dt = config.dt.max(0.0001);
+        astraweave_scripting::register_mod_runtime();
         let mut app = ecs_adapter::build_app(legacy_world, dt);
         // Behavior graphs tick inside this runtime's fixed step. Entities
         // without `CBehaviorGraph` are skipped.
@@ -542,6 +543,14 @@ mod behavior_tick_tests {
                 status: BehaviorStatus::Running,
                 running_node: None,
             },
+        );
+        assert!(
+            runtime
+                .app
+                .world
+                .get_resource::<astraweave_scripting::sim_mod::ModClock>()
+                .is_some(),
+            "the game app runs mods through build_app"
         );
         runtime.run_tick();
         let graph = runtime

@@ -1,9 +1,46 @@
 //! ECS adapter: integrate a minimal ECS app/schedule while bridging existing World.
 use astraweave_ecs as ecs;
+use std::sync::Mutex;
 
 use crate::ecs_bridge::EntityBridge;
 use crate::ecs_events::{Events, MovedEvent};
 use crate::{CAmmo, CCooldowns, CDesiredPos, CHealth, CPos, CTeam, IVec2, World};
+
+/// Sim plugins installed by [`build_app`].
+///
+/// `astraweave-core` cannot depend on `astraweave-scripting` (that crate
+/// depends on core). Higher crates record an installer here, and every engine
+/// app built afterwards runs it. Registration order is the install order.
+/// The same function pointer is recorded once.
+static SIM_EXTENSIONS: Mutex<Vec<fn(&mut ecs::App)>> = Mutex::new(Vec::new());
+
+/// Record `install` so the next [`build_app`] runs it before the legacy sim systems.
+pub fn register_sim_extension(install: fn(&mut ecs::App)) {
+    let mut guard = SIM_EXTENSIONS
+        .lock()
+        .unwrap_or_else(|poison| poison.into_inner());
+    // Address equality is enough to ignore a repeated register of this same
+    // installer. A second call still no-ops inside the plugin if the address
+    // differs across codegen units: ModEngine already present skips the system.
+    if !guard
+        .iter()
+        .any(|existing| std::ptr::fn_addr_eq(*existing, install))
+    {
+        guard.push(install);
+    }
+}
+
+fn install_sim_extensions(app: &mut ecs::App) {
+    let installers = {
+        let guard = SIM_EXTENSIONS
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner());
+        guard.clone()
+    };
+    for install in installers {
+        install(app);
+    }
+}
 
 #[derive(Clone, Copy)]
 struct Dt(pub f32);
@@ -215,6 +252,9 @@ pub fn build_app(legacy_world: World, dt: f32) -> ecs::App {
 
     // Now insert the legacy world as a resource so systems can access it.
     app.world.insert_resource::<World>(legacy_world);
+    // Mod scripts (and any other registered sim extension) run first in this
+    // stage. The concrete plugin is registered from its own crate.
+    install_sim_extensions(&mut app);
     app.add_system_known_stage("simulation", sys_sim as ecs::SystemFn);
     app.add_system_known_stage("simulation", sys_move as ecs::SystemFn);
     // Bridge sync runs after simulation so mappings are reflected into components

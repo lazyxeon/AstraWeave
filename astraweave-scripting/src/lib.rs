@@ -31,6 +31,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
 pub mod sim_mod;
+pub use sim_mod::register_mod_runtime;
 
 pub mod api;
 pub mod events;

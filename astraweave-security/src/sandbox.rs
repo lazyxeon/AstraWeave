@@ -821,13 +821,11 @@ pub fn load_mod_dir(root: &Path, ceilings: &EngineCeilings) -> Result<LoadedMod>
     let manifest = parse_manifest_str(&text, ceilings)?;
     let mut scripts = BTreeMap::new();
     for rel in &manifest.scripts {
-        let (canon, source) =
+        let (_canon, source) =
             read_rhai_under_root(root, Path::new(rel), ceilings.max_script_bytes)?;
-        let key = canon
-            .to_str()
-            .context("script path is not utf-8")?
-            .replace('\\', "/");
-        scripts.insert(key, source);
+        // Key is the manifest path. The canonical path embeds the machine's
+        // temp directory and is not a sim input.
+        scripts.insert(rel.clone(), source);
     }
     Ok(LoadedMod { manifest, scripts })
 }
@@ -1169,6 +1167,33 @@ scripts = []
         assert_eq!(keys, vec!["a.rhai".to_string(), "b.rhai".to_string()]);
         assert_eq!(taken["a.rhai"].source, "a2");
         assert!(queue.is_empty());
+    }
+
+    #[test]
+    fn load_mod_dir_keys_are_manifest_paths() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path();
+        std::fs::create_dir(root.join("scripts")).unwrap();
+        std::fs::write(root.join("scripts/tick.rhai"), "moves.move_to(1, 0);\n").unwrap();
+        std::fs::write(
+            root.join("mod.toml"),
+            r#"
+schema = 1
+id = "demo.mod"
+name = "Demo"
+version = "1.0.0"
+api = 1
+capabilities = ["move_entity"]
+scripts = ["scripts/tick.rhai"]
+"#,
+        )
+        .unwrap();
+        let loaded = load_mod_dir(root, &EngineCeilings::default()).unwrap();
+        assert_eq!(
+            loaded.scripts.keys().cloned().collect::<Vec<_>>(),
+            vec!["scripts/tick.rhai".to_string()]
+        );
+        assert!(loaded.scripts["scripts/tick.rhai"].contains("move_to"));
     }
 
     #[test]

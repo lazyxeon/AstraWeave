@@ -7,6 +7,7 @@ use astraweave_core::ecs_adapter::build_app;
 use astraweave_core::World;
 use astraweave_ecs::App as SimulationApp;
 use astraweave_profiling::{frame_mark, plot, span};
+use astraweave_scripting::register_mod_runtime;
 use astraweave_security::sandbox::{ScriptReloadQueue, ScriptReplayLog};
 use std::time::Instant;
 
@@ -537,6 +538,12 @@ impl EditorRuntime {
         let pending = std::mem::take(&mut self.pending_script_swaps);
         for (path, source) in pending {
             if let Some(app) = self.sim_app.as_mut() {
+                // The mod system reads this log at ModClock.tick and stages
+                // ModReloadQueue. ScriptReloadQueue stays for a CScript resource
+                // when that plugin is also present.
+                if let Some(log) = app.world.get_resource_mut::<ScriptReplayLog>() {
+                    log.record(tick, path.clone(), source.clone());
+                }
                 if let Some(queue) = app.world.get_resource_mut::<ScriptReloadQueue>() {
                     queue.stage(path.clone(), source.clone());
                 }
@@ -610,8 +617,10 @@ impl EditorRuntime {
         // Capture snapshot of edit state
         let snapshot = SceneData::from_world(world);
 
-        // Clone world for simulation via snapshot and boot the ECS app
+        // Clone world for simulation via snapshot and boot the ECS app.
+        // Registration is idempotent. build_app then installs ModScriptPlugin.
         let sim_world = snapshot.to_world();
+        register_mod_runtime();
         let sim_app = build_app(sim_world, self.fixed_dt);
 
         self.edit_snapshot = Some(snapshot);
@@ -1315,6 +1324,16 @@ mod tests {
         let mut runtime = EditorRuntime::new();
         let world = World::new();
         runtime.enter_play(&world).expect("enter play");
+        assert!(
+            runtime
+                .sim_app
+                .as_ref()
+                .expect("sim app")
+                .world
+                .get_resource::<astraweave_scripting::sim_mod::ModClock>()
+                .is_some(),
+            "play mode runs mods through build_app"
+        );
         runtime.queue_script_swap("scripts/tick.rhai", "moves.move_to(1, 0);");
         runtime.tick(0.0).expect("no step");
         assert!(
@@ -1326,6 +1345,16 @@ mod tests {
         assert_eq!(swap.tick, 0);
         assert_eq!(swap.path, "scripts/tick.rhai");
         assert!(swap.hash_matches());
+        let world_log = runtime
+            .sim_app
+            .as_ref()
+            .expect("sim app")
+            .world
+            .get_resource::<ScriptReplayLog>()
+            .expect("mod replay log");
+        assert_eq!(world_log.swaps.len(), 1);
+        assert_eq!(world_log.swaps[0].tick, 0);
+        assert!(world_log.swaps[0].hash_matches());
         runtime.exit_play().expect("exit");
         assert!(runtime.script_replay_log().swaps.is_empty());
     }
