@@ -20,6 +20,9 @@ rand = { workspace = true }
 glam = { workspace = true }
 
 # AstraWeave crates
+astraweave-combat = { path = "../astraweave-combat" }
+astraweave-destruction = { path = "../astraweave-destruction" }
+astraweave-ecs = { path = "../astraweave-ecs" }
 astraweave-pcg = { path = "../astraweave-pcg" }
 
 # Collections (deterministic)
@@ -28,6 +31,10 @@ astraweave-pcg = { path = "../astraweave-pcg" }
 [dev-dependencies]
 approx = { workspace = true }
 criterion = { workspace = true }
+
+[[example]]
+name = "aravath_slice"
+path = "examples/aravath_slice.rs"
 
 [[bench]]
 name = "weaving_benchmarks"

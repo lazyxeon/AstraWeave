@@ -14,6 +14,10 @@ pub const SIM_SYSTEM_ENEMY_PATROL: u64 = 0xAE11_7002;
 pub const SIM_SYSTEM_SPAWNER: u64 = 0xAE11_7003;
 /// Terrain solver distance rolls. The solver stores the mixed `u64`.
 pub const SIM_SYSTEM_TERRAIN_SOLVER: u64 = 0x7E22_7001;
+/// Combat hit streams. `astraweave-combat` folds ordinal and attack id into this.
+pub const SIM_SYSTEM_COMBAT: u64 = 0xC0BA_7001;
+/// Destruction fracture rolls. `astraweave-destruction` mixes this with the world seed.
+pub const SIM_SYSTEM_DESTRUCTION: u64 = 0xD357_7001;
 
 /// Mix `(world_seed, tick, system_id)` into one `StdRng` seed.
 ///

@@ -689,6 +689,28 @@ impl ArchetypeStorage {
 
         ids.iter().filter_map(move |id| self.archetypes.get(id))
     }
+
+    /// Append entities that have `ty` into `out`.
+    ///
+    /// Does not clear `out`. Grows it only when the caller has not reserved
+    /// enough capacity, so a reused scratch buffer stays allocation-free
+    /// after the first tick that saw this entity set.
+    pub fn append_entities_with_component(&self, ty: TypeId, out: &mut Vec<Entity>) {
+        let Some(ids) = self.component_to_archetypes.get(&ty) else {
+            return;
+        };
+        let extra: usize = ids
+            .iter()
+            .filter_map(|id| self.archetypes.get(id))
+            .map(|arch| arch.len())
+            .sum();
+        out.reserve(extra);
+        for id in ids {
+            if let Some(arch) = self.archetypes.get(id) {
+                out.extend_from_slice(arch.entities_vec());
+            }
+        }
+    }
 }
 
 #[cfg(test)]

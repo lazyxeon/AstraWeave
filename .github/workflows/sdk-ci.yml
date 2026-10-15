@@ -91,8 +91,13 @@ jobs:
           if (Test-Path target\release\astraweave_sdk.dll) { Copy-Item target\release\astraweave_sdk.dll . }
           .\c_harness.exe | Tee-Object -FilePath harness_out.txt | Out-Null
           # Semantic version gate (Windows)
-          $ver = (Select-String -Path astraweave-sdk/Cargo.toml -Pattern '^version\s*=\s*"([^"]+)"' | ForEach-Object { $_.Matches[0].Groups[1].Value })[0]
-          $out = Get-Content harness_out.txt | Select-Object -First 1
+          # Select-Object -First 1, not [0]: indexing the version string yields its first character.
+          $found = @(Select-String -Path astraweave-sdk/Cargo.toml -Pattern '^version\s*=\s*"([^"]+)"')
+          if ($found.Count -lt 1) { throw "astraweave-sdk version line not found" }
+          $ver = $found[0].Matches[0].Groups[1].Value
+          $out = @(Get-Content harness_out.txt | Select-Object -First 1)
+          if ($out.Count -lt 1) { throw "C harness printed no version" }
+          $out = $out[0].Trim()
           Write-Host "SDK Crate Version: $ver; Runtime: $out"
           if ($out -ne $ver) { throw "Version mismatch: $out vs $ver" }
       - name: Cinematics smoke test (Windows)
@@ -134,7 +139,7 @@ jobs:
           add_executable(aw_cmake_example main.c)
           target_include_directories(aw_cmake_example PRIVATE ${CMAKE_SOURCE_DIR}/..)
           target_link_directories(aw_cmake_example PRIVATE ${CMAKE_SOURCE_DIR}/../target/release)
-          target_link_libraries(aw_cmake_example PRIVATE astraweave_sdk)
+          target_link_libraries(aw_cmake_example PRIVATE astraweave_sdk ws2_32 userenv ntdll)
           '@
           Set-Content -Path cmake_example/main.c -Value @'
           #include <stdio.h>
@@ -142,7 +147,9 @@ jobs:
           int main(){ struct AWWorld w = aw_world_create(); aw_world_tick(w, 0.016f); aw_world_destroy(w); return 0; }
           '@
           cmake -S cmake_example -B cmake_build
+          if ($LASTEXITCODE -ne 0) { throw "cmake configure failed: $LASTEXITCODE" }
           cmake --build cmake_build --config Release
+          if ($LASTEXITCODE -ne 0) { throw "cmake build failed: $LASTEXITCODE" }
           Copy-Item target\release\astraweave_sdk.dll cmake_build\Release -ErrorAction SilentlyContinue
           $env:Path = "$pwd\target\release;$env:Path"
           if (Test-Path cmake_build\Release\aw_cmake_example.exe) { .\cmake_build\Release\aw_cmake_example.exe } else { .\cmake_build\aw_cmake_example.exe }
