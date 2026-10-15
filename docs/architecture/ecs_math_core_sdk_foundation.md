@@ -8,7 +8,7 @@ domain: core
 lifecycle_status: active
 integration_status: wired
 owns: [astraweave-alloc, astraweave-core, astraweave-ecs, astraweave-math, astraweave-sdk]
-doc_version: "1.4"
+doc_version: "1.5"
 last_verified_commit: 67c9de7e1
 ---
 
@@ -20,7 +20,7 @@ last_verified_commit: 67c9de7e1
 |---|---|
 | **System name** | ECS substrate + Math / Core / SDK primitives (foundation layer) |
 | **Primary crates** | `astraweave-ecs`, `astraweave-math`, `astraweave-core`, `astraweave-sdk` |
-| **Document version** | 1.4 |
+| **Document version** | 1.5 |
 | **Last verified against commit** | `67c9de7e1` |
 | **Last verified date** | 2026-05-10 |
 | **Status** | Active foundation. `astraweave-ecs` and `astraweave-math` are canonical; `astraweave-core` contains a canonical schema **plus** a transitional legacy `World` that bridges to ECS; `astraweave-sdk` is a stable C ABI surface with a single in-tree consumer (`examples/sdk_c_harness`) and an otherwise out-of-tree audience. |
@@ -290,7 +290,8 @@ There are several distinct flows through this layer. The first is the canonical 
 
 | File | Role | Status | Notes |
 |---|---|---|---|
-| `astraweave-math/src/lib.rs` | Top-level: re-export modules, `enable_flush_to_zero()` | Active | Module declarations at lines 68-71. Note: `astraweave-math/Cargo.toml:23-24` defines a `simd` feature with empty dependency list — workspace-wide grep finds zero `cfg(feature = "simd")` usages. The feature is a no-op stub; actual SIMD activation is via `target_feature = "sse2"` cfg-gates throughout the source (37 occurrences across 4 files) |
+| `astraweave-math/src/lib.rs` | Top-level: re-export modules, `enable_flush_to_zero()` | Active | Declares `fixed64` plus the SIMD modules. The `simd` feature in `Cargo.toml` is still an empty no-op; SIMD activation is via `target_feature = "sse2"` cfg-gates. |
+| `astraweave-math/src/fixed64.rs` | Q32.32 `Fixed64`. Mul through `i128`, saturating cast, `from_ratio` toward zero, `mul_ratio` via `div_euclid` | Active | No `f32`/`f64` conversion. `fixed64_contract_bytes` is the `fixed64` replay case. Consumed by `astraweave-core`'s replay test (dev-dependency). |
 | `astraweave-math/src/simd_vec.rs` | SIMD Vec3/Vec4 dot, cross, normalize, length | Active | SSE2 fast-path with `glam` fallback (`simd_vec.rs:64-75`) |
 | `astraweave-math/src/simd_mat.rs` | SIMD Mat4 multiply, transpose, transform | Active | Uses `unsafe` for intrinsics; SAFETY comments document target-feature gates |
 | `astraweave-math/src/simd_quat.rs` | SIMD Quat multiply, normalize, slerp | Active | `mul_quat_simd`, `slerp_simd` |
@@ -457,6 +458,7 @@ There are several distinct flows through this layer. The first is the canonical 
 | 12 | `Component` and `Resource` traits are blanket-implemented for `'static + Send + Sync` types — any such type can be both | Yes (compile-time) | `astraweave-ecs/src/lib.rs:85-90` |
 | 13 | SIMD math functions handle NaN/Inf input — `debug_assert!(a.is_finite())` in debug; production paths fall through to scalar `glam` for non-x86_64 | Yes (debug) | E.g. `astraweave-math/src/simd_vec.rs:62-63`, `simd_quat.rs:33-34`. Release builds do not check finiteness |
 | 14 | Perception queries that feed a snapshot are ordered. `all_of_team`, `enemies_of`, and `entities` sort by entity id. Obstacle snapshots sort by `(x, y)`. The replay hash does not re-sort those lists | Yes | `world.rs` `sorted_entities` / `sorted_obstacles`; `perception.rs` `assemble_snapshot`. `astraweave-core/tests/perception_order.rs` builds two worlds and compares enemy ids, the first-enemy plan, and SHA-256 |
+| 15 | `Fixed64` is Q32.32 (`SCALE = 1 << 32`). `from_ratio` truncates toward zero and yields zero when `den == 0`. `mul_ratio` uses `div_euclid`. Mul and the saturating add/sub clamp to `i64`. The sim path has no float conversion | Yes | `astraweave-math/src/fixed64.rs`. `fixed64_contract_bytes` is hashed as the required `fixed64` case in `determinism-replay.yml` |
 
 ---
 
