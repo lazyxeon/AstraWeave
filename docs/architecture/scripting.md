@@ -170,14 +170,15 @@ Mods need a single sandboxed command set whose results are sim inputs. A second 
 
 | # | Invariant | Checkable? | Enforced by |
 |---|---|---|---|
-| 1 | Gameplay `script_system` iterates `CScript` entities in `Entity` order and does not call `std::fs` or `SystemTime`. | Yes | `script_reload_applies_on_the_next_tick_only` |
+| 1 | Gameplay `script_system` iterates `CScript` entities in `Entity` order. Reloads come from `ScriptReloadQueue` and the content hash. The tick does not call `metadata.modified`. | Yes | `script_reload_applies_on_the_next_tick_only`, `script_reload_ignores_mtime_and_uses_the_hashed_queue` |
 | 2 | Host scope keys (`commands`, `physics`, `nav`, `entity_id`, `position`, `health`, `delta_time`) are not stored in `script_state`. | Yes | `is_host_scope_key` |
 | 3 | `mod_script_system` draws with `roll_i64`, which calls `SimRng::new(world_seed, tick, mix_sim_seed(system_id, entity, draw))`. | Yes | `roll_uses_canonical_sim_rng_and_is_bounded`, `two_runs_match_and_reload_waits_for_the_next_tick` |
 | 4 | `move_to` outside `±DEFAULT_MAX_MOVE_DELTA` (100_000) leaves the agent in place and records an error. | Yes | `over_ceiling_move_does_not_change_position` |
 | 5 | `scripted_system` SHA-256 is `362e4c6d3085d2a95d1219b988326beb4cbe898408de4a91e5b2abe3c3294d78` for seed `0xA11CE5E0`, 32 ticks, three agents, and the checked-in script. | Yes | `tests/script_replay_hash.rs` |
 | 6 | A script swap recorded as `(tick, path, content hash, source)` and replayed from `ScriptReplayLog` matches the live digest. | Yes | `reload_mid_run_replays_to_the_identical_hash` |
 | 8 | `build_app` installs `ModScriptPlugin` after `register_mod_runtime`. A mod loaded onto that app, including a mid-run swap in `ScriptReplayLog`, replays to the same digest. Manifest script map keys are the relative manifest paths. | Yes | `mod_loaded_through_build_app_replays_identically`, `load_mod_dir_keys_are_manifest_paths` |
-| 9 | `queue_weave` is capability `Weave` at command API 2. The script passes a template id and an origin. The host fills tick, seq, and caster and calls `astraweave_weaving::queue_weave`. Ids 1 through 7 are engine ids. `max_weaves` defaults to 64 and does not spend `terrain_edits`. Two runs through `build_app` enqueue the same commands. | Yes | `queue_weave_is_a_weave_command_and_weaves_do_not_spend_terrain`, `queue_weave_through_build_app_replays_identically`, `parse_rejects_engine_ids_and_accepts_modifier_data` |
+| 9 | `queue_weave` is capability `Weave` at command API 2. The script passes a template id and an origin. The host fills tick, seq, and caster and calls `astraweave_weaving::queue_weave`. Ids 1 through 7 are engine ids. Ids outside `u16` are rejected before the cast. `max_weaves` defaults to 64 and does not spend `terrain_edits`. Two runs through `build_app` enqueue the same commands. | Yes | `queue_weave_is_a_weave_command_and_weaves_do_not_spend_terrain`, `queue_weave_through_build_app_replays_identically`, `parse_rejects_engine_ids_and_accepts_modifier_data` |
+| 10 | The mod tick does not register `PhysicsProxy` or `NavMeshProxy`. The sim sandbox keeps the operation budget and `timeout_ms = 0`. `advertised_memory_bytes` is the structural product of the string, array, and map caps, not a process limit. | Yes | `mod_tick_rejects_physics_and_nav_proxies`, `sim_sandbox_keeps_the_op_budget_and_no_wall_clock` |
 | 7 | Author `configure` output that exceeds the director ceilings is an error. Hints cannot contain floats. | Yes | `sandboxed_configure_is_deterministic_and_capped` |
 
 ---

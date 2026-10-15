@@ -906,6 +906,29 @@ scripts = ["scripts/tick.rhai"]
     }
 
     #[test]
+    fn mod_tick_rejects_physics_and_nav_proxies() {
+        let mut app = App::new().add_plugin(ModScriptPlugin);
+        app.world.insert_resource(ModClock::new(1));
+        app.world.insert_resource(ModPrograms {
+            scripts: vec![ModScriptSource::new(
+                "demo.mod",
+                "scripts/tick.rhai",
+                "physics.raycast(0, 0, 0, 0, 1, 0, 1);\nnav.find_path(0, 0, 0, 1, 0, 0);",
+            )],
+        });
+        let entity = app.world.spawn();
+        app.world.insert(entity, CModAgent { x: 0, y: 0 });
+        mod_script_system(&mut app.world);
+        let errors = app.world.get_resource::<ModScriptErrors>().unwrap();
+        assert!(
+            !errors.messages.is_empty(),
+            "physics and nav are not on the mod tick"
+        );
+        let agent = app.world.get::<CModAgent>(entity).unwrap();
+        assert_eq!((agent.x, agent.y), (0, 0));
+    }
+
+    #[test]
     fn queue_weave_through_build_app_replays_identically() {
         use astraweave_core::ecs_adapter::build_app;
         use astraweave_core::World as LegacyWorld;

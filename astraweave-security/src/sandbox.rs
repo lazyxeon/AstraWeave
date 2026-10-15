@@ -159,7 +159,11 @@ impl Default for EngineCeilings {
 }
 
 impl EngineCeilings {
-    /// Bytes the structural caps can force Rhai to retain. Not a process RSS cap.
+    /// Structural ceiling: the product of the string, array, and map caps.
+    ///
+    /// This is not a process RSS limit and it is not enforced by a wall clock.
+    /// The sim executor keeps `timeout_ms` at 0 and stops scripts with the
+    /// operation budget.
     pub fn advertised_memory_bytes(&self) -> usize {
         self.max_string_size
             .saturating_mul(self.max_variables)
@@ -1281,6 +1285,28 @@ scripts = []
         assert_eq!(keys, vec!["a.rhai".to_string(), "b.rhai".to_string()]);
         assert_eq!(taken["a.rhai"].source, "a2");
         assert!(queue.is_empty());
+    }
+
+    #[test]
+    fn sim_sandbox_keeps_the_op_budget_and_no_wall_clock() {
+        let ceilings = EngineCeilings::default();
+        let structural = ceilings
+            .max_string_size
+            .saturating_mul(ceilings.max_variables)
+            .saturating_add(ceilings.max_array_size.saturating_mul(16))
+            .saturating_add(ceilings.max_map_size.saturating_mul(64));
+        assert_eq!(ceilings.advertised_memory_bytes(), structural);
+        let sandbox = SandboxEngine::build(&SandboxProfile::sim()).into_script_sandbox();
+        assert_eq!(sandbox.execution_limits.timeout_ms, 0);
+        assert_eq!(
+            sandbox.execution_limits.max_operations,
+            DEFAULT_MAX_OPERATIONS
+        );
+        assert_eq!(sandbox.execution_limits.max_memory_bytes, structural);
+        assert!(sandbox.allowed_functions.contains_key("queue_weave"));
+        assert!(sandbox.allowed_functions.contains_key("sim_roll"));
+        assert!(!sandbox.allowed_functions.contains_key("raycast"));
+        assert!(!sandbox.allowed_functions.contains_key("find_path"));
     }
 
     #[test]

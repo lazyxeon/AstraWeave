@@ -211,7 +211,11 @@ pub fn queue_weave(
 /// Parse one template. Load time only. Ids 1 through 7 are engine ids.
 pub fn parse_template_toml(text: &str) -> Result<WeaveTemplate, String> {
     let value: toml::Value = toml::from_str(text).map_err(|err| err.to_string())?;
-    let id = integer_field(&value, "id")? as u16;
+    let raw_id = integer_field(&value, "id")?;
+    if raw_id < 0 || raw_id > i64::from(u16::MAX) {
+        return Err(format!("template id {raw_id} does not fit u16"));
+    }
+    let id = raw_id as u16;
     if id == 0 || id <= ENGINE_TEMPLATE_MAX {
         return Err(format!("template {id} is an engine id"));
     }
@@ -310,6 +314,12 @@ mod tests {
         assert!(err.contains("engine id"));
         let err = parse_template_toml("id = 8.5\nnodes = [{ kind = \"heat\" }]\n").unwrap_err();
         assert!(err.contains("integer"));
+        let err = parse_template_toml("id = 65536\nnodes = [{ kind = \"heat\" }]\n").unwrap_err();
+        assert!(err.contains("does not fit u16"), "{err}");
+        let err = parse_template_toml("id = -1\nnodes = [{ kind = \"heat\" }]\n").unwrap_err();
+        assert!(err.contains("does not fit u16"), "{err}");
+        let wide = parse_template_toml("id = 65535\nnodes = [{ kind = \"heat\" }]\n").unwrap();
+        assert_eq!(wide.id, 65535);
         let template = parse_template_toml(
             "id = 8\nduration = 4\n[[nodes]]\nkind = \"density\"\nradius = 1\na = 40\n",
         )

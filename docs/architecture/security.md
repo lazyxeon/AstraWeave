@@ -21,15 +21,9 @@ last_verified_commit: b47fb566
 |---|---|
 | **System name** | Security System (script sandbox, anticheat, signatures, path/deserialization validation, secrets) |
 | **Primary crates** | [`astraweave-security`](../../astraweave-security), [`astraweave-secrets`](../../astraweave-secrets) |
-<<<<<<< HEAD
-| **Document version** | 1.3 |
+| **Document version** | 1.4 |
 | **Last verified against commit** | `b47fb566` |
 | **Last verified date** | 2026-10-15 |
-=======
-| **Document version** | 1.4 |
-| **Last verified against commit** | `85d09a2c` |
-| **Last verified date** | 2026-10-14 |
->>>>>>> e83cad17 (feat(mod): register queue_weave on the sandbox)
 | **Status** | Path validation, the deterministic Rhai sandbox, and the mod loader are wired. Anticheat, the async script helper, signatures, and secrets remain dormant. |
 | **Owner notes** | Crates originate from a 2025 "Phase 1 Week 2" remediation effort (see [`docs/archive/remediation/PHASE1_WEEK2_COMPLETE.md`](../../docs/archive/remediation/PHASE1_WEEK2_COMPLETE.md)). Active follow-up work is owned by the S-series security campaign ([`docs/campaigns/security/S0_FINDINGS_SEED.md`](../../docs/campaigns/security/S0_FINDINGS_SEED.md)) and the hardening plan ([`docs/current/SECURITY_AUDIT_AND_HARDENING_PLAN.md`](../../docs/current/SECURITY_AUDIT_AND_HARDENING_PLAN.md)). |
 

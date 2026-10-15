@@ -714,6 +714,54 @@ mod tests {
         assert_eq!(read(&app.world), 2);
     }
 
+    #[test]
+    fn script_reload_ignores_mtime_and_uses_the_hashed_queue() {
+        let rel = format!("aw-script-reload-{}/tick.rhai", std::process::id());
+        let file = std::env::current_dir().expect("cwd").join(&rel);
+        std::fs::create_dir_all(file.parent().expect("parent")).expect("proof dir");
+        std::fs::write(&file, "result = 9;").expect("script file");
+        let mut app = App::new().add_plugin(ScriptingPlugin);
+        let entity = app.world.spawn();
+        let mut script = CScript::new(&rel, "result = 1;");
+        script
+            .script_state
+            .insert("result".to_string(), Dynamic::from(0_i64));
+        app.world.insert(entity, script);
+        app.schedule.run(&mut app.world);
+        let read = |world: &World| {
+            world
+                .get::<CScript>(entity)
+                .unwrap()
+                .script_state
+                .get("result")
+                .unwrap()
+                .as_int()
+                .unwrap()
+        };
+        assert_eq!(read(&app.world), 1, "the tick runs the staged source");
+        std::fs::write(&file, "result = 9;").expect("rewrite");
+        let later = std::time::SystemTime::now() + std::time::Duration::from_secs(5);
+        std::fs::File::options()
+            .write(true)
+            .open(&file)
+            .expect("open")
+            .set_modified(later)
+            .expect("mtime");
+        app.schedule.run(&mut app.world);
+        assert_eq!(
+            read(&app.world),
+            1,
+            "a newer mtime must not reload the file"
+        );
+        app.world
+            .get_resource_mut::<ScriptReloadQueue>()
+            .unwrap()
+            .stage(&rel, "result = 4;");
+        app.schedule.run(&mut app.world);
+        assert_eq!(read(&app.world), 4);
+        std::fs::remove_dir_all(file.parent().expect("parent")).expect("cleanup");
+    }
+
     #[tokio::test]
     async fn test_script_loading_and_execution() {
         use std::path::PathBuf;
