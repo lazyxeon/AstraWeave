@@ -38,7 +38,7 @@ impl TerrainVertex {
     /// Convert to engine-compatible vertex by extracting the dominant material
     /// slot. The engine uses a single biome_id per vertex; post-Real-Fix.C
     /// this is the material_id of the highest-weight slot.
-    pub fn to_engine_vertex(&self) -> astraweave_render::TerrainVertex {
+    pub fn to_engine_vertex(self) -> astraweave_render::TerrainVertex {
         let mut best_idx = 0usize;
         let mut best_weight = self.material_weights[0];
         for i in 1..4 {
