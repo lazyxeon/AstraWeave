@@ -46,7 +46,7 @@ No tolerance was widened. No test was skipped or quarantined. Simulation and com
 | `editor-ci` | 62 `clippy -D warnings` lints in `aw_editor` after libudev and accesskit compiled. No allows. Deferred. https://github.com/lazyxeon/AstraWeave/issues/248 |
 | `Toolchain Validation (stable)` on Ubuntu | `astraweave-sdk` `last_error_is_set_on_intent_parse_error` asserted `n > 1` after `AW_ERR_PARSE`. `LAST_ERROR` was one process-wide string. A parallel lib test cleared it before the read. Windows stable passed the same suite. | **Fixed.** The slot is `thread_local`. Same-thread reads are unchanged. `last_error_survives_another_thread_clearing_its_own_slot` covers the race. |
 
-The integration token cannot add labels (`addLabelsToLabelable` HTTP 403). Issues 246, 247, and 248 are written for `deferred-failure` and need that label applied by someone who can edit labels. Issue 224 already has it.
+The integration token cannot add labels (`addLabelsToLabelable` HTTP 403). Issues 224, 247, 248, 256, 265, 266, 267, and 268 already carry `deferred-failure`. Issue 246 still needs that label if it does not.
 
 ## Issue #254 (workspace nextest on PR #223, head `7839f930`)
 
@@ -60,6 +60,22 @@ Owned here. 95 unique failures, each retried twice. Groups:
 | `astraweave-llm` `test_qwen3_variants` (2048 vs 8192) | **Fixed in the test.** `Qwen3Ollama::fast` documents context 2048, and the unit test already locks 2048. The integration test still expected 8192. The assert stays exact. |
 | Render and fluids `textureLoad` on depth textures | **Deferred.** Lavapipe's naga GLSL backend rejects `textureLoad` on `texture_depth_2d`. That fails fluids SSFR (#247), `water_pipeline`, god rays, GTAO, and the deferred shadow `sampler2DShadow` call. `test_buffer_lifecycle_no_leaks` grew 106,270,720 bytes of `VmRSS` and stays with #246. Do not raise the ceilings. Owner and the R32Float plan are on #254. |
 | Windows partitions cancelled at 45 minutes | Owned by PR #223, not this branch. Raise `timeout-minutes` to 60 there so a failing test is visible. |
+
+## Owned deferred-failure issues (2026-10-15)
+
+#256 and #219 stay open until PR #217 merges. The rustls switch is already on this branch. `cargo deny check bans` prints `bans ok`. The ban lines in `deny.toml` are unchanged.
+
+| Issue | Disposition |
+|---|---|
+| #265 editor `libudev.pc` on Ubuntu/macOS | **Fixed on this branch.** `editor-ci.yml` and `aw-editor-tests.yml` install `pkg-config`, `libudev-dev`, and `libasound2-dev` on Ubuntu. `libudev-sys` is a `gilrs-core` dependency only for Linux, Dragonfly, and FreeBSD, so macOS does not build it. On `002af2d9`, `Test AW Editor` succeeded on ubuntu, macOS, and Windows. |
+| #266 Windows SDK `WSAStartup` / `GetUserProfileDirectoryW` / `NtReadFile` | **Fixed on this branch.** `sdk-ci.yml` links `ws2_32`, `userenv`, and `ntdll` for the harness and the CMake example. `build-sdk-and-c (windows-latest)` succeeded on `002af2d9`. |
+| #267 `astraweave-physics` `serde_json` under `--all-features` | **Fixed on this branch.** The `serde` feature enables `dep:serde` and `dep:serde_json`. `export_telemetry` is `#[cfg(feature = "serde")]`. `cargo check -p astraweave-physics --all-features` and `--features serde` both succeed. |
+| #268 physics production unwraps | **Fixed on this branch.** `cargo clippy -p astraweave-physics --all-features --lib -- -D clippy::unwrap_used -D clippy::expect_used -D clippy::panic -D clippy::todo` exits 0. No `expect` was added. Replay hashes were not touched. |
+| #218 headless audio | **Fixed on this branch.** Null backend plus `aw_audio_probe`. Device hosts still use rodio. |
+| #239 Windows PBR `cargo fmt` os error 206 | **Fixed on this branch.** `.github/scripts/fmt-check.sh` batches rustfmt under 6000 characters. `Build PBR Components (windows-latest)` succeeded on `a5e0adfe`. |
+| #240 `accesskit_update` and editor `libudev` | **Fixed on this branch.** `kittest` enables `eframe/accesskit`. Ubuntu editor tests install `libudev-dev`. The three `Test AW Editor` OS jobs succeeded on `002af2d9`. |
+| #241 toolchain render tests, no GPU adapter | **Fixed on this branch.** Toolchain Ubuntu jobs install lavapipe. macOS sets `AW_GPU_SKIP_IF_UNAVAILABLE` and writes the reason into the job summary. On `002af2d9`, toolchain 1.88, beta, and nightly succeeded. The later Ubuntu stable failure was the SDK last-error race, fixed in `17750cdc`. |
+| #248 `aw_editor` clippy, 62 `-D warnings` | **Still open. No allows.** `editor-ci` on `002af2d9` still fails after libudev and accesskit. The 62 sites from that log stay the burndown list. Mechanical edits, one lint at a time, in this order: `let_and_return` (14, panels returning a `let`), `useless_format` (8), `doc_lazy_continuation` (`viewport/renderer.rs` 111–120), `needless_range_loop`, `needless_borrows_for_generic_args`, `collapsible_if` / `collapsible_str_replace`, `unwrap_or_default`, `manual_*`, `field_reassign_with_default`, `excessive_precision`, `for_kv_map` (`viewport/widget.rs:2453`). `too_many_arguments` is at `node_graph_widget.rs:459`, `entity_catalog.rs:882`, `terrain_integration.rs:2061`, `engine_adapter.rs:3826`. `type_complexity` is at `terrain_panel.rs:773`, `tab_viewer/mod.rs:1456`, `terrain_integration.rs:1905`. `arc_with_non_send_sync` is `Arc<Mutex<ViewportRenderer>>` at `viewport/widget.rs:272` and `:343`. That one is a design change (the renderer is not `Send`), not a mechanical edit, and it is not silenced. Exit: `cargo clippy -p aw_editor --all-features -- -D warnings` is clean. |
 
 ## What was not done
 
