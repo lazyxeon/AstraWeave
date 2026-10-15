@@ -498,7 +498,7 @@ Edited chunks live in a sparse voxel DAG (`VoxelDag` in `octree.rs`). Identical 
 
 GPU compute is not on the simulation path. An integer GPU solve would need its own three-OS replay proof before it could write simulation state. Until then, GPU work stays on meshes, particles, and other derived data.
 
-The 8-iteration load push stays on the sim thread. Inside one structure the push order is the result. Independent structures can later be separate jobs with the same merge rule. The node cap is what keeps a collapse inside the tick.
+The 8-iteration load push stays on the sim thread. Inside one structure the push order is the result. Independent structures can later be separate jobs with the same merge rule. The node cap is what keeps a collapse inside the tick. `collapse_tick_fits_in_an_11ms_frame` checks the scripted collapse tick against the 11 ms frame budget. `tests/tick_alloc.rs` counts heap calls and requires zero allocations on warmed ticks. The first time a node loses support it takes one seeded planar cut (`planar_children`). `bake_gate` is the offline prefracture; its SHA-256 is locked in `prefracture_manifest_hash_is_locked` and `assets/aravath_destruction/prefracture_manifest.txt`.
 
 ### No heap and no lock contention on the tick
 

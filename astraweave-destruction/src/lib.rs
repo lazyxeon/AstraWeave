@@ -35,7 +35,7 @@ pub use budget::{
     MAX_NODES_PER_TICK, MAX_SIM_DEBRIS, SLEEP_TICKS, STRESS_ITERS,
 };
 pub use command::{CommandError as DestructionCommandError, DestructionCommand as Command};
-pub use fracture::{bake_bytes, bake_gate, BreakRule};
+pub use fracture::{bake_bytes, bake_gate, planar_children, BreakRule};
 pub use graph::{allows_climb, PieceFlags as FractureFlags};
 pub use terrain::FlatColumnBase;
 
@@ -74,6 +74,8 @@ pub struct DestructionWorld {
     notices: [GeometryNotice; NOTICE_CAP],
     notice_len: usize,
     query_marks: [u8; 4],
+    fractured: [u64; 16],
+    fractured_len: usize,
     hash_buf: Vec<u8>,
     dag_children: Box<[[u16; 8]; 2048]>,
     dag_density: Box<[i8; 2048]>,
@@ -119,6 +121,8 @@ impl DestructionWorld {
             }; NOTICE_CAP],
             notice_len: 0,
             query_marks: [0; 4],
+            fractured: [0; 16],
+            fractured_len: 0,
             hash_buf: Vec::with_capacity(65_536),
             dag_children: Box::new([[0; 8]; 2048]),
             dag_density: Box::new([0; 2048]),
@@ -318,6 +322,7 @@ impl DestructionWorld {
             if self.graph.broken_ids().len() > broken_before {
                 self.push_notice(0, 0, 0, 1, 1, 1, 2);
             }
+            self.fracture_dynamic();
             self.spawn_dynamic();
         }
         self.debris.step(&self.terrain);
@@ -565,6 +570,51 @@ impl DestructionWorld {
             seen = bond_id;
             have_seen = true;
             self.graph.add_damage(bond_id, falloff);
+        }
+    }
+
+    fn already_fractured(&self, id: u64) -> bool {
+        self.fractured[..self.fractured_len].contains(&id)
+    }
+
+    fn mark_fractured(&mut self, id: u64) {
+        if self.already_fractured(id) || self.fractured_len >= self.fractured.len() {
+            return;
+        }
+        self.fractured[self.fractured_len] = id;
+        self.fractured_len += 1;
+    }
+
+    /// One seeded planar cut the first time a node loses support.
+    fn fracture_dynamic(&mut self) {
+        let mut parents = [0u64; 8];
+        let mut count = 0usize;
+        for node in &self.graph.nodes {
+            if node.flags.contains(PieceFlags::DYNAMIC)
+                && !node.flags.contains(PieceFlags::ANTI_DESTROY)
+                && !self.already_fractured(node.id)
+                && count < parents.len()
+            {
+                parents[count] = node.id;
+                count += 1;
+            }
+        }
+        for index in 0..count {
+            let id = parents[index];
+            self.mark_fractured(id);
+            let Some(parent) = self.graph.node(id).cloned() else {
+                continue;
+            };
+            for child in planar_children(&parent) {
+                let child_id = self.graph.add_node(
+                    child.structure,
+                    child.mass,
+                    child.pos,
+                    child.half,
+                    child.flags,
+                );
+                self.mark_fractured(child_id);
+            }
         }
     }
 

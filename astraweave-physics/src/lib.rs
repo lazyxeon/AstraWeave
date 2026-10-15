@@ -1636,6 +1636,9 @@ impl PhysicsWorld {
         }
     }
 
+    /// Empty on purpose. Hits that change destruction state go through
+    /// `astraweave-destruction`'s command log. Deletion of this stub is part
+    /// of retiring `destruction.rs` (deferred-failure issue #255).
     #[allow(dead_code)]
     fn process_destructible_hits(&mut self) {}
 

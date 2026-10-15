@@ -214,4 +214,18 @@ mod tests {
     fn bake_is_stable() {
         assert_eq!(bake_bytes(&bake_gate(1)), bake_bytes(&bake_gate(1)));
     }
+
+    #[test]
+    fn prefracture_manifest_hash_is_locked() {
+        use sha2::{Digest, Sha256};
+        let digest = Sha256::digest(bake_bytes(&bake_gate(0xA2A0_0001)));
+        let mut hex = String::new();
+        for byte in digest {
+            hex.push_str(&format!("{byte:02x}"));
+        }
+        assert_eq!(
+            hex,
+            "d652793ef4dde351df61496e401aef1cd2a18deebc54b448a139e4ddc6fb9909"
+        );
+    }
 }

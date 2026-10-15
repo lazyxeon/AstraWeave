@@ -1,5 +1,10 @@
 //! Destruction System
 //!
+//! Dormant float manager. The deterministic system is `astraweave-destruction`.
+//! This module stays until its tests are moved and the file is deleted.
+//! See deferred-failure issue #255.
+//! Do not add callers.
+//!
 //! Provides physics-based destruction for breakable objects:
 //! - Pre-fractured mesh system (swap intact → debris)
 //! - Structural integrity (health-based breaking)
