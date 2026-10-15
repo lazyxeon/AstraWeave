@@ -72,6 +72,9 @@ pub struct AravathSlice {
     pub cover_damage: i64,
 }
 
+/// World seed and destruction seed used by [`run_aravath_slice`].
+pub const ARAVATH_SLICE_SEED: u64 = 0xA11C_E5EE;
+
 /// Sword for 25, a data-driven weave school for 15, and a cover bond that breaks.
 pub fn run_aravath_slice() -> AravathSlice {
     let mut app = App::new().add_plugin(CombatPlugin);
@@ -81,11 +84,11 @@ pub fn run_aravath_slice() -> AravathSlice {
     )
     .expect("install table");
     app.world.insert_resource(CombatClock {
-        world_seed: 0xA11C_E5EE,
+        world_seed: ARAVATH_SLICE_SEED,
         tick: 0,
     });
 
-    let mut destruction = DestructionWorld::new(0xA11C_E5EE, 0);
+    let mut destruction = DestructionWorld::new(ARAVATH_SLICE_SEED, 0);
     let half = [Fixed64::from_int(1); 3];
     let post = [Fixed64::from_int(0), Fixed64::from_int(1), Fixed64::ZERO];
     destruction

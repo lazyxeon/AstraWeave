@@ -1,0 +1,18 @@
+Scenario(
+    schema: 1,
+    id: "aravath_slice_sword",
+    seed: 0xA11CE5EE,
+    max_ticks: 1,
+    setup: Slice,
+    bot: Script(steps: [
+        (edges: [
+            Hit(attack_id: 1, defender: Cover, seq: 0, heal: false),
+            Hit(attack_id: 3, defender: Woven, seq: 1, heal: false),
+            WeaveDecay,
+        ]),
+    ]),
+    goal: (objective: "cover_broken", policy: "slice_sword_then_weave"),
+    checks: [
+        Reach(by_tick: 1, sword_hp: 15, weave_hp: 25, cover_intact: false, min_cover_damage: 25),
+    ],
+)

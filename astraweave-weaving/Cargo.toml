@@ -12,7 +12,10 @@ weaving = []
 [dependencies]
 # Core dependencies
 anyhow = { workspace = true }
+ron = "0.8"
 serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
 toml = { workspace = true }
 rand = { workspace = true }
 

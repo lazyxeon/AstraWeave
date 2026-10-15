@@ -9,7 +9,7 @@ lifecycle_status: in_design
 integration_status: example_only
 summary: "Zero library consumers (only examples/advanced_content_demo + veilweaver_quest_demo); systems/* take Vec/slice params, not Query/Res — not registerable as ECS systems as written. weaving.md §1,§8"
 owns: [astraweave-weaving]
-doc_version: "1.2"
+doc_version: "1.3"
 last_verified_commit: 7c29b8182
 ---
 
@@ -21,7 +21,7 @@ last_verified_commit: 7c29b8182
 |---|---|
 | **System name** | Weaving / Fate-Weaving System (the Veilweaver signature mechanic) |
 | **Primary crates** | `astraweave-weaving` |
-| **Document version** | 1.2 |
+| **Document version** | 1.3 |
 | **Last verified against commit** | `7c29b8182` |
 | **Last verified date** | 2026-06-25 |
 | **Status** | In-Design-but-tested (heavily unit-tested; consumed only by two non-runtime examples) |
@@ -230,7 +230,10 @@ This crate hosts **two distinct pipelines** that do not call each other. Both ar
 
 | File | Role | Status | Notes |
 |---|---|---|---|
-| [`lib.rs`](../../astraweave-weaving/src/lib.rs) | Module roots, re-exports, `CWeaveAgent`/`CWeaveSignal`/`WeaveIntentEvent` ECS-style components | Active | `#![forbid(unsafe_code)]`. The three components have no in-crate consumer (no ECS in this crate). |
+| [`lib.rs`](../../astraweave-weaving/src/lib.rs) | Module roots, re-exports, `CWeaveAgent`/`CWeaveSignal`/`WeaveIntentEvent` ECS-style components | Active | `#![forbid(unsafe_code)]`. |
+| [`aravath.rs`](../../astraweave-weaving/src/aravath.rs) | `run_aravath_slice`, `ARAVATH_SLICE_SEED` (`0xA11C_E5EE`) | Active | One combat resolve plus one destruction tick. Sword hp 15, weave hp 25, cover bond broken. |
+| [`gameplay_qa.rs`](../../astraweave-weaving/src/gameplay_qa.rs) | Scenario loader, scripted and goal policies, failure artifact, ddmin | Active | Scenario 1 calls `run_aravath_slice` once per trace. It does not split the function. |
+| [`scenarios/aravath_slice_sword.ron`](../../astraweave-weaving/scenarios/aravath_slice_sword.ron) | Scenario 1 | Active | Reach check only. `SaveReload` and `SameSeqTwice` are not in this file. |
 | [`patterns.rs`](../../astraweave-weaving/src/patterns.rs) | Emergent pattern detection (4 detectors) | Active | Pure functions over `WorldMetrics`. |
 | [`intents.rs`](../../astraweave-weaving/src/intents.rs) | `WeaveIntent` + 4 proposers | Active | Builder-style intent. |
 | [`adjudicator.rs`](../../astraweave-weaving/src/adjudicator.rs) | `WeaveAdjudicator` + `WeaveConfig` (TOML) | Active | Budget/cooldown/priority gate. |
@@ -337,6 +340,15 @@ This crate hosts **two distinct pipelines** that do not call each other. Both ar
 - **Alternatives considered:** [Reasoning not recovered].
 - **Consequences:** The crate is portable and testable but is dormant scaffolding from a runtime-wiring standpoint (zero library consumers).
 
+### Decision: Scenario 1 calls `run_aravath_slice` once
+
+- **Date:** 2026-10-15
+- **Status:** Accepted
+- **Context:** Gameplay QA needs a headless trace. The slice function is one resolve.
+- **Decision:** The RON scenario records the sword hit, the weave hit, and weave decay. Scripted and goal policies must hash equal. ddmin stays off pull requests (`QA_MINIMIZE=1` and the event is not `pull_request`).
+- **Alternatives considered:** Splitting the function into a tick loop before the first scenario. Rejected for scenario 1.
+- **Consequences:** Save and double-hit checks are not in the first scenario. The trace is integer fields, so the three-OS compare does not hash Rapier `f32`.
+
 ---
 
 ## 8. Known Invariants
@@ -353,6 +365,7 @@ This crate hosts **two distinct pipelines** that do not call each other. Both ar
 | 8 | An anchor repair only reports an ability unlock when the anchor's pre-repair stability was `< 0.7`. | Yes | `anchor_repair_system.rs:91-99`; `test_ability_not_unlocked_if_stable`. |
 | 9 | Anchor particle positions and velocities are a function of `(world_seed, tick, SIM_SYSTEM_ANCHOR_PARTICLES)` via `SimRng`. Draws are dyadic `f32`s plus IEEE `sqrt`; no `rand::random` and no `sin`/`cos`. | Yes | `sim_rng.rs`, `particles/anchor_particle.rs`; test `particle_spawn_state_is_bit_identical_for_the_same_seed`. |
 | 10 | Enemy patrol targets and wave spawn positions are a function of `(world_seed, draw_index, SIM_SYSTEM_ENEMY_PATROL \| SIM_SYSTEM_SPAWNER)`. Offsets are rejection samples in the disk (`disk_xz`); no `thread_rng` and no `sin`/`cos`. Active spawn ids are sorted before round-robin. | Yes | `enemy.rs`, `spawner.rs`; tests `patrol_target_is_bit_identical_for_the_same_seed`, `spawn_positions_are_bit_identical_for_the_same_seed`. |
+| 11 | `run_aravath_slice` is one resolve at `ARAVATH_SLICE_SEED`. The scripted and goal policies of `aravath_slice_sword` finish on the same SHA-256 trace. That digest is required case `gameplay_qa_aravath_slice`. | Yes | `gameplay_qa.rs` test `replay_aravath_slice_scenario`. `determinism-replay.yml` merges `replay-hash-gameplay-qa.json`. |
 
 ---
 
@@ -392,10 +405,17 @@ This is a pure-CPU logic crate; performance is benchmark-tracked but not a runti
 - **Relationship to `veilweaver_slice_runtime`:** A separate `veilweaver_slice_runtime` crate exists and references "veilweaver"/anchor/echo concepts but does **not** depend on `astraweave-weaving` (verified: no `astraweave_weaving` import). Is `astraweave-weaving` superseded by the slice runtime, or are they parallel tracks? This determines whether this crate is in-design or effectively legacy.
 - **`CWeaveAgent`/`CWeaveSignal`/`WeaveIntentEvent`** (declared in `lib.rs:56-94`) have no in-crate consumer. Are these intended ECS components for a future host integration?
 - **`astraweave-pcg` usage scope:** `astraweave-pcg` is a declared-but-unused Cargo dep — zero `use`/`pcg` references in `astraweave-weaving/src` (verified 2026-06-24). Whether to wire it or drop the dep remains parked. Spawn positions, archetypes, and patrol targets are seed-driven as of WS-D2 (`SimRng` + `disk_xz`, system ids `SIM_SYSTEM_SPAWNER` / `SIM_SYSTEM_ENEMY_PATROL`). Default `world_seed` is 0. Callers that want a world-specific stream call `set_world_seed` before `update`.
+- **Tickable slice session.** Scenario 1 records edges and calls `run_aravath_slice` once. `SaveReload` and `SameSeqTwice` wait until a later change returns the world from that function. Do not add a second resolver beside it.
 
 ---
 
 ## 12. Maintenance Notes
+
+**Revision history**
+
+| Version | Date | Notes |
+|---|---|---|
+| 1.3 | 2026-10-15 | Scenario 1 gameplay QA. File map rows for `aravath.rs`, `gameplay_qa.rs`, and the RON. Invariant 11. |
 
 **Update this doc when:**
 - A consumer beyond the two examples adopts `astraweave-weaving` (this would flip its wired status — update §1 and §4).
