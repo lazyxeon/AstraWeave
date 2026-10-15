@@ -69,23 +69,6 @@ fn write_skip_line(path: &std::path::Path, reason: &str) {
     }
 }
 
-#[cfg(test)]
-mod skip_record_tests {
-    use super::write_skip_line;
-
-    #[test]
-    fn skip_reason_is_written_verbatim() {
-        let path =
-            std::env::temp_dir().join(format!("aw-gpu-skip-{}-record.txt", std::process::id()));
-        let _ = std::fs::remove_file(&path);
-        let reason = "no wgpu adapter for 'unit' (backends=all). software adapter: none";
-        write_skip_line(&path, reason);
-        let text = std::fs::read_to_string(&path).expect("skip log");
-        let _ = std::fs::remove_file(&path);
-        assert_eq!(text, format!("SKIP(gpu): {reason}\n"));
-    }
-}
-
 pub async fn request_headless(
     label: &'static str,
     features: wgpu::Features,
@@ -158,5 +141,22 @@ pub async fn request_headless(
         None
     } else {
         panic!("Failed to find adapter: {reason}");
+    }
+}
+
+#[cfg(test)]
+mod skip_record_tests {
+    use super::write_skip_line;
+
+    #[test]
+    fn skip_reason_is_written_verbatim() {
+        let path =
+            std::env::temp_dir().join(format!("aw-gpu-skip-{}-record.txt", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        let reason = "no wgpu adapter for 'unit' (backends=all). software adapter: none";
+        write_skip_line(&path, reason);
+        let text = std::fs::read_to_string(&path).expect("skip log");
+        let _ = std::fs::remove_file(&path);
+        assert_eq!(text, format!("SKIP(gpu): {reason}\n"));
     }
 }
