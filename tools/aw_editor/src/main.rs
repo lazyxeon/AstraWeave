@@ -9461,7 +9461,7 @@ impl MenuActionHandler for EditorApp {
                 match ViewportWidget::new_additional(primary) {
                     Ok(vp) => self.extra_viewports.push(vp),
                     Err(e) => {
-                        self.log(&format!("Failed to create extra viewport: {}", e));
+                        self.log(format!("Failed to create extra viewport: {}", e));
                         return;
                     }
                 }
