@@ -59,6 +59,8 @@ pub struct Graph {
     members: Vec<usize>,
     incident: Vec<usize>,
     broken: Vec<u64>,
+    /// 1 when the node was already `DYNAMIC` before this solve.
+    was_dynamic: Vec<u8>,
 }
 
 impl Graph {
@@ -76,7 +78,27 @@ impl Graph {
             members: Vec::with_capacity(1024),
             incident: Vec::with_capacity(32),
             broken: Vec::with_capacity(64),
+            was_dynamic: Vec::with_capacity(1024),
         }
+    }
+
+    /// Remember which nodes are already dynamic so the collapse notice can
+    /// cover only the pieces that lose support in this solve.
+    pub fn snapshot_dynamic(&mut self) {
+        if self.was_dynamic.len() < self.nodes.len() {
+            self.was_dynamic.resize(self.nodes.len(), 0);
+        }
+        for (index, node) in self.nodes.iter().enumerate() {
+            self.was_dynamic[index] = u8::from(node.flags.contains(PieceFlags::DYNAMIC));
+        }
+    }
+
+    pub fn became_dynamic(&self, index: usize) -> bool {
+        let Some(node) = self.nodes.get(index) else {
+            return false;
+        };
+        let was = self.was_dynamic.get(index).copied().unwrap_or(0) != 0;
+        node.flags.contains(PieceFlags::DYNAMIC) && !was
     }
 
     pub fn add_node(

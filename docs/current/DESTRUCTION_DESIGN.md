@@ -512,7 +512,7 @@ Brush edits, the DAG, notices, and the per-tick command batch sit in buffers res
 
 `enqueue_weave` records a `Weave` command: an integer density delta and a `Fixed64` decay inside a radius. Decay adds bond damage. The command is replayed with the rest of the log. Weaving calls this hook; destruction does not depend on the weaving crate.
 
-`GeometryNotice` records an integer box and a reason (brush, collapse, weave). `drain_geometry_notices` hands them to navigation in record order. Destruction does not depend on the nav crate, which is `f32`. Navigation reads the notices and rebuilds its own graph outside the hashed tick.
+`GeometryNotice` records an integer box and a reason (brush, collapse, weave). A collapse box is the union of pieces that became dynamic in that solve: `floor(pos - half)` through `ceil(pos + half)`. It is not a placeholder unit box. `drain_geometry_notices` hands them to navigation in record order. Destruction does not depend on the nav crate, which is `f32`. Navigation reads the notices and rebuilds its own graph outside the hashed tick.
 
 ## 14. Review questions
 

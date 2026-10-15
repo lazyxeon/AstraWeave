@@ -316,12 +316,10 @@ impl DestructionWorld {
                 self.applied_len += 1;
             }
         }
-        let broken_before = self.graph.broken_ids().len();
         if self.graph.dirty {
+            self.graph.snapshot_dynamic();
             self.graph.solve();
-            if self.graph.broken_ids().len() > broken_before {
-                self.push_notice(0, 0, 0, 1, 1, 1, 2);
-            }
+            self.notice_collapsed();
             self.fracture_dynamic();
             self.spawn_dynamic();
         }
@@ -476,6 +474,39 @@ impl DestructionWorld {
             weave.origin[2] + radius,
             3,
         );
+    }
+
+    fn notice_collapsed(&mut self) {
+        let mut any = false;
+        let mut x0 = i32::MAX;
+        let mut y0 = i32::MAX;
+        let mut z0 = i32::MAX;
+        let mut x1 = i32::MIN;
+        let mut y1 = i32::MIN;
+        let mut z1 = i32::MIN;
+        let count = self.graph.nodes.len();
+        for index in 0..count {
+            if !self.graph.became_dynamic(index) {
+                continue;
+            }
+            let node = &self.graph.nodes[index];
+            any = true;
+            let min_x = floor_whole(node.pos[0].saturating_sub(node.half[0]));
+            let min_y = floor_whole(node.pos[1].saturating_sub(node.half[1]));
+            let min_z = floor_whole(node.pos[2].saturating_sub(node.half[2]));
+            let max_x = ceil_whole(node.pos[0].saturating_add(node.half[0]));
+            let max_y = ceil_whole(node.pos[1].saturating_add(node.half[1]));
+            let max_z = ceil_whole(node.pos[2].saturating_add(node.half[2]));
+            x0 = x0.min(min_x);
+            y0 = y0.min(min_y);
+            z0 = z0.min(min_z);
+            x1 = x1.max(max_x);
+            y1 = y1.max(max_y);
+            z1 = z1.max(max_z);
+        }
+        if any {
+            self.push_notice(x0, y0, z0, x1, y1, z1, 2);
+        }
     }
 
     fn push_notice(&mut self, x0: i32, y0: i32, z0: i32, x1: i32, y1: i32, z1: i32, reason: u8) {
@@ -899,6 +930,22 @@ fn fill(tick: u64) -> DestructionCommand {
     }
 }
 
+fn floor_whole(value: Fixed64) -> i32 {
+    value
+        .raw()
+        .div_euclid(Fixed64::SCALE)
+        .clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32
+}
+
+fn ceil_whole(value: Fixed64) -> i32 {
+    let raw = value.raw();
+    let mut whole = raw.div_euclid(Fixed64::SCALE);
+    if raw.rem_euclid(Fixed64::SCALE) != 0 {
+        whole = whole.saturating_add(1);
+    }
+    whole.clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32
+}
+
 fn hex(bytes: impl AsRef<[u8]>) -> String {
     const HEX: &[u8; 16] = b"0123456789abcdef";
     let bytes = bytes.as_ref();
@@ -914,6 +961,75 @@ fn hex(bytes: impl AsRef<[u8]>) -> String {
 mod tests {
     use super::*;
     use debris::DebrisLod;
+
+    #[test]
+    fn collapse_notice_covers_the_dropped_bridge_span() {
+        let mut world = DestructionWorld::new(9, 0);
+        let post = [Fixed64::from_int(1); 3];
+        let anchor = PieceFlags::ANCHOR.bits();
+        world.push_script(spawn_node(
+            0,
+            1,
+            Fixed64::from_int(20),
+            [Fixed64::from_int(-6), Fixed64::from_int(1), Fixed64::ZERO],
+            post,
+            anchor,
+        ));
+        world.push_script(spawn_node(
+            0,
+            1,
+            Fixed64::from_int(20),
+            [Fixed64::from_int(6), Fixed64::from_int(1), Fixed64::ZERO],
+            post,
+            anchor,
+        ));
+        world.push_script(spawn_node(
+            0,
+            1,
+            Fixed64::from_int(80),
+            [Fixed64::ZERO, Fixed64::from_int(4), Fixed64::ZERO],
+            [
+                Fixed64::from_int(5),
+                Fixed64::from_int(1),
+                Fixed64::from_int(1),
+            ],
+            PieceFlags::empty().bits(),
+        ));
+        world.push_script(spawn_bond(
+            0,
+            1,
+            3,
+            Fixed64::from_int(1),
+            Fixed64::from_int(1),
+        ));
+        world.push_script(spawn_bond(
+            0,
+            2,
+            3,
+            Fixed64::from_int(1),
+            Fixed64::from_int(1),
+        ));
+        world.tick();
+        let blank = GeometryNotice {
+            tick: 0,
+            x0: 0,
+            y0: 0,
+            z0: 0,
+            x1: 0,
+            y1: 0,
+            z1: 0,
+            reason: 0,
+        };
+        let mut notices = [blank; 8];
+        let count = world.drain_geometry_notices(&mut notices);
+        let collapse = notices[..count]
+            .iter()
+            .find(|notice| notice.reason == 2)
+            .expect("collapse notice");
+        assert!(collapse.x0 <= -5 && collapse.x1 >= 5, "{collapse:?}");
+        assert!(collapse.y0 <= 3 && collapse.y1 >= 5, "{collapse:?}");
+        assert!(collapse.z0 <= -1 && collapse.z1 >= 1, "{collapse:?}");
+    }
 
     #[test]
     fn rejected_brush_does_not_enter_the_log() {

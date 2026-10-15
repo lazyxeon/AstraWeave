@@ -9,8 +9,8 @@ lifecycle_status: active
 integration_status: wired
 summary: "Ordered destruction commands, an 8-iteration load push, and a 300-tick replay case."
 owns: [astraweave-destruction]
-doc_version: "1.1"
-last_verified_commit: 9ad8001a
+doc_version: "1.2"
+last_verified_commit: 444b485c
 runtime_edges:
   - to: astraweave-core
     note: "The core replay test calls demolition_bytes."
@@ -26,8 +26,8 @@ runtime_edges:
 |---|---|
 | **System name** | Deterministic destruction |
 | **Primary crates** | `astraweave-destruction` |
-| **Document version** | 1.1 |
-| **Last verified against commit** | `9ad8001a` |
+| **Document version** | 1.2 |
+| **Last verified against commit** | `444b485c` |
 | **Last verified date** | 2026-10-15 |
 | **Status** | Active. Headless showcase and the required replay case. The Aravath runtime on PR #205 is not on this branch. |
 | **Owner notes** | Design: `docs/current/DESTRUCTION_DESIGN.md`. Survey: `docs/current/DESTRUCTION_ARCHAEOLOGY.md`. `Fixed64` lives in `astraweave-math` (PR #245). |
@@ -53,7 +53,7 @@ Each `DestructionWorld::tick`:
 
 1. Take pending commands whose `tick` equals the world tick.
 2. Sort by `(tick, seq, entity_id)` and apply them. Rejected commands never enter the log.
-3. If the graph is dirty, run Tier B (`STRESS_ITERS = 8`) then Tier A, and spawn debris for `DYNAMIC` nodes.
+3. If the graph is dirty, snapshot which nodes are already `DYNAMIC`, run Tier B (`STRESS_ITERS = 8`) then Tier A, and publish one reason-2 `GeometryNotice` whose box is the union of the pieces that became `DYNAMIC` in that solve. Bounds are `floor(pos - half)` and `ceil(pos + half)` in whole units. Fracture and debris spawn run after the notice, so the box is the collapsed piece, not its children.
 4. Step the debris pool against the integer terrain.
 5. On the showcase, tick 60 unloads and reloads chunk `(0, 0)` before the caller hashes.
 
@@ -70,6 +70,7 @@ Floats do not enter this pipeline. Rapier is not called.
 | Tier B | Fixed 8-iteration load push. A bond breaks when pushed load exceeds strength minus damage |
 | `FlatColumnBase` | Every column has the same integer top. The #215 adapter is not compiled yet |
 | Cosmetic debris | Not represented. Slots are gameplay debris and are hashed |
+| `GeometryNotice` | Integer box navigation can consume. Reason 2 is a structural collapse |
 
 ---
 
@@ -138,7 +139,7 @@ Floats do not enter this pipeline. Rapier is not called.
 - **Date:** 2026-10-15
 - **Status:** Accepted
 - **Decision:** Destruction depends on `astraweave-math` and not on `astraweave-combat`. The type move is PR #245.
-- **Consequences:** This branch merges that history so it builds before #245 lands on `main`.
+- **Consequences:** `Fixed64` is on `main` via #245. Destruction does not depend on `astraweave-combat`.
 
 ### Decision: Eight load-push iterations
 - **Date:** 2026-10-15
@@ -162,6 +163,7 @@ Floats do not enter this pipeline. Rapier is not called.
 | 8 | `demolition_bytes` is stable and is a required replay case | Yes | `determinism-replay.yml` |
 | 9 | Restoring `persist_bytes` matches the live hash | Yes | `command_log_restores_the_gate_and_the_crater` |
 | 10 | Parallel occupancy queries match a direct DAG walk | Yes | `parallel_queries_match_the_dag_walk` |
+| 11 | A collapse notice covers every piece that became `DYNAMIC` this solve, and no piece that was already dynamic | Yes | `collapse_notice_covers_the_dropped_bridge_span` |
 
 ---
 
@@ -196,3 +198,4 @@ Update this trace when the command set, the stress iteration count, the pool siz
 |---|---|---|
 | 1.0 | 2026-10-15 | Initial trace for the crate, the replay case, and the headless Aravath showcase |
 | 1.1 | 2026-10-15 | Sparse voxel DAG, ordered query jobs, command-log persistence, weave and navigation notices |
+| 1.2 | 2026-10-15 | Collapse notices publish the union of newly dynamic piece bounds. Issue #279 |
