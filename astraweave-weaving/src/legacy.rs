@@ -1,8 +1,8 @@
 //! Compiles the six legacy ops into templates and director rectangles.
 
-use crate::field::{meters_to_cell, SimModifier};
+use crate::field::{meters_to_cell, FieldWrite, WriteOp};
 use crate::templates::{
-    builtin, modifiers_for, MAX_NODES, TEMPLATE_DENSITY, TEMPLATE_FREEZE, TEMPLATE_LOWER_WATER,
+    builtin, writes_for, MAX_NODES, TEMPLATE_DENSITY, TEMPLATE_FREEZE, TEMPLATE_LOWER_WATER,
     TEMPLATE_WIND,
 };
 use astraweave_nav::NavChange;
@@ -25,8 +25,8 @@ pub struct DirectorCollapse {
 
 #[derive(Clone, Copy, Debug)]
 pub struct CompiledOp {
-    pub modifiers: [SimModifier; MAX_NODES],
-    pub modifier_count: u8,
+    pub writes: [FieldWrite; MAX_NODES],
+    pub write_count: u8,
     pub fortify: Option<DirectorRect>,
     pub collapse: Option<DirectorCollapse>,
     pub ice_min_milli: Option<[i32; 3]>,
@@ -53,8 +53,8 @@ pub fn compile_legacy(kind: u8, points: LegacyPoints) -> CompiledOp {
     let seq = points.seq;
     let origin = [meters_to_cell(ax), meters_to_cell(ay), meters_to_cell(az)];
     let mut compiled = CompiledOp {
-        modifiers: modifiers_for(&builtin(TEMPLATE_DENSITY).unwrap(), origin, 1).0,
-        modifier_count: 0,
+        writes: writes_for(&builtin(TEMPLATE_DENSITY).unwrap(), origin, 1).0,
+        write_count: 0,
         fortify: None,
         collapse: None,
         ice_min_milli: None,
@@ -72,9 +72,9 @@ pub fn compile_legacy(kind: u8, points: LegacyPoints) -> CompiledOp {
                 x1: x + span,
                 y1: z + span,
             });
-            let (mods, count) = modifiers_for(&builtin(TEMPLATE_DENSITY).unwrap(), origin, 1);
-            compiled.modifiers = mods;
-            compiled.modifier_count = count;
+            let (mods, count) = writes_for(&builtin(TEMPLATE_DENSITY).unwrap(), origin, 1);
+            compiled.writes = mods;
+            compiled.write_count = count;
         }
         1 => {
             if let (Some(bx), Some(bz)) = (bx, bz) {
@@ -88,28 +88,27 @@ pub fn compile_legacy(kind: u8, points: LegacyPoints) -> CompiledOp {
             let _ = by;
         }
         2 => {
-            let (mods, count) = modifiers_for(&builtin(TEMPLATE_WIND).unwrap(), origin, 1);
-            compiled.modifiers = mods;
-            compiled.modifier_count = count;
+            let (mods, count) = writes_for(&builtin(TEMPLATE_WIND).unwrap(), origin, 1);
+            compiled.writes = mods;
+            compiled.write_count = count;
             if let (Some(bx), Some(bz)) = (bx, bz) {
-                let dx = ((bx - ax) * 1000.0) as i16;
-                let dz = ((bz - az) * 1000.0) as i16;
-                if compiled.modifier_count > 0 {
-                    compiled.modifiers[0].a = dx;
-                    compiled.modifiers[0].b = dz;
+                let dx = ((bx - ax) as i8).clamp(-1, 1);
+                let dz = ((bz - az) as i8).clamp(-1, 1);
+                if compiled.write_count > 0 {
+                    compiled.writes[0].op = WriteOp::SetWind { x: dx, y: 0, z: dz };
                 }
             }
         }
         3 => {
-            let (mods, count) = modifiers_for(&builtin(TEMPLATE_LOWER_WATER).unwrap(), origin, 1);
-            compiled.modifiers = mods;
-            compiled.modifier_count = count;
+            let (mods, count) = writes_for(&builtin(TEMPLATE_LOWER_WATER).unwrap(), origin, 1);
+            compiled.writes = mods;
+            compiled.write_count = count;
         }
         5 => {
             let template = builtin(TEMPLATE_FREEZE).unwrap();
-            let (mods, count) = modifiers_for(&template, origin, 1);
-            compiled.modifiers = mods;
-            compiled.modifier_count = count;
+            let (mods, count) = writes_for(&template, origin, 1);
+            compiled.writes = mods;
+            compiled.write_count = count;
             let radius = template.ice_radius as i32;
             let min_milli = [
                 (origin[0] - radius) * crate::field::CELL_MM,
@@ -138,7 +137,7 @@ pub fn compile_legacy(kind: u8, points: LegacyPoints) -> CompiledOp {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::field::{ModifierKind, MAT_ICE};
+    use crate::field::{WriteOp, PHASE_ICE};
 
     #[test]
     fn freeze_compiles_ice_sheet_and_nav() {
@@ -151,9 +150,11 @@ mod tests {
                 seq: 2,
             },
         );
-        assert!(compiled.modifier_count >= 1);
-        assert_eq!(compiled.modifiers[0].kind, ModifierKind::MaterialStamp);
-        assert_eq!(compiled.modifiers[0].a, MAT_ICE as i16);
+        assert!(compiled.write_count >= 1);
+        assert!(matches!(
+            compiled.writes[0].op,
+            WriteOp::SetPhase { phase: PHASE_ICE }
+        ));
         let nav = compiled.nav.unwrap();
         assert_eq!(nav.tick, 4);
         assert_eq!(nav.seq, 2);

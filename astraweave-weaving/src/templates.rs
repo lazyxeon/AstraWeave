@@ -1,6 +1,6 @@
-//! Closed weave templates. A cast names an id. The tick does not build a graph.
+//! Closed weave templates. A cast names an id. The tick emits [`FieldWrite`]s.
 
-use crate::field::{ModifierKind, SimModifier, MAT_ICE, MAT_WATER, MAT_WOOD};
+use crate::field::{FieldWrite, Shape, WriteOp, FLAG_ICE, PHASE_ICE};
 
 pub const TEMPLATE_HEAT: u16 = 1;
 pub const TEMPLATE_FREEZE: u16 = 2;
@@ -15,11 +15,9 @@ pub const MAX_TEMPLATES: usize = 64;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Node {
-    pub kind: ModifierKind,
-    pub radius: u16,
-    pub a: i16,
-    pub b: i16,
-    pub c: i16,
+    pub shape: Shape,
+    pub radius: u8,
+    pub op: WriteOp,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -40,11 +38,12 @@ impl Template {
         Self {
             id,
             nodes: [Node {
-                kind: ModifierKind::HeatSource,
+                shape: Shape::Point,
                 radius: 0,
-                a: 0,
-                b: 0,
-                c: 0,
+                op: WriteOp::AddTemp {
+                    delta: 0,
+                    stack: false,
+                },
             }; MAX_NODES],
             node_count: 0,
             ice_radius: 0,
@@ -57,87 +56,84 @@ pub fn builtin(id: u16) -> Option<Template> {
     match id {
         TEMPLATE_HEAT => {
             template.nodes[0] = Node {
-                kind: ModifierKind::MaterialStamp,
+                shape: Shape::Point,
                 radius: 0,
-                a: MAT_WOOD as i16,
-                b: 0,
-                c: 0,
+                op: WriteOp::AddTemp {
+                    delta: 400,
+                    stack: false,
+                },
             };
-            template.nodes[1] = Node {
-                kind: ModifierKind::HeatSource,
-                radius: 0,
-                a: 400,
-                b: 0,
-                c: 0,
-            };
-            template.node_count = 2;
+            template.node_count = 1;
         }
         TEMPLATE_FREEZE => {
             template.nodes[0] = Node {
-                kind: ModifierKind::MaterialStamp,
+                shape: Shape::Sphere,
                 radius: 2,
-                a: MAT_ICE as i16,
-                b: 0,
-                c: 0,
+                op: WriteOp::SetPhase { phase: PHASE_ICE },
             };
             template.nodes[1] = Node {
-                kind: ModifierKind::HeatSource,
+                shape: Shape::Sphere,
                 radius: 2,
-                a: -200,
-                b: 0,
-                c: 0,
+                op: WriteOp::SetFlags {
+                    set: FLAG_ICE,
+                    clear: 0,
+                },
             };
-            template.node_count = 2;
+            template.nodes[2] = Node {
+                shape: Shape::Sphere,
+                radius: 2,
+                op: WriteOp::AddTemp {
+                    delta: -200,
+                    stack: false,
+                },
+            };
+            template.node_count = 3;
             template.ice_radius = 2;
         }
         TEMPLATE_DENSITY => {
             template.nodes[0] = Node {
-                kind: ModifierKind::DensityScale,
+                shape: Shape::Sphere,
                 radius: 1,
-                a: 400,
-                b: 0,
-                c: 0,
+                op: WriteOp::AddDensity {
+                    delta: 40,
+                    stack: false,
+                },
             };
             template.node_count = 1;
         }
         TEMPLATE_GRAVITY => {
-            // +1000 milli-g cancels the world -1000, which is zero-g.
+            // Zone index 1 is the host's zero-g row. The field stores the index.
             template.nodes[0] = Node {
-                kind: ModifierKind::GravityDelta,
+                shape: Shape::Sphere,
                 radius: 2,
-                a: 1000,
-                b: 0,
-                c: 0,
+                op: WriteOp::SetGravity { index: 1 },
             };
             template.node_count = 1;
         }
         TEMPLATE_WIND => {
             template.nodes[0] = Node {
-                kind: ModifierKind::Wind,
+                shape: Shape::Point,
                 radius: 0,
-                a: 1000,
-                b: 0,
-                c: 400,
+                op: WriteOp::SetWind { x: 1, y: 0, z: 0 },
             };
             template.node_count = 1;
         }
         TEMPLATE_LOWER_WATER => {
             template.nodes[0] = Node {
-                kind: ModifierKind::FillStamp,
+                shape: Shape::Sphere,
                 radius: 2,
-                a: MAT_WATER as i16,
-                b: 0,
-                c: 0,
+                op: WriteOp::AddVolume { delta: -255 },
             };
             template.node_count = 1;
         }
         TEMPLATE_DECAY => {
             template.nodes[0] = Node {
-                kind: ModifierKind::DensityScale,
+                shape: Shape::Sphere,
                 radius: 1,
-                a: 50,
-                b: 0,
-                c: 0,
+                op: WriteOp::AddDensity {
+                    delta: -40,
+                    stack: false,
+                },
             };
             template.node_count = 1;
         }
@@ -146,19 +142,21 @@ pub fn builtin(id: u16) -> Option<Template> {
     Some(template)
 }
 
-pub fn modifiers_for(
+pub fn writes_for(
     template: &Template,
     origin: [i32; 3],
-    id_base: u32,
-) -> ([SimModifier; MAX_NODES], u8) {
-    let mut out = [SimModifier {
-        id: 0,
-        kind: ModifierKind::HeatSource,
+    seq_base: u32,
+) -> ([FieldWrite; MAX_NODES], u8) {
+    let mut out = [FieldWrite {
+        seq: 0,
+        shape: Shape::Point,
         origin,
+        end: origin,
         radius: 0,
-        a: 0,
-        b: 0,
-        c: 0,
+        op: WriteOp::AddTemp {
+            delta: 0,
+            stack: false,
+        },
     }; MAX_NODES];
     let count = template.node_count as usize;
     for (i, (slot, node)) in out
@@ -167,14 +165,13 @@ pub fn modifiers_for(
         .take(count)
         .enumerate()
     {
-        *slot = SimModifier {
-            id: id_base.saturating_add(i as u32),
-            kind: node.kind,
+        *slot = FieldWrite {
+            seq: seq_base.saturating_add(i as u32),
+            shape: node.shape,
             origin,
+            end: origin,
             radius: node.radius,
-            a: node.a,
-            b: node.b,
-            c: node.c,
+            op: node.op,
         };
     }
     (out, template.node_count)
@@ -203,26 +200,33 @@ pub fn parse_template_toml(text: &str) -> Result<Template, String> {
             .get("kind")
             .and_then(|v| v.as_str())
             .ok_or_else(|| "kind".to_string())?;
-        let kind = match kind {
-            "heat" => ModifierKind::HeatSource,
-            "wind" => ModifierKind::Wind,
-            "gravity" => ModifierKind::GravityDelta,
-            "material" => ModifierKind::MaterialStamp,
-            "fill" => ModifierKind::FillStamp,
-            "density" => ModifierKind::DensityScale,
+        let radius = node.get("radius").and_then(|v| v.as_integer()).unwrap_or(0) as u8;
+        let a = node.get("a").and_then(|v| v.as_integer()).unwrap_or(0) as i16;
+        let op = match kind {
+            "heat" => WriteOp::AddTemp {
+                delta: a,
+                stack: false,
+            },
+            "wind" => WriteOp::SetWind {
+                x: a as i8,
+                y: 0,
+                z: 0,
+            },
+            "gravity" => WriteOp::SetGravity { index: a as u16 },
+            "phase" => WriteOp::SetPhase { phase: a as u8 },
+            "volume" => WriteOp::AddVolume { delta: a },
+            "density" => WriteOp::AddDensity {
+                delta: a.clamp(-128, 127) as i8,
+                stack: false,
+            },
             _ => return Err(format!("unknown kind {kind}")),
         };
-        let radius = node.get("radius").and_then(|v| v.as_integer()).unwrap_or(0) as u16;
-        let a = node.get("a").and_then(|v| v.as_integer()).unwrap_or(0) as i16;
-        let b = node.get("b").and_then(|v| v.as_integer()).unwrap_or(0) as i16;
-        let c = node.get("c").and_then(|v| v.as_integer()).unwrap_or(0) as i16;
-        template.nodes[i] = Node {
-            kind,
-            radius,
-            a,
-            b,
-            c,
+        let shape = if radius == 0 {
+            Shape::Point
+        } else {
+            Shape::Sphere
         };
+        template.nodes[i] = Node { shape, radius, op };
     }
     template.node_count = nodes.len() as u8;
     template.ice_radius = value
@@ -259,6 +263,9 @@ nodes = [{ kind = "density", radius = 1, a = 120 }]
         let template = parse_template_toml(text).unwrap();
         assert_eq!(template.id, 40);
         assert_eq!(template.node_count, 1);
-        assert_eq!(template.nodes[0].a, 120);
+        assert!(matches!(
+            template.nodes[0].op,
+            WriteOp::AddDensity { delta: 120, .. }
+        ));
     }
 }

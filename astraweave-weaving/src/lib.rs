@@ -51,13 +51,12 @@ pub use damage::{apply_element_schools, ElementSchool};
 pub use echo_currency::{EchoCurrency, Transaction, TransactionReason};
 pub use enemy::{AttackTarget, Enemy, EnemyBehavior, EnemyState};
 pub use eval::{
-    queue_weave, weave_eval, weave_tick, weaving_case_bytes, IceSheet, QueueError, WeaveCommand,
-    WeaveScratch,
+    queue_weave, weave_eval, weave_tick, weaving_case_bytes, weaving_case_on, IceSheet, QueueError,
+    WeaveCommand, WeaveScratch,
 };
 pub use field::{
-    gravity_mm_s2, meters_to_cell, FieldSample, ModifierKind, ModifierReject, SimField,
-    SimModifier, TestSimField, CELL_MM, FLAG_ICE, MAX_MODIFIERS, PHASE_BURN, PHASE_ICE,
-    WORLD_GRAVITY_MILLI_G,
+    gravity_mm_s2, meters_to_cell, FieldEvent, FieldWrite, NullField, Shape, SimField, WriteOp,
+    CELL_MM, FLAG_ICE, MAX_FIELD_WRITES, PHASE_BURN, PHASE_ICE, WORLD_GRAVITY_MILLI_G,
 };
 pub use gameplay_qa::{load_bundled_scenario, run_scenario, FailureArtifact, RunOutcome};
 pub use intents::{IntentProposer, WeaveIntent};

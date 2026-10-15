@@ -17,7 +17,7 @@ A weave is a data record that modifies world state. Heat, cold, force, density, 
 
 ## 1. Decision
 
-`astraweave-weaving` owns the modifier graph, the template table, and the casts. It writes `SimModifier` records through `SimField`. It does not own a second field solver. `TestSimField` is the deterministic stand-in until `astraweave-localsim` exists.
+`astraweave-weaving` owns the modifier graph, the template table, and the casts. It emits `FieldWrite` (including `AddVolume` and `SetWind`) through `SimField`. It does not store regions or a cell window. `NullField` returns a zero `field_digest` until `LocalSim` is on this branch; then `apply_writes` feeds `LocalSim::tick` and the replay stores `LocalSim::field_digest`. `TestSimField` is `cfg(test)` and records writes only.
 
 The crate depends on `astraweave-core` for `SimRng` and `Entity`. It does not depend on physics, gameplay, render, fluids, combat, or destruction. Those crates do not depend on it in Phase 2 either. The host (`build_app`, and later the Aravath call site) drains the sink rings. That is the same one-way shape PR #243 uses so a library with no hooks does not go dormant, and so the dependency graph does not gain a cycle.
 

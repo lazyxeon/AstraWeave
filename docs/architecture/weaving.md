@@ -235,7 +235,7 @@ This crate hosts **two distinct pipelines** that do not call each other. Both ar
 | [`gameplay_qa.rs`](../../astraweave-weaving/src/gameplay_qa.rs) | Scenario loader, scripted and goal policies, failure artifact, ddmin | Active | Scenario 1 calls `run_aravath_slice` once per trace. It does not split the function. |
 | [`scenarios/aravath_slice_sword.ron`](../../astraweave-weaving/scenarios/aravath_slice_sword.ron) | Scenario 1 | Active | Reach check only. `SaveReload` and `SameSeqTwice` are not in this file. |
 | [`mod_queue.rs`](../../astraweave-weaving/src/mod_queue.rs) | `queue_weave`, `parse_template_toml`, fixed `WeaveScratch` | Active | Sandbox host entry. Engine template ids 1 through 7 are reserved. The tick copies casts into a fixed array and does not evaluate a field. |
-| [`field.rs`](../../astraweave-weaving/src/field.rs) | `SimModifier` / `SimField` / `TestSimField` | Active | Writes modifiers. Does not step the local-sim grid. `TestSimField` is the stand-in. |
+| [`field.rs`](../../astraweave-weaving/src/field.rs) | `FieldWrite` / `SimField` / `NullField` | Active | Stamps only. No region arrays. `TestSimField` is `cfg(test)`. `LocalSim` applies the writes once that crate shares this branch. |
 | [`templates.rs`](../../astraweave-weaving/src/templates.rs) | Closed template table and TOML loader | Active | Casts name an id. |
 | [`eval.rs`](../../astraweave-weaving/src/eval.rs) | `weave_tick`, hazard tail, ice sheet, `NavChange` | Active | No allocation inside `weave_tick`. |
 | [`legacy.rs`](../../astraweave-weaving/src/legacy.rs) | Compiles the six legacy ops | Active | `apply_weave_op` calls this. |

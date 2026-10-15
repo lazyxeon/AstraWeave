@@ -1,10 +1,7 @@
-//! Fixed-tick weave evaluation. `weave_tick` does not allocate.
+//! Fixed-tick weave evaluation. `weave_eval` does not allocate and does not store cells.
 
-use crate::field::{
-    flags_of, phase_of, FieldSample, SimField, TestSimField, CELL_MM, MAT_FIRE, MAT_ICE,
-    MAT_POISON, MAT_STEAM, MAT_WATER,
-};
-use crate::templates::{builtin, modifiers_for, Template, MAX_NODES};
+use crate::field::{encode_write, FieldWrite, NullField, SimField, CELL_MM, MAX_FIELD_WRITES};
+use crate::templates::{builtin, writes_for, Template};
 use astraweave_core::WeaveHazard;
 use astraweave_nav::NavChange;
 
@@ -46,7 +43,9 @@ pub struct WeaveScratch {
     sheet_count: u8,
     nav: [NavChange; MAX_SINKS],
     nav_count: u8,
-    next_mod_id: u32,
+    writes: [FieldWrite; MAX_FIELD_WRITES],
+    write_count: u8,
+    next_seq: u32,
     loaded: [Template; 16],
     loaded_count: u8,
 }
@@ -80,7 +79,19 @@ impl WeaveScratch {
                 max_milli: [0, 0, 0],
             }; MAX_SINKS],
             nav_count: 0,
-            next_mod_id: 1,
+            writes: [FieldWrite {
+                seq: 0,
+                shape: crate::field::Shape::Point,
+                origin: [0, 0, 0],
+                end: [0, 0, 0],
+                radius: 0,
+                op: crate::field::WriteOp::AddTemp {
+                    delta: 0,
+                    stack: false,
+                },
+            }; MAX_FIELD_WRITES],
+            write_count: 0,
+            next_seq: 1,
             loaded: [Template::vacant(0); 16],
             loaded_count: 0,
         }
@@ -162,6 +173,32 @@ impl WeaveScratch {
     pub fn command_count(&self) -> usize {
         self.command_count as usize
     }
+
+    pub fn write_count(&self) -> usize {
+        self.write_count as usize
+    }
+
+    pub fn write(&self, index: usize) -> Option<FieldWrite> {
+        if index < self.write_count as usize {
+            Some(self.writes[index])
+        } else {
+            None
+        }
+    }
+
+    #[cfg(test)]
+    fn writes_op_is_ice(&self) -> bool {
+        self.writes[..self.write_count as usize]
+            .iter()
+            .any(|write| {
+                matches!(
+                    write.op,
+                    crate::field::WriteOp::SetPhase {
+                        phase: crate::field::PHASE_ICE
+                    }
+                )
+            })
+    }
 }
 
 impl Default for WeaveScratch {
@@ -170,9 +207,10 @@ impl Default for WeaveScratch {
     }
 }
 
-/// Push this tick's modifiers. Does not stamp the field.
+/// Expand active templates into [`FieldWrite`]s and hand them to the field.
+/// Does not read or store cells.
 pub fn weave_eval(scratch: &mut WeaveScratch, field: &mut impl SimField, tick: u64) {
-    field.begin_tick();
+    scratch.write_count = 0;
     let count = scratch.command_count as usize;
     for (i, slot) in scratch.order.iter_mut().enumerate().take(count) {
         *slot = i as u8;
@@ -197,15 +235,19 @@ pub fn weave_eval(scratch: &mut WeaveScratch, field: &mut impl SimField, tick: u
         let Some(template) = scratch.find_template(command.template) else {
             continue;
         };
-        let id_base = scratch.next_mod_id;
-        let (mods, mod_count) = modifiers_for(&template, command.origin, id_base);
+        let seq_base = scratch.next_seq;
+        let (mods, mod_count) = writes_for(&template, command.origin, seq_base);
         let mut pushed = 0u32;
-        for modifier in mods.into_iter().take(mod_count as usize) {
-            if field.try_push(modifier).is_ok() {
-                pushed = pushed.saturating_add(1);
+        for write in mods.into_iter().take(mod_count as usize) {
+            let index = scratch.write_count as usize;
+            if index >= MAX_FIELD_WRITES {
+                break;
             }
+            scratch.writes[index] = write;
+            scratch.write_count = scratch.write_count.saturating_add(1);
+            pushed = pushed.saturating_add(1);
         }
-        scratch.next_mod_id = scratch.next_mod_id.saturating_add(pushed);
+        scratch.next_seq = scratch.next_seq.saturating_add(pushed);
         if tick == command.start && template.ice_radius > 0 {
             push_ice(
                 scratch,
@@ -216,6 +258,9 @@ pub fn weave_eval(scratch: &mut WeaveScratch, field: &mut impl SimField, tick: u
             );
         }
     }
+    let n = scratch.write_count as usize;
+    let staged = scratch.writes;
+    field.apply_writes(&staged[..n]);
 }
 
 fn command_less(a: &WeaveCommand, b: &WeaveCommand) -> bool {
@@ -257,83 +302,9 @@ fn push_ice(scratch: &mut WeaveScratch, tick: u64, seq: u32, origin: [i32; 3], r
     }
 }
 
-/// Test-double tick: evaluate, stamp, then fill the hazard tail.
-pub fn weave_tick(scratch: &mut WeaveScratch, field: &mut TestSimField, tick: u64) {
+/// Evaluate one tick against a field that does not live in this crate.
+pub fn weave_tick(scratch: &mut WeaveScratch, field: &mut impl SimField, tick: u64) {
     weave_eval(scratch, field, tick);
-    field.stamp_and_react();
-    collect_hazards(scratch, field);
-}
-
-fn collect_hazards(scratch: &mut WeaveScratch, field: &TestSimField) {
-    scratch.hazard_count = 0;
-    scratch.hazards = [WeaveHazard::EMPTY; 16];
-    // Window is [-8, 8). Visit in z, y, x so ties are stable.
-    for z in -8..8 {
-        for y in -8..8 {
-            for x in -8..8 {
-                let sample = field.sample([x, y, z]);
-                let Some(kind) = hazard_kind(&sample) else {
-                    continue;
-                };
-                insert_hazard(
-                    scratch,
-                    WeaveHazard {
-                        kind,
-                        x,
-                        y,
-                        z,
-                        temperature: sample.temperature,
-                        flags: sample.flags,
-                        radius_milli: CELL_MM as u16,
-                    },
-                );
-            }
-        }
-    }
-}
-
-fn hazard_kind(sample: &FieldSample) -> Option<u8> {
-    match sample.material {
-        MAT_FIRE => Some(WeaveHazard::FIRE),
-        MAT_STEAM => Some(WeaveHazard::STEAM),
-        MAT_POISON => Some(WeaveHazard::POISON_GAS),
-        MAT_WATER => Some(WeaveHazard::DEEP_WATER),
-        MAT_ICE => Some(WeaveHazard::ICE),
-        _ => {
-            let _ = (phase_of(sample.material), flags_of(sample.material));
-            None
-        }
-    }
-}
-
-fn insert_hazard(scratch: &mut WeaveScratch, hazard: WeaveHazard) {
-    let count = scratch.hazard_count as usize;
-    if count < 16 {
-        scratch.hazards[count] = hazard;
-        scratch.hazard_count = scratch.hazard_count.saturating_add(1);
-        sort_hazards(scratch);
-        return;
-    }
-    // Full: replace the last (farthest in the sort) if this one sorts earlier.
-    if hazard_less(&hazard, &scratch.hazards[15]) {
-        scratch.hazards[15] = hazard;
-        sort_hazards(scratch);
-    }
-}
-
-fn sort_hazards(scratch: &mut WeaveScratch) {
-    let count = scratch.hazard_count as usize;
-    for i in 1..count {
-        let mut j = i;
-        while j > 0 && hazard_less(&scratch.hazards[j], &scratch.hazards[j - 1]) {
-            scratch.hazards.swap(j, j - 1);
-            j -= 1;
-        }
-    }
-}
-
-fn hazard_less(a: &WeaveHazard, b: &WeaveHazard) -> bool {
-    (a.kind, a.z, a.y, a.x) < (b.kind, b.z, b.y, b.x)
 }
 
 /// Mod command entry. PR #214's sandbox calls this once that API is on the branch.
@@ -349,11 +320,16 @@ pub fn queue_weave(
     scratch.enqueue(start, until, seq, caster, template, origin)
 }
 
-/// Bytes for the `weaving` replay case. 300 ticks, seed recorded by the caller.
+/// Bytes for the `weaving` replay case.
+///
+/// The 32-byte tail is [`SimField::field_digest`]. [`NullField`] returns zeros
+/// until `LocalSim` is on this branch and the host passes it in.
 pub fn weaving_case_bytes(world_seed: u64) -> Vec<u8> {
-    let _ = world_seed;
+    weaving_case_on(world_seed, &mut NullField)
+}
+
+pub fn weaving_case_on(world_seed: u64, field: &mut impl SimField) -> Vec<u8> {
     let mut scratch = WeaveScratch::new();
-    let mut field = TestSimField::new();
     scratch
         .enqueue(1, 50, 0, 1, crate::templates::TEMPLATE_HEAT, [0, 0, 0])
         .expect("heat");
@@ -381,59 +357,38 @@ pub fn weaving_case_bytes(world_seed: u64) -> Vec<u8> {
         )
         .expect("gravity");
     let mut out = Vec::new();
-    out.extend_from_slice(b"AWWEAV1");
+    out.extend_from_slice(b"AWWEAV2");
     out.extend_from_slice(&world_seed.to_le_bytes());
     for tick in 0..300u64 {
-        weave_tick(&mut scratch, &mut field, tick);
-        if tick == 40 {
-            debug_assert_eq!(field.sample([0, 0, 0]).material, MAT_FIRE);
-        }
+        weave_tick(&mut scratch, field, tick);
         if tick == 80 {
             debug_assert!(scratch.sheet_count() >= 1);
             debug_assert!(scratch.nav_count() >= 1);
-            debug_assert_ne!(field.sample([2, 0, 0]).flags & crate::field::FLAG_ICE, 0);
         }
-        push_tick(&mut out, tick, &scratch, &field);
+        push_tick(&mut out, tick, &scratch, field.field_digest());
     }
     out
 }
 
-fn push_tick(out: &mut Vec<u8>, tick: u64, scratch: &WeaveScratch, field: &TestSimField) {
+fn push_tick(out: &mut Vec<u8>, tick: u64, scratch: &WeaveScratch, digest: [u8; 32]) {
     out.extend_from_slice(&tick.to_le_bytes());
-    out.push(scratch.hazard_count);
-    for i in 0..scratch.hazard_count as usize {
-        let h = scratch.hazards[i];
-        out.push(h.kind);
-        out.extend_from_slice(&h.x.to_le_bytes());
-        out.extend_from_slice(&h.y.to_le_bytes());
-        out.extend_from_slice(&h.z.to_le_bytes());
-        out.extend_from_slice(&h.temperature.to_le_bytes());
-        out.push(h.flags);
+    out.push(scratch.write_count);
+    for index in 0..scratch.write_count as usize {
+        encode_write(out, &scratch.writes[index]);
     }
     out.push(scratch.sheet_count);
     out.push(scratch.nav_count);
-    out.push(field.modifier_count() as u8);
-    let focus = field.sample([0, 0, 0]);
-    out.extend_from_slice(&focus.temperature.to_le_bytes());
-    out.push(focus.phase);
-    out.extend_from_slice(&focus.density.to_le_bytes());
-    out.push(focus.flags);
-    out.extend_from_slice(&focus.gravity_delta.to_le_bytes());
-    out.extend_from_slice(&focus.material.to_le_bytes());
-    let ice = field.sample([2, 0, 0]);
-    out.push(ice.phase);
-    out.push(ice.flags);
-    let _ = MAX_NODES;
+    out.extend_from_slice(&digest);
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::field::{FLAG_ICE, PHASE_BURN, PHASE_ICE};
+    use crate::field::{TestSimField, WriteOp};
     use crate::templates::{TEMPLATE_FREEZE, TEMPLATE_GRAVITY, TEMPLATE_HEAT};
 
     #[test]
-    fn heat_ignites_and_freeze_emits_sheet_and_nav() {
+    fn heat_writes_temp_and_freeze_emits_sheet_and_nav() {
         let mut scratch = WeaveScratch::new();
         let mut field = TestSimField::new();
         scratch
@@ -443,18 +398,19 @@ mod tests {
             .enqueue(2, 6, 1, 1, TEMPLATE_FREEZE, [1, 0, 0])
             .unwrap();
         weave_tick(&mut scratch, &mut field, 1);
-        assert_eq!(field.sample([0, 0, 0]).phase, PHASE_BURN);
-        assert!(scratch.hazards[..scratch.hazard_count as usize]
-            .iter()
-            .any(|h| h.kind == WeaveHazard::FIRE));
+        assert!(matches!(
+            scratch.write(0).unwrap().op,
+            WriteOp::AddTemp { delta: 400, .. }
+        ));
         weave_tick(&mut scratch, &mut field, 2);
-        assert_eq!(field.sample([1, 0, 0]).phase, PHASE_ICE);
-        assert_ne!(field.sample([1, 0, 0]).flags & FLAG_ICE, 0);
+        assert!(scratch.write_count() >= 2);
+        assert!(scratch.writes_op_is_ice());
         assert_eq!(scratch.sheet_count(), 1);
         assert_eq!(scratch.nav_count(), 1);
         let nav = scratch.nav_change(0).unwrap();
         assert_eq!(nav.tick, 2);
-        assert_eq!(nav.min_milli[0], scratch.sheet(0).unwrap().min_milli[0]);
+        assert_eq!(nav.min_milli, scratch.sheet(0).unwrap().min_milli);
+        assert_ne!(field.field_digest(), [0; 32]);
     }
 
     #[test]
@@ -466,18 +422,21 @@ mod tests {
     }
 
     #[test]
-    fn gravity_template_zeroes_world_g() {
+    fn gravity_template_sets_zone_index() {
         let mut scratch = WeaveScratch::new();
         let mut field = TestSimField::new();
         scratch
             .enqueue(0, 2, 0, 1, TEMPLATE_GRAVITY, [0, 0, 0])
             .unwrap();
         weave_tick(&mut scratch, &mut field, 0);
-        assert_eq!(field.sample([0, 0, 0]).gravity_delta, 1000);
+        assert!(matches!(
+            scratch.write(0).unwrap().op,
+            WriteOp::SetGravity { index: 1 }
+        ));
     }
 
     #[test]
-    fn command_order_does_not_change_the_stamp() {
+    fn command_order_does_not_change_the_writes() {
         let mut a = WeaveScratch::new();
         let mut b = WeaveScratch::new();
         a.enqueue(0, 1, 1, 2, TEMPLATE_HEAT, [0, 0, 0]).unwrap();
@@ -488,7 +447,7 @@ mod tests {
         let mut fb = TestSimField::new();
         weave_tick(&mut a, &mut fa, 0);
         weave_tick(&mut b, &mut fb, 0);
-        assert_eq!(fa.sample([0, 0, 0]), fb.sample([0, 0, 0]));
-        assert_eq!(fa.sample([2, 0, 0]), fb.sample([2, 0, 0]));
+        assert_eq!(a.write_count(), b.write_count());
+        assert_eq!(fa.field_digest(), fb.field_digest());
     }
 }
