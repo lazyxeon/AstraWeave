@@ -1234,13 +1234,181 @@
     <priority>0.8</priority>
   </url>
   <url>
+    <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_nav/enum.NavChangeKind.html</loc>
+    <lastmod>2026-10-15</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_nav/struct.NavScratch.html</loc>
+    <lastmod>2026-10-15</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_nav/struct.TileSideBuffer.html</loc>
+    <lastmod>2026-10-15</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
     <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_nav/struct.NavTri.html</loc>
     <lastmod>2026-10-15</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
+    <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_nav/constant.FRAME_BUDGET_MS.html</loc>
+    <lastmod>2026-10-15</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_nav/fn.bridge_and_ford.html</loc>
+    <lastmod>2026-10-15</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_nav/struct.CoverSite.html</loc>
+    <lastmod>2026-10-15</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_nav/struct.NavTiles.html</loc>
+    <lastmod>2026-10-15</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_nav/constant.TILE_SIZE_M.html</loc>
+    <lastmod>2026-10-15</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_nav/fn.nav_change_from_geometry_notice.html</loc>
+    <lastmod>2026-10-15</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
     <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_nav/struct.Triangle.html</loc>
+    <lastmod>2026-10-15</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_nav/constant.NOTICE_WEAVE.html</loc>
+    <lastmod>2026-10-15</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_nav/constant.NOTICE_COLLAPSE.html</loc>
+    <lastmod>2026-10-15</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_nav/tiles/enum.NavChangeKind.html</loc>
+    <lastmod>2026-10-15</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_nav/tiles/struct.NavScratch.html</loc>
+    <lastmod>2026-10-15</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_nav/tiles/struct.TileSideBuffer.html</loc>
+    <lastmod>2026-10-15</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_nav/tiles/constant.FRAME_BUDGET_MS.html</loc>
+    <lastmod>2026-10-15</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_nav/tiles/fn.bridge_and_ford.html</loc>
+    <lastmod>2026-10-15</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_nav/tiles/struct.CoverSite.html</loc>
+    <lastmod>2026-10-15</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_nav/tiles/struct.NavTiles.html</loc>
+    <lastmod>2026-10-15</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_nav/tiles/constant.TILE_SIZE_M.html</loc>
+    <lastmod>2026-10-15</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_nav/tiles/fn.nav_change_from_geometry_notice.html</loc>
+    <lastmod>2026-10-15</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_nav/tiles/constant.NOTICE_WEAVE.html</loc>
+    <lastmod>2026-10-15</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_nav/tiles/constant.NOTICE_COLLAPSE.html</loc>
+    <lastmod>2026-10-15</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_nav/tiles/constant.NOTICE_BRUSH.html</loc>
+    <lastmod>2026-10-15</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_nav/tiles/struct.BreachSite.html</loc>
+    <lastmod>2026-10-15</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_nav/tiles/struct.NavChange.html</loc>
+    <lastmod>2026-10-15</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_nav/tiles/fn.nav_change_from_kind.html</loc>
+    <lastmod>2026-10-15</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_nav/tiles/constant.TILE_COMMITS_PER_TICK.html</loc>
+    <lastmod>2026-10-15</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_nav/constant.NOTICE_BRUSH.html</loc>
     <lastmod>2026-10-15</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
@@ -1258,6 +1426,30 @@
     <priority>0.8</priority>
   </url>
   <url>
+    <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_nav/struct.BreachSite.html</loc>
+    <lastmod>2026-10-15</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_nav/struct.NavChange.html</loc>
+    <lastmod>2026-10-15</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_nav/fn.nav_change_from_kind.html</loc>
+    <lastmod>2026-10-15</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_nav/constant.TILE_COMMITS_PER_TICK.html</loc>
+    <lastmod>2026-10-15</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
     <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_nav/all.html</loc>
     <lastmod>2026-10-15</lastmod>
     <changefreq>weekly</changefreq>
@@ -1265,6 +1457,12 @@
   </url>
   <url>
     <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_nav/struct.Aabb.html</loc>
+    <lastmod>2026-10-15</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_nav/struct.GeometryNotice.html</loc>
     <lastmod>2026-10-15</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
@@ -2122,6 +2320,12 @@
     <priority>0.8</priority>
   </url>
   <url>
+    <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_ai/fn.bridge_and_ford.html</loc>
+    <lastmod>2026-10-15</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
     <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_ai/ecs_ai_plugin/struct.AiPlanningPlugin.html</loc>
     <lastmod>2026-10-15</lastmod>
     <changefreq>weekly</changefreq>
@@ -2135,6 +2339,102 @@
   </url>
   <url>
     <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_ai/ecs_ai_plugin/index.html</loc>
+    <lastmod>2026-10-15</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_ai/htn/struct.AgentPlan.html</loc>
+    <lastmod>2026-10-15</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_ai/htn/constant.BAND1_MILLI.html</loc>
+    <lastmod>2026-10-15</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_ai/htn/fn.tick_agents.html</loc>
+    <lastmod>2026-10-15</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_ai/htn/constant.BAND2_MILLI.html</loc>
+    <lastmod>2026-10-15</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_ai/htn/fn.fill_observation.html</loc>
+    <lastmod>2026-10-15</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_ai/htn/fn.legacy_utility_plan.html</loc>
+    <lastmod>2026-10-15</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_ai/htn/struct.HtnOrchestrator.html</loc>
+    <lastmod>2026-10-15</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_ai/htn/index.html</loc>
+    <lastmod>2026-10-15</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_ai/htn/struct.SpatialTick.html</loc>
+    <lastmod>2026-10-15</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_ai/htn/constant.REPLAN_TICKS.html</loc>
+    <lastmod>2026-10-15</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_ai/htn/enum.ActionSlot.html</loc>
+    <lastmod>2026-10-15</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_ai/htn/struct.AgentState.html</loc>
+    <lastmod>2026-10-15</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_ai/htn/constant.HTN_EXPANSIONS_PER_TICK.html</loc>
+    <lastmod>2026-10-15</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_ai/htn/fn.plan_route.html</loc>
+    <lastmod>2026-10-15</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_ai/htn/struct.SpatialHooks.html</loc>
+    <lastmod>2026-10-15</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_ai/htn/constant.BAND0_MILLI.html</loc>
     <lastmod>2026-10-15</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
@@ -3016,6 +3316,18 @@
     <priority>0.8</priority>
   </url>
   <url>
+    <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_core/perception/struct.ObservedCover.html</loc>
+    <lastmod>2026-10-15</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_core/perception/struct.WeaveEffectHook.html</loc>
+    <lastmod>2026-10-15</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
     <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_core/perception/struct.PerceptionConfig.html</loc>
     <lastmod>2026-10-15</lastmod>
     <changefreq>weekly</changefreq>
@@ -3035,6 +3347,30 @@
   </url>
   <url>
     <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_core/perception/fn.try_build_snapshot_shared_obstacles.html</loc>
+    <lastmod>2026-10-15</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_core/perception/fn.try_build_snapshot_observed.html</loc>
+    <lastmod>2026-10-15</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_core/perception/struct.ObservedBreach.html</loc>
+    <lastmod>2026-10-15</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_core/perception/struct.LocalHazardHook.html</loc>
+    <lastmod>2026-10-15</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_core/perception/struct.ObservationBuf.html</loc>
     <lastmod>2026-10-15</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
@@ -3070,6 +3406,12 @@
     <priority>0.8</priority>
   </url>
   <url>
+    <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_core/sim/constant.SIM_SYSTEM_HTN.html</loc>
+    <lastmod>2026-10-15</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
     <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_core/sim/fn.mix_sim_seed.html</loc>
     <lastmod>2026-10-15</lastmod>
     <changefreq>weekly</changefreq>
@@ -3077,6 +3419,12 @@
   </url>
   <url>
     <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_core/sim/constant.SIM_SYSTEM_HARVEST.html</loc>
+    <lastmod>2026-10-15</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_core/sim/constant.SIM_SYSTEM_NAV.html</loc>
     <lastmod>2026-10-15</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>

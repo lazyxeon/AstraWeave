@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"mod":["core_loop","ecs_ai_plugin","orchestrator","tool_sandbox"]};
+window.SIDEBAR_ITEMS = {"fn":["bridge_and_ford"],"mod":["core_loop","ecs_ai_plugin","htn","orchestrator","tool_sandbox"]};

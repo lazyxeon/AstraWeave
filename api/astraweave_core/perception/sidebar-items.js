@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"fn":["build_snapshot","build_snapshot_shared_obstacles","try_build_snapshot","try_build_snapshot_shared_obstacles"],"struct":["PerceptionConfig","SnapshotError"]};
+window.SIDEBAR_ITEMS = {"fn":["build_snapshot","build_snapshot_shared_obstacles","try_build_snapshot","try_build_snapshot_observed","try_build_snapshot_shared_obstacles"],"struct":["LocalHazardHook","ObservationBuf","ObservedBreach","ObservedCover","PerceptionConfig","SnapshotError","WeaveEffectHook"]};

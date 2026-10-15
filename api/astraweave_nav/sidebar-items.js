@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"struct":["Aabb","NavMesh","NavTri","Triangle"]};
+window.SIDEBAR_ITEMS = {"constant":["FRAME_BUDGET_MS","NOTICE_BRUSH","NOTICE_COLLAPSE","NOTICE_WEAVE","TILE_COMMITS_PER_TICK","TILE_SIZE_M"],"enum":["NavChangeKind"],"fn":["bridge_and_ford","nav_change_from_geometry_notice","nav_change_from_kind"],"struct":["Aabb","BreachSite","CoverSite","GeometryNotice","NavChange","NavMesh","NavScratch","NavTiles","NavTri","TileSideBuffer","Triangle"]};

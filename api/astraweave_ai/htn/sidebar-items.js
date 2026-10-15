@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["BAND0_MILLI","BAND1_MILLI","BAND2_MILLI","HTN_EXPANSIONS_PER_TICK","REPLAN_TICKS"],"enum":["ActionSlot"],"fn":["fill_observation","legacy_utility_plan","plan_route","tick_agents"],"struct":["AgentPlan","AgentState","HtnOrchestrator","SpatialHooks","SpatialTick"]};
