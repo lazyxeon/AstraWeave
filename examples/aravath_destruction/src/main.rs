@@ -1,9 +1,9 @@
 //! Headless Aravath demolition. The same script is the destruction replay case.
 
+use astraweave_destruction::debris::DebrisLod;
 use astraweave_destruction::{
     allows_climb, aravath_lines, demolition_digest, DestructionWorld, FractureFlags,
 };
-use astraweave_destruction::debris::DebrisLod;
 
 fn main() {
     let seed = 0xA2A0_0001;
