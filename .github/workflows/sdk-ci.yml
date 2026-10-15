@@ -87,7 +87,7 @@ jobs:
             return 0;
           }
           '@
-          cl /I. c_harness.c /link /LIBPATH:target\release astraweave_sdk.lib
+          cl /I. c_harness.c /link /LIBPATH:target\release astraweave_sdk.lib ws2_32.lib userenv.lib ntdll.lib
           if (Test-Path target\release\astraweave_sdk.dll) { Copy-Item target\release\astraweave_sdk.dll . }
           .\c_harness.exe | Tee-Object -FilePath harness_out.txt | Out-Null
           # Semantic version gate (Windows)

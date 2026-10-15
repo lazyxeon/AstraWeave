@@ -28,6 +28,7 @@ astraweave-behavior = { workspace = true }
 criterion = { workspace = true }
 astraweave-ai = { workspace = true }
 astraweave-gameplay = { path = "../astraweave-gameplay" }
+astraweave-math = { workspace = true }
 sha2 = { workspace = true }
 
 [[bench]]

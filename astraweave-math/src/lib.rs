@@ -65,6 +65,7 @@ Typical speedups vs scalar glam operations (x86_64 SSE2):
 
 */
 
+pub mod fixed64;
 pub mod simd_mat;
 pub mod simd_movement;
 pub mod simd_quat;
@@ -108,6 +109,8 @@ mod mutation_tests;
 mod simd_vec_kani;
 
 // Re-exports for convenience
+pub use fixed64::{fixed64_contract_bytes, Fixed64};
+
 pub use simd_vec::{cross_simd, dot_simd, length_simd, length_squared_simd, normalize_simd};
 
 pub use simd_mat::{

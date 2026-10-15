@@ -13,6 +13,7 @@ unexpected_cfgs = { level = "warn", check-cfg = ['cfg(kani)'] }
 [dependencies]
 glam = { workspace = true }
 bytemuck = { version = "1", features = ["derive"] }
+serde = { workspace = true }
 
 [dev-dependencies]
 criterion = { version = "0.7", features = ["html_reports"] }

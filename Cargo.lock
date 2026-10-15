@@ -810,6 +810,7 @@ dependencies = [
  "astraweave-behavior",
  "astraweave-ecs",
  "astraweave-gameplay",
+ "astraweave-math",
  "criterion 0.7.0",
  "glam",
  "rand 0.9.2",
@@ -1043,6 +1044,7 @@ dependencies = [
  "bytemuck",
  "criterion 0.7.0",
  "glam",
+ "serde",
 ]
 
 [[package]]
