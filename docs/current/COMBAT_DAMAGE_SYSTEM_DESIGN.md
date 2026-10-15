@@ -1040,6 +1040,7 @@ No GPU, no WoW client, and no three-OS runner were used. That is why H1 is not m
 | 0.4 | 2026-10-14 | Rebased onto `85d09a2c`. `SimRng` is core (R2 closed). `Fixed64` stays local because that merge has no Q32.32 type (R3 open). `combat_resolve` is a required case of `determinism-replay.yml` (R1 closed). Golden hashes unchanged. |
 | 0.5 | 2026-10-14 | §23 logs CI failures from the rebase run that PR #217's ledger does not cover. Benchmark aggregation now expects 49 packages because this crate has a bench. |
 | 0.6 | 2026-10-15 | Rebased onto PR #245. Combat re-exports `astraweave_math::Fixed64`. `whole_raw` stays. `fixed64` and `combat_resolve` are both required replay cases. Golden hashes unchanged. |
+| 0.7 | 2026-10-15 | Windows SDK harness linked, then failed `0.4.0` vs `0` because PowerShell indexed the version string. The capture group is read whole. |
 
 ---
 
@@ -1095,3 +1096,4 @@ These failures are not that ledger:
 4. `Test (macos-latest, debug)` stopped in `astraweave-render` (1232 passed, 59 failed) with the same missing adapter (`supported_backends: METAL`).
 5. `Coverage (Linux)` panicked in `astraweave-fluids` GPU tests (`Device::create_compute_pipeline`, label `SSFR Smooth Pipeline`: WGSL `textureLoad` from depth textures is not supported in GLSL) and in `astraweave-persistence-ecs` `test_large_world_1000_entities` (serialize took 83 ms against a 50 ms debug budget). The job was then canceled. The ledger's caustics note is a different fluids test.
 6. Benchmark aggregation required 48 package records. This branch has 49 because `astraweave-combat` has a bench, so `complete` was false. `benchmark.yml` and `benchmark_alert.yml` now expect 49. Shard timeouts still leave the aggregate unhealthy, and that part is the ledger.
+7. After PR #245 linked `ws2_32.lib`, `userenv.lib`, and `ntdll.lib`, `build-sdk-and-c (windows-latest)` got past the linker and failed `Version mismatch: 0.4.0 vs 0`. The runtime print is `0.4.0`. PowerShell's trailing `[0]` took the first character of that string. The workflow now reads the regex capture whole. Ubuntu already compared the full strings and passed.

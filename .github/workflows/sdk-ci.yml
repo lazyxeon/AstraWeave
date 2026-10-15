@@ -91,8 +91,13 @@ jobs:
           if (Test-Path target\release\astraweave_sdk.dll) { Copy-Item target\release\astraweave_sdk.dll . }
           .\c_harness.exe | Tee-Object -FilePath harness_out.txt | Out-Null
           # Semantic version gate (Windows)
-          $ver = (Select-String -Path astraweave-sdk/Cargo.toml -Pattern '^version\s*=\s*"([^"]+)"' | ForEach-Object { $_.Matches[0].Groups[1].Value })[0]
-          $out = Get-Content harness_out.txt | Select-Object -First 1
+          # Select-Object -First 1, not [0]: indexing the version string yields its first character.
+          $found = @(Select-String -Path astraweave-sdk/Cargo.toml -Pattern '^version\s*=\s*"([^"]+)"')
+          if ($found.Count -lt 1) { throw "astraweave-sdk version line not found" }
+          $ver = $found[0].Matches[0].Groups[1].Value
+          $out = @(Get-Content harness_out.txt | Select-Object -First 1)
+          if ($out.Count -lt 1) { throw "C harness printed no version" }
+          $out = $out[0].Trim()
           Write-Host "SDK Crate Version: $ver; Runtime: $out"
           if ($out -ne $ver) { throw "Version mismatch: $out vs $ver" }
       - name: Cinematics smoke test (Windows)
