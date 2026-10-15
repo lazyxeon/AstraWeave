@@ -2,8 +2,8 @@
 name = "ecs_ai_showcase"
 license.workspace = true
 version = "0.1.0"
+license = "MIT"
 edition = "2021"
-
 [dependencies]
 astraweave-ecs = { path = "../../astraweave-ecs" }
 astraweave-core = { path = "../../astraweave-core" }

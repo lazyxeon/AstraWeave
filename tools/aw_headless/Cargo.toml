@@ -1,10 +1,10 @@
 [package]
 name = "aw_headless"
 version = "0.1.0"
+license = "MIT"
 authors = ["AstraWeave Contributors"]
 edition = "2021"
 publish = false
-
 [dependencies]
 anyhow = { workspace = true }
 wgpu = { workspace = true }

@@ -2,8 +2,8 @@
 name = "astraweave-fluids"
 license.workspace = true
 version = "0.1.0"
+license = "MIT"
 edition = "2021"
-
 [features]
 default = []
 # ORPHANED by W.1 (2026-06-20): `simd_ops` — the sole consumer of these

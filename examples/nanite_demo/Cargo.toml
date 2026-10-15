@@ -1,8 +1,8 @@
 [package]
 name = "nanite_demo"
 version = "0.1.0"
+license = "MIT"
 edition = "2021"
-
 [dependencies]
 astraweave-render = { path = "../../astraweave-render", features = ["nanite", "textures"] }
 astraweave-asset = { path = "../../astraweave-asset", features = ["gltf"] }

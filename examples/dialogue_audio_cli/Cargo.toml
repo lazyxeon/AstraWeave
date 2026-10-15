@@ -2,8 +2,8 @@
 name = "dialogue_audio_cli"
 license.workspace = true
 version = "0.1.0"
+license = "MIT"
 edition = "2021"
-
 [dependencies]
 anyhow = { workspace = true }
 astraweave-audio = { path = "../../astraweave-audio", features = ["mock_tts"] }

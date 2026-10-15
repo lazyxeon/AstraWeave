@@ -1,8 +1,8 @@
 [package]
 name = "hybrid_voxel_demo"
 version = "0.1.0"
+license = "MIT"
 edition = "2021"
-
 [dependencies]
 astraweave-terrain = { path = "../../astraweave-terrain", features = ["hybrid-voxel"] }
 astraweave-render = { path = "../../astraweave-render" }

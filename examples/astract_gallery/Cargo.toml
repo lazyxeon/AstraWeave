@@ -2,8 +2,8 @@
 name = "astract_gallery"
 license.workspace = true
 version = "0.1.0"
+license = "MIT"
 edition = "2021"
-
 [dependencies]
 astract = { path = "../../crates/astract" }
 eframe = "0.32"
