@@ -225,7 +225,7 @@ impl TemporalUpscalePass {
                 tex_entry(0),
                 tex_entry(1),
                 tex_entry(2),
-                tex_entry(3),
+                depth_entry(3),
                 sampler_entry(4),
                 uniform_entry(5),
                 storage_entry(6, fmt),
@@ -240,7 +240,7 @@ impl TemporalUpscalePass {
                 tex_entry(0),
                 tex_entry(1),
                 tex_entry(2),
-                tex_entry(3),
+                depth_entry(3),
                 sampler_entry(4),
                 uniform_entry(5),
                 storage_entry(6, fmt),
@@ -546,6 +546,19 @@ impl TemporalUpscalePass {
 // ============================================================================
 // Bind group layout helpers
 // ============================================================================
+
+fn depth_entry(binding: u32) -> wgpu::BindGroupLayoutEntry {
+    wgpu::BindGroupLayoutEntry {
+        binding,
+        visibility: wgpu::ShaderStages::COMPUTE,
+        ty: wgpu::BindingType::Texture {
+            sample_type: wgpu::TextureSampleType::Depth,
+            view_dimension: wgpu::TextureViewDimension::D2,
+            multisampled: false,
+        },
+        count: None,
+    }
+}
 
 fn tex_entry(binding: u32) -> wgpu::BindGroupLayoutEntry {
     wgpu::BindGroupLayoutEntry {

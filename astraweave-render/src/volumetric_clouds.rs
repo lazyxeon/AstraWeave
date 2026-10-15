@@ -291,7 +291,7 @@ impl VolumetricCloudsPass {
                 bgl_uniform(0),            // CloudCompositeParams
                 bgl_texture_2d(1),         // scene color
                 bgl_texture_2d(2),         // cloud result
-                bgl_texture_2d(3),         // depth
+                bgl_depth(3),              // scene depth
                 bgl_sampler(4),            // linear sampler
                 bgl_storage_2d_rw(5, fmt), // output
             ],
@@ -855,6 +855,19 @@ fn bgl_uniform(binding: u32) -> wgpu::BindGroupLayoutEntry {
             ty: wgpu::BufferBindingType::Uniform,
             has_dynamic_offset: false,
             min_binding_size: None,
+        },
+        count: None,
+    }
+}
+
+fn bgl_depth(binding: u32) -> wgpu::BindGroupLayoutEntry {
+    wgpu::BindGroupLayoutEntry {
+        binding,
+        visibility: wgpu::ShaderStages::COMPUTE,
+        ty: wgpu::BindingType::Texture {
+            sample_type: wgpu::TextureSampleType::Depth,
+            view_dimension: wgpu::TextureViewDimension::D2,
+            multisampled: false,
         },
         count: None,
     }

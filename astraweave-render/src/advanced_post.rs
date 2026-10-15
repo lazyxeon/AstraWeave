@@ -301,7 +301,7 @@ impl AdvancedPostFx {
                     binding: 1,
                     visibility: wgpu::ShaderStages::FRAGMENT,
                     ty: wgpu::BindingType::Texture {
-                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        sample_type: wgpu::TextureSampleType::Depth,
                         view_dimension: wgpu::TextureViewDimension::D2,
                         multisampled: false,
                     },
@@ -499,6 +499,73 @@ impl AdvancedPostFx {
         pass.draw(0..3, 0..1);
     }
 
+    pub fn history_view(&self) -> &wgpu::TextureView {
+        &self.taa_history_view
+    }
+
+    /// Depth-of-field. `depth_view` is `texture_depth_2d`. Presentation only.
+    pub fn apply_dof(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        encoder: &mut wgpu::CommandEncoder,
+        color_view: &wgpu::TextureView,
+        depth_view: &wgpu::TextureView,
+        output_view: &wgpu::TextureView,
+    ) {
+        self.dof_config.enabled = true;
+        let params = [
+            self.dof_config.focus_distance,
+            self.dof_config.focus_range,
+            self.dof_config.bokeh_size,
+            0.0,
+            0.1,
+            200.0,
+            1.0 / 64.0,
+            1.0 / 64.0,
+        ];
+        queue.write_buffer(&self.dof_params_buf, 0, bytemuck::cast_slice(&params));
+        let bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("dof bg"),
+            layout: &self.dof_bgl,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(color_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::TextureView(depth_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: wgpu::BindingResource::Sampler(&self.sampler),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: self.dof_params_buf.as_entire_binding(),
+                },
+            ],
+        });
+        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("dof pass"),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view: output_view,
+                resolve_target: None,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Load,
+                    store: wgpu::StoreOp::Store,
+                },
+            })],
+            depth_stencil_attachment: None,
+            timestamp_writes: None,
+            occlusion_query_set: None,
+        });
+        pass.set_pipeline(&self.dof_pipeline);
+        pass.set_bind_group(0, &bg, &[]);
+        pass.draw(0..3, 0..1);
+    }
+
     /// Update frame counter
     pub fn next_frame(&mut self) {
         self.frame_count += 1;
@@ -582,7 +649,7 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
 
 const DOF_SHADER: &str = r#"
 @group(0) @binding(0) var color_tex: texture_2d<f32>;
-@group(0) @binding(1) var depth_tex: texture_2d<f32>;
+@group(0) @binding(1) var depth_tex: texture_depth_2d;
 @group(0) @binding(2) var tex_sampler: sampler;
 
 struct DofParams {
@@ -625,7 +692,8 @@ fn compute_coc(linear_depth: f32) -> f32 {
 
 @fragment
 fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
-    let raw_depth = textureSample(depth_tex, tex_sampler, input.uv).r;
+    let depth_size = vec2<f32>(textureDimensions(depth_tex));
+    let raw_depth = textureLoad(depth_tex, vec2<i32>(input.uv * depth_size), 0);
     let linear_depth = linearize_depth(raw_depth);
     let coc = compute_coc(linear_depth);
 

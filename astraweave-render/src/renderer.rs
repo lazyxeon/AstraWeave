@@ -1023,6 +1023,22 @@ pub struct Renderer {
     particle_draw: Option<crate::particle_render::ParticleRenderPass>,
     particle_sort: Option<wgpu::Buffer>,
     particle_emitter: Option<crate::gpu_particles::EmitterParams>,
+    /// Optional presentation passes. Off by default so `draw_into` does not
+    /// record them. #227 and #228 stay on PR #205.
+    atmosphere_on: bool,
+    cloud_raymarch_on: bool,
+    ssgi_on: bool,
+    taa_on: bool,
+    upscale_on: bool,
+    dof_on: bool,
+    atmosphere: Option<crate::atmosphere::AtmospherePass>,
+    cloud_raymarch: Option<crate::volumetric_clouds::VolumetricCloudsPass>,
+    ssgi_pass: Option<crate::ssgi::SsgiPass>,
+    taa_pass: Option<crate::taa::TaaPass>,
+    upscale_pass: Option<crate::temporal_upscale::TemporalUpscalePass>,
+    dof_pass: Option<crate::advanced_post::AdvancedPostFx>,
+    gated_normal: Option<(wgpu::Texture, wgpu::TextureView)>,
+    gated_velocity: Option<(wgpu::Texture, wgpu::TextureView)>,
     /// Camera-distance texture requests. `draw_into` uploads from its ring.
     streaming: crate::texture_streaming::TextureStreamingManager,
     /// Present when the device was created with the binding-array features.
@@ -3681,6 +3697,20 @@ fn vs(input: VSIn) -> VSOut {
             particle_draw: None,
             particle_sort: None,
             particle_emitter: None,
+            atmosphere_on: false,
+            cloud_raymarch_on: false,
+            ssgi_on: false,
+            taa_on: false,
+            upscale_on: false,
+            dof_on: false,
+            atmosphere: None,
+            cloud_raymarch: None,
+            ssgi_pass: None,
+            taa_pass: None,
+            upscale_pass: None,
+            dof_pass: None,
+            gated_normal: None,
+            gated_velocity: None,
             streaming: crate::texture_streaming::TextureStreamingManager::new(256),
             bindless,
             bindless_active,
@@ -5397,6 +5427,201 @@ fn vs(input: VSIn) -> VSOut {
                 },
             ],
         })
+    }
+
+    pub fn set_atmosphere_enabled(&mut self, enabled: bool) {
+        self.atmosphere_on = enabled;
+    }
+
+    pub fn set_cloud_raymarch_enabled(&mut self, enabled: bool) {
+        self.cloud_raymarch_on = enabled;
+    }
+
+    pub fn set_ssgi_enabled(&mut self, enabled: bool) {
+        self.ssgi_on = enabled;
+    }
+
+    pub fn set_taa_enabled(&mut self, enabled: bool) {
+        self.taa_on = enabled;
+    }
+
+    pub fn set_temporal_upscale_enabled(&mut self, enabled: bool) {
+        self.upscale_on = enabled;
+    }
+
+    pub fn set_dof_enabled(&mut self, enabled: bool) {
+        self.dof_on = enabled;
+    }
+
+    fn ensure_gated_aux(&mut self) {
+        if self.gated_normal.is_some() {
+            return;
+        }
+        let size = wgpu::Extent3d {
+            width: self.config.width.max(1),
+            height: self.config.height.max(1),
+            depth_or_array_layers: 1,
+        };
+        let normal = self.device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("gated normal"),
+            size,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba16Float,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::RENDER_ATTACHMENT,
+            view_formats: &[],
+        });
+        let normal_view = normal.create_view(&wgpu::TextureViewDescriptor::default());
+        let velocity = self.device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("gated velocity"),
+            size,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rg16Float,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::RENDER_ATTACHMENT,
+            view_formats: &[],
+        });
+        let velocity_view = velocity.create_view(&wgpu::TextureViewDescriptor::default());
+        self.gated_normal = Some((normal, normal_view));
+        self.gated_velocity = Some((velocity, velocity_view));
+    }
+
+    /// Presentation passes that stay off unless a setter turned them on.
+    /// History and GI stay out of the simulation.
+    fn record_gated_presentation(
+        &mut self,
+        enc: &mut wgpu::CommandEncoder,
+        depth: &wgpu::TextureView,
+    ) {
+        let gen = self.resource_generation;
+        let hdr = self.hdr_view.clone();
+        let device = self.device.clone();
+        let queue = self.queue.clone();
+        let width = self.config.width.max(1);
+        let height = self.config.height.max(1);
+        let inv = self.cached_proj * self.cached_view;
+        let eye = glam::Vec3::new(
+            self.camera_ubo.camera_pos_pad[0],
+            self.camera_ubo.camera_pos_pad[1],
+            self.camera_ubo.camera_pos_pad[2],
+        );
+
+        if self.atmosphere_on {
+            if self.atmosphere.is_none() {
+                self.atmosphere = Some(crate::atmosphere::AtmospherePass::new(
+                    &self.device,
+                    width,
+                    height,
+                    crate::atmosphere::AtmosphereConfig::default(),
+                ));
+            }
+            if let Some(pass) = self.atmosphere.as_mut() {
+                pass.prepare_frame(
+                    &queue,
+                    inv,
+                    eye,
+                    glam::Vec3::Y,
+                    glam::Vec3::NEG_Y,
+                    0.1,
+                    200.0,
+                );
+                pass.execute(&device, enc, &hdr, depth, gen);
+                enc.copy_texture_to_texture(
+                    pass.aerial_texture().as_image_copy(),
+                    self.hdr_tex.as_image_copy(),
+                    wgpu::Extent3d {
+                        width,
+                        height,
+                        depth_or_array_layers: 1,
+                    },
+                );
+            }
+        }
+        if self.cloud_raymarch_on {
+            if self.cloud_raymarch.is_none() {
+                self.cloud_raymarch = Some(crate::volumetric_clouds::VolumetricCloudsPass::new(
+                    &self.device,
+                    width,
+                    height,
+                    crate::volumetric_clouds::CloudConfig::default(),
+                ));
+            }
+            if let Some(pass) = self.cloud_raymarch.as_mut() {
+                pass.prepare_frame(
+                    &queue,
+                    inv,
+                    eye,
+                    glam::Vec3::Y,
+                    glam::Vec3::ONE,
+                    1.0,
+                    0.2,
+                    0.1,
+                    200.0,
+                    1.0 / 60.0,
+                );
+                pass.execute(&device, enc, &hdr, depth, gen);
+                pass.copy_cloud_to_history(enc);
+            }
+        }
+        if self.ssgi_on || self.taa_on || self.upscale_on {
+            self.ensure_gated_aux();
+        }
+        let normal = self.gated_normal.as_ref().map(|(_, view)| view.clone());
+        let velocity = self.gated_velocity.as_ref().map(|(_, view)| view.clone());
+        if self.ssgi_on {
+            if self.ssgi_pass.is_none() {
+                self.ssgi_pass = Some(crate::ssgi::SsgiPass::new(&self.device, width, height));
+            }
+            if let (Some(pass), Some(normal), Some(velocity)) =
+                (self.ssgi_pass.as_mut(), normal.as_ref(), velocity.as_ref())
+            {
+                pass.update_params(&queue, self.cached_proj);
+                pass.execute(&device, enc, depth, normal, &hdr, velocity, gen);
+            }
+        }
+        if self.taa_on {
+            if self.taa_pass.is_none() {
+                self.taa_pass = Some(crate::taa::TaaPass::new(&self.device, width, height));
+            }
+            if let (Some(pass), Some(velocity)) = (self.taa_pass.as_mut(), velocity.as_ref()) {
+                pass.update_params(&queue);
+                pass.execute(&device, enc, &hdr, depth, velocity, gen);
+            }
+        }
+        if self.upscale_on {
+            if self.upscale_pass.is_none() {
+                let config = crate::temporal_upscale::UpscaleConfig::default();
+                self.upscale_pass = Some(crate::temporal_upscale::TemporalUpscalePass::new(
+                    &self.device,
+                    width,
+                    height,
+                    &config,
+                ));
+            }
+            if let (Some(pass), Some(velocity)) = (self.upscale_pass.as_mut(), velocity.as_ref()) {
+                pass.update_params(&queue);
+                pass.execute(&device, enc, &hdr, depth, velocity, gen);
+            }
+        }
+        if self.dof_on {
+            if self.dof_pass.is_none() {
+                match crate::advanced_post::AdvancedPostFx::new(
+                    &self.device,
+                    width,
+                    height,
+                    wgpu::TextureFormat::Rgba16Float,
+                ) {
+                    Ok(pass) => self.dof_pass = Some(pass),
+                    Err(err) => log::error!("depth of field pass was not created: {err:#}"),
+                }
+            }
+            if let Some(pass) = self.dof_pass.as_mut() {
+                let history = pass.history_view().clone();
+                pass.apply_dof(&device, &queue, enc, &hdr, depth, &history);
+            }
+        }
     }
 
     /// Enable a presentation-only particle emitter. `None` disables it.
@@ -7214,21 +7439,24 @@ fn vs(input: VSIn) -> VSOut {
 
         let sky_tex = self.ibl_resources.as_ref().map(|r| &r.env_cube);
 
-        self.sky
-            .render(
-                &self.device,
-                enc,
-                &self.hdr_view,
-                // Real-Fix.A: route to caller-provided depth when Some, else internal fallback.
-                depth_view.unwrap_or(&self.depth.view),
-                vp_sky,
-                &self.queue,
-                sky_tex,
-                self.ibl_resources
-                    .as_ref()
-                    .and_then(|r| r.hdr_equirect.as_ref()),
-            )
-            .context("Sky render failed")?;
+        // Bruneton is a sky mode, not a second layer on the HDRI sky.
+        if !self.atmosphere_on {
+            self.sky
+                .render(
+                    &self.device,
+                    enc,
+                    &self.hdr_view,
+                    // Real-Fix.A: route to caller-provided depth when Some, else internal fallback.
+                    depth_view.unwrap_or(&self.depth.view),
+                    vp_sky,
+                    &self.queue,
+                    sky_tex,
+                    self.ibl_resources
+                        .as_ref()
+                        .and_then(|r| r.hdr_equirect.as_ref()),
+                )
+                .context("Sky render failed")?;
+        }
 
         // Upload scene environment UBO (fog, ambient, tint) — aligned with render() path
         {
@@ -7596,6 +7824,19 @@ fn vs(input: VSIn) -> VSOut {
         } else {
             0.0
         };
+        if self.atmosphere_on
+            || self.cloud_raymarch_on
+            || self.ssgi_on
+            || self.taa_on
+            || self.upscale_on
+            || self.dof_on
+        {
+            let depth = depth_view
+                .cloned()
+                .unwrap_or_else(|| self.depth.view.clone());
+            self.record_gated_presentation(enc, &depth);
+        }
+
         // Upload blit compositing params (16 bytes — always written, cheap).
         self.queue.write_buffer(
             &self.postfx_params_buf,

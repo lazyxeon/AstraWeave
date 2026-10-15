@@ -297,7 +297,9 @@ impl AtmospherePass {
                 sample_count: 1,
                 dimension: wgpu::TextureDimension::D2,
                 format: fmt,
-                usage: wgpu::TextureUsages::STORAGE_BINDING | wgpu::TextureUsages::TEXTURE_BINDING,
+                usage: wgpu::TextureUsages::STORAGE_BINDING
+                    | wgpu::TextureUsages::TEXTURE_BINDING
+                    | wgpu::TextureUsages::COPY_SRC,
                 view_formats: &[],
             });
             let view = tex.create_view(&wgpu::TextureViewDescriptor::default());
@@ -346,7 +348,7 @@ impl AtmospherePass {
             entries: &[
                 bgl_uniform(0),
                 bgl_texture_2d(1), // scene
-                bgl_texture_2d(2), // depth
+                bgl_depth(2),      // scene depth, texture_depth_2d
                 bgl_texture_2d(3), // transmittance LUT
                 bgl_sampler(4),
                 bgl_storage_2d_rw(5, fmt),
@@ -439,6 +441,10 @@ impl AtmospherePass {
     /// Aerial perspective output texture view.
     pub fn aerial_view(&self) -> &wgpu::TextureView {
         &self.aerial_view
+    }
+
+    pub fn aerial_texture(&self) -> &wgpu::Texture {
+        &self.aerial_texture
     }
 
     /// Transmittance LUT view (for external use in other passes).
@@ -749,6 +755,19 @@ fn bgl_uniform(binding: u32) -> wgpu::BindGroupLayoutEntry {
             ty: wgpu::BufferBindingType::Uniform,
             has_dynamic_offset: false,
             min_binding_size: None,
+        },
+        count: None,
+    }
+}
+
+fn bgl_depth(binding: u32) -> wgpu::BindGroupLayoutEntry {
+    wgpu::BindGroupLayoutEntry {
+        binding,
+        visibility: wgpu::ShaderStages::COMPUTE,
+        ty: wgpu::BindingType::Texture {
+            sample_type: wgpu::TextureSampleType::Depth,
+            view_dimension: wgpu::TextureViewDimension::D2,
+            multisampled: false,
         },
         count: None,
     }

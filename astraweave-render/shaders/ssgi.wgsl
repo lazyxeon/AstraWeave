@@ -23,7 +23,7 @@ struct SsgiParams {
     _pad: u32,
 };
 
-@group(0) @binding(0) var depth_tex: texture_2d<f32>;
+@group(0) @binding(0) var depth_tex: texture_depth_2d;
 @group(0) @binding(1) var normal_tex: texture_2d<f32>;
 @group(0) @binding(2) var color_tex: texture_2d<f32>;
 @group(0) @binding(3) var samp: sampler;
@@ -99,7 +99,8 @@ fn sample_depth_tiled(screen_uv: vec2<f32>) -> f32 {
     if (local.x >= 0 && u32(local.x) < TILE_DIM && local.y >= 0 && u32(local.y) < TILE_DIM) {
         return tile_depth[u32(local.y) * TILE_DIM + u32(local.x)];
     }
-    return textureSampleLevel(depth_tex, samp, screen_uv, 0.0).r;
+    let size = vec2<f32>(textureDimensions(depth_tex));
+    return textureLoad(depth_tex, vec2<i32>(screen_uv * size), 0);
 }
 
 // Screen-space ray march (uses shared depth tile for in-tile lookups)
@@ -155,9 +156,8 @@ fn ssgi_main(
         let ty = i32(k / TILE_DIM);
         let tx = i32(k % TILE_DIM);
         let p = p_tile_origin + vec2<i32>(tx, ty);
-        let uv_p = (vec2<f32>(p) + 0.5) * params.inv_resolution;
         if (p.x >= 0 && p.x < p_dims.x && p.y >= 0 && p.y < p_dims.y) {
-            tile_depth[k] = textureSampleLevel(depth_tex, samp, uv_p, 0.0).r;
+            tile_depth[k] = textureLoad(depth_tex, p, 0);
         } else {
             tile_depth[k] = 1.0;
         }

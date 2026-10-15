@@ -178,7 +178,7 @@ impl TaaPass {
                 tex_entry(0),          // current / sharpen input
                 tex_entry(1),          // history
                 tex_entry(2),          // velocity
-                tex_entry(3),          // depth
+                depth_entry(3),        // scene depth
                 sampler_entry(4),      // sampler
                 uniform_entry(5),      // params
                 storage_entry(6, fmt), // output
@@ -456,6 +456,19 @@ impl TaaPass {
             return;
         }
         *self = Self::new(device, width, height);
+    }
+}
+
+fn depth_entry(binding: u32) -> wgpu::BindGroupLayoutEntry {
+    wgpu::BindGroupLayoutEntry {
+        binding,
+        visibility: wgpu::ShaderStages::COMPUTE,
+        ty: wgpu::BindingType::Texture {
+            sample_type: wgpu::TextureSampleType::Depth,
+            view_dimension: wgpu::TextureViewDimension::D2,
+            multisampled: false,
+        },
+        count: None,
     }
 }
 
