@@ -1040,7 +1040,8 @@ No GPU, no WoW client, and no three-OS runner were used. That is why H1 is not m
 | 0.4 | 2026-10-14 | Rebased onto `85d09a2c`. `SimRng` is core (R2 closed). `Fixed64` stays local because that merge has no Q32.32 type (R3 open). `combat_resolve` is a required case of `determinism-replay.yml` (R1 closed). Golden hashes unchanged. |
 | 0.5 | 2026-10-14 | §23 logs CI failures from the rebase run that PR #217's ledger does not cover. Benchmark aggregation now expects 49 packages because this crate has a bench. |
 | 0.6 | 2026-10-15 | Rebased onto PR #245. Combat re-exports `astraweave_math::Fixed64`. `whole_raw` stays. `fixed64` and `combat_resolve` are both required replay cases. Golden hashes unchanged. |
-| 0.7 | 2026-10-15 | Windows SDK harness linked, then failed `0.4.0` vs `0` because PowerShell indexed the version string. The capture group is read whole. |
+| 0.7 | 2026-10-15 | Windows SDK version gate reads the whole capture. The CMake example links `ws2_32`, `userenv`, and `ntdll`, matching the `cl` harness. |
+| 0.8 | 2026-10-15 | Cover hits enqueue destruction impacts. Weave schools are data in `astraweave-weaving`. `run_aravath_slice` is the Aravath caller. |
 
 ---
 
@@ -1066,7 +1067,7 @@ Do not delete these until the demo calls `astraweave-combat`. The order is the d
 
 | Step | Path | What changes | Done when |
 |---|---|---|---|
-| 1 | Aravath greybox (`aravath_runtime` combat and motor) | Sword, swipe, block, and roll i-frames enqueue `HitEvent`s. `apply_damage_multiplier` is deleted in that crate only. Death still calls `ScarField::inject_death`. | One unblocked sword removes 25 whole HP. An 8000 bp block keeps 20%. An i-frame keeps all of it. |
+| 1 | Aravath greybox (`aravath_runtime` combat and motor) | Sword, swipe, block, and roll i-frames enqueue `HitEvent`s. `apply_damage_multiplier` is deleted in that crate only. Death still calls `ScarField::inject_death`. | `run_aravath_slice` is that caller on this branch: sword 25, a data-driven weave school for 15, and a cover impulse that breaks the bond. The greybox runtime still lives on PR #205 and does not call it yet. |
 | 2 | `astraweave-gameplay` physics sweep | `perform_attack_sweep` still does the ray, parry, and i-frame gates, then submits a hit instead of `Stats::apply_damage`. | `combat_physics_demo` health matches a scripted `resolve_hit`. |
 | 3 | `astraweave-gameplay` combo ticker and ECS `combat_system` | The combo owns timing and reach. Damage is `attack_id`, not `step.damage` subtracted from `CHealth`. | Manhattan reach still gates the event. HP moves only through `CVitals`. |
 | 4 | `astraweave-weaving` `CombatSystem` and `enemy_types` | Flat `f32` health and Sentinel's `armor: 0.3` become table rows and `CVitals`. | `effective_health` on a Sentinel-shaped row matches `health / (1 - 0.3)` within one whole unit, using the hyperbola with K chosen so 30% is the operating point. |

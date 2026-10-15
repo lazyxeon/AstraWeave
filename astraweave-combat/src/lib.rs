@@ -22,9 +22,9 @@ mod sim_rng;
 mod tables;
 
 pub use ecs::{
-    apply_hp_delta, combat_resolve_system, CBlock, CDefense, CImmune, CModifiers, COffense,
+    apply_hp_delta, combat_resolve_system, CBlock, CCover, CDefense, CImmune, CModifiers, COffense,
     CThreadStrain, CVitals, CombatClock, CombatLog, CombatPlugin, CombatScratch, CombatWriteGate,
-    HitEvent, HitQueue, LoadedTables,
+    CoverImpulse, CoverOut, HitEvent, HitQueue, LoadedTables, COVER_CAP,
 };
 pub use fixed::Fixed64;
 pub use resolve::{

@@ -9,6 +9,7 @@ description = "Deterministic Q32.32 damage dealt and damage received"
 
 [dependencies]
 astraweave-core = { path = "../astraweave-core" }
+astraweave-destruction = { path = "../astraweave-destruction" }
 astraweave-ecs = { path = "../astraweave-ecs" }
 astraweave-math = { path = "../astraweave-math" }
 rand = { workspace = true }

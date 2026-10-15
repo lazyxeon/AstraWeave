@@ -14,6 +14,8 @@ last_verified_commit: be413626
 runtime_edges:
   - to: astraweave-ecs
     note: CombatPlugin registers combat_resolve_system on the simulation stage
+  - to: astraweave-destruction
+    note: Cover hits enqueue Impact commands on DestructionWorld
 ---
 
 # Architecture Trace: Combat damage
@@ -43,7 +45,9 @@ The repo had four flat or `f32` damage paths. This crate is the single productio
 **Where it primarily lives:**
 - `astraweave-combat/src/resolve.rs` — `resolve_hit`, `resolve_heal`, `expected_hit`, `effective_health`
 - `astraweave-combat/src/tables.rs` — RON load, ceilings, mod overrides, semantic hash
-- `astraweave-combat/src/ecs.rs` — components and `combat_resolve_system`
+- `astraweave-combat/src/ecs.rs` — components, `combat_resolve_system`, and cover impulses
+- `astraweave-weaving/src/damage.rs` — data-driven element schools
+- `astraweave-weaving/src/aravath.rs` — sword, weave bolt, and cover destruction
 - `astraweave-combat/src/save.rs` — `combat_tables` and `combat_vitals` meta keys
 - `astraweave-combat/src/sim_rng.rs` — `hit_rng` on `astraweave_core::SimRng`
 - `astraweave-combat/src/fixed.rs` — `whole_raw` on `astraweave_math::Fixed64` (PR #245)
@@ -104,7 +108,8 @@ CVitals.hp / poise            ecs.rs apply_hp_delta
 | `astraweave-combat/src/sim_rng.rs` | `hit_rng` | Active | Re-exports `astraweave_core::SimRng`. One extra fold, then `SimRng::new` |
 | `astraweave-combat/src/tables.rs` | Load, validate, hash | Active | `DEFAULT_TABLE_RON` |
 | `astraweave-combat/src/resolve.rs` | Hit and heal math | Active | No `Vec` on the hit path |
-| `astraweave-combat/src/ecs.rs` | Tick system | Active | Simulation stage |
+| `astraweave-combat/src/ecs.rs` | Tick system | Active | Simulation stage. Cover hits enqueue `Impact` commands |
+| `astraweave-weaving/src/aravath.rs` | Aravath slice | Active | Sword 25, weave rating 15, cover bond breaks |
 | `astraweave-combat/src/save.rs` | Meta codec | Active | No dependency on `aw-save` |
 
 ---

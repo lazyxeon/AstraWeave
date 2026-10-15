@@ -7,6 +7,8 @@
 use std::any::TypeId;
 use std::sync::Arc;
 
+use astraweave_destruction::command::{CommandKind, DestructionCommand, Impact};
+use astraweave_destruction::DestructionWorld;
 use astraweave_ecs::{App, Entity, Plugin, World};
 
 use crate::fixed::Fixed64;
@@ -60,6 +62,72 @@ impl Default for CVitals {
             poise_max: Fixed64::from_int(1),
             stagger_left: 0,
         }
+    }
+}
+
+/// Destructible cover. A landed hit records an impulse for this structure.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct CCover {
+    pub structure: u64,
+    pub point: [Fixed64; 3],
+}
+
+/// One cover impulse. The combat tick stores these in a fixed array.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct CoverImpulse {
+    pub tick: u64,
+    pub structure: u64,
+    pub point: [Fixed64; 3],
+    pub impulse: Fixed64,
+}
+
+impl Default for CoverImpulse {
+    fn default() -> Self {
+        Self {
+            tick: 0,
+            structure: 0,
+            point: [Fixed64::ZERO; 3],
+            impulse: Fixed64::ZERO,
+        }
+    }
+}
+
+pub const COVER_CAP: usize = 32;
+
+/// Recycled cover impulses for this tick. No heap traffic after startup.
+#[derive(Clone, Copy, Debug)]
+pub struct CoverOut {
+    slots: [CoverImpulse; COVER_CAP],
+    len: u8,
+    pub rejected: u8,
+}
+
+impl Default for CoverOut {
+    fn default() -> Self {
+        Self {
+            slots: [CoverImpulse::default(); COVER_CAP],
+            len: 0,
+            rejected: 0,
+        }
+    }
+}
+
+impl CoverOut {
+    fn push(&mut self, impulse: CoverImpulse) -> bool {
+        let index = self.len as usize;
+        if index >= COVER_CAP {
+            return false;
+        }
+        self.slots[index] = impulse;
+        self.len += 1;
+        true
+    }
+
+    fn take(&mut self, out: &mut [CoverImpulse]) -> usize {
+        let count = (self.len as usize).min(out.len());
+        out[..count].copy_from_slice(&self.slots[..count]);
+        self.len = 0;
+        count
     }
 }
 
@@ -215,6 +283,7 @@ impl Plugin for CombatPlugin {
         app.world.insert_resource(CombatScratch::default());
         app.world.insert_resource(CombatWriteGate::default());
         app.world.insert_resource(LoadedTables::default());
+        app.world.insert_resource(CoverOut::default());
         app.add_system_known_stage("simulation", combat_resolve_system);
     }
 }
@@ -245,12 +314,13 @@ pub fn combat_resolve_system(world: &mut World) {
         let result = if event.heal {
             resolve_one_heal(world, &tables, &clock, ordinal as u64, event)
         } else {
-            resolve_one_hit(world, &tables, &clock, ordinal as u64, event)
+            resolve_one_hit(world, &tables, &clock, ordinal as u64, event, clock.tick)
         };
         if let Err(CombatError::DoubleWrite) = result {
             break;
         }
     }
+    flush_cover(world);
     if let Some(gate) = world.get_resource_mut::<CombatWriteGate>() {
         gate.open = false;
     }
@@ -269,6 +339,7 @@ fn resolve_one_hit(
     clock: &CombatClock,
     ordinal: u64,
     event: HitEvent,
+    tick: u64,
 ) -> Result<(), CombatError> {
     let Some(offense) = world.get::<COffense>(event.attacker).copied() else {
         return Ok(());
@@ -348,6 +419,7 @@ fn resolve_one_hit(
         event.defender,
         outcome,
         tables.defaults().stagger_ticks,
+        tick,
     )
 }
 
@@ -400,6 +472,7 @@ fn apply_outcome(
     entity: Entity,
     outcome: HitOutcome,
     stagger_ticks: u16,
+    tick: u64,
 ) -> Result<(), CombatError> {
     if outcome.consume_parry {
         if let Some(immune) = world.get_mut::<CImmune>(entity) {
@@ -436,8 +509,59 @@ fn apply_outcome(
             log.deaths.push(entity.to_raw());
         }
     }
+    if outcome.hp_delta.raw() > 0 {
+        if let Some(cover) = world.get::<CCover>(entity).copied() {
+            if let Some(out) = world.get_resource_mut::<CoverOut>() {
+                let recorded = out.push(CoverImpulse {
+                    tick,
+                    structure: cover.structure,
+                    point: cover.point,
+                    impulse: outcome.hp_delta,
+                });
+                if !recorded {
+                    out.rejected = out.rejected.saturating_add(1);
+                }
+            }
+        }
+    }
     let _ = BULWARK_MOD_ID;
     Ok(())
+}
+
+fn flush_cover(world: &mut World) {
+    if world.get_resource::<DestructionWorld>().is_none() {
+        return;
+    }
+    let mut batch = [CoverImpulse::default(); COVER_CAP];
+    let count = world
+        .get_resource_mut::<CoverOut>()
+        .map(|out| out.take(&mut batch))
+        .unwrap_or(0);
+    let mut rejected = 0u8;
+    {
+        let Some(dest) = world.get_resource_mut::<DestructionWorld>() else {
+            return;
+        };
+        for impulse in batch.iter().take(count) {
+            let queued = dest.enqueue(DestructionCommand {
+                tick: impulse.tick,
+                seq: 0,
+                entity_id: impulse.structure,
+                kind: CommandKind::Impact(Impact {
+                    point: impulse.point,
+                    impulse: impulse.impulse,
+                }),
+            });
+            if queued.is_err() {
+                rejected = rejected.saturating_add(1);
+            }
+        }
+    }
+    if rejected > 0 {
+        if let Some(out) = world.get_resource_mut::<CoverOut>() {
+            out.rejected = out.rejected.saturating_add(rejected);
+        }
+    }
 }
 
 /// The only HP writer. Refuses to run unless [`CombatWriteGate`] is open,

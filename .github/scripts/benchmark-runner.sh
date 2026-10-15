@@ -59,7 +59,7 @@ BENCHMARK_SHARD_GROUPS=(
     "astraweave-ai astraweave-net astraweave-profiling astraweave-water"
     "astraweave-cinematics astraweave-quests astraweave-context astraweave-terrain"
     "astraweave-dialogue astraweave-llm astraweave-steam astraweave-embeddings"
-    "astraweave-ecs astraweave-math astraweave-ipc astraweave-memory"
+    "astraweave-ecs astraweave-math astraweave-ipc astraweave-memory astraweave-destruction"
     "astraweave-fluids astraweave-scripting astraweave-author astraweave-core"
     "astraweave-net-ecs astraweave-asset-pipeline astraweave-prompts astraweave-audio"
     "astraweave-persistence-ecs astraweave-weaving astraweave-observability astraweave-input"

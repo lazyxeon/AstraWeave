@@ -163,15 +163,15 @@ jobs:
           if [ "${#result_files[@]}" -eq 12 ] &&
              [ "${#status_files[@]}" -eq 12 ] &&
              [ "${#timing_files[@]}" -eq 12 ] &&
-             [ "$package_count" -eq 49 ] &&
-             [ "$unique_package_count" -eq 49 ]; then
+             [ "$package_count" -eq 50 ] &&
+             [ "$unique_package_count" -eq 50 ]; then
             complete=true
           fi
 
           healthy=false
           if [ "$complete" = true ] &&
              [ "$failed_package_count" -eq 0 ] &&
-             [ "$collection_accounted_count" -eq 49 ]; then
+             [ "$collection_accounted_count" -eq 50 ]; then
             healthy=true
           fi
 
@@ -180,13 +180,13 @@ jobs:
             echo "Shard result files: ${#result_files[@]}/12"
             echo "Shard status files: ${#status_files[@]}/12"
             echo "Shard timing files: ${#timing_files[@]}/12"
-            echo "Package records: $package_count (unique: $unique_package_count; expected: 49)"
-            echo "Package records accounted for: $record_accounted_count/49"
+            echo "Package records: $package_count (unique: $unique_package_count; expected: 50)"
+            echo "Package records accounted for: $record_accounted_count/50"
             echo "Packages with collected results: $collected_package_count"
             echo "Named collection exceptions: $exception_count"
             echo "Named no-output execution failures: $no_output_failure_count"
-            echo "Packages with Criterion output or collection exception: $collection_accounted_count/49"
-            echo "Outcome accounting: $collected_package_count collected + $named_accounting_exception_count named accounting exceptions = $outcome_accounted_count/49"
+            echo "Packages with Criterion output or collection exception: $collection_accounted_count/50"
+            echo "Outcome accounting: $collected_package_count collected + $named_accounting_exception_count named accounting exceptions = $outcome_accounted_count/50"
             echo "Failed packages: $failed_package_count"
             echo "Benchmark results collected: $benchmark_count"
             echo "Complete: $complete"
