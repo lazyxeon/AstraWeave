@@ -27,9 +27,10 @@ astraweave-behavior = { workspace = true }
 [dev-dependencies]
 criterion = { workspace = true }
 astraweave-ai = { workspace = true }
+astraweave-destruction = { workspace = true }
 astraweave-gameplay = { path = "../astraweave-gameplay" }
 astraweave-math = { workspace = true }
-astraweave-destruction = { workspace = true }
+astraweave-nav = { workspace = true }
 sha2 = { workspace = true }
 
 [[bench]]

@@ -9,7 +9,7 @@ lifecycle_status: active
 integration_status: wired
 summary: "Resolves the two-nav-crate conflict (astraweave-nav vs crates/astraweave-nav). nav.md §6"
 owns: [astraweave-nav]
-doc_version: "1.1"
+doc_version: "1.2"
 last_verified_commit: 7c29b8182
 ---
 
@@ -21,9 +21,9 @@ last_verified_commit: 7c29b8182
 |---|---|
 | **System name** | Navigation / Pathfinding System (navmesh) |
 | **Primary crates** | `astraweave-nav` (top-level, workspace member) |
-| **Document version** | 1.1 |
-| **Last verified against commit** | `7c29b8182` |
-| **Last verified date** | 2026-06-25 |
+| **Document version** | 1.2 |
+| **Last verified against commit** | `feat/ai-orchestration` |
+| **Last verified date** | 2026-10-15 |
 | **Status** | Active (single-file library); consumers are mostly examples/tests — see §1 status note and §6 |
 | **Owner notes** | [Reasoning not recovered from available sources] — crate predates the architecture-trace campaign. Phase 10 "AI-Orchestrated Dynamic Terrain" added the region-invalidation block (lib.rs §520-629). |
 
@@ -321,8 +321,8 @@ Source: [`docs/masters/MASTER_BENCHMARK_REPORT.md`](../masters/MASTER_BENCHMARK_
 - **Is the AI navigability gate meant to be wired?** `tool_sandbox.rs`'s `MoveTo` nav check is fully implemented but only reachable via `ValidationContext::with_nav`, which has no production caller. Is this intended forward-design, or a missing wire-up in the AI runtime loop? (Context: CLAUDE.md Integration Completeness item 1.)
 - **Does any shipping app insert a `NavMesh` ECS resource?** The scripting plugin reads `world.get_resource::<NavMesh>()`; if no app inserts that resource, `nav_ptr` is always null and `NavMeshProxy::find_path` returns `[]`. (Verification note 2026-06-25: one **example** app does insert it — `examples/scripting_advanced_demo/src/main.rs:32` calls `app.world.insert_resource(nav)` after baking a 2-triangle ground mesh, exercising the full `NavMeshProxy` path. The only other insert site is in scripting's own `#[cfg(test)]` block. No non-example shipping binary was found; whether a real runtime app is intended to insert the resource remains the owner's call.)
 - **Should `crates/astraweave-nav/` be reconciled?** It is an orphan (no manifest, stale bench copy). Its existence can mislead grep-based discovery into thinking there are two nav crates. (Surfaced factually per §6; disposition is the owner's call.)
-- **Is `max_step` intended to gain meaning?** It is plumbed through every API and test but read by nothing. Either step-height filtering is unimplemented forward-design, or the parameter is vestigial.
-- **`partial_rebake` incrementality:** the function's own doc-comment notes the partial path is unimplemented (delegates to full bake). Is incremental rebake a planned follow-up?
+- **`max_step` (closed 2026-10-15):** a shared XZ edge links only when the vertical gap is at most `max_step`. Coplanar edges are unchanged. The stair golden is `max_step_links_a_low_ledge_and_rejects_a_tall_one`.
+- **`partial_rebake` (closed 2026-10-15):** relinks triangles that meet a dirty AABB and leaves other vertices in place. Tiled commits live in `src/tiles.rs` and stop at `TILE_COMMITS_PER_TICK` (4).
 - **Scaling:** 10K-tri bake at 473 ms (O(n²) adjacency) is flagged "must be async" in the benchmark report. Is large-mesh baking expected to move off the main thread or precompute offline?
 
 ---
@@ -347,7 +347,7 @@ Source: [`docs/masters/MASTER_BENCHMARK_REPORT.md`](../masters/MASTER_BENCHMARK_
 
 **If you're working on this system, remember:**
 1. There is exactly **one** `NavMesh` implementation: `astraweave-nav/src/lib.rs`. `crates/astraweave-nav/` is an orphan bench file, not a second crate — do not "fix" it into the build without the owner's call.
-2. **`max_step` does nothing.** Don't assume step-height filtering happens; only slope + upward-facing filtering does.
+2. **`max_step` filters ledge links.** A shared XZ edge taller than `max_step` is not a neighbor. Slope and upward-facing filters still apply.
 3. Pathing is **center-to-center A* + generic smoothing**, not a funnel/string-pull. Don't claim taut/optimal paths.
 4. The AI `MoveTo` nav gate is real code but **dormant** (no production `with_nav` caller). The genuinely-wired runtime consumer is the **scripting `NavMeshProxy`** (ECS `NavMesh` resource) and the **editor** Bake button.
 
@@ -360,12 +360,14 @@ Source: [`docs/masters/MASTER_BENCHMARK_REPORT.md`](../masters/MASTER_BENCHMARK_
 
 **Common mistakes when changing this system:**
 - Adding a "second navmesh path" — there is no peer; extend `lib.rs` (CLAUDE.md scope-discipline rule).
-- Treating `partial_rebake` as incremental — it does a full `bake`.
+- Treating `partial_rebake` as a full `bake`. It relinks dirty triangles only. Tile commits are `NavTiles::commit_tick`.
 - Assuming `find_path` does point-in-triangle containment — `closest_tri` is a nearest-*center* scan, so off-mesh queries still snap somewhere.
 - Adding behavior keyed on `max_step` without wiring it into `bake`/`find_path` first.
 
 ---
 
 ## Appendix B: Historical context
+
+Revision 1.2 (2026-10-15): `max_step` rejects tall ledges; `partial_rebake` no longer calls a full bake; `src/tiles.rs` adds 32 m tiles, a 4-tile commit, and a side buffer accepted only when its input hash matches `build` of the current sources.
 
 The crate is one of the engine's earliest "P0" foundation crates: it appears throughout the Phase 0 / Week 1-6 coverage and benchmark journey docs (e.g. `docs/journey/phases/PHASE_0_WEEK_1_*`, `docs/archive/NAVIGATION_BENCHMARK_RESULTS.md`) and was a target of the mutation-testing campaign (`docs/journey/phases/PHASE_10_MUTATION_TESTING_PLAN.md`, shard outputs under `archive/mutation_outputs/`). The region-invalidation block (lib.rs §520-629) was added under Phase 10 "AI-Orchestrated Dynamic Terrain" to let runtime terrain edits mark the mesh stale. The `#![forbid(unsafe_code)]` attribute and doc-test/dep-hygiene pass landed in commit `e060d7973`. The minimal dependency footprint (only `anyhow` + `glam`) is deliberate per the README ("Minimal dependency footprint").

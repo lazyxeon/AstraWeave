@@ -48,8 +48,8 @@ fn test_build_snapshot_basic() {
     assert!(snap.obstacles.iter().any(|&p| p.x == 5 && p.y == 5));
     assert!(snap.obstacles.iter().any(|&p| p.x == 6 && p.y == 5));
 
-    // Verify POIs exist
-    assert!(!snap.pois.is_empty());
+    // No nav observation is attached, so perception does not invent a breach.
+    assert!(snap.pois.is_empty());
 }
 
 #[test]

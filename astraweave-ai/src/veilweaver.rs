@@ -1,8 +1,6 @@
 #![allow(clippy::too_many_arguments)]
 
-use std::time::Instant;
-
-use astraweave_behavior::goap::{GoapAction, GoapGoal, GoapPlanner, WorldState};
+use astraweave_behavior::goap::{GoapAction, GoapGoal, WorldState};
 use astraweave_core::{ActionStep, MovementSpeed, PlanIntent, WorldSnapshot};
 use astraweave_observability::{log_companion_action, CompanionActionEvent};
 use tracing::info;
@@ -17,7 +15,6 @@ const ACTION_REPOSITION: &str = "reposition";
 
 /// Hybrid GOAP planner tailored to Veilweaver companion behaviors.
 pub struct VeilweaverCompanionOrchestrator {
-    planner: GoapPlanner,
     actions: Vec<GoapAction>,
     goals: Vec<GoapGoal>,
 }
@@ -25,89 +22,58 @@ pub struct VeilweaverCompanionOrchestrator {
 impl VeilweaverCompanionOrchestrator {
     pub fn new() -> Self {
         Self {
-            planner: GoapPlanner::new().with_max_iterations(64),
             actions: build_actions(),
             goals: build_goals(),
         }
     }
 
-    fn derive_world_state<'a>(&self, snap: &'a WorldSnapshot) -> (WorldState, HeuristicState<'a>) {
-        let heuristics = HeuristicState::from_snapshot(snap);
-        let mut state = WorldState::new();
-        state.set("player_low", heuristics.player_low);
-        state.set("anchor_unstable", heuristics.anchor_unstable);
-        state.set("has_echo", heuristics.has_echo);
-        state.set("enemy_vulnerable", heuristics.enemy_vulnerable);
-        state.set("enemy_tagged", heuristics.enemy_tagged);
-        state.set("position_good", heuristics.position_good);
-        (state, heuristics)
-    }
-
     fn plan_internal(&self, snap: &WorldSnapshot) -> PlanIntent {
-        let start = Instant::now();
-        let (world_state, heuristics) = self.derive_world_state(snap);
-
-        let mut selected_goal = None;
-        let mut planned_actions = Vec::new();
-
-        let mut goals = self.goals.clone();
-        goals.sort_by(|a, b| {
-            b.priority
-                .partial_cmp(&a.priority)
-                .unwrap_or(std::cmp::Ordering::Equal)
-        });
-
-        for goal in goals {
-            if goal.is_satisfied(&world_state) {
-                continue;
-            }
-            if let Some(actions) = self.planner.plan(&world_state, &goal, &self.actions) {
-                selected_goal = Some(goal.name.clone());
-                planned_actions = actions;
-                break;
-            }
-        }
-
-        let elapsed_ms = start.elapsed().as_secs_f32() * 1000.0;
+        debug_assert_eq!(self.actions.len(), 5);
+        debug_assert_eq!(self.goals.len(), 4);
+        let heuristics = HeuristicState::from_snapshot(snap);
+        let action = select_slice_action(&heuristics);
         let plan_id = format!("vw-companion-{}", (snap.t * 1000.0) as i64);
-
-        if planned_actions.is_empty() {
-            info!(
-                target: "veilweaver.companion",
-                event = "CompanionPlan",
-                %plan_id,
-                goal = "idle",
-                actions = 0,
-                elapsed_ms
-            );
+        let steps = map_action_to_steps(action, &heuristics);
+        info!(
+            target: "veilweaver.companion",
+            event = "CompanionAction",
+            %plan_id,
+            action,
+            step_count = steps.len()
+        );
+        log_companion_action(&CompanionActionEvent {
+            action_id: action.to_string(),
+            success: true,
+            latency_ms: 0.0,
+        });
+        if steps.is_empty() {
             return PlanIntent {
                 plan_id,
                 steps: vec![ActionStep::Wait { duration: 0.5 }],
             };
         }
-
-        let mut steps = Vec::new();
-        for action in planned_actions.iter() {
-            let action_steps = map_action_to_steps(action.name.as_str(), &heuristics);
-            info!(
-                target: "veilweaver.companion",
-                event = "CompanionAction",
-                %plan_id,
-                goal = selected_goal.as_deref().unwrap_or("unknown"),
-                action = %action.name,
-                step_count = action_steps.len(),
-                elapsed_ms
-            );
-            log_companion_action(&CompanionActionEvent {
-                action_id: action.name.clone(),
-                success: true,
-                latency_ms: elapsed_ms,
-            });
-            steps.extend(action_steps);
-        }
-
         PlanIntent { plan_id, steps }
     }
+}
+
+/// Method order is priority, then lower method id. No A* search and no wall clock.
+fn select_slice_action(h: &HeuristicState<'_>) -> &'static str {
+    if h.player_low {
+        return ACTION_HEAL_PLAYER;
+    }
+    if h.anchor_unstable && h.has_echo {
+        return ACTION_STABILITY_PULSE;
+    }
+    if h.enemy_vulnerable {
+        return ACTION_EXECUTE_COMBO;
+    }
+    if !h.position_good {
+        return ACTION_REPOSITION;
+    }
+    if h.closest_enemy.is_some() && !h.enemy_tagged {
+        return ACTION_MARK_TARGET;
+    }
+    ""
 }
 
 impl Default for VeilweaverCompanionOrchestrator {

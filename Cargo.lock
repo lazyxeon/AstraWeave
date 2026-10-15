@@ -840,6 +840,7 @@ dependencies = [
  "astraweave-ecs",
  "astraweave-gameplay",
  "astraweave-math",
+ "astraweave-nav",
  "criterion 0.7.0",
  "glam",
  "rand 0.9.2",
@@ -1117,6 +1118,7 @@ name = "astraweave-nav"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "astraweave-destruction",
  "criterion 0.5.1",
  "glam",
 ]

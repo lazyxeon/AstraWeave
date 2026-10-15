@@ -193,61 +193,8 @@ impl Default for UtilityOrchestrator {
 
 impl Orchestrator for UtilityOrchestrator {
     fn propose_plan(&self, snap: &WorldSnapshot) -> PlanIntent {
-        let plan_id = format!("util-{}", (snap.t * 1000.0) as i64);
-        let me = &snap.me;
-        // Candidate A: Throw smoke at midpoint to first enemy
-        let mut cands: Vec<(f32, Vec<ActionStep>)> = vec![];
-        if let Some(enemy) = snap.enemies.first() {
-            let cd = me
-                .cooldowns
-                .get(COOLDOWN_THROW_SMOKE)
-                .copied()
-                .unwrap_or(0.0);
-            if cd <= 0.0 {
-                let mid = IVec2 {
-                    x: (me.pos.x + enemy.pos.x) / 2,
-                    y: (me.pos.y + enemy.pos.y) / 2,
-                };
-                let steps = vec![
-                    ActionStep::Throw {
-                        item: "smoke".into(),
-                        x: mid.x,
-                        y: mid.y,
-                    },
-                    ActionStep::MoveTo {
-                        speed: None,
-                        x: me.pos.x + (enemy.pos.x - me.pos.x).signum() * 2,
-                        y: me.pos.y + (enemy.pos.y - me.pos.y).signum() * 2,
-                    },
-                ];
-                // Score: encourage if ammo present and enemy hp > 0
-                let score = 1.0
-                    + (snap.player.hp as f32).min(100.0) * 0.0
-                    + (enemy.hp.max(0) as f32) * 0.01;
-                cands.push((score, steps));
-            }
-            // Candidate B: advance; if close, cover fire
-            let dx = (enemy.pos.x - me.pos.x).abs();
-            let dy = (enemy.pos.y - me.pos.y).abs();
-            let dist = (dx + dy) as f32;
-            let mut steps = vec![ActionStep::MoveTo {
-                speed: None,
-                x: me.pos.x + (enemy.pos.x - me.pos.x).signum(),
-                y: me.pos.y + (enemy.pos.y - me.pos.y).signum(),
-            }];
-            if dist <= 3.0 {
-                steps.push(ActionStep::CoverFire {
-                    target_id: enemy.id,
-                    duration: 1.0,
-                });
-            }
-            let score = 0.8 + (3.0 - dist).max(0.0) * 0.05;
-            cands.push((score, steps));
-        }
-        // Use total_cmp to provide a total ordering for f32 (handles NaN deterministically)
-        cands.sort_by(|a, b| b.0.total_cmp(&a.0));
-        let steps = cands.first().map(|c| c.1.clone()).unwrap_or_default();
-        PlanIntent { plan_id, steps }
+        // The scores live in the HTN module. This type is the legacy name.
+        crate::htn::legacy_utility_plan(snap)
     }
 }
 

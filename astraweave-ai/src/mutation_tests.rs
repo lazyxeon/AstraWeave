@@ -59,12 +59,15 @@ mod planner_mode_tests {
     }
 
     #[test]
-    fn all_returns_three_modes() {
+    fn all_returns_four_modes() {
+        // Re-locked from 3 when `PlannerMode::Htn` became an always-available
+        // mode. The count stays exact.
         let all = PlannerMode::all();
-        assert_eq!(all.len(), 3, "all() should return 3 modes");
+        assert_eq!(all.len(), 4, "all() should return 4 modes");
         assert!(all.contains(&PlannerMode::Rule));
         assert!(all.contains(&PlannerMode::BehaviorTree));
         assert!(all.contains(&PlannerMode::GOAP));
+        assert!(all.contains(&PlannerMode::Htn));
     }
 }
 
@@ -460,10 +463,12 @@ mod behavioral_correctness_tests {
             .filter(|m| **m == PlannerMode::BehaviorTree)
             .count();
         let goap_count = all.iter().filter(|m| **m == PlannerMode::GOAP).count();
+        let htn_count = all.iter().filter(|m| **m == PlannerMode::Htn).count();
 
         assert_eq!(rule_count, 1, "Rule should appear exactly once");
         assert_eq!(bt_count, 1, "BehaviorTree should appear exactly once");
         assert_eq!(goap_count, 1, "GOAP should appear exactly once");
+        assert_eq!(htn_count, 1, "Htn should appear exactly once");
     }
 }
 

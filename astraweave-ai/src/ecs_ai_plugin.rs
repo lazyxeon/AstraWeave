@@ -262,11 +262,23 @@ fn sys_ai_planning(world: &mut ecs::World) {
     }
 }
 
+/// Spatial HTN tick. No work unless [`crate::htn::SpatialTick`] was inserted.
+fn sys_spatial_tick(world: &mut ecs::World) {
+    let Some(tick) = world.get_resource_mut::<crate::htn::SpatialTick>() else {
+        return;
+    };
+    let mut scratch = astraweave_nav::NavScratch::new();
+    let sim_tick = tick.clock;
+    tick.clock = tick.clock.saturating_add(1);
+    crate::htn::tick_agents(tick, &mut scratch, sim_tick);
+}
+
 impl ecs::Plugin for AiPlanningPlugin {
     fn build(&self, app: &mut ecs::App) {
         app.world
             .insert_resource(Events::<AiPlanningFailedEvent>::default());
         app.add_system_known_stage("ai_planning", sys_ai_planning as ecs::SystemFn);
+        app.add_system_known_stage("ai_planning", sys_spatial_tick as ecs::SystemFn);
     }
 }
 

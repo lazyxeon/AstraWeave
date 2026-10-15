@@ -30,6 +30,14 @@
 use glam::Vec3;
 use std::fmt;
 
+mod tiles;
+pub use astraweave_destruction::GeometryNotice;
+pub use tiles::{
+    bridge_and_ford, nav_change_from_geometry_notice, nav_change_from_kind, BreachSite, CoverSite,
+    NavChange, NavChangeKind, NavScratch, NavTiles, TileSideBuffer, FRAME_BUDGET_MS, NOTICE_BRUSH,
+    NOTICE_COLLAPSE, NOTICE_WEAVE, TILE_COMMITS_PER_TICK, TILE_SIZE_M,
+};
+
 #[cfg(test)]
 mod mutation_tests;
 
@@ -462,16 +470,19 @@ impl NavMesh {
                     verts: [t.a, t.b, t.c],
                     normal: n,
                     center,
-                    neighbors: vec![],
+                    // Capacity is reserved at bake so a later relink does not allocate.
+                    neighbors: Vec::with_capacity(8),
                 })
             })
             .collect();
 
-        // Build adjacency by shared edge (position‑based, epsilon)
+        // Adjacency is a shared edge in XZ. `max_step` is the largest vertical
+        // gap that still links. Coplanar edges have a zero gap, so meshes that
+        // were already linked stay linked. A ledge taller than `max_step` does not.
         let eps = 1e-3;
         for i in 0..ntris.len() {
             for j in i + 1..ntris.len() {
-                if share_edge(&ntris[i], &ntris[j], eps) {
+                if share_edge(&ntris[i], &ntris[j], eps, max_step) {
                     ntris[i].neighbors.push(j);
                     ntris[j].neighbors.push(i);
                 }
@@ -559,50 +570,118 @@ impl NavMesh {
         self.dirty_regions.clear();
     }
 
-    /// Rebake dirty regions with new triangle data
+    /// Rebake dirty regions.
     ///
-    /// This performs a full rebake of the entire mesh using the provided triangles.
-    /// For large meshes, consider using partial_rebake for better performance.
+    /// Delegates to [`Self::partial_rebake`]. Triangles outside the dirty
+    /// AABBs keep their vertices. One call commits every dirty triangle in
+    /// this mesh; the tiled world commits at most [`TILE_COMMITS_PER_TICK`].
     pub fn rebake_dirty_regions(&mut self, tris: &[Triangle]) {
         if self.dirty_regions.is_empty() {
             return;
         }
-
-        // Full rebake (simplest implementation)
-        let rebaked = NavMesh::bake(tris, self.max_step, self.max_slope_deg);
-        self.tris = rebaked.tris;
-        self.dirty_regions.clear();
-        self.rebake_count += 1;
+        let _ = self.partial_rebake(tris);
     }
 
-    /// Partial rebake - only processes triangles within dirty regions
+    /// Relink triangles that intersect a dirty region.
     ///
-    /// More efficient for large meshes with small changes.
-    /// Returns the number of triangles that were updated.
+    /// Vertices of triangles outside those regions are left in place. Neighbor
+    /// lists of a clean triangle change only where they touched a dirty one.
+    /// Returns how many triangles intersected a dirty region.
+    #[allow(clippy::needless_range_loop)]
     pub fn partial_rebake(&mut self, all_tris: &[Triangle]) -> usize {
         if self.dirty_regions.is_empty() {
             return 0;
         }
 
-        // Find triangles that intersect with dirty regions
-        let mut affected_count = 0;
+        const MAX_RELINK: usize = 4096;
+        let limit = self.tris.len().min(MAX_RELINK);
+        let mut dirty_tri = [false; MAX_RELINK];
+        // The returned count is input triangles that meet a dirty AABB.
+        // That is the golden `partial_rebake` locked in before tiles existed,
+        // including faces the slope filter dropped from the baked mesh.
+        let mut affected = 0usize;
         for tri in all_tris {
-            let tri_aabb = Aabb::from_triangle(tri);
+            let aabb = Aabb::from_triangle(tri);
             for region in &self.dirty_regions {
-                if tri_aabb.intersects(region) {
-                    affected_count += 1;
+                if aabb.intersects(region) {
+                    affected += 1;
+                    break;
+                }
+            }
+        }
+        for i in 0..limit {
+            let tri = &self.tris[i];
+            let aabb = Aabb::new(
+                Vec3::new(
+                    tri.verts[0].x.min(tri.verts[1].x).min(tri.verts[2].x),
+                    tri.verts[0].y.min(tri.verts[1].y).min(tri.verts[2].y),
+                    tri.verts[0].z.min(tri.verts[1].z).min(tri.verts[2].z),
+                ),
+                Vec3::new(
+                    tri.verts[0].x.max(tri.verts[1].x).max(tri.verts[2].x),
+                    tri.verts[0].y.max(tri.verts[1].y).max(tri.verts[2].y),
+                    tri.verts[0].z.max(tri.verts[1].z).max(tri.verts[2].z),
+                ),
+            );
+            for region in &self.dirty_regions {
+                if aabb.intersects(region) {
+                    dirty_tri[i] = true;
                     break;
                 }
             }
         }
 
-        // For now, do a full rebake if any triangles are affected
-        // In a production system, you would only rebuild the affected portions
-        if affected_count > 0 {
-            self.rebake_dirty_regions(all_tris);
+        let eps = 1e-3;
+        let max_step = self.max_step;
+        for i in 0..limit {
+            if !dirty_tri[i] {
+                continue;
+            }
+            let idx = self.tris[i].idx;
+            if let Some(src) = all_tris.get(idx) {
+                let n = src.normal_normalized();
+                if n.length_squared() >= 1e-6 && n.dot(Vec3::Y) >= 0.0 {
+                    self.tris[i].verts = [src.a, src.b, src.c];
+                    self.tris[i].center = src.center();
+                    self.tris[i].normal = n;
+                }
+            }
+            self.tris[i].neighbors.clear();
+        }
+        for i in 0..limit {
+            if dirty_tri[i] {
+                continue;
+            }
+            self.tris[i]
+                .neighbors
+                .retain(|&j| j >= limit || !dirty_tri[j]);
+        }
+        for i in 0..limit {
+            if !dirty_tri[i] {
+                continue;
+            }
+            for j in 0..limit {
+                if i == j {
+                    continue;
+                }
+                if share_edge(&self.tris[i], &self.tris[j], eps, max_step)
+                    && self.tris[i].neighbors.len() < self.tris[i].neighbors.capacity()
+                {
+                    if !self.tris[i].neighbors.contains(&j) {
+                        self.tris[i].neighbors.push(j);
+                    }
+                    if !self.tris[j].neighbors.contains(&i)
+                        && self.tris[j].neighbors.len() < self.tris[j].neighbors.capacity()
+                    {
+                        self.tris[j].neighbors.push(i);
+                    }
+                }
+            }
         }
 
-        affected_count
+        self.dirty_regions.clear();
+        self.rebake_count = self.rebake_count.saturating_add(1);
+        affected
     }
 
     /// Get the total number of rebakes performed
@@ -713,11 +792,15 @@ impl fmt::Display for NavMesh {
     }
 }
 
-fn share_edge(a: &NavTri, b: &NavTri, eps: f32) -> bool {
+fn share_edge(a: &NavTri, b: &NavTri, eps: f32, max_step: f32) -> bool {
     let mut shared = 0;
+    let eps2 = eps * eps;
     for va in a.verts {
         for vb in b.verts {
-            if va.distance(vb) <= eps {
+            let dx = va.x - vb.x;
+            let dz = va.z - vb.z;
+            let dy = (va.y - vb.y).abs();
+            if dx * dx + dz * dz <= eps2 && dy <= max_step {
                 shared += 1;
             }
         }
@@ -824,6 +907,81 @@ mod tests {
         assert_eq!(nav.tris.len(), 0);
         assert_eq!(nav.max_step, 0.4);
         assert_eq!(nav.max_slope_deg, 60.0);
+    }
+
+    /// `max_step` used to be stored and ignored, so a ledge and a flat edge
+    /// linked the same way only when the vertices were within 1e-3 in 3D.
+    /// It now rejects a shared XZ edge whose vertical gap is taller than the
+    /// step. Coplanar pairs are unchanged (gap is 0). These counts are the
+    /// new golden: a 0.3 m ledge links at `max_step` 0.4, a 1.0 m ledge does not.
+    #[test]
+    fn max_step_links_a_low_ledge_and_rejects_a_tall_one() {
+        let low = ledge_pair(0.3);
+        let linked = NavMesh::bake(&low, 0.4, 60.0);
+        assert_eq!(linked.triangle_count(), 2, "both ledge faces stay walkable");
+        assert_eq!(
+            linked.tris[0].neighbor_count(),
+            1,
+            "0.3 m gap is inside max_step 0.4"
+        );
+        assert_eq!(linked.tris[1].neighbor_count(), 1);
+
+        let tall = ledge_pair(1.0);
+        let blocked = NavMesh::bake(&tall, 0.4, 60.0);
+        assert_eq!(blocked.triangle_count(), 2);
+        assert_eq!(
+            blocked.tris[0].neighbor_count(),
+            0,
+            "1.0 m gap is above max_step 0.4 and must not link"
+        );
+        assert_eq!(blocked.tris[1].neighbor_count(), 0);
+
+        let flat = NavMesh::bake(&ledge_pair(0.0), 0.4, 60.0);
+        assert_eq!(
+            flat.tris[0].neighbor_count(),
+            1,
+            "coplanar goldens stay linked"
+        );
+    }
+
+    fn ledge_pair(rise: f32) -> Vec<Triangle> {
+        // Counter-clockwise from above so the normal points up.
+        vec![
+            Triangle::new(
+                Vec3::new(0.0, 0.0, 0.0),
+                Vec3::new(0.0, 0.0, 2.0),
+                Vec3::new(2.0, 0.0, 2.0),
+            ),
+            Triangle::new(
+                Vec3::new(0.0, rise, 2.0),
+                Vec3::new(0.0, rise, 4.0),
+                Vec3::new(2.0, rise, 2.0),
+            ),
+        ]
+    }
+
+    #[test]
+    fn partial_rebake_keeps_vertices_outside_the_dirty_aabb() {
+        let tris = vec![
+            Triangle::new(
+                Vec3::ZERO,
+                Vec3::new(0.0, 0.0, 1.0),
+                Vec3::new(1.0, 0.0, 0.0),
+            ),
+            Triangle::new(
+                Vec3::new(50.0, 0.0, 50.0),
+                Vec3::new(50.0, 0.0, 51.0),
+                Vec3::new(51.0, 0.0, 50.0),
+            ),
+        ];
+        let mut nav = NavMesh::bake(&tris, 0.4, 60.0);
+        let before = nav.tris[1].verts;
+        nav.invalidate_region(Aabb::new(Vec3::ZERO, Vec3::ONE));
+        let affected = nav.partial_rebake(&tris);
+        assert_eq!(affected, 1, "only the origin triangle intersects the AABB");
+        assert_eq!(nav.tris[1].verts, before);
+        assert_eq!(nav.rebake_count(), 1);
+        assert!(!nav.needs_rebake());
     }
 
     #[test]
@@ -1026,7 +1184,7 @@ mod tests {
             center: Vec3::ZERO,
             neighbors: vec![],
         };
-        assert!(share_edge(&tri_a, &tri_b, 1e-3));
+        assert!(share_edge(&tri_a, &tri_b, 1e-3, 0.4));
     }
 
     #[test]
@@ -1053,7 +1211,7 @@ mod tests {
             center: Vec3::ZERO,
             neighbors: vec![],
         };
-        assert!(!share_edge(&tri_a, &tri_b, 1e-3));
+        assert!(!share_edge(&tri_a, &tri_b, 1e-3, 0.4));
     }
 
     #[test]
@@ -1080,7 +1238,7 @@ mod tests {
             center: Vec3::ZERO,
             neighbors: vec![],
         };
-        assert!(share_edge(&tri_a, &tri_b, 1e-3));
+        assert!(share_edge(&tri_a, &tri_b, 1e-3, 0.4));
     }
 
     #[test]

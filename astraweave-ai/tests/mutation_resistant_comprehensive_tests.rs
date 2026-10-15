@@ -747,14 +747,17 @@ mod planner_mode_mutations {
     }
 
     #[test]
-    fn planner_mode_all_returns_3() {
+    fn planner_mode_all_returns_4() {
+        // Re-locked from 3 when Htn joined the always-available modes.
         let all = PlannerMode::all();
-        assert_eq!(all.len(), 3, "PlannerMode::all() must return 3 modes");
+        assert_eq!(all.len(), 4, "PlannerMode::all() must return 4 modes");
+        assert!(all.contains(&PlannerMode::Htn));
     }
 
     #[test]
     fn planner_mode_always_available() {
         assert!(PlannerMode::Rule.is_always_available());
+        assert!(PlannerMode::Htn.is_always_available());
         assert!(!PlannerMode::BehaviorTree.is_always_available());
         assert!(!PlannerMode::GOAP.is_always_available());
     }

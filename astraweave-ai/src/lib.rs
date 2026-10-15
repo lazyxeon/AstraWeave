@@ -28,6 +28,7 @@
 
 pub mod core_loop;
 pub mod ecs_ai_plugin;
+pub mod htn;
 pub mod orchestrator;
 pub mod tool_sandbox;
 
@@ -51,8 +52,10 @@ pub mod veilweaver;
 #[cfg(feature = "planner_advanced")]
 pub mod goap;
 
+pub use astraweave_nav::bridge_and_ford;
 pub use core_loop::*;
 pub use ecs_ai_plugin::{build_app_with_ai, AiPlanningPlugin};
+pub use htn::{SpatialTick, HTN_EXPANSIONS_PER_TICK};
 pub use orchestrator::*;
 pub use tool_sandbox::*;
 

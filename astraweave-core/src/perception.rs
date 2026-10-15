@@ -5,6 +5,99 @@ pub struct PerceptionConfig {
     pub los_max: i32,
 }
 
+/// A breach the nav publish reported. `x` and `y` are world cells, not the
+/// retired constant cell.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct ObservedBreach {
+    pub portal_id: u32,
+    pub x: i32,
+    pub y: i32,
+}
+
+/// Cover that the last nav commit removed.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct ObservedCover {
+    pub id: u32,
+    pub x: i32,
+    pub y: i32,
+}
+
+/// Hook for a weaving effect perception will score later.
+///
+/// `kind` is reserved for the weaving owner. A non-zero kind on a cell seals
+/// a breach that shares that cell.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct WeaveEffectHook {
+    pub effect_id: u32,
+    pub x: i32,
+    pub y: i32,
+    pub kind: u16,
+}
+
+/// Hook for a local-sim hazard (fire, gas, heat) perception will score later.
+///
+/// A hazard on a cell blocks a breach on that cell.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct LocalHazardHook {
+    pub hazard_id: u32,
+    pub x: i32,
+    pub y: i32,
+    pub kind: u16,
+}
+
+/// Fixed buffers the AI tick fills from nav, weaving, and the local sim.
+///
+/// Empty lengths mean those channels saw nothing. The legacy snapshot builder
+/// copies breaches and lost cover into `WorldSnapshot::pois`. Weaving and
+/// hazards stay here so `WorldSnapshot` field names do not change.
+#[derive(Clone, Copy, Debug)]
+pub struct ObservationBuf {
+    pub breaches: [ObservedBreach; 16],
+    pub breach_len: u8,
+    pub lost_cover: [ObservedCover; 16],
+    pub lost_cover_len: u8,
+    pub weaving: [WeaveEffectHook; 8],
+    pub weaving_len: u8,
+    pub hazards: [LocalHazardHook; 8],
+    pub hazard_len: u8,
+}
+
+impl ObservationBuf {
+    #[must_use]
+    pub const fn none() -> Self {
+        Self {
+            breaches: [ObservedBreach {
+                portal_id: 0,
+                x: 0,
+                y: 0,
+            }; 16],
+            breach_len: 0,
+            lost_cover: [ObservedCover { id: 0, x: 0, y: 0 }; 16],
+            lost_cover_len: 0,
+            weaving: [WeaveEffectHook {
+                effect_id: 0,
+                x: 0,
+                y: 0,
+                kind: 0,
+            }; 8],
+            weaving_len: 0,
+            hazards: [LocalHazardHook {
+                hazard_id: 0,
+                x: 0,
+                y: 0,
+                kind: 0,
+            }; 8],
+            hazard_len: 0,
+        }
+    }
+}
+
+impl Default for ObservationBuf {
+    fn default() -> Self {
+        Self::none()
+    }
+}
+
 /// A snapshot could not be built because a required component is absent.
 ///
 /// The AI tick records this as `AiPlanningFailedEvent` instead of aborting
@@ -59,6 +152,7 @@ pub fn try_build_snapshot(
         objective,
         cfg,
         w.sorted_obstacles(),
+        &ObservationBuf::none(),
     )
 }
 
@@ -106,9 +200,33 @@ pub fn try_build_snapshot_shared_obstacles(
         objective,
         cfg,
         sort_obstacles(obstacles),
+        &ObservationBuf::none(),
     )
 }
 
+/// Snapshot builder that copies real breaches and lost cover into `pois`.
+pub fn try_build_snapshot_observed(
+    w: &World,
+    t_player: Entity,
+    t_companion: Entity,
+    enemies: &[Entity],
+    objective: Option<String>,
+    cfg: &PerceptionConfig,
+    observation: &ObservationBuf,
+) -> Result<WorldSnapshot, SnapshotError> {
+    assemble_snapshot(
+        w,
+        t_player,
+        t_companion,
+        enemies,
+        objective,
+        cfg,
+        w.sorted_obstacles(),
+        observation,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
 fn assemble_snapshot(
     w: &World,
     t_player: Entity,
@@ -117,6 +235,7 @@ fn assemble_snapshot(
     objective: Option<String>,
     cfg: &PerceptionConfig,
     obstacles: Vec<IVec2>,
+    observation: &ObservationBuf,
 ) -> Result<WorldSnapshot, SnapshotError> {
     let ppos = w.pos_of(t_player).ok_or(SnapshotError {
         entity: t_player,
@@ -184,13 +303,42 @@ fn assemble_snapshot(
         player,
         me,
         enemies: seen,
-        pois: vec![Poi {
-            k: "breach_door".into(),
-            pos: IVec2 { x: 15, y: 8 },
-        }],
+        pois: pois_from_observation(observation),
         obstacles,
         objective,
     })
+}
+
+fn pois_from_observation(observation: &ObservationBuf) -> Vec<Poi> {
+    let mut pois =
+        Vec::with_capacity(observation.breach_len as usize + observation.lost_cover_len as usize);
+    for breach in observation
+        .breaches
+        .iter()
+        .take(observation.breach_len as usize)
+    {
+        pois.push(Poi {
+            k: "breach".into(),
+            pos: IVec2 {
+                x: breach.x,
+                y: breach.y,
+            },
+        });
+    }
+    for cover in observation
+        .lost_cover
+        .iter()
+        .take(observation.lost_cover_len as usize)
+    {
+        pois.push(Poi {
+            k: "cover_lost".into(),
+            pos: IVec2 {
+                x: cover.x,
+                y: cover.y,
+            },
+        });
+    }
+    pois
 }
 
 fn sort_obstacles(mut obstacles: Vec<IVec2>) -> Vec<IVec2> {
@@ -400,9 +548,57 @@ mod tests {
         let cfg = PerceptionConfig { los_max: 20 };
         let snap = build_snapshot(&w, player, companion, &[], None, &cfg);
 
-        assert_eq!(snap.pois.len(), 1);
-        assert_eq!(snap.pois[0].k, "breach_door");
-        assert_eq!(snap.pois[0].pos, iv2(15, 8));
+        assert!(
+            snap.pois.is_empty(),
+            "no nav observation means no invented breach"
+        );
+    }
+
+    #[test]
+    fn test_observed_breach_and_lost_cover_become_pois() {
+        let mut w = World::new();
+        let player = w.spawn("player", iv2(0, 0), Team { id: 1 }, 100, 0);
+        let companion = w.spawn("companion", iv2(1, 1), Team { id: 1 }, 100, 10);
+        let mut observation = ObservationBuf::none();
+        observation.breaches[0] = ObservedBreach {
+            portal_id: 7,
+            x: 4,
+            y: 9,
+        };
+        observation.breach_len = 1;
+        observation.lost_cover[0] = ObservedCover { id: 3, x: 2, y: 2 };
+        observation.lost_cover_len = 1;
+        observation.weaving[0] = WeaveEffectHook {
+            effect_id: 1,
+            x: 4,
+            y: 9,
+            kind: 1,
+        };
+        observation.weaving_len = 1;
+        observation.hazards[0] = LocalHazardHook {
+            hazard_id: 2,
+            x: 1,
+            y: 1,
+            kind: 1,
+        };
+        observation.hazard_len = 1;
+        let snap = try_build_snapshot_observed(
+            &w,
+            player,
+            companion,
+            &[],
+            None,
+            &PerceptionConfig { los_max: 10 },
+            &observation,
+        )
+        .expect("snapshot");
+        assert_eq!(snap.pois.len(), 2);
+        assert_eq!(snap.pois[0].k, "breach");
+        assert_eq!(snap.pois[0].pos, iv2(4, 9));
+        assert_eq!(snap.pois[1].k, "cover_lost");
+        assert_ne!(snap.pois[0].pos, iv2(15, 8));
+        assert_eq!(observation.weaving_len, 1);
+        assert_eq!(observation.hazard_len, 1);
     }
 
     #[test]
@@ -528,7 +724,10 @@ mod tests {
         assert_eq!(snap.enemies[0].cover, CoverType::Low); // Within LOS
         assert_eq!(snap.enemies[1].cover, CoverType::Unknown); // Beyond LOS
         assert_eq!(snap.obstacles.len(), 2);
-        assert_eq!(snap.pois.len(), 1);
+        assert!(
+            snap.pois.is_empty(),
+            "no nav observation means no invented breach"
+        );
         assert_eq!(snap.objective, Some("Defend position".to_string()));
     }
 

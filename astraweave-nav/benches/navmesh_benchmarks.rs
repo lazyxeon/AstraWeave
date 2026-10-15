@@ -21,7 +21,9 @@
 //   5. Path Length: Path distance is at least straight-line distance
 // =============================================================================
 
-use astraweave_nav::{NavMesh, Triangle};
+use astraweave_nav::{
+    bridge_and_ford, nav_change_from_kind, NavChangeKind, NavMesh, Triangle, TILE_COMMITS_PER_TICK,
+};
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
 use glam::Vec3;
 
@@ -438,4 +440,24 @@ criterion_group!(
     bench_throughput_10k_triangles,
 );
 
-criterion_main!(baking, pathfinding, throughput);
+fn bench_tile_commits_per_tick(c: &mut Criterion) {
+    c.bench_function("tile_commits_per_tick", |b| {
+        b.iter(|| {
+            let mut tiles = bridge_and_ford();
+            for seq in 0..TILE_COMMITS_PER_TICK as u32 {
+                tiles.mark(nav_change_from_kind(
+                    NavChangeKind::Brush,
+                    1,
+                    seq,
+                    [seq as i32 * 32_000, -1_000, 0],
+                    [seq as i32 * 32_000 + 500, 1_000, 500],
+                ));
+            }
+            black_box(tiles.commit_tick())
+        });
+    });
+}
+
+criterion_group!(tile_budget, bench_tile_commits_per_tick);
+
+criterion_main!(baking, pathfinding, throughput, tile_budget);

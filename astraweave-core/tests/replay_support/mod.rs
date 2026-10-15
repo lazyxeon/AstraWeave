@@ -9,7 +9,7 @@
 use astraweave_ai::{GoapOrchestrator, Orchestrator, RuleOrchestrator};
 use astraweave_core::{
     build_snapshot, ActionStep, CompanionState, EnemyState, IVec2, MovementSpeed, PerceptionConfig,
-    PlanIntent, PlayerState, Poi, Team, World, WorldSnapshot,
+    PlanIntent, PlayerState, Team, World, WorldSnapshot,
 };
 use sha2::{Digest, Sha256};
 use std::path::PathBuf;
@@ -40,6 +40,95 @@ pub fn planner_pure_bytes() -> Vec<u8> {
         encode_plan(&mut out, &rule);
         push_str(&mut out, "goap");
         encode_plan(&mut out, &goap);
+    }
+    out
+}
+
+pub fn nav_reroute_bytes() -> Vec<u8> {
+    use astraweave_ai::htn::{plan_route, AgentPlan, SpatialHooks};
+    use astraweave_destruction::command::{
+        Brush, BrushOp, BrushShape, CommandKind, DestructionCommand,
+    };
+    use astraweave_destruction::DestructionWorld;
+    use astraweave_nav::{bridge_and_ford, nav_change_from_geometry_notice, NavScratch};
+
+    let mut tiles = bridge_and_ford();
+    let mut scratch = NavScratch::new();
+    let hooks = SpatialHooks::none();
+    let mut world = DestructionWorld::new(0xA11C, 0);
+    world
+        .enqueue(DestructionCommand {
+            tick: 30,
+            seq: 0,
+            entity_id: 1,
+            kind: CommandKind::Brush(Brush {
+                shape: BrushShape::Box,
+                op: BrushOp::Subtract,
+                origin: [2_000, 0, 24_500],
+                radius: 7_499,
+                half_extents: [1, 1, 1],
+                strength: 1,
+            }),
+        })
+        .expect("enqueue bridge collapse");
+    let mut out = Vec::new();
+    for tick in 0..60u64 {
+        world.tick();
+        let empty = astraweave_destruction::GeometryNotice {
+            tick: 0,
+            x0: 0,
+            y0: 0,
+            z0: 0,
+            x1: 0,
+            y1: 0,
+            z1: 0,
+            reason: 0,
+        };
+        let mut notices = [empty; 8];
+        let count = world.drain_geometry_notices(&mut notices);
+        for (seq, notice) in notices[..count].iter().enumerate() {
+            if let Some(change) = nav_change_from_geometry_notice(notice, seq as u32) {
+                tiles.mark(change);
+            }
+        }
+        let committed = tiles.commit_tick() as u32;
+        let mut budget = 64u32;
+        let mut plan = AgentPlan::empty();
+        plan_route(
+            &tiles,
+            &mut scratch,
+            [1_000, 0, 1_000],
+            [1_000, 0, 46_000],
+            &hooks,
+            tick,
+            &mut plan,
+            &mut budget,
+        );
+        push_u32(&mut out, tick as u32);
+        push_u32(&mut out, committed);
+        push_u8(&mut out, plan.len);
+        for slot in plan.slots.iter().take(plan.len as usize) {
+            match slot {
+                astraweave_ai::htn::ActionSlot::Empty => push_u8(&mut out, 0),
+                astraweave_ai::htn::ActionSlot::MoveTo { x, y } => {
+                    push_u8(&mut out, 1);
+                    push_i32(&mut out, *x);
+                    push_i32(&mut out, *y);
+                }
+                astraweave_ai::htn::ActionSlot::UseBreach { portal_id } => {
+                    push_u8(&mut out, 2);
+                    push_u32(&mut out, *portal_id);
+                }
+                astraweave_ai::htn::ActionSlot::TakeCover { cover_id } => {
+                    push_u8(&mut out, 3);
+                    push_u32(&mut out, *cover_id);
+                }
+                astraweave_ai::htn::ActionSlot::Wait { duration_milli } => {
+                    push_u8(&mut out, 4);
+                    push_u32(&mut out, *duration_milli);
+                }
+            }
+        }
     }
     out
 }
@@ -213,10 +302,8 @@ fn hand_snapshot(smoke_cd: f32, first_enemy_x: i32, with_enemies: bool) -> World
             pos: IVec2 { x: 2, y: 3 },
         },
         enemies,
-        pois: vec![Poi {
-            k: "breach_door".to_string(),
-            pos: IVec2 { x: 15, y: 8 },
-        }],
+        // Authored fixture. Perception no longer inserts a breach at a fixed cell.
+        pois: vec![],
         obstacles: vec![IVec2 { x: 1, y: 2 }, IVec2 { x: 3, y: 3 }],
         objective: Some("extract".to_string()),
     }
