@@ -3136,36 +3136,29 @@ impl EngineRenderAdapter {
                                 s.truncate(idx);
                                 patterns.push(format!("{}_diff.", s).to_lowercase());
                             }
-                            for entry in candidates {
-                                if let Ok(e) = entry {
-                                    let name = e.file_name().to_string_lossy().to_lowercase();
-                                    for pat in &patterns {
-                                        if name.starts_with(pat.as_str()) {
-                                            let path = e.path();
-                                            let canon = path
-                                                .canonicalize()
-                                                .unwrap_or_else(|_| path.clone());
-                                            if let Some(cached) =
-                                                self.scatter_texture_cache.get(&canon)
-                                            {
-                                                return Some(cached.clone());
-                                            }
-                                            if let Some(entry) =
-                                                Self::load_scatter_texture_from_path(
-                                                    &path,
-                                                    SCATTER_MAX_TEX_SIZE,
-                                                )
-                                            {
-                                                self.scatter_texture_cache
-                                                    .insert(canon, entry.clone());
-                                                tracing::debug!(
-                                                    "Scatter: loaded texture {}×{} for hint '{hint}' from {}",
-                                                    entry.0,
-                                                    entry.1,
-                                                    path.display(),
-                                                );
-                                                return Some(entry);
-                                            }
+                            for e in candidates.flatten() {
+                                let name = e.file_name().to_string_lossy().to_lowercase();
+                                for pat in &patterns {
+                                    if name.starts_with(pat.as_str()) {
+                                        let path = e.path();
+                                        let canon =
+                                            path.canonicalize().unwrap_or_else(|_| path.clone());
+                                        if let Some(cached) = self.scatter_texture_cache.get(&canon)
+                                        {
+                                            return Some(cached.clone());
+                                        }
+                                        if let Some(entry) = Self::load_scatter_texture_from_path(
+                                            &path,
+                                            SCATTER_MAX_TEX_SIZE,
+                                        ) {
+                                            self.scatter_texture_cache.insert(canon, entry.clone());
+                                            tracing::debug!(
+                                                "Scatter: loaded texture {}×{} for hint '{hint}' from {}",
+                                                entry.0,
+                                                entry.1,
+                                                path.display(),
+                                            );
+                                            return Some(entry);
                                         }
                                     }
                                 }
