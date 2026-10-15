@@ -139,7 +139,7 @@ jobs:
           add_executable(aw_cmake_example main.c)
           target_include_directories(aw_cmake_example PRIVATE ${CMAKE_SOURCE_DIR}/..)
           target_link_directories(aw_cmake_example PRIVATE ${CMAKE_SOURCE_DIR}/../target/release)
-          target_link_libraries(aw_cmake_example PRIVATE astraweave_sdk)
+          target_link_libraries(aw_cmake_example PRIVATE astraweave_sdk ws2_32 userenv ntdll)
           '@
           Set-Content -Path cmake_example/main.c -Value @'
           #include <stdio.h>
@@ -147,7 +147,9 @@ jobs:
           int main(){ struct AWWorld w = aw_world_create(); aw_world_tick(w, 0.016f); aw_world_destroy(w); return 0; }
           '@
           cmake -S cmake_example -B cmake_build
+          if ($LASTEXITCODE -ne 0) { throw "cmake configure failed: $LASTEXITCODE" }
           cmake --build cmake_build --config Release
+          if ($LASTEXITCODE -ne 0) { throw "cmake build failed: $LASTEXITCODE" }
           Copy-Item target\release\astraweave_sdk.dll cmake_build\Release -ErrorAction SilentlyContinue
           $env:Path = "$pwd\target\release;$env:Path"
           if (Test-Path cmake_build\Release\aw_cmake_example.exe) { .\cmake_build\Release\aw_cmake_example.exe } else { .\cmake_build\aw_cmake_example.exe }
