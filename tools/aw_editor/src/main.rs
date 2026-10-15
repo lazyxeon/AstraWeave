@@ -8033,8 +8033,7 @@ impl EditorApp {
         let zones = self.dock_tab_viewer.blueprint_zones();
         let overlay_data: Vec<ZoneOverlayData> = zones
             .iter()
-            .enumerate()
-            .map(|(_i, z)| {
+            .map(|z| {
                 let color = match &z.source {
                     ZoneSourceState::BiomePreset(_) => [0.3, 0.8, 0.4],
                     ZoneSourceState::BlendScene { .. } => [0.3, 0.5, 0.9],
