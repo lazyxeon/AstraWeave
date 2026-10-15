@@ -2808,16 +2808,6 @@ mod tests {
     }
 }
 
-/// A walkable-region edit. Weaving emits one when ice becomes a static sheet.
-/// Tile rebuild consumes it. The milli-unit AABB is the only payload.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct NavChange {
-    pub tick: u64,
-    pub seq: u32,
-    pub min_milli: [i32; 3],
-    pub max_milli: [i32; 3],
-}
-
 // Week 2 Day 2: Stress Tests
 #[cfg(test)]
 #[path = "stress_tests.rs"]

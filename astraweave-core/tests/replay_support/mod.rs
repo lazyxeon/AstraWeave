@@ -368,16 +368,6 @@ fn encode_snapshot(out: &mut Vec<u8>, snap: &WorldSnapshot) {
         }
         None => push_u8(out, 0),
     }
-    push_u8(out, snap.hazard_count);
-    for hazard in snap.hazards.iter().take(snap.hazard_count as usize) {
-        push_u8(out, hazard.kind);
-        push_i32(out, hazard.x);
-        push_i32(out, hazard.y);
-        push_i32(out, hazard.z);
-        push_i32(out, hazard.temperature as i32);
-        push_u8(out, hazard.flags);
-        push_u32(out, hazard.radius_milli as u32);
-    }
 }
 
 fn encode_step(out: &mut Vec<u8>, step: &ActionStep) {

@@ -11,7 +11,7 @@ use crate::mod_queue::{
     KIND_PHASE, KIND_VOLUME, KIND_WIND, MAX_WEAVE_COMMANDS,
 };
 use crate::templates::{builtin, writes_for, TEMPLATE_FREEZE};
-use astraweave_nav::NavChange;
+use astraweave_nav::{NavChange, NavChangeKind};
 
 pub const MAX_SINKS: usize = 32;
 
@@ -48,12 +48,7 @@ impl WeaveFrame {
                 max_milli: [0, 0, 0],
             }; MAX_SINKS],
             sheet_count: 0,
-            nav: [NavChange {
-                tick: 0,
-                seq: 0,
-                min_milli: [0, 0, 0],
-                max_milli: [0, 0, 0],
-            }; MAX_SINKS],
+            nav: [NavChange::new(0, 0, [0, 0, 0], [0, 0, 0], NavChangeKind::Weave); MAX_SINKS],
             nav_count: 0,
             writes: [FieldWrite {
                 seq: 0,
@@ -258,12 +253,8 @@ fn push_ice(frame: &mut WeaveFrame, tick: u64, seq: u32, origin: [i32; 3], radiu
     }
     let nav_index = frame.nav_count as usize;
     if nav_index < MAX_SINKS {
-        frame.nav[nav_index] = NavChange {
-            tick,
-            seq,
-            min_milli,
-            max_milli,
-        };
+        frame.nav[nav_index] =
+            NavChange::new(tick, seq, min_milli, max_milli, NavChangeKind::Weave);
         frame.nav_count = frame.nav_count.saturating_add(1);
     }
 }

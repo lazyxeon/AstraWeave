@@ -5,7 +5,7 @@ use crate::templates::{
     builtin, writes_for, MAX_NODES, TEMPLATE_DENSITY, TEMPLATE_FREEZE, TEMPLATE_LOWER_WATER,
     TEMPLATE_WIND,
 };
-use astraweave_nav::NavChange;
+use astraweave_nav::{NavChange, NavChangeKind};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct DirectorRect {
@@ -122,12 +122,13 @@ pub fn compile_legacy(kind: u8, points: LegacyPoints) -> CompiledOp {
             ];
             compiled.ice_min_milli = Some(min_milli);
             compiled.ice_max_milli = Some(max_milli);
-            compiled.nav = Some(NavChange {
+            compiled.nav = Some(NavChange::new(
                 tick,
                 seq,
                 min_milli,
                 max_milli,
-            });
+                NavChangeKind::Weave,
+            ));
         }
         _ => {}
     }
