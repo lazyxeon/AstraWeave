@@ -1013,7 +1013,7 @@ gate:
   date: 2026-10-14
 ```
 
-Status after the rebase onto PR #245 (`cursor/fixed64-math-8aec`): R1, R2, and R3 are closed on this branch. `Fixed64` is `astraweave_math::Fixed64`. It reaches `main` when #245 merges, which happens before this PR. The register in §15 is the current text. The card above is the approval record and is not rewritten.
+Status after the rebase onto `main` `b7ffb358` (PR #245): R1, R2, and R3 are closed. `Fixed64` is `astraweave_math::Fixed64`. `whole_raw` stays in combat. The destruction crate on this branch is a temporary copy until PR #243 lands. The register in §15 is the current text. The card above is the approval record and is not rewritten.
 
 ---
 
@@ -1042,6 +1042,7 @@ No GPU, no WoW client, and no three-OS runner were used. That is why H1 is not m
 | 0.6 | 2026-10-15 | Rebased onto PR #245. Combat re-exports `astraweave_math::Fixed64`. `whole_raw` stays. `fixed64` and `combat_resolve` are both required replay cases. Golden hashes unchanged. |
 | 0.7 | 2026-10-15 | Windows SDK version gate reads the whole capture. The CMake example links `ws2_32`, `userenv`, and `ntdll`, matching the `cl` harness. |
 | 0.8 | 2026-10-15 | Cover hits enqueue destruction impacts. Weave schools are data in `astraweave-weaving`. `run_aravath_slice` is the Aravath caller. |
+| 0.9 | 2026-10-15 | Rebased onto `main` `b7ffb358`. `Fixed64` is only `astraweave_math::Fixed64`. Destruction copy stays until #243. |
 
 ---
 

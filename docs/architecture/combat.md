@@ -10,7 +10,7 @@ integration_status: partial
 summary: "Cover hits enqueue destruction impacts. Weave schools are data. run_aravath_slice is the Aravath caller. Fixed64 is astraweave-math."
 owns: [astraweave-combat]
 doc_version: "1.3"
-last_verified_commit: df4b07bc
+last_verified_commit: 9459573d
 runtime_edges:
   - to: astraweave-ecs
     note: CombatPlugin registers combat_resolve_system on the simulation stage
@@ -27,7 +27,7 @@ runtime_edges:
 | **System name** | Combat damage |
 | **Primary crates** | `astraweave-combat` |
 | **Document version** | 1.3 |
-| **Last verified against commit** | `df4b07bc` |
+| **Last verified against commit** | `9459573d` |
 | **Last verified date** | 2026-10-15 |
 | **Status** | Active, partial. `run_aravath_slice` is the caller. PR #205's greybox runtime does not call it yet. |
 | **Owner notes** | Formula spec: `docs/current/COMBAT_DAMAGE_SYSTEM_DESIGN.md`. Gate Pass, 2026-10-14. |
