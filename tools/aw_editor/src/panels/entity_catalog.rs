@@ -1142,6 +1142,12 @@ pub struct EntityCatalogState {
     expanded_packs: HashSet<(EntityCategory, String)>,
 }
 
+impl Default for EntityCatalogState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl EntityCatalogState {
     pub fn new() -> Self {
         let entries = build_catalog();
