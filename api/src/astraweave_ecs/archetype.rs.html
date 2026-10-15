@@ -689,433 +689,455 @@
 <a href=#689 id=689 data-nosnippet>689</a>
 <a href=#690 id=690 data-nosnippet>690</a>        ids.iter().filter_map(<span class="kw">move </span>|id| <span class="self">self</span>.archetypes.get(id))
 <a href=#691 id=691 data-nosnippet>691</a>    }
-<a href=#692 id=692 data-nosnippet>692</a>}
-<a href=#693 id=693 data-nosnippet>693</a>
-<a href=#694 id=694 data-nosnippet>694</a><span class="attr">#[cfg(test)]
-<a href=#695 id=695 data-nosnippet>695</a></span><span class="kw">mod </span>tests {
-<a href=#696 id=696 data-nosnippet>696</a>    <span class="kw">use super</span>::<span class="kw-2">*</span>;
-<a href=#697 id=697 data-nosnippet>697</a>
-<a href=#698 id=698 data-nosnippet>698</a>    <span class="attr">#[derive(Clone, Copy, Debug, PartialEq)]
-<a href=#699 id=699 data-nosnippet>699</a>    </span><span class="kw">struct </span>Health(i32);
-<a href=#700 id=700 data-nosnippet>700</a>
-<a href=#701 id=701 data-nosnippet>701</a>    <span class="attr">#[derive(Clone, Copy, Debug, PartialEq)]
-<a href=#702 id=702 data-nosnippet>702</a>    </span><span class="kw">struct </span>Position(f32, f32);
-<a href=#703 id=703 data-nosnippet>703</a>
-<a href=#704 id=704 data-nosnippet>704</a>    <span class="attr">#[test]
-<a href=#705 id=705 data-nosnippet>705</a>    </span><span class="kw">fn </span>test_signature_creation() {
-<a href=#706 id=706 data-nosnippet>706</a>        <span class="kw">let </span>sig1 = ArchetypeSignature::new(<span class="macro">vec!</span>[TypeId::of::&lt;Health&gt;(), TypeId::of::&lt;Position&gt;()]);
-<a href=#707 id=707 data-nosnippet>707</a>        <span class="kw">let </span>sig2 = ArchetypeSignature::new(<span class="macro">vec!</span>[TypeId::of::&lt;Position&gt;(), TypeId::of::&lt;Health&gt;()]);
-<a href=#708 id=708 data-nosnippet>708</a>        <span class="macro">assert_eq!</span>(sig1, sig2); <span class="comment">// Order-independent
-<a href=#709 id=709 data-nosnippet>709</a>    </span>}
-<a href=#710 id=710 data-nosnippet>710</a>
-<a href=#711 id=711 data-nosnippet>711</a>    <span class="attr">#[test]
-<a href=#712 id=712 data-nosnippet>712</a>    </span><span class="kw">fn </span>test_archetype_storage() {
-<a href=#713 id=713 data-nosnippet>713</a>        <span class="kw">let </span><span class="kw-2">mut </span>storage = ArchetypeStorage::new();
-<a href=#714 id=714 data-nosnippet>714</a>        <span class="kw">let </span>sig = ArchetypeSignature::new(<span class="macro">vec!</span>[TypeId::of::&lt;Health&gt;()]);
+<a href=#692 id=692 data-nosnippet>692</a>
+<a href=#693 id=693 data-nosnippet>693</a>    <span class="doccomment">/// Append entities that have `ty` into `out`.
+<a href=#694 id=694 data-nosnippet>694</a>    ///
+<a href=#695 id=695 data-nosnippet>695</a>    /// Does not clear `out`. Grows it only when the caller has not reserved
+<a href=#696 id=696 data-nosnippet>696</a>    /// enough capacity, so a reused scratch buffer stays allocation-free
+<a href=#697 id=697 data-nosnippet>697</a>    /// after the first tick that saw this entity set.
+<a href=#698 id=698 data-nosnippet>698</a>    </span><span class="kw">pub fn </span>append_entities_with_component(<span class="kw-2">&amp;</span><span class="self">self</span>, ty: TypeId, out: <span class="kw-2">&amp;mut </span>Vec&lt;Entity&gt;) {
+<a href=#699 id=699 data-nosnippet>699</a>        <span class="kw">let </span><span class="prelude-val">Some</span>(ids) = <span class="self">self</span>.component_to_archetypes.get(<span class="kw-2">&amp;</span>ty) <span class="kw">else </span>{
+<a href=#700 id=700 data-nosnippet>700</a>            <span class="kw">return</span>;
+<a href=#701 id=701 data-nosnippet>701</a>        };
+<a href=#702 id=702 data-nosnippet>702</a>        <span class="kw">let </span>extra: usize = ids
+<a href=#703 id=703 data-nosnippet>703</a>            .iter()
+<a href=#704 id=704 data-nosnippet>704</a>            .filter_map(|id| <span class="self">self</span>.archetypes.get(id))
+<a href=#705 id=705 data-nosnippet>705</a>            .map(|arch| arch.len())
+<a href=#706 id=706 data-nosnippet>706</a>            .sum();
+<a href=#707 id=707 data-nosnippet>707</a>        out.reserve(extra);
+<a href=#708 id=708 data-nosnippet>708</a>        <span class="kw">for </span>id <span class="kw">in </span>ids {
+<a href=#709 id=709 data-nosnippet>709</a>            <span class="kw">if let </span><span class="prelude-val">Some</span>(arch) = <span class="self">self</span>.archetypes.get(id) {
+<a href=#710 id=710 data-nosnippet>710</a>                out.extend_from_slice(arch.entities_vec());
+<a href=#711 id=711 data-nosnippet>711</a>            }
+<a href=#712 id=712 data-nosnippet>712</a>        }
+<a href=#713 id=713 data-nosnippet>713</a>    }
+<a href=#714 id=714 data-nosnippet>714</a>}
 <a href=#715 id=715 data-nosnippet>715</a>
-<a href=#716 id=716 data-nosnippet>716</a>        <span class="kw">let </span>id1 = storage.get_or_create_archetype(sig.clone());
-<a href=#717 id=717 data-nosnippet>717</a>        <span class="kw">let </span>id2 = storage.get_or_create_archetype(sig.clone());
-<a href=#718 id=718 data-nosnippet>718</a>
-<a href=#719 id=719 data-nosnippet>719</a>        <span class="macro">assert_eq!</span>(id1, id2); <span class="comment">// Same signature returns same archetype
-<a href=#720 id=720 data-nosnippet>720</a>    </span>}
-<a href=#721 id=721 data-nosnippet>721</a>
-<a href=#722 id=722 data-nosnippet>722</a>    <span class="comment">// ====================
-<a href=#723 id=723 data-nosnippet>723</a>    // Day 3: Surgical Coverage Improvements - archetype.rs
-<a href=#724 id=724 data-nosnippet>724</a>    // ====================
+<a href=#716 id=716 data-nosnippet>716</a><span class="attr">#[cfg(test)]
+<a href=#717 id=717 data-nosnippet>717</a></span><span class="kw">mod </span>tests {
+<a href=#718 id=718 data-nosnippet>718</a>    <span class="kw">use super</span>::<span class="kw-2">*</span>;
+<a href=#719 id=719 data-nosnippet>719</a>
+<a href=#720 id=720 data-nosnippet>720</a>    <span class="attr">#[derive(Clone, Copy, Debug, PartialEq)]
+<a href=#721 id=721 data-nosnippet>721</a>    </span><span class="kw">struct </span>Health(i32);
+<a href=#722 id=722 data-nosnippet>722</a>
+<a href=#723 id=723 data-nosnippet>723</a>    <span class="attr">#[derive(Clone, Copy, Debug, PartialEq)]
+<a href=#724 id=724 data-nosnippet>724</a>    </span><span class="kw">struct </span>Position(f32, f32);
 <a href=#725 id=725 data-nosnippet>725</a>
-<a href=#726 id=726 data-nosnippet>726</a>    </span><span class="attr">#[test]
-<a href=#727 id=727 data-nosnippet>727</a>    </span><span class="kw">fn </span>test_signature_methods() {
-<a href=#728 id=728 data-nosnippet>728</a>        <span class="comment">// Tests contains(), len(), is_empty()
-<a href=#729 id=729 data-nosnippet>729</a>        </span><span class="kw">let </span>sig = ArchetypeSignature::new(<span class="macro">vec!</span>[TypeId::of::&lt;Health&gt;(), TypeId::of::&lt;Position&gt;()]);
-<a href=#730 id=730 data-nosnippet>730</a>
-<a href=#731 id=731 data-nosnippet>731</a>        <span class="macro">assert!</span>(sig.contains(TypeId::of::&lt;Health&gt;()));
-<a href=#732 id=732 data-nosnippet>732</a>        <span class="macro">assert!</span>(sig.contains(TypeId::of::&lt;Position&gt;()));
-<a href=#733 id=733 data-nosnippet>733</a>        <span class="macro">assert!</span>(!sig.contains(TypeId::of::&lt;i32&gt;()));
-<a href=#734 id=734 data-nosnippet>734</a>
-<a href=#735 id=735 data-nosnippet>735</a>        <span class="macro">assert_eq!</span>(sig.len(), <span class="number">2</span>);
-<a href=#736 id=736 data-nosnippet>736</a>        <span class="macro">assert!</span>(!sig.is_empty());
+<a href=#726 id=726 data-nosnippet>726</a>    <span class="attr">#[test]
+<a href=#727 id=727 data-nosnippet>727</a>    </span><span class="kw">fn </span>test_signature_creation() {
+<a href=#728 id=728 data-nosnippet>728</a>        <span class="kw">let </span>sig1 = ArchetypeSignature::new(<span class="macro">vec!</span>[TypeId::of::&lt;Health&gt;(), TypeId::of::&lt;Position&gt;()]);
+<a href=#729 id=729 data-nosnippet>729</a>        <span class="kw">let </span>sig2 = ArchetypeSignature::new(<span class="macro">vec!</span>[TypeId::of::&lt;Position&gt;(), TypeId::of::&lt;Health&gt;()]);
+<a href=#730 id=730 data-nosnippet>730</a>        <span class="macro">assert_eq!</span>(sig1, sig2); <span class="comment">// Order-independent
+<a href=#731 id=731 data-nosnippet>731</a>    </span>}
+<a href=#732 id=732 data-nosnippet>732</a>
+<a href=#733 id=733 data-nosnippet>733</a>    <span class="attr">#[test]
+<a href=#734 id=734 data-nosnippet>734</a>    </span><span class="kw">fn </span>test_archetype_storage() {
+<a href=#735 id=735 data-nosnippet>735</a>        <span class="kw">let </span><span class="kw-2">mut </span>storage = ArchetypeStorage::new();
+<a href=#736 id=736 data-nosnippet>736</a>        <span class="kw">let </span>sig = ArchetypeSignature::new(<span class="macro">vec!</span>[TypeId::of::&lt;Health&gt;()]);
 <a href=#737 id=737 data-nosnippet>737</a>
-<a href=#738 id=738 data-nosnippet>738</a>        <span class="kw">let </span>empty_sig = ArchetypeSignature::new(<span class="macro">vec!</span>[]);
-<a href=#739 id=739 data-nosnippet>739</a>        <span class="macro">assert_eq!</span>(empty_sig.len(), <span class="number">0</span>);
-<a href=#740 id=740 data-nosnippet>740</a>        <span class="macro">assert!</span>(empty_sig.is_empty());
-<a href=#741 id=741 data-nosnippet>741</a>    }
-<a href=#742 id=742 data-nosnippet>742</a>
-<a href=#743 id=743 data-nosnippet>743</a>    <span class="attr">#[test]
-<a href=#744 id=744 data-nosnippet>744</a>    </span><span class="kw">fn </span>test_archetype_entity_operations() {
-<a href=#745 id=745 data-nosnippet>745</a>        <span class="comment">// Tests add_entity, get, get_mut, len, is_empty, entities_vec
-<a href=#746 id=746 data-nosnippet>746</a>        </span><span class="kw">let </span>sig = ArchetypeSignature::new(<span class="macro">vec!</span>[TypeId::of::&lt;Health&gt;(), TypeId::of::&lt;Position&gt;()]);
-<a href=#747 id=747 data-nosnippet>747</a>        <span class="kw">let </span><span class="kw-2">mut </span>archetype = Archetype::new(ArchetypeId(<span class="number">0</span>), sig);
-<a href=#748 id=748 data-nosnippet>748</a>
-<a href=#749 id=749 data-nosnippet>749</a>        <span class="macro">assert_eq!</span>(archetype.len(), <span class="number">0</span>);
-<a href=#750 id=750 data-nosnippet>750</a>        <span class="macro">assert!</span>(archetype.is_empty());
-<a href=#751 id=751 data-nosnippet>751</a>        <span class="macro">assert_eq!</span>(archetype.entities_vec().len(), <span class="number">0</span>);
+<a href=#738 id=738 data-nosnippet>738</a>        <span class="kw">let </span>id1 = storage.get_or_create_archetype(sig.clone());
+<a href=#739 id=739 data-nosnippet>739</a>        <span class="kw">let </span>id2 = storage.get_or_create_archetype(sig.clone());
+<a href=#740 id=740 data-nosnippet>740</a>
+<a href=#741 id=741 data-nosnippet>741</a>        <span class="macro">assert_eq!</span>(id1, id2); <span class="comment">// Same signature returns same archetype
+<a href=#742 id=742 data-nosnippet>742</a>    </span>}
+<a href=#743 id=743 data-nosnippet>743</a>
+<a href=#744 id=744 data-nosnippet>744</a>    <span class="comment">// ====================
+<a href=#745 id=745 data-nosnippet>745</a>    // Day 3: Surgical Coverage Improvements - archetype.rs
+<a href=#746 id=746 data-nosnippet>746</a>    // ====================
+<a href=#747 id=747 data-nosnippet>747</a>
+<a href=#748 id=748 data-nosnippet>748</a>    </span><span class="attr">#[test]
+<a href=#749 id=749 data-nosnippet>749</a>    </span><span class="kw">fn </span>test_signature_methods() {
+<a href=#750 id=750 data-nosnippet>750</a>        <span class="comment">// Tests contains(), len(), is_empty()
+<a href=#751 id=751 data-nosnippet>751</a>        </span><span class="kw">let </span>sig = ArchetypeSignature::new(<span class="macro">vec!</span>[TypeId::of::&lt;Health&gt;(), TypeId::of::&lt;Position&gt;()]);
 <a href=#752 id=752 data-nosnippet>752</a>
-<a href=#753 id=753 data-nosnippet>753</a>        <span class="comment">// Add entity with components
-<a href=#754 id=754 data-nosnippet>754</a>        </span><span class="kw">let </span>entity = <span class="kw">unsafe </span>{ Entity::from_raw(<span class="number">1</span>) };
-<a href=#755 id=755 data-nosnippet>755</a>        <span class="kw">let </span><span class="kw-2">mut </span>components = HashMap::new();
-<a href=#756 id=756 data-nosnippet>756</a>        components.insert(
-<a href=#757 id=757 data-nosnippet>757</a>            TypeId::of::&lt;Health&gt;(),
-<a href=#758 id=758 data-nosnippet>758</a>            Box::new(Health(<span class="number">100</span>)) <span class="kw">as </span>Box&lt;<span class="kw">dyn </span>std::any::Any + Send + Sync&gt;,
-<a href=#759 id=759 data-nosnippet>759</a>        );
-<a href=#760 id=760 data-nosnippet>760</a>        components.insert(
-<a href=#761 id=761 data-nosnippet>761</a>            TypeId::of::&lt;Position&gt;(),
-<a href=#762 id=762 data-nosnippet>762</a>            Box::new(Position(<span class="number">1.0</span>, <span class="number">2.0</span>)) <span class="kw">as </span>Box&lt;<span class="kw">dyn </span>std::any::Any + Send + Sync&gt;,
-<a href=#763 id=763 data-nosnippet>763</a>        );
+<a href=#753 id=753 data-nosnippet>753</a>        <span class="macro">assert!</span>(sig.contains(TypeId::of::&lt;Health&gt;()));
+<a href=#754 id=754 data-nosnippet>754</a>        <span class="macro">assert!</span>(sig.contains(TypeId::of::&lt;Position&gt;()));
+<a href=#755 id=755 data-nosnippet>755</a>        <span class="macro">assert!</span>(!sig.contains(TypeId::of::&lt;i32&gt;()));
+<a href=#756 id=756 data-nosnippet>756</a>
+<a href=#757 id=757 data-nosnippet>757</a>        <span class="macro">assert_eq!</span>(sig.len(), <span class="number">2</span>);
+<a href=#758 id=758 data-nosnippet>758</a>        <span class="macro">assert!</span>(!sig.is_empty());
+<a href=#759 id=759 data-nosnippet>759</a>
+<a href=#760 id=760 data-nosnippet>760</a>        <span class="kw">let </span>empty_sig = ArchetypeSignature::new(<span class="macro">vec!</span>[]);
+<a href=#761 id=761 data-nosnippet>761</a>        <span class="macro">assert_eq!</span>(empty_sig.len(), <span class="number">0</span>);
+<a href=#762 id=762 data-nosnippet>762</a>        <span class="macro">assert!</span>(empty_sig.is_empty());
+<a href=#763 id=763 data-nosnippet>763</a>    }
 <a href=#764 id=764 data-nosnippet>764</a>
-<a href=#765 id=765 data-nosnippet>765</a>        archetype.add_entity(entity, components);
-<a href=#766 id=766 data-nosnippet>766</a>
-<a href=#767 id=767 data-nosnippet>767</a>        <span class="macro">assert_eq!</span>(archetype.len(), <span class="number">1</span>);
-<a href=#768 id=768 data-nosnippet>768</a>        <span class="macro">assert!</span>(!archetype.is_empty());
-<a href=#769 id=769 data-nosnippet>769</a>        <span class="macro">assert_eq!</span>(archetype.entities_vec().len(), <span class="number">1</span>);
-<a href=#770 id=770 data-nosnippet>770</a>        <span class="macro">assert_eq!</span>(archetype.entities_vec()[<span class="number">0</span>], entity);
-<a href=#771 id=771 data-nosnippet>771</a>
-<a href=#772 id=772 data-nosnippet>772</a>        <span class="comment">// Test get
-<a href=#773 id=773 data-nosnippet>773</a>        </span><span class="kw">let </span>health = archetype.get::&lt;Health&gt;(entity).unwrap();
-<a href=#774 id=774 data-nosnippet>774</a>        <span class="macro">assert_eq!</span>(health.<span class="number">0</span>, <span class="number">100</span>);
-<a href=#775 id=775 data-nosnippet>775</a>
-<a href=#776 id=776 data-nosnippet>776</a>        <span class="kw">let </span>pos = archetype.get::&lt;Position&gt;(entity).unwrap();
-<a href=#777 id=777 data-nosnippet>777</a>        <span class="macro">assert_eq!</span>(pos.<span class="number">0</span>, <span class="number">1.0</span>);
-<a href=#778 id=778 data-nosnippet>778</a>        <span class="macro">assert_eq!</span>(pos.<span class="number">1</span>, <span class="number">2.0</span>);
-<a href=#779 id=779 data-nosnippet>779</a>
-<a href=#780 id=780 data-nosnippet>780</a>        <span class="comment">// Test get_mut
-<a href=#781 id=781 data-nosnippet>781</a>        </span>{
-<a href=#782 id=782 data-nosnippet>782</a>            <span class="kw">let </span>health_mut = archetype.get_mut::&lt;Health&gt;(entity).unwrap();
-<a href=#783 id=783 data-nosnippet>783</a>            health_mut.<span class="number">0 </span>= <span class="number">50</span>;
-<a href=#784 id=784 data-nosnippet>784</a>        }
-<a href=#785 id=785 data-nosnippet>785</a>
-<a href=#786 id=786 data-nosnippet>786</a>        <span class="kw">let </span>health = archetype.get::&lt;Health&gt;(entity).unwrap();
-<a href=#787 id=787 data-nosnippet>787</a>        <span class="macro">assert_eq!</span>(health.<span class="number">0</span>, <span class="number">50</span>);
-<a href=#788 id=788 data-nosnippet>788</a>    }
-<a href=#789 id=789 data-nosnippet>789</a>
-<a href=#790 id=790 data-nosnippet>790</a>    <span class="attr">#[test]
-<a href=#791 id=791 data-nosnippet>791</a>    </span><span class="kw">fn </span>test_archetype_remove_entity() {
-<a href=#792 id=792 data-nosnippet>792</a>        <span class="comment">// Tests remove_entity and remove_entity_components
-<a href=#793 id=793 data-nosnippet>793</a>        </span><span class="kw">let </span>sig = ArchetypeSignature::new(<span class="macro">vec!</span>[TypeId::of::&lt;Health&gt;()]);
-<a href=#794 id=794 data-nosnippet>794</a>        <span class="kw">let </span><span class="kw-2">mut </span>archetype = Archetype::new(ArchetypeId(<span class="number">0</span>), sig);
-<a href=#795 id=795 data-nosnippet>795</a>
-<a href=#796 id=796 data-nosnippet>796</a>        <span class="kw">let </span>entity1 = <span class="kw">unsafe </span>{ Entity::from_raw(<span class="number">1</span>) };
-<a href=#797 id=797 data-nosnippet>797</a>        <span class="kw">let </span>entity2 = <span class="kw">unsafe </span>{ Entity::from_raw(<span class="number">2</span>) };
-<a href=#798 id=798 data-nosnippet>798</a>
-<a href=#799 id=799 data-nosnippet>799</a>        <span class="kw">let </span><span class="kw-2">mut </span>components1 = HashMap::new();
-<a href=#800 id=800 data-nosnippet>800</a>        components1.insert(
-<a href=#801 id=801 data-nosnippet>801</a>            TypeId::of::&lt;Health&gt;(),
-<a href=#802 id=802 data-nosnippet>802</a>            Box::new(Health(<span class="number">100</span>)) <span class="kw">as </span>Box&lt;<span class="kw">dyn </span>std::any::Any + Send + Sync&gt;,
-<a href=#803 id=803 data-nosnippet>803</a>        );
-<a href=#804 id=804 data-nosnippet>804</a>        archetype.add_entity(entity1, components1);
-<a href=#805 id=805 data-nosnippet>805</a>
-<a href=#806 id=806 data-nosnippet>806</a>        <span class="kw">let </span><span class="kw-2">mut </span>components2 = HashMap::new();
-<a href=#807 id=807 data-nosnippet>807</a>        components2.insert(
-<a href=#808 id=808 data-nosnippet>808</a>            TypeId::of::&lt;Health&gt;(),
-<a href=#809 id=809 data-nosnippet>809</a>            Box::new(Health(<span class="number">200</span>)) <span class="kw">as </span>Box&lt;<span class="kw">dyn </span>std::any::Any + Send + Sync&gt;,
-<a href=#810 id=810 data-nosnippet>810</a>        );
-<a href=#811 id=811 data-nosnippet>811</a>        archetype.add_entity(entity2, components2);
-<a href=#812 id=812 data-nosnippet>812</a>
-<a href=#813 id=813 data-nosnippet>813</a>        <span class="macro">assert_eq!</span>(archetype.len(), <span class="number">2</span>);
-<a href=#814 id=814 data-nosnippet>814</a>
-<a href=#815 id=815 data-nosnippet>815</a>        <span class="comment">// Remove entity1
-<a href=#816 id=816 data-nosnippet>816</a>        </span><span class="kw">let </span>removed_components = archetype.remove_entity_components(entity1);
-<a href=#817 id=817 data-nosnippet>817</a>        <span class="macro">assert_eq!</span>(archetype.len(), <span class="number">1</span>);
-<a href=#818 id=818 data-nosnippet>818</a>        <span class="macro">assert!</span>(removed_components.contains_key(<span class="kw-2">&amp;</span>TypeId::of::&lt;Health&gt;()));
-<a href=#819 id=819 data-nosnippet>819</a>
-<a href=#820 id=820 data-nosnippet>820</a>        <span class="comment">// entity2 should still be accessible
-<a href=#821 id=821 data-nosnippet>821</a>        </span><span class="kw">let </span>health = archetype.get::&lt;Health&gt;(entity2).unwrap();
-<a href=#822 id=822 data-nosnippet>822</a>        <span class="macro">assert_eq!</span>(health.<span class="number">0</span>, <span class="number">200</span>);
-<a href=#823 id=823 data-nosnippet>823</a>
-<a href=#824 id=824 data-nosnippet>824</a>        <span class="comment">// entity1 should be gone
-<a href=#825 id=825 data-nosnippet>825</a>        </span><span class="macro">assert!</span>(archetype.get::&lt;Health&gt;(entity1).is_none());
-<a href=#826 id=826 data-nosnippet>826</a>    }
+<a href=#765 id=765 data-nosnippet>765</a>    <span class="attr">#[test]
+<a href=#766 id=766 data-nosnippet>766</a>    </span><span class="kw">fn </span>test_archetype_entity_operations() {
+<a href=#767 id=767 data-nosnippet>767</a>        <span class="comment">// Tests add_entity, get, get_mut, len, is_empty, entities_vec
+<a href=#768 id=768 data-nosnippet>768</a>        </span><span class="kw">let </span>sig = ArchetypeSignature::new(<span class="macro">vec!</span>[TypeId::of::&lt;Health&gt;(), TypeId::of::&lt;Position&gt;()]);
+<a href=#769 id=769 data-nosnippet>769</a>        <span class="kw">let </span><span class="kw-2">mut </span>archetype = Archetype::new(ArchetypeId(<span class="number">0</span>), sig);
+<a href=#770 id=770 data-nosnippet>770</a>
+<a href=#771 id=771 data-nosnippet>771</a>        <span class="macro">assert_eq!</span>(archetype.len(), <span class="number">0</span>);
+<a href=#772 id=772 data-nosnippet>772</a>        <span class="macro">assert!</span>(archetype.is_empty());
+<a href=#773 id=773 data-nosnippet>773</a>        <span class="macro">assert_eq!</span>(archetype.entities_vec().len(), <span class="number">0</span>);
+<a href=#774 id=774 data-nosnippet>774</a>
+<a href=#775 id=775 data-nosnippet>775</a>        <span class="comment">// Add entity with components
+<a href=#776 id=776 data-nosnippet>776</a>        </span><span class="kw">let </span>entity = <span class="kw">unsafe </span>{ Entity::from_raw(<span class="number">1</span>) };
+<a href=#777 id=777 data-nosnippet>777</a>        <span class="kw">let </span><span class="kw-2">mut </span>components = HashMap::new();
+<a href=#778 id=778 data-nosnippet>778</a>        components.insert(
+<a href=#779 id=779 data-nosnippet>779</a>            TypeId::of::&lt;Health&gt;(),
+<a href=#780 id=780 data-nosnippet>780</a>            Box::new(Health(<span class="number">100</span>)) <span class="kw">as </span>Box&lt;<span class="kw">dyn </span>std::any::Any + Send + Sync&gt;,
+<a href=#781 id=781 data-nosnippet>781</a>        );
+<a href=#782 id=782 data-nosnippet>782</a>        components.insert(
+<a href=#783 id=783 data-nosnippet>783</a>            TypeId::of::&lt;Position&gt;(),
+<a href=#784 id=784 data-nosnippet>784</a>            Box::new(Position(<span class="number">1.0</span>, <span class="number">2.0</span>)) <span class="kw">as </span>Box&lt;<span class="kw">dyn </span>std::any::Any + Send + Sync&gt;,
+<a href=#785 id=785 data-nosnippet>785</a>        );
+<a href=#786 id=786 data-nosnippet>786</a>
+<a href=#787 id=787 data-nosnippet>787</a>        archetype.add_entity(entity, components);
+<a href=#788 id=788 data-nosnippet>788</a>
+<a href=#789 id=789 data-nosnippet>789</a>        <span class="macro">assert_eq!</span>(archetype.len(), <span class="number">1</span>);
+<a href=#790 id=790 data-nosnippet>790</a>        <span class="macro">assert!</span>(!archetype.is_empty());
+<a href=#791 id=791 data-nosnippet>791</a>        <span class="macro">assert_eq!</span>(archetype.entities_vec().len(), <span class="number">1</span>);
+<a href=#792 id=792 data-nosnippet>792</a>        <span class="macro">assert_eq!</span>(archetype.entities_vec()[<span class="number">0</span>], entity);
+<a href=#793 id=793 data-nosnippet>793</a>
+<a href=#794 id=794 data-nosnippet>794</a>        <span class="comment">// Test get
+<a href=#795 id=795 data-nosnippet>795</a>        </span><span class="kw">let </span>health = archetype.get::&lt;Health&gt;(entity).unwrap();
+<a href=#796 id=796 data-nosnippet>796</a>        <span class="macro">assert_eq!</span>(health.<span class="number">0</span>, <span class="number">100</span>);
+<a href=#797 id=797 data-nosnippet>797</a>
+<a href=#798 id=798 data-nosnippet>798</a>        <span class="kw">let </span>pos = archetype.get::&lt;Position&gt;(entity).unwrap();
+<a href=#799 id=799 data-nosnippet>799</a>        <span class="macro">assert_eq!</span>(pos.<span class="number">0</span>, <span class="number">1.0</span>);
+<a href=#800 id=800 data-nosnippet>800</a>        <span class="macro">assert_eq!</span>(pos.<span class="number">1</span>, <span class="number">2.0</span>);
+<a href=#801 id=801 data-nosnippet>801</a>
+<a href=#802 id=802 data-nosnippet>802</a>        <span class="comment">// Test get_mut
+<a href=#803 id=803 data-nosnippet>803</a>        </span>{
+<a href=#804 id=804 data-nosnippet>804</a>            <span class="kw">let </span>health_mut = archetype.get_mut::&lt;Health&gt;(entity).unwrap();
+<a href=#805 id=805 data-nosnippet>805</a>            health_mut.<span class="number">0 </span>= <span class="number">50</span>;
+<a href=#806 id=806 data-nosnippet>806</a>        }
+<a href=#807 id=807 data-nosnippet>807</a>
+<a href=#808 id=808 data-nosnippet>808</a>        <span class="kw">let </span>health = archetype.get::&lt;Health&gt;(entity).unwrap();
+<a href=#809 id=809 data-nosnippet>809</a>        <span class="macro">assert_eq!</span>(health.<span class="number">0</span>, <span class="number">50</span>);
+<a href=#810 id=810 data-nosnippet>810</a>    }
+<a href=#811 id=811 data-nosnippet>811</a>
+<a href=#812 id=812 data-nosnippet>812</a>    <span class="attr">#[test]
+<a href=#813 id=813 data-nosnippet>813</a>    </span><span class="kw">fn </span>test_archetype_remove_entity() {
+<a href=#814 id=814 data-nosnippet>814</a>        <span class="comment">// Tests remove_entity and remove_entity_components
+<a href=#815 id=815 data-nosnippet>815</a>        </span><span class="kw">let </span>sig = ArchetypeSignature::new(<span class="macro">vec!</span>[TypeId::of::&lt;Health&gt;()]);
+<a href=#816 id=816 data-nosnippet>816</a>        <span class="kw">let </span><span class="kw-2">mut </span>archetype = Archetype::new(ArchetypeId(<span class="number">0</span>), sig);
+<a href=#817 id=817 data-nosnippet>817</a>
+<a href=#818 id=818 data-nosnippet>818</a>        <span class="kw">let </span>entity1 = <span class="kw">unsafe </span>{ Entity::from_raw(<span class="number">1</span>) };
+<a href=#819 id=819 data-nosnippet>819</a>        <span class="kw">let </span>entity2 = <span class="kw">unsafe </span>{ Entity::from_raw(<span class="number">2</span>) };
+<a href=#820 id=820 data-nosnippet>820</a>
+<a href=#821 id=821 data-nosnippet>821</a>        <span class="kw">let </span><span class="kw-2">mut </span>components1 = HashMap::new();
+<a href=#822 id=822 data-nosnippet>822</a>        components1.insert(
+<a href=#823 id=823 data-nosnippet>823</a>            TypeId::of::&lt;Health&gt;(),
+<a href=#824 id=824 data-nosnippet>824</a>            Box::new(Health(<span class="number">100</span>)) <span class="kw">as </span>Box&lt;<span class="kw">dyn </span>std::any::Any + Send + Sync&gt;,
+<a href=#825 id=825 data-nosnippet>825</a>        );
+<a href=#826 id=826 data-nosnippet>826</a>        archetype.add_entity(entity1, components1);
 <a href=#827 id=827 data-nosnippet>827</a>
-<a href=#828 id=828 data-nosnippet>828</a>    <span class="attr">#[test]
-<a href=#829 id=829 data-nosnippet>829</a>    </span><span class="kw">fn </span>test_archetype_iter_components() {
-<a href=#830 id=830 data-nosnippet>830</a>        <span class="comment">// Tests iter_components batch iterator
-<a href=#831 id=831 data-nosnippet>831</a>        </span><span class="kw">let </span>sig = ArchetypeSignature::new(<span class="macro">vec!</span>[TypeId::of::&lt;Health&gt;()]);
-<a href=#832 id=832 data-nosnippet>832</a>        <span class="kw">let </span><span class="kw-2">mut </span>archetype = Archetype::new(ArchetypeId(<span class="number">0</span>), sig);
-<a href=#833 id=833 data-nosnippet>833</a>
-<a href=#834 id=834 data-nosnippet>834</a>        <span class="kw">let </span>entity1 = <span class="kw">unsafe </span>{ Entity::from_raw(<span class="number">1</span>) };
-<a href=#835 id=835 data-nosnippet>835</a>        <span class="kw">let </span>entity2 = <span class="kw">unsafe </span>{ Entity::from_raw(<span class="number">2</span>) };
-<a href=#836 id=836 data-nosnippet>836</a>        <span class="kw">let </span>entity3 = <span class="kw">unsafe </span>{ Entity::from_raw(<span class="number">3</span>) };
-<a href=#837 id=837 data-nosnippet>837</a>
-<a href=#838 id=838 data-nosnippet>838</a>        <span class="kw">let </span><span class="kw-2">mut </span>components1 = HashMap::new();
-<a href=#839 id=839 data-nosnippet>839</a>        components1.insert(
-<a href=#840 id=840 data-nosnippet>840</a>            TypeId::of::&lt;Health&gt;(),
-<a href=#841 id=841 data-nosnippet>841</a>            Box::new(Health(<span class="number">100</span>)) <span class="kw">as </span>Box&lt;<span class="kw">dyn </span>std::any::Any + Send + Sync&gt;,
-<a href=#842 id=842 data-nosnippet>842</a>        );
-<a href=#843 id=843 data-nosnippet>843</a>        archetype.add_entity(entity1, components1);
-<a href=#844 id=844 data-nosnippet>844</a>
-<a href=#845 id=845 data-nosnippet>845</a>        <span class="kw">let </span><span class="kw-2">mut </span>components2 = HashMap::new();
-<a href=#846 id=846 data-nosnippet>846</a>        components2.insert(
-<a href=#847 id=847 data-nosnippet>847</a>            TypeId::of::&lt;Health&gt;(),
-<a href=#848 id=848 data-nosnippet>848</a>            Box::new(Health(<span class="number">200</span>)) <span class="kw">as </span>Box&lt;<span class="kw">dyn </span>std::any::Any + Send + Sync&gt;,
-<a href=#849 id=849 data-nosnippet>849</a>        );
-<a href=#850 id=850 data-nosnippet>850</a>        archetype.add_entity(entity2, components2);
-<a href=#851 id=851 data-nosnippet>851</a>
-<a href=#852 id=852 data-nosnippet>852</a>        <span class="kw">let </span><span class="kw-2">mut </span>components3 = HashMap::new();
-<a href=#853 id=853 data-nosnippet>853</a>        components3.insert(
-<a href=#854 id=854 data-nosnippet>854</a>            TypeId::of::&lt;Health&gt;(),
-<a href=#855 id=855 data-nosnippet>855</a>            Box::new(Health(<span class="number">300</span>)) <span class="kw">as </span>Box&lt;<span class="kw">dyn </span>std::any::Any + Send + Sync&gt;,
-<a href=#856 id=856 data-nosnippet>856</a>        );
-<a href=#857 id=857 data-nosnippet>857</a>        archetype.add_entity(entity3, components3);
-<a href=#858 id=858 data-nosnippet>858</a>
-<a href=#859 id=859 data-nosnippet>859</a>        <span class="comment">// Collect all health values via iterator
-<a href=#860 id=860 data-nosnippet>860</a>        </span><span class="kw">let </span>healths: Vec&lt;i32&gt; = archetype
-<a href=#861 id=861 data-nosnippet>861</a>            .iter_components::&lt;Health&gt;()
-<a href=#862 id=862 data-nosnippet>862</a>            .map(|(<span class="kw">_</span>, health)| health.<span class="number">0</span>)
-<a href=#863 id=863 data-nosnippet>863</a>            .collect();
-<a href=#864 id=864 data-nosnippet>864</a>
-<a href=#865 id=865 data-nosnippet>865</a>        <span class="macro">assert_eq!</span>(healths.len(), <span class="number">3</span>);
-<a href=#866 id=866 data-nosnippet>866</a>        <span class="macro">assert!</span>(healths.contains(<span class="kw-2">&amp;</span><span class="number">100</span>));
-<a href=#867 id=867 data-nosnippet>867</a>        <span class="macro">assert!</span>(healths.contains(<span class="kw-2">&amp;</span><span class="number">200</span>));
-<a href=#868 id=868 data-nosnippet>868</a>        <span class="macro">assert!</span>(healths.contains(<span class="kw-2">&amp;</span><span class="number">300</span>));
-<a href=#869 id=869 data-nosnippet>869</a>    }
-<a href=#870 id=870 data-nosnippet>870</a>
-<a href=#871 id=871 data-nosnippet>871</a>    <span class="attr">#[test]
-<a href=#872 id=872 data-nosnippet>872</a>    </span><span class="kw">fn </span>test_archetype_storage_comprehensive() {
-<a href=#873 id=873 data-nosnippet>873</a>        <span class="comment">// Tests get_archetype, get_entity_archetype, set_entity_archetype, remove_entity,
-<a href=#874 id=874 data-nosnippet>874</a>        // archetypes(), iter(), archetypes_mut(), archetypes_with_component()
-<a href=#875 id=875 data-nosnippet>875</a>        </span><span class="kw">let </span><span class="kw-2">mut </span>storage = ArchetypeStorage::new();
-<a href=#876 id=876 data-nosnippet>876</a>
-<a href=#877 id=877 data-nosnippet>877</a>        <span class="kw">let </span>sig1 = ArchetypeSignature::new(<span class="macro">vec!</span>[TypeId::of::&lt;Health&gt;()]);
-<a href=#878 id=878 data-nosnippet>878</a>        <span class="kw">let </span>sig2 = ArchetypeSignature::new(<span class="macro">vec!</span>[TypeId::of::&lt;Position&gt;()]);
-<a href=#879 id=879 data-nosnippet>879</a>        <span class="kw">let </span>sig3 = ArchetypeSignature::new(<span class="macro">vec!</span>[TypeId::of::&lt;Health&gt;(), TypeId::of::&lt;Position&gt;()]);
+<a href=#828 id=828 data-nosnippet>828</a>        <span class="kw">let </span><span class="kw-2">mut </span>components2 = HashMap::new();
+<a href=#829 id=829 data-nosnippet>829</a>        components2.insert(
+<a href=#830 id=830 data-nosnippet>830</a>            TypeId::of::&lt;Health&gt;(),
+<a href=#831 id=831 data-nosnippet>831</a>            Box::new(Health(<span class="number">200</span>)) <span class="kw">as </span>Box&lt;<span class="kw">dyn </span>std::any::Any + Send + Sync&gt;,
+<a href=#832 id=832 data-nosnippet>832</a>        );
+<a href=#833 id=833 data-nosnippet>833</a>        archetype.add_entity(entity2, components2);
+<a href=#834 id=834 data-nosnippet>834</a>
+<a href=#835 id=835 data-nosnippet>835</a>        <span class="macro">assert_eq!</span>(archetype.len(), <span class="number">2</span>);
+<a href=#836 id=836 data-nosnippet>836</a>
+<a href=#837 id=837 data-nosnippet>837</a>        <span class="comment">// Remove entity1
+<a href=#838 id=838 data-nosnippet>838</a>        </span><span class="kw">let </span>removed_components = archetype.remove_entity_components(entity1);
+<a href=#839 id=839 data-nosnippet>839</a>        <span class="macro">assert_eq!</span>(archetype.len(), <span class="number">1</span>);
+<a href=#840 id=840 data-nosnippet>840</a>        <span class="macro">assert!</span>(removed_components.contains_key(<span class="kw-2">&amp;</span>TypeId::of::&lt;Health&gt;()));
+<a href=#841 id=841 data-nosnippet>841</a>
+<a href=#842 id=842 data-nosnippet>842</a>        <span class="comment">// entity2 should still be accessible
+<a href=#843 id=843 data-nosnippet>843</a>        </span><span class="kw">let </span>health = archetype.get::&lt;Health&gt;(entity2).unwrap();
+<a href=#844 id=844 data-nosnippet>844</a>        <span class="macro">assert_eq!</span>(health.<span class="number">0</span>, <span class="number">200</span>);
+<a href=#845 id=845 data-nosnippet>845</a>
+<a href=#846 id=846 data-nosnippet>846</a>        <span class="comment">// entity1 should be gone
+<a href=#847 id=847 data-nosnippet>847</a>        </span><span class="macro">assert!</span>(archetype.get::&lt;Health&gt;(entity1).is_none());
+<a href=#848 id=848 data-nosnippet>848</a>    }
+<a href=#849 id=849 data-nosnippet>849</a>
+<a href=#850 id=850 data-nosnippet>850</a>    <span class="attr">#[test]
+<a href=#851 id=851 data-nosnippet>851</a>    </span><span class="kw">fn </span>test_archetype_iter_components() {
+<a href=#852 id=852 data-nosnippet>852</a>        <span class="comment">// Tests iter_components batch iterator
+<a href=#853 id=853 data-nosnippet>853</a>        </span><span class="kw">let </span>sig = ArchetypeSignature::new(<span class="macro">vec!</span>[TypeId::of::&lt;Health&gt;()]);
+<a href=#854 id=854 data-nosnippet>854</a>        <span class="kw">let </span><span class="kw-2">mut </span>archetype = Archetype::new(ArchetypeId(<span class="number">0</span>), sig);
+<a href=#855 id=855 data-nosnippet>855</a>
+<a href=#856 id=856 data-nosnippet>856</a>        <span class="kw">let </span>entity1 = <span class="kw">unsafe </span>{ Entity::from_raw(<span class="number">1</span>) };
+<a href=#857 id=857 data-nosnippet>857</a>        <span class="kw">let </span>entity2 = <span class="kw">unsafe </span>{ Entity::from_raw(<span class="number">2</span>) };
+<a href=#858 id=858 data-nosnippet>858</a>        <span class="kw">let </span>entity3 = <span class="kw">unsafe </span>{ Entity::from_raw(<span class="number">3</span>) };
+<a href=#859 id=859 data-nosnippet>859</a>
+<a href=#860 id=860 data-nosnippet>860</a>        <span class="kw">let </span><span class="kw-2">mut </span>components1 = HashMap::new();
+<a href=#861 id=861 data-nosnippet>861</a>        components1.insert(
+<a href=#862 id=862 data-nosnippet>862</a>            TypeId::of::&lt;Health&gt;(),
+<a href=#863 id=863 data-nosnippet>863</a>            Box::new(Health(<span class="number">100</span>)) <span class="kw">as </span>Box&lt;<span class="kw">dyn </span>std::any::Any + Send + Sync&gt;,
+<a href=#864 id=864 data-nosnippet>864</a>        );
+<a href=#865 id=865 data-nosnippet>865</a>        archetype.add_entity(entity1, components1);
+<a href=#866 id=866 data-nosnippet>866</a>
+<a href=#867 id=867 data-nosnippet>867</a>        <span class="kw">let </span><span class="kw-2">mut </span>components2 = HashMap::new();
+<a href=#868 id=868 data-nosnippet>868</a>        components2.insert(
+<a href=#869 id=869 data-nosnippet>869</a>            TypeId::of::&lt;Health&gt;(),
+<a href=#870 id=870 data-nosnippet>870</a>            Box::new(Health(<span class="number">200</span>)) <span class="kw">as </span>Box&lt;<span class="kw">dyn </span>std::any::Any + Send + Sync&gt;,
+<a href=#871 id=871 data-nosnippet>871</a>        );
+<a href=#872 id=872 data-nosnippet>872</a>        archetype.add_entity(entity2, components2);
+<a href=#873 id=873 data-nosnippet>873</a>
+<a href=#874 id=874 data-nosnippet>874</a>        <span class="kw">let </span><span class="kw-2">mut </span>components3 = HashMap::new();
+<a href=#875 id=875 data-nosnippet>875</a>        components3.insert(
+<a href=#876 id=876 data-nosnippet>876</a>            TypeId::of::&lt;Health&gt;(),
+<a href=#877 id=877 data-nosnippet>877</a>            Box::new(Health(<span class="number">300</span>)) <span class="kw">as </span>Box&lt;<span class="kw">dyn </span>std::any::Any + Send + Sync&gt;,
+<a href=#878 id=878 data-nosnippet>878</a>        );
+<a href=#879 id=879 data-nosnippet>879</a>        archetype.add_entity(entity3, components3);
 <a href=#880 id=880 data-nosnippet>880</a>
-<a href=#881 id=881 data-nosnippet>881</a>        <span class="kw">let </span>id1 = storage.get_or_create_archetype(sig1);
-<a href=#882 id=882 data-nosnippet>882</a>        <span class="kw">let </span>id2 = storage.get_or_create_archetype(sig2);
-<a href=#883 id=883 data-nosnippet>883</a>        <span class="kw">let </span>id3 = storage.get_or_create_archetype(sig3);
-<a href=#884 id=884 data-nosnippet>884</a>
-<a href=#885 id=885 data-nosnippet>885</a>        <span class="comment">// Test get_archetype
-<a href=#886 id=886 data-nosnippet>886</a>        </span><span class="macro">assert!</span>(storage.get_archetype(id1).is_some());
-<a href=#887 id=887 data-nosnippet>887</a>        <span class="macro">assert!</span>(storage.get_archetype(id2).is_some());
-<a href=#888 id=888 data-nosnippet>888</a>        <span class="macro">assert!</span>(storage.get_archetype(id3).is_some());
-<a href=#889 id=889 data-nosnippet>889</a>
-<a href=#890 id=890 data-nosnippet>890</a>        <span class="comment">// Test entity-&gt;archetype mapping
-<a href=#891 id=891 data-nosnippet>891</a>        </span><span class="kw">let </span>entity = <span class="kw">unsafe </span>{ Entity::from_raw(<span class="number">42</span>) };
-<a href=#892 id=892 data-nosnippet>892</a>        <span class="macro">assert!</span>(storage.get_entity_archetype(entity).is_none());
-<a href=#893 id=893 data-nosnippet>893</a>
-<a href=#894 id=894 data-nosnippet>894</a>        storage.set_entity_archetype(entity, id1);
-<a href=#895 id=895 data-nosnippet>895</a>        <span class="macro">assert_eq!</span>(storage.get_entity_archetype(entity), <span class="prelude-val">Some</span>(id1));
-<a href=#896 id=896 data-nosnippet>896</a>
-<a href=#897 id=897 data-nosnippet>897</a>        <span class="comment">// Test remove_entity
-<a href=#898 id=898 data-nosnippet>898</a>        </span><span class="kw">let </span>removed = storage.remove_entity(entity);
-<a href=#899 id=899 data-nosnippet>899</a>        <span class="macro">assert_eq!</span>(removed, <span class="prelude-val">Some</span>(id1));
-<a href=#900 id=900 data-nosnippet>900</a>        <span class="macro">assert!</span>(storage.get_entity_archetype(entity).is_none());
-<a href=#901 id=901 data-nosnippet>901</a>
-<a href=#902 id=902 data-nosnippet>902</a>        <span class="comment">// Test archetypes() iterator
-<a href=#903 id=903 data-nosnippet>903</a>        </span><span class="kw">let </span>count = storage.archetypes().count();
-<a href=#904 id=904 data-nosnippet>904</a>        <span class="macro">assert_eq!</span>(count, <span class="number">3</span>);
-<a href=#905 id=905 data-nosnippet>905</a>
-<a href=#906 id=906 data-nosnippet>906</a>        <span class="comment">// Test iter() (alias)
-<a href=#907 id=907 data-nosnippet>907</a>        </span><span class="kw">let </span>count2 = storage.iter().count();
-<a href=#908 id=908 data-nosnippet>908</a>        <span class="macro">assert_eq!</span>(count2, <span class="number">3</span>);
-<a href=#909 id=909 data-nosnippet>909</a>
-<a href=#910 id=910 data-nosnippet>910</a>        <span class="comment">// Test archetypes_mut()
-<a href=#911 id=911 data-nosnippet>911</a>        </span><span class="kw">let </span>mut_count = storage.archetypes_mut().count();
-<a href=#912 id=912 data-nosnippet>912</a>        <span class="macro">assert_eq!</span>(mut_count, <span class="number">3</span>);
-<a href=#913 id=913 data-nosnippet>913</a>
-<a href=#914 id=914 data-nosnippet>914</a>        <span class="comment">// Test archetypes_with_component
-<a href=#915 id=915 data-nosnippet>915</a>        </span><span class="kw">let </span>with_health = storage
-<a href=#916 id=916 data-nosnippet>916</a>            .archetypes_with_component(TypeId::of::&lt;Health&gt;())
-<a href=#917 id=917 data-nosnippet>917</a>            .count();
-<a href=#918 id=918 data-nosnippet>918</a>        <span class="macro">assert_eq!</span>(with_health, <span class="number">2</span>); <span class="comment">// sig1 and sig3 have Health
-<a href=#919 id=919 data-nosnippet>919</a>
-<a href=#920 id=920 data-nosnippet>920</a>        </span><span class="kw">let </span>with_position = storage
-<a href=#921 id=921 data-nosnippet>921</a>            .archetypes_with_component(TypeId::of::&lt;Position&gt;())
-<a href=#922 id=922 data-nosnippet>922</a>            .count();
-<a href=#923 id=923 data-nosnippet>923</a>        <span class="macro">assert_eq!</span>(with_position, <span class="number">2</span>); <span class="comment">// sig2 and sig3 have Position
-<a href=#924 id=924 data-nosnippet>924</a>
-<a href=#925 id=925 data-nosnippet>925</a>        </span><span class="kw">let </span>with_nothing = storage
-<a href=#926 id=926 data-nosnippet>926</a>            .archetypes_with_component(TypeId::of::&lt;i32&gt;())
-<a href=#927 id=927 data-nosnippet>927</a>            .count();
-<a href=#928 id=928 data-nosnippet>928</a>        <span class="macro">assert_eq!</span>(with_nothing, <span class="number">0</span>);
-<a href=#929 id=929 data-nosnippet>929</a>    }
-<a href=#930 id=930 data-nosnippet>930</a>
-<a href=#931 id=931 data-nosnippet>931</a>    <span class="comment">// ===========================================================================
-<a href=#932 id=932 data-nosnippet>932</a>    // Mutation-Resistant Remediation Tests: Blob Iteration &amp; Storage Boundaries
-<a href=#933 id=933 data-nosnippet>933</a>    // ===========================================================================
-<a href=#934 id=934 data-nosnippet>934</a>    // Targets 9 missed mutants in archetype.rs shard 1/6:
-<a href=#935 id=935 data-nosnippet>935</a>    //   iter_components_blob → None / Some((empty,empty)) / delete !
-<a href=#936 id=936 data-nosnippet>936</a>    //   iter_components_blob_mut → None / Some((empty,empty)) / delete !
-<a href=#937 id=937 data-nosnippet>937</a>    //   get_or_create_archetype_with_blob: += → -=/*=
-<a href=#938 id=938 data-nosnippet>938</a>    //   remove_entity: &lt; → &lt;=
-<a href=#939 id=939 data-nosnippet>939</a>
-<a href=#940 id=940 data-nosnippet>940</a>    </span><span class="attr">#[test]
-<a href=#941 id=941 data-nosnippet>941</a>    </span><span class="kw">fn </span>test_iter_components_blob_returns_correct_data() {
-<a href=#942 id=942 data-nosnippet>942</a>        <span class="comment">// Kills: iter_components_blob → None (would fail unwrap)
-<a href=#943 id=943 data-nosnippet>943</a>        // Kills: iter_components_blob → Some(([], [])) (wrong length)
-<a href=#944 id=944 data-nosnippet>944</a>        // Kills: delete `!` in `!self.uses_blob` (would skip blob archetypes)
-<a href=#945 id=945 data-nosnippet>945</a>        </span><span class="kw">use </span><span class="kw">crate</span>::component_meta::ComponentMeta;
+<a href=#881 id=881 data-nosnippet>881</a>        <span class="comment">// Collect all health values via iterator
+<a href=#882 id=882 data-nosnippet>882</a>        </span><span class="kw">let </span>healths: Vec&lt;i32&gt; = archetype
+<a href=#883 id=883 data-nosnippet>883</a>            .iter_components::&lt;Health&gt;()
+<a href=#884 id=884 data-nosnippet>884</a>            .map(|(<span class="kw">_</span>, health)| health.<span class="number">0</span>)
+<a href=#885 id=885 data-nosnippet>885</a>            .collect();
+<a href=#886 id=886 data-nosnippet>886</a>
+<a href=#887 id=887 data-nosnippet>887</a>        <span class="macro">assert_eq!</span>(healths.len(), <span class="number">3</span>);
+<a href=#888 id=888 data-nosnippet>888</a>        <span class="macro">assert!</span>(healths.contains(<span class="kw-2">&amp;</span><span class="number">100</span>));
+<a href=#889 id=889 data-nosnippet>889</a>        <span class="macro">assert!</span>(healths.contains(<span class="kw-2">&amp;</span><span class="number">200</span>));
+<a href=#890 id=890 data-nosnippet>890</a>        <span class="macro">assert!</span>(healths.contains(<span class="kw-2">&amp;</span><span class="number">300</span>));
+<a href=#891 id=891 data-nosnippet>891</a>    }
+<a href=#892 id=892 data-nosnippet>892</a>
+<a href=#893 id=893 data-nosnippet>893</a>    <span class="attr">#[test]
+<a href=#894 id=894 data-nosnippet>894</a>    </span><span class="kw">fn </span>test_archetype_storage_comprehensive() {
+<a href=#895 id=895 data-nosnippet>895</a>        <span class="comment">// Tests get_archetype, get_entity_archetype, set_entity_archetype, remove_entity,
+<a href=#896 id=896 data-nosnippet>896</a>        // archetypes(), iter(), archetypes_mut(), archetypes_with_component()
+<a href=#897 id=897 data-nosnippet>897</a>        </span><span class="kw">let </span><span class="kw-2">mut </span>storage = ArchetypeStorage::new();
+<a href=#898 id=898 data-nosnippet>898</a>
+<a href=#899 id=899 data-nosnippet>899</a>        <span class="kw">let </span>sig1 = ArchetypeSignature::new(<span class="macro">vec!</span>[TypeId::of::&lt;Health&gt;()]);
+<a href=#900 id=900 data-nosnippet>900</a>        <span class="kw">let </span>sig2 = ArchetypeSignature::new(<span class="macro">vec!</span>[TypeId::of::&lt;Position&gt;()]);
+<a href=#901 id=901 data-nosnippet>901</a>        <span class="kw">let </span>sig3 = ArchetypeSignature::new(<span class="macro">vec!</span>[TypeId::of::&lt;Health&gt;(), TypeId::of::&lt;Position&gt;()]);
+<a href=#902 id=902 data-nosnippet>902</a>
+<a href=#903 id=903 data-nosnippet>903</a>        <span class="kw">let </span>id1 = storage.get_or_create_archetype(sig1);
+<a href=#904 id=904 data-nosnippet>904</a>        <span class="kw">let </span>id2 = storage.get_or_create_archetype(sig2);
+<a href=#905 id=905 data-nosnippet>905</a>        <span class="kw">let </span>id3 = storage.get_or_create_archetype(sig3);
+<a href=#906 id=906 data-nosnippet>906</a>
+<a href=#907 id=907 data-nosnippet>907</a>        <span class="comment">// Test get_archetype
+<a href=#908 id=908 data-nosnippet>908</a>        </span><span class="macro">assert!</span>(storage.get_archetype(id1).is_some());
+<a href=#909 id=909 data-nosnippet>909</a>        <span class="macro">assert!</span>(storage.get_archetype(id2).is_some());
+<a href=#910 id=910 data-nosnippet>910</a>        <span class="macro">assert!</span>(storage.get_archetype(id3).is_some());
+<a href=#911 id=911 data-nosnippet>911</a>
+<a href=#912 id=912 data-nosnippet>912</a>        <span class="comment">// Test entity-&gt;archetype mapping
+<a href=#913 id=913 data-nosnippet>913</a>        </span><span class="kw">let </span>entity = <span class="kw">unsafe </span>{ Entity::from_raw(<span class="number">42</span>) };
+<a href=#914 id=914 data-nosnippet>914</a>        <span class="macro">assert!</span>(storage.get_entity_archetype(entity).is_none());
+<a href=#915 id=915 data-nosnippet>915</a>
+<a href=#916 id=916 data-nosnippet>916</a>        storage.set_entity_archetype(entity, id1);
+<a href=#917 id=917 data-nosnippet>917</a>        <span class="macro">assert_eq!</span>(storage.get_entity_archetype(entity), <span class="prelude-val">Some</span>(id1));
+<a href=#918 id=918 data-nosnippet>918</a>
+<a href=#919 id=919 data-nosnippet>919</a>        <span class="comment">// Test remove_entity
+<a href=#920 id=920 data-nosnippet>920</a>        </span><span class="kw">let </span>removed = storage.remove_entity(entity);
+<a href=#921 id=921 data-nosnippet>921</a>        <span class="macro">assert_eq!</span>(removed, <span class="prelude-val">Some</span>(id1));
+<a href=#922 id=922 data-nosnippet>922</a>        <span class="macro">assert!</span>(storage.get_entity_archetype(entity).is_none());
+<a href=#923 id=923 data-nosnippet>923</a>
+<a href=#924 id=924 data-nosnippet>924</a>        <span class="comment">// Test archetypes() iterator
+<a href=#925 id=925 data-nosnippet>925</a>        </span><span class="kw">let </span>count = storage.archetypes().count();
+<a href=#926 id=926 data-nosnippet>926</a>        <span class="macro">assert_eq!</span>(count, <span class="number">3</span>);
+<a href=#927 id=927 data-nosnippet>927</a>
+<a href=#928 id=928 data-nosnippet>928</a>        <span class="comment">// Test iter() (alias)
+<a href=#929 id=929 data-nosnippet>929</a>        </span><span class="kw">let </span>count2 = storage.iter().count();
+<a href=#930 id=930 data-nosnippet>930</a>        <span class="macro">assert_eq!</span>(count2, <span class="number">3</span>);
+<a href=#931 id=931 data-nosnippet>931</a>
+<a href=#932 id=932 data-nosnippet>932</a>        <span class="comment">// Test archetypes_mut()
+<a href=#933 id=933 data-nosnippet>933</a>        </span><span class="kw">let </span>mut_count = storage.archetypes_mut().count();
+<a href=#934 id=934 data-nosnippet>934</a>        <span class="macro">assert_eq!</span>(mut_count, <span class="number">3</span>);
+<a href=#935 id=935 data-nosnippet>935</a>
+<a href=#936 id=936 data-nosnippet>936</a>        <span class="comment">// Test archetypes_with_component
+<a href=#937 id=937 data-nosnippet>937</a>        </span><span class="kw">let </span>with_health = storage
+<a href=#938 id=938 data-nosnippet>938</a>            .archetypes_with_component(TypeId::of::&lt;Health&gt;())
+<a href=#939 id=939 data-nosnippet>939</a>            .count();
+<a href=#940 id=940 data-nosnippet>940</a>        <span class="macro">assert_eq!</span>(with_health, <span class="number">2</span>); <span class="comment">// sig1 and sig3 have Health
+<a href=#941 id=941 data-nosnippet>941</a>
+<a href=#942 id=942 data-nosnippet>942</a>        </span><span class="kw">let </span>with_position = storage
+<a href=#943 id=943 data-nosnippet>943</a>            .archetypes_with_component(TypeId::of::&lt;Position&gt;())
+<a href=#944 id=944 data-nosnippet>944</a>            .count();
+<a href=#945 id=945 data-nosnippet>945</a>        <span class="macro">assert_eq!</span>(with_position, <span class="number">2</span>); <span class="comment">// sig2 and sig3 have Position
 <a href=#946 id=946 data-nosnippet>946</a>
-<a href=#947 id=947 data-nosnippet>947</a>        <span class="kw">let </span><span class="kw-2">mut </span>metas = HashMap::new();
-<a href=#948 id=948 data-nosnippet>948</a>        metas.insert(TypeId::of::&lt;Health&gt;(), ComponentMeta::of::&lt;Health&gt;());
-<a href=#949 id=949 data-nosnippet>949</a>
-<a href=#950 id=950 data-nosnippet>950</a>        <span class="kw">let </span>sig = ArchetypeSignature::new(<span class="macro">vec!</span>[TypeId::of::&lt;Health&gt;()]);
-<a href=#951 id=951 data-nosnippet>951</a>        <span class="kw">let </span><span class="kw-2">mut </span>archetype = Archetype::new_with_blob(ArchetypeId(<span class="number">0</span>), sig, metas);
+<a href=#947 id=947 data-nosnippet>947</a>        </span><span class="kw">let </span>with_nothing = storage
+<a href=#948 id=948 data-nosnippet>948</a>            .archetypes_with_component(TypeId::of::&lt;i32&gt;())
+<a href=#949 id=949 data-nosnippet>949</a>            .count();
+<a href=#950 id=950 data-nosnippet>950</a>        <span class="macro">assert_eq!</span>(with_nothing, <span class="number">0</span>);
+<a href=#951 id=951 data-nosnippet>951</a>    }
 <a href=#952 id=952 data-nosnippet>952</a>
-<a href=#953 id=953 data-nosnippet>953</a>        <span class="comment">// Add entities using typed blob path
-<a href=#954 id=954 data-nosnippet>954</a>        </span><span class="kw">let </span>e1 = <span class="kw">unsafe </span>{ Entity::from_raw(<span class="number">1</span>) };
-<a href=#955 id=955 data-nosnippet>955</a>        <span class="kw">let </span>e2 = <span class="kw">unsafe </span>{ Entity::from_raw(<span class="number">2</span>) };
-<a href=#956 id=956 data-nosnippet>956</a>        <span class="kw">let </span>e3 = <span class="kw">unsafe </span>{ Entity::from_raw(<span class="number">3</span>) };
-<a href=#957 id=957 data-nosnippet>957</a>
-<a href=#958 id=958 data-nosnippet>958</a>        archetype.entity_index.insert(e1);
-<a href=#959 id=959 data-nosnippet>959</a>        archetype.entities.push(e1);
-<a href=#960 id=960 data-nosnippet>960</a>        archetype.push_component_typed(Health(<span class="number">100</span>));
+<a href=#953 id=953 data-nosnippet>953</a>    <span class="comment">// ===========================================================================
+<a href=#954 id=954 data-nosnippet>954</a>    // Mutation-Resistant Remediation Tests: Blob Iteration &amp; Storage Boundaries
+<a href=#955 id=955 data-nosnippet>955</a>    // ===========================================================================
+<a href=#956 id=956 data-nosnippet>956</a>    // Targets 9 missed mutants in archetype.rs shard 1/6:
+<a href=#957 id=957 data-nosnippet>957</a>    //   iter_components_blob → None / Some((empty,empty)) / delete !
+<a href=#958 id=958 data-nosnippet>958</a>    //   iter_components_blob_mut → None / Some((empty,empty)) / delete !
+<a href=#959 id=959 data-nosnippet>959</a>    //   get_or_create_archetype_with_blob: += → -=/*=
+<a href=#960 id=960 data-nosnippet>960</a>    //   remove_entity: &lt; → &lt;=
 <a href=#961 id=961 data-nosnippet>961</a>
-<a href=#962 id=962 data-nosnippet>962</a>        archetype.entity_index.insert(e2);
-<a href=#963 id=963 data-nosnippet>963</a>        archetype.entities.push(e2);
-<a href=#964 id=964 data-nosnippet>964</a>        archetype.push_component_typed(Health(<span class="number">200</span>));
-<a href=#965 id=965 data-nosnippet>965</a>
-<a href=#966 id=966 data-nosnippet>966</a>        archetype.entity_index.insert(e3);
-<a href=#967 id=967 data-nosnippet>967</a>        archetype.entities.push(e3);
-<a href=#968 id=968 data-nosnippet>968</a>        archetype.push_component_typed(Health(<span class="number">300</span>));
-<a href=#969 id=969 data-nosnippet>969</a>
-<a href=#970 id=970 data-nosnippet>970</a>        <span class="comment">// Verify iter_components_blob returns correct entities and values
-<a href=#971 id=971 data-nosnippet>971</a>        </span><span class="kw">let </span>(entities, healths) = archetype
-<a href=#972 id=972 data-nosnippet>972</a>            .iter_components_blob::&lt;Health&gt;()
-<a href=#973 id=973 data-nosnippet>973</a>            .expect(<span class="string">"blob archetype must return Some for registered component"</span>);
+<a href=#962 id=962 data-nosnippet>962</a>    </span><span class="attr">#[test]
+<a href=#963 id=963 data-nosnippet>963</a>    </span><span class="kw">fn </span>test_iter_components_blob_returns_correct_data() {
+<a href=#964 id=964 data-nosnippet>964</a>        <span class="comment">// Kills: iter_components_blob → None (would fail unwrap)
+<a href=#965 id=965 data-nosnippet>965</a>        // Kills: iter_components_blob → Some(([], [])) (wrong length)
+<a href=#966 id=966 data-nosnippet>966</a>        // Kills: delete `!` in `!self.uses_blob` (would skip blob archetypes)
+<a href=#967 id=967 data-nosnippet>967</a>        </span><span class="kw">use </span><span class="kw">crate</span>::component_meta::ComponentMeta;
+<a href=#968 id=968 data-nosnippet>968</a>
+<a href=#969 id=969 data-nosnippet>969</a>        <span class="kw">let </span><span class="kw-2">mut </span>metas = HashMap::new();
+<a href=#970 id=970 data-nosnippet>970</a>        metas.insert(TypeId::of::&lt;Health&gt;(), ComponentMeta::of::&lt;Health&gt;());
+<a href=#971 id=971 data-nosnippet>971</a>
+<a href=#972 id=972 data-nosnippet>972</a>        <span class="kw">let </span>sig = ArchetypeSignature::new(<span class="macro">vec!</span>[TypeId::of::&lt;Health&gt;()]);
+<a href=#973 id=973 data-nosnippet>973</a>        <span class="kw">let </span><span class="kw-2">mut </span>archetype = Archetype::new_with_blob(ArchetypeId(<span class="number">0</span>), sig, metas);
 <a href=#974 id=974 data-nosnippet>974</a>
-<a href=#975 id=975 data-nosnippet>975</a>        <span class="macro">assert_eq!</span>(entities.len(), <span class="number">3</span>, <span class="string">"must return all 3 entities"</span>);
-<a href=#976 id=976 data-nosnippet>976</a>        <span class="macro">assert_eq!</span>(healths.len(), <span class="number">3</span>, <span class="string">"must return all 3 component values"</span>);
-<a href=#977 id=977 data-nosnippet>977</a>
-<a href=#978 id=978 data-nosnippet>978</a>        <span class="macro">assert_eq!</span>(entities[<span class="number">0</span>], e1);
-<a href=#979 id=979 data-nosnippet>979</a>        <span class="macro">assert_eq!</span>(entities[<span class="number">1</span>], e2);
-<a href=#980 id=980 data-nosnippet>980</a>        <span class="macro">assert_eq!</span>(entities[<span class="number">2</span>], e3);
-<a href=#981 id=981 data-nosnippet>981</a>
-<a href=#982 id=982 data-nosnippet>982</a>        <span class="macro">assert_eq!</span>(healths[<span class="number">0</span>], Health(<span class="number">100</span>));
-<a href=#983 id=983 data-nosnippet>983</a>        <span class="macro">assert_eq!</span>(healths[<span class="number">1</span>], Health(<span class="number">200</span>));
-<a href=#984 id=984 data-nosnippet>984</a>        <span class="macro">assert_eq!</span>(healths[<span class="number">2</span>], Health(<span class="number">300</span>));
-<a href=#985 id=985 data-nosnippet>985</a>
-<a href=#986 id=986 data-nosnippet>986</a>        <span class="comment">// Non-blob archetype returns None
-<a href=#987 id=987 data-nosnippet>987</a>        </span><span class="kw">let </span>box_sig = ArchetypeSignature::new(<span class="macro">vec!</span>[TypeId::of::&lt;Health&gt;()]);
-<a href=#988 id=988 data-nosnippet>988</a>        <span class="kw">let </span>box_archetype = Archetype::new(ArchetypeId(<span class="number">1</span>), box_sig);
-<a href=#989 id=989 data-nosnippet>989</a>        <span class="macro">assert!</span>(
-<a href=#990 id=990 data-nosnippet>990</a>            box_archetype.iter_components_blob::&lt;Health&gt;().is_none(),
-<a href=#991 id=991 data-nosnippet>991</a>            <span class="string">"non-blob archetype must return None"
-<a href=#992 id=992 data-nosnippet>992</a>        </span>);
-<a href=#993 id=993 data-nosnippet>993</a>
-<a href=#994 id=994 data-nosnippet>994</a>        <span class="comment">// Wrong component type returns None
-<a href=#995 id=995 data-nosnippet>995</a>        </span><span class="macro">assert!</span>(
-<a href=#996 id=996 data-nosnippet>996</a>            archetype.iter_components_blob::&lt;Position&gt;().is_none(),
-<a href=#997 id=997 data-nosnippet>997</a>            <span class="string">"unregistered component type must return None"
-<a href=#998 id=998 data-nosnippet>998</a>        </span>);
-<a href=#999 id=999 data-nosnippet>999</a>    }
-<a href=#1000 id=1000 data-nosnippet>1000</a>
-<a href=#1001 id=1001 data-nosnippet>1001</a>    <span class="attr">#[test]
-<a href=#1002 id=1002 data-nosnippet>1002</a>    </span><span class="kw">fn </span>test_iter_components_blob_mut_returns_correct_data_and_allows_mutation() {
-<a href=#1003 id=1003 data-nosnippet>1003</a>        <span class="comment">// Kills: iter_components_blob_mut → None / Some(([], []))  / delete !
-<a href=#1004 id=1004 data-nosnippet>1004</a>        </span><span class="kw">use </span><span class="kw">crate</span>::component_meta::ComponentMeta;
-<a href=#1005 id=1005 data-nosnippet>1005</a>
-<a href=#1006 id=1006 data-nosnippet>1006</a>        <span class="kw">let </span><span class="kw-2">mut </span>metas = HashMap::new();
-<a href=#1007 id=1007 data-nosnippet>1007</a>        metas.insert(TypeId::of::&lt;Health&gt;(), ComponentMeta::of::&lt;Health&gt;());
-<a href=#1008 id=1008 data-nosnippet>1008</a>
-<a href=#1009 id=1009 data-nosnippet>1009</a>        <span class="kw">let </span>sig = ArchetypeSignature::new(<span class="macro">vec!</span>[TypeId::of::&lt;Health&gt;()]);
-<a href=#1010 id=1010 data-nosnippet>1010</a>        <span class="kw">let </span><span class="kw-2">mut </span>archetype = Archetype::new_with_blob(ArchetypeId(<span class="number">0</span>), sig, metas);
-<a href=#1011 id=1011 data-nosnippet>1011</a>
-<a href=#1012 id=1012 data-nosnippet>1012</a>        <span class="kw">let </span>e1 = <span class="kw">unsafe </span>{ Entity::from_raw(<span class="number">1</span>) };
-<a href=#1013 id=1013 data-nosnippet>1013</a>        <span class="kw">let </span>e2 = <span class="kw">unsafe </span>{ Entity::from_raw(<span class="number">2</span>) };
-<a href=#1014 id=1014 data-nosnippet>1014</a>
-<a href=#1015 id=1015 data-nosnippet>1015</a>        archetype.entity_index.insert(e1);
-<a href=#1016 id=1016 data-nosnippet>1016</a>        archetype.entities.push(e1);
-<a href=#1017 id=1017 data-nosnippet>1017</a>        archetype.push_component_typed(Health(<span class="number">50</span>));
-<a href=#1018 id=1018 data-nosnippet>1018</a>
-<a href=#1019 id=1019 data-nosnippet>1019</a>        archetype.entity_index.insert(e2);
-<a href=#1020 id=1020 data-nosnippet>1020</a>        archetype.entities.push(e2);
-<a href=#1021 id=1021 data-nosnippet>1021</a>        archetype.push_component_typed(Health(<span class="number">75</span>));
+<a href=#975 id=975 data-nosnippet>975</a>        <span class="comment">// Add entities using typed blob path
+<a href=#976 id=976 data-nosnippet>976</a>        </span><span class="kw">let </span>e1 = <span class="kw">unsafe </span>{ Entity::from_raw(<span class="number">1</span>) };
+<a href=#977 id=977 data-nosnippet>977</a>        <span class="kw">let </span>e2 = <span class="kw">unsafe </span>{ Entity::from_raw(<span class="number">2</span>) };
+<a href=#978 id=978 data-nosnippet>978</a>        <span class="kw">let </span>e3 = <span class="kw">unsafe </span>{ Entity::from_raw(<span class="number">3</span>) };
+<a href=#979 id=979 data-nosnippet>979</a>
+<a href=#980 id=980 data-nosnippet>980</a>        archetype.entity_index.insert(e1);
+<a href=#981 id=981 data-nosnippet>981</a>        archetype.entities.push(e1);
+<a href=#982 id=982 data-nosnippet>982</a>        archetype.push_component_typed(Health(<span class="number">100</span>));
+<a href=#983 id=983 data-nosnippet>983</a>
+<a href=#984 id=984 data-nosnippet>984</a>        archetype.entity_index.insert(e2);
+<a href=#985 id=985 data-nosnippet>985</a>        archetype.entities.push(e2);
+<a href=#986 id=986 data-nosnippet>986</a>        archetype.push_component_typed(Health(<span class="number">200</span>));
+<a href=#987 id=987 data-nosnippet>987</a>
+<a href=#988 id=988 data-nosnippet>988</a>        archetype.entity_index.insert(e3);
+<a href=#989 id=989 data-nosnippet>989</a>        archetype.entities.push(e3);
+<a href=#990 id=990 data-nosnippet>990</a>        archetype.push_component_typed(Health(<span class="number">300</span>));
+<a href=#991 id=991 data-nosnippet>991</a>
+<a href=#992 id=992 data-nosnippet>992</a>        <span class="comment">// Verify iter_components_blob returns correct entities and values
+<a href=#993 id=993 data-nosnippet>993</a>        </span><span class="kw">let </span>(entities, healths) = archetype
+<a href=#994 id=994 data-nosnippet>994</a>            .iter_components_blob::&lt;Health&gt;()
+<a href=#995 id=995 data-nosnippet>995</a>            .expect(<span class="string">"blob archetype must return Some for registered component"</span>);
+<a href=#996 id=996 data-nosnippet>996</a>
+<a href=#997 id=997 data-nosnippet>997</a>        <span class="macro">assert_eq!</span>(entities.len(), <span class="number">3</span>, <span class="string">"must return all 3 entities"</span>);
+<a href=#998 id=998 data-nosnippet>998</a>        <span class="macro">assert_eq!</span>(healths.len(), <span class="number">3</span>, <span class="string">"must return all 3 component values"</span>);
+<a href=#999 id=999 data-nosnippet>999</a>
+<a href=#1000 id=1000 data-nosnippet>1000</a>        <span class="macro">assert_eq!</span>(entities[<span class="number">0</span>], e1);
+<a href=#1001 id=1001 data-nosnippet>1001</a>        <span class="macro">assert_eq!</span>(entities[<span class="number">1</span>], e2);
+<a href=#1002 id=1002 data-nosnippet>1002</a>        <span class="macro">assert_eq!</span>(entities[<span class="number">2</span>], e3);
+<a href=#1003 id=1003 data-nosnippet>1003</a>
+<a href=#1004 id=1004 data-nosnippet>1004</a>        <span class="macro">assert_eq!</span>(healths[<span class="number">0</span>], Health(<span class="number">100</span>));
+<a href=#1005 id=1005 data-nosnippet>1005</a>        <span class="macro">assert_eq!</span>(healths[<span class="number">1</span>], Health(<span class="number">200</span>));
+<a href=#1006 id=1006 data-nosnippet>1006</a>        <span class="macro">assert_eq!</span>(healths[<span class="number">2</span>], Health(<span class="number">300</span>));
+<a href=#1007 id=1007 data-nosnippet>1007</a>
+<a href=#1008 id=1008 data-nosnippet>1008</a>        <span class="comment">// Non-blob archetype returns None
+<a href=#1009 id=1009 data-nosnippet>1009</a>        </span><span class="kw">let </span>box_sig = ArchetypeSignature::new(<span class="macro">vec!</span>[TypeId::of::&lt;Health&gt;()]);
+<a href=#1010 id=1010 data-nosnippet>1010</a>        <span class="kw">let </span>box_archetype = Archetype::new(ArchetypeId(<span class="number">1</span>), box_sig);
+<a href=#1011 id=1011 data-nosnippet>1011</a>        <span class="macro">assert!</span>(
+<a href=#1012 id=1012 data-nosnippet>1012</a>            box_archetype.iter_components_blob::&lt;Health&gt;().is_none(),
+<a href=#1013 id=1013 data-nosnippet>1013</a>            <span class="string">"non-blob archetype must return None"
+<a href=#1014 id=1014 data-nosnippet>1014</a>        </span>);
+<a href=#1015 id=1015 data-nosnippet>1015</a>
+<a href=#1016 id=1016 data-nosnippet>1016</a>        <span class="comment">// Wrong component type returns None
+<a href=#1017 id=1017 data-nosnippet>1017</a>        </span><span class="macro">assert!</span>(
+<a href=#1018 id=1018 data-nosnippet>1018</a>            archetype.iter_components_blob::&lt;Position&gt;().is_none(),
+<a href=#1019 id=1019 data-nosnippet>1019</a>            <span class="string">"unregistered component type must return None"
+<a href=#1020 id=1020 data-nosnippet>1020</a>        </span>);
+<a href=#1021 id=1021 data-nosnippet>1021</a>    }
 <a href=#1022 id=1022 data-nosnippet>1022</a>
-<a href=#1023 id=1023 data-nosnippet>1023</a>        <span class="comment">// Mutate through blob_mut
-<a href=#1024 id=1024 data-nosnippet>1024</a>        </span>{
-<a href=#1025 id=1025 data-nosnippet>1025</a>            <span class="kw">let </span>(entities, healths) = archetype
-<a href=#1026 id=1026 data-nosnippet>1026</a>                .iter_components_blob_mut::&lt;Health&gt;()
-<a href=#1027 id=1027 data-nosnippet>1027</a>                .expect(<span class="string">"blob archetype must return Some"</span>);
-<a href=#1028 id=1028 data-nosnippet>1028</a>
-<a href=#1029 id=1029 data-nosnippet>1029</a>            <span class="macro">assert_eq!</span>(entities.len(), <span class="number">2</span>);
-<a href=#1030 id=1030 data-nosnippet>1030</a>            <span class="macro">assert_eq!</span>(healths.len(), <span class="number">2</span>);
-<a href=#1031 id=1031 data-nosnippet>1031</a>            <span class="macro">assert_eq!</span>(healths[<span class="number">0</span>], Health(<span class="number">50</span>));
-<a href=#1032 id=1032 data-nosnippet>1032</a>            <span class="macro">assert_eq!</span>(healths[<span class="number">1</span>], Health(<span class="number">75</span>));
+<a href=#1023 id=1023 data-nosnippet>1023</a>    <span class="attr">#[test]
+<a href=#1024 id=1024 data-nosnippet>1024</a>    </span><span class="kw">fn </span>test_iter_components_blob_mut_returns_correct_data_and_allows_mutation() {
+<a href=#1025 id=1025 data-nosnippet>1025</a>        <span class="comment">// Kills: iter_components_blob_mut → None / Some(([], []))  / delete !
+<a href=#1026 id=1026 data-nosnippet>1026</a>        </span><span class="kw">use </span><span class="kw">crate</span>::component_meta::ComponentMeta;
+<a href=#1027 id=1027 data-nosnippet>1027</a>
+<a href=#1028 id=1028 data-nosnippet>1028</a>        <span class="kw">let </span><span class="kw-2">mut </span>metas = HashMap::new();
+<a href=#1029 id=1029 data-nosnippet>1029</a>        metas.insert(TypeId::of::&lt;Health&gt;(), ComponentMeta::of::&lt;Health&gt;());
+<a href=#1030 id=1030 data-nosnippet>1030</a>
+<a href=#1031 id=1031 data-nosnippet>1031</a>        <span class="kw">let </span>sig = ArchetypeSignature::new(<span class="macro">vec!</span>[TypeId::of::&lt;Health&gt;()]);
+<a href=#1032 id=1032 data-nosnippet>1032</a>        <span class="kw">let </span><span class="kw-2">mut </span>archetype = Archetype::new_with_blob(ArchetypeId(<span class="number">0</span>), sig, metas);
 <a href=#1033 id=1033 data-nosnippet>1033</a>
-<a href=#1034 id=1034 data-nosnippet>1034</a>            <span class="comment">// Mutate
-<a href=#1035 id=1035 data-nosnippet>1035</a>            </span>healths[<span class="number">0</span>] = Health(<span class="number">999</span>);
-<a href=#1036 id=1036 data-nosnippet>1036</a>            healths[<span class="number">1</span>] = Health(<span class="number">888</span>);
-<a href=#1037 id=1037 data-nosnippet>1037</a>        }
-<a href=#1038 id=1038 data-nosnippet>1038</a>
-<a href=#1039 id=1039 data-nosnippet>1039</a>        <span class="comment">// Verify mutations persisted via immutable path
-<a href=#1040 id=1040 data-nosnippet>1040</a>        </span><span class="kw">let </span>(<span class="kw">_</span>, healths_after) = archetype.iter_components_blob::&lt;Health&gt;().unwrap();
-<a href=#1041 id=1041 data-nosnippet>1041</a>        <span class="macro">assert_eq!</span>(healths_after[<span class="number">0</span>], Health(<span class="number">999</span>));
-<a href=#1042 id=1042 data-nosnippet>1042</a>        <span class="macro">assert_eq!</span>(healths_after[<span class="number">1</span>], Health(<span class="number">888</span>));
-<a href=#1043 id=1043 data-nosnippet>1043</a>    }
+<a href=#1034 id=1034 data-nosnippet>1034</a>        <span class="kw">let </span>e1 = <span class="kw">unsafe </span>{ Entity::from_raw(<span class="number">1</span>) };
+<a href=#1035 id=1035 data-nosnippet>1035</a>        <span class="kw">let </span>e2 = <span class="kw">unsafe </span>{ Entity::from_raw(<span class="number">2</span>) };
+<a href=#1036 id=1036 data-nosnippet>1036</a>
+<a href=#1037 id=1037 data-nosnippet>1037</a>        archetype.entity_index.insert(e1);
+<a href=#1038 id=1038 data-nosnippet>1038</a>        archetype.entities.push(e1);
+<a href=#1039 id=1039 data-nosnippet>1039</a>        archetype.push_component_typed(Health(<span class="number">50</span>));
+<a href=#1040 id=1040 data-nosnippet>1040</a>
+<a href=#1041 id=1041 data-nosnippet>1041</a>        archetype.entity_index.insert(e2);
+<a href=#1042 id=1042 data-nosnippet>1042</a>        archetype.entities.push(e2);
+<a href=#1043 id=1043 data-nosnippet>1043</a>        archetype.push_component_typed(Health(<span class="number">75</span>));
 <a href=#1044 id=1044 data-nosnippet>1044</a>
-<a href=#1045 id=1045 data-nosnippet>1045</a>    <span class="attr">#[test]
-<a href=#1046 id=1046 data-nosnippet>1046</a>    </span><span class="kw">fn </span>test_get_or_create_archetype_with_blob_increments_id() {
-<a href=#1047 id=1047 data-nosnippet>1047</a>        <span class="comment">// Kills: next_id += 1 → next_id -= 1 / next_id *= 1
-<a href=#1048 id=1048 data-nosnippet>1048</a>        // Verifies that each new blob archetype gets a strictly increasing ID
-<a href=#1049 id=1049 data-nosnippet>1049</a>        </span><span class="kw">use </span><span class="kw">crate</span>::component_meta::ComponentMeta;
+<a href=#1045 id=1045 data-nosnippet>1045</a>        <span class="comment">// Mutate through blob_mut
+<a href=#1046 id=1046 data-nosnippet>1046</a>        </span>{
+<a href=#1047 id=1047 data-nosnippet>1047</a>            <span class="kw">let </span>(entities, healths) = archetype
+<a href=#1048 id=1048 data-nosnippet>1048</a>                .iter_components_blob_mut::&lt;Health&gt;()
+<a href=#1049 id=1049 data-nosnippet>1049</a>                .expect(<span class="string">"blob archetype must return Some"</span>);
 <a href=#1050 id=1050 data-nosnippet>1050</a>
-<a href=#1051 id=1051 data-nosnippet>1051</a>        <span class="kw">let </span><span class="kw-2">mut </span>storage = ArchetypeStorage::new();
-<a href=#1052 id=1052 data-nosnippet>1052</a>
-<a href=#1053 id=1053 data-nosnippet>1053</a>        <span class="kw">let </span>sig1 = ArchetypeSignature::new(<span class="macro">vec!</span>[TypeId::of::&lt;Health&gt;()]);
-<a href=#1054 id=1054 data-nosnippet>1054</a>        <span class="kw">let </span><span class="kw-2">mut </span>metas1 = HashMap::new();
-<a href=#1055 id=1055 data-nosnippet>1055</a>        metas1.insert(TypeId::of::&lt;Health&gt;(), ComponentMeta::of::&lt;Health&gt;());
-<a href=#1056 id=1056 data-nosnippet>1056</a>
-<a href=#1057 id=1057 data-nosnippet>1057</a>        <span class="kw">let </span>sig2 = ArchetypeSignature::new(<span class="macro">vec!</span>[TypeId::of::&lt;Position&gt;()]);
-<a href=#1058 id=1058 data-nosnippet>1058</a>        <span class="kw">let </span><span class="kw-2">mut </span>metas2 = HashMap::new();
-<a href=#1059 id=1059 data-nosnippet>1059</a>        metas2.insert(TypeId::of::&lt;Position&gt;(), ComponentMeta::of::&lt;Position&gt;());
+<a href=#1051 id=1051 data-nosnippet>1051</a>            <span class="macro">assert_eq!</span>(entities.len(), <span class="number">2</span>);
+<a href=#1052 id=1052 data-nosnippet>1052</a>            <span class="macro">assert_eq!</span>(healths.len(), <span class="number">2</span>);
+<a href=#1053 id=1053 data-nosnippet>1053</a>            <span class="macro">assert_eq!</span>(healths[<span class="number">0</span>], Health(<span class="number">50</span>));
+<a href=#1054 id=1054 data-nosnippet>1054</a>            <span class="macro">assert_eq!</span>(healths[<span class="number">1</span>], Health(<span class="number">75</span>));
+<a href=#1055 id=1055 data-nosnippet>1055</a>
+<a href=#1056 id=1056 data-nosnippet>1056</a>            <span class="comment">// Mutate
+<a href=#1057 id=1057 data-nosnippet>1057</a>            </span>healths[<span class="number">0</span>] = Health(<span class="number">999</span>);
+<a href=#1058 id=1058 data-nosnippet>1058</a>            healths[<span class="number">1</span>] = Health(<span class="number">888</span>);
+<a href=#1059 id=1059 data-nosnippet>1059</a>        }
 <a href=#1060 id=1060 data-nosnippet>1060</a>
-<a href=#1061 id=1061 data-nosnippet>1061</a>        <span class="kw">let </span>sig3 = ArchetypeSignature::new(<span class="macro">vec!</span>[TypeId::of::&lt;Health&gt;(), TypeId::of::&lt;Position&gt;()]);
-<a href=#1062 id=1062 data-nosnippet>1062</a>        <span class="kw">let </span><span class="kw-2">mut </span>metas3 = HashMap::new();
-<a href=#1063 id=1063 data-nosnippet>1063</a>        metas3.insert(TypeId::of::&lt;Health&gt;(), ComponentMeta::of::&lt;Health&gt;());
-<a href=#1064 id=1064 data-nosnippet>1064</a>        metas3.insert(TypeId::of::&lt;Position&gt;(), ComponentMeta::of::&lt;Position&gt;());
-<a href=#1065 id=1065 data-nosnippet>1065</a>
-<a href=#1066 id=1066 data-nosnippet>1066</a>        <span class="kw">let </span>id1 = storage.get_or_create_archetype_with_blob(sig1.clone(), metas1);
-<a href=#1067 id=1067 data-nosnippet>1067</a>        <span class="kw">let </span>id2 = storage.get_or_create_archetype_with_blob(sig2.clone(), metas2);
-<a href=#1068 id=1068 data-nosnippet>1068</a>        <span class="kw">let </span>id3 = storage.get_or_create_archetype_with_blob(sig3.clone(), metas3);
-<a href=#1069 id=1069 data-nosnippet>1069</a>
-<a href=#1070 id=1070 data-nosnippet>1070</a>        <span class="comment">// IDs must be strictly increasing
-<a href=#1071 id=1071 data-nosnippet>1071</a>        </span><span class="macro">assert!</span>(id2.<span class="number">0 </span>&gt; id1.<span class="number">0</span>, <span class="string">"id2 ({}) must be &gt; id1 ({})"</span>, id2.<span class="number">0</span>, id1.<span class="number">0</span>);
-<a href=#1072 id=1072 data-nosnippet>1072</a>        <span class="macro">assert!</span>(id3.<span class="number">0 </span>&gt; id2.<span class="number">0</span>, <span class="string">"id3 ({}) must be &gt; id2 ({})"</span>, id3.<span class="number">0</span>, id2.<span class="number">0</span>);
-<a href=#1073 id=1073 data-nosnippet>1073</a>        <span class="macro">assert_eq!</span>(id1.<span class="number">0 </span>+ <span class="number">1</span>, id2.<span class="number">0</span>, <span class="string">"IDs should be consecutive"</span>);
-<a href=#1074 id=1074 data-nosnippet>1074</a>        <span class="macro">assert_eq!</span>(id2.<span class="number">0 </span>+ <span class="number">1</span>, id3.<span class="number">0</span>, <span class="string">"IDs should be consecutive"</span>);
-<a href=#1075 id=1075 data-nosnippet>1075</a>
-<a href=#1076 id=1076 data-nosnippet>1076</a>        <span class="comment">// Re-requesting same signature returns same ID (no increment)
-<a href=#1077 id=1077 data-nosnippet>1077</a>        </span><span class="kw">let </span>metas1_dup = {
-<a href=#1078 id=1078 data-nosnippet>1078</a>            <span class="kw">let </span><span class="kw-2">mut </span>m = HashMap::new();
-<a href=#1079 id=1079 data-nosnippet>1079</a>            m.insert(TypeId::of::&lt;Health&gt;(), ComponentMeta::of::&lt;Health&gt;());
-<a href=#1080 id=1080 data-nosnippet>1080</a>            m
-<a href=#1081 id=1081 data-nosnippet>1081</a>        };
-<a href=#1082 id=1082 data-nosnippet>1082</a>        <span class="kw">let </span>id1_dup = storage.get_or_create_archetype_with_blob(sig1, metas1_dup);
-<a href=#1083 id=1083 data-nosnippet>1083</a>        <span class="macro">assert_eq!</span>(id1, id1_dup, <span class="string">"duplicate signature must return same ID"</span>);
-<a href=#1084 id=1084 data-nosnippet>1084</a>
-<a href=#1085 id=1085 data-nosnippet>1085</a>        <span class="comment">// Archetype is actually usable for blob operations
-<a href=#1086 id=1086 data-nosnippet>1086</a>        </span><span class="kw">let </span>arch = storage.get_archetype(id1).unwrap();
-<a href=#1087 id=1087 data-nosnippet>1087</a>        <span class="macro">assert!</span>(arch.uses_blob(), <span class="string">"blob archetype must use blob mode"</span>);
-<a href=#1088 id=1088 data-nosnippet>1088</a>    }
-<a href=#1089 id=1089 data-nosnippet>1089</a>
-<a href=#1090 id=1090 data-nosnippet>1090</a>    <span class="attr">#[test]
-<a href=#1091 id=1091 data-nosnippet>1091</a>    </span><span class="kw">fn </span>test_remove_entity_boundary_at_len() {
-<a href=#1092 id=1092 data-nosnippet>1092</a>        <span class="comment">// Kills: remove_entity &lt; → &lt;= (entity at exactly vec.len()-1 must work)
-<a href=#1093 id=1093 data-nosnippet>1093</a>        // With `&lt;=`, entity.id == vec.len() would enter the branch and OOB.
-<a href=#1094 id=1094 data-nosnippet>1094</a>        </span><span class="kw">let </span><span class="kw-2">mut </span>storage = ArchetypeStorage::new();
-<a href=#1095 id=1095 data-nosnippet>1095</a>        <span class="kw">let </span>sig = ArchetypeSignature::new(<span class="macro">vec!</span>[TypeId::of::&lt;Health&gt;()]);
-<a href=#1096 id=1096 data-nosnippet>1096</a>        <span class="kw">let </span>arch_id = storage.get_or_create_archetype(sig);
+<a href=#1061 id=1061 data-nosnippet>1061</a>        <span class="comment">// Verify mutations persisted via immutable path
+<a href=#1062 id=1062 data-nosnippet>1062</a>        </span><span class="kw">let </span>(<span class="kw">_</span>, healths_after) = archetype.iter_components_blob::&lt;Health&gt;().unwrap();
+<a href=#1063 id=1063 data-nosnippet>1063</a>        <span class="macro">assert_eq!</span>(healths_after[<span class="number">0</span>], Health(<span class="number">999</span>));
+<a href=#1064 id=1064 data-nosnippet>1064</a>        <span class="macro">assert_eq!</span>(healths_after[<span class="number">1</span>], Health(<span class="number">888</span>));
+<a href=#1065 id=1065 data-nosnippet>1065</a>    }
+<a href=#1066 id=1066 data-nosnippet>1066</a>
+<a href=#1067 id=1067 data-nosnippet>1067</a>    <span class="attr">#[test]
+<a href=#1068 id=1068 data-nosnippet>1068</a>    </span><span class="kw">fn </span>test_get_or_create_archetype_with_blob_increments_id() {
+<a href=#1069 id=1069 data-nosnippet>1069</a>        <span class="comment">// Kills: next_id += 1 → next_id -= 1 / next_id *= 1
+<a href=#1070 id=1070 data-nosnippet>1070</a>        // Verifies that each new blob archetype gets a strictly increasing ID
+<a href=#1071 id=1071 data-nosnippet>1071</a>        </span><span class="kw">use </span><span class="kw">crate</span>::component_meta::ComponentMeta;
+<a href=#1072 id=1072 data-nosnippet>1072</a>
+<a href=#1073 id=1073 data-nosnippet>1073</a>        <span class="kw">let </span><span class="kw-2">mut </span>storage = ArchetypeStorage::new();
+<a href=#1074 id=1074 data-nosnippet>1074</a>
+<a href=#1075 id=1075 data-nosnippet>1075</a>        <span class="kw">let </span>sig1 = ArchetypeSignature::new(<span class="macro">vec!</span>[TypeId::of::&lt;Health&gt;()]);
+<a href=#1076 id=1076 data-nosnippet>1076</a>        <span class="kw">let </span><span class="kw-2">mut </span>metas1 = HashMap::new();
+<a href=#1077 id=1077 data-nosnippet>1077</a>        metas1.insert(TypeId::of::&lt;Health&gt;(), ComponentMeta::of::&lt;Health&gt;());
+<a href=#1078 id=1078 data-nosnippet>1078</a>
+<a href=#1079 id=1079 data-nosnippet>1079</a>        <span class="kw">let </span>sig2 = ArchetypeSignature::new(<span class="macro">vec!</span>[TypeId::of::&lt;Position&gt;()]);
+<a href=#1080 id=1080 data-nosnippet>1080</a>        <span class="kw">let </span><span class="kw-2">mut </span>metas2 = HashMap::new();
+<a href=#1081 id=1081 data-nosnippet>1081</a>        metas2.insert(TypeId::of::&lt;Position&gt;(), ComponentMeta::of::&lt;Position&gt;());
+<a href=#1082 id=1082 data-nosnippet>1082</a>
+<a href=#1083 id=1083 data-nosnippet>1083</a>        <span class="kw">let </span>sig3 = ArchetypeSignature::new(<span class="macro">vec!</span>[TypeId::of::&lt;Health&gt;(), TypeId::of::&lt;Position&gt;()]);
+<a href=#1084 id=1084 data-nosnippet>1084</a>        <span class="kw">let </span><span class="kw-2">mut </span>metas3 = HashMap::new();
+<a href=#1085 id=1085 data-nosnippet>1085</a>        metas3.insert(TypeId::of::&lt;Health&gt;(), ComponentMeta::of::&lt;Health&gt;());
+<a href=#1086 id=1086 data-nosnippet>1086</a>        metas3.insert(TypeId::of::&lt;Position&gt;(), ComponentMeta::of::&lt;Position&gt;());
+<a href=#1087 id=1087 data-nosnippet>1087</a>
+<a href=#1088 id=1088 data-nosnippet>1088</a>        <span class="kw">let </span>id1 = storage.get_or_create_archetype_with_blob(sig1.clone(), metas1);
+<a href=#1089 id=1089 data-nosnippet>1089</a>        <span class="kw">let </span>id2 = storage.get_or_create_archetype_with_blob(sig2.clone(), metas2);
+<a href=#1090 id=1090 data-nosnippet>1090</a>        <span class="kw">let </span>id3 = storage.get_or_create_archetype_with_blob(sig3.clone(), metas3);
+<a href=#1091 id=1091 data-nosnippet>1091</a>
+<a href=#1092 id=1092 data-nosnippet>1092</a>        <span class="comment">// IDs must be strictly increasing
+<a href=#1093 id=1093 data-nosnippet>1093</a>        </span><span class="macro">assert!</span>(id2.<span class="number">0 </span>&gt; id1.<span class="number">0</span>, <span class="string">"id2 ({}) must be &gt; id1 ({})"</span>, id2.<span class="number">0</span>, id1.<span class="number">0</span>);
+<a href=#1094 id=1094 data-nosnippet>1094</a>        <span class="macro">assert!</span>(id3.<span class="number">0 </span>&gt; id2.<span class="number">0</span>, <span class="string">"id3 ({}) must be &gt; id2 ({})"</span>, id3.<span class="number">0</span>, id2.<span class="number">0</span>);
+<a href=#1095 id=1095 data-nosnippet>1095</a>        <span class="macro">assert_eq!</span>(id1.<span class="number">0 </span>+ <span class="number">1</span>, id2.<span class="number">0</span>, <span class="string">"IDs should be consecutive"</span>);
+<a href=#1096 id=1096 data-nosnippet>1096</a>        <span class="macro">assert_eq!</span>(id2.<span class="number">0 </span>+ <span class="number">1</span>, id3.<span class="number">0</span>, <span class="string">"IDs should be consecutive"</span>);
 <a href=#1097 id=1097 data-nosnippet>1097</a>
-<a href=#1098 id=1098 data-nosnippet>1098</a>        <span class="comment">// Entity with id=0 (so index = 0)
-<a href=#1099 id=1099 data-nosnippet>1099</a>        </span><span class="kw">let </span>e0 = <span class="kw">unsafe </span>{ Entity::from_raw(<span class="number">0</span>) };
-<a href=#1100 id=1100 data-nosnippet>1100</a>        storage.set_entity_archetype(e0, arch_id);
-<a href=#1101 id=1101 data-nosnippet>1101</a>
-<a href=#1102 id=1102 data-nosnippet>1102</a>        <span class="comment">// Entity with id=1 (so index = 1, which is entity_to_archetype.len()-1 after resize)
-<a href=#1103 id=1103 data-nosnippet>1103</a>        </span><span class="kw">let </span>e1 = <span class="kw">unsafe </span>{ Entity::from_raw(<span class="number">1</span>) };
-<a href=#1104 id=1104 data-nosnippet>1104</a>        storage.set_entity_archetype(e1, arch_id);
-<a href=#1105 id=1105 data-nosnippet>1105</a>
-<a href=#1106 id=1106 data-nosnippet>1106</a>        <span class="comment">// Entity with id exactly at len boundary — the vec length should be 2
-<a href=#1107 id=1107 data-nosnippet>1107</a>        // Removing entity 1 (id=1, len is 2, 1 &lt; 2 is true → enters branch)
-<a href=#1108 id=1108 data-nosnippet>1108</a>        </span><span class="kw">let </span>result = storage.remove_entity(e1);
-<a href=#1109 id=1109 data-nosnippet>1109</a>        <span class="macro">assert_eq!</span>(result, <span class="prelude-val">Some</span>(arch_id), <span class="string">"entity at len-1 must be removable"</span>);
-<a href=#1110 id=1110 data-nosnippet>1110</a>
-<a href=#1111 id=1111 data-nosnippet>1111</a>        <span class="comment">// Entity just beyond the vec length — should return None cleanly
-<a href=#1112 id=1112 data-nosnippet>1112</a>        </span><span class="kw">let </span>e_beyond = <span class="kw">unsafe </span>{ Entity::from_raw(<span class="number">2</span>) };
-<a href=#1113 id=1113 data-nosnippet>1113</a>        <span class="kw">let </span>result_beyond = storage.remove_entity(e_beyond);
-<a href=#1114 id=1114 data-nosnippet>1114</a>        <span class="macro">assert_eq!</span>(result_beyond, <span class="prelude-val">None</span>, <span class="string">"entity beyond vec length must be None"</span>);
-<a href=#1115 id=1115 data-nosnippet>1115</a>
-<a href=#1116 id=1116 data-nosnippet>1116</a>        <span class="comment">// Verify e0 is still tracked
-<a href=#1117 id=1117 data-nosnippet>1117</a>        </span><span class="macro">assert_eq!</span>(storage.get_entity_archetype(e0), <span class="prelude-val">Some</span>(arch_id));
-<a href=#1118 id=1118 data-nosnippet>1118</a>        <span class="comment">// Verify e1 is gone
-<a href=#1119 id=1119 data-nosnippet>1119</a>        </span><span class="macro">assert_eq!</span>(storage.get_entity_archetype(e1), <span class="prelude-val">None</span>);
-<a href=#1120 id=1120 data-nosnippet>1120</a>    }
-<a href=#1121 id=1121 data-nosnippet>1121</a>}</code></pre></div></section></main></body></html>
+<a href=#1098 id=1098 data-nosnippet>1098</a>        <span class="comment">// Re-requesting same signature returns same ID (no increment)
+<a href=#1099 id=1099 data-nosnippet>1099</a>        </span><span class="kw">let </span>metas1_dup = {
+<a href=#1100 id=1100 data-nosnippet>1100</a>            <span class="kw">let </span><span class="kw-2">mut </span>m = HashMap::new();
+<a href=#1101 id=1101 data-nosnippet>1101</a>            m.insert(TypeId::of::&lt;Health&gt;(), ComponentMeta::of::&lt;Health&gt;());
+<a href=#1102 id=1102 data-nosnippet>1102</a>            m
+<a href=#1103 id=1103 data-nosnippet>1103</a>        };
+<a href=#1104 id=1104 data-nosnippet>1104</a>        <span class="kw">let </span>id1_dup = storage.get_or_create_archetype_with_blob(sig1, metas1_dup);
+<a href=#1105 id=1105 data-nosnippet>1105</a>        <span class="macro">assert_eq!</span>(id1, id1_dup, <span class="string">"duplicate signature must return same ID"</span>);
+<a href=#1106 id=1106 data-nosnippet>1106</a>
+<a href=#1107 id=1107 data-nosnippet>1107</a>        <span class="comment">// Archetype is actually usable for blob operations
+<a href=#1108 id=1108 data-nosnippet>1108</a>        </span><span class="kw">let </span>arch = storage.get_archetype(id1).unwrap();
+<a href=#1109 id=1109 data-nosnippet>1109</a>        <span class="macro">assert!</span>(arch.uses_blob(), <span class="string">"blob archetype must use blob mode"</span>);
+<a href=#1110 id=1110 data-nosnippet>1110</a>    }
+<a href=#1111 id=1111 data-nosnippet>1111</a>
+<a href=#1112 id=1112 data-nosnippet>1112</a>    <span class="attr">#[test]
+<a href=#1113 id=1113 data-nosnippet>1113</a>    </span><span class="kw">fn </span>test_remove_entity_boundary_at_len() {
+<a href=#1114 id=1114 data-nosnippet>1114</a>        <span class="comment">// Kills: remove_entity &lt; → &lt;= (entity at exactly vec.len()-1 must work)
+<a href=#1115 id=1115 data-nosnippet>1115</a>        // With `&lt;=`, entity.id == vec.len() would enter the branch and OOB.
+<a href=#1116 id=1116 data-nosnippet>1116</a>        </span><span class="kw">let </span><span class="kw-2">mut </span>storage = ArchetypeStorage::new();
+<a href=#1117 id=1117 data-nosnippet>1117</a>        <span class="kw">let </span>sig = ArchetypeSignature::new(<span class="macro">vec!</span>[TypeId::of::&lt;Health&gt;()]);
+<a href=#1118 id=1118 data-nosnippet>1118</a>        <span class="kw">let </span>arch_id = storage.get_or_create_archetype(sig);
+<a href=#1119 id=1119 data-nosnippet>1119</a>
+<a href=#1120 id=1120 data-nosnippet>1120</a>        <span class="comment">// Entity with id=0 (so index = 0)
+<a href=#1121 id=1121 data-nosnippet>1121</a>        </span><span class="kw">let </span>e0 = <span class="kw">unsafe </span>{ Entity::from_raw(<span class="number">0</span>) };
+<a href=#1122 id=1122 data-nosnippet>1122</a>        storage.set_entity_archetype(e0, arch_id);
+<a href=#1123 id=1123 data-nosnippet>1123</a>
+<a href=#1124 id=1124 data-nosnippet>1124</a>        <span class="comment">// Entity with id=1 (so index = 1, which is entity_to_archetype.len()-1 after resize)
+<a href=#1125 id=1125 data-nosnippet>1125</a>        </span><span class="kw">let </span>e1 = <span class="kw">unsafe </span>{ Entity::from_raw(<span class="number">1</span>) };
+<a href=#1126 id=1126 data-nosnippet>1126</a>        storage.set_entity_archetype(e1, arch_id);
+<a href=#1127 id=1127 data-nosnippet>1127</a>
+<a href=#1128 id=1128 data-nosnippet>1128</a>        <span class="comment">// Entity with id exactly at len boundary — the vec length should be 2
+<a href=#1129 id=1129 data-nosnippet>1129</a>        // Removing entity 1 (id=1, len is 2, 1 &lt; 2 is true → enters branch)
+<a href=#1130 id=1130 data-nosnippet>1130</a>        </span><span class="kw">let </span>result = storage.remove_entity(e1);
+<a href=#1131 id=1131 data-nosnippet>1131</a>        <span class="macro">assert_eq!</span>(result, <span class="prelude-val">Some</span>(arch_id), <span class="string">"entity at len-1 must be removable"</span>);
+<a href=#1132 id=1132 data-nosnippet>1132</a>
+<a href=#1133 id=1133 data-nosnippet>1133</a>        <span class="comment">// Entity just beyond the vec length — should return None cleanly
+<a href=#1134 id=1134 data-nosnippet>1134</a>        </span><span class="kw">let </span>e_beyond = <span class="kw">unsafe </span>{ Entity::from_raw(<span class="number">2</span>) };
+<a href=#1135 id=1135 data-nosnippet>1135</a>        <span class="kw">let </span>result_beyond = storage.remove_entity(e_beyond);
+<a href=#1136 id=1136 data-nosnippet>1136</a>        <span class="macro">assert_eq!</span>(result_beyond, <span class="prelude-val">None</span>, <span class="string">"entity beyond vec length must be None"</span>);
+<a href=#1137 id=1137 data-nosnippet>1137</a>
+<a href=#1138 id=1138 data-nosnippet>1138</a>        <span class="comment">// Verify e0 is still tracked
+<a href=#1139 id=1139 data-nosnippet>1139</a>        </span><span class="macro">assert_eq!</span>(storage.get_entity_archetype(e0), <span class="prelude-val">Some</span>(arch_id));
+<a href=#1140 id=1140 data-nosnippet>1140</a>        <span class="comment">// Verify e1 is gone
+<a href=#1141 id=1141 data-nosnippet>1141</a>        </span><span class="macro">assert_eq!</span>(storage.get_entity_archetype(e1), <span class="prelude-val">None</span>);
+<a href=#1142 id=1142 data-nosnippet>1142</a>    }
+<a href=#1143 id=1143 data-nosnippet>1143</a>}</code></pre></div></section></main></body></html>
