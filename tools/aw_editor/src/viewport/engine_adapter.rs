@@ -2930,8 +2930,8 @@ impl EngineRenderAdapter {
 
                         let density = Self::scatter_density_for_distance(&lod_distances, dist);
                         if density < 1.0 {
-                            let hash_input = (p.position.x * 73856.093) as u32
-                                ^ (p.position.y * 42191.271) as u32
+                            let hash_input = (p.position.x * 73856.09) as u32
+                                ^ (p.position.y * 42191.27) as u32
                                 ^ (p.position.z * 19349.663) as u32;
                             let h = astraweave_render::vegetation_gpu::pcg_hash(hash_input);
                             let r = astraweave_render::vegetation_gpu::hash_to_float(h);
