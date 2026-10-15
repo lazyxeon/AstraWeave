@@ -138,7 +138,7 @@ impl EditorAnimationBridge {
         let state = self
             .entity_states
             .entry(entity_id)
-            .or_insert_with(EntityAnimationState::default);
+            .or_default();
         state.clip_index = Some(clip_index);
         state.time = 0.0;
         state.playing = true;

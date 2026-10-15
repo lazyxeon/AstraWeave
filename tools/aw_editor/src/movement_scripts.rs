@@ -244,7 +244,7 @@ impl MovementSystem {
         let state = self
             .runtime_states
             .entry(entity_id)
-            .or_insert_with(MovementRuntimeState::default);
+            .or_default();
         state.elapsed += dt;
 
         match script.script_type {
