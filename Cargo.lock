@@ -345,6 +345,7 @@ dependencies = [
  "anyhow",
  "astraweave-ai",
  "astraweave-camera",
+ "astraweave-ecs",
  "astraweave-input",
  "astraweave-nav",
  "astraweave-physics",

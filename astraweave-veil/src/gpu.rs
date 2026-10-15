@@ -37,11 +37,37 @@ impl ScarField {
     /// `focus_metres`. Cells outside the window are not in this upload;
     /// they remain in the field.
     pub fn bake_gpu_volume(&self, focus_metres: [i32; 3]) -> GpuScarVolume {
+        let mut rgba = Vec::new();
+        let (origin_metres, extent_metres, dims, any) = self.bake_into(focus_metres, &mut rgba);
+        GpuScarVolume {
+            origin_metres,
+            extent_metres,
+            dims,
+            rgba,
+            any,
+        }
+    }
+
+    /// Fill `rgba` in place. A buffer that already has `GPU_DIM`³ texels is
+    /// cleared and reused, so a settled frame does not allocate.
+    pub fn bake_into(
+        &self,
+        focus_metres: [i32; 3],
+        rgba: &mut Vec<[f32; 4]>,
+    ) -> ([i32; 3], [i32; 3], [u32; 3], bool) {
         let dim = GPU_DIM as i32;
         let half = dim / 2;
         let focus = self.cell_of_metres(focus_metres);
         let origin_cell = [focus[0] - half, focus[1] - half, focus[2] - half];
-        let mut rgba = vec![[0.0_f32; 4]; (GPU_DIM as usize).pow(3)];
+        let texels = (GPU_DIM as usize).pow(3);
+        if rgba.len() != texels {
+            rgba.clear();
+            rgba.resize(texels, [0.0; 4]);
+        } else {
+            for texel in rgba.iter_mut() {
+                *texel = [0.0; 4];
+            }
+        }
         let mut any = false;
         let density_scale = Fixed64::from_raw(DENSITY_PER_UNIT_RAW);
         let peak = Fixed64::from_int(PEAK_TENSION);
@@ -68,17 +94,16 @@ impl ScarField {
             any = true;
         }
         let extent = dim.saturating_mul(CELL_METRES);
-        GpuScarVolume {
-            origin_metres: [
+        (
+            [
                 origin_cell[0].saturating_mul(CELL_METRES),
                 origin_cell[1].saturating_mul(CELL_METRES),
                 origin_cell[2].saturating_mul(CELL_METRES),
             ],
-            extent_metres: [extent, extent, extent],
-            dims: [GPU_DIM, GPU_DIM, GPU_DIM],
-            rgba,
+            [extent, extent, extent],
+            [GPU_DIM, GPU_DIM, GPU_DIM],
             any,
-        }
+        )
     }
 }
 

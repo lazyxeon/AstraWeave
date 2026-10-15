@@ -34,6 +34,7 @@ raw-window-handle = "0.6"
 log = "0.4"
 
 [dev-dependencies]
+astraweave-ecs = { path = "../astraweave-ecs", features = ["alloc-counter"] }
 sha2 = { workspace = true }
 tempfile = "3"
 

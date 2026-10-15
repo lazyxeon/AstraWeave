@@ -41,6 +41,22 @@ The workflow `.github/workflows/aravath-windows.yml` builds that exe and runs `c
 
 Airborne runs keep 40% of ground speed. Flight keeps full speed and no gravity.
 
+## Frame budget
+
+The whole frame is budgeted at 11 ms on a GTX 1660 Ti-class GPU. From a release build:
+
+```text
+cargo run -p aravath_runtime --bin aravath_greybox --release -- --frame-times
+```
+
+That prints CPU sim-and-skin percentiles against 11.000 ms, then one headless submit on whatever adapter this machine has. The headless number is not the 1660 Ti measurement. A release build exits with an error when the CPU p95 is over the budget. A debug build prints the same line and does not fail on it.
+
+A settled tick does not allocate for streaming, seepage marks, or the locomotion graph. Skinning reuses the pose buffers after the first sample. Rapier's physics step and the character raycasts still allocate inside `astraweave-physics`. That count stays flat from tick to tick.
+
+## Dynamic world
+
+Dig and place reshape the voxel grid and the physics trimesh. Death writes a seepage mark through the weaving field, and the engine fog pass samples it. Traversal beyond walk, jump, roll, and flight waits on the implementation that follows PR #244. That work reuses this demo's input path (`PlayInput`, `FrameLatch`, `DeviceEvent::MouseMotion`, Windows `CursorGrabMode::Confined`, `InputManager::set_physical_key`). Those types stay as they are.
+
 ## Determinism
 
 Movement, stamina, combat, enemy steering, and voxel edits advance at a fixed 60 Hz. The window accumulates real frame time and spends it in slices of 1/60 s, at most eight slices in one frame. A short frame does not step the simulation. A jump, swing, or dig pressed during that frame waits for the next slice. The same recorded inputs produce the same state hash on independent runs, including the player and the edit log after a save and load. The save file's id and timestamp are not part of that hash. The sun clock and the HUD notice still follow the rendered frame.
@@ -69,7 +85,7 @@ The egui overlay is the HUD only. It is drawn after the engine frame.
 
 ## Performance budget
 
-Stay inside this box on a GTX 1660 at 1080p, and do not treat an RTX 4070 as a reason to raise it:
+Stay inside this box on a GTX 1660 at 1080p, and do not treat an RTX 4070 as a reason to raise it. The whole frame stays under 11 ms on a GTX 1660 Ti. `--frame-times` reports the CPU sim-and-skin time against that budget.
 
 - Stream radius 3. Do not fill a multi-kilometre voxel volume.
 - Block-bit albedo crops for the voxel materials, the wood plank map, and the small KayKit atlases. Props are instanced, not a mesh per blade of grass.
