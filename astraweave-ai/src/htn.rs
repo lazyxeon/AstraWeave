@@ -211,6 +211,100 @@ pub fn fill_observation(tiles: &NavTiles, buf: &mut ObservationBuf) {
     }
 }
 
+#[cfg(feature = "decision-trace")]
+std::thread_local! {
+    static TRACE_ACTIVE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    static TRACE_ENTITY: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+    static TRACE_HOLDER: std::cell::RefCell<Option<crate::decision_trace::DecisionTrace>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+/// Swaps `trace` into thread-local storage until the guard drops.
+///
+/// `plan_route` keeps the same eight arguments with the feature on or off,
+/// so the replay harness compiles either way and writes the same plan bytes.
+/// With the feature off this function does not exist, and `plan_route` does
+/// not touch the thread local.
+#[cfg(feature = "decision-trace")]
+pub struct TraceGuard {
+    trace: *mut crate::decision_trace::DecisionTrace,
+    prev_active: bool,
+    prev_entity: u64,
+}
+
+#[cfg(feature = "decision-trace")]
+#[must_use]
+pub fn attach_trace(
+    trace: &mut crate::decision_trace::DecisionTrace,
+    entity_id: u64,
+) -> TraceGuard {
+    let prev_active = TRACE_ACTIVE.with(|cell| cell.replace(true));
+    let prev_entity = TRACE_ENTITY.with(|cell| cell.replace(entity_id));
+    let trace_ptr = trace as *mut crate::decision_trace::DecisionTrace;
+    swap_holder(trace);
+    TraceGuard {
+        trace: trace_ptr,
+        prev_active,
+        prev_entity,
+    }
+}
+
+#[cfg(feature = "decision-trace")]
+fn swap_holder(trace: &mut crate::decision_trace::DecisionTrace) {
+    TRACE_HOLDER.with(|cell| {
+        let mut slot = cell.borrow_mut();
+        if slot.is_none() {
+            *slot = Some(crate::decision_trace::DecisionTrace::new());
+        }
+        if let Some(held) = slot.as_mut() {
+            std::mem::swap(trace, held);
+        }
+    });
+}
+
+#[cfg(feature = "decision-trace")]
+impl Drop for TraceGuard {
+    fn drop(&mut self) {
+        if !self.trace.is_null() {
+            // SAFETY: `attach_trace` created this pointer from the caller's
+            // `&mut DecisionTrace`, and this guard is dropped before that
+            // borrow ends. The swap returns the caller's rings.
+            unsafe { swap_holder(&mut *self.trace) }
+        }
+        TRACE_ACTIVE.with(|cell| cell.set(self.prev_active));
+        TRACE_ENTITY.with(|cell| cell.set(self.prev_entity));
+    }
+}
+
+#[cfg(feature = "decision-trace")]
+fn set_trace_entity(entity_id: u64) {
+    TRACE_ENTITY.with(|cell| cell.set(entity_id));
+}
+
+#[cfg(feature = "decision-trace")]
+fn emit_record(record: &crate::decision_trace::DecisionRecord) {
+    if !TRACE_ACTIVE.with(|cell| cell.get()) {
+        return;
+    }
+    TRACE_HOLDER.with(|cell| {
+        if let Some(trace) = cell.borrow_mut().as_mut() {
+            let _ = trace.push(record);
+        }
+    });
+}
+
+#[cfg(feature = "decision-trace")]
+fn emit_band(entity_id: u64, tick: u64, band: u8) {
+    if !TRACE_ACTIVE.with(|cell| cell.get()) {
+        return;
+    }
+    TRACE_HOLDER.with(|cell| {
+        if let Some(trace) = cell.borrow_mut().as_mut() {
+            trace.amend_band(entity_id, tick, band);
+        }
+    });
+}
+
 /// Advance every agent. Sort key is `(band, entity_id)`.
 #[allow(clippy::needless_range_loop)]
 pub fn tick_agents(tick: &mut SpatialTick, scratch: &mut NavScratch, sim_tick: u64) {
@@ -276,6 +370,8 @@ pub fn tick_agents(tick: &mut SpatialTick, scratch: &mut NavScratch, sim_tick: u
         agent.ticks_since_plan = agent.ticks_since_plan.saturating_add(1);
         match band {
             0 if agent.ticks_since_plan >= REPLAN_TICKS || agent.plan.len == 0 => {
+                #[cfg(feature = "decision-trace")]
+                set_trace_entity(agent.entity_id);
                 plan_route(
                     nav,
                     scratch,
@@ -288,8 +384,12 @@ pub fn tick_agents(tick: &mut SpatialTick, scratch: &mut NavScratch, sim_tick: u
                 );
                 agent.plan.band = 0;
                 agent.ticks_since_plan = 0;
+                #[cfg(feature = "decision-trace")]
+                emit_band(agent.entity_id, sim_tick, 0);
             }
             1 => {
+                #[cfg(feature = "decision-trace")]
+                set_trace_entity(agent.entity_id);
                 plan_route(
                     nav,
                     scratch,
@@ -302,6 +402,8 @@ pub fn tick_agents(tick: &mut SpatialTick, scratch: &mut NavScratch, sim_tick: u
                 );
                 agent.plan.band = 1;
                 agent.ticks_since_plan = 0;
+                #[cfg(feature = "decision-trace")]
+                emit_band(agent.entity_id, sim_tick, 1);
             }
             2 if agent.plan.len == 0 => {
                 agent.plan.slots[0] = ActionSlot::MoveTo {
@@ -312,6 +414,20 @@ pub fn tick_agents(tick: &mut SpatialTick, scratch: &mut NavScratch, sim_tick: u
                 agent.plan.band = 2;
                 agent.plan.tick = sim_tick;
                 budget = budget.saturating_sub(1);
+                #[cfg(feature = "decision-trace")]
+                {
+                    let record = crate::decision_trace::route_record(
+                        agent.entity_id,
+                        sim_tick,
+                        2,
+                        agent.pos_milli,
+                        &agent.plan,
+                        crate::decision_trace::PerceivedView::EMPTY,
+                        &crate::decision_trace::AltList::new(),
+                        0,
+                    );
+                    emit_record(&record);
+                }
             }
             _ => {
                 agent.plan.band = band;
@@ -333,6 +449,8 @@ pub fn plan_route(
     out: &mut AgentPlan,
     budget: &mut u32,
 ) {
+    #[cfg(feature = "decision-trace")]
+    clear_alts();
     if *budget == 0 {
         return;
     }
@@ -387,6 +505,17 @@ pub fn plan_route(
             }
         }
     }
+    #[cfg(feature = "decision-trace")]
+    {
+        let perceived = perceived_for_route(tiles, pos_milli);
+        let alts = copy_alts();
+        let score = route_score(tiles, out);
+        let entity_id = TRACE_ENTITY.with(|cell| cell.get());
+        let record = crate::decision_trace::route_record(
+            entity_id, sim_tick, 0, pos_milli, out, perceived, &alts, score,
+        );
+        emit_record(&record);
+    }
 }
 
 fn best_breach(tiles: &NavTiles, scratch: &NavScratch, hooks: &SpatialHooks<'_>) -> Option<u32> {
@@ -399,6 +528,14 @@ fn best_breach(tiles: &NavTiles, scratch: &NavScratch, hooks: &SpatialHooks<'_>)
         let cell_x = site.x_milli / 1000;
         let cell_y = site.z_milli / 1000;
         if sealed(hooks, cell_x, cell_y) {
+            #[cfg(feature = "decision-trace")]
+            push_alt(crate::decision_trace::AltScore {
+                action: crate::decision_trace::ActionCode::UseBreach as u16,
+                reject: crate::decision_trace::RejectCode::SealedCell as u16,
+                score: i32::MIN,
+                a: id as i32,
+                b: 0,
+            });
             continue;
         }
         let score = -site.x_milli;
@@ -409,7 +546,39 @@ fn best_breach(tiles: &NavTiles, scratch: &NavScratch, hooks: &SpatialHooks<'_>)
             }
         };
         if take {
+            #[cfg(feature = "decision-trace")]
+            if let Some((old_id, old_score)) = best {
+                let reject = if score == old_score {
+                    crate::decision_trace::RejectCode::TieLostToLowerId
+                } else {
+                    crate::decision_trace::RejectCode::LowerScore
+                };
+                push_alt(crate::decision_trace::AltScore {
+                    action: crate::decision_trace::ActionCode::UseBreach as u16,
+                    reject: reject as u16,
+                    score: old_score,
+                    a: old_id as i32,
+                    b: 0,
+                });
+            }
             best = Some((id, score));
+        } else {
+            #[cfg(feature = "decision-trace")]
+            {
+                let best_score = best.map(|(_, best_score)| best_score).unwrap_or(score);
+                let reject = if score == best_score {
+                    crate::decision_trace::RejectCode::TieLostToLowerId
+                } else {
+                    crate::decision_trace::RejectCode::LowerScore
+                };
+                push_alt(crate::decision_trace::AltScore {
+                    action: crate::decision_trace::ActionCode::UseBreach as u16,
+                    reject: reject as u16,
+                    score,
+                    a: id as i32,
+                    b: 0,
+                });
+            }
         }
     }
     best.map(|(id, _)| id)
@@ -445,10 +614,97 @@ fn best_cover(tiles: &NavTiles, pos_milli: [i32; 3]) -> Option<u32> {
             Some((id, best_dist)) => dist < best_dist || (dist == best_dist && cover.id < id),
         };
         if take {
+            #[cfg(feature = "decision-trace")]
+            if let Some((old_id, old_dist)) = best {
+                push_alt(crate::decision_trace::AltScore {
+                    action: crate::decision_trace::ActionCode::TakeCover as u16,
+                    reject: crate::decision_trace::RejectCode::LowerScore as u16,
+                    score: -old_dist,
+                    a: old_id as i32,
+                    b: 0,
+                });
+            }
             best = Some((cover.id, dist));
+        } else {
+            #[cfg(feature = "decision-trace")]
+            push_alt(crate::decision_trace::AltScore {
+                action: crate::decision_trace::ActionCode::TakeCover as u16,
+                reject: crate::decision_trace::RejectCode::LowerScore as u16,
+                score: -dist,
+                a: cover.id as i32,
+                b: 0,
+            });
         }
     }
     best.map(|(id, _)| id)
+}
+
+#[cfg(feature = "decision-trace")]
+std::thread_local! {
+    static ROUTE_ALTS: std::cell::RefCell<crate::decision_trace::AltList> =
+        const { std::cell::RefCell::new(crate::decision_trace::AltList::new()) };
+}
+
+#[cfg(feature = "decision-trace")]
+fn clear_alts() {
+    ROUTE_ALTS.with(|cell| {
+        if let Ok(mut alts) = cell.try_borrow_mut() {
+            alts.clear();
+        }
+    });
+}
+
+#[cfg(feature = "decision-trace")]
+fn push_alt(alt: crate::decision_trace::AltScore) {
+    ROUTE_ALTS.with(|cell| {
+        if let Ok(mut alts) = cell.try_borrow_mut() {
+            alts.push(alt);
+        }
+    });
+}
+
+#[cfg(feature = "decision-trace")]
+fn copy_alts() -> crate::decision_trace::AltList {
+    ROUTE_ALTS.with(|cell| {
+        cell.try_borrow()
+            .map(|alts| *alts)
+            .unwrap_or_else(|_| crate::decision_trace::AltList::new())
+    })
+}
+
+#[cfg(feature = "decision-trace")]
+fn perceived_for_route(
+    tiles: &NavTiles,
+    pos_milli: [i32; 3],
+) -> crate::decision_trace::PerceivedView {
+    let mut perceived = crate::decision_trace::PerceivedView::EMPTY;
+    perceived.self_x = pos_milli[0] / 1000;
+    perceived.self_y = pos_milli[2] / 1000;
+    perceived.breach_len = u8::try_from(tiles.breach_count).unwrap_or(u8::MAX);
+    if let Some(site) = tiles.breaches.first() {
+        if tiles.breach_count > 0 {
+            perceived.breach_portal = site.portal_id;
+            perceived.breach_x = site.x_milli / 1000;
+            perceived.breach_y = site.z_milli / 1000;
+        }
+    }
+    perceived.lost_cover_len = u8::try_from(tiles.lost_cover_count).unwrap_or(u8::MAX);
+    if tiles.lost_cover_count > 0 {
+        perceived.lost_cover_id = tiles.lost_cover[0].id;
+    }
+    perceived
+}
+
+#[cfg(feature = "decision-trace")]
+fn route_score(tiles: &NavTiles, plan: &AgentPlan) -> i32 {
+    for slot in plan.slots.iter().take(plan.len as usize) {
+        if let ActionSlot::UseBreach { portal_id } = slot {
+            if let Some(site) = find_breach(tiles, *portal_id) {
+                return -site.x_milli;
+            }
+        }
+    }
+    0
 }
 
 fn band_of(pos: [i32; 3], player: [i32; 3]) -> u8 {
@@ -479,31 +735,59 @@ fn plan_from_snapshot(snap: &WorldSnapshot) -> PlanIntent {
     legacy_steps(snap, plan_id)
 }
 
-fn legacy_steps(snap: &WorldSnapshot, plan_id: String) -> PlanIntent {
-    let Some(enemy) = snap.enemies.first() else {
-        return PlanIntent {
-            plan_id,
-            steps: vec![],
-        };
-    };
+pub(crate) struct UtilityPair {
+    pub smoke: i32,
+    pub advance: i32,
+    pub dist: i32,
+    pub me_x: i32,
+    pub me_y: i32,
+    pub enemy_x: i32,
+    pub enemy_y: i32,
+    pub enemy_id: u32,
+}
+
+/// Integer smoke-versus-advance scores. Equal scores keep smoke.
+pub(crate) fn utility_pair(snap: &WorldSnapshot) -> Option<UtilityPair> {
+    let enemy = snap.enemies.first()?;
     let me = &snap.me;
     let cd = me.cooldowns.get("throw:smoke").copied().unwrap_or(0.0);
     let dx = (enemy.pos.x - me.pos.x).abs();
     let dy = (enemy.pos.y - me.pos.y).abs();
     let dist = dx + dy;
-    // Integer form of the old scores: smoke 1000 + hp*10, advance 800 + close bonus.
-    // Higher wins. Equal scores take the lower method id (smoke is 0).
-    let smoke_score = if cd <= 0.0 {
+    let smoke = if cd <= 0.0 {
         1000 + enemy.hp.saturating_mul(10)
     } else {
         i32::MIN
     };
     let close_bonus = (3 - dist).max(0) * 50;
-    let advance_score = 800 + close_bonus;
+    Some(UtilityPair {
+        smoke,
+        advance: 800 + close_bonus,
+        dist,
+        me_x: me.pos.x,
+        me_y: me.pos.y,
+        enemy_x: enemy.pos.x,
+        enemy_y: enemy.pos.y,
+        enemy_id: enemy.id,
+    })
+}
+
+fn legacy_steps(snap: &WorldSnapshot, plan_id: String) -> PlanIntent {
+    let Some(pair) = utility_pair(snap) else {
+        return PlanIntent {
+            plan_id,
+            steps: vec![],
+        };
+    };
+    // Integer form of the old scores: smoke 1000 + hp*10, advance 800 + close bonus.
+    // Higher wins. Equal scores take the lower method id (smoke is 0).
+    let smoke_score = pair.smoke;
+    let advance_score = pair.advance;
+    let dist = pair.dist;
     if smoke_score >= advance_score {
         let mid = IVec2 {
-            x: (me.pos.x + enemy.pos.x) / 2,
-            y: (me.pos.y + enemy.pos.y) / 2,
+            x: (pair.me_x + pair.enemy_x) / 2,
+            y: (pair.me_y + pair.enemy_y) / 2,
         };
         PlanIntent {
             plan_id,
@@ -515,20 +799,20 @@ fn legacy_steps(snap: &WorldSnapshot, plan_id: String) -> PlanIntent {
                 },
                 ActionStep::MoveTo {
                     speed: None,
-                    x: me.pos.x + (enemy.pos.x - me.pos.x).signum() * 2,
-                    y: me.pos.y + (enemy.pos.y - me.pos.y).signum() * 2,
+                    x: pair.me_x + (pair.enemy_x - pair.me_x).signum() * 2,
+                    y: pair.me_y + (pair.enemy_y - pair.me_y).signum() * 2,
                 },
             ],
         }
     } else {
         let mut steps = vec![ActionStep::MoveTo {
             speed: None,
-            x: me.pos.x + (enemy.pos.x - me.pos.x).signum(),
-            y: me.pos.y + (enemy.pos.y - me.pos.y).signum(),
+            x: pair.me_x + (pair.enemy_x - pair.me_x).signum(),
+            y: pair.me_y + (pair.enemy_y - pair.me_y).signum(),
         }];
         if dist <= 3 {
             steps.push(ActionStep::CoverFire {
-                target_id: enemy.id,
+                target_id: pair.enemy_id,
                 duration: 1.0,
             });
         }

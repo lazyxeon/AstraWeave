@@ -50,6 +50,7 @@ llm = ["astraweave-llm", "astraweave-llm/llm_cache", "tokio"]
 ollama = ["llm", "astraweave-llm/ollama", "reqwest", "serde_json"]
 metrics = ["serde", "serde_json", "chrono"]
 llm_orchestrator = ["astraweave-ai/llm_orchestrator", "ollama"]
+decision-trace = ["astraweave-ai/decision-trace"]
 # Visual demo with full rendering + LLM support
 visual = [
     "astraweave-render",

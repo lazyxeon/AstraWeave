@@ -380,7 +380,9 @@ fn run_single_demo(mode: AIMode) -> Result<AIMetrics> {
     {
         let w = app.world.get_resource_mut::<World>().unwrap();
         println!("\n--- Executing Plan @ t={:.2} ---", w.t);
-        if let Err(e) = validate_and_execute(&mut *w, comp, &plan, &v_cfg, &mut log) {
+        let exec_result = validate_and_execute(&mut *w, comp, &plan, &v_cfg, &mut log);
+        note_decision(&snap, comp, &plan, mode, &exec_result);
+        if let Err(e) = exec_result {
             println!("⚠️  Execution failed: {}. Continuing...", e);
         }
     }
@@ -452,7 +454,9 @@ fn run_single_demo(mode: AIMode) -> Result<()> {
     {
         let w = app.world.get_resource_mut::<World>().unwrap();
         println!("\n--- Executing Plan @ t={:.2} ---", w.t);
-        if let Err(e) = validate_and_execute(&mut *w, comp, &plan, &v_cfg, &mut log) {
+        let exec_result = validate_and_execute(&mut *w, comp, &plan, &v_cfg, &mut log);
+        note_decision(&snap, comp, &plan, mode, &exec_result);
+        if let Err(e) = exec_result {
             println!("⚠️  Execution failed: {}. Continuing...", e);
         }
     }
@@ -610,6 +614,45 @@ fn select_ai_mode(args: &[String]) -> AIMode {
 // ============================================================================
 // PLAN GENERATION ROUTER
 // ============================================================================
+
+fn planner_code(mode: AIMode) -> u8 {
+    match mode {
+        AIMode::Classical => 1,
+        #[cfg(feature = "llm")]
+        AIMode::BehaviorTree => 2,
+        #[cfg(feature = "llm")]
+        AIMode::Utility => 4,
+        #[cfg(feature = "ollama")]
+        AIMode::LLM | AIMode::Hybrid => 0,
+        #[cfg(feature = "llm")]
+        AIMode::Ensemble => 0,
+        #[cfg(feature = "llm_orchestrator")]
+        AIMode::Arbiter => 0,
+    }
+}
+
+fn note_decision(
+    snap: &WorldSnapshot,
+    comp: astraweave_core::Entity,
+    plan: &PlanIntent,
+    mode: AIMode,
+    result: &Result<(), astraweave_core::EngineError>,
+) {
+    let _ = planner_code(mode);
+    astraweave_ai::decision_record!({
+        let mut trace = astraweave_ai::decision_trace::DecisionTrace::new();
+        let entity = u64::from(comp);
+        let tick = astraweave_ai::decision_trace::tick_from_time(snap.t);
+        if trace.bind(entity) {
+            if planner_code(mode) == 4 {
+                astraweave_ai::decision_trace::record_utility(&mut trace, entity, tick, snap);
+            } else {
+                astraweave_ai::decision_trace::record_rule(&mut trace, entity, tick, snap, plan);
+            }
+            let _ = astraweave_ai::decision_trace::store_result(&mut trace, entity, tick, result);
+        }
+    });
+}
 
 fn generate_plan(snap: &WorldSnapshot, mode: AIMode) -> Result<PlanIntent> {
     match mode {

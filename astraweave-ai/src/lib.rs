@@ -27,10 +27,23 @@
 //! - Validated capacity: 12,700+ agents @ 60 FPS
 
 pub mod core_loop;
+#[cfg(feature = "decision-trace")]
+pub mod decision_trace;
 pub mod ecs_ai_plugin;
 pub mod htn;
 pub mod orchestrator;
 pub mod tool_sandbox;
+
+/// Record a decision. With `decision-trace` off, the tokens are discarded.
+#[macro_export]
+macro_rules! decision_record {
+    ($($tokens:tt)*) => {
+        #[cfg(feature = "decision-trace")]
+        {
+            $($tokens)*
+        }
+    };
+}
 
 #[cfg(test)]
 mod mutation_tests;

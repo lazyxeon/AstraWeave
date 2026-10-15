@@ -42,6 +42,8 @@ alloc-counter = ["dep:astraweave-profiling", "astraweave-profiling/alloc-counter
 # Bench-only allocator swap for the mimalloc experiment.
 fast-alloc = ["dep:astraweave-alloc", "astraweave-alloc/fast-alloc"]
 veilweaver_slice = ["dep:astraweave-behavior", "dep:astraweave-observability"]
+# Decision ring. Off by default: call sites compile out.
+decision-trace = []
 
 [dependencies.astraweave-llm]
 workspace = true
@@ -54,6 +56,7 @@ criterion = { workspace = true }
 tokio = { workspace = true, features = ["rt", "sync", "time", "macros"] }
 tempfile = "3.8"
 serial_test = "3"
+sha2 = { workspace = true }
 
 [[bench]]
 name = "ai_core_loop"

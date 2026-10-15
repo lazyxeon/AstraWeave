@@ -92,6 +92,7 @@ members = [
   "astraweave-pcg",
   "astraweave-weaving",
   "tools/aw_debug",
+  "tools/aw_decision",
   "tools/aw_build",
   "tools/aw_texture_gen",
   "tools/aw_headless",

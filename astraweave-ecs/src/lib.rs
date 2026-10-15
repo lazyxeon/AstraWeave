@@ -487,6 +487,25 @@ impl World {
         self.resources.get_mut(&TypeId::of::<T>())?.downcast_mut()
     }
 
+    /// Remove a resource and hand back its box. Putting the same box back
+    /// with [`restore_resource`] does not allocate.
+    pub fn take_resource<T: 'static + Send + Sync>(&mut self) -> Option<Box<T>> {
+        let boxed = self.resources.remove(&TypeId::of::<T>())?;
+        match boxed.downcast::<T>() {
+            Ok(value) => Some(value),
+            Err(boxed) => {
+                self.resources.insert(TypeId::of::<T>(), boxed);
+                None
+            }
+        }
+    }
+
+    /// Return a box previously taken with [`take_resource`].
+    pub fn restore_resource<T: 'static + Send + Sync>(&mut self, value: Box<T>) {
+        let erased: Box<dyn std::any::Any + Send + Sync> = value;
+        self.resources.insert(TypeId::of::<T>(), erased);
+    }
+
     /// Iterates all entities with component `T`, giving mutable access.
     ///
     /// # Examples
@@ -958,6 +977,19 @@ mod tests {
 
     #[derive(Debug, PartialEq)]
     struct TestResource(i32);
+
+    #[test]
+    fn take_resource_round_trips_without_dropping_the_value() {
+        let mut world = World::new();
+        world.insert_resource(TestResource(7));
+        let taken = world.take_resource::<TestResource>();
+        assert!(taken.is_some());
+        let taken = taken.unwrap_or_else(|| Box::new(TestResource(0)));
+        assert!(world.get_resource::<TestResource>().is_none());
+        assert_eq!(taken.0, 7);
+        world.restore_resource(taken);
+        assert_eq!(world.get_resource::<TestResource>().map(|r| r.0), Some(7));
+    }
 
     #[test]
     fn test_spawn_and_insert() {
