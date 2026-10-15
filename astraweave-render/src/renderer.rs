@@ -1014,6 +1014,11 @@ pub struct Renderer {
     models: std::collections::HashMap<String, RenderModel>,
     /// One Hi-Z pyramid. SSR, SSGI, and occlusion sample its R32Float copy.
     hiz: Option<crate::hiz_pyramid::HizPyramid>,
+    /// Presentation-only particle sim. `None` until an emitter is enabled.
+    particle_sim: Option<crate::gpu_particles::GpuParticleSystem>,
+    particle_draw: Option<crate::particle_render::ParticleRenderPass>,
+    particle_sort: Option<wgpu::Buffer>,
+    particle_emitter: Option<crate::gpu_particles::EmitterParams>,
     /// Present when the device was created with the binding-array features.
     bindless: Option<crate::material_bindless::BindlessMaterialSystem>,
     /// When false, uploads stay on group-3 bind groups even if `bindless` exists.
@@ -3666,6 +3671,10 @@ fn vs(input: VSIn) -> VSOut {
             mesh_external: None,
             models: std::collections::HashMap::new(),
             hiz: None,
+            particle_sim: None,
+            particle_draw: None,
+            particle_sort: None,
+            particle_emitter: None,
             bindless,
             bindless_active,
             instances: Vec::new(),
@@ -5218,6 +5227,50 @@ fn vs(input: VSIn) -> VSOut {
         primitive.mesh.vertex_buf = new_vb;
         primitive.mesh.index_buf = new_ib;
         primitive.storage_generation = primitive.storage_generation.saturating_add(1);
+        Ok(())
+    }
+
+    /// Enable a presentation-only particle emitter. `None` disables it.
+    /// The seed and `delta_time` on `params` come from the caller. This does
+    /// not write simulation state.
+    pub fn set_particle_emitter(
+        &mut self,
+        params: Option<crate::gpu_particles::EmitterParams>,
+    ) -> Result<()> {
+        if params.is_some() && self.particle_sim.is_none() {
+            const MAX: u32 = 256;
+            self.particle_sim = Some(
+                crate::gpu_particles::GpuParticleSystem::new(&self.device, MAX)
+                    .context("create presentation particle sim")?,
+            );
+            self.particle_draw = Some(crate::particle_render::ParticleRenderPass::new(
+                &self.device,
+                &self.queue,
+                self.config.format,
+                self.depth.format,
+                crate::particle_render::ParticleRenderConfig::default(),
+            ));
+            #[repr(C)]
+            #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+            struct SortEntry {
+                index: u32,
+                distance: f32,
+            }
+            let entries: Vec<SortEntry> = (0..MAX)
+                .map(|index| SortEntry {
+                    index,
+                    distance: 0.0,
+                })
+                .collect();
+            self.particle_sort = Some(self.device.create_buffer_init(
+                &wgpu::util::BufferInitDescriptor {
+                    label: Some("particle sort identity"),
+                    contents: bytemuck::cast_slice(&entries),
+                    usage: wgpu::BufferUsages::STORAGE,
+                },
+            ));
+        }
+        self.particle_emitter = params;
         Ok(())
     }
 
@@ -7420,8 +7473,60 @@ fn vs(input: VSIn) -> VSOut {
             p.end_frame(enc);
         }
         self.record_hiz(enc, depth_view);
+        self.record_particles(enc, view, depth_view);
 
         Ok(())
+    }
+
+    fn record_particles(
+        &mut self,
+        enc: &mut wgpu::CommandEncoder,
+        view: &wgpu::TextureView,
+        depth_view: Option<&wgpu::TextureView>,
+    ) {
+        let Some(params) = self.particle_emitter else {
+            return;
+        };
+        if let Some(sim) = self.particle_sim.as_mut() {
+            sim.update(&self.queue, enc, &params);
+        }
+        let (buffer, count) = match self.particle_sim.as_ref() {
+            Some(sim) if sim.particle_count() > 0 => {
+                (sim.particle_buffer().clone(), sim.particle_count())
+            }
+            _ => return,
+        };
+        let Some(draw) = self.particle_draw.as_ref() else {
+            return;
+        };
+        let Some(sort) = self.particle_sort.as_ref() else {
+            return;
+        };
+        let depth = depth_view
+            .cloned()
+            .unwrap_or_else(|| self.depth.view.clone());
+        let mut pass = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("presentation particles"),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view,
+                resolve_target: None,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Load,
+                    store: wgpu::StoreOp::Store,
+                },
+            })],
+            depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                view: &depth,
+                depth_ops: Some(wgpu::Operations {
+                    load: wgpu::LoadOp::Load,
+                    store: wgpu::StoreOp::Store,
+                }),
+                stencil_ops: None,
+            }),
+            timestamp_writes: None,
+            occlusion_query_set: None,
+        });
+        draw.render(&self.device, &mut pass, &buffer, sort, &depth, count, None);
     }
 
     /// Copy this frame's depth into the shared Hi-Z pyramid.
