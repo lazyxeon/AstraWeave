@@ -51,6 +51,9 @@ fn create_test_snapshot(enemy_count: usize, distance: i32) -> WorldSnapshot {
         pois: vec![],
         obstacles: vec![],
         objective: None,
+
+        hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+        hazard_count: 0,
     }
 }
 

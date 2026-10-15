@@ -36,6 +36,9 @@ fn mk_snap_from_world(w: &World, me: Entity, player: Entity, enemy: Entity) -> W
         pois: vec![],
         obstacles: vec![],
         objective: None,
+    
+        hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+        hazard_count: 0,
     }
 }
 

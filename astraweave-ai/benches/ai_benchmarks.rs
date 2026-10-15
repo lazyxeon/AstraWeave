@@ -194,6 +194,9 @@ fn create_minimal_snapshot(num_enemies: usize, num_pois: usize) -> WorldSnapshot
         pois,
         obstacles: vec![],
         objective: None,
+
+        hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+        hazard_count: 0,
     }
 }
 
@@ -255,6 +258,9 @@ fn create_complex_snapshot() -> WorldSnapshot {
             IVec2 { x: 18, y: 16 },
         ],
         objective: Some("Defend the checkpoint".to_string()),
+
+        hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+        hazard_count: 0,
     }
 }
 

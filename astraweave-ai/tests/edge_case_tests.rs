@@ -60,6 +60,9 @@ fn create_test_snapshot(agent_pos: IVec2, enemy_count: usize, poi_count: usize) 
         pois,
         obstacles: vec![],
         objective: Some("test".into()),
+
+        hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+        hazard_count: 0,
     }
 }
 
@@ -90,6 +93,9 @@ fn edge_empty_snapshot_all_arrays() {
         pois: vec![],
         obstacles: vec![],
         objective: None,
+
+        hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+        hazard_count: 0,
     };
     let plan = o.propose_plan(&snap);
     // Should handle empty world gracefully (likely empty or minimal plan)

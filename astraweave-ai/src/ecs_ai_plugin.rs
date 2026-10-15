@@ -239,6 +239,9 @@ fn sys_ai_planning(world: &mut ecs::World) {
             pois: vec![],
             obstacles: vec![],
             objective: None,
+
+            hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+            hazard_count: 0,
         };
         let plan = orch.propose_plan(&snap);
         record_plan_outcome(
@@ -696,6 +699,9 @@ mod tests {
             pois: vec![],
             obstacles: vec![],
             objective: None,
+
+            hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+            hazard_count: 0,
         };
 
         // Build positions map
@@ -753,6 +759,9 @@ mod tests {
             pois: vec![],
             obstacles: vec![],
             objective: None,
+
+            hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+            hazard_count: 0,
         };
 
         let mapped = map_legacy_companion_to_ecs(&positions, &teams, &snap, 1, &app.world);
@@ -818,6 +827,9 @@ mod tests {
             pois: vec![],
             obstacles: vec![],
             objective: None,
+
+            hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+            hazard_count: 0,
         };
 
         // Map legacy id 5 (should use bridge, not proximity)
@@ -855,6 +867,9 @@ mod tests {
             pois: vec![],
             obstacles: vec![],
             objective: None,
+
+            hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+            hazard_count: 0,
         };
 
         let mapped = map_legacy_companion_to_ecs(&positions, &teams, &snap, 1, &app.world);
@@ -926,6 +941,9 @@ mod tests {
             pois: vec![],
             obstacles: vec![],
             objective: None,
+
+            hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+            hazard_count: 0,
         };
 
         let mapped = map_legacy_companion_to_ecs(&positions, &teams, &snap, 1, &app.world);
@@ -991,6 +1009,9 @@ mod tests {
             pois: vec![],
             obstacles: vec![],
             objective: None,
+
+            hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+            hazard_count: 0,
         };
 
         let mapped = map_legacy_companion_to_ecs(&positions, &teams, &snap, 1, &app.world);
@@ -1741,6 +1762,9 @@ mod tests {
             pois: vec![],
             obstacles: vec![],
             objective: None,
+
+            hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+            hazard_count: 0,
         };
 
         let result = map_legacy_companion_to_ecs(&positions, &teams, &snap, 0, &world);
@@ -1786,6 +1810,9 @@ mod tests {
             pois: vec![],
             obstacles: vec![],
             objective: None,
+
+            hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+            hazard_count: 0,
         };
 
         let result = map_legacy_companion_to_ecs(&positions, &teams, &snap, 0, &world);
@@ -1830,6 +1857,9 @@ mod tests {
             pois: vec![],
             obstacles: vec![],
             objective: None,
+
+            hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+            hazard_count: 0,
         };
 
         let result = map_legacy_companion_to_ecs(&positions, &teams, &snap, 0, &world);
@@ -1870,6 +1900,9 @@ mod tests {
             pois: vec![],
             obstacles: vec![],
             objective: None,
+
+            hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+            hazard_count: 0,
         };
 
         let result = map_legacy_companion_to_ecs(&positions, &teams, &snap, 0, &world);

@@ -51,6 +51,9 @@ fn create_test_snapshot(time: f32, enemy_count: usize) -> WorldSnapshot {
         pois: vec![],
         obstacles: vec![],
         objective: None,
+
+        hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+        hazard_count: 0,
     }
 }
 
@@ -116,6 +119,9 @@ fn create_complex_snapshot(time: f32) -> WorldSnapshot {
         pois,
         obstacles,
         objective: Some("eliminate_all_enemies".to_string()),
+
+        hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+        hazard_count: 0,
     }
 }
 

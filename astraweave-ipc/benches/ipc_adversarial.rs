@@ -27,6 +27,9 @@ struct WorldSnapshot {
     time: f64,
     entities: Vec<EntityState>,
     events: Vec<GameEvent>,
+
+    hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+    hazard_count: 0,
 }
 
 #[derive(Clone, Debug)]
@@ -112,6 +115,9 @@ fn generate_snapshot(entity_count: usize) -> WorldSnapshot {
                     .collect(),
             })
             .collect(),
+    
+        hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+        hazard_count: 0,
     }
 }
 

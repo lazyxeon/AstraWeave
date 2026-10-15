@@ -35,6 +35,9 @@ fn main() -> anyhow::Result<()> {
         pois: vec![],
         obstacles: vec![],
         objective: Some("defeat_boss".into()),
+    
+        hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+        hazard_count: 0,
     };
 
     let mut budget = DirectorBudget {

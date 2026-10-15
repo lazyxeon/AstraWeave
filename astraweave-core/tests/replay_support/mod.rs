@@ -306,6 +306,9 @@ fn hand_snapshot(smoke_cd: f32, first_enemy_x: i32, with_enemies: bool) -> World
         pois: vec![],
         obstacles: vec![IVec2 { x: 1, y: 2 }, IVec2 { x: 3, y: 3 }],
         objective: Some("extract".to_string()),
+
+        hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+        hazard_count: 0,
     }
 }
 
@@ -364,6 +367,16 @@ fn encode_snapshot(out: &mut Vec<u8>, snap: &WorldSnapshot) {
             push_str(out, text);
         }
         None => push_u8(out, 0),
+    }
+    push_u8(out, snap.hazard_count);
+    for hazard in snap.hazards.iter().take(snap.hazard_count as usize) {
+        push_u8(out, hazard.kind);
+        push_i32(out, hazard.x);
+        push_i32(out, hazard.y);
+        push_i32(out, hazard.z);
+        push_i32(out, hazard.temperature as i32);
+        push_u8(out, hazard.flags);
+        push_u32(out, hazard.radius_milli as u32);
     }
 }
 

@@ -202,7 +202,7 @@ impl CAiController {
 /// # Example
 /// ```
 /// use astraweave_ai::core_loop::{CAiController, PlannerMode, dispatch_planner};
-/// use astraweave_core::{WorldSnapshot, PlayerState, CompanionState, EnemyState, IVec2};
+/// use astraweave_core::{WorldSnapshot, PlayerState, CompanionState, EnemyState, IVec2, WeaveHazard, MAX_WEAVE_HAZARDS};
 /// use std::collections::BTreeMap;
 ///
 /// let controller = CAiController {
@@ -235,6 +235,8 @@ impl CAiController {
 ///     pois: vec![],
 ///     obstacles: vec![],
 ///     objective: None,
+///     hazards: [WeaveHazard::EMPTY; MAX_WEAVE_HAZARDS],
+///     hazard_count: 0,
 /// };
 ///
 /// let plan = dispatch_planner(&controller, &snapshot).unwrap();
@@ -509,6 +511,9 @@ mod tests {
             pois: vec![],
             obstacles: vec![],
             objective: None,
+
+            hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+            hazard_count: 0,
         }
     }
 
@@ -688,6 +693,9 @@ mod tests {
             pois: vec![],
             obstacles: vec![],
             objective: None,
+
+            hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+            hazard_count: 0,
         };
 
         let result = dispatch_planner(&controller, &snapshot);

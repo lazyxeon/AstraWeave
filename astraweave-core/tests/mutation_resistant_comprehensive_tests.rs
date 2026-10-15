@@ -1455,6 +1455,9 @@ mod display_impl_tests {
             pois: vec![],
             obstacles: vec![],
             objective: None,
+
+            hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+            hazard_count: 0,
         };
         let s = format!("{}", snap);
         assert!(s.contains("0 enemies"), "Should show 0 enemies: {}", s);
@@ -1489,6 +1492,9 @@ mod display_impl_tests {
             }],
             obstacles: vec![],
             objective: None,
+
+            hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+            hazard_count: 0,
         };
         let s = format!("{}", snap);
         assert!(s.contains("2 enemies"), "Should show 2 enemies: {}", s);
@@ -2329,6 +2335,9 @@ mod world_snapshot_additional_tests {
             pois,
             obstacles: vec![],
             objective,
+
+            hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+            hazard_count: 0,
         }
     }
 

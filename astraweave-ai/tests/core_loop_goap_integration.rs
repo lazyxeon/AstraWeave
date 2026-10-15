@@ -42,6 +42,9 @@ fn test_goap_mode_basic_planning() {
         pois: vec![],
         obstacles: vec![],
         objective: None,
+
+        hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+        hazard_count: 0,
     };
 
     // Generate GOAP plan
@@ -93,6 +96,9 @@ fn test_goap_mode_deterministic_planning() {
         pois: vec![],
         obstacles: vec![],
         objective: None,
+
+        hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+        hazard_count: 0,
     };
 
     // Generate plan twice
@@ -141,6 +147,9 @@ fn test_goap_mode_goal_satisfaction() {
         pois: vec![],
         obstacles: vec![],
         objective: None,
+
+        hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+        hazard_count: 0,
     };
 
     let plan = dispatch_planner(&controller, &snapshot).expect("GOAP planning should succeed");
@@ -176,6 +185,9 @@ fn test_goap_mode_policy_variants() {
         pois: vec![],
         obstacles: vec![],
         objective: None,
+
+        hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+        hazard_count: 0,
     };
 
     // Policy with "gather_craft" should produce crafting plan
@@ -232,6 +244,9 @@ fn test_goap_mode_reproducibility() {
         pois: vec![],
         obstacles: vec![],
         objective: None,
+
+        hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+        hazard_count: 0,
     };
 
     // Generate plans multiple times
@@ -291,6 +306,9 @@ fn test_goap_mode_feature_gate() {
         pois: vec![],
         obstacles: vec![],
         objective: None,
+
+        hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+        hazard_count: 0,
     };
 
     let result = dispatch_planner(&controller, &snapshot);

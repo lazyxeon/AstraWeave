@@ -53,6 +53,9 @@ fn create_combat_snapshot(frame: usize, agent_id: usize) -> WorldSnapshot {
         pois: vec![],
         obstacles: vec![],
         objective: Some("eliminate_enemies".to_string()),
+
+        hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+        hazard_count: 0,
     }
 }
 

@@ -143,6 +143,9 @@ mod world_snapshot_tests {
             }],
             obstacles: vec![IVec2::new(2, 2)],
             objective: Some("capture_point".into()),
+
+            hazards: [crate::WeaveHazard::EMPTY; crate::MAX_WEAVE_HAZARDS],
+            hazard_count: 0,
         }
     }
 
@@ -580,6 +583,9 @@ mod behavioral_correctness_tests {
             pois: vec![],
             obstacles: vec![],
             objective: None,
+
+            hazards: [crate::WeaveHazard::EMPTY; crate::MAX_WEAVE_HAZARDS],
+            hazard_count: 0,
         };
 
         let nearest = snap.nearest_enemy().expect("Should have enemies");
@@ -823,6 +829,9 @@ mod boundary_condition_tests {
             pois: vec![],
             obstacles: vec![],
             objective: None,
+
+            hazards: [crate::WeaveHazard::EMPTY; crate::MAX_WEAVE_HAZARDS],
+            hazard_count: 0,
         }
     }
 
@@ -1112,6 +1121,9 @@ mod comparison_operator_tests {
             pois: vec![],
             obstacles: vec![],
             objective: None,
+
+            hazards: [crate::WeaveHazard::EMPTY; crate::MAX_WEAVE_HAZARDS],
+            hazard_count: 0,
         };
 
         let nearest = snap.nearest_enemy().unwrap();
@@ -1142,6 +1154,9 @@ mod comparison_operator_tests {
             pois: vec![],
             obstacles: vec![],
             objective: None,
+
+            hazards: [crate::WeaveHazard::EMPTY; crate::MAX_WEAVE_HAZARDS],
+            hazard_count: 0,
         };
 
         // Both at distance 5, should pick first (id=1)
@@ -1205,6 +1220,9 @@ mod boolean_return_path_tests {
             pois: vec![],
             obstacles: vec![],
             objective: None,
+
+            hazards: [crate::WeaveHazard::EMPTY; crate::MAX_WEAVE_HAZARDS],
+            hazard_count: 0,
         };
         assert!(
             snap.has_no_enemies(),
@@ -1228,6 +1246,9 @@ mod boolean_return_path_tests {
             pois: vec![],
             obstacles: vec![],
             objective: None,
+
+            hazards: [crate::WeaveHazard::EMPTY; crate::MAX_WEAVE_HAZARDS],
+            hazard_count: 0,
         };
         assert!(
             !snap.has_no_enemies(),
@@ -1260,6 +1281,9 @@ mod boolean_return_path_tests {
             pois: vec![],
             obstacles: vec![],
             objective: None,
+
+            hazards: [crate::WeaveHazard::EMPTY; crate::MAX_WEAVE_HAZARDS],
+            hazard_count: 0,
         };
         assert!(
             !snap.has_no_enemies(),
@@ -1282,6 +1306,9 @@ mod boolean_return_path_tests {
             pois: vec![],
             obstacles: vec![],
             objective: None,
+
+            hazards: [crate::WeaveHazard::EMPTY; crate::MAX_WEAVE_HAZARDS],
+            hazard_count: 0,
         };
         assert!(!snap.has_ammo(), "Should return false when ammo is 0");
     }
@@ -1299,6 +1326,9 @@ mod boolean_return_path_tests {
             pois: vec![],
             obstacles: vec![],
             objective: None,
+
+            hazards: [crate::WeaveHazard::EMPTY; crate::MAX_WEAVE_HAZARDS],
+            hazard_count: 0,
         };
         assert!(snap.has_ammo(), "Should return true when ammo is 1");
     }
@@ -1316,6 +1346,9 @@ mod boolean_return_path_tests {
             pois: vec![],
             obstacles: vec![],
             objective: None,
+
+            hazards: [crate::WeaveHazard::EMPTY; crate::MAX_WEAVE_HAZARDS],
+            hazard_count: 0,
         };
         assert!(snap.has_ammo(), "Should return true when ammo is 100");
     }
@@ -1332,6 +1365,9 @@ mod boolean_return_path_tests {
             pois: vec![],
             obstacles: vec![],
             objective: None,
+
+            hazards: [crate::WeaveHazard::EMPTY; crate::MAX_WEAVE_HAZARDS],
+            hazard_count: 0,
         };
         assert!(
             !snap.has_pois(),
@@ -1352,6 +1388,9 @@ mod boolean_return_path_tests {
             }],
             obstacles: vec![],
             objective: None,
+
+            hazards: [crate::WeaveHazard::EMPTY; crate::MAX_WEAVE_HAZARDS],
+            hazard_count: 0,
         };
         assert!(
             snap.has_pois(),
@@ -1371,6 +1410,9 @@ mod boolean_return_path_tests {
             pois: vec![],
             obstacles: vec![],
             objective: None,
+
+            hazards: [crate::WeaveHazard::EMPTY; crate::MAX_WEAVE_HAZARDS],
+            hazard_count: 0,
         };
         assert!(
             !snap.has_objective(),
@@ -1388,6 +1430,9 @@ mod boolean_return_path_tests {
             pois: vec![],
             obstacles: vec![],
             objective: Some("capture".into()),
+
+            hazards: [crate::WeaveHazard::EMPTY; crate::MAX_WEAVE_HAZARDS],
+            hazard_count: 0,
         };
         assert!(
             snap.has_objective(),
@@ -1405,6 +1450,9 @@ mod boolean_return_path_tests {
             pois: vec![],
             obstacles: vec![],
             objective: Some("".into()),
+
+            hazards: [crate::WeaveHazard::EMPTY; crate::MAX_WEAVE_HAZARDS],
+            hazard_count: 0,
         };
         assert!(
             snap.has_objective(),

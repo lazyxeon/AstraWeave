@@ -50,6 +50,9 @@ fn create_deterministic_snapshot(seed: u64) -> WorldSnapshot {
         pois: vec![],
         obstacles: vec![],
         objective: Some("eliminate_enemy".to_string()),
+
+        hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+        hazard_count: 0,
     }
 }
 
@@ -343,6 +346,9 @@ fn create_empty_snapshot() -> WorldSnapshot {
         pois: vec![],
         obstacles: vec![],
         objective: None,
+
+        hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+        hazard_count: 0,
     }
 }
 
