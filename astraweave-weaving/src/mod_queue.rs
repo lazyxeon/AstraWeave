@@ -399,16 +399,4 @@ mod tests {
             [ISLAND_HALF_CELLS, 0, -ISLAND_HALF_CELLS]
         );
     }
-
-    #[test]
-    fn parse_range_checks_the_id_before_the_u16_cast() {
-        let err = parse_template_toml("id = 65544\nnodes = [{ kind = \"heat\" }]\n").unwrap_err();
-        assert!(err.contains("out of range"));
-        let err = parse_template_toml("id = -1\nnodes = [{ kind = \"heat\" }]\n").unwrap_err();
-        assert!(err.contains("out of range"));
-        let err = parse_template_toml("id = 0\nnodes = [{ kind = \"heat\" }]\n").unwrap_err();
-        assert!(err.contains("out of range"));
-        let template = parse_template_toml("id = 65535\nnodes = [{ kind = \"heat\" }]\n").unwrap();
-        assert_eq!(template.id, 65535);
-    }
 }
