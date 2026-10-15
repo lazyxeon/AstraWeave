@@ -3496,6 +3496,12 @@
     <priority>0.8</priority>
   </url>
   <url>
+    <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_core/ecs_adapter/fn.register_sim_extension.html</loc>
+    <lastmod>2026-10-15</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
     <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_core/ecs_adapter/index.html</loc>
     <lastmod>2026-10-15</lastmod>
     <changefreq>weekly</changefreq>

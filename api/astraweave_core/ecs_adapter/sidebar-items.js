@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"fn":["build_app"]};
+window.SIDEBAR_ITEMS = {"fn":["build_app","register_sim_extension"]};
