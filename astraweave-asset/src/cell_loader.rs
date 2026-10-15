@@ -221,7 +221,8 @@ pub fn save_cell_to_ron_sync(path: &Path, data: &CellData) -> Result<()> {
 
 /// Load an asset referenced by a cell
 pub async fn load_asset(asset_ref: &AssetRef, assets_root: &Path) -> Result<Vec<u8>> {
-    let asset_path = assets_root.join(&asset_ref.path);
+    let asset_path = astraweave_security::path::safe_under(assets_root, Path::new(&asset_ref.path))
+        .map_err(|err| anyhow::anyhow!("path traversal rejected: {err}"))?;
 
     match asset_ref.kind {
         AssetKind::Mesh => {

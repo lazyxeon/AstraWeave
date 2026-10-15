@@ -1,0 +1,23 @@
+[package]
+name = "aw-save-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[workspace]
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+
+[dependencies.aw-save]
+path = ".."
+
+[[bin]]
+name = "fuzz_awsv"
+path = "fuzz_targets/fuzz_awsv.rs"
+test = false
+doc = false
+bench = false

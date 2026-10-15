@@ -8,7 +8,7 @@ domain: rendering
 lifecycle_status: active
 integration_status: wired
 owns: [astraweave-asset, astraweave-asset-pipeline]
-doc_version: "1.2"
+doc_version: "1.3"
 last_verified_commit: 7c29b8182
 ---
 
@@ -145,7 +145,7 @@ The system is three loosely-coupled data paths. They share the `astraweave-asset
 
 #### Stage B2: Per-asset byte load + magic validation
 **File:** `astraweave-asset/src/cell_loader.rs:223-308`.
-**Role:** Read raw asset bytes from `assets_root.join(asset_ref.path)` and run a lightweight magic-number check (GLB `b"glTF"`, PNG `\x89PNG\r\n\x1a\n`, JPEG `0xFF D8 FF`).
+**Role:** Read raw asset bytes from `safe_under(assets_root, asset_ref.path)` and run a lightweight magic-number check (GLB `b"glTF"`, PNG `\x89PNG\r\n\x1a\n`, JPEG `0xFF D8 FF`). Parent segments and absolute paths are rejected. glTF buffer and image file URIs in `gltf_loader::load_uri_bytes` use the same `safe_under` against the process current directory. `data:` URIs stay in memory.
 **Inputs:** `&AssetRef`, `assets_root: &Path`.
 **Outputs:** `Vec<u8>` raw bytes — NOT decoded into `MeshData`. Decode is the consumer's responsibility.
 **Notes:** `cell_loader::AssetKind` (cell_loader.rs:12-21) is a *distinct enum* from the crate-root `AssetKind` (lib.rs:3256). See §6 naming collision.

@@ -800,8 +800,10 @@ pub mod gltf_loader {
             let data = base64::engine::general_purpose::STANDARD.decode(parts[1])?;
             Ok(data)
         } else {
-            // Treat as file path
-            let bytes = std::fs::read(uri).with_context(|| format!("Read uri {uri}"))?;
+            let base = std::env::current_dir().context("asset jail base")?;
+            let path = astraweave_security::path::safe_under(&base, std::path::Path::new(uri))
+                .map_err(|err| anyhow!("path traversal rejected: {err}"))?;
+            let bytes = std::fs::read(&path).with_context(|| format!("Read uri {uri}"))?;
             Ok(bytes)
         }
     }

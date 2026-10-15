@@ -597,14 +597,14 @@ impl GameServer {
         let (mut tx, mut rx) = ws.split();
         let mut rx_bcast = self.tx.subscribe();
 
-        // send welcome (id will be updated after ClientHello)
+        // send welcome. The id is the server player. Client hello does not replace it.
         tx.send(Message::Text(
-            serde_json::to_string(&Msg::ServerWelcome { id: 1 })?.into(),
+            serde_json::to_string(&Msg::ServerWelcome { id: self.player_id })?.into(),
         ))
         .await?;
 
         // spawn a task to push snapshots
-        let viewer_id = std::sync::Arc::new(Mutex::new(self.player_id)); // updated on ClientHello
+        let viewer_id = std::sync::Arc::new(Mutex::new(self.player_id));
         let policy = std::sync::Arc::new(Mutex::new(InterestPolicy::Radius { radius: 6 }));
         let writer_viewer = viewer_id.clone();
         let writer_policy = policy.clone();
@@ -770,6 +770,7 @@ impl GameServer {
             }
         });
 
+        let mut authed = false;
         while let Some(msg) = rx.next().await {
             let msg = msg?;
             if msg.is_text() {
@@ -781,23 +782,14 @@ impl GameServer {
                         token,
                         policy: pol,
                     } => {
+                        if !hello_token_accepted(token.as_deref()) {
+                            eprintln!("rejected hello from {name}: token is not accepted");
+                            break;
+                        }
+                        authed = true;
                         println!("Hello from {name}");
-                        if let Some(tok) = token {
-                            if tok != "dev" {
-                                println!("unauthenticated or unknown token: {}", tok);
-                            }
-                        }
-                        // Map name to viewer id
-                        let mapped = match name.as_str() {
-                            "player" | "player1" => self.player_id,
-                            "comp" | "companion" => self.companion_id,
-                            "enemy" => self.enemy_id,
-                            _ => self.player_id,
-                        };
-                        {
-                            let mut v = viewer_id.lock().await;
-                            *v = mapped;
-                        }
+                        // The connection's actor is the server player. The
+                        // client name does not select player, companion, or enemy.
                         if let Some(kind) = pol.as_deref() {
                             let mut p = policy.lock().await;
                             *p = match kind {
@@ -820,7 +812,15 @@ impl GameServer {
                         let snap = build_snapshot(&w, self.tick.load(Ordering::Relaxed), 0);
                         let _ = self.tx.send(ServerEvent::ForceSnapshot(snap));
                     }
-                    Msg::ClientProposePlan { actor_id, intent } => {
+                    Msg::ClientProposePlan {
+                        actor_id: _,
+                        intent,
+                    } => {
+                        if !authed {
+                            eprintln!("rejected plan: hello token was not accepted");
+                            break;
+                        }
+                        let actor_id = self.player_id;
                         let mut w = self.world.lock().await;
                         let mut log = |s: String| println!("{}", s);
                         let vcfg = ValidateCfg {
@@ -847,11 +847,16 @@ impl GameServer {
                         let _ = self.tx.send(ServerEvent::ApplyResult { ok, err });
                     }
                     Msg::ClientInput {
-                        actor_id,
+                        actor_id: _,
                         intent,
                         seq,
                         ..
                     } => {
+                        if !authed {
+                            eprintln!("rejected input: hello token was not accepted");
+                            break;
+                        }
+                        let actor_id = self.player_id;
                         let mut w = self.world.lock().await;
                         let mut log = |s: String| println!("{}", s);
                         let vcfg = ValidateCfg {
@@ -908,6 +913,39 @@ pub struct ReplayEvent {
 }
 
 /// Replays a sequence of inputs against a fresh world state provided by caller, stepping deterministically at 60 Hz.
+/// Debug and test builds accept the literal `dev` token. Every other build
+/// requires `AW_GAME_TOKEN` to be a non-empty value other than `dev`, and the
+/// client must present that exact value.
+fn hello_token_accepted(token: Option<&str>) -> bool {
+    let Some(token) = token else {
+        return false;
+    };
+    if token.is_empty() {
+        return false;
+    }
+    if cfg!(any(test, debug_assertions)) && token == "dev" {
+        return true;
+    }
+    let Ok(expected) = std::env::var("AW_GAME_TOKEN") else {
+        return false;
+    };
+    if expected.is_empty() || expected == "dev" {
+        return false;
+    }
+    constant_time_eq(token.as_bytes(), expected.as_bytes())
+}
+
+fn constant_time_eq(left: &[u8], right: &[u8]) -> bool {
+    if left.len() != right.len() {
+        return false;
+    }
+    let mut diff = 0u8;
+    for (a, b) in left.iter().zip(right.iter()) {
+        diff |= a ^ b;
+    }
+    diff == 0
+}
+
 pub fn replay_from(mut world: World, events: &[ReplayEvent]) -> Result<u64> {
     let dt = 1.0f32 / 60.0f32;
     let mut current_tick: u64 = 0;

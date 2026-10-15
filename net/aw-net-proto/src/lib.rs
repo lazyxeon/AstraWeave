@@ -6,6 +6,9 @@ use thiserror::Error;
 
 pub const PROTOCOL_VERSION: u16 = 1;
 
+/// LZ4 declared uncompressed size above this is rejected before decompression.
+pub const MAX_LZ4_DECLARED_OUTPUT: usize = 4 * 1024 * 1024;
+
 /// Length in bytes of an HMAC-SHA256 signature tag.
 pub const SIG_LEN: usize = 32;
 
@@ -89,8 +92,27 @@ impl SigningKey {
     /// must distribute a real key out-of-band and load it via [`Self::from_hex`].
     pub fn dev_default() -> Self {
         // 32 ASCII bytes, self-describing.
-        SigningKey(*b"ASTRAWEAVE-DEV-KEY-NOT-FOR-PROD!")
+        SigningKey(PUBLISHED_DEV_KEY)
     }
+
+    /// True when `key` is the constant published in source.
+    ///
+    /// Release servers must refuse this key. Debug and test builds may still
+    /// boot with it so local clients share one definition.
+    pub fn is_published_dev_key(&self) -> bool {
+        let mut diff = 0u8;
+        for (got, expected) in self.0.iter().zip(PUBLISHED_DEV_KEY.iter()) {
+            diff |= got ^ expected;
+        }
+        diff == 0
+    }
+}
+
+const PUBLISHED_DEV_KEY: [u8; 32] = *b"ASTRAWEAVE-DEV-KEY-NOT-FOR-PROD!";
+
+/// Release builds cannot serve traffic signed by [`SigningKey::dev_default`].
+pub fn published_dev_key_allowed() -> bool {
+    cfg!(any(test, debug_assertions))
 }
 
 /// Compute HMAC-SHA256 of `payload` keyed by `key` (arbitrary length).
@@ -240,6 +262,18 @@ pub enum Codec {
     Bincode,
 }
 
+fn decompress_lz4_capped(bytes: &[u8]) -> Result<Vec<u8>, WireError> {
+    if bytes.len() >= 4 {
+        let declared = u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]) as usize;
+        if declared > MAX_LZ4_DECLARED_OUTPUT {
+            return Err(WireError::Decode(format!(
+                "declared uncompressed size exceeds cap ({declared} > {MAX_LZ4_DECLARED_OUTPUT})"
+            )));
+        }
+    }
+    lz4_flex::decompress_size_prepended(bytes).map_err(|e| WireError::Decode(format!("lz4: {e}")))
+}
+
 pub fn encode_msg(codec: Codec, msg: &impl Serialize) -> Vec<u8> {
     match codec {
         Codec::PostcardLz4 => {
@@ -260,8 +294,7 @@ pub fn decode_msg<T: for<'de> Deserialize<'de>>(
 ) -> Result<T, WireError> {
     match codec {
         Codec::PostcardLz4 => {
-            let decompressed = lz4_flex::decompress_size_prepended(bytes)
-                .map_err(|e| WireError::Decode(format!("lz4: {e}")))?;
+            let decompressed = decompress_lz4_capped(bytes)?;
             postcard::from_bytes(&decompressed)
                 .map_err(|e| WireError::Decode(format!("postcard: {e}")))
         }

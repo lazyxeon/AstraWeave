@@ -198,10 +198,16 @@ async fn test_local_http_client(
     url: &str,
 ) -> anyhow::Result<()> {
     let model = env::var("LOCAL_LLM_MODEL").unwrap_or_else(|_| "gpt-3.5-turbo".to_string());
-    let client = if let Ok(api_key) = env::var("LOCAL_LLM_API_KEY") {
-        LocalHttpClient::with_api_key(url.to_string(), model, api_key)
-    } else {
-        LocalHttpClient::new(url.to_string(), model)
+    let allow_remote = env::var("LOCAL_LLM_ALLOW_REMOTE")
+        .map(|value| value == "1" || value.eq_ignore_ascii_case("true"))
+        .unwrap_or(false);
+    let client = match (allow_remote, env::var("LOCAL_LLM_API_KEY")) {
+        (true, Ok(api_key)) => {
+            LocalHttpClient::allowing_remote_with_api_key(url.to_string(), model, api_key)
+        }
+        (true, Err(_)) => LocalHttpClient::allowing_remote(url.to_string(), model),
+        (false, Ok(api_key)) => LocalHttpClient::with_api_key(url.to_string(), model, api_key),
+        (false, Err(_)) => LocalHttpClient::new(url.to_string(), model),
     };
 
     println!("Connecting to local LLM at: {}", url);
