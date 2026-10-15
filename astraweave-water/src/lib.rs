@@ -33,6 +33,9 @@
 //! wired consumer reads them yet — they arrive together with the consumer
 //! that needs them (swim/flow forces: F.2-followup/F.3).
 
+mod columns;
+pub use columns::{ColumnWater, WaterColumn, COLUMN_CAP};
+
 use glam::Vec3;
 
 /// What a consumer learns about the water at a point.

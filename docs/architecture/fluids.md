@@ -7,10 +7,10 @@ primary_crate: astraweave-fluids
 domain: physics-world
 lifecycle_status: dormant
 integration_status: example_only
-summary: "Post-W.1: SPH/voxel/simd_ops removed (−58.8K LoC). Now the deprecated PBD remnant + retained F.4 GPU-particle accent substrate; only examples consume. Water rendering successor lives in water.md. fluids.md §0.5,§0.6"
+summary: "GPU PBD and SSFR stay a picture. Gameplay fluid, gas, and heat live in astraweave-localsim. SSFR smooth still fails on lavapipe (#247). Water truth is water.md."
 owns: [astraweave-fluids]
-doc_version: "2.0"
-last_verified_commit: 7c29b8182
+doc_version: "2.1"
+last_verified_commit: 2d560807
 ---
 
 # Architecture Trace: Fluids
@@ -933,7 +933,7 @@ Per README:
 
 | Version | Date | Change |
 |---|---|---|
-| 2.0 | 2026-10-14 | **WS-STAB caustics.** CPU `hash_2d` is an integer mix of IEEE bits. Depth falloff uses `det_powf` (add/mul/div and `f32` constants only). `test_sample_multi_point_golden` locks `to_bits` `(1050907696, 1041034631, 1050301147)`. The WGSL hash no longer calls `sin`. |
+| 2.1 | 2026-10-15 | **Local sim owns gameplay transport.** `FluidSystem::step` stays a picture (adaptive iterations, off the replay hash). Accents may later be filled from `LocalSim::write_visual`. SSFR `ssfr_smooth_v2.wgsl` remains broken on lavapipe; deferred as #247 (write depth as `R32Float` and `textureLoad` a `texture_2d<f32>`). This crate is not deleted. |
 | 1.0–1.2 | 2026-05-12 | Initial trace + verification + deep-investigation passes |
 | 1.3 | 2026-06-11 | **F.1 revision** (§0): F.0 audit corrections (phantom `ResearchFluidSystem`, 9th orphan shader, ping-pong-defect invariants) + F.1 code deltas (FluidSystem repair, 5 SDF fixes, UnifiedSolver deletion, DFSPH/IISPH variant removal, `experimental` feature, serde unconditional, validation honesty, first GPU tests + baselines) + determinism carve-out policy. §8 invariants 21–23 rewritten; §11 closures. Body sections older than §0 should be read through the §0 corrections; a full re-verification pass is queued post-campaign. |
 | 1.4 | 2026-06-19 | **F.3 revision**: `WaterVolumeGrid` put behind the proven `WaterQuery` facade (new feature-gated `astraweave-water → astraweave-fluids` edge, cycle-safe). §8 invariants 25–28 added (gate flags READ — Must-Fix #6; conserving `flow_horizontal`; `MAX_STABLE_DT` substep; voxel `WaterQuery` determinism). §11 F.3 closures + the gate-flags/conservation questions resolved; `WaterVolumeGrid` now has its first non-demo consumer. §5/§6 updated (volume_grid.rs 928→1,049 LoC, new `apply_terrain_boundary`/`simulate_substep`/`cell_flow_blocked`). Scope held: NO sparsity, NO budget claim (→ F.3.S). See `F3_EXECUTION_REPORT.md`. |

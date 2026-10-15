@@ -1,10 +1,44 @@
 # Local Simulation Design
 
-**Status:** Phase 1, waiting for review. No crate code in this change.
+**Status:** Phase 2 in progress on this branch. The ownership split (this crate owns the field, `FieldWrite`, `FieldEvent`, `field_digest`) is the approved contract with #252.
 **Base:** `main` `85d09a2c`. Survey: [`LOCAL_SIM_ARCHAEOLOGY.md`](LOCAL_SIM_ARCHAEOLOGY.md).
-**Coordination:** PR #252 (`feat/weaving-framework`, `docs/current/WEAVING_FRAMEWORK_DESIGN.md`). Weaving owns templates, the command log, and sinks. This crate owns the field storage, the activation map, and the neighbor solver. Weaving writes modifiers through `FieldWrite`. It does not store a second grid.
+**Coordination:** PR #252. Weaving owns templates, the command log, and sinks. This crate owns storage, activation, and the solver.
 
-Phase 2 does not start until this document is approved and the schema notes on #252 are confirmed.
+## Revision 2 — pool, real transport, existing fluids
+
+The approved write record and event record stay. The eight-region cap in §2 does not. An open world needs a region around every player and AI entity, most of them asleep.
+
+| Piece | Value |
+|---|---|
+| Pool | 256 regions, allocated in `LocalSim::new` |
+| Active budget | 32 regions tick transport per tick |
+| Cell | 1 m, 16³, index `(z * 16 + y) * 16 + x` |
+| Activation order | players, then lively slots, then remaining occupied slots, always by ascending slot index |
+| Eviction | pool full → highest `subject` id that is not a player |
+| Sleep | run-length of non-zero cells, cap 1024. Above the cap the slot stays dense. Wake decodes those runs and matches the pre-sleep bytes |
+| Weave channels | `temp i16`, `phase u8`, `density_delta i8`, `flags u8`, `gravity u16` |
+| Solver channels | `volume u8` (0–255 quanta), `gas u8`, `wind [i8; 3]` |
+| Iterations | 4 flow, 4 gas, 4 heat. Always. No convergence loop |
+| Conductivity | `u8` on the material row. Each heat pass walks +X/+Y/+Z once. Flux is `(temp_a - temp_b) * min(cond) / (256 * 6)`, taken from scratch temperatures so the pass is conservative and order-independent. The divisor is six neighbor slots, so conductivity 255 cannot invert a cell in one pass |
+| Wind | `WriteOp::SetWind`. Advection steps one cell per gas pass along the dominant axis. Diffusion gives `gas/8` to each neighbor and keeps the remainder |
+| Fluid | each flow pass moves volume one step along gravity, then equalizes horizontally when the step is blocked. A cell `SolidField` says is open is a breach: volume falls through it. Volume that would leave the region stays on the edge cell |
+| Extra writes | `AddVolume` and `SetWind`. Existing `FieldWrite` ops are unchanged |
+| Events | still ignited, froze, cleared_burn, shocked |
+| Digest | `field_digest` hashes the pool, including sleep runs. Weaving stores that digest, not a second grid |
+
+`WriteOp` additions do not change the meaning of the ops already on #252.
+
+### What happens to the fluids that already exist
+
+| Piece | Decision |
+|---|---|
+| SSFR (`FluidRenderer` smooth pass) | **Defer.** It stays a visual pass. Gameplay does not read it. Lavapipe cannot build it (#247, owner: fluids, plan: write depth as `R32Float` and `textureLoad` a `texture_2d<f32>`). Driving SSFR from the grid waits on that fix. This crate exposes `write_visual` so a host can fill the existing CPU accent upload from `volume`, `gas`, and `temp` after the digest. |
+| GPU PBD `FluidSystem::step` | **Defer as a simulator, keep as a picture.** Particle state stays off the hash. Examples may still call `step`. The sim they must not hash is this crate. |
+| Buoyancy | **Wire.** `ColumnWater` is sampled before `AnalyticWater`. An empty column buffer leaves current buoyancy tests on the analytic plane. |
+| Analytic water volumes | **Wire as the far field.** Not deleted. A grid column on the same point wins. |
+| `water_movement` | **Wire the missing input.** `submersion_between(feet_y, head_y, surface_y)` turns a `WaterQuery` surface into the fraction `WaterPlayerState::update` already accepts. Thresholds stay. PR #244's motor is the caller. |
+
+The tick does not allocate and does not take a lock. Regions run in slot order on the calling thread. A slot that is not lively skips sampling and transport. Each region writes only its own cells, so a later job split does not need a lock. A scheduler that allocates is not part of the tick. The 11 ms figure is the whole frame on a GTX 1660 Ti-class machine. Transport is capped at 32 regions. On the cloud VM that ran the bench (not that GPU), the quiet 32-region tick plus digest is 1.33 ms and the busy tick (volume and heat in every region) is 5.24 ms. `benches/tick.rs` measures both. The replay case `local_sim` is in the required set of `determinism-replay.yml`.
 
 ---
 

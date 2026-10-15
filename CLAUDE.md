@@ -82,6 +82,7 @@ The workspace has a per-subsystem architecture trace campaign under `docs/archit
 | `docs/architecture/fluids.md` | Fluids |
 | `docs/architecture/gameplay.md` | Gameplay — combat, crafting, Veilweaver slice, in-crate weave bridge |
 | `docs/architecture/input.md` | Input |
+| `docs/architecture/localsim.md` | Deterministic local fluid, gas, and heat field. Activation pool, FieldWrite, FieldEvent, field_digest. |
 | `docs/architecture/nav.md` | Navigation / Pathfinding — navmesh (resolves the two-`nav`-crate conflict) |
 | `docs/architecture/net.md` | Net (snapshot-based game server) |
 | `docs/architecture/net_ecs.md` | Net-ECS + standalone matchmaking |

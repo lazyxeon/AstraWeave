@@ -20,7 +20,9 @@ fn replay_hash_cases_are_stable_and_written() {
     );
 
     let perception = perception_world_bytes();
+    let local_sim = astraweave_localsim::local_sim_case_bytes();
     let cases = [
+        ("local_sim".to_string(), sha256_hex(&local_sim)),
         ("perception_world".to_string(), sha256_hex(&perception)),
         ("planner_pure".to_string(), sha256_hex(&planner_a)),
     ];

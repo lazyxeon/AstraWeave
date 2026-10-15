@@ -7,10 +7,10 @@ primary_crate: astraweave-water
 domain: physics-world
 lifecycle_status: active
 integration_status: mixed
-summary: "Gameplay water-truth facade (WaterQuery/AnalyticWater) — sole backend after W.1 removed the voxel backend; physics buoyancy (astraweave-physics lib.rs:931) is the production consumer. Deterministic CPU truth (gate Q1). water.md §4,§5"
+summary: "Gameplay water-truth facade. ColumnWater (local-sim grid) is sampled before AnalyticWater; an empty column table leaves the analytic plane. Physics buoyancy is the production consumer. Deterministic CPU truth (gate Q1)."
 owns: [astraweave-water]
-doc_version: "1.4"
-last_verified_commit: 1e3d8f692
+doc_version: "1.5"
+last_verified_commit: 2d560807
 ---
 
 # Architecture Trace: Water (Successor) — Rendering, Query Facade & Weave-Response
@@ -21,11 +21,11 @@ last_verified_commit: 1e3d8f692
 |---|---|
 | **System name** | Water (Successor) — layered rendering + gameplay-truth query facade + weave-response deformation |
 | **Primary crates** | `astraweave-water` (truth facade), `astraweave-render` (surface + weave presentation), `astraweave-physics` (buoyancy consumer), `astraweave-gameplay` (`WeaveOp` source + `water_movement`), `astraweave-fluids` (particle accent substrate), `examples/weaving_playground` (weave/accent producers — example layer) |
-| **Document version** | 1.4 |
-| **Last verified against commit** | `1e3d8f692` |
-| **Last verified date** | 2026-07-24 |
+| **Document version** | 1.5 |
+| **Last verified against commit** | `2d560807` (parent of the local-sim column wiring) |
+| **Last verified date** | 2026-10-15 |
 | **Status** | Active (post-W.1 layered-rendering re-scope; surface + refraction + weave deformation + accents all wired; some layers example-only — see §5/§6) |
-| **Owner notes** | First trace for the W-series (Water Successor) campaign; derived from forensic reading at `7c29b8182` plus the campaign docs under `docs/campaigns/water-successor/`. **Rev 1.2 (T.W.1, 2026-07-21, `88c6ba588`):** editor water repaired + re-gated (HDR-format fix + install assert, aquatic-census enable, sea-level single-sourcing, W.2c.2 scaffolding-weave deletion); invariants 11-12 added; the W-FU-2 "woke the editor water" claim corrected in §5/Appendix B (per `TWR_WATER_RECON.md` §1.6 + `TW1_OUTCOME.md`). **Rev 1.3 (T.W.1.A, 2026-07-23, `49f1e3396`):** world-scale presentation — horizon shell (flat far annulus past every camera far plane), camera-distance amplitude fade (flat before the shell seam), per-`WaterStyle` `set_wave_params` (amplitude/steepness scale + foam threshold); invariants 13-14 added; see `TW1A_OUTCOME.md`. **Rev 1.4 (T.W.2, 2026-07-24, `1e3d8f692`):** authored bounded water bodies — `WaterVolumeDesc` + `set_water_volumes` render a per-volume patch (own uniform block: level/colors/wave, no weaves) through the same pipeline as the plane, clipped to XZ bounds, terrain-occluded; `plane_visible`/`has_renderable_content` gate a volumes-only scene; the editor `WaterVolume` entity + Carve Water brush (a terrain op, not water config) are the two authored-water surfaces. Invariant 15 added; see `TW2_OUTCOME.md`. Cross-references the (DEPRECATED-solver) [`fluids.md`](./fluids.md) and the [render trace](./render_pipeline_material_system_shader_infrastructure.md). |
+| **Owner notes** | First trace for the W-series (Water Successor) campaign; derived from forensic reading at `7c29b8182` plus the campaign docs under `docs/campaigns/water-successor/`. **Rev 1.2 (T.W.1, 2026-07-21, `88c6ba588`):** editor water repaired + re-gated (HDR-format fix + install assert, aquatic-census enable, sea-level single-sourcing, W.2c.2 scaffolding-weave deletion); invariants 11-12 added; the W-FU-2 "woke the editor water" claim corrected in §5/Appendix B (per `TWR_WATER_RECON.md` §1.6 + `TW1_OUTCOME.md`). **Rev 1.3 (T.W.1.A, 2026-07-23, `49f1e3396`):** world-scale presentation — horizon shell (flat far annulus past every camera far plane), camera-distance amplitude fade (flat before the shell seam), per-`WaterStyle` `set_wave_params` (amplitude/steepness scale + foam threshold); invariants 13-14 added; see `TW1A_OUTCOME.md`. **Rev 1.4 (T.W.2, 2026-07-24, `1e3d8f692`):** authored bounded water bodies — `WaterVolumeDesc` + `set_water_volumes` render a per-volume patch (own uniform block: level/colors/wave, no weaves) through the same pipeline as the plane, clipped to XZ bounds, terrain-occluded; `plane_visible`/`has_renderable_content` gate a volumes-only scene; the editor `WaterVolume` entity + Carve Water brush (a terrain op, not water config) are the two authored-water surfaces. Invariant 15 added; see `TW2_OUTCOME.md`. **Rev 1.5 (local sim, 2026-10-15):** `ColumnWater` is a second `WaterQuery` backend, sampled before `AnalyticWater`. The local field publishes it. `submersion_between` turns a surface height into the fraction `WaterPlayerState::update` already takes. Invariant 16 added. Cross-references the (DEPRECATED-solver) [`fluids.md`](./fluids.md), [`localsim.md`](./localsim.md), and the [render trace](./render_pipeline_material_system_shader_infrastructure.md). |
 
 ---
 
@@ -46,7 +46,7 @@ The W-series campaign (W.0 ratification, 2026-06) re-scoped water from a general
 - `examples/weaving_playground/src/{weave_producer.rs,weave_accent_producer.rs,main.rs}` — the gameplay-`WeaveOp` → render-`WeaveInstance` translation and the accent emitter. **These live at the example/binary layer, not in a library crate** (see §5, §6).
 
 **Status note:**
-The truth facade and the render surface (Gerstner + refraction + depth-foam + weave deformation) are wired into the runtime. The weave-response **producers** (the gameplay-op→render-instance and gameplay-op→accent translations) currently live ONLY in the `weaving_playground` binary; they are not yet a shared library system. `FreezeWater` weave truth (walkable ice / buoyancy blocking) is deliberately **presentation-only** today — there is no truth-coupling for it (`astraweave-gameplay/src/weaving.rs:94-105`). The voxel `WaterQuery` backend was removed in W.1; only `AnalyticWater` remains.
+The truth facade and the render surface (Gerstner + refraction + depth-foam + weave deformation) are wired into the runtime. The weave-response **producers** (the gameplay-op→render-instance and gameplay-op→accent translations) currently live ONLY in the `weaving_playground` binary; they are not yet a shared library system. `FreezeWater` weave truth (walkable ice / buoyancy blocking) is deliberately **presentation-only** today — there is no truth-coupling for it (`astraweave-gameplay/src/weaving.rs:94-105`). The voxel `WaterQuery` backend was removed in W.1. Two backends remain: `ColumnWater` (the local-sim grid, sampled first) and `AnalyticWater` (the far-field plane and AABBs). An empty column table leaves the analytic plane in force.
 
 ---
 
@@ -57,21 +57,31 @@ The system has two largely-independent data flows that meet only at the `WeaveOp
 ### 2A. Gameplay-truth flow (CPU, deterministic)
 
 ```text
+[Local field publish — astraweave-localsim::LocalSim::write_columns]
+    │
+    │ ColumnWater::fill (sorted by x, then z, one row per column)
+    ▼
+[ColumnWater — grid columns, sampled first]
+    file: astraweave-water/src/columns.rs
+    role: binary search on (x, z). Cell x covers world x in [x, x+1) via div_euclid
+    key data: WaterColumn{x, z, surface_y, density, ice}
+    │
+    │ miss (empty table, or no column at that cell)
+    ▼
 [Authoring / back-compat scalar plane / add_water_aabb]
     │
     │ AnalyticWater::set_plane(level, density) / ::add_aabb(min, max, density, drag)
     ▼
-[AnalyticWater — single owner of analytic water truth]
+[AnalyticWater — far-field plane and AABB volumes]
     file: astraweave-water/src/lib.rs
-    role: holds an optional infinite plane + N bounded AABB volumes
+    role: optional infinite plane + N bounded AABB volumes
     key data: Plane{surface_height, density}, Aabb{min,max,density,linear_drag}
     │
     │ WaterQuery::sample(point) -> Option<WaterSample{surface_height, density}>
     ▼
 [Physics buoyancy — the wired consumer]
-    file: astraweave-physics/src/lib.rs:1429 (apply_buoyancy_forces)
-    role: write-through-sync scalar plane into facade, sample per buoyant body,
-          apply Archimedes impulse (volume * density * 9.81) * dt when below surface
+    file: astraweave-physics/src/lib.rs (sample_water, then apply_buoyancy_forces)
+    role: column first, then the facade. Archimedes impulse when the body is below the surface
     key data: per-body buoyancy impulse
     │
     ▼
@@ -209,14 +219,14 @@ The system has two largely-independent data flows that meet only at the `WeaveOp
 
 | Consumer system | Interface | Data | Notes |
 |---|---|---|---|
-| Physics buoyancy | `WaterQuery::sample(point)` | `WaterSample{surface_height, density}` → Archimedes impulse | `astraweave-physics/src/lib.rs:1464`. The one wired non-test/non-example consumer of the truth facade |
-| Gameplay swim/oxygen | `WaterPlayerState::update(submersion, dt)` | Movement mode, wet status, drowning damage | `astraweave-gameplay/src/water_movement.rs:206`. Consumes a `submersion` float computed by the caller — does NOT itself call `WaterQuery` |
+| Physics buoyancy | `PhysicsWorld::sample_water` | Column hit, else `WaterSample` from the analytic plane | `astraweave-physics` `sample_water`. Empty columns leave the plane |
+| Gameplay swim/oxygen | `submersion_between(feet_y, head_y, surface_y)` then `WaterPlayerState::update` | Fraction in `[0, 1]`, then movement mode | The fraction helper is the #244 hook. `WaterPlayerState` still has no production caller |
 | HDR composite / tonemap | water draws into HDR target inside `run_water_pass` | Refracted/foamed/deformed water pixels + additive accents | `astraweave-render/src/renderer.rs:4679` |
 | Fluids accent renderer | `FluidRenderer::render_accents` via `set_hdr_overlay` closure (wgpu types only) | Splash/spray billboards | Binary-orchestrated; no render↔fluids Cargo edge (`F4_3_EXECUTION_REPORT.md` §3) |
 
 ### Bidirectional / Coupled
 
-- **Physics ↔ `astraweave-water`:** Physics owns an `AnalyticWater` field (`astraweave-physics/src/lib.rs:931`), writes the scalar plane into it each tick, and reads it back via `sample`. The dependency is `physics → water → glam`, verified acyclic (the facade is a Cargo leaf below physics; `W2_DECISIONS.md` standing red line #2).
+- **Physics ↔ `astraweave-water`:** Physics owns an `AnalyticWater` and a `ColumnWater`. `sample_water` checks the columns, then the analytic plane. `apply_buoyancy_forces` still write-through-syncs `water_level` into the plane before it samples. The dependency is `physics → water → glam`, verified acyclic.
 - **`Renderer` ↔ `WaterRenderer`:** The renderer holds an `Option<WaterRenderer>` and `take()`s it for the duration of `run_water_pass` to keep field borrows disjoint (`renderer.rs:4679-4768`). See the W-FU-3 panic-gap caveat in §11.
 
 ---
@@ -225,14 +235,15 @@ The system has two largely-independent data flows that meet only at the `WeaveOp
 
 | File | Role | Status | Notes |
 |---|---|---|---|
-| `astraweave-water/src/lib.rs` | `WaterQuery` trait + `WaterSample` + `AnalyticWater` backend | Active | The single owner of gameplay water truth. 9 inline tests incl. the gate-Q1 determinism test (`lib.rs:319-349`) |
-| `astraweave-physics/src/lib.rs:1429-1489` | `apply_buoyancy_forces` + `add_water_aabb` | Active | The one wired `WaterQuery::sample` production consumer |
+| `astraweave-water/src/lib.rs` | `WaterQuery` trait + `WaterSample` + `AnalyticWater` backend | Active | Far-field plane and AABB volumes. Gate-Q1 determinism test stays here |
+| `astraweave-water/src/columns.rs` | `ColumnWater` + `WaterColumn` | Active | Grid published by `astraweave-localsim`. Sampled before `AnalyticWater`. Cap 4096 |
+| `astraweave-physics/src/lib.rs` | `sample_water`, `set_water_columns`, `apply_buoyancy_forces` | Active | Column first, then the analytic plane. Empty columns preserve the plane |
+| `astraweave-gameplay/src/water_movement.rs` | Swim/dive/oxygen state machine plus `submersion_between` | Mixed | `submersion_between` is the pure hook for a `WaterQuery` surface (0.5 of a 2 m body is waist-deep). `WaterPlayerState::update` still has no production caller; PR #244's motor is that caller. The crate does not depend on `astraweave-water` |
 | `astraweave-render/src/water.rs` | `WaterRenderer`: chunked-LOD Gerstner surface + T.W.1.A horizon shell + T.W.2 bounded volume patches (`WaterVolumeDesc`/`VolumeGpu`/`set_water_volumes`/`generate_volume_patch`/`plane_visible`/`has_renderable_content`), `WaterUniforms`, weave instances, set_water_level/colors/rain/`set_wave_params`; T.W.1 added `target_format`; T.W.1.A added `generate_horizon_shell`, `HORIZON_*`/`WAVE_FADE_*` consts | Active | ~1,500 LoC; owns surface + weave + bounded-volume *presentation*. 13 inline tests (T.W.2 added volume-patch geometry + plane-gating/change-detect assertions) |
 | `astraweave-render/src/shaders/water.wgsl` | Vertex (Gerstner ×`wave_amp_scale`×distance-fade + weave deform + skirt) + fragment (refraction, depth-foam, freeze material) | Active | Mirrors `WaterUniforms` byte layout; `WEAVE_MAX_DEFORM` must equal `SKIRT_DEPTH`; `WAVE_FADE_START/END` must mirror `water.rs` (test-pinned verbatim) |
 | `astraweave-render/src/renderer.rs` | `run_water_pass`, `update_water`, `set_water_level`, `set_water_weave_instances`, `set_hdr_overlay`, scene-color snapshot; T.W.1: `set_water_renderer` asserts the installed pipeline's `target_format == hdr_format()` | Active | Split water pass called from both `render()` and `draw_into()`. Caveat (T.W.1 finding): headless `render()` is a NO-OP (`acquire_surface_texture` → None → early Ok) and the headless uncaptured-error handler only LOGS validation errors — headless draw tests must use `draw_into` + an error scope |
 | `astraweave-gameplay/src/types.rs:42-58` | `WeaveOpKind` enum (incl. `LowerWater`/`RaisePlatform`/`FreezeWater`) + `WeaveOp` | Active | `#[non_exhaustive]` — the deform trigger source |
 | `astraweave-gameplay/src/weaving.rs:70-105` | `WeaveOpKind` application (incl. `FreezeWater` presentation-only arm) | Active | `FreezeWater` consumes weather budget + carries `op.a`; NO truth mutation (W.2c.3) |
-| `astraweave-gameplay/src/water_movement.rs` | Swim/dive/oxygen/wet-status state machine (`WaterPlayerState`, `WaterMovementHelper`) | Dormant (tested only) | Self-contained; consumes a scalar `submersion` float clamped in `update` (`water_movement.rs:206-207`), NOT `WaterQuery`; the crate has no `astraweave-fluids`/`astraweave-water` dep. Zero workspace callers — verified, and concordant with `gameplay.md` §5/§6 which marks it Dormant residue of an abandoned Enshrouded-style water plan. ~50 inline mutation-resistant tests. (Prior "Active" status corrected — it compiles but has no production driver) |
 | `examples/weaving_playground/src/weave_producer.rs` | `WaterWeaveProducer`: `WeaveOp` → `WeaveInstance` + lifetime envelope | **Example-only** | Binary glue; the only place knowing BOTH gameplay+render weave types. 5 tests. NOT a library crate |
 | `examples/weaving_playground/src/weave_accent_producer.rs` | `WaterAccentProducer`: `WeaveOp` → `SecondaryParticle` accent emitters | **Example-only** | Binary glue; CPU particle aging + xorshift PRNG. 8 tests. NOT a library crate |
 | `examples/weaving_playground/src/main.rs` | Demo driver: builds `WaterRenderer`, drives producers, registers HDR overlay | **Example** | The wiring that lights the whole presentation flow live |
@@ -373,6 +384,7 @@ The honest summary: **water truth and the rendered surface are wired; the weave/
 | 13 | (T.W.1.A) The horizon shell's outer extent exceeds every camera far plane the surface is judged under (judging far=40,000; production `min(far, full-fog)`=1,800) with margin — the visible water boundary is the far-plane arc or fog, never a mesh edge | Yes | `test_horizon_covers_both_view_regimes` (≥1.25× the larger regime); shell drawn under the grid's dormant condition (invariant 8 unchanged) |
 | 14 | (T.W.1.A) Gerstner amplitude is exactly zero before the horizon shell's inner edge under worst-case camera offset (fade end 420 ≤ 480 − 32·√2), and the fade does not touch the LOD0/LOD1 near field; the WGSL fade consts mirror `water.rs` verbatim | Yes | `test_wave_fade_flat_before_shell_seam` + `test_wgsl_mirrors_wave_fade_constants` |
 | 15 | (T.W.2) Authored volume patches render through the same pipeline as the plane with their own per-volume uniform block and NO weave instances (a lake never inherits a sea-aimed weave); the water pass is skipped only when `has_renderable_content()` is false (no plane chunks AND no volumes); an unchanged volume set is a no-op, a changed set invalidates bind groups | Yes | `test_water_renderer_new_and_update` (volume count, plane-gating, change-detect vs rebuild); `test_volume_patch_geometry` (flat, upward-wound, spans extents) |
+| 16 | (local sim) `ColumnWater` is sampled before `AnalyticWater`. An empty table returns no sample, so the analytic plane is unchanged. A stored column at integer `(x, z)` covers world x in `[x, x+1)` and z in `[z, z+1)` (`div_euclid`). Ice columns publish density 0 | Yes | `columns::tests`, physics `column_water_wins_over_the_analytic_plane` |
 
 ---
 
@@ -421,8 +433,7 @@ Measured on the documented min-spec: **NVIDIA GeForce GTX 1660 Ti with Max-Q Des
 ## 11. Open Questions / Parked Decisions
 
 - **Relocating the producers out of the example layer (F.4.3-editor follow-on).** `WaterWeaveProducer` and `WaterAccentProducer` live in the `weaving_playground` binary with zero library callers. The editor's accent pass mechanism is already live in `draw_into`, but visible editor accents need the producers in a shared crate + an editor producer feed (`F4_3_EXECUTION_REPORT.md` §3/§5). When/where is this relocation done?
-- **Is `astraweave-gameplay::water_movement` (`WaterPlayerState`) wired to a game loop?** Confirmed **not wired** (it is dormant, tested-only). It is fully tested but in-design-only; the parked question is who would eventually wire it and who would compute the `submersion` float it consumes.
-  - *Verification note (2026-06-25):* a workspace `rg WaterPlayerState|WaterMovementHelper` at `7c29b8182` confirms **zero non-test callers** — every hit is inside `#[cfg(test)]` modules (`water_movement.rs`, `mutation_tests.rs`) or `astraweave-gameplay/tests/mutation_resistant_comprehensive_tests.rs`. It is re-exported via `pub use water_movement::*` (`astraweave-gameplay/src/lib.rs:51`) but consumed by nothing. `update` takes a caller-supplied scalar `submersion` (`water_movement.rs:206-207`); there is NO `WaterQuery`/`astraweave-fluids` bridge — `gameplay.md` §6 records the crate has no such dep and frames the module as dormant residue of an abandoned Enshrouded-style water plan (`docs/current/WATER_SYSTEM_ENHANCEMENT_PLAN.md` staleness banner). The factual "no caller" question is now resolved across two independent traces; who (if anyone) wires it and computes `submersion` remains the parked decision.
+- **Is `astraweave-gameplay::water_movement` (`WaterPlayerState`) wired to a game loop?** The state machine is still uncalled outside tests. **Closed, 2026-10-15:** `submersion_between(feet_y, head_y, surface_y)` is the function that turns a `WaterQuery` surface into the fraction `update` already accepts. PR #244's traversal motor is the production caller. The gameplay crate still does not depend on `astraweave-water`.
 - **`FreezeWater` (and parted-corridor / raised-platform) truth-coupling.** Today these are presentation-only (`weaving.rs:94-105`). The deferred "gameplay-truth-coupling phase" would make a frozen patch walkable / block buoyancy via a *separate facade concern* (with the existing `WeaveOpKind::LowerWater` precedent). When this lands, the truth side gains a new `WaterQuery` consumer or backend.
 - **W-FU-3: `run_water_pass` take/restore panic gap.** A panic between `self.water_renderer.take()` and restore would drop the `WaterRenderer` for the process lifetime (`renderer.rs:4684`, `W2B2_EXECUTION_REPORT.md` §6). The F.4.3 overlay correctly fires *outside* that window but does not close the pre-existing gap. The normal path never panics (wgpu errors route through the error scope). Is closing this gap worth a refactor?
 - **Provisional 2.0 ms budget ceiling.** Still provisional pending a real-scene capture; the headless probe renders a near-empty default scene (`W2A_EXECUTION_REPORT.md` §2/§7). Should a windowed-capture budget pass replace the assumption?
@@ -451,10 +462,10 @@ Measured on the documented min-spec: **NVIDIA GeForce GTX 1660 Ti with Max-Q Des
 ## Appendix A: Quick reference for agents
 
 **If you're working on this system, remember:**
-1. **Truth vs presentation is the load-bearing split.** Gameplay water truth → `astraweave-water` (`WaterQuery`/`AnalyticWater`, CPU, deterministic). Rendered surface + weave deformation → `astraweave-render` (`WaterRenderer`, GPU, non-deterministic, excluded from world_hash/replay/net). Do not put presentation state behind the facade, and do not make `render` depend on `water`.
+1. **Truth vs presentation is the load-bearing split.** Gameplay water truth → `astraweave-water` (`WaterQuery`, `ColumnWater` then `AnalyticWater`, CPU, deterministic). Rendered surface + weave deformation → `astraweave-render` (`WaterRenderer`, GPU, non-deterministic, excluded from world_hash/replay/net). Do not put presentation state behind the facade, and do not make `render` depend on `water`.
 2. **The weave producers are example-only.** `WaterWeaveProducer`/`WaterAccentProducer` live in the `weaving_playground` binary with zero library callers. Don't describe them as a shipped library system; relocating them is logged but undone.
-3. **`FreezeWater` is presentation-only.** No walkable ice / buoyancy block exists yet.
-4. **The solver is gone.** `astraweave-fluids` contributes only the particle-accent substrate (+ deferred effects). The SPH/voxel sim was removed in W.1 (tag `w0-pre-deprecation`). Don't resurrect it — the documented restart is a different method family (APIC/MLS-MPM).
+3. **`FreezeWater` is presentation-only.** No walkable ice / buoyancy block exists yet. Local-sim ice is a separate phase on the field grid; it publishes a column with density 0.
+4. **The solver is gone from this crate.** `astraweave-fluids` contributes the particle picture. Gameplay fluid, gas, and heat live in `astraweave-localsim` and publish columns here. Don't resurrect the voxel `WaterQuery` backend.
 5. **Keep weave deform within `±SKIRT_DEPTH`.** Otherwise a deformation re-exposes a LOD seam.
 
 **Files you'll most likely touch:**
