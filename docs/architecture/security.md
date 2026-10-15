@@ -9,8 +9,8 @@ lifecycle_status: active
 integration_status: partial
 summary: "path validation plus the deterministic Rhai sandbox and mod loader are wired; anticheat, async script helper, signatures, and secrets stay dormant. security.md"
 owns: [astraweave-secrets, astraweave-security]
-doc_version: "1.4"
-last_verified_commit: b47fb566
+doc_version: "1.5"
+last_verified_commit: adc8ade2
 ---
 
 # Architecture Trace: Security System (script sandbox, anticheat, signatures, path validation, secrets)
@@ -21,11 +21,11 @@ last_verified_commit: b47fb566
 |---|---|
 | **System name** | Security System (script sandbox, anticheat, signatures, path/deserialization validation, secrets) |
 | **Primary crates** | [`astraweave-security`](../../astraweave-security), [`astraweave-secrets`](../../astraweave-secrets) |
-| **Document version** | 1.4 |
-| **Last verified against commit** | `b47fb566` |
+| **Document version** | 1.5 |
+| **Last verified against commit** | `adc8ade2` |
 | **Last verified date** | 2026-10-15 |
 | **Status** | Path validation, the deterministic Rhai sandbox, and the mod loader are wired. Anticheat, the async script helper, signatures, and secrets remain dormant. |
-| **Owner notes** | Crates originate from a 2025 "Phase 1 Week 2" remediation effort (see [`docs/archive/remediation/PHASE1_WEEK2_COMPLETE.md`](../../docs/archive/remediation/PHASE1_WEEK2_COMPLETE.md)). Active follow-up work is owned by the S-series security campaign ([`docs/campaigns/security/S0_FINDINGS_SEED.md`](../../docs/campaigns/security/S0_FINDINGS_SEED.md)) and the hardening plan ([`docs/current/SECURITY_AUDIT_AND_HARDENING_PLAN.md`](../../docs/current/SECURITY_AUDIT_AND_HARDENING_PLAN.md)). |
+| **Owner notes** | 1.5 (2026-10-15): `default_allowed_llm_domains` is `localhost` only. `SecurityPlugin::build` uses that list. `sanitize_llm_prompt` still prefixes `SAFE:`. Crates originate from a 2025 "Phase 1 Week 2" remediation effort (see [`docs/archive/remediation/PHASE1_WEEK2_COMPLETE.md`](../../docs/archive/remediation/PHASE1_WEEK2_COMPLETE.md)). Active follow-up work is owned by the S-series security campaign ([`docs/campaigns/security/S0_FINDINGS_SEED.md`](../../docs/campaigns/security/S0_FINDINGS_SEED.md)) and the hardening plan ([`docs/current/SECURITY_AUDIT_AND_HARDENING_PLAN.md`](../../docs/current/SECURITY_AUDIT_AND_HARDENING_PLAN.md)). |
 
 ---
 
@@ -38,7 +38,7 @@ Provides a grab-bag of security primitives: path-traversal validation, size-limi
 It was created to close a set of remediation findings (insecure secret storage, unbounded deserialization, path traversal, unsandboxed scripting) catalogued during a 2025 security/remediation pass.
 
 **Where it primarily lives:**
-- [`astraweave-security/src/lib.rs`](../../astraweave-security/src/lib.rs) (955 lines incl. tests) — plugin, sandbox, anti-cheat, LLM validator, crypto helpers
+- [`astraweave-security/src/lib.rs`](../../astraweave-security/src/lib.rs) (960 lines incl. tests) — plugin, sandbox, anti-cheat, LLM validator, crypto helpers
 - [`astraweave-security/src/path.rs`](../../astraweave-security/src/path.rs) — `safe_under`, `validate_extension`
 - [`astraweave-security/src/deserialization.rs`](../../astraweave-security/src/deserialization.rs) — size-limited JSON/TOML/RON parsing
 - [`astraweave-secrets/src/`](../../astraweave-secrets/src) — `SecretManager`, `SecretBackend`, `KeyringBackend`, `SecretValue`, and the `aw_secrets` CLI bin
@@ -149,13 +149,13 @@ There is no single pipeline. The system is a set of independent utility surfaces
 | **`CAntiCheat`** | ECS component: `player_id`, `trust_score` (f32), `last_validation`, `anomaly_flags`. The `C` prefix marks it an ECS component. | `lib.rs:85-92` |
 | **`trust_score`** | f32 in [0,1]; multiplicatively decayed per detected anomaly, EMA-blended frame-to-frame. | `lib.rs:293-334` |
 | **`anomaly_flags`** | Free-form `Vec<String>` of flag names. Only three are interpreted: `rapid_input`, `impossible_movement`, `memory_tamper`. | `lib.rs:299-326` |
-| **`LLMValidator`** | Config struct (banned patterns, allowed domains, max length, content-filter toggle) consumed by `sanitize_llm_prompt`. | `lib.rs:77-83` |
+| **`LLMValidator`** | Config struct (banned patterns, allowed domains, max length, content-filter toggle) consumed by `sanitize_llm_prompt`. `SecurityPlugin` fills domains from `default_allowed_llm_domains` (`localhost` only). | `lib.rs:77-83` |
 | **`TelemetryData` / `TelemetryEvent`** | In-memory event log resource and per-event record. | `lib.rs:33-58` |
 | **`ReadLimiter`** | Private `Read` adapter that errors once a byte budget is exhausted. | `deserialization.rs:14-43` |
 
 ### Terms to NOT confuse
 
-- **Two unrelated "signature" surfaces.** `astraweave-security`'s `generate_signature`/`verify_signature` (`lib.rs:405-419`) are **ed25519** helpers (via `ed25519-dalek`) with **zero callers**. The networking session-input signing described as "the signature work" is **HMAC-SHA256** and lives entirely in `aw-net-proto` (`SigningKey` / `input_frame_sig_payload`), not here. See [`docs/architecture/net_ecs.md`](net_ecs.md) and [`docs/audits/net_trio_signature_remediation_findings_2026-06.md`](../../docs/audits/net_trio_signature_remediation_findings_2026-06.md). Do not conflate the two; they share no code.
+- **Two unrelated "signature" surfaces.** `astraweave-security`'s `generate_signature`/`verify_signature` (`lib.rs:411-418`) are **ed25519** helpers (via `ed25519-dalek`) with **zero callers**. The networking session-input signing described as "the signature work" is **HMAC-SHA256** and lives entirely in `aw-net-proto` (`SigningKey` / `input_frame_sig_payload`), not here. See [`docs/architecture/net_ecs.md`](net_ecs.md) and [`docs/audits/net_trio_signature_remediation_findings_2026-06.md`](../../docs/audits/net_trio_signature_remediation_findings_2026-06.md). Do not conflate the two; they share no code.
 - **"Secrets" (the crate) vs `SecretValue`.** `astraweave-secrets` is the keyring crate; `SecretValue` is its zeroizing byte-wrapper. Neither is referenced by `astraweave-security`.
 - **`allowed_functions` (sandbox) vs `allowed_domains` (LLM).** Different structs, different fields; both are **defined but never consulted** (see §6 traps).
 
@@ -168,8 +168,8 @@ There is no single pipeline. The system is a set of independent utility surfaces
 | Source system | Interface | Data | Notes |
 |---|---|---|---|
 | `astraweave-ecs` | `Plugin` trait, `App::add_system`, `World::insert_resource`, `World::entities_with::<CAntiCheat>` | resources + systems | Only exercised by `SecurityPlugin` (dormant); `lib.rs:16,128-179`. |
-| `rhai` | `rhai::Engine`, `Scope`, `Dynamic`, `compile`/`eval_ast_with_scope` | script source + context vars | Sandbox internals; `lib.rs:369-403`. |
-| `ed25519-dalek`, `sha2`, `hex`, `rand` | `SigningKey`/`VerifyingKey`, `Sha256` | crypto primitives | `lib.rs:405-427`; no internal or external consumer. |
+| `rhai` | `rhai::Engine`, `Scope`, `Dynamic`, `compile`/`eval_ast_with_scope` | script source + context vars | Sandbox internals; `lib.rs:374-408`. |
+| `ed25519-dalek`, `sha2`, `hex`, `rand` | `SigningKey`/`VerifyingKey`, `Sha256` | crypto primitives | `lib.rs:411-424`; no internal or external consumer. |
 | `keyring` (v3.6) | `keyring::Entry::new`/`get_password`/`set_password`/`delete_credential` | OS credential store under service `"astraweave.secrets"` | `keyring_backend.rs`. |
 | `serde_json` / `toml` / `ron` | `from_reader` / `from_str` | config bytes | Deserialization limiters; `deserialization.rs:45-84`. |
 
@@ -197,7 +197,7 @@ There is no single pipeline. The system is a set of independent utility surfaces
 |---|---|---|---|
 | [`astraweave-security/src/path.rs`](../../astraweave-security/src/path.rs) | Path-traversal + extension validation | **Active (WIRED)** | The only surface with production callers (3 sites). `#![forbid(unsafe_code)]` at crate root. |
 | [`astraweave-security/src/sandbox.rs`](../../astraweave-security/src/sandbox.rs) | Deterministic Rhai engine, capability allowlist, mod manifest, path-capped script reads, reload queue | **Active (WIRED)** | Callers: `astraweave-author`, `astraweave-scripting`, `tools/aw_editor/src/rhai_reload.rs`. `load_mod_dir` keys scripts by the manifest path. No wall clock on the sim executor. |
-| [`astraweave-security/src/lib.rs`](../../astraweave-security/src/lib.rs) | `SecurityPlugin`, `ScriptSandbox`, anti-cheat, `LLMValidator`, crypto | **Mixed** | `ScriptSandbox` is now filled by `sandbox::SandboxEngine::into_script_sandbox` for production. `SecurityPlugin`, `execute_script_sandboxed`, anticheat, and crypto helpers still have no production caller. |
+| [`astraweave-security/src/lib.rs`](../../astraweave-security/src/lib.rs) | `SecurityPlugin`, `ScriptSandbox`, anti-cheat, `LLMValidator`, crypto | **Mixed** | `ScriptSandbox` is now filled by `sandbox::SandboxEngine::into_script_sandbox` for production. `SecurityPlugin::build` allows only `default_allowed_llm_domains` (`localhost`). `SecurityPlugin`, `execute_script_sandboxed`, anticheat, and crypto helpers still have no production caller. |
 | [`astraweave-security/src/deserialization.rs`](../../astraweave-security/src/deserialization.rs) | `parse_{json,toml,ron}_limited`, `ReadLimiter` | **In-design-but-tested (DORMANT)** | Zero production callers; only own crate + 2 test files. |
 | [`astraweave-secrets/src/manager.rs`](../../astraweave-secrets/src/manager.rs) | `SecretManager`, lazy `global()` singleton | **In-design-but-tested (DORMANT)** | Used only by the `aw_secrets` bin and tests. |
 | [`astraweave-secrets/src/backend.rs`](../../astraweave-secrets/src/backend.rs) | `SecretBackend` trait, `SecretValue`, `MockBackend` (test-cfg) | **In-design-but-tested (DORMANT)** | `MockBackend` is `#[cfg(test)]`. `SecretValue` zeroizes on drop. |
@@ -217,13 +217,13 @@ There is no single pipeline. The system is a set of independent utility surfaces
 
 | Abstraction | Files | Status | Disposition |
 |---|---|---|---|
-| ed25519 signing (`generate_signature`/`verify_signature`) | `lib.rs:405-419` | Dormant | Coexists with the *real, wired* HMAC-SHA256 input signing in `aw-net-proto`. Different algorithm, different crate, no shared code. [Disposition is S-series's call, not this doc's.] |
+| ed25519 signing (`generate_signature`/`verify_signature`) | `lib.rs:411-418` | Dormant | Coexists with the *real, wired* HMAC-SHA256 input signing in `aw-net-proto`. Different algorithm, different crate, no shared code. [Disposition is S-series's call, not this doc's.] |
 | `astraweave-security::path::safe_under` vs ad-hoc `fs` calls | `path.rs` vs the rest of the workspace | Active (wired) but partial adoption | Only 3 production sites adopt it; most file I/O in the workspace does not route through it. [`tools/aw_editor/PRODUCTION_READINESS_AUDIT.md:438`](../../tools/aw_editor/PRODUCTION_READINESS_AUDIT.md) recommends broader adoption. |
 | `KeyringBackend` (prod) vs env-var secret reads | `keyring_backend.rs` vs `astraweave-ai/src/orchestrator.rs:376-412` | Both live | The hardening plan (P1 finding 1) notes secrets are *still* read from env vars in the orchestrator/examples while `SecretManager` sits unused. See [`SECURITY_AUDIT_AND_HARDENING_PLAN.md:40-43`](../../docs/current/SECURITY_AUDIT_AND_HARDENING_PLAN.md). |
 
 ### Naming collisions
 
-- **"signature":** In `astraweave-security`, means an ed25519 `Signature` (`lib.rs:405`). In the net stack (`aw-net-proto`), means an HMAC-SHA256 tag over an input frame. These are unrelated; an agent searching "signature" will hit both.
+- **"signature":** In `astraweave-security`, means an ed25519 `Signature` (`lib.rs:411`). In the net stack (`aw-net-proto`), means an HMAC-SHA256 tag over an input frame. These are unrelated; an agent searching "signature" will hit both.
 - **"sandbox":** `ScriptSandbox` here (Rhai) is distinct from any GPU/process sandbox. The sim path is `sandbox::execute_deterministic`. `execute_script_sandboxed` is the older async helper and is not that path.
 
 ### Known cognitive traps
@@ -234,7 +234,7 @@ There is no single pipeline. The system is a set of independent utility surfaces
 
 - **Trap: `sanitize_llm_prompt` does not sanitize.**
   - **Why it's confusing:** The name and `enable_content_filtering` flag imply prompt-injection defense.
-  - **What's actually true:** On a suspicious substring (`hack`/`exploit`/`cheat`/`bypass`) it returns `Ok(format!("SAFE: {}", prompt))` — it **prefixes** the unchanged prompt rather than blocking it (`lib.rs:355-363`). It blocks only exact banned-pattern substrings and over-length prompts. Documented as a no-op in [`SECURITY_AUDIT_AND_HARDENING_PLAN.md:64-67`](../../docs/current/SECURITY_AUDIT_AND_HARDENING_PLAN.md) (P2 finding 1) and CLAUDE.md does not list it but the hardening plan does.
+  - **What's actually true:** On a suspicious substring (`hack`/`exploit`/`cheat`/`bypass`) it returns `Ok(format!("SAFE: {}", prompt))` — it **prefixes** the unchanged prompt rather than blocking it (`lib.rs:365`). It blocks only exact banned-pattern substrings and over-length prompts. Documented as a no-op in [`SECURITY_AUDIT_AND_HARDENING_PLAN.md:64-67`](../../docs/current/SECURITY_AUDIT_AND_HARDENING_PLAN.md) (P2 finding 1) and CLAUDE.md does not list it but the hardening plan does.
 
 - **Trap: `KeyringBackend::list_keys` always returns `Ok(vec![])`.**
   - **Why it's confusing:** Callers may assume an empty list means "no secrets stored."
@@ -382,6 +382,7 @@ Performance is largely irrelevant for the wired surface (path validation runs at
 |---|---|---|
 | 1.2 | 2026-10-14 | WS-MOD. Deterministic sandbox, mod manifests, and the reload queue are wired. Async `execute_script_sandboxed` remains unconsulted for the allowlist. |
 | 1.3 | 2026-10-14 | `load_mod_dir` script map keys are the relative manifest paths. |
+| 1.5 | 2026-10-15 | Rebase onto `adc8ade2`. `default_allowed_llm_domains` is `localhost` only, and `SecurityPlugin::build` uses it. |
 | 1.4 | 2026-10-15 | `queue_weave` on capability `Weave`. `MOD_COMMAND_API_VERSION` is 2. `max_weaves` defaults to 64 and is not a terrain-edit spend. |
 | 1.1 | 2026-06-25 | Prior verification at `7c29b8182`. Path validation wired; other surfaces dormant. |
 
