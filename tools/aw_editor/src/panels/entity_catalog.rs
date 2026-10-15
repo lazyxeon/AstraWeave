@@ -879,14 +879,7 @@ fn draw_prop_icon(pixels: &mut [u8], size: usize, r: u8, g: u8, b: u8) {
 
 /// Draw a short text label onto a pixel buffer using a tiny 3×5 pixel font.
 /// `x` and `y` are the top-left corner of the first character.
-fn draw_label(
-    pixels: &mut [u8],
-    size: usize,
-    text: &str,
-    x: usize,
-    y: usize,
-    color: (u8, u8, u8),
-) {
+fn draw_label(pixels: &mut [u8], size: usize, text: &str, x: usize, y: usize, color: (u8, u8, u8)) {
     let (r, g, b) = color;
     // 3×5 pixel font bitmaps for A-Z and 0-9. Each char is 5 rows of 3-bit patterns.
     #[rustfmt::skip]
@@ -1358,7 +1351,6 @@ impl EntityCatalogState {
                         let start = row_idx * columns;
                         let end = (start + columns).min(pack_entries.len());
                         for entry in &pack_entries[start..end] {
-
                             // Lazy thumbnail generation
                             if !self.thumbnails.contains_key(&entry.path) {
                                 let tex = generate_thumbnail(ctx, entry);

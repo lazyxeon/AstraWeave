@@ -770,9 +770,7 @@ impl TerrainPanel {
 
     /// Called when the brush stroke ends (mouse released).
     /// Returns undo data if any chunks were modified during the stroke.
-    pub fn end_brush_stroke(
-        &mut self,
-    ) -> Option<crate::terrain_integration::TerrainHeightStroke> {
+    pub fn end_brush_stroke(&mut self) -> Option<crate::terrain_integration::TerrainHeightStroke> {
         self.flatten_target_height = None;
         self.terrain_state.end_stroke()
     }

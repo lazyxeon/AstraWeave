@@ -135,10 +135,7 @@ impl EditorAnimationBridge {
 
     /// Assign a clip to an entity and start playing.
     pub fn assign_clip(&mut self, entity_id: u64, clip_index: usize) {
-        let state = self
-            .entity_states
-            .entry(entity_id)
-            .or_default();
+        let state = self.entity_states.entry(entity_id).or_default();
         state.clip_index = Some(clip_index);
         state.time = 0.0;
         state.playing = true;

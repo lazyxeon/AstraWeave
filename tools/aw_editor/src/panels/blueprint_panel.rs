@@ -948,8 +948,8 @@ impl BlueprintPanel {
                 });
                 ui.label(
                     RichText::new("1.0x = exact replica, <1.0 = compress, >1.0 = expand")
-                    .weak()
-                    .size(10.0),
+                        .weak()
+                        .size(10.0),
                 );
             }
         }

@@ -6192,13 +6192,11 @@ impl TabViewer for EditorTabViewer {
                                                 .on_hover_text("Clear texture")
                                                 .clicked()
                                         {
-                                            self.emit_event(
-                                                PanelEvent::MaterialTextureChanged {
-                                                    entity_id,
-                                                    slot: slot.to_string(),
-                                                    path: String::new(),
-                                                },
-                                            );
+                                            self.emit_event(PanelEvent::MaterialTextureChanged {
+                                                entity_id,
+                                                slot: slot.to_string(),
+                                                path: String::new(),
+                                            });
                                         }
                                     });
                                 }
