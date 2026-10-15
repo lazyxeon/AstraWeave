@@ -6,8 +6,8 @@ description: "Typed causal events, parent links, and baked consequence rules"
 primary_crate: astraweave-causality
 domain: gameplay
 lifecycle_status: active
-integration_status: test_only
-summary: "Opt-in ring. No production caller until destruction issue #279 publishes real collapse bounds."
+integration_status: partial
+summary: "Opt-in ring. BridgeAgent drains a collapse notice into the cut. Editor play does not."
 owns: [astraweave-causality]
 doc_version: "1.0"
 last_verified_commit: ea8ec329
@@ -24,7 +24,7 @@ last_verified_commit: ea8ec329
 | **Document version** | 1.0 |
 | **Last verified against commit** | `ea8ec329` (base) plus the crate landing on this branch |
 | **Last verified date** | 2026-10-15 |
-| **Status** | Active library, test-only integration |
+| **Status** | Active library. Headless Aravath caller. Editor play does not call it. |
 | **Owner notes** | Approved from `docs/current/CAUSAL_WORLD_DESIGN.md`. The Aravath slice waits on deferred-failure #279. |
 
 ---
@@ -41,7 +41,7 @@ Quests, AI, and persistence need consequences of a world change (a cut span, a b
 `astraweave-causality/src/rules.rs` (kinds and `bridge_rules`) and `astraweave-causality/src/world.rs` (`tick`, hash, rollback).
 
 **Status note:**
-Games opt in by depending on the crate. Nothing in the editor or the Aravath runtime depends on it yet. `BridgeAgent` is on #263, and the slice stays unhooked until #279 replaces the placeholder collapse box.
+Games opt in by depending on the crate. `aravath_runtime::BridgeAgent` is the production caller. It drains the collapse notice from the temporary destruction copy. The editor does not.
 
 ---
 
@@ -99,7 +99,7 @@ This crate does not call destruction, nav, weaving, quests, or an LLM client.
 | Consumer | Interface | Data |
 |---|---|---|
 | Replay job | `replay_hash` written to `replay-hash-causal.json` | Case `causal_bridge` |
-| Future Aravath host | `stock`, `stance`, `quest_template`, `quest_complete`, `events` | After #279 |
+| `aravath_runtime::BridgeAgent` | `push_input`, then `stock`, `stance`, `quest_template`, `quest_complete` | Collapse notice converted to milli-units |
 
 ---
 
@@ -122,7 +122,7 @@ This crate does not call destruction, nav, weaving, quests, or an LLM client.
 | `WorldEventGenerator` already generates events | Leave it off the tick. It uses the wall clock and a live client. |
 | `WeaveConsequence` already names an after-effect | Leave the `f32` struct. This ring does not grow another `CollapseBridge` arm. |
 | `replay_system` already has `ReplayEvent` | It does not apply events. This crate hashes its own bytes. WS-SAVE may copy them later. |
-| Destruction `GeometryNotice` reason 2 is a unit box (#279) | The bridge case carries the authored span. It does not drain notices. |
+| Destruction `GeometryNotice` reason 2 was a unit box | #279 fixed it on #243 at `7a571045`. This branch carries that fix in the temporary destruction copy. `causal_bridge` still uses the authored span. `BridgeAgent` uses the drained notice. |
 | Two `NavChangeKind` copies (#251 and #263) | This crate does not pathfind. The host, later, submits `ACTOR_CELL` and `GEOMETRY_CUT`. |
 
 ---
@@ -153,5 +153,5 @@ This crate does not call destruction, nav, weaving, quests, or an LLM client.
 
 ## 11. Open Questions
 
-1. When #279 lands, the host on #263 should admit `GEOMETRY_CUT` from the drained notice bounds and stop passing the authored constant. Owner: the slice PR, after #279.
+1. Drop the temporary `astraweave-destruction` copy, including the `7a571045` bounds fix, when #243 lands. Owner: the destruction merge.
 2. WS-SAVE still does not apply `ReplayEvent`. Copying `canonical_bytes` into that log is a later change and does not edit `aw-save`.

@@ -349,6 +349,9 @@ dependencies = [
 name = "aravath_runtime"
 version = "0.4.0"
 dependencies = [
+ "astraweave-causality",
+ "astraweave-destruction",
+ "astraweave-math",
  "astraweave-nav",
  "glam",
 ]
