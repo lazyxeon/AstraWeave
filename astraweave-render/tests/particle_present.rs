@@ -64,11 +64,21 @@ fn fingerprint(seed: u32) -> Vec<u8> {
 
 #[test]
 fn same_seed_and_dt_repeat_the_presentation_fingerprint() {
-    let a = fingerprint(7);
-    let b = fingerprint(7);
-    assert_eq!(a, b);
-    let other = fingerprint(9);
-    assert_ne!(a, other);
+    // Each call builds a new device and runs two updates. The buffers start
+    // at zero (`mapped_at_creation`), the emit/update shaders have no
+    // atomics, and seed and dt are the only varying uniforms. A second run
+    // of the same seed must match bit for bit. Seed 9 must match itself and
+    // must differ from seed 7.
+    let seed_7_a = fingerprint(7);
+    let seed_7_b = fingerprint(7);
+    assert_eq!(seed_7_a, seed_7_b, "seed 7 did not repeat");
+    let seed_9_a = fingerprint(9);
+    let seed_9_b = fingerprint(9);
+    assert_eq!(seed_9_a, seed_9_b, "seed 9 did not repeat");
+    assert_ne!(
+        seed_7_a, seed_9_a,
+        "different seeds produced the same buffer"
+    );
 }
 
 #[test]
