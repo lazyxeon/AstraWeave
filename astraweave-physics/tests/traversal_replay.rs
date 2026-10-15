@@ -5,6 +5,7 @@
 //! on Ubuntu, Windows, and macOS. The digest covers a real 180-tick run of
 //! ground, jump, and roll. It is not a constant.
 
+use astraweave_physics::deformed::deformed_replay;
 use astraweave_physics::traversal::{replay_bytes, ProbeFrame, TraversalBody, TICK_DT};
 use astraweave_physics::PhysicsWorld;
 use glam::vec3;
@@ -67,6 +68,23 @@ fn traversal_replay_is_stable_and_written() {
     assert!(first.len() > 128, "replay bytes must carry per-tick state");
     let digest = sha256_hex(&first);
     assert_eq!(digest.len(), 64);
+    let deformed_a = deformed_replay();
+    let deformed_b = deformed_replay();
+    assert_eq!(
+        deformed_a.bytes, deformed_b.bytes,
+        "deformed replay diverged"
+    );
+    assert!(
+        deformed_a.crossed_seam,
+        "walk snagged on deformed voxel terrain"
+    );
+    assert!(deformed_a.climbed, "never climbed the deformed face");
+    assert!(deformed_a.detached, "destroyed handhold did not detach");
+    assert!(
+        deformed_a.momentum_kept,
+        "detach zeroed horizontal momentum"
+    );
+    let deformed_digest = sha256_hex(&deformed_a.bytes);
 
     let idle = {
         let mut body = TraversalBody::default();
@@ -93,7 +111,10 @@ fn traversal_replay_is_stable_and_written() {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).expect("create replay-hash directory");
     }
-    let rows = vec![serde_json::json!({ "case": "traversal", "sha256": digest })];
+    let rows = vec![
+        serde_json::json!({ "case": "traversal", "sha256": digest }),
+        serde_json::json!({ "case": "traversal_deformed", "sha256": deformed_digest }),
+    ];
     let body = serde_json::to_vec_pretty(&rows).expect("encode replay-hash json");
     std::fs::write(&path, body).expect("write replay-hash json");
     println!("replay-hash traversal {digest}");

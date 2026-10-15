@@ -148,6 +148,53 @@ impl Motor {
         Vec3::new(self.body.vel.x, 0.0, self.body.vel.z)
     }
 
+    /// One tick on deformable terrain. Notices and climb flags come from the
+    /// destruction world. The capsule is placed from the resulting feet.
+    pub fn tick_deformed(
+        &mut self,
+        physics: &mut PhysicsWorld,
+        player: &mut Player,
+        camera_yaw: f32,
+        input: MotorInput,
+        stamp: &astraweave_physics::deformed::ColumnStamp,
+        notices: &[astraweave_physics::deformed::GeometryNotice],
+        anchor: &mut [i32; 3],
+        attached: &mut bool,
+        climb_flags: astraweave_physics::deformed::FractureFlags,
+    ) -> Vec3 {
+        self.sync_feet(physics, player);
+        let (move_x, move_y) = if input.feet_locked {
+            (0.0, 0.0)
+        } else {
+            (input.move_x, input.move_y)
+        };
+        astraweave_physics::deformed::deformed_step(
+            &mut self.body,
+            TraversalInput {
+                move_x,
+                move_y,
+                yaw: camera_yaw,
+                jump: input.jump,
+                roll: input.roll,
+                sprint: input.sprint,
+                crouch: input.crouch,
+                walk: input.walk,
+                climb: input.climb,
+                glide: input.glide,
+                dive: input.dive,
+                prone: input.prone,
+            },
+            stamp,
+            notices,
+            anchor,
+            attached,
+            climb_flags,
+            0,
+        );
+        self.publish(physics, player);
+        Vec3::new(self.body.vel.x, 0.0, self.body.vel.z)
+    }
+
     fn tick_fly(
         &mut self,
         physics: &mut PhysicsWorld,
@@ -481,5 +528,47 @@ mod tests {
             y1 >= y_air,
             "double jump did not rise: {y_air} -> {y1} start {y0}"
         );
+    }
+
+    #[test]
+    fn deformed_notice_detaches_a_climb_on_the_capsule() {
+        use astraweave_physics::deformed::{ColumnStamp, FractureFlags, GeometryNotice};
+        let (mut physics, mut player) = grounded_player();
+        let mut motor = Motor::default();
+        motor.body.mode = astraweave_physics::traversal::TraversalMode::Climb;
+        motor.body.vel = Vec3::new(1.25, 0.2, 0.0);
+        let stamp = ColumnStamp {
+            x: 0,
+            z: 0,
+            heights: [[4; 3]; 3],
+        };
+        let notice = GeometryNotice {
+            tick: 1,
+            x0: 0,
+            y0: 0,
+            z0: 0,
+            x1: 2,
+            y1: 8,
+            z1: 2,
+            reason: 2,
+        };
+        let mut anchor = [0, 4, 0];
+        let mut attached = true;
+        let wish = motor.tick_deformed(
+            &mut physics,
+            &mut player,
+            0.0,
+            MotorInput {
+                climb: true,
+                ..MotorInput::default()
+            },
+            &stamp,
+            &[notice],
+            &mut anchor,
+            &mut attached,
+            FractureFlags::CLIMBABLE,
+        );
+        assert!(!attached);
+        assert!((wish.x - 1.25).abs() < 1e-4, "wish {wish:?}");
     }
 }

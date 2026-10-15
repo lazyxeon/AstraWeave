@@ -116,6 +116,7 @@ const _: () = assert!(
 
 mod detmath;
 
+pub mod deformed;
 /// Tick-based traversal sim. The Aravath motor and the replay gate both call it.
 pub mod traversal;
 #[cfg(feature = "profiling")]
@@ -1671,6 +1672,7 @@ impl PhysicsWorld {
             self.body_kinds.remove(&h);
             self.char_map.remove(&id);
             self.buoyancy_bodies.remove(&id);
+            self.climb_flags.remove(&id);
         }
     }
 
