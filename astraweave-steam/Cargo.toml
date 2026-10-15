@@ -10,7 +10,7 @@ name = "steam_adversarial"
 harness = false
 
 [dependencies]
-steamworks = "0.13"
+steamworks = "0.12"
 anyhow = { workspace = true }
 thiserror = { workspace = true }
 serde = { workspace = true }

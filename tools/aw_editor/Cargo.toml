@@ -105,7 +105,7 @@ crc32fast = "1.4"
 # docs/audits/e4_cook_path_recon_2026-06.md.
 tokio = { workspace = true }
 mp4 = "0.14"
-openh264 = "0.8"
+openh264 = "0.6"
 egui_kittest = { version = "0.32", optional = true }
 [dev-dependencies]
 approx = "0.5"

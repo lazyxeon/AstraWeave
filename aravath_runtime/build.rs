@@ -12,9 +12,14 @@ fn main() {
     // The manifest is required: asInvoker is part of the download contract.
     // A Windows build that cannot compile the resource must fail, not ship
     // a bare exe.
-    embed_resource::compile("windows/aravath.rc", embed_resource::NONE)
+    if let Err(err) = embed_resource::compile("windows/aravath.rc", embed_resource::NONE)
         .manifest_required()
-        .expect("embed Windows version resource and asInvoker manifest");
+    {
+        println!(
+            "cargo:error=embed Windows version resource and asInvoker manifest: {err}"
+        );
+        std::process::exit(1);
+    }
     let target_env = std::env::var("CARGO_CFG_TARGET_ENV").unwrap_or_default();
     if target_env == "msvc" {
         // rustc-link-arg-bins keeps these off the library test binaries.
@@ -28,15 +33,20 @@ fn refuse_native_and_fma(crate_name: &str) {
     let rustflags = std::env::var("RUSTFLAGS").unwrap_or_default();
     let flags = format!("{encoded}\n{rustflags}").to_ascii_lowercase();
     if flags.contains("target-cpu=native") || flags.contains("target-cpu\u{1f}native") {
-        panic!("{crate_name} refuses target-cpu=native; it changes floating-point codegen");
+        println!(
+            "cargo:error={crate_name} refuses target-cpu=native; it changes floating-point codegen"
+        );
+        std::process::exit(1);
     }
     if flags.contains("+fma") {
-        panic!(
-            "{crate_name} refuses the fma target feature; mul-add contraction is not cross-machine stable"
+        println!(
+            "cargo:error={crate_name} refuses the fma target feature; mul-add contraction is not cross-machine stable"
         );
+        std::process::exit(1);
     }
     let target_features = std::env::var("CARGO_CFG_TARGET_FEATURE").unwrap_or_default();
     if target_features.split(',').any(|feature| feature == "fma") {
-        panic!("{crate_name} refuses to compile with the fma target feature enabled");
+        println!("cargo:error={crate_name} refuses to compile with the fma target feature enabled");
+        std::process::exit(1);
     }
 }
