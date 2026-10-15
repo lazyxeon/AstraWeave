@@ -6189,20 +6189,19 @@ impl TabViewer for EditorTabViewer {
                                                 );
                                             }
                                         }
-                                        if !current.is_empty() {
-                                            if ui
+                                        if !current.is_empty()
+                                            && ui
                                                 .small_button("✕")
                                                 .on_hover_text("Clear texture")
                                                 .clicked()
-                                            {
-                                                self.emit_event(
-                                                    PanelEvent::MaterialTextureChanged {
-                                                        entity_id,
-                                                        slot: slot.to_string(),
-                                                        path: String::new(),
-                                                    },
-                                                );
-                                            }
+                                        {
+                                            self.emit_event(
+                                                PanelEvent::MaterialTextureChanged {
+                                                    entity_id,
+                                                    slot: slot.to_string(),
+                                                    path: String::new(),
+                                                },
+                                            );
                                         }
                                     });
                                 }

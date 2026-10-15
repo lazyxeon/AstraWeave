@@ -821,15 +821,13 @@ impl NodeGraphWidget {
                                     changed = true;
                                     close = true;
                                 }
-                                if !is_root {
-                                    if ui.button("🗑 Delete Node").clicked() {
-                                        if doc.remove_node(*node_id).is_ok() {
-                                            self.selected_node = Some(doc.root_id());
-                                            self.status = Some("Node deleted".into());
-                                            changed = true;
-                                        }
-                                        close = true;
+                                if !is_root && ui.button("🗑 Delete Node").clicked() {
+                                    if doc.remove_node(*node_id).is_ok() {
+                                        self.selected_node = Some(doc.root_id());
+                                        self.status = Some("Node deleted".into());
+                                        changed = true;
                                     }
+                                    close = true;
                                 }
                             }
                         });

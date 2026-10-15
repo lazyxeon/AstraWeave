@@ -370,10 +370,8 @@ impl WorldWizard {
                             self.step = WizardStep::ALL[step_idx + 1];
                         }
 
-                        if step_idx > 0 {
-                            if ui.button("← Back").clicked() {
-                                self.step = WizardStep::ALL[step_idx - 1];
-                            }
+                        if step_idx > 0 && ui.button("← Back").clicked() {
+                            self.step = WizardStep::ALL[step_idx - 1];
                         }
                     });
                 });
