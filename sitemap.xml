@@ -3412,6 +3412,12 @@
     <priority>0.8</priority>
   </url>
   <url>
+    <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_core/sim/constant.SIM_SYSTEM_CAUSAL.html</loc>
+    <lastmod>2026-10-15</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
     <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_core/sim/fn.step.html</loc>
     <lastmod>2026-10-15</lastmod>
     <changefreq>weekly</changefreq>
