@@ -1671,8 +1671,10 @@ impl EngineRenderAdapter {
                     height: None,
                 })
                 .collect();
-            let mut gpu_material = astraweave_render::TerrainMaterialGpu::default();
-            gpu_material.active_layer_count = 8;
+            let mut gpu_material = astraweave_render::TerrainMaterialGpu {
+                active_layer_count: 8,
+                ..Default::default()
+            };
             for (i, layer) in gpu_material.layers.iter_mut().enumerate() {
                 layer.texture_indices = [i as u32, i as u32, i as u32, i as u32];
             }

@@ -272,8 +272,10 @@ pub fn borrow_layer_textures(
 /// `uv_scale` is set from `materials.toml`'s `tiling` field.
 #[cfg(feature = "terrain-splat-arrays")]
 pub fn build_gpu_material(pack: &CanonicalTerrainPack) -> astraweave_render::TerrainMaterialGpu {
-    let mut gpu_material = astraweave_render::TerrainMaterialGpu::default();
-    gpu_material.active_layer_count = pack.active_layer_count;
+    let mut gpu_material = astraweave_render::TerrainMaterialGpu {
+        active_layer_count: pack.active_layer_count,
+        ..Default::default()
+    };
     for (i, layer) in pack
         .layers
         .iter()
