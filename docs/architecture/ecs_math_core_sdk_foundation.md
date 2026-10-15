@@ -308,7 +308,7 @@ There are several distinct flows through this layer. The first is the canonical 
 | `astraweave-core/src/lib.rs` | Top-level: module declarations, re-exports, `default_tool_registry()` | Active | `pub mod` at lines 28-43; `pub use` re-exports at lines 51-62 |
 | `astraweave-core/src/schema.rs` | `IVec2`, `WorldSnapshot`, `PlayerState`, `CompanionState`, `EnemyState`, `Poi`, `PlanIntent`, `ActionStep`, `Stance`, `CoverType`, plus `pub type Entity = u32` | Active | Canonical AI-perception schema. **CRITICAL** — names hardcoded in LLM prompts |
 | `astraweave-core/src/world.rs` | Legacy `World` struct with HashMap-per-component-type (poses, health, team, ammo, cds, names, behavior_graphs, parents/children_map) | Transitional | Bridged into ECS via `ecs_adapter::build_app`. `entities`, `all_of_team`, and `enemies_of` return ids sorted by entity id. `sorted_obstacles` / `obstacles_as_ivec2` sort by `(x, y)`. `iter_entities` stays unordered and is not a sim output |
-| `astraweave-core/src/ecs_adapter.rs` | `build_app(legacy_world, dt) -> ecs::App`, plus `sys_sim`, `sys_move`, `sys_bridge_sync`, `sys_sync_to_legacy`, `sys_refresh_los` | Transitional | Bridge layer between legacy World and ECS substrate |
+| `astraweave-core/src/ecs_adapter.rs` | `build_app(legacy_world, dt) -> ecs::App`, `register_sim_extension`, plus `sys_sim`, `sys_move`, `sys_bridge_sync`, `sys_sync_to_legacy`, `sys_refresh_los` | Transitional | Bridge layer between legacy World and ECS substrate. Sim extensions install before the legacy simulation systems |
 | `astraweave-core/src/ecs_bridge.rs` | `EntityBridge` bidirectional `legacy::Entity ↔ ecs::Entity` map | Active | Reverse index maintained on every insert/remove |
 | `astraweave-core/src/ecs_components.rs` | `CPos`, `CHealth`, `CTeam`, `CAmmo`, `CCooldowns`, `CDesiredPos`, `CAiAgent`, `CLegacyId`, plus placeholders `CompanionProfile`, `Fact` | Transitional | Module header: "Phase 1 incremental migration" (line 1) |
 | `astraweave-core/src/ecs_events.rs` | `Events<E>` bridge type, `MovedEvent` | Active | Used by `ecs_adapter` for `sys_move` |
@@ -421,6 +421,14 @@ There are several distinct flows through this layer. The first is the canonical 
 - **Alternatives considered:** [Reasoning not recovered]
 - **Consequences:** Dual-World runtime. AI orchestrators, validation, capture/replay, and the SDK continue to operate on legacy `World`. ECS-native systems operate on ECS components. The `sync` stage exists specifically to keep the two consistent. Long-term migration target is unresolved (see §11).
 
+### Decision: Sim extensions install from the crate that owns them
+- **Date:** 2026-10-14
+- **Status:** Accepted
+- **Context:** `ModScriptPlugin` lives in `astraweave-scripting`, which already depends on `astraweave-core`. Putting that plugin type in `build_app` would be a cargo cycle. The AI planner uses the same constraint and ships `build_app_with_ai` instead of editing `build_app`. Mods have to run on the app `build_app` itself returns, because the editor and the game both call that function.
+- **Decision:** `register_sim_extension` records a `fn(&mut App)`. `build_app` calls every recorded installer, in registration order, before `sys_sim` / `sys_move`. `astraweave_scripting::register_mod_runtime` records `ModScriptPlugin`. The editor (`EditorRuntime::enter_play`), `VeilweaverRuntime::new`, and `hello_companion` call `register_mod_runtime` before `build_app`.
+- **Alternatives considered:** A `mods` feature on core that depends on scripting. Rejected: the dependency would still cycle. A second `build_app_with_mods` that callers might forget. Rejected: the gap being closed is that `build_app` itself did not run mods.
+- **Consequences:** A process that never calls `register_mod_runtime` still gets the legacy bridge only. Core tests stay on that path. Once the process registers, every later `build_app` installs the plugin once (`ModEngine` already present skips a second system).
+
 ### Decision: SIMD math primitives as thin layer over `glam`
 - **Date:** Week 5 Action 21 (Vec3/Vec4) and Week 6 Action 26 (Mat4 / Quat), per the module header at `astraweave-math/src/lib.rs:14-18`. SIMD movement landed in Week 8 Day 3 (`docs/journey/daily/WEEK_8_DAY_3_SIMD_MOVEMENT_PLAN.md` dated October 12, 2025; implementation completion documented in `WEEK_8_DAY_3_COMPLETE.md` and `WEEK_8_DAY_3_IMPLEMENTATION_COMPLETE.md`).
 - **Status:** Accepted (in active code)
@@ -459,6 +467,7 @@ There are several distinct flows through this layer. The first is the canonical 
 | 13 | SIMD math functions handle NaN/Inf input — `debug_assert!(a.is_finite())` in debug; production paths fall through to scalar `glam` for non-x86_64 | Yes (debug) | E.g. `astraweave-math/src/simd_vec.rs:62-63`, `simd_quat.rs:33-34`. Release builds do not check finiteness |
 | 14 | Perception queries that feed a snapshot are ordered. `all_of_team`, `enemies_of`, and `entities` sort by entity id. Obstacle snapshots sort by `(x, y)`. The replay hash does not re-sort those lists | Yes | `world.rs` `sorted_entities` / `sorted_obstacles`; `perception.rs` `assemble_snapshot`. `astraweave-core/tests/perception_order.rs` builds two worlds and compares enemy ids, the first-enemy plan, and SHA-256 |
 | 15 | `Fixed64` is Q32.32 (`SCALE = 1 << 32`). `from_ratio` truncates toward zero and yields zero when `den == 0`. `mul_ratio` uses `div_euclid`. Mul and the saturating add/sub clamp to `i64`. The sim path has no float conversion | Yes | `astraweave-math/src/fixed64.rs`. `fixed64_contract_bytes` is hashed as the required `fixed64` case in `determinism-replay.yml` |
+| 16 | `build_app` installs sim extensions recorded with `register_sim_extension` before `sys_sim`, and records each function pointer once. With no registration, `build_app` is the legacy bridge only | Yes | `astraweave-scripting` test `mod_loaded_through_build_app_replays_identically` |
 
 ---
 

@@ -22,6 +22,7 @@ pub mod enemy_types;
 pub mod gameplay_qa;
 pub mod intents;
 pub mod level;
+pub mod mod_queue;
 pub mod particles;
 pub mod patterns;
 pub mod quest;
@@ -48,6 +49,10 @@ pub use enemy::{AttackTarget, Enemy, EnemyBehavior, EnemyState};
 pub use gameplay_qa::{load_bundled_scenario, run_scenario, FailureArtifact, RunOutcome};
 pub use intents::{IntentProposer, WeaveIntent};
 pub use level::{Camera, LevelStats, Player, VeilweaverLevel};
+pub use mod_queue::{
+    parse_template_toml, queue_weave, QueueError, WeaveCommand, WeaveScratch, WeaveTemplate,
+    ENGINE_TEMPLATE_MAX, MAX_WEAVE_COMMANDS,
+};
 pub use particles::{AnchorParticleEmitter, AnchorParticleSystem, Particle, ParticleType};
 pub use patterns::{Pattern, PatternDetector, PatternStrength};
 pub use quest::{ObjectiveType, Quest, QuestManager, QuestReward, QuestState};

@@ -7,6 +7,7 @@ edition = "2021"
 [dependencies]
 anyhow = { workspace = true }
 astraweave-core = { path = "../../astraweave-core" }
+astraweave-scripting = { path = "../../astraweave-scripting" }
 astraweave-ecs = { path = "../../astraweave-ecs" }
 astraweave-ai = { path = "../../astraweave-ai" }
 astraweave-behavior = { path = "../../astraweave-behavior" }

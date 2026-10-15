@@ -24,6 +24,7 @@ astraweave-ecs = { workspace = true }
 astraweave-core = { workspace = true }
 astraweave-ai = { workspace = true }
 astraweave-llm = { workspace = true }
+astraweave-weaving = { path = "../astraweave-weaving" }
 
 [dev-dependencies]
 tempfile = { workspace = true }

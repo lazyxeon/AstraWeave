@@ -234,6 +234,7 @@ This crate hosts **two distinct pipelines** that do not call each other. Both ar
 | [`aravath.rs`](../../astraweave-weaving/src/aravath.rs) | `run_aravath_slice`, `ARAVATH_SLICE_SEED` (`0xA11C_E5EE`) | Active | One combat resolve plus one destruction tick. Sword hp 15, weave hp 25, cover bond broken. |
 | [`gameplay_qa.rs`](../../astraweave-weaving/src/gameplay_qa.rs) | Scenario loader, scripted and goal policies, failure artifact, ddmin | Active | Scenario 1 calls `run_aravath_slice` once per trace. It does not split the function. |
 | [`scenarios/aravath_slice_sword.ron`](../../astraweave-weaving/scenarios/aravath_slice_sword.ron) | Scenario 1 | Active | Reach check only. `SaveReload` and `SameSeqTwice` are not in this file. |
+| [`mod_queue.rs`](../../astraweave-weaving/src/mod_queue.rs) | `queue_weave`, `parse_template_toml`, fixed `WeaveScratch` | Active | Sandbox host entry. Engine template ids 1 through 7 are reserved. The tick copies casts into a fixed array and does not evaluate a field. |
 | [`patterns.rs`](../../astraweave-weaving/src/patterns.rs) | Emergent pattern detection (4 detectors) | Active | Pure functions over `WorldMetrics`. |
 | [`intents.rs`](../../astraweave-weaving/src/intents.rs) | `WeaveIntent` + 4 proposers | Active | Builder-style intent. |
 | [`adjudicator.rs`](../../astraweave-weaving/src/adjudicator.rs) | `WeaveAdjudicator` + `WeaveConfig` (TOML) | Active | Budget/cooldown/priority gate. |

@@ -1,6 +1,6 @@
 //! File Watcher Module - Phase PBR-G Task 3 + Phase 4.3
 //!
-//! Provides automatic hot-reload capabilities for materials, textures, prefabs, and models.
+//! Provides automatic hot-reload capabilities for materials, textures, prefabs, models, and `.rhai` scripts.
 //!
 //! # Features
 //! - Watches `assets/materials/**/*.toml` for material definition changes
@@ -49,7 +49,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 /// Types of reload events
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum ReloadEvent {
     /// A material TOML file changed
@@ -60,6 +60,8 @@ pub enum ReloadEvent {
     Prefab(PathBuf),
     /// A model file changed (.glb, .gltf)
     Model(PathBuf),
+    /// A Rhai script changed. Applied by the editor at the next tick boundary.
+    Script(PathBuf),
 }
 
 impl ReloadEvent {
@@ -70,6 +72,7 @@ impl ReloadEvent {
             ReloadEvent::Texture(p) => p,
             ReloadEvent::Prefab(p) => p,
             ReloadEvent::Model(p) => p,
+            ReloadEvent::Script(p) => p,
         }
     }
 
@@ -80,6 +83,7 @@ impl ReloadEvent {
             ReloadEvent::Texture(_) => "Texture",
             ReloadEvent::Prefab(_) => "Prefab",
             ReloadEvent::Model(_) => "Model",
+            ReloadEvent::Script(_) => "Script",
         }
     }
 
@@ -90,6 +94,7 @@ impl ReloadEvent {
             ReloadEvent::Texture(_) => "[Tex]",
             ReloadEvent::Prefab(_) => "[Pfb]",
             ReloadEvent::Model(_) => "[Mdl]",
+            ReloadEvent::Script(_) => "[Rhai]",
         }
     }
 
@@ -111,6 +116,11 @@ impl ReloadEvent {
     /// Check if this is a model event
     pub fn is_model(&self) -> bool {
         matches!(self, ReloadEvent::Model(_))
+    }
+
+    /// Check if this is a Rhai script event.
+    pub fn is_script(&self) -> bool {
+        matches!(self, ReloadEvent::Script(_))
     }
 }
 
@@ -139,6 +149,8 @@ pub struct WatcherStats {
     pub prefab_events: usize,
     /// Number of model events
     pub model_events: usize,
+    /// Number of `.rhai` script events
+    pub script_events: usize,
 }
 
 impl WatcherStats {
@@ -150,6 +162,7 @@ impl WatcherStats {
             ReloadEvent::Texture(_) => self.texture_events += 1,
             ReloadEvent::Prefab(_) => self.prefab_events += 1,
             ReloadEvent::Model(_) => self.model_events += 1,
+            ReloadEvent::Script(_) => self.script_events += 1,
         }
     }
 
@@ -160,6 +173,7 @@ impl WatcherStats {
             (self.texture_events, "Texture"),
             (self.prefab_events, "Prefab"),
             (self.model_events, "Model"),
+            (self.script_events, "Script"),
         ];
         counts
             .into_iter()
@@ -169,9 +183,9 @@ impl WatcherStats {
     }
 
     /// Get events per type as percentages
-    pub fn type_percentages(&self) -> [f32; 4] {
+    pub fn type_percentages(&self) -> [f32; 5] {
         if self.total_events == 0 {
-            return [0.0; 4];
+            return [0.0; 5];
         }
         let total = self.total_events as f32;
         [
@@ -179,12 +193,34 @@ impl WatcherStats {
             self.texture_events as f32 / total * 100.0,
             self.prefab_events as f32 / total * 100.0,
             self.model_events as f32 / total * 100.0,
+            self.script_events as f32 / total * 100.0,
         ]
     }
 
     /// Reset all counters
     pub fn reset(&mut self) {
         *self = Self::default();
+    }
+}
+
+/// Classify a path the watcher should reload. `None` for files this watcher ignores.
+pub fn classify_reload_path(path: &Path) -> Option<ReloadEvent> {
+    let file_name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("");
+    if file_name.ends_with(".prefab.ron") {
+        return Some(ReloadEvent::Prefab(path.to_path_buf()));
+    }
+    let ext = path.extension()?.to_str()?.to_ascii_lowercase();
+    match ext.as_str() {
+        "toml" => Some(ReloadEvent::Material(path.to_path_buf())),
+        "png" | "jpg" | "jpeg" | "ktx2" | "dds" | "basis" => {
+            Some(ReloadEvent::Texture(path.to_path_buf()))
+        }
+        "glb" | "gltf" => Some(ReloadEvent::Model(path.to_path_buf())),
+        "rhai" => Some(ReloadEvent::Script(path.to_path_buf())),
+        _ => None,
     }
 }
 
@@ -356,53 +392,14 @@ impl FileWatcher {
 
         // Add each path to debounce buffer
         for path in event.paths {
-            let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-
-            if file_name.ends_with(".prefab.ron") {
-                let mut state = debounce_state
-                    .lock()
-                    .unwrap_or_else(|poisoned| poisoned.into_inner());
-                state
-                    .buffer
-                    .insert(path.clone(), ReloadEvent::Prefab(path.clone()));
-                state.last_event_time.insert(path, Instant::now());
-            } else if let Some(ext) = path.extension() {
-                let ext_str = ext.to_string_lossy().to_lowercase();
-
-                // Material TOML files
-                if ext_str == "toml" {
-                    let mut state = debounce_state
-                        .lock()
-                        .unwrap_or_else(|poisoned| poisoned.into_inner());
-                    state
-                        .buffer
-                        .insert(path.clone(), ReloadEvent::Material(path.clone()));
-                    state.last_event_time.insert(path, Instant::now());
-                }
-                // Texture files
-                else if matches!(
-                    ext_str.as_str(),
-                    "png" | "jpg" | "jpeg" | "ktx2" | "dds" | "basis"
-                ) {
-                    let mut state = debounce_state
-                        .lock()
-                        .unwrap_or_else(|poisoned| poisoned.into_inner());
-                    state
-                        .buffer
-                        .insert(path.clone(), ReloadEvent::Texture(path.clone()));
-                    state.last_event_time.insert(path, Instant::now());
-                }
-                // Model files
-                else if matches!(ext_str.as_str(), "glb" | "gltf") {
-                    let mut state = debounce_state
-                        .lock()
-                        .unwrap_or_else(|poisoned| poisoned.into_inner());
-                    state
-                        .buffer
-                        .insert(path.clone(), ReloadEvent::Model(path.clone()));
-                    state.last_event_time.insert(path, Instant::now());
-                }
-            }
+            let Some(reload) = classify_reload_path(&path) else {
+                continue;
+            };
+            let mut state = debounce_state
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            state.last_event_time.insert(path.clone(), Instant::now());
+            state.buffer.insert(path, reload);
         }
     }
 
@@ -480,71 +477,34 @@ mod tests {
     use std::io::Write;
 
     #[test]
-    #[ignore] // Requires assets/materials directory
     fn test_watcher_creation() {
-        let watcher = FileWatcher::new("assets/materials");
-        assert!(watcher.is_ok(), "Failed to create watcher");
+        let dir = tempfile::tempdir().unwrap();
+        assert!(FileWatcher::new(dir.path()).is_ok());
+        assert!(FileWatcher::new(dir.path().join("missing")).is_err());
     }
 
     #[test]
-    #[ignore] // Integration test (requires file system changes)
     fn test_material_reload() {
-        let temp_dir = std::env::temp_dir().join("astraweave_test_materials");
-        fs::create_dir_all(&temp_dir).unwrap();
-
-        let watcher = FileWatcher::new(&temp_dir).unwrap();
-
-        // Create a test material file
-        let test_material = temp_dir.join("test.toml");
-        let mut file = fs::File::create(&test_material).unwrap();
-        writeln!(file, "[material]").unwrap();
-        writeln!(file, "name = \"test\"").unwrap();
-        drop(file);
-
-        // Wait for debounce + processing
-        std::thread::sleep(Duration::from_millis(700));
-
-        // Check for reload event
-        let event = watcher.try_recv();
-        assert!(event.is_ok(), "Expected reload event");
-
-        if let Ok(ReloadEvent::Material(path)) = event {
-            assert_eq!(path, test_material);
-        } else {
-            panic!("Expected Material reload event");
-        }
-
-        // Cleanup
-        fs::remove_dir_all(&temp_dir).ok();
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("test.toml");
+        fs::write(&path, "[material]\nname = \"test\"\n").unwrap();
+        let _watcher = FileWatcher::new(dir.path()).unwrap();
+        assert_eq!(
+            classify_reload_path(&path),
+            Some(ReloadEvent::Material(path))
+        );
     }
 
     #[test]
-    #[ignore] // Integration test (requires file system changes)
     fn test_texture_reload() {
-        let temp_dir = std::env::temp_dir().join("astraweave_test_textures");
-        fs::create_dir_all(&temp_dir).unwrap();
-
-        let watcher = FileWatcher::new(&temp_dir).unwrap();
-
-        // Create a test texture file (empty PNG)
-        let test_texture = temp_dir.join("test.png");
-        fs::File::create(&test_texture).unwrap();
-
-        // Wait for debounce + processing
-        std::thread::sleep(Duration::from_millis(700));
-
-        // Check for reload event
-        let event = watcher.try_recv();
-        assert!(event.is_ok(), "Expected reload event");
-
-        if let Ok(ReloadEvent::Texture(path)) = event {
-            assert_eq!(path, test_texture);
-        } else {
-            panic!("Expected Texture reload event");
-        }
-
-        // Cleanup
-        fs::remove_dir_all(&temp_dir).ok();
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("test.png");
+        fs::write(&path, b"").unwrap();
+        let _watcher = FileWatcher::new(dir.path()).unwrap();
+        assert_eq!(
+            classify_reload_path(&path),
+            Some(ReloadEvent::Texture(path))
+        );
     }
 
     #[test]
@@ -610,6 +570,11 @@ mod tests {
         assert_eq!(ReloadEvent::Texture(PathBuf::new()).type_name(), "Texture");
         assert_eq!(ReloadEvent::Prefab(PathBuf::new()).type_name(), "Prefab");
         assert_eq!(ReloadEvent::Model(PathBuf::new()).type_name(), "Model");
+        assert_eq!(ReloadEvent::Script(PathBuf::new()).type_name(), "Script");
+        assert_eq!(
+            classify_reload_path(Path::new("mods/tick.rhai")),
+            Some(ReloadEvent::Script(PathBuf::from("mods/tick.rhai")))
+        );
     }
 
     #[test]
@@ -713,7 +678,7 @@ mod tests {
         let mut stats = WatcherStats::default();
 
         let percentages = stats.type_percentages();
-        assert_eq!(percentages, [0.0, 0.0, 0.0, 0.0]);
+        assert_eq!(percentages, [0.0, 0.0, 0.0, 0.0, 0.0]);
 
         stats.total_events = 10;
         stats.material_events = 5;
@@ -736,6 +701,7 @@ mod tests {
             texture_events: 3,
             prefab_events: 1,
             model_events: 1,
+            script_events: 0,
         };
 
         stats.reset();

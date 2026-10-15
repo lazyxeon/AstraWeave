@@ -22,12 +22,16 @@ use astraweave_core::{CHealth, CPos, IVec2};
 use astraweave_ecs::{App, Entity, Events, Plugin, SystemStage, World};
 use astraweave_nav::NavMesh;
 use astraweave_physics::{CollisionEvent, Layers, PhysicsWorld};
+pub use astraweave_security::sandbox::ScriptReloadQueue;
+use astraweave_security::sandbox::{SandboxEngine, SandboxProfile};
 use events::ScriptEvent;
 use glam::Vec3;
 use rhai::{Dynamic, Engine, Scope, AST};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
-use std::time::SystemTime;
+
+pub mod sim_mod;
+pub use sim_mod::register_mod_runtime;
 
 pub mod api;
 pub mod events;
@@ -45,8 +49,8 @@ pub struct CScript {
     /// The actual script content. If empty, system may try to load from path (not implemented in MVP).
     pub source: String,
     pub cached_ast: Option<Arc<AST>>,
-    /// Persistent variables maintained across ticks
-    pub script_state: HashMap<String, Dynamic>,
+    /// Persistent variables maintained across ticks. `BTreeMap` so writeback order is stable.
+    pub script_state: BTreeMap<String, Dynamic>,
     pub enabled: bool,
 }
 
@@ -56,7 +60,7 @@ impl CScript {
             script_path: path.into(),
             source: source.into(),
             cached_ast: None,
-            script_state: HashMap::new(),
+            script_state: BTreeMap::new(),
             enabled: true,
         }
     }
@@ -68,22 +72,11 @@ pub struct ScriptEngineResource(pub Arc<Engine>);
 
 impl Default for ScriptEngineResource {
     fn default() -> Self {
-        let mut engine = Engine::new();
-
-        // Security: Configure limits
-        engine.set_max_expr_depths(64, 64);
-        engine.set_max_operations(50_000); // Limit operations per run
-        engine.set_max_string_size(1024); // Limit string size
-        engine.set_max_array_size(1024); // Limit array size
-        engine.set_max_map_size(1024); // Limit map size
-
-        // Register standard packages
-        // engine.register_global_module(rhai::packages::Package::new().as_shared_module());
-
-        // Register AstraWeave API
-        api::register_api(&mut engine);
-
-        Self(Arc::new(engine))
+        // Gameplay profile: finite op/memory caps, no file/module resolver, no clock.
+        // Host commands are the ones `register_api` adds; they match MOD_COMMAND_API_VERSION.
+        let mut sandbox = SandboxEngine::build(&SandboxProfile::gameplay());
+        api::register_api(sandbox.engine_mut());
+        Self(Arc::new(sandbox.into_engine()))
     }
 }
 
@@ -133,8 +126,76 @@ fn spawn_prefab(world: &mut World, prefab: &str, position: Vec3) -> Entity {
     }
 }
 
-/// System to execute entity scripts
+const HOST_SCOPE_KEYS: &[&str] = &[
+    "commands",
+    "physics",
+    "nav",
+    "entity_id",
+    "position",
+    "health",
+    "delta_time",
+];
+
+fn is_host_scope_key(key: &str) -> bool {
+    HOST_SCOPE_KEYS.contains(&key)
+}
+
+/// Apply staged `.rhai` bytes before any script runs. The queue is the sim input.
+/// File mtimes are not read here.
+fn apply_script_reloads(world: &mut World) {
+    let pending = match world.get_resource_mut::<ScriptReloadQueue>() {
+        Some(queue) => queue.take_boundary(),
+        None => return,
+    };
+    if pending.is_empty() {
+        return;
+    }
+    let mut entities = world.entities_with::<CScript>();
+    entities.sort();
+    for entity in entities {
+        let Some(script) = world.get_mut::<CScript>(entity) else {
+            continue;
+        };
+        let Some(staged) = pending.get(&script.script_path) else {
+            continue;
+        };
+        script.source.clone_from(&staged.source);
+        script.cached_ast = None;
+        script.enabled = true;
+    }
+}
+
+fn script_event_rank(event: &ScriptEvent) -> (u8, u64, u64, u32, String) {
+    match event {
+        ScriptEvent::OnSpawn { entity } => (0, entity.to_raw(), 0, 0, String::new()),
+        ScriptEvent::OnCollision { entity, other } => {
+            (1, entity.to_raw(), other.to_raw(), 0, String::new())
+        }
+        ScriptEvent::OnTrigger {
+            entity,
+            trigger_name,
+        } => (2, entity.to_raw(), 0, 0, trigger_name.clone()),
+        ScriptEvent::OnDamage {
+            entity,
+            damage,
+            source,
+        } => (
+            3,
+            entity.to_raw(),
+            source.to_raw(),
+            damage.to_bits(),
+            String::new(),
+        ),
+    }
+}
+
+/// System to execute entity scripts.
+///
+/// Reloads apply at the start of the tick from [`ScriptReloadQueue`], in path order.
+/// The tick does not stat the filesystem and does not read a clock.
 pub fn script_system(world: &mut World) {
+    apply_script_reloads(world);
+
     // 1. Get the engine (cheap clone of Arc)
     let engine = if let Some(res) = world.get_resource::<ScriptEngineResource>() {
         res.0.clone()
@@ -176,8 +237,9 @@ pub fn script_system(world: &mut World) {
 
     let mut all_commands = Vec::new();
 
-    // 2. Run Scripts (Main Body)
-    let entities = world.entities_with::<CScript>();
+    // 2. Run Scripts (Main Body), entity id order.
+    let mut entities = world.entities_with::<CScript>();
+    entities.sort();
     for entity in entities {
         // Gather Read Data FIRST
         let pos_data = world
@@ -191,69 +253,38 @@ pub fn script_system(world: &mut World) {
                 continue;
             }
 
-            // Hot Reloading
-            if !script.script_path.is_empty() {
-                let jailed = loader::jail_script_path(std::path::Path::new(&script.script_path));
-                let jailed = match jailed {
-                    Ok(path) => path,
-                    Err(err) => {
-                        eprintln!("script path rejected: {err}");
-                        continue;
-                    }
-                };
-                if let Ok(metadata) = std::fs::metadata(&jailed) {
-                    if let Ok(modified) = metadata.modified() {
-                        let needs_reload =
-                            if let Some(cached) = cache.scripts.get(&script.script_path) {
-                                modified > cached.last_modified
-                            } else {
-                                true
-                            };
-
-                        if needs_reload {
-                            // println!("[ScriptSystem] Reloading script: {}", script.script_path);
-                            if let Ok(source) = std::fs::read_to_string(&jailed) {
-                                match engine.compile(&source) {
-                                    Ok(ast) => {
-                                        let ast = Arc::new(ast);
-                                        cache.scripts.insert(
-                                            script.script_path.clone(),
-                                            CachedScript {
-                                                ast: ast.clone(),
-                                                last_modified: modified,
-                                            },
-                                        );
-                                        script.cached_ast = Some(ast);
-                                        script.source = source;
-                                    }
-                                    Err(e) => {
-                                        eprintln!(
-                                            "Script compilation error for {}: {}",
-                                            script.script_path, e
-                                        );
-                                    }
-                                }
-                            }
-                        } else {
-                            // Use cached AST if we don't have one
-                            if script.cached_ast.is_none() {
-                                if let Some(cached) = cache.scripts.get(&script.script_path) {
-                                    script.cached_ast = Some(cached.ast.clone());
-                                }
-                            }
-                        }
+            if script.cached_ast.is_none() {
+                if let Some(cached) = cache.scripts.get(&script.script_path) {
+                    if cached.source_hash
+                        == astraweave_security::sandbox::sha256_hex(script.source.as_bytes())
+                    {
+                        script.cached_ast = Some(cached.ast.clone());
                     }
                 }
             }
 
-            // Compile if needed (inline scripts or failed load)
+            // Compile if needed (inline scripts or a boundary reload that cleared the AST)
             if script.cached_ast.is_none() {
                 if script.source.is_empty() {
                     continue;
                 }
 
                 match engine.compile(&script.source) {
-                    Ok(ast) => script.cached_ast = Some(Arc::new(ast)),
+                    Ok(ast) => {
+                        let ast = Arc::new(ast);
+                        if !script.script_path.is_empty() {
+                            cache.scripts.insert(
+                                script.script_path.clone(),
+                                CachedScript {
+                                    ast: ast.clone(),
+                                    source_hash: astraweave_security::sandbox::sha256_hex(
+                                        script.source.as_bytes(),
+                                    ),
+                                },
+                            );
+                        }
+                        script.cached_ast = Some(ast);
+                    }
                     Err(e) => {
                         eprintln!("Script compilation error for {}: {}", script.script_path, e);
                         script.enabled = false; // Disable failing script
@@ -305,12 +336,9 @@ pub fn script_system(world: &mut World) {
 
                 // Update state from scope
                 for (k, _, v) in scope.iter() {
-                    if k == "commands" {
+                    if is_host_scope_key(k) {
                         continue;
-                    } // Don't save commands to state
-                    if k == "physics" {
-                        continue;
-                    } // Don't save physics proxy
+                    }
                     script.script_state.insert(k.to_string(), v);
                 }
 
@@ -367,6 +395,8 @@ pub fn script_system(world: &mut World) {
             }
         }
     }
+
+    script_events.sort_by_key(script_event_rank);
 
     // Execute callbacks
     for event in script_events {
@@ -441,7 +471,7 @@ pub fn script_system(world: &mut World) {
 
             // Update state
             for (k, _, v) in scope.iter() {
-                if k == "commands" {
+                if is_host_scope_key(k) {
                     continue;
                 }
                 script.script_state.insert(k.to_string(), v);
@@ -587,6 +617,9 @@ impl Plugin for ScriptingPlugin {
     fn build(&self, app: &mut App) {
         app.world.insert_resource(ScriptEngineResource::default());
         app.world.insert_resource(ScriptCache::default());
+        if app.world.get_resource::<ScriptReloadQueue>().is_none() {
+            app.world.insert_resource(ScriptReloadQueue::default());
+        }
         if app.world.get_resource::<Events>().is_none() {
             app.world.insert_resource(Events::default());
         }
@@ -597,12 +630,12 @@ impl Plugin for ScriptingPlugin {
 
 pub struct CachedScript {
     pub ast: Arc<AST>,
-    pub last_modified: SystemTime,
+    pub source_hash: String,
 }
 
 #[derive(Default)]
 pub struct ScriptCache {
-    pub scripts: HashMap<String, CachedScript>,
+    pub scripts: BTreeMap<String, CachedScript>,
 }
 
 #[cfg(test)]
@@ -634,6 +667,99 @@ mod tests {
         let script = app.world.get::<CScript>(e).unwrap();
         let result = script.script_state.get("result").unwrap().as_int().unwrap();
         assert_eq!(result, 30);
+    }
+
+    #[test]
+    fn default_engine_rejects_import_and_clock() {
+        let engine = ScriptEngineResource::default();
+        for source in [r#"import "std";"#, "eval(\"1\")", "timestamp()", "sleep(1)"] {
+            let rejected = match engine.0.compile(source) {
+                Err(_) => true,
+                Ok(ast) => {
+                    let mut scope = Scope::new();
+                    engine.0.run_ast_with_scope(&mut scope, &ast).is_err()
+                }
+            };
+            assert!(rejected, "{source} must fail on the gameplay sandbox");
+        }
+    }
+
+    #[test]
+    fn script_reload_applies_on_the_next_tick_only() {
+        let mut app = App::new().add_plugin(ScriptingPlugin);
+        let entity = app.world.spawn();
+        let mut script = CScript::new("tick.rhai", "result = 1;");
+        script
+            .script_state
+            .insert("result".to_string(), Dynamic::from(0_i64));
+        app.world.insert(entity, script);
+        app.schedule.run(&mut app.world);
+        let read = |world: &World| {
+            world
+                .get::<CScript>(entity)
+                .unwrap()
+                .script_state
+                .get("result")
+                .unwrap()
+                .as_int()
+                .unwrap()
+        };
+        assert_eq!(read(&app.world), 1);
+        app.world
+            .get_resource_mut::<ScriptReloadQueue>()
+            .unwrap()
+            .stage("tick.rhai", "result = 2;");
+        assert_eq!(read(&app.world), 1);
+        app.schedule.run(&mut app.world);
+        assert_eq!(read(&app.world), 2);
+    }
+
+    #[test]
+    fn script_reload_ignores_mtime_and_uses_the_hashed_queue() {
+        let rel = format!("aw-script-reload-{}/tick.rhai", std::process::id());
+        let file = std::env::current_dir().expect("cwd").join(&rel);
+        std::fs::create_dir_all(file.parent().expect("parent")).expect("proof dir");
+        std::fs::write(&file, "result = 9;").expect("script file");
+        let mut app = App::new().add_plugin(ScriptingPlugin);
+        let entity = app.world.spawn();
+        let mut script = CScript::new(&rel, "result = 1;");
+        script
+            .script_state
+            .insert("result".to_string(), Dynamic::from(0_i64));
+        app.world.insert(entity, script);
+        app.schedule.run(&mut app.world);
+        let read = |world: &World| {
+            world
+                .get::<CScript>(entity)
+                .unwrap()
+                .script_state
+                .get("result")
+                .unwrap()
+                .as_int()
+                .unwrap()
+        };
+        assert_eq!(read(&app.world), 1, "the tick runs the staged source");
+        std::fs::write(&file, "result = 9;").expect("rewrite");
+        let later = std::time::SystemTime::now() + std::time::Duration::from_secs(5);
+        std::fs::File::options()
+            .write(true)
+            .open(&file)
+            .expect("open")
+            .set_modified(later)
+            .expect("mtime");
+        app.schedule.run(&mut app.world);
+        assert_eq!(
+            read(&app.world),
+            1,
+            "a newer mtime must not reload the file"
+        );
+        app.world
+            .get_resource_mut::<ScriptReloadQueue>()
+            .unwrap()
+            .stage(&rel, "result = 4;");
+        app.schedule.run(&mut app.world);
+        assert_eq!(read(&app.world), 4);
+        std::fs::remove_dir_all(file.parent().expect("parent")).expect("cleanup");
     }
 
     #[tokio::test]

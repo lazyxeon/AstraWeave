@@ -60,6 +60,7 @@ use astraweave_core::{
 };
 use astraweave_core::{CAmmo, CCooldowns, CHealth, CPos};
 use astraweave_ecs as ecs;
+use astraweave_scripting::register_mod_runtime;
 
 #[cfg(feature = "llm")]
 use astraweave_core::{ActionStep, ToolRegistry};
@@ -339,7 +340,8 @@ fn run_single_demo(mode: AIMode) -> Result<AIMetrics> {
     // Setup world
     let (w, _player, comp, enemy, snap) = setup_world()?;
 
-    // Build ECS App
+    // Build ECS App. Mods install through the same hook as the editor.
+    register_mod_runtime();
     let mut app = build_app(w, 0.25);
 
     // Generate plan with timing
@@ -430,7 +432,8 @@ fn run_single_demo(mode: AIMode) -> Result<()> {
 
     let (w, _player, comp, enemy, snap) = setup_world()?;
 
-    // Build ECS App
+    // Build ECS App. Mods install through the same hook as the editor.
+    register_mod_runtime();
     let mut app = build_app(w, 0.25);
 
     let start = Instant::now();
