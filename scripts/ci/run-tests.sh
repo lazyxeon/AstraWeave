@@ -15,9 +15,14 @@ profile="${AW_CI_PROFILE:-ci}"
 archive_out="${AW_CI_ARCHIVE_OUT:-}"
 archive_run="${AW_CI_ARCHIVE_RUN:-}"
 
-if [ "$profile" = "ci-pr" ]; then
-  echo "Profile ci-pr excludes scripts/ci/deferred_pr_tests.txt (issue #254, owner PR #217)."
-  echo "Profile ci on main and the nightly schedule still runs those tests."
+case "$profile" in
+  ci-pr|ci-pr-archive)
+    echo "Profile $profile excludes scripts/ci/deferred_pr_tests.txt (issue #254, owner PR #217)."
+    echo "Profile ci on main and the nightly schedule still runs those tests."
+    ;;
+esac
+if [ "$profile" = "ci-pr-archive" ]; then
+  echo "Archive partitions also apply scripts/ci/archive_only_skips.txt."
 fi
 
 run_nextest() {

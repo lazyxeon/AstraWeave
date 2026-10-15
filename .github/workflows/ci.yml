@@ -173,6 +173,11 @@ jobs:
           CARGO_PROFILE_TEST_DEBUG: "0"
         run: bash scripts/ci/run-tests.sh
 
+      - name: Net client binaries on this machine
+        # CARGO_BIN_EXE_aw-net-client is this runner's target path. Partition
+        # jobs only have the extracted archive, so they skip these two targets.
+        run: cargo nextest run --locked --profile ci -p aw-net-client --test family1_client_binary --test family3_client_binary_wrong_key
+
       - name: Upload the archive
         uses: actions/upload-artifact@v4
         with:
@@ -216,7 +221,7 @@ jobs:
         env:
           AW_CI_ARCHIVE_RUN: target/nextest-archive.tar.zst
           AW_CI_PARTITION: count:${{ matrix.partition }}/3
-          AW_CI_PROFILE: ci-pr
+          AW_CI_PROFILE: ci-pr-archive
         run: bash scripts/ci/run-tests.sh
 
   msrv:
