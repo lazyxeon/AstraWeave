@@ -690,13 +690,13 @@ fn sync_skinned(
             renderer.add_model_with_texture(
                 &name,
                 gpu,
-                &[instance.clone()],
+                std::slice::from_ref(&instance),
                 albedo.width,
                 albedo.height,
                 &albedo.pixels,
             );
         } else {
-            renderer.add_model(&name, gpu, &[instance.clone()]);
+            renderer.add_model(&name, gpu, std::slice::from_ref(&instance));
         }
         names.push(name);
     }

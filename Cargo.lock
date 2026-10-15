@@ -347,11 +347,13 @@ dependencies = [
  "astraweave-camera",
  "astraweave-ecs",
  "astraweave-input",
+ "astraweave-localsim",
  "astraweave-nav",
  "astraweave-physics",
  "astraweave-render",
  "astraweave-terrain",
  "astraweave-veil",
+ "astraweave-water",
  "aw-save",
  "egui",
  "egui-wgpu",
@@ -1056,6 +1058,15 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "astraweave-localsim"
+version = "0.1.0"
+dependencies = [
+ "astraweave-water",
+ "criterion 0.5.1",
+ "sha2",
 ]
 
 [[package]]

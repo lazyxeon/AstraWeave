@@ -19,6 +19,8 @@ astraweave-render = { path = "../astraweave-render" }
 astraweave-input = { path = "../astraweave-input" }
 astraweave-nav = { path = "../astraweave-nav" }
 astraweave-ai = { workspace = true }
+astraweave-localsim = { path = "../astraweave-localsim" }
+astraweave-water = { path = "../astraweave-water" }
 astraweave-veil = { workspace = true }
 aw-save = { path = "../persistence/aw-save" }
 uuid = { version = "1", features = ["v4"] }

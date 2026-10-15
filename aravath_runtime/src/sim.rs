@@ -1,9 +1,11 @@
 //! Headless greybox simulation. The window binary only displays this.
 
 use astraweave_camera::ThirdPersonCamera;
+use astraweave_localsim::{demo_materials, LocalSim, SolidField, Subject};
 use astraweave_nav::{Aabb, NavMesh};
 use astraweave_physics::PhysicsWorld;
 use astraweave_terrain::VoxelGrid;
+use astraweave_water::ColumnWater;
 use glam::Vec3;
 
 use crate::combat::Combat;
@@ -113,6 +115,10 @@ pub struct Greybox {
     /// by asking `catch_up` to spend it.
     accumulator: f64,
     pub tick: u64,
+    /// Local fluid, gas, and heat. Regions follow the player and living enemies.
+    field: LocalSim,
+    /// Reused column table. `LocalSim::tick` does not allocate; neither does filling this.
+    water_columns: ColumnWater,
 }
 
 impl Greybox {
@@ -140,6 +146,8 @@ impl Greybox {
             scars: ScarField::new(),
             accumulator: 0.0,
             tick: 0,
+            field: LocalSim::new(),
+            water_columns: ColumnWater::new(),
         }
     }
 
@@ -167,6 +175,8 @@ impl Greybox {
             scars: ScarField::new(),
             accumulator: 0.0,
             tick: 0,
+            field: LocalSim::new(),
+            water_columns: ColumnWater::new(),
         }
     }
 
@@ -248,6 +258,7 @@ impl Greybox {
             self.respawn();
         }
         self.tick = self.tick.saturating_add(1);
+        self.tick_field();
         respawned
     }
 
@@ -324,9 +335,94 @@ impl Greybox {
             hash.i32(z);
             hash.u64(id);
         }
+        hash.bytes(&self.field.field_digest());
         hash.finish()
     }
 
+    /// Player plus living enemies, in spawn order, at most eight.
+    fn tick_field(&mut self) {
+        const CAP: usize = 8;
+        let mut subjects = [Subject {
+            id: 0,
+            cell: [0, 0, 0],
+            player: false,
+        }; CAP];
+        let mut n = 0usize;
+        if let Some(cell) = cell_of(self.player_pos()) {
+            subjects[0] = Subject {
+                id: 1,
+                cell,
+                player: true,
+            };
+            n = 1;
+        }
+        for enemy in &self.combat.enemies {
+            if n >= CAP || !enemy.alive() {
+                continue;
+            }
+            let Some(pos) = crate::combat::body_pos(&self.physics, enemy.body) else {
+                continue;
+            };
+            let Some(cell) = cell_of(pos) else {
+                continue;
+            };
+            subjects[n] = Subject {
+                id: enemy.body.saturating_add(1 << 32),
+                cell,
+                player: false,
+            };
+            n += 1;
+        }
+        let materials = demo_materials();
+        let solid = VoxelSolid {
+            grid: &self.ground.grid,
+        };
+        self.field.tick(
+            self.tick,
+            astraweave_localsim::TickInput {
+                subjects: &subjects[..n],
+                writes: &[],
+                materials: &materials,
+                zones: &[],
+            },
+            &solid,
+        );
+        self.field.write_columns(&mut self.water_columns);
+        self.physics.set_water_columns(&self.water_columns);
+    }
+}
+
+fn cell_of(pos: Vec3) -> Option<[i32; 3]> {
+    if !pos.x.is_finite() || !pos.y.is_finite() || !pos.z.is_finite() {
+        return None;
+    }
+    Some([
+        pos.x.div_euclid(1.0) as i32,
+        pos.y.div_euclid(1.0) as i32,
+        pos.z.div_euclid(1.0) as i32,
+    ])
+}
+
+struct VoxelSolid<'a> {
+    grid: &'a VoxelGrid,
+}
+
+impl SolidField for VoxelSolid<'_> {
+    fn solid(&self, x: i32, y: i32, z: i32) -> bool {
+        self.grid
+            .get_voxel(Vec3::new(x as f32 + 0.5, y as f32 + 0.5, z as f32 + 0.5))
+            .is_some_and(|voxel| voxel.is_solid())
+    }
+
+    fn material_id(&self, x: i32, y: i32, z: i32) -> u16 {
+        self.grid
+            .get_voxel(Vec3::new(x as f32 + 0.5, y as f32 + 0.5, z as f32 + 0.5))
+            .map(|voxel| voxel.material)
+            .unwrap_or(0)
+    }
+}
+
+impl Greybox {
     pub fn tick_controls(&mut self, input: MotorInput) {
         let mut input = input;
         if self.combat.player_hp <= 0.0 {
@@ -571,6 +667,41 @@ mod tests {
             sim.tick_wish(Vec3::ZERO);
         }
         sim.player_pos()
+    }
+
+    #[test]
+    fn field_follows_the_player_and_a_dug_cell_opens() {
+        let mut sim = Greybox::open(0);
+        sim.spawn_enemy(Vec3::new(22.0, 16.0, 16.0));
+        sim.step(TickInput::default());
+        assert_eq!(sim.field.tick_index(), sim.tick);
+        assert!(
+            sim.field.occupied_count() >= 2,
+            "the player and the enemy each keep a region"
+        );
+        let cell = cell_of(sim.player_pos()).expect("player cell");
+        let mut solid_y = None;
+        for dy in 0..48 {
+            let y = cell[1] - dy;
+            if (VoxelSolid {
+                grid: &sim.ground.grid,
+            })
+            .solid(cell[0], y, cell[2])
+            {
+                solid_y = Some(y);
+                break;
+            }
+        }
+        let y = solid_y.expect("the heightfield has a solid cell under the player");
+        let center = Vec3::new(cell[0] as f32 + 0.5, y as f32 + 0.5, cell[2] as f32 + 0.5);
+        sim.ground.dig_sphere(center, 1.0);
+        let open = (VoxelSolid {
+            grid: &sim.ground.grid,
+        })
+        .solid(cell[0], y, cell[2]);
+        assert!(!open, "a dug voxel is open to the field");
+        sim.step(TickInput::default());
+        assert_eq!(sim.field.tick_index(), 2);
     }
 
     #[test]
