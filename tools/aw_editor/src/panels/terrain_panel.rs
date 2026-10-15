@@ -772,7 +772,7 @@ impl TerrainPanel {
     /// Returns undo data if any chunks were modified during the stroke.
     pub fn end_brush_stroke(
         &mut self,
-    ) -> Option<Vec<(astraweave_terrain::ChunkId, Vec<f32>, Vec<f32>)>> {
+    ) -> Option<crate::terrain_integration::TerrainHeightStroke> {
         self.flatten_target_height = None;
         self.terrain_state.end_stroke()
     }

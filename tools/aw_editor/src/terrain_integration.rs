@@ -141,6 +141,9 @@ impl Default for TerrainState {
     }
 }
 
+/// Per-chunk `(id, pre-heights, post-heights)` captured by one brush stroke.
+pub type TerrainHeightStroke = Vec<(ChunkId, Vec<f32>, Vec<f32>)>;
+
 /// One sculpt or carve application. The position stays on `apply_brush`.
 pub struct TerrainBrushStroke {
     pub radius: f32,
@@ -1945,7 +1948,7 @@ impl TerrainState {
 
     /// End a brush stroke — returns the undo data (ChunkId → (pre, post) heightmaps).
     /// Returns None if no chunks were modified.
-    pub fn end_stroke(&mut self) -> Option<Vec<(ChunkId, Vec<f32>, Vec<f32>)>> {
+    pub fn end_stroke(&mut self) -> Option<TerrainHeightStroke> {
         self.is_stroking = false;
         if self.stroke_pre_snapshots.is_empty() {
             return None;

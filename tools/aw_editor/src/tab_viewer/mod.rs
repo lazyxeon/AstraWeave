@@ -1482,7 +1482,7 @@ impl EditorTabViewer {
     /// Returns undo data if any chunks were modified.
     pub fn end_terrain_brush_stroke(
         &mut self,
-    ) -> Option<Vec<(astraweave_terrain::ChunkId, Vec<f32>, Vec<f32>)>> {
+    ) -> Option<crate::terrain_integration::TerrainHeightStroke> {
         self.terrain_panel.end_brush_stroke()
     }
 
