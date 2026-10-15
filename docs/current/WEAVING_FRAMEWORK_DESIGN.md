@@ -1,6 +1,15 @@
 # Weaving framework design
 
-**Status:** review gate. No feature code in this change.
+**Status:** approved with the ownership changes below. Phase 2 implements them on `feat/weaving-framework`.
+
+Approved deltas:
+
+- The field solver stays on `feat/local-sim` (`astraweave-localsim`). Weaving writes `SimModifier` records. `TestSimField` is the stand-in until that crate exists.
+- One crate: `astraweave-weaving`. No `astraweave-weave`.
+- `WorldSnapshot` has a 16-slot hazard tail (PR #251 coordination).
+- Freeze emits a static AABB, a `NavChange`, and the ice flag.
+- `queue_weave` matches the shape #214 will call. Full sandbox registration waits on that merge.
+- Integer milli-units until `Fixed64` lands in `astraweave-math` from the destruction work.
 **Reads:** [`WEAVING_ARCHAEOLOGY.md`](WEAVING_ARCHAEOLOGY.md), `main` at `85d09a2c`.
 **Does not merge.** Phase 2 starts when the questions in §14 are answered.
 
@@ -8,7 +17,7 @@ A weave is a data record that modifies world state. Heat, cold, force, density, 
 
 ## 1. Decision
 
-Add one crate, `astraweave-weave`, that owns a modifier graph, a fixed-capacity field, and the command log. Other crates receive sink commands. They do not grow a second evaluator.
+`astraweave-weaving` owns the modifier graph, the template table, and the casts. It writes `SimModifier` records through `SimField`. It does not own a second field solver. `TestSimField` is the deterministic stand-in until `astraweave-localsim` exists.
 
 The crate depends on `astraweave-core` for `SimRng` and `Entity`. It does not depend on physics, gameplay, render, fluids, combat, or destruction. Those crates do not depend on it in Phase 2 either. The host (`build_app`, and later the Aravath call site) drains the sink rings. That is the same one-way shape PR #243 uses so a library with no hooks does not go dormant, and so the dependency graph does not gain a cycle.
 

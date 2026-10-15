@@ -1594,7 +1594,7 @@ fn player_defaults() {
     let p = Player::new(Vec3::ZERO);
     assert_eq!(p.health, 100.0);
     assert_eq!(p.max_health, 100.0);
-    assert_eq!(p.echo_currency, 0);
+    assert_eq!(p.echo_balance(), 0);
 }
 
 #[test]
@@ -1609,45 +1609,45 @@ fn player_is_alive_boundary() {
 #[test]
 fn player_can_dash_cost() {
     let mut p = Player::new(Vec3::ZERO);
-    p.echo_currency = 9;
+    p.set_echo(9);
     assert!(!p.can_dash(), "9 < 10");
-    p.echo_currency = 10;
+    p.set_echo(10);
     assert!(p.can_dash(), "10 >= 10");
 }
 
 #[test]
 fn player_can_shield_cost() {
     let mut p = Player::new(Vec3::ZERO);
-    p.echo_currency = 14;
+    p.set_echo(14);
     assert!(!p.can_shield(), "14 < 15");
-    p.echo_currency = 15;
+    p.set_echo(15);
     assert!(p.can_shield(), "15 >= 15");
 }
 
 #[test]
 fn player_use_dash_deducts_echo() {
     let mut p = Player::new(Vec3::ZERO);
-    p.echo_currency = 20;
+    p.set_echo(20);
     p.forward = Vec3::Z;
     let result = p.use_dash();
     assert!(result.is_ok());
-    assert_eq!(p.echo_currency, 10, "deducts 10");
+    assert_eq!(p.echo_balance(), 10, "deducts 10");
 }
 
 #[test]
 fn player_use_shield_deducts_echo() {
     let mut p = Player::new(Vec3::ZERO);
-    p.echo_currency = 30;
+    p.set_echo(30);
     let result = p.use_shield();
     assert!(result.is_ok());
-    assert_eq!(p.echo_currency, 15, "deducts 15");
+    assert_eq!(p.echo_balance(), 15, "deducts 15");
 }
 
 #[test]
 fn player_add_echo() {
     let mut p = Player::new(Vec3::ZERO);
     p.add_echo(42);
-    assert_eq!(p.echo_currency, 42);
+    assert_eq!(p.echo_balance(), 42);
 }
 
 #[test]

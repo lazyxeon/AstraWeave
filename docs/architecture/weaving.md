@@ -2,12 +2,12 @@
 schema_version: 1
 trace_id: weaving
 title: "Weaving / Fate-Weaving System (`astraweave-weaving`)"
-description: "Weaving / Fate-Weaving — the Veilweaver mechanic (`astraweave-weaving`)"
+description: "Weaving — modifier graph, casts, and the anchor slice (`astraweave-weaving`)"
 primary_crate: astraweave-weaving
 domain: gameplay
 lifecycle_status: in_design
 integration_status: example_only
-summary: "Zero library consumers (only examples/advanced_content_demo + veilweaver_quest_demo); systems/* take Vec/slice params, not Query/Res — not registerable as ECS systems as written. weaving.md §1,§8"
+summary: "Modifier graph and casts live here and write SimModifier records into the local-sim field trait. Gameplay apply_weave_op compiles the legacy ops. The anchor slice systems are still plain functions. weaving.md §5,§8"
 owns: [astraweave-weaving]
 doc_version: "1.3"
 last_verified_commit: 7c29b8182
@@ -235,6 +235,10 @@ This crate hosts **two distinct pipelines** that do not call each other. Both ar
 | [`gameplay_qa.rs`](../../astraweave-weaving/src/gameplay_qa.rs) | Scenario loader, scripted and goal policies, failure artifact, ddmin | Active | Scenario 1 calls `run_aravath_slice` once per trace. It does not split the function. |
 | [`scenarios/aravath_slice_sword.ron`](../../astraweave-weaving/scenarios/aravath_slice_sword.ron) | Scenario 1 | Active | Reach check only. `SaveReload` and `SameSeqTwice` are not in this file. |
 | [`mod_queue.rs`](../../astraweave-weaving/src/mod_queue.rs) | `queue_weave`, `parse_template_toml`, fixed `WeaveScratch` | Active | Sandbox host entry. Engine template ids 1 through 7 are reserved. The tick copies casts into a fixed array and does not evaluate a field. |
+| [`field.rs`](../../astraweave-weaving/src/field.rs) | `SimModifier` / `SimField` / `TestSimField` | Active | Writes modifiers. Does not step the local-sim grid. `TestSimField` is the stand-in. |
+| [`templates.rs`](../../astraweave-weaving/src/templates.rs) | Closed template table and TOML loader | Active | Casts name an id. |
+| [`eval.rs`](../../astraweave-weaving/src/eval.rs) | `weave_tick`, hazard tail, ice sheet, `NavChange` | Active | No allocation inside `weave_tick`. |
+| [`legacy.rs`](../../astraweave-weaving/src/legacy.rs) | Compiles the six legacy ops | Active | `apply_weave_op` calls this. |
 | [`patterns.rs`](../../astraweave-weaving/src/patterns.rs) | Emergent pattern detection (4 detectors) | Active | Pure functions over `WorldMetrics`. |
 | [`intents.rs`](../../astraweave-weaving/src/intents.rs) | `WeaveIntent` + 4 proposers | Active | Builder-style intent. |
 | [`adjudicator.rs`](../../astraweave-weaving/src/adjudicator.rs) | `WeaveAdjudicator` + `WeaveConfig` (TOML) | Active | Budget/cooldown/priority gate. |
@@ -367,6 +371,7 @@ This crate hosts **two distinct pipelines** that do not call each other. Both ar
 | 9 | Anchor particle positions and velocities are a function of `(world_seed, tick, SIM_SYSTEM_ANCHOR_PARTICLES)` via `SimRng`. Draws are dyadic `f32`s plus IEEE `sqrt`; no `rand::random` and no `sin`/`cos`. | Yes | `sim_rng.rs`, `particles/anchor_particle.rs`; test `particle_spawn_state_is_bit_identical_for_the_same_seed`. |
 | 10 | Enemy patrol targets and wave spawn positions are a function of `(world_seed, draw_index, SIM_SYSTEM_ENEMY_PATROL \| SIM_SYSTEM_SPAWNER)`. Offsets are rejection samples in the disk (`disk_xz`); no `thread_rng` and no `sin`/`cos`. Active spawn ids are sorted before round-robin. | Yes | `enemy.rs`, `spawner.rs`; tests `patrol_target_is_bit_identical_for_the_same_seed`, `spawn_positions_are_bit_identical_for_the_same_seed`. |
 | 11 | `run_aravath_slice` is one resolve at `ARAVATH_SLICE_SEED`. The scripted and goal policies of `aravath_slice_sword` finish on the same SHA-256 trace. That digest is required case `gameplay_qa_aravath_slice`. | Yes | `gameplay_qa.rs` test `replay_aravath_slice_scenario`. `determinism-replay.yml` merges `replay-hash-gameplay-qa.json`. |
+| 12 | `weave_tick` does not allocate. Modifiers are stamped in command order. One reaction per cell. Freeze emits one ice AABB and one `NavChange` on the command's start tick. | Yes | `eval.rs`, `tests/no_alloc.rs`, `astraweave-core/tests/replay_hash.rs` case `weaving`. |
 
 ---
 
@@ -451,7 +456,7 @@ This is a pure-CPU logic crate; performance is benchmark-tracked but not a runti
 
 **Common mistakes when changing this system:**
 - Assuming `add_system(stage, anchor_decay_system)` works — it does not; rewrite signatures to ECS params first if wiring is the goal.
-- Editing one repair/currency path and assuming the demo picks it up — the demo uses `VeilweaverLevel`/`Player.echo_currency`, not `EchoCurrency`/`anchor_repair_system`.
+- Editing a second Echo balance. `Player` keeps one `EchoCurrency` ledger. Ability costs are `dash_echo_cost` / `shield_echo_cost`.
 - Conflating `anchor::AbilityType` with `abilities::AbilityType`, or `combat::CombatEvent` with `systems::CombatEvent`.
 
 ---

@@ -3,8 +3,9 @@ use anyhow::Result;
 use astraweave_core::{
     apply_director_plan, DirectorBudget, DirectorOp, DirectorPlan, IVec2, World,
 };
-use astraweave_nav::{NavMesh, Triangle};
+use astraweave_nav::Triangle;
 use astraweave_physics::PhysicsWorld;
+use astraweave_weaving::{compile_legacy, LegacyPoints};
 use glam::vec3;
 
 /// Apply a single weave op to the world + physics, consume budgets, and return consequences.
@@ -16,101 +17,98 @@ pub fn apply_weave_op(
     op: &WeaveOp,
     log: &mut impl FnMut(String),
 ) -> Result<WeaveConsequence> {
+    let _ = nav_src;
     let mut core_budget = DirectorBudget {
         traps: 0,
         terrain_edits: 3,
         spawns: 0,
     };
     let mut plan = DirectorPlan { ops: vec![] };
+    let kind = match op.kind {
+        WeaveOpKind::ReinforcePath => 0,
+        WeaveOpKind::CollapseBridge => 1,
+        WeaveOpKind::RedirectWind => 2,
+        WeaveOpKind::LowerWater => 3,
+        WeaveOpKind::RaisePlatform => 4,
+        WeaveOpKind::FreezeWater => 5,
+    };
+    let compiled = compile_legacy(
+        kind,
+        LegacyPoints {
+            a: [op.a.x, op.a.y, op.a.z],
+            b: op.b.map(|p| [p.x, p.y, p.z]),
+            tick: 0,
+            seq: 0,
+        },
+    );
 
+    if matches!(op.kind, WeaveOpKind::CollapseBridge) && op.b.is_none() {
+        anyhow::bail!("Collapse needs A->B");
+    }
     match op.kind {
-        WeaveOpKind::ReinforcePath => {
+        WeaveOpKind::ReinforcePath | WeaveOpKind::RaisePlatform | WeaveOpKind::CollapseBridge => {
             if budget.terrain_edits <= 0 {
                 anyhow::bail!("No terrain budget");
             }
-            // fortify a small rect around A
-            let a = op.a;
-            plan.ops.push(DirectorOp::Fortify {
-                rect: astraweave_core::Rect {
-                    x0: a.x as i32 - 1,
-                    y0: a.z as i32 - 1,
-                    x1: a.x as i32 + 1,
-                    y1: a.z as i32 + 1,
-                },
-            });
             budget.terrain_edits -= 1;
         }
-        WeaveOpKind::CollapseBridge => {
-            if budget.terrain_edits <= 0 {
-                anyhow::bail!("No terrain budget");
-            }
-            let a = op.a;
-            let b = op.b.ok_or_else(|| anyhow::anyhow!("Collapse needs A->B"))?;
-            plan.ops.push(DirectorOp::Collapse {
-                a: IVec2 {
-                    x: a.x as i32,
-                    y: a.z as i32,
-                },
-                b: IVec2 {
-                    x: b.x as i32,
-                    y: b.z as i32,
-                },
-            });
-            budget.terrain_edits -= 1;
-        }
-        WeaveOpKind::RedirectWind => {
+        WeaveOpKind::RedirectWind | WeaveOpKind::LowerWater | WeaveOpKind::FreezeWater => {
             if budget.weather_ops <= 0 {
                 anyhow::bail!("No weather budget");
             }
-            let dir = (op.b.unwrap_or(op.a + vec3(1.0, 0.0, 0.0)) - op.a).normalize_or_zero();
-            phys.set_wind(dir, 10.0);
             budget.weather_ops -= 1;
-            log("Weave: Wind redirected".into());
         }
-        WeaveOpKind::LowerWater => {
-            if budget.weather_ops <= 0 {
-                anyhow::bail!("No weather budget");
-            }
-            // crude: clear water volumes entirely (demo)
-            phys.clear_water();
-            budget.weather_ops -= 1;
-            log("Weave: Waters receded".into());
-        }
-        WeaveOpKind::RaisePlatform => {
-            if budget.terrain_edits <= 0 {
-                anyhow::bail!("No terrain budget");
-            }
-            let a = op.a;
-            plan.ops.push(DirectorOp::Fortify {
-                rect: astraweave_core::Rect {
-                    x0: a.x as i32,
-                    y0: a.z as i32,
-                    x1: a.x as i32,
-                    y1: a.z as i32,
-                },
-            });
-            budget.terrain_edits -= 1;
-        }
-        WeaveOpKind::FreezeWater => {
-            if budget.weather_ops <= 0 {
-                anyhow::bail!("No weather budget");
-            }
-            // W.2c.3 presentation-only: a valid weave that consumes the weather
-            // budget and carries `op.a` for the render layer's freeze deformation.
-            // NO truth mutation — the walkable-ice / buoyancy-blocking freeze is
-            // deferred to the post-surface-arc gameplay-truth-coupling phase, so
-            // there is deliberately no physics/collision/traversal change here.
-            budget.weather_ops -= 1;
-            log("Weave: Waters frozen".into());
-        }
+    }
+
+    if let Some(rect) = compiled.fortify {
+        plan.ops.push(DirectorOp::Fortify {
+            rect: astraweave_core::Rect {
+                x0: rect.x0,
+                y0: rect.y0,
+                x1: rect.x1,
+                y1: rect.y1,
+            },
+        });
+    }
+    if let Some(collapse) = compiled.collapse {
+        plan.ops.push(DirectorOp::Collapse {
+            a: IVec2 {
+                x: collapse.ax,
+                y: collapse.ay,
+            },
+            b: IVec2 {
+                x: collapse.bx,
+                y: collapse.by,
+            },
+        });
+    }
+    if matches!(op.kind, WeaveOpKind::RedirectWind) {
+        let dir = (op.b.unwrap_or(op.a + vec3(1.0, 0.0, 0.0)) - op.a).normalize_or_zero();
+        phys.set_wind(dir, 10.0);
+        log("Weave: Wind redirected".into());
+    }
+    if matches!(op.kind, WeaveOpKind::LowerWater) {
+        phys.clear_water();
+        log("Weave: Waters receded".into());
+    }
+    if let (Some(min_milli), Some(max_milli)) = (compiled.ice_min_milli, compiled.ice_max_milli) {
+        let min = glam::Vec3::new(
+            min_milli[0] as f32 / 1000.0,
+            min_milli[1] as f32 / 1000.0,
+            min_milli[2] as f32 / 1000.0,
+        );
+        let max = glam::Vec3::new(
+            max_milli[0] as f32 / 1000.0,
+            max_milli[1] as f32 / 1000.0,
+            max_milli[2] as f32 / 1000.0,
+        );
+        let _body = phys.add_static_aabb(min, max);
+        log("Weave: Waters frozen".into());
     }
 
     if !plan.ops.is_empty() {
         apply_director_plan(w, &mut core_budget, &plan, log);
     }
-
-    // Re-bake a small navmesh from provided triangles (demo pathing update)
-    let _nav = NavMesh::bake(nav_src, 0.5, 55.0);
 
     // Return a rough “world consequence”
     let consequence = match op.kind {

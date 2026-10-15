@@ -202,6 +202,14 @@ impl AbilityManager {
         self.echo_shield.update(delta_time);
     }
 
+    pub fn dash_echo_cost(&self) -> u32 {
+        self.echo_dash.state.echo_cost
+    }
+
+    pub fn shield_echo_cost(&self) -> u32 {
+        self.echo_shield.state.echo_cost
+    }
+
     /// Activate Echo Dash (returns dash target position and damage)
     pub fn activate_dash(
         &mut self,

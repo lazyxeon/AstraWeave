@@ -28,7 +28,7 @@ fn demo_scenario_1_escort_quest_with_ui() {
     println!("----------------------------------------");
 
     let mut player = Player::new(Vec3::ZERO);
-    player.echo_currency = 100;
+    player.set_echo(100);
     player.forward = Vec3::new(1.0, 0.0, 0.0);
 
     let escort_npc = quest_types::EscortNPC::new(
@@ -68,7 +68,7 @@ fn demo_scenario_1_escort_quest_with_ui() {
         );
         println!(
             "✅ Shield activated! Echo: {} → {}",
-            100, player.echo_currency
+            100, player.echo_balance() as i32
         );
     }
 
@@ -87,7 +87,7 @@ fn demo_scenario_1_escort_quest_with_ui() {
         println!("{}", play_audio_effect("dash_whoosh"));
         println!("{}", render_particle_effect("dash_trail", player.position));
         player.position += player.forward * 10.0; // Dash forward
-        println!("✅ Dash complete! Echo: {}", player.echo_currency);
+        println!("✅ Dash complete! Echo: {}", player.echo_balance() as i32);
     }
 
     println!("{}", render_full_hud(&player, &quest, 80));
@@ -107,7 +107,7 @@ fn demo_scenario_1_escort_quest_with_ui() {
 
     // Update cooldowns
     player.ability_manager.update(2.0);
-    player.echo_currency += 10; // Regen some Echo
+    player.add_echo(10); // Regen some Echo
 
     println!("{}", render_full_hud(&player, &quest, 80));
 
@@ -126,7 +126,7 @@ fn demo_scenario_1_escort_quest_with_ui() {
         render_notification("Quest Complete!", "You earned 50 Echo ⚡", "✅")
     );
 
-    player.echo_currency += 50; // Reward
+    player.add_echo(50); // Reward
 
     println!("{}", render_full_hud(&player, &quest, 80));
 
@@ -140,7 +140,7 @@ fn demo_scenario_2_defend_quest_with_ui() {
     println!("----------------------------------------");
 
     let mut player = Player::new(Vec3::new(50.0, 0.0, 50.0));
-    player.echo_currency = 150;
+    player.set_echo(150);
     player.forward = Vec3::new(0.0, 0.0, 1.0);
 
     let defend_anchor = quest_types::DefendObjective::new(
@@ -230,7 +230,7 @@ fn demo_scenario_2_defend_quest_with_ui() {
 
     // Abilities on cooldown
     player.ability_manager.update(3.0);
-    player.echo_currency += 20;
+    player.add_echo(20);
 
     println!("{}", render_full_hud(&player, &quest, 80));
 
@@ -254,7 +254,7 @@ fn demo_scenario_2_defend_quest_with_ui() {
         render_notification("Defense Complete!", "Village survived! +100 Echo ⚡", "🏆")
     );
 
-    player.echo_currency += 100;
+    player.add_echo(100);
 
     println!("{}", render_full_hud(&player, &quest, 80));
 
@@ -266,7 +266,7 @@ fn demo_scenario_3_boss_fight_with_ui() {
     println!("----------------------------------------");
 
     let mut player = Player::new(Vec3::new(0.0, 0.0, 0.0));
-    player.echo_currency = 200;
+    player.set_echo(200);
     player.forward = Vec3::new(1.0, 0.0, 0.0);
 
     let void_boss = quest_types::BossObjective::new(
@@ -328,7 +328,7 @@ fn demo_scenario_3_boss_fight_with_ui() {
     if let Ok((_pos, _dmg)) = player.use_dash() {
         println!("{}", render_particle_effect("dash_trail", player.position));
         player.position += player.forward * 15.0;
-        println!("✅ Dodged! Echo: {}", player.echo_currency);
+        println!("✅ Dodged! Echo: {}", player.echo_balance() as i32);
     }
 
     player.ability_manager.update(1.0);
@@ -342,7 +342,7 @@ fn demo_scenario_3_boss_fight_with_ui() {
             "{}",
             render_particle_effect("shield_bubble", player.position)
         );
-        println!("✅ Blocked! Echo: {}", player.echo_currency);
+        println!("✅ Blocked! Echo: {}", player.echo_balance() as i32);
     }
 
     // Damage to boss (simulated)
@@ -364,7 +364,7 @@ fn demo_scenario_3_boss_fight_with_ui() {
     }
 
     player.ability_manager.update(2.0);
-    player.echo_currency += 30;
+    player.add_echo(30);
     println!("{}", render_full_hud(&player, &quest, 80));
 
     // === PHASE 2: Boss enrage ===
@@ -432,7 +432,7 @@ fn demo_scenario_3_boss_fight_with_ui() {
         render_notification("Boss Defeated!", "Reality restored! +250 Echo ⚡", "👑")
     );
 
-    player.echo_currency += 250;
+    player.add_echo(250);
 
     println!("{}", render_full_hud(&player, &quest, 80));
 

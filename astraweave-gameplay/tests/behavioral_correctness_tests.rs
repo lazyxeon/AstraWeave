@@ -65,12 +65,11 @@ fn test_zero_defense_full_damage() {
     let mut stats = Stats::new(100);
     stats.defense = 0;
 
-    // Test: damage = 30, defense = 0
-    // Expected: max(30 - 0 * 0.5, 1) = max(30, 1) = 30
+    // Fire scales the physical result by 12500 basis points: 30 -> 37.
     let mitigated = stats.apply_damage(30, DamageType::Fire);
 
-    assert_eq!(mitigated, 30, "Zero defense should apply full damage");
-    assert_eq!(stats.hp, 70, "HP should be 100 - 30 = 70");
+    assert_eq!(mitigated, 37, "Fire school scales the physical hit");
+    assert_eq!(stats.hp, 63, "HP should be 100 - 37 = 63");
 }
 
 /// Test bleed DoT deals damage proportional to DPS * dt
@@ -922,27 +921,21 @@ fn test_damage_types_distinct() {
     assert_eq!(types.len(), 6, "Should have 6 damage types");
 }
 
-/// Test damage type doesn't affect mitigation formula (defense-based only)
+/// School scale is applied after defense. Physical result of 20 vs defense 10 is 15.
 #[test]
-fn test_damage_type_mitigation_same() {
-    let damage_types = [
-        DamageType::Physical,
-        DamageType::Fire,
-        DamageType::Frost,
-        DamageType::Shock,
+fn test_damage_type_school_scale() {
+    let expected = [
+        (DamageType::Physical, 15),
+        (DamageType::Fire, 18),
+        (DamageType::Frost, 15),
+        (DamageType::Shock, 16),
     ];
 
-    for dtype in &damage_types {
+    for (dtype, want) in expected {
         let mut stats = Stats::new(100);
         stats.defense = 10;
-
-        let mitigated = stats.apply_damage(20, *dtype);
-
-        assert_eq!(
-            mitigated, 15,
-            "{:?} damage should have same mitigation as other types",
-            dtype
-        );
+        let mitigated = stats.apply_damage(20, dtype);
+        assert_eq!(mitigated, want, "{dtype:?} school scale");
     }
 }
 

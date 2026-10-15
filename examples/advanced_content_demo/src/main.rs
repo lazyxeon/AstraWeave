@@ -28,7 +28,7 @@ fn demo_scenario_1_escort_quest() {
     println!("----------------------------------------");
 
     let mut player = Player::new(Vec3::ZERO);
-    player.echo_currency = 100;
+    player.set_echo(100);
     player.forward = Vec3::new(1.0, 0.0, 0.0);
 
     let escort_npc = quest_types::EscortNPC::new(
@@ -66,7 +66,7 @@ fn demo_scenario_1_escort_quest() {
 
                 if player.can_shield() {
                     player.use_shield().ok();
-                    println!("   🛡️  Shield activated! Echo: {}", player.echo_currency);
+                    println!("   🛡️  Shield activated! Echo: {}", player.echo_balance() as i32);
                 }
             }
 
@@ -98,7 +98,7 @@ fn demo_scenario_2_defend_quest() {
     println!("----------------------------------------");
 
     let mut player = Player::new(Vec3::ZERO);
-    player.echo_currency = 100;
+    player.set_echo(100);
 
     let defend_obj =
         quest_types::DefendObjective::new("Ancient Anchor", Vec3::ZERO, 10.0, 200.0, 30.0, 3);
@@ -162,7 +162,7 @@ fn demo_scenario_3_boss_fight() {
     println!("----------------------------------------");
 
     let mut player = Player::new(Vec3::ZERO);
-    player.echo_currency = 150;
+    player.set_echo(150);
     player.forward = Vec3::new(1.0, 0.0, 0.0);
 
     let boss_obj = quest_types::BossObjective::new(
@@ -233,7 +233,7 @@ fn demo_scenario_4_time_trial() {
     println!("----------------------------------------");
 
     let mut player = Player::new(Vec3::ZERO);
-    player.echo_currency = 100;
+    player.set_echo(100);
     player.forward = Vec3::new(1.0, 0.0, 0.0);
 
     let time_trial_obj = quest_types::TimeTrialObjective::new(15.0, 10.0);
@@ -303,7 +303,7 @@ fn demo_scenario_5_collect_quest() {
     println!("----------------------------------------");
 
     let mut player = Player::new(Vec3::ZERO);
-    player.echo_currency = 100;
+    player.set_echo(100);
 
     let positions = vec![
         Vec3::new(10.0, 0.0, 0.0),

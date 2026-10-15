@@ -100,7 +100,7 @@ The workspace has a per-subsystem architecture trace campaign under `docs/archit
 | `docs/architecture/terrain_materials.md` | Terrain Material System (canonical reference example) |
 | `docs/architecture/ui.md` | UI — HUD, menus, panels (egui) |
 | `docs/architecture/water.md` | Water Successor — `WaterQuery` facade + render water surface + weave-response (part/freeze/raise/FreezeWater) + F.4 accents |
-| `docs/architecture/weaving.md` | Weaving / Fate-Weaving — the Veilweaver mechanic (`astraweave-weaving`) |
+| `docs/architecture/weaving.md` | Weaving — modifier graph, casts, and the anchor slice (`astraweave-weaving`) |
 <!-- TRACE-TABLE:END -->
 
 **The 5-prompt trace toolkit lives at `docs/architecture/_meta/`:**

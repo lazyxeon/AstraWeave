@@ -15,7 +15,7 @@ fn bench_player_ability_updates(c: &mut Criterion) {
                 let mut players: Vec<Player> = (0..count)
                     .map(|i| {
                         let mut p = Player::new(Vec3::new(i as f32, 0.0, 0.0));
-                        p.echo_currency = 100;
+                        p.set_echo(100);
                         p
                     })
                     .collect();
@@ -39,13 +39,13 @@ fn bench_player_ability_activation(c: &mut Criterion) {
     // Dash activation
     group.bench_function("dash_activation", |b| {
         let mut player = Player::new(Vec3::ZERO);
-        player.echo_currency = 1000;
+        player.set_echo(1000);
         player.forward = Vec3::new(1.0, 0.0, 0.0);
 
         b.iter(|| {
             let result = player.use_dash();
             let _ = black_box(result);
-            player.echo_currency += 10; // Refund for continuous testing
+            player.add_echo(10); // Refund for continuous testing
             player.update(1.0); // Reset cooldown
         });
     });
@@ -53,12 +53,12 @@ fn bench_player_ability_activation(c: &mut Criterion) {
     // Shield activation
     group.bench_function("shield_activation", |b| {
         let mut player = Player::new(Vec3::ZERO);
-        player.echo_currency = 1000;
+        player.set_echo(1000);
 
         b.iter(|| {
             let result = player.use_shield();
             let _ = black_box(result);
-            player.echo_currency += 15; // Refund
+            player.add_echo(15); // Refund
             player.update(5.0); // Reset cooldown
         });
     });
@@ -184,7 +184,7 @@ fn bench_integrated_systems(c: &mut Criterion) {
                 let mut players: Vec<Player> = (0..size)
                     .map(|i| {
                         let mut p = Player::new(Vec3::new(i as f32, 0.0, 0.0));
-                        p.echo_currency = 100;
+                        p.set_echo(100);
                         p
                     })
                     .collect();

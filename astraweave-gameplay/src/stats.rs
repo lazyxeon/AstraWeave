@@ -14,9 +14,22 @@ pub struct Stats {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[non_exhaustive]
 pub enum StatusEffect {
-    Stagger { time: f32 },
-    Bleed { dps: f32, time: f32 },
-    Chill { slow: f32, time: f32 },
+    Stagger {
+        time: f32,
+    },
+    Bleed {
+        dps: f32,
+        time: f32,
+    },
+    Chill {
+        slow: f32,
+        time: f32,
+    },
+    /// Rider from a fire weave or an item `special = "burn"`.
+    Burn {
+        dps: f32,
+        time: f32,
+    },
 }
 
 impl Stats {
@@ -31,10 +44,71 @@ impl Stats {
         }
     }
 
-    pub fn apply_damage(&mut self, amount: i32, _dtype: DamageType) -> i32 {
-        let mitigated = (amount as f32 - self.defense as f32 * 0.5).max(1.0) as i32;
-        self.hp -= mitigated;
-        mitigated
+    pub fn apply_damage(&mut self, amount: i32, dtype: DamageType) -> i32 {
+        let physical = (amount as f32 - self.defense as f32 * 0.5).max(1.0) as i32;
+        // School scale in basis points after the physical mitigation. Physical and
+        // Echo stay at 10000 so existing physical tests keep their numbers.
+        let scale_bp: i32 = match dtype {
+            DamageType::Physical | DamageType::Echo => 10_000,
+            DamageType::Fire => 12_500,
+            DamageType::Frost => 10_000,
+            DamageType::Shock => 11_000,
+            DamageType::Poison => 8_000,
+        };
+        let taken = ((physical as i64 * scale_bp as i64) / 10_000).max(1) as i32;
+        self.hp -= taken;
+        self.apply_element_rider(dtype, None);
+        taken
+    }
+
+    /// Chill, burn, and stun readers. `special` is the item tag `"burn"` or `"stun"`.
+    pub fn apply_element_rider(&mut self, dtype: DamageType, special: Option<&str>) {
+        match dtype {
+            DamageType::Frost => self.effects.push(StatusEffect::Chill {
+                slow: 0.25,
+                time: 2.0,
+            }),
+            DamageType::Fire => self.effects.push(StatusEffect::Burn {
+                dps: 2.0,
+                time: 3.0,
+            }),
+            DamageType::Poison => self.effects.push(StatusEffect::Bleed {
+                dps: 2.0,
+                time: 3.0,
+            }),
+            _ => {}
+        }
+        match special {
+            Some("burn") => self.effects.push(StatusEffect::Burn {
+                dps: 4.0,
+                time: 3.0,
+            }),
+            Some("stun") => self.effects.push(StatusEffect::Stagger { time: 1.5 }),
+            _ => {}
+        }
+    }
+
+    /// 10000 is full speed. Chill `slow` is a fraction in `0..=1`, read here.
+    pub fn move_scale_bp(&self) -> u16 {
+        let mut slow_bp: u32 = 0;
+        for effect in &self.effects {
+            if let StatusEffect::Chill { slow, .. } = effect {
+                let clamped = slow.clamp(0.0, 1.0);
+                slow_bp = slow_bp.saturating_add((clamped * 10_000.0) as u32);
+            }
+        }
+        10_000u32.saturating_sub(slow_bp).min(10_000) as u16
+    }
+
+    pub fn is_stunned(&self) -> bool {
+        self.effects
+            .iter()
+            .any(|effect| matches!(effect, StatusEffect::Stagger { time } if *time > 0.0))
+    }
+
+    /// Displacement in millimetres after chill. This is the movement reader.
+    pub fn scaled_milli(&self, step_milli: i32) -> i32 {
+        (step_milli as i64 * self.move_scale_bp() as i64 / 10_000) as i32
     }
 
     pub fn tick(&mut self, dt: f32) -> i32 {
@@ -51,6 +125,11 @@ impl Stats {
                 *time > 0.0
             }
             StatusEffect::Chill { time, .. } => {
+                *time -= dt;
+                *time > 0.0
+            }
+            StatusEffect::Burn { dps, time } => {
+                dot += *dps * dt;
                 *time -= dt;
                 *time > 0.0
             }
@@ -108,8 +187,13 @@ mod tests {
         let mut stats = Stats::new(100);
         stats.defense = 0;
         let mitigated = stats.apply_damage(30, DamageType::Fire);
-        assert_eq!(mitigated, 30);
-        assert_eq!(stats.hp, 70);
+        // Fire is 12500 basis points of the physical result.
+        assert_eq!(mitigated, 37);
+        assert_eq!(stats.hp, 63);
+        assert!(stats
+            .effects
+            .iter()
+            .any(|e| matches!(e, StatusEffect::Burn { .. })));
     }
 
     #[test]

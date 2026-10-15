@@ -1147,6 +1147,26 @@ impl PhysicsWorld {
         }
     }
 
+    /// Fixed cuboid from `min` to `max`. Ice sheets use this so the surface is walkable.
+    pub fn add_static_aabb(&mut self, min: Vec3, max: Vec3) -> BodyId {
+        let center = (min + max) * 0.5;
+        let half = (max - min) * 0.5;
+        let rb = RigidBodyBuilder::fixed()
+            .translation(vector![center.x, center.y, center.z])
+            .build();
+        let h = self.bodies.insert(rb);
+        let shape = ColliderBuilder::cuboid(half.x.abs(), half.y.abs().max(0.05), half.z.abs())
+            .friction(0.2)
+            .collision_groups(InteractionGroups::new(
+                Group::from_bits_truncate(Layers::DEFAULT.bits()),
+                Group::ALL,
+            ))
+            .build();
+        self.colliders
+            .insert_with_parent(shape, h, &mut self.bodies);
+        self.tag_body(h, ActorKind::Static)
+    }
+
     pub fn create_ground_plane(&mut self, half: Vec3, friction: f32) -> BodyId {
         let rb = RigidBodyBuilder::fixed().build();
         let h = self.bodies.insert(rb);

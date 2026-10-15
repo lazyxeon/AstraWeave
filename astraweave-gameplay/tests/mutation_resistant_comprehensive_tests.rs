@@ -1650,10 +1650,10 @@ mod stats_mutations {
     fn apply_damage_zero_defense() {
         let mut s = Stats::new(100);
         s.defense = 0;
-        // mitigated = max(30 - 0, 1) = 30
+        // Fire is 125% of the physical result: 30 -> 37.
         let m = s.apply_damage(30, DamageType::Fire);
-        assert_eq!(m, 30);
-        assert_eq!(s.hp, 70);
+        assert_eq!(m, 37);
+        assert_eq!(s.hp, 63);
     }
 
     // --- tick(): bleed dps*dt subtracted from hp ---
