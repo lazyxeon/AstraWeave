@@ -137,6 +137,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+        with:
+          lfs: true
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.89.0
@@ -169,6 +171,9 @@ jobs:
           test -f dist/aravath_greybox/LICENSE
           test -f dist/aravath_greybox/assets/aravath/models/AnimationLibrary_Godot_Standard.gltf
           test -f dist/aravath_greybox/assets/aravath/textures/grass_diff_1k.jpg
+          test -f dist/aravath_greybox/assets/aravath/models/kaykit/knight/Knight.glb
+          sig=$(head -c 4 dist/aravath_greybox/assets/aravath/models/kaykit/knight/Knight.glb)
+          test "$sig" = "glTF"
           find dist/aravath_greybox -maxdepth 3 -type d -o -type f | sort
 
       - name: Smoke test the staged exe

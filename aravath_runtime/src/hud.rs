@@ -30,6 +30,10 @@ pub fn block_name(material: u16) -> &'static str {
         3 => "Grass",
         4 => "Sand",
         5 => "Wood",
+        6 => "Snow",
+        7 => "Copper",
+        8 => "Silver",
+        9 => "Gold",
         _ => "Stone",
     }
 }
@@ -81,6 +85,10 @@ mod tests {
     fn bars_and_blocks_cover_the_hud() {
         assert_eq!(block_name(1), "Stone");
         assert_eq!(block_name(5), "Wood");
+        assert_eq!(block_name(6), "Snow");
+        assert_eq!(block_name(7), "Copper");
+        assert_eq!(block_name(8), "Silver");
+        assert_eq!(block_name(9), "Gold");
         let model = HudModel {
             health: 150.0,
             health_max: 100.0,

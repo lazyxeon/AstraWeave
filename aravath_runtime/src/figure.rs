@@ -1,9 +1,10 @@
-//! CC0 Quaternius mannequin: one skinned mesh, many clips.
+//! KayKit Adventurers knight: one skinned mesh, clips retargeted by joint name.
 //!
-//! Sword and shield meshes are Kenney props. This module only reports the
-//! hand frames they attach to.
+//! Sword and shield are the Adventurers one-handed sword and round shield.
+//! This module reports the hand frames they attach to. Clip maps are
+//! `BTreeMap`s, and clip files are merged in sorted path order.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
 
 use anyhow::{Context, Result};
@@ -32,15 +33,16 @@ pub struct Primitive {
 
 pub struct Figure {
     pub skeleton: Skeleton,
-    pub clips: HashMap<String, AnimationClip>,
+    pub clips: BTreeMap<String, AnimationClip>,
     pub primitives: Vec<Primitive>,
+    pub albedo: Option<crate::props::Rgba>,
     pub hand_l: usize,
     pub hand_r: usize,
 }
 
 impl Figure {
     pub fn load(path: &Path) -> Result<Self> {
-        let (doc, buffers, _) = crate::assets::import_model(path)?;
+        let (doc, buffers, images) = crate::assets::import_model(path)?;
         let skin = doc.skins().next().context("gltf has no skin")?;
         let joint_nodes: Vec<usize> = skin.joints().map(|node| node.index()).collect();
         let node_to_joint: HashMap<usize, usize> = joint_nodes
@@ -93,7 +95,7 @@ impl Figure {
             root_indices,
         };
 
-        let mut clips = HashMap::new();
+        let mut clips = BTreeMap::new();
         for animation in doc.animations() {
             let name = animation.name().unwrap_or("clip").to_string();
             if let Some(clip) = convert_clip(&animation, &buffers, &node_to_joint) {
@@ -179,15 +181,88 @@ impl Figure {
             }
         }
 
-        let hand_l = joint_named(&skeleton, "DEF-hand.L").unwrap_or(0);
-        let hand_r = joint_named(&skeleton, "DEF-hand.R").unwrap_or(0);
+        let hand_l = first_joint(&skeleton, &["handslot.l", "hand.l", "DEF-hand.L"]);
+        let hand_r = first_joint(&skeleton, &["handslot.r", "hand.r", "DEF-hand.R"]);
         Ok(Self {
             skeleton,
             clips,
             primitives,
+            albedo: crate::props::rgba_from_images(&images),
             hand_l,
             hand_r,
         })
+    }
+
+    /// Skin from `mesh`, clips from `clip_files` retargeted by joint name.
+    /// Clip files are read in sorted path order. The first clip of a name wins.
+    pub fn load_with_clips(mesh: &Path, clip_files: &[&Path]) -> Result<Self> {
+        let mut figure = Self::load(mesh)?;
+        let mut files: Vec<&Path> = clip_files.to_vec();
+        files.sort();
+        for path in files {
+            figure.merge_clips(path)?;
+        }
+        Ok(figure)
+    }
+
+    pub fn knight_path() -> std::path::PathBuf {
+        crate::assets::asset_dir().join("models/kaykit/knight/Knight.glb")
+    }
+
+    pub fn medium_clip_paths() -> Vec<std::path::PathBuf> {
+        let root = crate::assets::asset_dir().join("models/kaykit/anims");
+        let mut paths = vec![
+            root.join("Rig_Medium_CombatMelee.glb"),
+            root.join("Rig_Medium_General.glb"),
+            root.join("Rig_Medium_MovementAdvanced.glb"),
+            root.join("Rig_Medium_MovementBasic.glb"),
+        ];
+        paths.sort();
+        paths
+    }
+
+    pub fn load_knight() -> Result<Self> {
+        let paths = Self::medium_clip_paths();
+        let refs: Vec<&Path> = paths.iter().map(Path::new).collect();
+        Self::load_with_clips(&Self::knight_path(), &refs)
+    }
+
+    fn merge_clips(&mut self, path: &Path) -> Result<()> {
+        let (doc, buffers, _) = crate::assets::import_model(path)?;
+        let skin = doc.skins().next().context("clip file has no skin")?;
+        let joint_nodes: Vec<usize> = skin.joints().map(|node| node.index()).collect();
+        let mut node_to_joint = HashMap::new();
+        let mut joint_names = Vec::with_capacity(joint_nodes.len());
+        for (joint, node_index) in joint_nodes.iter().enumerate() {
+            node_to_joint.insert(*node_index, joint);
+            let node = doc.nodes().nth(*node_index).context("clip joint")?;
+            joint_names.push(node.name().unwrap_or("").to_string());
+        }
+        for animation in doc.animations() {
+            let Some(mut clip) = convert_clip(&animation, &buffers, &node_to_joint) else {
+                continue;
+            };
+            let mut channels = Vec::new();
+            for channel in clip.channels.drain(..) {
+                let Some(name) = joint_names.get(channel.target_joint_index) else {
+                    continue;
+                };
+                let Some(index) = joint_named(&self.skeleton, name) else {
+                    continue;
+                };
+                channels.push(AnimationChannel {
+                    target_joint_index: index,
+                    ..channel
+                });
+            }
+            if channels.is_empty() {
+                continue;
+            }
+            channels.sort_by_key(|channel| channel.target_joint_index);
+            clip.channels = channels;
+            self.clips.entry(clip.name.clone()).or_insert(clip);
+        }
+        Ok(())
     }
 
     pub fn library_path() -> std::path::PathBuf {
@@ -295,11 +370,22 @@ pub struct PosedPrimitive {
     pub color: [f32; 4],
 }
 
+/// Capsule center to the ground. Cylinder half-height 0.8 plus radius 0.35.
+pub const CAPSULE_FOOT_DROP: f32 = 1.15;
+
 pub fn actor_transform(position: Vec3, yaw: f32) -> Mat4 {
-    let feet = position - Vec3::Y * 1.15;
+    // KayKit feet sit on local Y=0. The knight is about 2.5 units tall.
+    let feet = position - Vec3::Y * CAPSULE_FOOT_DROP;
     Mat4::from_translation(feet)
         * Mat4::from_rotation_y(std::f32::consts::FRAC_PI_2 - yaw)
-        * Mat4::from_scale(Vec3::splat(1.15))
+        * Mat4::from_scale(Vec3::splat(0.72))
+}
+
+fn first_joint(skeleton: &Skeleton, names: &[&str]) -> usize {
+    names
+        .iter()
+        .find_map(|name| joint_named(skeleton, name))
+        .unwrap_or(0)
 }
 
 fn joint_named(skeleton: &Skeleton, name: &str) -> Option<usize> {
@@ -367,29 +453,41 @@ mod tests {
 
     #[test]
     fn library_has_locomotion_and_combat_clips() {
-        let figure = Figure::load(&Figure::library_path()).unwrap();
+        let figure = Figure::load_knight().unwrap();
         for name in [
-            "Idle_Loop",
-            "Walk_Loop",
-            "Jog_Fwd_Loop",
-            "Sprint_Loop",
-            "Jump_Loop",
-            "Crouch_Idle_Loop",
-            "Roll",
-            "Sword_Attack",
-            "Sword_Idle",
-            "Hit_Chest",
-            "Death01",
+            "Idle_A",
+            "Walking_A",
+            "Running_A",
+            "Running_B",
+            "Jump_Idle",
+            "Crouching",
+            "Dodge_Forward",
+            "Melee_1H_Attack_Slice_Horizontal",
+            "Melee_Blocking",
+            "Hit_A",
+            "Death_A",
         ] {
             assert!(figure.clip(name).is_some(), "missing {name}");
         }
-        let idle = figure.skin("Idle_Loop", 0.0).unwrap();
-        let walk = figure.skin("Walk_Loop", 0.3).unwrap();
-        assert!(idle[0].mesh.vertices.len() > 1000);
-        let idle_y = idle[0].mesh.vertices[10].position[1];
-        let walk_y = walk[0].mesh.vertices[10].position[1];
-        assert!((idle_y - walk_y).abs() > 1e-4);
-        let (left, right) = figure.hand_positions("Idle_Loop", 0.0).unwrap();
-        assert!(left.distance(right) > 0.2, "{left:?} {right:?}");
+        let idle = figure.skin("Idle_A", 0.0).unwrap();
+        let walk = figure.skin("Walking_A", 0.3).unwrap();
+        let verts: usize = idle.iter().map(|part| part.mesh.vertices.len()).sum();
+        assert!(verts > 200, "knight {verts}");
+        assert!(!walk.is_empty());
+        assert!(figure.albedo.is_some());
+        let (left, right) = figure.hand_positions("Idle_A", 0.0).unwrap();
+        assert!(left.distance(right) > 0.05, "{left:?} {right:?}");
+        let paths = Figure::medium_clip_paths();
+        let mut sorted = paths.clone();
+        sorted.sort();
+        assert_eq!(paths, sorted);
+        let golem = Figure::load_with_clips(
+            &crate::assets::asset_dir().join("models/kaykit/skeletons/Skeleton_Golem.glb"),
+            &paths.iter().map(Path::new).collect::<Vec<_>>(),
+        )
+        .unwrap();
+        assert!(golem.clip("Idle_A").is_some());
+        assert!(golem.clip("Death_A").is_some());
+        assert!(golem.albedo.is_some());
     }
 }

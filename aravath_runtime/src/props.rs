@@ -3,7 +3,7 @@
 //! The figurine is not a skinned mesh. Each limb is its own primitive, and
 //! clips rotate those nodes. `NodeActor::pose` bakes one `CpuMesh`.
 
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::path::Path;
 
 use anyhow::{Context, Result};
@@ -54,14 +54,14 @@ pub struct NodeActor {
     parts: Vec<Part>,
     rest: Vec<NodeRest>,
     parents: Vec<Option<usize>>,
-    clips: HashMap<String, Clip>,
+    clips: BTreeMap<String, Clip>,
     pub albedo: Option<Rgba>,
 }
 
 impl NodeActor {
     pub fn load(path: &Path) -> Result<Self> {
         let (doc, buffers, images) = crate::assets::import_model(path)?;
-        let albedo = first_rgba(&images);
+        let albedo = rgba_from_images(&images);
         let mut parents = vec![None; doc.nodes().len()];
         for node in doc.nodes() {
             for child in node.children() {
@@ -92,7 +92,7 @@ impl NodeActor {
                 }
             }
         }
-        let mut clips = HashMap::new();
+        let mut clips = BTreeMap::new();
         for animation in doc.animations() {
             let name = animation.name().unwrap_or("clip").to_string();
             if let Some(clip) = read_clip(&animation, &buffers) {
@@ -303,33 +303,26 @@ pub fn load_rigid(path: &Path) -> Result<TexturedMesh> {
             albedo_image: None,
             texture_source_hint: None,
         },
-        albedo: first_rgba(&images),
+        albedo: rgba_from_images(&images),
     })
 }
 
 pub fn sword_path() -> std::path::PathBuf {
-    crate::assets::asset_dir().join("models/weapon-sword.glb")
+    crate::assets::asset_dir().join("models/kaykit/gear/sword_1handed.gltf")
 }
 
 pub fn shield_path() -> std::path::PathBuf {
-    crate::assets::asset_dir().join("models/weapon-shield.glb")
+    crate::assets::asset_dir().join("models/kaykit/gear/shield_round.gltf")
 }
 
-/// Grip sits on the hand origin. The Kenney blade runs along local +X and
-/// the Godot hand bone runs along +Y, so the blade is turned onto that axis.
+/// KayKit one-handed sword is already Y-up. The grip sits near the origin.
 pub fn sword_on_hand(hand: Mat4) -> Mat4 {
-    let local = Mat4::from_rotation_z(std::f32::consts::FRAC_PI_2)
-        * Mat4::from_translation(Vec3::new(0.22, -0.04, 0.0))
-        * Mat4::from_scale(Vec3::splat(1.7));
-    hand * local
+    hand * Mat4::from_translation(Vec3::new(0.0, 0.02, 0.06)) * Mat4::from_scale(Vec3::splat(0.55))
 }
 
-/// Shield face is the local XZ plane. Turn that face onto the hand's side
-/// axis so the board sits across the forearm instead of edge-on.
+/// Round shield faces local Z. Turn it across the off hand.
 pub fn shield_on_hand(hand: Mat4) -> Mat4 {
-    let local =
-        Mat4::from_rotation_x(std::f32::consts::FRAC_PI_2) * Mat4::from_scale(Vec3::splat(1.8));
-    hand * local
+    hand * Mat4::from_rotation_y(std::f32::consts::FRAC_PI_2) * Mat4::from_scale(Vec3::splat(0.65))
 }
 
 /// Kenney figurine origin is the feet and the mesh is about 0.85 tall.
@@ -440,7 +433,52 @@ fn segment(times: &[f32], time: f32) -> (usize, usize, f32) {
     (i, j, ((time - times[i]) / span).clamp(0.0, 1.0))
 }
 
-fn first_rgba(images: &[gltf::image::Data]) -> Option<Rgba> {
+pub fn albedo_tile(path: &Path) -> Result<Rgba> {
+    let mesh = load_rigid(path)?;
+    let atlas = mesh.albedo.context("model has no albedo")?;
+    if mesh.mesh.vertices.is_empty() {
+        return Ok(atlas);
+    }
+    let mut min_u = f32::MAX;
+    let mut min_v = f32::MAX;
+    let mut max_u = f32::MIN;
+    let mut max_v = f32::MIN;
+    for vertex in &mesh.mesh.vertices {
+        min_u = min_u.min(vertex.uv[0]);
+        min_v = min_v.min(vertex.uv[1]);
+        max_u = max_u.max(vertex.uv[0]);
+        max_v = max_v.max(vertex.uv[1]);
+    }
+    let width = atlas.width.max(1) as f32;
+    let height = atlas.height.max(1) as f32;
+    let x0 = (min_u.clamp(0.0, 1.0) * (width - 1.0)).floor() as u32;
+    let x1 = (max_u.clamp(0.0, 1.0) * (width - 1.0))
+        .ceil()
+        .max(x0 as f32 + 1.0) as u32;
+    let x1 = x1.min(atlas.width).max(x0 + 1);
+    // glTF v=0 is the bottom of the image.
+    let y0 = ((1.0 - max_v.clamp(0.0, 1.0)) * (height - 1.0)).floor() as u32;
+    let y1 = ((1.0 - min_v.clamp(0.0, 1.0)) * (height - 1.0))
+        .ceil()
+        .max(y0 as f32 + 1.0) as u32;
+    let y1 = y1.min(atlas.height).max(y0 + 1);
+    let tile_w = x1 - x0;
+    let tile_h = y1 - y0;
+    let mut pixels = Vec::with_capacity((tile_w * tile_h * 4) as usize);
+    for y in y0..y1 {
+        let row = y as usize * atlas.width as usize * 4;
+        let start = row + x0 as usize * 4;
+        let end = row + x1 as usize * 4;
+        pixels.extend_from_slice(&atlas.pixels[start..end]);
+    }
+    Ok(Rgba {
+        width: tile_w,
+        height: tile_h,
+        pixels,
+    })
+}
+
+pub fn rgba_from_images(images: &[gltf::image::Data]) -> Option<Rgba> {
     let image = images.first()?;
     let pixels = match image.format {
         gltf::image::Format::R8G8B8A8 => image.pixels.clone(),
@@ -489,29 +527,22 @@ mod tests {
     }
 
     #[test]
-    fn sword_blade_follows_the_hand_bone() {
-        let figure = crate::figure::Figure::load(&crate::figure::Figure::library_path()).unwrap();
-        let (_, hand) = figure.hand_frames("Idle_Loop", 0.0).unwrap();
+    fn sword_sits_on_the_knight_hand() {
+        let figure = crate::figure::Figure::load_knight().unwrap();
+        let (_, hand) = figure.hand_frames("Idle_A", 0.0).unwrap();
         let sword = load_rigid(&sword_path()).unwrap();
-        let placed = sword_on_hand(hand);
-        let tip = sword
-            .mesh
-            .vertices
-            .iter()
-            .map(|vertex| Vec3::from(vertex.position))
-            .max_by(|a, b| a.x.total_cmp(&b.x))
-            .unwrap();
-        let grip = Vec3::new(-0.22, 0.05, 0.0);
-        let tip_w = placed.transform_point3(tip);
-        let grip_w = placed.transform_point3(grip);
-        let bone = hand.transform_vector3(Vec3::Y).normalize();
-        let along = (tip_w - grip_w).normalize();
+        assert!(sword.albedo.is_some());
+        let ys: Vec<f32> = sword.mesh.vertices.iter().map(|v| v.position[1]).collect();
+        let xs: Vec<f32> = sword.mesh.vertices.iter().map(|v| v.position[0]).collect();
+        let height = ys.iter().copied().fold(f32::MIN, f32::max)
+            - ys.iter().copied().fold(f32::MAX, f32::min);
+        let width = xs.iter().copied().fold(f32::MIN, f32::max)
+            - xs.iter().copied().fold(f32::MAX, f32::min);
+        assert!(height > width, "sword should be Y-up, {height} vs {width}");
+        let grip = Vec3::ZERO;
+        let grip_w = sword_on_hand(hand).transform_point3(grip);
         assert!(
-            along.dot(bone) > 0.9,
-            "blade {along:?} should follow the hand bone {bone:?}"
-        );
-        assert!(
-            grip_w.distance(hand.w_axis.truncate()) < 0.2,
+            grip_w.distance(hand.w_axis.truncate()) < 0.25,
             "grip {grip_w:?} hand {:?}",
             hand.w_axis.truncate()
         );

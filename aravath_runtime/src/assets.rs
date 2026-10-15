@@ -24,7 +24,72 @@ const REQUIRED: &[&str] = &[
     "models/nature/plant_bush.glb",
     "models/kaykit_forest/Tree_1_A_Color1.gltf",
     "models/kaykit_forest/Tree_1_A_Color1.bin",
+    "models/kaykit_forest/Tree_2_A_Color1.gltf",
+    "models/kaykit_forest/Tree_2_A_Color1.bin",
+    "models/kaykit_forest/Tree_3_A_Color1.gltf",
+    "models/kaykit_forest/Tree_3_A_Color1.bin",
+    "models/kaykit_forest/Tree_4_A_Color1.gltf",
+    "models/kaykit_forest/Tree_4_A_Color1.bin",
+    "models/kaykit_forest/Bush_1_A_Color1.gltf",
+    "models/kaykit_forest/Bush_1_A_Color1.bin",
+    "models/kaykit_forest/Bush_2_A_Color1.gltf",
+    "models/kaykit_forest/Bush_2_A_Color1.bin",
+    "models/kaykit_forest/Grass_1_A_Color1.gltf",
+    "models/kaykit_forest/Grass_1_A_Color1.bin",
+    "models/kaykit_forest/Grass_2_A_Color1.gltf",
+    "models/kaykit_forest/Grass_2_A_Color1.bin",
+    "models/kaykit_forest/Rock_1_A_Color1.gltf",
+    "models/kaykit_forest/Rock_1_A_Color1.bin",
+    "models/kaykit_forest/Rock_2_A_Color1.gltf",
+    "models/kaykit_forest/Rock_2_A_Color1.bin",
     "models/kaykit_forest/forest_texture.png",
+    "models/kaykit/anims/Rig_Medium_CombatMelee.glb",
+    "models/kaykit/anims/Rig_Medium_General.glb",
+    "models/kaykit/anims/Rig_Medium_MovementAdvanced.glb",
+    "models/kaykit/anims/Rig_Medium_MovementBasic.glb",
+    "models/kaykit/knight/Knight.glb",
+    "models/kaykit/gear/sword_1handed.gltf",
+    "models/kaykit/gear/sword_1handed.bin",
+    "models/kaykit/gear/shield_round.gltf",
+    "models/kaykit/gear/shield_round.bin",
+    "models/kaykit/gear/knight_texture.png",
+    "models/kaykit/gear/sword_A.gltf",
+    "models/kaykit/gear/sword_A.bin",
+    "models/kaykit/gear/shield_A.gltf",
+    "models/kaykit/gear/shield_A.bin",
+    "models/kaykit/gear/weapons_bits_texture.png",
+    "models/kaykit/skeletons/Skeleton_Minion.glb",
+    "models/kaykit/skeletons/Skeleton_Warrior.glb",
+    "models/kaykit/skeletons/Skeleton_Golem.glb",
+    "models/kaykit/skeletons/Skeleton_Rogue.glb",
+    "models/kaykit/blocks/dirt.gltf",
+    "models/kaykit/blocks/dirt.bin",
+    "models/kaykit/blocks/grass.gltf",
+    "models/kaykit/blocks/grass.bin",
+    "models/kaykit/blocks/stone.gltf",
+    "models/kaykit/blocks/stone.bin",
+    "models/kaykit/blocks/sand_A.gltf",
+    "models/kaykit/blocks/sand_A.bin",
+    "models/kaykit/blocks/snow.gltf",
+    "models/kaykit/blocks/snow.bin",
+    "models/kaykit/blocks/stone_with_copper.gltf",
+    "models/kaykit/blocks/stone_with_copper.bin",
+    "models/kaykit/blocks/stone_with_silver.gltf",
+    "models/kaykit/blocks/stone_with_silver.bin",
+    "models/kaykit/blocks/stone_with_gold.gltf",
+    "models/kaykit/blocks/stone_with_gold.bin",
+    "models/kaykit/blocks/block_bits_texture.png",
+    "models/kaykit/pickups/Containers_Crate_Medium_Wood.gltf",
+    "models/kaykit/pickups/Containers_Crate_Medium_Wood.bin",
+    "models/kaykit/pickups/Gem_Small.gltf",
+    "models/kaykit/pickups/Gem_Small.bin",
+    "models/kaykit/pickups/Copper_Nugget_Small.gltf",
+    "models/kaykit/pickups/Copper_Nugget_Small.bin",
+    "models/kaykit/pickups/Silver_Nugget_Small.gltf",
+    "models/kaykit/pickups/Silver_Nugget_Small.bin",
+    "models/kaykit/pickups/Gold_Nugget_Small.gltf",
+    "models/kaykit/pickups/Gold_Nugget_Small.bin",
+    "models/kaykit/pickups/resource_bits_texture.png",
     "textures/grass_diff_1k.jpg",
     "textures/dirt_diff_1k.jpg",
     "textures/stone_diff_1k.jpg",
@@ -407,6 +472,54 @@ pub fn write_log_line(file: &mut File, text: &str) -> io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn hex_encode(bytes: &[u8]) -> String {
+        const HEX: &[u8; 16] = b"0123456789abcdef";
+        let mut out = String::with_capacity(bytes.len() * 2);
+        for byte in bytes {
+            out.push(HEX[(byte >> 4) as usize] as char);
+            out.push(HEX[(byte & 0x0f) as usize] as char);
+        }
+        out
+    }
+
+    #[test]
+    fn asset_manifest_is_sorted_and_hashes_match() {
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../assets/aravath");
+        use sha2::Digest;
+        let text = fs::read_to_string(root.join("ASSET_MANIFEST.tsv")).expect("manifest");
+        let mut lines = text.lines();
+        assert_eq!(lines.next(), Some("path\tsource_pack\tlicense\tsha256"));
+        let mut paths = Vec::new();
+        for line in lines {
+            let mut cols = line.split('\t');
+            let path = cols.next().expect("path");
+            let pack = cols.next().expect("pack");
+            let license = cols.next().expect("license");
+            let hash = cols.next().expect("hash");
+            assert!(cols.next().is_none(), "{line}");
+            assert!(!path.is_empty() && !pack.is_empty());
+            if path.contains("kaykit") {
+                assert_eq!(license, "CC0 — Kay Lousberg, www.kaylousberg.com");
+                assert!(pack.starts_with("KayKit "), "{pack}");
+            } else {
+                assert_eq!(license, "CC0");
+            }
+            let bytes = fs::read(root.join(path)).unwrap_or_else(|_| panic!("missing {path}"));
+            let digest = sha2::Sha256::digest(&bytes);
+            assert_eq!(hex_encode(&digest), hash, "{path}");
+            paths.push(path.to_string());
+        }
+        let mut sorted = paths.clone();
+        sorted.sort();
+        assert_eq!(paths, sorted, "manifest paths must stay in sorted order");
+        for required in REQUIRED {
+            assert!(
+                paths.iter().any(|path| path == required),
+                "manifest missing {required}"
+            );
+        }
+    }
 
     #[test]
     fn asset_dir_finds_the_character_library() {

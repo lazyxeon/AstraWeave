@@ -109,18 +109,18 @@ pub fn choose_state(pose: PoseInput) -> LocoState {
 
 pub fn clip_name(state: LocoState) -> &'static str {
     match state {
-        LocoState::Idle => "Idle_Loop",
-        LocoState::Walk => "Walk_Loop",
-        LocoState::Run => "Jog_Fwd_Loop",
-        LocoState::Sprint => "Sprint_Loop",
-        LocoState::CrouchIdle => "Crouch_Idle_Loop",
-        LocoState::CrouchMove => "Crouch_Fwd_Loop",
-        LocoState::Jump | LocoState::Fly => "Jump_Loop",
-        LocoState::Roll => "Roll",
-        LocoState::Attack => "Sword_Attack",
-        LocoState::Block => "Sword_Idle",
-        LocoState::Hit => "Hit_Chest",
-        LocoState::Death => "Death01",
+        LocoState::Idle => "Idle_A",
+        LocoState::Walk => "Walking_A",
+        LocoState::Run => "Running_A",
+        LocoState::Sprint => "Running_B",
+        LocoState::CrouchIdle => "Crouching",
+        LocoState::CrouchMove => "Sneaking",
+        LocoState::Jump | LocoState::Fly => "Jump_Idle",
+        LocoState::Roll => "Dodge_Forward",
+        LocoState::Attack => "Melee_1H_Attack_Slice_Horizontal",
+        LocoState::Block => "Melee_Blocking",
+        LocoState::Hit => "Hit_A",
+        LocoState::Death => "Death_A",
     }
 }
 
@@ -200,19 +200,19 @@ mod tests {
     #[test]
     fn every_action_maps_to_a_distinct_clip() {
         let cases = [
-            (LocoState::Idle, "Idle_Loop"),
-            (LocoState::Walk, "Walk_Loop"),
-            (LocoState::Run, "Jog_Fwd_Loop"),
-            (LocoState::Sprint, "Sprint_Loop"),
-            (LocoState::Jump, "Jump_Loop"),
-            (LocoState::Fly, "Jump_Loop"),
-            (LocoState::CrouchIdle, "Crouch_Idle_Loop"),
-            (LocoState::CrouchMove, "Crouch_Fwd_Loop"),
-            (LocoState::Roll, "Roll"),
-            (LocoState::Attack, "Sword_Attack"),
-            (LocoState::Block, "Sword_Idle"),
-            (LocoState::Hit, "Hit_Chest"),
-            (LocoState::Death, "Death01"),
+            (LocoState::Idle, "Idle_A"),
+            (LocoState::Walk, "Walking_A"),
+            (LocoState::Run, "Running_A"),
+            (LocoState::Sprint, "Running_B"),
+            (LocoState::Jump, "Jump_Idle"),
+            (LocoState::Fly, "Jump_Idle"),
+            (LocoState::CrouchIdle, "Crouching"),
+            (LocoState::CrouchMove, "Sneaking"),
+            (LocoState::Roll, "Dodge_Forward"),
+            (LocoState::Attack, "Melee_1H_Attack_Slice_Horizontal"),
+            (LocoState::Block, "Melee_Blocking"),
+            (LocoState::Hit, "Hit_A"),
+            (LocoState::Death, "Death_A"),
         ];
         for (state, name) in cases {
             assert_eq!(clip_name(state), name);

@@ -27,6 +27,10 @@ pub enum PropKind {
     ForestBush,
     ForestTuft,
     ForestRock,
+    Crate,
+    Gem,
+    Nugget,
+    Gear,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -382,6 +386,19 @@ fn fill_height_chunk(grid: &mut VoxelGrid, coord: ChunkCoord) {
     }
 }
 
+/// Chunk keys sorted, then spots in the order `scatter_chunk` wrote them.
+pub fn gather_spots(chunks: &HashMap<(i32, i32, i32), Vec<PropSpot>>) -> Vec<PropSpot> {
+    let mut keys: Vec<(i32, i32, i32)> = chunks.keys().copied().collect();
+    keys.sort();
+    let mut spots = Vec::new();
+    for key in keys {
+        if let Some(chunk) = chunks.get(&key) {
+            spots.extend_from_slice(chunk);
+        }
+    }
+    spots
+}
+
 fn scatter_chunk(coord: ChunkCoord) -> Vec<PropSpot> {
     let origin = coord.to_world_pos();
     let mut spots = Vec::new();
@@ -437,6 +454,42 @@ fn scatter_chunk(coord: ChunkCoord) -> Vec<PropSpot> {
                             position,
                             yaw,
                             scale: scale * 0.75,
+                        });
+                    }
+                    if n % 17 == 0 {
+                        spots.push(PropSpot {
+                            kind: PropKind::Crate,
+                            variant: 0,
+                            position,
+                            yaw,
+                            scale: 0.8,
+                        });
+                    }
+                    if n % 19 == 0 {
+                        spots.push(PropSpot {
+                            kind: PropKind::Gem,
+                            variant: 0,
+                            position,
+                            yaw,
+                            scale: 0.7,
+                        });
+                    }
+                    if n % 23 == 0 {
+                        spots.push(PropSpot {
+                            kind: PropKind::Nugget,
+                            variant: (n % 3) as u8,
+                            position,
+                            yaw,
+                            scale: 0.65,
+                        });
+                    }
+                    if n % 29 == 0 {
+                        spots.push(PropSpot {
+                            kind: PropKind::Gear,
+                            variant: (n % 2) as u8,
+                            position,
+                            yaw,
+                            scale: 0.7,
                         });
                     }
                 }
@@ -661,20 +714,56 @@ mod tests {
 
     #[test]
     fn grass_hills_scatter_kaykit_forest_props() {
-        let spots = scatter_chunk(astraweave_terrain::ChunkCoord::new(0, 0, 0));
+        let mut spots = Vec::new();
+        for x in 0..3 {
+            for z in 0..3 {
+                spots.extend(scatter_chunk(astraweave_terrain::ChunkCoord::new(x, 0, z)));
+            }
+        }
         assert!(
             spots.iter().any(|spot| spot.kind == PropKind::ForestTree),
             "western hills should include a forest tree"
         );
         assert!(spots.iter().any(|spot| spot.kind == PropKind::ForestTuft));
+        assert!(spots.iter().any(|spot| spot.kind == PropKind::Crate));
+        assert!(spots.iter().any(|spot| spot.kind == PropKind::Gem));
+        assert!(spots.iter().any(|spot| spot.kind == PropKind::Nugget));
+        assert!(spots
+            .iter()
+            .any(|spot| spot.kind == PropKind::Gear && spot.variant == 0));
+        assert!(spots
+            .iter()
+            .any(|spot| spot.kind == PropKind::Gear && spot.variant == 1));
         assert!(spots.iter().all(|spot| match spot.kind {
             PropKind::ForestTree
             | PropKind::ForestBush
             | PropKind::ForestTuft
-            | PropKind::ForestRock => {
+            | PropKind::ForestRock
+            | PropKind::Crate
+            | PropKind::Gem
+            | PropKind::Nugget
+            | PropKind::Gear => {
                 !island::on_yaqar_road(spot.position.x as i32, spot.position.z as i32)
             }
             _ => true,
         }));
+    }
+
+    #[test]
+    fn gather_spots_follows_chunk_key_order() {
+        let mut chunks = std::collections::HashMap::new();
+        let spot = |x: f32| PropSpot {
+            kind: PropKind::Crate,
+            variant: 0,
+            position: Vec3::new(x, 0.0, 0.0),
+            yaw: 0.0,
+            scale: 1.0,
+        };
+        chunks.insert((1, 0, 0), vec![spot(1.0)]);
+        chunks.insert((0, 0, 1), vec![spot(2.0), spot(3.0)]);
+        chunks.insert((-1, 0, 0), vec![spot(0.0)]);
+        let ordered = gather_spots(&chunks);
+        let xs: Vec<f32> = ordered.iter().map(|spot| spot.position.x).collect();
+        assert_eq!(xs, vec![0.0, 2.0, 3.0, 1.0]);
     }
 }
