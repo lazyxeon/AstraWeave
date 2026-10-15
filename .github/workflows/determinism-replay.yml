@@ -1,6 +1,8 @@
 # Required status check on pull requests: `determinism-replay / compare`.
 # Branch protection is a repository setting. This workflow is the check it must require.
-# Both `planner_pure` (WS-D0) and `perception_world` (WS-D1) fail the compare job on any mismatch.
+# `planner_pure` (WS-D0), `perception_world` (WS-D1), and `gameplay_rng` (WS-D2)
+# fail the compare job on any mismatch or if the case is missing.
+# No path filter. cargo test has no retry loop (no-retry). Do not switch this job to nextest.
 
 name: determinism-replay
 
@@ -11,7 +13,7 @@ on:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -38,8 +40,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.89.0
+      - name: Rust CI setup
+        uses: ./.github/actions/rust-ci-setup
+        with:
+          install-nextest: "false"
 
       - name: Pin baseline CPU
         run: |
@@ -56,11 +60,6 @@ jobs:
               exit 1
               ;;
           esac
-
-      - name: Cache cargo dependencies
-        uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: determinism-replay
 
       - name: Replay hash
         run: cargo test -p astraweave-core --test replay_hash -- --nocapture
@@ -92,7 +91,7 @@ jobs:
           import sys
           from pathlib import Path
 
-          required = {"planner_pure", "perception_world"}
+          required = {"planner_pure", "perception_world", "gameplay_rng"}
           root = Path("replay-artifacts")
           files = sorted(root.glob("*/replay-hash.json"))
           print(f"artifacts: {[str(p) for p in files]}")

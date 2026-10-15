@@ -20,7 +20,9 @@ nalgebra = "0.33"
 rand = { version = "0.9", features = ["small_rng"] }
 
 # ONNX Runtime for sentence transformers
-ort = { version = "2.0.0-rc.10", features = ["cuda", "tensorrt"], optional = true }
+# download-binaries pulls ureq's native-tls build-dep, which pulls the
+# banned openssl crate. Callers supply the ONNX runtime library instead.
+ort = { version = "2.0.0-rc.10", default-features = false, features = ["std", "ndarray", "tracing", "copy-dylibs", "load-dynamic", "cuda", "tensorrt"], optional = true }
 
 # Alternative: candle for pure Rust inference
 candle-core = { version = "0.8", optional = true }
@@ -31,7 +33,7 @@ candle-transformers = { version = "0.8", optional = true }
 hnsw_rs = { version = "0.3", optional = true }
 
 # HTTP client for embeddings API
-reqwest = { version = "0.12", features = ["json"], optional = true }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"], optional = true }
 
 # Concurrent data structures
 dashmap = "6.1"
@@ -52,3 +54,12 @@ tokio-test = "0.4"
 name = "embeddings_bench"
 harness = false
 
+
+# Production-lib unwrap gate. Enforced by the single workspace clippy --lib pass.
+# Tests are not part of --lib, so test unwraps stay allowed.
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+todo = "deny"
+result_large_err = "allow"

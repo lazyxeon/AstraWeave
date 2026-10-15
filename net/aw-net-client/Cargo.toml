@@ -6,7 +6,7 @@ license = "MIT"
 
 [dependencies]
 tokio = { version = "1.48", features = ["rt-multi-thread", "macros", "time"] }
-tokio-tungstenite = { version = "0.28", features = ["native-tls"] }
+tokio-tungstenite = { version = "0.28", default-features = false, features = ["connect", "rustls-tls-webpki-roots"] }
 tungstenite = "0.28"
 url = "2"
 futures = "0.3"

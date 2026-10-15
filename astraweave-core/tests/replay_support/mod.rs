@@ -44,6 +44,72 @@ pub fn planner_pure_bytes() -> Vec<u8> {
     out
 }
 
+/// Seeded harvest respawn and craft item ids. Same `(world_seed, tick)` pair
+/// the gameplay crate locks in `gameplay_rng_*`. No `HashMap` walk.
+pub fn gameplay_rng_bytes() -> Vec<u8> {
+    use astraweave_gameplay::{
+        CraftCost, CraftRecipe, Inventory, ItemKind, RecipeBook, ResourceKind, ResourceNode,
+    };
+
+    let mut out = Vec::new();
+    push_u64(&mut out, 0xA11C);
+    for tick in 0..8u64 {
+        let mut node = ResourceNode {
+            kind: ResourceKind::Wood,
+            pos: glam::Vec3::new(10.0, 0.0, 5.0),
+            amount: 0,
+            respawn_time: 30.0,
+            timer: 1.0,
+        };
+        node.tick_with_seed(1.5, 0xA11C, tick);
+        push_u32(&mut out, node.amount);
+        push_f32(&mut out, node.timer);
+        push_f32(&mut out, node.pos.x);
+        push_f32(&mut out, node.pos.y);
+        push_f32(&mut out, node.pos.z);
+    }
+
+    let book = RecipeBook {
+        recipes: vec![CraftRecipe {
+            name: "Blade".into(),
+            output_item: ItemKind::Consumable { heal: 1 },
+            costs: vec![CraftCost {
+                kind: ResourceKind::Ore,
+                count: 1,
+            }],
+        }],
+    };
+    for tick in 0..8u64 {
+        let mut inv = Inventory::default();
+        inv.add_resource(ResourceKind::Ore, 5);
+        match book.craft_with_seed("Blade", &mut inv, 0xA11C, tick) {
+            Some(item) => {
+                push_u8(&mut out, 1);
+                push_u32(&mut out, item.id);
+                push_str(&mut out, &item.name);
+            }
+            None => push_u8(&mut out, 0),
+        }
+        push_u32(&mut out, inv.resources.len() as u32);
+        for (kind, count) in &inv.resources {
+            push_u8(&mut out, resource_tag(*kind));
+            push_u32(&mut out, *count);
+        }
+    }
+    out
+}
+
+fn resource_tag(kind: astraweave_gameplay::ResourceKind) -> u8 {
+    match kind {
+        astraweave_gameplay::ResourceKind::Wood => 1,
+        astraweave_gameplay::ResourceKind::Crystal => 2,
+        astraweave_gameplay::ResourceKind::Ore => 3,
+        astraweave_gameplay::ResourceKind::Fiber => 4,
+        astraweave_gameplay::ResourceKind::Essence => 5,
+        _ => 255,
+    }
+}
+
 pub fn perception_world_bytes() -> Vec<u8> {
     let mut world = World::new();
     let player = world.spawn("player", IVec2 { x: 0, y: 0 }, Team { id: 0 }, 100, 0);
@@ -267,6 +333,10 @@ fn push_u8(out: &mut Vec<u8>, value: u8) {
 }
 
 fn push_u32(out: &mut Vec<u8>, value: u32) {
+    out.extend_from_slice(&value.to_le_bytes());
+}
+
+fn push_u64(out: &mut Vec<u8>, value: u64) {
     out.extend_from_slice(&value.to_le_bytes());
 }
 

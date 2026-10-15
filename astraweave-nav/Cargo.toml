@@ -14,3 +14,12 @@ criterion = { version = "0.5", features = ["html_reports"] }
 [[bench]]
 name = "navmesh_benchmarks"
 harness = false
+
+# P1 unwrap guidance. Warn, matching the old non-blocking P1 matrix.
+[lints.clippy]
+unwrap_used = "warn"
+expect_used = "warn"
+panic = "warn"
+dbg_macro = "warn"
+print_stdout = "warn"
+print_stderr = "warn"

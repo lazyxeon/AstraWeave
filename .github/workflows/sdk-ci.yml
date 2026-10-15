@@ -3,19 +3,28 @@ name: SDK Header and C Harness CI
 on:
   push:
     branches: [ main ]
-  pull_request:
+  schedule:
+    - cron: "25 6 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   build-sdk-and-c:
+    name: SDK and C harness (${{ matrix.os }})
     # SDK/C harness tests may fail on some platforms - non-blocking
     continue-on-error: true
+    timeout-minutes: 30
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v5
-      - uses: dtolnay/rust-toolchain@1.89.0
+      - name: Rust CI setup
+        uses: ./.github/actions/rust-ci-setup
       - name: MSVC developer environment
         if: matrix.os == 'windows-latest'
         uses: ilammy/msvc-dev-cmd@v1

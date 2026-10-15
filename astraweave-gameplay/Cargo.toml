@@ -35,3 +35,12 @@ criterion = { workspace = true }
 [[bench]]
 name = "combat_pipeline"
 harness = false
+
+# P1 unwrap guidance. Warn, matching the old non-blocking P1 matrix.
+[lints.clippy]
+unwrap_used = "warn"
+expect_used = "warn"
+panic = "warn"
+dbg_macro = "warn"
+print_stdout = "warn"
+print_stderr = "warn"

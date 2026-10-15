@@ -22,6 +22,7 @@ astraweave-behavior = { workspace = true }
 [dev-dependencies]
 criterion = { workspace = true }
 astraweave-ai = { workspace = true }
+astraweave-gameplay = { path = "../astraweave-gameplay" }
 sha2 = { workspace = true }
 
 [[bench]]
@@ -31,3 +32,12 @@ harness = false
 [[bench]]
 name = "full_game_loop"
 harness = false
+
+# Production-lib unwrap gate. Enforced by the single workspace clippy --lib pass.
+# Tests are not part of --lib, so test unwraps stay allowed.
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+todo = "deny"
+result_large_err = "allow"

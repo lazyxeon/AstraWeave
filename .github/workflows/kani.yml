@@ -119,6 +119,7 @@ jobs:
   summary:
     name: Kani Summary
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     needs: [kani-ecs, kani-math, kani-sdk, kani-core]
     if: always()
     steps:

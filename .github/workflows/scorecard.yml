@@ -10,6 +10,10 @@ name: OpenSSF Scorecard
   pull_request:
     branches: [ "main" ]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 permissions:
   contents: read
 
@@ -17,6 +21,7 @@ jobs:
   scorecard:
     name: OpenSSF Scorecard Analysis
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       # Needed to upload the results to code-scanning dashboard
       security-events: write

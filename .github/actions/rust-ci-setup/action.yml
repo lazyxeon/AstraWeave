@@ -1,0 +1,76 @@
+name: Rust CI setup
+description: >-
+  Install the pinned Rust toolchain, host build dependencies, sccache (GitHub
+  Actions cache backend), and one Swatinem rust-cache key per OS. The registry
+  cache is saved only from main. Cargo target directories are not cached here;
+  sccache owns compilation artifacts so the two caches do not wrap the same
+  directory.
+
+inputs:
+  toolchain:
+    description: Rust toolchain version
+    required: false
+    default: "1.89.0"
+  components:
+    description: Comma-separated rustup components
+    required: false
+    default: rustfmt,clippy
+  install-nextest:
+    description: Install cargo-nextest from a prebuilt binary
+    required: false
+    default: "false"
+
+runs:
+  using: composite
+  steps:
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@master
+      with:
+        toolchain: ${{ inputs.toolchain }}
+        components: ${{ inputs.components }}
+
+    - name: Install system dependencies (Linux)
+      if: runner.os == 'Linux'
+      shell: bash
+      run: |
+        sudo apt-get update -q
+        sudo apt-get install -y -q \
+          build-essential pkg-config cmake ninja-build \
+          libx11-dev libxi-dev libxcursor-dev libxrandr-dev libxinerama-dev \
+          libxkbcommon-dev libxkbcommon-x11-dev libx11-xcb-dev \
+          libxcb1-dev libxcb-randr0-dev libxcb-xfixes0-dev libxcb-shape0-dev libxcb-xkb-dev \
+          libgl1-mesa-dev libegl1-mesa-dev wayland-protocols libwayland-dev \
+          libasound2-dev libpulse-dev libudev-dev
+
+    - name: Install system dependencies (macOS)
+      if: runner.os == 'macOS'
+      shell: bash
+      run: |
+        if ! command -v cmake >/dev/null 2>&1 || ! command -v pkg-config >/dev/null 2>&1; then
+          brew install pkg-config cmake
+        fi
+
+    - name: Install sccache
+      uses: mozilla-actions/sccache-action@v0.0.9
+
+    - name: Enable sccache
+      shell: bash
+      run: |
+        echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
+        echo "SCCACHE_GHA_ENABLED=true" >> "$GITHUB_ENV"
+        echo "CARGO_INCREMENTAL=0" >> "$GITHUB_ENV"
+        echo "SCCACHE_CACHE_SIZE=10G" >> "$GITHUB_ENV"
+        echo "SCCACHE_IDLE_TIMEOUT=0" >> "$GITHUB_ENV"
+
+    - name: Cache cargo registry (one key per OS, save on main only)
+      uses: Swatinem/rust-cache@v2
+      with:
+        workspaces: "."
+        shared-key: ${{ runner.os }}-astraweave
+        cache-all-crates: "true"
+        cache-targets: "false"
+        save-if: ${{ github.ref == 'refs/heads/main' }}
+
+    - name: Install cargo-nextest
+      if: inputs.install-nextest == 'true'
+      uses: taiki-e/install-action@nextest

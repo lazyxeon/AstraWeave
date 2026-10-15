@@ -12,6 +12,14 @@ on:
     paths:
       - 'tools/aw_editor/**'
       - 'astraweave-core/**'
+  schedule:
+    # Nightly runs the macOS leg. Pull requests stay on Ubuntu and Windows.
+    - cron: "35 6 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   CARGO_TERM_COLOR: always
@@ -21,42 +29,20 @@ jobs:
   test:
     name: Test AW Editor (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
     # Skip if editor has known compilation issues - allows CI to pass while editor is being fixed
     continue-on-error: true
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        os: ${{ github.event_name == 'pull_request' && fromJSON('["ubuntu-latest", "windows-latest"]') || fromJSON('["ubuntu-latest", "windows-latest", "macos-latest"]') }}
         
     steps:
     - name: Checkout Repository
-      uses: actions/checkout@v4
-      
-    - name: Install Rust Toolchain
-      uses: dtolnay/rust-toolchain@1.89.0
-      with:
-        toolchain: stable
-        components: rustfmt, clippy
-        
-    - name: Cache Cargo Registry
-      uses: actions/cache@v4
-      with:
-        path: |
-          ~/.cargo/bin/
-          ~/.cargo/registry/index/
-          ~/.cargo/registry/cache/
-          ~/.cargo/git/db/
-        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-        restore-keys: |
-          ${{ runner.os }}-cargo-
-          
-    - name: Cache Target Directory
-      uses: actions/cache@v4
-      with:
-        path: target
-        key: ${{ runner.os }}-target-${{ hashFiles('**/Cargo.lock') }}
-        restore-keys: |
-          ${{ runner.os }}-target-
+      uses: actions/checkout@v5
+
+    - name: Rust CI setup
+      uses: ./.github/actions/rust-ci-setup
           
     # Linux-specific: Install dependencies for graphics/windowing
     - name: Install Linux Dependencies
@@ -115,7 +101,8 @@ jobs:
   coverage:
     name: Test Coverage
     runs-on: ubuntu-latest
-    if: github.event_name == 'push'
+    timeout-minutes: 45
+    if: github.event_name != 'pull_request'
     
     steps:
     - name: Checkout Repository

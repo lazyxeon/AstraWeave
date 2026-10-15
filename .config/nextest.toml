@@ -1,0 +1,12 @@
+# Selected with `cargo nextest run --profile ci`.
+# Ordinary tests may retry twice. Determinism and replay tests never retry:
+# a second pass would hide a hash mismatch.
+[profile.ci]
+retries = 2
+fail-fast = false
+slow-timeout = { period = "120s", terminate-after = 2 }
+
+[[profile.ci.overrides]]
+filter = 'test(/determinism/) | test(/replay/) | test(/deterministic/)'
+retries = 0
+slow-timeout = { period = "300s", terminate-after = 1 }

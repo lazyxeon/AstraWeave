@@ -50,9 +50,9 @@ jobs:
       - name: Set up Rust cache
         uses: Swatinem/rust-cache@v2
         with:
-          key: benchmark-alerts-v2-shard-${{ matrix.shard_index }}-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
-          cache-all-crates: true
-          shared-key: "bench-alert-shard-${{ matrix.shard_index }}"
+          shared-key: ${{ runner.os }}-astraweave
+          cache-targets: false
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       
       - name: Run benchmarks
         run: |
