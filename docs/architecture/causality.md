@@ -41,7 +41,7 @@ Quests, AI, and persistence need consequences of a world change (a cut span, a b
 `astraweave-causality/src/rules.rs` (kinds and `bridge_rules`) and `astraweave-causality/src/world.rs` (`tick`, hash, rollback).
 
 **Status note:**
-Games opt in by depending on the crate. `aravath_runtime::BridgeAgent` is the production caller. It drains the collapse notice from the temporary destruction copy. The editor does not.
+Games opt in by depending on the crate. `aravath_runtime::BridgeAgent` is the production caller. It drains the collapse notice from `astraweave-destruction` on `main`. The editor does not.
 
 ---
 
@@ -122,7 +122,7 @@ This crate does not call destruction, nav, weaving, quests, or an LLM client.
 | `WorldEventGenerator` already generates events | Leave it off the tick. It uses the wall clock and a live client. |
 | `WeaveConsequence` already names an after-effect | Leave the `f32` struct. This ring does not grow another `CollapseBridge` arm. |
 | `replay_system` already has `ReplayEvent` | It does not apply events. This crate hashes its own bytes. WS-SAVE may copy them later. |
-| Destruction `GeometryNotice` reason 2 was a unit box | #279 fixed it on #243 at `7a571045`. This branch carries that fix in the temporary destruction copy. `causal_bridge` still uses the authored span. `BridgeAgent` uses the drained notice. |
+| Destruction `GeometryNotice` reason 2 was a unit box | #279 is fixed on `main` via #243 (`1d3e41be`). `causal_bridge` still uses the authored span. `BridgeAgent` uses the drained notice. |
 | Two `NavChangeKind` copies (#251 and #263) | This crate does not pathfind. The host, later, submits `ACTOR_CELL` and `GEOMETRY_CUT`. |
 
 ---
@@ -153,5 +153,5 @@ This crate does not call destruction, nav, weaving, quests, or an LLM client.
 
 ## 11. Open Questions
 
-1. Drop the temporary `astraweave-destruction` copy, including the `7a571045` bounds fix, when #243 lands. Owner: the destruction merge.
+1. #243 is on `main`. No separate bounds copy remains on this branch. Owner: closed.
 2. WS-SAVE still does not apply `ReplayEvent`. Copying `canonical_bytes` into that log is a later change and does not edit `aw-save`.

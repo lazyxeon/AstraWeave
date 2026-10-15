@@ -5,7 +5,7 @@
 **Decisions (review §10):**
 
 1. The engine is a separate `astraweave-causality` crate. Games opt in by depending on it.
-2. Collapse notice bounds must be the real span before any Aravath slice. That fix is `7a571045` on #243 (issue #279). `causal_bridge` still feeds the authored span. `BridgeAgent` drains the notice.
+2. Collapse notice bounds must be the real span before any Aravath slice. That fix landed with #243 (`1d3e41be` on `main`). `causal_bridge` still feeds the authored span. `BridgeAgent` drains the notice.
 3. One sack per 10 ticks stays the bridge pace. `bridge_rules(pace_ticks, sack_delta)` is the data. The replay case passes `(10, -1)`.
 4. Quest completion is rule 7. An actor-cell input for the merchant at the ford cell emits `QUEST_COMPLETE` only when a `QUEST_OFFER` is already in the ring.
 
@@ -309,7 +309,7 @@ Forbidden on the tick: `generate_event`, `generate_storyline`, `QuestLlmSystem::
 
 Headless, in `aravath_runtime::BridgeAgent`. No new mesh, texture, or audio.
 
-The agent owns a `DestructionWorld` and a `CausalWorld`. Tick 30 detaches the deck. The collapse notice is the union of pieces that became dynamic (the #279 fix, copied until #243 lands). That box is converted to milli-units and is both the nav mark and the `GEOMETRY_CUT` region. Tick 120, once the route is on the ford, admits the merchant cell. Rule 7 completes the quest. Player-visible copy is the template line in §3.3 and the scene label `Aravath`.
+The agent owns a `DestructionWorld` and a `CausalWorld`. Tick 30 detaches the deck. The collapse notice is the union of pieces that became dynamic, from the #243 bounds fix now on `main`. That box is converted to milli-units and is both the nav mark and the `GEOMETRY_CUT` region. Tick 120, once the route is on the ford, admits the merchant cell. Rule 7 completes the quest. Player-visible copy is the template line in §3.3 and the scene label `Aravath`.
 
 ## 8. Merge order
 
@@ -344,7 +344,7 @@ Shared-file note for the implementation PR: `determinism-replay.yml` and `astraw
 ## 10. Decisions recorded
 
 1. Separate crate `astraweave-causality`. Opt-in. Not a module of `astraweave-core`.
-2. Bounds fix is a gate. The temporary destruction copy carries `7a571045` until #243 lands. `causal_bridge` does not read the notice. `BridgeAgent` does.
+2. Bounds fix is a gate. #243 is on `main`, so `BridgeAgent` drains the landed notice. `causal_bridge` does not read it.
 3. Pace is `bridge_rules(10, -1)` for `causal_bridge`. The numbers are arguments.
 4. Rule 7 emits `QUEST_COMPLETE` from `ACTOR_CELL` at the ford while `QUEST_OFFER` is in the ring.
 
