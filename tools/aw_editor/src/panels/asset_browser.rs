@@ -561,8 +561,7 @@ fn prettify_name(name: &str) -> String {
         .and_then(|s| s.to_str())
         .unwrap_or(name);
     // Replace underscores/hyphens with spaces, then title-case each word
-    stem.replace('_', " ")
-        .replace('-', " ")
+    stem.replace(['_', '-'], " ")
         .split_whitespace()
         .map(|word| {
             let mut chars = word.chars();
