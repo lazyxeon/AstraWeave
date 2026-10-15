@@ -5829,9 +5829,7 @@ impl EditorApp {
                                                     }
                                                     mra_data
                                                 }
-                                                Err(_) => {
-                                                    [0u8, 128, 255, 255].repeat(2048 * 2048)
-                                                }
+                                                Err(_) => [0u8, 128, 255, 255].repeat(2048 * 2048),
                                             }
                                         } // end non-exr roughness branch
                                     } else {
