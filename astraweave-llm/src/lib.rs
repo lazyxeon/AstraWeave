@@ -846,23 +846,57 @@ pub struct LocalHttpClient {
 
 #[cfg(feature = "ollama")]
 impl LocalHttpClient {
-    /// Create a new client for OpenAI-compatible APIs (including local services)
+    /// Create a client. Non-loopback URLs are replaced with `http://127.0.0.1:11434`.
+    /// Use [`Self::allowing_remote`] to keep a caller-supplied host.
     pub fn new(url: String, model: String) -> Self {
-        Self {
-            url,
-            model,
-            api_key: None,
-        }
+        Self::assemble(url, model, None, false)
     }
 
-    /// Create a client with API key (for services that require it)
+    /// Create a client with an API key. The URL is loopback-only, same as [`Self::new`].
     pub fn with_api_key(url: String, model: String, api_key: String) -> Self {
+        Self::assemble(url, model, Some(api_key), false)
+    }
+
+    /// Keep `url` even when it is not loopback. This is the explicit opt-in.
+    pub fn allowing_remote(url: String, model: String) -> Self {
+        Self::assemble(url, model, None, true)
+    }
+
+    /// [`Self::allowing_remote`] plus a bearer token.
+    pub fn allowing_remote_with_api_key(url: String, model: String, api_key: String) -> Self {
+        Self::assemble(url, model, Some(api_key), true)
+    }
+
+    fn assemble(url: String, model: String, api_key: Option<String>, allow_remote: bool) -> Self {
+        let url = if allow_remote || is_loopback_http_url(&url) {
+            url
+        } else {
+            "http://127.0.0.1:11434".to_string()
+        };
         Self {
             url,
             model,
-            api_key: Some(api_key),
+            api_key,
         }
     }
+}
+
+#[cfg(feature = "ollama")]
+fn is_loopback_http_url(url: &str) -> bool {
+    let Some(rest) = url
+        .strip_prefix("http://")
+        .or_else(|| url.strip_prefix("https://"))
+    else {
+        return false;
+    };
+    let hostport = rest.split('/').next().unwrap_or("");
+    let host = if let Some(bracketed) = hostport.strip_prefix('[') {
+        bracketed.split(']').next().unwrap_or("")
+    } else {
+        hostport.split(':').next().unwrap_or("")
+    };
+    let host = host.trim().to_ascii_lowercase();
+    host == "localhost" || host == "127.0.0.1" || host == "::1"
 }
 
 #[cfg(feature = "ollama")]

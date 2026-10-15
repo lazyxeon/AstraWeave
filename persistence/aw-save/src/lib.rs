@@ -27,6 +27,11 @@ use uuid::Uuid;
 
 const MAGIC: &[u8; 4] = b"ASVS";
 const CODEC_LZ4: u8 = 1;
+/// Compressed payload cap. Checked before the buffer is allocated.
+/// The hostile-header proof claims 8 MiB, so this stays below that.
+pub const MAX_AWSV_COMPRESSED_BYTES: usize = 4 * 1024 * 1024;
+/// Uncompressed LZ4 output cap. Checked before `decompress_size_prepended` reserves it.
+pub const MAX_AWSV_UNCOMPRESSED_BYTES: usize = 16 * 1024 * 1024;
 /// Bump this when you change SaveBundle layout. Add explicit migrations below.
 pub const SAVE_SCHEMA_VERSION: u16 = 2;
 
@@ -288,11 +293,19 @@ fn write_awsv(path: &Path, v2: &SaveBundleV2) -> Result<()> {
 }
 
 fn read_awsv(path: &Path) -> Result<SaveBundleV2> {
-    let AnySave { version, blob } = read_any_version(path)?;
-    match version {
-        2 => Ok(postcard::from_bytes::<SaveBundleV2>(&blob)?),
+    bundle_from_any(read_any_version(path)?)
+}
+
+/// Decode an `.awsv` blob from memory. Same checks as the file loader.
+pub fn decode_awsv_bytes(bytes: &[u8]) -> Result<SaveBundleV2> {
+    bundle_from_any(read_any_from_slice(bytes)?)
+}
+
+fn bundle_from_any(any: AnySave) -> Result<SaveBundleV2> {
+    match any.version {
+        2 => Ok(postcard::from_bytes::<SaveBundleV2>(&any.blob)?),
         1 => {
-            let v1: SaveBundleV1 = postcard::from_bytes(&blob)?;
+            let v1: SaveBundleV1 = postcard::from_bytes(&any.blob)?;
             Ok(v1.into_v2())
         }
         other => bail!("unknown save version {other}"),
@@ -306,29 +319,78 @@ struct AnySave {
 
 fn read_any_version(path: &Path) -> Result<AnySave> {
     let mut f = File::open(path)?;
-    let mut header = [0u8; 4 + 2 + 1 + 1 + 4 + 4];
+    let mut header = [0u8; 16];
     f.read_exact(&mut header)?;
+    let parsed = parse_awsv_header(&header)?;
+    if parsed.len > MAX_AWSV_COMPRESSED_BYTES {
+        bail!(
+            "declared payload length exceeds cap ({} > {MAX_AWSV_COMPRESSED_BYTES})",
+            parsed.len
+        );
+    }
+    let mut payload = vec![0u8; parsed.len];
+    f.read_exact(&mut payload)?;
+    finish_awsv(parsed, &payload)
+}
+
+fn read_any_from_slice(bytes: &[u8]) -> Result<AnySave> {
+    if bytes.len() < 16 {
+        bail!("awsv header is truncated");
+    }
+    let mut header = [0u8; 16];
+    header.copy_from_slice(&bytes[..16]);
+    let parsed = parse_awsv_header(&header)?;
+    if parsed.len > MAX_AWSV_COMPRESSED_BYTES {
+        bail!(
+            "declared payload length exceeds cap ({} > {MAX_AWSV_COMPRESSED_BYTES})",
+            parsed.len
+        );
+    }
+    let rest = &bytes[16..];
+    if rest.len() < parsed.len {
+        bail!("awsv payload is truncated");
+    }
+    finish_awsv(parsed, &rest[..parsed.len])
+}
+
+#[derive(Clone, Copy)]
+struct AwsvHeader {
+    version: u16,
+    codec: u8,
+    len: usize,
+    crc: u32,
+}
+
+fn parse_awsv_header(header: &[u8; 16]) -> Result<AwsvHeader> {
     if &header[0..4] != MAGIC {
         bail!("bad magic");
     }
-    let version = u16::from_le_bytes([header[4], header[5]]);
-    let codec = header[6];
-    let _reserved = header[7];
-    let len = u32::from_le_bytes([header[8], header[9], header[10], header[11]]) as usize;
-    let crc = u32::from_le_bytes([header[12], header[13], header[14], header[15]]);
-    let mut payload = vec![0u8; len];
-    f.read_exact(&mut payload)?;
+    Ok(AwsvHeader {
+        version: u16::from_le_bytes([header[4], header[5]]),
+        codec: header[6],
+        len: u32::from_le_bytes([header[8], header[9], header[10], header[11]]) as usize,
+        crc: u32::from_le_bytes([header[12], header[13], header[14], header[15]]),
+    })
+}
+
+fn finish_awsv(parsed: AwsvHeader, payload: &[u8]) -> Result<AnySave> {
+    let AwsvHeader {
+        version,
+        codec,
+        len: _,
+        crc,
+    } = parsed;
 
     // verify CRC
     let mut h = Crc32::new();
-    h.update(&payload);
+    h.update(payload);
     let got = h.finalize();
     if got != crc {
         bail!("crc mismatch: expected {crc}, got {got}");
     }
     // decompress if needed
     let data = match codec {
-        CODEC_LZ4 => lz4_flex::decompress_size_prepended(&payload)?,
+        CODEC_LZ4 => decompress_lz4_capped(payload)?,
         _ => bail!("unknown codec {codec}"),
     };
     Ok(AnySave {
@@ -338,6 +400,19 @@ fn read_any_version(path: &Path) -> Result<AnySave> {
 }
 
 // --------- Helpers ----------
+
+fn decompress_lz4_capped(payload: &[u8]) -> Result<Vec<u8>> {
+    if payload.len() >= 4 {
+        let declared =
+            u32::from_le_bytes([payload[0], payload[1], payload[2], payload[3]]) as usize;
+        if declared > MAX_AWSV_UNCOMPRESSED_BYTES {
+            bail!(
+                "declared uncompressed size exceeds cap ({declared} > {MAX_AWSV_UNCOMPRESSED_BYTES})"
+            );
+        }
+    }
+    Ok(lz4_flex::decompress_size_prepended(payload)?)
+}
 
 fn sanitize(s: &str) -> String {
     s.chars()

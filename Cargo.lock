@@ -592,6 +592,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "astraweave-blend",
+ "astraweave-security",
  "base64 0.22.1",
  "bytemuck",
  "criterion 0.7.0",

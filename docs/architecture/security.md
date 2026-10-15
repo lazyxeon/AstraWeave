@@ -9,7 +9,7 @@ lifecycle_status: in_design
 integration_status: test_only
 summary: "script sandbox/anticheat/signatures/path validation; ed25519 surface distinct from net HMAC. security.md"
 owns: [astraweave-secrets, astraweave-security]
-doc_version: "1.1"
+doc_version: "1.2"
 last_verified_commit: 7c29b8182
 ---
 
@@ -21,7 +21,7 @@ last_verified_commit: 7c29b8182
 |---|---|
 | **System name** | Security System (script sandbox, anticheat, signatures, path/deserialization validation, secrets) |
 | **Primary crates** | [`astraweave-security`](../../astraweave-security), [`astraweave-secrets`](../../astraweave-secrets) |
-| **Document version** | 1.1 |
+| **Document version** | 1.2 |
 | **Last verified against commit** | `7c29b8182` |
 | **Last verified date** | 2026-06-25 |
 | **Status** | Transitional — one surface (path validation) is wired; the rest is in-design-but-tested / dormant scaffolding |
@@ -44,7 +44,7 @@ It was created to close a set of remediation findings (insecure secret storage, 
 - [`astraweave-secrets/src/`](../../astraweave-secrets/src) — `SecretManager`, `SecretBackend`, `KeyringBackend`, `SecretValue`, and the `aw_secrets` CLI bin
 
 **Status note — read this first.**
-This is **not one cohesive runtime system**. As of `7c29b8182` the only surface with non-test, non-example production callers is **path validation** (`astraweave_security::path::safe_under` / `validate_extension`), used by exactly three production sites: [`tools/aw_editor/src/scene_serialization.rs`](../../tools/aw_editor/src/scene_serialization.rs), [`tools/aw_texture_gen/src/main.rs`](../../tools/aw_texture_gen/src/main.rs), and [`tools/aw_demo_builder/src/main.rs`](../../tools/aw_demo_builder/src/main.rs). **Everything else** — `SecurityPlugin`, `ScriptSandbox`/`execute_script_sandboxed`, `CAntiCheat` + the three ECS systems, `sanitize_llm_prompt`, `generate_signature`/`verify_signature`/`hash_data`, the `parse_*_limited` deserialization limiters, and the entire `astraweave-secrets` public API — has **zero production callers** and lives only behind test suites and benchmarks. See §5 and §6 for the per-surface wired/dormant breakdown; this is the single most important fact in this doc.
+This is **not one cohesive runtime system**. Path validation (`astraweave_security::path::safe_under` / `validate_extension`) is the wired surface. Callers are the three tool sites plus, as of 2026-10-15, glTF file URIs, cell asset loads, and script loads. The original three were: [`tools/aw_editor/src/scene_serialization.rs`](../../tools/aw_editor/src/scene_serialization.rs), [`tools/aw_texture_gen/src/main.rs`](../../tools/aw_texture_gen/src/main.rs), and [`tools/aw_demo_builder/src/main.rs`](../../tools/aw_demo_builder/src/main.rs). **Everything else** — `SecurityPlugin`, `ScriptSandbox`/`execute_script_sandboxed`, `CAntiCheat` + the three ECS systems, `sanitize_llm_prompt`, `generate_signature`/`verify_signature`/`hash_data`, the `parse_*_limited` deserialization limiters, and the entire `astraweave-secrets` public API — has **zero production callers** and lives only behind test suites and benchmarks. See §5 and §6 for the per-surface wired/dormant breakdown; this is the single most important fact in this doc.
 
 ---
 
@@ -180,6 +180,8 @@ There is no single pipeline. The system is a set of independent utility surfaces
 | `tools/aw_editor` (scene serialization) | `astraweave_security::path::{safe_under, validate_extension}` | validated scene file paths | **WIRED.** [`scene_serialization.rs:4,159-163,191-195`](../../tools/aw_editor/src/scene_serialization.rs). |
 | `tools/aw_texture_gen` | `path::safe_under` | validated output path | **WIRED.** [`tools/aw_texture_gen/src/main.rs:2,32`](../../tools/aw_texture_gen/src/main.rs). |
 | `tools/aw_demo_builder` | `path::safe_under` | validated output path | **WIRED.** [`tools/aw_demo_builder/src/main.rs:2,78`](../../tools/aw_demo_builder/src/main.rs). |
+| `astraweave-asset` glTF URI and cell `load_asset` | `path::safe_under` | asset bytes under a base directory | **WIRED** (2026-10-15). File URIs and cell paths. No second jail. |
+| `astraweave-scripting` `ScriptLoader` and script hot reload | `path::safe_under` | script source under the process current directory | **WIRED** (2026-10-15). |
 | `astraweave-scripting` | (Cargo dep only) | — | Declares `astraweave-security.workspace = true` in [`astraweave-scripting/Cargo.toml:18`](../../astraweave-scripting/Cargo.toml) but **no `use astraweave_security` appears in its source** — only a comment "Security: Configure limits" at `astraweave-scripting/src/lib.rs:73` where it sets its *own* rhai limits (`src/lib.rs:74-78`). This is a declared-but-unused dependency. Verified — a workspace `rg 'astraweave[_-]security'` over `astraweave-scripting/` returns only `Cargo.toml:18`; there is no `#[cfg(feature)]`-gated `use astraweave_security` anywhere in its source. |
 | `astraweave-secrets` consumers | — | — | **NONE.** No non-test, non-bin `use astraweave_secrets` exists in the workspace (the only `use` is in `aw_secrets.rs`). |
 

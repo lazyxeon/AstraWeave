@@ -1,7 +1,8 @@
 # Security audit and hardening plan
 
-**Status:** Draft for review. No parser, sandbox, or network fix is in this change.
+**Status:** Caps from this audit that already had a failing proof on `main` are landed. PR-side items stay on their branches.
 **Date:** 2026-10-15
+**Secret scanning:** GitHub secret scanning and push protection are enabled on this repository. No further settings change is required for SEC-SUPPLY-2.
 **HEAD surveyed:** `f1109340` (`main`)
 **Open PRs surveyed:** [#205](https://github.com/lazyxeon/AstraWeave/pull/205) `5048c630`, [#214](https://github.com/lazyxeon/AstraWeave/pull/214) `7a58612f`, [#252](https://github.com/lazyxeon/AstraWeave/pull/252) `5095f7eb`, [#213](https://github.com/lazyxeon/AstraWeave/pull/213) `61ebe2fa`
 **Rule for the fixes:** hostile input is rejected. Bytes that already decode keep the same structures, so replay hashes of valid fixtures stay put.
@@ -11,6 +12,25 @@ This pass treats every external byte as hostile: save files, mod text, weave tab
 The 2025 plan at `docs/current/SECURITY_AUDIT_AND_HARDENING_PLAN.md` and the seed in `docs/campaigns/security/S0_FINDINGS_SEED.md` are still the right map for three live holes (plaintext in-engine server, prompt logging, empty script allowlist). This document re-checks those and adds the parsers they did not cover. It does not replace `docs/architecture/security.md`.
 
 ---
+
+## Landed on main
+
+These are in the caps pull request. Valid fixtures still decode to the same bytes. Linux replay hashes match the pinned values (`combat_resolve` `975aae72e3c83a2335be05142eea2bf2ae4413d621fc5009ed6019f89e2a6e52`, plus `planner_pure`, `perception_world`, `gameplay_rng`, and `fixed64` from `cargo test -p astraweave-core --test replay_hash` and `cargo test -p astraweave-combat --test replay_hash`). The three-OS compare job diffs those same hashes; this change does not touch the hashed functions.
+
+| ID | What landed |
+|---|---|
+| SEC-SAVE-1 | Declared `.awsv` length above 4 MiB is rejected before the payload buffer is allocated. LZ4 output above 16 MiB is rejected before decompress. |
+| SEC-SAVE-2 | `decode_vitals` rejects more than 4,096 records. |
+| SEC-NET-3 | `decode_msg` rejects an LZ4 declared output above 4 MiB. |
+| SEC-ASSET-1 | glTF file URIs and cell asset paths go through `safe_under`. |
+| SEC-MOD-4 | Script load and hot reload go through `safe_under`. |
+| SEC-LLM-1 | `LocalHttpClient::new` and `with_api_key` keep only loopback URLs. `allowing_remote` is the explicit opt-in. `LOCAL_LLM_ALLOW_REMOTE=1` selects it in the integration example. |
+| SEC-NET-1 | `ServerConfig::default` binds `127.0.0.1`. `spawn_server` refuses the published dev key outside debug and test builds. Release CLI requires `--shared-key-hex`. |
+| SEC-NET-2 | The in-engine server ignores client actor ids and hello names. Outside debug/test, hello requires `AW_GAME_TOKEN` (not the literal `dev`). |
+
+The compressed save cap is 4 MiB, not the 16 MiB sketch below, because the proof claims 8 MiB and must fail closed. The LZ4 message cap is 4 MiB for the same reason (the proof claims 16 MiB).
+
+Nightly fuzzing is `.github/workflows/fuzz-nightly.yml`. It is not on pull requests. Each target runs for 120 seconds: `fuzz_awsv`, `fuzz_vitals`, `fuzz_gltf_json`, `fuzz_cell_ron`, `fuzz_decode_msg`.
 
 ## Findings, ranked
 
@@ -293,9 +313,7 @@ None in `aw-net-proto`, `astraweave-net`, or `astraweave-ipc`.
 
 The signing constant in `SigningKey::dev_default` is committed on purpose and documented as such. It is not a leaked production secret. It is a default credential (SEC-NET-1).
 
-No workflow in `.github/workflows` runs gitleaks, trufflehog, or GitHub secret scanning. Secret scanning and push protection are repository settings. This change cannot enable them.
-
-**Action for the user, not for a pull request:** in the GitHub repository settings, turn on secret scanning and push protection for this repository and for any fork that receives engine commits. Do that before the next dependency or cert-generation change.
+GitHub secret scanning and push protection are enabled on this repository. No workflow in `.github/workflows` runs a second scanner. That is enough for SEC-SUPPLY-2.
 
 ### Fuzz targets that already exist
 
@@ -347,7 +365,7 @@ Each fix rejects input. None of them reorder fields, bump `SAVE_SCHEMA_VERSION`,
 ### Supply chain
 
 1. After #217/#219 merges, make advisory and license `cargo deny` failures fail the job. Set `unknown-git` and `unknown-registry` to `deny`. Leave the unmaintained-crate ignore list, and add a one-line reason that they are maintenance notices.
-2. The user enables GitHub secret scanning and push protection in the repository settings. No YAML in this repo can turn those on.
+2. Secret scanning and push protection are already enabled. Leave them on.
 
 ---
 
@@ -437,7 +455,7 @@ Not opened by this change. Label `deferred-failure`. Owner is `@lazyxeon` (repos
 | SEC-NET-2 | In-engine server trusts the client | `@lazyxeon` | Authenticate, bind `actor_id`, 1 MiB message cap. Remove the `"dev"` print. | S0-1 |
 | SEC-NET-3 | `decode_msg` honors the attacker's LZ4 size | `@lazyxeon` | Same uncompressed cap as `aw-save`. Turn `poc_postcard_lz4_rejects_oversized_declared_output` green. | No |
 | SEC-SUPPLY-1 | Advisory and license `cargo deny` failures are warnings | `@lazyxeon` | Fail the job, and set `unknown-git` to `deny`, after #219 is closed. | #219 covers the openssl ban failure |
-| SEC-SUPPLY-2 | Secret scanning and push protection | `@lazyxeon` | User enables both in GitHub settings. No code change. | No |
+| SEC-SUPPLY-2 | Secret scanning and push protection | `@lazyxeon` | Enabled on the repository. No code change. Do not refile. | Done |
 | — | `llm_dialogue.rs` is an orphan and names `thread_rng` | unset on the issue | Do not register the module. Fix or delete it under the existing issue. | [#225](https://github.com/lazyxeon/AstraWeave/issues/225) |
 | — | `cargo deny` fails on `native-tls` / `openssl` | unset on the issue | Merge the burndown branch. Do not re-implement in the security PR. | [#219](https://github.com/lazyxeon/AstraWeave/issues/219) |
 

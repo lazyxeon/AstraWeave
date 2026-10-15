@@ -6,6 +6,7 @@ license = "MIT"
 
 [dependencies]
 anyhow = { workspace = true }
+astraweave-security = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 glam = { workspace = true }

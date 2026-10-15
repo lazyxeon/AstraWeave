@@ -4,7 +4,6 @@
 use std::path::PathBuf;
 
 use anyhow::{anyhow, Result};
-use tracing::{info, warn};
 use tracing_subscriber::EnvFilter;
 
 use aw_net_proto::SigningKey;
@@ -44,7 +43,7 @@ fn parse_args(args: &[String]) -> Result<ServerConfig> {
                 #[cfg(debug_assertions)]
                 {
                     config.tls_enabled = false;
-                    info!("TLS disabled via command line (debug build only)");
+                    tracing::info!("TLS disabled via command line (debug build only)");
                 }
             }
             "--tls-cert" => {
@@ -98,10 +97,20 @@ fn parse_args(args: &[String]) -> Result<ServerConfig> {
     }
 
     if !key_provided {
-        warn!(
-            "no --shared-key-hex provided; using the built-in DEVELOPMENT signing key \
-             (NOT FOR PRODUCTION)"
-        );
+        #[cfg(not(debug_assertions))]
+        {
+            return Err(anyhow!(
+                "release builds require --shared-key-hex; the published development signing key \
+                 cannot be used"
+            ));
+        }
+        #[cfg(debug_assertions)]
+        {
+            tracing::warn!(
+                "no --shared-key-hex provided; using the built-in DEVELOPMENT signing key \
+                 (NOT FOR PRODUCTION)"
+            );
+        }
     }
 
     Ok(config)

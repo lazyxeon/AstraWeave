@@ -44,3 +44,17 @@ path = "fuzz_targets/fuzz_asset_manifest.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "fuzz_gltf_json"
+path = "fuzz_targets/fuzz_gltf_json.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_cell_ron"
+path = "fuzz_targets/fuzz_cell_ron.rs"
+test = false
+doc = false
+bench = false

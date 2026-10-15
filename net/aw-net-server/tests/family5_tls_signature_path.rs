@@ -169,7 +169,7 @@ async fn spawn_tls_test_server(key: SigningKey, policy: SignatureFailurePolicy) 
         sig_failure_policy: policy,
         // All eight ServerConfig fields are set explicitly above — no
         // `..ServerConfig::default()` (clippy::needless_update), and it keeps
-        // the TLS config from silently inheriting the 0.0.0.0:8788 default
+        // the TLS config from silently inheriting the 127.0.0.1:8788 default
         // listen addrs.
     };
     let server = timeout(IO_TIMEOUT, spawn_server(config))

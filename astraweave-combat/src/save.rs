@@ -10,6 +10,8 @@ use crate::CombatError;
 
 pub const META_TABLES: &str = "combat_tables";
 pub const META_VITALS: &str = "combat_vitals";
+/// Hostile record lists above this are rejected. Fixtures in this crate use one record.
+pub const MAX_VITALS_RECORDS: usize = 4096;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct ThreadStrainSave {
@@ -90,7 +92,7 @@ pub fn decode_vitals(text: &str) -> Result<Vec<VitalsRecord>, CombatError> {
     let len = u32::from_le_bytes(len_buf) as usize;
     let body = &bytes[4..];
     let stride = 8 * 9;
-    if body.len() != len * stride {
+    if len > MAX_VITALS_RECORDS || body.len() != len * stride {
         return Err(CombatError::BadSave);
     }
     let mut out = Vec::with_capacity(len);

@@ -193,7 +193,15 @@ pub fn script_system(world: &mut World) {
 
             // Hot Reloading
             if !script.script_path.is_empty() {
-                if let Ok(metadata) = std::fs::metadata(&script.script_path) {
+                let jailed = loader::jail_script_path(std::path::Path::new(&script.script_path));
+                let jailed = match jailed {
+                    Ok(path) => path,
+                    Err(err) => {
+                        eprintln!("script path rejected: {err}");
+                        continue;
+                    }
+                };
+                if let Ok(metadata) = std::fs::metadata(&jailed) {
                     if let Ok(modified) = metadata.modified() {
                         let needs_reload =
                             if let Some(cached) = cache.scripts.get(&script.script_path) {
@@ -204,7 +212,7 @@ pub fn script_system(world: &mut World) {
 
                         if needs_reload {
                             // println!("[ScriptSystem] Reloading script: {}", script.script_path);
-                            if let Ok(source) = std::fs::read_to_string(&script.script_path) {
+                            if let Ok(source) = std::fs::read_to_string(&jailed) {
                                 match engine.compile(&source) {
                                     Ok(ast) => {
                                         let ast = Arc::new(ast);

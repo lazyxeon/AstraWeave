@@ -65,10 +65,11 @@ impl FromStr for SignatureFailurePolicy {
     }
 }
 
-/// Full server configuration. `Default` preserves the historical hardcoded
-/// behavior: TLS on with the dev cert paths, listen on `0.0.0.0:8788` (WS)
-/// and `0.0.0.0:8789` (HTTP admin), sled db at `aw_net_server_db`, the
-/// development signing key, and the `Kick` signature-failure policy.
+/// Full server configuration. `Default` listens on loopback (`127.0.0.1:8788`
+/// and `127.0.0.1:8789`), with TLS on, the dev cert paths, sled at
+/// `aw_net_server_db`, and `SignatureFailurePolicy::Kick`. Debug and test
+/// builds still install [`SigningKey::dev_default`]. A release build that
+/// reaches [`spawn_server`] with that key is refused.
 #[derive(Clone, Debug)]
 pub struct ServerConfig {
     /// WebSocket listen address.
@@ -92,8 +93,8 @@ pub struct ServerConfig {
 impl Default for ServerConfig {
     fn default() -> Self {
         Self {
-            ws_listen: SocketAddr::from(([0, 0, 0, 0], 8788)),
-            http_listen: SocketAddr::from(([0, 0, 0, 0], 8789)),
+            ws_listen: SocketAddr::from(([127, 0, 0, 1], 8788)),
+            http_listen: SocketAddr::from(([127, 0, 0, 1], 8789)),
             tls_enabled: true,
             tls_cert_path: PathBuf::from("net/certs/dev/dev-cert.pem"),
             tls_key_path: PathBuf::from("net/certs/dev/dev-key.pem"),
@@ -223,6 +224,12 @@ pub async fn run_server(config: ServerConfig) -> Result<()> {
 /// `127.0.0.1:0` yields real ephemeral ports in the returned
 /// [`RunningServer`] — this is the test seam.
 pub async fn spawn_server(config: ServerConfig) -> Result<RunningServer> {
+    if config.signing_key.is_published_dev_key() && !aw_net_proto::published_dev_key_allowed() {
+        anyhow::bail!(
+            "the published development signing key cannot be used outside debug and test builds; \
+             pass --shared-key-hex"
+        );
+    }
     let db = sled::open(&config.db_path)
         .with_context(|| format!("Failed to open sled db at {}", config.db_path.display()))?;
     let state = AppState {
