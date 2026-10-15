@@ -59,7 +59,7 @@ impl crate::EditorApp {
 
         // Sync skeleton/animation data from loaded meshes -> animation bridge
         if let Some(viewport) = &self.viewport {
-            if let Ok(renderer) = viewport.renderer().lock() {
+            if let Ok(renderer) = viewport.renderer().borrow() {
                 for (entity_id, mesh_path) in &entities_with_meshes {
                     if !self.animation_bridge.has_skeleton(*entity_id) {
                         if let Some(skel) = renderer.get_mesh_skeleton(mesh_path) {
@@ -80,7 +80,7 @@ impl crate::EditorApp {
         for (entity_id, mesh_path) in &entities_with_meshes {
             if let Some(joint_matrices) = self.animation_bridge.compute_joint_matrices(*entity_id) {
                 if let Some(viewport) = &self.viewport {
-                    if let Ok(mut renderer) = viewport.renderer().lock() {
+                    if let Ok(mut renderer) = viewport.renderer().borrow_mut() {
                         renderer.apply_cpu_skinning(mesh_path, &joint_matrices);
                     }
                 }

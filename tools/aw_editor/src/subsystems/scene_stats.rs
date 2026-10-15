@@ -22,7 +22,7 @@ impl crate::EditorApp {
         // Pull real data from terrain + scatter renderers
         let (real_triangles, real_vertices, real_draw_calls, scatter_instances, gpu_mem_kb) =
             if let Some(viewport) = &self.viewport {
-                if let Ok(renderer) = viewport.renderer().lock() {
+                if let Ok(renderer) = viewport.renderer().borrow() {
                     let terrain_tris = renderer.terrain_triangles();
                     let terrain_indices = renderer.terrain_indices();
                     let scatter_tris = renderer.scatter_triangles();
@@ -104,7 +104,7 @@ impl crate::EditorApp {
 
         // Push GPU metrics to the profiler panel for real-time monitoring
         let (gpu_used, gpu_budget, _) = if let Some(viewport) = &self.viewport {
-            if let Ok(renderer) = viewport.renderer().lock() {
+            if let Ok(renderer) = viewport.renderer().borrow() {
                 renderer.gpu_memory_stats()
             } else {
                 (0, 0, 0.0)
