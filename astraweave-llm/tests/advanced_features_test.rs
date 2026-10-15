@@ -115,7 +115,8 @@ fn test_qwen3_variants() {
     assert_eq!(fast.temperature, 0.5);
     assert_eq!(fast.max_tokens, 128);
     assert!(!fast.enable_thinking);
-    assert_eq!(fast.context_length, 8192);
+    // Fast is the low-latency window documented on Qwen3Ollama::fast (unit test locks 2048).
+    assert_eq!(fast.context_length, 2048);
 
     // Test Strategic variant
     let strategic = Qwen3Ollama::strategic();

@@ -5,7 +5,40 @@
 
 use anyhow::{Context, Result};
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
+
+/// Per-process asset root. Nextest runs each test in its own process, and
+/// `cleanup_test_assets` deletes the directory. A shared `tests/assets` path
+/// lets one process remove files another process just created.
+#[allow(dead_code)]
+pub fn assets_root_str() -> &'static str {
+    let owned = assets_root().to_string_lossy().into_owned();
+    Box::leak(owned.into_boxed_str())
+}
+
+pub fn assets_root() -> &'static Path {
+    static ROOT: OnceLock<PathBuf> = OnceLock::new();
+    ROOT.get_or_init(|| {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("target")
+            .join("audio-test-assets")
+            .join(std::process::id().to_string())
+    })
+    .as_path()
+}
+
+/// Absolute path of one generated asset. The string lives for the process.
+pub fn asset_path(rel: &str) -> &'static str {
+    let path = assets_root().join(rel);
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).unwrap_or_else(|err| {
+            panic!("create audio test dir {}: {err}", parent.display());
+        });
+    }
+    let owned = path.to_string_lossy().into_owned();
+    Box::leak(owned.into_boxed_str())
+}
 
 /// Generate a simple sine wave WAV file for testing
 pub fn generate_test_beep(
@@ -205,8 +238,8 @@ pub fn write_test_assets(dir: &Path) -> Result<()> {
 
 /// Clean up all generated test assets
 pub fn cleanup_test_assets() -> Result<()> {
-    let assets_dir = "tests/assets";
-    if Path::new(assets_dir).exists() {
+    let assets_dir = assets_root();
+    if assets_dir.exists() {
         fs::remove_dir_all(assets_dir)?;
     }
     Ok(())
@@ -220,7 +253,7 @@ mod tests {
     #[test]
     #[serial]
     fn test_generate_beep() -> Result<()> {
-        let path = "tests/assets/test_generator_beep.wav";
+        let path = asset_path("test_generator_beep.wav");
         generate_test_beep(path, 440.0, 0.5, 22050)?;
 
         assert!(Path::new(path).exists());
@@ -246,7 +279,7 @@ mod tests {
     #[test]
     #[serial]
     fn test_generate_music() -> Result<()> {
-        let path = "tests/assets/test_generator_music.wav";
+        let path = asset_path("test_generator_music.wav");
         generate_test_music(path, 2.0, 22050)?;
 
         assert!(Path::new(path).exists());
@@ -263,7 +296,7 @@ mod tests {
     #[test]
     #[serial]
     fn test_generate_voice() -> Result<()> {
-        let path = "tests/assets/test_generator_voice.wav";
+        let path = asset_path("test_generator_voice.wav");
         generate_test_voice(path, 1.0, 22050)?;
 
         assert!(Path::new(path).exists());
@@ -318,7 +351,7 @@ mod tests {
         cleanup_test_assets()?;
 
         assert!(
-            !Path::new("tests/assets").exists(),
+            !assets_root().exists(),
             "Assets directory should be removed"
         );
 

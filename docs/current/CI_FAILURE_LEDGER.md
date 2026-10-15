@@ -48,6 +48,19 @@ No tolerance was widened. No test was skipped or quarantined. Simulation and com
 
 The integration token cannot add labels (`addLabelsToLabelable` HTTP 403). Issues 246, 247, and 248 are written for `deferred-failure` and need that label applied by someone who can edit labels. Issue 224 already has it.
 
+## Issue #254 (workspace nextest on PR #223, head `7839f930`)
+
+Owned here. 95 unique failures, each retried twice. Groups:
+
+| Group | Disposition |
+|---|---|
+| Terrain goldens, including `golden_density_origin` expected 0 got 477 | **Deferred with #215 / #242.** `sample_density(0,0,0)` is `sample_height(0,0)` minus cave carving. E3 mountains amplitude 480 and Billow at the origin produce height 477. The assert still expects the pre-E3 Perlin-at-lattice zero. The same class covers the other `wave2_noise_golden_*` fingerprints, the Perlin/Ridged/old-amplitude config asserts, the halo byte-identity test, and the structure-count tests that assume that surface. The seven lib goldens in #242 are already locked on this branch and on PR #215. Terrain trace §10 forbids a piecemeal re-bake of the rest. Owner: terrain (T.G), coordinated with https://github.com/lazyxeon/AstraWeave/pull/215 and https://github.com/lazyxeon/AstraWeave/issues/242. Plan and exit criteria are on https://github.com/lazyxeon/AstraWeave/issues/254. |
+| `astraweave-ai` `ecs_integration_tests` (`CDesiredPos` / `AiPlannedEvent`, 72/100) | **Not reproduced on this tree.** `ecs_ai_plugin.rs` blob `5ff20de9` is the same as `7839f930`. `cargo test` and `cargo nextest` on rustc 1.89.0 pass all 26 tests, including `test_multi_agent_100_agents`. The asserts stay exact. Owner: AI (WS-AI-1). Plan on #254. |
+| Audio `test_setup_all_assets` and `test_rapid_music_changes` | **Fixed.** Nextest runs each test in its own process. `cleanup_test_assets` deleted the shared `tests/assets` directory while another process still opened `test_music_5sec.wav`. Fixtures now live under `target/audio-test-assets/<pid>`. `cargo nextest run -p astraweave-audio --test-threads=16`: 541 passed, 9 skipped. |
+| `astraweave-llm` `test_qwen3_variants` (2048 vs 8192) | **Fixed in the test.** `Qwen3Ollama::fast` documents context 2048, and the unit test already locks 2048. The integration test still expected 8192. The assert stays exact. |
+| Render and fluids `textureLoad` on depth textures | **Deferred.** Lavapipe's naga GLSL backend rejects `textureLoad` on `texture_depth_2d`. That fails fluids SSFR (#247), `water_pipeline`, god rays, GTAO, and the deferred shadow `sampler2DShadow` call. `test_buffer_lifecycle_no_leaks` grew 106,270,720 bytes of `VmRSS` and stays with #246. Do not raise the ceilings. Owner and the R32Float plan are on #254. |
+| Windows partitions cancelled at 45 minutes | Owned by PR #223, not this branch. Raise `timeout-minutes` to 60 there so a failing test is visible. |
+
 ## What was not done
 
 - Benchmark targets whose measurement itself exceeds 600s are tracked in https://github.com/lazyxeon/AstraWeave/issues/224, labeled `deferred-failure`. The caustics golden matches on rustc 1.89.0 once the workspace test run is allowed to reach it.

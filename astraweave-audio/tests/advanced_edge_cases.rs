@@ -29,21 +29,25 @@ mod test_asset_generator;
 #[serial]
 fn test_dialogue_file_path_with_spaces() -> Result<()> {
     // Setup
-    fs::create_dir_all("tests/assets/advanced/speakers/space name")?;
+    fs::create_dir_all(test_asset_generator::asset_path(
+        "advanced/speakers/space name",
+    ))?;
     test_asset_generator::generate_test_voice(
-        "tests/assets/advanced/speakers/space name/test voice.wav",
+        test_asset_generator::asset_path("advanced/speakers/space name/test voice.wav"),
         1.0,
         22050,
     )?;
 
-    let voice_bank_toml = r#"
-[speakers.space_speaker]
-folder = "tests/assets/advanced/speakers/space name"
+    let space_dir = test_asset_generator::asset_path("advanced/speakers/space name");
+    let voice_bank_toml = format!(
+        r#"[speakers.space_speaker]
+folder = "{space_dir}"
 files = ["test voice.wav"]
-"#;
+"#
+    );
 
-    let toml_path = "tests/assets/advanced/space_voice_bank.toml";
-    fs::create_dir_all("tests/assets/advanced")?;
+    let toml_path = test_asset_generator::asset_path("advanced/space_voice_bank.toml");
+    fs::create_dir_all(test_asset_generator::asset_path("advanced"))?;
     let mut file = File::create(toml_path)?;
     file.write_all(voice_bank_toml.as_bytes())?;
     drop(file);
@@ -85,7 +89,7 @@ files = ["test voice.wav"]
     thread::sleep(Duration::from_millis(50));
 
     // Cleanup
-    let _ = fs::remove_dir_all("tests/assets/advanced");
+    let _ = fs::remove_dir_all(test_asset_generator::asset_path("advanced"));
 
     Ok(())
 }
@@ -100,25 +104,38 @@ fn test_voice_ducking_edge_cases() -> Result<()> {
     let mut engine = AudioEngine::new()?;
 
     // Generate test voice file
-    test_asset_generator::generate_test_voice("tests/assets/test_voice_duck.wav", 0.05, 22050)?;
+    test_asset_generator::generate_test_voice(
+        test_asset_generator::asset_path("test_voice_duck.wav"),
+        0.05,
+        22050,
+    )?;
 
     // Case 1: Very short voice (should clamp to 0.1s minimum)
-    engine.play_voice_file("tests/assets/test_voice_duck.wav", Some(0.01))?;
+    engine.play_voice_file(
+        test_asset_generator::asset_path("test_voice_duck.wav"),
+        Some(0.01),
+    )?;
     engine.tick(0.02);
 
     // Case 2: Negative duration (should clamp to 0.1s minimum)
-    engine.play_voice_file("tests/assets/test_voice_duck.wav", Some(-1.0))?;
+    engine.play_voice_file(
+        test_asset_generator::asset_path("test_voice_duck.wav"),
+        Some(-1.0),
+    )?;
     engine.tick(0.02);
 
     // Case 3: Very long duration (should clamp to 30s maximum)
-    engine.play_voice_file("tests/assets/test_voice_duck.wav", Some(100.0))?;
+    engine.play_voice_file(
+        test_asset_generator::asset_path("test_voice_duck.wav"),
+        Some(100.0),
+    )?;
     engine.tick(0.02);
 
     thread::sleep(Duration::from_millis(100));
 
     // Cleanup
-    if Path::new("tests/assets/test_voice_duck.wav").exists() {
-        fs::remove_file("tests/assets/test_voice_duck.wav")?;
+    if Path::new(test_asset_generator::asset_path("test_voice_duck.wav")).exists() {
+        fs::remove_file(test_asset_generator::asset_path("test_voice_duck.wav"))?;
     }
 
     Ok(())
@@ -133,10 +150,14 @@ fn test_voice_ducking_edge_cases() -> Result<()> {
 fn test_music_crossfade_negative_duration() -> Result<()> {
     let mut engine = AudioEngine::new()?;
 
-    test_asset_generator::generate_test_music("tests/assets/test_music_neg.wav", 2.0, 22050)?;
+    test_asset_generator::generate_test_music(
+        test_asset_generator::asset_path("test_music_neg.wav"),
+        2.0,
+        22050,
+    )?;
 
     let track = MusicTrack {
-        path: "tests/assets/test_music_neg.wav".to_string(),
+        path: test_asset_generator::asset_path("test_music_neg.wav").to_string(),
         looped: true,
     };
 
@@ -151,7 +172,7 @@ fn test_music_crossfade_negative_duration() -> Result<()> {
     thread::sleep(Duration::from_millis(50));
 
     // Cleanup
-    fs::remove_file("tests/assets/test_music_neg.wav")?;
+    fs::remove_file(test_asset_generator::asset_path("test_music_neg.wav"))?;
 
     Ok(())
 }
@@ -161,10 +182,14 @@ fn test_music_crossfade_negative_duration() -> Result<()> {
 fn test_music_tick_without_crossfade() -> Result<()> {
     let mut engine = AudioEngine::new()?;
 
-    test_asset_generator::generate_test_music("tests/assets/test_music_simple.wav", 1.0, 22050)?;
+    test_asset_generator::generate_test_music(
+        test_asset_generator::asset_path("test_music_simple.wav"),
+        1.0,
+        22050,
+    )?;
 
     let track = MusicTrack {
-        path: "tests/assets/test_music_simple.wav".to_string(),
+        path: test_asset_generator::asset_path("test_music_simple.wav").to_string(),
         looped: false,
     };
 
@@ -178,7 +203,7 @@ fn test_music_tick_without_crossfade() -> Result<()> {
     }
 
     // Cleanup
-    fs::remove_file("tests/assets/test_music_simple.wav")?;
+    fs::remove_file(test_asset_generator::asset_path("test_music_simple.wav"))?;
 
     Ok(())
 }
@@ -192,7 +217,12 @@ fn test_music_tick_without_crossfade() -> Result<()> {
 fn test_spatial_volume_zero_master() -> Result<()> {
     let mut engine = AudioEngine::new()?;
 
-    test_asset_generator::generate_test_beep("tests/assets/test_beep_vol.wav", 440.0, 0.3, 22050)?;
+    test_asset_generator::generate_test_beep(
+        test_asset_generator::asset_path("test_beep_vol.wav"),
+        440.0,
+        0.3,
+        22050,
+    )?;
 
     // Set master volume to zero
     engine.set_master_volume(0.0);
@@ -200,7 +230,11 @@ fn test_spatial_volume_zero_master() -> Result<()> {
     let emitter_id = 2000;
     let pos = Vec3::new(10.0, 0.0, 0.0);
 
-    engine.play_sfx_3d_file(emitter_id, "tests/assets/test_beep_vol.wav", pos)?;
+    engine.play_sfx_3d_file(
+        emitter_id,
+        test_asset_generator::asset_path("test_beep_vol.wav"),
+        pos,
+    )?;
 
     // Tick with zero master volume
     for _ in 0..10 {
@@ -208,7 +242,7 @@ fn test_spatial_volume_zero_master() -> Result<()> {
     }
 
     // Cleanup
-    fs::remove_file("tests/assets/test_beep_vol.wav")?;
+    fs::remove_file(test_asset_generator::asset_path("test_beep_vol.wav"))?;
 
     Ok(())
 }
@@ -218,7 +252,12 @@ fn test_spatial_volume_zero_master() -> Result<()> {
 fn test_spatial_volume_maximum_master() -> Result<()> {
     let mut engine = AudioEngine::new()?;
 
-    test_asset_generator::generate_test_beep("tests/assets/test_beep_max.wav", 440.0, 0.3, 22050)?;
+    test_asset_generator::generate_test_beep(
+        test_asset_generator::asset_path("test_beep_max.wav"),
+        440.0,
+        0.3,
+        22050,
+    )?;
 
     // Set master volume to maximum
     engine.set_master_volume(1.0);
@@ -226,7 +265,11 @@ fn test_spatial_volume_maximum_master() -> Result<()> {
     let emitter_id = 2001;
     let pos = Vec3::ZERO; // At listener position
 
-    engine.play_sfx_3d_file(emitter_id, "tests/assets/test_beep_max.wav", pos)?;
+    engine.play_sfx_3d_file(
+        emitter_id,
+        test_asset_generator::asset_path("test_beep_max.wav"),
+        pos,
+    )?;
 
     // Tick with maximum volume
     for _ in 0..10 {
@@ -234,7 +277,7 @@ fn test_spatial_volume_maximum_master() -> Result<()> {
     }
 
     // Cleanup
-    fs::remove_file("tests/assets/test_beep_max.wav")?;
+    fs::remove_file(test_asset_generator::asset_path("test_beep_max.wav"))?;
 
     Ok(())
 }
@@ -263,15 +306,17 @@ fn test_voice_bank_load_nonexistent_file() -> Result<()> {
 #[test]
 #[serial]
 fn test_dialogue_override_file_not_found() -> Result<()> {
-    fs::create_dir_all("tests/assets/override_test")?;
+    fs::create_dir_all(test_asset_generator::asset_path("override_test"))?;
 
     // Create DialogueAudioMap pointing to nonexistent file
-    let toml_data = r#"
-[map.test_dlg]
-n0 = "tests/assets/override_test/NONEXISTENT.wav"
-"#;
+    let missing = test_asset_generator::asset_path("override_test/NONEXISTENT.wav");
+    let toml_data = format!(
+        r#"[map.test_dlg]
+n0 = "{missing}"
+"#
+    );
 
-    let toml_path = "tests/assets/override_test/override_map.toml";
+    let toml_path = test_asset_generator::asset_path("override_test/override_map.toml");
     let mut file = File::create(toml_path)?;
     file.write_all(toml_data.as_bytes())?;
     drop(file);
@@ -322,7 +367,7 @@ n0 = "tests/assets/override_test/NONEXISTENT.wav"
     thread::sleep(Duration::from_millis(50));
 
     // Cleanup
-    let _ = fs::remove_dir_all("tests/assets/override_test");
+    let _ = fs::remove_dir_all(test_asset_generator::asset_path("override_test"));
 
     Ok(())
 }
