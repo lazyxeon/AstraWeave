@@ -32,14 +32,12 @@
 //! renderer crate's responsibility.
 
 pub mod freefly;
-pub mod third_person;
 pub mod producer;
 pub mod projection;
 pub mod render_view;
 pub mod third_person;
 
 pub use freefly::{CameraController, CameraMode, FreeFly};
-pub use third_person::ThirdPersonCamera;
 pub use producer::CameraProducer;
 pub use projection::Projection;
 pub use render_view::RenderView;
