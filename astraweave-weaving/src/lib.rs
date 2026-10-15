@@ -61,7 +61,7 @@ pub use legacy::{compile_legacy, LegacyPoints};
 pub use level::{Camera, LevelStats, Player, VeilweaverLevel};
 pub use mod_queue::{
     parse_template_toml, queue_weave, QueueError, WeaveCommand, WeaveScratch, WeaveTemplate,
-    ENGINE_TEMPLATE_MAX, MAX_WEAVE_COMMANDS,
+    ENGINE_TEMPLATE_MAX, ISLAND_HALF_CELLS, MAX_WEAVE_COMMANDS,
 };
 pub use particles::{AnchorParticleEmitter, AnchorParticleSystem, Particle, ParticleType};
 pub use patterns::{Pattern, PatternDetector, PatternStrength};

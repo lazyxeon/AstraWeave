@@ -9,7 +9,7 @@ lifecycle_status: in_design
 integration_status: example_only
 summary: "Modifier graph and casts live here and write SimModifier records into the local-sim field trait. Gameplay apply_weave_op compiles the legacy ops. The anchor slice systems are still plain functions. weaving.md §5,§8"
 owns: [astraweave-weaving]
-doc_version: "1.3"
+doc_version: "1.4"
 last_verified_commit: 7c29b8182
 ---
 
@@ -21,7 +21,7 @@ last_verified_commit: 7c29b8182
 |---|---|
 | **System name** | Weaving / Fate-Weaving System (the Veilweaver signature mechanic) |
 | **Primary crates** | `astraweave-weaving` |
-| **Document version** | 1.3 |
+| **Document version** | 1.4 |
 | **Last verified against commit** | `7c29b8182` |
 | **Last verified date** | 2026-06-25 |
 | **Status** | In-Design-but-tested (heavily unit-tested; consumed only by two non-runtime examples) |
@@ -372,6 +372,7 @@ This crate hosts **two distinct pipelines** that do not call each other. Both ar
 | 10 | Enemy patrol targets and wave spawn positions are a function of `(world_seed, draw_index, SIM_SYSTEM_ENEMY_PATROL \| SIM_SYSTEM_SPAWNER)`. Offsets are rejection samples in the disk (`disk_xz`); no `thread_rng` and no `sin`/`cos`. Active spawn ids are sorted before round-robin. | Yes | `enemy.rs`, `spawner.rs`; tests `patrol_target_is_bit_identical_for_the_same_seed`, `spawn_positions_are_bit_identical_for_the_same_seed`. |
 | 11 | `run_aravath_slice` is one resolve at `ARAVATH_SLICE_SEED`. The scripted and goal policies of `aravath_slice_sword` finish on the same SHA-256 trace. That digest is required case `gameplay_qa_aravath_slice`. | Yes | `gameplay_qa.rs` test `replay_aravath_slice_scenario`. `determinism-replay.yml` merges `replay-hash-gameplay-qa.json`. |
 | 12 | `weave_tick` does not allocate. Modifiers are stamped in command order. One reaction per cell. Freeze emits one ice AABB and one `NavChange` on the command's start tick. | Yes | `eval.rs`, `tests/no_alloc.rs`, `astraweave-core/tests/replay_hash.rs` case `weaving`. |
+| 13 | `queue_weave` rejects an origin outside ±`ISLAND_HALF_CELLS` (2048) on any axis. It does not saturate. `parse_template_toml` range-checks the id as `i64` before the `u16` cast. Ids 1–7 stay engine ids. In-range casts keep their bytes. | Yes | `mod_queue.rs` tests `origins_outside_the_island_are_rejected_without_saturation` and `parse_range_checks_the_id_before_the_u16_cast`. |
 
 ---
 
