@@ -38,7 +38,7 @@ planner_advanced = []
 rag = []
 profiling = ["astraweave-profiling/profiling", "tracy-client", "tracy-client/enable"]
 # Pull in astraweave-profiling's alloc-counter for bench assertions.
-alloc-counter = ["dep:astraweave-profiling", "astraweave-profiling/alloc-counter"]
+alloc-counter = ["dep:astraweave-profiling", "astraweave-profiling/alloc-counter", "astraweave-ecs/alloc-counter"]
 # Bench-only allocator swap for the mimalloc experiment.
 fast-alloc = ["dep:astraweave-alloc", "astraweave-alloc/fast-alloc"]
 veilweaver_slice = ["dep:astraweave-behavior", "dep:astraweave-observability"]

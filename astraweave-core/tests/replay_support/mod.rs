@@ -46,7 +46,7 @@ pub fn planner_pure_bytes() -> Vec<u8> {
 
 pub fn nav_reroute_bytes() -> Vec<u8> {
     use astraweave_ai::htn::{plan_route, AgentPlan, SpatialHooks};
-    use astraweave_nav::{bridge_and_ford, nav_change_from_kind, NavChangeKind, NavScratch};
+    use astraweave_nav::{bridge_and_ford, NavScratch};
 
     let mut tiles = bridge_and_ford();
     let mut scratch = NavScratch::new();
@@ -54,13 +54,21 @@ pub fn nav_reroute_bytes() -> Vec<u8> {
     let mut out = Vec::new();
     for tick in 0..60u64 {
         if tick == 30 {
-            tiles.mark(nav_change_from_kind(
-                NavChangeKind::Detach,
+            // Same shape `drain_geometry_notices` publishes for a collapse
+            // (reason 2). The destruction crate is not on this branch.
+            let notice = astraweave_nav::GeometryNotice {
                 tick,
-                0,
-                [-1_000, -1_000, 17_000],
-                [5_000, 1_000, 31_999],
-            ));
+                x0: -1_000,
+                y0: -1_000,
+                z0: 17_000,
+                x1: 5_000,
+                y1: 1_000,
+                z1: 31_999,
+                reason: astraweave_nav::NOTICE_COLLAPSE,
+            };
+            let change = astraweave_nav::nav_change_from_geometry_notice(&notice, 0)
+                .expect("collapse notice");
+            tiles.mark(change);
         }
         let committed = tiles.commit_tick() as u32;
         let mut budget = 64u32;

@@ -35,11 +35,36 @@ const MAX_NODES: usize = MAX_SLOTS * MAX_TRIS;
 const MAX_WAYPOINTS: usize = 32;
 
 /// Which destruction command produced a [`NavChange`].
+///
+/// `Weave` is reason 3 on `GeometryNotice` from the destruction crate.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum NavChangeKind {
     Explosion,
     Brush,
     Detach,
+    Weave,
+}
+
+/// Reason bytes published by `DestructionWorld::drain_geometry_notices`.
+pub const NOTICE_BRUSH: u8 = 1;
+pub const NOTICE_COLLAPSE: u8 = 2;
+pub const NOTICE_WEAVE: u8 = 3;
+
+/// Same fields as `astraweave_destruction::GeometryNotice`.
+///
+/// That crate lives on `feat/destruction` and is not in this branch. Callers
+/// copy a drained notice into this struct and pass it to
+/// [`nav_change_from_geometry_notice`]. Bounds are copied as published.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct GeometryNotice {
+    pub tick: u64,
+    pub x0: i32,
+    pub y0: i32,
+    pub z0: i32,
+    pub x1: i32,
+    pub y1: i32,
+    pub z1: i32,
+    pub reason: u8,
 }
 
 /// One walkable-region invalidation, in milli-units.
@@ -71,11 +96,33 @@ impl NavChange {
     }
 }
 
-/// `Explosion`, `Brush`, and `Detach` become a [`NavChange`].
+/// Map one drained geometry notice into a [`NavChange`].
 ///
-/// The destruction crate does not exist on this branch. Callers that already
-/// have a quantized AABB pass the kind through here so both sides share one
-/// enum. Kinds outside those three are not representable.
+/// Reason 1 is a brush, 2 is a collapse (`Detach`), 3 is a weave. Any other
+/// reason is ignored. `seq` is the drain index so two notices in one tick
+/// stay ordered. `drain_geometry_notices` is the producer on the destruction
+/// branch; this crate does not depend on that crate until both share a commit.
+#[must_use]
+pub const fn nav_change_from_geometry_notice(
+    notice: &GeometryNotice,
+    seq: u32,
+) -> Option<NavChange> {
+    let kind = match notice.reason {
+        NOTICE_BRUSH => NavChangeKind::Brush,
+        NOTICE_COLLAPSE => NavChangeKind::Detach,
+        NOTICE_WEAVE => NavChangeKind::Weave,
+        _ => return None,
+    };
+    Some(NavChange::new(
+        notice.tick,
+        seq,
+        [notice.x0, notice.y0, notice.z0],
+        [notice.x1, notice.y1, notice.z1],
+        kind,
+    ))
+}
+
+/// `Explosion`, `Brush`, `Detach`, and `Weave` become a [`NavChange`].
 #[must_use]
 pub const fn nav_change_from_kind(
     kind: NavChangeKind,
@@ -534,10 +581,16 @@ impl NavTiles {
             }
             let mut kept = 0u16;
             let src_n = self.slots[slot].source_count as usize;
-            let mut next = [SourceTri { verts: [Vec3::ZERO; 3] }; MAX_TRIS];
+            let mut next = [SourceTri {
+                verts: [Vec3::ZERO; 3],
+            }; MAX_TRIS];
             let mut removed = false;
             for i in 0..src_n {
-                if source_hits(&self.slots[slot].sources[i], change.min_milli, change.max_milli) {
+                if source_hits(
+                    &self.slots[slot].sources[i],
+                    change.min_milli,
+                    change.max_milli,
+                ) {
                     removed = true;
                 } else {
                     next[kept as usize] = self.slots[slot].sources[i];
@@ -588,7 +641,8 @@ impl NavTiles {
                 let a = self.dirty[j - 1] as usize;
                 let b = self.dirty[j] as usize;
                 let out = self.slots[a].cx > self.slots[b].cx
-                    || (self.slots[a].cx == self.slots[b].cx && self.slots[a].cz > self.slots[b].cz);
+                    || (self.slots[a].cx == self.slots[b].cx
+                        && self.slots[a].cz > self.slots[b].cz);
                 if !out {
                     break;
                 }
@@ -786,15 +840,7 @@ impl NavTiles {
         }
     }
 
-    fn relax(
-        &self,
-        scratch: &mut NavScratch,
-        from: u32,
-        to: u32,
-        g: u32,
-        goal: u32,
-        stamp: u32,
-    ) {
+    fn relax(&self, scratch: &mut NavScratch, from: u32, to: u32, g: u32, goal: u32, stamp: u32) {
         let (slot, local) = decode_node(to);
         if slot >= MAX_SLOTS || !self.slots[slot].tris[local].live {
             return;
@@ -947,7 +993,12 @@ impl Portal {
 }
 
 fn build_slot(slot: &Slot, max_step: f32, min_up_dot: f32) -> (u64, u16, [TileTri; MAX_TRIS]) {
-    let hash = hash_sources(&slot.sources, slot.source_count as usize, max_step, min_up_dot);
+    let hash = hash_sources(
+        &slot.sources,
+        slot.source_count as usize,
+        max_step,
+        min_up_dot,
+    );
     let mut tris = [TileTri::empty(); MAX_TRIS];
     let mut count = 0u16;
     let n = slot.source_count as usize;
@@ -1236,7 +1287,10 @@ mod tests {
             after_max_x > 16_000,
             "the reroute uses the ford, max x milli {after_max_x}"
         );
-        assert!(scratch.portal_len > 0, "the ford still crosses a tile border");
+        assert!(
+            scratch.portal_len > 0,
+            "the ford still crosses a tile border"
+        );
     }
 
     fn max_waypoint_x(scratch: &NavScratch) -> i32 {
@@ -1251,13 +1305,7 @@ mod tests {
     fn changes_apply_in_tick_seq_order() {
         let mut a = five_tiles();
         let mut b = five_tiles();
-        let first = nav_change_from_kind(
-            NavChangeKind::Brush,
-            1,
-            0,
-            [0, -1, 0],
-            [1_000, 1, 1_000],
-        );
+        let first = nav_change_from_kind(NavChangeKind::Brush, 1, 0, [0, -1, 0], [1_000, 1, 1_000]);
         let second = nav_change_from_kind(
             NavChangeKind::Brush,
             1,
@@ -1334,6 +1382,46 @@ mod tests {
             elapsed_ms < FRAME_BUDGET_MS,
             "4 tile commits took {elapsed_ms} ms, budget is {FRAME_BUDGET_MS} ms"
         );
+    }
+
+    #[test]
+    fn geometry_notice_reasons_map_and_unknown_is_dropped() {
+        let brush = GeometryNotice {
+            tick: 4,
+            x0: 1,
+            y0: 2,
+            z0: 3,
+            x1: 4,
+            y1: 5,
+            z1: 6,
+            reason: NOTICE_BRUSH,
+        };
+        let mapped = nav_change_from_geometry_notice(&brush, 2).expect("brush");
+        assert_eq!(mapped.kind, NavChangeKind::Brush);
+        assert_eq!(mapped.seq, 2);
+        assert_eq!(mapped.min_milli, [1, 2, 3]);
+        let collapse = GeometryNotice {
+            reason: NOTICE_COLLAPSE,
+            ..brush
+        };
+        assert_eq!(
+            nav_change_from_geometry_notice(&collapse, 0)
+                .expect("collapse")
+                .kind,
+            NavChangeKind::Detach
+        );
+        let weave = GeometryNotice {
+            reason: NOTICE_WEAVE,
+            ..brush
+        };
+        assert_eq!(
+            nav_change_from_geometry_notice(&weave, 0)
+                .expect("weave")
+                .kind,
+            NavChangeKind::Weave
+        );
+        let unknown = GeometryNotice { reason: 9, ..brush };
+        assert!(nav_change_from_geometry_notice(&unknown, 0).is_none());
     }
 
     fn five_tiles() -> NavTiles {

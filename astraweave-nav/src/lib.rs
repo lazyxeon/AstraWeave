@@ -32,8 +32,10 @@ use std::fmt;
 
 mod tiles;
 pub use tiles::{
-    bridge_and_ford, nav_change_from_kind, BreachSite, CoverSite, NavChange, NavChangeKind,
-    NavScratch, NavTiles, TileSideBuffer, FRAME_BUDGET_MS, TILE_COMMITS_PER_TICK, TILE_SIZE_M,
+    bridge_and_ford, nav_change_from_geometry_notice, nav_change_from_kind, BreachSite, CoverSite,
+    GeometryNotice, NavChange, NavChangeKind, NavScratch, NavTiles, TileSideBuffer,
+    FRAME_BUDGET_MS, NOTICE_BRUSH, NOTICE_COLLAPSE, NOTICE_WEAVE, TILE_COMMITS_PER_TICK,
+    TILE_SIZE_M,
 };
 
 #[cfg(test)]
@@ -961,7 +963,11 @@ mod tests {
     #[test]
     fn partial_rebake_keeps_vertices_outside_the_dirty_aabb() {
         let tris = vec![
-            Triangle::new(Vec3::ZERO, Vec3::new(0.0, 0.0, 1.0), Vec3::new(1.0, 0.0, 0.0)),
+            Triangle::new(
+                Vec3::ZERO,
+                Vec3::new(0.0, 0.0, 1.0),
+                Vec3::new(1.0, 0.0, 0.0),
+            ),
             Triangle::new(
                 Vec3::new(50.0, 0.0, 50.0),
                 Vec3::new(50.0, 0.0, 51.0),

@@ -378,6 +378,8 @@ Dormant systems:
 | `AIArbiter` | Deferred. A live model cannot write the sim tick. Issue #257 |
 | `astraweave-ai/src/goap/` (22 files) and `GoapPlanner` | Deferred. The slice path no longer calls them. Deleting them would drop the symbolic A* suite without a zero-alloc replacement. Issue #258 |
 
-`nav_reroute` is a required case in `.github/workflows/determinism-replay.yml`.
+`nav_reroute` is a required case in `.github/workflows/determinism-replay.yml`. The replay builds a collapse `GeometryNotice` (reason 2) and maps it with `nav_change_from_geometry_notice`. `drain_geometry_notices` is the producer on `feat/destruction` (#243). That crate is not in this branch, so the live drain call waits until both trees share a commit.
+
+`cargo test -p astraweave-ai --features alloc-counter --test zero_alloc_tick -- --test-threads=1` asserts the tile commit and the HTN tick allocate zero times after warmup.
 
 The Aravath runtime is not on this branch, so the showcase scene is not added.
