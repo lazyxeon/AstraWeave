@@ -30,6 +30,10 @@ pub enum StatusEffect {
         dps: f32,
         time: f32,
     },
+    /// Item `special = "stun"`. Hit-stagger stays [`StatusEffect::Stagger`].
+    Stun {
+        time: f32,
+    },
 }
 
 impl Stats {
@@ -83,7 +87,7 @@ impl Stats {
                 dps: 4.0,
                 time: 3.0,
             }),
-            Some("stun") => self.effects.push(StatusEffect::Stagger { time: 1.5 }),
+            Some("stun") => self.effects.push(StatusEffect::Stun { time: 1.5 }),
             _ => {}
         }
     }
@@ -103,7 +107,7 @@ impl Stats {
     pub fn is_stunned(&self) -> bool {
         self.effects
             .iter()
-            .any(|effect| matches!(effect, StatusEffect::Stagger { time } if *time > 0.0))
+            .any(|effect| matches!(effect, StatusEffect::Stun { time } if *time > 0.0))
     }
 
     /// Displacement in millimetres after chill. This is the movement reader.
@@ -120,7 +124,7 @@ impl Stats {
                 *time -= dt;
                 *time > 0.0
             }
-            StatusEffect::Stagger { time } => {
+            StatusEffect::Stagger { time } | StatusEffect::Stun { time } => {
                 *time -= dt;
                 *time > 0.0
             }
@@ -194,6 +198,17 @@ mod tests {
             .effects
             .iter()
             .any(|e| matches!(e, StatusEffect::Burn { .. })));
+    }
+
+    #[test]
+    fn hit_stagger_is_not_stun() {
+        let mut stats = Stats::new(100);
+        stats.effects.push(StatusEffect::Stagger { time: 0.4 });
+        assert!(!stats.is_stunned());
+        stats.apply_element_rider(DamageType::Physical, Some("stun"));
+        assert!(stats.is_stunned());
+        stats.tick(1.5);
+        assert!(!stats.is_stunned());
     }
 
     #[test]
