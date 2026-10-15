@@ -90,6 +90,12 @@ Owned here. 95 unique failures, each retried twice. Groups:
 | `editor_engine_render_parity` | **Deferred.** https://github.com/lazyxeon/AstraWeave/issues/273. Stable llvmpipe hashes `034f46c7…` vs `3cae37d4…`. Formats match and overlay isolation passes. The label could not be applied from this token. |
 | Windows dialogue TOML (`D:\a\...` in a basic string) | **Fixed after `94d6adb2`.** Those tests parse the fixture path as TOML. `\` starts an escape, and `\a` is not one. Fixture path strings now use `/`. |
 
+## Rebase onto `b47fb566` and issue #303
+
+The branch is rebased onto main after #243, #290, and the design docs. #273 stays open: `editor_engine_render_parity` is still the tracked failure.
+
+#219's rustls switch is already on this branch. #303 is the follow-on gate: `unknown-git = "deny"` in `deny.toml`, and `cargo deny check advisories` / `cargo deny check licenses` fail the Cargo Deny job instead of warning. A 300s advisory-db timeout still warns. `cargo-audit` is unchanged. The deny tool in that job is 0.20.2 so the advisory database's CVSS 4.0 entries parse. `cargo deny check bans sources licenses` is ok. Advisories are not ok: the database reports unsound and vulnerability findings, so that job is expected to fail until those are fixed. They are not added to the ignore list.
+
 ## What was not done
 
 - Benchmark targets whose measurement itself exceeds 600s are tracked in https://github.com/lazyxeon/AstraWeave/issues/224, labeled `deferred-failure`. The caustics golden matches on rustc 1.89.0 once the workspace test run is allowed to reach it.
