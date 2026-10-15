@@ -78,6 +78,7 @@ The workspace has a per-subsystem architecture trace campaign under `docs/archit
 | `docs/architecture/aw_editor.md` | aw_editor (Visual Editor) |
 | `docs/architecture/camera.md` | Camera — freefly, projection, render-view, parity producer |
 | `docs/architecture/cinematics.md` | Cinematics — timeline / sequencer |
+| `docs/architecture/destruction.md` | Command log, support graph, fracture, terrain deltas, and debris. Sim state is Fixed64. |
 | `docs/architecture/ecs_math_core_sdk_foundation.md` | ECS substrate + Math/Core/SDK |
 | `docs/architecture/fluids.md` | Fluids |
 | `docs/architecture/gameplay.md` | Gameplay — combat, crafting, Veilweaver slice, in-crate weave bridge |

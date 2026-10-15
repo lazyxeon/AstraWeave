@@ -339,6 +339,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "aravath_destruction"
+version = "0.1.0"
+dependencies = [
+ "astraweave-destruction",
+]
+
+[[package]]
 name = "arbitrary"
 version = "1.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -808,6 +815,7 @@ dependencies = [
  "anyhow",
  "astraweave-ai",
  "astraweave-behavior",
+ "astraweave-destruction",
  "astraweave-ecs",
  "astraweave-math",
  "criterion 0.7.0",
@@ -817,6 +825,19 @@ dependencies = [
  "serde_json",
  "sha2",
  "thiserror 2.0.17",
+]
+
+[[package]]
+name = "astraweave-destruction"
+version = "0.1.0"
+dependencies = [
+ "astraweave-core",
+ "astraweave-math",
+ "bitflags 2.9.4",
+ "criterion 0.7.0",
+ "rand 0.9.2",
+ "serde",
+ "sha2",
 ]
 
 [[package]]

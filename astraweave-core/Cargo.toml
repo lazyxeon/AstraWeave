@@ -23,6 +23,7 @@ astraweave-behavior = { workspace = true }
 criterion = { workspace = true }
 astraweave-ai = { workspace = true }
 astraweave-math = { workspace = true }
+astraweave-destruction = { workspace = true }
 sha2 = { workspace = true }
 
 [[bench]]

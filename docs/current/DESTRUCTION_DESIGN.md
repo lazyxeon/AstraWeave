@@ -1,10 +1,15 @@
 # Destruction Design
 
-**Status:** Phase 1, waiting for review. No crate code in this change.
-**Base:** `main` `85d09a2c`. Survey: [`DESTRUCTION_ARCHAEOLOGY.md`](DESTRUCTION_ARCHAEOLOGY.md).
+**Status:** Approved 2026-10-15. Phase 2 is in progress on this branch.
+**Base:** `main` `85d09a2c`, stacked on the `Fixed64` move (PR #245). Survey: [`DESTRUCTION_ARCHAEOLOGY.md`](DESTRUCTION_ARCHAEOLOGY.md).
 **Decision:** hybrid. A new crate owns the graph, fracture, the command log, terrain-edit deltas, and debris. Physics and terrain get thin one-way hooks. Render and combat are callers, not owners.
 
-Phase 2 does not start until this document is approved.
+Approved answers:
+
+1. `Fixed64` lives in `astraweave-math`. Destruction does not depend on `astraweave-combat`.
+2. `STRESS_ITERS` is 8. The Aravath gate matches a 64-iteration solve, so no tuning issue was opened. A longer chain stays partial by the cap.
+3. Tests use `FlatColumnBase`. The #215 adapter waits until that PR merges (issue #249).
+4. `astraweave-core`'s replay test dev-depends on this crate.
 
 ---
 
