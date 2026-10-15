@@ -528,4 +528,17 @@ mod tests {
         let delta = (a[0] - b[0]).abs() + (a[1] - b[1]).abs() + (a[2] - b[2]).abs();
         assert!(delta > 0.2, "{a:?} vs {b:?}");
     }
+
+    #[test]
+    fn kaykit_forest_tree_keeps_its_atlas() {
+        let path = crate::assets::asset_dir().join("models/kaykit_forest/Tree_1_A_Color1.gltf");
+        let tree = load_rigid(&path).unwrap();
+        assert!(tree.mesh.vertices.len() > 50);
+        let albedo = tree.albedo.expect("forest atlas");
+        assert!(albedo.width > 0 && albedo.height > 0);
+        assert_eq!(
+            albedo.pixels.len(),
+            albedo.width as usize * albedo.height as usize * 4
+        );
+    }
 }

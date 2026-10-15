@@ -22,11 +22,18 @@ pub enum PropKind {
     Rock,
     Grass,
     Bush,
+    /// KayKit forest tree on the western hills.
+    ForestTree,
+    ForestBush,
+    ForestTuft,
+    ForestRock,
 }
 
 #[derive(Clone, Copy, Debug)]
 pub struct PropSpot {
     pub kind: PropKind,
+    /// Which mesh of that kind. Kenney props use 0.
+    pub variant: u8,
     pub position: Vec3,
     pub yaw: f32,
     pub scale: f32,
@@ -395,32 +402,41 @@ fn scatter_chunk(coord: ChunkCoord) -> Vec<PropSpot> {
             let position = Vec3::new(wx as f32 + 0.5, h as f32 + 0.55, wz as f32 + 0.5);
             match biome_at(wx, wz) {
                 Biome::Grass => {
-                    if n % 5 == 0 {
+                    let scale = 0.9 + ((n >> 8) & 7) as f32 * 0.04;
+                    if n % 3 == 0 {
                         spots.push(PropSpot {
-                            kind: PropKind::Grass,
+                            kind: PropKind::ForestTuft,
+                            variant: (n % 2) as u8,
                             position,
                             yaw,
-                            scale: 1.6,
+                            scale,
                         });
                     }
-                    if n % 9 == 0 {
+                    if n % 6 == 0 {
                         spots.push(PropSpot {
-                            kind: PropKind::Bush,
+                            kind: PropKind::ForestBush,
+                            variant: ((n / 6) % 2) as u8,
                             position,
                             yaw,
-                            scale: 2.2,
+                            scale,
                         });
                     }
-                    if n % 7 == 0 {
+                    if n % 4 == 0 {
                         spots.push(PropSpot {
-                            kind: if n % 2 == 0 {
-                                PropKind::Oak
-                            } else {
-                                PropKind::Pine
-                            },
+                            kind: PropKind::ForestTree,
+                            variant: (n % 4) as u8,
                             position,
                             yaw,
-                            scale: 3.2,
+                            scale: scale + 0.15,
+                        });
+                    }
+                    if n % 11 == 0 {
+                        spots.push(PropSpot {
+                            kind: PropKind::ForestRock,
+                            variant: (n % 2) as u8,
+                            position,
+                            yaw,
+                            scale: scale * 0.75,
                         });
                     }
                 }
@@ -428,6 +444,7 @@ fn scatter_chunk(coord: ChunkCoord) -> Vec<PropSpot> {
                     if n % 6 == 0 {
                         spots.push(PropSpot {
                             kind: PropKind::Palm,
+                            variant: 0,
                             position,
                             yaw,
                             scale: 3.0,
@@ -436,6 +453,7 @@ fn scatter_chunk(coord: ChunkCoord) -> Vec<PropSpot> {
                     if n % 8 == 0 {
                         spots.push(PropSpot {
                             kind: PropKind::Rock,
+                            variant: 0,
                             position,
                             yaw,
                             scale: 1.8,
@@ -446,6 +464,7 @@ fn scatter_chunk(coord: ChunkCoord) -> Vec<PropSpot> {
                     if n % 4 == 0 {
                         spots.push(PropSpot {
                             kind: PropKind::Rock,
+                            variant: 0,
                             position,
                             yaw,
                             scale: 2.4,
@@ -454,6 +473,7 @@ fn scatter_chunk(coord: ChunkCoord) -> Vec<PropSpot> {
                     if n % 11 == 0 {
                         spots.push(PropSpot {
                             kind: PropKind::Pine,
+                            variant: 0,
                             position,
                             yaw,
                             scale: 2.6,
@@ -637,5 +657,24 @@ mod tests {
             "load with an empty edit log should rebuild the column"
         );
         assert!(ground.edits.is_empty());
+    }
+
+    #[test]
+    fn grass_hills_scatter_kaykit_forest_props() {
+        let spots = scatter_chunk(astraweave_terrain::ChunkCoord::new(0, 0, 0));
+        assert!(
+            spots.iter().any(|spot| spot.kind == PropKind::ForestTree),
+            "western hills should include a forest tree"
+        );
+        assert!(spots.iter().any(|spot| spot.kind == PropKind::ForestTuft));
+        assert!(spots.iter().all(|spot| match spot.kind {
+            PropKind::ForestTree
+            | PropKind::ForestBush
+            | PropKind::ForestTuft
+            | PropKind::ForestRock => {
+                !island::on_yaqar_road(spot.position.x as i32, spot.position.z as i32)
+            }
+            _ => true,
+        }));
     }
 }
