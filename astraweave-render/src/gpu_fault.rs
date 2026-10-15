@@ -101,6 +101,82 @@ pub fn text_means_device_lost(text: &str) -> bool {
         || text.contains("device lost")
 }
 
+/// Whether this device can `textureLoad` a `texture_depth_2d`.
+///
+/// The GL backend rejects that load (`not supported in GLSL`). Vulkan,
+/// including lavapipe, accepts it. A probe failure that is not that rejection
+/// reports supported, so the real pipeline creation still surfaces it.
+pub fn depth_texture_load_supported(device: &wgpu::Device) -> bool {
+    const SHADER: &str = r#"
+@group(0) @binding(0) var t_depth: texture_depth_2d;
+
+@compute @workgroup_size(1)
+fn main() {
+    let _depth = textureLoad(t_depth, vec2<i32>(0, 0), 0);
+}
+"#;
+    device.push_error_scope(wgpu::ErrorFilter::Validation);
+    let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        label: Some("depth_texture_load_probe"),
+        entries: &[wgpu::BindGroupLayoutEntry {
+            binding: 0,
+            visibility: wgpu::ShaderStages::COMPUTE,
+            ty: wgpu::BindingType::Texture {
+                sample_type: wgpu::TextureSampleType::Depth,
+                view_dimension: wgpu::TextureViewDimension::D2,
+                multisampled: false,
+            },
+            count: None,
+        }],
+    });
+    let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+        label: Some("depth_texture_load_probe"),
+        source: wgpu::ShaderSource::Wgsl(SHADER.into()),
+    });
+    let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+        label: Some("depth_texture_load_probe"),
+        bind_group_layouts: &[&layout],
+        push_constant_ranges: &[],
+    });
+    let _pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+        label: Some("depth_texture_load_probe"),
+        layout: Some(&pipeline_layout),
+        module: &shader,
+        entry_point: Some("main"),
+        compilation_options: Default::default(),
+        cache: None,
+    });
+    match pop_error(device) {
+        None => true,
+        Some(err) if err.contains("textureLoad") && err.contains("depth") => {
+            log::warn!("textureLoad on depth textures is not supported: {err}");
+            false
+        }
+        Some(err) => {
+            log::warn!("depth textureLoad probe failed for another reason: {err}");
+            true
+        }
+    }
+}
+
+fn pop_error(device: &wgpu::Device) -> Option<String> {
+    let waker = std::task::Waker::from(std::sync::Arc::new(ScopeWaker));
+    let mut future = std::pin::pin!(device.pop_error_scope());
+    for _ in 0..64 {
+        let mut cx = std::task::Context::from_waker(&waker);
+        match future.as_mut().poll(&mut cx) {
+            std::task::Poll::Ready(Some(err)) => return Some(err.to_string()),
+            std::task::Poll::Ready(None) => return None,
+            std::task::Poll::Pending => {
+                if device.poll(wgpu::PollType::Wait).is_err() {
+                    return None;
+                }
+            }
+        }
+    }
+    None
+}
+
 /// Run `body` inside a validation error scope. The value is dropped when the
 /// scope captured an error, so an invalid pipeline is not stored.
 pub fn scope<T>(device: &wgpu::Device, label: &str, body: impl FnOnce() -> T) -> Result<T, String> {

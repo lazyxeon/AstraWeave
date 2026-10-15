@@ -1464,6 +1464,16 @@ mod tests {
         assert!(total(med) < total(high));
     }
 
+    fn skip_without_depth_texture_load(device: &wgpu::Device, test_name: &str) -> bool {
+        if crate::gpu_fault::depth_texture_load_supported(device) {
+            return false;
+        }
+        eprintln!(
+            "skip {test_name}: this adapter does not support textureLoad on depth textures. GL rejects that load. The lavapipe job still runs this test."
+        );
+        true
+    }
+
     #[test]
     fn volumetric_fog_pass_creation() {
         let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
@@ -1476,6 +1486,9 @@ mod tests {
         let (device, _) =
             pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
                 .expect("device");
+        if skip_without_depth_texture_load(&device, "volumetric_fog_pass_creation") {
+            return;
+        }
 
         let config = VolumetricFogConfig {
             froxel_dims: [8, 8, 8],
@@ -1531,6 +1544,12 @@ mod tests {
             trace: Default::default(),
         }))
         .expect("device");
+        if skip_without_depth_texture_load(
+            &device,
+            "scar_upload_is_timed_on_the_low_froxel_grid_when_the_device_can",
+        ) {
+            return;
+        }
 
         let config = VolumetricFogConfig {
             froxel_dims: VolumetricQuality::Low.froxel_dims(),
