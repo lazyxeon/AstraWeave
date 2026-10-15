@@ -9,7 +9,7 @@ lifecycle_status: active
 integration_status: wired
 summary: "Deaths write a sparse fixed-point scar. Fog and agents read it."
 owns: [astraweave-veil]
-doc_version: "1.0"
+doc_version: "1.1"
 last_verified_commit: 79fcf579
 runtime_edges:
   - to: astraweave-ai
@@ -26,7 +26,7 @@ runtime_edges:
 |---|---|
 | **System name** | Fate-scars (veil) |
 | **Primary crates** | `astraweave-veil` |
-| **Document version** | 1.0 |
+| **Document version** | 1.1 |
 | **Last verified against commit** | `79fcf579` (parent of the feature; the code landed on `cursor/aravath-veil-scars-7098`) |
 | **Last verified date** | 2026-10-14 |
 | **Status** | Active |
@@ -126,6 +126,7 @@ The froxel grid stays the engine preset (80×45×32 in this demo). The scar text
 - **Feed the existing pass.** A 16×9×24 pass would have duplicated `VolumetricFogPass` and ignored the demo's 80×45×32 low preset.
 - **No spillway.** The demo has no city and no water network. Hydraulic grounding was not implemented.
 - **Save via meta, schema stays 2.** `SaveBundleV2.meta["veil_scars"]` holds the hex postcard. Old saves omit the key and load an empty field. `ecs_blob` remains the edit log the demo already writes.
+- **Cell-list cap stays on this branch.** `from_postcard` rejects more than 4096 cells before insert. The parser is not copied onto `main`.
 
 ---
 
@@ -141,6 +142,7 @@ The froxel grid stays the engine preset (80×45×32 in this demo). The scar text
 | 6 | `astraweave_ai::stance_at` on a scripted field hashes to `0x0eb14da1efc9e7b2` | Yes | `cross_run_stance_matches_the_golden_hash` |
 | 7 | Postcard bytes round-trip through `SaveManager` with the same field hash | Yes | `aw_save_roundtrip_keeps_the_field_hash` |
 | 8 | The GPU bake writes the injected cell at the center texel of a focus on that cell, not at `index % 64` | Yes | `density_sits_on_the_world_cell_that_was_injected` |
+| 9 | `from_postcard` rejects `wire.cells` longer than `MAX_SCAR_CELLS` (4096) before `insert_loaded` | Yes | `postcard_rejects_more_than_4096_cells_before_insert` |
 
 ---
 

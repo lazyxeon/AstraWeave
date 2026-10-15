@@ -476,12 +476,6 @@ mod tests {
         );
     }
 
-    /// SEC-POC SEC-SAVE-1. A hostile `.awsv` header can name a multi-megabyte
-    /// payload that is not in the file. The loader must reject that length
-    /// as over the cap. Today it allocates the declared buffer and then fails
-    /// the short read.
-    #[test]
-
     fn fixed_bundle() -> SaveBundleV2 {
         SaveBundleV2 {
             schema: SAVE_SCHEMA_VERSION,
@@ -523,6 +517,10 @@ mod tests {
         assert_eq!(restored, bytes);
     }
 
+    /// SEC-POC SEC-SAVE-1. A hostile `.awsv` header can name a multi-megabyte
+    /// payload that is not in the file. The loader must reject that length
+    /// as over the cap.
+    #[test]
     fn poc_awsv_rejects_oversized_declared_payload() {
         let dir = tempfile::tempdir().expect("tempdir");
         let path = dir.path().join("hostile.awsv");

@@ -268,6 +268,7 @@ mod tests {
                 yaw: 0.0,
                 stamina: 1.0,
                 player_hp: 1.0,
+                scars: astraweave_veil::ScarField::new(),
             },
         )
         .unwrap();
@@ -290,8 +291,14 @@ mod tests {
             density: 0.5,
             material: 4,
         }];
-        assert_eq!(encode_edits(&edits), "1:2:-3:0.500:4");
+        assert_eq!(encode_edits(&edits), "1:2:-3:3f000000:4");
         assert_eq!(decode_edits("1:2:-3:0.500:4").unwrap()[0].material, 4);
+        assert_eq!(
+            decode_edits("1:2:-3:3f000000:4").unwrap()[0]
+                .density
+                .to_bits(),
+            0.5f32.to_bits()
+        );
     }
 }
 

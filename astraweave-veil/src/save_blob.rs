@@ -14,6 +14,9 @@ use crate::fixed::Fixed64;
 
 pub const META_KEY: &str = "veil_scars";
 const BLOB_VERSION: u16 = 1;
+/// Hostile cell lists above this are rejected before any cell is inserted.
+/// Greybox deaths and the reference history use a handful of cells.
+pub const MAX_SCAR_CELLS: usize = 4096;
 
 #[derive(Serialize, Deserialize)]
 struct ScarWire {
@@ -69,6 +72,12 @@ impl ScarField {
         }
         if wire.cell_metres <= 0 || wire.retain_den <= 0 {
             bail!("veil scar blob has a non-positive cell size or retain denominator");
+        }
+        if wire.cells.len() > MAX_SCAR_CELLS {
+            bail!(
+                "veil scar blob has {} cells; limit is {MAX_SCAR_CELLS}",
+                wire.cells.len()
+            );
         }
         let mut field = ScarField::from_parts(
             wire.cell_metres,
@@ -179,6 +188,64 @@ mod tests {
             restored.to_postcard().unwrap(),
             field.to_postcard().unwrap()
         );
+    }
+
+    #[test]
+    fn postcard_rejects_more_than_4096_cells_before_insert() {
+        let cells = (0..MAX_SCAR_CELLS + 1)
+            .map(|i| WireCell {
+                x: i as i32,
+                y: 0,
+                z: 0,
+                floor: 1,
+                transient: 0,
+            })
+            .collect();
+        let wire = ScarWire {
+            v: BLOB_VERSION,
+            cell_metres: 4,
+            decay: 0,
+            retain_num: 1,
+            retain_den: 3,
+            wary: 1,
+            avoid: 2,
+            ticks: 0,
+            cells,
+        };
+        let bytes = postcard::to_allocvec(&wire).unwrap();
+        let err = ScarField::from_postcard(&bytes).unwrap_err();
+        let text = format!("{err:#}");
+        assert!(
+            text.contains("4096"),
+            "cell list was inserted or the cap was not named: {text}"
+        );
+    }
+
+    #[test]
+    fn postcard_accepts_a_full_4096_cell_list() {
+        let cells = (0..MAX_SCAR_CELLS)
+            .map(|i| WireCell {
+                x: i as i32,
+                y: 1,
+                z: 2,
+                floor: 1,
+                transient: 0,
+            })
+            .collect();
+        let wire = ScarWire {
+            v: BLOB_VERSION,
+            cell_metres: 4,
+            decay: 0,
+            retain_num: 1,
+            retain_den: 3,
+            wary: 1,
+            avoid: 2,
+            ticks: 0,
+            cells,
+        };
+        let bytes = postcard::to_allocvec(&wire).unwrap();
+        let field = ScarField::from_postcard(&bytes).unwrap();
+        assert_eq!(field.occupied_count(), MAX_SCAR_CELLS);
     }
 
     #[test]
