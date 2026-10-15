@@ -1443,10 +1443,7 @@ impl EditorTabViewer {
             return 0; // Already have terrain
         }
         ts.configure(seed, biome);
-        match ts.generate_terrain(2) {
-            Ok(count) => count,
-            Err(_) => 0,
-        }
+        ts.generate_terrain(2).unwrap_or_default()
     }
 
     /// Returns borrowed TerrainChunks from the terrain state.
