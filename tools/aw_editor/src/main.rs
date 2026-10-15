@@ -2402,7 +2402,7 @@ impl EditorApp {
                                     let display_name = format!(
                                         "{} / {}",
                                         pack_name,
-                                        file_stem.replace('_', " ").replace('-', " ")
+                                        file_stem.replace(['_', '-'], " ")
                                     );
                                     let rel_path = file_path.display().to_string();
                                     models.push((display_name, rel_path));
