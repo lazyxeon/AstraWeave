@@ -12,12 +12,10 @@ fn main() {
     // The manifest is required: asInvoker is part of the download contract.
     // A Windows build that cannot compile the resource must fail, not ship
     // a bare exe.
-    if let Err(err) = embed_resource::compile("windows/aravath.rc", embed_resource::NONE)
-        .manifest_required()
+    if let Err(err) =
+        embed_resource::compile("windows/aravath.rc", embed_resource::NONE).manifest_required()
     {
-        println!(
-            "cargo:error=embed Windows version resource and asInvoker manifest: {err}"
-        );
+        println!("cargo:error=embed Windows version resource and asInvoker manifest: {err}");
         std::process::exit(1);
     }
     let target_env = std::env::var("CARGO_CFG_TARGET_ENV").unwrap_or_default();
