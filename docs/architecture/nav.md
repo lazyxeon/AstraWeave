@@ -9,8 +9,8 @@ lifecycle_status: active
 integration_status: wired
 summary: "Resolves the two-nav-crate conflict (astraweave-nav vs crates/astraweave-nav). nav.md §6"
 owns: [astraweave-nav]
-doc_version: "1.2"
-last_verified_commit: 7c29b8182
+doc_version: "1.3"
+last_verified_commit: d6b07fc8
 ---
 
 # Architecture Trace: Navigation / Pathfinding System (navmesh)
@@ -21,8 +21,8 @@ last_verified_commit: 7c29b8182
 |---|---|
 | **System name** | Navigation / Pathfinding System (navmesh) |
 | **Primary crates** | `astraweave-nav` (top-level, workspace member) |
-| **Document version** | 1.2 |
-| **Last verified against commit** | `feat/ai-orchestration` |
+| **Document version** | 1.3 |
+| **Last verified against commit** | `d6b07fc8` |
 | **Last verified date** | 2026-10-15 |
 | **Status** | Active (single-file library); consumers are mostly examples/tests — see §1 status note and §6 |
 | **Owner notes** | [Reasoning not recovered from available sources] — crate predates the architecture-trace campaign. Phase 10 "AI-Orchestrated Dynamic Terrain" added the region-invalidation block (lib.rs §520-629). |
@@ -35,7 +35,7 @@ last_verified_commit: 7c29b8182
 `astraweave-nav` bakes a triangle-based navigation mesh from a list of geometric triangles (slope/upward-facing filtering + shared-edge adjacency), runs A* over the triangle-adjacency graph, and returns a smoothed waypoint path. It also tracks "dirty regions" (AABBs) for incremental rebake when terrain changes at runtime.
 
 **Why it exists:**
-It provides the navigability check + path query that the AI tool-validation layer (`MoveTo`), the scripting layer (Rhai `NavMeshProxy`), and the editor "Bake Navmesh" tool consult to answer "can an agent get from A to B, and along what route."
+It provides the navigability check + path query that the AI tool-validation layer (`MoveTo`) and the editor "Bake Navmesh" tool consult to answer "can an agent get from A to B, and along what route." Gameplay scripts do not query it.
 
 **Where it primarily lives:**
 - [`astraweave-nav/src/lib.rs`](../../astraweave-nav/src/lib.rs) — the entire production implementation (~810 LoC of code; the rest of the 2,661-line file is `#[cfg(test)]` modules).
@@ -166,7 +166,7 @@ The crate itself is Active and is a declared workspace member. However, of its n
 
 | Consumer system | Interface | Data | Notes |
 |---|---|---|---|
-| Scripting (Rhai) | `astraweave-scripting/src/lib.rs:155-159` reads `world.get_resource::<NavMesh>()`; exposed via `api::NavMeshProxy.find_path` (`api.rs:147-157`) | `Vec<Vec3>` path → Rhai `Vec<Dynamic>` | `NavMeshProxy` holds a `*const NavMesh` and is `unsafe impl Send/Sync` (`api.rs:143-144`). This is the most "wired" runtime consumer: the plugin reads `NavMesh` as an ECS resource each tick. One non-test app inserts a `NavMesh` ECS resource: `examples/scripting_advanced_demo/src/main.rs:32` (`app.world.insert_resource(nav)`, workspace member at root `Cargo.toml:120`) — verified; the only other `insert_resource::<NavMesh>` site is inside `astraweave-scripting`'s `#[cfg(test)]` block (`lib.rs:1038`, mod tests at `lib.rs:600`). No non-example shipping binary was found inserting the resource. |
+| Scripting (Rhai) | `api::NavMeshProxy` still exists. `script_system` does not read `NavMesh` and does not inject the proxy. | none on the tick | #317. `examples/scripting_advanced_demo` still inserts a `NavMesh` resource, and the script no longer calls `nav.find_path`. No shipping binary inserts the resource. |
 | AI tool sandbox | `astraweave-ai/src/tool_sandbox.rs:400-410` (`validate_tool_action`, `MoveTo` arm) | calls `nav.find_path(start,goal).is_empty()` to block movement with no path | Reachable **only** when `ValidationContext::with_nav` was used to attach a mesh. `with_nav` has zero non-test callers (§6). |
 | Editor | `tools/aw_editor/src/main.rs:498` stores `nav_mesh: NavMesh::bake(&[],…)`; rebakes on button | triangle count for display | Editor-local; not part of the engine runtime loop. |
 | `astraweave-gameplay::weaving` | `weaving.rs:113` `let _nav = NavMesh::bake(nav_src, 0.5, 55.0);` | discarded | Result is bound to `_nav` and never used (comment: "demo pathing update"). |
@@ -299,7 +299,7 @@ Source: [`docs/masters/MASTER_BENCHMARK_REPORT.md`](../masters/MASTER_BENCHMARK_
 - **Region invalidation / rebake:** `invalidate_region` is cheap (small AABB merge); `rebake_dirty_regions`/`partial_rebake` pay a **full** `bake` (so the 473 ms figure applies to any rebake of a large mesh). Intended to run on terrain-change events, not per frame.
 
 ### Resource ownership
-- A `NavMesh` owns its `Vec<NavTri>` and `Vec<Aabb>` dirty regions. In the scripting path it is held as an **ECS resource** and read immutably each tick via `world.get_resource::<NavMesh>()` (`astraweave-scripting/src/lib.rs:155`), then handed to scripts as a `*const NavMesh` inside `NavMeshProxy` (lifetime scoped to the script call, per the SAFETY comment at `api.rs:151-154`).
+- A `NavMesh` owns its `Vec<NavTri>` and `Vec<Aabb>` dirty regions. Gameplay `script_system` does not read it. `NavMeshProxy` remains a type in `astraweave-scripting` and is not placed in the script scope.
 
 ---
 
@@ -319,7 +319,7 @@ Source: [`docs/masters/MASTER_BENCHMARK_REPORT.md`](../masters/MASTER_BENCHMARK_
 ## 11. Open Questions / Parked Decisions
 
 - **Is the AI navigability gate meant to be wired?** `tool_sandbox.rs`'s `MoveTo` nav check is fully implemented but only reachable via `ValidationContext::with_nav`, which has no production caller. Is this intended forward-design, or a missing wire-up in the AI runtime loop? (Context: CLAUDE.md Integration Completeness item 1.)
-- **Does any shipping app insert a `NavMesh` ECS resource?** The scripting plugin reads `world.get_resource::<NavMesh>()`; if no app inserts that resource, `nav_ptr` is always null and `NavMeshProxy::find_path` returns `[]`. (Verification note 2026-06-25: one **example** app does insert it — `examples/scripting_advanced_demo/src/main.rs:32` calls `app.world.insert_resource(nav)` after baking a 2-triangle ground mesh, exercising the full `NavMeshProxy` path. The only other insert site is in scripting's own `#[cfg(test)]` block. No non-example shipping binary was found; whether a real runtime app is intended to insert the resource remains the owner's call.)
+- **Does any shipping app insert a `NavMesh` ECS resource?** Closed for the script tick: `script_system` does not read `NavMesh` (#317). `examples/scripting_advanced_demo` still inserts one. No non-example shipping binary was found. Whether a runtime app should insert the resource for a non-script consumer remains open.
 - **Should `crates/astraweave-nav/` be reconciled?** It is an orphan (no manifest, stale bench copy). Its existence can mislead grep-based discovery into thinking there are two nav crates. (Surfaced factually per §6; disposition is the owner's call.)
 - **`max_step` (closed 2026-10-15):** a shared XZ edge links only when the vertical gap is at most `max_step`. Coplanar edges are unchanged. The stair golden is `max_step_links_a_low_ledge_and_rejects_a_tall_one`.
 - **`partial_rebake` (closed 2026-10-15):** relinks triangles that meet a dirty AABB and leaves other vertices in place. Tiled commits live in `src/tiles.rs` and stop at `TILE_COMMITS_PER_TICK` (4).
@@ -349,7 +349,7 @@ Source: [`docs/masters/MASTER_BENCHMARK_REPORT.md`](../masters/MASTER_BENCHMARK_
 1. There is exactly **one** `NavMesh` implementation: `astraweave-nav/src/lib.rs`. `crates/astraweave-nav/` is an orphan bench file, not a second crate — do not "fix" it into the build without the owner's call.
 2. **`max_step` filters ledge links.** A shared XZ edge taller than `max_step` is not a neighbor. Slope and upward-facing filters still apply.
 3. Pathing is **center-to-center A* + generic smoothing**, not a funnel/string-pull. Don't claim taut/optimal paths.
-4. The AI `MoveTo` nav gate is real code but **dormant** (no production `with_nav` caller). The genuinely-wired runtime consumer is the **scripting `NavMeshProxy`** (ECS `NavMesh` resource) and the **editor** Bake button.
+4. The AI `MoveTo` nav gate is real code but **dormant** (no production `with_nav` caller). The editor Bake button is the live non-test consumer. Gameplay scripts do not query the mesh.
 
 **Files you'll most likely touch:**
 - `astraweave-nav/src/lib.rs` (everything)
@@ -367,6 +367,8 @@ Source: [`docs/masters/MASTER_BENCHMARK_REPORT.md`](../masters/MASTER_BENCHMARK_
 ---
 
 ## Appendix B: Historical context
+
+Revision 1.3 (2026-10-15): gameplay `script_system` no longer reads `NavMesh` or injects `NavMeshProxy` (#317).
 
 Revision 1.2 (2026-10-15): `max_step` rejects tall ledges; `partial_rebake` no longer calls a full bake; `src/tiles.rs` adds 32 m tiles, a 4-tile commit, and a side buffer accepted only when its input hash matches `build` of the current sources.
 

@@ -9,8 +9,8 @@ lifecycle_status: active
 integration_status: wired
 summary: "Gameplay and mod scripts run on the security sandbox. build_app installs ModScriptPlugin after register_mod_runtime, so the editor and game tick mods on the logged sandbox path. Native plugin template is not a runtime."
 owns: [astraweave-scripting, astraweave-author]
-doc_version: "1.2"
-last_verified_commit: 85d09a2c
+doc_version: "1.3"
+last_verified_commit: d6b07fc8
 runtime_edges:
   - to: astraweave-security
     note: "ScriptEngineResource and mod_script_system call sandbox::SandboxEngine / execute_deterministic"
@@ -28,9 +28,9 @@ runtime_edges:
 |---|---|
 | **System name** | Scripting and mod API |
 | **Primary crates** | `astraweave-scripting`, `astraweave-author` |
-| **Document version** | 1.2 |
-| **Last verified against commit** | `85d09a2c` |
-| **Last verified date** | 2026-10-14 |
+| **Document version** | 1.3 |
+| **Last verified against commit** | `d6b07fc8` |
+| **Last verified date** | 2026-10-15 |
 | **Status** | Active for the sandboxed Rhai path. `register_mod_runtime` plus `build_app` is how the editor, Veilweaver runtime, and `hello_companion` run mods. Examples still exercise `ScriptingPlugin`. The editor does not feed `CScript` entities. |
 | **Owner notes** | WS-MOD. One sandbox implementation lives in `astraweave-security::sandbox`. This trace is the caller side. |
 
@@ -52,7 +52,7 @@ Mods need a single sandboxed command set whose results are sim inputs. A second 
 - `tools/aw_editor/src/rhai_reload.rs` — editor hot reload
 
 **Status note:**
-`script_system` no longer stats files during the tick. Reloads come from `ScriptReloadQueue::take_boundary` at the start of the system. `mod_script_system` uses a separate `ModReloadQueue` so the two systems do not steal each other's bytes.
+`script_system` no longer stats files during the tick. Reloads come from `ScriptReloadQueue::take_boundary` at the start of the system. `mod_script_system` uses a separate `ModReloadQueue` so the two systems do not steal each other's bytes. Neither tick places `PhysicsProxy` or `NavMeshProxy` in the script scope.
 
 ---
 
@@ -120,7 +120,7 @@ Mods need a single sandboxed command set whose results are sim inputs. A second 
 | File | Role | Status | Notes |
 |---|---|---|---|
 | `astraweave-security/src/sandbox.rs` | Sandbox, manifests, queue | Active | See `docs/architecture/security.md`. |
-| `astraweave-scripting/src/lib.rs` | `CScript`, `script_system` | Active | Entity iteration is sorted. `script_state` is a `BTreeMap`. No `SystemTime` on the tick. |
+| `astraweave-scripting/src/lib.rs` | `CScript`, `script_system` | Active | Entity iteration is sorted. `script_state` is a `BTreeMap`. No `SystemTime` on the tick. Physics and nav proxies are not injected. |
 | `astraweave-scripting/src/api.rs` | `ScriptCommand` set | Active | Re-exports `SCRIPT_COMMAND_API_VERSION`. |
 | `astraweave-scripting/src/loader.rs` | Async relative `.rhai` load | Active | Rejects absolute paths and `..`. Size-capped. |
 | `astraweave-scripting/src/sim_mod.rs` | Mod tick + digest | Active | `MOD_SYSTEM_ID = 0x4D4F4453`. `register_mod_runtime` is the engine-app installer. The success tick reuses entity, source, error, and Rhai scope buffers. Weave casts go into a fixed array. |
@@ -135,7 +135,7 @@ Mods need a single sandboxed command set whose results are sim inputs. A second 
 
 - `script_system` and `mod_script_system` are two callers of one sandbox, not two engines. They use different reload queues (`ScriptReloadQueue` vs `ModReloadQueue`).
 - `execute_script_sandboxed` in `astraweave-security` is the async helper. Sim code does not call it.
-- `register_api` still exposes physics and nav proxies on the gameplay engine. Those proxies are host keys and are not written back into `script_state`.
+- `register_api` still registers `PhysicsProxy` and `NavMeshProxy` types. `script_system` does not place either value in scope, so a gameplay script cannot call them. `physics` and `nav` stay host keys and are not written back into `script_state`.
 - The editor publishes reloaded sources into `RhaiHotReload.loaded`. It does not insert `CScript` entities. Play mode does not execute those sources until a later wiring step.
 
 ---
@@ -156,6 +156,13 @@ Mods need a single sandboxed command set whose results are sim inputs. A second 
 - **Context:** `tokio::time::timeout` depends on scheduling and is not a sim input.
 - **Decision:** `set_max_operations` (default 50_000) and `OptimizationLevel::None`. `timeout_ms` on the production sandbox is 0 and is not read by `execute_deterministic`.
 - **Consequences:** The same source and seed do the same work on every OS. A loop errors instead of sleeping.
+
+### Decision: Gameplay scripts do not query physics or nav
+- **Date:** 2026-10-15
+- **Status:** Accepted
+- **Context:** No shipped gameplay script called `PhysicsProxy` or `NavMeshProxy`. The only callers were `examples/scripting_advanced_demo`, `examples/scripting_playground`, and the unit tests that exercised the injection. The proxies held raw pointers into the live world.
+- **Decision:** `script_system` does not inject them, on the main body or on event callbacks. Issue #317.
+- **Consequences:** A script that names `physics` or `nav` errors and does not advance its result. The types remain registered for the mutation tests.
 
 ### Decision: Hot reload is data staged for the next tick
 - **Date:** 2026-10-14
@@ -179,6 +186,7 @@ Mods need a single sandboxed command set whose results are sim inputs. A second 
 | 8 | `build_app` installs `ModScriptPlugin` after `register_mod_runtime`. A mod loaded onto that app, including a mid-run swap in `ScriptReplayLog`, replays to the same digest. Manifest script map keys are the relative manifest paths. | Yes | `mod_loaded_through_build_app_replays_identically`, `load_mod_dir_keys_are_manifest_paths` |
 | 9 | `queue_weave` is capability `Weave` at command API 2. The script passes a template id and an origin. The host fills tick, seq, and caster and calls `astraweave_weaving::queue_weave`. Ids 1 through 7 are engine ids. Ids outside `u16` are rejected before the cast. `max_weaves` defaults to 64 and does not spend `terrain_edits`. Two runs through `build_app` enqueue the same commands. | Yes | `queue_weave_is_a_weave_command_and_weaves_do_not_spend_terrain`, `queue_weave_through_build_app_replays_identically`, `parse_rejects_engine_ids_and_accepts_modifier_data` |
 | 10 | The mod tick does not register `PhysicsProxy` or `NavMeshProxy`. The sim sandbox keeps the operation budget and `timeout_ms = 0`. `advertised_memory_bytes` is the structural product of the string, array, and map caps, not a process limit. | Yes | `mod_tick_rejects_physics_and_nav_proxies`, `sim_sandbox_keeps_the_op_budget_and_no_wall_clock` |
+| 11 | Gameplay `script_system` does not inject `PhysicsProxy` or `NavMeshProxy`, even when `PhysicsWorld` and `NavMesh` resources are present. The event-callback scope is built the same way. | Yes | `script_system_rejects_physics_and_nav_proxies` |
 | 7 | Author `configure` output that exceeds the director ceilings is an error. Hints cannot contain floats. | Yes | `sandboxed_configure_is_deterministic_and_capped` |
 
 ---
@@ -195,6 +203,7 @@ Each mod script is compiled on the tick it runs. The replay case is 32 ticks of 
 - `cargo test -p astraweave-security --test mod_manifest_props`
 - `cargo test -p astraweave-author --lib`
 - `cargo test -p astraweave-scripting --lib`
+- `cargo test -p astraweave-scripting --lib script_system_rejects_physics_and_nav_proxies`
 - `cargo test -p astraweave-scripting --test script_replay_hash`
 - `cargo test -p astraweave-scripting --lib mod_loaded_through_build_app_replays_identically`
 - `cargo test -p aw_editor --lib -- file_watcher:: rhai_reload::`
@@ -222,4 +231,5 @@ Each mod script is compiled on the tick it runs. The replay case is 32 ticks of 
 |---|---|---|
 | 1.0 | 2026-10-14 | WS-MOD. Sandbox, mod loader, tick-boundary reload, `scripted_system` hash. |
 | 1.1 | 2026-10-14 | `build_app` installs `ModScriptPlugin` via `register_mod_runtime`. Editor, game runtime, and `hello_companion` call it. |
+| 1.3 | 2026-10-15 | Gameplay `script_system` does not inject `PhysicsProxy` or `NavMeshProxy`. #317. |
 | 1.2 | 2026-10-15 | `queue_weave` on capability `Weave`. Command API 2. Weave casts are a fixed buffer. |
