@@ -649,7 +649,7 @@ mod tests {
         sim.combat.attack.start();
         sim.tick_controls(MotorInput::default());
         let (name, time, looping) = sim.player_visual(1.5);
-        assert_eq!(name, "Sword_Attack");
+        assert_eq!(name, "Melee_1H_Attack_Slice_Horizontal");
         assert!(!looping);
         assert!(time >= 0.0);
     }
@@ -733,7 +733,7 @@ mod tests {
         );
         sim.tick_controls(MotorInput::default());
         let (clip, _, _) = sim.player_visual(2.0);
-        assert_ne!(clip, "Death01");
+        assert_ne!(clip, "Death_A");
     }
 
     #[test]

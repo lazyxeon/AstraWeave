@@ -364,6 +364,7 @@ dependencies = [
  "pollster",
  "raw-window-handle",
  "serde_json",
+ "sha2",
  "tempfile",
  "time",
  "uuid",

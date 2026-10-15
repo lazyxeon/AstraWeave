@@ -23,14 +23,11 @@ use winit::{
     window::{Window, WindowId},
 };
 
-use aravath_runtime::combat::EnemyPose;
-use aravath_runtime::figure::{actor_transform, Figure};
+use aravath_runtime::figure::{actor_transform, Figure, CAPSULE_FOOT_DROP};
 use aravath_runtime::ground::{ChunkPart, ChunkUpload, PropKind, PropSpot};
 use aravath_runtime::hud::{self, HudModel};
 use aravath_runtime::play_input::{InputTransition, PlayInput};
-use aravath_runtime::props::{
-    self, figurine_transform, ColoredMesh, NodeActor, Rgba, TexturedMesh,
-};
+use aravath_runtime::props::{self, ColoredMesh, Rgba, TexturedMesh};
 use aravath_runtime::sim::FrameLatch;
 use aravath_runtime::Greybox;
 
@@ -48,7 +45,7 @@ struct App {
     figure: Figure,
     sword: TexturedMesh,
     shield: TexturedMesh,
-    figurine: NodeActor,
+    foes: Vec<Figure>,
     foliage: Foliage,
     props: HashMap<(i32, i32, i32), Vec<PropSpot>>,
     foliage_ready: bool,
@@ -84,10 +81,10 @@ impl App {
             lock_toggle: false,
             place_toggle: false,
             terrain: TerrainMaps::load()?,
-            figure: Figure::load(&Figure::library_path())?,
+            figure: Figure::load_knight()?,
             sword: props::load_rigid(&props::sword_path())?,
             shield: props::load_rigid(&props::shield_path())?,
-            figurine: NodeActor::load(&NodeActor::figurine_path())?,
+            foes: load_foes()?,
             foliage: Foliage::load()?,
             props: HashMap::new(),
             foliage_ready: false,
@@ -257,6 +254,10 @@ impl ApplicationHandler for App {
                     KeyCode::Digit3 => self.selected = 3,
                     KeyCode::Digit4 => self.selected = 4,
                     KeyCode::Digit5 => self.selected = 5,
+                    KeyCode::Digit6 => self.selected = 6,
+                    KeyCode::Digit7 => self.selected = 7,
+                    KeyCode::Digit8 => self.selected = 8,
+                    KeyCode::Digit9 => self.selected = 9,
                     _ => {}
                 }
             }
@@ -437,12 +438,12 @@ impl ApplicationHandler for App {
                 startup::line(&format!("scar upload failed: {err:#}"));
             }
         }
-        upload_posed(
+        upload_skinned(
             renderer,
             "player",
             &posed,
             player_xform,
-            [1.0, 1.0, 1.0, 1.0],
+            self.figure.albedo.as_ref(),
         );
         let sword = [Instance {
             transform: sword_xform,
@@ -469,33 +470,36 @@ impl ApplicationHandler for App {
             };
             let to_player = pos - enemy_pos;
             let foe_yaw = aravath_runtime::detmath::atan2(to_player.z, to_player.x);
-            let (foe_clip, foe_time, foe_loop) = sample_enemy(&self.figurine, enemy);
-            let foe_pose = self
-                .figurine
-                .pose_at(foe_clip, foe_time, foe_loop)
+            let (foe_clip, raw_time, foe_loop, phase) = sample_enemy(enemy);
+            let foe = self.foes.get(index).unwrap_or(&self.foes[0]);
+            let duration = foe.duration(foe_clip).unwrap_or(1.0);
+            let foe_time = if phase { raw_time * duration } else { raw_time };
+            let foe_pose = foe
+                .skin_at(foe_clip, foe_time, foe_loop)
                 .expect("pose enemy");
-            let instance = [Instance {
-                transform: figurine_transform(enemy_pos, foe_yaw),
-                color: foe_tint(index),
-                material_id: 0,
-            }];
-            let name = format!("enemy{index}");
-            if let Some(albedo) = &self.figurine.albedo {
-                renderer.add_model_with_texture(
-                    name,
-                    renderer.create_mesh_from_cpu_mesh(&foe_pose),
-                    &instance,
-                    albedo.width,
-                    albedo.height,
-                    &albedo.pixels,
-                );
-            } else {
-                renderer.add_model(
-                    name,
-                    renderer.create_mesh_from_cpu_mesh(&foe_pose),
-                    &instance,
-                );
-            }
+            let scale = if index == 2 { 0.55 } else { 0.85 };
+            upload_skinned(
+                renderer,
+                &format!("enemy{index}"),
+                &foe_pose,
+                skeleton_transform(enemy_pos, foe_yaw, scale),
+                foe.albedo.as_ref(),
+            );
+        }
+        if let Some(rogue) = self.foes.get(3) {
+            let pose = rogue.skin_at("Idle_A", 0.0, true).expect("pose rogue");
+            let ground = aravath_runtime::island::surface_height(18, 22) as f32;
+            upload_skinned(
+                renderer,
+                "rogue",
+                &pose,
+                skeleton_transform(
+                    Vec3::new(18.0, ground + 0.55 + CAPSULE_FOOT_DROP, 22.0),
+                    0.4,
+                    0.85,
+                ),
+                rogue.albedo.as_ref(),
+            );
         }
         let model = HudModel {
             health: self.sim.combat.player_hp,
@@ -549,26 +553,57 @@ impl ApplicationHandler for App {
     }
 }
 
-fn foe_tint(index: usize) -> [f32; 4] {
-    match index {
-        0 => [0.42, 0.24, 0.12, 1.0],
-        2 => [0.78, 0.58, 0.28, 1.0],
-        _ => [0.55, 0.62, 0.40, 1.0],
+fn sample_enemy(enemy: &aravath_runtime::combat::Enemy) -> (&'static str, f32, bool, bool) {
+    match enemy.pose() {
+        aravath_runtime::combat::EnemyPose::Loop { clip, time } => {
+            (kaykit_enemy_clip(clip), time, true, false)
+        }
+        aravath_runtime::combat::EnemyPose::Fraction { clip, phase } => {
+            (kaykit_enemy_clip(clip), phase.clamp(0.0, 1.0), false, true)
+        }
+        aravath_runtime::combat::EnemyPose::Hold { clip, time } => {
+            (kaykit_enemy_clip(clip), time, false, false)
+        }
     }
 }
 
-fn sample_enemy(
-    actor: &NodeActor,
-    enemy: &aravath_runtime::combat::Enemy,
-) -> (&'static str, f32, bool) {
-    let duration = |name| actor.duration(name).unwrap_or(1.0);
-    match enemy.pose() {
-        EnemyPose::Loop { clip, time } => (clip, time, true),
-        EnemyPose::Fraction { clip, phase } => {
-            (clip, phase.clamp(0.0, 1.0) * duration(clip), false)
-        }
-        EnemyPose::Hold { clip, time } => (clip, time, false),
+fn kaykit_enemy_clip(name: &str) -> &'static str {
+    match name {
+        "walk" => "Walking_A",
+        "attack-melee-right" => "Melee_1H_Attack_Slice_Horizontal",
+        "die" => "Death_A",
+        _ => "Idle_A",
     }
+}
+
+fn skeleton_transform(position: Vec3, yaw: f32, scale: f32) -> Mat4 {
+    let feet = position - Vec3::Y * CAPSULE_FOOT_DROP;
+    Mat4::from_translation(feet)
+        * Mat4::from_rotation_y(std::f32::consts::FRAC_PI_2 - yaw)
+        * Mat4::from_scale(Vec3::splat(scale))
+}
+
+/// Visual meshes for the three simulated foes, then the rogue.
+///
+/// Index 0 is PLACEHOLDER seepage-touched beast (Minion).
+/// Index 1 is PLACEHOLDER hollow-eyed wildlife (Warrior).
+/// Index 2 is PLACEHOLDER roadside brigand (Golem, the taller mesh).
+/// Index 3 is Skeleton_Rogue, drawn on the hill and not a simulated body.
+fn load_foes() -> anyhow::Result<Vec<Figure>> {
+    let clips = Figure::medium_clip_paths();
+    let refs: Vec<&std::path::Path> = clips.iter().map(|path| path.as_path()).collect();
+    let root = aravath_runtime::assets::asset_dir().join("models/kaykit/skeletons");
+    let names = [
+        "Skeleton_Minion.glb",
+        "Skeleton_Warrior.glb",
+        "Skeleton_Golem.glb",
+        "Skeleton_Rogue.glb",
+    ];
+    let mut foes = Vec::with_capacity(names.len());
+    for name in names {
+        foes.push(Figure::load_with_clips(&root.join(name), &refs)?);
+    }
+    Ok(foes)
 }
 
 fn upload_textured(
@@ -592,36 +627,39 @@ fn upload_textured(
     }
 }
 
-fn upload_posed(
+fn upload_skinned(
     renderer: &mut Renderer,
     name: &str,
     posed: &[aravath_runtime::figure::PosedPrimitive],
     transform: Mat4,
-    tint: [f32; 4],
+    albedo: Option<&Rgba>,
 ) {
     for (index, primitive) in posed.iter().enumerate() {
         let gpu = renderer.create_mesh_from_cpu_mesh(&primitive.mesh);
-        let color = [
-            primitive.color[0] * tint[0],
-            primitive.color[1] * tint[1],
-            primitive.color[2] * tint[2],
-            1.0,
-        ];
-        renderer.add_model(
-            format!("{name}_{index}"),
-            gpu,
-            &[Instance {
-                transform,
-                color,
-                material_id: 0,
-            }],
-        );
+        let instance = [Instance {
+            transform,
+            color: [1.0, 1.0, 1.0, 1.0],
+            material_id: 0,
+        }];
+        let part = format!("{name}_{index}");
+        if let Some(albedo) = albedo {
+            renderer.add_model_with_texture(
+                part,
+                gpu,
+                &instance,
+                albedo.width,
+                albedo.height,
+                &albedo.pixels,
+            );
+        } else {
+            renderer.add_model(part, gpu, &instance);
+        }
     }
 }
 
 fn upload_chunks(renderer: &mut Renderer, uploads: &[ChunkUpload], terrain: &TerrainMaps) {
     for chunk in uploads {
-        for material in [1, 2, 3, 4, 5] {
+        for material in 1..=9 {
             renderer.clear_model(&chunk_name(
                 chunk.coord.x,
                 chunk.coord.y,
@@ -675,16 +713,31 @@ struct TerrainMaps {
     grass: Rgba,
     sand: Rgba,
     wood: Rgba,
+    snow: Rgba,
+    copper: Rgba,
+    silver: Rgba,
+    gold: Rgba,
 }
 
 impl TerrainMaps {
     fn load() -> anyhow::Result<Self> {
+        let block = |name: &str| {
+            props::albedo_tile(
+                &aravath_runtime::assets::asset_dir()
+                    .join("models/kaykit/blocks")
+                    .join(name),
+            )
+        };
         Ok(Self {
-            stone: load_jpg("stone_diff_1k.jpg")?,
-            dirt: load_jpg("dirt_diff_1k.jpg")?,
-            grass: load_jpg("grass_diff_1k.jpg")?,
-            sand: load_jpg("sand_diff_1k.jpg")?,
+            stone: block("stone.gltf")?,
+            dirt: block("dirt.gltf")?,
+            grass: block("grass.gltf")?,
+            sand: block("sand_A.gltf")?,
             wood: load_jpg("wood_diff_1k.jpg")?,
+            snow: block("snow.gltf")?,
+            copper: block("stone_with_copper.gltf")?,
+            silver: block("stone_with_silver.gltf")?,
+            gold: block("stone_with_gold.gltf")?,
         })
     }
 
@@ -694,6 +747,10 @@ impl TerrainMaps {
             3 => &self.grass,
             4 => &self.sand,
             5 => &self.wood,
+            6 => &self.snow,
+            7 => &self.copper,
+            8 => &self.silver,
+            9 => &self.gold,
             _ => &self.stone,
         }
     }
@@ -719,6 +776,10 @@ struct Foliage {
     forest_bushes: Vec<TexturedMesh>,
     forest_tufts: Vec<TexturedMesh>,
     forest_rocks: Vec<TexturedMesh>,
+    crates: Vec<TexturedMesh>,
+    gems: Vec<TexturedMesh>,
+    nuggets: Vec<TexturedMesh>,
+    gear: Vec<TexturedMesh>,
 }
 
 impl Foliage {
@@ -731,6 +792,12 @@ impl Foliage {
         let kaykit = |name: &str| {
             aravath_runtime::assets::asset_dir()
                 .join("models/kaykit_forest")
+                .join(name)
+        };
+        let pack = |folder: &str, name: &str| {
+            aravath_runtime::assets::asset_dir()
+                .join("models/kaykit")
+                .join(folder)
                 .join(name)
         };
         let textured = |name: &str| props::load_rigid(&kaykit(name));
@@ -759,6 +826,20 @@ impl Foliage {
                 textured("Rock_1_A_Color1.gltf")?,
                 textured("Rock_2_A_Color1.gltf")?,
             ],
+            crates: vec![props::load_rigid(&pack(
+                "pickups",
+                "Containers_Crate_Medium_Wood.gltf",
+            ))?],
+            gems: vec![props::load_rigid(&pack("pickups", "Gem_Small.gltf"))?],
+            nuggets: vec![
+                props::load_rigid(&pack("pickups", "Copper_Nugget_Small.gltf"))?,
+                props::load_rigid(&pack("pickups", "Silver_Nugget_Small.gltf"))?,
+                props::load_rigid(&pack("pickups", "Gold_Nugget_Small.gltf"))?,
+            ],
+            gear: vec![
+                props::load_rigid(&pack("gear", "sword_A.gltf"))?,
+                props::load_rigid(&pack("gear", "shield_A.gltf"))?,
+            ],
         })
     }
 
@@ -773,7 +854,11 @@ impl Foliage {
             PropKind::ForestTree
             | PropKind::ForestBush
             | PropKind::ForestTuft
-            | PropKind::ForestRock => &[],
+            | PropKind::ForestRock
+            | PropKind::Crate
+            | PropKind::Gem
+            | PropKind::Nugget
+            | PropKind::Gear => &[],
         }
     }
 
@@ -783,6 +868,10 @@ impl Foliage {
             PropKind::ForestBush => &self.forest_bushes,
             PropKind::ForestTuft => &self.forest_tufts,
             PropKind::ForestRock => &self.forest_rocks,
+            PropKind::Crate => &self.crates,
+            PropKind::Gem => &self.gems,
+            PropKind::Nugget => &self.nuggets,
+            PropKind::Gear => &self.gear,
             _ => &[],
         }
     }
@@ -818,11 +907,15 @@ fn sync_foliage(
         PropKind::ForestBush,
         PropKind::ForestTuft,
         PropKind::ForestRock,
+        PropKind::Crate,
+        PropKind::Gem,
+        PropKind::Nugget,
+        PropKind::Gear,
     ];
+    let ordered = aravath_runtime::ground::gather_spots(props);
     for kind in kinds {
-        let instances: Vec<Instance> = props
-            .values()
-            .flatten()
+        let instances: Vec<Instance> = ordered
+            .iter()
             .filter(|spot| spot.kind == kind)
             .map(|spot| Instance {
                 transform: Mat4::from_translation(spot.position)
@@ -856,9 +949,8 @@ fn sync_foliage(
     for kind in forest {
         let meshes = foliage.forest(kind);
         for (index, mesh) in meshes.iter().enumerate() {
-            let instances: Vec<Instance> = props
-                .values()
-                .flatten()
+            let instances: Vec<Instance> = ordered
+                .iter()
                 .filter(|spot| {
                     spot.kind == kind
                         && !meshes.is_empty()
@@ -970,7 +1062,7 @@ fn paint_hud(hud: &mut EguiHud, frame: HudFrame<'_>) {
     egui::Area::new(egui::Id::new("block"))
         .anchor(egui::Align2::RIGHT_BOTTOM, egui::vec2(-16.0, -16.0))
         .show(&hud.ctx, |ui| {
-            ui.label(format!("Block: {}  (1-5)", model.block));
+            ui.label(format!("Block: {}  (1-9)", model.block));
         });
     egui::Area::new(egui::Id::new("mouse"))
         .anchor(egui::Align2::CENTER_TOP, egui::vec2(0.0, 8.0))
@@ -1140,10 +1232,10 @@ fn smoke_test(volumetrics: bool) -> anyhow::Result<()> {
     let root = aravath_runtime::assets::verify()?;
     startup::line(&format!("assets {}", root.display()));
     startup::stage("load models");
-    let _figure = Figure::load(&Figure::library_path())?;
+    let _figure = Figure::load_knight()?;
     let _sword = props::load_rigid(&props::sword_path())?;
     let _shield = props::load_rigid(&props::shield_path())?;
-    let _figurine = NodeActor::load(&NodeActor::figurine_path())?;
+    let _foes = load_foes()?;
     let _foliage = Foliage::load()?;
     let _terrain = TerrainMaps::load()?;
     startup::stage("mesh one chunk");
