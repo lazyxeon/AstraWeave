@@ -9,8 +9,8 @@ lifecycle_status: active
 integration_status: mixed
 summary: "Voxel meshing/biome/noise/scatter/streaming (complements terrain_materials.md). terrain.md"
 owns: [astraweave-terrain]
-doc_version: "1.8"
-last_verified_commit: d4c4479d4
+doc_version: "1.9"
+last_verified_commit: cdea968c
 ---
 
 # Architecture Trace: Terrain System (Generation, Voxels, Biomes, Noise, Scatter, Streaming)
@@ -21,7 +21,7 @@ last_verified_commit: d4c4479d4
 |---|---|
 | **System name** | Terrain System (procedural generation, voxel meshing, biome/noise pipeline, scatter, chunk streaming) |
 | **Primary crates** | `astraweave-terrain` (with reverse dep into `astraweave-gameplay`); consumers in `tools/aw_editor`, `examples/hybrid_voxel_demo`, `astraweave-render` |
-| **Document version** | 1.8 |
+| **Document version** | 1.9 |
 | **Last verified against commit** | ED-3 working tree over `aca627436` (v1.7: amplitude Open Question closed); prior `d4c4479d4` (v1.6), prior `03f9d9a2d` (v1.5: T.2d third pass, two new §11 Open Questions), prior `611c8edc7` (v1.3/v1.4: T.2a boreal band + `expect()` retirement), `8232b150b`. Note: v1.4 bumped the front-matter `doc_version` and the revision table only, leaving this row at 1.3 — corrected here. |
 | **Last verified date** | 2026-07-26 (v1.7) |
 | **Status** | Active (editor heightmap path wired; voxel-meshing, streaming/LOD, and multi-archetype paths are in-design-but-tested / dormant — see §5, §6). 1.8: `DualContouring` stores one vertex per crossed edge in Bourke corner order so `MC_TRI_TABLE` emits a real surface. `aravath_runtime` is the first caller that collides with that mesh. |
@@ -106,7 +106,7 @@ The wired editor heightmap path (the path an agent will most often touch):
             key data: render-ready terrain (material path is terrain_materials.md's domain)
 ```
 
-The parallel **voxel** path (wired only in `examples/hybrid_voxel_demo`):
+The parallel **voxel** path (wired in `examples/hybrid_voxel_demo` and `aravath_runtime`):
 
 ```text
 [VoxelChunk (Sparse Voxel Octree of Voxel{density, material})]
@@ -121,7 +121,7 @@ The parallel **voxel** path (wired only in `examples/hybrid_voxel_demo`):
     │
     │ LodMeshGenerator::generate_mesh_lod(chunk, distance, ...)  (LOD decimation)
     ▼
-[render-ready voxel mesh]   (consumed by examples/hybrid_voxel_demo only)
+[render-ready voxel mesh]   (hybrid_voxel_demo, and aravath_runtime ground colliders)
 ```
 
 ### Stage-by-stage detail
@@ -156,7 +156,7 @@ The parallel **voxel** path (wired only in `examples/hybrid_voxel_demo`):
 
 #### Voxel meshing detail
 **File:** `astraweave-terrain/src/meshing.rs`, `voxel_data.rs`, `marching_cubes_tables.rs`
-**Role:** `DualContouring::generate_mesh` extracts an isosurface from a `VoxelChunk` (32³ SVO of `Voxel{density:f32, material:u16}`), using marching-cubes edge/tri tables for connectivity. `ChunkMesh::add_skirts` (meshing.rs:68) generates vertical skirt geometry on the 6 boundary faces to hide LOD-seam cracks. `LodMeshGenerator` / `AsyncMeshGenerator` provide LOD and async variants.
+**Role:** `DualContouring::generate_mesh` extracts an isosurface from a `VoxelChunk` (32³ SVO of `Voxel{density:f32, material:u16}`), using marching-cubes edge/tri tables for connectivity. Corner bits follow Bourke order (`BOURKE_CORNERS`), the same order as `EDGE_ENDPOINTS`. Each crossed edge stores one vertex, deduped by `EdgeKey` (`meshing.rs`). `ChunkMesh::add_skirts` (meshing.rs:68) generates vertical skirt geometry on the 6 boundary faces to hide LOD-seam cracks. `LodMeshGenerator` / `AsyncMeshGenerator` provide LOD and async variants.
 **Notes:** This voxel representation is **independent** of the heightmap `TerrainChunk` path — they share the crate, not the data flow. `ChunkCoord` (3D, voxel_data.rs:29) and `ChunkId` (2D, chunk.rs:11) are different coordinate types (§3, §6).
 
 ---
@@ -209,7 +209,8 @@ The parallel **voxel** path (wired only in `examples/hybrid_voxel_demo`):
 | `tools/aw_editor` (heightmap path) | `WorldGenerator::generate_chunk_with_climate(chunk_id, climate_bias)` | `TerrainChunk` | `terrain_integration.rs:343`. THE wired production consumer of generation |
 | `tools/aw_editor` (vegetation) | `VegetationScatter::new(...).scatter_vegetation_hierarchical(...)` | `Vec<VegetationInstance>` | `terrain_integration.rs:2728-2760` |
 | `tools/aw_editor` (blueprint zones) | `ZoneScatterGenerator::new(64.0, 65).generate_zone_scatter(&bz, &chunk_refs, seed)` | `ZoneGenerationResult` | `main.rs:7458-7465`. Note: editor seeds this from `SystemTime` (main.rs:7459) — non-deterministic at that call site |
-| `examples/hybrid_voxel_demo` (voxel path) | `DualContouring::generate_mesh(chunk)`, `LodMeshGenerator::generate_mesh_lod(...)` | `ChunkMesh` | `examples/hybrid_voxel_demo/src/main.rs:120,183`. Only production caller of the voxel meshing path |
+| `examples/hybrid_voxel_demo` (voxel path) | `DualContouring::generate_mesh(chunk)`, `LodMeshGenerator::generate_mesh_lod(...)` | `ChunkMesh` | `examples/hybrid_voxel_demo/src/main.rs:120,183` |
+| `aravath_runtime` (voxel path) | `DualContouring::generate_mesh` via `Ground::sync_dirty` | `ChunkMesh` turned into a static trimesh and render parts | `aravath_runtime/src/ground.rs`. The greybox island stands on this mesh |
 | `astraweave-render` (terrain GPU bridge) | `astraweave_terrain::gpu_bridge::TerrainGpuAccelerator` impl `WgpuTerrainAccelerator` | `GpuHeightmapRequest`/`GpuNoiseRequest`/`GpuErosionRequest` | `astraweave-render/src/terrain_gpu_bridge.rs:11-67`. The impl exists but has no production caller outside its own file (§11). Traced in [`render_pipeline_material_system_shader_infrastructure.md`](render_pipeline_material_system_shader_infrastructure.md) |
 | Material/splat path | biome data → editor splat bake | biome → material slot influence | Out of scope here; see [`terrain_materials.md`](terrain_materials.md) §4 (the exact biome→material-slot interface is marked NEEDS VERIFICATION there) |
 
@@ -250,8 +251,8 @@ Wiredness verified by workspace grep for non-test/non-example production callers
 | `blueprint_zone.rs` | `BlueprintZone`, `ZoneRegistry`, polygon math | Active | Backing data for zone_scatter |
 | `structures.rs` | `StructureGenerator`, `StructureType`, structure scatter | Active | Wired via `scatter_chunk_content` (lib.rs:256) |
 | `regional_archetype_mask.rs` | `RegionalArchetypeMask` (paint + I/O), `RegionalArchetypeBlend` sampler, `blend_bootstrap_params` | Active type / **dormant data path** | Type wired into editor `RegionalArchetypePanel`; the generation `Some`-branch (lib.rs:600-626) is unreachable because no caller assigns the mask (§6, §11) |
-| `meshing.rs` | `DualContouring`, `LodMeshGenerator`, `AsyncMeshGenerator`, `ChunkMesh`, `MeshVertex` | Active in example only | Production caller: `examples/hybrid_voxel_demo` only |
-| `voxel_data.rs` | `VoxelChunk` (SVO), `Voxel`, `ChunkCoord`, `VoxelGrid`, `CHUNK_SIZE=32` | Active in example only | Same single example consumer |
+| `meshing.rs` | `DualContouring`, `LodMeshGenerator`, `AsyncMeshGenerator`, `ChunkMesh`, `MeshVertex` | Active | Callers: `examples/hybrid_voxel_demo` and `aravath_runtime/src/ground.rs`. One vertex per crossed edge (`EdgeKey`) |
+| `voxel_data.rs` | `VoxelChunk` (SVO), `Voxel`, `ChunkCoord`, `VoxelGrid`, `CHUNK_SIZE=32` | Active | Same callers as `meshing.rs` |
 | `marching_cubes_tables.rs` | MC edge/tri tables for dual contouring | Active in example only | Data tables for `meshing.rs` |
 | `compressed_voxels.rs` | Palette + RLE compression for voxel chunks | In-design-but-tested | P4-8; no production caller found |
 | `collision.rs` | `collision_mesh_from_chunk` / `_from_heightmap`, `CollisionMesh` | In-design-but-tested | No non-test production caller found |
@@ -282,7 +283,7 @@ Wiredness verified by workspace grep for non-test/non-example production callers
 | Abstraction | Files | Status | Notes |
 |---|---|---|---|
 | Heightmap terrain (`TerrainChunk`/`Heightmap`/`ChunkId`) | `chunk.rs`, `heightmap.rs`, `lib.rs` | Active (wired) | The editor's terrain world |
-| Voxel terrain (`VoxelChunk`/`ChunkCoord`/`DualContouring`) | `voxel_data.rs`, `meshing.rs` | Active in example only | Independent 3D representation; shares crate, not data flow |
+| Voxel terrain (`VoxelChunk`/`ChunkCoord`/`DualContouring`) | `voxel_data.rs`, `meshing.rs` | Active | Independent of the heightmap path. Callers: `hybrid_voxel_demo` and `aravath_runtime` |
 | `BiomeType` (8-enum, scored) | `biome.rs`, `lib.rs:859` | Active | Original classification |
 | `BiomeId` (Whittaker climate lookup) | `biome_lookup.rs`, `chunk.rs:91` | Active | Newer per-vertex identity; coexists with `BiomeType` on the same chunk |
 | Simple CA erosion (`apply_erosion`) | `chunk.rs:204` | Active (legacy `generate_chunk` path) | Bypassed by the climate path |
@@ -380,6 +381,7 @@ Wiredness verified by workspace grep for non-test/non-example production callers
 | 7 | A `VoxelChunk` mesh's skirt geometry is generated only for vertices on a boundary face within `eps` | Yes | `add_skirts` boundary test (meshing.rs:74-94) + meshing tests |
 | 8 | `TUNDRA_MAX_TEMP_C` must stay **strictly above -10.0 degC**, and `BOREAL_MAX_TEMP_C` must not rise: the canonical-tundra test asserts `lookup_biome(-10.0, 200.0, 100.0) == Tundra` (moisture 200 is exactly `BOREAL_MIN_MOISTURE_MM`, so at -10.0 it flips to BorealForest), while the Equatorial and Desert distribution tests assert `frac(BorealForest) < 0.005`. T.2a lowered the floor 0.0 -> -5.0 within those bounds | Yes | `biome_lookup.rs` in-file `mod tests`; `world_archetypes.rs` 10K-sample distribution suite |
 | 9 | Elevation overlays are evaluated **before** the Whittaker polygon and preempt it: `SnowCap` at `elev >= 350` (`temp < 18`), `Alpine` at 280, `Scree` at 220 (`moisture < 600`). So the temperature band governs only terrain below ~220 m, and a warm archetype's small Tundra census is SnowCap, not Whittaker Tundra — the distinction that made T.2a's global band change safe | Yes | `biome_lookup.rs:186-190`, `:277-287` / `:332-340`; per-archetype census via `tools/aw_editor/tests/terrain_ab_stations.rs` |
+| 10 | Marching-cubes triangles index one vertex per crossed edge. The cache key is `EdgeKey`, and corner bits use Bourke order so they match `EDGE_ENDPOINTS`. A cache keyed by cell position does not feed the triangle table | Yes | `meshing.rs` `edge_vertex`; `marching_cubes_tests` and `meshing_mutations` |
 
 ---
 
@@ -388,7 +390,7 @@ Wiredness verified by workspace grep for non-test/non-example production callers
 ### Hot paths
 - **`apply_per_biome_modulation_to_halo`** (lib.rs:488): per halo vertex does 1 raw noise sample + N (default 6) climate samples + N biome lookups + N parameter lookups + 1 modulated noise sample. For a 96-resolution chunk with halo=1 that is ~288² ≈ 83K vertices. Cost analysis is documented inline (lib.rs:481-487). Climate sampling and biome lookup are pure functions — cache-friendly.
 - **`AdvancedErosionSimulator` droplet pass:** droplet_count × max_droplet_lifetime steps over the full halo. Cost scales with preset droplet count and halo area.
-- **`DualContouring::generate_mesh`:** per voxel cell over a 32³ chunk; HashMap-based vertex dedup (meshing.rs:14).
+- **`DualContouring::generate_mesh`:** per voxel cell over a 32³ chunk; one vertex per crossed edge, deduped in `HashMap<EdgeKey, u32>`.
 
 ### Cold paths
 - **Chunk generation** runs at chunk-load time, not per frame. The editor invokes it on demand.
@@ -420,7 +422,7 @@ Wiredness verified by workspace grep for non-test/non-example production callers
 
 - **Is the async streaming/LOD subsystem (`BackgroundChunkLoader`, `LodManager`, `MorphingLodManager`, `StreamingDiagnostics`, `partition_integration`) intended to become the runtime loader, or is it dormant scaffolding?** It is fully implemented and tested but has zero production callers at `7c29b8182`; the editor uses synchronous `generate_chunk_with_climate`. Resolving this determines whether these ~5K LoC are "in-design-but-tested" (per CLAUDE.md Lesson 8) or destined for wiring.
 - **Should the `RegionalArchetypeMask` `Some`-branch be wired into the editor?** The panel exists, owns a mask, and Multi-Tool SP5.B (2026-06-06) wired click+drag painting INTO the panel's mask — but no code assigns that mask onto a generator (`set_mask` callers are test-only; `regenerate_terrain` builds a fresh `TerrainState::new()`), so the multi-archetype generation branch (lib.rs:620-643) remains unreachable in production at `8232b150b`. Per the 2026-07-20 T-series ratification, spatial multi-archetype stays a **separately-ratifiable future feature** — explicitly NOT in the terrain T-series (`E3_PREFLIGHT_2026-07.md` §7).
-- **What is the runtime role of the voxel terrain path (`VoxelChunk`/`DualContouring`)?** It is wired only into `examples/hybrid_voxel_demo`. Is it the intended destructible-terrain runtime, or a research prototype distinct from the heightmap editor world? `compressed_voxels.rs`, `terrain_modifier.rs`, `terrain_persistence.rs`, and `solver.rs` (all Phase 10, all without production callers) appear to be the supporting cast for a voxel runtime that is not yet assembled.
+- **What is the runtime role of the voxel terrain path (`VoxelChunk`/`DualContouring`)?** `examples/hybrid_voxel_demo` and `aravath_runtime` (`Ground::sync_dirty`) both call `generate_mesh`. The greybox island collider and render mesh come from that call. `compressed_voxels.rs`, `terrain_modifier.rs`, `terrain_persistence.rs`, and `solver.rs` (all Phase 10, all without production callers) are still unwired. The heightmap editor path is a separate system.
 - **Does `WgpuTerrainAccelerator` (the `TerrainGpuAccelerator` impl in `astraweave-render`) have any intended caller?** The impl compiles but nothing invokes it outside its own file. GPU-accelerated heightmap/erosion is therefore dormant.
 - **Is the CLAUDE.md claim that `AdvancedErosionSimulator` and `RegionalArchetypePanel` were "removed" stale, or did a prior commit remove and re-add them?** Both are present and (for erosion) wired at `7c29b8182`. This trace verified only current state. [NEEDS VERIFICATION of git history.]
 - **Should the gameplay reverse dependency be inverted?** [`ARCHITECTURE_MAP.md`](ARCHITECTURE_MAP.md):148 flags it as a directional anomaly with HIGH blast radius. It is working code; the question is parked, not a recommendation.
@@ -480,6 +482,7 @@ Wiredness verified by workspace grep for non-test/non-example production callers
 
 | Version | Date | Change |
 |---|---|---|
+| 1.9 | 2026-10-15 | **Edge-keyed isosurface.** `DualContouring` again stores one vertex per crossed marching-cubes edge (`HashMap<EdgeKey, u32>`, Bourke corner order). A cell-position cache left triangle lookups empty, so the Aravath island collider did not hold the character. `aravath_runtime` is a caller of `generate_mesh` via `Ground::sync_dirty`. Invariant 10. |
 | 1.8 | 2026-10-14 | **WS-D2.** `TerrainSolver::new` requires an explicit `u64` seed. `SystemTime` is gone from the solver and from terrain save headers/filenames (`timestamp` is a sim tick, default 0). `meshing.rs` was not modified. |
 | 1.7 | 2026-07-26 | **ED-3 — the Base-Amplitude Open Question is CLOSED.** New `NoiseConfig::base_amplitude_scale` (serde-default 1.0, bit-identical; consumed once in `sample_height_with_params` as a multiplier on the spline-derived `base_elevation_amplitude`); panel slider re-plumbed as "Amplitude x (spline scale)" via `TerrainState::set_amplitude_scale`. Regression + render proof cited in §11. T.3's amplitude-finality gate is actionable. See `docs/audits/ED3_OUTCOME.md`. |
 | 1.6 | 2026-07-25 | **T.2d.F — the `compute_material_lod` Open Question is CLOSED** (director-ratified deletion, executed same day). §11 entry struck through with the measured outcome (boundary signature + dithering gone, close range 1 LSB, far field +≤9.5%, min-spec −1.0%); the Base-Amplitude-slider question REMAINS OPEN and now blocks T.3's amplitude-finality gate (see `docs/audits/T2DF_OUTCOME.md` §8). Shader-side details live in the render trace (v1.12, Invariant 19) — no `astraweave-terrain` code changed. |
