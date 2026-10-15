@@ -856,8 +856,7 @@ impl NodeGraphWidget {
     pub fn auto_layout(&self, doc: &mut BehaviorGraphDocument) {
         let root_id = doc.root_id();
         let mut visited = std::collections::HashSet::new();
-        let mut column_widths: Vec<f32> = Vec::new();
-        self.compute_subtree_width(doc, root_id, &mut visited, &mut column_widths, 0);
+        self.compute_subtree_width(doc, root_id, &mut visited);
 
         visited.clear();
         self.layout_subtree(doc, root_id, &mut visited, 0, 0.0);
@@ -868,8 +867,6 @@ impl NodeGraphWidget {
         doc: &BehaviorGraphDocument,
         node_id: NodeId,
         visited: &mut std::collections::HashSet<NodeId>,
-        column_widths: &mut Vec<f32>,
-        _depth: usize,
     ) -> f32 {
         if !visited.insert(node_id) {
             return NODE_WIDTH + 20.0;
@@ -891,7 +888,7 @@ impl NodeGraphWidget {
 
         let total: f32 = children
             .iter()
-            .map(|&cid| self.compute_subtree_width(doc, cid, visited, column_widths, _depth + 1))
+            .map(|&cid| self.compute_subtree_width(doc, cid, visited))
             .sum();
         total.max(NODE_WIDTH + 20.0)
     }
