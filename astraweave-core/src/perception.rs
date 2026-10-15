@@ -310,10 +310,13 @@ fn assemble_snapshot(
 }
 
 fn pois_from_observation(observation: &ObservationBuf) -> Vec<Poi> {
-    let mut pois = Vec::with_capacity(
-        observation.breach_len as usize + observation.lost_cover_len as usize,
-    );
-    for breach in observation.breaches.iter().take(observation.breach_len as usize) {
+    let mut pois =
+        Vec::with_capacity(observation.breach_len as usize + observation.lost_cover_len as usize);
+    for breach in observation
+        .breaches
+        .iter()
+        .take(observation.breach_len as usize)
+    {
         pois.push(Poi {
             k: "breach".into(),
             pos: IVec2 {
@@ -563,11 +566,7 @@ mod tests {
             y: 9,
         };
         observation.breach_len = 1;
-        observation.lost_cover[0] = ObservedCover {
-            id: 3,
-            x: 2,
-            y: 2,
-        };
+        observation.lost_cover[0] = ObservedCover { id: 3, x: 2, y: 2 };
         observation.lost_cover_len = 1;
         observation.weaving[0] = WeaveEffectHook {
             effect_id: 1,

@@ -193,7 +193,11 @@ pub fn fill_observation(tiles: &NavTiles, buf: &mut ObservationBuf) {
         buf.breach_len += 1;
     }
     buf.lost_cover_len = 0;
-    for cover in tiles.lost_cover.iter().take(tiles.lost_cover_count as usize) {
+    for cover in tiles
+        .lost_cover
+        .iter()
+        .take(tiles.lost_cover_count as usize)
+    {
         if buf.lost_cover_len == 16 {
             break;
         }
@@ -348,15 +352,15 @@ pub fn plan_route(
     );
     let waypoints = tiles.query_path(scratch, start, goal);
     if waypoints < 2 {
-        out.slots[0] = ActionSlot::Wait { duration_milli: 500 };
+        out.slots[0] = ActionSlot::Wait {
+            duration_milli: 500,
+        };
         out.len = 1;
         return;
     }
     *budget = budget.saturating_sub(1);
     if let Some(portal) = best_breach(tiles, scratch, hooks) {
-        out.slots[0] = ActionSlot::UseBreach {
-            portal_id: portal,
-        };
+        out.slots[0] = ActionSlot::UseBreach { portal_id: portal };
         out.len = 1;
     }
     let mut far = scratch.waypoints[0];
@@ -400,7 +404,9 @@ fn best_breach(tiles: &NavTiles, scratch: &NavScratch, hooks: &SpatialHooks<'_>)
         let score = -site.x_milli;
         let take = match best {
             None => true,
-            Some((best_id, best_score)) => score > best_score || (score == best_score && id < best_id),
+            Some((best_id, best_score)) => {
+                score > best_score || (score == best_score && id < best_id)
+            }
         };
         if take {
             best = Some((id, score));
@@ -481,11 +487,7 @@ fn legacy_steps(snap: &WorldSnapshot, plan_id: String) -> PlanIntent {
         };
     };
     let me = &snap.me;
-    let cd = me
-        .cooldowns
-        .get("throw:smoke")
-        .copied()
-        .unwrap_or(0.0);
+    let cd = me.cooldowns.get("throw:smoke").copied().unwrap_or(0.0);
     let dx = (enemy.pos.x - me.pos.x).abs();
     let dy = (enemy.pos.y - me.pos.y).abs();
     let dist = dx + dy;
