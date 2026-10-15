@@ -22,11 +22,16 @@ pub const ROLL_TICKS: u16 = 30;
 pub const ROLL_IFRAME_START: u16 = 5;
 pub const ROLL_IFRAME_END: u16 = 19;
 
+pub const WALK_SPEED: f32 = 3.0;
 pub const RUN_SPEED: f32 = 5.0;
+pub const SPRINT_SPEED: f32 = 8.0;
+pub const CROUCH_SPEED: f32 = 1.8;
 pub const ROLL_SPEED: f32 = 9.0;
 pub const JUMP_HEIGHT: f32 = 1.15;
 pub const AIR_CONTROL: f32 = 0.4;
 pub const ROLL_COST: f32 = 25.0;
+pub const SPRINT_DRAIN_PER_TICK: f32 = 18.0 * TICK_DT;
+pub const STAMINA_REGEN_PER_TICK: f32 = 22.0 * TICK_DT;
 pub const SNAP: f32 = 0.05;
 
 const REPLAY_TICKS: u32 = 180;
@@ -38,6 +43,7 @@ pub enum TraversalMode {
     Ground = 1,
     Air = 2,
     Roll = 3,
+    Crouch = 4,
 }
 
 #[derive(Clone, Debug)]
@@ -54,6 +60,9 @@ pub struct TraversalBody {
     pub roll_tick: u16,
     pub roll_dir: Vec3,
     pub invulnerable: bool,
+    pub sprinting: bool,
+    pub walking: bool,
+    pub crouching: bool,
 }
 
 impl Default for TraversalBody {
@@ -71,6 +80,9 @@ impl Default for TraversalBody {
             roll_tick: 0,
             roll_dir: Vec3::new(1.0, 0.0, 0.0),
             invulnerable: false,
+            sprinting: false,
+            walking: false,
+            crouching: false,
         }
     }
 }
@@ -82,6 +94,9 @@ pub struct TraversalInput {
     pub yaw: f32,
     pub jump: bool,
     pub roll: bool,
+    pub sprint: bool,
+    pub crouch: bool,
+    pub walk: bool,
 }
 
 /// Collision answers for one tick. The pure replay uses an infinite plane.
@@ -130,7 +145,11 @@ pub fn step(body: &mut TraversalBody, input: TraversalInput, probe: &ProbeFrame,
     }
 
     let can_jump = supported || body.coyote > 0;
-    if body.jump_buffer > 0 && can_jump && body.mode != TraversalMode::Roll {
+    if body.mode == TraversalMode::Air && input.jump && body.jumps_used == 1 {
+        body.vel.y = jump_speed();
+        body.jumps_used = 2;
+        body.jump_buffer = 0;
+    } else if body.jump_buffer > 0 && can_jump && body.jumps_used == 0 {
         body.vel.y = jump_speed();
         body.jump_buffer = 0;
         body.coyote = 0;
@@ -144,19 +163,48 @@ pub fn step(body: &mut TraversalBody, input: TraversalInput, probe: &ProbeFrame,
         return;
     }
 
-    let mut wish = wish_dir(input);
-    let speed = if wish == Vec3::ZERO { 0.0 } else { RUN_SPEED };
-    if body.mode == TraversalMode::Air {
-        wish = scale(wish, AIR_CONTROL);
-    }
-    body.vel.x = wish.x * speed;
-    body.vel.z = wish.z * speed;
-    if wish.length_squared() > 1e-8 {
+    let wish = wish_dir(input);
+    let moving = wish.length_squared() > 1e-8;
+    body.crouching = input.crouch && supported && body.mode != TraversalMode::Air;
+    body.sprinting =
+        input.sprint && moving && body.stamina > 0.0 && !body.crouching && supported;
+    body.walking = input.walk && moving && !body.sprinting && !body.crouching;
+    let speed = if !moving {
+        0.0
+    } else if body.crouching {
+        CROUCH_SPEED
+    } else if body.sprinting {
+        SPRINT_SPEED
+    } else if body.walking {
+        WALK_SPEED
+    } else {
+        RUN_SPEED
+    };
+    let planar = if body.mode == TraversalMode::Air {
+        scale(wish, AIR_CONTROL * speed)
+    } else {
+        scale(wish, speed)
+    };
+    body.vel.x = planar.x;
+    body.vel.z = planar.z;
+    if moving {
         body.facing_yaw = detmath::atan2(wish.z, wish.x);
     }
 
-    if body.mode != TraversalMode::Air && !supported {
+    if supported && body.mode != TraversalMode::Air && body.mode != TraversalMode::Roll {
+        body.mode = if body.crouching {
+            TraversalMode::Crouch
+        } else {
+            TraversalMode::Ground
+        };
+    } else if !supported && body.mode != TraversalMode::Roll {
         body.mode = TraversalMode::Air;
+    }
+
+    if body.sprinting {
+        body.stamina = (body.stamina - SPRINT_DRAIN_PER_TICK).max(0.0);
+    } else if supported && body.mode != TraversalMode::Roll {
+        body.stamina = (body.stamina + STAMINA_REGEN_PER_TICK).min(body.stamina_max);
     }
 
     integrate(body, probe);
@@ -283,6 +331,9 @@ fn replay_input(tick: u32) -> TraversalInput {
         yaw: 0.0,
         jump: jumping,
         roll: rolling,
+        sprint: false,
+        crouch: false,
+        walk: false,
     }
 }
 

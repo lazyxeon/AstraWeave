@@ -1684,6 +1684,47 @@ impl PhysicsWorld {
         }
     }
 
+    /// Move a kinematic capsule to `center` and keep the next physics step there.
+    pub fn place_character(&mut self, id: BodyId, center: Vec3) {
+        let Some(h) = self.handle_of(id) else {
+            return;
+        };
+        let Some(rb) = self.bodies.get(h) else {
+            return;
+        };
+        let mut iso = *rb.position();
+        iso.translation.x = center.x;
+        iso.translation.y = center.y;
+        iso.translation.z = center.z;
+        if let Some(rbmut) = self.bodies.get_mut(h) {
+            rbmut.set_translation(vector![center.x, center.y, center.z], true);
+            rbmut.set_next_kinematic_position(iso);
+        }
+    }
+
+    /// Downward probe that ignores the character collider.
+    /// Returns `(ground_y, normal_y)` when something is under the capsule center.
+    pub fn character_ground(&self, id: BodyId) -> Option<(f32, f32)> {
+        let h = self.handle_of(id)?;
+        let rb = self.bodies.get(h)?;
+        let origin = *rb.translation();
+        let ray = rapier3d::prelude::Ray::new(
+            point![origin.x, origin.y, origin.z],
+            vector![0.0, -1.0, 0.0],
+        );
+        let filter = QueryFilter::default().exclude_rigid_body(h);
+        let (_, hit) = self.query_pipeline.cast_ray_and_get_normal(
+            &self.bodies,
+            &self.colliders,
+            &ray,
+            6.0,
+            true,
+            filter,
+        )?;
+        let ground_y = origin.y - hit.time_of_impact;
+        Some((ground_y, hit.normal.y))
+    }
+
     pub fn enable_ccd(&mut self, id: BodyId) {
         if let Some(h) = self.handle_of(id) {
             if let Some(rb) = self.bodies.get_mut(h) {

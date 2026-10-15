@@ -1,5 +1,8 @@
 //! Player motor. Stamina lives here, not on `astraweave-gameplay::Stats`.
 
+use astraweave_physics::traversal::{
+    self, ProbeFrame, TraversalBody, TraversalInput, TraversalMode, TICK_DT,
+};
 use astraweave_physics::PhysicsWorld;
 use glam::Vec3;
 
@@ -39,6 +42,8 @@ pub struct Motor {
     pub walking: bool,
     pub grounded: bool,
     pub invulnerable: bool,
+    body: TraversalBody,
+    synced: bool,
 }
 
 impl Default for Motor {
@@ -55,6 +60,8 @@ impl Default for Motor {
             walking: false,
             grounded: true,
             invulnerable: false,
+            body: TraversalBody::default(),
+            synced: false,
         }
     }
 }
@@ -83,7 +90,7 @@ impl Motor {
         }
     }
 
-    /// Advance one fixed step. Returns the horizontal wish passed to the character controller.
+    /// Advance one fixed 60 Hz tick. `dt` is ignored; callers pass [`TICK_DT`].
     pub fn tick(
         &mut self,
         physics: &mut PhysicsWorld,
@@ -92,6 +99,7 @@ impl Motor {
         input: MotorInput,
         dt: f32,
     ) -> Vec3 {
+        let _ = dt;
         if input.fly_toggle {
             self.mode = if self.mode == MotorMode::Fly {
                 MotorMode::Locomotion
@@ -99,126 +107,138 @@ impl Motor {
                 MotorMode::Fly
             };
             self.roll_time = 0.0;
+            self.synced = false;
         }
 
+        if self.mode == MotorMode::Fly {
+            return self.tick_fly(physics, player, camera_yaw, input);
+        }
+
+        self.sync_feet(physics, player);
+        let probe = ground_probe(physics, player.body);
+        let (move_x, move_y) = if input.feet_locked {
+            (0.0, 0.0)
+        } else {
+            (input.move_x, input.move_y)
+        };
+        traversal::step(
+            &mut self.body,
+            TraversalInput {
+                move_x,
+                move_y,
+                yaw: camera_yaw,
+                jump: input.jump,
+                roll: input.roll,
+                sprint: input.sprint,
+                crouch: input.crouch,
+                walk: input.walk,
+            },
+            &probe,
+            0,
+        );
+        self.publish(physics, player);
+        Vec3::new(self.body.vel.x, 0.0, self.body.vel.z)
+    }
+
+    fn tick_fly(
+        &mut self,
+        physics: &mut PhysicsWorld,
+        player: &mut Player,
+        camera_yaw: f32,
+        input: MotorInput,
+    ) -> Vec3 {
         if let Some(ctrl) = physics.char_map.get_mut(&player.body) {
-            ctrl.gravity_scale = if self.mode == MotorMode::Fly {
-                0.0
+            ctrl.gravity_scale = 0.0;
+            ctrl.vertical_velocity = if input.jump {
+                FLY_SPEED
+            } else if input.crouch {
+                -FLY_SPEED
             } else {
-                1.0
+                0.0
             };
         }
-
-        let grounded = on_ground(physics, player.body);
-        self.grounded = grounded;
-        if grounded && self.mode != MotorMode::Roll {
-            self.jumps_used = 0;
-        }
-
-        if self.mode == MotorMode::Roll {
-            self.roll_time += dt;
-            self.invulnerable =
-                self.roll_time >= ROLL_IFRAME_START && self.roll_time <= ROLL_IFRAME_END;
-            let wish = self.roll_dir * ROLL_SPEED;
-            if self.roll_time >= ROLL_DURATION {
-                self.mode = MotorMode::Locomotion;
-                self.invulnerable = false;
-                self.roll_time = 0.0;
-            }
-            player.facing_yaw = crate::detmath::atan2(wish.z, wish.x);
-            physics.control_character(player.body, wish, dt, false);
-            return wish;
-        }
-
-        self.invulnerable = false;
-        self.crouching = input.crouch && self.mode != MotorMode::Fly;
         let moving = input.move_x.abs() + input.move_y.abs() > 0.05;
-        self.sprinting = input.sprint && moving && self.stamina > 0.0 && !self.crouching;
-        self.walking = input.walk && moving && !self.sprinting && !self.crouching;
-
-        if input.roll && self.mode != MotorMode::Fly && self.stamina >= ROLL_COST {
-            self.stamina -= ROLL_COST;
-            self.mode = MotorMode::Roll;
-            self.roll_time = 0.0;
-            let (forward, right) = player::flat_basis(camera_yaw);
-            let mut dir = forward * input.move_y + right * input.move_x;
-            if dir.length_squared() < 1e-4 {
-                dir = player::flat_basis(player.facing_yaw).0;
-            }
-            self.roll_dir = Vec3::new(dir.x, 0.0, dir.z).normalize_or_zero();
-            if self.roll_dir.length_squared() < 1e-4 {
-                self.roll_dir = Vec3::X;
-            }
-        }
-
-        if input.jump && self.mode != MotorMode::Roll {
-            if self.mode == MotorMode::Fly {
-                if let Some(ctrl) = physics.char_map.get_mut(&player.body) {
-                    ctrl.vertical_velocity = FLY_SPEED;
-                }
-            } else if grounded && self.jumps_used == 0 {
-                physics.jump(player.body, JUMP_HEIGHT);
-                self.jumps_used = 1;
-            } else if self.jumps_used == 1 {
-                if let Some(ctrl) = physics.char_map.get_mut(&player.body) {
-                    ctrl.vertical_velocity = crate::detmath::sqrt(2.0 * 9.81 * JUMP_HEIGHT);
-                }
-                self.jumps_used = 2;
-            }
-        } else if self.mode == MotorMode::Fly && input.crouch {
-            if let Some(ctrl) = physics.char_map.get_mut(&player.body) {
-                ctrl.vertical_velocity = -FLY_SPEED;
-            }
-        } else if self.mode == MotorMode::Fly {
-            if let Some(ctrl) = physics.char_map.get_mut(&player.body) {
-                ctrl.vertical_velocity = 0.0;
-            }
-        }
-
-        let speed = if self.mode == MotorMode::Fly {
-            FLY_SPEED
-        } else if self.crouching {
-            CROUCH_SPEED
-        } else if self.sprinting {
-            SPRINT_SPEED
-        } else if self.walking {
-            WALK_SPEED
-        } else if moving {
-            RUN_SPEED
-        } else {
-            0.0
-        };
         let (forward, right) = player::flat_basis(camera_yaw);
-        let mut wish = player::wish_from_axes(forward, right, input.move_x, input.move_y, speed);
-        if !moving {
+        let mut wish = if moving {
+            player::wish_from_axes(forward, right, input.move_x, input.move_y, FLY_SPEED)
+        } else {
+            Vec3::ZERO
+        };
+        if input.feet_locked {
             wish = Vec3::ZERO;
-        }
-        if input.feet_locked && self.mode != MotorMode::Fly {
-            wish = Vec3::ZERO;
-        }
-        if !grounded && self.mode == MotorMode::Locomotion {
-            wish *= 0.4;
         }
         if wish.length_squared() > 1e-6 {
             player.facing_yaw = crate::detmath::atan2(wish.z, wish.x);
         }
-
-        if self.sprinting {
-            self.stamina = (self.stamina - SPRINT_DRAIN * dt).max(0.0);
-        } else if self.mode != MotorMode::Roll && grounded {
-            self.stamina = (self.stamina + STAMINA_REGEN * dt).min(self.stamina_max);
-        }
-
-        physics.control_character(player.body, wish, dt, false);
+        self.grounded = false;
+        self.crouching = false;
+        self.sprinting = false;
+        self.invulnerable = false;
+        physics.control_character(player.body, wish, TICK_DT, false);
         wish
+    }
+
+    fn sync_feet(&mut self, physics: &PhysicsWorld, player: &Player) {
+        if self.synced {
+            return;
+        }
+        let center = player.translation(physics).unwrap_or(Vec3::ZERO);
+        let half = capsule_half(physics, player.body);
+        self.body.pos = Vec3::new(center.x, center.y - half, center.z);
+        self.body.stamina = self.stamina;
+        self.body.stamina_max = self.stamina_max;
+        self.body.facing_yaw = player.facing_yaw;
+        self.synced = true;
+    }
+
+    fn publish(&mut self, physics: &mut PhysicsWorld, player: &mut Player) {
+        self.stamina = self.body.stamina;
+        self.jumps_used = self.body.jumps_used;
+        self.invulnerable = self.body.invulnerable;
+        self.crouching = self.body.crouching;
+        self.sprinting = self.body.sprinting;
+        self.walking = self.body.walking;
+        self.grounded = self.body.mode != TraversalMode::Air;
+        self.roll_dir = self.body.roll_dir;
+        self.roll_time = f32::from(self.body.roll_tick);
+        self.mode = if self.body.mode == TraversalMode::Roll {
+            MotorMode::Roll
+        } else {
+            MotorMode::Locomotion
+        };
+        player.facing_yaw = self.body.facing_yaw;
+        let half = capsule_half(physics, player.body);
+        let center = self.body.pos + Vec3::Y * half;
+        physics.place_character(player.body, center);
+        if let Some(ctrl) = physics.char_map.get_mut(&player.body) {
+            ctrl.vertical_velocity = self.body.vel.y;
+            ctrl.gravity_scale = 1.0;
+            ctrl.time_since_grounded = if self.grounded { 0.0 } else { TICK_DT };
+        }
     }
 }
 
-fn on_ground(physics: &PhysicsWorld, body: u64) -> bool {
+fn capsule_half(physics: &PhysicsWorld, body: u64) -> f32 {
     physics
         .char_map
         .get(&body)
-        .is_some_and(|c| c.time_since_grounded <= 0.02)
+        .map(|ctrl| ctrl.height * 0.5 + ctrl.radius)
+        .unwrap_or(1.0)
+}
+
+fn ground_probe(physics: &PhysicsWorld, body: u64) -> ProbeFrame {
+    match physics.character_ground(body) {
+        Some((ground_y, normal_y)) => ProbeFrame {
+            support: normal_y > 0.35,
+            ground_y,
+            normal_y,
+        },
+        None => ProbeFrame {
+            support: false,
+            ground_y: 0.0,
+            normal_y: 1.0,
+        },
+    }
 }
 
 #[cfg(test)]
@@ -231,7 +251,9 @@ mod tests {
         let mut physics = PhysicsWorld::new(Vec3::new(0.0, -9.81, 0.0));
         let _ = physics.create_ground_plane(Vec3::new(20.0, 0.5, 20.0), 1.0);
         physics.step();
-        let player = Player::spawn(&mut physics, Vec3::new(0.0, 2.0, 0.0));
+        let player = Player::spawn(&mut physics, Vec3::new(0.0, 1.25, 0.0));
+        physics.place_character(player.body, Vec3::new(0.0, 1.25, 0.0));
+        physics.step();
         (physics, player)
     }
 
@@ -252,7 +274,15 @@ mod tests {
         );
         assert_eq!(motor.mode, MotorMode::Roll);
         assert!(!motor.invulnerable);
-        motor.tick(&mut physics, &mut player, 0.0, MotorInput::default(), 0.1);
+        for _ in 0..5 {
+            motor.tick(
+                &mut physics,
+                &mut player,
+                0.0,
+                MotorInput::default(),
+                TICK_DT,
+            );
+        }
         assert!(motor.invulnerable);
         assert_eq!(motor.apply_damage_multiplier(false), 0.0);
 
@@ -271,7 +301,11 @@ mod tests {
             0.016,
         );
         assert_ne!(dry.mode, MotorMode::Roll);
-        assert!((dry.stamina - 10.0).abs() < 0.01);
+        assert!(
+            dry.stamina + 1e-3 >= 10.0,
+            "a refused roll must not spend stamina, got {}",
+            dry.stamina
+        );
     }
 
     #[test]
