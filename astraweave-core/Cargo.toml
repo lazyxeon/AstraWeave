@@ -30,6 +30,7 @@ astraweave-ai = { workspace = true }
 astraweave-gameplay = { path = "../astraweave-gameplay" }
 astraweave-math = { workspace = true }
 astraweave-destruction = { workspace = true }
+astraweave-nav = { workspace = true }
 sha2 = { workspace = true }
 
 [[bench]]

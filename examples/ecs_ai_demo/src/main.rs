@@ -8,6 +8,8 @@ fn main() -> anyhow::Result<()> {
 
     // Create ECS app with AI plugin and movement systems
     let mut app = ecs::App::new().add_plugin(AiPlanningPlugin);
+    app.world
+        .insert_resource(astraweave_ai::SpatialTick::demo_agent());
 
     // Add movement system (from ecs_adapter)
     app.add_system("simulation", move_system as ecs::SystemFn)

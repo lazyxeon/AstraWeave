@@ -32,6 +32,8 @@ pub enum PlannerMode {
     BehaviorTree,
     /// Use GOAP planner (requires `ai-goap` feature).
     GOAP,
+    /// Hierarchical planner with utility-scored methods.
+    Htn,
 }
 
 impl std::fmt::Display for PlannerMode {
@@ -40,6 +42,7 @@ impl std::fmt::Display for PlannerMode {
             PlannerMode::Rule => write!(f, "Rule"),
             PlannerMode::BehaviorTree => write!(f, "BehaviorTree"),
             PlannerMode::GOAP => write!(f, "GOAP"),
+            PlannerMode::Htn => write!(f, "Htn"),
         }
     }
 }
@@ -60,14 +63,14 @@ impl PlannerMode {
     /// Check if this mode is always available (no feature flag required).
     #[must_use]
     pub fn is_always_available(&self) -> bool {
-        matches!(self, PlannerMode::Rule)
+        matches!(self, PlannerMode::Rule | PlannerMode::Htn)
     }
 
     /// Get the feature flag name required for this mode, if any.
     #[must_use]
     pub fn required_feature(&self) -> Option<&'static str> {
         match self {
-            PlannerMode::Rule => None,
+            PlannerMode::Rule | PlannerMode::Htn => None,
             PlannerMode::BehaviorTree => Some("ai-bt"),
             PlannerMode::GOAP => Some("ai-goap"),
         }
@@ -80,6 +83,7 @@ impl PlannerMode {
             PlannerMode::Rule,
             PlannerMode::BehaviorTree,
             PlannerMode::GOAP,
+            PlannerMode::Htn,
         ]
     }
 }
@@ -268,6 +272,7 @@ pub fn dispatch_planner(
                 anyhow::bail!("GOAP mode requires 'ai-goap' feature")
             }
         }
+        PlannerMode::Htn => Ok(crate::htn::HtnOrchestrator.propose_plan(snapshot)),
     }
 }
 
@@ -735,6 +740,7 @@ mod tests {
     #[test]
     fn test_planner_mode_is_always_available() {
         assert!(PlannerMode::Rule.is_always_available());
+        assert!(PlannerMode::Htn.is_always_available());
         assert!(!PlannerMode::BehaviorTree.is_always_available());
         assert!(!PlannerMode::GOAP.is_always_available());
     }
@@ -749,10 +755,11 @@ mod tests {
     #[test]
     fn test_planner_mode_all() {
         let all = PlannerMode::all();
-        assert_eq!(all.len(), 3);
+        assert_eq!(all.len(), 4);
         assert!(all.contains(&PlannerMode::Rule));
         assert!(all.contains(&PlannerMode::BehaviorTree));
         assert!(all.contains(&PlannerMode::GOAP));
+        assert!(all.contains(&PlannerMode::Htn));
     }
 
     #[test]
@@ -769,7 +776,8 @@ mod tests {
         set.insert(PlannerMode::Rule);
         set.insert(PlannerMode::BehaviorTree);
         set.insert(PlannerMode::GOAP);
-        assert_eq!(set.len(), 3);
+        set.insert(PlannerMode::Htn);
+        assert_eq!(set.len(), 4);
     }
 
     // ===== Tests for new CAiController enhancements =====

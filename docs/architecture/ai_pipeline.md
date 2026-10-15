@@ -8,7 +8,7 @@ domain: ai
 lifecycle_status: active
 integration_status: wired
 owns: [astraweave-ai, astraweave-behavior, astraweave-context, astraweave-coordination, astraweave-dialogue, astraweave-director, astraweave-embeddings, astraweave-llm, astraweave-memory, astraweave-npc, astraweave-persona, astraweave-prompts, astraweave-rag]
-doc_version: "1.12"
+doc_version: "1.13"
 last_verified_commit: 32afac52f
 ---
 
@@ -20,7 +20,7 @@ last_verified_commit: 32afac52f
 |---|---|
 | **System name** | AI Pipeline (Perception → Reasoning → Planning → Action) — foundational AI-first substrate |
 | **Primary crates** | `astraweave-ai` (39 files / 30.5K LoC), `astraweave-behavior` (6 / 5K), `astraweave-llm` (29 / 23.5K), `astraweave-memory` (17 / 11.5K), `astraweave-director` (6 / 3.3K), `astraweave-npc` (6 / 1.7K), `astraweave-dialogue` (4 / 5K), `astraweave-coordination` (5 / 5.3K) — **8 crates, 112 files, ~85K LoC total** |
-| **Document version** | 1.12 |
+| **Document version** | 1.13 |
 | **Last verified against commit** | `32afac52f` |
 | **Last verified date** | 2026-05-12 |
 | **Status** | **Active foundation — AI-first citizen of the engine.** The canonical loop is stable and validated for 12,700+ agents @ 60 FPS (per `astraweave-ai/src/lib.rs:27`). The Arbiter / dual-executor / LLM fallback chain has shipped multiple iterations and is hardening continuously. Subsystems like Memory, Director, NPC, Dialogue, Coordination are each large enough to warrant per-system follow-up traces. |
@@ -370,7 +370,8 @@ This section enumerates the load-bearing files. Per-file enumeration of all 112 
 | File | Role | Status | Notes |
 |---|---|---|---|
 | `astraweave-ai/src/lib.rs` | Module declarations + re-exports; performance summary at lines 22-27 | Active | 70 LoC |
-| `astraweave-ai/src/core_loop.rs` | `PlannerMode`, `CAiController`, `dispatch_planner`; the canonical loop dispatcher | Active | With `ai-bt`, policy `default` ticks a behavior graph and other policies return `BehaviorDispatchError`. `ai-goap` / `ai-bt` enable the behavior crate |
+| `astraweave-ai/src/core_loop.rs` | `PlannerMode`, `CAiController`, `dispatch_planner`; the canonical loop dispatcher | Active | `PlannerMode::Htn` is always available (2026-10-15). With `ai-bt`, policy `default` ticks a behavior graph and other policies return `BehaviorDispatchError`. `ai-goap` / `ai-bt` enable the behavior crate |
+| `astraweave-ai/src/htn.rs` | HTN decomposition, utility-scored breaches and cover, LOD bands, `SpatialTick` | Active | Tick writes `[ActionSlot; 8]` and does not allocate. Caps at `HTN_EXPANSIONS_PER_TICK` (64). Weaving and hazard hooks are read and empty until those owners write them |
 | `astraweave-ai/src/orchestrator.rs` | `Orchestrator` trait, `OrchestratorAsync` trait, `RuleOrchestrator` | Active | The trait surface is the single contract every planner implements |
 | `astraweave-ai/src/tool_sandbox.rs` | `ToolVerb` enum (10 verbs), `ValidationCategory`, sandbox helpers | Active | Re-exported via `lib.rs:57` |
 | `astraweave-ai/src/ecs_ai_plugin.rs` | `AiPlanningPlugin`, `build_app_with_ai()`, `sys_ai_planning` system | Active | Plans every team-1 companion on the tick (legacy ids sorted, then ECS companions not already handled). A plan without `MoveTo`, or `try_build_snapshot`'s `SnapshotError`, records `AiPlanningFailedEvent` |

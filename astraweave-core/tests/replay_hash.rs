@@ -9,8 +9,8 @@ mod replay_support;
 use astraweave_destruction::demolition_bytes;
 use astraweave_math::fixed64_contract_bytes;
 use replay_support::{
-    gameplay_rng_bytes, perception_world_bytes, planner_pure_bytes, replay_hash_json_path,
-    sha256_hex,
+    gameplay_rng_bytes, nav_reroute_bytes, perception_world_bytes, planner_pure_bytes,
+    replay_hash_json_path, sha256_hex,
 };
 
 #[test]
@@ -38,12 +38,16 @@ fn replay_hash_cases_are_stable_and_written() {
         destruction_a, destruction_b,
         "destruction diverged inside one process"
     );
+    let nav_a = nav_reroute_bytes();
+    let nav_b = nav_reroute_bytes();
+    assert_eq!(nav_a, nav_b, "nav_reroute diverged inside one process");
     let cases = [
         ("destruction".to_string(), sha256_hex(&destruction_a)),
         ("fixed64".to_string(), sha256_hex(&fixed_a)),
         ("gameplay_rng".to_string(), sha256_hex(&gameplay_a)),
         ("perception_world".to_string(), sha256_hex(&perception)),
         ("planner_pure".to_string(), sha256_hex(&planner_a)),
+        ("nav_reroute".to_string(), sha256_hex(&nav_a)),
     ];
 
     for (case, digest) in &cases {

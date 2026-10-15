@@ -18,6 +18,10 @@ pub const SIM_SYSTEM_TERRAIN_SOLVER: u64 = 0x7E22_7001;
 pub const SIM_SYSTEM_COMBAT: u64 = 0xC0BA_7001;
 /// Destruction fracture seeds and island ids. Not used by combat or terrain.
 pub const SIM_SYSTEM_DESTRUCTION: u64 = 0xD357_7001;
+/// Reserved for nav-tile commits. Tile builds do not draw it.
+pub const SIM_SYSTEM_NAV: u64 = 0x4E41_7001;
+/// Reserved for HTN tie-breaks. Planning does not draw it.
+pub const SIM_SYSTEM_HTN: u64 = 0x4854_7001;
 
 /// Mix `(world_seed, tick, system_id)` into one `StdRng` seed.
 ///
@@ -158,6 +162,27 @@ mod tests {
         for _ in 0..32 {
             assert_eq!(a.next_u32(), b.next_u32());
             assert_eq!(a.unit_f32().to_bits(), b.unit_f32().to_bits());
+        }
+    }
+
+    #[test]
+    fn nav_and_htn_ids_do_not_collide() {
+        let ids = [
+            SIM_SYSTEM_CRAFT,
+            SIM_SYSTEM_HARVEST,
+            SIM_SYSTEM_ANCHOR_PARTICLES,
+            SIM_SYSTEM_ENEMY_PATROL,
+            SIM_SYSTEM_SPAWNER,
+            SIM_SYSTEM_TERRAIN_SOLVER,
+            SIM_SYSTEM_COMBAT,
+            SIM_SYSTEM_DESTRUCTION,
+            SIM_SYSTEM_NAV,
+            SIM_SYSTEM_HTN,
+        ];
+        for i in 0..ids.len() {
+            for j in (i + 1)..ids.len() {
+                assert_ne!(ids[i], ids[j]);
+            }
         }
     }
 

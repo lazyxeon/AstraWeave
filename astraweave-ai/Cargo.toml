@@ -69,6 +69,10 @@ harness = false
 required-features = ["alloc-counter", "planner_advanced"]
 
 [[bench]]
+name = "htn_budget"
+harness = false
+
+[[bench]]
 name = "arbiter_bench"
 harness = false
 

@@ -356,6 +356,28 @@ No new `deferred-failure` issue is opened by this PR. The failures above already
 6. Confirm the hot tick writes `ActionSlot` and does not tick `BehaviorGraph` or `sys_ai_depth`.
 7. Confirm the Aravath scene waits until `aravath_runtime` is on the integration branch, and this PR stays docs-only.
 
-## 11. Stop
+## 11. Phase 2 status
 
-Phase 2 starts only after those questions are answered. This branch does not merge.
+Approved 2026-10-15. Decisions 1–5 are implemented on `feat/ai-orchestration`. This branch still does not merge.
+
+| Decision | Where |
+|---|---|
+| HTN with utility scores | `astraweave-ai/src/htn.rs` |
+| Side buffer accepted only on a matching input hash | `NavTiles::accept_side_buffer` |
+| `Explosion`, `Brush`, `Detach` | `NavChangeKind` and `nav_change_from_kind` |
+| 32 m, 4 commits, 64 expansions | `TILE_SIZE_M`, `TILE_COMMITS_PER_TICK`, `HTN_EXPANSIONS_PER_TICK`. Unit tests assert each budget is under 11 ms. Benches: `tile_commits_per_tick`, `htn_expansions_per_tick` |
+| `max_step` live | `share_edge`. Golden `max_step_links_a_low_ledge_and_rejects_a_tall_one` locks a 0.3 m link and a 1.0 m reject. Coplanar neighbor counts stayed 1 |
+
+Dormant systems:
+
+| Surface | Decision |
+|---|---|
+| `UtilityOrchestrator` | Wired. `propose_plan` calls `htn::legacy_utility_plan` |
+| `dispatch_planner` | Wired. `PlannerMode::Htn` is always available and the ECS demo runs `SpatialTick` |
+| Slice companion planner | Wired. Method select by priority. It no longer calls `GoapPlanner` or reads the wall clock |
+| `AIArbiter` | Deferred. A live model cannot write the sim tick. Issue #257 |
+| `astraweave-ai/src/goap/` (22 files) and `GoapPlanner` | Deferred. The slice path no longer calls them. Deleting them would drop the symbolic A* suite without a zero-alloc replacement. Issue #258 |
+
+`nav_reroute` is a required case in `.github/workflows/determinism-replay.yml`.
+
+The Aravath runtime is not on this branch, so the showcase scene is not added.
