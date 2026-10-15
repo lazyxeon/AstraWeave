@@ -5356,7 +5356,7 @@ impl TabViewer for EditorTabViewer {
                     // Open native file dialog for texture selection
                     if let Some(path) = rfd::FileDialog::new()
                         .add_filter("Images", &["png", "jpg", "jpeg", "tga", "bmp", "hdr"])
-                        .set_title(&format!("Select {} Texture", slot))
+                        .set_title(format!("Select {} Texture", slot))
                         .pick_file()
                     {
                         let path_str = path.to_string_lossy().to_string();
@@ -5502,7 +5502,7 @@ impl TabViewer for EditorTabViewer {
                         if let Some(path) = rfd::FileDialog::new()
                             .add_filter("Material", &["ron", "json"])
                             .set_title("Save Material")
-                            .set_file_name(&format!("{}.ron", self.current_material.name))
+                            .set_file_name(format!("{}.ron", self.current_material.name))
                             .save_file()
                         {
                             // Serialize material to RON format
@@ -5538,7 +5538,7 @@ impl TabViewer for EditorTabViewer {
                         if let Some(path) = rfd::FileDialog::new()
                             .add_filter("Material File", &["mat"])
                             .set_title("Export Material")
-                            .set_file_name(&format!("{}.mat", self.current_material.name))
+                            .set_file_name(format!("{}.mat", self.current_material.name))
                             .save_file()
                         {
                             let content = format!("{:#?}", self.current_material);
