@@ -7,10 +7,10 @@ primary_crate: astraweave-combat
 domain: gameplay
 lifecycle_status: active
 integration_status: partial
-summary: "Resolver re-exports core SimRng. Fixed64 stays in this crate. combat_resolve is a required determinism-replay case. The demo still uses its own flat hits."
+summary: "Resolver re-exports core SimRng and astraweave-math Fixed64. whole_raw stays here. combat_resolve is a required determinism-replay case. The demo still uses its own flat hits."
 owns: [astraweave-combat]
-doc_version: "1.1"
-last_verified_commit: 9f75e245
+doc_version: "1.2"
+last_verified_commit: be413626
 runtime_edges:
   - to: astraweave-ecs
     note: CombatPlugin registers combat_resolve_system on the simulation stage
@@ -24,9 +24,9 @@ runtime_edges:
 |---|---|
 | **System name** | Combat damage |
 | **Primary crates** | `astraweave-combat` |
-| **Document version** | 1.1 |
-| **Last verified against commit** | `9f75e245` |
-| **Last verified date** | 2026-10-14 |
+| **Document version** | 1.2 |
+| **Last verified against commit** | `be413626` |
+| **Last verified date** | 2026-10-15 |
 | **Status** | Active, partial. The demo does not call it yet. |
 | **Owner notes** | Formula spec: `docs/current/COMBAT_DAMAGE_SYSTEM_DESIGN.md`. Gate Pass, 2026-10-14. |
 
