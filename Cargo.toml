@@ -42,6 +42,7 @@ members = [
   "examples/visual_3d",
   "astraweave-physics",
   "astraweave-water",
+  "astraweave-localsim",
   "astraweave-nav",
   "astraweave-scene",
   "astraweave-terrain",

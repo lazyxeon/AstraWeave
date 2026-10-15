@@ -464,6 +464,31 @@ impl WaterSkills {
     }
 }
 
+/// Fraction of a body under a water surface.
+///
+/// `surface_y` comes from `WaterQuery` (analytic plane or a local-field
+/// column). `None` is dry. The fraction is what [`WaterPlayerState::update`]
+/// already takes. Thresholds are unchanged.
+pub fn submersion_between(feet_y: f32, head_y: f32, surface_y: Option<f32>) -> f32 {
+    let Some(surface) = surface_y else {
+        return 0.0;
+    };
+    if !feet_y.is_finite() || !head_y.is_finite() || !surface.is_finite() {
+        return 0.0;
+    }
+    if feet_y >= surface {
+        return 0.0;
+    }
+    let span = head_y - feet_y;
+    if span <= f32::EPSILON {
+        return 1.0;
+    }
+    if head_y <= surface {
+        return 1.0;
+    }
+    ((surface - feet_y) / span).clamp(0.0, 1.0)
+}
+
 /// Helper for computing movement in water
 #[derive(Clone, Debug)]
 pub struct WaterMovementHelper {
@@ -1817,5 +1842,18 @@ mod tests {
             "At submersion>0.0, buoyancy must be positive, got {}",
             forces_tiny.buoyancy.y
         );
+    }
+
+    #[test]
+    fn submersion_between_feeds_the_existing_state_machine() {
+        assert_eq!(submersion_between(0.0, 2.0, None), 0.0);
+        assert_eq!(submersion_between(1.0, 2.0, Some(0.5)), 0.0);
+        let waist = submersion_between(0.0, 2.0, Some(1.0));
+        assert!((waist - 0.5).abs() < 1.0e-6);
+        let mut state = WaterPlayerState::default();
+        let result = state.update(waist, 1.0 / 60.0);
+        assert_eq!(state.mode, WaterMovementMode::WaistDeep);
+        assert_eq!(result.drowning_damage, 0.0);
+        assert_eq!(submersion_between(0.0, 1.0, Some(2.0)), 1.0);
     }
 }

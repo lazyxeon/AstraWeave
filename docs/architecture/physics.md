@@ -9,10 +9,10 @@ lifecycle_status: active
 integration_status: wired
 runtime_edges:
   - to: astraweave-water
-    note: "buoyancy (apply_buoyancy_forces, lib.rs:1464) consumes WaterQuery/AnalyticWater"
+    note: "buoyancy samples ColumnWater, then AnalyticWater (apply_buoyancy_forces)"
 owns: [astraweave-physics]
-doc_version: "1.4"
-last_verified_commit: 1b4ab5b7
+doc_version: "1.5"
+last_verified_commit: 5048c630
 ---
 
 # Architecture Trace: Physics
@@ -23,11 +23,11 @@ last_verified_commit: 1b4ab5b7
 |---|---|
 | **System name** | Physics (Rigid Body Simulation + Subsystems) |
 | **Primary crates** | `astraweave-physics` (12 source files / ~31K LoC), wraps `rapier3d 0.22` |
-| **Document version** | 1.4 |
-| **Last verified against commit** | `1b4ab5b7` |
-| **Last verified date** | 2026-10-14 |
-| **Status** | **Active core** (`PhysicsWorld` + `CharacterController` + Rapier broadphase) **with feature-gated and dormant subsystems** (async-physics, ECS plugin, in-house SpatialHash). The core rigid-body / character / raycast surface is production-wired through `astraweave-gameplay` and `astraweave-npc`. 1.3: `PhysicsWorld::remove_body` is the shared removal path; `break_destructible` delegates to it. `aravath_runtime` uses it to replace chunk trimeshes. Several subsystems (projectile, gravity zones, ragdoll, vehicle, environment, destruction, cloth) are independent managers with rich APIs but limited production wiring — most have tests + benches but no game-loop consumer yet. The `SpatialHash` module is **dormant** despite being advertised in the crate doc-comment. |
-| **Owner notes** | This trace is forensic, not aspirational — it documents what is wired today, not what the doc-comments imply. Scale: 12 source files, 31K LoC, 20 test files, 10 benchmarks, 9 consumer Cargo deps (5 production + 4 examples). **Verification pass 2026-05-12 (version 1.1):** resolved 3 markers — (a) `astraweave-scripting` is a real production consumer that uses `PhysicsWorld` as an ECS resource AND wraps it in a `*const PhysicsWorld` raw pointer via `PhysicsProxy` for Rhai bindings (§4 Downstream row corrected); (b) `PhysicsWorld` IS `Send + Sync` (auto-derived, proven by compile-time obligations of `World::get_resource<T>` — §8 Invariant 18 corrected, previous "Send but NOT Sync" claim was wrong); (c) `process_destructible_hits` has zero callers workspace-wide (closed in §11). Decision Log "[Reasoning not recovered]" markers (8 entries) remain — git log searches returned no physics-specific decision commits. **Deep investigation pass 2026-05-12 (version 1.2):** corrected 4 factual errors and enriched 2 Open Questions. Corrections: (a) the crate has **5 features**, not 3 — `alloc-counter` and `fast-alloc` were missing from §1, §5, Appendix A; (b) `alloc-counter` feature location in §9 was wrong (was "Cargo.toml:67-69 — wait that's astraweave-ai", actually `Cargo.toml:17` + bench gating at `:77-80`); (c) `SpatialHash` test surface in §11 was significantly under-counted (claimed "3 dedicated tests" — actually 20+ tests across 4 files: `behavioral_correctness_tests.rs`, `coverage_boost_tests.rs`, `cross_subsystem_validation.rs`, `spatial_hash_character_tests.rs` with 33 `#[test]` attributes); (d) the claim that "`benches/raycast.rs` mentions spatial-hash patterns" was wrong — zero `SpatialHash` references in any bench file. Enrichments: (a) §11 `ecs` feature question now documents three de facto consumer patterns (direct passthrough / `World::insert_resource` without feature / designed `PhysicsPlugin` with feature) — `astraweave-scripting` uses pattern (b) which sits between the existing two; (b) `SpatialHash` Open Question enriched with comprehensive test surface inventory + "no bench" correction. |
+| **Document version** | 1.5 |
+| **Last verified against commit** | `5048c630` |
+| **Last verified date** | 2026-10-15 |
+| **Status** | **Active core** (`PhysicsWorld` + `CharacterController` + Rapier broadphase) **with feature-gated and dormant subsystems** (async-physics, ECS plugin, in-house SpatialHash). The core rigid-body / character / raycast surface is production-wired through `astraweave-gameplay` and `astraweave-npc`. 1.3: `PhysicsWorld::remove_body` is the shared removal path; `break_destructible` delegates to it. `aravath_runtime` uses it to replace chunk trimeshes. 1.5: buoyancy samples `ColumnWater` before `AnalyticWater`. Several subsystems (projectile, gravity zones, ragdoll, vehicle, environment, destruction, cloth) are independent managers with rich APIs but limited production wiring — most have tests + benches but no game-loop consumer yet. The `SpatialHash` module is **dormant** despite being advertised in the crate doc-comment. |
+| **Owner notes** | This trace is forensic, not aspirational — it documents what is wired today, not what the doc-comments imply. Scale: 12 source files, 31K LoC, 20 test files, 10 benchmarks, 9 consumer Cargo deps (5 production + 4 examples). **Rev 1.5 (2026-10-15, local sim):** buoyancy samples `ColumnWater` before `AnalyticWater`. Empty columns leave the plane. `add_water_aabb` forwards to the facade. **Verification pass 2026-05-12 (version 1.1):** resolved 3 markers — (a) `astraweave-scripting` is a real production consumer that uses `PhysicsWorld` as an ECS resource AND wraps it in a `*const PhysicsWorld` raw pointer via `PhysicsProxy` for Rhai bindings (§4 Downstream row corrected); (b) `PhysicsWorld` IS `Send + Sync` (auto-derived, proven by compile-time obligations of `World::get_resource<T>` — §8 Invariant 18 corrected, previous "Send but NOT Sync" claim was wrong); (c) `process_destructible_hits` has zero callers workspace-wide (closed in §11). Decision Log "[Reasoning not recovered]" markers (8 entries) remain — git log searches returned no physics-specific decision commits. **Deep investigation pass 2026-05-12 (version 1.2):** corrected 4 factual errors and enriched 2 Open Questions. Corrections: (a) the crate has **5 features**, not 3 — `alloc-counter` and `fast-alloc` were missing from §1, §5, Appendix A; (b) `alloc-counter` feature location in §9 was wrong (was "Cargo.toml:67-69 — wait that's astraweave-ai", actually `Cargo.toml:17` + bench gating at `:77-80`); (c) `SpatialHash` test surface in §11 was significantly under-counted (claimed "3 dedicated tests" — actually 20+ tests across 4 files: `behavioral_correctness_tests.rs`, `coverage_boost_tests.rs`, `cross_subsystem_validation.rs`, `spatial_hash_character_tests.rs` with 33 `#[test]` attributes); (d) the claim that "`benches/raycast.rs` mentions spatial-hash patterns" was wrong — zero `SpatialHash` references in any bench file. Enrichments: (a) §11 `ecs` feature question now documents three de facto consumer patterns (direct passthrough / `World::insert_resource` without feature / designed `PhysicsPlugin` with feature) — `astraweave-scripting` uses pattern (b) which sits between the existing two; (b) `SpatialHash` Open Question enriched with comprehensive test surface inventory + "no bench" correction. |
 
 ---
 
@@ -84,8 +84,9 @@ Game-side code needs to manage rigid bodies, ground-aware character movement, ra
           update QueryPipeline so raycasts in the SAME tick see post-step geometry
     │
     ├─[2a] apply_buoyancy_forces()
-    │     role: Iterate self.buoyancy_bodies HashMap; compute Archimedes force per body
-    │           below self.water_level; add_force on each Rapier rigid body
+    │     role: Sync water_level into AnalyticWater, then sample_water per body.
+    │           ColumnWater wins when the cell has a column; otherwise the plane.
+    │           Impulse is volume * density * 9.81 * dt when the body is below the surface.
     │
     ├─[2b] self.pipeline.step(gravity, integration_params, island_mgr, broad_phase,
     │                          narrow_phase, bodies, colliders, joints, multibody_joints,
@@ -443,7 +444,7 @@ Note: This path requires `astraweave-physics/features = ["ecs"]` to be enabled b
 | 14 | `CharState` is `#[non_exhaustive]` with exactly 1 variant: Grounded | Yes (code) | `lib.rs:391-395` |
 | 15 | `JointType` is `#[non_exhaustive]` with exactly 4 variants: Fixed / Revolute / Prismatic / Spherical | Yes (code) | `lib.rs:635-648` |
 | 16 | `ProjectileKind` is `#[non_exhaustive]` with exactly 2 variants: Hitscan / Kinematic; default = Kinematic | Yes (code) | `projectile.rs:43-52` |
-| 17 | `add_water_aabb` is a no-op stub (function body is `{}`) | Yes (code) | `lib.rs:1449`: `pub fn add_water_aabb(&mut self, _min: Vec3, _max: Vec3, _density: f32, _linear_damp: f32) {}` |
+| 17 | `add_water_aabb` registers a volume on `AnalyticWater`. `sample_water` returns a `ColumnWater` hit before that facade. An empty column table does not hide the plane | Yes | `column_water_wins_over_the_analytic_plane`; `add_water_aabb` body calls `self.water.add_aabb` |
 | 18 | `PhysicsWorld` is `Send + Sync` (auto-derived) — must hold for use as `astraweave-ecs::World` resource | Yes (compile-time, transitively proven) | Verified 2026-05-12: `astraweave-ecs::World::get_resource<T>` / `insert_resource<T>` require `T: 'static + Send + Sync` (per `astraweave-ecs/src/lib.rs:466, 482, 486`). Multiple call sites compile: `astraweave-scripting/src/lib.rs:148, 336, 453, 506` (`world.get_resource::<PhysicsWorld>()`) and `astraweave-physics/tests/ecs_integration_test.rs:20` (`app.world.get_resource_mut::<PhysicsWorld>().unwrap()`). Therefore `PhysicsWorld` MUST be `Send + Sync`. The previous trace claim "Send but NOT Sync" was incorrect. |
 | 19 | `process_destructible_hits` is a no-op stub with `#[allow(dead_code)]` | Yes (code) | `lib.rs:1586-1587`: `#[allow(dead_code)] fn process_destructible_hits(&mut self) {}` |
 | 20 | Crate uses `#![forbid(unsafe_code)]`; no unsafe blocks in any of the source files | Yes (compile-time + grep) | `lib.rs:1` |
@@ -563,8 +564,8 @@ Per inline `lib.rs:1071-1075`: "Allocation-measurement instrumentation (audit 20
 1. **`PhysicsWorld` is the single mutable owner.** All add/remove/step/query operations require `&mut PhysicsWorld`. Game code stores `BodyId: u64` (NOT Rapier `RigidBodyHandle`).
 2. **`step()` always updates `query_pipeline` AFTER Rapier's step.** Raycasts within the same tick see post-step geometry (per `lib.rs:1102-1104` "Week 2 Day 3" fix).
 3. **`SpatialHash` is dormant.** The crate doc-comment advertises it as the broadphase but `PhysicsWorld` uses Rapier's `DefaultBroadPhase`. Do not assume `SpatialHash` is in the live path.
-4. **`add_water_aabb`, `process_destructible_hits`, and the `_health`/`_break_impulse` params of `add_destructible_box` are stubs** — calling them is harmless but does nothing.
-5. **Per-body `add_buoyancy` works.** Volume-based water buoyancy in `PhysicsWorld` is not implemented; for richer water you need `EnvironmentManager::WaterVolume` from `environment.rs`.
+4. **`process_destructible_hits` and the `_health`/`_break_impulse` params of `add_destructible_box` are stubs.** `add_water_aabb` is not: it forwards to `AnalyticWater::add_aabb`.
+5. **Per-body `add_buoyancy` samples water.** `sample_water` checks `ColumnWater` first, then `AnalyticWater`. `set_water_columns` installs the local-sim grid. An empty table leaves the analytic plane. `add_water_aabb` registers a volume on that plane's facade; it is not a no-op.
 6. **`PhysicsWorld.wind: Vec3` and `EnvironmentManager::WindZone` are parallel systems**, not unified. Same for `PhysicsWorld.gravity` vs `GravityManager`.
 7. **All AI/game-loop callers pass fixed `dt = 1.0/60.0` to `control_character`.** The function uses `dt` internally for timer + gravity updates, but `astraweave-npc/src/runtime.rs:33-34` hardcodes the value. Variable-dt callers must call themselves at game-tick rate.
 8. **All event channels (`collision_recv`, `contact_force_recv`) are unbounded.** Unconsumed events accumulate in memory; drain them every tick.

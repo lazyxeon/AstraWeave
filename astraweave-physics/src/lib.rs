@@ -936,6 +936,9 @@ pub struct PhysicsWorld {
     /// `clear_water` register/clear bounded volumes on it. Deterministic,
     /// CPU-only (gate Q1).
     pub water: astraweave_water::AnalyticWater,
+    /// Grid columns from the local field. Sampled before [`Self::water`].
+    /// Empty leaves buoyancy on the analytic plane.
+    pub columns: Box<astraweave_water::ColumnWater>,
     pub wind: Vec3,
 
     /// Async physics scheduler (feature-gated)
@@ -975,6 +978,7 @@ impl PhysicsWorld {
             water_level: f32::NEG_INFINITY,
             fluid_density: 1000.0,
             water: astraweave_water::AnalyticWater::new(),
+            columns: Box::new(astraweave_water::ColumnWater::new()),
             wind: Vec3::ZERO,
             #[cfg(feature = "async-physics")]
             async_scheduler: None,
@@ -1017,6 +1021,7 @@ impl PhysicsWorld {
             water_level: f32::NEG_INFINITY,
             fluid_density: 1000.0,
             water: astraweave_water::AnalyticWater::new(),
+            columns: Box::new(astraweave_water::ColumnWater::new()),
             wind: Vec3::ZERO,
             #[cfg(feature = "async-physics")]
             async_scheduler: None,
@@ -1443,8 +1448,6 @@ impl PhysicsWorld {
     }
 
     fn apply_buoyancy_forces(&mut self) {
-        use astraweave_water::WaterQuery;
-
         // Back-compat: write-through-sync the retired scalar plane
         // (water_level/fluid_density) into the facade so it participates in
         // the single sampling path. NEG_INFINITY clears the plane.
@@ -1474,7 +1477,7 @@ impl PhysicsWorld {
             };
 
             // Single source of water truth.
-            let Some(sample) = self.water.sample(pos) else {
+            let Some(sample) = self.sample_water(pos) else {
                 continue;
             };
             // Preserve the wired semantics: buoyancy only below the surface.
@@ -1499,6 +1502,18 @@ impl PhysicsWorld {
     /// [`apply_buoyancy_forces`](Self::apply_buoyancy_forces).
     pub fn add_water_aabb(&mut self, min: Vec3, max: Vec3, density: f32, linear_damp: f32) {
         self.water.add_aabb(min, max, density, linear_damp);
+    }
+
+    /// Install grid columns published by the local field. An empty table
+    /// leaves sampling on the analytic plane.
+    pub fn set_water_columns(&mut self, columns: &astraweave_water::ColumnWater) {
+        *self.columns = columns.clone();
+    }
+
+    /// Grid column first, then the analytic plane and AABB volumes.
+    pub fn sample_water(&self, pos: Vec3) -> Option<astraweave_water::WaterSample> {
+        use astraweave_water::WaterQuery;
+        self.columns.sample(pos).or_else(|| self.water.sample(pos))
     }
 
     pub fn set_wind(&mut self, dir: Vec3, strength: f32) {
@@ -5595,5 +5610,27 @@ mod tests {
             expected_dv,
             ctrl.vertical_velocity
         );
+    }
+
+    #[test]
+    fn column_water_wins_over_the_analytic_plane() {
+        use astraweave_water::{ColumnWater, WaterColumn};
+        let mut pw = PhysicsWorld::new(Vec3::new(0.0, -9.81, 0.0));
+        pw.water_level = 0.0;
+        pw.fluid_density = 1000.0;
+        pw.water.set_plane(pw.water_level, pw.fluid_density);
+        let mut columns = ColumnWater::new();
+        columns.fill(&[WaterColumn {
+            x: 2,
+            z: 3,
+            surface_y: 6.0,
+            density: 1000.0,
+            ice: false,
+        }]);
+        pw.set_water_columns(&columns);
+        let grid = pw.sample_water(Vec3::new(2.2, 1.0, 3.4)).unwrap();
+        assert_eq!(grid.surface_height, 6.0);
+        let plane = pw.sample_water(Vec3::new(40.0, 1.0, 40.0)).unwrap();
+        assert_eq!(plane.surface_height, 0.0);
     }
 }

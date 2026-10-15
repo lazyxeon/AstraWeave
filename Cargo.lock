@@ -845,6 +845,7 @@ dependencies = [
  "astraweave-ai",
  "astraweave-behavior",
  "astraweave-ecs",
+ "astraweave-localsim",
  "criterion 0.7.0",
  "glam",
  "rand 0.9.5",
@@ -1056,6 +1057,15 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "astraweave-localsim"
+version = "0.1.0"
+dependencies = [
+ "astraweave-water",
+ "criterion 0.5.1",
+ "sha2",
 ]
 
 [[package]]

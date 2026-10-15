@@ -1157,6 +1157,11 @@ impl FluidSystem {
     /// submission), and is harvested when the mapping completes — typically at
     /// the start of step N+2.
     ///
+    /// Gameplay fluid, gas, and heat live in `astraweave-localsim`. This step
+    /// is a picture: particle positions are not replayed. A host may upload
+    /// accents from `LocalSim::write_visual` after that crate's digest.
+    /// The SSFR smooth pass still fails to build on lavapipe (#247).
+    ///
     /// # Defined adaptive-iteration semantics
     /// `self.iterations` for frame N is derived from the smoothed average
     /// density error of the most recently *harvested* frame (normally N-2).
