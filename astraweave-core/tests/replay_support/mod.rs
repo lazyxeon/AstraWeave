@@ -46,29 +46,50 @@ pub fn planner_pure_bytes() -> Vec<u8> {
 
 pub fn nav_reroute_bytes() -> Vec<u8> {
     use astraweave_ai::htn::{plan_route, AgentPlan, SpatialHooks};
-    use astraweave_nav::{bridge_and_ford, NavScratch};
+    use astraweave_destruction::command::{
+        Brush, BrushOp, BrushShape, CommandKind, DestructionCommand,
+    };
+    use astraweave_destruction::DestructionWorld;
+    use astraweave_nav::{bridge_and_ford, nav_change_from_geometry_notice, NavScratch};
 
     let mut tiles = bridge_and_ford();
     let mut scratch = NavScratch::new();
     let hooks = SpatialHooks::none();
+    let mut world = DestructionWorld::new(0xA11C, 0);
+    world
+        .enqueue(DestructionCommand {
+            tick: 30,
+            seq: 0,
+            entity_id: 1,
+            kind: CommandKind::Brush(Brush {
+                shape: BrushShape::Box,
+                op: BrushOp::Subtract,
+                origin: [2_000, 0, 24_500],
+                radius: 7_499,
+                half_extents: [1, 1, 1],
+                strength: 1,
+            }),
+        })
+        .expect("enqueue bridge collapse");
     let mut out = Vec::new();
     for tick in 0..60u64 {
-        if tick == 30 {
-            // Same shape `drain_geometry_notices` publishes for a collapse
-            // (reason 2). The destruction crate is not on this branch.
-            let notice = astraweave_nav::GeometryNotice {
-                tick,
-                x0: -1_000,
-                y0: -1_000,
-                z0: 17_000,
-                x1: 5_000,
-                y1: 1_000,
-                z1: 31_999,
-                reason: astraweave_nav::NOTICE_COLLAPSE,
-            };
-            let change = astraweave_nav::nav_change_from_geometry_notice(&notice, 0)
-                .expect("collapse notice");
-            tiles.mark(change);
+        world.tick();
+        let empty = astraweave_destruction::GeometryNotice {
+            tick: 0,
+            x0: 0,
+            y0: 0,
+            z0: 0,
+            x1: 0,
+            y1: 0,
+            z1: 0,
+            reason: 0,
+        };
+        let mut notices = [empty; 8];
+        let count = world.drain_geometry_notices(&mut notices);
+        for (seq, notice) in notices[..count].iter().enumerate() {
+            if let Some(change) = nav_change_from_geometry_notice(notice, seq as u32) {
+                tiles.mark(change);
+            }
         }
         let committed = tiles.commit_tick() as u32;
         let mut budget = 64u32;

@@ -6,6 +6,7 @@ edition = "2021"
 
 [dependencies]
 anyhow = { workspace = true }
+astraweave-destruction = { workspace = true }
 glam = { workspace = true }
 
 [dev-dependencies]

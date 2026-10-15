@@ -15,6 +15,7 @@
 //! once at the edge and call [`nav_change_from_kind`].
 
 use crate::Triangle;
+use astraweave_destruction::GeometryNotice;
 use glam::Vec3;
 
 /// World span of one tile, in meters.
@@ -45,27 +46,10 @@ pub enum NavChangeKind {
     Weave,
 }
 
-/// Reason bytes published by `DestructionWorld::drain_geometry_notices`.
+/// Reason bytes published by [`astraweave_destruction::DestructionWorld::drain_geometry_notices`].
 pub const NOTICE_BRUSH: u8 = 1;
 pub const NOTICE_COLLAPSE: u8 = 2;
 pub const NOTICE_WEAVE: u8 = 3;
-
-/// Same fields as `astraweave_destruction::GeometryNotice`.
-///
-/// That crate lives on `feat/destruction` and is not in this branch. Callers
-/// copy a drained notice into this struct and pass it to
-/// [`nav_change_from_geometry_notice`]. Bounds are copied as published.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct GeometryNotice {
-    pub tick: u64,
-    pub x0: i32,
-    pub y0: i32,
-    pub z0: i32,
-    pub x1: i32,
-    pub y1: i32,
-    pub z1: i32,
-    pub reason: u8,
-}
 
 /// One walkable-region invalidation, in milli-units.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -100,8 +84,8 @@ impl NavChange {
 ///
 /// Reason 1 is a brush, 2 is a collapse (`Detach`), 3 is a weave. Any other
 /// reason is ignored. `seq` is the drain index so two notices in one tick
-/// stay ordered. `drain_geometry_notices` is the producer on the destruction
-/// branch; this crate does not depend on that crate until both share a commit.
+/// stay ordered. `notice` is a value drained from
+/// [`astraweave_destruction::DestructionWorld::drain_geometry_notices`].
 #[must_use]
 pub const fn nav_change_from_geometry_notice(
     notice: &GeometryNotice,
@@ -1233,7 +1217,8 @@ mod tests {
     #[test]
     fn tile_isolation_keeps_the_other_hash() {
         let mut tiles = bridge_and_ford();
-        let before = tiles.slot_hash(2, 0).expect("decoy tile");
+        let before = tiles.slot_hash(2, 0);
+        assert!(before.is_some(), "decoy tile");
         tiles.mark(nav_change_from_kind(
             NavChangeKind::Detach,
             30,
@@ -1242,7 +1227,7 @@ mod tests {
             [5_000, 1_000, 31_999],
         ));
         let _ = tiles.commit_tick();
-        assert_eq!(tiles.slot_hash(2, 0), Some(before));
+        assert_eq!(tiles.slot_hash(2, 0), before);
     }
 
     #[test]
@@ -1386,7 +1371,7 @@ mod tests {
 
     #[test]
     fn geometry_notice_reasons_map_and_unknown_is_dropped() {
-        let brush = GeometryNotice {
+        let brush = astraweave_destruction::GeometryNotice {
             tick: 4,
             x0: 1,
             y0: 2,
@@ -1396,29 +1381,25 @@ mod tests {
             z1: 6,
             reason: NOTICE_BRUSH,
         };
-        let mapped = nav_change_from_geometry_notice(&brush, 2).expect("brush");
-        assert_eq!(mapped.kind, NavChangeKind::Brush);
-        assert_eq!(mapped.seq, 2);
-        assert_eq!(mapped.min_milli, [1, 2, 3]);
+        let mapped = nav_change_from_geometry_notice(&brush, 2);
+        assert_eq!(mapped.map(|change| change.kind), Some(NavChangeKind::Brush));
+        assert_eq!(mapped.map(|change| change.seq), Some(2));
+        assert_eq!(mapped.map(|change| change.min_milli), Some([1, 2, 3]));
         let collapse = GeometryNotice {
             reason: NOTICE_COLLAPSE,
             ..brush
         };
         assert_eq!(
-            nav_change_from_geometry_notice(&collapse, 0)
-                .expect("collapse")
-                .kind,
-            NavChangeKind::Detach
+            nav_change_from_geometry_notice(&collapse, 0).map(|change| change.kind),
+            Some(NavChangeKind::Detach)
         );
         let weave = GeometryNotice {
             reason: NOTICE_WEAVE,
             ..brush
         };
         assert_eq!(
-            nav_change_from_geometry_notice(&weave, 0)
-                .expect("weave")
-                .kind,
-            NavChangeKind::Weave
+            nav_change_from_geometry_notice(&weave, 0).map(|change| change.kind),
+            Some(NavChangeKind::Weave)
         );
         let unknown = GeometryNotice { reason: 9, ..brush };
         assert!(nav_change_from_geometry_notice(&unknown, 0).is_none());

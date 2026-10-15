@@ -31,11 +31,11 @@ use glam::Vec3;
 use std::fmt;
 
 mod tiles;
+pub use astraweave_destruction::GeometryNotice;
 pub use tiles::{
     bridge_and_ford, nav_change_from_geometry_notice, nav_change_from_kind, BreachSite, CoverSite,
-    GeometryNotice, NavChange, NavChangeKind, NavScratch, NavTiles, TileSideBuffer,
-    FRAME_BUDGET_MS, NOTICE_BRUSH, NOTICE_COLLAPSE, NOTICE_WEAVE, TILE_COMMITS_PER_TICK,
-    TILE_SIZE_M,
+    NavChange, NavChangeKind, NavScratch, NavTiles, TileSideBuffer, FRAME_BUDGET_MS, NOTICE_BRUSH,
+    NOTICE_COLLAPSE, NOTICE_WEAVE, TILE_COMMITS_PER_TICK, TILE_SIZE_M,
 };
 
 #[cfg(test)]
