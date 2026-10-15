@@ -1,0 +1,4 @@
+bake_gate seed 0xA2A0_0001
+sha256 d652793ef4dde351df61496e401aef1cd2a18deebc54b448a139e4ddc6fb9909
+tool astraweave-destruction fracture::bake_gate
+license engine-authored blocks, no third-party mesh bytes

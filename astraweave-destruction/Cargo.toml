@@ -5,8 +5,6 @@ edition = "2021"
 license.workspace = true
 publish.workspace = true
 description = "Deterministic destruction: command log, support graph, fracture, terrain deltas, debris"
-# Temporary copy of the crate from PR #243 (`feat/destruction`).
-# Drop this copy from `cursor/combat-damage-design` (#212) when #243 lands.
 
 [dependencies]
 astraweave-core = { workspace = true }
