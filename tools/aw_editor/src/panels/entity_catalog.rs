@@ -1351,8 +1351,7 @@ impl EntityCatalogState {
                     ui.horizontal(|ui| {
                         let start = row_idx * columns;
                         let end = (start + columns).min(pack_entries.len());
-                        for i in start..end {
-                            let entry = pack_entries[i];
+                        for entry in &pack_entries[start..end] {
 
                             // Lazy thumbnail generation
                             if !self.thumbnails.contains_key(&entry.path) {
