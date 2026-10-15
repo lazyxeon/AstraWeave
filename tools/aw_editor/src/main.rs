@@ -5742,7 +5742,7 @@ impl EditorApp {
                                     };
                                     let load_tex = |rel_path: &Option<String>| -> Vec<u8> {
                                         let gray_fallback =
-                                            || vec![128u8, 128, 128, 255].repeat(2048 * 2048);
+                                            || [128u8, 128, 128, 255].repeat(2048 * 2048);
                                         let Some(rel) = rel_path else {
                                             return gray_fallback();
                                         };
@@ -5788,7 +5788,7 @@ impl EditorApp {
                                             gt.normal
                                         );
                                         // Flat tangent-space normal: (0, 0, 1) encoded as (128, 128, 255)
-                                        vec![128u8, 128, 255, 255].repeat(2048 * 2048)
+                                        [128u8, 128, 255, 255].repeat(2048 * 2048)
                                     } else {
                                         load_tex(&gt.normal)
                                     };
@@ -5799,7 +5799,7 @@ impl EditorApp {
                                             tracing::info!(
                                                 "BiomePack: skipping tonemapped roughness '{rough_path}' — using default MRA"
                                             );
-                                            vec![0u8, 128, 255, 255].repeat(2048 * 2048)
+                                            [0u8, 128, 255, 255].repeat(2048 * 2048)
                                         } else {
                                             let full = root.join(rough_path);
                                             match astraweave_asset::open_limited_image(&full) {
@@ -5830,13 +5830,13 @@ impl EditorApp {
                                                     mra_data
                                                 }
                                                 Err(_) => {
-                                                    vec![0u8, 128, 255, 255].repeat(2048 * 2048)
+                                                    [0u8, 128, 255, 255].repeat(2048 * 2048)
                                                 }
                                             }
                                         } // end non-exr roughness branch
                                     } else {
                                         // Default MRA: metallic=0, roughness=0.5, AO=1.0
-                                        vec![0u8, 128, 255, 255].repeat(2048 * 2048)
+                                        [0u8, 128, 255, 255].repeat(2048 * 2048)
                                     };
 
                                     renderer.replace_terrain_texture_layer(
