@@ -61,7 +61,19 @@ jobs:
           cc -I. -L target/release -Wl,-rpath,'$ORIGIN/target/release' -o c_harness c_harness.c -lastraweave_sdk -lpthread -ldl -lm
           LD_LIBRARY_PATH=target/release ./c_harness | tee harness_out.txt
           # Semantic version gate: compare printed version to Cargo.toml version
-          VER=$(sed -n 's/^version\s*=\s*"\([^"]\+\)"/\1/p' astraweave-sdk/Cargo.toml | head -n1)
+          # The package version is the version key inside [package], not the
+          # first version = "..." in the file (a later table can match first
+          # on some parsers, and Windows indexing a string yields "0").
+          VER=$(awk '
+            /^\[package\]/ { in_pkg=1; next }
+            /^\[/ { in_pkg=0 }
+            in_pkg && /^version[[:space:]]*=[[:space:]]*"/ {
+              sub(/^version[[:space:]]*=[[:space:]]*"/, "")
+              sub(/".*/, "")
+              print
+              exit
+            }
+          ' astraweave-sdk/Cargo.toml)
           OUT=$(head -n1 harness_out.txt)
           echo "SDK Crate Version: $VER; Runtime: $OUT"
           test "$OUT" = "$VER"

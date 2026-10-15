@@ -86,7 +86,8 @@ jobs:
           sudo apt-get install -y \
             build-essential pkg-config cmake ninja-build \
             libx11-dev libxi-dev libxcursor-dev libxrandr-dev \
-            libasound2-dev libudev-dev
+            libasound2-dev libudev-dev \
+            mesa-vulkan-drivers libvulkan1 vulkan-tools
 
       - name: Install system dependencies (macOS)
         if: matrix.os == 'macos-latest'
@@ -125,13 +126,37 @@ jobs:
           # Test basic compilation with this toolchain
           cargo check --locked --workspace ${{ env.EXCLUDED_PACKAGES }}
 
+      - name: macOS runners have no wgpu software adapter
+        if: matrix.os == 'macos-latest'
+        run: echo "AW_GPU_SKIP_IF_UNAVAILABLE=1" >> "$GITHUB_ENV"
+
       - name: Run minimal test suite
         run: |
           cargo test --locked --workspace --lib ${{ env.EXCLUDED_PACKAGES }}
 
+      - name: Report GPU skips
+        if: always()
+        shell: bash
+        run: |
+          log="target/gpu-skip-reasons.txt"
+          if [ -s "$log" ]; then
+            {
+              echo "## GPU tests skipped"
+              echo
+              echo "These tests did not execute. A line here is a skip, not a pass."
+              echo
+            } >> "$GITHUB_STEP_SUMMARY"
+            while IFS= read -r line; do
+              echo "- ${line}" >> "$GITHUB_STEP_SUMMARY"
+              echo "::warning title=GPU test skipped::$line"
+              echo "$line"
+            done < "$log"
+          fi
+
       - name: Check code formatting compatibility
         if: matrix.toolchain != 'nightly'  # Nightly may have different formatting rules
-        run: cargo fmt --all --check
+        shell: bash
+        run: bash .github/scripts/fmt-check.sh
 
       - name: Run clippy with toolchain
         run: |
@@ -177,7 +202,8 @@ jobs:
           sudo apt-get install -y \
             build-essential pkg-config cmake ninja-build \
             libx11-dev libxi-dev libxcursor-dev libxrandr-dev \
-            libasound2-dev libudev-dev
+            libasound2-dev libudev-dev \
+            mesa-vulkan-drivers libvulkan1 vulkan-tools
 
       - name: Set up MSRV cache
         uses: Swatinem/rust-cache@v2
@@ -215,7 +241,8 @@ jobs:
           sudo apt-get install -y \
             build-essential pkg-config cmake ninja-build \
             libx11-dev libxi-dev libxcursor-dev libxrandr-dev \
-            libasound2-dev libudev-dev time
+            libasound2-dev libudev-dev \
+            mesa-vulkan-drivers libvulkan1 vulkan-tools time
 
       - name: Install sccache
         uses: mozilla-actions/sccache-action@v0.0.9
