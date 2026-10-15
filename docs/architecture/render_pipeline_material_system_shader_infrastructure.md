@@ -8,7 +8,7 @@ domain: rendering
 lifecycle_status: active
 integration_status: wired
 owns: [astraweave-materials, astraweave-render]
-doc_version: "1.23"
+doc_version: "1.24"
 last_verified_commit: 154d723aa
 ---
 
@@ -20,7 +20,7 @@ last_verified_commit: 154d723aa
 |---|---|
 | **System name** | Render Pipeline + Material System + Shader Infrastructure |
 | **Primary crates** | `astraweave-render` (123 Rust files / ~78K LoC + 71 WGSL files), `astraweave-materials` (single-file material-graph crate), `tools/aw_editor/src/viewport/` (editor-side renderer + engine adapter) |
-| **Document version** | 1.23 |
+| **Document version** | 1.24 |
 | **Last verified against commit** | `154d723aa` (v1.19, 2026-08-02: L.3.C-resolution — 4-cascade CSM + `FarCascadePolicy` + fit-derived bias cap; trace updated in the same commit as the code, so this names its parent); prior `d4c4479d4` (v1.12, 2026-07-25: T.2d.F tier retirement — see revision notice); prior `8232b150b` (v1.10, 2026-07-21: E3 terrain render-path additions verified first-hand — see revision notice); prior `7c29b8182` (v1.8 verification pass: §2.6 Water surface render path re-verified end-to-end against `water.rs` / `water.wgsl` / `renderer.rs` — every file:line citation confirmed, zero corrections, no markers needed; v1.7 added the subsection + cross-link to `docs/architecture/water.md`); prior: `67c9de7e1` (full trace); water rows W.2a + W.2b.2 + W.2c.2 weave-deformation + W.2c.3 weave producer (2026-06-22) + F.4.2 weave-impact accent machinery + F.4.3 live HDR-overlay composite & combined-frame measurement (2026-06-24) |
 | **Last verified date** | 2026-08-02 (L.3.C-resolution: 4-cascade CSM, far-cascade refresh policy, fit-derived receiver-bias cap, invariant 20 (e)-(i)); 2026-07-21 (E3 terrain render-path, T.0 trace-sync); 2026-06-25 (§2.6 water render-path verification pass); 2026-06-24 (water render-path subsection authored); 2026-05-10 (full trace) |
 | **Status** | **ACTIVE WORKZONE** — Editor Multi-Tool Architecture Campaign Sub-phase 3 (Mediator Brush) is in flight as of campaign-doc commit `e3d07f366` (2026-05-08, Round-8-Closure). Fix 27 Unified Pipeline Campaign is structurally complete (per CLAUDE.md) but deeper editor↔runtime unification continues. Treat this trace as a **navigational map**; per-subsystem detailed traces are follow-up work. |
@@ -29,6 +29,8 @@ last_verified_commit: 154d723aa
 > **Revision notice — 2026-10-15 (v1.21).** Texture, material, impostor, smoke-test, and HDRI file reads decode through `astraweave_asset::open_limited_image` / `decode_limited_image` (4096-pixel edge, 64 MiB allocation).
 >
 > **Revision notice — 2026-10-15 (v1.20).** `mesh_gltf::load_gltf` opens the document with `Gltf::open`, then rejects buffer and image file URIs that fail `astraweave_security::path::safe_under` against the glTF's parent directory. `gltf::import` runs only after that check. `data:` URIs are left in memory.
+>
+> **Revision notice — 2026-10-15 (v1.24).** `compute_joint_matrices` sizes both buffers with `Vec::with_capacity(joint_count)` before `compute_joint_matrices_into`. `Vec::new` plus `resize` used amortized growth, so a 3-joint skeleton returned capacity 4 and `test_stress_memory_stability` treated that as a leak. The returned vec's capacity now equals its length. The into path is unchanged.
 >
 > **Revision notice — 2026-10-15 (v1.23).** `AnimationClip::sample_into` and `compute_joint_matrices_into` write into caller-owned buffers so a repeat pose does not allocate. `Renderer::write_model_vertices` and `Renderer::update_model_transform` update an existing model. Full-array mesh vertex buffers include `COPY_DST` so that rewrite is valid. The Aravath greybox uses both on the character path.
 >

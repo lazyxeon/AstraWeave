@@ -283,8 +283,11 @@ pub fn compute_joint_matrices(
     skeleton: &Skeleton,
     local_transforms: &[Transform],
 ) -> Result<Vec<Mat4>, anyhow::Error> {
-    let mut world_matrices = Vec::new();
-    let mut skinning_matrices = Vec::new();
+    let count = skeleton.joints.len();
+    // `Vec::new` plus `resize` grows amortized, so a 3-joint skeleton came
+    // back with capacity 4. The stress test compares that to `vec![_; n]`.
+    let mut world_matrices = Vec::with_capacity(count);
+    let mut skinning_matrices = Vec::with_capacity(count);
     let mut visited = std::collections::HashSet::new();
     compute_joint_matrices_into(
         skeleton,
@@ -568,6 +571,7 @@ mod tests {
 
         let matrices = compute_joint_matrices(&skeleton, &local_transforms).unwrap();
         assert_eq!(matrices.len(), 1);
+        assert_eq!(matrices.capacity(), matrices.len());
 
         // Should be translation matrix
         assert_eq!(matrices[0].w_axis.truncate(), Vec3::new(1.0, 0.0, 0.0));
@@ -606,6 +610,7 @@ mod tests {
 
         let matrices = compute_joint_matrices(&skeleton, &local_transforms).unwrap();
         assert_eq!(matrices.len(), 2);
+        assert_eq!(matrices.capacity(), matrices.len());
 
         // Root should be at (1, 0, 0)
         assert_eq!(matrices[0].w_axis.truncate(), Vec3::new(1.0, 0.0, 0.0));
