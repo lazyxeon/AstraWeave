@@ -3900,7 +3900,7 @@ impl TabViewer for EditorTabViewer {
 
                 // Scene file info
                 if let Some(ref path) = stats.scene_path {
-                    ui.small(format!("{}", path));
+                    ui.small(path);
                     if let Some(ref time) = stats.last_save_time {
                         ui.small(format!("Last saved: {}", time));
                     }

@@ -1377,7 +1377,7 @@ impl InputBindingsPanel {
                                 .gamepad_button
                                 .map(|g| g.display_name())
                                 .unwrap_or("---");
-                            if ui.button(format!("{}", gp_text)).clicked() {
+                            if ui.button(gp_text).clicked() {
                                 self.editing_action = Some(idx);
                                 self.waiting_for_input = true;
                                 self.input_target = Some(InputTarget::GamepadButton(idx));

@@ -1175,7 +1175,7 @@ impl ParticleSystemPanel {
 
         // System info and preview controls
         ui.horizontal(|ui| {
-            ui.label(format!("{}", self.current_system.name));
+            ui.label(&self.current_system.name);
 
             ui.separator();
 

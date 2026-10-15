@@ -1077,7 +1077,7 @@ impl DialogueEditorPanel {
 
         // Graph info
         ui.horizontal(|ui| {
-            ui.label(format!("{}", self.current_graph.name));
+            ui.label(&self.current_graph.name);
             ui.label(format!("| {} nodes", self.current_graph.nodes.len()));
             ui.label(format!("| {} speakers", self.current_graph.speakers.len()));
 
@@ -1850,7 +1850,7 @@ impl DialogueEditorPanel {
                     }
                     if !issue.suggestion.is_empty() {
                         ui.label(
-                            RichText::new(format!("{}", issue.suggestion))
+                            RichText::new(&issue.suggestion)
                                 .color(Color32::from_rgb(200, 200, 100)),
                         );
                     }
