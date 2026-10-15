@@ -103,6 +103,11 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libudev-dev
+
       - name: Install Rust Nightly
         uses: dtolnay/rust-toolchain@nightly
         with:
@@ -164,6 +169,11 @@ jobs:
       ASAN_OPTIONS: detect_leaks=0:abort_on_error=0:halt_on_error=0:print_stats=1
     steps:
       - uses: actions/checkout@v5
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libudev-dev
 
       - name: Install Rust Nightly
         uses: dtolnay/rust-toolchain@nightly
@@ -296,6 +306,11 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libudev-dev
+
       - name: Install Rust Nightly
         uses: dtolnay/rust-toolchain@nightly
         with:
@@ -358,6 +373,11 @@ jobs:
       TSAN_OPTIONS: suppressions=scripts/tsan_suppressions.txt:second_deadlock_stack=1
     steps:
       - uses: actions/checkout@v5
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libudev-dev
 
       - name: Install Rust Nightly
         uses: dtolnay/rust-toolchain@nightly
@@ -424,7 +444,7 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libudev-dev
+          sudo apt-get install -y pkg-config libudev-dev
 
       - name: Install Rust Stable
         uses: dtolnay/rust-toolchain@1.89.0

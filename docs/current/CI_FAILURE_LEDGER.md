@@ -96,6 +96,10 @@ The branch is rebased onto main after #243, #290, and the design docs. #273 stay
 
 #219's rustls switch is already on this branch. #303 is the follow-on gate: `unknown-git = "deny"` in `deny.toml`, and `cargo deny check advisories` / `cargo deny check licenses` fail the Cargo Deny job instead of warning. `cargo deny check advisories` fails the job. The deny tool in that job is 0.20.2. After the version bumps, `cargo deny check advisories bans sources licenses` prints ok. Advisories with no patched release, or whose patched release is pinned by egui, winit, rhai, mikktspace, or indicatif, are ignored one ID at a time on https://github.com/lazyxeon/AstraWeave/issues/305 through https://github.com/lazyxeon/AstraWeave/issues/311.
 
+## Nightly Sanitizers (#304)
+
+On main `1d3e41be`, AddressSanitizer and LeakSanitizer failed while compiling `libudev-sys` for `astraweave-core`: `libudev.pc` was not installed. The determinism job already installs `libudev-dev`. The ASan, LSan, and TSan jobs now install `pkg-config` and `libudev-dev` before the nightly toolchain runs. This workflow does not run on pull requests, so the next proof is a push to `main` or the 03:00 UTC schedule.
+
 ## What was not done
 
 - Benchmark targets whose measurement itself exceeds 600s are tracked in https://github.com/lazyxeon/AstraWeave/issues/224, labeled `deferred-failure`. The caustics golden matches on rustc 1.89.0 once the workspace test run is allowed to reach it.
