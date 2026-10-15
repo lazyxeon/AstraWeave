@@ -663,6 +663,10 @@ pub struct RenderModel {
     pub aabb: Option<([f32; 3], [f32; 3])>,
     /// GPU memory used by this model's texture (for budget tracking).
     pub tex_gpu_bytes: u64,
+    /// Asset path queued with [`Renderer::request_streamed_albedo`].
+    pub stream_albedo_id: Option<String>,
+    /// True after the resident texture replaced the 1×1 fallback bind.
+    pub stream_resident: bool,
 }
 
 pub struct ModelSurfaceMaps<'a> {
@@ -1019,6 +1023,8 @@ pub struct Renderer {
     particle_draw: Option<crate::particle_render::ParticleRenderPass>,
     particle_sort: Option<wgpu::Buffer>,
     particle_emitter: Option<crate::gpu_particles::EmitterParams>,
+    /// Camera-distance texture requests. `draw_into` uploads from its ring.
+    streaming: crate::texture_streaming::TextureStreamingManager,
     /// Present when the device was created with the binding-array features.
     bindless: Option<crate::material_bindless::BindlessMaterialSystem>,
     /// When false, uploads stay on group-3 bind groups even if `bindless` exists.
@@ -3675,6 +3681,7 @@ fn vs(input: VSIn) -> VSOut {
             particle_draw: None,
             particle_sort: None,
             particle_emitter: None,
+            streaming: crate::texture_streaming::TextureStreamingManager::new(256),
             bindless,
             bindless_active,
             instances: Vec::new(),
@@ -5230,6 +5237,160 @@ fn vs(input: VSIn) -> VSOut {
         Ok(())
     }
 
+    /// Queue `path` for the named model. Distance is from `world_pos` to the
+    /// camera. Until the decode worker finishes, the model keeps a 1×1 white
+    /// albedo bind. `draw_into` uploads at most one resident texture per frame
+    /// and does not allocate while the fallback is still bound.
+    pub fn request_streamed_albedo(
+        &mut self,
+        model_name: &str,
+        path: &str,
+        world_pos: glam::Vec3,
+    ) -> Result<()> {
+        if !self.models.contains_key(model_name) {
+            anyhow::bail!("model '{model_name}' is not loaded");
+        }
+        let (fallback_bg, fallback_textures, _) =
+            self.create_model_albedo_bind_group(1, 1, &[255, 255, 255, 255]);
+        let model = self
+            .models
+            .get_mut(model_name)
+            .context("model disappeared while requesting a stream")?;
+        model.stream_albedo_id = Some(path.to_string());
+        model.stream_resident = false;
+        for primitive in &mut model.primitives {
+            primitive.tex_bind_group = Some(fallback_bg.clone());
+            primitive._retained_textures = fallback_textures.clone();
+        }
+        let camera = glam::Vec3::new(
+            self.camera_ubo.camera_pos_pad[0],
+            self.camera_ubo.camera_pos_pad[1],
+            self.camera_ubo.camera_pos_pad[2],
+        );
+        self.streaming.set_camera(camera);
+        self.streaming.request_at(path, world_pos);
+        Ok(())
+    }
+
+    /// `true` while `model_name` is waiting on a streamed albedo and still
+    /// draws the 1×1 fallback.
+    pub fn streamed_albedo_is_fallback(&self, model_name: &str) -> bool {
+        self.models
+            .get(model_name)
+            .map(|model| model.stream_albedo_id.is_some() && !model.stream_resident)
+            .unwrap_or(false)
+    }
+
+    pub fn stream_failure(&self, path: &str) -> Option<&str> {
+        self.streaming.failure(path)
+    }
+
+    fn tick_texture_streaming(&mut self) {
+        let camera = glam::Vec3::new(
+            self.camera_ubo.camera_pos_pad[0],
+            self.camera_ubo.camera_pos_pad[1],
+            self.camera_ubo.camera_pos_pad[2],
+        );
+        let device = self.device.clone();
+        let queue = self.queue.clone();
+        self.streaming.set_camera(camera);
+        self.streaming.tick(&device, &queue, 1);
+        self.refresh_streamed_albedo();
+    }
+
+    fn refresh_streamed_albedo(&mut self) {
+        let mut ready_name: Option<String> = None;
+        for (name, model) in &self.models {
+            let Some(id) = model.stream_albedo_id.as_deref() else {
+                continue;
+            };
+            if model.stream_resident {
+                continue;
+            }
+            if self.streaming.resident_texture(id).is_some() {
+                ready_name = Some(name.clone());
+                break;
+            }
+        }
+        let Some(name) = ready_name else {
+            return;
+        };
+        let Some(id) = self
+            .models
+            .get(&name)
+            .and_then(|model| model.stream_albedo_id.clone())
+        else {
+            return;
+        };
+        let Some(texture) = self.streaming.resident_texture(&id) else {
+            return;
+        };
+        let view = texture.view.clone();
+        let gpu_texture = texture.texture.clone();
+        let bg = self.bind_group_for_albedo_view(&view);
+        let Some(model) = self.models.get_mut(&name) else {
+            return;
+        };
+        for primitive in &mut model.primitives {
+            primitive.tex_bind_group = Some(bg.clone());
+            primitive._retained_textures = vec![gpu_texture.clone()];
+        }
+        model.stream_resident = true;
+    }
+
+    fn bind_group_for_albedo_view(&self, view: &wgpu::TextureView) -> wgpu::BindGroup {
+        self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("streamed albedo bg"),
+            layout: &self.tex_bgl,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&self.albedo_sampler),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: wgpu::BindingResource::TextureView(&self.mr_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: wgpu::BindingResource::Sampler(&self.mr_sampler),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 4,
+                    resource: wgpu::BindingResource::TextureView(&self.normal_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 5,
+                    resource: wgpu::BindingResource::Sampler(&self.normal_sampler),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 6,
+                    resource: self.skin_palette_buf.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 7,
+                    resource: wgpu::BindingResource::TextureView(&self.occlusion_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 8,
+                    resource: wgpu::BindingResource::Sampler(&self.occlusion_sampler),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 9,
+                    resource: wgpu::BindingResource::TextureView(&self.emissive_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 10,
+                    resource: wgpu::BindingResource::Sampler(&self.emissive_sampler),
+                },
+            ],
+        })
+    }
+
     /// Enable a presentation-only particle emitter. `None` disables it.
     /// The seed and `delta_time` on `params` come from the caller. This does
     /// not write simulation state.
@@ -6639,6 +6800,7 @@ fn vs(input: VSIn) -> VSOut {
         }
         // Advance the staging ring buffer for this frame.
         self.staging_ring.begin_frame();
+        self.tick_texture_streaming();
 
         let di_ts_cluster = self
             .gpu_profiler
@@ -8697,6 +8859,8 @@ fn vs(input: VSIn) -> VSOut {
             instance_count: instances.len() as u32,
             aabb,
             tex_gpu_bytes: 0,
+            stream_albedo_id: None,
+            stream_resident: false,
         };
         self.insert_model(name.into(), model);
     }
@@ -8776,6 +8940,8 @@ fn vs(input: VSIn) -> VSOut {
             instance_count: instances.len() as u32,
             aabb,
             tex_gpu_bytes,
+            stream_albedo_id: None,
+            stream_resident: false,
         };
         self.insert_model(name.into(), model);
     }
@@ -9182,6 +9348,8 @@ fn vs(input: VSIn) -> VSOut {
             instance_count: instances.len() as u32,
             aabb: None,
             tex_gpu_bytes,
+            stream_albedo_id: None,
+            stream_resident: false,
         };
         self.insert_model(name.into(), model);
     }
@@ -9239,6 +9407,8 @@ fn vs(input: VSIn) -> VSOut {
             instance_count: instances.len() as u32,
             aabb,
             tex_gpu_bytes,
+            stream_albedo_id: None,
+            stream_resident: false,
         };
         self.insert_model(name.into(), model);
     }
@@ -9312,6 +9482,8 @@ fn vs(input: VSIn) -> VSOut {
             instance_count: instances.len() as u32,
             aabb,
             tex_gpu_bytes: 0, // Don't double-count — source owns the budget
+            stream_albedo_id: None,
+            stream_resident: false,
         };
         self.insert_model(name.into(), model);
         true

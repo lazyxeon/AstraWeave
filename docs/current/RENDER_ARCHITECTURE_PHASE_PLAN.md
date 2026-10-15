@@ -1,6 +1,16 @@
 # Rendering architecture phase — plan
 
-Status: **plan only**. Nothing in this document is approved to build. The sky, IBL, PBR upload, and lavapipe validation work on PR #216 stays as it is.
+Status: **steps 1–7 are on this branch**. Step 8 (GTX 1660 Ti capture) is not in this series. The inventory table below is the pre-build snapshot. Decision 2 was overridden: one fixed `HizPyramid`, not a second occlusion pyramid.
+
+## What landed
+
+1. `draw_into` reuses instance and visible-list scratch. After warmup the lavapipe recording floor is `[219, 217, 217, 216, 217, 216]` (`tests/frame_alloc.rs`). Engine scratch adds nothing. The floor is wgpu-core command lists (#269).
+2. `pipeline_cache::create_render_pipeline` is the production helper. Forward, shadow, and skinned passes pass the real cache. Other production creators pass `None`. `volumetric_fog.rs` and `god_rays.rs` were not edited.
+3. Mesh vertex and index buffers are `COPY_DST`. `Renderer::write_mesh` rewrites in place when the counts fit.
+4. Bindless registration runs when the device has the binding-array features. Group 3 still shades. Engine metallic-roughness is R = metallic, G = roughness.
+5. `HizPyramid` copies `texture_depth_2d` with `textureLoad` into R32Float and downsamples that copy. `draw_into` builds it. SSR and SSGI sample `HizPyramid::view`. A uniform depth clear stays uniform (`tests/hiz_depth_copy.rs`). CPU `FrustumPlanes` remains the draw filter; `tests/frustum_agree.rs` checks it against `test_aabb`. GPU indirect compaction is not the model loop: each model binds its own group 3. The pyramid is not read back into the sim.
+6. `set_particle_emitter` turns on `GpuParticleSystem::update` and `particle_render` from `draw_into`. Emit fills dead slots. Seed and `dt` come from the caller. `tests/particle_present.rs` checks the readback fingerprint. That fingerprint is not in the world hash. With no emitter, the alloc samples stay on the floor above.
+7. `TextureStreamingManager::tick` uploads at most one decoded image per frame from a ring reserved in `new`. A tokio worker decodes off the sim tick. `request_streamed_albedo` keeps a 1×1 fallback bind until the image is resident. Load failures are recorded, not discarded. `tests/stream_fallback.rs` measured the fallback frame at `[219, 217, 217, 216]`.
 
 This phase is the rendering slice of the 2026-10-15 user directives. It does not start the weaving, AI, traversal, or fluid directives. Those stay out of scope until their own archaeology lands.
 
@@ -25,7 +35,7 @@ The trace at `docs/architecture/render_pipeline_material_system_shader_infrastru
 ## Decisions the plan is making
 
 1. Extend the live forward renderer. Do not turn `NaniteCullingPipeline` into the scene renderer. Nanite stays a dormant virtualized-geometry path until a later phase says otherwise.
-2. One culling owner. CPU `FrustumPlanes` stays the fallback and the reference. `CullingPipeline` becomes the GPU frustum path for the same AABBs. A new occlusion pass consumes a Hi-Z built for culling. `hiz_pyramid.rs` stays the SSR/SSGI pyramid until its depth binding is fixed (#230, #231). It is not the occlusion pyramid.
+2. One culling owner. CPU `FrustumPlanes` stays the draw filter and the reference. The accepted override replaced the new occlusion pyramid: `HizPyramid` copies `texture_depth_2d` into R32Float with `textureLoad`, and that one pyramid is what occlusion, SSR, and SSGI sample. `CullingPipeline` remains the GPU frustum implementation and is not dispatched from `draw_into`, because a compacted indirect list cannot bind a different group 3 per model. Visibility is not read back into the sim.
 3. One material fallback. Bindless is selected when `supports_bindless` is true. Otherwise the current group-3 bind groups stay. Both paths read the same `ModelSurfaceMaps` bytes. Bindless `GpuMaterialEntry` calls its packed map ORM. The engine map is R = metallic, G = roughness. The upload converts once, in `pbr_maps`, and the bindless shader samples that same layout. No third packing.
 4. Particles are presentation. `EmitterParams.random_seed` and `delta_time` come from the caller. The shader's xorshift is not a sim RNG. Particle state does not write ECS, nav, or physics. A weave that must move the world does that on the CPU with `SimRng`, and the GPU only draws the result.
 5. GPU culling does not write simulation state. Visibility is a draw filter. The replay hash does not include it.

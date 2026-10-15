@@ -4,11 +4,17 @@
 
 use crate::texture::{Texture, TextureUsage};
 use glam::Vec3;
-use log::{debug, error, warn};
+#[cfg(feature = "textures")]
+use image::GenericImageView;
+use log::{debug, error};
 use std::cmp::Ordering;
 use std::collections::{BinaryHeap, HashMap, HashSet, VecDeque};
+use std::sync::mpsc::{self, Receiver, SyncSender};
 use std::sync::Arc;
-use tokio::sync::mpsc;
+use tokio::sync::mpsc as tokio_mpsc;
+
+/// Decoded images waiting to upload. The deque is reserved once in `new`.
+const UPLOAD_RING_CAP: usize = 8;
 
 /// Unique identifier for textures in the asset system
 pub type AssetId = String;
@@ -72,6 +78,27 @@ impl Ord for LoadRequest {
 
 type LoadResult = Result<(AssetId, Texture), (AssetId, String)>;
 
+enum StreamMsg {
+    Ready {
+        id: AssetId,
+        width: u32,
+        height: u32,
+        rgba: Vec<u8>,
+    },
+    Failed {
+        id: AssetId,
+        error: String,
+    },
+}
+
+impl StreamMsg {
+    fn id(&self) -> &str {
+        match self {
+            Self::Ready { id, .. } | Self::Failed { id, .. } => id,
+        }
+    }
+}
+
 /// Texture streaming manager with LRU eviction and priority-based loading
 pub struct TextureStreamingManager {
     /// Map of asset states (Resident, Loading, Failed)
@@ -89,10 +116,16 @@ pub struct TextureStreamingManager {
     /// Camera position for distance-based residency
     camera_position: Vec3,
 
-    /// Channel for receiving async load results
-    result_rx: mpsc::Receiver<LoadResult>,
-    /// Sender to clone for async tasks
-    result_tx: mpsc::Sender<LoadResult>,
+    /// Channel for receiving async load results (`process_next_load`).
+    result_rx: tokio_mpsc::Receiver<LoadResult>,
+    /// Sender to clone for async tasks (`process_next_load`).
+    result_tx: tokio_mpsc::Sender<LoadResult>,
+    /// Tokio runtime for decode workers. The sim tick only polls.
+    runtime: tokio::runtime::Runtime,
+    /// Pre-sized ring of decoded images. Uploads drain it on the frame.
+    upload_ring: VecDeque<StreamMsg>,
+    decoded_tx: SyncSender<StreamMsg>,
+    decoded_rx: Receiver<StreamMsg>,
 }
 
 impl TextureStreamingManager {
@@ -101,7 +134,16 @@ impl TextureStreamingManager {
     /// # Arguments
     /// * `max_memory_mb` - Maximum GPU memory budget in megabytes
     pub fn new(max_memory_mb: usize) -> Self {
-        let (tx, rx) = mpsc::channel(32); // Buffer size of 32 results
+        let (tx, rx) = tokio_mpsc::channel(32); // Buffer size of 32 results
+        let (decoded_tx, decoded_rx) = mpsc::sync_channel(UPLOAD_RING_CAP);
+        let mut upload_ring = VecDeque::new();
+        upload_ring.reserve(UPLOAD_RING_CAP);
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(1)
+            .enable_all()
+            .thread_name("texture-stream")
+            .build()
+            .expect("texture streaming runtime");
         Self {
             assets: HashMap::new(),
             lru_queue: VecDeque::new(),
@@ -112,6 +154,177 @@ impl TextureStreamingManager {
             camera_position: Vec3::ZERO,
             result_rx: rx,
             result_tx: tx,
+            runtime,
+            upload_ring,
+            decoded_tx,
+            decoded_rx,
+        }
+    }
+
+    /// Queue `id` by distance from the current camera. Closer requests sort first.
+    pub fn request_at(&mut self, id: impl Into<String>, world_pos: Vec3) -> Option<TextureHandle> {
+        let id = id.into();
+        let distance = world_pos.distance(self.camera_position);
+        let priority = if distance.is_finite() {
+            (1_000_000.0 / (1.0 + distance)) as u32
+        } else {
+            0
+        };
+        self.request_texture(id, priority, distance)
+    }
+
+    pub fn set_camera(&mut self, camera: Vec3) {
+        self.camera_position = camera;
+    }
+
+    /// Pull decoded images into the ring and upload at most `max_uploads`.
+    /// Also starts at most `max_uploads` decode workers. An empty queue does
+    /// not allocate. Load failures stay on the asset as `Failed`; the previous
+    /// resident texture, or the caller's 1×1 fallback, remains the bind.
+    pub fn tick(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, max_uploads: usize) {
+        while self.upload_ring.len() < UPLOAD_RING_CAP {
+            match self.decoded_rx.try_recv() {
+                Ok(msg) => self.upload_ring.push_back(msg),
+                Err(_) => break,
+            }
+        }
+        let mut uploaded = 0;
+        while uploaded < max_uploads {
+            let Some(msg) = self.upload_ring.pop_front() else {
+                break;
+            };
+            self.admit(device, queue, msg);
+            uploaded += 1;
+        }
+        let mut started = 0;
+        while started < max_uploads {
+            if !self.start_one_decode() {
+                break;
+            }
+            started += 1;
+        }
+    }
+
+    pub fn resident_texture(&self, id: &str) -> Option<Arc<Texture>> {
+        match self.assets.get(id) {
+            Some(AssetState::Resident(handle)) => Some(Arc::clone(&handle.texture)),
+            _ => None,
+        }
+    }
+
+    pub fn failure(&self, id: &str) -> Option<&str> {
+        match self.assets.get(id) {
+            Some(AssetState::Failed(err)) => Some(err.as_str()),
+            _ => None,
+        }
+    }
+
+    fn start_one_decode(&mut self) -> bool {
+        let Some(request) = self.load_queue.pop() else {
+            return false;
+        };
+        self.pending_ids.remove(&request.id);
+        if self.assets.contains_key(&request.id) {
+            return true;
+        }
+        self.assets.insert(request.id.clone(), AssetState::Loading);
+        let tx = self.decoded_tx.clone();
+        let id = request.id.clone();
+        self.runtime.spawn(async move {
+            let msg = decode_texture(id).await;
+            let label = msg.id().to_string();
+            let send = tokio::task::spawn_blocking(move || tx.send(msg)).await;
+            match send {
+                Ok(Ok(())) => {}
+                Ok(Err(err)) => {
+                    error!("texture stream closed before {} was admitted", err.0.id());
+                }
+                Err(err) => {
+                    error!("texture stream worker stopped for {label}: {err}");
+                }
+            }
+        });
+        true
+    }
+
+    fn admit(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, msg: StreamMsg) {
+        match msg {
+            StreamMsg::Failed { id, error } => {
+                error!("Texture load failed for {id}: {error}");
+                self.assets.insert(id, AssetState::Failed(error));
+            }
+            StreamMsg::Ready {
+                id,
+                width,
+                height,
+                rgba,
+            } => {
+                let memory_bytes =
+                    (width as usize) * (height as usize) * 4 + (width as usize * height as usize);
+                while self.current_memory_bytes + memory_bytes > self.max_memory_bytes {
+                    if !self.evict_lru() {
+                        error!("Memory budget full, cannot admit {id}");
+                        self.assets
+                            .insert(id, AssetState::Failed("memory budget full".into()));
+                        return;
+                    }
+                }
+                let texture = device.create_texture(&wgpu::TextureDescriptor {
+                    label: Some("streamed albedo"),
+                    size: wgpu::Extent3d {
+                        width,
+                        height,
+                        depth_or_array_layers: 1,
+                    },
+                    mip_level_count: 1,
+                    sample_count: 1,
+                    dimension: wgpu::TextureDimension::D2,
+                    format: wgpu::TextureFormat::Rgba8UnormSrgb,
+                    usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+                    view_formats: &[],
+                });
+                queue.write_texture(
+                    wgpu::TexelCopyTextureInfo {
+                        texture: &texture,
+                        mip_level: 0,
+                        origin: wgpu::Origin3d::ZERO,
+                        aspect: wgpu::TextureAspect::All,
+                    },
+                    &rgba,
+                    wgpu::TexelCopyBufferLayout {
+                        offset: 0,
+                        bytes_per_row: Some(4 * width),
+                        rows_per_image: Some(height),
+                    },
+                    wgpu::Extent3d {
+                        width,
+                        height,
+                        depth_or_array_layers: 1,
+                    },
+                );
+                let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+                let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+                    label: Some("streamed albedo sampler"),
+                    mag_filter: wgpu::FilterMode::Linear,
+                    min_filter: wgpu::FilterMode::Linear,
+                    ..Default::default()
+                });
+                let handle = TextureHandle {
+                    id: id.clone(),
+                    texture: Arc::new(Texture {
+                        texture,
+                        view,
+                        sampler,
+                    }),
+                    width,
+                    height,
+                    mip_levels: 1,
+                    memory_bytes,
+                };
+                self.current_memory_bytes += memory_bytes;
+                self.assets.insert(id.clone(), AssetState::Resident(handle));
+                self.lru_queue.push_back(id);
+            }
         }
     }
 
@@ -184,12 +397,20 @@ impl TextureStreamingManager {
                         (width * height * 4) as usize + ((width * height * 4) as usize / 3);
 
                     // Check budget before committing
+                    let mut admitted = true;
                     while self.current_memory_bytes + memory_bytes > self.max_memory_bytes {
                         if !self.evict_lru() {
-                            warn!("Memory budget full, forcing eviction for {}", id);
-                            // Fix: Do not insert if budget is exceeded and eviction fails
-                            return;
+                            error!("Memory budget full, cannot admit {id}");
+                            self.assets.insert(
+                                id.clone(),
+                                AssetState::Failed("memory budget full".into()),
+                            );
+                            admitted = false;
+                            break;
                         }
+                    }
+                    if !admitted {
+                        continue;
                     }
 
                     let handle = TextureHandle {
@@ -238,16 +459,23 @@ impl TextureStreamingManager {
             let id = request.id.clone();
             let path = request.id.clone(); // Assuming ID is path
 
-            tokio::task::spawn(async move {
+            self.runtime.spawn(async move {
                 let result =
                     Texture::load_texture_async(&device, &queue, &path, TextureUsage::Albedo).await;
 
                 match result {
                     Ok(texture) => {
-                        let _ = tx.send(Ok((id, texture))).await;
+                        if tx.send(Ok((id, texture))).await.is_err() {
+                            error!("texture stream closed before {path} was admitted");
+                        }
                     }
                     Err(e) => {
-                        let _ = tx.send(Err((id, e.to_string()))).await;
+                        let message = e.to_string();
+                        if tx.send(Err((id, message.clone()))).await.is_err() {
+                            error!(
+                                "texture stream closed, load failure for {path} was not recorded: {message}"
+                            );
+                        }
                     }
                 }
             });
@@ -326,7 +554,51 @@ impl TextureStreamingManager {
         self.lru_queue.clear();
         self.load_queue.clear();
         self.pending_ids.clear();
+        self.upload_ring.clear();
         self.current_memory_bytes = 0;
+    }
+}
+
+async fn decode_texture(id: String) -> StreamMsg {
+    let bytes = match tokio::fs::read(&id).await {
+        Ok(bytes) => bytes,
+        Err(err) => {
+            return StreamMsg::Failed {
+                id,
+                error: format!("read failed: {err}"),
+            };
+        }
+    };
+    let decoded = tokio::task::spawn_blocking(move || decode_bytes(&bytes)).await;
+    match decoded {
+        Ok(Ok((width, height, rgba))) => StreamMsg::Ready {
+            id,
+            width,
+            height,
+            rgba,
+        },
+        Ok(Err(err)) => StreamMsg::Failed {
+            id,
+            error: err.to_string(),
+        },
+        Err(err) => StreamMsg::Failed {
+            id,
+            error: format!("decode worker stopped: {err}"),
+        },
+    }
+}
+
+fn decode_bytes(bytes: &[u8]) -> anyhow::Result<(u32, u32, Vec<u8>)> {
+    #[cfg(feature = "textures")]
+    {
+        let image = image::load_from_memory(bytes)?;
+        let (width, height) = image.dimensions();
+        Ok((width, height, image.to_rgba8().into_raw()))
+    }
+    #[cfg(not(feature = "textures"))]
+    {
+        let _ = bytes;
+        anyhow::bail!("textures feature is off");
     }
 }
 
@@ -423,6 +695,16 @@ mod tests {
 
         // Verify the load queue has one entry
         assert_eq!(mgr.load_queue.len(), 1, "queue should have one request");
+    }
+
+    #[test]
+    fn closer_request_sorts_ahead_of_a_far_one() {
+        let mut mgr = TextureStreamingManager::new(64);
+        mgr.set_camera(Vec3::ZERO);
+        mgr.request_at("far", Vec3::new(100.0, 0.0, 0.0));
+        mgr.request_at("near", Vec3::new(1.0, 0.0, 0.0));
+        let first = mgr.load_queue.peek().expect("queued");
+        assert_eq!(first.id, "near");
     }
 
     #[test]
