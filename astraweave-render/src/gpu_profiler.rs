@@ -35,7 +35,8 @@ pub struct GpuProfiler {
     /// Next query index to allocate this frame.
     next_query: u32,
     /// Map from pass name → (begin_query, end_query) indices.
-    pass_queries: Vec<(String, u32, u32)>,
+    /// Names are `'static` so a steady frame does not allocate a `String`.
+    pass_queries: Vec<(&'static str, u32, u32)>,
     /// Most recent readback results (updated asynchronously).
     latest_results: Vec<PassTiming>,
     /// Whether a readback is currently pending (buffer mapped).
@@ -80,7 +81,7 @@ impl GpuProfiler {
             timestamp_period,
             next_query: 0,
             pass_queries: Vec::with_capacity(MAX_PASSES as usize),
-            latest_results: Vec::new(),
+            latest_results: Vec::with_capacity(MAX_PASSES as usize),
             readback_pending: false,
             map_ready: Arc::new(AtomicBool::new(false)),
             map_failed: Arc::new(AtomicBool::new(false)),
@@ -105,14 +106,14 @@ impl GpuProfiler {
     /// Returns `(begin_index, end_index)` or `None` if slots are exhausted.
     /// The returned indices can be used with `query_set()` to construct
     /// `RenderPassTimestampWrites` or `ComputePassTimestampWrites` inline.
-    pub fn allocate_pass(&mut self, name: &str) -> Option<(u32, u32)> {
+    pub fn allocate_pass(&mut self, name: &'static str) -> Option<(u32, u32)> {
         if self.next_query + 2 > MAX_QUERIES {
             return None;
         }
         let begin = self.next_query;
         let end = self.next_query + 1;
         self.next_query += 2;
-        self.pass_queries.push((name.to_owned(), begin, end));
+        self.pass_queries.push((name, begin, end));
         Some((begin, end))
     }
 
@@ -121,7 +122,7 @@ impl GpuProfiler {
     /// or `None` if we've run out of query slots.
     pub fn render_pass_timestamps(
         &mut self,
-        name: &str,
+        name: &'static str,
     ) -> Option<wgpu::RenderPassTimestampWrites<'_>> {
         if self.next_query + 2 > MAX_QUERIES {
             return None;
@@ -129,7 +130,7 @@ impl GpuProfiler {
         let begin = self.next_query;
         let end = self.next_query + 1;
         self.next_query += 2;
-        self.pass_queries.push((name.to_owned(), begin, end));
+        self.pass_queries.push((name, begin, end));
 
         Some(wgpu::RenderPassTimestampWrites {
             query_set: &self.query_set,
@@ -143,7 +144,7 @@ impl GpuProfiler {
     /// or `None` if we've run out of query slots.
     pub fn compute_pass_timestamps(
         &mut self,
-        name: &str,
+        name: &'static str,
     ) -> Option<wgpu::ComputePassTimestampWrites<'_>> {
         if self.next_query + 2 > MAX_QUERIES {
             return None;
@@ -151,7 +152,7 @@ impl GpuProfiler {
         let begin = self.next_query;
         let end = self.next_query + 1;
         self.next_query += 2;
-        self.pass_queries.push((name.to_owned(), begin, end));
+        self.pass_queries.push((name, begin, end));
 
         Some(wgpu::ComputePassTimestampWrites {
             query_set: &self.query_set,
@@ -234,23 +235,39 @@ impl GpuProfiler {
             bytemuck::cast_slice(&data[..self.next_query as usize * std::mem::size_of::<u64>()]);
 
         let ns_per_tick = self.timestamp_period as f64;
-        let mut results = Vec::with_capacity(self.pass_queries.len());
-
-        for (name, begin_idx, end_idx) in &self.pass_queries {
-            let t0 = timestamps[*begin_idx as usize];
-            let t1 = timestamps[*end_idx as usize];
-            let delta_ns = (t1.wrapping_sub(t0)) as f64 * ns_per_tick;
-            results.push(PassTiming {
-                name: name.clone(),
-                duration_ms: (delta_ns / 1_000_000.0) as f32,
-            });
+        let n = self.pass_queries.len();
+        let same_slots = self.latest_results.len() == n
+            && self
+                .latest_results
+                .iter()
+                .zip(self.pass_queries.iter())
+                .all(|(timing, (name, _, _))| timing.name == *name);
+        if same_slots {
+            for (timing, (_, begin_idx, end_idx)) in
+                self.latest_results.iter_mut().zip(self.pass_queries.iter())
+            {
+                let t0 = timestamps[*begin_idx as usize];
+                let t1 = timestamps[*end_idx as usize];
+                let delta_ns = (t1.wrapping_sub(t0)) as f64 * ns_per_tick;
+                timing.duration_ms = (delta_ns / 1_000_000.0) as f32;
+            }
+        } else {
+            self.latest_results.clear();
+            for (name, begin_idx, end_idx) in &self.pass_queries {
+                let t0 = timestamps[*begin_idx as usize];
+                let t1 = timestamps[*end_idx as usize];
+                let delta_ns = (t1.wrapping_sub(t0)) as f64 * ns_per_tick;
+                self.latest_results.push(PassTiming {
+                    name: (*name).to_string(),
+                    duration_ms: (delta_ns / 1_000_000.0) as f32,
+                });
+            }
         }
 
         drop(data);
         self.readback_buf.unmap();
         self.readback_pending = false;
         self.map_ready.store(false, Ordering::Release);
-        self.latest_results = results;
         true
     }
 

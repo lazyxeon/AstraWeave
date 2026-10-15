@@ -29,6 +29,17 @@ jobs:
             export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json
           fi
           cargo test -p astraweave-render --test created_pass_validation -- --nocapture
+      - name: Assert draw_into allocates nothing after warmup
+        env:
+          WGPU_BACKEND: vulkan
+          WGPU_VALIDATION: "1"
+        run: |
+          if [ -f /usr/share/vulkan/icd.d/lvp_icd.x86_64.json ]; then
+            export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.x86_64.json
+          else
+            export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json
+          fi
+          cargo test -p astraweave-render --features alloc-counter --test frame_alloc -- --nocapture
 
   windows:
     name: Startup passes (Windows)

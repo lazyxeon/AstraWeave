@@ -956,6 +956,10 @@ pub struct Renderer {
     /// Whether `set_terrain_ground_plane()` has positioned the plane for terrain.
     /// When true, `draw_into()` skips the default plane overwrite.
     terrain_ground_set: bool,
+    /// The default ground-plane instance was written. Later frames skip the write.
+    plane_instance_uploaded: bool,
+    /// Last visible-instance bytes uploaded. A matching frame skips `write_buffer`.
+    visible_uploaded: Vec<u8>,
     /// Cached clustered lighting offsets to skip recomputation when lights are static.
     clustered_offsets_cache: Option<Vec<u32>>,
     /// Debug flag: when true, force shadow factor to 1.0 (shadows off) in the shader.
@@ -1006,6 +1010,14 @@ pub struct Renderer {
     models: std::collections::HashMap<String, RenderModel>,
 
     instances: Vec<Instance>,
+    /// Reused `InstanceRaw` upload for [`Self::update_instances`].
+    /// Cleared and refilled each call. Capacity stays, so a stable instance
+    /// count does not allocate.
+    instance_raw_scratch: Vec<InstanceRaw>,
+    /// Last bytes written by [`Self::update_instances`]. An identical upload skips the GPU write.
+    instance_uploaded: Vec<u8>,
+    /// Reused frustum-visible list filled by [`Self::build_visible_instances`].
+    visible_raw_scratch: Vec<InstanceRaw>,
 
     /// Optional light direction/intensity override from the editor's world panel.
     /// When Some, `update_camera_matrices` uses this instead of TimeOfDay.
@@ -3559,8 +3571,10 @@ fn vs(input: VSIn) -> VSOut {
             max_draw_distance: 0.0, // 0 = use fog_end fallback
             rendered_model_count: 0,
             terrain_ground_set: false, // No terrain ground plane set yet
+            plane_instance_uploaded: false,
+            visible_uploaded: Vec::new(),
             clustered_offsets_cache: None, // Force first-frame computation
-            force_shadow_override: false, // Normal runtime: use computed PCF shadows
+            force_shadow_override: false,  // Normal runtime: use computed PCF shadows
             albedo_tex,
             albedo_view,
             albedo_sampler,
@@ -3592,6 +3606,9 @@ fn vs(input: VSIn) -> VSOut {
             mesh_external: None,
             models: std::collections::HashMap::new(),
             instances: Vec::new(),
+            instance_raw_scratch: Vec::new(),
+            instance_uploaded: Vec::new(),
+            visible_raw_scratch: Vec::new(),
             light_override: None,
             instance_buf,
             overlay,
@@ -5071,34 +5088,42 @@ fn vs(input: VSIn) -> VSOut {
         // When camera-relative, offset every model matrix so its translation
         // is relative to the camera origin.  The f64 subtraction preserves
         // sub-centimetre precision even at 20 000+ km from world origin.
+        self.instance_raw_scratch.clear();
+        self.instance_raw_scratch.reserve(self.instances.len());
         #[cfg(feature = "camera-relative")]
-        let raws: Vec<InstanceRaw> = {
+        {
             let cam = self.camera_world_pos;
-            self.instances
-                .iter()
-                .map(|inst| {
-                    let mut model = inst.transform;
-                    let wp = glam::DVec3::new(
-                        model.w_axis.x as f64,
-                        model.w_axis.y as f64,
-                        model.w_axis.z as f64,
-                    );
-                    let rel = (wp - cam).as_vec3();
-                    model.w_axis = glam::Vec4::new(rel.x, rel.y, rel.z, model.w_axis.w);
+            for inst in &self.instances {
+                let mut model = inst.transform;
+                let wp = glam::DVec3::new(
+                    model.w_axis.x as f64,
+                    model.w_axis.y as f64,
+                    model.w_axis.z as f64,
+                );
+                let rel = (wp - cam).as_vec3();
+                model.w_axis = glam::Vec4::new(rel.x, rel.y, rel.z, model.w_axis.w);
+                self.instance_raw_scratch.push(
                     Instance {
                         transform: model,
                         color: inst.color,
                         material_id: inst.material_id,
                     }
-                    .raw()
-                })
-                .collect()
-        };
+                    .raw(),
+                );
+            }
+        }
         #[cfg(not(feature = "camera-relative"))]
-        let raws: Vec<InstanceRaw> = self.instances.iter().map(|i| i.raw()).collect();
+        {
+            for inst in &self.instances {
+                self.instance_raw_scratch.push(inst.raw());
+            }
+        }
 
-        let size = (raws.len() * std::mem::size_of::<InstanceRaw>()) as u64;
-
+        let bytes = bytemuck::cast_slice(&self.instance_raw_scratch);
+        if self.instance_uploaded.as_slice() == bytes {
+            return;
+        }
+        let size = bytes.len() as u64;
         if size > self.instance_buf.size() {
             self.instance_buf = self.device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some("instance buf (resized)"),
@@ -5109,8 +5134,10 @@ fn vs(input: VSIn) -> VSOut {
                 mapped_at_creation: false,
             });
         }
+        self.instance_uploaded.clear();
+        self.instance_uploaded.extend_from_slice(bytes);
         self.queue
-            .write_buffer(&self.instance_buf, 0, bytemuck::cast_slice(&raws));
+            .write_buffer(&self.instance_buf, 0, &self.instance_uploaded);
     }
 
     /// Reads back the instance buffer from the GPU.
@@ -5939,10 +5966,13 @@ fn vs(input: VSIn) -> VSOut {
             self.queue.write_buffer(buf, 0, bytemuck::bytes_of(&inst));
         }
         // Frustum cull instances
-        let (vis_raws, vis_count) = self.build_visible_instances();
+        let vis_count = self.build_visible_instances();
         if vis_count > 0 {
-            self.queue
-                .write_buffer(&self.instance_buf, 0, bytemuck::cast_slice(&vis_raws));
+            self.queue.write_buffer(
+                &self.instance_buf,
+                0,
+                bytemuck::cast_slice(&self.visible_raw_scratch[..vis_count]),
+            );
         }
         // Shadow passes (depth only) — skip when shadows are disabled or there
         // is no shadow-casting geometry.
@@ -6472,7 +6502,7 @@ fn vs(input: VSIn) -> VSOut {
         // extent for terrain rendering — overwriting it here would place a
         // small dark plane at Y=-0.2 right inside the camera's shadow cascade,
         // producing a massive shadow that follows the camera.
-        if !self.terrain_ground_set {
+        if !self.terrain_ground_set && !self.plane_instance_uploaded {
             let plane_xform = glam::Mat4::from_translation(vec3(0.0, -0.2, 0.0))
                 * glam::Mat4::from_scale(vec3(50.0, 1.0, 50.0));
             let plane_inst = Instance {
@@ -6483,13 +6513,19 @@ fn vs(input: VSIn) -> VSOut {
             .raw();
             self.queue
                 .write_buffer(&self.plane_inst_buf, 0, bytemuck::bytes_of(&plane_inst));
+            self.plane_instance_uploaded = true;
         }
 
         // Frustum cull - TEST 4
-        let (vis_raws, vis_count) = self.build_visible_instances();
+        let vis_count = self.build_visible_instances();
         if vis_count > 0 {
-            self.queue
-                .write_buffer(&self.instance_buf, 0, bytemuck::cast_slice(&vis_raws));
+            let bytes = bytemuck::cast_slice(&self.visible_raw_scratch[..vis_count]);
+            if self.visible_uploaded.as_slice() != bytes {
+                self.visible_uploaded.clear();
+                self.visible_uploaded.extend_from_slice(bytes);
+                self.queue
+                    .write_buffer(&self.instance_buf, 0, &self.visible_uploaded);
+            }
         }
 
         // Shadow passes — skip entirely when shadows disabled or no geometry visible.
@@ -7724,7 +7760,7 @@ fn vs(input: VSIn) -> VSOut {
             })
     }
 
-    fn build_visible_instances(&self) -> (Vec<InstanceRaw>, usize) {
+    fn build_visible_instances(&mut self) -> usize {
         // Allocation-measurement instrumentation (audit 2026-04-17, §2.3 #5).
         #[cfg(feature = "profiling")]
         astraweave_profiling::measured_span!("render.visible_instances");
@@ -7751,7 +7787,11 @@ fn vs(input: VSIn) -> VSOut {
             (n / len, p.w / len)
         });
 
-        let mut out = Vec::with_capacity(self.instances.len());
+        let needed = self.instances.len();
+        if self.visible_raw_scratch.capacity() < needed {
+            self.visible_raw_scratch.reserve(needed);
+        }
+        self.visible_raw_scratch.clear();
         for inst in &self.instances {
             let center = inst.transform.w_axis.truncate();
             // approximate radius from basis vectors length (half-extents length)
@@ -7760,11 +7800,10 @@ fn vs(input: VSIn) -> VSOut {
             let sz = inst.transform.z_axis.truncate().length();
             let radius = 0.5 * glam::Vec3::new(sx, sy, sz).length();
             if inside_frustum_sphere(center, radius, &norm_planes) {
-                out.push(inst.raw());
+                self.visible_raw_scratch.push(inst.raw());
             }
         }
-        let count = out.len();
-        (out, count)
+        self.visible_raw_scratch.len()
     }
 
     /// Load a texture from disk for smoke testing / dev validation.

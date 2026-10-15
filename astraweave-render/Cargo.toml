@@ -29,7 +29,7 @@ obj-assets = ["tobj", "assets"]
 profiling = ["astraweave-profiling/profiling", "tracy-client", "tracy-client/enable"]
 # Pull in astraweave-profiling's alloc-counter for bench assertions. Optional dep
 # is only built when someone asks for counting.
-alloc-counter = ["dep:astraweave-profiling", "astraweave-profiling/alloc-counter"]
+alloc-counter = ["dep:astraweave-profiling", "astraweave-profiling/alloc-counter", "astraweave-ecs/alloc-counter"]
 # Bench-only allocator swap for the mimalloc experiment.
 fast-alloc = ["dep:astraweave-alloc", "astraweave-alloc/fast-alloc"]
 
@@ -84,6 +84,7 @@ naga = { version = "25.0.1", features = ["wgsl-in"] }
 glob = "0.3"
 image = "0.25"
 sha2 = { workspace = true }
+astraweave-ecs = { path = "../astraweave-ecs" }
 
 [[bench]]
 name = "alloc_measure"
