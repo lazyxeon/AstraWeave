@@ -7848,9 +7848,7 @@ impl EditorApp {
         }
 
         // Run the scatter generator
-        let terrain_chunks = self.dock_tab_viewer.collect_terrain_chunks();
-        let chunk_refs: Vec<&astraweave_terrain::TerrainChunk> =
-            terrain_chunks.iter().copied().collect();
+        let chunk_refs = self.dock_tab_viewer.collect_terrain_chunks();
 
         let generator = ZoneScatterGenerator::new(64.0, 65);
         // Same seed the terrain panel used. A clock seed made every zone
