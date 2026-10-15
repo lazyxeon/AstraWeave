@@ -601,8 +601,7 @@ fn test_time_of_day_defaults() {
 /// Test TimeOfDay sun position at noon
 #[test]
 fn test_sun_position_noon() {
-    let mut tod = TimeOfDay::default();
-    tod.current_time = 12.0; // Noon
+    let tod = TimeOfDay::new(12.0, 60.0);
 
     let sun_pos = tod.get_sun_position();
 
@@ -617,8 +616,7 @@ fn test_sun_position_noon() {
 /// Test TimeOfDay sun position at sunset
 #[test]
 fn test_sun_position_sunset() {
-    let mut tod = TimeOfDay::default();
-    tod.current_time = 18.0; // 6 PM
+    let tod = TimeOfDay::new(18.0, 60.0);
 
     let sun_pos = tod.get_sun_position();
 
@@ -633,8 +631,7 @@ fn test_sun_position_sunset() {
 /// Test TimeOfDay sun position at midnight
 #[test]
 fn test_sun_position_midnight() {
-    let mut tod = TimeOfDay::default();
-    tod.current_time = 0.0; // Midnight
+    let tod = TimeOfDay::new(0.0, 60.0);
 
     let sun_pos = tod.get_sun_position();
 
@@ -662,8 +659,7 @@ fn test_moon_opposite_sun() {
 /// Test is_day at noon
 #[test]
 fn test_is_day_noon() {
-    let mut tod = TimeOfDay::default();
-    tod.current_time = 12.0;
+    let tod = TimeOfDay::new(12.0, 60.0);
 
     assert!(tod.is_day(), "Noon should be daytime");
     assert!(!tod.is_night(), "Noon should not be night");
@@ -672,8 +668,7 @@ fn test_is_day_noon() {
 /// Test is_night at midnight
 #[test]
 fn test_is_night_midnight() {
-    let mut tod = TimeOfDay::default();
-    tod.current_time = 0.0;
+    let tod = TimeOfDay::new(0.0, 60.0);
 
     assert!(tod.is_night(), "Midnight should be nighttime");
     assert!(!tod.is_day(), "Midnight should not be day");
@@ -682,9 +677,7 @@ fn test_is_night_midnight() {
 /// Test light color changes with time
 #[test]
 fn test_light_color_day_vs_night() {
-    let mut tod = TimeOfDay::default();
-
-    tod.current_time = 12.0;
+    let mut tod = TimeOfDay::new(12.0, 60.0);
     let day_color = tod.get_light_color();
 
     tod.current_time = 0.0;
@@ -703,9 +696,7 @@ fn test_light_color_day_vs_night() {
 /// Test ambient color changes with time
 #[test]
 fn test_ambient_color_day_vs_night() {
-    let mut tod = TimeOfDay::default();
-
-    tod.current_time = 12.0;
+    let mut tod = TimeOfDay::new(12.0, 60.0);
     let day_ambient = tod.get_ambient_color();
 
     tod.current_time = 0.0;
