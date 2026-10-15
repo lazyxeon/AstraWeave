@@ -646,6 +646,8 @@ pub struct RenderModelPrimitive {
     pub tex_bind_group: Option<wgpu::BindGroup>,
     /// Retained GPU textures to keep the bind group's texture views alive.
     pub _retained_textures: Vec<wgpu::Texture>,
+    /// Increments only when [`Renderer::write_mesh`] replaces the GPU buffers.
+    pub storage_generation: u32,
 }
 
 pub struct RenderModel {
@@ -3265,12 +3267,12 @@ fn vs(input: VSIn) -> VSOut {
         let cube_vb = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("mesh_cube vertex_buf"),
             contents: bytemuck::cast_slice(&cube_v),
-            usage: wgpu::BufferUsages::VERTEX,
+            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
         });
         let cube_ib = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("mesh_cube index_buf"),
             contents: bytemuck::cast_slice(&cube_i),
-            usage: wgpu::BufferUsages::INDEX,
+            usage: wgpu::BufferUsages::INDEX | wgpu::BufferUsages::COPY_DST,
         });
         let mesh_cube = Mesh {
             vertex_buf: cube_vb,
@@ -3280,12 +3282,12 @@ fn vs(input: VSIn) -> VSOut {
         let sphere_vb = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("mesh_sphere vertex_buf"),
             contents: bytemuck::cast_slice(&sphere_v),
-            usage: wgpu::BufferUsages::VERTEX,
+            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
         });
         let sphere_ib = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("mesh_sphere index_buf"),
             contents: bytemuck::cast_slice(&sphere_i),
-            usage: wgpu::BufferUsages::INDEX,
+            usage: wgpu::BufferUsages::INDEX | wgpu::BufferUsages::COPY_DST,
         });
         let mesh_sphere = Mesh {
             vertex_buf: sphere_vb,
@@ -3297,12 +3299,12 @@ fn vs(input: VSIn) -> VSOut {
         let plane_vb = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("mesh_plane vertex_buf"),
             contents: bytemuck::cast_slice(&plane_v),
-            usage: wgpu::BufferUsages::VERTEX,
+            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
         });
         let plane_ib = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("mesh_plane index_buf"),
             contents: bytemuck::cast_slice(&plane_i),
-            usage: wgpu::BufferUsages::INDEX,
+            usage: wgpu::BufferUsages::INDEX | wgpu::BufferUsages::COPY_DST,
         });
         let mesh_plane = Mesh {
             vertex_buf: plane_vb,
@@ -5099,6 +5101,91 @@ fn vs(input: VSIn) -> VSOut {
         let tangents: Vec<_> = cpu_mesh.vertices.iter().map(|v| v.tangent).collect();
         let uvs: Vec<_> = cpu_mesh.vertices.iter().map(|v| v.uv).collect();
         self.create_mesh_from_full_arrays(&positions, &normals, &tangents, &uvs, &cpu_mesh.indices)
+    }
+
+    /// Rewrite a named model's first primitive from a CPU mesh.
+    ///
+    /// The CPU mesh is the source of truth (the sim already committed it).
+    /// When the vertex and index bytes fit the existing GPU buffers, this
+    /// writes in place and leaves [`RenderModelPrimitive::storage_generation`]
+    /// unchanged. Growth allocates the next power-of-two size and bumps the
+    /// generation. The model's world AABB is updated from the CPU mesh.
+    pub fn write_mesh(&mut self, name: &str, cpu: &crate::mesh::CpuMesh) -> Result<()> {
+        if cpu.vertices.is_empty() || cpu.indices.is_empty() {
+            anyhow::bail!("model '{name}' write has no vertices or indices");
+        }
+        let verts: Vec<crate::types::Vertex> = cpu
+            .vertices
+            .iter()
+            .map(|v| crate::types::Vertex {
+                position: v.position,
+                normal: v.normal,
+                tangent: v.tangent,
+                uv: v.uv,
+            })
+            .collect();
+        let vbytes = bytemuck::cast_slice(&verts);
+        let ibytes = bytemuck::cast_slice(&cpu.indices);
+        let aabb = cpu.aabb().map(|(min, max)| (min.to_array(), max.to_array()));
+
+        let model = self
+            .models
+            .get_mut(name)
+            .with_context(|| format!("model '{name}' is not loaded"))?;
+        let primitive = model
+            .primitives
+            .first_mut()
+            .with_context(|| format!("model '{name}' has no primitives"))?;
+        let fits = (vbytes.len() as u64) <= primitive.mesh.vertex_buf.size()
+            && (ibytes.len() as u64) <= primitive.mesh.index_buf.size();
+        let vertex_buf = primitive.mesh.vertex_buf.clone();
+        let index_buf = primitive.mesh.index_buf.clone();
+        primitive.mesh.index_count = cpu.indices.len() as u32;
+        model.aabb = aabb;
+        drop(model);
+
+        if fits {
+            self.queue.write_buffer(&vertex_buf, 0, vbytes);
+            self.queue.write_buffer(&index_buf, 0, ibytes);
+            return Ok(());
+        }
+
+        let vsize = (vbytes.len() as u64).next_power_of_two().max(64);
+        let isize = (ibytes.len() as u64).next_power_of_two().max(12);
+        let new_vb = self.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("mesh vertex rewrite"),
+            size: vsize,
+            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        let new_ib = self.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("mesh index rewrite"),
+            size: isize,
+            usage: wgpu::BufferUsages::INDEX | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        self.queue.write_buffer(&new_vb, 0, vbytes);
+        self.queue.write_buffer(&new_ib, 0, ibytes);
+        let model = self
+            .models
+            .get_mut(name)
+            .with_context(|| format!("model '{name}' disappeared during rewrite"))?;
+        let primitive = model
+            .primitives
+            .first_mut()
+            .with_context(|| format!("model '{name}' has no primitives"))?;
+        primitive.mesh.vertex_buf = new_vb;
+        primitive.mesh.index_buf = new_ib;
+        primitive.storage_generation = primitive.storage_generation.saturating_add(1);
+        Ok(())
+    }
+
+    /// Generation of the GPU buffers for `name`. `None` if the model is absent.
+    pub fn mesh_storage_generation(&self, name: &str) -> Option<u32> {
+        self.models
+            .get(name)
+            .and_then(|model| model.primitives.first())
+            .map(|primitive| primitive.storage_generation)
     }
 
     pub fn set_external_mesh(&mut self, mesh: Mesh) {
@@ -7417,14 +7504,14 @@ fn vs(input: VSIn) -> VSOut {
             .create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some("terrain-forward-chunk-vertices"),
                 contents: bytemuck::cast_slice(vertices),
-                usage: wgpu::BufferUsages::VERTEX,
+                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
             });
         let index_buffer = self
             .device
             .create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some("terrain-forward-chunk-indices"),
                 contents: bytemuck::cast_slice(indices),
-                usage: wgpu::BufferUsages::INDEX,
+                usage: wgpu::BufferUsages::INDEX | wgpu::BufferUsages::COPY_DST,
             });
 
         tf.manager
@@ -8240,14 +8327,14 @@ fn vs(input: VSIn) -> VSOut {
             .create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some("skinned vbuf"),
                 contents: bytemuck::cast_slice(vertices),
-                usage: wgpu::BufferUsages::VERTEX,
+                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
             });
         let ibuf = self
             .device
             .create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some("skinned ibuf"),
                 contents: bytemuck::cast_slice(indices),
-                usage: wgpu::BufferUsages::INDEX,
+                usage: wgpu::BufferUsages::INDEX | wgpu::BufferUsages::COPY_DST,
             });
         self.skinned_mesh = Some((vbuf, ibuf, indices.len() as u32));
     }
@@ -8376,6 +8463,7 @@ fn vs(input: VSIn) -> VSOut {
                 mesh,
                 tex_bind_group: None,
                 _retained_textures: Vec::new(),
+                storage_generation: 0,
             }],
             instance_buf,
             instance_count: instances.len() as u32,
@@ -8428,6 +8516,7 @@ fn vs(input: VSIn) -> VSOut {
                     mesh,
                     tex_bind_group: Some(tex_bg),
                     _retained_textures: textures,
+                    storage_generation: 0,
                 });
             } else if let Some(img) = cpu_mesh.albedo_image.as_ref() {
                 let (tex_bg, textures, bytes) =
@@ -8437,12 +8526,14 @@ fn vs(input: VSIn) -> VSOut {
                     mesh,
                     tex_bind_group: Some(tex_bg),
                     _retained_textures: textures,
+                    storage_generation: 0,
                 });
             } else {
                 primitives.push(RenderModelPrimitive {
                     mesh,
                     tex_bind_group: None,
                     _retained_textures: Vec::new(),
+                storage_generation: 0,
                 });
             }
         }
@@ -8852,6 +8943,7 @@ fn vs(input: VSIn) -> VSOut {
                 mesh,
                 tex_bind_group: Some(tex_bg),
                 _retained_textures: textures,
+                storage_generation: 0,
             }],
             instance_buf,
             instance_count: instances.len() as u32,
@@ -8907,6 +8999,7 @@ fn vs(input: VSIn) -> VSOut {
                 mesh,
                 tex_bind_group: Some(tex_bg),
                 _retained_textures: textures,
+                storage_generation: 0,
             }],
             instance_buf,
             instance_count: instances.len() as u32,
@@ -8978,6 +9071,7 @@ fn vs(input: VSIn) -> VSOut {
                 mesh,
                 tex_bind_group: shared_bg,
                 _retained_textures: shared_textures,
+                storage_generation: 0,
             }],
             instance_buf,
             instance_count: instances.len() as u32,
