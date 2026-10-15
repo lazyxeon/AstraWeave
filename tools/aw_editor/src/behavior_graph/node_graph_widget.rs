@@ -66,6 +66,12 @@ struct PortRef {
     port: PortKind,
 }
 
+/// Node and port under the pointer for one interaction pass.
+struct PointerHit {
+    node: Option<NodeId>,
+    port: Option<PortRef>,
+}
+
 // ────────────────────── Interaction state ──────────────────────
 
 /// Tracks in-progress drag-to-connect wire.
@@ -223,8 +229,10 @@ impl NodeGraphWidget {
             &canvas_response,
             canvas_rect,
             &node_rects,
-            click_hit_node,
-            port_hit,
+            PointerHit {
+                node: click_hit_node,
+                port: port_hit,
+            },
         );
 
         // Context menu
@@ -463,9 +471,10 @@ impl NodeGraphWidget {
         response: &egui::Response,
         canvas_rect: Rect,
         node_rects: &std::collections::HashMap<NodeId, Rect>,
-        click_hit_node: Option<NodeId>,
-        port_hit: Option<PortRef>,
+        hit: PointerHit,
     ) -> bool {
+        let click_hit_node = hit.node;
+        let port_hit = hit.port;
         let mut changed = false;
 
         // Left-click on node → select

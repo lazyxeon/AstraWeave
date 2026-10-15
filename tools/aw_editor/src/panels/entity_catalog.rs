@@ -879,7 +879,15 @@ fn draw_prop_icon(pixels: &mut [u8], size: usize, r: u8, g: u8, b: u8) {
 
 /// Draw a short text label onto a pixel buffer using a tiny 3×5 pixel font.
 /// `x` and `y` are the top-left corner of the first character.
-fn draw_label(pixels: &mut [u8], size: usize, text: &str, x: usize, y: usize, r: u8, g: u8, b: u8) {
+fn draw_label(
+    pixels: &mut [u8],
+    size: usize,
+    text: &str,
+    x: usize,
+    y: usize,
+    color: (u8, u8, u8),
+) {
+    let (r, g, b) = color;
     // 3×5 pixel font bitmaps for A-Z and 0-9. Each char is 5 rows of 3-bit patterns.
     #[rustfmt::skip]
     const GLYPHS: &[(char, [u8; 5])] = &[
@@ -1075,7 +1083,7 @@ fn generate_thumbnail(ctx: &egui::Context, entry: &CatalogEntry) -> TextureHandl
         .and_then(|e| e.to_str())
     {
         let ext_upper = ext.to_uppercase();
-        draw_label(&mut pixels, size, &ext_upper, 2, size - 8, 200, 200, 200);
+        draw_label(&mut pixels, size, &ext_upper, 2, size - 8, (200, 200, 200));
     }
 
     // Draw category label at top-right corner
@@ -1090,7 +1098,7 @@ fn generate_thumbnail(ctx: &egui::Context, entry: &CatalogEntry) -> TextureHandl
         EntityCategory::Infrastructure => "INF",
         EntityCategory::Prop => "PRP",
     };
-    draw_label(&mut pixels, size, cat_short, size - 22, 2, r, g, b);
+    draw_label(&mut pixels, size, cat_short, size - 22, 2, (r, g, b));
 
     let color_image = ColorImage::from_rgba_unmultiplied([size, size], &pixels);
 

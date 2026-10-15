@@ -659,6 +659,14 @@ pub struct EngineRenderAdapter {
         Option<std::sync::mpsc::Receiver<anyhow::Result<astraweave_render::IblResources>>>,
 }
 
+/// Atlas bake size for one impostor pass.
+#[cfg(feature = "impostor-bake")]
+struct ImpostorAtlasSize {
+    width: u32,
+    height: u32,
+    angle_count: u32,
+}
+
 impl EngineRenderAdapter {
     pub async fn new(
         device: Arc<wgpu::Device>,
@@ -3537,9 +3545,11 @@ impl EngineRenderAdapter {
                                 &species_label,
                                 view_proj,
                                 camera_pos,
-                                ATLAS_W,
-                                ATLAS_H,
-                                ANGLES,
+                                ImpostorAtlasSize {
+                                    width: ATLAS_W,
+                                    height: ATLAS_H,
+                                    angle_count: ANGLES,
+                                },
                             ) {
                                 Ok(installed_key) => {
                                     impostor_live_keys.insert(installed_key);
@@ -3830,10 +3840,13 @@ impl EngineRenderAdapter {
         species_name: &str,
         view_proj: glam::Mat4,
         camera_pos: glam::Vec3,
-        atlas_width: u32,
-        atlas_height: u32,
-        angle_count: u32,
+        atlas: ImpostorAtlasSize,
     ) -> Result<String> {
+        let ImpostorAtlasSize {
+            width: atlas_width,
+            height: atlas_height,
+            angle_count,
+        } = atlas;
         use super::impostor_wiring::{bake_primitive_pixels, primitive_mesh_hash};
         use astraweave_render::impostor_pass::ImpostorPass;
         use astraweave_render::vegetation_lod::ImpostorAtlasSpec;

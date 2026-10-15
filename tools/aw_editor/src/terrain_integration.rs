@@ -141,6 +141,16 @@ impl Default for TerrainState {
     }
 }
 
+/// One sculpt or carve application. The position stays on `apply_brush`.
+pub struct TerrainBrushStroke {
+    pub radius: f32,
+    pub strength: f32,
+    pub brush_mode: crate::panels::terrain_panel::BrushMode,
+    pub falloff_curve: crate::panels::terrain_panel::FalloffCurve,
+    pub target_height: Option<f32>,
+    pub noise_scale: f32,
+}
+
 impl TerrainState {
     pub fn new() -> Self {
         Self::default()
@@ -2091,20 +2101,18 @@ impl TerrainState {
         None
     }
 
-    pub fn apply_brush(
-        &mut self,
-        world_x: f32,
-        world_z: f32,
-        radius: f32,
-        strength: f32,
-        brush_mode: crate::panels::terrain_panel::BrushMode,
-        falloff_curve: crate::panels::terrain_panel::FalloffCurve,
-        // Target height for the target-blending modes: Flatten's captured
-        // first-click height, or Carve Water's `water_level − carve_depth`
-        // (TW2). Ignored by every other mode.
-        target_height: Option<f32>,
-        noise_scale: f32,
-    ) -> bool {
+    pub fn apply_brush(&mut self, world_x: f32, world_z: f32, stroke: TerrainBrushStroke) -> bool {
+        let TerrainBrushStroke {
+            radius,
+            strength,
+            brush_mode,
+            falloff_curve,
+            // Target height for the target-blending modes: Flatten's captured
+            // first-click height, or Carve Water's `water_level − carve_depth`
+            // (TW2). Ignored by every other mode.
+            target_height,
+            noise_scale,
+        } = stroke;
         use crate::panels::terrain_panel::BrushMode;
 
         let chunk_size = self.config.chunk_size;
@@ -3603,12 +3611,14 @@ mod tests {
             state.apply_brush(
                 cx,
                 cz,
-                radius,
-                1.0,
-                BrushMode::CarveWater,
-                FalloffCurve::Smooth,
-                Some(target),
-                0.05,
+                TerrainBrushStroke {
+                    radius,
+                    strength: 1.0,
+                    brush_mode: BrushMode::CarveWater,
+                    falloff_curve: FalloffCurve::Smooth,
+                    target_height: Some(target),
+                    noise_scale: 0.05,
+                },
             );
         }
         let carved = state.sample_height_at(cx, cz).expect("carved height");
@@ -3622,12 +3632,14 @@ mod tests {
             state.apply_brush(
                 cx,
                 cz,
-                radius,
-                1.0,
-                BrushMode::CarveWater,
-                FalloffCurve::Smooth,
-                Some(target),
-                0.05,
+                TerrainBrushStroke {
+                    radius,
+                    strength: 1.0,
+                    brush_mode: BrushMode::CarveWater,
+                    falloff_curve: FalloffCurve::Smooth,
+                    target_height: Some(target),
+                    noise_scale: 0.05,
+                },
             );
         }
         let after = state.sample_height_at(cx, cz).expect("post-idempotence");
@@ -3657,12 +3669,14 @@ mod tests {
             state.apply_brush(
                 cx,
                 cz,
-                radius,
-                0.8,
-                BrushMode::CarveWater,
-                FalloffCurve::Smooth,
-                Some(target),
-                0.05,
+                TerrainBrushStroke {
+                    radius,
+                    strength: 0.8,
+                    brush_mode: BrushMode::CarveWater,
+                    falloff_curve: FalloffCurve::Smooth,
+                    target_height: Some(target),
+                    noise_scale: 0.05,
+                },
             );
         }
         state.end_stroke();
@@ -3704,12 +3718,14 @@ mod tests {
         state.apply_brush(
             cx,
             cz,
-            radius,
-            1.0,
-            BrushMode::CarveWater,
-            FalloffCurve::Smooth,
-            Some(-1.0),
-            0.05,
+            TerrainBrushStroke {
+                radius,
+                strength: 1.0,
+                brush_mode: BrushMode::CarveWater,
+                falloff_curve: FalloffCurve::Smooth,
+                target_height: Some(-1.0),
+                noise_scale: 0.05,
+            },
         );
         let deltas = state.end_stroke().expect("stroke must record deltas");
         assert!(!deltas.is_empty(), "carve stroke must snapshot chunks");
@@ -3771,12 +3787,14 @@ mod tests {
         state.apply_brush(
             cx,
             cz,
-            radius,
-            1.0,
-            BrushMode::CarveWater,
-            FalloffCurve::Linear,
-            Some(high_target),
-            0.05,
+            TerrainBrushStroke {
+                radius,
+                strength: 1.0,
+                brush_mode: BrushMode::CarveWater,
+                falloff_curve: FalloffCurve::Linear,
+                target_height: Some(high_target),
+                noise_scale: 0.05,
+            },
         );
         state.end_stroke();
 
