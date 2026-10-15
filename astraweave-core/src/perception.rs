@@ -724,7 +724,10 @@ mod tests {
         assert_eq!(snap.enemies[0].cover, CoverType::Low); // Within LOS
         assert_eq!(snap.enemies[1].cover, CoverType::Unknown); // Beyond LOS
         assert_eq!(snap.obstacles.len(), 2);
-        assert_eq!(snap.pois.len(), 1);
+        assert!(
+            snap.pois.is_empty(),
+            "no nav observation means no invented breach"
+        );
         assert_eq!(snap.objective, Some("Defend position".to_string()));
     }
 
