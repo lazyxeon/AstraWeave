@@ -9,7 +9,7 @@ lifecycle_status: active
 integration_status: partial
 summary: "path validation plus the deterministic Rhai sandbox and mod loader are wired; anticheat, async script helper, signatures, and secrets stay dormant. security.md"
 owns: [astraweave-secrets, astraweave-security]
-doc_version: "1.3"
+doc_version: "1.4"
 last_verified_commit: b47fb566
 ---
 
@@ -21,9 +21,15 @@ last_verified_commit: b47fb566
 |---|---|
 | **System name** | Security System (script sandbox, anticheat, signatures, path/deserialization validation, secrets) |
 | **Primary crates** | [`astraweave-security`](../../astraweave-security), [`astraweave-secrets`](../../astraweave-secrets) |
+<<<<<<< HEAD
 | **Document version** | 1.3 |
 | **Last verified against commit** | `b47fb566` |
 | **Last verified date** | 2026-10-15 |
+=======
+| **Document version** | 1.4 |
+| **Last verified against commit** | `85d09a2c` |
+| **Last verified date** | 2026-10-14 |
+>>>>>>> e83cad17 (feat(mod): register queue_weave on the sandbox)
 | **Status** | Path validation, the deterministic Rhai sandbox, and the mod loader are wired. Anticheat, the async script helper, signatures, and secrets remain dormant. |
 | **Owner notes** | Crates originate from a 2025 "Phase 1 Week 2" remediation effort (see [`docs/archive/remediation/PHASE1_WEEK2_COMPLETE.md`](../../docs/archive/remediation/PHASE1_WEEK2_COMPLETE.md)). Active follow-up work is owned by the S-series security campaign ([`docs/campaigns/security/S0_FINDINGS_SEED.md`](../../docs/campaigns/security/S0_FINDINGS_SEED.md)) and the hardening plan ([`docs/current/SECURITY_AUDIT_AND_HARDENING_PLAN.md`](../../docs/current/SECURITY_AUDIT_AND_HARDENING_PLAN.md)). |
 
@@ -382,6 +388,7 @@ Performance is largely irrelevant for the wired surface (path validation runs at
 |---|---|---|
 | 1.2 | 2026-10-14 | WS-MOD. Deterministic sandbox, mod manifests, and the reload queue are wired. Async `execute_script_sandboxed` remains unconsulted for the allowlist. |
 | 1.3 | 2026-10-14 | `load_mod_dir` script map keys are the relative manifest paths. |
+| 1.4 | 2026-10-15 | `queue_weave` on capability `Weave`. `MOD_COMMAND_API_VERSION` is 2. `max_weaves` defaults to 64 and is not a terrain-edit spend. |
 | 1.1 | 2026-06-25 | Prior verification at `7c29b8182`. Path validation wired; other surfaces dormant. |
 
 ## Appendix B: Historical context

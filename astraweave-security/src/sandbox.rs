@@ -12,6 +12,7 @@
 use crate::{ExecutionLimits, ScriptSandbox};
 use anyhow::{bail, Context, Result};
 use astraweave_core::sim::{mix_sim_seed, SimRng};
+use astraweave_weaving::parse_template_toml;
 use rand::Rng;
 use rhai::packages::{
     ArithmeticPackage, BasicArrayPackage, BasicIteratorPackage, BasicMapPackage,
@@ -30,7 +31,7 @@ use std::sync::{Arc, Mutex};
 pub const MOD_API_VERSION: u32 = 1;
 
 /// Public command set. Bump when a command's name or result changes.
-pub const MOD_COMMAND_API_VERSION: u32 = 1;
+pub const MOD_COMMAND_API_VERSION: u32 = 2;
 
 /// Commands a sandboxed script may be granted. Sorted. This is the allowlist.
 pub static COMMANDS: &[&str] = &[
@@ -39,6 +40,7 @@ pub static COMMANDS: &[&str] = &[
     "despawn",
     "move_to",
     "play_sound",
+    "queue_weave",
     "set_position",
     "sim_roll",
     "spawn_particle",
@@ -60,6 +62,7 @@ pub const DEFAULT_MAX_MODS: usize = 64;
 pub const DEFAULT_MAX_TRAPS: i32 = 64;
 pub const DEFAULT_MAX_TERRAIN_EDITS: i32 = 256;
 pub const DEFAULT_MAX_SPAWNS: i32 = 128;
+pub const DEFAULT_MAX_WEAVES: i32 = 64;
 pub const DEFAULT_MAX_MOVE_DELTA: i32 = 100_000;
 pub const DEFAULT_MAX_DAMAGE: i32 = 10_000;
 pub const MAX_SIM_ROLL_BOUND: i64 = 1_000_000;
@@ -74,6 +77,7 @@ pub enum Capability {
     ApplyDamage,
     Presentation,
     SimRng,
+    Weave,
 }
 
 impl Capability {
@@ -86,6 +90,7 @@ impl Capability {
             Capability::ApplyDamage => &["apply_damage"],
             Capability::Presentation => &["play_sound", "spawn_particle"],
             Capability::SimRng => &["sim_roll"],
+            Capability::Weave => &["queue_weave"],
         }
     }
 
@@ -98,6 +103,7 @@ impl Capability {
             "apply_damage" => Some(Self::ApplyDamage),
             "presentation" => Some(Self::Presentation),
             "sim_rng" => Some(Self::SimRng),
+            "weave" => Some(Self::Weave),
             _ => None,
         }
     }
@@ -109,6 +115,8 @@ pub struct EngineCeilings {
     pub max_traps: i32,
     pub max_terrain_edits: i32,
     pub max_spawns: i32,
+    /// Weave casts queued by `queue_weave`. Not spent from `terrain_edits`.
+    pub max_weaves: i32,
     pub max_move_delta: i32,
     pub max_damage: i32,
     pub max_script_bytes: usize,
@@ -131,6 +139,7 @@ impl Default for EngineCeilings {
             max_traps: DEFAULT_MAX_TRAPS,
             max_terrain_edits: DEFAULT_MAX_TERRAIN_EDITS,
             max_spawns: DEFAULT_MAX_SPAWNS,
+            max_weaves: DEFAULT_MAX_WEAVES,
             max_move_delta: DEFAULT_MAX_MOVE_DELTA,
             max_damage: DEFAULT_MAX_DAMAGE,
             max_script_bytes: DEFAULT_MAX_SCRIPT_BYTES,
@@ -209,6 +218,7 @@ impl SandboxProfile {
         let mut capabilities = BTreeSet::new();
         capabilities.insert(Capability::MoveEntity);
         capabilities.insert(Capability::SimRng);
+        capabilities.insert(Capability::Weave);
         Self {
             capabilities,
             ceilings: EngineCeilings::default(),
@@ -232,6 +242,7 @@ fn all_capabilities() -> BTreeSet<Capability> {
         Capability::ApplyDamage,
         Capability::Presentation,
         Capability::SimRng,
+        Capability::Weave,
     ]
     .into_iter()
     .collect()
@@ -572,6 +583,7 @@ pub struct ModManifest {
     pub load_after: Vec<String>,
     pub load_before: Vec<String>,
     pub scripts: Vec<String>,
+    pub weaves: Vec<String>,
     pub capabilities: BTreeSet<Capability>,
     pub budget: BudgetLimits,
 }
@@ -580,6 +592,8 @@ pub struct ModManifest {
 pub struct LoadedMod {
     pub manifest: ModManifest,
     pub scripts: BTreeMap<String, String>,
+    /// Template TOML keyed by the manifest path. Parsed at load, not in the tick.
+    pub weaves: BTreeMap<String, String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -596,6 +610,8 @@ struct ManifestFile {
     load_before: Vec<String>,
     #[serde(default)]
     scripts: Vec<String>,
+    #[serde(default)]
+    weaves: Vec<String>,
     capabilities: Vec<String>,
     #[serde(default)]
     data: ManifestData,
@@ -654,6 +670,20 @@ fn validate_manifest_file(file: ManifestFile, ceilings: &EngineCeilings) -> Resu
             bail!("duplicate script path {script}");
         }
     }
+    if file.weaves.len() > ceilings.max_scripts {
+        bail!(
+            "manifest lists {} weave templates, ceiling is {}",
+            file.weaves.len(),
+            ceilings.max_scripts
+        );
+    }
+    let mut seen_weaves = BTreeSet::new();
+    for weave in &file.weaves {
+        validate_manifest_weave_path(weave)?;
+        if !seen_weaves.insert(weave.clone()) {
+            bail!("duplicate weave path {weave}");
+        }
+    }
     if file.capabilities.is_empty() {
         bail!("capability allowlist is empty");
     }
@@ -691,6 +721,7 @@ fn validate_manifest_file(file: ManifestFile, ceilings: &EngineCeilings) -> Resu
         load_after: file.load_after,
         load_before: file.load_before,
         scripts: file.scripts,
+        weaves: file.weaves,
         capabilities,
         budget,
     })
@@ -750,6 +781,45 @@ pub fn validate_manifest_script_path(path: &str) -> Result<()> {
             Component::ParentDir => bail!("script path contains '..'"),
             Component::RootDir | Component::Prefix(_) => {
                 bail!("script path must be relative");
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Relative weave template path. Toml only. No filesystem access.
+pub fn validate_manifest_weave_path(path: &str) -> Result<()> {
+    if path.is_empty() || path.len() > 256 {
+        bail!("weave path length is invalid");
+    }
+    if path
+        .chars()
+        .any(|c| c.is_control() || c == '\\' || c == '\0')
+    {
+        bail!("weave path contains a control character or backslash");
+    }
+    if !path.ends_with(".toml") {
+        bail!("weave path must end with .toml");
+    }
+    if path.starts_with('/') || path.starts_with('~') {
+        bail!("weave path must be relative");
+    }
+    let as_path = Path::new(path);
+    if as_path.is_absolute() {
+        bail!("weave path must be relative");
+    }
+    for component in as_path.components() {
+        match component {
+            Component::Normal(part) => {
+                let text = part.to_str().context("weave path is not utf-8")?;
+                if text == "." || text == ".." || text.contains(':') {
+                    bail!("weave path component {text} is not allowed");
+                }
+            }
+            Component::CurDir => bail!("weave path contains '.'"),
+            Component::ParentDir => bail!("weave path contains '..'"),
+            Component::RootDir | Component::Prefix(_) => {
+                bail!("weave path must be relative");
             }
         }
     }
@@ -827,7 +897,51 @@ pub fn load_mod_dir(root: &Path, ceilings: &EngineCeilings) -> Result<LoadedMod>
         // temp directory and is not a sim input.
         scripts.insert(rel.clone(), source);
     }
-    Ok(LoadedMod { manifest, scripts })
+    let mut weaves = BTreeMap::new();
+    for rel in &manifest.weaves {
+        let (_canon, source) =
+            read_text_under_root(root, Path::new(rel), ceilings.max_manifest_bytes)?;
+        parse_template_toml(&source).map_err(|err| anyhow::anyhow!(err))?;
+        weaves.insert(rel.clone(), source);
+    }
+    Ok(LoadedMod {
+        manifest,
+        scripts,
+        weaves,
+    })
+}
+
+fn read_text_under_root(
+    root: &Path,
+    candidate: &Path,
+    max_bytes: usize,
+) -> Result<(PathBuf, String)> {
+    if !root.is_dir() {
+        bail!("mod root {} is not a directory", root.display());
+    }
+    let root_canon = root
+        .canonicalize()
+        .with_context(|| format!("canonicalize {}", root.display()))?;
+    let text = candidate.to_str().context("data path is not utf-8")?;
+    validate_manifest_weave_path(text)?;
+    let joined = root.join(candidate);
+    let canon = joined
+        .canonicalize()
+        .with_context(|| format!("canonicalize {}", joined.display()))?;
+    if !canon.starts_with(&root_canon) {
+        bail!(
+            "{} escapes mod root {}",
+            candidate.display(),
+            root.display()
+        );
+    }
+    let ext = canon.extension().and_then(|ext| ext.to_str()).unwrap_or("");
+    if !ext.eq_ignore_ascii_case("toml") {
+        bail!("{} is not a .toml file", canon.display());
+    }
+    let bytes = read_capped(&canon, max_bytes)?;
+    let source = String::from_utf8(bytes).context("file is not utf-8")?;
+    Ok((canon, source))
 }
 
 /// Stable load order. Ties break by mod id. Cycles and missing deps are errors.
@@ -1167,6 +1281,28 @@ scripts = []
         assert_eq!(keys, vec!["a.rhai".to_string(), "b.rhai".to_string()]);
         assert_eq!(taken["a.rhai"].source, "a2");
         assert!(queue.is_empty());
+    }
+
+    #[test]
+    fn queue_weave_is_a_weave_command_and_weaves_do_not_spend_terrain() {
+        assert!(COMMANDS.contains(&"queue_weave"));
+        let mut previous = "";
+        for name in COMMANDS {
+            assert!(previous < *name, "COMMANDS must stay sorted");
+            previous = name;
+        }
+        assert_eq!(MOD_COMMAND_API_VERSION, 2);
+        assert_eq!(Capability::Weave.command_names(), &["queue_weave"][..]);
+        let ceilings = EngineCeilings::default();
+        assert_eq!(ceilings.max_weaves, DEFAULT_MAX_WEAVES);
+        assert_eq!(DEFAULT_MAX_WEAVES, 64);
+        let budget = BudgetLimits {
+            traps: 0,
+            terrain_edits: 0,
+            spawns: 0,
+        };
+        validate_budget(budget, &ceilings).unwrap();
+        assert_eq!(budget.terrain_edits, 0);
     }
 
     #[test]

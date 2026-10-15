@@ -9,13 +9,15 @@ lifecycle_status: active
 integration_status: wired
 summary: "Gameplay and mod scripts run on the security sandbox. build_app installs ModScriptPlugin after register_mod_runtime, so the editor and game tick mods on the logged sandbox path. Native plugin template is not a runtime."
 owns: [astraweave-scripting, astraweave-author]
-doc_version: "1.1"
+doc_version: "1.2"
 last_verified_commit: 85d09a2c
 runtime_edges:
   - to: astraweave-security
     note: "ScriptEngineResource and mod_script_system call sandbox::SandboxEngine / execute_deterministic"
   - to: astraweave-core
     note: "register_mod_runtime records ModScriptPlugin; build_app installs it before the legacy sim systems"
+  - to: astraweave-weaving
+    note: "queue_weave copies a template id and origin into WeaveScratch; the tick does not evaluate the field"
 ---
 
 # Architecture Trace: Scripting and mod API
@@ -26,7 +28,7 @@ runtime_edges:
 |---|---|
 | **System name** | Scripting and mod API |
 | **Primary crates** | `astraweave-scripting`, `astraweave-author` |
-| **Document version** | 1.1 |
+| **Document version** | 1.2 |
 | **Last verified against commit** | `85d09a2c` |
 | **Last verified date** | 2026-10-14 |
 | **Status** | Active for the sandboxed Rhai path. `register_mod_runtime` plus `build_app` is how the editor, Veilweaver runtime, and `hello_companion` run mods. Examples still exercise `ScriptingPlugin`. The editor does not feed `CScript` entities. |
@@ -93,7 +95,7 @@ Mods need a single sandboxed command set whose results are sim inputs. A second 
 | Term | Meaning |
 |---|---|
 | `MOD_API_VERSION` | `1`. Manifest `api` must match. |
-| `MOD_COMMAND_API_VERSION` | `1`. Also re-exported as `SCRIPT_COMMAND_API_VERSION`. |
+| `MOD_COMMAND_API_VERSION` | `2`. Also re-exported as `SCRIPT_COMMAND_API_VERSION`. |
 | `COMMANDS` | The only host command names a profile may grant. |
 | `Capability` | A group of those commands (`configure`, `move_entity`, `sim_rng`, …). |
 | `EngineCeilings` | Caps for operations, strings, arrays, maps, script bytes, and director budget fields. |
@@ -175,6 +177,7 @@ Mods need a single sandboxed command set whose results are sim inputs. A second 
 | 5 | `scripted_system` SHA-256 is `362e4c6d3085d2a95d1219b988326beb4cbe898408de4a91e5b2abe3c3294d78` for seed `0xA11CE5E0`, 32 ticks, three agents, and the checked-in script. | Yes | `tests/script_replay_hash.rs` |
 | 6 | A script swap recorded as `(tick, path, content hash, source)` and replayed from `ScriptReplayLog` matches the live digest. | Yes | `reload_mid_run_replays_to_the_identical_hash` |
 | 8 | `build_app` installs `ModScriptPlugin` after `register_mod_runtime`. A mod loaded onto that app, including a mid-run swap in `ScriptReplayLog`, replays to the same digest. Manifest script map keys are the relative manifest paths. | Yes | `mod_loaded_through_build_app_replays_identically`, `load_mod_dir_keys_are_manifest_paths` |
+| 9 | `queue_weave` is capability `Weave` at command API 2. The script passes a template id and an origin. The host fills tick, seq, and caster and calls `astraweave_weaving::queue_weave`. Ids 1 through 7 are engine ids. `max_weaves` defaults to 64 and does not spend `terrain_edits`. Two runs through `build_app` enqueue the same commands. | Yes | `queue_weave_is_a_weave_command_and_weaves_do_not_spend_terrain`, `queue_weave_through_build_app_replays_identically`, `parse_rejects_engine_ids_and_accepts_modifier_data` |
 | 7 | Author `configure` output that exceeds the director ceilings is an error. Hints cannot contain floats. | Yes | `sandboxed_configure_is_deterministic_and_capped` |
 
 ---
@@ -217,4 +220,5 @@ Each mod script is compiled on the tick it runs. The replay case is 32 ticks of 
 | Version | Date | Notes |
 |---|---|---|
 | 1.0 | 2026-10-14 | WS-MOD. Sandbox, mod loader, tick-boundary reload, `scripted_system` hash. |
-| 1.1 | 2026-10-14 | `build_app` installs `ModScriptPlugin` via `register_mod_runtime`. Editor, Veilweaver, and `hello_companion` call it. |
+| 1.1 | 2026-10-14 | `build_app` installs `ModScriptPlugin` via `register_mod_runtime`. Editor, game runtime, and `hello_companion` call it. |
+| 1.2 | 2026-10-15 | `queue_weave` on capability `Weave`. Command API 2. Weave casts are a fixed buffer. |

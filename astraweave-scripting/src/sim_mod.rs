@@ -9,10 +9,14 @@
 use crate::ScriptReloadQueue;
 use astraweave_ecs::{App, Entity, Plugin, SystemStage, World};
 use astraweave_security::sandbox::{
-    execute_deterministic, roll_i64, sha256_bytes, SandboxEngine, SandboxProfile, ScriptReplayLog,
-    DEFAULT_MAX_MOVE_DELTA,
+    execute_deterministic, roll_i64, sha256_bytes, EngineCeilings, LoadedMod, SandboxEngine,
+    SandboxProfile, ScriptReplayLog, DEFAULT_MAX_MOVE_DELTA, DEFAULT_MAX_WEAVES,
 };
 use astraweave_security::ScriptSandbox;
+use astraweave_weaving::{
+    parse_template_toml, queue_weave, QueueError, WeaveScratch, ENGINE_TEMPLATE_MAX,
+    MAX_WEAVE_COMMANDS,
+};
 use rhai::{Engine, Scope};
 use sha2::{Digest, Sha256};
 
@@ -98,6 +102,60 @@ struct MoveBuf {
     target: Option<(i64, i64)>,
 }
 
+const MAX_KNOWN_TEMPLATES: usize = 24;
+
+#[derive(Clone, Copy)]
+struct WeaveCast {
+    template: u16,
+    origin: [i32; 3],
+}
+
+#[derive(Clone, Copy)]
+struct WeaveBuf {
+    known: [u16; MAX_KNOWN_TEMPLATES],
+    known_count: u8,
+    casts: [WeaveCast; MAX_WEAVE_COMMANDS],
+    count: u8,
+    already: u8,
+    ceiling: u8,
+}
+
+impl WeaveBuf {
+    fn prepare(scratch: &WeaveScratch, ceilings: &EngineCeilings) -> Self {
+        let mut known = [0u16; MAX_KNOWN_TEMPLATES];
+        let mut known_count = 0u8;
+        for id in 1..=ENGINE_TEMPLATE_MAX {
+            known[known_count as usize] = id;
+            known_count = known_count.saturating_add(1);
+        }
+        let mut loaded = [0u16; 16];
+        let loaded_count = scratch.copy_loaded_ids(&mut loaded);
+        for id in loaded.iter().take(loaded_count) {
+            if (known_count as usize) >= known.len() {
+                break;
+            }
+            known[known_count as usize] = *id;
+            known_count = known_count.saturating_add(1);
+        }
+        let ceiling = ceilings.max_weaves.clamp(0, DEFAULT_MAX_WEAVES) as u8;
+        Self {
+            known,
+            known_count,
+            casts: [WeaveCast {
+                template: 0,
+                origin: [0, 0, 0],
+            }; MAX_WEAVE_COMMANDS],
+            count: 0,
+            already: scratch.command_count() as u8,
+            ceiling,
+        }
+    }
+
+    fn allows(&self, template: u16) -> bool {
+        self.known[..self.known_count as usize].contains(&template)
+    }
+}
+
 pub struct ModScriptPlugin;
 
 /// Install [`ModScriptPlugin`] on the engine app `build_app` creates.
@@ -133,6 +191,15 @@ impl Plugin for ModScriptPlugin {
         }
         if app.world.get_resource::<ScriptReplayLog>().is_none() {
             app.world.insert_resource(ScriptReplayLog::default());
+        }
+        if app.world.get_resource::<WeaveScratch>().is_none() {
+            app.world.insert_resource(WeaveScratch::new());
+        }
+        if app.world.get_resource::<EngineCeilings>().is_none() {
+            app.world.insert_resource(EngineCeilings::default());
+        }
+        if app.world.get_resource::<ModTickScratch>().is_none() {
+            app.world.insert_resource(ModTickScratch::default());
         }
         app.world.insert_resource(ModScriptErrors::default());
         app.add_system(SystemStage::SIMULATION, mod_script_system)
@@ -180,6 +247,52 @@ fn register_sim_host(engine: &mut Engine) {
                 Ok(())
             },
         );
+    engine
+        .register_type_with_name::<WeaveBuf>("WeaveBuf")
+        .register_fn(
+            "queue_weave",
+            |buf: &mut WeaveBuf,
+             template: i64,
+             x: i64,
+             y: i64,
+             z: i64|
+             -> Result<(), Box<rhai::EvalAltResult>> {
+                let template = u16::try_from(template).map_err(|_| weave_runtime("template id"))?;
+                if !buf.allows(template) {
+                    return Err(weave_runtime("unknown weave template"));
+                }
+                let origin = [
+                    i32::try_from(x).map_err(|_| weave_runtime("origin x"))?,
+                    i32::try_from(y).map_err(|_| weave_runtime("origin y"))?,
+                    i32::try_from(z).map_err(|_| weave_runtime("origin z"))?,
+                ];
+                let used = buf.already.saturating_add(buf.count);
+                if u16::from(used) >= u16::from(buf.ceiling)
+                    || buf.count as usize >= buf.casts.len()
+                {
+                    return Err(weave_runtime("weave queue is full"));
+                }
+                buf.casts[buf.count as usize] = WeaveCast { template, origin };
+                buf.count = buf.count.saturating_add(1);
+                Ok(())
+            },
+        );
+}
+
+fn weave_runtime(message: &str) -> Box<rhai::EvalAltResult> {
+    Box::new(rhai::EvalAltResult::ErrorRuntime(
+        message.into(),
+        rhai::Position::NONE,
+    ))
+}
+
+#[derive(Default)]
+struct ModTickScratch {
+    entities: Vec<Entity>,
+    writes: Vec<(Entity, i32, i32)>,
+    errors: Vec<String>,
+    sources: Vec<ModScriptSource>,
+    mounted_weaves: bool,
 }
 
 /// One simulation step of every mod script.
@@ -189,6 +302,7 @@ pub fn mod_script_system(world: &mut World) {
     }
     apply_logged_swaps(world);
     apply_program_reloads(world);
+    mount_loaded_weaves(world);
 
     let sandbox = match world.get_resource::<ModEngine>() {
         Some(engine) => engine.0.clone(),
@@ -201,46 +315,188 @@ pub fn mod_script_system(world: &mut World) {
             world_seed: 0,
             tick: 0,
         });
-    let programs = world
-        .get_resource::<ModPrograms>()
+    let ceilings = world
+        .get_resource::<EngineCeilings>()
         .cloned()
         .unwrap_or_default();
+    let mut tick = {
+        let slot = world.get_resource_mut::<ModTickScratch>();
+        match slot {
+            Some(slot) => std::mem::take(slot),
+            None => ModTickScratch::default(),
+        }
+    };
+    if let Some(programs) = world.get_resource::<ModPrograms>() {
+        refill_sources(&mut tick, programs);
+    }
+    tick.entities.clear();
+    tick.entities.extend(world.entities_with::<CModAgent>());
+    tick.entities.sort();
+    tick.writes.clear();
+    tick.errors.clear();
 
-    let mut entities = world.entities_with::<CModAgent>();
-    entities.sort();
+    let mut weave_buf = world
+        .get_resource::<WeaveScratch>()
+        .map(|scratch| WeaveBuf::prepare(scratch, &ceilings))
+        .unwrap_or_else(|| WeaveBuf::prepare(&WeaveScratch::new(), &ceilings));
 
-    let mut errors = Vec::new();
-    let mut writes: Vec<(Entity, i32, i32)> = Vec::new();
-
-    for script in &programs.scripts {
-        for entity in &entities {
-            let Some(agent) = world.get::<CModAgent>(*entity) else {
+    for source_index in 0..tick.sources.len() {
+        for entity_index in 0..tick.entities.len() {
+            let entity = tick.entities[entity_index];
+            let Some(agent) = world.get::<CModAgent>(entity).copied() else {
                 continue;
             };
-            let agent = *agent;
-            match run_one(&sandbox, script, &clock, entity.to_raw(), agent) {
-                Ok(Some((x, y))) => writes.push((*entity, x, y)),
-                Ok(None) => {}
+            let entity_raw = entity.to_raw();
+            let result = run_one(
+                &sandbox,
+                tick.sources[source_index].source.as_str(),
+                &clock,
+                entity_raw,
+                agent,
+                weave_buf,
+            );
+            match result {
+                Ok((target, casts)) => {
+                    if let Some((x, y)) = target {
+                        tick.writes.push((entity, x, y));
+                    }
+                    apply_weave_casts(world, &clock, entity_raw, &casts, &mut tick.errors);
+                    if let Some(scratch) = world.get_resource::<WeaveScratch>() {
+                        weave_buf.already = scratch.command_count() as u8;
+                    }
+                }
                 Err(message) => {
-                    errors.push(format!("{}:{}:{message}", script.path, entity.to_raw()))
+                    let path = tick.sources[source_index].path.as_str();
+                    tick.errors.push(format!("{path}:{entity_raw}:{message}"));
                 }
             }
         }
     }
 
-    for (entity, x, y) in writes {
-        if let Some(agent) = world.get_mut::<CModAgent>(entity) {
-            agent.x = x;
-            agent.y = y;
+    for (entity, x, y) in &tick.writes {
+        if let Some(agent) = world.get_mut::<CModAgent>(*entity) {
+            agent.x = *x;
+            agent.y = *y;
         }
     }
 
     if let Some(slot) = world.get_resource_mut::<ModScriptErrors>() {
-        slot.messages.extend(errors);
+        slot.messages.extend(tick.errors.iter().cloned());
         slot.messages.sort();
+    }
+    tick.errors.clear();
+    if let Some(slot) = world.get_resource_mut::<ModTickScratch>() {
+        *slot = tick;
+    } else {
+        world.insert_resource(tick);
     }
     if let Some(clock) = world.get_resource_mut::<ModClock>() {
         clock.tick = clock.tick.wrapping_add(1);
+    }
+}
+
+fn refill_sources(tick: &mut ModTickScratch, programs: &ModPrograms) {
+    let count = programs.scripts.len();
+    if tick.sources.len() < count {
+        tick.sources.resize_with(count, || {
+            ModScriptSource::new(String::new(), String::new(), String::new())
+        });
+    } else {
+        tick.sources.truncate(count);
+    }
+    for (dst, src) in tick.sources.iter_mut().zip(programs.scripts.iter()) {
+        dst.mod_id.clone_from(&src.mod_id);
+        dst.path.clone_from(&src.path);
+        dst.source.clone_from(&src.source);
+        dst.sha256 = src.sha256;
+    }
+}
+
+fn mount_loaded_weaves(world: &mut World) {
+    let mounted = world
+        .get_resource::<ModTickScratch>()
+        .map(|tick| tick.mounted_weaves)
+        .unwrap_or(false);
+    if mounted {
+        return;
+    }
+    let Some(loaded) = world.get_resource::<LoadedMod>() else {
+        return;
+    };
+    let texts: Vec<String> = loaded.weaves.values().cloned().collect();
+    if let Some(tick) = world.get_resource_mut::<ModTickScratch>() {
+        tick.mounted_weaves = true;
+    }
+    let mut scratch = world
+        .get_resource_mut::<WeaveScratch>()
+        .map(std::mem::take)
+        .unwrap_or_default();
+    if let Some(errors) = world.get_resource_mut::<ModScriptErrors>() {
+        for text in &texts {
+            match parse_template_toml(text) {
+                Ok(template) => {
+                    if let Err(err) = scratch.load_template(template) {
+                        errors.messages.push(format!("weave template: {err}"));
+                    }
+                }
+                Err(err) => errors.messages.push(format!("weave template: {err}")),
+            }
+        }
+    }
+    if let Some(slot) = world.get_resource_mut::<WeaveScratch>() {
+        *slot = scratch;
+    } else {
+        world.insert_resource(scratch);
+    }
+}
+
+fn apply_weave_casts(
+    world: &mut World,
+    clock: &ModClock,
+    caster: u64,
+    casts: &WeaveBuf,
+    errors: &mut Vec<String>,
+) {
+    let ceilings = world
+        .get_resource::<EngineCeilings>()
+        .map(|ceilings| ceilings.max_weaves)
+        .unwrap_or(DEFAULT_MAX_WEAVES);
+    let mut scratch = match world.get_resource_mut::<WeaveScratch>() {
+        Some(slot) => std::mem::take(slot),
+        None => return,
+    };
+    for index in 0..casts.count as usize {
+        let cast = casts.casts[index];
+        if scratch.command_count() as i32 >= ceilings {
+            errors.push(format!(
+                "weave queue is full for template {}",
+                cast.template
+            ));
+            break;
+        }
+        let duration = u64::from(scratch.duration_of(cast.template).max(1));
+        let seq = scratch.command_count() as u32;
+        let start = clock.tick;
+        let until = start.saturating_add(duration);
+        if let Err(err) = queue_weave(
+            &mut scratch,
+            start,
+            until,
+            seq,
+            caster,
+            cast.template,
+            cast.origin,
+        ) {
+            errors.push(match err {
+                QueueError::UnknownTemplate => {
+                    format!("unknown weave template {}", cast.template)
+                }
+                QueueError::Full => format!("weave queue is full for template {}", cast.template),
+            });
+        }
+    }
+    if let Some(slot) = world.get_resource_mut::<WeaveScratch>() {
+        *slot = scratch;
     }
 }
 
@@ -306,11 +562,12 @@ fn apply_program_reloads(world: &mut World) {
 
 fn run_one(
     sandbox: &ScriptSandbox,
-    script: &ModScriptSource,
+    source: &str,
     clock: &ModClock,
     entity_raw: u64,
     agent: CModAgent,
-) -> Result<Option<(i32, i32)>, String> {
+    weaves: WeaveBuf,
+) -> Result<(Option<(i32, i32)>, WeaveBuf), String> {
     let mut scope = Scope::new();
     scope.push(
         "rng",
@@ -323,20 +580,24 @@ fn run_one(
         },
     );
     scope.push("moves", MoveBuf::default());
+    scope.push("weaves", weaves);
     scope.push("pos_x", i64::from(agent.x));
     scope.push("pos_y", i64::from(agent.y));
     scope.push("entity_id", entity_raw as i64);
-    let _value = execute_deterministic(sandbox, &script.source, &mut scope)
-        .map_err(|err| err.to_string())?;
+    let _value =
+        execute_deterministic(sandbox, source, &mut scope).map_err(|err| err.to_string())?;
+    let weaves = scope
+        .get_value::<WeaveBuf>("weaves")
+        .ok_or_else(|| "weave buffer missing".to_string())?;
     let moves = scope
         .get_value::<MoveBuf>("moves")
         .ok_or_else(|| "move buffer missing".to_string())?;
     let Some((x, y)) = moves.target else {
-        return Ok(None);
+        return Ok((None, weaves));
     };
     let x = i32::try_from(x).map_err(|_| format!("x {x} does not fit i32"))?;
     let y = i32::try_from(y).map_err(|_| format!("y {y} does not fit i32"))?;
-    Ok(Some((x, y)))
+    Ok((Some((x, y)), weaves))
 }
 
 /// SHA-256 of the clock, script bytes, errors, and agent positions.
@@ -615,6 +876,82 @@ scripts = ["scripts/tick.rhai"]
                 let entity = app.world.spawn();
                 app.world.insert(entity, CModAgent { x, y });
             }
+            app
+        }
+    }
+
+    #[test]
+    fn queue_weave_through_build_app_replays_identically() {
+        use astraweave_core::ecs_adapter::build_app;
+        use astraweave_core::World as LegacyWorld;
+        use astraweave_weaving::WeaveScratch;
+
+        const SCRIPT: &str =
+            "weaves.queue_weave(1, pos_x, pos_y, 0);\nweaves.queue_weave(8, 1, 2, 3);\n";
+        let toml = "id = 8\nduration = 3\n[[nodes]]\nkind = \"gravity\"\na = 1\n";
+        register_mod_runtime();
+
+        let mut live = app_with_weave(SCRIPT, toml);
+        live = live.run_fixed(2);
+        let mut replay = app_with_weave(SCRIPT, toml);
+        replay = replay.run_fixed(2);
+        assert_eq!(
+            mod_state_digest(&live.world),
+            mod_state_digest(&replay.world)
+        );
+        let live_weaves = live.world.get_resource::<WeaveScratch>().unwrap();
+        let replay_weaves = replay.world.get_resource::<WeaveScratch>().unwrap();
+        assert_eq!(live_weaves.command_count(), replay_weaves.command_count());
+        assert!(live_weaves.command_count() >= 2);
+        assert_eq!(live_weaves.command(0).unwrap().template, 1);
+        assert_eq!(live_weaves.command(1).unwrap().template, 8);
+        assert_eq!(live_weaves.command(1).unwrap().until, 3);
+        for index in 0..live_weaves.command_count() {
+            assert_eq!(live_weaves.command(index), replay_weaves.command(index));
+        }
+
+        fn app_with_weave(script: &str, toml: &str) -> App {
+            use astraweave_security::sandbox::{BudgetLimits, LoadedMod, ModManifest, SemVer};
+            let loaded = LoadedMod {
+                manifest: ModManifest {
+                    schema: 1,
+                    id: "demo.mod".into(),
+                    name: "Demo".into(),
+                    version: SemVer {
+                        major: 1,
+                        minor: 0,
+                        patch: 0,
+                    },
+                    api: 1,
+                    load_after: Vec::new(),
+                    load_before: Vec::new(),
+                    scripts: vec!["scripts/tick.rhai".into()],
+                    weaves: vec!["weaves/gravity.toml".into()],
+                    capabilities: Default::default(),
+                    budget: BudgetLimits {
+                        traps: 0,
+                        terrain_edits: 0,
+                        spawns: 0,
+                    },
+                },
+                scripts: Default::default(),
+                weaves: std::collections::BTreeMap::from([(
+                    "weaves/gravity.toml".into(),
+                    toml.into(),
+                )]),
+            };
+            let mut app = build_app(LegacyWorld::new(), 1.0 / 60.0);
+            app.world.insert_resource(loaded);
+            app.world.insert_resource(ModClock::new(0xA11C));
+            app.world.insert_resource(ModPrograms {
+                scripts: vec![ModScriptSource::new(
+                    "demo.mod",
+                    "scripts/tick.rhai",
+                    script,
+                )],
+            });
+            let entity = app.world.spawn();
+            app.world.insert(entity, CModAgent { x: 4, y: 5 });
             app
         }
     }
