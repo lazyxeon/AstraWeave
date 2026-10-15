@@ -1,6 +1,6 @@
 # Required status check on pull requests: `determinism-replay / compare`.
 # Branch protection is a repository setting. This workflow is the check it must require.
-# Both `planner_pure` (WS-D0) and `perception_world` (WS-D1) fail the compare job on any mismatch.
+# `planner_pure`, `perception_world`, and `fixed64` fail the compare job on any mismatch.
 
 name: determinism-replay
 
@@ -92,7 +92,7 @@ jobs:
           import sys
           from pathlib import Path
 
-          required = {"planner_pure", "perception_world"}
+          required = {"planner_pure", "perception_world", "fixed64"}
           root = Path("replay-artifacts")
           files = sorted(root.glob("*/replay-hash.json"))
           print(f"artifacts: {[str(p) for p in files]}")

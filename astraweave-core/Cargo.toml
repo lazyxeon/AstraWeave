@@ -22,6 +22,7 @@ astraweave-behavior = { workspace = true }
 [dev-dependencies]
 criterion = { workspace = true }
 astraweave-ai = { workspace = true }
+astraweave-math = { workspace = true }
 sha2 = { workspace = true }
 
 [[bench]]
