@@ -764,6 +764,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "astraweave-causality"
+version = "0.1.0"
+dependencies = [
+ "astraweave-core",
+ "sha2",
+]
+
+[[package]]
 name = "astraweave-cinematics"
 version = "0.1.0"
 dependencies = [

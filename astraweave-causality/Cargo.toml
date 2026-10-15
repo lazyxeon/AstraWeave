@@ -1,0 +1,12 @@
+[package]
+name = "astraweave-causality"
+version = "0.1.0"
+edition = "2021"
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Deterministic causal events and baked consequence rules"
+
+[dependencies]
+astraweave-core = { workspace = true }
+sha2 = { workspace = true }

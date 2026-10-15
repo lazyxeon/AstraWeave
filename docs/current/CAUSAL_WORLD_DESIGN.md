@@ -1,8 +1,15 @@
 # Causal world-state design
 
-**Status:** review only. This pull request adds this document. It does not add a crate, a system, a replay case, or a demo scene. Do not merge.
+**Status:** approved and implemented. Restacked on `main` at `e894d019` after #251 and #263 merged. Do not merge.
 
-**Reads:** `main` at `f1109340` (combat resolver, #212). Open drafts #243, #251, #263, #213, #252, and #205. `docs/current/ENGINE_PRODUCTION_ROADMAP.md` as it stands on that commit.
+**Decisions (review §10):**
+
+1. The engine is a separate `astraweave-causality` crate. Games opt in by depending on it.
+2. Collapse notice bounds must be the real span before any Aravath slice. That fix is `7a571045` on #243 (issue #279). `causal_bridge` still feeds the authored span. `BridgeAgent` drains the notice.
+3. One sack per 10 ticks stays the bridge pace. `bridge_rules(pace_ticks, sack_delta)` is the data. The replay case passes `(10, -1)`.
+4. Quest completion is rule 7. An actor-cell input for the merchant at the ford cell emits `QUEST_COMPLETE` only when a `QUEST_OFFER` is already in the ring.
+
+**Reads:** `main` at `e894d019`. Open draft #243 still owns the destruction copy. #279's bounds fix is carried here until that PR lands.
 
 **Rule this design obeys.** An LLM may propose text or a rule id. The fixed tick validates that proposal against a baked table and executes only the recorded command. Model bytes never allocate a stock count, a route class, or a quest step.
 
@@ -165,6 +172,8 @@ pub struct CausalEvent {
 | 5 | `SUPPLY_SHORT` | Rule, when stock hits 0 | `[0, 0, 0, 0]` |
 | 6 | `NPC_STANCE` | Rule | `[stance, actor_id_lo, 0, 0]` where 1 = trading, 2 = asking |
 | 7 | `QUEST_OFFER` | Rule | `[template_id, 0, 0, 0]` |
+| 8 | `ACTOR_CELL` | Host | `[cell_id, 0, 0, 0]` where 2 is the ford cell |
+| 9 | `QUEST_COMPLETE` | Rule 7 | `[template_id, 0, 0, 0]` |
 
 Later kinds (heat, faction, weather) append to this table. They do not reuse `String` event types from `WorldEvent`.
 
@@ -191,10 +200,13 @@ The slice table, in `(id)` order:
 |---|---|---|---|
 | 1 | `GEOMETRY_CUT` on the bridge structure | `ROUTE_BLOCKED` on route 1 | 0 |
 | 2 | `ROUTE_BLOCKED` on route 1 | `ROUTE_CLASS` ford, if the span's baked alternate is the ford | 0 |
-| 3 | `ROUTE_CLASS` ford while stock > 0 | `SUPPLY_DELTA` of -1 every 10 ticks | 10 |
+| 3 | `ROUTE_CLASS` ford while stock > 0 | `SUPPLY_DELTA` of `sack_delta` every `pace_ticks` | `pace_ticks` |
 | 4 | `SUPPLY_DELTA` whose `stock_after` is 0 | `SUPPLY_SHORT` | 0 |
 | 5 | `SUPPLY_SHORT` | `NPC_STANCE` asking for the merchant | 0 |
 | 6 | `NPC_STANCE` asking | `QUEST_OFFER` template 1 | 0 |
+| 7 | `ACTOR_CELL` for the merchant at the ford cell, and a `QUEST_OFFER` is already in the ring | `QUEST_COMPLETE` template 1 | 0 |
+
+The bridge table is `bridge_rules(pace_ticks, sack_delta)`. The replay case uses `pace_ticks = 10` and `sack_delta = -1`. A different pair is a different table, not a different match arm.
 
 Match is equality on kind, class, and subject. The scan is the rule array in id order, then the events admitted this tick in `(seq, id)` order. A rule fires at most once per cause event. Delayed emits sit in a fixed pending array and become due when `tick` matches. Pending overflow returns `CausalError::PendingFull` and does not drop silently.
 
@@ -229,17 +241,19 @@ Encoding matches the destruction `state_hash` and the depth-tick `canonical_byte
 
 ### 4.1 Case `causal_bridge`
 
-New required case in `.github/workflows/determinism-replay.yml`. The compare job already runs on Ubuntu, Windows, and macOS and fails a required case on mismatch or absence. This case joins that set. It does not replace `planner_pure`, `perception_world`, `gameplay_rng`, `fixed64`, or `combat_resolve`. When #243, #251, and #213 have landed their cases, the set also keeps `destruction`, `nav_reroute`, and `ai_depth_tick`.
+New required case in `.github/workflows/determinism-replay.yml`. The compare job already runs on Ubuntu, Windows, and macOS and fails a required case on mismatch or absence. This case joins the eight already required on `main` at `e894d019`: `planner_pure`, `perception_world`, `gameplay_rng`, `fixed64`, `combat_resolve`, `destruction`, `gameplay_qa_aravath_slice`, and `nav_reroute`.
 
-The case builds one world, seed `0xCA05_B81D`, and runs 120 ticks. At tick 30 the host admits one `GEOMETRY_CUT` for the bridge span #263 uses. No recorded model line. Expected integers at tick 120:
+The case builds one world, seed `0xCA05_B81D`, and applies ticks 0 through 120 inclusive. At tick 30 the host admits one `GEOMETRY_CUT` for the authored bridge span (milli-units `[-1000, -1000, 17000]` to `[5000, 1000, 31999]`). At tick 120 it admits `ACTOR_CELL` for the merchant at the ford cell. No recorded model line. Expected integers after tick 120:
 
 - route class = ford (2)
 - stock = 0 (8 sacks, -1 per 10 ticks across ticks 40, 50, 60, 70, 80, 90, 100, 110)
 - stance = asking (2)
-- one `QUEST_OFFER` with template 1, parented on the stance event, parented on the short event, parented on the last delta, parented on the class event, parented on the blocked event, parented on the cut
-- resolved line = `scripted:The ford is the only road. Carry the sacks across.`
+- one `QUEST_OFFER` with template 1
+- one `QUEST_COMPLETE` with template 1, caused by the cell event and the offer
+- offer line = `scripted:The ford is the only road. Carry the sacks across.`
+- completion line = `scripted:The sacks are across the ford.`
 
-A second process in the same test hashes the same bytes. The workflow uploads `target/replay-hash.json` the way the existing job does. The digest is filled in when the case exists. This document does not invent one.
+A second process in the same test hashes the same bytes. The workflow merges `replay-hash-causal.json` into `target/replay-hash.json` beside the combat and gameplay-qa files. Local digest, pinned in `astraweave-causality/tests/replay_hash.rs`: `813492cb11ffb9834dcfbcdd13fc0aaffd7b07c8ac54e1c921bbdb773dc83446`. The three-OS compare is the check that this pin is not Linux-only.
 
 Same-input reorder check, in the crate tests: two `GEOMETRY_CUT` inputs that differ only by arrival order and share `(tick, seq)` are sorted by `(subject, kind)` before admission, and the hash matches. Inputs that differ by `seq` keep that order. That is the cross-OS case's defense against a host that drains notices in scheduler order.
 
@@ -293,19 +307,9 @@ Forbidden on the tick: `generate_event`, `generate_storyline`, `QuestLlmSystem::
 
 ## 7. First vertical slice in the Aravath demo
 
-Headless, in `aravath_runtime`, stacked on #263. No new mesh, no new texture, no new audio. The KayKit and Kenney files already in `assets/aravath` stay the only art. The windowed scene stays where #263 left it.
+Headless, in `aravath_runtime::BridgeAgent`. No new mesh, texture, or audio.
 
-Extend `BridgeAgent` rather than adding a second router:
-
-- Own a `CausalWorld` and the merchant stock (8).
-- On tick 30, keep the existing `Detach` mark so the path still moves to the ford.
-- Admit one `GEOMETRY_CUT` for that same milli-unit span.
-- Step the causal world every tick.
-- Expose `stock`, `stance`, and `quest_template` for the test.
-
-The test `collapse_sends_the_agent_to_the_ford` stays. A second test runs 120 ticks and checks the integers in §4.1. Player-visible copy in the crate is the template line in §3.3 and the existing scene label `Aravath`.
-
-The slice does not call the LLM, does not open a window, and does not write a save file. Stock on screen, when a later PR draws the greybox HUD, reads the same integers.
+The agent owns a `DestructionWorld` and a `CausalWorld`. Tick 30 detaches the deck. The collapse notice is the union of pieces that became dynamic (the #279 fix, copied until #243 lands). That box is converted to milli-units and is both the nav mark and the `GEOMETRY_CUT` region. Tick 120, once the route is on the ford, admits the merchant cell. Rule 7 completes the quest. Player-visible copy is the template line in §3.3 and the scene label `Aravath`.
 
 ## 8. Merge order
 
@@ -337,9 +341,11 @@ Shared-file note for the implementation PR: `determinism-replay.yml` and `astraw
 - Clippy `-D warnings` on `astraweave-causality` and `aravath_runtime`.
 - Player-facing strings say Aravath. The retired setting name is not introduced.
 
-## 10. Questions for review
+## 10. Decisions recorded
 
-1. Is the crate split (`astraweave-causality`, host-drained rings, no edge into destruction) the one to build, or should the rings live as a module of `astraweave-core` next to `SimRng`?
-2. Should reason-2 bounds be fixed on #243 before the slice, or is the authored span in §7 acceptable for the first case while #243 keeps the unit box behind `deferred-failure`?
-3. Stock decay of 1 sack per 10 ticks, from 8, is the scripted shortage. Confirm that pace before the integers are frozen in `causal_bridge`.
-4. Quest completion (merchant reaches the ford cell) is asserted in the demo and is not a seventh rule in the first table. Say if that step should be a rule instead.
+1. Separate crate `astraweave-causality`. Opt-in. Not a module of `astraweave-core`.
+2. Bounds fix is a gate. The temporary destruction copy carries `7a571045` until #243 lands. `causal_bridge` does not read the notice. `BridgeAgent` does.
+3. Pace is `bridge_rules(10, -1)` for `causal_bridge`. The numbers are arguments.
+4. Rule 7 emits `QUEST_COMPLETE` from `ACTOR_CELL` at the ford while `QUEST_OFFER` is in the ring.
+
+#251 and #263 are on `main` at `e894d019`. This branch rebases onto that commit. The required replay set is those eight cases plus `causal_bridge`.
