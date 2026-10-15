@@ -77,6 +77,10 @@ pub struct MotorInput {
     pub fly_toggle: bool,
     pub walk: bool,
     pub feet_locked: bool,
+    pub climb: bool,
+    pub glide: bool,
+    pub dive: bool,
+    pub prone: bool,
 }
 
 impl Motor {
@@ -132,6 +136,10 @@ impl Motor {
                 sprint: input.sprint,
                 crouch: input.crouch,
                 walk: input.walk,
+                climb: input.climb,
+                glide: input.glide,
+                dive: input.dive,
+                prone: input.prone,
             },
             &probe,
             0,
@@ -227,18 +235,24 @@ fn capsule_half(physics: &PhysicsWorld, body: u64) -> f32 {
 }
 
 fn ground_probe(physics: &PhysicsWorld, body: u64) -> ProbeFrame {
-    match physics.character_ground(body) {
-        Some((ground_y, normal_y)) => ProbeFrame {
-            support: normal_y > 0.35,
-            ground_y,
-            normal_y,
-        },
-        None => ProbeFrame {
-            support: false,
-            ground_y: 0.0,
-            normal_y: 1.0,
-        },
+    let mut probe = match physics.character_ground(body) {
+        Some((ground_y, normal_y)) => {
+            let mut probe = ProbeFrame::plane(ground_y);
+            probe.support = normal_y > 0.35;
+            probe.normal_y = normal_y;
+            probe
+        }
+        None => {
+            let mut probe = ProbeFrame::plane(0.0);
+            probe.support = false;
+            probe
+        }
+    };
+    if let Some(center) = physics.body_transform(body).map(|m| m.w_axis.truncate()) {
+        probe.water_surface = physics.water_surface_at(center);
+        probe.climbability = physics.climbability_at(body, center);
     }
+    probe
 }
 
 #[cfg(test)]

@@ -13,11 +13,13 @@ const _: () = assert!(
 pub mod assets;
 pub mod bridge_agent;
 pub mod combat;
+pub mod course;
 pub mod detmath;
 pub mod figure;
 pub mod frame_budget;
 pub mod ground;
 pub mod hud;
+pub mod ik;
 pub mod island;
 pub mod locomotion;
 pub mod motor;

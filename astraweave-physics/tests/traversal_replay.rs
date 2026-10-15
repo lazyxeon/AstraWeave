@@ -11,6 +11,38 @@ use glam::vec3;
 use sha2::{Digest, Sha256};
 use std::path::PathBuf;
 
+#[test]
+fn climb_flags_fail_closed_for_dynamic_bodies_and_puzzle_volumes() {
+    use astraweave_physics::traversal::Climbability;
+    use astraweave_physics::Layers;
+    let mut world = PhysicsWorld::new(vec3(0.0, -9.8, 0.0));
+    let ground = world.create_ground_plane(vec3(10.0, 0.5, 10.0), 0.9);
+    assert_eq!(
+        world.climbability_at(ground, vec3(0.0, 0.2, 0.0)),
+        Climbability::Climbable
+    );
+    let built = world.add_dynamic_box(
+        vec3(2.0, 1.0, 0.0),
+        vec3(0.5, 0.5, 0.5),
+        1.0,
+        Layers::DEFAULT,
+    );
+    assert_eq!(
+        world.climbability_at(built, vec3(2.0, 1.0, 0.0)),
+        Climbability::NonClimbable
+    );
+    world.set_climbability(built, Climbability::Climbable);
+    assert_eq!(
+        world.climbability_at(built, vec3(2.0, 1.0, 0.0)),
+        Climbability::Climbable
+    );
+    world.add_climb_blocker(vec3(-1.0, -1.0, -1.0), vec3(1.0, 3.0, 1.0));
+    assert_eq!(
+        world.climbability_at(ground, vec3(0.0, 0.2, 0.0)),
+        Climbability::NonClimbable
+    );
+}
+
 fn sha256_hex(bytes: &[u8]) -> String {
     let digest = Sha256::digest(bytes);
     let mut hex = String::with_capacity(digest.len() * 2);

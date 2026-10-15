@@ -200,6 +200,21 @@ impl WaterPlayerState {
         }
     }
 
+    /// Feed a traversal water surface into this state.
+    ///
+    /// `surface_y` and `feet_y` come from `WaterQuery` and the capsule feet.
+    /// Submersion is depth divided by the configured body height.
+    pub fn update_from_surface(
+        &mut self,
+        surface_y: f32,
+        feet_y: f32,
+        dt: f32,
+    ) -> WaterUpdateResult {
+        let depth = (surface_y - feet_y).max(0.0);
+        let height = self.config.player_height.max(0.01);
+        self.update((depth / height).clamp(0.0, 1.0), dt)
+    }
+
     /// Update water state based on submersion level
     ///
     /// Returns drowning damage if applicable
@@ -541,6 +556,17 @@ impl WaterForces {
 #[allow(clippy::field_reassign_with_default)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn traversal_surface_query_enters_swim_and_dive() {
+        let mut state = WaterPlayerState::default();
+        let wading = state.update_from_surface(0.4, 0.0, 1.0 / 60.0);
+        assert_eq!(wading.mode, WaterMovementMode::Wading);
+        state.is_diving = true;
+        let diving = state.update_from_surface(2.2, 0.0, 1.0 / 60.0);
+        assert_eq!(diving.mode, WaterMovementMode::Diving);
+        assert!(diving.oxygen_percent < 1.0);
+    }
 
     #[test]
     fn test_movement_mode_from_submersion() {

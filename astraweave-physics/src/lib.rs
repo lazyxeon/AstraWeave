@@ -923,6 +923,10 @@ pub struct PhysicsWorld {
     body_kinds: HashMap<RigidBodyHandle, ActorKind>,
     next_body_id: BodyId,
     pub char_map: HashMap<BodyId, CharacterController>,
+    /// Explicit climb flags. Missing entries use [`Self::climbability`].
+    pub climb_flags: HashMap<BodyId, crate::traversal::Climbability>,
+    /// World-space AABBs that force NonClimbable (puzzle volumes).
+    pub climb_blockers: Vec<(Vec3, Vec3)>,
     next_joint_id: u64,
     debug_render_pipeline: DebugRenderPipeline,
     pub buoyancy_bodies: HashMap<BodyId, BuoyancyData>,
@@ -971,6 +975,8 @@ impl PhysicsWorld {
             body_kinds: HashMap::new(),
             next_body_id: 1,
             char_map: HashMap::new(),
+            climb_flags: HashMap::new(),
+            climb_blockers: Vec::new(),
             next_joint_id: 1,
             debug_render_pipeline: DebugRenderPipeline::default(),
             buoyancy_bodies: HashMap::new(),
@@ -1013,6 +1019,8 @@ impl PhysicsWorld {
             body_kinds: HashMap::new(),
             next_body_id: 1,
             char_map: HashMap::new(),
+            climb_flags: HashMap::new(),
+            climb_blockers: Vec::new(),
             next_joint_id: 1,
             debug_render_pipeline: DebugRenderPipeline::default(),
             buoyancy_bodies: HashMap::new(),
@@ -1700,6 +1708,46 @@ impl PhysicsWorld {
             rbmut.set_translation(vector![center.x, center.y, center.z], true);
             rbmut.set_next_kinematic_position(iso);
         }
+    }
+
+    pub fn set_climbability(&mut self, id: BodyId, flag: crate::traversal::Climbability) {
+        self.climb_flags.insert(id, flag);
+    }
+
+    pub fn add_climb_blocker(&mut self, min: Vec3, max: Vec3) {
+        self.climb_blockers.push((min, max));
+    }
+
+    /// World geometry defaults to climbable. Player-built and unknown bodies
+    /// fail closed. A puzzle blocker AABB forces non-climbable.
+    pub fn climbability_at(&self, id: BodyId, point: Vec3) -> crate::traversal::Climbability {
+        use crate::traversal::Climbability;
+        for (min, max) in &self.climb_blockers {
+            let inside = point.x >= min.x
+                && point.x <= max.x
+                && point.y >= min.y
+                && point.y <= max.y
+                && point.z >= min.z
+                && point.z <= max.z;
+            if inside {
+                return Climbability::NonClimbable;
+            }
+        }
+        if let Some(flag) = self.climb_flags.get(&id).copied() {
+            return flag;
+        }
+        let kind = self
+            .handle_of(id)
+            .and_then(|handle| self.body_kinds.get(&handle).copied());
+        match kind {
+            Some(ActorKind::Static) => Climbability::Climbable,
+            _ => Climbability::NonClimbable,
+        }
+    }
+
+    pub fn water_surface_at(&self, point: Vec3) -> Option<f32> {
+        use astraweave_water::WaterQuery;
+        self.water.sample(point).map(|sample| sample.surface_height)
     }
 
     /// Downward probe that ignores the character collider.
