@@ -63,7 +63,7 @@ pub(super) fn compute_sky_colors(
 
     // Modulate by time of day
     let time = world_time_of_day;
-    let day_factor = if time >= 6.0 && time <= 18.0 {
+    let day_factor = if (6.0..=18.0).contains(&time) {
         let mid = 12.0;
         let diff = (time - mid).abs();
         1.0 - (diff / 6.0) * 0.6 // 1.0 at noon, 0.4 at 6am/6pm
