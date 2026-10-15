@@ -127,7 +127,7 @@ Run-length of dirty cells, cap 1024. Above the cap the slot stays dense. Sparse 
 | Physics buoyancy | `write_columns` → `set_water_columns` | `ColumnWater` | Empty table leaves the analytic plane |
 | Traversal #244 | `submersion_between` | fraction in `[0, 1]` | Helper lives in `astraweave-gameplay`. The motor is not on this branch |
 | AI perception | `hazards()` | up to 16 samples nearest the player | Copying them onto `WorldSnapshot` waits. This crate does not edit the snapshot |
-| Replay | `local_sim_case_bytes` | 300 × 32 digest bytes | Required case in `determinism-replay.yml` |
+| Aravath greybox | `Greybox::step` calls `LocalSim::tick` | player plus living enemies, voxel `SolidField`, columns into `PhysicsWorld` | `aravath_runtime/src/sim.rs`. The replay hash includes `field_digest` |
 | GPU fluids | `write_visual` | volume, gas, temp, phase | Caller buffer. Upload is a host concern. SSFR stays deferred (#247) |
 
 ---
@@ -215,15 +215,16 @@ Run-length of dirty cells, cap 1024. Above the cap the slot stays dense. Sparse 
 - `cargo test -p astraweave-water --lib columns::`
 - `cargo test -p astraweave-gameplay --lib submersion_between`
 - `cargo test -p astraweave-physics --lib column_water_wins_over_the_analytic_plane`
-- `cargo test -p astraweave-core --test replay_hash`
+- `cargo test -p aravath_runtime --lib field_follows_the_player`
+- `cargo test -p aravath_runtime --lib replay_matches_golden_hash`
 - `cargo clippy -p astraweave-localsim --all-features -- -D warnings`
 
 ---
 
 ## 11. Open Questions / Parked Decisions
 
-- **Host loop.** Nothing on `main` calls `LocalSim::tick` yet. The Aravath demo (#205) is the intended showcase and is not on this branch.
-- **Destruction overlay.** `SolidField` is the seam. Replacing `FloorSolid` with #243's voxel solidity waits until that PR lands. Do not fork a second solidity grid.
+- **Host loop.** `aravath_runtime::Greybox::step` calls `LocalSim::tick` after movement and dig. The three-OS `local_sim` case stays on `feat/local-sim` (this branch does not carry `determinism-replay.yml`). The Aravath golden covers the same digest inside `state_hash`.
+- **Destruction overlay.** The Aravath host reads the greybox `VoxelGrid`, so a dug cell is open on the next field tick. #243's bond overlay is a later `SolidField`. Do not fork a second solidity grid.
 - **`WorldSnapshot` hazards.** The array is filled here. Copying it onto the snapshot waits on the weaving review question and must not land as a silent schema change inside this crate.
 - **SSFR driven from `write_visual`.** Blocked on #247. The label `deferred-failure` could not be applied from this agent (`gh` is read-only). The issue already states the plan.
 - **Cross-region flow.** Volume stops at the region edge. A breach on the boundary does not spill into the neighbor region.

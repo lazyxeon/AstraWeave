@@ -1505,9 +1505,10 @@ impl PhysicsWorld {
     }
 
     /// Install grid columns published by the local field. An empty table
-    /// leaves sampling on the analytic plane.
+    /// leaves sampling on the analytic plane. The destination buffer is
+    /// reserved in `new`, so a tick that stays under the cap does not allocate.
     pub fn set_water_columns(&mut self, columns: &astraweave_water::ColumnWater) {
-        *self.columns = columns.clone();
+        self.columns.fill(columns.rows());
     }
 
     /// Grid column first, then the analytic plane and AABB volumes.
