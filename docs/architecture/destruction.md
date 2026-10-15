@@ -10,7 +10,7 @@ integration_status: wired
 summary: "Ordered destruction commands, an 8-iteration load push, and a 300-tick replay case."
 owns: [astraweave-destruction]
 doc_version: "1.2"
-last_verified_commit: 444b485c
+last_verified_commit: 7a571045
 runtime_edges:
   - to: astraweave-core
     note: "The core replay test calls demolition_bytes."
@@ -27,7 +27,7 @@ runtime_edges:
 | **System name** | Deterministic destruction |
 | **Primary crates** | `astraweave-destruction` |
 | **Document version** | 1.2 |
-| **Last verified against commit** | `444b485c` |
+| **Last verified against commit** | `7a571045` |
 | **Last verified date** | 2026-10-15 |
 | **Status** | Active. Headless showcase and the required replay case. The Aravath runtime on PR #205 is not on this branch. |
 | **Owner notes** | Design: `docs/current/DESTRUCTION_DESIGN.md`. Survey: `docs/current/DESTRUCTION_ARCHAEOLOGY.md`. `Fixed64` lives in `astraweave-math` (PR #245). |
