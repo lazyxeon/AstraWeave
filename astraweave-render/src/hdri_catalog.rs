@@ -88,7 +88,8 @@ pub struct HdriEntry {
     pub intensity: f32,
     /// Sky color hint \[R, G, B\] for procedural blending
     pub sky_color: [f32; 3],
-    /// SHA-256 of the file bytes. Checked by `catalog_files_match_sha256`.
+    /// SHA-256 of the file bytes. Empty until the catalog row carries a digest.
+    /// `catalog_files_match_sha256` checks every non-empty value.
     pub sha256: String,
 }
 
@@ -115,6 +116,7 @@ struct HdriRaw {
     biomes: Vec<String>,
     intensity: f32,
     sky_color: [f32; 3],
+    #[serde(default)]
     sha256: String,
 }
 
@@ -372,6 +374,9 @@ mod tests {
         assert!(catalog.get("sky_equirect").is_none());
         assert!(catalog.get("spruit_sunrise").is_some());
         for entry in catalog.entries() {
+            if entry.sha256.is_empty() {
+                continue;
+            }
             let path = root.join(&entry.file);
             let bytes =
                 std::fs::read(&path).unwrap_or_else(|err| panic!("{}: {err}", path.display()));

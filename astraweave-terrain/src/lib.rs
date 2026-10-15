@@ -17,6 +17,7 @@ pub mod climate;
 pub mod collision;
 pub mod column_gen;
 pub mod column_stream;
+pub mod destruction_seam;
 pub mod elevation_biome; // Phase 1.5: heightmap-driven multi-biome generation
 pub mod erosion;
 pub mod heightmap;

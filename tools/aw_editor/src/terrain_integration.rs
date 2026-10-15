@@ -54,8 +54,10 @@ pub struct TerrainState {
     cached_pack: Option<(std::path::PathBuf, astraweave_terrain::BiomePack)>,
     /// Integer columns written by scene save. The climate mesh above is a preview.
     saved_ground: Vec<u8>,
-    /// Droplets in the integer bake. Zero means the raw `worldgen_record`.
+    /// Droplets requested by Apply Erosion. Zero means there is no deformation log.
     erosion_droplets: u32,
+    /// DestructionCommand bytes. The base columns stay [`worldgen_record`].
+    erosion_commands: Vec<u8>,
 }
 
 pub struct GeneratedChunk {
@@ -134,6 +136,7 @@ impl Default for TerrainState {
             cached_pack: None,
             saved_ground: Vec::new(),
             erosion_droplets: 0,
+            erosion_commands: Vec::new(),
         }
     }
 }
@@ -153,11 +156,16 @@ impl TerrainState {
         self.erosion_droplets
     }
 
-    /// Replace the saved columns with the deterministic integer droplet bake.
-    /// The f32 preview mesh is left as it is.
+    /// Append the integer droplet walk as destruction commands.
+    /// Saved columns stay the seed record. The f32 preview mesh is left as it is.
     pub fn bake_integer_erosion(&mut self, droplets: u32) {
         self.erosion_droplets = droplets;
-        self.saved_ground = astraweave_terrain::column_gen::eroded_worldgen_record(droplets);
+        self.saved_ground = astraweave_terrain::column_gen::worldgen_record();
+        self.erosion_commands = astraweave_terrain::column_gen::erosion_command_bytes(droplets);
+    }
+
+    pub fn erosion_commands(&self) -> &[u8] {
+        &self.erosion_commands
     }
 
     pub fn cached_biome_pack(&self) -> Option<&astraweave_terrain::BiomePack> {

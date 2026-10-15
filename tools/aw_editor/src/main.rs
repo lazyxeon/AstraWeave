@@ -9256,11 +9256,21 @@ impl MenuActionHandler for EditorApp {
                             .console_logs
                             .push(format!("integer ground save failed: {err}")),
                     }
+                    let commands = self.dock_tab_viewer.erosion_commands();
+                    let cmd_path = path.with_extension("erosion.cmd");
+                    match fs::write(&cmd_path, commands) {
+                        Ok(()) => self
+                            .console_logs
+                            .push(format!("deformation log saved: {:?}", cmd_path)),
+                        Err(err) => self
+                            .console_logs
+                            .push(format!("deformation log save failed: {err}")),
+                    }
                     let banner = path.with_extension("erosion.txt");
                     let note = if droplets == 0 {
-                        "erosion preview is not saved; the ground file is integer columns\n"
+                        "base columns are the seed record; there is no deformation log\n"
                     } else {
-                        "integer droplet bake is in the columns file; the f32 preview is not the save\n"
+                        "base columns are the seed record; deformation is the command log in the erosion.cmd file\n"
                     };
                     match fs::write(&banner, note) {
                         Ok(()) => {}

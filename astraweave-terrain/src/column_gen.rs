@@ -5,13 +5,16 @@
 //! Species and yaw come from [`astraweave_core::sim::SimRng`]. Nothing in
 //! this module iterates a `HashMap`, and nothing calls libm.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use astraweave_core::sim::{SimRng, SIM_SYSTEM_COLUMN_EROSION, SIM_SYSTEM_FOREST_SCATTER};
 use glam::Vec3;
 use rand::RngCore;
 use rayon::prelude::*;
 
+use crate::destruction_seam::{
+    column_step_brush, push_command, CommandKind, DestructionCommand, Detach, MAX_LOG_COMMANDS,
+};
 use crate::voxel_data::{Voxel, VoxelGrid, CHUNK_SIZE};
 
 /// Greybox world seed. The Aravath opening and the replay hash both use it.
@@ -87,6 +90,18 @@ impl PropPlacement {
         const STEP: f32 = std::f32::consts::TAU / 256.0;
         self.yaw_quanta as f32 * STEP
     }
+
+    /// Destruction-graph id. The same `(seed, x, z)` always yields this id.
+    pub fn entity_id(self) -> u64 {
+        scatter_entity_id(self.x, self.z)
+    }
+}
+
+/// Stable scatter id. Destroyed ids stay in the command log and are not respawned.
+pub fn scatter_entity_id(x: i32, z: i32) -> u64 {
+    let hi = u64::from(mix(FOREST_WORLD_SEED, x, z));
+    let lo = u64::from(mix(FOREST_WORLD_SEED ^ 0x5CA7_7E21, z, x));
+    (hi << 32) | lo
 }
 
 pub fn on_yaqar_road(x: i32, z: i32) -> bool {
@@ -243,7 +258,16 @@ pub fn morphed_height(x: i32, z: i32, level: u8, morph_milli: u16) -> i32 {
 /// Integer downhill droplets inside one chunk. Neighbor ties break in the
 /// fixed order north, east, south, west. `droplets == 0` returns the raw heights.
 pub fn erode_chunk_heights(cx: i32, cz: i32, droplets: u32) -> Vec<i32> {
-    let n = CHUNK_SIZE as i32;
+    erode_chunk_heights_with(cx, cz, droplets, |_, _, _| {})
+}
+
+fn erode_chunk_heights_with(
+    cx: i32,
+    cz: i32,
+    droplets: u32,
+    mut on_unit: impl FnMut(i32, i32, bool),
+) -> Vec<i32> {
+    let n = CHUNK_SIZE;
     let mut heights = vec![0i32; (n * n) as usize];
     for lz in 0..n {
         for lx in 0..n {
@@ -280,26 +304,48 @@ pub fn erode_chunk_heights(cx: i32, cz: i32, droplets: u32) -> Vec<i32> {
                 }
             }
             let Some((nx, nz)) = best else {
-                heights[(z * n + x) as usize] += sediment;
+                add_sediment(&mut heights, n, cx, cz, x, z, sediment, &mut on_unit);
                 sediment = 0;
                 break;
             };
             if heights[(z * n + x) as usize] > 1 {
                 heights[(z * n + x) as usize] -= 1;
                 sediment += 1;
+                on_unit(cx * n + x, cz * n + z, true);
             }
             x = nx;
             z = nz;
             if sediment > 2 {
                 heights[(z * n + x) as usize] += 1;
                 sediment -= 1;
+                on_unit(cx * n + x, cz * n + z, false);
             }
         }
         if sediment > 0 {
-            heights[(z * n + x) as usize] += sediment;
+            add_sediment(&mut heights, n, cx, cz, x, z, sediment, &mut on_unit);
         }
     }
     heights
+}
+
+#[allow(clippy::too_many_arguments)]
+fn add_sediment(
+    heights: &mut [i32],
+    n: i32,
+    cx: i32,
+    cz: i32,
+    x: i32,
+    z: i32,
+    sediment: i32,
+    on_unit: &mut impl FnMut(i32, i32, bool),
+) {
+    if sediment <= 0 {
+        return;
+    }
+    heights[(z * n + x) as usize] += sediment;
+    for _ in 0..sediment {
+        on_unit(cx * n + x, cz * n + z, false);
+    }
 }
 
 pub fn prop_at(x: i32, z: i32) -> Option<PropPlacement> {
@@ -392,7 +438,7 @@ pub fn lod_keeps(kind: ForestProp, cam_x: i32, cam_z: i32, x: i32, z: i32, yaw_q
 /// Little-endian record of three chunks, including a negative coordinate and
 /// a road chunk. Sorted by construction. This is the `worldgen_columns` case.
 pub fn worldgen_record() -> Vec<u8> {
-    encode_record(|x, z| surface_height(x, z))
+    encode_record(surface_height)
 }
 
 /// Same record as [`worldgen_record`] after the integer droplet bake.
@@ -404,7 +450,7 @@ pub fn eroded_worldgen_record(droplets: u32) -> Vec<u8> {
     let mut eroded = BTreeMap::new();
     for (cx, cz) in [(-1i32, 2i32), (0, 0), (8, 0)] {
         let heights = erode_chunk_heights(cx, cz, droplets);
-        let n = CHUNK_SIZE as i32;
+        let n = CHUNK_SIZE;
         for (index, height) in heights.into_iter().enumerate() {
             let lx = (index as i32) % n;
             let lz = (index as i32) / n;
@@ -417,6 +463,52 @@ pub fn eroded_worldgen_record(droplets: u32) -> Vec<u8> {
             .copied()
             .unwrap_or_else(|| surface_height(x, z))
     })
+}
+
+/// Apply Erosion appends these bytes. The base [`worldgen_record`] stays the
+/// seed columns. Zero droplets is an empty log.
+pub fn erosion_command_bytes(droplets: u32) -> Vec<u8> {
+    let mut commands: Vec<DestructionCommand> = Vec::new();
+    if droplets == 0 {
+        return Vec::new();
+    }
+    let mut detached = BTreeSet::new();
+    for (cx, cz) in [(-1i32, 2i32), (0, 0), (8, 0)] {
+        if commands.len() >= MAX_LOG_COMMANDS {
+            break;
+        }
+        let _ = erode_chunk_heights_with(cx, cz, droplets, |x, z, subtract| {
+            if commands.len() >= MAX_LOG_COMMANDS {
+                return;
+            }
+            let seq = commands.len() as u32;
+            commands.push(DestructionCommand {
+                tick: 0,
+                seq,
+                entity_id: SIM_SYSTEM_COLUMN_EROSION,
+                kind: CommandKind::Brush(column_step_brush(x, 0, z, subtract)),
+            });
+            if subtract {
+                if let Some(prop) = prop_at(x, z) {
+                    let entity_id = prop.entity_id();
+                    if detached.insert(entity_id) && commands.len() < MAX_LOG_COMMANDS {
+                        let seq = commands.len() as u32;
+                        commands.push(DestructionCommand {
+                            tick: 0,
+                            seq,
+                            entity_id,
+                            kind: CommandKind::Detach(Detach { bond_id: entity_id }),
+                        });
+                    }
+                }
+            }
+        });
+    }
+    let mut out = Vec::new();
+    for cmd in &commands {
+        push_command(&mut out, cmd);
+    }
+    out
 }
 
 fn encode_record(height_at: impl Fn(i32, i32) -> i32) -> Vec<u8> {
@@ -628,5 +720,19 @@ mod tests {
         assert_ne!(once, worldgen_record());
         let heights = erode_chunk_heights(0, 0, 32);
         assert!(heights.iter().all(|height| *height >= 1));
+    }
+
+    #[test]
+    fn erosion_commands_leave_the_base_record_unchanged() {
+        let base = worldgen_record();
+        assert!(erosion_command_bytes(0).is_empty());
+        let once = erosion_command_bytes(32);
+        let twice = erosion_command_bytes(32);
+        assert_eq!(once, twice);
+        assert!(!once.is_empty());
+        assert_eq!(worldgen_record(), base);
+        let prop = prop_at(18, 22).expect("stride cell");
+        assert_eq!(prop.entity_id(), scatter_entity_id(18, 22));
+        assert_ne!(scatter_entity_id(18, 22), scatter_entity_id(22, 18));
     }
 }

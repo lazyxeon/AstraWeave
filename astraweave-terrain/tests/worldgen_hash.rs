@@ -6,6 +6,7 @@
 use std::path::PathBuf;
 
 use astraweave_terrain::column_gen::worldgen_record;
+use astraweave_terrain::column_stream::deformed_chunk_record;
 use sha2::{Digest, Sha256};
 
 fn glb_triangles(bytes: &[u8]) -> usize {
@@ -52,6 +53,15 @@ fn worldgen_columns_hash_is_stable_and_published() {
     );
     let digest = sha256_hex(&bytes_a);
     assert_eq!(digest.len(), 64);
+    let deformed_a = deformed_chunk_record();
+    let deformed_b = deformed_chunk_record();
+    assert_eq!(
+        deformed_a, deformed_b,
+        "deformed chunk replay diverged inside one process"
+    );
+    let deformed = sha256_hex(&deformed_a);
+    assert_eq!(deformed.len(), 64);
+    assert_ne!(deformed, digest);
 
     let path = replay_hash_json_path();
     if let Some(parent) = path.parent() {
@@ -63,8 +73,12 @@ fn worldgen_columns_hash_is_stable_and_published() {
     } else {
         Vec::new()
     };
-    rows.retain(|row| row.get("case").and_then(|value| value.as_str()) != Some("worldgen_columns"));
+    rows.retain(|row| {
+        let case = row.get("case").and_then(|value| value.as_str());
+        case != Some("worldgen_columns") && case != Some("deformed_chunk")
+    });
     rows.push(serde_json::json!({ "case": "worldgen_columns", "sha256": digest }));
+    rows.push(serde_json::json!({ "case": "deformed_chunk", "sha256": deformed }));
     rows.sort_by(|left, right| {
         left.get("case")
             .and_then(|value| value.as_str())
@@ -79,6 +93,7 @@ fn worldgen_columns_hash_is_stable_and_published() {
     let body = serde_json::to_vec_pretty(&rows).expect("encode replay-hash json");
     std::fs::write(&path, body).expect("write replay-hash json");
     println!("replay-hash worldgen_columns {digest}");
+    println!("replay-hash deformed_chunk {deformed}");
     println!("wrote {}", path.display());
 }
 
