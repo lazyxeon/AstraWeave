@@ -544,7 +544,7 @@ impl WaterRenderer {
 
         // Render pipeline with alpha blending.
         // Two vertex buffers: per-vertex tile geometry + per-instance chunk offset.
-        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        let pipeline = crate::pipeline_cache::create_render_pipeline(device, None, wgpu::RenderPipelineDescriptor {
             label: Some("water_pipeline"),
             layout: Some(&pipeline_layout),
             vertex: wgpu::VertexState {

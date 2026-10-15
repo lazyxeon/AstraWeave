@@ -78,7 +78,7 @@ impl OverlayFx {
             bind_group_layouts: &[&bgl],
             push_constant_ranges: &[],
         });
-        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        let pipeline = crate::pipeline_cache::create_render_pipeline(device, None, wgpu::RenderPipelineDescriptor {
             label: Some("overlay pipe"),
             layout: Some(&pl),
             vertex: wgpu::VertexState {

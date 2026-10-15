@@ -992,7 +992,7 @@ impl TerrainMaterialManager {
                     bias: wgpu::DepthBiasState::default(),
                 });
 
-                device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                crate::pipeline_cache::create_render_pipeline(device, None, wgpu::RenderPipelineDescriptor {
                     label: Some("terrain-splat-pipeline"),
                     layout: Some(&pipeline_layout),
                     vertex: wgpu::VertexState {
@@ -1179,7 +1179,7 @@ impl TerrainMaterialManager {
                     bind_group_layouts: &[light_bgl],
                     push_constant_ranges: &[],
                 });
-                let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                let pipeline = crate::pipeline_cache::create_render_pipeline(device, None, wgpu::RenderPipelineDescriptor {
                     label: Some("terrain-shadow-pipeline"),
                     layout: Some(&layout),
                     vertex: wgpu::VertexState {
@@ -1276,7 +1276,7 @@ impl TerrainMaterialManager {
                 });
 
                 let build = |polygon_mode: wgpu::PolygonMode, label: &str| {
-                    device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                    crate::pipeline_cache::create_render_pipeline(device, None, wgpu::RenderPipelineDescriptor {
                         label: Some(label),
                         layout: Some(&pipeline_layout),
                         vertex: wgpu::VertexState {

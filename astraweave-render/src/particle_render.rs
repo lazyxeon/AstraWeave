@@ -242,7 +242,7 @@ impl ParticleRenderPass {
             push_constant_ranges: &[],
         });
 
-        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        let pipeline = crate::pipeline_cache::create_render_pipeline(device, None, wgpu::RenderPipelineDescriptor {
             label: Some("particle_render_pipeline"),
             layout: Some(&pl),
             vertex: wgpu::VertexState {

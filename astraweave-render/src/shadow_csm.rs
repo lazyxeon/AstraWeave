@@ -414,7 +414,7 @@ impl CsmRenderer {
                 push_constant_ranges: &[],
             });
 
-        let shadow_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        let shadow_pipeline = crate::pipeline_cache::create_render_pipeline(device, None, wgpu::RenderPipelineDescriptor {
             label: Some("Shadow Render Pipeline"),
             layout: Some(&shadow_pipeline_layout), // Use explicit layout (only group 1)
             vertex: wgpu::VertexState {
@@ -494,7 +494,7 @@ impl CsmRenderer {
         });
 
         let shadow_alpha_pipeline =
-            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            crate::pipeline_cache::create_render_pipeline(device, None, wgpu::RenderPipelineDescriptor {
                 label: Some("Shadow Alpha Render Pipeline"),
                 layout: Some(&shadow_alpha_pl),
                 vertex: wgpu::VertexState {

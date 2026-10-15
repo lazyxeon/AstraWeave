@@ -1770,7 +1770,10 @@ impl Renderer {
             push_constant_ranges: &[],
         });
         #[cfg(feature = "postfx")]
-        let _post_pipeline_ssr = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        let _post_pipeline_ssr = crate::pipeline_cache::create_render_pipeline(
+            &device,
+            pipeline_cache.as_ref(),
+            wgpu::RenderPipelineDescriptor {
             cache: pipeline_cache.as_ref(),
             label: Some("ssr pipeline"),
             layout: Some(&ssr_pl),
@@ -1846,7 +1849,10 @@ impl Renderer {
             push_constant_ranges: &[],
         });
         #[cfg(feature = "postfx")]
-        let _post_pipeline_ssao = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        let _post_pipeline_ssao = crate::pipeline_cache::create_render_pipeline(
+            &device,
+            pipeline_cache.as_ref(),
+            wgpu::RenderPipelineDescriptor {
             cache: pipeline_cache.as_ref(),
             label: Some("ssao pipeline"),
             layout: Some(&ssao_pl),
@@ -1936,7 +1942,10 @@ impl Renderer {
             push_constant_ranges: &[],
         });
         #[cfg(feature = "postfx")]
-        let _post_pipeline_ssgi = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        let _post_pipeline_ssgi = crate::pipeline_cache::create_render_pipeline(
+            &device,
+            pipeline_cache.as_ref(),
+            wgpu::RenderPipelineDescriptor {
             cache: pipeline_cache.as_ref(),
             label: Some("ssgi pipeline"),
             layout: Some(&ssgi_pl),
@@ -2498,7 +2507,10 @@ impl Renderer {
             push_constant_ranges: &[],
         });
 
-        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        let pipeline = crate::pipeline_cache::create_render_pipeline(
+            &device,
+            pipeline_cache.as_ref(),
+            wgpu::RenderPipelineDescriptor {
             cache: pipeline_cache.as_ref(),
             label: Some("pipeline"),
             layout: Some(&pipeline_layout),
@@ -2548,7 +2560,10 @@ impl Renderer {
             .contains(wgpu::Features::POLYGON_MODE_LINE)
         {
             Some(
-                device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                crate::pipeline_cache::create_render_pipeline(
+            &device,
+            pipeline_cache.as_ref(),
+            wgpu::RenderPipelineDescriptor {
                     cache: pipeline_cache.as_ref(),
                     label: Some("pipeline-wire"),
                     layout: Some(&pipeline_layout),
@@ -2609,7 +2624,10 @@ impl Renderer {
         #[cfg(feature = "postfx")]
         let post_pipeline_layout = post_fx_pl;
 
-        let post_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        let post_pipeline = crate::pipeline_cache::create_render_pipeline(
+            &device,
+            pipeline_cache.as_ref(),
+            wgpu::RenderPipelineDescriptor {
             cache: pipeline_cache.as_ref(),
             label: Some("post pipeline"),
             layout: Some(&post_pipeline_layout),
@@ -2821,7 +2839,10 @@ fn vs(input: VSIn) -> VSOut {
                 bind_group_layouts: &[&shadow_bgl_light],
                 push_constant_ranges: &[],
             });
-        let shadow_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        let shadow_pipeline = crate::pipeline_cache::create_render_pipeline(
+            &device,
+            pipeline_cache.as_ref(),
+            wgpu::RenderPipelineDescriptor {
             cache: pipeline_cache.as_ref(),
             label: Some("shadow pipeline"),
             layout: Some(&shadow_pipeline_layout),
@@ -3103,7 +3124,10 @@ fn vs(input: VSIn) -> VSOut {
             label: Some("skinned shader"),
             source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(SKINNED_SHADER_SRC)),
         });
-        let skinned_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        let skinned_pipeline = crate::pipeline_cache::create_render_pipeline(
+            &device,
+            pipeline_cache.as_ref(),
+            wgpu::RenderPipelineDescriptor {
             cache: pipeline_cache.as_ref(),
             label: Some("skinned pipeline"),
             layout: Some(&skinned_pipeline_layout),
@@ -7732,8 +7756,10 @@ fn vs(input: VSIn) -> VSOut {
                 bind_group_layouts: &[&bgl],
                 push_constant_ranges: &[],
             });
-        self.device
-            .create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        crate::pipeline_cache::create_render_pipeline(
+            &self.device,
+            self.pipeline_cache.as_ref(),
+            wgpu::RenderPipelineDescriptor {
                 cache: self.pipeline_cache.as_ref(),
                 label: Some("material preview pipeline"),
                 layout: Some(&layout),

@@ -511,7 +511,7 @@ pub fn create_skinned_pipeline(
     };
 
     // Create the render pipeline
-    device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+    crate::pipeline_cache::create_render_pipeline(device, None, wgpu::RenderPipelineDescriptor {
         label: Some("gpu_skinned_mesh_pipeline"),
         layout: Some(&pipeline_layout),
         vertex: wgpu::VertexState {

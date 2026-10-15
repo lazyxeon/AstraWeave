@@ -300,8 +300,10 @@ impl SkyRenderer {
             push_constant_ranges: &[],
         });
 
-        self.skybox_pipeline = Some(device.create_render_pipeline(
-            &wgpu::RenderPipelineDescriptor {
+        self.skybox_pipeline = Some(crate::pipeline_cache::create_render_pipeline(
+            device,
+            None,
+            wgpu::RenderPipelineDescriptor {
                 label: Some("Sky Pipeline"),
                 layout: Some(&pipeline_layout),
                 vertex: wgpu::VertexState {
@@ -389,8 +391,10 @@ impl SkyRenderer {
             push_constant_ranges: &[],
         });
 
-        self.texture_pipeline = Some(device.create_render_pipeline(
-            &wgpu::RenderPipelineDescriptor {
+        self.texture_pipeline = Some(crate::pipeline_cache::create_render_pipeline(
+            device,
+            None,
+            wgpu::RenderPipelineDescriptor {
                 label: Some("Textured Sky Pipeline"),
                 layout: Some(&texture_pl),
                 vertex: wgpu::VertexState {
@@ -476,8 +480,10 @@ impl SkyRenderer {
             push_constant_ranges: &[],
         });
 
-        self.equirect_pipeline = Some(device.create_render_pipeline(
-            &wgpu::RenderPipelineDescriptor {
+        self.equirect_pipeline = Some(crate::pipeline_cache::create_render_pipeline(
+            device,
+            None,
+            wgpu::RenderPipelineDescriptor {
                 label: Some("Equirect Sky Pipeline"),
                 layout: Some(&equirect_pl),
                 vertex: wgpu::VertexState {

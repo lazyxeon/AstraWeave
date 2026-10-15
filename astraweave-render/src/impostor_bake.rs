@@ -352,7 +352,7 @@ impl ImpostorBaker {
             push_constant_ranges: &[],
         });
 
-        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        let pipeline = crate::pipeline_cache::create_render_pipeline(device, None, wgpu::RenderPipelineDescriptor {
             label: Some("impostor-bake-pipeline"),
             layout: Some(&pipeline_layout),
             vertex: wgpu::VertexState {

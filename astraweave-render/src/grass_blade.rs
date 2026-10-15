@@ -189,7 +189,7 @@ impl GrassBladePass {
         });
 
         // ── Render pipeline ─────────────────────────────────────────────────
-        let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        let render_pipeline = crate::pipeline_cache::create_render_pipeline(device, None, wgpu::RenderPipelineDescriptor {
             label: Some("GrassBlade Pipeline"),
             layout: Some(&pipeline_layout),
             vertex: wgpu::VertexState {

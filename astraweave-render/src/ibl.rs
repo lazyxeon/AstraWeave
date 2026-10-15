@@ -205,7 +205,7 @@ impl IblManager {
             bind_group_layouts: &[],
             push_constant_ranges: &[],
         });
-        let brdf_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        let brdf_pipeline = crate::pipeline_cache::create_render_pipeline(device, None, wgpu::RenderPipelineDescriptor {
             label: Some("ibl-brdf-pipeline"),
             layout: Some(&unit_pl),
             vertex: wgpu::VertexState {
@@ -303,7 +303,7 @@ impl IblManager {
             bind_group_layouts: &[&env_bgl, &prefilter_params_bgl],
             push_constant_ranges: &[],
         });
-        let sky_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        let sky_pipeline = crate::pipeline_cache::create_render_pipeline(device, None, wgpu::RenderPipelineDescriptor {
             label: Some("ibl-sky-pipeline"),
             layout: Some(&sky_pl),
             vertex: wgpu::VertexState {
@@ -329,7 +329,7 @@ impl IblManager {
             cache: None,
         });
 
-        let irr_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        let irr_pipeline = crate::pipeline_cache::create_render_pipeline(device, None, wgpu::RenderPipelineDescriptor {
             label: Some("ibl-irr-pipeline"),
             layout: Some(&conv_pl),
             vertex: wgpu::VertexState {
@@ -355,7 +355,7 @@ impl IblManager {
             cache: None,
         });
 
-        let spec_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        let spec_pipeline = crate::pipeline_cache::create_render_pipeline(device, None, wgpu::RenderPipelineDescriptor {
             label: Some("ibl-spec-pipeline"),
             layout: Some(&spec_pl),
             vertex: wgpu::VertexState {
@@ -412,7 +412,7 @@ impl IblManager {
             bind_group_layouts: &[&eqr_bgl, &eqr_face_bgl],
             push_constant_ranges: &[],
         });
-        let eqr_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        let eqr_pipeline = crate::pipeline_cache::create_render_pipeline(device, None, wgpu::RenderPipelineDescriptor {
             label: Some("ibl-eqr-pipeline"),
             layout: Some(&eqr_pl),
             vertex: wgpu::VertexState {
