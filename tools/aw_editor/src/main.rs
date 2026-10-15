@@ -2012,7 +2012,7 @@ impl EditorApp {
                     // Week 4 Day 5: Validate asset before import
                     let validation = self.validate_model_file(&path);
                     for warning in &validation.warnings {
-                        self.log(format!("{}", warning));
+                        self.log(warning.as_str());
                     }
 
                     if !validation.is_valid {
@@ -2030,7 +2030,7 @@ impl EditorApp {
                     // Log validation stats
                     if !validation.info.is_empty() {
                         for info in &validation.info {
-                            self.log(format!("{}", info));
+                            self.log(info.as_str());
                         }
                     }
 
@@ -6302,7 +6302,7 @@ impl EditorApp {
                     for (entity, name, pose, health, team) in &entity_data {
                         let is_selected = current_primary == Some(u64::from(*entity));
 
-                        let response = ui.selectable_label(is_selected, format!("{}", name));
+                        let response = ui.selectable_label(is_selected, name.as_str());
 
                         if response.clicked() {
                             new_selection = Some(u64::from(*entity));
@@ -7504,9 +7504,9 @@ impl EditorApp {
                                 half_side * 2.0,
                                 half_side * 2.0
                             ));
-                            self.status = format!(
+                            self.status =
                                 "Replica zone created — switch to Blueprint panel to generate"
-                            );
+                                    .to_string();
                         }
                         Err(e) => {
                             let msg = format!("Failed to load biome pack for zone creation: {e}");
