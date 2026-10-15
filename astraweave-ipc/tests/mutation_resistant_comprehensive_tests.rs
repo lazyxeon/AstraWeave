@@ -48,7 +48,7 @@ fn base_snapshot() -> WorldSnapshot {
         }],
         obstacles: vec![IVec2::new(7, 7)],
         objective: Some("Reach the extraction point".to_string()),
-    
+
         hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
         hazard_count: 0,
     }
@@ -73,7 +73,7 @@ fn empty_snapshot() -> WorldSnapshot {
         pois: vec![],
         obstacles: vec![],
         objective: None,
-    
+
         hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
         hazard_count: 0,
     }

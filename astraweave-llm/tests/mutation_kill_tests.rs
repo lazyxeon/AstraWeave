@@ -101,7 +101,7 @@ fn snap_with_enemies_and_objective() -> WorldSnapshot {
         pois: vec![],
         obstacles: vec![],
         objective: Some("extract".into()),
-    
+
         hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
         hazard_count: 0,
     }
@@ -126,7 +126,7 @@ fn snap_no_enemies_no_objective() -> WorldSnapshot {
         pois: vec![],
         obstacles: vec![],
         objective: None,
-    
+
         hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
         hazard_count: 0,
     }

@@ -302,7 +302,7 @@ fn create_test_scenario() -> WorldSnapshot {
         ],
         obstacles: vec![],
         objective: Some("Reach extraction point while providing cover".into()),
-    
+
         hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
         hazard_count: 0,
     }

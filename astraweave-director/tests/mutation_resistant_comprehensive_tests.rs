@@ -42,7 +42,7 @@ fn make_snapshot(player_pos: IVec2, enemies: Vec<(IVec2, i32)>) -> WorldSnapshot
         pois: vec![],
         obstacles: vec![],
         objective: None,
-    
+
         hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
         hazard_count: 0,
     }

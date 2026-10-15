@@ -127,7 +127,7 @@ fn create_combat_scenario() -> WorldSnapshot {
             IVec2 { x: 18, y: 14 },
         ],
         objective: Some("Eliminate all hostiles".to_string()),
-    
+
         hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
         hazard_count: 0,
     }

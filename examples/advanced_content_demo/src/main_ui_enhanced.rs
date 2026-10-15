@@ -68,7 +68,8 @@ fn demo_scenario_1_escort_quest_with_ui() {
         );
         println!(
             "✅ Shield activated! Echo: {} → {}",
-            100, player.echo_balance() as i32
+            100,
+            player.echo_balance() as i32
         );
     }
 

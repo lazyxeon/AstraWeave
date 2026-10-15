@@ -66,7 +66,10 @@ fn demo_scenario_1_escort_quest() {
 
                 if player.can_shield() {
                     player.use_shield().ok();
-                    println!("   🛡️  Shield activated! Echo: {}", player.echo_balance() as i32);
+                    println!(
+                        "   🛡️  Shield activated! Echo: {}",
+                        player.echo_balance() as i32
+                    );
                 }
             }
 
