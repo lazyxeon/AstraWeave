@@ -287,20 +287,16 @@ struct VsOut { @builtin(position) pos: vec4<f32>, @location(0) uv: vec2<f32> };
             return load_ktx2_to_rgba(path);
         }
 
-        let img = image::ImageReader::open(path)
-            .with_context(|| format!("open {}", path.display()))?
-            .decode()
-            .with_context(|| format!("decode {}", path.display()))?;
+        let img = astraweave_asset::open_limited_image(path)
+            .with_context(|| format!("open {}", path.display()))?;
         Ok(img.to_rgba8())
     }
 
     fn load_gray(path: &Path) -> Result<image::GrayImage> {
         // Note: KTX2 normal maps (BC5) need special handling
         // For now, we only support PNG/JPEG normals via load_gray
-        let img = image::ImageReader::open(path)
-            .with_context(|| format!("open {}", path.display()))?
-            .decode()
-            .with_context(|| format!("decode {}", path.display()))?;
+        let img = astraweave_asset::open_limited_image(path)
+            .with_context(|| format!("open {}", path.display()))?;
         Ok(img.to_luma8())
     }
 

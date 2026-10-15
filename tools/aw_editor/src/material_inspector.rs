@@ -394,7 +394,7 @@ impl MaterialInspector {
             // Load albedo
             let albedo_path = base_dir.join(&layer.albedo);
             if albedo_path.exists() {
-                match image::open(&albedo_path) {
+                match astraweave_asset::open_limited_image(&albedo_path) {
                     Ok(img) => {
                         let (width, height) = (img.width(), img.height());
                         self.textures.albedo = Some(img);
@@ -429,7 +429,7 @@ impl MaterialInspector {
             // Load normal
             let normal_path = base_dir.join(&layer.normal);
             if normal_path.exists() {
-                match image::open(&normal_path) {
+                match astraweave_asset::open_limited_image(&normal_path) {
                     Ok(img) => {
                         let (width, height) = (img.width(), img.height());
                         self.textures.normal = Some(img);
@@ -462,7 +462,7 @@ impl MaterialInspector {
             if !orm_name.is_empty() {
                 let orm_path = base_dir.join(orm_name);
                 if orm_path.exists() {
-                    match image::open(&orm_path) {
+                    match astraweave_asset::open_limited_image(&orm_path) {
                         Ok(img) => {
                             let (width, height) = (img.width(), img.height());
                             self.textures.orm = Some(img);

@@ -267,7 +267,7 @@ fn grab(
     }
     let png = out.join(format!("{name}.png"));
     viewport.capture_frame_png(texture, &png)?;
-    Ok(image::open(&png)?.to_rgba8())
+    Ok(astraweave_asset::open_limited_image(&png)?.to_rgba8())
 }
 
 fn set_shadows(viewport: &mut ViewportRenderer, on: bool) -> Result<()> {
@@ -390,7 +390,7 @@ fn grab_one_mode(
         .with_context(|| format!("render failed at {name}"))?;
     let png = out.join(format!("{name}.png"));
     viewport.capture_frame_png(texture, &png)?;
-    Ok(image::open(&png)?.to_rgba8())
+    Ok(astraweave_asset::open_limited_image(&png)?.to_rgba8())
 }
 
 /// Mean luma over a (2k+1)² patch centred at (x, y) — the per-frame observable

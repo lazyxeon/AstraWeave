@@ -1539,7 +1539,7 @@ impl EditorApp {
         self.log(format!("Importing texture: {}", file_name));
 
         // Load the image
-        let image = match image::open(path) {
+        let image = match astraweave_asset::open_limited_image(path) {
             Ok(img) => img,
             Err(e) => {
                 self.log(format!("Failed to open image: {}", e));
@@ -5444,8 +5444,10 @@ impl EditorApp {
                             pack.ground_textures.iter().find(|gt| gt.diffuse.is_some());
                         if let Some(ground_texture) = ground_texture {
                             let load_rgba = |relative_path: &str| {
-                                image::open(pack.root_dir.join(relative_path))
-                                    .map(|image| image.to_rgba8())
+                                astraweave_asset::open_limited_image(
+                                    pack.root_dir.join(relative_path),
+                                )
+                                .map(|image| image.to_rgba8())
                             };
 
                             if let Some(diffuse_path) = ground_texture.diffuse.as_deref() {
@@ -5743,7 +5745,8 @@ impl EditorApp {
                                             return gray_fallback();
                                         };
                                         let full = root.join(rel);
-                                        let img = match image::open(&full) {
+                                        let img = match astraweave_asset::open_limited_image(&full)
+                                        {
                                             Ok(i) => i,
                                             Err(e) => {
                                                 tracing::warn!(
@@ -5797,7 +5800,7 @@ impl EditorApp {
                                             vec![0u8, 128, 255, 255].repeat(2048 * 2048)
                                         } else {
                                             let full = root.join(rough_path);
-                                            match image::open(&full) {
+                                            match astraweave_asset::open_limited_image(&full) {
                                                 Ok(img) => {
                                                     let converted = img.to_rgba8();
                                                     let rgba = if converted.width() == 2048

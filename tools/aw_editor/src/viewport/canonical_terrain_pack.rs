@@ -195,7 +195,7 @@ pub fn load_canonical_terrain_pack(biome_dir: &Path) -> Result<CanonicalTerrainP
 /// RGBA8. The source is interpreted as already-sRGB-encoded (matches `image`
 /// crate default + the on-disk grassland PNGs at 2048² sRGB).
 fn load_albedo_bytes(path: &Path) -> Result<Vec<u8>> {
-    let rgba = image::open(path)
+    let rgba = astraweave_asset::open_limited_image(path)
         .with_context(|| format!("image::open {}", path.display()))?
         .to_rgba8();
     let resized = if rgba.dimensions() == (CANONICAL_ALBEDO_RES, CANONICAL_ALBEDO_RES) {
@@ -229,7 +229,7 @@ fn load_mra_as_orm_bytes(path: &Path) -> Result<Vec<u8>> {
 /// Read an aux PNG (normal map) and resize to
 /// `CANONICAL_AUX_RES × CANONICAL_AUX_RES` RGBA8.
 fn load_aux_bytes(path: &Path) -> Result<Vec<u8>> {
-    let rgba = image::open(path)
+    let rgba = astraweave_asset::open_limited_image(path)
         .with_context(|| format!("image::open {}", path.display()))?
         .to_rgba8();
     let resized = if rgba.dimensions() == (CANONICAL_AUX_RES, CANONICAL_AUX_RES) {

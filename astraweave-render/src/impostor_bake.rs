@@ -858,7 +858,7 @@ pub fn save_atlas_png(path: &Path, pixels: &[u8], width: u32, height: u32) -> Re
 /// Non-RGBA8 PNGs are converted to RGBA8 by the `image` crate.
 #[cfg(feature = "textures")]
 pub fn load_atlas_png(path: &Path) -> Result<(Vec<u8>, u32, u32)> {
-    let img = image::open(path)
+    let img = astraweave_asset::open_limited_image(path)
         .with_context(|| format!("read atlas PNG from {}", path.display()))?
         .to_rgba8();
     let (w, h) = img.dimensions();

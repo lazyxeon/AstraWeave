@@ -49,7 +49,7 @@ impl SkyboxRenderer {
         // Load HDR texture
         let hdr_bytes = std::fs::read(path).expect("Failed to load HDR file");
 
-        let img = image::load_from_memory(&hdr_bytes)
+        let img = astraweave_asset::decode_limited_image(&hdr_bytes)
             .expect("Failed to decode HDR")
             .to_rgba32f();
 

@@ -2118,6 +2118,7 @@ dependencies = [
  "anyhow",
  "asset_signing",
  "astraweave-asset",
+ "astraweave-security",
  "base64 0.22.1",
  "chrono",
  "clap",
@@ -4822,6 +4823,7 @@ dependencies = [
 name = "fluids_demo"
 version = "0.1.0"
 dependencies = [
+ "astraweave-asset",
  "astraweave-fluids",
  "astraweave-physics",
  "astraweave-render",

@@ -1360,8 +1360,7 @@ const MAX_HDR_DIMENSION: u32 = 8192;
 
 #[cfg(feature = "textures")]
 fn load_hdr_equirectangular(path: &Path) -> Result<image::DynamicImage> {
-    let reader = image::ImageReader::open(path)?;
-    let img = reader.decode()?;
+    let img = astraweave_asset::open_limited_image(path)?;
     let (w, h) = img.dimensions();
     if w > MAX_HDR_DIMENSION || h > MAX_HDR_DIMENSION {
         log::info!(

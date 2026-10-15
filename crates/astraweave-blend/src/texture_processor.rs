@@ -11,6 +11,9 @@ use image::{DynamicImage, ImageFormat, RgbaImage};
 use std::path::{Path, PathBuf};
 use tracing::{debug, info, warn};
 
+#[path = "../../../astraweave-asset/src/image_limits.rs"]
+mod image_limits;
+
 /// Configuration for the texture processing pipeline.
 #[derive(Debug, Clone)]
 pub struct TextureProcessingConfig {
@@ -182,7 +185,7 @@ fn convert_hdr_textures_in_dir(
 
 /// Convert a single HDR/EXR file to PNG (or JPEG based on config).
 fn convert_hdr_file(path: &Path, config: &TextureProcessingConfig) -> Result<PathBuf> {
-    let img = image::open(path)
+    let img = image_limits::open_limited_image(path)
         .with_context(|| format!("Failed to open HDR/EXR file: {}", path.display()))?;
 
     // Tonemap from HDR to LDR (simple Reinhard)
@@ -279,7 +282,7 @@ fn enforce_max_resolution(
             continue;
         }
 
-        match image::open(&path) {
+        match image_limits::open_limited_image(&path) {
             Ok(img) => {
                 if img.width() > max || img.height() > max {
                     // Triangle filter is ~5x faster than Lanczos3 with acceptable quality
@@ -421,7 +424,7 @@ fn generate_thumbnail(
     output_name: &str,
     size: u32,
 ) -> Result<PathBuf> {
-    let img = image::open(source)
+    let img = image_limits::open_limited_image(source)
         .with_context(|| format!("Failed to open image for thumbnail: {}", source.display()))?;
 
     let thumbnail = img.thumbnail(size, size);
@@ -776,7 +779,7 @@ mod tests {
         assert_eq!(result.downscaled, 1);
 
         // Verify the image was actually resized
-        let resized = image::open(&tex_path).unwrap();
+        let resized = image_limits::open_limited_image(&tex_path).unwrap();
         assert!(resized.width() <= 256);
         assert!(resized.height() <= 256);
     }
@@ -797,7 +800,7 @@ mod tests {
         let result = generate_thumbnail(&source_path, &thumb_dir, "test_thumb.png", 64).unwrap();
         assert!(result.exists());
 
-        let thumb = image::open(&result).unwrap();
+        let thumb = image_limits::open_limited_image(&result).unwrap();
         assert!(thumb.width() <= 64);
         assert!(thumb.height() <= 64);
     }

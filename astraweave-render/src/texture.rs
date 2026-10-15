@@ -209,7 +209,7 @@ impl Texture {
         label: &str,
         usage: TextureUsage,
     ) -> Result<Self> {
-        let img = image::load_from_memory(bytes)?;
+        let img = astraweave_asset::decode_limited_image(bytes)?;
         let rgba = img.to_rgba8();
         let (width, height) = img.dimensions();
 
@@ -337,7 +337,7 @@ impl Texture {
         // Phase 2: Async image decoding (on thread pool)
         let label = path.to_string();
         let img = tokio::task::spawn_blocking(move || {
-            image::load_from_memory(&bytes)
+            astraweave_asset::decode_limited_image(&bytes)
                 .map_err(|e| anyhow::anyhow!("Failed to decode image: {}", e))
         })
         .await
@@ -572,7 +572,7 @@ pub fn validate_texture_assets(asset_paths: &[&str]) -> Result<()> {
 
     for texture_path in asset_paths {
         if std::path::Path::new(texture_path).exists() {
-            match image::open(texture_path) {
+            match astraweave_asset::open_limited_image(texture_path) {
                 Ok(img) => {
                     let (w, h) = img.dimensions();
                     log::info!("  ✅ {}: {}x{} pixels", texture_path, w, h);

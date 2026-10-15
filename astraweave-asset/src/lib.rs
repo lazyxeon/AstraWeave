@@ -12,6 +12,9 @@ use tokio::sync::watch;
 // Nanite preprocessing module
 pub mod nanite_preprocess;
 
+pub mod image_limits;
+pub use image_limits::{capped_image_limits, decode_limited_image, open_limited_image};
+
 // World Partition cell loader
 pub mod cell_loader;
 
@@ -830,22 +833,8 @@ pub mod gltf_loader {
         }
     }
 
-    /// Checked-in CC0 maps are 1024². 4096 is four times that edge.
-    /// 4096² RGBA8 is 64 MiB, which is also the allocation cap.
-    const MAX_IMAGE_EDGE: u32 = 4096;
-    const MAX_IMAGE_ALLOC: u64 = 64 * 1024 * 1024;
-
     fn decode_image_bytes(bytes: &[u8]) -> Result<ImageData> {
-        use std::io::Cursor;
-        let mut limits = image::Limits::default();
-        limits.max_image_width = Some(MAX_IMAGE_EDGE);
-        limits.max_image_height = Some(MAX_IMAGE_EDGE);
-        limits.max_alloc = Some(MAX_IMAGE_ALLOC);
-        let mut reader = image::ImageReader::new(Cursor::new(bytes))
-            .with_guessed_format()
-            .context("guess image format")?;
-        reader.limits(limits);
-        let img = reader.decode()?;
+        let img = crate::decode_limited_image(bytes)?;
         let rgba = img.to_rgba8();
         let (w, h) = rgba.dimensions();
         Ok(ImageData {
@@ -3676,7 +3665,7 @@ pub mod import_pipelines {
     use image::ImageFormat;
 
     pub fn import_texture(source: &Path, output: &Path) -> Result<()> {
-        let img = image::open(source)?;
+        let img = crate::open_limited_image(source)?;
         let rgba = img.to_rgba8();
         rgba.save_with_format(output, ImageFormat::Png)?;
         Ok(())

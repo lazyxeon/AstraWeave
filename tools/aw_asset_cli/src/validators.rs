@@ -90,7 +90,7 @@ pub fn validate_texture(path: &Path, config: &TextureValidationConfig) -> Result
     let mut result = ValidationResult::new(path.display().to_string());
 
     // Load image
-    let img = match image::open(path) {
+    let img = match astraweave_asset::open_limited_image(path) {
         Ok(img) => img,
         Err(e) => {
             result.error(format!("Failed to load image: {}", e));

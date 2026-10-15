@@ -369,6 +369,32 @@ fn process_texture(src: &Path, out_root: &str, compress: bool) -> Result<PathBuf
     Ok(processed)
 }
 
+fn jail_gltf_uri(base: &Path, uri: &str) -> Result<()> {
+    if uri.starts_with("data:") {
+        return Ok(());
+    }
+    let path_part = uri.split('?').next().unwrap_or(uri);
+    astraweave_security::path::safe_under(base, Path::new(path_part))
+        .map_err(|err| anyhow!("path traversal rejected: {err}"))?;
+    Ok(())
+}
+
+fn reject_escaping_gltf_uris(path: &Path) -> Result<()> {
+    let base = path.parent().unwrap_or_else(|| Path::new("."));
+    let doc = gltf::Gltf::open(path)?;
+    for buffer in doc.buffers() {
+        if let gltf::buffer::Source::Uri(uri) = buffer.source() {
+            jail_gltf_uri(base, uri)?;
+        }
+    }
+    for image in doc.images() {
+        if let gltf::image::Source::Uri { uri, .. } = image.source() {
+            jail_gltf_uri(base, uri)?;
+        }
+    }
+    Ok(())
+}
+
 fn process_model(src: &Path, out_root: &str, compress: bool) -> Result<PathBuf> {
     fs::create_dir_all(out_root)?;
     let stem = src.file_stem().unwrap().to_string_lossy();
@@ -381,6 +407,7 @@ fn process_model(src: &Path, out_root: &str, compress: bool) -> Result<PathBuf> 
     if src.extension().map(|e| e.to_string_lossy().to_lowercase()) == Some("gltf".into())
         || src.extension().map(|e| e.to_string_lossy().to_lowercase()) == Some("glb".into())
     {
+        reject_escaping_gltf_uris(src)?;
         let (_doc, _buffers, _images) = gltf::import(src)?;
         // Minimal example: just copy the glTF for now; swap to a meshbin writer later
         fs::copy(src, &out)?;
@@ -652,5 +679,32 @@ fn validate_single_asset(
             warnings: vec![],
             info: vec![],
         }),
+    }
+}
+
+#[cfg(test)]
+mod gltf_jail_tests {
+    use super::*;
+
+    #[test]
+    fn cli_gltf_buffer_parent_uri_is_rejected() {
+        let dir = std::env::temp_dir().join(format!("aw-gltf-jail-{}", std::process::id()));
+        fs::create_dir_all(&dir).expect("tempdir");
+        let path = dir.join("hostile.gltf");
+        fs::write(
+            &path,
+            r#"{
+                "asset": {"version": "2.0"},
+                "buffers": [{"uri": "../secret.bin", "byteLength": 4}]
+            }"#,
+        )
+        .expect("write gltf");
+        let err = reject_escaping_gltf_uris(&path).expect_err("hostile gltf");
+        let msg = format!("{err:#}").to_lowercase();
+        assert!(
+            msg.contains("traversal") || msg.contains("rejected"),
+            "{msg}"
+        );
+        let _ = fs::remove_dir_all(&dir);
     }
 }

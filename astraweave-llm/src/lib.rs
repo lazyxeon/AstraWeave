@@ -179,6 +179,26 @@ pub struct OllamaClient {
 }
 
 #[cfg(feature = "ollama")]
+impl OllamaClient {
+    /// Keep a loopback URL. A non-loopback URL is replaced with `http://127.0.0.1:11434`.
+    pub fn new(url: impl Into<String>, model: impl Into<String>) -> Self {
+        Self::assemble(url, model, false)
+    }
+
+    /// Keep a non-loopback URL. [`Self::new`] replaces one.
+    pub fn allowing_remote(url: impl Into<String>, model: impl Into<String>) -> Self {
+        Self::assemble(url, model, true)
+    }
+
+    fn assemble(url: impl Into<String>, model: impl Into<String>, allow_remote: bool) -> Self {
+        Self {
+            url: loopback_model_url(url.into(), allow_remote),
+            model: model.into(),
+        }
+    }
+}
+
+#[cfg(feature = "ollama")]
 #[async_trait::async_trait]
 impl LlmClient for OllamaClient {
     async fn complete(&self, prompt: &str) -> Result<String> {
@@ -1548,6 +1568,20 @@ mod tests {
         let opted = qwen3_ollama::Qwen3Ollama::allowing_remote(remote, "qwen");
         assert_eq!(opted.url, remote);
     }
+
+    #[cfg(feature = "ollama")]
+    #[test]
+    fn ollama_generate_client_keeps_only_loopback_urls() {
+        let remote = "https://api.openai.com";
+        let client = OllamaClient::new(remote, "llama");
+        assert!(
+            client.url.contains("127.0.0.1"),
+            "stored a non-loopback endpoint: {}",
+            client.url
+        );
+        let opted = OllamaClient::allowing_remote(remote, "llama");
+        assert_eq!(opted.url, remote);
+    }
     use astraweave_core::{
         CompanionState, Constraints, EnemyState, IVec2, PlayerState, ToolSpec, WorldSnapshot,
     };
@@ -1868,10 +1902,7 @@ mod tests {
     #[cfg(feature = "ollama")]
     #[test]
     fn test_ollama_client_creation() {
-        let client = OllamaClient {
-            url: "http://localhost:11434".to_string(),
-            model: "llama2".to_string(),
-        };
+        let client = OllamaClient::new("http://localhost:11434", "llama2");
         assert_eq!(client.url, "http://localhost:11434");
         assert_eq!(client.model, "llama2");
     }

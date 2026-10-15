@@ -7282,13 +7282,13 @@ fn vs(input: VSIn) -> VSOut {
                         );
                         // Fallback: manually read and guess format because image::open fails on .ktx2 extensions it doesn't know
                         let bytes = std::fs::read(path).expect("Failed to read fallback file");
-                        image::load_from_memory(&bytes)
+                        astraweave_asset::decode_limited_image(&bytes)
                             .expect("Failed to decode fallback texture (unknown format)")
                             .to_rgba8()
                     }
                 }
             } else {
-                image::open(path)
+                astraweave_asset::open_limited_image(path)
                     .expect("Failed to load smoke test texture")
                     .to_rgba8()
             };

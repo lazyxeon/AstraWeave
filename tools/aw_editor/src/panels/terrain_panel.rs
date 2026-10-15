@@ -1964,7 +1964,7 @@ impl TerrainPanel {
             .enumerate()
             .map(|(i, name)| {
                 let path = assets_dir.join(format!("materials/{name}.png"));
-                match image::open(&path) {
+                match astraweave_asset::open_limited_image(&path) {
                     Ok(img) => {
                         let thumb = img.resize_exact(64, 64, image::imageops::FilterType::Triangle);
                         let rgba = thumb.to_rgba8();
