@@ -648,6 +648,8 @@ pub struct RenderModelPrimitive {
     pub _retained_textures: Vec<wgpu::Texture>,
     /// Increments only when [`Renderer::write_mesh`] replaces the GPU buffers.
     pub storage_generation: u32,
+    /// Index into the bindless material SSBO. `None` on the bind-group path.
+    pub bindless_index: Option<u32>,
 }
 
 pub struct RenderModel {
@@ -1010,6 +1012,10 @@ pub struct Renderer {
     mesh_external: Option<Mesh>,
     /// Named models for multi-model rendering (terrain, trees, rocks, etc.)
     models: std::collections::HashMap<String, RenderModel>,
+    /// Present when the device was created with the bindless texture features.
+    bindless: Option<crate::material_bindless::BindlessMaterialSystem>,
+    /// When false, uploads stay on group-3 bind groups even if `bindless` exists.
+    bindless_active: bool,
 
     instances: Vec<Instance>,
     /// Reused `InstanceRaw` upload for [`Self::update_instances`].
@@ -1193,6 +1199,33 @@ impl Renderer {
                 source: wgpu::ShaderSource::Wgsl(std::borrow::Cow::Owned(full)),
             })
     }
+    fn requested_device(adapter: &wgpu::Adapter, gpu_tests: bool) -> (wgpu::Features, wgpu::Limits) {
+        let mut features = wgpu::Features::empty();
+        if gpu_tests {
+            features |= wgpu::Features::TIMESTAMP_QUERY;
+        }
+        if adapter.features().contains(wgpu::Features::PIPELINE_CACHE) {
+            features |= wgpu::Features::PIPELINE_CACHE;
+        }
+        if adapter.features().contains(wgpu::Features::TIMESTAMP_QUERY) {
+            features |= wgpu::Features::TIMESTAMP_QUERY;
+        }
+        let mut limits = wgpu::Limits {
+            max_bind_groups: 8,
+            ..wgpu::Limits::default()
+        };
+        if crate::material_bindless::supports_bindless(adapter) {
+            let cap = adapter
+                .limits()
+                .max_binding_array_elements_per_shader_stage;
+            if cap >= 4 {
+                features |= crate::material_bindless::required_features();
+                limits.max_binding_array_elements_per_shader_stage = 4.min(cap);
+            }
+        }
+        (features, limits)
+    }
+
     pub async fn new(window: std::sync::Arc<winit::window::Window>) -> Result<Self> {
         let boot = std::time::Instant::now();
         let instance = gpu_instance();
@@ -1204,27 +1237,15 @@ impl Renderer {
             warp_requested()
         );
 
+        let (features, limits) = Self::requested_device(
+            &adapter,
+            cfg!(feature = "gpu-tests"),
+        );
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor {
                 label: Some("device"),
-                required_features: {
-                    let mut f = wgpu::Features::empty();
-                    #[cfg(feature = "gpu-tests")]
-                    {
-                        f |= wgpu::Features::TIMESTAMP_QUERY;
-                    }
-                    if adapter.features().contains(wgpu::Features::PIPELINE_CACHE) {
-                        f |= wgpu::Features::PIPELINE_CACHE;
-                    }
-                    if adapter.features().contains(wgpu::Features::TIMESTAMP_QUERY) {
-                        f |= wgpu::Features::TIMESTAMP_QUERY;
-                    }
-                    f
-                },
-                required_limits: wgpu::Limits {
-                    max_bind_groups: 8,
-                    ..wgpu::Limits::default()
-                },
+                required_features: features,
+                required_limits: limits,
                 memory_hints: Default::default(),
                 trace: Default::default(),
             })
@@ -1274,23 +1295,12 @@ impl Renderer {
         let instance = gpu_instance();
         let adapter = choose_adapter(&instance, None).await?;
 
+        let (features, limits) = Self::requested_device(&adapter, false);
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor {
                 label: Some("headless device"),
-                required_features: {
-                    let mut f = wgpu::Features::empty();
-                    if adapter.features().contains(wgpu::Features::PIPELINE_CACHE) {
-                        f |= wgpu::Features::PIPELINE_CACHE;
-                    }
-                    if adapter.features().contains(wgpu::Features::TIMESTAMP_QUERY) {
-                        f |= wgpu::Features::TIMESTAMP_QUERY;
-                    }
-                    f
-                },
-                required_limits: wgpu::Limits {
-                    max_bind_groups: 8,
-                    ..wgpu::Limits::default()
-                },
+                required_features: features,
+                required_limits: limits,
                 memory_hints: Default::default(),
                 trace: Default::default(),
             })
@@ -3501,6 +3511,24 @@ fn vs(input: VSIn) -> VSOut {
         });
 
         let ext_inst_buf = None;
+        let bindless_features = crate::material_bindless::required_features();
+        let bindless = if device.features().contains(bindless_features) {
+            let slots = device
+                .limits()
+                .max_binding_array_elements_per_shader_stage
+                .clamp(4, 32);
+            Some(crate::material_bindless::BindlessMaterialSystem::new(
+                &device,
+                &queue,
+                crate::material_bindless::BindlessMaterialConfig {
+                    max_textures: slots,
+                    max_materials: 64,
+                },
+            ))
+        } else {
+            None
+        };
+        let bindless_active = bindless.is_some();
 
         let ibl = crate::ibl::IblManager::new(&device, crate::ibl::IblQuality::Medium)
             .context("Failed to init IBL")?;
@@ -3631,6 +3659,8 @@ fn vs(input: VSIn) -> VSOut {
             mesh_plane,
             mesh_external: None,
             models: std::collections::HashMap::new(),
+            bindless,
+            bindless_active,
             instances: Vec::new(),
             instance_raw_scratch: Vec::new(),
             instance_uploaded: Vec::new(),
@@ -5181,6 +5211,50 @@ fn vs(input: VSIn) -> VSOut {
     }
 
     /// Generation of the GPU buffers for `name`. `None` if the model is absent.
+    /// Turn bindless registration on or off. Enabling does nothing when the
+    /// device was created without the binding-array features. Shading stays on
+    /// the group-3 bind groups either way; the SSBO is the indexed copy.
+    pub fn set_bindless_enabled(&mut self, enabled: bool) {
+        self.bindless_active = enabled && self.bindless.is_some();
+    }
+
+    pub fn bindless_supported(&self) -> bool {
+        self.bindless.is_some()
+    }
+
+    pub fn bindless_material_index(&self, name: &str) -> Option<u32> {
+        self.models
+            .get(name)
+            .and_then(|model| model.primitives.first())
+            .and_then(|primitive| primitive.bindless_index)
+    }
+
+    fn register_bindless_maps(&mut self, textures: &[wgpu::Texture]) -> Option<u32> {
+        if !self.bindless_active || textures.len() < 3 {
+            return None;
+        }
+        let system = self.bindless.as_mut()?;
+        let view = |texture: &wgpu::Texture| {
+            texture.create_view(&wgpu::TextureViewDescriptor::default())
+        };
+        let albedo = system.add_texture(view(&textures[0]))?;
+        let metallic_roughness = system.add_texture(view(&textures[1]))?;
+        let normal = system.add_texture(view(&textures[2]))?;
+        system.add_material(crate::material_bindless::GpuMaterialEntry {
+            albedo_index: albedo,
+            normal_index: normal,
+            orm_index: metallic_roughness,
+            flags: crate::material_bindless::MAT_FLAG_HAS_ALBEDO
+                | crate::material_bindless::MAT_FLAG_HAS_NORMAL
+                | crate::material_bindless::MAT_FLAG_HAS_ORM,
+            metallic_factor: 1.0,
+            roughness_factor: 1.0,
+            occlusion_factor: 1.0,
+            base_color: [1.0, 1.0, 1.0, 1.0],
+            ..Default::default()
+        })
+    }
+
     pub fn mesh_storage_generation(&self, name: &str) -> Option<u32> {
         self.models
             .get(name)
@@ -6495,6 +6569,11 @@ fn vs(input: VSIn) -> VSOut {
             p.begin_frame();
         }
         self.poll_fog_timestamps();
+        if self.bindless_active {
+            if let Some(system) = self.bindless.as_mut() {
+                system.update(&self.device, &self.queue);
+            }
+        }
         // Advance the staging ring buffer for this frame.
         self.staging_ring.begin_frame();
 
@@ -8464,6 +8543,7 @@ fn vs(input: VSIn) -> VSOut {
                 tex_bind_group: None,
                 _retained_textures: Vec::new(),
                 storage_generation: 0,
+                bindless_index: None,
             }],
             instance_buf,
             instance_count: instances.len() as u32,
@@ -8512,11 +8592,13 @@ fn vs(input: VSIn) -> VSOut {
                 };
                 let (tex_bg, textures, bytes) = self.create_model_pbr_bind_group(&maps);
                 tex_gpu_bytes += bytes;
+                let bindless_index = self.register_bindless_maps(&textures);
                 primitives.push(RenderModelPrimitive {
                     mesh,
                     tex_bind_group: Some(tex_bg),
                     _retained_textures: textures,
                     storage_generation: 0,
+                    bindless_index,
                 });
             } else if let Some(img) = cpu_mesh.albedo_image.as_ref() {
                 let (tex_bg, textures, bytes) =
@@ -8527,6 +8609,7 @@ fn vs(input: VSIn) -> VSOut {
                     tex_bind_group: Some(tex_bg),
                     _retained_textures: textures,
                     storage_generation: 0,
+                    bindless_index: None,
                 });
             } else {
                 primitives.push(RenderModelPrimitive {
@@ -8534,6 +8617,7 @@ fn vs(input: VSIn) -> VSOut {
                     tex_bind_group: None,
                     _retained_textures: Vec::new(),
                 storage_generation: 0,
+                bindless_index: None,
                 });
             }
         }
@@ -8944,6 +9028,7 @@ fn vs(input: VSIn) -> VSOut {
                 tex_bind_group: Some(tex_bg),
                 _retained_textures: textures,
                 storage_generation: 0,
+                bindless_index: None,
             }],
             instance_buf,
             instance_count: instances.len() as u32,
@@ -9000,6 +9085,7 @@ fn vs(input: VSIn) -> VSOut {
                 tex_bind_group: Some(tex_bg),
                 _retained_textures: textures,
                 storage_generation: 0,
+                bindless_index: None,
             }],
             instance_buf,
             instance_count: instances.len() as u32,
@@ -9072,6 +9158,7 @@ fn vs(input: VSIn) -> VSOut {
                 tex_bind_group: shared_bg,
                 _retained_textures: shared_textures,
                 storage_generation: 0,
+                bindless_index: None,
             }],
             instance_buf,
             instance_count: instances.len() as u32,

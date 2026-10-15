@@ -69,12 +69,13 @@ fn sample_material(material_id: u32, uv: vec2<f32>) -> MaterialSample {
         result.normal = vec3<f32>(0.0, 0.0, 1.0);
     }
 
-    // ORM (Occlusion, Roughness, Metallic packed)
+    // Engine metallic-roughness: R = metallic, G = roughness. Occlusion is the
+    // material factor (the AO map stays on the bind-group path).
     if ((mat.flags & MAT_FLAG_HAS_ORM) != 0u) {
-        let orm = textureSample(textures[mat.orm_index], material_sampler, scaled_uv);
-        result.occlusion = orm.r * mat.occlusion_factor;
-        result.roughness = orm.g * mat.roughness_factor;
-        result.metallic  = orm.b * mat.metallic_factor;
+        let mr = textureSample(textures[mat.orm_index], material_sampler, scaled_uv);
+        result.metallic = mr.r * mat.metallic_factor;
+        result.roughness = mr.g * mat.roughness_factor;
+        result.occlusion = mat.occlusion_factor;
     } else {
         result.occlusion = mat.occlusion_factor;
         result.roughness = mat.roughness_factor;
