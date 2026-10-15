@@ -10,7 +10,7 @@ integration_status: example_only
 summary: "GPU PBD and SSFR stay a picture. Gameplay fluid, gas, and heat live in astraweave-localsim. SSFR smooth still fails on lavapipe (#247). Water truth is water.md."
 owns: [astraweave-fluids]
 doc_version: "2.1"
-last_verified_commit: 2d560807
+last_verified_commit: c74c5083
 ---
 
 # Architecture Trace: Fluids

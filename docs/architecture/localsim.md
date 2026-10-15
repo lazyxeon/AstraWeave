@@ -10,7 +10,7 @@ integration_status: partial
 summary: "256-region pool, 32 active per tick. Integer volume, gas, and heat. Publishes ColumnWater. GPU fluids stay a picture. localsim.md §2,§8"
 owns: [astraweave-localsim]
 doc_version: "1.0"
-last_verified_commit: 2d560807
+last_verified_commit: c74c5083
 runtime_edges:
   - to: astraweave-water
     note: "publish writes ColumnWater; buoyancy samples it before AnalyticWater"
@@ -25,7 +25,7 @@ runtime_edges:
 | **System name** | Local simulation — fluid volume, gas, and heat on a region pool |
 | **Primary crates** | `astraweave-localsim` (solver), `astraweave-water` (column query), `astraweave-physics` (buoyancy consumer) |
 | **Document version** | 1.0 |
-| **Last verified against commit** | `2d560807` (parent of this crate) |
+| **Last verified against commit** | `c74c5083` |
 | **Last verified date** | 2026-10-15 |
 | **Status** | Active solver, partial host wiring. Weaving (PR #252) is the write producer and is not merged. Destruction voxels (PR #243) are read through `SolidField`; this crate does not own bonds. Swim (PR #244) consumes `submersion_between`. The Aravath demo showcase waits on that demo's runtime. |
 | **Owner notes** | Design: `docs/current/LOCAL_SIM_DESIGN.md` revision 2. Archaeology: `docs/current/LOCAL_SIM_ARCHAEOLOGY.md`. Shared contract with #252: this crate owns the field, `FieldWrite`, `FieldEvent`, and `field_digest`. |
