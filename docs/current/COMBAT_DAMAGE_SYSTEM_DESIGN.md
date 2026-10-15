@@ -853,9 +853,9 @@ residual_risks:
     text: "SimRng is not on main (a3fe3ecd). It is on cursor/engine-ws-d2-stab. M1 blocks if that API changes or does not merge."
     closed: "PR #211 is on main at 85d09a2c. astraweave-combat re-exports astraweave_core::SimRng. hit_rng still folds ordinal and attack id, then calls SimRng::new once. The mix vector and both golden hashes were re-checked and did not move."
   - id: R3
-    status: open
+    status: closed
     text: "Veil's Fixed64 is on the Aravath branch, not main. M0 is a cross-branch extract. A divergent copy would split the fixed-point contract."
-    note: "PR #211's description said SimRng and Fixed64. The merge added astraweave-core/src/sim.rs only. rg finds no Fixed64 type on main. Combat keeps fixed.rs. Its arithmetic was not edited in the rebase, so the golden hashes stay the previous bytes. Do not merge cursor/aravath-greybox-b3de to fill this gap."
+    closed: "PR #245 puts the type in astraweave-math. This branch is rebased onto cursor/fixed64-math-8aec and re-exports astraweave_math::Fixed64. whole_raw stays in combat because it returns CombatError. Arithmetic was not copied. Both golden hashes were re-checked. #245 merges to main before this PR. Do not merge cursor/aravath-greybox-b3de."
   - id: R4
     status: open
     text: "AI target choice does not see EHP inside WorldSnapshot until a later hash-versioned change. Planners keep using raw hp until that lands."
@@ -1013,7 +1013,7 @@ gate:
   date: 2026-10-14
 ```
 
-Status after the rebase onto `main` `85d09a2c`: R1 and R2 are closed. R3 stays open because that merge has `SimRng` and no `Fixed64`. The register in §15 is the current text. The card above is the approval record and is not rewritten.
+Status after the rebase onto PR #245 (`cursor/fixed64-math-8aec`): R1, R2, and R3 are closed on this branch. `Fixed64` is `astraweave_math::Fixed64`. It reaches `main` when #245 merges, which happens before this PR. The register in §15 is the current text. The card above is the approval record and is not rewritten.
 
 ---
 
@@ -1039,6 +1039,7 @@ No GPU, no WoW client, and no three-OS runner were used. That is why H1 is not m
 | 0.3 | 2026-10-14 | Property tests, combat replay-hash workflow, migration plan §22. Legacy paths stay. |
 | 0.4 | 2026-10-14 | Rebased onto `85d09a2c`. `SimRng` is core (R2 closed). `Fixed64` stays local because that merge has no Q32.32 type (R3 open). `combat_resolve` is a required case of `determinism-replay.yml` (R1 closed). Golden hashes unchanged. |
 | 0.5 | 2026-10-14 | §23 logs CI failures from the rebase run that PR #217's ledger does not cover. Benchmark aggregation now expects 49 packages because this crate has a bench. |
+| 0.6 | 2026-10-15 | Rebased onto PR #245. Combat re-exports `astraweave_math::Fixed64`. `whole_raw` stays. `fixed64` and `combat_resolve` are both required replay cases. Golden hashes unchanged. |
 
 ---
 

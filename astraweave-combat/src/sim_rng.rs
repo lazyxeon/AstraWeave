@@ -4,9 +4,9 @@
 //! module does not copy them. `hit_rng` is the only extra fold: it builds a
 //! `system_id` and then calls `SimRng::new`, which performs the one mix.
 //!
-//! `Fixed64` is not in that merge. The combat crate still owns the Q32.32
-//! type in `fixed.rs`. Its arithmetic was not changed when the RNG moved,
-//! so the golden stage hash and the battle digest stay the same bytes.
+//! The Q32.32 type is `astraweave_math::Fixed64` (PR #245), re-exported from
+//! `fixed`. Moving the RNG did not change that arithmetic, so the golden
+//! stage hash and the battle digest stay the same bytes.
 
 pub use astraweave_core::{mix_sim_seed, SimRng, SIM_SYSTEM_COMBAT};
 

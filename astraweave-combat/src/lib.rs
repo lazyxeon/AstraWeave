@@ -9,9 +9,10 @@
 //!
 //! # Seams
 //!
-//! [`sim_rng`] re-exports `astraweave_core::SimRng` (PR #211, `main` `85d09a2c`).
-//! [`fixed`] is still local: that merge did not add a Q32.32 type. The
-//! arithmetic is unchanged, so the golden hashes are the same bytes.
+//! [`sim_rng`] re-exports `astraweave_core::SimRng` (PR #211).
+//! [`fixed`] re-exports `astraweave_math::Fixed64` (PR #245) and keeps
+//! `whole_raw`. The arithmetic was not copied, so the golden hashes are the
+//! same bytes.
 
 mod ecs;
 mod fixed;

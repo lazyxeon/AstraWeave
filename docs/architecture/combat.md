@@ -46,7 +46,7 @@ The repo had four flat or `f32` damage paths. This crate is the single productio
 - `astraweave-combat/src/ecs.rs` — components and `combat_resolve_system`
 - `astraweave-combat/src/save.rs` — `combat_tables` and `combat_vitals` meta keys
 - `astraweave-combat/src/sim_rng.rs` — `hit_rng` on `astraweave_core::SimRng`
-- `astraweave-combat/src/fixed.rs` — local Q32.32 type. `main` at `85d09a2c` has no `Fixed64`
+- `astraweave-combat/src/fixed.rs` — `whole_raw` on `astraweave_math::Fixed64` (PR #245)
 
 **Status note:**
 Schools are data. The shipped table is physical, weave, and the mundane hazards fire, frost, and poison. Shock is not shipped. The labels Echo and Veil are rejected. A sword and shield with only Might, Armor, and Bulwark is a complete build. AI queries take a `StatKnowledge` mask. `CThreadStrain` is saved and is not read by the formula.
@@ -100,7 +100,7 @@ CVitals.hp / poise            ecs.rs apply_hp_delta
 
 | File | Role | Status | Notes |
 |---|---|---|---|
-| `astraweave-combat/src/fixed.rs` | `Fixed64` | Active seam | PR #211 did not add this type. Delete when one definition exists on `main` |
+| `astraweave-combat/src/fixed.rs` | `whole_raw` | Active | Re-exports `astraweave_math::Fixed64`. The range check returns `CombatError` |
 | `astraweave-combat/src/sim_rng.rs` | `hit_rng` | Active | Re-exports `astraweave_core::SimRng`. One extra fold, then `SimRng::new` |
 | `astraweave-combat/src/tables.rs` | Load, validate, hash | Active | `DEFAULT_TABLE_RON` |
 | `astraweave-combat/src/resolve.rs` | Hit and heal math | Active | No `Vec` on the hit path |
@@ -113,7 +113,7 @@ CVitals.hp / poise            ecs.rs apply_hp_delta
 
 - Do not wrap `astraweave-gameplay::Stats::apply_damage`. It remains the legacy flat formula until a later port.
 - Do not put a second damage product in `astraweave-weaving` or `aravath_runtime`.
-- Do not merge `cursor/aravath-greybox-b3de` to obtain `Fixed64`. `SimRng` is already `astraweave_core::sim`.
+- Do not add a second `Fixed64`. The type is `astraweave_math::Fixed64` on PR #245. `SimRng` is `astraweave_core::sim`.
 - Do not add shock, Echo, or Veil to the default table.
 - Do not let `expected_hit` or `effective_health` ignore `StatKnowledge`.
 
@@ -121,7 +121,8 @@ CVitals.hp / poise            ecs.rs apply_hp_delta
 
 ## 7. Decision Log
 
-- **RNG seam closed.** `SimRng` and `mix_sim_seed` come from core. `hit_rng` still folds ordinal and attack id into `SIM_SYSTEM_COMBAT` and calls `SimRng::new` once. `Fixed64` stays in this crate because `main` has no Q32.32 type. Arithmetic was not changed when the RNG moved.
+- **RNG seam closed.** `SimRng` and `mix_sim_seed` come from core. `hit_rng` still folds ordinal and attack id into `SIM_SYSTEM_COMBAT` and calls `SimRng::new` once.
+- **One Fixed64.** Combat re-exports `astraweave_math::Fixed64`. `whole_raw` stays in this crate. Arithmetic was not copied, so the golden hashes stay the previous bytes.
 - **Generic resists.** Ratings and resistances are id-keyed arrays, not Heat/Rime/Volt/Toxin fields.
 - **AI mask.** The world resolver sees true components. The estimate functions do not.
 - **K is the attacker's tier.** The table row is selected with `AttackerView.tier`.
@@ -168,6 +169,6 @@ CVitals.hp / poise            ecs.rs apply_hp_delta
 
 ## 12. Maintenance Notes
 
-When a single `Fixed64` lands on `main`, delete `fixed.rs` in that commit and keep the lock tests. The golden stage hash and the battle digest are the check that the move did not change a bit. When the default school list changes, re-run the lore-name test. Bump `doc_version` if the stage order or the golden hash changes.
+`fixed.rs` keeps `whole_raw` only. If that helper moves, the golden stage hash and the battle digest are the check that the move did not change a bit. When the default school list changes, re-run the lore-name test. Bump `doc_version` if the stage order or the golden hash changes.
 
 `combat_resolve` is a required case of `.github/workflows/determinism-replay.yml`. The combat test writes `replay-hash-combat.json` so it does not replace core's `replay-hash.json`. The workflow merges the two files before upload.
