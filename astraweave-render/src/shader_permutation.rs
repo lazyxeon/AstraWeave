@@ -284,6 +284,10 @@ mod tests {
                 include_str!("../shaders/bloom_upsample.wgsl"),
             ),
             ("hiz_pyramid", include_str!("../shaders/hiz_pyramid.wgsl")),
+            (
+                "hiz_pyramid_copy",
+                include_str!("../shaders/hiz_pyramid_copy.wgsl"),
+            ),
             ("ssr", include_str!("../shaders/ssr.wgsl")),
             ("ssgi", include_str!("../shaders/ssgi.wgsl")),
             (

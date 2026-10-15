@@ -189,42 +189,46 @@ impl GrassBladePass {
         });
 
         // ── Render pipeline ─────────────────────────────────────────────────
-        let render_pipeline = crate::pipeline_cache::create_render_pipeline(device, None, wgpu::RenderPipelineDescriptor {
-            label: Some("GrassBlade Pipeline"),
-            layout: Some(&pipeline_layout),
-            vertex: wgpu::VertexState {
-                module: &shader,
-                entry_point: Some("vs_main"),
-                buffers: &[], // No vertex buffers — procedural from instance storage
-                compilation_options: Default::default(),
+        let render_pipeline = crate::pipeline_cache::create_render_pipeline(
+            device,
+            None,
+            wgpu::RenderPipelineDescriptor {
+                label: Some("GrassBlade Pipeline"),
+                layout: Some(&pipeline_layout),
+                vertex: wgpu::VertexState {
+                    module: &shader,
+                    entry_point: Some("vs_main"),
+                    buffers: &[], // No vertex buffers — procedural from instance storage
+                    compilation_options: Default::default(),
+                },
+                primitive: wgpu::PrimitiveState {
+                    topology: wgpu::PrimitiveTopology::TriangleList,
+                    front_face: wgpu::FrontFace::Ccw,
+                    cull_mode: None, // Double-sided grass blades
+                    ..Default::default()
+                },
+                depth_stencil: Some(wgpu::DepthStencilState {
+                    format: depth_format,
+                    depth_write_enabled: true,
+                    depth_compare: wgpu::CompareFunction::Less,
+                    stencil: Default::default(),
+                    bias: Default::default(),
+                }),
+                multisample: msaa.multisample_state_alpha_to_coverage(),
+                fragment: Some(wgpu::FragmentState {
+                    module: &shader,
+                    entry_point: Some("fs_main"),
+                    targets: &[Some(wgpu::ColorTargetState {
+                        format: color_format,
+                        blend: None, // Opaque grass
+                        write_mask: wgpu::ColorWrites::ALL,
+                    })],
+                    compilation_options: Default::default(),
+                }),
+                multiview: None,
+                cache: None,
             },
-            primitive: wgpu::PrimitiveState {
-                topology: wgpu::PrimitiveTopology::TriangleList,
-                front_face: wgpu::FrontFace::Ccw,
-                cull_mode: None, // Double-sided grass blades
-                ..Default::default()
-            },
-            depth_stencil: Some(wgpu::DepthStencilState {
-                format: depth_format,
-                depth_write_enabled: true,
-                depth_compare: wgpu::CompareFunction::Less,
-                stencil: Default::default(),
-                bias: Default::default(),
-            }),
-            multisample: msaa.multisample_state_alpha_to_coverage(),
-            fragment: Some(wgpu::FragmentState {
-                module: &shader,
-                entry_point: Some("fs_main"),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: color_format,
-                    blend: None, // Opaque grass
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-                compilation_options: Default::default(),
-            }),
-            multiview: None,
-            cache: None,
-        });
+        );
 
         // ── Buffers ─────────────────────────────────────────────────────────
         let camera_buffer = device.create_buffer(&wgpu::BufferDescriptor {

@@ -205,31 +205,35 @@ impl IblManager {
             bind_group_layouts: &[],
             push_constant_ranges: &[],
         });
-        let brdf_pipeline = crate::pipeline_cache::create_render_pipeline(device, None, wgpu::RenderPipelineDescriptor {
-            label: Some("ibl-brdf-pipeline"),
-            layout: Some(&unit_pl),
-            vertex: wgpu::VertexState {
-                module: &brdf_sm,
-                entry_point: Some("vs"),
-                buffers: &[],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
+        let brdf_pipeline = crate::pipeline_cache::create_render_pipeline(
+            device,
+            None,
+            wgpu::RenderPipelineDescriptor {
+                label: Some("ibl-brdf-pipeline"),
+                layout: Some(&unit_pl),
+                vertex: wgpu::VertexState {
+                    module: &brdf_sm,
+                    entry_point: Some("vs"),
+                    buffers: &[],
+                    compilation_options: wgpu::PipelineCompilationOptions::default(),
+                },
+                fragment: Some(wgpu::FragmentState {
+                    module: &brdf_sm,
+                    entry_point: Some("fs"),
+                    targets: &[Some(wgpu::ColorTargetState {
+                        format: wgpu::TextureFormat::Rg16Float,
+                        blend: None,
+                        write_mask: wgpu::ColorWrites::ALL,
+                    })],
+                    compilation_options: wgpu::PipelineCompilationOptions::default(),
+                }),
+                primitive: wgpu::PrimitiveState::default(),
+                depth_stencil: None,
+                multisample: wgpu::MultisampleState::default(),
+                multiview: None,
+                cache: None,
             },
-            fragment: Some(wgpu::FragmentState {
-                module: &brdf_sm,
-                entry_point: Some("fs"),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: wgpu::TextureFormat::Rg16Float,
-                    blend: None,
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-            }),
-            primitive: wgpu::PrimitiveState::default(),
-            depth_stencil: None,
-            multisample: wgpu::MultisampleState::default(),
-            multiview: None,
-            cache: None,
-        });
+        );
 
         // Env sampling BGL for irradiance/specular passes
         let env_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -303,83 +307,95 @@ impl IblManager {
             bind_group_layouts: &[&env_bgl, &prefilter_params_bgl],
             push_constant_ranges: &[],
         });
-        let sky_pipeline = crate::pipeline_cache::create_render_pipeline(device, None, wgpu::RenderPipelineDescriptor {
-            label: Some("ibl-sky-pipeline"),
-            layout: Some(&sky_pl),
-            vertex: wgpu::VertexState {
-                module: &sky_sm,
-                entry_point: Some("vs"),
-                buffers: &[],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
+        let sky_pipeline = crate::pipeline_cache::create_render_pipeline(
+            device,
+            None,
+            wgpu::RenderPipelineDescriptor {
+                label: Some("ibl-sky-pipeline"),
+                layout: Some(&sky_pl),
+                vertex: wgpu::VertexState {
+                    module: &sky_sm,
+                    entry_point: Some("vs"),
+                    buffers: &[],
+                    compilation_options: wgpu::PipelineCompilationOptions::default(),
+                },
+                fragment: Some(wgpu::FragmentState {
+                    module: &sky_sm,
+                    entry_point: Some("fs"),
+                    targets: &[Some(wgpu::ColorTargetState {
+                        format: wgpu::TextureFormat::Rgba16Float,
+                        blend: None,
+                        write_mask: wgpu::ColorWrites::ALL,
+                    })],
+                    compilation_options: wgpu::PipelineCompilationOptions::default(),
+                }),
+                primitive: wgpu::PrimitiveState::default(),
+                depth_stencil: None,
+                multisample: wgpu::MultisampleState::default(),
+                multiview: None,
+                cache: None,
             },
-            fragment: Some(wgpu::FragmentState {
-                module: &sky_sm,
-                entry_point: Some("fs"),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: wgpu::TextureFormat::Rgba16Float,
-                    blend: None,
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-            }),
-            primitive: wgpu::PrimitiveState::default(),
-            depth_stencil: None,
-            multisample: wgpu::MultisampleState::default(),
-            multiview: None,
-            cache: None,
-        });
+        );
 
-        let irr_pipeline = crate::pipeline_cache::create_render_pipeline(device, None, wgpu::RenderPipelineDescriptor {
-            label: Some("ibl-irr-pipeline"),
-            layout: Some(&conv_pl),
-            vertex: wgpu::VertexState {
-                module: &irr_sm,
-                entry_point: Some("vs"),
-                buffers: &[],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
+        let irr_pipeline = crate::pipeline_cache::create_render_pipeline(
+            device,
+            None,
+            wgpu::RenderPipelineDescriptor {
+                label: Some("ibl-irr-pipeline"),
+                layout: Some(&conv_pl),
+                vertex: wgpu::VertexState {
+                    module: &irr_sm,
+                    entry_point: Some("vs"),
+                    buffers: &[],
+                    compilation_options: wgpu::PipelineCompilationOptions::default(),
+                },
+                fragment: Some(wgpu::FragmentState {
+                    module: &irr_sm,
+                    entry_point: Some("fs"),
+                    targets: &[Some(wgpu::ColorTargetState {
+                        format: wgpu::TextureFormat::Rgba16Float,
+                        blend: None,
+                        write_mask: wgpu::ColorWrites::ALL,
+                    })],
+                    compilation_options: wgpu::PipelineCompilationOptions::default(),
+                }),
+                primitive: wgpu::PrimitiveState::default(),
+                depth_stencil: None,
+                multisample: wgpu::MultisampleState::default(),
+                multiview: None,
+                cache: None,
             },
-            fragment: Some(wgpu::FragmentState {
-                module: &irr_sm,
-                entry_point: Some("fs"),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: wgpu::TextureFormat::Rgba16Float,
-                    blend: None,
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-            }),
-            primitive: wgpu::PrimitiveState::default(),
-            depth_stencil: None,
-            multisample: wgpu::MultisampleState::default(),
-            multiview: None,
-            cache: None,
-        });
+        );
 
-        let spec_pipeline = crate::pipeline_cache::create_render_pipeline(device, None, wgpu::RenderPipelineDescriptor {
-            label: Some("ibl-spec-pipeline"),
-            layout: Some(&spec_pl),
-            vertex: wgpu::VertexState {
-                module: &spec_sm,
-                entry_point: Some("vs"),
-                buffers: &[],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
+        let spec_pipeline = crate::pipeline_cache::create_render_pipeline(
+            device,
+            None,
+            wgpu::RenderPipelineDescriptor {
+                label: Some("ibl-spec-pipeline"),
+                layout: Some(&spec_pl),
+                vertex: wgpu::VertexState {
+                    module: &spec_sm,
+                    entry_point: Some("vs"),
+                    buffers: &[],
+                    compilation_options: wgpu::PipelineCompilationOptions::default(),
+                },
+                fragment: Some(wgpu::FragmentState {
+                    module: &spec_sm,
+                    entry_point: Some("fs"),
+                    targets: &[Some(wgpu::ColorTargetState {
+                        format: wgpu::TextureFormat::Rgba16Float,
+                        blend: None,
+                        write_mask: wgpu::ColorWrites::ALL,
+                    })],
+                    compilation_options: wgpu::PipelineCompilationOptions::default(),
+                }),
+                primitive: wgpu::PrimitiveState::default(),
+                depth_stencil: None,
+                multisample: wgpu::MultisampleState::default(),
+                multiview: None,
+                cache: None,
             },
-            fragment: Some(wgpu::FragmentState {
-                module: &spec_sm,
-                entry_point: Some("fs"),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: wgpu::TextureFormat::Rgba16Float,
-                    blend: None,
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-            }),
-            primitive: wgpu::PrimitiveState::default(),
-            depth_stencil: None,
-            multisample: wgpu::MultisampleState::default(),
-            multiview: None,
-            cache: None,
-        });
+        );
 
         // Equirectangular to cube pipeline
         let eqr_sm = device.create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -412,31 +428,35 @@ impl IblManager {
             bind_group_layouts: &[&eqr_bgl, &eqr_face_bgl],
             push_constant_ranges: &[],
         });
-        let eqr_pipeline = crate::pipeline_cache::create_render_pipeline(device, None, wgpu::RenderPipelineDescriptor {
-            label: Some("ibl-eqr-pipeline"),
-            layout: Some(&eqr_pl),
-            vertex: wgpu::VertexState {
-                module: &eqr_sm,
-                entry_point: Some("vs"),
-                buffers: &[],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
+        let eqr_pipeline = crate::pipeline_cache::create_render_pipeline(
+            device,
+            None,
+            wgpu::RenderPipelineDescriptor {
+                label: Some("ibl-eqr-pipeline"),
+                layout: Some(&eqr_pl),
+                vertex: wgpu::VertexState {
+                    module: &eqr_sm,
+                    entry_point: Some("vs"),
+                    buffers: &[],
+                    compilation_options: wgpu::PipelineCompilationOptions::default(),
+                },
+                fragment: Some(wgpu::FragmentState {
+                    module: &eqr_sm,
+                    entry_point: Some("fs"),
+                    targets: &[Some(wgpu::ColorTargetState {
+                        format: wgpu::TextureFormat::Rgba16Float,
+                        blend: None,
+                        write_mask: wgpu::ColorWrites::ALL,
+                    })],
+                    compilation_options: wgpu::PipelineCompilationOptions::default(),
+                }),
+                primitive: wgpu::PrimitiveState::default(),
+                depth_stencil: None,
+                multisample: wgpu::MultisampleState::default(),
+                multiview: None,
+                cache: None,
             },
-            fragment: Some(wgpu::FragmentState {
-                module: &eqr_sm,
-                entry_point: Some("fs"),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: wgpu::TextureFormat::Rgba16Float,
-                    blend: None,
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-            }),
-            primitive: wgpu::PrimitiveState::default(),
-            depth_stencil: None,
-            multisample: wgpu::MultisampleState::default(),
-            multiview: None,
-            cache: None,
-        });
+        );
 
         let mgr = Self {
             enabled: true,

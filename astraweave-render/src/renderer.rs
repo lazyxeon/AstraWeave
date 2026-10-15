@@ -1012,7 +1012,9 @@ pub struct Renderer {
     mesh_external: Option<Mesh>,
     /// Named models for multi-model rendering (terrain, trees, rocks, etc.)
     models: std::collections::HashMap<String, RenderModel>,
-    /// Present when the device was created with the bindless texture features.
+    /// One Hi-Z pyramid. SSR, SSGI, and occlusion sample its R32Float copy.
+    hiz: Option<crate::hiz_pyramid::HizPyramid>,
+    /// Present when the device was created with the binding-array features.
     bindless: Option<crate::material_bindless::BindlessMaterialSystem>,
     /// When false, uploads stay on group-3 bind groups even if `bindless` exists.
     bindless_active: bool,
@@ -1199,7 +1201,10 @@ impl Renderer {
                 source: wgpu::ShaderSource::Wgsl(std::borrow::Cow::Owned(full)),
             })
     }
-    fn requested_device(adapter: &wgpu::Adapter, gpu_tests: bool) -> (wgpu::Features, wgpu::Limits) {
+    fn requested_device(
+        adapter: &wgpu::Adapter,
+        gpu_tests: bool,
+    ) -> (wgpu::Features, wgpu::Limits) {
         let mut features = wgpu::Features::empty();
         if gpu_tests {
             features |= wgpu::Features::TIMESTAMP_QUERY;
@@ -1215,9 +1220,7 @@ impl Renderer {
             ..wgpu::Limits::default()
         };
         if crate::material_bindless::supports_bindless(adapter) {
-            let cap = adapter
-                .limits()
-                .max_binding_array_elements_per_shader_stage;
+            let cap = adapter.limits().max_binding_array_elements_per_shader_stage;
             if cap >= 4 {
                 features |= crate::material_bindless::required_features();
                 limits.max_binding_array_elements_per_shader_stage = 4.min(cap);
@@ -1237,10 +1240,7 @@ impl Renderer {
             warp_requested()
         );
 
-        let (features, limits) = Self::requested_device(
-            &adapter,
-            cfg!(feature = "gpu-tests"),
-        );
+        let (features, limits) = Self::requested_device(&adapter, cfg!(feature = "gpu-tests"));
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor {
                 label: Some("device"),
@@ -1786,30 +1786,31 @@ impl Renderer {
             &device,
             pipeline_cache.as_ref(),
             wgpu::RenderPipelineDescriptor {
-            cache: pipeline_cache.as_ref(),
-            label: Some("ssr pipeline"),
-            layout: Some(&ssr_pl),
-            vertex: wgpu::VertexState {
-                module: &ssr_shader,
-                entry_point: Some("vs_main"),
-                buffers: &[],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
+                cache: pipeline_cache.as_ref(),
+                label: Some("ssr pipeline"),
+                layout: Some(&ssr_pl),
+                vertex: wgpu::VertexState {
+                    module: &ssr_shader,
+                    entry_point: Some("vs_main"),
+                    buffers: &[],
+                    compilation_options: wgpu::PipelineCompilationOptions::default(),
+                },
+                fragment: Some(wgpu::FragmentState {
+                    module: &ssr_shader,
+                    entry_point: Some("fs_main"),
+                    targets: &[Some(wgpu::ColorTargetState {
+                        format: wgpu::TextureFormat::Rgba16Float,
+                        blend: Some(wgpu::BlendState::REPLACE),
+                        write_mask: wgpu::ColorWrites::ALL,
+                    })],
+                    compilation_options: wgpu::PipelineCompilationOptions::default(),
+                }),
+                primitive: wgpu::PrimitiveState::default(),
+                depth_stencil: None,
+                multisample: wgpu::MultisampleState::default(),
+                multiview: None,
             },
-            fragment: Some(wgpu::FragmentState {
-                module: &ssr_shader,
-                entry_point: Some("fs_main"),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: wgpu::TextureFormat::Rgba16Float,
-                    blend: Some(wgpu::BlendState::REPLACE),
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-            }),
-            primitive: wgpu::PrimitiveState::default(),
-            depth_stencil: None,
-            multisample: wgpu::MultisampleState::default(),
-            multiview: None,
-        });
+        );
 
         // SSAO
         #[cfg(feature = "postfx")]
@@ -1865,30 +1866,31 @@ impl Renderer {
             &device,
             pipeline_cache.as_ref(),
             wgpu::RenderPipelineDescriptor {
-            cache: pipeline_cache.as_ref(),
-            label: Some("ssao pipeline"),
-            layout: Some(&ssao_pl),
-            vertex: wgpu::VertexState {
-                module: &ssao_shader,
-                entry_point: Some("vs_main"),
-                buffers: &[],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
+                cache: pipeline_cache.as_ref(),
+                label: Some("ssao pipeline"),
+                layout: Some(&ssao_pl),
+                vertex: wgpu::VertexState {
+                    module: &ssao_shader,
+                    entry_point: Some("vs_main"),
+                    buffers: &[],
+                    compilation_options: wgpu::PipelineCompilationOptions::default(),
+                },
+                fragment: Some(wgpu::FragmentState {
+                    module: &ssao_shader,
+                    entry_point: Some("fs_main"),
+                    targets: &[Some(wgpu::ColorTargetState {
+                        format: wgpu::TextureFormat::Rgba16Float,
+                        blend: Some(wgpu::BlendState::REPLACE),
+                        write_mask: wgpu::ColorWrites::ALL,
+                    })],
+                    compilation_options: wgpu::PipelineCompilationOptions::default(),
+                }),
+                primitive: wgpu::PrimitiveState::default(),
+                depth_stencil: None,
+                multisample: wgpu::MultisampleState::default(),
+                multiview: None,
             },
-            fragment: Some(wgpu::FragmentState {
-                module: &ssao_shader,
-                entry_point: Some("fs_main"),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: wgpu::TextureFormat::Rgba16Float,
-                    blend: Some(wgpu::BlendState::REPLACE),
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-            }),
-            primitive: wgpu::PrimitiveState::default(),
-            depth_stencil: None,
-            multisample: wgpu::MultisampleState::default(),
-            multiview: None,
-        });
+        );
 
         // SSGI
         #[cfg(feature = "postfx")]
@@ -1958,30 +1960,31 @@ impl Renderer {
             &device,
             pipeline_cache.as_ref(),
             wgpu::RenderPipelineDescriptor {
-            cache: pipeline_cache.as_ref(),
-            label: Some("ssgi pipeline"),
-            layout: Some(&ssgi_pl),
-            vertex: wgpu::VertexState {
-                module: &ssgi_shader,
-                entry_point: Some("vs_main"),
-                buffers: &[],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
+                cache: pipeline_cache.as_ref(),
+                label: Some("ssgi pipeline"),
+                layout: Some(&ssgi_pl),
+                vertex: wgpu::VertexState {
+                    module: &ssgi_shader,
+                    entry_point: Some("vs_main"),
+                    buffers: &[],
+                    compilation_options: wgpu::PipelineCompilationOptions::default(),
+                },
+                fragment: Some(wgpu::FragmentState {
+                    module: &ssgi_shader,
+                    entry_point: Some("fs_main"),
+                    targets: &[Some(wgpu::ColorTargetState {
+                        format: wgpu::TextureFormat::Rgba16Float,
+                        blend: Some(wgpu::BlendState::REPLACE),
+                        write_mask: wgpu::ColorWrites::ALL,
+                    })],
+                    compilation_options: wgpu::PipelineCompilationOptions::default(),
+                }),
+                primitive: wgpu::PrimitiveState::default(),
+                depth_stencil: None,
+                multisample: wgpu::MultisampleState::default(),
+                multiview: None,
             },
-            fragment: Some(wgpu::FragmentState {
-                module: &ssgi_shader,
-                entry_point: Some("fs_main"),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: wgpu::TextureFormat::Rgba16Float,
-                    blend: Some(wgpu::BlendState::REPLACE),
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-            }),
-            primitive: wgpu::PrimitiveState::default(),
-            depth_stencil: None,
-            multisample: wgpu::MultisampleState::default(),
-            multiview: None,
-        });
+        );
 
         // Post-fx composition pipeline
         #[cfg(feature = "postfx")]
@@ -2523,44 +2526,45 @@ impl Renderer {
             &device,
             pipeline_cache.as_ref(),
             wgpu::RenderPipelineDescriptor {
-            cache: pipeline_cache.as_ref(),
-            label: Some("pipeline"),
-            layout: Some(&pipeline_layout),
-            vertex: wgpu::VertexState {
-                module: &shader,
-                entry_point: Some("vs"),
-                buffers: &[
-                    crate::types::Vertex::layout(),
-                    crate::types::InstanceRaw::layout(),
-                ],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
+                cache: pipeline_cache.as_ref(),
+                label: Some("pipeline"),
+                layout: Some(&pipeline_layout),
+                vertex: wgpu::VertexState {
+                    module: &shader,
+                    entry_point: Some("vs"),
+                    buffers: &[
+                        crate::types::Vertex::layout(),
+                        crate::types::InstanceRaw::layout(),
+                    ],
+                    compilation_options: wgpu::PipelineCompilationOptions::default(),
+                },
+                fragment: Some(wgpu::FragmentState {
+                    module: &shader,
+                    entry_point: Some("fs"),
+                    targets: &[Some(wgpu::ColorTargetState {
+                        format: wgpu::TextureFormat::Rgba16Float,
+                        blend: Some(wgpu::BlendState::ALPHA_BLENDING),
+                        write_mask: wgpu::ColorWrites::ALL,
+                    })],
+                    compilation_options: wgpu::PipelineCompilationOptions::default(),
+                }),
+                primitive: wgpu::PrimitiveState {
+                    topology: wgpu::PrimitiveTopology::TriangleList,
+                    front_face: wgpu::FrontFace::Ccw,
+                    cull_mode: Some(wgpu::Face::Back),
+                    ..Default::default()
+                },
+                depth_stencil: Some(wgpu::DepthStencilState {
+                    format: depth.format,
+                    depth_write_enabled: true,
+                    depth_compare: wgpu::CompareFunction::Less,
+                    stencil: wgpu::StencilState::default(),
+                    bias: wgpu::DepthBiasState::default(),
+                }),
+                multisample: wgpu::MultisampleState::default(),
+                multiview: None,
             },
-            fragment: Some(wgpu::FragmentState {
-                module: &shader,
-                entry_point: Some("fs"),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: wgpu::TextureFormat::Rgba16Float,
-                    blend: Some(wgpu::BlendState::ALPHA_BLENDING),
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-            }),
-            primitive: wgpu::PrimitiveState {
-                topology: wgpu::PrimitiveTopology::TriangleList,
-                front_face: wgpu::FrontFace::Ccw,
-                cull_mode: Some(wgpu::Face::Back),
-                ..Default::default()
-            },
-            depth_stencil: Some(wgpu::DepthStencilState {
-                format: depth.format,
-                depth_write_enabled: true,
-                depth_compare: wgpu::CompareFunction::Less,
-                stencil: wgpu::StencilState::default(),
-                bias: wgpu::DepthBiasState::default(),
-            }),
-            multisample: wgpu::MultisampleState::default(),
-            multiview: None,
-        });
+        );
 
         // ED-3: wireframe variant of the main static-mesh pipeline —
         // identical descriptor, polygon_mode Line. Feature-gated: the
@@ -2571,11 +2575,10 @@ impl Renderer {
             .features()
             .contains(wgpu::Features::POLYGON_MODE_LINE)
         {
-            Some(
-                crate::pipeline_cache::create_render_pipeline(
-            &device,
-            pipeline_cache.as_ref(),
-            wgpu::RenderPipelineDescriptor {
+            Some(crate::pipeline_cache::create_render_pipeline(
+                &device,
+                pipeline_cache.as_ref(),
+                wgpu::RenderPipelineDescriptor {
                     cache: pipeline_cache.as_ref(),
                     label: Some("pipeline-wire"),
                     layout: Some(&pipeline_layout),
@@ -2614,8 +2617,8 @@ impl Renderer {
                     }),
                     multisample: wgpu::MultisampleState::default(),
                     multiview: None,
-                }),
-            )
+                },
+            ))
         } else {
             None
         };
@@ -2640,36 +2643,37 @@ impl Renderer {
             &device,
             pipeline_cache.as_ref(),
             wgpu::RenderPipelineDescriptor {
-            cache: pipeline_cache.as_ref(),
-            label: Some("post pipeline"),
-            layout: Some(&post_pipeline_layout),
-            vertex: wgpu::VertexState {
-                #[cfg(not(feature = "postfx"))]
-                module: &post_shader,
-                #[cfg(feature = "postfx")]
-                module: &post_fx_shader,
-                entry_point: Some("vs_main"),
-                buffers: &[],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
+                cache: pipeline_cache.as_ref(),
+                label: Some("post pipeline"),
+                layout: Some(&post_pipeline_layout),
+                vertex: wgpu::VertexState {
+                    #[cfg(not(feature = "postfx"))]
+                    module: &post_shader,
+                    #[cfg(feature = "postfx")]
+                    module: &post_fx_shader,
+                    entry_point: Some("vs_main"),
+                    buffers: &[],
+                    compilation_options: wgpu::PipelineCompilationOptions::default(),
+                },
+                fragment: Some(wgpu::FragmentState {
+                    #[cfg(not(feature = "postfx"))]
+                    module: &post_shader,
+                    #[cfg(feature = "postfx")]
+                    module: &post_fx_shader,
+                    entry_point: Some("fs_main"),
+                    targets: &[Some(wgpu::ColorTargetState {
+                        format: config.format,
+                        blend: Some(wgpu::BlendState::REPLACE),
+                        write_mask: wgpu::ColorWrites::ALL,
+                    })],
+                    compilation_options: wgpu::PipelineCompilationOptions::default(),
+                }),
+                primitive: wgpu::PrimitiveState::default(),
+                depth_stencil: None,
+                multisample: wgpu::MultisampleState::default(),
+                multiview: None,
             },
-            fragment: Some(wgpu::FragmentState {
-                #[cfg(not(feature = "postfx"))]
-                module: &post_shader,
-                #[cfg(feature = "postfx")]
-                module: &post_fx_shader,
-                entry_point: Some("fs_main"),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: config.format,
-                    blend: Some(wgpu::BlendState::REPLACE),
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-            }),
-            primitive: wgpu::PrimitiveState::default(),
-            depth_stencil: None,
-            multisample: wgpu::MultisampleState::default(),
-            multiview: None,
-        });
+        );
 
         // Editor-Engine Render Parity P.3: hdr_blit_pipeline construction
         // removed. Was the passthrough HDR→HDR blit selected by
@@ -2855,37 +2859,38 @@ fn vs(input: VSIn) -> VSOut {
             &device,
             pipeline_cache.as_ref(),
             wgpu::RenderPipelineDescriptor {
-            cache: pipeline_cache.as_ref(),
-            label: Some("shadow pipeline"),
-            layout: Some(&shadow_pipeline_layout),
-            vertex: wgpu::VertexState {
-                module: &shadow_shader,
-                entry_point: Some("vs"),
-                buffers: &[
-                    crate::types::Vertex::layout(),
-                    crate::types::InstanceRaw::layout(),
-                ],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-            },
-            fragment: None,
-            primitive: wgpu::PrimitiveState {
-                cull_mode: Some(wgpu::Face::Back),
-                ..Default::default()
-            },
-            depth_stencil: Some(wgpu::DepthStencilState {
-                format: wgpu::TextureFormat::Depth32Float,
-                depth_write_enabled: true,
-                depth_compare: wgpu::CompareFunction::LessEqual,
-                stencil: wgpu::StencilState::default(),
-                bias: wgpu::DepthBiasState {
-                    constant: 2,
-                    slope_scale: 2.0,
-                    clamp: 0.0,
+                cache: pipeline_cache.as_ref(),
+                label: Some("shadow pipeline"),
+                layout: Some(&shadow_pipeline_layout),
+                vertex: wgpu::VertexState {
+                    module: &shadow_shader,
+                    entry_point: Some("vs"),
+                    buffers: &[
+                        crate::types::Vertex::layout(),
+                        crate::types::InstanceRaw::layout(),
+                    ],
+                    compilation_options: wgpu::PipelineCompilationOptions::default(),
                 },
-            }),
-            multisample: wgpu::MultisampleState::default(),
-            multiview: None,
-        });
+                fragment: None,
+                primitive: wgpu::PrimitiveState {
+                    cull_mode: Some(wgpu::Face::Back),
+                    ..Default::default()
+                },
+                depth_stencil: Some(wgpu::DepthStencilState {
+                    format: wgpu::TextureFormat::Depth32Float,
+                    depth_write_enabled: true,
+                    depth_compare: wgpu::CompareFunction::LessEqual,
+                    stencil: wgpu::StencilState::default(),
+                    bias: wgpu::DepthBiasState {
+                        constant: 2,
+                        slope_scale: 2.0,
+                        clamp: 0.0,
+                    },
+                }),
+                multisample: wgpu::MultisampleState::default(),
+                multiview: None,
+            },
+        );
 
         // Default 1x1 white albedo
         let albedo_tex = device.create_texture(&wgpu::TextureDescriptor {
@@ -3140,44 +3145,45 @@ fn vs(input: VSIn) -> VSOut {
             &device,
             pipeline_cache.as_ref(),
             wgpu::RenderPipelineDescriptor {
-            cache: pipeline_cache.as_ref(),
-            label: Some("skinned pipeline"),
-            layout: Some(&skinned_pipeline_layout),
-            vertex: wgpu::VertexState {
-                module: &skinned_shader,
-                entry_point: Some("vs"),
-                buffers: &[
-                    crate::types::SkinnedVertex::layout(),
-                    crate::types::InstanceRaw::layout(),
-                ],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
+                cache: pipeline_cache.as_ref(),
+                label: Some("skinned pipeline"),
+                layout: Some(&skinned_pipeline_layout),
+                vertex: wgpu::VertexState {
+                    module: &skinned_shader,
+                    entry_point: Some("vs"),
+                    buffers: &[
+                        crate::types::SkinnedVertex::layout(),
+                        crate::types::InstanceRaw::layout(),
+                    ],
+                    compilation_options: wgpu::PipelineCompilationOptions::default(),
+                },
+                fragment: Some(wgpu::FragmentState {
+                    module: &skinned_shader,
+                    entry_point: Some("fs"),
+                    targets: &[Some(wgpu::ColorTargetState {
+                        format: wgpu::TextureFormat::Rgba16Float,
+                        blend: Some(wgpu::BlendState::ALPHA_BLENDING),
+                        write_mask: wgpu::ColorWrites::ALL,
+                    })],
+                    compilation_options: wgpu::PipelineCompilationOptions::default(),
+                }),
+                primitive: wgpu::PrimitiveState {
+                    topology: wgpu::PrimitiveTopology::TriangleList,
+                    front_face: wgpu::FrontFace::Ccw,
+                    cull_mode: Some(wgpu::Face::Back),
+                    ..Default::default()
+                },
+                depth_stencil: Some(wgpu::DepthStencilState {
+                    format: depth.format,
+                    depth_write_enabled: true,
+                    depth_compare: wgpu::CompareFunction::Less,
+                    stencil: wgpu::StencilState::default(),
+                    bias: wgpu::DepthBiasState::default(),
+                }),
+                multisample: wgpu::MultisampleState::default(),
+                multiview: None,
             },
-            fragment: Some(wgpu::FragmentState {
-                module: &skinned_shader,
-                entry_point: Some("fs"),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: wgpu::TextureFormat::Rgba16Float,
-                    blend: Some(wgpu::BlendState::ALPHA_BLENDING),
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-            }),
-            primitive: wgpu::PrimitiveState {
-                topology: wgpu::PrimitiveTopology::TriangleList,
-                front_face: wgpu::FrontFace::Ccw,
-                cull_mode: Some(wgpu::Face::Back),
-                ..Default::default()
-            },
-            depth_stencil: Some(wgpu::DepthStencilState {
-                format: depth.format,
-                depth_write_enabled: true,
-                depth_compare: wgpu::CompareFunction::Less,
-                stencil: wgpu::StencilState::default(),
-                bias: wgpu::DepthBiasState::default(),
-            }),
-            multisample: wgpu::MultisampleState::default(),
-            multiview: None,
-        });
+        );
 
         // Default extra textures
         let mr_tex = device.create_texture(&wgpu::TextureDescriptor {
@@ -3659,6 +3665,7 @@ fn vs(input: VSIn) -> VSOut {
             mesh_plane,
             mesh_external: None,
             models: std::collections::HashMap::new(),
+            hiz: None,
             bindless,
             bindless_active,
             instances: Vec::new(),
@@ -5156,23 +5163,27 @@ fn vs(input: VSIn) -> VSOut {
             .collect();
         let vbytes = bytemuck::cast_slice(&verts);
         let ibytes = bytemuck::cast_slice(&cpu.indices);
-        let aabb = cpu.aabb().map(|(min, max)| (min.to_array(), max.to_array()));
+        let aabb = cpu
+            .aabb()
+            .map(|(min, max)| (min.to_array(), max.to_array()));
 
-        let model = self
-            .models
-            .get_mut(name)
-            .with_context(|| format!("model '{name}' is not loaded"))?;
-        let primitive = model
-            .primitives
-            .first_mut()
-            .with_context(|| format!("model '{name}' has no primitives"))?;
-        let fits = (vbytes.len() as u64) <= primitive.mesh.vertex_buf.size()
-            && (ibytes.len() as u64) <= primitive.mesh.index_buf.size();
-        let vertex_buf = primitive.mesh.vertex_buf.clone();
-        let index_buf = primitive.mesh.index_buf.clone();
-        primitive.mesh.index_count = cpu.indices.len() as u32;
-        model.aabb = aabb;
-        drop(model);
+        let (fits, vertex_buf, index_buf) = {
+            let model = self
+                .models
+                .get_mut(name)
+                .with_context(|| format!("model '{name}' is not loaded"))?;
+            let primitive = model
+                .primitives
+                .first_mut()
+                .with_context(|| format!("model '{name}' has no primitives"))?;
+            let fits = (vbytes.len() as u64) <= primitive.mesh.vertex_buf.size()
+                && (ibytes.len() as u64) <= primitive.mesh.index_buf.size();
+            let vertex_buf = primitive.mesh.vertex_buf.clone();
+            let index_buf = primitive.mesh.index_buf.clone();
+            primitive.mesh.index_count = cpu.indices.len() as u32;
+            model.aabb = aabb;
+            (fits, vertex_buf, index_buf)
+        };
 
         if fits {
             self.queue.write_buffer(&vertex_buf, 0, vbytes);
@@ -5210,7 +5221,6 @@ fn vs(input: VSIn) -> VSOut {
         Ok(())
     }
 
-    /// Generation of the GPU buffers for `name`. `None` if the model is absent.
     /// Turn bindless registration on or off. Enabling does nothing when the
     /// device was created without the binding-array features. Shading stays on
     /// the group-3 bind groups either way; the SSBO is the indexed copy.
@@ -5234,9 +5244,8 @@ fn vs(input: VSIn) -> VSOut {
             return None;
         }
         let system = self.bindless.as_mut()?;
-        let view = |texture: &wgpu::Texture| {
-            texture.create_view(&wgpu::TextureViewDescriptor::default())
-        };
+        let view =
+            |texture: &wgpu::Texture| texture.create_view(&wgpu::TextureViewDescriptor::default());
         let albedo = system.add_texture(view(&textures[0]))?;
         let metallic_roughness = system.add_texture(view(&textures[1]))?;
         let normal = system.add_texture(view(&textures[2]))?;
@@ -5255,6 +5264,7 @@ fn vs(input: VSIn) -> VSOut {
         })
     }
 
+    /// Generation of the GPU buffers for `name`. `None` if the model is absent.
     pub fn mesh_storage_generation(&self, name: &str) -> Option<u32> {
         self.models
             .get(name)
@@ -7409,8 +7419,40 @@ fn vs(input: VSIn) -> VSOut {
         if let Some(ref mut p) = self.gpu_profiler {
             p.end_frame(enc);
         }
+        self.record_hiz(enc, depth_view);
 
         Ok(())
+    }
+
+    /// Copy this frame's depth into the shared Hi-Z pyramid.
+    ///
+    /// The pyramid is presentation-only. Occlusion may consult it next frame.
+    /// It is not read back into the simulation. The first frame builds it;
+    /// later frames only dispatch the copy and the min-depth downsample.
+    fn record_hiz(
+        &mut self,
+        enc: &mut wgpu::CommandEncoder,
+        depth_view: Option<&wgpu::TextureView>,
+    ) {
+        let width = self.config.width.max(1);
+        let height = self.config.height.max(1);
+        let source = depth_view.unwrap_or(&self.depth.view).clone();
+        let rebuild = self
+            .hiz
+            .as_ref()
+            .map(|pyramid| pyramid.dimensions() != (width, height))
+            .unwrap_or(true);
+        if rebuild {
+            self.hiz = Some(crate::hiz_pyramid::HizPyramid::new(
+                &self.device,
+                width,
+                height,
+                &source,
+            ));
+        }
+        if let Some(pyramid) = self.hiz.as_ref() {
+            pyramid.build(enc);
+        }
     }
 
     pub fn surface_size(&self) -> (u32, u32) {
@@ -7949,7 +7991,8 @@ fn vs(input: VSIn) -> VSOut {
                 depth_stencil: None,
                 multisample: wgpu::MultisampleState::default(),
                 multiview: None,
-            })
+            },
+        )
     }
 
     fn build_visible_instances(&mut self) -> usize {
@@ -8616,8 +8659,8 @@ fn vs(input: VSIn) -> VSOut {
                     mesh,
                     tex_bind_group: None,
                     _retained_textures: Vec::new(),
-                storage_generation: 0,
-                bindless_index: None,
+                    storage_generation: 0,
+                    bindless_index: None,
                 });
             }
         }

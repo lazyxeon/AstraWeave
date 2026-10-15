@@ -6,9 +6,24 @@ use astraweave_render::{Instance, Renderer};
 fn triangle() -> CpuMesh {
     let mut mesh = CpuMesh::default();
     mesh.vertices = vec![
-        MeshVertex::from_arrays([0.0, 0.0, 0.0], [0.0, 1.0, 0.0], [1.0, 0.0, 0.0, 1.0], [0.0, 0.0]),
-        MeshVertex::from_arrays([1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [1.0, 0.0, 0.0, 1.0], [1.0, 0.0]),
-        MeshVertex::from_arrays([0.0, 1.0, 0.0], [0.0, 1.0, 0.0], [1.0, 0.0, 0.0, 1.0], [0.0, 1.0]),
+        MeshVertex::from_arrays(
+            [0.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [1.0, 0.0, 0.0, 1.0],
+            [0.0, 0.0],
+        ),
+        MeshVertex::from_arrays(
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [1.0, 0.0, 0.0, 1.0],
+            [1.0, 0.0],
+        ),
+        MeshVertex::from_arrays(
+            [0.0, 1.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [1.0, 0.0, 0.0, 1.0],
+            [0.0, 1.0],
+        ),
     ];
     mesh.indices = vec![0, 1, 2];
     mesh.albedo_image = Some(CpuImage {

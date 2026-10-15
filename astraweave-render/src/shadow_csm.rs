@@ -414,55 +414,59 @@ impl CsmRenderer {
                 push_constant_ranges: &[],
             });
 
-        let shadow_pipeline = crate::pipeline_cache::create_render_pipeline(device, None, wgpu::RenderPipelineDescriptor {
-            label: Some("Shadow Render Pipeline"),
-            layout: Some(&shadow_pipeline_layout), // Use explicit layout (only group 1)
-            vertex: wgpu::VertexState {
-                module: &shader_module,
-                entry_point: Some("shadow_vertex_main"),
-                buffers: &[
-                    // FIXED: Full vertex buffer (position vec3 + normal vec3 = 24 bytes)
-                    // Shadow shader only uses position, but stride must match actual vertex data
-                    wgpu::VertexBufferLayout {
-                        array_stride: 24, // 6 × f32 (position + normal)
-                        step_mode: wgpu::VertexStepMode::Vertex,
-                        attributes: &[
-                            wgpu::VertexAttribute {
-                                format: wgpu::VertexFormat::Float32x3,
-                                offset: 0,
-                                shader_location: 0,
-                            },
-                            // Normal at offset 12 (ignored by shader, but maintains alignment)
-                        ],
-                    },
-                ],
-                compilation_options: Default::default(),
-            },
-            primitive: wgpu::PrimitiveState {
-                topology: wgpu::PrimitiveTopology::TriangleList,
-                strip_index_format: None,
-                front_face: wgpu::FrontFace::Ccw,
-                cull_mode: Some(wgpu::Face::Back),
-                unclipped_depth: false,
-                polygon_mode: wgpu::PolygonMode::Fill,
-                conservative: false,
-            },
-            depth_stencil: Some(wgpu::DepthStencilState {
-                format: wgpu::TextureFormat::Depth32Float,
-                depth_write_enabled: true,
-                depth_compare: wgpu::CompareFunction::Less,
-                stencil: wgpu::StencilState::default(),
-                bias: wgpu::DepthBiasState {
-                    constant: 2, // Depth bias for shadow acne prevention
-                    slope_scale: 2.0,
-                    clamp: 0.0,
+        let shadow_pipeline = crate::pipeline_cache::create_render_pipeline(
+            device,
+            None,
+            wgpu::RenderPipelineDescriptor {
+                label: Some("Shadow Render Pipeline"),
+                layout: Some(&shadow_pipeline_layout), // Use explicit layout (only group 1)
+                vertex: wgpu::VertexState {
+                    module: &shader_module,
+                    entry_point: Some("shadow_vertex_main"),
+                    buffers: &[
+                        // FIXED: Full vertex buffer (position vec3 + normal vec3 = 24 bytes)
+                        // Shadow shader only uses position, but stride must match actual vertex data
+                        wgpu::VertexBufferLayout {
+                            array_stride: 24, // 6 × f32 (position + normal)
+                            step_mode: wgpu::VertexStepMode::Vertex,
+                            attributes: &[
+                                wgpu::VertexAttribute {
+                                    format: wgpu::VertexFormat::Float32x3,
+                                    offset: 0,
+                                    shader_location: 0,
+                                },
+                                // Normal at offset 12 (ignored by shader, but maintains alignment)
+                            ],
+                        },
+                    ],
+                    compilation_options: Default::default(),
                 },
-            }),
-            multisample: wgpu::MultisampleState::default(),
-            fragment: None, // Depth-only pass, no fragment shader
-            multiview: None,
-            cache: None,
-        });
+                primitive: wgpu::PrimitiveState {
+                    topology: wgpu::PrimitiveTopology::TriangleList,
+                    strip_index_format: None,
+                    front_face: wgpu::FrontFace::Ccw,
+                    cull_mode: Some(wgpu::Face::Back),
+                    unclipped_depth: false,
+                    polygon_mode: wgpu::PolygonMode::Fill,
+                    conservative: false,
+                },
+                depth_stencil: Some(wgpu::DepthStencilState {
+                    format: wgpu::TextureFormat::Depth32Float,
+                    depth_write_enabled: true,
+                    depth_compare: wgpu::CompareFunction::Less,
+                    stencil: wgpu::StencilState::default(),
+                    bias: wgpu::DepthBiasState {
+                        constant: 2, // Depth bias for shadow acne prevention
+                        slope_scale: 2.0,
+                        clamp: 0.0,
+                    },
+                }),
+                multisample: wgpu::MultisampleState::default(),
+                fragment: None, // Depth-only pass, no fragment shader
+                multiview: None,
+                cache: None,
+            },
+        );
 
         // Alpha-tested shadow pipeline (for masked geometry)
         let shadow_alpha_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -493,8 +497,10 @@ impl CsmRenderer {
             push_constant_ranges: &[],
         });
 
-        let shadow_alpha_pipeline =
-            crate::pipeline_cache::create_render_pipeline(device, None, wgpu::RenderPipelineDescriptor {
+        let shadow_alpha_pipeline = crate::pipeline_cache::create_render_pipeline(
+            device,
+            None,
+            wgpu::RenderPipelineDescriptor {
                 label: Some("Shadow Alpha Render Pipeline"),
                 layout: Some(&shadow_alpha_pl),
                 vertex: wgpu::VertexState {
@@ -547,7 +553,8 @@ impl CsmRenderer {
                 }),
                 multiview: None,
                 cache: None,
-            });
+            },
+        );
 
         Ok(Self {
             atlas_texture,

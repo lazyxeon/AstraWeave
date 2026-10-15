@@ -12,6 +12,7 @@
 pub struct HizPyramid {
     copy_pipeline: wgpu::ComputePipeline,
     downsample_pipeline: wgpu::ComputePipeline,
+    /// Downsample layout. The copy layout is depth-only and stays private.
     bgl: wgpu::BindGroupLayout,
     #[allow(dead_code)] // texture must be kept alive for views to remain valid
     hiz_texture: wgpu::Texture,
@@ -31,9 +32,9 @@ pub struct HizPyramid {
 impl HizPyramid {
     /// Create a new Hi-Z pyramid for the given resolution.
     ///
-    /// `src_depth_view` is the view of the source depth texture (R32Float or
-    /// similar filterable float format) that will be copied into mip 0 during
-    /// [`build`].
+    /// `src_depth_view` is a `texture_depth_2d` view (`Depth32Float`). The copy
+    /// stores it into mip 0 as `R32Float`. Downsample and SSR/SSGI read that
+    /// copy with `textureLoad`.
     pub fn new(
         device: &wgpu::Device,
         width: u32,
@@ -54,7 +55,9 @@ impl HizPyramid {
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
             format: fmt,
-            usage: wgpu::TextureUsages::STORAGE_BINDING | wgpu::TextureUsages::TEXTURE_BINDING,
+            usage: wgpu::TextureUsages::STORAGE_BINDING
+                | wgpu::TextureUsages::TEXTURE_BINDING
+                | wgpu::TextureUsages::COPY_SRC,
             view_formats: &[],
         });
 
@@ -79,6 +82,32 @@ impl HizPyramid {
             ..Default::default()
         });
 
+        let storage_entry = wgpu::BindGroupLayoutEntry {
+            binding: 1,
+            visibility: wgpu::ShaderStages::COMPUTE,
+            ty: wgpu::BindingType::StorageTexture {
+                access: wgpu::StorageTextureAccess::WriteOnly,
+                format: fmt,
+                view_dimension: wgpu::TextureViewDimension::D2,
+            },
+            count: None,
+        };
+        let copy_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("hiz_copy_bgl"),
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Depth,
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                storage_entry,
+            ],
+        });
         let bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("hiz_pyramid_bgl"),
             entries: &[
@@ -92,23 +121,14 @@ impl HizPyramid {
                     },
                     count: None,
                 },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 1,
-                    visibility: wgpu::ShaderStages::COMPUTE,
-                    ty: wgpu::BindingType::StorageTexture {
-                        access: wgpu::StorageTextureAccess::WriteOnly,
-                        format: fmt,
-                        view_dimension: wgpu::TextureViewDimension::D2,
-                    },
-                    count: None,
-                },
+                storage_entry,
             ],
         });
 
         // Bind group 0: copy — src_depth → hiz mip 0
         let mut bind_groups = vec![device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("hiz_copy_bg"),
-            layout: &bgl,
+            layout: &copy_bgl,
             entries: &[
                 wgpu::BindGroupEntry {
                     binding: 0,
@@ -139,11 +159,22 @@ impl HizPyramid {
             }));
         }
 
+        let copy_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("hiz_pyramid_copy_shader"),
+            source: wgpu::ShaderSource::Wgsl(
+                include_str!("../shaders/hiz_pyramid_copy.wgsl").into(),
+            ),
+        });
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("hiz_pyramid_shader"),
             source: wgpu::ShaderSource::Wgsl(include_str!("../shaders/hiz_pyramid.wgsl").into()),
         });
 
+        let copy_pl = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("hiz_copy_pl"),
+            bind_group_layouts: &[&copy_bgl],
+            push_constant_ranges: &[],
+        });
         let pl = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("hiz_pyramid_pl"),
             bind_group_layouts: &[&bgl],
@@ -152,8 +183,8 @@ impl HizPyramid {
 
         let copy_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
             label: Some("hiz_copy_pipeline"),
-            layout: Some(&pl),
-            module: &shader,
+            layout: Some(&copy_pl),
+            module: &copy_shader,
             entry_point: Some("copy_depth"),
             compilation_options: Default::default(),
             cache: None,
@@ -186,6 +217,11 @@ impl HizPyramid {
     /// Returns the full mip-chain view for SSR/SSGI shader sampling.
     pub fn view(&self) -> &wgpu::TextureView {
         &self.full_view
+    }
+
+    /// The R32Float pyramid texture. SSR, SSGI, and occlusion sample [`Self::view`].
+    pub fn texture(&self) -> &wgpu::Texture {
+        &self.hiz_texture
     }
 
     /// Number of mip levels in the pyramid.
@@ -300,8 +336,8 @@ mod tests {
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::R32Float,
-            usage: wgpu::TextureUsages::TEXTURE_BINDING,
+            format: wgpu::TextureFormat::Depth32Float,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::RENDER_ATTACHMENT,
             view_formats: &[],
         });
         let depth_view = depth_tex.create_view(&wgpu::TextureViewDescriptor::default());

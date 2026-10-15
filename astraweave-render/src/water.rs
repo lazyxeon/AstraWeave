@@ -544,49 +544,53 @@ impl WaterRenderer {
 
         // Render pipeline with alpha blending.
         // Two vertex buffers: per-vertex tile geometry + per-instance chunk offset.
-        let pipeline = crate::pipeline_cache::create_render_pipeline(device, None, wgpu::RenderPipelineDescriptor {
-            label: Some("water_pipeline"),
-            layout: Some(&pipeline_layout),
-            vertex: wgpu::VertexState {
-                module: &shader,
-                entry_point: Some("vs_main"),
-                buffers: &[WaterVertex::desc(), ChunkInstance::desc()],
-                compilation_options: Default::default(),
+        let pipeline = crate::pipeline_cache::create_render_pipeline(
+            device,
+            None,
+            wgpu::RenderPipelineDescriptor {
+                label: Some("water_pipeline"),
+                layout: Some(&pipeline_layout),
+                vertex: wgpu::VertexState {
+                    module: &shader,
+                    entry_point: Some("vs_main"),
+                    buffers: &[WaterVertex::desc(), ChunkInstance::desc()],
+                    compilation_options: Default::default(),
+                },
+                fragment: Some(wgpu::FragmentState {
+                    module: &shader,
+                    entry_point: Some("fs_main"),
+                    targets: &[Some(wgpu::ColorTargetState {
+                        format: target_format,
+                        blend: Some(wgpu::BlendState::ALPHA_BLENDING),
+                        write_mask: wgpu::ColorWrites::ALL,
+                    })],
+                    compilation_options: Default::default(),
+                }),
+                primitive: wgpu::PrimitiveState {
+                    topology: wgpu::PrimitiveTopology::TriangleList,
+                    strip_index_format: None,
+                    front_face: wgpu::FrontFace::Ccw,
+                    // Top surface (normal +Y) is CCW-front when viewed from above and
+                    // skirt walls are wound outward-front, so back-face culling keeps
+                    // the correct faces. The submerged/underside two-sided case is a
+                    // deferred effects-phase concern (W-series Gemini triage §E).
+                    cull_mode: Some(wgpu::Face::Back),
+                    unclipped_depth: false,
+                    polygon_mode: wgpu::PolygonMode::Fill,
+                    conservative: false,
+                },
+                depth_stencil: Some(wgpu::DepthStencilState {
+                    format: depth_format,
+                    depth_write_enabled: false, // Transparent, don't write depth
+                    depth_compare: wgpu::CompareFunction::LessEqual, // Normal depth testing
+                    stencil: wgpu::StencilState::default(),
+                    bias: wgpu::DepthBiasState::default(),
+                }),
+                multisample: wgpu::MultisampleState::default(),
+                multiview: None,
+                cache: None,
             },
-            fragment: Some(wgpu::FragmentState {
-                module: &shader,
-                entry_point: Some("fs_main"),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: target_format,
-                    blend: Some(wgpu::BlendState::ALPHA_BLENDING),
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-                compilation_options: Default::default(),
-            }),
-            primitive: wgpu::PrimitiveState {
-                topology: wgpu::PrimitiveTopology::TriangleList,
-                strip_index_format: None,
-                front_face: wgpu::FrontFace::Ccw,
-                // Top surface (normal +Y) is CCW-front when viewed from above and
-                // skirt walls are wound outward-front, so back-face culling keeps
-                // the correct faces. The submerged/underside two-sided case is a
-                // deferred effects-phase concern (W-series Gemini triage §E).
-                cull_mode: Some(wgpu::Face::Back),
-                unclipped_depth: false,
-                polygon_mode: wgpu::PolygonMode::Fill,
-                conservative: false,
-            },
-            depth_stencil: Some(wgpu::DepthStencilState {
-                format: depth_format,
-                depth_write_enabled: false, // Transparent, don't write depth
-                depth_compare: wgpu::CompareFunction::LessEqual, // Normal depth testing
-                stencil: wgpu::StencilState::default(),
-                bias: wgpu::DepthBiasState::default(),
-            }),
-            multisample: wgpu::MultisampleState::default(),
-            multiview: None,
-            cache: None,
-        });
+        );
 
         // Pre-bake one tile mesh per LOD level, plus an instance buffer per LOD.
         let mut lod_meshes = Vec::with_capacity(LOD_SUBDIVS.len());

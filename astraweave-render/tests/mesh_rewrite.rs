@@ -6,10 +6,30 @@ use astraweave_render::{Instance, Renderer};
 fn quad(lift: f32) -> CpuMesh {
     let mut mesh = CpuMesh::default();
     mesh.vertices = vec![
-        MeshVertex::from_arrays([0.0, lift, 0.0], [0.0, 1.0, 0.0], [1.0, 0.0, 0.0, 1.0], [0.0, 0.0]),
-        MeshVertex::from_arrays([1.0, lift, 0.0], [0.0, 1.0, 0.0], [1.0, 0.0, 0.0, 1.0], [1.0, 0.0]),
-        MeshVertex::from_arrays([1.0, lift, 1.0], [0.0, 1.0, 0.0], [1.0, 0.0, 0.0, 1.0], [1.0, 1.0]),
-        MeshVertex::from_arrays([0.0, lift, 1.0], [0.0, 1.0, 0.0], [1.0, 0.0, 0.0, 1.0], [0.0, 1.0]),
+        MeshVertex::from_arrays(
+            [0.0, lift, 0.0],
+            [0.0, 1.0, 0.0],
+            [1.0, 0.0, 0.0, 1.0],
+            [0.0, 0.0],
+        ),
+        MeshVertex::from_arrays(
+            [1.0, lift, 0.0],
+            [0.0, 1.0, 0.0],
+            [1.0, 0.0, 0.0, 1.0],
+            [1.0, 0.0],
+        ),
+        MeshVertex::from_arrays(
+            [1.0, lift, 1.0],
+            [0.0, 1.0, 0.0],
+            [1.0, 0.0, 0.0, 1.0],
+            [1.0, 1.0],
+        ),
+        MeshVertex::from_arrays(
+            [0.0, lift, 1.0],
+            [0.0, 1.0, 0.0],
+            [1.0, 0.0, 0.0, 1.0],
+            [0.0, 1.0],
+        ),
     ];
     mesh.indices = vec![0, 2, 1, 0, 3, 2];
     mesh
@@ -23,7 +43,13 @@ fn write_mesh_keeps_buffers_when_the_deformation_fits() {
             .expect("headless renderer");
         let mesh = renderer.create_mesh_from_cpu_mesh(&quad(0.0));
         let instance = Instance::from_pos_scale_color(glam::Vec3::ZERO, glam::Vec3::ONE, [1.0; 4]);
-        renderer.add_model_with_bounds("plate", mesh, &[instance], [0.0, 0.0, 0.0], [1.0, 0.0, 1.0]);
+        renderer.add_model_with_bounds(
+            "plate",
+            mesh,
+            &[instance],
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 1.0],
+        );
         let generation = renderer.mesh_storage_generation("plate").expect("model");
 
         renderer

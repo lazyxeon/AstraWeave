@@ -112,13 +112,13 @@ fn draw_into_allocates_nothing_after_warmup() {
         let min = *samples.iter().min().unwrap();
         let max = *samples.iter().max().unwrap();
         // wgpu-core allocates a fresh command Vec for every recorded pass
-        // (`wgpu-core` `command/mod.rs`). That floor is about 110 allocations
-        // on lavapipe for this scene and jitters by a couple of counts.
+        // (`wgpu-core` `command/mod.rs`). With the shared Hi-Z pyramid the
+        // lavapipe floor is about 216-219 and jitters by a few counts.
         // Engine scratch (visible instances, profiler names, repeated instance
         // uploads) adds nothing: `update_instances` above is zero, and the
         // draw_into count does not climb across the window.
         assert!(
-            max <= 120 && min >= 100 && max - min <= 4,
+            max <= 230 && min >= 200 && max - min <= 4,
             "draw_into allocs left the wgpu recording floor: {samples:?}"
         );
     });
