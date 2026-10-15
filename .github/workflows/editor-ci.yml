@@ -9,14 +9,10 @@ on:
       - 'Cargo.toml'
       - 'Cargo.lock'
       - 'llvm-cov.toml'
-  pull_request:
-    branches: [ main ]
-    paths:
-      - 'tools/aw_editor/**'
-      - '.github/workflows/editor-ci.yml'
-      - 'Cargo.toml'
-      - 'Cargo.lock'
-      - 'llvm-cov.toml'
+  schedule:
+    # Not on pull_request. Editor clippy is optional and must not queue
+    # ahead of the required PR checks.
+    - cron: "50 6 * * *"
   workflow_dispatch:
 
 concurrency:

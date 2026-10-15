@@ -9,6 +9,11 @@ publish = { workspace = true }
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(kani)'] }
 
+[features]
+# Test-only. Turns on CountingAlloc for tests/zero_alloc_tick.rs.
+# The test is ignored, so a default `cargo test` / PR nextest does not run it.
+alloc-counter = ["astraweave-ecs/alloc-counter"]
+
 [dependencies]
 anyhow = { workspace = true }
 thiserror = { workspace = true }

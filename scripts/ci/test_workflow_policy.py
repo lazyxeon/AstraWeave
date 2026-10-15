@@ -120,6 +120,10 @@ class WorkflowPolicyTest(unittest.TestCase):
             "toolchain-management.yml",
             "integration-tests.yml",
             "sdk-ci.yml",
+            "pbr-pipeline-ci.yml",
+            "editor-ci.yml",
+            "aw-editor-tests.yml",
+            "allocation-measurement.yml",
         ]
         for name in nightly_only:
             text = (WORKFLOWS / name).read_text(encoding="utf-8")
@@ -132,7 +136,45 @@ class WorkflowPolicyTest(unittest.TestCase):
         script = (ROOT / "scripts" / "ci" / "run-tests.sh").read_text(encoding="utf-8")
         self.assertIn("--partition", script)
         self.assertIn("cargo nextest run", script)
-        self.assertIn("retries = 0", (ROOT / ".config" / "nextest.toml").read_text(encoding="utf-8"))
+        self.assertIn("cargo nextest archive", script)
+        nextest = (ROOT / ".config" / "nextest.toml").read_text(encoding="utf-8")
+        self.assertIn("retries = 0", nextest)
+        self.assertIn("[profile.ci-pr]", nextest)
+        self.assertIn("default-filter", nextest)
+        self.assertIn("timeout-minutes: 75", text)
+        self.assertIn("Test (windows, build archive)", text)
+        self.assertIn("needs: [changes, gate, test-windows-build]", text)
+
+    def test_deferred_pr_filter_matches_the_list_and_skips_replay(self) -> None:
+        listed = []
+        for line in (ROOT / "scripts" / "ci" / "deferred_pr_tests.txt").read_text(encoding="utf-8").splitlines():
+            stripped = line.strip()
+            if not stripped or stripped.startswith("#"):
+                continue
+            package, binary, test = stripped.split(" ", 2)
+            listed.append((package, binary, test))
+        self.assertGreaterEqual(len(listed), 90)
+        profile = (ROOT / ".config" / "nextest.toml").read_text(encoding="utf-8")
+        for package, binary, test in listed:
+            self.assertIn(f"package(={package})", profile)
+            self.assertIn(f"binary(={binary})", profile)
+            self.assertIn(f"test(={test})", profile)
+            if binary == package:
+                self.fail(f"lib binary should be the underscore target name, got {binary}")
+        for replay in ("planner_pure", "perception_world", "gameplay_rng", "replay_hash"):
+            self.assertNotIn(replay, profile)
+            self.assertNotIn(replay, (ROOT / "scripts" / "ci" / "deferred_pr_tests.txt").read_text(encoding="utf-8"))
+
+    def test_allocation_measurement_is_a_real_gate_off_prs(self) -> None:
+        text = (WORKFLOWS / "allocation-measurement.yml").read_text(encoding="utf-8")
+        self.assertIn("schedule:", text)
+        self.assertIn("branches: [main]", text)
+        self.assertIn("gpu_frame_budget", text)
+        self.assertIn("zero_alloc_tick", text)
+        self.assertIn("zero_alloc_step", text)
+        self.assertIn("[self-hosted, gpu]", text)
+        self.assertNotIn("continue-on-error: true", text)
+        self.assertFalse(has_pull_request(text))
 
 
 if __name__ == "__main__":

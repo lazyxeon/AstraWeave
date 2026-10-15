@@ -54,9 +54,8 @@ use criterion::{criterion_group, criterion_main, Criterion};
 use std::collections::BTreeMap;
 use std::hint::black_box;
 
-/// Placeholder threshold. From audit inference: up to ~4 allocations per
-/// expansion × up to `max_plan_iterations` (default 10000). Set generously.
-const MAX_ALLOCS_GOAP_PLAN: usize = 200_000;
+/// 2026-04-17 capture: 5_639 allocs for a 16-action plan. 50% margin, rounded up.
+const MAX_ALLOCS_GOAP_PLAN: usize = 8_459;
 
 /// Build a mini-GOAP problem with N actions so the planner actually does search
 /// work. Structured as a linear chain: a0 enables a1 enables a2 ... enables goal.

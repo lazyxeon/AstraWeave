@@ -1,9 +1,11 @@
 name: Comprehensive CI Pipeline
 
 # PR tier (required): detect, gate (fmt + one clippy + check), Linux nextest of
-# affected crates, Windows nextest in 3 partitions, MSRV. Docs-only pulls skip
-# the compile steps. The cross-OS replay hash check is Determinism Replay,
-# which is a separate workflow with no path filter.
+# affected crates, one Windows archive build plus 3 partition runs, MSRV.
+# Docs-only pulls skip the compile steps. The cross-OS replay hash check is
+# Determinism Replay, which is a separate workflow with no path filter.
+# Heavy optional workflows (PBR, editor, AW Editor tests) are not on
+# pull_request, so they do not occupy runners ahead of this workflow.
 #
 # Main, schedule, and workflow_dispatch: the same gate against the full
 # workspace, then the 3-OS test matrix and a release build. Sanitizers,
@@ -135,13 +137,57 @@ jobs:
           AW_CI_FULL: ${{ needs.changes.outputs.full }}
           AW_CI_PACKAGES: ${{ needs.changes.outputs.packages }}
           AW_CI_EXCLUDES: ${{ env.EXCLUDED_PACKAGES }}
+          AW_CI_PROFILE: ci-pr
         run: bash scripts/ci/run-tests.sh
+
+  test-windows-build:
+    name: Test (windows, build archive)
+    runs-on: windows-latest
+    needs: [changes, gate]
+    # 75, not 45. Each of the old partitions compiled the workspace and was
+    # cancelled at 45 minutes. One Windows debug compile of this workspace is
+    # about 50 minutes (the pre-tiering job used 60). This job compiles once,
+    # writes a zstd archive, and uploads it. Partition jobs do not compile.
+    # CARGO_PROFILE_TEST_DEBUG=0 keeps that archive under the artifact cap.
+    timeout-minutes: 75
+    if: >-
+      github.event_name == 'pull_request' &&
+      needs.gate.result == 'success' &&
+      needs.changes.outputs.docs_only != 'true' &&
+      (needs.changes.outputs.full == 'true' || needs.changes.outputs.packages != '')
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Rust CI setup
+        uses: ./.github/actions/rust-ci-setup
+        with:
+          install-nextest: "true"
+
+      - name: Archive tests once
+        env:
+          AW_CI_FULL: ${{ needs.changes.outputs.full }}
+          AW_CI_PACKAGES: ${{ needs.changes.outputs.packages }}
+          AW_CI_EXCLUDES: ${{ env.EXCLUDED_PACKAGES }}
+          AW_CI_ARCHIVE_OUT: target/nextest-archive.tar.zst
+          CARGO_PROFILE_TEST_DEBUG: "0"
+        run: bash scripts/ci/run-tests.sh
+
+      - name: Upload the archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: nextest-archive-windows
+          path: target/nextest-archive.tar.zst
+          if-no-files-found: error
+          retention-days: 1
+          # The archive is already zstd. Skip a second compression pass.
+          compression-level: 0
 
   test-windows:
     name: Test (windows, ${{ matrix.partition }}/3)
     runs-on: windows-latest
-    needs: [changes, gate]
-    timeout-minutes: 45
+    needs: [changes, gate, test-windows-build]
+    timeout-minutes: 30
     if: >-
       github.event_name == 'pull_request' &&
       needs.gate.result == 'success' &&
@@ -160,12 +206,17 @@ jobs:
         with:
           install-nextest: "true"
 
+      - name: Download the archive
+        uses: actions/download-artifact@v4
+        with:
+          name: nextest-archive-windows
+          path: target
+
       - name: Nextest partition
         env:
-          AW_CI_FULL: ${{ needs.changes.outputs.full }}
-          AW_CI_PACKAGES: ${{ needs.changes.outputs.packages }}
-          AW_CI_EXCLUDES: ${{ env.EXCLUDED_PACKAGES }}
+          AW_CI_ARCHIVE_RUN: target/nextest-archive.tar.zst
           AW_CI_PARTITION: count:${{ matrix.partition }}/3
+          AW_CI_PROFILE: ci-pr
         run: bash scripts/ci/run-tests.sh
 
   msrv:

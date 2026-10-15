@@ -19,6 +19,7 @@ on:
       - AW Editor Tests
       - SDK Header and C Harness CI
       - Editor CI
+      - Allocation Measurement
     types: [completed]
 
 concurrency:

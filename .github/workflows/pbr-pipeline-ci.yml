@@ -9,16 +9,9 @@ on:
       - 'tools/aw_editor/**'
       - 'shaders/**'
       - '.github/workflows/pbr-pipeline-ci.yml'
-  pull_request:
-    branches: [ main, develop ]
-    paths:
-      - 'astraweave-render/**'
-      - 'tools/aw_asset_cli/**'
-      - 'tools/aw_editor/**'
-      - 'shaders/**'
-      - '.github/workflows/pbr-pipeline-ci.yml'
   schedule:
-    # Nightly includes macOS. Pull requests keep Ubuntu and Windows only.
+    # Not on pull_request. This compile is optional and was taking runners
+    # ahead of determinism-replay and the PR Rust checks.
     - cron: "20 6 * * *"
   workflow_dispatch:
 
@@ -38,8 +31,7 @@ jobs:
     continue-on-error: true  # Allow workflow to pass if editor/platform issues occur
     strategy:
       matrix:
-        # macOS is nightly, push, and workflow_dispatch. Pull requests do not take a macOS slot.
-        os: ${{ github.event_name == 'pull_request' && fromJSON('["ubuntu-latest", "windows-latest"]') || fromJSON('["ubuntu-latest", "windows-latest", "macos-latest"]') }}
+        os: [ubuntu-latest, windows-latest, macos-latest]
     
     steps:
     - name: Checkout repository
