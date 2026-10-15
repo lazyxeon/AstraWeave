@@ -123,7 +123,7 @@ Mods need a single sandboxed command set whose results are sim inputs. A second 
 | `astraweave-scripting/src/lib.rs` | `CScript`, `script_system` | Active | Entity iteration is sorted. `script_state` is a `BTreeMap`. No `SystemTime` on the tick. |
 | `astraweave-scripting/src/api.rs` | `ScriptCommand` set | Active | Re-exports `SCRIPT_COMMAND_API_VERSION`. |
 | `astraweave-scripting/src/loader.rs` | Async relative `.rhai` load | Active | Rejects absolute paths and `..`. Size-capped. |
-| `astraweave-scripting/src/sim_mod.rs` | Mod tick + digest | Active | `MOD_SYSTEM_ID = 0x4D4F4453`. `register_mod_runtime` is the engine-app installer. |
+| `astraweave-scripting/src/sim_mod.rs` | Mod tick + digest | Active | `MOD_SYSTEM_ID = 0x4D4F4453`. `register_mod_runtime` is the engine-app installer. The success tick reuses entity, source, error, and Rhai scope buffers. Weave casts go into a fixed array. |
 | `astraweave-scripting/tests/script_replay_hash.rs` | `scripted_system` SHA-256 | Active | Appends the case to `target/replay-hash.json`. |
 | `astraweave-author/src/lib.rs` | `configure` | Active | Floats in hints are rejected. |
 | `tools/aw_editor/src/rhai_reload.rs` | Editor boundary | Active | |

@@ -19,6 +19,7 @@ use astraweave_weaving::{
 };
 use rhai::{Engine, Scope};
 use sha2::{Digest, Sha256};
+use std::any::TypeId;
 
 /// Stable id mixed into the per-entity seed. ASCII "MODS".
 pub const MOD_SYSTEM_ID: u64 = 0x4D4F_4453;
@@ -121,7 +122,7 @@ struct WeaveBuf {
 }
 
 impl WeaveBuf {
-    fn prepare(scratch: &WeaveScratch, ceilings: &EngineCeilings) -> Self {
+    fn prepare(scratch: &WeaveScratch, max_weaves: i32) -> Self {
         let mut known = [0u16; MAX_KNOWN_TEMPLATES];
         let mut known_count = 0u8;
         for id in 1..=ENGINE_TEMPLATE_MAX {
@@ -137,7 +138,7 @@ impl WeaveBuf {
             known[known_count as usize] = *id;
             known_count = known_count.saturating_add(1);
         }
-        let ceiling = ceilings.max_weaves.clamp(0, DEFAULT_MAX_WEAVES) as u8;
+        let ceiling = max_weaves.clamp(0, DEFAULT_MAX_WEAVES) as u8;
         Self {
             known,
             known_count,
@@ -286,13 +287,26 @@ fn weave_runtime(message: &str) -> Box<rhai::EvalAltResult> {
     ))
 }
 
-#[derive(Default)]
 struct ModTickScratch {
     entities: Vec<Entity>,
     writes: Vec<(Entity, i32, i32)>,
     errors: Vec<String>,
     sources: Vec<ModScriptSource>,
+    scope: Scope<'static>,
     mounted_weaves: bool,
+}
+
+impl Default for ModTickScratch {
+    fn default() -> Self {
+        Self {
+            entities: Vec::new(),
+            writes: Vec::new(),
+            errors: Vec::new(),
+            sources: Vec::new(),
+            scope: Scope::new(),
+            mounted_weaves: false,
+        }
+    }
 }
 
 /// One simulation step of every mod script.
@@ -315,10 +329,10 @@ pub fn mod_script_system(world: &mut World) {
             world_seed: 0,
             tick: 0,
         });
-    let ceilings = world
+    let max_weaves = world
         .get_resource::<EngineCeilings>()
-        .cloned()
-        .unwrap_or_default();
+        .map(|ceilings| ceilings.max_weaves)
+        .unwrap_or(DEFAULT_MAX_WEAVES);
     let mut tick = {
         let slot = world.get_resource_mut::<ModTickScratch>();
         match slot {
@@ -330,15 +344,20 @@ pub fn mod_script_system(world: &mut World) {
         refill_sources(&mut tick, programs);
     }
     tick.entities.clear();
-    tick.entities.extend(world.entities_with::<CModAgent>());
+    for archetype in world
+        .archetypes()
+        .archetypes_with_component(TypeId::of::<CModAgent>())
+    {
+        tick.entities.extend_from_slice(archetype.entities_vec());
+    }
     tick.entities.sort();
     tick.writes.clear();
     tick.errors.clear();
 
     let mut weave_buf = world
         .get_resource::<WeaveScratch>()
-        .map(|scratch| WeaveBuf::prepare(scratch, &ceilings))
-        .unwrap_or_else(|| WeaveBuf::prepare(&WeaveScratch::new(), &ceilings));
+        .map(|scratch| WeaveBuf::prepare(scratch, max_weaves))
+        .unwrap_or_else(|| WeaveBuf::prepare(&WeaveScratch::new(), max_weaves));
 
     for source_index in 0..tick.sources.len() {
         for entity_index in 0..tick.entities.len() {
@@ -348,6 +367,7 @@ pub fn mod_script_system(world: &mut World) {
             };
             let entity_raw = entity.to_raw();
             let result = run_one(
+                &mut tick.scope,
                 &sandbox,
                 tick.sources[source_index].source.as_str(),
                 &clock,
@@ -381,10 +401,9 @@ pub fn mod_script_system(world: &mut World) {
     }
 
     if let Some(slot) = world.get_resource_mut::<ModScriptErrors>() {
-        slot.messages.extend(tick.errors.iter().cloned());
+        slot.messages.append(&mut tick.errors);
         slot.messages.sort();
     }
-    tick.errors.clear();
     if let Some(slot) = world.get_resource_mut::<ModTickScratch>() {
         *slot = tick;
     } else {
@@ -507,6 +526,12 @@ fn apply_logged_swaps(world: &mut World) {
         .get_resource::<ModClock>()
         .map(|clock| clock.tick)
         .unwrap_or(0);
+    let has_swap = world
+        .get_resource::<ScriptReplayLog>()
+        .is_some_and(|log| log.at_tick(tick).next().is_some());
+    if !has_swap {
+        return;
+    }
     let (staged, errors) = {
         let Some(log) = world.get_resource::<ScriptReplayLog>() else {
             return;
@@ -561,6 +586,7 @@ fn apply_program_reloads(world: &mut World) {
 }
 
 fn run_one(
+    scope: &mut Scope<'static>,
     sandbox: &ScriptSandbox,
     source: &str,
     clock: &ModClock,
@@ -568,7 +594,7 @@ fn run_one(
     agent: CModAgent,
     weaves: WeaveBuf,
 ) -> Result<(Option<(i32, i32)>, WeaveBuf), String> {
-    let mut scope = Scope::new();
+    scope.clear();
     scope.push(
         "rng",
         ScriptDrawRng {
@@ -584,8 +610,7 @@ fn run_one(
     scope.push("pos_x", i64::from(agent.x));
     scope.push("pos_y", i64::from(agent.y));
     scope.push("entity_id", entity_raw as i64);
-    let _value =
-        execute_deterministic(sandbox, source, &mut scope).map_err(|err| err.to_string())?;
+    let _value = execute_deterministic(sandbox, source, scope).map_err(|err| err.to_string())?;
     let weaves = scope
         .get_value::<WeaveBuf>("weaves")
         .ok_or_else(|| "weave buffer missing".to_string())?;
