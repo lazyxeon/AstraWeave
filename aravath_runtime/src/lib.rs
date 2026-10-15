@@ -15,6 +15,7 @@ pub mod bridge_agent;
 pub mod combat;
 pub mod detmath;
 pub mod figure;
+pub mod frame_budget;
 pub mod ground;
 pub mod hud;
 pub mod island;

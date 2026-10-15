@@ -4851,7 +4851,7 @@ fn vs(input: VSIn) -> VSOut {
         let vbuf = self.upload_bytes(
             "ext v (full)",
             bytemuck::cast_slice(&verts),
-            wgpu::BufferUsages::VERTEX,
+            wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
         );
         let ibuf = self.upload_bytes(
             "ext i (full)",
@@ -8600,6 +8600,47 @@ fn vs(input: VSIn) -> VSOut {
     ///
     /// Returns `true` if the model existed and was updated, `false` if the
     /// model name was not found (caller should fall back to `add_model`).
+    /// Replace one model's vertex buffer. The buffer must already be large
+    /// enough and have been created with `COPY_DST`. Returns false when the
+    /// model is missing or the new vertex list does not fit.
+    pub fn write_model_vertices(
+        &self,
+        name: &str,
+        primitive: usize,
+        vertices: &[crate::mesh::MeshVertex],
+    ) -> bool {
+        let bytes = bytemuck::cast_slice(vertices);
+        let Some(buf) = self
+            .models
+            .get(name)
+            .and_then(|model| model.primitives.get(primitive))
+            .map(|part| part.mesh.vertex_buf.clone())
+        else {
+            return false;
+        };
+        if buf.size() < bytes.len() as u64 {
+            return false;
+        }
+        self.queue.write_buffer(&buf, 0, bytes);
+        true
+    }
+
+    /// Write a single instance without building a temporary instance list.
+    pub fn update_model_transform(&mut self, name: &str, instance: Instance) -> bool {
+        let raw = instance.raw();
+        let bytes = bytemuck::bytes_of(&raw);
+        let Some(model) = self.models.get_mut(name) else {
+            return false;
+        };
+        if model.instance_buf.size() < bytes.len() as u64 {
+            return false;
+        }
+        let buf = model.instance_buf.clone();
+        model.instance_count = 1;
+        self.queue.write_buffer(&buf, 0, bytes);
+        true
+    }
+
     pub fn update_model_instances(&mut self, name: &str, instances: &[Instance]) -> bool {
         let Some(model) = self.models.get_mut(name) else {
             return false;

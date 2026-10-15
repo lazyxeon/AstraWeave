@@ -63,6 +63,9 @@ pub struct Ground {
     bodies: HashMap<ChunkCoord, u64>,
     generated: HashSet<ChunkCoord>,
     scatter: HashMap<ChunkCoord, Vec<PropSpot>>,
+    /// Chunk the ring was built around, plus the radius. A settled player
+    /// whose grid is clean skips the set rebuild.
+    stream_key: Option<(i32, i32, i32, i32)>,
 }
 
 #[derive(Clone, Debug)]
@@ -83,6 +86,7 @@ impl Ground {
             bodies: HashMap::new(),
             generated: HashSet::new(),
             scatter: HashMap::new(),
+            stream_key: None,
         }
     }
 
@@ -99,6 +103,10 @@ impl Ground {
         radius: i32,
     ) -> Vec<ChunkUpload> {
         let center = ChunkCoord::from_world_pos(Vec3::new(focus.x, 0.0, focus.z));
+        let key = (center.x, center.y, center.z, radius);
+        if self.stream_key == Some(key) && self.grid.dirty_chunks().is_empty() {
+            return Vec::new();
+        }
         let mut keep = HashSet::new();
         for dz in -radius..=radius {
             for dx in -radius..=radius {
@@ -140,6 +148,7 @@ impl Ground {
         }
         let mut uploads = self.sync_dirty(physics);
         uploads.extend(removed);
+        self.stream_key = Some(key);
         uploads
     }
 

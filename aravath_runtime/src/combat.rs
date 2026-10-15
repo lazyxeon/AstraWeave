@@ -217,12 +217,23 @@ impl Combat {
         let blocking = self.blocking;
         let player_body = player.body;
         let hp_before = self.player_hp;
-        let spots: Vec<(u64, Vec3)> = self
-            .enemies
-            .iter()
-            .filter(|enemy| enemy.alive())
-            .filter_map(|enemy| body_pos(physics, enemy.body).map(|pos| (enemy.body, pos)))
-            .collect();
+        // Stack list so a settled tick does not allocate. The greybox keeps
+        // three foes; sixteen covers a small fight without a heap buffer.
+        let mut spots = [(0_u64, Vec3::ZERO); 16];
+        let mut spot_count = 0;
+        for enemy in &self.enemies {
+            if spot_count == spots.len() {
+                break;
+            }
+            if !enemy.alive() {
+                continue;
+            }
+            if let Some(pos) = body_pos(physics, enemy.body) {
+                spots[spot_count] = (enemy.body, pos);
+                spot_count += 1;
+            }
+        }
+        let spots = &spots[..spot_count];
         if let Some(field) = scars.as_deref_mut() {
             for enemy in &mut self.enemies {
                 if enemy.alive() || enemy.scarred {

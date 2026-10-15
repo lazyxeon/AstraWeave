@@ -4,13 +4,13 @@
 //! This module reports the hand frames they attach to. Clip maps are
 //! `BTreeMap`s, and clip files are merged in sorted path order.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::Path;
 
 use anyhow::{Context, Result};
 use astraweave_render::animation::{
-    compute_joint_matrices, skin_vertex_cpu, AnimationChannel, AnimationClip, ChannelData,
-    Interpolation, Joint, Skeleton, Transform,
+    compute_joint_matrices, compute_joint_matrices_into, skin_vertex_cpu, AnimationChannel,
+    AnimationClip, ChannelData, Interpolation, Joint, Skeleton, Transform,
 };
 use astraweave_render::mesh::{CpuMesh, MeshVertex};
 use glam::{Mat4, Quat, Vec2, Vec3, Vec4};
@@ -38,6 +38,11 @@ pub struct Figure {
     pub albedo: Option<crate::props::Rgba>,
     pub hand_l: usize,
     pub hand_r: usize,
+    locals: Vec<Transform>,
+    world: Vec<Mat4>,
+    skin_matrices: Vec<Mat4>,
+    visited: HashSet<usize>,
+    posed: Vec<PosedPrimitive>,
 }
 
 impl Figure {
@@ -190,6 +195,11 @@ impl Figure {
             albedo: crate::props::rgba_from_images(&images),
             hand_l,
             hand_r,
+            locals: Vec::new(),
+            world: Vec::new(),
+            skin_matrices: Vec::new(),
+            visited: HashSet::new(),
+            posed: Vec::new(),
         })
     }
 
@@ -273,38 +283,88 @@ impl Figure {
         self.clips.get(name)
     }
 
-    pub fn skin(&self, clip_name: &str, time: f32) -> Result<Vec<PosedPrimitive>> {
+    pub fn skin(&mut self, clip_name: &str, time: f32) -> Result<Vec<PosedPrimitive>> {
         self.skin_at(clip_name, time, true)
     }
 
     pub fn skin_at(
-        &self,
+        &mut self,
         clip_name: &str,
         time: f32,
         looping: bool,
     ) -> Result<Vec<PosedPrimitive>> {
-        let locals = self.locals_at(clip_name, time, looping)?;
-        let joints = compute_joint_matrices(&self.skeleton, &locals)?;
-        let mut posed = Vec::new();
+        self.skin_into(clip_name, time, looping)?;
+        Ok(self.posed.clone())
+    }
+
+    /// Pose into this figure's buffers. The first call sizes them. Later calls
+    /// with the same mesh do not allocate.
+    pub fn skin_into(&mut self, clip_name: &str, time: f32, looping: bool) -> Result<()> {
+        let duration = self
+            .clips
+            .get(clip_name)
+            .with_context(|| format!("missing clip {clip_name}"))?
+            .duration
+            .max(0.001);
+        let sample_time = if looping {
+            time.rem_euclid(duration)
+        } else {
+            time.clamp(0.0, duration - 0.001)
+        };
+        self.ensure_posed();
+        {
+            let Figure {
+                clips,
+                skeleton,
+                locals,
+                ..
+            } = &mut *self;
+            let clip = clips
+                .get(clip_name)
+                .with_context(|| format!("missing clip {clip_name}"))?;
+            clip.sample_into(sample_time, skeleton, locals);
+        }
+        compute_joint_matrices_into(
+            &self.skeleton,
+            &self.locals,
+            &mut self.world,
+            &mut self.skin_matrices,
+            &mut self.visited,
+        )?;
+        write_skinned(&self.primitives, &mut self.posed, &self.skin_matrices);
+        Ok(())
+    }
+
+    pub fn posed(&self) -> &[PosedPrimitive] {
+        &self.posed
+    }
+
+    /// Hand joints from the last [`Self::skin_into`] call.
+    pub fn hand_frames_posed(&self) -> (Mat4, Mat4) {
+        (
+            joint_world(&self.skeleton, &self.skin_matrices, self.hand_l),
+            joint_world(&self.skeleton, &self.skin_matrices, self.hand_r),
+        )
+    }
+
+    fn ensure_posed(&mut self) {
+        if self.posed.len() == self.primitives.len()
+            && self
+                .posed
+                .iter()
+                .zip(self.primitives.iter())
+                .all(|(posed, primitive)| posed.mesh.vertices.len() == primitive.vertices.len())
+        {
+            return;
+        }
+        self.posed.clear();
         for primitive in &self.primitives {
-            let mut vertices = Vec::with_capacity(primitive.vertices.len());
-            for vertex in &primitive.vertices {
-                let (position, normal) = skin_vertex_cpu(
-                    vertex.position,
-                    vertex.normal,
-                    vertex.joints,
-                    vertex.weights,
-                    &joints,
-                );
-                let tangent = normal.cross(Vec3::Y).normalize_or_zero();
-                vertices.push(MeshVertex::new(
-                    position,
-                    normal,
-                    Vec4::new(tangent.x, tangent.y, tangent.z, 1.0),
-                    vertex.uv,
-                ));
-            }
-            posed.push(PosedPrimitive {
+            let vertices = primitive
+                .vertices
+                .iter()
+                .map(|vertex| MeshVertex::new(vertex.position, vertex.normal, Vec4::X, vertex.uv))
+                .collect();
+            self.posed.push(PosedPrimitive {
                 mesh: CpuMesh {
                     vertices,
                     indices: primitive.indices.clone(),
@@ -314,7 +374,6 @@ impl Figure {
                 color: primitive.color,
             });
         }
-        Ok(posed)
     }
 
     pub fn hand_positions(&self, clip_name: &str, time: f32) -> Result<(Vec3, Vec3)> {
@@ -365,6 +424,7 @@ impl Figure {
     }
 }
 
+#[derive(Clone)]
 pub struct PosedPrimitive {
     pub mesh: CpuMesh,
     pub color: [f32; 4],
@@ -390,6 +450,31 @@ fn first_joint(skeleton: &Skeleton, names: &[&str]) -> usize {
 
 fn joint_named(skeleton: &Skeleton, name: &str) -> Option<usize> {
     skeleton.joints.iter().position(|joint| joint.name == name)
+}
+
+fn write_skinned(primitives: &[Primitive], posed: &mut [PosedPrimitive], joints: &[Mat4]) {
+    for (primitive, posed) in primitives.iter().zip(posed.iter_mut()) {
+        for (vertex, out) in primitive
+            .vertices
+            .iter()
+            .zip(posed.mesh.vertices.iter_mut())
+        {
+            let (position, normal) = skin_vertex_cpu(
+                vertex.position,
+                vertex.normal,
+                vertex.joints,
+                vertex.weights,
+                joints,
+            );
+            let tangent = normal.cross(Vec3::Y).normalize_or_zero();
+            *out = MeshVertex::new(
+                position,
+                normal,
+                Vec4::new(tangent.x, tangent.y, tangent.z, 1.0),
+                vertex.uv,
+            );
+        }
+    }
 }
 
 fn joint_world(skeleton: &Skeleton, skin: &[Mat4], index: usize) -> Mat4 {
@@ -453,7 +538,7 @@ mod tests {
 
     #[test]
     fn library_has_locomotion_and_combat_clips() {
-        let figure = Figure::load_knight().unwrap();
+        let mut figure = Figure::load_knight().unwrap();
         for name in [
             "Idle_A",
             "Walking_A",

@@ -100,16 +100,26 @@ impl AnimationClip {
     /// Returns joint local transforms for all joints
     pub fn sample(&self, time: f32, skeleton: &Skeleton) -> Vec<Transform> {
         let mut transforms = Vec::with_capacity(skeleton.joints.len());
+        self.sample_into(time, skeleton, &mut transforms);
+        transforms
+    }
 
-        // Initialize with bind pose (local transforms from skeleton)
-        for joint in &skeleton.joints {
-            transforms.push(joint.local_transform);
+    /// Write joint locals into `out`. A buffer that already holds one transform
+    /// per joint is reused and does not allocate.
+    pub fn sample_into(&self, time: f32, skeleton: &Skeleton, out: &mut Vec<Transform>) {
+        let count = skeleton.joints.len();
+        if out.len() != count {
+            out.clear();
+            out.extend(skeleton.joints.iter().map(|joint| joint.local_transform));
+        } else {
+            for (slot, joint) in out.iter_mut().zip(skeleton.joints.iter()) {
+                *slot = joint.local_transform;
+            }
         }
 
-        // Apply animation channels
         for channel in &self.channels {
             let joint_idx = channel.target_joint_index;
-            if joint_idx >= transforms.len() {
+            if joint_idx >= out.len() {
                 continue; // Skip invalid joints
             }
 
@@ -128,7 +138,7 @@ impl AnimationClip {
                     };
                     Transform {
                         translation,
-                        ..transforms[joint_idx]
+                        ..out[joint_idx]
                     }
                 }
                 ChannelData::Rotation(values) => {
@@ -141,7 +151,7 @@ impl AnimationClip {
                     };
                     Transform {
                         rotation,
-                        ..transforms[joint_idx]
+                        ..out[joint_idx]
                     }
                 }
                 ChannelData::Scale(values) => {
@@ -154,15 +164,13 @@ impl AnimationClip {
                     };
                     Transform {
                         scale,
-                        ..transforms[joint_idx]
+                        ..out[joint_idx]
                     }
                 }
             };
 
-            transforms[joint_idx] = transform;
+            out[joint_idx] = transform;
         }
-
-        transforms
     }
 
     /// Find keyframe indices and interpolation factor for a given time
@@ -275,7 +283,35 @@ pub fn compute_joint_matrices(
     skeleton: &Skeleton,
     local_transforms: &[Transform],
 ) -> Result<Vec<Mat4>, anyhow::Error> {
-    let mut world_matrices = vec![Mat4::IDENTITY; skeleton.joints.len()];
+    let mut world_matrices = Vec::new();
+    let mut skinning_matrices = Vec::new();
+    let mut visited = std::collections::HashSet::new();
+    compute_joint_matrices_into(
+        skeleton,
+        local_transforms,
+        &mut world_matrices,
+        &mut skinning_matrices,
+        &mut visited,
+    )?;
+    Ok(skinning_matrices)
+}
+
+/// Same as [`compute_joint_matrices`], writing into caller-owned buffers.
+/// After the first call sized to this skeleton, later calls do not allocate.
+pub fn compute_joint_matrices_into(
+    skeleton: &Skeleton,
+    local_transforms: &[Transform],
+    world_matrices: &mut Vec<Mat4>,
+    skinning_matrices: &mut Vec<Mat4>,
+    visited: &mut std::collections::HashSet<usize>,
+) -> Result<(), anyhow::Error> {
+    if local_transforms.len() < skeleton.joints.len() {
+        anyhow::bail!("local transforms are shorter than the skeleton");
+    }
+    let count = skeleton.joints.len();
+    world_matrices.clear();
+    world_matrices.resize(count, Mat4::IDENTITY);
+    visited.clear();
 
     // Compute world transforms via hierarchical traversal
     fn compute_recursive(
@@ -313,26 +349,25 @@ pub fn compute_joint_matrices(
         Ok(())
     }
 
-    // Start from root joints
-    let mut visited = std::collections::HashSet::new();
     for &root_idx in &skeleton.root_indices {
         compute_recursive(
             skeleton,
             local_transforms,
-            &mut world_matrices,
+            world_matrices,
             root_idx,
             Mat4::IDENTITY,
-            &mut visited,
+            visited,
         )?;
     }
 
-    // Apply inverse bind matrices to get final skinning matrices
-    let mut skinning_matrices = Vec::with_capacity(skeleton.joints.len());
+    if skinning_matrices.len() != count {
+        skinning_matrices.resize(count, Mat4::IDENTITY);
+    }
     for (i, joint) in skeleton.joints.iter().enumerate() {
-        skinning_matrices.push(world_matrices[i] * joint.inverse_bind_matrix);
+        skinning_matrices[i] = world_matrices[i] * joint.inverse_bind_matrix;
     }
 
-    Ok(skinning_matrices)
+    Ok(())
 }
 
 // ============================================================================

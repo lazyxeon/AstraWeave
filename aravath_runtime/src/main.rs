@@ -46,6 +46,11 @@ struct App {
     sword: TexturedMesh,
     shield: TexturedMesh,
     foes: Vec<Figure>,
+    player_parts: Vec<String>,
+    foe_parts: Vec<Vec<String>>,
+    rogue_parts: Vec<String>,
+    frame_uploads: Vec<ChunkUpload>,
+    scar_rgba: Vec<[f32; 4]>,
     foliage: Foliage,
     props: HashMap<(i32, i32, i32), Vec<PropSpot>>,
     foliage_ready: bool,
@@ -70,6 +75,8 @@ impl App {
         };
         startup::stage("world meshed");
         startup::stage("load assets");
+        let foes = load_foes()?;
+        let foe_parts = vec![Vec::new(); foes.len()];
         Ok(Self {
             window: None,
             renderer: None,
@@ -84,7 +91,12 @@ impl App {
             figure: Figure::load_knight()?,
             sword: props::load_rigid(&props::sword_path())?,
             shield: props::load_rigid(&props::shield_path())?,
-            foes: load_foes()?,
+            foes,
+            player_parts: Vec::new(),
+            foe_parts,
+            rogue_parts: Vec::new(),
+            frame_uploads: Vec::new(),
+            scar_rgba: Vec::new(),
             foliage: Foliage::load()?,
             props: HashMap::new(),
             foliage_ready: false,
@@ -385,7 +397,8 @@ impl ApplicationHandler for App {
         } else {
             None
         };
-        let streamed = std::mem::take(&mut self.sim.pending_uploads);
+        self.frame_uploads.clear();
+        self.frame_uploads.append(&mut self.sim.pending_uploads);
         self.play.clear_frame();
 
         let distance = self.sim.occluded_camera_distance();
@@ -395,26 +408,22 @@ impl ApplicationHandler for App {
         let clip = aravath_runtime::locomotion::clip_name(self.sim.graph.state);
         let duration = self.figure.duration(clip).unwrap_or(1.0);
         let (clip, time, looping) = self.sim.player_visual(duration);
-        let posed = self
-            .figure
-            .skin_at(clip, time, looping)
+        self.figure
+            .skin_into(clip, time, looping)
             .expect("pose character");
-        let (hand_l, hand_r) = self
-            .figure
-            .hand_frames_at(clip, time, looping)
-            .expect("hand joints");
+        let (hand_l, hand_r) = self.figure.hand_frames_posed();
         let player_xform = actor_transform(pos, yaw);
         let sword_xform = player_xform * props::sword_on_hand(hand_r);
         let shield_xform = player_xform * props::shield_on_hand(hand_l);
 
         let renderer = self.renderer.as_mut().expect("renderer");
-        upload_chunks(renderer, &streamed, &self.terrain);
-        note_props(&mut self.props, &streamed);
+        upload_chunks(renderer, &self.frame_uploads, &self.terrain);
+        note_props(&mut self.props, &self.frame_uploads);
         if let Some(uploads) = restore_uploads.as_deref() {
             upload_chunks(renderer, uploads, &self.terrain);
             note_props(&mut self.props, uploads);
         }
-        if !streamed.is_empty() || restore_uploads.is_some() {
+        if !self.frame_uploads.is_empty() || restore_uploads.is_some() {
             sync_foliage(
                 renderer,
                 &self.foliage,
@@ -426,79 +435,96 @@ impl ApplicationHandler for App {
         renderer.update_view(&view);
         if self.volumetrics {
             let focus = aravath_runtime::combat::world_metres(pos);
-            let baked = self.sim.scars.bake_gpu_volume(focus);
+            let (origin_metres, extent_metres, dims, any) =
+                self.sim.scars.bake_into(focus, &mut self.scar_rgba);
             let volume = astraweave_render::ScarFogVolume {
-                origin_metres: baked.origin_metres,
-                extent_metres: baked.extent_metres,
-                dims: baked.dims,
-                rgba: baked.rgba,
-                any: baked.any,
+                origin_metres,
+                extent_metres,
+                dims,
+                rgba: std::mem::take(&mut self.scar_rgba),
+                any,
             };
             if let Err(err) = renderer.upload_veil_scar_volume(&volume) {
                 startup::line(&format!("scar upload failed: {err:#}"));
             }
+            self.scar_rgba = volume.rgba;
         }
-        upload_skinned(
+        sync_skinned(
             renderer,
+            &mut self.player_parts,
             "player",
-            &posed,
+            self.figure.posed(),
             player_xform,
             self.figure.albedo.as_ref(),
         );
-        let sword = [Instance {
+        let sword = Instance {
             transform: sword_xform,
             color: [1.0, 1.0, 1.0, 1.0],
             material_id: 0,
-        }];
-        let shield = [Instance {
+        };
+        let shield = Instance {
             transform: shield_xform,
             color: [1.0, 1.0, 1.0, 1.0],
             material_id: 0,
-        }];
+        };
         if !self.player_mesh_ready {
-            upload_textured(renderer, "sword", &self.sword, &sword);
-            upload_textured(renderer, "shield", &self.shield, &shield);
+            upload_textured(renderer, "sword", &self.sword, &[sword]);
+            upload_textured(renderer, "shield", &self.shield, &[shield]);
             self.player_mesh_ready = true;
         } else {
-            renderer.update_model_instances("sword", &sword);
-            renderer.update_model_instances("shield", &shield);
+            renderer.update_model_transform("sword", sword);
+            renderer.update_model_transform("shield", shield);
         }
-        for (index, enemy) in self.sim.combat.enemies.iter().enumerate() {
-            let Some(enemy_pos) = aravath_runtime::combat::body_pos(&self.sim.physics, enemy.body)
-            else {
+        let enemy_count = self.sim.combat.enemies.len();
+        for index in 0..enemy_count {
+            let Some(enemy_pos) = aravath_runtime::combat::body_pos(
+                &self.sim.physics,
+                self.sim.combat.enemies[index].body,
+            ) else {
                 continue;
             };
             let to_player = pos - enemy_pos;
             let foe_yaw = aravath_runtime::detmath::atan2(to_player.z, to_player.x);
-            let (foe_clip, raw_time, foe_loop, phase) = sample_enemy(enemy);
-            let foe = self.foes.get(index).unwrap_or(&self.foes[0]);
-            let duration = foe.duration(foe_clip).unwrap_or(1.0);
+            let (foe_clip, raw_time, foe_loop, phase) =
+                sample_enemy(&self.sim.combat.enemies[index]);
+            let foe_index = if index < self.foes.len() { index } else { 0 };
+            let duration = self.foes[foe_index].duration(foe_clip).unwrap_or(1.0);
             let foe_time = if phase { raw_time * duration } else { raw_time };
-            let foe_pose = foe
-                .skin_at(foe_clip, foe_time, foe_loop)
+            self.foes[foe_index]
+                .skin_into(foe_clip, foe_time, foe_loop)
                 .expect("pose enemy");
             let scale = if index == 2 { 0.55 } else { 0.85 };
-            upload_skinned(
+            let label = match index {
+                0 => "enemy0",
+                1 => "enemy1",
+                2 => "enemy2",
+                _ => "enemy",
+            };
+            sync_skinned(
                 renderer,
-                &format!("enemy{index}"),
-                &foe_pose,
+                &mut self.foe_parts[foe_index],
+                label,
+                self.foes[foe_index].posed(),
                 skeleton_transform(enemy_pos, foe_yaw, scale),
-                foe.albedo.as_ref(),
+                self.foes[foe_index].albedo.as_ref(),
             );
         }
-        if let Some(rogue) = self.foes.get(3) {
-            let pose = rogue.skin_at("Idle_A", 0.0, true).expect("pose rogue");
+        if self.foes.len() > 3 {
+            self.foes[3]
+                .skin_into("Idle_A", 0.0, true)
+                .expect("pose rogue");
             let ground = aravath_runtime::island::surface_height(18, 22) as f32;
-            upload_skinned(
+            sync_skinned(
                 renderer,
+                &mut self.rogue_parts,
                 "rogue",
-                &pose,
+                self.foes[3].posed(),
                 skeleton_transform(
                     Vec3::new(18.0, ground + 0.55 + CAPSULE_FOOT_DROP, 22.0),
                     0.4,
                     0.85,
                 ),
-                rogue.albedo.as_ref(),
+                self.foes[3].albedo.as_ref(),
             );
         }
         let model = HudModel {
@@ -627,33 +653,52 @@ fn upload_textured(
     }
 }
 
-fn upload_skinned(
+fn sync_skinned(
     renderer: &mut Renderer,
-    name: &str,
+    names: &mut Vec<String>,
+    label: &str,
     posed: &[aravath_runtime::figure::PosedPrimitive],
     transform: Mat4,
     albedo: Option<&Rgba>,
 ) {
+    let instance = Instance {
+        transform,
+        color: [1.0, 1.0, 1.0, 1.0],
+        material_id: 0,
+    };
+    if names.len() == posed.len() {
+        let mut rewrite = false;
+        for (index, primitive) in posed.iter().enumerate() {
+            if !renderer.write_model_vertices(&names[index], 0, &primitive.mesh.vertices) {
+                rewrite = true;
+                break;
+            }
+            renderer.update_model_transform(&names[index], instance.clone());
+        }
+        if !rewrite {
+            return;
+        }
+        for name in names.iter() {
+            renderer.clear_model(name);
+        }
+        names.clear();
+    }
     for (index, primitive) in posed.iter().enumerate() {
+        let name = format!("{label}_{index}");
         let gpu = renderer.create_mesh_from_cpu_mesh(&primitive.mesh);
-        let instance = [Instance {
-            transform,
-            color: [1.0, 1.0, 1.0, 1.0],
-            material_id: 0,
-        }];
-        let part = format!("{name}_{index}");
         if let Some(albedo) = albedo {
             renderer.add_model_with_texture(
-                part,
+                &name,
                 gpu,
-                &instance,
+                &[instance.clone()],
                 albedo.width,
                 albedo.height,
                 &albedo.pixels,
             );
         } else {
-            renderer.add_model(part, gpu, &instance);
+            renderer.add_model(&name, gpu, &[instance.clone()]);
         }
+        names.push(name);
     }
 }
 
@@ -981,6 +1026,28 @@ struct EguiHud {
     renderer: egui_wgpu::Renderer,
 }
 
+fn stack_label<'a>(buf: &'a mut [u8], args: std::fmt::Arguments<'_>) -> &'a str {
+    struct Writer<'a> {
+        buf: &'a mut [u8],
+        used: usize,
+    }
+    impl std::fmt::Write for Writer<'_> {
+        fn write_str(&mut self, text: &str) -> std::fmt::Result {
+            let bytes = text.as_bytes();
+            let room = self.buf.len().saturating_sub(self.used);
+            let count = bytes.len().min(room);
+            self.buf[self.used..self.used + count].copy_from_slice(&bytes[..count]);
+            self.used += count;
+            Ok(())
+        }
+    }
+    let mut writer = Writer { buf, used: 0 };
+    let _ = std::fmt::Write::write_fmt(&mut writer, args);
+    let used = writer.used;
+    let buf = writer.buf;
+    std::str::from_utf8(&buf[..used]).unwrap_or("")
+}
+
 fn sync_cursor(window: &Window, captured: bool) -> bool {
     if !captured {
         if let Err(err) = window.set_cursor_grab(winit::window::CursorGrabMode::None) {
@@ -1043,17 +1110,32 @@ fn paint_hud(hud: &mut EguiHud, frame: HudFrame<'_>) {
         size_in_pixels: [size.0, size.1],
         pixels_per_point: scale,
     };
+    let mut health_buf = [0u8; 48];
+    let mut stamina_buf = [0u8; 48];
+    let mut block_buf = [0u8; 48];
+    let health = stack_label(
+        &mut health_buf,
+        format_args!("Health {:.0}", model.health.max(0.0)),
+    );
+    let stamina = stack_label(
+        &mut stamina_buf,
+        format_args!("Stamina {:.0}", model.stamina.max(0.0)),
+    );
+    let block = stack_label(
+        &mut block_buf,
+        format_args!("Block: {}  (1-9)", model.block),
+    );
     let input = hud.state.take_egui_input(window);
     hud.ctx.begin_pass(input);
     egui::Area::new(egui::Id::new("vitals"))
         .anchor(egui::Align2::LEFT_BOTTOM, egui::vec2(16.0, -16.0))
         .show(&hud.ctx, |ui| {
-            ui.label(format!("Health {:.0}", model.health.max(0.0)));
+            ui.label(health);
             ui.add(
                 egui::ProgressBar::new(hud::health_fraction(model))
                     .fill(egui::Color32::from_rgb(176, 48, 42)),
             );
-            ui.label(format!("Stamina {:.0}", model.stamina.max(0.0)));
+            ui.label(stamina);
             ui.add(
                 egui::ProgressBar::new(hud::stamina_fraction(model))
                     .fill(egui::Color32::from_rgb(196, 142, 42)),
@@ -1062,7 +1144,7 @@ fn paint_hud(hud: &mut EguiHud, frame: HudFrame<'_>) {
     egui::Area::new(egui::Id::new("block"))
         .anchor(egui::Align2::RIGHT_BOTTOM, egui::vec2(-16.0, -16.0))
         .show(&hud.ctx, |ui| {
-            ui.label(format!("Block: {}  (1-9)", model.block));
+            ui.label(block);
         });
     egui::Area::new(egui::Id::new("mouse"))
         .anchor(egui::Align2::CENTER_TOP, egui::vec2(0.0, 8.0))
@@ -1195,6 +1277,7 @@ fn axis(positive: bool, negative: bool) -> f32 {
 
 struct Launch {
     smoke: bool,
+    frame_times: bool,
     volumetrics: bool,
 }
 
@@ -1210,9 +1293,11 @@ fn launch_options() -> Launch {
         Err(err) => startup::fatal("Aravath config", &format!("{err:#}")),
     }
     let mut smoke = false;
+    let mut frame_times = false;
     for arg in std::env::args().skip(1) {
         match arg.as_str() {
             "--smoke-test" => smoke = true,
+            "--frame-times" => frame_times = true,
             "--no-volumetrics" | "--safe" => volumetrics = false,
             "--volumetrics" => volumetrics = true,
             other => startup::line(&format!(
@@ -1221,7 +1306,78 @@ fn launch_options() -> Launch {
             )),
         }
     }
-    Launch { smoke, volumetrics }
+    Launch {
+        smoke,
+        frame_times,
+        volumetrics,
+    }
+}
+
+fn report_frame_times() -> anyhow::Result<()> {
+    use aravath_runtime::frame_budget::{budget_line, FrameReport, BASELINE, FRAME_BUDGET_MS};
+    use aravath_runtime::sim::FIXED_DT;
+    startup::stage("frame times");
+    let mut sim = {
+        let mut sim = aravath_runtime::Greybox::open(aravath_runtime::sim::VIEW_RADIUS);
+        sim.spawn_enemy(Vec3::new(28.0, 16.0, 16.0));
+        sim.spawn_enemy(Vec3::new(10.0, 16.0, 28.0));
+        sim.spawn_enemy(Vec3::new(24.0, 16.0, 30.0));
+        sim
+    };
+    let mut figure = Figure::load_knight()?;
+    let mut foes = load_foes()?;
+    let input = aravath_runtime::sim::TickInput::default();
+    for _ in 0..45 {
+        sim.catch_up(FIXED_DT, input);
+        let clip = aravath_runtime::locomotion::clip_name(sim.graph.state);
+        let duration = figure.duration(clip).unwrap_or(1.0);
+        let (clip, time, looping) = sim.player_visual(duration);
+        figure.skin_into(clip, time, looping)?;
+        for foe in &mut foes {
+            foe.skin_into("Idle_A", 0.0, true)?;
+        }
+    }
+    let mut samples = [0_u128; 120];
+    for sample in &mut samples {
+        let started = Instant::now();
+        sim.catch_up(FIXED_DT, input);
+        let clip = aravath_runtime::locomotion::clip_name(sim.graph.state);
+        let duration = figure.duration(clip).unwrap_or(1.0);
+        let (clip, time, looping) = sim.player_visual(duration);
+        figure.skin_into(clip, time, looping)?;
+        for (index, foe) in foes.iter_mut().enumerate() {
+            let clip = if index == 3 { "Idle_A" } else { "Walking_A" };
+            foe.skin_into(clip, sim.tick as f32 * FIXED_DT, true)?;
+        }
+        *sample = started.elapsed().as_nanos();
+    }
+    let report = FrameReport::from_nanos(&samples);
+    println!("{}", budget_line(&report));
+    println!(
+        "budget {:.3} ms is the whole frame on a {BASELINE} GPU. This number is the CPU sim and skin on this machine.",
+        FRAME_BUDGET_MS
+    );
+    match pollster::block_on(astraweave_render::Renderer::new_headless(64, 64)) {
+        Ok(mut renderer) => {
+            let started = Instant::now();
+            renderer.submit_headless_frame()?;
+            let gpu_ms = started.elapsed().as_secs_f64() * 1000.0;
+            println!(
+                "one headless submit {gpu_ms:.3} ms on this adapter. That is not the {BASELINE} measurement."
+            );
+        }
+        Err(err) => {
+            println!("headless submit skipped: {err:#}");
+        }
+    }
+    if !cfg!(debug_assertions) && !report.inside_budget() {
+        anyhow::bail!(
+            "release CPU frame p95 {:.3} ms is over the {:.3} ms {BASELINE} budget",
+            report.p95_ms,
+            FRAME_BUDGET_MS
+        );
+    }
+    Ok(())
 }
 
 fn smoke_test(volumetrics: bool) -> anyhow::Result<()> {
@@ -1313,6 +1469,9 @@ fn main() -> anyhow::Result<()> {
         startup::fatal("Aravath assets", &format!("{err:#}"));
     }
     startup::stage("assets verified");
+    if launch.frame_times {
+        return report_frame_times();
+    }
     if launch.smoke {
         return smoke_test(launch.volumetrics);
     }
