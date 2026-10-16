@@ -2,7 +2,6 @@
 name = "ollama_probe_example"
 license.workspace = true
 version = "0.1.0"
-license = "MIT"
 edition = "2021"
 [dependencies]
 reqwest = { workspace = true }

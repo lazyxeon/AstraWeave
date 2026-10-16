@@ -2,7 +2,6 @@
 name = "ollama_probe"
 license.workspace = true
 version = "0.1.0"
-license = "MIT"
 edition = "2021"
 [dependencies]
 reqwest = { version = "0.12", default-features = false, features = ["json", "blocking", "rustls-tls"] }
