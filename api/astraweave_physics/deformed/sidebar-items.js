@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["SEAM_VOXELS"],"fn":["allows_climb","cell_in_notice","deformed_replay","deformed_step","is_micro_seam","seam_floor","smooth_normal"],"struct":["ColumnStamp","DeformedReplay","FractureFlags","GeometryNotice"]};
