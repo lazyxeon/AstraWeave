@@ -6,7 +6,7 @@ LLVM to auto-vectorize the code, providing ~20-30% speedup on modern CPUs.</p>
     chunk_id: <a class="struct" href="../chunk/struct.ChunkId.html" title="struct astraweave_terrain::chunk::ChunkId">ChunkId</a>,
     chunk_size: <a class="primitive" href="https://doc.rust-lang.org/1.89.0/std/primitive.f32.html">f32</a>,
     resolution: <a class="primitive" href="https://doc.rust-lang.org/1.89.0/std/primitive.u32.html">u32</a>,
-) -&gt; <a class="type" href="https://docs.rs/anyhow/1.0.100/anyhow/type.Result.html" title="type anyhow::Result">Result</a>&lt;<a class="struct" href="../heightmap/struct.Heightmap.html" title="struct astraweave_terrain::heightmap::Heightmap">Heightmap</a>&gt;</h4></section></summary><div class="docblock"><p>Generate a heightmap using optimized operations with loop unrolling</p>
+) -&gt; <a class="type" href="https://docs.rs/anyhow/1.0.104/anyhow/type.Result.html" title="type anyhow::Result">Result</a>&lt;<a class="struct" href="../heightmap/struct.Heightmap.html" title="struct astraweave_terrain::heightmap::Heightmap">Heightmap</a>&gt;</h4></section></summary><div class="docblock"><p>Generate a heightmap using optimized operations with loop unrolling</p>
 <p>This processes heights with loop unrolling for better instruction-level
 parallelism and cache efficiency, allowing LLVM to auto-vectorize.</p>
 </div></details><details class="toggle method-toggle" open><summary><section id="method.generate_preview_simd" class="method"><a class="src rightside" href="../../src/astraweave_terrain/noise_simd.rs.html#73-109">Source</a><h4 class="code-header">pub fn <a href="#method.generate_preview_simd" class="fn">generate_preview_simd</a>(

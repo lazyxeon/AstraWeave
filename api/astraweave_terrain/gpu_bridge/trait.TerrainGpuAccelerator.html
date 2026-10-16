@@ -4,13 +4,13 @@
         &amp;self,
         request: &amp;<a class="struct" href="struct.GpuHeightmapRequest.html" title="struct astraweave_terrain::gpu_bridge::GpuHeightmapRequest">GpuHeightmapRequest</a>,
         params: &amp;<a class="struct" href="struct.GpuNoiseRequest.html" title="struct astraweave_terrain::gpu_bridge::GpuNoiseRequest">GpuNoiseRequest</a>,
-    ) -&gt; <a class="type" href="https://docs.rs/anyhow/1.0.100/anyhow/type.Result.html" title="type anyhow::Result">Result</a>&lt;<a class="struct" href="struct.GpuHeightmapResult.html" title="struct astraweave_terrain::gpu_bridge::GpuHeightmapResult">GpuHeightmapResult</a>&gt;;
+    ) -&gt; <a class="type" href="https://docs.rs/anyhow/1.0.104/anyhow/type.Result.html" title="type anyhow::Result">Result</a>&lt;<a class="struct" href="struct.GpuHeightmapResult.html" title="struct astraweave_terrain::gpu_bridge::GpuHeightmapResult">GpuHeightmapResult</a>&gt;;
 <span class="item-spacer"></span>    fn <a href="#tymethod.erode_heightmap" class="fn">erode_heightmap</a>(
         &amp;self,
         request: &amp;<a class="struct" href="struct.GpuHeightmapRequest.html" title="struct astraweave_terrain::gpu_bridge::GpuHeightmapRequest">GpuHeightmapRequest</a>,
         params: &amp;<a class="struct" href="struct.GpuErosionRequest.html" title="struct astraweave_terrain::gpu_bridge::GpuErosionRequest">GpuErosionRequest</a>,
         input_heights: &amp;[<a class="primitive" href="https://doc.rust-lang.org/1.89.0/std/primitive.f32.html">f32</a>],
-    ) -&gt; <a class="type" href="https://docs.rs/anyhow/1.0.100/anyhow/type.Result.html" title="type anyhow::Result">Result</a>&lt;<a class="struct" href="struct.GpuHeightmapResult.html" title="struct astraweave_terrain::gpu_bridge::GpuHeightmapResult">GpuHeightmapResult</a>&gt;;
+    ) -&gt; <a class="type" href="https://docs.rs/anyhow/1.0.104/anyhow/type.Result.html" title="type anyhow::Result">Result</a>&lt;<a class="struct" href="struct.GpuHeightmapResult.html" title="struct astraweave_terrain::gpu_bridge::GpuHeightmapResult">GpuHeightmapResult</a>&gt;;
 <span class="item-spacer"></span>    fn <a href="#tymethod.is_available" class="fn">is_available</a>(&amp;self) -&gt; <a class="primitive" href="https://doc.rust-lang.org/1.89.0/std/primitive.bool.html">bool</a>;
 <span class="item-spacer"></span>    fn <a href="#tymethod.backend_name" class="fn">backend_name</a>(&amp;self) -&gt; &amp;<a class="primitive" href="https://doc.rust-lang.org/1.89.0/std/primitive.str.html">str</a>;
 }</code></pre><details class="toggle top-doc" open><summary class="hideme"><span>Expand description</span></summary><div class="docblock"><p>Trait for dispatching terrain compute work to the GPU.</p>
@@ -23,7 +23,7 @@ implementor is responsible for GPU dispatch, readback, and fence waiting.</p>
     &amp;self,
     request: &amp;<a class="struct" href="struct.GpuHeightmapRequest.html" title="struct astraweave_terrain::gpu_bridge::GpuHeightmapRequest">GpuHeightmapRequest</a>,
     params: &amp;<a class="struct" href="struct.GpuNoiseRequest.html" title="struct astraweave_terrain::gpu_bridge::GpuNoiseRequest">GpuNoiseRequest</a>,
-) -&gt; <a class="type" href="https://docs.rs/anyhow/1.0.100/anyhow/type.Result.html" title="type anyhow::Result">Result</a>&lt;<a class="struct" href="struct.GpuHeightmapResult.html" title="struct astraweave_terrain::gpu_bridge::GpuHeightmapResult">GpuHeightmapResult</a>&gt;</h4></section></summary><div class="docblock"><p>Generate a noise heightmap on the GPU.</p>
+) -&gt; <a class="type" href="https://docs.rs/anyhow/1.0.104/anyhow/type.Result.html" title="type anyhow::Result">Result</a>&lt;<a class="struct" href="struct.GpuHeightmapResult.html" title="struct astraweave_terrain::gpu_bridge::GpuHeightmapResult">GpuHeightmapResult</a>&gt;</h4></section></summary><div class="docblock"><p>Generate a noise heightmap on the GPU.</p>
 <p>Returns <code>Ok(result)</code> with the generated heights, or <code>Err</code> if the GPU
 pipeline is unavailable or dispatch fails.</p>
 </div></details><details class="toggle method-toggle" open><summary><section id="tymethod.erode_heightmap" class="method"><a class="src rightside" href="../../src/astraweave_terrain/gpu_bridge.rs.html#149-154">Source</a><h4 class="code-header">fn <a href="#tymethod.erode_heightmap" class="fn">erode_heightmap</a>(
@@ -31,7 +31,7 @@ pipeline is unavailable or dispatch fails.</p>
     request: &amp;<a class="struct" href="struct.GpuHeightmapRequest.html" title="struct astraweave_terrain::gpu_bridge::GpuHeightmapRequest">GpuHeightmapRequest</a>,
     params: &amp;<a class="struct" href="struct.GpuErosionRequest.html" title="struct astraweave_terrain::gpu_bridge::GpuErosionRequest">GpuErosionRequest</a>,
     input_heights: &amp;[<a class="primitive" href="https://doc.rust-lang.org/1.89.0/std/primitive.f32.html">f32</a>],
-) -&gt; <a class="type" href="https://docs.rs/anyhow/1.0.100/anyhow/type.Result.html" title="type anyhow::Result">Result</a>&lt;<a class="struct" href="struct.GpuHeightmapResult.html" title="struct astraweave_terrain::gpu_bridge::GpuHeightmapResult">GpuHeightmapResult</a>&gt;</h4></section></summary><div class="docblock"><p>Apply hydraulic erosion to an existing heightmap on the GPU.</p>
+) -&gt; <a class="type" href="https://docs.rs/anyhow/1.0.104/anyhow/type.Result.html" title="type anyhow::Result">Result</a>&lt;<a class="struct" href="struct.GpuHeightmapResult.html" title="struct astraweave_terrain::gpu_bridge::GpuHeightmapResult">GpuHeightmapResult</a>&gt;</h4></section></summary><div class="docblock"><p>Apply hydraulic erosion to an existing heightmap on the GPU.</p>
 <p><code>input_heights</code> must have exactly <code>request.width * request.height</code> entries.
 Returns the eroded heightmap.</p>
 </div></details><details class="toggle method-toggle" open><summary><section id="tymethod.is_available" class="method"><a class="src rightside" href="../../src/astraweave_terrain/gpu_bridge.rs.html#157">Source</a><h4 class="code-header">fn <a href="#tymethod.is_available" class="fn">is_available</a>(&amp;self) -&gt; <a class="primitive" href="https://doc.rust-lang.org/1.89.0/std/primitive.bool.html">bool</a></h4></section></summary><div class="docblock"><p>Check whether this accelerator is operational (GPU device + pipelines ready).</p>
