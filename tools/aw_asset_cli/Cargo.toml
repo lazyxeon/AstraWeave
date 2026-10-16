@@ -21,7 +21,6 @@ gltf = "1"
 image = { version = "0.25", default-features = false, features = ["bmp", "dds", "exr", "gif", "hdr", "ico", "jpeg", "png", "pnm", "qoi", "tga", "tiff", "webp"] }
 astraweave-asset = { path = "../../astraweave-asset" }
 astraweave-security = { workspace = true }
-tokio = { version = "1", features = ["full"] }
 notify = "8"
 flate2 = "1"  # for compression
 base64 = "0.22"

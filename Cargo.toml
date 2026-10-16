@@ -186,7 +186,10 @@ ed25519-dalek = { version = "2", features = ["rand_core"] }
 hex = "0.4"
 semver = "1.0"
 rhai = { version = "1.23", features = ["sync", "f32_float"] }
-tokio = { version = "1", features = ["full"] }
+# No `net`, `process`, or `signal`. The Aravath greybox graph reaches this
+# dependency through astraweave-llm, and `scripts/check-aravath-network.sh`
+# rejects tokio's `net` feature. Crates that open sockets add `net` themselves.
+tokio = { version = "1", features = ["fs", "io-util", "macros", "rt", "rt-multi-thread", "sync", "time"] }
 futures-util = "0.3"
 tungstenite = "0.28"
 tokio-tungstenite = "0.28"
