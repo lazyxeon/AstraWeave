@@ -74,7 +74,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-bd6d870a.js";
+            window.path_to_searchindex_js = "searchindex-d28dae47.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-3cd98da5.js"></script>
@@ -12298,7 +12298,10 @@ handle.await?;
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="scripting-with-rhai"><a class="header" href="#scripting-with-rhai">Scripting with Rhai</a></h1>
 <blockquote>
-<p><strong>Crates</strong>: <code>astraweave-scripting</code>, <code>astraweave-author</code><br><strong>Status</strong>: Production Ready (Sandboxed)</p>
+<p><strong>Not the live gameplay API.</strong> This page describes callbacks, a <code>ScriptEngine</code> config, and a <code>raycast</code> function that <code>script_system</code> does not provide. As of #318 (<code>3971cbe1</code>), gameplay scripts do not receive <code>physics</code> or <code>nav</code>. The live contract is <a href="../architecture/scripting.html">docs/architecture/scripting.md</a> and <a href="../guides/ai-scripting.html">docs/guides/ai-scripting.md</a>.</p>
+</blockquote>
+<blockquote>
+<p><strong>Crates</strong>: <code>astraweave-scripting</code>, <code>astraweave-author</code><br><strong>Status</strong>: Historical sketch. The sandboxed tick is real. The snippets below are not.</p>
 </blockquote>
 <p>AstraWeave provides secure Rhai scripting for modding, behavior authoring, and runtime customization with full sandboxing.</p>
 <h2 id="quick-start-6"><a class="header" href="#quick-start-6">Quick Start</a></h2>
