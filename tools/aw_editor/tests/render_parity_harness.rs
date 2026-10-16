@@ -463,6 +463,7 @@ async fn render_engine_path(
     device: Arc<wgpu::Device>,
     queue: Arc<wgpu::Queue>,
     fixture: &ParityFixture,
+    shared_env: Option<&astraweave_render::IblResources>,
 ) -> Result<EngineFrame> {
     // C.3.C: `CameraUploadPath` enum removed. `Renderer::update_view` is the
     // only camera-upload path; the deprecated `update_camera_matrices` wrapper
@@ -493,36 +494,12 @@ async fn render_engine_path(
     renderer.time_of_day_mut().current_time = fixture.time_of_day;
 
     let camera = fixture.camera();
-    let view_matrix = camera.view_matrix();
-    let projection_matrix = camera.projection_matrix();
-    let position = camera.position();
-    const ENGINE_PATH_ZNEAR: f32 = 0.5;
-    const ENGINE_PATH_ZFAR: f32 = 5000.0;
-    let fovy = 60_f32.to_radians();
-    let aspect = fixture.width as f32 / fixture.height as f32;
-
-    // C.3.C canonical (and only) path: build RenderView directly, call
-    // Renderer::update_view.
-    {
-        let inverse_view = view_matrix.inverse();
-        let view_dir = -inverse_view.col(2).truncate();
-        let view_proj = projection_matrix * view_matrix;
-        let inverse_view_proj = view_proj.inverse();
-        let render_view = astraweave_camera::RenderView {
-            view: view_matrix,
-            projection: projection_matrix,
-            view_proj,
-            inverse_view,
-            inverse_view_proj,
-            position,
-            view_dir,
-            fovy,
-            aspect,
-            znear: ENGINE_PATH_ZNEAR,
-            zfar: ENGINE_PATH_ZFAR,
-        };
-        renderer.update_view(&render_view);
-    }
+    // Same producer the editor path uses (`EngineRenderAdapter::update_camera`
+    // → `OrbitCamera::to_render_view`). A hand-built RenderView with zfar
+    // 5000 disagreed with the camera's far plane (40000 since E3): shadow
+    // cascade fits read `RenderView.zfar`, and the projection the editor
+    // uploads is the camera's. One producer keeps those fields together.
+    renderer.update_view(&camera.to_render_view());
 
     // P.2 fixture expansion: upload canonical grassland biome pack + a single
     // 10m × 10m terrain chunk at origin so the loader axis becomes measurable.
@@ -550,6 +527,14 @@ async fn render_engine_path(
         &mut renderer,
         &CanonicalQualityPresetParams::GAME_QUALITY,
     );
+
+    // The live editor bakes the default HDRI on a worker and installs it from
+    // `render_to_texture`. The equirect sky fades to black near the horizon,
+    // so a frame that has the bake does not match a frame that does not.
+    // `shared_env` is one bake cloned onto both renderers.
+    if let Some(env) = shared_env {
+        renderer.install_baked_environment(env.clone());
+    }
 
     // P.3: external Rgba8UnormSrgb LDR target — matches post_pipeline's
     // config.format output. Pre-P.3 was Rgba16Float to match the now-deleted
@@ -617,13 +602,18 @@ async fn render_editor_path(
     queue: Arc<wgpu::Queue>,
     fixture: &ParityFixture,
     show_grid: bool,
+    shared_env: Option<&astraweave_render::IblResources>,
 ) -> Result<EditorFrame> {
     let mut viewport = ViewportRenderer::new(device.clone(), queue.clone())
         .context("ViewportRenderer::new failed")?;
+    // Do not start the adapter's worker bake. `render` polls that channel and
+    // would install a second environment between the warm-up and measurement
+    // frames — on llvmpipe the worker finishes in that window, and the engine
+    // path never sees it.
     viewport
-        .init_engine_adapter()
+        .init_engine_adapter_without_env_bake()
         .await
-        .context("ViewportRenderer::init_engine_adapter failed")?;
+        .context("ViewportRenderer::init_engine_adapter_without_env_bake failed")?;
     if let Some(adapter) = viewport.engine_adapter_mut() {
         adapter.set_time_of_day(fixture.time_of_day);
     }
@@ -654,6 +644,11 @@ async fn render_editor_path(
             adapter.renderer_mut(),
             &CanonicalQualityPresetParams::GAME_QUALITY,
         );
+        if let Some(env) = shared_env {
+            adapter
+                .renderer_mut()
+                .install_baked_environment(env.clone());
+        }
     }
 
     // Display target (caller-supplied texture; the egui-bound viewport
@@ -1119,8 +1114,29 @@ fn editor_engine_render_parity() {
     // C.3.C: `Renderer::update_view(&RenderView)` is the canonical (and only)
     // camera-upload path. The deprecated `update_camera_matrices` wrapper and
     // the sibling wrapper-preservation test were deleted in C.3.C.
-    let engine = pollster::block_on(render_engine_path(device.clone(), queue.clone(), &fixture))
-        .expect("engine path render failed");
+    // One bake, installed on both renderers. The live editor starts this bake
+    // on a worker and polls it from `render_to_texture`. On llvmpipe that
+    // poll lands between the harness's two editor frames, so the measurement
+    // frame uses the equirect sky (black near the horizon) while the engine
+    // path, which never bakes, stays on the procedural sky.
+    let shared_env = ViewportRenderer::bake_default_environment(&device, &queue)
+        .expect("default environment bake failed");
+    eprintln!(
+        "Shared default environment: {}",
+        if shared_env.is_some() {
+            "baked HDRI installed on both paths"
+        } else {
+            "HDRI absent — both paths stay on the fallback sky-fill"
+        }
+    );
+
+    let engine = pollster::block_on(render_engine_path(
+        device.clone(),
+        queue.clone(),
+        &fixture,
+        shared_env.as_ref(),
+    ))
+    .expect("engine path render failed");
 
     // P.6 editor path runs twice: once with overlays disabled (show_grid=false)
     // and once with overlays enabled (show_grid=true). The closure proof
@@ -1133,6 +1149,7 @@ fn editor_engine_render_parity() {
         queue.clone(),
         &fixture,
         false, // overlays disabled — the canonical parity comparison
+        shared_env.as_ref(),
     ))
     .expect("editor path render (overlays disabled) failed");
     let editor_overlays_on = pollster::block_on(render_editor_path(
@@ -1140,6 +1157,7 @@ fn editor_engine_render_parity() {
         queue.clone(),
         &fixture,
         true, // overlays enabled — drives the overlay-isolation closure proof
+        shared_env.as_ref(),
     ))
     .expect("editor path render (overlays enabled) failed");
 

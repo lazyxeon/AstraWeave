@@ -1838,6 +1838,45 @@ impl ViewportRenderer {
         Ok(())
     }
 
+    /// Adapter init that does not start the worker-thread HDRI bake.
+    /// The parity harness bakes once via [`ViewportRenderer::bake_default_environment`]
+    /// and installs that value on both renderers.
+    pub async fn init_engine_adapter_without_env_bake(&mut self) -> Result<()> {
+        if self.engine_adapter.is_some() {
+            return Ok(());
+        }
+
+        let (width, height) = if self.size.0 > 0 && self.size.1 > 0 {
+            self.size
+        } else {
+            (1920, 1080)
+        };
+
+        let mut adapter = EngineRenderAdapter::new_without_default_env_bake(
+            self.device.clone(),
+            self.queue.clone(),
+            width,
+            height,
+        )
+        .await
+        .context("Failed to initialize engine render adapter")?;
+
+        if let Some(params) = self.pending_lighting_params.take() {
+            adapter.set_lighting_params(&params);
+        }
+
+        self.engine_adapter = Some(adapter);
+        Ok(())
+    }
+
+    /// Bake the editor default HDRI. `Ok(None)` when the file is absent.
+    pub fn bake_default_environment(
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+    ) -> Result<Option<astraweave_render::IblResources>> {
+        EngineRenderAdapter::bake_default_environment(device, queue)
+    }
+
     /// Check if engine adapter is initialized
     pub fn engine_adapter_initialized(&self) -> bool {
         self.engine_adapter.is_some()

@@ -674,6 +674,28 @@ impl EngineRenderAdapter {
         width: u32,
         height: u32,
     ) -> Result<Self> {
+        Self::new_with_default_env_bake(device, queue, width, height, true).await
+    }
+
+    /// Same as [`Self::new`] except the worker-thread HDRI bake is not started.
+    /// The parity harness bakes once and installs that `IblResources` on both
+    /// renderers; a second in-flight bake would replace it mid-frame.
+    pub async fn new_without_default_env_bake(
+        device: Arc<wgpu::Device>,
+        queue: Arc<wgpu::Queue>,
+        width: u32,
+        height: u32,
+    ) -> Result<Self> {
+        Self::new_with_default_env_bake(device, queue, width, height, false).await
+    }
+
+    async fn new_with_default_env_bake(
+        device: Arc<wgpu::Device>,
+        queue: Arc<wgpu::Queue>,
+        width: u32,
+        height: u32,
+        start_default_env_bake: bool,
+    ) -> Result<Self> {
         // Editor-Engine Render Parity P.3: config.format aligned to
         // Rgba8UnormSrgb so the canonical post_pipeline (which writes
         // config.format to its caller-supplied view) produces bytes
@@ -806,9 +828,45 @@ impl EngineRenderAdapter {
         // The bake runs on a WORKER THREAD (director condition E: it must not
         // block the UI thread — measured cost is ~0.6 s decode + ~1.9 s
         // encode/submit); results are installed by `poll_env_bake` from
-        // `render_to_texture`.
-        adapter.spawn_default_environment_bake(&device, &queue);
+        // `render_to_texture`. The parity harness passes `false` and installs
+        // one shared bake itself.
+        if start_default_env_bake {
+            adapter.spawn_default_environment_bake(&device, &queue);
+        }
         Ok(adapter)
+    }
+
+    /// Bake the editor's default HDRI (Medium, kloppenheim puresky).
+    ///
+    /// `Ok(None)` when the file is not in the asset roots — callers keep the
+    /// fallback sky-fill. This is the bake the worker thread runs and the
+    /// bake the parity harness shares across the engine and editor renderers.
+    pub fn bake_default_environment(
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+    ) -> Result<Option<astraweave_render::IblResources>> {
+        const HDRI_REL: &str = "hdri/polyhaven/kloppenheim_02_puresky_2k.hdr";
+        let path = ["assets", "../../assets"]
+            .iter()
+            .map(|root| std::path::Path::new(root).join(HDRI_REL))
+            .find(|p| p.is_file());
+        let Some(path) = path else {
+            tracing::warn!(
+                "L.2 default IBL: {HDRI_REL} not found under assets/ or ../../assets/ — \
+                 skipping bake; terrain keeps the fallback sky-fill environment"
+            );
+            return Ok(None);
+        };
+        let path_str = path.to_string_lossy().to_string();
+        let mut ibl =
+            astraweave_render::IblManager::new(device, astraweave_render::ibl::IblQuality::Medium)?;
+        ibl.mode = astraweave_render::ibl::SkyMode::HdrPath {
+            biome: "editor-default".to_string(),
+            path: path_str,
+        };
+        let resources =
+            ibl.bake_environment(device, queue, astraweave_render::ibl::IblQuality::Medium)?;
+        Ok(Some(resources))
     }
 
     /// L.2 — one-time IBL bake at adapter construction, on a worker thread.
@@ -834,19 +892,6 @@ impl EngineRenderAdapter {
     fn spawn_default_environment_bake(&mut self, device: &wgpu::Device, queue: &wgpu::Queue) {
         // Same asset-root probing the editor harnesses use: repo root CWD
         // (`cargo editor`) or a crate-relative CWD (`tools/aw_editor`).
-        const HDRI_REL: &str = "hdri/polyhaven/kloppenheim_02_puresky_2k.hdr";
-        let path = ["assets", "../../assets"]
-            .iter()
-            .map(|root| std::path::Path::new(root).join(HDRI_REL))
-            .find(|p| p.is_file());
-        let Some(path) = path else {
-            tracing::warn!(
-                "L.2 default IBL: {HDRI_REL} not found under assets/ or ../../assets/ — \
-                 skipping bake; terrain keeps the fallback sky-fill environment"
-            );
-            return;
-        };
-        let path_str = path.to_string_lossy().to_string();
         let (tx, rx) = std::sync::mpsc::channel();
         let device = device.clone();
         let queue = queue.clone();
@@ -854,32 +899,25 @@ impl EngineRenderAdapter {
             .name("l2-env-bake".to_string())
             .spawn(move || {
                 let started = std::time::Instant::now();
-                let result = (|| -> anyhow::Result<astraweave_render::IblResources> {
-                    let mut ibl = astraweave_render::IblManager::new(
-                        &device,
-                        astraweave_render::ibl::IblQuality::Medium,
-                    )?;
-                    ibl.mode = astraweave_render::ibl::SkyMode::HdrPath {
-                        biome: "editor-default".to_string(),
-                        path: path_str.clone(),
-                    };
-                    ibl.bake_environment(
-                        &device,
-                        &queue,
-                        astraweave_render::ibl::IblQuality::Medium,
-                    )
-                })();
-                match &result {
-                    Ok(_) => tracing::info!(
-                        "L.2 default IBL baked (worker thread): source={path_str}, \
-                         tier=Medium, took {:.1} ms",
-                        started.elapsed().as_secs_f64() * 1000.0
-                    ),
-                    Err(e) => tracing::warn!(
-                        "L.2 default IBL bake failed ({e:#}); terrain keeps the \
-                         fallback sky-fill environment"
-                    ),
-                }
+                let result = match Self::bake_default_environment(&device, &queue) {
+                    Ok(Some(resources)) => {
+                        tracing::info!(
+                            "L.2 default IBL baked (worker thread): tier=Medium, took {:.1} ms",
+                            started.elapsed().as_secs_f64() * 1000.0
+                        );
+                        Ok(resources)
+                    }
+                    Ok(None) => Err(anyhow::anyhow!(
+                        "default HDRI absent; fallback sky-fill stays installed"
+                    )),
+                    Err(e) => {
+                        tracing::warn!(
+                            "L.2 default IBL bake failed ({e:#}); terrain keeps the \
+                             fallback sky-fill environment"
+                        );
+                        Err(e)
+                    }
+                };
                 // Receiver may be gone if the adapter died first — fine.
                 let _ = tx.send(result);
             })
