@@ -1,13 +1,13 @@
 # AstraWeave Project Status
 
-> **Current as of 2026-10-16** (`main` @ `5cba174c`, which includes #252). The repository [README](../../README.md) is the short status page. This file's June narrative below that banner is a session log, not the live headline.
+> **Current as of 2026-10-16** (`main` @ `cdea968c`, which includes #205). The repository [README](../../README.md) is the short status page. This file's June narrative below that banner is a session log, not the live headline.
 
 ## Current (2026-10-16)
 
-- **Workspace:** 140 members (`cargo metadata --no-deps`). 57 names start with `astraweave-`. 60 example manifests.
-- **Determinism:** eleven required cross-OS cases — `planner_pure`, `perception_world`, `gameplay_rng`, `fixed64`, `combat_resolve`, `destruction`, `gameplay_qa_aravath_slice`, `nav_reroute`, `causal_bridge`, `scripted_system`, `weaving`.
-- **On main:** nav reroute (#251), `aravath_runtime` bridge reroute (#263), security caps (#312 and #316), decision debugger (#287), causal consequence engine (#286), Rhai mod sandbox and loader (#214), destruction (#243), Aravath-slice gameplay QA replay (#277 plan, #280 case), weaving framework (#252). #316 caps image decode (4096-pixel edge, 64 MiB), confines CLI glTF file URIs with `safe_under`, and keeps Ollama constructors on loopback unless `allowing_remote` is used. #318 keeps `PhysicsProxy` and `NavMeshProxy` off the gameplay script tick. #252 adds `weave_tick` and required case `weaving` on `NullField` until local sim #253.
-- **In progress, not on main:** greybox demo #205, traversal #244, local fluid sim #253, render frame budget #216, CI #217.
+- **Workspace:** 141 members (`cargo metadata --no-deps`). 58 names start with `astraweave-`. 60 example manifests.
+- **Determinism:** eleven required cross-OS cases — `planner_pure`, `perception_world`, `gameplay_rng`, `fixed64`, `combat_resolve`, `destruction`, `gameplay_qa_aravath_slice`, `nav_reroute`, `causal_bridge`, `scripted_system`, `weaving`. The greybox replay is a separate Linux-and-Windows hash, not one of those eleven.
+- **On main:** nav reroute (#251), `aravath_runtime` bridge reroute (#263), security caps (#312 and #316), decision debugger (#287), causal consequence engine (#286), Rhai mod sandbox and loader (#214), destruction (#243), Aravath-slice gameplay QA replay (#277 plan, #280 case), weaving framework (#252), Aravath greybox (#205). The greybox window is `aravath_greybox`: CC0 KayKit characters, a streamed three-chunk world, and sword combat. Dig still uses `dig_sphere`.
+- **In progress, not on main:** traversal #244, local fluid sim #253, render frame budget #216, CI #217.
 - **Frame budget:** target under 11 ms on a GTX 1660 Ti-class GPU. Not yet measured. GPU timer read 0 ms. #216 is the readback fix.
 - **AI:** local models propose; the deterministic sim validates and executes. Orchestrator default model is `phi3:medium` unless `OLLAMA_MODEL` is set.
 - **Name:** player-facing text says Aravath.

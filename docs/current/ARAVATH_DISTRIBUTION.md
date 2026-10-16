@@ -117,7 +117,7 @@ What was actually removed or narrowed:
 - `astraweave-scene` no longer inherits the workspace `tokio` feature set (`full`, which includes `net`). `aw_asset_cli` declared `tokio` with `full` and never called it; that dependency is gone. `scripts/check-aravath-network.sh` is the regression check.
 - Workspace `reqwest` and `aw-net-client`'s WebSocket client use rustls instead of native-tls, so `openssl` is not in the lockfile. `deny.toml` still bans it.
 
-Patched in this pass (lockfile bumps, still inside the existing semver ranges unless noted): `bytes` 1.12.1, `crossbeam-epoch` 0.9.21, `h2` 0.4.20, `lz4_flex` 0.11.6, `quinn-proto` 0.11.19, `rustls` 0.23.46 with `rustls-webpki` 0.103.15, `tar` 0.4.46, `thin-vec` 0.2.21, `time` 0.3.55, `webbrowser` 1.2.4, `anyhow` 1.0.104, `event-listener` 5.4.2, `memmap2` 0.9.11, `rand` 0.8.8 and 0.9.5, `lru` 0.18.5, `steamworks` 0.13.1, `openh264` 0.8.1, `serial_test` 3.5 (drops vulnerable `scc` 2.4). `lz4_flex` is the one the greybox save loader actually calls.
+Patched in this pass (lockfile bumps, still inside the existing semver ranges unless noted): `bytes` 1.12.1, `crossbeam-epoch` 0.9.21, `h2` 0.4.20, `lz4_flex` 0.11.6, the Quinn protocol crate 0.11.19, `rustls` 0.23.46 with `rustls-webpki` 0.103.15, `tar` 0.4.46, `thin-vec` 0.2.21, `time` 0.3.55, `webbrowser` 1.2.4, `anyhow` 1.0.104, `event-listener` 5.4.2, `memmap2` 0.9.11, `rand` 0.8.8 and 0.9.5, `lru` 0.18.5, `steamworks` 0.13.1, `openh264` 0.8.1, `serial_test` 3.5 (drops vulnerable `scc` 2.4). `lz4_flex` is the one the greybox save loader actually calls.
 
 What cannot be upgraded away. `deny.toml` and `.cargo/audit.toml` ignore these IDs, with the reason:
 

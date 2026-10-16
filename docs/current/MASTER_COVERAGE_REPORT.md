@@ -2,7 +2,7 @@
 
 > **Version**: 5.4.1 | **Date**: 2026-10-16 | **Tool**: `cargo llvm-cov` (LLVM source-based)
 >
-> **2026-10-16:** The 57.35% headline is the 2026-06-29 whole-workspace run. It was not re-measured on the 140-member tree (`5cba174c`). The "130 crates" row and the per-tier table are older. Kani proof attributes were 69 on 2026-06-13 (registry), not "~71", and were not re-counted here. No new letter grade.
+> **2026-10-16:** The 57.35% headline is the 2026-06-29 whole-workspace run. It was not re-measured on the 141-member tree (`cdea968c`). The "130 crates" row and the per-tier table are older. Kani proof attributes were 69 on 2026-06-13 (registry), not "~71", and were not re-counted here. No new letter grade.
 
 ---
 
@@ -10,7 +10,7 @@
 
 | Metric | Value |
 |--------|-------|
-| **Workspace Crates** | 140 on 2026-10-16 (`5cba174c`). The 130-member row was the 2026-06-10 count. Coverage itself was not re-measured; the 29-crate tier table below is still the 2026-02-25 subset. |
+| **Workspace Crates** | 141 on 2026-10-16 (`cdea968c`). The 130-member row was the 2026-06-10 count. Coverage itself was not re-measured; the 29-crate tier table below is still the 2026-02-25 subset. |
 | **Total Tests** | ~21,900 (measured crates) / ~39,000+ (workspace; live re-count 2026-06-10: 39,973 markers incl. `#[tokio::test]`) |
 | **Primary Tool** | `cargo llvm-cov` (LLVM source-based instrumentation) |
 | **Overall Line Coverage** | **57.35% whole-workspace** (`cargo llvm-cov --workspace`, 2026-06-29) — supersedes the 59.3% subset run of 2026-02-25; the per-tier breakdown below is the prior 29-crate subset |

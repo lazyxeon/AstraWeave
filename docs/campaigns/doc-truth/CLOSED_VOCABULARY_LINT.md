@@ -20,7 +20,7 @@ Seeded from the `CLAIMS_REGISTRY.md` Retired table + D.0 §4 + D.0.1 §5. Each i
 27,000+                    # workspace tests -> ~39,900 markers (registry: test-markers-total)
 3,892 | 6,100+             # editor tests -> 9,427 markers (registry: editor-test-markers)
 82+ crates | 128 members | 128 workspace | 126 members | 49 production | 47 crates | 44+ crates | 55 crates | 59 library crates
-                           # -> 140 members at 2026-10-16 after #252 (registry: workspace-members). 130, 133, and 139 are earlier snapshots, not poison.
+                           # -> 141 members at 2026-10-16 after #205 (registry: workspace-members). 130, 133, 139, and 140 are earlier snapshots, not poison.
 # Fabricated competitor multipliers / baselines
 10.4× | 10.4x | 2.1-5.2× | 2.1-5.2x | 3-6× | 3-6x
 Unity 9,900 | Unreal 20k-50k
@@ -90,7 +90,7 @@ The union of acted + kept occurrences is the complete closed-vocabulary inventor
 
 - Both `required` lists in `.github/workflows/determinism-replay.yml` must agree, and `README.md` must name each case.
 - `README.md` must state that the under-11 ms GTX 1660 Ti frame budget is not yet measured, that assets are CC0, that local LLMs propose, and that the deterministic simulation validates.
-- `README.md` must have a `## In progress` section listing #205, #244, #253, #216, and #217, and that section must not call the work shipped, landed, or merged. #252 is on main and is not in that list.
+- `README.md` must have a `## In progress` section listing #244, #253, #216, and #217, and that section must not call the work shipped, landed, or merged. #252 and #205 are on main and are not in that list.
 - Player-facing files (`README.md`, `CONTRIBUTING.md`, `docs/README.md`, `docs/QUICKSTART.md`, `docs/guides/**/*.md`) must not use the retired game title. `veilweaver_` crate names and the archive directory `projects/veilweaver` are allowed.
 
 ## Frame-time carve-out (D.3.1) — why `2.70 ms` is NOT in Vocabulary A

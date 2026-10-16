@@ -1,6 +1,6 @@
 # Security audit and hardening plan
 
-> **2026-10-16:** This survey is pinned to `f1109340`. #214, #252, #312, #316, and #318 are on main at `5cba174c`. Sentences below that say those pulls are not on main are the survey, not the current tree. Weaving's replay case is `weaving`. Local sim #253 is still not on main.
+> **2026-10-16:** This survey is pinned to `f1109340`. #205, #214, #252, #312, #316, and #318 are on main at `cdea968c`. Sentences below that say those pulls are not on main are the survey, not the current tree. Weaving's replay case is `weaving`. Local sim #253 is still not on main. The greybox still digs with `dig_sphere`.
 
 **Status:** Caps from this audit that already had a failing proof on `main` are landed. PR-side items stay on their branches.
 **Date:** 2026-10-15

@@ -1,6 +1,6 @@
 # Build quick reference
 
-Checked against `main` at `5cba174c` (2026-10-16). The player-facing name is Aravath.
+Checked against `main` at `cdea968c` (2026-10-16). The player-facing name is Aravath. The windowed demo is `cargo run -p aravath_runtime --bin aravath_greybox`.
 
 ## Daily commands
 

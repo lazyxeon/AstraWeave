@@ -2,7 +2,7 @@
 
 Active planning documents for ongoing AstraWeave development.
 
-> **2026-10-16:** live status is the repository [README](../../README.md) and the banner at the top of [PROJECT_STATUS.md](PROJECT_STATUS.md). Phase 8 week plans below are older campaign notes. Greybox #205, traversal #244, local fluid sim #253, render frame budget #216, and CI #217 are in progress and are not shipped. Weaving #252 is on main. The required replay set has eleven cases, including `weaving`.
+> **2026-10-16:** live status is the repository [README](../../README.md) and the banner at the top of [PROJECT_STATUS.md](PROJECT_STATUS.md). Phase 8 week plans below are older campaign notes. Traversal #244, local fluid sim #253, render frame budget #216, and CI #217 are in progress and are not shipped. Weaving #252 and the Aravath greybox #205 are on main. The required replay set has eleven cases, including `weaving`. The greybox hash is Linux and Windows only.
 
 > [!TIP]
 > For authoritative master reports, see **[../masters/](../masters/)**.
