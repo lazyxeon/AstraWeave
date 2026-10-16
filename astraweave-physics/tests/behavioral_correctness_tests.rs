@@ -14,7 +14,6 @@
 
 use astraweave_physics::cloth::{Cloth, ClothConfig, ClothId, ClothParticle, DistanceConstraint};
 use astraweave_physics::destruction::{DestructibleConfig, DestructionManager, FracturePattern};
-use astraweave_physics::gravity::{GravityManager, GravityZone, GravityZoneShape};
 use astraweave_physics::projectile::{
     ExplosionConfig, FalloffCurve, ProjectileConfig, ProjectileManager,
 };
@@ -411,118 +410,10 @@ fn test_falloff_curves_mathematical_correctness() {
 
 /// Verify point gravity uses distance-based falloff
 /// Note: AstraWeave uses (1 - d/r)² falloff, not true 1/r² inverse-square
-#[test]
-fn test_gravity_distance_falloff() {
-    let mut manager = GravityManager::new(Vec3::ZERO);
-
-    // Point attractor at origin with radius 100
-    let zone = GravityZone {
-        shape: GravityZoneShape::Point {
-            center: Vec3::ZERO,
-            radius: 100.0,
-            strength: 1000.0,
-        },
-        gravity: Vec3::ZERO,
-        ..Default::default()
-    };
-    manager.add_zone(zone);
-
-    // At distance 10 (10% of radius): falloff = (1 - 0.1)² = 0.81
-    // At distance 50 (50% of radius): falloff = (1 - 0.5)² = 0.25
-    // At distance 90 (90% of radius): falloff = (1 - 0.9)² = 0.01
-
-    let g_10 = manager.calculate_gravity(1, Vec3::new(10.0, 0.0, 0.0));
-    let g_50 = manager.calculate_gravity(1, Vec3::new(50.0, 0.0, 0.0));
-    let g_90 = manager.calculate_gravity(1, Vec3::new(90.0, 0.0, 0.0));
-
-    // Gravity should decrease with distance
-    assert!(
-        g_10.length() > g_50.length(),
-        "Gravity should decrease with distance. g(10)={}, g(50)={}",
-        g_10.length(),
-        g_50.length()
-    );
-
-    assert!(
-        g_50.length() > g_90.length(),
-        "Gravity should decrease with distance. g(50)={}, g(90)={}",
-        g_50.length(),
-        g_90.length()
-    );
-
-    // Gravity should be directed toward center (negative X for +X position)
-    assert!(g_10.x < 0.0, "Gravity should point toward center");
-    assert!(g_50.x < 0.0, "Gravity should point toward center");
-
-    // Outside radius should have no gravity
-    let g_110 = manager.calculate_gravity(1, Vec3::new(110.0, 0.0, 0.0));
-    assert!(
-        g_110.length() < 0.01,
-        "Outside radius should have no gravity. Got {}",
-        g_110.length()
-    );
-}
 
 /// Verify gravity zones don't affect objects outside
-#[test]
-fn test_gravity_zone_boundaries_strict() {
-    let mut manager = GravityManager::new(Vec3::ZERO); // No global gravity
-
-    let zone = GravityZone {
-        shape: GravityZoneShape::Sphere {
-            center: Vec3::ZERO,
-            radius: 10.0,
-        },
-        gravity: Vec3::new(0.0, -100.0, 0.0),
-        ..Default::default()
-    };
-    manager.add_zone(zone);
-
-    // Inside zone
-    let inside = manager.calculate_gravity(1, Vec3::new(5.0, 0.0, 0.0));
-    assert!(inside.y < -50.0, "Inside zone should have gravity");
-
-    // Outside zone (just barely)
-    let outside = manager.calculate_gravity(1, Vec3::new(10.1, 0.0, 0.0));
-    assert!(
-        outside.length() < 1.0,
-        "Outside zone should have no zone gravity. Got: {:?}",
-        outside
-    );
-}
 
 /// Verify gravity scale is applied correctly (mutation: ignoring scale)
-#[test]
-fn test_gravity_scale_multiplication() {
-    let mut manager = GravityManager::new(Vec3::new(0.0, -10.0, 0.0));
-
-    // Body 1: normal gravity scale
-    manager.set_gravity_scale(1, 1.0);
-    let g1 = manager.calculate_gravity(1, Vec3::ZERO);
-
-    // Body 2: half gravity
-    manager.set_gravity_scale(2, 0.5);
-    let g2 = manager.calculate_gravity(2, Vec3::ZERO);
-
-    // Body 3: double gravity
-    manager.set_gravity_scale(3, 2.0);
-    let g3 = manager.calculate_gravity(3, Vec3::ZERO);
-
-    // Body 4: zero gravity (immune)
-    manager.set_gravity_scale(4, 0.0);
-    let g4 = manager.calculate_gravity(4, Vec3::ZERO);
-
-    assert!(
-        (g1.y - (-10.0)).abs() < 0.01,
-        "Scale 1.0 should give full gravity"
-    );
-    assert!((g2.y - (-5.0)).abs() < 0.01, "Scale 0.5 should give half");
-    assert!(
-        (g3.y - (-20.0)).abs() < 0.01,
-        "Scale 2.0 should give double"
-    );
-    assert!(g4.length() < 0.01, "Scale 0.0 should give zero");
-}
 
 // ============================================================================
 // CLOTH PHYSICS CORRECTNESS
@@ -977,19 +868,6 @@ fn test_ragdoll_mass_scaling_correct() {
 // ============================================================================
 
 /// Catch sign flip mutations in gravity
-#[test]
-fn test_mutation_gravity_sign() {
-    let manager = GravityManager::new(Vec3::new(0.0, -9.81, 0.0));
-    let gravity = manager.calculate_gravity(1, Vec3::ZERO);
-
-    // Gravity should be NEGATIVE Y (downward)
-    assert!(gravity.y < 0.0, "Gravity should be negative (downward)");
-    assert!(
-        gravity.y > -15.0 && gravity.y < -5.0,
-        "Gravity magnitude should be reasonable. Got {}",
-        gravity.y
-    );
-}
 
 /// Catch off-by-one in spatial hash cell calculations
 #[test]

@@ -25,7 +25,9 @@
 //! - **[`SpatialHash`]** — Grid-based broadphase for O(n log n) collision culling
 //!   (99.96% pair reduction vs brute-force).
 //! - **[`ProjectileManager`]** — Ballistic projectiles with penetration and explosions.
-//! - **[`GravityManager`]** — Composable gravity zones (sphere, box, cylinder).
+//! - **Local field gravity** — cell acceleration is `LocalSim::gravity_mm_s2_at`
+//!   (`astraweave_weaving::gravity_mm_s2` over the zone's milli-g). `PhysicsWorld::step`
+//!   still reads the Rapier gravity vector only.
 //! - **[`Ragdoll`] / [`RagdollBuilder`]** — Multi-bone ragdoll creation and simulation.
 //! - **[`Vehicle`] / [`VehicleManager`]** — Vehicle dynamics with drivetrain and wheels.
 //! - **[`EnvironmentManager`]** — Wind zones, water volumes, and buoyancy.
@@ -145,13 +147,6 @@ pub mod projectile;
 pub use projectile::{
     ExplosionConfig, ExplosionResult, FalloffCurve, ProjectileConfig, ProjectileHit, ProjectileId,
     ProjectileKind, ProjectileManager,
-};
-
-// Gravity system for variable gravity, zones, and attractors
-pub mod gravity;
-pub use gravity::{
-    BodyGravityId, BodyGravitySettings, GravityManager, GravityZone, GravityZoneId,
-    GravityZoneShape,
 };
 
 // Ragdoll system for physics-based character animations
@@ -943,6 +938,8 @@ pub struct PhysicsWorld {
     /// `clear_water` register/clear bounded volumes on it. Deterministic,
     /// CPU-only (gate Q1).
     pub water: astraweave_water::AnalyticWater,
+    /// Grid columns from the local field. Sampled before [`Self::water`].
+    pub columns: astraweave_water::ColumnWater,
     pub wind: Vec3,
 
     /// Async physics scheduler (feature-gated)
@@ -984,6 +981,7 @@ impl PhysicsWorld {
             water_level: f32::NEG_INFINITY,
             fluid_density: 1000.0,
             water: astraweave_water::AnalyticWater::new(),
+            columns: astraweave_water::ColumnWater::new(),
             wind: Vec3::ZERO,
             #[cfg(feature = "async-physics")]
             async_scheduler: None,
@@ -1028,6 +1026,7 @@ impl PhysicsWorld {
             water_level: f32::NEG_INFINITY,
             fluid_density: 1000.0,
             water: astraweave_water::AnalyticWater::new(),
+            columns: astraweave_water::ColumnWater::new(),
             wind: Vec3::ZERO,
             #[cfg(feature = "async-physics")]
             async_scheduler: None,
@@ -1505,7 +1504,7 @@ impl PhysicsWorld {
             };
 
             // Single source of water truth.
-            let Some(sample) = self.water.sample(pos) else {
+            let Some(sample) = self.columns.sample(pos).or_else(|| self.water.sample(pos)) else {
                 continue;
             };
             // Preserve the wired semantics: buoyancy only below the surface.
@@ -1749,7 +1748,15 @@ impl PhysicsWorld {
 
     pub fn water_surface_at(&self, point: Vec3) -> Option<f32> {
         use astraweave_water::WaterQuery;
-        self.water.sample(point).map(|sample| sample.surface_height)
+        self.columns
+            .sample(point)
+            .or_else(|| self.water.sample(point))
+            .map(|sample| sample.surface_height)
+    }
+
+    /// Install grid columns from the local field. The buffer is reserved in `new`.
+    pub fn set_water_columns(&mut self, columns: &astraweave_water::ColumnWater) {
+        self.columns.fill(columns.rows());
     }
 
     /// Downward probe that ignores the character collider.

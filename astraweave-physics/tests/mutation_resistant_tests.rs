@@ -6,7 +6,6 @@
 
 #![cfg(test)]
 
-use astraweave_physics::gravity::{BodyGravitySettings, GravityZoneShape};
 use astraweave_physics::projectile::FalloffCurve;
 use astraweave_physics::vehicle::{
     EngineConfig, FrictionCurve, TransmissionConfig, WheelConfig, WheelPosition,
@@ -781,118 +780,5 @@ mod wheel_config_tests {
         assert!((wheel.suspension_stiffness - 50000.0).abs() < 1e-6);
         assert!((wheel.suspension_damping - 6000.0).abs() < 1e-6);
         assert!((wheel.suspension_rest_length - 0.4).abs() < 1e-6);
-    }
-}
-
-// =============================================================================
-// Gravity Zone Tests - Verify shape containment and gravity calculation
-// =============================================================================
-
-mod gravity_zone_tests {
-    use super::*;
-
-    #[test]
-    fn box_contains_center() {
-        let shape = GravityZoneShape::Box {
-            min: Vec3::new(-5.0, -5.0, -5.0),
-            max: Vec3::new(5.0, 5.0, 5.0),
-        };
-        assert!(shape.contains(Vec3::ZERO), "Box should contain its center");
-    }
-
-    #[test]
-    fn box_contains_corner() {
-        let shape = GravityZoneShape::Box {
-            min: Vec3::new(-5.0, -5.0, -5.0),
-            max: Vec3::new(5.0, 5.0, 5.0),
-        };
-        assert!(
-            shape.contains(Vec3::new(5.0, 5.0, 5.0)),
-            "Box should contain max corner"
-        );
-        assert!(
-            shape.contains(Vec3::new(-5.0, -5.0, -5.0)),
-            "Box should contain min corner"
-        );
-    }
-
-    #[test]
-    fn box_excludes_outside_point() {
-        let shape = GravityZoneShape::Box {
-            min: Vec3::new(-5.0, -5.0, -5.0),
-            max: Vec3::new(5.0, 5.0, 5.0),
-        };
-        assert!(
-            !shape.contains(Vec3::new(5.1, 0.0, 0.0)),
-            "Box should not contain point outside +X"
-        );
-        assert!(
-            !shape.contains(Vec3::new(-5.1, 0.0, 0.0)),
-            "Box should not contain point outside -X"
-        );
-    }
-
-    #[test]
-    fn sphere_contains_center() {
-        let shape = GravityZoneShape::Sphere {
-            center: Vec3::ZERO,
-            radius: 10.0,
-        };
-        assert!(
-            shape.contains(Vec3::ZERO),
-            "Sphere should contain its center"
-        );
-    }
-
-    #[test]
-    fn sphere_contains_point_at_radius() {
-        let shape = GravityZoneShape::Sphere {
-            center: Vec3::ZERO,
-            radius: 10.0,
-        };
-        assert!(
-            shape.contains(Vec3::new(10.0, 0.0, 0.0)),
-            "Sphere should contain point at radius"
-        );
-    }
-
-    #[test]
-    fn sphere_excludes_point_beyond_radius() {
-        let shape = GravityZoneShape::Sphere {
-            center: Vec3::ZERO,
-            radius: 10.0,
-        };
-        // sqrt(8^2 + 8^2) = sqrt(128) ≈ 11.3 > 10
-        assert!(
-            !shape.contains(Vec3::new(8.0, 8.0, 0.0)),
-            "Sphere should not contain point at distance 11.3"
-        );
-    }
-
-    #[test]
-    fn body_gravity_settings_default_scale_is_1() {
-        let settings = BodyGravitySettings::default();
-        assert!(
-            (settings.scale - 1.0).abs() < 1e-6,
-            "Default gravity scale should be 1.0"
-        );
-    }
-
-    #[test]
-    fn body_gravity_settings_default_ignore_zones_is_false() {
-        let settings = BodyGravitySettings::default();
-        assert!(
-            !settings.ignore_zones,
-            "Default ignore_zones should be false"
-        );
-    }
-
-    #[test]
-    fn body_gravity_settings_default_custom_direction_is_none() {
-        let settings = BodyGravitySettings::default();
-        assert!(
-            settings.custom_direction.is_none(),
-            "Default custom_direction should be None"
-        );
     }
 }

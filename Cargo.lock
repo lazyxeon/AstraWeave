@@ -356,12 +356,14 @@ dependencies = [
  "astraweave-destruction",
  "astraweave-ecs",
  "astraweave-input",
+ "astraweave-localsim",
  "astraweave-math",
  "astraweave-nav",
  "astraweave-physics",
  "astraweave-render",
  "astraweave-terrain",
  "astraweave-veil",
+ "astraweave-water",
  "astraweave-weaving",
  "aw-save",
  "egui",
@@ -1124,6 +1126,18 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "astraweave-localsim"
+version = "0.1.0"
+dependencies = [
+ "astraweave-core",
+ "astraweave-destruction",
+ "astraweave-water",
+ "astraweave-weaving",
+ "criterion 0.7.0",
+ "sha2 0.10.9",
 ]
 
 [[package]]

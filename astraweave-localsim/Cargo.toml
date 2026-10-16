@@ -1,0 +1,21 @@
+[package]
+name = "astraweave-localsim"
+version = "0.1.0"
+edition = "2021"
+license.workspace = true
+description = "Deterministic local field: activation-mapped regions for fluid volume, gas, and heat. GPU fluids stay visual."
+
+[dependencies]
+astraweave-core = { path = "../astraweave-core" }
+astraweave-destruction = { path = "../astraweave-destruction" }
+astraweave-water = { path = "../astraweave-water" }
+astraweave-weaving = { path = "../astraweave-weaving" }
+sha2 = { workspace = true }
+
+[dev-dependencies]
+criterion = { workspace = true }
+sha2 = { workspace = true }
+
+[[bench]]
+name = "tick"
+harness = false
