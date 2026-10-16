@@ -24,6 +24,8 @@ pub const SIM_SYSTEM_NAV: u64 = 0x4E41_7001;
 pub const SIM_SYSTEM_HTN: u64 = 0x4854_7001;
 /// Causal rule draws. The bridge table does not draw it.
 pub const SIM_SYSTEM_CAUSAL: u64 = 0xCA05_7001;
+/// Traversal slip and variant draws. Mixed into [`SimRng`] with the world seed and tick.
+pub const SIM_SYSTEM_TRAVERSAL: u64 = 0x7A4E_7001;
 
 /// Mix `(world_seed, tick, system_id)` into one `StdRng` seed.
 ///
@@ -181,6 +183,7 @@ mod tests {
             SIM_SYSTEM_NAV,
             SIM_SYSTEM_HTN,
             SIM_SYSTEM_CAUSAL,
+            SIM_SYSTEM_TRAVERSAL,
         ];
         for i in 0..ids.len() {
             for j in (i + 1)..ids.len() {

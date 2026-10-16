@@ -43,6 +43,8 @@ pub struct PoseInput {
 pub struct LocomotionGraph {
     pub state: LocoState,
     pub time: f32,
+    /// Presentation only. The sim hash does not read this.
+    pub foot_offset: f32,
 }
 
 impl Default for LocomotionGraph {
@@ -50,6 +52,7 @@ impl Default for LocomotionGraph {
         Self {
             state: LocoState::Idle,
             time: 0.0,
+            foot_offset: 0.0,
         }
     }
 }
@@ -63,6 +66,14 @@ impl LocomotionGraph {
         } else {
             self.time += dt;
         }
+        let ground = if pose.grounded { 0.0 } else { -0.2 };
+        self.foot_offset = crate::ik::foot_ground_offset(1.0, 0.0, ground);
+        let _hand = crate::ik::solve_two_bone(
+            glam::Vec3::new(0.0, 1.4, 0.0),
+            glam::Vec3::new(0.25, 1.2, 0.1),
+            glam::Vec3::new(0.45, 1.0, 0.2),
+            glam::Vec3::new(0.2, 1.3, 0.35),
+        );
     }
 
     /// Sample a clip. Time is wrapped into the clip duration so a looping

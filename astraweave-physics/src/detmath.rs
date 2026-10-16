@@ -11,3 +11,14 @@ pub fn sqrt(value: f32) -> f32 {
 pub fn acos(value: f32) -> f32 {
     libm::acosf(value)
 }
+pub fn sin(value: f32) -> f32 {
+    libm::sinf(value)
+}
+
+pub fn cos(value: f32) -> f32 {
+    libm::cosf(value)
+}
+
+pub fn atan2(y: f32, x: f32) -> f32 {
+    libm::atan2f(y, x)
+}

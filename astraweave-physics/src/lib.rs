@@ -116,6 +116,9 @@ const _: () = assert!(
 
 mod detmath;
 
+pub mod deformed;
+/// Tick-based traversal sim. The Aravath motor and the replay gate both call it.
+pub mod traversal;
 #[cfg(feature = "profiling")]
 use astraweave_profiling::{plot, span};
 
@@ -921,6 +924,10 @@ pub struct PhysicsWorld {
     body_kinds: HashMap<RigidBodyHandle, ActorKind>,
     next_body_id: BodyId,
     pub char_map: HashMap<BodyId, CharacterController>,
+    /// Explicit climb flags. Missing entries use [`Self::climbability`].
+    pub climb_flags: HashMap<BodyId, crate::traversal::Climbability>,
+    /// World-space AABBs that force NonClimbable (puzzle volumes).
+    pub climb_blockers: Vec<(Vec3, Vec3)>,
     next_joint_id: u64,
     debug_render_pipeline: DebugRenderPipeline,
     pub buoyancy_bodies: HashMap<BodyId, BuoyancyData>,
@@ -969,6 +976,8 @@ impl PhysicsWorld {
             body_kinds: HashMap::new(),
             next_body_id: 1,
             char_map: HashMap::new(),
+            climb_flags: HashMap::new(),
+            climb_blockers: Vec::new(),
             next_joint_id: 1,
             debug_render_pipeline: DebugRenderPipeline::default(),
             buoyancy_bodies: HashMap::new(),
@@ -1011,6 +1020,8 @@ impl PhysicsWorld {
             body_kinds: HashMap::new(),
             next_body_id: 1,
             char_map: HashMap::new(),
+            climb_flags: HashMap::new(),
+            climb_blockers: Vec::new(),
             next_joint_id: 1,
             debug_render_pipeline: DebugRenderPipeline::default(),
             buoyancy_bodies: HashMap::new(),
@@ -1661,6 +1672,7 @@ impl PhysicsWorld {
             self.body_kinds.remove(&h);
             self.char_map.remove(&id);
             self.buoyancy_bodies.remove(&id);
+            self.climb_flags.remove(&id);
         }
     }
 
@@ -1680,6 +1692,87 @@ impl PhysicsWorld {
                 rb.set_translation(vector![pos.x, pos.y, pos.z], true);
             }
         }
+    }
+
+    /// Move a kinematic capsule to `center` and keep the next physics step there.
+    pub fn place_character(&mut self, id: BodyId, center: Vec3) {
+        let Some(h) = self.handle_of(id) else {
+            return;
+        };
+        let Some(rb) = self.bodies.get(h) else {
+            return;
+        };
+        let mut iso = *rb.position();
+        iso.translation.x = center.x;
+        iso.translation.y = center.y;
+        iso.translation.z = center.z;
+        if let Some(rbmut) = self.bodies.get_mut(h) {
+            rbmut.set_translation(vector![center.x, center.y, center.z], true);
+            rbmut.set_next_kinematic_position(iso);
+        }
+    }
+
+    pub fn set_climbability(&mut self, id: BodyId, flag: crate::traversal::Climbability) {
+        self.climb_flags.insert(id, flag);
+    }
+
+    pub fn add_climb_blocker(&mut self, min: Vec3, max: Vec3) {
+        self.climb_blockers.push((min, max));
+    }
+
+    /// World geometry defaults to climbable. Player-built and unknown bodies
+    /// fail closed. A puzzle blocker AABB forces non-climbable.
+    pub fn climbability_at(&self, id: BodyId, point: Vec3) -> crate::traversal::Climbability {
+        use crate::traversal::Climbability;
+        for (min, max) in &self.climb_blockers {
+            let inside = point.x >= min.x
+                && point.x <= max.x
+                && point.y >= min.y
+                && point.y <= max.y
+                && point.z >= min.z
+                && point.z <= max.z;
+            if inside {
+                return Climbability::NonClimbable;
+            }
+        }
+        if let Some(flag) = self.climb_flags.get(&id).copied() {
+            return flag;
+        }
+        let kind = self
+            .handle_of(id)
+            .and_then(|handle| self.body_kinds.get(&handle).copied());
+        match kind {
+            Some(ActorKind::Static) => Climbability::Climbable,
+            _ => Climbability::NonClimbable,
+        }
+    }
+
+    pub fn water_surface_at(&self, point: Vec3) -> Option<f32> {
+        use astraweave_water::WaterQuery;
+        self.water.sample(point).map(|sample| sample.surface_height)
+    }
+
+    /// Downward probe that ignores the character collider.
+    /// Returns `(ground_y, normal_y)` when something is under the capsule center.
+    pub fn character_ground(&self, id: BodyId) -> Option<(f32, f32)> {
+        let h = self.handle_of(id)?;
+        let rb = self.bodies.get(h)?;
+        let origin = *rb.translation();
+        let ray = rapier3d::prelude::Ray::new(
+            point![origin.x, origin.y, origin.z],
+            vector![0.0, -1.0, 0.0],
+        );
+        let filter = QueryFilter::default().exclude_rigid_body(h);
+        let (_, hit) = self.query_pipeline.cast_ray_and_get_normal(
+            &self.bodies,
+            &self.colliders,
+            &ray,
+            6.0,
+            true,
+            filter,
+        )?;
+        let ground_y = origin.y - hit.time_of_impact;
+        Some((ground_y, hit.normal.y))
     }
 
     pub fn enable_ccd(&mut self, id: BodyId) {

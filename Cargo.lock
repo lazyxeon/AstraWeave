@@ -1365,6 +1365,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "astraweave-alloc",
+ "astraweave-destruction",
  "astraweave-ecs",
  "astraweave-profiling",
  "astraweave-scene",
@@ -1379,6 +1380,7 @@ dependencies = [
  "rustc-hash 2.1.1",
  "serde",
  "serde_json",
+ "sha2",
  "tracy-client",
 ]
 
