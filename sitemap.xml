@@ -3826,6 +3826,12 @@
     <priority>0.8</priority>
   </url>
   <url>
+    <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_core/sim/constant.SIM_SYSTEM_LLM_DIALOGUE.html</loc>
+    <lastmod>2026-10-16</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
     <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_core/sim/constant.SIM_SYSTEM_ENEMY_PATROL.html</loc>
     <lastmod>2026-10-16</lastmod>
     <changefreq>weekly</changefreq>

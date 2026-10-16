@@ -829,145 +829,171 @@
 <a href=#829 id=829 data-nosnippet>829</a>    <span class="kw">use </span>astraweave_nav::{bridge_and_ford, NavChangeKind, NavScratch, FRAME_BUDGET_MS};
 <a href=#830 id=830 data-nosnippet>830</a>
 <a href=#831 id=831 data-nosnippet>831</a>    <span class="attr">#[test]
-<a href=#832 id=832 data-nosnippet>832</a>    </span><span class="kw">fn </span>equal_scores_pick_the_lower_breach_id() {
-<a href=#833 id=833 data-nosnippet>833</a>        <span class="kw">let </span>tiles = bridge_and_ford();
-<a href=#834 id=834 data-nosnippet>834</a>        <span class="kw">let </span><span class="kw-2">mut </span>scratch = NavScratch::new();
-<a href=#835 id=835 data-nosnippet>835</a>        <span class="kw">let _ </span>= tiles.query_path(
-<a href=#836 id=836 data-nosnippet>836</a>            <span class="kw-2">&amp;mut </span>scratch,
-<a href=#837 id=837 data-nosnippet>837</a>            Vec3::new(<span class="number">1.0</span>, <span class="number">0.0</span>, <span class="number">1.0</span>),
-<a href=#838 id=838 data-nosnippet>838</a>            Vec3::new(<span class="number">1.0</span>, <span class="number">0.0</span>, <span class="number">46.0</span>),
-<a href=#839 id=839 data-nosnippet>839</a>        );
-<a href=#840 id=840 data-nosnippet>840</a>        <span class="kw">let </span>hooks = SpatialHooks::none();
-<a href=#841 id=841 data-nosnippet>841</a>        <span class="kw">let </span><span class="kw-2">mut </span>first = <span class="prelude-val">None</span>;
-<a href=#842 id=842 data-nosnippet>842</a>        <span class="kw">let </span><span class="kw-2">mut </span>second = <span class="prelude-val">None</span>;
-<a href=#843 id=843 data-nosnippet>843</a>        <span class="kw">for _ in </span><span class="number">0</span>..<span class="number">2 </span>{
-<a href=#844 id=844 data-nosnippet>844</a>            <span class="kw">let </span>id = best_breach(<span class="kw-2">&amp;</span>tiles, <span class="kw-2">&amp;</span>scratch, <span class="kw-2">&amp;</span>hooks);
-<a href=#845 id=845 data-nosnippet>845</a>            <span class="kw">if </span>first.is_none() {
-<a href=#846 id=846 data-nosnippet>846</a>                first = id;
-<a href=#847 id=847 data-nosnippet>847</a>            } <span class="kw">else </span>{
-<a href=#848 id=848 data-nosnippet>848</a>                second = id;
-<a href=#849 id=849 data-nosnippet>849</a>            }
-<a href=#850 id=850 data-nosnippet>850</a>        }
-<a href=#851 id=851 data-nosnippet>851</a>        <span class="macro">assert_eq!</span>(first, second);
-<a href=#852 id=852 data-nosnippet>852</a>    }
-<a href=#853 id=853 data-nosnippet>853</a>
-<a href=#854 id=854 data-nosnippet>854</a>    <span class="attr">#[test]
-<a href=#855 id=855 data-nosnippet>855</a>    </span><span class="kw">fn </span>a_hazard_or_weave_on_the_cell_drops_the_breach() {
-<a href=#856 id=856 data-nosnippet>856</a>        <span class="kw">let </span>tiles = bridge_and_ford();
-<a href=#857 id=857 data-nosnippet>857</a>        <span class="kw">let </span><span class="kw-2">mut </span>scratch = NavScratch::new();
-<a href=#858 id=858 data-nosnippet>858</a>        <span class="macro">assert!</span>(
-<a href=#859 id=859 data-nosnippet>859</a>            tiles.query_path(
-<a href=#860 id=860 data-nosnippet>860</a>                <span class="kw-2">&amp;mut </span>scratch,
-<a href=#861 id=861 data-nosnippet>861</a>                Vec3::new(<span class="number">1.0</span>, <span class="number">0.0</span>, <span class="number">1.0</span>),
-<a href=#862 id=862 data-nosnippet>862</a>                Vec3::new(<span class="number">1.0</span>, <span class="number">0.0</span>, <span class="number">46.0</span>),
-<a href=#863 id=863 data-nosnippet>863</a>            ) &gt;= <span class="number">2
-<a href=#864 id=864 data-nosnippet>864</a>        </span>);
-<a href=#865 id=865 data-nosnippet>865</a>        <span class="kw">let </span>portal = best_breach(<span class="kw-2">&amp;</span>tiles, <span class="kw-2">&amp;</span>scratch, <span class="kw-2">&amp;</span>SpatialHooks::none())
-<a href=#866 id=866 data-nosnippet>866</a>            .expect(<span class="string">"the first publish marks the bridge portal as a breach"</span>);
-<a href=#867 id=867 data-nosnippet>867</a>        <span class="kw">let </span>site = find_breach(<span class="kw-2">&amp;</span>tiles, portal).expect(<span class="string">"portal is a breach on first publish"</span>);
-<a href=#868 id=868 data-nosnippet>868</a>        <span class="kw">let </span>hazard = [LocalHazardHook {
-<a href=#869 id=869 data-nosnippet>869</a>            hazard_id: <span class="number">1</span>,
-<a href=#870 id=870 data-nosnippet>870</a>            x: site.x_milli / <span class="number">1000</span>,
-<a href=#871 id=871 data-nosnippet>871</a>            y: site.z_milli / <span class="number">1000</span>,
-<a href=#872 id=872 data-nosnippet>872</a>            kind: <span class="number">1</span>,
-<a href=#873 id=873 data-nosnippet>873</a>        }];
-<a href=#874 id=874 data-nosnippet>874</a>        <span class="kw">let </span>hooks = SpatialHooks {
-<a href=#875 id=875 data-nosnippet>875</a>            weaving: <span class="kw-2">&amp;</span>[],
-<a href=#876 id=876 data-nosnippet>876</a>            hazards: <span class="kw-2">&amp;</span>hazard,
-<a href=#877 id=877 data-nosnippet>877</a>        };
-<a href=#878 id=878 data-nosnippet>878</a>        <span class="macro">assert_ne!</span>(best_breach(<span class="kw-2">&amp;</span>tiles, <span class="kw-2">&amp;</span>scratch, <span class="kw-2">&amp;</span>hooks), <span class="prelude-val">Some</span>(portal));
-<a href=#879 id=879 data-nosnippet>879</a>        <span class="kw">let </span>weave = [WeaveEffectHook {
-<a href=#880 id=880 data-nosnippet>880</a>            effect_id: <span class="number">2</span>,
-<a href=#881 id=881 data-nosnippet>881</a>            x: site.x_milli / <span class="number">1000</span>,
-<a href=#882 id=882 data-nosnippet>882</a>            y: site.z_milli / <span class="number">1000</span>,
-<a href=#883 id=883 data-nosnippet>883</a>            kind: <span class="number">1</span>,
-<a href=#884 id=884 data-nosnippet>884</a>        }];
-<a href=#885 id=885 data-nosnippet>885</a>        <span class="kw">let </span>hooks = SpatialHooks {
-<a href=#886 id=886 data-nosnippet>886</a>            weaving: <span class="kw-2">&amp;</span>weave,
-<a href=#887 id=887 data-nosnippet>887</a>            hazards: <span class="kw-2">&amp;</span>[],
-<a href=#888 id=888 data-nosnippet>888</a>        };
-<a href=#889 id=889 data-nosnippet>889</a>        <span class="macro">assert_ne!</span>(best_breach(<span class="kw-2">&amp;</span>tiles, <span class="kw-2">&amp;</span>scratch, <span class="kw-2">&amp;</span>hooks), <span class="prelude-val">Some</span>(portal));
-<a href=#890 id=890 data-nosnippet>890</a>    }
-<a href=#891 id=891 data-nosnippet>891</a>
-<a href=#892 id=892 data-nosnippet>892</a>    <span class="attr">#[test]
-<a href=#893 id=893 data-nosnippet>893</a>    </span><span class="kw">fn </span>sixty_four_expansions_fit_in_the_frame_budget() {
-<a href=#894 id=894 data-nosnippet>894</a>        <span class="kw">let </span>tiles = bridge_and_ford();
-<a href=#895 id=895 data-nosnippet>895</a>        <span class="kw">let </span><span class="kw-2">mut </span>scratch = NavScratch::new();
-<a href=#896 id=896 data-nosnippet>896</a>        <span class="kw">let </span>hooks = SpatialHooks::none();
-<a href=#897 id=897 data-nosnippet>897</a>        <span class="kw">let </span>start = std::time::Instant::now();
-<a href=#898 id=898 data-nosnippet>898</a>        <span class="kw">let </span><span class="kw-2">mut </span>budget = HTN_EXPANSIONS_PER_TICK <span class="kw">as </span>u32;
-<a href=#899 id=899 data-nosnippet>899</a>        <span class="kw">let </span><span class="kw-2">mut </span>plan = AgentPlan::empty();
-<a href=#900 id=900 data-nosnippet>900</a>        <span class="kw">while </span>budget &gt; <span class="number">0 </span>{
-<a href=#901 id=901 data-nosnippet>901</a>            <span class="kw">let </span>before = budget;
-<a href=#902 id=902 data-nosnippet>902</a>            plan_route(
-<a href=#903 id=903 data-nosnippet>903</a>                <span class="kw-2">&amp;</span>tiles,
-<a href=#904 id=904 data-nosnippet>904</a>                <span class="kw-2">&amp;mut </span>scratch,
-<a href=#905 id=905 data-nosnippet>905</a>                [<span class="number">1_000</span>, <span class="number">0</span>, <span class="number">1_000</span>],
-<a href=#906 id=906 data-nosnippet>906</a>                [<span class="number">1_000</span>, <span class="number">0</span>, <span class="number">46_000</span>],
-<a href=#907 id=907 data-nosnippet>907</a>                <span class="kw-2">&amp;</span>hooks,
-<a href=#908 id=908 data-nosnippet>908</a>                <span class="number">1</span>,
-<a href=#909 id=909 data-nosnippet>909</a>                <span class="kw-2">&amp;mut </span>plan,
-<a href=#910 id=910 data-nosnippet>910</a>                <span class="kw-2">&amp;mut </span>budget,
-<a href=#911 id=911 data-nosnippet>911</a>            );
-<a href=#912 id=912 data-nosnippet>912</a>            <span class="kw">if </span>budget == before {
-<a href=#913 id=913 data-nosnippet>913</a>                <span class="kw">break</span>;
-<a href=#914 id=914 data-nosnippet>914</a>            }
-<a href=#915 id=915 data-nosnippet>915</a>        }
-<a href=#916 id=916 data-nosnippet>916</a>        <span class="kw">let </span>elapsed_ms = start.elapsed().as_secs_f32() * <span class="number">1000.0</span>;
-<a href=#917 id=917 data-nosnippet>917</a>        <span class="macro">assert!</span>(plan.len &gt; <span class="number">0</span>);
-<a href=#918 id=918 data-nosnippet>918</a>        <span class="macro">assert!</span>(
-<a href=#919 id=919 data-nosnippet>919</a>            elapsed_ms &lt; FRAME_BUDGET_MS,
-<a href=#920 id=920 data-nosnippet>920</a>            <span class="string">"{HTN_EXPANSIONS_PER_TICK} expansions took {elapsed_ms} ms"
-<a href=#921 id=921 data-nosnippet>921</a>        </span>);
-<a href=#922 id=922 data-nosnippet>922</a>    }
-<a href=#923 id=923 data-nosnippet>923</a>
-<a href=#924 id=924 data-nosnippet>924</a>    <span class="attr">#[test]
-<a href=#925 id=925 data-nosnippet>925</a>    </span><span class="kw">fn </span>reroute_after_the_bridge_drops() {
-<a href=#926 id=926 data-nosnippet>926</a>        <span class="kw">let </span><span class="kw-2">mut </span>tiles = bridge_and_ford();
-<a href=#927 id=927 data-nosnippet>927</a>        <span class="kw">let </span><span class="kw-2">mut </span>scratch = NavScratch::new();
-<a href=#928 id=928 data-nosnippet>928</a>        <span class="kw">let </span>hooks = SpatialHooks::none();
-<a href=#929 id=929 data-nosnippet>929</a>        <span class="kw">let </span><span class="kw-2">mut </span>budget = HTN_EXPANSIONS_PER_TICK <span class="kw">as </span>u32;
-<a href=#930 id=930 data-nosnippet>930</a>        <span class="kw">let </span><span class="kw-2">mut </span>plan = AgentPlan::empty();
-<a href=#931 id=931 data-nosnippet>931</a>        plan_route(
-<a href=#932 id=932 data-nosnippet>932</a>            <span class="kw-2">&amp;</span>tiles,
-<a href=#933 id=933 data-nosnippet>933</a>            <span class="kw-2">&amp;mut </span>scratch,
-<a href=#934 id=934 data-nosnippet>934</a>            [<span class="number">1_000</span>, <span class="number">0</span>, <span class="number">1_000</span>],
-<a href=#935 id=935 data-nosnippet>935</a>            [<span class="number">1_000</span>, <span class="number">0</span>, <span class="number">46_000</span>],
-<a href=#936 id=936 data-nosnippet>936</a>            <span class="kw-2">&amp;</span>hooks,
-<a href=#937 id=937 data-nosnippet>937</a>            <span class="number">1</span>,
-<a href=#938 id=938 data-nosnippet>938</a>            <span class="kw-2">&amp;mut </span>plan,
-<a href=#939 id=939 data-nosnippet>939</a>            <span class="kw-2">&amp;mut </span>budget,
-<a href=#940 id=940 data-nosnippet>940</a>        );
-<a href=#941 id=941 data-nosnippet>941</a>        <span class="kw">let </span>before = move_cell(<span class="kw-2">&amp;</span>plan);
-<a href=#942 id=942 data-nosnippet>942</a>        tiles.mark(astraweave_nav::nav_change_from_kind(
-<a href=#943 id=943 data-nosnippet>943</a>            NavChangeKind::Detach,
-<a href=#944 id=944 data-nosnippet>944</a>            <span class="number">30</span>,
-<a href=#945 id=945 data-nosnippet>945</a>            <span class="number">0</span>,
-<a href=#946 id=946 data-nosnippet>946</a>            [-<span class="number">1_000</span>, -<span class="number">1_000</span>, <span class="number">17_000</span>],
-<a href=#947 id=947 data-nosnippet>947</a>            [<span class="number">5_000</span>, <span class="number">1_000</span>, <span class="number">31_999</span>],
-<a href=#948 id=948 data-nosnippet>948</a>        ));
-<a href=#949 id=949 data-nosnippet>949</a>        <span class="macro">assert!</span>(tiles.commit_tick() &gt;= <span class="number">1</span>);
-<a href=#950 id=950 data-nosnippet>950</a>        plan_route(
-<a href=#951 id=951 data-nosnippet>951</a>            <span class="kw-2">&amp;</span>tiles,
-<a href=#952 id=952 data-nosnippet>952</a>            <span class="kw-2">&amp;mut </span>scratch,
-<a href=#953 id=953 data-nosnippet>953</a>            [<span class="number">1_000</span>, <span class="number">0</span>, <span class="number">1_000</span>],
-<a href=#954 id=954 data-nosnippet>954</a>            [<span class="number">1_000</span>, <span class="number">0</span>, <span class="number">46_000</span>],
-<a href=#955 id=955 data-nosnippet>955</a>            <span class="kw-2">&amp;</span>hooks,
-<a href=#956 id=956 data-nosnippet>956</a>            <span class="number">31</span>,
-<a href=#957 id=957 data-nosnippet>957</a>            <span class="kw-2">&amp;mut </span>plan,
-<a href=#958 id=958 data-nosnippet>958</a>            <span class="kw-2">&amp;mut </span>budget,
-<a href=#959 id=959 data-nosnippet>959</a>        );
-<a href=#960 id=960 data-nosnippet>960</a>        <span class="kw">let </span>after = move_cell(<span class="kw-2">&amp;</span>plan);
-<a href=#961 id=961 data-nosnippet>961</a>        <span class="macro">assert!</span>(before &lt; <span class="number">8</span>, <span class="string">"bridge path cell {before}"</span>);
-<a href=#962 id=962 data-nosnippet>962</a>        <span class="macro">assert!</span>(after &gt; <span class="number">8</span>, <span class="string">"ford cell {after}, bridge cell was {before}"</span>);
-<a href=#963 id=963 data-nosnippet>963</a>    }
-<a href=#964 id=964 data-nosnippet>964</a>
-<a href=#965 id=965 data-nosnippet>965</a>    <span class="kw">fn </span>move_cell(plan: <span class="kw-2">&amp;</span>AgentPlan) -&gt; i32 {
-<a href=#966 id=966 data-nosnippet>966</a>        <span class="kw">for </span>slot <span class="kw">in </span><span class="kw-2">&amp;</span>plan.slots {
-<a href=#967 id=967 data-nosnippet>967</a>            <span class="kw">if let </span>ActionSlot::MoveTo { x, .. } = slot {
-<a href=#968 id=968 data-nosnippet>968</a>                <span class="kw">return </span><span class="kw-2">*</span>x;
-<a href=#969 id=969 data-nosnippet>969</a>            }
-<a href=#970 id=970 data-nosnippet>970</a>        }
-<a href=#971 id=971 data-nosnippet>971</a>        -<span class="number">1
-<a href=#972 id=972 data-nosnippet>972</a>    </span>}
-<a href=#973 id=973 data-nosnippet>973</a>}</code></pre></div></section></main></body></html>
+<a href=#832 id=832 data-nosnippet>832</a>    </span><span class="kw">fn </span>spatial_tick_does_not_call_goap_or_a_live_model() {
+<a href=#833 id=833 data-nosnippet>833</a>        <span class="kw">let </span>spatial = <span class="macro">include_str!</span>(<span class="string">"htn.rs"</span>);
+<a href=#834 id=834 data-nosnippet>834</a>        <span class="kw">let </span>spatial = spatial.split(<span class="string">"mod tests"</span>).next().unwrap_or(<span class="string">""</span>);
+<a href=#835 id=835 data-nosnippet>835</a>        <span class="macro">assert!</span>(spatial.contains(<span class="string">"fn plan_route"</span>));
+<a href=#836 id=836 data-nosnippet>836</a>        <span class="macro">assert!</span>(!spatial.contains(<span class="string">"GoapPlanner"</span>));
+<a href=#837 id=837 data-nosnippet>837</a>        <span class="macro">assert!</span>(!spatial.contains(<span class="string">"AIArbiter"</span>));
+<a href=#838 id=838 data-nosnippet>838</a>        <span class="macro">assert!</span>(!spatial.contains(<span class="string">"thread_rng"</span>));
+<a href=#839 id=839 data-nosnippet>839</a>        <span class="macro">assert!</span>(!spatial.contains(<span class="string">"LlmDialogueSystem"</span>));
+<a href=#840 id=840 data-nosnippet>840</a>        <span class="kw">let </span>plugin = <span class="macro">include_str!</span>(<span class="string">"ecs_ai_plugin.rs"</span>);
+<a href=#841 id=841 data-nosnippet>841</a>        <span class="kw">let </span>plugin = plugin.split(<span class="string">"mod tests"</span>).next().unwrap_or(<span class="string">""</span>);
+<a href=#842 id=842 data-nosnippet>842</a>        <span class="macro">assert!</span>(plugin.contains(<span class="string">"fn sys_spatial_tick"</span>));
+<a href=#843 id=843 data-nosnippet>843</a>        <span class="macro">assert!</span>(plugin.contains(<span class="string">"fn sys_ai_planning"</span>));
+<a href=#844 id=844 data-nosnippet>844</a>        <span class="macro">assert!</span>(!plugin.contains(<span class="string">"GoapPlanner"</span>));
+<a href=#845 id=845 data-nosnippet>845</a>        <span class="macro">assert!</span>(!plugin.contains(<span class="string">"AIArbiter"</span>));
+<a href=#846 id=846 data-nosnippet>846</a>        <span class="macro">assert!</span>(!plugin.contains(<span class="string">"LlmClient"</span>));
+<a href=#847 id=847 data-nosnippet>847</a>        <span class="macro">assert!</span>(!plugin.contains(<span class="string">"LlmDialogueSystem"</span>));
+<a href=#848 id=848 data-nosnippet>848</a>        <span class="kw">let </span>slice = <span class="macro">include_str!</span>(<span class="string">"veilweaver.rs"</span>);
+<a href=#849 id=849 data-nosnippet>849</a>        <span class="kw">let </span>slice = slice.split(<span class="string">"mod tests"</span>).next().unwrap_or(<span class="string">""</span>);
+<a href=#850 id=850 data-nosnippet>850</a>        <span class="macro">assert!</span>(slice.contains(<span class="string">"fn select_slice_action"</span>));
+<a href=#851 id=851 data-nosnippet>851</a>        <span class="macro">assert!</span>(!slice.contains(<span class="string">"GoapPlanner"</span>));
+<a href=#852 id=852 data-nosnippet>852</a>        <span class="macro">assert!</span>(!slice.contains(<span class="string">"thread_rng"</span>));
+<a href=#853 id=853 data-nosnippet>853</a>        <span class="macro">assert!</span>(!slice.contains(<span class="string">"Instant::"</span>));
+<a href=#854 id=854 data-nosnippet>854</a>        <span class="macro">assert!</span>(!slice.contains(<span class="string">"SystemTime"</span>));
+<a href=#855 id=855 data-nosnippet>855</a>    }
+<a href=#856 id=856 data-nosnippet>856</a>
+<a href=#857 id=857 data-nosnippet>857</a>    <span class="attr">#[test]
+<a href=#858 id=858 data-nosnippet>858</a>    </span><span class="kw">fn </span>equal_scores_pick_the_lower_breach_id() {
+<a href=#859 id=859 data-nosnippet>859</a>        <span class="kw">let </span>tiles = bridge_and_ford();
+<a href=#860 id=860 data-nosnippet>860</a>        <span class="kw">let </span><span class="kw-2">mut </span>scratch = NavScratch::new();
+<a href=#861 id=861 data-nosnippet>861</a>        <span class="kw">let _ </span>= tiles.query_path(
+<a href=#862 id=862 data-nosnippet>862</a>            <span class="kw-2">&amp;mut </span>scratch,
+<a href=#863 id=863 data-nosnippet>863</a>            Vec3::new(<span class="number">1.0</span>, <span class="number">0.0</span>, <span class="number">1.0</span>),
+<a href=#864 id=864 data-nosnippet>864</a>            Vec3::new(<span class="number">1.0</span>, <span class="number">0.0</span>, <span class="number">46.0</span>),
+<a href=#865 id=865 data-nosnippet>865</a>        );
+<a href=#866 id=866 data-nosnippet>866</a>        <span class="kw">let </span>hooks = SpatialHooks::none();
+<a href=#867 id=867 data-nosnippet>867</a>        <span class="kw">let </span><span class="kw-2">mut </span>first = <span class="prelude-val">None</span>;
+<a href=#868 id=868 data-nosnippet>868</a>        <span class="kw">let </span><span class="kw-2">mut </span>second = <span class="prelude-val">None</span>;
+<a href=#869 id=869 data-nosnippet>869</a>        <span class="kw">for _ in </span><span class="number">0</span>..<span class="number">2 </span>{
+<a href=#870 id=870 data-nosnippet>870</a>            <span class="kw">let </span>id = best_breach(<span class="kw-2">&amp;</span>tiles, <span class="kw-2">&amp;</span>scratch, <span class="kw-2">&amp;</span>hooks);
+<a href=#871 id=871 data-nosnippet>871</a>            <span class="kw">if </span>first.is_none() {
+<a href=#872 id=872 data-nosnippet>872</a>                first = id;
+<a href=#873 id=873 data-nosnippet>873</a>            } <span class="kw">else </span>{
+<a href=#874 id=874 data-nosnippet>874</a>                second = id;
+<a href=#875 id=875 data-nosnippet>875</a>            }
+<a href=#876 id=876 data-nosnippet>876</a>        }
+<a href=#877 id=877 data-nosnippet>877</a>        <span class="macro">assert_eq!</span>(first, second);
+<a href=#878 id=878 data-nosnippet>878</a>    }
+<a href=#879 id=879 data-nosnippet>879</a>
+<a href=#880 id=880 data-nosnippet>880</a>    <span class="attr">#[test]
+<a href=#881 id=881 data-nosnippet>881</a>    </span><span class="kw">fn </span>a_hazard_or_weave_on_the_cell_drops_the_breach() {
+<a href=#882 id=882 data-nosnippet>882</a>        <span class="kw">let </span>tiles = bridge_and_ford();
+<a href=#883 id=883 data-nosnippet>883</a>        <span class="kw">let </span><span class="kw-2">mut </span>scratch = NavScratch::new();
+<a href=#884 id=884 data-nosnippet>884</a>        <span class="macro">assert!</span>(
+<a href=#885 id=885 data-nosnippet>885</a>            tiles.query_path(
+<a href=#886 id=886 data-nosnippet>886</a>                <span class="kw-2">&amp;mut </span>scratch,
+<a href=#887 id=887 data-nosnippet>887</a>                Vec3::new(<span class="number">1.0</span>, <span class="number">0.0</span>, <span class="number">1.0</span>),
+<a href=#888 id=888 data-nosnippet>888</a>                Vec3::new(<span class="number">1.0</span>, <span class="number">0.0</span>, <span class="number">46.0</span>),
+<a href=#889 id=889 data-nosnippet>889</a>            ) &gt;= <span class="number">2
+<a href=#890 id=890 data-nosnippet>890</a>        </span>);
+<a href=#891 id=891 data-nosnippet>891</a>        <span class="kw">let </span>portal = best_breach(<span class="kw-2">&amp;</span>tiles, <span class="kw-2">&amp;</span>scratch, <span class="kw-2">&amp;</span>SpatialHooks::none())
+<a href=#892 id=892 data-nosnippet>892</a>            .expect(<span class="string">"the first publish marks the bridge portal as a breach"</span>);
+<a href=#893 id=893 data-nosnippet>893</a>        <span class="kw">let </span>site = find_breach(<span class="kw-2">&amp;</span>tiles, portal).expect(<span class="string">"portal is a breach on first publish"</span>);
+<a href=#894 id=894 data-nosnippet>894</a>        <span class="kw">let </span>hazard = [LocalHazardHook {
+<a href=#895 id=895 data-nosnippet>895</a>            hazard_id: <span class="number">1</span>,
+<a href=#896 id=896 data-nosnippet>896</a>            x: site.x_milli / <span class="number">1000</span>,
+<a href=#897 id=897 data-nosnippet>897</a>            y: site.z_milli / <span class="number">1000</span>,
+<a href=#898 id=898 data-nosnippet>898</a>            kind: <span class="number">1</span>,
+<a href=#899 id=899 data-nosnippet>899</a>        }];
+<a href=#900 id=900 data-nosnippet>900</a>        <span class="kw">let </span>hooks = SpatialHooks {
+<a href=#901 id=901 data-nosnippet>901</a>            weaving: <span class="kw-2">&amp;</span>[],
+<a href=#902 id=902 data-nosnippet>902</a>            hazards: <span class="kw-2">&amp;</span>hazard,
+<a href=#903 id=903 data-nosnippet>903</a>        };
+<a href=#904 id=904 data-nosnippet>904</a>        <span class="macro">assert_ne!</span>(best_breach(<span class="kw-2">&amp;</span>tiles, <span class="kw-2">&amp;</span>scratch, <span class="kw-2">&amp;</span>hooks), <span class="prelude-val">Some</span>(portal));
+<a href=#905 id=905 data-nosnippet>905</a>        <span class="kw">let </span>weave = [WeaveEffectHook {
+<a href=#906 id=906 data-nosnippet>906</a>            effect_id: <span class="number">2</span>,
+<a href=#907 id=907 data-nosnippet>907</a>            x: site.x_milli / <span class="number">1000</span>,
+<a href=#908 id=908 data-nosnippet>908</a>            y: site.z_milli / <span class="number">1000</span>,
+<a href=#909 id=909 data-nosnippet>909</a>            kind: <span class="number">1</span>,
+<a href=#910 id=910 data-nosnippet>910</a>        }];
+<a href=#911 id=911 data-nosnippet>911</a>        <span class="kw">let </span>hooks = SpatialHooks {
+<a href=#912 id=912 data-nosnippet>912</a>            weaving: <span class="kw-2">&amp;</span>weave,
+<a href=#913 id=913 data-nosnippet>913</a>            hazards: <span class="kw-2">&amp;</span>[],
+<a href=#914 id=914 data-nosnippet>914</a>        };
+<a href=#915 id=915 data-nosnippet>915</a>        <span class="macro">assert_ne!</span>(best_breach(<span class="kw-2">&amp;</span>tiles, <span class="kw-2">&amp;</span>scratch, <span class="kw-2">&amp;</span>hooks), <span class="prelude-val">Some</span>(portal));
+<a href=#916 id=916 data-nosnippet>916</a>    }
+<a href=#917 id=917 data-nosnippet>917</a>
+<a href=#918 id=918 data-nosnippet>918</a>    <span class="attr">#[test]
+<a href=#919 id=919 data-nosnippet>919</a>    </span><span class="kw">fn </span>sixty_four_expansions_fit_in_the_frame_budget() {
+<a href=#920 id=920 data-nosnippet>920</a>        <span class="kw">let </span>tiles = bridge_and_ford();
+<a href=#921 id=921 data-nosnippet>921</a>        <span class="kw">let </span><span class="kw-2">mut </span>scratch = NavScratch::new();
+<a href=#922 id=922 data-nosnippet>922</a>        <span class="kw">let </span>hooks = SpatialHooks::none();
+<a href=#923 id=923 data-nosnippet>923</a>        <span class="kw">let </span>start = std::time::Instant::now();
+<a href=#924 id=924 data-nosnippet>924</a>        <span class="kw">let </span><span class="kw-2">mut </span>budget = HTN_EXPANSIONS_PER_TICK <span class="kw">as </span>u32;
+<a href=#925 id=925 data-nosnippet>925</a>        <span class="kw">let </span><span class="kw-2">mut </span>plan = AgentPlan::empty();
+<a href=#926 id=926 data-nosnippet>926</a>        <span class="kw">while </span>budget &gt; <span class="number">0 </span>{
+<a href=#927 id=927 data-nosnippet>927</a>            <span class="kw">let </span>before = budget;
+<a href=#928 id=928 data-nosnippet>928</a>            plan_route(
+<a href=#929 id=929 data-nosnippet>929</a>                <span class="kw-2">&amp;</span>tiles,
+<a href=#930 id=930 data-nosnippet>930</a>                <span class="kw-2">&amp;mut </span>scratch,
+<a href=#931 id=931 data-nosnippet>931</a>                [<span class="number">1_000</span>, <span class="number">0</span>, <span class="number">1_000</span>],
+<a href=#932 id=932 data-nosnippet>932</a>                [<span class="number">1_000</span>, <span class="number">0</span>, <span class="number">46_000</span>],
+<a href=#933 id=933 data-nosnippet>933</a>                <span class="kw-2">&amp;</span>hooks,
+<a href=#934 id=934 data-nosnippet>934</a>                <span class="number">1</span>,
+<a href=#935 id=935 data-nosnippet>935</a>                <span class="kw-2">&amp;mut </span>plan,
+<a href=#936 id=936 data-nosnippet>936</a>                <span class="kw-2">&amp;mut </span>budget,
+<a href=#937 id=937 data-nosnippet>937</a>            );
+<a href=#938 id=938 data-nosnippet>938</a>            <span class="kw">if </span>budget == before {
+<a href=#939 id=939 data-nosnippet>939</a>                <span class="kw">break</span>;
+<a href=#940 id=940 data-nosnippet>940</a>            }
+<a href=#941 id=941 data-nosnippet>941</a>        }
+<a href=#942 id=942 data-nosnippet>942</a>        <span class="kw">let </span>elapsed_ms = start.elapsed().as_secs_f32() * <span class="number">1000.0</span>;
+<a href=#943 id=943 data-nosnippet>943</a>        <span class="macro">assert!</span>(plan.len &gt; <span class="number">0</span>);
+<a href=#944 id=944 data-nosnippet>944</a>        <span class="macro">assert!</span>(
+<a href=#945 id=945 data-nosnippet>945</a>            elapsed_ms &lt; FRAME_BUDGET_MS,
+<a href=#946 id=946 data-nosnippet>946</a>            <span class="string">"{HTN_EXPANSIONS_PER_TICK} expansions took {elapsed_ms} ms"
+<a href=#947 id=947 data-nosnippet>947</a>        </span>);
+<a href=#948 id=948 data-nosnippet>948</a>    }
+<a href=#949 id=949 data-nosnippet>949</a>
+<a href=#950 id=950 data-nosnippet>950</a>    <span class="attr">#[test]
+<a href=#951 id=951 data-nosnippet>951</a>    </span><span class="kw">fn </span>reroute_after_the_bridge_drops() {
+<a href=#952 id=952 data-nosnippet>952</a>        <span class="kw">let </span><span class="kw-2">mut </span>tiles = bridge_and_ford();
+<a href=#953 id=953 data-nosnippet>953</a>        <span class="kw">let </span><span class="kw-2">mut </span>scratch = NavScratch::new();
+<a href=#954 id=954 data-nosnippet>954</a>        <span class="kw">let </span>hooks = SpatialHooks::none();
+<a href=#955 id=955 data-nosnippet>955</a>        <span class="kw">let </span><span class="kw-2">mut </span>budget = HTN_EXPANSIONS_PER_TICK <span class="kw">as </span>u32;
+<a href=#956 id=956 data-nosnippet>956</a>        <span class="kw">let </span><span class="kw-2">mut </span>plan = AgentPlan::empty();
+<a href=#957 id=957 data-nosnippet>957</a>        plan_route(
+<a href=#958 id=958 data-nosnippet>958</a>            <span class="kw-2">&amp;</span>tiles,
+<a href=#959 id=959 data-nosnippet>959</a>            <span class="kw-2">&amp;mut </span>scratch,
+<a href=#960 id=960 data-nosnippet>960</a>            [<span class="number">1_000</span>, <span class="number">0</span>, <span class="number">1_000</span>],
+<a href=#961 id=961 data-nosnippet>961</a>            [<span class="number">1_000</span>, <span class="number">0</span>, <span class="number">46_000</span>],
+<a href=#962 id=962 data-nosnippet>962</a>            <span class="kw-2">&amp;</span>hooks,
+<a href=#963 id=963 data-nosnippet>963</a>            <span class="number">1</span>,
+<a href=#964 id=964 data-nosnippet>964</a>            <span class="kw-2">&amp;mut </span>plan,
+<a href=#965 id=965 data-nosnippet>965</a>            <span class="kw-2">&amp;mut </span>budget,
+<a href=#966 id=966 data-nosnippet>966</a>        );
+<a href=#967 id=967 data-nosnippet>967</a>        <span class="kw">let </span>before = move_cell(<span class="kw-2">&amp;</span>plan);
+<a href=#968 id=968 data-nosnippet>968</a>        tiles.mark(astraweave_nav::nav_change_from_kind(
+<a href=#969 id=969 data-nosnippet>969</a>            NavChangeKind::Detach,
+<a href=#970 id=970 data-nosnippet>970</a>            <span class="number">30</span>,
+<a href=#971 id=971 data-nosnippet>971</a>            <span class="number">0</span>,
+<a href=#972 id=972 data-nosnippet>972</a>            [-<span class="number">1_000</span>, -<span class="number">1_000</span>, <span class="number">17_000</span>],
+<a href=#973 id=973 data-nosnippet>973</a>            [<span class="number">5_000</span>, <span class="number">1_000</span>, <span class="number">31_999</span>],
+<a href=#974 id=974 data-nosnippet>974</a>        ));
+<a href=#975 id=975 data-nosnippet>975</a>        <span class="macro">assert!</span>(tiles.commit_tick() &gt;= <span class="number">1</span>);
+<a href=#976 id=976 data-nosnippet>976</a>        plan_route(
+<a href=#977 id=977 data-nosnippet>977</a>            <span class="kw-2">&amp;</span>tiles,
+<a href=#978 id=978 data-nosnippet>978</a>            <span class="kw-2">&amp;mut </span>scratch,
+<a href=#979 id=979 data-nosnippet>979</a>            [<span class="number">1_000</span>, <span class="number">0</span>, <span class="number">1_000</span>],
+<a href=#980 id=980 data-nosnippet>980</a>            [<span class="number">1_000</span>, <span class="number">0</span>, <span class="number">46_000</span>],
+<a href=#981 id=981 data-nosnippet>981</a>            <span class="kw-2">&amp;</span>hooks,
+<a href=#982 id=982 data-nosnippet>982</a>            <span class="number">31</span>,
+<a href=#983 id=983 data-nosnippet>983</a>            <span class="kw-2">&amp;mut </span>plan,
+<a href=#984 id=984 data-nosnippet>984</a>            <span class="kw-2">&amp;mut </span>budget,
+<a href=#985 id=985 data-nosnippet>985</a>        );
+<a href=#986 id=986 data-nosnippet>986</a>        <span class="kw">let </span>after = move_cell(<span class="kw-2">&amp;</span>plan);
+<a href=#987 id=987 data-nosnippet>987</a>        <span class="macro">assert!</span>(before &lt; <span class="number">8</span>, <span class="string">"bridge path cell {before}"</span>);
+<a href=#988 id=988 data-nosnippet>988</a>        <span class="macro">assert!</span>(after &gt; <span class="number">8</span>, <span class="string">"ford cell {after}, bridge cell was {before}"</span>);
+<a href=#989 id=989 data-nosnippet>989</a>    }
+<a href=#990 id=990 data-nosnippet>990</a>
+<a href=#991 id=991 data-nosnippet>991</a>    <span class="kw">fn </span>move_cell(plan: <span class="kw-2">&amp;</span>AgentPlan) -&gt; i32 {
+<a href=#992 id=992 data-nosnippet>992</a>        <span class="kw">for </span>slot <span class="kw">in </span><span class="kw-2">&amp;</span>plan.slots {
+<a href=#993 id=993 data-nosnippet>993</a>            <span class="kw">if let </span>ActionSlot::MoveTo { x, .. } = slot {
+<a href=#994 id=994 data-nosnippet>994</a>                <span class="kw">return </span><span class="kw-2">*</span>x;
+<a href=#995 id=995 data-nosnippet>995</a>            }
+<a href=#996 id=996 data-nosnippet>996</a>        }
+<a href=#997 id=997 data-nosnippet>997</a>        -<span class="number">1
+<a href=#998 id=998 data-nosnippet>998</a>    </span>}
+<a href=#999 id=999 data-nosnippet>999</a>}</code></pre></div></section></main></body></html>
