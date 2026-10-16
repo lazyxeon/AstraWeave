@@ -29,7 +29,7 @@ runtime_edges:
 | **Document version** | 1.4 |
 | **Last verified against commit** | `84d3888a` |
 | **Last verified date** | 2026-10-16 |
-| **Status** | Active. Headless showcase and the required replay case. The Aravath greybox binds integer columns through `ColumnFns` and digs with a sphere `Subtract` brush. `Greybox::step` calls `BridgeAgent::step` after the motor. `FlatColumnBase` remains the terrain when no functions are bound, so the `destruction` replay hash is unchanged. The greybox golden is `0a576578512f25d2`. |
+| **Status** | Active. Headless showcase and the required replay case. The Aravath greybox binds integer columns through `ColumnFns` and digs with a sphere `Subtract` brush. `Greybox::step` calls `BridgeAgent::step` after the motor. `FlatColumnBase` remains the terrain when no functions are bound, so the `destruction` replay hash is unchanged. The greybox golden is `b6a9d5a2c5da28a6` (#330). The earlier #329 value was `0a576578512f25d2`. |
 | **Owner notes** | Design: `docs/current/DESTRUCTION_DESIGN.md`. Survey: `docs/current/DESTRUCTION_ARCHAEOLOGY.md`. `Fixed64` lives in `astraweave-math` (PR #245). |
 
 ---

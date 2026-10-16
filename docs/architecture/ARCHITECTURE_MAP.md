@@ -1,7 +1,8 @@
 # AstraWeave Architecture Map
 
-> **Generated**: 2026-05-07 | **Last reconciled**: 2026-10-16 | **Version**: 0.8.9 | **Rust**: 1.89.0
+> **Generated**: 2026-05-07 | **Last reconciled**: 2026-10-16 | **Version**: 0.8.10 | **Rust**: 1.89.0
 > Living document — used by all agents as the primary architectural reference.
+> **0.8.10 update (2026-10-16)**: Rebased onto `10757c81`. #330 adds `astraweave-localsim` and required case `local_sim` (sixteen). The greybox golden is `b6a9d5a2c5da28a6`. `gravity.rs` is deleted. #336 and #253 are closed. Member count is **142**.
 > **0.8.9 update (2026-10-16)**: Rebased onto `84d3888a`. #329 steps `BridgeAgent` inside `Greybox::step`, digs with a sphere `Subtract` brush on `ColumnFns`, and moves the greybox golden to `0a576578512f25d2`. The fifteen required replay cases stay. Member count stays **141**.
 > **0.8.8 update (2026-10-16)**: Rebased onto `6a0e9f4c`. #331 keeps `AIArbiter`, `GoapPlanner`, and `GravityManager` off the deterministic tick. `recorded_line` does not draw. Deletion follow-ups are #334, #335, and #336. Required replay cases stay fifteen. Member count stays **141**. Local sim #253 and frame budget #216 stay in progress.
 > **0.8.7 update (2026-10-16)**: Rebased onto `d6903d3a`. #327 is on main and #326 is closed. The workspace `tokio` dependency does not enable `net`. #275 wires the greybox sword hit through `run_aravath_slice`. Required replay cases stay fifteen. Member count stays **141**. Local sim #253 and frame budget #216 stay in progress.
@@ -963,6 +964,9 @@ These are decisional questions that cross subsystem boundaries or affect the bro
 ---
 
 ## Revision History
+
+### v0.8.10 (2026-10-16)
+Rebased onto `10757c81`. #330 is on main. The required replay list is sixteen cases, including `local_sim`. The greybox golden is `b6a9d5a2c5da28a6`.
 
 ### v0.8.9 (2026-10-16)
 Rebased onto `84d3888a`. #329 is on main. The greybox golden is `0a576578512f25d2`. The required replay list stays fifteen cases.

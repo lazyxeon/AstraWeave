@@ -1,11 +1,11 @@
 # AstraWeave: Master Strategic Roadmap
 
-**Version**: 1.59  
+**Version**: 1.60  
 **Last Updated**: October 16, 2026  
 **Status**: Strategy log. Live engine status is the repository [README](../../README.md).  
 **Validation**: The January 2026 validation report linked below is a dated audit, not a current grade.
 
-> **2026-10-16.** The "Current State (June 10, 2026)" table is a snapshot. Workspace members on `84d3888a` are **141** (unchanged since `a10780f4`). Determinism on `main` is fifteen cross-OS replay cases, including `worldgen_columns` and `deformed_chunk`. The Aravath greybox #205 is on main. Its golden hash is `0a576578512f25d2`, Linux and Windows only (#329). Traversal #244, terrain columns #215, CI burndown #217, greybox tokio graph #327, greybox combat slice #275, off-tick AI/gravity #331, and the greybox showcase #329 are on main. #326 is closed. `AIArbiter`, `GoapPlanner`, and `GravityManager` stay off the deterministic tick. The frame-time target is under 11 ms on a GTX 1660 Ti-class GPU and is not yet measured (#216). Local fluid sim #253 and render frame budget #216 are in progress. Player-facing name is Aravath. Do not treat the A+ row in the June table as a current grade.
+> **2026-10-16.** The "Current State (June 10, 2026)" table is a snapshot. Workspace members on `10757c81` are **142**. Determinism on `main` is sixteen cross-OS replay cases, including `local_sim`. The Aravath greybox #205 is on main. Its golden hash is `b6a9d5a2c5da28a6`, Linux and Windows only (#330). Traversal #244, terrain columns #215, CI burndown #217, greybox tokio graph #327, greybox combat slice #275, off-tick AI #331, the greybox showcase #329, and the local field #330 are on main. #253 and #336 are closed. `gravity.rs` is deleted. `AIArbiter` and `GoapPlanner` stay off the deterministic tick. The frame-time target is under 11 ms on a GTX 1660 Ti-class GPU and is not yet measured (#216). Render frame budget #216 is in progress. Player-facing name is Aravath. Do not treat the A+ row in the June table as a current grade.
 
 ---
 
@@ -378,6 +378,7 @@ Key achievements:
 
 | Ver | Date | Type | Impact | Summary (≤80 chars) |
 |-----|------|------|--------|---------------------|
+| **1.60** | Oct 16 | 📋 | 🟢 | #330 docs: local_sim is the 16th case; golden b6a9d5a2c5da28a6 |
 | **1.59** | Oct 16 | 📋 | 🟢 | #329 docs: golden 0a576578512f25d2, bridge step, brush dig |
 | **1.58** | Oct 16 | 📋 | 🟢 | #331 docs: AIArbiter, GoapPlanner, GravityManager stay off tick |
 | **1.57** | Oct 16 | 📋 | 🟢 | #328 docs: workspace tokio drops net; #326 closed |
