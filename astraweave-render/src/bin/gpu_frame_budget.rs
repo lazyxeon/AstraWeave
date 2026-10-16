@@ -144,7 +144,7 @@ fn main() -> anyhow::Result<()> {
         );
     }
     let gpu_median = median(&mut gpu);
-    if !(gpu_median > 0.0) {
+    if gpu_median.partial_cmp(&0.0) != Some(std::cmp::Ordering::Greater) {
         anyhow::bail!(
             "median GPU pass sum is {gpu_median}; refusing to print 0. median_cpu_frame_ms is the CPU fallback."
         );

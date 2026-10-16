@@ -3603,6 +3603,8 @@ fn vs(input: VSIn) -> VSOut {
         }
 
         log::info!("renderer pipelines ready {} ms", boot.elapsed().as_millis());
+        let streaming = crate::texture_streaming::TextureStreamingManager::new(256)
+            .context("texture streaming runtime")?;
 
         Ok(Self {
             surface,
@@ -3728,7 +3730,7 @@ fn vs(input: VSIn) -> VSOut {
             dof_pass: None,
             gated_normal: None,
             gated_velocity: None,
-            streaming: crate::texture_streaming::TextureStreamingManager::new(256),
+            streaming,
             bindless,
             bindless_active,
             instances: Vec::new(),

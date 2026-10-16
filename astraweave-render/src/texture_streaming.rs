@@ -3,6 +3,7 @@
 //! Provides LRU caching, priority queuing, and distance-based residency management.
 
 use crate::texture::{Texture, TextureUsage};
+use anyhow::Context;
 use glam::Vec3;
 #[cfg(feature = "textures")]
 use image::GenericImageView;
@@ -129,11 +130,14 @@ pub struct TextureStreamingManager {
 }
 
 impl TextureStreamingManager {
-    /// Create a new texture streaming manager
+    /// Create a new texture streaming manager.
+    ///
+    /// The decode runtime is one tokio worker. If that runtime cannot start,
+    /// the error is returned and the renderer does not continue without it.
     ///
     /// # Arguments
     /// * `max_memory_mb` - Maximum GPU memory budget in megabytes
-    pub fn new(max_memory_mb: usize) -> Self {
+    pub fn new(max_memory_mb: usize) -> anyhow::Result<Self> {
         let (tx, rx) = tokio_mpsc::channel(32); // Buffer size of 32 results
         let (decoded_tx, decoded_rx) = mpsc::sync_channel(UPLOAD_RING_CAP);
         let mut upload_ring = VecDeque::new();
@@ -143,8 +147,8 @@ impl TextureStreamingManager {
             .enable_all()
             .thread_name("texture-stream")
             .build()
-            .expect("texture streaming runtime");
-        Self {
+            .context("texture streaming runtime")?;
+        Ok(Self {
             assets: HashMap::new(),
             lru_queue: VecDeque::new(),
             load_queue: BinaryHeap::new(),
@@ -158,7 +162,7 @@ impl TextureStreamingManager {
             upload_ring,
             decoded_tx,
             decoded_rx,
-        }
+        })
     }
 
     /// Queue `id` by distance from the current camera. Closer requests sort first.
@@ -677,7 +681,7 @@ mod tests {
         // Regression test for the state machine deadlock:
         // request_texture must NOT insert Loading into self.assets, only into the queue.
         // process_next_load is the sole owner of the Loading→spawn transition.
-        let mut mgr = TextureStreamingManager::new(64);
+        let mut mgr = TextureStreamingManager::new(64).expect("texture streaming runtime");
 
         // First request should return None and add to pending queue
         let result = mgr.request_texture("tex_a".into(), 10, 5.0);
@@ -699,7 +703,7 @@ mod tests {
 
     #[test]
     fn closer_request_sorts_ahead_of_a_far_one() {
-        let mut mgr = TextureStreamingManager::new(64);
+        let mut mgr = TextureStreamingManager::new(64).expect("texture streaming runtime");
         mgr.set_camera(Vec3::ZERO);
         mgr.request_at("far", Vec3::new(100.0, 0.0, 0.0));
         mgr.request_at("near", Vec3::new(1.0, 0.0, 0.0));
@@ -709,7 +713,7 @@ mod tests {
 
     #[test]
     fn duplicate_request_does_not_double_queue() {
-        let mut mgr = TextureStreamingManager::new(64);
+        let mut mgr = TextureStreamingManager::new(64).expect("texture streaming runtime");
 
         // Request the same texture twice
         mgr.request_texture("tex_dup".into(), 10, 5.0);
@@ -726,7 +730,7 @@ mod tests {
 
     #[test]
     fn failed_texture_is_not_requeued() {
-        let mut mgr = TextureStreamingManager::new(64);
+        let mut mgr = TextureStreamingManager::new(64).expect("texture streaming runtime");
 
         // Manually insert a Failed texture
         mgr.assets
@@ -746,7 +750,7 @@ mod tests {
     fn loading_texture_blocks_requeue_but_not_via_assets_map() {
         // After process_next_load runs and sets Loading in assets map,
         // a subsequent request_texture call should return None and NOT add a duplicate.
-        let mut mgr = TextureStreamingManager::new(64);
+        let mut mgr = TextureStreamingManager::new(64).expect("texture streaming runtime");
 
         // Simulate process_next_load having picked up "tex_x" and set it as Loading
         mgr.assets.insert("tex_x".into(), AssetState::Loading);
@@ -763,7 +767,7 @@ mod tests {
 
     #[test]
     fn stats_counts_pending_correctly() {
-        let mut mgr = TextureStreamingManager::new(64);
+        let mut mgr = TextureStreamingManager::new(64).expect("texture streaming runtime");
 
         // Add some pending requests
         mgr.request_texture("a".into(), 1, 10.0);
@@ -777,7 +781,7 @@ mod tests {
 
     #[test]
     fn clear_resets_all_state() {
-        let mut mgr = TextureStreamingManager::new(64);
+        let mut mgr = TextureStreamingManager::new(64).expect("texture streaming runtime");
 
         mgr.request_texture("x".into(), 1, 1.0);
         // Also add a Loading entry directly
@@ -796,7 +800,7 @@ mod tests {
 
     #[test]
     fn resident_texture_is_returned_and_lru_updated() {
-        let mut mgr = TextureStreamingManager::new(64);
+        let mut mgr = TextureStreamingManager::new(64).expect("texture streaming runtime");
 
         inject_resident(&mut mgr, "tex_resident", 4);
 
@@ -817,7 +821,7 @@ mod tests {
 
     #[test]
     fn evict_lru_removes_oldest() {
-        let mut mgr = TextureStreamingManager::new(64);
+        let mut mgr = TextureStreamingManager::new(64).expect("texture streaming runtime");
 
         inject_resident(&mut mgr, "oldest", 100);
         inject_resident(&mut mgr, "newest", 100);
@@ -843,7 +847,7 @@ mod tests {
 
     #[test]
     fn stats_counts_loaded_with_resident() {
-        let mut mgr = TextureStreamingManager::new(64);
+        let mut mgr = TextureStreamingManager::new(64).expect("texture streaming runtime");
 
         // Add some pending requests
         mgr.request_texture("a".into(), 1, 10.0);

@@ -777,7 +777,7 @@ fn color_grading_default_tint() {
 
 #[test]
 fn streaming_new_budget_conversion_mb_to_bytes() {
-    let mgr = TextureStreamingManager::new(64);
+    let mgr = TextureStreamingManager::new(64).expect("texture streaming runtime");
     let stats = mgr.get_stats();
     assert_eq!(
         stats.memory_budget_bytes,
@@ -788,14 +788,14 @@ fn streaming_new_budget_conversion_mb_to_bytes() {
 
 #[test]
 fn streaming_new_budget_1mb() {
-    let mgr = TextureStreamingManager::new(1);
+    let mgr = TextureStreamingManager::new(1).expect("texture streaming runtime");
     let stats = mgr.get_stats();
     assert_eq!(stats.memory_budget_bytes, 1_048_576);
 }
 
 #[test]
 fn streaming_fresh_stats_zeroed() {
-    let mgr = TextureStreamingManager::new(100);
+    let mgr = TextureStreamingManager::new(100).expect("texture streaming runtime");
     let stats = mgr.get_stats();
     assert_eq!(stats.loaded_count, 0);
     assert_eq!(stats.pending_count, 0);
@@ -805,14 +805,14 @@ fn streaming_fresh_stats_zeroed() {
 
 #[test]
 fn streaming_request_returns_none_for_new_texture() {
-    let mut mgr = TextureStreamingManager::new(64);
+    let mut mgr = TextureStreamingManager::new(64).expect("texture streaming runtime");
     let result = mgr.request_texture("tex_a".into(), 10, 5.0);
     assert!(result.is_none());
 }
 
 #[test]
 fn streaming_request_increments_pending() {
-    let mut mgr = TextureStreamingManager::new(64);
+    let mut mgr = TextureStreamingManager::new(64).expect("texture streaming runtime");
     mgr.request_texture("tex_a".into(), 10, 5.0);
     let stats = mgr.get_stats();
     assert_eq!(stats.pending_count, 1);
@@ -820,7 +820,7 @@ fn streaming_request_increments_pending() {
 
 #[test]
 fn streaming_duplicate_request_no_double_pending() {
-    let mut mgr = TextureStreamingManager::new(64);
+    let mut mgr = TextureStreamingManager::new(64).expect("texture streaming runtime");
     mgr.request_texture("tex_a".into(), 10, 5.0);
     mgr.request_texture("tex_a".into(), 20, 1.0); // duplicate
     let stats = mgr.get_stats();
@@ -829,7 +829,7 @@ fn streaming_duplicate_request_no_double_pending() {
 
 #[test]
 fn streaming_multiple_unique_requests_counted() {
-    let mut mgr = TextureStreamingManager::new(64);
+    let mut mgr = TextureStreamingManager::new(64).expect("texture streaming runtime");
     mgr.request_texture("a".into(), 1, 10.0);
     mgr.request_texture("b".into(), 2, 5.0);
     mgr.request_texture("c".into(), 3, 1.0);
@@ -839,26 +839,26 @@ fn streaming_multiple_unique_requests_counted() {
 
 #[test]
 fn streaming_is_resident_false_for_unknown() {
-    let mgr = TextureStreamingManager::new(64);
+    let mgr = TextureStreamingManager::new(64).expect("texture streaming runtime");
     assert!(!mgr.is_resident(&"nonexistent".into()));
 }
 
 #[test]
 fn streaming_is_resident_false_for_queued() {
-    let mut mgr = TextureStreamingManager::new(64);
+    let mut mgr = TextureStreamingManager::new(64).expect("texture streaming runtime");
     mgr.request_texture("queued".into(), 10, 5.0);
     assert!(!mgr.is_resident(&"queued".into()));
 }
 
 #[test]
 fn streaming_evict_lru_on_empty_returns_false() {
-    let mut mgr = TextureStreamingManager::new(64);
+    let mut mgr = TextureStreamingManager::new(64).expect("texture streaming runtime");
     assert!(!mgr.evict_lru());
 }
 
 #[test]
 fn streaming_clear_resets_all() {
-    let mut mgr = TextureStreamingManager::new(64);
+    let mut mgr = TextureStreamingManager::new(64).expect("texture streaming runtime");
     mgr.request_texture("a".into(), 1, 1.0);
     mgr.request_texture("b".into(), 2, 2.0);
     mgr.clear();
@@ -870,7 +870,7 @@ fn streaming_clear_resets_all() {
 
 #[test]
 fn streaming_update_residency_sets_position() {
-    let mut mgr = TextureStreamingManager::new(64);
+    let mut mgr = TextureStreamingManager::new(64).expect("texture streaming runtime");
     // Just verify it doesn't panic
     mgr.update_residency(glam::Vec3::new(10.0, 20.0, 30.0));
     // No observable side-effect from public API yet
@@ -878,7 +878,7 @@ fn streaming_update_residency_sets_position() {
 
 #[test]
 fn streaming_memory_used_percent_zero_on_fresh() {
-    let mgr = TextureStreamingManager::new(256);
+    let mgr = TextureStreamingManager::new(256).expect("texture streaming runtime");
     let stats = mgr.get_stats();
     assert!((stats.memory_used_percent - 0.0).abs() < 1e-6);
 }
@@ -887,7 +887,7 @@ fn streaming_memory_used_percent_zero_on_fresh() {
 fn streaming_stats_budget_scales_with_mb() {
     // Verify the multiplication chain: mb * 1024 * 1024
     for mb in [1, 10, 64, 256, 1024] {
-        let mgr = TextureStreamingManager::new(mb);
+        let mgr = TextureStreamingManager::new(mb).expect("texture streaming runtime");
         let stats = mgr.get_stats();
         assert_eq!(
             stats.memory_budget_bytes,

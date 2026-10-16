@@ -23,12 +23,16 @@ pub struct PassTiming {
     pub duration_ms: f32,
 }
 
+fn strictly_positive(value: f32) -> bool {
+    matches!(value.partial_cmp(&0.0), Some(std::cmp::Ordering::Greater))
+}
+
 /// Convert a begin/end timestamp pair into milliseconds.
 ///
-/// A zero period, an unwritten pair (both ticks 0), or a non-positive span is
-/// not a measurement.
+/// A zero period, an unwritten pair (both ticks 0), a NaN, or a non-positive
+/// span is not a measurement.
 pub fn timestamp_duration_ms(begin: u64, end: u64, period_ns: f32) -> Result<f32, &'static str> {
-    if !(period_ns > 0.0) {
+    if !strictly_positive(period_ns) {
         return Err("timestamp period is not positive");
     }
     if begin == 0 && end == 0 {
@@ -38,7 +42,7 @@ pub fn timestamp_duration_ms(begin: u64, end: u64, period_ns: f32) -> Result<f32
         return Err("timestamp end is before begin");
     }
     let ms = ((end - begin) as f64) * f64::from(period_ns) / 1_000_000.0;
-    if !(ms > 0.0) {
+    if !strictly_positive(ms as f32) {
         return Err("GPU duration is zero or negative");
     }
     Ok(ms as f32)
@@ -300,7 +304,7 @@ impl GpuProfiler {
         }
         let mut sum = 0.0f32;
         for timing in &self.latest_results {
-            if !(timing.duration_ms > 0.0) {
+            if !strictly_positive(timing.duration_ms) {
                 return Err("GPU pass duration is zero or negative");
             }
             sum += timing.duration_ms;
@@ -333,6 +337,7 @@ mod tests {
         assert!(timestamp_duration_ms(20, 10, 1.0).is_err());
         assert!(timestamp_duration_ms(10, 20, 0.0).is_err());
         assert!(timestamp_duration_ms(10, 20, -1.0).is_err());
+        assert!(timestamp_duration_ms(10, 20, f32::NAN).is_err());
         let ms = timestamp_duration_ms(1_000_000, 2_000_000, 1.0).unwrap();
         assert!(ms > 0.0);
     }

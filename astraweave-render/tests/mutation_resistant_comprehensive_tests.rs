@@ -1534,14 +1534,14 @@ mod texture_streaming_mutations {
 
     #[test]
     fn new_sets_memory_bytes_from_mb() {
-        let mgr = TextureStreamingManager::new(256);
+        let mgr = TextureStreamingManager::new(256).expect("texture streaming runtime");
         let stats = mgr.get_stats();
         assert_eq!(stats.memory_budget_bytes, 256 * 1024 * 1024);
     }
 
     #[test]
     fn new_starts_empty() {
-        let mgr = TextureStreamingManager::new(256);
+        let mgr = TextureStreamingManager::new(256).expect("texture streaming runtime");
         let stats = mgr.get_stats();
         assert_eq!(stats.loaded_count, 0);
         assert_eq!(stats.memory_used_bytes, 0);
@@ -1550,13 +1550,13 @@ mod texture_streaming_mutations {
 
     #[test]
     fn is_resident_false_initially() {
-        let mgr = TextureStreamingManager::new(256);
+        let mgr = TextureStreamingManager::new(256).expect("texture streaming runtime");
         assert!(!mgr.is_resident(&"test_texture".to_string()));
     }
 
     #[test]
     fn clear_resets_everything() {
-        let mut mgr = TextureStreamingManager::new(256);
+        let mut mgr = TextureStreamingManager::new(256).expect("texture streaming runtime");
         mgr.request_texture("test1".into(), 1, 10.0);
         mgr.clear();
         let stats = mgr.get_stats();
@@ -1566,14 +1566,14 @@ mod texture_streaming_mutations {
 
     #[test]
     fn request_texture_returns_none_for_new() {
-        let mut mgr = TextureStreamingManager::new(256);
+        let mut mgr = TextureStreamingManager::new(256).expect("texture streaming runtime");
         let result = mgr.request_texture("new_texture".into(), 1, 10.0);
         assert!(result.is_none());
     }
 
     #[test]
     fn update_residency_does_not_crash() {
-        let mut mgr = TextureStreamingManager::new(256);
+        let mut mgr = TextureStreamingManager::new(256).expect("texture streaming runtime");
         mgr.update_residency(glam::Vec3::new(10.0, 5.0, 20.0));
     }
 }
