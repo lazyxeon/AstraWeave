@@ -4,6 +4,7 @@
 //! does not allocate: edits sit in fixed arrays. The DAG is rebuilt from
 //! those arrays when the chunk deforms.
 
+use crate::column_base::ColumnFns;
 use crate::command::{Brush, BrushOp, BrushShape};
 use crate::octree::{VoxelDag, CHUNK_EXTENT};
 
@@ -196,6 +197,8 @@ impl ChunkSlot {
 
 pub struct Terrain {
     base: FlatColumnBase,
+    /// When set, `surface_y` regenerates the seed column instead of the flat top.
+    columns: Option<ColumnFns>,
     slots: Box<[ChunkSlot; MAX_CHUNKS]>,
     remesh: [(i32, i32); 8],
     remesh_len: usize,
@@ -205,6 +208,7 @@ impl Terrain {
     pub fn new(top: i32) -> Self {
         Self {
             base: FlatColumnBase { top },
+            columns: None,
             slots: Box::new([
                 ChunkSlot::empty(),
                 ChunkSlot::empty(),
@@ -218,6 +222,11 @@ impl Terrain {
 
     pub fn base_top(&self) -> i32 {
         self.base.top
+    }
+
+    /// Use the caller's integer columns. `None` keeps [`FlatColumnBase`].
+    pub fn set_column_fns(&mut self, fns: ColumnFns) {
+        self.columns = Some(fns);
     }
 
     pub fn load(&mut self, chunk: (i32, i32)) {
@@ -307,7 +316,11 @@ impl Terrain {
             .filter(|slot| slot.loaded)
             .map(|slot| slot.occ.height_delta(x, z))
             .unwrap_or(0);
-        self.base.column_top(x, z).saturating_add(delta)
+        let top = match self.columns {
+            Some(fns) => fns.top(x, z),
+            None => self.base.column_top(x, z),
+        };
+        top.saturating_add(delta)
     }
 
     pub fn dag(&self, chunk: (i32, i32)) -> Option<&VoxelDag> {
@@ -610,5 +623,26 @@ mod tests {
         let dag = terrain.dag((0, 0)).expect("dag");
         assert!(dag.ready());
         assert!(!dag.solid_at(4, 2, 4, |_, _, _| true));
+    }
+
+    #[test]
+    fn seeded_columns_replay_the_same_occupancy() {
+        fn top(x: i32, z: i32) -> i32 {
+            6 + (x + z).rem_euclid(3)
+        }
+        fn material(_x: i32, y: i32, _z: i32) -> u16 {
+            u16::from(y <= top(0, 0))
+        }
+        let mut terrain = Terrain::new(0);
+        terrain.set_column_fns(ColumnFns { top, material });
+        let seed = top(4, 4);
+        terrain.load((0, 0));
+        terrain.apply_brush(dig());
+        assert!(terrain.surface_y(4, 4) < seed);
+        let before = terrain.occupancy_bytes((0, 0));
+        terrain.unload((0, 0));
+        terrain.load((0, 0));
+        assert_eq!(terrain.occupancy_bytes((0, 0)), before);
+        assert_eq!(terrain.surface_y(0, 0), top(0, 0));
     }
 }

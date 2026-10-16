@@ -7,6 +7,7 @@
 #![allow(clippy::too_many_arguments, clippy::needless_range_loop)]
 
 pub mod budget;
+pub mod column_base;
 pub mod command;
 pub mod debris;
 pub mod fracture;
@@ -34,6 +35,7 @@ pub use budget::{
     DEMOLITION_TICKS as SHOWCASE_TICKS, MAX_BRUSH_CELLS, MAX_LOG_COMMANDS as LATE_JOIN_CAP,
     MAX_NODES_PER_TICK, MAX_SIM_DEBRIS, SLEEP_TICKS, STRESS_ITERS,
 };
+pub use column_base::ColumnFns;
 pub use command::{CommandError as DestructionCommandError, DestructionCommand as Command};
 pub use fracture::{bake_bytes, bake_gate, planar_children, BreakRule};
 pub use graph::{allows_climb, PieceFlags as FractureFlags};
@@ -196,6 +198,28 @@ impl DestructionWorld {
 
     pub fn terrain(&self) -> &Terrain {
         &self.terrain
+    }
+
+    /// Seed columns for brush replay. The flat test double stays in place until this is called.
+    pub fn bind_column_fns(&mut self, fns: ColumnFns) {
+        self.terrain.set_column_fns(fns);
+    }
+
+    /// Load the brush chunk, record the command, and apply it on this tick.
+    pub fn apply_brush_now(&mut self, brush: crate::command::Brush) -> Result<(), CommandError> {
+        let chunk = (
+            brush.origin[0].div_euclid(crate::octree::CHUNK_EXTENT),
+            brush.origin[2].div_euclid(crate::octree::CHUNK_EXTENT),
+        );
+        self.terrain.load(chunk);
+        self.enqueue(DestructionCommand {
+            tick: self.tick,
+            seq: 0,
+            entity_id: 0,
+            kind: CommandKind::Brush(brush),
+        })?;
+        self.tick();
+        Ok(())
     }
 
     pub fn debris(&self) -> &DebrisPool {

@@ -113,6 +113,8 @@ pub struct Greybox {
     /// by asking `catch_up` to spend it.
     accumulator: f64,
     pub tick: u64,
+    /// Bridge collapse and the ford. Does not drive the character motor.
+    pub bridge: Box<crate::bridge_agent::BridgeAgent>,
 }
 
 impl Greybox {
@@ -140,6 +142,7 @@ impl Greybox {
             scars: ScarField::new(),
             accumulator: 0.0,
             tick: 0,
+            bridge: Box::new(crate::bridge_agent::BridgeAgent::new()),
         }
     }
 
@@ -167,6 +170,7 @@ impl Greybox {
             scars: ScarField::new(),
             accumulator: 0.0,
             tick: 0,
+            bridge: Box::new(crate::bridge_agent::BridgeAgent::new()),
         }
     }
 
@@ -235,6 +239,8 @@ impl Greybox {
             self.combat.toggle_lock(&self.physics, &self.player);
         }
         self.tick_controls(input.motor);
+        // Collapse notices update nav tiles. The motor is not called here.
+        self.bridge.step(self.tick);
         if input.dig {
             let uploads = self.dig_ahead(2.5);
             self.pending_uploads.extend(uploads);
@@ -308,6 +314,11 @@ impl Greybox {
         }
         hash.u8(loco_tag(self.graph.state));
         hash.f32(self.graph.time);
+        hash.i32(self.bridge.route_x_milli);
+        hash.bool(self.bridge.setup_ok);
+        for value in self.bridge.cut_milli {
+            hash.i32(value);
+        }
         hash.u64(self.ground.edits.len() as u64);
         for edit in &self.ground.edits {
             hash.i32(edit.x);
@@ -834,6 +845,9 @@ mod tests {
     fn replay_matches_golden_hash() {
         let sim = play(&recorded_script());
         let got = format!("{:016x}", sim.state_hash());
+        // Intended move off b663da52ea1d566e to 0a576578512f25d2: the
+        // scripted dig is a DestructionCommand brush on the integer columns,
+        // and the hash includes the bridge-collapse route. The motor is unchanged.
         let golden = include_str!("../golden/replay.hash").trim();
         assert_eq!(
             got, golden,
