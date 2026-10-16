@@ -26,6 +26,10 @@ pub const SIM_SYSTEM_HTN: u64 = 0x4854_7001;
 pub const SIM_SYSTEM_CAUSAL: u64 = 0xCA05_7001;
 /// Traversal slip and variant draws. Mixed into [`SimRng`] with the world seed and tick.
 pub const SIM_SYSTEM_TRAVERSAL: u64 = 0x7A4E_7001;
+/// Forest scatter species and yaw. One stream per packed column `(x, z)`.
+pub const SIM_SYSTEM_FOREST_SCATTER: u64 = 0x7E22_7101;
+/// Integer droplet erosion over column heights. Not the scatter stream.
+pub const SIM_SYSTEM_COLUMN_EROSION: u64 = 0x7E22_7102;
 
 /// Mix `(world_seed, tick, system_id)` into one `StdRng` seed.
 ///
@@ -184,6 +188,8 @@ mod tests {
             SIM_SYSTEM_HTN,
             SIM_SYSTEM_CAUSAL,
             SIM_SYSTEM_TRAVERSAL,
+            SIM_SYSTEM_FOREST_SCATTER,
+            SIM_SYSTEM_COLUMN_EROSION,
         ];
         for i in 0..ids.len() {
             for j in (i + 1)..ids.len() {

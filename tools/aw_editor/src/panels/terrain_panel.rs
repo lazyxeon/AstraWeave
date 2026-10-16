@@ -1878,26 +1878,20 @@ impl TerrainPanel {
 
     fn apply_erosion(&mut self) {
         let start = std::time::Instant::now();
-
-        // In a real implementation, this would call the erosion systems
-        // For now, just track the timing
-        tracing::info!("Applying erosion with preset: {:?}", self.erosion_preset);
-        tracing::info!(
-            "Hydraulic: enabled={}, iterations={}",
-            self.hydraulic_erosion.enabled,
+        // The f32 inertia/capacity/gravity knobs stay on the preview. The
+        // save uses the integer droplet bake. Iteration count is capped so
+        // the default 50_000 does not stall the UI. Hydraulic wins when
+        // more than one channel is enabled.
+        let droplets = if self.hydraulic_erosion.enabled {
             self.hydraulic_erosion.iterations
-        );
-        tracing::info!(
-            "Thermal: enabled={}, iterations={}",
-            self.thermal_erosion.enabled,
+        } else if self.thermal_erosion.enabled {
             self.thermal_erosion.iterations
-        );
-        tracing::info!(
-            "Wind: enabled={}, iterations={}",
-            self.wind_erosion.enabled,
+        } else if self.wind_erosion.enabled {
             self.wind_erosion.iterations
-        );
-
+        } else {
+            0
+        };
+        self.terrain_state.bake_integer_erosion(droplets.min(4096));
         self.generation_stats.erosion_time_ms = start.elapsed().as_secs_f32() * 1000.0;
     }
 

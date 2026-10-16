@@ -940,7 +940,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "slow test - skip for mutation testing"]
     fn test_scatter_generation() -> anyhow::Result<()> {
         let scatter = VegetationScatter::new(ScatterConfig::default());
 

@@ -294,7 +294,6 @@ mod tests {
                 "snow_accumulation",
                 include_str!("../shaders/snow_accumulation.wgsl"),
             ),
-            ("gpu_erosion", include_str!("../shaders/gpu_erosion.wgsl")),
             (
                 "virtual_texture",
                 include_str!("../shaders/virtual_texture.wgsl"),

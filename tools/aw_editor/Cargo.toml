@@ -93,6 +93,7 @@ astraweave-physics = { path = "../../astraweave-physics" }
 astraweave-scripting = { path = "../../astraweave-scripting" }
 astraweave-security = { path = "../../astraweave-security" }
 astraweave-terrain = { path = "../../astraweave-terrain" }
+astraweave-pcg = { path = "../../astraweave-pcg" }
 clap = { version = "4", features = ["derive"] }
 env_logger = "0.11"
 log = "0.4"

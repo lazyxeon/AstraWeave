@@ -1195,6 +1195,10 @@ mod mesh_tests {
             indices,
             albedo_image: None,
             texture_source_hint: None,
+            normal_image: None,
+            metallic_roughness_image: None,
+            occlusion_image: None,
+            emissive_image: None,
         };
         assert_eq!(mesh.vertices.len(), 3);
         assert_eq!(mesh.indices.len(), 3);
@@ -1229,6 +1233,10 @@ mod mesh_tests {
             indices,
             albedo_image: None,
             texture_source_hint: None,
+            normal_image: None,
+            metallic_roughness_image: None,
+            occlusion_image: None,
+            emissive_image: None,
         };
         compute_tangents(&mut mesh);
 
@@ -1270,6 +1278,10 @@ mod mesh_tests {
             indices,
             albedo_image: None,
             texture_source_hint: None,
+            normal_image: None,
+            metallic_roughness_image: None,
+            occlusion_image: None,
+            emissive_image: None,
         };
         compute_tangents(&mut mesh);
 
@@ -1315,6 +1327,10 @@ mod mesh_tests {
             indices,
             albedo_image: None,
             texture_source_hint: None,
+            normal_image: None,
+            metallic_roughness_image: None,
+            occlusion_image: None,
+            emissive_image: None,
         };
         compute_tangents(&mut mesh);
 

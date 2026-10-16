@@ -75,8 +75,7 @@ pub fn load_gltf(path: &std::path::Path, opts: &GltfOptions) -> Result<Vec<CpuMe
             let mut cpu = CpuMesh {
                 vertices: Vec::with_capacity(positions.len()),
                 indices,
-                albedo_image: None,
-                texture_source_hint: None,
+                ..CpuMesh::default()
             };
             if let Some(t) = tangents_opt {
                 for ((p, n), (u, t4)) in positions
@@ -96,22 +95,14 @@ pub fn load_gltf(path: &std::path::Path, opts: &GltfOptions) -> Result<Vec<CpuMe
                     generate_mikktspace_tangents(&mut cpu)?;
                 }
             }
-            // Extract base color texture from glTF material
-            cpu.albedo_image = prim
-                .material()
-                .pbr_metallic_roughness()
-                .base_color_texture()
-                .and_then(|info| {
-                    let idx = info.texture().source().index();
-                    images.get(idx).map(|img| {
-                        let pixels = convert_gltf_image_to_rgba8(img);
-                        CpuImage {
-                            width: img.width,
-                            height: img.height,
-                            pixels,
-                        }
-                    })
-                });
+            let material = prim.material();
+            let pbr = material.pbr_metallic_roughness();
+            cpu.albedo_image = image_from_texture(&images, pbr.base_color_texture())?;
+            cpu.metallic_roughness_image =
+                image_from_texture(&images, pbr.metallic_roughness_texture())?;
+            cpu.normal_image = image_from_texture(&images, material.normal_texture())?;
+            cpu.occlusion_image = image_from_texture(&images, material.occlusion_texture())?;
+            cpu.emissive_image = image_from_texture(&images, material.emissive_texture())?;
 
             // Extract texture source hint for filesystem-based discovery.
             // Even when the image data isn't embedded/loadable, the glTF
@@ -176,8 +167,52 @@ mod jail_tests {
 }
 
 #[cfg(feature = "gltf-assets")]
-fn convert_gltf_image_to_rgba8(img: &gltf::image::Data) -> Vec<u8> {
-    match img.format {
+fn image_from_texture<'a, T>(
+    images: &'a [gltf::image::Data],
+    info: Option<T>,
+) -> Result<Option<CpuImage>>
+where
+    T: TextureInfo,
+{
+    let Some(info) = info else {
+        return Ok(None);
+    };
+    let idx = info.texture_index();
+    let Some(img) = images.get(idx) else {
+        return Ok(None);
+    };
+    Ok(Some(convert_gltf_image(img)?))
+}
+
+#[cfg(feature = "gltf-assets")]
+trait TextureInfo {
+    fn texture_index(&self) -> usize;
+}
+
+#[cfg(feature = "gltf-assets")]
+impl TextureInfo for gltf::texture::Info<'_> {
+    fn texture_index(&self) -> usize {
+        self.texture().source().index()
+    }
+}
+
+#[cfg(feature = "gltf-assets")]
+impl<'a> TextureInfo for gltf::material::NormalTexture<'a> {
+    fn texture_index(&self) -> usize {
+        self.texture().source().index()
+    }
+}
+
+#[cfg(feature = "gltf-assets")]
+impl<'a> TextureInfo for gltf::material::OcclusionTexture<'a> {
+    fn texture_index(&self) -> usize {
+        self.texture().source().index()
+    }
+}
+
+#[cfg(feature = "gltf-assets")]
+fn convert_gltf_image(img: &gltf::image::Data) -> Result<CpuImage> {
+    let pixels = match img.format {
         gltf::image::Format::R8G8B8A8 => img.pixels.clone(),
         gltf::image::Format::R8G8B8 => {
             let mut rgba = Vec::with_capacity(img.pixels.len() / 3 * 4);
@@ -193,12 +228,112 @@ fn convert_gltf_image_to_rgba8(img: &gltf::image::Data) -> Vec<u8> {
             .chunks_exact(2)
             .flat_map(|rg| [rg[0], rg[1], 0, 255])
             .collect(),
-        _ => {
-            // R16/R16G16/R16G16B16/R16G16B16A16/R32G32B32FLOAT/R32G32B32A32FLOAT
-            // Fallback: 1x1 white
-            vec![255, 255, 255, 255]
+        gltf::image::Format::R16G16B16A16 => decode_u16_rgba(&img.pixels)?,
+        gltf::image::Format::R16G16B16 => decode_u16_rgb(&img.pixels)?,
+        gltf::image::Format::R32G32B32FLOAT => decode_f32_rgb(&img.pixels)?,
+        gltf::image::Format::R32G32B32A32FLOAT => decode_f32_rgba(&img.pixels)?,
+        other => {
+            anyhow::bail!(
+                "unsupported glTF image format {other:?} ({}x{}); refusing a 1x1 white stand-in",
+                img.width,
+                img.height
+            );
+        }
+    };
+    let expected = (img.width as usize)
+        .saturating_mul(img.height as usize)
+        .saturating_mul(4);
+    if pixels.len() != expected {
+        anyhow::bail!(
+            "glTF image {}x{} decoded to {} bytes, expected {expected}",
+            img.width,
+            img.height,
+            pixels.len()
+        );
+    }
+    Ok(CpuImage {
+        width: img.width,
+        height: img.height,
+        pixels,
+    })
+}
+
+#[cfg(feature = "gltf-assets")]
+fn u8_from_unit(v: f32) -> u8 {
+    (v.clamp(0.0, 1.0) * 255.0).round() as u8
+}
+
+#[cfg(feature = "gltf-assets")]
+fn le_f32(bytes: &[u8]) -> f32 {
+    let mut buf = [0u8; 4];
+    buf.copy_from_slice(bytes);
+    f32::from_le_bytes(buf)
+}
+
+#[cfg(feature = "gltf-assets")]
+fn le_u16(bytes: &[u8]) -> u16 {
+    let mut buf = [0u8; 2];
+    buf.copy_from_slice(bytes);
+    u16::from_le_bytes(buf)
+}
+
+#[cfg(feature = "gltf-assets")]
+fn decode_f32_rgb(bytes: &[u8]) -> Result<Vec<u8>> {
+    if bytes.len() % 12 != 0 {
+        anyhow::bail!("truncated R32G32B32FLOAT image");
+    }
+    let mut rgba = Vec::with_capacity(bytes.len() / 12 * 4);
+    for chunk in bytes.chunks_exact(12) {
+        let r = le_f32(&chunk[0..4]);
+        let g = le_f32(&chunk[4..8]);
+        let b = le_f32(&chunk[8..12]);
+        rgba.extend_from_slice(&[u8_from_unit(r), u8_from_unit(g), u8_from_unit(b), 255]);
+    }
+    Ok(rgba)
+}
+
+#[cfg(feature = "gltf-assets")]
+fn decode_f32_rgba(bytes: &[u8]) -> Result<Vec<u8>> {
+    if bytes.len() % 16 != 0 {
+        anyhow::bail!("truncated R32G32B32A32FLOAT image");
+    }
+    let mut rgba = Vec::with_capacity(bytes.len() / 4);
+    for chunk in bytes.chunks_exact(16) {
+        for i in 0..4 {
+            let v = le_f32(&chunk[i * 4..i * 4 + 4]);
+            rgba.push(u8_from_unit(v));
         }
     }
+    Ok(rgba)
+}
+
+#[cfg(feature = "gltf-assets")]
+fn decode_u16_rgb(bytes: &[u8]) -> Result<Vec<u8>> {
+    if bytes.len() % 6 != 0 {
+        anyhow::bail!("truncated R16G16B16 image");
+    }
+    let mut rgba = Vec::with_capacity(bytes.len() / 6 * 4);
+    for chunk in bytes.chunks_exact(6) {
+        for i in 0..3 {
+            let v = le_u16(&chunk[i * 2..i * 2 + 2]);
+            rgba.push((v >> 8) as u8);
+        }
+        rgba.push(255);
+    }
+    Ok(rgba)
+}
+
+#[cfg(feature = "gltf-assets")]
+fn decode_u16_rgba(bytes: &[u8]) -> Result<Vec<u8>> {
+    if bytes.len() % 8 != 0 {
+        anyhow::bail!("truncated R16G16B16A16 image");
+    }
+    let mut rgba = Vec::with_capacity(bytes.len() / 2);
+    for chunk in bytes.chunks_exact(2) {
+        let v = le_u16(chunk);
+        rgba.push((v >> 8) as u8);
+    }
+    Ok(rgba)
 }
 
 #[cfg(not(feature = "gltf-assets"))]

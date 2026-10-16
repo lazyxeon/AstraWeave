@@ -11,6 +11,7 @@ glam.workspace = true
 rand.workspace = true
 serde.workspace = true
 astraweave-core = { path = "../astraweave-core" }
+astraweave-destruction = { path = "../astraweave-destruction" }
 astraweave-gameplay = { path = "../astraweave-gameplay" }
 noise = "0.9"
 rayon = "1.11"
@@ -29,6 +30,7 @@ simd-noise = [] # Week 3 Action 8: SIMD-optimized noise generation (20-30% speed
 [dev-dependencies]
 criterion.workspace = true
 serde_json.workspace = true
+sha2.workspace = true
 tokio = { version = "1", features = ["rt", "rt-multi-thread", "sync", "macros"] }
 tempfile = "3"            # Phase 10: Terrain persistence tests
 

@@ -112,6 +112,7 @@ impl SimplificationMesh {
             indices: self.indices.clone(),
             albedo_image,
             texture_source_hint,
+            ..Default::default()
         };
         crate::mesh::compute_tangents(&mut mesh);
         mesh

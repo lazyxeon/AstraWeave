@@ -507,26 +507,26 @@ mod tests {
     }
 
     #[test]
-    #[ignore] // Extreme edge case - may overflow with very large coordinates
-    fn test_chunk_coord_large_coordinates() {
-        // Test with very large chunk coordinates
-        let large_coords = vec![
-            ChunkCoord::new(i32::MAX / 2, 0, 0),
-            ChunkCoord::new(0, i32::MAX / 2, 0),
-            ChunkCoord::new(0, 0, i32::MAX / 2),
-            ChunkCoord::new(i32::MIN / 2, 0, 0),
-            ChunkCoord::new(0, i32::MIN / 2, 0),
-            ChunkCoord::new(0, 0, i32::MIN / 2),
+    fn test_chunk_coord_round_trip_while_origin_is_exact_in_f32() {
+        // `to_world_pos` is `coord * CHUNK_SIZE` in f32. f32 integers are
+        // exact through 2^24, and CHUNK_SIZE is 32, so |coord| <= 524_288
+        // round-trips. i32::MAX / 2 does not: the measured reconstruction
+        // is 1073741824, one chunk past 1073741823.
+        let limit = (1 << 24) / CHUNK_SIZE;
+        let exact = [
+            ChunkCoord::new(0, 0, 0),
+            ChunkCoord::new(1, -1, 2),
+            ChunkCoord::new(limit, 0, -limit),
+            ChunkCoord::new(-limit, limit, 0),
         ];
-
-        for coord in large_coords {
-            let world_pos = coord.to_world_pos();
-            let reconstructed = ChunkCoord::from_world_pos(world_pos);
-
-            // Should round-trip correctly even with large values
-            assert_eq!(coord.x, reconstructed.x, "X should round-trip");
-            assert_eq!(coord.y, reconstructed.y, "Y should round-trip");
-            assert_eq!(coord.z, reconstructed.z, "Z should round-trip");
+        for coord in exact {
+            let reconstructed = ChunkCoord::from_world_pos(coord.to_world_pos());
+            assert_eq!(coord, reconstructed);
         }
+
+        let overflow = ChunkCoord::new(i32::MAX / 2, 0, 0);
+        let reconstructed = ChunkCoord::from_world_pos(overflow.to_world_pos());
+        assert_ne!(overflow.x, reconstructed.x);
+        assert_eq!(reconstructed.x, 1_073_741_824);
     }
 }

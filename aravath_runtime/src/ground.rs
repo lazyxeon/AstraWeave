@@ -4,7 +4,9 @@ use std::collections::{HashMap, HashSet};
 
 use astraweave_physics::{Layers, PhysicsWorld};
 use astraweave_render::mesh::{CpuMesh, MeshVertex as RenderVertex};
-use astraweave_terrain::{ChunkCoord, ChunkMesh, DualContouring, MeshVertex, Voxel, VoxelGrid};
+use astraweave_terrain::{
+    ChunkCoord, ChunkMesh, ColumnStream, DualContouring, MeshVertex, Voxel, VoxelGrid,
+};
 use glam::{Vec2, Vec3, Vec4};
 
 use crate::island::{self, biome_at, column_material, Biome, MAT_WOOD};
@@ -62,6 +64,7 @@ pub struct Ground {
     mesher: DualContouring,
     bodies: HashMap<ChunkCoord, u64>,
     generated: HashSet<ChunkCoord>,
+    stream: ColumnStream,
     scatter: HashMap<ChunkCoord, Vec<PropSpot>>,
     /// Chunk the ring was built around, plus the radius. A settled player
     /// whose grid is clean skips the set rebuild.
@@ -85,6 +88,7 @@ impl Ground {
             mesher: DualContouring::new(),
             bodies: HashMap::new(),
             generated: HashSet::new(),
+            stream: ColumnStream::new(),
             scatter: HashMap::new(),
             stream_key: None,
         }
@@ -107,32 +111,19 @@ impl Ground {
         if self.stream_key == Some(key) && self.grid.dirty_chunks().is_empty() {
             return Vec::new();
         }
-        let mut keep = HashSet::new();
-        for dz in -radius..=radius {
-            for dx in -radius..=radius {
-                if dx.abs().max(dz.abs()) > radius {
-                    continue;
-                }
-                let coord = ChunkCoord::new(center.x + dx, 0, center.z + dz);
-                keep.insert(coord);
-                if self.generated.insert(coord) {
-                    fill_height_chunk(&mut self.grid, coord);
-                    self.reapply_edits(coord);
-                    self.scatter.insert(coord, scatter_chunk(coord));
-                }
-            }
+        // ColumnStream is the loaded set. Island columns still fill the
+        // voxels, so the #205 heightfield stays the one the replay hashes.
+        let delta = self.stream.around(center.x, center.z, radius);
+        for &(x, z) in delta.added() {
+            let coord = ChunkCoord::new(x, 0, z);
+            self.generated.insert(coord);
+            fill_height_chunk(&mut self.grid, coord);
+            self.reapply_edits(coord);
+            self.scatter.insert(coord, scatter_chunk(coord));
         }
-        let mut stale: Vec<ChunkCoord> = self
-            .generated
-            .iter()
-            .copied()
-            .filter(|coord| coord.y == 0 && !keep.contains(coord))
-            .collect();
-        // HashSet iteration follows the process hasher. Removal order is part
-        // of the physics step, so it has to be the same on every run.
-        sort_coords(&mut stale);
         let mut removed = Vec::new();
-        for coord in stale {
+        for &(x, z) in delta.removed() {
+            let coord = ChunkCoord::new(x, 0, z);
             self.generated.remove(&coord);
             self.scatter.remove(&coord);
             self.grid.remove_chunk(coord);
@@ -613,6 +604,7 @@ fn chunk_parts(mesh: &ChunkMesh) -> Vec<ChunkPart> {
                 indices,
                 albedo_image: None,
                 texture_source_hint: None,
+                ..CpuMesh::default()
             },
         });
     }

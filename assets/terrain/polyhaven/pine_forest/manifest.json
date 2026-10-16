@@ -1,0 +1,1002 @@
+{
+  "license": "CC0",
+  "source": "https://polyhaven.com",
+  "resolution": "2k",
+  "maps": [
+    "diff",
+    "nor_gl",
+    "arm"
+  ],
+  "assets": [
+    {
+      "role": "forest_floor",
+      "polyhaven_id": "forest_ground_04",
+      "note": "Pine-forest collection ground. Role: forest floor.",
+      "files": [
+        {
+          "map": "diff",
+          "path": "assets/terrain/polyhaven/pine_forest/forest_ground_04_diff_2k.jpg",
+          "bytes": 4529321,
+          "sha256": "24b8aaf4c8547305d80b0e029ec365219ab1b90748d4ca5651bdc9e75bfde5e6",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/forest_ground_04/forest_ground_04_diff_2k.jpg"
+        },
+        {
+          "map": "nor_gl",
+          "path": "assets/terrain/polyhaven/pine_forest/forest_ground_04_nor_gl_2k.jpg",
+          "bytes": 5288849,
+          "sha256": "b37ac799ed410976541e0011c246fca254e74eaa3f096ae7a7d74178db5a6d9b",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/forest_ground_04/forest_ground_04_nor_gl_2k.jpg"
+        },
+        {
+          "map": "arm",
+          "path": "assets/terrain/polyhaven/pine_forest/forest_ground_04_arm_2k.jpg",
+          "bytes": 3418726,
+          "sha256": "a6086cb5611fabcc3dd4c9ac74bcf6cf8ed5d07e136ebe51255a5a3bea9e42c6",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/forest_ground_04/forest_ground_04_arm_2k.jpg"
+        }
+      ],
+      "license": "CC0",
+      "license_url": "https://polyhaven.com/license",
+      "source_url": "https://polyhaven.com/a/forest_ground_04",
+      "kind": "texture"
+    },
+    {
+      "role": "gravel_road",
+      "polyhaven_id": "gravel",
+      "note": "Gravel. Role: dirt-road surface.",
+      "files": [
+        {
+          "map": "diff",
+          "path": "assets/terrain/polyhaven/pine_forest/gravel_diff_2k.jpg",
+          "bytes": 3449100,
+          "sha256": "5eb5eec5af1fb33aa572279ad2aafb4ac31f15bd8222b4e2b1361bd9a1007d76",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/gravel/gravel_diff_2k.jpg"
+        },
+        {
+          "map": "nor_gl",
+          "path": "assets/terrain/polyhaven/pine_forest/gravel_nor_gl_2k.jpg",
+          "bytes": 5709278,
+          "sha256": "a6d6155ed388c45833c021f91c59b05c2a1364d195f619263c4561d71e03fb98",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/gravel/gravel_nor_gl_2k.jpg"
+        },
+        {
+          "map": "arm",
+          "path": "assets/terrain/polyhaven/pine_forest/gravel_arm_2k.jpg",
+          "bytes": 3589193,
+          "sha256": "e36d64a14975250ec258f529b2aac5bdcfe6a481109b3eb212973735b717f822",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/gravel/gravel_arm_2k.jpg"
+        }
+      ],
+      "license": "CC0",
+      "license_url": "https://polyhaven.com/license",
+      "source_url": "https://polyhaven.com/a/gravel",
+      "kind": "texture"
+    },
+    {
+      "role": "rock_face",
+      "polyhaven_id": "rock_wall_02",
+      "note": "Rock wall. Role: rock face.",
+      "files": [
+        {
+          "map": "diff",
+          "path": "assets/terrain/polyhaven/pine_forest/rock_wall_02_diff_2k.jpg",
+          "bytes": 1209071,
+          "sha256": "55aa5fd7f309501aeb343a9bbdff09a2643b9c012521452878e76ddc6dffe8ef",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/rock_wall_02/rock_wall_02_diff_2k.jpg"
+        },
+        {
+          "map": "nor_gl",
+          "path": "assets/terrain/polyhaven/pine_forest/rock_wall_02_nor_gl_2k.jpg",
+          "bytes": 763948,
+          "sha256": "ef5d7df77085827dc68cffeaf1e417185358f303dd5c11a99cf039b49f8e8ef6",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/rock_wall_02/rock_wall_02_nor_gl_2k.jpg"
+        },
+        {
+          "map": "arm",
+          "path": "assets/terrain/polyhaven/pine_forest/rock_wall_02_arm_2k.jpg",
+          "bytes": 848763,
+          "sha256": "335eec4cd08caa1b49009a93302a0cdf71a150711b439460d99b392bcb21df43",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/rock_wall_02/rock_wall_02_arm_2k.jpg"
+        }
+      ],
+      "license": "CC0",
+      "license_url": "https://polyhaven.com/license",
+      "source_url": "https://polyhaven.com/a/rock_wall_02",
+      "kind": "texture"
+    },
+    {
+      "role": "cliff",
+      "polyhaven_id": "cliff_side",
+      "note": "Cliff side. Role: cliff.",
+      "files": [
+        {
+          "map": "diff",
+          "path": "assets/terrain/polyhaven/pine_forest/cliff_side_diff_2k.jpg",
+          "bytes": 3387348,
+          "sha256": "bc6f92d72eb6383ecc3a1094ed9f5b37efb36ccf83cf29699bb5990e6775afee",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/cliff_side/cliff_side_diff_2k.jpg"
+        },
+        {
+          "map": "nor_gl",
+          "path": "assets/terrain/polyhaven/pine_forest/cliff_side_nor_gl_2k.jpg",
+          "bytes": 3585856,
+          "sha256": "eec5c0bb3daa1ad72f0f9c1d19caf78e84dfedcf3283b35b5a5dcf163718025f",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/cliff_side/cliff_side_nor_gl_2k.jpg"
+        },
+        {
+          "map": "arm",
+          "path": "assets/terrain/polyhaven/pine_forest/cliff_side_arm_2k.jpg",
+          "bytes": 2130381,
+          "sha256": "4c7eda3983f14892717baea852690840e6b4f6e7f30fb95f4f2c7c25b1856230",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/cliff_side/cliff_side_arm_2k.jpg"
+        }
+      ],
+      "license": "CC0",
+      "license_url": "https://polyhaven.com/license",
+      "source_url": "https://polyhaven.com/a/cliff_side",
+      "kind": "texture"
+    },
+    {
+      "role": "grass",
+      "polyhaven_id": "grass_ground",
+      "note": "Grass ground. Role: grass.",
+      "files": [
+        {
+          "map": "diff",
+          "path": "assets/terrain/polyhaven/pine_forest/grass_ground_diff_2k.jpg",
+          "bytes": 3787330,
+          "sha256": "4272bddc71a7fa659d1deeb13a9df8c42e68a5ac8cde7523187e4a081e028258",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/grass_ground/grass_ground_diff_2k.jpg"
+        },
+        {
+          "map": "nor_gl",
+          "path": "assets/terrain/polyhaven/pine_forest/grass_ground_nor_gl_2k.jpg",
+          "bytes": 5968024,
+          "sha256": "effa95c06af273c974476d9a74a234668a1c9292f60fffb4fa40348d638ee7f3",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/grass_ground/grass_ground_nor_gl_2k.jpg"
+        },
+        {
+          "map": "arm",
+          "path": "assets/terrain/polyhaven/pine_forest/grass_ground_arm_2k.jpg",
+          "bytes": 3850286,
+          "sha256": "79554d3cb2c1cbf4351960e16bc6bba004fa3112d256ff1b500ac994694b5673",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/grass_ground/grass_ground_arm_2k.jpg"
+        }
+      ],
+      "license": "CC0",
+      "license_url": "https://polyhaven.com/license",
+      "source_url": "https://polyhaven.com/a/grass_ground",
+      "kind": "texture"
+    },
+    {
+      "role": "pebbles",
+      "polyhaven_id": "floor_pebbles_01",
+      "note": "Floor pebbles. Role: pebbles.",
+      "files": [
+        {
+          "map": "diff",
+          "path": "assets/terrain/polyhaven/pine_forest/floor_pebbles_01_diff_2k.jpg",
+          "bytes": 2227964,
+          "sha256": "2ae79eca983e17255455af66fe35f64fe408bebe32a1e60f6a84dcaf4eb3596c",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/floor_pebbles_01/floor_pebbles_01_diff_2k.jpg"
+        },
+        {
+          "map": "nor_gl",
+          "path": "assets/terrain/polyhaven/pine_forest/floor_pebbles_01_nor_gl_2k.jpg",
+          "bytes": 3397270,
+          "sha256": "b2f6ecc9e8e252006b0763c83331b3733417b1df6aff9b4873d4b6c9161d4ca3",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/floor_pebbles_01/floor_pebbles_01_nor_gl_2k.jpg"
+        },
+        {
+          "map": "arm",
+          "path": "assets/terrain/polyhaven/pine_forest/floor_pebbles_01_arm_2k.jpg",
+          "bytes": 906788,
+          "sha256": "ec2eb50085b37e6cd918e8dc091d5d486f21f06e8da6f4e25a12ca1ed6571a0f",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/floor_pebbles_01/floor_pebbles_01_arm_2k.jpg"
+        }
+      ],
+      "license": "CC0",
+      "license_url": "https://polyhaven.com/license",
+      "source_url": "https://polyhaven.com/a/floor_pebbles_01",
+      "kind": "texture"
+    },
+    {
+      "role": "pine_forest_trail",
+      "kind": "texture",
+      "polyhaven_id": "rocky_trail",
+      "license": "CC0",
+      "license_url": "https://polyhaven.com/license",
+      "source_url": "https://polyhaven.com/a/rocky_trail",
+      "note": "Pine-forest collection trail. Role: path through the opening.",
+      "files": [
+        {
+          "path": "assets/terrain/polyhaven/pine_forest/rocky_trail_diff_2k.jpg",
+          "bytes": 4208713,
+          "sha256": "5434c6377a0b74be356c6f1f0a13842a38111a3dcec9934bf74f7c6f6396c54b",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/rocky_trail/rocky_trail_diff_2k.jpg",
+          "map": "diff"
+        },
+        {
+          "path": "assets/terrain/polyhaven/pine_forest/rocky_trail_nor_gl_2k.jpg",
+          "bytes": 5525906,
+          "sha256": "c8783873d83d7a14cb339332ddf59ee7ee31c68c4cd72770e2f673402755c93c",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/rocky_trail/rocky_trail_nor_gl_2k.jpg",
+          "map": "nor_gl"
+        },
+        {
+          "path": "assets/terrain/polyhaven/pine_forest/rocky_trail_arm_2k.jpg",
+          "bytes": 3986946,
+          "sha256": "cb3ec682ee4fc1d95b6d0a05dadcb03a0438f73ed0d7bb55b205c2c84d29dbef",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/rocky_trail/rocky_trail_arm_2k.jpg",
+          "map": "arm"
+        }
+      ]
+    },
+    {
+      "role": "pine_bark",
+      "kind": "texture",
+      "polyhaven_id": "pine_bark",
+      "license": "CC0",
+      "license_url": "https://polyhaven.com/license",
+      "source_url": "https://polyhaven.com/a/pine_bark",
+      "note": "Pine-forest collection bark. Role: trunk material.",
+      "files": [
+        {
+          "path": "assets/terrain/polyhaven/pine_forest/pine_bark_diff_2k.jpg",
+          "bytes": 3167561,
+          "sha256": "741f333ab9f8a0996d8a53905b5ac792fab77d7ccb8cac5fbaed8c99b9f6abd5",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/pine_bark/pine_bark_diff_2k.jpg",
+          "map": "diff"
+        },
+        {
+          "path": "assets/terrain/polyhaven/pine_forest/pine_bark_nor_gl_2k.jpg",
+          "bytes": 4637035,
+          "sha256": "e91d024441a698523472ef2001be2eade2f73005d798466c7acd3ec5d585667f",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/pine_bark/pine_bark_nor_gl_2k.jpg",
+          "map": "nor_gl"
+        },
+        {
+          "path": "assets/terrain/polyhaven/pine_forest/pine_bark_arm_2k.jpg",
+          "bytes": 3084928,
+          "sha256": "34b678403ce3d069d590c407b2bef54ab5b0da1a55a8a7b64f420861b3986e2b",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/pine_bark/pine_bark_arm_2k.jpg",
+          "map": "arm"
+        }
+      ]
+    },
+    {
+      "role": "forest_leaves_02",
+      "kind": "texture",
+      "polyhaven_id": "forest_leaves_02",
+      "license": "CC0",
+      "license_url": "https://polyhaven.com/license",
+      "source_url": "https://polyhaven.com/a/forest_leaves_02",
+      "note": "Leaf litter. Role: forest floor scatter cover.",
+      "files": [
+        {
+          "path": "assets/terrain/polyhaven/pine_forest/forest_leaves_02_diff_2k.jpg",
+          "bytes": 1668009,
+          "sha256": "9c38b2b151a0415457a6914966422cfca5a546c94674442e5395e0b1e908a196",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/forest_leaves_02/forest_leaves_02_diffuse_2k.jpg",
+          "map": "diff"
+        },
+        {
+          "path": "assets/terrain/polyhaven/pine_forest/forest_leaves_02_nor_gl_2k.jpg",
+          "bytes": 2323898,
+          "sha256": "af0346114834c347a8d6a138f6ea16a97b0bec8d6e4db32c24f1c7e482163235",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/forest_leaves_02/forest_leaves_02_nor_gl_2k.jpg",
+          "map": "nor_gl"
+        },
+        {
+          "path": "assets/terrain/polyhaven/pine_forest/forest_leaves_02_arm_2k.jpg",
+          "bytes": 1066850,
+          "sha256": "d8423b522d86285e26036d27fc51f4db7b8c6716b1558deb4575b288e14c28b7",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/forest_leaves_02/forest_leaves_02_arm_2k.jpg",
+          "map": "arm"
+        }
+      ]
+    },
+    {
+      "role": "leafy_grass",
+      "kind": "texture",
+      "polyhaven_id": "leafy_grass",
+      "license": "CC0",
+      "license_url": "https://polyhaven.com/license",
+      "source_url": "https://polyhaven.com/a/leafy_grass",
+      "note": "Leafy grass. Role: grass tufts ground.",
+      "files": [
+        {
+          "path": "assets/terrain/polyhaven/pine_forest/leafy_grass_diff_2k.jpg",
+          "bytes": 4766204,
+          "sha256": "8e1c6d21365d4b89bc5a35ab664da98a78dbc3ab9ba6100474881c8619a5b113",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/leafy_grass/leafy_grass_diff_2k.jpg",
+          "map": "diff"
+        },
+        {
+          "path": "assets/terrain/polyhaven/pine_forest/leafy_grass_nor_gl_2k.jpg",
+          "bytes": 6047262,
+          "sha256": "df0cf0ce96e653f033e5b934d5b12995464bda027aa53bd12e329be889aa9f45",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/leafy_grass/leafy_grass_nor_gl_2k.jpg",
+          "map": "nor_gl"
+        },
+        {
+          "path": "assets/terrain/polyhaven/pine_forest/leafy_grass_arm_2k.jpg",
+          "bytes": 4116600,
+          "sha256": "70d61c669fe9d186a84f5bb50e8a337083014d7e46534306a89d47d48fd5eb0e",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/leafy_grass/leafy_grass_arm_2k.jpg",
+          "map": "arm"
+        }
+      ]
+    },
+    {
+      "role": "aerial_rocks_01",
+      "kind": "texture",
+      "polyhaven_id": "aerial_rocks_01",
+      "license": "CC0",
+      "license_url": "https://polyhaven.com/license",
+      "source_url": "https://polyhaven.com/a/aerial_rocks_01",
+      "note": "Aerial rocks. Role: forest rock faces.",
+      "files": [
+        {
+          "path": "assets/terrain/polyhaven/pine_forest/aerial_rocks_01_diff_2k.jpg",
+          "bytes": 2968327,
+          "sha256": "25edb78d0c3daf52d44bbd076c74ef53865fc4cd386a922736cb167313420a7b",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/aerial_rocks_01/aerial_rocks_01_diff_2k.jpg",
+          "map": "diff"
+        },
+        {
+          "path": "assets/terrain/polyhaven/pine_forest/aerial_rocks_01_nor_gl_2k.jpg",
+          "bytes": 5309052,
+          "sha256": "570650b9c9bc26b541cbd09754ab6a6b3d198bb44ae964e3877f262d3c96567d",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/aerial_rocks_01/aerial_rocks_01_nor_gl_2k.jpg",
+          "map": "nor_gl"
+        },
+        {
+          "path": "assets/terrain/polyhaven/pine_forest/aerial_rocks_01_arm_2k.jpg",
+          "bytes": 877378,
+          "sha256": "aea53e51023e68c56faba7ff07150d5a48f4a1d799ede7781e7343536793c8b3",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/aerial_rocks_01/aerial_rocks_01_arm_2k.jpg",
+          "map": "arm"
+        }
+      ]
+    },
+    {
+      "role": "coast_land_rocks_01",
+      "kind": "texture",
+      "polyhaven_id": "coast_land_rocks_01",
+      "license": "CC0",
+      "license_url": "https://polyhaven.com/license",
+      "source_url": "https://polyhaven.com/a/coast_land_rocks_01",
+      "note": "Coast land rocks. Role: western hill rock.",
+      "files": [
+        {
+          "path": "assets/terrain/polyhaven/pine_forest/coast_land_rocks_01_diff_2k.jpg",
+          "bytes": 3567190,
+          "sha256": "78eb0b928b50affa50d34176aa38790bc75a6b075e34d9e34a6a9431d91da602",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/coast_land_rocks_01/coast_land_rocks_01_diff_2k.jpg",
+          "map": "diff"
+        },
+        {
+          "path": "assets/terrain/polyhaven/pine_forest/coast_land_rocks_01_nor_gl_2k.jpg",
+          "bytes": 4960096,
+          "sha256": "5cb2771de4f9cc13dd364ba3a37f7bf75d42fb0cdd5a7426ac3b2338f585d46d",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/coast_land_rocks_01/coast_land_rocks_01_nor_gl_2k.jpg",
+          "map": "nor_gl"
+        },
+        {
+          "path": "assets/terrain/polyhaven/pine_forest/coast_land_rocks_01_arm_2k.jpg",
+          "bytes": 3429431,
+          "sha256": "b2b88438a586f08dfee0f1cbf959ccfa7b7907c02d4c1568ee42741a4707ec32",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/coast_land_rocks_01/coast_land_rocks_01_arm_2k.jpg",
+          "map": "arm"
+        }
+      ]
+    },
+    {
+      "role": "broadleaf_tree",
+      "kind": "model",
+      "polyhaven_id": "tree_small_02",
+      "license": "CC0",
+      "license_url": "https://polyhaven.com/license",
+      "source_url": "https://polyhaven.com/a/tree_small_02",
+      "resolution": "1k",
+      "note": "Poly Haven broadleaf. Greybox trees stay KayKit until the demo agent swaps the loader.",
+      "files": [
+        {
+          "map": "tree_small_02_arm_1k",
+          "path": "assets/terrain/polyhaven/pine_forest/models/tree_small_02/textures/tree_small_02_arm_1k.jpg",
+          "bytes": 708242,
+          "sha256": "891c5a1bb124292984b01558e9f2b0302d27d2fa3ccf9dfc6c34f9ea4ca24e6c",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/tree_small_02/tree_small_02_arm_1k.jpg"
+        },
+        {
+          "map": "tree_small_02_branch_arm_1k",
+          "path": "assets/terrain/polyhaven/pine_forest/models/tree_small_02/textures/tree_small_02_branch_arm_1k.jpg",
+          "bytes": 375732,
+          "sha256": "8968b46d76c67da09ebbf4eed04b8123c9e0ddf5b55d123968b35b32aa76d27a",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/tree_small_02/tree_small_02_branch_arm_1k.jpg"
+        },
+        {
+          "map": "tree_small_02_branch_diff_1k",
+          "path": "assets/terrain/polyhaven/pine_forest/models/tree_small_02/textures/tree_small_02_branch_diff_1k.jpg",
+          "bytes": 449977,
+          "sha256": "a71b768e330c0c6cca097e30314f6b4e842ef724a1370f6aab14b4434eec64cb",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/tree_small_02/tree_small_02_branch_diff_1k.jpg"
+        },
+        {
+          "map": "tree_small_02_branch_nor_gl_1k",
+          "path": "assets/terrain/polyhaven/pine_forest/models/tree_small_02/textures/tree_small_02_branch_nor_gl_1k.jpg",
+          "bytes": 581596,
+          "sha256": "a2efae9e7fede259601188cd5cb7e561fc502bd87e04d862a9532b2d8e647a62",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/tree_small_02/tree_small_02_branch_nor_gl_1k.jpg"
+        },
+        {
+          "map": "tree_small_02_diff_1k",
+          "path": "assets/terrain/polyhaven/pine_forest/models/tree_small_02/textures/tree_small_02_diff_1k.jpg",
+          "bytes": 863246,
+          "sha256": "4e0093f407b3a1120a36de49a48ebe5a465a9a9b77e361c7a3e66866e115e404",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/tree_small_02/tree_small_02_diff_1k.jpg"
+        },
+        {
+          "map": "tree_small_02_leaves_arm_1k",
+          "path": "assets/terrain/polyhaven/pine_forest/models/tree_small_02/textures/tree_small_02_leaves_arm_1k.jpg",
+          "bytes": 633698,
+          "sha256": "71f81374daf5a8f3e6eb2c694264a1769fdb0bea508178e4105618eecea83c3e",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/tree_small_02/tree_small_02_leaves_arm_1k.jpg"
+        },
+        {
+          "map": "tree_small_02_leaves_diff_1k",
+          "path": "assets/terrain/polyhaven/pine_forest/models/tree_small_02/textures/tree_small_02_leaves_diff_1k.jpg",
+          "bytes": 340003,
+          "sha256": "261e7d7a5ac7d2e16ea8823ff8510be8f3f615999724232994039ad2885e5c36",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/tree_small_02/tree_small_02_leaves_diff_1k.jpg"
+        },
+        {
+          "map": "tree_small_02_leaves_nor_gl_1k",
+          "path": "assets/terrain/polyhaven/pine_forest/models/tree_small_02/textures/tree_small_02_leaves_nor_gl_1k.jpg",
+          "bytes": 681604,
+          "sha256": "8c72e04fb23e16ae1df79c01385a638473d1dd4dede3d51e83d70153c129f09b",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/tree_small_02/tree_small_02_leaves_nor_gl_1k.jpg"
+        },
+        {
+          "map": "tree_small_02_nor_gl_1k",
+          "path": "assets/terrain/polyhaven/pine_forest/models/tree_small_02/textures/tree_small_02_nor_gl_1k.jpg",
+          "bytes": 1228646,
+          "sha256": "9c83be074c950ea1b94c732c0c0291b53b9ba357f932d378bafe3ca3b4418871",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/tree_small_02/tree_small_02_nor_gl_1k.jpg"
+        },
+        {
+          "map": "gltf",
+          "path": "assets/terrain/polyhaven/pine_forest/models/tree_small_02/tree_small_02_1k.gltf",
+          "bytes": 9075,
+          "sha256": "3062a709614c05b80fdc1e56583998bc3cb1027b0d52f956c8ecfb882ff8ca6d",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/tree_small_02/tree_small_02_1k.gltf"
+        }
+      ],
+      "remote_files": [
+        {
+          "map": "bin",
+          "vendored": false,
+          "bytes": 95102324,
+          "sha256": "8da6c3c389ad8748286d1b7488cd827f75ebdad9d8f59ef7dfb0916df5edc634",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/tree_small_02/tree_small_02.bin",
+          "note": "Photogrammetry mesh buffer. Not vendored; the public repo keeps the glTF and 1k maps."
+        }
+      ],
+      "game_ready": {
+        "tool": "gltfpack",
+        "tool_version": "1.3",
+        "tool_url": "https://github.com/zeux/meshoptimizer/releases/download/v1.3/gltfpack-ubuntu.zip",
+        "tool_zip_sha256": "0666d9dc40d60fe5b9a45f3fc24f8e6ca87112974bd5de9ca57152aa13d06017",
+        "tool_binary_sha256": "595441045457bf3d069ec14fa807b1034d324db003bd66ac6377977cc11e7da3",
+        "command": "gltfpack -i <source.gltf> -o <out.glb> -sa -si <ratio> -tc -vp 14 -vt 12 -vn 8",
+        "source_tris": 2062487,
+        "lod0_triangle_budget": 15000,
+        "note": "Aggressive simplify (-sa) is required to reach the budget from the photogrammetry source. Output glb is byte-identical across two runs of this binary. Billboard is a two-quad cross packed with the same flags from a generated glTF.",
+        "lods": [
+          {
+            "level": "lod0",
+            "path": "assets/terrain/polyhaven/pine_forest/game/tree_small_02_lod0.glb",
+            "bytes": 2231640,
+            "sha256": "385cc89d4c334d8f854e15f02e071ef3967d7a80585920b7917f78ce0506dd5c",
+            "ratio": "0.007273",
+            "textures": "KTX2"
+          },
+          {
+            "level": "lod1",
+            "path": "assets/terrain/polyhaven/pine_forest/game/tree_small_02_lod1.glb",
+            "bytes": 1949176,
+            "sha256": "38324c8540206159d9ba346ac73cd26af4b09ac164a7a1c6eaba316e59967365",
+            "ratio": "0.002424",
+            "textures": "KTX2"
+          },
+          {
+            "level": "lod2",
+            "path": "assets/terrain/polyhaven/pine_forest/game/tree_small_02_lod2.glb",
+            "bytes": 1831300,
+            "sha256": "fc82a090bef0d359f2ba60be128984bfc02782ccf4cbc4865270143fe0fb6c95",
+            "ratio": "0.000727",
+            "textures": "KTX2"
+          },
+          {
+            "level": "billboard",
+            "path": "assets/terrain/polyhaven/pine_forest/game/tree_small_02_billboard.glb",
+            "bytes": 127032,
+            "sha256": "db5162691c21c0c599c1bad2f556caf3af07688913c2d0a927e35f24e8d88642",
+            "ratio": null,
+            "textures": "KTX2"
+          }
+        ]
+      }
+    },
+    {
+      "role": "island_tree",
+      "kind": "model",
+      "polyhaven_id": "island_tree_01",
+      "license": "CC0",
+      "license_url": "https://polyhaven.com/license",
+      "source_url": "https://polyhaven.com/a/island_tree_01",
+      "resolution": "1k",
+      "note": "Poly Haven island tree. Not wired into the greybox prop enum.",
+      "files": [
+        {
+          "map": "gltf",
+          "path": "assets/terrain/polyhaven/pine_forest/models/island_tree_01/island_tree_01_1k.gltf",
+          "bytes": 8576,
+          "sha256": "78e905a40670bfabb2760601d4d9a6c17193a50d68e6271c66893eb7bd75906d",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/island_tree_01/island_tree_01_1k.gltf"
+        },
+        {
+          "map": "island_tree_01_arm_1k",
+          "path": "assets/terrain/polyhaven/pine_forest/models/island_tree_01/textures/island_tree_01_arm_1k.jpg",
+          "bytes": 727403,
+          "sha256": "bf972dff0fbc71f146b4c02103fc3596477a49a9eff46b87b13c89b7b90d18ca",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/island_tree_01/island_tree_01_arm_1k.jpg"
+        },
+        {
+          "map": "island_tree_01_branches_arm_1k",
+          "path": "assets/terrain/polyhaven/pine_forest/models/island_tree_01/textures/island_tree_01_branches_arm_1k.jpg",
+          "bytes": 484806,
+          "sha256": "9e3f82263247ce4f619692cea4c4f6fe9936ff465a86623481849062642c7d05",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/island_tree_01/island_tree_01_branches_arm_1k.jpg"
+        },
+        {
+          "map": "island_tree_01_branches_diff_1k",
+          "path": "assets/terrain/polyhaven/pine_forest/models/island_tree_01/textures/island_tree_01_branches_diff_1k.jpg",
+          "bytes": 528304,
+          "sha256": "bee5ec22196e9e31ad0c95a5a9b4636571cc0124d5bb27a92f1e307d289cc60d",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/island_tree_01/island_tree_01_branches_diff_1k.jpg"
+        },
+        {
+          "map": "island_tree_01_branches_nor_gl_1k",
+          "path": "assets/terrain/polyhaven/pine_forest/models/island_tree_01/textures/island_tree_01_branches_nor_gl_1k.jpg",
+          "bytes": 819101,
+          "sha256": "2d67393ba76a0f49cf965fa0c99d8c16268e71e87b1203d35539bfdb971a514e",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/island_tree_01/island_tree_01_branches_nor_gl_1k.jpg"
+        },
+        {
+          "map": "island_tree_01_diff_1k",
+          "path": "assets/terrain/polyhaven/pine_forest/models/island_tree_01/textures/island_tree_01_diff_1k.jpg",
+          "bytes": 791327,
+          "sha256": "51bff9a3a6ed7d89ff4c73f01708b7267ed8d7a82b0cb12343741894f708218f",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/island_tree_01/island_tree_01_diff_1k.jpg"
+        },
+        {
+          "map": "island_tree_01_leaves_arm_1k",
+          "path": "assets/terrain/polyhaven/pine_forest/models/island_tree_01/textures/island_tree_01_leaves_arm_1k.jpg",
+          "bytes": 489476,
+          "sha256": "90da3a072dbcb052715b1313b9dbc69a4aa8a09a31a4b3868411a2bb51d72037",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/island_tree_01/island_tree_01_leaves_arm_1k.jpg"
+        },
+        {
+          "map": "island_tree_01_leaves_diff_1k",
+          "path": "assets/terrain/polyhaven/pine_forest/models/island_tree_01/textures/island_tree_01_leaves_diff_1k.jpg",
+          "bytes": 191886,
+          "sha256": "f56d762a1507754752abf164cc12acbc1e87ce87fa609ac44b98a1b0037c89d8",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/island_tree_01/island_tree_01_leaves_diff_1k.jpg"
+        },
+        {
+          "map": "island_tree_01_leaves_nor_gl_1k",
+          "path": "assets/terrain/polyhaven/pine_forest/models/island_tree_01/textures/island_tree_01_leaves_nor_gl_1k.jpg",
+          "bytes": 379443,
+          "sha256": "07ba461c0c95da4e49a42981766bdb6191d4c3c4d815796c082266dcc3cecdb8",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/island_tree_01/island_tree_01_leaves_nor_gl_1k.jpg"
+        },
+        {
+          "map": "island_tree_01_nor_gl_1k",
+          "path": "assets/terrain/polyhaven/pine_forest/models/island_tree_01/textures/island_tree_01_nor_gl_1k.jpg",
+          "bytes": 1207134,
+          "sha256": "ca22e428e1b1ebac47b2fc67ec355700c8779d6628d2fc6c3ebae9002988f63e",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/island_tree_01/island_tree_01_nor_gl_1k.jpg"
+        }
+      ],
+      "remote_files": [
+        {
+          "map": "bin",
+          "vendored": false,
+          "bytes": 60709812,
+          "sha256": "1faa817b46e24ed6fc90d3ec72188a0dc5ac75e82c89b3dd3c5fdaecf7cc005c",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/island_tree_01/island_tree_01.bin",
+          "note": "Photogrammetry mesh buffer. Not vendored; the public repo keeps the glTF and 1k maps."
+        }
+      ],
+      "game_ready": {
+        "tool": "gltfpack",
+        "tool_version": "1.3",
+        "tool_url": "https://github.com/zeux/meshoptimizer/releases/download/v1.3/gltfpack-ubuntu.zip",
+        "tool_zip_sha256": "0666d9dc40d60fe5b9a45f3fc24f8e6ca87112974bd5de9ca57152aa13d06017",
+        "tool_binary_sha256": "595441045457bf3d069ec14fa807b1034d324db003bd66ac6377977cc11e7da3",
+        "command": "gltfpack -i <source.gltf> -o <out.glb> -sa -si <ratio> -tc -vp 14 -vt 12 -vn 8",
+        "source_tris": 1599403,
+        "lod0_triangle_budget": 15000,
+        "note": "Aggressive simplify (-sa) is required to reach the budget from the photogrammetry source. Output glb is byte-identical across two runs of this binary. Billboard is a two-quad cross packed with the same flags from a generated glTF.",
+        "lods": [
+          {
+            "level": "lod0",
+            "path": "assets/terrain/polyhaven/pine_forest/game/island_tree_01_lod0.glb",
+            "bytes": 2360548,
+            "sha256": "5431981b08a19627dc6ed84a1875ffe129f5ca09615eeeef51e6f77b816fed7b",
+            "ratio": "0.009378",
+            "textures": "KTX2"
+          },
+          {
+            "level": "lod1",
+            "path": "assets/terrain/polyhaven/pine_forest/game/island_tree_01_lod1.glb",
+            "bytes": 1943724,
+            "sha256": "195ba618db38f3f8496ca29bb9884e410e1af53000d423769a8c7f562677bf28",
+            "ratio": "0.003126",
+            "textures": "KTX2"
+          },
+          {
+            "level": "lod2",
+            "path": "assets/terrain/polyhaven/pine_forest/game/island_tree_01_lod2.glb",
+            "bytes": 1802596,
+            "sha256": "03b871782411c1ac5765fde7fcc442ff1d7c560e5eafdbe6cee7e8e68f8b2f0e",
+            "ratio": "0.000938",
+            "textures": "KTX2"
+          },
+          {
+            "level": "billboard",
+            "path": "assets/terrain/polyhaven/pine_forest/game/island_tree_01_billboard.glb",
+            "bytes": 79980,
+            "sha256": "0c8e4778dc65017169ef3b804533365918197cf56a93eaa748adca02db0130bd",
+            "ratio": null,
+            "textures": "KTX2"
+          }
+        ]
+      }
+    },
+    {
+      "role": "dead_branches",
+      "kind": "model",
+      "polyhaven_id": "dry_branches_medium_01",
+      "license": "CC0",
+      "license_url": "https://polyhaven.com/license",
+      "source_url": "https://polyhaven.com/a/dry_branches_medium_01",
+      "resolution": "1k",
+      "note": "Pine-forest collection dry branches. Slug dry_branches_medium_01. There is no Poly Haven id dead_branches.",
+      "files": [
+        {
+          "map": "bin",
+          "path": "assets/terrain/polyhaven/pine_forest/models/dry_branches_medium_01/dry_branches_medium_01.bin",
+          "bytes": 465172,
+          "sha256": "969da1e8cbb2d8201e7fa0fc0dac5b19ef354b32c3d8c62dd9faa7cb3833d8ca",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/dry_branches_medium_01/dry_branches_medium_01.bin"
+        },
+        {
+          "map": "gltf",
+          "path": "assets/terrain/polyhaven/pine_forest/models/dry_branches_medium_01/dry_branches_medium_01_1k.gltf",
+          "bytes": 5844,
+          "sha256": "23f328ded9be1e151ccd7994b303c70221551544c4857a71474c1c01a14b8a22",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/dry_branches_medium_01/dry_branches_medium_01_1k.gltf"
+        },
+        {
+          "map": "dry_branches_medium_01_arm_1k",
+          "path": "assets/terrain/polyhaven/pine_forest/models/dry_branches_medium_01/textures/dry_branches_medium_01_arm_1k.jpg",
+          "bytes": 831180,
+          "sha256": "6d1ba6f4763d2815301a15bf62eaf68c345cecafb107e2681d12f26fbc657f5a",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/dry_branches_medium_01/dry_branches_medium_01_arm_1k.jpg"
+        },
+        {
+          "map": "dry_branches_medium_01_diff_1k",
+          "path": "assets/terrain/polyhaven/pine_forest/models/dry_branches_medium_01/textures/dry_branches_medium_01_diff_1k.jpg",
+          "bytes": 778799,
+          "sha256": "1fbaf810a9ca29d2faf0a179834e8dce10cf4854bafe13f63af111030b3ec660",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/dry_branches_medium_01/dry_branches_medium_01_diff_1k.jpg"
+        },
+        {
+          "map": "dry_branches_medium_01_nor_gl_1k",
+          "path": "assets/terrain/polyhaven/pine_forest/models/dry_branches_medium_01/textures/dry_branches_medium_01_nor_gl_1k.jpg",
+          "bytes": 1170647,
+          "sha256": "62f5205bfec599000bb7a430e003bbada939bc8d7976a7d3ab7709fd5893413c",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/dry_branches_medium_01/dry_branches_medium_01_nor_gl_1k.jpg"
+        }
+      ],
+      "game_ready": {
+        "tool": "gltfpack",
+        "tool_version": "1.3",
+        "tool_url": "https://github.com/zeux/meshoptimizer/releases/download/v1.3/gltfpack-ubuntu.zip",
+        "tool_zip_sha256": "0666d9dc40d60fe5b9a45f3fc24f8e6ca87112974bd5de9ca57152aa13d06017",
+        "tool_binary_sha256": "595441045457bf3d069ec14fa807b1034d324db003bd66ac6377977cc11e7da3",
+        "command": "gltfpack -i <source.gltf> -o <out.glb> -sa -si <ratio> -tc -vp 14 -vt 12 -vn 8",
+        "source_tris": 16803,
+        "lod0_triangle_budget": 15000,
+        "note": "Aggressive simplify (-sa) is required to reach the budget from the photogrammetry source. Output glb is byte-identical across two runs of this binary. Billboard is a two-quad cross packed with the same flags from a generated glTF.",
+        "lods": [
+          {
+            "level": "lod0",
+            "path": "assets/terrain/polyhaven/pine_forest/game/dry_branches_medium_01_lod0.glb",
+            "bytes": 948816,
+            "sha256": "45d778f667dba73312005c23e2ab395334e832a514a3b22e657b26d764411a04",
+            "ratio": "0.892697",
+            "textures": "KTX2"
+          },
+          {
+            "level": "lod1",
+            "path": "assets/terrain/polyhaven/pine_forest/game/dry_branches_medium_01_lod1.glb",
+            "bytes": 799552,
+            "sha256": "01d17ab7687cc903ed59d073067c5ef21ca77a1c42064a7f0ea54cd5c72542cc",
+            "ratio": "0.297565",
+            "textures": "KTX2"
+          },
+          {
+            "level": "lod2",
+            "path": "assets/terrain/polyhaven/pine_forest/game/dry_branches_medium_01_lod2.glb",
+            "bytes": 734508,
+            "sha256": "cc82cd06b5e019da4478286e544f9cc5f7e2bafe2e67fd3c09be6d7599becc1f",
+            "ratio": "0.089271",
+            "textures": "KTX2"
+          },
+          {
+            "level": "billboard",
+            "path": "assets/terrain/polyhaven/pine_forest/game/dry_branches_medium_01_billboard.glb",
+            "bytes": 227224,
+            "sha256": "9df747badf96a3f16417a4f663d2d9990a3e591ecd2ae687e48bc59d89961b2d",
+            "ratio": null,
+            "textures": "KTX2"
+          }
+        ]
+      }
+    },
+    {
+      "role": "conifer",
+      "kind": "model",
+      "polyhaven_id": "pine_tree_01",
+      "license": "CC0",
+      "license_url": "https://polyhaven.com/license",
+      "source_url": "https://polyhaven.com/a/pine_tree_01",
+      "resolution": "1k",
+      "note": "CC0 conifer. Poly Haven pine_tree_01, pine_forest collection. Source https://polyhaven.com/a/pine_tree_01 License CC0 https://polyhaven.com/license",
+      "files": [
+        {
+          "map": "gltf",
+          "path": "assets/terrain/polyhaven/pine_forest/models/pine_tree_01/pine_tree_01_1k.gltf",
+          "bytes": 30596,
+          "sha256": "c81e8eebbda722313f07bed37b8b9156ce520f7fa95488d83a694d02fffdb469",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/pine_tree_01/pine_tree_01_1k.gltf"
+        },
+        {
+          "map": "pine_tree_01_bark_arm_1k",
+          "path": "assets/terrain/polyhaven/pine_forest/models/pine_tree_01/textures/pine_tree_01_bark_arm_1k.jpg",
+          "bytes": 801278,
+          "sha256": "336a4680cd571b6076b67afee2310b290b8900d9d126eb39ec1ae92e95be2ea9",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/pine_tree_01/pine_tree_01_bark_arm_1k.jpg"
+        },
+        {
+          "map": "pine_tree_01_bark_diff_1k",
+          "path": "assets/terrain/polyhaven/pine_forest/models/pine_tree_01/textures/pine_tree_01_bark_diff_1k.jpg",
+          "bytes": 725265,
+          "sha256": "5c76836b01c3536fa0e24207b67bf4f3315b53ebe2b4ecc6f08dfcf3f8d74929",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/pine_tree_01/pine_tree_01_bark_diff_1k.jpg"
+        },
+        {
+          "map": "pine_tree_01_bark_nor_gl_1k",
+          "path": "assets/terrain/polyhaven/pine_forest/models/pine_tree_01/textures/pine_tree_01_bark_nor_gl_1k.jpg",
+          "bytes": 1016849,
+          "sha256": "05c46455531781b6cf18cae0648cf627f60ee942adaa8bcbfd1592fc2506a9e0",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/pine_tree_01/pine_tree_01_bark_nor_gl_1k.jpg"
+        },
+        {
+          "map": "pine_tree_01_trunk_a_arm_1k",
+          "path": "assets/terrain/polyhaven/pine_forest/models/pine_tree_01/textures/pine_tree_01_trunk_a_arm_1k.jpg",
+          "bytes": 788967,
+          "sha256": "7286e74c42b32c2df6cf04c3050b81b2ff636dff1d4389aecfff80bb8d5904da",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/pine_tree_01/pine_tree_01_trunk_a_arm_1k.jpg"
+        },
+        {
+          "map": "pine_tree_01_trunk_a_diff_1k",
+          "path": "assets/terrain/polyhaven/pine_forest/models/pine_tree_01/textures/pine_tree_01_trunk_a_diff_1k.jpg",
+          "bytes": 789806,
+          "sha256": "cfb646cbc4b6cb2db410eb4342174ebe7812a4ae03520491e788722cf1867286",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/pine_tree_01/pine_tree_01_trunk_a_diff_1k.jpg"
+        },
+        {
+          "map": "pine_tree_01_trunk_a_nor_gl_1k",
+          "path": "assets/terrain/polyhaven/pine_forest/models/pine_tree_01/textures/pine_tree_01_trunk_a_nor_gl_1k.jpg",
+          "bytes": 997355,
+          "sha256": "9d46c05be22de0dcc4af7e3703fde4c7397644b9faeff4914c0469a6bde99caf",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/pine_tree_01/pine_tree_01_trunk_a_nor_gl_1k.jpg"
+        },
+        {
+          "map": "pine_tree_01_trunk_b_arm_1k",
+          "path": "assets/terrain/polyhaven/pine_forest/models/pine_tree_01/textures/pine_tree_01_trunk_b_arm_1k.jpg",
+          "bytes": 732269,
+          "sha256": "8141cd57969269604351e366400354e47e7f25294881387e1ea307b48c37b033",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/pine_tree_01/pine_tree_01_trunk_b_arm_1k.jpg"
+        },
+        {
+          "map": "pine_tree_01_trunk_b_diff_1k",
+          "path": "assets/terrain/polyhaven/pine_forest/models/pine_tree_01/textures/pine_tree_01_trunk_b_diff_1k.jpg",
+          "bytes": 687662,
+          "sha256": "9d39263a9243a4b6cd669de5e3a504eae32d52f5ab48e471cad5f7e52e052508",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/pine_tree_01/pine_tree_01_trunk_b_diff_1k.jpg"
+        },
+        {
+          "map": "pine_tree_01_trunk_b_nor_gl_1k",
+          "path": "assets/terrain/polyhaven/pine_forest/models/pine_tree_01/textures/pine_tree_01_trunk_b_nor_gl_1k.jpg",
+          "bytes": 915273,
+          "sha256": "5e498ee6fee29437196085620c978346ba6731edad8bfc2a2642868f8bf64efe",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/pine_tree_01/pine_tree_01_trunk_b_nor_gl_1k.jpg"
+        },
+        {
+          "map": "pine_tree_01_twig_arm_1k",
+          "path": "assets/terrain/polyhaven/pine_forest/models/pine_tree_01/textures/pine_tree_01_twig_arm_1k.jpg",
+          "bytes": 474787,
+          "sha256": "47facef9985e8c073184a64d15ea14bd2dc3b3debfb93f3671b6d5ad0dbc163d",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/pine_tree_01/pine_tree_01_twig_arm_1k.jpg"
+        },
+        {
+          "map": "pine_tree_01_twig_diff_1k",
+          "path": "assets/terrain/polyhaven/pine_forest/models/pine_tree_01/textures/pine_tree_01_twig_diff_1k.jpg",
+          "bytes": 510932,
+          "sha256": "e649f0f9bc74d1af5f1a45eaf2fe7a29adaaddfab251f746b983da301e4b80e1",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/pine_tree_01/pine_tree_01_twig_diff_1k.jpg"
+        },
+        {
+          "map": "pine_tree_01_twig_nor_gl_1k",
+          "path": "assets/terrain/polyhaven/pine_forest/models/pine_tree_01/textures/pine_tree_01_twig_nor_gl_1k.jpg",
+          "bytes": 797935,
+          "sha256": "2a02a482a18d20255c800845902d5e0061d2a2d14107d7c4ed0b789414153141",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/pine_tree_01/pine_tree_01_twig_nor_gl_1k.jpg"
+        }
+      ],
+      "remote_files": [
+        {
+          "map": "bin",
+          "vendored": false,
+          "bytes": 948849556,
+          "sha256": "9955ac7e2f8fe28dc6da8e4d478593ad830f8a23d44e39a2187ef7dffac2646b",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/pine_tree_01/pine_tree_01.bin",
+          "note": "Photogrammetry mesh buffer. Not vendored; the public repo keeps the glTF and 1k maps."
+        }
+      ],
+      "game_ready": {
+        "tool": "gltfpack",
+        "tool_version": "1.3",
+        "tool_url": "https://github.com/zeux/meshoptimizer/releases/download/v1.3/gltfpack-ubuntu.zip",
+        "tool_zip_sha256": "0666d9dc40d60fe5b9a45f3fc24f8e6ca87112974bd5de9ca57152aa13d06017",
+        "tool_binary_sha256": "595441045457bf3d069ec14fa807b1034d324db003bd66ac6377977cc11e7da3",
+        "command": "gltfpack -i <source.gltf> -o <out.glb> -sa -si <ratio> -tc -vp 14 -vt 12 -vn 8",
+        "source_tris": 17182252,
+        "lod0_triangle_budget": 15000,
+        "note": "Aggressive simplify (-sa) is required to reach the budget from the photogrammetry source. Output glb is byte-identical across two runs of this binary. Billboard is a two-quad cross packed with the same flags from a generated glTF.",
+        "lods": [
+          {
+            "level": "lod0",
+            "path": "assets/terrain/polyhaven/pine_forest/game/pine_tree_01_lod0.glb",
+            "bytes": 2763864,
+            "sha256": "b7859193a3947236e4af006a53ed7ea3b2ba8124143516576deea4f524e39d4f",
+            "ratio": "0.000873",
+            "textures": "KTX2"
+          },
+          {
+            "level": "lod1",
+            "path": "assets/terrain/polyhaven/pine_forest/game/pine_tree_01_lod1.glb",
+            "bytes": 2541664,
+            "sha256": "73f5aff419db6222b3543bd95f17f89b3041ce51708fdccf663e28305ac1395a",
+            "ratio": "0.000291",
+            "textures": "KTX2"
+          },
+          {
+            "level": "lod2",
+            "path": "assets/terrain/polyhaven/pine_forest/game/pine_tree_01_lod2.glb",
+            "bytes": 2457040,
+            "sha256": "b6a7d03323cc4ce788bf7d12990d7e06c7d9ce009f58be69c80d5bab5b5c9cc4",
+            "ratio": "0.000087",
+            "textures": "KTX2"
+          },
+          {
+            "level": "billboard",
+            "path": "assets/terrain/polyhaven/pine_forest/game/pine_tree_01_billboard.glb",
+            "bytes": 171908,
+            "sha256": "9700a461851f270c61672eb6a806fd37e49810134a4e436fd6bc855203426a6b",
+            "ratio": null,
+            "textures": "KTX2"
+          }
+        ]
+      }
+    },
+    {
+      "role": "opening_sky_ibl",
+      "kind": "hdri",
+      "polyhaven_id": "spruit_sunrise",
+      "license": "CC0",
+      "license_url": "https://polyhaven.com/license",
+      "source_url": "https://polyhaven.com/a/spruit_sunrise",
+      "resolution": "2k",
+      "note": "Forest opening sky/IBL. Do not install a second sky path. PR #216 (WS-RENDER-ENV-A) owns renderer IBL. Its phase-1 note names on-disk kloppenheim_02 as the current showcase HDRI. spruit_sunrise is the forest-opening file for that agent to bind.",
+      "files": [
+        {
+          "path": "assets/terrain/polyhaven/pine_forest/hdri/spruit_sunrise_2k.exr",
+          "bytes": 5362584,
+          "sha256": "6db7045b78c3872843aa42563b851d4792f828082f2e5d9df6b3b510806103b7",
+          "url": "https://dl.polyhaven.org/file/ph-assets/HDRIs/exr/2k/spruit_sunrise_2k.exr",
+          "map": "hdri"
+        }
+      ]
+    },
+    {
+      "role": "greybox_forest_props",
+      "kind": "pack",
+      "license": "CC0",
+      "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "source_url": "https://kaylousberg.itch.io/kaykit-complete",
+      "note": "KayKit Forest Nature Pack (Kay Lousberg), CC0. The Aravath demo agent on PR #205 integrates these greybox props. This workstream does not replace that loader. No Unity Asset Store files.",
+      "files": [
+        {
+          "map": "glb",
+          "path": "assets/aravath/models/nature/grass.glb",
+          "bytes": 11496,
+          "sha256": "260e41d3e5f2472492ed7b475c5b92a30b13ce2bad408535b5ff50574d4575e7",
+          "url": "https://kaylousberg.itch.io/kaykit-complete"
+        },
+        {
+          "map": "glb",
+          "path": "assets/aravath/models/nature/plant_bush.glb",
+          "bytes": 4396,
+          "sha256": "ae7b1beb39e242b13f5f29e3ec23ef21034b814f82297b8aa00a9bf4e1b09590",
+          "url": "https://kaylousberg.itch.io/kaykit-complete"
+        },
+        {
+          "map": "glb",
+          "path": "assets/aravath/models/nature/rock_largeA.glb",
+          "bytes": 7552,
+          "sha256": "6dd15390fd96501dcd1454765a17ba61dbbd8d47705dfe5149c8dd92b353ce25",
+          "url": "https://kaylousberg.itch.io/kaykit-complete"
+        },
+        {
+          "map": "glb",
+          "path": "assets/aravath/models/nature/tree_oak.glb",
+          "bytes": 14644,
+          "sha256": "d7fd8773674928c50c11b66d12c636d49bdcc15a8b1c7fbb98e6f63a3439a3f3",
+          "url": "https://kaylousberg.itch.io/kaykit-complete"
+        },
+        {
+          "map": "glb",
+          "path": "assets/aravath/models/nature/tree_palmShort.glb",
+          "bytes": 15596,
+          "sha256": "d2526ca31c144a238820aa5c0f6183c5b9cf37fd3cc037932e637cf7c473ba27",
+          "url": "https://kaylousberg.itch.io/kaykit-complete"
+        },
+        {
+          "map": "glb",
+          "path": "assets/aravath/models/nature/tree_pineDefaultA.glb",
+          "bytes": 17220,
+          "sha256": "60d8f352fa3659ed275e06cbddfecf8f92c8effe2977c2f2d7b29b6c9b582e46",
+          "url": "https://kaylousberg.itch.io/kaykit-complete"
+        }
+      ]
+    }
+  ],
+  "excluded": "Unity Asset Store content is not used.",
+  "conifer": {
+    "id": "pine_tree_01",
+    "source_url": "https://polyhaven.com/a/pine_tree_01",
+    "license": "CC0",
+    "license_url": "https://polyhaven.com/license"
+  },
+  "game_lod_pipeline": {
+    "script": "assets/terrain/polyhaven/pine_forest/build_game_lod.py",
+    "gltfpack": "1.3"
+  }
+}

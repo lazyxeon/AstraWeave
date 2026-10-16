@@ -1289,6 +1289,21 @@ impl EditorTabViewer {
                     crate::panels::terrain_panel::TerrainAction::SetActiveTool { uuid } => {
                         self.pending_set_active_tool.push(uuid);
                     }
+                    crate::panels::terrain_panel::TerrainAction::RunHydraulicErosion => {
+                        self.terrain_panel
+                            .terrain_state_mut()
+                            .bake_integer_erosion(48);
+                    }
+                    crate::panels::terrain_panel::TerrainAction::RunThermalErosion => {
+                        self.terrain_panel
+                            .terrain_state_mut()
+                            .bake_integer_erosion(24);
+                    }
+                    crate::panels::terrain_panel::TerrainAction::RunWindErosion => {
+                        self.terrain_panel
+                            .terrain_state_mut()
+                            .bake_integer_erosion(12);
+                    }
                     _ => {}
                 }
             }
@@ -1404,6 +1419,20 @@ impl EditorTabViewer {
     /// Get the terrain generator seed from the terrain panel.
     pub fn terrain_seed(&self) -> u64 {
         self.terrain_panel.terrain_state().seed()
+    }
+
+    /// Integer columns captured the last time terrain was generated.
+    pub fn saved_ground(&self) -> &[u8] {
+        self.terrain_panel.terrain_state().saved_ground()
+    }
+
+    pub fn erosion_droplets(&self) -> u32 {
+        self.terrain_panel.terrain_state().erosion_droplets()
+    }
+
+    /// DestructionCommand log from Apply Erosion. Empty when no droplets ran.
+    pub fn erosion_commands(&self) -> &[u8] {
+        self.terrain_panel.terrain_state().erosion_commands()
     }
 
     /// Ensure terrain chunks exist, generating with the specified biome if empty.
@@ -7820,6 +7849,21 @@ impl TabViewer for EditorTabViewer {
                             // capture SetActiveTool for main.rs drain.
                             crate::panels::terrain_panel::TerrainAction::SetActiveTool { uuid } => {
                                 self.pending_set_active_tool.push(uuid);
+                            }
+                            crate::panels::terrain_panel::TerrainAction::RunHydraulicErosion => {
+                                self.terrain_panel
+                                    .terrain_state_mut()
+                                    .bake_integer_erosion(48);
+                            }
+                            crate::panels::terrain_panel::TerrainAction::RunThermalErosion => {
+                                self.terrain_panel
+                                    .terrain_state_mut()
+                                    .bake_integer_erosion(24);
+                            }
+                            crate::panels::terrain_panel::TerrainAction::RunWindErosion => {
+                                self.terrain_panel
+                                    .terrain_state_mut()
+                                    .bake_integer_erosion(12);
                             }
                             _ => {} // Other actions (seed, biome, etc.) handled internally
                         }

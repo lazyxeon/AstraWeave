@@ -28,6 +28,10 @@ pub fn load_obj(path: &std::path::Path) -> Result<Vec<CpuMesh>> {
             indices: mesh.indices.clone(),
             albedo_image: None,
             texture_source_hint: None,
+            normal_image: None,
+            metallic_roughness_image: None,
+            occlusion_image: None,
+            emissive_image: None,
         };
         for i in 0..(mesh.positions.len() / 3) {
             let p = Vec3::new(

@@ -467,6 +467,33 @@ impl Default for LodConfig {
     }
 }
 
+/// Screen-space inputs for [`LodMeshGenerator`]. Distance thresholds are
+/// used when the caller does not have a view.
+#[derive(Debug, Clone, Copy)]
+pub struct ViewParams {
+    /// Vertical field of view in radians.
+    pub fov_y: f32,
+    /// Viewport height in pixels.
+    pub screen_height: f32,
+}
+
+impl ViewParams {
+    pub fn new(fov_y: f32, screen_height: f32) -> Self {
+        Self {
+            fov_y,
+            screen_height,
+        }
+    }
+}
+
+fn compute_pixel_error(geometric_error: f32, distance: f32, view: &ViewParams) -> f32 {
+    let denom = distance * 2.0 * (view.fov_y * 0.5).tan();
+    if denom < 1e-6 {
+        return f32::MAX;
+    }
+    (geometric_error * view.screen_height) / denom
+}
+
 /// LOD mesh generator
 pub struct LodMeshGenerator {
     config: LodConfig,
@@ -490,24 +517,20 @@ impl LodMeshGenerator {
         &mut self,
         chunk: &VoxelChunk,
         distance: f32,
-        view: Option<&crate::lod_manager::ViewParams>,
+        view: Option<&ViewParams>,
     ) -> ChunkMesh {
         let lod_level = self.select_lod_level(distance, view);
         self.generators[lod_level].generate_mesh(chunk)
     }
 
     /// Select LOD level based on screen-space error (preferred) or distance (fallback).
-    fn select_lod_level(
-        &self,
-        distance: f32,
-        view: Option<&crate::lod_manager::ViewParams>,
-    ) -> usize {
+    fn select_lod_level(&self, distance: f32, view: Option<&ViewParams>) -> usize {
         if let Some(vp) = view {
             // Screen-space error: walk from coarsest LOD toward finest.
             // Pick the coarsest level whose pixel error is within budget.
             for level in (0..4).rev() {
                 let geo_err = self.config.geometric_errors[level];
-                let px = crate::lod_manager::compute_pixel_error(geo_err, distance, vp);
+                let px = compute_pixel_error(geo_err, distance, vp);
                 if px <= self.config.pixel_error_budget {
                     return level;
                 }
@@ -577,6 +600,43 @@ mod tests {
         assert_eq!(lod_gen.select_lod_level(200.0, None), 1);
         assert_eq!(lod_gen.select_lod_level(400.0, None), 2);
         assert_eq!(lod_gen.select_lod_level(1500.0, None), 3);
+    }
+
+    #[test]
+    fn edge_midpoint_is_stored_and_two_runs_match_bits() {
+        let coord = ChunkCoord::new(0, 0, 0);
+        let mut chunk = VoxelChunk::new(coord);
+        // Corner (3,0,0) is not the origin of cell (2,0,0). The old cache
+        // keyed vertices by cell position and looked them up with
+        // `edge_key.min`, so this edge's midpoint never became a vertex.
+        chunk.set_voxel(IVec3::new(3, 0, 0), Voxel::new(1.0, 1));
+
+        let mut first = DualContouring::new();
+        let mut second = DualContouring::new();
+        let a = first.generate_mesh(&chunk);
+        let b = second.generate_mesh(&chunk);
+        assert!(!a.indices.is_empty());
+        assert_eq!(a.indices, b.indices);
+        assert_eq!(a.vertices.len(), b.vertices.len());
+        for (left, right) in a.vertices.iter().zip(b.vertices.iter()) {
+            assert_eq!(left.position.x.to_bits(), right.position.x.to_bits());
+            assert_eq!(left.position.y.to_bits(), right.position.y.to_bits());
+            assert_eq!(left.position.z.to_bits(), right.position.z.to_bits());
+            assert_eq!(left.material, right.material);
+        }
+        let midpoint = a.vertices.iter().any(|vertex| {
+            vertex.position.x.to_bits() == 3.0f32.to_bits()
+                && vertex.position.y.to_bits() == 0.0f32.to_bits()
+                && vertex.position.z.to_bits() == 0.5f32.to_bits()
+        });
+        assert!(
+            midpoint,
+            "expected the crossed edge midpoint (3, 0, 0.5), got {:?}",
+            a.vertices
+                .iter()
+                .map(|vertex| vertex.position)
+                .collect::<Vec<_>>()
+        );
     }
 
     #[test]

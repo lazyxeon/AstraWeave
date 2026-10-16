@@ -314,6 +314,12 @@ impl WfcGrid {
     }
 
     /// Run the full WFC algorithm until all cells are collapsed.
+    /// Collapse with [`crate::SeedRng`] so the same seed is the same dungeon.
+    pub fn collapse_seeded(&mut self, seed: u64) -> Result<(), WfcError> {
+        let mut rng = crate::SeedRng::new(seed, "wfc");
+        self.collapse_all(&mut rng)
+    }
+
     pub fn collapse_all<R: Rng>(&mut self, rng: &mut R) -> Result<(), WfcError> {
         if self.tileset.tile_count() == 0 {
             return Err(WfcError::EmptyTileSet);
@@ -539,6 +545,18 @@ pub fn rooms_and_corridors_tileset() -> TileSet {
     ts
 }
 
+/// Collapse a 6×6 rooms-and-corridors dungeon and count placed tiles.
+///
+/// The editor dungeon button calls this. The same seed returns the same count.
+pub fn seeded_dungeon_tile_count(seed: u64) -> usize {
+    let tileset = rooms_and_corridors_tileset();
+    let mut grid = WfcGrid::new(6, 6, &tileset);
+    match grid.collapse_seeded(seed) {
+        Ok(()) => grid.to_grid().into_iter().flatten().flatten().count(),
+        Err(_) => 0,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -690,6 +708,17 @@ mod tests {
     }
 
     #[test]
+    fn wfc_seeded_collapse_is_stable() {
+        let ts = rooms_and_corridors_tileset();
+        let mut a = WfcGrid::new(6, 6, &ts);
+        let mut b = WfcGrid::new(6, 6, &ts);
+        a.collapse_seeded(7).expect("seed 7");
+        b.collapse_seeded(7).expect("seed 7");
+        assert_eq!(a.to_grid(), b.to_grid());
+        assert_eq!(seeded_dungeon_tile_count(7), seeded_dungeon_tile_count(7));
+        assert!(seeded_dungeon_tile_count(7) > 0);
+    }
+
     fn wfc_rooms_tileset() {
         let ts = rooms_and_corridors_tileset();
         assert_eq!(ts.tile_count(), 10);

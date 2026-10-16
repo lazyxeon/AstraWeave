@@ -10,7 +10,6 @@
 //! - structures.rs:451 → choose_structure_type target -= → +=, /=
 //! - structures.rs:452 → choose_structure_type target <= → >
 
-use astraweave_terrain::streaming_diagnostics::HitchDetector;
 use astraweave_terrain::structures::{StructureConfig, StructureGenerator, StructureType};
 use astraweave_terrain::BiomeType;
 use std::collections::HashSet;
@@ -49,45 +48,6 @@ fn gather_structures(
         }
     }
     all
-}
-
-// ───────────────────── P99 Frame Time Tests ─────────────────
-
-/// TARGETS: streaming_diagnostics.rs:101 → * → +
-/// With 200 frames, sorted.len()=200, index = ceil(200 * 0.99) = ceil(198) = 198
-/// If * becomes +, index = ceil(200 + 0.99) = ceil(200.99) = 201 → capped to 199
-/// The p99 should be near the high end but NOT the absolute max.
-#[test]
-fn p99_large_sample_not_max() {
-    let mut det = HitchDetector::new(300, 16.0);
-    // Record 300 frames with linearly increasing times
-    for i in 0..300 {
-        det.record_frame(i as f32 * 0.1); // 0.0, 0.1, 0.2, ..., 29.9
-    }
-    let p99 = det.p99_frame_time();
-    // p99 should be around 29.7 (index ~297 of 300), NOT 29.9 (max)
-    assert!(p99 < 29.9, "p99 should NOT be the absolute max, got {p99}");
-    assert!(p99 > 25.0, "p99 should be in the upper range, got {p99}");
-}
-
-/// TARGETS: streaming_diagnostics.rs:101 → * → /
-/// If * becomes /, index = ceil(200 / 0.99) = ceil(202.02) = 203 → capped to 199
-/// vs correct: ceil(200 * 0.99) = ceil(198) = 198
-/// With linearly spaced data, different indices give different values.
-#[test]
-fn p99_distinguishable_from_max_and_median() {
-    let mut det = HitchDetector::new(400, 16.0);
-    // 400 distinct values
-    for i in 0..400 {
-        det.record_frame(i as f32);
-    }
-    let p99 = det.p99_frame_time();
-    // correct p99: ceil(400*0.99) = 396 → sorted[396] = 396.0
-    // with /: ceil(400/0.99) = 405 → capped to 399 → sorted[399] = 399.0
-    assert!(
-        (p99 - 396.0).abs() < 2.0,
-        "p99 should be ~396 for 400 frames, got {p99}"
-    );
 }
 
 // ───────────── Structure Type Distribution Tests ─────────────

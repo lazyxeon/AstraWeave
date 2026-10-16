@@ -7851,10 +7851,9 @@ impl EditorApp {
             terrain_chunks.iter().copied().collect();
 
         let generator = ZoneScatterGenerator::new(64.0, 65);
-        let seed = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_secs())
-            .unwrap_or(42);
+        // Same seed the terrain panel used. A clock seed made every zone
+        // scatter unreproducible across editor runs.
+        let seed = zone_seed;
 
         match generator.generate_zone_scatter(&bz, &chunk_refs, seed) {
             Ok(result) => {
@@ -9241,6 +9240,44 @@ impl MenuActionHandler for EditorApp {
                     ));
                     self.console_logs.push(format!("Scene saved: {:?}", path));
                     self.last_auto_save = std::time::Instant::now();
+                    let columns = path.with_extension("columns");
+                    let baked = self.dock_tab_viewer.saved_ground();
+                    let record = if baked.is_empty() {
+                        astraweave_terrain::column_gen::worldgen_record()
+                    } else {
+                        baked.to_vec()
+                    };
+                    let droplets = self.dock_tab_viewer.erosion_droplets();
+                    match fs::write(&columns, &record) {
+                        Ok(()) => self
+                            .console_logs
+                            .push(format!("integer ground saved: {:?}", columns)),
+                        Err(err) => self
+                            .console_logs
+                            .push(format!("integer ground save failed: {err}")),
+                    }
+                    let commands = self.dock_tab_viewer.erosion_commands();
+                    let cmd_path = path.with_extension("erosion.cmd");
+                    match fs::write(&cmd_path, commands) {
+                        Ok(()) => self
+                            .console_logs
+                            .push(format!("deformation log saved: {:?}", cmd_path)),
+                        Err(err) => self
+                            .console_logs
+                            .push(format!("deformation log save failed: {err}")),
+                    }
+                    let banner = path.with_extension("erosion.txt");
+                    let note = if droplets == 0 {
+                        "base columns are the seed record; there is no deformation log\n"
+                    } else {
+                        "base columns are the seed record; deformation is the command log in the erosion.cmd file\n"
+                    };
+                    match fs::write(&banner, note) {
+                        Ok(()) => {}
+                        Err(err) => self
+                            .console_logs
+                            .push(format!("erosion banner save failed: {err}")),
+                    }
                 }
                 Err(e) => {
                     self.status = format!("Scene save failed: {}", e);

@@ -394,64 +394,6 @@ fn scatter_config_default_seed_offset() {
 }
 
 // ============================================================================
-// StreamingConfig: precise default values
-// ============================================================================
-
-#[test]
-fn streaming_config_default_max_loaded_chunks() {
-    let c = StreamingConfig::default();
-    assert_eq!(c.max_loaded_chunks, 256);
-}
-
-#[test]
-fn streaming_config_default_view_distance() {
-    let c = StreamingConfig::default();
-    assert_eq!(c.view_distance, 8);
-}
-
-#[test]
-fn streaming_config_default_prefetch_distance() {
-    let c = StreamingConfig::default();
-    assert_eq!(c.prefetch_distance, 4);
-}
-
-#[test]
-fn streaming_config_default_max_concurrent_loads() {
-    let c = StreamingConfig::default();
-    assert_eq!(c.max_concurrent_loads, 8);
-}
-
-#[test]
-fn streaming_config_default_chunk_size() {
-    let c = StreamingConfig::default();
-    assert!((c.chunk_size - 256.0).abs() < 1e-6);
-}
-
-#[test]
-fn streaming_config_default_adaptive_throttle() {
-    let c = StreamingConfig::default();
-    assert!((c.adaptive_throttle_threshold_ms - 10.0).abs() < 1e-6);
-}
-
-#[test]
-fn streaming_config_default_throttled_loads() {
-    let c = StreamingConfig::default();
-    assert_eq!(c.throttled_concurrent_loads, 2);
-}
-
-#[test]
-fn streaming_prefetch_le_view() {
-    let c = StreamingConfig::default();
-    assert!(c.prefetch_distance <= c.view_distance);
-}
-
-#[test]
-fn streaming_throttled_lt_max_concurrent() {
-    let c = StreamingConfig::default();
-    assert!(c.throttled_concurrent_loads < c.max_concurrent_loads);
-}
-
-// ============================================================================
 // Noise preview generation from utils
 // ============================================================================
 

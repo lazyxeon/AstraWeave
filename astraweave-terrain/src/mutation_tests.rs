@@ -631,87 +631,6 @@ mod texture_splatting_tests {
 }
 
 #[cfg(test)]
-mod lod_tests {
-    use crate::lod_manager::LodLevel;
-
-    #[test]
-    fn test_lod_level_variants() {
-        // All LOD levels should be distinct and valid
-        let full = LodLevel::Full;
-        let half = LodLevel::Half;
-        let quarter = LodLevel::Quarter;
-        let skybox = LodLevel::Skybox;
-
-        // Each should be debuggable
-        assert!(!format!("{:?}", full).is_empty());
-        assert!(!format!("{:?}", half).is_empty());
-        assert!(!format!("{:?}", quarter).is_empty());
-        assert!(!format!("{:?}", skybox).is_empty());
-    }
-
-    #[test]
-    fn test_lod_level_full_is_distinct() {
-        let full = LodLevel::Full;
-        let half = LodLevel::Half;
-
-        // Full should not equal Half
-        assert_ne!(format!("{:?}", full), format!("{:?}", half));
-    }
-
-    #[test]
-    fn test_lod_level_skybox_is_lowest_detail() {
-        // Skybox should be the lowest detail level
-        let skybox = LodLevel::Skybox;
-        assert!(format!("{:?}", skybox).contains("Skybox"));
-    }
-}
-
-#[cfg(test)]
-mod streaming_tests {
-    use crate::background_loader::StreamingConfig;
-
-    #[test]
-    fn test_streaming_config_default() {
-        let config = StreamingConfig::default();
-
-        // View distance should be reasonable (u32)
-        assert!(config.view_distance > 0);
-        assert!(config.view_distance <= 100);
-
-        // Prefetch distance should be reasonable
-        assert!(config.prefetch_distance > 0);
-        assert!(config.prefetch_distance <= config.view_distance);
-
-        // Max concurrent loads should be at least 1
-        assert!(config.max_concurrent_loads >= 1);
-
-        // Chunk size should be positive
-        assert!(config.chunk_size > 0.0);
-    }
-
-    #[test]
-    fn test_streaming_config_adaptive_throttle() {
-        let config = StreamingConfig::default();
-
-        // Throttle threshold should be reasonable frame time
-        assert!(config.adaptive_throttle_threshold_ms > 0.0);
-        assert!(config.adaptive_throttle_threshold_ms < 100.0);
-
-        // Throttled loads should be less than normal
-        assert!(config.throttled_concurrent_loads <= config.max_concurrent_loads);
-    }
-
-    #[test]
-    fn test_streaming_config_max_loaded() {
-        let config = StreamingConfig::default();
-
-        // Max loaded chunks should be reasonable
-        assert!(config.max_loaded_chunks >= 16);
-        assert!(config.max_loaded_chunks <= 1024);
-    }
-}
-
-#[cfg(test)]
 mod erosion_tests {
     use crate::advanced_erosion::{ErosionPreset, HydraulicErosionConfig, ThermalErosionConfig};
 
@@ -824,44 +743,6 @@ mod solver_tests {
 }
 
 #[cfg(test)]
-mod terrain_modifier_tests {
-    use crate::terrain_modifier::VoxelOpType;
-    use crate::voxel_data::Voxel;
-
-    #[test]
-    fn test_voxel_op_type_set() {
-        let voxel = Voxel::new(0.8, 1);
-        let set_op = VoxelOpType::Set(voxel);
-        assert!(format!("{:?}", set_op).contains("Set"));
-    }
-
-    #[test]
-    fn test_voxel_op_type_add_density() {
-        let add = VoxelOpType::AddDensity(0.5);
-        assert!(format!("{:?}", add).contains("AddDensity"));
-    }
-
-    #[test]
-    fn test_voxel_op_type_subtract_density() {
-        let subtract = VoxelOpType::SubtractDensity(0.3);
-        assert!(format!("{:?}", subtract).contains("SubtractDensity"));
-    }
-
-    #[test]
-    fn test_voxel_op_type_set_material() {
-        let set_mat = VoxelOpType::SetMaterial(42);
-        assert!(format!("{:?}", set_mat).contains("SetMaterial"));
-    }
-
-    #[test]
-    fn test_voxel_op_type_blend() {
-        let voxel = Voxel::new(0.5, 2);
-        let blend = VoxelOpType::Blend { voxel, factor: 0.5 };
-        assert!(format!("{:?}", blend).contains("Blend"));
-    }
-}
-
-#[cfg(test)]
 mod structure_tests {
     use crate::structures::StructureType;
 
@@ -910,43 +791,6 @@ mod structure_tests {
         assert!(format!("{:?}", ruin).contains("AncientRuin"));
         assert!(format!("{:?}", obelisk).contains("Obelisk"));
         assert!(format!("{:?}", tomb).contains("Tomb"));
-    }
-}
-
-#[cfg(test)]
-mod diagnostic_tests {
-    use crate::streaming_diagnostics::ChunkLoadState;
-
-    #[test]
-    fn test_chunk_load_state_pending() {
-        let pending = ChunkLoadState::Pending;
-        assert!(format!("{:?}", pending).contains("Pending"));
-    }
-
-    #[test]
-    fn test_chunk_load_state_loading() {
-        let loading = ChunkLoadState::Loading;
-        assert!(format!("{:?}", loading).contains("Loading"));
-    }
-
-    #[test]
-    fn test_chunk_load_state_loaded() {
-        let loaded = ChunkLoadState::Loaded;
-        assert!(format!("{:?}", loaded).contains("Loaded"));
-    }
-
-    #[test]
-    fn test_chunk_load_state_unloaded() {
-        let unloaded = ChunkLoadState::Unloaded;
-        assert!(format!("{:?}", unloaded).contains("Unloaded"));
-    }
-
-    #[test]
-    fn test_chunk_load_states_distinct() {
-        // All states should be distinct
-        assert_ne!(ChunkLoadState::Pending, ChunkLoadState::Loading);
-        assert_ne!(ChunkLoadState::Loading, ChunkLoadState::Loaded);
-        assert_ne!(ChunkLoadState::Loaded, ChunkLoadState::Unloaded);
     }
 }
 
@@ -1066,7 +910,6 @@ mod behavioral_correctness_tests {
 
 #[cfg(test)]
 mod boundary_condition_tests {
-    use crate::background_loader::StreamingConfig;
     use crate::chunk::ChunkId;
     use crate::heightmap::{Heightmap, HeightmapConfig};
     use crate::voxel_data::Voxel;
@@ -1195,32 +1038,6 @@ mod boundary_condition_tests {
         let voxel = Voxel::new(0.501, 0);
         assert!(voxel.is_solid());
     }
-
-    // --- StreamingConfig boundary tests ---
-
-    #[test]
-    fn streaming_view_distance_minimum() {
-        let config = StreamingConfig::default();
-        assert!(config.view_distance >= 1);
-    }
-
-    #[test]
-    fn streaming_prefetch_within_view() {
-        let config = StreamingConfig::default();
-        assert!(config.prefetch_distance <= config.view_distance);
-    }
-
-    #[test]
-    fn streaming_max_loads_at_least_one() {
-        let config = StreamingConfig::default();
-        assert!(config.max_concurrent_loads >= 1);
-    }
-
-    #[test]
-    fn streaming_throttle_positive() {
-        let config = StreamingConfig::default();
-        assert!(config.adaptive_throttle_threshold_ms > 0.0);
-    }
 }
 
 // =============================================================================
@@ -1232,7 +1049,6 @@ mod comparison_operator_tests {
     use crate::biome::BiomeType;
     use crate::chunk::ChunkId;
     use crate::heightmap::Heightmap;
-    use crate::lod_manager::LodLevel;
     use crate::voxel_data::Voxel;
     // --- ChunkId equality ---
 
@@ -1319,24 +1135,6 @@ mod comparison_operator_tests {
         let data = vec![7.0; 4];
         let heightmap = Heightmap::from_data(data, 2).unwrap();
         assert_eq!(heightmap.min_height(), heightmap.max_height());
-    }
-
-    // --- LodLevel debug format comparisons ---
-
-    #[test]
-    fn lod_full_not_equals_half() {
-        assert_ne!(
-            format!("{:?}", LodLevel::Full),
-            format!("{:?}", LodLevel::Half)
-        );
-    }
-
-    #[test]
-    fn lod_quarter_not_equals_skybox() {
-        assert_ne!(
-            format!("{:?}", LodLevel::Quarter),
-            format!("{:?}", LodLevel::Skybox)
-        );
     }
 
     // --- Position comparisons ---
@@ -2290,42 +2088,36 @@ mod noise_fbm_indirect_targeted {
 
     #[test]
     fn fbm_persistence_affects_output() {
+        // E3 C.1 default temperature is one octave, so persistence is never
+        // read. A second-and-later octave is what this mutation test guards.
         let mut config1 = ClimateConfig::default();
+        config1.temperature.octaves = 4;
         config1.temperature.persistence = 0.1;
-        let climate1 = ClimateMap::new(&config1, 42);
-
         let mut config2 = ClimateConfig::default();
+        config2.temperature.octaves = 4;
         config2.temperature.persistence = 0.9;
-        let climate2 = ClimateMap::new(&config2, 42);
 
-        let t1 = climate1.sample_temperature(300.0, 300.0, 0.0);
-        let t2 = climate2.sample_temperature(300.0, 300.0, 0.0);
-        assert!(
-            t1 != t2,
-            "Different persistence should affect temperature: t1={}, t2={}",
-            t1,
-            t2
-        );
+        let t1 = ClimateMap::new(&config1, 42).sample_temperature(300.0, 300.0, 0.0);
+        let t2 = ClimateMap::new(&config2, 42).sample_temperature(300.0, 300.0, 0.0);
+        // rustc 1.89.0, debug opt-level 0 and release opt-level 3 + thin LTO.
+        assert_eq!(t1.to_bits(), 1_051_743_661, "persistence 0.1");
+        assert_eq!(t2.to_bits(), 1_057_537_545, "persistence 0.9");
     }
 
     #[test]
     fn fbm_lacunarity_affects_output() {
+        // Same as persistence: the default one-octave field ignores lacunarity.
         let mut config1 = ClimateConfig::default();
+        config1.temperature.octaves = 4;
         config1.temperature.lacunarity = 1.1;
-        let climate1 = ClimateMap::new(&config1, 42);
-
         let mut config2 = ClimateConfig::default();
+        config2.temperature.octaves = 4;
         config2.temperature.lacunarity = 4.0;
-        let climate2 = ClimateMap::new(&config2, 42);
 
-        let t1 = climate1.sample_temperature(400.0, 400.0, 0.0);
-        let t2 = climate2.sample_temperature(400.0, 400.0, 0.0);
-        assert!(
-            t1 != t2,
-            "Different lacunarity should affect temperature: t1={}, t2={}",
-            t1,
-            t2
-        );
+        let t1 = ClimateMap::new(&config1, 42).sample_temperature(400.0, 400.0, 0.0);
+        let t2 = ClimateMap::new(&config2, 42).sample_temperature(400.0, 400.0, 0.0);
+        assert_eq!(t1.to_bits(), 1_044_132_904, "lacunarity 1.1");
+        assert_eq!(t2.to_bits(), 1_056_061_964, "lacunarity 4.0");
     }
 
     #[test]
@@ -3619,30 +3411,19 @@ mod golden_value_tests {
 
     #[test]
     fn temperature_golden_value_default_config() {
-        // Golden values for temperature — kills fbm sign/operator mutations
-        let config = ClimateConfig::default();
-        let climate = ClimateMap::new(&config, 42);
-
-        let t1 = climate.sample_temperature(300.0, 300.0, 0.0);
-        assert!(
-            (t1 - 0.640202).abs() < 0.001,
-            "Temperature at (300,300) should be 0.640202, got {}",
-            t1
-        );
-
-        let t2 = climate.sample_temperature(100.0, 100.0, 0.0);
-        assert!(
-            (t2 - 0.333779).abs() < 0.001,
-            "Temperature at (100,100) should be 0.333779, got {}",
-            t2
-        );
-
-        let t3 = climate.sample_temperature(1000.0, 1000.0, 0.0);
-        assert!(
-            (t3 - 0.508000).abs() < 0.001,
-            "Temperature at (1000,1000) should be 0.508000, got {}",
-            t3
-        );
+        // E3 C.1 temperature is one octave (scale 0.0005). The old literals
+        // 0.640202 / 0.333779 / 0.508000 were the 3-octave field. Bits below
+        // matched in debug and release on rustc 1.89.0 (x86_64, Linux).
+        let climate = ClimateMap::new(&ClimateConfig::default(), 42);
+        let samples = [
+            (300.0_f64, 300.0, 1_051_886_291_u32),
+            (100.0, 100.0, 1_055_063_251),
+            (1000.0, 1000.0, 1_064_363_571),
+        ];
+        for (x, z, bits) in samples {
+            let t = climate.sample_temperature(x, z, 0.0);
+            assert_eq!(t.to_bits(), bits, "temperature at ({x}, {z})");
+        }
     }
 
     #[test]

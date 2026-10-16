@@ -132,10 +132,22 @@ impl BiomeMaterialSystem {
 
         if let Some(entry) = catalog.resolve(biome.as_str(), time) {
             let path = catalog.resolve_path(entry);
-            Ok(SkyMode::HdrPath {
-                biome: biome.as_str().to_string(),
-                path: path.to_string_lossy().to_string(),
-            })
+            if path.is_file() {
+                Ok(SkyMode::HdrPath {
+                    biome: biome.as_str().to_string(),
+                    path: path.to_string_lossy().to_string(),
+                })
+            } else {
+                log::error!(
+                    "HDRI catalog entry {} points at missing {}; using procedural sky",
+                    entry.name,
+                    path.display()
+                );
+                Ok(SkyMode::Procedural {
+                    last_capture_time: 0.0,
+                    recapture_interval: 60.0,
+                })
+            }
         } else {
             // No HDRI available — use procedural sky
             Ok(SkyMode::Procedural {

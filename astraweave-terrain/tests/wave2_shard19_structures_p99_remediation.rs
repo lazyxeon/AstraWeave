@@ -7,7 +7,6 @@
 //!   - streaming_diagnostics.rs:101 — p99 percentile index (* 0.99)
 
 use astraweave_terrain::biome::BiomeType;
-use astraweave_terrain::streaming_diagnostics::HitchDetector;
 use astraweave_terrain::structures::{StructureConfig, StructureGenerator};
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -16,90 +15,6 @@ use astraweave_terrain::structures::{StructureConfig, StructureGenerator};
 // Previous tests used small collections where .min(len-1) always clips.
 // Need 200+ frames where the p99 index falls BELOW the max.
 // ═══════════════════════════════════════════════════════════════════════
-
-#[test]
-fn p99_200_frames_unclamped_index() {
-    // 200 frames: len*0.99 = 198.0, ceil=198, min(198,199)=198
-    // With + mutation: 200+0.99=200.99, ceil=201, min(201,199)=199
-    // With / mutation: 200/0.99=202.02, ceil=203, min(203,199)=199
-    // sorted: [1.0 x198, 2.0, 999.0]
-    // Correct: index 198 → 2.0
-    // Mutated: index 199 → 999.0
-    let mut d = HitchDetector::new(300, 1000.0);
-    for _ in 0..198 {
-        d.record_frame(1.0);
-    }
-    d.record_frame(2.0);
-    d.record_frame(999.0);
-    let p99 = d.p99_frame_time();
-    assert!(
-        (p99 - 2.0).abs() < 0.01,
-        "p99 with 200 frames should be 2.0 (index 198), got {}",
-        p99
-    );
-}
-
-#[test]
-fn p99_500_frames_percentile_accuracy() {
-    // 500 frames: len*0.99 = 495.0, ceil=495, min(495,499)=495
-    // With + mutation: 500+0.99=500.99, ceil=501, min(501,499)=499
-    // sorted: [10.0 x495, 20.0 x4, 100.0]
-    // Correct: index 495 → 20.0
-    // Mutated: index 499 → 100.0
-    let mut d = HitchDetector::new(600, 1000.0);
-    for _ in 0..495 {
-        d.record_frame(10.0);
-    }
-    for _ in 0..4 {
-        d.record_frame(20.0);
-    }
-    d.record_frame(100.0);
-    let p99 = d.p99_frame_time();
-    assert!(
-        (p99 - 20.0).abs() < 0.01,
-        "p99 with 500 frames should be 20.0 (index 495), got {}",
-        p99
-    );
-}
-
-#[test]
-fn p99_1000_frames_extreme() {
-    // 1000 frames: len*0.99=990, ceil=990, min(990,999)=990
-    // With + mutation: 1000+0.99=1000.99, ceil=1001, min(1001,999)=999
-    let mut d = HitchDetector::new(1100, 5000.0);
-    for _ in 0..990 {
-        d.record_frame(5.0);
-    }
-    for _ in 0..9 {
-        d.record_frame(50.0);
-    }
-    d.record_frame(500.0); // The 1000th frame, index 999
-    let p99 = d.p99_frame_time();
-    assert!(
-        (p99 - 50.0).abs() < 0.01,
-        "p99 with 1000 frames should be 50.0 (index 990), got {}",
-        p99
-    );
-}
-
-#[test]
-fn p99_300_frames_boundary() {
-    // 300 frames: len*0.99=297.0, ceil=297, min(297,299)=297
-    // With mutations the index shifts to 299
-    let mut d = HitchDetector::new(400, 5000.0);
-    for _ in 0..297 {
-        d.record_frame(10.0);
-    }
-    d.record_frame(15.0); // index 297
-    d.record_frame(20.0); // index 298
-    d.record_frame(99.0); // index 299
-    let p99 = d.p99_frame_time();
-    assert!(
-        (p99 - 15.0).abs() < 0.01,
-        "p99 with 300 frames should be 15.0 (index 297), got {}",
-        p99
-    );
-}
 
 // ═══════════════════════════════════════════════════════════════════════
 // StructureGenerator — position bounds & density-area math

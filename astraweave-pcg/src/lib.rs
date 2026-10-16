@@ -14,4 +14,4 @@ pub mod wfc;
 pub use encounters::{Encounter, EncounterConstraints, EncounterGenerator, EncounterKind};
 pub use layout::{LayoutGenerator, Room};
 pub use seed_rng::SeedRng;
-pub use wfc::{Direction, TileId, TileSet, WfcError, WfcGrid};
+pub use wfc::{seeded_dungeon_tile_count, Direction, TileId, TileSet, WfcError, WfcGrid};

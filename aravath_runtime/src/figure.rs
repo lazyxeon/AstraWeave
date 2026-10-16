@@ -370,6 +370,7 @@ impl Figure {
                     indices: primitive.indices.clone(),
                     albedo_image: None,
                     texture_source_hint: None,
+                    ..Default::default()
                 },
                 color: primitive.color,
             });
