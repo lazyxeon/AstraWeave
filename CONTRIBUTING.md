@@ -8,7 +8,7 @@ Thank you for your interest in helping advance the AstraWeave AI-Native Gaming E
 - Determinism changes must keep the fifteen required replay cases identical across Linux, Windows, and macOS. The list is in `.github/workflows/determinism-replay.yml` and the repository README. `worldgen_columns` and `deformed_chunk` are the fourteenth and fifteenth.
 - Local LLMs propose. The deterministic simulation validates and executes.
 - Player-facing text says Aravath. Assets added to the tree are CC0 only.
-- Do not document local fluid sim #253, render frame budget #216, or the greybox `tokio` `net` fix #327 as shipped until they are on `main`. #327 addresses #326. Weaving #252, the Aravath greybox #205, traversal #244, terrain columns #215, and CI burndown #217 are on `main`.
+- Do not document local fluid sim #253 or render frame budget #216 as shipped until they are on `main`. Weaving #252, the Aravath greybox #205, traversal #244, terrain columns #215, CI burndown #217, the greybox tokio graph #327, and the greybox combat slice #275 are on `main`. #326 is closed.
 - Install required native dependencies for `wgpu`, `rapier`, and `ffmpeg` (refer to platform notes in `docs/masters/MASTER_ROADMAP.md`).
 - Clone the repository and run `cargo fetch` to prime the workspace.
 

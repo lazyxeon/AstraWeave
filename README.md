@@ -29,7 +29,7 @@ The game this engine is being built for is **Aravath**.
 
 ## Current state (2026-10-16)
 
-Checked against `main` at `a66304dc`. Numbers that were not re-measured in this pass are dated below. This page does not assign a letter grade.
+Checked against `main` at `d6903d3a`. Numbers that were not re-measured in this pass are dated below. This page does not assign a letter grade.
 
 | Topic | What is true on this commit |
 | --- | --- |
@@ -42,7 +42,7 @@ Checked against `main` at `a66304dc`. Numbers that were not re-measured in this 
 | **Frame time** | The target is under 11 ms per frame on a GTX 1660 Ti-class GPU. It is not yet measured on that hardware: the GPU timer read 0 ms, and the readback is in progress in #216. Do not treat the older CPU `profiling_demo` times as this measurement. |
 | **Coverage and Miri** | Whole-workspace line coverage **57.35%** was measured 2026-06-29 and has not been re-run on the 141-member tree. Miri **1,059** tests, 0 UB, was measured 2026-06-27 across ecs, math, core, and sdk. The February 2026 report records an older, smaller run. Kani proof attributes were **69** on 2026-06-13 and were not re-counted here. |
 | **Build** | This pass did not run `cargo check --workspace`. The last clean workspace check written into these docs is 2026-06-10, at 130 members. |
-| **Supply chain** | #325 (`8e5dd73c`) makes `cargo deny` advisories and `cargo audit` pass. Patched crates are locked (`rustls` 0.23.46, `tokio-rustls` 0.26.4, `openh264` 0.9.9). Ignored leftovers are #305–#311 and #320–#324. #217 removed `openssl` from the lockfile. `deny.toml` still bans `openssl` and `openssl-sys`. #219 and #256 are closed. The workspace `tokio` dependency still enables `full`, so the greybox `net` edge is #326. The fix is #327 and is not on this commit. |
+| **Supply chain** | #325 (`8e5dd73c`) makes `cargo deny` advisories and `cargo audit` pass. Patched crates are locked (`rustls` 0.23.46, `tokio-rustls` 0.26.4, `openh264` 0.9.9). Ignored leftovers are #305–#311 and #320–#324. #217 removed `openssl` from the lockfile. `deny.toml` still bans `openssl` and `openssl-sys`. #219 and #256 are closed. #327 (`87fbe079`) drops `net` from the workspace `tokio` features. `astraweave-net`, `astraweave-ipc`, and `astraweave-net-ecs` opt in. #326 is closed. |
 | **Traces** | **31** subsystem traces under `docs/architecture/`, including `veil.md`, listed in the generated table in `CLAUDE.md`. The June "13 traces" figure is the original campaign, not the current set. |
 
 ### On main since the June snapshot
@@ -56,9 +56,11 @@ Checked against `main` at `a66304dc`. Numbers that were not re-measured in this 
 - **Destruction (#243).** Command log, support graph, fracture, terrain deltas, and debris. Sim state is `Fixed64`. Display meshes are outside the hash. Replay case `destruction`.
 - **Gameplay QA (#277, replay #280).** Headless Aravath-slice scenario hashed as `gameplay_qa_aravath_slice`. The #277 document is the plan; the required replay case is what landed.
 - **Weaving framework (#252).** `weave_tick` stamps data-driven templates (heat, freeze, density, gravity, and the other built-in ids) into `FieldWrite`s on a `SimField`. Replay case `weaving` runs 300 ticks on `NullField`, whose field digest is zeros until the local sim in #253 is on main. Freeze records an ice sheet and a nav change. `examples/aravath_weave` is the headless caller. `astraweave-core`, `astraweave-gameplay`, `astraweave-scripting`, and `astraweave-security` depend on the crate. The anchor-slice helpers are still plain functions.
-- **Aravath greybox (#205).** `cargo run -p aravath_runtime --bin aravath_greybox` opens the window. The on-screen player is the CC0 KayKit knight with the KayKit sword and shield. The three foes are CC0 KayKit skeletons. Ground albedos are CC0 Poly Haven maps. Foliage is CC0 KayKit and Kenney. Credits are in `assets/aravath/CREDITS.md`. The world streams a three-chunk ring. Sword hits land once, inside the active window, and lock-on drops when that enemy dies. Dig and place still use `dig_sphere` and the voxel edit log. The greybox replay hash is `b663da52ea1d566e` in `aravath_runtime/golden/replay.hash`. That check runs on Linux and Windows only. It is a separate hash from the fifteen three-OS cases. Since #215, `ColumnStream` is the keep and evict set for the radius-3 ring. Those chunks still fill from the island heightfield. The 11 ms frame budget is still not measured on a GTX 1660 Ti.
+- **Aravath greybox (#205).** `cargo run -p aravath_runtime --bin aravath_greybox` opens the window. The on-screen player is the CC0 KayKit knight with the KayKit sword and shield. The three foes are CC0 KayKit skeletons. Ground albedos are CC0 Poly Haven maps. Foliage is CC0 KayKit and Kenney. Credits are in `assets/aravath/CREDITS.md`. The world streams a three-chunk ring. Sword hits land once, inside the active window, and lock-on drops when that enemy dies. Dig and place still use `dig_sphere` and the voxel edit log. The greybox replay hash is `b663da52ea1d566e` in `aravath_runtime/golden/replay.hash`. That check runs on Linux and Windows only. It is a separate hash from the fifteen three-OS cases. Since #215, `ColumnStream` is the keep and evict set for the radius-3 ring. Those chunks still fill from the island heightfield. A connecting sword hit calls `run_aravath_slice` (#275). Dealt damage is `40 - sword_hp`. The slice test locks that remainder at 15, so the hit deals 25, and a broken cover bond shows the notice `Cover broke` once. The 11 ms frame budget is still not measured on a GTX 1660 Ti.
 - **Traversal (#244).** `astraweave-physics` steps movement at a fixed 60 Hz. The sim owns displacement. Ground, jump, and roll are hashed for 180 ticks as required case `traversal`. `traversal_deformed` walks and climbs terrain that a brush cuts mid-run: a one-voxel seam ramps, a destroyed handhold detaches, and horizontal momentum is kept. Climb is hybrid (markup wins, otherwise a flagged surface). The Aravath motor (ground, air, crouch, sprint, roll) steps once per tick. Roll invulnerability is ticks 5 through 19. Swim, slide, prone, wall-run, glide, ledge, and shimmy are in the course script. Foot and hand IK stay on the presentation graph and are outside the hash.
 - **CI burndown (#217).** `aw-editor-tests.yml` and the sanitizer jobs install `pkg-config` and `libudev-dev`. Audio nextest fixtures live under `astraweave-audio/target/audio-test-assets/<pid>`. `fluid.wgsl` uses `safe_normalize` and takes velocity from the pre-clamp prediction so a zero vector and a wall hit stay finite on lavapipe. reqwest, the websocket client, and `hf-hub` use rustls. `ort` does not enable `download-binaries`. The fifteen replay cases are unchanged. The disposition of the older red checks is `docs/current/CI_FAILURE_LEDGER.md`.
+- **Greybox tokio graph (#327).** The workspace `tokio` features are `fs`, `io-util`, `macros`, `rt`, `rt-multi-thread`, `sync`, and `time`. `astraweave-net`, `astraweave-ipc`, and `astraweave-net-ecs` add `net`. `astraweave-blend` adds `process`. `aw_asset_cli` does not depend on tokio. #326 is closed.
+- **Greybox combat slice (#275).** `Combat::tick` calls `astraweave_weaving::run_aravath_slice` on a connecting sword hit. The foe loses `40 - sword_hp`. `cover_intact == false` sets `cover_broken`, and the window shows `Cover broke` for 2.5 seconds, once. The greybox golden stays `b663da52ea1d566e`.
 - **Terrain columns and scatter (#215).** `column_gen` is the integer forest record. Height, material, and a prop are functions of `(FOREST_WORLD_SEED, x, z)` with wrapping integer arithmetic. Species and yaw come from `SimRng` on `SIM_SYSTEM_FOREST_SCATTER`. The road stays empty. `worldgen_columns` is the SHA-256 of `worldgen_record()`: three chunks, including a negative coordinate and a road chunk. `deformed_chunk` is the SHA-256 of a sphere brush and one scatter detach on chunk `(-1, 2)`, then the occupancy after that chunk is evicted and loaded again. A `Detach` stays down across that reload. `ColumnStream` is the greybox keep set. The window still fills those chunks from the island heightfield, and its props still come from `aravath_runtime`'s local scatter. The editor climate mesh is the preview. Scene save and the Aravath checkpoint store `worldgen_record()`. Apply Erosion appends destruction commands and leaves that record in place. The CC0 pine-forest files, including Poly Haven `pine_tree_01`, are hashed in `assets/terrain/polyhaven/pine_forest/manifest.json`. KayKit and Kenney stay the greybox props.
 
 ## In progress
@@ -67,7 +69,6 @@ These pulls are not on `main`.
 
 - **#253** — local fluid sim
 - **#216** — render frame budget (GPU timer readback)
-- **#327** — greybox `tokio` `net` (#326)
 
 ---
 
@@ -130,7 +131,7 @@ The 12,700-agent figure is a CPU capacity estimate for a mid-complexity AI loop 
 
 ## Systems on this tree
 
-| Area | State on `a66304dc` |
+| Area | State on `d6903d3a` |
 | --- | --- |
 | **ECS, math, core, sdk** | Single-threaded archetype schedule. Miri-clean as of the 2026-06-27 run (1,059 tests). |
 | **Combat** | `astraweave-combat` resolves damage in Q32.32. Replay case `combat_resolve`. |
@@ -140,7 +141,7 @@ The 12,700-agent figure is a CPU capacity estimate for a mid-complexity AI loop 
 | **Scripting** | Sandboxed Rhai, mod loader, tick-boundary reload. Required replay case `scripted_system`. Gameplay scripts do not receive physics or nav proxies (#318). See [scripting.md](docs/architecture/scripting.md). |
 | **Security** | Path checks, the deterministic Rhai sandbox, the #312 bounds, and the #316 image, glTF, and Ollama caps are wired. Anticheat, signatures, and the secrets crate stay dormant. See [security.md](docs/architecture/security.md). |
 | **Decision inspector** | `tools/aw_decision`. |
-| **Aravath greybox** | Windowed demo `aravath_greybox` (#205). CC0 KayKit characters, streamed three-chunk world, sword combat. `BridgeAgent` is in the same crate and is not drawn. Greybox replay is Linux and Windows only. |
+| **Aravath greybox** | Windowed demo `aravath_greybox` (#205). CC0 KayKit characters, streamed three-chunk world, sword combat. A connecting hit calls `run_aravath_slice` (#275) and can show `Cover broke`. `BridgeAgent` is in the same crate and is not drawn. Greybox replay is Linux and Windows only. |
 | **Rendering** | wgpu path: Disney BRDF with multi-scatter compensation, clustered forward lighting, IBL cubemaps, ACES / AgX / Reinhard in one post pipeline, 4-cascade CSM. Editor and engine share that path; a SHA-256 parity harness covers the May 2026 seams ([architecture map](docs/architecture/ARCHITECTURE_MAP.md)). Nanite-style and VXGI surfaces exist in-tree; this page does not claim they hold the frame budget. |
 | **Camera** | `astraweave-camera` is the upload contract (`RenderView`). |
 | **Physics** | Rapier3D wrapper. The in-crate `SpatialHash` is not the broadphase. Traversal (#244) is a 60 Hz tick sim in this crate. Required cases `traversal` and `traversal_deformed`. |
@@ -164,7 +165,7 @@ cargo run -p aw_doc_lint -- --mode warn
 cargo run -p aw_trace_sync -- --check
 ```
 
-Pull-request Rust work is tiered. The required replay check is `determinism-replay / compare`. Docs-only diffs skip the workspace compile; they still run the replay hashes. The full job list is [CI_ARCHITECTURE.md](docs/current/CI_ARCHITECTURE.md). #217 is on `main`. The greybox `tokio` `net` failure remains #326, and #327 is the open fix.
+Pull-request Rust work is tiered. The required replay check is `determinism-replay / compare`. Docs-only diffs skip the workspace compile; they still run the replay hashes. The full job list is [CI_ARCHITECTURE.md](docs/current/CI_ARCHITECTURE.md). #217 and #327 are on `main`. #326 is closed.
 
 `aw_doc_lint` reads the closed vocabulary in [CLOSED_VOCABULARY_LINT.md](docs/campaigns/doc-truth/CLOSED_VOCABULARY_LINT.md). It also checks this README against the replay workflow: every required case name, the unmeasured 11 ms target, the in-progress issue list, and the absence of the retired game title in player-facing docs. That front-door check fails the process even while the vocabulary scan is still in warn mode.
 

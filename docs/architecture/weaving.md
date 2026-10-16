@@ -7,10 +7,10 @@ primary_crate: astraweave-weaving
 domain: gameplay
 lifecycle_status: active
 integration_status: partial
-summary: "weave_tick is on main (#252). Required replay case weaving hashes NullField until local sim #253. Core, gameplay, scripting, and security depend on the crate."
+summary: "weave_tick is on main (#252). The greybox sword hit calls run_aravath_slice (#275). Required replay case weaving hashes NullField until local sim #253."
 owns: [astraweave-weaving]
-doc_version: "1.5"
-last_verified_commit: 5cba174c
+doc_version: "1.6"
+last_verified_commit: d6903d3a
 ---
 
 # Architecture Trace: Weaving / Fate-Weaving System (`astraweave-weaving`)
@@ -21,10 +21,10 @@ last_verified_commit: 5cba174c
 |---|---|
 | **System name** | Weaving / Fate-Weaving System (the Veilweaver signature mechanic) |
 | **Primary crates** | `astraweave-weaving` |
-| **Document version** | 1.5 |
-| **Last verified against commit** | `5cba174c` |
+| **Document version** | 1.6 |
+| **Last verified against commit** | `d6903d3a` |
 | **Last verified date** | 2026-10-16 |
-| **Status** | The data-driven cast path is on main (#252). Required replay case `weaving`. `NullField` stands in for the local sim (#253). Anchor-slice helpers are still plain functions. |
+| **Status** | The data-driven cast path is on main (#252). A connecting greybox sword hit calls `run_aravath_slice` (#275). Required replay case `weaving`. `NullField` stands in for the local sim (#253). Anchor-slice helpers are still plain functions. |
 | **Owner notes** | Built during the Veilweaver vertical-slice "Weeks 1-5" campaign (see `docs/journey/weeks/WEEK_*` and `docs/archive/projects/veilweaver/`). Naming is heavily overloaded across three independent "weaving" surfaces in the workspace — see §3 and §6. |
 
 ---
@@ -231,7 +231,7 @@ This crate hosts **two distinct pipelines** that do not call each other. Both ar
 | File | Role | Status | Notes |
 |---|---|---|---|
 | [`lib.rs`](../../astraweave-weaving/src/lib.rs) | Module roots, re-exports, `CWeaveAgent`/`CWeaveSignal`/`WeaveIntentEvent` ECS-style components | Active | `#![forbid(unsafe_code)]`. |
-| [`aravath.rs`](../../astraweave-weaving/src/aravath.rs) | `run_aravath_slice`, `ARAVATH_SLICE_SEED` (`0xA11C_E5EE`) | Active | One combat resolve plus one destruction tick. Sword hp 15, weave hp 25, cover bond broken. |
+| [`aravath.rs`](../../astraweave-weaving/src/aravath.rs) | `run_aravath_slice`, `ARAVATH_SLICE_SEED` (`0xA11C_E5EE`) | Active | One combat resolve plus one destruction tick. Sword hp 15, weave hp 25, cover bond broken. `aravath_runtime` `Combat::tick` calls it on a connecting sword hit (#275). |
 | [`gameplay_qa.rs`](../../astraweave-weaving/src/gameplay_qa.rs) | Scenario loader, scripted and goal policies, failure artifact, ddmin | Active | Scenario 1 calls `run_aravath_slice` once per trace. It does not split the function. |
 | [`scenarios/aravath_slice_sword.ron`](../../astraweave-weaving/scenarios/aravath_slice_sword.ron) | Scenario 1 | Active | Reach check only. `SaveReload` and `SameSeqTwice` are not in this file. |
 | [`mod_queue.rs`](../../astraweave-weaving/src/mod_queue.rs) | `queue_weave`, `parse_template_toml`, fixed `WeaveScratch` | Active | Sandbox host entry. Engine template ids 1 through 7 are reserved. The tick copies casts into a fixed array and does not evaluate a field. |
@@ -422,6 +422,7 @@ This is a pure-CPU logic crate; performance is benchmark-tracked but not a runti
 
 | Version | Date | Notes |
 |---|---|---|
+| 1.6 | 2026-10-16 | Greybox caller. `Combat::tick` calls `run_aravath_slice` and the window shows `Cover broke` when `cover_intact` is false. |
 | 1.3 | 2026-10-15 | Scenario 1 gameplay QA. File map rows for `aravath.rs`, `gameplay_qa.rs`, and the RON. Invariant 11. |
 
 **Update this doc when:**
