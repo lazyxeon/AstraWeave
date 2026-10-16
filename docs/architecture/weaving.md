@@ -7,10 +7,10 @@ primary_crate: astraweave-weaving
 domain: gameplay
 lifecycle_status: active
 integration_status: partial
-summary: "weave_tick is on main (#252). The greybox sword hit calls run_aravath_slice (#275). Required replay case weaving hashes NullField until local sim #253."
+summary: "weave_tick is on main (#252). The greybox runs run_aravath_slice once at startup and reuses sword_hp (#275, #343). Replay case weaving still hashes NullField. local_sim is the local field."
 owns: [astraweave-weaving]
-doc_version: "1.7"
-last_verified_commit: 7a5fd4f6
+doc_version: "1.8"
+last_verified_commit: fb1c8ec2
 ---
 
 # Architecture Trace: Weaving / Fate-Weaving System (`astraweave-weaving`)
@@ -21,10 +21,10 @@ last_verified_commit: 7a5fd4f6
 |---|---|
 | **System name** | Weaving / Fate-Weaving System (the Veilweaver signature mechanic) |
 | **Primary crates** | `astraweave-weaving` |
-| **Document version** | 1.7 |
-| **Last verified against commit** | `7a5fd4f6` |
+| **Document version** | 1.8 |
+| **Last verified against commit** | `fb1c8ec2` |
 | **Last verified date** | 2026-10-16 |
-| **Status** | The data-driven cast path is on main (#252). A connecting greybox sword hit calls `run_aravath_slice` (#275). Required replay case `weaving`. `NullField` stands in for the local sim (#253). Anchor-slice helpers are still plain functions. |
+| **Status** | The data-driven cast path is on main (#252). `Greybox::new` and `Greybox::open` run `run_aravath_slice` once. Each sword hit reuses that `sword_hp` and `cover_intact` (#275, #343). Required replay case `weaving` still hashes `NullField`. The local field is required case `local_sim` (#330). #253 is closed. Anchor-slice helpers are still plain functions. |
 | **Owner notes** | Built during the Veilweaver vertical-slice "Weeks 1-5" campaign (see `docs/journey/weeks/WEEK_*` and `docs/archive/projects/veilweaver/`). Naming is heavily overloaded across three independent "weaving" surfaces in the workspace — see §3 and §6. |
 
 ---
@@ -44,8 +44,8 @@ It provides the deterministic, pure-logic core for the Veilweaver "signature mec
 - Quest/enemy/spawn: [`quest.rs`](../../astraweave-weaving/src/quest.rs), [`quest_types.rs`](../../astraweave-weaving/src/quest_types.rs), [`starter_quests.rs`](../../astraweave-weaving/src/starter_quests.rs), [`enemy.rs`](../../astraweave-weaving/src/enemy.rs), [`enemy_types.rs`](../../astraweave-weaving/src/enemy_types.rs), [`spawner.rs`](../../astraweave-weaving/src/spawner.rs), [`combat.rs`](../../astraweave-weaving/src/combat.rs).
 - Presentation data structs: [`ui/`](../../astraweave-weaving/src/ui/), [`particles/`](../../astraweave-weaving/src/particles/), [`audio/`](../../astraweave-weaving/src/audio/).
 
-**Status note (read this first, 2026-10-16, `5cba174c`):**
-#252 is on main. `weave_tick` expands templates into `FieldWrite` stamps on a `SimField`. The required replay case `weaving` runs 300 ticks of heat, freeze, density, and gravity through `weaving_case_bytes`, which uses `NullField`. That field digest is zeros until local sim #253 is on main. Freeze still records an ice sheet and a `NavChange`. Library consumers now include `astraweave-core`, `astraweave-gameplay`, `astraweave-scripting`, and `astraweave-security`. `examples/aravath_weave` is the headless caller. The older "zero library consumers" sentence is the pre-#252 state. Anchor-slice functions in `systems/` still take plain slices, not ECS queries. The `ui/` egui methods stay compiled out.
+**Status note (read this first, 2026-10-16, `fb1c8ec2`):**
+#252 is on main. `weave_tick` expands templates into `FieldWrite` stamps on a `SimField`. The required replay case `weaving` still runs through `weaving_case_bytes` on `NullField`, so that digest stays zeros. The local field is required case `local_sim` (#330). #253 is closed. `Greybox::new` and `Greybox::open` call `run_aravath_slice` once. A sword hit reads the cached `sword_hp` and `cover_intact` (#275, #343). Anchor-slice functions in `systems/` still take plain slices, not ECS queries. The `ui/` egui methods stay compiled out.
 
 ---
 
@@ -215,7 +215,7 @@ This crate hosts **two distinct pipelines** that do not call each other. Both ar
 
 | Consumer system | Interface | Data | Notes |
 |---|---|---|---|
-| `aravath_runtime` | `Combat::tick` | `run_aravath_slice` | Connecting sword hit (#275). |
+| `aravath_runtime` | `prime_sword_slice` | `sword_hp`, `cover_intact` | `Greybox::new` and `Greybox::open` call `run_aravath_slice` once. `Combat::tick` reads the cache (#275, #343). |
 | `astraweave-gameplay` | `src/weaving.rs` | `compile_legacy`, `LegacyPoints` | Legacy weave bridge. |
 | `astraweave-scripting` | `src/sim_mod.rs` | `queue_weave`, `parse_template_toml`, `WeaveScratch` | Mod host enqueue. |
 | `astraweave-security` | `src/sandbox.rs` | `parse_template_toml` | Template parse inside the sandbox. |
@@ -428,6 +428,7 @@ This is a pure-CPU logic crate; performance is benchmark-tracked but not a runti
 
 | Version | Date | Notes |
 |---|---|---|
+| 1.8 | 2026-10-16 | Restamp `fb1c8ec2`. Summary, status, and the §4 greybox row match the startup cache. `weaving` still hashes `NullField`. |
 | 1.7 | 2026-10-16 | Restamp `1e275a9e`. Cargo consumers are the greybox, gameplay, scripting, security, the core replay test, `aravath_weave`, and the two older quest examples. |
 | 1.6 | 2026-10-16 | Greybox caller. `Combat::tick` calls `run_aravath_slice` and the window shows `Cover broke` when `cover_intact` is false. |
 | 1.7 | 2026-10-16 | The greybox calls `run_aravath_slice` once at startup. Sword hits reuse `sword_hp` and `cover_intact`. |

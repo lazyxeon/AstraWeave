@@ -7,10 +7,10 @@ primary_crate: astraweave-combat
 domain: gameplay
 lifecycle_status: active
 integration_status: partial
-summary: "Cover hits enqueue destruction impacts. The greybox sword hit calls run_aravath_slice and can show Cover broke. Fixed64 is astraweave-math."
+summary: "Cover hits enqueue destruction impacts. The greybox runs run_aravath_slice once at startup and reuses sword_hp. Fixed64 is astraweave-math."
 owns: [astraweave-combat]
-doc_version: "1.5"
-last_verified_commit: 7a5fd4f6
+doc_version: "1.6"
+last_verified_commit: fb1c8ec2
 runtime_edges:
   - to: astraweave-ecs
     note: CombatPlugin registers combat_resolve_system on the simulation stage
@@ -26,8 +26,8 @@ runtime_edges:
 |---|---|
 | **System name** | Combat damage |
 | **Primary crates** | `astraweave-combat` |
-| **Document version** | 1.5 |
-| **Last verified against commit** | `7a5fd4f6` |
+| **Document version** | 1.6 |
+| **Last verified against commit** | `fb1c8ec2` |
 | **Last verified date** | 2026-10-16 |
 | **Status** | Active, partial. A connecting greybox sword hit uses the `sword_hp` from one `run_aravath_slice` at startup (#275). The window shows `Cover broke` once when that slice breaks the cover bond. Shield, roll, and scar injection stay in `aravath_runtime`. |
 | **Owner notes** | Formula spec: `docs/current/COMBAT_DAMAGE_SYSTEM_DESIGN.md`. Gate Pass, 2026-10-14. |
@@ -180,5 +180,6 @@ CVitals.hp / poise            ecs.rs apply_hp_delta
 
 | Version | Date | Change |
 |---|---|---|
+| 1.6 | 2026-10-16 | Summary matches the startup cache. Restamp `fb1c8ec2`. |
 | 1.4 | 2026-10-16 | Greybox sword hit calls `run_aravath_slice`. The window notice is `Cover broke`. |
 | 1.5 | 2026-10-16 | The greybox runs `run_aravath_slice` once at startup. Each sword hit applies that cached remainder. |

@@ -1,7 +1,8 @@
 # AstraWeave Architecture Map
 
-> **Generated**: 2026-05-07 | **Last reconciled**: 2026-10-16 | **Version**: 0.8.10 | **Rust**: 1.89.0
+> **Generated**: 2026-05-07 | **Last reconciled**: 2026-10-16 | **Version**: 0.8.11 | **Rust**: 1.89.0
 > Living document — used by all agents as the primary architectural reference.
+> **0.8.11 update (2026-10-16)**: Rebased onto `fb1c8ec2`. #343 runs `run_aravath_slice` once at greybox startup. Each sword hit reuses that `sword_hp`. A checkpoint stores the demolition command log, and a brush loads every chunk its radius touches. The golden stays `b6a9d5a2c5da28a6`. Required cases stay sixteen. #342 and #343 added no member.
 > **0.8.10 update (2026-10-16)**: Rebased onto `10757c81`. #330 adds `astraweave-localsim` and required case `local_sim` (sixteen). The greybox golden is `b6a9d5a2c5da28a6`. `gravity.rs` is deleted. #336 and #253 are closed. Member count is **142**.
 > **0.8.9 update (2026-10-16)**: Rebased onto `84d3888a`. #329 steps `BridgeAgent` inside `Greybox::step`, digs with a sphere `Subtract` brush on `ColumnFns`, and moves the greybox golden to `0a576578512f25d2`. The fifteen required replay cases stay. Member count stays **141**.
 > **0.8.8 update (2026-10-16)**: Rebased onto `6a0e9f4c`. #331 keeps `AIArbiter`, `GoapPlanner`, and `GravityManager` off the deterministic tick. `recorded_line` does not draw. Deletion follow-ups are #334, #335, and #336. Required replay cases stay fifteen. Member count stays **141**. Local sim #253 and frame budget #216 stay in progress.
