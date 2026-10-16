@@ -9,7 +9,7 @@ lifecycle_status: dormant
 integration_status: example_only
 summary: "Post-W.1: SPH/voxel/simd_ops removed (−58.8K LoC). Now the deprecated PBD remnant + retained F.4 GPU-particle accent substrate; only examples consume. Water rendering successor lives in water.md. fluids.md §0.5,§0.6"
 owns: [astraweave-fluids]
-doc_version: "2.0"
+doc_version: "2.1"
 last_verified_commit: 7c29b8182
 ---
 
@@ -933,6 +933,7 @@ Per README:
 
 | Version | Date | Change |
 |---|---|---|
+| 2.1 | 2026-10-16 | **Lavapipe SPH NaN.** `delta_pos` cohesion weight is `kernel_w * (r/h)` so it is 0 at coincident particles (`normalize(0)` was NaN). `safe_normalize` covers the SDF gradient and object normals. `integrate` takes velocity from the pre-clamp prediction and zeroes the into-wall component. `gpu_containment_invariant_120_frames` and `gpu_settling_envelope_300_frames` stay finite on lavapipe. |
 | 2.0 | 2026-10-14 | **WS-STAB caustics.** CPU `hash_2d` is an integer mix of IEEE bits. Depth falloff uses `det_powf` (add/mul/div and `f32` constants only). `test_sample_multi_point_golden` locks `to_bits` `(1050907696, 1041034631, 1050301147)`. The WGSL hash no longer calls `sin`. |
 | 1.0–1.2 | 2026-05-12 | Initial trace + verification + deep-investigation passes |
 | 1.3 | 2026-06-11 | **F.1 revision** (§0): F.0 audit corrections (phantom `ResearchFluidSystem`, 9th orphan shader, ping-pong-defect invariants) + F.1 code deltas (FluidSystem repair, 5 SDF fixes, UnifiedSolver deletion, DFSPH/IISPH variant removal, `experimental` feature, serde unconditional, validation honesty, first GPU tests + baselines) + determinism carve-out policy. §8 invariants 21–23 rewritten; §11 closures. Body sections older than §0 should be read through the §0 corrections; a full re-verification pass is queued post-campaign. |
