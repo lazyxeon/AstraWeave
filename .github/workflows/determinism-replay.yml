@@ -3,7 +3,8 @@
 # `planner_pure` (WS-D0), `perception_world` (WS-D1), `gameplay_rng` (WS-D2),
 # `fixed64`, `combat_resolve`, `destruction`, `gameplay_qa_aravath_slice`,
 # `nav_reroute`, `causal_bridge`, `scripted_system` (WS-MOD), `weaving`,
-# `traversal`, `traversal_deformed`, `worldgen_columns`, and `deformed_chunk`
+# `traversal`, `traversal_deformed`, `worldgen_columns`, `deformed_chunk`,
+# and `local_sim`
 # fail the compare job on any mismatch or if the case is missing. No path
 # filter. cargo test has no retry loop (no-retry). Do not switch this job to
 # nextest.
@@ -104,7 +105,7 @@ jobs:
             seen.add(row.case);
             merged.push(row);
           }
-          const required = ["planner_pure", "perception_world", "gameplay_rng", "fixed64", "combat_resolve", "destruction", "gameplay_qa_aravath_slice", "nav_reroute", "causal_bridge", "scripted_system", "weaving", "traversal", "traversal_deformed", "worldgen_columns", "deformed_chunk"];
+          const required = ["planner_pure", "perception_world", "gameplay_rng", "fixed64", "combat_resolve", "destruction", "gameplay_qa_aravath_slice", "nav_reroute", "causal_bridge", "scripted_system", "weaving", "traversal", "traversal_deformed", "worldgen_columns", "deformed_chunk", "local_sim"];
           const names = new Set(merged.map((row) => row.case));
           for (const name of required) {
             if (!names.has(name)) {
@@ -143,7 +144,7 @@ jobs:
           import sys
           from pathlib import Path
 
-          required = {"planner_pure", "perception_world", "gameplay_rng", "fixed64", "combat_resolve", "destruction", "gameplay_qa_aravath_slice", "nav_reroute", "causal_bridge", "scripted_system", "weaving", "traversal", "traversal_deformed", "worldgen_columns", "deformed_chunk"}
+          required = {"planner_pure", "perception_world", "gameplay_rng", "fixed64", "combat_resolve", "destruction", "gameplay_qa_aravath_slice", "nav_reroute", "causal_bridge", "scripted_system", "weaving", "traversal", "traversal_deformed", "worldgen_columns", "deformed_chunk", "local_sim"}
           root = Path("replay-artifacts")
           files = sorted(root.glob("*/replay-hash.json"))
           print(f"artifacts: {[str(p) for p in files]}")

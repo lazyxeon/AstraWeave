@@ -1,4 +1,5 @@
-//! `local_sim` digest. Not in the required set until it matches on three OSes.
+//! `local_sim` digest. Required by `determinism-replay` after it matched
+//! on Linux, Windows, and macOS (`77768119…eb29c8`).
 
 use std::path::PathBuf;
 
