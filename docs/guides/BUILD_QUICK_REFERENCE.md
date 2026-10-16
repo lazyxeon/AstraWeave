@@ -1,6 +1,6 @@
 # Build quick reference
 
-Checked against `main` at `d6b07fc8` (2026-10-16). The player-facing name is Aravath.
+Checked against `main` at `3971cbe1` (2026-10-16). The player-facing name is Aravath.
 
 ## Daily commands
 

@@ -17,7 +17,7 @@
 | **Frame Time** | CPU `profiling_demo`: ~0.97 ms (system) / ~0.71 ms (mimalloc) @ 1,000 entities (2026-06-27). 2.70 ms was the Week-8 target. The GTX 1660 Ti full-frame target (under 11 ms) is not yet measured (#216). |
 | **Agent Capacity** | 12,700+ is a CPU AI-loop estimate @ a 16.67 ms budget (2026-06-27, i5-10300H). Not a rendered 60 FPS frame. |
 | **Validation Throughput** | 6.48M checks/sec (MoveTo path, 2026-06-27) |
-| **Determinism** | Ten required cross-OS SHA-256 cases on `main` at `d6b07fc8`. See the repository README. |
+| **Determinism** | Ten required cross-OS SHA-256 cases on `main` at `3971cbe1`. See the repository README. |
 
 ### First Fluids Baselines Ever Recorded (v5.58, Fluids-Integration F.1)
 

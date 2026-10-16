@@ -29,7 +29,7 @@ The game this engine is being built for is **Aravath**.
 
 ## Current state (2026-10-16)
 
-Checked against `main` at `d6b07fc8`. Numbers that were not re-measured in this pass are dated below. This page does not assign a letter grade.
+Checked against `main` at `3971cbe1`. Numbers that were not re-measured in this pass are dated below. This page does not assign a letter grade.
 
 | Topic | What is true on this commit |
 | --- | --- |
@@ -37,7 +37,7 @@ Checked against `main` at `d6b07fc8`. Numbers that were not re-measured in this 
 | **Toolchain** | Rust **1.89.0**, pinned in `rust-toolchain.toml`. Targets: Linux x86_64, Windows MSVC, macOS x86_64 and Apple Silicon. |
 | **CI platforms** | Pull-request replay hashes run on `ubuntu-latest`, `windows-latest`, and `macos-latest`. That is the supported cross-OS determinism matrix. It is not a claim that every example window has been run on all three. |
 | **Determinism** | Ten required replay cases. The compare job fails if any case is missing or its SHA-256 differs across the three OS artifacts. See [Determinism](#determinism). |
-| **AI rule** | Local LLMs propose. The deterministic simulation validates and executes. The orchestrator default, when `OLLAMA_MODEL` is unset, is `phi3:medium` (`astraweave-ai`). The Qwen client constant is `qwen3.5:4b`. Remote model APIs are not the runtime path. |
+| **AI rule** | Local LLMs propose. The deterministic simulation validates and executes. The orchestrator default, when `OLLAMA_MODEL` is unset, is `phi3:medium` (`astraweave-ai`). The Qwen client constant is `qwen3.5:4b`. Ollama constructors keep a loopback URL. A non-loopback URL is replaced with `http://127.0.0.1:11434` unless the caller uses `allowing_remote` (#316). |
 | **Assets** | The project rule is **CC0 only**. `assets/README.md` still says "Mixed" and this pass did not re-audit every file's license. |
 | **Frame time** | The target is under 11 ms per frame on a GTX 1660 Ti-class GPU. It is not yet measured on that hardware: the GPU timer read 0 ms, and the readback is in progress in #216. Do not treat the older CPU `profiling_demo` times as this measurement. |
 | **Coverage and Miri** | Whole-workspace line coverage **57.35%** was measured 2026-06-29 and has not been re-run on the 139-member tree. Miri **1,059** tests, 0 UB, was measured 2026-06-27 across ecs, math, core, and sdk. The February 2026 report records an older, smaller run. Kani proof attributes were **69** on 2026-06-13 and were not re-counted here. |
@@ -48,10 +48,10 @@ Checked against `main` at `d6b07fc8`. Numbers that were not re-measured in this 
 
 - **AI orchestration and dynamic nav reroute (#251).** `NavTiles` can take a geometry change and recompute a route. Replay case `nav_reroute`.
 - **Bridge reroute and `aravath_runtime` (#263).** Headless `BridgeAgent` walks a bridge-and-ford graph, detaches the deck at tick 30, and leaves the span for the ford. The window is not in this crate. Player-facing scene label is `Aravath`.
-- **Security caps (#312).** Bounds on model text, imports, admin auth, and socket frames, on top of the Rhai sandbox ceilings (operation budget, string/array/map sizes, mod counts). `default_allowed_llm_domains` is localhost only.
+- **Security caps (#312, #316).** #312 bounds model text, imports, admin auth, and socket frames, on top of the Rhai sandbox ceilings (operation budget, string/array/map sizes, mod counts). `default_allowed_llm_domains` is localhost only. #316 caps image decode at a 4096-pixel edge and 64 MiB (`open_limited_image` / `decode_limited_image`). Render, the editor, blend import, and `aw_asset_cli` call that decoder. `astraweave-asset-pipeline` doc comments still show an uncapped open; that crate is the dormant cook path, not a live caller. `aw_asset_cli` rejects glTF buffer and image file URIs that fail `safe_under` before import. `OllamaClient::new` keeps only loopback URLs unless `allowing_remote` is used.
 - **AI decision debugger (#287).** Zero-cost decision ring plus the headless `aw_decision` inspector (`show` / `diff`). Tracing is off unless the caller records.
 - **Causal consequence engine (#286).** `CausalWorld::tick` admits recorded inputs and fires a baked rule table. It does not call a model. Replay case `causal_bridge`. Editor play does not call it. The causality crate does not read a geometry notice; `BridgeAgent` drains the collapse into the cut.
-- **Rhai mod sandbox and loader (#214).** Gameplay and mod scripts run on the security sandbox. `build_app` installs `ModScriptPlugin` after `register_mod_runtime`. Replay case `scripted_system`.
+- **Rhai mod sandbox and loader (#214, #318).** Gameplay and mod scripts run on the security sandbox. `build_app` installs `ModScriptPlugin` after `register_mod_runtime`. Replay case `scripted_system`. Gameplay `script_system` does not inject `PhysicsProxy` or `NavMeshProxy` (#318).
 - **Destruction (#243).** Command log, support graph, fracture, terrain deltas, and debris. Sim state is `Fixed64`. Display meshes are outside the hash. Replay case `destruction`.
 - **Gameplay QA (#277, replay #280).** Headless Aravath-slice scenario hashed as `gameplay_qa_aravath_slice`. The #277 document is the plan; the required replay case is what landed.
 
@@ -125,15 +125,15 @@ The 12,700-agent figure is a CPU capacity estimate for a mid-complexity AI loop 
 
 ## Systems on this tree
 
-| Area | State on `d6b07fc8` |
+| Area | State on `3971cbe1` |
 | --- | --- |
 | **ECS, math, core, sdk** | Single-threaded archetype schedule. Miri-clean as of the 2026-06-27 run (1,059 tests). |
 | **Combat** | `astraweave-combat` resolves damage in Q32.32. Replay case `combat_resolve`. |
 | **Navigation** | Navmesh plus tile routes. `nav_reroute` is a required replay case. |
 | **Destruction** | `astraweave-destruction`, `Fixed64` sim, required replay case. |
 | **Causality** | `astraweave-causality`, baked rules, required replay case. Headless Aravath caller only. |
-| **Scripting** | Sandboxed Rhai, mod loader, tick-boundary reload. Required replay case `scripted_system`. |
-| **Security** | Path checks, deterministic Rhai sandbox, and the #312 bounds are wired. Anticheat, signatures, and the secrets crate stay dormant. See [security.md](docs/architecture/security.md). |
+| **Scripting** | Sandboxed Rhai, mod loader, tick-boundary reload. Required replay case `scripted_system`. Gameplay scripts do not receive physics or nav proxies (#318). |
+| **Security** | Path checks, the deterministic Rhai sandbox, the #312 bounds, and the #316 image, glTF, and Ollama caps are wired. Anticheat, signatures, and the secrets crate stay dormant. See [security.md](docs/architecture/security.md). |
 | **Decision inspector** | `tools/aw_decision`. |
 | **Aravath bridge** | `aravath_runtime::BridgeAgent`. No window in that crate. |
 | **Rendering** | wgpu path: Disney BRDF with multi-scatter compensation, clustered forward lighting, IBL cubemaps, ACES / AgX / Reinhard in one post pipeline, 4-cascade CSM. Editor and engine share that path; a SHA-256 parity harness covers the May 2026 seams ([architecture map](docs/architecture/ARCHITECTURE_MAP.md)). Nanite-style and VXGI surfaces exist in-tree; this page does not claim they hold the frame budget. |

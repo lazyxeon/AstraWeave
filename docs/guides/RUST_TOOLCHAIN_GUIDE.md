@@ -1,6 +1,6 @@
 # Rust toolchain
 
-Checked against `main` at `d6b07fc8` (2026-10-16).
+Checked against `main` at `3971cbe1` (2026-10-16).
 
 AstraWeave pins Rust **1.89.0** in `rust-toolchain.toml`, with `rustfmt`, `clippy`, `rust-src`, `rust-analyzer`, and `llvm-tools-preview`. Targets listed there:
 

@@ -1,12 +1,12 @@
 # AstraWeave Project Status
 
-> **Current as of 2026-10-16** (`main` @ `d6b07fc8`). The repository [README](../../README.md) is the short status page. This file's June narrative below that banner is a session log, not the live headline.
+> **Current as of 2026-10-16** (`main` @ `3971cbe1`, which includes #316 and #318). The repository [README](../../README.md) is the short status page. This file's June narrative below that banner is a session log, not the live headline.
 
 ## Current (2026-10-16)
 
 - **Workspace:** 139 members (`cargo metadata --no-deps`). 57 names start with `astraweave-`. 59 example manifests.
 - **Determinism:** ten required cross-OS cases — `planner_pure`, `perception_world`, `gameplay_rng`, `fixed64`, `combat_resolve`, `destruction`, `gameplay_qa_aravath_slice`, `nav_reroute`, `causal_bridge`, `scripted_system`.
-- **On main:** nav reroute (#251), `aravath_runtime` bridge reroute (#263), security caps (#312), decision debugger (#287), causal consequence engine (#286), Rhai mod sandbox and loader (#214), destruction (#243), Aravath-slice gameplay QA replay (#277 plan, #280 case).
+- **On main:** nav reroute (#251), `aravath_runtime` bridge reroute (#263), security caps (#312 and #316), decision debugger (#287), causal consequence engine (#286), Rhai mod sandbox and loader (#214), destruction (#243), Aravath-slice gameplay QA replay (#277 plan, #280 case). #316 caps image decode (4096-pixel edge, 64 MiB), confines CLI glTF file URIs with `safe_under`, and keeps Ollama constructors on loopback unless `allowing_remote` is used. #318 keeps `PhysicsProxy` and `NavMeshProxy` off the gameplay script tick.
 - **In progress, not on main:** greybox demo #205, weaving #252, traversal #244, local fluid sim #253, render frame budget #216, CI #217.
 - **Frame budget:** target under 11 ms on a GTX 1660 Ti-class GPU. Not yet measured. GPU timer read 0 ms. #216 is the readback fix.
 - **AI:** local models propose; the deterministic sim validates and executes. Orchestrator default model is `phi3:medium` unless `OLLAMA_MODEL` is set.
