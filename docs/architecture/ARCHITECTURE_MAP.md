@@ -1,8 +1,9 @@
 # AstraWeave Architecture Map
 
-> **Generated**: 2026-05-07 | **Last reconciled**: 2026-10-16 | **Version**: 0.8.3 | **Rust**: 1.89.0
+> **Generated**: 2026-05-07 | **Last reconciled**: 2026-10-16 | **Version**: 0.8.4 | **Rust**: 1.89.0
 > Living document — used by all agents as the primary architectural reference.
-> **0.8.3 update (2026-10-16)**: Rebased onto `cdea968c`. The Aravath greybox #205 is on main (`aravath_greybox`). Member count is **141** (`astraweave-veil`). Trace count is **31** (`veil.md`). The greybox replay is Linux and Windows only. Traversal #244, local sim #253, frame budget #216, and CI #217 stay in progress.
+> **0.8.4 update (2026-10-16)**: Rebased onto `a10780f4`. Traversal #244 is on main. Required replay cases are thirteen, including `traversal` and `traversal_deformed`. The greybox golden is `b663da52ea1d566e` (Linux and Windows only). Member count stays **141**. Local sim #253, frame budget #216, and CI #217 stay in progress.
+> **0.8.3 update (2026-10-16)**: Rebased onto `cdea968c`. The Aravath greybox #205 is on main (`aravath_greybox`). Member count is **141** (`astraweave-veil`). Trace count is **31** (`veil.md`). The greybox replay is Linux and Windows only. Local sim #253, frame budget #216, and CI #217 stay in progress.
 > **0.8.2 update (2026-10-16)**: Rebased onto `5cba174c`. Weaving #252 is on main. Required replay cases are eleven, including `weaving`. Member count was **140** at that commit (`aravath_weave`). Local sim #253 is still in progress; the weaving replay hashes `NullField`.
 > **0.8.1 update (2026-10-16)**: Rebased onto `3971cbe1`. #316 is on main: image decode cap (4096 edge, 64 MiB), CLI glTF URI jail, Ollama loopback unless `allowing_remote`. #318 keeps physics and nav proxies off the gameplay script tick. Member count was **139** at that commit.
 > **0.8.0 update (2026-10-16)**: Member count corrected 130 → **139**. Trace count is **30**, generated into `CLAUDE.md`; the §0 table below is the June 2026 index and is not the full set. Landed since that index, and not folded into every row: nav reroute (#251), `aravath_runtime` bridge agent (#263), security caps (#312, #316), `aw_decision` (#287), `astraweave-causality` (#286), Rhai mod loader (#214), `astraweave-destruction` (#243), gameplay QA replay case (#280). Traversal #244, local fluid sim #253, render frame budget #216, and CI #217 are in progress and are not shipped. Weaving #252 and the Aravath greybox #205 are on main. The 12,700-agent line in §0 is a CPU capacity estimate, not a measured full frame. Orchestrator LLM default is still `phi3:medium` when `OLLAMA_MODEL` is unset.
@@ -957,6 +958,9 @@ These are decisional questions that cross subsystem boundaries or affect the bro
 ---
 
 ## Revision History
+
+### v0.8.4 (2026-10-16)
+Rebased onto `a10780f4`. Traversal #244 is on main. The required replay list is thirteen cases.
 
 ### v0.8.3 (2026-10-16)
 Rebased onto `cdea968c`. Greybox #205 is on main. Member count 140 → 141.

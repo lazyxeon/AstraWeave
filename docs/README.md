@@ -1,6 +1,6 @@
 # AstraWeave Documentation Index
 
-> **Current engine status lives in the repository [README](../README.md)** (checked 2026-10-16 against `cdea968c`).
+> **Current engine status lives in the repository [README](../README.md)** (checked 2026-10-16 against `a10780f4`).
 > The file counts, word counts, and "49 core crates" figure below are a **January 1, 2026 census**. They were not re-counted for this pass. Do not quote them as the live workspace size.
 
 ---

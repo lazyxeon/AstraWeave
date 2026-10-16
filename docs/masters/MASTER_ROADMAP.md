@@ -5,7 +5,7 @@
 **Status**: Strategy log. Live engine status is the repository [README](../../README.md).  
 **Validation**: The January 2026 validation report linked below is a dated audit, not a current grade.
 
-> **2026-10-16.** The "Current State (June 10, 2026)" table is a snapshot. Workspace members on `cdea968c` are **141**, not 130. Determinism on `main` is eleven cross-OS replay cases, including `weaving`, not an unbounded "100% validated" claim. The Aravath greybox #205 is on main. Its own replay hash is Linux and Windows only. The frame-time target is under 11 ms on a GTX 1660 Ti-class GPU and is not yet measured (#216). Traversal #244, local fluid sim #253, render frame budget #216, and CI #217 are in progress. Player-facing name is Aravath. Do not treat the A+ row in the June table as a current grade.
+> **2026-10-16.** The "Current State (June 10, 2026)" table is a snapshot. Workspace members on `a10780f4` are **141**, not 130. Determinism on `main` is thirteen cross-OS replay cases, including `weaving`, `traversal`, and `traversal_deformed`, not an unbounded "100% validated" claim. The Aravath greybox #205 is on main. Its golden hash is `b663da52ea1d566e`, Linux and Windows only. Traversal #244 is on main. The frame-time target is under 11 ms on a GTX 1660 Ti-class GPU and is not yet measured (#216). Local fluid sim #253, render frame budget #216, and CI #217 are in progress. Player-facing name is Aravath. Do not treat the A+ row in the June table as a current grade.
 
 ---
 

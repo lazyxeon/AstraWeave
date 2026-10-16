@@ -484,7 +484,7 @@ This PR is docs on `main`. It does not merge the drafts below. Implementation or
 | 4 | demo, branch that contains #263 and step 3 | `aravath-bridge` script and the two CLI commands. Still headless |
 | 5 | editor panel | After #265 and #273 are closed. Separate PR. Reads the dump from step 3 |
 
-Other work stays outside this tracer: #252 and #214 are on main, #253 local sim, #244 traversal, #243 destruction (the crate is already on `main`; that draft must not be re-merged over it), #215 terrain, #216 render, #217 CI burndown (the owner of #265), #275 combat wire, #264 local-sim host. The tracer reads `GeometryNotice` only as a documented input shape. It does not subscribe to destruction, fluids, or the character motor.
+Other work stays outside this tracer: #252, #214, and #244 are on main, #253 local sim, #243 destruction (the crate is already on `main`; that draft must not be re-merged over it), #215 terrain, #216 render, #217 CI burndown (the owner of #265), #275 combat wire, #264 local-sim host. The tracer reads `GeometryNotice` only as a documented input shape. It does not subscribe to destruction, fluids, or the character motor.
 
 Issues #257 and #258 stay deferred. The trace has no `PlannerId` for a live model and no arm that calls the advanced GOAP tree.
 
