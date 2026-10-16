@@ -4642,6 +4642,12 @@ async fn test_advanced_post_processing() {
         .request_device(&wgpu::DeviceDescriptor::default())
         .await
         .unwrap();
+    if !astraweave_render::gpu_fault::depth_texture_load_supported(&device) {
+        eprintln!(
+            "skip test_advanced_post_processing: this adapter does not support textureLoad on depth textures"
+        );
+        return;
+    }
 
     // Test config structs
     let _taa_config = TaaConfig::default();

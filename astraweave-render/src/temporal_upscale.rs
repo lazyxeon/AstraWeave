@@ -724,6 +724,9 @@ mod tests {
                     return;
                 }
             };
+        if crate::gpu_fault::skip_without_depth_texture_load(&device, "upscale_pass_creation") {
+            return;
+        }
 
         let cfg = UpscaleConfig::from_quality(UpscaleQuality::Balanced);
         let _pass = TemporalUpscalePass::new(&device, 1920, 1080, &cfg);

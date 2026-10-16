@@ -434,6 +434,12 @@ mod tests {
         let (device, queue) =
             pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
                 .expect("device");
+        if crate::gpu_fault::skip_without_depth_texture_load(
+            &device,
+            "particle_render_pass_creation",
+        ) {
+            return;
+        }
 
         let pass = ParticleRenderPass::new(
             &device,

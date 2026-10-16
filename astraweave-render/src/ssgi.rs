@@ -813,6 +813,9 @@ mod tests {
         let (device, _queue) =
             pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
                 .expect("device");
+        if crate::gpu_fault::skip_without_depth_texture_load(&device, "ssgi_pass_creation") {
+            return;
+        }
 
         let pass = SsgiPass::new(&device, 1920, 1080);
         assert_eq!(pass.dimensions(), (1920, 1080));
@@ -842,6 +845,9 @@ mod tests {
         let (device, _queue) =
             pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
                 .expect("device");
+        if crate::gpu_fault::skip_without_depth_texture_load(&device, "ssgi_pass_half_res") {
+            return;
+        }
 
         let config = SsgiConfig {
             half_res: true,

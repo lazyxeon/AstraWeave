@@ -7,6 +7,12 @@ use astraweave_render::Renderer;
 fn recorded_pass_timestamp_is_positive() {
     pollster::block_on(async {
         let mut renderer = Renderer::new_headless(64, 64).await.expect("headless");
+        if !astraweave_render::gpu_fault::depth_texture_load_supported(renderer.device()) {
+            eprintln!(
+                "skip recorded_pass_timestamp_is_positive: GL cannot textureLoad depth, so this frame is not the lavapipe measurement"
+            );
+            return;
+        }
         assert!(
             renderer.timestamps_supported(),
             "lavapipe should expose TIMESTAMP_QUERY with a positive period; adapter={} backend={} features={:?}",

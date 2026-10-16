@@ -106,6 +106,17 @@ pub fn text_means_device_lost(text: &str) -> bool {
 /// The GL backend rejects that load (`not supported in GLSL`). Vulkan,
 /// including lavapipe, accepts it. A probe failure that is not that rejection
 /// reports supported, so the real pipeline creation still surfaces it.
+/// `true` when `test_name` should return. GL rejects `textureLoad` on depth.
+pub fn skip_without_depth_texture_load(device: &wgpu::Device, test_name: &str) -> bool {
+    if depth_texture_load_supported(device) {
+        return false;
+    }
+    eprintln!(
+        "skip {test_name}: this adapter does not support textureLoad on depth textures. GL rejects that load. The lavapipe job still runs this test."
+    );
+    true
+}
+
 pub fn depth_texture_load_supported(device: &wgpu::Device) -> bool {
     const SHADER: &str = r#"
 @group(0) @binding(0) var t_depth: texture_depth_2d;

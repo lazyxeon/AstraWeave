@@ -1007,6 +1007,9 @@ mod tests {
                 ..Default::default()
             }))
             .unwrap();
+        if crate::gpu_fault::skip_without_depth_texture_load(&device, "cloud_pass_creation") {
+            return;
+        }
 
         let config = CloudConfig::default();
         let pass = VolumetricCloudsPass::new(&device, 1920, 1080, config);

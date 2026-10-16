@@ -75,6 +75,12 @@ fn depth_copy_stays_uniform_for_ssr_and_ssgi() {
             .request_device(&wgpu::DeviceDescriptor::default())
             .await
             .expect("device");
+        if !astraweave_render::gpu_fault::depth_texture_load_supported(&device) {
+            eprintln!(
+                "skip depth_copy_stays_uniform_for_ssr_and_ssgi: this adapter does not support textureLoad on depth textures"
+            );
+            return;
+        }
         let depth = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("depth"),
             size: wgpu::Extent3d {

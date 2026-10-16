@@ -1020,6 +1020,8 @@ pub struct Renderer {
     models: std::collections::HashMap<String, RenderModel>,
     /// One Hi-Z pyramid. SSR, SSGI, and occlusion sample its R32Float copy.
     hiz: Option<crate::hiz_pyramid::HizPyramid>,
+    /// GL rejects `textureLoad` on `texture_depth_2d`, so the pyramid stays off.
+    hiz_depth_load: bool,
     /// Presentation-only particle sim. `None` until an emitter is enabled.
     particle_sim: Option<crate::gpu_particles::GpuParticleSystem>,
     particle_draw: Option<crate::particle_render::ParticleRenderPass>,
@@ -3605,6 +3607,7 @@ fn vs(input: VSIn) -> VSOut {
         log::info!("renderer pipelines ready {} ms", boot.elapsed().as_millis());
         let streaming = crate::texture_streaming::TextureStreamingManager::new(256)
             .context("texture streaming runtime")?;
+        let hiz_depth_load = crate::gpu_fault::depth_texture_load_supported(&device);
 
         Ok(Self {
             surface,
@@ -3712,6 +3715,7 @@ fn vs(input: VSIn) -> VSOut {
             mesh_external: None,
             models: std::collections::HashMap::new(),
             hiz: None,
+            hiz_depth_load,
             particle_sim: None,
             particle_draw: None,
             particle_sort: None,
@@ -8001,6 +8005,9 @@ fn vs(input: VSIn) -> VSOut {
         enc: &mut wgpu::CommandEncoder,
         depth_view: Option<&wgpu::TextureView>,
     ) {
+        if !self.hiz_depth_load {
+            return;
+        }
         let width = self.config.width.max(1);
         let height = self.config.height.max(1);
         let source = depth_view.unwrap_or(&self.depth.view).clone();

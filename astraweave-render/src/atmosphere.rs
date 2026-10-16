@@ -883,6 +883,9 @@ mod tests {
         let (device, _) =
             pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
                 .expect("device");
+        if crate::gpu_fault::skip_without_depth_texture_load(&device, "atmosphere_pass_creation") {
+            return;
+        }
 
         let config = AtmosphereConfig {
             lut_width: 32,

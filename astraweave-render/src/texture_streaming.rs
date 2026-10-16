@@ -121,12 +121,77 @@ pub struct TextureStreamingManager {
     result_rx: tokio_mpsc::Receiver<LoadResult>,
     /// Sender to clone for async tasks (`process_next_load`).
     result_tx: tokio_mpsc::Sender<LoadResult>,
-    /// Tokio runtime for decode workers. The sim tick only polls.
-    runtime: tokio::runtime::Runtime,
+    /// Decode workers. The runtime lives on its own thread so dropping this
+    /// manager from inside another Tokio runtime does not block.
+    runtime: DecodeRuntime,
     /// Pre-sized ring of decoded images. Uploads drain it on the frame.
     upload_ring: VecDeque<StreamMsg>,
     decoded_tx: SyncSender<StreamMsg>,
     decoded_rx: Receiver<StreamMsg>,
+}
+
+/// One current-thread runtime on `texture-stream`. Drop signals that thread
+/// and only joins it when the caller is not already inside a runtime.
+struct DecodeRuntime {
+    handle: tokio::runtime::Handle,
+    shutdown: Option<std::sync::mpsc::Sender<()>>,
+    thread: Option<std::thread::JoinHandle<()>>,
+}
+
+impl DecodeRuntime {
+    fn start() -> anyhow::Result<Self> {
+        let (shutdown_tx, shutdown_rx) = std::sync::mpsc::channel::<()>();
+        let (ready_tx, ready_rx) = std::sync::mpsc::channel();
+        let thread = std::thread::Builder::new()
+            .name("texture-stream".into())
+            .spawn(move || {
+                let runtime = tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build();
+                let runtime = match runtime {
+                    Ok(runtime) => runtime,
+                    Err(err) => {
+                        let _ = ready_tx.send(Err(err));
+                        return;
+                    }
+                };
+                let handle = runtime.handle().clone();
+                if ready_tx.send(Ok(handle)).is_err() {
+                    return;
+                }
+                let _ = shutdown_rx.recv();
+                drop(runtime);
+            })
+            .context("texture streaming runtime")?;
+        let handle = ready_rx
+            .recv()
+            .context("texture streaming runtime stopped")?
+            .context("texture streaming runtime")?;
+        Ok(Self {
+            handle,
+            shutdown: Some(shutdown_tx),
+            thread: Some(thread),
+        })
+    }
+
+    fn spawn<F>(&self, future: F)
+    where
+        F: std::future::Future<Output = ()> + Send + 'static,
+    {
+        self.handle.spawn(future);
+    }
+}
+
+impl Drop for DecodeRuntime {
+    fn drop(&mut self) {
+        self.shutdown.take();
+        let Some(thread) = self.thread.take() else {
+            return;
+        };
+        if tokio::runtime::Handle::try_current().is_err() {
+            let _ = thread.join();
+        }
+    }
 }
 
 impl TextureStreamingManager {
@@ -142,12 +207,7 @@ impl TextureStreamingManager {
         let (decoded_tx, decoded_rx) = mpsc::sync_channel(UPLOAD_RING_CAP);
         let mut upload_ring = VecDeque::new();
         upload_ring.reserve(UPLOAD_RING_CAP);
-        let runtime = tokio::runtime::Builder::new_multi_thread()
-            .worker_threads(1)
-            .enable_all()
-            .thread_name("texture-stream")
-            .build()
-            .context("texture streaming runtime")?;
+        let runtime = DecodeRuntime::start()?;
         Ok(Self {
             assets: HashMap::new(),
             lru_queue: VecDeque::new(),

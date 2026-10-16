@@ -29,8 +29,9 @@ last_verified_commit: 0758171bf
 > **Revision notice — 2026-10-17 (v1.27).** `test_renderer_lifecycle_stress_test` keeps one wgpu Instance and Adapter, treats the first create/destroy as the warm baseline, and asserts VmRSS growth after that cycle stays under 50 MB. It also requires `generate_report` to show zero user-held buffers, textures, texture views, devices, and queues after each cycle. Lavapipe measured about 5.2 MB after the warm cycle.
 >
 > **Revision notice — 2026-10-16 (v1.26).** `IblResources` is `Clone`. The views are `wgpu` handles, so one bake can be installed on two renderers without a second convolution. The editor parity harness does that; the live adapter still bakes on its worker thread.
->
 > **Revision notice — 2026-10-16 (v1.26).** Rebased onto main `cdea968c`. Volumetric fog and god rays stay the #205 passes. Timestamp slots are still allocated only when the pass is recorded, and `gpu_frame_budget --scene heavy` still prints CPU and GPU times with `budget_11ms=not_decided`. `TextureStreamingManager::new` returns `Result`.
+>
+> **Revision notice — 2026-10-16 (v1.26).** Rebased onto main `cdea968c`. Volumetric fog and god rays stay the #205 passes. Timestamp slots are still allocated only when the pass is recorded, and `gpu_frame_budget --scene heavy` still prints CPU and GPU times with `budget_11ms=not_decided`. `TextureStreamingManager::new` returns `Result`, and its decode runtime lives on its own thread. `draw_into` skips the Hi-Z pyramid when the device cannot `textureLoad` a depth texture. GL rejects that load.
 >
 > **Revision notice — 2026-10-15 (v1.21).** Texture, material, impostor, smoke-test, and HDRI file reads decode through `astraweave_asset::open_limited_image` / `decode_limited_image` (4096-pixel edge, 64 MiB allocation).
 >

@@ -324,6 +324,9 @@ mod tests {
         let (device, _queue) =
             pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
                 .expect("device");
+        if crate::gpu_fault::skip_without_depth_texture_load(&device, "hiz_pyramid_creation") {
+            return;
+        }
 
         // Create a dummy R32Float depth source texture
         let depth_tex = device.create_texture(&wgpu::TextureDescriptor {
