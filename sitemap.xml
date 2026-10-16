@@ -2554,48 +2554,6 @@
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_physics/gravity/type.GravityZoneId.html</loc>
-    <lastmod>2026-10-16</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_physics/gravity/type.BodyGravityId.html</loc>
-    <lastmod>2026-10-16</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_physics/gravity/struct.GravityManager.html</loc>
-    <lastmod>2026-10-16</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_physics/gravity/struct.BodyGravitySettings.html</loc>
-    <lastmod>2026-10-16</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_physics/gravity/index.html</loc>
-    <lastmod>2026-10-16</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_physics/gravity/struct.GravityZone.html</loc>
-    <lastmod>2026-10-16</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_physics/gravity/enum.GravityZoneShape.html</loc>
-    <lastmod>2026-10-16</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
     <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_ai/tool_sandbox/enum.ToolVerb.html</loc>
     <lastmod>2026-10-16</lastmod>
     <changefreq>weekly</changefreq>
@@ -3797,6 +3755,12 @@
   </url>
   <url>
     <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_core/sim/fn.step.html</loc>
+    <lastmod>2026-10-16</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_core/sim/constant.SIM_SYSTEM_LOCAL_SIM.html</loc>
     <lastmod>2026-10-16</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
