@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["ScarStance"],"fn":["sense","stance_at"]};

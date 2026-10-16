@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["depth_texture_load_supported","device_lost","error_means_device_lost","finish_scope","mark_device_lost","record","scope","storage_write_supported","take","text_means_device_lost"]};

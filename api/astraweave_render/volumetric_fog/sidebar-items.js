@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"enum":["VolumetricQuality"],"struct":["ApplyParams","CascadeData","FogDensityParams","IntegrateParams","ScatterParams","VolumetricFogConfig","VolumetricFogPass"]};
+window.SIDEBAR_ITEMS = {"constant":["SCAR_VOLUME_DIM"],"enum":["VolumetricQuality"],"struct":["ApplyParams","CascadeData","FogDensityParams","IntegrateParams","ScarFogParams","ScarFogVolume","ScatterParams","VolumetricFogConfig","VolumetricFogPass","VolumetricGpuSample"]};

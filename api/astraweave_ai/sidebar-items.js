@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"fn":["bridge_and_ford"],"macro":["decision_record"],"mod":["core_loop","ecs_ai_plugin","htn","orchestrator","tool_sandbox"]};
+window.SIDEBAR_ITEMS = {"fn":["bridge_and_ford"],"macro":["decision_record"],"mod":["core_loop","ecs_ai_plugin","htn","orchestrator","scar_sense","tool_sandbox"]};

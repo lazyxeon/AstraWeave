@@ -2446,6 +2446,30 @@
     <priority>0.8</priority>
   </url>
   <url>
+    <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_ai/scar_sense/fn.sense.html</loc>
+    <lastmod>2026-10-16</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_ai/scar_sense/fn.stance_at.html</loc>
+    <lastmod>2026-10-16</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_ai/scar_sense/index.html</loc>
+    <lastmod>2026-10-16</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_ai/scar_sense/enum.ScarStance.html</loc>
+    <lastmod>2026-10-16</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
     <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_ai/index.html</loc>
     <lastmod>2026-10-16</lastmod>
     <changefreq>weekly</changefreq>
@@ -6160,6 +6184,72 @@
     <priority>0.8</priority>
   </url>
   <url>
+    <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_render/gpu_fault/fn.error_means_device_lost.html</loc>
+    <lastmod>2026-10-16</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_render/gpu_fault/fn.depth_texture_load_supported.html</loc>
+    <lastmod>2026-10-16</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_render/gpu_fault/fn.text_means_device_lost.html</loc>
+    <lastmod>2026-10-16</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_render/gpu_fault/fn.record.html</loc>
+    <lastmod>2026-10-16</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_render/gpu_fault/fn.storage_write_supported.html</loc>
+    <lastmod>2026-10-16</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_render/gpu_fault/fn.mark_device_lost.html</loc>
+    <lastmod>2026-10-16</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_render/gpu_fault/index.html</loc>
+    <lastmod>2026-10-16</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_render/gpu_fault/fn.take.html</loc>
+    <lastmod>2026-10-16</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_render/gpu_fault/fn.device_lost.html</loc>
+    <lastmod>2026-10-16</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_render/gpu_fault/fn.scope.html</loc>
+    <lastmod>2026-10-16</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_render/gpu_fault/fn.finish_scope.html</loc>
+    <lastmod>2026-10-16</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
     <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_render/velocity/struct.PrevTransformUniforms.html</loc>
     <lastmod>2026-10-16</lastmod>
     <changefreq>weekly</changefreq>
@@ -6544,6 +6634,18 @@
     <priority>0.8</priority>
   </url>
   <url>
+    <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_render/volumetric_fog/struct.ScarFogParams.html</loc>
+    <lastmod>2026-10-16</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_render/volumetric_fog/struct.ScarFogVolume.html</loc>
+    <lastmod>2026-10-16</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
     <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_render/volumetric_fog/struct.CascadeData.html</loc>
     <lastmod>2026-10-16</lastmod>
     <changefreq>weekly</changefreq>
@@ -6581,6 +6683,18 @@
   </url>
   <url>
     <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_render/volumetric_fog/struct.FogDensityParams.html</loc>
+    <lastmod>2026-10-16</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_render/volumetric_fog/constant.SCAR_VOLUME_DIM.html</loc>
+    <lastmod>2026-10-16</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_render/volumetric_fog/struct.VolumetricGpuSample.html</loc>
     <lastmod>2026-10-16</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
@@ -7325,6 +7439,12 @@
   </url>
   <url>
     <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_render/animation/struct.Transform.html</loc>
+    <lastmod>2026-10-16</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_render/animation/fn.compute_joint_matrices_into.html</loc>
     <lastmod>2026-10-16</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
