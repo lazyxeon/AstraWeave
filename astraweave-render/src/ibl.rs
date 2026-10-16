@@ -67,6 +67,7 @@ pub enum SkyMode {
 }
 
 /// Public handles to IBL resources (texture views suited for binding)
+#[derive(Clone)]
 pub struct IblResources {
     pub env_cube: wgpu::TextureView, // optional to keep for debug
     pub irradiance_cube: wgpu::TextureView,
