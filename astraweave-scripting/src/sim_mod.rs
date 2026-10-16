@@ -511,6 +511,10 @@ fn apply_weave_casts(
                     format!("unknown weave template {}", cast.template)
                 }
                 QueueError::Full => format!("weave queue is full for template {}", cast.template),
+                QueueError::OutsideIsland => format!(
+                    "weave origin is outside the island for template {}",
+                    cast.template
+                ),
             });
         }
     }
