@@ -80,6 +80,7 @@ jobs:
           cargo test -p astraweave-scripting --test script_replay_hash -- --nocapture
           cargo test -p astraweave-physics --test traversal_replay -- --nocapture
           cargo test -p astraweave-terrain --test worldgen_hash -- --nocapture
+          cargo test -p astraweave-localsim --test replay_hash -- --nocapture
 
       - name: Merge replay hashes
         run: |
@@ -92,9 +93,10 @@ jobs:
           const gameplay = JSON.parse(fs.readFileSync(path.join(root, "replay-hash-gameplay-qa.json"), "utf8"));
           const causal = JSON.parse(fs.readFileSync(path.join(root, "replay-hash-causal.json"), "utf8"));
           const traversal = JSON.parse(fs.readFileSync(path.join(root, "replay-hash-traversal.json"), "utf8"));
+          const localsim = JSON.parse(fs.readFileSync(path.join(root, "replay-hash-localsim.json"), "utf8"));
           const seen = new Set(core.map((row) => row.case));
           const merged = core.slice();
-          for (const row of combat.concat(gameplay, causal, traversal)) {
+          for (const row of combat.concat(gameplay, causal, traversal, localsim)) {
             if (seen.has(row.case)) {
               console.error(`duplicate replay case ${row.case}`);
               process.exit(1);

@@ -200,19 +200,43 @@ impl WaterPlayerState {
         }
     }
 
+    /// Fraction of the body under a water surface. `None` and non-finite inputs are dry.
+    /// Feet at or above the surface are dry. Head at or below the surface is fully under.
+    pub fn submersion_between(feet_y: f32, head_y: f32, surface_y: Option<f32>) -> f32 {
+        let Some(surface) = surface_y else {
+            return 0.0;
+        };
+        if !feet_y.is_finite() || !head_y.is_finite() || !surface.is_finite() {
+            return 0.0;
+        }
+        if feet_y >= surface {
+            return 0.0;
+        }
+        let span = head_y - feet_y;
+        if span <= f32::EPSILON {
+            return 1.0;
+        }
+        if head_y <= surface {
+            return 1.0;
+        }
+        ((surface - feet_y) / span).clamp(0.0, 1.0)
+    }
+
     /// Feed a traversal water surface into this state.
     ///
     /// `surface_y` and `feet_y` come from `WaterQuery` and the capsule feet.
-    /// Submersion is depth divided by the configured body height.
+    /// The fraction is [`submersion_between`] with the head at `feet_y + player_height`.
     pub fn update_from_surface(
         &mut self,
         surface_y: f32,
         feet_y: f32,
         dt: f32,
     ) -> WaterUpdateResult {
-        let depth = (surface_y - feet_y).max(0.0);
-        let height = self.config.player_height.max(0.01);
-        self.update((depth / height).clamp(0.0, 1.0), dt)
+        let head_y = feet_y + self.config.player_height;
+        self.update(
+            Self::submersion_between(feet_y, head_y, Some(surface_y)),
+            dt,
+        )
     }
 
     /// Update water state based on submersion level

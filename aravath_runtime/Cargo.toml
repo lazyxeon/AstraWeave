@@ -18,6 +18,8 @@ astraweave-destruction = { workspace = true }
 astraweave-math = { workspace = true }
 astraweave-terrain = { path = "../astraweave-terrain" }
 astraweave-physics = { path = "../astraweave-physics" }
+astraweave-localsim = { path = "../astraweave-localsim" }
+astraweave-water = { path = "../astraweave-water" }
 astraweave-camera = { path = "../astraweave-camera" }
 astraweave-render = { path = "../astraweave-render" }
 astraweave-input = { path = "../astraweave-input" }

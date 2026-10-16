@@ -53,7 +53,8 @@ pub use enemy::{AttackTarget, Enemy, EnemyBehavior, EnemyState};
 pub use eval::{weave_eval, weave_tick, weaving_case_bytes, weaving_case_on, IceSheet, WeaveFrame};
 pub use field::{
     gravity_mm_s2, meters_to_cell, FieldEvent, FieldWrite, NullField, Shape, SimField, WriteOp,
-    CELL_MM, FLAG_ICE, MAX_FIELD_WRITES, PHASE_BURN, PHASE_ICE, WORLD_GRAVITY_MILLI_G,
+    CELL_MM, FLAG_BURN, FLAG_CONDUCTIVE, FLAG_ICE, FLAG_SLIP, FLAG_WET, MAX_FIELD_WRITES,
+    PHASE_BURN, PHASE_DRY, PHASE_GAS, PHASE_ICE, PHASE_OIL, PHASE_WET, WORLD_GRAVITY_MILLI_G,
 };
 pub use gameplay_qa::{load_bundled_scenario, run_scenario, FailureArtifact, RunOutcome};
 pub use intents::{IntentProposer, WeaveIntent};

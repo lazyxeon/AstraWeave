@@ -943,6 +943,8 @@ pub struct PhysicsWorld {
     /// `clear_water` register/clear bounded volumes on it. Deterministic,
     /// CPU-only (gate Q1).
     pub water: astraweave_water::AnalyticWater,
+    /// Grid columns from the local field. Sampled before [`Self::water`].
+    pub columns: astraweave_water::ColumnWater,
     pub wind: Vec3,
 
     /// Async physics scheduler (feature-gated)
@@ -984,6 +986,7 @@ impl PhysicsWorld {
             water_level: f32::NEG_INFINITY,
             fluid_density: 1000.0,
             water: astraweave_water::AnalyticWater::new(),
+            columns: astraweave_water::ColumnWater::new(),
             wind: Vec3::ZERO,
             #[cfg(feature = "async-physics")]
             async_scheduler: None,
@@ -1028,6 +1031,7 @@ impl PhysicsWorld {
             water_level: f32::NEG_INFINITY,
             fluid_density: 1000.0,
             water: astraweave_water::AnalyticWater::new(),
+            columns: astraweave_water::ColumnWater::new(),
             wind: Vec3::ZERO,
             #[cfg(feature = "async-physics")]
             async_scheduler: None,
@@ -1505,7 +1509,7 @@ impl PhysicsWorld {
             };
 
             // Single source of water truth.
-            let Some(sample) = self.water.sample(pos) else {
+            let Some(sample) = self.columns.sample(pos).or_else(|| self.water.sample(pos)) else {
                 continue;
             };
             // Preserve the wired semantics: buoyancy only below the surface.
@@ -1749,7 +1753,15 @@ impl PhysicsWorld {
 
     pub fn water_surface_at(&self, point: Vec3) -> Option<f32> {
         use astraweave_water::WaterQuery;
-        self.water.sample(point).map(|sample| sample.surface_height)
+        self.columns
+            .sample(point)
+            .or_else(|| self.water.sample(point))
+            .map(|sample| sample.surface_height)
+    }
+
+    /// Install grid columns from the local field. The buffer is reserved in `new`.
+    pub fn set_water_columns(&mut self, columns: &astraweave_water::ColumnWater) {
+        self.columns.fill(columns.rows());
     }
 
     /// Downward probe that ignores the character collider.

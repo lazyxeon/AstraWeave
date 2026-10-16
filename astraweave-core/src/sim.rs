@@ -32,6 +32,8 @@ pub const SIM_SYSTEM_FOREST_SCATTER: u64 = 0x7E22_7101;
 pub const SIM_SYSTEM_COLUMN_EROSION: u64 = 0x7E22_7102;
 /// Dialogue proposals. Seeded and not drawn by the recorded-line helper.
 pub const SIM_SYSTEM_LLM_DIALOGUE: u64 = 0xD1A1_7001;
+/// Local fluid, gas, and heat. Neighbor passes do not draw it.
+pub const SIM_SYSTEM_LOCAL_SIM: u64 = 0x51A0_7001;
 
 /// Mix `(world_seed, tick, system_id)` into one `StdRng` seed.
 ///
@@ -193,6 +195,7 @@ mod tests {
             SIM_SYSTEM_FOREST_SCATTER,
             SIM_SYSTEM_COLUMN_EROSION,
             SIM_SYSTEM_LLM_DIALOGUE,
+            SIM_SYSTEM_LOCAL_SIM,
         ];
         for i in 0..ids.len() {
             for j in (i + 1)..ids.len() {
