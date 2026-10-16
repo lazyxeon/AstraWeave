@@ -6,8 +6,12 @@ use astraweave_localsim::local_sim_case_bytes;
 use sha2::{Digest, Sha256};
 
 fn replay_path() -> PathBuf {
-    let mut path =
-        PathBuf::from(std::env::var("CARGO_TARGET_DIR").unwrap_or_else(|_| "target".into()));
+    if let Ok(dir) = std::env::var("CARGO_TARGET_DIR") {
+        return PathBuf::from(dir).join("replay-hash-localsim.json");
+    }
+    let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    path.pop();
+    path.push("target");
     path.push("replay-hash-localsim.json");
     path
 }
