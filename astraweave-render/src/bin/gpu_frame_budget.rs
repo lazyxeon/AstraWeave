@@ -4,9 +4,10 @@
 //! On a GTX 1660 Ti-class GPU the printed median is the measurement.
 //!
 //! ```text
-//! cargo run -p astraweave-render --release --features gpu-frame-budget --bin gpu_frame_budget -- --glb "assets/The Complete KayKit Collection v4/KayKit Adventurers 2.0/Characters/gltf/Rogue.glb"
+//! cargo run -p astraweave-render --release --features gpu-frame-budget --bin gpu_frame_budget -- --scene heavy --glb "assets/The Complete KayKit Collection v4/KayKit Adventurers 2.0/Characters/gltf/Rogue.glb"
 //! ```
 
+use anyhow::Context;
 use std::path::PathBuf;
 use std::time::Instant;
 
@@ -23,6 +24,7 @@ const SAMPLES: usize = 120;
 
 fn main() -> anyhow::Result<()> {
     let glb = glb_path();
+    let heavy = scene_is_heavy();
     if !glb.is_file() {
         anyhow::bail!(
             "textured GLB not found at {}. Pass --glb <path>. No frame time is invented.",
@@ -31,13 +33,32 @@ fn main() -> anyhow::Result<()> {
     }
 
     let mut renderer = pollster::block_on(Renderer::new_headless(WIDTH, HEIGHT))?;
+    println!("adapter={}", renderer.gpu_adapter_name());
+    println!("backend={}", renderer.gpu_backend());
+    println!("features={:?}", renderer.gpu_features());
+    let timestamps = renderer.timestamps_supported();
+    if !timestamps {
+        eprintln!(
+            "GPU timestamps are unsupported on this adapter (need TIMESTAMP_QUERY and a positive timestamp period)."
+        );
+    }
     let hdri = renderer.bake_showcase_environment(astraweave_render::ibl::IblQuality::Medium)?;
     let meshes = load_gltf(&glb, &GltfOptions::default())?;
     if meshes.is_empty() {
         anyhow::bail!("{} produced no meshes", glb.display());
     }
-    let instance = Instance::from_pos_scale_color(Vec3::ZERO, Vec3::ONE, [1.0, 1.0, 1.0, 1.0]);
-    renderer.add_composite_model("budget-model", meshes, &[instance]);
+    let instances = if heavy {
+        heavy_instances()
+    } else {
+        vec![Instance::from_pos_scale_color(
+            Vec3::ZERO,
+            Vec3::ONE,
+            [1.0, 1.0, 1.0, 1.0],
+        )]
+    };
+    renderer.add_composite_model("budget-model", meshes, &instances);
+    renderer.set_shadows_enabled(true);
+    add_heavy_terrain(&mut renderer)?;
     renderer.set_particle_emitter(Some(emitter()))?;
     // Cloud shadows stay at the renderer default. Volumetric fog and god rays
     // are not called. GPU indirect culling is not the draw path yet: each
@@ -63,49 +84,142 @@ fn main() -> anyhow::Result<()> {
     let view = color.create_view(&wgpu::TextureViewDescriptor::default());
     let camera = fixed_camera();
 
-    let frame = |renderer: &mut Renderer| -> anyhow::Result<f64> {
+    let frame = |renderer: &mut Renderer| -> anyhow::Result<(f64, f64)> {
         renderer.update_view(&camera);
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("frame budget"),
         });
-        let started = Instant::now();
+        let encode_started = Instant::now();
         renderer.draw_into(&view, None, &mut encoder)?;
-        let cpu_ms = started.elapsed().as_secs_f64() * 1_000.0;
+        let encode_ms = encode_started.elapsed().as_secs_f64() * 1_000.0;
+        let frame_started = Instant::now();
         queue.submit(std::iter::once(encoder.finish()));
-        renderer.request_gpu_profiler_readback();
-        let _ = device.poll(wgpu::MaintainBase::Wait);
-        Ok(cpu_ms)
+        if timestamps {
+            renderer.request_gpu_profiler_readback();
+        }
+        let _ = device.poll(wgpu::PollType::Wait);
+        if timestamps {
+            if let Some(profiler) = renderer.gpu_profiler_mut() {
+                profiler
+                    .block_on_readback(&device)
+                    .map_err(anyhow::Error::msg)?;
+            }
+        }
+        let cpu_frame_ms = frame_started.elapsed().as_secs_f64() * 1_000.0 + encode_ms;
+        Ok((encode_ms, cpu_frame_ms))
     };
 
     for _ in 0..WARMUP {
         frame(&mut renderer)?;
     }
-    let mut cpu = Vec::with_capacity(SAMPLES);
+    let mut encode = Vec::with_capacity(SAMPLES);
+    let mut cpu_frame = Vec::with_capacity(SAMPLES);
     let mut gpu = Vec::new();
     for _ in 0..SAMPLES {
-        cpu.push(frame(&mut renderer)?);
-        if let Some(profiler) = renderer.gpu_profiler() {
-            if !profiler.results().is_empty() {
-                gpu.push(profiler.total_gpu_ms() as f64);
-            }
+        let (encode_ms, frame_ms) = frame(&mut renderer)?;
+        encode.push(encode_ms);
+        cpu_frame.push(frame_ms);
+        if timestamps {
+            let profiler = renderer
+                .gpu_profiler()
+                .context("GPU profiler disappeared after a supported device")?;
+            let total = profiler.validated_total_ms().map_err(anyhow::Error::msg)?;
+            gpu.push(f64::from(total));
         }
     }
 
-    println!("scene=1920x1080 warmup={WARMUP} samples={SAMPLES}");
+    let scene = if heavy { "heavy" } else { "light" };
+    println!("scene={scene} resolution=1920x1080 warmup={WARMUP} samples={SAMPLES}");
     println!("hdri={}", hdri.display());
     println!("glb={}", glb.display());
-    println!("particles=on cloud_shadows=default volumetrics=off gpu_cull={gpu_cull}");
-    println!("median_draw_into_ms={:.3}", median(&mut cpu));
-    if gpu.is_empty() {
-        println!("median_gpu_pass_sum_ms=unavailable");
-    } else {
-        println!(
-            "median_gpu_pass_sum_ms={:.3} gpu_samples={}",
-            median(&mut gpu),
-            gpu.len()
+    println!(
+        "instances={} particles=on shadows=on volumetrics=off gpu_cull={gpu_cull}",
+        instances.len()
+    );
+    println!("median_draw_into_ms={:.3}", median(&mut encode));
+    println!("median_cpu_frame_ms={:.3}", median(&mut cpu_frame));
+    if !timestamps {
+        anyhow::bail!(
+            "GPU timestamps are unsupported. median_cpu_frame_ms is the CPU fallback and is not the 11 ms GPU budget."
         );
     }
+    let gpu_median = median(&mut gpu);
+    if !(gpu_median > 0.0) {
+        anyhow::bail!(
+            "median GPU pass sum is {gpu_median}; refusing to print 0. median_cpu_frame_ms is the CPU fallback."
+        );
+    }
+    println!(
+        "median_gpu_pass_sum_ms={:.3} gpu_samples={}",
+        gpu_median,
+        gpu.len()
+    );
     println!("budget_11ms=not_decided");
+    Ok(())
+}
+
+fn scene_is_heavy() -> bool {
+    std::env::args().any(|arg| arg == "--scene=heavy" || arg == "heavy")
+        || std::env::args()
+            .collect::<Vec<_>>()
+            .windows(2)
+            .any(|pair| pair[0] == "--scene" && pair[1] == "heavy")
+}
+
+fn heavy_instances() -> Vec<Instance> {
+    let mut instances = Vec::with_capacity(64);
+    for z in 0..8 {
+        for x in 0..8 {
+            instances.push(Instance::from_pos_scale_color(
+                Vec3::new((x as f32 - 3.5) * 4.0, 0.0, (z as f32 - 3.5) * 4.0),
+                Vec3::ONE,
+                [1.0, 1.0, 1.0, 1.0],
+            ));
+        }
+    }
+    instances
+}
+
+#[cfg(feature = "terrain-splat-arrays")]
+fn add_heavy_terrain(renderer: &mut Renderer) -> anyhow::Result<()> {
+    if !scene_is_heavy() {
+        return Ok(());
+    }
+    renderer.init_terrain_forward()?;
+    let mut vertices = Vec::new();
+    let mut indices = Vec::new();
+    let n = 8u32;
+    for z in 0..=n {
+        for x in 0..=n {
+            vertices.push(
+                astraweave_render::terrain_material_manager::TerrainSplatVertex {
+                    position: [
+                        (x as f32 / n as f32) * 64.0 - 32.0,
+                        0.0,
+                        (z as f32 / n as f32) * 64.0 - 32.0,
+                    ],
+                    normal: [0.0, 1.0, 0.0],
+                    uv: [x as f32 / n as f32, z as f32 / n as f32],
+                },
+            );
+        }
+    }
+    for z in 0..n {
+        for x in 0..n {
+            let i = z * (n + 1) + x;
+            indices.extend([i, i + n + 1, i + 1, i + 1, i + n + 1, i + n + 2]);
+        }
+    }
+    let texel = [255u8, 0, 0, 255];
+    let map = texel.repeat(16);
+    let maps = vec![map; 8];
+    let refs: Vec<&[u8]> = maps.iter().map(|bytes| bytes.as_slice()).collect();
+    renderer.upload_terrain_chunk(1, &vertices, &indices, &refs, (4, 4))?;
+    Ok(())
+}
+
+#[cfg(not(feature = "terrain-splat-arrays"))]
+fn add_heavy_terrain(_renderer: &mut Renderer) -> anyhow::Result<()> {
     Ok(())
 }
 

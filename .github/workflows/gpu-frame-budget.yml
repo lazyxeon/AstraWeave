@@ -34,4 +34,4 @@ jobs:
       - name: Median draw_into
         shell: pwsh
         run: |
-          cargo run -p astraweave-render --release --features gpu-frame-budget --bin gpu_frame_budget -- --glb "${{ inputs.glb }}"
+          cargo run -p astraweave-render --release --features gpu-frame-budget --bin gpu_frame_budget -- --scene heavy --glb "${{ inputs.glb }}"

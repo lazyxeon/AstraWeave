@@ -23,6 +23,27 @@ pub struct PassTiming {
     pub duration_ms: f32,
 }
 
+/// Convert a begin/end timestamp pair into milliseconds.
+///
+/// A zero period, an unwritten pair (both ticks 0), or a non-positive span is
+/// not a measurement.
+pub fn timestamp_duration_ms(begin: u64, end: u64, period_ns: f32) -> Result<f32, &'static str> {
+    if !(period_ns > 0.0) {
+        return Err("timestamp period is not positive");
+    }
+    if begin == 0 && end == 0 {
+        return Err("timestamp queries were not written");
+    }
+    if end < begin {
+        return Err("timestamp end is before begin");
+    }
+    let ms = ((end - begin) as f64) * f64::from(period_ns) / 1_000_000.0;
+    if !(ms > 0.0) {
+        return Err("GPU duration is zero or negative");
+    }
+    Ok(ms as f32)
+}
+
 /// Manages GPU timestamp queries across render/compute passes.
 pub struct GpuProfiler {
     query_set: wgpu::QuerySet,
@@ -43,8 +64,10 @@ pub struct GpuProfiler {
     readback_pending: bool,
     /// Signalled by the map callback when the readback buffer is ready.
     map_ready: Arc<AtomicBool>,
-    /// The map callback failed. The buffer is not mapped and must not be read.
-    map_failed: Arc<AtomicBool>,
+    /// `true` when that callback received `Ok`.
+    map_ok: Arc<AtomicBool>,
+    /// Why the last readback could not be used.
+    last_error: Option<&'static str>,
 }
 
 impl GpuProfiler {
@@ -84,7 +107,8 @@ impl GpuProfiler {
             latest_results: Vec::with_capacity(MAX_PASSES as usize),
             readback_pending: false,
             map_ready: Arc::new(AtomicBool::new(false)),
-            map_failed: Arc::new(AtomicBool::new(false)),
+            map_ok: Arc::new(AtomicBool::new(false)),
+            last_error: None,
         }
     }
 
@@ -191,17 +215,26 @@ impl GpuProfiler {
         }
         let slice = self.readback_buf.slice(..);
         self.readback_pending = true;
+        self.last_error = None;
         self.map_ready.store(false, Ordering::Release);
-        self.map_failed.store(false, Ordering::Release);
+        self.map_ok.store(false, Ordering::Release);
         let ready = self.map_ready.clone();
-        let failed = self.map_failed.clone();
+        let ok = self.map_ok.clone();
         slice.map_async(wgpu::MapMode::Read, move |result| {
-            if result.is_ok() {
-                ready.store(true, Ordering::Release);
-            } else {
-                failed.store(true, Ordering::Release);
-            }
+            ok.store(result.is_ok(), Ordering::Release);
+            ready.store(true, Ordering::Release);
         });
+    }
+
+    /// Wait until the mapped timestamp buffer is ready, then decode it.
+    pub fn block_on_readback(&mut self, device: &wgpu::Device) -> Result<(), &'static str> {
+        let _ = device.poll(wgpu::PollType::Wait);
+        if !self.poll_readback(device) {
+            return Err(self
+                .last_error
+                .unwrap_or("timestamp readback did not complete"));
+        }
+        Ok(())
     }
 
     /// Poll for completed readback and update `latest_results`.
@@ -216,16 +249,14 @@ impl GpuProfiler {
             return false;
         }
 
-        if self.map_failed.swap(false, Ordering::AcqRel) {
-            // map_async failed, so the buffer is not mapped. Do not unmap or read it.
-            self.readback_pending = false;
-            self.map_ready.store(false, Ordering::Release);
-            log::error!("gpu profiler readback map failed; leaving the buffer unmapped");
-            return false;
-        }
-
         if !self.map_ready.load(Ordering::Acquire) {
             // Still mapped. end_frame will not copy into this buffer.
+            return false;
+        }
+        if !self.map_ok.load(Ordering::Acquire) {
+            self.readback_pending = false;
+            self.last_error = Some("timestamp buffer map failed");
+            self.latest_results.clear();
             return false;
         }
 
@@ -234,34 +265,15 @@ impl GpuProfiler {
         let timestamps: &[u64] =
             bytemuck::cast_slice(&data[..self.next_query as usize * std::mem::size_of::<u64>()]);
 
-        let ns_per_tick = self.timestamp_period as f64;
-        let n = self.pass_queries.len();
-        let same_slots = self.latest_results.len() == n
-            && self
-                .latest_results
-                .iter()
-                .zip(self.pass_queries.iter())
-                .all(|(timing, (name, _, _))| timing.name == *name);
-        if same_slots {
-            for (timing, (_, begin_idx, end_idx)) in
-                self.latest_results.iter_mut().zip(self.pass_queries.iter())
-            {
-                let t0 = timestamps[*begin_idx as usize];
-                let t1 = timestamps[*end_idx as usize];
-                let delta_ns = (t1.wrapping_sub(t0)) as f64 * ns_per_tick;
-                timing.duration_ms = (delta_ns / 1_000_000.0) as f32;
-            }
-        } else {
-            self.latest_results.clear();
-            for (name, begin_idx, end_idx) in &self.pass_queries {
-                let t0 = timestamps[*begin_idx as usize];
-                let t1 = timestamps[*end_idx as usize];
-                let delta_ns = (t1.wrapping_sub(t0)) as f64 * ns_per_tick;
-                self.latest_results.push(PassTiming {
-                    name: (*name).to_string(),
-                    duration_ms: (delta_ns / 1_000_000.0) as f32,
-                });
-            }
+        self.latest_results.clear();
+        for (name, begin_idx, end_idx) in &self.pass_queries {
+            let t0 = timestamps[*begin_idx as usize];
+            let t1 = timestamps[*end_idx as usize];
+            let duration_ms = timestamp_duration_ms(t0, t1, self.timestamp_period).unwrap_or(0.0);
+            self.latest_results.push(PassTiming {
+                name: (*name).to_string(),
+                duration_ms,
+            });
         }
 
         drop(data);
@@ -274,6 +286,26 @@ impl GpuProfiler {
     /// Get the most recent per-pass timing results.
     pub fn results(&self) -> &[PassTiming] {
         &self.latest_results
+    }
+
+    /// Nanoseconds per GPU tick. Zero means the device did not report a period.
+    pub fn timestamp_period_ns(&self) -> f32 {
+        self.timestamp_period
+    }
+
+    /// Sum of pass durations. Errors when any pass is zero, negative, or unread.
+    pub fn validated_total_ms(&self) -> Result<f32, &'static str> {
+        if self.latest_results.is_empty() {
+            return Err("no GPU timestamp samples");
+        }
+        let mut sum = 0.0f32;
+        for timing in &self.latest_results {
+            if !(timing.duration_ms > 0.0) {
+                return Err("GPU pass duration is zero or negative");
+            }
+            sum += timing.duration_ms;
+        }
+        Ok(sum)
     }
 
     /// Get total GPU time across all instrumented passes (ms).
@@ -293,6 +325,17 @@ impl GpuProfiler {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn zero_or_negative_gpu_duration_is_rejected() {
+        assert!(timestamp_duration_ms(0, 0, 1.0).is_err());
+        assert!(timestamp_duration_ms(10, 10, 1.0).is_err());
+        assert!(timestamp_duration_ms(20, 10, 1.0).is_err());
+        assert!(timestamp_duration_ms(10, 20, 0.0).is_err());
+        assert!(timestamp_duration_ms(10, 20, -1.0).is_err());
+        let ms = timestamp_duration_ms(1_000_000, 2_000_000, 1.0).unwrap();
+        assert!(ms > 0.0);
+    }
 
     fn timestamp_device() -> Option<(wgpu::Device, wgpu::Queue)> {
         let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::from_env_or_default());

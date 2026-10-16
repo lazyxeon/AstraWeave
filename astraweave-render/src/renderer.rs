@@ -803,6 +803,8 @@ pub struct Renderer {
     _pipeline_cache_mgr: Option<crate::pipeline_cache::PipelineCacheManager>,
     /// Per-pass GPU timestamp profiler; `None` when `TIMESTAMP_QUERY` is unsupported.
     gpu_profiler: Option<crate::gpu_profiler::GpuProfiler>,
+    gpu_adapter_name: String,
+    gpu_backend: String,
     /// Ring buffer for transient per-frame GPU allocations (uniforms, storage).
     staging_ring: crate::staging_ring::StagingRing,
     /// Monotonic counter bumped on resize and resource invalidation; drives
@@ -1239,8 +1241,14 @@ impl Renderer {
         if adapter.features().contains(wgpu::Features::PIPELINE_CACHE) {
             features |= wgpu::Features::PIPELINE_CACHE;
         }
-        if adapter.features().contains(wgpu::Features::TIMESTAMP_QUERY) {
-            features |= wgpu::Features::TIMESTAMP_QUERY;
+        for feature in [
+            wgpu::Features::TIMESTAMP_QUERY,
+            wgpu::Features::TIMESTAMP_QUERY_INSIDE_PASSES,
+            wgpu::Features::TIMESTAMP_QUERY_INSIDE_ENCODERS,
+        ] {
+            if adapter.features().contains(feature) {
+                features |= feature;
+            }
         }
         let mut limits = wgpu::Limits {
             max_bind_groups: 8,
@@ -1315,7 +1323,11 @@ impl Renderer {
         );
         surface.configure(&device, &config);
 
-        Self::new_from_device_monitored(device, queue, Some(surface), config, device_lost).await
+        let mut renderer =
+            Self::new_from_device_monitored(device, queue, Some(surface), config, device_lost)
+                .await?;
+        renderer.note_adapter(&adapter);
+        Ok(renderer)
     }
 
     pub async fn new_headless(width: u32, height: u32) -> Result<Self> {
@@ -1348,7 +1360,10 @@ impl Renderer {
             desired_maximum_frame_latency: 2,
         };
 
-        Self::new_from_device_monitored(device, queue, None, config, device_lost).await
+        let mut renderer =
+            Self::new_from_device_monitored(device, queue, None, config, device_lost).await?;
+        renderer.note_adapter(&adapter);
+        Ok(renderer)
     }
 
     pub async fn new_from_device(
@@ -3596,6 +3611,8 @@ fn vs(input: VSIn) -> VSOut {
             pipeline_cache,
             _pipeline_cache_mgr: pipeline_cache_mgr,
             gpu_profiler,
+            gpu_adapter_name: String::new(),
+            gpu_backend: String::new(),
             staging_ring,
             resource_generation,
             #[cfg(feature = "camera-relative")]
@@ -3850,6 +3867,32 @@ fn vs(input: VSIn) -> VSOut {
         }
     }
 
+    pub fn note_adapter(&mut self, adapter: &wgpu::Adapter) {
+        let info = adapter.get_info();
+        self.gpu_adapter_name = info.name;
+        self.gpu_backend = format!("{:?}", info.backend);
+    }
+
+    pub fn gpu_adapter_name(&self) -> &str {
+        &self.gpu_adapter_name
+    }
+
+    pub fn gpu_backend(&self) -> &str {
+        &self.gpu_backend
+    }
+
+    pub fn gpu_features(&self) -> wgpu::Features {
+        self.device.features()
+    }
+
+    pub fn timestamps_supported(&self) -> bool {
+        self.gpu_profiler.is_some()
+            && self
+                .gpu_profiler
+                .as_ref()
+                .is_some_and(|profiler| profiler.timestamp_period_ns() > 0.0)
+    }
+
     /// Map the timestamp buffer after `queue.submit`. The next `draw_into`
     /// copies the result into [`GpuProfiler::results`].
     pub fn request_gpu_profiler_readback(&mut self) {
@@ -3860,6 +3903,10 @@ fn vs(input: VSIn) -> VSOut {
 
     pub fn gpu_profiler(&self) -> Option<&crate::gpu_profiler::GpuProfiler> {
         self.gpu_profiler.as_ref()
+    }
+
+    pub fn gpu_profiler_mut(&mut self) -> Option<&mut crate::gpu_profiler::GpuProfiler> {
+        self.gpu_profiler.as_mut()
     }
 
     /// Returns a reference to the per-frame staging ring buffer.
@@ -7035,31 +7082,15 @@ fn vs(input: VSIn) -> VSOut {
         self.staging_ring.begin_frame();
         self.tick_texture_streaming();
 
-        let di_ts_cluster = self
-            .gpu_profiler
-            .as_mut()
-            .and_then(|p| p.allocate_pass("cluster_bin"));
-        // One profiler pass per cascade — labels are static strings indexed by
-        // cascade so the array cannot fall behind CASCADE_COUNT.
+        // Timestamp slots are allocated only for passes that actually begin.
+        // A resolve range that includes a query nobody wrote comes back as
+        // zeros on Vulkan, which is what made every pass read 0 ms.
         const SHADOW_PASS_LABELS: [&str; CASCADE_COUNT] = [
             "shadow_cascade_0",
             "shadow_cascade_1",
             "shadow_cascade_2",
             "shadow_cascade_3",
         ];
-        let di_ts_shadow: [Option<(u32, u32)>; CASCADE_COUNT] = std::array::from_fn(|i| {
-            self.gpu_profiler
-                .as_mut()
-                .and_then(|p| p.allocate_pass(SHADOW_PASS_LABELS[i]))
-        });
-        let di_ts_main = self
-            .gpu_profiler
-            .as_mut()
-            .and_then(|p| p.allocate_pass("main_render"));
-        let di_ts_post = self
-            .gpu_profiler
-            .as_mut()
-            .and_then(|p| p.allocate_pass("post_process"));
 
         // Clustered lighting setup — only recompute when lights change.
         // The default two hardcoded lights never change, so after the first
@@ -7128,7 +7159,11 @@ fn vs(input: VSIn) -> VSOut {
             // GPU compute pass only needed when lights changed (offsets were recomputed above)
             enc.clear_buffer(&self.clustered_counts_buf, 0, None);
             {
-                let cluster_ts = di_ts_cluster.and_then(|(b, e)| {
+                let cluster_pair = self
+                    .gpu_profiler
+                    .as_mut()
+                    .and_then(|p| p.allocate_pass("cluster_bin"));
+                let cluster_ts = cluster_pair.and_then(|(b, e)| {
                     Some(wgpu::ComputePassTimestampWrites {
                         query_set: self.gpu_profiler.as_ref()?.query_set(),
                         beginning_of_pass_write_index: Some(b),
@@ -7236,7 +7271,11 @@ fn vs(input: VSIn) -> VSOut {
             if idx >= FIRST_CACHED_CASCADE && !far_rendered[idx - FIRST_CACHED_CASCADE] {
                 continue;
             }
-            let shadow_ts = di_ts_shadow[idx].and_then(|(b, e)| {
+            let shadow_pair = self
+                .gpu_profiler
+                .as_mut()
+                .and_then(|p| p.allocate_pass(SHADOW_PASS_LABELS[idx]));
+            let shadow_ts = shadow_pair.and_then(|(b, e)| {
                 Some(wgpu::RenderPassTimestampWrites {
                     query_set: self.gpu_profiler.as_ref()?.query_set(),
                     beginning_of_pass_write_index: Some(b),
@@ -7550,7 +7589,11 @@ fn vs(input: VSIn) -> VSOut {
         }
 
         {
-            let main_ts = di_ts_main.and_then(|(b, e)| {
+            let main_pair = self
+                .gpu_profiler
+                .as_mut()
+                .and_then(|p| p.allocate_pass("main_render"));
+            let main_ts = main_pair.and_then(|(b, e)| {
                 Some(wgpu::RenderPassTimestampWrites {
                     query_set: self.gpu_profiler.as_ref()?.query_set(),
                     beginning_of_pass_write_index: Some(b),
@@ -7852,7 +7895,11 @@ fn vs(input: VSIn) -> VSOut {
         // stage. Caller's `view` format must match config.format
         // (post_pipeline's hardcoded color target format at construction).
         {
-            let post_ts = di_ts_post.and_then(|(b, e)| {
+            let post_pair = self
+                .gpu_profiler
+                .as_mut()
+                .and_then(|p| p.allocate_pass("post_process"));
+            let post_ts = post_pair.and_then(|(b, e)| {
                 Some(wgpu::RenderPassTimestampWrites {
                     query_set: self.gpu_profiler.as_ref()?.query_set(),
                     beginning_of_pass_write_index: Some(b),
@@ -7879,12 +7926,14 @@ fn vs(input: VSIn) -> VSOut {
             pp.draw(0..3, 0..1);
         }
 
-        // --- GPU profiler: resolve timestamp queries into readback buffer ---
-        if let Some(ref mut p) = self.gpu_profiler {
-            p.end_frame(enc);
-        }
         self.record_hiz(enc, depth_view);
         self.record_particles(enc, view, depth_view);
+
+        // Resolve only after every timestamped pass has written. The copy
+        // follows the resolve in the same encoder, before submit.
+        if let Some(ref p) = self.gpu_profiler {
+            p.end_frame(enc);
+        }
 
         Ok(())
     }
