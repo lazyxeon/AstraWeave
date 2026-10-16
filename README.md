@@ -29,7 +29,7 @@ The game this engine is being built for is **Aravath**.
 
 ## Current state (2026-10-16)
 
-Checked against `main` at `a10780f4`. Numbers that were not re-measured in this pass are dated below. This page does not assign a letter grade.
+Checked against `main` at `8e5dd73c`. Numbers that were not re-measured in this pass are dated below. This page does not assign a letter grade.
 
 | Topic | What is true on this commit |
 | --- | --- |
@@ -42,6 +42,7 @@ Checked against `main` at `a10780f4`. Numbers that were not re-measured in this 
 | **Frame time** | The target is under 11 ms per frame on a GTX 1660 Ti-class GPU. It is not yet measured on that hardware: the GPU timer read 0 ms, and the readback is in progress in #216. Do not treat the older CPU `profiling_demo` times as this measurement. |
 | **Coverage and Miri** | Whole-workspace line coverage **57.35%** was measured 2026-06-29 and has not been re-run on the 141-member tree. Miri **1,059** tests, 0 UB, was measured 2026-06-27 across ecs, math, core, and sdk. The February 2026 report records an older, smaller run. Kani proof attributes were **69** on 2026-06-13 and were not re-counted here. |
 | **Build** | This pass did not run `cargo check --workspace`. The last clean workspace check written into these docs is 2026-06-10, at 130 members. |
+| **Supply chain** | #325 (`8e5dd73c`) makes `cargo deny` advisories and `cargo audit` pass. Patched crates are locked (`rustls` 0.23.46, `tokio-rustls` 0.26.4, `openh264` 0.9.9). Ignored leftovers are #305–#311 and #320–#324. The greybox `tokio` `net` edge is #326. |
 | **Traces** | **31** subsystem traces under `docs/architecture/`, including `veil.md`, listed in the generated table in `CLAUDE.md`. The June "13 traces" figure is the original campaign, not the current set. |
 
 ### On main since the June snapshot

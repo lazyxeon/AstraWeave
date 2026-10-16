@@ -1,6 +1,6 @@
 # AstraWeave Project Status
 
-> **Current as of 2026-10-16** (`main` @ `a10780f4`, which includes #244). The repository [README](../../README.md) is the short status page. This file's June narrative below that banner is a session log, not the live headline.
+> **Current as of 2026-10-16** (`main` @ `8e5dd73c`, which includes #325). The repository [README](../../README.md) is the short status page. This file's June narrative below that banner is a session log, not the live headline. `cargo deny` advisories and `cargo audit` pass. Ignored leftovers are #305–#311 and #320–#324. The greybox `tokio` `net` edge is #326.
 
 ## Current (2026-10-16)
 

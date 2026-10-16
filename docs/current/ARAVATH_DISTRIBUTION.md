@@ -108,63 +108,36 @@ Compare the hash to the `aravath_greybox.exe` line in `SHA256SUMS.txt` from the 
 
 `.github/workflows/aravath-windows.yml` runs `cargo deny check` (advisories, bans, licenses, sources) and `cargo audit` on every Aravath push and pull request. `scripts/check-aravath-network.sh` fails the job if the greybox graph grows an HTTP client or `tokio`/`net`.
 
-What was actually removed or narrowed:
+What #325 (`8e5dd73c`) changed, checked against `Cargo.lock`:
 
-- `async-std` was only used by `examples/orchestrator_async_tick`. That example now uses `pollster`. Advisory `RUSTSEC-2025-0052` (async-std discontinued) no longer applies.
-- `postcard` no longer enables its default `heapless` feature, which was pulling unmaintained `atomic-polyfill` (`RUSTSEC-2023-0089`) on non-Windows targets.
-- `derivative` is not in the lockfile. Its old ignore entry was stale.
-- The greybox does not enable `image`'s AVIF encoder (`ravif` / `rav1e`). PNG, JPEG, and the other formats the renderer already opens stay on.
-- `astraweave-scene` no longer inherits the workspace `tokio` feature set (`full`, which includes `net`). `aw_asset_cli` declared `tokio` with `full` and never called it; that dependency is gone. `scripts/check-aravath-network.sh` is the regression check.
-- Workspace `reqwest` and `aw-net-client`'s WebSocket client use rustls instead of native-tls, so `openssl` is not in the lockfile. `deny.toml` still bans it.
+- `cargo deny check` (advisories, bans, licenses, sources) and `cargo audit` pass. `.cargo/audit.toml` and `deny.toml` ignore the same leftover IDs.
+- `net/aw-net-server` and `astraweave-net` depend on `tokio-rustls` 0.26 and `rustls` 0.23. The lockfile has one `rustls` (0.23.46), one `tokio-rustls` (0.26.4), and one `rustls-webpki` (0.103.15). `rustls-pemfile` is not in the lockfile. Certificate PEM is parsed with `rustls-pki-types`.
+- `tools/aw_editor` requires `openh264` 0.9. The lock is `openh264` 0.9.9 and `openh264-sys2` 0.9.9. The 0.6 pin is gone.
+- Also locked at the patched versions: `bytes` 1.12.1, `crossbeam-epoch` 0.9.21, `h2` 0.4.20, `lz4_flex` 0.11.6, the Quinn protocol crate 0.11.19, `thin-vec` 0.2.21, `time` 0.3.55, `webbrowser` 1.2.4, `anyhow` 1.0.104, `event-listener` 5.4.2, `memmap2` 0.9.11, `rand` 0.8.8 and 0.9.5, `lru` 0.18.5, `steamworks` 0.13.1, `serial_test` 3.5.0. `scc` 2.4.0 is not in the lockfile. The greybox save loader calls `lz4_flex` 0.11.6.
+- `opentelemetry-jaeger`, `async-std`, `derivative`, `openssl`, and `openssl-sys` are not in the lockfile. `deny.toml` still bans `openssl`.
+- `postcard` still depends on `heapless` 0.7.17, which still pulls `atomic-polyfill` 1.0.3.
 
-The lockfile bumps this section used to claim were not applied. `Cargo.lock` at `cdea968c` still has the vulnerable versions. `cargo deny check advisories` fails on this lockfile, and `cargo audit` reported 34 vulnerabilities on the #205 merge and again on pull request #319. There is no `.cargo/audit.toml`. `deny.toml` does not ignore the vulnerability IDs below.
+The advisory check passes because the leftovers are ignored, not because they are gone. Each ignored ID has a tracking issue:
 
-| Crate | Still locked | Version this note used to claim |
+| Advisory | Locked crate | Issue |
 | --- | --- | --- |
-| `bytes` | 1.10.1 | 1.12.1 |
-| `crossbeam-epoch` | 0.9.18 | 0.9.21 |
-| `h2` | 0.4.12 | 0.4.20 |
-| `lz4_flex` | 0.11.5 | 0.11.6 |
-| Quinn protocol crate | 0.11.13 | 0.11.19 |
-| `rustls` | 0.22.4 and 0.23.32 | 0.23.46 |
-| `rustls-webpki` | 0.102.8 and 0.103.7 | 0.103.15 |
-| `thin-vec` | 0.2.14 | 0.2.21 |
-| `time` | 0.3.44 | 0.3.55 |
-| `webbrowser` | 1.0.5 | 1.2.4 |
-| `anyhow` | 1.0.100 | 1.0.104 |
-| `event-listener` | 5.4.1 | 5.4.2 |
-| `memmap2` | 0.9.8 | 0.9.11 |
-| `rand` | 0.8.5 and 0.9.2 | 0.9.5 |
-| `lru` | 0.12.5 | 0.18.5 |
-| `steamworks` | 0.12.2 | 0.13.1 |
-| `openh264` | 0.6.6 | 0.8.1 |
-| `serial_test` | 3.2.0 | 3.5 |
+| `RUSTSEC-2025-0141` | `bincode` 1.3.3 and 2.0.1 | [#305](https://github.com/lazyxeon/AstraWeave/issues/305) |
+| `RUSTSEC-2021-0070` | `nalgebra` 0.26.2, still pulled by `mikktspace` 0.3.0 | [#306](https://github.com/lazyxeon/AstraWeave/issues/306) |
+| `RUSTSEC-2025-0119` | `number_prefix` 0.4.0 | [#307](https://github.com/lazyxeon/AstraWeave/issues/307) |
+| `RUSTSEC-2026-0194`, `RUSTSEC-2026-0195` | `quick-xml` 0.36.2 and 0.37.5 | [#308](https://github.com/lazyxeon/AstraWeave/issues/308) |
+| `RUSTSEC-2026-0249` | `smartstring` 1.0.1 | [#309](https://github.com/lazyxeon/AstraWeave/issues/309) |
+| `RUSTSEC-2026-0192` | `ttf-parser` 0.25.1 | [#310](https://github.com/lazyxeon/AstraWeave/issues/310) |
+| `RUSTSEC-2024-0449` | `unsafe-libyaml` 0.2.11 | [#311](https://github.com/lazyxeon/AstraWeave/issues/311) |
+| `RUSTSEC-2023-0089` | `atomic-polyfill` 1.0.3 | [#320](https://github.com/lazyxeon/AstraWeave/issues/320) |
+| `RUSTSEC-2025-0057` | `fxhash` 0.2.1 | [#321](https://github.com/lazyxeon/AstraWeave/issues/321) |
+| `RUSTSEC-2024-0384` | `instant` 0.1.13 | [#322](https://github.com/lazyxeon/AstraWeave/issues/322) |
+| `RUSTSEC-2024-0436` | `paste` 1.0.15 | [#323](https://github.com/lazyxeon/AstraWeave/issues/323) |
 
-`tar` 0.4.46 is not in the lockfile. `scc` 2.4.0 is still locked. The greybox save loader calls `lz4_flex` 0.11.5.
+[#324](https://github.com/lazyxeon/AstraWeave/issues/324) tracks yanked `zip` 1.1.4, which `candle-core` 0.8.4 still requires. `cargo audit` cannot ignore one yanked crate. `zip` 9.0.3 is also locked. [#303](https://github.com/lazyxeon/AstraWeave/issues/303) is the older note that deny advisory and license failures were warnings. On this commit, deny advisories and `cargo audit` pass with the ignore list above.
 
-Two pins block a lockfile-only bump:
+`scripts/check-aravath-network.sh` still fails the greybox job. `aravath_runtime` reaches `tokio` with the `net` feature through `astraweave-render` → `astraweave-asset` → `astraweave-security` → `astraweave-llm`, because the workspace `tokio` dependency enables `full`. That failure is [#326](https://github.com/lazyxeon/AstraWeave/issues/326). It is not an HTTP client in the greybox crate. `reqwest`, `hyper`, `openssl`, and `socket2` are what the script rejects by name. The supply-chain bumps did not add that edge.
 
-- `net/aw-net-server` depends on `tokio-rustls` 0.25 and `rustls` 0.22, and its dev-dependencies repeat that pair so the graph does not grow a second `rustls`. `tokio-rustls` 0.25 keeps `rustls` 0.22.4 and `rustls-webpki` 0.102.8. The advisory fix for the 0.23 line is `rustls` >= 0.23.46, which needs `tokio-rustls` 0.26 and a different `ServerCertVerifier` than those tests implement.
-- `tools/aw_editor` requires `openh264` `^0.6`. The lock is 0.6.6, which keeps `openh264-sys2` 0.6.6 (heap overflow). `openh264` 0.8.1 does not satisfy `^0.6`.
-
-The open tracking issues are [#303](https://github.com/lazyxeon/AstraWeave/issues/303) (deny advisory and license failures) and [#305](https://github.com/lazyxeon/AstraWeave/issues/305) through [#311](https://github.com/lazyxeon/AstraWeave/issues/311): unmaintained `bincode`, `nalgebra` 0.26 via `mikktspace`, `number_prefix`, `quick-xml` before 0.41, `smartstring`, `ttf-parser`, and deprecated `serde_yaml`.
-
-What this note treats as leftovers, with the reason:
-
-| Advisory | Crate | Why it remains |
-| --- | --- | --- |
-| `RUSTSEC-2024-0436` | `paste` 1.0.15 | Unmaintained proc-macro. No patched release. `nalgebra` / `simba` / `rapier3d` and `texture2ddecoder` require it, and the greybox links Rapier. |
-| `RUSTSEC-2024-0384`, `RUSTSEC-2025-0057` | `instant`, `fxhash` | Unmaintained. Only through `sled` 0.34 in `aw-net-*`. Not in the greybox graph. |
-| `RUSTSEC-2025-0141` | `bincode` 1.3 and 2.0 | Unmaintained, no patched release. Used for terrain, AI, and persistence-ecs blobs. Replacing it changes those formats. |
-| `RUSTSEC-2025-0119`, `RUSTSEC-2025-0123`, `RUSTSEC-2025-0134`, `RUSTSEC-2026-0249`, `RUSTSEC-2026-0192`, `RUSTSEC-2024-0449` | `number_prefix`, `opentelemetry-jaeger`, `rustls-pemfile`, `smartstring`, `ttf-parser`, `unsafe-libyaml` | Unmaintained, no patched release. None of these are an HTTP client. `rustls-pemfile` loads certificates in `aw-net-server`. |
-| `RUSTSEC-2021-0070` | `nalgebra` 0.26.2 | Deserialize can break a length invariant. The only crate that still pulls 0.26 is `mikktspace` 0.3.0, which is the latest release of that crate. The renderer uses it to generate tangents. It does not deserialize `nalgebra`. |
-| `RUSTSEC-2026-0194`, `RUSTSEC-2026-0195` | `quick-xml` 0.36 and 0.37 | DoS in XML parsing. Reached through `wayland-scanner` (winit) and `zbus_xml` (accesskit). They parse protocol XML. No upgrade fits inside `winit` 0.30. |
-| `RUSTSEC-2026-0049`, `RUSTSEC-2026-0098`, `RUSTSEC-2026-0099`, `RUSTSEC-2026-0104` | `rustls-webpki` 0.102.8 | Old webpki kept by `rustls` 0.22 / `tokio-rustls` 0.25 in `aw-net-server`. Not linked into `aravath_greybox`. The 0.103 line in the lockfile is 0.103.7, not 0.103.15. The fix needs `tokio-rustls` 0.26. |
-| `RUSTSEC-2026-0346`, `RUSTSEC-2026-0349` | `rustls` 0.22.4 and 0.23.32 | Same server pin for 0.22.4. The 0.23 copy is 0.23.32, not 0.23.46. `aravath_greybox` does not link this crate. |
-
-Duplicate crate versions are reported (`multiple-versions = "warn"`) and do not fail the build. The duplicates are mostly `windows-sys` / `windows-targets` stacks pulled by different wgpu and winit versions, and collapsing them means upgrading wgpu. `spin` 0.10.0 is yanked and still required by `bevy_platform` 0.17.3; `cargo update -p bevy_platform` does not remove it. `cargo deny` warns on that yank and does not fail.
-
-Those three are maintenance advisories, not a CVSS vulnerability with a patch. Replacing `sled` would be a storage-engine change in the net stack and is out of scope for this demo.
+Duplicate crate versions stay at `multiple-versions = "warn"` and do not fail the advisory check. Collapsing `windows-sys` still means upgrading wgpu.
 
 ## VirusTotal and packers
 
