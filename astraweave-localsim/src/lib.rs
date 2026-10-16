@@ -298,6 +298,39 @@ impl LocalSim {
         self.digest_bytes()
     }
 
+    /// Acceleration at a world cell, in mm/s². Index 0 is world gravity
+    /// (`-1000` milli-g). A zone with axis 1 is zero. Otherwise the zone's
+    /// `strength_milli_g` is converted by [`astraweave_weaving::gravity_mm_s2`].
+    pub fn gravity_mm_s2_at(&self, world: [i32; 3], zones: &[GravityView]) -> i32 {
+        astraweave_weaving::gravity_mm_s2(i32::from(self.gravity_milli_g_at(world, zones)))
+    }
+
+    fn gravity_milli_g_at(&self, world: [i32; 3], zones: &[GravityView]) -> i16 {
+        let mut index = 0u16;
+        let mut owned = false;
+        for slot in 0..POOL_CAP {
+            if !self.meta[slot].occupied {
+                continue;
+            }
+            let Some(cell) = local_cell(self.meta[slot].origin, world) else {
+                continue;
+            };
+            if owned {
+                break;
+            }
+            index = self.gravity(slot, cell);
+            owned = true;
+        }
+        if !owned || index == 0 {
+            return astraweave_weaving::WORLD_GRAVITY_MILLI_G as i16;
+        }
+        match zones.iter().find(|zone| zone.index == index) {
+            Some(zone) if zone.axis == 1 => 0,
+            Some(zone) if zone.strength_milli_g != 0 => zone.strength_milli_g,
+            _ => astraweave_weaving::WORLD_GRAVITY_MILLI_G as i16,
+        }
+    }
+
     fn digest_bytes(&self) -> [u8; 32] {
         let mut hasher = Sha256::new();
         hasher.update(b"AWLOCL1");
@@ -2069,6 +2102,47 @@ mod tests {
         sim.tick(1, input(&player, &[], &materials), &solid);
         assert_eq!(volume_sum(&sim), 40);
         assert_ne!(SimField::field_digest(&sim), [0; 32]);
+    }
+
+    #[test]
+    fn gravity_sample_uses_milli_g() {
+        let mut sim = LocalSim::new();
+        let materials = demo_materials();
+        let solid = FloorSolid::closed(-20);
+        let player = [Subject {
+            id: 1,
+            cell: [0, 0, 0],
+            player: true,
+        }];
+        let zones = [GravityView {
+            index: 1,
+            axis: 1,
+            strength_milli_g: 0,
+            center: [0, 0, 0],
+            radius: 2,
+        }];
+        sim.tick(
+            1,
+            TickInput {
+                subjects: &player,
+                writes: &[FieldWrite {
+                    seq: 0,
+                    shape: Shape::Point,
+                    origin: [0, 0, 0],
+                    end: [0, 0, 0],
+                    radius: 0,
+                    op: WriteOp::SetGravity { index: 1 },
+                }],
+                materials: &materials,
+                zones: &zones,
+            },
+            &solid,
+        );
+        assert_eq!(sim.gravity_mm_s2_at([0, 0, 0], &zones), 0);
+        assert_eq!(
+            sim.gravity_mm_s2_at([4, 0, 0], &zones),
+            astraweave_weaving::gravity_mm_s2(astraweave_weaving::WORLD_GRAVITY_MILLI_G)
+        );
     }
 
     #[test]

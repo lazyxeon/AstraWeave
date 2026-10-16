@@ -7,7 +7,6 @@
 use astraweave_physics::{
     cloth::{ClothConfig, ClothManager},
     destruction::{DestructibleConfig, DestructibleId, DestructionManager},
-    gravity::GravityManager,
     projectile::{ProjectileConfig, ProjectileKind, ProjectileManager},
     ragdoll::RagdollConfig,
     spatial_hash::SpatialHash,
@@ -77,35 +76,6 @@ fn test_cloth_responds_to_gravity() {
     }
 }
 
-#[test]
-fn test_cloth_in_zero_g_zone() {
-    let mut gravity_mgr = GravityManager::new(Vec3::new(0.0, -9.81, 0.0));
-    let mut cloth_mgr = ClothManager::new();
-
-    // Create zero-G zone
-    gravity_mgr.add_zero_g_box(Vec3::new(-10.0, 0.0, -10.0), Vec3::new(10.0, 20.0, 10.0), 1);
-
-    // Create cloth with no gravity (simulating zero-G)
-    let config = ClothConfig {
-        gravity: Vec3::ZERO,
-        ..Default::default()
-    };
-    let cloth_id = cloth_mgr.create(config, Vec3::new(0.0, 10.0, 0.0));
-
-    // Get cloth position
-    let cloth = cloth_mgr.get(cloth_id).unwrap();
-    let cloth_positions = cloth.get_positions();
-    let avg_pos = cloth_positions.iter().copied().sum::<Vec3>() / cloth_positions.len() as f32;
-
-    let effective_gravity = gravity_mgr.calculate_gravity(1, avg_pos);
-
-    // The zone should provide zero gravity
-    assert!(
-        effective_gravity.length() < 0.01,
-        "Cloth in zero-G zone should have no gravity"
-    );
-}
-
 // ============================================================================
 // VEHICLE + DESTRUCTION INTEGRATION
 // ============================================================================
@@ -173,48 +143,6 @@ fn test_ragdoll_config_has_valid_defaults() {
     );
 }
 
-#[test]
-fn test_ragdoll_responds_to_gravity_manager() {
-    let gravity_mgr = GravityManager::new(Vec3::new(0.0, -9.81, 0.0));
-
-    // Create ragdoll at a position
-    let ragdoll_pos = Vec3::new(5.0, 10.0, 0.0);
-
-    // Calculate gravity for ragdoll position
-    let gravity = gravity_mgr.calculate_gravity(1, ragdoll_pos);
-
-    // Should get standard gravity
-    assert!(
-        (gravity.y - (-9.81)).abs() < 0.1,
-        "Ragdoll should experience normal gravity"
-    );
-}
-
-#[test]
-fn test_ragdoll_in_reverse_gravity_zone() {
-    let mut gravity_mgr = GravityManager::new(Vec3::new(0.0, -9.81, 0.0));
-
-    // Add reverse gravity zone
-    gravity_mgr.add_zone(astraweave_physics::gravity::GravityZone {
-        shape: astraweave_physics::gravity::GravityZoneShape::Box {
-            min: Vec3::new(-10.0, -10.0, -10.0),
-            max: Vec3::new(10.0, 10.0, 10.0),
-        },
-        gravity: Vec3::new(0.0, 9.81, 0.0), // Reverse gravity
-        priority: 10,
-        ..Default::default()
-    });
-
-    let ragdoll_pos = Vec3::ZERO; // Inside zone
-    let gravity = gravity_mgr.calculate_gravity(1, ragdoll_pos);
-
-    // Should get reverse gravity from zone
-    assert!(
-        gravity.y > 0.0,
-        "Ragdoll in reverse gravity zone should experience upward force"
-    );
-}
-
 // ============================================================================
 // PROJECTILE + GRAVITY INTEGRATION
 // ============================================================================
@@ -243,33 +171,6 @@ fn test_projectile_affected_by_gravity() {
 
     let final_y = mgr.get(id).unwrap().position.y;
     assert!(final_y < initial_y, "Projectile should fall under gravity");
-}
-
-#[test]
-fn test_projectile_with_custom_gravity_zone() {
-    let mut gravity_mgr = GravityManager::new(Vec3::new(0.0, -9.81, 0.0));
-
-    // Create low-gravity zone
-    gravity_mgr.add_zone(astraweave_physics::gravity::GravityZone {
-        shape: astraweave_physics::gravity::GravityZoneShape::Sphere {
-            center: Vec3::ZERO,
-            radius: 50.0,
-        },
-        gravity: Vec3::new(0.0, -1.0, 0.0), // Low gravity
-        priority: 5,
-        ..Default::default()
-    });
-
-    // Projectile in zone
-    let pos = Vec3::new(5.0, 5.0, 0.0);
-    let gravity = gravity_mgr.calculate_gravity(1, pos);
-
-    // Should have low gravity from zone
-    assert!(
-        gravity.y > -5.0 && gravity.y < 0.0,
-        "Projectile in low-gravity zone: got {}",
-        gravity.y
-    );
 }
 
 // ============================================================================
@@ -407,17 +308,6 @@ fn test_empty_managers_handle_updates() {
     projectile_mgr.update(1.0 / 60.0, |_, _, _| None);
 
     assert_eq!(cloth_mgr.count(), 0);
-}
-
-#[test]
-fn test_extreme_gravity_doesnt_break_physics() {
-    let gravity_mgr = GravityManager::new(Vec3::new(0.0, -1000.0, 0.0)); // Extreme gravity
-
-    let gravity = gravity_mgr.calculate_gravity(1, Vec3::ZERO);
-    assert!(
-        gravity.y.is_finite(),
-        "Extreme gravity should still produce finite values"
-    );
 }
 
 #[test]

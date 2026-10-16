@@ -80,10 +80,6 @@ name = "ragdoll"
 harness = false
 
 [[bench]]
-name = "gravity"
-harness = false
-
-[[bench]]
 name = "alloc_measure"
 harness = false
 required-features = ["alloc-counter"]

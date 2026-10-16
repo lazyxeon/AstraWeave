@@ -25,7 +25,9 @@
 //! - **[`SpatialHash`]** — Grid-based broadphase for O(n log n) collision culling
 //!   (99.96% pair reduction vs brute-force).
 //! - **[`ProjectileManager`]** — Ballistic projectiles with penetration and explosions.
-//! - **[`GravityManager`]** — Composable gravity zones (sphere, box, cylinder).
+//! - **Local field gravity** — cell acceleration is `LocalSim::gravity_mm_s2_at`
+//!   (`astraweave_weaving::gravity_mm_s2` over the zone's milli-g). `PhysicsWorld::step`
+//!   still reads the Rapier gravity vector only.
 //! - **[`Ragdoll`] / [`RagdollBuilder`]** — Multi-bone ragdoll creation and simulation.
 //! - **[`Vehicle`] / [`VehicleManager`]** — Vehicle dynamics with drivetrain and wheels.
 //! - **[`EnvironmentManager`]** — Wind zones, water volumes, and buoyancy.
@@ -145,13 +147,6 @@ pub mod projectile;
 pub use projectile::{
     ExplosionConfig, ExplosionResult, FalloffCurve, ProjectileConfig, ProjectileHit, ProjectileId,
     ProjectileKind, ProjectileManager,
-};
-
-// Gravity system for variable gravity, zones, and attractors
-pub mod gravity;
-pub use gravity::{
-    BodyGravityId, BodyGravitySettings, GravityManager, GravityZone, GravityZoneId,
-    GravityZoneShape,
 };
 
 // Ragdoll system for physics-based character animations
