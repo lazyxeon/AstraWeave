@@ -209,7 +209,7 @@ Each mod script is compiled on the tick it runs. The replay case is 32 ticks of 
 - `cargo test -p astraweave-scripting --test script_replay_hash`
 - `cargo test -p astraweave-scripting --lib mod_loaded_through_build_app_replays_identically`
 - `cargo test -p aw_editor --lib -- file_watcher:: rhai_reload::`
-- CI: `.github/workflows/determinism-replay.yml` requires `scripted_system` as one of the thirteen cross-OS cases. `target-cpu=native` is not set. Apple Silicon uses the default aarch64 baseline.
+- CI: `.github/workflows/determinism-replay.yml` requires `scripted_system` as one of the fifteen cross-OS cases. `target-cpu=native` is not set. Apple Silicon uses the default aarch64 baseline.
 
 ---
 

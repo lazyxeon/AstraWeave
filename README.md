@@ -29,14 +29,14 @@ The game this engine is being built for is **Aravath**.
 
 ## Current state (2026-10-16)
 
-Checked against `main` at `8e5dd73c`. Numbers that were not re-measured in this pass are dated below. This page does not assign a letter grade.
+Checked against `main` at `d0452d3e`. Numbers that were not re-measured in this pass are dated below. This page does not assign a letter grade.
 
 | Topic | What is true on this commit |
 | --- | --- |
 | **Workspace** | **141** members via `cargo metadata --no-deps`. **58** of those names start with `astraweave-` (`astraweave-veil` is the new scar-field crate). **60** manifests live under `examples/`. The count at `5cba174c` was 140. |
 | **Toolchain** | Rust **1.89.0**, pinned in `rust-toolchain.toml`. Targets: Linux x86_64, Windows MSVC, macOS x86_64 and Apple Silicon. |
 | **CI platforms** | Pull-request replay hashes run on `ubuntu-latest`, `windows-latest`, and `macos-latest`. That is the supported cross-OS determinism matrix. It is not a claim that every example window has been run on all three. |
-| **Determinism** | Thirteen required replay cases, including `weaving`, `traversal`, and `traversal_deformed`. The compare job fails if any case is missing or its SHA-256 differs across the three OS artifacts. See [Determinism](#determinism). |
+| **Determinism** | Fifteen required replay cases, including `traversal`, `traversal_deformed`, `worldgen_columns`, and `deformed_chunk`. The compare job fails if any case is missing or its SHA-256 differs across the three OS artifacts. See [Determinism](#determinism). |
 | **AI rule** | Local LLMs propose. The deterministic simulation validates and executes. The orchestrator default, when `OLLAMA_MODEL` is unset, is `phi3:medium` (`astraweave-ai`). The Qwen client constant is `qwen3.5:4b`. Ollama constructors keep a loopback URL. A non-loopback URL is replaced with `http://127.0.0.1:11434` unless the caller uses `allowing_remote` (#316). |
 | **Assets** | The project rule is **CC0 only**. `assets/README.md` still says "Mixed" and this pass did not re-audit every file's license. |
 | **Frame time** | The target is under 11 ms per frame on a GTX 1660 Ti-class GPU. It is not yet measured on that hardware: the GPU timer read 0 ms, and the readback is in progress in #216. Do not treat the older CPU `profiling_demo` times as this measurement. |
@@ -56,8 +56,9 @@ Checked against `main` at `8e5dd73c`. Numbers that were not re-measured in this 
 - **Destruction (#243).** Command log, support graph, fracture, terrain deltas, and debris. Sim state is `Fixed64`. Display meshes are outside the hash. Replay case `destruction`.
 - **Gameplay QA (#277, replay #280).** Headless Aravath-slice scenario hashed as `gameplay_qa_aravath_slice`. The #277 document is the plan; the required replay case is what landed.
 - **Weaving framework (#252).** `weave_tick` stamps data-driven templates (heat, freeze, density, gravity, and the other built-in ids) into `FieldWrite`s on a `SimField`. Replay case `weaving` runs 300 ticks on `NullField`, whose field digest is zeros until the local sim in #253 is on main. Freeze records an ice sheet and a nav change. `examples/aravath_weave` is the headless caller. `astraweave-core`, `astraweave-gameplay`, `astraweave-scripting`, and `astraweave-security` depend on the crate. The anchor-slice helpers are still plain functions.
-- **Aravath greybox (#205).** `cargo run -p aravath_runtime --bin aravath_greybox` opens the window. The on-screen player is the CC0 KayKit knight with the KayKit sword and shield. The three foes are CC0 KayKit skeletons. Ground albedos are CC0 Poly Haven maps. Foliage is CC0 KayKit and Kenney. Credits are in `assets/aravath/CREDITS.md`. The world streams a three-chunk ring. Sword hits land once, inside the active window, and lock-on drops when that enemy dies. Dig and place still use `dig_sphere` and the voxel edit log. The greybox replay hash is `b663da52ea1d566e` in `aravath_runtime/golden/replay.hash`. That check runs on Linux and Windows only. It is not one of the thirteen three-OS cases. The 11 ms frame budget is still not measured on a GTX 1660 Ti.
-- **Traversal (#244).** `astraweave-physics` steps movement at a fixed 60 Hz. The sim owns displacement. Ground, jump, and roll are hashed for 180 ticks as required case `traversal`. `traversal_deformed` walks and climbs terrain that a brush cuts mid-run: a one-voxel seam ramps, a destroyed handhold detaches, and horizontal momentum is kept. Climb is hybrid (markup wins, otherwise a flagged surface). The Aravath motor (ground, air, crouch, sprint, roll) steps once per tick. Roll invulnerability is ticks 5 through 19. Swim, slide, prone, wall-run, glide, ledge, and shimmy are in the course script. Foot and hand IK stay on the presentation graph and are not in the hash.
+- **Aravath greybox (#205).** `cargo run -p aravath_runtime --bin aravath_greybox` opens the window. The on-screen player is the CC0 KayKit knight with the KayKit sword and shield. The three foes are CC0 KayKit skeletons. Ground albedos are CC0 Poly Haven maps. Foliage is CC0 KayKit and Kenney. Credits are in `assets/aravath/CREDITS.md`. The world streams a three-chunk ring. Sword hits land once, inside the active window, and lock-on drops when that enemy dies. Dig and place still use `dig_sphere` and the voxel edit log. The greybox replay hash is `b663da52ea1d566e` in `aravath_runtime/golden/replay.hash`. That check runs on Linux and Windows only. It is a separate hash from the fifteen three-OS cases. Since #215, `ColumnStream` is the keep and evict set for the radius-3 ring. Those chunks still fill from the island heightfield. The 11 ms frame budget is still not measured on a GTX 1660 Ti.
+- **Traversal (#244).** `astraweave-physics` steps movement at a fixed 60 Hz. The sim owns displacement. Ground, jump, and roll are hashed for 180 ticks as required case `traversal`. `traversal_deformed` walks and climbs terrain that a brush cuts mid-run: a one-voxel seam ramps, a destroyed handhold detaches, and horizontal momentum is kept. Climb is hybrid (markup wins, otherwise a flagged surface). The Aravath motor (ground, air, crouch, sprint, roll) steps once per tick. Roll invulnerability is ticks 5 through 19. Swim, slide, prone, wall-run, glide, ledge, and shimmy are in the course script. Foot and hand IK stay on the presentation graph and are outside the hash.
+- **Terrain columns and scatter (#215).** `column_gen` is the integer forest record. Height, material, and a prop are functions of `(FOREST_WORLD_SEED, x, z)` with wrapping integer arithmetic. Species and yaw come from `SimRng` on `SIM_SYSTEM_FOREST_SCATTER`. The road stays empty. `worldgen_columns` is the SHA-256 of `worldgen_record()`: three chunks, including a negative coordinate and a road chunk. `deformed_chunk` is the SHA-256 of a sphere brush and one scatter detach on chunk `(-1, 2)`, then the occupancy after that chunk is evicted and loaded again. A `Detach` stays down across that reload. `ColumnStream` is the greybox keep set. The window still fills those chunks from the island heightfield, and its props still come from `aravath_runtime`'s local scatter. The editor climate mesh is the preview. Scene save and the Aravath checkpoint store `worldgen_record()`. Apply Erosion appends destruction commands and leaves that record in place. The CC0 pine-forest files, including Poly Haven `pine_tree_01`, are hashed in `assets/terrain/polyhaven/pine_forest/manifest.json`. KayKit and Kenney stay the greybox props.
 
 ## In progress
 
@@ -73,9 +74,11 @@ These pulls are not on `main`.
 
 Determinism is non-negotiable. `.github/workflows/determinism-replay.yml` runs on every pull request and on push to `main`, with no path filter. Each OS pins a baseline CPU (`target-cpu=x86-64` on x86_64; Apple Silicon stays on the default aarch64 baseline). `cargo test` in this workflow is not retried.
 
-The compare job requires these thirteen cases to be present and byte-identical across Linux, Windows, and macOS:
+The compare job requires these fifteen cases to be present and byte-identical across Linux, Windows, and macOS:
 
-`planner_pure`, `perception_world`, `gameplay_rng`, `fixed64`, `combat_resolve`, `destruction`, `gameplay_qa_aravath_slice`, `nav_reroute`, `causal_bridge`, `scripted_system`, `weaving`, `traversal`, `traversal_deformed`.
+`planner_pure`, `perception_world`, `gameplay_rng`, `fixed64`, `combat_resolve`, `destruction`, `gameplay_qa_aravath_slice`, `nav_reroute`, `causal_bridge`, `scripted_system`, `weaving`, `traversal`, `traversal_deformed`, `worldgen_columns`, `deformed_chunk`.
+
+`worldgen_columns` and `deformed_chunk` are written into `target/replay-hash.json` by `cargo test -p astraweave-terrain --test worldgen_hash` before the merge step. They do not have a separate artifact file.
 
 The ECS schedule itself is single-threaded per tick, in this order: `PRE_SIMULATION`, `PERCEPTION`, `SIMULATION`, `SYNC`, `AI_PLANNING`, `PHYSICS`, `POST_SIMULATION`, `PRESENTATION`. `ParallelSchedule` was removed on 2026-04-18 ([audit](docs/audits/parallel_schedule_removal_2026-04-18.md)). Rayon, tokio, and GPU compute live in subsystems, not inside the tick schedule.
 
@@ -126,7 +129,7 @@ The 12,700-agent figure is a CPU capacity estimate for a mid-complexity AI loop 
 
 ## Systems on this tree
 
-| Area | State on `a10780f4` |
+| Area | State on `d0452d3e` |
 | --- | --- |
 | **ECS, math, core, sdk** | Single-threaded archetype schedule. Miri-clean as of the 2026-06-27 run (1,059 tests). |
 | **Combat** | `astraweave-combat` resolves damage in Q32.32. Replay case `combat_resolve`. |
@@ -140,7 +143,7 @@ The 12,700-agent figure is a CPU capacity estimate for a mid-complexity AI loop 
 | **Rendering** | wgpu path: Disney BRDF with multi-scatter compensation, clustered forward lighting, IBL cubemaps, ACES / AgX / Reinhard in one post pipeline, 4-cascade CSM. Editor and engine share that path; a SHA-256 parity harness covers the May 2026 seams ([architecture map](docs/architecture/ARCHITECTURE_MAP.md)). Nanite-style and VXGI surfaces exist in-tree; this page does not claim they hold the frame budget. |
 | **Camera** | `astraweave-camera` is the upload contract (`RenderView`). |
 | **Physics** | Rapier3D wrapper. The in-crate `SpatialHash` is not the broadphase. Traversal (#244) is a 60 Hz tick sim in this crate. Required cases `traversal` and `traversal_deformed`. |
-| **Terrain** | Voxel terrain, climate/biome lookup, material layers. The June 2026 asset-quality note still stands: the BC7/KTX2 cook path was non-functional and runtime uploads were uncompressed RGBA8. Not re-tested here. |
+| **Terrain** | Integer columns in `column_gen` are the saved ground (#215). Required cases `worldgen_columns` and `deformed_chunk`. The editor climate heightmap is the preview mesh. The greybox collider still comes from the island voxel fill. The June 2026 asset-quality note still stands: the BC7/KTX2 cook path was non-functional and runtime uploads were uncompressed RGBA8. Not re-tested here. |
 | **Weaving** | Data-driven casts on main (#252). Required replay case `weaving` hashes `NullField` until local sim #253. See [weaving.md](docs/architecture/weaving.md). |
 | **Water** | View-side `astraweave-water` facade plus `astraweave-render` surface. `astraweave-fluids` is the deprecated accent remnant, not a game-loop solver. A local fluid sim is in progress in #253 and is not this water path. |
 | **Networking** | Snapshot net (`astraweave-net`, JSON over WebSocket) and a separate ECS/matchmaking stack. Matchmaking input frames use HMAC-SHA256, verify-first, kick by default (June 2026). No replay protection. Server-to-client messages are unsigned. See [net_ecs.md](docs/architecture/net_ecs.md). |
@@ -162,7 +165,7 @@ cargo run -p aw_trace_sync -- --check
 
 Pull-request Rust work is tiered. The required replay check is `determinism-replay / compare`. Docs-only diffs skip the workspace compile; they still run the replay hashes. The full job list is [CI_ARCHITECTURE.md](docs/current/CI_ARCHITECTURE.md). CI restructuring beyond what is already on `main` is in progress in #217.
 
-`aw_doc_lint` reads the closed vocabulary in [CLOSED_VOCABULARY_LINT.md](docs/campaigns/doc-truth/CLOSED_VOCABULARY_LINT.md). It also checks this README against the replay workflow: the ten case names, the unmeasured 11 ms target, the in-progress issue list, and the absence of the retired game title in player-facing docs. That front-door check fails the process even while the vocabulary scan is still in warn mode.
+`aw_doc_lint` reads the closed vocabulary in [CLOSED_VOCABULARY_LINT.md](docs/campaigns/doc-truth/CLOSED_VOCABULARY_LINT.md). It also checks this README against the replay workflow: every required case name, the unmeasured 11 ms target, the in-progress issue list, and the absence of the retired game title in player-facing docs. That front-door check fails the process even while the vocabulary scan is still in warn mode.
 
 ---
 

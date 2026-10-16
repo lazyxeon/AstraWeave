@@ -240,8 +240,8 @@ Status vocabulary: **VERIFIED-AT-HEAD** (re-checked this campaign at HEAD via th
 
 ### replay-cases
 - metric: Required cross-OS determinism replay cases
-- value: `planner_pure`, `perception_world`, `gameplay_rng`, `fixed64`, `combat_resolve`, `destruction`, `gameplay_qa_aravath_slice`, `nav_reroute`, `causal_bridge`, `scripted_system`, `weaving`, `traversal`, `traversal_deformed` (13)
-- status: VERIFIED-AT-HEAD (2026-10-16, both `required` lists in `.github/workflows/determinism-replay.yml` at `a10780f4`)
+- value: `planner_pure`, `perception_world`, `gameplay_rng`, `fixed64`, `combat_resolve`, `destruction`, `gameplay_qa_aravath_slice`, `nav_reroute`, `causal_bridge`, `scripted_system`, `weaving`, `traversal`, `traversal_deformed`, `worldgen_columns`, `deformed_chunk` (15)
+- status: VERIFIED-AT-HEAD (2026-10-16, both `required` lists in `.github/workflows/determinism-replay.yml` at `d0452d3e`)
 - repro: read the `required` arrays in `.github/workflows/determinism-replay.yml`
 - hardware: n/a (compare job is Ubuntu, Windows, macOS)
 - canonical_source: `.github/workflows/determinism-replay.yml`
@@ -280,6 +280,7 @@ Status vocabulary: **VERIFIED-AT-HEAD** (re-checked this campaign at HEAD via th
 | 0.1 (D.1.A skeleton) | 2026-06-13 | Created. 11 VERIFIED-AT-HEAD count/version rows; 7 PENDING-D2 benchmark/coverage rows; Retired table seeded. PENDING-D2 rows to be filled by D.2 measurement. |
 | 0.2 (D.1.B hygiene) | 2026-06-13 | Hygiene pass: `canonical_source` for agents-capacity-60fps / frame-time-1000-entities / coverage-weighted / miri-tests changed from doc-references to the bench/llvm-cov/miri **command** (doc-cites-doc break). Denominators confirmed named ("test markers", not "tests"). `referenced_by` lists are representative load-bearing sites, not exhaustive — D.1.B added registry-comment back-links across the long-tail corpus. |
 | 0.3 (D.2.A.1) | 2026-06-25 | **W.1-contamination re-resolution.** Re-resolved the 4 W.1-invalidated rows (fluids-loc 80,222→24,251 src; fluids-test-markers 2,560→738; rust-loc-total ~1.16M→~1.10M raw / ~892K→~854K code; dormant-loc-inventory 108,753→52,782). Fixed 2 broken repro commands (fluids-loc `**`-glob returned 0; rust-loc-total `xargs … wc -l \| tail -1` batching). Added 4 NEW rows for the W.2–F.4 water successor: water-facade-loc, water-surface-loc, water-system (narrative), water-budget (PENDING-D2, single-machine/provisional). Dated D.2.A snapshots in the execution reports left byte-identical (per-row resolution principle). Authority: `D_RESUME_0_RECON.md`. |
+| 1.1 | 2026-10-16 | #215 on main. `replay-cases` adds `worldgen_columns` and `deformed_chunk` (15). Greybox golden stays `b663da52ea1d566e`, outside that gate. Member count stays 141. |
 | 1.0 | 2026-10-16 | #244 on main. `replay-cases` adds `traversal` and `traversal_deformed` (13). Greybox golden is `b663da52ea1d566e`, still outside that gate. |
 | 0.9 | 2026-10-16 | #205 on main. `workspace-members` 140 → 141 (`astraweave-veil`). Greybox replay stays off the eleven-case gate. |
 | 0.8 | 2026-10-16 | #252 on main. `workspace-members` 139 → 140. `replay-cases` adds `weaving` (11). |
