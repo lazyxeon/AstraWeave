@@ -9,21 +9,10 @@ fn dist(a, b) {
 
 // Perception: Look for player
 let player_pos = vec3(5.0, 0.0, 5.0); // Mock player position (in real game, query entity)
-// Raycast to check visibility
 let dir = player_pos - position;
 let dist_to_player = dist(position, player_pos);
 let ray_dir = dir * (1.0 / dist_to_player);
-
-let hit = physics.raycast(position, ray_dir, 20.0);
-let can_see_player = false;
-
-if hit != () {
-    // In a real game, check if hit.entity_id == player_id
-    // Here we assume if we hit something close to player pos, it's the player
-    if (hit.distance - dist_to_player).abs() < 1.0 {
-        can_see_player = true;
-    }
-}
+let can_see_player = dist_to_player < 20.0;
 
 // Sync float_pos if it drifted too much (e.g. teleported externally)
 if dist(float_pos, position) > 1.5 {
@@ -49,8 +38,7 @@ switch state {
             if dist(float_pos, target) < 1.0 {
                 patrol_idx = (patrol_idx + 1) % patrol_points.len();
                 target = patrol_points[patrol_idx];
-                // Re-plan path
-                path = nav.find_path(float_pos, target);
+                path = [];
                 current_path_idx = 0;
                 log("Patrolling to point " + patrol_idx);
             }

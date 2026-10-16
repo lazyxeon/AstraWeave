@@ -4,8 +4,6 @@
 //!
 //! ## Features
 //! - Entity manipulation via `ScriptCommands`
-//! - Physics integration through `PhysicsProxy` and `RaycastHit`
-//! - Navigation mesh queries via `NavMeshProxy`
 //! - Event-driven communication with `ScriptEvent`
 //!
 //! ## Quick Start
@@ -20,7 +18,6 @@
 use api::{ScriptCommand, ScriptCommands};
 use astraweave_core::{CHealth, CPos, IVec2};
 use astraweave_ecs::{App, Entity, Events, Plugin, SystemStage, World};
-use astraweave_nav::NavMesh;
 use astraweave_physics::{CollisionEvent, Layers, PhysicsWorld};
 pub use astraweave_security::sandbox::ScriptReloadQueue;
 use astraweave_security::sandbox::{SandboxEngine, SandboxProfile};
@@ -193,6 +190,7 @@ fn script_event_rank(event: &ScriptEvent) -> (u8, u64, u64, u32, String) {
 ///
 /// Reloads apply at the start of the tick from [`ScriptReloadQueue`], in path order.
 /// The tick does not stat the filesystem and does not read a clock.
+/// `PhysicsProxy` and `NavMeshProxy` are not placed in the script scope.
 pub fn script_system(world: &mut World) {
     apply_script_reloads(world);
 
@@ -203,37 +201,12 @@ pub fn script_system(world: &mut World) {
         return;
     };
 
-    // Get PhysicsWorld pointer (immutable borrow)
-    // Safety: We drop the borrow immediately, but keep the pointer.
-    // We must ensure we don't remove the resource during execution.
-    let physics_ptr = if let Some(physics) = world.get_resource::<PhysicsWorld>() {
-        physics as *const PhysicsWorld
-    } else {
-        std::ptr::null()
-    };
-
-    // Get NavMesh pointer (immutable borrow)
-    let nav_ptr = if let Some(nav) = world.get_resource::<NavMesh>() {
-        nav as *const NavMesh
-    } else {
-        std::ptr::null()
-    };
-
     // Take cache out to avoid borrow conflicts
     let mut cache = if let Some(c) = world.get_resource_mut::<ScriptCache>() {
         std::mem::take(c)
     } else {
         ScriptCache::default()
     };
-
-    // Build Body -> Entity map for PhysicsProxy
-    let mut body_to_entity_raw = HashMap::new();
-    for e in world.entities_with::<CPhysicsBody>() {
-        if let Some(body) = world.get::<CPhysicsBody>(e) {
-            body_to_entity_raw.insert(body.body_id, e.to_raw());
-        }
-    }
-    let body_map = Arc::new(body_to_entity_raw);
 
     let mut all_commands = Vec::new();
 
@@ -313,17 +286,6 @@ pub fn script_system(world: &mut World) {
                     scope.push("health", h);
                 }
                 scope.push("delta_time", 0.01667_f32);
-
-                // Inject Physics
-                let physics_proxy = api::PhysicsProxy {
-                    ptr: physics_ptr,
-                    body_map: body_map.clone(),
-                };
-                scope.push("physics", physics_proxy);
-
-                // Inject NavMesh
-                let nav_proxy = api::NavMeshProxy { ptr: nav_ptr };
-                scope.push("nav", nav_proxy);
 
                 // Inject Commands
                 let commands = ScriptCommands::new();
@@ -448,17 +410,6 @@ pub fn script_system(world: &mut World) {
                 scope.push("health", h);
             }
             scope.push("delta_time", 0.01667_f32);
-
-            // Inject Physics
-            let physics_proxy = api::PhysicsProxy {
-                ptr: physics_ptr,
-                body_map: body_map.clone(),
-            };
-            scope.push("physics", physics_proxy);
-
-            // Inject NavMesh
-            let nav_proxy = api::NavMeshProxy { ptr: nav_ptr };
-            scope.push("nav", nav_proxy);
 
             scope.push("commands", ScriptCommands::new());
 
@@ -1078,142 +1029,87 @@ mod tests {
     }
 
     #[test]
-    fn test_raycast_api() {
-        use astraweave_physics::{Layers, PhysicsWorld};
-        use glam::Vec3;
-
-        let mut app = App::new();
-        app = app.add_plugin(ScriptingPlugin);
-
-        // Add PhysicsWorld resource
-        let physics = PhysicsWorld::new(Vec3::new(0.0, -9.8, 0.0));
-        app.world.insert_resource(physics);
-
-        // Spawn an entity to hit
-        let target = app.world.spawn();
-        let body_id = {
-            let physics = app.world.get_resource_mut::<PhysicsWorld>().unwrap();
-            // Box at (5, 0, 0) size 1
-            physics.add_dynamic_box(
-                Vec3::new(5.0, 0.0, 0.0),
-                Vec3::new(0.5, 0.5, 0.5),
-                1.0,
-                Layers::DEFAULT,
-            )
-        };
-        app.world.insert(target, CPhysicsBody { body_id });
-
-        // Update physics to build acceleration structure
-        if let Some(physics) = app.world.get_resource_mut::<PhysicsWorld>() {
-            physics.step();
-        }
-
-        // Spawn script entity
-        let e = app.world.spawn();
-        let script_source = r#"
-            let start = vec3(0.0, 0.0, 0.0);
-            let dir = vec3(1.0, 0.0, 0.0);
-            let hit = physics.raycast(start, dir, 100.0);
-            
-            if hit != () {
-                hit_entity = hit.entity_id;
-                hit_dist = hit.distance;
-            } else {
-                hit_entity = -1;
-            }
-        "#;
-
-        let mut script = CScript::new("test_raycast.rhai", script_source);
-        script
-            .script_state
-            .insert("hit_entity".to_string(), Dynamic::from(0_i64));
-        script
-            .script_state
-            .insert("hit_dist".to_string(), Dynamic::from(0.0_f32));
-        app.world.insert(e, script);
-
-        // Run one tick
-        app.schedule.run(&mut app.world);
-
-        // Check result
-        let script = app.world.get::<CScript>(e).unwrap();
-        let hit_entity = script
-            .script_state
-            .get("hit_entity")
-            .unwrap()
-            .as_int()
-            .unwrap();
-        let hit_dist = script
-            .script_state
-            .get("hit_dist")
-            .unwrap()
-            .as_float()
-            .unwrap();
-
-        assert_eq!(hit_entity, target.to_raw() as i64);
-        // Distance should be 4.5 (5.0 center - 0.5 half extent)
-        assert!((hit_dist - 4.5_f32).abs() < 0.001);
-    }
-
-    #[test]
-    fn test_navmesh_api() {
+    fn script_system_rejects_physics_and_nav_proxies() {
         use astraweave_nav::{NavMesh, Triangle};
-        use glam::Vec3;
+        use astraweave_physics::{Layers, PhysicsWorld};
 
-        let mut app = App::new();
-        app = app.add_plugin(ScriptingPlugin);
-
-        // Create a simple NavMesh
-        let tris = vec![Triangle {
-            a: Vec3::new(0.0, 0.0, 0.0),
-            b: Vec3::new(0.0, 0.0, 10.0),
-            c: Vec3::new(10.0, 0.0, 0.0),
-        }];
-        let nav = NavMesh::bake(&tris, 0.5, 60.0);
+        let mut app = App::new().add_plugin(ScriptingPlugin);
+        let mut physics = PhysicsWorld::new(Vec3::new(0.0, -9.8, 0.0));
+        let body_id = physics.add_dynamic_box(
+            Vec3::new(5.0, 0.0, 0.0),
+            Vec3::new(0.5, 0.5, 0.5),
+            1.0,
+            Layers::DEFAULT,
+        );
+        physics.step();
+        app.world.insert_resource(physics);
+        let target = app.world.spawn();
+        app.world.insert(target, CPhysicsBody { body_id });
+        let nav = NavMesh::bake(
+            &[Triangle {
+                a: Vec3::new(0.0, 0.0, 0.0),
+                b: Vec3::new(0.0, 0.0, 10.0),
+                c: Vec3::new(10.0, 0.0, 0.0),
+            }],
+            0.5,
+            60.0,
+        );
         app.world.insert_resource(nav);
 
-        // Spawn script entity
-        let e = app.world.spawn();
-        let script_source = r#"
-            let start = vec3(1.0, 0.0, 1.0);
-            let goal = vec3(2.0, 0.0, 2.0);
-            let path = nav.find_path(start, goal);
-            
-            path_len = path.len();
-            if path_len > 0 {
-                first_pt = path[0];
-            }
-        "#;
-
-        let mut script = CScript::new("test_nav.rhai", script_source);
-        script
+        let physics_entity = app.world.spawn();
+        let mut physics_script = CScript::new(
+            "physics.rhai",
+            "saw = 1;\n\
+             physics.raycast(vec3(0.0, 0.0, 0.0), vec3(1.0, 0.0, 0.0), 100.0);\n\
+             result = 1;",
+        );
+        physics_script
             .script_state
-            .insert("path_len".to_string(), Dynamic::from(0_i64));
-        script
+            .insert("saw".to_string(), Dynamic::from(0_i64));
+        physics_script
             .script_state
-            .insert("first_pt".to_string(), Dynamic::from(Vec3::ZERO));
-        app.world.insert(e, script);
+            .insert("result".to_string(), Dynamic::from(0_i64));
+        app.world.insert(physics_entity, physics_script);
 
-        // Run one tick
+        let nav_entity = app.world.spawn();
+        let mut nav_script = CScript::new(
+            "nav.rhai",
+            "saw = 1;\n\
+             nav.find_path(vec3(1.0, 0.0, 1.0), vec3(2.0, 0.0, 2.0));\n\
+             result = 1;",
+        );
+        nav_script
+            .script_state
+            .insert("saw".to_string(), Dynamic::from(0_i64));
+        nav_script
+            .script_state
+            .insert("result".to_string(), Dynamic::from(0_i64));
+        app.world.insert(nav_entity, nav_script);
+
         app.schedule.run(&mut app.world);
 
-        // Check result
-        let script = app.world.get::<CScript>(e).unwrap();
-        let path_len = script
-            .script_state
-            .get("path_len")
-            .unwrap()
-            .as_int()
-            .unwrap();
-        let first_pt = script
-            .script_state
-            .get("first_pt")
-            .unwrap()
-            .clone()
-            .cast::<Vec3>();
-
-        assert!(path_len >= 2);
-        assert!((first_pt - Vec3::new(1.0, 0.0, 1.0)).length() < 0.1);
+        let read = |entity: Entity, name: &str| {
+            app.world
+                .get::<CScript>(entity)
+                .unwrap()
+                .script_state
+                .get(name)
+                .unwrap()
+                .as_int()
+                .unwrap()
+        };
+        assert_eq!(read(physics_entity, "saw"), 1, "the physics script ran");
+        assert_eq!(
+            read(physics_entity, "result"),
+            0,
+            "physics is not on the gameplay tick"
+        );
+        assert_eq!(read(nav_entity, "saw"), 1, "the nav script ran");
+        assert_eq!(
+            read(nav_entity, "result"),
+            0,
+            "nav is not on the gameplay tick"
+        );
     }
 
     #[test]

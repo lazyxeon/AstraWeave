@@ -34,21 +34,6 @@ fn main() {
                 print("Player entered trigger! Entity: " + other);
                 commands.apply_damage(entity_id, 5);
             }
-            
-            // Raycast forward using injected my_pos
-            // Offset ray start to avoid hitting self (radius 0.5)
-            let dir = vec3(1.0, 0.0, 0.0);
-            let start = my_pos + dir * 0.6;
-            
-            // print("Ray start: " + start);
-            let hit = physics.raycast(start, dir, 10.0);
-            if hit.hit {
-                // print("Hit entity: " + hit.entity);
-                if hit.entity == 2 {
-                    print("Player sees enemy! Damaging...");
-                    commands.apply_damage(hit.entity, 10);
-                }
-            }
         "#;
         let script = CScript::new("player.rhai", script_source);
         app.world.insert(e, script);
