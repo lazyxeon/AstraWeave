@@ -28,4 +28,4 @@ The workspace has **141** members (`cargo metadata --no-deps` on this commit). T
 
 `ci.yml` runs a fmt/clippy/check gate, tests of affected crates, a Windows archive split into three partitions, and an MSRV job at 1.89.0. Docs-only diffs skip that compile. Replay hashes still run on Linux, Windows, and macOS. See `docs/current/CI_ARCHITECTURE.md`.
 
-#217, #327, #275, #329, and #331 are on `main` (`84d3888a`). The greybox golden is `0a576578512f25d2`. The workspace `tokio` dependency does not enable `net`. #326 is closed. The greybox sword hit calls `run_aravath_slice`. `AIArbiter`, `GoapPlanner`, and `GravityManager` stay off the deterministic tick. Local fluid sim #253 and render frame budget #216 are not on `main`.
+#217, #327, #275, #329, #330, and #331 are on `main` (`10757c81`). The greybox golden is `b6a9d5a2c5da28a6`. Required replay cases are sixteen, including `local_sim`. `gravity.rs` is deleted. #253 and #336 are closed. The workspace `tokio` dependency does not enable `net`. #326 is closed. The greybox sword hit calls `run_aravath_slice`. `AIArbiter` and `GoapPlanner` stay off the deterministic tick. Render frame budget #216 is not on `main`.

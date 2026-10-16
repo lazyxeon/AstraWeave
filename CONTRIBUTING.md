@@ -5,10 +5,10 @@ Thank you for your interest in helping advance the AstraWeave AI-Native Gaming E
 ## Getting Started
 
 - Ensure you are using the pinned toolchain in `rust-toolchain.toml` (Rust 1.89.0).
-- Determinism changes must keep the fifteen required replay cases identical across Linux, Windows, and macOS. The list is in `.github/workflows/determinism-replay.yml` and the repository README. `worldgen_columns` and `deformed_chunk` are the fourteenth and fifteenth.
+- Determinism changes must keep the sixteen required replay cases identical across Linux, Windows, and macOS. The list is in `.github/workflows/determinism-replay.yml` and the repository README. `local_sim` is the sixteenth.
 - Local LLMs propose. The deterministic simulation validates and executes.
 - Player-facing text says Aravath. Assets added to the tree are CC0 only.
-- Do not document local fluid sim #253 or render frame budget #216 as shipped until they are on `main`. Weaving #252, the Aravath greybox #205, traversal #244, terrain columns #215, CI burndown #217, the greybox tokio graph #327, the greybox combat slice #275, the off-tick AI/gravity change #331, and the greybox showcase #329 are on `main`. The greybox golden is `0a576578512f25d2`. #326 is closed. `AIArbiter`, `GoapPlanner`, and `GravityManager` still exist and stay off the deterministic tick.
+- Do not document render frame budget #216 as shipped until it is on `main`. Local field #330 is on `main` (`astraweave-localsim`, required case `local_sim`). #253 and #336 are closed. `gravity.rs` is deleted. Weaving #252, the Aravath greybox #205, traversal #244, terrain columns #215, CI burndown #217, the greybox tokio graph #327, the greybox combat slice #275, the off-tick AI change #331, and the greybox showcase #329 are on `main`. The greybox golden is `b6a9d5a2c5da28a6`. #326 is closed. `AIArbiter` and `GoapPlanner` still exist and stay off the deterministic tick.
 - Install required native dependencies for `wgpu`, `rapier`, and `ffmpeg` (refer to platform notes in `docs/masters/MASTER_ROADMAP.md`).
 - Clone the repository and run `cargo fetch` to prime the workspace.
 

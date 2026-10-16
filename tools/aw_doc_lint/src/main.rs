@@ -40,7 +40,7 @@ const ALLOWLIST_REL: &str = "docs/campaigns/doc-truth/CLOSED_VOCABULARY_ALLOWLIS
 const REPLAY_WORKFLOW_REL: &str = ".github/workflows/determinism-replay.yml";
 const README_REL: &str = "README.md";
 
-const IN_PROGRESS_ISSUES: &[&str] = &["#253", "#216"];
+const IN_PROGRESS_ISSUES: &[&str] = &["#216"];
 
 const VOCAB_A_START: &str = "<!-- VOCAB-A-START -->";
 const VOCAB_A_END: &str = "<!-- VOCAB-A-END -->";
@@ -808,16 +808,16 @@ mod tests {
             "The game is Aravath. Assets are CC0 only.",
             "under 11 ms per frame on a GTX 1660 Ti-class GPU. It is not yet measured.",
             "planner_pure perception_world gameplay_rng fixed64 combat_resolve",
-            "destruction gameplay_qa_aravath_slice nav_reroute causal_bridge scripted_system weaving traversal traversal_deformed worldgen_columns deformed_chunk",
+            "destruction gameplay_qa_aravath_slice nav_reroute causal_bridge scripted_system weaving traversal traversal_deformed worldgen_columns deformed_chunk local_sim",
             "## In progress",
-            "#253 #216 are in progress",
+            "#216 are in progress",
             "## Next",
         ]
         .join("\n")
     }
 
     fn sample_workflow() -> String {
-        let cases = r#""planner_pure", "perception_world", "gameplay_rng", "fixed64", "combat_resolve", "destruction", "gameplay_qa_aravath_slice", "nav_reroute", "causal_bridge", "scripted_system", "weaving", "traversal", "traversal_deformed", "worldgen_columns", "deformed_chunk""#;
+        let cases = r#""planner_pure", "perception_world", "gameplay_rng", "fixed64", "combat_resolve", "destruction", "gameplay_qa_aravath_slice", "nav_reroute", "causal_bridge", "scripted_system", "weaving", "traversal", "traversal_deformed", "worldgen_columns", "deformed_chunk", "local_sim""#;
         format!("const required = [{cases}];\nrequired = {{{cases}}};\n")
     }
 
@@ -826,7 +826,7 @@ mod tests {
         let lists = required_case_lists(&sample_workflow());
         assert_eq!(lists.len(), 2);
         assert_eq!(lists[0], lists[1]);
-        assert_eq!(lists[0].len(), 15);
+        assert_eq!(lists[0].len(), 16);
     }
 
     #[test]
@@ -837,14 +837,14 @@ mod tests {
 
     #[test]
     fn front_door_rejects_an_extra_in_progress_issue() {
-        let readme = sample_readme().replace("#253 #216", "#253 #216 #999");
+        let readme = sample_readme().replace("#216 are in progress", "#216 #999 are in progress");
         let errors = front_door_errors(&readme, &sample_workflow(), &[]);
         assert!(
             errors.iter().any(|error| error.contains("#999")),
             "{errors:?}"
         );
         assert!(
-            !errors.iter().any(|error| error.contains("missing #253")),
+            !errors.iter().any(|error| error.contains("missing #216")),
             "{errors:?}"
         );
     }
