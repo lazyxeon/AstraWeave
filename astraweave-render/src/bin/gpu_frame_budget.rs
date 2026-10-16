@@ -41,6 +41,33 @@ fn main() -> anyhow::Result<()> {
         println!("timestamp_period_ns={}", profiler.timestamp_period_ns());
     }
     let timestamps = renderer.timestamps_supported();
+    if timestamps
+        && renderer
+            .gpu_features()
+            .contains(wgpu::Features::TIMESTAMP_QUERY_INSIDE_ENCODERS)
+    {
+        renderer
+            .device()
+            .push_error_scope(wgpu::ErrorFilter::Validation);
+        match astraweave_render::GpuProfiler::prove_readback(renderer.device(), renderer.queue()) {
+            Ok(report) => {
+                if let Some(err) = pollster::block_on(renderer.device().pop_error_scope()) {
+                    anyhow::bail!("timestamp self-test validation: {err}\n{report}");
+                }
+                println!("timestamp_self_test=ok");
+                println!("{report}");
+            }
+            Err(err) => {
+                let scope = pollster::block_on(renderer.device().pop_error_scope());
+                anyhow::bail!(
+                    "timestamp self-test failed before the benchmark.\n{err}\nvalidation={scope:?}"
+                );
+            }
+        }
+    } else if timestamps {
+        println!("timestamp_self_test=skipped missing TIMESTAMP_QUERY_INSIDE_ENCODERS");
+    }
+    let timestamps = renderer.timestamps_supported();
     if !timestamps {
         eprintln!(
             "GPU timestamps are unsupported on this adapter (need TIMESTAMP_QUERY and a positive timestamp period)."
@@ -70,7 +97,6 @@ fn main() -> anyhow::Result<()> {
     let gpu_cull = "cpu_fallback";
 
     let device = renderer.device().clone();
-    let queue = renderer.queue().clone();
     let color = device.create_texture(&wgpu::TextureDescriptor {
         label: Some("frame budget color"),
         size: wgpu::Extent3d {
@@ -97,11 +123,13 @@ fn main() -> anyhow::Result<()> {
         renderer.draw_into(&view, None, &mut encoder)?;
         let encode_ms = encode_started.elapsed().as_secs_f64() * 1_000.0;
         let frame_started = Instant::now();
-        queue.submit(std::iter::once(encoder.finish()));
+        renderer.submit_timestamped(encoder.finish());
         if timestamps {
             renderer.request_gpu_profiler_readback();
         }
-        let _ = device.poll(wgpu::PollType::Wait);
+        device
+            .poll(wgpu::PollType::Wait)
+            .map_err(|err| anyhow::anyhow!("device.poll(Wait) failed: {err}"))?;
         if timestamps {
             if let Some(profiler) = renderer.gpu_profiler_mut() {
                 profiler
@@ -158,8 +186,9 @@ fn main() -> anyhow::Result<()> {
     println!("hdri={}", hdri.display());
     println!("glb={}", glb.display());
     println!(
-        "instances={} particles=on shadows=on volumetrics=off gpu_cull={gpu_cull}",
-        instances.len()
+        "instances={} rendered_models={} particles=on shadows=on volumetrics=off gpu_cull={gpu_cull}",
+        instances.len(),
+        renderer.rendered_model_count()
     );
     println!("median_draw_into_ms={:.3}", median(&mut encode));
     println!("median_cpu_frame_ms={:.3}", median(&mut cpu_frame));

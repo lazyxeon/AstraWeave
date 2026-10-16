@@ -3902,12 +3902,26 @@ fn vs(input: VSIn) -> VSOut {
                 .is_some_and(|profiler| profiler.timestamp_period_ns() > 0.0)
     }
 
-    /// Map the timestamp buffer after `queue.submit`. The next `draw_into`
-    /// copies the result into [`GpuProfiler::results`].
+    /// Map the timestamp buffer after [`Self::submit_timestamped`].
+    /// `draw_into` only resolves queries; the staging copy is the second
+    /// command buffer in that submit.
     pub fn request_gpu_profiler_readback(&mut self) {
         if let Some(profiler) = self.gpu_profiler.as_mut() {
             profiler.request_readback();
         }
+    }
+
+    /// Submit the frame encoder, then the timestamp staging copy.
+    ///
+    /// The copy is a second command buffer. Vulkan returns all-zero
+    /// timestamps when that copy shares the resolve encoder (wgpu#6406).
+    pub fn submit_timestamped(&self, frame: wgpu::CommandBuffer) {
+        crate::gpu_profiler::GpuProfiler::submit_frame(
+            self.gpu_profiler.as_ref(),
+            &self.queue,
+            &self.device,
+            frame,
+        );
     }
 
     pub fn gpu_profiler(&self) -> Option<&crate::gpu_profiler::GpuProfiler> {
@@ -7046,12 +7060,13 @@ fn vs(input: VSIn) -> VSOut {
             pp.draw(0..3, 0..1);
         }
 
-        // --- GPU profiler: resolve timestamp queries into readback buffer ---
+        // Resolve in this encoder. The staging copy is a second command
+        // buffer in the same submit (wgpu#6406).
         if let Some(ref mut p) = self.gpu_profiler {
             p.end_frame(&mut enc);
         }
 
-        self.queue.submit(Some(enc.finish()));
+        self.submit_timestamped(enc.finish());
         frame.present();
 
         // --- GPU profiler: initiate async readback of timestamp data ---
@@ -7942,8 +7957,9 @@ fn vs(input: VSIn) -> VSOut {
         // The frame end tick is after every pass, still in this encoder, so
         // resolve sees both sides of the bracket.
         self.close_frame_timestamp(enc);
-        // Resolve only after every timestamped pass has written. The copy
-        // follows the resolve in the same encoder, before submit.
+        // Resolve here. The caller submits this encoder and then
+        // `submit_timestamped`'s copy encoder. A copy in this encoder comes
+        // back as zeros on Vulkan.
         if let Some(ref p) = self.gpu_profiler {
             p.end_frame(enc);
         }
@@ -8424,7 +8440,7 @@ fn vs(input: VSIn) -> VSOut {
             self.surface_size(),
         );
 
-        self.queue.submit(std::iter::once(enc.finish()));
+        self.submit_timestamped(enc.finish());
         frame.present();
 
         // --- GPU profiler: initiate async readback of timestamp data ---
@@ -8466,7 +8482,7 @@ fn vs(input: VSIn) -> VSOut {
                 label: Some("headless validation"),
             });
         self.draw_into(&view, None, &mut enc)?;
-        self.queue.submit(std::iter::once(enc.finish()));
+        self.submit_timestamped(enc.finish());
         if let Some(profiler) = self.gpu_profiler.as_mut() {
             profiler.request_readback();
         }

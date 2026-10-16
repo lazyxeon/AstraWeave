@@ -23,7 +23,7 @@
 - **On main, bench shards 2 and 4 (#361):** dialogue, embeddings, and fluids Criterion groups are separate targets. #359 is closed. The 600s cap stays. `print_gpu_pass_breakdown` runs only when `AW_FLUID_GPU_TIMINGS` is set. #224 stays open.
 - **On main, editor clicks (#368):** the six toolbar and menu cases use synthetic `RawInput` press and release events on a plain `egui::Context`. `egui_kittest` is still not linked.
 - **In progress, not on main:** render frame budget #216. Schedule-stage registration #360. #366 step 2 (`egui_kittest` once `accesskit_unix` uses zbus 6). None of these are on `main`.
-- **Frame budget:** target under 11 ms on a GTX 1660 Ti-class GPU. Not yet measured. GPU timer read 0 ms. #216 is the readback fix.
+- **Frame budget:** target under 11 ms on a GTX 1660 Ti-class GPU. Not yet measured. The 1660 read all-zero timestamps because the resolve and the staging copy shared one command buffer (wgpu#6406). #216 splits that copy into a second command buffer and self-tests the readback before warmup. `budget_11ms` stays `not_decided`.
 - **AI:** local models propose; the deterministic sim validates and executes. `recorded_line` is the intended recorded-line helper and is not wired into the tick yet. Orchestrator default model is `phi3:medium` unless `OLLAMA_MODEL` is set.
 - **Name:** player-facing text says Aravath.
 - **Not re-run here:** `cargo check --workspace`, `cargo llvm-cov`, Miri, Kani. Coverage 57.35% and Miri 1,059 remain the 2026-06 measurements.

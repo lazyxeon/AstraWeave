@@ -288,26 +288,62 @@ impl GpuProfiler {
         })
     }
 
-    /// After all passes are recorded, resolve and copy timestamps.
-    /// Call before `queue.submit()`.
+    /// This frame wrote queries and the staging buffer is free to receive them.
+    pub fn staging_copy_pending(&self) -> bool {
+        self.next_query > 0 && !self.readback_pending
+    }
+
+    /// Resolve written queries into the GPU buffer.
+    ///
+    /// Call this on the same encoder as the timestamp writes, then
+    /// [`Self::copy_resolved`] on a second encoder, and `queue.submit` both
+    /// in that order. Vulkan returns zeros when `copy_buffer_to_buffer`
+    /// follows `resolve_query_set` in one command buffer (wgpu#6406). The
+    /// timestamp normalizer that would otherwise touch the resolve buffer
+    /// does not run when `timestamp_period` is 1, which is the NVIDIA value.
     pub fn end_frame(&self, encoder: &mut wgpu::CommandEncoder) {
-        if self.next_query == 0 {
+        if !self.staging_copy_pending() {
+            if self.readback_pending && self.next_query > 0 {
+                log::debug!(
+                    "gpu profiler skipped timestamp resolve; gpu_profiler_readback is still mapped"
+                );
+            }
             return;
         }
-        // A mapped MAP_READ buffer cannot be a copy destination. Skipping the
-        // resolve keeps Queue::submit from reporting that gpu_profiler_readback
-        // is still mapped. The next frame copies once poll_readback unmaps it.
-        if self.readback_pending {
-            log::debug!(
-                "gpu profiler skipped timestamp copy; gpu_profiler_readback is still mapped"
-            );
-            return;
-        }
-        // Resolve timestamps into the GPU buffer.
         encoder.resolve_query_set(&self.query_set, 0..self.next_query, &self.resolve_buf, 0);
-        // Copy to the CPU-readable staging buffer.
+    }
+
+    /// Copy the resolved timestamps into the CPU staging buffer.
+    ///
+    /// The encoder must not be the one that called [`Self::end_frame`].
+    /// Submit it after that encoder in the same `queue.submit`.
+    pub fn copy_resolved(&self, encoder: &mut wgpu::CommandEncoder) {
+        if !self.staging_copy_pending() {
+            return;
+        }
         let byte_count = (self.next_query as u64) * std::mem::size_of::<u64>() as u64;
         encoder.copy_buffer_to_buffer(&self.resolve_buf, 0, &self.readback_buf, 0, byte_count);
+    }
+
+    /// Submit `frame`, then the staging copy when this profiler resolved queries.
+    pub fn submit_frame(
+        profiler: Option<&Self>,
+        queue: &wgpu::Queue,
+        device: &wgpu::Device,
+        frame: wgpu::CommandBuffer,
+    ) {
+        let mut batch = Vec::with_capacity(2);
+        batch.push(frame);
+        if let Some(profiler) = profiler {
+            if profiler.staging_copy_pending() {
+                let mut copy = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                    label: Some("gpu profiler timestamp copy"),
+                });
+                profiler.copy_resolved(&mut copy);
+                batch.push(copy.finish());
+            }
+        }
+        queue.submit(batch);
     }
 
     /// Initiate an async readback of the timestamp buffer.
@@ -331,7 +367,11 @@ impl GpuProfiler {
 
     /// Wait until the mapped timestamp buffer is ready, then decode it.
     pub fn block_on_readback(&mut self, device: &wgpu::Device) -> Result<(), &'static str> {
-        let _ = device.poll(wgpu::PollType::Wait);
+        if device.poll(wgpu::PollType::Wait).is_err() {
+            self.last_error = Some("device.poll(Wait) failed");
+            log::error!("gpu profiler device.poll(Wait) failed before timestamp readback");
+            return Err("device.poll(Wait) failed");
+        }
         if !self.poll_readback(device) {
             return Err(self
                 .last_error
@@ -392,6 +432,114 @@ impl GpuProfiler {
     /// Get the most recent per-pass timing results.
     pub fn results(&self) -> &[PassTiming] {
         &self.latest_results
+    }
+
+    /// Write two encoder timestamps around a 1×1 clear, resolve, copy in a
+    /// second command buffer, submit both, wait, and read.
+    ///
+    /// `Ok` is the stamp report. Both ticks of a pair must be written: a
+    /// `0, 0` pair is the Vulkan same-encoder readback failure, not an empty
+    /// pass. Equal non-zero ticks are accepted.
+    pub fn prove_readback(device: &wgpu::Device, queue: &wgpu::Queue) -> Result<String, String> {
+        let features = device.features();
+        if !features.contains(wgpu::Features::TIMESTAMP_QUERY) {
+            return Err("timestamp self-test: device is missing TIMESTAMP_QUERY".to_string());
+        }
+        if !features.contains(wgpu::Features::TIMESTAMP_QUERY_INSIDE_ENCODERS) {
+            return Err(
+                "timestamp self-test: device is missing TIMESTAMP_QUERY_INSIDE_ENCODERS, so write_timestamp cannot run"
+                    .to_string(),
+            );
+        }
+        let mut profiler = Self::new(device, queue);
+        let period = profiler.timestamp_period_ns();
+        if !strictly_positive(period) {
+            return Err(format!(
+                "timestamp self-test: timestamp_period_ns={period} is not positive"
+            ));
+        }
+        profiler.begin_frame();
+        let (begin, end) = profiler.allocate_pass("self_test").ok_or_else(|| {
+            "timestamp self-test: no query slot for the encoder bracket".to_string()
+        })?;
+        let (pass_begin, pass_end) = profiler
+            .allocate_pass("self_test_clear")
+            .ok_or_else(|| "timestamp self-test: no query slot for the clear pass".to_string())?;
+        let query_set = profiler.query_set().clone();
+        let target = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("timestamp self-test target"),
+            size: wgpu::Extent3d {
+                width: 1,
+                height: 1,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8Unorm,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+            view_formats: &[],
+        });
+        let view = target.create_view(&wgpu::TextureViewDescriptor::default());
+
+        let mut writes = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("timestamp self-test writes"),
+        });
+        writes.write_timestamp(&query_set, begin);
+        {
+            let _pass = writes.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("timestamp self-test clear"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                timestamp_writes: Some(wgpu::RenderPassTimestampWrites {
+                    query_set: &query_set,
+                    beginning_of_pass_write_index: Some(pass_begin),
+                    end_of_pass_write_index: Some(pass_end),
+                }),
+                occlusion_query_set: None,
+            });
+        }
+        writes.write_timestamp(&query_set, end);
+        profiler.end_frame(&mut writes);
+
+        let frame = writes.finish();
+        Self::submit_frame(Some(&profiler), queue, device, frame);
+        profiler.request_readback();
+        if let Err(err) = device.poll(wgpu::PollType::Wait) {
+            return Err(format!(
+                "timestamp self-test: device.poll(Wait) failed: {err}\ntimestamp_period_ns={period}"
+            ));
+        }
+        if let Err(err) = profiler.block_on_readback(device) {
+            return Err(format!(
+                "timestamp self-test: {err}\n{}",
+                profiler.timestamp_report()
+            ));
+        }
+        let report = profiler.timestamp_report();
+        let unread: Vec<&str> = profiler
+            .results()
+            .iter()
+            .filter(|timing| timing.begin_tick == 0 && timing.end_tick == 0)
+            .map(|timing| timing.name.as_str())
+            .collect();
+        if !unread.is_empty() {
+            return Err(format!(
+                "timestamp self-test read zeros ({}); resolve and the staging copy must be different command buffers in one submit\n{report}",
+                unread.join(", ")
+            ));
+        }
+        if profiler.results().is_empty() {
+            return Err(format!("timestamp self-test read no slots\n{report}"));
+        }
+        Ok(report)
     }
 
     /// Nanoseconds per GPU tick. Zero means the device did not report a period.
@@ -498,12 +646,20 @@ mod tests {
             force_fallback_adapter: false,
         }))
         .ok()?;
-        if !adapter.features().contains(wgpu::Features::TIMESTAMP_QUERY) {
+        let adapter_features = adapter.features();
+        if !adapter_features.contains(wgpu::Features::TIMESTAMP_QUERY) {
             return None;
+        }
+        let mut required = wgpu::Features::TIMESTAMP_QUERY;
+        if adapter_features.contains(wgpu::Features::TIMESTAMP_QUERY_INSIDE_ENCODERS) {
+            required |= wgpu::Features::TIMESTAMP_QUERY_INSIDE_ENCODERS;
+        }
+        if adapter_features.contains(wgpu::Features::TIMESTAMP_QUERY_INSIDE_PASSES) {
+            required |= wgpu::Features::TIMESTAMP_QUERY_INSIDE_PASSES;
         }
         pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
             label: Some("profiler-readback-test"),
-            required_features: wgpu::Features::TIMESTAMP_QUERY,
+            required_features: required,
             required_limits: wgpu::Limits::default(),
             memory_hints: Default::default(),
             trace: Default::default(),
@@ -557,15 +713,65 @@ mod tests {
                 });
             }
             profiler.end_frame(&mut enc);
-            enc.finish()
+            let copy = if profiler.staging_copy_pending() {
+                let mut staging = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                    label: Some("profiler copy"),
+                });
+                profiler.copy_resolved(&mut staging);
+                Some(staging.finish())
+            } else {
+                None
+            };
+            (enc.finish(), copy)
         };
-        queue.submit(std::iter::once(record(&mut profiler)));
+        let (frame, copy) = record(&mut profiler);
+        assert!(
+            copy.is_some(),
+            "the first frame must record the staging copy"
+        );
+        let mut batch = vec![frame];
+        if let Some(copy) = copy {
+            batch.push(copy);
+        }
+        queue.submit(batch);
         profiler.request_readback();
-        queue.submit(std::iter::once(record(&mut profiler)));
+        let (frame, copy) = record(&mut profiler);
+        assert!(
+            copy.is_none(),
+            "staging copy must be skipped while gpu_profiler_readback is mapped"
+        );
+        queue.submit(std::iter::once(frame));
         let _ = device.poll(wgpu::PollType::Wait);
         let err = pollster::block_on(device.pop_error_scope());
         if let Some(err) = err {
             panic!("profiler readback validation: {err}");
+        }
+    }
+
+    #[test]
+    fn timestamp_self_test_reads_nonzero() {
+        let Some((device, queue)) = timestamp_device() else {
+            eprintln!("no TIMESTAMP_QUERY adapter; skipping profiler self-test");
+            return;
+        };
+        if !device
+            .features()
+            .contains(wgpu::Features::TIMESTAMP_QUERY_INSIDE_ENCODERS)
+        {
+            eprintln!("no TIMESTAMP_QUERY_INSIDE_ENCODERS; skipping profiler self-test");
+            return;
+        }
+        device.push_error_scope(wgpu::ErrorFilter::Validation);
+        let report = GpuProfiler::prove_readback(&device, &queue).unwrap_or_else(|err| {
+            panic!("timestamp self-test read zeros or failed: {err}");
+        });
+        assert!(
+            !report.contains("begin=0 end=0"),
+            "self-test report still has an unwritten pair:\n{report}"
+        );
+        let err = pollster::block_on(device.pop_error_scope());
+        if let Some(err) = err {
+            panic!("timestamp self-test validation: {err}\n{report}");
         }
     }
 }

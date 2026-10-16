@@ -366,12 +366,32 @@ fn main() {
                 if has_inside {
                     enc.write_timestamp(&acc_qset, 1);
                     enc.resolve_query_set(&acc_qset, 0..2, &acc_resolve, 0);
-                    enc.copy_buffer_to_buffer(&acc_resolve, 0, &acc_read, 0, 16);
                 }
                 if let Some(ref p) = profiler {
                     p.end_frame(&mut enc);
                 }
-                queue.submit(Some(enc.finish()));
+                // Staging copies are a second command buffer. Vulkan returns
+                // zeros when they share the resolve encoder (wgpu#6406).
+                let resolved = enc.finish();
+                let mut batch = vec![resolved];
+                let mut staging = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                    label: Some("accent timestamp copy"),
+                });
+                let mut staged = false;
+                if has_inside {
+                    staging.copy_buffer_to_buffer(&acc_resolve, 0, &acc_read, 0, 16);
+                    staged = true;
+                }
+                if let Some(p) = profiler.as_ref() {
+                    if p.staging_copy_pending() {
+                        p.copy_resolved(&mut staging);
+                        staged = true;
+                    }
+                }
+                if staged {
+                    batch.push(staging.finish());
+                }
+                queue.submit(batch);
                 let _ = device.poll(wgpu::PollType::Wait);
 
                 if has_inside {

@@ -21,7 +21,6 @@ fn recorded_pass_timestamp_is_positive() {
             renderer.gpu_features()
         );
         let device = renderer.device().clone();
-        let queue = renderer.queue().clone();
         let color = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("timestamp color"),
             size: wgpu::Extent3d {
@@ -43,7 +42,7 @@ fn recorded_pass_timestamp_is_positive() {
         renderer
             .draw_into(&view, None, &mut encoder)
             .expect("draw_into");
-        queue.submit(std::iter::once(encoder.finish()));
+        renderer.submit_timestamped(encoder.finish());
         renderer.request_gpu_profiler_readback();
         renderer
             .gpu_profiler_mut()
@@ -56,5 +55,64 @@ fn recorded_pass_timestamp_is_positive() {
             .validated_total_ms()
             .expect("positive GPU duration");
         assert!(total > 0.0, "GPU duration {total} ms");
+    });
+}
+
+/// The isolated write/resolve/copy/wait/read path must return a non-zero tick.
+/// Lavapipe is the CI stand-in. A zero pair is the Vulkan same-encoder bug.
+#[test]
+fn timestamp_readback_self_test_is_nonzero() {
+    pollster::block_on(async {
+        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::from_env_or_default());
+        let adapter = instance
+            .request_adapter(&wgpu::RequestAdapterOptions {
+                power_preference: wgpu::PowerPreference::HighPerformance,
+                compatible_surface: None,
+                force_fallback_adapter: false,
+            })
+            .await
+            .expect("adapter");
+        let info = adapter.get_info();
+        let adapter_features = adapter.features();
+        let needed = wgpu::Features::TIMESTAMP_QUERY
+            | wgpu::Features::TIMESTAMP_QUERY_INSIDE_ENCODERS
+            | wgpu::Features::TIMESTAMP_QUERY_INSIDE_PASSES;
+        if !adapter_features.contains(needed) {
+            let name = info.name.to_lowercase();
+            if name.contains("llvmpipe") || name.contains("lavapipe") {
+                panic!(
+                    "lavapipe is missing timestamp features ({:?}); adapter={} features={:?}",
+                    needed, info.name, adapter_features
+                );
+            }
+            eprintln!(
+                "skip timestamp_readback_self_test_is_nonzero: adapter={} features={:?}",
+                info.name, adapter_features
+            );
+            return;
+        }
+        let (device, queue) = adapter
+            .request_device(&wgpu::DeviceDescriptor {
+                label: Some("timestamp-self-test"),
+                required_features: needed,
+                required_limits: wgpu::Limits::default(),
+                memory_hints: Default::default(),
+                trace: Default::default(),
+            })
+            .await
+            .expect("device");
+        device.push_error_scope(wgpu::ErrorFilter::Validation);
+        let report = astraweave_render::GpuProfiler::prove_readback(&device, &queue)
+            .unwrap_or_else(|err| panic!("readback path returned zeros: {err}"));
+        assert!(
+            !report.contains("begin=0 end=0"),
+            "readback path returned zeros:\n{report}"
+        );
+        println!("{report}");
+        let err = device.pop_error_scope().await;
+        assert!(
+            err.is_none(),
+            "timestamp self-test validation: {err:?}\n{report}"
+        );
     });
 }
