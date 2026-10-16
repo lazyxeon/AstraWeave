@@ -479,7 +479,7 @@ impl App {
                 renderer.set_material_params(doc.base_color, doc.metallic, doc.roughness);
                 if let Some(path) = doc.texture_path {
                     if let Ok(bytes) = std::fs::read(&path) {
-                        if let Ok(img) = image::load_from_memory(&bytes) {
+                        if let Ok(img) = astraweave_asset::decode_limited_image(&bytes) {
                             let img = img.to_rgba8();
                             let (w, h) = img.dimensions();
                             renderer.set_albedo_from_rgba8(w, h, &img);

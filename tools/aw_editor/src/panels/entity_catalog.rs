@@ -960,7 +960,7 @@ fn try_load_companion_thumbnail(
 
     for candidate in &candidates {
         if candidate.exists() {
-            if let Ok(img) = image::open(candidate) {
+            if let Ok(img) = astraweave_asset::open_limited_image(candidate) {
                 let rgba = img
                     .resize_exact(64, 64, image::imageops::FilterType::Triangle)
                     .to_rgba8();
@@ -985,7 +985,7 @@ fn try_load_companion_thumbnail(
         if thumbnails_dir.is_dir() {
             let thumb_path = thumbnails_dir.join(format!("{stem}.png"));
             if thumb_path.exists() {
-                if let Ok(img) = image::open(&thumb_path) {
+                if let Ok(img) = astraweave_asset::open_limited_image(&thumb_path) {
                     let rgba = img
                         .resize_exact(64, 64, image::imageops::FilterType::Triangle)
                         .to_rgba8();

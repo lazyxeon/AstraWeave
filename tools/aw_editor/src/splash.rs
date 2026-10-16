@@ -410,7 +410,7 @@ fn fit_preserve_aspect(aspect: f32, max_w: f32, max_h: f32) -> (f32, f32) {
 
 fn load_logo_image() -> Option<egui::ColorImage> {
     let data = std::fs::read(LOGO_PATH).ok()?;
-    let img = image::load_from_memory(&data).ok()?;
+    let img = astraweave_asset::decode_limited_image(&data).ok()?;
     let rgba = img.to_rgba8();
     let (w, h) = (rgba.width() as usize, rgba.height() as usize);
     let pixels = rgba

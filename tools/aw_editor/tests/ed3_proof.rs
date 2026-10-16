@@ -147,7 +147,7 @@ fn station_camera() -> OrbitCamera {
 }
 
 fn luma_stats(path: &std::path::Path) -> Result<(f64, usize)> {
-    let img = image::open(path)?.to_rgba8();
+    let img = astraweave_asset::open_limited_image(path)?.to_rgba8();
     let mut sum = 0.0f64;
     for p in img.pixels() {
         sum += 0.2126 * p.0[0] as f64 + 0.7152 * p.0[1] as f64 + 0.0722 * p.0[2] as f64;
@@ -159,8 +159,8 @@ fn luma_stats(path: &std::path::Path) -> Result<(f64, usize)> {
 }
 
 fn diff_pixels(a: &std::path::Path, b: &std::path::Path) -> Result<usize> {
-    let ia = image::open(a)?.to_rgba8();
-    let ib = image::open(b)?.to_rgba8();
+    let ia = astraweave_asset::open_limited_image(a)?.to_rgba8();
+    let ib = astraweave_asset::open_limited_image(b)?.to_rgba8();
     anyhow::ensure!(ia.dimensions() == ib.dimensions(), "dimension mismatch");
     Ok(ia
         .pixels()

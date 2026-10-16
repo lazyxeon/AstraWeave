@@ -151,7 +151,7 @@ impl TextureMeshRenderer {
         queue: &wgpu::Queue,
         path: &str,
     ) -> usize {
-        let img = image::open(path).expect(&format!("Failed to load texture: {}", path));
+        let img = astraweave_asset::open_limited_image(path).expect(&format!("Failed to load texture: {}", path));
         let rgba = img.to_rgba8();
         let dimensions = rgba.dimensions();
 

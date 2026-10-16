@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+astraweave-asset = { path = "../../astraweave-asset" }
 astraweave-physics = { path = "../../astraweave-physics" }
 astraweave-render = { path = "../../astraweave-render" }
 astraweave-fluids = { path = "../../astraweave-fluids" }

@@ -47,7 +47,7 @@ fn create_test_png() -> Vec<u8> {
 #[test]
 fn test_load_png_texture() {
     let png_data = create_test_png();
-    let result = image::load_from_memory(&png_data);
+    let result = astraweave_asset::decode_limited_image(&png_data);
     assert!(result.is_ok(), "PNG should load successfully");
 
     let img = result.unwrap();
@@ -59,7 +59,7 @@ fn test_load_png_texture() {
 #[test]
 fn test_verify_png_dimensions() {
     let png_data = create_test_png();
-    let img = image::load_from_memory(&png_data).expect("Failed to load PNG");
+    let img = astraweave_asset::decode_limited_image(&png_data).expect("Failed to load PNG");
     let rgba = img.to_rgba8();
 
     assert_eq!(rgba.dimensions(), (4, 4), "Dimensions should be 4x4");
@@ -143,7 +143,7 @@ fn test_validate_ktx2_magic_header() {
 #[test]
 fn test_load_corrupted_png() {
     let corrupted_data = b"INVALID_PNG_DATA";
-    let result = image::load_from_memory(corrupted_data);
+    let result = astraweave_asset::decode_limited_image(corrupted_data);
     assert!(result.is_err(), "Corrupted PNG should fail to load");
 }
 
@@ -151,7 +151,7 @@ fn test_load_corrupted_png() {
 #[test]
 fn test_load_empty_texture_data() {
     let empty_data = b"";
-    let result = image::load_from_memory(empty_data);
+    let result = astraweave_asset::decode_limited_image(empty_data);
     assert!(result.is_err(), "Empty data should fail to load");
 }
 
@@ -159,7 +159,7 @@ fn test_load_empty_texture_data() {
 #[test]
 fn test_validate_png_color_channels() {
     let png_data = create_test_png();
-    let img = image::load_from_memory(&png_data).expect("Failed to load PNG");
+    let img = astraweave_asset::decode_limited_image(&png_data).expect("Failed to load PNG");
     let rgba = img.to_rgba8();
 
     // Check first pixel color
@@ -210,7 +210,7 @@ fn test_load_real_mra_map() {
 #[test]
 fn test_validate_png_pixel_access() {
     let png_data = create_test_png();
-    let img = image::load_from_memory(&png_data).expect("Failed to load PNG");
+    let img = astraweave_asset::decode_limited_image(&png_data).expect("Failed to load PNG");
     let rgba = img.to_rgba8();
 
     // Access all pixels without panic
@@ -237,7 +237,7 @@ fn test_png_various_dimensions() {
         )
         .expect("Failed to encode PNG");
 
-        let loaded = image::load_from_memory(&buffer).expect("Failed to load PNG");
+        let loaded = astraweave_asset::decode_limited_image(&buffer).expect("Failed to load PNG");
         assert_eq!(loaded.width(), width, "Width should match");
         assert_eq!(loaded.height(), height, "Height should match");
     }
@@ -284,7 +284,7 @@ fn test_load_multiple_ktx2_textures() {
 #[test]
 fn test_png_rgba8_conversion() {
     let png_data = create_test_png();
-    let img = image::load_from_memory(&png_data).expect("Failed to load PNG");
+    let img = astraweave_asset::decode_limited_image(&png_data).expect("Failed to load PNG");
     let rgba = img.to_rgba8();
 
     assert_eq!(rgba.dimensions(), (4, 4));
@@ -364,7 +364,8 @@ fn test_grayscale_png_conversion() {
     )
     .expect("Failed to encode grayscale PNG");
 
-    let loaded = image::load_from_memory(&buffer).expect("Failed to load grayscale PNG");
+    let loaded =
+        astraweave_asset::decode_limited_image(&buffer).expect("Failed to load grayscale PNG");
     assert_eq!(loaded.width(), 4);
     assert_eq!(loaded.height(), 4);
 }
@@ -384,7 +385,7 @@ fn test_png_alpha_channel() {
     )
     .expect("Failed to encode PNG with alpha");
 
-    let loaded = image::load_from_memory(&buffer).expect("Failed to load PNG");
+    let loaded = astraweave_asset::decode_limited_image(&buffer).expect("Failed to load PNG");
     let rgba = loaded.to_rgba8();
 
     // Verify alpha channel variation
@@ -437,7 +438,7 @@ fn test_load_real_png_fallback() {
     }
 
     let bytes = fs::read(&path).expect("Failed to read dirt.png");
-    let img = image::load_from_memory(&bytes).expect("Failed to load PNG");
+    let img = astraweave_asset::decode_limited_image(&bytes).expect("Failed to load PNG");
 
     assert!(img.width() > 0, "PNG should have width");
     assert!(img.height() > 0, "PNG should have height");
@@ -458,7 +459,7 @@ fn test_png_encoding_quality() {
         )
         .expect("Failed to encode PNG");
 
-    let loaded = image::load_from_memory(&buffer).expect("Failed to load PNG");
+    let loaded = astraweave_asset::decode_limited_image(&buffer).expect("Failed to load PNG");
     let rgba = loaded.to_rgba8();
 
     // PNG is lossless, so pixels should match exactly

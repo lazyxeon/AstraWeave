@@ -124,7 +124,7 @@ pub fn bake_texture(
     config: &BakeConfig,
 ) -> Result<TextureMetadata> {
     // Load source image
-    let img = image::open(input_path)
+    let img = astraweave_asset::open_limited_image(input_path)
         .with_context(|| format!("Failed to load texture: {}", input_path.display()))?;
 
     let (width, height) = img.dimensions();

@@ -9,7 +9,7 @@ lifecycle_status: active
 integration_status: partial
 summary: "path validation plus the deterministic Rhai sandbox and mod loader are wired; anticheat, async script helper, signatures, and secrets stay dormant. security.md"
 owns: [astraweave-secrets, astraweave-security]
-doc_version: "1.5"
+doc_version: "1.6"
 last_verified_commit: adc8ade2
 ---
 
@@ -21,11 +21,11 @@ last_verified_commit: adc8ade2
 |---|---|
 | **System name** | Security System (script sandbox, anticheat, signatures, path/deserialization validation, secrets) |
 | **Primary crates** | [`astraweave-security`](../../astraweave-security), [`astraweave-secrets`](../../astraweave-secrets) |
-| **Document version** | 1.5 |
+| **Document version** | 1.6 |
 | **Last verified against commit** | `adc8ade2` |
 | **Last verified date** | 2026-10-15 |
 | **Status** | Path validation, the deterministic Rhai sandbox, and the mod loader are wired. Anticheat, the async script helper, signatures, and secrets remain dormant. |
-| **Owner notes** | 1.5 (2026-10-15): `default_allowed_llm_domains` is `localhost` only. `SecurityPlugin::build` uses that list. `sanitize_llm_prompt` still prefixes `SAFE:`. Crates originate from a 2025 "Phase 1 Week 2" remediation effort (see [`docs/archive/remediation/PHASE1_WEEK2_COMPLETE.md`](../../docs/archive/remediation/PHASE1_WEEK2_COMPLETE.md)). Active follow-up work is owned by the S-series security campaign ([`docs/campaigns/security/S0_FINDINGS_SEED.md`](../../docs/campaigns/security/S0_FINDINGS_SEED.md)) and the hardening plan ([`docs/current/SECURITY_AUDIT_AND_HARDENING_PLAN.md`](../../docs/current/SECURITY_AUDIT_AND_HARDENING_PLAN.md)). |
+| **Owner notes** | 1.6 (2026-10-15): `aw_asset_cli` rejects glTF buffer and image file URIs that fail `safe_under` before `gltf::import`. 1.5 (2026-10-15): `default_allowed_llm_domains` is `localhost` only. `SecurityPlugin::build` uses that list. `sanitize_llm_prompt` still prefixes `SAFE:`. Crates originate from a 2025 "Phase 1 Week 2" remediation effort (see [`docs/archive/remediation/PHASE1_WEEK2_COMPLETE.md`](../../docs/archive/remediation/PHASE1_WEEK2_COMPLETE.md)). Active follow-up work is owned by the S-series security campaign ([`docs/campaigns/security/S0_FINDINGS_SEED.md`](../../docs/campaigns/security/S0_FINDINGS_SEED.md)) and the hardening plan ([`docs/current/SECURITY_AUDIT_AND_HARDENING_PLAN.md`](../../docs/current/SECURITY_AUDIT_AND_HARDENING_PLAN.md)). |
 
 ---
 

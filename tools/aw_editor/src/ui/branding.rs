@@ -33,7 +33,7 @@ fn load_logo_rgba() -> Option<&'static image::RgbaImage> {
                     return None;
                 }
             };
-            match image::load_from_memory(&data) {
+            match astraweave_asset::decode_limited_image(&data) {
                 Ok(img) => Some(img.to_rgba8()),
                 Err(e) => {
                     tracing::warn!("Branding: failed to decode {}: {e}", path.display());

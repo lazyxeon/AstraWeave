@@ -198,7 +198,7 @@ fn shoot(
 }
 
 fn luma_stats(path: &std::path::Path) -> Result<(f64, f64)> {
-    let img = image::open(path)?.to_rgba8();
+    let img = astraweave_asset::open_limited_image(path)?.to_rgba8();
     let n = (img.width() * img.height()) as f64;
     let mut sum = 0.0f64;
     let mut sum_sq = 0.0f64;

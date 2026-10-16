@@ -2224,10 +2224,10 @@ impl EngineRenderAdapter {
         path: &std::path::Path,
         max_texture_size: u32,
     ) -> Option<(u32, u32, Vec<u8>)> {
-        let mut rgba = image::open(path).ok()?.to_rgba8();
+        let mut rgba = astraweave_asset::open_limited_image(path).ok()?.to_rgba8();
 
         if let Some(alpha_path) = Self::scatter_alpha_sidecar_path(path) {
-            if let Ok(alpha_image) = image::open(&alpha_path) {
+            if let Ok(alpha_image) = astraweave_asset::open_limited_image(&alpha_path) {
                 let mut alpha = alpha_image.to_luma8();
                 if alpha.dimensions() != rgba.dimensions() {
                     alpha = image::imageops::resize(
@@ -2296,7 +2296,7 @@ impl EngineRenderAdapter {
     }
 
     fn load_terrain_surface_texture(path: &std::path::Path) -> Option<(u32, u32, Vec<u8>)> {
-        let rgba = image::open(path).ok()?.to_rgba8();
+        let rgba = astraweave_asset::open_limited_image(path).ok()?.to_rgba8();
         let (width, height) = rgba.dimensions();
         Some((width, height, rgba.into_raw()))
     }

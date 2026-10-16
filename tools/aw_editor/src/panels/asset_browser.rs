@@ -865,7 +865,7 @@ impl AssetBrowser {
             _ => return None,
         };
 
-        let image_data = match image::open(&image_path) {
+        let image_data = match astraweave_asset::open_limited_image(&image_path) {
             Ok(img) => img,
             Err(_) => return None,
         };

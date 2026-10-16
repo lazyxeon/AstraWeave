@@ -615,7 +615,7 @@ fn ibl_irradiance_faces_are_distinct_and_sky_up() -> Result<()> {
             res.avg_luminance
         );
         {
-            let img = image::open(HDRI_PATH)
+            let img = astraweave_asset::open_limited_image(HDRI_PATH)
                 .context("decode HDRI for luminance diagnostic")?
                 .to_rgb32f();
             let mut lin = 0.0f64;
@@ -693,7 +693,7 @@ fn ibl_irradiance_faces_are_distinct_and_sky_up() -> Result<()> {
 
         // 3 + 4. CPU reference agreement: same quadrature, same basis,
         //    integrating the source equirect directly.
-        let img = image::open(HDRI_PATH)
+        let img = astraweave_asset::open_limited_image(HDRI_PATH)
             .context("decode HDRI for CPU reference")?
             .to_rgb32f();
         // For ±Y the exact pole is a tangent-basis singularity (up ∥ N) that

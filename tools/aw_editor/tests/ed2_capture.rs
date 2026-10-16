@@ -135,8 +135,8 @@ fn ed2_two_captures_from_one_restored_station_are_identical() -> Result<()> {
 
         // Measure rather than merely assert, so a non-identical result is
         // reported as a magnitude instead of a bare failure.
-        let img_a = image::open(&a)?.to_rgba8();
-        let img_b = image::open(&b)?.to_rgba8();
+        let img_a = astraweave_asset::open_limited_image(&a)?.to_rgba8();
+        let img_b = astraweave_asset::open_limited_image(&b)?.to_rgba8();
         assert_eq!(img_a.dimensions(), img_b.dimensions());
         let (mut diff_px, mut max_ch) = (0usize, 0u8);
         for (pa, pb) in img_a.pixels().zip(img_b.pixels()) {
@@ -178,7 +178,7 @@ fn ed2_capture_writes_a_readable_png_of_the_requested_size() -> Result<()> {
         let out = std::env::temp_dir().join("aw_ed2_capture").join("size.png");
         let (w, h) = viewport.capture_frame_png(&texture, &out)?;
         assert_eq!((w, h), (WIDTH, HEIGHT));
-        let img = image::open(&out)?;
+        let img = astraweave_asset::open_limited_image(&out)?;
         assert_eq!((img.width(), img.height()), (WIDTH, HEIGHT));
         println!("[ed2] wrote {} at {w}x{h}", out.display());
         Ok(())
