@@ -9,8 +9,8 @@ lifecycle_status: active
 integration_status: example_only
 summary: "FALSE-PRODUCTION-READY (R.0.B 2026-06-30): the prior active/wired front-matter was example-only reality — astraweave-gameplay/astraweave-ui declare the dep but never `use astraweave_input`; the sole consumer is examples/ui_controls_demo. Wire >=1 real engine caller to reach production. input.md"
 owns: [astraweave-input]
-doc_version: "1.2"
-last_verified_commit: a2474c5b7
+doc_version: "1.3"
+last_verified_commit: d4d753c6
 ---
 
 # Architecture Trace: Input
@@ -21,10 +21,10 @@ last_verified_commit: a2474c5b7
 |---|---|
 | **System name** | Input |
 | **Primary crates** | `astraweave-input` (sole production crate; pure facade over `winit` + `gilrs`) |
-| **Document version** | 1.2 |
-| **Last verified against commit** | `a2474c5b7` |
-| **Last verified date** | 2026-05-12 |
-| **Revision history** | 1.2 (2026-05-12): Deep investigation pass. **Discovered a major parallel implementation**: `tools/aw_editor/src/panels/input_bindings_panel.rs` (2511 lines) reinvents the entire input domain — its own `InputBindingAction`, `InputDevice`, `ActionCategory`, `BindingPreset`, `GamepadButton`, `KeyboardKey`, `MouseButton`, `ActionBinding`, `AxisBinding`, `InputTarget`, `InputBindingsPanel` types — with zero use of `astraweave_input` (the editor's `Cargo.toml` doesn't even declare the dep). Documented in §6 as a coexisting abstraction; added new §11 question. Also discovered the editor panel's `pending_actions` queue is never drained externally — confirmed via comprehensive grep showing `input_bindings_panel.take_actions()` has no call site. Enriched §11 Q1, Q2, Q5, Q8, Q9 with comprehensive evidence (commit dates, `git log -p --follow`, complete gilrs `Button` variant enumeration). Corrected §11 Q9: gilrs 0.10.10 has exactly 3 unmapped buttons (`C`, `Z`, `Mode`) — the prior "paddles" speculation was inaccurate (gilrs 0.10 does not define paddle buttons).<br><br>1.1 (2026-05-12): Verification pass. Resolved `[INFERRED]` on Miri workflow absence (direct workspace-grep confirmed). Recovered creation dates (2025-09-05 / 2026-02-09) for all six §7 Decision Log entries — every commit has an empty body, so "Alternatives considered" markers stand. Sharpened §2 Stage 1 and §11 `look_sensitivity` claims to acknowledge `bench_sensitivity_access` (benches/input_benchmarks.rs:153-160) does read the field while no production-path method does. Sharpened §9 hot-paths bench claim — `bench_process_window_event` is verified absent from `benches/input_benchmarks.rs:1-180`. Verified `gilrs::Button::LeftTrigger` ↔ bumper mapping via gilrs 0.10.10 source (`mapping/mod.rs:211-214`: `BTN_LT → leftshoulder`). |
+| **Document version** | 1.3 |
+| **Last verified against commit** | d4d753c6 |
+| **Last verified date** | 2026-10-14 |
+| **Revision history** | 1.3 (2026-10-14): `InputManager::new` no longer calls `Gilrs::new()`. gilrs-core's Linux backend spawns a detached udev hotplug thread and drops the `JoinHandle`, so each construction leaks a thread until `spawn` returns `EAGAIN` and panics. The backend now opens on the first `poll_gamepads` call. Keyboard, mouse, and touch paths are unchanged.<br><br>1.2 (2026-05-12): Deep investigation pass. **Discovered a major parallel implementation**: `tools/aw_editor/src/panels/input_bindings_panel.rs` (2511 lines) reinvents the entire input domain — its own `InputBindingAction`, `InputDevice`, `ActionCategory`, `BindingPreset`, `GamepadButton`, `KeyboardKey`, `MouseButton`, `ActionBinding`, `AxisBinding`, `InputTarget`, `InputBindingsPanel` types — with zero use of `astraweave_input` (the editor's `Cargo.toml` doesn't even declare the dep). Documented in §6 as a coexisting abstraction; added new §11 question. Also discovered the editor panel's `pending_actions` queue is never drained externally — confirmed via comprehensive grep showing `input_bindings_panel.take_actions()` has no call site. Enriched §11 Q1, Q2, Q5, Q8, Q9 with comprehensive evidence (commit dates, `git log -p --follow`, complete gilrs `Button` variant enumeration). Corrected §11 Q9: gilrs 0.10.10 has exactly 3 unmapped buttons (`C`, `Z`, `Mode`) — the prior "paddles" speculation was inaccurate (gilrs 0.10 does not define paddle buttons).<br><br>1.1 (2026-05-12): Verification pass. Resolved `[INFERRED]` on Miri workflow absence (direct workspace-grep confirmed). Recovered creation dates (2025-09-05 / 2026-02-09) for all six §7 Decision Log entries — every commit has an empty body, so "Alternatives considered" markers stand. Sharpened §2 Stage 1 and §11 `look_sensitivity` claims to acknowledge `bench_sensitivity_access` (benches/input_benchmarks.rs:153-160) does read the field while no production-path method does. Sharpened §9 hot-paths bench claim — `bench_process_window_event` is verified absent from `benches/input_benchmarks.rs:1-180`. Verified `gilrs::Button::LeftTrigger` ↔ bumper mapping via gilrs 0.10.10 source (`mapping/mod.rs:211-214`: `BTN_LT → leftshoulder`). |
 | **Status** | Active crate, **example-only integration** (R-series M1 trace-honesty, 2026-06-30): the front-matter `integration_status` was corrected `wired → example_only` — the R.0.B `FALSE-PRODUCTION-READY` verdict (the active/wired claim vs the orphaned-but-for-one-example reality below). To reach production, wire ≥1 real engine caller. |
 | **Owner notes** | Pure facade crate. No ECS plugin, no system stage registration. Two workspace crates (`astraweave-gameplay`, `astraweave-ui`) declare the dependency in `Cargo.toml` but their `src/` directories contain **zero** `use astraweave_input` statements as of `a2474c5b7`. The crate has exactly one actual workspace consumer: `examples/ui_controls_demo`. |
 
@@ -57,7 +57,7 @@ The actual API surface is small (~30 public types/functions) and stable. Signifi
     │
     │ App::new() → InputManager::new(InputContext, BindingSet::default())
     │              │
-    │              ├─ Gilrs::new().ok() (gamepad backend; None if unavailable)
+    │              ├─ gilrs stays closed until the first poll_gamepads() call
     │              ├─ pressed: HashSet<Action> = {}
     │              ├─ just_pressed: HashSet<Action> = {}
     │              ├─ move_axis = look_axis = Axis2::default()
@@ -141,10 +141,10 @@ Persistence path:
 ### Stage-by-stage detail
 
 #### Stage 1: Construction (`manager.rs:36-53`)
-**Role:** Build an `InputManager` with an initial `InputContext`, a `BindingSet` (typically `BindingSet::default()`), an attempt at `Gilrs::new()` for gamepad support, and zero-initialized axes / state sets.
+**Role:** Build an `InputManager` with an initial `InputContext`, a `BindingSet` (typically `BindingSet::default()`), and zero-initialized axes / state sets. The gilrs backend is not opened here.
 **Inputs:** `InputContext`, `BindingSet`.
 **Outputs:** A live `InputManager`.
-**Notes:** `Gilrs::new().ok()` discards any error and stores `None` — when gamepad backend init fails, the manager runs without gamepad but does not surface why. `look_sensitivity` defaults to `0.12` (`manager.rs:46`); this field is `pub` and is not read by any method in `astraweave-input/src/` (the bench `bench_sensitivity_access` at `benches/input_benchmarks.rs:153-160` reads it once for field-access timing but does not use it in any computation). Callers are expected to multiply by it at the query site.
+**Notes:** `Gilrs::new()` runs on the first `poll_gamepads` call, and a construction error is stored as `None`. gilrs-core's Linux hotplug thread is detached, so constructing one `Gilrs` per `InputManager::new` leaked threads until `spawn` panicked. `look_sensitivity` defaults to `0.12` (`manager.rs`); this field is `pub` and is not read by any method in `astraweave-input/src/` (the bench `bench_sensitivity_access` reads it once for field-access timing but does not use it in any computation). Callers are expected to multiply by it at the query site.
 
 #### Stage 2: Window event ingestion (`manager.rs:72-147`)
 **Role:** Convert one `winit::WindowEvent` into zero-or-more action updates, or update the touch joystick state machine.
@@ -223,7 +223,7 @@ Persistence path:
 | Source system | Interface | Data | Notes |
 |---|---|---|---|
 | winit (0.30 per `Cargo.toml:12`) | `WindowEvent::{KeyboardInput, MouseInput, Touch}` → `InputManager::process_window_event(&WindowEvent)` | Raw `KeyCode`, `MouseButton`, `Touch` (with `id`/`location`/`phase`) | Caller's event loop forwards every window event. The manager filters internally; unknown event variants fall through `_ => {}` at `manager.rs:145`. |
-| gilrs (per `Cargo.toml:14`) | `Gilrs::next_event()` drained inside `InputManager::poll_gamepads()` | `gilrs::EventType::{ButtonPressed, ButtonReleased, AxisChanged}` | `Gilrs::new()` failures are silently absorbed (`manager.rs:38`: `let gilrs = Gilrs::new().ok();`). When `None`, gamepad input is unavailable but the manager continues to work. |
+| gilrs (per `Cargo.toml`) | `Gilrs::next_event()` drained inside `InputManager::poll_gamepads()` | `gilrs::EventType::{ButtonPressed, ButtonReleased, AxisChanged}` | `Gilrs::new()` runs on the first poll. Failures are stored as `None`. When `None`, gamepad input is unavailable but the manager continues to work. |
 | Filesystem (JSON) | `load_bindings(path) -> Option<BindingSet>` (`save.rs:16-19`) | `BindingSet` deserialized from JSON | Single function call site is expected to be called once at startup; not enforced. |
 
 ### Downstream (what consumes this system's output)
@@ -402,7 +402,7 @@ Persistence path:
 
 - **`save_bindings`** — JSON serialization + filesystem write. Once per user-driven save, not per-frame.
 - **`load_bindings`** — Read + JSON parse. Typically once at startup.
-- **`InputManager::new`** — Calls `Gilrs::new()` which scans connected devices; can take milliseconds. Once per process.
+- **`InputManager::new`** — Does not open gilrs. Device scan happens on the first `poll_gamepads`.
 
 ### Resource ownership
 

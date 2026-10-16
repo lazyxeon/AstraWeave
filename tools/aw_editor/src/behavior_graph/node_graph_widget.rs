@@ -66,6 +66,12 @@ struct PortRef {
     port: PortKind,
 }
 
+/// Node and port under the pointer for one interaction pass.
+struct PointerHit {
+    node: Option<NodeId>,
+    port: Option<PortRef>,
+}
+
 // ────────────────────── Interaction state ──────────────────────
 
 /// Tracks in-progress drag-to-connect wire.
@@ -223,8 +229,10 @@ impl NodeGraphWidget {
             &canvas_response,
             canvas_rect,
             &node_rects,
-            click_hit_node,
-            port_hit,
+            PointerHit {
+                node: click_hit_node,
+                port: port_hit,
+            },
         );
 
         // Context menu
@@ -463,9 +471,10 @@ impl NodeGraphWidget {
         response: &egui::Response,
         canvas_rect: Rect,
         node_rects: &std::collections::HashMap<NodeId, Rect>,
-        click_hit_node: Option<NodeId>,
-        port_hit: Option<PortRef>,
+        hit: PointerHit,
     ) -> bool {
+        let click_hit_node = hit.node;
+        let port_hit = hit.port;
         let mut changed = false;
 
         // Left-click on node → select
@@ -812,15 +821,13 @@ impl NodeGraphWidget {
                                     changed = true;
                                     close = true;
                                 }
-                                if !is_root {
-                                    if ui.button("🗑 Delete Node").clicked() {
-                                        if doc.remove_node(*node_id).is_ok() {
-                                            self.selected_node = Some(doc.root_id());
-                                            self.status = Some("Node deleted".into());
-                                            changed = true;
-                                        }
-                                        close = true;
+                                if !is_root && ui.button("🗑 Delete Node").clicked() {
+                                    if doc.remove_node(*node_id).is_ok() {
+                                        self.selected_node = Some(doc.root_id());
+                                        self.status = Some("Node deleted".into());
+                                        changed = true;
                                     }
+                                    close = true;
                                 }
                             }
                         });
@@ -849,20 +856,16 @@ impl NodeGraphWidget {
     pub fn auto_layout(&self, doc: &mut BehaviorGraphDocument) {
         let root_id = doc.root_id();
         let mut visited = std::collections::HashSet::new();
-        let mut column_widths: Vec<f32> = Vec::new();
-        self.compute_subtree_width(doc, root_id, &mut visited, &mut column_widths, 0);
+        Self::compute_subtree_width(doc, root_id, &mut visited);
 
         visited.clear();
-        self.layout_subtree(doc, root_id, &mut visited, 0, 0.0);
+        Self::layout_subtree(doc, root_id, &mut visited, 0, 0.0);
     }
 
     fn compute_subtree_width(
-        &self,
         doc: &BehaviorGraphDocument,
         node_id: NodeId,
         visited: &mut std::collections::HashSet<NodeId>,
-        column_widths: &mut Vec<f32>,
-        _depth: usize,
     ) -> f32 {
         if !visited.insert(node_id) {
             return NODE_WIDTH + 20.0;
@@ -884,13 +887,12 @@ impl NodeGraphWidget {
 
         let total: f32 = children
             .iter()
-            .map(|&cid| self.compute_subtree_width(doc, cid, visited, column_widths, _depth + 1))
+            .map(|&cid| Self::compute_subtree_width(doc, cid, visited))
             .sum();
         total.max(NODE_WIDTH + 20.0)
     }
 
     fn layout_subtree(
-        &self,
         doc: &mut BehaviorGraphDocument,
         node_id: NodeId,
         visited: &mut std::collections::HashSet<NodeId>,
@@ -927,8 +929,7 @@ impl NodeGraphWidget {
         let mut child_widths: Vec<f32> = Vec::new();
         let mut temp_visited = visited.clone();
         for &cid in &children {
-            let w =
-                self.compute_subtree_width(doc, cid, &mut temp_visited, &mut Vec::new(), depth + 1);
+            let w = Self::compute_subtree_width(doc, cid, &mut temp_visited);
             child_widths.push(w);
         }
 
@@ -938,7 +939,7 @@ impl NodeGraphWidget {
         for (i, &cid) in children.iter().enumerate() {
             let w = child_widths[i];
             let child_center = cx + w / 2.0;
-            self.layout_subtree(doc, cid, visited, depth + 1, child_center);
+            Self::layout_subtree(doc, cid, visited, depth + 1, child_center);
             cx += w;
         }
     }

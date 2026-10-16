@@ -9,7 +9,7 @@ lifecycle_status: active
 integration_status: wired
 owns: [aw_editor]
 doc_version: "1.18"
-last_verified_commit: 85d09a2c
+last_verified_commit: 154d723aa
 ---
 
 # Architecture Trace: aw_editor (Visual Editor)
@@ -27,6 +27,8 @@ last_verified_commit: 85d09a2c
 | **Owner notes** | The editor is by far the largest workspace crate: 216 `.rs` files, ~224,584 LoC (including tests), 49 files in `panels/` (48 panel files + `mod.rs`), 41 `PanelType` enum variants (verified 2026-05-12 by reading `panel_type.rs:107-233`), 123 fields on the `EditorApp` god struct (verified 2026-05-12), 18 direct `astraweave-*` path dependencies (verified 2026-05-12 — earlier "24+" claim was wrong), 12 feature flags (`editor-core`, `editor-graphs`, `editor-materials`, `editor-terrain`, `editor-nav`, `editor-sim`, `editor-full`, `profiling`, `fast-alloc`, `kittest`, `terrain-splat-arrays`, `impostor-bake` — earlier "8 features" claim was wrong, list was always correct). Plus 20 `.md` files inside `tools/aw_editor/` itself and 19 `EDITOR_*.md` / `AW_EDITOR_*.md` files under `docs/current/` (verified counts 2026-05-12; earlier figures were estimates). It is mid-campaign on multiple architectural fronts as of `a2474c5b7`. Three load-bearing reference documents already exist that this trace builds on rather than duplicates: `docs/current/EDITOR_BEHAVIORAL_CORRECTNESS_AUDIT.md` (37-fix audit, 14 critical + 18 high findings, 2026-04-04), `docs/current/FIX27_UNIFIED_PIPELINE_CAMPAIGN.md` (7-phase eliminate-dual-pipeline campaign, 2026-04-05), `docs/current/EDITOR_MULTI_TOOL_ARCHITECTURE_CAMPAIGN.md` (Sub-phase 3 in flight as of 2026-05-08, "Round 8 Closure" — the §7.7 "wrapped-component resource identity trap" anti-pattern was elevated from candidate to structural axiom in this campaign). Read those for depth on specific concerns; this trace covers the structural shape. |
 
 ---
+
+Viewport renderer sharing (2026-10-15, doc 1.18): `ViewportWidget` keeps `ViewportRenderer` in `Rc<RefCell<_>>`. Callers borrow it on the UI thread only (`App::update`, dock subsystems, the widget paint path). The type is not `Send`. The IBL bake thread does not receive this renderer. `eframe::App` does not require `Send`.
 
 ## 1. Executive Summary
 

@@ -3,7 +3,6 @@ name = "shadow_csm_demo"
 license.workspace = true
 version = "0.1.0"
 edition = "2021"
-
 [dependencies]
 astraweave-render = { path = "../../astraweave-render" }
 anyhow = { workspace = true }

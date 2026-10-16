@@ -561,8 +561,7 @@ fn prettify_name(name: &str) -> String {
         .and_then(|s| s.to_str())
         .unwrap_or(name);
     // Replace underscores/hyphens with spaces, then title-case each word
-    stem.replace('_', " ")
-        .replace('-', " ")
+    stem.replace(['_', '-'], " ")
         .split_whitespace()
         .map(|word| {
             let mut chars = word.chars();
@@ -1155,9 +1154,9 @@ impl AssetBrowser {
             // Draw each character as a simple 3×5 dot pattern
             for (ci, &ch) in label_bytes.iter().take(5).enumerate() {
                 let glyph = Self::tiny_glyph(ch);
-                for gy in 0..5usize {
+                for (gy, row) in glyph.iter().enumerate() {
                     for gx in 0..3usize {
-                        if glyph[gy] & (1 << (2 - gx)) != 0 {
+                        if row & (1 << (2 - gx)) != 0 {
                             set_px(
                                 &mut pixels,
                                 lx + ci * (char_w + 1) + gx,

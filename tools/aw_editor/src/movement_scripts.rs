@@ -241,10 +241,7 @@ impl MovementSystem {
         let rand_dist = self.next_random();
         let rand_cooldown = 2.0 + self.next_random() * 3.0;
 
-        let state = self
-            .runtime_states
-            .entry(entity_id)
-            .or_insert_with(MovementRuntimeState::default);
+        let state = self.runtime_states.entry(entity_id).or_default();
         state.elapsed += dt;
 
         match script.script_type {

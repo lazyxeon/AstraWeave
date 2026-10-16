@@ -960,7 +960,7 @@ pub struct ProjectSettingsPanel {
 
 impl Default for ProjectSettingsPanel {
     fn default() -> Self {
-        let panel = Self {
+        Self {
             active_tab: SettingsTab::Project,
 
             project_name: "AstraWeave Project".to_string(),
@@ -989,9 +989,7 @@ impl Default for ProjectSettingsPanel {
             selected_build: 0,
 
             pending_actions: Vec::new(),
-        };
-
-        panel
+        }
     }
 }
 

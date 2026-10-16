@@ -34,7 +34,9 @@
 //! - Total: <12ms (26% headroom)
 
 use anyhow::{Context, Result};
-use std::sync::{Arc, Mutex};
+use std::cell::RefCell;
+use std::rc::Rc;
+use std::sync::Arc;
 use tracing::{debug, trace, warn};
 
 use super::camera::{CameraState, OrbitCamera};
@@ -102,7 +104,7 @@ type CameraBookmark = CameraState;
 /// Manages camera, rendering, and input handling.
 pub struct ViewportWidget {
     /// Viewport renderer (wgpu coordinator)
-    renderer: Arc<Mutex<ViewportRenderer>>,
+    renderer: Rc<RefCell<ViewportRenderer>>,
 
     /// Orbit camera controller
     camera: OrbitCamera,
@@ -268,8 +270,8 @@ impl ViewportWidget {
             "wgpu render state not available - ensure eframe is built with 'wgpu' feature",
         )?;
 
-        // Create renderer (wrapped in Arc<Mutex<>> for thread-safe interior mutability)
-        let renderer = Arc::new(Mutex::new({
+        // The renderer is only borrowed on the UI thread (eframe's winit loop).
+        let renderer = Rc::new(RefCell::new({
             let mut r = ViewportRenderer::from_eframe(render_state)
                 .context("Failed to create viewport renderer")?;
             // Eagerly initialize all sub-renderers to avoid frame hitches during editing
@@ -333,14 +335,13 @@ impl ViewportWidget {
     /// but shares the underlying wgpu device and queue.
     pub fn new_additional(existing: &ViewportWidget) -> Result<Self> {
         let (device, queue) = {
-            let renderer = existing
-                .renderer
-                .lock()
-                .map_err(|e| anyhow::anyhow!("Failed to lock renderer: {}", e))?;
+            let renderer = existing.renderer.try_borrow().map_err(|_| {
+                anyhow::anyhow!("Failed to borrow renderer: already borrowed on the UI thread")
+            })?;
             (renderer.device().clone(), renderer.queue().clone())
         };
 
-        let renderer = Arc::new(Mutex::new(
+        let renderer = Rc::new(RefCell::new(
             ViewportRenderer::new(device, queue)
                 .context("Failed to create additional viewport renderer")?,
         ));
@@ -398,10 +399,10 @@ impl ViewportWidget {
     where
         F: FnOnce(&mut ViewportRenderer) -> R,
     {
-        match self.renderer.lock() {
+        match self.renderer.try_borrow_mut() {
             Ok(mut renderer) => Some(f(&mut renderer)),
-            Err(_poisoned) => {
-                tracing::error!("Renderer mutex poisoned during '{op}' — operation skipped (GPU state may be corrupted)");
+            Err(_borrowed) => {
+                tracing::error!("Renderer already borrowed during '{op}' — operation skipped");
                 None
             }
         }
@@ -581,7 +582,7 @@ impl ViewportWidget {
     }
 
     /// Get access to the underlying renderer
-    pub fn renderer(&self) -> &Arc<Mutex<ViewportRenderer>> {
+    pub fn renderer(&self) -> &Rc<RefCell<ViewportRenderer>> {
         &self.renderer
     }
 
@@ -2224,8 +2225,8 @@ impl ViewportWidget {
         // Lock renderer to create texture and resize
         let mut renderer = self
             .renderer
-            .lock()
-            .map_err(|e| anyhow::anyhow!("Renderer lock poisoned: {}", e))?;
+            .try_borrow_mut()
+            .map_err(|_| anyhow::anyhow!("Renderer already borrowed on the UI thread"))?;
 
         // Create new render texture
         let texture = renderer
@@ -2450,7 +2451,7 @@ impl ViewportWidget {
         let mut lines = Vec::new();
         let segments = 32;
 
-        for (_, entity) in entity_manager.entities() {
+        for entity in entity_manager.entities().values() {
             let pos = [entity.position.x, entity.position.y, entity.position.z];
 
             // Light: yellow wireframe sphere at light range
@@ -2718,8 +2719,8 @@ impl ViewportWidget {
         let name = name.into();
         let mut renderer = self
             .renderer
-            .lock()
-            .map_err(|_| anyhow::anyhow!("Renderer mutex poisoned"))?;
+            .try_borrow_mut()
+            .map_err(|_| anyhow::anyhow!("Renderer already borrowed on the UI thread"))?;
 
         // Lazily initialize engine adapter if not already done
         if !renderer.engine_adapter_initialized() {
@@ -2753,8 +2754,8 @@ impl ViewportWidget {
     ) -> anyhow::Result<()> {
         let mut renderer = self
             .renderer
-            .lock()
-            .map_err(|_| anyhow::anyhow!("Renderer mutex poisoned"))?;
+            .try_borrow_mut()
+            .map_err(|_| anyhow::anyhow!("Renderer already borrowed on the UI thread"))?;
 
         if let Some(adapter) = renderer.engine_adapter_mut() {
             adapter.set_material_params(base_color, metallic, roughness);
@@ -2768,8 +2769,8 @@ impl ViewportWidget {
     pub fn get_time_of_day(&self) -> anyhow::Result<f32> {
         let renderer = self
             .renderer
-            .lock()
-            .map_err(|_| anyhow::anyhow!("Renderer mutex poisoned"))?;
+            .try_borrow()
+            .map_err(|_| anyhow::anyhow!("Renderer already borrowed on the UI thread"))?;
 
         if let Some(adapter) = renderer.engine_adapter() {
             Ok(adapter.get_time_of_day())
@@ -2782,8 +2783,8 @@ impl ViewportWidget {
     pub fn set_time_of_day(&self, hour: f32) -> anyhow::Result<()> {
         let mut renderer = self
             .renderer
-            .lock()
-            .map_err(|_| anyhow::anyhow!("Renderer mutex poisoned"))?;
+            .try_borrow_mut()
+            .map_err(|_| anyhow::anyhow!("Renderer already borrowed on the UI thread"))?;
 
         if let Some(adapter) = renderer.engine_adapter_mut() {
             adapter.set_time_of_day(hour);
@@ -2797,8 +2798,8 @@ impl ViewportWidget {
     pub fn get_time_scale(&self) -> anyhow::Result<f32> {
         let renderer = self
             .renderer
-            .lock()
-            .map_err(|_| anyhow::anyhow!("Renderer mutex poisoned"))?;
+            .try_borrow()
+            .map_err(|_| anyhow::anyhow!("Renderer already borrowed on the UI thread"))?;
 
         if let Some(adapter) = renderer.engine_adapter() {
             Ok(adapter.get_time_scale())
@@ -2811,8 +2812,8 @@ impl ViewportWidget {
     pub fn set_time_scale(&self, scale: f32) -> anyhow::Result<()> {
         let mut renderer = self
             .renderer
-            .lock()
-            .map_err(|_| anyhow::anyhow!("Renderer mutex poisoned"))?;
+            .try_borrow_mut()
+            .map_err(|_| anyhow::anyhow!("Renderer already borrowed on the UI thread"))?;
 
         if let Some(adapter) = renderer.engine_adapter_mut() {
             adapter.set_time_scale(scale);
@@ -2826,8 +2827,8 @@ impl ViewportWidget {
     pub fn get_time_period(&self) -> anyhow::Result<&'static str> {
         let renderer = self
             .renderer
-            .lock()
-            .map_err(|_| anyhow::anyhow!("Renderer mutex poisoned"))?;
+            .try_borrow()
+            .map_err(|_| anyhow::anyhow!("Renderer already borrowed on the UI thread"))?;
 
         if let Some(adapter) = renderer.engine_adapter() {
             Ok(adapter.get_time_period())
@@ -2840,8 +2841,8 @@ impl ViewportWidget {
     pub fn shadows_enabled(&self) -> anyhow::Result<bool> {
         let renderer = self
             .renderer
-            .lock()
-            .map_err(|_| anyhow::anyhow!("Renderer mutex poisoned"))?;
+            .try_borrow()
+            .map_err(|_| anyhow::anyhow!("Renderer already borrowed on the UI thread"))?;
 
         if let Some(adapter) = renderer.engine_adapter() {
             Ok(adapter.shadows_enabled())
@@ -2854,8 +2855,8 @@ impl ViewportWidget {
     pub fn set_shadows_enabled(&self, enabled: bool) -> anyhow::Result<()> {
         let mut renderer = self
             .renderer
-            .lock()
-            .map_err(|_| anyhow::anyhow!("Renderer mutex poisoned"))?;
+            .try_borrow_mut()
+            .map_err(|_| anyhow::anyhow!("Renderer already borrowed on the UI thread"))?;
 
         if let Some(adapter) = renderer.engine_adapter_mut() {
             adapter.set_shadows_enabled(enabled);
@@ -3216,11 +3217,9 @@ fn estimate_memory_usage_mb() -> f32 {
     }
 }
 
-// SAFETY: ViewportWidget owns wgpu resources (textures), which are NOT Send/Sync.
-// However, egui requires widgets to be Send. We ensure safety by:
-// 1. Only creating wgpu resources on the main thread
-// 2. Never sending ViewportWidget across threads
-// 3. Using Arc for shared GPU resources in renderer
-//
-// This is safe because eframe runs on a single thread (winit event loop).
-// If we later add multi-threading, we'll need to refactor to use Arc<Mutex<>>.
+// The viewport renderer lives in Rc<RefCell<_>> because every caller locks it
+// from the UI thread: eframe::App::update, the dock subsystems, and the
+// widget's own paint. ViewportRenderer is not Send (it owns wgpu resources
+// that this editor does not share across threads). The IBL bake worker in
+// EngineRenderAdapter owns a separate IblManager and never receives this
+// renderer. eframe::App does not require Send.

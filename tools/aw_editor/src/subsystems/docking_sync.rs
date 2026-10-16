@@ -25,7 +25,7 @@ impl crate::EditorApp {
         // Get real render stats from viewport if available
         let (vp_draw_calls, vp_triangles, vp_memory_mb) = if let Some(viewport) = &self.viewport {
             let stats = &viewport.toolbar().stats;
-            if let Ok(renderer) = viewport.renderer().lock() {
+            if let Ok(renderer) = viewport.renderer().try_borrow() {
                 let base_draw_calls = if entity_count > 0 { 4 } else { 2 };
                 let terrain_draw_calls = renderer.terrain_triangles().min(1);
                 let scatter_draw_calls = renderer.scatter_draw_calls() as usize;
@@ -157,7 +157,7 @@ impl crate::EditorApp {
     pub(crate) fn sync_post_process_to_renderer(&mut self) {
         if let Some(settings) = self.dock_tab_viewer.take_post_process_update() {
             if let Some(viewport) = &self.viewport {
-                if let Ok(mut renderer) = viewport.renderer().lock() {
+                if let Ok(mut renderer) = viewport.renderer().try_borrow_mut() {
                     // Update the PostProcessChain bloom on/off flag.
                     if let Some(existing) = renderer.post_process_chain() {
                         let mut chain = existing.clone();

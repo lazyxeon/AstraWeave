@@ -4,7 +4,6 @@ license.workspace = true
 version = "0.1.0"
 edition = "2021"
 description = "Comprehensive demonstration of AstraWeave's LLM integration capabilities"
-
 [dependencies]
 # Core AstraWeave crates
 astraweave-core = { path = "../../astraweave-core" }

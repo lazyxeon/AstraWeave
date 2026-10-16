@@ -8,8 +8,8 @@ domain: gameplay
 lifecycle_status: active
 integration_status: wired
 owns: [astraweave-audio]
-doc_version: "1.3"
-last_verified_commit: a2474c5b7
+doc_version: "1.7"
+last_verified_commit: 2702a457
 ---
 
 # Architecture Trace: Audio
@@ -20,10 +20,10 @@ last_verified_commit: a2474c5b7
 |---|---|
 | **System name** | Audio |
 | **Primary crates** | `astraweave-audio` (sole production crate); `tools/aw_editor` (editor integration via `audio_bridge.rs`); `astraweave-npc` (single direct consumer in runtime) |
-| **Document version** | 1.2 |
-| **Last verified against commit** | `a2474c5b7` |
-| **Last verified date** | 2026-05-12 |
-| **Revision history** | 1.2 (2026-05-12): Deep investigation pass. Closed factual portion of Open Question 4 (aspirational docs origin) — git log identifies commit `28bc94f21` "Create comprehensive bespoke wiki with 51-section documentation structure (#34)" authored by GitHub Copilot bot on 2025-09-08; resolution moved to §6. Enriched §11 Open Questions 2 (PanMode), 8 (hardcoded AudioStats), and 9 (veilweaver_demo) with comprehensive git/source evidence. Corrected §9 hot-paths bench-name reference (`listener_movement_*` exercises `tick`, not a separate `audio_tick_per_frame` bench). Added new cognitive trap in §6: `EmitterId` collision silently reuses the existing `SpatialSink` and overwrites its emitter position. Added new §11 Open Question on the `EmitterId` allocator-less design.<br><br>1.1 (2026-05-12): Verification pass. Confirmed rodio→cpal `!Send + !Sync` chain via `cpal-0.15.3/src/platform/mod.rs:73, 736` (`NotSendSyncAcrossAllPlatforms(PhantomData<*mut ()>)` marker). Corrected Sink/SpatialSink Send/Sync claim — only `OutputStream` is the `!Send` blocker, not the sinks themselves. Confirmed `astraweave-audio` is absent from `miri.yml`, `kani.yml`, `mutation-testing.yml`, `coverage.yml` workflows (CI presence only in `ci.yml`). Recovered partial rationale for 5th bus from commit `745c100a8` ("audio ambient" alongside biome materials). Corrected Appendix A `#[non_exhaustive]` claim (irrelevant within same crate). |
+| **Document version** | 1.7 |
+| **Last verified against commit** | `2702a457` |
+| **Last verified date** | 2026-10-15 |
+| **Revision history** | 1.7 (2026-10-15): Fixture path strings use `/` so a Windows `D:\a\...` root can be embedded in a TOML basic string. Playback is unchanged.<br><br>1.6 (2026-10-15): Test fixtures only. Each nextest process writes WAVs under `target/audio-test-assets/<pid>` so `cleanup_test_assets` cannot delete another process's files. The playback path is unchanged.<br><br>1.2 (2026-05-12): Deep investigation pass. Closed factual portion of Open Question 4 (aspirational docs origin) — git log identifies commit `28bc94f21` "Create comprehensive bespoke wiki with 51-section documentation structure (#34)" authored by GitHub Copilot bot on 2025-09-08; resolution moved to §6. Enriched §11 Open Questions 2 (PanMode), 8 (hardcoded AudioStats), and 9 (veilweaver_demo) with comprehensive git/source evidence. Corrected §9 hot-paths bench-name reference (`listener_movement_*` exercises `tick`, not a separate `audio_tick_per_frame` bench). Added new cognitive trap in §6: `EmitterId` collision silently reuses the existing `SpatialSink` and overwrites its emitter position. Added new §11 Open Question on the `EmitterId` allocator-less design.<br><br>1.1 (2026-05-12): Verification pass. Confirmed rodio→cpal `!Send + !Sync` chain via `cpal-0.15.3/src/platform/mod.rs:73, 736` (`NotSendSyncAcrossAllPlatforms(PhantomData<*mut ()>)` marker). Corrected Sink/SpatialSink Send/Sync claim — only `OutputStream` is the `!Send` blocker, not the sinks themselves. Confirmed `astraweave-audio` is absent from `miri.yml`, `kani.yml`, `mutation-testing.yml`, `coverage.yml` workflows (CI presence only in `ci.yml`). Recovered partial rationale for 5th bus from commit `745c100a8` ("audio ambient" alongside biome materials). Corrected Appendix A `#[non_exhaustive]` claim (irrelevant within same crate). |
 | **Status** | Active |
 | **Owner notes** | Pure facade crate. No ECS plugin, no system stage registration. Forward-designed editor UI exposes features (HRTF, Doppler, distance model, reverb) that the underlying engine does not yet implement. |
 
@@ -387,7 +387,7 @@ Dialogue path: DialoguePlayer::speak_current(dlg, st)  (dialogue_runtime.rs:33-1
 | 10 | `compute_ears` produces ears at distance exactly `ear_sep` for non-degenerate forward/up | Yes (with floating tolerance) | `engine.rs:276-285`. Mutation test asserts within `0.01` of `0.2m` (`engine.rs:1821-1836`). |
 | 11 | Dialogue `speak_current` returns `Ok(false)` iff the node has no `line` | Yes | `dialogue_runtime.rs:34-37`. Tested by `test_dialogue_player_no_line` (`dialogue_runtime.rs:178-206`). |
 | 12 | Dialogue `speak_current` emits the subtitle callback before any audio resolution attempt | Yes | `dialogue_runtime.rs:41-43`. Tested by `test_dialogue_player_subtitle_callback`. |
-| 13 | `AudioEngine::new` falls back to a null backend when the host has no output device. Mixer state (volumes, duck timer, emitter map) still updates; samples are dropped. `has_output_device()` is false on that path | Yes | `engine.rs` `new` / `null`; test `null_backend_keeps_mixer_state_without_a_device`. Headless CI (no ALSA card) uses this path |
+| 13 | `AudioEngine::new` falls back to a null backend when `AW_AUDIO_NULL` is set, when `OutputStream::try_default` returns `Err`, or when the `aw_audio_probe` child exits non-zero or is killed (WASAPI `STATUS_ACCESS_VIOLATION` / `0xC0000005` stays in the child). On Windows the in-process open is refused if that binary is missing. Mixer state still updates; samples are dropped. `has_output_device()` is false on the null path | Yes | `engine.rs` `new` / `run_isolated_probe` / `aw_audio_probe`; tests `null_backend_keeps_mixer_state_without_a_device`, `only_a_clean_probe_exit_opens_the_device`, `a_failing_probe_child_does_not_count_as_an_open_device` |
 | 13 | All voice-file/sfx-file/3d-sfx-file `Result`s are propagated to caller (not silently discarded) | Yes | `engine.rs:344, 374, 390` all use `?` with `anyhow!()` context. Editor caller logs via `tracing::warn!` (`audio_bridge.rs:151-153, 193-195`). NPC caller uses `let _ =` for `call_guards` 3D beep (`runtime.rs:49`) — this is an exception, intentional. |
 | 14 | `AudioEngine::new()` failure is non-fatal in the editor — falls back to `engine: None` and runs without audio | Yes | `audio_bridge.rs:67-75`. |
 | 15 | TTS is only available when the `mock_tts` feature is enabled (in this crate's bundled adapter) | Yes (compile-time) | `voice.rs:43, 49, 59` all `#[cfg(feature = "mock_tts")]`. The `TtsAdapter` trait is unconditional; only the bundled implementation is gated. |

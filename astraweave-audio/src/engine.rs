@@ -235,8 +235,142 @@ pub struct AudioEngine {
     duck_factor: f32,
 }
 
+/// Only a clean exit from `aw_audio_probe` means the parent may open the device.
+/// A crash (Windows `0xC0000005`) or a non-zero exit means the null backend.
+pub(crate) fn probe_exit_allows_open(code: Option<i32>) -> bool {
+    code == Some(0)
+}
+
+fn probe_binary_name() -> &'static str {
+    if cfg!(windows) {
+        "aw_audio_probe.exe"
+    } else {
+        "aw_audio_probe"
+    }
+}
+
+fn probe_binary_candidates() -> Vec<std::path::PathBuf> {
+    let mut paths = Vec::new();
+    if let Some(explicit) = std::env::var_os("AW_AUDIO_PROBE_BIN") {
+        paths.push(std::path::PathBuf::from(explicit));
+    }
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            let name = probe_binary_name();
+            paths.push(dir.join(name));
+            paths.push(dir.join("..").join(name));
+        }
+    }
+    paths
+}
+
+enum ProbeReport {
+    Open,
+    Closed { detail: String },
+}
+
+fn run_isolated_probe(path: &std::path::Path) -> ProbeReport {
+    use std::io::Read;
+    use std::process::{Command, Stdio};
+    use std::time::{Duration, Instant};
+
+    let mut child = match Command::new(path)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()
+    {
+        Ok(child) => child,
+        Err(err) => {
+            return ProbeReport::Closed {
+                detail: format!("failed to start {}: {err}", path.display()),
+            };
+        }
+    };
+    let started = Instant::now();
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => break status,
+            Ok(None) if started.elapsed() > Duration::from_secs(8) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return ProbeReport::Closed {
+                    detail: format!("{} timed out after 8s", path.display()),
+                };
+            }
+            Ok(None) => std::thread::sleep(Duration::from_millis(20)),
+            Err(err) => {
+                return ProbeReport::Closed {
+                    detail: format!("failed to wait on {}: {err}", path.display()),
+                };
+            }
+        }
+    };
+    let mut stderr = String::new();
+    if let Some(mut pipe) = child.stderr.take() {
+        let _ = pipe.read_to_string(&mut stderr);
+    }
+    let stderr = stderr.trim();
+    if probe_exit_allows_open(status.code()) {
+        ProbeReport::Open
+    } else {
+        ProbeReport::Closed {
+            detail: format!(
+                "{} status {status}{}",
+                path.display(),
+                if stderr.is_empty() {
+                    String::new()
+                } else {
+                    format!(": {stderr}")
+                }
+            ),
+        }
+    }
+}
+
+fn isolated_probe_allows_open() -> bool {
+    static CACHED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *CACHED.get_or_init(|| {
+        let candidates = probe_binary_candidates();
+        let Some(path) = candidates.iter().find(|path| path.is_file()) else {
+            eprintln!(
+                "astraweave-audio: aw_audio_probe was not found ({}); opening the default device in this process",
+                candidates
+                    .iter()
+                    .map(|path| path.display().to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
+            // Without the child, a WASAPI access violation would kill the game.
+            // Refuse the in-process open on Windows until the probe binary is
+            // beside the executable (or AW_AUDIO_PROBE_BIN points at it).
+            if cfg!(windows) {
+                eprintln!(
+                    "astraweave-audio: refusing an in-process WASAPI open without aw_audio_probe; using a null backend"
+                );
+                return false;
+            }
+            return true;
+        };
+        match run_isolated_probe(path) {
+            ProbeReport::Open => true,
+            ProbeReport::Closed { detail } => {
+                eprintln!("astraweave-audio: {detail}; using a null backend");
+                false
+            }
+        }
+    })
+}
+
 impl AudioEngine {
     pub fn new() -> Result<Self> {
+        if std::env::var_os("AW_AUDIO_NULL").is_some() {
+            eprintln!("astraweave-audio: AW_AUDIO_NULL set; using a null backend");
+            return Self::null();
+        }
+        if !isolated_probe_allows_open() {
+            return Self::null();
+        }
         match OutputStream::try_default() {
             Ok((stream, handle)) => Self::from_device(Some(stream), Some(handle)),
             Err(err) => {
@@ -591,6 +725,25 @@ impl AudioEngine {
 mod tests {
     use super::*;
     use glam::vec3;
+
+    #[test]
+    fn only_a_clean_probe_exit_opens_the_device() {
+        assert!(probe_exit_allows_open(Some(0)));
+        assert!(!probe_exit_allows_open(Some(2)));
+        assert!(!probe_exit_allows_open(None));
+        // STATUS_ACCESS_VIOLATION, the Windows code behind step exit 139.
+        assert!(!probe_exit_allows_open(Some(0xC000_0005_u32 as i32)));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_failing_probe_child_does_not_count_as_an_open_device() {
+        let report = run_isolated_probe(std::path::Path::new("/bin/false"));
+        assert!(
+            matches!(report, ProbeReport::Closed { .. }),
+            "a non-zero probe exit must select the null backend"
+        );
+    }
 
     #[test]
     fn null_backend_keeps_mixer_state_without_a_device() {

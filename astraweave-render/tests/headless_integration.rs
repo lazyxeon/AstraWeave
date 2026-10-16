@@ -2,28 +2,26 @@
 
 use std::path::PathBuf;
 
+#[path = "support/gpu_capability.rs"]
+mod gpu_capability;
+
 #[test]
 #[cfg(feature = "textures")]
 fn headless_biome_pack_and_pipeline_compat() {
-    // Headless device
-    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
-    let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
-        power_preference: wgpu::PowerPreference::LowPower,
-        compatible_surface: None,
-        force_fallback_adapter: false,
-    }))
-    .expect("adapter");
     // Need at least 5 bind groups (camera, materials, shadow, light, ibl)
     let mut limits = wgpu::Limits::downlevel_webgl2_defaults();
     limits.max_bind_groups = limits.max_bind_groups.max(5);
-    let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
-        label: Some("headless-device"),
-        required_features: wgpu::Features::empty(),
-        required_limits: limits,
-        memory_hints: wgpu::MemoryHints::default(),
-        trace: wgpu::Trace::Off,
-    }))
-    .expect("device");
+    let Some(gpu) = pollster::block_on(gpu_capability::request_headless(
+        "headless-device",
+        wgpu::Features::empty(),
+        limits,
+        wgpu::PowerPreference::LowPower,
+        false,
+    )) else {
+        return;
+    };
+    let device = gpu.device;
+    let queue = gpu.queue;
 
     // Build material BGL using integrator’s layout (same as examples)
     let material_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {

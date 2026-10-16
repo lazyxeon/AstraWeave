@@ -48,10 +48,8 @@ jobs:
           libasound2-dev mesa-vulkan-drivers libvulkan1 libudev-dev pkg-config
     
     - name: Check formatting
-      # cargo fmt --all exceeds the Windows command-length limit (os error 206).
-      # The Linux gate already checks formatting for the workspace.
-      if: runner.os != 'Windows'
-      run: cargo fmt --all -- --check
+      shell: bash
+      run: bash .github/scripts/fmt-check.sh
     
     - name: Build astraweave-render
       run: |

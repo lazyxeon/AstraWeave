@@ -744,7 +744,7 @@ impl HierarchyPanel {
                 egui::Color32::from_rgb(120, 120, 120)
             };
             painter.text(
-                text_pos - egui::vec2(if has_children { 0.0 } else { 0.0 }, 0.0),
+                text_pos - egui::vec2(0.0, 0.0),
                 egui::Align2::LEFT_TOP,
                 icon,
                 egui::FontId::proportional(10.0),

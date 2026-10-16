@@ -1436,7 +1436,7 @@ impl Panel for EntityPanel {
             let (name, archetype, health, damage) = entities[selected_entity];
 
             ui.group(|ui| {
-                ui.heading(format!("{}", name));
+                ui.heading(name);
                 ui.separator();
 
                 ui.label(format!("Type: {}", archetype));

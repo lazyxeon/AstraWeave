@@ -2012,7 +2012,7 @@ impl EditorApp {
                     // Week 4 Day 5: Validate asset before import
                     let validation = self.validate_model_file(&path);
                     for warning in &validation.warnings {
-                        self.log(format!("{}", warning));
+                        self.log(warning.as_str());
                     }
 
                     if !validation.is_valid {
@@ -2030,7 +2030,7 @@ impl EditorApp {
                     // Log validation stats
                     if !validation.info.is_empty() {
                         for info in &validation.info {
-                            self.log(format!("{}", info));
+                            self.log(info.as_str());
                         }
                     }
 
@@ -2402,7 +2402,7 @@ impl EditorApp {
                                     let display_name = format!(
                                         "{} / {}",
                                         pack_name,
-                                        file_stem.replace('_', " ").replace('-', " ")
+                                        file_stem.replace(['_', '-'], " ")
                                     );
                                     let rel_path = file_path.display().to_string();
                                     models.push((display_name, rel_path));
@@ -5358,7 +5358,7 @@ impl EditorApp {
                 }
                 tab_viewer::PanelEvent::HdriLoaded { ref path } => {
                     if let Some(viewport) = &self.viewport {
-                        if let Ok(mut renderer) = viewport.renderer().lock() {
+                        if let Ok(mut renderer) = viewport.renderer().try_borrow_mut() {
                             match renderer.load_hdri(path) {
                                 Ok(()) => {
                                     self.status = format!(
@@ -5378,7 +5378,7 @@ impl EditorApp {
                 }
                 tab_viewer::PanelEvent::HdriCleared => {
                     if let Some(viewport) = &self.viewport {
-                        if let Ok(mut renderer) = viewport.renderer().lock() {
+                        if let Ok(mut renderer) = viewport.renderer().try_borrow_mut() {
                             renderer.clear_hdri();
                         }
                     }
@@ -5391,7 +5391,7 @@ impl EditorApp {
 
                         // Verify engine adapter is initialized (terrain upload
                         // auto-inits, but surface the result for diagnostics).
-                        if let Ok(mut renderer) = viewport.renderer().lock() {
+                        if let Ok(mut renderer) = viewport.renderer().try_borrow_mut() {
                             if !renderer.engine_adapter_initialized() {
                                 self.console_logs.push(
                                     "Engine adapter not ready after terrain upload — initializing explicitly...".into(),
@@ -5521,7 +5521,9 @@ impl EditorApp {
                                         });
 
                                     if let Some(viewport) = &self.viewport {
-                                        if let Ok(mut renderer) = viewport.renderer().lock() {
+                                        if let Ok(mut renderer) =
+                                            viewport.renderer().try_borrow_mut()
+                                        {
                                             if let Some(adapter) = renderer.engine_adapter_mut() {
                                                 adapter.set_terrain_surface_maps(
                                                     (albedo_width, albedo_height, &albedo),
@@ -5569,7 +5571,7 @@ impl EditorApp {
                             .join("materials")
                             .join("biomes");
                         if let Some(viewport) = &self.viewport {
-                            if let Ok(mut renderer) = viewport.renderer().lock() {
+                            if let Ok(mut renderer) = viewport.renderer().try_borrow_mut() {
                                 if let Some(adapter) = renderer.engine_adapter_mut() {
                                     adapter.set_biome_pack(Some(biome_dir));
                                 }
@@ -5597,7 +5599,7 @@ impl EditorApp {
                         // TDR timeout because ~200 MB of terrain + scatter buffer
                         // writes accumulate and are only flushed at the next present.
                         if let Some(viewport) = &self.viewport {
-                            if let Ok(renderer) = viewport.renderer().lock() {
+                            if let Ok(renderer) = viewport.renderer().try_borrow() {
                                 if let Some(adapter) = renderer.engine_adapter() {
                                     adapter.renderer().queue().submit(std::iter::empty());
                                     tracing::debug!(
@@ -5615,7 +5617,7 @@ impl EditorApp {
                             ));
                         }
                         if let Some(viewport) = &self.viewport {
-                            if let Ok(mut renderer) = viewport.renderer().lock() {
+                            if let Ok(mut renderer) = viewport.renderer().try_borrow_mut() {
                                 // Diagnostic: verify adapter status before scatter
                                 let adapter_ready = renderer.engine_adapter_initialized();
                                 self.console_logs.push(format!(
@@ -5707,7 +5709,7 @@ impl EditorApp {
                             pack.root_dir
                         );
                         if let Some(viewport) = &self.viewport {
-                            if let Ok(mut renderer) = viewport.renderer().lock() {
+                            if let Ok(mut renderer) = viewport.renderer().try_borrow_mut() {
                                 let root = pack.root_dir.clone();
                                 let mut next_custom_layer = 12u32;
                                 for gt in pack.ground_textures.iter() {
@@ -5740,7 +5742,7 @@ impl EditorApp {
                                     };
                                     let load_tex = |rel_path: &Option<String>| -> Vec<u8> {
                                         let gray_fallback =
-                                            || vec![128u8, 128, 128, 255].repeat(2048 * 2048);
+                                            || [128u8, 128, 128, 255].repeat(2048 * 2048);
                                         let Some(rel) = rel_path else {
                                             return gray_fallback();
                                         };
@@ -5786,7 +5788,7 @@ impl EditorApp {
                                             gt.normal
                                         );
                                         // Flat tangent-space normal: (0, 0, 1) encoded as (128, 128, 255)
-                                        vec![128u8, 128, 255, 255].repeat(2048 * 2048)
+                                        [128u8, 128, 255, 255].repeat(2048 * 2048)
                                     } else {
                                         load_tex(&gt.normal)
                                     };
@@ -5797,7 +5799,7 @@ impl EditorApp {
                                             tracing::info!(
                                                 "BiomePack: skipping tonemapped roughness '{rough_path}' — using default MRA"
                                             );
-                                            vec![0u8, 128, 255, 255].repeat(2048 * 2048)
+                                            [0u8, 128, 255, 255].repeat(2048 * 2048)
                                         } else {
                                             let full = root.join(rough_path);
                                             match astraweave_asset::open_limited_image(&full) {
@@ -5827,14 +5829,12 @@ impl EditorApp {
                                                     }
                                                     mra_data
                                                 }
-                                                Err(_) => {
-                                                    vec![0u8, 128, 255, 255].repeat(2048 * 2048)
-                                                }
+                                                Err(_) => [0u8, 128, 255, 255].repeat(2048 * 2048),
                                             }
                                         } // end non-exr roughness branch
                                     } else {
                                         // Default MRA: metallic=0, roughness=0.5, AO=1.0
-                                        vec![0u8, 128, 255, 255].repeat(2048 * 2048)
+                                        [0u8, 128, 255, 255].repeat(2048 * 2048)
                                     };
 
                                     renderer.replace_terrain_texture_layer(
@@ -6083,9 +6083,9 @@ impl EditorApp {
                             ui.separator();
 
                             // Engine PBR Rendering toggle
-                            let mut use_pbr = viewport.renderer().lock().map(|r| r.use_engine_rendering()).unwrap_or(false);
+                            let mut use_pbr = viewport.renderer().try_borrow().map(|r| r.use_engine_rendering()).unwrap_or(false);
                             if ui.checkbox(&mut use_pbr, "Engine PBR").on_hover_text("Enable full PBR mesh rendering instead of cube placeholders").changed() {
-                                if let Ok(mut renderer) = viewport.renderer().lock() {
+                                if let Ok(mut renderer) = viewport.renderer().try_borrow_mut() {
                                     renderer.set_use_engine_rendering(use_pbr);
                                 }
                             }
@@ -6300,7 +6300,7 @@ impl EditorApp {
                     for (entity, name, pose, health, team) in &entity_data {
                         let is_selected = current_primary == Some(u64::from(*entity));
 
-                        let response = ui.selectable_label(is_selected, format!("{}", name));
+                        let response = ui.selectable_label(is_selected, name.as_str());
 
                         if response.clicked() {
                             new_selection = Some(u64::from(*entity));
@@ -7502,9 +7502,9 @@ impl EditorApp {
                                 half_side * 2.0,
                                 half_side * 2.0
                             ));
-                            self.status = format!(
+                            self.status =
                                 "Replica zone created — switch to Blueprint panel to generate"
-                            );
+                                    .to_string();
                         }
                         Err(e) => {
                             let msg = format!("Failed to load biome pack for zone creation: {e}");
@@ -7846,9 +7846,7 @@ impl EditorApp {
         }
 
         // Run the scatter generator
-        let terrain_chunks = self.dock_tab_viewer.collect_terrain_chunks();
-        let chunk_refs: Vec<&astraweave_terrain::TerrainChunk> =
-            terrain_chunks.iter().copied().collect();
+        let chunk_refs = self.dock_tab_viewer.collect_terrain_chunks();
 
         let generator = ZoneScatterGenerator::new(64.0, 65);
         // Same seed the terrain panel used. A clock seed made every zone
@@ -8033,8 +8031,7 @@ impl EditorApp {
         let zones = self.dock_tab_viewer.blueprint_zones();
         let overlay_data: Vec<ZoneOverlayData> = zones
             .iter()
-            .enumerate()
-            .map(|(_i, z)| {
+            .map(|z| {
                 let color = match &z.source {
                     ZoneSourceState::BiomePreset(_) => [0.3, 0.8, 0.4],
                     ZoneSourceState::BlendScene { .. } => [0.3, 0.5, 0.9],
@@ -9462,7 +9459,7 @@ impl MenuActionHandler for EditorApp {
                 match ViewportWidget::new_additional(primary) {
                     Ok(vp) => self.extra_viewports.push(vp),
                     Err(e) => {
-                        self.log(&format!("Failed to create extra viewport: {}", e));
+                        self.log(format!("Failed to create extra viewport: {}", e));
                         return;
                     }
                 }
@@ -9602,7 +9599,7 @@ impl MenuActionHandler for EditorApp {
 
     fn on_toggle_engine_rendering(&mut self) {
         if let Some(viewport) = &self.viewport {
-            if let Ok(mut renderer) = viewport.renderer().lock() {
+            if let Ok(mut renderer) = viewport.renderer().try_borrow_mut() {
                 let current = renderer.use_engine_rendering();
                 renderer.set_use_engine_rendering(!current);
                 let state = if !current { "enabled" } else { "disabled" };
@@ -9615,7 +9612,7 @@ impl MenuActionHandler for EditorApp {
 
     fn on_show_engine_info(&mut self) {
         if let Some(viewport) = &self.viewport {
-            if let Ok(renderer) = viewport.renderer().lock() {
+            if let Ok(renderer) = viewport.renderer().try_borrow() {
                 let engine_active = renderer.use_engine_rendering();
                 let adapter_init = renderer.engine_adapter_initialized();
                 self.console_logs.push(format!(
@@ -9766,7 +9763,7 @@ impl eframe::App for EditorApp {
         // try_lock: never stall the UI thread — on contention the panel keeps
         // last frame's mapping.
         if let Some(viewport) = &self.viewport {
-            if let Ok(renderer) = viewport.renderer().try_lock() {
+            if let Ok(renderer) = viewport.renderer().try_borrow() {
                 if let Some(adapter) = renderer.engine_adapter() {
                     self.dock_tab_viewer
                         .set_palette_remap(adapter.palette_remap().cloned());

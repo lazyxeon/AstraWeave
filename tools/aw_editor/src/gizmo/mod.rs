@@ -29,4 +29,3 @@ pub use rotate::RotateGizmo;
 pub use scale::ScaleGizmo;
 pub use snapping::SnappingConfig;
 pub use state::{AxisConstraint, GizmoMode, GizmoState, TransformSnapshot};
-pub use translate::TranslateGizmo;

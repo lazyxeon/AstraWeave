@@ -1,39 +1,38 @@
 //! Integration tests for GPU-driven frustum culling
 //! Validates CPU vs GPU culling parity and headless execution
 
+#[path = "support/gpu_capability.rs"]
+mod gpu_capability;
+
 use astraweave_render::culling::{cpu_frustum_cull, CullingPipeline, FrustumPlanes, InstanceAABB};
 use glam::{Mat4, Vec3};
 
 /// Helper to create a test wgpu device
-fn create_test_device() -> (wgpu::Device, wgpu::Queue) {
-    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
-    let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
-        power_preference: wgpu::PowerPreference::LowPower,
-        compatible_surface: None,
-        force_fallback_adapter: false,
-    }))
-    .expect("Failed to find adapter");
-
-    pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
-        label: Some("culling_test_device"),
-        required_features: wgpu::Features::empty(),
-        required_limits: wgpu::Limits::downlevel_defaults(),
-        memory_hints: wgpu::MemoryHints::default(),
-        trace: wgpu::Trace::Off,
-    }))
-    .expect("Failed to create device")
+fn create_test_device() -> Option<(wgpu::Device, wgpu::Queue)> {
+    pollster::block_on(gpu_capability::request_headless(
+        "culling_test_device",
+        wgpu::Features::empty(),
+        wgpu::Limits::downlevel_defaults(),
+        wgpu::PowerPreference::LowPower,
+        false,
+    ))
+    .map(|gpu| (gpu.device, gpu.queue))
 }
 
 #[test]
 fn test_gpu_culling_pipeline_creation() {
-    let (device, _queue) = create_test_device();
+    let Some((device, _queue)) = create_test_device() else {
+        return;
+    };
     let _pipeline = CullingPipeline::new(&device);
     // If we get here, pipeline creation succeeded
 }
 
 #[test]
 fn test_cpu_vs_gpu_culling_parity() {
-    let (device, queue) = create_test_device();
+    let Some((device, queue)) = create_test_device() else {
+        return;
+    };
     let pipeline = CullingPipeline::new(&device);
 
     // Create perspective frustum
@@ -167,7 +166,9 @@ fn test_cpu_vs_gpu_culling_parity() {
 
 #[test]
 fn test_culling_reduces_draw_count() {
-    let (device, queue) = create_test_device();
+    let Some((device, queue)) = create_test_device() else {
+        return;
+    };
     let pipeline = CullingPipeline::new(&device);
 
     // Create frustum looking down negative Z
@@ -256,7 +257,9 @@ fn test_culling_reduces_draw_count() {
 
 #[test]
 fn test_all_instances_visible_when_inside_frustum() {
-    let (device, queue) = create_test_device();
+    let Some((device, queue)) = create_test_device() else {
+        return;
+    };
     let pipeline = CullingPipeline::new(&device);
 
     // Very wide frustum
@@ -320,7 +323,9 @@ fn test_all_instances_visible_when_inside_frustum() {
 
 #[test]
 fn test_empty_instance_list() {
-    let (device, queue) = create_test_device();
+    let Some((device, queue)) = create_test_device() else {
+        return;
+    };
     let pipeline = CullingPipeline::new(&device);
 
     let view_proj = Mat4::IDENTITY;

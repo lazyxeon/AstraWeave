@@ -898,7 +898,7 @@ pub struct AnimationPanel {
 
 impl Default for AnimationPanel {
     fn default() -> Self {
-        let panel = Self {
+        Self {
             active_tab: AnimationTab::Clips,
 
             clips: Vec::new(),
@@ -930,9 +930,7 @@ impl Default for AnimationPanel {
             next_parameter_id: 1,
 
             pending_actions: Vec::new(),
-        };
-
-        panel
+        }
     }
 }
 

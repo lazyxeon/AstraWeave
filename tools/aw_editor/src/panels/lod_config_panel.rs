@@ -485,7 +485,7 @@ pub struct LodConfigPanel {
 
 impl Default for LodConfigPanel {
     fn default() -> Self {
-        let panel = Self {
+        Self {
             active_tab: LodTab::Groups,
 
             lod_groups: Vec::new(),
@@ -501,9 +501,7 @@ impl Default for LodConfigPanel {
             next_group_id: 1,
 
             actions: Vec::new(),
-        };
-
-        panel
+        }
     }
 }
 

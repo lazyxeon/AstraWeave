@@ -646,10 +646,11 @@ mod tests {
         // them to the scene-env debug uniform / wireframe pipeline swap).
         assert_eq!(ShadingMode::Normals.to_u32(), 3);
         assert_eq!(ShadingMode::Uvs.to_u32(), 4);
-        assert_eq!(ShadingMode::all().len(), 5);
+        assert_eq!(ShadingMode::CascadeIndex.to_u32(), 5);
+        assert_eq!(ShadingMode::all().len(), 6);
         // The cycle visits every mode and returns to start.
         let mut m = ShadingMode::Lit;
-        for _ in 0..5 {
+        for _ in 0..6 {
             m = m.cycle();
         }
         assert_eq!(m, ShadingMode::Lit);
@@ -740,12 +741,13 @@ mod tests {
         // formerly advertised in the docked dropdown and silently mapped
         // to Lit).
         let all = ShadingMode::all();
-        assert_eq!(all.len(), 5);
+        assert_eq!(all.len(), 6);
         assert!(all.contains(&ShadingMode::Lit));
         assert!(all.contains(&ShadingMode::Unlit));
         assert!(all.contains(&ShadingMode::Wireframe));
         assert!(all.contains(&ShadingMode::Normals));
         assert!(all.contains(&ShadingMode::Uvs));
+        assert!(all.contains(&ShadingMode::CascadeIndex));
     }
 
     #[test]
@@ -790,7 +792,8 @@ mod tests {
         // ED-3: the cycle continues through the new debug views.
         assert_eq!(ShadingMode::Wireframe.cycle(), ShadingMode::Normals);
         assert_eq!(ShadingMode::Normals.cycle(), ShadingMode::Uvs);
-        assert_eq!(ShadingMode::Uvs.cycle(), ShadingMode::Lit);
+        assert_eq!(ShadingMode::Uvs.cycle(), ShadingMode::CascadeIndex);
+        assert_eq!(ShadingMode::CascadeIndex.cycle(), ShadingMode::Lit);
     }
 
     #[test]

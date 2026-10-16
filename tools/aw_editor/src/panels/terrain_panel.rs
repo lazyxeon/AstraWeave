@@ -740,12 +740,14 @@ impl TerrainPanel {
                 self.terrain_state.apply_brush(
                     world_x,
                     world_z,
-                    self.brush_radius,
-                    self.brush_strength,
-                    self.brush_mode,
-                    self.brush_falloff,
-                    self.brush_target_height(),
-                    self.noise_scale,
+                    crate::terrain_integration::TerrainBrushStroke {
+                        radius: self.brush_radius,
+                        strength: self.brush_strength,
+                        brush_mode: self.brush_mode,
+                        falloff_curve: self.brush_falloff,
+                        target_height: self.brush_target_height(),
+                        noise_scale: self.noise_scale,
+                    },
                 )
             }
         };
@@ -768,9 +770,7 @@ impl TerrainPanel {
 
     /// Called when the brush stroke ends (mouse released).
     /// Returns undo data if any chunks were modified during the stroke.
-    pub fn end_brush_stroke(
-        &mut self,
-    ) -> Option<Vec<(astraweave_terrain::ChunkId, Vec<f32>, Vec<f32>)>> {
+    pub fn end_brush_stroke(&mut self) -> Option<crate::terrain_integration::TerrainHeightStroke> {
         self.flatten_target_height = None;
         self.terrain_state.end_stroke()
     }
@@ -1370,12 +1370,14 @@ impl TerrainPanel {
                     _ => self.terrain_state.apply_brush(
                         self.brush_pos_x,
                         self.brush_pos_z,
-                        self.brush_radius,
-                        self.brush_strength,
-                        self.brush_mode,
-                        self.brush_falloff,
-                        self.brush_target_height(),
-                        self.noise_scale,
+                        crate::terrain_integration::TerrainBrushStroke {
+                            radius: self.brush_radius,
+                            strength: self.brush_strength,
+                            brush_mode: self.brush_mode,
+                            falloff_curve: self.brush_falloff,
+                            target_height: self.brush_target_height(),
+                            noise_scale: self.noise_scale,
+                        },
                     ),
                 };
                 if modified {

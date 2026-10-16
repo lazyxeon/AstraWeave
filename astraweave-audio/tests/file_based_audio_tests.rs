@@ -27,7 +27,7 @@ fn test_play_sfx_file_basic() -> Result<()> {
     let mut engine = AudioEngine::new()?;
 
     // Play short beep from file
-    let result = engine.play_sfx_file("tests/assets/test_beep_440hz.wav");
+    let result = engine.play_sfx_file(test_asset_generator::asset_path("test_beep_440hz.wav"));
     assert!(result.is_ok(), "Should play SFX file successfully");
 
     // Allow audio to start playing
@@ -46,13 +46,13 @@ fn test_play_multiple_sfx_files() -> Result<()> {
     let mut engine = AudioEngine::new()?;
 
     // Play three different frequency beeps
-    engine.play_sfx_file("tests/assets/test_beep_200hz.wav")?;
+    engine.play_sfx_file(test_asset_generator::asset_path("test_beep_200hz.wav"))?;
     thread::sleep(Duration::from_millis(100));
 
-    engine.play_sfx_file("tests/assets/test_beep_440hz.wav")?;
+    engine.play_sfx_file(test_asset_generator::asset_path("test_beep_440hz.wav"))?;
     thread::sleep(Duration::from_millis(100));
 
-    engine.play_sfx_file("tests/assets/test_beep_1000hz.wav")?;
+    engine.play_sfx_file(test_asset_generator::asset_path("test_beep_1000hz.wav"))?;
     thread::sleep(Duration::from_millis(100));
 
     engine.tick(0.3);
@@ -69,7 +69,10 @@ fn test_play_voice_file_with_ducking() -> Result<()> {
     let mut engine = AudioEngine::new()?;
 
     // Play voice file (should duck music if playing)
-    let result = engine.play_voice_file("tests/assets/test_voice_short.wav", None);
+    let result = engine.play_voice_file(
+        test_asset_generator::asset_path("test_voice_short.wav"),
+        None,
+    );
     assert!(result.is_ok(), "Should play voice file successfully");
 
     // Tick to activate ducking
@@ -91,7 +94,10 @@ fn test_play_voice_file_explicit_duration() -> Result<()> {
     let mut engine = AudioEngine::new()?;
 
     // Play voice with explicit 2.5 second duration
-    let result = engine.play_voice_file("tests/assets/test_voice_medium.wav", Some(2.5));
+    let result = engine.play_voice_file(
+        test_asset_generator::asset_path("test_voice_medium.wav"),
+        Some(2.5),
+    );
     assert!(
         result.is_ok(),
         "Should play voice file with explicit duration"
@@ -113,7 +119,11 @@ fn test_play_sfx_3d_file() -> Result<()> {
     let position = vec3(5.0, 0.0, 0.0); // 5 meters to the right
 
     // Play spatial SFX from file
-    let result = engine.play_sfx_3d_file(emitter_id, "tests/assets/test_beep_440hz.wav", position);
+    let result = engine.play_sfx_3d_file(
+        emitter_id,
+        test_asset_generator::asset_path("test_beep_440hz.wav"),
+        position,
+    );
     assert!(result.is_ok(), "Should play 3D SFX file successfully");
 
     engine.tick(0.016);
@@ -138,10 +148,10 @@ fn test_multiple_3d_files() -> Result<()> {
     ];
 
     let files = [
-        "tests/assets/test_beep_200hz.wav",
-        "tests/assets/test_beep_440hz.wav",
-        "tests/assets/test_beep_1000hz.wav",
-        "tests/assets/test_beep_short.wav",
+        test_asset_generator::asset_path("test_beep_200hz.wav"),
+        test_asset_generator::asset_path("test_beep_440hz.wav"),
+        test_asset_generator::asset_path("test_beep_1000hz.wav"),
+        test_asset_generator::asset_path("test_beep_short.wav"),
     ];
 
     for ((id, pos), file) in positions.iter().zip(files.iter()) {
@@ -163,7 +173,7 @@ fn test_play_music_file_basic() -> Result<()> {
     let mut engine = AudioEngine::new()?;
 
     let track = MusicTrack {
-        path: "tests/assets/test_music_2sec.wav".to_string(),
+        path: test_asset_generator::asset_path("test_music_2sec.wav").to_string(),
         looped: false,
     };
 
@@ -185,7 +195,7 @@ fn test_play_music_looped() -> Result<()> {
     let mut engine = AudioEngine::new()?;
 
     let track = MusicTrack {
-        path: "tests/assets/test_music_2sec.wav".to_string(),
+        path: test_asset_generator::asset_path("test_music_2sec.wav").to_string(),
         looped: true,
     };
 
@@ -210,7 +220,7 @@ fn test_music_crossfade() -> Result<()> {
 
     // Play first track
     let track1 = MusicTrack {
-        path: "tests/assets/test_music_2sec.wav".to_string(),
+        path: test_asset_generator::asset_path("test_music_2sec.wav").to_string(),
         looped: true,
     };
     engine.play_music(track1, 0.0)?;
@@ -221,7 +231,7 @@ fn test_music_crossfade() -> Result<()> {
 
     // Start crossfade to second track (1 second crossfade)
     let track2 = MusicTrack {
-        path: "tests/assets/test_music_5sec.wav".to_string(),
+        path: test_asset_generator::asset_path("test_music_5sec.wav").to_string(),
         looped: true,
     };
     let result = engine.play_music(track2, 1.0);
@@ -245,7 +255,7 @@ fn test_music_fast_crossfade() -> Result<()> {
 
     // Play first track
     let track1 = MusicTrack {
-        path: "tests/assets/test_music_2sec.wav".to_string(),
+        path: test_asset_generator::asset_path("test_music_2sec.wav").to_string(),
         looped: false,
     };
     engine.play_music(track1, 0.0)?;
@@ -253,7 +263,7 @@ fn test_music_fast_crossfade() -> Result<()> {
 
     // Fast crossfade to second track
     let track2 = MusicTrack {
-        path: "tests/assets/test_music_5sec.wav".to_string(),
+        path: test_asset_generator::asset_path("test_music_5sec.wav").to_string(),
         looped: false,
     };
     engine.play_music(track2, 0.1)?;
@@ -276,7 +286,7 @@ fn test_stop_music_while_playing() -> Result<()> {
 
     // Start music
     let track = MusicTrack {
-        path: "tests/assets/test_music_5sec.wav".to_string(),
+        path: test_asset_generator::asset_path("test_music_5sec.wav").to_string(),
         looped: true,
     };
     engine.play_music(track, 0.0)?;
@@ -299,14 +309,17 @@ fn test_voice_ducking_with_music() -> Result<()> {
 
     // Start music
     let track = MusicTrack {
-        path: "tests/assets/test_music_5sec.wav".to_string(),
+        path: test_asset_generator::asset_path("test_music_5sec.wav").to_string(),
         looped: true,
     };
     engine.play_music(track, 0.0)?;
     engine.tick(0.1);
 
     // Play voice (should duck music)
-    engine.play_voice_file("tests/assets/test_voice_short.wav", None)?;
+    engine.play_voice_file(
+        test_asset_generator::asset_path("test_voice_short.wav"),
+        None,
+    )?;
     engine.tick(0.016);
 
     // Tick through voice duration + restoration time
@@ -327,22 +340,31 @@ fn test_multiple_voice_files_ducking() -> Result<()> {
 
     // Start music
     let track = MusicTrack {
-        path: "tests/assets/test_music_5sec.wav".to_string(),
+        path: test_asset_generator::asset_path("test_music_5sec.wav").to_string(),
         looped: true,
     };
     engine.play_music(track, 0.0)?;
     engine.tick(0.1);
 
     // Play three voice files in succession
-    engine.play_voice_file("tests/assets/test_voice_short.wav", Some(1.0))?;
+    engine.play_voice_file(
+        test_asset_generator::asset_path("test_voice_short.wav"),
+        Some(1.0),
+    )?;
     thread::sleep(Duration::from_millis(200));
     engine.tick(0.2);
 
-    engine.play_voice_file("tests/assets/test_voice_medium.wav", Some(2.0))?;
+    engine.play_voice_file(
+        test_asset_generator::asset_path("test_voice_medium.wav"),
+        Some(2.0),
+    )?;
     thread::sleep(Duration::from_millis(300));
     engine.tick(0.3);
 
-    engine.play_voice_file("tests/assets/test_voice_long.wav", Some(3.0))?;
+    engine.play_voice_file(
+        test_asset_generator::asset_path("test_voice_long.wav"),
+        Some(3.0),
+    )?;
     thread::sleep(Duration::from_millis(400));
     engine.tick(0.4);
 
@@ -366,7 +388,11 @@ fn test_3d_file_with_listener_movement() -> Result<()> {
     let sound_pos = vec3(10.0, 0.0, 0.0);
 
     // Play long 3D sound
-    engine.play_sfx_3d_file(emitter_id, "tests/assets/test_beep_long.wav", sound_pos)?;
+    engine.play_sfx_3d_file(
+        emitter_id,
+        test_asset_generator::asset_path("test_beep_long.wav"),
+        sound_pos,
+    )?;
 
     // Move listener in a circle around the sound
     for i in 0..36 {
@@ -395,10 +421,10 @@ fn test_stress_20_file_based_3d_sounds() -> Result<()> {
     let mut engine = AudioEngine::new()?;
 
     let files = [
-        "tests/assets/test_beep_200hz.wav",
-        "tests/assets/test_beep_440hz.wav",
-        "tests/assets/test_beep_1000hz.wav",
-        "tests/assets/test_beep_short.wav",
+        test_asset_generator::asset_path("test_beep_200hz.wav"),
+        test_asset_generator::asset_path("test_beep_440hz.wav"),
+        test_asset_generator::asset_path("test_beep_1000hz.wav"),
+        test_asset_generator::asset_path("test_beep_short.wav"),
     ];
 
     // Create 20 emitters in a grid
@@ -431,7 +457,7 @@ fn test_interleaved_file_and_beep_sfx() -> Result<()> {
     for i in 0..10 {
         if i % 2 == 0 {
             // File-based SFX
-            engine.play_sfx_file("tests/assets/test_beep_short.wav")?;
+            engine.play_sfx_file(test_asset_generator::asset_path("test_beep_short.wav"))?;
         } else {
             // Synthesized beep
             engine.play_sfx_beep(880.0, 0.1, 0.5);
@@ -454,17 +480,17 @@ fn test_volume_control_with_files() -> Result<()> {
 
     // Play file at full volume
     engine.set_master_volume(1.0);
-    engine.play_sfx_file("tests/assets/test_beep_440hz.wav")?;
+    engine.play_sfx_file(test_asset_generator::asset_path("test_beep_440hz.wav"))?;
     engine.tick(0.1);
 
     // Play file at half volume
     engine.set_master_volume(0.5);
-    engine.play_sfx_file("tests/assets/test_beep_440hz.wav")?;
+    engine.play_sfx_file(test_asset_generator::asset_path("test_beep_440hz.wav"))?;
     engine.tick(0.1);
 
     // Play file at minimum volume
     engine.set_master_volume(0.0);
-    engine.play_sfx_file("tests/assets/test_beep_440hz.wav")?;
+    engine.play_sfx_file(test_asset_generator::asset_path("test_beep_440hz.wav"))?;
     engine.tick(0.1);
 
     Ok(())
@@ -482,12 +508,20 @@ fn test_pan_modes_with_files() -> Result<()> {
 
     // StereoAngle mode
     engine.set_pan_mode(PanMode::StereoAngle);
-    engine.play_sfx_3d_file(emitter_id, "tests/assets/test_beep_440hz.wav", pos)?;
+    engine.play_sfx_3d_file(
+        emitter_id,
+        test_asset_generator::asset_path("test_beep_440hz.wav"),
+        pos,
+    )?;
     engine.tick(0.2);
 
     // None mode
     engine.set_pan_mode(PanMode::None);
-    engine.play_sfx_3d_file(emitter_id + 1, "tests/assets/test_beep_1000hz.wav", pos)?;
+    engine.play_sfx_3d_file(
+        emitter_id + 1,
+        test_asset_generator::asset_path("test_beep_1000hz.wav"),
+        pos,
+    )?;
     engine.tick(0.2);
 
     Ok(())
@@ -502,7 +536,7 @@ fn test_long_music_playback() -> Result<()> {
     let mut engine = AudioEngine::new()?;
 
     let track = MusicTrack {
-        path: "tests/assets/test_music_5sec.wav".to_string(),
+        path: test_asset_generator::asset_path("test_music_5sec.wav").to_string(),
         looped: true,
     };
     engine.play_music(track, 0.0)?;
@@ -524,8 +558,8 @@ fn test_rapid_music_changes() -> Result<()> {
     let mut engine = AudioEngine::new()?;
 
     let tracks = [
-        "tests/assets/test_music_2sec.wav",
-        "tests/assets/test_music_5sec.wav",
+        test_asset_generator::asset_path("test_music_2sec.wav"),
+        test_asset_generator::asset_path("test_music_5sec.wav"),
     ];
 
     // Change tracks 5 times with 0.5 second crossfades
@@ -553,7 +587,7 @@ fn test_missing_file_error() -> Result<()> {
     let mut engine = AudioEngine::new()?;
 
     // Attempt to play non-existent file
-    let result = engine.play_sfx_file("tests/assets/nonexistent_file.wav");
+    let result = engine.play_sfx_file(test_asset_generator::asset_path("nonexistent_file.wav"));
     assert!(result.is_err(), "Should return error for missing file");
 
     Ok(())
@@ -564,20 +598,23 @@ fn test_missing_file_error() -> Result<()> {
 #[serial]
 fn test_invalid_file_format() -> Result<()> {
     // Create a text file pretending to be WAV
-    std::fs::create_dir_all("tests/assets")?;
-    std::fs::write("tests/assets/invalid.wav", "This is not a WAV file")?;
+    std::fs::create_dir_all(test_asset_generator::assets_root_str())?;
+    std::fs::write(
+        test_asset_generator::asset_path("invalid.wav"),
+        "This is not a WAV file",
+    )?;
 
     let mut engine = AudioEngine::new()?;
 
     // Attempt to play invalid file
-    let result = engine.play_sfx_file("tests/assets/invalid.wav");
+    let result = engine.play_sfx_file(test_asset_generator::asset_path("invalid.wav"));
     assert!(
         result.is_err(),
         "Should return error for invalid file format"
     );
 
     // Cleanup
-    std::fs::remove_file("tests/assets/invalid.wav")?;
+    std::fs::remove_file(test_asset_generator::asset_path("invalid.wav"))?;
 
     Ok(())
 }
@@ -594,7 +631,7 @@ fn test_emitter_reuse_with_files() -> Result<()> {
     // Play at position 1
     engine.play_sfx_3d_file(
         emitter_id,
-        "tests/assets/test_beep_200hz.wav",
+        test_asset_generator::asset_path("test_beep_200hz.wav"),
         vec3(5.0, 0.0, 0.0),
     )?;
     thread::sleep(Duration::from_millis(100));
@@ -603,7 +640,7 @@ fn test_emitter_reuse_with_files() -> Result<()> {
     // Reuse same emitter at position 2
     engine.play_sfx_3d_file(
         emitter_id,
-        "tests/assets/test_beep_440hz.wav",
+        test_asset_generator::asset_path("test_beep_440hz.wav"),
         vec3(-5.0, 0.0, 0.0),
     )?;
     thread::sleep(Duration::from_millis(100));
@@ -612,7 +649,7 @@ fn test_emitter_reuse_with_files() -> Result<()> {
     // Reuse again at position 3
     engine.play_sfx_3d_file(
         emitter_id,
-        "tests/assets/test_beep_1000hz.wav",
+        test_asset_generator::asset_path("test_beep_1000hz.wav"),
         vec3(0.0, 5.0, 0.0),
     )?;
     thread::sleep(Duration::from_millis(100));
@@ -630,13 +667,25 @@ fn test_distance_attenuation_files() -> Result<()> {
     let mut engine = AudioEngine::new()?;
 
     // Near sound
-    engine.play_sfx_3d_file(1, "tests/assets/test_beep_440hz.wav", vec3(1.0, 0.0, 0.0))?;
+    engine.play_sfx_3d_file(
+        1,
+        test_asset_generator::asset_path("test_beep_440hz.wav"),
+        vec3(1.0, 0.0, 0.0),
+    )?;
 
     // Medium distance
-    engine.play_sfx_3d_file(2, "tests/assets/test_beep_440hz.wav", vec3(10.0, 0.0, 0.0))?;
+    engine.play_sfx_3d_file(
+        2,
+        test_asset_generator::asset_path("test_beep_440hz.wav"),
+        vec3(10.0, 0.0, 0.0),
+    )?;
 
     // Far sound
-    engine.play_sfx_3d_file(3, "tests/assets/test_beep_440hz.wav", vec3(100.0, 0.0, 0.0))?;
+    engine.play_sfx_3d_file(
+        3,
+        test_asset_generator::asset_path("test_beep_440hz.wav"),
+        vec3(100.0, 0.0, 0.0),
+    )?;
 
     engine.tick(0.1);
 
@@ -653,7 +702,7 @@ fn test_comprehensive_file_based_pipeline() -> Result<()> {
 
     // 1. Start background music
     let music = MusicTrack {
-        path: "tests/assets/test_music_5sec.wav".to_string(),
+        path: test_asset_generator::asset_path("test_music_5sec.wav").to_string(),
         looped: true,
     };
     engine.play_music(music, 0.0)?;
@@ -661,18 +710,29 @@ fn test_comprehensive_file_based_pipeline() -> Result<()> {
     engine.tick(0.2);
 
     // 2. Play voice over (with ducking)
-    engine.play_voice_file("tests/assets/test_voice_short.wav", Some(1.0))?;
+    engine.play_voice_file(
+        test_asset_generator::asset_path("test_voice_short.wav"),
+        Some(1.0),
+    )?;
     thread::sleep(Duration::from_millis(300));
     engine.tick(0.3);
 
     // 3. Play 2D SFX
-    engine.play_sfx_file("tests/assets/test_beep_440hz.wav")?;
+    engine.play_sfx_file(test_asset_generator::asset_path("test_beep_440hz.wav"))?;
     thread::sleep(Duration::from_millis(100));
     engine.tick(0.1);
 
     // 4. Play 3D spatial SFX
-    engine.play_sfx_3d_file(1, "tests/assets/test_beep_1000hz.wav", vec3(5.0, 0.0, 0.0))?;
-    engine.play_sfx_3d_file(2, "tests/assets/test_beep_200hz.wav", vec3(-5.0, 0.0, 0.0))?;
+    engine.play_sfx_3d_file(
+        1,
+        test_asset_generator::asset_path("test_beep_1000hz.wav"),
+        vec3(5.0, 0.0, 0.0),
+    )?;
+    engine.play_sfx_3d_file(
+        2,
+        test_asset_generator::asset_path("test_beep_200hz.wav"),
+        vec3(-5.0, 0.0, 0.0),
+    )?;
 
     // 5. Update listener position
     let pose = ListenerPose {

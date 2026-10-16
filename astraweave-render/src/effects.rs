@@ -370,37 +370,24 @@ impl WeatherFx {
 mod tests {
     use super::*;
 
-    async fn create_test_device() -> (wgpu::Device, wgpu::Queue) {
-        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
-            backends: wgpu::Backends::all(),
-            ..Default::default()
-        });
-
-        let adapter = instance
-            .request_adapter(&wgpu::RequestAdapterOptions {
-                power_preference: wgpu::PowerPreference::default(),
-                force_fallback_adapter: true,
-                compatible_surface: None,
-            })
-            .await
-            .expect("Failed to find adapter");
-
-        adapter
-            .request_device(&wgpu::DeviceDescriptor {
-                label: Some("test_device"),
-                required_features: wgpu::Features::empty(),
-                required_limits: wgpu::Limits::downlevel_defaults(),
-                memory_hints: wgpu::MemoryHints::default(),
-                trace: Default::default(),
-            })
-            .await
-            .expect("Failed to create device")
+    async fn create_test_device() -> Option<(wgpu::Device, wgpu::Queue)> {
+        crate::gpu_capability::request_headless(
+            "test_device",
+            wgpu::Features::empty(),
+            wgpu::Limits::downlevel_defaults(),
+            wgpu::PowerPreference::default(),
+            true,
+        )
+        .await
+        .map(|gpu| (gpu.device, gpu.queue))
     }
 
     #[test]
     fn test_weather_fx_new() {
         pollster::block_on(async {
-            let (device, _queue) = create_test_device().await;
+            let Some((device, _queue)) = create_test_device().await else {
+                return;
+            };
             let fx = WeatherFx::new(&device, 1000);
 
             assert_eq!(fx.max, 1000);
@@ -411,7 +398,9 @@ mod tests {
     #[test]
     fn test_weather_fx_set_kind() {
         pollster::block_on(async {
-            let (device, _queue) = create_test_device().await;
+            let Some((device, _queue)) = create_test_device().await else {
+                return;
+            };
             let mut fx = WeatherFx::new(&device, 100);
 
             fx.set_kind(WeatherKind::Rain);
@@ -425,7 +414,9 @@ mod tests {
     #[test]
     fn test_weather_fx_update_none() {
         pollster::block_on(async {
-            let (device, queue) = create_test_device().await;
+            let Some((device, queue)) = create_test_device().await else {
+                return;
+            };
             let mut fx = WeatherFx::new(&device, 100);
 
             fx.set_kind(WeatherKind::None);
@@ -438,7 +429,9 @@ mod tests {
     #[test]
     fn test_weather_fx_update_rain() {
         pollster::block_on(async {
-            let (device, queue) = create_test_device().await;
+            let Some((device, queue)) = create_test_device().await else {
+                return;
+            };
             let mut fx = WeatherFx::new(&device, 100);
 
             fx.set_kind(WeatherKind::Rain);
@@ -452,7 +445,9 @@ mod tests {
     #[test]
     fn test_weather_fx_update_wind() {
         pollster::block_on(async {
-            let (device, queue) = create_test_device().await;
+            let Some((device, queue)) = create_test_device().await else {
+                return;
+            };
             let mut fx = WeatherFx::new(&device, 100);
 
             fx.set_kind(WeatherKind::WindTrails);
@@ -466,7 +461,9 @@ mod tests {
     #[test]
     fn test_weather_fx_rain_spawns_up_to_max() {
         pollster::block_on(async {
-            let (device, queue) = create_test_device().await;
+            let Some((device, queue)) = create_test_device().await else {
+                return;
+            };
             let max = 50;
             let mut fx = WeatherFx::new(&device, max);
 
@@ -484,7 +481,9 @@ mod tests {
     #[test]
     fn test_weather_fx_particles_despawn() {
         pollster::block_on(async {
-            let (device, queue) = create_test_device().await;
+            let Some((device, queue)) = create_test_device().await else {
+                return;
+            };
             let mut fx = WeatherFx::new(&device, 100);
 
             fx.set_kind(WeatherKind::Rain);
@@ -505,7 +504,9 @@ mod tests {
     #[test]
     fn test_weather_fx_switch_kind_clears() {
         pollster::block_on(async {
-            let (device, queue) = create_test_device().await;
+            let Some((device, queue)) = create_test_device().await else {
+                return;
+            };
             let mut fx = WeatherFx::new(&device, 100);
 
             fx.set_kind(WeatherKind::Rain);
@@ -535,7 +536,9 @@ mod tests {
     #[test]
     fn test_weather_fx_buffer_exists() {
         pollster::block_on(async {
-            let (device, _queue) = create_test_device().await;
+            let Some((device, _queue)) = create_test_device().await else {
+                return;
+            };
             let fx = WeatherFx::new(&device, 100);
 
             let _buf = fx.buffer();
@@ -546,7 +549,9 @@ mod tests {
     #[test]
     fn test_biome_tint_defaults_to_one() {
         pollster::block_on(async {
-            let (device, _queue) = create_test_device().await;
+            let Some((device, _queue)) = create_test_device().await else {
+                return;
+            };
             let fx = WeatherFx::new(&device, 100);
 
             assert_eq!(fx.biome_tint(), Vec3::ONE);
@@ -556,7 +561,9 @@ mod tests {
     #[test]
     fn test_biome_tint_set_and_get() {
         pollster::block_on(async {
-            let (device, _queue) = create_test_device().await;
+            let Some((device, _queue)) = create_test_device().await else {
+                return;
+            };
             let mut fx = WeatherFx::new(&device, 100);
 
             let tint = vec3(0.8, 0.9, 0.7);
@@ -568,7 +575,9 @@ mod tests {
     #[test]
     fn test_biome_tint_applied_to_particles() {
         pollster::block_on(async {
-            let (device, queue) = create_test_device().await;
+            let Some((device, queue)) = create_test_device().await else {
+                return;
+            };
             let mut fx = WeatherFx::new(&device, 50);
 
             // Set tint and spawn particles
@@ -586,7 +595,9 @@ mod tests {
     #[test]
     fn test_weather_fx_update_snow() {
         pollster::block_on(async {
-            let (device, queue) = create_test_device().await;
+            let Some((device, queue)) = create_test_device().await else {
+                return;
+            };
             let mut fx = WeatherFx::new(&device, 100);
 
             fx.set_kind(WeatherKind::Snow);
@@ -600,7 +611,9 @@ mod tests {
     #[test]
     fn test_weather_fx_update_sandstorm() {
         pollster::block_on(async {
-            let (device, queue) = create_test_device().await;
+            let Some((device, queue)) = create_test_device().await else {
+                return;
+            };
             let mut fx = WeatherFx::new(&device, 100);
 
             fx.set_kind(WeatherKind::Sandstorm);
@@ -614,7 +627,9 @@ mod tests {
     #[test]
     fn test_density_defaults_to_one() {
         pollster::block_on(async {
-            let (device, _queue) = create_test_device().await;
+            let Some((device, _queue)) = create_test_device().await else {
+                return;
+            };
             let fx = WeatherFx::new(&device, 100);
             assert!((fx.density() - 1.0).abs() < 0.001);
         });
@@ -623,7 +638,9 @@ mod tests {
     #[test]
     fn test_density_set_and_get() {
         pollster::block_on(async {
-            let (device, _queue) = create_test_device().await;
+            let Some((device, _queue)) = create_test_device().await else {
+                return;
+            };
             let mut fx = WeatherFx::new(&device, 100);
 
             fx.set_density(0.5);
@@ -634,7 +651,9 @@ mod tests {
     #[test]
     fn test_density_clamped() {
         pollster::block_on(async {
-            let (device, _queue) = create_test_device().await;
+            let Some((device, _queue)) = create_test_device().await else {
+                return;
+            };
             let mut fx = WeatherFx::new(&device, 100);
 
             fx.set_density(2.0);
@@ -648,7 +667,9 @@ mod tests {
     #[test]
     fn test_density_affects_particle_count() {
         pollster::block_on(async {
-            let (device, queue) = create_test_device().await;
+            let Some((device, queue)) = create_test_device().await else {
+                return;
+            };
             let mut fx = WeatherFx::new(&device, 100);
 
             fx.set_kind(WeatherKind::Rain);
@@ -667,7 +688,9 @@ mod tests {
     #[test]
     fn test_wind_defaults() {
         pollster::block_on(async {
-            let (device, _queue) = create_test_device().await;
+            let Some((device, _queue)) = create_test_device().await else {
+                return;
+            };
             let fx = WeatherFx::new(&device, 100);
             assert!((fx.wind_strength() - 1.0).abs() < 0.001);
             assert!((fx.wind_direction().x - 1.0).abs() < 0.001);
@@ -677,7 +700,9 @@ mod tests {
     #[test]
     fn test_wind_set_and_get() {
         pollster::block_on(async {
-            let (device, _queue) = create_test_device().await;
+            let Some((device, _queue)) = create_test_device().await else {
+                return;
+            };
             let mut fx = WeatherFx::new(&device, 100);
 
             fx.set_wind(2.5, vec3(0.0, 0.0, 1.0));

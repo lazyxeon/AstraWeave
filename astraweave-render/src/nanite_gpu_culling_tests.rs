@@ -6,24 +6,16 @@ use crate::nanite_visibility::GpuMeshlet;
 use glam::{Mat4, Vec3};
 
 /// Create test GPU device for unit tests
-async fn create_test_device() -> (wgpu::Device, wgpu::Queue) {
-    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
-        backends: wgpu::Backends::all(),
-        ..Default::default()
-    });
-
-    let adapter = instance
-        .request_adapter(&wgpu::RequestAdapterOptions::default())
-        .await
-        .expect("Failed to find adapter");
-
-    adapter
-        .request_device(&wgpu::DeviceDescriptor {
-            required_features: wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES,
-            ..Default::default()
-        })
-        .await
-        .expect("Failed to create device")
+async fn create_test_device() -> Option<(wgpu::Device, wgpu::Queue)> {
+    crate::gpu_capability::request_headless(
+        "test_device",
+        wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES,
+        wgpu::Limits::default(),
+        wgpu::PowerPreference::default(),
+        false,
+    )
+    .await
+    .map(|gpu| (gpu.device, gpu.queue))
 }
 
 /// Create test meshlets for validation
@@ -97,7 +89,9 @@ async fn test_gpu_meshlet_size() {
 
 #[tokio::test]
 async fn test_pipeline_creation() {
-    let (device, _queue) = create_test_device().await;
+    let Some((device, _queue)) = create_test_device().await else {
+        return;
+    };
 
     let meshlets = create_test_meshlets(100);
     let vertices = vec![0u8; 1024]; // Placeholder vertex data
@@ -114,7 +108,9 @@ async fn test_pipeline_creation() {
 
 #[tokio::test]
 async fn test_hiz_pyramid_creation() {
-    let (device, _queue) = create_test_device().await;
+    let Some((device, _queue)) = create_test_device().await else {
+        return;
+    };
 
     let meshlets = create_test_meshlets(10);
     let vertices = vec![0u8; 1024];
@@ -133,7 +129,9 @@ async fn test_hiz_pyramid_creation() {
 
 #[tokio::test]
 async fn test_visibility_buffer_format() {
-    let (device, _queue) = create_test_device().await;
+    let Some((device, _queue)) = create_test_device().await else {
+        return;
+    };
 
     let meshlets = create_test_meshlets(10);
     let vertices = vec![0u8; 1024];
@@ -187,7 +185,9 @@ fn test_visibility_id_bounds() {
 
 #[tokio::test]
 async fn test_camera_buffer_update() {
-    let (device, queue) = create_test_device().await;
+    let Some((device, queue)) = create_test_device().await else {
+        return;
+    };
 
     let meshlets = create_test_meshlets(10);
     let vertices = vec![0u8; 1024];
@@ -241,7 +241,9 @@ fn test_edge_function() {
 
 #[tokio::test]
 async fn test_meshlet_buffer_size() {
-    let (device, _queue) = create_test_device().await;
+    let Some((device, _queue)) = create_test_device().await else {
+        return;
+    };
 
     let meshlet_count = 10000;
     let meshlets = create_test_meshlets(meshlet_count);
@@ -255,7 +257,9 @@ async fn test_meshlet_buffer_size() {
 
 #[tokio::test]
 async fn test_maximum_meshlet_capacity() {
-    let (device, _queue) = create_test_device().await;
+    let Some((device, _queue)) = create_test_device().await else {
+        return;
+    };
 
     // Test with realistic maximum count (100K meshlets ≈ 10M triangles)
     let meshlet_count = 100_000;

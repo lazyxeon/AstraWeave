@@ -99,10 +99,10 @@ pub fn build_chunk_splat_maps(
                 channels[layer as usize] += v.material_weights[i];
             }
         }
-        for splat_idx in 0..NUM_SPLAT_MAPS {
+        for (splat_idx, splat) in splats.iter_mut().enumerate() {
             let base = splat_idx * 4;
             for ch in 0..4 {
-                splats[splat_idx].push(encode_weight(channels[base + ch]));
+                splat.push(encode_weight(channels[base + ch]));
             }
         }
     }

@@ -3,10 +3,15 @@
 //! Validates that GPU resources (buffers, textures, pipelines) are properly
 //! cleaned up and don't leak across renderer creation/destruction cycles.
 
+#[path = "support/gpu_capability.rs"]
+mod gpu_capability;
+
 #[test]
 fn test_headless_device_creation() {
     // Verify headless device can be created for testing
-    let (device, queue) = pollster::block_on(create_test_device());
+    let Some((device, queue)) = pollster::block_on(create_test_device()) else {
+        return;
+    };
 
     // Basic validation
     assert!(device.limits().max_texture_dimension_2d > 0);
@@ -18,7 +23,9 @@ fn test_headless_device_creation() {
 
 #[test]
 fn test_buffer_lifecycle_no_leaks() {
-    let (device, queue) = pollster::block_on(create_test_device());
+    let Some((device, queue)) = pollster::block_on(create_test_device()) else {
+        return;
+    };
 
     // Track resource counts by creating and destroying buffers multiple times
     let initial_usage = get_memory_usage();
@@ -57,7 +64,9 @@ fn test_buffer_lifecycle_no_leaks() {
 
 #[test]
 fn test_texture_lifecycle_no_leaks() {
-    let (device, _queue) = pollster::block_on(create_test_device());
+    let Some((device, _queue)) = pollster::block_on(create_test_device()) else {
+        return;
+    };
 
     let initial_usage = get_memory_usage();
 
@@ -98,7 +107,9 @@ fn test_texture_lifecycle_no_leaks() {
 
 #[test]
 fn test_pipeline_lifecycle_no_leaks() {
-    let (device, _queue) = pollster::block_on(create_test_device());
+    let Some((device, _queue)) = pollster::block_on(create_test_device()) else {
+        return;
+    };
 
     let shader_source = r#"
         @vertex
@@ -172,7 +183,9 @@ fn test_renderer_lifecycle_stress_test() {
     let initial_usage = get_memory_usage();
 
     for cycle in 0..2 {
-        let (device, queue) = pollster::block_on(create_test_device());
+        let Some((device, queue)) = pollster::block_on(create_test_device()) else {
+            return;
+        };
 
         // Create typical renderer resources
         let texture = device.create_texture(&wgpu::TextureDescriptor {
@@ -233,31 +246,16 @@ fn test_renderer_lifecycle_stress_test() {
 
 // Helper functions
 
-async fn create_test_device() -> (wgpu::Device, wgpu::Queue) {
-    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
-        backends: wgpu::Backends::all(),
-        ..Default::default()
-    });
-
-    let adapter = instance
-        .request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::default(),
-            force_fallback_adapter: false,
-            compatible_surface: None,
-        })
-        .await
-        .expect("Failed to find adapter");
-
-    adapter
-        .request_device(&wgpu::DeviceDescriptor {
-            label: Some("Test Device"),
-            required_features: wgpu::Features::empty(),
-            required_limits: wgpu::Limits::default(),
-            memory_hints: wgpu::MemoryHints::default(),
-            trace: wgpu::Trace::Off,
-        })
-        .await
-        .expect("Failed to create device")
+async fn create_test_device() -> Option<(wgpu::Device, wgpu::Queue)> {
+    gpu_capability::request_headless(
+        "Test Device",
+        wgpu::Features::empty(),
+        wgpu::Limits::default(),
+        wgpu::PowerPreference::default(),
+        false,
+    )
+    .await
+    .map(|gpu| (gpu.device, gpu.queue))
 }
 
 fn get_memory_usage() -> usize {

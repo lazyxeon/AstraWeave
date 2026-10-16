@@ -659,6 +659,14 @@ pub struct EngineRenderAdapter {
         Option<std::sync::mpsc::Receiver<anyhow::Result<astraweave_render::IblResources>>>,
 }
 
+/// Atlas bake size for one impostor pass.
+#[cfg(feature = "impostor-bake")]
+pub struct ImpostorAtlasSize {
+    width: u32,
+    height: u32,
+    angle_count: u32,
+}
+
 impl EngineRenderAdapter {
     pub async fn new(
         device: Arc<wgpu::Device>,
@@ -1663,8 +1671,10 @@ impl EngineRenderAdapter {
                     height: None,
                 })
                 .collect();
-            let mut gpu_material = astraweave_render::TerrainMaterialGpu::default();
-            gpu_material.active_layer_count = 8;
+            let mut gpu_material = astraweave_render::TerrainMaterialGpu {
+                active_layer_count: 8,
+                ..Default::default()
+            };
             for (i, layer) in gpu_material.layers.iter_mut().enumerate() {
                 layer.texture_indices = [i as u32, i as u32, i as u32, i as u32];
             }
@@ -2920,8 +2930,8 @@ impl EngineRenderAdapter {
 
                         let density = Self::scatter_density_for_distance(&lod_distances, dist);
                         if density < 1.0 {
-                            let hash_input = (p.position.x * 73856.093) as u32
-                                ^ (p.position.y * 42191.271) as u32
+                            let hash_input = (p.position.x * 73856.09) as u32
+                                ^ (p.position.y * 42191.27) as u32
                                 ^ (p.position.z * 19349.663) as u32;
                             let h = astraweave_render::vegetation_gpu::pcg_hash(hash_input);
                             let r = astraweave_render::vegetation_gpu::hash_to_float(h);
@@ -3126,36 +3136,29 @@ impl EngineRenderAdapter {
                                 s.truncate(idx);
                                 patterns.push(format!("{}_diff.", s).to_lowercase());
                             }
-                            for entry in candidates {
-                                if let Ok(e) = entry {
-                                    let name = e.file_name().to_string_lossy().to_lowercase();
-                                    for pat in &patterns {
-                                        if name.starts_with(pat.as_str()) {
-                                            let path = e.path();
-                                            let canon = path
-                                                .canonicalize()
-                                                .unwrap_or_else(|_| path.clone());
-                                            if let Some(cached) =
-                                                self.scatter_texture_cache.get(&canon)
-                                            {
-                                                return Some(cached.clone());
-                                            }
-                                            if let Some(entry) =
-                                                Self::load_scatter_texture_from_path(
-                                                    &path,
-                                                    SCATTER_MAX_TEX_SIZE,
-                                                )
-                                            {
-                                                self.scatter_texture_cache
-                                                    .insert(canon, entry.clone());
-                                                tracing::debug!(
-                                                    "Scatter: loaded texture {}×{} for hint '{hint}' from {}",
-                                                    entry.0,
-                                                    entry.1,
-                                                    path.display(),
-                                                );
-                                                return Some(entry);
-                                            }
+                            for e in candidates.flatten() {
+                                let name = e.file_name().to_string_lossy().to_lowercase();
+                                for pat in &patterns {
+                                    if name.starts_with(pat.as_str()) {
+                                        let path = e.path();
+                                        let canon =
+                                            path.canonicalize().unwrap_or_else(|_| path.clone());
+                                        if let Some(cached) = self.scatter_texture_cache.get(&canon)
+                                        {
+                                            return Some(cached.clone());
+                                        }
+                                        if let Some(entry) = Self::load_scatter_texture_from_path(
+                                            &path,
+                                            SCATTER_MAX_TEX_SIZE,
+                                        ) {
+                                            self.scatter_texture_cache.insert(canon, entry.clone());
+                                            tracing::debug!(
+                                                "Scatter: loaded texture {}×{} for hint '{hint}' from {}",
+                                                entry.0,
+                                                entry.1,
+                                                path.display(),
+                                            );
+                                            return Some(entry);
                                         }
                                     }
                                 }
@@ -3537,9 +3540,11 @@ impl EngineRenderAdapter {
                                 &species_label,
                                 view_proj,
                                 camera_pos,
-                                ATLAS_W,
-                                ATLAS_H,
-                                ANGLES,
+                                ImpostorAtlasSize {
+                                    width: ATLAS_W,
+                                    height: ATLAS_H,
+                                    angle_count: ANGLES,
+                                },
                             ) {
                                 Ok(installed_key) => {
                                     impostor_live_keys.insert(installed_key);
@@ -3830,10 +3835,13 @@ impl EngineRenderAdapter {
         species_name: &str,
         view_proj: glam::Mat4,
         camera_pos: glam::Vec3,
-        atlas_width: u32,
-        atlas_height: u32,
-        angle_count: u32,
+        atlas: ImpostorAtlasSize,
     ) -> Result<String> {
+        let ImpostorAtlasSize {
+            width: atlas_width,
+            height: atlas_height,
+            angle_count,
+        } = atlas;
         use super::impostor_wiring::{bake_primitive_pixels, primitive_mesh_hash};
         use astraweave_render::impostor_pass::ImpostorPass;
         use astraweave_render::vegetation_lod::ImpostorAtlasSpec;

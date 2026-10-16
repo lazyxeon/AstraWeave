@@ -108,16 +108,16 @@ pub struct ViewportRenderer {
 
     /// P.6 internal editor overlay target. Receives grid + physics debug
     /// + gizmo + brush cursor + zone overlay + selection outline draws.
-    /// Cleared transparent at frame start; overlays draw with premultiplied
-    /// alpha (BlendState::ALPHA_BLENDING). Composited into the display
-    /// target by `composite_pipeline`.
+    ///   Cleared transparent at frame start; overlays draw with premultiplied
+    ///   alpha (BlendState::ALPHA_BLENDING). Composited into the display
+    ///   target by `composite_pipeline`.
     editor_overlay_texture: Option<wgpu::Texture>,
     editor_overlay_view: Option<wgpu::TextureView>,
 
     /// P.6 composite pipeline: alpha-over composition of engine_ldr_texture
     /// + editor_overlay_texture → caller-supplied display target.
-    /// Pipeline is built once in `new`; its bind group is rebuilt on
-    /// resize when target views change.
+    ///   Pipeline is built once in `new`; its bind group is rebuilt on
+    ///   resize when target views change.
     composite_pipeline: Option<wgpu::RenderPipeline>,
     composite_bgl: Option<wgpu::BindGroupLayout>,
     composite_sampler: Option<wgpu::Sampler>,
@@ -1519,7 +1519,7 @@ impl ViewportRenderer {
     pub fn physics_debug_enabled(&self) -> bool {
         self.physics_renderer
             .as_ref()
-            .map_or(false, |p| p.options.show_colliders)
+            .is_some_and(|p| p.options.show_colliders)
     }
 
     /// Enable/disable physics debug rendering

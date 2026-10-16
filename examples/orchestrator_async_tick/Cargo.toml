@@ -3,7 +3,6 @@ name = "orchestrator_async_tick"
 license.workspace = true
 version = "0.1.0"
 edition = "2021"
-
 [dependencies]
 astraweave-core = { path = "../../astraweave-core" }
 astraweave-ai = { path = "../../astraweave-ai", features=["llm_orchestrator"] }

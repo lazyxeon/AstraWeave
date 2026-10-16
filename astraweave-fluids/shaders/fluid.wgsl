@@ -112,6 +112,16 @@ fn kernel_w(r: f32, h: f32) -> f32 {
     }
 }
 
+// `normalize(0)` is a NaN on lavapipe. Coincident particles and a flat SDF
+// gradient both produce a zero vector; the force must be zero, not NaN.
+fn safe_normalize(v: vec3<f32>) -> vec3<f32> {
+    let len2 = dot(v, v);
+    if (len2 <= 1e-12) {
+        return vec3<f32>(0.0);
+    }
+    return v * inverseSqrt(len2);
+}
+
 fn kernel_grad_w(r: f32, diff: vec3<f32>, h: f32) -> vec3<f32> {
     let q = r / h;
     if (q >= 1.0 || r <= 0.0001) { return vec3<f32>(0.0); }
@@ -269,14 +279,14 @@ fn compute_delta_pos(@builtin(global_invocation_id) global_id: vec3<u32>) {
         if (obj.half_extents.w < 0.5) { // Box
             dist = sd_box(p_local, obj.half_extents.xyz);
             // Gradient approximation for box
-            local_normal = normalize(sign(p_local) * max(abs(p_local) - obj.half_extents.xyz, vec3<f32>(0.001)));
+            local_normal = safe_normalize(sign(p_local) * max(abs(p_local) - obj.half_extents.xyz, vec3<f32>(0.001)));
         } else { // Sphere
             dist = length(p_local) - obj.half_extents.x;
-            local_normal = normalize(p_local);
+            local_normal = safe_normalize(p_local);
         }
         
         if (dist < 0.1) {
-             let world_normal = normalize((obj.transform * vec4<f32>(local_normal, 0.0)).xyz);
+             let world_normal = safe_normalize((obj.transform * vec4<f32>(local_normal, 0.0)).xyz);
              delta_p += world_normal * (0.1 - dist) * 0.5; // Soft collision resolve
         }
     }
@@ -303,17 +313,16 @@ fn compute_delta_pos(@builtin(global_invocation_id) global_id: vec3<u32>) {
                             let lambda_j = particles[current].lambda;
                             
                             // Tensile instability correction (scorr)
+                            // Tensile instability correction (scorr)
                             let scorr = -0.001 * pow(kernel_w(r, h) / kernel_w(0.1 * h, h), 4.0);
-                            
-                            // --- Akinci et al. 2013 Surface Tension ---
-                            // Cohesion force: f_cohesion = -gamma * m^2 * C(r) * (x_i - x_j)/|x_i - x_j|
-                            let cohesion_weight = kernel_w(r, h); // Simplified C(r)
-                            let cohesion = -params.surface_tension * cohesion_weight * normalize(diff);
-                            
-                            // Curvature force: f_curvature = -gamma * m * (n_i - n_j)
-                            // (n is surface normal, simplified here as gradient of color field)
-                            // For simplicity in this kernel, we'll combine them into a versatile term
-                            
+
+                            // Akinci cohesion is 0 at r = 0. Using kernel_w alone
+                            // peaks there, so once lavapipe stacks particles the
+                            // force is several meters per iteration and the next
+                            // integrate turns that into a NaN velocity.
+                            let cohesion_weight = kernel_w(r, h) * (r / h);
+                            let cohesion = -params.surface_tension * cohesion_weight * safe_normalize(diff);
+
                             delta_p += (lambda_i + lambda_j + scorr) * kernel_grad_w(r, diff, h) + cohesion;
                         }
                     }
@@ -354,7 +363,7 @@ fn integrate(@builtin(global_invocation_id) global_id: vec3<u32>) {
         let nz = textureSampleLevel(sdf_texture, default_sampler, voxel_pos + vec3<f32>(0.0, 0.0, eps), 0.0).r - 
                  textureSampleLevel(sdf_texture, default_sampler, voxel_pos - vec3<f32>(0.0, 0.0, eps), 0.0).r;
         
-        let normal = normalize(vec3<f32>(nx, ny, nz));
+        let normal = safe_normalize(vec3<f32>(nx, ny, nz));
         
         // Push out of surface
         pred_pos += normal * (particle_radius - sdf_dist);
@@ -365,18 +374,41 @@ fn integrate(@builtin(global_invocation_id) global_id: vec3<u32>) {
         // if (normal_vel < 0.0) { pred_pos -= normal * normal_vel * params.dt * 0.5; }
     }
 
+    // Velocity from the unconstrained prediction. Clamping the position
+    // first folds the whole correction into (pos_clamped - old) / dt, which
+    // is tens of m/s on the floor and then feeds the next step until a
+    // component overflows to NaN. Lavapipe reaches that overflow; a desktop
+    // GPU often stops just short of it.
+    var vel = (pred_pos - old_pos) / params.dt;
+
     // Boundary Handling (Secondary fallback)
     let bounds_x = 29.5;
     let bounds_z = 29.5;
     let bounds_y = 59.5;
-    if (pred_pos.y < 0.0) { pred_pos.y = 0.0; }
-    if (pred_pos.y > bounds_y) { pred_pos.y = bounds_y; }
-    if (pred_pos.x < -bounds_x) { pred_pos.x = -bounds_x; }
-    if (pred_pos.x > bounds_x) { pred_pos.x = bounds_x; }
-    if (pred_pos.z < -bounds_z) { pred_pos.z = -bounds_z; }
-    if (pred_pos.z > bounds_z) { pred_pos.z = bounds_z; }
-
-    var vel = (pred_pos - old_pos) / params.dt;
+    if (pred_pos.y < 0.0) {
+        pred_pos.y = 0.0;
+        vel.y = max(vel.y, 0.0);
+    }
+    if (pred_pos.y > bounds_y) {
+        pred_pos.y = bounds_y;
+        vel.y = min(vel.y, 0.0);
+    }
+    if (pred_pos.x < -bounds_x) {
+        pred_pos.x = -bounds_x;
+        vel.x = max(vel.x, 0.0);
+    }
+    if (pred_pos.x > bounds_x) {
+        pred_pos.x = bounds_x;
+        vel.x = min(vel.x, 0.0);
+    }
+    if (pred_pos.z < -bounds_z) {
+        pred_pos.z = -bounds_z;
+        vel.z = max(vel.z, 0.0);
+    }
+    if (pred_pos.z > bounds_z) {
+        pred_pos.z = bounds_z;
+        vel.z = min(vel.z, 0.0);
+    }
     
     // --- Vorticity Confinement ---
     // Calculate local curl and apply force to preserve energy

@@ -1,9 +1,9 @@
 [package]
 name = "renderer_integration_test"
 version = "0.1.0"
+license = "MIT"
 edition = "2021"
 publish = false
-
 [dependencies]
 anyhow = { workspace = true }
 winit = { workspace = true }

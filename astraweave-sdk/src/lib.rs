@@ -23,6 +23,8 @@
 //! - [`AW_ERR_EXEC`] — Execution error
 //!
 //! Use [`aw_last_error_string`] to retrieve a human-readable error message.
+//! The message belongs to the calling thread. A host that submits on one
+//! thread and reads the error on another does not see that message.
 //!
 //! # Safety
 //!
@@ -32,10 +34,10 @@
 //! - `AWWorld` handles are not used after `aw_world_destroy`
 
 use serde::{Deserialize, Serialize};
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ffi::CStr;
 use std::os::raw::c_char;
-use std::sync::{Mutex, OnceLock};
 
 use astraweave_core::{
     validation::{validate_and_execute, ValidateCfg},
@@ -354,21 +356,19 @@ pub const AW_ERR_PARAM: i32 = -2;
 pub const AW_ERR_PARSE: i32 = -3;
 pub const AW_ERR_EXEC: i32 = -4;
 
-static LAST_ERROR: OnceLock<Mutex<String>> = OnceLock::new();
+thread_local! {
+    static LAST_ERROR: RefCell<String> = const { RefCell::new(String::new()) };
+}
 
 fn set_last_error(msg: &str) {
-    let m = LAST_ERROR.get_or_init(|| Mutex::new(String::new()));
-    if let Ok(mut s) = m.lock() {
-        *s = msg.to_string();
-    }
+    LAST_ERROR.with(|slot| {
+        *slot.borrow_mut() = msg.to_string();
+    });
 }
 
 #[no_mangle]
 pub extern "C" fn aw_last_error_string(buf: *mut u8, len: usize) -> usize {
-    let s = LAST_ERROR
-        .get()
-        .and_then(|m| m.lock().ok().map(|s| s.clone()))
-        .unwrap_or_default();
+    let s = LAST_ERROR.with(|slot| slot.borrow().clone());
     write_cstr(s.as_bytes(), buf, len)
 }
 
@@ -445,6 +445,7 @@ fn write_cstr(bytes: &[u8], buf: *mut u8, len: usize) -> usize {
 mod tests {
     use super::*;
     use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::OnceLock;
     static SNAP_COUNT: AtomicUsize = AtomicUsize::new(0);
     unsafe extern "C" fn snap_cb(_msg: *const c_char) {
         SNAP_COUNT.fetch_add(1, Ordering::SeqCst);
@@ -492,6 +493,36 @@ mod tests {
             )
         };
         assert_eq!(rc, AW_ERR_PARSE);
+        let mut buf = [0u8; 128];
+        let n = aw_last_error_string(buf.as_mut_ptr(), buf.len());
+        assert!(n > 1);
+        let s = std::ffi::CStr::from_bytes_until_nul(&buf)
+            .unwrap()
+            .to_string_lossy()
+            .into_owned();
+        assert!(s.contains("parse error"));
+        aw_world_destroy(w);
+    }
+
+    #[test]
+    fn last_error_survives_another_thread_clearing_its_own_slot() {
+        let w = aw_world_create();
+        let rc = unsafe {
+            aw_world_submit_intent_json(
+                w,
+                1,
+                std::ffi::CString::new("not json").unwrap().as_ptr(),
+                None,
+            )
+        };
+        assert_eq!(rc, AW_ERR_PARSE);
+        let cleared = std::thread::spawn(|| {
+            set_last_error("");
+            let mut buf = [0u8; 32];
+            let n = aw_last_error_string(buf.as_mut_ptr(), buf.len());
+            assert_eq!(n, 1);
+        });
+        cleared.join().expect("clearing thread");
         let mut buf = [0u8; 128];
         let n = aw_last_error_string(buf.as_mut_ptr(), buf.len());
         assert!(n > 1);

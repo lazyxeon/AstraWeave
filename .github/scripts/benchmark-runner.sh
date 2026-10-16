@@ -49,14 +49,14 @@ BENCHMARK_PACKAGES_STATIC=(
     astraweave-physics
 )
 
-# Production 12-way grouping, balanced by longest-processing-time assignment
-# from each package's slower wall time across Alerts run 30133613866 and
-# Performance run 30133654366. The largest group is 1,727 measured package
-# seconds; a 50% package-time reserve plus 240 seconds of setup is 2,831/3,600
-# seconds. Discovery remains authoritative and the coverage validation below
-# fails if this map ever omits, duplicates, or invents a benchmark package.
+# Production grouping. astraweave-ai and astraweave-render each have their own
+# shard: on the 2026-10-14 main run their compiles were killed by the 600s
+# per-package timeout before Criterion wrote an estimate, and they shared a
+# shard with other multi-minute packages. Discovery remains authoritative and
+# the coverage validation below fails if this map ever omits, duplicates, or
+# invents a benchmark package.
 BENCHMARK_SHARD_GROUPS=(
-    "astraweave-ai astraweave-net astraweave-profiling astraweave-water"
+    "astraweave-net astraweave-profiling astraweave-water"
     "astraweave-cinematics astraweave-quests astraweave-context astraweave-terrain"
     "astraweave-dialogue astraweave-llm astraweave-steam astraweave-embeddings"
     "astraweave-ecs astraweave-math astraweave-ipc astraweave-memory astraweave-destruction"
@@ -64,10 +64,12 @@ BENCHMARK_SHARD_GROUPS=(
     "astraweave-net-ecs astraweave-asset-pipeline astraweave-prompts astraweave-audio"
     "astraweave-persistence-ecs astraweave-weaving astraweave-observability astraweave-input"
     "astraweave-rag astraweave-llm-eval astraweave-secrets astraweave-physics"
-    "astraweave-render astraweave-npc astraweave-materials astraweave-gameplay astraweave-combat"
+    "astraweave-npc astraweave-materials astraweave-gameplay astraweave-combat"
     "astraweave-scene astraweave-optimization astraweave-director astraweave-nav"
     "astraweave-sdk astraweave-coordination astraweave-persona astraweave-behavior"
     "astraweave-ui astraweave-pcg astraweave-security astraweave-stress-test"
+    "astraweave-ai"
+    "astraweave-render"
 )
 
 RESULTS_DIR="${BENCHMARK_RESULTS_DIR:-benchmark_results}"
@@ -189,7 +191,7 @@ discover_benchmark_packages() {
         BENCHMARK_PACKAGES=("${selected_packages[@]}")
     elif [ "$SHARD_COUNT" -gt 1 ]; then
         # Preserve the generic modulo mode for ad-hoc shard counts. The two
-        # production workflows use the validated measured 12-way map above.
+        # production workflows use the validated measured shard map above.
         local selected_packages=()
         local package_index
         for package_index in "${!BENCHMARK_PACKAGES[@]}"; do
@@ -303,6 +305,37 @@ process_benchmarks() {
 # Main benchmark execution
 log_info "Starting benchmark execution..."
 
+# Bench target names come from cargo metadata. Targets with required-features
+# outside the package default set are skipped, matching `cargo bench --benches`.
+METADATA_JSON=""
+if METADATA_JSON=$(cargo metadata --format-version 1 --no-deps 2>"${RESULTS_DIR}/metadata.err"); then
+    log_info "Resolved bench targets from cargo metadata"
+else
+    log_error "cargo metadata failed; each package will run as one --benches invocation"
+    METADATA_JSON=""
+fi
+
+bench_target_names() {
+    local pkg="$1"
+    if [ -z "$METADATA_JSON" ]; then
+        return 0
+    fi
+    jq -r --arg pkg "$pkg" '
+        .packages[] | select(.name == $pkg) as $p
+        | ($p.features.default // []) as $defaults
+        | $p.targets[]
+        | select(any(.kind[]; . == "bench"))
+        | select(
+            ((.["required-features"] // []) | length) == 0
+            or (
+                (.["required-features"] // [])
+                | all(. as $f | $defaults | index($f) != null)
+            )
+          )
+        | .name
+    ' <<<"$METADATA_JSON"
+}
+
 for pkg in "${BENCHMARK_PACKAGES[@]}"; do
     if [ -d "$pkg/benches" ]; then
         log_info "Running benchmarks for $pkg..."
@@ -313,27 +346,75 @@ for pkg in "${BENCHMARK_PACKAGES[@]}"; do
         fi
 
         package_start=$(date +%s)
-        set +e
-        timeout 600 cargo bench -p "$pkg" --benches \
-            > "${RESULTS_DIR}/${pkg}_stdout.log" \
-            2> "${RESULTS_DIR}/${pkg}_stderr.log"
-        execution_exit=$?
-        set -e
-        package_end=$(date +%s)
-        elapsed_seconds=$((package_end - package_start))
+        stdout_log="${RESULTS_DIR}/${pkg}_stdout.log"
+        stderr_log="${RESULTS_DIR}/${pkg}_stderr.log"
+        : > "$stdout_log"
+        : > "$stderr_log"
 
-        if [ "$execution_exit" -eq 0 ]; then
-            execution_status="success"
-            log_success "Benchmark execution completed for $pkg in ${elapsed_seconds}s"
-        elif [ "$execution_exit" -eq 124 ]; then
-            execution_status="timeout"
-            EXECUTION_FAILURE_COUNT=$((EXECUTION_FAILURE_COUNT + 1))
-            OVERALL_FAILURE=1
-            log_error "Benchmark execution timed out for $pkg after ${elapsed_seconds}s"
-        else
+        # Compilation is not part of the 600s measurement budget. Cold
+        # astraweave-ai / astraweave-render compiles were being killed before
+        # Criterion wrote a single estimate. The job timeout still bounds a
+        # hung rustc. Each bench target then gets its own 600s so one crate
+        # with many targets is split instead of raising the limit.
+        set +e
+        cargo bench -p "$pkg" --benches --no-run \
+            >> "$stdout_log" \
+            2>> "$stderr_log"
+        compile_exit=$?
+        set -e
+
+        execution_exit=0
+        execution_status="success"
+        if [ "$compile_exit" -ne 0 ]; then
+            execution_exit=$compile_exit
             execution_status="failed"
             EXECUTION_FAILURE_COUNT=$((EXECUTION_FAILURE_COUNT + 1))
             OVERALL_FAILURE=1
+            log_error "Benchmark compile failed for $pkg with exit $compile_exit"
+        else
+            mapfile -t bench_targets < <(bench_target_names "$pkg")
+            if [ "${#bench_targets[@]}" -eq 0 ]; then
+                bench_targets=("__all__")
+            fi
+            for target in "${bench_targets[@]}"; do
+                set +e
+                if [ "$target" = "__all__" ]; then
+                    timeout 600 cargo bench -p "$pkg" --benches \
+                        >> "$stdout_log" 2>> "$stderr_log"
+                else
+                    timeout 600 cargo bench -p "$pkg" --bench "$target" \
+                        >> "$stdout_log" 2>> "$stderr_log"
+                fi
+                one_exit=$?
+                set -e
+                if [ "$one_exit" -eq 0 ]; then
+                    log_info "Benchmark target $pkg::$target completed"
+                elif [ "$one_exit" -eq 124 ]; then
+                    execution_exit=124
+                    execution_status="timeout"
+                    log_error "Benchmark target $pkg::$target timed out after 600s"
+                else
+                    if [ "$execution_status" != "timeout" ]; then
+                        execution_exit=$one_exit
+                        execution_status="failed"
+                    fi
+                    log_error "Benchmark target $pkg::$target failed with exit $one_exit"
+                fi
+            done
+            if [ "$execution_status" != "success" ]; then
+                EXECUTION_FAILURE_COUNT=$((EXECUTION_FAILURE_COUNT + 1))
+                OVERALL_FAILURE=1
+            fi
+        fi
+
+        package_end=$(date +%s)
+        elapsed_seconds=$((package_end - package_start))
+
+        if [ "$execution_status" = "success" ]; then
+            log_success "Benchmark execution completed for $pkg in ${elapsed_seconds}s"
+        elif [ "$execution_status" = "timeout" ]; then
+            log_error "Benchmark execution timed out for $pkg after ${elapsed_seconds}s"
+        else
             log_error "Benchmark execution failed for $pkg with exit $execution_exit after ${elapsed_seconds}s"
         fi
 

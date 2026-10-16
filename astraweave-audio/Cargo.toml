@@ -28,6 +28,10 @@ criterion = "0.5"
 serial_test = "3.0"
 tempfile = "3.0"
 
+[[bin]]
+name = "aw_audio_probe"
+path = "src/bin/aw_audio_probe.rs"
+
 [[bench]]
 name = "audio_benchmarks"
 harness = false

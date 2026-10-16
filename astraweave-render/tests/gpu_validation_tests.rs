@@ -9,6 +9,9 @@
 //!
 //! These tests use headless wgpu with software fallback for CI compatibility.
 
+#[path = "support/gpu_capability.rs"]
+mod gpu_capability;
+
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use wgpu::util::DeviceExt;
@@ -18,33 +21,16 @@ use wgpu::util::DeviceExt;
 // =============================================================================
 
 /// Create headless wgpu device for testing (uses software fallback for CI)
-async fn create_test_device() -> (wgpu::Device, wgpu::Queue, wgpu::Adapter) {
-    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
-        backends: wgpu::Backends::all(),
-        ..Default::default()
-    });
-
-    let adapter = instance
-        .request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::default(),
-            force_fallback_adapter: true, // Software adapter for CI
-            compatible_surface: None,
-        })
-        .await
-        .expect("Failed to find adapter");
-
-    let (device, queue) = adapter
-        .request_device(&wgpu::DeviceDescriptor {
-            label: Some("gpu_validation_test_device"),
-            required_features: wgpu::Features::empty(),
-            required_limits: wgpu::Limits::downlevel_defaults(),
-            memory_hints: wgpu::MemoryHints::default(),
-            trace: Default::default(),
-        })
-        .await
-        .expect("Failed to create device");
-
-    (device, queue, adapter)
+async fn create_test_device() -> Option<(wgpu::Device, wgpu::Queue, wgpu::Adapter)> {
+    gpu_capability::request_headless(
+        "gpu_validation_test_device",
+        wgpu::Features::empty(),
+        wgpu::Limits::downlevel_defaults(),
+        wgpu::PowerPreference::default(),
+        true,
+    )
+    .await
+    .map(|gpu| (gpu.device, gpu.queue, gpu.adapter))
 }
 
 /// Compute deterministic hash of buffer contents
@@ -64,7 +50,9 @@ mod buffer_tests {
     #[test]
     fn test_buffer_create_and_write() {
         pollster::block_on(async {
-            let (device, _queue, _adapter) = create_test_device().await;
+            let Some((device, _queue, _adapter)) = create_test_device().await else {
+                return;
+            };
 
             let data: [f32; 4] = [1.0, 2.0, 3.0, 4.0];
             let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -89,7 +77,9 @@ mod buffer_tests {
     #[test]
     fn test_buffer_readback() {
         pollster::block_on(async {
-            let (device, queue, _adapter) = create_test_device().await;
+            let Some((device, queue, _adapter)) = create_test_device().await else {
+                return;
+            };
 
             // Create source buffer with data
             let source_data: [f32; 4] = [1.5, 2.5, 3.5, 4.5];
@@ -139,7 +129,9 @@ mod buffer_tests {
     #[test]
     fn test_buffer_queue_write() {
         pollster::block_on(async {
-            let (device, queue, _adapter) = create_test_device().await;
+            let Some((device, queue, _adapter)) = create_test_device().await else {
+                return;
+            };
 
             // Create uniform buffer
             let buffer = device.create_buffer(&wgpu::BufferDescriptor {
@@ -187,7 +179,9 @@ mod buffer_tests {
     #[test]
     fn test_buffer_partial_write() {
         pollster::block_on(async {
-            let (device, queue, _adapter) = create_test_device().await;
+            let Some((device, queue, _adapter)) = create_test_device().await else {
+                return;
+            };
 
             // Create buffer with initial zeros
             let buffer = device.create_buffer(&wgpu::BufferDescriptor {
@@ -253,7 +247,9 @@ mod texture_tests {
     #[test]
     fn test_texture_create_rgba8() {
         pollster::block_on(async {
-            let (device, _queue, _adapter) = create_test_device().await;
+            let Some((device, _queue, _adapter)) = create_test_device().await else {
+                return;
+            };
 
             let texture = device.create_texture(&wgpu::TextureDescriptor {
                 label: Some("rgba8_texture"),
@@ -281,7 +277,9 @@ mod texture_tests {
     #[test]
     fn test_texture_create_depth32() {
         pollster::block_on(async {
-            let (device, _queue, _adapter) = create_test_device().await;
+            let Some((device, _queue, _adapter)) = create_test_device().await else {
+                return;
+            };
 
             let texture = device.create_texture(&wgpu::TextureDescriptor {
                 label: Some("depth_texture"),
@@ -308,7 +306,9 @@ mod texture_tests {
     #[test]
     fn test_texture_upload_and_readback() {
         pollster::block_on(async {
-            let (device, queue, _adapter) = create_test_device().await;
+            let Some((device, queue, _adapter)) = create_test_device().await else {
+                return;
+            };
 
             let width = 4u32;
             let height = 4u32;
@@ -430,7 +430,9 @@ mod texture_tests {
     #[test]
     fn test_texture_view_creation() {
         pollster::block_on(async {
-            let (device, _queue, _adapter) = create_test_device().await;
+            let Some((device, _queue, _adapter)) = create_test_device().await else {
+                return;
+            };
 
             let texture = device.create_texture(&wgpu::TextureDescriptor {
                 label: Some("test_texture"),
@@ -502,7 +504,9 @@ mod texture_tests {
     #[test]
     fn test_texture_hdr_format() {
         pollster::block_on(async {
-            let (device, _queue, _adapter) = create_test_device().await;
+            let Some((device, _queue, _adapter)) = create_test_device().await else {
+                return;
+            };
 
             let texture = device.create_texture(&wgpu::TextureDescriptor {
                 label: Some("hdr_texture"),
@@ -535,7 +539,9 @@ mod render_pass_tests {
     #[test]
     fn test_clear_render_target() {
         pollster::block_on(async {
-            let (device, queue, _adapter) = create_test_device().await;
+            let Some((device, queue, _adapter)) = create_test_device().await else {
+                return;
+            };
 
             let width = 64u32;
             let height = 64u32;
@@ -647,7 +653,9 @@ mod render_pass_tests {
     #[test]
     fn test_depth_clear() {
         pollster::block_on(async {
-            let (device, queue, _adapter) = create_test_device().await;
+            let Some((device, queue, _adapter)) = create_test_device().await else {
+                return;
+            };
 
             let depth_texture = device.create_texture(&wgpu::TextureDescriptor {
                 label: Some("depth"),
@@ -728,7 +736,9 @@ mod shader_tests {
     #[test]
     fn test_vertex_shader_compilation() {
         pollster::block_on(async {
-            let (device, _queue, _adapter) = create_test_device().await;
+            let Some((device, _queue, _adapter)) = create_test_device().await else {
+                return;
+            };
 
             let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
                 label: Some("vertex_shader"),
@@ -743,7 +753,9 @@ mod shader_tests {
     #[test]
     fn test_fragment_shader_compilation() {
         pollster::block_on(async {
-            let (device, _queue, _adapter) = create_test_device().await;
+            let Some((device, _queue, _adapter)) = create_test_device().await else {
+                return;
+            };
 
             let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
                 label: Some("fragment_shader"),
@@ -757,7 +769,9 @@ mod shader_tests {
     #[test]
     fn test_compute_shader_compilation() {
         pollster::block_on(async {
-            let (device, _queue, _adapter) = create_test_device().await;
+            let Some((device, _queue, _adapter)) = create_test_device().await else {
+                return;
+            };
 
             let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
                 label: Some("compute_shader"),
@@ -771,7 +785,9 @@ mod shader_tests {
     #[test]
     fn test_render_pipeline_creation() {
         pollster::block_on(async {
-            let (device, _queue, _adapter) = create_test_device().await;
+            let Some((device, _queue, _adapter)) = create_test_device().await else {
+                return;
+            };
 
             let vs_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
                 label: Some("vs"),
@@ -822,7 +838,9 @@ mod shader_tests {
     #[test]
     fn test_compute_pipeline_creation() {
         pollster::block_on(async {
-            let (device, _queue, _adapter) = create_test_device().await;
+            let Some((device, _queue, _adapter)) = create_test_device().await else {
+                return;
+            };
 
             let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
                 label: Some("compute"),
@@ -883,7 +901,9 @@ mod compute_validation_tests {
     #[test]
     fn test_compute_shader_doubles_values() {
         pollster::block_on(async {
-            let (device, queue, _adapter) = create_test_device().await;
+            let Some((device, queue, _adapter)) = create_test_device().await else {
+                return;
+            };
 
             let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
                 label: Some("double_shader"),
@@ -1022,7 +1042,9 @@ mod backend_tests {
     #[test]
     fn test_adapter_info() {
         pollster::block_on(async {
-            let (_device, _queue, adapter) = create_test_device().await;
+            let Some((_device, _queue, adapter)) = create_test_device().await else {
+                return;
+            };
 
             let info = adapter.get_info();
 
@@ -1042,7 +1064,9 @@ mod backend_tests {
     #[test]
     fn test_buffer_hash_determinism() {
         pollster::block_on(async {
-            let (device, queue, _adapter) = create_test_device().await;
+            let Some((device, queue, _adapter)) = create_test_device().await else {
+                return;
+            };
 
             let data: [f32; 16] = [
                 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0,
@@ -1107,7 +1131,9 @@ mod resource_tests {
     #[test]
     fn test_sampler_creation() {
         pollster::block_on(async {
-            let (device, _queue, _adapter) = create_test_device().await;
+            let Some((device, _queue, _adapter)) = create_test_device().await else {
+                return;
+            };
 
             // Linear filtering sampler
             let _linear = device.create_sampler(&wgpu::SamplerDescriptor {
@@ -1148,7 +1174,9 @@ mod resource_tests {
     #[test]
     fn test_bind_group_creation() {
         pollster::block_on(async {
-            let (device, _queue, _adapter) = create_test_device().await;
+            let Some((device, _queue, _adapter)) = create_test_device().await else {
+                return;
+            };
 
             let buffer = device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some("uniform"),

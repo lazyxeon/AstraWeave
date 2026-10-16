@@ -1744,7 +1744,9 @@ mod tests {
     async fn mutation_cleanup_expired_sessions_works() {
         // Targets: L593 cleanup → (), L601 < → ==, < → >
         let config = CoordinatorConfig {
-            max_coordination_duration: Duration::from_millis(1),
+            // Wide enough that a fresh session cannot expire while this
+            // test is running. The expired session is backdated below.
+            max_coordination_duration: Duration::from_secs(30),
             ..Default::default()
         };
         let coordinator = AgentCoordinator::new(config);
@@ -1760,14 +1762,18 @@ mod tests {
             .await
             .unwrap();
 
-        // Wait for session to expire
-        tokio::time::sleep(Duration::from_millis(10)).await;
+        {
+            let sessions = coordinator.coordination_sessions.write().await;
+            let mut ctx = sessions
+                .get(&session_id)
+                .expect("expired session")
+                .write()
+                .await;
+            ctx.start_time = Utc::now() - chrono::Duration::seconds(60);
+        }
 
-        // Create a second fresh session AFTER sleep (not expired)
-        // We need a new config with longer duration for this to work,
-        // but the coordinator already has short duration. Instead, verify
-        // both paths: expired removed AND that fresh sessions aren't wrongly removed.
-        // The fresh session's start_time is NOW, so duration ≈ 0ms < 1ms → kept.
+        // A session started now stays inside the 30s window. A 1ms window
+        // also expired this session on a loaded runner, so both asserts failed.
         let a2 = TestAgent {
             base: BaseAgent::new("a2".into(), vec![]),
         };
@@ -1786,8 +1792,6 @@ mod tests {
             !sessions.contains_key(&session_id),
             "Expired session should be cleaned up"
         );
-        // With < → ==: duration(0ms) == max(1ms) is false → keep=false → wrongly removed
-        // With <: duration(0ms) < max(1ms) is true → keep=true → correctly retained
         assert!(
             sessions.contains_key(&fresh_session_id),
             "Fresh session should NOT be cleaned up (kills < → ==)"

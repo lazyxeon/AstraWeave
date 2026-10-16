@@ -35,7 +35,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard_index: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+        shard_index: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]
     
     steps:
       - name: Checkout repository
@@ -60,7 +60,7 @@ jobs:
           # Run this deterministic shard of the full discovered package list
           ./.github/scripts/benchmark-runner.sh \
             --shard-index "${{ matrix.shard_index }}" \
-            --shard-count 12
+            --shard-count 14
       
       - name: Upload benchmark artifacts
         uses: actions/upload-artifact@v4
@@ -130,7 +130,7 @@ jobs:
           done
 
           : > benchmark_results/missing-shards.txt
-          for shard_index in {0..11}; do
+          for shard_index in {0..13}; do
             if ! find benchmark-shards -mindepth 1 -maxdepth 1 -type d \
               -name "*-shard-${shard_index}" -print -quit 2>/dev/null |
               grep -q .; then
@@ -162,9 +162,9 @@ jobs:
             benchmark_results/package-status.json > benchmark_results/failed-packages.txt
 
           complete=false
-          if [ "${#result_files[@]}" -eq 12 ] &&
-             [ "${#status_files[@]}" -eq 12 ] &&
-             [ "${#timing_files[@]}" -eq 12 ] &&
+          if [ "${#result_files[@]}" -eq 14 ] &&
+             [ "${#status_files[@]}" -eq 14 ] &&
+             [ "${#timing_files[@]}" -eq 14 ] &&
              [ "$package_count" -eq 50 ] &&
              [ "$unique_package_count" -eq 50 ]; then
             complete=true
@@ -179,9 +179,9 @@ jobs:
 
           {
             echo "=== Benchmark Aggregation Summary ==="
-            echo "Shard result files: ${#result_files[@]}/12"
-            echo "Shard status files: ${#status_files[@]}/12"
-            echo "Shard timing files: ${#timing_files[@]}/12"
+            echo "Shard result files: ${#result_files[@]}/14"
+            echo "Shard status files: ${#status_files[@]}/14"
+            echo "Shard timing files: ${#timing_files[@]}/14"
             echo "Package records: $package_count (unique: $unique_package_count; expected: 50)"
             echo "Package records accounted for: $record_accounted_count/50"
             echo "Packages with collected results: $collected_package_count"

@@ -1,9 +1,9 @@
 [package]
 name = "astraweave-ecs-fuzz"
 version = "0.0.0"
+license = "MIT"
 publish = false
 edition = "2021"
-
 [workspace]
 # This is a separate workspace to avoid conflicts with the main workspace
 

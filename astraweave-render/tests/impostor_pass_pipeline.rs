@@ -39,7 +39,9 @@ fn make_spec() -> ImpostorAtlasSpec {
 #[test]
 fn impostor_pass_new_builds_with_valid_inputs() {
     pollster::block_on(async {
-        let (device, queue) = test_utils::create_headless_device().await;
+        let Some((device, queue)) = test_utils::create_headless_device().await else {
+            return;
+        };
         let pixels = solid_atlas([255, 0, 0, 255]);
         let pass = ImpostorPass::new(
             &device,
@@ -63,7 +65,9 @@ fn impostor_pass_new_builds_with_valid_inputs() {
 #[test]
 fn impostor_pass_new_rejects_mismatched_pixel_buffer() {
     pollster::block_on(async {
-        let (device, queue) = test_utils::create_headless_device().await;
+        let Some((device, queue)) = test_utils::create_headless_device().await else {
+            return;
+        };
         // One-byte-short buffer → Lod3Resources::upload must bail.
         let mut pixels = solid_atlas([0, 255, 0, 255]);
         pixels.pop();
@@ -88,7 +92,9 @@ fn impostor_pass_new_rejects_mismatched_pixel_buffer() {
 #[test]
 fn upload_instances_grows_buffer_geometrically() {
     pollster::block_on(async {
-        let (device, queue) = test_utils::create_headless_device().await;
+        let Some((device, queue)) = test_utils::create_headless_device().await else {
+            return;
+        };
         let pixels = solid_atlas([0, 0, 255, 255]);
         let mut pass = ImpostorPass::new(
             &device,
@@ -126,7 +132,9 @@ fn record_writes_red_pixels_for_red_atlas() {
     // red (a single instance aimed straight at the camera samples the red
     // atlas cell).
     pollster::block_on(async {
-        let (device, queue) = test_utils::create_headless_device().await;
+        let Some((device, queue)) = test_utils::create_headless_device().await else {
+            return;
+        };
 
         let pixels = solid_atlas([255, 0, 0, 255]);
         let mut pass = ImpostorPass::new(

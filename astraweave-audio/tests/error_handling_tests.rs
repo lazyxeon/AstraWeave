@@ -53,17 +53,17 @@ fn cleanup_error_test_assets_named(base_dir: &str) -> Result<()> {
 }
 
 fn setup_error_test_assets() -> Result<()> {
-    fs::create_dir_all("tests/assets/error_tests")?;
-    fs::create_dir_all("tests/assets/error_tests/malformed")?;
-    fs::create_dir_all("tests/assets/error_tests/empty_folder")?;
-    fs::create_dir_all("tests/assets/error_tests/corrupted")?;
+    fs::create_dir_all(test_asset_generator::asset_path("error_tests"))?;
+    fs::create_dir_all(test_asset_generator::asset_path("error_tests/malformed"))?;
+    fs::create_dir_all(test_asset_generator::asset_path("error_tests/empty_folder"))?;
+    fs::create_dir_all(test_asset_generator::asset_path("error_tests/corrupted"))?;
     Ok(())
 }
 
 fn cleanup_error_test_assets() -> Result<()> {
-    if Path::new("tests/assets/error_tests").exists() {
+    if Path::new(test_asset_generator::asset_path("error_tests")).exists() {
         // Ignore permission errors during cleanup (Windows file locking)
-        let _ = fs::remove_dir_all("tests/assets/error_tests");
+        let _ = fs::remove_dir_all(test_asset_generator::asset_path("error_tests"));
     }
     Ok(())
 }
@@ -82,7 +82,7 @@ fn test_malformed_toml_dialogue_audio_map() -> Result<()> {
 test_dialogue = { n0 = "test.wav"  # Missing closing brace
 "#;
 
-    let toml_path = "tests/assets/error_tests/malformed/bad_dialogue_map.toml";
+    let toml_path = test_asset_generator::asset_path("error_tests/malformed/bad_dialogue_map.toml");
     let mut file = File::create(toml_path)?;
     file.write_all(malformed_toml.as_bytes())?;
     drop(file);
@@ -139,7 +139,7 @@ fn test_missing_audio_file_play_sfx() -> Result<()> {
     let mut engine = AudioEngine::new()?;
 
     // Attempt to play non-existent file
-    let result = engine.play_sfx_file("tests/assets/NONEXISTENT_FILE.wav");
+    let result = engine.play_sfx_file(test_asset_generator::asset_path("NONEXISTENT_FILE.wav"));
 
     // Should return error (file not found)
     assert!(
@@ -156,7 +156,7 @@ fn test_corrupted_audio_file() -> Result<()> {
     setup_error_test_assets()?;
 
     // Create "corrupted" WAV file (invalid header, truncated data)
-    let corrupted_path = "tests/assets/error_tests/corrupted/bad.wav";
+    let corrupted_path = test_asset_generator::asset_path("error_tests/corrupted/bad.wav");
     let mut file = File::create(corrupted_path)?;
     file.write_all(b"NOT A REAL WAV FILE HEADER\x00\x00")?;
     drop(file);
@@ -182,13 +182,15 @@ fn test_empty_folder_voice_bank_scan() -> Result<()> {
     setup_error_test_assets()?;
 
     // Create VoiceBank with empty folder (no .wav/.ogg files)
-    let voice_bank_toml = r#"
-[speakers.empty_speaker]
-folder = "tests/assets/error_tests/empty_folder"
+    let empty_folder = test_asset_generator::asset_path("error_tests/empty_folder");
+    let voice_bank_toml = format!(
+        r#"[speakers.empty_speaker]
+folder = "{empty_folder}"
 files = []  # Triggers folder scan
-"#;
+"#
+    );
 
-    let toml_path = "tests/assets/error_tests/empty_voice_bank.toml";
+    let toml_path = test_asset_generator::asset_path("error_tests/empty_voice_bank.toml");
     let mut file = File::create(toml_path)?;
     file.write_all(voice_bank_toml.as_bytes())?;
     drop(file);
@@ -255,16 +257,18 @@ fn test_tts_adapter_failure_fallback() -> Result<()> {
     setup_error_test_assets()?;
 
     // Create VoiceBank with TTS but no files (forces TTS path)
-    let voice_bank_toml = r#"
-[speakers.tts_fail_speaker]
-folder = "tests/assets/error_tests/tts_fail"
+    let tts_fail = test_asset_generator::asset_path("error_tests/tts_fail");
+    let voice_bank_toml = format!(
+        r#"[speakers.tts_fail_speaker]
+folder = "{tts_fail}"
 files = []
 tts_voice = "en-US-Neural"
-"#;
+"#
+    );
 
-    fs::create_dir_all("tests/assets/error_tests/tts_fail")?;
+    fs::create_dir_all(test_asset_generator::asset_path("error_tests/tts_fail"))?;
 
-    let toml_path = "tests/assets/error_tests/tts_fail_voice_bank.toml";
+    let toml_path = test_asset_generator::asset_path("error_tests/tts_fail_voice_bank.toml");
     let mut file = File::create(toml_path)?;
     file.write_all(voice_bank_toml.as_bytes())?;
     drop(file);
@@ -338,13 +342,22 @@ fn test_spatial_audio_nan_coordinates() -> Result<()> {
     let mut engine = AudioEngine::new()?;
 
     // Generate test beep
-    generate_test_beep("tests/assets/test_beep_nan.wav", 440.0, 0.2, 22050)?;
+    generate_test_beep(
+        test_asset_generator::asset_path("test_beep_nan.wav"),
+        440.0,
+        0.2,
+        22050,
+    )?;
 
     // Create emitter at NaN position (undefined behavior in 3D math)
     let nan_pos = Vec3::new(f32::NAN, f32::NAN, f32::NAN);
     let emitter_id = 999; // Unique emitter ID
 
-    let result = engine.play_sfx_3d_file(emitter_id, "tests/assets/test_beep_nan.wav", nan_pos);
+    let result = engine.play_sfx_3d_file(
+        emitter_id,
+        test_asset_generator::asset_path("test_beep_nan.wav"),
+        nan_pos,
+    );
 
     // Engine should either:
     // 1. Reject NaN coordinates (return error)
@@ -363,8 +376,8 @@ fn test_spatial_audio_nan_coordinates() -> Result<()> {
     }
 
     // Cleanup
-    if Path::new("tests/assets/test_beep_nan.wav").exists() {
-        fs::remove_file("tests/assets/test_beep_nan.wav")?;
+    if Path::new(test_asset_generator::asset_path("test_beep_nan.wav")).exists() {
+        fs::remove_file(test_asset_generator::asset_path("test_beep_nan.wav"))?;
     }
 
     Ok(())
@@ -375,13 +388,22 @@ fn test_spatial_audio_infinite_coordinates() -> Result<()> {
     let mut engine = AudioEngine::new()?;
 
     // Generate test beep
-    generate_test_beep("tests/assets/test_beep_inf.wav", 440.0, 0.2, 22050)?;
+    generate_test_beep(
+        test_asset_generator::asset_path("test_beep_inf.wav"),
+        440.0,
+        0.2,
+        22050,
+    )?;
 
     // Create emitter at infinite distance
     let inf_pos = Vec3::new(f32::INFINITY, f32::INFINITY, f32::INFINITY);
     let emitter_id = 1000;
 
-    let result = engine.play_sfx_3d_file(emitter_id, "tests/assets/test_beep_inf.wav", inf_pos);
+    let result = engine.play_sfx_3d_file(
+        emitter_id,
+        test_asset_generator::asset_path("test_beep_inf.wav"),
+        inf_pos,
+    );
 
     // Similar to NaN - engine should handle gracefully
     match result {
@@ -395,8 +417,8 @@ fn test_spatial_audio_infinite_coordinates() -> Result<()> {
     }
 
     // Cleanup
-    if Path::new("tests/assets/test_beep_inf.wav").exists() {
-        fs::remove_file("tests/assets/test_beep_inf.wav")?;
+    if Path::new(test_asset_generator::asset_path("test_beep_inf.wav")).exists() {
+        fs::remove_file(test_asset_generator::asset_path("test_beep_inf.wav"))?;
     }
 
     Ok(())
@@ -407,7 +429,12 @@ fn test_spatial_audio_extreme_distance() -> Result<()> {
     let mut engine = AudioEngine::new()?;
 
     // Generate test beep
-    generate_test_beep("tests/assets/test_beep_extreme.wav", 440.0, 0.5, 22050)?;
+    generate_test_beep(
+        test_asset_generator::asset_path("test_beep_extreme.wav"),
+        440.0,
+        0.5,
+        22050,
+    )?;
 
     // Emitter at extreme distance (1 million units away)
     let extreme_pos = Vec3::new(1_000_000.0, 1_000_000.0, 1_000_000.0);
@@ -415,7 +442,7 @@ fn test_spatial_audio_extreme_distance() -> Result<()> {
 
     let result = engine.play_sfx_3d_file(
         emitter_id,
-        "tests/assets/test_beep_extreme.wav",
+        test_asset_generator::asset_path("test_beep_extreme.wav"),
         extreme_pos,
     );
 
@@ -431,8 +458,8 @@ fn test_spatial_audio_extreme_distance() -> Result<()> {
     println!("Extreme distance emitter created: {}", emitter_id);
 
     // Cleanup
-    if Path::new("tests/assets/test_beep_extreme.wav").exists() {
-        fs::remove_file("tests/assets/test_beep_extreme.wav")?;
+    if Path::new(test_asset_generator::asset_path("test_beep_extreme.wav")).exists() {
+        fs::remove_file(test_asset_generator::asset_path("test_beep_extreme.wav"))?;
     }
 
     Ok(())

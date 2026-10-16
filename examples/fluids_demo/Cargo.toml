@@ -3,7 +3,6 @@ name = "fluids_demo"
 license.workspace = true
 version = "0.1.0"
 edition = "2021"
-
 [dependencies]
 astraweave-asset = { path = "../../astraweave-asset" }
 astraweave-physics = { path = "../../astraweave-physics" }

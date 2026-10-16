@@ -688,7 +688,7 @@ pub struct PostProcessPanel {
 
 impl Default for PostProcessPanel {
     fn default() -> Self {
-        let panel = Self {
+        Self {
             active_tab: PostProcessTab::Overview,
 
             profiles: Vec::new(),
@@ -705,9 +705,7 @@ impl Default for PostProcessPanel {
             next_id: 1,
 
             settings_dirty: false,
-        };
-
-        panel
+        }
     }
 }
 

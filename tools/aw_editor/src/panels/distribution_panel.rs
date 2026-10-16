@@ -929,7 +929,7 @@ impl DistributionPanel {
             ui.separator();
             ui.label(format!("{} {}", self.profile.icon(), self.profile.name()));
             ui.separator();
-            ui.label(format!("{}", self.selected_format.name()));
+            ui.label(self.selected_format.name());
 
             if self.is_building {
                 ui.separator();

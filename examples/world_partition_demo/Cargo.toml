@@ -3,7 +3,6 @@ name = "world_partition_demo"
 license.workspace = true
 version = "0.1.0"
 edition = "2021"
-
 [dependencies]
 astraweave-scene = { path = "../../astraweave-scene", features = ["ecs", "world-partition"] }
 astraweave-ecs = { path = "../../astraweave-ecs" }

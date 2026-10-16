@@ -666,39 +666,26 @@ mod tests {
 mod gpu_tests {
     use super::*;
 
-    async fn create_test_device() -> (wgpu::Device, wgpu::Queue) {
-        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
-            backends: wgpu::Backends::all(),
-            ..Default::default()
-        });
-
-        let adapter = instance
-            .request_adapter(&wgpu::RequestAdapterOptions {
-                power_preference: wgpu::PowerPreference::default(),
-                compatible_surface: None,
-                force_fallback_adapter: false,
-            })
-            .await
-            .expect("Failed to find an appropriate adapter");
-
-        adapter
-            .request_device(&wgpu::DeviceDescriptor {
-                label: Some("test_device"),
-                required_features: wgpu::Features::empty(),
-                required_limits: wgpu::Limits {
-                    max_bind_groups: 8,
-                    ..wgpu::Limits::default()
-                },
-                memory_hints: wgpu::MemoryHints::default(),
-                trace: wgpu::Trace::Off,
-            })
-            .await
-            .expect("Failed to create device")
+    async fn create_test_device() -> Option<(wgpu::Device, wgpu::Queue)> {
+        crate::gpu_capability::request_headless(
+            "test_device",
+            wgpu::Features::empty(),
+            wgpu::Limits {
+                max_bind_groups: 8,
+                ..wgpu::Limits::default()
+            },
+            wgpu::PowerPreference::default(),
+            false,
+        )
+        .await
+        .map(|gpu| (gpu.device, gpu.queue))
     }
 
     #[tokio::test]
     async fn test_pipeline_creation() {
-        let (device, queue) = create_test_device().await;
+        let Some((device, queue)) = create_test_device().await else {
+            return;
+        };
         let manager = JointPaletteManager::new(&device, &queue);
 
         // Create dummy bind group layouts for testing
@@ -784,7 +771,9 @@ mod gpu_tests {
 
     #[tokio::test]
     async fn test_skinning_produces_valid_output() {
-        let (device, queue) = create_test_device().await;
+        let Some((device, queue)) = create_test_device().await else {
+            return;
+        };
         let mut manager = JointPaletteManager::new(&device, &queue);
 
         // Allocate a palette

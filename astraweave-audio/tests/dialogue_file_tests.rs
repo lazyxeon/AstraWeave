@@ -25,40 +25,48 @@ use std::{collections::HashMap, fs, path::Path, thread, time::Duration};
 
 /// Helper: Create test DialogueAudioMap TOML and load it
 fn create_test_audio_map() -> Result<DialogueAudioMap> {
-    let toml_content = r#"
-[map.test_dialogue]
-n0 = "tests/assets/test_voice_short.wav"
-n1 = "tests/assets/test_voice_medium.wav"
+    let short = test_asset_generator::asset_path("test_voice_short.wav");
+    let medium = test_asset_generator::asset_path("test_voice_medium.wav");
+    let toml_content = format!(
+        r#"[map.test_dialogue]
+n0 = "{short}"
+n1 = "{medium}"
 
 [map.multi_speaker]
-alice_node = "tests/assets/test_voice_short.wav"
-bob_node = "tests/assets/test_voice_medium.wav"
-"#;
+alice_node = "{short}"
+bob_node = "{medium}"
+"#
+    );
 
-    fs::create_dir_all("tests/assets")?;
-    fs::write("tests/assets/test_dialogue_audio_map.toml", toml_content)?;
+    fs::create_dir_all(test_asset_generator::assets_root_str())?;
+    fs::write(
+        test_asset_generator::asset_path("test_dialogue_audio_map.toml"),
+        toml_content,
+    )?;
 
-    load_dialogue_audio_map("tests/assets/test_dialogue_audio_map.toml")
+    load_dialogue_audio_map(test_asset_generator::asset_path(
+        "test_dialogue_audio_map.toml",
+    ))
 }
 
 /// Helper: Create VoiceBank with explicit files
 fn create_test_voice_bank_explicit() -> Result<VoiceBank> {
     // Create speaker folder structure
-    fs::create_dir_all("tests/assets/speakers/alice")?;
-    fs::create_dir_all("tests/assets/speakers/bob")?;
+    fs::create_dir_all(test_asset_generator::asset_path("speakers/alice"))?;
+    fs::create_dir_all(test_asset_generator::asset_path("speakers/bob"))?;
 
     // Copy test voice files to speaker folders
     fs::copy(
-        "tests/assets/test_voice_short.wav",
-        "tests/assets/speakers/alice/voice_01.wav",
+        test_asset_generator::asset_path("test_voice_short.wav"),
+        test_asset_generator::asset_path("speakers/alice/voice_01.wav"),
     )?;
     fs::copy(
-        "tests/assets/test_voice_medium.wav",
-        "tests/assets/speakers/alice/voice_02.wav",
+        test_asset_generator::asset_path("test_voice_medium.wav"),
+        test_asset_generator::asset_path("speakers/alice/voice_02.wav"),
     )?;
     fs::copy(
-        "tests/assets/test_voice_long.wav",
-        "tests/assets/speakers/bob/voice_01.wav",
+        test_asset_generator::asset_path("test_voice_long.wav"),
+        test_asset_generator::asset_path("speakers/bob/voice_01.wav"),
     )?;
 
     // Create VoiceBank with explicit file lists
@@ -66,7 +74,7 @@ fn create_test_voice_bank_explicit() -> Result<VoiceBank> {
     speakers.insert(
         "Alice".to_string(),
         VoiceSpec {
-            folder: "tests/assets/speakers/alice".to_string(),
+            folder: test_asset_generator::asset_path("speakers/alice").to_string(),
             files: vec!["voice_01.wav".to_string(), "voice_02.wav".to_string()],
             tts_voice: None,
         },
@@ -74,7 +82,7 @@ fn create_test_voice_bank_explicit() -> Result<VoiceBank> {
     speakers.insert(
         "Bob".to_string(),
         VoiceSpec {
-            folder: "tests/assets/speakers/bob".to_string(),
+            folder: test_asset_generator::asset_path("speakers/bob").to_string(),
             files: vec!["voice_01.wav".to_string()],
             tts_voice: None,
         },
@@ -86,31 +94,34 @@ fn create_test_voice_bank_explicit() -> Result<VoiceBank> {
 /// Helper: Create VoiceBank with folder scanning (no explicit files)
 fn create_test_voice_bank_folder_scan() -> Result<VoiceBank> {
     // Create speaker folder with multiple files
-    fs::create_dir_all("tests/assets/speakers/charlie")?;
+    fs::create_dir_all(test_asset_generator::asset_path("speakers/charlie"))?;
 
     // Add multiple voice files to folder
     fs::copy(
-        "tests/assets/test_voice_short.wav",
-        "tests/assets/speakers/charlie/line_01.wav",
+        test_asset_generator::asset_path("test_voice_short.wav"),
+        test_asset_generator::asset_path("speakers/charlie/line_01.wav"),
     )?;
     fs::copy(
-        "tests/assets/test_voice_medium.wav",
-        "tests/assets/speakers/charlie/line_02.wav",
+        test_asset_generator::asset_path("test_voice_medium.wav"),
+        test_asset_generator::asset_path("speakers/charlie/line_02.wav"),
     )?;
     fs::copy(
-        "tests/assets/test_voice_long.wav",
-        "tests/assets/speakers/charlie/line_03.ogg", // Test .ogg extension
+        test_asset_generator::asset_path("test_voice_long.wav"),
+        test_asset_generator::asset_path("speakers/charlie/line_03.ogg"), // Test .ogg extension
     )?;
 
     // Add a non-audio file (should be filtered out)
-    fs::write("tests/assets/speakers/charlie/readme.txt", "Test file")?;
+    fs::write(
+        test_asset_generator::asset_path("speakers/charlie/readme.txt"),
+        "Test file",
+    )?;
 
     // VoiceSpec with empty files list triggers folder scanning
     let mut speakers = HashMap::new();
     speakers.insert(
         "Charlie".to_string(),
         VoiceSpec {
-            folder: "tests/assets/speakers/charlie".to_string(),
+            folder: test_asset_generator::asset_path("speakers/charlie").to_string(),
             files: vec![], // Empty = folder scan mode
             tts_voice: None,
         },
@@ -440,7 +451,10 @@ fn test_folder_scan_filters_non_audio() -> Result<()> {
     let mut audio_engine = AudioEngine::new()?;
 
     // Check that readme.txt exists but won't be selected
-    assert!(Path::new("tests/assets/speakers/charlie/readme.txt").exists());
+    assert!(Path::new(test_asset_generator::asset_path(
+        "speakers/charlie/readme.txt"
+    ))
+    .exists());
 
     // Should only select .wav/.ogg files, not .txt
     let dialogue = Dialogue {
@@ -490,14 +504,14 @@ fn test_tts_fallback_when_no_files() -> Result<()> {
     test_asset_generator::setup_all_test_assets()?;
 
     // Create folder for TTS output
-    fs::create_dir_all("tests/assets/speakers/tts_speaker")?;
+    fs::create_dir_all(test_asset_generator::asset_path("speakers/tts_speaker"))?;
 
     // VoiceBank with TTS voice but no files
     let mut speakers = HashMap::new();
     speakers.insert(
         "TTSSpeaker".to_string(),
         VoiceSpec {
-            folder: "tests/assets/speakers/tts_speaker".to_string(),
+            folder: test_asset_generator::asset_path("speakers/tts_speaker").to_string(),
             files: vec![], // No files
             tts_voice: Some("test_voice_a".to_string()),
         },
@@ -545,13 +559,13 @@ fn test_tts_fallback_when_no_files() -> Result<()> {
 #[serial]
 fn test_tts_generates_temporary_file() -> Result<()> {
     test_asset_generator::setup_all_test_assets()?;
-    fs::create_dir_all("tests/assets/speakers/tts_speaker2")?;
+    fs::create_dir_all(test_asset_generator::asset_path("speakers/tts_speaker2"))?;
 
     let mut speakers = HashMap::new();
     speakers.insert(
         "TTS2".to_string(),
         VoiceSpec {
-            folder: "tests/assets/speakers/tts_speaker2".to_string(),
+            folder: test_asset_generator::asset_path("speakers/tts_speaker2").to_string(),
             files: vec![],
             tts_voice: Some("voice_b".to_string()),
         },
@@ -588,7 +602,7 @@ fn test_tts_generates_temporary_file() -> Result<()> {
     assert!(result);
 
     // Check that TTS generated a file in the folder
-    let entries: Vec<_> = fs::read_dir("tests/assets/speakers/tts_speaker2")?
+    let entries: Vec<_> = fs::read_dir(test_asset_generator::asset_path("speakers/tts_speaker2"))?
         .filter_map(|e| e.ok())
         .filter(|e| e.path().extension().is_some_and(|ext| ext == "wav"))
         .collect();

@@ -679,7 +679,7 @@ pub struct MaterialEditorPanel {
 
 impl Default for MaterialEditorPanel {
     fn default() -> Self {
-        let panel = Self {
+        Self {
             active_tab: MaterialTab::Properties,
 
             materials: Vec::new(),
@@ -699,9 +699,7 @@ impl Default for MaterialEditorPanel {
             next_id: 1,
 
             actions: Vec::new(),
-        };
-
-        panel
+        }
     }
 }
 

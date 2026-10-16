@@ -8,37 +8,25 @@
 //! - Mesh vertex formats
 //! - Draw call validation
 
+#[path = "support/gpu_capability.rs"]
+mod gpu_capability;
+
 use wgpu::util::DeviceExt;
 
 // =============================================================================
 // Test Infrastructure
 // =============================================================================
 
-async fn create_test_device() -> (wgpu::Device, wgpu::Queue) {
-    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
-        backends: wgpu::Backends::all(),
-        ..Default::default()
-    });
-
-    let adapter = instance
-        .request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::default(),
-            force_fallback_adapter: true,
-            compatible_surface: None,
-        })
-        .await
-        .expect("Failed to find adapter");
-
-    adapter
-        .request_device(&wgpu::DeviceDescriptor {
-            label: Some("render_pipeline_test_device"),
-            required_features: wgpu::Features::empty(),
-            required_limits: wgpu::Limits::downlevel_defaults(),
-            memory_hints: wgpu::MemoryHints::default(),
-            trace: Default::default(),
-        })
-        .await
-        .expect("Failed to create device")
+async fn create_test_device() -> Option<(wgpu::Device, wgpu::Queue)> {
+    gpu_capability::request_headless(
+        "render_pipeline_test_device",
+        wgpu::Features::empty(),
+        wgpu::Limits::downlevel_defaults(),
+        wgpu::PowerPreference::default(),
+        true,
+    )
+    .await
+    .map(|gpu| (gpu.device, gpu.queue))
 }
 
 // =============================================================================
@@ -72,7 +60,9 @@ mod camera_tests {
     #[test]
     fn test_camera_uniform_buffer_creation() {
         pollster::block_on(async {
-            let (device, _queue) = create_test_device().await;
+            let Some((device, _queue)) = create_test_device().await else {
+                return;
+            };
 
             let camera = CameraUbo {
                 view: [
@@ -121,7 +111,9 @@ mod camera_tests {
     #[test]
     fn test_camera_bind_group_layout() {
         pollster::block_on(async {
-            let (device, _queue) = create_test_device().await;
+            let Some((device, _queue)) = create_test_device().await else {
+                return;
+            };
 
             let bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 label: Some("camera_bgl"),
@@ -186,7 +178,9 @@ mod light_tests {
     #[test]
     fn test_light_uniform_buffer() {
         pollster::block_on(async {
-            let (device, queue) = create_test_device().await;
+            let Some((device, queue)) = create_test_device().await else {
+                return;
+            };
 
             let light = MainLightUbo {
                 direction: [0.0, -1.0, 0.0, 0.0],
@@ -216,7 +210,9 @@ mod light_tests {
     #[test]
     fn test_light_bind_group_layout() {
         pollster::block_on(async {
-            let (device, _queue) = create_test_device().await;
+            let Some((device, _queue)) = create_test_device().await else {
+                return;
+            };
 
             let bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 label: Some("light_bgl"),
@@ -281,7 +277,9 @@ mod material_tests {
     #[test]
     fn test_material_buffer_creation() {
         pollster::block_on(async {
-            let (device, _queue) = create_test_device().await;
+            let Some((device, _queue)) = create_test_device().await else {
+                return;
+            };
 
             let material = MaterialUbo {
                 base_color: [0.8, 0.2, 0.1, 1.0],
@@ -304,7 +302,9 @@ mod material_tests {
     #[test]
     fn test_metallic_material() {
         pollster::block_on(async {
-            let (device, _queue) = create_test_device().await;
+            let Some((device, _queue)) = create_test_device().await else {
+                return;
+            };
 
             let metal = MaterialUbo {
                 base_color: [0.9, 0.85, 0.8, 1.0], // Gold-ish
@@ -327,7 +327,9 @@ mod material_tests {
     #[test]
     fn test_dielectric_material() {
         pollster::block_on(async {
-            let (device, _queue) = create_test_device().await;
+            let Some((device, _queue)) = create_test_device().await else {
+                return;
+            };
 
             let plastic = MaterialUbo {
                 base_color: [0.1, 0.4, 0.8, 1.0], // Blue plastic
@@ -377,7 +379,9 @@ mod vertex_tests {
     #[test]
     fn test_vertex_buffer_creation() {
         pollster::block_on(async {
-            let (device, _queue) = create_test_device().await;
+            let Some((device, _queue)) = create_test_device().await else {
+                return;
+            };
 
             // Triangle vertices
             let vertices = [
@@ -414,7 +418,9 @@ mod vertex_tests {
     #[test]
     fn test_index_buffer_creation() {
         pollster::block_on(async {
-            let (device, _queue) = create_test_device().await;
+            let Some((device, _queue)) = create_test_device().await else {
+                return;
+            };
 
             // Quad indices (two triangles)
             let indices: [u16; 6] = [0, 1, 2, 0, 2, 3];
@@ -480,7 +486,9 @@ mod shadow_tests {
     #[test]
     fn test_shadow_map_texture_array() {
         pollster::block_on(async {
-            let (device, _queue) = create_test_device().await;
+            let Some((device, _queue)) = create_test_device().await else {
+                return;
+            };
 
             let shadow_map = device.create_texture(&wgpu::TextureDescriptor {
                 label: Some("shadow_cascades"),
@@ -506,7 +514,9 @@ mod shadow_tests {
     #[test]
     fn test_shadow_cascade_views() {
         pollster::block_on(async {
-            let (device, _queue) = create_test_device().await;
+            let Some((device, _queue)) = create_test_device().await else {
+                return;
+            };
 
             let shadow_map = device.create_texture(&wgpu::TextureDescriptor {
                 label: Some("shadow_cascades"),
@@ -557,7 +567,9 @@ mod shadow_tests {
     #[test]
     fn test_shadow_comparison_sampler() {
         pollster::block_on(async {
-            let (device, _queue) = create_test_device().await;
+            let Some((device, _queue)) = create_test_device().await else {
+                return;
+            };
 
             let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
                 label: Some("shadow_sampler"),
@@ -581,7 +593,9 @@ mod shadow_tests {
     #[test]
     fn test_cascade_splits_buffer() {
         pollster::block_on(async {
-            let (device, _queue) = create_test_device().await;
+            let Some((device, _queue)) = create_test_device().await else {
+                return;
+            };
 
             let splits = CascadeSplits {
                 splits: [10.0, 25.0, 50.0, 100.0],
@@ -628,7 +642,9 @@ mod draw_tests {
     #[test]
     fn test_draw_triangle() {
         pollster::block_on(async {
-            let (device, queue) = create_test_device().await;
+            let Some((device, queue)) = create_test_device().await else {
+                return;
+            };
 
             let vs = device.create_shader_module(wgpu::ShaderModuleDescriptor {
                 label: Some("vs"),
@@ -750,7 +766,9 @@ mod draw_tests {
     #[test]
     fn test_indexed_draw() {
         pollster::block_on(async {
-            let (device, queue) = create_test_device().await;
+            let Some((device, queue)) = create_test_device().await else {
+                return;
+            };
 
             let vs = device.create_shader_module(wgpu::ShaderModuleDescriptor {
                 label: Some("vs"),
@@ -880,7 +898,9 @@ mod draw_tests {
     #[test]
     fn test_instanced_draw() {
         pollster::block_on(async {
-            let (device, queue) = create_test_device().await;
+            let Some((device, queue)) = create_test_device().await else {
+                return;
+            };
 
             const INSTANCED_VS: &str = r#"
                 struct InstanceData {
@@ -1042,7 +1062,9 @@ mod depth_tests {
     #[test]
     fn test_depth_buffer_creation() {
         pollster::block_on(async {
-            let (device, _queue) = create_test_device().await;
+            let Some((device, _queue)) = create_test_device().await else {
+                return;
+            };
 
             let depth_texture = device.create_texture(&wgpu::TextureDescriptor {
                 label: Some("depth"),
@@ -1073,7 +1095,9 @@ mod depth_tests {
     #[test]
     fn test_depth_stencil_buffer() {
         pollster::block_on(async {
-            let (device, _queue) = create_test_device().await;
+            let Some((device, _queue)) = create_test_device().await else {
+                return;
+            };
 
             let depth_stencil = device.create_texture(&wgpu::TextureDescriptor {
                 label: Some("depth_stencil"),

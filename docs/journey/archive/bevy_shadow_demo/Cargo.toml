@@ -1,8 +1,8 @@
 [package]
 name = "bevy_shadow_demo"
 version = "0.1.0"
+license = "MIT"
 edition = "2021"
-
 [dependencies]
 astraweave-ecs = { path = "../../astraweave-ecs" }
 astraweave-render-bevy = { path = "../../astraweave-render-bevy" }

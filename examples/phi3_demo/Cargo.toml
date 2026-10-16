@@ -3,7 +3,6 @@ name = "phi3_demo"
 license.workspace = true
 version = "0.1.0"
 edition = "2021"
-
 [dependencies]
 astraweave-llm = { path = "../../astraweave-llm", features = ["ollama"] }
 astraweave-core = { path = "../../astraweave-core" }

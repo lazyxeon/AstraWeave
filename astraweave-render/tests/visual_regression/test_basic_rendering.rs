@@ -6,7 +6,9 @@ use super::visual_regression::VisualTestContext;
 
 #[test]
 fn test_clear_color() {
-    let ctx = pollster::block_on(VisualTestContext::new(64, 64));
+    let Some(ctx) = pollster::block_on(VisualTestContext::new(64, 64)) else {
+        return;
+    };
 
     let pixels = ctx.render_to_buffer(|device, queue, view, _width, _height| {
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
@@ -82,7 +84,9 @@ fn test_clear_color() {
 
 #[test]
 fn test_depth_buffer() {
-    let ctx = pollster::block_on(VisualTestContext::new(64, 64));
+    let Some(ctx) = pollster::block_on(VisualTestContext::new(64, 64)) else {
+        return;
+    };
 
     let pixels = ctx.render_to_buffer(|device, queue, view, width, height| {
         // Create depth texture
@@ -152,7 +156,9 @@ fn test_depth_buffer() {
 
 #[test]
 fn test_simple_triangle() {
-    let ctx = pollster::block_on(VisualTestContext::new(128, 128));
+    let Some(ctx) = pollster::block_on(VisualTestContext::new(128, 128)) else {
+        return;
+    };
 
     let pixels = ctx.render_to_buffer(|device, queue, view, _width, _height| {
         // Create a simple shader that renders a triangle

@@ -136,6 +136,9 @@ jobs:
         with:
           install-nextest: "true"
 
+      - name: Build the audio device probe
+        run: cargo build --locked -p astraweave-audio --bin aw_audio_probe
+
       - name: Nextest (affected crates, or the workspace on a full diff)
         env:
           AW_CI_FULL: ${{ needs.changes.outputs.full }}
@@ -338,11 +341,37 @@ jobs:
         with:
           install-nextest: "true"
 
+      - name: Build the audio device probe
+        run: cargo build --locked -p astraweave-audio --bin aw_audio_probe
+
+      - name: macOS runners have no wgpu software adapter
+        if: runner.os == 'macOS'
+        run: echo "AW_GPU_SKIP_IF_UNAVAILABLE=1" >> "$GITHUB_ENV"
+
       - name: Workspace nextest
         env:
           AW_CI_FULL: "true"
           AW_CI_EXCLUDES: ${{ env.EXCLUDED_PACKAGES }}
         run: bash scripts/ci/run-tests.sh
+
+      - name: Report GPU skips
+        if: always()
+        shell: bash
+        run: |
+          log="target/gpu-skip-reasons.txt"
+          if [ -s "$log" ]; then
+            {
+              echo "## GPU tests skipped"
+              echo
+              echo "These tests did not execute. A line here is a skip, not a pass."
+              echo
+            } >> "$GITHUB_STEP_SUMMARY"
+            while IFS= read -r line; do
+              echo "- ${line}" >> "$GITHUB_STEP_SUMMARY"
+              echo "::warning title=GPU test skipped::$line"
+              echo "$line"
+            done < "$log"
+          fi
 
   build-release:
     name: Build release (${{ matrix.os }})
