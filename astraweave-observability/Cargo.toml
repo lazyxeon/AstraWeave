@@ -25,7 +25,6 @@ dashmap = "6.1"
 async-trait = "0.1"
 prometheus = { version = "0.14", optional = true }
 opentelemetry = { version = "0.31", optional = true }
-opentelemetry-jaeger = { version = "0.22", optional = true }
 histogram = "0.11"
 hdrhistogram = "7.5"
 rand = "0.9"
@@ -33,7 +32,7 @@ rand = "0.9"
 [features]
 default = []
 prometheus = ["dep:prometheus"]
-opentelemetry = ["dep:opentelemetry", "dep:opentelemetry-jaeger"]
+opentelemetry = ["dep:opentelemetry"]
 
 [dev-dependencies]
 tempfile.workspace = true

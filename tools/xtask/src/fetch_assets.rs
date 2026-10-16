@@ -1637,7 +1637,10 @@ fn unpack_zip(zip_path: &Path, dest: &Path) -> Result<()> {
     let mut total = 0u64;
     for i in 0..archive.len() {
         let mut member = archive.by_index(i)?;
-        let raw_name = member.name().to_string();
+        let raw_name = member
+            .name()
+            .with_context(|| format!("zip member {i} has an undecodable name"))?
+            .into_owned();
         if !is_safe_relative(&raw_name) {
             bail!("path traversal rejected: zip member '{raw_name}'");
         }

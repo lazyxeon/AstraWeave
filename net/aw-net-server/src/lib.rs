@@ -9,8 +9,6 @@
 
 use std::{
     collections::HashMap,
-    fs::File,
-    io::BufReader,
     net::SocketAddr,
     path::{Path, PathBuf},
     str::FromStr,
@@ -25,7 +23,8 @@ use axum::response::IntoResponse;
 use axum::{routing::get, Router};
 use futures::{SinkExt, StreamExt};
 use parking_lot::Mutex;
-use rustls_pemfile::{certs, private_key};
+use rustls::pki_types::pem::PemObject;
+use rustls::pki_types::{CertificateDer, PrivateKeyDer};
 use tokio::{net::TcpListener, task::JoinHandle, time::Instant};
 use tokio_rustls::{rustls::ServerConfig as RustlsServerConfig, TlsAcceptor};
 use tokio_tungstenite::{
@@ -235,22 +234,16 @@ struct AppState {
 }
 
 // TLS certificate loading functions
-fn load_certs(path: &Path) -> Result<Vec<rustls::pki_types::CertificateDer<'static>>> {
-    let file = File::open(path)
-        .map_err(|e| anyhow!("Failed to open certificate file {}: {}", path.display(), e))?;
-    let mut reader = BufReader::new(file);
-    certs(&mut reader)
+fn load_certs(path: &Path) -> Result<Vec<CertificateDer<'static>>> {
+    CertificateDer::pem_file_iter(path)
+        .map_err(|e| anyhow!("Failed to open certificate file {}: {}", path.display(), e))?
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| anyhow!("Failed to parse certificates: {}", e))
 }
 
-fn load_private_key(path: &Path) -> Result<rustls::pki_types::PrivateKeyDer<'static>> {
-    let file = File::open(path)
-        .map_err(|e| anyhow!("Failed to open private key file {}: {}", path.display(), e))?;
-    let mut reader = BufReader::new(file);
-    private_key(&mut reader)
-        .map_err(|e| anyhow!("Failed to parse private key: {}", e))?
-        .ok_or_else(|| anyhow!("No private key found in {}", path.display()))
+fn load_private_key(path: &Path) -> Result<PrivateKeyDer<'static>> {
+    PrivateKeyDer::from_pem_file(path)
+        .map_err(|e| anyhow!("Failed to parse private key in {}: {}", path.display(), e))
 }
 
 fn create_tls_acceptor(cert_path: &Path, key_path: &Path) -> Result<TlsAcceptor> {
