@@ -6,7 +6,7 @@ edition = "2021"
 
 [features]
 default = []
-tls = ["tokio-rustls", "rustls", "rustls-pemfile", "webpki-roots"]
+tls = ["tokio-rustls", "rustls", "webpki-roots"]
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(feature, values("dangerous-testing"))'] }
@@ -26,7 +26,6 @@ rand = { workspace = true }
 # TLS support (optional) - using ring for Windows compatibility
 tokio-rustls = { version = "0.26", optional = true, default-features = false, features = ["ring"] }
 rustls = { version = "0.23", optional = true, default-features = false, features = ["ring", "std"] }
-rustls-pemfile = { version = "2", optional = true }
 webpki-roots = { version = "0.26", optional = true }
 
 [dev-dependencies]

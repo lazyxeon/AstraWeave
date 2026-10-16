@@ -20,14 +20,12 @@
 //! // Use connector with tokio-tungstenite's connect_async_tls_with_config
 //! ```
 
-use std::fs::File;
-use std::io::BufReader;
 use std::path::Path;
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
-use rustls_pemfile::{certs, private_key};
-use tokio_rustls::rustls::pki_types::{CertificateDer, ServerName};
+use tokio_rustls::rustls::pki_types::pem::PemObject;
+use tokio_rustls::rustls::pki_types::{CertificateDer, PrivateKeyDer, ServerName};
 use tokio_rustls::rustls::{ClientConfig, RootCertStore, ServerConfig};
 use tokio_rustls::{TlsAcceptor, TlsConnector};
 use webpki_roots::TLS_SERVER_ROOTS;
@@ -54,17 +52,16 @@ impl TlsServerConfig {
     /// # Returns
     /// TLS configuration ready to create an acceptor
     pub fn from_pem_files(cert_path: impl AsRef<Path>, key_path: impl AsRef<Path>) -> Result<Self> {
-        // Load certificate chain
-        let cert_file = File::open(cert_path.as_ref()).with_context(|| {
-            format!(
-                "Failed to open cert file: {}",
-                redact_path_for_error(cert_path.as_ref())
-            )
-        })?;
-        let mut cert_reader = BufReader::new(cert_file);
-        let cert_chain: Vec<CertificateDer<'static>> = certs(&mut cert_reader)
-            .collect::<Result<Vec<_>, _>>()
-            .context("Failed to parse certificate chain")?;
+        let cert_chain: Vec<CertificateDer<'static>> =
+            CertificateDer::pem_file_iter(cert_path.as_ref())
+                .with_context(|| {
+                    format!(
+                        "Failed to open cert file: {}",
+                        redact_path_for_error(cert_path.as_ref())
+                    )
+                })?
+                .collect::<Result<Vec<_>, _>>()
+                .context("Failed to parse certificate chain")?;
 
         if cert_chain.is_empty() {
             anyhow::bail!(
@@ -73,22 +70,12 @@ impl TlsServerConfig {
             );
         }
 
-        // Load private key
-        let key_file = File::open(key_path.as_ref()).with_context(|| {
+        let private_key = PrivateKeyDer::from_pem_file(key_path.as_ref()).with_context(|| {
             format!(
-                "Failed to open key file: {}",
+                "Failed to parse private key in {}",
                 redact_path_for_error(key_path.as_ref())
             )
         })?;
-        let mut key_reader = BufReader::new(key_file);
-        let private_key = private_key(&mut key_reader)
-            .context("Failed to parse private key")?
-            .ok_or_else(|| {
-                anyhow::anyhow!(
-                    "No private key found in {}",
-                    redact_path_for_error(key_path.as_ref())
-                )
-            })?;
 
         // Build config immediately since PrivateKeyDer doesn't implement Clone
         let server_config = ServerConfig::builder()
@@ -130,16 +117,15 @@ impl TlsClientConfig {
     /// # Arguments
     /// * `ca_cert_path` - Path to PEM-encoded CA certificate file
     pub fn with_custom_ca(ca_cert_path: impl AsRef<Path>) -> Result<TlsConnector> {
-        let ca_file = File::open(ca_cert_path.as_ref()).with_context(|| {
+        let ca_certs = CertificateDer::pem_file_iter(ca_cert_path.as_ref()).with_context(|| {
             format!(
                 "Failed to open CA cert: {}",
                 redact_path_for_error(ca_cert_path.as_ref())
             )
         })?;
-        let mut ca_reader = BufReader::new(ca_file);
 
         let mut root_store = RootCertStore::empty();
-        for cert in certs(&mut ca_reader) {
+        for cert in ca_certs {
             let cert = cert.context("Failed to parse CA certificate")?;
             root_store
                 .add(cert)

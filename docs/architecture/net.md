@@ -9,7 +9,7 @@ lifecycle_status: active
 integration_status: example_only
 summary: "FALSE-PRODUCTION-READY (R.0.B 2026-06-30): the prior active/wired front-matter was example-only reality — astraweave-net::GameServer/Msg/Snapshot has no non-example engine/tool caller (ex-only). Real multiplayer wire-up is DEFERRED to v1.1 (a conscious deferral, not a drop). net.md §1"
 owns: [astraweave-net]
-doc_version: "1.4"
+doc_version: "1.5"
 last_verified_commit: a2474c5b7
 ---
 
@@ -27,11 +27,11 @@ last_verified_commit: a2474c5b7
 |---|---|
 | **System name** | Net (snapshot-based game server) |
 | **Primary crates** | `astraweave-net` (sole crate in this subsystem) |
-| **Document version** | 1.4 |
+| **Document version** | 1.5 |
 | **Last verified against commit** | `a2474c5b7` |
 | **Last verified date** | 2026-05-12 |
 | **Status** | Active |
-| **Revision history** | 1.4 (2026-10-15): `GameServer` accepts WebSocket connections with `engine_ws_config` (`max_message_size` and `max_frame_size` 1 MiB). `astraweave-ipc` uses the same 1 MiB cap on accept and connect. 1.3 (2026-10-15): Hello requires a real token outside debug/test, and input uses the server player id. 1.2 (2026-05-12): Deep investigation pass. **Major new finding**: the aspirational `docs/src/core-systems/networking.md` doc claims AstraWeave uses **QUIC (via Quinn)** for transport — but the actual implementation uses **WebSocket (tokio-tungstenite over TCP)**. This is an architectural-class mismatch beyond the type-name mismatches already documented; added to §6. Enriched §11 Q2, Q6, Q8, Q9 with concrete factual context (test counts, call-site counts, exact line refs). Q6 (replay log) factually closed at the code level: 2 push sites (`lib.rs:837, 868`), 0 remove sites anywhere — confirmed truly unbounded. Q9 (webpki-roots) clarified as **client-side-only** — `TLS_SERVER_ROOTS` is imported only at `tls.rs:33, 119`, both inside `TlsClientConfig::default_connector`. Q8 (Box<dyn Interest>) quantified — 2 allocation sites per broadcast per connection. Added note that `tls.rs` exports **5 public methods** (not the 2 the §1 summary highlights): `TlsServerConfig::{from_pem_files, acceptor}`, `TlsClientConfig::{default_connector, with_custom_ca, insecure_connector}`.<br><br>1.1 (2026-05-12): Verification pass. **Corrected §4 / Appendix B**: the prior `[INFERRED]` claim of "no aspirational doc tree" was wrong — `docs/src/core-systems/networking.md` exists and references 7+ nonexistent submodules (`replication`, `state`, `delta`, `serialization`, `prediction`, plus types `Server`/`ServerConfig`/`Client`/`ClientConfig`/`ClientEvent`). Same `28bc94f21` "Create comprehensive bespoke wiki" sweep that created the aspirational audio/input docs. Added new §6 row. Resolved §10 sanitizer `[INFERRED]` — `astraweave-net` is explicitly listed in the `P1_CRATES` array at `sanitizers.yml:205`. Corrected Appendix B creation date: first commit was 2025-09-04 (`ba52548b3`), not 2025-09-05. |
+| **Revision history** | 1.5 (2026-10-15): The `tls` feature parses PEM with `rustls-pki-types`. `rustls-pemfile` is not a dependency.<br><br>1.4 (2026-10-15): `GameServer` accepts WebSocket connections with `engine_ws_config` (`max_message_size` and `max_frame_size` 1 MiB). `astraweave-ipc` uses the same 1 MiB cap on accept and connect. 1.3 (2026-10-15): Hello requires a real token outside debug/test, and input uses the server player id. 1.2 (2026-05-12): Deep investigation pass. **Major new finding**: the aspirational `docs/src/core-systems/networking.md` doc claims AstraWeave uses **QUIC (via Quinn)** for transport — but the actual implementation uses **WebSocket (tokio-tungstenite over TCP)**. This is an architectural-class mismatch beyond the type-name mismatches already documented; added to §6. Enriched §11 Q2, Q6, Q8, Q9 with concrete factual context (test counts, call-site counts, exact line refs). Q6 (replay log) factually closed at the code level: 2 push sites (`lib.rs:837, 868`), 0 remove sites anywhere — confirmed truly unbounded. Q9 (webpki-roots) clarified as **client-side-only** — `TLS_SERVER_ROOTS` is imported only at `tls.rs:33, 119`, both inside `TlsClientConfig::default_connector`. Q8 (Box<dyn Interest>) quantified — 2 allocation sites per broadcast per connection. Added note that `tls.rs` exports **5 public methods** (not the 2 the §1 summary highlights): `TlsServerConfig::{from_pem_files, acceptor}`, `TlsClientConfig::{default_connector, with_custom_ca, insecure_connector}`.<br><br>1.1 (2026-05-12): Verification pass. **Corrected §4 / Appendix B**: the prior `[INFERRED]` claim of "no aspirational doc tree" was wrong — `docs/src/core-systems/networking.md` exists and references 7+ nonexistent submodules (`replication`, `state`, `delta`, `serialization`, `prediction`, plus types `Server`/`ServerConfig`/`Client`/`ClientConfig`/`ClientEvent`). Same `28bc94f21` "Create comprehensive bespoke wiki" sweep that created the aspirational audio/input docs. Added new §6 row. Resolved §10 sanitizer `[INFERRED]` — `astraweave-net` is explicitly listed in the `P1_CRATES` array at `sanitizers.yml:205`. Corrected Appendix B creation date: first commit was 2025-09-04 (`ba52548b3`), not 2025-09-05. |
 | **Owner notes** | Self-contained snapshot-server library. Three direct production consumers (`examples/coop_server`, `examples/coop_client`, `examples/net_headless_sim`). Optional `tls` feature for secure WebSocket. Dedicated `.github/workflows/net-tests.yml` workflow. Not an ECS-Plugin — `astraweave-net` predates and operates parallel to the ECS-Plugin networking in `astraweave-net-ecs`. |
 
 ---
@@ -159,7 +159,7 @@ Optional TLS path (feature = "tls")
     │ astraweave-net/src/tls.rs
     ▼
 [TlsServerConfig::from_pem_files(cert.pem, key.pem)]    (tls.rs:56-)
-    │   → Reads cert chain + private key with rustls_pemfile
+    │   → Reads cert chain + private key with rustls-pki-types (`CertificateDer::pem_file_iter`, `PrivateKeyDer::from_pem_file`)
     │   → Builds rustls::ServerConfig with ring crypto backend
     │   → Wraps in TlsAcceptor via .acceptor()
     │
@@ -470,7 +470,7 @@ The runtime selects via the `InterestPolicy` enum (lib.rs:212-226): `Radius | Fo
 | 13 | `replay_from` does NOT bail on per-event validation failures | Yes (intentional contract) | `lib.rs:928`: `let _ = validate_and_execute(...)`. |
 | 14 | `ServerWelcome` is sent immediately after WebSocket upgrade, before any other server message | Yes | `lib.rs:601-604` — synchronous send before the writer-task spawn at `lib.rs:612`. |
 | 15 | `GameServer::tick` uses `AtomicU64::fetch_add(1, Ordering::Relaxed)` | Yes | `lib.rs:559`. The relaxed ordering is sufficient because all reads happen on the same task that incremented. |
-| 16 | TLS feature is opt-in (default features = `[]`) | Yes (compile-time) | `Cargo.toml:8`: `default = []`; `tls = ["tokio-rustls", "rustls", "rustls-pemfile", "webpki-roots"]` at line 9. |
+| 16 | TLS feature is opt-in (default features = `[]`) | Yes (compile-time) | `Cargo.toml:8`: `default = []`; `tls = ["tokio-rustls", "rustls", "webpki-roots"]` at line 9. |
 
 ---
 
@@ -567,7 +567,7 @@ The runtime selects via the `InterestPolicy` enum (lib.rs:212-226): `Radius | Fo
 
 **Verification process:**
 - `rg 'pub fn|pub struct|pub enum|pub trait' astraweave-net/src/` should match §3 vocabulary surface.
-- `cargo tree -p astraweave-net --depth 1` should list `anyhow`, `thiserror`, `serde`, `serde_json`, `tokio`, `futures-util`, `tungstenite`, `tokio-tungstenite`, `astraweave-core`, `rand`. Adding `tls` feature adds `tokio-rustls`, `rustls`, `rustls-pemfile`, `webpki-roots`.
+- `cargo tree -p astraweave-net --depth 1` should list `anyhow`, `thiserror`, `serde`, `serde_json`, `tokio`, `futures-util`, `tungstenite`, `tokio-tungstenite`, `astraweave-core`, `rand`. Adding `tls` feature adds `tokio-rustls`, `rustls`, `webpki-roots`.
 - `rg 'use astraweave_net' --type rust -g '!*test*' -g '!benches/*'` should find the three example consumers in §4. New consumers must be added there.
 - `grep -c '#\[test\]\|#\[tokio::test\]\|proptest!' astraweave-net/src/*.rs astraweave-net/tests/*.rs astraweave-net/tests/integration/*.rs` should total ≥ 377 (the test-count invariant should grow, never shrink).
 - Stamp the new commit hash and date in the metadata table after verification.

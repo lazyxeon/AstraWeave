@@ -10,7 +10,7 @@ use std::{
 };
 use time::OffsetDateTime;
 use walkdir::WalkDir;
-use zip::write::FileOptions;
+use zip::write::SimpleFileOptions;
 
 #[derive(Parser)]
 #[command(
@@ -201,8 +201,7 @@ fn gen_manifest(root: &Path, name: &str, version: &str) -> Result<Manifest> {
 fn write_zip(zip_path: &Path, src_root: &Path) -> Result<()> {
     let f = fs::File::create(zip_path)?;
     let mut zip = zip::ZipWriter::new(f);
-    let options: FileOptions<'_, ()> =
-        FileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+    let options = SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
 
     for entry in WalkDir::new(src_root).into_iter().filter_map(Result::ok) {
         let p = entry.path();
