@@ -1,0 +1,46 @@
+# CodeRabbit configuration. Schema: https://coderabbit.ai/integrations/schema.v2.json
+# https://docs.coderabbit.ai/reference/configuration
+language: en-US
+reviews:
+  request_changes_workflow: true
+  path_filters:
+    - "**"
+    - "!assets/**"
+    - "!**/golden/**"
+    - "!**/*.hash"
+    - "!docs/architecture/workspace_map.html"
+  path_instructions:
+    - path: "**/*.rs"
+      instructions: |
+        Determinism is non-negotiable for simulation and tick code (ECS stages, combat, physics, destruction, nav, terrain columns, weaving, scripting, causality, and aravath_runtime).
+        Flag HashMap or HashSet iteration that affects sim outputs, wall-clock time (SystemTime, Instant used as a sim input), unseeded RNG, and float nondeterminism (target-cpu=native, fma, or libm bypasses) in that code.
+        Local LLMs propose. The deterministic simulation validates and executes. Flag a new remote or cloud model client. Ollama stays on loopback unless the caller uses allowing_remote.
+        Assets added to the tree are CC0 only.
+    - path: "astraweave-render/**"
+      instructions: |
+        The frame-time target is under 11 ms per frame on a GTX 1660 Ti-class GPU. That target is not yet measured. Do not treat a change as meeting the budget unless it includes a real GPU timing sample. Flag new per-frame work that has no budget note.
+    - path: "**/*.wgsl"
+      instructions: |
+        Shader changes sit on the frame path. The target is under 11 ms per frame on a GTX 1660 Ti-class GPU and is not yet measured. Flag extra passes or unbounded loops that have no budget note.
+    - path: "README.md"
+      instructions: |
+        Player-facing text uses Aravath. Flag the string Veilweaver. A crate name ending in veilweaver_ and the archive directory projects/veilweaver are not title uses. Assets are CC0 only. Local LLMs propose and the deterministic simulation validates and executes. The under-11 ms GTX 1660 Ti frame budget is a target, not a measured result.
+    - path: "CONTRIBUTING.md"
+      instructions: |
+        Player-facing text uses Aravath. Flag the string Veilweaver. A crate name ending in veilweaver_ and the archive directory projects/veilweaver are not title uses. Assets added to the tree are CC0 only. Local LLMs propose and the deterministic simulation validates and executes.
+    - path: "docs/guides/**"
+      instructions: |
+        Player-facing text uses Aravath. Flag the string Veilweaver. A crate name ending in veilweaver_ and the archive directory projects/veilweaver are not title uses. Assets are CC0 only. Do not describe the under-11 ms GTX 1660 Ti frame budget as measured.
+    - path: "docs/README.md"
+      instructions: |
+        Player-facing text uses Aravath. Flag the string Veilweaver. A crate name ending in veilweaver_ and the archive directory projects/veilweaver are not title uses.
+    - path: "docs/QUICKSTART.md"
+      instructions: |
+        Player-facing text uses Aravath. Flag the string Veilweaver. A crate name ending in veilweaver_ and the archive directory projects/veilweaver are not title uses.
+  auto_review:
+    enabled: true
+    drafts: true
+    auto_incremental_review: true
+    auto_pause_after_reviewed_commits: 0
+    base_branches:
+      - "^main$"
