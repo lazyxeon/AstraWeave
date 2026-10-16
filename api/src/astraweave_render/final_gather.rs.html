@@ -482,17 +482,27 @@
 <a href=#482 id=482 data-nosnippet>482</a>    <span class="attr">#[test]
 <a href=#483 id=483 data-nosnippet>483</a>    </span><span class="kw">fn </span>final_gather_pass_creation() {
 <a href=#484 id=484 data-nosnippet>484</a>        <span class="kw">let </span>instance = wgpu::Instance::new(<span class="kw-2">&amp;</span>wgpu::InstanceDescriptor::default());
-<a href=#485 id=485 data-nosnippet>485</a>        <span class="kw">let </span>adapter = pollster::block_on(instance.request_adapter(<span class="kw-2">&amp;</span>wgpu::RequestAdapterOptions {
-<a href=#486 id=486 data-nosnippet>486</a>            power_preference: wgpu::PowerPreference::LowPower,
-<a href=#487 id=487 data-nosnippet>487</a>            compatible_surface: <span class="prelude-val">None</span>,
-<a href=#488 id=488 data-nosnippet>488</a>            force_fallback_adapter: <span class="bool-val">false</span>,
-<a href=#489 id=489 data-nosnippet>489</a>        }))
-<a href=#490 id=490 data-nosnippet>490</a>        .expect(<span class="string">"adapter"</span>);
-<a href=#491 id=491 data-nosnippet>491</a>        <span class="kw">let </span>(device, <span class="kw">_</span>) =
-<a href=#492 id=492 data-nosnippet>492</a>            pollster::block_on(adapter.request_device(<span class="kw-2">&amp;</span>wgpu::DeviceDescriptor::default()))
-<a href=#493 id=493 data-nosnippet>493</a>                .expect(<span class="string">"device"</span>);
-<a href=#494 id=494 data-nosnippet>494</a>
-<a href=#495 id=495 data-nosnippet>495</a>        <span class="kw">let </span>pass = FinalGatherPass::new(<span class="kw-2">&amp;</span>device, <span class="number">1280</span>, <span class="number">720</span>);
-<a href=#496 id=496 data-nosnippet>496</a>        <span class="macro">assert_eq!</span>(pass.dimensions(), (<span class="number">1280</span>, <span class="number">720</span>));
-<a href=#497 id=497 data-nosnippet>497</a>    }
-<a href=#498 id=498 data-nosnippet>498</a>}</code></pre></div></section></main></body></html>
+<a href=#485 id=485 data-nosnippet>485</a>        <span class="kw">let </span>adapter =
+<a href=#486 id=486 data-nosnippet>486</a>            <span class="kw">match </span>pollster::block_on(instance.request_adapter(<span class="kw-2">&amp;</span>wgpu::RequestAdapterOptions {
+<a href=#487 id=487 data-nosnippet>487</a>                power_preference: wgpu::PowerPreference::LowPower,
+<a href=#488 id=488 data-nosnippet>488</a>                compatible_surface: <span class="prelude-val">None</span>,
+<a href=#489 id=489 data-nosnippet>489</a>                force_fallback_adapter: <span class="bool-val">false</span>,
+<a href=#490 id=490 data-nosnippet>490</a>            })) {
+<a href=#491 id=491 data-nosnippet>491</a>                <span class="prelude-val">Ok</span>(adapter) =&gt; adapter,
+<a href=#492 id=492 data-nosnippet>492</a>                <span class="prelude-val">Err</span>(err) =&gt; {
+<a href=#493 id=493 data-nosnippet>493</a>                    <span class="kw">let </span>reason = <span class="macro">format!</span>(<span class="string">"no wgpu adapter: {err}"</span>);
+<a href=#494 id=494 data-nosnippet>494</a>                    <span class="kw">if </span><span class="kw">crate</span>::gpu_capability::skip_if_unavailable() {
+<a href=#495 id=495 data-nosnippet>495</a>                        <span class="kw">crate</span>::gpu_capability::note_skip(<span class="kw-2">&amp;</span>reason);
+<a href=#496 id=496 data-nosnippet>496</a>                        <span class="kw">return</span>;
+<a href=#497 id=497 data-nosnippet>497</a>                    }
+<a href=#498 id=498 data-nosnippet>498</a>                    <span class="macro">panic!</span>(<span class="string">"Failed to find adapter: {reason}"</span>);
+<a href=#499 id=499 data-nosnippet>499</a>                }
+<a href=#500 id=500 data-nosnippet>500</a>            };
+<a href=#501 id=501 data-nosnippet>501</a>        <span class="kw">let </span>(device, <span class="kw">_</span>) =
+<a href=#502 id=502 data-nosnippet>502</a>            pollster::block_on(adapter.request_device(<span class="kw-2">&amp;</span>wgpu::DeviceDescriptor::default()))
+<a href=#503 id=503 data-nosnippet>503</a>                .expect(<span class="string">"device"</span>);
+<a href=#504 id=504 data-nosnippet>504</a>
+<a href=#505 id=505 data-nosnippet>505</a>        <span class="kw">let </span>pass = FinalGatherPass::new(<span class="kw-2">&amp;</span>device, <span class="number">1280</span>, <span class="number">720</span>);
+<a href=#506 id=506 data-nosnippet>506</a>        <span class="macro">assert_eq!</span>(pass.dimensions(), (<span class="number">1280</span>, <span class="number">720</span>));
+<a href=#507 id=507 data-nosnippet>507</a>    }
+<a href=#508 id=508 data-nosnippet>508</a>}</code></pre></div></section></main></body></html>

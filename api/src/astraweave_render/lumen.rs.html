@@ -357,80 +357,110 @@
 <a href=#357 id=357 data-nosnippet>357</a>    <span class="attr">#[test]
 <a href=#358 id=358 data-nosnippet>358</a>    </span><span class="kw">fn </span>lumen_gi_creation() {
 <a href=#359 id=359 data-nosnippet>359</a>        <span class="kw">let </span>instance = wgpu::Instance::new(<span class="kw-2">&amp;</span>wgpu::InstanceDescriptor::default());
-<a href=#360 id=360 data-nosnippet>360</a>        <span class="kw">let </span>adapter = pollster::block_on(instance.request_adapter(<span class="kw-2">&amp;</span>wgpu::RequestAdapterOptions {
-<a href=#361 id=361 data-nosnippet>361</a>            power_preference: wgpu::PowerPreference::LowPower,
-<a href=#362 id=362 data-nosnippet>362</a>            compatible_surface: <span class="prelude-val">None</span>,
-<a href=#363 id=363 data-nosnippet>363</a>            force_fallback_adapter: <span class="bool-val">false</span>,
-<a href=#364 id=364 data-nosnippet>364</a>        }))
-<a href=#365 id=365 data-nosnippet>365</a>        .expect(<span class="string">"adapter"</span>);
-<a href=#366 id=366 data-nosnippet>366</a>        <span class="kw">let </span>(device, <span class="kw">_</span>) =
-<a href=#367 id=367 data-nosnippet>367</a>            pollster::block_on(adapter.request_device(<span class="kw-2">&amp;</span>wgpu::DeviceDescriptor::default()))
-<a href=#368 id=368 data-nosnippet>368</a>                .expect(<span class="string">"device"</span>);
-<a href=#369 id=369 data-nosnippet>369</a>
-<a href=#370 id=370 data-nosnippet>370</a>        <span class="kw">let </span>config = LumenConfig {
-<a href=#371 id=371 data-nosnippet>371</a>            surface_cache: SurfaceCacheConfig {
-<a href=#372 id=372 data-nosnippet>372</a>                grid_dims: UVec3::new(<span class="number">4</span>, <span class="number">4</span>, <span class="number">4</span>),
-<a href=#373 id=373 data-nosnippet>373</a>                ..Default::default()
-<a href=#374 id=374 data-nosnippet>374</a>            },
-<a href=#375 id=375 data-nosnippet>375</a>            sdf: SdfConfig {
-<a href=#376 id=376 data-nosnippet>376</a>                dims: [<span class="number">8</span>, <span class="number">8</span>, <span class="number">8</span>],
-<a href=#377 id=377 data-nosnippet>377</a>                ..Default::default()
-<a href=#378 id=378 data-nosnippet>378</a>            },
-<a href=#379 id=379 data-nosnippet>379</a>            ..Default::default()
-<a href=#380 id=380 data-nosnippet>380</a>        };
-<a href=#381 id=381 data-nosnippet>381</a>        <span class="kw">let </span>lumen = LumenGI::new(<span class="kw-2">&amp;</span>device, <span class="number">640</span>, <span class="number">480</span>, config);
-<a href=#382 id=382 data-nosnippet>382</a>        <span class="macro">assert_eq!</span>(lumen.surface_cache().total_probes(), <span class="number">64</span>);
-<a href=#383 id=383 data-nosnippet>383</a>    }
-<a href=#384 id=384 data-nosnippet>384</a>
-<a href=#385 id=385 data-nosnippet>385</a>    <span class="attr">#[test]
-<a href=#386 id=386 data-nosnippet>386</a>    </span><span class="kw">fn </span>lumen_gi_with_quality() {
-<a href=#387 id=387 data-nosnippet>387</a>        <span class="kw">let </span>instance = wgpu::Instance::new(<span class="kw-2">&amp;</span>wgpu::InstanceDescriptor::default());
-<a href=#388 id=388 data-nosnippet>388</a>        <span class="kw">let </span>adapter = pollster::block_on(instance.request_adapter(<span class="kw-2">&amp;</span>wgpu::RequestAdapterOptions {
-<a href=#389 id=389 data-nosnippet>389</a>            power_preference: wgpu::PowerPreference::LowPower,
-<a href=#390 id=390 data-nosnippet>390</a>            compatible_surface: <span class="prelude-val">None</span>,
-<a href=#391 id=391 data-nosnippet>391</a>            force_fallback_adapter: <span class="bool-val">false</span>,
-<a href=#392 id=392 data-nosnippet>392</a>        }))
-<a href=#393 id=393 data-nosnippet>393</a>        .expect(<span class="string">"adapter"</span>);
-<a href=#394 id=394 data-nosnippet>394</a>        <span class="kw">let </span>(device, <span class="kw">_</span>) =
-<a href=#395 id=395 data-nosnippet>395</a>            pollster::block_on(adapter.request_device(<span class="kw-2">&amp;</span>wgpu::DeviceDescriptor::default()))
-<a href=#396 id=396 data-nosnippet>396</a>                .expect(<span class="string">"device"</span>);
-<a href=#397 id=397 data-nosnippet>397</a>
-<a href=#398 id=398 data-nosnippet>398</a>        <span class="kw">let </span>lumen = LumenGI::with_quality(<span class="kw-2">&amp;</span>device, <span class="number">640</span>, <span class="number">480</span>, LumenQuality::Low);
-<a href=#399 id=399 data-nosnippet>399</a>        <span class="macro">assert_eq!</span>(lumen.surface_cache().total_probes(), <span class="number">256</span>);
-<a href=#400 id=400 data-nosnippet>400</a>    }
-<a href=#401 id=401 data-nosnippet>401</a>
-<a href=#402 id=402 data-nosnippet>402</a>    <span class="attr">#[test]
-<a href=#403 id=403 data-nosnippet>403</a>    </span><span class="kw">fn </span>sdf_update() {
-<a href=#404 id=404 data-nosnippet>404</a>        <span class="kw">let </span>instance = wgpu::Instance::new(<span class="kw-2">&amp;</span>wgpu::InstanceDescriptor::default());
-<a href=#405 id=405 data-nosnippet>405</a>        <span class="kw">let </span>adapter = pollster::block_on(instance.request_adapter(<span class="kw-2">&amp;</span>wgpu::RequestAdapterOptions {
-<a href=#406 id=406 data-nosnippet>406</a>            power_preference: wgpu::PowerPreference::LowPower,
-<a href=#407 id=407 data-nosnippet>407</a>            compatible_surface: <span class="prelude-val">None</span>,
-<a href=#408 id=408 data-nosnippet>408</a>            force_fallback_adapter: <span class="bool-val">false</span>,
-<a href=#409 id=409 data-nosnippet>409</a>        }))
-<a href=#410 id=410 data-nosnippet>410</a>        .expect(<span class="string">"adapter"</span>);
-<a href=#411 id=411 data-nosnippet>411</a>        <span class="kw">let </span>(device, <span class="kw">_</span>) =
-<a href=#412 id=412 data-nosnippet>412</a>            pollster::block_on(adapter.request_device(<span class="kw-2">&amp;</span>wgpu::DeviceDescriptor::default()))
-<a href=#413 id=413 data-nosnippet>413</a>                .expect(<span class="string">"device"</span>);
-<a href=#414 id=414 data-nosnippet>414</a>
-<a href=#415 id=415 data-nosnippet>415</a>        <span class="kw">let </span>config = LumenConfig {
-<a href=#416 id=416 data-nosnippet>416</a>            surface_cache: SurfaceCacheConfig {
-<a href=#417 id=417 data-nosnippet>417</a>                grid_dims: UVec3::new(<span class="number">2</span>, <span class="number">2</span>, <span class="number">2</span>),
-<a href=#418 id=418 data-nosnippet>418</a>                ..Default::default()
-<a href=#419 id=419 data-nosnippet>419</a>            },
-<a href=#420 id=420 data-nosnippet>420</a>            sdf: SdfConfig {
-<a href=#421 id=421 data-nosnippet>421</a>                dims: [<span class="number">4</span>, <span class="number">4</span>, <span class="number">4</span>],
-<a href=#422 id=422 data-nosnippet>422</a>                ..Default::default()
-<a href=#423 id=423 data-nosnippet>423</a>            },
-<a href=#424 id=424 data-nosnippet>424</a>            ..Default::default()
-<a href=#425 id=425 data-nosnippet>425</a>        };
-<a href=#426 id=426 data-nosnippet>426</a>        <span class="kw">let </span><span class="kw-2">mut </span>lumen = LumenGI::new(<span class="kw-2">&amp;</span>device, <span class="number">320</span>, <span class="number">240</span>, config);
-<a href=#427 id=427 data-nosnippet>427</a>
-<a href=#428 id=428 data-nosnippet>428</a>        <span class="kw">let </span>boxes = <span class="macro">vec!</span>[<span class="kw">crate</span>::distance_field::SdfBox {
-<a href=#429 id=429 data-nosnippet>429</a>            center: Vec3::ZERO,
-<a href=#430 id=430 data-nosnippet>430</a>            half_extents: Vec3::ONE,
-<a href=#431 id=431 data-nosnippet>431</a>        }];
-<a href=#432 id=432 data-nosnippet>432</a>        lumen.update_sdf(<span class="kw-2">&amp;</span>boxes);
-<a href=#433 id=433 data-nosnippet>433</a>        <span class="comment">// sdf_dirty should be true after update
-<a href=#434 id=434 data-nosnippet>434</a>        </span><span class="macro">assert!</span>(lumen.sdf_dirty);
-<a href=#435 id=435 data-nosnippet>435</a>    }
-<a href=#436 id=436 data-nosnippet>436</a>}</code></pre></div></section></main></body></html>
+<a href=#360 id=360 data-nosnippet>360</a>        <span class="kw">let </span>adapter =
+<a href=#361 id=361 data-nosnippet>361</a>            <span class="kw">match </span>pollster::block_on(instance.request_adapter(<span class="kw-2">&amp;</span>wgpu::RequestAdapterOptions {
+<a href=#362 id=362 data-nosnippet>362</a>                power_preference: wgpu::PowerPreference::LowPower,
+<a href=#363 id=363 data-nosnippet>363</a>                compatible_surface: <span class="prelude-val">None</span>,
+<a href=#364 id=364 data-nosnippet>364</a>                force_fallback_adapter: <span class="bool-val">false</span>,
+<a href=#365 id=365 data-nosnippet>365</a>            })) {
+<a href=#366 id=366 data-nosnippet>366</a>                <span class="prelude-val">Ok</span>(adapter) =&gt; adapter,
+<a href=#367 id=367 data-nosnippet>367</a>                <span class="prelude-val">Err</span>(err) =&gt; {
+<a href=#368 id=368 data-nosnippet>368</a>                    <span class="kw">let </span>reason = <span class="macro">format!</span>(<span class="string">"no wgpu adapter: {err}"</span>);
+<a href=#369 id=369 data-nosnippet>369</a>                    <span class="kw">if </span><span class="kw">crate</span>::gpu_capability::skip_if_unavailable() {
+<a href=#370 id=370 data-nosnippet>370</a>                        <span class="kw">crate</span>::gpu_capability::note_skip(<span class="kw-2">&amp;</span>reason);
+<a href=#371 id=371 data-nosnippet>371</a>                        <span class="kw">return</span>;
+<a href=#372 id=372 data-nosnippet>372</a>                    }
+<a href=#373 id=373 data-nosnippet>373</a>                    <span class="macro">panic!</span>(<span class="string">"Failed to find adapter: {reason}"</span>);
+<a href=#374 id=374 data-nosnippet>374</a>                }
+<a href=#375 id=375 data-nosnippet>375</a>            };
+<a href=#376 id=376 data-nosnippet>376</a>        <span class="kw">let </span>(device, <span class="kw">_</span>) =
+<a href=#377 id=377 data-nosnippet>377</a>            pollster::block_on(adapter.request_device(<span class="kw-2">&amp;</span>wgpu::DeviceDescriptor::default()))
+<a href=#378 id=378 data-nosnippet>378</a>                .expect(<span class="string">"device"</span>);
+<a href=#379 id=379 data-nosnippet>379</a>
+<a href=#380 id=380 data-nosnippet>380</a>        <span class="kw">let </span>config = LumenConfig {
+<a href=#381 id=381 data-nosnippet>381</a>            surface_cache: SurfaceCacheConfig {
+<a href=#382 id=382 data-nosnippet>382</a>                grid_dims: UVec3::new(<span class="number">4</span>, <span class="number">4</span>, <span class="number">4</span>),
+<a href=#383 id=383 data-nosnippet>383</a>                ..Default::default()
+<a href=#384 id=384 data-nosnippet>384</a>            },
+<a href=#385 id=385 data-nosnippet>385</a>            sdf: SdfConfig {
+<a href=#386 id=386 data-nosnippet>386</a>                dims: [<span class="number">8</span>, <span class="number">8</span>, <span class="number">8</span>],
+<a href=#387 id=387 data-nosnippet>387</a>                ..Default::default()
+<a href=#388 id=388 data-nosnippet>388</a>            },
+<a href=#389 id=389 data-nosnippet>389</a>            ..Default::default()
+<a href=#390 id=390 data-nosnippet>390</a>        };
+<a href=#391 id=391 data-nosnippet>391</a>        <span class="kw">let </span>lumen = LumenGI::new(<span class="kw-2">&amp;</span>device, <span class="number">640</span>, <span class="number">480</span>, config);
+<a href=#392 id=392 data-nosnippet>392</a>        <span class="macro">assert_eq!</span>(lumen.surface_cache().total_probes(), <span class="number">64</span>);
+<a href=#393 id=393 data-nosnippet>393</a>    }
+<a href=#394 id=394 data-nosnippet>394</a>
+<a href=#395 id=395 data-nosnippet>395</a>    <span class="attr">#[test]
+<a href=#396 id=396 data-nosnippet>396</a>    </span><span class="kw">fn </span>lumen_gi_with_quality() {
+<a href=#397 id=397 data-nosnippet>397</a>        <span class="kw">let </span>instance = wgpu::Instance::new(<span class="kw-2">&amp;</span>wgpu::InstanceDescriptor::default());
+<a href=#398 id=398 data-nosnippet>398</a>        <span class="kw">let </span>adapter =
+<a href=#399 id=399 data-nosnippet>399</a>            <span class="kw">match </span>pollster::block_on(instance.request_adapter(<span class="kw-2">&amp;</span>wgpu::RequestAdapterOptions {
+<a href=#400 id=400 data-nosnippet>400</a>                power_preference: wgpu::PowerPreference::LowPower,
+<a href=#401 id=401 data-nosnippet>401</a>                compatible_surface: <span class="prelude-val">None</span>,
+<a href=#402 id=402 data-nosnippet>402</a>                force_fallback_adapter: <span class="bool-val">false</span>,
+<a href=#403 id=403 data-nosnippet>403</a>            })) {
+<a href=#404 id=404 data-nosnippet>404</a>                <span class="prelude-val">Ok</span>(adapter) =&gt; adapter,
+<a href=#405 id=405 data-nosnippet>405</a>                <span class="prelude-val">Err</span>(err) =&gt; {
+<a href=#406 id=406 data-nosnippet>406</a>                    <span class="kw">let </span>reason = <span class="macro">format!</span>(<span class="string">"no wgpu adapter: {err}"</span>);
+<a href=#407 id=407 data-nosnippet>407</a>                    <span class="kw">if </span><span class="kw">crate</span>::gpu_capability::skip_if_unavailable() {
+<a href=#408 id=408 data-nosnippet>408</a>                        <span class="kw">crate</span>::gpu_capability::note_skip(<span class="kw-2">&amp;</span>reason);
+<a href=#409 id=409 data-nosnippet>409</a>                        <span class="kw">return</span>;
+<a href=#410 id=410 data-nosnippet>410</a>                    }
+<a href=#411 id=411 data-nosnippet>411</a>                    <span class="macro">panic!</span>(<span class="string">"Failed to find adapter: {reason}"</span>);
+<a href=#412 id=412 data-nosnippet>412</a>                }
+<a href=#413 id=413 data-nosnippet>413</a>            };
+<a href=#414 id=414 data-nosnippet>414</a>        <span class="kw">let </span>(device, <span class="kw">_</span>) =
+<a href=#415 id=415 data-nosnippet>415</a>            pollster::block_on(adapter.request_device(<span class="kw-2">&amp;</span>wgpu::DeviceDescriptor::default()))
+<a href=#416 id=416 data-nosnippet>416</a>                .expect(<span class="string">"device"</span>);
+<a href=#417 id=417 data-nosnippet>417</a>
+<a href=#418 id=418 data-nosnippet>418</a>        <span class="kw">let </span>lumen = LumenGI::with_quality(<span class="kw-2">&amp;</span>device, <span class="number">640</span>, <span class="number">480</span>, LumenQuality::Low);
+<a href=#419 id=419 data-nosnippet>419</a>        <span class="macro">assert_eq!</span>(lumen.surface_cache().total_probes(), <span class="number">256</span>);
+<a href=#420 id=420 data-nosnippet>420</a>    }
+<a href=#421 id=421 data-nosnippet>421</a>
+<a href=#422 id=422 data-nosnippet>422</a>    <span class="attr">#[test]
+<a href=#423 id=423 data-nosnippet>423</a>    </span><span class="kw">fn </span>sdf_update() {
+<a href=#424 id=424 data-nosnippet>424</a>        <span class="kw">let </span>instance = wgpu::Instance::new(<span class="kw-2">&amp;</span>wgpu::InstanceDescriptor::default());
+<a href=#425 id=425 data-nosnippet>425</a>        <span class="kw">let </span>adapter =
+<a href=#426 id=426 data-nosnippet>426</a>            <span class="kw">match </span>pollster::block_on(instance.request_adapter(<span class="kw-2">&amp;</span>wgpu::RequestAdapterOptions {
+<a href=#427 id=427 data-nosnippet>427</a>                power_preference: wgpu::PowerPreference::LowPower,
+<a href=#428 id=428 data-nosnippet>428</a>                compatible_surface: <span class="prelude-val">None</span>,
+<a href=#429 id=429 data-nosnippet>429</a>                force_fallback_adapter: <span class="bool-val">false</span>,
+<a href=#430 id=430 data-nosnippet>430</a>            })) {
+<a href=#431 id=431 data-nosnippet>431</a>                <span class="prelude-val">Ok</span>(adapter) =&gt; adapter,
+<a href=#432 id=432 data-nosnippet>432</a>                <span class="prelude-val">Err</span>(err) =&gt; {
+<a href=#433 id=433 data-nosnippet>433</a>                    <span class="kw">let </span>reason = <span class="macro">format!</span>(<span class="string">"no wgpu adapter: {err}"</span>);
+<a href=#434 id=434 data-nosnippet>434</a>                    <span class="kw">if </span><span class="kw">crate</span>::gpu_capability::skip_if_unavailable() {
+<a href=#435 id=435 data-nosnippet>435</a>                        <span class="kw">crate</span>::gpu_capability::note_skip(<span class="kw-2">&amp;</span>reason);
+<a href=#436 id=436 data-nosnippet>436</a>                        <span class="kw">return</span>;
+<a href=#437 id=437 data-nosnippet>437</a>                    }
+<a href=#438 id=438 data-nosnippet>438</a>                    <span class="macro">panic!</span>(<span class="string">"Failed to find adapter: {reason}"</span>);
+<a href=#439 id=439 data-nosnippet>439</a>                }
+<a href=#440 id=440 data-nosnippet>440</a>            };
+<a href=#441 id=441 data-nosnippet>441</a>        <span class="kw">let </span>(device, <span class="kw">_</span>) =
+<a href=#442 id=442 data-nosnippet>442</a>            pollster::block_on(adapter.request_device(<span class="kw-2">&amp;</span>wgpu::DeviceDescriptor::default()))
+<a href=#443 id=443 data-nosnippet>443</a>                .expect(<span class="string">"device"</span>);
+<a href=#444 id=444 data-nosnippet>444</a>
+<a href=#445 id=445 data-nosnippet>445</a>        <span class="kw">let </span>config = LumenConfig {
+<a href=#446 id=446 data-nosnippet>446</a>            surface_cache: SurfaceCacheConfig {
+<a href=#447 id=447 data-nosnippet>447</a>                grid_dims: UVec3::new(<span class="number">2</span>, <span class="number">2</span>, <span class="number">2</span>),
+<a href=#448 id=448 data-nosnippet>448</a>                ..Default::default()
+<a href=#449 id=449 data-nosnippet>449</a>            },
+<a href=#450 id=450 data-nosnippet>450</a>            sdf: SdfConfig {
+<a href=#451 id=451 data-nosnippet>451</a>                dims: [<span class="number">4</span>, <span class="number">4</span>, <span class="number">4</span>],
+<a href=#452 id=452 data-nosnippet>452</a>                ..Default::default()
+<a href=#453 id=453 data-nosnippet>453</a>            },
+<a href=#454 id=454 data-nosnippet>454</a>            ..Default::default()
+<a href=#455 id=455 data-nosnippet>455</a>        };
+<a href=#456 id=456 data-nosnippet>456</a>        <span class="kw">let </span><span class="kw-2">mut </span>lumen = LumenGI::new(<span class="kw-2">&amp;</span>device, <span class="number">320</span>, <span class="number">240</span>, config);
+<a href=#457 id=457 data-nosnippet>457</a>
+<a href=#458 id=458 data-nosnippet>458</a>        <span class="kw">let </span>boxes = <span class="macro">vec!</span>[<span class="kw">crate</span>::distance_field::SdfBox {
+<a href=#459 id=459 data-nosnippet>459</a>            center: Vec3::ZERO,
+<a href=#460 id=460 data-nosnippet>460</a>            half_extents: Vec3::ONE,
+<a href=#461 id=461 data-nosnippet>461</a>        }];
+<a href=#462 id=462 data-nosnippet>462</a>        lumen.update_sdf(<span class="kw-2">&amp;</span>boxes);
+<a href=#463 id=463 data-nosnippet>463</a>        <span class="comment">// sdf_dirty should be true after update
+<a href=#464 id=464 data-nosnippet>464</a>        </span><span class="macro">assert!</span>(lumen.sdf_dirty);
+<a href=#465 id=465 data-nosnippet>465</a>    }
+<a href=#466 id=466 data-nosnippet>466</a>}</code></pre></div></section></main></body></html>

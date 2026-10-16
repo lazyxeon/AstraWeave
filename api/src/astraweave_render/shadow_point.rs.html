@@ -313,18 +313,28 @@
 <a href=#313 id=313 data-nosnippet>313</a>    <span class="attr">#[test]
 <a href=#314 id=314 data-nosnippet>314</a>    </span><span class="kw">fn </span>point_shadow_pass_creation() {
 <a href=#315 id=315 data-nosnippet>315</a>        <span class="kw">let </span>instance = wgpu::Instance::new(<span class="kw-2">&amp;</span>wgpu::InstanceDescriptor::default());
-<a href=#316 id=316 data-nosnippet>316</a>        <span class="kw">let </span>adapter = pollster::block_on(instance.request_adapter(<span class="kw-2">&amp;</span>wgpu::RequestAdapterOptions {
-<a href=#317 id=317 data-nosnippet>317</a>            power_preference: wgpu::PowerPreference::LowPower,
-<a href=#318 id=318 data-nosnippet>318</a>            compatible_surface: <span class="prelude-val">None</span>,
-<a href=#319 id=319 data-nosnippet>319</a>            force_fallback_adapter: <span class="bool-val">false</span>,
-<a href=#320 id=320 data-nosnippet>320</a>        }))
-<a href=#321 id=321 data-nosnippet>321</a>        .expect(<span class="string">"adapter"</span>);
-<a href=#322 id=322 data-nosnippet>322</a>        <span class="kw">let </span>(device, _queue) =
-<a href=#323 id=323 data-nosnippet>323</a>            pollster::block_on(adapter.request_device(<span class="kw-2">&amp;</span>wgpu::DeviceDescriptor::default()))
-<a href=#324 id=324 data-nosnippet>324</a>                .expect(<span class="string">"device"</span>);
-<a href=#325 id=325 data-nosnippet>325</a>
-<a href=#326 id=326 data-nosnippet>326</a>        <span class="kw">let </span>config = PointShadowConfig::default();
-<a href=#327 id=327 data-nosnippet>327</a>        <span class="kw">let </span>pass = PointShadowPass::new(<span class="kw-2">&amp;</span>device, config);
-<a href=#328 id=328 data-nosnippet>328</a>        <span class="macro">assert_eq!</span>(pass.config().max_point_shadows, <span class="number">8</span>);
-<a href=#329 id=329 data-nosnippet>329</a>    }
-<a href=#330 id=330 data-nosnippet>330</a>}</code></pre></div></section></main></body></html>
+<a href=#316 id=316 data-nosnippet>316</a>        <span class="kw">let </span>adapter =
+<a href=#317 id=317 data-nosnippet>317</a>            <span class="kw">match </span>pollster::block_on(instance.request_adapter(<span class="kw-2">&amp;</span>wgpu::RequestAdapterOptions {
+<a href=#318 id=318 data-nosnippet>318</a>                power_preference: wgpu::PowerPreference::LowPower,
+<a href=#319 id=319 data-nosnippet>319</a>                compatible_surface: <span class="prelude-val">None</span>,
+<a href=#320 id=320 data-nosnippet>320</a>                force_fallback_adapter: <span class="bool-val">false</span>,
+<a href=#321 id=321 data-nosnippet>321</a>            })) {
+<a href=#322 id=322 data-nosnippet>322</a>                <span class="prelude-val">Ok</span>(adapter) =&gt; adapter,
+<a href=#323 id=323 data-nosnippet>323</a>                <span class="prelude-val">Err</span>(err) =&gt; {
+<a href=#324 id=324 data-nosnippet>324</a>                    <span class="kw">let </span>reason = <span class="macro">format!</span>(<span class="string">"no wgpu adapter: {err}"</span>);
+<a href=#325 id=325 data-nosnippet>325</a>                    <span class="kw">if </span><span class="kw">crate</span>::gpu_capability::skip_if_unavailable() {
+<a href=#326 id=326 data-nosnippet>326</a>                        <span class="kw">crate</span>::gpu_capability::note_skip(<span class="kw-2">&amp;</span>reason);
+<a href=#327 id=327 data-nosnippet>327</a>                        <span class="kw">return</span>;
+<a href=#328 id=328 data-nosnippet>328</a>                    }
+<a href=#329 id=329 data-nosnippet>329</a>                    <span class="macro">panic!</span>(<span class="string">"Failed to find adapter: {reason}"</span>);
+<a href=#330 id=330 data-nosnippet>330</a>                }
+<a href=#331 id=331 data-nosnippet>331</a>            };
+<a href=#332 id=332 data-nosnippet>332</a>        <span class="kw">let </span>(device, _queue) =
+<a href=#333 id=333 data-nosnippet>333</a>            pollster::block_on(adapter.request_device(<span class="kw-2">&amp;</span>wgpu::DeviceDescriptor::default()))
+<a href=#334 id=334 data-nosnippet>334</a>                .expect(<span class="string">"device"</span>);
+<a href=#335 id=335 data-nosnippet>335</a>
+<a href=#336 id=336 data-nosnippet>336</a>        <span class="kw">let </span>config = PointShadowConfig::default();
+<a href=#337 id=337 data-nosnippet>337</a>        <span class="kw">let </span>pass = PointShadowPass::new(<span class="kw-2">&amp;</span>device, config);
+<a href=#338 id=338 data-nosnippet>338</a>        <span class="macro">assert_eq!</span>(pass.config().max_point_shadows, <span class="number">8</span>);
+<a href=#339 id=339 data-nosnippet>339</a>    }
+<a href=#340 id=340 data-nosnippet>340</a>}</code></pre></div></section></main></body></html>
