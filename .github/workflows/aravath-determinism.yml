@@ -1,0 +1,60 @@
+name: Aravath determinism
+
+# The recorded replay must land on the same state hash on Linux and Windows.
+# Baseline x86-64, no FMA, no target-cpu=native. rustc does not contract
+# `a * b + c` into an FMA unless the code calls `mul_add`.
+
+on:
+  push:
+    branches:
+      - "cursor/aravath-*"
+  pull_request:
+
+concurrency:
+  group: aravath-determinism-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_NET_RETRY: 10
+  RUST_BACKTRACE: short
+  RUSTFLAGS: "-C target-cpu=x86-64 -C target-feature=-fma"
+
+jobs:
+  golden:
+    name: Replay hash (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          lfs: true
+
+      - name: Install Linux link dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y pkg-config libudev-dev libasound2-dev
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@d77020bf130f2e8c39c025bf9c4c3a445fe2b9fa # 1.89.0
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: "."
+          key: aravath-det-${{ matrix.os }}-v1
+          cache-all-crates: true
+
+      - name: Replay against the golden hash
+        run: cargo test -p aravath_runtime --lib replay_matches_golden_hash -- --nocapture

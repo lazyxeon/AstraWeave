@@ -42,6 +42,8 @@ pub struct GpuProfiler {
     readback_pending: bool,
     /// Signalled by the map callback when the readback buffer is ready.
     map_ready: Arc<AtomicBool>,
+    /// The map callback failed. The buffer is not mapped and must not be read.
+    map_failed: Arc<AtomicBool>,
 }
 
 impl GpuProfiler {
@@ -81,6 +83,7 @@ impl GpuProfiler {
             latest_results: Vec::new(),
             readback_pending: false,
             map_ready: Arc::new(AtomicBool::new(false)),
+            map_failed: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -163,6 +166,15 @@ impl GpuProfiler {
         if self.next_query == 0 {
             return;
         }
+        // A mapped MAP_READ buffer cannot be a copy destination. Skipping the
+        // resolve keeps Queue::submit from reporting that gpu_profiler_readback
+        // is still mapped. The next frame copies once poll_readback unmaps it.
+        if self.readback_pending {
+            log::debug!(
+                "gpu profiler skipped timestamp copy; gpu_profiler_readback is still mapped"
+            );
+            return;
+        }
         // Resolve timestamps into the GPU buffer.
         encoder.resolve_query_set(&self.query_set, 0..self.next_query, &self.resolve_buf, 0);
         // Copy to the CPU-readable staging buffer.
@@ -179,9 +191,15 @@ impl GpuProfiler {
         let slice = self.readback_buf.slice(..);
         self.readback_pending = true;
         self.map_ready.store(false, Ordering::Release);
-        let flag = self.map_ready.clone();
-        slice.map_async(wgpu::MapMode::Read, move |_result| {
-            flag.store(true, Ordering::Release);
+        self.map_failed.store(false, Ordering::Release);
+        let ready = self.map_ready.clone();
+        let failed = self.map_failed.clone();
+        slice.map_async(wgpu::MapMode::Read, move |result| {
+            if result.is_ok() {
+                ready.store(true, Ordering::Release);
+            } else {
+                failed.store(true, Ordering::Release);
+            }
         });
     }
 
@@ -192,10 +210,21 @@ impl GpuProfiler {
             return false;
         }
         // Non-blocking poll — drives the map callback.
-        let _ = device.poll(wgpu::PollType::Poll);
+        if device.poll(wgpu::PollType::Poll).is_err() {
+            log::error!("gpu profiler device poll failed; not reading a mapped buffer");
+            return false;
+        }
+
+        if self.map_failed.swap(false, Ordering::AcqRel) {
+            // map_async failed, so the buffer is not mapped. Do not unmap or read it.
+            self.readback_pending = false;
+            self.map_ready.store(false, Ordering::Release);
+            log::error!("gpu profiler readback map failed; leaving the buffer unmapped");
+            return false;
+        }
 
         if !self.map_ready.load(Ordering::Acquire) {
-            // Mapping not complete yet.
+            // Still mapped. end_frame will not copy into this buffer.
             return false;
         }
 
@@ -241,5 +270,89 @@ impl GpuProfiler {
             .iter()
             .map(|r| (r.name.clone(), r.duration_ms))
             .collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn timestamp_device() -> Option<(wgpu::Device, wgpu::Queue)> {
+        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::from_env_or_default());
+        let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
+            power_preference: wgpu::PowerPreference::HighPerformance,
+            compatible_surface: None,
+            force_fallback_adapter: false,
+        }))
+        .ok()?;
+        if !adapter.features().contains(wgpu::Features::TIMESTAMP_QUERY) {
+            return None;
+        }
+        pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
+            label: Some("profiler-readback-test"),
+            required_features: wgpu::Features::TIMESTAMP_QUERY,
+            required_limits: wgpu::Limits::default(),
+            memory_hints: Default::default(),
+            trace: Default::default(),
+        }))
+        .ok()
+    }
+
+    #[test]
+    fn timestamp_copy_skips_a_buffer_that_is_still_mapped() {
+        let Some((device, queue)) = timestamp_device() else {
+            eprintln!("no TIMESTAMP_QUERY adapter; skipping profiler map test");
+            return;
+        };
+        device.push_error_scope(wgpu::ErrorFilter::Validation);
+        let mut profiler = GpuProfiler::new(&device, &queue);
+        let tex = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("profiler target"),
+            size: wgpu::Extent3d {
+                width: 1,
+                height: 1,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8Unorm,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+            view_formats: &[],
+        });
+        let view = tex.create_view(&wgpu::TextureViewDescriptor::default());
+        let record = |profiler: &mut GpuProfiler| {
+            profiler.begin_frame();
+            let mut enc = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("profiler frame"),
+            });
+            let timestamps = profiler.render_pass_timestamps("clear");
+            {
+                let _pass = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
+                    label: Some("profiler clear"),
+                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                        view: &view,
+                        resolve_target: None,
+                        ops: wgpu::Operations {
+                            load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                            store: wgpu::StoreOp::Store,
+                        },
+                    })],
+                    depth_stencil_attachment: None,
+                    timestamp_writes: timestamps,
+                    occlusion_query_set: None,
+                });
+            }
+            profiler.end_frame(&mut enc);
+            enc.finish()
+        };
+        queue.submit(std::iter::once(record(&mut profiler)));
+        profiler.request_readback();
+        queue.submit(std::iter::once(record(&mut profiler)));
+        let _ = device.poll(wgpu::PollType::Wait);
+        let err = pollster::block_on(device.pop_error_scope());
+        if let Some(err) = err {
+            panic!("profiler readback validation: {err}");
+        }
     }
 }

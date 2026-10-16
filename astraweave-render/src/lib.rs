@@ -179,6 +179,7 @@ pub mod weather_gpu; // GPU-accelerated weather particle emitter configurations
 
 // GPU memory management
 pub mod bind_group_cache; // Generation-tracked bind group cache
+pub mod gpu_fault; // First wgpu validation error, for aravath.log
 pub mod gpu_memory; // GPU memory budget tracking and enforcement
 pub mod gpu_profiler; // GPU timestamp profiler for per-pass performance analysis
 pub mod staging_ring; // Per-frame ring buffer for transient GPU allocations
@@ -266,7 +267,10 @@ pub use texture_streaming::{TextureStreamingManager, TextureStreamingStats};
 pub use transparency::{create_blend_state, BlendMode, TransparencyManager, TransparentInstance};
 pub use virtual_texture::{PageCache, PageRequest, VirtualTextureConfig, VirtualTextureFeedback};
 pub use volumetric_clouds::{CloudConfig, CloudQuality, VolumetricCloudsPass};
-pub use volumetric_fog::{VolumetricFogConfig, VolumetricFogPass, VolumetricQuality};
+pub use volumetric_fog::{
+    ScarFogVolume, VolumetricFogConfig, VolumetricFogPass, VolumetricGpuSample, VolumetricQuality,
+    SCAR_VOLUME_DIM,
+};
 
 // Phase 2 Task 5: Skeletal Animation exports
 pub use animation::{

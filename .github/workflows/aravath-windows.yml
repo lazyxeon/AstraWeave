@@ -1,0 +1,268 @@
+name: Aravath Windows
+
+# Windows desktop build of the Aravath greybox. The Linux cloud VM cannot link
+# the MSVC build of basis-universal (no lib.exe), so the windows job is the
+# check that the exe actually links. supply-chain runs on Linux.
+
+on:
+  push:
+    branches:
+      - "cursor/aravath-*"
+  pull_request:
+
+concurrency:
+  group: aravath-windows-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Read at the workflow root. The release job overrides this with contents:
+# write, which `gh release` needs for the rolling prerelease.
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_NET_RETRY: 10
+  RUST_BACKTRACE: short
+
+jobs:
+  vulkan-validation:
+    name: Volumetrics validation on lavapipe
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@d77020bf130f2e8c39c025bf9c4c3a445fe2b9fa # 1.89.0
+
+      - name: Install lavapipe
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends pkg-config libudev-dev libasound2-dev mesa-vulkan-drivers libvulkan1
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: "."
+          key: aravath-vulkan-validation-v1
+          cache-all-crates: true
+
+      - name: Validate volumetrics pipelines
+        env:
+          WGPU_VALIDATION: "1"
+          WGPU_BACKEND: vulkan
+        run: cargo test -p astraweave-render --test volumetric_validation -- --nocapture
+
+  supply-chain:
+    name: cargo-audit, cargo-deny, SBOM
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@d77020bf130f2e8c39c025bf9c4c3a445fe2b9fa # 1.89.0
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: "."
+          key: aravath-supply-v1
+          cache-all-crates: true
+
+      - name: Install audit tools
+        run: |
+          cargo install cargo-audit --locked --version 0.22.2
+          cargo install cargo-deny --locked --version 0.20.2
+          cargo install cargo-cyclonedx --locked --version 0.5.9
+
+      - name: cargo deny
+        run: |
+          # The advisory database clone flakes on a cold runner.
+          for attempt in 1 2 3 4; do
+            if cargo deny check --hide-inclusion-graph advisories bans licenses sources; then
+              exit 0
+            fi
+            echo "cargo deny attempt ${attempt} failed; retrying"
+            sleep $((attempt * 15))
+          done
+          exit 1
+
+      - name: cargo audit
+        run: |
+          # cargo-deny leaves ~/.cargo/advisory-db in a state cargo-audit's
+          # clone refuses ("failed to prepare clone"). Start from an empty dir.
+          db="${CARGO_HOME:-$HOME/.cargo}/advisory-db"
+          for attempt in 1 2 3 4; do
+            rm -rf "$db"
+            if cargo audit; then
+              exit 0
+            fi
+            echo "cargo audit attempt ${attempt} failed; retrying"
+            sleep $((attempt * 15))
+          done
+          exit 1
+
+      - name: Greybox has no network client
+        run: bash scripts/check-aravath-network.sh
+
+      - name: CycloneDX SBOM
+        run: |
+          mkdir -p dist
+          # cargo-cyclonedx writes one JSON per workspace package, next to that
+          # package. Keep the greybox graph and delete the rest.
+          cargo cyclonedx --manifest-path aravath_runtime/Cargo.toml --format json --spec-version 1.5 --override-filename aravath_greybox
+          test -s aravath_runtime/aravath_greybox.json
+          cp aravath_runtime/aravath_greybox.json dist/aravath_greybox.cdx.json
+          find . -name aravath_greybox.json -delete
+
+      - name: Upload SBOM
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: aravath-sbom
+          path: dist/aravath_greybox.cdx.json
+          if-no-files-found: error
+          retention-days: 14
+
+  windows:
+    name: Build, test, and upload greybox
+    runs-on: windows-latest
+    timeout-minutes: 180
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          lfs: true
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@d77020bf130f2e8c39c025bf9c4c3a445fe2b9fa # 1.89.0
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: "."
+          key: aravath-windows-v2
+          cache-all-crates: true
+
+      - name: Build aravath_greybox (dist)
+        run: cargo build -p aravath_runtime --bin aravath_greybox --profile dist --locked
+
+      - name: Test aravath_runtime lib
+        run: cargo test -p aravath_runtime --lib
+
+      - name: Test aw-save lib
+        run: cargo test -p aw-save --lib
+
+      - name: Stage exe and assets
+        run: |
+          mkdir -p dist/aravath_greybox/assets
+          cp target/dist/aravath_greybox.exe dist/aravath_greybox/
+          cp -a assets/aravath dist/aravath_greybox/assets/
+          cp docs/current/ARAVATH_WINDOWS_README.txt dist/aravath_greybox/README.txt
+          cp LICENSE dist/aravath_greybox/LICENSE
+          test -f dist/aravath_greybox/aravath_greybox.exe
+          test -f dist/aravath_greybox/README.txt
+          test -f dist/aravath_greybox/LICENSE
+          test -f dist/aravath_greybox/assets/aravath/models/AnimationLibrary_Godot_Standard.gltf
+          test -f dist/aravath_greybox/assets/aravath/textures/grass_diff_1k.jpg
+          test -f dist/aravath_greybox/assets/aravath/models/kaykit/knight/Knight.glb
+          sig=$(head -c 4 dist/aravath_greybox/assets/aravath/models/kaykit/knight/Knight.glb)
+          test "$sig" = "glTF"
+          find dist/aravath_greybox -maxdepth 3 -type d -o -type f | sort
+
+      - name: Smoke test the staged exe
+        working-directory: dist/aravath_greybox
+        run: ./aravath_greybox.exe --smoke-test --no-volumetrics
+
+      - name: Smoke test volumetrics on DX12
+        working-directory: dist/aravath_greybox
+        env:
+          WGPU_VALIDATION: "1"
+          WGPU_BACKEND: dx12
+        run: ./aravath_greybox.exe --smoke-test --volumetrics
+
+      - name: Smoke test volumetrics on Vulkan
+        working-directory: dist/aravath_greybox
+        env:
+          WGPU_VALIDATION: "1"
+          WGPU_BACKEND: vulkan
+          ARAVATH_WARP: "0"
+          ARAVATH_ALLOW_MISSING_ADAPTER: "1"
+        run: ./aravath_greybox.exe --smoke-test --volumetrics
+
+      # Authenticode is not wired. Add it after a signing option is chosen.
+      # scripts/sign-aravath.ps1 is the PFX path; Azure Artifact Signing is
+      # documented in docs/current/ARAVATH_DISTRIBUTION.md.
+
+      - name: SHA-256 checksums
+        run: bash scripts/aravath-sha256.sh dist/aravath_greybox
+
+      - name: Upload greybox artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: aravath_greybox-windows
+          path: dist/aravath_greybox
+          if-no-files-found: error
+          retention-days: 14
+
+  release:
+    name: GitHub Release
+    needs: [windows, supply-chain]
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/heads/cursor/aravath-')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Download greybox
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: aravath_greybox-windows
+          path: aravath_greybox
+
+      - name: Download SBOM
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: aravath-sbom
+          path: aravath_greybox
+
+      - name: Publish rolling prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test -f aravath_greybox/aravath_greybox.exe
+          test -f aravath_greybox/SHA256SUMS.txt
+          test -f aravath_greybox/aravath_greybox.cdx.json
+          zip -r aravath_greybox-windows.zip aravath_greybox
+          notes=$(cat <<EOF
+          Rolling Windows build of the Aravath greybox from \`${GITHUB_SHA}\`.
+
+          Extract the whole zip and start \`aravath_greybox.exe\` from the extracted folder. Saves and logs go to \`%LOCALAPPDATA%\\Aravath\`. \`SHA256SUMS.txt\` covers the files in this zip. \`aravath_greybox.cdx.json\` is the CycloneDX SBOM.
+
+          This release is a prerelease. Chrome and SmartScreen can still warn until the file is signed with a publicly trusted certificate and has download reputation. See \`docs/current/ARAVATH_DISTRIBUTION.md\`.
+          EOF
+          )
+          if gh release view aravath-greybox >/dev/null 2>&1; then
+            gh release upload aravath-greybox aravath_greybox-windows.zip --clobber
+            gh release edit aravath-greybox --prerelease --target "$GITHUB_SHA" --notes "$notes"
+          else
+            gh release create aravath-greybox aravath_greybox-windows.zip \
+              --prerelease \
+              --target "$GITHUB_SHA" \
+              --title "Aravath greybox" \
+              --notes "$notes"
+          fi

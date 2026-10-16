@@ -109,6 +109,13 @@ pub use rapier3d::prelude::{point, vector};
 
 use std::collections::HashMap;
 
+const _: () = assert!(
+    !cfg!(target_feature = "fma"),
+    "astraweave-physics must be compiled without the fma target feature"
+);
+
+mod detmath;
+
 #[cfg(feature = "profiling")]
 use astraweave_profiling::{plot, span};
 
@@ -1271,7 +1278,7 @@ impl PhysicsWorld {
         if let Some(ctrl) = self.char_map.get_mut(&id) {
             ctrl.jump_buffer_timer = ctrl.jump_buffer_limit;
             let g = 9.81 * ctrl.gravity_scale;
-            ctrl.pending_jump_velocity = (2.0 * g * height).sqrt();
+            ctrl.pending_jump_velocity = detmath::sqrt(2.0 * g * height);
         }
     }
 
@@ -1372,7 +1379,7 @@ impl PhysicsWorld {
                 ) {
                     let ground_normal =
                         glam::Vec3::new(hit.normal.x, hit.normal.y, hit.normal.z).normalize();
-                    let slope = ground_normal.dot(glam::Vec3::Y).acos().to_degrees();
+                    let slope = detmath::acos(ground_normal.dot(glam::Vec3::Y)).to_degrees();
                     let ground_y = cast_origin.y - hit.time_of_impact;
 
                     // The capsule origin (rigid-body translation) is its CENTER, but
@@ -1636,9 +1643,12 @@ impl PhysicsWorld {
     ) -> BodyId {
         self.add_dynamic_box(pos, half, mass, Layers::DEFAULT)
     }
-    pub fn break_destructible(&mut self, id: BodyId) {
+    /// Remove a rigid body, its colliders, and every engine-side mapping for `id`.
+    ///
+    /// Chunk replacement in `aravath_runtime` uses this to drop a stale trimesh
+    /// before inserting the remeshed one. Missing ids are a no-op.
+    pub fn remove_body(&mut self, id: BodyId) {
         if let Some(h) = self.handle_of(id) {
-            // Remove from Rapier sets
             self.bodies.remove(
                 h,
                 &mut self.island_mgr,
@@ -1647,13 +1657,15 @@ impl PhysicsWorld {
                 &mut self.multibody_joints,
                 true,
             );
-
-            // Remove from our mappings
             self.body_ids.remove(&h);
             self.body_kinds.remove(&h);
             self.char_map.remove(&id);
             self.buoyancy_bodies.remove(&id);
         }
+    }
+
+    pub fn break_destructible(&mut self, id: BodyId) {
+        self.remove_body(id);
     }
 
     /// Empty on purpose. Hits that change destruction state go through
@@ -1731,6 +1743,31 @@ impl PhysicsWorld {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn remove_body_drops_transform_and_break_destructible_delegates() {
+        let mut pw = PhysicsWorld::new(Vec3::new(0.0, -9.81, 0.0));
+        let id = pw.add_dynamic_box(
+            Vec3::new(0.0, 2.0, 0.0),
+            Vec3::new(0.3, 0.3, 0.3),
+            1.0,
+            Layers::DEFAULT,
+        );
+        assert!(pw.body_transform(id).is_some());
+        pw.remove_body(id);
+        assert!(pw.body_transform(id).is_none());
+        pw.remove_body(id);
+
+        let other = pw.add_destructible_box(
+            Vec3::new(1.0, 2.0, 0.0),
+            Vec3::new(0.3, 0.3, 0.3),
+            1.0,
+            10.0,
+            5.0,
+        );
+        pw.break_destructible(other);
+        assert!(pw.body_transform(other).is_none());
+    }
 
     #[test]
     fn character_position_updates() {

@@ -1,5 +1,6 @@
 [package]
 name = "nav_physics_bridge"
+license.workspace = true
 version = "0.1.0"
 edition = "2021"
 

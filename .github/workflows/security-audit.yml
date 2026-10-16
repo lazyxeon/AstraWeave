@@ -34,13 +34,13 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cargo/bin/cargo-deny
-          key: ${{ runner.os }}-cargo-deny-0.18.4
+          key: ${{ runner.os }}-cargo-deny-0.20.2
           restore-keys: ${{ runner.os }}-cargo-deny-
 
       - name: Install cargo-deny
         run: |
-          if ! command -v cargo-deny &> /dev/null; then
-            cargo install cargo-deny --locked
+          if ! command -v cargo-deny &> /dev/null || ! cargo deny --version | grep -q '0.20.2'; then
+            cargo install cargo-deny --locked --version 0.20.2
           fi
 
       - name: Run cargo-deny checks
@@ -58,33 +58,12 @@ jobs:
           cargo deny check sources
           echo "::endgroup::"
           
-          # Run advisories check with better error handling
           echo "::group::Checking for security advisories"
-          if timeout 300 cargo deny check advisories; then
-            echo "✅ Advisories check completed successfully"
-          else
-            exit_code=$?
-            if [ $exit_code -eq 124 ]; then
-              echo "⚠️  Advisories check timed out - this may be due to network connectivity issues"
-              echo "::warning::Advisories check timed out. Consider running 'cargo deny check advisories' locally."
-            elif [ $exit_code -eq 1 ]; then
-              echo "⚠️  Advisories check found warnings (unmaintained crates, etc.) - review the output above"
-              echo "::warning::Found advisory warnings. Review unmaintained dependencies."
-            else
-              echo "❌ Advisories check failed with exit code $exit_code"
-              exit $exit_code
-            fi
-          fi
+          cargo deny check advisories
           echo "::endgroup::"
-          
-          # Run license check (optional - may have warnings)
+
           echo "::group::Checking license compliance"
-          if cargo deny check licenses; then
-            echo "✅ License check passed"
-          else
-            echo "⚠️  License check found issues - review workspace license configuration"
-            echo "::warning::License check found issues. Consider reviewing license configuration."
-          fi
+          cargo deny check licenses
           echo "::endgroup::"
 
   security-audit:
@@ -104,36 +83,14 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cargo/bin/cargo-audit
-          key: ${{ runner.os }}-cargo-audit-0.21.2
+          key: ${{ runner.os }}-cargo-audit-0.22.2
           restore-keys: ${{ runner.os }}-cargo-audit-
 
       - name: Install cargo-audit
         run: |
-          if ! command -v cargo-audit &> /dev/null; then
-            cargo install cargo-audit --locked
+          if ! command -v cargo-audit &> /dev/null || ! cargo audit --version | grep -q '0.22.2'; then
+            cargo install cargo-audit --locked --version 0.22.2
           fi
 
-      - name: Run cargo-audit with timeout
-        run: |
-          echo "Running cargo-audit security scan..."
-          
-          # Run cargo audit with improved error handling
-          if timeout 600 cargo audit --ignore RUSTSEC-2020-0071; then
-            echo "✅ Security audit completed successfully"
-          else
-            exit_code=$?
-            if [ $exit_code -eq 124 ]; then
-              echo "⚠️  cargo-audit timed out - this may be due to network connectivity issues"
-              echo "::warning::cargo-audit timed out. This may be due to network issues. Consider running locally."
-            elif [ $exit_code -eq 1 ]; then
-              echo "⚠️  cargo-audit found security advisories - review the output above"
-              echo "::warning::Security advisories found. Review and address the identified vulnerabilities."
-              # For CI, we'll treat advisory findings as warnings, not failures
-              exit 0
-            else
-              echo "❌ cargo-audit failed with exit code $exit_code"
-              exit $exit_code
-            fi
-          fi
-          
-          echo "Security audit completed. Check logs above for any advisory warnings."
+      - name: Run cargo-audit
+        run: cargo audit

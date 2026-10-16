@@ -126,6 +126,10 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+        with:
+          # Greybox tests open KayKit glTF buffers. An LFS pointer is ~130 bytes
+          # and the importer rejects it.
+          lfs: true
 
       - name: Rust CI setup
         uses: ./.github/actions/rust-ci-setup
@@ -205,6 +209,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+        with:
+          # The archived tests load KayKit files from this checkout.
+          lfs: true
 
       - name: Rust CI setup
         uses: ./.github/actions/rust-ci-setup
@@ -323,6 +330,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+        with:
+          lfs: true
 
       - name: Rust CI setup
         uses: ./.github/actions/rust-ci-setup

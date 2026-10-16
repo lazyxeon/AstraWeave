@@ -5,11 +5,46 @@ edition.workspace = true
 license.workspace = true
 publish.workspace = true
 rust-version.workspace = true
-description = "Aravath companion route across a collapsing span"
+description = "Aravath greybox: one voxel island, a third-person body, and a dig kernel."
 
 [dependencies]
+anyhow.workspace = true
+glam = { workspace = true, features = ["libm"] }
+libm = { version = "0.2", default-features = false }
+winit.workspace = true
+pollster.workspace = true
 astraweave-causality = { workspace = true }
 astraweave-destruction = { workspace = true }
 astraweave-math = { workspace = true }
+astraweave-terrain = { path = "../astraweave-terrain" }
+astraweave-physics = { path = "../astraweave-physics" }
+astraweave-camera = { path = "../astraweave-camera" }
+astraweave-render = { path = "../astraweave-render" }
+astraweave-input = { path = "../astraweave-input" }
 astraweave-nav = { workspace = true }
-glam = { workspace = true }
+astraweave-ai = { workspace = true }
+astraweave-veil = { workspace = true }
+aw-save = { path = "../persistence/aw-save" }
+uuid = { version = "1", features = ["v4"] }
+time = { version = "0.3", features = ["macros"] }
+image = { version = "0.25", default-features = false, features = ["jpeg"] }
+gltf = "1.4"
+serde_json = "1"
+egui.workspace = true
+egui-winit.workspace = true
+egui-wgpu.workspace = true
+wgpu.workspace = true
+raw-window-handle = "0.6"
+log = "0.4"
+
+[dev-dependencies]
+astraweave-ecs = { path = "../astraweave-ecs", features = ["alloc-counter"] }
+sha2 = { workspace = true }
+tempfile = "3"
+
+[build-dependencies]
+embed-resource = "3"
+
+[[bin]]
+name = "aravath_greybox"
+path = "src/main.rs"

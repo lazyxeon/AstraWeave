@@ -99,6 +99,7 @@ The workspace has a per-subsystem architecture trace campaign under `docs/archit
 | `docs/architecture/terrain.md` | Terrain System — voxel meshing, biomes, noise, scatter, streaming (complements `terrain_materials.md`, which is the material-splat slice) |
 | `docs/architecture/terrain_materials.md` | Terrain Material System (canonical reference example) |
 | `docs/architecture/ui.md` | UI — HUD, menus, panels (egui) |
+| `docs/architecture/veil.md` | Deterministic Q32.32 fate-scar field sampled by volumetric fog and AI perception |
 | `docs/architecture/water.md` | Water Successor — `WaterQuery` facade + render water surface + weave-response (part/freeze/raise/FreezeWater) + F.4 accents |
 | `docs/architecture/weaving.md` | Weaving — modifier graph, casts, and the anchor slice (`astraweave-weaving`) |
 <!-- TRACE-TABLE:END -->

@@ -992,6 +992,10 @@ pub struct Renderer {
 
     /// Post-processing chain configuration (controls which effects are active).
     post_chain: crate::hdr_pipeline::PostProcessChain,
+    /// Froxel fog. Built on first enable so a shader failure cannot block startup.
+    volumetric_fog: Option<crate::volumetric_fog::VolumetricFogPass>,
+    /// Screen-space light shafts. Built on first enable.
+    god_rays: Option<crate::god_rays::GodRayPass>,
 
     /// Bloom compute pass (created lazily when bloom is first enabled).
     bloom_pass: Option<crate::bloom::BloomPass>,
@@ -1064,16 +1068,15 @@ impl Renderer {
             })
     }
     pub async fn new(window: std::sync::Arc<winit::window::Window>) -> Result<Self> {
-        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
+        let boot = std::time::Instant::now();
+        let instance = gpu_instance();
         let surface = instance.create_surface(window.clone())?;
-        let adapter = instance
-            .request_adapter(&wgpu::RequestAdapterOptions {
-                power_preference: wgpu::PowerPreference::HighPerformance,
-                compatible_surface: Some(&surface),
-                force_fallback_adapter: false,
-            })
-            .await
-            .context("No adapter")?;
+        let adapter = choose_adapter(&instance, Some(&surface)).await?;
+        log::info!(
+            "adapter selected after {} ms warp={}",
+            boot.elapsed().as_millis(),
+            warp_requested()
+        );
 
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor {
@@ -1101,21 +1104,10 @@ impl Renderer {
             })
             .await?;
 
+        log_gpu(&adapter, &device);
         // Register GPU error callback for validation errors and device loss.
         let device_lost = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-        {
-            let dl = device_lost.clone();
-            device.on_uncaptured_error(Box::new(move |error| {
-                log::error!("wgpu device error: {error}");
-                // Internal errors typically signal GPU device loss (TDR, driver
-                // crash, device removed).  Flag the renderer so the application
-                // can recreate it instead of continuing to submit broken work.
-                if matches!(error, wgpu::Error::Internal { .. }) {
-                    dl.store(true, std::sync::atomic::Ordering::SeqCst);
-                    log::error!("GPU device loss detected — renderer must be recreated");
-                }
-            }));
-        }
+        install_device_error_handler(&device, device_lost.clone());
 
         let caps = surface.get_capabilities(&adapter);
         let format = caps
@@ -1124,32 +1116,37 @@ impl Renderer {
             .copied()
             .find(|f| f.is_srgb())
             .unwrap_or(caps.formats[0]);
+        let present_mode = caps
+            .present_modes
+            .iter()
+            .copied()
+            .find(|mode| *mode == wgpu::PresentMode::Fifo)
+            .unwrap_or(caps.present_modes[0]);
         let size = window.inner_size();
         let config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
             format,
             width: size.width.max(1),
             height: size.height.max(1),
-            present_mode: caps.present_modes[0],
+            present_mode,
             alpha_mode: caps.alpha_modes[0],
             view_formats: vec![],
             desired_maximum_frame_latency: 2,
         };
+        log::info!(
+            "surface format {format:?} present {present_mode:?} {}x{} {} ms",
+            config.width,
+            config.height,
+            boot.elapsed().as_millis()
+        );
         surface.configure(&device, &config);
 
         Self::new_from_device_monitored(device, queue, Some(surface), config, device_lost).await
     }
 
     pub async fn new_headless(width: u32, height: u32) -> Result<Self> {
-        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
-        let adapter = instance
-            .request_adapter(&wgpu::RequestAdapterOptions {
-                power_preference: wgpu::PowerPreference::HighPerformance,
-                compatible_surface: None,
-                force_fallback_adapter: false,
-            })
-            .await
-            .context("No adapter")?;
+        let instance = gpu_instance();
+        let adapter = choose_adapter(&instance, None).await?;
 
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor {
@@ -1173,18 +1170,9 @@ impl Renderer {
             })
             .await?;
 
-        // Register GPU error callback for validation errors and device loss.
+        log_gpu(&adapter, &device);
         let device_lost = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-        {
-            let dl = device_lost.clone();
-            device.on_uncaptured_error(Box::new(move |error| {
-                log::error!("wgpu device error (headless): {error}");
-                if matches!(error, wgpu::Error::Internal { .. }) {
-                    dl.store(true, std::sync::atomic::Ordering::SeqCst);
-                    log::error!("GPU device loss detected — renderer must be recreated");
-                }
-            }));
-        }
+        install_device_error_handler(&device, device_lost.clone());
 
         let config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
@@ -1217,6 +1205,8 @@ impl Renderer {
         config: wgpu::SurfaceConfiguration,
         device_lost: std::sync::Arc<std::sync::atomic::AtomicBool>,
     ) -> Result<Self> {
+        let boot = std::time::Instant::now();
+        log::info!("renderer device init");
         #[cfg(feature = "gpu-tests")]
         let timestamp_query_set = device.create_query_set(&wgpu::QuerySetDescriptor {
             label: Some("timestamps"),
@@ -1377,7 +1367,9 @@ impl Renderer {
             format: wgpu::TextureFormat::Rgba16Float,
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT
                 | wgpu::TextureUsages::TEXTURE_BINDING
-                | wgpu::TextureUsages::COPY_SRC,
+                | wgpu::TextureUsages::COPY_SRC
+                | wgpu::TextureUsages::COPY_DST
+                | wgpu::TextureUsages::STORAGE_BINDING,
             view_formats: &[],
         });
 
@@ -3359,6 +3351,8 @@ fn vs(input: VSIn) -> VSOut {
             queue.write_buffer(&scene_env_buf, 0, bytemuck::bytes_of(&default_ubo));
         }
 
+        log::info!("renderer pipelines ready {} ms", boot.elapsed().as_millis());
+
         Ok(Self {
             surface,
             device,
@@ -3518,6 +3512,8 @@ fn vs(input: VSIn) -> VSOut {
             scene_env_bg,
             material_manager: crate::material::MaterialManager::new(),
             post_chain: crate::hdr_pipeline::PostProcessChain::default(),
+            volumetric_fog: None,
+            god_rays: None,
             bloom_pass: None,
             pending_bloom_config: None,
             postfx_params_buf,
@@ -3536,6 +3532,18 @@ fn vs(input: VSIn) -> VSOut {
     /// create a new one.
     pub fn is_device_lost(&self) -> bool {
         self.device_lost.load(std::sync::atomic::Ordering::SeqCst)
+            || crate::gpu_fault::device_lost()
+    }
+
+    /// Pump the device so a loss reported on the previous submit is visible
+    /// before this frame maps any buffers.
+    pub fn poll_device(&self) {
+        if self.device.poll(wgpu::PollType::Poll).is_err() {
+            self.device_lost
+                .store(true, std::sync::atomic::Ordering::SeqCst);
+            crate::gpu_fault::mark_device_lost();
+            log::error!("device.poll failed; treating the GPU as lost");
+        }
     }
 
     /// Returns a reference to the pipeline cache, if available (Vulkan backends only).
@@ -4185,12 +4193,20 @@ fn vs(input: VSIn) -> VSOut {
             format: wgpu::TextureFormat::Rgba16Float,
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT
                 | wgpu::TextureUsages::TEXTURE_BINDING
-                | wgpu::TextureUsages::COPY_SRC,
+                | wgpu::TextureUsages::COPY_SRC
+                | wgpu::TextureUsages::COPY_DST
+                | wgpu::TextureUsages::STORAGE_BINDING,
             view_formats: &[],
         });
         self.hdr_view = self
             .hdr_tex
             .create_view(&wgpu::TextureViewDescriptor::default());
+        if let Some(fog) = self.volumetric_fog.as_mut() {
+            fog.resize(&self.device, self.config.width, self.config.height);
+        }
+        if let Some(rays) = self.god_rays.as_mut() {
+            rays.resize(&self.device, self.config.width, self.config.height);
+        }
         // W.2b — keep the scene-color snapshot sized to the surface.
         self.water_scene_color = self.device.create_texture(&wgpu::TextureDescriptor {
             label: Some("water scene color"),
@@ -4735,6 +4751,9 @@ fn vs(input: VSIn) -> VSOut {
         normals: &[[f32; 3]],
         indices: &[u32],
     ) -> Mesh {
+        if self.is_device_lost() {
+            return self.unmapped_mesh();
+        }
         // Interleave into Vertex, derive simple defaults for tangent (+X) and uv (planar XZ)
         let verts: Vec<crate::types::Vertex> = vertices
             .iter()
@@ -4746,20 +4765,16 @@ fn vs(input: VSIn) -> VSOut {
                 uv: [p[0] * 0.5 + 0.5, p[2] * 0.5 + 0.5],
             })
             .collect();
-        let vbuf = self
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("ext v"),
-                contents: bytemuck::cast_slice(&verts),
-                usage: wgpu::BufferUsages::VERTEX,
-            });
-        let ibuf = self
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("ext i"),
-                contents: bytemuck::cast_slice(indices),
-                usage: wgpu::BufferUsages::INDEX,
-            });
+        let vbuf = self.upload_bytes(
+            "ext v",
+            bytemuck::cast_slice(&verts),
+            wgpu::BufferUsages::VERTEX,
+        );
+        let ibuf = self.upload_bytes(
+            "ext i",
+            bytemuck::cast_slice(indices),
+            wgpu::BufferUsages::INDEX,
+        );
         Mesh {
             vertex_buf: vbuf,
             index_buf: ibuf,
@@ -4775,6 +4790,9 @@ fn vs(input: VSIn) -> VSOut {
         uvs: &[[f32; 2]],
         indices: &[u32],
     ) -> Mesh {
+        if self.is_device_lost() {
+            return self.unmapped_mesh();
+        }
         assert!(
             positions.len() == normals.len()
                 && positions.len() == tangents.len()
@@ -4801,20 +4819,16 @@ fn vs(input: VSIn) -> VSOut {
                 uv: [0.0; 2],
             }; 3];
             let placeholder_idx: [u32; 3] = [0, 1, 2];
-            let vbuf = self
-                .device
-                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                    label: Some("ext v (full) placeholder"),
-                    contents: bytemuck::cast_slice(&placeholder_verts),
-                    usage: wgpu::BufferUsages::VERTEX,
-                });
-            let ibuf = self
-                .device
-                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                    label: Some("ext i (full) placeholder"),
-                    contents: bytemuck::cast_slice(&placeholder_idx),
-                    usage: wgpu::BufferUsages::INDEX,
-                });
+            let vbuf = self.upload_bytes(
+                "ext v (full) placeholder",
+                bytemuck::cast_slice(&placeholder_verts),
+                wgpu::BufferUsages::VERTEX,
+            );
+            let ibuf = self.upload_bytes(
+                "ext i (full) placeholder",
+                bytemuck::cast_slice(&placeholder_idx),
+                wgpu::BufferUsages::INDEX,
+            );
             return Mesh {
                 vertex_buf: vbuf,
                 index_buf: ibuf,
@@ -4834,20 +4848,16 @@ fn vs(input: VSIn) -> VSOut {
                 uv: *uv,
             })
             .collect();
-        let vbuf = self
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("ext v (full)"),
-                contents: bytemuck::cast_slice(&verts),
-                usage: wgpu::BufferUsages::VERTEX,
-            });
-        let ibuf = self
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("ext i (full)"),
-                contents: bytemuck::cast_slice(indices),
-                usage: wgpu::BufferUsages::INDEX,
-            });
+        let vbuf = self.upload_bytes(
+            "ext v (full)",
+            bytemuck::cast_slice(&verts),
+            wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+        );
+        let ibuf = self.upload_bytes(
+            "ext i (full)",
+            bytemuck::cast_slice(indices),
+            wgpu::BufferUsages::INDEX,
+        );
         Mesh {
             vertex_buf: vbuf,
             index_buf: ibuf,
@@ -5010,6 +5020,251 @@ fn vs(input: VSIn) -> VSOut {
     }
 
     /// Enable or disable shadow rendering
+    /// Turn froxel fog on or off and replace its settings.
+    ///
+    /// A froxel-dimension change rebuilds the volumes. Density changes do not.
+    pub fn set_volumetric_fog_config(
+        &mut self,
+        config: crate::volumetric_fog::VolumetricFogConfig,
+    ) {
+        let started = std::time::Instant::now();
+        let rebuild = self
+            .volumetric_fog
+            .as_ref()
+            .is_none_or(|fog| fog.config().froxel_dims != config.froxel_dims);
+        let timestamp_period = self.queue.get_timestamp_period();
+        if rebuild {
+            let device = self.device.clone();
+            match crate::volumetric_fog::VolumetricFogPass::new(
+                &device,
+                self.config.width,
+                self.config.height,
+                config,
+            ) {
+                Ok(pass) => self.volumetric_fog = Some(pass),
+                Err(err) => {
+                    log::error!("volumetric fog disabled: {err}");
+                    self.volumetric_fog = None;
+                    self.note_scope_device_loss();
+                    return;
+                }
+            }
+        } else if let Some(fog) = self.volumetric_fog.as_mut() {
+            fog.set_config(config);
+        }
+        if let Some(fog) = self.volumetric_fog.as_mut() {
+            fog.set_timestamp_period_ns(timestamp_period);
+        }
+        log::info!(
+            "volumetric fog {} in {} ms",
+            if rebuild { "built" } else { "updated" },
+            started.elapsed().as_millis()
+        );
+    }
+
+    pub fn volumetric_fog_enabled(&self) -> bool {
+        self.volumetric_fog
+            .as_ref()
+            .is_some_and(|fog| fog.config().enabled)
+    }
+
+    /// Feed a world-space scar volume into the existing froxel density pass.
+    ///
+    /// A no-op while volumetric fog is off, including `--no-volumetrics`.
+    pub fn upload_veil_scar_volume(
+        &mut self,
+        volume: &crate::volumetric_fog::ScarFogVolume,
+    ) -> Result<()> {
+        let Some(fog) = self.volumetric_fog.as_mut() else {
+            return Ok(());
+        };
+        if !fog.config().enabled {
+            return Ok(());
+        }
+        let queue = self.queue.clone();
+        fog.upload_scar_volume(&queue, volume)
+            .map_err(|err| anyhow::anyhow!(err))?;
+        Ok(())
+    }
+
+    /// Latest density and scatter GPU times, when timestamp queries are available.
+    pub fn volumetric_gpu_sample(&self) -> Option<crate::volumetric_fog::VolumetricGpuSample> {
+        self.volumetric_fog
+            .as_ref()
+            .and_then(|fog| fog.last_gpu_sample())
+    }
+
+    fn poll_fog_timestamps(&mut self) {
+        let device = self.device.clone();
+        if let Some(fog) = self.volumetric_fog.as_mut() {
+            if let Some(sample) = fog.poll_timestamps(&device) {
+                log::debug!(
+                    "volumetric fog gpu density {:.3} ms scatter {:.3} ms",
+                    sample.density_ms,
+                    sample.scatter_ms
+                );
+            }
+        }
+    }
+
+    fn request_fog_timestamps(&mut self) {
+        if let Some(fog) = self.volumetric_fog.as_mut() {
+            fog.request_timestamp_readback();
+        }
+    }
+
+    /// Turn screen-space light shafts on or off.
+    ///
+    /// Half-resolution changes rebuild the shaft target.
+    pub fn set_god_ray_config(&mut self, config: crate::god_rays::GodRayConfig) {
+        let started = std::time::Instant::now();
+        let rebuild = self
+            .god_rays
+            .as_ref()
+            .is_none_or(|rays| rays.config().half_res != config.half_res);
+        if rebuild {
+            let device = self.device.clone();
+            match crate::god_rays::GodRayPass::with_config(
+                &device,
+                self.config.width,
+                self.config.height,
+                config,
+            ) {
+                Ok(pass) => self.god_rays = Some(pass),
+                Err(err) => {
+                    log::error!("light shafts disabled: {err}");
+                    self.god_rays = None;
+                    self.note_scope_device_loss();
+                    return;
+                }
+            }
+        } else if let Some(rays) = self.god_rays.as_mut() {
+            rays.set_config(config);
+        }
+        log::info!(
+            "light shafts {} in {} ms",
+            if rebuild { "built" } else { "updated" },
+            started.elapsed().as_millis()
+        );
+    }
+
+    pub fn god_rays_enabled(&self) -> bool {
+        self.god_rays
+            .as_ref()
+            .is_some_and(|rays| rays.config().enabled)
+    }
+
+    /// Composite engine volumetric fog, then screen-space light shafts, into HDR.
+    ///
+    /// Both passes no-op while their configs are disabled. Fog samples the
+    /// cascaded shadow map. Shafts are added before the tonemap blit.
+    fn composite_atmosphere(&mut self, enc: &mut wgpu::CommandEncoder, depth: &wgpu::TextureView) {
+        let light = glam::Vec3::new(
+            self.camera_ubo.light_dir_pad[0],
+            self.camera_ubo.light_dir_pad[1],
+            self.camera_ubo.light_dir_pad[2],
+        );
+        let toward_sun = if light.length_squared() > 1e-6 {
+            -light.normalize()
+        } else {
+            glam::Vec3::Y
+        };
+        let camera_pos = glam::Vec3::new(
+            self.camera_ubo.camera_pos_pad[0],
+            self.camera_ubo.camera_pos_pad[1],
+            self.camera_ubo.camera_pos_pad[2],
+        );
+        let view_proj = self.cached_proj * self.cached_view;
+        let inv_view_proj = view_proj.inverse();
+        let (near, far) = clip_planes(self.cached_proj);
+        let sun_color = self.sky.time_of_day().get_light_color();
+        let ambient = self.sky.time_of_day().get_ambient_color();
+        let intensity = self.camera_ubo.light_dir_pad[3].max(0.15);
+
+        if let Some(fog) = self
+            .volumetric_fog
+            .as_mut()
+            .filter(|fog| fog.config().enabled)
+        {
+            let splits = [
+                self.split0,
+                self.split1,
+                self.split2,
+                far.max(self.split2 + 1.0),
+            ];
+            let cascades: [crate::volumetric_fog::CascadeData; 4] =
+                std::array::from_fn(|index| crate::volumetric_fog::CascadeData {
+                    vp: self.cascades[index].to_cols_array_2d(),
+                    split: splits[index],
+                    _align: [0.0; 3],
+                    _pad: [0.0; 3],
+                    _tail: 0.0,
+                });
+            let device = self.device.clone();
+            let queue = self.queue.clone();
+            let shadow = self.shadow_view.clone();
+            let hdr = self.hdr_view.clone();
+            let generation = self.resource_generation;
+            fog.upload_cascades(&queue, &cascades);
+            fog.prepare_frame(
+                &queue,
+                inv_view_proj,
+                camera_pos,
+                toward_sun,
+                sun_color,
+                intensity,
+                ambient,
+                0.35,
+                near,
+                far,
+                1.0 / 60.0,
+            );
+            let ran = fog.execute(&device, enc, depth, &shadow, &hdr, generation);
+            if ran {
+                fog.copy_scatter_to_history(enc);
+                enc.copy_texture_to_texture(
+                    fog.output_texture().as_image_copy(),
+                    self.hdr_tex.as_image_copy(),
+                    wgpu::Extent3d {
+                        width: self.config.width,
+                        height: self.config.height,
+                        depth_or_array_layers: 1,
+                    },
+                );
+            }
+        }
+
+        if let Some(rays) = self.god_rays.as_mut().filter(|rays| rays.config().enabled) {
+            let device = self.device.clone();
+            let queue = self.queue.clone();
+            let hdr = self.hdr_view.clone();
+            let generation = self.resource_generation;
+            let scene_width = self.config.width;
+            let scene_height = self.config.height;
+            let composite = {
+                rays.update_params(&queue, view_proj, toward_sun, sun_color);
+                let ran = rays.execute(&device, enc, depth, &hdr, generation);
+                let added = ran && rays.add_into(&device, enc, &hdr, generation);
+                if added {
+                    rays.composite_texture().cloned()
+                } else {
+                    None
+                }
+            };
+            if let Some(composite) = composite {
+                enc.copy_texture_to_texture(
+                    composite.as_image_copy(),
+                    self.hdr_tex.as_image_copy(),
+                    wgpu::Extent3d {
+                        width: scene_width,
+                        height: scene_height,
+                        depth_or_array_layers: 1,
+                    },
+                );
+            }
+        }
+    }
+
     pub fn set_shadows_enabled(&mut self, enabled: bool) {
         self.shadows_enabled = enabled;
         // When shadows are disabled, set the force_shadow_override sentinel so
@@ -5368,6 +5623,7 @@ fn vs(input: VSIn) -> VSOut {
             p.poll_readback(&self.device);
             p.begin_frame();
         }
+        self.poll_fog_timestamps();
         // Advance the staging ring buffer for this frame.
         self.staging_ring.begin_frame();
 
@@ -5822,6 +6078,8 @@ fn vs(input: VSIn) -> VSOut {
         // sample the scene behind it for refraction + depth-delta shoreline foam.
         // render() always uses the internal depth target.
         self.run_water_pass(&mut enc, None);
+        let depth = self.depth.view.clone();
+        self.composite_atmosphere(&mut enc, &depth);
 
         // Optional feature-gated post chain — gated by post_chain flags
         #[cfg(feature = "postfx")]
@@ -5874,7 +6132,7 @@ fn vs(input: VSIn) -> VSOut {
         }
 
         // --- GPU profiler: resolve timestamp queries into readback buffer ---
-        if let Some(ref p) = self.gpu_profiler {
+        if let Some(ref mut p) = self.gpu_profiler {
             p.end_frame(&mut enc);
         }
 
@@ -5885,6 +6143,7 @@ fn vs(input: VSIn) -> VSOut {
         if let Some(ref mut p) = self.gpu_profiler {
             p.request_readback();
         }
+        self.request_fog_timestamps();
 
         Ok(())
     }
@@ -5907,6 +6166,7 @@ fn vs(input: VSIn) -> VSOut {
             p.poll_readback(&self.device);
             p.begin_frame();
         }
+        self.poll_fog_timestamps();
         // Advance the staging ring buffer for this frame.
         self.staging_ring.begin_frame();
 
@@ -6632,6 +6892,12 @@ fn vs(input: VSIn) -> VSOut {
         // the caller-supplied depth so the water pass tests/samples the depth the
         // editor's opaque geometry actually wrote (not the internal self.depth).
         self.run_water_pass(enc, depth_view);
+        if let Some(external_depth) = depth_view {
+            self.composite_atmosphere(enc, external_depth);
+        } else {
+            let depth = self.depth.view.clone();
+            self.composite_atmosphere(enc, &depth);
+        }
 
         // --- Post-processing: bloom compute pass (runs on HDR, before blit) ---
         let bloom_intensity = if self.post_chain.bloom_enabled {
@@ -6727,7 +6993,7 @@ fn vs(input: VSIn) -> VSOut {
         }
 
         // --- GPU profiler: resolve timestamp queries into readback buffer ---
-        if let Some(ref p) = self.gpu_profiler {
+        if let Some(ref mut p) = self.gpu_profiler {
             p.end_frame(enc);
         }
 
@@ -7082,7 +7348,59 @@ fn vs(input: VSIn) -> VSOut {
         if let Some(ref mut p) = self.gpu_profiler {
             p.request_readback();
         }
+        self.request_fog_timestamps();
 
+        Ok(())
+    }
+
+    /// Record one frame without a window and fail if wgpu validation reported an error.
+    ///
+    /// The greybox smoke test calls this with volumetrics enabled. Headless
+    /// `render_with` returns before drawing, so it cannot see a bad pass.
+    pub fn submit_headless_frame(&mut self) -> Result<()> {
+        if self.is_device_lost() {
+            anyhow::bail!("GPU device lost before the validation frame");
+        }
+        let target = self.device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("headless validation target"),
+            size: wgpu::Extent3d {
+                width: self.config.width.max(1),
+                height: self.config.height.max(1),
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: self.config.format,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+            view_formats: &[],
+        });
+        let view = target.create_view(&wgpu::TextureViewDescriptor::default());
+        self.device.push_error_scope(wgpu::ErrorFilter::Validation);
+        let mut enc = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("headless validation"),
+            });
+        self.draw_into(&view, None, &mut enc)?;
+        self.queue.submit(std::iter::once(enc.finish()));
+        if let Some(profiler) = self.gpu_profiler.as_mut() {
+            profiler.request_readback();
+        }
+        self.device
+            .poll(wgpu::PollType::Wait)
+            .map_err(|err| anyhow::anyhow!("device poll: {err}"))?;
+        if let Some(err) = crate::gpu_fault::finish_scope(&self.device) {
+            self.note_scope_device_loss();
+            anyhow::bail!("wgpu validation: {err}");
+        }
+        if let Some(err) = crate::gpu_fault::take() {
+            self.note_scope_device_loss();
+            anyhow::bail!("wgpu validation: {err}");
+        }
+        if self.is_device_lost() {
+            anyhow::bail!("GPU device lost during the validation frame");
+        }
         Ok(())
     }
 
@@ -8282,6 +8600,47 @@ fn vs(input: VSIn) -> VSOut {
     ///
     /// Returns `true` if the model existed and was updated, `false` if the
     /// model name was not found (caller should fall back to `add_model`).
+    /// Replace one model's vertex buffer. The buffer must already be large
+    /// enough and have been created with `COPY_DST`. Returns false when the
+    /// model is missing or the new vertex list does not fit.
+    pub fn write_model_vertices(
+        &self,
+        name: &str,
+        primitive: usize,
+        vertices: &[crate::mesh::MeshVertex],
+    ) -> bool {
+        let bytes = bytemuck::cast_slice(vertices);
+        let Some(buf) = self
+            .models
+            .get(name)
+            .and_then(|model| model.primitives.get(primitive))
+            .map(|part| part.mesh.vertex_buf.clone())
+        else {
+            return false;
+        };
+        if buf.size() < bytes.len() as u64 {
+            return false;
+        }
+        self.queue.write_buffer(&buf, 0, bytes);
+        true
+    }
+
+    /// Write a single instance without building a temporary instance list.
+    pub fn update_model_transform(&mut self, name: &str, instance: Instance) -> bool {
+        let raw = instance.raw();
+        let bytes = bytemuck::bytes_of(&raw);
+        let Some(model) = self.models.get_mut(name) else {
+            return false;
+        };
+        if model.instance_buf.size() < bytes.len() as u64 {
+            return false;
+        }
+        let buf = model.instance_buf.clone();
+        model.instance_count = 1;
+        self.queue.write_buffer(&buf, 0, bytes);
+        true
+    }
+
     pub fn update_model_instances(&mut self, name: &str, instances: &[Instance]) -> bool {
         let Some(model) = self.models.get_mut(name) else {
             return false;
@@ -8391,6 +8750,244 @@ fn vs(input: VSIn) -> VSOut {
 impl Drop for Renderer {
     fn drop(&mut self) {
         self.save_pipeline_cache();
+    }
+}
+
+fn note_scope_device_loss_on(flag: &std::sync::atomic::AtomicBool) {
+    if crate::gpu_fault::device_lost() {
+        flag.store(true, std::sync::atomic::Ordering::SeqCst);
+    }
+}
+
+impl Renderer {
+    fn note_scope_device_loss(&self) {
+        note_scope_device_loss_on(&self.device_lost);
+    }
+
+    /// Upload bytes without mapping the buffer. `create_buffer_init` calls
+    /// `get_mapped_range` and panics when the buffer is invalid.
+    fn upload_bytes(
+        &self,
+        label: &str,
+        contents: &[u8],
+        usage: wgpu::BufferUsages,
+    ) -> wgpu::Buffer {
+        let mut padded = contents.to_vec();
+        while padded.len() % 4 != 0 {
+            padded.push(0);
+        }
+        if padded.is_empty() {
+            padded.resize(4, 0);
+        }
+        let buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some(label),
+            size: padded.len() as u64,
+            usage: usage | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        if !self.is_device_lost() {
+            self.queue.write_buffer(&buffer, 0, &padded);
+        } else {
+            log::error!("skipped upload of {label}; the GPU device is lost");
+        }
+        buffer
+    }
+
+    fn unmapped_mesh(&self) -> Mesh {
+        log::error!("GPU device is lost; refusing to map a mesh buffer");
+        let vertex_size = std::mem::size_of::<crate::types::Vertex>() as u64;
+        let vbuf = self.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("ext v (device lost)"),
+            size: vertex_size.max(4) * 3,
+            usage: wgpu::BufferUsages::VERTEX,
+            mapped_at_creation: false,
+        });
+        let ibuf = self.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("ext i (device lost)"),
+            size: 12,
+            usage: wgpu::BufferUsages::INDEX,
+            mapped_at_creation: false,
+        });
+        Mesh {
+            vertex_buf: vbuf,
+            index_buf: ibuf,
+            index_count: 0,
+        }
+    }
+}
+
+fn gpu_instance() -> wgpu::Instance {
+    wgpu::Instance::new(&wgpu::InstanceDescriptor::from_env_or_default())
+}
+
+const NVIDIA_VENDOR: u32 = 0x10DE;
+
+fn is_nvidia(info: &wgpu::AdapterInfo) -> bool {
+    info.vendor == NVIDIA_VENDOR || info.name.to_ascii_lowercase().contains("nvidia")
+}
+
+async fn choose_adapter(
+    instance: &wgpu::Instance,
+    compatible_surface: Option<&wgpu::Surface<'_>>,
+) -> Result<wgpu::Adapter> {
+    if warp_requested() {
+        log::info!("requesting the fallback adapter (ARAVATH_WARP) at HighPerformance");
+        return instance
+            .request_adapter(&wgpu::RequestAdapterOptions {
+                power_preference: wgpu::PowerPreference::HighPerformance,
+                compatible_surface,
+                force_fallback_adapter: true,
+            })
+            .await
+            .context("No adapter");
+    }
+
+    let backends = wgpu::Backends::from_env().unwrap_or(wgpu::Backends::all());
+    let adapters = instance.enumerate_adapters(backends);
+    for adapter in &adapters {
+        let info = adapter.get_info();
+        let surface_ok = compatible_surface
+            .map(|surface| adapter.is_surface_supported(surface))
+            .unwrap_or(true);
+        log::info!(
+            "adapter candidate '{}' backend {:?} type {:?} vendor {:#06x} device {:#06x} driver '{}' info '{}' surface_ok={surface_ok}",
+            info.name,
+            info.backend,
+            info.device_type,
+            info.vendor,
+            info.device,
+            info.driver,
+            info.driver_info,
+        );
+    }
+    let usable: Vec<&wgpu::Adapter> = adapters
+        .iter()
+        .filter(|adapter| {
+            compatible_surface
+                .map(|surface| adapter.is_surface_supported(surface))
+                .unwrap_or(true)
+        })
+        .collect();
+    let nvidia_discrete = usable.iter().find(|adapter| {
+        let info = adapter.get_info();
+        is_nvidia(&info) && info.device_type == wgpu::DeviceType::DiscreteGpu
+    });
+    let any_discrete = usable
+        .iter()
+        .find(|adapter| adapter.get_info().device_type == wgpu::DeviceType::DiscreteGpu);
+    let any_nvidia = usable.iter().find(|adapter| is_nvidia(&adapter.get_info()));
+    let (adapter, reason) = if let Some(adapter) = nvidia_discrete {
+        (*adapter, "discrete NVIDIA")
+    } else if let Some(adapter) = any_discrete {
+        (*adapter, "discrete GPU")
+    } else if let Some(adapter) = any_nvidia {
+        (*adapter, "NVIDIA adapter")
+    } else {
+        log::info!("no enumerated discrete adapter; requesting HighPerformance");
+        return instance
+            .request_adapter(&wgpu::RequestAdapterOptions {
+                power_preference: wgpu::PowerPreference::HighPerformance,
+                compatible_surface,
+                force_fallback_adapter: false,
+            })
+            .await
+            .context("No adapter");
+    };
+    log::info!("chose adapter '{}' ({reason})", adapter.get_info().name);
+    Ok(adapter.clone())
+}
+
+fn log_gpu(adapter: &wgpu::Adapter, device: &wgpu::Device) {
+    let info = adapter.get_info();
+    let limits = device.limits();
+    let features = adapter.features();
+    let rgba16 = wgpu::TextureFormat::Rgba16Float.guaranteed_format_features(features);
+    log::info!(
+        "adapter '{}' backend {:?} type {:?} vendor {:#06x} device {:#06x} driver '{}' info '{}'",
+        info.name,
+        info.backend,
+        info.device_type,
+        info.vendor,
+        info.device,
+        info.driver,
+        info.driver_info
+    );
+    log::info!(
+        "limits bind_groups={} bindings_per_group={} sampled_textures={} samplers={} storage_textures={} storage_buffers={} uniform_buffers={} tex2d={} tex3d={} buffer_bytes={}",
+        limits.max_bind_groups,
+        limits.max_bindings_per_bind_group,
+        limits.max_sampled_textures_per_shader_stage,
+        limits.max_samplers_per_shader_stage,
+        limits.max_storage_textures_per_shader_stage,
+        limits.max_storage_buffers_per_shader_stage,
+        limits.max_uniform_buffers_per_shader_stage,
+        limits.max_texture_dimension_2d,
+        limits.max_texture_dimension_3d,
+        limits.max_buffer_size,
+    );
+    log::info!(
+        "Rgba16Float storage_write={} storage_read_write={} adapter_specific_formats={} timestamp_query={}",
+        rgba16
+            .flags
+            .contains(wgpu::TextureFormatFeatureFlags::STORAGE_WRITE_ONLY),
+        rgba16
+            .flags
+            .contains(wgpu::TextureFormatFeatureFlags::STORAGE_READ_WRITE),
+        features.contains(wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES),
+        features.contains(wgpu::Features::TIMESTAMP_QUERY),
+    );
+}
+
+fn install_device_error_handler(
+    device: &wgpu::Device,
+    device_lost: std::sync::Arc<std::sync::atomic::AtomicBool>,
+) {
+    device.on_uncaptured_error(Box::new(move |error| {
+        let text = error.to_string();
+        log::error!("wgpu device error: {text}");
+        if matches!(error, wgpu::Error::Validation { .. }) {
+            crate::gpu_fault::record(&text);
+        }
+        if crate::gpu_fault::error_means_device_lost(&error, &text) {
+            device_lost.store(true, std::sync::atomic::Ordering::SeqCst);
+            crate::gpu_fault::mark_device_lost();
+            log::error!("GPU device loss detected — renderer must be recreated");
+        }
+    }));
+}
+
+fn warp_requested() -> bool {
+    matches!(
+        std::env::var("ARAVATH_WARP").ok().as_deref(),
+        Some("1") | Some("true")
+    )
+}
+
+fn clip_planes(proj: glam::Mat4) -> (f32, f32) {
+    let c = proj.z_axis.z;
+    let d = proj.w_axis.z;
+    if c.abs() < 1e-5 {
+        return (0.1, 500.0);
+    }
+    let near = (d / c).abs().clamp(0.01, 50.0);
+    let far = if (1.0 + c).abs() < 1e-4 {
+        500.0
+    } else {
+        (c * near / (1.0 + c)).abs().clamp(near + 1.0, 20000.0)
+    };
+    (near, far)
+}
+
+#[cfg(test)]
+mod atmosphere_tests {
+    use super::clip_planes;
+
+    #[test]
+    fn clip_planes_match_a_perspective_matrix() {
+        let proj = glam::Mat4::perspective_rh(1.0, 1.5, 0.1, 500.0);
+        let (near, far) = clip_planes(proj);
+        assert!((near - 0.1).abs() < 0.02, "near {near}");
+        assert!((far - 500.0).abs() < 5.0, "far {far}");
     }
 }
 

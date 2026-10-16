@@ -3,7 +3,7 @@
 //! This module generates minimal test audio files on-the-fly for testing
 //! file-based audio APIs without requiring checked-in binary assets.
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use std::fs;
 use std::path::Path;
 
@@ -171,64 +171,35 @@ pub fn generate_test_voice(path: &str, duration_secs: f32, sample_rate: u32) -> 
     Ok(())
 }
 
-/// Generate all test assets needed for comprehensive audio testing
+/// Generate all test assets needed for comprehensive audio testing.
+///
+/// Writes under `tests/assets` relative to the process working directory.
+/// [`write_test_assets`] is the same set in a caller-owned directory, so a
+/// cleanup of the shared tree cannot delete the files mid-check.
 pub fn setup_all_test_assets() -> Result<()> {
-    // When running tests, cargo sets the working directory to the crate root
-    // So "tests/assets" is correct for the astraweave-audio crate
-    let assets_dir = "tests/assets";
-    fs::create_dir_all(assets_dir)?;
+    write_test_assets(Path::new("tests/assets"))
+}
 
-    // Short beep for SFX testing (440 Hz "A" note, 0.5 seconds)
-    generate_test_beep(
-        &format!("{}/test_beep_440hz.wav", assets_dir),
-        440.0,
-        0.5,
-        22050,
-    )?;
+/// Generate the beep, music, and voice WAVs used by the file-based tests.
+pub fn write_test_assets(dir: &Path) -> Result<()> {
+    fs::create_dir_all(dir)?;
+    let path = |name: &str| -> Result<String> {
+        dir.join(name)
+            .into_os_string()
+            .into_string()
+            .map_err(|_| anyhow::anyhow!("test asset path is not utf-8"))
+    };
 
-    // Low frequency beep for bass testing (200 Hz, 0.5 seconds)
-    generate_test_beep(
-        &format!("{}/test_beep_200hz.wav", assets_dir),
-        200.0,
-        0.5,
-        22050,
-    )?;
-
-    // High frequency beep (1000 Hz, 0.3 seconds)
-    generate_test_beep(
-        &format!("{}/test_beep_1000hz.wav", assets_dir),
-        1000.0,
-        0.3,
-        22050,
-    )?;
-
-    // Very short beep for rapid-fire testing (0.1 seconds)
-    generate_test_beep(
-        &format!("{}/test_beep_short.wav", assets_dir),
-        440.0,
-        0.1,
-        22050,
-    )?;
-
-    // Long beep for duration testing (3 seconds)
-    generate_test_beep(
-        &format!("{}/test_beep_long.wav", assets_dir),
-        440.0,
-        3.0,
-        22050,
-    )?;
-
-    // Music track for crossfade testing (5 seconds, loopable)
-    generate_test_music(&format!("{}/test_music_5sec.wav", assets_dir), 5.0, 22050)?;
-
-    // Shorter music for quick crossfade tests (2 seconds)
-    generate_test_music(&format!("{}/test_music_2sec.wav", assets_dir), 2.0, 22050)?;
-
-    // Voice samples for dialogue testing
-    generate_test_voice(&format!("{}/test_voice_short.wav", assets_dir), 1.0, 22050)?;
-    generate_test_voice(&format!("{}/test_voice_medium.wav", assets_dir), 2.0, 22050)?;
-    generate_test_voice(&format!("{}/test_voice_long.wav", assets_dir), 3.0, 22050)?;
-
+    generate_test_beep(&path("test_beep_440hz.wav")?, 440.0, 0.5, 22050)?;
+    generate_test_beep(&path("test_beep_200hz.wav")?, 200.0, 0.5, 22050)?;
+    generate_test_beep(&path("test_beep_1000hz.wav")?, 1000.0, 0.3, 22050)?;
+    generate_test_beep(&path("test_beep_short.wav")?, 440.0, 0.1, 22050)?;
+    generate_test_beep(&path("test_beep_long.wav")?, 440.0, 3.0, 22050)?;
+    generate_test_music(&path("test_music_5sec.wav")?, 5.0, 22050)?;
+    generate_test_music(&path("test_music_2sec.wav")?, 2.0, 22050)?;
+    generate_test_voice(&path("test_voice_short.wav")?, 1.0, 22050)?;
+    generate_test_voice(&path("test_voice_medium.wav")?, 2.0, 22050)?;
+    generate_test_voice(&path("test_voice_long.wav")?, 3.0, 22050)?;
     Ok(())
 }
 
@@ -309,24 +280,32 @@ mod tests {
     #[test]
     #[serial]
     fn test_setup_all_assets() -> Result<()> {
-        setup_all_test_assets()?;
+        // Private directory. `cleanup_test_assets` deletes the shared
+        // `tests/assets` tree from another test process.
+        let dir = tempfile::tempdir()?;
+        write_test_assets(dir.path())?;
 
-        // Verify all expected files exist
-        let expected_files = vec![
-            "tests/assets/test_beep_440hz.wav",
-            "tests/assets/test_beep_200hz.wav",
-            "tests/assets/test_beep_1000hz.wav",
-            "tests/assets/test_beep_short.wav",
-            "tests/assets/test_beep_long.wav",
-            "tests/assets/test_music_5sec.wav",
-            "tests/assets/test_music_2sec.wav",
-            "tests/assets/test_voice_short.wav",
-            "tests/assets/test_voice_medium.wav",
-            "tests/assets/test_voice_long.wav",
+        let expected_files = [
+            "test_beep_440hz.wav",
+            "test_beep_200hz.wav",
+            "test_beep_1000hz.wav",
+            "test_beep_short.wav",
+            "test_beep_long.wav",
+            "test_music_5sec.wav",
+            "test_music_2sec.wav",
+            "test_voice_short.wav",
+            "test_voice_medium.wav",
+            "test_voice_long.wav",
         ];
 
         for file in expected_files {
-            assert!(Path::new(file).exists(), "Expected file {} to exist", file);
+            let path = dir.path().join(file);
+            let bytes = fs::read(&path).with_context(|| format!("read {file}"))?;
+            assert!(
+                bytes.len() > 44 && bytes.starts_with(b"RIFF"),
+                "{file} is not a wav ({} bytes)",
+                bytes.len()
+            );
         }
 
         Ok(())

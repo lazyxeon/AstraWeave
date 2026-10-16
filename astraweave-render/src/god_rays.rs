@@ -87,10 +87,19 @@ pub struct GodRayPass {
     sampler: wgpu::Sampler,
     /// Cached bind group (rebuilt on generation change).
     cached_bg: crate::bind_group_cache::CachedBindGroup,
+    scene_width: u32,
+    scene_height: u32,
+    composite_pipeline: wgpu::ComputePipeline,
+    composite_bgl: wgpu::BindGroupLayout,
+    composite_sampler: wgpu::Sampler,
+    /// Full-resolution write-only target. Copied onto the HDR scene after the dispatch.
+    composite_texture: wgpu::Texture,
+    composite_view: wgpu::TextureView,
+    cached_composite: crate::bind_group_cache::CachedBindGroup,
 }
 
 impl GodRayPass {
-    pub fn new(device: &wgpu::Device, width: u32, height: u32) -> Self {
+    pub fn new(device: &wgpu::Device, width: u32, height: u32) -> Result<Self, String> {
         Self::with_config(device, width, height, GodRayConfig::default())
     }
 
@@ -99,7 +108,19 @@ impl GodRayPass {
         width: u32,
         height: u32,
         config: GodRayConfig,
-    ) -> Self {
+    ) -> Result<Self, String> {
+        if !crate::gpu_fault::storage_write_supported(device, wgpu::TextureFormat::Rgba16Float) {
+            let msg = "Rgba16Float write-only storage is not supported; light shafts stay off"
+                .to_string();
+            log::error!("{msg}");
+            return Err(msg);
+        }
+        crate::gpu_fault::scope(device, "god rays", || {
+            Self::build(device, width, height, config)
+        })
+    }
+
+    fn build(device: &wgpu::Device, width: u32, height: u32, config: GodRayConfig) -> Self {
         // Compute effective resolution (half-res if enabled)
         let tex_w = if config.half_res {
             width.div_ceil(2)
@@ -225,6 +246,83 @@ impl GodRayPass {
             cache: None,
         });
 
+        let composite_texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("god_rays_composite_tex"),
+            size: wgpu::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: fmt,
+            usage: wgpu::TextureUsages::STORAGE_BINDING | wgpu::TextureUsages::COPY_SRC,
+            view_formats: &[],
+        });
+        let composite_view = composite_texture.create_view(&wgpu::TextureViewDescriptor::default());
+
+        let composite_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("god_rays_composite_bgl"),
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 2,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 3,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::StorageTexture {
+                        access: wgpu::StorageTextureAccess::WriteOnly,
+                        format: wgpu::TextureFormat::Rgba16Float,
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                    },
+                    count: None,
+                },
+            ],
+        });
+        let composite_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("god_rays_composite_shader"),
+            source: wgpu::ShaderSource::Wgsl(
+                include_str!("../shaders/volumetrics/composite_shafts.wgsl").into(),
+            ),
+        });
+        let composite_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("god_rays_composite_pl"),
+            bind_group_layouts: &[&composite_bgl],
+            push_constant_ranges: &[],
+        });
+        let composite_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+            label: Some("god_rays_composite_pipeline"),
+            layout: Some(&composite_layout),
+            module: &composite_shader,
+            entry_point: Some("composite_main"),
+            compilation_options: Default::default(),
+            cache: None,
+        });
+
         Self {
             config,
             pipeline,
@@ -241,6 +339,19 @@ impl GodRayPass {
                 ..Default::default()
             }),
             cached_bg: crate::bind_group_cache::CachedBindGroup::new(),
+            scene_width: width,
+            scene_height: height,
+            composite_pipeline,
+            composite_bgl,
+            composite_sampler: device.create_sampler(&wgpu::SamplerDescriptor {
+                label: Some("god_rays_composite_sampler"),
+                mag_filter: wgpu::FilterMode::Linear,
+                min_filter: wgpu::FilterMode::Linear,
+                ..Default::default()
+            }),
+            composite_texture,
+            composite_view,
+            cached_composite: crate::bind_group_cache::CachedBindGroup::new(),
         }
     }
 
@@ -310,38 +421,47 @@ impl GodRayPass {
         depth_view: &wgpu::TextureView,
         scene_color_view: &wgpu::TextureView,
         resource_gen: crate::bind_group_cache::Generation,
-    ) {
+    ) -> bool {
         if !self.config.enabled {
-            return;
+            return false;
         }
 
         if !self.cached_bg.is_valid(resource_gen) {
-            let bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
-                label: Some("god_rays_bg"),
-                layout: &self.bgl,
-                entries: &[
-                    wgpu::BindGroupEntry {
-                        binding: 0,
-                        resource: self.params_buf.as_entire_binding(),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 1,
-                        resource: wgpu::BindingResource::TextureView(depth_view),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 2,
-                        resource: wgpu::BindingResource::TextureView(scene_color_view),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 3,
-                        resource: wgpu::BindingResource::Sampler(&self.sampler),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 4,
-                        resource: wgpu::BindingResource::TextureView(&self.output_view),
-                    },
-                ],
-            });
+            let bg = match crate::gpu_fault::scope(device, "god_rays_bg", || {
+                device.create_bind_group(&wgpu::BindGroupDescriptor {
+                    label: Some("god_rays_bg"),
+                    layout: &self.bgl,
+                    entries: &[
+                        wgpu::BindGroupEntry {
+                            binding: 0,
+                            resource: self.params_buf.as_entire_binding(),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 1,
+                            resource: wgpu::BindingResource::TextureView(depth_view),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 2,
+                            resource: wgpu::BindingResource::TextureView(scene_color_view),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 3,
+                            resource: wgpu::BindingResource::Sampler(&self.sampler),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 4,
+                            resource: wgpu::BindingResource::TextureView(&self.output_view),
+                        },
+                    ],
+                })
+            }) {
+                Ok(bg) => bg,
+                Err(err) => {
+                    log::error!("disabling light shafts: {err}");
+                    self.config.enabled = false;
+                    return false;
+                }
+            };
             self.cached_bg =
                 crate::bind_group_cache::CachedBindGroup::with_bind_group(bg, resource_gen);
         }
@@ -359,6 +479,82 @@ impl GodRayPass {
             .get_or_rebuild(resource_gen, || unreachable!());
         pass.set_bind_group(0, bg, &[]);
         pass.dispatch_workgroups(wg_x, wg_y, 1);
+        true
+    }
+
+    /// Write scene color plus shafts into [`Self::composite_texture`].
+    ///
+    /// The caller copies that texture onto the HDR target. The scene view is
+    /// sampled; it is not a storage texture.
+    pub fn add_into(
+        &mut self,
+        device: &wgpu::Device,
+        encoder: &mut wgpu::CommandEncoder,
+        scene_color: &wgpu::TextureView,
+        resource_gen: crate::bind_group_cache::Generation,
+    ) -> bool {
+        if !self.config.enabled {
+            return false;
+        }
+        if !self.cached_composite.is_valid(resource_gen) {
+            let bg = match crate::gpu_fault::scope(device, "god_rays_composite_bg", || {
+                device.create_bind_group(&wgpu::BindGroupDescriptor {
+                    label: Some("god_rays_composite_bg"),
+                    layout: &self.composite_bgl,
+                    entries: &[
+                        wgpu::BindGroupEntry {
+                            binding: 0,
+                            resource: wgpu::BindingResource::TextureView(&self.output_view),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 1,
+                            resource: wgpu::BindingResource::Sampler(&self.composite_sampler),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 2,
+                            resource: wgpu::BindingResource::TextureView(scene_color),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 3,
+                            resource: wgpu::BindingResource::TextureView(&self.composite_view),
+                        },
+                    ],
+                })
+            }) {
+                Ok(bg) => bg,
+                Err(err) => {
+                    log::error!("disabling light shafts: {err}");
+                    self.config.enabled = false;
+                    return false;
+                }
+            };
+            self.cached_composite =
+                crate::bind_group_cache::CachedBindGroup::with_bind_group(bg, resource_gen);
+        }
+        let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+            label: Some("god_rays_composite"),
+            timestamp_writes: None,
+        });
+        pass.set_pipeline(&self.composite_pipeline);
+        let bg = self
+            .cached_composite
+            .get_or_rebuild(resource_gen, || unreachable!());
+        pass.set_bind_group(0, bg, &[]);
+        pass.dispatch_workgroups(
+            self.scene_width.div_ceil(8),
+            self.scene_height.div_ceil(8),
+            1,
+        );
+        true
+    }
+
+    /// Full-resolution shaft composite, when the pass is still enabled.
+    pub fn composite_texture(&self) -> Option<&wgpu::Texture> {
+        if self.config.enabled {
+            Some(&self.composite_texture)
+        } else {
+            None
+        }
     }
 
     /// Resize output texture (preserves current config including half_res).
@@ -377,7 +573,13 @@ impl GodRayPass {
             return;
         }
         let config = self.config.clone();
-        *self = Self::with_config(device, width, height, config);
+        match Self::with_config(device, width, height, config) {
+            Ok(next) => *self = next,
+            Err(err) => {
+                log::error!("light shaft resize failed: {err}");
+                self.config.enabled = false;
+            }
+        }
     }
 }
 
@@ -450,8 +652,19 @@ mod tests {
             pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
                 .expect("device");
 
-        let pass = GodRayPass::new(&device, 640, 480);
+        let pass = GodRayPass::new(&device, 640, 480).expect("god rays");
         assert_eq!(pass.dimensions(), (640, 480));
+    }
+
+    #[test]
+    fn composite_shader_writes_a_separate_target() {
+        let src = include_str!("../shaders/volumetrics/composite_shafts.wgsl");
+        assert!(
+            !src.contains("read_write"),
+            "rgba16float read_write storage is not a guaranteed WebGPU feature"
+        );
+        assert!(src.contains("texture_storage_2d<rgba16float, write>"));
+        assert!(src.contains("var t_scene: texture_2d<f32>"));
     }
 
     #[test]

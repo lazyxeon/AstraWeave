@@ -377,12 +377,51 @@ impl SaveManager {
         Ok(())
     }
 
-    /// Sanitize a slot name to prevent path traversal
+    /// One path component: ASCII letters, digits, '-' and '_'. Reserved
+    /// Windows device names are prefixed so `CON` cannot open the console.
     fn sanitize_slot_name(name: &str) -> String {
-        name.replace(['/', '\\'], "")
-            .replace("..", "")
-            .trim_matches('.')
-            .to_string()
+        let mut out = String::new();
+        for c in name.chars() {
+            if out.len() >= 64 {
+                break;
+            }
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+                out.push(c);
+            }
+        }
+        if out.is_empty() {
+            return "slot".to_string();
+        }
+        let stem = out.split('.').next().unwrap_or(out.as_str());
+        let reserved = matches!(
+            stem.to_ascii_uppercase().as_str(),
+            "CON"
+                | "PRN"
+                | "AUX"
+                | "NUL"
+                | "COM1"
+                | "COM2"
+                | "COM3"
+                | "COM4"
+                | "COM5"
+                | "COM6"
+                | "COM7"
+                | "COM8"
+                | "COM9"
+                | "LPT1"
+                | "LPT2"
+                | "LPT3"
+                | "LPT4"
+                | "LPT5"
+                | "LPT6"
+                | "LPT7"
+                | "LPT8"
+                | "LPT9"
+        );
+        if reserved {
+            out.insert(0, '_');
+        }
+        out
     }
 
     /// Get save file path for a slot
@@ -427,16 +466,16 @@ impl SaveManager {
         let meta_path = self.metadata_path(slot_name);
 
         // Load metadata
-        let meta_json =
-            std::fs::read_to_string(&meta_path).context("Failed to read save metadata")?;
+        let meta_bytes = read_regular(&meta_path, 1024 * 1024)?;
+        let meta_json = String::from_utf8(meta_bytes).context("Save metadata is not UTF-8")?;
         let metadata: SaveMetadata =
             serde_json::from_str(&meta_json).context("Failed to parse save metadata")?;
 
         // Load save data
-        let raw_data = std::fs::read(&save_path).context("Failed to read save file")?;
+        let raw_data = read_regular(&save_path, 32 * 1024 * 1024)?;
 
         let data = if self.config.compress {
-            zstd::decode_all(raw_data.as_slice()).context("Failed to decompress save data")?
+            decompress_capped(&raw_data, 64 * 1024 * 1024)?
         } else {
             raw_data
         };
@@ -460,9 +499,11 @@ impl SaveManager {
             if path.extension().map(|e| e == "json").unwrap_or(false)
                 && path.to_string_lossy().ends_with(".meta.json")
             {
-                if let Ok(meta_json) = std::fs::read_to_string(&path) {
-                    if let Ok(metadata) = serde_json::from_str::<SaveMetadata>(&meta_json) {
-                        saves.push(metadata);
+                if let Ok(bytes) = read_regular(&path, 1024 * 1024) {
+                    if let Ok(meta_json) = String::from_utf8(bytes) {
+                        if let Ok(metadata) = serde_json::from_str::<SaveMetadata>(&meta_json) {
+                            saves.push(metadata);
+                        }
                     }
                 }
             }
@@ -535,6 +576,42 @@ impl SaveManager {
     }
 }
 
+fn read_regular(path: &std::path::Path, max_bytes: u64) -> Result<Vec<u8>> {
+    let meta =
+        std::fs::symlink_metadata(path).with_context(|| format!("stat {}", path.display()))?;
+    if meta.file_type().is_symlink() {
+        anyhow::bail!("refusing to follow symlink {}", path.display());
+    }
+    if !meta.is_file() {
+        anyhow::bail!("{} is not a regular file", path.display());
+    }
+    if meta.len() > max_bytes {
+        anyhow::bail!(
+            "{} is {} bytes; limit is {max_bytes}",
+            path.display(),
+            meta.len()
+        );
+    }
+    std::fs::read(path).with_context(|| format!("read {}", path.display()))
+}
+
+fn decompress_capped(raw: &[u8], max_bytes: usize) -> Result<Vec<u8>> {
+    let mut decoder = zstd::stream::Decoder::new(raw).context("open zstd save")?;
+    let mut out = Vec::new();
+    let mut buf = [0u8; 8192];
+    loop {
+        let n = std::io::Read::read(&mut decoder, &mut buf).context("decompress save")?;
+        if n == 0 {
+            break;
+        }
+        if out.len().saturating_add(n) > max_bytes {
+            anyhow::bail!("decompressed save exceeds {max_bytes} bytes");
+        }
+        out.extend_from_slice(&buf[..n]);
+    }
+    Ok(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -562,6 +639,32 @@ mod tests {
             progress.advance("Loading...");
         }
         assert!(progress.is_complete());
+    }
+
+    #[test]
+    fn slot_names_cannot_escape_the_save_directory() {
+        let manager = SaveManager::new(SaveConfig::default(), "game");
+        let escaped = manager.save_path(r"..\..\windows\system32\evil");
+        assert_eq!(
+            escaped.file_name().and_then(|name| name.to_str()),
+            Some("windowssystem32evil.sav")
+        );
+        assert!(escaped.starts_with(&manager.save_dir));
+        let device = manager.save_path("CON");
+        assert_eq!(
+            device.file_name().and_then(|name| name.to_str()),
+            Some("_CON.sav")
+        );
+        let stream = manager.save_path("foo:bar");
+        assert_eq!(
+            stream.file_name().and_then(|name| name.to_str()),
+            Some("foobar.sav")
+        );
+        let dotted = manager.save_path("....//");
+        assert_eq!(
+            dotted.file_name().and_then(|name| name.to_str()),
+            Some("slot.sav")
+        );
     }
 
     #[test]

@@ -1,0 +1,7 @@
+assets/aravath/**/*.glb filter=lfs diff=lfs merge=lfs -text
+assets/aravath/**/*.bin filter=lfs diff=lfs merge=lfs -text
+assets/aravath/**/*.png filter=lfs diff=lfs merge=lfs -text
+assets/aravath/**/*.jpg filter=lfs diff=lfs merge=lfs -text
+assets/aravath/**/*.gltf text eol=lf
+assets/aravath/**/*.tsv text eol=lf
+assets/aravath/**/*.md text eol=lf

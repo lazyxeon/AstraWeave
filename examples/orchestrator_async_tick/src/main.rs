@@ -42,8 +42,11 @@ fn mk_snap_from_world(w: &World, me: Entity, player: Entity, enemy: Entity) -> W
     }
 }
 
-#[async_std::main]
-async fn main() {
+fn main() {
+    pollster::block_on(async_main());
+}
+
+async fn async_main() {
     // Minimal tick loop exercising OrchestratorAsync and tool-block mapping
     let mut w = World::new();
     let player = w.spawn(

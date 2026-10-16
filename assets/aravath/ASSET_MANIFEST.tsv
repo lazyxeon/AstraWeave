@@ -1,0 +1,87 @@
+path	source_pack	license	sha256
+models/AnimationLibrary_Godot_Standard.bin	Quaternius Universal Animation Library	CC0	6e65377d81558333c4093dbb144a48fd19019343d82b1a3a7992a98ec0e0543c
+models/AnimationLibrary_Godot_Standard.gltf	Quaternius Universal Animation Library	CC0	0ff075c7ad6855c5c2c37a171592ee8f0d6ab2f58259e2be77a9b63dd8027765
+models/Textures/colormap.png	Kenney Prototype Kit	CC0	0d4947d34ff32acf4a359c7f22ca784e057e7e72f622170a9a77b6fc88fdb70e
+models/figurine.glb	Kenney Prototype Kit	CC0	ae0ea82089e66215684b0b2f5a162be9f6c71475085c81c3b80e53abd08b6bd8
+models/kaykit/anims/Rig_Medium_CombatMelee.glb	KayKit Character Animations 1.1	CC0 — Kay Lousberg, www.kaylousberg.com	c55e6ec1c79e83ae21d46fe1cd921c1b64be8b9a524a24517e51c6ba99231459
+models/kaykit/anims/Rig_Medium_General.glb	KayKit Character Animations 1.1	CC0 — Kay Lousberg, www.kaylousberg.com	5f725c0f745f36078c7238968cd5c04843cbc6260689eb6e7f5e2bbd7ffdd7ad
+models/kaykit/anims/Rig_Medium_MovementAdvanced.glb	KayKit Character Animations 1.1	CC0 — Kay Lousberg, www.kaylousberg.com	8b2317cf81e3f24149e4b791c27e1932bebd46cd378ed962e7d27d642fad8c56
+models/kaykit/anims/Rig_Medium_MovementBasic.glb	KayKit Character Animations 1.1	CC0 — Kay Lousberg, www.kaylousberg.com	11422afd50abf7e8c92ea107e2e0bc94abd38023d6d15f55ad580347efbfa29e
+models/kaykit/blocks/block_bits_texture.png	KayKit Block Bits 1.0	CC0 — Kay Lousberg, www.kaylousberg.com	a5fba2cb82f62d41f764f33d98482fec9e35756a2dbd07fd5e5806b59710d6c7
+models/kaykit/blocks/dirt.bin	KayKit Block Bits 1.0	CC0 — Kay Lousberg, www.kaylousberg.com	093aea838eafc677d88f93ff13fd8723de953158503d17b2f5cbd8639a9356f6
+models/kaykit/blocks/dirt.gltf	KayKit Block Bits 1.0	CC0 — Kay Lousberg, www.kaylousberg.com	c433a871c9d38adc9265ce962802c56b79ef7ffae1e21934f134efd08c5108c7
+models/kaykit/blocks/grass.bin	KayKit Block Bits 1.0	CC0 — Kay Lousberg, www.kaylousberg.com	dac7e41b9d3c41c509a2d1a7e50ad10a03805abbe2987da0f261160cf2c2c0b8
+models/kaykit/blocks/grass.gltf	KayKit Block Bits 1.0	CC0 — Kay Lousberg, www.kaylousberg.com	35ab00088a1dddd7609c86a6440f9dacdf693854c02b8d2bf91a3d6c1ca6e45f
+models/kaykit/blocks/sand_A.bin	KayKit Block Bits 1.0	CC0 — Kay Lousberg, www.kaylousberg.com	bec8a2e6f396fd4704ae976d505e54a0fde09c3d90a1ab61c857d1af5d1499d5
+models/kaykit/blocks/sand_A.gltf	KayKit Block Bits 1.0	CC0 — Kay Lousberg, www.kaylousberg.com	f5a5f86735add8f57920fdaeaf28d4f41f0c0502df1b81cc8b70a2422893469e
+models/kaykit/blocks/snow.bin	KayKit Block Bits 1.0	CC0 — Kay Lousberg, www.kaylousberg.com	39ee318895747352aa9152457a095e30e1d062fa586a849bc2a447103233c45e
+models/kaykit/blocks/snow.gltf	KayKit Block Bits 1.0	CC0 — Kay Lousberg, www.kaylousberg.com	7a2055ff4622499a1e9838bfae366d7c884ef3ff8ba962af14c570b5854c0658
+models/kaykit/blocks/stone.bin	KayKit Block Bits 1.0	CC0 — Kay Lousberg, www.kaylousberg.com	b4918453ccfdd822f722e28d1c69a4f2daf8f73141a5601b42c2a6f7ee4ec8ce
+models/kaykit/blocks/stone.gltf	KayKit Block Bits 1.0	CC0 — Kay Lousberg, www.kaylousberg.com	51f87c415dbbfb026896c559202a6f77d62e22f682c26ea33cb7b0a2c87edfd3
+models/kaykit/blocks/stone_with_copper.bin	KayKit Block Bits 1.0	CC0 — Kay Lousberg, www.kaylousberg.com	e456076a7c247263590948c6d6f735454f9f517ee4c455a825656d2629f56675
+models/kaykit/blocks/stone_with_copper.gltf	KayKit Block Bits 1.0	CC0 — Kay Lousberg, www.kaylousberg.com	315821963d092a3abf92d7699eeb210271f7da00eedc37d8581fc106927e8668
+models/kaykit/blocks/stone_with_gold.bin	KayKit Block Bits 1.0	CC0 — Kay Lousberg, www.kaylousberg.com	7692777fe2599cb2bb60ff6bd317d041a4cd2f0ddb6d64a7b7a2514b7a190e65
+models/kaykit/blocks/stone_with_gold.gltf	KayKit Block Bits 1.0	CC0 — Kay Lousberg, www.kaylousberg.com	a839a801aa827bf08a83e31ad4f6a5a810f9e89f765aea6dd3915d852ba873df
+models/kaykit/blocks/stone_with_silver.bin	KayKit Block Bits 1.0	CC0 — Kay Lousberg, www.kaylousberg.com	47d84fa62e6733f71545b9362e6cc942ae41526fe276393493e75eaac944c200
+models/kaykit/blocks/stone_with_silver.gltf	KayKit Block Bits 1.0	CC0 — Kay Lousberg, www.kaylousberg.com	ff1744b6c69f60a4220f2b4014e3003f1b41de0c621366de1e26ca8f0f39cc4e
+models/kaykit/gear/knight_texture.png	KayKit Adventurers 2.0	CC0 — Kay Lousberg, www.kaylousberg.com	028db4d1cd8b3471e6ba21686515abd4e36ae582f8b314b71ad2ab1fb5453b12
+models/kaykit/gear/shield_A.bin	KayKit Fantasy Weapons Bits 1.0	CC0 — Kay Lousberg, www.kaylousberg.com	274bf02beaf4a9c8e936b62e18189c2bf11ceda1f1720b6c86dffe6ad42e60df
+models/kaykit/gear/shield_A.gltf	KayKit Fantasy Weapons Bits 1.0	CC0 — Kay Lousberg, www.kaylousberg.com	3634e520841d408a021c247c613084299e3a57458a4d3fa1ee84a9ba37fd5d9b
+models/kaykit/gear/shield_round.bin	KayKit Adventurers 2.0	CC0 — Kay Lousberg, www.kaylousberg.com	42da365328fc8804f44cd3db6becc8bc98729f11862b63e51b42820559d6e1e0
+models/kaykit/gear/shield_round.gltf	KayKit Adventurers 2.0	CC0 — Kay Lousberg, www.kaylousberg.com	dd052a109d5a003fa7ebe4641c31e89a5189ad8d606ee8fc969d05e2d99dab38
+models/kaykit/gear/sword_1handed.bin	KayKit Adventurers 2.0	CC0 — Kay Lousberg, www.kaylousberg.com	c8acdc21adf19257e66b78e86d37855474a0a9fda796c39b39d6d08a5ca34bd5
+models/kaykit/gear/sword_1handed.gltf	KayKit Adventurers 2.0	CC0 — Kay Lousberg, www.kaylousberg.com	2a6074d46c3e337f84f0295d0ea862b116fec7d816db8d027d75a464311228b6
+models/kaykit/gear/sword_A.bin	KayKit Fantasy Weapons Bits 1.0	CC0 — Kay Lousberg, www.kaylousberg.com	5b3d293758c6a33d792d7c2a055c71d84848e77a1c9d0f203508cc9955db4aeb
+models/kaykit/gear/sword_A.gltf	KayKit Fantasy Weapons Bits 1.0	CC0 — Kay Lousberg, www.kaylousberg.com	137cc318e9f36339a088524243071187da8adff3b5735f1d5330ed1577f54851
+models/kaykit/gear/weapons_bits_texture.png	KayKit Fantasy Weapons Bits 1.0	CC0 — Kay Lousberg, www.kaylousberg.com	c153429a49928594b00b53c07c4ab3d6352087b7f5df6c272d4aedfdb99a40be
+models/kaykit/knight/Knight.glb	KayKit Adventurers 2.0	CC0 — Kay Lousberg, www.kaylousberg.com	e484370733824a0740683e7f6040aae0d20e5efd4107dde1175d6a2ad7e2f199
+models/kaykit/pickups/Containers_Crate_Medium_Wood.bin	KayKit Resource Bits 1.0	CC0 — Kay Lousberg, www.kaylousberg.com	ead1a784828dfbaf0597a76efa367a60d019556733a18e3329f213d9792deef0
+models/kaykit/pickups/Containers_Crate_Medium_Wood.gltf	KayKit Resource Bits 1.0	CC0 — Kay Lousberg, www.kaylousberg.com	a584ad0d00df75f171eda1ba4c3ef9b398c3c5eef01e2caa401367b61bc72968
+models/kaykit/pickups/Copper_Nugget_Small.bin	KayKit Resource Bits 1.0	CC0 — Kay Lousberg, www.kaylousberg.com	c4e8de08554e991c5b9fc8ac539c1fb357b910a2157f209f87a9e53ed6edbc34
+models/kaykit/pickups/Copper_Nugget_Small.gltf	KayKit Resource Bits 1.0	CC0 — Kay Lousberg, www.kaylousberg.com	e33cd9cad60b3e0e5a60fa6c81014a4f5964962020907b4ca64694e8de95a664
+models/kaykit/pickups/Gem_Small.bin	KayKit Resource Bits 1.0	CC0 — Kay Lousberg, www.kaylousberg.com	619db05db3bff48cf62fa8dd5574c53a4eb7bb41a030988a3e906c71ae8620fc
+models/kaykit/pickups/Gem_Small.gltf	KayKit Resource Bits 1.0	CC0 — Kay Lousberg, www.kaylousberg.com	b2ec15a0da98883597d9ac7f0d8be041103838fb46bb6b15a2876d90a487700a
+models/kaykit/pickups/Gold_Nugget_Small.bin	KayKit Resource Bits 1.0	CC0 — Kay Lousberg, www.kaylousberg.com	b217f8a1e47c66dd1a28c0c3d2094c4cdf257a52b906a618aa40f9e63cd863d2
+models/kaykit/pickups/Gold_Nugget_Small.gltf	KayKit Resource Bits 1.0	CC0 — Kay Lousberg, www.kaylousberg.com	ccfac388f12b55ccaff60d9127756f640405e8bf94ae648171e6ab213e3acd4e
+models/kaykit/pickups/Silver_Nugget_Small.bin	KayKit Resource Bits 1.0	CC0 — Kay Lousberg, www.kaylousberg.com	31bbf5f5fd8d86b0432c00a984fbea13220f7fab5ab80c121f19f24d9f2b61cc
+models/kaykit/pickups/Silver_Nugget_Small.gltf	KayKit Resource Bits 1.0	CC0 — Kay Lousberg, www.kaylousberg.com	acb26e04978a836b68b3489b75d89625b5c3fc563ded7ddb11cec826c4b32b42
+models/kaykit/pickups/resource_bits_texture.png	KayKit Resource Bits 1.0	CC0 — Kay Lousberg, www.kaylousberg.com	62a252aba7bc9382effe48d93b976605d8fa70a3a40af7fc52362f5ca89c135b
+models/kaykit/skeletons/Skeleton_Golem.glb	KayKit Skeletons 1.1	CC0 — Kay Lousberg, www.kaylousberg.com	5012c8a8c3483c12ff9231ae8d03449e0d6dabe542967e2cb4d4ba9fb4234870
+models/kaykit/skeletons/Skeleton_Minion.glb	KayKit Skeletons 1.1	CC0 — Kay Lousberg, www.kaylousberg.com	1976f68b5b47710d6edbe99cc9c0459a390cf067ad5443157e942be8a6ffab58
+models/kaykit/skeletons/Skeleton_Rogue.glb	KayKit Skeletons 1.1	CC0 — Kay Lousberg, www.kaylousberg.com	846d1a30461ac542a7dcf9ab814732235c01d01f2c6fcccc4bbebfcb6aebe9ab
+models/kaykit/skeletons/Skeleton_Warrior.glb	KayKit Skeletons 1.1	CC0 — Kay Lousberg, www.kaylousberg.com	c6a9a2b90423651ba9c4c83e9270d6fba11faf033f83e1c30d0c05f263c3bc39
+models/kaykit_forest/Bush_1_A_Color1.bin	KayKit Forest Nature Pack 1.0	CC0 — Kay Lousberg, www.kaylousberg.com	a23e69b15bb25e70408d80ec8fabef4a090674a35b32788a82c1538b3116c27f
+models/kaykit_forest/Bush_1_A_Color1.gltf	KayKit Forest Nature Pack 1.0	CC0 — Kay Lousberg, www.kaylousberg.com	bc6cf33dbed296a181d8afbd82ffe1c44ee5e57cb095f9efdf4b63e93c165b70
+models/kaykit_forest/Bush_2_A_Color1.bin	KayKit Forest Nature Pack 1.0	CC0 — Kay Lousberg, www.kaylousberg.com	dc3e49f3c2040e8c24e6dc3d4450ec3570324e55137eb48e46bf05a5ec776f6a
+models/kaykit_forest/Bush_2_A_Color1.gltf	KayKit Forest Nature Pack 1.0	CC0 — Kay Lousberg, www.kaylousberg.com	ac4824d107be986b97635db7a7ea4cce53e524f75f981af8153bbaf29655faf1
+models/kaykit_forest/Grass_1_A_Color1.bin	KayKit Forest Nature Pack 1.0	CC0 — Kay Lousberg, www.kaylousberg.com	d293510be3ca4a6062dc305c22a143ba134fc49af65aaba064cc8f8d868d6c6e
+models/kaykit_forest/Grass_1_A_Color1.gltf	KayKit Forest Nature Pack 1.0	CC0 — Kay Lousberg, www.kaylousberg.com	58686904164d636e8731544fbb6911bf1ebc068841fe6c127f0c509b1449212b
+models/kaykit_forest/Grass_2_A_Color1.bin	KayKit Forest Nature Pack 1.0	CC0 — Kay Lousberg, www.kaylousberg.com	07fc84eda0b374b3fd4afed280452f0be21f75c0e53fbf6778d3997c09832a64
+models/kaykit_forest/Grass_2_A_Color1.gltf	KayKit Forest Nature Pack 1.0	CC0 — Kay Lousberg, www.kaylousberg.com	fa822543a17721c40b3386557ed37af6c44fd6d4ce6b4fc16f9187d69cde8fe1
+models/kaykit_forest/Rock_1_A_Color1.bin	KayKit Forest Nature Pack 1.0	CC0 — Kay Lousberg, www.kaylousberg.com	aaf422fe8b6ea471eb520425f302f9e7523e2686a9c5988fb4e7750ad6e9b483
+models/kaykit_forest/Rock_1_A_Color1.gltf	KayKit Forest Nature Pack 1.0	CC0 — Kay Lousberg, www.kaylousberg.com	ca24326b9c24556227c68df64933122f34a972cd38b6e95c53353fefa97dbc80
+models/kaykit_forest/Rock_2_A_Color1.bin	KayKit Forest Nature Pack 1.0	CC0 — Kay Lousberg, www.kaylousberg.com	ffee05221dda59936ba6c94112b65bb3c8a38e938fbb219a2808a1590daab050
+models/kaykit_forest/Rock_2_A_Color1.gltf	KayKit Forest Nature Pack 1.0	CC0 — Kay Lousberg, www.kaylousberg.com	bbe5254a4c13be7f4aa017297a9458db441e99234028af378d29207d80be4696
+models/kaykit_forest/Tree_1_A_Color1.bin	KayKit Forest Nature Pack 1.0	CC0 — Kay Lousberg, www.kaylousberg.com	96e74161a6673316335777e133d065bcd23b3535da52fb7ee8a1e0b4fade97bb
+models/kaykit_forest/Tree_1_A_Color1.gltf	KayKit Forest Nature Pack 1.0	CC0 — Kay Lousberg, www.kaylousberg.com	9d972eba9d61fc563cb7c3248f1be057190859ce2554ad2032df27c3d09e06c6
+models/kaykit_forest/Tree_2_A_Color1.bin	KayKit Forest Nature Pack 1.0	CC0 — Kay Lousberg, www.kaylousberg.com	fd413ad809ff30939faf1190194654892066aba94f67ec6f96ce257fa5b34e35
+models/kaykit_forest/Tree_2_A_Color1.gltf	KayKit Forest Nature Pack 1.0	CC0 — Kay Lousberg, www.kaylousberg.com	793570b93cd350b935bc88c766317675890f102d157965d2aca3d8daef5ee49b
+models/kaykit_forest/Tree_3_A_Color1.bin	KayKit Forest Nature Pack 1.0	CC0 — Kay Lousberg, www.kaylousberg.com	11787f3510d73b650ff8395016de4a5a3b5365a64bbc592d26fe5a41e57e33cb
+models/kaykit_forest/Tree_3_A_Color1.gltf	KayKit Forest Nature Pack 1.0	CC0 — Kay Lousberg, www.kaylousberg.com	a5140f21978004544844df4c2969625724c2c263e74f798716ea9e115216a230
+models/kaykit_forest/Tree_4_A_Color1.bin	KayKit Forest Nature Pack 1.0	CC0 — Kay Lousberg, www.kaylousberg.com	56907fa6c064137d1b3fca6bb3c7666457935350258d4bdb7507e95226a25100
+models/kaykit_forest/Tree_4_A_Color1.gltf	KayKit Forest Nature Pack 1.0	CC0 — Kay Lousberg, www.kaylousberg.com	14f8f50af9f9cf8d2bb488cae15613f9e2ed6ce0002d2aa11721a2efc2ba3010
+models/kaykit_forest/forest_texture.png	KayKit Forest Nature Pack 1.0	CC0 — Kay Lousberg, www.kaylousberg.com	4e116d40a273b72af075f2a1f1250fa6bc3330643aadef0c969a654c8cdc8549
+models/nature/grass.glb	Kenney Nature Kit	CC0	260e41d3e5f2472492ed7b475c5b92a30b13ce2bad408535b5ff50574d4575e7
+models/nature/plant_bush.glb	Kenney Nature Kit	CC0	ae7b1beb39e242b13f5f29e3ec23ef21034b814f82297b8aa00a9bf4e1b09590
+models/nature/rock_largeA.glb	Kenney Nature Kit	CC0	6dd15390fd96501dcd1454765a17ba61dbbd8d47705dfe5149c8dd92b353ce25
+models/nature/tree_oak.glb	Kenney Nature Kit	CC0	d7fd8773674928c50c11b66d12c636d49bdcc15a8b1c7fbb98e6f63a3439a3f3
+models/nature/tree_palmShort.glb	Kenney Nature Kit	CC0	d2526ca31c144a238820aa5c0f6183c5b9cf37fd3cc037932e637cf7c473ba27
+models/nature/tree_pineDefaultA.glb	Kenney Nature Kit	CC0	60d8f352fa3659ed275e06cbddfecf8f92c8effe2977c2f2d7b29b6c9b582e46
+models/weapon-shield.glb	Kenney Prototype Kit	CC0	8232af51dd670763d7e75bf996996aeb949bf7ed7df53d2c570dc0084c242407
+models/weapon-sword.glb	Kenney Prototype Kit	CC0	45bd7325367d05de51e25e14e1e7a4fb04f9b7b33be15aa6a5b2d21f798b01ef
+rock_wall_02_diff_1k.jpg	Poly Haven	CC0	4f1d2f80c07e502f5a5ecb4e58388cbf7f4cb33f507e39d024a17ea6d24539b5
+textures/dirt_diff_1k.jpg	Poly Haven	CC0	6da4fbd6fc5d21044dcbdbd96e098fb464ed544b42c982e72ce8ccd1d53686c5
+textures/grass_diff_1k.jpg	Poly Haven	CC0	57b8041bfe0d0f01430e4dbaad45e7ddddf0a9fc97317f90dbc51f7b0d9e1b5d
+textures/sand_diff_1k.jpg	Poly Haven	CC0	a73b90eaa6d675ef57e7d48a8cf23e1f412e353ab2e29cf73930b8ecd4e76875
+textures/stone_diff_1k.jpg	Poly Haven	CC0	cce4b50517161264bdef196f5e247e328ca3739083cd6044ad3cc54d88cb82e2
+textures/wood_diff_1k.jpg	Poly Haven	CC0	3b0669f683e4bf10f5a55a381cfa9669a7b8dfd921901829daa3b35acc2bbdec

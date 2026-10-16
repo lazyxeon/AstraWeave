@@ -25,6 +25,7 @@ fast-alloc = ["dep:astraweave-alloc", "astraweave-alloc/fast-alloc"]
 [dependencies]
 anyhow = { workspace = true }
 glam = { workspace = true }
+libm = { version = "0.2", default-features = false }
 rapier3d = { workspace = true }
 rand = { workspace = true }
 bitflags = "2"
