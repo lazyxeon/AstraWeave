@@ -10,7 +10,7 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::sync::RwLock;
+use tokio::sync::{Mutex, RwLock};
 
 // Base dialogue system
 use crate::DialogueGraph;
@@ -35,8 +35,9 @@ pub struct LlmDialogueSystem {
     /// Template engine for prompt generation
     template_engine: Arc<RwLock<TemplateEngine>>,
 
-    /// Active conversations
-    conversations: Arc<RwLock<HashMap<String, ActiveConversation>>>,
+    /// Active conversations. Each conversation has its own mutex so one
+    /// `generate_response` updates history, metadata, and emotion together.
+    conversations: Arc<RwLock<HashMap<String, Arc<Mutex<ActiveConversation>>>>>,
 
     /// Dialogue configuration
     config: DialogueConfig,
@@ -568,7 +569,8 @@ pub fn recorded_line(
 
 /// An active conversation with context and state.
 ///
-/// `history` is shared so the conversation can be cloned without copying the model client.
+/// The map holds one of these behind a mutex. `history` stays in an `Arc` so a
+/// snapshot from `get_conversation` can share the log without copying the client.
 #[derive(Clone)]
 pub struct ActiveConversation {
     /// Conversation ID
@@ -751,11 +753,11 @@ impl std::fmt::Display for EmotionalState {
 /// Metadata about a conversation
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConversationMetadata {
-    /// When the conversation started
-    pub started_at: u64,
+    /// Turn index when the conversation started. Not a wall clock.
+    pub started_turn: u64,
 
-    /// Last activity timestamp
-    pub last_activity: u64,
+    /// Turn index recorded on the last update. Not a wall clock.
+    pub last_turn: u64,
 
     /// Turn count
     pub turn_count: usize,
@@ -1470,8 +1472,8 @@ impl LlmDialogueSystem {
         let history = ConversationHistory::with_llm_client(context_config, self.llm_client.clone());
 
         let mut metadata = ConversationMetadata {
-            started_at: 0,
-            last_activity: 0,
+            started_turn: 0,
+            last_turn: 0,
             turn_count: 0,
             topics: Vec::new(),
             quality_metrics: QualityMetrics::default(),
@@ -1498,7 +1500,7 @@ impl LlmDialogueSystem {
 
         {
             let mut conversations = self.conversations.write().await;
-            conversations.insert(conversation_id.clone(), conversation);
+            conversations.insert(conversation_id.clone(), Arc::new(Mutex::new(conversation)));
         }
 
         // Update metrics
@@ -1523,14 +1525,16 @@ impl LlmDialogueSystem {
     ) -> Result<GeneratedResponse> {
         let start_time = std::time::Instant::now();
 
-        // Get conversation
-        let mut conversation = {
+        // Hold this conversation for the whole generate-and-update step.
+        // The map lock is dropped before the mutex so other conversations proceed.
+        let slot = {
             let conversations = self.conversations.read().await;
             conversations
                 .get(conversation_id)
+                .cloned()
                 .ok_or_else(|| anyhow!("Conversation not found: {}", conversation_id))?
-                .clone()
         };
+        let mut conversation = slot.lock().await;
 
         // Add player input to history
         conversation
@@ -1594,8 +1598,8 @@ impl LlmDialogueSystem {
             .add_message(Role::Assistant, response.text.clone())
             .await?;
 
-        // Update conversation state
-        conversation.metadata.last_activity = conversation.metadata.turn_count as u64;
+        // Update conversation state in place. `last_turn` is the turn index, not a clock.
+        conversation.metadata.last_turn = conversation.metadata.turn_count as u64;
         conversation.metadata.turn_count += 1;
         conversation.emotional_state =
             self.blend_emotional_states(&conversation.emotional_state, &response.emotional_tone);
@@ -1605,12 +1609,6 @@ impl LlmDialogueSystem {
         {
             let mut rag = self.rag_pipeline.write().await;
             rag.add_memory(memory_text).await?;
-        }
-
-        // Update conversation in storage
-        {
-            let mut conversations = self.conversations.write().await;
-            conversations.insert(conversation_id.to_string(), conversation);
         }
 
         // Update metrics
@@ -1698,10 +1696,7 @@ impl LlmDialogueSystem {
     ) -> Result<String> {
         let mut template_context = TemplateContext::new();
         let set_str = |ctx: &mut TemplateContext, key: &str, value: &str| {
-            ctx.set(
-                key.to_string(),
-                astraweave_prompts::context::ContextValue::from(value),
-            );
+            ctx.set_path(key, astraweave_prompts::context::ContextValue::from(value));
         };
 
         // Basic dialogue info
@@ -2057,8 +2052,12 @@ Respond as {{speaker.name}} would, considering their personality, the emotional 
 
     /// Get conversation by ID
     pub async fn get_conversation(&self, conversation_id: &str) -> Option<ActiveConversation> {
-        let conversations = self.conversations.read().await;
-        conversations.get(conversation_id).cloned()
+        let slot = {
+            let conversations = self.conversations.read().await;
+            conversations.get(conversation_id).cloned()?
+        };
+        let snapshot = slot.lock().await.clone();
+        Some(snapshot)
     }
 
     /// Get system metrics
@@ -2131,5 +2130,102 @@ mod tests {
         assert!(spatial.contains("fn plan_route"));
         assert!(!spatial.contains("generate_response"));
         assert!(!spatial.contains("recorded_line"));
+    }
+
+    struct EchoClient;
+
+    #[async_trait::async_trait]
+    impl LlmClient for EchoClient {
+        async fn complete(&self, _prompt: &str) -> anyhow::Result<String> {
+            Ok("Hello there friend today. The ford is quiet.".to_string())
+        }
+    }
+
+    fn speaker_named(name: &str) -> LlmPersona {
+        let mut persona = LlmPersona {
+            base: Default::default(),
+            llm_config: Default::default(),
+            personality_state: Default::default(),
+            adaptation: Default::default(),
+            prompt_settings: Default::default(),
+            memory_profile: Default::default(),
+        };
+        persona.base.voice = name.to_string();
+        persona.base.tone = "calm".to_string();
+        persona.base.humor = "dry".to_string();
+        persona.base.backstory = "Keeps the ford.".to_string();
+        persona
+    }
+
+    async fn test_system(config: DialogueConfig) -> LlmDialogueSystem {
+        let llm: Arc<dyn LlmClient> = Arc::new(EchoClient);
+        let rag = astraweave_rag::RagPipeline::new(
+            Arc::new(astraweave_embeddings::MockEmbeddingClient::new()),
+            Arc::new(astraweave_rag::VectorStoreWrapper::new(
+                astraweave_embeddings::VectorStore::new(384),
+            )),
+            Some(Arc::clone(&llm)),
+            astraweave_rag::RagConfig::default(),
+        );
+        LlmDialogueSystem::new(llm, rag, config)
+            .await
+            .unwrap_or_else(|err| panic!("dialogue system: {err}"))
+    }
+
+    #[tokio::test]
+    async fn speaker_name_appears_in_the_rendered_prompt() {
+        let system = test_system(DialogueConfig::default()).await;
+        let id = system
+            .start_conversation("ford".to_string(), vec!["sera".to_string()], None)
+            .await
+            .unwrap_or_else(|err| panic!("start: {err}"));
+        let stored = system
+            .get_conversation(&id)
+            .await
+            .unwrap_or_else(|| panic!("missing conversation"));
+        assert_eq!(stored.metadata.started_turn, 0);
+        assert_eq!(stored.metadata.last_turn, 0);
+        let persona = speaker_named("Sera Thorn");
+        let prompt = system
+            .build_dialogue_prompt(
+                &stored,
+                Some(&persona),
+                "hello",
+                None,
+                &EmotionalState::default(),
+                &[],
+            )
+            .await
+            .unwrap_or_else(|err| panic!("prompt: {err}"));
+        assert!(
+            prompt.contains("Sera Thorn"),
+            "speaker name missing from prompt: {prompt}"
+        );
+    }
+
+    #[tokio::test]
+    async fn concurrent_generate_response_keeps_both_turns() {
+        let mut config = DialogueConfig::default();
+        config.quality_control.enable_validation = false;
+        let system = Arc::new(test_system(config).await);
+        system
+            .start_conversation("ford".to_string(), vec!["sera".to_string()], None)
+            .await
+            .unwrap_or_else(|err| panic!("start: {err}"));
+        let persona = speaker_named("Sera Thorn");
+        let first =
+            system.generate_response("ford", Some(&persona), "hello there friend today", None);
+        let second =
+            system.generate_response("ford", Some(&persona), "hello there friend today", None);
+        let (left, right) = tokio::join!(first, second);
+        left.unwrap_or_else(|err| panic!("first: {err}"));
+        right.unwrap_or_else(|err| panic!("second: {err}"));
+        let stored = system
+            .get_conversation("ford")
+            .await
+            .unwrap_or_else(|| panic!("missing conversation"));
+        assert_eq!(stored.metadata.turn_count, 2);
+        assert_eq!(stored.metadata.started_turn, 0);
+        assert_eq!(stored.metadata.last_turn, 1);
     }
 }
