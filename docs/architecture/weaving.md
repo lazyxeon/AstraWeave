@@ -10,7 +10,7 @@ integration_status: partial
 summary: "weave_tick is on main (#252). The greybox sword hit calls run_aravath_slice (#275). Required replay case weaving hashes NullField until local sim #253."
 owns: [astraweave-weaving]
 doc_version: "1.7"
-last_verified_commit: 8f97cd50
+last_verified_commit: 7a5fd4f6
 ---
 
 # Architecture Trace: Weaving / Fate-Weaving System (`astraweave-weaving`)
@@ -22,7 +22,7 @@ last_verified_commit: 8f97cd50
 | **System name** | Weaving / Fate-Weaving System (the Veilweaver signature mechanic) |
 | **Primary crates** | `astraweave-weaving` |
 | **Document version** | 1.7 |
-| **Last verified against commit** | `8f97cd50` |
+| **Last verified against commit** | `7a5fd4f6` |
 | **Last verified date** | 2026-10-16 |
 | **Status** | The data-driven cast path is on main (#252). A connecting greybox sword hit calls `run_aravath_slice` (#275). Required replay case `weaving`. `NullField` stands in for the local sim (#253). Anchor-slice helpers are still plain functions. |
 | **Owner notes** | Built during the Veilweaver vertical-slice "Weeks 1-5" campaign (see `docs/journey/weeks/WEEK_*` and `docs/archive/projects/veilweaver/`). Naming is heavily overloaded across three independent "weaving" surfaces in the workspace — see §3 and §6. |
