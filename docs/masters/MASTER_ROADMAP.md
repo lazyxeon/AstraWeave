@@ -1,11 +1,11 @@
 # AstraWeave: Master Strategic Roadmap
 
-**Version**: 1.57  
+**Version**: 1.58  
 **Last Updated**: October 16, 2026  
 **Status**: Strategy log. Live engine status is the repository [README](../../README.md).  
 **Validation**: The January 2026 validation report linked below is a dated audit, not a current grade.
 
-> **2026-10-16.** The "Current State (June 10, 2026)" table is a snapshot. Workspace members on `d6903d3a` are **141** (unchanged since `a10780f4`). Determinism on `main` is fifteen cross-OS replay cases, including `worldgen_columns` and `deformed_chunk`. The Aravath greybox #205 is on main. Its golden hash is `b663da52ea1d566e`, Linux and Windows only. Traversal #244, terrain columns #215, CI burndown #217, greybox tokio graph #327, and greybox combat slice #275 are on main. #326 is closed. The frame-time target is under 11 ms on a GTX 1660 Ti-class GPU and is not yet measured (#216). Local fluid sim #253 and render frame budget #216 are in progress. Player-facing name is Aravath. Do not treat the A+ row in the June table as a current grade.
+> **2026-10-16.** The "Current State (June 10, 2026)" table is a snapshot. Workspace members on `6a0e9f4c` are **141** (unchanged since `a10780f4`). Determinism on `main` is fifteen cross-OS replay cases, including `worldgen_columns` and `deformed_chunk`. The Aravath greybox #205 is on main. Its golden hash is `b663da52ea1d566e`, Linux and Windows only. Traversal #244, terrain columns #215, CI burndown #217, greybox tokio graph #327, greybox combat slice #275, and off-tick AI/gravity #331 are on main. #326 is closed. `AIArbiter`, `GoapPlanner`, and `GravityManager` stay off the deterministic tick. The frame-time target is under 11 ms on a GTX 1660 Ti-class GPU and is not yet measured (#216). Local fluid sim #253 and render frame budget #216 are in progress. Player-facing name is Aravath. Do not treat the A+ row in the June table as a current grade.
 
 ---
 

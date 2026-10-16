@@ -1,6 +1,6 @@
 # AstraWeave Project Status
 
-> **Current as of 2026-10-16** (`main` @ `d6903d3a`, which includes #319, #327, #275, #217, #215, and #325). The repository [README](../../README.md) is the short status page. This file's June narrative below that banner is a session log, not the live headline. `cargo deny` advisories and `cargo audit` pass. Ignored leftovers are #305–#311 and #320–#324. #217 removed `openssl` from the lockfile; the ban stays, and #219 and #256 are closed. #327 dropped `net` from the workspace `tokio` features. #326 is closed. #275 wires the greybox sword hit through `run_aravath_slice`.
+> **Current as of 2026-10-16** (`main` @ `6a0e9f4c`, which includes #331, #328, #327, #275, #217, #215, and #325). The repository [README](../../README.md) is the short status page. This file's June narrative below that banner is a session log, not the live headline. `cargo deny` advisories and `cargo audit` pass. Ignored leftovers are #305–#311 and #320–#324. #217 removed `openssl` from the lockfile; the ban stays, and #219 and #256 are closed. #327 dropped `net` from the workspace `tokio` features. #326 is closed. #275 wires the greybox sword hit through `run_aravath_slice`. #331 keeps `AIArbiter`, `GoapPlanner`, and `GravityManager` off the deterministic tick.
 
 ## Current (2026-10-16)
 
@@ -10,9 +10,10 @@
 - **On main, CI (#217):** editor and sanitizer jobs install `libudev-dev`. Audio fixtures are per-process under `astraweave-audio/target/audio-test-assets/<pid>`. `fluid.wgsl` keeps SPH positions finite on lavapipe (`safe_normalize`, velocity from the pre-clamp prediction). TLS dependencies use rustls. The fifteen replay cases are unchanged. The ledger is `CI_FAILURE_LEDGER.md`.
 - **On main, greybox graph (#327):** workspace `tokio` features are `fs`, `io-util`, `macros`, `rt`, `rt-multi-thread`, `sync`, and `time`. Socket crates opt into `net`. #326 is closed.
 - **On main, greybox combat (#275):** a connecting sword hit calls `run_aravath_slice`, deals `40 - sword_hp`, and the window shows `Cover broke` once when the cover bond breaks. The golden stays `b663da52ea1d566e`.
+- **On main, off-tick AI and gravity (#331):** `llm_dialogue` compiles. `recorded_line` does not draw. `AIArbiter` (`llm_orchestrator`, default off), `GoapPlanner`, and `GravityManager` stay off the sim tick. Deletion follow-ups are #334, #335, and #336. #225, #257, #258, and #259 stay open. No new required replay case.
 - **In progress, not on main:** local fluid sim #253, render frame budget #216.
 - **Frame budget:** target under 11 ms on a GTX 1660 Ti-class GPU. Not yet measured. GPU timer read 0 ms. #216 is the readback fix.
-- **AI:** local models propose; the deterministic sim validates and executes. Orchestrator default model is `phi3:medium` unless `OLLAMA_MODEL` is set.
+- **AI:** local models propose; the deterministic sim validates and executes. A model line enters the tick only as `recorded_line`. Orchestrator default model is `phi3:medium` unless `OLLAMA_MODEL` is set.
 - **Name:** player-facing text says Aravath.
 - **Not re-run here:** `cargo check --workspace`, `cargo llvm-cov`, Miri, Kani. Coverage 57.35% and Miri 1,059 remain the 2026-06 measurements.
 

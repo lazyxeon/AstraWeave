@@ -29,7 +29,7 @@ The game this engine is being built for is **Aravath**.
 
 ## Current state (2026-10-16)
 
-Checked against `main` at `d6903d3a`. Numbers that were not re-measured in this pass are dated below. This page does not assign a letter grade.
+Checked against `main` at `6a0e9f4c`. Numbers that were not re-measured in this pass are dated below. This page does not assign a letter grade.
 
 | Topic | What is true on this commit |
 | --- | --- |
@@ -37,7 +37,7 @@ Checked against `main` at `d6903d3a`. Numbers that were not re-measured in this 
 | **Toolchain** | Rust **1.89.0**, pinned in `rust-toolchain.toml`. Targets: Linux x86_64, Windows MSVC, macOS x86_64 and Apple Silicon. |
 | **CI platforms** | Pull-request replay hashes run on `ubuntu-latest`, `windows-latest`, and `macos-latest`. That is the supported cross-OS determinism matrix. It is not a claim that every example window has been run on all three. |
 | **Determinism** | Fifteen required replay cases, including `traversal`, `traversal_deformed`, `worldgen_columns`, and `deformed_chunk`. The compare job fails if any case is missing or its SHA-256 differs across the three OS artifacts. See [Determinism](#determinism). |
-| **AI rule** | Local LLMs propose. The deterministic simulation validates and executes. The orchestrator default, when `OLLAMA_MODEL` is unset, is `phi3:medium` (`astraweave-ai`). The Qwen client constant is `qwen3.5:4b`. Ollama constructors keep a loopback URL. A non-loopback URL is replaced with `http://127.0.0.1:11434` unless the caller uses `allowing_remote` (#316). |
+| **AI rule** | Local LLMs propose. The deterministic simulation validates and executes. `AIArbiter` stays behind `llm_orchestrator` (default off) and is not on `sys_ai_planning` or `sys_spatial_tick`. `GoapPlanner` and `GravityManager` stay off that tick too (#331). `recorded_line` is the dialogue boundary and does not draw. The orchestrator default, when `OLLAMA_MODEL` is unset, is `phi3:medium` (`astraweave-ai`). The Qwen client constant is `qwen3.5:4b`. Ollama constructors keep a loopback URL. A non-loopback URL is replaced with `http://127.0.0.1:11434` unless the caller uses `allowing_remote` (#316). |
 | **Assets** | The project rule is **CC0 only**. `assets/README.md` still says "Mixed" and this pass did not re-audit every file's license. |
 | **Frame time** | The target is under 11 ms per frame on a GTX 1660 Ti-class GPU. It is not yet measured on that hardware: the GPU timer read 0 ms, and the readback is in progress in #216. Do not treat the older CPU `profiling_demo` times as this measurement. |
 | **Coverage and Miri** | Whole-workspace line coverage **57.35%** was measured 2026-06-29 and has not been re-run on the 141-member tree. Miri **1,059** tests, 0 UB, was measured 2026-06-27 across ecs, math, core, and sdk. The February 2026 report records an older, smaller run. Kani proof attributes were **69** on 2026-06-13 and were not re-counted here. |
@@ -61,6 +61,7 @@ Checked against `main` at `d6903d3a`. Numbers that were not re-measured in this 
 - **CI burndown (#217).** `aw-editor-tests.yml` and the sanitizer jobs install `pkg-config` and `libudev-dev`. Audio nextest fixtures live under `astraweave-audio/target/audio-test-assets/<pid>`. `fluid.wgsl` uses `safe_normalize` and takes velocity from the pre-clamp prediction so a zero vector and a wall hit stay finite on lavapipe. reqwest, the websocket client, and `hf-hub` use rustls. `ort` does not enable `download-binaries`. The fifteen replay cases are unchanged. The disposition of the older red checks is `docs/current/CI_FAILURE_LEDGER.md`.
 - **Greybox tokio graph (#327).** The workspace `tokio` features are `fs`, `io-util`, `macros`, `rt`, `rt-multi-thread`, `sync`, and `time`. `astraweave-net`, `astraweave-ipc`, and `astraweave-net-ecs` add `net`. `astraweave-blend` adds `process`. `aw_asset_cli` does not depend on tokio. #326 is closed.
 - **Greybox combat slice (#275).** `Combat::tick` calls `astraweave_weaving::run_aravath_slice` on a connecting sword hit. The foe loses `40 - sword_hp`. `cover_intact == false` sets `cover_broken`, and the window shows `Cover broke` for 2.5 seconds, once. The greybox golden stays `b663da52ea1d566e`.
+- **Off-tick models, GOAP, and gravity (#331).** `llm_dialogue` compiles as a module. `recorded_line` returns a recorded string, or `scripted:` plus the prompt, and does not draw `SimRng`. `sys_ai_planning` and `sys_spatial_tick` do not name `AIArbiter`, `GoapPlanner`, or `LlmDialogueSystem::generate_response`. `PhysicsWorld::step` does not read `GravityManager`. The types remain: `AIArbiter` behind `llm_orchestrator`, `GoapPlanner` in `astraweave-behavior`, and `gravity.rs`. Deletion follow-ups are #334, #335, and #336. #225, #257, #258, and #259 stay open as the off-tick records. No new required replay case.
 - **Terrain columns and scatter (#215).** `column_gen` is the integer forest record. Height, material, and a prop are functions of `(FOREST_WORLD_SEED, x, z)` with wrapping integer arithmetic. Species and yaw come from `SimRng` on `SIM_SYSTEM_FOREST_SCATTER`. The road stays empty. `worldgen_columns` is the SHA-256 of `worldgen_record()`: three chunks, including a negative coordinate and a road chunk. `deformed_chunk` is the SHA-256 of a sphere brush and one scatter detach on chunk `(-1, 2)`, then the occupancy after that chunk is evicted and loaded again. A `Detach` stays down across that reload. `ColumnStream` is the greybox keep set. The window still fills those chunks from the island heightfield, and its props still come from `aravath_runtime`'s local scatter. The editor climate mesh is the preview. Scene save and the Aravath checkpoint store `worldgen_record()`. Apply Erosion appends destruction commands and leaves that record in place. The CC0 pine-forest files, including Poly Haven `pine_tree_01`, are hashed in `assets/terrain/polyhaven/pine_forest/manifest.json`. KayKit and Kenney stay the greybox props.
 
 ## In progress
@@ -119,7 +120,7 @@ Perception → local model proposes → plan → deterministic validation → si
 ```
 
 1. **Perception.** Agents read a `WorldSnapshot`.
-2. **Proposal.** A local LLM, a utility score, GOAP, or a behavior tree proposes a plan.
+2. **Proposal.** A local LLM, a utility score, or a behavior tree proposes a plan. The deterministic tick does not call `AIArbiter`, `GoapPlanner`, or `GravityManager` (#331).
 3. **Validation.** The tool sandbox and the sim accept or reject the plan.
 4. **Action.** Accepted steps run as deterministic ECS commands.
 
@@ -131,7 +132,7 @@ The 12,700-agent figure is a CPU capacity estimate for a mid-complexity AI loop 
 
 ## Systems on this tree
 
-| Area | State on `d6903d3a` |
+| Area | State on `6a0e9f4c` |
 | --- | --- |
 | **ECS, math, core, sdk** | Single-threaded archetype schedule. Miri-clean as of the 2026-06-27 run (1,059 tests). |
 | **Combat** | `astraweave-combat` resolves damage in Q32.32. Replay case `combat_resolve`. |
@@ -144,13 +145,13 @@ The 12,700-agent figure is a CPU capacity estimate for a mid-complexity AI loop 
 | **Aravath greybox** | Windowed demo `aravath_greybox` (#205). CC0 KayKit characters, streamed three-chunk world, sword combat. A connecting hit calls `run_aravath_slice` (#275) and can show `Cover broke`. `BridgeAgent` is in the same crate and is not drawn. Greybox replay is Linux and Windows only. |
 | **Rendering** | wgpu path: Disney BRDF with multi-scatter compensation, clustered forward lighting, IBL cubemaps, ACES / AgX / Reinhard in one post pipeline, 4-cascade CSM. Editor and engine share that path; a SHA-256 parity harness covers the May 2026 seams ([architecture map](docs/architecture/ARCHITECTURE_MAP.md)). Nanite-style and VXGI surfaces exist in-tree; this page does not claim they hold the frame budget. |
 | **Camera** | `astraweave-camera` is the upload contract (`RenderView`). |
-| **Physics** | Rapier3D wrapper. The in-crate `SpatialHash` is not the broadphase. Traversal (#244) is a 60 Hz tick sim in this crate. Required cases `traversal` and `traversal_deformed`. |
+| **Physics** | Rapier3D wrapper. The in-crate `SpatialHash` is not the broadphase. Traversal (#244) is a 60 Hz tick sim in this crate. Required cases `traversal` and `traversal_deformed`. `GravityManager` stays off `PhysicsWorld::step` (#331). Deletion of `gravity.rs` is #336. |
 | **Terrain** | Integer columns in `column_gen` are the saved ground (#215). Required cases `worldgen_columns` and `deformed_chunk`. The editor climate heightmap is the preview mesh. The greybox collider still comes from the island voxel fill. The June 2026 asset-quality note still stands: the BC7/KTX2 cook path was non-functional and runtime uploads were uncompressed RGBA8. Not re-tested here. |
 | **Weaving** | Data-driven casts on main (#252). Required replay case `weaving` hashes `NullField` until local sim #253. See [weaving.md](docs/architecture/weaving.md). |
 | **Water** | View-side `astraweave-water` facade plus `astraweave-render` surface. `astraweave-fluids` is the deprecated accent remnant, not a game-loop solver. A local fluid sim is in progress in #253 and is not this water path. |
 | **Networking** | Snapshot net (`astraweave-net`, JSON over WebSocket) and a separate ECS/matchmaking stack. Matchmaking input frames use HMAC-SHA256, verify-first, kick by default (June 2026). No replay protection. Server-to-client messages are unsigned. See [net_ecs.md](docs/architecture/net_ecs.md). |
 | **Editor** | `aw_editor`, reached with `cargo editor`. June 2026 multi-tool sub-phase 5 was still open in the campaign doc; this pass did not close it. |
-| **Memory, RAG, coordination, advanced GOAP** | Present and tested. Not on the default sim tick. `VectorStore::search` is a linear scan. |
+| **Memory, RAG, coordination, advanced GOAP** | Present and tested. Not on the default sim tick. `GoapPlanner` stays off `sys_spatial_tick` (#331). Port or deletion is #335. `VectorStore::search` is a linear scan. |
 
 ---
 

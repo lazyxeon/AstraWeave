@@ -1,6 +1,6 @@
 # Build quick reference
 
-Checked against `main` at `d6903d3a` (2026-10-16). The player-facing name is Aravath. The windowed demo is `cargo run -p aravath_runtime --bin aravath_greybox`.
+Checked against `main` at `6a0e9f4c` (2026-10-16). The player-facing name is Aravath. The windowed demo is `cargo run -p aravath_runtime --bin aravath_greybox`. `AIArbiter`, `GoapPlanner`, and `GravityManager` stay off the deterministic tick (#331).
 
 ## Daily commands
 
