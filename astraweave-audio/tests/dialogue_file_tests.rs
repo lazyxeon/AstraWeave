@@ -450,11 +450,30 @@ fn test_folder_scan_filters_non_audio() -> Result<()> {
     let bank = create_test_voice_bank_folder_scan()?;
     let mut audio_engine = AudioEngine::new()?;
 
-    // Check that readme.txt exists but won't be selected
-    assert!(Path::new(test_asset_generator::asset_path(
-        "speakers/charlie/readme.txt"
-    ))
-    .exists());
+    // Check that readme.txt exists but is not a voice candidate.
+    let readme = test_asset_generator::asset_path("speakers/charlie/readme.txt");
+    assert!(Path::new(readme).exists());
+    let candidates = astraweave_audio::dialogue_runtime::voice_folder_candidates(Path::new(
+        test_asset_generator::asset_path("speakers/charlie"),
+    ));
+    let names: Vec<String> = candidates
+        .iter()
+        .map(|path| {
+            path.file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or("")
+                .to_string()
+        })
+        .collect();
+    assert_eq!(
+        names,
+        vec![
+            "line_01.wav".to_string(),
+            "line_02.wav".to_string(),
+            "line_03.ogg".to_string()
+        ]
+    );
+    assert!(!names.iter().any(|name| name == "readme.txt"));
 
     // Should only select .wav/.ogg files, not .txt
     let dialogue = Dialogue {
@@ -481,14 +500,10 @@ fn test_folder_scan_filters_non_audio() -> Result<()> {
         subtitle_out: None,
     };
 
-    // Run multiple times to ensure we never select readme.txt
-    for _ in 0..5 {
-        let result = player.speak_current(&dialogue, &state)?;
-        assert!(result);
-        thread::sleep(Duration::from_millis(20));
-    }
-
-    // Tick after the loop to avoid borrow issues
+    // One play. The candidate assertion above is the filter; this checks
+    // that a listed file actually opens.
+    let result = player.speak_current(&dialogue, &state)?;
+    assert!(result);
     audio_engine.tick(0.1);
 
     Ok(())

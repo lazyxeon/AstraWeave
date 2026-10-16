@@ -13,6 +13,28 @@ pub struct DialogueAudioMap {
     pub map: HashMap<String, HashMap<String, String>>,
 }
 
+/// `.ogg` and `.wav` files in `folder`, sorted by path.
+///
+/// Directory order is not stable across operating systems. The playback
+/// pick is still random; the candidate set is not.
+pub fn voice_folder_candidates(folder: &Path) -> Vec<std::path::PathBuf> {
+    let Ok(rd) = fs::read_dir(folder) else {
+        return Vec::new();
+    };
+    let mut pool = Vec::new();
+    for entry in rd.flatten() {
+        let path = entry.path();
+        let Some(ext) = path.extension().and_then(|ext| ext.to_str()) else {
+            continue;
+        };
+        if ext.eq_ignore_ascii_case("ogg") || ext.eq_ignore_ascii_case("wav") {
+            pool.push(path);
+        }
+    }
+    pool.sort();
+    pool
+}
+
 pub fn load_dialogue_audio_map(path: &str) -> Result<DialogueAudioMap> {
     let txt = fs::read_to_string(path)?;
     let m: DialogueAudioMap = toml::from_str(&txt)?;
@@ -68,26 +90,16 @@ impl<'a> DialoguePlayer<'a> {
                 }
             } else {
                 // or any .ogg/.wav in folder
-                if let Ok(rd) = fs::read_dir(&vspec.folder) {
-                    let mut pool: Vec<String> = vec![];
-                    for e in rd.flatten() {
-                        if let Some(ext) = e.path().extension() {
-                            if ext == "ogg" || ext == "wav" {
-                                pool.push(e.path().to_string_lossy().to_string());
-                            }
-                        }
-                    }
-                    if !pool.is_empty() {
-                        let mut rng = rand::rng();
-                        // INVARIANT: pool is non-empty (checked above), so choose always returns Some
-                        #[allow(clippy::expect_used)]
-                        let path = pool
-                            .choose(&mut rng)
-                            .expect("BUG: pool should have items after is_empty check")
-                            .clone();
-                        self.audio.play_voice_file(&path, None)?;
-                        return Ok(true);
-                    }
+                let pool = voice_folder_candidates(Path::new(&vspec.folder));
+                if !pool.is_empty() {
+                    let mut rng = rand::rng();
+                    // INVARIANT: pool is non-empty (checked above), so choose always returns Some
+                    #[allow(clippy::expect_used)]
+                    let path = pool
+                        .choose(&mut rng)
+                        .expect("BUG: pool should have items after is_empty check");
+                    self.audio.play_voice_file(&path.to_string_lossy(), None)?;
+                    return Ok(true);
                 }
             }
 
