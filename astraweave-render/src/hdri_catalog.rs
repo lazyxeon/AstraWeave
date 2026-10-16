@@ -371,7 +371,10 @@ mod tests {
         let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../assets/hdri");
         let catalog =
             HdriCatalog::load(&root.join("hdri_catalog.toml"), &root).expect("hdri catalog");
-        assert!(catalog.get("sky_equirect").is_none());
+        let equirect = catalog
+            .get("sky_equirect")
+            .expect("main catalog includes sky_equirect");
+        assert_eq!(equirect.file, "sky_equirect.png");
         assert!(catalog.get("spruit_sunrise").is_some());
         for entry in catalog.entries() {
             if entry.sha256.is_empty() {
