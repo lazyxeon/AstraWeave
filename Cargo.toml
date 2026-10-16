@@ -136,8 +136,6 @@ members = [
   "examples/veilweaver_demo",
   "examples/veilweaver_slice_loader",
   "veilweaver_slice_runtime",
-  "astraweave-veil",
-  "aravath_runtime",
   "examples/world_partition_demo",
   "examples/profiling_demo",
   # Phase 8 demos
@@ -234,7 +232,6 @@ astraweave-profiling = { path = "astraweave-profiling" }
 astraweave-scripting = { path = "astraweave-scripting" }
 astraweave-veil = { path = "astraweave-veil" }
 astraweave-alloc = { path = "crates/astraweave-alloc" }
-astraweave-veil = { path = "astraweave-veil" }
 # mimalloc as an optional workspace dep so astraweave-alloc and any binary can
 # reference it via the `fast-alloc` feature cascade. MIT-licensed; Microsoft-
 # maintained; supports Windows/Linux/macOS with no extra build deps.

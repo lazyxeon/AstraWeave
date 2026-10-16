@@ -440,11 +440,11 @@ fn resident_coord(resident: &Resident) -> (i32, i32) {
 
 /// Replay one edited negative chunk, evict it, and load it again.
 /// The bytes are the command log plus the occupancy after the second load.
-pub fn deformed_chunk_record() -> Vec<u8> {
+pub fn deformed_chunk_record() -> Option<Vec<u8>> {
     let mut stream = ColumnStream::new();
     let chunk = (-1, 2);
     let _ = stream.around(chunk.0, chunk.1, 0);
-    stream
+    if stream
         .append_brush(Brush {
             shape: BrushShape::Sphere,
             op: BrushOp::Subtract,
@@ -453,26 +453,35 @@ pub fn deformed_chunk_record() -> Vec<u8> {
             half_extents: [1, 1, 1],
             strength: 4,
         })
-        .expect("dig fits the log");
+        .is_err()
+    {
+        return None;
+    }
     let mut x = chunk.0 * CHUNK_EXTENT;
     let mut detached = false;
     while x < (chunk.0 + 1) * CHUNK_EXTENT && !detached {
         let mut z = chunk.1 * CHUNK_EXTENT;
         while z < (chunk.1 + 1) * CHUNK_EXTENT {
-            if stream.destroy_scatter(x, z).expect("detach fits the log") {
-                detached = true;
-                break;
+            match stream.destroy_scatter(x, z) {
+                Ok(true) => {
+                    detached = true;
+                    break;
+                }
+                Ok(false) => {}
+                Err(_) => return None,
             }
             z += 1;
         }
         x += 1;
     }
-    assert!(detached, "negative chunk has a scatter spawn to detach");
+    if !detached {
+        return None;
+    }
     let _ = stream.around(40, 40, 0);
     let _ = stream.around(chunk.0, chunk.1, 0);
     let mut out = stream.command_bytes();
     out.extend(stream.occupancy_bytes(chunk));
-    out
+    Some(out)
 }
 
 #[cfg(test)]

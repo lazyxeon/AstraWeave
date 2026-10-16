@@ -189,6 +189,7 @@ mod tests {
             SIM_SYSTEM_CAUSAL,
             SIM_SYSTEM_TRAVERSAL,
             SIM_SYSTEM_FOREST_SCATTER,
+            SIM_SYSTEM_COLUMN_EROSION,
         ];
         for i in 0..ids.len() {
             for j in (i + 1)..ids.len() {

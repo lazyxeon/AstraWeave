@@ -53,8 +53,8 @@ fn worldgen_columns_hash_is_stable_and_published() {
     );
     let digest = sha256_hex(&bytes_a);
     assert_eq!(digest.len(), 64);
-    let deformed_a = deformed_chunk_record();
-    let deformed_b = deformed_chunk_record();
+    let deformed_a = deformed_chunk_record().expect("negative chunk replay");
+    let deformed_b = deformed_chunk_record().expect("negative chunk replay");
     assert_eq!(
         deformed_a, deformed_b,
         "deformed chunk replay diverged inside one process"

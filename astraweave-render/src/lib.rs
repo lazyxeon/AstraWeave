@@ -90,6 +90,7 @@ pub mod parallax; // Parallax Occlusion Mapping — steep ray-march + binary ref
 pub mod particle_forces; // Enhanced particle simulation: forces, curves, emission shapes (Phase 7)
 pub mod particle_render; // Billboard particle render pipeline with blending (Phase 7)
 pub mod particle_sort; // GPU bitonic sort for depth-ordered particle transparency (Phase 7)
+pub mod pbr_maps;
 pub mod pipeline_cache; // Disk-backed Vulkan/DX12 pipeline cache (eliminates cold-start stalls)
 pub mod residency;
 pub mod scene_environment;
@@ -102,7 +103,6 @@ pub mod subgroup_ops; // Subgroup-optimized shader variants (auto-exposure, pref
 pub mod surface_cache; // World-space irradiance probe grid (Lumen Phase 5)
 pub mod taa; // Temporal Anti-Aliasing with neighborhood clamping and RCAS sharpening
 pub mod temporal_upscale; // Temporal upscaling (TAA-U) — render at reduced internal res, resolve to native
-pub mod terrain_gpu_bridge; // Render-side impl of TerrainGpuAccelerator (GPU noise + erosion bridge)
 pub mod terrain_material;
 #[cfg(feature = "terrain-splat-arrays")]
 pub mod terrain_material_manager; // Phase 2.2: 8-layer splat-array terrain pipeline (Issue #9 fix)
@@ -153,7 +153,6 @@ pub mod advanced_post;
 pub mod decals; // Screen-space decal system
 pub mod deferred; // Deferred rendering pipeline
 pub mod effects; // NEW
-pub mod gpu_erosion;
 pub mod gpu_particles; // GPU compute-based particle system
 pub mod grass_blade; // Procedural per-blade grass geometry rendering
 #[cfg(feature = "impostor-bake")]
@@ -207,7 +206,6 @@ pub use distance_field::{DfaoConfig, DfaoParams, DfaoPass, SdfBox, SdfConfig, Sd
 pub use effects::{WeatherFx, WeatherKind};
 pub use final_gather::{FinalGatherConfig, FinalGatherParams, FinalGatherPass};
 pub use god_rays::{sun_to_screen, GodRayConfig, GodRayParams, GodRayPass};
-pub use gpu_erosion::{ErosionPreset, GpuErosionConfig, GpuErosionPipeline};
 pub use gpu_memory::{GpuMemoryBudget, MemoryCategory};
 pub use gpu_particles::{EmitterParams, GpuParticle, GpuParticleSystem};
 pub use gpu_profiler::{GpuProfiler, PassTiming};

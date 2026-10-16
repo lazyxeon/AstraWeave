@@ -11,6 +11,7 @@ glam.workspace = true
 rand.workspace = true
 serde.workspace = true
 astraweave-core = { path = "../astraweave-core" }
+astraweave-destruction = { path = "../astraweave-destruction" }
 astraweave-gameplay = { path = "../astraweave-gameplay" }
 noise = "0.9"
 rayon = "1.11"

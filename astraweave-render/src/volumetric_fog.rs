@@ -234,17 +234,6 @@ impl VolumetricQuality {
 // Volumetric Fog Pass
 // ---------------------------------------------------------------------------
 
-/// World-space scar density the greybox uploads. The froxel pass that samples
-/// it is the demo renderer's; this struct is the shared upload shape.
-#[derive(Clone, Debug)]
-pub struct ScarFogVolume {
-    pub origin_metres: [i32; 3],
-    pub extent_metres: [i32; 3],
-    pub dims: [u32; 3],
-    pub rgba: Vec<[f32; 4]>,
-    pub any: bool,
-}
-
 /// Manages the full volumetric fog pipeline (density → scatter → integrate → apply).
 pub struct VolumetricFogPass {
     config: VolumetricFogConfig,
@@ -306,14 +295,6 @@ pub struct VolumetricFogPass {
 }
 
 impl VolumetricFogPass {
-    /// Fog settings the greybox turns on. Density stays the engine default.
-    pub fn gameplay_config() -> VolumetricFogConfig {
-        VolumetricFogConfig {
-            enabled: true,
-            ..VolumetricFogConfig::default()
-        }
-    }
-
     pub fn new(
         device: &wgpu::Device,
         width: u32,
