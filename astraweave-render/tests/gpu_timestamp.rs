@@ -42,7 +42,9 @@ fn recorded_pass_timestamp_is_positive() {
         renderer
             .draw_into(&view, None, &mut encoder)
             .expect("draw_into");
-        renderer.submit_timestamped(encoder.finish());
+        renderer
+            .submit_timestamped(encoder.finish())
+            .expect("timestamp submit");
         renderer.request_gpu_profiler_readback();
         renderer
             .gpu_profiler_mut()
@@ -55,6 +57,108 @@ fn recorded_pass_timestamp_is_positive() {
             .validated_total_ms()
             .expect("positive GPU duration");
         assert!(total > 0.0, "GPU duration {total} ms");
+    });
+}
+
+#[test]
+fn draw_into_heavy_path_timestamps_and_models() {
+    pollster::block_on(async {
+        let mut renderer = Renderer::new_headless(256, 256).await.expect("headless");
+        if !astraweave_render::gpu_fault::depth_texture_load_supported(renderer.device()) {
+            eprintln!("skip draw_into_heavy_path: no depth textureLoad");
+            return;
+        }
+        let device = renderer.device().clone();
+        let positions = [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]];
+        let normals = [[0.0, 0.0, 1.0]; 3];
+        let indices = [0, 1, 2];
+        let mesh = renderer.create_mesh_from_arrays(&positions, &normals, &indices);
+        // Rogue.glb is not in the repo. The budget tool uploads one mesh, then
+        // `duplicate_model` so each instance is its own model. This generated
+        // triangle takes that same path. `rendered_models` counts models.
+        let count = 64u32;
+        let root = astraweave_render::Instance::from_pos_scale_color(
+            glam::Vec3::new(-3.5 * 4.0, 0.0, -3.5 * 4.0),
+            glam::Vec3::ONE,
+            [1.0, 1.0, 1.0, 1.0],
+        );
+        renderer.add_model("budget-0", mesh, &[root]);
+        for i in 1..count {
+            let x = (i % 8) as f32;
+            let z = (i / 8) as f32;
+            let instance = astraweave_render::Instance::from_pos_scale_color(
+                glam::Vec3::new((x - 3.5) * 4.0, 0.0, (z - 3.5) * 4.0),
+                glam::Vec3::ONE,
+                [1.0, 1.0, 1.0, 1.0],
+            );
+            assert!(
+                renderer.duplicate_model("budget-0", format!("budget-{i}"), instance),
+                "duplicate {i}"
+            );
+        }
+        renderer.set_shadows_enabled(true);
+        let color = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("heavy color"),
+            size: wgpu::Extent3d {
+                width: 256,
+                height: 256,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: renderer.surface_format(),
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+            view_formats: &[],
+        });
+        let view = color.create_view(&wgpu::TextureViewDescriptor::default());
+        device.push_error_scope(wgpu::ErrorFilter::Validation);
+        for frame_index in 0..2 {
+            let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("heavy frame"),
+            });
+            renderer
+                .draw_into(&view, None, &mut encoder)
+                .expect("draw_into");
+            renderer
+                .submit_timestamped(encoder.finish())
+                .expect("timestamp submit");
+            renderer.request_gpu_profiler_readback();
+            renderer
+                .gpu_profiler_mut()
+                .expect("profiler")
+                .block_on_readback(&device)
+                .expect("readback");
+            let report = renderer
+                .gpu_profiler()
+                .expect("profiler")
+                .timestamp_report();
+            eprintln!(
+                "frame={frame_index} rendered_models={}",
+                renderer.rendered_model_count()
+            );
+            eprintln!("{report}");
+            assert_eq!(
+                renderer.rendered_model_count(),
+                count,
+                "frame {frame_index}\n{report}"
+            );
+            let profiler = renderer.gpu_profiler().expect("profiler");
+            assert!(!profiler.results().is_empty(), "{report}");
+            for timing in profiler.results() {
+                assert_eq!(
+                    timing.kind,
+                    astraweave_render::gpu_profiler::TimestampKind::Measured,
+                    "frame {frame_index} pass {} is {:?}\n{report}",
+                    timing.name,
+                    timing.kind
+                );
+            }
+        }
+        let err = device.pop_error_scope().await;
+        if let Some(err) = err {
+            panic!("validation: {err}");
+        }
     });
 }
 

@@ -87,7 +87,16 @@ fn main() -> anyhow::Result<()> {
             [1.0, 1.0, 1.0, 1.0],
         )]
     };
-    renderer.add_composite_model("budget-model", meshes, &instances);
+    if instances.len() <= 1 {
+        renderer.add_composite_model("budget-model", meshes, &instances);
+    } else {
+        renderer.add_composite_model("budget-0", meshes, &instances[..1]);
+        for (i, instance) in instances.iter().enumerate().skip(1) {
+            if !renderer.duplicate_model("budget-0", format!("budget-{i}"), instance.clone()) {
+                anyhow::bail!("failed to place heavy model {i}");
+            }
+        }
+    }
     renderer.set_shadows_enabled(true);
     add_heavy_terrain(&mut renderer)?;
     renderer.set_particle_emitter(Some(emitter()))?;
@@ -123,7 +132,7 @@ fn main() -> anyhow::Result<()> {
         renderer.draw_into(&view, None, &mut encoder)?;
         let encode_ms = encode_started.elapsed().as_secs_f64() * 1_000.0;
         let frame_started = Instant::now();
-        renderer.submit_timestamped(encoder.finish());
+        renderer.submit_timestamped(encoder.finish())?;
         if timestamps {
             renderer.request_gpu_profiler_readback();
         }

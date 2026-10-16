@@ -639,6 +639,7 @@ struct CameraUBO {
 }
 
 /// A named model with its mesh and instance data for multi-model rendering.
+#[derive(Clone)]
 pub struct RenderModelPrimitive {
     /// The GPU mesh (vertex/index buffers) for one primitive.
     pub mesh: Mesh,
@@ -3903,25 +3904,28 @@ fn vs(input: VSIn) -> VSOut {
     }
 
     /// Map the timestamp buffer after [`Self::submit_timestamped`].
-    /// `draw_into` only resolves queries; the staging copy is the second
-    /// command buffer in that submit.
+    /// That submit waits for the writes, then resolves and copies.
     pub fn request_gpu_profiler_readback(&mut self) {
         if let Some(profiler) = self.gpu_profiler.as_mut() {
             profiler.request_readback();
         }
     }
 
-    /// Submit the frame encoder, then the timestamp staging copy.
+    /// Submit `draw_into`'s encoder, then resolve timestamps after the GPU
+    /// finishes those writes.
     ///
-    /// The copy is a second command buffer. Vulkan returns all-zero
-    /// timestamps when that copy shares the resolve encoder (wgpu#6406).
-    pub fn submit_timestamped(&self, frame: wgpu::CommandBuffer) {
+    /// `draw_into` opens a Vulkan command buffer per pass. Resolving in that
+    /// same submission returns zeros on NVIDIA, including the `frame`
+    /// bracket. A one-pass self-test does not. The staging copy is a later
+    /// submission so it cannot race the resolve.
+    pub fn submit_timestamped(&self, frame: wgpu::CommandBuffer) -> Result<()> {
         crate::gpu_profiler::GpuProfiler::submit_frame(
             self.gpu_profiler.as_ref(),
             &self.queue,
             &self.device,
             frame,
-        );
+        )
+        .map_err(|err| anyhow::anyhow!("device.poll(Wait) failed: {err}"))
     }
 
     pub fn gpu_profiler(&self) -> Option<&crate::gpu_profiler::GpuProfiler> {
@@ -7066,7 +7070,7 @@ fn vs(input: VSIn) -> VSOut {
             p.end_frame(&mut enc);
         }
 
-        self.submit_timestamped(enc.finish());
+        self.submit_timestamped(enc.finish())?;
         frame.present();
 
         // --- GPU profiler: initiate async readback of timestamp data ---
@@ -7954,12 +7958,10 @@ fn vs(input: VSIn) -> VSOut {
         self.record_hiz(enc, depth_view);
         self.record_particles(enc, view, depth_view);
 
-        // The frame end tick is after every pass, still in this encoder, so
-        // resolve sees both sides of the bracket.
+        // The frame end tick is after every pass, still in this encoder.
+        // Resolve stays out of this encoder: `submit_timestamped` waits for
+        // the submission, then resolves. Resolving here reads zeros on NVIDIA.
         self.close_frame_timestamp(enc);
-        // Resolve here. The caller submits this encoder and then
-        // `submit_timestamped`'s copy encoder. A copy in this encoder comes
-        // back as zeros on Vulkan.
         if let Some(ref p) = self.gpu_profiler {
             p.end_frame(enc);
         }
@@ -8440,7 +8442,7 @@ fn vs(input: VSIn) -> VSOut {
             self.surface_size(),
         );
 
-        self.submit_timestamped(enc.finish());
+        self.submit_timestamped(enc.finish())?;
         frame.present();
 
         // --- GPU profiler: initiate async readback of timestamp data ---
@@ -8482,7 +8484,7 @@ fn vs(input: VSIn) -> VSOut {
                 label: Some("headless validation"),
             });
         self.draw_into(&view, None, &mut enc)?;
-        self.submit_timestamped(enc.finish());
+        self.submit_timestamped(enc.finish())?;
         if let Some(profiler) = self.gpu_profiler.as_mut() {
             profiler.request_readback();
         }
@@ -9214,6 +9216,34 @@ fn vs(input: VSIn) -> VSOut {
                 );
             }
         }
+    }
+
+    /// Place one more copy of `source`, sharing its GPU meshes and textures.
+    ///
+    /// The copy draws a single instance. The heavy frame-budget scene uses
+    /// this so 64 placements are 64 models, not one instanced draw.
+    pub fn duplicate_model(
+        &mut self,
+        source: &str,
+        name: impl Into<String>,
+        instance: Instance,
+    ) -> bool {
+        let Some(source) = self.models.get(source) else {
+            return false;
+        };
+        let primitives = source.primitives.clone();
+        let instance_buf = self.create_model_instance_buffer(std::slice::from_ref(&instance));
+        let model = RenderModel {
+            primitives,
+            instance_buf,
+            instance_count: 1,
+            aabb: None,
+            tex_gpu_bytes: 0,
+            stream_albedo_id: None,
+            stream_resident: false,
+        };
+        self.insert_model(name.into(), model);
+        true
     }
 
     fn add_model_impl(

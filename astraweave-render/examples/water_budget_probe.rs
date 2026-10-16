@@ -173,7 +173,8 @@ fn probe_isolated(device: &wgpu::Device, queue: &wgpu::Queue, has_timestamps: bo
             if let Some(ref p) = profiler {
                 p.end_frame(&mut enc);
             }
-            GpuProfiler::submit_frame(profiler.as_ref(), queue, device, enc.finish());
+            GpuProfiler::submit_frame(profiler.as_ref(), queue, device, enc.finish())
+                .expect("timestamp submit");
             let _ = device.poll(wgpu::PollType::Wait);
 
             if let Some(ref mut p) = profiler {
@@ -272,7 +273,8 @@ fn probe_isolated(device: &wgpu::Device, queue: &wgpu::Queue, has_timestamps: bo
             if let Some(ref p) = profiler {
                 p.end_frame(&mut enc);
             }
-            GpuProfiler::submit_frame(profiler.as_ref(), queue, device, enc.finish());
+            GpuProfiler::submit_frame(profiler.as_ref(), queue, device, enc.finish())
+                .expect("timestamp submit");
             let _ = device.poll(wgpu::PollType::Wait);
             if let Some(ref mut p) = profiler {
                 p.request_readback();
@@ -733,7 +735,6 @@ fn probe_refraction(device: &wgpu::Device, queue: &wgpu::Queue, has_timestamps: 
             );
             if copy_ts {
                 enc.write_timestamp(&copy_qset, 1);
-                enc.resolve_query_set(&copy_qset, 0..2, &copy_resolve, 0);
             }
             // 3. Water pass (read-only depth, samples scene_color + depth).
             {
@@ -763,11 +764,22 @@ fn probe_refraction(device: &wgpu::Device, queue: &wgpu::Queue, has_timestamps: 
             if let Some(ref p) = profiler {
                 p.end_frame(&mut enc);
             }
-            // The copy query and the profiler resolve both need a second
-            // command buffer. Vulkan returns zeros when the staging copy
-            // shares the resolve encoder.
-            let resolved = enc.finish();
-            let mut batch = vec![resolved];
+            // Writes finish before resolve. NVIDIA returns zeros when the
+            // resolve shares that submission, and the staging copy cannot
+            // share the resolve submission either.
+            queue.submit(Some(enc.finish()));
+            let _ = device.poll(wgpu::PollType::Wait);
+            let mut resolve = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("probe timestamp resolve"),
+            });
+            if copy_ts {
+                resolve.resolve_query_set(&copy_qset, 0..2, &copy_resolve, 0);
+            }
+            if let Some(p) = profiler.as_ref() {
+                p.resolve_queries(&mut resolve);
+            }
+            queue.submit(Some(resolve.finish()));
+            let _ = device.poll(wgpu::PollType::Wait);
             let mut staging = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("probe timestamp copy"),
             });
@@ -783,9 +795,8 @@ fn probe_refraction(device: &wgpu::Device, queue: &wgpu::Queue, has_timestamps: 
                 }
             }
             if staged {
-                batch.push(staging.finish());
+                queue.submit(Some(staging.finish()));
             }
-            queue.submit(batch);
             let _ = device.poll(wgpu::PollType::Wait);
             // read copy timestamps
             if copy_ts {
@@ -1065,7 +1076,8 @@ fn measure_water_pass(
         if let Some(p) = profiler.as_ref() {
             p.end_frame(&mut enc);
         }
-        GpuProfiler::submit_frame(profiler.as_ref(), queue, device, enc.finish());
+        GpuProfiler::submit_frame(profiler.as_ref(), queue, device, enc.finish())
+            .expect("timestamp submit");
         let _ = device.poll(wgpu::PollType::Wait);
         if let Some(p) = profiler.as_mut() {
             p.request_readback();

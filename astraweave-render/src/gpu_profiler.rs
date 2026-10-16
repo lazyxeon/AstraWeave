@@ -293,21 +293,26 @@ impl GpuProfiler {
         self.next_query > 0 && !self.readback_pending
     }
 
+    /// The write encoder must not resolve. `draw_into` splits one wgpu
+    /// encoder into many Vulkan command buffers (one per pass). Resolving in
+    /// that same submit reads zeros on NVIDIA, including the frame bracket,
+    /// even though a one-pass self-test succeeds. [`Self::submit_frame`]
+    /// waits until those writes finish, then resolves.
+    pub fn end_frame(&self, _encoder: &mut wgpu::CommandEncoder) {
+        if self.readback_pending && self.next_query > 0 {
+            log::debug!(
+                "gpu profiler skipped timestamp resolve; gpu_profiler_readback is still mapped"
+            );
+        }
+    }
+
     /// Resolve written queries into the GPU buffer.
     ///
-    /// Call this on the same encoder as the timestamp writes, then
-    /// [`Self::copy_resolved`] on a second encoder, and `queue.submit` both
-    /// in that order. Vulkan returns zeros when `copy_buffer_to_buffer`
-    /// follows `resolve_query_set` in one command buffer (wgpu#6406). The
-    /// timestamp normalizer that would otherwise touch the resolve buffer
-    /// does not run when `timestamp_period` is 1, which is the NVIDIA value.
-    pub fn end_frame(&self, encoder: &mut wgpu::CommandEncoder) {
+    /// Call this only after `device.poll(Wait)` has finished the submission
+    /// that wrote the queries. The staging copy stays on a second encoder
+    /// (wgpu#6406).
+    pub fn resolve_queries(&self, encoder: &mut wgpu::CommandEncoder) {
         if !self.staging_copy_pending() {
-            if self.readback_pending && self.next_query > 0 {
-                log::debug!(
-                    "gpu profiler skipped timestamp resolve; gpu_profiler_readback is still mapped"
-                );
-            }
             return;
         }
         encoder.resolve_query_set(&self.query_set, 0..self.next_query, &self.resolve_buf, 0);
@@ -325,25 +330,39 @@ impl GpuProfiler {
         encoder.copy_buffer_to_buffer(&self.resolve_buf, 0, &self.readback_buf, 0, byte_count);
     }
 
-    /// Submit `frame`, then the staging copy when this profiler resolved queries.
+    /// Submit the timestamp writes, wait until the GPU finishes them, then
+    /// resolve and copy in later submissions.
+    ///
+    /// A resolve inside the write submission returns zeros on NVIDIA once
+    /// `draw_into` has split the encoder into a command buffer per pass.
+    /// `timestamp_period_ns=1` does not change that. The staging copy is
+    /// still its own submission so it cannot race the resolve (wgpu#6406).
     pub fn submit_frame(
         profiler: Option<&Self>,
         queue: &wgpu::Queue,
         device: &wgpu::Device,
         frame: wgpu::CommandBuffer,
-    ) {
-        let mut batch = Vec::with_capacity(2);
-        batch.push(frame);
-        if let Some(profiler) = profiler {
-            if profiler.staging_copy_pending() {
-                let mut copy = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                    label: Some("gpu profiler timestamp copy"),
-                });
-                profiler.copy_resolved(&mut copy);
-                batch.push(copy.finish());
-            }
+    ) -> Result<(), wgpu::PollError> {
+        queue.submit(std::iter::once(frame));
+        let Some(profiler) = profiler else {
+            return Ok(());
+        };
+        if !profiler.staging_copy_pending() {
+            return Ok(());
         }
-        queue.submit(batch);
+        device.poll(wgpu::PollType::Wait)?;
+        let mut resolve = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("gpu profiler timestamp resolve"),
+        });
+        profiler.resolve_queries(&mut resolve);
+        queue.submit(std::iter::once(resolve.finish()));
+        device.poll(wgpu::PollType::Wait)?;
+        let mut copy = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("gpu profiler timestamp copy"),
+        });
+        profiler.copy_resolved(&mut copy);
+        queue.submit(std::iter::once(copy.finish()));
+        Ok(())
     }
 
     /// Initiate an async readback of the timestamp buffer.
@@ -510,7 +529,11 @@ impl GpuProfiler {
         profiler.end_frame(&mut writes);
 
         let frame = writes.finish();
-        Self::submit_frame(Some(&profiler), queue, device, frame);
+        Self::submit_frame(Some(&profiler), queue, device, frame).map_err(|err| {
+            format!(
+                "timestamp self-test: device.poll(Wait) failed: {err}\ntimestamp_period_ns={period}"
+            )
+        })?;
         profiler.request_readback();
         if let Err(err) = device.poll(wgpu::PollType::Wait) {
             return Err(format!(
@@ -713,31 +736,19 @@ mod tests {
                 });
             }
             profiler.end_frame(&mut enc);
-            let copy = if profiler.staging_copy_pending() {
-                let mut staging = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                    label: Some("profiler copy"),
-                });
-                profiler.copy_resolved(&mut staging);
-                Some(staging.finish())
-            } else {
-                None
-            };
-            (enc.finish(), copy)
+            enc.finish()
         };
-        let (frame, copy) = record(&mut profiler);
+        let frame = record(&mut profiler);
         assert!(
-            copy.is_some(),
-            "the first frame must record the staging copy"
+            profiler.staging_copy_pending(),
+            "the first frame must have queries to resolve"
         );
-        let mut batch = vec![frame];
-        if let Some(copy) = copy {
-            batch.push(copy);
-        }
-        queue.submit(batch);
+        GpuProfiler::submit_frame(Some(&profiler), &queue, &device, frame)
+            .expect("first timestamp submit");
         profiler.request_readback();
-        let (frame, copy) = record(&mut profiler);
+        let frame = record(&mut profiler);
         assert!(
-            copy.is_none(),
+            !profiler.staging_copy_pending(),
             "staging copy must be skipped while gpu_profiler_readback is mapped"
         );
         queue.submit(std::iter::once(frame));

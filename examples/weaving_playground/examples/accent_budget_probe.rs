@@ -365,15 +365,25 @@ fn main() {
                 );
                 if has_inside {
                     enc.write_timestamp(&acc_qset, 1);
-                    enc.resolve_query_set(&acc_qset, 0..2, &acc_resolve, 0);
                 }
                 if let Some(ref p) = profiler {
                     p.end_frame(&mut enc);
                 }
-                // Staging copies are a second command buffer. Vulkan returns
-                // zeros when they share the resolve encoder (wgpu#6406).
-                let resolved = enc.finish();
-                let mut batch = vec![resolved];
+                // Resolve only after the writes' submission has finished.
+                // NVIDIA returns zeros when resolve shares that submission.
+                queue.submit(Some(enc.finish()));
+                let _ = device.poll(wgpu::PollType::Wait);
+                let mut resolve = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                    label: Some("accent timestamp resolve"),
+                });
+                if has_inside {
+                    resolve.resolve_query_set(&acc_qset, 0..2, &acc_resolve, 0);
+                }
+                if let Some(p) = profiler.as_ref() {
+                    p.resolve_queries(&mut resolve);
+                }
+                queue.submit(Some(resolve.finish()));
+                let _ = device.poll(wgpu::PollType::Wait);
                 let mut staging = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
                     label: Some("accent timestamp copy"),
                 });
@@ -389,9 +399,8 @@ fn main() {
                     }
                 }
                 if staged {
-                    batch.push(staging.finish());
+                    queue.submit(Some(staging.finish()));
                 }
-                queue.submit(batch);
                 let _ = device.poll(wgpu::PollType::Wait);
 
                 if has_inside {
