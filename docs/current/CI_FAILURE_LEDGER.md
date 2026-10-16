@@ -1,6 +1,6 @@
 # CI failure ledger
 
-> **2026-10-16:** This ledger landed with #217, now `main` at `a66304dc`. #219 and #256 are closed. `openssl` is not in `Cargo.lock`. The ban in `deny.toml` is unchanged. Sentences below that say #217 has not merged, or that #219 and #256 stay open until it does, are the pre-merge notes. The greybox `tokio` `net` failure is #326. #327 is open and is not this commit. The fifteen required replay cases are unchanged.
+> **2026-10-16:** This ledger landed with #217. `main` is now `d6903d3a`. #219 and #256 are closed. `openssl` is not in `Cargo.lock`. The ban in `deny.toml` is unchanged. Sentences below that say #217 has not merged, or that #219 and #256 stay open until it does, are the pre-merge notes. #327 is on `main` and #326 is closed. The fifteen required replay cases are unchanged.
 
 Inventory of checks that failed on PR #212 (`cursor/combat-damage-design`, run set 2026-10-14) and are shared with `main` at `a3fe3ecd`. The PR is documentation-only, so these are pre-existing. Each row is either fixed on `cursor/ci-failure-burndown` or verified not to be a separate defect.
 

@@ -28,4 +28,4 @@ The workspace has **141** members (`cargo metadata --no-deps` on this commit). T
 
 `ci.yml` runs a fmt/clippy/check gate, tests of affected crates, a Windows archive split into three partitions, and an MSRV job at 1.89.0. Docs-only diffs skip that compile. Replay hashes still run on Linux, Windows, and macOS. See `docs/current/CI_ARCHITECTURE.md`.
 
-#217 is on `main` (`a66304dc`). The open greybox `tokio` `net` failure is #326. #327 is the fix and is not on `main`. Do not describe #327 as the current workflow.
+#217 and #327 are on `main` (`d6903d3a`). The workspace `tokio` dependency does not enable `net`. #326 is closed. #275 is on `main`: the greybox sword hit calls `run_aravath_slice`. Local fluid sim #253 and render frame budget #216 are not on `main`.
