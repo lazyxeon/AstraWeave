@@ -7,9 +7,9 @@ primary_crate: astraweave-persistence-ecs
 domain: networking
 lifecycle_status: unknown
 integration_status: unknown
-summary: "Roundtrip works; auto_save_system body is comment-only TODO; replay_system never applies events. No production consumer. persistence_ecs.md §1"
+summary: "Save ids and timestamps come from the sim tick. replay_system applies due events in order. auto_save runs on CSimClock. persistence_ecs.md §1"
 owns: [astraweave-persistence-ecs, aw-save]
-doc_version: "1.3"
+doc_version: "1.4"
 last_verified_commit: a2474c5b7
 ---
 
@@ -28,7 +28,7 @@ last_verified_commit: a2474c5b7
 | **Document version** | 1.2 |
 | **Last verified against commit** | `a2474c5b7` |
 | **Last verified date** | 2026-05-12 |
-| **Status** | Active (mixed maturity: file format + serialization + hashing are production-grade; ECS Plugin layer's `auto_save_system` and replay event apply are TODO stubs) |
+| **Status** | Active. File format is production-shaped. `replay_system` applies due events into `AppliedReplay`. `auto_save_system` writes when `CSimClock` hits its interval. Inventory and companion extraction are still placeholders. |
 | **Revision history** | 1.3 (2026-10-15): `.awsv` load rejects a declared compressed length above 4 MiB before allocation, and an LZ4 uncompressed prefix above 16 MiB. Schema stays 2. `postcard_and_lz4_bytes_are_stable` locks the postcard 1.1 and lz4_flex 0.11 bytes. 1.2 (2026-05-12): Deep investigation pass. **Closed Open Question 13** (CLI tools location) — purely factual question, comprehensively answered (`tools/aw_save_cli/` exists, was created in the same commit as `aw-save` itself). Resolution moved to §4 / §6. **New emergent finding**: a separate sibling crate `crates/astraweave-persistence-player` exists for player-profile persistence (TOML-based, distinct data model). Has zero dependency relationship with this subsystem; only a single doc-comment reference. Added to §6 as a coexisting-but-disjoint abstraction so future agents don't conflate them. Enriched §11 Q1, Q2, Q11 with commit-date provenance: the `astraweave-stress-test` declaration of both `astraweave-net-ecs` and `astraweave-persistence-ecs` and the `astraweave-memory` declaration in `astraweave-persistence-ecs/Cargo.toml` all landed in the **same commit** `08befc6ec` (2025-10-01, "phase 6 implementation"); test artifacts (`slot*.awsv`, `savegame.bin`) were committed in unrelated subsequent commits with misleading titles.<br><br>1.1 (2026-05-12): Verification pass. **Major corrections**: (1) The §4 `[INFERRED]` claim that CLI tools "may live elsewhere or be planned" was wrong — `tools/aw_save_cli/src/main.rs` (110 lines, clap-based) is a real binary that consumes `aw-save`. Added to §4 downstream table; resolved the marker. (2) Discovered second `aw-save` consumer not previously documented: `examples/save_integration/src/main.rs` (234 lines) imports `aw-save` types directly. Added to §4. (3) Resolved §9 `[INFERRED]` about auto-pruning absence — direct grep `fs::remove\|remove_file\|tokio::fs::remove persistence/aw-save/src` returns zero matches, conclusively confirming no auto-prune path exists. (4) Verified `Entity::to_raw()` layout claim in §3 against actual source at `astraweave-ecs/src/entity_allocator.rs:95-103` — claim is exact. |
 | **Owner notes** | `aw-save` (file format and SaveManager) is fully production-shaped: atomic writes via tmp+fsync+rename, CRC32 + LZ4, explicit V1→V2 migration, 256 slots per player. `astraweave-persistence-ecs` (ECS integration) is partly stub: the ECS `auto_save_system` function body is a comment-only TODO; replay event application is a TODO; `CPersistenceManager::save_game` hardcodes inventory (`credits: 1000`, `items: []`) and emits zero companions. **`astraweave-stress-test/Cargo.toml:21` declares `astraweave-persistence-ecs` as a dep but no source file imports anything from it** — same pattern as `net-ecs` (declared-but-unused). The companion `astraweave-memory` workspace dep declared at `astraweave-persistence-ecs/Cargo.toml:20` is also never imported in the crate's source. |
 
@@ -250,25 +250,24 @@ Replay path (scaffolded, partial):
     ▼
 [PersistencePlugin::build adds replay_system to "pre_simulation" stage]   (lib.rs:67)
     │
-    │ replay_system(world):                              (lib.rs:78-104)
-    │   For every entity with CReplayState where is_replaying:
+    │ replay_system(world):
+    │   Entities sorted by Entity::to_raw.
+    │   For each CReplayState where is_replaying:
     │     if current_tick < total_ticks:
-    │       // TODO: Implement replay event application   (lib.rs:96)
-    │       current_tick += 1
+    │       copy events with tick == current_tick into AppliedReplay
+    │       sorted by (event_type, data), then current_tick += 1
     │     else:
     │       is_replaying = false
-    │
-    │ The system advances the tick counter but does NOT apply any saved events.
 
 ──────────────────────────────────────────────────────────────────────
 Auto-save path (scaffolded, empty body):
     │
     │ PersistencePlugin::build adds auto_save_system to "post_simulation" stage  (lib.rs:66)
     ▼
-[auto_save_system(_world): { /* TODO body */ }]    (lib.rs:72-75)
+[auto_save_system(world)]
     │
-    │ Function takes &mut World but currently does nothing.
-    │ Comment: "Query for persistence manager and save at intervals"
+    │ If CSimClock.tick is a multiple of save_every, and a CPersistenceManager
+    │ is present, write the ECS blob with sim_save_id and sim_timestamp.
 ```
 
 ### Stage-by-stage detail
@@ -343,8 +342,8 @@ Auto-save path (scaffolded, empty body):
 **Outputs:** Two systems registered.
 **Notes:**
 - `PersistencePlugin.save_directory: PathBuf` is stored on the plugin struct but **never read** by `build()`. The field is `#[allow(dead_code)]` (`lib.rs:52-55`). Setting up a real `SaveManager` would require the caller to do that work outside the plugin.
-- `auto_save_system(_world)` body is comment-only (`lib.rs:72-75`). The system runs in `"post_simulation"` and does nothing.
-- `replay_system(world)` increments `CReplayState.current_tick` per call but the actual event application is `// TODO: Implement replay event application` (`lib.rs:96`).
+- `auto_save_system` saves when `CSimClock` lands on `save_every`. No clock resource means no save and no wall-clock fallback.
+- `replay_system` copies due events into `AppliedReplay` in `(event_type, data)` order, then advances `current_tick`.
 
 ---
 
@@ -715,6 +714,8 @@ Auto-save path (scaffolded, empty body):
 ---
 
 ## 12. Maintenance Notes
+
+**Revision 1.4 (2026-10-16):** save filenames use `bundle.created_at`. `sim_save_id` / `sim_timestamp` replace `Uuid::new_v4` and `OffsetDateTime::now_utc` on the persistence and greybox paths. `replay_system` applies due events. `auto_save_system` follows `CSimClock`. Entity blobs are sorted by `Entity::to_raw`.
 
 **Update this doc when:**
 - A new component is added to `astraweave-core::ecs_components` (§3 vocabulary, §5 file map, §6 component-count row, §7 sixth decision).

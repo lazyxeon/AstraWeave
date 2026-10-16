@@ -4,7 +4,7 @@
 # `fixed64`, `combat_resolve`, `destruction`, `gameplay_qa_aravath_slice`,
 # `nav_reroute`, `causal_bridge`, `scripted_system` (WS-MOD), `weaving`,
 # `traversal`, `traversal_deformed`, `worldgen_columns`, `deformed_chunk`,
-# and `local_sim`
+# `local_sim`, `greybox_checkpoint`, `quest_ticks`, and `persist_replay`
 # fail the compare job on any mismatch or if the case is missing. No path
 # filter. cargo test has no retry loop (no-retry). Do not switch this job to
 # nextest.
@@ -82,6 +82,9 @@ jobs:
           cargo test -p astraweave-physics --test traversal_replay -- --nocapture
           cargo test -p astraweave-terrain --test worldgen_hash -- --nocapture
           cargo test -p astraweave-localsim --test replay_hash -- --nocapture
+          cargo test -p aravath_runtime --test checkpoint_replay -- --nocapture
+          cargo test -p astraweave-quests --test quest_tick_replay -- --nocapture
+          cargo test -p astraweave-persistence-ecs --test persist_replay -- --nocapture
 
       - name: Merge replay hashes
         run: |
@@ -95,9 +98,12 @@ jobs:
           const causal = JSON.parse(fs.readFileSync(path.join(root, "replay-hash-causal.json"), "utf8"));
           const traversal = JSON.parse(fs.readFileSync(path.join(root, "replay-hash-traversal.json"), "utf8"));
           const localsim = JSON.parse(fs.readFileSync(path.join(root, "replay-hash-localsim.json"), "utf8"));
+          const greybox = JSON.parse(fs.readFileSync(path.join(root, "replay-hash-greybox.json"), "utf8"));
+          const quests = JSON.parse(fs.readFileSync(path.join(root, "replay-hash-quests.json"), "utf8"));
+          const persist = JSON.parse(fs.readFileSync(path.join(root, "replay-hash-persist.json"), "utf8"));
           const seen = new Set(core.map((row) => row.case));
           const merged = core.slice();
-          for (const row of combat.concat(gameplay, causal, traversal, localsim)) {
+          for (const row of combat.concat(gameplay, causal, traversal, localsim, greybox, quests, persist)) {
             if (seen.has(row.case)) {
               console.error(`duplicate replay case ${row.case}`);
               process.exit(1);
@@ -105,7 +111,7 @@ jobs:
             seen.add(row.case);
             merged.push(row);
           }
-          const required = ["planner_pure", "perception_world", "gameplay_rng", "fixed64", "combat_resolve", "destruction", "gameplay_qa_aravath_slice", "nav_reroute", "causal_bridge", "scripted_system", "weaving", "traversal", "traversal_deformed", "worldgen_columns", "deformed_chunk", "local_sim"];
+          const required = ["planner_pure", "perception_world", "gameplay_rng", "fixed64", "combat_resolve", "destruction", "gameplay_qa_aravath_slice", "nav_reroute", "causal_bridge", "scripted_system", "weaving", "traversal", "traversal_deformed", "worldgen_columns", "deformed_chunk", "local_sim", "greybox_checkpoint", "quest_ticks", "persist_replay"];
           const names = new Set(merged.map((row) => row.case));
           for (const name of required) {
             if (!names.has(name)) {
@@ -144,7 +150,7 @@ jobs:
           import sys
           from pathlib import Path
 
-          required = {"planner_pure", "perception_world", "gameplay_rng", "fixed64", "combat_resolve", "destruction", "gameplay_qa_aravath_slice", "nav_reroute", "causal_bridge", "scripted_system", "weaving", "traversal", "traversal_deformed", "worldgen_columns", "deformed_chunk", "local_sim"}
+          required = {"planner_pure", "perception_world", "gameplay_rng", "fixed64", "combat_resolve", "destruction", "gameplay_qa_aravath_slice", "nav_reroute", "causal_bridge", "scripted_system", "weaving", "traversal", "traversal_deformed", "worldgen_columns", "deformed_chunk", "local_sim", "greybox_checkpoint", "quest_ticks", "persist_replay"}
           root = Path("replay-artifacts")
           files = sorted(root.glob("*/replay-hash.json"))
           print(f"artifacts: {[str(p) for p in files]}")

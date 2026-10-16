@@ -3,14 +3,30 @@
 use std::path::Path;
 
 use anyhow::{bail, Context, Result};
+use astraweave_veil::{insert_into_meta, read_from_meta, ScarField};
 use aw_save::{PlayerInventory, SaveBundleV2, SaveManager, WorldState, SAVE_SCHEMA_VERSION};
 use glam::Vec3;
-use time::OffsetDateTime;
-use uuid::Uuid;
 
-use astraweave_veil::{insert_into_meta, read_from_meta, ScarField};
+/// Mixed into [`aw_save::sim_save_id`] for this demo. Not a random uuid.
+pub const ARAVATH_SAVE_SEED: u64 = 0xA2A7_5A7E;
 
 use crate::ground::VoxelEdit;
+use crate::motor::MotorMode;
+
+/// One enemy the checkpoint can put back into the fight.
+#[derive(Clone, Debug)]
+pub struct SavedEnemy {
+    pub body: u64,
+    pub health: f32,
+    pub stagger: f32,
+    pub windup: f32,
+    pub attack_cooldown: f32,
+    pub attack_time: f32,
+    pub swinging: bool,
+    pub hit_landed: bool,
+    pub closing: bool,
+    pub position: Vec3,
+}
 
 pub struct Checkpoint {
     pub edits: Vec<VoxelEdit>,
@@ -21,6 +37,112 @@ pub struct Checkpoint {
     pub stamina: f32,
     pub player_hp: f32,
     pub scars: ScarField,
+    pub tick: u64,
+    pub motor_mode: MotorMode,
+    pub attack_time: f32,
+    pub attack_swinging: bool,
+    pub attack_hit: bool,
+    pub lock: Option<usize>,
+    pub cover_broken: bool,
+    pub enemies: Vec<SavedEnemy>,
+}
+
+impl Checkpoint {
+    pub fn basic(position: Vec3, yaw: f32, stamina: f32, player_hp: f32) -> Self {
+        Self {
+            edits: Vec::new(),
+            demolition: Vec::new(),
+            position,
+            yaw,
+            stamina,
+            player_hp,
+            scars: ScarField::new(),
+            tick: 0,
+            motor_mode: MotorMode::Locomotion,
+            attack_time: 0.0,
+            attack_swinging: false,
+            attack_hit: false,
+            lock: None,
+            cover_broken: false,
+            enemies: Vec::new(),
+        }
+    }
+}
+
+/// FNV-1a of the gameplay fields a load restores. Not `edits.len()`.
+#[must_use]
+pub fn gameplay_hash(checkpoint: &Checkpoint) -> u64 {
+    let mut hash = 0xcbf2_9ce4_8422_2325u64;
+    let mut mix = |bytes: &[u8]| {
+        for byte in bytes {
+            hash ^= u64::from(*byte);
+            hash = hash.wrapping_mul(0x1000_0000_01B3);
+        }
+    };
+    mix(&checkpoint.tick.to_le_bytes());
+    mix(&checkpoint.position.x.to_bits().to_le_bytes());
+    mix(&checkpoint.position.y.to_bits().to_le_bytes());
+    mix(&checkpoint.position.z.to_bits().to_le_bytes());
+    mix(&checkpoint.yaw.to_bits().to_le_bytes());
+    mix(&checkpoint.stamina.to_bits().to_le_bytes());
+    mix(&checkpoint.player_hp.to_bits().to_le_bytes());
+    mix(&[motor_tag(checkpoint.motor_mode)]);
+    mix(&checkpoint.attack_time.to_bits().to_le_bytes());
+    mix(&[
+        u8::from(checkpoint.attack_swinging),
+        u8::from(checkpoint.attack_hit),
+    ]);
+    mix(&checkpoint
+        .lock
+        .map(|index| index as u64)
+        .unwrap_or(u64::MAX)
+        .to_le_bytes());
+    mix(&[u8::from(checkpoint.cover_broken)]);
+    mix(&(checkpoint.enemies.len() as u64).to_le_bytes());
+    for enemy in &checkpoint.enemies {
+        mix(&enemy.body.to_le_bytes());
+        mix(&enemy.health.to_bits().to_le_bytes());
+        mix(&enemy.stagger.to_bits().to_le_bytes());
+        mix(&enemy.windup.to_bits().to_le_bytes());
+        mix(&enemy.attack_cooldown.to_bits().to_le_bytes());
+        mix(&enemy.attack_time.to_bits().to_le_bytes());
+        mix(&[
+            u8::from(enemy.swinging),
+            u8::from(enemy.hit_landed),
+            u8::from(enemy.closing),
+        ]);
+        mix(&enemy.position.x.to_bits().to_le_bytes());
+        mix(&enemy.position.y.to_bits().to_le_bytes());
+        mix(&enemy.position.z.to_bits().to_le_bytes());
+    }
+    mix(&(checkpoint.edits.len() as u64).to_le_bytes());
+    for edit in &checkpoint.edits {
+        mix(&edit.x.to_le_bytes());
+        mix(&edit.y.to_le_bytes());
+        mix(&edit.z.to_le_bytes());
+        mix(&edit.density.to_bits().to_le_bytes());
+        mix(&edit.material.to_le_bytes());
+    }
+    mix(&(checkpoint.demolition.len() as u64).to_le_bytes());
+    mix(&checkpoint.demolition);
+    hash
+}
+
+fn motor_tag(mode: MotorMode) -> u8 {
+    match mode {
+        MotorMode::Locomotion => 0,
+        MotorMode::Roll => 1,
+        MotorMode::Fly => 2,
+    }
+}
+
+fn motor_from_tag(tag: u8) -> Result<MotorMode> {
+    match tag {
+        0 => Ok(MotorMode::Locomotion),
+        1 => Ok(MotorMode::Roll),
+        2 => Ok(MotorMode::Fly),
+        _ => bail!("motor mode is unknown"),
+    }
 }
 
 pub fn save_checkpoint(root: &Path, checkpoint: &Checkpoint) -> Result<()> {
@@ -48,16 +170,40 @@ pub fn save_checkpoint(root: &Path, checkpoint: &Checkpoint) -> Result<()> {
             encode_f32(checkpoint.player_hp)
         ),
     );
+    meta.insert("tick".into(), checkpoint.tick.to_string());
+    meta.insert("motor".into(), motor_tag(checkpoint.motor_mode).to_string());
+    meta.insert(
+        "attack".into(),
+        format!(
+            "{},{},{}",
+            encode_f32(checkpoint.attack_time),
+            u8::from(checkpoint.attack_swinging),
+            u8::from(checkpoint.attack_hit)
+        ),
+    );
+    meta.insert(
+        "lock".into(),
+        checkpoint
+            .lock
+            .map(|index| index.to_string())
+            .unwrap_or_default(),
+    );
+    meta.insert(
+        "cover".into(),
+        u8::from(checkpoint.cover_broken).to_string(),
+    );
+    meta.insert("enemies".into(), encode_enemies(&checkpoint.enemies));
+    let state_hash = gameplay_hash(checkpoint);
     let bundle = SaveBundleV2 {
         schema: SAVE_SCHEMA_VERSION,
-        save_id: Uuid::new_v4(),
-        created_at: OffsetDateTime::now_utc(),
+        save_id: aw_save::sim_save_id(ARAVATH_SAVE_SEED, checkpoint.tick, 0),
+        created_at: aw_save::sim_timestamp(checkpoint.tick),
         player_id: "aravath".into(),
         slot: 0,
         world: WorldState {
-            tick: 0,
+            tick: checkpoint.tick,
             ecs_blob: meta.get("edits").cloned().unwrap_or_default().into_bytes(),
-            state_hash: checkpoint.edits.len() as u64,
+            state_hash,
         },
         companions: Vec::new(),
         inventory: PlayerInventory {
@@ -112,6 +258,31 @@ pub fn load_checkpoint(root: &Path) -> Result<Checkpoint> {
     };
     require_saved_ground(&bundle.meta)?;
     let scars = read_from_meta(&bundle.meta).context("decode veil scars")?;
+    let tick = match bundle.meta.get("tick") {
+        Some(text) => text.parse::<u64>().context("tick")?,
+        None => bundle.world.tick,
+    };
+    let motor_mode = match bundle.meta.get("motor") {
+        Some(text) => motor_from_tag(text.parse::<u8>().context("motor")?)?,
+        None => MotorMode::Locomotion,
+    };
+    let (attack_time, attack_swinging, attack_hit) = match bundle.meta.get("attack") {
+        Some(text) => decode_attack(text)?,
+        None => (0.0, false, false),
+    };
+    let lock = match bundle.meta.get("lock") {
+        Some(text) if text.is_empty() => None,
+        Some(text) => Some(text.parse::<usize>().context("lock")?),
+        None => None,
+    };
+    let cover_broken = match bundle.meta.get("cover") {
+        Some(text) => text == "1",
+        None => false,
+    };
+    let enemies = match bundle.meta.get("enemies") {
+        Some(text) => decode_enemies(text)?,
+        None => Vec::new(),
+    };
     Ok(Checkpoint {
         edits,
         demolition,
@@ -120,6 +291,14 @@ pub fn load_checkpoint(root: &Path) -> Result<Checkpoint> {
         stamina,
         player_hp,
         scars,
+        tick,
+        motor_mode,
+        attack_time,
+        attack_swinging,
+        attack_hit,
+        lock,
+        cover_broken,
+        enemies,
     })
 }
 
@@ -200,6 +379,84 @@ fn require_saved_ground(meta: &std::collections::HashMap<String, String>) -> Res
         bail!("saved ground does not match the integer columns");
     }
     Ok(())
+}
+
+fn encode_enemies(enemies: &[SavedEnemy]) -> String {
+    enemies
+        .iter()
+        .map(|enemy| {
+            format!(
+                "{},{},{},{},{},{},{},{},{},{},{},{}",
+                enemy.body,
+                encode_f32(enemy.health),
+                encode_f32(enemy.stagger),
+                encode_f32(enemy.windup),
+                encode_f32(enemy.attack_cooldown),
+                encode_f32(enemy.attack_time),
+                u8::from(enemy.swinging),
+                u8::from(enemy.hit_landed),
+                u8::from(enemy.closing),
+                encode_f32(enemy.position.x),
+                encode_f32(enemy.position.y),
+                encode_f32(enemy.position.z)
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(";")
+}
+
+fn decode_enemies(text: &str) -> Result<Vec<SavedEnemy>> {
+    if text.is_empty() {
+        return Ok(Vec::new());
+    }
+    let mut enemies = Vec::new();
+    for row in text.split(';') {
+        let mut parts = row.split(',');
+        let body = parts
+            .next()
+            .context("enemy body")?
+            .parse()
+            .context("enemy body")?;
+        let health = finite_limited(parts.next().context("health")?, "health", 10_000.0)?;
+        let stagger = finite_limited(parts.next().context("stagger")?, "stagger", 10_000.0)?;
+        let windup = finite_limited(parts.next().context("windup")?, "windup", 10_000.0)?;
+        let attack_cooldown =
+            finite_limited(parts.next().context("cooldown")?, "cooldown", 10_000.0)?;
+        let attack_time = finite_limited(parts.next().context("attack")?, "attack", 10_000.0)?;
+        let swinging = parts.next().context("swing")? == "1";
+        let hit_landed = parts.next().context("hit")? == "1";
+        let closing = parts.next().context("closing")? == "1";
+        let position = Vec3::new(
+            finite_coord(parts.next().context("ex")?, "enemy x")?,
+            finite_coord(parts.next().context("ey")?, "enemy y")?,
+            finite_coord(parts.next().context("ez")?, "enemy z")?,
+        );
+        enemies.push(SavedEnemy {
+            body,
+            health,
+            stagger,
+            windup,
+            attack_cooldown,
+            attack_time,
+            swinging,
+            hit_landed,
+            closing,
+            position,
+        });
+    }
+    Ok(enemies)
+}
+
+fn decode_attack(text: &str) -> Result<(f32, bool, bool)> {
+    let mut parts = text.split(',');
+    let time = finite_limited(
+        parts.next().context("attack time")?,
+        "attack time",
+        10_000.0,
+    )?;
+    let swinging = parts.next().context("swing")? == "1";
+    let hit = parts.next().context("hit")? == "1";
+    Ok((time, swinging, hit))
 }
 
 fn encode_edits(edits: &[VoxelEdit]) -> String {
@@ -285,19 +542,9 @@ mod tests {
 
         let dir = tempfile::tempdir().unwrap();
         let position = Vec3::new(3.0, 6.5, 3.0);
-        save_checkpoint(
-            dir.path(),
-            &Checkpoint {
-                edits: ground.edits.clone(),
-                demolition: Vec::new(),
-                position,
-                yaw: 0.4,
-                stamina: 77.0,
-                player_hp: 100.0,
-                scars: astraweave_veil::ScarField::new(),
-            },
-        )
-        .unwrap();
+        let mut checkpoint = Checkpoint::basic(position, 0.4, 77.0, 100.0);
+        checkpoint.edits = ground.edits.clone();
+        save_checkpoint(dir.path(), &checkpoint).unwrap();
         let loaded = load_checkpoint(dir.path()).unwrap();
         assert!((loaded.position - position).length() < 1e-3);
         assert!((loaded.stamina - 77.0).abs() < 1e-3);
@@ -336,15 +583,7 @@ mod tests {
 
         save_checkpoint(
             dir.path(),
-            &Checkpoint {
-                edits: Vec::new(),
-                demolition: Vec::new(),
-                position: Vec3::new(1.0, 2.0, 3.0),
-                yaw: 0.0,
-                stamina: 1.0,
-                player_hp: 1.0,
-                scars: astraweave_veil::ScarField::new(),
-            },
+            &Checkpoint::basic(Vec3::new(1.0, 2.0, 3.0), 0.0, 1.0, 1.0),
         )
         .unwrap();
         let (bundle, _) = aw_save::SaveManager::new(dir.path())
@@ -379,19 +618,7 @@ mod tests {
     #[test]
     fn saved_ground_is_the_integer_record() {
         let dir = tempfile::tempdir().unwrap();
-        save_checkpoint(
-            dir.path(),
-            &Checkpoint {
-                edits: Vec::new(),
-                demolition: Vec::new(),
-                position: Vec3::ZERO,
-                yaw: 0.0,
-                stamina: 1.0,
-                player_hp: 1.0,
-                scars: astraweave_veil::ScarField::new(),
-            },
-        )
-        .unwrap();
+        save_checkpoint(dir.path(), &Checkpoint::basic(Vec3::ZERO, 0.0, 1.0, 1.0)).unwrap();
         let loaded = load_checkpoint(dir.path()).unwrap();
         assert!(loaded.edits.is_empty());
         let (bundle, _) = aw_save::SaveManager::new(dir.path())

@@ -10,7 +10,6 @@
 #![allow(clippy::field_reassign_with_default)]
 
 use astraweave_quests::*;
-use chrono::Utc;
 use std::collections::HashMap;
 
 // ============================================================================
@@ -78,7 +77,7 @@ fn make_test_llm_quest(id: &str, category: &str) -> LlmQuest {
             reputation_changes: HashMap::new(),
             unlock_content: vec![],
         },
-        generated_at: Utc::now(),
+        generated_at: 0,
         personalization: PersonalizationData {
             player_id: "player_1".into(),
             player_preferences: vec!["combat".into()],
@@ -411,7 +410,7 @@ mod active_quest_tests {
     fn test_get_current_step_after_advance() {
         let quest = make_test_llm_quest("q1", "combat");
         let mut active = CActiveQuest::new(quest);
-        active.advance_step();
+        active.advance_step(1);
         let step = active.get_current_step().unwrap();
         assert_eq!(step.id, "step_2");
     }
@@ -454,7 +453,7 @@ mod active_quest_tests {
         let quest = make_test_llm_quest("q1", "combat");
         let mut active = CActiveQuest::new(quest);
         // two steps: index 0 → 1 should return true
-        assert!(active.advance_step());
+        assert!(active.advance_step(1));
         assert_eq!(active.current_step_index, 1);
     }
 
@@ -463,7 +462,7 @@ mod active_quest_tests {
         let quest = make_test_llm_quest("q1", "combat");
         let mut active = CActiveQuest::new(quest);
         active.current_step_index = 1; // last step (2 steps total)
-        assert!(!active.advance_step());
+        assert!(!active.advance_step(2));
         assert!(matches!(active.state, QuestState::Completed));
     }
 
@@ -478,7 +477,7 @@ mod active_quest_tests {
             requirements: None,
             leads_to_step: None,
         };
-        active.record_choice("step_1".into(), choice);
+        active.record_choice("step_1".into(), choice, 4);
         assert_eq!(active.choices_made.len(), 1);
         assert_eq!(active.choices_made[0].step_id, "step_1");
         assert_eq!(active.choices_made[0].choice.id, "c1");
@@ -488,11 +487,11 @@ mod active_quest_tests {
     fn test_set_state() {
         let quest = make_test_llm_quest("q1", "combat");
         let mut active = CActiveQuest::new(quest);
-        active.set_state(QuestState::Paused);
+        active.set_state(QuestState::Paused, 5);
         assert!(matches!(active.state, QuestState::Paused));
-        active.set_state(QuestState::Failed);
+        active.set_state(QuestState::Failed, 6);
         assert!(matches!(active.state, QuestState::Failed));
-        active.set_state(QuestState::Abandoned);
+        active.set_state(QuestState::Abandoned, 7);
         assert!(matches!(active.state, QuestState::Abandoned));
     }
 
@@ -527,7 +526,7 @@ mod active_quest_tests {
         let quest = make_test_llm_quest("q1", "combat");
         let active = CActiveQuest::new(quest);
         let dur = active.get_duration();
-        assert!(dur.num_milliseconds() >= 0);
+        assert_eq!(dur, 0);
     }
 }
 
@@ -2150,7 +2149,7 @@ mod edge_case_tests {
         quest.steps = vec![quest.steps[0].clone()]; // Keep only first step
         let mut active = CActiveQuest::new(quest);
         // Index 0, only 1 step: 0 + 1 = 1, not < 1 → false, completes
-        let advanced = active.advance_step();
+        let advanced = active.advance_step(1);
         assert!(!advanced);
         assert!(matches!(active.state, QuestState::Completed));
     }
@@ -2266,7 +2265,7 @@ mod edge_case_tests {
                 requirements: None,
                 leads_to_step: None,
             },
-            timestamp: Utc::now(),
+            timestamp: 3,
             consequences_applied: vec!["damage".into()],
         };
         assert_eq!(record.step_id, "s1");
@@ -2508,8 +2507,9 @@ mod mutation_kill_tests {
     fn active_quest_duration_nonzero() {
         let quest = make_test_llm_quest("dur_test", "exploration");
         let mut active = CActiveQuest::new(quest);
-        active.start_time = Utc::now() - chrono::Duration::seconds(60);
+        active.start_time = 10;
+        active.last_update = 70;
         let dur = active.get_duration();
-        assert!(dur.num_seconds() > 0, "duration should be positive");
+        assert!(dur > 0, "duration should be positive");
     }
 }

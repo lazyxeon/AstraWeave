@@ -35,6 +35,40 @@ pub const MAX_AWSV_UNCOMPRESSED_BYTES: usize = 16 * 1024 * 1024;
 /// Bump this when you change SaveBundle layout. Add explicit migrations below.
 pub const SAVE_SCHEMA_VERSION: u16 = 2;
 
+/// Deterministic save id. Same `(world_seed, tick, slot)` is the same UUID on every OS.
+///
+/// The bytes are a splitmix of those three integers with RFC 4122 version 5 and the RFC variant.
+/// This is not `Uuid::new_v4`.
+#[must_use]
+pub fn sim_save_id(world_seed: u64, tick: u64, slot: u64) -> Uuid {
+    fn mix(mut z: u64) -> u64 {
+        z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+        z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+        z ^ (z >> 31)
+    }
+    let a = mix(world_seed
+        .wrapping_add(0x9E37_79B9_7F4A_7C15)
+        .wrapping_mul(tick ^ 0xBF58_476D_1CE4_E5B9)
+        .wrapping_add(slot.rotate_left(17)));
+    let b = mix(tick
+        .wrapping_add(0xA24B_AED4_963E_E407)
+        .wrapping_mul(slot ^ 0x94D0_49BB_1331_11EB)
+        .wrapping_add(world_seed.rotate_left(13)));
+    let mut bytes = [0u8; 16];
+    bytes[..8].copy_from_slice(&a.to_le_bytes());
+    bytes[8..].copy_from_slice(&b.to_le_bytes());
+    bytes[6] = (bytes[6] & 0x0f) | 0x50;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    Uuid::from_bytes(bytes)
+}
+
+/// Sim tick as a UTC timestamp. Tick 0 is the unix epoch. Not the wall clock.
+#[must_use]
+pub fn sim_timestamp(tick: u64) -> OffsetDateTime {
+    let seconds = i64::try_from(tick).unwrap_or(i64::MAX);
+    OffsetDateTime::from_unix_timestamp(seconds).unwrap_or(OffsetDateTime::UNIX_EPOCH)
+}
+
 /// Public, stable entrypoint
 #[derive(Debug, Clone)]
 pub struct SaveManager {
@@ -59,13 +93,17 @@ impl SaveManager {
         let dir = self.player_dir(player_id);
         fs::create_dir_all(&dir)?;
         // Use Windows-safe timestamp format (replace colons with dashes)
-        let format = format_description::parse("[year]-[month]-[day]T[hour]-[minute]-[second]Z")
-            .unwrap_or_else(|_| {
-                format_description::parse("[year][month][day]T[hour][minute][second]Z").unwrap()
-            });
-        let stamp = OffsetDateTime::now_utc()
+        let format = format_description::parse_borrowed::<1>(
+            "[year]-[month]-[day]T[hour]-[minute]-[second]Z",
+        )
+        .unwrap_or_else(|_| {
+            format_description::parse_borrowed::<1>("[year][month][day]T[hour][minute][second]Z")
+                .unwrap()
+        });
+        let stamp = bundle
+            .created_at
             .format(&format)
-            .unwrap_or_else(|_| "now".into());
+            .unwrap_or_else(|_| bundle.world.tick.to_string());
         let fname = format!("slot{:02}_{}_{}.awsv", slot, stamp, bundle.save_id);
         let path = dir.join(fname);
         write_awsv(&path, &bundle)?;
@@ -186,9 +224,13 @@ pub struct SaveBundleV1 {
 
 impl SaveBundleV1 {
     pub fn into_v2(self) -> SaveBundleV2 {
+        let seed = self.player_id.bytes().fold(0u64, |acc, byte| {
+            acc.wrapping_mul(0x1000_0000_01B3)
+                .wrapping_add(u64::from(byte))
+        });
         SaveBundleV2 {
             schema: SAVE_SCHEMA_VERSION,
-            save_id: Uuid::new_v4(),
+            save_id: sim_save_id(seed, self.world.tick, u64::from(self.slot)),
             created_at: self.created_at,
             player_id: self.player_id,
             slot: self.slot,
@@ -431,12 +473,50 @@ mod tests {
     use super::*;
 
     #[test]
+    fn sim_save_id_is_stable_and_not_all_zero() {
+        let first = sim_save_id(0xA2A7, 30, 0);
+        let second = sim_save_id(0xA2A7, 30, 0);
+        assert_eq!(first, second);
+        assert_ne!(first, sim_save_id(0xA2A7, 31, 0));
+        assert_ne!(first, Uuid::nil());
+        let stamp = sim_timestamp(30);
+        assert_eq!(stamp.unix_timestamp(), 30);
+    }
+
+    #[test]
+    fn migrated_v1_id_does_not_use_a_fresh_random_uuid() {
+        let v1 = SaveBundleV1 {
+            player_id: "aravath".into(),
+            slot: 1,
+            created_at: sim_timestamp(4),
+            world: WorldState {
+                tick: 4,
+                ecs_blob: vec![1, 2],
+                state_hash: 9,
+            },
+            inventory: PlayerInventory {
+                credits: 0,
+                items: Vec::new(),
+            },
+            companion: None,
+            meta: HashMap::new(),
+        };
+        let a = v1.clone().into_v2();
+        let b = v1.into_v2();
+        assert_eq!(a.save_id, b.save_id);
+        assert_eq!(a.created_at, sim_timestamp(4));
+    }
+
+    #[test]
     fn test_windows_safe_timestamp() {
         // Test that the timestamp format doesn't contain invalid Windows filename characters
-        let format = format_description::parse("[year]-[month]-[day]T[hour]-[minute]-[second]Z")
-            .unwrap_or_else(|_| {
-                format_description::parse("[year][month][day]T[hour][minute][second]Z").unwrap()
-            });
+        let format = format_description::parse_borrowed::<1>(
+            "[year]-[month]-[day]T[hour]-[minute]-[second]Z",
+        )
+        .unwrap_or_else(|_| {
+            format_description::parse_borrowed::<1>("[year][month][day]T[hour][minute][second]Z")
+                .unwrap()
+        });
         let stamp = OffsetDateTime::now_utc()
             .format(&format)
             .unwrap_or_else(|_| "now".into());

@@ -545,7 +545,7 @@ impl TerrainQuestGenerator {
                 reputation_changes: HashMap::new(),
                 unlock_content: vec![],
             },
-            generated_at: chrono::Utc::now(),
+            generated_at: 0,
             personalization: crate::PersonalizationData {
                 player_id: player_ctx.player_id.clone(),
                 player_preferences: player_ctx.preferred_quest_types.clone(),

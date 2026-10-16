@@ -70,15 +70,73 @@ impl Plugin for PersistencePlugin {
     }
 }
 
-/// System that automatically saves game state at regular intervals
-fn auto_save_system(_world: &mut World) {
-    // TODO: Query for persistence manager and save at intervals
-    // This would serialize the current ECS state and save it
+/// Tick the host stores. `save_every` is a sim-tick interval, not wall time.
+#[derive(Clone, Copy, Debug)]
+pub struct CSimClock {
+    pub world_seed: u64,
+    pub tick: u64,
+    pub save_every: u64,
+    pub last_saved_tick: Option<u64>,
+    pub slot: u8,
 }
 
-/// System that handles replay functionality
+/// System that saves when the sim clock lands on an interval.
+fn auto_save_system(world: &mut World) {
+    let Some(clock) = world.get_resource::<CSimClock>().cloned() else {
+        return;
+    };
+    if clock.save_every == 0 || clock.tick % clock.save_every != 0 {
+        return;
+    }
+    if clock.last_saved_tick == Some(clock.tick) {
+        return;
+    }
+    let managers: Vec<Entity> = {
+        let q = Query::<CPersistenceManager>::new(world);
+        let mut ids: Vec<Entity> = q.map(|(entity, _)| entity).collect();
+        ids.sort_by_key(|entity| entity.to_raw());
+        ids
+    };
+    let Ok(blob) = serialize_ecs_world(world) else {
+        return;
+    };
+    let hash = fnv64(&blob);
+    for entity in managers {
+        let Some(manager) = world.get::<CPersistenceManager>(entity) else {
+            continue;
+        };
+        if manager
+            .save_game(clock.slot, clock.tick, hash, blob.clone())
+            .is_err()
+        {
+            return;
+        }
+    }
+    if let Some(clock) = world.get_resource_mut::<CSimClock>() {
+        clock.last_saved_tick = Some(clock.tick);
+    }
+}
+
+fn fnv64(bytes: &[u8]) -> u64 {
+    let mut hash = 0xcbf2_9ce4_8422_2325u64;
+    for byte in bytes {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(0x1000_0000_01B3);
+    }
+    hash
+}
+
+/// Events applied by [`replay_system`], in entity order then `(type, data)` order.
+#[derive(Clone, Debug, Default)]
+pub struct AppliedReplay {
+    pub records: Vec<ReplayEvent>,
+}
+
+/// System that handles replay functionality.
+///
+/// Events whose `tick` equals `current_tick` are copied into [`AppliedReplay`]
+/// before the counter advances. Entity order is `Entity::to_raw`.
 fn replay_system(world: &mut World) {
-    // First collect all entities that need updating
     let mut entities_to_update = Vec::new();
 
     {
@@ -89,19 +147,36 @@ fn replay_system(world: &mut World) {
             }
         }
     }
+    entities_to_update.sort_by_key(|entity| entity.to_raw());
 
-    // Now update each entity
+    let mut applied = Vec::new();
     for entity in entities_to_update {
         if let Some(replay) = world.get_mut::<CReplayState>(entity) {
             if replay.current_tick < replay.total_ticks {
-                // Apply next replay event
-                // TODO: Implement replay event application
+                let now = replay.current_tick;
+                let mut due: Vec<ReplayEvent> = replay
+                    .events
+                    .iter()
+                    .filter(|event| event.tick == now)
+                    .cloned()
+                    .collect();
+                due.sort_by(|a, b| {
+                    a.event_type
+                        .cmp(&b.event_type)
+                        .then_with(|| a.data.cmp(&b.data))
+                });
+                applied.extend(due);
                 replay.current_tick += 1;
             } else {
-                // Replay finished
                 replay.is_replaying = false;
             }
         }
+    }
+    let log = world.get_resource_mut::<AppliedReplay>();
+    if let Some(log) = log {
+        log.records.extend(applied);
+    } else if !applied.is_empty() {
+        world.insert_resource(AppliedReplay { records: applied });
     }
 }
 
@@ -135,10 +210,14 @@ impl CPersistenceManager {
             env!("CARGO_PKG_VERSION").to_string(),
         );
 
+        let player_seed = self.current_player.bytes().fold(0u64, |acc, byte| {
+            acc.wrapping_mul(0x1000_0000_01B3)
+                .wrapping_add(u64::from(byte))
+        });
         let bundle = SaveBundleV2 {
             schema: SAVE_SCHEMA_VERSION,
-            save_id: Uuid::new_v4(),
-            created_at: OffsetDateTime::now_utc(),
+            save_id: aw_save::sim_save_id(player_seed, world_tick, u64::from(slot)),
+            created_at: aw_save::sim_timestamp(world_tick),
             player_id: self.current_player.clone(),
             slot,
             world: WorldState {
@@ -340,8 +419,11 @@ pub fn serialize_ecs_world(world: &World) -> Result<Vec<u8>> {
         }
     }
 
+    let mut ordered: Vec<_> = entity_set.into_iter().collect();
+    ordered.sort_by_key(|entity| entity.to_raw());
+
     // Now collect all components for each entity
-    for entity in entity_set {
+    for entity in ordered {
         let serialized = SerializedEntity {
             entity_raw: entity.to_raw(), // Convert Entity to u64
             pos: world.get::<CPos>(entity).copied(),

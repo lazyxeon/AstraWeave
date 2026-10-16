@@ -1,4 +1,3 @@
-use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -117,10 +116,10 @@ pub struct CActiveQuest {
     pub quest: LlmQuest,
     /// Current step index
     pub current_step_index: usize,
-    /// Quest start time
-    pub start_time: DateTime<Utc>,
-    /// Last update time
-    pub last_update: DateTime<Utc>,
+    /// Sim tick when the quest started.
+    pub start_time: u64,
+    /// Sim tick of the last state change.
+    pub last_update: u64,
     /// Quest state
     pub state: QuestState,
     /// Player choices made so far
@@ -145,18 +144,22 @@ pub enum QuestState {
 pub struct ChoiceRecord {
     pub step_id: String,
     pub choice: BranchingChoice,
-    pub timestamp: DateTime<Utc>,
+    pub timestamp: u64,
     pub consequences_applied: Vec<String>,
 }
 
 impl CActiveQuest {
     pub fn new(quest: LlmQuest) -> Self {
-        let now = Utc::now();
+        Self::at_tick(quest, 0)
+    }
+
+    /// Start a quest on a sim tick. The tick is not a wall-clock reading.
+    pub fn at_tick(quest: LlmQuest, tick: u64) -> Self {
         Self {
             quest,
             current_step_index: 0,
-            start_time: now,
-            last_update: now,
+            start_time: tick,
+            last_update: tick,
             state: QuestState::Active,
             choices_made: Vec::new(),
             dynamic_content: HashMap::new(),
@@ -174,10 +177,10 @@ impl CActiveQuest {
     }
 
     /// Advance to next step
-    pub fn advance_step(&mut self) -> bool {
+    pub fn advance_step(&mut self, tick: u64) -> bool {
+        self.last_update = tick;
         if self.current_step_index + 1 < self.quest.steps.len() {
             self.current_step_index += 1;
-            self.last_update = Utc::now();
             true
         } else {
             self.state = QuestState::Completed;
@@ -186,26 +189,27 @@ impl CActiveQuest {
     }
 
     /// Record a player choice
-    pub fn record_choice(&mut self, step_id: String, choice: BranchingChoice) {
+    pub fn record_choice(&mut self, step_id: String, choice: BranchingChoice, tick: u64) {
         let record = ChoiceRecord {
             step_id,
             choice,
-            timestamp: Utc::now(),
+            timestamp: tick,
             consequences_applied: Vec::new(),
         };
         self.choices_made.push(record);
-        self.last_update = Utc::now();
+        self.last_update = tick;
     }
 
-    /// Get quest duration so far
-    pub fn get_duration(&self) -> chrono::Duration {
-        Utc::now() - self.start_time
+    /// Sim ticks since the quest started, using the last stamped tick.
+    #[must_use]
+    pub fn get_duration(&self) -> u64 {
+        self.last_update.saturating_sub(self.start_time)
     }
 
     /// Update quest state
-    pub fn set_state(&mut self, state: QuestState) {
+    pub fn set_state(&mut self, state: QuestState, tick: u64) {
         self.state = state;
-        self.last_update = Utc::now();
+        self.last_update = tick;
     }
 
     /// Add dynamic content for a step
@@ -395,9 +399,9 @@ pub struct QuestJournalEntry {
     pub quest_title: String,
     pub quest_description: String,
     pub category: String,
-    pub started_at: DateTime<Utc>,
-    pub completed_at: Option<DateTime<Utc>>,
-    pub abandoned_at: Option<DateTime<Utc>>,
+    pub started_at: u64,
+    pub completed_at: Option<u64>,
+    pub abandoned_at: Option<u64>,
     pub final_state: QuestState,
     pub choices_made: Vec<String>, // Simplified choice descriptions
     pub completion_notes: String,
@@ -441,12 +445,16 @@ impl CQuestJournal {
 
     /// Complete a quest in the journal
     pub fn complete_quest(&mut self, quest_id: &str, completion_notes: String) {
+        self.complete_quest_at(quest_id, completion_notes, 0);
+    }
+
+    pub fn complete_quest_at(&mut self, quest_id: &str, completion_notes: String, tick: u64) {
         if let Some(entry) = self
             .quest_history
             .iter_mut()
             .find(|e| e.quest_id == quest_id)
         {
-            entry.completed_at = Some(Utc::now());
+            entry.completed_at = Some(tick);
             entry.final_state = QuestState::Completed;
             entry.completion_notes = completion_notes;
 
@@ -462,12 +470,16 @@ impl CQuestJournal {
 
     /// Abandon a quest in the journal
     pub fn abandon_quest(&mut self, quest_id: &str, reason: String) {
+        self.abandon_quest_at(quest_id, reason, 0);
+    }
+
+    pub fn abandon_quest_at(&mut self, quest_id: &str, reason: String, tick: u64) {
         if let Some(entry) = self
             .quest_history
             .iter_mut()
             .find(|e| e.quest_id == quest_id)
         {
-            entry.abandoned_at = Some(Utc::now());
+            entry.abandoned_at = Some(tick);
             entry.final_state = QuestState::Abandoned;
             entry.completion_notes = format!("Abandoned: {}", reason);
 
@@ -582,7 +594,7 @@ mod tests {
                 reputation_changes: HashMap::new(),
                 unlock_content: Vec::new(),
             },
-            generated_at: Utc::now(),
+            generated_at: 0,
             personalization: PersonalizationData {
                 player_id: "test_player".to_string(),
                 player_preferences: Vec::new(),
@@ -616,7 +628,7 @@ mod tests {
         assert_eq!(active_quest.current_step_index, 0);
         assert!(matches!(active_quest.state, QuestState::Active));
 
-        active_quest.set_state(QuestState::Completed);
+        active_quest.set_state(QuestState::Completed, active_quest.last_update);
         assert!(matches!(active_quest.state, QuestState::Completed));
     }
 

@@ -458,6 +458,27 @@ impl Greybox {
     }
 
     pub fn checkpoint(&self) -> crate::save::Checkpoint {
+        let enemies = self
+            .combat
+            .enemies
+            .iter()
+            .map(|enemy| {
+                let position =
+                    crate::combat::body_pos(&self.physics, enemy.body).unwrap_or(Vec3::ZERO);
+                crate::save::SavedEnemy {
+                    body: enemy.body,
+                    health: enemy.health,
+                    stagger: enemy.stagger,
+                    windup: enemy.windup,
+                    attack_cooldown: enemy.attack_cooldown,
+                    attack_time: enemy.attack.time,
+                    swinging: enemy.attack.swinging,
+                    hit_landed: enemy.attack.hit_landed,
+                    closing: enemy.closing,
+                    position,
+                }
+            })
+            .collect();
         crate::save::Checkpoint {
             edits: self.ground.edits.clone(),
             demolition: self.ground.demolition_log(),
@@ -466,6 +487,14 @@ impl Greybox {
             stamina: self.motor.stamina,
             player_hp: self.combat.player_hp,
             scars: self.scars.clone(),
+            tick: self.tick,
+            motor_mode: self.motor.mode,
+            attack_time: self.combat.attack.time,
+            attack_swinging: self.combat.attack.swinging,
+            attack_hit: self.combat.attack.hit_landed,
+            lock: self.combat.lock,
+            cover_broken: self.combat.cover_broken,
+            enemies,
         }
     }
 
@@ -473,8 +502,35 @@ impl Greybox {
         &mut self,
         checkpoint: crate::save::Checkpoint,
     ) -> anyhow::Result<Vec<ChunkUpload>> {
+        self.tick = checkpoint.tick;
         self.motor.stamina = checkpoint.stamina.clamp(0.0, self.motor.stamina_max);
+        self.motor.mode = checkpoint.motor_mode;
         self.combat.player_hp = checkpoint.player_hp.max(0.0);
+        self.combat.attack.time = checkpoint.attack_time;
+        self.combat.attack.swinging = checkpoint.attack_swinging;
+        self.combat.attack.hit_landed = checkpoint.attack_hit;
+        self.combat.lock = checkpoint.lock;
+        self.combat.cover_broken = checkpoint.cover_broken;
+        self.combat.enemies.clear();
+        for saved in checkpoint.enemies {
+            let body = if self.physics.get_velocity(saved.body).is_some() {
+                saved.body
+            } else {
+                self.physics
+                    .add_character(saved.position, Vec3::new(0.35, 0.8, 0.35))
+            };
+            self.physics.set_body_position(body, saved.position);
+            let mut enemy = crate::combat::Enemy::new(body);
+            enemy.health = saved.health;
+            enemy.stagger = saved.stagger;
+            enemy.windup = saved.windup;
+            enemy.attack_cooldown = saved.attack_cooldown;
+            enemy.attack.time = saved.attack_time;
+            enemy.attack.swinging = saved.swinging;
+            enemy.attack.hit_landed = saved.hit_landed;
+            enemy.closing = saved.closing;
+            self.combat.enemies.push(enemy);
+        }
         self.player.facing_yaw = checkpoint.yaw;
         self.scars = checkpoint.scars;
         self.physics
