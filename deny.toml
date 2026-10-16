@@ -14,13 +14,15 @@ allow = [
     "ISC",
     "Zlib",
     "MPL-2.0",
+    "MIT-0",    # MIT No Attribution - borrow-or-share
     "Unicode-3.0",  # Used by ICU4X crates
     "Unicode-DFS-2016",  # Used by Unicode normalization
     "OFL-1.1",  # SIL Open Font License (for fonts)
+    "Ubuntu-font-1.0",  # Ubuntu Font Licence - epaint_default_fonts
     "CDLA-Permissive-2.0",  # Community Data License Agreement - used by webpki-roots
     "BSL-1.0",  # Boost Software License 1.0 - used by clipboard-win and error-code
     "NCSA",     # University of Illinois/NCSA Open Source License - used by libfuzzer-sys
-    "LicenseRef-UFL-1.0",  # Ubuntu Font License - used by epaint/egui fonts
+    "bzip2-1.0.6",  # bzip2 license - libbz2-rs-sys
 ]
 
 # The confidence threshold for detecting a license from a license text.
@@ -72,7 +74,7 @@ external-default-features = "allow"
 unknown-registry = "warn"
 # Lint level for what to happen when a crate from a git repository that is not
 # in the allow list is encountered
-unknown-git = "warn"
+unknown-git = "deny"
 
 # List of allowed registries
 allow-registry = [
@@ -96,17 +98,25 @@ maximum-db-staleness = "P90D"
 # A list of advisory IDs to ignore. Note that ignored advisories will still
 # output a note when they are encountered.
 ignore = [
-    # Known issues that we accept for now - these are maintenance warnings, not security vulnerabilities
-    "RUSTSEC-2024-0388",  # derivative crate is unmaintained - used by transitive deps
-    "RUSTSEC-2024-0384",  # instant crate is unmaintained - used by transitive deps  
-    "RUSTSEC-2024-0436",  # paste crate is unmaintained - used by transitive deps
-    "RUSTSEC-2025-0052",  # async-std has been discontinued - used by orchestrator_async_tick example
-    "RUSTSEC-2023-0089",  # atomic-polyfill is unmaintained - used by heapless -> postcard
-    "RUSTSEC-2025-0057",  # fxhash no longer maintained - used by sled -> aw-net-server
-    
+    # Unmaintained, no patched release. One advisory ID, one issue.
+    { id = "RUSTSEC-2024-0384", reason = "instant 0.1.13 has no patched release. parking_lot 0.11 (sled 0.34) and rhai 1.23.4 pin it. https://github.com/lazyxeon/AstraWeave/issues/322" },
+    { id = "RUSTSEC-2024-0436", reason = "paste 1.0.15 has no patched release. egui_dock, rav1e, simba, steamworks, and tokenizers pin it. https://github.com/lazyxeon/AstraWeave/issues/323" },
+    { id = "RUSTSEC-2023-0089", reason = "atomic-polyfill 1.0.3 has no patched release. heapless 0.7.17 (postcard) pins it. https://github.com/lazyxeon/AstraWeave/issues/320" },
+    { id = "RUSTSEC-2025-0057", reason = "fxhash 0.2.1 has no patched release. sled 0.34.7 (aw-net-server) pins it. https://github.com/lazyxeon/AstraWeave/issues/321" },
+
     # RESOLVED VULNERABILITIES (historical record):
-    # RUSTSEC-2021-0070 - nalgebra 0.26.2 memory corruption - FIXED by removing mikktspace dependency (2025-10-12)
     # RUSTSEC-2024-0437 - protobuf 2.28.0 DoS vulnerability - FIXED by updating prometheus to 0.14 (2025-10-12)
+
+    # No patched release, or the patched crate is pinned by a parent this
+    # branch does not upgrade. One advisory ID, one reason, one issue.
+    { id = "RUSTSEC-2025-0141", reason = "bincode 1 and 2 have no patched release. Replay and save bytes stay on bincode. https://github.com/lazyxeon/AstraWeave/issues/305" },
+    { id = "RUSTSEC-2021-0070", reason = "nalgebra 0.26.2 is pinned by mikktspace 0.3.0, which has no newer release. Tangent generation does not deserialize VecStorage. https://github.com/lazyxeon/AstraWeave/issues/306" },
+    { id = "RUSTSEC-2025-0119", reason = "number_prefix 0.4.0 has no patched release. indicatif 0.17 in the asset CLI is the only parent. https://github.com/lazyxeon/AstraWeave/issues/307" },
+    { id = "RUSTSEC-2026-0194", reason = "quick-xml < 0.41 comes from egui-winit/accesskit and wayland-scanner. Those parents do not accept 0.41. https://github.com/lazyxeon/AstraWeave/issues/308" },
+    { id = "RUSTSEC-2026-0195", reason = "quick-xml NsReader DoS has the same parent constraint as RUSTSEC-2026-0194. https://github.com/lazyxeon/AstraWeave/issues/308" },
+    { id = "RUSTSEC-2026-0249", reason = "smartstring 1.0.1 has no patched release. rhai 1.23.4 pins it. https://github.com/lazyxeon/AstraWeave/issues/309" },
+    { id = "RUSTSEC-2026-0192", reason = "ttf-parser 0.25.1 has no patched release. egui 0.32 pulls it through ab_glyph. https://github.com/lazyxeon/AstraWeave/issues/310" },
+    { id = "RUSTSEC-2024-0449", reason = "unsafe-libyaml has no patched release. aw_trace_sync is the only serde_yaml caller. https://github.com/lazyxeon/AstraWeave/issues/311" },
 ]
 
 # Threshold for security vulnerabilities, any vulnerability with a CVSS score
