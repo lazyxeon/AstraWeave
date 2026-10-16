@@ -30,6 +30,8 @@ pub const SIM_SYSTEM_TRAVERSAL: u64 = 0x7A4E_7001;
 pub const SIM_SYSTEM_FOREST_SCATTER: u64 = 0x7E22_7101;
 /// Integer droplet erosion over column heights. Not the scatter stream.
 pub const SIM_SYSTEM_COLUMN_EROSION: u64 = 0x7E22_7102;
+/// Dialogue proposals. Seeded and not drawn by the recorded-line helper.
+pub const SIM_SYSTEM_LLM_DIALOGUE: u64 = 0xD1A1_7001;
 
 /// Mix `(world_seed, tick, system_id)` into one `StdRng` seed.
 ///
@@ -190,6 +192,7 @@ mod tests {
             SIM_SYSTEM_TRAVERSAL,
             SIM_SYSTEM_FOREST_SCATTER,
             SIM_SYSTEM_COLUMN_EROSION,
+            SIM_SYSTEM_LLM_DIALOGUE,
         ];
         for i in 0..ids.len() {
             for j in (i + 1)..ids.len() {

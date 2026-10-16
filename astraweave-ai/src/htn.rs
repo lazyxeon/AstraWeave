@@ -829,6 +829,32 @@ mod tests {
     use astraweave_nav::{bridge_and_ford, NavChangeKind, NavScratch, FRAME_BUDGET_MS};
 
     #[test]
+    fn spatial_tick_does_not_call_goap_or_a_live_model() {
+        let spatial = include_str!("htn.rs");
+        let spatial = spatial.split("mod tests").next().unwrap_or("");
+        assert!(spatial.contains("fn plan_route"));
+        assert!(!spatial.contains("GoapPlanner"));
+        assert!(!spatial.contains("AIArbiter"));
+        assert!(!spatial.contains("thread_rng"));
+        assert!(!spatial.contains("LlmDialogueSystem"));
+        let plugin = include_str!("ecs_ai_plugin.rs");
+        let plugin = plugin.split("mod tests").next().unwrap_or("");
+        assert!(plugin.contains("fn sys_spatial_tick"));
+        assert!(plugin.contains("fn sys_ai_planning"));
+        assert!(!plugin.contains("GoapPlanner"));
+        assert!(!plugin.contains("AIArbiter"));
+        assert!(!plugin.contains("LlmClient"));
+        assert!(!plugin.contains("LlmDialogueSystem"));
+        let slice = include_str!("veilweaver.rs");
+        let slice = slice.split("mod tests").next().unwrap_or("");
+        assert!(slice.contains("fn select_slice_action"));
+        assert!(!slice.contains("GoapPlanner"));
+        assert!(!slice.contains("thread_rng"));
+        assert!(!slice.contains("Instant::"));
+        assert!(!slice.contains("SystemTime"));
+    }
+
+    #[test]
     fn equal_scores_pick_the_lower_breach_id() {
         let tiles = bridge_and_ford();
         let mut scratch = NavScratch::new();

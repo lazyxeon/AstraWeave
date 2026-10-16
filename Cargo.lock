@@ -928,21 +928,19 @@ version = "0.4.0"
 dependencies = [
  "anyhow",
  "astraweave-context",
+ "astraweave-core",
  "astraweave-embeddings",
  "astraweave-llm",
  "astraweave-persona",
  "astraweave-prompts",
  "astraweave-rag",
  "async-trait",
- "chrono",
  "criterion 0.5.1",
- "rand 0.9.5",
  "regex",
  "serde",
  "serde_json",
  "tokio",
  "toml 0.9.8",
- "uuid",
 ]
 
 [[package]]

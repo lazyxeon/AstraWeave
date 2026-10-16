@@ -175,7 +175,12 @@ impl Default for BodyGravitySettings {
     }
 }
 
-/// Manages gravity for the physics world
+/// Zone table for authoring tools.
+///
+/// `PhysicsWorld::step` does not read this type. Sim gravity is
+/// `astraweave_weaving::gravity_mm_s2` over a sorted modifier table.
+/// This map stays off the deterministic tick: `HashMap` order and `f32`
+/// zones must not enter the weave hash.
 #[derive(Debug)]
 pub struct GravityManager {
     /// Global gravity vector
@@ -388,6 +393,23 @@ impl GravityManager {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn physics_step_does_not_read_gravity_manager() {
+        let src = include_str!("lib.rs");
+        for name in ["pub fn step(", "fn step_internal("] {
+            let start = src.find(name).unwrap_or(src.len());
+            assert!(start < src.len(), "{name}");
+            let rest = &src[start..];
+            let end = rest[1..]
+                .find("\n    fn ")
+                .map(|index| index + 1)
+                .unwrap_or(rest.len());
+            let body = &rest[..end];
+            assert!(!body.contains("GravityManager"), "{name}");
+            assert!(!body.contains("gravity_manager"), "{name}");
+        }
+    }
 
     #[test]
     fn test_gravity_manager_creation() {
