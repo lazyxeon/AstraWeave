@@ -212,11 +212,10 @@ pub fn generate_test_voice(path: &str, duration_secs: f32, sample_rate: u32) -> 
 
 /// Generate all test assets needed for comprehensive audio testing.
 ///
-/// Writes under `tests/assets` relative to the process working directory.
-/// [`write_test_assets`] is the same set in a caller-owned directory, so a
-/// cleanup of the shared tree cannot delete the files mid-check.
+/// Writes under [`assets_root`], the same directory [`asset_path`] reads.
+/// [`write_test_assets`] is the same set in a caller-owned directory.
 pub fn setup_all_test_assets() -> Result<()> {
-    write_test_assets(Path::new("tests/assets"))
+    write_test_assets(assets_root())
 }
 
 /// Generate the beep, music, and voice WAVs used by the file-based tests.
