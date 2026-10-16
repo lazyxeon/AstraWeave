@@ -1,11 +1,11 @@
 # AstraWeave: Master Strategic Roadmap
 
-**Version**: 1.61  
+**Version**: 1.62  
 **Last Updated**: October 16, 2026  
 **Status**: Strategy log. Live engine status is the repository [README](../../README.md).  
 **Validation**: The January 2026 validation report linked below is a dated audit, not a current grade.
 
-> **2026-10-16.** The "Current State (June 10, 2026)" table is a snapshot. Workspace members on `10757c81` are **142**. #342 and #343 added no member. Determinism on `main` (`fb1c8ec2`) is sixteen cross-OS replay cases, including `local_sim`. The Aravath greybox #205 is on main. Its golden hash is `b6a9d5a2c5da28a6`, Linux and Windows only (#330). #343 did not move it. Greybox startup runs `run_aravath_slice` once. Each sword hit reuses that `sword_hp`. A checkpoint stores the demolition command log, and a brush loads every chunk its radius touches. Traversal #244, terrain columns #215, CI burndown #217, greybox tokio graph #327, greybox combat slice #275, off-tick AI #331, the greybox showcase #329, and the local field #330 are on main. #253 and #336 are closed. `gravity.rs` is deleted. `AIArbiter` and `GoapPlanner` stay off the deterministic tick. The frame-time target is under 11 ms on a GTX 1660 Ti-class GPU and is not yet measured (#216). Render frame budget #216 is in progress. Player-facing name is Aravath. Do not treat the A+ row in the June table as a current grade.
+> **2026-10-16.** The "Current State (June 10, 2026)" table is a snapshot. Workspace members on `10757c81` are **142**. #342 and #343 added no member. Determinism on `main` (`30afc26d`) is sixteen cross-OS replay cases, including `local_sim`. #340 closed #273 and #338: the parity harness shares one HDRI bake, and the two Windows flakes no longer use a wall-clock sleep. #333 took the terrain goldens and the AI planning tests off the pull-request skip list. Profile `ci-pr` still excludes GPU render passes, lavapipe fluid smokes, and `test_qwen3_variants`. #218 is closed. #254, #242, #314, #304, and #274 stay open. The Aravath greybox #205 is on main. Its golden hash is `b6a9d5a2c5da28a6`, Linux and Windows only (#330). #343 did not move it. Greybox startup runs `run_aravath_slice` once. Each sword hit reuses that `sword_hp`. A checkpoint stores the demolition command log, and a brush loads every chunk its radius touches. Traversal #244, terrain columns #215, CI burndown #217, greybox tokio graph #327, greybox combat slice #275, off-tick AI #331, the greybox showcase #329, and the local field #330 are on main. #253 and #336 are closed. `gravity.rs` is deleted. `AIArbiter` and `GoapPlanner` stay off the deterministic tick. The frame-time target is under 11 ms on a GTX 1660 Ti-class GPU and is not yet measured (#216). Render frame budget #216 is in progress. Player-facing name is Aravath. Do not treat the A+ row in the June table as a current grade.
 
 ---
 
@@ -378,6 +378,7 @@ Key achievements:
 
 | Ver | Date | Type | Impact | Summary (≤80 chars) |
 |-----|------|------|--------|---------------------|
+| **1.62** | Oct 16 | 📋 | 🟢 | #340/#333 docs: parity closed; terrain and AI skips removed |
 | **1.61** | Oct 16 | 📋 | 🟢 | #343 docs: startup sword cache; checkpoint demolition log |
 | **1.60** | Oct 16 | 📋 | 🟢 | #330 docs: local_sim is the 16th case; golden b6a9d5a2c5da28a6 |
 | **1.59** | Oct 16 | 📋 | 🟢 | #329 docs: golden 0a576578512f25d2, bridge step, brush dig |
@@ -416,7 +417,7 @@ Key achievements:
 
 ### Statistical Summary
 
-The percentages below are the June 2026 count. Rows 1.54–1.61 are eight October documentation updates and are not folded into those percentages.
+The percentages below are the June 2026 count. Rows 1.54–1.62 are nine October documentation updates and are not folded into those percentages.
 
 **By Type:**
 | Type | Count | % |

@@ -4,6 +4,8 @@ Approved 2026-10-15. Every question in §14 was accepted as proposed. The implem
 
 The survey below was taken at `main` `f1109340` and on the #251 draft before that rebase. It stays as the map. The code that landed from this approval is `astraweave-ai/src/decision_trace.rs` (feature `decision-trace`, default off), the record sites in the hierarchical tick and the grid planners, and the headless `tools/aw_decision` binary. No editor panel. No new asset.
 
+#273 is closed (`aab4c84b`, #340). `editor_engine_render_parity` shares one HDRI bake. #265 stays open. Sentences below that say the parity hashes still diverge, or that the editor panel waits on #273, are the pre-merge plan.
+
 ## Approved answers
 
 1. Feature-off is the zero-cost mode. `decision_record!` compiles to nothing unless `decision-trace` is on. The default replay build leaves the feature off.

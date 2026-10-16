@@ -135,7 +135,7 @@ These were red on PR #212. #217 (`a66304dc`) is the burndown that landed. The ro
 
 | Issue | Failure |
 |---|---|
-| #218 | Headless audio stops workspace tests and the toolchain matrix |
+| #218 | Closed. GitHub attributes the close to #333. The null backend and `aw_audio_probe` landed in #217. |
 | #219 | Closed by #217. reqwest, tokio-tungstenite, and hf-hub use rustls. `ort` does not enable `download-binaries`. The openssl ban is unchanged. |
 | #220 | `clippy -D warnings` on phi3 and the render glTF import |
 | #221 | Benchmark shards: 600s cap (not raised) and five package errors |
@@ -143,18 +143,18 @@ These were red on PR #212. #217 (`a66304dc`) is the burndown that landed. The ro
 
 `aw-editor-tests.yml` installs `pkg-config`, `libudev-dev`, and `libasound2-dev` on Ubuntu. The sanitizer jobs install `pkg-config` and `libudev-dev`. `editor-ci.yml` uses `rust-ci-setup`, which already installed `libudev-dev` and now also installs `mesa-vulkan-drivers`, `libvulkan1`, and `vulkan-tools`. Cargo Deny remains a failing check. #219 is closed.
 
-Issue #254 is the workspace nextest failure from head `7839f930`. #217 fixed the audio group: generated WAVs live under `astraweave-audio/target/audio-test-assets/<pid>`. The other groups stay in the ledger and in `scripts/ci/deferred_pr_tests.txt`.
+Issue #254 is the workspace nextest failure from head `7839f930`. #217 fixed the audio fixture directory. #333 (`30afc26d`) removed the terrain rows and the AI planning rows from `scripts/ci/deferred_pr_tests.txt`. #254 and #242 stay open. #314 stays open: the folder-scan ordering is fixed, and the issue still names `test_distance_attenuation_files`.
 
 | Group | Tests | Plan |
 |---|---|---|
-| Terrain goldens and structure | 64 | Finish the burndown branch's E3 test update: lock the measured bits, do not change production terrain math or replay hashes. `density(0,0,0)` expected 0 and got 477. |
-| Terrain slow-timeouts | 3 at 240s | Shorten `phase_1_6_f3_phase_2_end_to_end_timing` and the two radius-5 climate diagnostics, or move them off the default test binary. Do not raise the nextest slow-timeout. |
-| AI `ecs_integration_tests` | 14, including `test_multi_agent_determinism` | WS-AI-1 plans every companion and these tests still expect `CDesiredPos` / `AiPlannedEvent`. Update the tests or the publication path. This is not the replay gate. |
-| Render GPU | 11 failures + `test_renderer_full_pipeline` segfault | Lavapipe where the runner has it, and an explicit printed skip when no adapter exists. The segfault needs a real fix. |
-| Fluids GPU smokes | 3 | Same headless GPU policy. Do not touch the caustics golden. |
-| LLM `test_qwen3_variants` | 1 | Make it hermetic or gate it on a local model. Separate from the candle compile fix. |
+| Terrain goldens and structure | Were 64 | **Off the skip list (#333).** Goldens lock `NoiseConfig::default`. #242 stays open. |
+| Terrain slow-timeouts | Were 3 at 240s | **Off the skip list (#333).** The radius-5 diagnostics and `phase_1_6_f3_phase_2_end_to_end_timing` check one chunk per climate. The slow-timeout is not raised. |
+| AI `ecs_integration_tests` | Were 14 | **Off the skip list (#333).** `sys_ai_planning` keeps `RuleOrchestrator` when `veilweaver_slice` is unified in. #254 stays open. |
+| Render GPU | 11 failures + `test_renderer_full_pipeline` segfault | Still excluded from profile `ci-pr`. Lavapipe where the runner has it, and an explicit printed skip when no adapter exists. The segfault needs a real fix. |
+| Fluids GPU smokes | 3 | Still excluded from profile `ci-pr`. Do not touch the caustics golden. |
+| LLM `test_qwen3_variants` | 1 | Still excluded from profile `ci-pr`. Make it hermetic or gate it on a local model. |
 
-Profile `ci-pr` excludes that exact list so the required pull-request test jobs can pass. Profile `ci` on main and the nightly schedule does not. Audio cases that were flaky and then passed are not in the list. Replay cases are not in the list. Delete a line from the list when that test is green on profile `ci`.
+Profile `ci-pr` excludes the three groups that remain in `scripts/ci/deferred_pr_tests.txt`. Profile `ci` on main and the nightly schedule does not. Replay cases are not in the list. Delete a line from the list when that test is green on profile `ci`.
 
 Windows partition jobs use profile `ci-pr-archive`, which adds `scripts/ci/archive_only_skips.txt`. On `0a8ffcec` those were a render crash (`test_renderer_bake_environment_wave16`, exit 2173), two fluids GPU tests that hit the 240s slow-timeout, and the `aw-net-client` binary tests. Linux profile `ci-pr` still runs all of those; that Linux job passed. The client-binary tests use `CARGO_BIN_EXE`, which points at the build runner, so the archive build job runs those two test targets before it uploads. The explicit GPU skip from #217 is on `main` and still runs on profile `ci`.
 
