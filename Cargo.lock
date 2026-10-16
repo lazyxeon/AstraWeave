@@ -362,6 +362,7 @@ dependencies = [
  "astraweave-render",
  "astraweave-terrain",
  "astraweave-veil",
+ "astraweave-weaving",
  "aw-save",
  "egui",
  "egui-wgpu",

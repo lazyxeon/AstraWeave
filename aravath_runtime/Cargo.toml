@@ -23,6 +23,7 @@ astraweave-render = { path = "../astraweave-render" }
 astraweave-input = { path = "../astraweave-input" }
 astraweave-nav = { workspace = true }
 astraweave-ai = { workspace = true }
+astraweave-weaving = { path = "../astraweave-weaving" }
 astraweave-veil = { workspace = true }
 aw-save = { path = "../persistence/aw-save" }
 uuid = { version = "1", features = ["v4"] }
