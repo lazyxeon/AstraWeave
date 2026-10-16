@@ -1,6 +1,6 @@
 # Build quick reference
 
-Checked against `main` at `d0452d3e` (2026-10-16). The player-facing name is Aravath. The windowed demo is `cargo run -p aravath_runtime --bin aravath_greybox`.
+Checked against `main` at `a66304dc` (2026-10-16). The player-facing name is Aravath. The windowed demo is `cargo run -p aravath_runtime --bin aravath_greybox`.
 
 ## Daily commands
 
@@ -27,7 +27,7 @@ Pull requests use `.github/workflows/ci.yml`. The old `rust-cache-optimized.yml`
 
 Required replay cases: `planner_pure`, `perception_world`, `gameplay_rng`, `fixed64`, `combat_resolve`, `destruction`, `gameplay_qa_aravath_slice`, `nav_reroute`, `causal_bridge`, `scripted_system`, `weaving`, `traversal`, `traversal_deformed`, `worldgen_columns`, `deformed_chunk`.
 
-Job tiers and which checks are required are written up in `docs/current/CI_ARCHITECTURE.md`. Further CI restructuring is in progress in #217 and is not described here as shipped.
+Job tiers and which checks are required are written up in `docs/current/CI_ARCHITECTURE.md`. #217 is on `main`. The greybox `tokio` `net` failure is #326, and #327 is the open fix.
 
 ## Toolchain
 

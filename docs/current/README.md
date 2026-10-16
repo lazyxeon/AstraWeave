@@ -2,7 +2,7 @@
 
 Active planning documents for ongoing AstraWeave development.
 
-> **2026-10-16:** live status is the repository [README](../../README.md) and the banner at the top of [PROJECT_STATUS.md](PROJECT_STATUS.md). Phase 8 week plans below are older campaign notes. Local fluid sim #253, render frame budget #216, and CI #217 are in progress and are not shipped. Weaving #252, the Aravath greybox #205, traversal #244, and terrain columns #215 are on main. The required replay set has fifteen cases, including `worldgen_columns` and `deformed_chunk`. The greybox golden is `b663da52ea1d566e`, Linux and Windows only.
+> **2026-10-16:** live status is the repository [README](../../README.md) and the banner at the top of [PROJECT_STATUS.md](PROJECT_STATUS.md). Phase 8 week plans below are older campaign notes. Local fluid sim #253, render frame budget #216, and greybox `tokio` `net` fix #327 are in progress and are not shipped. #327 addresses #326. Weaving #252, the Aravath greybox #205, traversal #244, terrain columns #215, and CI burndown #217 are on main. The required replay set has fifteen cases, including `worldgen_columns` and `deformed_chunk`. The greybox golden is `b663da52ea1d566e`, Linux and Windows only.
 
 > [!TIP]
 > For authoritative master reports, see **[../masters/](../masters/)**.

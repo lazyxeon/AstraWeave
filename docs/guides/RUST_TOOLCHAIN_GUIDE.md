@@ -28,4 +28,4 @@ The workspace has **141** members (`cargo metadata --no-deps` on this commit). T
 
 `ci.yml` runs a fmt/clippy/check gate, tests of affected crates, a Windows archive split into three partitions, and an MSRV job at 1.89.0. Docs-only diffs skip that compile. Replay hashes still run on Linux, Windows, and macOS. See `docs/current/CI_ARCHITECTURE.md`.
 
-Open CI work that is not on `main` is #217. Do not describe it as the current workflow.
+#217 is on `main` (`a66304dc`). The open greybox `tokio` `net` failure is #326. #327 is the fix and is not on `main`. Do not describe #327 as the current workflow.

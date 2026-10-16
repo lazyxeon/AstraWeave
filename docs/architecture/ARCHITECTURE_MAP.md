@@ -1,7 +1,8 @@
 # AstraWeave Architecture Map
 
-> **Generated**: 2026-05-07 | **Last reconciled**: 2026-10-16 | **Version**: 0.8.5 | **Rust**: 1.89.0
+> **Generated**: 2026-05-07 | **Last reconciled**: 2026-10-16 | **Version**: 0.8.6 | **Rust**: 1.89.0
 > Living document — used by all agents as the primary architectural reference.
+> **0.8.6 update (2026-10-16)**: Rebased onto `a66304dc`. CI burndown #217 is on main. #219 and #256 are closed. Required replay cases stay fifteen. Member count stays **141**. Local sim #253, frame budget #216, and greybox `tokio` `net` fix #327 stay in progress. #327 addresses #326.
 > **0.8.5 update (2026-10-16)**: Rebased onto `d0452d3e`. Terrain columns #215 are on main. Required replay cases are fifteen, including `worldgen_columns` and `deformed_chunk`. The greybox golden stays `b663da52ea1d566e` (Linux and Windows only). Member count stays **141**. Local sim #253, frame budget #216, and CI #217 stay in progress.
 > **0.8.4 update (2026-10-16)**: Rebased onto `a10780f4`. Traversal #244 is on main. Required replay cases are thirteen, including `traversal` and `traversal_deformed`. The greybox golden is `b663da52ea1d566e` (Linux and Windows only). Member count stays **141**. Local sim #253, frame budget #216, and CI #217 stay in progress.
 > **0.8.3 update (2026-10-16)**: Rebased onto `cdea968c`. The Aravath greybox #205 is on main (`aravath_greybox`). Member count is **141** (`astraweave-veil`). Trace count is **31** (`veil.md`). The greybox replay is Linux and Windows only. Local sim #253, frame budget #216, and CI #217 stay in progress.
@@ -959,6 +960,9 @@ These are decisional questions that cross subsystem boundaries or affect the bro
 ---
 
 ## Revision History
+
+### v0.8.6 (2026-10-16)
+Rebased onto `a66304dc`. CI burndown #217 is on main. The required replay list stays fifteen cases.
 
 ### v0.8.5 (2026-10-16)
 Rebased onto `d0452d3e`. Terrain columns #215 are on main. The required replay list is fifteen cases.

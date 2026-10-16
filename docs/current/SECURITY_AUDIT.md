@@ -1,6 +1,6 @@
 # Security audit and hardening plan
 
-> **2026-10-16:** This survey is pinned to `f1109340`. #205, #214, #244, #252, #312, #316, #318, and #325 are on main at `8e5dd73c`. Sentences below that say those pulls are not on main are the survey, not the current tree. #325 cleared the patched supply-chain advisories. `cargo deny` advisories and `cargo audit` pass. The ignored leftovers are #305–#311 and #320–#324. The greybox `tokio` `net` edge is #326. The greybox still digs with `dig_sphere`. Local sim #253 is still not on main.
+> **2026-10-16:** This survey is pinned to `f1109340`. #205, #214, #217, #244, #252, #312, #316, #318, and #325 are on main at `a66304dc`. Sentences below that say those pulls are not on main are the survey, not the current tree. #325 cleared the patched supply-chain advisories. `cargo deny` advisories and `cargo audit` pass. The ignored leftovers are #305–#311 and #320–#324. #217 closed #219 and #256: `openssl` is not in `Cargo.lock`, and `deny.toml` still bans it. The greybox `tokio` `net` edge is #326. #327 is the open fix. The greybox still digs with `dig_sphere`. Local sim #253 is still not on main.
 
 **Status:** Caps from this audit that already had a failing proof on `main` are landed. PR-side items stay on their branches.
 **Date:** 2026-10-15
@@ -307,7 +307,7 @@ None in `aw-net-proto`, `astraweave-net`, or `astraweave-ipc`.
 
 **SEC-SUPPLY-1.** A new advisory or a forbidden license does not fail this workflow. `unknown-git = "warn"` allows a git dependency to land with a warning.
 
-**Already open, do not refile:** [#219](https://github.com/lazyxeon/AstraWeave/issues/219) — `cargo deny check bans` fails while `native-tls` pulls `openssl`. The fix is on `cursor/ci-failure-burndown` (PR #217). This audit does not touch `deny.toml` bans. Merging #217 is the plan already written on that issue. Owner is unset on the issue.
+**Closed by #217:** [#219](https://github.com/lazyxeon/AstraWeave/issues/219) and [#256](https://github.com/lazyxeon/AstraWeave/issues/256). `cargo deny check bans` was failing while `native-tls` pulled `openssl`. On `a66304dc`, reqwest, the websocket client, and `hf-hub` use rustls, `ort` does not enable `download-binaries`, and `Cargo.lock` has no `openssl` package. `deny.toml` still bans `openssl` and `openssl-sys`. This audit does not change those bans.
 
 ### Secrets hygiene
 
@@ -366,7 +366,7 @@ Each fix rejects input. None of them reorder fields, bump `SAVE_SCHEMA_VERSION`,
 
 ### Supply chain
 
-1. After #217/#219 merges, make advisory and license `cargo deny` failures fail the job. Set `unknown-git` and `unknown-registry` to `deny`. Leave the unmaintained-crate ignore list, and add a one-line reason that they are maintenance notices.
+1. #217 and #219 are on `main` and closed. `security-audit.yml` runs bans, sources, advisories, and licenses with `set -e`, so a deny failure fails the job. On `a66304dc`, `unknown-git` is `deny` and `unknown-registry` is `warn`. Leave the unmaintained-crate ignore list.
 2. Secret scanning and push protection are already enabled. Leave them on.
 
 ---
@@ -423,7 +423,7 @@ This pull request is the review draft. It does not merge. The failing PoCs are t
 Open feature PRs that touch the same files, and the order to use:
 
 1. **Review this draft.** Open the issues in the table below. The user turns on secret scanning and push protection.
-2. **PR #217 / issue #219 first** among CI changes. `cargo deny` bans are already red on `native-tls`. Do not edit `deny.toml` bans in the security fix until that burndown has merged, or the security PR will fight it.
+2. **PR #217 / issue #219** merged as `a66304dc`. The openssl ban stayed. The lockfile no longer contains the package. A later security change can edit `deny.toml` without fighting that branch.
 3. **Small `main` PR: parsers that exist today.** `aw-save` length cap, `decode_vitals` count cap, `decode_msg` LZ4 cap, `safe_under` on glTF URIs and `load_asset`, `ScriptLoader` path reject, loopback check on the LLM clients, `GameServer` message cap. No sandbox rewrite. Re-run replay fixtures.
 4. **PR #214 before any new sandbox work.** Fix SEC-MOD-2 (id cast) and keep the old `script_system` from reading the disk, on that branch. It already has the fuel limit, the allowlist, and `timeout_ms = 0`.
 5. **PR #252 rebases onto #214** if both are still open, because both carry `astraweave-weaving/src/mod_queue.rs`. Fix SEC-WEAVE-1 (origin range) once, on the branch that owns `push_ice` after the rebase. Do not fork `parse_template_toml`.
@@ -456,10 +456,10 @@ Not opened by this change. Label `deferred-failure`. Owner is `@lazyxeon` (repos
 | SEC-NET-1 | Server default is `0.0.0.0` plus the published dev key | `@lazyxeon` | Loopback unless flagged. Refuse `dev_default` unless `--dev-key`. | Extends the 2025 plan's admin-port note |
 | SEC-NET-2 | In-engine server trusts the client | `@lazyxeon` | Authenticate, bind `actor_id`, 1 MiB message cap. Remove the `"dev"` print. | S0-1 |
 | SEC-NET-3 | `decode_msg` honors the attacker's LZ4 size | `@lazyxeon` | Same uncompressed cap as `aw-save`. Turn `poc_postcard_lz4_rejects_oversized_declared_output` green. | No |
-| SEC-SUPPLY-1 | Advisory and license `cargo deny` failures are warnings | `@lazyxeon` | Fail the job, and set `unknown-git` to `deny`, after #219 is closed. | #219 covers the openssl ban failure |
+| SEC-SUPPLY-1 | Advisory and license `cargo deny` failures were warnings | `@lazyxeon` | `security-audit.yml` fails the job on bans, sources, advisories, and licenses. `unknown-git` is `deny`. `unknown-registry` is `warn`. #219 is closed. | #219 covered the openssl ban failure |
 | SEC-SUPPLY-2 | Secret scanning and push protection | `@lazyxeon` | Enabled on the repository. No code change. Do not refile. | Done |
 | — | `llm_dialogue.rs` is an orphan and names `thread_rng` | unset on the issue | Do not register the module. Fix or delete it under the existing issue. | [#225](https://github.com/lazyxeon/AstraWeave/issues/225) |
-| — | `cargo deny` fails on `native-tls` / `openssl` | unset on the issue | Merge the burndown branch. Do not re-implement in the security PR. | [#219](https://github.com/lazyxeon/AstraWeave/issues/219) |
+| — | `cargo deny` failed on `native-tls` / `openssl` | closed | #217 switched TLS to rustls and dropped the `ort` download feature. The ban stayed. | [#219](https://github.com/lazyxeon/AstraWeave/issues/219) |
 
 The six PoCs in this pull request fail on purpose. They are the regression net for SEC-SAVE-1, SEC-SAVE-2, SEC-NET-3, SEC-ASSET-1, SEC-MOD-4, and SEC-LLM-1. Deleting them is not the fix.
 
