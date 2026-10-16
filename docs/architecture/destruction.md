@@ -10,7 +10,7 @@ integration_status: wired
 summary: "Greybox digs with a sphere Subtract brush on ColumnFns. FlatColumnBase keeps the destruction replay hash."
 owns: [astraweave-destruction]
 doc_version: "1.5"
-last_verified_commit: 1e275a9e
+last_verified_commit: 69d856e1
 runtime_edges:
   - to: astraweave-core
     note: "The core replay test calls demolition_bytes."
@@ -27,7 +27,7 @@ runtime_edges:
 | **System name** | Deterministic destruction |
 | **Primary crates** | `astraweave-destruction` |
 | **Document version** | 1.5 |
-| **Last verified against commit** | `1e275a9e` |
+| **Last verified against commit** | `69d856e1` |
 | **Last verified date** | 2026-10-16 |
 | **Status** | Active. Headless showcase and the required replay case. The Aravath greybox binds integer columns through `ColumnFns` and digs with a sphere `Subtract` brush. `Greybox::step` calls `BridgeAgent::step` after the motor. `apply_brush_now` loads every chunk in `(origin ± radius) / CHUNK_EXTENT` before the tick. A checkpoint stores `persist_bytes` and `restore_dug` replays that log before the next dig. `FlatColumnBase` remains the terrain when no functions are bound, so the `destruction` replay hash is unchanged. The greybox golden is `b6a9d5a2c5da28a6` (#330). The earlier #329 value was `0a576578512f25d2`. |
 | **Owner notes** | Design: `docs/current/DESTRUCTION_DESIGN.md`. Survey: `docs/current/DESTRUCTION_ARCHAEOLOGY.md`. `Fixed64` lives in `astraweave-math` (PR #245). |
