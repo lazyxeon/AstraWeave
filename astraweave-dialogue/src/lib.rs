@@ -3,6 +3,7 @@
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
+pub mod llm_dialogue;
 pub mod runner;
 pub mod toml_loader;
 

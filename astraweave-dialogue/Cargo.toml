@@ -10,6 +10,7 @@ publish.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 anyhow.workspace = true
+astraweave-core = { path = "../astraweave-core" }
 toml = { workspace = true }
 
 # Phase 2 LLM Integration
@@ -25,9 +26,6 @@ tokio = { version = "1.48", features = ["full"] }
 async-trait = "0.1"
 
 # Additional utilities
-uuid = { version = "1.0", features = ["v4", "serde"] }
-chrono = { version = "0.4", features = ["serde"] }
-rand = "0.9"
 regex = "1.12"
 
 [dev-dependencies]
