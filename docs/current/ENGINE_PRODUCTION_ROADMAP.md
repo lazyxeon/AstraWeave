@@ -5,7 +5,7 @@
 **Audience**: agents who will implement one workstream each, in parallel.
 **Date**: 2026-10-14.
 
-The Aravath greybox (`cursor/aravath-greybox-b3de`) is a proof that a scene can run. It is not the definition of a finished engine. This roadmap is the path to a production-grade, fully featured engine. [R.1](ROADMAP_R1_PATH_TO_V1.md) remains the ratified *v1.0 editor* sequence (networking deferred there). This document raises the bar: every shipped sim system is functionally complete **and** passes the determinism gate in §2.
+The Aravath greybox (`cursor/aravath-greybox-b3de`) is a proof that a scene can run. It is not the definition of a finished engine. This roadmap is the path to an engine that can ship a game. [R.1](ROADMAP_R1_PATH_TO_V1.md) remains the ratified *v1.0 editor* sequence (networking deferred there). This document raises the bar: every shipped sim system is functionally complete **and** passes the determinism gate in §2.
 
 ---
 

@@ -1,6 +1,12 @@
-# 🚀 Advanced GOAP - Quick Start Guide
+# Advanced GOAP tutorial
 
-Get up and running with the Advanced GOAP system in **under 10 minutes**!
+This file is not the engine install guide. Clone, toolchain, and run commands are in the repository [README](../README.md) and [build quick reference](guides/BUILD_QUICK_REFERENCE.md). Rust is pinned at **1.89.0**.
+
+`AdvancedGOAP` and `GoalDefinition` exist behind the `planner_advanced` feature on `astraweave-ai`. That feature is not what a default `hello_companion` run enables. The types below are the feature-gated API, not the tick path that `nav_reroute` uses.
+
+---
+
+# Advanced GOAP - tutorial body
 
 ---
 
@@ -18,7 +24,7 @@ Get up and running with the Advanced GOAP system in **under 10 minutes**!
 ## Installation
 
 ### Prerequisites
-- Rust 1.70+ installed
+- Rust 1.89.0 (the pin in `rust-toolchain.toml`)
 - AstraWeave engine cloned
 
 ### Enable Advanced GOAP

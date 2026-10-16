@@ -1,5 +1,7 @@
 # AstraWeave Comprehensive Miri Validation Report
 
+> **Later measurement (2026-06-27):** 1,059 tests passed, 0 UB, across the same four crates (ecs 419, core 503, sdk 28, math 109). Recorded in [CLAIMS_REGISTRY.md](../campaigns/doc-truth/CLAIMS_REGISTRY.md#miri-tests). The tables below are the February 3, 2026 run and were not rewritten.
+
 **Version**: 1.0.0  
 **Date**: February 3, 2026  
 **Status**: ✅ ALL CRATES PASS - CLEAN BILL OF HEALTH  

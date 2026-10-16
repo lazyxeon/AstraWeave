@@ -5,6 +5,10 @@ Thank you for your interest in helping advance the AstraWeave AI-Native Gaming E
 ## Getting Started
 
 - Ensure you are using the pinned toolchain in `rust-toolchain.toml` (Rust 1.89.0).
+- Determinism changes must keep the ten required replay cases identical across Linux, Windows, and macOS. The list is in `.github/workflows/determinism-replay.yml` and the repository README.
+- Local LLMs propose. The deterministic simulation validates and executes.
+- Player-facing text says Aravath. Assets added to the tree are CC0 only.
+- Do not document greybox #205, weaving #252, traversal #244, local fluid sim #253, render frame budget #216, or CI #217 as shipped until they are on `main`.
 - Install required native dependencies for `wgpu`, `rapier`, and `ffmpeg` (refer to platform notes in `docs/masters/MASTER_ROADMAP.md`).
 - Clone the repository and run `cargo fetch` to prime the workspace.
 

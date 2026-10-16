@@ -1,7 +1,8 @@
 # AstraWeave Architecture Map
 
-> **Generated**: 2026-05-07 | **Last reconciled**: 2026-06-29 | **Version**: 0.7.4 | **Rust**: 1.89.0
+> **Generated**: 2026-05-07 | **Last reconciled**: 2026-10-16 | **Version**: 0.8.0 | **Rust**: 1.89.0
 > Living document — used by all agents as the primary architectural reference.
+> **0.8.0 update (2026-10-16)**: Member count corrected 130 → **139** (`cargo metadata --no-deps` at `d6b07fc8`). Trace count is **30**, generated into `CLAUDE.md`; the §0 table below is the June 2026 index and is not the full set. Landed since that index, and not folded into every row: nav reroute (#251), `aravath_runtime` bridge agent (#263), security caps (#312), `aw_decision` (#287), `astraweave-causality` (#286), Rhai mod loader (#214), `astraweave-destruction` (#243), gameplay QA replay case (#280). Greybox #205, weaving #252, traversal #244, local fluid sim #253, render frame budget #216, and CI #217 are in progress and are not shipped. The 12,700-agent line in §0 is a CPU capacity estimate, not a measured full frame. Orchestrator LLM default is still `phi3:medium` when `OLLAMA_MODEL` is unset.
 > **0.7.2 update (2026-06-10)**: Engine-health-audit reconciliation — workspace member count corrected 143 → **130** (root Cargo.toml members verified identical to `cargo metadata --no-deps`); `astraweave-camera` (Unified Camera C.2, `52b9e711c`, 2026-05-18) added to §1/§2.1 and to `astraweave-render`'s dep row; examples count corrected to 59; §0 editor/render trace rows updated for Multi-Tool Sub-phase 3/4 closeouts (SP5 in flight) and Render Parity P.1–P.7 closure.
 > **0.7.1 update (2026-06-10)**: Net-Trio-Remediation reconciliation — the standalone-trio HMAC-vs-XOR signature mismatch is RESOLVED (canonical HMAC-SHA256 signing enforced end-to-end, kick-by-default). Updated the net_ecs subsystem row (§0), the known-issues silent-failure row (§4.3), the documentation-hazards row (§7.2), the §8.8 network data-flow diagram, and §14 open-question 17. See `net_ecs.md` §6/§7 and `docs/audits/net_trio_signature_remediation_findings_2026-06.md`.
 > **0.7.0 update**: Reconciled against the 13 per-subsystem architecture traces under `docs/architecture/`. Every traced subsystem now linked at section level. Workspace-wide structural axioms (§7.7 wrapped-component resource identity, Fix-27 dual-pipeline lesson, silent-failure policy, "wired beats tested" taxonomy) crystallised into their own section. Dormant-code taxonomy and documentation-hazard inventory consolidated from per-trace evidence. **0.6.0 update (2026-05-07)**: Full cartography audit — impostor infrastructure catalogued, astraweave-alloc added, workspace count verified at 143 members, viewport module inventory updated, Regional Archetype Variation campaign status integrated.
@@ -27,16 +28,18 @@
 | AI Pipeline (8 subsystem traces) | [`ai_pipeline.md`](ai_pipeline.md) | Active foundation — engine's first-class citizen. 12,700+ agents @ 60 FPS validated. **Two GOAP implementations**, **runtime LLM default still phi3:medium despite Qwen3 doc-comments**, hardening surface (~15K LoC) shelf-stocked but not in line, Memory/Coordination/RAG subsystems dormant |
 | aw_editor (Visual Editor) | [`aw_editor.md`](aw_editor.md) | Mid-campaign. 216 `.rs` files / 224,584+ LoC; god-struct `EditorApp` (123 fields); §7.7 wrapped-component trap surfaced at 4 layers; Multi-Tool Sub-phases 3 (incl. Real-Fix.A–E) and 4 COMPLETE, Sub-phase 5 in flight (5.A/5.B landed 2026-06-06; 5.C closeout + Mediator Removal + SP6 pending) |
 
+Traces added after the June index (file map is the trace; do not treat a missing row here as "unbuilt"): `asset.md`, `camera.md`, `causality.md`, `cinematics.md`, `combat.md`, `destruction.md`, `gameplay.md`, `nav.md`, `pcg.md`, `quests.md`, `scene.md`, `scripting.md`, `security.md`, `terrain.md`, `ui.md`, `water.md`, `weaving.md`. The generated table in `CLAUDE.md` is the membership list. `aw_trace_sync --check` owns that table.
+
 The 5-prompt trace toolkit lives at `_meta/` (`ARCHITECTURE_TRACE_TEMPLATE.md`, `TRACE_PROMPT_TEMPLATE.md`, `TRACE_VERIFICATION_PROMPT_TEMPLATE.md`, `DEEP_TRACE_INVESTIGATION_TEMPLATE.md`, `SUBSYSTEM_TRACE_EXPANSION_PROMPT_TEMPLATE.md`).
 
 ---
 
 ## 1. Workspace Overview
 
-- **Total workspace members**: 130 (root Cargo.toml members list, verified identical to `cargo metadata --no-deps` 2026-06-10; the prior 143 figure was a stale over-count)
-- **Production crates**: ~51 (core engine infrastructure, incl. `astraweave-camera` added 2026-05-18)
-- **Examples**: 59
-- **Tools**: 12 (`aw_editor`, `aw_asset_cli`, `astraweave-assets`, `aw_debug`, `aw_build`, `aw_texture_gen`, `aw_headless`, `ollama_probe`, `asset_signing`, `aw_release`, `aw_demo_builder`, `aw_save_cli`)
+- **Total workspace members**: 139 (`cargo metadata --no-deps` at `d6b07fc8`, 2026-10-16). The 130 figure is the 2026-06-10 snapshot. The earlier 143 figure was an over-count.
+- **`astraweave-*` names**: 57. The old "~51 production crates" line was a judgment bucket, not a mechanical count, and is not restated as current.
+- **Examples**: 59 (manifest path under `examples/`)
+- **Tools**: the June list of 12 is incomplete for this tree (`aw_doc_lint`, `aw_trace_sync`, `aw_decision`, and `xtask` are members). This pass did not republish a closed tool roster.
 - **Crates/** subdirectory**: 5 (`astraweave-blend`, `astraweave-alloc`, `astraweave-persistence-player`, `astract`, `astract/astract-macro`)
 - **Networking sub-crates**: 3 (`aw-net-proto`, `aw-net-server`, `aw-net-client`)
 - **Persistence**: `aw-save`, `aw_save_cli`, `astraweave-persistence-ecs`, `astraweave-persistence-player` (the last is a **disjoint** player-profile crate, not part of the ECS-world-save chain — see `persistence_ecs.md` §6)
@@ -951,6 +954,9 @@ These are decisional questions that cross subsystem boundaries or affect the bro
 ---
 
 ## Revision History
+
+### v0.8.0 (2026-10-16)
+Documentation-steward reconciliation against `d6b07fc8`. Header, §0 pointer, and §1 counts updated for 139 members and 30 traces. Landed systems since v0.7.4 are named in the header and are not rewritten into every June status cell. In-progress pulls #205, #252, #244, #253, #216, and #217 are labeled not shipped.
 
 ### v0.7.4 (2026-06-29)
 D.2.B-Prop-Final miri-count propagation (doc-truth campaign): the §"Formally Verified" tier row corrected **Miri 977 → 1,059** (current count, per `CLAIMS_REGISTRY.md` `miri-tests` VERIFIED-AT-HEAD; supersedes the stale-low 977). Single factual sync; no other content changed.

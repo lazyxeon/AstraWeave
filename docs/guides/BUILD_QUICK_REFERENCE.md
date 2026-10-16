@@ -1,112 +1,41 @@
-# Veilweaver Build Quick Reference
+# Build quick reference
 
-## Daily Development
+Checked against `main` at `d6b07fc8` (2026-10-16). The player-facing name is Aravath.
+
+## Daily commands
 
 ```bash
-# Quick core build (debug)
-cargo build -p astraweave-core -p astraweave-ai -p hello_companion
+rustup show   # must report 1.89.0, from rust-toolchain.toml
 
-# Quick check all working crates
-cargo check --workspace --exclude astraweave-author --exclude visual_3d --exclude ui_controls_demo --exclude npc_town_demo --exclude rhai_authoring
-
-# Format and lint
+cargo check -p astraweave-core
+cargo test -p astraweave-core
 cargo fmt --all
-cargo clippy --workspace --exclude astraweave-author --exclude visual_3d --exclude ui_controls_demo --exclude npc_town_demo --exclude rhai_authoring -- -D warnings
+cargo clippy -p astraweave-core --all-features -- -D warnings
 
-# Run tests
-cargo test -p astraweave-input -p astraweave-core
+cargo run -p hello_companion --release
+cargo xtask fetch-assets
+cargo editor          # aw_editor, release-fast profile
 ```
 
-## Build Helper Usage
+Workspace-wide `cargo check --workspace` and `cargo test --workspace` are real commands. The editor aliases are only `editor`, `editor-release`, and `editor-dev` (`.cargo/config.toml`).
 
-```bash
-# Full development cycle
-.github/scripts/build.sh full
+This page does not exclude crates. A June 2026 audit recorded the former authoring and egui demo failures as compiling. This pass did not re-run `cargo check --workspace`.
 
-# Quick builds
-.github/scripts/build.sh build                 # Debug build
-.github/scripts/build.sh build --release       # Release build
+## What CI runs
 
-# Testing
-.github/scripts/build.sh test --verbose        # Run tests
+Pull requests use `.github/workflows/ci.yml`. The old `rust-cache-optimized.yml` workflow file is gone; that work was folded into `ci.yml`. Cross-OS replay hashes are `.github/workflows/determinism-replay.yml`.
 
-# Maintenance
-.github/scripts/build.sh clean                 # Clean all
-.github/scripts/build.sh cache-warm           # Warm cache
-.github/scripts/build.sh cache-stats          # Show stats
-```
+Required replay cases: `planner_pure`, `perception_world`, `gameplay_rng`, `fixed64`, `combat_resolve`, `destruction`, `gameplay_qa_aravath_slice`, `nav_reroute`, `causal_bridge`, `scripted_system`.
 
-## CI/CD Workflows
+Job tiers and which checks are required are written up in `docs/current/CI_ARCHITECTURE.md`. Further CI restructuring is in progress in #217 and is not described here as shipped.
 
-### Automatically Triggered
-- **Push/PR**: `rust-cache-optimized.yml` - Main build workflow
-- **Toolchain changes**: `toolchain-management.yml` - Compatibility testing
-- **Daily 2 AM UTC**: `dependency-management.yml` - Cache warming and audits
+## Toolchain
 
-### Manual Triggers
-- **Dependency Management**: Cache actions (warm/clean/rebuild)
-- **Toolchain Testing**: Custom Rust version testing
-- **Performance Analysis**: Build benchmarking
+- Pin: Rust 1.89.0 (`rust-toolchain.toml`)
+- Targets in that file: `x86_64-unknown-linux-gnu`, `x86_64-pc-windows-msvc`, `x86_64-apple-darwin`, `aarch64-apple-darwin`
+- Windows link stack is 16 MB (`.cargo/config.toml`), because some state structs are large
+- `sccache` is not configured as `rustc-wrapper` in `.cargo/config.toml`
 
-## Cache Management
+## Determinism
 
-```bash
-# Check cache status
-sccache --show-stats
-
-# Clear specific cache
-.github/scripts/build.sh clean sccache    # Just sccache
-.github/scripts/build.sh clean cargo      # Just cargo artifacts
-.github/scripts/build.sh clean all        # Everything
-
-# Warm cache for faster builds
-.github/scripts/build.sh cache-warm
-```
-
-## Troubleshooting
-
-### Build Failures
-1. Check system dependencies: `.github/scripts/build.sh install-deps`
-2. Clean and rebuild: `.github/scripts/build.sh clean && .github/scripts/build.sh build`
-3. Check excluded crates list if adding new dependencies
-
-### Performance Issues
-1. Check cache stats: `.github/scripts/build.sh cache-stats`
-2. Warm cache: `.github/scripts/build.sh cache-warm`
-3. Use release mode for benchmarks: `--release`
-
-### Compatibility Issues
-1. Check MSRV: Rust 1.89.0 minimum
-2. Test with stable: `rustup default stable`
-3. Check platform dependencies
-
-## Key Files
-
-- `rust-toolchain.toml` - Rust version and components
-- `.cargo/config.toml` - Build optimization and sccache
-- `.github/workflows/rust-cache-optimized.yml` - Main CI workflow
-- `.github/scripts/build.sh` - Build orchestration
-- `docs/RUST_TOOLCHAIN_GUIDE.md` - Complete documentation
-
-## Working vs Problematic Crates
-
-### ✅ Core Working Crates
-- astraweave-core, astraweave-ai, astraweave-render
-- astraweave-physics, astraweave-nav, astraweave-gameplay
-- astraweave-audio, astraweave-input, astraweave-ui
-- hello_companion, physics_demo3d, navmesh_demo
-
-### ❌ Excluded (Known Issues)
-- astraweave-author (rhai sync/send traits)
-- visual_3d (winit/egui API mismatches)
-- ui_controls_demo, npc_town_demo (API issues)
-- rhai_authoring (depends on broken crate)
-
-## Environment Variables
-
-```bash
-export BUILD_TYPE=release        # release|debug
-export VERBOSE=true             # Enable verbose output
-export FEATURES=all             # all|default|minimal
-export SCCACHE_CACHE_SIZE=10G   # sccache size limit
-```
+Do not set `target-cpu=native` for replay hashes. The workflow pins `x86-64` on x86_64 hosts and leaves Apple Silicon on the default baseline.

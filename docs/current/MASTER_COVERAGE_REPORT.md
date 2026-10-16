@@ -1,6 +1,8 @@
 # AstraWeave Master Test Coverage Report
 
-> **Version**: 5.4.0 | **Date**: 2026-06-29 | **Grade**: B+ | **Tool**: `cargo llvm-cov` (LLVM source-based)
+> **Version**: 5.4.1 | **Date**: 2026-10-16 | **Tool**: `cargo llvm-cov` (LLVM source-based)
+>
+> **2026-10-16:** The 57.35% headline is the 2026-06-29 whole-workspace run. It was not re-measured on the 139-member tree (`d6b07fc8`). The "130 crates" row and the per-tier table are older. Kani proof attributes were 69 on 2026-06-13 (registry), not "~71", and were not re-counted here. No new letter grade.
 
 ---
 
@@ -8,13 +10,13 @@
 
 | Metric | Value |
 |--------|-------|
-| **Workspace Crates** | 130 total (29 measured for coverage; `astraweave-alloc` and `astraweave-camera` added since v5.2.0, both unmeasured) |
+| **Workspace Crates** | 139 on 2026-10-16 (`d6b07fc8`). The 130-member row was the 2026-06-10 count. Coverage itself was not re-measured; the 29-crate tier table below is still the 2026-02-25 subset. |
 | **Total Tests** | ~21,900 (measured crates) / ~39,000+ (workspace; live re-count 2026-06-10: 39,973 markers incl. `#[tokio::test]`) |
 | **Primary Tool** | `cargo llvm-cov` (LLVM source-based instrumentation) |
 | **Overall Line Coverage** | **57.35% whole-workspace** (`cargo llvm-cov --workspace`, 2026-06-29) — supersedes the 59.3% subset run of 2026-02-25; the per-tier breakdown below is the prior 29-crate subset |
 | **High-Coverage Crates (≥85%)** | 14 of 28 in the prior 2026-02-25 subset run (whole-workspace per-crate not re-broken-out) |
 | **Miri Validated** | 1,059 tests, 4 crates, zero UB |
-| **Kani Verified** | ~71 proof harnesses, 4 crates, all passing |
+| **Kani Verified** | 69 `kani::proof` attributes on 2026-06-13 (registry). Not re-counted 2026-10-16. The older "~71" figure is retired. |
 | **Mutation Testing** | Wave 1: 767 manual + Wave 2: 1,261 automated + Wave 3: 489 targeted + Wave 4: 411 fluids |
 
 ### Tier Overview (Line Coverage, Weighted by LOC)
@@ -540,6 +542,7 @@ cargo mutants --package astraweave-prompts --test-tool nextest --in-place --time
 
 | Version | Date | Type | Summary | Impact |
 |:-------:|:----:|:----:|:--------|:------:|
+| **5.4.1** | 2026-10-16 | **Update** | Status banner only. Workspace member count in the executive summary set to 139. Kani row set to the 2026-06-13 registry count of 69. Coverage percentage not re-measured. | Incremental |
 | **5.4.0** | 2026-06-29 | **Update** | D-series Path-B.2 whole-workspace coverage re-baseline propagated: Executive-Summary headline coverage **59.3% subset → 57.35% whole-workspace** (`cargo llvm-cov --workspace`, 369,462 lines; supersedes the 2026-02-25 29-crate subset — a denominator change, not a regression); Miri headline **977 → 1,059** (current count). The dated per-tier / per-crate breakdown (2026-02-25 subset) and the Report-Version-Comparison table are retained byte-identical as historical records. Source: [CLAIMS_REGISTRY](../campaigns/doc-truth/CLAIMS_REGISTRY.md) `coverage-weighted` / `miri-tests` (VERIFIED-AT-HEAD). | Significant |
 | **5.3.0** | 2026-06-10 | **Update** | Engine-health-audit reconciliation: workspace crate count 128 → 130 (`astraweave-alloc` 2026-04-17, `astraweave-camera` 2026-05-18 — both unmeasured); recorded post-v5.2.0 test growth (Net-Trio-Remediation 104 trio tests: proto 59 / server 41 / client 4; Multi-Tool SP4 dispatcher tests 15 → 21; Unified Camera 25 crate tests + 8 contract tests + parity fixtures); live marker re-count 39,973. Coverage percentages NOT re-measured (still 2026-02-25) — gap caveat added. | Incremental |
 | 5.2.0 | 2026-03-01 | Update | Added Wave 4 fluids mutation testing (411 mutants, 100% adjusted kill rate). Updated cumulative mutation totals (2,928 mutants, 91.7% raw). Created `FLUIDS_MUTATION_TESTING_REPORT.md`. | Significant |

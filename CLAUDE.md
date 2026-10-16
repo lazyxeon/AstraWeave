@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-AstraWeave is a **scientific proof of concept**: a production-grade AI-native game engine built **iteratively by AI with zero human-written code**. It uses a deterministic ECS architecture where AI agents are first-class citizens. The workspace contains 133 crates (~51 production + examples + tools; `cargo metadata --no-deps` package count, verified 2026-07-19 after the director-ratified removal of `unified_showcase`). Rust toolchain is pinned at 1.89.0.
+AstraWeave is a **scientific proof of concept**: an AI-native game engine built **iteratively by AI with zero human-written code**. It uses a deterministic ECS architecture where AI agents are first-class citizens. The player-facing game name is Aravath. The workspace contains 139 crates (`cargo metadata --no-deps` at `d6b07fc8`, 2026-10-16; 57 names start with `astraweave-`, 59 example manifests). The July 2026 note of 133 members is older. Rust toolchain is pinned at 1.89.0. Determinism replay requires ten cross-OS cases (`planner_pure`, `perception_world`, `gameplay_rng`, `fixed64`, `combat_resolve`, `destruction`, `gameplay_qa_aravath_slice`, `nav_reroute`, `causal_bridge`, `scripted_system`). Greybox #205, weaving #252, traversal #244, local fluid sim #253, render frame budget #216, and CI #217 are in progress and are not on this commit.
 
 ### Mandate
 

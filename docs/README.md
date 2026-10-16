@@ -1,14 +1,13 @@
 # AstraWeave Documentation Index
 
-> **Research-Grade Documentation Audit**  
-> **Last Updated**: January 1, 2026  
-> **Total Documentation**: 1,078 files • 15.5 MB • ~2.03 million words • 445,965 lines
+> **Current engine status lives in the repository [README](../README.md)** (checked 2026-10-16 against `d6b07fc8`).
+> The file counts, word counts, and "49 core crates" figure below are a **January 1, 2026 census**. They were not re-counted for this pass. Do not quote them as the live workspace size.
 
 ---
 
 ## 📊 Executive Summary
 
-AstraWeave maintains **one of the most extensively documented codebases** for any open-source game engine project. This documentation corpus represents a comprehensive record of AI-assisted development, architectural decisions, performance optimizations, and project evolution.
+This tree keeps a large documentation corpus: architecture traces, campaign notes, and a historical journey log. The January 2026 census below is a snapshot of that corpus, not a live inventory.
 
 ### Key Metrics at a Glance
 
@@ -25,16 +24,14 @@ AstraWeave maintains **one of the most extensively documented codebases** for an
 
 ## 🚀 Quick Start
 
-**[→ QUICKSTART.md](QUICKSTART.md)** - Complete setup and first steps guide
+Engine setup is the repository [README](../README.md) and the [build quick reference](guides/BUILD_QUICK_REFERENCE.md). [QUICKSTART.md](QUICKSTART.md) is the feature-gated advanced GOAP tutorial, not the install guide.
 
 ```bash
-# Clone and build
-git clone https://github.com/your-org/AstraWeave.git
+git clone https://github.com/lazyxeon/AstraWeave.git
 cd AstraWeave
-cargo build --release
-
-# Run example
-cargo run --example simple_scene
+rustup show
+cargo build --release -p astraweave-core
+cargo run -p hello_companion --release
 ```
 
 ---
@@ -94,7 +91,7 @@ The archive contains **485 files** (6.7 MB) preserving the development history.
 | `archive/session_reports/` | 5 | Session summaries |
 | `archive/remediation/` | 7 | Bug fix and remediation docs |
 | `archive/gap_analysis/` | 6 | Coverage gap analyses |
-| `archive/projects/veilweaver/` | 28 | Veilweaver game project |
+| `archive/projects/veilweaver/` | 28 | Historical game-project notes (directory name kept) |
 | `archive/projects/console/` | 1 | Console project docs |
 | `archive/AI Engine/` | 1 | AI engine overview |
 | `archive/benchmark_*` | 2 | Benchmark data/dashboard |
