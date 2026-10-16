@@ -354,8 +354,9 @@ pub struct SerializedWorld {
 /// to a background thread.
 ///
 /// # Determinism
-/// Output is **deterministic** for the same world state - entity iteration order is
-/// consistent via HashSet insertion order (same entities → same order → same blob).
+/// Output is **deterministic** for the same world state. Discovered entities are
+/// sorted by `Entity::to_raw` before encoding, so the blob does not follow
+/// `HashSet` iteration order.
 pub fn serialize_ecs_world(world: &World) -> Result<Vec<u8>> {
     let mut entities = Vec::new();
 
@@ -523,7 +524,9 @@ pub fn serialize_ecs_world(world: &World) -> Result<Vec<u8>> {
 ///
 /// # Determinism
 /// Deserialization is **deterministic** - same blob + same world state → same result.
-/// Entity IDs will differ between loads (remapping), but component data is bit-identical.
+/// Fresh ids are assigned in blob order. An empty world therefore receives the same
+/// ids as a source whose entities were spawned in `to_raw` order. A world that
+/// already holds entities remaps those ids. Component data stays bit-identical.
 ///
 /// # Adding New Components
 /// See `serialize_ecs_world()` documentation for how to add support for new component types.

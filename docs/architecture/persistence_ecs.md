@@ -25,12 +25,12 @@ last_verified_commit: a2474c5b7
 |---|---|
 | **System name** | Persistence-ECS (save / load / migrate / replay) |
 | **Primary crates** | `astraweave-persistence-ecs` (ECS Plugin + world serialization + hashing); `persistence/aw-save` (file format, atomic I/O, versioning, migration) |
-| **Document version** | 1.2 |
+| **Document version** | 1.4 |
 | **Last verified against commit** | `a2474c5b7` |
 | **Last verified date** | 2026-05-12 |
 | **Status** | Active. File format is production-shaped. `replay_system` applies due events into `AppliedReplay`. `auto_save_system` writes when `CSimClock` hits its interval. Inventory and companion extraction are still placeholders. |
 | **Revision history** | 1.3 (2026-10-15): `.awsv` load rejects a declared compressed length above 4 MiB before allocation, and an LZ4 uncompressed prefix above 16 MiB. Schema stays 2. `postcard_and_lz4_bytes_are_stable` locks the postcard 1.1 and lz4_flex 0.11 bytes. 1.2 (2026-05-12): Deep investigation pass. **Closed Open Question 13** (CLI tools location) — purely factual question, comprehensively answered (`tools/aw_save_cli/` exists, was created in the same commit as `aw-save` itself). Resolution moved to §4 / §6. **New emergent finding**: a separate sibling crate `crates/astraweave-persistence-player` exists for player-profile persistence (TOML-based, distinct data model). Has zero dependency relationship with this subsystem; only a single doc-comment reference. Added to §6 as a coexisting-but-disjoint abstraction so future agents don't conflate them. Enriched §11 Q1, Q2, Q11 with commit-date provenance: the `astraweave-stress-test` declaration of both `astraweave-net-ecs` and `astraweave-persistence-ecs` and the `astraweave-memory` declaration in `astraweave-persistence-ecs/Cargo.toml` all landed in the **same commit** `08befc6ec` (2025-10-01, "phase 6 implementation"); test artifacts (`slot*.awsv`, `savegame.bin`) were committed in unrelated subsequent commits with misleading titles.<br><br>1.1 (2026-05-12): Verification pass. **Major corrections**: (1) The §4 `[INFERRED]` claim that CLI tools "may live elsewhere or be planned" was wrong — `tools/aw_save_cli/src/main.rs` (110 lines, clap-based) is a real binary that consumes `aw-save`. Added to §4 downstream table; resolved the marker. (2) Discovered second `aw-save` consumer not previously documented: `examples/save_integration/src/main.rs` (234 lines) imports `aw-save` types directly. Added to §4. (3) Resolved §9 `[INFERRED]` about auto-pruning absence — direct grep `fs::remove\|remove_file\|tokio::fs::remove persistence/aw-save/src` returns zero matches, conclusively confirming no auto-prune path exists. (4) Verified `Entity::to_raw()` layout claim in §3 against actual source at `astraweave-ecs/src/entity_allocator.rs:95-103` — claim is exact. |
-| **Owner notes** | `aw-save` (file format and SaveManager) is fully production-shaped: atomic writes via tmp+fsync+rename, CRC32 + LZ4, explicit V1→V2 migration, 256 slots per player. `astraweave-persistence-ecs` (ECS integration) is partly stub: the ECS `auto_save_system` function body is a comment-only TODO; replay event application is a TODO; `CPersistenceManager::save_game` hardcodes inventory (`credits: 1000`, `items: []`) and emits zero companions. **`astraweave-stress-test/Cargo.toml:21` declares `astraweave-persistence-ecs` as a dep but no source file imports anything from it** — same pattern as `net-ecs` (declared-but-unused). The companion `astraweave-memory` workspace dep declared at `astraweave-persistence-ecs/Cargo.toml:20` is also never imported in the crate's source. |
+| **Owner notes** | `aw-save` (file format and SaveManager) is fully production-shaped: atomic writes via tmp+fsync+rename, CRC32 + LZ4, explicit V1→V2 migration, 256 slots per player. Save ids and timestamps come from the sim (`sim_save_id`, `sim_timestamp`). `auto_save_system` writes when `CSimClock` hits its interval. `replay_system` copies due events into `AppliedReplay` in canonical order. `CPersistenceManager::save_game` still hardcodes inventory (`credits: 1000`, `items: []`) and emits zero companions. **`astraweave-stress-test/Cargo.toml:21` declares `astraweave-persistence-ecs` as a dep but no source file imports anything from it** — same pattern as `net-ecs` (declared-but-unused). The companion `astraweave-memory` workspace dep declared at `astraweave-persistence-ecs/Cargo.toml:20` is also never imported in the crate's source. |
 
 ---
 
@@ -53,7 +53,7 @@ Saving game state across crashes and version upgrades is hard. The two-layer spl
 - `astraweave-persistence-ecs/savegame.bin` — 2-byte test artifact at the crate root.
 
 **Status note:**
-The disk-format layer (`aw-save`) is fully production-grade and CI-covered. The ECS integration layer (`astraweave-persistence-ecs`) has working roundtrip serialization but several systems and helpers are TODO-stubs (see §6 cognitive traps). **No production code outside the crates' own tests uses `astraweave-persistence-ecs`.** It is scaffolding ready to be wired.
+The disk-format layer (`aw-save`) is fully production-grade and CI-covered. Save identity comes from the sim tick. `replay_system` applies due events and `auto_save_system` follows `CSimClock`. Inventory and companion extraction stay placeholders (see §6). **No production code outside the crates' own tests uses `astraweave-persistence-ecs`.** It is scaffolding ready to be wired.
 
 ---
 
@@ -498,13 +498,13 @@ Auto-save path (scaffolded, empty body):
   - **Why it's confusing:** The doc comment at `persistence-ecs/lib.rs:386-398` describes entity-ID remapping at length.
   - **What's actually true:** Stage 6 above. The id_map is built, but `CLegacyId` is inserted as-is (`lib.rs:490-493`) with a TODO comment. If `CLegacyId` carries an entity reference, the reference points at a (potentially nonexistent) old entity after load.
 
-- **Trap:** Migration generates a fresh `save_id` Uuid.
-  - **Why it's confusing:** Migration "preserves" the save's identity in most other dimensions.
-  - **What's actually true:** `aw-save/lib.rs:186`: `save_id: Uuid::new_v4()`. The V1 save had no Uuid; the V2 migration mints one. Callers using `save_id` for deduplication should not expect stability across migration.
+- **Trap:** V1 migration used to mint a fresh `Uuid::new_v4` save id.
+  - **Why it's confusing:** Older notes say migration identity is random.
+  - **What's actually true:** `SaveBundleV1::into_v2` derives `sim_save_id` from the player id, the world tick, and the slot. The same V1 bytes migrate to the same id.
 
-- **Trap:** `entity_set` in `serialize_ecs_world` is a `HashSet<Entity>` — iteration order is not deterministic across compiles.
-  - **Why it's confusing:** The function's doc claims determinism at `lib.rs:275-277`.
-  - **What's actually true:** The claim says "HashSet insertion order (same entities → same order → same blob)." Stdlib's `HashSet` uses a randomized hasher by default — `insertion order` is preserved within a single program run, but across runs with different RNG seeds it can differ. Whether the blob is byte-identical across runs depends on the specific stdlib version and hasher; this is **not the same kind of determinism** as `calculate_world_hash`'s explicit `entity_list.sort_unstable()`. [INFERRED — the doc comment overstates the determinism guarantee; not specifically tested with a reproducer.]
+- **Trap:** `entity_set` in `serialize_ecs_world` is collected through a `HashSet<Entity>`.
+  - **Why it's confusing:** A `HashSet` walk is not a stable order.
+  - **What's actually true:** After discovery the entities are sorted by `Entity::to_raw` before postcard encoding. The blob order matches `calculate_world_hash`'s sorted walk. An empty-world load therefore restores the same ids when the source was spawned in raw-id order.
 
 - **Trap:** Test artifacts (`.awsv`, `index.json`, `savegame.bin`) are checked into the repo source tree.
   - **Why it's confusing:** Looks like fixture files used by integration tests.
