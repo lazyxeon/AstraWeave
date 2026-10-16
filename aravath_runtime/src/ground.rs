@@ -332,10 +332,34 @@ impl Ground {
         });
     }
 
+    /// Command log that `dig_sphere` has applied. A checkpoint stores this beside the voxel edits.
+    pub fn demolition_log(&self) -> Vec<u8> {
+        self.demolition.persist_bytes()
+    }
+
     /// Replace the edit log and rebuild every loaded chunk from the heightfield
-    /// plus that log. Used when a save is loaded.
+    /// plus that log. The demolition world is a fresh column seed.
     pub fn restore_edits(&mut self, edits: Vec<VoxelEdit>) {
+        self.restore_dug(edits, &[])
+            .expect("an empty demolition log is a fresh world");
+    }
+
+    /// Rebuild voxels from `edits` and the demolition command log.
+    /// An empty log starts a new column world. A log that does not restore is an error.
+    pub fn restore_dug(&mut self, edits: Vec<VoxelEdit>, log: &[u8]) -> anyhow::Result<()> {
         self.edits = edits;
+        self.demolition = Box::new(if log.is_empty() {
+            column_demolition()
+        } else {
+            let mut world = DestructionWorld::restore(log)
+                .map_err(|err| anyhow::anyhow!("demolition log did not restore: {err:?}"))?;
+            world.bind_column_fns(ColumnFns {
+                top: column_gen::surface_height,
+                material: seed_column_material,
+            });
+            world.reload_logged_brushes();
+            world
+        });
         let mut coords: Vec<ChunkCoord> = self.generated.iter().copied().collect();
         sort_coords(&mut coords);
         for coord in coords {
@@ -343,6 +367,7 @@ impl Ground {
             fill_height_chunk(&mut self.grid, coord);
             self.reapply_edits(coord);
         }
+        Ok(())
     }
 
     fn visible_props(&self, coord: ChunkCoord) -> Vec<PropSpot> {

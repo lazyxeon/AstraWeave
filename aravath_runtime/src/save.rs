@@ -14,6 +14,8 @@ use crate::ground::VoxelEdit;
 
 pub struct Checkpoint {
     pub edits: Vec<VoxelEdit>,
+    /// `DestructionWorld::persist_bytes`. Empty on saves written before the brush log.
+    pub demolition: Vec<u8>,
     pub position: Vec3,
     pub yaw: f32,
     pub stamina: f32,
@@ -25,6 +27,10 @@ pub fn save_checkpoint(root: &Path, checkpoint: &Checkpoint) -> Result<()> {
     let manager = SaveManager::new(root);
     let mut meta = std::collections::HashMap::new();
     meta.insert("edits".into(), encode_edits(&checkpoint.edits));
+    if checkpoint.demolition.len() > MAX_DEMOLITION {
+        bail!("demolition log is too long");
+    }
+    meta.insert("demolition".into(), encode_hex(&checkpoint.demolition));
     insert_into_meta(&mut meta, &checkpoint.scars).context("encode veil scars")?;
     meta.insert(
         "ground".into(),
@@ -73,6 +79,18 @@ pub fn load_checkpoint(root: &Path) -> Result<Checkpoint> {
         .context("read aravath save")?;
     let edits_text = bundle.meta.get("edits").map(String::as_str).unwrap_or("");
     let edits = decode_edits(edits_text)?;
+    let demolition = match bundle.meta.get("demolition").map(String::as_str) {
+        Some(text) if !text.is_empty() => {
+            let bytes = decode_hex(text).context("demolition log")?;
+            if bytes.len() > MAX_DEMOLITION {
+                bail!("demolition log is too long");
+            }
+            astraweave_destruction::DestructionWorld::restore(&bytes)
+                .map_err(|err| anyhow::anyhow!("demolition log did not restore: {err:?}"))?;
+            bytes
+        }
+        _ => Vec::new(),
+    };
     let player = bundle
         .meta
         .get("player")
@@ -96,6 +114,7 @@ pub fn load_checkpoint(root: &Path) -> Result<Checkpoint> {
     let scars = read_from_meta(&bundle.meta).context("decode veil scars")?;
     Ok(Checkpoint {
         edits,
+        demolition,
         position,
         yaw,
         stamina,
@@ -105,6 +124,7 @@ pub fn load_checkpoint(root: &Path) -> Result<Checkpoint> {
 }
 
 const MAX_EDITS: usize = 16_384;
+const MAX_DEMOLITION: usize = 1024 * 1024;
 const MAX_EDIT_COORD: i32 = 2_048;
 const MAX_EDIT_TEXT: usize = 2 * 1024 * 1024;
 
@@ -269,6 +289,7 @@ mod tests {
             dir.path(),
             &Checkpoint {
                 edits: ground.edits.clone(),
+                demolition: Vec::new(),
                 position,
                 yaw: 0.4,
                 stamina: 77.0,
@@ -317,6 +338,7 @@ mod tests {
             dir.path(),
             &Checkpoint {
                 edits: Vec::new(),
+                demolition: Vec::new(),
                 position: Vec3::new(1.0, 2.0, 3.0),
                 yaw: 0.0,
                 stamina: 1.0,
@@ -361,6 +383,7 @@ mod tests {
             dir.path(),
             &Checkpoint {
                 edits: Vec::new(),
+                demolition: Vec::new(),
                 position: Vec3::ZERO,
                 yaw: 0.0,
                 stamina: 1.0,

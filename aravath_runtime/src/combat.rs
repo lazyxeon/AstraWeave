@@ -14,6 +14,19 @@ pub const ACTIVE: f32 = 0.14;
 pub const RECOVERY: f32 = 0.22;
 pub const SWORD_REACH: f32 = 1.8;
 pub const SWORD_DAMAGE: f32 = 25.0;
+
+/// `run_aravath_slice` builds an ECS app, parses the table, and ticks a destruction world.
+/// Sword remainder and the cover bond are constant, so the greybox runs that once at startup.
+pub fn prime_sword_slice() {
+    let _ = sword_hit();
+}
+
+fn sword_hit() -> (f32, bool) {
+    use std::sync::OnceLock;
+    static SLICE: OnceLock<astraweave_weaving::AravathSlice> = OnceLock::new();
+    let slice = SLICE.get_or_init(astraweave_weaving::run_aravath_slice);
+    (40.0 - slice.sword_hp as f32, !slice.cover_intact)
+}
 pub const ENEMY_DAMAGE: f32 = 12.0;
 pub const HIT_REACT: f32 = 0.4;
 pub const ATTACK_WINDOW: f32 = STARTUP + ACTIVE + RECOVERY;
@@ -159,7 +172,7 @@ pub struct Combat {
     pub enemies: Vec<Enemy>,
     pub lock: Option<usize>,
     pub hit_react: f32,
-    /// Set when a sword hit's `run_aravath_slice` breaks the cover bond.
+    /// Set when a sword hit breaks the cover bond from the startup slice.
     pub cover_broken: bool,
 }
 
@@ -208,11 +221,10 @@ impl Combat {
         if was_active && !self.attack.hit_landed {
             if let Some(index) = sword_target(self, physics, player) {
                 self.attack.hit_landed = true;
-                let slice = astraweave_weaving::run_aravath_slice();
-                let dealt = 40.0 - slice.sword_hp as f32;
+                let (dealt, cover_broke) = sword_hit();
                 let enemy = &mut self.enemies[index];
                 enemy.health = (enemy.health - dealt).max(0.0);
-                if !slice.cover_intact {
+                if cover_broke {
                     self.cover_broken = true;
                 }
                 enemy.stagger = 0.45;
@@ -484,6 +496,18 @@ mod tests {
         combat.attack.time = STARTUP;
         combat.tick(&mut physics, &player, &Motor::default(), 0.0, None);
         assert!((combat.enemies[0].health - health).abs() < 0.01);
+    }
+
+    #[test]
+    fn sword_hit_reads_the_startup_slice() {
+        let (dealt, cover_broke) = sword_hit();
+        assert!(
+            (dealt - SWORD_DAMAGE).abs() < 0.01,
+            "startup slice remainder must stay the dealt damage"
+        );
+        assert!(cover_broke, "the startup slice breaks the cover bond");
+        let (again, _) = sword_hit();
+        assert_eq!(again.to_bits(), dealt.to_bits());
     }
 
     #[test]

@@ -395,10 +395,16 @@ impl ApplicationHandler for App {
         let restore_uploads = if caught.steps > 0 && self.load_toggle {
             self.load_toggle = false;
             match aravath_runtime::save::load_checkpoint(&save_root()) {
-                Ok(checkpoint) => {
-                    self.notice = Some(("Loaded".into(), 2.5));
-                    Some(self.sim.restore(checkpoint))
-                }
+                Ok(checkpoint) => match self.sim.restore(checkpoint) {
+                    Ok(uploads) => {
+                        self.notice = Some(("Loaded".into(), 2.5));
+                        Some(uploads)
+                    }
+                    Err(err) => {
+                        self.notice = Some((format!("Load failed: {err}"), 3.5));
+                        None
+                    }
+                },
                 Err(err) => {
                     self.notice = Some((format!("Load failed: {err}"), 3.5));
                     None

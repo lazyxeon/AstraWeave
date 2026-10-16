@@ -123,6 +123,7 @@ pub struct Greybox {
 
 impl Greybox {
     pub fn new(grid: VoxelGrid, spawn: Vec3) -> Self {
+        crate::combat::prime_sword_slice();
         let mut physics = PhysicsWorld::new(Vec3::new(0.0, -9.81, 0.0));
         let mut ground = Ground::from_grid(grid);
         let initial_uploads = ground.sync_dirty(&mut physics);
@@ -153,6 +154,7 @@ impl Greybox {
     }
 
     pub fn open(radius: i32) -> Self {
+        crate::combat::prime_sword_slice();
         let spawn = Vec3::new(16.0, 20.0, 16.0);
         let mut physics = PhysicsWorld::new(Vec3::new(0.0, -9.81, 0.0));
         let mut ground = Ground::from_grid(VoxelGrid::new());
@@ -458,6 +460,7 @@ impl Greybox {
     pub fn checkpoint(&self) -> crate::save::Checkpoint {
         crate::save::Checkpoint {
             edits: self.ground.edits.clone(),
+            demolition: self.ground.demolition_log(),
             position: self.player_pos(),
             yaw: self.player.facing_yaw,
             stamina: self.motor.stamina,
@@ -466,7 +469,10 @@ impl Greybox {
         }
     }
 
-    pub fn restore(&mut self, checkpoint: crate::save::Checkpoint) -> Vec<ChunkUpload> {
+    pub fn restore(
+        &mut self,
+        checkpoint: crate::save::Checkpoint,
+    ) -> anyhow::Result<Vec<ChunkUpload>> {
         self.motor.stamina = checkpoint.stamina.clamp(0.0, self.motor.stamina_max);
         self.combat.player_hp = checkpoint.player_hp.max(0.0);
         self.player.facing_yaw = checkpoint.yaw;
@@ -474,10 +480,11 @@ impl Greybox {
         self.physics
             .set_body_position(self.player.body, checkpoint.position);
         self.camera.pivot = checkpoint.position;
-        self.ground.restore_edits(checkpoint.edits);
+        self.ground
+            .restore_dug(checkpoint.edits, &checkpoint.demolition)?;
         let uploads = self.ground.sync_dirty(&mut self.physics);
         self.physics.step();
-        uploads
+        Ok(uploads)
     }
 
     /// Full health at the original spawn. The edit log stays.
@@ -802,7 +809,7 @@ mod tests {
         sim.ground.dig_sphere(Vec3::new(20.0, 4.0, 16.0), 1.0);
         sim.combat.player_hp = 0.0;
         let loaded = crate::save::load_checkpoint(dir.path()).unwrap();
-        let _ = sim.restore(loaded);
+        sim.restore(loaded).unwrap();
         assert!((sim.combat.player_hp - 41.0).abs() < 1e-3);
         assert!((sim.motor.stamina - 18.0).abs() < 1e-3);
         assert!((sim.player.facing_yaw - 0.7).abs() < 1e-3);
@@ -1006,9 +1013,39 @@ mod tests {
 
         let mut restored_a = Greybox::open(0);
         let mut restored_b = Greybox::open(0);
-        let _ = restored_a.restore(crate::save::load_checkpoint(dir.path()).unwrap());
-        let _ = restored_b.restore(crate::save::load_checkpoint(dir.path()).unwrap());
+        restored_a
+            .restore(crate::save::load_checkpoint(dir.path()).unwrap())
+            .unwrap();
+        restored_b
+            .restore(crate::save::load_checkpoint(dir.path()).unwrap())
+            .unwrap();
         assert_eq!(restored_a.state_hash(), restored_b.state_hash());
+    }
+
+    #[test]
+    fn dig_after_load_matches_the_continuous_run() {
+        let dig_at = |sim: &mut Greybox, x: i32, z: i32| {
+            let y = crate::island::surface_height(x, z) as f32;
+            sim.ground.dig_sphere(Vec3::new(x as f32, y, z as f32), 1.5);
+            let _ = sim.ground.sync_dirty(&mut sim.physics);
+        };
+        let mut live = Greybox::open(0);
+        dig_at(&mut live, 16, 16);
+        live.physics.step();
+        dig_at(&mut live, 18, 16);
+        let expected = live.state_hash();
+
+        let mut saved = Greybox::open(0);
+        dig_at(&mut saved, 16, 16);
+        let dir = tempfile::tempdir().unwrap();
+        crate::save::save_checkpoint(dir.path(), &saved.checkpoint()).unwrap();
+        let mut loaded = Greybox::open(0);
+        loaded
+            .restore(crate::save::load_checkpoint(dir.path()).unwrap())
+            .unwrap();
+        dig_at(&mut loaded, 18, 16);
+        assert_eq!(loaded.ground.edits.len(), live.ground.edits.len());
+        assert_eq!(loaded.state_hash(), expected);
     }
 
     #[test]
@@ -1134,7 +1171,7 @@ mod tests {
         crate::save::save_checkpoint(dir.path(), &sim.checkpoint()).unwrap();
         sim.scars = astraweave_veil::ScarField::new();
         let loaded = crate::save::load_checkpoint(dir.path()).unwrap();
-        let _ = sim.restore(loaded);
+        sim.restore(loaded).unwrap();
         assert_eq!(sim.scars.state_hash(), hash);
     }
 }
