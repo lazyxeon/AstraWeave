@@ -1,6 +1,18 @@
 # CI failure ledger
 
-> **2026-10-16:** This ledger landed with #217. `main` is now `d6903d3a`. #219 and #256 are closed. `openssl` is not in `Cargo.lock`. The ban in `deny.toml` is unchanged. Sentences below that say #217 has not merged, or that #219 and #256 stay open until it does, are the pre-merge notes. #327 is on `main` and #326 is closed. The fifteen required replay cases are unchanged.
+> **2026-10-16:** `main` is `30afc26d`. #340 (`aab4c84b`) closed #273 and #338. #333 closed #218. #254, #242, #314, #304, and #274 stay open. Profile `ci-pr` still excludes the GPU render passes, the lavapipe fluid smokes, and `test_qwen3_variants`. The sixteen required replay cases and the greybox golden `b6a9d5a2c5da28a6` are unchanged. Sentences below that still call `editor_engine_render_parity` deferred, or that leave the terrain goldens and the AI planning tests in the pull-request skip list, are the pre-#340 / pre-#333 notes. #219 and #256 are closed. `openssl` is not in `Cargo.lock`.
+
+## Current disposition (`30afc26d`)
+
+| Item | State |
+|---|---|
+| `editor_engine_render_parity` (#273) | **Closed by #340.** The harness bakes the default HDRI once and installs that `IblResources` on the direct `Renderer` and the editor adapter. The editor path in the test uses `init_engine_adapter_without_env_bake`, so `poll_env_bake` cannot install a second bake between the warm-up frame and the measurement frame. The live editor still starts the worker from `EngineRenderAdapter::new`. |
+| Windows flakes (#338) | **Closed by #340.** `test_async_task_is_finished_lifecycle` waits on a oneshot and yields until `is_finished`. `test_perception_stress` checks that each frame's snapshot matches its inputs. |
+| Terrain goldens and the radius-5 / phase-2 walks (#242, part of #254) | **Tests updated in #333. Issues stay open.** Noise goldens lock `NoiseConfig::default` (base 100 Fbm, mountains 480 Billow, detail 3). Structure fixtures sit on a 1.5 m ramp. The radius-5 diagnostics and `phase_1_6_f3_phase_2_end_to_end_timing` check one chunk per climate. Those rows are gone from `scripts/ci/deferred_pr_tests.txt`. |
+| `ecs_integration_tests` (part of #254) | **Tests run again in #333. #254 stays open.** `sys_ai_planning` keeps `RuleOrchestrator` when `veilweaver_slice` is unified in. The slice runtime still constructs `VeilweaverCompanionOrchestrator` itself. |
+| Voice-folder scan (ordering half of #314) | **Fixed in #333. #314 stays open.** The candidate list is sorted `.ogg` / `.wav` files, and `test_folder_scan_filters_non_audio` asserts that list excludes `readme.txt`. The issue still names `test_distance_attenuation_files`. |
+| #218 headless audio | **Closed.** GitHub attributes the close to #333. The null backend and `aw_audio_probe` landed in #217. |
+| Still excluded from profile `ci-pr` | GPU render passes, the three lavapipe fluid smokes, and `test_qwen3_variants`. Profile `ci` on `main` and nightly still runs them. #304 and #274 stay open. |
 
 Inventory of checks that failed on PR #212 (`cursor/combat-damage-design`, run set 2026-10-14) and are shared with `main` at `a3fe3ecd`. The PR is documentation-only, so these are pre-existing. Each row is either fixed on `cursor/ci-failure-burndown` or verified not to be a separate defect.
 
@@ -56,8 +68,8 @@ Owned here. 95 unique failures, each retried twice. Groups:
 
 | Group | Disposition |
 |---|---|
-| Terrain goldens, including `golden_density_origin` expected 0 got 477 | **Deferred with #215 / #242.** `sample_density(0,0,0)` is `sample_height(0,0)` minus cave carving. E3 mountains amplitude 480 and Billow at the origin produce height 477. The assert still expects the pre-E3 Perlin-at-lattice zero. The same class covers the other `wave2_noise_golden_*` fingerprints, the Perlin/Ridged/old-amplitude config asserts, the halo byte-identity test, and the structure-count tests that assume that surface. The seven lib goldens in #242 are already locked on this branch and on PR #215. Terrain trace §10 forbids a piecemeal re-bake of the rest. Owner: terrain (T.G), coordinated with https://github.com/lazyxeon/AstraWeave/pull/215 and https://github.com/lazyxeon/AstraWeave/issues/242. Plan and exit criteria are on https://github.com/lazyxeon/AstraWeave/issues/254. |
-| `astraweave-ai` `ecs_integration_tests` (`CDesiredPos` / `AiPlannedEvent`, 72/100) | **Not reproduced on this tree.** `ecs_ai_plugin.rs` blob `5ff20de9` is the same as `7839f930`. `cargo test` and `cargo nextest` on rustc 1.89.0 pass all 26 tests, including `test_multi_agent_100_agents`. The asserts stay exact. Owner: AI (WS-AI-1). Plan on #254. |
+| Terrain goldens, including `golden_density_origin` expected 0 got 477 | **Updated in #333. #242 and #254 stay open.** The pre-#333 note was: the assert expected the pre-E3 zero and the E3 mountains amplitude produced 477. #333 locks `NoiseConfig::default` and removes those rows from `scripts/ci/deferred_pr_tests.txt`. |
+| `astraweave-ai` `ecs_integration_tests` (`CDesiredPos` / `AiPlannedEvent`, 72/100) | **Fixed in #333. #254 stays open.** Workspace nextest enables `veilweaver_slice`, and that feature used to swap the ECS tick to `VeilweaverCompanionOrchestrator`, which skips `MoveTo` inside 6 cells. `sys_ai_planning` now keeps `RuleOrchestrator`. The row is gone from the pull-request skip list. |
 | Audio `test_setup_all_assets` and `test_rapid_music_changes` | **Fixed.** Nextest runs each test in its own process. `cleanup_test_assets` deleted the shared `tests/assets` directory while another process still opened `test_music_5sec.wav`. Fixtures now live under `target/audio-test-assets/<pid>`. `cargo nextest run -p astraweave-audio --test-threads=16`: 541 passed, 9 skipped. |
 | `astraweave-llm` `test_qwen3_variants` (2048 vs 8192) | **Fixed in the test.** `Qwen3Ollama::fast` documents context 2048, and the unit test already locks 2048. The integration test still expected 8192. The assert stays exact. |
 | Render and fluids `textureLoad` on depth textures | **Deferred.** Lavapipe's naga GLSL backend rejects `textureLoad` on `texture_depth_2d`. That fails fluids SSFR (#247), `water_pipeline`, god rays, GTAO, and the deferred shadow `sampler2DShadow` call. `test_buffer_lifecycle_no_leaks` grew 106,270,720 bytes of `VmRSS` and stays with #246. Do not raise the ceilings. Owner and the R32Float plan are on #254. |
@@ -89,12 +101,12 @@ Owned here. 95 unique failures, each retried twice. Groups:
 |---|---|
 | `ShadingMode` tests (`all` length 6 vs 5, cycle stops before `CascadeIndex`) | **Fixed after this tally.** `CascadeIndex` is already in `all`, `cycle`, and `to_u32`. The tests now lock that sixth mode. |
 | `modifier_drain_completed_requests` (`completed.len() >= 2`) | **Fixed after this tally.** One tick uses a 1 ms wall-clock budget and deferred the second op on the Ubuntu runner. The test now gives that tick 60 s so both request ids drain. The production default stays 1 ms. |
-| `editor_engine_render_parity` | **Deferred.** https://github.com/lazyxeon/AstraWeave/issues/273. Stable llvmpipe hashes `034f46c7…` vs `3cae37d4…`. Formats match and overlay isolation passes. The label could not be applied from this token. |
+| `editor_engine_render_parity` | **Closed by #340.** https://github.com/lazyxeon/AstraWeave/issues/273. The pre-fix llvmpipe pair was `034f46c7…` vs `3cae37d4…`. The harness now shares one HDRI bake. |
 | Windows dialogue TOML (`D:\a\...` in a basic string) | **Fixed after `94d6adb2`.** Those tests parse the fixture path as TOML. `\` starts an escape, and `\a` is not one. Fixture path strings now use `/`. |
 
 ## Rebase onto `b47fb566` and issue #303
 
-The branch is rebased onto main after #243, #290, and the design docs. #273 stays open: `editor_engine_render_parity` is still the tracked failure.
+The branch is rebased onto main after #243, #290, and the design docs. This paragraph is the pre-#340 note. #273 is closed. `editor_engine_render_parity` shares one HDRI bake.
 
 #219's rustls switch is already on this branch. #303 is the follow-on gate: `unknown-git = "deny"` in `deny.toml`, and `cargo deny check advisories` / `cargo deny check licenses` fail the Cargo Deny job instead of warning. `cargo deny check advisories` fails the job. The deny tool in that job is 0.20.2. After the version bumps, `cargo deny check advisories bans sources licenses` prints ok. Advisories with no patched release, or whose patched release is pinned by egui, winit, rhai, mikktspace, or indicatif, are ignored one ID at a time on https://github.com/lazyxeon/AstraWeave/issues/305 through https://github.com/lazyxeon/AstraWeave/issues/311.
 

@@ -112,7 +112,7 @@ No save blob stores the runner's current node or history. A dialogue save/reload
 
 `docs/current/CI_ARCHITECTURE.md` is the contract. Pull requests require a short set: `PR Rust checks`, `determinism-replay / compare`, the three `hash (*)` jobs, cargo-deny, cargo-audit, pack guard, scorecard. `cancel-in-progress` is on for `pull_request` only. PBR, editor, and full integration tests do not run on pull requests. Docs-only diffs skip the Rust compile. Determinism still runs.
 
-Profile `ci-pr` excludes the tests in `scripts/ci/deferred_pr_tests.txt` (issue #254, owner PR #217). Profile `ci` on `main` and nightly does not. Replay tests match `test(/determinism/) | test(/replay/) | test(/deterministic/)` and get `retries = 0`. The determinism workflow does not call nextest.
+Profile `ci-pr` excludes the tests still listed in `scripts/ci/deferred_pr_tests.txt`. #333 removed the terrain goldens and the AI planning rows. The file still names GPU render passes, lavapipe fluid smokes, and `test_qwen3_variants`. #254 stays open. Profile `ci` on `main` and nightly does not exclude that file. Replay tests match `test(/determinism/) | test(/replay/) | test(/deterministic/)` and get `retries = 0`. The determinism workflow does not call nextest.
 
 Measured on #223 head `7512c86a`: execution-only chain to `PR Rust checks` is 49.3 minutes, almost all of it the Windows archive build (36.3 minutes) plus three short partitions. Replay compare execution is 10.8 minutes, Windows hash 10.7 minutes. Queue on that chain was 2.5 minutes. A new required job, or a greybox LFS run on every pull request, spends the budget #223 just recovered.
 
