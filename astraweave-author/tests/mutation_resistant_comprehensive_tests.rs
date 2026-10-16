@@ -4,7 +4,6 @@
 //! run_author_script (with a real Rhai script file).
 
 use astraweave_author::MapMeta;
-use std::io::Write;
 
 // =========================================================================
 // MapMeta — field access, clone, boundary values
@@ -106,29 +105,42 @@ fn map_meta_min_difficulty() {
 // run_author_script — with a real Rhai file
 // =========================================================================
 
+/// The loader rejects paths outside the working directory. Keep the file there.
+fn script_in_workdir(name: &str, source: &str) -> (tempfile::TempDir, String) {
+    let root = std::env::current_dir().expect("workdir");
+    let dir = tempfile::tempdir_in(&root).expect("script dir under workdir");
+    let file = dir.path().join(name);
+    std::fs::write(&file, source).expect("write script");
+    let rel = file
+        .strip_prefix(&root)
+        .expect("script stays under workdir");
+    let text = rel
+        .components()
+        .map(|component| component.as_os_str().to_string_lossy().into_owned())
+        .collect::<Vec<_>>()
+        .join("/");
+    (dir, text)
+}
+
 #[test]
 fn run_author_script_simple() {
-    let dir = tempfile::tempdir().unwrap();
-    let script_path = dir.path().join("test.rhai");
-    let mut f = std::fs::File::create(&script_path).unwrap();
-    write!(
-        f,
+    let (_dir, script_path) = script_in_workdir(
+        "test.rhai",
         r#"
-fn configure(meta) {{
+fn configure(meta) {
     let traps = meta.difficulty * 2;
     let terrain_edits = meta.width / 10;
     let spawns = meta.enemy_count;
-    let hints = #{{"tip": "use cover"}};
-    #{{
+    let hints = #{"tip": "use cover"};
+    #{
         traps: traps,
         terrain_edits: terrain_edits,
         spawns: spawns,
         hints: hints
-    }}
-}}
-"#
-    )
-    .unwrap();
+    }
+}
+"#,
+    );
 
     let meta = MapMeta {
         width: 100,
@@ -137,7 +149,7 @@ fn configure(meta) {{
         difficulty: 3,
     };
     let (budget, hints) =
-        astraweave_author::run_author_script(script_path.to_str().unwrap(), &meta).unwrap();
+        astraweave_author::run_author_script(&script_path, &meta).expect("script under workdir");
 
     assert_eq!(budget.traps, 6); // difficulty(3) * 2
     assert_eq!(budget.terrain_edits, 10); // width(100) / 10
@@ -147,19 +159,15 @@ fn configure(meta) {{
 
 #[test]
 fn run_author_script_defaults_on_missing_keys() {
-    let dir = tempfile::tempdir().unwrap();
-    let script_path = dir.path().join("minimal.rhai");
-    let mut f = std::fs::File::create(&script_path).unwrap();
-    // Return empty map — defaults: traps=1, terrain_edits=2, spawns=1
-    write!(
-        f,
+    // Empty map — defaults: traps=1, terrain_edits=2, spawns=1
+    let (_dir, script_path) = script_in_workdir(
+        "minimal.rhai",
         r#"
-fn configure(meta) {{
-    #{{}}
-}}
-"#
-    )
-    .unwrap();
+fn configure(meta) {
+    #{}
+}
+"#,
+    );
 
     let meta = MapMeta {
         width: 10,
@@ -168,7 +176,7 @@ fn configure(meta) {{
         difficulty: 1,
     };
     let (budget, hints) =
-        astraweave_author::run_author_script(script_path.to_str().unwrap(), &meta).unwrap();
+        astraweave_author::run_author_script(&script_path, &meta).expect("script under workdir");
 
     assert_eq!(budget.traps, 1); // default
     assert_eq!(budget.terrain_edits, 2); // default
@@ -190,29 +198,24 @@ fn run_author_script_nonexistent_file_errors() {
 
 #[test]
 fn run_author_script_meta_fields_passed_correctly() {
-    let dir = tempfile::tempdir().unwrap();
-    let script_path = dir.path().join("echo.rhai");
-    let mut f = std::fs::File::create(&script_path).unwrap();
-    // Echo back all meta fields as hints so we can verify they arrived
-    write!(
-        f,
+    let (_dir, script_path) = script_in_workdir(
+        "echo.rhai",
         r#"
-fn configure(meta) {{
-    #{{
+fn configure(meta) {
+    #{
         traps: 1,
         terrain_edits: 2,
         spawns: 1,
-        hints: #{{
+        hints: #{
             w: meta.width,
             h: meta.height,
             e: meta.enemy_count,
             d: meta.difficulty
-        }}
-    }}
-}}
-"#
-    )
-    .unwrap();
+        }
+    }
+}
+"#,
+    );
 
     let meta = MapMeta {
         width: 42,
@@ -221,7 +224,7 @@ fn configure(meta) {{
         difficulty: 4,
     };
     let (_, hints) =
-        astraweave_author::run_author_script(script_path.to_str().unwrap(), &meta).unwrap();
+        astraweave_author::run_author_script(&script_path, &meta).expect("script under workdir");
 
     assert_eq!(hints["w"], 42);
     assert_eq!(hints["h"], 99);
