@@ -209,7 +209,7 @@
 <a href=#209 id=209 data-nosnippet>209</a>        label: <span class="kw-2">&amp;</span>str,
 <a href=#210 id=210 data-nosnippet>210</a>        usage: TextureUsage,
 <a href=#211 id=211 data-nosnippet>211</a>    ) -&gt; <span class="prelude-ty">Result</span>&lt;<span class="self">Self</span>&gt; {
-<a href=#212 id=212 data-nosnippet>212</a>        <span class="kw">let </span>img = image::load_from_memory(bytes)<span class="question-mark">?</span>;
+<a href=#212 id=212 data-nosnippet>212</a>        <span class="kw">let </span>img = astraweave_asset::decode_limited_image(bytes)<span class="question-mark">?</span>;
 <a href=#213 id=213 data-nosnippet>213</a>        <span class="kw">let </span>rgba = img.to_rgba8();
 <a href=#214 id=214 data-nosnippet>214</a>        <span class="kw">let </span>(width, height) = img.dimensions();
 <a href=#215 id=215 data-nosnippet>215</a>
@@ -337,7 +337,7 @@
 <a href=#337 id=337 data-nosnippet>337</a>        <span class="comment">// Phase 2: Async image decoding (on thread pool)
 <a href=#338 id=338 data-nosnippet>338</a>        </span><span class="kw">let </span>label = path.to_string();
 <a href=#339 id=339 data-nosnippet>339</a>        <span class="kw">let </span>img = tokio::task::spawn_blocking(<span class="kw">move </span>|| {
-<a href=#340 id=340 data-nosnippet>340</a>            image::load_from_memory(<span class="kw-2">&amp;</span>bytes)
+<a href=#340 id=340 data-nosnippet>340</a>            astraweave_asset::decode_limited_image(<span class="kw-2">&amp;</span>bytes)
 <a href=#341 id=341 data-nosnippet>341</a>                .map_err(|e| <span class="macro">anyhow::anyhow!</span>(<span class="string">"Failed to decode image: {}"</span>, e))
 <a href=#342 id=342 data-nosnippet>342</a>        })
 <a href=#343 id=343 data-nosnippet>343</a>        .<span class="kw">await
@@ -572,7 +572,7 @@
 <a href=#572 id=572 data-nosnippet>572</a>
 <a href=#573 id=573 data-nosnippet>573</a>    <span class="kw">for </span>texture_path <span class="kw">in </span>asset_paths {
 <a href=#574 id=574 data-nosnippet>574</a>        <span class="kw">if </span>std::path::Path::new(texture_path).exists() {
-<a href=#575 id=575 data-nosnippet>575</a>            <span class="kw">match </span>image::open(texture_path) {
+<a href=#575 id=575 data-nosnippet>575</a>            <span class="kw">match </span>astraweave_asset::open_limited_image(texture_path) {
 <a href=#576 id=576 data-nosnippet>576</a>                <span class="prelude-val">Ok</span>(img) =&gt; {
 <a href=#577 id=577 data-nosnippet>577</a>                    <span class="kw">let </span>(w, h) = img.dimensions();
 <a href=#578 id=578 data-nosnippet>578</a>                    <span class="macro">log::info!</span>(<span class="string">"  ✅ {}: {}x{} pixels"</span>, texture_path, w, h);
