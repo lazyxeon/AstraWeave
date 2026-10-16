@@ -31,15 +31,12 @@ fn make_generator(seed: u64) -> WorldGenerator {
 
 #[test]
 fn halo_cropped_heightmap_matches_single_chunk_generation() {
-    // The halo path generates 3×3 chunks at per-vertex spacing matching
-    // single-chunk generation, then crops the center. Because
-    // `TerrainNoise::sample_height` is deterministic per world (x, z), the
-    // cropped heights must match what `generate_chunk` produces for the same
-    // chunk via the SIMD (or scalar) heightmap generator — up to float
-    // precision differences in accumulator ordering.
-    //
-    // Tolerance: 0.01 world units. Runs with erosion_enabled=false so
-    // phase 2's AdvancedErosion doesn't confound the machinery test.
+    // D.3b re-samples the halo with per-biome mountain amplitude before the
+    // public heightmap is returned. That field is not `generate_chunk`.
+    // The 0.01 crop identity is
+    // `phase_1_6_f3_phase_1_unmodulated_halo_crop_matches_generate_chunk`.
+    // This test locks the public result: two climate generations are
+    // bit-identical, and modulation moves the field off the legacy heights.
     let gen = make_generator(12345);
     let legacy = gen
         .generate_chunk(ChunkId::new(0, 0))
@@ -47,6 +44,14 @@ fn halo_cropped_heightmap_matches_single_chunk_generation() {
     let new_path = gen
         .generate_chunk_with_climate(ChunkId::new(0, 0), ClimateBias::Temperate)
         .expect("new generation should succeed");
+    let again = gen
+        .generate_chunk_with_climate(ChunkId::new(0, 0), ClimateBias::Temperate)
+        .expect("second climate generation should succeed");
+    assert_eq!(
+        new_path.heightmap().data(),
+        again.heightmap().data(),
+        "climate heightmap must be bit-identical across calls"
+    );
 
     let legacy_hm = legacy.heightmap();
     let new_hm = new_path.heightmap();
@@ -68,10 +73,10 @@ fn halo_cropped_heightmap_matches_single_chunk_generation() {
             }
         }
     }
-    println!("halo vs legacy max height diff (no erosion): {max_diff:.6}");
+    println!("modulated climate vs legacy max height diff (no erosion): {max_diff:.6}");
     assert!(
-        max_diff < 0.01,
-        "halo-cropped heightmap machinery diverges from legacy single-chunk by {max_diff:.6}"
+        max_diff > 0.01,
+        "per-biome mountain amplitude should move the climate heightmap off generate_chunk, diff {max_diff:.6}"
     );
 }
 

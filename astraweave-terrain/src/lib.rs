@@ -846,10 +846,37 @@ mod tests {
         assert_eq!(generator.config.seed, 12345);
     }
 
-    /// Phase 1.6-F.3-phase-1.B: `halo_seed` must be deterministic for the same
-    /// (world_seed, target_chunk_id, halo_chunks) triple, and must produce
-    /// different seeds for different target chunks (so adjacent halos have
-    /// distinct PRNG streams).
+    /// The halo crop, before D.3b per-biome amplitude, matches `generate_chunk`.
+    ///
+    /// `generate_chunk_with_climate` modulates heights after this crop. That
+    /// public heightmap is not the legacy field; the 0.01 check belongs here.
+    #[test]
+    fn phase_1_6_f3_phase_1_unmodulated_halo_crop_matches_generate_chunk() -> anyhow::Result<()> {
+        let mut config = WorldConfig::default();
+        config.noise.erosion_enabled = false;
+        let gen = WorldGenerator::new(config);
+        let chunk_id = ChunkId::new(0, 0);
+        let legacy = gen.generate_chunk(chunk_id)?;
+        let halo = gen.generate_halo_heightmap(chunk_id, 1)?;
+        let cropped = gen.crop_halo_to_chunk(&halo, chunk_id)?;
+        assert_eq!(legacy.heightmap().resolution(), cropped.resolution());
+        let dim = cropped.resolution();
+        let mut max_diff = 0.0f32;
+        for z in 0..dim {
+            for x in 0..dim {
+                let d = (legacy.heightmap().get_height(x, z) - cropped.get_height(x, z)).abs();
+                max_diff = max_diff.max(d);
+            }
+        }
+        assert!(
+            max_diff < 0.01,
+            "unmodulated halo crop diverges from generate_chunk by {max_diff:.6}"
+        );
+        Ok(())
+    }
+
+    /// `halo_seed` is deterministic for one `(world_seed, chunk, halo)` triple
+    /// and differs across chunks.
     #[test]
     fn phase_1_6_f3_phase_1_halo_seed_deterministic() {
         let s1 = WorldGenerator::halo_seed(12345, ChunkId::new(5, 3), 1);

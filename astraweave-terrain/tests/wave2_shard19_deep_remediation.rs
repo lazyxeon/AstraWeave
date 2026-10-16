@@ -16,12 +16,25 @@ use std::collections::HashSet;
 
 // ───────────────────────── Helpers ──────────────────────────
 
+/// A 1.5 m ramp. Local slope stays inside `height_tolerance` (2 m) so
+/// placement runs; adjacent texels still differ by more than 0.01 m.
 fn make_chunk(cx: i32, cz: i32) -> astraweave_terrain::TerrainChunk {
-    let world_config = astraweave_terrain::WorldConfig::default();
-    let world_gen = astraweave_terrain::WorldGenerator::new(world_config);
-    world_gen
-        .generate_chunk(astraweave_terrain::ChunkId::new(cx, cz))
-        .unwrap()
+    gentle_chunk(cx, cz)
+}
+
+fn gentle_chunk(cx: i32, cz: i32) -> astraweave_terrain::TerrainChunk {
+    use astraweave_terrain::{ChunkId, Heightmap, TerrainChunk};
+    let resolution = 96u32;
+    let mut data = vec![0.0f32; (resolution * resolution) as usize];
+    for z in 0..resolution {
+        for x in 0..resolution {
+            let t = (x as f32 + z as f32) / (resolution - 1) as f32;
+            data[(z * resolution + x) as usize] = 10.0 + t * 1.5;
+        }
+    }
+    let heightmap = Heightmap::from_data(data, resolution).expect("heightmap");
+    let biomes = vec![BiomeType::Grassland; (resolution * resolution) as usize];
+    TerrainChunk::new(ChunkId::new(cx, cz), heightmap, biomes)
 }
 
 /// Gather structures from many seeds to get a large sample.

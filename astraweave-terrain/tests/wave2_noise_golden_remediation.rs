@@ -30,37 +30,39 @@ fn assert_close(actual: f32, expected: f32, label: &str) {
 #[test]
 fn golden_sample_height_origin() {
     let noise = default_noise();
-    assert_close(noise.sample_height(0.0, 0.0), 35.8488, "origin");
+    // E3-terrain defaults: origin is mountains |noise| * 480 plus detail
+    // noise * 3. Billow/Fbm at the origin are -1 and 0, so height is 477.
+    assert_close(noise.sample_height(0.0, 0.0), 477.0, "origin");
 }
 
 #[test]
 fn golden_sample_height_100_200() {
     let noise = default_noise();
-    assert_close(noise.sample_height(100.0, 200.0), 37.5913, "(100,200)");
+    assert_close(noise.sample_height(100.0, 200.0), 348.665558, "(100,200)");
 }
 
 #[test]
 fn golden_sample_height_500_500() {
     let noise = default_noise();
-    assert_close(noise.sample_height(500.0, 500.0), 40.4571, "(500,500)");
+    assert_close(noise.sample_height(500.0, 500.0), 422.993195, "(500,500)");
 }
 
 #[test]
 fn golden_sample_height_1000_0() {
     let noise = default_noise();
-    assert_close(noise.sample_height(1000.0, 0.0), 30.1594, "(1000,0)");
+    assert_close(noise.sample_height(1000.0, 0.0), 433.366577, "(1000,0)");
 }
 
 #[test]
 fn golden_sample_height_0_1000() {
     let noise = default_noise();
-    assert_close(noise.sample_height(0.0, 1000.0), 34.2941, "(0,1000)");
+    assert_close(noise.sample_height(0.0, 1000.0), 456.755310, "(0,1000)");
 }
 
 #[test]
 fn golden_sample_height_250_750() {
     let noise = default_noise();
-    assert_close(noise.sample_height(250.0, 750.0), 60.1683, "(250,750)");
+    assert_close(noise.sample_height(250.0, 750.0), 106.591362, "(250,750)");
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -75,7 +77,7 @@ fn golden_base_only_100_200() {
     let noise = TerrainNoise::new(&cfg, SEED);
     assert_close(
         noise.sample_height(100.0, 200.0),
-        28.8675,
+        30.792015,
         "base_only(100,200)",
     );
 }
@@ -88,7 +90,7 @@ fn golden_base_only_500_500() {
     let noise = TerrainNoise::new(&cfg, SEED);
     assert_close(
         noise.sample_height(500.0, 500.0),
-        14.4338,
+        15.396008,
         "base_only(500,500)",
     );
 }
@@ -101,7 +103,7 @@ fn golden_mountains_only_100_200() {
     let noise = TerrainNoise::new(&cfg, SEED);
     assert_close(
         noise.sample_height(100.0, 200.0),
-        14.6972,
+        320.873535,
         "mtn_only(100,200)",
     );
 }
@@ -114,7 +116,7 @@ fn golden_mountains_only_500_500() {
     let noise = TerrainNoise::new(&cfg, SEED);
     assert_close(
         noise.sample_height(500.0, 500.0),
-        31.9967,
+        410.597198,
         "mtn_only(500,500)",
     );
 }
@@ -339,7 +341,7 @@ fn golden_density_10_5_10() {
     let noise = default_noise();
     assert_close(
         noise.sample_density(10.0, 5.0, 10.0),
-        -0.0546,
+        428.233063,
         "density(10,5,10)",
     );
 }
@@ -349,7 +351,7 @@ fn golden_density_100_50_100() {
     let noise = default_noise();
     assert_close(
         noise.sample_density(100.0, 50.0, 100.0),
-        0.2887,
+        266.725952,
         "density(100,50,100)",
     );
 }
@@ -357,7 +359,7 @@ fn golden_density_100_50_100() {
 #[test]
 fn golden_density_origin() {
     let noise = default_noise();
-    assert_close(noise.sample_density(0.0, 0.0, 0.0), 0.0, "density(0,0,0)");
+    assert_close(noise.sample_density(0.0, 0.0, 0.0), 477.0, "density(0,0,0)");
 }
 
 #[test]
@@ -365,7 +367,7 @@ fn golden_density_500_250_500() {
     let noise = default_noise();
     assert_close(
         noise.sample_density(500.0, 250.0, 500.0),
-        0.2887,
+        172.993195,
         "density(500,250,500)",
     );
 }
@@ -438,7 +440,7 @@ fn config_returns_actual_config_all_fields() {
     // Base elevation
     assert!(c.base_elevation.enabled);
     assert!((c.base_elevation.scale - 0.005).abs() < 1e-9);
-    assert!((c.base_elevation.amplitude - 50.0).abs() < 1e-6);
+    assert!((c.base_elevation.amplitude - 100.0).abs() < 1e-6);
     assert_eq!(c.base_elevation.octaves, 4);
     assert!((c.base_elevation.persistence - 0.5).abs() < 1e-9);
     assert!((c.base_elevation.lacunarity - 2.0).abs() < 1e-9);
@@ -446,7 +448,7 @@ fn config_returns_actual_config_all_fields() {
     // Mountains
     assert!(c.mountains.enabled);
     assert!((c.mountains.scale - 0.002).abs() < 1e-9);
-    assert!((c.mountains.amplitude - 80.0).abs() < 1e-6);
+    assert!((c.mountains.amplitude - 480.0).abs() < 1e-6);
     assert_eq!(c.mountains.octaves, 6);
     assert!((c.mountains.persistence - 0.4).abs() < 1e-9);
     assert!((c.mountains.lacunarity - 2.2).abs() < 1e-9);
@@ -454,7 +456,7 @@ fn config_returns_actual_config_all_fields() {
     // Detail
     assert!(c.detail.enabled);
     assert!((c.detail.scale - 0.02).abs() < 1e-9);
-    assert!((c.detail.amplitude - 5.0).abs() < 1e-6);
+    assert!((c.detail.amplitude - 3.0).abs() < 1e-6);
     assert_eq!(c.detail.octaves, 3);
     assert!((c.detail.persistence - 0.6).abs() < 1e-9);
     assert!((c.detail.lacunarity - 2.0).abs() < 1e-9);
@@ -491,12 +493,12 @@ fn config_returns_custom_config() {
 fn multi_point_fingerprint() {
     let noise = default_noise();
     let expected: &[(f64, f64, f32)] = &[
-        (0.0, 0.0, 35.8488),
-        (100.0, 200.0, 37.5913),
-        (500.0, 500.0, 40.4571),
-        (1000.0, 0.0, 30.1594),
-        (0.0, 1000.0, 34.2941),
-        (250.0, 750.0, 60.1683),
+        (0.0, 0.0, 477.0),
+        (100.0, 200.0, 348.665558),
+        (500.0, 500.0, 422.993195),
+        (1000.0, 0.0, 433.366577),
+        (0.0, 1000.0, 456.755310),
+        (250.0, 750.0, 106.591362),
     ];
     for &(x, z, exp) in expected {
         assert_close(
@@ -511,10 +513,10 @@ fn multi_point_fingerprint() {
 fn density_fingerprint() {
     let noise = default_noise();
     let expected: &[(f64, f64, f64, f32)] = &[
-        (10.0, 5.0, 10.0, -0.0546),
-        (100.0, 50.0, 100.0, 0.2887),
-        (0.0, 0.0, 0.0, 0.0),
-        (500.0, 250.0, 500.0, 0.2887),
+        (10.0, 5.0, 10.0, 428.233063),
+        (100.0, 50.0, 100.0, 266.725952),
+        (0.0, 0.0, 0.0, 477.0),
+        (500.0, 250.0, 500.0, 172.993195),
     ];
     for &(x, y, z, exp) in expected {
         assert_close(

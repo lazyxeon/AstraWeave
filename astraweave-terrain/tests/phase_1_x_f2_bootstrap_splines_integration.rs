@@ -17,9 +17,9 @@
 
 use astraweave_terrain::climate::ClimateSample;
 use astraweave_terrain::spline_types::{
-    bootstrap_splines_continental_temperate, BootstrapParams,
-    D5FIX_BASELINE_BASE_ELEVATION_AMPLITUDE, D5FIX_BASELINE_CONTINENTAL_SCALE,
-    D5FIX_BASELINE_MOUNTAINS_AMPLITUDE, D5FIX_BASELINE_MOUNTAINS_SCALE,
+    bootstrap_splines_continental_temperate, D5FIX_BASELINE_BASE_ELEVATION_AMPLITUDE,
+    D5FIX_BASELINE_CONTINENTAL_SCALE, D5FIX_BASELINE_MOUNTAINS_AMPLITUDE,
+    D5FIX_BASELINE_MOUNTAINS_SCALE,
 };
 use astraweave_terrain::world_archetypes::{self, WorldArchetypeId};
 
@@ -57,28 +57,86 @@ fn world_archetype_continental_temperate_bootstrap_splines_match_factory() {
 }
 
 /// All 6 catalog archetypes have `bootstrap_splines` populated and
-/// produce F.4.B.3.D.5-fix baseline byte-identical at median climate.
-/// F.2's load-bearing regression contract: catalog archetypes ship at
-/// baseline; F.7 differentiates.
+/// produce the climate-driven spline bits locked below at median climate.
+/// Each archetype has its own shape. `Default` is the constant fallback.
 #[test]
 fn world_archetype_six_catalog_archetypes_have_bootstrap_splines_field() {
     let sample = median_climate_sample();
-    let expected = BootstrapParams {
-        mountains_amplitude: D5FIX_BASELINE_MOUNTAINS_AMPLITUDE,
-        mountains_scale: D5FIX_BASELINE_MOUNTAINS_SCALE,
-        continental_scale: D5FIX_BASELINE_CONTINENTAL_SCALE,
-        base_elevation_amplitude: D5FIX_BASELINE_BASE_ELEVATION_AMPLITUDE,
-        base_elevation_floor: astraweave_terrain::spline_types::D5FIX_BASELINE_BASE_ELEVATION_FLOOR,
-    };
+    // Climate-driven splines at the median sample. Bits, not decimals:
+    // interpolated f32 values are not the shortest decimal.
+    let expected: &[(_, u32, u64, u32, u32, u32)] = &[
+        (
+            WorldArchetypeId::ContinentalTemperate,
+            1106247680,
+            4566758108544739836,
+            966609234,
+            1106846866,
+            1096810496,
+        ),
+        (
+            WorldArchetypeId::EquatorialTropical,
+            1108973978,
+            4565021520528425773,
+            966609234,
+            1108344832,
+            1094014294,
+        ),
+        (
+            WorldArchetypeId::BorealSubarctic,
+            1115772245,
+            4568141614350268052,
+            966609234,
+            1105798290,
+            1096810496,
+        ),
+        (
+            WorldArchetypeId::Mediterranean,
+            1108344832,
+            4566758108544739836,
+            966609234,
+            1107296256,
+            1096810496,
+        ),
+        (
+            WorldArchetypeId::Desert,
+            1093245338,
+            4567680445748425313,
+            966609234,
+            1105898155,
+            1106247680,
+        ),
+        (
+            WorldArchetypeId::Custom,
+            1106247680,
+            4566758108544739836,
+            966609234,
+            1106846866,
+            1096810496,
+        ),
+    ];
 
-    for id in WorldArchetypeId::all() {
-        let archetype = id.default_archetype();
-        let params = archetype.bootstrap_splines.evaluate(&sample);
+    for (id, amp, scale, continental, base, floor) in expected {
+        let params = id.default_archetype().bootstrap_splines.evaluate(&sample);
         assert_eq!(
-            params, expected,
-            "{:?}: bootstrap_splines.evaluate must produce baseline at \
-             median climate",
-            id
+            params.mountains_amplitude.to_bits(),
+            *amp,
+            "{id:?} amplitude"
+        );
+        assert_eq!(params.mountains_scale.to_bits(), *scale, "{id:?} scale");
+        assert_eq!(
+            params.continental_scale.to_bits(),
+            *continental,
+            "{id:?} continental"
+        );
+        assert_eq!(
+            params.base_elevation_amplitude.to_bits(),
+            *base,
+            "{id:?} base"
+        );
+        assert_eq!(
+            params.base_elevation_floor.to_bits(),
+            *floor,
+            "{id:?} floor"
         );
     }
 }
@@ -149,7 +207,29 @@ fn world_archetype_default_matches_continental_temperate() {
 #[test]
 fn bootstrap_spline_set_default_is_d5fix_baseline() {
     let default_set = astraweave_terrain::spline_types::BootstrapSplineSet::default();
-    let factory_ct = bootstrap_splines_continental_temperate();
     let sample = median_climate_sample();
-    assert_eq!(default_set.evaluate(&sample), factory_ct.evaluate(&sample));
+    let params = default_set.evaluate(&sample);
+    // `Default` stays the constant D5-fix fallback used by serde. The six
+    // catalog factories are the climate-driven splines, so they are not
+    // this value at median climate.
+    assert_eq!(
+        params.mountains_amplitude.to_bits(),
+        D5FIX_BASELINE_MOUNTAINS_AMPLITUDE.to_bits()
+    );
+    assert_eq!(
+        params.mountains_scale.to_bits(),
+        D5FIX_BASELINE_MOUNTAINS_SCALE.to_bits()
+    );
+    assert_eq!(
+        params.continental_scale.to_bits(),
+        D5FIX_BASELINE_CONTINENTAL_SCALE.to_bits()
+    );
+    assert_eq!(
+        params.base_elevation_amplitude.to_bits(),
+        D5FIX_BASELINE_BASE_ELEVATION_AMPLITUDE.to_bits()
+    );
+    assert_eq!(
+        params.base_elevation_floor.to_bits(),
+        astraweave_terrain::spline_types::D5FIX_BASELINE_BASE_ELEVATION_FLOOR.to_bits()
+    );
 }

@@ -26,7 +26,7 @@ fn noise_config_base_elevation_scale() {
 #[test]
 fn noise_config_base_elevation_amplitude() {
     let c = NoiseConfig::default();
-    assert!((c.base_elevation.amplitude - 50.0).abs() < 1e-6);
+    assert!((c.base_elevation.amplitude - 100.0).abs() < 1e-6);
 }
 
 #[test]
@@ -66,7 +66,7 @@ fn noise_config_mountains_scale() {
 #[test]
 fn noise_config_mountains_amplitude() {
     let c = NoiseConfig::default();
-    assert!((c.mountains.amplitude - 80.0).abs() < 1e-6);
+    assert!((c.mountains.amplitude - 480.0).abs() < 1e-6);
 }
 
 #[test]
@@ -106,7 +106,7 @@ fn noise_config_detail_scale() {
 #[test]
 fn noise_config_detail_amplitude() {
     let c = NoiseConfig::default();
-    assert!((c.detail.amplitude - 5.0).abs() < 1e-6);
+    assert!((c.detail.amplitude - 3.0).abs() < 1e-6);
 }
 
 #[test]
@@ -238,15 +238,15 @@ fn terrain_noise_with_disabled_layers() {
 // ============================================================================
 
 #[test]
-fn noise_config_base_elevation_type_is_perlin() {
+fn noise_config_base_elevation_type_is_fbm() {
     let c = NoiseConfig::default();
-    assert!(matches!(c.base_elevation.noise_type, NoiseType::Perlin));
+    assert!(matches!(c.base_elevation.noise_type, NoiseType::Fbm));
 }
 
 #[test]
-fn noise_config_mountains_type_is_ridged() {
+fn noise_config_mountains_type_is_billow() {
     let c = NoiseConfig::default();
-    assert!(matches!(c.mountains.noise_type, NoiseType::RidgedNoise));
+    assert!(matches!(c.mountains.noise_type, NoiseType::Billow));
 }
 
 #[test]

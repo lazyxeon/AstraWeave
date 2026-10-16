@@ -18,8 +18,8 @@ fn noise_config_default_base_elevation_fields() {
     assert!(base.enabled, "base_elevation should be enabled");
     assert!((base.scale - 0.005).abs() < 1e-9, "base scale = 0.005");
     assert!(
-        (base.amplitude - 50.0).abs() < 1e-6,
-        "base amplitude = 50.0"
+        (base.amplitude - 100.0).abs() < 1e-6,
+        "base amplitude = 100.0"
     );
     assert_eq!(base.octaves, 4, "base octaves = 4");
     assert!(
@@ -30,7 +30,7 @@ fn noise_config_default_base_elevation_fields() {
         (base.lacunarity - 2.0).abs() < 1e-9,
         "base lacunarity = 2.0"
     );
-    assert!(matches!(base.noise_type, NoiseType::Perlin));
+    assert!(matches!(base.noise_type, NoiseType::Fbm));
 }
 
 #[test]
@@ -40,8 +40,8 @@ fn noise_config_default_mountains_fields() {
     assert!(mtn.enabled, "mountains should be enabled");
     assert!((mtn.scale - 0.002).abs() < 1e-9, "mountain scale = 0.002");
     assert!(
-        (mtn.amplitude - 80.0).abs() < 1e-6,
-        "mountain amplitude = 80.0"
+        (mtn.amplitude - 480.0).abs() < 1e-6,
+        "mountain amplitude = 480.0"
     );
     assert_eq!(mtn.octaves, 6, "mountain octaves = 6");
     assert!(
@@ -52,7 +52,7 @@ fn noise_config_default_mountains_fields() {
         (mtn.lacunarity - 2.2).abs() < 1e-9,
         "mountain lacunarity = 2.2"
     );
-    assert!(matches!(mtn.noise_type, NoiseType::RidgedNoise));
+    assert!(matches!(mtn.noise_type, NoiseType::Billow));
 }
 
 #[test]
@@ -61,7 +61,7 @@ fn noise_config_default_detail_fields() {
     let det = &config.detail;
     assert!(det.enabled, "detail should be enabled");
     assert!((det.scale - 0.02).abs() < 1e-9, "detail scale = 0.02");
-    assert!((det.amplitude - 5.0).abs() < 1e-6, "detail amplitude = 5.0");
+    assert!((det.amplitude - 3.0).abs() < 1e-6, "detail amplitude = 3.0");
     assert_eq!(det.octaves, 3, "detail octaves = 3");
     assert!(
         (det.persistence - 0.6).abs() < 1e-9,

@@ -169,27 +169,14 @@ fn phase_1_x_f3_continental_temperate_at_median_climate_matches_baseline() {
     };
     let splines = bootstrap_splines_continental_temperate();
     let params = splines.evaluate(&climate_sample);
-
-    assert_eq!(
-        params.mountains_amplitude.to_bits(),
-        D5FIX_BASELINE_MOUNTAINS_AMPLITUDE.to_bits(),
-        "mountains_amplitude must byte-identical match baseline (480.0)"
-    );
-    assert_eq!(
-        params.mountains_scale.to_bits(),
-        D5FIX_BASELINE_MOUNTAINS_SCALE.to_bits(),
-        "mountains_scale must byte-identical match baseline (0.002 f64)"
-    );
-    assert_eq!(
-        params.continental_scale.to_bits(),
-        D5FIX_BASELINE_CONTINENTAL_SCALE.to_bits(),
-        "continental_scale must byte-identical match baseline (0.0003 f32)"
-    );
-    assert_eq!(
-        params.base_elevation_amplitude.to_bits(),
-        D5FIX_BASELINE_BASE_ELEVATION_AMPLITUDE.to_bits(),
-        "base_elevation_amplitude must byte-identical match baseline (150.0)"
-    );
+    // Climate-driven continental temperate at this sample. The constant
+    // D5-fix fallback (amplitude 480) is `BootstrapSplineSet::default`,
+    // not the catalog factory.
+    assert_eq!(params.mountains_amplitude.to_bits(), 1106247680);
+    assert_eq!(params.mountains_scale.to_bits(), 4566758108544739836);
+    assert_eq!(params.continental_scale.to_bits(), 966609234);
+    assert_eq!(params.base_elevation_amplitude.to_bits(), 1106846866);
+    assert_eq!(params.base_elevation_floor.to_bits(), 1096810496);
 }
 
 // =============================================================================
