@@ -136,9 +136,8 @@ fn main() -> anyhow::Result<()> {
         if timestamps {
             renderer.request_gpu_profiler_readback();
         }
-        device
-            .poll(wgpu::PollType::Wait)
-            .map_err(|err| anyhow::anyhow!("device.poll(Wait) failed: {err}"))?;
+        astraweave_render::gpu_profiler::wait_for_gpu(&device, "frame gpu")
+            .map_err(anyhow::Error::msg)?;
         if timestamps {
             if let Some(profiler) = renderer.gpu_profiler_mut() {
                 profiler
@@ -150,7 +149,10 @@ fn main() -> anyhow::Result<()> {
         Ok((encode_ms, cpu_frame_ms))
     };
 
-    for _ in 0..WARMUP {
+    for i in 0..WARMUP {
+        if debug_timestamps {
+            println!("warmup {}/{WARMUP}", i + 1);
+        }
         frame(&mut renderer)?;
     }
     let mut encode = Vec::with_capacity(SAMPLES);
@@ -160,6 +162,9 @@ fn main() -> anyhow::Result<()> {
     let mut empty_passes = String::new();
     let mut gpu_error = None;
     for sample_index in 0..SAMPLES {
+        if debug_timestamps {
+            println!("sample {}/{SAMPLES}", sample_index + 1);
+        }
         let (encode_ms, frame_ms) = frame(&mut renderer)?;
         encode.push(encode_ms);
         cpu_frame.push(frame_ms);

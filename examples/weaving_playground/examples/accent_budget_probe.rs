@@ -369,10 +369,8 @@ fn main() {
                 if let Some(ref p) = profiler {
                     p.end_frame(&mut enc);
                 }
-                // Resolve only after the writes' submission has finished.
-                // NVIDIA returns zeros when resolve shares that submission.
-                queue.submit(Some(enc.finish()));
-                let _ = device.poll(wgpu::PollType::Wait);
+                // Resolve in the same submit as the writes. Waiting first, then
+                // resolving, deadlocks NVIDIA's query wait.
                 let mut resolve = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
                     label: Some("accent timestamp resolve"),
                 });
@@ -382,8 +380,9 @@ fn main() {
                 if let Some(p) = profiler.as_ref() {
                     p.resolve_queries(&mut resolve);
                 }
-                queue.submit(Some(resolve.finish()));
-                let _ = device.poll(wgpu::PollType::Wait);
+                queue.submit([enc.finish(), resolve.finish()]);
+                astraweave_render::gpu_profiler::wait_for_gpu(&device, "accent write+resolve")
+                    .expect("accent write+resolve");
                 let mut staging = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
                     label: Some("accent timestamp copy"),
                 });
@@ -400,8 +399,9 @@ fn main() {
                 }
                 if staged {
                     queue.submit(Some(staging.finish()));
+                    astraweave_render::gpu_profiler::wait_for_gpu(&device, "accent timestamp copy")
+                        .expect("accent copy");
                 }
-                let _ = device.poll(wgpu::PollType::Wait);
 
                 if has_inside {
                     let slice = acc_read.slice(..);

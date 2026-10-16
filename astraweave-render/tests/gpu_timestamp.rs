@@ -145,15 +145,28 @@ fn draw_into_heavy_path_timestamps_and_models() {
             );
             let profiler = renderer.gpu_profiler().expect("profiler");
             assert!(!profiler.results().is_empty(), "{report}");
+            // `submit_timestamped` is the budget tool's submit/poll path,
+            // including the 5s wait. Empty is a real zero-length pass.
+            let mut measured = false;
             for timing in profiler.results() {
-                assert_eq!(
-                    timing.kind,
-                    astraweave_render::gpu_profiler::TimestampKind::Measured,
+                assert!(
+                    matches!(
+                        timing.kind,
+                        astraweave_render::gpu_profiler::TimestampKind::Measured
+                            | astraweave_render::gpu_profiler::TimestampKind::Empty
+                    ),
                     "frame {frame_index} pass {} is {:?}\n{report}",
                     timing.name,
                     timing.kind
                 );
+                if timing.kind == astraweave_render::gpu_profiler::TimestampKind::Measured {
+                    measured = true;
+                }
             }
+            assert!(
+                measured,
+                "frame {frame_index} wrote no positive span\n{report}"
+            );
         }
         let err = device.pop_error_scope().await;
         if let Some(err) = err {

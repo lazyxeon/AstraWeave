@@ -3911,13 +3911,12 @@ fn vs(input: VSIn) -> VSOut {
         }
     }
 
-    /// Submit `draw_into`'s encoder, then resolve timestamps after the GPU
-    /// finishes those writes.
+    /// Submit `draw_into`'s encoder together with the timestamp resolve.
     ///
-    /// `draw_into` opens a Vulkan command buffer per pass. Resolving in that
-    /// same submission returns zeros on NVIDIA, including the `frame`
-    /// bracket. A one-pass self-test does not. The staging copy is a later
-    /// submission so it cannot race the resolve.
+    /// Waiting for the writes and then resolving in a later submission
+    /// deadlocks on NVIDIA: the resolve waits for queries that have not
+    /// landed, and `device.poll(Wait)` does not return. The resolve is the
+    /// second command buffer of this submit. The copy follows a 5s poll.
     pub fn submit_timestamped(&self, frame: wgpu::CommandBuffer) -> Result<()> {
         crate::gpu_profiler::GpuProfiler::submit_frame(
             self.gpu_profiler.as_ref(),
@@ -3925,7 +3924,7 @@ fn vs(input: VSIn) -> VSOut {
             &self.device,
             frame,
         )
-        .map_err(|err| anyhow::anyhow!("device.poll(Wait) failed: {err}"))
+        .map_err(|err| anyhow::anyhow!(err))
     }
 
     pub fn gpu_profiler(&self) -> Option<&crate::gpu_profiler::GpuProfiler> {
@@ -8488,9 +8487,8 @@ fn vs(input: VSIn) -> VSOut {
         if let Some(profiler) = self.gpu_profiler.as_mut() {
             profiler.request_readback();
         }
-        self.device
-            .poll(wgpu::PollType::Wait)
-            .map_err(|err| anyhow::anyhow!("device poll: {err}"))?;
+        crate::gpu_profiler::wait_for_gpu(&self.device, "headless validation")
+            .map_err(|err| anyhow::anyhow!(err))?;
         if let Some(err) = crate::gpu_fault::finish_scope(&self.device) {
             self.note_scope_device_loss();
             anyhow::bail!("wgpu validation: {err}");

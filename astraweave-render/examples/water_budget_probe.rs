@@ -764,11 +764,8 @@ fn probe_refraction(device: &wgpu::Device, queue: &wgpu::Queue, has_timestamps: 
             if let Some(ref p) = profiler {
                 p.end_frame(&mut enc);
             }
-            // Writes finish before resolve. NVIDIA returns zeros when the
-            // resolve shares that submission, and the staging copy cannot
-            // share the resolve submission either.
-            queue.submit(Some(enc.finish()));
-            let _ = device.poll(wgpu::PollType::Wait);
+            // Resolve in the same submit as the writes. A later resolve
+            // deadlocks NVIDIA's query wait. The copy stays a later submit.
             let mut resolve = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("probe timestamp resolve"),
             });
@@ -778,8 +775,9 @@ fn probe_refraction(device: &wgpu::Device, queue: &wgpu::Queue, has_timestamps: 
             if let Some(p) = profiler.as_ref() {
                 p.resolve_queries(&mut resolve);
             }
-            queue.submit(Some(resolve.finish()));
-            let _ = device.poll(wgpu::PollType::Wait);
+            queue.submit([enc.finish(), resolve.finish()]);
+            astraweave_render::gpu_profiler::wait_for_gpu(device, "probe write+resolve")
+                .expect("probe write+resolve");
             let mut staging = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("probe timestamp copy"),
             });
@@ -796,8 +794,9 @@ fn probe_refraction(device: &wgpu::Device, queue: &wgpu::Queue, has_timestamps: 
             }
             if staged {
                 queue.submit(Some(staging.finish()));
+                astraweave_render::gpu_profiler::wait_for_gpu(device, "probe timestamp copy")
+                    .expect("probe copy");
             }
-            let _ = device.poll(wgpu::PollType::Wait);
             // read copy timestamps
             if copy_ts {
                 let slice = copy_read.slice(..);

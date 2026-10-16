@@ -15,6 +15,29 @@ use std::sync::{
 /// Maximum number of timestamp pairs (begin + end per pass).
 const MAX_PASSES: u32 = 16;
 const MAX_QUERIES: u32 = MAX_PASSES * 2;
+/// `device.poll(Wait)` blocks inside the driver for up to 60s and can fail
+/// to return when a query resolve waits on work that is still queued.
+const GPU_WAIT: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// Poll until the queue is idle, or fail after 5s. The `point` names the wait
+/// in the error. This does not call `PollType::Wait`.
+pub fn wait_for_gpu(device: &wgpu::Device, point: &str) -> Result<(), String> {
+    let deadline = std::time::Instant::now() + GPU_WAIT;
+    loop {
+        match device.poll(wgpu::PollType::Poll) {
+            Ok(wgpu::PollStatus::QueueEmpty | wgpu::PollStatus::WaitSucceeded) => return Ok(()),
+            Ok(wgpu::PollStatus::Poll) => {
+                if std::time::Instant::now() >= deadline {
+                    return Err(format!(
+                        "GPU wait timed out after 5s at {point}. The submission did not finish."
+                    ));
+                }
+                std::thread::sleep(std::time::Duration::from_millis(1));
+            }
+            Err(err) => return Err(format!("device.poll failed at {point}: {err}")),
+        }
+    }
+}
 
 /// How a begin/end pair was read.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -293,11 +316,8 @@ impl GpuProfiler {
         self.next_query > 0 && !self.readback_pending
     }
 
-    /// The write encoder must not resolve. `draw_into` splits one wgpu
-    /// encoder into many Vulkan command buffers (one per pass). Resolving in
-    /// that same submit reads zeros on NVIDIA, including the frame bracket,
-    /// even though a one-pass self-test succeeds. [`Self::submit_frame`]
-    /// waits until those writes finish, then resolves.
+    /// Mark the frame closed. The resolve is not recorded here.
+    /// [`Self::submit_frame`] appends it to the same submission as the writes.
     pub fn end_frame(&self, _encoder: &mut wgpu::CommandEncoder) {
         if self.readback_pending && self.next_query > 0 {
             log::debug!(
@@ -330,39 +350,41 @@ impl GpuProfiler {
         encoder.copy_buffer_to_buffer(&self.resolve_buf, 0, &self.readback_buf, 0, byte_count);
     }
 
-    /// Submit the timestamp writes, wait until the GPU finishes them, then
-    /// resolve and copy in later submissions.
+    /// Submit the writes and the resolve together, then copy after that
+    /// submission is idle.
     ///
-    /// A resolve inside the write submission returns zeros on NVIDIA once
-    /// `draw_into` has split the encoder into a command buffer per pass.
-    /// `timestamp_period_ns=1` does not change that. The staging copy is
-    /// still its own submission so it cannot race the resolve (wgpu#6406).
+    /// `device.poll(Wait)` after the writes and before the resolve deadlocks
+    /// on NVIDIA. The resolve's `VK_QUERY_RESULT_WAIT_BIT` runs while the
+    /// writes are still queued, and the fence wait never returns. The resolve
+    /// stays in the same `queue.submit` as the writes, ordered after them.
+    /// The copy is a later submission (wgpu#6406). Every wait is a non-blocking
+    /// poll with a 5s limit.
     pub fn submit_frame(
         profiler: Option<&Self>,
         queue: &wgpu::Queue,
         device: &wgpu::Device,
         frame: wgpu::CommandBuffer,
-    ) -> Result<(), wgpu::PollError> {
-        queue.submit(std::iter::once(frame));
+    ) -> Result<(), String> {
         let Some(profiler) = profiler else {
-            return Ok(());
+            queue.submit(std::iter::once(frame));
+            return wait_for_gpu(device, "frame submit");
         };
         if !profiler.staging_copy_pending() {
-            return Ok(());
+            queue.submit(std::iter::once(frame));
+            return wait_for_gpu(device, "frame submit");
         }
-        device.poll(wgpu::PollType::Wait)?;
         let mut resolve = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("gpu profiler timestamp resolve"),
         });
         profiler.resolve_queries(&mut resolve);
-        queue.submit(std::iter::once(resolve.finish()));
-        device.poll(wgpu::PollType::Wait)?;
+        queue.submit([frame, resolve.finish()]);
+        wait_for_gpu(device, "timestamp write+resolve")?;
         let mut copy = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("gpu profiler timestamp copy"),
         });
         profiler.copy_resolved(&mut copy);
         queue.submit(std::iter::once(copy.finish()));
-        Ok(())
+        wait_for_gpu(device, "timestamp staging copy")
     }
 
     /// Initiate an async readback of the timestamp buffer.
@@ -385,18 +407,37 @@ impl GpuProfiler {
     }
 
     /// Wait until the mapped timestamp buffer is ready, then decode it.
-    pub fn block_on_readback(&mut self, device: &wgpu::Device) -> Result<(), &'static str> {
-        if device.poll(wgpu::PollType::Wait).is_err() {
-            self.last_error = Some("device.poll(Wait) failed");
-            log::error!("gpu profiler device.poll(Wait) failed before timestamp readback");
-            return Err("device.poll(Wait) failed");
+    ///
+    /// Uses [`wait_for_gpu`]'s 5s poll, not `PollType::Wait`. The map callback
+    /// only stores an atomic, so this thread can poll it.
+    pub fn block_on_readback(&mut self, device: &wgpu::Device) -> Result<(), String> {
+        if !self.readback_pending {
+            return Err("timestamp readback was not requested".to_string());
         }
-        if !self.poll_readback(device) {
-            return Err(self
-                .last_error
-                .unwrap_or("timestamp readback did not complete"));
+        let deadline = std::time::Instant::now() + GPU_WAIT;
+        loop {
+            if let Err(err) = device.poll(wgpu::PollType::Poll) {
+                return Err(format!(
+                    "device.poll failed at timestamp map readback: {err}"
+                ));
+            }
+            if self.poll_readback(device) {
+                return Ok(());
+            }
+            if !self.readback_pending {
+                return Err(self
+                    .last_error
+                    .unwrap_or("timestamp readback did not complete")
+                    .to_string());
+            }
+            if std::time::Instant::now() >= deadline {
+                return Err(
+                    "GPU wait timed out after 5s at timestamp map readback. The submission did not finish."
+                        .to_string(),
+                );
+            }
+            std::thread::sleep(std::time::Duration::from_millis(1));
         }
-        Ok(())
     }
 
     /// Poll for completed readback and update `latest_results`.
@@ -453,12 +494,13 @@ impl GpuProfiler {
         &self.latest_results
     }
 
-    /// Write two encoder timestamps around a 1×1 clear, resolve, copy in a
-    /// second command buffer, submit both, wait, and read.
+    /// Write two encoder timestamps around a 1×1 clear, then use
+    /// [`Self::submit_frame`] (same submit for the writes and the resolve,
+    /// timed wait, then the copy).
     ///
-    /// `Ok` is the stamp report. Both ticks of a pair must be written: a
-    /// `0, 0` pair is the Vulkan same-encoder readback failure, not an empty
-    /// pass. Equal non-zero ticks are accepted.
+    /// `Ok` is the stamp report. A `0, 0` pair is a failure. Equal non-zero
+    /// ticks are [`TimestampKind::Empty`]: a trivial pass can be shorter than
+    /// one timestamp tick, and that is not a failure.
     pub fn prove_readback(device: &wgpu::Device, queue: &wgpu::Queue) -> Result<String, String> {
         let features = device.features();
         if !features.contains(wgpu::Features::TIMESTAMP_QUERY) {
@@ -529,17 +571,9 @@ impl GpuProfiler {
         profiler.end_frame(&mut writes);
 
         let frame = writes.finish();
-        Self::submit_frame(Some(&profiler), queue, device, frame).map_err(|err| {
-            format!(
-                "timestamp self-test: device.poll(Wait) failed: {err}\ntimestamp_period_ns={period}"
-            )
-        })?;
+        Self::submit_frame(Some(&profiler), queue, device, frame)
+            .map_err(|err| format!("timestamp self-test: {err}\ntimestamp_period_ns={period}"))?;
         profiler.request_readback();
-        if let Err(err) = device.poll(wgpu::PollType::Wait) {
-            return Err(format!(
-                "timestamp self-test: device.poll(Wait) failed: {err}\ntimestamp_period_ns={period}"
-            ));
-        }
         if let Err(err) = profiler.block_on_readback(device) {
             return Err(format!(
                 "timestamp self-test: {err}\n{}",
