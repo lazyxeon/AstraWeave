@@ -17,9 +17,9 @@
 
 use astraweave_terrain::climate::ClimateSample;
 use astraweave_terrain::spline_types::{
-    bootstrap_splines_continental_temperate,
-    D5FIX_BASELINE_BASE_ELEVATION_AMPLITUDE, D5FIX_BASELINE_CONTINENTAL_SCALE,
-    D5FIX_BASELINE_MOUNTAINS_AMPLITUDE, D5FIX_BASELINE_MOUNTAINS_SCALE,
+    bootstrap_splines_continental_temperate, D5FIX_BASELINE_BASE_ELEVATION_AMPLITUDE,
+    D5FIX_BASELINE_CONTINENTAL_SCALE, D5FIX_BASELINE_MOUNTAINS_AMPLITUDE,
+    D5FIX_BASELINE_MOUNTAINS_SCALE,
 };
 use astraweave_terrain::world_archetypes::{self, WorldArchetypeId};
 
