@@ -69,31 +69,32 @@ async fn test_async_task_concurrent_spawns() {
     }
 }
 
-/// Test that is_finished() returns correct status throughout lifecycle
+/// Test that is_finished() returns correct status throughout lifecycle.
+///
+/// The task waits on a oneshot instead of a wall-clock sleep. On a loaded
+/// Windows runner a 50 ms sleep can finish before the test's 20 ms sleep
+/// returns, or still be running after the following 40 ms sleep.
 #[tokio::test]
 async fn test_async_task_is_finished_lifecycle() {
-    let handle = tokio::spawn(async {
-        sleep(Duration::from_millis(50)).await;
-        42
-    });
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    let handle = tokio::spawn(async move { rx.await.expect("lifecycle signal") });
 
     let mut task = AsyncTask::new(handle);
 
-    // Should not be finished immediately
     assert!(!task.is_finished());
 
-    // Wait a bit (still running)
-    sleep(Duration::from_millis(20)).await;
-    assert!(!task.is_finished());
-
-    // Wait for completion
-    sleep(Duration::from_millis(40)).await;
+    tx.send(42).expect("send lifecycle signal");
+    for _ in 0..64 {
+        if task.is_finished() {
+            break;
+        }
+        tokio::task::yield_now().await;
+    }
     assert!(task.is_finished());
 
-    // Should still report finished after try_recv
     let result = task.try_recv();
-    assert!(result.is_some());
-    assert!(task.is_finished()); // Still finished even after consuming
+    assert_eq!(result.expect("task result").expect("task value"), 42);
+    assert!(task.is_finished());
 }
 
 /// Test timeout with zero duration (immediate timeout)
