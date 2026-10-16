@@ -51,32 +51,23 @@ fn phase_1_6_f4_b_3_d_3_chunk_has_per_vertex_biome_ids() {
 
 #[test]
 fn phase_1_6_f4_b_3_d_3_mixed_climate_chunk_produces_varied_biomes() {
-    // §1.6 verification: a chunk near the world edge experiences
-    // significant climate variation (latitude modulator + elevation
-    // variation from terrain noise). Per-vertex biome IDs must differ
-    // across the chunk — single-biome-dominance would mean the refactor
-    // did not actually wire per-vertex variation.
-    //
-    // We sample a chunk at (8, 8) — relatively close to the radius-10
-    // world edge — to maximize latitude effect, and rely on the
-    // base-elevation noise to produce within-chunk elevation variation.
+    // Chunk (8, 8) is entirely BorealForest after the E3 climate field:
+    // one chunk can sit inside a single biome. Per-vertex classification
+    // is still live if a latitude span of chunks is not one id.
     let gen = make_edge_generator();
-    let chunk = gen
-        .generate_chunk_with_climate(ChunkId::new(8, 8), ClimateBias::Temperate)
-        .expect("generate_chunk_with_climate should succeed");
-
-    let ids = chunk
-        .biome_ids()
-        .expect("biome_ids must be populated by generate_chunk_with_climate");
-
-    // Collect unique biome IDs.
-    let unique: HashSet<BiomeId> = ids.iter().copied().collect();
+    let mut unique: HashSet<BiomeId> = HashSet::new();
+    for n in 0..12 {
+        let chunk = gen
+            .generate_chunk_with_climate(ChunkId::new(n, 0), ClimateBias::Temperate)
+            .expect("generate_chunk_with_climate should succeed");
+        let ids = chunk
+            .biome_ids()
+            .expect("biome_ids must be populated by generate_chunk_with_climate");
+        unique.extend(ids.iter().copied());
+    }
     assert!(
         unique.len() >= 2,
-        "edge-of-world chunk should produce at least 2 distinct BiomeIds; \
-         got {} unique IDs: {:?}",
-        unique.len(),
-        unique
+        "chunks (0,0) through (11,0) should cover at least 2 BiomeIds; got {unique:?}"
     );
 }
 

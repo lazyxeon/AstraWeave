@@ -252,7 +252,7 @@ mod noise_mutations {
     fn noise_config_base_elevation_defaults() {
         let c = NoiseConfig::default();
         assert!((c.base_elevation.scale - 0.005).abs() < 1e-6);
-        assert!((c.base_elevation.amplitude - 50.0).abs() < 1e-3);
+        assert!((c.base_elevation.amplitude - 100.0).abs() < 1e-3);
         assert_eq!(c.base_elevation.octaves, 4);
         assert!((c.base_elevation.persistence - 0.5).abs() < 1e-6);
         assert!((c.base_elevation.lacunarity - 2.0).abs() < 1e-6);
@@ -263,7 +263,7 @@ mod noise_mutations {
     fn noise_config_mountains_defaults() {
         let c = NoiseConfig::default();
         assert!((c.mountains.scale - 0.002).abs() < 1e-6);
-        assert!((c.mountains.amplitude - 80.0).abs() < 1e-3);
+        assert!((c.mountains.amplitude - 480.0).abs() < 1e-3);
         assert_eq!(c.mountains.octaves, 6);
         assert!((c.mountains.persistence - 0.4).abs() < 1e-6);
         assert!((c.mountains.lacunarity - 2.2).abs() < 1e-6);
@@ -274,7 +274,7 @@ mod noise_mutations {
     fn noise_config_detail_defaults() {
         let c = NoiseConfig::default();
         assert!((c.detail.scale - 0.02).abs() < 1e-6);
-        assert!((c.detail.amplitude - 5.0).abs() < 1e-3);
+        assert!((c.detail.amplitude - 3.0).abs() < 1e-3);
         assert_eq!(c.detail.octaves, 3);
         assert!((c.detail.persistence - 0.6).abs() < 1e-6);
         assert!((c.detail.lacunarity - 2.0).abs() < 1e-6);
@@ -326,11 +326,14 @@ mod noise_mutations {
             "Height range must be substantial (got {}), noise is working",
             range
         );
-        // With base amp=50, mountains amp=80, detail amp=5 the max height should be < 300
+        // Each layer's noise is in about [-1, 1] and mountains use abs, so the
+        // sampled height stays under the sum of the E3 default amplitudes
+        // (base 100 + mountains 480 + detail 3).
+        let amp_ceiling =
+            config.base_elevation.amplitude + config.mountains.amplitude + config.detail.amplitude;
         assert!(
-            max_h < 300.0,
-            "Max height should be bounded by amplitudes, got {}",
-            max_h
+            max_h < amp_ceiling,
+            "Max height should be bounded by amplitudes ({amp_ceiling}), got {max_h}"
         );
     }
 
@@ -355,7 +358,7 @@ mod noise_mutations {
                 full_higher_count += 1;
             }
         }
-        // Mountains (.abs() * 80.0) should almost always add to height
+        // Mountains (.abs() * mountains.amplitude) should almost always add to height
         assert!(
             full_higher_count > total / 2,
             "Mountains should add height in most cases ({}/{})",

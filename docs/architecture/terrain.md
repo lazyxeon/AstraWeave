@@ -9,7 +9,7 @@ lifecycle_status: active
 integration_status: mixed
 summary: "Voxel meshing/biome/noise/scatter/streaming (complements terrain_materials.md). terrain.md"
 owns: [astraweave-terrain]
-doc_version: "1.13"
+doc_version: "1.14"
 last_verified_commit: d0452d3e
 ---
 
@@ -21,9 +21,9 @@ last_verified_commit: d0452d3e
 |---|---|
 | **System name** | Terrain System (procedural generation, voxel meshing, biome/noise pipeline, scatter, chunk streaming) |
 | **Primary crates** | `astraweave-terrain` (with reverse dep into `astraweave-gameplay`); consumers in `tools/aw_editor`, `examples/hybrid_voxel_demo`, `astraweave-render` |
-| **Document version** | 1.13 |
-| **Last verified against commit** | `d0452d3e` (v1.13: fifteen required replay cases). Prior ED-3 working tree over `aca627436` (v1.7: amplitude Open Question closed); prior `d4c4479d4` (v1.6), prior `03f9d9a2d` (v1.5: T.2d third pass, two new §11 Open Questions), prior `611c8edc7` (v1.3/v1.4: T.2a boreal band + `expect()` retirement), `8232b150b`. Note: v1.4 bumped the front-matter `doc_version` and the revision table only, leaving this row at 1.3 — corrected here. |
-| **Last verified date** | 2026-10-16 (v1.13); 2026-07-26 (v1.7) |
+| **Document version** | 1.14 |
+| **Last verified against commit** | `d0452d3e` (v1.13: fifteen required replay cases). v1.14 locks the noise golden tests to the E3 amplitudes (base 100, mountains 480, detail 3, base Fbm, mountains Billow) and moves the halo 0.01 identity to the pre-modulation crop. Prior ED-3 working tree over `aca627436` (v1.7: amplitude Open Question closed); prior `d4c4479d4` (v1.6), prior `03f9d9a2d` (v1.5: T.2d third pass, two new §11 Open Questions), prior `611c8edc7` (v1.3/v1.4: T.2a boreal band + `expect()` retirement), `8232b150b`. Note: v1.4 bumped the front-matter `doc_version` and the revision table only, leaving this row at 1.3 — corrected here. |
+| **Last verified date** | 2026-10-16 (v1.14); 2026-07-26 (v1.7) |
 | **Status** | Active. Editor preview is the climate heightmap. Saved ground is the integer seed record. Deformation is a `DestructionCommand` log replayed into `ColumnStream`. The async heightmap loader, clipmap, GPU erosion trait, voxel modifier, and Phase 10 persistence format are removed. `DualContouring` stores one vertex per crossed edge. `aravath_runtime` collides with that mesh. |
 | **Owner notes** | Complements [`terrain_materials.md`](terrain_materials.md), which covers ONLY the material/splat-weight slice. This trace covers the REST: noise → heightmap → biome → erosion → chunk generation, voxel meshing, scatter/vegetation, and chunk streaming. Where the two overlap (biome semantics, `astraweave-render` terrain paths) this doc cross-references rather than duplicates. |
 
@@ -365,7 +365,7 @@ Wiredness verified by workspace grep for non-test/non-example production callers
 | # | Invariant | Checkable? | Enforced by |
 |---|---|---|---|
 | 1 | `TerrainNoise::sample_height(x,z)` is a pure deterministic function of `(seed, world_x, world_z)` — same inputs → byte-identical output across runs/platforms | Yes | Doc-only + relied on for halo center-crop byte-identity (lib.rs:705-710); `halo_seed` determinism has explicit tests (lib.rs:895-917) |
-| 2 | The halo center-crop is byte-identical to single-chunk `generate_chunk` output at the same world coords | Yes | Tests `phase_1_6_f3_phase_*`; f32-step discipline (lib.rs:496-504) is the mechanism |
+| 2 | The unmodulated halo center-crop is byte-identical (within 0.01) to single-chunk `generate_chunk` at the same world coords. The public climate heightmap is that crop after per-biome mountain amplitude, so it is not the legacy field | Yes | `phase_1_6_f3_phase_1_unmodulated_halo_crop_matches_generate_chunk`; f32-step discipline is the mechanism |
 | 3 | Biome weights/IDs are computed from PRE-erosion heights (authorial intent over post-erosion shape) | Yes | Structural (lib.rs:364-392); test `phase_1_6_f3_phase_1_biome_weights_pre_erosion.rs` |
 | 4 | `mask = None` evaluates exactly ONE archetype's splines — the selected `config.climate.archetype` (default CT). **Superseded form (pre-E3):** byte-identity to the F.3/D5FIX baseline no longer holds — the E3 spline sets deliberately diverged, and the D5FIX baseline-assertion tests fail by design pending T.G | Yes | Structural branch (lib.rs:618-619); `none_path_splines` from the selected archetype (lib.rs:577) |
 | 4b | Biome classification elevation and render height derive from the SAME spline regime: classification runs on the params-based provisional height (`sample_height_with_params(params, x, z, 1.0)`), never the legacy `sample_height` halo value (the E3 seam fix — violating this re-opens snow-on-plains) | Yes | Structural (lib.rs:587-651, provisional height at :649-651) |
@@ -407,7 +407,7 @@ Wiredness verified by workspace grep for non-test/non-example production callers
 - **Mutation testing:** Wave 2/3 remediation present (multiple `wave2_*`/`wave3_*` test files). `texture_splatting.rs` mutation coverage is documented in `terrain_materials.md` §10.
 - **Manual validation:** the F-series campaign used editor-visual diagnostics (continental field highland presence, highland-Y-max regression, bed-of-nails surface) recorded inline in `noise_gen.rs` and in `docs/current/REGIONAL_ARCHETYPE_VARIATION_CAMPAIGN.md` (referenced in noise_gen.rs:552).
 - **Determinism note:** seed-determinism is strong inside the crate, but the editor's `ZoneScatterGenerator` call seeds from `SystemTime` (main.rs:7459), so that one production path is non-deterministic by construction.
-- **Known-failing surface (BY DESIGN, post-E3):** `cargo test -p astraweave-terrain --no-fail-fast` measured 2026-07-20: **2,439 passed / 63 failed across 56 targets (11 targets failing)** — every failure is a pre-E3 baseline/golden assertion (D5FIX spline baselines, old noise-config defaults asserting Perlin/RidgedMulti/old amplitudes, `golden_sample_height_*`/density fingerprints, the halo byte-identity contract test). Zero real defects; adjudication in `E3_PREFLIGHT_2026-07.md` §2.4. The re-bake is beat T.G (after the amplitude-finality gate). Do NOT "fix" these tests piecemeal — they re-bake together against ratified-final terrain.
+- **E3 golden re-lock (2026-10-16):** noise-config defaults and `golden_sample_height_*` / density fingerprints assert the current `NoiseConfig::default` (base amplitude 100 Fbm, mountains 480 Billow, detail 3). The halo 0.01 check compares the crop taken before per-biome modulation with `generate_chunk`. The July 2026 measurement (2,439 passed / 63 failed) was the pre-lock surface; see `E3_PREFLIGHT_2026-07.md` §2.4.
   - **Updated 2026-07-24 (T.2a):** re-measured `--release` at T.2a HEAD: **2,440 passed / 64 failed / 15 ignored**. The +1 failure is `phase_1_6_f4_b_3_d_3_mixed_climate_chunk_produces_varied_biomes`, caused by T.2a Phase 3 (`TUNDRA_MAX_TEMP_C` 0.0 → −5.0; proven by flipping the constant — 6/0 at `0.0`, 5/1 at `−5.0`). **It is NOT re-bake class**: it is a structural liveness assertion that per-vertex biome lookup produces variation, not a baked value. So T.G inherits **63 re-bake-class + 1 structural**. The invariant itself holds — 15/25 probed chunks still carry ≥2 distinct BiomeIds. Left failing pending director ratification of the threshold, because the correct replacement sample depends on the final value. Full attribution: `docs/audits/T2A_OUTCOME.md` §8.1.
 
 ---
