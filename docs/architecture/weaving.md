@@ -9,8 +9,8 @@ lifecycle_status: active
 integration_status: partial
 summary: "weave_tick is on main (#252). The greybox sword hit calls run_aravath_slice (#275). Required replay case weaving hashes NullField until local sim #253."
 owns: [astraweave-weaving]
-doc_version: "1.6"
-last_verified_commit: d6903d3a
+doc_version: "1.7"
+last_verified_commit: 1e275a9e
 ---
 
 # Architecture Trace: Weaving / Fate-Weaving System (`astraweave-weaving`)
@@ -21,8 +21,8 @@ last_verified_commit: d6903d3a
 |---|---|
 | **System name** | Weaving / Fate-Weaving System (the Veilweaver signature mechanic) |
 | **Primary crates** | `astraweave-weaving` |
-| **Document version** | 1.6 |
-| **Last verified against commit** | `d6903d3a` |
+| **Document version** | 1.7 |
+| **Last verified against commit** | `1e275a9e` |
 | **Last verified date** | 2026-10-16 |
 | **Status** | The data-driven cast path is on main (#252). A connecting greybox sword hit calls `run_aravath_slice` (#275). Required replay case `weaving`. `NullField` stands in for the local sim (#253). Anchor-slice helpers are still plain functions. |
 | **Owner notes** | Built during the Veilweaver vertical-slice "Weeks 1-5" campaign (see `docs/journey/weeks/WEEK_*` and `docs/archive/projects/veilweaver/`). Naming is heavily overloaded across three independent "weaving" surfaces in the workspace — see §3 and §6. |
@@ -215,6 +215,12 @@ This crate hosts **two distinct pipelines** that do not call each other. Both ar
 
 | Consumer system | Interface | Data | Notes |
 |---|---|---|---|
+| `aravath_runtime` | `Combat::tick` | `run_aravath_slice` | Connecting sword hit (#275). |
+| `astraweave-gameplay` | `src/weaving.rs` | `compile_legacy`, `LegacyPoints` | Legacy weave bridge. |
+| `astraweave-scripting` | `src/sim_mod.rs` | `queue_weave`, `parse_template_toml`, `WeaveScratch` | Mod host enqueue. |
+| `astraweave-security` | `src/sandbox.rs` | `parse_template_toml` | Template parse inside the sandbox. |
+| `astraweave-core` | `tests/replay_hash.rs` | `weaving_case_bytes` | Required replay row `weaving`. The dependency is a normal Cargo dep; production `src/` does not call the crate. |
+| `examples/aravath_weave` | `src/main.rs` | `queue_weave`, `weave_tick`, `NullField` | Headless stamp demo. |
 | `examples/advanced_content_demo` | `use astraweave_weaving::*;` (`main.rs:1`) | `Quest`, `QuestReward`, `QuestState`, `quest_types::*` | Demonstrates 5 quest scenarios (escort/defend/timetrial/boss/collect). Non-runtime example. |
 | `examples/veilweaver_quest_demo` | `use astraweave_weaving::VeilweaverLevel;` (`main.rs:11`) | `VeilweaverLevel`, anchor repair, quest chain | Console walkthrough of the anchor/Echo/quest slice. Non-runtime example. |
 | (intended) external renderer | `ui/*`, `particles/*` data structs | HUD state, feedback floats, particle pools | No in-crate renderer; egui `render()` is `#[cfg(any())]`-disabled in `ui/echo_hud.rs`. |
@@ -399,8 +405,8 @@ This is a pure-CPU logic crate; performance is benchmark-tracked but not a runti
 - **Mutation testing:** Covered in the workspace mutation-testing campaign (see `docs/current/MUTATION_TESTING_AUDIT.md` and `docs/journey/daily/WEAVING_TEST_SPRINT_*`). `mutation_resistant_comprehensive_tests.rs` exists in both `src/` and `tests/`.
 - **Benchmarks:** `benches/weaving_benchmarks.rs`, `benches/integration_benchmarks.rs` (criterion). Results in `docs/masters/MASTER_BENCHMARK_REPORT.md`.
 - **Miri:** Not applicable (no `unsafe`; `#![forbid(unsafe_code)]`).
-- **Manual validation:** Console playthrough via `examples/veilweaver_quest_demo` and `examples/advanced_content_demo`.
-- **Important caveat (Key Lesson 8):** High test/bench coverage does NOT imply runtime wiring. This crate has zero library consumers; its tests validate logic, not integration into a running game loop.
+- **Manual validation:** Console playthrough via `examples/veilweaver_quest_demo` and `examples/advanced_content_demo`. Headless stamps via `examples/aravath_weave`.
+- **Important caveat (Key Lesson 8):** High test/bench coverage does not by itself mean every module is on a game tick. Cargo consumers on `1e275a9e` are `aravath_runtime`, `astraweave-gameplay`, `astraweave-scripting`, `astraweave-security`, `astraweave-core` (replay test), `examples/aravath_weave`, `examples/advanced_content_demo`, and `examples/veilweaver_quest_demo`. The anchor-slice helpers are still plain functions.
 
 ---
 
@@ -422,17 +428,18 @@ This is a pure-CPU logic crate; performance is benchmark-tracked but not a runti
 
 | Version | Date | Notes |
 |---|---|---|
+| 1.7 | 2026-10-16 | Restamp `1e275a9e`. Cargo consumers are the greybox, gameplay, scripting, security, the core replay test, `aravath_weave`, and the two older quest examples. |
 | 1.6 | 2026-10-16 | Greybox caller. `Combat::tick` calls `run_aravath_slice` and the window shows `Cover broke` when `cover_intact` is false. |
 | 1.3 | 2026-10-15 | Scenario 1 gameplay QA. File map rows for `aravath.rs`, `gameplay_qa.rs`, and the RON. Invariant 11. |
 
 **Update this doc when:**
-- A consumer beyond the two examples adopts `astraweave-weaving` (this would flip its wired status — update §1 and §4).
+- A new `Cargo.toml` consumer appears, or one of the eight listed in §4 drops the dependency. Update §4 and the verification command below.
 - Either of the duplicate repair/currency paths in §6 is unified, or a duplicate enum (`AbilityType`/`CombatEvent`) is reconciled.
 - The `systems/*` functions gain real ECS signatures (would change §2/§6 traps and §11).
 - Stability/decay/repair constants in `anchor.rs` or the adjudicator budget/cooldown defaults change (would affect §8 invariants).
 
 **Verification process:**
-- `rg 'astraweave-weaving' --type toml` to recheck the consumer set (currently only `examples/advanced_content_demo`, `examples/veilweaver_quest_demo`).
+- `rg 'astraweave-weaving' --type toml` to recheck the consumer set. On `1e275a9e` that is `aravath_runtime`, `astraweave-gameplay`, `astraweave-scripting`, `astraweave-security`, `astraweave-core`, `examples/aravath_weave`, `examples/advanced_content_demo`, and `examples/veilweaver_quest_demo`. The crate's own manifest and the workspace member list are not consumers.
 - `rg 'pub enum AbilityType|pub (enum|struct) CombatEvent' astraweave-weaving/src` to recheck the naming collisions.
 - Spot-check the two pipelines in §2 against current `patterns.rs`/`intents.rs`/`adjudicator.rs` and `systems/`.
 - Stamp the new commit hash and date in the Metadata table after verification.
