@@ -1,9 +1,10 @@
 # AstraWeave Architecture Map
 
-> **Generated**: 2026-05-07 | **Last reconciled**: 2026-10-16 | **Version**: 0.8.1 | **Rust**: 1.89.0
+> **Generated**: 2026-05-07 | **Last reconciled**: 2026-10-16 | **Version**: 0.8.2 | **Rust**: 1.89.0
 > Living document — used by all agents as the primary architectural reference.
-> **0.8.1 update (2026-10-16)**: Rebased onto `3971cbe1`. #316 is on main: image decode cap (4096 edge, 64 MiB), CLI glTF URI jail, Ollama loopback unless `allowing_remote`. #318 keeps physics and nav proxies off the gameplay script tick. Member count is still **139**.
-> **0.8.0 update (2026-10-16)**: Member count corrected 130 → **139**. Trace count is **30**, generated into `CLAUDE.md`; the §0 table below is the June 2026 index and is not the full set. Landed since that index, and not folded into every row: nav reroute (#251), `aravath_runtime` bridge agent (#263), security caps (#312, #316), `aw_decision` (#287), `astraweave-causality` (#286), Rhai mod loader (#214), `astraweave-destruction` (#243), gameplay QA replay case (#280). Greybox #205, weaving #252, traversal #244, local fluid sim #253, render frame budget #216, and CI #217 are in progress and are not shipped. The 12,700-agent line in §0 is a CPU capacity estimate, not a measured full frame. Orchestrator LLM default is still `phi3:medium` when `OLLAMA_MODEL` is unset.
+> **0.8.2 update (2026-10-16)**: Rebased onto `5cba174c`. Weaving #252 is on main. Required replay cases are eleven, including `weaving`. Member count is **140** (`aravath_weave`). Local sim #253 is still in progress; the weaving replay hashes `NullField`.
+> **0.8.1 update (2026-10-16)**: Rebased onto `3971cbe1`. #316 is on main: image decode cap (4096 edge, 64 MiB), CLI glTF URI jail, Ollama loopback unless `allowing_remote`. #318 keeps physics and nav proxies off the gameplay script tick. Member count was **139** at that commit.
+> **0.8.0 update (2026-10-16)**: Member count corrected 130 → **139**. Trace count is **30**, generated into `CLAUDE.md`; the §0 table below is the June 2026 index and is not the full set. Landed since that index, and not folded into every row: nav reroute (#251), `aravath_runtime` bridge agent (#263), security caps (#312, #316), `aw_decision` (#287), `astraweave-causality` (#286), Rhai mod loader (#214), `astraweave-destruction` (#243), gameplay QA replay case (#280). Greybox #205, traversal #244, local fluid sim #253, render frame budget #216, and CI #217 are in progress and are not shipped. Weaving #252 is on main. The 12,700-agent line in §0 is a CPU capacity estimate, not a measured full frame. Orchestrator LLM default is still `phi3:medium` when `OLLAMA_MODEL` is unset.
 > **0.7.2 update (2026-06-10)**: Engine-health-audit reconciliation — workspace member count corrected 143 → **130** (root Cargo.toml members verified identical to `cargo metadata --no-deps`); `astraweave-camera` (Unified Camera C.2, `52b9e711c`, 2026-05-18) added to §1/§2.1 and to `astraweave-render`'s dep row; examples count corrected to 59; §0 editor/render trace rows updated for Multi-Tool Sub-phase 3/4 closeouts (SP5 in flight) and Render Parity P.1–P.7 closure.
 > **0.7.1 update (2026-06-10)**: Net-Trio-Remediation reconciliation — the standalone-trio HMAC-vs-XOR signature mismatch is RESOLVED (canonical HMAC-SHA256 signing enforced end-to-end, kick-by-default). Updated the net_ecs subsystem row (§0), the known-issues silent-failure row (§4.3), the documentation-hazards row (§7.2), the §8.8 network data-flow diagram, and §14 open-question 17. See `net_ecs.md` §6/§7 and `docs/audits/net_trio_signature_remediation_findings_2026-06.md`.
 > **0.7.0 update**: Reconciled against the 13 per-subsystem architecture traces under `docs/architecture/`. Every traced subsystem now linked at section level. Workspace-wide structural axioms (§7.7 wrapped-component resource identity, Fix-27 dual-pipeline lesson, silent-failure policy, "wired beats tested" taxonomy) crystallised into their own section. Dormant-code taxonomy and documentation-hazard inventory consolidated from per-trace evidence. **0.6.0 update (2026-05-07)**: Full cartography audit — impostor infrastructure catalogued, astraweave-alloc added, workspace count verified at 143 members, viewport module inventory updated, Regional Archetype Variation campaign status integrated.
@@ -37,9 +38,9 @@ The 5-prompt trace toolkit lives at `_meta/` (`ARCHITECTURE_TRACE_TEMPLATE.md`, 
 
 ## 1. Workspace Overview
 
-- **Total workspace members**: 139 (`cargo metadata --no-deps` at `3971cbe1`, 2026-10-16; unchanged by #316 and #318). The 130 figure is the 2026-06-10 snapshot. The earlier 143 figure was an over-count.
+- **Total workspace members**: 140 (`cargo metadata --no-deps` at `5cba174c`, 2026-10-16). #252 added `examples/aravath_weave`. The 139 figure is the count at `3971cbe1`. The 130 figure is the 2026-06-10 snapshot.
 - **`astraweave-*` names**: 57. The old "~51 production crates" line was a judgment bucket, not a mechanical count, and is not restated as current.
-- **Examples**: 59 (manifest path under `examples/`)
+- **Examples**: 60 (manifest path under `examples/`, including `aravath_weave`)
 - **Tools**: the June list of 12 is incomplete for this tree (`aw_doc_lint`, `aw_trace_sync`, `aw_decision`, and `xtask` are members). This pass did not republish a closed tool roster.
 - **Crates/** subdirectory**: 5 (`astraweave-blend`, `astraweave-alloc`, `astraweave-persistence-player`, `astract`, `astract/astract-macro`)
 - **Networking sub-crates**: 3 (`aw-net-proto`, `aw-net-server`, `aw-net-client`)
@@ -955,6 +956,9 @@ These are decisional questions that cross subsystem boundaries or affect the bro
 ---
 
 ## Revision History
+
+### v0.8.2 (2026-10-16)
+Rebased onto `5cba174c`. Weaving #252 is on main. The required replay list is eleven cases, including `weaving`. Member count 139 → 140.
 
 ### v0.8.1 (2026-10-16)
 Rebased onto `3971cbe1`. Header notes #316 (image decode cap, CLI glTF `safe_under`, Ollama loopback) and #318 (gameplay scripts do not receive physics or nav proxies). Member count unchanged.

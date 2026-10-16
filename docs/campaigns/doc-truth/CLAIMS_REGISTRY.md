@@ -18,13 +18,13 @@ Status vocabulary: **VERIFIED-AT-HEAD** (re-checked this campaign at HEAD via th
 
 ### workspace-members
 - metric: Workspace member count
-- value: 139
-- status: VERIFIED-AT-HEAD (2026-10-16, `cargo metadata --no-deps` at `3971cbe1`; same count as `d6b07fc8`. #316 and #318 added no members.)
+- value: 140
+- status: VERIFIED-AT-HEAD (2026-10-16, `cargo metadata --no-deps` at `5cba174c`. #252 added `examples/aravath_weave`. 139 was the count at `3971cbe1`.)
 - repro: `cargo metadata --no-deps --format-version 1 | jq '.packages | length'`
 - hardware: n/a
 - canonical_source: `cargo metadata --no-deps`
 - referenced_by: README.md; CLAUDE.md; docs/architecture/ARCHITECTURE_MAP.md; docs/guides/RUST_TOOLCHAIN_GUIDE.md
-- note: SUPERSEDES the 2026-06-13 value `130` and the 2026-07-19 narrative `133`. Dated sentences that say "130 as of June 2026" are history, not the current value. 57 package names start with `astraweave-`. 59 manifests live under `examples/`.
+- note: SUPERSEDES the 2026-06-13 value `130` and the 2026-07-19 narrative `133`. Dated sentences that say "130 as of June 2026" are history, not the current value. 57 package names start with `astraweave-`. 60 manifests live under `examples/` at `5cba174c`.
 
 ### production-crates
 - metric: Production-crate count (judgment bucket, not a mechanical count)
@@ -240,8 +240,8 @@ Status vocabulary: **VERIFIED-AT-HEAD** (re-checked this campaign at HEAD via th
 
 ### replay-cases
 - metric: Required cross-OS determinism replay cases
-- value: `planner_pure`, `perception_world`, `gameplay_rng`, `fixed64`, `combat_resolve`, `destruction`, `gameplay_qa_aravath_slice`, `nav_reroute`, `causal_bridge`, `scripted_system` (10)
-- status: VERIFIED-AT-HEAD (2026-10-16, both `required` lists in `.github/workflows/determinism-replay.yml`)
+- value: `planner_pure`, `perception_world`, `gameplay_rng`, `fixed64`, `combat_resolve`, `destruction`, `gameplay_qa_aravath_slice`, `nav_reroute`, `causal_bridge`, `scripted_system`, `weaving` (11)
+- status: VERIFIED-AT-HEAD (2026-10-16, both `required` lists in `.github/workflows/determinism-replay.yml` at `5cba174c`)
 - repro: read the `required` arrays in `.github/workflows/determinism-replay.yml`
 - hardware: n/a (compare job is Ubuntu, Windows, macOS)
 - canonical_source: `.github/workflows/determinism-replay.yml`
@@ -280,6 +280,7 @@ Status vocabulary: **VERIFIED-AT-HEAD** (re-checked this campaign at HEAD via th
 | 0.1 (D.1.A skeleton) | 2026-06-13 | Created. 11 VERIFIED-AT-HEAD count/version rows; 7 PENDING-D2 benchmark/coverage rows; Retired table seeded. PENDING-D2 rows to be filled by D.2 measurement. |
 | 0.2 (D.1.B hygiene) | 2026-06-13 | Hygiene pass: `canonical_source` for agents-capacity-60fps / frame-time-1000-entities / coverage-weighted / miri-tests changed from doc-references to the bench/llvm-cov/miri **command** (doc-cites-doc break). Denominators confirmed named ("test markers", not "tests"). `referenced_by` lists are representative load-bearing sites, not exhaustive — D.1.B added registry-comment back-links across the long-tail corpus. |
 | 0.3 (D.2.A.1) | 2026-06-25 | **W.1-contamination re-resolution.** Re-resolved the 4 W.1-invalidated rows (fluids-loc 80,222→24,251 src; fluids-test-markers 2,560→738; rust-loc-total ~1.16M→~1.10M raw / ~892K→~854K code; dormant-loc-inventory 108,753→52,782). Fixed 2 broken repro commands (fluids-loc `**`-glob returned 0; rust-loc-total `xargs … wc -l \| tail -1` batching). Added 4 NEW rows for the W.2–F.4 water successor: water-facade-loc, water-surface-loc, water-system (narrative), water-budget (PENDING-D2, single-machine/provisional). Dated D.2.A snapshots in the execution reports left byte-identical (per-row resolution principle). Authority: `D_RESUME_0_RECON.md`. |
+| 0.8 | 2026-10-16 | #252 on main. `workspace-members` 139 → 140. `replay-cases` adds `weaving` (11). |
 | 0.7 | 2026-10-16 | Restamp `workspace-members` onto `3971cbe1` after #316 and #318. Count stays 139. |
 | 0.6 | 2026-10-16 | **Member count and two new rows.** `workspace-members` 130 → 139 at `d6b07fc8`. Added `replay-cases` (10 required names) and `frame-budget-gtx1660` (target under 11 ms, not measured, #216). `130` is not poison: dated June sentences may still say it. |
 | 0.5 (Path-B.2) | 2026-06-29 | **Coverage re-baseline — last PENDING-D2 measurement row settled.** Flipped `coverage-weighted` PENDING-D2/blocked → **VERIFIED-AT-HEAD: 57.35% line coverage** whole-workspace (369,462 lines; regions 56.41%, functions 60.46%), superseding the 29-curated-crate **59.3%** (denominator change, not a regression). Unblocked by Path-B.1 (`1eacebff4`, the 8 broken test targets fixed). Two tooling findings recorded: (1) Windows ~32 KB command-line limit blocks `cargo llvm-cov --workspace`'s report step (668 objects) — worked around via `llvm-cov report` response file on the merged profdata; (2) 36/646 test binaries fail at runtime (pre-existing assertion failures + a few stale assertions exposed-not-caused by Path-B.1's compile fix) — absorbed by `--ignore-run-fail`, a runtime-assertion-currency follow-on, coverage unaffected. Corpus 59.3% citations noted for the deferred final propagation. Registry measurement section now fully resolved (0 PENDING-D2 unfinished: coverage VERIFIED; water-budget PENDING-by-classification; mutation-kill-rate PROVENANCE-ACCEPTED). Ledger only; no source changed. Authority: `PATH_B0_RECON.md` + `D2B0_RECON.md`. |

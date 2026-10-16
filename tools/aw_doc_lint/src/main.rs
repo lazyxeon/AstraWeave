@@ -40,7 +40,7 @@ const ALLOWLIST_REL: &str = "docs/campaigns/doc-truth/CLOSED_VOCABULARY_ALLOWLIS
 const REPLAY_WORKFLOW_REL: &str = ".github/workflows/determinism-replay.yml";
 const README_REL: &str = "README.md";
 
-const IN_PROGRESS_ISSUES: &[&str] = &["#205", "#252", "#244", "#253", "#216", "#217"];
+const IN_PROGRESS_ISSUES: &[&str] = &["#205", "#244", "#253", "#216", "#217"];
 
 const VOCAB_A_START: &str = "<!-- VOCAB-A-START -->";
 const VOCAB_A_END: &str = "<!-- VOCAB-A-END -->";
@@ -773,16 +773,16 @@ mod tests {
             "The game is Aravath. Assets are CC0 only.",
             "under 11 ms per frame on a GTX 1660 Ti-class GPU. It is not yet measured.",
             "planner_pure perception_world gameplay_rng fixed64 combat_resolve",
-            "destruction gameplay_qa_aravath_slice nav_reroute causal_bridge scripted_system",
+            "destruction gameplay_qa_aravath_slice nav_reroute causal_bridge scripted_system weaving",
             "## In progress",
-            "#205 #252 #244 #253 #216 #217 are in progress",
+            "#205 #244 #253 #216 #217 are in progress",
             "## Next",
         ]
         .join("\n")
     }
 
     fn sample_workflow() -> String {
-        let cases = r#""planner_pure", "perception_world", "gameplay_rng", "fixed64", "combat_resolve", "destruction", "gameplay_qa_aravath_slice", "nav_reroute", "causal_bridge", "scripted_system""#;
+        let cases = r#""planner_pure", "perception_world", "gameplay_rng", "fixed64", "combat_resolve", "destruction", "gameplay_qa_aravath_slice", "nav_reroute", "causal_bridge", "scripted_system", "weaving""#;
         format!("const required = [{cases}];\nrequired = {{{cases}}};\n")
     }
 
@@ -791,7 +791,7 @@ mod tests {
         let lists = required_case_lists(&sample_workflow());
         assert_eq!(lists.len(), 2);
         assert_eq!(lists[0], lists[1]);
-        assert_eq!(lists[0].len(), 10);
+        assert_eq!(lists[0].len(), 11);
     }
 
     #[test]

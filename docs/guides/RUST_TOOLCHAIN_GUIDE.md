@@ -1,6 +1,6 @@
 # Rust toolchain
 
-Checked against `main` at `3971cbe1` (2026-10-16).
+Checked against `main` at `5cba174c` (2026-10-16).
 
 AstraWeave pins Rust **1.89.0** in `rust-toolchain.toml`, with `rustfmt`, `clippy`, `rust-src`, `rust-analyzer`, and `llvm-tools-preview`. Targets listed there:
 
@@ -22,7 +22,7 @@ cargo --version
 
 CI caching lives in `.github/workflows/ci.yml` (Swatinem's rust-cache action, one shared key per OS, `cache-targets: false`, save on `main`). The former `rust-cache-optimized.yml` file is not in the tree. There is no measured "50–80% faster" figure to cite from the current workflow.
 
-The workspace has **139** members (`cargo metadata --no-deps` on this commit). The June 2026 count of 130 is the previous snapshot.
+The workspace has **140** members (`cargo metadata --no-deps` on this commit). The count at `3971cbe1` was 139. The June 2026 count of 130 is older.
 
 ## Pull-request compile
 

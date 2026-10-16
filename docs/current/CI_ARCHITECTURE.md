@@ -45,7 +45,7 @@ A new push cancels the previous pull-request run. Pushes to main, tags, and sche
 | Windows archive, then 3 partitions | `Test (windows, build archive)`, then `Test (windows, 1/3)`, `Test (windows, 2/3)`, `Test (windows, 3/3)` |
 | MSRV (`rust-version` in the workspace manifest, 1.89.0) | `Minimum Supported Rust Version` |
 | Rollup of the rows above | `PR Rust checks` |
-| Replay hash, Ubuntu / Windows / macOS, then compare. Required cases: `planner_pure`, `perception_world`, `gameplay_rng`, `fixed64`, `combat_resolve`, `destruction`, `gameplay_qa_aravath_slice`, `nav_reroute`, `causal_bridge`, `scripted_system`. No path filter. | `hash (ubuntu-latest)`, `hash (windows-latest)`, `hash (macos-latest)`, `compare` |
+| Replay hash, Ubuntu / Windows / macOS, then compare. Required cases: `planner_pure`, `perception_world`, `gameplay_rng`, `fixed64`, `combat_resolve`, `destruction`, `gameplay_qa_aravath_slice`, `nav_reroute`, `causal_bridge`, `scripted_system`, `weaving`. No path filter. | `hash (ubuntu-latest)`, `hash (windows-latest)`, `hash (macos-latest)`, `compare` |
 | cargo-deny, cargo-audit | `Cargo Deny Check`, `Security Audit (cargo-audit)` |
 
 These also run on a non-docs pull request when their paths match, and are not in the required set because a path filter would skip them: `net-tests`, trace sync, doc-truth lint, docs. Pack guard and OpenSSF Scorecard run on every pull request. PBR, Editor CI, and AW Editor tests do not run on pull requests.
@@ -69,7 +69,7 @@ These also run on a non-docs pull request when their paths match, and are not in
 
 ## Determinism
 
-`determinism-replay.yml` runs on every pull request and on push to `main`. It has no path filter. Each OS runs the core replay test, the combat replay test, `replay_aravath_slice_scenario`, the causality replay test, and the scripting replay test, with the baseline CPU pinned (`target-cpu=x86-64` on x86_64; aarch64 stays on the default baseline). `cargo test` has no retry loop. The `compare` job requires `planner_pure`, `perception_world`, `gameplay_rng`, `fixed64`, `combat_resolve`, `destruction`, `gameplay_qa_aravath_slice`, `nav_reroute`, `causal_bridge`, and `scripted_system` to be present and byte-identical across the three artifacts. Open CI work that is not in this file is #217.
+`determinism-replay.yml` runs on every pull request and on push to `main`. It has no path filter. Each OS runs the core replay test, the combat replay test, `replay_aravath_slice_scenario`, the causality replay test, and the scripting replay test, with the baseline CPU pinned (`target-cpu=x86-64` on x86_64; aarch64 stays on the default baseline). `cargo test` has no retry loop. The `compare` job requires `planner_pure`, `perception_world`, `gameplay_rng`, `fixed64`, `combat_resolve`, `destruction`, `gameplay_qa_aravath_slice`, `nav_reroute`, `causal_bridge`, `scripted_system`, and `weaving` to be present and byte-identical across the three artifacts. The `weaving` case is emitted by the core replay test. Open CI work that is not in this file is #217. The local fluid field that `weaving` will hash is #253.
 
 When the same tests also run under nextest (an affected crate on a pull request, or the full nightly matrix), `.config/nextest.toml` profile `ci` sets `retries = 2` for ordinary tests and `retries = 0` for test names matching `determinism`, `replay`, or `deterministic`. The determinism workflow does not call nextest.
 

@@ -1,6 +1,6 @@
 # Build quick reference
 
-Checked against `main` at `3971cbe1` (2026-10-16). The player-facing name is Aravath.
+Checked against `main` at `5cba174c` (2026-10-16). The player-facing name is Aravath.
 
 ## Daily commands
 
@@ -25,7 +25,7 @@ This page does not exclude crates. A June 2026 audit recorded the former authori
 
 Pull requests use `.github/workflows/ci.yml`. The old `rust-cache-optimized.yml` workflow file is gone; that work was folded into `ci.yml`. Cross-OS replay hashes are `.github/workflows/determinism-replay.yml`.
 
-Required replay cases: `planner_pure`, `perception_world`, `gameplay_rng`, `fixed64`, `combat_resolve`, `destruction`, `gameplay_qa_aravath_slice`, `nav_reroute`, `causal_bridge`, `scripted_system`.
+Required replay cases: `planner_pure`, `perception_world`, `gameplay_rng`, `fixed64`, `combat_resolve`, `destruction`, `gameplay_qa_aravath_slice`, `nav_reroute`, `causal_bridge`, `scripted_system`, `weaving`.
 
 Job tiers and which checks are required are written up in `docs/current/CI_ARCHITECTURE.md`. Further CI restructuring is in progress in #217 and is not described here as shipped.
 
