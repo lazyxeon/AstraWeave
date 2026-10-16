@@ -2,14 +2,37 @@
 
 use std::collections::{HashMap, HashSet};
 
+use astraweave_destruction::command::{Brush, BrushOp, BrushShape};
+use astraweave_destruction::{ColumnFns, DestructionWorld};
 use astraweave_physics::{Layers, PhysicsWorld};
 use astraweave_render::mesh::{CpuMesh, MeshVertex as RenderVertex};
+use astraweave_terrain::column_gen::{
+    self, biome_at as seed_biome, column_material as seed_material,
+};
 use astraweave_terrain::{
     ChunkCoord, ChunkMesh, ColumnStream, DualContouring, MeshVertex, Voxel, VoxelGrid,
 };
 use glam::{Vec2, Vec3, Vec4};
 
 use crate::island::{self, biome_at, column_material, Biome, MAT_WOOD};
+
+fn column_demolition() -> DestructionWorld {
+    let mut world = DestructionWorld::new(column_gen::FOREST_WORLD_SEED, 0);
+    world.bind_column_fns(ColumnFns {
+        top: column_gen::surface_height,
+        material: seed_column_material,
+    });
+    world
+}
+
+fn seed_column_material(x: i32, y: i32, z: i32) -> u16 {
+    seed_material(
+        y,
+        column_gen::surface_height(x, z),
+        seed_biome(x, z),
+        column_gen::on_yaqar_road(x, z),
+    )
+}
 
 pub struct ChunkPart {
     pub material: u16,
@@ -65,6 +88,7 @@ pub struct Ground {
     bodies: HashMap<ChunkCoord, u64>,
     generated: HashSet<ChunkCoord>,
     stream: ColumnStream,
+    demolition: Box<DestructionWorld>,
     scatter: HashMap<ChunkCoord, Vec<PropSpot>>,
     /// Chunk the ring was built around, plus the radius. A settled player
     /// whose grid is clean skips the set rebuild.
@@ -89,6 +113,7 @@ impl Ground {
             bodies: HashMap::new(),
             generated: HashSet::new(),
             stream: ColumnStream::new(),
+            demolition: Box::new(column_demolition()),
             scatter: HashMap::new(),
             stream_key: None,
         }
@@ -202,22 +227,42 @@ impl Ground {
         uploads
     }
 
-    /// Write air voxels. Caller runs [`Self::sync_dirty`] afterwards.
+    /// Dig with a destruction brush. Occupancy is the integer column plus the
+    /// command log. The voxel grid is the mesh of that occupancy.
     pub fn dig_sphere(&mut self, center: Vec3, radius: f32) {
-        let r = radius.ceil() as i32;
         let origin = IVecFloor::from_vec(center);
-        for x in -r..=r {
-            for y in -r..=r {
-                for z in -r..=r {
-                    let p = Vec3::new(
-                        (origin.x + x) as f32,
-                        (origin.y + y) as f32,
-                        (origin.z + z) as f32,
-                    );
-                    if p.distance(center) <= radius {
-                        self.grid.set_voxel(p, Voxel::new(0.0, 0));
-                        self.remember(p, 0.0, 0);
+        let reach = radius.ceil().max(1.0) as i32;
+        let brush = Brush {
+            shape: BrushShape::Sphere,
+            op: BrushOp::Subtract,
+            origin: [origin.x, origin.y, origin.z],
+            radius: reach as u16,
+            half_extents: [1, 1, 1],
+            strength: 4,
+        };
+        if self.demolition.apply_brush_now(brush).is_err() {
+            return;
+        }
+        let limit = reach * reach;
+        for dz in -reach..=reach {
+            for dy in -reach..=reach {
+                for dx in -reach..=reach {
+                    if dx * dx + dy * dy + dz * dz > limit {
+                        continue;
                     }
+                    let x = origin.x + dx;
+                    let y = origin.y + dy;
+                    let z = origin.z + dz;
+                    let seed = column_gen::surface_height(x, z);
+                    let dug = self.demolition.terrain().surface_y(x, z);
+                    let drop = seed.saturating_sub(dug);
+                    let mesh_top = island::surface_height(x, z);
+                    if drop <= 0 || y <= mesh_top.saturating_sub(drop) {
+                        continue;
+                    }
+                    let p = Vec3::new(x as f32, y as f32, z as f32);
+                    self.grid.set_voxel(p, Voxel::new(0.0, 0));
+                    self.remember(p, 0.0, 0);
                 }
             }
         }
