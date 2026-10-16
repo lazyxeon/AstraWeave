@@ -1,6 +1,6 @@
 # Security audit and hardening plan
 
-> **2026-10-16:** This survey is pinned to `f1109340`. #205, #214, #217, #244, #252, #275, #312, #316, #318, #325, #327, #329, and #331 are on main at `84d3888a`. Sentences below that say those pulls are not on main, or that `llm_dialogue.rs` is an undeclared orphan with `thread_rng`, are the survey, not the current tree. #325 cleared the patched supply-chain advisories. `cargo deny` advisories and `cargo audit` pass. The ignored leftovers are #305–#311 and #320–#324. #217 closed #219 and #256: `openssl` is not in `Cargo.lock`, and `deny.toml` still bans it. #327 dropped `net` from the workspace `tokio` features. #326 is closed. `dig_sphere` applies a sphere `Subtract` brush (#329). The greybox golden is `0a576578512f25d2`. A connecting sword hit calls `run_aravath_slice` (#275). #331 declares `llm_dialogue` and removes `thread_rng`. `recorded_line` does not draw. `AIArbiter`, `GoapPlanner`, and `GravityManager` stay off the tick. #225, #257, #258, and #259 stay open. Local sim #253 is still not on main.
+> **2026-10-16:** This survey is pinned to `f1109340`. #205, #214, #217, #244, #252, #275, #312, #316, #318, #325, #327, #329, and #331 are on main at `84d3888a`. Sentences below that say those pulls are not on main, or that `llm_dialogue.rs` is an undeclared orphan with `thread_rng`, are the survey, not the current tree. #325 cleared the patched supply-chain advisories. `cargo deny` advisories and `cargo audit` pass. The ignored leftovers are #305–#311 and #320–#324. #217 closed #219 and #256: `openssl` is not in `Cargo.lock`, and `deny.toml` still bans it. #327 dropped `net` from the workspace `tokio` features. #326 is closed. `dig_sphere` applies a sphere `Subtract` brush (#329). The greybox golden is `0a576578512f25d2`. A connecting sword hit calls `run_aravath_slice` (#275). #331 declares `llm_dialogue` and removes `thread_rng`. `recorded_line` is a pure helper with no non-test caller yet. `AIArbiter`, `GoapPlanner`, and `GravityManager` stay off the tick. #225, #257, #258, and #259 stay open. Local sim #253 is still not on main.
 
 **Status:** Caps from this audit that already had a failing proof on `main` are landed. PR-side items stay on their branches.
 **Date:** 2026-10-15
@@ -348,7 +348,7 @@ Each fix rejects input. None of them reorder fields, bump `SAVE_SCHEMA_VERSION`,
 2. Remove the bearer-key constructor from the path that the example uses, or make `with_api_key` return an error. No cloud provider.
 3. Leave `validation_script` unread by Rhai. Bound the JSON `complete()` return (proposal: 64 KiB) before `serde_json::from_str` in the quest and world-event parsers when those parsers are wired. They are not wired today; the cap can land with the wiring PR, not before.
 4. Stop logging full prompts (S0-2) in the same change as the URL check. That does not affect replay hashes. It does affect stderr.
-5. #331 registers `llm_dialogue` and removes `thread_rng`. `recorded_line` is the sim boundary and does not draw. `generate_response` stays off the tick. #225 stays open as that record.
+5. #331 registers `llm_dialogue` and removes `thread_rng`. `recorded_line` is a pure helper intended as the sim boundary. It does not draw, and it is not wired in yet. `generate_response` stays off the tick. #225 stays open as that record.
 
 ### Assets
 
@@ -458,7 +458,7 @@ Not opened by this change. Label `deferred-failure`. Owner is `@lazyxeon` (repos
 | SEC-NET-3 | `decode_msg` honors the attacker's LZ4 size | `@lazyxeon` | Same uncompressed cap as `aw-save`. Turn `poc_postcard_lz4_rejects_oversized_declared_output` green. | No |
 | SEC-SUPPLY-1 | Advisory and license `cargo deny` failures were warnings | `@lazyxeon` | `security-audit.yml` fails the job on bans, sources, advisories, and licenses. `unknown-git` is `deny`. `unknown-registry` is `warn`. #219 is closed. | #219 covered the openssl ban failure |
 | SEC-SUPPLY-2 | Secret scanning and push protection | `@lazyxeon` | Enabled on the repository. No code change. Do not refile. | Done |
-| — | `llm_dialogue.rs` was an orphan and named `thread_rng` | #331 on main | The module compiles. `recorded_line` does not draw. `generate_response` stays off the tick. #225 stays open. | [#225](https://github.com/lazyxeon/AstraWeave/issues/225) |
+| — | `llm_dialogue.rs` was an orphan and named `thread_rng` | #331 on main | The module compiles. `recorded_line` is an unwired pure helper and does not draw. `generate_response` stays off the tick. #225 stays open. | [#225](https://github.com/lazyxeon/AstraWeave/issues/225) |
 | — | `cargo deny` failed on `native-tls` / `openssl` | closed | #217 switched TLS to rustls and dropped the `ort` download feature. The ban stayed. | [#219](https://github.com/lazyxeon/AstraWeave/issues/219) |
 
 The six PoCs in this pull request fail on purpose. They are the regression net for SEC-SAVE-1, SEC-SAVE-2, SEC-NET-3, SEC-ASSET-1, SEC-MOD-4, and SEC-LLM-1. Deleting them is not the fix.

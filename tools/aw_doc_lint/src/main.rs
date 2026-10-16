@@ -353,6 +353,34 @@ fn in_progress_body(readme: &str) -> Option<String> {
     Some(lines[start..end].join("\n"))
 }
 
+/// `#123` tokens. A digit run that is not a whole issue number is skipped.
+fn issue_numbers(text: &str) -> Vec<String> {
+    let bytes = text.as_bytes();
+    let mut found = Vec::new();
+    let mut index = 0;
+    while index < bytes.len() {
+        if bytes[index] == b'#' {
+            let start = index + 1;
+            let mut end = start;
+            while end < bytes.len() && bytes[end].is_ascii_digit() {
+                end += 1;
+            }
+            let left_ok = index == 0 || !is_word_byte(bytes[index - 1]);
+            let right_ok = end == bytes.len() || !is_word_byte(bytes[end]);
+            if end > start && left_ok && right_ok {
+                let digits = std::str::from_utf8(&bytes[start..end]).unwrap_or("");
+                if !digits.is_empty() {
+                    found.push(format!("#{digits}"));
+                }
+            }
+            index = end;
+        } else {
+            index += 1;
+        }
+    }
+    found
+}
+
 fn has_bare_word(text: &str, word: &str) -> bool {
     let lower = text.to_ascii_lowercase();
     let needle = word.to_ascii_lowercase();
@@ -432,6 +460,13 @@ fn front_door_errors(
             for issue in IN_PROGRESS_ISSUES {
                 if !body.contains(issue) {
                     errors.push(format!("{README_REL}: in-progress section missing {issue}"));
+                }
+            }
+            for found in issue_numbers(&body) {
+                if !IN_PROGRESS_ISSUES.contains(&found.as_str()) {
+                    errors.push(format!(
+                        "{README_REL}: in-progress section lists {found}, which is not in the in-progress list"
+                    ));
                 }
             }
             for word in ["shipped", "landed", "merged"] {
@@ -798,6 +833,20 @@ mod tests {
     fn front_door_accepts_a_honest_readme() {
         let errors = front_door_errors(&sample_readme(), &sample_workflow(), &[]);
         assert!(errors.is_empty(), "{errors:?}");
+    }
+
+    #[test]
+    fn front_door_rejects_an_extra_in_progress_issue() {
+        let readme = sample_readme().replace("#253 #216", "#253 #216 #999");
+        let errors = front_door_errors(&readme, &sample_workflow(), &[]);
+        assert!(
+            errors.iter().any(|error| error.contains("#999")),
+            "{errors:?}"
+        );
+        assert!(
+            !errors.iter().any(|error| error.contains("missing #253")),
+            "{errors:?}"
+        );
     }
 
     #[test]

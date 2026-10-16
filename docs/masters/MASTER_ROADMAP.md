@@ -347,8 +347,8 @@ Key achievements:
 
 | Metric | Value |
 |--------|-------|
-| **Total Versions** | 22 |
-| **Timeline** | Nov 22, 2025 → Mar 2026 (~4 months) |
+| **Total Versions** | 28 |
+| **Timeline** | Nov 22, 2025 → Oct 16, 2026 |
 | **Primary Authors** | AI Team |
 | **Average Frequency** | ~3 days/version |
 
@@ -378,6 +378,12 @@ Key achievements:
 
 | Ver | Date | Type | Impact | Summary (≤80 chars) |
 |-----|------|------|--------|---------------------|
+| **1.59** | Oct 16 | 📋 | 🟢 | #329 docs: golden 0a576578512f25d2, bridge step, brush dig |
+| **1.58** | Oct 16 | 📋 | 🟢 | #331 docs: AIArbiter, GoapPlanner, GravityManager stay off tick |
+| **1.57** | Oct 16 | 📋 | 🟢 | #328 docs: workspace tokio drops net; #326 closed |
+| **1.56** | Oct 16 | 📋 | 🟢 | #217 docs: CI burndown on main; fifteen replay cases |
+| **1.55** | Oct 16 | 📋 | 🟢 | #215 docs: worldgen_columns and deformed_chunk (15 cases) |
+| **1.54** | Oct 16 | 📋 | 🟢 | Status restamp: 141 members, traversal, unmeasured 11 ms |
 | **1.53** | Jun 29 | 🔍 | 🟡 | D.3.2b doc-truth cleanup: fluids test markers corrected to 738 (post-W.1; rows :86/:91/:102) |
 | **1.52** | Jun 29 | 🔍 | 🟡 | D-series Path-B.2: coverage 57.35% whole-workspace (was 59.3% subset); miri 1,059 |
 | **1.49** | Mar 25 | 🔷 | 🟡 | Blueprint Zone Editor: 9 phases, polygon zones, Replica/Inspired, 125+ tests |
@@ -407,6 +413,8 @@ Key achievements:
 ---
 
 ### Statistical Summary
+
+The percentages below are the June 2026 count. Rows 1.54–1.59 are six October documentation updates and are not folded into those percentages.
 
 **By Type:**
 | Type | Count | % |
