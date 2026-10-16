@@ -7,10 +7,10 @@ primary_crate: astraweave-scripting
 domain: gameplay
 lifecycle_status: active
 integration_status: wired
-summary: "Gameplay and mod scripts run on the security sandbox. build_app installs ModScriptPlugin after register_mod_runtime, so the editor and game tick mods on the logged sandbox path. Native plugin template is not a runtime."
+summary: "Gameplay and mod scripts run on the security sandbox. script_system does not inject PhysicsProxy or NavMeshProxy. The scripting examples no longer call them."
 owns: [astraweave-scripting, astraweave-author]
-doc_version: "1.3"
-last_verified_commit: d6b07fc8
+doc_version: "1.4"
+last_verified_commit: 3971cbe1
 runtime_edges:
   - to: astraweave-security
     note: "ScriptEngineResource and mod_script_system call sandbox::SandboxEngine / execute_deterministic"
@@ -28,10 +28,10 @@ runtime_edges:
 |---|---|
 | **System name** | Scripting and mod API |
 | **Primary crates** | `astraweave-scripting`, `astraweave-author` |
-| **Document version** | 1.3 |
-| **Last verified against commit** | `d6b07fc8` |
-| **Last verified date** | 2026-10-15 |
-| **Status** | Active for the sandboxed Rhai path. `register_mod_runtime` plus `build_app` is how the editor, Veilweaver runtime, and `hello_companion` run mods. Examples still exercise `ScriptingPlugin`. The editor does not feed `CScript` entities. |
+| **Document version** | 1.4 |
+| **Last verified against commit** | `3971cbe1` |
+| **Last verified date** | 2026-10-16 |
+| **Status** | Active for the sandboxed Rhai path. `register_mod_runtime` plus `build_app` is how the editor, `veilweaver_slice_runtime`, and `hello_companion` run mods. `script_system` does not inject physics or nav proxies (#318). The editor does not feed `CScript` entities. |
 | **Owner notes** | WS-MOD. One sandbox implementation lives in `astraweave-security::sandbox`. This trace is the caller side. |
 
 ---
@@ -52,7 +52,7 @@ Mods need a single sandboxed command set whose results are sim inputs. A second 
 - `tools/aw_editor/src/rhai_reload.rs` — editor hot reload
 
 **Status note:**
-`script_system` no longer stats files during the tick. Reloads come from `ScriptReloadQueue::take_boundary` at the start of the system. `mod_script_system` uses a separate `ModReloadQueue` so the two systems do not steal each other's bytes. Neither tick places `PhysicsProxy` or `NavMeshProxy` in the script scope.
+`script_system` no longer stats files during the tick. Reloads come from `ScriptReloadQueue::take_boundary` at the start of the system. `mod_script_system` uses a separate `ModReloadQueue` so the two systems do not steal each other's bytes. Neither tick places `PhysicsProxy` or `NavMeshProxy` in the script scope. The host still reads `PhysicsWorld` for collision events and for bodies spawned by script commands. A gameplay script that names `physics` or `nav` errors. `script_system_rejects_physics_and_nav_proxies` checks that: the script runs (`saw` becomes 1) and the assignment after the proxy call does not (`result` stays 0), even when both resources are in the world.
 
 ---
 
@@ -128,6 +128,8 @@ Mods need a single sandboxed command set whose results are sim inputs. A second 
 | `astraweave-author/src/lib.rs` | `configure` | Active | Floats in hints are rejected. |
 | `tools/aw_editor/src/rhai_reload.rs` | Editor boundary | Active | |
 | `tools/aw_plugin_template/` | Scaffold | Non-runtime | README says so. |
+| `examples/scripting_advanced_demo/` | `ScriptingPlugin` demo | Example | Host still inserts `PhysicsWorld` and `NavMesh`. `assets/advanced_ai.rhai` does not call them. Sight is `dist_to_player < 20.0`. A finished patrol point sets `path = []`. |
+| `examples/scripting_playground/` | `ScriptingPlugin` demo | Example | Host still owns `PhysicsWorld`, dynamic boxes, and a sensor. The player script handles `on_trigger_enter` and `commands.apply_damage`. It does not raycast. |
 
 ---
 
@@ -162,7 +164,7 @@ Mods need a single sandboxed command set whose results are sim inputs. A second 
 - **Status:** Accepted
 - **Context:** No shipped gameplay script called `PhysicsProxy` or `NavMeshProxy`. The only callers were `examples/scripting_advanced_demo`, `examples/scripting_playground`, and the unit tests that exercised the injection. The proxies held raw pointers into the live world.
 - **Decision:** `script_system` does not inject them, on the main body or on event callbacks. Issue #317.
-- **Consequences:** A script that names `physics` or `nav` errors and does not advance its result. The types remain registered for the mutation tests.
+- **Consequences:** A script that names `physics` or `nav` errors and does not advance its result. The types remain registered for the mutation tests. #318 (`3971cbe1`) also changed the two demos that used to call the proxies. `advanced_ai.rhai` no longer calls `physics.raycast` or `nav.find_path`. `scripting_playground`'s player script no longer raycasts. The hosts still insert the resources.
 
 ### Decision: Hot reload is data staged for the next tick
 - **Date:** 2026-10-14
@@ -207,7 +209,7 @@ Each mod script is compiled on the tick it runs. The replay case is 32 ticks of 
 - `cargo test -p astraweave-scripting --test script_replay_hash`
 - `cargo test -p astraweave-scripting --lib mod_loaded_through_build_app_replays_identically`
 - `cargo test -p aw_editor --lib -- file_watcher:: rhai_reload::`
-- CI: `.github/workflows/determinism-replay.yml` requires `scripted_system` along with `planner_pure` and `perception_world`. `target-cpu=native` is not set. Apple Silicon uses the default aarch64 baseline.
+- CI: `.github/workflows/determinism-replay.yml` requires `scripted_system` as one of the ten cross-OS cases. `target-cpu=native` is not set. Apple Silicon uses the default aarch64 baseline.
 
 ---
 
@@ -231,5 +233,6 @@ Each mod script is compiled on the tick it runs. The replay case is 32 ticks of 
 |---|---|---|
 | 1.0 | 2026-10-14 | WS-MOD. Sandbox, mod loader, tick-boundary reload, `scripted_system` hash. |
 | 1.1 | 2026-10-14 | `build_app` installs `ModScriptPlugin` via `register_mod_runtime`. Editor, game runtime, and `hello_companion` call it. |
-| 1.3 | 2026-10-15 | Gameplay `script_system` does not inject `PhysicsProxy` or `NavMeshProxy`. #317. |
+| 1.3 | 2026-10-15 | Gameplay `script_system` does not inject `PhysicsProxy` or `NavMeshProxy`. #317, merged as #318. |
+| 1.4 | 2026-10-16 | Demo follow-through. `advanced_ai.rhai` uses distance for sight and an empty patrol path. `scripting_playground` keeps trigger damage and drops the player raycast. Hosts still insert the physics and nav resources. |
 | 1.2 | 2026-10-15 | `queue_weave` on capability `Weave`. Command API 2. Weave casts are a fixed buffer. |
