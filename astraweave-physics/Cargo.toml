@@ -35,7 +35,6 @@ bitflags = "2"
 # physics→fluids→terrain→gameplay→physics cycle open.
 astraweave-water = { path = "../astraweave-water" }
 astraweave-destruction = { path = "../astraweave-destruction" }
-libm = { version = "0.2", default-features = false }
 rayon = { version = "1.10", optional = true }
 serde = { version = "1.0", features = ["derive"], optional = true }
 serde_json = { workspace = true, optional = true }

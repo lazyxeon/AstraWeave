@@ -1365,6 +1365,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "astraweave-alloc",
+ "astraweave-destruction",
  "astraweave-ecs",
  "astraweave-profiling",
  "astraweave-scene",
