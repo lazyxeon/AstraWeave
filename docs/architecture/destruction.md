@@ -9,8 +9,8 @@ lifecycle_status: active
 integration_status: wired
 summary: "Ordered destruction commands, an 8-iteration load push, and a 300-tick replay case."
 owns: [astraweave-destruction]
-doc_version: "1.2"
-last_verified_commit: 7a571045
+doc_version: "1.3"
+last_verified_commit: 5c664f23
 runtime_edges:
   - to: astraweave-core
     note: "The core replay test calls demolition_bytes."
@@ -26,10 +26,10 @@ runtime_edges:
 |---|---|
 | **System name** | Deterministic destruction |
 | **Primary crates** | `astraweave-destruction` |
-| **Document version** | 1.2 |
-| **Last verified against commit** | `7a571045` |
-| **Last verified date** | 2026-10-15 |
-| **Status** | Active. Headless showcase and the required replay case. The greybox on main (`cdea968c`) still digs with `dig_sphere`, not `DestructionCommand::Brush`. |
+| **Document version** | 1.3 |
+| **Last verified against commit** | `5c664f23` |
+| **Last verified date** | 2026-10-16 |
+| **Status** | Active. Headless showcase and the required replay case. The Aravath greybox binds integer columns through `ColumnFns` and digs with `DestructionCommand::Brush`. `FlatColumnBase` remains the terrain when no functions are bound, so the `destruction` replay hash is unchanged. |
 | **Owner notes** | Design: `docs/current/DESTRUCTION_DESIGN.md`. Survey: `docs/current/DESTRUCTION_ARCHAEOLOGY.md`. `Fixed64` lives in `astraweave-math` (PR #245). |
 
 ---
@@ -68,7 +68,8 @@ Floats do not enter this pipeline. Rapier is not called.
 | `DestructionCommand` | One impact, explosion, brush, detach, or anchor |
 | Tier A | Flood-fill from anchors. Islands with no anchor and without `ANTI_DESTROY` become `DYNAMIC` |
 | Tier B | Fixed 8-iteration load push. A bond breaks when pushed load exceeds strength minus damage |
-| `FlatColumnBase` | Every column has the same integer top. The #215 adapter is not compiled yet |
+| `FlatColumnBase` | Every column has the same integer top. Used when `ColumnFns` is unset |
+| `ColumnFns` | Caller-supplied `surface` top and material. This crate does not depend on `astraweave-terrain` |
 | Cosmetic debris | Not represented. Slots are gameplay debris and are hashed |
 | `GeometryNotice` | Integer box navigation can consume. Reason 2 is a structural collapse |
 
@@ -90,7 +91,7 @@ Floats do not enter this pipeline. Rapier is not called.
 ### Not touched
 
 - `astraweave-physics` `DestructionManager`, `add_destructible_box`, Rapier
-- `astraweave-terrain` column generator (PR #215)
+- `astraweave-terrain` column generator (the greybox passes function pointers; this crate does not import that crate)
 - `astraweave-render` passes (PR #216)
 - `astraweave-combat` (PR #212)
 
@@ -105,7 +106,8 @@ Floats do not enter this pipeline. Rapier is not called.
 | `astraweave-destruction/src/command.rs` | Command types, validation, canonical bytes | Active | Serde on the command types |
 | `astraweave-destruction/src/graph.rs` | Nodes, bonds, Tier A, Tier B, climb flags | Active | `Vec` sorted by id. No `HashMap` |
 | `astraweave-destruction/src/fracture.rs` | Planar cut, seeded Voronoi, `bake_gate` | Active | Bake bytes are the manifest input |
-| `astraweave-destruction/src/terrain.rs` | Fixed-capacity brush slab, unload/reload | Active | `i32` height, `i8` density. No map alloc on apply |
+| `astraweave-destruction/src/column_base.rs` | `ColumnFns` function pointers | Active | `top` and `material`. No terrain-crate dependency |
+| `astraweave-destruction/src/terrain.rs` | Fixed-capacity brush slab, unload/reload | Active | `i32` height, `i8` density. No map alloc on apply. `surface_y` adds the brush delta to `ColumnFns::top` when bound, otherwise to `FlatColumnBase` |
 | `astraweave-destruction/src/octree.rs` | Sparse voxel DAG for an edited chunk | Active | Shared leaves and branches. Base column fills unedited cells |
 | `astraweave-destruction/src/jobs.rs` | Two query workers, ordered slot merge | Active | Started in `QueryPool::new`. GPU is not a sim writer |
 | `astraweave-destruction/src/debris.rs` | 256-slot pool, sleep, eviction | Active | Array, no steady-state alloc |
@@ -122,8 +124,8 @@ Floats do not enter this pipeline. Rapier is not called.
 |---|---|---|
 | `astraweave-physics` `DestructionManager` | Dormant float toy | Left in place. New calls do not go through it |
 | `PhysicsWorld::add_destructible_box` | Stub | Not extended |
-| Greybox `dig_sphere` / `VoxelEdit` | On main, not this crate | The showcase script is the replacement the demo should call |
-| #215 `surface_height` | Not on this branch | `FlatColumnBase` until that PR merges |
+| Greybox `dig_sphere` | Calls `apply_brush_now` | Sphere `Subtract` brush, then the island mesh is carved by `seed - surface_y`. A full command log returns before that carve |
+| #215 `surface_height` | Bound by the greybox | `column_gen` stays in `astraweave-terrain`. `ColumnFns` is the hook. `FlatColumnBase` stays for the replay case |
 
 ---
 
@@ -164,6 +166,7 @@ Floats do not enter this pipeline. Rapier is not called.
 | 9 | Restoring `persist_bytes` matches the live hash | Yes | `command_log_restores_the_gate_and_the_crater` |
 | 10 | Parallel occupancy queries match a direct DAG walk | Yes | `parallel_queries_match_the_dag_walk` |
 | 11 | A collapse notice covers every piece that became `DYNAMIC` this solve, and no piece that was already dynamic | Yes | `collapse_notice_covers_the_dropped_bridge_span` |
+| 12 | With `ColumnFns` set, unload then load restores the brush occupancy, and an undug column reports the seed top | Yes | `terrain::tests::seeded_columns_replay_the_same_occupancy` |
 
 ---
 
@@ -181,8 +184,8 @@ Caps, not wall-clock gates: 256 debris, 1024 nodes per tick, 8 stress iterations
 
 ## 11. Open Questions / Parked Decisions
 
-- **#215 column adapter.** `FlatColumnBase` is the test terrain. After #215 merges, an adapter should call `surface_height` / `column_material` without editing that crate's generator. Tracked in issue #249.
-- **Greybox call site.** `aravath_runtime` is on main. The window still calls `dig_sphere`. Replacing that with `DestructionCommand::Brush` is still open. The headless destruction example remains the showcase for this crate.
+- **#249 column adapter.** Closed on `5c664f23` for the hook. `ColumnFns::top` is what `surface_y` reads. `ColumnFns::material` is the paired pointer. `rebuild_dag` still fills density overrides only, the same as `TerrainBase::column_material`, which no rebuild calls. The generator, erosion, and scatter in `astraweave-terrain` are not edited here.
+- **Greybox brush.** Closed on `5c664f23`. `Ground::dig_sphere` enqueues a sphere `Subtract` brush through `DestructionWorld::apply_brush_now`. The headless `examples/aravath_destruction` binary remains the crate showcase. The visible island hole is the occupancy drop applied to `island::surface_height`, because the streamed voxels are still the island fill.
 - **Direct stress solve.** A sparse direct solve can replace the 8-iteration push only if it stays integer and ordered. That would change the hash and needs its own review.
 - **Physics mirror.** Not added. Add `mirror_debris_pose` only when a caller needs a Rapier body it cannot get from the integer query.
 
@@ -199,3 +202,4 @@ Update this trace when the command set, the stress iteration count, the pool siz
 | 1.0 | 2026-10-15 | Initial trace for the crate, the replay case, and the headless Aravath showcase |
 | 1.1 | 2026-10-15 | Sparse voxel DAG, ordered query jobs, command-log persistence, weave and navigation notices |
 | 1.2 | 2026-10-15 | Collapse notices publish the union of newly dynamic piece bounds. Issue #279 |
+| 1.3 | 2026-10-16 | `ColumnFns` and `apply_brush_now`. Greybox digs with a brush. `FlatColumnBase` stays the unbound terrain. Issues #249 and #250 |
