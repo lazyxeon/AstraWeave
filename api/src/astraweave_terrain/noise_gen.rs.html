@@ -1644,258 +1644,243 @@
 <a href=#1644 id=1644 data-nosnippet>1644</a>        <span class="kw">let </span>p95 = heights[(n <span class="kw">as </span>f32 * <span class="number">0.95</span>) <span class="kw">as </span>usize];
 <a href=#1645 id=1645 data-nosnippet>1645</a>        <span class="kw">let </span>p99 = heights[(n <span class="kw">as </span>f32 * <span class="number">0.99</span>) <span class="kw">as </span>usize];
 <a href=#1646 id=1646 data-nosnippet>1646</a>
-<a href=#1647 id=1647 data-nosnippet>1647</a>        <span class="macro">println!</span>(
-<a href=#1648 id=1648 data-nosnippet>1648</a>            <span class="string">"Highland-Y-max regression: min={y_min:.2} p95={p95:.2} p99={p99:.2} max={y_max:.2} n={n}"
-<a href=#1649 id=1649 data-nosnippet>1649</a>        </span>);
-<a href=#1650 id=1650 data-nosnippet>1650</a>
-<a href=#1651 id=1651 data-nosnippet>1651</a>        <span class="comment">// Phase 1.6-F.4.B.2.F: thresholds scaled with amplitude (×5).
-<a href=#1652 id=1652 data-nosnippet>1652</a>        // F.2-T-4 / F.2-T-3 / pre-F.4.B.2 Y max ≥ 85 threshold was tuned for
-<a href=#1653 id=1653 data-nosnippet>1653</a>        // amplitude 50/80/4 which gave Y max ~96 at seed 12345. Target B
-<a href=#1654 id=1654 data-nosnippet>1654</a>        // amplitudes 150/480/10 give pre-erosion Y max ~606 (measured via
-<a href=#1655 id=1655 data-nosnippet>1655</a>        // `phase_4_b_1_scale_radius5_per_climate`). Threshold ≥ 425 is 70%
-<a href=#1656 id=1656 data-nosnippet>1656</a>        // of new baseline (analogous to old 85/96 = 89% buffer).
-<a href=#1657 id=1657 data-nosnippet>1657</a>        </span><span class="macro">assert!</span>(
-<a href=#1658 id=1658 data-nosnippet>1658</a>            y_max &gt;= <span class="number">425.0</span>,
-<a href=#1659 id=1659 data-nosnippet>1659</a>            <span class="string">"Highland Y max reached only {y_max:.2} — expected &gt;= 425. Continental modulation \
-<a href=#1660 id=1660 data-nosnippet>1660</a>             may be suppressing mountain layer too aggressively, or continental field may not \
-<a href=#1661 id=1661 data-nosnippet>1661</a>             reach highland regions (cont &gt; 0.7) within the visible terrain."
-<a href=#1662 id=1662 data-nosnippet>1662</a>        </span>);
-<a href=#1663 id=1663 data-nosnippet>1663</a>        <span class="comment">// Phase 1.6-F.4.B.2.F: p95 ≥ 40 was pre-F.4.B.2 (~83% of then-baseline
-<a href=#1664 id=1664 data-nosnippet>1664</a>        // p95=48). New baseline p95 ~350 (F.2-T / F.4.B.2 measurement).
-<a href=#1665 id=1665 data-nosnippet>1665</a>        // Threshold ≥ 250 is 71% of new baseline.
-<a href=#1666 id=1666 data-nosnippet>1666</a>        </span><span class="macro">assert!</span>(
-<a href=#1667 id=1667 data-nosnippet>1667</a>            p95 &gt;= <span class="number">250.0</span>,
-<a href=#1668 id=1668 data-nosnippet>1668</a>            <span class="string">"Highland p95 reached only {p95:.2} — expected &gt;= 250. Top 5% of vertices do not \
-<a href=#1669 id=1669 data-nosnippet>1669</a>             form a substantial highland band."
-<a href=#1670 id=1670 data-nosnippet>1670</a>        </span>);
-<a href=#1671 id=1671 data-nosnippet>1671</a>    }
-<a href=#1672 id=1672 data-nosnippet>1672</a>
-<a href=#1673 id=1673 data-nosnippet>1673</a>    <span class="doccomment">/// Phase 1.6-F.2.C: regression guard. When continental_enabled is false,
-<a href=#1674 id=1674 data-nosnippet>1674</a>    /// sample_height must produce byte-identical output to pre-F.2
-<a href=#1675 id=1675 data-nosnippet>1675</a>    /// semantics (i.e. mountain layer's raw contribution is added without
-<a href=#1676 id=1676 data-nosnippet>1676</a>    /// modulation). Verified by comparing a config with continental disabled
-<a href=#1677 id=1677 data-nosnippet>1677</a>    /// against a hand-computed sum of the three layers.
-<a href=#1678 id=1678 data-nosnippet>1678</a>    </span><span class="attr">#[test]
-<a href=#1679 id=1679 data-nosnippet>1679</a>    </span><span class="kw">fn </span>phase_1_6_f2_continental_disabled_is_noop() {
-<a href=#1680 id=1680 data-nosnippet>1680</a>        <span class="kw">let </span>config = NoiseConfig {
-<a href=#1681 id=1681 data-nosnippet>1681</a>            continental_enabled: <span class="bool-val">false</span>,
-<a href=#1682 id=1682 data-nosnippet>1682</a>            ..Default::default()
-<a href=#1683 id=1683 data-nosnippet>1683</a>        };
-<a href=#1684 id=1684 data-nosnippet>1684</a>        <span class="kw">let </span>noise = TerrainNoise::new(<span class="kw-2">&amp;</span>config, <span class="number">12345</span>);
-<a href=#1685 id=1685 data-nosnippet>1685</a>
-<a href=#1686 id=1686 data-nosnippet>1686</a>        <span class="comment">// Sample at three positions; the result should match a manual sum
-<a href=#1687 id=1687 data-nosnippet>1687</a>        // of the three layers without any continental modulation.
-<a href=#1688 id=1688 data-nosnippet>1688</a>        </span><span class="kw">for </span>(x, z) <span class="kw">in </span>[(<span class="number">0.0f64</span>, <span class="number">0.0</span>), (<span class="number">500.0</span>, <span class="number">500.0</span>), (-<span class="number">300.0</span>, <span class="number">700.0</span>)] {
-<a href=#1689 id=1689 data-nosnippet>1689</a>            <span class="kw">let </span>actual = noise.sample_height(x, z);
+<a href=#1647 id=1647 data-nosnippet>1647</a>        <span class="comment">// E3 retuned this grassland distribution. The F.4 floor (y_max &gt;= 425,
+<a href=#1648 id=1648 data-nosnippet>1648</a>        // p95 &gt;= 250) was 70% of a pre-E3 peak near 606. Debug and release
+<a href=#1649 id=1649 data-nosnippet>1649</a>        // now agree on these bits (rustc 1.89.0, x86_64 Linux): min 0,
+<a href=#1650 id=1650 data-nosnippet>1650</a>        // p95 ~223.40, p99 ~260.44, max ~368.97.
+<a href=#1651 id=1651 data-nosnippet>1651</a>        </span><span class="macro">assert_eq!</span>(n, <span class="number">495_616</span>);
+<a href=#1652 id=1652 data-nosnippet>1652</a>        <span class="macro">assert_eq!</span>(y_min.to_bits(), <span class="number">0</span>, <span class="string">"min {y_min}"</span>);
+<a href=#1653 id=1653 data-nosnippet>1653</a>        <span class="macro">assert_eq!</span>(p95.to_bits(), <span class="number">1_130_325_586</span>, <span class="string">"p95 {p95}"</span>);
+<a href=#1654 id=1654 data-nosnippet>1654</a>        <span class="macro">assert_eq!</span>(p99.to_bits(), <span class="number">1_132_607_593</span>, <span class="string">"p99 {p99}"</span>);
+<a href=#1655 id=1655 data-nosnippet>1655</a>        <span class="macro">assert_eq!</span>(y_max.to_bits(), <span class="number">1_136_163_823</span>, <span class="string">"max {y_max}"</span>);
+<a href=#1656 id=1656 data-nosnippet>1656</a>    }
+<a href=#1657 id=1657 data-nosnippet>1657</a>
+<a href=#1658 id=1658 data-nosnippet>1658</a>    <span class="doccomment">/// Phase 1.6-F.2.C: regression guard. When continental_enabled is false,
+<a href=#1659 id=1659 data-nosnippet>1659</a>    /// sample_height must produce byte-identical output to pre-F.2
+<a href=#1660 id=1660 data-nosnippet>1660</a>    /// semantics (i.e. mountain layer's raw contribution is added without
+<a href=#1661 id=1661 data-nosnippet>1661</a>    /// modulation). Verified by comparing a config with continental disabled
+<a href=#1662 id=1662 data-nosnippet>1662</a>    /// against a hand-computed sum of the three layers.
+<a href=#1663 id=1663 data-nosnippet>1663</a>    </span><span class="attr">#[test]
+<a href=#1664 id=1664 data-nosnippet>1664</a>    </span><span class="kw">fn </span>phase_1_6_f2_continental_disabled_is_noop() {
+<a href=#1665 id=1665 data-nosnippet>1665</a>        <span class="kw">let </span>config = NoiseConfig {
+<a href=#1666 id=1666 data-nosnippet>1666</a>            continental_enabled: <span class="bool-val">false</span>,
+<a href=#1667 id=1667 data-nosnippet>1667</a>            ..Default::default()
+<a href=#1668 id=1668 data-nosnippet>1668</a>        };
+<a href=#1669 id=1669 data-nosnippet>1669</a>        <span class="kw">let </span>noise = TerrainNoise::new(<span class="kw-2">&amp;</span>config, <span class="number">12345</span>);
+<a href=#1670 id=1670 data-nosnippet>1670</a>
+<a href=#1671 id=1671 data-nosnippet>1671</a>        <span class="comment">// Sample at three positions; the result should match a manual sum
+<a href=#1672 id=1672 data-nosnippet>1672</a>        // of the three layers without any continental modulation.
+<a href=#1673 id=1673 data-nosnippet>1673</a>        </span><span class="kw">for </span>(x, z) <span class="kw">in </span>[(<span class="number">0.0f64</span>, <span class="number">0.0</span>), (<span class="number">500.0</span>, <span class="number">500.0</span>), (-<span class="number">300.0</span>, <span class="number">700.0</span>)] {
+<a href=#1674 id=1674 data-nosnippet>1674</a>            <span class="kw">let </span>actual = noise.sample_height(x, z);
+<a href=#1675 id=1675 data-nosnippet>1675</a>
+<a href=#1676 id=1676 data-nosnippet>1676</a>            <span class="kw">let </span>base = noise.base_elevation.get([
+<a href=#1677 id=1677 data-nosnippet>1677</a>                x * config.base_elevation.scale,
+<a href=#1678 id=1678 data-nosnippet>1678</a>                <span class="number">0.0</span>,
+<a href=#1679 id=1679 data-nosnippet>1679</a>                z * config.base_elevation.scale,
+<a href=#1680 id=1680 data-nosnippet>1680</a>            ]) <span class="kw">as </span>f32
+<a href=#1681 id=1681 data-nosnippet>1681</a>                * config.base_elevation.amplitude;
+<a href=#1682 id=1682 data-nosnippet>1682</a>
+<a href=#1683 id=1683 data-nosnippet>1683</a>            <span class="kw">let </span>mountains_raw =
+<a href=#1684 id=1684 data-nosnippet>1684</a>                (noise
+<a href=#1685 id=1685 data-nosnippet>1685</a>                    .mountains
+<a href=#1686 id=1686 data-nosnippet>1686</a>                    .get([x * config.mountains.scale, <span class="number">0.0</span>, z * config.mountains.scale])
+<a href=#1687 id=1687 data-nosnippet>1687</a>                    <span class="kw">as </span>f32)
+<a href=#1688 id=1688 data-nosnippet>1688</a>                    .abs()
+<a href=#1689 id=1689 data-nosnippet>1689</a>                    * config.mountains.amplitude;
 <a href=#1690 id=1690 data-nosnippet>1690</a>
-<a href=#1691 id=1691 data-nosnippet>1691</a>            <span class="kw">let </span>base = noise.base_elevation.get([
-<a href=#1692 id=1692 data-nosnippet>1692</a>                x * config.base_elevation.scale,
-<a href=#1693 id=1693 data-nosnippet>1693</a>                <span class="number">0.0</span>,
-<a href=#1694 id=1694 data-nosnippet>1694</a>                z * config.base_elevation.scale,
-<a href=#1695 id=1695 data-nosnippet>1695</a>            ]) <span class="kw">as </span>f32
-<a href=#1696 id=1696 data-nosnippet>1696</a>                * config.base_elevation.amplitude;
-<a href=#1697 id=1697 data-nosnippet>1697</a>
-<a href=#1698 id=1698 data-nosnippet>1698</a>            <span class="kw">let </span>mountains_raw =
-<a href=#1699 id=1699 data-nosnippet>1699</a>                (noise
-<a href=#1700 id=1700 data-nosnippet>1700</a>                    .mountains
-<a href=#1701 id=1701 data-nosnippet>1701</a>                    .get([x * config.mountains.scale, <span class="number">0.0</span>, z * config.mountains.scale])
-<a href=#1702 id=1702 data-nosnippet>1702</a>                    <span class="kw">as </span>f32)
-<a href=#1703 id=1703 data-nosnippet>1703</a>                    .abs()
-<a href=#1704 id=1704 data-nosnippet>1704</a>                    * config.mountains.amplitude;
+<a href=#1691 id=1691 data-nosnippet>1691</a>            <span class="kw">let </span>detail = noise
+<a href=#1692 id=1692 data-nosnippet>1692</a>                .detail
+<a href=#1693 id=1693 data-nosnippet>1693</a>                .get([x * config.detail.scale, <span class="number">0.0</span>, z * config.detail.scale])
+<a href=#1694 id=1694 data-nosnippet>1694</a>                <span class="kw">as </span>f32
+<a href=#1695 id=1695 data-nosnippet>1695</a>                * config.detail.amplitude;
+<a href=#1696 id=1696 data-nosnippet>1696</a>
+<a href=#1697 id=1697 data-nosnippet>1697</a>            <span class="kw">let </span>expected = (base + mountains_raw + detail).max(<span class="number">0.0</span>);
+<a href=#1698 id=1698 data-nosnippet>1698</a>            <span class="macro">assert!</span>(
+<a href=#1699 id=1699 data-nosnippet>1699</a>                (actual - expected).abs() &lt; <span class="number">1e-4</span>,
+<a href=#1700 id=1700 data-nosnippet>1700</a>                <span class="string">"continental-disabled sample_height({x}, {z}) = {actual}, expected {expected} (diff {})"</span>,
+<a href=#1701 id=1701 data-nosnippet>1701</a>                (actual - expected).abs()
+<a href=#1702 id=1702 data-nosnippet>1702</a>            );
+<a href=#1703 id=1703 data-nosnippet>1703</a>        }
+<a href=#1704 id=1704 data-nosnippet>1704</a>    }
 <a href=#1705 id=1705 data-nosnippet>1705</a>
-<a href=#1706 id=1706 data-nosnippet>1706</a>            <span class="kw">let </span>detail = noise
-<a href=#1707 id=1707 data-nosnippet>1707</a>                .detail
-<a href=#1708 id=1708 data-nosnippet>1708</a>                .get([x * config.detail.scale, <span class="number">0.0</span>, z * config.detail.scale])
-<a href=#1709 id=1709 data-nosnippet>1709</a>                <span class="kw">as </span>f32
-<a href=#1710 id=1710 data-nosnippet>1710</a>                * config.detail.amplitude;
-<a href=#1711 id=1711 data-nosnippet>1711</a>
-<a href=#1712 id=1712 data-nosnippet>1712</a>            <span class="kw">let </span>expected = (base + mountains_raw + detail).max(<span class="number">0.0</span>);
-<a href=#1713 id=1713 data-nosnippet>1713</a>            <span class="macro">assert!</span>(
-<a href=#1714 id=1714 data-nosnippet>1714</a>                (actual - expected).abs() &lt; <span class="number">1e-4</span>,
-<a href=#1715 id=1715 data-nosnippet>1715</a>                <span class="string">"continental-disabled sample_height({x}, {z}) = {actual}, expected {expected} (diff {})"</span>,
-<a href=#1716 id=1716 data-nosnippet>1716</a>                (actual - expected).abs()
-<a href=#1717 id=1717 data-nosnippet>1717</a>            );
-<a href=#1718 id=1718 data-nosnippet>1718</a>        }
-<a href=#1719 id=1719 data-nosnippet>1719</a>    }
-<a href=#1720 id=1720 data-nosnippet>1720</a>
-<a href=#1721 id=1721 data-nosnippet>1721</a>    <span class="comment">// =========================================================================
-<a href=#1722 id=1722 data-nosnippet>1722</a>    // Phase 1.X-F.3.A: sample_height_with_params tests
-<a href=#1723 id=1723 data-nosnippet>1723</a>    // =========================================================================
-<a href=#1724 id=1724 data-nosnippet>1724</a>
-<a href=#1725 id=1725 data-nosnippet>1725</a>    </span><span class="doccomment">/// Build the F.4.B.3.D.5-fix baseline `BootstrapParams` from the
-<a href=#1726 id=1726 data-nosnippet>1726</a>    /// `D5FIX_BASELINE_*` consts. At these values + multiplier 1.0,
-<a href=#1727 id=1727 data-nosnippet>1727</a>    /// `sample_height_with_params` must produce byte-identical output to
-<a href=#1728 id=1728 data-nosnippet>1728</a>    /// `sample_height` (which delegates to `sample_height_with_mountain_amplitude(_, _, 1.0)`).
-<a href=#1729 id=1729 data-nosnippet>1729</a>    </span><span class="kw">fn </span>baseline_bootstrap_params() -&gt; <span class="kw">crate</span>::spline_types::BootstrapParams {
-<a href=#1730 id=1730 data-nosnippet>1730</a>        <span class="kw">crate</span>::spline_types::BootstrapParams {
-<a href=#1731 id=1731 data-nosnippet>1731</a>            mountains_amplitude: <span class="kw">crate</span>::spline_types::D5FIX_BASELINE_MOUNTAINS_AMPLITUDE,
-<a href=#1732 id=1732 data-nosnippet>1732</a>            mountains_scale: <span class="kw">crate</span>::spline_types::D5FIX_BASELINE_MOUNTAINS_SCALE,
-<a href=#1733 id=1733 data-nosnippet>1733</a>            continental_scale: <span class="kw">crate</span>::spline_types::D5FIX_BASELINE_CONTINENTAL_SCALE,
-<a href=#1734 id=1734 data-nosnippet>1734</a>            base_elevation_amplitude: <span class="kw">crate</span>::spline_types::D5FIX_BASELINE_BASE_ELEVATION_AMPLITUDE,
-<a href=#1735 id=1735 data-nosnippet>1735</a>            base_elevation_floor: <span class="kw">crate</span>::spline_types::D5FIX_BASELINE_BASE_ELEVATION_FLOOR,
-<a href=#1736 id=1736 data-nosnippet>1736</a>        }
-<a href=#1737 id=1737 data-nosnippet>1737</a>    }
-<a href=#1738 id=1738 data-nosnippet>1738</a>
-<a href=#1739 id=1739 data-nosnippet>1739</a>    <span class="doccomment">/// At baseline params + multiplier 1.0, `sample_height_with_params`
-<a href=#1740 id=1740 data-nosnippet>1740</a>    /// produces **byte-identical** output to legacy `sample_height` across
-<a href=#1741 id=1741 data-nosnippet>1741</a>    /// 100 sample positions.
-<a href=#1742 id=1742 data-nosnippet>1742</a>    ///
-<a href=#1743 id=1743 data-nosnippet>1743</a>    /// **F.3.B retrofit history (logged in `REGIONAL_ARCHETYPE_VARIATION_CAMPAIGN.md`
-<a href=#1744 id=1744 data-nosnippet>1744</a>    /// §10 F.3 entry)**: F.3.A initially landed with
-<a href=#1745 id=1745 data-nosnippet>1745</a>    /// `BootstrapParams.mountains_scale: f32`, which produced ~60-ulp
-<a href=#1746 id=1746 data-nosnippet>1746</a>    /// precision drift relative to the legacy `NoiseConfig.mountains.scale: f64`
-<a href=#1747 id=1747 data-nosnippet>1747</a>    /// exact representation. The drift propagated through erosion (per
-<a href=#1748 id=1748 data-nosnippet>1748</a>    /// F.3-phase-3 world-coord seeding finding) and produced 103 WU
-<a href=#1749 id=1749 data-nosnippet>1749</a>    /// divergence at chunk shared edges, breaking phase-2 continuity
-<a href=#1750 id=1750 data-nosnippet>1750</a>    /// (80 WU threshold). F.3.B retrofit changed `BootstrapParams.mountains_scale`
-<a href=#1751 id=1751 data-nosnippet>1751</a>    /// from `f32` to `f64` and `BootstrapSplineSet.mountains_scale` from
-<a href=#1752 id=1752 data-nosnippet>1752</a>    /// a `ParamSpline` to a plain `f64` field, restoring byte-identity.
-<a href=#1753 id=1753 data-nosnippet>1753</a>    /// `continental_scale` stays `f32` because legacy
-<a href=#1754 id=1754 data-nosnippet>1754</a>    /// `NoiseConfig.continental_scale` is also `f32` — both sides share
-<a href=#1755 id=1755 data-nosnippet>1755</a>    /// the same f32 representation, no drift.
-<a href=#1756 id=1756 data-nosnippet>1756</a>    ///
-<a href=#1757 id=1757 data-nosnippet>1757</a>    /// Test asserts byte-identical (max world-unit divergence == 0.0).
-<a href=#1758 id=1758 data-nosnippet>1758</a>    /// If a future change introduces drift, this test surfaces the
-<a href=#1759 id=1759 data-nosnippet>1759</a>    /// regression immediately.
-<a href=#1760 id=1760 data-nosnippet>1760</a>    </span><span class="attr">#[test]
-<a href=#1761 id=1761 data-nosnippet>1761</a>    </span><span class="kw">fn </span>sample_height_with_params_at_baseline_matches_sample_height() {
-<a href=#1762 id=1762 data-nosnippet>1762</a>        <span class="kw">let </span>config = NoiseConfig::default();
-<a href=#1763 id=1763 data-nosnippet>1763</a>        <span class="kw">let </span>noise = TerrainNoise::new(<span class="kw-2">&amp;</span>config, <span class="number">12345</span>);
-<a href=#1764 id=1764 data-nosnippet>1764</a>        <span class="kw">let </span>params = baseline_bootstrap_params();
-<a href=#1765 id=1765 data-nosnippet>1765</a>
-<a href=#1766 id=1766 data-nosnippet>1766</a>        <span class="comment">// 10×10 grid across Target B world (~11264 WU per side).
-<a href=#1767 id=1767 data-nosnippet>1767</a>        </span><span class="kw">let </span><span class="kw-2">mut </span>max_diff = <span class="number">0.0f32</span>;
-<a href=#1768 id=1768 data-nosnippet>1768</a>        <span class="kw">let </span><span class="kw-2">mut </span>sum_diff = <span class="number">0.0f32</span>;
-<a href=#1769 id=1769 data-nosnippet>1769</a>        <span class="kw">let </span><span class="kw-2">mut </span>count = <span class="number">0u32</span>;
-<a href=#1770 id=1770 data-nosnippet>1770</a>        <span class="kw">for </span>i <span class="kw">in </span><span class="number">0</span>..<span class="number">10 </span>{
-<a href=#1771 id=1771 data-nosnippet>1771</a>            <span class="kw">for </span>j <span class="kw">in </span><span class="number">0</span>..<span class="number">10 </span>{
-<a href=#1772 id=1772 data-nosnippet>1772</a>                <span class="kw">let </span>x = -<span class="number">5000.0 </span>+ i <span class="kw">as </span>f64 * <span class="number">1000.0</span>;
-<a href=#1773 id=1773 data-nosnippet>1773</a>                <span class="kw">let </span>z = -<span class="number">5000.0 </span>+ j <span class="kw">as </span>f64 * <span class="number">1000.0</span>;
-<a href=#1774 id=1774 data-nosnippet>1774</a>                <span class="kw">let </span>legacy = noise.sample_height(x, z);
-<a href=#1775 id=1775 data-nosnippet>1775</a>                <span class="kw">let </span>new = noise.sample_height_with_params(<span class="kw-2">&amp;</span>params, x, z, <span class="number">1.0</span>);
-<a href=#1776 id=1776 data-nosnippet>1776</a>                <span class="kw">let </span>diff = (legacy - new).abs();
-<a href=#1777 id=1777 data-nosnippet>1777</a>                <span class="kw">if </span>diff &gt; max_diff {
-<a href=#1778 id=1778 data-nosnippet>1778</a>                    max_diff = diff;
-<a href=#1779 id=1779 data-nosnippet>1779</a>                }
-<a href=#1780 id=1780 data-nosnippet>1780</a>                sum_diff += diff;
-<a href=#1781 id=1781 data-nosnippet>1781</a>                count += <span class="number">1</span>;
-<a href=#1782 id=1782 data-nosnippet>1782</a>            }
-<a href=#1783 id=1783 data-nosnippet>1783</a>        }
-<a href=#1784 id=1784 data-nosnippet>1784</a>        <span class="kw">let </span>mean_diff = sum_diff / count <span class="kw">as </span>f32;
-<a href=#1785 id=1785 data-nosnippet>1785</a>
-<a href=#1786 id=1786 data-nosnippet>1786</a>        <span class="comment">// Byte-identical contract: max divergence must be exactly 0.0
-<a href=#1787 id=1787 data-nosnippet>1787</a>        // after F.3.B retrofit (mountains_scale: f64).
-<a href=#1788 id=1788 data-nosnippet>1788</a>        </span><span class="macro">assert_eq!</span>(
-<a href=#1789 id=1789 data-nosnippet>1789</a>            max_diff, <span class="number">0.0</span>,
-<a href=#1790 id=1790 data-nosnippet>1790</a>            <span class="string">"sample_height_with_params at baseline must be byte-identical \
-<a href=#1791 id=1791 data-nosnippet>1791</a>             to legacy sample_height; max={:.9}m, mean={:.9}m"</span>,
-<a href=#1792 id=1792 data-nosnippet>1792</a>            max_diff, mean_diff
-<a href=#1793 id=1793 data-nosnippet>1793</a>        );
-<a href=#1794 id=1794 data-nosnippet>1794</a>    }
-<a href=#1795 id=1795 data-nosnippet>1795</a>
-<a href=#1796 id=1796 data-nosnippet>1796</a>    <span class="doccomment">/// Same `(params, x, z, multiplier)` produces byte-identical output
-<a href=#1797 id=1797 data-nosnippet>1797</a>    /// across two consecutive calls. Determinism contract.
-<a href=#1798 id=1798 data-nosnippet>1798</a>    </span><span class="attr">#[test]
-<a href=#1799 id=1799 data-nosnippet>1799</a>    </span><span class="kw">fn </span>sample_height_with_params_deterministic() {
-<a href=#1800 id=1800 data-nosnippet>1800</a>        <span class="kw">let </span>config = NoiseConfig::default();
-<a href=#1801 id=1801 data-nosnippet>1801</a>        <span class="kw">let </span>noise = TerrainNoise::new(<span class="kw-2">&amp;</span>config, <span class="number">12345</span>);
-<a href=#1802 id=1802 data-nosnippet>1802</a>        <span class="kw">let </span>params = baseline_bootstrap_params();
-<a href=#1803 id=1803 data-nosnippet>1803</a>
-<a href=#1804 id=1804 data-nosnippet>1804</a>        <span class="kw">for </span><span class="kw-2">&amp;</span>(x, z) <span class="kw">in </span><span class="kw-2">&amp;</span>[(<span class="number">0.0</span>, <span class="number">0.0</span>), (<span class="number">1234.5</span>, -<span class="number">678.9</span>), (-<span class="number">3000.0</span>, <span class="number">4500.0</span>)] {
-<a href=#1805 id=1805 data-nosnippet>1805</a>            <span class="kw">let </span>a = noise.sample_height_with_params(<span class="kw-2">&amp;</span>params, x, z, <span class="number">1.0</span>);
-<a href=#1806 id=1806 data-nosnippet>1806</a>            <span class="kw">let </span>b = noise.sample_height_with_params(<span class="kw-2">&amp;</span>params, x, z, <span class="number">1.0</span>);
-<a href=#1807 id=1807 data-nosnippet>1807</a>            <span class="macro">assert_eq!</span>(
-<a href=#1808 id=1808 data-nosnippet>1808</a>                a.to_bits(),
-<a href=#1809 id=1809 data-nosnippet>1809</a>                b.to_bits(),
-<a href=#1810 id=1810 data-nosnippet>1810</a>                <span class="string">"sample_height_with_params not deterministic at ({}, {})"</span>,
-<a href=#1811 id=1811 data-nosnippet>1811</a>                x,
-<a href=#1812 id=1812 data-nosnippet>1812</a>                z
-<a href=#1813 id=1813 data-nosnippet>1813</a>            );
-<a href=#1814 id=1814 data-nosnippet>1814</a>        }
-<a href=#1815 id=1815 data-nosnippet>1815</a>    }
-<a href=#1816 id=1816 data-nosnippet>1816</a>
-<a href=#1817 id=1817 data-nosnippet>1817</a>    <span class="doccomment">/// 10 sample positions at baseline produce 10 different f32 outputs.
-<a href=#1818 id=1818 data-nosnippet>1818</a>    /// Catches the failure mode where `sample_height_with_params`
-<a href=#1819 id=1819 data-nosnippet>1819</a>    /// accidentally returns a constant.
-<a href=#1820 id=1820 data-nosnippet>1820</a>    </span><span class="attr">#[test]
-<a href=#1821 id=1821 data-nosnippet>1821</a>    </span><span class="kw">fn </span>sample_height_with_params_position_varies() {
-<a href=#1822 id=1822 data-nosnippet>1822</a>        <span class="kw">let </span>config = NoiseConfig::default();
-<a href=#1823 id=1823 data-nosnippet>1823</a>        <span class="kw">let </span>noise = TerrainNoise::new(<span class="kw-2">&amp;</span>config, <span class="number">12345</span>);
-<a href=#1824 id=1824 data-nosnippet>1824</a>        <span class="kw">let </span>params = baseline_bootstrap_params();
-<a href=#1825 id=1825 data-nosnippet>1825</a>
-<a href=#1826 id=1826 data-nosnippet>1826</a>        <span class="kw">let </span>heights: Vec&lt;f32&gt; = (<span class="number">0</span>..<span class="number">10</span>)
-<a href=#1827 id=1827 data-nosnippet>1827</a>            .map(|i| {
-<a href=#1828 id=1828 data-nosnippet>1828</a>                <span class="kw">let </span>x = i <span class="kw">as </span>f64 * <span class="number">1500.0</span>;
-<a href=#1829 id=1829 data-nosnippet>1829</a>                noise.sample_height_with_params(<span class="kw-2">&amp;</span>params, x, <span class="number">0.0</span>, <span class="number">1.0</span>)
-<a href=#1830 id=1830 data-nosnippet>1830</a>            })
-<a href=#1831 id=1831 data-nosnippet>1831</a>            .collect();
-<a href=#1832 id=1832 data-nosnippet>1832</a>
-<a href=#1833 id=1833 data-nosnippet>1833</a>        <span class="kw">let </span>unique: std::collections::HashSet&lt;u32&gt; = heights.iter().map(|h| h.to_bits()).collect();
-<a href=#1834 id=1834 data-nosnippet>1834</a>        <span class="macro">assert!</span>(
-<a href=#1835 id=1835 data-nosnippet>1835</a>            unique.len() &gt;= <span class="number">8</span>,
-<a href=#1836 id=1836 data-nosnippet>1836</a>            <span class="string">"sample_height_with_params produced too few distinct values: \
-<a href=#1837 id=1837 data-nosnippet>1837</a>             {}/10 unique (heights: {:?})"</span>,
-<a href=#1838 id=1838 data-nosnippet>1838</a>            unique.len(),
-<a href=#1839 id=1839 data-nosnippet>1839</a>            heights
-<a href=#1840 id=1840 data-nosnippet>1840</a>        );
-<a href=#1841 id=1841 data-nosnippet>1841</a>    }
-<a href=#1842 id=1842 data-nosnippet>1842</a>
-<a href=#1843 id=1843 data-nosnippet>1843</a>    <span class="doccomment">/// Doubling `params.mountains_amplitude` produces a measurable height
-<a href=#1844 id=1844 data-nosnippet>1844</a>    /// increase at a position with substantial mountain contribution.
-<a href=#1845 id=1845 data-nosnippet>1845</a>    /// Falsifiable smoke test that splines actually drive the mountain
-<a href=#1846 id=1846 data-nosnippet>1846</a>    /// layer. Position selected during test development by sampling
-<a href=#1847 id=1847 data-nosnippet>1847</a>    /// candidate positions; (1234.5, -678.9) at seed 12345 produces
-<a href=#1848 id=1848 data-nosnippet>1848</a>    /// pre-erosion height &gt; 100m at baseline (verified during F.3.A
-<a href=#1849 id=1849 data-nosnippet>1849</a>    /// development).
-<a href=#1850 id=1850 data-nosnippet>1850</a>    ///
-<a href=#1851 id=1851 data-nosnippet>1851</a>    /// **Falsifiability**:
-<a href=#1852 id=1852 data-nosnippet>1852</a>    /// - If splines wired correctly: doubling `mountains_amplitude`
-<a href=#1853 id=1853 data-nosnippet>1853</a>    ///   approximately doubles the mountain layer's contribution; the
-<a href=#1854 id=1854 data-nosnippet>1854</a>    ///   delta is positive and substantial.
-<a href=#1855 id=1855 data-nosnippet>1855</a>    /// - If splines NOT wired (the new method ignores `params.mountains_amplitude`):
-<a href=#1856 id=1856 data-nosnippet>1856</a>    ///   delta ≈ 0.
-<a href=#1857 id=1857 data-nosnippet>1857</a>    /// - If wrong field doubled (e.g., `base_elevation_amplitude` instead):
-<a href=#1858 id=1858 data-nosnippet>1858</a>    ///   delta is small or has unexpected sign.
-<a href=#1859 id=1859 data-nosnippet>1859</a>    </span><span class="attr">#[test]
-<a href=#1860 id=1860 data-nosnippet>1860</a>    </span><span class="kw">fn </span>sample_height_with_params_doubles_with_doubled_mountain_amplitude() {
-<a href=#1861 id=1861 data-nosnippet>1861</a>        <span class="kw">let </span>config = NoiseConfig::default();
-<a href=#1862 id=1862 data-nosnippet>1862</a>        <span class="kw">let </span>noise = TerrainNoise::new(<span class="kw-2">&amp;</span>config, <span class="number">12345</span>);
-<a href=#1863 id=1863 data-nosnippet>1863</a>        <span class="kw">let </span>baseline = baseline_bootstrap_params();
-<a href=#1864 id=1864 data-nosnippet>1864</a>        <span class="kw">let </span><span class="kw-2">mut </span>doubled = baseline;
-<a href=#1865 id=1865 data-nosnippet>1865</a>        doubled.mountains_amplitude <span class="kw-2">*</span>= <span class="number">2.0</span>;
-<a href=#1866 id=1866 data-nosnippet>1866</a>
-<a href=#1867 id=1867 data-nosnippet>1867</a>        <span class="comment">// Search for a position where mountain layer contributes substantially.
-<a href=#1868 id=1868 data-nosnippet>1868</a>        // Pick the first position with baseline height &gt; 100m to make the
-<a href=#1869 id=1869 data-nosnippet>1869</a>        // test self-validating.
-<a href=#1870 id=1870 data-nosnippet>1870</a>        </span><span class="kw">let </span><span class="kw-2">mut </span>chosen: <span class="prelude-ty">Option</span>&lt;(f64, f64, f32)&gt; = <span class="prelude-val">None</span>;
-<a href=#1871 id=1871 data-nosnippet>1871</a>        <span class="kw">for </span>i <span class="kw">in </span><span class="number">0</span>..<span class="number">10 </span>{
-<a href=#1872 id=1872 data-nosnippet>1872</a>            <span class="kw">for </span>j <span class="kw">in </span><span class="number">0</span>..<span class="number">10 </span>{
-<a href=#1873 id=1873 data-nosnippet>1873</a>                <span class="kw">let </span>x = -<span class="number">3000.0 </span>+ i <span class="kw">as </span>f64 * <span class="number">700.0</span>;
-<a href=#1874 id=1874 data-nosnippet>1874</a>                <span class="kw">let </span>z = -<span class="number">3000.0 </span>+ j <span class="kw">as </span>f64 * <span class="number">700.0</span>;
-<a href=#1875 id=1875 data-nosnippet>1875</a>                <span class="kw">let </span>h = noise.sample_height_with_params(<span class="kw-2">&amp;</span>baseline, x, z, <span class="number">1.0</span>);
-<a href=#1876 id=1876 data-nosnippet>1876</a>                <span class="kw">if </span>h &gt; <span class="number">100.0 </span>{
-<a href=#1877 id=1877 data-nosnippet>1877</a>                    chosen = <span class="prelude-val">Some</span>((x, z, h));
-<a href=#1878 id=1878 data-nosnippet>1878</a>                    <span class="kw">break</span>;
-<a href=#1879 id=1879 data-nosnippet>1879</a>                }
-<a href=#1880 id=1880 data-nosnippet>1880</a>            }
-<a href=#1881 id=1881 data-nosnippet>1881</a>            <span class="kw">if </span>chosen.is_some() {
-<a href=#1882 id=1882 data-nosnippet>1882</a>                <span class="kw">break</span>;
-<a href=#1883 id=1883 data-nosnippet>1883</a>            }
-<a href=#1884 id=1884 data-nosnippet>1884</a>        }
-<a href=#1885 id=1885 data-nosnippet>1885</a>        <span class="kw">let </span>(x, z, baseline_height) =
-<a href=#1886 id=1886 data-nosnippet>1886</a>            chosen.expect(<span class="string">"expected at least one position with baseline height &gt; 100m"</span>);
-<a href=#1887 id=1887 data-nosnippet>1887</a>        <span class="kw">let </span>doubled_height = noise.sample_height_with_params(<span class="kw-2">&amp;</span>doubled, x, z, <span class="number">1.0</span>);
-<a href=#1888 id=1888 data-nosnippet>1888</a>        <span class="kw">let </span>delta = doubled_height - baseline_height;
-<a href=#1889 id=1889 data-nosnippet>1889</a>
-<a href=#1890 id=1890 data-nosnippet>1890</a>        <span class="macro">assert!</span>(
-<a href=#1891 id=1891 data-nosnippet>1891</a>            delta &gt; <span class="number">50.0</span>,
-<a href=#1892 id=1892 data-nosnippet>1892</a>            <span class="string">"doubling mountains_amplitude at ({}, {}) should increase height \
-<a href=#1893 id=1893 data-nosnippet>1893</a>             substantially; baseline={:.1}, doubled={:.1}, delta={:.1}"</span>,
-<a href=#1894 id=1894 data-nosnippet>1894</a>            x,
-<a href=#1895 id=1895 data-nosnippet>1895</a>            z,
-<a href=#1896 id=1896 data-nosnippet>1896</a>            baseline_height,
-<a href=#1897 id=1897 data-nosnippet>1897</a>            doubled_height,
-<a href=#1898 id=1898 data-nosnippet>1898</a>            delta
-<a href=#1899 id=1899 data-nosnippet>1899</a>        );
-<a href=#1900 id=1900 data-nosnippet>1900</a>    }
-<a href=#1901 id=1901 data-nosnippet>1901</a>}</code></pre></div></section></main></body></html>
+<a href=#1706 id=1706 data-nosnippet>1706</a>    <span class="comment">// =========================================================================
+<a href=#1707 id=1707 data-nosnippet>1707</a>    // Phase 1.X-F.3.A: sample_height_with_params tests
+<a href=#1708 id=1708 data-nosnippet>1708</a>    // =========================================================================
+<a href=#1709 id=1709 data-nosnippet>1709</a>
+<a href=#1710 id=1710 data-nosnippet>1710</a>    </span><span class="doccomment">/// Build the F.4.B.3.D.5-fix baseline `BootstrapParams` from the
+<a href=#1711 id=1711 data-nosnippet>1711</a>    /// `D5FIX_BASELINE_*` consts. At these values + multiplier 1.0,
+<a href=#1712 id=1712 data-nosnippet>1712</a>    /// `sample_height_with_params` must produce byte-identical output to
+<a href=#1713 id=1713 data-nosnippet>1713</a>    /// `sample_height` (which delegates to `sample_height_with_mountain_amplitude(_, _, 1.0)`).
+<a href=#1714 id=1714 data-nosnippet>1714</a>    </span><span class="kw">fn </span>baseline_bootstrap_params() -&gt; <span class="kw">crate</span>::spline_types::BootstrapParams {
+<a href=#1715 id=1715 data-nosnippet>1715</a>        <span class="kw">crate</span>::spline_types::BootstrapParams {
+<a href=#1716 id=1716 data-nosnippet>1716</a>            mountains_amplitude: <span class="kw">crate</span>::spline_types::D5FIX_BASELINE_MOUNTAINS_AMPLITUDE,
+<a href=#1717 id=1717 data-nosnippet>1717</a>            mountains_scale: <span class="kw">crate</span>::spline_types::D5FIX_BASELINE_MOUNTAINS_SCALE,
+<a href=#1718 id=1718 data-nosnippet>1718</a>            continental_scale: <span class="kw">crate</span>::spline_types::D5FIX_BASELINE_CONTINENTAL_SCALE,
+<a href=#1719 id=1719 data-nosnippet>1719</a>            base_elevation_amplitude: <span class="kw">crate</span>::spline_types::D5FIX_BASELINE_BASE_ELEVATION_AMPLITUDE,
+<a href=#1720 id=1720 data-nosnippet>1720</a>            base_elevation_floor: <span class="kw">crate</span>::spline_types::D5FIX_BASELINE_BASE_ELEVATION_FLOOR,
+<a href=#1721 id=1721 data-nosnippet>1721</a>        }
+<a href=#1722 id=1722 data-nosnippet>1722</a>    }
+<a href=#1723 id=1723 data-nosnippet>1723</a>
+<a href=#1724 id=1724 data-nosnippet>1724</a>    <span class="doccomment">/// At baseline params + multiplier 1.0, `sample_height_with_params`
+<a href=#1725 id=1725 data-nosnippet>1725</a>    /// produces **byte-identical** output to legacy `sample_height` across
+<a href=#1726 id=1726 data-nosnippet>1726</a>    /// 100 sample positions.
+<a href=#1727 id=1727 data-nosnippet>1727</a>    ///
+<a href=#1728 id=1728 data-nosnippet>1728</a>    /// **F.3.B retrofit history (logged in `REGIONAL_ARCHETYPE_VARIATION_CAMPAIGN.md`
+<a href=#1729 id=1729 data-nosnippet>1729</a>    /// §10 F.3 entry)**: F.3.A initially landed with
+<a href=#1730 id=1730 data-nosnippet>1730</a>    /// `BootstrapParams.mountains_scale: f32`, which produced ~60-ulp
+<a href=#1731 id=1731 data-nosnippet>1731</a>    /// precision drift relative to the legacy `NoiseConfig.mountains.scale: f64`
+<a href=#1732 id=1732 data-nosnippet>1732</a>    /// exact representation. The drift propagated through erosion (per
+<a href=#1733 id=1733 data-nosnippet>1733</a>    /// F.3-phase-3 world-coord seeding finding) and produced 103 WU
+<a href=#1734 id=1734 data-nosnippet>1734</a>    /// divergence at chunk shared edges, breaking phase-2 continuity
+<a href=#1735 id=1735 data-nosnippet>1735</a>    /// (80 WU threshold). F.3.B retrofit changed `BootstrapParams.mountains_scale`
+<a href=#1736 id=1736 data-nosnippet>1736</a>    /// from `f32` to `f64` and `BootstrapSplineSet.mountains_scale` from
+<a href=#1737 id=1737 data-nosnippet>1737</a>    /// a `ParamSpline` to a plain `f64` field, restoring byte-identity.
+<a href=#1738 id=1738 data-nosnippet>1738</a>    /// `continental_scale` stays `f32` because legacy
+<a href=#1739 id=1739 data-nosnippet>1739</a>    /// `NoiseConfig.continental_scale` is also `f32` — both sides share
+<a href=#1740 id=1740 data-nosnippet>1740</a>    /// the same f32 representation, no drift.
+<a href=#1741 id=1741 data-nosnippet>1741</a>    ///
+<a href=#1742 id=1742 data-nosnippet>1742</a>    /// Test asserts byte-identical (max world-unit divergence == 0.0).
+<a href=#1743 id=1743 data-nosnippet>1743</a>    /// If a future change introduces drift, this test surfaces the
+<a href=#1744 id=1744 data-nosnippet>1744</a>    /// regression immediately.
+<a href=#1745 id=1745 data-nosnippet>1745</a>    </span><span class="attr">#[test]
+<a href=#1746 id=1746 data-nosnippet>1746</a>    </span><span class="kw">fn </span>sample_height_with_params_at_baseline_matches_sample_height() {
+<a href=#1747 id=1747 data-nosnippet>1747</a>        <span class="kw">let </span>config = NoiseConfig::default();
+<a href=#1748 id=1748 data-nosnippet>1748</a>        <span class="kw">let </span>noise = TerrainNoise::new(<span class="kw-2">&amp;</span>config, <span class="number">12345</span>);
+<a href=#1749 id=1749 data-nosnippet>1749</a>        <span class="kw">let </span>params = baseline_bootstrap_params();
+<a href=#1750 id=1750 data-nosnippet>1750</a>
+<a href=#1751 id=1751 data-nosnippet>1751</a>        <span class="comment">// 10×10 grid across Target B world (~11264 WU per side).
+<a href=#1752 id=1752 data-nosnippet>1752</a>        </span><span class="kw">let </span><span class="kw-2">mut </span>max_diff = <span class="number">0.0f32</span>;
+<a href=#1753 id=1753 data-nosnippet>1753</a>        <span class="kw">let </span><span class="kw-2">mut </span>sum_diff = <span class="number">0.0f32</span>;
+<a href=#1754 id=1754 data-nosnippet>1754</a>        <span class="kw">let </span><span class="kw-2">mut </span>count = <span class="number">0u32</span>;
+<a href=#1755 id=1755 data-nosnippet>1755</a>        <span class="kw">for </span>i <span class="kw">in </span><span class="number">0</span>..<span class="number">10 </span>{
+<a href=#1756 id=1756 data-nosnippet>1756</a>            <span class="kw">for </span>j <span class="kw">in </span><span class="number">0</span>..<span class="number">10 </span>{
+<a href=#1757 id=1757 data-nosnippet>1757</a>                <span class="kw">let </span>x = -<span class="number">5000.0 </span>+ i <span class="kw">as </span>f64 * <span class="number">1000.0</span>;
+<a href=#1758 id=1758 data-nosnippet>1758</a>                <span class="kw">let </span>z = -<span class="number">5000.0 </span>+ j <span class="kw">as </span>f64 * <span class="number">1000.0</span>;
+<a href=#1759 id=1759 data-nosnippet>1759</a>                <span class="kw">let </span>legacy = noise.sample_height(x, z);
+<a href=#1760 id=1760 data-nosnippet>1760</a>                <span class="kw">let </span>new = noise.sample_height_with_params(<span class="kw-2">&amp;</span>params, x, z, <span class="number">1.0</span>);
+<a href=#1761 id=1761 data-nosnippet>1761</a>                <span class="kw">let </span>diff = (legacy - new).abs();
+<a href=#1762 id=1762 data-nosnippet>1762</a>                <span class="kw">if </span>diff &gt; max_diff {
+<a href=#1763 id=1763 data-nosnippet>1763</a>                    max_diff = diff;
+<a href=#1764 id=1764 data-nosnippet>1764</a>                }
+<a href=#1765 id=1765 data-nosnippet>1765</a>                sum_diff += diff;
+<a href=#1766 id=1766 data-nosnippet>1766</a>                count += <span class="number">1</span>;
+<a href=#1767 id=1767 data-nosnippet>1767</a>            }
+<a href=#1768 id=1768 data-nosnippet>1768</a>        }
+<a href=#1769 id=1769 data-nosnippet>1769</a>        <span class="kw">let </span>mean_diff = sum_diff / count <span class="kw">as </span>f32;
+<a href=#1770 id=1770 data-nosnippet>1770</a>
+<a href=#1771 id=1771 data-nosnippet>1771</a>        <span class="comment">// Byte-identical contract: max divergence must be exactly 0.0
+<a href=#1772 id=1772 data-nosnippet>1772</a>        // after F.3.B retrofit (mountains_scale: f64).
+<a href=#1773 id=1773 data-nosnippet>1773</a>        </span><span class="macro">assert_eq!</span>(
+<a href=#1774 id=1774 data-nosnippet>1774</a>            max_diff, <span class="number">0.0</span>,
+<a href=#1775 id=1775 data-nosnippet>1775</a>            <span class="string">"sample_height_with_params at baseline must be byte-identical \
+<a href=#1776 id=1776 data-nosnippet>1776</a>             to legacy sample_height; max={:.9}m, mean={:.9}m"</span>,
+<a href=#1777 id=1777 data-nosnippet>1777</a>            max_diff, mean_diff
+<a href=#1778 id=1778 data-nosnippet>1778</a>        );
+<a href=#1779 id=1779 data-nosnippet>1779</a>    }
+<a href=#1780 id=1780 data-nosnippet>1780</a>
+<a href=#1781 id=1781 data-nosnippet>1781</a>    <span class="doccomment">/// Same `(params, x, z, multiplier)` produces byte-identical output
+<a href=#1782 id=1782 data-nosnippet>1782</a>    /// across two consecutive calls. Determinism contract.
+<a href=#1783 id=1783 data-nosnippet>1783</a>    </span><span class="attr">#[test]
+<a href=#1784 id=1784 data-nosnippet>1784</a>    </span><span class="kw">fn </span>sample_height_with_params_deterministic() {
+<a href=#1785 id=1785 data-nosnippet>1785</a>        <span class="kw">let </span>config = NoiseConfig::default();
+<a href=#1786 id=1786 data-nosnippet>1786</a>        <span class="kw">let </span>noise = TerrainNoise::new(<span class="kw-2">&amp;</span>config, <span class="number">12345</span>);
+<a href=#1787 id=1787 data-nosnippet>1787</a>        <span class="kw">let </span>params = baseline_bootstrap_params();
+<a href=#1788 id=1788 data-nosnippet>1788</a>
+<a href=#1789 id=1789 data-nosnippet>1789</a>        <span class="kw">for </span><span class="kw-2">&amp;</span>(x, z) <span class="kw">in </span><span class="kw-2">&amp;</span>[(<span class="number">0.0</span>, <span class="number">0.0</span>), (<span class="number">1234.5</span>, -<span class="number">678.9</span>), (-<span class="number">3000.0</span>, <span class="number">4500.0</span>)] {
+<a href=#1790 id=1790 data-nosnippet>1790</a>            <span class="kw">let </span>a = noise.sample_height_with_params(<span class="kw-2">&amp;</span>params, x, z, <span class="number">1.0</span>);
+<a href=#1791 id=1791 data-nosnippet>1791</a>            <span class="kw">let </span>b = noise.sample_height_with_params(<span class="kw-2">&amp;</span>params, x, z, <span class="number">1.0</span>);
+<a href=#1792 id=1792 data-nosnippet>1792</a>            <span class="macro">assert_eq!</span>(
+<a href=#1793 id=1793 data-nosnippet>1793</a>                a.to_bits(),
+<a href=#1794 id=1794 data-nosnippet>1794</a>                b.to_bits(),
+<a href=#1795 id=1795 data-nosnippet>1795</a>                <span class="string">"sample_height_with_params not deterministic at ({}, {})"</span>,
+<a href=#1796 id=1796 data-nosnippet>1796</a>                x,
+<a href=#1797 id=1797 data-nosnippet>1797</a>                z
+<a href=#1798 id=1798 data-nosnippet>1798</a>            );
+<a href=#1799 id=1799 data-nosnippet>1799</a>        }
+<a href=#1800 id=1800 data-nosnippet>1800</a>    }
+<a href=#1801 id=1801 data-nosnippet>1801</a>
+<a href=#1802 id=1802 data-nosnippet>1802</a>    <span class="doccomment">/// 10 sample positions at baseline produce 10 different f32 outputs.
+<a href=#1803 id=1803 data-nosnippet>1803</a>    /// Catches the failure mode where `sample_height_with_params`
+<a href=#1804 id=1804 data-nosnippet>1804</a>    /// accidentally returns a constant.
+<a href=#1805 id=1805 data-nosnippet>1805</a>    </span><span class="attr">#[test]
+<a href=#1806 id=1806 data-nosnippet>1806</a>    </span><span class="kw">fn </span>sample_height_with_params_position_varies() {
+<a href=#1807 id=1807 data-nosnippet>1807</a>        <span class="kw">let </span>config = NoiseConfig::default();
+<a href=#1808 id=1808 data-nosnippet>1808</a>        <span class="kw">let </span>noise = TerrainNoise::new(<span class="kw-2">&amp;</span>config, <span class="number">12345</span>);
+<a href=#1809 id=1809 data-nosnippet>1809</a>        <span class="kw">let </span>params = baseline_bootstrap_params();
+<a href=#1810 id=1810 data-nosnippet>1810</a>
+<a href=#1811 id=1811 data-nosnippet>1811</a>        <span class="kw">let </span>heights: Vec&lt;f32&gt; = (<span class="number">0</span>..<span class="number">10</span>)
+<a href=#1812 id=1812 data-nosnippet>1812</a>            .map(|i| {
+<a href=#1813 id=1813 data-nosnippet>1813</a>                <span class="kw">let </span>x = i <span class="kw">as </span>f64 * <span class="number">1500.0</span>;
+<a href=#1814 id=1814 data-nosnippet>1814</a>                noise.sample_height_with_params(<span class="kw-2">&amp;</span>params, x, <span class="number">0.0</span>, <span class="number">1.0</span>)
+<a href=#1815 id=1815 data-nosnippet>1815</a>            })
+<a href=#1816 id=1816 data-nosnippet>1816</a>            .collect();
+<a href=#1817 id=1817 data-nosnippet>1817</a>
+<a href=#1818 id=1818 data-nosnippet>1818</a>        <span class="kw">let </span>unique: std::collections::HashSet&lt;u32&gt; = heights.iter().map(|h| h.to_bits()).collect();
+<a href=#1819 id=1819 data-nosnippet>1819</a>        <span class="macro">assert!</span>(
+<a href=#1820 id=1820 data-nosnippet>1820</a>            unique.len() &gt;= <span class="number">8</span>,
+<a href=#1821 id=1821 data-nosnippet>1821</a>            <span class="string">"sample_height_with_params produced too few distinct values: \
+<a href=#1822 id=1822 data-nosnippet>1822</a>             {}/10 unique (heights: {:?})"</span>,
+<a href=#1823 id=1823 data-nosnippet>1823</a>            unique.len(),
+<a href=#1824 id=1824 data-nosnippet>1824</a>            heights
+<a href=#1825 id=1825 data-nosnippet>1825</a>        );
+<a href=#1826 id=1826 data-nosnippet>1826</a>    }
+<a href=#1827 id=1827 data-nosnippet>1827</a>
+<a href=#1828 id=1828 data-nosnippet>1828</a>    <span class="doccomment">/// Doubling `params.mountains_amplitude` produces a measurable height
+<a href=#1829 id=1829 data-nosnippet>1829</a>    /// increase at a position with substantial mountain contribution.
+<a href=#1830 id=1830 data-nosnippet>1830</a>    /// Falsifiable smoke test that splines actually drive the mountain
+<a href=#1831 id=1831 data-nosnippet>1831</a>    /// layer. Position selected during test development by sampling
+<a href=#1832 id=1832 data-nosnippet>1832</a>    /// candidate positions; (1234.5, -678.9) at seed 12345 produces
+<a href=#1833 id=1833 data-nosnippet>1833</a>    /// pre-erosion height &gt; 100m at baseline (verified during F.3.A
+<a href=#1834 id=1834 data-nosnippet>1834</a>    /// development).
+<a href=#1835 id=1835 data-nosnippet>1835</a>    ///
+<a href=#1836 id=1836 data-nosnippet>1836</a>    /// **Falsifiability**:
+<a href=#1837 id=1837 data-nosnippet>1837</a>    /// - If splines wired correctly: doubling `mountains_amplitude`
+<a href=#1838 id=1838 data-nosnippet>1838</a>    ///   approximately doubles the mountain layer's contribution; the
+<a href=#1839 id=1839 data-nosnippet>1839</a>    ///   delta is positive and substantial.
+<a href=#1840 id=1840 data-nosnippet>1840</a>    /// - If splines NOT wired (the new method ignores `params.mountains_amplitude`):
+<a href=#1841 id=1841 data-nosnippet>1841</a>    ///   delta ≈ 0.
+<a href=#1842 id=1842 data-nosnippet>1842</a>    /// - If wrong field doubled (e.g., `base_elevation_amplitude` instead):
+<a href=#1843 id=1843 data-nosnippet>1843</a>    ///   delta is small or has unexpected sign.
+<a href=#1844 id=1844 data-nosnippet>1844</a>    </span><span class="attr">#[test]
+<a href=#1845 id=1845 data-nosnippet>1845</a>    </span><span class="kw">fn </span>sample_height_with_params_doubles_with_doubled_mountain_amplitude() {
+<a href=#1846 id=1846 data-nosnippet>1846</a>        <span class="kw">let </span>config = NoiseConfig::default();
+<a href=#1847 id=1847 data-nosnippet>1847</a>        <span class="kw">let </span>noise = TerrainNoise::new(<span class="kw-2">&amp;</span>config, <span class="number">12345</span>);
+<a href=#1848 id=1848 data-nosnippet>1848</a>        <span class="kw">let </span>baseline = baseline_bootstrap_params();
+<a href=#1849 id=1849 data-nosnippet>1849</a>        <span class="kw">let </span><span class="kw-2">mut </span>doubled = baseline;
+<a href=#1850 id=1850 data-nosnippet>1850</a>        doubled.mountains_amplitude <span class="kw-2">*</span>= <span class="number">2.0</span>;
+<a href=#1851 id=1851 data-nosnippet>1851</a>
+<a href=#1852 id=1852 data-nosnippet>1852</a>        <span class="comment">// Search for a position where mountain layer contributes substantially.
+<a href=#1853 id=1853 data-nosnippet>1853</a>        // Pick the first position with baseline height &gt; 100m to make the
+<a href=#1854 id=1854 data-nosnippet>1854</a>        // test self-validating.
+<a href=#1855 id=1855 data-nosnippet>1855</a>        </span><span class="kw">let </span><span class="kw-2">mut </span>chosen: <span class="prelude-ty">Option</span>&lt;(f64, f64, f32)&gt; = <span class="prelude-val">None</span>;
+<a href=#1856 id=1856 data-nosnippet>1856</a>        <span class="kw">for </span>i <span class="kw">in </span><span class="number">0</span>..<span class="number">10 </span>{
+<a href=#1857 id=1857 data-nosnippet>1857</a>            <span class="kw">for </span>j <span class="kw">in </span><span class="number">0</span>..<span class="number">10 </span>{
+<a href=#1858 id=1858 data-nosnippet>1858</a>                <span class="kw">let </span>x = -<span class="number">3000.0 </span>+ i <span class="kw">as </span>f64 * <span class="number">700.0</span>;
+<a href=#1859 id=1859 data-nosnippet>1859</a>                <span class="kw">let </span>z = -<span class="number">3000.0 </span>+ j <span class="kw">as </span>f64 * <span class="number">700.0</span>;
+<a href=#1860 id=1860 data-nosnippet>1860</a>                <span class="kw">let </span>h = noise.sample_height_with_params(<span class="kw-2">&amp;</span>baseline, x, z, <span class="number">1.0</span>);
+<a href=#1861 id=1861 data-nosnippet>1861</a>                <span class="kw">if </span>h &gt; <span class="number">100.0 </span>{
+<a href=#1862 id=1862 data-nosnippet>1862</a>                    chosen = <span class="prelude-val">Some</span>((x, z, h));
+<a href=#1863 id=1863 data-nosnippet>1863</a>                    <span class="kw">break</span>;
+<a href=#1864 id=1864 data-nosnippet>1864</a>                }
+<a href=#1865 id=1865 data-nosnippet>1865</a>            }
+<a href=#1866 id=1866 data-nosnippet>1866</a>            <span class="kw">if </span>chosen.is_some() {
+<a href=#1867 id=1867 data-nosnippet>1867</a>                <span class="kw">break</span>;
+<a href=#1868 id=1868 data-nosnippet>1868</a>            }
+<a href=#1869 id=1869 data-nosnippet>1869</a>        }
+<a href=#1870 id=1870 data-nosnippet>1870</a>        <span class="kw">let </span>(x, z, baseline_height) =
+<a href=#1871 id=1871 data-nosnippet>1871</a>            chosen.expect(<span class="string">"expected at least one position with baseline height &gt; 100m"</span>);
+<a href=#1872 id=1872 data-nosnippet>1872</a>        <span class="kw">let </span>doubled_height = noise.sample_height_with_params(<span class="kw-2">&amp;</span>doubled, x, z, <span class="number">1.0</span>);
+<a href=#1873 id=1873 data-nosnippet>1873</a>        <span class="kw">let </span>delta = doubled_height - baseline_height;
+<a href=#1874 id=1874 data-nosnippet>1874</a>
+<a href=#1875 id=1875 data-nosnippet>1875</a>        <span class="macro">assert!</span>(
+<a href=#1876 id=1876 data-nosnippet>1876</a>            delta &gt; <span class="number">50.0</span>,
+<a href=#1877 id=1877 data-nosnippet>1877</a>            <span class="string">"doubling mountains_amplitude at ({}, {}) should increase height \
+<a href=#1878 id=1878 data-nosnippet>1878</a>             substantially; baseline={:.1}, doubled={:.1}, delta={:.1}"</span>,
+<a href=#1879 id=1879 data-nosnippet>1879</a>            x,
+<a href=#1880 id=1880 data-nosnippet>1880</a>            z,
+<a href=#1881 id=1881 data-nosnippet>1881</a>            baseline_height,
+<a href=#1882 id=1882 data-nosnippet>1882</a>            doubled_height,
+<a href=#1883 id=1883 data-nosnippet>1883</a>            delta
+<a href=#1884 id=1884 data-nosnippet>1884</a>        );
+<a href=#1885 id=1885 data-nosnippet>1885</a>    }
+<a href=#1886 id=1886 data-nosnippet>1886</a>}</code></pre></div></section></main></body></html>

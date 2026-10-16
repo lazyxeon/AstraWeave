@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["CHUNK_EXTENT","MAX_LOG_COMMANDS","MAX_REMESHES_PER_TICK"],"enum":["BrushOp","BrushShape","CommandError","CommandKind"],"fn":["column_step_brush","push_command","validate"],"struct":["Brush","DestructionCommand","Detach","SeedColumnBase","VoxelDag","Weave"],"trait":["TerrainBase"]};

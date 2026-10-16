@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"struct":["AsyncMeshGenerator","ChunkMesh","DualContouring","LodConfig","LodMeshGenerator","MeshVertex"]};
+window.SIDEBAR_ITEMS = {"struct":["AsyncMeshGenerator","ChunkMesh","DualContouring","LodConfig","LodMeshGenerator","MeshVertex","ViewParams"]};
