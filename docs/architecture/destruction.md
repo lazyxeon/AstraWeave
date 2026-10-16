@@ -9,8 +9,8 @@ lifecycle_status: active
 integration_status: wired
 summary: "Greybox digs with a sphere Subtract brush on ColumnFns. FlatColumnBase keeps the destruction replay hash."
 owns: [astraweave-destruction]
-doc_version: "1.4"
-last_verified_commit: 84d3888a
+doc_version: "1.5"
+last_verified_commit: 1e275a9e
 runtime_edges:
   - to: astraweave-core
     note: "The core replay test calls demolition_bytes."
@@ -26,10 +26,10 @@ runtime_edges:
 |---|---|
 | **System name** | Deterministic destruction |
 | **Primary crates** | `astraweave-destruction` |
-| **Document version** | 1.4 |
-| **Last verified against commit** | `84d3888a` |
+| **Document version** | 1.5 |
+| **Last verified against commit** | `1e275a9e` |
 | **Last verified date** | 2026-10-16 |
-| **Status** | Active. Headless showcase and the required replay case. The Aravath greybox binds integer columns through `ColumnFns` and digs with a sphere `Subtract` brush. `Greybox::step` calls `BridgeAgent::step` after the motor. `FlatColumnBase` remains the terrain when no functions are bound, so the `destruction` replay hash is unchanged. The greybox golden is `b6a9d5a2c5da28a6` (#330). The earlier #329 value was `0a576578512f25d2`. |
+| **Status** | Active. Headless showcase and the required replay case. The Aravath greybox binds integer columns through `ColumnFns` and digs with a sphere `Subtract` brush. `Greybox::step` calls `BridgeAgent::step` after the motor. `apply_brush_now` loads every chunk in `(origin ± radius) / CHUNK_EXTENT` before the tick. A checkpoint stores `persist_bytes` and `restore_dug` replays that log before the next dig. `FlatColumnBase` remains the terrain when no functions are bound, so the `destruction` replay hash is unchanged. The greybox golden is `b6a9d5a2c5da28a6` (#330). The earlier #329 value was `0a576578512f25d2`. |
 | **Owner notes** | Design: `docs/current/DESTRUCTION_DESIGN.md`. Survey: `docs/current/DESTRUCTION_ARCHAEOLOGY.md`. `Fixed64` lives in `astraweave-math` (PR #245). |
 
 ---
@@ -124,7 +124,7 @@ Floats do not enter this pipeline. Rapier is not called.
 |---|---|---|
 | `astraweave-physics` `DestructionManager` | Dormant float toy | Left in place. New calls do not go through it |
 | `PhysicsWorld::add_destructible_box` | Stub | Not extended |
-| Greybox `dig_sphere` | Calls `apply_brush_now` | Sphere `Subtract` brush, then the island mesh is carved by `seed - surface_y`. A full command log returns before that carve |
+| Greybox `dig_sphere` | Calls `apply_brush_now` | Sphere `Subtract` brush. Every chunk the radius touches is loaded before `tick`. The island mesh is carved by `seed - surface_y`. A checkpoint replays `persist_bytes` on load. A full command log returns before that carve |
 | #215 `surface_height` | Bound by the greybox | `column_gen` stays in `astraweave-terrain`. `ColumnFns` is the hook. `FlatColumnBase` stays for the replay case |
 
 ---
@@ -204,3 +204,4 @@ Update this trace when the command set, the stress iteration count, the pool siz
 | 1.2 | 2026-10-15 | Collapse notices publish the union of newly dynamic piece bounds. Issue #279 |
 | 1.4 | 2026-10-16 | Merge `84d3888a`. `Greybox::step` calls `BridgeAgent`. Greybox golden is `0a576578512f25d2`. #249, #250, and #261 are still open on the tracker. |
 | 1.3 | 2026-10-16 | `ColumnFns` and `apply_brush_now`. Greybox digs with a brush. `FlatColumnBase` stays the unbound terrain. Issues #249 and #250 |
+| 1.5 | 2026-10-16 | `apply_brush_now` loads the brush span, not only the centre chunk. Greybox save stores the command log and replays it on restore. The `destruction` replay case and the greybox golden are unchanged. |

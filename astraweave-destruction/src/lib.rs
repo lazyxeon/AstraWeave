@@ -205,13 +205,9 @@ impl DestructionWorld {
         self.terrain.set_column_fns(fns);
     }
 
-    /// Load the brush chunk, record the command, and apply it on this tick.
+    /// Load every chunk the brush can touch, record the command, and apply it on this tick.
     pub fn apply_brush_now(&mut self, brush: crate::command::Brush) -> Result<(), CommandError> {
-        let chunk = (
-            brush.origin[0].div_euclid(crate::octree::CHUNK_EXTENT),
-            brush.origin[2].div_euclid(crate::octree::CHUNK_EXTENT),
-        );
-        self.terrain.load(chunk);
+        self.load_brush_chunks(brush);
         self.enqueue(DestructionCommand {
             tick: self.tick,
             seq: 0,
@@ -220,6 +216,40 @@ impl DestructionWorld {
         })?;
         self.tick();
         Ok(())
+    }
+
+    /// Load chunks already in the log. A restored world only has chunk `(0, 0)` until this runs.
+    pub fn reload_logged_brushes(&mut self) {
+        let count = self.log.len();
+        for index in 0..count {
+            if let CommandKind::Brush(brush) = self.log[index].kind {
+                self.load_brush_chunks(brush);
+            }
+        }
+    }
+
+    fn load_brush_chunks(&mut self, brush: crate::command::Brush) {
+        let extent = crate::octree::CHUNK_EXTENT;
+        let radius = i32::from(brush.radius);
+        let x0 = brush.origin[0].saturating_sub(radius).div_euclid(extent);
+        let x1 = brush.origin[0].saturating_add(radius).div_euclid(extent);
+        let z0 = brush.origin[2].saturating_sub(radius).div_euclid(extent);
+        let z1 = brush.origin[2].saturating_add(radius).div_euclid(extent);
+        let mut x = x0;
+        loop {
+            let mut z = z0;
+            loop {
+                self.terrain.load((x, z));
+                if z == z1 {
+                    break;
+                }
+                z += 1;
+            }
+            if x == x1 {
+                break;
+            }
+            x += 1;
+        }
     }
 
     pub fn debris(&self) -> &DebrisPool {
@@ -985,6 +1015,26 @@ fn hex(bytes: impl AsRef<[u8]>) -> String {
 mod tests {
     use super::*;
     use debris::DebrisLod;
+
+    #[test]
+    fn brush_across_a_chunk_border_lowers_both_columns() {
+        let mut world = DestructionWorld::new(1, 6);
+        let brush = Brush {
+            shape: BrushShape::Sphere,
+            op: BrushOp::Subtract,
+            origin: [31, 2, 4],
+            radius: 3,
+            half_extents: [1, 1, 1],
+            strength: 4,
+        };
+        world.apply_brush_now(brush).expect("brush");
+        assert!(world.terrain().surface_y(31, 4) < 6);
+        assert!(
+            world.terrain().surface_y(32, 4) < 6,
+            "the dig must cross into the next chunk"
+        );
+        assert_eq!(world.terrain().surface_y(0, 0), 6);
+    }
 
     #[test]
     fn collapse_notice_covers_the_dropped_bridge_span() {

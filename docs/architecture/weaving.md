@@ -237,7 +237,7 @@ This crate hosts **two distinct pipelines** that do not call each other. Both ar
 | File | Role | Status | Notes |
 |---|---|---|---|
 | [`lib.rs`](../../astraweave-weaving/src/lib.rs) | Module roots, re-exports, `CWeaveAgent`/`CWeaveSignal`/`WeaveIntentEvent` ECS-style components | Active | `#![forbid(unsafe_code)]`. |
-| [`aravath.rs`](../../astraweave-weaving/src/aravath.rs) | `run_aravath_slice`, `ARAVATH_SLICE_SEED` (`0xA11C_E5EE`) | Active | One combat resolve plus one destruction tick. Sword hp 15, weave hp 25, cover bond broken. `aravath_runtime` `Combat::tick` calls it on a connecting sword hit (#275). |
+| [`aravath.rs`](../../astraweave-weaving/src/aravath.rs) | `run_aravath_slice`, `ARAVATH_SLICE_SEED` (`0xA11C_E5EE`) | Active | One combat resolve plus one destruction tick. Sword hp 15, weave hp 25, cover bond broken. `Greybox::new` and `Greybox::open` call it once. A sword hit reads that remainder (#275). |
 | [`gameplay_qa.rs`](../../astraweave-weaving/src/gameplay_qa.rs) | Scenario loader, scripted and goal policies, failure artifact, ddmin | Active | Scenario 1 calls `run_aravath_slice` once per trace. It does not split the function. |
 | [`scenarios/aravath_slice_sword.ron`](../../astraweave-weaving/scenarios/aravath_slice_sword.ron) | Scenario 1 | Active | Reach check only. `SaveReload` and `SameSeqTwice` are not in this file. |
 | [`mod_queue.rs`](../../astraweave-weaving/src/mod_queue.rs) | `queue_weave`, `parse_template_toml`, fixed `WeaveScratch` | Active | Sandbox host entry. Engine template ids 1 through 7 are reserved. The tick copies casts into a fixed array and does not evaluate a field. |
@@ -430,6 +430,7 @@ This is a pure-CPU logic crate; performance is benchmark-tracked but not a runti
 |---|---|---|
 | 1.7 | 2026-10-16 | Restamp `1e275a9e`. Cargo consumers are the greybox, gameplay, scripting, security, the core replay test, `aravath_weave`, and the two older quest examples. |
 | 1.6 | 2026-10-16 | Greybox caller. `Combat::tick` calls `run_aravath_slice` and the window shows `Cover broke` when `cover_intact` is false. |
+| 1.7 | 2026-10-16 | The greybox calls `run_aravath_slice` once at startup. Sword hits reuse `sword_hp` and `cover_intact`. |
 | 1.3 | 2026-10-15 | Scenario 1 gameplay QA. File map rows for `aravath.rs`, `gameplay_qa.rs`, and the RON. Invariant 11. |
 
 **Update this doc when:**
