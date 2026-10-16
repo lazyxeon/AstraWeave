@@ -803,6 +803,8 @@ pub struct Renderer {
     _pipeline_cache_mgr: Option<crate::pipeline_cache::PipelineCacheManager>,
     /// Per-pass GPU timestamp profiler; `None` when `TIMESTAMP_QUERY` is unsupported.
     gpu_profiler: Option<crate::gpu_profiler::GpuProfiler>,
+    /// End query of the `frame` bracket. Written just before resolve.
+    frame_ts_end: Option<u32>,
     gpu_adapter_name: String,
     gpu_backend: String,
     /// Ring buffer for transient per-frame GPU allocations (uniforms, storage).
@@ -3616,6 +3618,7 @@ fn vs(input: VSIn) -> VSOut {
             pipeline_cache,
             _pipeline_cache_mgr: pipeline_cache_mgr,
             gpu_profiler,
+            frame_ts_end: None,
             gpu_adapter_name: String::new(),
             gpu_backend: String::new(),
             staging_ring,
@@ -7078,6 +7081,7 @@ fn vs(input: VSIn) -> VSOut {
             p.poll_readback(&self.device);
             p.begin_frame();
         }
+        self.open_frame_timestamp(enc);
         self.poll_fog_timestamps();
         if self.bindless_active {
             if let Some(system) = self.bindless.as_mut() {
@@ -7935,6 +7939,9 @@ fn vs(input: VSIn) -> VSOut {
         self.record_hiz(enc, depth_view);
         self.record_particles(enc, view, depth_view);
 
+        // The frame end tick is after every pass, still in this encoder, so
+        // resolve sees both sides of the bracket.
+        self.close_frame_timestamp(enc);
         // Resolve only after every timestamped pass has written. The copy
         // follows the resolve in the same encoder, before submit.
         if let Some(ref p) = self.gpu_profiler {
@@ -8000,6 +8007,53 @@ fn vs(input: VSIn) -> VSOut {
     /// The pyramid is presentation-only. Occlusion may consult it next frame.
     /// It is not read back into the simulation. The first frame builds it;
     /// later frames only dispatch the copy and the min-depth downsample.
+    /// Begin the `frame` pair when the device can write timestamps on the encoder.
+    ///
+    /// Pass-boundary timestamps on Vulkan are `BOTTOM_OF_PIPE`. A pass that
+    /// does no draws can land both writes on the same tick. The encoder pair
+    /// brackets the whole `draw_into` recording, so that collapse does not
+    /// erase the frame.
+    fn open_frame_timestamp(&mut self, enc: &mut wgpu::CommandEncoder) {
+        self.frame_ts_end = None;
+        if !self
+            .device
+            .features()
+            .contains(wgpu::Features::TIMESTAMP_QUERY_INSIDE_ENCODERS)
+        {
+            return;
+        }
+        let Some((begin, end)) = self
+            .gpu_profiler
+            .as_mut()
+            .and_then(|profiler| profiler.allocate_pass("frame"))
+        else {
+            return;
+        };
+        let Some(query_set) = self
+            .gpu_profiler
+            .as_ref()
+            .map(|profiler| profiler.query_set().clone())
+        else {
+            return;
+        };
+        enc.write_timestamp(&query_set, begin);
+        self.frame_ts_end = Some(end);
+    }
+
+    fn close_frame_timestamp(&mut self, enc: &mut wgpu::CommandEncoder) {
+        let Some(end) = self.frame_ts_end.take() else {
+            return;
+        };
+        let Some(query_set) = self
+            .gpu_profiler
+            .as_ref()
+            .map(|profiler| profiler.query_set().clone())
+        else {
+            return;
+        };
+        enc.write_timestamp(&query_set, end);
+    }
+
     fn record_hiz(
         &mut self,
         enc: &mut wgpu::CommandEncoder,

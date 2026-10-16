@@ -16,21 +16,120 @@ use std::sync::{
 const MAX_PASSES: u32 = 16;
 const MAX_QUERIES: u32 = MAX_PASSES * 2;
 
+/// How a begin/end pair was read.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TimestampKind {
+    /// `end > begin` and the span is a positive number of milliseconds.
+    Measured,
+    /// Both ticks were written and they are equal. The pass was shorter than
+    /// one timestamp tick (or the driver collapsed the pair). Not a failure.
+    Empty,
+    /// Both ticks are 0. The query was resolved but never written.
+    Unwritten,
+    /// `end < begin`. Not a wrap of a full counter in one pass.
+    Inverted,
+    /// The device period is not positive, or a positive tick span underflows.
+    BadPeriod,
+}
+
 /// Per-pass GPU timing result.
 #[derive(Debug, Clone)]
 pub struct PassTiming {
     pub name: String,
+    /// Milliseconds for [`TimestampKind::Measured`]. Zero for every other kind.
     pub duration_ms: f32,
+    pub begin_tick: u64,
+    pub end_tick: u64,
+    pub kind: TimestampKind,
+}
+
+/// Pass sum plus the optional whole-frame bracket.
+#[derive(Debug, Clone)]
+pub struct GpuStampSummary {
+    /// Sum of measured passes other than the `frame` bracket.
+    pub pass_sum_ms: f32,
+    /// Encoder begin/end around `draw_into`, when that pair was measured.
+    pub frame_ms: Option<f32>,
+    pub empty: Vec<String>,
+    pub report: String,
+}
+
+fn format_stamp_report(period_ns: f32, results: &[PassTiming]) -> String {
+    let mut lines = vec![format!("timestamp_period_ns={period_ns}")];
+    for timing in results {
+        lines.push(format!(
+            "pass={} kind={:?} begin={} end={} duration_ms={:.6}",
+            timing.name, timing.kind, timing.begin_tick, timing.end_tick, timing.duration_ms
+        ));
+    }
+    if results.is_empty() {
+        lines.push("pass=(none)".to_string());
+    }
+    lines.join("\n")
+}
+
+fn summarize_stamps(period_ns: f32, results: &[PassTiming]) -> Result<GpuStampSummary, String> {
+    let report = format_stamp_report(period_ns, results);
+    if results.is_empty() {
+        return Err(format!("no GPU timestamp samples\n{report}"));
+    }
+    let mut pass_sum_ms = 0.0f32;
+    let mut frame_ms = None;
+    let mut empty = Vec::new();
+    let mut bad = Vec::new();
+    for timing in results {
+        match timing.kind {
+            TimestampKind::Measured if timing.name == "frame" => {
+                frame_ms = Some(timing.duration_ms);
+            }
+            TimestampKind::Measured => {
+                pass_sum_ms += timing.duration_ms;
+            }
+            TimestampKind::Empty => empty.push(timing.name.clone()),
+            TimestampKind::Unwritten | TimestampKind::Inverted | TimestampKind::BadPeriod => {
+                bad.push(format!("{} {:?}", timing.name, timing.kind));
+            }
+        }
+    }
+    if !bad.is_empty() {
+        return Err(format!(
+            "GPU timestamp read failed ({})\n{report}",
+            bad.join(", ")
+        ));
+    }
+    if !strictly_positive(pass_sum_ms) && frame_ms.is_none() {
+        return Err(format!(
+            "no pass recorded a positive GPU duration\n{report}"
+        ));
+    }
+    Ok(GpuStampSummary {
+        pass_sum_ms,
+        frame_ms,
+        empty,
+        report,
+    })
 }
 
 fn strictly_positive(value: f32) -> bool {
     matches!(value.partial_cmp(&0.0), Some(std::cmp::Ordering::Greater))
 }
 
+/// Classify a raw pair. Equal non-zero ticks are [`TimestampKind::Empty`].
+pub fn classify_timestamp(begin: u64, end: u64, period_ns: f32) -> (TimestampKind, f32) {
+    match timestamp_duration_ms(begin, end, period_ns) {
+        Ok(ms) => (TimestampKind::Measured, ms),
+        Err("timestamp queries were not written") => (TimestampKind::Unwritten, 0.0),
+        Err("timestamp end is before begin") => (TimestampKind::Inverted, 0.0),
+        Err("GPU duration is zero or negative") if begin == end => (TimestampKind::Empty, 0.0),
+        Err(_) => (TimestampKind::BadPeriod, 0.0),
+    }
+}
+
 /// Convert a begin/end timestamp pair into milliseconds.
 ///
 /// A zero period, an unwritten pair (both ticks 0), a NaN, or a non-positive
-/// span is not a measurement.
+/// span is not a measurement. Equal non-zero ticks are a zero span, not an
+/// unread query.
 pub fn timestamp_duration_ms(begin: u64, end: u64, period_ns: f32) -> Result<f32, &'static str> {
     if !strictly_positive(period_ns) {
         return Err("timestamp period is not positive");
@@ -273,10 +372,13 @@ impl GpuProfiler {
         for (name, begin_idx, end_idx) in &self.pass_queries {
             let t0 = timestamps[*begin_idx as usize];
             let t1 = timestamps[*end_idx as usize];
-            let duration_ms = timestamp_duration_ms(t0, t1, self.timestamp_period).unwrap_or(0.0);
+            let (kind, duration_ms) = classify_timestamp(t0, t1, self.timestamp_period);
             self.latest_results.push(PassTiming {
                 name: (*name).to_string(),
                 duration_ms,
+                begin_tick: t0,
+                end_tick: t1,
+                kind,
             });
         }
 
@@ -297,19 +399,23 @@ impl GpuProfiler {
         self.timestamp_period
     }
 
-    /// Sum of pass durations. Errors when any pass is zero, negative, or unread.
-    pub fn validated_total_ms(&self) -> Result<f32, &'static str> {
-        if self.latest_results.is_empty() {
-            return Err("no GPU timestamp samples");
-        }
-        let mut sum = 0.0f32;
-        for timing in &self.latest_results {
-            if !strictly_positive(timing.duration_ms) {
-                return Err("GPU pass duration is zero or negative");
-            }
-            sum += timing.duration_ms;
-        }
-        Ok(sum)
+    /// One line per pass: name, kind, raw ticks, and the device period.
+    pub fn timestamp_report(&self) -> String {
+        format_stamp_report(self.timestamp_period, &self.latest_results)
+    }
+
+    /// Measured passes, excluding the `frame` bracket.
+    ///
+    /// [`TimestampKind::Empty`] is listed and left out of the sum. Unwritten,
+    /// inverted, and bad-period pairs are failures and the error includes
+    /// [`Self::timestamp_report`].
+    pub fn validated_stamp(&self) -> Result<GpuStampSummary, String> {
+        summarize_stamps(self.timestamp_period, &self.latest_results)
+    }
+
+    /// Sum of measured passes other than `frame`.
+    pub fn validated_total_ms(&self) -> Result<f32, String> {
+        self.validated_stamp().map(|summary| summary.pass_sum_ms)
     }
 
     /// Get total GPU time across all instrumented passes (ms).
@@ -340,6 +446,48 @@ mod tests {
         assert!(timestamp_duration_ms(10, 20, f32::NAN).is_err());
         let ms = timestamp_duration_ms(1_000_000, 2_000_000, 1.0).unwrap();
         assert!(ms > 0.0);
+    }
+
+    #[test]
+    fn equal_ticks_are_empty_and_unwritten_still_fails() {
+        assert_eq!(classify_timestamp(10, 10, 1.0).0, TimestampKind::Empty);
+        assert_eq!(classify_timestamp(0, 0, 1.0).0, TimestampKind::Unwritten);
+        assert_eq!(classify_timestamp(20, 10, 1.0).0, TimestampKind::Inverted);
+        let (kind, ms) = classify_timestamp(1_000_000, 2_000_000, 1.0);
+        assert_eq!(kind, TimestampKind::Measured);
+        assert!(ms > 0.0);
+
+        let mut results = vec![
+            sample("shadow_cascade_3", 40, 40, TimestampKind::Empty, 0.0),
+            sample("main_render", 40, 1_040_000, TimestampKind::Measured, 1.0),
+            sample("frame", 10, 2_010_000, TimestampKind::Measured, 2.0),
+        ];
+        let summary = summarize_stamps(1.0, &results).expect("empty shadow is not a failure");
+        assert!((summary.pass_sum_ms - 1.0).abs() < 1e-6);
+        assert_eq!(summary.frame_ms, Some(2.0));
+        assert_eq!(summary.empty, vec!["shadow_cascade_3".to_string()]);
+
+        results.push(sample("post_process", 0, 0, TimestampKind::Unwritten, 0.0));
+        let err = summarize_stamps(1.0, &results).expect_err("unwritten fails");
+        assert!(err.contains("post_process"));
+        assert!(err.contains("begin=0"));
+        assert!(err.contains("timestamp_period_ns=1"));
+    }
+
+    fn sample(
+        name: &str,
+        begin: u64,
+        end: u64,
+        kind: TimestampKind,
+        duration_ms: f32,
+    ) -> PassTiming {
+        PassTiming {
+            name: name.to_string(),
+            duration_ms,
+            begin_tick: begin,
+            end_tick: end,
+            kind,
+        }
     }
 
     fn timestamp_device() -> Option<(wgpu::Device, wgpu::Queue)> {

@@ -4,7 +4,7 @@
 //! On a GTX 1660 Ti-class GPU the printed median is the measurement.
 //!
 //! ```text
-//! cargo run -p astraweave-render --release --features gpu-frame-budget --bin gpu_frame_budget -- --scene heavy --glb "assets/The Complete KayKit Collection v4/KayKit Adventurers 2.0/Characters/gltf/Rogue.glb"
+//! cargo run -p astraweave-render --release --features gpu-frame-budget --bin gpu_frame_budget -- --scene heavy --debug-timestamps --glb "assets/The Complete KayKit Collection v4/KayKit Adventurers 2.0/Characters/gltf/Rogue.glb"
 //! ```
 
 use anyhow::Context;
@@ -25,6 +25,7 @@ const SAMPLES: usize = 120;
 fn main() -> anyhow::Result<()> {
     let glb = glb_path();
     let heavy = scene_is_heavy();
+    let debug_timestamps = debug_timestamps();
     if !glb.is_file() {
         anyhow::bail!(
             "textured GLB not found at {}. Pass --glb <path>. No frame time is invented.",
@@ -36,6 +37,9 @@ fn main() -> anyhow::Result<()> {
     println!("adapter={}", renderer.gpu_adapter_name());
     println!("backend={}", renderer.gpu_backend());
     println!("features={:?}", renderer.gpu_features());
+    if let Some(profiler) = renderer.gpu_profiler() {
+        println!("timestamp_period_ns={}", profiler.timestamp_period_ns());
+    }
     let timestamps = renderer.timestamps_supported();
     if !timestamps {
         eprintln!(
@@ -115,16 +119,37 @@ fn main() -> anyhow::Result<()> {
     let mut encode = Vec::with_capacity(SAMPLES);
     let mut cpu_frame = Vec::with_capacity(SAMPLES);
     let mut gpu = Vec::new();
-    for _ in 0..SAMPLES {
+    let mut gpu_frame = Vec::new();
+    let mut empty_passes = String::new();
+    let mut gpu_error = None;
+    for sample_index in 0..SAMPLES {
         let (encode_ms, frame_ms) = frame(&mut renderer)?;
         encode.push(encode_ms);
         cpu_frame.push(frame_ms);
-        if timestamps {
-            let profiler = renderer
-                .gpu_profiler()
-                .context("GPU profiler disappeared after a supported device")?;
-            let total = profiler.validated_total_ms().map_err(anyhow::Error::msg)?;
-            gpu.push(f64::from(total));
+        if !timestamps {
+            continue;
+        }
+        let profiler = renderer
+            .gpu_profiler()
+            .context("GPU profiler disappeared after a supported device")?;
+        match profiler.validated_stamp() {
+            Ok(summary) => {
+                if debug_timestamps {
+                    println!("sample={sample_index}\n{}", summary.report);
+                }
+                gpu.push(f64::from(summary.pass_sum_ms));
+                if let Some(ms) = summary.frame_ms {
+                    gpu_frame.push(f64::from(ms));
+                }
+                if empty_passes.is_empty() && !summary.empty.is_empty() {
+                    empty_passes = summary.empty.join(",");
+                }
+            }
+            Err(report) => {
+                println!("sample={sample_index}\n{report}");
+                gpu_error = Some(report);
+                break;
+            }
         }
     }
 
@@ -143,19 +168,34 @@ fn main() -> anyhow::Result<()> {
             "GPU timestamps are unsupported. median_cpu_frame_ms is the CPU fallback and is not the 11 ms GPU budget."
         );
     }
-    let gpu_median = median(&mut gpu);
-    if gpu_median.partial_cmp(&0.0) != Some(std::cmp::Ordering::Greater) {
+    if let Some(report) = gpu_error {
         anyhow::bail!(
-            "median GPU pass sum is {gpu_median}; refusing to print 0. median_cpu_frame_ms is the CPU fallback."
+            "GPU timestamp read failed. median_cpu_frame_ms is the CPU fallback.\n{report}"
         );
     }
+    let gpu_median = median(&mut gpu);
     println!(
-        "median_gpu_pass_sum_ms={:.3} gpu_samples={}",
+        "median_gpu_pass_sum_ms={:.3} gpu_samples={} empty={empty_passes}",
         gpu_median,
         gpu.len()
     );
+    if !gpu_frame.is_empty() {
+        println!(
+            "median_gpu_frame_ms={:.3} frame_samples={}",
+            median(&mut gpu_frame),
+            gpu_frame.len()
+        );
+    }
+    let frame_positive = gpu_frame.iter().any(|ms| *ms > 0.0);
+    if gpu_median.partial_cmp(&0.0) != Some(std::cmp::Ordering::Greater) && !frame_positive {
+        anyhow::bail!("no positive GPU duration. median_cpu_frame_ms is the CPU fallback.");
+    }
     println!("budget_11ms=not_decided");
     Ok(())
+}
+
+fn debug_timestamps() -> bool {
+    std::env::args().any(|arg| arg == "--debug-timestamps" || arg == "--debug-timestamps=true")
 }
 
 fn scene_is_heavy() -> bool {
