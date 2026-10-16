@@ -7,11 +7,7 @@ use astraweave_core::{
 };
 use astraweave_ecs as ecs;
 
-use crate::orchestrator::Orchestrator;
-#[cfg(not(feature = "veilweaver_slice"))]
-use crate::orchestrator::RuleOrchestrator;
-#[cfg(feature = "veilweaver_slice")]
-use crate::VeilweaverCompanionOrchestrator;
+use crate::orchestrator::{Orchestrator, RuleOrchestrator};
 
 pub struct AiPlanningPlugin;
 
@@ -101,9 +97,11 @@ fn sys_ai_planning(world: &mut ecs::World) {
         }
     }
 
-    #[cfg(feature = "veilweaver_slice")]
-    let orch: Box<dyn Orchestrator> = Box::new(VeilweaverCompanionOrchestrator::new());
-    #[cfg(not(feature = "veilweaver_slice"))]
+    // Always the rule planner. `veilweaver_slice` is enabled for the whole
+    // workspace resolve because `veilweaver_slice_runtime` turns that feature
+    // on, and `VeilweaverCompanionOrchestrator` does not emit `MoveTo` for a
+    // companion already near the player. The slice constructs that orchestrator
+    // itself (`veilweaver_slice_runtime/src/companion_ai.rs`).
     let orch: Box<dyn Orchestrator> = Box::new(RuleOrchestrator);
     let mut updates: Vec<(ecs::Entity, CDesiredPos)> = vec![];
     let mut planned_events: Vec<AiPlannedEvent> = vec![];
@@ -355,7 +353,6 @@ mod tests {
     use anyhow::Result;
     use astraweave_core::{IVec2, World};
 
-    #[cfg(not(feature = "veilweaver_slice"))]
     #[test]
     fn ai_plugin_sets_desired_position_for_companion() -> Result<()> {
         // Legacy world can be empty for this test
@@ -544,7 +541,6 @@ mod tests {
         Ok(())
     }
 
-    #[cfg(not(feature = "veilweaver_slice"))]
     #[test]
     fn test_ai_component_queries() -> Result<()> {
         // Verify system correctly queries ECS components
@@ -1024,7 +1020,6 @@ mod tests {
     // sys_ai_planning Legacy World Path Tests (4 tests)
     // =============================================================================
 
-    #[cfg(not(feature = "veilweaver_slice"))]
     #[test]
     fn test_sys_ai_planning_no_legacy_world() -> Result<()> {
         // Verify ECS-only snapshot path when no legacy World resource
@@ -1071,7 +1066,6 @@ mod tests {
         Ok(())
     }
 
-    #[cfg(not(feature = "veilweaver_slice"))]
     #[test]
     fn test_sys_ai_planning_no_player_in_legacy() -> Result<()> {
         // Verify system handles missing player in legacy World
@@ -1119,7 +1113,6 @@ mod tests {
         Ok(())
     }
 
-    #[cfg(not(feature = "veilweaver_slice"))]
     #[test]
     fn test_sys_ai_planning_no_companion_in_legacy() -> Result<()> {
         // Verify system handles missing companion in legacy World
@@ -1360,7 +1353,6 @@ mod tests {
     // ECS-Only Snapshot Path Tests (3 tests)
     // =============================================================================
 
-    #[cfg(not(feature = "veilweaver_slice"))]
     #[test]
     fn test_ecs_only_snapshot_multiple_allies() -> Result<()> {
         // Verify ECS-only path handles multiple companions
@@ -1455,7 +1447,6 @@ mod tests {
         Ok(())
     }
 
-    #[cfg(not(feature = "veilweaver_slice"))]
     #[test]
     fn test_ecs_only_snapshot_cooldowns_conversion() -> Result<()> {
         // Verify ECS-only path converts cooldowns to BTreeMap<String, f32>
@@ -1500,7 +1491,6 @@ mod tests {
         Ok(())
     }
 
-    #[cfg(not(feature = "veilweaver_slice"))]
     #[test]
     fn test_ecs_only_snapshot_enemy_filtering() -> Result<()> {
         // Verify ECS-only path correctly filters team 2 as enemies
@@ -1572,7 +1562,6 @@ mod tests {
     // Event Generation Tests (2 tests)
     // =============================================================================
 
-    #[cfg(not(feature = "veilweaver_slice"))]
     #[test]
     fn test_ai_planned_event_contents() -> Result<()> {
         // Verify AiPlannedEvent has correct entity and target
@@ -1667,7 +1656,6 @@ mod tests {
     // Component Query Edge Cases (2 tests)
     // =============================================================================
 
-    #[cfg(not(feature = "veilweaver_slice"))]
     #[test]
     fn test_sys_ai_planning_missing_components() -> Result<()> {
         // Verify system handles entities missing CAmmo or CCooldowns
@@ -1917,7 +1905,6 @@ mod tests {
     /// are only written when the vec is empty (discarding real plans).
     /// This test verifies that when a legacy world has enemies and planning
     /// produces a MoveTo, CDesiredPos is actually written to the bridged ECS entity.
-    #[cfg(not(feature = "veilweaver_slice"))]
     #[test]
     fn test_sys_ai_planning_writes_desired_pos_when_updates_nonempty() -> Result<()> {
         use astraweave_core::ecs_bridge::EntityBridge;
