@@ -23,6 +23,11 @@
 //!
 //! Spec: `docs/campaigns/doc-truth/CLOSED_VOCABULARY_LINT.md` (the carve-out
 //! section documents why frame-time `2.70 ms` is deliberately NOT in Vocab A).
+//!
+//! A separate front-door check always fails the process, including in `--mode warn`:
+//! `README.md` must name every required replay case from `determinism-replay.yml`,
+//! must keep the 11 ms frame budget unmarked as measured, must list open pulls as
+//! in progress, and player-facing docs must not use the retired game title.
 
 use anyhow::{bail, Context, Result};
 use clap::{Parser, ValueEnum};
@@ -32,6 +37,10 @@ use std::process::Command;
 
 const SPEC_REL: &str = "docs/campaigns/doc-truth/CLOSED_VOCABULARY_LINT.md";
 const ALLOWLIST_REL: &str = "docs/campaigns/doc-truth/CLOSED_VOCABULARY_ALLOWLIST.md";
+const REPLAY_WORKFLOW_REL: &str = ".github/workflows/determinism-replay.yml";
+const README_REL: &str = "README.md";
+
+const IN_PROGRESS_ISSUES: &[&str] = &["#253", "#216", "#327"];
 
 const VOCAB_A_START: &str = "<!-- VOCAB-A-START -->";
 const VOCAB_A_END: &str = "<!-- VOCAB-A-END -->";
@@ -269,6 +278,177 @@ fn should_fail(mode: Mode, unallowlisted: usize) -> bool {
     matches!(mode, Mode::Enforce) && unallowlisted > 0
 }
 
+// ---- front door (always enforced) ------------------------------------------
+
+fn is_player_facing(path: &str) -> bool {
+    let p = path.replace('\\', "/");
+    p == "README.md"
+        || p == "CONTRIBUTING.md"
+        || p == "docs/README.md"
+        || p == "docs/QUICKSTART.md"
+        || (p.starts_with("docs/guides/") && p.ends_with(".md"))
+}
+
+/// Quoted names inside each `required = [` / `required = {` assignment.
+fn required_case_lists(workflow: &str) -> Vec<Vec<String>> {
+    let mut lists = Vec::new();
+    for (i, _) in workflow.match_indices("required") {
+        let after = &workflow[i..];
+        let Some(eq) = after.find('=') else { continue };
+        if eq > 24 {
+            continue;
+        }
+        let rest = after[eq + 1..].trim_start();
+        let close = if rest.starts_with('[') {
+            ']'
+        } else if rest.starts_with('{') {
+            '}'
+        } else {
+            continue;
+        };
+        let Some(end) = rest.find(close) else {
+            continue;
+        };
+        let names: Vec<String> = rest[1..end]
+            .split(',')
+            .filter_map(|part| {
+                let name = part.trim().trim_matches('"').trim_matches('\'').trim();
+                if name.is_empty() {
+                    None
+                } else {
+                    Some(name.to_string())
+                }
+            })
+            .collect();
+        if !names.is_empty() {
+            lists.push(names);
+        }
+    }
+    lists
+}
+
+fn contains_word(haystack: &str, word: &str) -> bool {
+    let bytes = haystack.as_bytes();
+    haystack.match_indices(word).any(|(idx, _)| {
+        let end = idx + word.len();
+        let left_ok = idx == 0 || !is_word_byte(bytes[idx - 1]);
+        let right_ok = end == bytes.len() || !is_word_byte(bytes[end]);
+        left_ok && right_ok
+    })
+}
+
+fn in_progress_body(readme: &str) -> Option<String> {
+    let lines: Vec<&str> = readme.lines().collect();
+    let start = lines.iter().position(|line| {
+        let t = line.trim();
+        t.starts_with("## ") && t.to_ascii_lowercase().contains("in progress")
+    })?;
+    let end = lines
+        .iter()
+        .enumerate()
+        .skip(start + 1)
+        .find(|(_, line)| line.starts_with("## "))
+        .map(|(i, _)| i)
+        .unwrap_or(lines.len());
+    Some(lines[start..end].join("\n"))
+}
+
+fn has_bare_word(text: &str, word: &str) -> bool {
+    let lower = text.to_ascii_lowercase();
+    let needle = word.to_ascii_lowercase();
+    contains_word(&lower, &needle)
+}
+
+/// Retired game title in player-facing prose. Identifier suffixes (`veilweaver_demo`)
+/// and the retained archive directory (`projects/veilweaver`) are not title uses.
+fn retired_title_hits(path: &str, text: &str) -> Vec<String> {
+    let lower = text.to_ascii_lowercase();
+    let needle = "veilweaver";
+    let bytes = lower.as_bytes();
+    let mut hits = Vec::new();
+    let mut from = 0;
+    while let Some(rel) = lower[from..].find(needle) {
+        let idx = from + rel;
+        let end = idx + needle.len();
+        let prev_ok = idx == 0 || !is_word_byte(bytes[idx - 1]);
+        let ident = bytes.get(end).copied() == Some(b'_');
+        let path_dir =
+            idx >= "projects/".len() && &lower[idx - "projects/".len()..idx] == "projects/";
+        if prev_ok && !ident && !path_dir {
+            let line = text[..idx].bytes().filter(|&b| b == b'\n').count() + 1;
+            hits.push(format!(
+                "{path}:{line}: player-facing text uses the retired game title"
+            ));
+        }
+        from = end;
+    }
+    hits
+}
+
+fn front_door_errors(
+    readme: &str,
+    workflow: &str,
+    player_facing: &[(String, String)],
+) -> Vec<String> {
+    let mut errors = Vec::new();
+    let lists = required_case_lists(workflow);
+    if lists.len() < 2 {
+        errors.push(format!(
+            "{REPLAY_WORKFLOW_REL}: expected two required-case lists, found {}",
+            lists.len()
+        ));
+    } else if lists.iter().any(|list| list != &lists[0]) {
+        errors.push(format!(
+            "{REPLAY_WORKFLOW_REL}: required-case lists disagree"
+        ));
+    }
+    if let Some(cases) = lists.first() {
+        for case in cases {
+            if !contains_word(readme, case) {
+                errors.push(format!(
+                    "{README_REL}: missing required replay case `{case}`"
+                ));
+            }
+        }
+    }
+    for phrase in [
+        "not yet measured",
+        "11 ms",
+        "GTX 1660 Ti",
+        "CC0",
+        "Local LLMs propose",
+        "deterministic simulation validates",
+        "Aravath",
+    ] {
+        if !readme.contains(phrase) {
+            errors.push(format!(
+                "{README_REL}: missing front-door phrase `{phrase}`"
+            ));
+        }
+    }
+    match in_progress_body(readme) {
+        None => errors.push(format!("{README_REL}: missing a '## In progress' section")),
+        Some(body) => {
+            for issue in IN_PROGRESS_ISSUES {
+                if !body.contains(issue) {
+                    errors.push(format!("{README_REL}: in-progress section missing {issue}"));
+                }
+            }
+            for word in ["shipped", "landed", "merged"] {
+                if has_bare_word(&body, word) {
+                    errors.push(format!(
+                        "{README_REL}: in-progress section marks work {word}"
+                    ));
+                }
+            }
+        }
+    }
+    for (path, text) in player_facing {
+        errors.extend(retired_title_hits(path, text));
+    }
+    errors
+}
+
 fn resolve_root(cli: &Cli) -> Result<PathBuf> {
     if let Some(r) = &cli.root {
         return Ok(r.clone());
@@ -296,10 +476,8 @@ fn main() -> Result<()> {
     let lits = load_literals(&spec)?;
     let allow = load_allowlist(&allowlist_doc)?;
 
-    let files: Vec<String> = tracked_files(&root)?
-        .into_iter()
-        .filter(|f| in_scope(f))
-        .collect();
+    let tracked = tracked_files(&root)?;
+    let files: Vec<String> = tracked.iter().filter(|f| in_scope(f)).cloned().collect();
 
     let in_ci = std::env::var("GITHUB_ACTIONS")
         .map(|v| v == "true")
@@ -352,6 +530,33 @@ fn main() -> Result<()> {
         eprintln!("doc-truth lint: clean (K=0 un-allowlisted).");
     }
 
+    let readme = std::fs::read_to_string(root.join(README_REL))
+        .with_context(|| format!("reading {README_REL}"))?;
+    let workflow = std::fs::read_to_string(root.join(REPLAY_WORKFLOW_REL))
+        .with_context(|| format!("reading {REPLAY_WORKFLOW_REL}"))?;
+    let mut player_facing = Vec::new();
+    for f in &tracked {
+        if !is_player_facing(f) {
+            continue;
+        }
+        if let Ok(text) = std::fs::read_to_string(root.join(f)) {
+            player_facing.push((f.clone(), text));
+        }
+    }
+    let front = front_door_errors(&readme, &workflow, &player_facing);
+    for e in &front {
+        println!("{e}");
+        if in_ci {
+            println!("::error::{e}");
+        }
+    }
+
+    if !front.is_empty() {
+        bail!(
+            "{} front-door documentation error(s) (always enforced)",
+            front.len()
+        );
+    }
     if should_fail(cli.mode, k) {
         bail!("{k} un-allowlisted closed-vocabulary occurrence(s) (enforce mode)");
     }
@@ -560,5 +765,57 @@ mod tests {
         assert!(!should_fail(Mode::Warn, 5)); // warn never fails
         assert!(!should_fail(Mode::Enforce, 0)); // clean enforce passes
         assert!(should_fail(Mode::Enforce, 1)); // dirty enforce fails
+    }
+
+    fn sample_readme() -> String {
+        [
+            "Local LLMs propose. The deterministic simulation validates and executes.",
+            "The game is Aravath. Assets are CC0 only.",
+            "under 11 ms per frame on a GTX 1660 Ti-class GPU. It is not yet measured.",
+            "planner_pure perception_world gameplay_rng fixed64 combat_resolve",
+            "destruction gameplay_qa_aravath_slice nav_reroute causal_bridge scripted_system weaving traversal traversal_deformed worldgen_columns deformed_chunk",
+            "## In progress",
+            "#253 #216 #327 are in progress",
+            "## Next",
+        ]
+        .join("\n")
+    }
+
+    fn sample_workflow() -> String {
+        let cases = r#""planner_pure", "perception_world", "gameplay_rng", "fixed64", "combat_resolve", "destruction", "gameplay_qa_aravath_slice", "nav_reroute", "causal_bridge", "scripted_system", "weaving", "traversal", "traversal_deformed", "worldgen_columns", "deformed_chunk""#;
+        format!("const required = [{cases}];\nrequired = {{{cases}}};\n")
+    }
+
+    #[test]
+    fn required_lists_must_agree() {
+        let lists = required_case_lists(&sample_workflow());
+        assert_eq!(lists.len(), 2);
+        assert_eq!(lists[0], lists[1]);
+        assert_eq!(lists[0].len(), 15);
+    }
+
+    #[test]
+    fn front_door_accepts_a_honest_readme() {
+        let errors = front_door_errors(&sample_readme(), &sample_workflow(), &[]);
+        assert!(errors.is_empty(), "{errors:?}");
+    }
+
+    #[test]
+    fn front_door_rejects_a_missing_case_and_a_shipped_label() {
+        let readme = sample_readme()
+            .replace("nav_reroute", "nav")
+            .replace("are in progress", "are shipped");
+        let errors = front_door_errors(&readme, &sample_workflow(), &[]);
+        assert!(errors.iter().any(|e| e.contains("nav_reroute")));
+        assert!(errors.iter().any(|e| e.contains("shipped")));
+    }
+
+    #[test]
+    fn retired_title_allows_crate_names_and_the_archive_directory() {
+        let text =
+            "see veilweaver_demo and archive/projects/veilweaver/ only\nThe Veilweaver game\n";
+        let hits = retired_title_hits("docs/guides/x.md", text);
+        assert_eq!(hits.len(), 1);
+        assert!(hits[0].contains(":2:"));
     }
 }

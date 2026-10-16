@@ -45,7 +45,7 @@ A new push cancels the previous pull-request run. Pushes to main, tags, and sche
 | Windows archive, then 3 partitions | `Test (windows, build archive)`, then `Test (windows, 1/3)`, `Test (windows, 2/3)`, `Test (windows, 3/3)` |
 | MSRV (`rust-version` in the workspace manifest, 1.89.0) | `Minimum Supported Rust Version` |
 | Rollup of the rows above | `PR Rust checks` |
-| Replay hash, Ubuntu / Windows / macOS, then compare. Required cases: `planner_pure`, `perception_world`, `gameplay_rng`, `fixed64`, `combat_resolve`, `destruction`, `gameplay_qa_aravath_slice`. No path filter. | `hash (ubuntu-latest)`, `hash (windows-latest)`, `hash (macos-latest)`, `compare` |
+| Replay hash, Ubuntu / Windows / macOS, then compare. Required cases: `planner_pure`, `perception_world`, `gameplay_rng`, `fixed64`, `combat_resolve`, `destruction`, `gameplay_qa_aravath_slice`, `nav_reroute`, `causal_bridge`, `scripted_system`, `weaving`, `traversal`, `traversal_deformed`, `worldgen_columns`, `deformed_chunk`. No path filter. | `hash (ubuntu-latest)`, `hash (windows-latest)`, `hash (macos-latest)`, `compare` |
 | cargo-deny, cargo-audit | `Cargo Deny Check`, `Security Audit (cargo-audit)` |
 
 These also run on a non-docs pull request when their paths match, and are not in the required set because a path filter would skip them: `net-tests`, trace sync, doc-truth lint, docs. Pack guard and OpenSSF Scorecard run on every pull request. PBR, Editor CI, and AW Editor tests do not run on pull requests.
@@ -69,7 +69,7 @@ These also run on a non-docs pull request when their paths match, and are not in
 
 ## Determinism
 
-`determinism-replay.yml` runs on every pull request and on push to `main`. It has no path filter. Each OS runs the core replay test, the combat replay test, and `replay_aravath_slice_scenario` with the baseline CPU pinned (`target-cpu=x86-64` on x86_64; aarch64 stays on the default baseline). `cargo test` has no retry loop. The `compare` job requires `planner_pure`, `perception_world`, `gameplay_rng`, `fixed64`, `combat_resolve`, `destruction`, and `gameplay_qa_aravath_slice` to be present and byte-identical across the three artifacts.
+`determinism-replay.yml` runs on every pull request and on push to `main`. It has no path filter. Each OS runs the core replay test, the combat replay test, `replay_aravath_slice_scenario`, the causality replay test, the scripting replay test, `astraweave-physics` `traversal_replay`, and `astraweave-terrain` `worldgen_hash`, with the baseline CPU pinned (`target-cpu=x86-64` on x86_64; aarch64 stays on the default baseline). `cargo test` has no retry loop. The `compare` job requires `planner_pure`, `perception_world`, `gameplay_rng`, `fixed64`, `combat_resolve`, `destruction`, `gameplay_qa_aravath_slice`, `nav_reroute`, `causal_bridge`, `scripted_system`, `weaving`, `traversal`, `traversal_deformed`, `worldgen_columns`, and `deformed_chunk` to be present and byte-identical across the three artifacts. `traversal` and `traversal_deformed` come from `replay-hash-traversal.json`. `worldgen_columns` and `deformed_chunk` are appended to `replay-hash.json` by `worldgen_hash` before the merge step. #217 did not change that required set. `.github/workflows/determinism-profile.yml` runs the seven terrain bit locks under `--release` nightly at 05:30 UTC on Ubuntu, macOS, and Windows. It is not a pull-request check. The open greybox network failure is #326. #327 is the fix and is not on `main`. Benchmark targets whose measurement exceeds 600s stay #224. The local fluid field that `weaving` will hash is #253.
 
 When the same tests also run under nextest (an affected crate on a pull request, or the full nightly matrix), `.config/nextest.toml` profile `ci` sets `retries = 2` for ordinary tests and `retries = 0` for test names matching `determinism`, `replay`, or `deterministic`. The determinism workflow does not call nextest.
 
@@ -127,23 +127,23 @@ One pass: `cargo clippy --locked --workspace --lib --no-deps`, excluding crates 
 
 `[workspace.lints.clippy]` sets that family to allow for a member that inherits and does not override. Cargo 1.89 rejects `[lints] workspace = true` together with a crate-level override, which is why P0 and P1 do not inherit.
 
-The old `-D warnings` / `--all-features` gate is not the pull-request clippy. It is red on `main` for reasons owned by `cursor/ci-failure-burndown` (issue #220).
+The old `-D warnings` / `--all-features` gate is not the pull-request clippy. #217 is on `main` at `a66304dc`. Its ledger records the phi3 and glTF import fixes that used to fail that invocation. This page does not claim a fresh workspace `-D warnings` run.
 
 ## Deferred failures
 
-These were red on PR #212 and are not re-fixed here. The burndown branch owns the patches. Each issue has the root cause and the plan. The token used here received HTTP 403 from the labels API, so the `deferred-failure` label still needs to be applied by someone who can create it. The title prefix is `[deferred-failure]`.
+These were red on PR #212. #217 (`a66304dc`) is the burndown that landed. The rows below are the state written before that merge. The ledger at `CI_FAILURE_LEDGER.md` is the disposition. #219 and #256 are closed: `openssl` and `openssl-sys` stay banned in `deny.toml`, and neither name is in `Cargo.lock`. The greybox `tokio` `net` failure is #326. #327 is open and is not on this commit. The title prefix is `[deferred-failure]`.
 
 | Issue | Failure |
 |---|---|
 | #218 | Headless audio stops workspace tests and the toolchain matrix |
-| #219 | cargo-deny: native-tls pulls banned openssl. This branch switches reqwest, tokio-tungstenite, hf-hub, and ort off native-tls so the ban can pass. |
+| #219 | Closed by #217. reqwest, tokio-tungstenite, and hf-hub use rustls. `ort` does not enable `download-binaries`. The openssl ban is unchanged. |
 | #220 | `clippy -D warnings` on phi3 and the render glTF import |
 | #221 | Benchmark shards: 600s cap (not raised) and five package errors |
 | #222 | SDK C harness: C++ header and missing MSVC prompt |
 
-Editor CI's missing `libudev` is handled by the shared setup action, which installs `libudev-dev`. Cargo Deny is a real failure again (`continue-on-error` removed), so #219 stays visible on pull requests until the burndown branch merges.
+`aw-editor-tests.yml` installs `pkg-config`, `libudev-dev`, and `libasound2-dev` on Ubuntu. The sanitizer jobs install `pkg-config` and `libudev-dev`. `editor-ci.yml` uses `rust-ci-setup`, which already installed `libudev-dev` and now also installs `mesa-vulkan-drivers`, `libvulkan1`, and `vulkan-tools`. Cargo Deny remains a failing check. #219 is closed.
 
-Issue #254 (label `deferred-failure`, applied by the maintainer) is the workspace nextest failure from head `7839f930`. The integration token cannot edit that issue (`updateIssue` HTTP 403), so the owner and the plan for each group are recorded here and in `scripts/ci/deferred_pr_tests.txt`. Owner of every group: the CI-cleanup agent, PR #217, branch `cursor/ci-failure-burndown`.
+Issue #254 is the workspace nextest failure from head `7839f930`. #217 fixed the audio group: generated WAVs live under `astraweave-audio/target/audio-test-assets/<pid>`. The other groups stay in the ledger and in `scripts/ci/deferred_pr_tests.txt`.
 
 | Group | Tests | Plan |
 |---|---|---|
@@ -156,7 +156,7 @@ Issue #254 (label `deferred-failure`, applied by the maintainer) is the workspac
 
 Profile `ci-pr` excludes that exact list so the required pull-request test jobs can pass. Profile `ci` on main and the nightly schedule does not. Audio cases that were flaky and then passed are not in the list. Replay cases are not in the list. Delete a line from the list when that test is green on profile `ci`.
 
-Windows partition jobs use profile `ci-pr-archive`, which adds `scripts/ci/archive_only_skips.txt`. On `0a8ffcec` those were a render crash (`test_renderer_bake_environment_wave16`, exit 2173), two fluids GPU tests that hit the 240s slow-timeout, and the `aw-net-client` binary tests. Linux profile `ci-pr` still runs all of those; that Linux job passed. The client-binary tests use `CARGO_BIN_EXE`, which points at the build runner, so the archive build job runs those two test targets before it uploads. The GPU skips are owned by PR #217 and still run on profile `ci`.
+Windows partition jobs use profile `ci-pr-archive`, which adds `scripts/ci/archive_only_skips.txt`. On `0a8ffcec` those were a render crash (`test_renderer_bake_environment_wave16`, exit 2173), two fluids GPU tests that hit the 240s slow-timeout, and the `aw-net-client` binary tests. Linux profile `ci-pr` still runs all of those; that Linux job passed. The client-binary tests use `CARGO_BIN_EXE`, which points at the build runner, so the archive build job runs those two test targets before it uploads. The explicit GPU skip from #217 is on `main` and still runs on profile `ci`.
 
 `PhysicsWorld::step` after warmup still allocates (8 allocs, 4112 bytes, 64 bodies, 30 warmup steps, measured 2026-10-15). `tests/zero_alloc_step.rs` asserts 0 and is not loosened. That failure is issue #262, owned by the repository maintainer until a physics workstream claims it. One `World::tick` / `step` with a cooldown already installed measured 0 allocations.
 

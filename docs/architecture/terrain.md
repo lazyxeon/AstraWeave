@@ -9,8 +9,8 @@ lifecycle_status: active
 integration_status: mixed
 summary: "Voxel meshing/biome/noise/scatter/streaming (complements terrain_materials.md). terrain.md"
 owns: [astraweave-terrain]
-doc_version: "1.12"
-last_verified_commit: a10780f4
+doc_version: "1.13"
+last_verified_commit: d0452d3e
 ---
 
 # Architecture Trace: Terrain System (Generation, Voxels, Biomes, Noise, Scatter, Streaming)
@@ -21,9 +21,9 @@ last_verified_commit: a10780f4
 |---|---|
 | **System name** | Terrain System (procedural generation, voxel meshing, biome/noise pipeline, scatter, chunk streaming) |
 | **Primary crates** | `astraweave-terrain` (with reverse dep into `astraweave-gameplay`); consumers in `tools/aw_editor`, `examples/hybrid_voxel_demo`, `astraweave-render` |
-| **Document version** | 1.12 |
-| **Last verified against commit** | ED-3 working tree over `aca627436` (v1.7: amplitude Open Question closed); prior `d4c4479d4` (v1.6), prior `03f9d9a2d` (v1.5: T.2d third pass, two new §11 Open Questions), prior `611c8edc7` (v1.3/v1.4: T.2a boreal band + `expect()` retirement), `8232b150b`. Note: v1.4 bumped the front-matter `doc_version` and the revision table only, leaving this row at 1.3 — corrected here. |
-| **Last verified date** | 2026-07-26 (v1.7) |
+| **Document version** | 1.13 |
+| **Last verified against commit** | `d0452d3e` (v1.13: fifteen required replay cases). Prior ED-3 working tree over `aca627436` (v1.7: amplitude Open Question closed); prior `d4c4479d4` (v1.6), prior `03f9d9a2d` (v1.5: T.2d third pass, two new §11 Open Questions), prior `611c8edc7` (v1.3/v1.4: T.2a boreal band + `expect()` retirement), `8232b150b`. Note: v1.4 bumped the front-matter `doc_version` and the revision table only, leaving this row at 1.3 — corrected here. |
+| **Last verified date** | 2026-10-16 (v1.13); 2026-07-26 (v1.7) |
 | **Status** | Active. Editor preview is the climate heightmap. Saved ground is the integer seed record. Deformation is a `DestructionCommand` log replayed into `ColumnStream`. The async heightmap loader, clipmap, GPU erosion trait, voxel modifier, and Phase 10 persistence format are removed. `DualContouring` stores one vertex per crossed edge. `aravath_runtime` collides with that mesh. |
 | **Owner notes** | Complements [`terrain_materials.md`](terrain_materials.md), which covers ONLY the material/splat-weight slice. This trace covers the REST: noise → heightmap → biome → erosion → chunk generation, voxel meshing, scatter/vegetation, and chunk streaming. Where the two overlap (biome semantics, `astraweave-render` terrain paths) this doc cross-references rather than duplicates. |
 
@@ -478,7 +478,8 @@ Wiredness verified by workspace grep for non-test/non-example production callers
 |---|---|---|
 | 1.9 | 2026-10-15 | **Edge-keyed isosurface.** `DualContouring` again stores one vertex per crossed marching-cubes edge (`HashMap<EdgeKey, u32>`, Bourke corner order). A cell-position cache left triangle lookups empty, so the Aravath island collider did not hold the character. `aravath_runtime` is a caller of `generate_mesh` via `Ground::sync_dirty`. Invariant 10. |
 | 1.8 | 2026-10-14 | **WS-D2.** `TerrainSolver::new` requires an explicit `u64` seed. `SystemTime` is gone from the solver and from terrain save headers/filenames (`timestamp` is a sim tick, default 0). `meshing.rs` was not modified. |
-| 1.12 | 2026-10-16 | **Rebase onto #205.** Copied command, `Fixed64`, and `VoxelDag` types are gone. The ring uses `astraweave-destruction`. Demo voxels stay `fill_height_chunk`. Required replay cases are main's eleven plus `worldgen_columns` and `deformed_chunk`. |
+| 1.13 | 2026-10-16 | **Case count on `d0452d3e`.** The compare job requires fifteen names: the thirteen already on main, plus `worldgen_columns` and `deformed_chunk`. `worldgen_hash` appends both rows to `replay-hash.json`. Greybox `ColumnStream` only chooses the loaded ring; `fill_height_chunk` still writes the island voxels, and window props still come from `aravath_runtime`'s local scatter. Checkpoint `ground` must equal `worldgen_record()` when the key is present. |
+| 1.12 | 2026-10-16 | **Rebase onto #205.** Copied command, `Fixed64`, and `VoxelDag` types are gone. The ring uses `astraweave-destruction`. Demo voxels stay `fill_height_chunk`. `worldgen_columns` and `deformed_chunk` join the required set. |
 | 1.11 | 2026-10-15 | **Destruction seam.** `ColumnStream` is a pre-sized ring and the deformation slot set. Apply Erosion appends `DestructionCommand` bytes (`erosion.cmd`) and leaves `worldgen_record` as the base. Scatter ids come from `(seed, x, z)`. A detach is not respawned. Determinism case `deformed_chunk`. |
 | 1.10 | 2026-10-14 | **Golden re-lock and capability restore.** The seven pre-E3 lib goldens match the shared debug/release bits from PR #217 (persistence and lacunarity force 4 octaves). `build_chunks_sorted` commits worker results in `(x, z)` order. `lod_step` / `morphed_height` are the distant LOD and morph. `erode_chunk_heights` is the integer droplet bake the editor Apply Erosion button writes. |
 | 1.9 | 2026-10-14 | **U1, U2, U4.** `ColumnStream` is the demo streamer. Scene save and the Aravath checkpoint store `worldgen_record()`; erosion preview is not that file. Deleted: async heightmap loader, LOD hysteresis, LOD morph, streaming diagnostics, clipmap, GPU erosion trait and render impl, compressed voxels, voxel modifier, Phase 10 terrain persistence. `astraweave-pcg` `SeedRng` drives `WfcGrid::collapse_seeded`, called from the editor dungeon button. Mask generation branch removed. Solver kept. |

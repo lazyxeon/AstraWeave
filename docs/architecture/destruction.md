@@ -29,7 +29,7 @@ runtime_edges:
 | **Document version** | 1.2 |
 | **Last verified against commit** | `7a571045` |
 | **Last verified date** | 2026-10-15 |
-| **Status** | Active. Headless showcase and the required replay case. The Aravath runtime on PR #205 is not on this branch. |
+| **Status** | Active. Headless showcase and the required replay case. The greybox on main (`cdea968c`) still digs with `dig_sphere`, not `DestructionCommand::Brush`. |
 | **Owner notes** | Design: `docs/current/DESTRUCTION_DESIGN.md`. Survey: `docs/current/DESTRUCTION_ARCHAEOLOGY.md`. `Fixed64` lives in `astraweave-math` (PR #245). |
 
 ---
@@ -122,7 +122,7 @@ Floats do not enter this pipeline. Rapier is not called.
 |---|---|---|
 | `astraweave-physics` `DestructionManager` | Dormant float toy | Left in place. New calls do not go through it |
 | `PhysicsWorld::add_destructible_box` | Stub | Not extended |
-| PR #205 `dig_sphere` / `VoxelEdit` | On that PR, not here | The showcase script is the replacement the demo should call |
+| Greybox `dig_sphere` / `VoxelEdit` | On main, not this crate | The showcase script is the replacement the demo should call |
 | #215 `surface_height` | Not on this branch | `FlatColumnBase` until that PR merges |
 
 ---
@@ -182,7 +182,7 @@ Caps, not wall-clock gates: 256 debris, 1024 nodes per tick, 8 stress iterations
 ## 11. Open Questions / Parked Decisions
 
 - **#215 column adapter.** `FlatColumnBase` is the test terrain. After #215 merges, an adapter should call `surface_height` / `column_material` without editing that crate's generator. Tracked in issue #249.
-- **PR #205 call site.** `aravath_runtime` is not on this branch. The demo should replace `dig_sphere` with `DestructionCommand::Brush` and read occupancy from this crate. The headless example is the showcase that exists today. Issue #250 tracks the runtime call.
+- **Greybox call site.** `aravath_runtime` is on main. The window still calls `dig_sphere`. Replacing that with `DestructionCommand::Brush` is still open. The headless destruction example remains the showcase for this crate.
 - **Direct stress solve.** A sparse direct solve can replace the 8-iteration push only if it stays integer and ordered. That would change the hash and needs its own review.
 - **Physics mirror.** Not added. Add `mirror_debris_pose` only when a caller needs a Rapier body it cannot get from the integer query.
 

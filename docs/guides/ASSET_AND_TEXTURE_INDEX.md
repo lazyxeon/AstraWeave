@@ -3,7 +3,7 @@
 This document lists the available assets and textures in the repository, grouped by their source folders and noting file formats for quick reference.
 
 > Note: No dedicated "pine forest" biome pack was detected in Git LFS or the repository tree; only existing pine tree models are present.
-> Veilweaver assets with labels such as Loomspire Sanctum, Echo Grove, and Fractured Cliffs are prototype vertical-slice identifiers used by the implementation and asset pipeline. Current canon geography and narrative naming live in `docs/Veilweaver/`.
+> Place labels such as Loomspire Sanctum, Echo Grove, and Fractured Cliffs are prototype identifiers in asset files. Player-facing text uses Aravath. The project asset rule is CC0 only; this index does not re-certify each file's license (`assets/README.md` still says "Mixed").
 
 ## assets
 

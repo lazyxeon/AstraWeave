@@ -28,7 +28,7 @@ Developer guides and tutorials for AstraWeave.
 
 | Guide | Description |
 |-------|-------------|
-| [ai-scripting.md](ai-scripting.md) | Rhai scripting for AI |
+| [ai-scripting.md](ai-scripting.md) | Gameplay Rhai scripts. No physics or nav proxies (#318). |
 | [behavior_and_quests.md](behavior_and_quests.md) | Behavior trees and quests |
 | [hierarchical_goals_designer_guide.md](hierarchical_goals_designer_guide.md) | Goal-oriented AI |
 | [persona-packs.md](persona-packs.md) | Persona pack system |

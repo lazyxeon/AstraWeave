@@ -29,7 +29,7 @@ runtime_edges:
 | **Document version** | 1.3 |
 | **Last verified against commit** | `9459573d` |
 | **Last verified date** | 2026-10-15 |
-| **Status** | Active, partial. `run_aravath_slice` is the caller. PR #205's greybox runtime does not call it yet. |
+| **Status** | Active, partial. `run_aravath_slice` is the caller. The greybox on main does not call it yet. |
 | **Owner notes** | Formula spec: `docs/current/COMBAT_DAMAGE_SYSTEM_DESIGN.md`. Gate Pass, 2026-10-14. |
 
 ---

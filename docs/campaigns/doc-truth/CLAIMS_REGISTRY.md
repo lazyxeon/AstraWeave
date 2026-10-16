@@ -18,12 +18,13 @@ Status vocabulary: **VERIFIED-AT-HEAD** (re-checked this campaign at HEAD via th
 
 ### workspace-members
 - metric: Workspace member count
-- value: 130
-- status: VERIFIED-AT-HEAD (2026-06-13, `cargo metadata --no-deps`)
+- value: 141
+- status: VERIFIED-AT-HEAD (2026-10-16, `cargo metadata --no-deps` at `cdea968c`. #205 added `astraweave-veil`. 140 was the count at `5cba174c`.)
 - repro: `cargo metadata --no-deps --format-version 1 | jq '.packages | length'`
 - hardware: n/a
 - canonical_source: `cargo metadata --no-deps`
-- referenced_by: README.md:52,129,274,289; CLAUDE.md:7,130; docs/architecture/ARCHITECTURE_MAP.md:36; docs/current/CLAUDE_MD_HARDENING_PROPOSAL.md:237; docs/README.md:21,411; docs/current/IMPLEMENTATION_PLANS_INDEX.md; gh-pages/index.md:18; gh-pages/crates.md:8
+- referenced_by: README.md; CLAUDE.md; docs/architecture/ARCHITECTURE_MAP.md; docs/guides/RUST_TOOLCHAIN_GUIDE.md
+- note: SUPERSEDES the 2026-06-13 value `130` and the 2026-07-19 narrative `133`. Dated sentences that say "130 as of June 2026" are history, not the current value. 58 package names start with `astraweave-` at `cdea968c` (`astraweave-veil` added). 60 manifests live under `examples/`.
 
 ### production-crates
 - metric: Production-crate count (judgment bucket, not a mechanical count)
@@ -237,6 +238,26 @@ Status vocabulary: **VERIFIED-AT-HEAD** (re-checked this campaign at HEAD via th
 
 ---
 
+### replay-cases
+- metric: Required cross-OS determinism replay cases
+- value: `planner_pure`, `perception_world`, `gameplay_rng`, `fixed64`, `combat_resolve`, `destruction`, `gameplay_qa_aravath_slice`, `nav_reroute`, `causal_bridge`, `scripted_system`, `weaving`, `traversal`, `traversal_deformed`, `worldgen_columns`, `deformed_chunk` (15)
+- status: VERIFIED-AT-HEAD (2026-10-16, both `required` lists in `.github/workflows/determinism-replay.yml` at `d0452d3e`)
+- repro: read the `required` arrays in `.github/workflows/determinism-replay.yml`
+- hardware: n/a (compare job is Ubuntu, Windows, macOS)
+- canonical_source: `.github/workflows/determinism-replay.yml`
+- referenced_by: README.md; docs/current/CI_ARCHITECTURE.md; docs/guides/BUILD_QUICK_REFERENCE.md
+- note: A missing case or a SHA-256 mismatch fails `determinism-replay / compare`. This is not a claim that every byte of the engine is hashed.
+
+### frame-budget-gtx1660
+- metric: Full-frame GPU budget on a GTX 1660 Ti-class GPU
+- value: TARGET under 11 ms. NOT MEASURED. The GPU timer read 0 ms. Readback fix is in progress in #216 and is not on `main`.
+- status: PENDING (target only; do not cite as achieved)
+- repro: not available until #216 lands a non-zero timestamp read on that GPU class
+- hardware: GTX 1660 Ti-class (the target machine class; this row has no passing sample)
+- canonical_source: repository README + issue #216
+- referenced_by: README.md; docs/masters/MASTER_BENCHMARK_REPORT.md
+- note: CPU `profiling_demo` times (system 0.965 ms / mimalloc 0.709 ms @ 1,000 entities, 2026-06-27) are a different measurement. Do not substitute them for this row.
+
 ## Retired (deleted across the corpus — no registry row, recorded here so D.1.B/D.2 never re-home them)
 
 | Retired figure | Why | Superseded by |
@@ -259,5 +280,12 @@ Status vocabulary: **VERIFIED-AT-HEAD** (re-checked this campaign at HEAD via th
 | 0.1 (D.1.A skeleton) | 2026-06-13 | Created. 11 VERIFIED-AT-HEAD count/version rows; 7 PENDING-D2 benchmark/coverage rows; Retired table seeded. PENDING-D2 rows to be filled by D.2 measurement. |
 | 0.2 (D.1.B hygiene) | 2026-06-13 | Hygiene pass: `canonical_source` for agents-capacity-60fps / frame-time-1000-entities / coverage-weighted / miri-tests changed from doc-references to the bench/llvm-cov/miri **command** (doc-cites-doc break). Denominators confirmed named ("test markers", not "tests"). `referenced_by` lists are representative load-bearing sites, not exhaustive — D.1.B added registry-comment back-links across the long-tail corpus. |
 | 0.3 (D.2.A.1) | 2026-06-25 | **W.1-contamination re-resolution.** Re-resolved the 4 W.1-invalidated rows (fluids-loc 80,222→24,251 src; fluids-test-markers 2,560→738; rust-loc-total ~1.16M→~1.10M raw / ~892K→~854K code; dormant-loc-inventory 108,753→52,782). Fixed 2 broken repro commands (fluids-loc `**`-glob returned 0; rust-loc-total `xargs … wc -l \| tail -1` batching). Added 4 NEW rows for the W.2–F.4 water successor: water-facade-loc, water-surface-loc, water-system (narrative), water-budget (PENDING-D2, single-machine/provisional). Dated D.2.A snapshots in the execution reports left byte-identical (per-row resolution principle). Authority: `D_RESUME_0_RECON.md`. |
+| 1.2 | 2026-10-16 | #217 on main at `a66304dc`. `replay-cases` stays 15. #219 and #256 are closed. #326 stays open. #327 is the open fix. |
+| 1.1 | 2026-10-16 | #215 on main. `replay-cases` adds `worldgen_columns` and `deformed_chunk` (15). Greybox golden stays `b663da52ea1d566e`, outside that gate. Member count stays 141. |
+| 1.0 | 2026-10-16 | #244 on main. `replay-cases` adds `traversal` and `traversal_deformed` (13). Greybox golden is `b663da52ea1d566e`, still outside that gate. |
+| 0.9 | 2026-10-16 | #205 on main. `workspace-members` 140 → 141 (`astraweave-veil`). Greybox replay stays off the eleven-case gate. |
+| 0.8 | 2026-10-16 | #252 on main. `workspace-members` 139 → 140. `replay-cases` adds `weaving` (11). |
+| 0.7 | 2026-10-16 | Restamp `workspace-members` onto `3971cbe1` after #316 and #318. Count stays 139. |
+| 0.6 | 2026-10-16 | **Member count and two new rows.** `workspace-members` 130 → 139 at `d6b07fc8`. Added `replay-cases` (10 required names) and `frame-budget-gtx1660` (target under 11 ms, not measured, #216). `130` is not poison: dated June sentences may still say it. |
 | 0.5 (Path-B.2) | 2026-06-29 | **Coverage re-baseline — last PENDING-D2 measurement row settled.** Flipped `coverage-weighted` PENDING-D2/blocked → **VERIFIED-AT-HEAD: 57.35% line coverage** whole-workspace (369,462 lines; regions 56.41%, functions 60.46%), superseding the 29-curated-crate **59.3%** (denominator change, not a regression). Unblocked by Path-B.1 (`1eacebff4`, the 8 broken test targets fixed). Two tooling findings recorded: (1) Windows ~32 KB command-line limit blocks `cargo llvm-cov --workspace`'s report step (668 objects) — worked around via `llvm-cov report` response file on the merged profdata; (2) 36/646 test binaries fail at runtime (pre-existing assertion failures + a few stale assertions exposed-not-caused by Path-B.1's compile fix) — absorbed by `--ignore-run-fail`, a runtime-assertion-currency follow-on, coverage unaffected. Corpus 59.3% citations noted for the deferred final propagation. Registry measurement section now fully resolved (0 PENDING-D2 unfinished: coverage VERIFIED; water-budget PENDING-by-classification; mutation-kill-rate PROVENANCE-ACCEPTED). Ledger only; no source changed. Authority: `PATH_B0_RECON.md` + `D2B0_RECON.md`. |
 | 0.4 (D.2.B.A) | 2026-06-27 | **Fast-tier measurement session** (hardware-stamped i5-10300H / GTX 1660 Ti Max-Q / rustc 1.89.0). Flipped 4 rows to VERIFIED-AT-HEAD: agents-capacity-60fps (12,700 confirmed, workload-dependent — ~10.3K complex / ~23.5K moderate full-loop / ~130K plan-only); frame-time-1000-entities (**CONTEST RESOLVED** — "2.70 ms" was the demo's Week-8 *target* mis-recorded as a measurement; real System 0.965 ms / mimalloc 0.709 ms; repro corrected to `profiling_demo`); validation-checks-per-sec (6.48M confirmed, 158 ns MoveTo); miri-tests (**1,059** vs stale-low 977; repro corrected to `-Zmiri-disable-isolation`). water-budget re-confirmed 0.2745 ms (stays PENDING-by-classification). coverage-weighted stays PENDING — **BLOCKED** by ≥3 pre-existing broken test targets (CODE-FINDING; Path-B fix beat ratified). mutation-kill-rate → **PROVENANCE-ACCEPTED** (100%/792, prior wave 2026-03-13; re-run cost-deferred). Docs/ledger only; no source changed. Authority: `D2B0_RECON.md`. |

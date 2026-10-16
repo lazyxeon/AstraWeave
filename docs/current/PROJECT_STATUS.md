@@ -1,12 +1,30 @@
 # AstraWeave Project Status
 
-> **Last Updated**: June 10, 2026  
-> **Read by**: Copilot agent when it needs current project context  
+> **Current as of 2026-10-16** (`main` @ `a66304dc`, which includes #217, #215, and #325). The repository [README](../../README.md) is the short status page. This file's June narrative below that banner is a session log, not the live headline. `cargo deny` advisories and `cargo audit` pass. Ignored leftovers are #305–#311 and #320–#324. #217 removed `openssl` from the lockfile; the ban stays, and #219 and #256 are closed. The greybox `tokio` `net` edge is #326. The fix is #327 and is not on this commit.
+
+## Current (2026-10-16)
+
+- **Workspace:** 141 members (`cargo metadata --no-deps`). 58 names start with `astraweave-`. 60 example manifests.
+- **Determinism:** fifteen required cross-OS cases — `planner_pure`, `perception_world`, `gameplay_rng`, `fixed64`, `combat_resolve`, `destruction`, `gameplay_qa_aravath_slice`, `nav_reroute`, `causal_bridge`, `scripted_system`, `weaving`, `traversal`, `traversal_deformed`, `worldgen_columns`, `deformed_chunk`. The greybox golden `b663da52ea1d566e` is a separate Linux-and-Windows hash.
+- **On main:** nav reroute (#251), `aravath_runtime` bridge reroute (#263), security caps (#312 and #316), decision debugger (#287), causal consequence engine (#286), Rhai mod sandbox and loader (#214), destruction (#243), Aravath-slice gameplay QA replay (#277 plan, #280 case), weaving framework (#252), Aravath greybox (#205), traversal (#244), terrain columns and scatter (#215). Traversal is a 60 Hz tick sim in `astraweave-physics`. The greybox motor steps from it. Dig still uses `dig_sphere`. #215 stores `worldgen_record()` as the saved ground. `ColumnStream` keeps the greybox ring. Those chunks still fill from the island heightfield, and the window props are still the local scatter.
+- **On main, CI (#217):** editor and sanitizer jobs install `libudev-dev`. Audio fixtures are per-process under `astraweave-audio/target/audio-test-assets/<pid>`. `fluid.wgsl` keeps SPH positions finite on lavapipe (`safe_normalize`, velocity from the pre-clamp prediction). TLS dependencies use rustls. The fifteen replay cases are unchanged. The ledger is `CI_FAILURE_LEDGER.md`.
+- **In progress, not on main:** local fluid sim #253, render frame budget #216, greybox `tokio` `net` fix #327 (issue #326).
+- **Frame budget:** target under 11 ms on a GTX 1660 Ti-class GPU. Not yet measured. GPU timer read 0 ms. #216 is the readback fix.
+- **AI:** local models propose; the deterministic sim validates and executes. Orchestrator default model is `phi3:medium` unless `OLLAMA_MODEL` is set.
+- **Name:** player-facing text says Aravath.
+- **Not re-run here:** `cargo check --workspace`, `cargo llvm-cov`, Miri, Kani. Coverage 57.35% and Miri 1,059 remain the 2026-06 measurements.
+
+The editor multi-tool sub-phase 5 notes and the Phase 8.8 physics pause in the next section are the **June 10, 2026** log. They were not re-audited on 2026-10-16.
+
+---
+
+> **Older header**: June 10, 2026  
+> **Read by**: Copilot agent when it needs project context  
 > **Do not inline this into copilot-instructions.md** — point to it instead
 
 ---
 
-## Active Work
+## Active Work (June 10, 2026 snapshot)
 
 ### Editor Multi-Tool Architecture Campaign — Sub-phase 5 IN PROGRESS (Jun 6, 2026)
 - **Sub-phase 3** (Mediator Brush Architecture) COMPLETE 2026-05-14 (`b220442a7`); **Sub-phase 4** (dispatcher Pattern A regression infrastructure) COMPLETE 2026-06-06 (`d5c350f60`)

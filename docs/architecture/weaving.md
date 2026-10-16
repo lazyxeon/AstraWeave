@@ -5,12 +5,12 @@ title: "Weaving / Fate-Weaving System (`astraweave-weaving`)"
 description: "Weaving — modifier graph, casts, and the anchor slice (`astraweave-weaving`)"
 primary_crate: astraweave-weaving
 domain: gameplay
-lifecycle_status: in_design
-integration_status: example_only
-summary: "Modifier graph and casts live here and write SimModifier records into the local-sim field trait. Gameplay apply_weave_op compiles the legacy ops. The anchor slice systems are still plain functions. weaving.md §5,§8"
+lifecycle_status: active
+integration_status: partial
+summary: "weave_tick is on main (#252). Required replay case weaving hashes NullField until local sim #253. Core, gameplay, scripting, and security depend on the crate."
 owns: [astraweave-weaving]
-doc_version: "1.4"
-last_verified_commit: f87e8750
+doc_version: "1.5"
+last_verified_commit: 5cba174c
 ---
 
 # Architecture Trace: Weaving / Fate-Weaving System (`astraweave-weaving`)
@@ -21,10 +21,10 @@ last_verified_commit: f87e8750
 |---|---|
 | **System name** | Weaving / Fate-Weaving System (the Veilweaver signature mechanic) |
 | **Primary crates** | `astraweave-weaving` |
-| **Document version** | 1.4 |
-| **Last verified against commit** | `f87e8750` |
-| **Last verified date** | 2026-10-15 |
-| **Status** | In-Design-but-tested (heavily unit-tested; consumed only by two non-runtime examples) |
+| **Document version** | 1.5 |
+| **Last verified against commit** | `5cba174c` |
+| **Last verified date** | 2026-10-16 |
+| **Status** | The data-driven cast path is on main (#252). Required replay case `weaving`. `NullField` stands in for the local sim (#253). Anchor-slice helpers are still plain functions. |
 | **Owner notes** | Built during the Veilweaver vertical-slice "Weeks 1-5" campaign (see `docs/journey/weeks/WEEK_*` and `docs/archive/projects/veilweaver/`). Naming is heavily overloaded across three independent "weaving" surfaces in the workspace — see §3 and §6. |
 
 ---
@@ -44,8 +44,8 @@ It provides the deterministic, pure-logic core for the Veilweaver "signature mec
 - Quest/enemy/spawn: [`quest.rs`](../../astraweave-weaving/src/quest.rs), [`quest_types.rs`](../../astraweave-weaving/src/quest_types.rs), [`starter_quests.rs`](../../astraweave-weaving/src/starter_quests.rs), [`enemy.rs`](../../astraweave-weaving/src/enemy.rs), [`enemy_types.rs`](../../astraweave-weaving/src/enemy_types.rs), [`spawner.rs`](../../astraweave-weaving/src/spawner.rs), [`combat.rs`](../../astraweave-weaving/src/combat.rs).
 - Presentation data structs: [`ui/`](../../astraweave-weaving/src/ui/), [`particles/`](../../astraweave-weaving/src/particles/), [`audio/`](../../astraweave-weaving/src/audio/).
 
-**Status note (read this first):**
-This crate is **tested-but-largely-unwired** in the Key-Lesson-8 sense. `cargo metadata` shows **zero library consumers**; the only workspace crates that depend on it are two examples — `examples/advanced_content_demo` and `examples/veilweaver_quest_demo` (verified: `rg 'astraweave-weaving' **/Cargo.toml`). It depends on only one AstraWeave crate (`astraweave-pcg`) and **does not depend on `astraweave-ecs`, `astraweave-core`, `astraweave-render`, `astraweave-audio`, or `astraweave-gameplay`**. The functions in `systems/` are documented as "ECS system functions" but their signatures take plain `Vec`/slices, **not** ECS `Query`/`Res`/`EventReader` params, so they cannot be registered via `App::add_system` as written (see §6). The `ui/` modules' egui `render()` methods are compiled out via `#[cfg(any())]` because egui is not a dependency. Treat this crate as a deterministic logic library and demo backbone, not a runtime-wired subsystem.
+**Status note (read this first, 2026-10-16, `5cba174c`):**
+#252 is on main. `weave_tick` expands templates into `FieldWrite` stamps on a `SimField`. The required replay case `weaving` runs 300 ticks of heat, freeze, density, and gravity through `weaving_case_bytes`, which uses `NullField`. That field digest is zeros until local sim #253 is on main. Freeze still records an ice sheet and a `NavChange`. Library consumers now include `astraweave-core`, `astraweave-gameplay`, `astraweave-scripting`, and `astraweave-security`. `examples/aravath_weave` is the headless caller. The older "zero library consumers" sentence is the pre-#252 state. Anchor-slice functions in `systems/` still take plain slices, not ECS queries. The `ui/` egui methods stay compiled out.
 
 ---
 
@@ -464,4 +464,4 @@ This is a pure-CPU logic crate; performance is benchmark-tracked but not a runti
 
 ## Appendix B: Historical context
 
-`astraweave-weaving` began (per its `Cargo.toml` description) as an "emergent behavior layer — pattern detection and intent generation." During the Veilweaver vertical-slice campaign (the `docs/journey/weeks/WEEK_1`…`WEEK_5` and `docs/archive/projects/veilweaver/` series, 2025), it absorbed the gameplay slice — anchors, Echo currency, abilities, quests, enemies, spawner, and presentation data structs — making it a grab-bag crate for the Veilweaver demo rather than a single cohesive subsystem. The later W-series water campaign (2026, `docs/campaigns/water-successor/`) re-examined the "weaving" name space and confirmed that the three weaving surfaces (this crate, `astraweave-gameplay` `WeaveOp`, render water `WeaveInstance`) are mutually independent. A separate `veilweaver_slice_runtime` crate now carries a runtime-oriented Veilweaver slice and does not depend on this crate, leaving `astraweave-weaving`'s runtime role unresolved (see §11).
+`astraweave-weaving` began (per its `Cargo.toml` description) as an "emergent behavior layer — pattern detection and intent generation." During the Veilweaver vertical-slice campaign (the `docs/journey/weeks/WEEK_1`…`WEEK_5` and `docs/archive/projects/veilweaver/` series, 2025), it absorbed the gameplay slice — anchors, Echo currency, abilities, quests, enemies, spawner, and presentation data structs — making it a grab-bag crate for the Veilweaver demo rather than a single cohesive subsystem. The later W-series water campaign (2026, `docs/campaigns/water-successor/`) re-examined the "weaving" name space and confirmed that the three weaving surfaces (this crate, `astraweave-gameplay` `WeaveOp`, render water `WeaveInstance`) are mutually independent. A separate `veilweaver_slice_runtime` crate now carries a runtime-oriented Veilweaver slice and does not depend on this crate, leaving `astraweave-weaving`'s runtime role unresolved at the time that paragraph was written. #252 (`5cba174c`) put `weave_tick` and required case `weaving` on main. The local field is still #253.

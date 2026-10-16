@@ -20,7 +20,7 @@ Seeded from the `CLAIMS_REGISTRY.md` Retired table + D.0 §4 + D.0.1 §5. Each i
 27,000+                    # workspace tests -> ~39,900 markers (registry: test-markers-total)
 3,892 | 6,100+             # editor tests -> 9,427 markers (registry: editor-test-markers)
 82+ crates | 128 members | 128 workspace | 126 members | 49 production | 47 crates | 44+ crates | 55 crates | 59 library crates
-                           # -> 130 members / ~51 production (registry: workspace-members / production-crates)
+                           # -> 141 members at 2026-10-16 after #205 (registry: workspace-members). 130, 133, 139, and 140 are earlier snapshots, not poison.
 # Fabricated competitor multipliers / baselines
 10.4× | 10.4x | 2.1-5.2× | 2.1-5.2x | 3-6× | 3-6x
 Unity 9,900 | Unreal 20k-50k
@@ -84,6 +84,15 @@ The union of acted + kept occurrences is the complete closed-vocabulary inventor
 
 ---
 
+## Front-door check (2026-10-16)
+
+`aw_doc_lint` enforces this even in `--mode warn` (the vocabulary scan stays warn-only):
+
+- Both `required` lists in `.github/workflows/determinism-replay.yml` must agree, and `README.md` must name each case.
+- `README.md` must state that the under-11 ms GTX 1660 Ti frame budget is not yet measured, that assets are CC0, that local LLMs propose, and that the deterministic simulation validates.
+- `README.md` must have a `## In progress` section listing #253, #216, and #327, and that section must not call the work shipped, landed, or merged. #217, #252, #205, #215, and #244 are on main and are not in that list.
+- Player-facing files (`README.md`, `CONTRIBUTING.md`, `docs/README.md`, `docs/QUICKSTART.md`, `docs/guides/**/*.md`) must not use the retired game title. `veilweaver_` crate names and the archive directory `projects/veilweaver` are allowed.
+
 ## Frame-time carve-out (D.3.1) — why `2.70 ms` is NOT in Vocabulary A
 
 The frame-time poison generation (`2.70 ms` / `370 FPS` / `84% headroom`, **as-achieved** — superseded by the measured System **0.965 ms** / mimalloc **0.709 ms** @ 1,000 entities; `CLAIMS_REGISTRY.md#frame-time-1000-entities`) is **deliberately excluded** from the closed-vocabulary lint, per the D.3.0 ratification (Option A).
@@ -109,4 +118,5 @@ A pure string match cannot separate (5) from (1)–(3). Listing it would either 
 | Version | Date | Change |
 |---|---|---|
 | 0.1 (D.1.B) | 2026-06-13 | Created. Vocab A (poison) + Vocab B (superlative) sets seeded from the registry Retired table + D.0/D.0.1 dispositions; keep-vs-act rule + exclusion scope defined for D.3 lint consumption. Pre-edit occurrence totals: 501 A + 415 B across 202 files (see occurrences doc). |
+| 0.3 | 2026-10-16 | Front-door check documented. Workspace-count comment now points at 139 members. `130` stays off the poison list. |
 | 0.2 (D.3.1) | 2026-06-29 | **New poison generation + machine-readable markers.** Added the D.2.B/Path-B.2 measured-metric poison to Vocab A: coverage `59.3`/`59.3%` + `94.57`/`94.57%` (→ 57.35% whole-workspace) and miri `977` (→ 1,059). Added the **Frame-time carve-out** (ratified Option A — `2.70 ms`/`370 FPS` deliberately NOT linted; human-review-only; present-tense survivors one-time-corrected). Wrapped Vocab A / Vocab B in `<!-- VOCAB-A/B-START/END -->` markers (and the allowlist table in `<!-- ALLOWLIST-START/END -->`) so the D.3.2 lint reads this spec as its single source of truth. Companion allowlist additions: 14 keys (supersession-context / version-comparison / debunking-context / dated-record / report-description). Authority: `D3_0_RECON.md`. |

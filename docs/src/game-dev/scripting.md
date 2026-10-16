@@ -1,7 +1,9 @@
 # Scripting with Rhai
 
+> **Not the live gameplay API.** This page describes callbacks, a `ScriptEngine` config, and a `raycast` function that `script_system` does not provide. As of #318 (`3971cbe1`), gameplay scripts do not receive `physics` or `nav`. The live contract is [docs/architecture/scripting.md](../../architecture/scripting.md) and [docs/guides/ai-scripting.md](../../guides/ai-scripting.md).
+
 > **Crates**: `astraweave-scripting`, `astraweave-author`  
-> **Status**: Production Ready (Sandboxed)
+> **Status**: Historical sketch. The sandboxed tick is real. The snippets below are not.
 
 AstraWeave provides secure Rhai scripting for modding, behavior authoring, and runtime customization with full sandboxing.
 

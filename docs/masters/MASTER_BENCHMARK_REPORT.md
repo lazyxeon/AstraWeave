@@ -1,6 +1,8 @@
 # AstraWeave Master Benchmark Report
 
-> **Version**: 5.60 | **Date**: 2026-06-29 | **Grade**: A+ | **Framework**: Criterion.rs (statistical)
+> **Version**: 5.62 | **Date**: 2026-10-16 | **Framework**: Criterion.rs (statistical)
+>
+> **2026-10-16:** This report does not show a passing full-frame budget. The target is under 11 ms per frame on a GTX 1660 Ti-class GPU. It is not yet measured on that hardware (GPU timer read 0 ms; readback is in progress in #216). The 0.97 ms / 0.71 ms rows are CPU `profiling_demo` times at 1,000 entities, measured 2026-06-27. The 12,700-agent row is a CPU AI-loop capacity estimate on an i5-10300H, not a rendered frame. "100% bit-identical" in older rows means the replay cases that existed when that sentence was written; `main` at `d0452d3e` requires fifteen named cases. No letter grade is claimed from this page.
 
 ---
 
@@ -11,11 +13,11 @@
 | **Total Benchmarks** | ~2,830 across 76 sections |
 | **Crates Benchmarked** | 40+ |
 | **Framework** | Criterion.rs (statistical confidence intervals) |
-| **Overall Grade** | A+ (Production Ready) |
-| **Frame Time** | ~0.97 ms (system) / ~0.71 ms (mimalloc) @ 1,000 entities (~94–96% headroom vs 60 FPS) — 2.70 ms was the Week-8 target |
-| **Agent Capacity** | 12,700+ @ 60 FPS (18.8x over initial target) |
-| **Validation Throughput** | 6.48M checks/sec |
-| **Determinism** | 100% bit-identical across runs |
+| **Overall Grade** | Not graded on this revision. The previous A+ label was a June 2026 summary, not a full-frame result. |
+| **Frame Time** | CPU `profiling_demo`: ~0.97 ms (system) / ~0.71 ms (mimalloc) @ 1,000 entities (2026-06-27). 2.70 ms was the Week-8 target. The GTX 1660 Ti full-frame target (under 11 ms) is not yet measured (#216). |
+| **Agent Capacity** | 12,700+ is a CPU AI-loop estimate @ a 16.67 ms budget (2026-06-27, i5-10300H). Not a rendered 60 FPS frame. |
+| **Validation Throughput** | 6.48M checks/sec (MoveTo path, 2026-06-27) |
+| **Determinism** | Fifteen required cross-OS SHA-256 cases on `main` at `d0452d3e`, including `worldgen_columns` and `deformed_chunk`. See the repository README. |
 
 ### First Fluids Baselines Ever Recorded (v5.58, Fluids-Integration F.1)
 
@@ -855,13 +857,10 @@ Sub-nanosecond operations discovered: 998 ps, 999 ps, 929 ps. DOF focus plane op
 
 ## Known Limitations
 
-- **Rendering**: Frame render time unknown (GPU benchmarks not yet integrated into Criterion)
-- **LLM latency**: Blocking 2,745 ms avg (Qwen3-8B, optimized); further reduction requires hardware upgrade or custom Ollama build; TTFC at theoretical floor (160ms, within 6%)
-- **Terrain 10K triangles**: 473 ms navmesh bake — must be async/precomputed
-- **Graphics examples**: `ui_controls_demo`, `debug_overlay` won't compile (egui/winit version drift)
-- **Rhai crates**: `astraweave-author`, `rhai_authoring` have Sync trait errors
-- **LLM crates**: `astraweave-llm`, `llm_toolcall` excluded from standard builds
-- **criterion 0.7**: `llm-eval` needs version alignment
+- **Rendering**: Full-frame GPU time on a GTX 1660 Ti-class GPU is not measured. The timer read 0 ms. #216 is in progress. CPU `profiling_demo` times are not that measurement.
+- **LLM latency**: Older blocking-latency rows in this report name a specific local model and machine. They are not a current frame budget. The orchestrator default when `OLLAMA_MODEL` is unset is `phi3:medium`.
+- **Terrain 10K triangles**: 473 ms navmesh bake — must be async/precomputed (dated bench; not re-run 2026-10-16).
+- **Compile exclusions**: A June 2026 audit recorded `ui_controls_demo`, `debug_overlay`, `astraweave-author`, `rhai_authoring`, and `astraweave-llm` as compiling. This pass did not re-run `cargo check --workspace`. Do not treat the older "won't compile" sentences as current.
 
 ---
 
@@ -880,6 +879,7 @@ Frame time optimization: **-12.6%** (3.09 ms to 2.70 ms, +47 FPS to 370 FPS).
 
 | Version | Date | Type | Summary | Impact |
 |:-------:|:----:|:----:|:--------|:------:|
+| 5.62 | 2026-10-16 | Update | Determinism row restated for `d0452d3e`: fifteen required cross-OS cases, including `worldgen_columns` and `deformed_chunk`. No new timing sample. | Incremental |
 | 5.60 | 2026-06-29 | Update | D-series Path-B.2: corrected the present-tense frame-time headline + budget/scalability/requirements rows from "2.70 ms" (the Week-8 *target*, mis-recorded as achieved) to the measured System ~0.97 ms / mimalloc ~0.71 ms @ 1,000 entities. The dated "Week 8 Performance Sprint" record (3.09 ms → 2.70 ms) retained byte-identical. Source: CLAIMS_REGISTRY.md `frame-time-1000-entities` (VERIFIED-AT-HEAD). | Significant |
 | 5.57 | 2026-06-10 | Update | mimalloc/fast-alloc merge recorded (back-fill of 2026-04-17 results): ai.goap.plan −52%, profiling_demo FPS +43%; 3 alloc_measure benches registered; ecs harness figure marked historical (deleted with ParallelSchedule) | Significant |
 | 5.56 | 2026-02-28 | Major | Qwen3-8B LLM latency: 4 rounds, 3.60× faster than Hermes, TTFC 160ms | Significant |

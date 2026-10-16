@@ -1,9 +1,11 @@
 # AstraWeave: Master Strategic Roadmap
 
-**Version**: 1.53  
-**Last Updated**: June 29, 2026  
-**Status**: Authoritative Source  
-**Validation**: ✅ PASS — [Full Report](../current/ENGINE_VALIDATION_2026_01_13.md)
+**Version**: 1.56  
+**Last Updated**: October 16, 2026  
+**Status**: Strategy log. Live engine status is the repository [README](../../README.md).  
+**Validation**: The January 2026 validation report linked below is a dated audit, not a current grade.
+
+> **2026-10-16.** The "Current State (June 10, 2026)" table is a snapshot. Workspace members on `a66304dc` are **141** (unchanged since `a10780f4`). Determinism on `main` is fifteen cross-OS replay cases, including `worldgen_columns` and `deformed_chunk`. The Aravath greybox #205 is on main. Its golden hash is `b663da52ea1d566e`, Linux and Windows only. Traversal #244, terrain columns #215, and CI burndown #217 are on main. The frame-time target is under 11 ms on a GTX 1660 Ti-class GPU and is not yet measured (#216). Local fluid sim #253, render frame budget #216, and greybox `tokio` `net` fix #327 are in progress. Player-facing name is Aravath. Do not treat the A+ row in the June table as a current grade.
 
 ---
 
