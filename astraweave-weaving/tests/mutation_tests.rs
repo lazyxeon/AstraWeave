@@ -1526,7 +1526,7 @@ mod level_tests {
 
         let mut level = VeilweaverLevel::new();
         // Give player enough echo currency (anchors cost 10 each)
-        level.player.echo_currency = 10;
+        level.player.set_echo(10);
 
         // Anchor 0 starts at 0.5 stability (below 0.8 threshold)
         let initial_stability = level.anchors[0].stability();
@@ -1540,7 +1540,7 @@ mod level_tests {
         // was_below_threshold (0.5 < 0.8) = true
         // result = true (quest updated)
         assert!(result, "repair should succeed and trigger quest update");
-        assert_eq!(level.player.echo_currency, 0, "echo should be spent");
+        assert_eq!(level.player.echo_balance(), 0, "echo should be spent");
         assert_eq!(level.anchors_repaired, 1);
     }
 
@@ -1550,7 +1550,7 @@ mod level_tests {
         use astraweave_weaving::level::VeilweaverLevel;
 
         let mut level = VeilweaverLevel::new();
-        level.player.echo_currency = 5; // Less than 10
+        level.player.set_echo(5); // Less than 10
 
         let result = level.repair_anchor(0, 10);
         assert!(
@@ -1565,7 +1565,7 @@ mod level_tests {
         use astraweave_weaving::level::VeilweaverLevel;
 
         let mut level = VeilweaverLevel::new();
-        level.player.echo_currency = 100;
+        level.player.set_echo(100);
 
         let result = level.repair_anchor(99, 10);
         assert!(!result, "repair should fail with invalid anchor index");
@@ -1604,7 +1604,7 @@ mod level_tests {
         let mut level = VeilweaverLevel::new();
 
         // Give player enough echo (5 repairs × 10 = 50 echo needed)
-        level.player.echo_currency = 100;
+        level.player.set_echo(100);
 
         // Repair all 3 anchors past 0.8 threshold to complete stabilize_anchors
         level.repair_anchor(0, 10); // 0.5 → 0.8
@@ -1614,7 +1614,7 @@ mod level_tests {
         level.repair_anchor(2, 10); // 0.6 → 0.9
 
         // After 5 repairs at cost 10 each, echo = 100 - 50 = 50
-        let echo_before_update = level.player.echo_currency;
+        let echo_before_update = level.player.echo_balance();
         assert_eq!(echo_before_update, 50);
 
         // Trigger quest completion via update → distributes EchoCurrency(50) reward
@@ -1624,7 +1624,7 @@ mod level_tests {
         // After apply_reward: 50 + 50 = 100
         // If apply_reward is no-op, echo stays at 50
         assert!(
-            level.player.echo_currency > echo_before_update,
+            level.player.echo_balance() > echo_before_update,
             "Echo should increase from quest reward (catches apply_reward → ())"
         );
     }
@@ -1636,7 +1636,7 @@ mod level_tests {
         use astraweave_weaving::level::VeilweaverLevel;
 
         let mut level = VeilweaverLevel::new();
-        level.player.echo_currency = 200;
+        level.player.set_echo(200);
 
         // Verify stabilize_anchors is active
         let active = level.quest_manager.active_quest();
@@ -1678,7 +1678,7 @@ mod level_tests {
         use astraweave_weaving::level::VeilweaverLevel;
 
         let mut level = VeilweaverLevel::new();
-        level.player.echo_currency = 500;
+        level.player.set_echo(500);
 
         // Complete stabilize_anchors: repair all 3 anchors past 0.8 threshold
         level.repair_anchor(0, 10);
@@ -1716,7 +1716,7 @@ mod level_tests {
     fn test_repair_anchor_exact_echo_cost() {
         let mut level = VeilweaverLevel::new();
         // Set echo currency to exactly the repair cost
-        let cost = level.player.echo_currency as u32;
+        let cost = level.player.echo_balance();
         // Repair anchor 0 with cost equal to all currency
         let _result = level.repair_anchor(0, cost);
         // Should succeed (< check: echo < cost is false when equal → proceed)
@@ -1724,7 +1724,8 @@ mod level_tests {
         // Note: result depends on whether anchor crosses 0.8 threshold
         // Player's echo should decrease regardless (repair happened)
         assert_eq!(
-            level.player.echo_currency, 0,
+            level.player.echo_balance(),
+            0,
             "Echo should be spent when cost equals balance"
         );
     }

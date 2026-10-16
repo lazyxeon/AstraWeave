@@ -62,6 +62,9 @@ fn create_agent_snapshot(agent_id: usize, agent_pos: IVec2, enemy_count: usize) 
         pois: vec![],
         obstacles: vec![],
         objective: Some("eliminate_threats".to_string()),
+
+        hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+        hazard_count: 0,
     }
 }
 

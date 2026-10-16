@@ -57,6 +57,9 @@ fn create_test_snapshot(agent_pos: IVec2, enemy_count: usize, poi_count: usize) 
         pois,
         obstacles: vec![],
         objective: Some("test".into()),
+
+        hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+        hazard_count: 0,
     }
 }
 

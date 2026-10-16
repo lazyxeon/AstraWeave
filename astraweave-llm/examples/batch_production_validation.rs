@@ -211,5 +211,8 @@ fn create_test_snapshot(agent_id: AgentId) -> WorldSnapshot {
         }],
         obstacles: vec![],
         objective: Some("Test mission".to_string()),
+
+        hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+        hazard_count: 0,
     }
 }

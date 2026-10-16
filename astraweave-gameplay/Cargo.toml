@@ -15,6 +15,7 @@ glam = { workspace = true }
 rapier3d = { workspace = true }
 
 astraweave-core = { path = "../astraweave-core" }
+astraweave-weaving = { path = "../astraweave-weaving" }
 astraweave-physics = { path = "../astraweave-physics" }
 astraweave-nav = { path = "../astraweave-nav" }
 astraweave-ecs = { workspace = true }

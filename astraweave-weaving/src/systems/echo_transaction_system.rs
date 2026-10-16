@@ -49,7 +49,9 @@ impl TransactionStats {
 
                 // Track ability spending
                 match txn.reason() {
-                    TransactionReason::UseEchoDash | TransactionReason::DeployBarricade => {
+                    TransactionReason::UseEchoDash
+                    | TransactionReason::UseEchoShield
+                    | TransactionReason::DeployBarricade => {
                         stats.ability_spending += (-txn.amount()) as u32;
                     }
                     _ => {}

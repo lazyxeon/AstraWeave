@@ -45,6 +45,8 @@ pub trait Orchestrator {
 ///     pois: vec![],
 ///     obstacles: vec![],
 ///     objective: None,
+///     hazards: [WeaveHazard::EMPTY; MAX_WEAVE_HAZARDS],
+///     hazard_count: 0,
 /// };
 /// let plan = orch.propose_plan(&snap);
 /// // An empty battlefield produces a plan (may be empty or a fallback advance)
@@ -547,6 +549,9 @@ mod tests {
             pois: vec![],
             obstacles: vec![],
             objective: None,
+
+            hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+            hazard_count: 0,
         }
     }
 
@@ -840,6 +845,9 @@ mod tests {
             pois: vec![],
             obstacles: vec![],
             objective: None,
+
+            hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+            hazard_count: 0,
         };
 
         let rule = RuleOrchestrator;
@@ -914,6 +922,9 @@ mod tests {
             pois: vec![],
             obstacles: vec![],
             objective: None,
+
+            hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+            hazard_count: 0,
         };
 
         let util = UtilityOrchestrator;
@@ -1103,6 +1114,9 @@ mod tests {
             pois: vec![],
             obstacles: vec![],
             objective: None,
+
+            hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+            hazard_count: 0,
         };
 
         let goap = GoapOrchestrator;
@@ -1576,6 +1590,9 @@ mod tests {
             pois: vec![],
             obstacles: vec![],
             objective: None,
+
+            hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+            hazard_count: 0,
         };
         let util = UtilityOrchestrator;
         let plan = util.propose_plan(&snap);
@@ -1652,6 +1669,9 @@ mod tests {
             pois: vec![],
             obstacles: vec![],
             objective: None,
+
+            hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+            hazard_count: 0,
         };
         let goap = GoapOrchestrator;
         match goap.next_action(&snap) {
@@ -1683,6 +1703,9 @@ mod tests {
             pois: vec![],
             obstacles: vec![],
             objective: None,
+
+            hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+            hazard_count: 0,
         };
         let goap = GoapOrchestrator;
         match goap.next_action(&snap) {
@@ -1753,6 +1776,9 @@ mod tests {
             pois: vec![],
             obstacles: vec![],
             objective: None,
+
+            hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+            hazard_count: 0,
         };
         let util = UtilityOrchestrator;
         let plan = util.propose_plan(&snap);
@@ -1797,6 +1823,9 @@ mod tests {
             pois: vec![],
             obstacles: vec![],
             objective: None,
+
+            hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+            hazard_count: 0,
         };
         let util = UtilityOrchestrator;
         let plan = util.propose_plan(&snap);
@@ -1841,6 +1870,9 @@ mod tests {
             pois: vec![],
             obstacles: vec![],
             objective: None,
+
+            hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+            hazard_count: 0,
         };
         let util = UtilityOrchestrator;
         let plan = util.propose_plan(&snap);

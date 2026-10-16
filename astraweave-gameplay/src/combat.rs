@@ -74,11 +74,12 @@ impl AttackState {
         let mut did_hit = false;
         let mut dmg = 0;
 
-        if want && in_win {
+        if want && in_win && !target.is_stunned() {
             // impact check: distance <= reach
             let d = attacker_pos.distance(target_pos);
             if d <= step.reach {
                 let base = step.damage + attacker_stats.power;
+                let scale = attacker_stats.move_scale_bp() as i32;
                 if let Some(w) = weapon {
                     match &w.kind {
                         crate::items::ItemKind::Weapon { base_damage, dtype } => {
@@ -88,19 +89,24 @@ impl AttackState {
                                 .as_ref()
                                 .and_then(|e| e.dtype_override)
                                 .unwrap_or(*dtype);
-                            let out = ((base + base_damage) as f32 * mult) as i32;
+                            let raw = ((base + base_damage) as f32 * mult) as i32;
+                            let out = (raw as i64 * scale as i64 / 10_000) as i32;
                             target.apply_damage(out, dtype);
+                            if let Some(tag) = w.echo.as_ref().and_then(|e| e.special.as_deref()) {
+                                target.apply_element_rider(DamageType::Physical, Some(tag));
+                            }
                             dmg = out;
                         }
                         _ => {
-                            let out = base;
+                            let out = (base as i64 * scale as i64 / 10_000) as i32;
                             target.apply_damage(out, DamageType::Physical);
                             dmg = out;
                         }
                     }
                 } else {
-                    target.apply_damage(base, DamageType::Physical);
-                    dmg = base;
+                    let out = (base as i64 * scale as i64 / 10_000) as i32;
+                    target.apply_damage(out, DamageType::Physical);
+                    dmg = out;
                 }
                 // apply stagger
                 target

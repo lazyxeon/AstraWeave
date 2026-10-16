@@ -306,6 +306,8 @@ fn assemble_snapshot(
         pois: pois_from_observation(observation),
         obstacles,
         objective,
+        hazards: [crate::WeaveHazard::EMPTY; crate::MAX_WEAVE_HAZARDS],
+        hazard_count: 0,
     })
 }
 

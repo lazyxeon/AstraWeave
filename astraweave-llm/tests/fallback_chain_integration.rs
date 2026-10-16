@@ -51,6 +51,9 @@ fn create_test_snapshot() -> WorldSnapshot {
         pois: vec![],
         obstacles: vec![IVec2 { x: 7, y: 7 }],
         objective: Some("eliminate hostiles".into()),
+
+        hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+        hazard_count: 0,
     }
 }
 

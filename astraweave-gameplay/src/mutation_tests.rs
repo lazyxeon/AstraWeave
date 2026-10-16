@@ -94,7 +94,7 @@ mod damage_tests {
         let mut stats = Stats::new(100);
         stats.defense = 0;
         let damage = stats.apply_damage(25, DamageType::Fire);
-        assert_eq!(damage, 25, "With zero defense, full damage should apply");
+        assert_eq!(damage, 31, "Fire is 125% of the unmitigated hit");
     }
 
     #[test]

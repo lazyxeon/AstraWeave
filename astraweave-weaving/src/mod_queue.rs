@@ -8,6 +8,9 @@ use std::fmt;
 
 pub const MAX_WEAVE_COMMANDS: usize = 64;
 pub const ENGINE_TEMPLATE_MAX: u16 = 7;
+/// Greybox island half-extent in cells. `queue_weave` rejects anything outside
+/// this cube so `(origin ± radius) * CELL_MM` cannot overflow `i32`.
+pub const ISLAND_HALF_CELLS: i32 = 2_048;
 pub const MAX_TEMPLATE_NODES: usize = 8;
 pub const MAX_LOADED_TEMPLATES: usize = 16;
 
@@ -33,6 +36,7 @@ pub struct WeaveCommand {
 pub enum QueueError {
     UnknownTemplate,
     Full,
+    OutsideIsland,
 }
 
 impl fmt::Display for QueueError {
@@ -40,6 +44,7 @@ impl fmt::Display for QueueError {
         match self {
             QueueError::UnknownTemplate => f.write_str("unknown weave template"),
             QueueError::Full => f.write_str("weave queue is full"),
+            QueueError::OutsideIsland => f.write_str("weave origin is outside the island"),
         }
     }
 }
@@ -175,6 +180,9 @@ impl WeaveScratch {
         template: u16,
         origin: [i32; 3],
     ) -> Result<(), QueueError> {
+        if !origin_on_island(origin) {
+            return Err(QueueError::OutsideIsland);
+        }
         if !self.known(template) {
             return Err(QueueError::UnknownTemplate);
         }
@@ -192,6 +200,14 @@ impl WeaveScratch {
         };
         self.command_count = self.command_count.saturating_add(1);
         Ok(())
+    }
+
+    pub(crate) fn loaded(&self, id: u16) -> Option<WeaveTemplate> {
+        let count = self.loaded_count as usize;
+        self.loaded[..count]
+            .iter()
+            .copied()
+            .find(|template| template.id == id)
     }
 }
 
@@ -284,6 +300,12 @@ fn integer_field(value: &toml::Value, key: &str) -> Result<i64, String> {
     integer_value(slot, key)
 }
 
+fn origin_on_island(origin: [i32; 3]) -> bool {
+    origin
+        .iter()
+        .all(|cell| (-ISLAND_HALF_CELLS..=ISLAND_HALF_CELLS).contains(cell))
+}
+
 fn integer_value(slot: &toml::Value, key: &str) -> Result<i64, String> {
     slot.as_integer()
         .ok_or_else(|| format!("{key} must be an integer"))
@@ -344,5 +366,37 @@ mod tests {
             Err(QueueError::Full)
         );
         assert_eq!(scratch.command_count(), MAX_WEAVE_COMMANDS);
+    }
+
+    #[test]
+    fn origins_outside_the_island_are_rejected_without_saturation() {
+        let mut scratch = WeaveScratch::new();
+        queue_weave(
+            &mut scratch,
+            1,
+            2,
+            0,
+            1,
+            1,
+            [ISLAND_HALF_CELLS, 0, -ISLAND_HALF_CELLS],
+        )
+        .unwrap();
+        assert_eq!(scratch.command_count(), 1);
+        for origin in [
+            [ISLAND_HALF_CELLS + 1, 0, 0],
+            [0, -ISLAND_HALF_CELLS - 1, 0],
+            [i32::MAX, 0, 0],
+            [i32::MIN, 0, 0],
+        ] {
+            assert_eq!(
+                queue_weave(&mut scratch, 1, 2, 1, 1, 1, origin),
+                Err(QueueError::OutsideIsland)
+            );
+        }
+        assert_eq!(scratch.command_count(), 1);
+        assert_eq!(
+            scratch.command(0).unwrap().origin,
+            [ISLAND_HALF_CELLS, 0, -ISLAND_HALF_CELLS]
+        );
     }
 }

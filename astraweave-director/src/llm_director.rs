@@ -595,6 +595,9 @@ mod tests {
             pois: vec![],
             obstacles: vec![],
             objective: None,
+
+            hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+            hazard_count: 0,
         };
 
         let analysis = model.analyze_snapshot(&snapshot);
@@ -662,6 +665,9 @@ mod tests {
             pois: vec![],
             obstacles: vec![],
             objective: None,
+
+            hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+            hazard_count: 0,
         };
         let s = m.analyze_snapshot(&snap);
         assert!(s.contains("average distance 8.0"));
@@ -697,6 +703,9 @@ mod tests {
             pois: vec![],
             obstacles: vec![],
             objective: None,
+
+            hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+            hazard_count: 0,
         };
         m.analyze_snapshot(&snap);
         assert_eq!(m.preferred_range, 0.6); // 0.5 + 0.1
@@ -729,6 +738,9 @@ mod tests {
             pois: vec![],
             obstacles: vec![],
             objective: None,
+
+            hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+            hazard_count: 0,
         };
         m.analyze_snapshot(&snap);
         assert_eq!(m.preferred_range, 0.4); // 0.5 - 0.1
@@ -764,6 +776,9 @@ mod tests {
             pois: vec![],
             obstacles: vec![],
             objective: None,
+
+            hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+            hazard_count: 0,
         };
         m.analyze_snapshot(&snap);
         assert_eq!(m.preferred_range, 0.0); // clamped, not -0.05

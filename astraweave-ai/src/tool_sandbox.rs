@@ -551,6 +551,8 @@ mod tests {
             pois: vec![],
             objective: None,
             obstacles: vec![IVec2 { x: 1, y: 0 }], // obstacle at (1,0)
+            hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+            hazard_count: 0,
         };
         let nav = NavMesh::bake(&[], 0.4, 60.0); // empty nav, no path
         let context = ValidationContext::new().with_nav(&nav);
@@ -586,6 +588,9 @@ mod tests {
             pois: vec![],
             objective: None,
             obstacles: vec![],
+
+            hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+            hazard_count: 0,
         };
         let context = ValidationContext::new();
         let result = validate_tool_action(
@@ -638,6 +643,9 @@ mod tests {
             pois: vec![],
             objective: None,
             obstacles: vec![],
+
+            hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+            hazard_count: 0,
         };
 
         let context = ValidationContext::new().with_physics(
@@ -683,6 +691,9 @@ mod tests {
             pois: vec![],
             objective: None,
             obstacles: vec![],
+
+            hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+            hazard_count: 0,
         };
 
         let context = ValidationContext::new();
@@ -723,6 +734,8 @@ mod tests {
             pois: vec![],
             objective: None,
             obstacles: vec![IVec2 { x: 1, y: 0 }, IVec2 { x: 2, y: 0 }], // Block path
+            hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+            hazard_count: 0,
         };
 
         let context = ValidationContext::new();
@@ -760,6 +773,8 @@ mod tests {
             pois: vec![],
             objective: None,
             obstacles: vec![], // No obstacles
+            hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+            hazard_count: 0,
         };
 
         let context = ValidationContext::new();
@@ -796,6 +811,9 @@ mod tests {
             pois: vec![],
             objective: None,
             obstacles: vec![],
+
+            hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+            hazard_count: 0,
         };
 
         let context = ValidationContext::new();
@@ -833,6 +851,9 @@ mod tests {
             pois: vec![],
             objective: None,
             obstacles: vec![],
+
+            hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+            hazard_count: 0,
         };
 
         let context = ValidationContext::new();
@@ -908,6 +929,9 @@ mod tests {
             pois: vec![],
             objective: None,
             obstacles: vec![],
+
+            hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+            hazard_count: 0,
         };
 
         let context = ValidationContext::new();
@@ -947,6 +971,9 @@ mod tests {
             pois: vec![],
             objective: None,
             obstacles: vec![],
+
+            hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+            hazard_count: 0,
         };
 
         let context = ValidationContext::new();
@@ -986,6 +1013,9 @@ mod tests {
             pois: vec![],
             objective: None,
             obstacles: vec![],
+
+            hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+            hazard_count: 0,
         };
 
         let context = ValidationContext::new();
@@ -1015,6 +1045,9 @@ mod tests {
             pois: vec![],
             objective: None,
             obstacles: vec![],
+
+            hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+            hazard_count: 0,
         };
 
         let context = ValidationContext::new();
@@ -1044,6 +1077,9 @@ mod tests {
             pois: vec![],
             objective: None,
             obstacles: vec![],
+
+            hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+            hazard_count: 0,
         };
 
         let context = ValidationContext::new();
@@ -1073,6 +1109,9 @@ mod tests {
             pois: vec![],
             objective: None,
             obstacles: vec![],
+
+            hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+            hazard_count: 0,
         };
 
         let context = ValidationContext::new();
@@ -1230,6 +1269,9 @@ mod tests {
             pois: vec![],
             objective: None,
             obstacles: vec![],
+
+            hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+            hazard_count: 0,
         };
 
         let has_los = has_line_of_sight(IVec2 { x: 5, y: 5 }, IVec2 { x: 5, y: 5 }, &world);
@@ -1258,6 +1300,8 @@ mod tests {
             pois: vec![],
             objective: None,
             obstacles: vec![], // No obstacles
+            hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+            hazard_count: 0,
         };
 
         let has_los = has_line_of_sight(IVec2 { x: 0, y: 0 }, IVec2 { x: 5, y: 0 }, &world);
@@ -1286,6 +1330,9 @@ mod tests {
             pois: vec![],
             objective: None,
             obstacles: vec![],
+
+            hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+            hazard_count: 0,
         };
 
         let has_los = has_line_of_sight(IVec2 { x: 0, y: 0 }, IVec2 { x: 0, y: 5 }, &world);
@@ -1314,6 +1361,9 @@ mod tests {
             pois: vec![],
             objective: None,
             obstacles: vec![],
+
+            hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+            hazard_count: 0,
         };
 
         let has_los = has_line_of_sight(IVec2 { x: 0, y: 0 }, IVec2 { x: 5, y: 5 }, &world);
@@ -1342,6 +1392,8 @@ mod tests {
             pois: vec![],
             objective: None,
             obstacles: vec![IVec2 { x: 2, y: 0 }], // Midpoint obstacle
+            hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+            hazard_count: 0,
         };
 
         let has_los = has_line_of_sight(IVec2 { x: 0, y: 0 }, IVec2 { x: 4, y: 0 }, &world);
@@ -1374,6 +1426,9 @@ mod tests {
             pois: vec![],
             objective: None,
             obstacles: vec![],
+
+            hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+            hazard_count: 0,
         };
         assert!(
             has_line_of_sight(IVec2 { x: 5, y: 0 }, IVec2 { x: 0, y: 0 }, &world),
@@ -1412,6 +1467,9 @@ mod tests {
             pois: vec![],
             objective: None,
             obstacles: vec![],
+
+            hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+            hazard_count: 0,
         };
         assert!(
             has_line_of_sight(IVec2 { x: 0, y: 5 }, IVec2 { x: 0, y: 0 }, &world),
@@ -1449,6 +1507,9 @@ mod tests {
             pois: vec![],
             objective: None,
             obstacles: vec![],
+
+            hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+            hazard_count: 0,
         };
         assert!(
             has_line_of_sight(IVec2 { x: 5, y: 5 }, IVec2 { x: 0, y: 0 }, &world),
@@ -1486,6 +1547,9 @@ mod tests {
             pois: vec![],
             objective: None,
             obstacles: vec![],
+
+            hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+            hazard_count: 0,
         };
         assert!(
             has_line_of_sight(IVec2 { x: 0, y: 0 }, IVec2 { x: 1, y: 4 }, &world),
@@ -1524,6 +1588,9 @@ mod tests {
             pois: vec![],
             objective: None,
             obstacles: vec![],
+
+            hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+            hazard_count: 0,
         };
         assert!(has_line_of_sight(
             IVec2 { x: 0, y: 0 },
@@ -1563,6 +1630,8 @@ mod tests {
             pois: vec![],
             objective: None,
             obstacles: vec![IVec2 { x: 1, y: 0 }], // obstacle at first step
+            hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+            hazard_count: 0,
         };
         assert!(
             !has_line_of_sight(IVec2 { x: 0, y: 0 }, IVec2 { x: 3, y: 0 }, &world),
@@ -1591,6 +1660,9 @@ mod tests {
             pois: vec![],
             objective: None,
             obstacles: vec![],
+
+            hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+            hazard_count: 0,
         };
         assert!(has_line_of_sight(
             IVec2 { x: 0, y: 0 },
@@ -1635,6 +1707,9 @@ mod tests {
             pois: vec![],
             objective: None,
             obstacles: vec![],
+
+            hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+            hazard_count: 0,
         };
         let context = ValidationContext::new();
 
@@ -1692,6 +1767,9 @@ mod tests {
             pois: vec![],
             objective: None,
             obstacles: vec![],
+
+            hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+            hazard_count: 0,
         };
         let context = ValidationContext::new();
         let result = validate_tool_action(
@@ -1747,6 +1825,8 @@ mod tests {
             pois: vec![],
             objective: None,
             obstacles: vec![IVec2 { x: 1, y: 0 }], // Obstacles present
+            hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+            hazard_count: 0,
         };
 
         let result = validate_line_of_sight(&world, None);
@@ -1779,6 +1859,9 @@ mod tests {
             pois: vec![],
             objective: None,
             obstacles: vec![],
+
+            hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+            hazard_count: 0,
         };
 
         let context = ValidationContext::new();
@@ -1812,6 +1895,9 @@ mod tests {
             pois: vec![],
             objective: None,
             obstacles: vec![],
+
+            hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+            hazard_count: 0,
         };
 
         let context = ValidationContext::new();
@@ -2278,6 +2364,9 @@ mod tests {
             pois: vec![],
             objective: None,
             obstacles: vec![],
+
+            hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+            hazard_count: 0,
         };
         let context = ValidationContext::new();
         let result = validate_tool_action(
@@ -2315,6 +2404,9 @@ mod tests {
             pois: vec![],
             objective: None,
             obstacles: vec![],
+
+            hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+            hazard_count: 0,
         };
         let context = ValidationContext::new();
         let result = validate_tool_action(
@@ -2356,6 +2448,9 @@ mod tests {
             pois: vec![],
             objective: None,
             obstacles: vec![],
+
+            hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+            hazard_count: 0,
         };
         let context = ValidationContext::new();
         let result = validate_tool_action(
@@ -2394,6 +2489,9 @@ mod tests {
             pois: vec![],
             objective: None,
             obstacles: vec![],
+
+            hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+            hazard_count: 0,
         };
         let context = ValidationContext::new();
         let result = validate_tool_action(
@@ -2432,6 +2530,8 @@ mod tests {
             pois: vec![],
             objective: None,
             obstacles: vec![IVec2 { x: 5, y: 1 }], // Shares y=1 with path cell (0,1)
+            hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+            hazard_count: 0,
         };
         // LOS from (0,0) to (0,3) — vertical line, obstacle at (5,1) NOT on path.
         let has_los = has_line_of_sight(IVec2 { x: 0, y: 0 }, IVec2 { x: 0, y: 3 }, &world);
@@ -2465,6 +2565,8 @@ mod tests {
             pois: vec![],
             objective: None,
             obstacles: vec![IVec2 { x: 5, y: 3 }], // On original path (3,2)→(4,3)→(5,3)→(6,4)
+            hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+            hazard_count: 0,
         };
         let has_los = has_line_of_sight(IVec2 { x: 3, y: 2 }, IVec2 { x: 6, y: 4 }, &world);
         assert!(

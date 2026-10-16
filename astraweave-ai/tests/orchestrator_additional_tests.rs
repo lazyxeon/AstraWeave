@@ -36,6 +36,9 @@ fn make_empty_snap() -> WorldSnapshot {
         pois: vec![],
         objective: None,
         obstacles: vec![],
+
+        hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+        hazard_count: 0,
     }
 }
 
@@ -65,6 +68,9 @@ fn make_snap_with_enemy(enemy_pos: IVec2, cooldowns: BTreeMap<String, f32>) -> W
         pois: vec![],
         objective: None,
         obstacles: vec![],
+
+        hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+        hazard_count: 0,
     }
 }
 

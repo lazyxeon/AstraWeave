@@ -27,6 +27,8 @@ astraweave-combat = { path = "../astraweave-combat" }
 astraweave-destruction = { path = "../astraweave-destruction" }
 astraweave-ecs = { path = "../astraweave-ecs" }
 astraweave-pcg = { path = "../astraweave-pcg" }
+astraweave-core = { path = "../astraweave-core" }
+astraweave-nav = { path = "../astraweave-nav" }
 
 # Collections (deterministic)
 # Using std BTreeMap/BTreeSet for stable iteration

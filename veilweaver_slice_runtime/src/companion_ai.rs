@@ -129,6 +129,9 @@ mod tests {
             pois: vec![],
             obstacles: vec![],
             objective: Some("defeat_warden".to_string()),
+
+            hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+            hazard_count: 0,
         }
     }
 

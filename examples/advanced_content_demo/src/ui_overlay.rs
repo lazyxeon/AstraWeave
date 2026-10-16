@@ -154,7 +154,7 @@ pub fn render_ability_panel(player: &Player) -> Vec<String> {
 
     // Dash ability
     let dash = &player.ability_manager.echo_dash;
-    let dash_ready = dash.can_use(player.echo_currency as u32);
+    let dash_ready = dash.can_use(player.echo_balance());
     let dash_status = if dash_ready {
         format!("{}READY{}", colors::GREEN, colors::RESET)
     } else {
@@ -183,7 +183,7 @@ pub fn render_ability_panel(player: &Player) -> Vec<String> {
 
     // Shield ability
     let shield = &player.ability_manager.echo_shield;
-    let shield_ready = shield.can_use(player.echo_currency as u32);
+    let shield_ready = shield.can_use(player.echo_balance());
     let shield_status = if shield_ready {
         format!("{}READY{}", colors::GREEN, colors::RESET)
     } else {
@@ -220,7 +220,7 @@ pub fn render_full_hud(player: &Player, quest: &Quest, frame_width: usize) -> St
     // Top bar: Echo HUD
     output.push_str(&format!(
         "{}\n",
-        render_echo_hud(player.echo_currency, frame_width)
+        render_echo_hud(player.echo_balance() as i32, frame_width)
     ));
     output.push_str(&format!("{}\n", "─".repeat(frame_width)));
 

@@ -6,7 +6,9 @@
 
 #![forbid(unsafe_code)]
 
-use astraweave_core::{ActionStep, EngineError, IVec2, WorldSnapshot};
+use astraweave_core::{
+    ActionStep, EngineError, IVec2, WeaveHazard, WorldSnapshot, MAX_WEAVE_HAZARDS,
+};
 
 use crate::htn::{self, plan_route, AgentPlan, SpatialHooks};
 use crate::orchestrator::Orchestrator;
@@ -835,6 +837,8 @@ fn snapshot_from_perceived(tick: u64, perceived: &PerceivedView, goal: u16) -> W
         pois: Vec::new(),
         obstacles: Vec::new(),
         objective,
+        hazards: [WeaveHazard::EMPTY; MAX_WEAVE_HAZARDS],
+        hazard_count: 0,
     }
 }
 
@@ -1028,7 +1032,9 @@ mod tests {
 
     #[test]
     fn utility_records_the_lower_score_as_rejected() {
-        use astraweave_core::{CompanionState, EnemyState, IVec2, PlayerState};
+        use astraweave_core::{
+            CompanionState, EnemyState, IVec2, PlayerState, WeaveHazard, MAX_WEAVE_HAZARDS,
+        };
         use std::collections::BTreeMap;
         let snap = WorldSnapshot {
             t: 0.0,
@@ -1054,6 +1060,8 @@ mod tests {
             pois: Vec::new(),
             obstacles: Vec::new(),
             objective: Some("engage".into()),
+            hazards: [WeaveHazard::EMPTY; MAX_WEAVE_HAZARDS],
+            hazard_count: 0,
         };
         let record = utility_decision(4, 3, &snap);
         assert_eq!(record.planner, PlannerId::Utility as u8);

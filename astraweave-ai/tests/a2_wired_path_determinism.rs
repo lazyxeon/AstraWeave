@@ -82,6 +82,9 @@ fn rich_snapshot(smoke_cd: f32, first_enemy_x: i32) -> WorldSnapshot {
         pois: vec![],
         obstacles: vec![],
         objective: None,
+
+        hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+        hazard_count: 0,
     }
 }
 

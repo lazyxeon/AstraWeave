@@ -751,6 +751,9 @@ mod tests {
             pois: vec![],
             obstacles: vec![],
             objective: Some("extract".into()),
+
+            hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+            hazard_count: 0,
         }
     }
 
@@ -875,6 +878,8 @@ mod tests {
             pois: vec![],
             obstacles: vec![],
             objective: None, // No objective
+            hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+            hazard_count: 0,
         };
 
         assert_eq!(snap_no_enemies.enemies.len(), 0);
@@ -908,6 +913,9 @@ mod tests {
             pois: vec![],
             obstacles: vec![],
             objective: Some("survive".into()),
+
+            hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+            hazard_count: 0,
         };
 
         assert_eq!(snap_many_enemies.enemies.len(), 100);

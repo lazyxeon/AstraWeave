@@ -48,6 +48,9 @@ fn make_snapshot(
         pois,
         obstacles,
         objective,
+
+        hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+        hazard_count: 0,
     }
 }
 

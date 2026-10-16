@@ -41,6 +41,9 @@ fn create_test_snapshot(t: f32, has_enemies: bool) -> WorldSnapshot {
         pois: vec![],
         obstacles: vec![],
         objective: None,
+
+        hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+        hazard_count: 0,
     }
 }
 
@@ -110,6 +113,9 @@ fn test_switch_rule_to_goap() {
         pois: vec![],
         obstacles: vec![],
         objective: None,
+
+        hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+        hazard_count: 0,
     };
 
     let plan2 = dispatch_planner(&controller, &snapshot2).expect("GOAP planning should succeed");
@@ -154,6 +160,9 @@ fn test_switch_goap_to_rule() {
         pois: vec![],
         obstacles: vec![],
         objective: None,
+
+        hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+        hazard_count: 0,
     };
 
     let plan1 = dispatch_planner(&controller, &snapshot1).expect("GOAP planning should succeed");
@@ -208,6 +217,9 @@ fn test_multi_switch_cycle() {
         pois: vec![],
         obstacles: vec![],
         objective: None,
+
+        hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+        hazard_count: 0,
     };
 
     let mut plan_sequence = Vec::new();
@@ -269,6 +281,9 @@ fn test_switch_determinism() {
         pois: vec![],
         obstacles: vec![],
         objective: None,
+
+        hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+        hazard_count: 0,
     };
 
     // Run switch sequence twice

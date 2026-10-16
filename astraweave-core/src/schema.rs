@@ -1,3 +1,46 @@
+use serde::{Deserialize, Serialize};
+
+/// Fixed hazard tail. Kind values match the local-sim hazard set.
+pub const MAX_WEAVE_HAZARDS: usize = 16;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WeaveHazard {
+    pub kind: u8,
+    pub x: i32,
+    pub y: i32,
+    pub z: i32,
+    pub temperature: i16,
+    pub flags: u8,
+    pub radius_milli: u16,
+}
+
+impl WeaveHazard {
+    pub const EMPTY: Self = Self {
+        kind: 0,
+        x: 0,
+        y: 0,
+        z: 0,
+        temperature: 0,
+        flags: 0,
+        radius_milli: 0,
+    };
+    pub const FIRE: u8 = 1;
+    pub const STEAM: u8 = 2;
+    pub const POISON_GAS: u8 = 3;
+    pub const DEEP_WATER: u8 = 4;
+    pub const ICE: u8 = 5;
+}
+
+impl Default for WeaveHazard {
+    fn default() -> Self {
+        Self::EMPTY
+    }
+}
+
+fn empty_hazards() -> [WeaveHazard; MAX_WEAVE_HAZARDS] {
+    [WeaveHazard::EMPTY; MAX_WEAVE_HAZARDS]
+}
+
 // Default implementations for test scaffolding
 impl Default for PlayerState {
     fn default() -> Self {
@@ -52,10 +95,11 @@ impl Default for WorldSnapshot {
             pois: vec![],
             obstacles: vec![],
             objective: None,
+            hazards: [WeaveHazard::EMPTY; MAX_WEAVE_HAZARDS],
+            hazard_count: 0,
         }
     }
 }
-use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fmt;
 
@@ -252,7 +296,7 @@ impl std::ops::Sub for IVec2 {
 /// # Examples
 ///
 /// ```
-/// use astraweave_core::{WorldSnapshot, PlayerState, CompanionState, IVec2};
+/// use astraweave_core::{WorldSnapshot, PlayerState, CompanionState, IVec2, WeaveHazard, MAX_WEAVE_HAZARDS};
 /// use std::collections::BTreeMap;
 ///
 /// let snap = WorldSnapshot {
@@ -263,6 +307,8 @@ impl std::ops::Sub for IVec2 {
 ///     pois: vec![],
 ///     obstacles: vec![],
 ///     objective: Some("patrol".into()),
+///     hazards: [WeaveHazard::EMPTY; MAX_WEAVE_HAZARDS],
+///     hazard_count: 0,
 /// };
 /// assert!(snap.has_no_enemies());
 /// assert!(snap.has_objective());
@@ -275,6 +321,11 @@ pub struct WorldSnapshot {
     pub pois: Vec<Poi>,
     pub obstacles: Vec<IVec2>,
     pub objective: Option<String>,
+    /// Nearest weave hazards, sorted by kind then cell. Empty slots are [`WeaveHazard::EMPTY`].
+    #[serde(default = "empty_hazards")]
+    pub hazards: [WeaveHazard; MAX_WEAVE_HAZARDS],
+    #[serde(default)]
+    pub hazard_count: u8,
 }
 
 impl WorldSnapshot {
@@ -1367,6 +1418,9 @@ mod tests {
             pois: vec![Poi::default()],
             obstacles: vec![IVec2 { x: 5, y: 5 }],
             objective: Some("Survive".to_string()),
+
+            hazards: [crate::WeaveHazard::EMPTY; crate::MAX_WEAVE_HAZARDS],
+            hazard_count: 0,
         };
         assert_eq!(snapshot.t, 10.5);
         assert_eq!(snapshot.enemies.len(), 1);

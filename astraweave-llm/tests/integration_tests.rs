@@ -99,6 +99,9 @@ fn create_test_world_snapshot() -> WorldSnapshot {
         pois: vec![],
         obstacles: vec![],
         objective: Some("extract".into()),
+
+        hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+        hazard_count: 0,
     }
 }
 

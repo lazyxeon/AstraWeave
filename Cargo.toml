@@ -54,6 +54,7 @@ members = [
   "examples/navmesh_demo",
   "astraweave-gameplay",
   "examples/weaving_playground",
+  "examples/aravath_weave",
   "examples/crafting_combat_demo",
   "examples/quest_dialogue_demo",
   "examples/combat_physics_demo",

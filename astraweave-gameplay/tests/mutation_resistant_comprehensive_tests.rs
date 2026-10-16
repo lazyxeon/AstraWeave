@@ -1650,10 +1650,10 @@ mod stats_mutations {
     fn apply_damage_zero_defense() {
         let mut s = Stats::new(100);
         s.defense = 0;
-        // mitigated = max(30 - 0, 1) = 30
+        // Fire is 125% of the physical result: 30 -> 37.
         let m = s.apply_damage(30, DamageType::Fire);
-        assert_eq!(m, 30);
-        assert_eq!(s.hp, 70);
+        assert_eq!(m, 37);
+        assert_eq!(s.hp, 63);
     }
 
     // --- tick(): bleed dps*dt subtracted from hp ---
@@ -2411,8 +2411,9 @@ mod combat_stats_integration {
             &mut target,
         );
         assert!(hit);
-        // base = 10+10 = 20; out = (20+20) * 1.5 = 60
+        // base = 10+10 = 20; out = (20+20) * 1.5 = 60. Shock is 11000
+        // basis points of that result with defense 0, so taken is 66.
         assert_eq!(dmg, 60);
-        assert_eq!(target.hp, 440); // 500 - 60
+        assert_eq!(target.hp, 434); // 500 - 66
     }
 }

@@ -42,7 +42,7 @@ fn main() {
     // Simulate player earning Echo currency (would come from combat/exploration)
     println!("[ACTION] Player earns 150 Echo from exploration...");
     level.player.add_echo(150);
-    println!("  ✓ Echo Currency: {}\n", level.player.echo_currency);
+    println!("  ✓ Echo Currency: {}\n", level.player.echo_balance());
 
     // Repair anchors (Central anchor at 50% needs 1 repair, Left/Right at 30% need 2 repairs each)
     println!("[ACTION] Player approaches Central Anchor...");
@@ -50,26 +50,26 @@ fn main() {
         println!("  ✓ Repaired Central Anchor (Cost: 10 Echo, 50% → 80%)");
         println!("  ✓ Quest progress: 1/3 anchors stabilized");
     }
-    println!("  Echo Currency: {}\n", level.player.echo_currency);
+    println!("  Echo Currency: {}\n", level.player.echo_balance());
 
     println!("[ACTION] Player approaches Left Anchor (1st repair)...");
     if !level.repair_anchor(1, 10) {
         println!("  ○ Partial repair (30% → 60%, not yet 80%)");
     }
-    println!("  Echo Currency: {}\n", level.player.echo_currency);
+    println!("  Echo Currency: {}\n", level.player.echo_balance());
 
     println!("[ACTION] Player approaches Left Anchor (2nd repair)...");
     if level.repair_anchor(1, 10) {
         println!("  ✓ Repaired Left Anchor (Cost: 10 Echo, 60% → 90%)");
         println!("  ✓ Quest progress: 2/3 anchors stabilized");
     }
-    println!("  Echo Currency: {}\n", level.player.echo_currency);
+    println!("  Echo Currency: {}\n", level.player.echo_balance());
 
     println!("[ACTION] Player approaches Right Anchor (1st repair)...");
     if !level.repair_anchor(2, 10) {
         println!("  ○ Partial repair (30% → 60%, not yet 80%)");
     }
-    println!("  Echo Currency: {}\n", level.player.echo_currency);
+    println!("  Echo Currency: {}\n", level.player.echo_balance());
 
     println!("[ACTION] Player approaches Right Anchor (2nd repair)...");
     if level.repair_anchor(2, 10) {
@@ -78,7 +78,7 @@ fn main() {
     } else {
         println!("  ✗ Failed to repair Right Anchor");
     }
-    println!("  Echo Currency: {}\n", level.player.echo_currency);
+    println!("  Echo Currency: {}\n", level.player.echo_balance());
 
     // Update level to trigger quest completion
     level.update(0.016); // 1 frame @ 60 FPS

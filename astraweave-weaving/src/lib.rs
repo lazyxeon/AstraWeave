@@ -19,8 +19,11 @@ pub mod damage;
 pub mod echo_currency;
 pub mod enemy;
 pub mod enemy_types;
+pub mod eval;
+pub mod field;
 pub mod gameplay_qa;
 pub mod intents;
+pub mod legacy;
 pub mod level;
 pub mod mod_queue;
 pub mod particles;
@@ -31,6 +34,7 @@ pub mod sim_rng;
 pub mod spawner;
 pub mod starter_quests;
 pub mod systems;
+pub mod templates;
 pub mod ui;
 
 #[cfg(test)]
@@ -46,12 +50,18 @@ pub use combat::{CombatEvent, CombatSystem, Killer};
 pub use damage::{apply_element_schools, ElementSchool};
 pub use echo_currency::{EchoCurrency, Transaction, TransactionReason};
 pub use enemy::{AttackTarget, Enemy, EnemyBehavior, EnemyState};
+pub use eval::{weave_eval, weave_tick, weaving_case_bytes, weaving_case_on, IceSheet, WeaveFrame};
+pub use field::{
+    gravity_mm_s2, meters_to_cell, FieldEvent, FieldWrite, NullField, Shape, SimField, WriteOp,
+    CELL_MM, FLAG_ICE, MAX_FIELD_WRITES, PHASE_BURN, PHASE_ICE, WORLD_GRAVITY_MILLI_G,
+};
 pub use gameplay_qa::{load_bundled_scenario, run_scenario, FailureArtifact, RunOutcome};
 pub use intents::{IntentProposer, WeaveIntent};
+pub use legacy::{compile_legacy, LegacyPoints};
 pub use level::{Camera, LevelStats, Player, VeilweaverLevel};
 pub use mod_queue::{
     parse_template_toml, queue_weave, QueueError, WeaveCommand, WeaveScratch, WeaveTemplate,
-    ENGINE_TEMPLATE_MAX, MAX_WEAVE_COMMANDS,
+    ENGINE_TEMPLATE_MAX, ISLAND_HALF_CELLS, MAX_WEAVE_COMMANDS,
 };
 pub use particles::{AnchorParticleEmitter, AnchorParticleSystem, Particle, ParticleType};
 pub use patterns::{Pattern, PatternDetector, PatternStrength};
@@ -62,6 +72,10 @@ pub use sim_rng::{
 pub use spawner::{EnemySpawner, SpawnPoint, SpawnRequest};
 pub use starter_quests::{
     all_starter_quests, quest_clear_corruption, quest_restore_beacon, quest_stabilize_anchors,
+};
+pub use templates::{
+    TEMPLATE_DECAY, TEMPLATE_DENSITY, TEMPLATE_FREEZE, TEMPLATE_GRAVITY, TEMPLATE_HEAT,
+    TEMPLATE_LOWER_WATER, TEMPLATE_WIND,
 };
 pub use ui::{
     AbilityUnlockNotification, AnchorInspectionModal, EchoFeedbackFloat, EchoHud,

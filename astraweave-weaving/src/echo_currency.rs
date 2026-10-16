@@ -246,6 +246,9 @@ pub enum TransactionReason {
     /// Used Echo Dash ability (-1 Echo per use)
     UseEchoDash,
 
+    /// Used Echo Shield ability
+    UseEchoShield,
+
     /// Deployed barricade (-1 Echo)
     DeployBarricade,
 
@@ -265,6 +268,7 @@ impl fmt::Display for TransactionReason {
             Self::FoundShard => write!(f, "Found: Echo Shard"),
             Self::RepairAnchor(id) => write!(f, "Repair: {}", id),
             Self::UseEchoDash => write!(f, "Use: Echo Dash"),
+            Self::UseEchoShield => write!(f, "Use: Echo Shield"),
             Self::DeployBarricade => write!(f, "Deploy: Barricade"),
             Self::QuestReward(id) => write!(f, "Quest: {}", id),
             Self::Debug(msg) => write!(f, "Debug: {}", msg),

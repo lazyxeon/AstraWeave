@@ -16,6 +16,7 @@
 use glam::Vec3;
 
 use crate::anchor::Anchor;
+use crate::echo_currency::{EchoCurrency, TransactionReason};
 use crate::enemy::Enemy;
 use crate::quest::QuestManager;
 use crate::spawner::EnemySpawner;
@@ -30,7 +31,8 @@ pub struct Player {
     pub forward: Vec3, // Player facing direction for dash
     pub health: f32,
     pub max_health: f32,
-    pub echo_currency: i32,
+    /// The only Echo ledger. Ability costs spend this balance.
+    pub echo: EchoCurrency,
     pub abilities: Vec<String>,
     pub ability_manager: crate::abilities::AbilityManager,
 }
@@ -44,7 +46,7 @@ impl Player {
             forward: Vec3::new(0.0, 0.0, 1.0), // Default forward +Z
             health: 100.0,
             max_health: 100.0,
-            echo_currency: 0,
+            echo: EchoCurrency::new(),
             abilities: Vec::new(),
             ability_manager: crate::abilities::AbilityManager::new(),
         }
@@ -83,8 +85,19 @@ impl Player {
     }
 
     /// Add echo currency (quest reward)
+    pub fn echo_balance(&self) -> u32 {
+        self.echo.count()
+    }
+
+    pub fn set_echo(&mut self, amount: u32) {
+        self.echo = EchoCurrency::with_balance(amount);
+    }
+
     pub fn add_echo(&mut self, amount: i32) {
-        self.echo_currency += amount;
+        if amount > 0 {
+            self.echo
+                .add(amount as u32, TransactionReason::Debug("credit".into()));
+        }
     }
 
     /// Unlock ability (quest reward)
@@ -109,39 +122,36 @@ impl Player {
 
     /// Use Echo Dash ability (dash forward + damage)
     pub fn use_dash(&mut self) -> Result<(Vec3, f32), String> {
-        let result = self.ability_manager.activate_dash(
-            self.position,
-            self.forward,
-            self.echo_currency as u32,
-        )?;
-
-        // Deduct Echo cost
-        self.echo_currency -= 10;
-
+        let cost = self.ability_manager.dash_echo_cost();
+        let result =
+            self.ability_manager
+                .activate_dash(self.position, self.forward, self.echo.count())?;
+        if !self.echo.spend(cost, TransactionReason::UseEchoDash) {
+            return Err("insufficient echoes".into());
+        }
         Ok(result)
     }
 
     /// Use Echo Shield ability (damage reduction)
     pub fn use_shield(&mut self) -> Result<(), String> {
-        self.ability_manager
-            .activate_shield(self.echo_currency as u32)?;
-
-        // Deduct Echo cost
-        self.echo_currency -= 15;
-
+        let cost = self.ability_manager.shield_echo_cost();
+        self.ability_manager.activate_shield(self.echo.count())?;
+        if !self.echo.spend(cost, TransactionReason::UseEchoShield) {
+            return Err("insufficient echoes".into());
+        }
         Ok(())
     }
 
     /// Check if dash is ready
     pub fn can_dash(&self) -> bool {
         let (ready, _) = self.ability_manager.dash_cooldown();
-        ready && self.echo_currency >= 10
+        ready && self.echo.has(self.ability_manager.dash_echo_cost())
     }
 
     /// Check if shield is ready
     pub fn can_shield(&self) -> bool {
         let (ready, _) = self.ability_manager.shield_cooldown();
-        ready && self.echo_currency >= 15
+        ready && self.echo.has(self.ability_manager.shield_echo_cost())
     }
 
     /// Get dash cooldown info (for UI)
@@ -328,7 +338,10 @@ impl VeilweaverLevel {
         }
 
         // Check if player has enough echo currency
-        if (self.player.echo_currency as u32) < echo_cost {
+        if !self.player.echo.spend(
+            echo_cost,
+            TransactionReason::RepairAnchor(anchor_index.to_string()),
+        ) {
             return false;
         }
 
@@ -337,9 +350,6 @@ impl VeilweaverLevel {
 
         // Repair anchor (no arguments - repairs to full)
         anchor.repair();
-
-        // Deduct echo currency
-        self.player.echo_currency -= echo_cost as i32;
 
         let now_above_threshold = anchor.stability() >= 0.8;
 
@@ -443,7 +453,7 @@ impl VeilweaverLevel {
             level_time: self.level_time,
             player_health: self.player.health,
             player_max_health: self.player.max_health,
-            echo_currency: self.player.echo_currency,
+            echo_currency: self.player.echo_balance() as i32,
             enemies_killed: self.enemies_killed,
             enemies_active: self.enemies.len(),
             anchors_repaired: self.anchors_repaired,
@@ -492,7 +502,7 @@ mod tests {
         let player = Player::new(Vec3::new(0.0, 0.0, -20.0));
         assert_eq!(player.position, Vec3::new(0.0, 0.0, -20.0));
         assert_eq!(player.health, 100.0);
-        assert_eq!(player.echo_currency, 0);
+        assert_eq!(player.echo_balance(), 0);
         assert!(player.is_alive());
     }
 
@@ -524,7 +534,7 @@ mod tests {
 
         // Echo currency
         player.add_echo(100);
-        assert_eq!(player.echo_currency, 100);
+        assert_eq!(player.echo_balance(), 100);
 
         // Ability unlock
         player.unlock_ability("Echo Dash");
@@ -578,7 +588,7 @@ mod tests {
         let mut level = VeilweaverLevel::new();
 
         // Give player some echo currency
-        level.player.echo_currency = 100;
+        level.player.set_echo(100);
 
         // Get initial stability
         let initial_stability = level.anchors[0].stability();
@@ -589,7 +599,7 @@ mod tests {
         assert!(repaired); // Should return true (crossed threshold)
         assert!(level.anchors[0].stability() > initial_stability);
         assert_eq!(level.anchors_repaired, 1);
-        assert_eq!(level.player.echo_currency, 90); // 100 - 10
+        assert_eq!(level.player.echo_balance(), 90); // 100 - 10
     }
 
     #[test]
@@ -647,7 +657,7 @@ mod tests {
         let mut level = VeilweaverLevel::new();
 
         // Give player echo currency for repairs
-        level.player.echo_currency = 100;
+        level.player.set_echo(100);
 
         // Initial quest should be "stabilize_anchors"
         let active = level.quest_manager.active_quest().unwrap();
@@ -695,7 +705,7 @@ mod tests {
     #[test]
     fn test_player_dash_ability() {
         let mut player = Player::new(Vec3::ZERO);
-        player.echo_currency = 50;
+        player.set_echo(50);
         player.forward = Vec3::new(1.0, 0.0, 0.0);
 
         // Dash should succeed
@@ -705,7 +715,7 @@ mod tests {
         let (target_pos, damage) = result.unwrap();
         assert_eq!(target_pos, Vec3::new(10.0, 0.0, 0.0)); // Dashed 10 units forward
         assert_eq!(damage, 30.0);
-        assert_eq!(player.echo_currency, 40); // 50 - 10
+        assert_eq!(player.echo_balance(), 40); // 50 - 10
 
         // Dash should fail (cooldown)
         let result2 = player.use_dash();
@@ -716,18 +726,18 @@ mod tests {
         player.update(1.0);
         let result3 = player.use_dash();
         assert!(result3.is_ok());
-        assert_eq!(player.echo_currency, 30); // 40 - 10
+        assert_eq!(player.echo_balance(), 30); // 40 - 10
     }
 
     #[test]
     fn test_player_shield_ability() {
         let mut player = Player::new(Vec3::ZERO);
-        player.echo_currency = 50;
+        player.set_echo(50);
 
         // Shield should succeed
         let result = player.use_shield();
         assert!(result.is_ok());
-        assert_eq!(player.echo_currency, 35); // 50 - 15
+        assert_eq!(player.echo_balance(), 35); // 50 - 15
 
         // Shield is active, damage should be reduced
         player.take_damage(100.0);
@@ -745,7 +755,7 @@ mod tests {
     #[test]
     fn test_player_ability_insufficient_echo() {
         let mut player = Player::new(Vec3::ZERO);
-        player.echo_currency = 5; // Not enough for either ability
+        player.set_echo(5); // Not enough for either ability
 
         // Dash fails (need 10)
         let dash_result = player.use_dash();
@@ -767,7 +777,7 @@ mod tests {
         assert!(!player.can_shield());
 
         // Add Echo
-        player.echo_currency = 50;
+        player.set_echo(50);
         assert!(player.can_dash());
         assert!(player.can_shield());
 
@@ -784,7 +794,7 @@ mod tests {
     #[test]
     fn test_player_ability_cooldown_info() {
         let mut player = Player::new(Vec3::ZERO);
-        player.echo_currency = 50;
+        player.set_echo(50);
 
         // Initially ready
         let (dash_ready, dash_remaining) = player.dash_cooldown_info();
@@ -807,7 +817,7 @@ mod tests {
     #[test]
     fn test_player_shield_active_info() {
         let mut player = Player::new(Vec3::ZERO);
-        player.echo_currency = 50;
+        player.set_echo(50);
 
         // Initially inactive
         let (active, remaining) = player.shield_active_info();

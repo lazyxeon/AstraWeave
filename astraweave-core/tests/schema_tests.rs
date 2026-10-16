@@ -94,6 +94,9 @@ fn test_worldsnapshot_with_data() {
         pois,
         obstacles,
         objective: Some("secure_area".to_string()),
+
+        hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+        hazard_count: 0,
     };
 
     // Validate field access
@@ -123,6 +126,9 @@ fn test_worldsnapshot_empty_collections() {
         pois: vec![],
         obstacles: vec![],
         objective: None,
+
+        hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+        hazard_count: 0,
     };
 
     assert!(snap.enemies.is_empty());

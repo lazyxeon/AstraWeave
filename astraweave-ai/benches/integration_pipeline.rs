@@ -74,6 +74,9 @@ fn create_scalable_snapshot(enemy_count: usize) -> WorldSnapshot {
         pois,
         obstacles,
         objective: Some("eliminate_all_enemies".to_string()),
+
+        hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+        hazard_count: 0,
     }
 }
 
@@ -98,6 +101,9 @@ fn create_simple_snapshot() -> WorldSnapshot {
         pois: vec![],
         obstacles: vec![],
         objective: None,
+
+        hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+        hazard_count: 0,
     }
 }
 
@@ -156,6 +162,9 @@ fn create_moderate_snapshot() -> WorldSnapshot {
             IVec2 { x: 17, y: 15 },
         ],
         objective: Some("eliminate_all_enemies".to_string()),
+
+        hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+        hazard_count: 0,
     }
 }
 
@@ -229,6 +238,9 @@ fn create_complex_snapshot() -> WorldSnapshot {
         pois,
         obstacles,
         objective: Some("survive_and_extract".to_string()),
+
+        hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+        hazard_count: 0,
     }
 }
 

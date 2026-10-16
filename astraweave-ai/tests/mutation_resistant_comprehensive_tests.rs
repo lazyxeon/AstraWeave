@@ -42,6 +42,9 @@ fn base_snapshot() -> WorldSnapshot {
         pois: vec![],
         obstacles: vec![],
         objective: None,
+
+        hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+        hazard_count: 0,
     }
 }
 
@@ -900,6 +903,9 @@ mod tool_sandbox_boundary_mutations {
             pois: vec![],
             obstacles: vec![],
             objective: None,
+
+            hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+            hazard_count: 0,
         }
     }
 

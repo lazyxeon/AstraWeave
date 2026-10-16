@@ -306,6 +306,9 @@ fn hand_snapshot(smoke_cd: f32, first_enemy_x: i32, with_enemies: bool) -> World
         pois: vec![],
         obstacles: vec![IVec2 { x: 1, y: 2 }, IVec2 { x: 3, y: 3 }],
         objective: Some("extract".to_string()),
+
+        hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+        hazard_count: 0,
     }
 }
 

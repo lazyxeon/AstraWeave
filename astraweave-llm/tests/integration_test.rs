@@ -242,6 +242,9 @@ fn create_complex_scenario() -> WorldSnapshot {
         ],
         obstacles: vec![],
         objective: Some("Reach extraction zone while eliminating hostiles".into()),
+
+        hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+        hazard_count: 0,
     }
 }
 
@@ -413,6 +416,9 @@ fn create_scenario_with_single_obstacle() -> WorldSnapshot {
         pois: vec![],
         obstacles: vec![IVec2 { x: 5, y: 0 }], // Single obstacle blocking direct path
         objective: Some("Reach enemy position".into()),
+
+        hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+        hazard_count: 0,
     }
 }
 
@@ -447,6 +453,9 @@ fn create_scenario_with_multiple_obstacles() -> WorldSnapshot {
             IVec2 { x: 0, y: 10 },  // Side blocker
         ],
         objective: Some("Navigate complex obstacle field".into()),
+
+        hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+        hazard_count: 0,
     }
 }
 
@@ -482,6 +491,9 @@ fn create_scenario_with_surrounding_obstacles() -> WorldSnapshot {
             IVec2 { x: 11, y: 11 }, // Diagonal
         ],
         objective: Some("Escape confined space".into()),
+
+        hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+        hazard_count: 0,
     }
 }
 
@@ -516,5 +528,8 @@ fn create_scenario_with_edge_obstacles() -> WorldSnapshot {
             IVec2 { x: 50, y: 0 },  // Opposite corner
         ],
         objective: Some("Handle edge case obstacles".into()),
+
+        hazards: [astraweave_core::WeaveHazard::EMPTY; astraweave_core::MAX_WEAVE_HAZARDS],
+        hazard_count: 0,
     }
 }
