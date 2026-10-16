@@ -9,7 +9,7 @@ lifecycle_status: active
 integration_status: mixed
 summary: "Voxel meshing/biome/noise/scatter/streaming (complements terrain_materials.md). terrain.md"
 owns: [astraweave-terrain]
-doc_version: "1.14"
+doc_version: "1.15"
 last_verified_commit: d0452d3e
 ---
 
@@ -21,9 +21,9 @@ last_verified_commit: d0452d3e
 |---|---|
 | **System name** | Terrain System (procedural generation, voxel meshing, biome/noise pipeline, scatter, chunk streaming) |
 | **Primary crates** | `astraweave-terrain` (with reverse dep into `astraweave-gameplay`); consumers in `tools/aw_editor`, `examples/hybrid_voxel_demo`, `astraweave-render` |
-| **Document version** | 1.14 |
+| **Document version** | 1.15 |
 | **Last verified against commit** | `d0452d3e` (v1.13: fifteen required replay cases). v1.14 locks the noise golden tests to the E3 amplitudes (base 100, mountains 480, detail 3, base Fbm, mountains Billow) and moves the halo 0.01 identity to the pre-modulation crop. Prior ED-3 working tree over `aca627436` (v1.7: amplitude Open Question closed); prior `d4c4479d4` (v1.6), prior `03f9d9a2d` (v1.5: T.2d third pass, two new §11 Open Questions), prior `611c8edc7` (v1.3/v1.4: T.2a boreal band + `expect()` retirement), `8232b150b`. Note: v1.4 bumped the front-matter `doc_version` and the revision table only, leaving this row at 1.3 — corrected here. |
-| **Last verified date** | 2026-10-16 (v1.14); 2026-07-26 (v1.7) |
+| **Last verified date** | 2026-10-16 (v1.15: `phase_1_6_f3_phase_2_end_to_end_timing` generates one chunk per climate and asserts finite relief; the 5×5×6 walk only printed a table and was killed at the 240s CI slow-timeout on Windows. v1.14); 2026-07-26 (v1.7) |
 | **Status** | Active. Editor preview is the climate heightmap. Saved ground is the integer seed record. Deformation is a `DestructionCommand` log replayed into `ColumnStream`. The async heightmap loader, clipmap, GPU erosion trait, voxel modifier, and Phase 10 persistence format are removed. `DualContouring` stores one vertex per crossed edge. `aravath_runtime` collides with that mesh. |
 | **Owner notes** | Complements [`terrain_materials.md`](terrain_materials.md), which covers ONLY the material/splat-weight slice. This trace covers the REST: noise → heightmap → biome → erosion → chunk generation, voxel meshing, scatter/vegetation, and chunk streaming. Where the two overlap (biome semantics, `astraweave-render` terrain paths) this doc cross-references rather than duplicates. |
 
@@ -413,6 +413,8 @@ Wiredness verified by workspace grep for non-test/non-example production callers
 ---
 
 ## 11. Open Questions / Parked Decisions
+
+- **CLOSED 2026-10-16.** `phase_1_6_f3_phase_2_end_to_end_timing` walked a 5×5 grid for six climates, printed a timing table, and asserted nothing. Windows CI terminated it at 240s on every retry. The test now generates one chunk per climate through the same halo-and-erosion path and asserts the heightmap is non-empty, finite, and has relief.
 
 - **Is the async streaming/LOD subsystem (`BackgroundChunkLoader`, `LodManager`, `MorphingLodManager`, `StreamingDiagnostics`, `partition_integration`) intended to become the runtime loader, or is it dormant scaffolding?** It is fully implemented and tested but has zero production callers at `7c29b8182`; the editor uses synchronous `generate_chunk_with_climate`. Resolving this determines whether these ~5K LoC are "in-design-but-tested" (per CLAUDE.md Lesson 8) or destined for wiring.
 - **Should the `RegionalArchetypeMask` `Some`-branch be wired into the editor?** The panel exists, owns a mask, and Multi-Tool SP5.B (2026-06-06) wired click+drag painting INTO the panel's mask — but no code assigns that mask onto a generator (`set_mask` callers are test-only; `regenerate_terrain` builds a fresh `TerrainState::new()`), so the multi-archetype generation branch (lib.rs:620-643) remains unreachable in production at `8232b150b`. Per the 2026-07-20 T-series ratification, spatial multi-archetype stays a **separately-ratifiable future feature** — explicitly NOT in the terrain T-series (`E3_PREFLIGHT_2026-07.md` §7).
