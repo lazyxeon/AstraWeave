@@ -1,7 +1,8 @@
 # AstraWeave Architecture Map
 
-> **Generated**: 2026-05-07 | **Last reconciled**: 2026-10-16 | **Version**: 0.8.8 | **Rust**: 1.89.0
+> **Generated**: 2026-05-07 | **Last reconciled**: 2026-10-16 | **Version**: 0.8.9 | **Rust**: 1.89.0
 > Living document — used by all agents as the primary architectural reference.
+> **0.8.9 update (2026-10-16)**: Rebased onto `84d3888a`. #329 steps `BridgeAgent` inside `Greybox::step`, digs with a sphere `Subtract` brush on `ColumnFns`, and moves the greybox golden to `0a576578512f25d2`. The fifteen required replay cases stay. Member count stays **141**.
 > **0.8.8 update (2026-10-16)**: Rebased onto `6a0e9f4c`. #331 keeps `AIArbiter`, `GoapPlanner`, and `GravityManager` off the deterministic tick. `recorded_line` does not draw. Deletion follow-ups are #334, #335, and #336. Required replay cases stay fifteen. Member count stays **141**. Local sim #253 and frame budget #216 stay in progress.
 > **0.8.7 update (2026-10-16)**: Rebased onto `d6903d3a`. #327 is on main and #326 is closed. The workspace `tokio` dependency does not enable `net`. #275 wires the greybox sword hit through `run_aravath_slice`. Required replay cases stay fifteen. Member count stays **141**. Local sim #253 and frame budget #216 stay in progress.
 > **0.8.6 update (2026-10-16)**: Rebased onto `a66304dc`. CI burndown #217 is on main. #219 and #256 are closed. Required replay cases stay fifteen. Member count stays **141**. Local sim #253, frame budget #216, and greybox `tokio` `net` fix #327 stay in progress. #327 addresses #326.
@@ -962,6 +963,9 @@ These are decisional questions that cross subsystem boundaries or affect the bro
 ---
 
 ## Revision History
+
+### v0.8.9 (2026-10-16)
+Rebased onto `84d3888a`. #329 is on main. The greybox golden is `0a576578512f25d2`. The required replay list stays fifteen cases.
 
 ### v0.8.8 (2026-10-16)
 Rebased onto `6a0e9f4c`. #331 is on main. `AIArbiter`, `GoapPlanner`, and `GravityManager` stay off the tick. The required replay list stays fifteen cases.

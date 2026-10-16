@@ -7,10 +7,10 @@ primary_crate: astraweave-destruction
 domain: physics-world
 lifecycle_status: active
 integration_status: wired
-summary: "Ordered destruction commands, an 8-iteration load push, and a 300-tick replay case."
+summary: "Greybox digs with a sphere Subtract brush on ColumnFns. FlatColumnBase keeps the destruction replay hash."
 owns: [astraweave-destruction]
-doc_version: "1.3"
-last_verified_commit: 5c664f23
+doc_version: "1.4"
+last_verified_commit: 84d3888a
 runtime_edges:
   - to: astraweave-core
     note: "The core replay test calls demolition_bytes."
@@ -26,10 +26,10 @@ runtime_edges:
 |---|---|
 | **System name** | Deterministic destruction |
 | **Primary crates** | `astraweave-destruction` |
-| **Document version** | 1.3 |
-| **Last verified against commit** | `5c664f23` |
+| **Document version** | 1.4 |
+| **Last verified against commit** | `84d3888a` |
 | **Last verified date** | 2026-10-16 |
-| **Status** | Active. Headless showcase and the required replay case. The Aravath greybox binds integer columns through `ColumnFns` and digs with `DestructionCommand::Brush`. `FlatColumnBase` remains the terrain when no functions are bound, so the `destruction` replay hash is unchanged. |
+| **Status** | Active. Headless showcase and the required replay case. The Aravath greybox binds integer columns through `ColumnFns` and digs with a sphere `Subtract` brush. `Greybox::step` calls `BridgeAgent::step` after the motor. `FlatColumnBase` remains the terrain when no functions are bound, so the `destruction` replay hash is unchanged. The greybox golden is `0a576578512f25d2`. |
 | **Owner notes** | Design: `docs/current/DESTRUCTION_DESIGN.md`. Survey: `docs/current/DESTRUCTION_ARCHAEOLOGY.md`. `Fixed64` lives in `astraweave-math` (PR #245). |
 
 ---
@@ -202,4 +202,5 @@ Update this trace when the command set, the stress iteration count, the pool siz
 | 1.0 | 2026-10-15 | Initial trace for the crate, the replay case, and the headless Aravath showcase |
 | 1.1 | 2026-10-15 | Sparse voxel DAG, ordered query jobs, command-log persistence, weave and navigation notices |
 | 1.2 | 2026-10-15 | Collapse notices publish the union of newly dynamic piece bounds. Issue #279 |
+| 1.4 | 2026-10-16 | Merge `84d3888a`. `Greybox::step` calls `BridgeAgent`. Greybox golden is `0a576578512f25d2`. #249, #250, and #261 are still open on the tracker. |
 | 1.3 | 2026-10-16 | `ColumnFns` and `apply_brush_now`. Greybox digs with a brush. `FlatColumnBase` stays the unbound terrain. Issues #249 and #250 |
