@@ -56,6 +56,7 @@ struct App {
     foliage_ready: bool,
     selected: u16,
     notice: Option<(String, f32)>,
+    cover_told: bool,
     save_toggle: bool,
     load_toggle: bool,
     respawn_toggle: bool,
@@ -102,6 +103,7 @@ impl App {
             foliage_ready: false,
             selected: 1,
             notice: None,
+            cover_told: false,
             save_toggle: false,
             load_toggle: false,
             respawn_toggle: false,
@@ -376,6 +378,10 @@ impl ApplicationHandler for App {
         let caught = self.latch.catch_up(&mut self.sim, frame_dt);
         if caught.respawned {
             self.notice = Some(("Respawned".into(), 2.5));
+        }
+        if self.sim.combat.cover_broken && !self.cover_told {
+            self.cover_told = true;
+            self.notice = Some(("Cover broke".into(), 2.5));
         }
         if caught.steps > 0 && self.save_toggle {
             self.save_toggle = false;

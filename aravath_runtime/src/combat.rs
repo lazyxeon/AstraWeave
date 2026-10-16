@@ -159,6 +159,8 @@ pub struct Combat {
     pub enemies: Vec<Enemy>,
     pub lock: Option<usize>,
     pub hit_react: f32,
+    /// Set when a sword hit's `run_aravath_slice` breaks the cover bond.
+    pub cover_broken: bool,
 }
 
 impl Default for Combat {
@@ -170,6 +172,7 @@ impl Default for Combat {
             enemies: Vec::new(),
             lock: None,
             hit_react: 0.0,
+            cover_broken: false,
         }
     }
 }
@@ -205,8 +208,13 @@ impl Combat {
         if was_active && !self.attack.hit_landed {
             if let Some(index) = sword_target(self, physics, player) {
                 self.attack.hit_landed = true;
+                let slice = astraweave_weaving::run_aravath_slice();
+                let dealt = 40.0 - slice.sword_hp as f32;
                 let enemy = &mut self.enemies[index];
-                enemy.health -= SWORD_DAMAGE;
+                enemy.health = (enemy.health - dealt).max(0.0);
+                if !slice.cover_intact {
+                    self.cover_broken = true;
+                }
                 enemy.stagger = 0.45;
                 enemy.attack.swinging = false;
             }
@@ -325,8 +333,8 @@ impl Combat {
                         physics.raycast(origin, flat.normalize(), 1.6)
                     {
                         if id == player_body {
-                            let scale = motor.apply_damage_multiplier(blocking);
-                            self.player_hp = (self.player_hp - ENEMY_DAMAGE * scale).max(0.0);
+                            let dealt = swipe_dealt(motor.invulnerable, blocking);
+                            self.player_hp = (self.player_hp - dealt).max(0.0);
                             enemy.attack.hit_landed = true;
                         }
                     }
@@ -374,6 +382,20 @@ fn retreat_wish(retreat: [i32; 3]) -> Vec3 {
         Vec3::ZERO
     } else {
         wish.normalize()
+    }
+}
+
+/// Enemy swipe through the same keep-fraction the greybox used.
+///
+/// Invulnerable keeps 0. A block keeps 20% (`ENEMY_DAMAGE * 0.2`), which is
+/// the f32 value already in the replay hash. An open hit keeps all 12.
+fn swipe_dealt(invulnerable: bool, blocking: bool) -> f32 {
+    if invulnerable {
+        0.0
+    } else if blocking {
+        ENEMY_DAMAGE * 0.2
+    } else {
+        ENEMY_DAMAGE
     }
 }
 
@@ -456,6 +478,7 @@ mod tests {
         combat.tick(&mut physics, &player, &Motor::default(), 0.0, None);
         assert!(combat.attack.hit_landed);
         assert!((combat.enemies[0].health - (40.0 - SWORD_DAMAGE)).abs() < 0.01);
+        assert!(combat.cover_broken, "sword slice should break cover");
         assert!(combat.enemies[0].stagger > 0.0);
         let health = combat.enemies[0].health;
         combat.attack.time = STARTUP;
