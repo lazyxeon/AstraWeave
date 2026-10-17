@@ -42,7 +42,7 @@ Checked against `main` at `10757c81`. Numbers that were not re-measured in this 
 | **Frame time** | The target is under 11 ms per frame on a GTX 1660 Ti-class GPU. It is not yet measured on that hardware: the GPU timer read 0 ms, and the readback is in progress in #216. Do not treat the older CPU `profiling_demo` times as this measurement. |
 | **Coverage and Miri** | Whole-workspace line coverage **57.35%** was measured 2026-06-29 and has not been re-run on the 141-member tree. Miri **1,059** tests, 0 UB, was measured 2026-06-27 across ecs, math, core, and sdk. The February 2026 report records an older, smaller run. Kani proof attributes were **69** on 2026-06-13 and were not re-counted here. |
 | **Build** | This pass did not run `cargo check --workspace`. The last clean workspace check written into these docs is 2026-06-10, at 130 members. |
-| **Supply chain** | #325 (`8e5dd73c`) makes `cargo deny` advisories and `cargo audit` pass aside from later advisories. Patched crates are locked (`rustls` 0.23.46, `tokio-rustls` 0.26.4, `openh264` 0.9.9). Ignored leftovers are #305–#311 and #320–#323. #353 vendors `third_party/candle-core` (crates.io `candle-core` 0.8.4) and pins it to `zip` 9.0.3. #350 vendors `third_party/rapier3d` (crates.io `rapier3d` 0.22) on the same `[patch.crates-io]` table so a settled `PhysicsWorld::step` allocates nothing. An in-house physics engine is not planned work. That is the patched line for RUSTSEC-2026-0367, 0368, and 0369. `Cargo.lock` has no `zip` 1.1.4. There is no audit ignore for those three IDs. #324 is closed. The fix is #353. Drop the vendor directory and the `[patch.crates-io]` entry once candle upstream depends on `zip >= 9`. #217 removed `openssl` from the lockfile. `deny.toml` still bans `openssl` and `openssl-sys`. #219 and #256 are closed. #327 (`87fbe079`) drops `net` from the workspace `tokio` features. `astraweave-net`, `astraweave-ipc`, and `astraweave-net-ecs` opt in. #326 is closed. |
+| **Supply chain** | #325 (`8e5dd73c`) makes `cargo deny` advisories and `cargo audit` pass aside from later advisories. Patched crates are locked (`rustls` 0.23.46, `tokio-rustls` 0.26.4, `openh264` 0.9.9). Ignored leftovers are #305–#311 and #320–#323. #353 vendors `third_party/candle-core` (crates.io `candle-core` 0.8.4) and pins it to `zip` 9.0.3. #350 vendors `third_party/rapier3d` (crates.io `rapier3d` 0.22) on the same `[patch.crates-io]` table so a settled `PhysicsWorld::step` allocates nothing. An in-house physics engine is not planned work. That is the patched line for RUSTSEC-2026-0367, 0368, and 0369. `Cargo.lock` has no `zip` 1.1.4. There is no audit ignore for those three zip IDs. #324 is closed. The fix is #353. #365 resolved RUSTSEC-2026-0370, 0371, and 0372 with no ignore: `eframe` is built without AccessKit, so screen readers do not receive the egui tree, and editor file dialogs are `rfd` 0.17 (`libdbus` or `zenity` on Linux). The editor `kittest` feature is gone. Click tests are #366, in progress. Drop the vendor directory and the `[patch.crates-io]` entry once candle upstream depends on `zip >= 9`. #217 removed `openssl` from the lockfile. `deny.toml` still bans `openssl` and `openssl-sys`. #219 and #256 are closed. #327 (`87fbe079`) drops `net` from the workspace `tokio` features. `astraweave-net`, `astraweave-ipc`, and `astraweave-net-ecs` opt in. #326 is closed. |
 | **Traces** | **31** subsystem traces under `docs/architecture/`, including `veil.md`, listed in the generated table in `CLAUDE.md`. The June "13 traces" figure is the original campaign, not the current set. |
 
 ### On main since the June snapshot
@@ -77,6 +77,7 @@ These pulls are not on `main`.
 - **#216** — render frame budget (GPU timer readback)
 - **#360** — register schedule stages without `expect`
 - **#361** — split benchmark shards 2 and 4 under the 600s cap
+- **#366** — restore editor click tests lost with `egui_kittest`
 
 ---
 
@@ -139,7 +140,7 @@ The 12,700-agent figure is a CPU capacity estimate for a mid-complexity AI loop 
 
 ## Systems on this tree
 
-| Area | State on `cbb314b9` |
+| Area | State on `9255b97b` |
 | --- | --- |
 | **ECS, math, core, sdk** | Single-threaded archetype schedule. Miri-clean as of the 2026-06-27 run (1,059 tests). |
 | **Combat** | `astraweave-combat` resolves damage in Q32.32. Replay case `combat_resolve`. |

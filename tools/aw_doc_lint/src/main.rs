@@ -40,7 +40,7 @@ const ALLOWLIST_REL: &str = "docs/campaigns/doc-truth/CLOSED_VOCABULARY_ALLOWLIS
 const REPLAY_WORKFLOW_REL: &str = ".github/workflows/determinism-replay.yml";
 const README_REL: &str = "README.md";
 
-const IN_PROGRESS_ISSUES: &[&str] = &["#216", "#360", "#361"];
+const IN_PROGRESS_ISSUES: &[&str] = &["#216", "#360", "#361", "#366"];
 
 const VOCAB_A_START: &str = "<!-- VOCAB-A-START -->";
 const VOCAB_A_END: &str = "<!-- VOCAB-A-END -->";
@@ -810,7 +810,7 @@ mod tests {
             "planner_pure perception_world gameplay_rng fixed64 combat_resolve",
             "destruction gameplay_qa_aravath_slice nav_reroute causal_bridge scripted_system weaving traversal traversal_deformed worldgen_columns deformed_chunk local_sim greybox_checkpoint quest_ticks persist_replay",
             "## In progress",
-            "#216 are in progress. #360 are in progress. #361 are in progress",
+            "#216 are in progress. #360 are in progress. #361 are in progress. #366 are in progress",
             "## Next",
         ]
         .join("\n")
