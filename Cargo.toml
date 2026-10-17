@@ -304,6 +304,14 @@ incremental = false
 # and 0369 are patched only in zip >= 9.0.0. This copy is crates.io 0.8.4
 # pinned to the workspace zip 9.0.3. Delete this directory and the patch
 # below once candle upstream depends on zip >= 9. Asset packs stay on 9.0.3.
+#
+# Rapier 0.22 `PhysicsPipeline::step` takes the modified-body and
+# modified-collider Vecs and drops them. The next step then grows a new
+# Vec from zero inside `RigidBodyColliders::update_positions` (5 allocs
+# for a 64-box stack) plus a full query-pipeline rebuild used to add 3
+# more. This copy returns the drained buffers so a settled step allocates
+# nothing. The query pipeline is still updated incrementally inside `step`.
 [patch.crates-io]
 candle-core = { path = "third_party/candle-core" }
+rapier3d = { path = "third_party/rapier3d" }
 
