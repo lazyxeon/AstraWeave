@@ -183,6 +183,7 @@ fn draw_into_heavy_path_timestamps_and_models() {
                 !writes.is_empty(),
                 "draw_into recorded no timestamp writes\n{trace_report}"
             );
+            assert_ne!(resolve.encoder, 0, "{trace_report}");
             for write in writes {
                 assert_eq!(
                     write.submit, resolve.submit,
@@ -194,8 +195,17 @@ fn draw_into_heavy_path_timestamps_and_models() {
                     "write {} query_set {} != resolve query_set {}\n{trace_report}",
                     write.label, write.query_set, resolve.query_set
                 );
+                assert_eq!(
+                    write.encoder, resolve.encoder,
+                    "write {} encoder {} != resolve encoder {}\n{trace_report}",
+                    write.label, write.encoder, resolve.encoder
+                );
                 assert_ne!(write.submit, 0, "{trace_report}");
             }
+            assert!(
+                trace_report.contains("encoder_count=1\n"),
+                "writes and resolve must be one encoder\n{trace_report}"
+            );
             assert!(trace_report.contains("mapped_buffer="), "{trace_report}");
             assert!(trace_report.contains("raw_u64="), "{trace_report}");
             if frame_index == 0 {
@@ -265,6 +275,10 @@ fn timestamp_readback_self_test_is_nonzero() {
         assert!(
             !report.contains("begin=0 end=0"),
             "readback path returned zeros:\n{report}"
+        );
+        assert!(
+            report.contains("encoder_count=1\n"),
+            "self-test writes and resolve must share one encoder\n{report}"
         );
         println!("{report}");
         let err = device.pop_error_scope().await;

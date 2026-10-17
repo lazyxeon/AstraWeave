@@ -3911,12 +3911,11 @@ fn vs(input: VSIn) -> VSOut {
         }
     }
 
-    /// Submit `draw_into`'s encoder together with the timestamp resolve.
+    /// Submit the encoder that already contains the timestamp writes and resolve.
     ///
-    /// Waiting for the writes and then resolving in a later submission
-    /// deadlocks on NVIDIA: the resolve waits for queries that have not
-    /// landed, and `device.poll(Wait)` does not return. The resolve is the
-    /// second command buffer of this submit. The copy follows a 5s poll.
+    /// [`crate::gpu_profiler::GpuProfiler::resolve_queries`] runs on that
+    /// encoder before `finish`. A second resolve encoder reads unavailable
+    /// queries on NVIDIA. The copy follows a 5s poll of this submission.
     pub fn submit_timestamped(&mut self, frame: wgpu::CommandBuffer) -> Result<()> {
         let queue = self.queue.clone();
         let device = self.device.clone();
@@ -7080,9 +7079,10 @@ fn vs(input: VSIn) -> VSOut {
             pp.draw(0..3, 0..1);
         }
 
-        // Resolve in this encoder. The staging copy is a second command
-        // buffer in the same submit (wgpu#6406).
+        // Pass timestamps in `render` are recorded on `enc`. Resolve them
+        // here. `submit_timestamped` does not open a second encoder.
         if let Some(ref mut p) = self.gpu_profiler {
+            p.resolve_queries(&mut enc);
             p.end_frame(&mut enc);
         }
 
@@ -7970,12 +7970,14 @@ fn vs(input: VSIn) -> VSOut {
         self.record_hiz(enc, depth_view);
         self.record_particles(enc, view, depth_view);
 
-        // The frame end tick is after every pass, still in this encoder.
-        // Resolve stays out of this encoder: `submit_timestamped` waits for
-        // the submission, then resolves. Resolving here reads zeros on NVIDIA.
+        // The frame end tick is the last `write_timestamp` on `enc`.
+        // Sky, water, atmosphere, Hi-Z, and particles record into `enc`.
+        // `draw_into` does not create a command encoder and does not call
+        // `queue.submit`. Resolve on this encoder, then the caller submits it.
         self.close_frame_timestamp(enc);
-        if let Some(ref p) = self.gpu_profiler {
-            p.end_frame(enc);
+        if let Some(profiler) = self.gpu_profiler.as_mut() {
+            profiler.resolve_queries(enc);
+            profiler.end_frame(enc);
         }
 
         Ok(())

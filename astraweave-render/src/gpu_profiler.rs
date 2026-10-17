@@ -188,6 +188,8 @@ pub struct StampRecord {
     pub index: u32,
     pub label: &'static str,
     pub submit: u64,
+    /// Address of the `CommandEncoder` that recorded this command.
+    pub encoder: u64,
 }
 
 /// End index of a pair opened by [`GpuProfiler::begin_stamp`].
@@ -219,7 +221,12 @@ const fn empty_stamp() -> StampRecord {
         index: 0,
         label: "",
         submit: 0,
+        encoder: 0,
     }
+}
+
+fn encoder_id(encoder: &wgpu::CommandEncoder) -> u64 {
+    encoder as *const wgpu::CommandEncoder as u64
 }
 
 /// Manages GPU timestamp queries across render/compute passes.
@@ -369,7 +376,14 @@ impl GpuProfiler {
         self.stamp_len = 0;
     }
 
-    fn note_stamp(&mut self, kind: StampKind, index: u32, label: &'static str, submit: u64) {
+    fn note_stamp(
+        &mut self,
+        kind: StampKind,
+        index: u32,
+        label: &'static str,
+        submit: u64,
+        encoder: u64,
+    ) {
         let len = self.stamp_len as usize;
         if len >= STAMP_CAP {
             return;
@@ -380,6 +394,7 @@ impl GpuProfiler {
             index,
             label,
             submit,
+            encoder,
         };
         self.stamp_len += 1;
     }
@@ -395,7 +410,7 @@ impl GpuProfiler {
         name: &'static str,
     ) -> Option<OpenStamp> {
         let (begin, end) = self.allocate_pass(name)?;
-        self.note_stamp(StampKind::Write, begin, name, 0);
+        self.note_stamp(StampKind::Write, begin, name, 0, encoder_id(encoder));
         let query_set = self.query_set.clone();
         encoder.write_timestamp(&query_set, begin);
         Some(OpenStamp { name, end })
@@ -403,7 +418,13 @@ impl GpuProfiler {
 
     /// Matching end `write_timestamp` for [`Self::begin_stamp`], on the same encoder.
     pub fn end_stamp(&mut self, encoder: &mut wgpu::CommandEncoder, stamp: OpenStamp) {
-        self.note_stamp(StampKind::Write, stamp.end, stamp.name, 0);
+        self.note_stamp(
+            StampKind::Write,
+            stamp.end,
+            stamp.name,
+            0,
+            encoder_id(encoder),
+        );
         let query_set = self.query_set.clone();
         encoder.write_timestamp(&query_set, stamp.end);
     }
@@ -428,10 +449,22 @@ impl GpuProfiler {
         lines.push(format!("query_set={}", query_set_token(&self.query_set)));
         for stamp in self.stamp_trace() {
             lines.push(format!(
-                "submit={} kind={:?} label={} index={} query_set={}",
-                stamp.submit, stamp.kind, stamp.label, stamp.index, stamp.query_set
+                "submit={} encoder={} kind={:?} label={} index={} query_set={}",
+                stamp.submit, stamp.encoder, stamp.kind, stamp.label, stamp.index, stamp.query_set
             ));
         }
+        let mut encoder_ids = [0u64; STAMP_CAP];
+        let mut encoder_count = 0usize;
+        for stamp in self.stamp_trace() {
+            if stamp.kind == StampKind::Copy || stamp.encoder == 0 {
+                continue;
+            }
+            if !encoder_ids[..encoder_count].contains(&stamp.encoder) {
+                encoder_ids[encoder_count] = stamp.encoder;
+                encoder_count += 1;
+            }
+        }
+        lines.push(format!("encoder_count={encoder_count}"));
         if self.stamp_len == 0 {
             lines.push("submit=(none)".to_string());
         }
@@ -533,8 +566,8 @@ impl GpuProfiler {
         self.next_query > 0 && !self.readback_pending
     }
 
-    /// Mark the frame closed. The resolve is not recorded here.
-    /// [`Self::submit_frame`] appends it to the same submission as the writes.
+    /// Mark the frame closed. [`Self::resolve_queries`] records the resolve
+    /// on the write encoder before [`Self::submit_frame`] submits that buffer.
     pub fn end_frame(&self, _encoder: &mut wgpu::CommandEncoder) {
         if self.readback_pending && self.next_query > 0 {
             log::debug!(
@@ -543,24 +576,74 @@ impl GpuProfiler {
         }
     }
 
-    /// Resolve written queries into the GPU buffer.
+    /// Resolve written queries into the GPU buffer on `encoder`.
     ///
-    /// Call this only after `device.poll(Wait)` has finished the submission
-    /// that wrote the queries. The staging copy stays on a second encoder
+    /// `encoder` is the `CommandEncoder` that recorded this frame's
+    /// `write_timestamp` calls. wgpu tracks query resets per encoder. A
+    /// resolve on a different encoder reads queries that encoder never wrote,
+    /// and NVIDIA returns 0 for them. The staging copy stays a later submission
     /// (wgpu#6406).
     pub fn resolve_queries(&mut self, encoder: &mut wgpu::CommandEncoder) {
         if !self.staging_copy_pending() {
             return;
         }
+        if self
+            .stamp_trace()
+            .iter()
+            .any(|stamp| stamp.kind == StampKind::Resolve)
+        {
+            return;
+        }
         self.resolve_buffer = resource_token(2, &self.resolve_buf);
         self.resolve_offset = 0;
-        encoder.resolve_query_set(&self.query_set, 0..self.next_query, &self.resolve_buf, 0);
+        let index = self.next_query;
+        let recorded_on = encoder_id(encoder);
+        self.note_stamp(StampKind::Resolve, index, "resolve", 0, recorded_on);
+        encoder.resolve_query_set(&self.query_set, 0..index, &self.resolve_buf, 0);
+    }
+
+    /// Every `write_timestamp` and the one `resolve_query_set` share an encoder.
+    ///
+    /// A matching submit id is not enough: `queue.submit` can take two
+    /// command buffers, and that id does not say which encoder recorded the
+    /// resolve.
+    fn assert_shared_write_encoder(&self) -> Result<(), String> {
+        let mut resolve_encoder = 0u64;
+        let mut resolve_count = 0u32;
+        for stamp in self.stamp_trace() {
+            if stamp.kind == StampKind::Resolve {
+                resolve_encoder = stamp.encoder;
+                resolve_count += 1;
+            }
+        }
+        if resolve_count != 1 || resolve_encoder == 0 {
+            return Err(format!(
+                "expected one resolve_query_set on the write encoder, found {resolve_count}\n{}",
+                self.submission_report()
+            ));
+        }
+        for stamp in self.stamp_trace() {
+            if stamp.kind != StampKind::Write {
+                continue;
+            }
+            if stamp.encoder != resolve_encoder {
+                return Err(format!(
+                    "timestamp write {} index {} encoder {} != resolve encoder {}\n{}",
+                    stamp.label,
+                    stamp.index,
+                    stamp.encoder,
+                    resolve_encoder,
+                    self.submission_report()
+                ));
+            }
+        }
+        Ok(())
     }
 
     /// Copy the resolved timestamps into the CPU staging buffer.
     ///
-    /// The encoder must not be the one that called [`Self::end_frame`].
-    /// Submit it after that encoder in the same `queue.submit`.
+    /// Submit this encoder only after the write-and-resolve submission is idle
+    /// (wgpu#6406). It is not the encoder that wrote the timestamps.
     pub fn copy_resolved(&mut self, encoder: &mut wgpu::CommandEncoder) {
         if !self.staging_copy_pending() {
             return;
@@ -574,15 +657,16 @@ impl GpuProfiler {
         encoder.copy_buffer_to_buffer(&self.resolve_buf, 0, &self.readback_buf, 0, byte_count);
     }
 
-    /// Submit the writes and the resolve together, then copy after that
-    /// submission is idle.
+    /// Submit the command buffer that already contains the writes and the resolve.
     ///
-    /// `device.poll(Wait)` after the writes and before the resolve deadlocks
-    /// on NVIDIA. The resolve's `VK_QUERY_RESULT_WAIT_BIT` runs while the
-    /// writes are still queued, and the fence wait never returns. The resolve
-    /// stays in the same `queue.submit` as the writes, ordered after them.
-    /// The copy is a later submission (wgpu#6406). Every wait is a non-blocking
-    /// poll with a 5s limit.
+    /// [`Self::resolve_queries`] must have run on that same `CommandEncoder`.
+    /// Opening a second encoder for the resolve submits two Vulkan command
+    /// buffers. wgpu resets queries per command buffer, so the resolve reads
+    /// queries that buffer never wrote, and NVIDIA returns 0. The submit id
+    /// is logical and does not show that split. The copy is a later submission
+    /// (wgpu#6406). Resolving only after a wait of the writes deadlocks NVIDIA:
+    /// `VK_QUERY_RESULT_WAIT_BIT` runs while those writes are still queued.
+    /// Every wait is a non-blocking poll with a 5s limit.
     pub fn submit_frame(
         profiler: Option<&mut Self>,
         queue: &wgpu::Queue,
@@ -597,28 +681,26 @@ impl GpuProfiler {
             queue.submit(std::iter::once(frame));
             return wait_for_gpu(device, "frame submit");
         }
-        let mut resolve = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("gpu profiler timestamp resolve"),
-        });
-        profiler.resolve_queries(&mut resolve);
+        profiler.assert_shared_write_encoder()?;
         profiler.submit_serial += 1;
         let write_submit = profiler.submit_serial;
         profiler.assign_open_stamps(write_submit);
-        profiler.note_stamp(
-            StampKind::Resolve,
-            profiler.next_query,
-            "resolve",
-            write_submit,
-        );
-        queue.submit([frame, resolve.finish()]);
+        queue.submit(std::iter::once(frame));
         wait_for_gpu(device, "timestamp write+resolve")?;
         let mut copy = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("gpu profiler timestamp copy"),
         });
+        let copy_encoder = encoder_id(&copy);
         profiler.copy_resolved(&mut copy);
         profiler.submit_serial += 1;
         let copy_submit = profiler.submit_serial;
-        profiler.note_stamp(StampKind::Copy, profiler.next_query, "copy", copy_submit);
+        profiler.note_stamp(
+            StampKind::Copy,
+            profiler.next_query,
+            "copy",
+            copy_submit,
+            copy_encoder,
+        );
         queue.submit(std::iter::once(copy.finish()));
         wait_for_gpu(device, "timestamp staging copy")
     }
@@ -740,9 +822,9 @@ impl GpuProfiler {
         &self.latest_results
     }
 
-    /// Write two encoder timestamps around a 1×1 clear, then use
-    /// [`Self::submit_frame`] (same submit for the writes and the resolve,
-    /// timed wait, then the copy).
+    /// Write two encoder timestamps around a 1×1 clear, resolve them on that
+    /// same encoder, then use [`Self::submit_frame`]. The copy is the next
+    /// submission. `Ok` includes `encoder_count`.
     ///
     /// `Ok` is the stamp report. A `0, 0` pair is a failure. Equal non-zero
     /// ticks are [`TimestampKind::Empty`]: a trivial pass can be shorter than
@@ -811,6 +893,7 @@ impl GpuProfiler {
         }
         profiler.end_stamp(&mut writes, clear);
         profiler.end_stamp(&mut writes, outer);
+        profiler.resolve_queries(&mut writes);
         profiler.end_frame(&mut writes);
 
         let frame = writes.finish();
@@ -832,8 +915,9 @@ impl GpuProfiler {
             .collect();
         if !unread.is_empty() {
             return Err(format!(
-                "timestamp self-test read zeros ({}); resolve and the staging copy must be different command buffers in one submit\n{report}",
-                unread.join(", ")
+                "timestamp self-test read zeros ({}); resolve_query_set must be on the write encoder and the copy is a later submission\n{report}\n{}",
+                unread.join(", "),
+                profiler.submission_report()
             ));
         }
         if profiler.results().is_empty() {
@@ -1012,6 +1096,7 @@ mod tests {
                     occlusion_query_set: None,
                 });
             }
+            profiler.resolve_queries(&mut enc);
             profiler.end_frame(&mut enc);
             enc.finish()
         };
@@ -1056,6 +1141,10 @@ mod tests {
         assert!(
             !report.contains("begin=0 end=0"),
             "self-test report still has an unwritten pair:\n{report}"
+        );
+        assert!(
+            report.contains("encoder_count=1\n"),
+            "self-test writes and resolve must share one encoder\n{report}"
         );
         let err = pollster::block_on(device.pop_error_scope());
         if let Some(err) = err {

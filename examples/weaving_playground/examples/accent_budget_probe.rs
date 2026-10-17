@@ -366,21 +366,15 @@ fn main() {
                 if has_inside {
                     enc.write_timestamp(&acc_qset, 1);
                 }
-                if let Some(ref p) = profiler {
+                if let Some(p) = profiler.as_mut() {
+                    p.resolve_queries(&mut enc);
                     p.end_frame(&mut enc);
                 }
-                // Resolve in the same submit as the writes. Waiting first, then
-                // resolving, deadlocks NVIDIA's query wait.
-                let mut resolve = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                    label: Some("accent timestamp resolve"),
-                });
+                // Accent timestamps were written on `enc`. Resolve them there.
                 if has_inside {
-                    resolve.resolve_query_set(&acc_qset, 0..2, &acc_resolve, 0);
+                    enc.resolve_query_set(&acc_qset, 0..2, &acc_resolve, 0);
                 }
-                if let Some(p) = profiler.as_mut() {
-                    p.resolve_queries(&mut resolve);
-                }
-                queue.submit([enc.finish(), resolve.finish()]);
+                queue.submit(std::iter::once(enc.finish()));
                 astraweave_render::gpu_profiler::wait_for_gpu(&device, "accent write+resolve")
                     .expect("accent write+resolve");
                 let mut staging = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {

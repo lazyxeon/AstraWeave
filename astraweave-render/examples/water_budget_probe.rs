@@ -170,7 +170,8 @@ fn probe_isolated(device: &wgpu::Device, queue: &wgpu::Queue, has_timestamps: bo
                 });
                 water.render(&mut rp);
             }
-            if let Some(ref p) = profiler {
+            if let Some(p) = profiler.as_mut() {
+                p.resolve_queries(&mut enc);
                 p.end_frame(&mut enc);
             }
             GpuProfiler::submit_frame(profiler.as_mut(), queue, device, enc.finish())
@@ -270,7 +271,8 @@ fn probe_isolated(device: &wgpu::Device, queue: &wgpu::Queue, has_timestamps: bo
                 });
                 water.render(&mut rp);
             }
-            if let Some(ref p) = profiler {
+            if let Some(p) = profiler.as_mut() {
+                p.resolve_queries(&mut enc);
                 p.end_frame(&mut enc);
             }
             GpuProfiler::submit_frame(profiler.as_mut(), queue, device, enc.finish())
@@ -761,21 +763,16 @@ fn probe_refraction(device: &wgpu::Device, queue: &wgpu::Queue, has_timestamps: 
                 });
                 water.render(&mut wp);
             }
-            if let Some(ref p) = profiler {
+            if let Some(p) = profiler.as_mut() {
+                p.resolve_queries(&mut enc);
                 p.end_frame(&mut enc);
             }
-            // Resolve in the same submit as the writes. A later resolve
-            // deadlocks NVIDIA's query wait. The copy stays a later submit.
-            let mut resolve = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("probe timestamp resolve"),
-            });
+            // The probe's own query set was written on `enc`. Resolve it there.
+            // A later resolve reads unavailable queries on NVIDIA.
             if copy_ts {
-                resolve.resolve_query_set(&copy_qset, 0..2, &copy_resolve, 0);
+                enc.resolve_query_set(&copy_qset, 0..2, &copy_resolve, 0);
             }
-            if let Some(p) = profiler.as_mut() {
-                p.resolve_queries(&mut resolve);
-            }
-            queue.submit([enc.finish(), resolve.finish()]);
+            queue.submit(std::iter::once(enc.finish()));
             astraweave_render::gpu_profiler::wait_for_gpu(device, "probe write+resolve")
                 .expect("probe write+resolve");
             let mut staging = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
@@ -1072,7 +1069,8 @@ fn measure_water_pass(
             });
             water.render(&mut rp);
         }
-        if let Some(p) = profiler.as_ref() {
+        if let Some(p) = profiler.as_mut() {
+            p.resolve_queries(&mut enc);
             p.end_frame(&mut enc);
         }
         GpuProfiler::submit_frame(profiler.as_mut(), queue, device, enc.finish())
