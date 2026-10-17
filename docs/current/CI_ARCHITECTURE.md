@@ -57,11 +57,11 @@ These also run on a non-docs pull request when their paths match, and are not in
 | Work | When |
 |---|---|
 | Full 3-OS `cargo nextest` plus a release build of the core crates, and demo validation | `ci.yml` on push, schedule 04:30 UTC, dispatch. Not on pull requests. |
-| 6-toolchain matrix (stable, 1.89.0, 1.88.0, beta, nightly) | `toolchain-management.yml` on push to main, schedule 05:40 UTC, dispatch. MSRV stays on the pull request. |
+| 6-toolchain matrix (stable, 1.89.0, 1.88.0, beta, nightly) | `toolchain-management.yml` on push to main, schedule 05:40 UTC, dispatch. The checkout sets `lfs: true` (#348) so `ASSET_MANIFEST.tsv` hashes the Aravath blobs, not the pointer files. MSRV stays on the pull request. |
 | Sanitizers | `sanitizers.yml` on push and schedule 03:00 UTC. Not on pull requests. |
 | Coverage | `coverage.yml` on push to main, schedule 06:10 UTC, dispatch. |
 | CodeQL | push to main and weekly (Sunday 03:00 UTC). Not on pull requests. |
-| Benchmarks, including `aw_build` | see item 1 above. Shard count stays 12 on this branch. |
+| Benchmarks, including `aw_build` | see item 1 above. Shard count is 14 (`shard_index` 0–13, `--shard-count 14`). Shard 0 is `astraweave-net`, `astraweave-profiling`, `astraweave-water`, and `astraweave-localsim` (#351). The 600s cap is unchanged. |
 | Integration tests other than the replay hash | `integration-tests.yml` on push and schedule 04:00 UTC. |
 | PBR build and editor tests, all three OS | `pbr-pipeline-ci.yml`, `editor-ci.yml`, `aw-editor-tests.yml` on push, their nightly schedules, and `workflow_dispatch`. Not on pull requests. |
 | Allocation ceilings, zero-alloc hot paths, CPU tick-time artifact | `allocation-measurement.yml` on push to `main`, schedule 05:45 UTC, and `workflow_dispatch`. Not on pull requests. The 11 ms GTX 1660 Ti check is the `gpu_frame_budget` dispatch input on a self-hosted runner labeled `gpu`. |
