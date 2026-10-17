@@ -314,6 +314,7 @@ incremental = false
 # for a 64-box stack) plus a full query-pipeline rebuild used to add 3
 # more. This copy returns the drained buffers so a settled step allocates
 # nothing. The query pipeline is still updated incrementally inside `step`.
+# Upstream version, the patch, and how to re-apply it: third_party/rapier3d/VENDORED.md.
 [patch.crates-io]
 candle-core = { path = "third_party/candle-core" }
 rapier3d = { path = "third_party/rapier3d" }
