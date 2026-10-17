@@ -6907,7 +6907,7 @@ fn vs(input: VSIn) -> VSOut {
                 sun_dir,
                 &cloud_cfg,
                 cloud_cfg.extinction_coeff,
-                32,
+                crate::volumetric_clouds::CLOUD_SHADOW_STEPS,
                 1.0 / 60.0,
             );
             self.cloud_shadow_pass
@@ -7621,7 +7621,7 @@ fn vs(input: VSIn) -> VSOut {
                 sun_dir,
                 &cloud_cfg,
                 cloud_cfg.extinction_coeff,
-                32,
+                crate::volumetric_clouds::CLOUD_SHADOW_STEPS,
                 1.0 / 60.0,
             );
             self.cloud_shadow_pass

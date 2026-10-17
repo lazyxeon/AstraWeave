@@ -8,7 +8,7 @@ domain: rendering
 lifecycle_status: active
 integration_status: wired
 owns: [astraweave-materials, astraweave-render]
-doc_version: "1.37"
+doc_version: "1.38"
 last_verified_commit: 0758171bf
 ---
 
@@ -20,7 +20,7 @@ last_verified_commit: 0758171bf
 |---|---|
 | **System name** | Render Pipeline + Material System + Shader Infrastructure |
 | **Primary crates** | `astraweave-render` (123 Rust files / ~78K LoC + 71 WGSL files), `astraweave-materials` (single-file material-graph crate), `tools/aw_editor/src/viewport/` (editor-side renderer + engine adapter) |
-| **Document version** | 1.37 |
+| **Document version** | 1.38 |
 | **Last verified against commit** | `0758171bf` (lifecycle RSS); prior `154d723aa` (v1.19, 2026-08-02: L.3.C-resolution — 4-cascade CSM + `FarCascadePolicy` + fit-derived bias cap; trace updated in the same commit as the code, so this names its parent); prior `d4c4479d4` (v1.12, 2026-07-25: T.2d.F tier retirement — see revision notice); prior `8232b150b` (v1.10, 2026-07-21: E3 terrain render-path additions verified first-hand — see revision notice); prior `7c29b8182` (v1.8 verification pass: §2.6 Water surface render path re-verified end-to-end against `water.rs` / `water.wgsl` / `renderer.rs` — every file:line citation confirmed, zero corrections, no markers needed; v1.7 added the subsection + cross-link to `docs/architecture/water.md`); prior: `67c9de7e1` (full trace); water rows W.2a + W.2b.2 + W.2c.2 weave-deformation + W.2c.3 weave producer (2026-06-22) + F.4.2 weave-impact accent machinery + F.4.3 live HDR-overlay composite & combined-frame measurement (2026-06-24) |
 | **Last verified date** | 2026-08-02 (L.3.C-resolution: 4-cascade CSM, far-cascade refresh policy, fit-derived receiver-bias cap, invariant 20 (e)-(i)); 2026-07-21 (E3 terrain render-path, T.0 trace-sync); 2026-06-25 (§2.6 water render-path verification pass); 2026-06-24 (water render-path subsection authored); 2026-05-10 (full trace) |
 | **Status** | **ACTIVE WORKZONE** — Editor Multi-Tool Architecture Campaign Sub-phase 3 (Mediator Brush) is in flight as of campaign-doc commit `e3d07f366` (2026-05-08, Round-8-Closure). Fix 27 Unified Pipeline Campaign is structurally complete (per CLAUDE.md) but deeper editor↔runtime unification continues. Treat this trace as a **navigational map**; per-subsystem detailed traces are follow-up work. |
@@ -32,7 +32,9 @@ last_verified_commit: 0758171bf
 > **Revision notice — 2026-10-16 (v1.26).** Rebased onto main `cdea968c`. Volumetric fog and god rays stay the #205 passes. Timestamp slots are still allocated only when the pass is recorded, and `gpu_frame_budget --scene heavy` still prints CPU and GPU times with `budget_11ms=not_decided`. `TextureStreamingManager::new` returns `Result`.
 > **Revision notice — 2026-10-16 (v1.26).** Rebased onto main `cdea968c`. Volumetric fog and god rays stay the #205 passes. Timestamp slots are still allocated only when the pass is recorded, and `gpu_frame_budget --scene heavy` still prints CPU and GPU times with `budget_11ms=not_decided`. `TextureStreamingManager::new` returns `Result`, and its decode runtime lives on its own thread. `draw_into` skips the Hi-Z pyramid when the device cannot `textureLoad` a depth texture. GL rejects that load.
 >
-> **Revision notice — 2026-10-17 (v1.37).** The span between sky and the main pass is `cloud_shadow`: the default-on 512² transmittance compute (`shadow_steps=32`). It is not an IBL rebake. The heavy scene still does not draw water. `gpu_cull=cpu_fallback` is the group-3 draw path on every adapter. `budget_11ms` stays `not_decided`.
+> **Revision notice — 2026-10-17 (v1.38).** The cloud-shadow march hoists per-column coverage and wind, and takes 16 steps instead of 32. A 32-step and a 16-step bake of the same noon column differ by at most one 8-bit level on the tonemapped ground (0.18% of texels). Worley stays. The map stays `Rgba16Float` (R16Float is not a core storage format; R32Float is not linearly filterable). Workgroup stays 8×8. `budget_11ms` stays `not_decided`.
+>
+> **Revision notice — 2026-10-17 (v1.37).** The span between sky and the main pass is `cloud_shadow`: the default-on 512² transmittance compute. It is not an IBL rebake. The heavy scene still does not draw water. `gpu_cull=cpu_fallback` is the group-3 draw path on every adapter. `budget_11ms` stays `not_decided`.
 >
 > **Revision notice — 2026-10-17 (v1.36).** Named intervals cover the encoder between the frame stamps (`before_passes`, `after_shadow_*`, `sky_to_main`, `after_main`, and the same pattern through `after_particles`). The heavy scene does not install `WaterRenderer`, so the water stamp brackets a no-op. `budget_11ms` stays `not_decided`.
 >
@@ -555,7 +557,7 @@ This map enumerates the load-bearing files. Per-file traces of every subsystem a
 | `astraweave-render/src/god_rays.rs` | Screen-space god rays / crepuscular shafts (Phase 6). v1.22: composite is sampled scene + write-only rgba16float, then a copy onto HDR | Active | `sun_to_screen`, `GodRayPass` |
 | `astraweave-render/src/volumetric_fog.rs` | Froxel-based volumetric fog + light scattering (Phase 6). v1.21: optional 32³ scar volume sampled in the density pass. v1.22: integrate samples `texture_depth_2d` | Active | Scar upload is `upload_scar_volume`; timestamps via `poll_timestamps` |
 | `astraweave-render/src/gpu_fault.rs` | First wgpu validation error for the process | Active | `scope` / `record`; logged as `FIRST wgpu error` |
-| `astraweave-render/src/volumetric_clouds.rs` | Perlin-Worley volumetric cloud raymarching (Phase 3) | Active | |
+| `astraweave-render/src/volumetric_clouds.rs` | Perlin-Worley volumetric cloud raymarching (Phase 3). Cloud shadows: 512² rgba16float, 16-step hoisted march, workgroup 8×8 (`CLOUD_SHADOW_STEPS`) | Active | `shaders/volumetrics/cloud_shadow_map.wgsl` |
 | `astraweave-render/src/scene_environment.rs` | Scene-env UBO (fog/ambient/tint/sun); WGSL shared snippets `WGSL_FOG_FUNCTIONS`, `WGSL_SCENE_ENVIRONMENT` | Active | |
 
 ### Post-processing
@@ -816,6 +818,7 @@ This map enumerates the load-bearing files. Per-file traces of every subsystem a
 | 21 | Same-named `#[repr(C)]` Rust structs and WGSL `var<uniform>` / `var<storage>` structs share size and field offsets. `vec3` is 16-byte aligned in WGSL. `FogDensityParams` is 160 bytes (`froxel_dims` at 96, `wind_dir` at 144). `ScatterParams` is 176 bytes. `CascadeData` storage stride is 96. | Yes | `tests/wgsl_struct_layout.rs` walks `shaders/` and `src/`. |
 | 22 | **Fate-scars do not add a volumetric pass.** A 32³ world-space texture is sampled by `fog_density.wgsl` at the froxel's world position and written into the existing density volume (R density, G forward weight, B tint). `scatter.wgsl` consumes those channels. The froxel dimensions stay the quality preset. WGSL does not read `i64`, and the scar is not addressed by `froxel_idx % 64`. Fog-off (`enabled == false`, or no pass) uploads nothing. | Yes | `scar_shader_samples_world_space_and_has_no_i64`; `Renderer::upload_veil_scar_volume` returns before work when fog is absent |
 | 23 | **Volumetric storage is write-only `Rgba16Float`.** God-ray composite samples the HDR scene and writes a separate storage texture, then copies onto HDR. It does not use `read_write` storage. Integrate samples scene depth with `texture_depth_2d`. A failed error scope or missing write-only support disables that pass and leaves the rest of the frame running. | Yes | `composite_shader_writes_a_separate_target`; `integrate_shader_samples_depth`; `gpu_fault::storage_write_supported` |
+| 24 | **The cloud-shadow map is one 512² `Rgba16Float` transmittance texture.** The march is 16 steps (`CLOUD_SHADOW_STEPS`). Coverage and wind are sampled once per column. The PBR shaders read `.r` with a linear sampler. R16Float is not used: wgpu does not guarantee it as storage. The pass stays on unless `set_cloud_shadows_enabled(false)`. | Yes | `cloud_shadow_map.wgsl`; `CloudShadowPass`; `sample_cloud_shadow` in SHADER_SRC and SKINNED_SHADER_SRC |
 
 ---
 

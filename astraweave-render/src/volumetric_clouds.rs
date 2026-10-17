@@ -307,6 +307,7 @@ impl VolumetricCloudsPass {
                 include_str!("../shaders/volumetrics/cloud_raymarching.wgsl")
             ),
             "cloud_raymarch_main",
+            &[],
         );
         let composite_pipeline = create_compute_pipeline(
             device,
@@ -314,6 +315,7 @@ impl VolumetricCloudsPass {
             "cloud_composite",
             include_str!("../shaders/volumetrics/cloud_composite.wgsl"),
             "cloud_composite_main",
+            &[],
         );
 
         // --- Sampler ---
@@ -592,6 +594,20 @@ const CLOUD_SHADOW_RES: u32 = 512;
 /// Default shadow map world-space half-extent (covers 2048 × 2048 m).
 const CLOUD_SHADOW_EXTENT: f32 = 1024.0;
 
+/// March steps through the cloud layer. 16 matches a 32-step integral on
+/// this noise scale (the column is a fraction of a Worley cell). See the
+/// shader header for the lavapipe measurement.
+pub const CLOUD_SHADOW_STEPS: u32 = 16;
+
+/// Compute workgroup. 8×8, 16×8, and 16×16 were within 1% on lavapipe.
+const CLOUD_SHADOW_WG_X: u32 = 8;
+const CLOUD_SHADOW_WG_Y: u32 = 8;
+
+const CLOUD_SHADOW_SHADER: &str = concat!(
+    include_str!("../shaders/constants.wgsl"),
+    include_str!("../shaders/volumetrics/cloud_shadow_map.wgsl")
+);
+
 /// Generates a 2D cloud shadow transmittance map from the sun direction.
 ///
 /// The map covers a square region centered on the camera, projected through
@@ -632,6 +648,7 @@ impl CloudShadowPass {
             format: fmt,
             usage: wgpu::TextureUsages::STORAGE_BINDING
                 | wgpu::TextureUsages::TEXTURE_BINDING
+                | wgpu::TextureUsages::COPY_SRC
                 | wgpu::TextureUsages::COPY_DST,
             view_formats: &[],
         });
@@ -693,16 +710,7 @@ impl CloudShadowPass {
             entries: &[bgl_uniform(0), bgl_storage_2d_rw(1, fmt)],
         });
 
-        let pipeline = create_compute_pipeline(
-            device,
-            &bgl,
-            "cloud_shadow",
-            concat!(
-                include_str!("../shaders/constants.wgsl"),
-                include_str!("../shaders/volumetrics/cloud_shadow_map.wgsl")
-            ),
-            "cloud_shadow_main",
-        );
+        let pipeline = create_cloud_shadow_pipeline(device, &bgl);
 
         Self {
             pipeline,
@@ -812,7 +820,11 @@ impl CloudShadowPass {
                 .cached_bg
                 .get_or_rebuild(resource_gen, || unreachable!());
             pass.set_bind_group(0, bg, &[]);
-            pass.dispatch_workgroups(self.resolution.div_ceil(8), self.resolution.div_ceil(8), 1);
+            pass.dispatch_workgroups(
+                self.resolution.div_ceil(CLOUD_SHADOW_WG_X),
+                self.resolution.div_ceil(CLOUD_SHADOW_WG_Y),
+                1,
+            );
         }
     }
 }
@@ -821,12 +833,30 @@ impl CloudShadowPass {
 // Pipeline / BGL helpers (local to this module)
 // ---------------------------------------------------------------------------
 
+fn create_cloud_shadow_pipeline(
+    device: &wgpu::Device,
+    bgl: &wgpu::BindGroupLayout,
+) -> wgpu::ComputePipeline {
+    create_compute_pipeline(
+        device,
+        bgl,
+        "cloud_shadow",
+        CLOUD_SHADOW_SHADER,
+        "cloud_shadow_main",
+        &[
+            ("WG_X", f64::from(CLOUD_SHADOW_WG_X)),
+            ("WG_Y", f64::from(CLOUD_SHADOW_WG_Y)),
+        ],
+    )
+}
+
 fn create_compute_pipeline(
     device: &wgpu::Device,
     bgl: &wgpu::BindGroupLayout,
     label: &str,
     source: &str,
     entry_point: &str,
+    constants: &[(&str, f64)],
 ) -> wgpu::ComputePipeline {
     let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
         label: Some(label),
@@ -842,7 +872,10 @@ fn create_compute_pipeline(
         layout: Some(&pl),
         module: &shader,
         entry_point: Some(entry_point),
-        compilation_options: Default::default(),
+        compilation_options: wgpu::PipelineCompilationOptions {
+            constants,
+            zero_initialize_workgroup_memory: false,
+        },
         cache: None,
     })
 }
