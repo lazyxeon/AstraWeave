@@ -150,15 +150,15 @@ Issue #254 is the workspace nextest failure from head `7839f930`. #217 fixed the
 | Terrain goldens and structure | Were 64 | **Off the skip list (#333).** Goldens lock `NoiseConfig::default`. #242 stays open. |
 | Terrain slow-timeouts | Were 3 at 240s | **Off the skip list (#333).** The radius-5 diagnostics and `phase_1_6_f3_phase_2_end_to_end_timing` check one chunk per climate. The slow-timeout is not raised. |
 | AI `ecs_integration_tests` | Were 14 | **Off the skip list (#333).** `sys_ai_planning` keeps `RuleOrchestrator` when `veilweaver_slice` is unified in. #254 stays open. |
-| Render GPU | 11 failures + `test_renderer_full_pipeline` segfault | Still excluded from profile `ci-pr`. Lavapipe where the runner has it, and an explicit printed skip when no adapter exists. The segfault needs a real fix. |
+| Render GPU | The other rows stay excluded | `test_renderer_lifecycle_stress_test` is green (#355, #352 closed): one shared wgpu Instance and Adapter, the first create/destroy is the warm baseline, growth after that stays under 50 MB, and `generate_report` shows zero user-held buffers, textures, devices, and queues. The line is still in `scripts/ci/deferred_pr_tests.txt`, so profile `ci-pr` still skips it. `test_buffer_lifecycle_no_leaks` stays with #246. `test_renderer_full_pipeline` is still the segfault. |
 | Fluids GPU smokes | 3 | Still excluded from profile `ci-pr`. Do not touch the caustics golden. |
 | LLM `test_qwen3_variants` | 1 | Still excluded from profile `ci-pr`. Make it hermetic or gate it on a local model. |
 
-Profile `ci-pr` excludes the three groups that remain in `scripts/ci/deferred_pr_tests.txt`. Profile `ci` on main and the nightly schedule does not. Replay cases are not in the list. Delete a line from the list when that test is green on profile `ci`.
+Profile `ci-pr` excludes the rows that remain in `scripts/ci/deferred_pr_tests.txt`. Profile `ci` on main and the nightly schedule does not. Replay cases are not in the list. Delete a line from the list when that test is green on profile `ci`. #356 split the cinematics, net-ecs, and scene benches (shards 1, 5, and 9) into per-group targets. #361 did the same for dialogue, embeddings, and fluids on shards 2 and 4. #359 is closed. The 600s limit stays. The fluids GPU timing walk runs only when `AW_FLUID_GPU_TIMINGS` is set. #224 stays open.
 
 Windows partition jobs use profile `ci-pr-archive`, which adds `scripts/ci/archive_only_skips.txt`. On `0a8ffcec` those were a render crash (`test_renderer_bake_environment_wave16`, exit 2173), two fluids GPU tests that hit the 240s slow-timeout, and the `aw-net-client` binary tests. Linux profile `ci-pr` still runs all of those; that Linux job passed. The client-binary tests use `CARGO_BIN_EXE`, which points at the build runner, so the archive build job runs those two test targets before it uploads. The explicit GPU skip from #217 is on `main` and still runs on profile `ci`.
 
-`PhysicsWorld::step` after warmup still allocates (8 allocs, 4112 bytes, 64 bodies, 30 warmup steps, measured 2026-10-15). `tests/zero_alloc_step.rs` asserts 0 and is not loosened. That failure is issue #262, owned by the repository maintainer until a physics workstream claims it. One `World::tick` / `step` with a cooldown already installed measured 0 allocations.
+The 2026-10-15 measurement was 8 allocs and 4112 bytes on a settled `PhysicsWorld::step` (64 bodies, 30 warmup steps). #350 (`f2075426`) vendors `rapier3d` 0.22 so that step returns the modified-collider buffer. `one_physics_step_allocates_nothing` stays at 0. An in-house physics engine is not planned work. #262 stays open. One `World::tick` / `step` with a cooldown already installed measured 0 allocations.
 
 ## Required status checks
 

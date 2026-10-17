@@ -51,7 +51,7 @@ cargo run -p aravath_runtime --bin aravath_greybox --release -- --frame-times
 
 That prints CPU sim-and-skin percentiles against 11.000 ms, then one headless submit on whatever adapter this machine has. The headless number is not the 1660 Ti measurement. A release build exits with an error when the CPU p95 is over the budget. A debug build prints the same line and does not fail on it.
 
-A settled tick does not allocate for streaming, seepage marks, or the locomotion graph. Skinning reuses the pose buffers after the first sample. Rapier's physics step and the character raycasts still allocate inside `astraweave-physics`. That count stays flat from tick to tick.
+A settled tick does not allocate for streaming, seepage marks, or the locomotion graph. Skinning reuses the pose buffers after the first sample. A settled `PhysicsWorld::step` allocates nothing (#350, vendored `rapier3d` 0.22). Character raycasts are outside that measurement.
 
 ## Dynamic world
 
