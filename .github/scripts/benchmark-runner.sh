@@ -56,7 +56,9 @@ BENCHMARK_PACKAGES_STATIC=(
 # the coverage validation below fails if this map ever omits, duplicates, or
 # invents a benchmark package.
 BENCHMARK_SHARD_GROUPS=(
-    "astraweave-net astraweave-profiling astraweave-water"
+    # localsim (#330) is a 32-region CPU tick. Shard 0 is the short group, so
+    # the measured map covers the crate without a fifteenth job or a longer cap.
+    "astraweave-net astraweave-profiling astraweave-water astraweave-localsim"
     "astraweave-cinematics astraweave-quests astraweave-context astraweave-terrain"
     "astraweave-dialogue astraweave-llm astraweave-steam astraweave-embeddings"
     "astraweave-ecs astraweave-math astraweave-ipc astraweave-memory astraweave-destruction"
