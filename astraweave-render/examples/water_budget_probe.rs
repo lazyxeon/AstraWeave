@@ -772,7 +772,7 @@ fn probe_refraction(device: &wgpu::Device, queue: &wgpu::Queue, has_timestamps: 
             if copy_ts {
                 resolve.resolve_query_set(&copy_qset, 0..2, &copy_resolve, 0);
             }
-            if let Some(p) = profiler.as_ref() {
+            if let Some(p) = profiler.as_mut() {
                 p.resolve_queries(&mut resolve);
             }
             queue.submit([enc.finish(), resolve.finish()]);
@@ -786,7 +786,7 @@ fn probe_refraction(device: &wgpu::Device, queue: &wgpu::Queue, has_timestamps: 
                 staging.copy_buffer_to_buffer(&copy_resolve, 0, &copy_read, 0, 16);
                 staged = true;
             }
-            if let Some(p) = profiler.as_ref() {
+            if let Some(p) = profiler.as_mut() {
                 if p.staging_copy_pending() {
                     p.copy_resolved(&mut staging);
                     staged = true;

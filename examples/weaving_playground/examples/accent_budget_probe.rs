@@ -377,7 +377,7 @@ fn main() {
                 if has_inside {
                     resolve.resolve_query_set(&acc_qset, 0..2, &acc_resolve, 0);
                 }
-                if let Some(p) = profiler.as_ref() {
+                if let Some(p) = profiler.as_mut() {
                     p.resolve_queries(&mut resolve);
                 }
                 queue.submit([enc.finish(), resolve.finish()]);
@@ -391,7 +391,7 @@ fn main() {
                     staging.copy_buffer_to_buffer(&acc_resolve, 0, &acc_read, 0, 16);
                     staged = true;
                 }
-                if let Some(p) = profiler.as_ref() {
+                if let Some(p) = profiler.as_mut() {
                     if p.staging_copy_pending() {
                         p.copy_resolved(&mut staging);
                         staged = true;

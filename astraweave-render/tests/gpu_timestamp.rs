@@ -113,6 +113,7 @@ fn draw_into_heavy_path_timestamps_and_models() {
         });
         let view = color.create_view(&wgpu::TextureViewDescriptor::default());
         device.push_error_scope(wgpu::ErrorFilter::Validation);
+        let mut first_query_set = None;
         for frame_index in 0..2 {
             let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("heavy frame"),
@@ -194,6 +195,18 @@ fn draw_into_heavy_path_timestamps_and_models() {
                     write.label, write.query_set, resolve.query_set
                 );
                 assert_ne!(write.submit, 0, "{trace_report}");
+            }
+            assert!(trace_report.contains("mapped_buffer="), "{trace_report}");
+            assert!(trace_report.contains("raw_u64="), "{trace_report}");
+            if frame_index == 0 {
+                first_query_set = Some(profiler.stamp_trace()[0].query_set);
+                renderer.recreate_timestamp_set().expect("fresh query set");
+            } else if let Some(previous) = first_query_set {
+                assert_ne!(
+                    profiler.stamp_trace()[0].query_set,
+                    previous,
+                    "recreate must replace the query set\n{trace_report}"
+                );
             }
         }
         let err = device.pop_error_scope().await;

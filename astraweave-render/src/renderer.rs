@@ -3937,6 +3937,21 @@ fn vs(input: VSIn) -> VSOut {
         self.gpu_profiler.as_mut()
     }
 
+    /// New query set, resolve buffer, and staging buffer.
+    ///
+    /// Mirrors the self-test, which reads a set that has never been written.
+    /// The frame path otherwise keeps one set and changes how many queries
+    /// it resolves after the first frame.
+    pub fn recreate_timestamp_set(&mut self) -> Result<()> {
+        let device = self.device.clone();
+        let Some(profiler) = self.gpu_profiler.as_mut() else {
+            anyhow::bail!("timestamps are unsupported; there is no query set to recreate");
+        };
+        profiler
+            .recreate(&device)
+            .map_err(|err| anyhow::anyhow!(err))
+    }
+
     /// Returns a reference to the per-frame staging ring buffer.
     pub fn staging_ring(&self) -> &crate::staging_ring::StagingRing {
         &self.staging_ring

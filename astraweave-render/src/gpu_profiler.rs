@@ -199,12 +199,17 @@ pub struct OpenStamp {
 
 const STAMP_CAP: usize = 48;
 
-fn query_set_token(set: &wgpu::QuerySet) -> u64 {
+fn resource_token<T: std::hash::Hash>(kind: u8, value: &T) -> u64 {
     use std::collections::hash_map::DefaultHasher;
     use std::hash::{Hash, Hasher};
     let mut hasher = DefaultHasher::new();
-    set.hash(&mut hasher);
+    kind.hash(&mut hasher);
+    value.hash(&mut hasher);
     hasher.finish()
+}
+
+fn query_set_token(set: &wgpu::QuerySet) -> u64 {
+    resource_token(1, set)
 }
 
 const fn empty_stamp() -> StampRecord {
@@ -245,6 +250,20 @@ pub struct GpuProfiler {
     stamps: [StampRecord; STAMP_CAP],
     stamp_len: u8,
     submit_serial: u64,
+    /// Last resolve/copy, so a later read can be matched to the buffer it mapped.
+    resolve_buffer: u64,
+    resolve_offset: u64,
+    copy_src: u64,
+    copy_dst: u64,
+    copy_src_offset: u64,
+    copy_dst_offset: u64,
+    copy_size: u64,
+    mapped_buffer: u64,
+    /// `none`, `pending`, `ok`, or `err`.
+    map_status: &'static str,
+    raw_ticks: [u64; 16],
+    raw_len: u8,
+    parsed_queries: u32,
 }
 
 impl GpuProfiler {
@@ -289,7 +308,58 @@ impl GpuProfiler {
             stamps: [empty_stamp(); STAMP_CAP],
             stamp_len: 0,
             submit_serial: 0,
+            resolve_buffer: 0,
+            resolve_offset: 0,
+            copy_src: 0,
+            copy_dst: 0,
+            copy_src_offset: 0,
+            copy_dst_offset: 0,
+            copy_size: 0,
+            mapped_buffer: 0,
+            map_status: "none",
+            raw_ticks: [0; 16],
+            raw_len: 0,
+            parsed_queries: 0,
         }
+    }
+
+    /// Replace the query set and both timestamp buffers.
+    ///
+    /// The self-test reads a set that has never been written. The frame path
+    /// reuses one set, and the query count changes after the first frame
+    /// (cluster and the far cascade drop out). A fresh set, resolve buffer,
+    /// and staging buffer make one sample match that self-test.
+    pub fn recreate(&mut self, device: &wgpu::Device) -> Result<(), &'static str> {
+        if self.readback_pending {
+            return Err("cannot recreate timestamp targets while the staging buffer is mapped");
+        }
+        self.query_set = device.create_query_set(&wgpu::QuerySetDescriptor {
+            label: Some("gpu_profiler_queries"),
+            ty: wgpu::QueryType::Timestamp,
+            count: MAX_QUERIES,
+        });
+        let buf_size = (MAX_QUERIES as u64) * std::mem::size_of::<u64>() as u64;
+        self.resolve_buf = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("gpu_profiler_resolve"),
+            size: buf_size,
+            usage: wgpu::BufferUsages::QUERY_RESOLVE | wgpu::BufferUsages::COPY_SRC,
+            mapped_at_creation: false,
+        });
+        self.readback_buf = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("gpu_profiler_readback"),
+            size: buf_size,
+            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+            mapped_at_creation: false,
+        });
+        self.next_query = 0;
+        self.pass_queries.clear();
+        self.stamp_len = 0;
+        self.latest_results.clear();
+        self.map_status = "none";
+        self.raw_len = 0;
+        self.parsed_queries = 0;
+        self.copy_size = 0;
+        Ok(())
     }
 
     /// Reset per-frame state. Call at the start of each frame before recording passes.
@@ -365,6 +435,29 @@ impl GpuProfiler {
         if self.stamp_len == 0 {
             lines.push("submit=(none)".to_string());
         }
+        lines.push(format!(
+            "resolve_buffer={} resolve_offset={}",
+            self.resolve_buffer, self.resolve_offset
+        ));
+        lines.push(format!(
+            "copy src={} src_offset={} dst={} dst_offset={} size={}",
+            self.copy_src,
+            self.copy_src_offset,
+            self.copy_dst,
+            self.copy_dst_offset,
+            self.copy_size
+        ));
+        lines.push(format!(
+            "mapped_buffer={} map={} parsed_queries={}",
+            self.mapped_buffer, self.map_status, self.parsed_queries
+        ));
+        let shown = self.raw_len as usize;
+        let raw = self.raw_ticks[..shown]
+            .iter()
+            .map(|tick| tick.to_string())
+            .collect::<Vec<_>>()
+            .join(",");
+        lines.push(format!("raw_u64={raw}"));
         lines.join("\n")
     }
 
@@ -455,10 +548,12 @@ impl GpuProfiler {
     /// Call this only after `device.poll(Wait)` has finished the submission
     /// that wrote the queries. The staging copy stays on a second encoder
     /// (wgpu#6406).
-    pub fn resolve_queries(&self, encoder: &mut wgpu::CommandEncoder) {
+    pub fn resolve_queries(&mut self, encoder: &mut wgpu::CommandEncoder) {
         if !self.staging_copy_pending() {
             return;
         }
+        self.resolve_buffer = resource_token(2, &self.resolve_buf);
+        self.resolve_offset = 0;
         encoder.resolve_query_set(&self.query_set, 0..self.next_query, &self.resolve_buf, 0);
     }
 
@@ -466,11 +561,16 @@ impl GpuProfiler {
     ///
     /// The encoder must not be the one that called [`Self::end_frame`].
     /// Submit it after that encoder in the same `queue.submit`.
-    pub fn copy_resolved(&self, encoder: &mut wgpu::CommandEncoder) {
+    pub fn copy_resolved(&mut self, encoder: &mut wgpu::CommandEncoder) {
         if !self.staging_copy_pending() {
             return;
         }
         let byte_count = (self.next_query as u64) * std::mem::size_of::<u64>() as u64;
+        self.copy_src = resource_token(2, &self.resolve_buf);
+        self.copy_dst = resource_token(3, &self.readback_buf);
+        self.copy_src_offset = 0;
+        self.copy_dst_offset = 0;
+        self.copy_size = byte_count;
         encoder.copy_buffer_to_buffer(&self.resolve_buf, 0, &self.readback_buf, 0, byte_count);
     }
 
@@ -530,6 +630,8 @@ impl GpuProfiler {
             return;
         }
         let slice = self.readback_buf.slice(..);
+        self.mapped_buffer = resource_token(3, &self.readback_buf);
+        self.map_status = "pending";
         self.readback_pending = true;
         self.last_error = None;
         self.map_ready.store(false, Ordering::Release);
@@ -594,6 +696,7 @@ impl GpuProfiler {
         }
         if !self.map_ok.load(Ordering::Acquire) {
             self.readback_pending = false;
+            self.map_status = "err";
             self.last_error = Some("timestamp buffer map failed");
             self.latest_results.clear();
             return false;
@@ -601,6 +704,13 @@ impl GpuProfiler {
 
         let slice = self.readback_buf.slice(..);
         let data = slice.get_mapped_range();
+        let raw_bytes = (16 * std::mem::size_of::<u64>()).min(data.len());
+        let raw: &[u64] = bytemuck::cast_slice(&data[..raw_bytes]);
+        self.raw_ticks = [0; 16];
+        self.raw_len = raw.len() as u8;
+        self.raw_ticks[..raw.len()].copy_from_slice(raw);
+        self.parsed_queries = self.next_query;
+        self.map_status = "ok";
         let timestamps: &[u64] =
             bytemuck::cast_slice(&data[..self.next_query as usize * std::mem::size_of::<u64>()]);
 

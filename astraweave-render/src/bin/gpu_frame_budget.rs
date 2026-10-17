@@ -26,6 +26,7 @@ fn main() -> anyhow::Result<()> {
     let glb = glb_path();
     let heavy = scene_is_heavy();
     let debug_timestamps = debug_timestamps();
+    let fresh_query_set = fresh_query_set();
     if !glb.is_file() {
         anyhow::bail!(
             "textured GLB not found at {}. Pass --glb <path>. No frame time is invented.",
@@ -37,6 +38,10 @@ fn main() -> anyhow::Result<()> {
     println!("adapter={}", renderer.gpu_adapter_name());
     println!("backend={}", renderer.gpu_backend());
     println!("features={:?}", renderer.gpu_features());
+    println!(
+        "fresh_query_set={}",
+        if fresh_query_set { "on" } else { "off" }
+    );
     if let Some(profiler) = renderer.gpu_profiler() {
         println!("timestamp_period_ns={}", profiler.timestamp_period_ns());
     }
@@ -124,6 +129,9 @@ fn main() -> anyhow::Result<()> {
     let camera = fixed_camera();
 
     let frame = |renderer: &mut Renderer| -> anyhow::Result<(f64, f64)> {
+        if fresh_query_set {
+            renderer.recreate_timestamp_set()?;
+        }
         renderer.update_view(&camera);
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("frame budget"),
@@ -248,6 +256,10 @@ fn main() -> anyhow::Result<()> {
 
 fn debug_timestamps() -> bool {
     std::env::args().any(|arg| arg == "--debug-timestamps" || arg == "--debug-timestamps=true")
+}
+
+fn fresh_query_set() -> bool {
+    std::env::args().any(|arg| arg == "--fresh-query-set" || arg == "--fresh-query-set=true")
 }
 
 fn scene_is_heavy() -> bool {
