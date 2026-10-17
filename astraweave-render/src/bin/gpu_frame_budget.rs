@@ -8,6 +8,7 @@
 //! ```
 
 use anyhow::Context;
+use std::collections::BTreeMap;
 use std::future::Future;
 use std::path::PathBuf;
 use std::sync::mpsc;
@@ -174,10 +175,10 @@ fn main() -> anyhow::Result<()> {
     let view = color.create_view(&wgpu::TextureViewDescriptor::default());
     let camera = fixed_camera();
 
-    let frame = |renderer: &mut Renderer| -> anyhow::Result<(f64, f64)> {
+    let frame = |renderer: &mut Renderer| -> anyhow::Result<FrameTimes> {
         device.push_error_scope(wgpu::ErrorFilter::Validation);
         device.push_error_scope(wgpu::ErrorFilter::OutOfMemory);
-        let recorded = (|| -> anyhow::Result<(f64, f64)> {
+        let recorded = (|| -> anyhow::Result<FrameTimes> {
             if fresh_query_set {
                 renderer.recreate_timestamp_set()?;
             }
@@ -193,9 +194,19 @@ fn main() -> anyhow::Result<()> {
             encoder.copy_buffer_to_buffer(&exec_src, 0, &exec_dst, 0, 4);
             let frame_started = Instant::now();
             renderer.submit_timestamped(encoder.finish())?;
+            let (write_wait_ms, copy_wait_ms) = renderer
+                .gpu_profiler()
+                .map(|profiler| {
+                    (
+                        f64::from(profiler.write_wait_ms()),
+                        f64::from(profiler.copy_wait_ms()),
+                    )
+                })
+                .unwrap_or((0.0, 0.0));
             if timestamps {
                 renderer.request_gpu_profiler_readback();
             }
+            let readback_started = Instant::now();
             astraweave_render::gpu_profiler::wait_for_gpu(&device, "frame gpu")
                 .map_err(anyhow::Error::msg)?;
             if timestamps {
@@ -205,13 +216,22 @@ fn main() -> anyhow::Result<()> {
                         .map_err(anyhow::Error::msg)?;
                 }
             }
+            let readback_ms = readback_started.elapsed().as_secs_f64() * 1_000.0;
             if debug_timestamps {
                 if let Some(profiler) = renderer.gpu_profiler() {
                     println!("{}", profiler.submission_report());
                 }
             }
+            // Record time plus the waits inside submit and the map. Those waits
+            // block on the GPU that just ran the frame. They are not extra GPU work.
             let cpu_frame_ms = frame_started.elapsed().as_secs_f64() * 1_000.0 + encode_ms;
-            Ok((encode_ms, cpu_frame_ms))
+            Ok(FrameTimes {
+                encode_ms,
+                cpu_frame_ms,
+                write_wait_ms,
+                copy_wait_ms,
+                readback_ms,
+            })
         })();
         let (validation, oom) = pop_frame_scopes(&device)?;
         println!(
@@ -244,17 +264,24 @@ fn main() -> anyhow::Result<()> {
     }
     let mut encode = Vec::with_capacity(SAMPLES);
     let mut cpu_frame = Vec::with_capacity(SAMPLES);
+    let mut write_wait = Vec::with_capacity(SAMPLES);
+    let mut copy_wait = Vec::with_capacity(SAMPLES);
+    let mut readback = Vec::with_capacity(SAMPLES);
     let mut gpu = Vec::new();
     let mut gpu_frame = Vec::new();
+    let mut pass_samples: BTreeMap<String, Vec<f64>> = BTreeMap::new();
     let mut empty_passes = String::new();
     let mut gpu_error = None;
     for sample_index in 0..SAMPLES {
         if debug_timestamps {
             println!("sample {}/{SAMPLES}", sample_index + 1);
         }
-        let (encode_ms, frame_ms) = frame(&mut renderer)?;
-        encode.push(encode_ms);
-        cpu_frame.push(frame_ms);
+        let times = frame(&mut renderer)?;
+        encode.push(times.encode_ms);
+        cpu_frame.push(times.cpu_frame_ms);
+        write_wait.push(times.write_wait_ms);
+        copy_wait.push(times.copy_wait_ms);
+        readback.push(times.readback_ms);
         if !timestamps {
             continue;
         }
@@ -269,6 +296,12 @@ fn main() -> anyhow::Result<()> {
                 gpu.push(f64::from(summary.pass_sum_ms));
                 if let Some(ms) = summary.frame_ms {
                     gpu_frame.push(f64::from(ms));
+                }
+                for timing in profiler.results() {
+                    pass_samples
+                        .entry(timing.name.clone())
+                        .or_default()
+                        .push(f64::from(timing.duration_ms));
                 }
                 if empty_passes.is_empty() && !summary.empty.is_empty() {
                     empty_passes = summary.empty.join(",");
@@ -297,6 +330,12 @@ fn main() -> anyhow::Result<()> {
     );
     println!("median_draw_into_ms={:.3}", median(&mut encode));
     println!("median_cpu_frame_ms={:.3}", median(&mut cpu_frame));
+    println!("median_cpu_write_wait_ms={:.3}", median(&mut write_wait));
+    println!("median_cpu_copy_wait_ms={:.3}", median(&mut copy_wait));
+    println!("median_cpu_readback_ms={:.3}", median(&mut readback));
+    println!("cpu_frame_includes=draw_into_record+gpu_write_wait+timestamp_copy_wait+readback_map");
+    println!("cpu_frame_waits_for_gpu=yes");
+    println!("cluster_bin=stamped_only_when_light_bins_change");
     if !timestamps {
         anyhow::bail!(
             "GPU timestamps are unsupported. median_cpu_frame_ms is the CPU fallback and is not the 11 ms GPU budget."
@@ -314,18 +353,42 @@ fn main() -> anyhow::Result<()> {
         gpu.len()
     );
     if !gpu_frame.is_empty() {
+        let frame_median = median(&mut gpu_frame);
         println!(
             "median_gpu_frame_ms={:.3} frame_samples={}",
-            median(&mut gpu_frame),
+            frame_median,
             gpu_frame.len()
+        );
+        println!(
+            "median_gpu_frame_minus_pass_sum_ms={:.3}",
+            frame_median - gpu_median
+        );
+    }
+    for (name, samples) in &mut pass_samples {
+        println!(
+            "median_pass {name}={:.3} n={}",
+            median(samples),
+            samples.len()
         );
     }
     let frame_positive = gpu_frame.iter().any(|ms| *ms > 0.0);
     if gpu_median.partial_cmp(&0.0) != Some(std::cmp::Ordering::Greater) && !frame_positive {
         anyhow::bail!("no positive GPU duration. median_cpu_frame_ms is the CPU fallback.");
     }
+    println!("budget_basis=gpu_frame");
+    println!(
+        "budget_basis_note=median_gpu_frame_ms is the clock. median_cpu_frame_ms waits for that GPU submission, so it is not the budget and not max(cpu, gpu)."
+    );
     println!("budget_11ms=not_decided");
     Ok(())
+}
+
+struct FrameTimes {
+    encode_ms: f64,
+    cpu_frame_ms: f64,
+    write_wait_ms: f64,
+    copy_wait_ms: f64,
+    readback_ms: f64,
 }
 
 struct ScopeWaker;

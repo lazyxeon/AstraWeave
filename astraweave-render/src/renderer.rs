@@ -7523,25 +7523,31 @@ fn vs(input: VSIn) -> VSOut {
         vp_sky.w_axis.z = 0.0;
         vp_sky = self.cached_proj * vp_sky;
 
-        let sky_tex = self.ibl_resources.as_ref().map(|r| &r.env_cube);
+        let sky_tex = self
+            .ibl_resources
+            .as_ref()
+            .map(|resources| resources.env_cube.clone());
+        let sky_equirect = self
+            .ibl_resources
+            .as_ref()
+            .and_then(|resources| resources.hdr_equirect.clone());
 
         // Bruneton is a sky mode, not a second layer on the HDRI sky.
         if !self.atmosphere_on {
-            self.sky
-                .render(
-                    &self.device,
-                    enc,
-                    &self.hdr_view,
-                    // Real-Fix.A: route to caller-provided depth when Some, else internal fallback.
-                    depth_view.unwrap_or(&self.depth.view),
-                    vp_sky,
-                    &self.queue,
-                    sky_tex,
-                    self.ibl_resources
-                        .as_ref()
-                        .and_then(|r| r.hdr_equirect.as_ref()),
-                )
-                .context("Sky render failed")?;
+            let sky_stamp = self.begin_named_stamp(enc, "sky");
+            let sky_result = self.sky.render(
+                &self.device,
+                enc,
+                &self.hdr_view,
+                // Real-Fix.A: route to caller-provided depth when Some, else internal fallback.
+                depth_view.unwrap_or(&self.depth.view),
+                vp_sky,
+                &self.queue,
+                sky_tex.as_ref(),
+                sky_equirect.as_ref(),
+            );
+            self.end_named_stamp(enc, sky_stamp);
+            sky_result.context("Sky render failed")?;
         }
 
         // Upload scene environment UBO (fog, ambient, tint) — aligned with render() path
@@ -7854,13 +7860,17 @@ fn vs(input: VSIn) -> VSOut {
         // `render()`, so the editor viewport renders the same refracted water. Pass
         // the caller-supplied depth so the water pass tests/samples the depth the
         // editor's opaque geometry actually wrote (not the internal self.depth).
+        let water_stamp = self.begin_named_stamp(enc, "water");
         self.run_water_pass(enc, depth_view);
+        self.end_named_stamp(enc, water_stamp);
+        let atmosphere_stamp = self.begin_named_stamp(enc, "atmosphere");
         if let Some(external_depth) = depth_view {
             self.composite_atmosphere(enc, external_depth);
         } else {
             let depth = self.depth.view.clone();
             self.composite_atmosphere(enc, &depth);
         }
+        self.end_named_stamp(enc, atmosphere_stamp);
 
         // --- Post-processing: bloom compute pass (runs on HDR, before blit) ---
         let bloom_intensity = if self.post_chain.bloom_enabled {
@@ -7887,6 +7897,7 @@ fn vs(input: VSIn) -> VSOut {
                 }
             };
             let cfg = bloom.config().clone();
+            let bloom_stamp = self.begin_named_stamp(enc, "bloom");
             bloom.execute(
                 &self.device,
                 &self.queue,
@@ -7896,6 +7907,7 @@ fn vs(input: VSIn) -> VSOut {
                 cfg.intensity,
                 self.resource_generation,
             );
+            self.end_named_stamp(enc, bloom_stamp);
             let intensity = cfg.intensity;
             // Editor-Engine Render Parity P.3: first-create HDR blit bind
             // group rebuild removed (only existed so hdr_blit_pipeline could
@@ -7971,13 +7983,17 @@ fn vs(input: VSIn) -> VSOut {
             }
         }
 
+        let hiz_stamp = self.begin_named_stamp(enc, "hiz");
         self.record_hiz(enc, depth_view);
+        self.end_named_stamp(enc, hiz_stamp);
+        let particle_stamp = self.begin_named_stamp(enc, "particles");
         self.record_particles(enc, view, depth_view);
+        self.end_named_stamp(enc, particle_stamp);
 
-        // The frame end tick is the last `write_timestamp` on `enc`.
-        // Sky, water, atmosphere, Hi-Z, and particles record into `enc`.
-        // `draw_into` does not create a command encoder and does not call
-        // `queue.submit`. Resolve on this encoder, then the caller submits it.
+        // The frame end tick is the last `write_timestamp`. Resolve after it
+        // so that query is inside the resolved range. Sky, water, atmosphere,
+        // Hi-Z, and particles record into `enc`. `draw_into` does not create
+        // a command encoder and does not call `queue.submit`.
         self.close_frame_timestamp(enc);
         if let Some(profiler) = self.gpu_profiler.as_mut() {
             profiler.resolve_queries(enc);
@@ -8137,6 +8153,29 @@ fn vs(input: VSIn) -> VSOut {
     /// does no draws can land both writes on the same tick. The encoder pair
     /// brackets the whole `draw_into` recording, so that collapse does not
     /// erase the frame.
+    fn begin_named_stamp(
+        &mut self,
+        enc: &mut wgpu::CommandEncoder,
+        name: &'static str,
+    ) -> Option<crate::gpu_profiler::OpenStamp> {
+        self.gpu_profiler
+            .as_mut()
+            .and_then(|profiler| profiler.begin_stamp(enc, name))
+    }
+
+    fn end_named_stamp(
+        &mut self,
+        enc: &mut wgpu::CommandEncoder,
+        stamp: Option<crate::gpu_profiler::OpenStamp>,
+    ) {
+        let Some(stamp) = stamp else {
+            return;
+        };
+        if let Some(profiler) = self.gpu_profiler.as_mut() {
+            profiler.end_stamp(enc, stamp);
+        }
+    }
+
     fn open_frame_timestamp(&mut self, enc: &mut wgpu::CommandEncoder) {
         self.frame_stamp = None;
         if !self

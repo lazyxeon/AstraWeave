@@ -17,7 +17,7 @@ use std::sync::{
 pub const FRAME_EXEC_MAGIC: u32 = 0xA1B2_C3D4;
 
 /// Maximum number of timestamp pairs (begin + end per pass).
-const MAX_PASSES: u32 = 16;
+const MAX_PASSES: u32 = 24;
 const MAX_QUERIES: u32 = MAX_PASSES * 2;
 /// `device.poll(Wait)` blocks inside the driver for up to 60s and can fail
 /// to return when a query resolve waits on work that is still queued.
@@ -203,7 +203,7 @@ pub struct OpenStamp {
     end: u32,
 }
 
-const STAMP_CAP: usize = 48;
+const STAMP_CAP: usize = 64;
 
 fn resource_token<T: std::hash::Hash>(kind: u8, value: &T) -> u64 {
     use std::collections::hash_map::DefaultHasher;
@@ -275,6 +275,10 @@ pub struct GpuProfiler {
     raw_ticks: [u64; 16],
     raw_len: u8,
     parsed_queries: u32,
+    /// CPU milliseconds blocked in the write+resolve `wait_for_gpu`.
+    write_wait_ms: f32,
+    /// CPU milliseconds blocked in the timestamp-copy `wait_for_gpu`.
+    copy_wait_ms: f32,
 }
 
 impl GpuProfiler {
@@ -331,7 +335,19 @@ impl GpuProfiler {
             raw_ticks: [0; 16],
             raw_len: 0,
             parsed_queries: 0,
+            write_wait_ms: 0.0,
+            copy_wait_ms: 0.0,
         }
+    }
+
+    /// CPU time spent waiting for the frame submission that wrote the timestamps.
+    pub fn write_wait_ms(&self) -> f32 {
+        self.write_wait_ms
+    }
+
+    /// CPU time spent waiting for the timestamp staging copy.
+    pub fn copy_wait_ms(&self) -> f32 {
+        self.copy_wait_ms
     }
 
     /// Replace the query set and both timestamp buffers.
@@ -690,7 +706,9 @@ impl GpuProfiler {
         let write_submit = profiler.submit_serial;
         profiler.assign_open_stamps(write_submit);
         queue.submit(std::iter::once(frame));
+        let write_started = std::time::Instant::now();
         wait_for_gpu(device, "timestamp write+resolve")?;
+        profiler.write_wait_ms = write_started.elapsed().as_secs_f32() * 1_000.0;
         let mut copy = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("gpu profiler timestamp copy"),
         });
@@ -706,7 +724,10 @@ impl GpuProfiler {
             copy_encoder,
         );
         queue.submit(std::iter::once(copy.finish()));
-        wait_for_gpu(device, "timestamp staging copy")
+        let copy_started = std::time::Instant::now();
+        let copied = wait_for_gpu(device, "timestamp staging copy");
+        profiler.copy_wait_ms = copy_started.elapsed().as_secs_f32() * 1_000.0;
+        copied
     }
 
     /// Initiate an async readback of the timestamp buffer.
