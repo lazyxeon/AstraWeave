@@ -6228,6 +6228,11 @@ fn vs(input: VSIn) -> VSOut {
         self.force_shadow_override = !enabled;
     }
 
+    /// The 512² cloud-shadow compute is on unless this is false.
+    pub fn cloud_shadows_enabled(&self) -> bool {
+        self.cloud_shadows_enabled
+    }
+
     /// Enable or disable the per-frame cloud shadow compute pass.
     /// When disabled the cloud shadow texture retains its initial all-white
     /// state (1.0 = fully lit), so direct sunlight is preserved without
@@ -7581,7 +7586,7 @@ fn vs(input: VSIn) -> VSOut {
                 sky_equirect.as_ref(),
             );
             self.end_named_stamp(enc, sky_stamp);
-            self.open_timing_gap(enc, "sky_to_main");
+            self.open_timing_gap(enc, "after_sky");
             sky_result.context("Sky render failed")?;
         }
 
@@ -7596,6 +7601,8 @@ fn vs(input: VSIn) -> VSOut {
         // Skipped when cloud_shadows_enabled is false — the 512×512 transmittance
         // map produces a noisy pattern on terrain at this resolution.
         if self.cloud_shadows_enabled {
+            self.close_timing_gap(enc);
+            let cloud_stamp = self.begin_named_stamp(enc, "cloud_shadow");
             let cam_pos = glam::Vec3::new(
                 self.camera_ubo.camera_pos_pad[0],
                 self.camera_ubo.camera_pos_pad[1],
@@ -7619,6 +7626,8 @@ fn vs(input: VSIn) -> VSOut {
             );
             self.cloud_shadow_pass
                 .execute(&self.device, enc, self.resource_generation);
+            self.end_named_stamp(enc, cloud_stamp);
+            self.open_timing_gap(enc, "after_cloud_shadow");
         }
 
         // Phase 1 — prepare forward-lit terrain state for this frame

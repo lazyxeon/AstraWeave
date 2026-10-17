@@ -141,9 +141,11 @@ fn main() -> anyhow::Result<()> {
     renderer.set_shadows_enabled(true);
     add_heavy_terrain(&mut renderer)?;
     renderer.set_particle_emitter(Some(emitter()))?;
-    // Cloud shadows stay at the renderer default. Volumetric fog and god rays
-    // are not called. GPU indirect culling is not the draw path yet: each
-    // model still binds group 3, so the CPU frustum remains the filter.
+    // Cloud shadows stay at the renderer default (on): a 512² compute march
+    // between the sky pass and the main pass. Volumetric fog and god rays
+    // are not called. GPU indirect culling is not the draw path on any
+    // adapter: each model still binds its own group 3, so one indirect
+    // buffer cannot select those groups. The CPU frustum remains the filter.
     let gpu_cull = "cpu_fallback";
 
     let device = renderer.device().clone();
@@ -324,10 +326,15 @@ fn main() -> anyhow::Result<()> {
     println!("hdri={}", hdri.display());
     println!("glb={}", glb.display());
     println!(
-        "instances={} rendered_models={} particles=on shadows=on volumetrics=off gpu_cull={gpu_cull} water_drawn={}",
+        "instances={} rendered_models={} particles=on shadows=on volumetrics=off gpu_cull={gpu_cull} gpu_cull_reason=group3_per_model water_drawn={} cloud_shadows={}",
         instances.len(),
         renderer.rendered_model_count(),
-        if renderer.water_is_drawn() { "yes" } else { "no" }
+        if renderer.water_is_drawn() { "yes" } else { "no" },
+        if renderer.cloud_shadows_enabled() {
+            "on"
+        } else {
+            "off"
+        }
     );
     println!("median_draw_into_ms={:.3}", median(&mut encode));
     println!("median_cpu_frame_ms={:.3}", median(&mut cpu_frame));

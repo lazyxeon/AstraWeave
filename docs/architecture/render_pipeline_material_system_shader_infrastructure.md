@@ -8,7 +8,7 @@ domain: rendering
 lifecycle_status: active
 integration_status: wired
 owns: [astraweave-materials, astraweave-render]
-doc_version: "1.36"
+doc_version: "1.37"
 last_verified_commit: 0758171bf
 ---
 
@@ -20,7 +20,7 @@ last_verified_commit: 0758171bf
 |---|---|
 | **System name** | Render Pipeline + Material System + Shader Infrastructure |
 | **Primary crates** | `astraweave-render` (123 Rust files / ~78K LoC + 71 WGSL files), `astraweave-materials` (single-file material-graph crate), `tools/aw_editor/src/viewport/` (editor-side renderer + engine adapter) |
-| **Document version** | 1.36 |
+| **Document version** | 1.37 |
 | **Last verified against commit** | `0758171bf` (lifecycle RSS); prior `154d723aa` (v1.19, 2026-08-02: L.3.C-resolution — 4-cascade CSM + `FarCascadePolicy` + fit-derived bias cap; trace updated in the same commit as the code, so this names its parent); prior `d4c4479d4` (v1.12, 2026-07-25: T.2d.F tier retirement — see revision notice); prior `8232b150b` (v1.10, 2026-07-21: E3 terrain render-path additions verified first-hand — see revision notice); prior `7c29b8182` (v1.8 verification pass: §2.6 Water surface render path re-verified end-to-end against `water.rs` / `water.wgsl` / `renderer.rs` — every file:line citation confirmed, zero corrections, no markers needed; v1.7 added the subsection + cross-link to `docs/architecture/water.md`); prior: `67c9de7e1` (full trace); water rows W.2a + W.2b.2 + W.2c.2 weave-deformation + W.2c.3 weave producer (2026-06-22) + F.4.2 weave-impact accent machinery + F.4.3 live HDR-overlay composite & combined-frame measurement (2026-06-24) |
 | **Last verified date** | 2026-08-02 (L.3.C-resolution: 4-cascade CSM, far-cascade refresh policy, fit-derived receiver-bias cap, invariant 20 (e)-(i)); 2026-07-21 (E3 terrain render-path, T.0 trace-sync); 2026-06-25 (§2.6 water render-path verification pass); 2026-06-24 (water render-path subsection authored); 2026-05-10 (full trace) |
 | **Status** | **ACTIVE WORKZONE** — Editor Multi-Tool Architecture Campaign Sub-phase 3 (Mediator Brush) is in flight as of campaign-doc commit `e3d07f366` (2026-05-08, Round-8-Closure). Fix 27 Unified Pipeline Campaign is structurally complete (per CLAUDE.md) but deeper editor↔runtime unification continues. Treat this trace as a **navigational map**; per-subsystem detailed traces are follow-up work. |
@@ -31,6 +31,8 @@ last_verified_commit: 0758171bf
 > **Revision notice — 2026-10-16 (v1.26).** `IblResources` is `Clone`. The views are `wgpu` handles, so one bake can be installed on two renderers without a second convolution. The editor parity harness does that; the live adapter still bakes on its worker thread.
 > **Revision notice — 2026-10-16 (v1.26).** Rebased onto main `cdea968c`. Volumetric fog and god rays stay the #205 passes. Timestamp slots are still allocated only when the pass is recorded, and `gpu_frame_budget --scene heavy` still prints CPU and GPU times with `budget_11ms=not_decided`. `TextureStreamingManager::new` returns `Result`.
 > **Revision notice — 2026-10-16 (v1.26).** Rebased onto main `cdea968c`. Volumetric fog and god rays stay the #205 passes. Timestamp slots are still allocated only when the pass is recorded, and `gpu_frame_budget --scene heavy` still prints CPU and GPU times with `budget_11ms=not_decided`. `TextureStreamingManager::new` returns `Result`, and its decode runtime lives on its own thread. `draw_into` skips the Hi-Z pyramid when the device cannot `textureLoad` a depth texture. GL rejects that load.
+>
+> **Revision notice — 2026-10-17 (v1.37).** The span between sky and the main pass is `cloud_shadow`: the default-on 512² transmittance compute (`shadow_steps=32`). It is not an IBL rebake. The heavy scene still does not draw water. `gpu_cull=cpu_fallback` is the group-3 draw path on every adapter. `budget_11ms` stays `not_decided`.
 >
 > **Revision notice — 2026-10-17 (v1.36).** Named intervals cover the encoder between the frame stamps (`before_passes`, `after_shadow_*`, `sky_to_main`, `after_main`, and the same pattern through `after_particles`). The heavy scene does not install `WaterRenderer`, so the water stamp brackets a no-op. `budget_11ms` stays `not_decided`.
 >
