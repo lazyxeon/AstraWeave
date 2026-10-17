@@ -12,6 +12,10 @@ use std::sync::{
     Arc,
 };
 
+/// Copied at the end of a frame encoder. A dropped command buffer leaves the
+/// readback at 0.
+pub const FRAME_EXEC_MAGIC: u32 = 0xA1B2_C3D4;
+
 /// Maximum number of timestamp pairs (begin + end per pass).
 const MAX_PASSES: u32 = 16;
 const MAX_QUERIES: u32 = MAX_PASSES * 2;

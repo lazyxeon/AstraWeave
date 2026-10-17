@@ -1030,6 +1030,9 @@ pub struct Renderer {
     particle_draw: Option<crate::particle_render::ParticleRenderPass>,
     particle_sort: Option<wgpu::Buffer>,
     particle_emitter: Option<crate::gpu_particles::EmitterParams>,
+    /// Copy of scene depth sampled when soft particles also write depth.
+    /// The default pipeline does not write depth and leaves this `None`.
+    particle_depth_copy: Option<(u32, u32, wgpu::Texture, wgpu::TextureView)>,
     /// Optional presentation passes. Off by default so `draw_into` does not
     /// record them. #227 and #228 stay on PR #205.
     atmosphere_on: bool,
@@ -3724,6 +3727,7 @@ fn vs(input: VSIn) -> VSOut {
             particle_draw: None,
             particle_sort: None,
             particle_emitter: None,
+            particle_depth_copy: None,
             atmosphere_on: false,
             cloud_raymarch_on: false,
             ssgi_on: false,
@@ -8001,15 +8005,38 @@ fn vs(input: VSIn) -> VSOut {
             }
             _ => return,
         };
+        let depth = depth_view
+            .cloned()
+            .unwrap_or_else(|| self.depth.view.clone());
+        // Soft particles textureLoad scene depth. `depth_ops: Some` marks that
+        // texture DEPTH_STENCIL_WRITE while the bind group uses it as RESOURCE,
+        // and wgpu drops the whole encoder. The default pipeline does not write
+        // depth, so the attachment is read-only and the depth test still runs.
+        // A pipeline that does write depth samples a copy made after the
+        // geometry pass, and writes the live attachment.
+        let writes_depth = self
+            .particle_draw
+            .as_ref()
+            .is_some_and(|draw| draw.config().depth_write);
+        let sample_depth = if writes_depth {
+            self.copy_scene_depth_for_particles(enc)
+        } else {
+            depth.clone()
+        };
         let Some(draw) = self.particle_draw.as_ref() else {
             return;
         };
         let Some(sort) = self.particle_sort.as_ref() else {
             return;
         };
-        let depth = depth_view
-            .cloned()
-            .unwrap_or_else(|| self.depth.view.clone());
+        let depth_ops = if writes_depth {
+            Some(wgpu::Operations {
+                load: wgpu::LoadOp::Load,
+                store: wgpu::StoreOp::Store,
+            })
+        } else {
+            None
+        };
         let mut pass = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("presentation particles"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -8022,16 +8049,81 @@ fn vs(input: VSIn) -> VSOut {
             })],
             depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
                 view: &depth,
-                depth_ops: Some(wgpu::Operations {
-                    load: wgpu::LoadOp::Load,
-                    store: wgpu::StoreOp::Store,
-                }),
+                depth_ops,
                 stencil_ops: None,
             }),
             timestamp_writes: None,
             occlusion_query_set: None,
         });
-        draw.render(&self.device, &mut pass, &buffer, sort, &depth, count, None);
+        draw.render(
+            &self.device,
+            &mut pass,
+            &buffer,
+            sort,
+            &sample_depth,
+            count,
+            None,
+        );
+    }
+
+    /// Copy the geometry depth after the writing passes have closed.
+    ///
+    /// Soft particles that also write depth cannot sample the attachment they
+    /// write. The copy is the sampled texture. It is rebuilt only when the
+    /// surface size changes.
+    fn copy_scene_depth_for_particles(
+        &mut self,
+        enc: &mut wgpu::CommandEncoder,
+    ) -> wgpu::TextureView {
+        let width = self.config.width.max(1);
+        let height = self.config.height.max(1);
+        let current = self
+            .particle_depth_copy
+            .as_ref()
+            .is_some_and(|(stored_w, stored_h, _, _)| *stored_w == width && *stored_h == height);
+        if !current {
+            let texture = self.device.create_texture(&wgpu::TextureDescriptor {
+                label: Some("particle depth sample"),
+                size: wgpu::Extent3d {
+                    width,
+                    height,
+                    depth_or_array_layers: 1,
+                },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: self.depth.format,
+                usage: wgpu::TextureUsages::COPY_DST | wgpu::TextureUsages::TEXTURE_BINDING,
+                view_formats: &[],
+            });
+            let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+            self.particle_depth_copy = Some((width, height, texture, view));
+        }
+        let Some((_, _, texture, view)) = self.particle_depth_copy.as_ref() else {
+            return self.depth.view.clone();
+        };
+        let texture = texture.clone();
+        let view = view.clone();
+        enc.copy_texture_to_texture(
+            wgpu::TexelCopyTextureInfo {
+                texture: &self.depth.texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            wgpu::TexelCopyTextureInfo {
+                texture: &texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            wgpu::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
+            },
+        );
+        view
     }
 
     /// Copy this frame's depth into the shared Hi-Z pyramid.

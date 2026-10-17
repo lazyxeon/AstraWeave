@@ -1,7 +1,10 @@
 //! A written timestamp pair must come back as a positive duration.
 //! Zero is an unread query, not a fast pass.
 
+use std::future::Future;
+
 use astraweave_render::Renderer;
+use wgpu::util::DeviceExt;
 
 #[test]
 fn recorded_pass_timestamp_is_positive() {
@@ -97,6 +100,23 @@ fn draw_into_heavy_path_timestamps_and_models() {
             );
         }
         renderer.set_shadows_enabled(true);
+        // The budget tool turns this emitter on. Earlier lavapipe timestamp
+        // passes did not, so they never bound scene depth inside the particle
+        // pass that also attached it for writing.
+        renderer
+            .set_particle_emitter(Some(budget_emitter()))
+            .expect("particles");
+        let exec_src = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("heavy exec src"),
+            contents: &astraweave_render::gpu_profiler::FRAME_EXEC_MAGIC.to_le_bytes(),
+            usage: wgpu::BufferUsages::COPY_SRC,
+        });
+        let exec_dst = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("heavy exec dst"),
+            size: 4,
+            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+            mapped_at_creation: false,
+        });
         let color = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("heavy color"),
             size: wgpu::Extent3d {
@@ -112,15 +132,17 @@ fn draw_into_heavy_path_timestamps_and_models() {
             view_formats: &[],
         });
         let view = color.create_view(&wgpu::TextureViewDescriptor::default());
-        device.push_error_scope(wgpu::ErrorFilter::Validation);
         let mut first_query_set = None;
         for frame_index in 0..2 {
+            device.push_error_scope(wgpu::ErrorFilter::Validation);
+            device.push_error_scope(wgpu::ErrorFilter::OutOfMemory);
             let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("heavy frame"),
             });
             renderer
                 .draw_into(&view, None, &mut encoder)
                 .expect("draw_into");
+            encoder.copy_buffer_to_buffer(&exec_src, 0, &exec_dst, 0, 4);
             renderer
                 .submit_timestamped(encoder.finish())
                 .expect("timestamp submit");
@@ -218,10 +240,21 @@ fn draw_into_heavy_path_timestamps_and_models() {
                     "recreate must replace the query set\n{trace_report}"
                 );
             }
-        }
-        let err = device.pop_error_scope().await;
-        if let Some(err) = err {
-            panic!("validation: {err}");
+            let oom = pop_scope(&device);
+            let validation = pop_scope(&device);
+            assert!(
+                oom.is_none() && validation.is_none(),
+                "frame {frame_index} frame_scope validation={} out_of_memory={}",
+                validation.unwrap_or_else(|| "none".to_string()),
+                oom.unwrap_or_else(|| "none".to_string())
+            );
+            let word = read_exec_word(&device, &exec_dst).expect("gpu_exec map");
+            let magic = astraweave_render::gpu_profiler::FRAME_EXEC_MAGIC;
+            assert_eq!(
+                word, magic,
+                "frame {frame_index} gpu_exec=0x{word:08X}, expected 0x{magic:08X}"
+            );
+            eprintln!("frame={frame_index} gpu_exec=0x{word:08X}");
         }
     });
 }
@@ -287,4 +320,166 @@ fn timestamp_readback_self_test_is_nonzero() {
             "timestamp self-test validation: {err:?}\n{report}"
         );
     });
+}
+
+/// The Aravath window calls `render_with` → `draw_into` with fog and light
+/// shafts on. Those passes sample depth from compute after the geometry pass
+/// closes. This frame must not be rejected.
+#[test]
+fn aravath_draw_into_has_no_depth_conflict() {
+    pollster::block_on(async {
+        let mut renderer = Renderer::new_headless(128, 128).await.expect("headless");
+        if !astraweave_render::gpu_fault::depth_texture_load_supported(renderer.device()) {
+            eprintln!("skip aravath_draw_into_has_no_depth_conflict: no depth textureLoad");
+            return;
+        }
+        renderer.set_shadows_enabled(true);
+        renderer.set_volumetric_fog_config(astraweave_render::VolumetricFogPass::gameplay_config());
+        renderer.set_god_ray_config(astraweave_render::GodRayConfig {
+            enabled: true,
+            half_res: true,
+            num_samples: 32,
+            exposure: 0.22,
+            ..astraweave_render::GodRayConfig::default()
+        });
+        assert!(
+            renderer.volumetric_fog_enabled(),
+            "Aravath fog did not stay enabled"
+        );
+        assert!(
+            renderer.god_rays_enabled(),
+            "Aravath light shafts did not stay enabled"
+        );
+        let device = renderer.device().clone();
+        let color = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("aravath color"),
+            size: wgpu::Extent3d {
+                width: 128,
+                height: 128,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: renderer.surface_format(),
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+            view_formats: &[],
+        });
+        let view = color.create_view(&wgpu::TextureViewDescriptor::default());
+        let exec_src = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("aravath exec src"),
+            contents: &astraweave_render::gpu_profiler::FRAME_EXEC_MAGIC.to_le_bytes(),
+            usage: wgpu::BufferUsages::COPY_SRC,
+        });
+        let exec_dst = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("aravath exec dst"),
+            size: 4,
+            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+            mapped_at_creation: false,
+        });
+        device.push_error_scope(wgpu::ErrorFilter::Validation);
+        device.push_error_scope(wgpu::ErrorFilter::OutOfMemory);
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("aravath frame"),
+        });
+        renderer
+            .draw_into(&view, None, &mut encoder)
+            .expect("draw_into");
+        encoder.copy_buffer_to_buffer(&exec_src, 0, &exec_dst, 0, 4);
+        renderer
+            .submit_timestamped(encoder.finish())
+            .expect("submit");
+        let oom = pop_scope(&device);
+        let validation = pop_scope(&device);
+        assert!(
+            oom.is_none() && validation.is_none(),
+            "aravath frame_scope validation={} out_of_memory={}",
+            validation.unwrap_or_else(|| "none".to_string()),
+            oom.unwrap_or_else(|| "none".to_string())
+        );
+        let word = read_exec_word(&device, &exec_dst).expect("gpu_exec map");
+        let magic = astraweave_render::gpu_profiler::FRAME_EXEC_MAGIC;
+        assert_eq!(word, magic, "aravath gpu_exec=0x{word:08X}");
+        eprintln!("aravath gpu_exec=0x{word:08X}");
+    });
+}
+
+fn budget_emitter() -> astraweave_render::gpu_particles::EmitterParams {
+    astraweave_render::gpu_particles::EmitterParams {
+        position: [0.0, 1.0, 0.0, 1.0],
+        velocity: [0.0, 1.0, 0.0, 0.0],
+        emission_rate: 8.0,
+        lifetime: 2.0,
+        velocity_randomness: 0.25,
+        delta_time: 1.0 / 60.0,
+        gravity: [0.0, -9.8, 0.0, 0.0],
+        particle_count: 32,
+        max_particles: 256,
+        random_seed: 7,
+        _padding: 0,
+    }
+}
+
+struct ScopeWaker;
+
+impl std::task::Wake for ScopeWaker {
+    fn wake(self: std::sync::Arc<Self>) {}
+}
+
+fn pop_scope(device: &wgpu::Device) -> Option<String> {
+    let waker = std::task::Waker::from(std::sync::Arc::new(ScopeWaker));
+    let mut future = std::pin::pin!(device.pop_error_scope());
+    for _ in 0..64 {
+        let mut context = std::task::Context::from_waker(&waker);
+        match future.as_mut().poll(&mut context) {
+            std::task::Poll::Ready(Some(err)) => return Some(err.to_string()),
+            std::task::Poll::Ready(None) => return None,
+            std::task::Poll::Pending => {
+                if device.poll(wgpu::PollType::Poll).is_err() {
+                    return Some("device.poll failed while popping an error scope".to_string());
+                }
+                std::thread::sleep(std::time::Duration::from_millis(1));
+            }
+        }
+    }
+    Some("error scope did not resolve".to_string())
+}
+
+fn read_exec_word(device: &wgpu::Device, buffer: &wgpu::Buffer) -> Result<u32, String> {
+    let (sender, receiver) = std::sync::mpsc::channel();
+    buffer
+        .slice(..)
+        .map_async(wgpu::MapMode::Read, move |result| {
+            let _ = sender.send(result.map_err(|err| err.to_string()));
+        });
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    loop {
+        device
+            .poll(wgpu::PollType::Poll)
+            .map_err(|err| format!("device.poll failed while mapping gpu_exec: {err}"))?;
+        match receiver.try_recv() {
+            Ok(Ok(())) => break,
+            Ok(Err(err)) => return Err(err),
+            Err(std::sync::mpsc::TryRecvError::Empty) => {
+                if std::time::Instant::now() >= deadline {
+                    return Err("gpu_exec map timed out".to_string());
+                }
+                std::thread::sleep(std::time::Duration::from_millis(1));
+            }
+            Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                return Err("gpu_exec map closed".to_string());
+            }
+        }
+    }
+    let data = buffer.slice(..).get_mapped_range();
+    if data.len() < 4 {
+        let len = data.len();
+        drop(data);
+        buffer.unmap();
+        return Err(format!("gpu_exec map is {len} bytes"));
+    }
+    let word = u32::from_le_bytes([data[0], data[1], data[2], data[3]]);
+    drop(data);
+    buffer.unmap();
+    Ok(word)
 }

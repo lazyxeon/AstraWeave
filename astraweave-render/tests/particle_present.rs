@@ -110,10 +110,13 @@ fn emitter_draw_into_submits() {
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("particle frame"),
         });
+        device.push_error_scope(wgpu::ErrorFilter::Validation);
         renderer
             .draw_into(&view, None, &mut encoder)
             .expect("draw_into");
         queue.submit(std::iter::once(encoder.finish()));
         let _ = device.poll(wgpu::MaintainBase::Wait);
+        let err = astraweave_render::gpu_fault::finish_scope(&device);
+        assert!(err.is_none(), "particle frame_scope validation={err:?}");
     });
 }

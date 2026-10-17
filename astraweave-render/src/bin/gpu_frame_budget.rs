@@ -21,9 +21,7 @@ use astraweave_render::{Instance, Renderer};
 use glam::{Mat4, Vec3};
 use wgpu::util::DeviceExt;
 
-/// Copied at the end of the frame encoder. The readback buffer starts at 0.
-/// A dropped invalid command buffer leaves this word unread.
-const GPU_EXEC_MAGIC: u32 = 0xA1B2_C3D4;
+const GPU_EXEC_MAGIC: u32 = astraweave_render::gpu_profiler::FRAME_EXEC_MAGIC;
 
 const WIDTH: u32 = 1920;
 const HEIGHT: u32 = 1080;
