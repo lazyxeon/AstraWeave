@@ -1694,9 +1694,7 @@ mod schedule_mutation_tests {
         fn dummy(_w: &mut World) {}
 
         let mut schedule = Schedule::default().with_stage("sim");
-        schedule
-            .add_system("sim", dummy)
-            .expect("registered schedule stage");
+        schedule.add_system_known_stage("sim", dummy);
         assert_eq!(schedule.stages[0].systems.len(), 1);
     }
 
@@ -1721,12 +1719,8 @@ mod schedule_mutation_tests {
         }
 
         let mut schedule = Schedule::default().with_stage("a").with_stage("b");
-        schedule
-            .add_system("a", sys1)
-            .expect("registered schedule stage");
-        schedule
-            .add_system("b", sys2)
-            .expect("registered schedule stage");
+        schedule.add_system_known_stage("a", sys1);
+        schedule.add_system_known_stage("b", sys2);
 
         let mut world = World::new();
         schedule.run(&mut world);
@@ -1771,8 +1765,7 @@ mod schedule_mutation_tests {
         }
 
         let mut app = App::new();
-        app.add_system("simulation", counter)
-            .expect("registered schedule stage");
+        app.add_system_known_stage("simulation", counter);
         let app = app.run_fixed(5);
         assert_eq!(
             *app.world.get_resource::<u32>().unwrap(),

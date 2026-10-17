@@ -26,8 +26,7 @@ fn bench_script_execution(c: &mut Criterion) {
     let ecs_ast_arc = Arc::new(ecs_ast);
 
     let mut app = App::new().insert_resource(ScriptEngineResource(Arc::new(ecs_engine)));
-    app.add_system(SystemStage::SIMULATION, script_system)
-        .expect("registered schedule stage");
+    app.add_system_known_stage(SystemStage::SIMULATION, script_system);
 
     for _ in 0..1000 {
         let e = app.world.spawn();

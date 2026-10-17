@@ -203,8 +203,7 @@ impl Plugin for ModScriptPlugin {
             app.world.insert_resource(ModTickScratch::default());
         }
         app.world.insert_resource(ModScriptErrors::default());
-        app.add_system(SystemStage::SIMULATION, mod_script_system)
-            .expect("registered schedule stage");
+        app.add_system_known_stage(SystemStage::SIMULATION, mod_script_system);
     }
 }
 

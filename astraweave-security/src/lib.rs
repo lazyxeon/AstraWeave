@@ -169,12 +169,9 @@ impl Plugin for SecurityPlugin {
         app.world.insert_resource(llm_validator);
 
         // Add security systems
-        app.add_system("pre_simulation", input_validation_system)
-            .expect("registered schedule stage");
-        app.add_system("post_simulation", telemetry_collection_system)
-            .expect("registered schedule stage");
-        app.add_system("post_simulation", anomaly_detection_system)
-            .expect("registered schedule stage");
+        app.add_system_known_stage("pre_simulation", input_validation_system);
+        app.add_system_known_stage("post_simulation", telemetry_collection_system);
+        app.add_system_known_stage("post_simulation", anomaly_detection_system);
     }
 }
 

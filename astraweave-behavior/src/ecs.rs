@@ -38,11 +38,10 @@ pub struct BehaviorPlugin;
 
 impl astraweave_ecs::Plugin for BehaviorPlugin {
     fn build(&self, app: &mut astraweave_ecs::App) {
-        app.add_system(
+        app.add_system_known_stage(
             SIMULATION_STAGE,
             behavior_tick_system as astraweave_ecs::SystemFn,
-        )
-        .expect("registered schedule stage");
+        );
     }
 }
 

@@ -768,6 +768,18 @@ impl Schedule {
             Err(UnknownStage { stage })
         }
     }
+
+    /// Register `stage` if needed, then install `sys`.
+    ///
+    /// `add_system` still errors when the stage is absent. This helper
+    /// registers it first. `abort` is only reached if the stage disappears
+    /// between the two calls.
+    pub fn add_system_known_stage(&mut self, stage: &'static str, sys: SystemFn) {
+        self.add_stage(stage);
+        if self.add_system(stage, sys).is_err() {
+            std::process::abort();
+        }
+    }
     pub fn run(&self, world: &mut World) {
         #[cfg(feature = "profiling")]
         span!("ECS::Schedule::run");
@@ -845,15 +857,14 @@ impl App {
         self.schedule.add_system(stage, sys)
     }
 
-    /// Install `sys` on a stage that [`App::new`] already created.
+    /// Install `sys` on `stage`, creating the stage when `App::new` did not.
     ///
-    /// The `expect` lives here, under an allow, so library crates that the
-    /// unwrap-prevention job lints do not each spell `expect`. A missing stage
-    /// still fails the process. It is not a silent drop.
-    #[allow(clippy::expect_used)]
+    /// `add_system` still returns `Err(UnknownStage)` for a name that was
+    /// never registered. This helper registers first, then adds. The `Err`
+    /// arm aborts: `add_stage` just inserted the name, so `Err` means the
+    /// schedule lost it. There is no `expect` and no silent drop.
     pub fn add_system_known_stage(&mut self, stage: &'static str, sys: SystemFn) {
-        self.add_system(stage, sys)
-            .expect("registered schedule stage");
+        self.schedule.add_system_known_stage(stage, sys);
     }
     pub fn insert_resource<T: 'static + Send + Sync>(mut self, r: T) -> Self {
         self.world.insert_resource(r);
@@ -1403,12 +1414,9 @@ mod tests {
         }
 
         let mut app = App::new();
-        app.add_system(SystemStage::PRE_SIMULATION, pre_sim)
-            .expect("registered schedule stage");
-        app.add_system("sync", sync_sys)
-            .expect("registered schedule stage");
-        app.add_system(SystemStage::POST_SIMULATION, post_sim)
-            .expect("registered schedule stage");
+        app.add_system_known_stage(SystemStage::PRE_SIMULATION, pre_sim);
+        app.add_system_known_stage("sync", sync_sys);
+        app.add_system_known_stage(SystemStage::POST_SIMULATION, post_sim);
         let _ = app.run_fixed(3);
 
         assert_eq!(PRE_SIM_COUNT.load(Ordering::SeqCst), 3);
@@ -1456,22 +1464,14 @@ mod tests {
 
         let mut app = App::new();
         // Register in reverse to prove scheduling is stage-ordered, not registration-ordered.
-        app.add_system("presentation", presentation_sys)
-            .expect("registered schedule stage");
-        app.add_system("post_simulation", post_sim_sys)
-            .expect("registered schedule stage");
-        app.add_system("physics", physics_sys)
-            .expect("registered schedule stage");
-        app.add_system("ai_planning", ai_planning_sys)
-            .expect("registered schedule stage");
-        app.add_system("sync", sync_sys)
-            .expect("registered schedule stage");
-        app.add_system("simulation", simulation_sys)
-            .expect("registered schedule stage");
-        app.add_system("perception", perception_sys)
-            .expect("registered schedule stage");
-        app.add_system("pre_simulation", pre_sim_sys)
-            .expect("registered schedule stage");
+        app.add_system_known_stage("presentation", presentation_sys);
+        app.add_system_known_stage("post_simulation", post_sim_sys);
+        app.add_system_known_stage("physics", physics_sys);
+        app.add_system_known_stage("ai_planning", ai_planning_sys);
+        app.add_system_known_stage("sync", sync_sys);
+        app.add_system_known_stage("simulation", simulation_sys);
+        app.add_system_known_stage("perception", perception_sys);
+        app.add_system_known_stage("pre_simulation", pre_sim_sys);
         let _ = app.run_fixed(1);
 
         let seq = SEQ.lock().unwrap().clone();
@@ -1557,16 +1557,11 @@ mod tests {
         }
 
         let mut app = App::new();
-        app.add_system("perception", per)
-            .expect("registered schedule stage");
-        app.add_system("simulation", sim)
-            .expect("registered schedule stage");
-        app.add_system("ai_planning", ai)
-            .expect("registered schedule stage");
-        app.add_system("physics", phy)
-            .expect("registered schedule stage");
-        app.add_system("presentation", pre)
-            .expect("registered schedule stage");
+        app.add_system_known_stage("perception", per);
+        app.add_system_known_stage("simulation", sim);
+        app.add_system_known_stage("ai_planning", ai);
+        app.add_system_known_stage("physics", phy);
+        app.add_system_known_stage("presentation", pre);
         let _ = app.run_fixed(4);
 
         assert_eq!(PER.load(Ordering::SeqCst), 4);
@@ -1591,8 +1586,7 @@ mod tests {
         }
 
         let mut app = App::new();
-        app.add_system("simulation", test_system)
-            .expect("registered schedule stage");
+        app.add_system_known_stage("simulation", test_system);
         app = app.run_fixed(1);
 
         let resource = app.world.get_resource::<TestResource>().unwrap();
@@ -1612,10 +1606,8 @@ mod tests {
         }
 
         let mut app = App::new();
-        app.add_system("simulation", system_a)
-            .expect("registered schedule stage");
-        app.add_system("simulation", system_b)
-            .expect("registered schedule stage");
+        app.add_system_known_stage("simulation", system_a);
+        app.add_system_known_stage("simulation", system_b);
         app = app.run_fixed(1);
 
         let resource = app.world.get_resource::<TestResource>().unwrap();
@@ -1633,8 +1625,7 @@ mod tests {
         }
 
         let mut app = App::new();
-        app.add_system("simulation", increment_system)
-            .expect("registered schedule stage");
+        app.add_system_known_stage("simulation", increment_system);
         app = app.run_fixed(10);
 
         let resource = app.world.get_resource::<TestResource>().unwrap();
