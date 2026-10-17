@@ -395,7 +395,28 @@ fn main() -> anyhow::Result<()> {
     println!(
         "budget_basis_note=median_gpu_frame_ms is the clock. median_cpu_frame_ms waits for that GPU submission, so it is not the budget and not max(cpu, gpu)."
     );
-    println!("budget_11ms=not_decided");
+    // 11 ms is the min-spec GPU frame. The recorded pass is the GTX 1660 Ti
+    // heavy scene. This line compares the frame just measured on this adapter.
+    const BUDGET_MS: f64 = 11.0;
+    if gpu_frame.is_empty() {
+        println!("budget_11ms=not_decided");
+        anyhow::bail!("no GPU frame bracket, so the 11 ms comparison was not made");
+    }
+    let frame_median = median(&mut gpu_frame);
+    let verdict = if frame_median <= BUDGET_MS {
+        "pass"
+    } else {
+        "fail"
+    };
+    println!("budget_11ms={verdict}");
+    println!("budget_11ms_limit_ms={BUDGET_MS:.1}");
+    println!("budget_11ms_clock_ms={frame_median:.3}");
+    if frame_median > BUDGET_MS {
+        anyhow::bail!(
+            "median_gpu_frame_ms {frame_median:.3} exceeds {BUDGET_MS:.1} ms on {}",
+            renderer.gpu_adapter_name()
+        );
+    }
     Ok(())
 }
 

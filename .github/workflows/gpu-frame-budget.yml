@@ -7,7 +7,9 @@
 #
 #   cargo run -p astraweave-render --release --features gpu-frame-budget --bin gpu_frame_budget -- --glb "assets/The Complete KayKit Collection v4/KayKit Adventurers 2.0/Characters/gltf/Rogue.glb"
 #
-# It prints median_draw_into_ms. budget_11ms stays not_decided.
+# It prints median_gpu_frame_ms. budget_11ms is pass when that median is <= 11,
+# fail when it is over, and not_decided only when the frame bracket is missing.
+# The min-spec record is the GTX 1660 Ti heavy scene, not lavapipe.
 
 name: GPU frame budget
 
