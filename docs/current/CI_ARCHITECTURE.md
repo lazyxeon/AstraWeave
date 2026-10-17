@@ -158,7 +158,7 @@ Profile `ci-pr` excludes the rows that remain in `scripts/ci/deferred_pr_tests.t
 
 Windows partition jobs use profile `ci-pr-archive`, which adds `scripts/ci/archive_only_skips.txt`. On `0a8ffcec` those were a render crash (`test_renderer_bake_environment_wave16`, exit 2173), two fluids GPU tests that hit the 240s slow-timeout, and the `aw-net-client` binary tests. Linux profile `ci-pr` still runs all of those; that Linux job passed. The client-binary tests use `CARGO_BIN_EXE`, which points at the build runner, so the archive build job runs those two test targets before it uploads. The explicit GPU skip from #217 is on `main` and still runs on profile `ci`.
 
-`PhysicsWorld::step` after warmup still allocates (8 allocs, 4112 bytes, 64 bodies, 30 warmup steps, measured 2026-10-15). `tests/zero_alloc_step.rs` asserts 0 and is not loosened. That failure is issue #262, owned by the repository maintainer until a physics workstream claims it. One `World::tick` / `step` with a cooldown already installed measured 0 allocations.
+The 2026-10-15 measurement was 8 allocs and 4112 bytes on a settled `PhysicsWorld::step` (64 bodies, 30 warmup steps). #350 (`f2075426`) vendors `rapier3d` 0.22 so that step returns the modified-collider buffer. `one_physics_step_allocates_nothing` stays at 0. An in-house physics engine is not planned work. #262 stays open. One `World::tick` / `step` with a cooldown already installed measured 0 allocations.
 
 ## Required status checks
 
