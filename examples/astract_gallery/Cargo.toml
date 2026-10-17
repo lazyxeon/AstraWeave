@@ -5,4 +5,4 @@ version = "0.1.0"
 edition = "2021"
 [dependencies]
 astract = { path = "../../crates/astract" }
-eframe = "0.32"
+eframe = { workspace = true }

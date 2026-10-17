@@ -9,6 +9,12 @@ A non-programmer friendly GUI tool for creating and editing levels, encounters, 
 - Boss encounter configuration with Rhai scripting
 - Hot-reload support for instant feedback
 
+## Linux file dialogs
+
+Open and save dialogs use `rfd` 0.17. On Linux and the BSDs that backend talks to the XDG desktop portal through `libdbus`. If `libdbus` is not installed, `rfd` falls back to `zenity`. A desktop that can show a portal dialog (GTK, GNOME, or KDE portal backend) or the `zenity` package is required at runtime. The editor does not link GTK3, so `libgtk-3-dev` is not a build dependency.
+
+AccessKit is off. Screen readers do not receive the egui tree. `accesskit_unix` still depends on zbus 5, which is RUSTSEC-2026-0370, 0371, and 0372.
+
 ## Usage
 
 ```bash

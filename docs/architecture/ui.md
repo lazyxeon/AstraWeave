@@ -9,7 +9,7 @@ lifecycle_status: in_design
 integration_status: example_only
 summary: "HUD/menus/panels; menus_broken.rs & menus_backup2.rs are residue. ui.md §6"
 owns: [astraweave-ui]
-doc_version: "1.1"
+doc_version: "1.2"
 last_verified_commit: 7c29b8182
 ---
 
@@ -21,11 +21,11 @@ last_verified_commit: 7c29b8182
 |---|---|
 | **System name** | UI System (HUD, menus, panels) |
 | **Primary crates** | `astraweave-ui` |
-| **Document version** | 1.1 |
+| **Document version** | 1.2 |
 | **Last verified against commit** | `7c29b8182` |
 | **Last verified date** | 2026-06-24 |
 | **Status** | Active (egui-based), with backup/residue source files on disk and several exported-but-unconsumed modules |
-| **Owner notes** | Module-level doc-comments are dated by "Week N Day M" labels (e.g. "Week 3 Day 4", "Week 5 Day 2"), reflecting an incremental build campaign. The crate has no `tools/aw_editor` consumer; its only production callers are two examples (`ui_menu_demo`, `ui_controls_demo`). Generated from forensic read of source on 2026-06-24. |
+| **Owner notes** | 1.2 (2026-10-17): egui AccessKit is off. `eframe` is built without the `accesskit` feature, so Linux AT-SPI (`accesskit_unix` / zbus 5) is not linked. Screen readers do not see the egui tree. The newest published `accesskit_unix` (0.24.0) still depends on zbus 5, which is RUSTSEC-2026-0370, 0371, and 0372. The editor file dialog is `rfd` 0.17, which uses libdbus or zenity instead of ashpd. The editor `kittest` feature is gone: `egui_kittest` 0.32 forces `egui/accesskit`, which cannot be built against an `egui-winit` that does not link `accesskit_unix`. Module-level doc-comments are dated by "Week N Day M" labels (e.g. "Week 3 Day 4", "Week 5 Day 2"), reflecting an incremental build campaign. The crate has no `tools/aw_editor` consumer; its only production callers are two examples (`ui_menu_demo`, `ui_controls_demo`). Generated from forensic read of source on 2026-06-24. |
 
 ---
 
