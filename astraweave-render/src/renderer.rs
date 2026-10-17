@@ -806,6 +806,8 @@ pub struct Renderer {
     gpu_profiler: Option<crate::gpu_profiler::GpuProfiler>,
     /// End query of the `frame` bracket. Written just before resolve.
     frame_stamp: Option<crate::gpu_profiler::OpenStamp>,
+    /// Open interval between named passes, so uncovered GPU time gets a name.
+    timing_gap: Option<crate::gpu_profiler::OpenStamp>,
     gpu_adapter_name: String,
     gpu_backend: String,
     /// Ring buffer for transient per-frame GPU allocations (uniforms, storage).
@@ -3623,6 +3625,7 @@ fn vs(input: VSIn) -> VSOut {
             _pipeline_cache_mgr: pipeline_cache_mgr,
             gpu_profiler,
             frame_stamp: None,
+            timing_gap: None,
             gpu_adapter_name: String::new(),
             gpu_backend: String::new(),
             staging_ring,
@@ -6379,6 +6382,13 @@ fn vs(input: VSIn) -> VSOut {
     /// crosses into the renderer**, so `astraweave-render` stays independent of the
     /// gameplay crates (the WeaveOp → WeaveInstance translation lives in the binary
     /// glue). No-op when no water renderer is installed.
+    /// The heavy frame-budget scene does not install a water surface.
+    pub fn water_is_drawn(&self) -> bool {
+        self.water_renderer
+            .as_ref()
+            .is_some_and(|water| water.has_renderable_content())
+    }
+
     pub fn set_water_weave_instances(&mut self, instances: &[crate::water::WeaveInstance]) {
         if let Some(ref mut water) = self.water_renderer {
             water.set_weave_instances(instances);
@@ -7120,7 +7130,9 @@ fn vs(input: VSIn) -> VSOut {
             p.poll_readback(&self.device);
             p.begin_frame();
         }
+        self.timing_gap = None;
         self.open_frame_timestamp(enc);
+        self.open_timing_gap(enc, "before_passes");
         self.poll_fog_timestamps();
         if self.bindless_active {
             if let Some(system) = self.bindless.as_mut() {
@@ -7139,6 +7151,12 @@ fn vs(input: VSIn) -> VSOut {
             "shadow_cascade_1",
             "shadow_cascade_2",
             "shadow_cascade_3",
+        ];
+        const AFTER_SHADOW: [&str; CASCADE_COUNT] = [
+            "after_shadow_0",
+            "after_shadow_1",
+            "after_shadow_2",
+            "after_shadow_3",
         ];
 
         // Clustered lighting setup — only recompute when lights change.
@@ -7206,6 +7224,7 @@ fn vs(input: VSIn) -> VSOut {
             self.clustered_offsets_cache = Some(offsets_cpu);
 
             // GPU compute pass only needed when lights changed (offsets were recomputed above)
+            self.close_timing_gap(enc);
             enc.clear_buffer(&self.clustered_counts_buf, 0, None);
             {
                 let cluster_stamp = self
@@ -7226,6 +7245,7 @@ fn vs(input: VSIn) -> VSOut {
                     }
                 }
             }
+            self.open_timing_gap(enc, "after_cluster");
         }
 
         // Update pre-allocated plane instance buffer ONLY if terrain hasn't
@@ -7292,6 +7312,8 @@ fn vs(input: VSIn) -> VSOut {
         // the passes are skipped this frame, nothing is overwritten and the
         // request must stay pending rather than snapshot a stale map.
         if self.c3_copy_pending && has_shadow_casters {
+            self.close_timing_gap(enc);
+            let copy_stamp = self.begin_named_stamp(enc, "c3_shadow_copy");
             let layer = |z: u32| wgpu::TexelCopyTextureInfo {
                 texture: &self.shadow_tex,
                 mip_level: 0,
@@ -7307,7 +7329,9 @@ fn vs(input: VSIn) -> VSOut {
                     depth_or_array_layers: 1,
                 },
             );
+            self.end_named_stamp(enc, copy_stamp);
             self.c3_copy_pending = false;
+            self.open_timing_gap(enc, "after_c3_copy");
         }
 
         for (idx, layer_view) in self.shadow_layer_views.iter().enumerate() {
@@ -7318,6 +7342,11 @@ fn vs(input: VSIn) -> VSOut {
             // known-filled with its current matrix and no refresh is pending.
             if idx >= FIRST_CACHED_CASCADE && !far_rendered[idx - FIRST_CACHED_CASCADE] {
                 continue;
+            }
+            if let Some(stamp) = self.timing_gap.take() {
+                if let Some(profiler) = self.gpu_profiler.as_mut() {
+                    profiler.end_stamp(enc, stamp);
+                }
             }
             let shadow_stamp = self
                 .gpu_profiler
@@ -7492,6 +7521,10 @@ fn vs(input: VSIn) -> VSOut {
                     profiler.end_stamp(enc, stamp);
                 }
             }
+            self.timing_gap = self
+                .gpu_profiler
+                .as_mut()
+                .and_then(|profiler| profiler.begin_stamp(enc, AFTER_SHADOW[idx]));
         }
         // Commit the cached-cascade state only now that the passes have
         // actually run (two-phase commit — see `update_cascade_splits`).
@@ -7534,6 +7567,7 @@ fn vs(input: VSIn) -> VSOut {
 
         // Bruneton is a sky mode, not a second layer on the HDRI sky.
         if !self.atmosphere_on {
+            self.close_timing_gap(enc);
             let sky_stamp = self.begin_named_stamp(enc, "sky");
             let sky_result = self.sky.render(
                 &self.device,
@@ -7547,6 +7581,7 @@ fn vs(input: VSIn) -> VSOut {
                 sky_equirect.as_ref(),
             );
             self.end_named_stamp(enc, sky_stamp);
+            self.open_timing_gap(enc, "sky_to_main");
             sky_result.context("Sky render failed")?;
         }
 
@@ -7642,6 +7677,7 @@ fn vs(input: VSIn) -> VSOut {
         }
 
         {
+            self.close_timing_gap(enc);
             let main_stamp = self
                 .gpu_profiler
                 .as_mut()
@@ -7855,14 +7891,18 @@ fn vs(input: VSIn) -> VSOut {
                 }
             }
         }
+        self.open_timing_gap(enc, "after_main");
 
         // W.2b — split water pass (after the opaque main pass closes), aligned with
         // `render()`, so the editor viewport renders the same refracted water. Pass
         // the caller-supplied depth so the water pass tests/samples the depth the
         // editor's opaque geometry actually wrote (not the internal self.depth).
+        self.close_timing_gap(enc);
         let water_stamp = self.begin_named_stamp(enc, "water");
         self.run_water_pass(enc, depth_view);
         self.end_named_stamp(enc, water_stamp);
+        self.open_timing_gap(enc, "after_water");
+        self.close_timing_gap(enc);
         let atmosphere_stamp = self.begin_named_stamp(enc, "atmosphere");
         if let Some(external_depth) = depth_view {
             self.composite_atmosphere(enc, external_depth);
@@ -7871,6 +7911,7 @@ fn vs(input: VSIn) -> VSOut {
             self.composite_atmosphere(enc, &depth);
         }
         self.end_named_stamp(enc, atmosphere_stamp);
+        self.open_timing_gap(enc, "after_atmosphere");
 
         // --- Post-processing: bloom compute pass (runs on HDR, before blit) ---
         let bloom_intensity = if self.post_chain.bloom_enabled {
@@ -7897,6 +7938,7 @@ fn vs(input: VSIn) -> VSOut {
                 }
             };
             let cfg = bloom.config().clone();
+            self.close_timing_gap(enc);
             let bloom_stamp = self.begin_named_stamp(enc, "bloom");
             bloom.execute(
                 &self.device,
@@ -7908,6 +7950,7 @@ fn vs(input: VSIn) -> VSOut {
                 self.resource_generation,
             );
             self.end_named_stamp(enc, bloom_stamp);
+            self.open_timing_gap(enc, "after_bloom");
             let intensity = cfg.intensity;
             // Editor-Engine Render Parity P.3: first-create HDR blit bind
             // group rebuild removed (only existed so hdr_blit_pipeline could
@@ -7953,6 +7996,7 @@ fn vs(input: VSIn) -> VSOut {
         // stage. Caller's `view` format must match config.format
         // (post_pipeline's hardcoded color target format at construction).
         {
+            self.close_timing_gap(enc);
             let post_stamp = self
                 .gpu_profiler
                 .as_mut()
@@ -7982,13 +8026,19 @@ fn vs(input: VSIn) -> VSOut {
                 }
             }
         }
+        self.open_timing_gap(enc, "after_post");
 
+        self.close_timing_gap(enc);
         let hiz_stamp = self.begin_named_stamp(enc, "hiz");
         self.record_hiz(enc, depth_view);
         self.end_named_stamp(enc, hiz_stamp);
+        self.open_timing_gap(enc, "after_hiz");
+        self.close_timing_gap(enc);
         let particle_stamp = self.begin_named_stamp(enc, "particles");
         self.record_particles(enc, view, depth_view);
         self.end_named_stamp(enc, particle_stamp);
+        self.open_timing_gap(enc, "after_particles");
+        self.close_timing_gap(enc);
 
         // The frame end tick is the last `write_timestamp`. Resolve after it
         // so that query is inside the resolved range. Sky, water, atmosphere,
@@ -8153,6 +8203,17 @@ fn vs(input: VSIn) -> VSOut {
     /// does no draws can land both writes on the same tick. The encoder pair
     /// brackets the whole `draw_into` recording, so that collapse does not
     /// erase the frame.
+    fn close_timing_gap(&mut self, enc: &mut wgpu::CommandEncoder) {
+        if let Some(stamp) = self.timing_gap.take() {
+            self.end_named_stamp(enc, Some(stamp));
+        }
+    }
+
+    fn open_timing_gap(&mut self, enc: &mut wgpu::CommandEncoder, name: &'static str) {
+        self.close_timing_gap(enc);
+        self.timing_gap = self.begin_named_stamp(enc, name);
+    }
+
     fn begin_named_stamp(
         &mut self,
         enc: &mut wgpu::CommandEncoder,

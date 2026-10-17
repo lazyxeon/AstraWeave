@@ -324,9 +324,10 @@ fn main() -> anyhow::Result<()> {
     println!("hdri={}", hdri.display());
     println!("glb={}", glb.display());
     println!(
-        "instances={} rendered_models={} particles=on shadows=on volumetrics=off gpu_cull={gpu_cull}",
+        "instances={} rendered_models={} particles=on shadows=on volumetrics=off gpu_cull={gpu_cull} water_drawn={}",
         instances.len(),
-        renderer.rendered_model_count()
+        renderer.rendered_model_count(),
+        if renderer.water_is_drawn() { "yes" } else { "no" }
     );
     println!("median_draw_into_ms={:.3}", median(&mut encode));
     println!("median_cpu_frame_ms={:.3}", median(&mut cpu_frame));

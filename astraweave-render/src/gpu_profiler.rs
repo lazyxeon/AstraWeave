@@ -17,7 +17,7 @@ use std::sync::{
 pub const FRAME_EXEC_MAGIC: u32 = 0xA1B2_C3D4;
 
 /// Maximum number of timestamp pairs (begin + end per pass).
-const MAX_PASSES: u32 = 24;
+const MAX_PASSES: u32 = 40;
 const MAX_QUERIES: u32 = MAX_PASSES * 2;
 /// `device.poll(Wait)` blocks inside the driver for up to 60s and can fail
 /// to return when a query resolve waits on work that is still queued.
@@ -203,7 +203,7 @@ pub struct OpenStamp {
     end: u32,
 }
 
-const STAMP_CAP: usize = 64;
+const STAMP_CAP: usize = 96;
 
 fn resource_token<T: std::hash::Hash>(kind: u8, value: &T) -> u64 {
     use std::collections::hash_map::DefaultHasher;
