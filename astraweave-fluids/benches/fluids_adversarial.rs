@@ -1,8 +1,8 @@
-//! Adversarial Fluids Benchmarks
-//!
-//! Stress testing for GPU SPH fluid simulation, particles, and grid operations.
+// Adversarial Fluids Benchmarks.
+//
+// Stress testing for GPU SPH fluid simulation, particles, and grid operations.
 
-use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+use criterion::{criterion_group, BenchmarkId, Criterion, Throughput};
 use std::collections::HashMap;
 use std::hint::black_box as std_black_box;
 
@@ -1662,17 +1662,15 @@ fn bench_simd_optimizations(c: &mut Criterion) {
 }
 
 criterion_group!(
-    benches,
+    particles_hash,
     bench_particle_operations,
-    bench_spatial_hashing,
-    bench_sph_kernels,
-    bench_density_pressure,
-    bench_simulation_step,
-    bench_gpu_data_prep,
-    bench_optimization_controller,
-    bench_adaptive_iterations,
-    bench_lod_system,
-    bench_simd_optimizations,
+    bench_spatial_hashing
 );
-
-criterion_main!(benches);
+criterion_group!(kernels_density, bench_sph_kernels, bench_density_pressure);
+criterion_group!(step_gpu, bench_simulation_step, bench_gpu_data_prep);
+criterion_group!(
+    adapt,
+    bench_optimization_controller,
+    bench_adaptive_iterations
+);
+criterion_group!(lod_simd, bench_lod_system, bench_simd_optimizations);

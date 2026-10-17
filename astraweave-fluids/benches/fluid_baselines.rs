@@ -1,16 +1,15 @@
-//! First production-solver baselines for astraweave-fluids (WI-6, F.1).
-//!
-//! Unlike `fluids_adversarial` (which predominantly benchmarks bench-local
-//! mock re-implementations — see the F.0 audit §1.4-D), every benchmark in
-//! this file measures PRODUCTION crate code:
-//!
-//! - `fluid_system_step`: full `FluidSystem::step` GPU dispatch + submit +
-//!   wait at 10k/20k/50k particles (demo-canonical parameters). Skipped
-//!   (with a loud message) when no GPU adapter is available.
-//!
-//! Before the criterion groups run, `print_gpu_pass_breakdown` captures a
-//! per-pass GPU timestamp table via `FluidSystem::read_gpu_timings` for the
-//! same particle counts; record its output in MASTER_BENCHMARK_REPORT.md.
+// First production-solver baselines for astraweave-fluids (WI-6, F.1).
+//
+// Unlike `fluids_adversarial` (which predominantly benchmarks bench-local
+// mock re-implementations — see the F.0 audit §1.4-D), every benchmark in
+// this file measures PRODUCTION crate code:
+//
+// - `fluid_system_step`: full `FluidSystem::step` GPU dispatch + submit +
+//   wait at one particle count per target (10k, 20k, or 50k). Skipped
+//   (with a loud message) when no GPU adapter is available.
+//
+// `print_gpu_pass_breakdown` runs only when `AW_FLUID_GPU_TIMINGS` is set.
+// CI does not set it. The 600s cap stays.
 
 use astraweave_fluids::FluidSystem;
 use criterion::{criterion_group, BenchmarkId, Criterion};
@@ -64,33 +63,46 @@ fn run_step(system: &mut FluidSystem, device: &wgpu::Device, queue: &wgpu::Queue
     queue.submit([encoder.finish()]);
 }
 
-fn bench_fluid_system_step(c: &mut Criterion) {
+fn bench_fluid_system_step_count(c: &mut Criterion, count: u32) {
+    if std::env::var_os("AW_FLUID_GPU_TIMINGS").is_some() {
+        print_gpu_pass_breakdown();
+    }
     let Some((device, queue)) = try_create_device() else {
         eprintln!("SKIPPED: fluid_system_step bench group (no GPU adapter / SKIP_GPU_TESTS)");
         return;
     };
     let mut group = c.benchmark_group("fluid_system_step");
     group.sample_size(30);
-    for count in [10_000u32, 20_000, 50_000] {
-        group.bench_with_input(
-            BenchmarkId::new("step_submit_wait", count),
-            &count,
-            |b, &count| {
-                let mut system = FluidSystem::new(&device, count);
-                apply_demo_params(&mut system);
-                // Warm up: let the fluid leave the degenerate initial lattice.
-                for _ in 0..30 {
-                    run_step(&mut system, &device, &queue);
-                }
+    group.bench_with_input(
+        BenchmarkId::new("step_submit_wait", count),
+        &count,
+        |b, &count| {
+            let mut system = FluidSystem::new(&device, count);
+            apply_demo_params(&mut system);
+            // Warm up: let the fluid leave the degenerate initial lattice.
+            for _ in 0..30 {
+                run_step(&mut system, &device, &queue);
+            }
+            let _ = device.poll(wgpu::MaintainBase::Wait);
+            b.iter(|| {
+                run_step(&mut system, &device, &queue);
                 let _ = device.poll(wgpu::MaintainBase::Wait);
-                b.iter(|| {
-                    run_step(&mut system, &device, &queue);
-                    let _ = device.poll(wgpu::MaintainBase::Wait);
-                });
-            },
-        );
-    }
+            });
+        },
+    );
     group.finish();
+}
+
+fn bench_fluid_10k(c: &mut Criterion) {
+    bench_fluid_system_step_count(c, 10_000);
+}
+
+fn bench_fluid_20k(c: &mut Criterion) {
+    bench_fluid_system_step_count(c, 20_000);
+}
+
+fn bench_fluid_50k(c: &mut Criterion) {
+    bench_fluid_system_step_count(c, 50_000);
 }
 
 /// One-shot per-pass GPU timestamp breakdown (printed, not criterion-timed).
@@ -140,10 +152,6 @@ fn print_gpu_pass_breakdown() {
     eprintln!();
 }
 
-criterion_group!(baselines, bench_fluid_system_step);
-
-fn main() {
-    print_gpu_pass_breakdown();
-    baselines();
-    Criterion::default().configure_from_args().final_summary();
-}
+criterion_group!(baseline_10k, bench_fluid_10k);
+criterion_group!(baseline_20k, bench_fluid_20k);
+criterion_group!(baseline_50k, bench_fluid_50k);

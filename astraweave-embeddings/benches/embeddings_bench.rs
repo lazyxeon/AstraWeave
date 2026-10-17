@@ -1,15 +1,9 @@
-//! # Embeddings Benchmark Suite
-//!
-//! Comprehensive benchmarks for the astraweave-embeddings crate covering:
-//! - Embedding generation (mock client for deterministic benchmarking)
-//! - Vector store operations (insert, search, remove)
-//! - Distance calculations (cosine, euclidean, manhattan, dot product)
-//! - Text preprocessing and chunking
-//! - Batch operations and scaling
-//!
-//! Run with: `cargo bench -p astraweave-embeddings`
+// Embeddings Benchmark Suite.
+//
+// Mock embedding generation, vector store, distance, preprocessing, and batches.
+// Run with: `cargo bench -p astraweave-embeddings`
 
-use criterion::{criterion_group, criterion_main, BatchSize, BenchmarkId, Criterion, Throughput};
+use criterion::{criterion_group, BatchSize, BenchmarkId, Criterion, Throughput};
 use std::collections::HashMap;
 use std::hint::black_box;
 
@@ -704,15 +698,22 @@ fn bench_memory_operations(c: &mut Criterion) {
 // ============================================================================
 
 criterion_group!(
-    benches,
+    client_store,
     bench_embedding_client,
-    bench_vector_store_operations,
-    bench_vector_search,
-    bench_distance_calculations,
-    bench_text_preprocessing,
-    bench_serialization,
-    bench_batch_operations,
-    bench_memory_operations,
+    bench_vector_store_operations
 );
-
-criterion_main!(benches);
+criterion_group!(
+    search_distance,
+    bench_vector_search,
+    bench_distance_calculations
+);
+criterion_group!(
+    text_serialize,
+    bench_text_preprocessing,
+    bench_serialization
+);
+criterion_group!(
+    batch_memory,
+    bench_batch_operations,
+    bench_memory_operations
+);

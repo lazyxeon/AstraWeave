@@ -3,6 +3,7 @@ name = "astraweave-fluids"
 license.workspace = true
 version = "0.1.0"
 edition = "2021"
+autobenches = false
 [features]
 default = []
 # ORPHANED by W.1 (2026-06-20): `simd_ops` — the sole consumer of these
@@ -17,12 +18,38 @@ parallel = ["dep:rayon"]
 # unconditional `use serde::` so --no-default-features could not compile.
 # serde is now an unconditional dependency.
 
+# fluids_adversarial and fluid_baselines each exceeded the 600s cap on
+# main 0758171b. The cap stays. Baselines are one particle count per target.
 [[bench]]
-name = "fluids_adversarial"
+name = "fluids_particles"
 harness = false
 
 [[bench]]
-name = "fluid_baselines"
+name = "fluids_kernels"
+harness = false
+
+[[bench]]
+name = "fluids_step"
+harness = false
+
+[[bench]]
+name = "fluids_adapt"
+harness = false
+
+[[bench]]
+name = "fluids_lod"
+harness = false
+
+[[bench]]
+name = "fluid_baseline_10k"
+harness = false
+
+[[bench]]
+name = "fluid_baseline_20k"
+harness = false
+
+[[bench]]
+name = "fluid_baseline_50k"
 harness = false
 
 [dependencies]
