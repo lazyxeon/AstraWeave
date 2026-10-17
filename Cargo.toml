@@ -198,6 +198,9 @@ futures-util = "0.3"
 tungstenite = "0.28"
 tokio-tungstenite = "0.28"
 egui = "0.32"
+# accesskit is intentionally off. The newest accesskit_unix (0.24) still
+# depends on zbus 5, and that line is RUSTSEC-2026-0370/0371/0372.
+# Screen readers do not receive the egui accessibility tree.
 eframe = { version = "0.32", default-features = false, features = ["default_fonts", "wgpu"] }
 egui_dock = "0.17"
 egui_plot = "0.33"

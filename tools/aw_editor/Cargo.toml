@@ -25,9 +25,10 @@ editor-full = ["editor-graphs", "editor-materials", "editor-terrain", "editor-na
 profiling = ["astraweave-profiling/profiling"]
 # Replace the global allocator with mimalloc. Off by default.
 fast-alloc = ["dep:astraweave-alloc", "astraweave-alloc/fast-alloc"]
-# egui_kittest enables egui/accesskit. eframe must enable egui-winit/accesskit
-# or PlatformOutput's accesskit_update field does not match.
-kittest = ["dep:egui_kittest", "eframe/accesskit"]
+# No `kittest` feature. egui_kittest 0.32 forces egui/accesskit, and the
+# matching eframe/accesskit feature pulls accesskit_unix -> zbus 5
+# (RUSTSEC-2026-0370/0371/0372). The UI harness tests stay on disk behind
+# `cfg(feature = "kittest")` and are not built.
 # Phase 2.2: enable the 8-layer splat-array terrain material pipeline.
 terrain-splat-arrays = ["astraweave-render/terrain-splat-arrays"]
 # Phase 5.3 T7: enable the LOD3 impostor bake / draw pipeline. Flipped into
@@ -61,7 +62,9 @@ gltf = { version = "1.4", features = ["import", "extensions"] }
 glam = { workspace = true }
 rand = "0.8"
 rayon = "1.11"
-rfd = "0.15"
+# 0.17 talks to the XDG portal through libdbus/zenity. 0.15 used ashpd,
+# which pinned zbus 5.
+rfd = "0.17"
 tracing = { workspace = true }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 chrono = "0.4"
@@ -107,7 +110,6 @@ crc32fast = "1.4"
 tokio = { workspace = true }
 mp4 = "0.14"
 openh264 = "0.9"
-egui_kittest = { version = "0.32", optional = true }
 [dev-dependencies]
 approx = "0.5"
 criterion = { version = "0.5", features = ["html_reports"] }

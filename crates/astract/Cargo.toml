@@ -11,7 +11,7 @@ egui = { workspace = true }
 
 [dev-dependencies]
 criterion = { workspace = true }
-eframe = "0.32"
+eframe = { workspace = true }
 
 [[example]]
 name = "counter_component"
