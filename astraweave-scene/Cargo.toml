@@ -3,6 +3,7 @@ name = "astraweave-scene"
 version = "0.1.0"
 edition = "2021"
 license = "MIT"
+autobenches = false
 
 [dependencies]
 glam = { workspace = true }
@@ -26,6 +27,24 @@ default = []
 ecs = []
 world-partition = []
 
+# The single scene_partition_streaming binary exceeded the 600s per-target
+# cap on main 0758171b. Each pair of groups gets its own target. The cap stays.
 [[bench]]
-name = "scene_partition_streaming"
+name = "scene_transform"
+harness = false
+
+[[bench]]
+name = "scene_grid_aabb"
+harness = false
+
+[[bench]]
+name = "scene_frustum_lru"
+harness = false
+
+[[bench]]
+name = "scene_partition_budget"
+harness = false
+
+[[bench]]
+name = "scene_cells_queries"
 harness = false

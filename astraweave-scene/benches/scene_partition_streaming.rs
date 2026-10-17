@@ -1,15 +1,15 @@
-//! AstraWeave-Scene Comprehensive Benchmarks v5.35
-//!
-//! Benchmarks covering:
-//! - Transform: matrix computations, TRS operations
-//! - Scene Graph: node creation, traversal, hierarchy
-//! - World Partition: GridCoord, AABB, cell operations, frustum culling
-//! - LRU Cache: cache operations, eviction
-//! - GPU Resource Management: budget tracking, memory allocation
-//! - Streaming: cell entity management, spatial queries
-//! - Partitioned Scene: entity tracking, cell queries
+// AstraWeave-Scene Comprehensive Benchmarks v5.35
+//
+// Benchmarks covering:
+// - Transform: matrix computations, TRS operations
+// - Scene Graph: node creation, traversal, hierarchy
+// - World Partition: GridCoord, AABB, cell operations, frustum culling
+// - LRU Cache: cache operations, eviction
+// - GPU Resource Management: budget tracking, memory allocation
+// - Streaming: cell entity management, spatial queries
+// - Partitioned Scene: entity tracking, cell queries
 
-use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+use criterion::{criterion_group, BenchmarkId, Criterion, Throughput};
 use glam::{Mat4, Quat, Vec3, Vec4};
 use std::collections::HashMap;
 use std::hint::black_box;
@@ -1432,17 +1432,27 @@ fn bench_spatial_queries(c: &mut Criterion) {
 // ============================================================================
 
 criterion_group!(
-    benches,
+    transform_scene,
     bench_transform_operations,
-    bench_scene_graph_operations,
-    bench_grid_coord_operations,
-    bench_aabb_operations,
-    bench_frustum_culling,
-    bench_lru_cache_operations,
-    bench_world_partition_operations,
-    bench_gpu_resource_budget,
-    bench_cell_entity_management,
-    bench_spatial_queries,
+    bench_scene_graph_operations
 );
-
-criterion_main!(benches);
+criterion_group!(
+    grid_aabb,
+    bench_grid_coord_operations,
+    bench_aabb_operations
+);
+criterion_group!(
+    frustum_lru,
+    bench_frustum_culling,
+    bench_lru_cache_operations
+);
+criterion_group!(
+    partition_budget,
+    bench_world_partition_operations,
+    bench_gpu_resource_budget
+);
+criterion_group!(
+    cells_queries,
+    bench_cell_entity_management,
+    bench_spatial_queries
+);
