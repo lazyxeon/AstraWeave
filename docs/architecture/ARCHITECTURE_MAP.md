@@ -1,7 +1,9 @@
 # AstraWeave Architecture Map
 
-> **Generated**: 2026-05-07 | **Last reconciled**: 2026-10-16 | **Version**: 0.8.12 | **Rust**: 1.89.0
+> **Generated**: 2026-05-07 | **Last reconciled**: 2026-10-17 | **Version**: 0.8.14 | **Rust**: 1.89.0
 > Living document — used by all agents as the primary architectural reference.
+> **0.8.14 update (2026-10-17)**: Rebased onto `cbb314b9`. #353 vendors `third_party/candle-core` 0.8.4 pinned to `zip` 9.0.3. `zip` 1.1.4 is not in the lockfile. No audit ignore for RUSTSEC-2026-0367, 0368, or 0369. #324 is closed. The fix is #353. Nineteen replay cases stay.
+> **0.8.13 update (2026-10-16)**: Rebased onto `22741c42`. #332 requires nineteen replay cases: `greybox_checkpoint`, `quest_ticks`, and `persist_replay` join the sixteen. The golden stays `b6a9d5a2c5da28a6`.
 > **0.8.12 update (2026-10-16)**: Rebased onto `30afc26d`. #340 closes #273 and #338. The parity harness shares one HDRI bake. #333 removes the terrain and AI rows from `scripts/ci/deferred_pr_tests.txt`. #218 is closed. #254, #242, #314, #304, and #274 stay open. Required cases stay sixteen. The golden stays `b6a9d5a2c5da28a6`.
 > **0.8.11 update (2026-10-16)**: Rebased onto `fb1c8ec2`. #343 runs `run_aravath_slice` once at greybox startup. Each sword hit reuses that `sword_hp`. A checkpoint stores the demolition command log, and a brush loads every chunk its radius touches. The golden stays `b6a9d5a2c5da28a6`. Required cases stay sixteen. #342 and #343 added no member.
 > **0.8.10 update (2026-10-16)**: Rebased onto `10757c81`. #330 adds `astraweave-localsim` and required case `local_sim` (sixteen). The greybox golden is `b6a9d5a2c5da28a6`. `gravity.rs` is deleted. #336 and #253 are closed. Member count is **142**.
@@ -966,6 +968,12 @@ These are decisional questions that cross subsystem boundaries or affect the bro
 ---
 
 ## Revision History
+
+### v0.8.14 (2026-10-17)
+Rebased onto `cbb314b9`. #353 vendors `third_party/candle-core` 0.8.4 pinned to `zip` 9.0.3. No audit ignore for the three zip advisories. #324 is closed. The fix is #353.
+
+### v0.8.13 (2026-10-16)
+Rebased onto `22741c42`. #332 requires nineteen replay cases. `greybox_checkpoint`, `quest_ticks`, and `persist_replay` are required. The greybox golden stays `b6a9d5a2c5da28a6`.
 
 ### v0.8.10 (2026-10-16)
 Rebased onto `10757c81`. #330 is on main. The required replay list is sixteen cases, including `local_sim`. The greybox golden is `b6a9d5a2c5da28a6`.
