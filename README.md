@@ -76,6 +76,8 @@ These pulls are not on `main`.
 
 - **#216** — render frame budget (GPU timer readback)
 - **#350** — physics zero-alloc (per-step allocations in the modified-collider buffer)
+- **#360** — register schedule stages without `expect`
+- **#361** — split benchmark shards 2 and 4 under the 600s cap
 
 ---
 

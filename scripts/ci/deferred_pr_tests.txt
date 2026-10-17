@@ -9,6 +9,11 @@
 # Still here: GPU render passes, lavapipe fluid smoke, and the qwen3 variant
 # test. Owner: CI burndown.
 #
+# test_renderer_lifecycle_stress_test is green after #355 (#352 closed):
+# one shared wgpu Instance, a warm baseline, the 50 MB ceiling, and zero
+# user-held handles. The line stays until a later change drops the exclusion.
+# test_buffer_lifecycle_no_leaks stays with #246.
+#
 # Columns: package, cargo target / binary, test name.
 astraweave-fluids gpu_execution_tests gpu_render_accents_smoke
 astraweave-fluids gpu_execution_tests gpu_renderer_smoke
