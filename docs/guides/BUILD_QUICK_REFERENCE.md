@@ -1,6 +1,6 @@
 # Build quick reference
 
-Checked against `main` at `10757c81` (2026-10-16). The player-facing name is Aravath. The windowed demo is `cargo run -p aravath_runtime --bin aravath_greybox`. Its golden is `b6a9d5a2c5da28a6`. Required replay cases are sixteen, including `local_sim`. `gravity.rs` is deleted (#336 closed). `AIArbiter` and `GoapPlanner` stay off the deterministic tick (#331).
+Checked against `main` at `10757c81` (2026-10-16). The player-facing name is Aravath. The windowed demo is `cargo run -p aravath_runtime --bin aravath_greybox`. Its golden is `b6a9d5a2c5da28a6`. Required replay cases are nineteen, including `local_sim`, `greybox_checkpoint`, `quest_ticks`, and `persist_replay`. `gravity.rs` is deleted (#336 closed). `AIArbiter` and `GoapPlanner` stay off the deterministic tick (#331).
 
 ## Daily commands
 

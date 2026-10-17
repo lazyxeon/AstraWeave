@@ -2,7 +2,7 @@
 
 Active planning documents for ongoing AstraWeave development.
 
-> **2026-10-16:** live status is the repository [README](../../README.md) and the banner at the top of [PROJECT_STATUS.md](PROJECT_STATUS.md). Phase 8 week plans below are older campaign notes. Render frame budget #216 is in progress and is not shipped. Local field #330 is on main. Weaving #252, the Aravath greybox #205, traversal #244, terrain columns #215, CI burndown #217, greybox tokio graph #327, greybox combat slice #275, and off-tick AI #331 are on main. #253 and #336 are closed. `gravity.rs` is deleted. `AIArbiter` and `GoapPlanner` stay off the deterministic tick. The required replay set has sixteen cases, including `local_sim`. The greybox golden is `b6a9d5a2c5da28a6`, Linux and Windows only.
+> **2026-10-16:** live status is the repository [README](../../README.md) and the banner at the top of [PROJECT_STATUS.md](PROJECT_STATUS.md). Phase 8 week plans below are older campaign notes. Render frame budget #216 is in progress and is not shipped. Local field #330 is on main. Weaving #252, the Aravath greybox #205, traversal #244, terrain columns #215, CI burndown #217, greybox tokio graph #327, greybox combat slice #275, and off-tick AI #331 are on main. #253 and #336 are closed. `gravity.rs` is deleted. `AIArbiter` and `GoapPlanner` stay off the deterministic tick. The required replay set has nineteen cases, including `local_sim`, `greybox_checkpoint`, `quest_ticks`, and `persist_replay`. The greybox golden is `b6a9d5a2c5da28a6`, Linux and Windows only.
 
 > [!TIP]
 > For authoritative master reports, see **[../masters/](../masters/)**.

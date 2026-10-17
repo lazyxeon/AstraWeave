@@ -808,7 +808,7 @@ mod tests {
             "The game is Aravath. Assets are CC0 only.",
             "under 11 ms per frame on a GTX 1660 Ti-class GPU. It is not yet measured.",
             "planner_pure perception_world gameplay_rng fixed64 combat_resolve",
-            "destruction gameplay_qa_aravath_slice nav_reroute causal_bridge scripted_system weaving traversal traversal_deformed worldgen_columns deformed_chunk local_sim",
+            "destruction gameplay_qa_aravath_slice nav_reroute causal_bridge scripted_system weaving traversal traversal_deformed worldgen_columns deformed_chunk local_sim greybox_checkpoint quest_ticks persist_replay",
             "## In progress",
             "#216 are in progress",
             "## Next",
@@ -817,7 +817,7 @@ mod tests {
     }
 
     fn sample_workflow() -> String {
-        let cases = r#""planner_pure", "perception_world", "gameplay_rng", "fixed64", "combat_resolve", "destruction", "gameplay_qa_aravath_slice", "nav_reroute", "causal_bridge", "scripted_system", "weaving", "traversal", "traversal_deformed", "worldgen_columns", "deformed_chunk", "local_sim""#;
+        let cases = r#""planner_pure", "perception_world", "gameplay_rng", "fixed64", "combat_resolve", "destruction", "gameplay_qa_aravath_slice", "nav_reroute", "causal_bridge", "scripted_system", "weaving", "traversal", "traversal_deformed", "worldgen_columns", "deformed_chunk", "local_sim", "greybox_checkpoint", "quest_ticks", "persist_replay""#;
         format!("const required = [{cases}];\nrequired = {{{cases}}};\n")
     }
 
@@ -826,7 +826,11 @@ mod tests {
         let lists = required_case_lists(&sample_workflow());
         assert_eq!(lists.len(), 2);
         assert_eq!(lists[0], lists[1]);
-        assert_eq!(lists[0].len(), 16);
+        assert_eq!(lists[0].len(), 19);
+        assert_eq!(
+            lists[0][16..].iter().map(String::as_str).collect::<Vec<_>>(),
+            ["greybox_checkpoint", "quest_ticks", "persist_replay"]
+        );
     }
 
     #[test]

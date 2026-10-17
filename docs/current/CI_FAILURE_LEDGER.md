@@ -1,6 +1,6 @@
 # CI failure ledger
 
-> **2026-10-16:** `main` is `30afc26d`. #340 (`aab4c84b`) closed #273 and #338. #333 closed #218. #254, #242, #314, #304, and #274 stay open. Profile `ci-pr` still excludes the GPU render passes, the lavapipe fluid smokes, and `test_qwen3_variants`. The sixteen required replay cases and the greybox golden `b6a9d5a2c5da28a6` are unchanged. Sentences below that still call `editor_engine_render_parity` deferred, or that leave the terrain goldens and the AI planning tests in the pull-request skip list, are the pre-#340 / pre-#333 notes. #219 and #256 are closed. `openssl` is not in `Cargo.lock`.
+> **2026-10-16:** `main` is `22741c42`. #340 (`aab4c84b`) closed #273 and #338. #333 closed #218. #254, #242, #314, #304, and #274 stay open. Profile `ci-pr` still excludes the GPU render passes, the lavapipe fluid smokes, and `test_qwen3_variants`. #332 (`22741c42`) requires nineteen replay cases, adding `greybox_checkpoint`, `quest_ticks`, and `persist_replay`. The greybox golden `b6a9d5a2c5da28a6` is unchanged. Sentences below that still call `editor_engine_render_parity` deferred, or that leave the terrain goldens and the AI planning tests in the pull-request skip list, are the pre-#340 / pre-#333 notes. #219 and #256 are closed. `openssl` is not in `Cargo.lock`.
 
 ## Current disposition (`30afc26d`)
 
