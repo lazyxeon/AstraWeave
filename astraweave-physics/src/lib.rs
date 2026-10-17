@@ -1127,10 +1127,9 @@ impl PhysicsWorld {
             &self.event_handler,
         );
 
-        // CRITICAL FIX (Week 2 Day 3): Update query pipeline after physics step
-        // Without this, raycasts in control_character() use stale geometry,
-        // causing character controller to fail ground detection
-        self.query_pipeline.update(&self.colliders);
+        // `pipeline.step` already calls `QueryPipeline::update_incremental`
+        // on `self.query_pipeline`. A second full `update` rebuilds the QBVH
+        // from scratch and allocates scratch vectors every step.
     }
 
     pub fn apply_force(&mut self, id: BodyId, force: Vec3) {
