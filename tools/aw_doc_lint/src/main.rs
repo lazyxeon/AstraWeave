@@ -828,7 +828,10 @@ mod tests {
         assert_eq!(lists[0], lists[1]);
         assert_eq!(lists[0].len(), 19);
         assert_eq!(
-            lists[0][16..].iter().map(String::as_str).collect::<Vec<_>>(),
+            lists[0][16..]
+                .iter()
+                .map(String::as_str)
+                .collect::<Vec<_>>(),
             ["greybox_checkpoint", "quest_ticks", "persist_replay"]
         );
     }
