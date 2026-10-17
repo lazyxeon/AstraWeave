@@ -72,6 +72,12 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
+        with:
+          # #205 stores the CC0 Aravath models in Git LFS and records each
+          # blob's sha256 in ASSET_MANIFEST.tsv. Without LFS the working
+          # tree is the pointer, so asset_manifest_is_sorted_and_hashes_match
+          # hashes that pointer instead of AnimationLibrary_Godot_Standard.bin.
+          lfs: true
 
       - name: Set up Rust toolchain
         uses: dtolnay/rust-toolchain@master
