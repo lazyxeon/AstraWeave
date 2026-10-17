@@ -299,10 +299,11 @@ strip = true
 debug = false
 incremental = false
 
-# candle-core 0.8.4 (and 0.11.0, and current candle main) depend on zip < 9.
-# RUSTSEC-2026-0367, 0368, and 0369 are patched only in zip >= 9.0.0. This
-# copy is crates.io 0.8.4 with that dependency, so zip 1.1.4 leaves the lock.
-# Asset packs stay on the workspace zip 9.0.3.
+# third_party/candle-core exists because candle-core 0.8.4, candle 0.11.0,
+# and current candle main all depend on zip < 9. RUSTSEC-2026-0367, 0368,
+# and 0369 are patched only in zip >= 9.0.0. This copy is crates.io 0.8.4
+# pinned to the workspace zip 9.0.3. Delete this directory and the patch
+# below once candle upstream depends on zip >= 9. Asset packs stay on 9.0.3.
 [patch.crates-io]
 candle-core = { path = "third_party/candle-core" }
 
