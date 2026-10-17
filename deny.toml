@@ -117,6 +117,12 @@ ignore = [
     { id = "RUSTSEC-2026-0249", reason = "smartstring 1.0.1 has no patched release. rhai 1.23.4 pins it. https://github.com/lazyxeon/AstraWeave/issues/309" },
     { id = "RUSTSEC-2026-0192", reason = "ttf-parser 0.25.1 has no patched release. egui 0.32 pulls it through ab_glyph. https://github.com/lazyxeon/AstraWeave/issues/310" },
     { id = "RUSTSEC-2024-0449", reason = "unsafe-libyaml has no patched release. aw_trace_sync is the only serde_yaml caller. https://github.com/lazyxeon/AstraWeave/issues/311" },
+
+    # Standalone zbus crates were folded into zbus 6. RustSec says no safe
+    # upgrade. The parent is egui-winit through accesskit. Not the Rapier vendor.
+    { id = "RUSTSEC-2026-0370", reason = "zvariant 5.7.0 is unmaintained as a standalone crate. No safe upgrade. egui-winit/accesskit pins it. https://rustsec.org/advisories/RUSTSEC-2026-0370" },
+    { id = "RUSTSEC-2026-0371", reason = "zbus_names 4.2.0 is unmaintained as a standalone crate. No safe upgrade. egui-winit/accesskit pins it. https://rustsec.org/advisories/RUSTSEC-2026-0371" },
+    { id = "RUSTSEC-2026-0372", reason = "zvariant_derive 5.7.0 is unmaintained as a standalone crate. No safe upgrade. egui-winit/accesskit pins it. https://rustsec.org/advisories/RUSTSEC-2026-0372" },
 ]
 
 # Threshold for security vulnerabilities, any vulnerability with a CVSS score
