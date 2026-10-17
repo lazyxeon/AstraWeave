@@ -177,7 +177,10 @@ fn main() -> anyhow::Result<()> {
     let view = color.create_view(&wgpu::TextureViewDescriptor::default());
     let camera = fixed_camera();
 
-    let frame = |renderer: &mut Renderer| -> anyhow::Result<FrameTimes> {
+    let mut presentation_frame = 0u64;
+    let mut frame = |renderer: &mut Renderer| -> anyhow::Result<FrameTimes> {
+        renderer.set_presentation_frame(presentation_frame);
+        presentation_frame = presentation_frame.saturating_add(1);
         device.push_error_scope(wgpu::ErrorFilter::Validation);
         device.push_error_scope(wgpu::ErrorFilter::OutOfMemory);
         let recorded = (|| -> anyhow::Result<FrameTimes> {
@@ -335,6 +338,11 @@ fn main() -> anyhow::Result<()> {
         } else {
             "off"
         }
+    );
+    println!(
+        "cloud_shadow_steps={} cloud_shadow_slices={} cloud_shadow_time=presentation_frame",
+        astraweave_render::volumetric_clouds::CLOUD_SHADOW_STEPS,
+        astraweave_render::volumetric_clouds::CLOUD_SHADOW_SLICES
     );
     println!("median_draw_into_ms={:.3}", median(&mut encode));
     println!("median_cpu_frame_ms={:.3}", median(&mut cpu_frame));

@@ -137,7 +137,7 @@ struct SceneEnv {
 
 fn sample_cloud_shadow(world_pos: vec3<f32>) -> f32 {
     let shadow_extent = 1024.0;
-    let uv = (world_pos.xz - uCamera.camera_pos.xz) / (2.0 * shadow_extent) + vec2<f32>(0.5, 0.5);
+    let uv = (world_pos.xz - uIbl._pad) / (2.0 * shadow_extent) + vec2<f32>(0.5, 0.5);
     if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) {
         return 1.0;
     }
@@ -498,13 +498,21 @@ struct SceneEnv {
 };
 @group(4) @binding(0) var<uniform> uScene: SceneEnv;
 
-// Group 5 shares the main PBR IBL layout; skinned shader uses cloud shadow bindings.
+// Group 5 shares the main PBR IBL layout. `_pad` is the cloud-shadow bake
+// center; the struct matches `IblParams` in ibl_common.wgsl. This shader does
+// not call `compute_ibl`, so the cubemap bindings stay undeclared.
+struct IblParams {
+    ibl_intensity: f32,
+    max_spec_lod: f32,
+    _pad: vec2<f32>,
+};
+@group(5) @binding(4) var<uniform> uIbl: IblParams;
 @group(5) @binding(7) var cloud_shadow_tex: texture_2d<f32>;
 @group(5) @binding(8) var cloud_shadow_samp: sampler;
 
 fn sample_cloud_shadow(world_pos: vec3<f32>) -> f32 {
     let shadow_extent = 1024.0;
-    let uv = (world_pos.xz - uCamera.camera_pos.xz) / (2.0 * shadow_extent) + vec2<f32>(0.5, 0.5);
+    let uv = (world_pos.xz - uIbl._pad) / (2.0 * shadow_extent) + vec2<f32>(0.5, 0.5);
     if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) {
         return 1.0;
     }
@@ -636,6 +644,16 @@ struct CameraUBO {
     view_proj: [[f32; 4]; 4],
     light_dir_pad: [f32; 4],
     camera_pos_pad: [f32; 4],
+}
+
+/// Matches `IblParams` in `ibl_common.wgsl`. `_pad` is the cloud-shadow bake
+/// center (world XZ). It is not shading data; `compute_ibl` does not read it.
+#[repr(C)]
+#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+struct IblParamsGpu {
+    ibl_intensity: f32,
+    max_spec_lod: f32,
+    _pad: [f32; 2],
 }
 
 /// A named model with its mesh and instance data for multi-model rendering.
@@ -1142,6 +1160,13 @@ pub struct Renderer {
     /// Whether to dispatch the per-frame cloud shadow compute pass.
     /// Disable in editor modes to avoid noisy shadow patterns on terrain.
     cloud_shadows_enabled: bool,
+    /// Set by `set_presentation_frame` and consumed by the next draw.
+    presentation_frame: Option<u64>,
+    /// Used when the caller does not set a presentation frame. Advances once
+    /// per cloud-shadow record so the slice stays a function of draw count.
+    cloud_shadow_frame: u64,
+    ibl_intensity: f32,
+    ibl_max_spec_lod: f32,
 
     // Water rendering
     water_renderer: Option<crate::water::WaterRenderer>,
@@ -2316,17 +2341,14 @@ impl Renderer {
         let cloud_shadow_pass =
             crate::volumetric_clouds::CloudShadowPass::new_default(&device, &queue);
 
-        // IBL params uniform buffer
-        #[repr(C)]
-        #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
-        struct IblParamsGpu {
-            ibl_intensity: f32,
-            max_spec_lod: f32,
-            _pad: [f32; 2],
-        }
+        // IBL params uniform buffer. `_pad` is filled with the cloud-shadow
+        // bake center on each draw. Intensity and LOD stay at these defaults
+        // until a bake overwrites them.
+        let ibl_intensity = 1.0f32;
+        let ibl_max_spec_lod = 4.0f32;
         let ibl_params_data = IblParamsGpu {
-            ibl_intensity: 1.0,
-            max_spec_lod: 4.0,
+            ibl_intensity,
+            max_spec_lod: ibl_max_spec_lod,
             _pad: [0.0; 2],
         };
         let ibl_params_buf = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -3798,6 +3820,10 @@ fn vs(input: VSIn) -> VSOut {
             gi_sampler,
             cloud_shadow_pass,
             cloud_shadows_enabled: true,
+            presentation_frame: None,
+            cloud_shadow_frame: 0,
+            ibl_intensity,
+            ibl_max_spec_lod,
             water_renderer: None,
             hdr_overlay: None,
             biome_system: crate::biome_material::BiomeMaterialSystem::new(
@@ -4166,13 +4192,6 @@ fn vs(input: VSIn) -> VSOut {
             ..Default::default()
         });
 
-        #[repr(C)]
-        #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
-        struct IblParamsGpu {
-            ibl_intensity: f32,
-            max_spec_lod: f32,
-            _pad: [f32; 2],
-        }
         // L.2 calibration (director-ratified 2026-07-28): fixed default IBL
         // intensity, replacing the former image-average normalisation
         // (`0.35/avg_luminance`). Measured for kloppenheim_02: the linear
@@ -4189,13 +4208,9 @@ fn vs(input: VSIn) -> VSOut {
             ibl_intensity,
             res.mips_specular,
         );
-        let params = IblParamsGpu {
-            ibl_intensity,
-            max_spec_lod: res.mips_specular.saturating_sub(1).max(1) as f32,
-            _pad: [0.0; 2],
-        };
-        self.queue
-            .write_buffer(&self.ibl_params_buf, 0, bytemuck::bytes_of(&params));
+        self.ibl_intensity = ibl_intensity;
+        self.ibl_max_spec_lod = res.mips_specular.saturating_sub(1).max(1) as f32;
+        self.write_ibl_params();
 
         // Recreate bind group with actual IBL textures.
         // We need the layout — extract from the current bind group's pipeline.
@@ -6241,6 +6256,63 @@ fn vs(input: VSIn) -> VSOut {
         self.cloud_shadows_enabled = enabled;
     }
 
+    /// Presentation frame for the cloud-shadow slice. The next draw consumes
+    /// it. The same index always selects the same rows and the same cloud
+    /// time (`(index / slices) * slices / 60` seconds). Callers that never
+    /// set this get a counter that advances once per draw.
+    pub fn set_presentation_frame(&mut self, frame: u64) {
+        self.presentation_frame = Some(frame);
+    }
+
+    fn cloud_shadow_frame_index(&mut self) -> u64 {
+        if let Some(frame) = self.presentation_frame.take() {
+            self.cloud_shadow_frame = frame.saturating_add(1);
+            frame
+        } else {
+            let frame = self.cloud_shadow_frame;
+            self.cloud_shadow_frame = self.cloud_shadow_frame.saturating_add(1);
+            frame
+        }
+    }
+
+    fn write_ibl_params(&self) {
+        let params = IblParamsGpu {
+            ibl_intensity: self.ibl_intensity,
+            max_spec_lod: self.ibl_max_spec_lod,
+            _pad: self.cloud_shadow_pass.baked_center_xz(),
+        };
+        self.queue
+            .write_buffer(&self.ibl_params_buf, 0, bytemuck::bytes_of(&params));
+    }
+
+    fn record_cloud_shadow(&mut self, encoder: &mut wgpu::CommandEncoder) {
+        let frame = self.cloud_shadow_frame_index();
+        let cam_pos = glam::Vec3::new(
+            self.camera_ubo.camera_pos_pad[0],
+            self.camera_ubo.camera_pos_pad[1],
+            self.camera_ubo.camera_pos_pad[2],
+        );
+        let sun_dir = -glam::Vec3::new(
+            self.camera_ubo.light_dir_pad[0],
+            self.camera_ubo.light_dir_pad[1],
+            self.camera_ubo.light_dir_pad[2],
+        )
+        .normalize_or_zero();
+        let cloud_cfg = crate::volumetric_clouds::CloudConfig::default();
+        self.cloud_shadow_pass.prepare_frame(
+            &self.queue,
+            cam_pos,
+            sun_dir,
+            &cloud_cfg,
+            cloud_cfg.extinction_coeff,
+            crate::volumetric_clouds::CLOUD_SHADOW_STEPS,
+            frame,
+        );
+        self.write_ibl_params();
+        self.cloud_shadow_pass
+            .execute(&self.device, encoder, self.resource_generation);
+    }
+
     /// Set the post-processing chain configuration.
     ///
     /// L.1 honesty note: in the current render paths (`render()` and
@@ -6889,29 +6961,7 @@ fn vs(input: VSIn) -> VSOut {
         // Skipped when cloud_shadows_enabled is false — the 512×512 transmittance
         // map produces a noisy pattern on terrain at this resolution.
         if self.cloud_shadows_enabled {
-            let cam_pos = glam::Vec3::new(
-                self.camera_ubo.camera_pos_pad[0],
-                self.camera_ubo.camera_pos_pad[1],
-                self.camera_ubo.camera_pos_pad[2],
-            );
-            let sun_dir = -glam::Vec3::new(
-                self.camera_ubo.light_dir_pad[0],
-                self.camera_ubo.light_dir_pad[1],
-                self.camera_ubo.light_dir_pad[2],
-            )
-            .normalize_or_zero();
-            let cloud_cfg = crate::volumetric_clouds::CloudConfig::default();
-            self.cloud_shadow_pass.prepare_frame(
-                &self.queue,
-                cam_pos,
-                sun_dir,
-                &cloud_cfg,
-                cloud_cfg.extinction_coeff,
-                crate::volumetric_clouds::CLOUD_SHADOW_STEPS,
-                1.0 / 60.0,
-            );
-            self.cloud_shadow_pass
-                .execute(&self.device, &mut enc, self.resource_generation);
+            self.record_cloud_shadow(&mut enc);
         }
 
         {
@@ -7603,29 +7653,7 @@ fn vs(input: VSIn) -> VSOut {
         if self.cloud_shadows_enabled {
             self.close_timing_gap(enc);
             let cloud_stamp = self.begin_named_stamp(enc, "cloud_shadow");
-            let cam_pos = glam::Vec3::new(
-                self.camera_ubo.camera_pos_pad[0],
-                self.camera_ubo.camera_pos_pad[1],
-                self.camera_ubo.camera_pos_pad[2],
-            );
-            let sun_dir = -glam::Vec3::new(
-                self.camera_ubo.light_dir_pad[0],
-                self.camera_ubo.light_dir_pad[1],
-                self.camera_ubo.light_dir_pad[2],
-            )
-            .normalize_or_zero();
-            let cloud_cfg = crate::volumetric_clouds::CloudConfig::default();
-            self.cloud_shadow_pass.prepare_frame(
-                &self.queue,
-                cam_pos,
-                sun_dir,
-                &cloud_cfg,
-                cloud_cfg.extinction_coeff,
-                crate::volumetric_clouds::CLOUD_SHADOW_STEPS,
-                1.0 / 60.0,
-            );
-            self.cloud_shadow_pass
-                .execute(&self.device, enc, self.resource_generation);
+            self.record_cloud_shadow(enc);
             self.end_named_stamp(enc, cloud_stamp);
             self.open_timing_gap(enc, "after_cloud_shadow");
         }

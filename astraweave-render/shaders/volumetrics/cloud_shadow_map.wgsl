@@ -37,6 +37,13 @@ struct CloudShadowParams {
     shadow_steps:    u32,          // march steps through cloud layer
     resolution:      f32,          // shadow map resolution (pixels, square)
     _pad0:           f32,
+    // This dispatch writes rows [y_begin, y_begin + row_count). The frame
+    // index picks the slice. gid.y is the row inside the slice, not the
+    // texture row, because the dispatch is only `row_count` tall.
+    y_begin:         u32,
+    row_count:       u32,
+    _pad1:           u32,
+    _pad2:           u32,
 };
 
 @group(0) @binding(0) var<uniform>  params:  CloudShadowParams;
@@ -120,15 +127,16 @@ override WG_Y: u32 = 8u;
 @compute @workgroup_size(WG_X, WG_Y, 1)
 fn cloud_shadow_main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let res = u32(params.resolution);
-    if (gid.x >= res || gid.y >= res) { return; }
+    let row = params.y_begin + gid.y;
+    if (gid.x >= res || gid.y >= params.row_count || row >= res) { return; }
 
-    let uv = (vec2<f32>(f32(gid.x), f32(gid.y)) + 0.5) / params.resolution;
+    let uv = (vec2<f32>(f32(gid.x), f32(row)) + 0.5) / params.resolution;
     let xz = params.center.xz + (uv - 0.5) * 2.0 * params.extent;
 
     // Clear columns used to pay for coverage on every step, then skip the FBM.
     let coverage = weather_coverage(xz);
     if (coverage < 0.001) {
-        textureStore(t_out, vec2<i32>(gid.xy), vec4<f32>(1.0, 0.0, 0.0, 0.0));
+        textureStore(t_out, vec2<i32>(i32(gid.x), i32(row)), vec4<f32>(1.0, 0.0, 0.0, 0.0));
         return;
     }
 
@@ -159,5 +167,5 @@ fn cloud_shadow_main(@builtin(global_invocation_id) gid: vec3<u32>) {
     }
 
     let transmittance = exp(-optical_depth * params.extinction);
-    textureStore(t_out, vec2<i32>(gid.xy), vec4<f32>(transmittance, 0.0, 0.0, 0.0));
+    textureStore(t_out, vec2<i32>(i32(gid.x), i32(row)), vec4<f32>(transmittance, 0.0, 0.0, 0.0));
 }
