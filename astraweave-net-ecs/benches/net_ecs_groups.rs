@@ -2,7 +2,7 @@ use astraweave_ecs::World;
 use astraweave_net_ecs::{
     CClientPrediction, CNetworkAuthority, CNetworkClient, EntityState, NetworkSnapshot,
 };
-use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
+use criterion::{criterion_group, BenchmarkId, Criterion};
 use std::collections::HashMap;
 use std::hint::black_box;
 use tokio::sync::mpsc;
@@ -476,12 +476,3 @@ criterion_group!(
     benchmark_full_delta_cycle
 );
 criterion_group!(bandwidth, benchmark_snapshot_size, benchmark_delta_size);
-
-criterion_main!(
-    serialization,
-    compression,
-    delta,
-    client_server,
-    full_pipeline,
-    bandwidth
-);

@@ -1,11 +1,11 @@
-//! Comprehensive benchmarks for astraweave-cinematics
-//!
-//! Covers: Timeline creation, Sequencer operations, Track handling, Event emission,
-//! JSON serialization/deserialization, and various edge cases.
-//!
-//! v5.36 - January 2026
+// Comprehensive benchmarks for astraweave-cinematics
+//
+// Covers: Timeline creation, Sequencer operations, Track handling, Event emission,
+// JSON serialization/deserialization, and various edge cases.
+//
+// v5.36 - January 2026
 
-use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
+use criterion::{criterion_group, BenchmarkId, Criterion};
 use std::hint::black_box;
 
 // Re-implement the types here to avoid dependency issues
@@ -860,18 +860,20 @@ fn bench_timeline_clone(c: &mut Criterion) {
 }
 
 criterion_group!(
-    benches,
+    creation,
     bench_timeline_creation,
-    bench_camera_keyframes,
-    bench_track_creation,
-    bench_sequencer_operations,
-    bench_event_emission,
-    bench_timeline_playback,
-    bench_json_serialization,
-    bench_event_creation,
-    bench_timeline_scaling,
-    bench_edge_cases,
-    bench_timeline_clone,
+    bench_camera_keyframes
 );
-
-criterion_main!(benches);
+criterion_group!(tracks, bench_track_creation, bench_sequencer_operations);
+criterion_group!(
+    playback,
+    bench_event_emission,
+    bench_timeline_playback
+);
+criterion_group!(
+    serialize,
+    bench_json_serialization,
+    bench_event_creation
+);
+criterion_group!(edges, bench_timeline_scaling, bench_edge_cases);
+criterion_group!(clone_timelines, bench_timeline_clone);

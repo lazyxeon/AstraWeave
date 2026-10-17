@@ -3,6 +3,7 @@ name = "astraweave-cinematics"
 version = "0.1.0"
 license.workspace = true
 edition = "2021"
+autobenches = false
 
 [dependencies]
 serde = { workspace = true }
@@ -13,6 +14,28 @@ thiserror = { workspace = true }
 [dev-dependencies]
 criterion = { workspace = true }
 
+# cinematics_benchmarks exceeded the 600s per-target cap on main 0758171b.
+# The cap stays. Each pair of groups is its own target.
 [[bench]]
-name = "cinematics_benchmarks"
+name = "cinematics_creation"
+harness = false
+
+[[bench]]
+name = "cinematics_tracks"
+harness = false
+
+[[bench]]
+name = "cinematics_playback"
+harness = false
+
+[[bench]]
+name = "cinematics_serialize"
+harness = false
+
+[[bench]]
+name = "cinematics_edges"
+harness = false
+
+[[bench]]
+name = "cinematics_clone"
 harness = false

@@ -3,6 +3,7 @@ name = "astraweave-net-ecs"
 version = "0.1.0"
 license.workspace = true
 edition = "2021"
+autobenches = false
 
 [dependencies]
 anyhow = { workspace = true }
@@ -24,8 +25,30 @@ bincode = "2.0"
 criterion = { version = "0.5", features = ["html_reports"] }
 serde_json = "1"
 
+# One Criterion group per target. The runner gives each target 600s, and the
+# combined net_ecs_benchmarks binary exceeded that on the 0758171b main run.
 [[bench]]
-name = "net_ecs_benchmarks"
+name = "net_ecs_serialization"
+harness = false
+
+[[bench]]
+name = "net_ecs_compression"
+harness = false
+
+[[bench]]
+name = "net_ecs_delta"
+harness = false
+
+[[bench]]
+name = "net_ecs_client_server"
+harness = false
+
+[[bench]]
+name = "net_ecs_full_pipeline"
+harness = false
+
+[[bench]]
+name = "net_ecs_bandwidth"
 harness = false
 
 [[bench]]
