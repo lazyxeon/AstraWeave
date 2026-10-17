@@ -1,15 +1,10 @@
-//! # Dialogue System Benchmark Suite
-//!
-//! Comprehensive benchmarks for the astraweave-dialogue crate covering:
-//! - Graph validation (reference checking)
-//! - Node traversal and lookup
-//! - Serialization/deserialization
-//! - Graph construction at scale
-//!
-//! Run with: `cargo bench -p astraweave-dialogue`
+// Dialogue System Benchmark Suite.
+//
+// Graph validation, node traversal, serialization, and graph construction.
+// Run with: `cargo bench -p astraweave-dialogue`
 
 use astraweave_dialogue::{DialogueGraph, DialogueNode, DialogueResponse};
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+use criterion::{black_box, criterion_group, BenchmarkId, Criterion, Throughput};
 
 // ============================================================================
 // CORRECTNESS ASSERTION HELPERS
@@ -576,14 +571,6 @@ fn bench_clone_operations(c: &mut Criterion) {
 // CRITERION GROUP REGISTRATION
 // ============================================================================
 
-criterion_group!(
-    benches,
-    bench_validation,
-    bench_node_lookup,
-    bench_serialization,
-    bench_graph_construction,
-    bench_traversal,
-    bench_clone_operations,
-);
-
-criterion_main!(benches);
+criterion_group!(validation_lookup, bench_validation, bench_node_lookup);
+criterion_group!(serialize_build, bench_serialization, bench_graph_construction);
+criterion_group!(traverse_clone, bench_traversal, bench_clone_operations);

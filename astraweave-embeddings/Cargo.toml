@@ -5,6 +5,7 @@ edition = "2021"
 description = "High-performance embeddings and vector search for AI-native gaming"
 license = "MIT"
 repository = "https://github.com/lazyxeon/AstraWeave"
+autobenches = false
 
 [dependencies]
 # Core dependencies
@@ -50,8 +51,21 @@ candle = ["candle-core", "candle-nn", "candle-transformers"]
 criterion = { version = "0.7", features = ["html_reports"] }
 tokio-test = "0.4"
 
+# embeddings_bench exceeded the 600s per-target cap on main 0758171b.
 [[bench]]
-name = "embeddings_bench"
+name = "embeddings_client"
+harness = false
+
+[[bench]]
+name = "embeddings_search"
+harness = false
+
+[[bench]]
+name = "embeddings_text"
+harness = false
+
+[[bench]]
+name = "embeddings_batch"
 harness = false
 
 
