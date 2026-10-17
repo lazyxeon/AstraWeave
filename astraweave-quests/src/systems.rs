@@ -72,7 +72,8 @@ impl QuestLlmSystem {
             return Ok(());
         }
 
-        let start_time = std::time::Instant::now();
+        // Wall-clock generation cost is not sim state.
+        let generation_time = 0.0;
 
         // Update context with learned preferences
         generator.context.preferred_quest_types = journal.get_preferred_categories();
@@ -84,8 +85,6 @@ impl QuestLlmSystem {
             .await
         {
             Ok(quest) => {
-                let generation_time = start_time.elapsed().as_millis() as f32;
-
                 // Validate quest
                 let validation = self
                     .quest_generator
@@ -118,8 +117,7 @@ impl QuestLlmSystem {
                 Ok(())
             }
             Err(e) => {
-                let generation_time = start_time.elapsed().as_millis() as f32;
-                metrics.record_quest_generation(generation_time, false, None);
+                metrics.record_quest_generation(0.0, false, None);
                 error!("Failed to generate quest: {}", e);
                 Err(e)
             }
@@ -172,9 +170,10 @@ impl QuestLlmSystem {
         metrics: &mut CQuestMetrics,
         journal: &mut CQuestJournal,
     ) -> Result<()> {
-        active_quest.set_state(QuestState::Completed);
+        let tick = active_quest.last_update;
+        active_quest.set_state(QuestState::Completed, tick);
         let duration = active_quest.get_duration();
-        let completion_time_minutes = duration.num_minutes() as f64;
+        let completion_time_minutes = duration as f64;
 
         info!(
             "Quest '{}' completed in {:.1} minutes",
@@ -220,7 +219,7 @@ impl QuestLlmSystem {
         );
 
         // Record choice
-        active_quest.record_choice(step_id.clone(), choice.clone());
+        active_quest.record_choice(step_id.clone(), choice.clone(), active_quest.last_update);
         journal.record_choice(&active_quest.quest.id, choice.description.clone());
         metrics.record_player_choice(choice.id.clone());
 
@@ -251,7 +250,8 @@ impl QuestLlmSystem {
 
         // Advance quest step if appropriate
         if choice.leads_to_step.is_some() || self.choice_completes_step(&choice) {
-            active_quest.advance_step();
+            let tick = active_quest.last_update;
+            active_quest.advance_step(tick);
         }
 
         Ok(())
@@ -265,7 +265,7 @@ impl QuestLlmSystem {
         metrics: &mut CQuestMetrics,
         journal: &mut CQuestJournal,
     ) -> Result<()> {
-        active_quest.set_state(QuestState::Abandoned);
+        active_quest.set_state(QuestState::Abandoned, active_quest.last_update);
 
         warn!("Quest '{}' abandoned: {}", active_quest.quest.title, reason);
 
@@ -284,7 +284,7 @@ impl QuestLlmSystem {
         journal: &mut CQuestJournal,
         completion_notes: String,
     ) -> Result<()> {
-        active_quest.set_state(QuestState::Completed);
+        active_quest.set_state(QuestState::Completed, active_quest.last_update);
 
         // Mark all steps as completed
         for step in &mut active_quest.quest.steps {
@@ -298,7 +298,7 @@ impl QuestLlmSystem {
 
         // Update metrics with admin completion
         let duration = active_quest.get_duration();
-        metrics.record_quest_completion(&active_quest.quest, duration.num_minutes() as f64, 1.0);
+        metrics.record_quest_completion(&active_quest.quest, duration as f64, 1.0);
         journal.complete_quest(
             &active_quest.quest.id,
             format!("Force completed: {}", completion_notes),
@@ -417,7 +417,7 @@ impl QuestLlmSystem {
         quality += choice_bonus;
 
         // Penalty for very quick completion (might indicate lack of engagement)
-        let duration_minutes = active_quest.get_duration().num_minutes();
+        let duration_minutes = active_quest.get_duration() as i64;
         if duration_minutes < 5 {
             quality -= 0.3;
         } else if duration_minutes > active_quest.quest.metadata.estimated_duration as i64 * 3 {

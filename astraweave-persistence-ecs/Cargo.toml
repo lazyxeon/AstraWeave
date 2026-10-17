@@ -20,6 +20,7 @@ astraweave-core = { workspace = true }
 astraweave-memory = { workspace = true }
 
 [dev-dependencies]
+sha2 = { workspace = true }
 tempfile = "3"
 criterion = { version = "0.5", features = ["html_reports"] }
 

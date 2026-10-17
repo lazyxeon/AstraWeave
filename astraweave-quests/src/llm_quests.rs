@@ -1,5 +1,4 @@
 use anyhow::{anyhow, Result};
-use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -25,7 +24,8 @@ pub struct LlmQuest {
     pub metadata: QuestMetadata,
     pub branching: QuestBranching,
     pub rewards: QuestRewards,
-    pub generated_at: DateTime<Utc>,
+    /// Sim tick that accepted the quest. `0` means the model proposed it and the sim has not stamped it.
+    pub generated_at: u64,
     pub personalization: PersonalizationData,
 }
 
@@ -431,7 +431,7 @@ Validation Criteria:
 
         // Add metadata
         quest.id = Uuid::new_v4().to_string();
-        quest.generated_at = Utc::now();
+        quest.generated_at = 0;
         quest.personalization = PersonalizationData {
             player_id: context.player_id.clone(),
             player_preferences: context.preferred_quest_types.clone(),

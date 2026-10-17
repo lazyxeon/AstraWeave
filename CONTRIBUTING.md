@@ -5,7 +5,7 @@ Thank you for your interest in helping advance the AstraWeave AI-Native Gaming E
 ## Getting Started
 
 - Ensure you are using the pinned toolchain in `rust-toolchain.toml` (Rust 1.89.0).
-- Determinism changes must keep the sixteen required replay cases identical across Linux, Windows, and macOS. The list is in `.github/workflows/determinism-replay.yml` and the repository README. `local_sim` is the sixteenth.
+- Determinism changes must keep the nineteen required replay cases identical across Linux, Windows, and macOS. The list is in `.github/workflows/determinism-replay.yml` and the repository README. `local_sim` is the sixteenth. `greybox_checkpoint`, `quest_ticks`, and `persist_replay` are the seventeenth through nineteenth.
 - Local LLMs propose. The deterministic simulation validates and executes.
 - CodeRabbit reviews pull requests, including drafts, using `.coderabbit.yaml`. It requests changes when a review has actionable comments. Push updates are reviewed again. Generated files, golden hashes, `docs/architecture/workspace_map.html`, and `assets/` are outside that review.
 - Player-facing text says Aravath. Assets added to the tree are CC0 only.

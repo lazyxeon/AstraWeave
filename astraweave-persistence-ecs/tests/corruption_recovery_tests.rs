@@ -333,12 +333,20 @@ fn test_world_hash_validation() {
 
     let loaded_hash = calculate_world_hash(&world2);
 
-    // Note: Hashes will NOT match because entity IDs are remapped during deserialization
-    // The hash includes entity IDs for determinism, so remapped IDs produce different hashes
-    // This is expected behavior - we verify data integrity by checking entity/component counts instead
-    assert_ne!(
+    // The blob is sorted by raw id. Loading it into an empty world spawns in that
+    // same order, so the remapped ids match the originals and the hash matches.
+    assert_eq!(
         original_hash, loaded_hash,
-        "hash changes after deserialization due to entity ID remapping"
+        "empty-world load keeps entity ids when the blob is sorted by raw id"
+    );
+
+    let mut occupied = World::new();
+    let _prior = occupied.spawn();
+    deserialize_ecs_world(&blob, &mut occupied).expect("deserialize into occupied world");
+    let shifted_hash = calculate_world_hash(&occupied);
+    assert_ne!(
+        original_hash, shifted_hash,
+        "a world that already has an entity remaps ids and changes the hash"
     );
 
     // Verify data integrity by checking counts
