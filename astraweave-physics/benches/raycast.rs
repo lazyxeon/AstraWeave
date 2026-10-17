@@ -239,6 +239,9 @@ fn raycast_batch_8_rays(c: &mut Criterion) {
         "[CORRECTNESS FAILURE] raycast_batch_8_rays setup: expected >= 21 colliders, got {}",
         world.colliders.len()
     );
+    // The query pipeline starts empty. step() is what updates it in the
+    // simulation; this bench never steps, so the rays were missing every box.
+    world.query_pipeline.update(&world.colliders);
 
     c.bench_function("raycast_batch_8_rays", |b| {
         b.iter(|| {
