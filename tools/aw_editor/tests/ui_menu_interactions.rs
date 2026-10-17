@@ -1,23 +1,17 @@
 //! Headless egui frames for the menu bar.
 //!
-//! These used to open menus and click items through `egui_kittest`. That
-//! crate forces `egui/accesskit`, which pulls zbus 5. A plain `egui::Context`
-//! can paint `MenuBar` and assert that painting does not fire a handler.
-//! It cannot open the Edit popup and click a labeled item. The click cases
-//! that stay untested until AccessKit is on zbus 6 are:
-//!
-//! - File → New calls `on_new`
-//! - Edit → Undo calls `on_undo`
-//! - Edit → Group calls `on_group_selection` when more than one entity is selected
-//!
-//! The old labels (`"New"`, `"✏️ Edit"`, `"↩️ Undo (Ctrl+Z)"`,
-//! `"📁 Group Selection (Ctrl+G)"`) also no longer match the menu text.
+//! Menu items are reached by clicking the painted menu-button rect, then the
+//! painted item rect on a later frame. `egui_kittest` is not used.
+
+#[path = "common/egui_click.rs"]
+mod egui_click;
 
 use aw_editor_lib::panel_type::PanelType;
 use aw_editor_lib::ui::menu_bar::{
     AlignDirection, DistributeDirection, MenuActionHandler, MenuBar,
 };
 use aw_editor_lib::viewport::ViewportLayout;
+use egui_click::{painted_text, text_rect, UiFrame};
 use std::path::PathBuf;
 
 struct MockHandler {
@@ -141,20 +135,34 @@ impl MenuActionHandler for MockHandler {
     }
 }
 
-fn paint(handler: &mut MockHandler) {
-    let ctx = egui::Context::default();
-    let input = egui::RawInput {
-        screen_rect: Some(egui::Rect::from_min_size(
-            egui::Pos2::ZERO,
-            egui::vec2(800.0, 600.0),
-        )),
-        ..Default::default()
-    };
-    let _ = ctx.run(input, |ctx| {
-        egui::CentralPanel::default().show(ctx, |ui| {
-            MenuBar::show(ui, handler);
-        });
+fn paint(ctx: &egui::Context, handler: &mut MockHandler) {
+    egui::CentralPanel::default().show(ctx, |ui| {
+        MenuBar::show(ui, handler);
     });
+}
+
+fn menu_item(text: &str, label: &str) -> bool {
+    match label {
+        "New" => text.starts_with("New") && text.contains("Ctrl+N"),
+        "Undo" => text.starts_with("Undo") && text.contains("Ctrl+Z"),
+        "Group" => text.starts_with("Group") && text.contains("Ctrl+G"),
+        _ => text == label,
+    }
+}
+
+fn require_item(shapes: &[egui::epaint::ClippedShape], label: &str) -> egui::Rect {
+    text_rect(shapes, |text| menu_item(text, label))
+        .unwrap_or_else(|| panic!("missing {label:?}. painted: {:?}", painted_text(shapes)))
+}
+
+fn click_menu(frame: &mut UiFrame, handler: &mut MockHandler, menu: &str, item: &str) {
+    let shapes = frame.paint(|ctx| paint(ctx, handler));
+    let menu_pos = require_item(&shapes, menu).left_center() + egui::vec2(2.0, 0.0);
+    frame.click(menu_pos, |ctx| paint(ctx, handler));
+    // Menu popups are areas. Their item labels show up on the next frame.
+    let shapes = frame.paint(|ctx| paint(ctx, handler));
+    let item_pos = require_item(&shapes, item).left_center() + egui::vec2(2.0, 0.0);
+    frame.click(item_pos, |ctx| paint(ctx, handler));
 }
 
 #[test]
@@ -166,8 +174,68 @@ fn menu_frame_does_not_fire_new_undo_or_group() {
         selection_count: 2,
         station_name: String::new(),
     };
-    paint(&mut handler);
+    let mut frame = UiFrame::new(1280.0, 800.0);
+    frame.paint(|ctx| paint(ctx, &mut handler));
     assert!(!handler.new_called);
     assert!(!handler.undo_called);
+    assert!(!handler.group_called);
+}
+
+#[test]
+fn file_new_calls_on_new() {
+    let mut handler = MockHandler {
+        new_called: false,
+        undo_called: false,
+        group_called: false,
+        selection_count: 0,
+        station_name: String::new(),
+    };
+    let mut frame = UiFrame::new(1280.0, 800.0);
+    click_menu(&mut frame, &mut handler, "File", "New");
+    assert!(handler.new_called);
+    assert!(!handler.undo_called);
+    assert!(!handler.group_called);
+}
+
+#[test]
+fn edit_undo_calls_on_undo() {
+    let mut handler = MockHandler {
+        new_called: false,
+        undo_called: false,
+        group_called: false,
+        selection_count: 0,
+        station_name: String::new(),
+    };
+    let mut frame = UiFrame::new(1280.0, 800.0);
+    click_menu(&mut frame, &mut handler, "Edit", "Undo");
+    assert!(handler.undo_called);
+    assert!(!handler.new_called);
+}
+
+#[test]
+fn edit_group_calls_on_group_when_several_entities_are_selected() {
+    let mut handler = MockHandler {
+        new_called: false,
+        undo_called: false,
+        group_called: false,
+        selection_count: 2,
+        station_name: String::new(),
+    };
+    let mut frame = UiFrame::new(1280.0, 800.0);
+    click_menu(&mut frame, &mut handler, "Edit", "Group");
+    assert!(handler.group_called);
+}
+
+#[test]
+fn edit_group_does_not_fire_for_a_single_selection() {
+    let mut handler = MockHandler {
+        new_called: false,
+        undo_called: false,
+        group_called: false,
+        selection_count: 1,
+        station_name: String::new(),
+    };
+    let mut frame = UiFrame::new(1280.0, 800.0);
+    click_menu(&mut frame, &mut handler, "Edit", "Group");
     assert!(!handler.group_called);
 }
