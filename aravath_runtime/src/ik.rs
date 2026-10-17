@@ -19,7 +19,7 @@ pub fn solve_two_bone(root: Vec3, mid: Vec3, end: Vec3, target: Vec3) -> (Vec3, 
         let new_end = root + dir * reach;
         return (new_mid, new_end);
     }
-    to_target = to_target / dist;
+    to_target /= dist;
     let adjacent = (len_ab * len_ab - len_bc * len_bc + dist * dist) / (2.0 * dist);
     let height_sq = (len_ab * len_ab - adjacent * adjacent).max(0.0);
     let height = height_sq.sqrt();

@@ -13,6 +13,16 @@ use crate::traversal::{step, ProbeFrame, TraversalBody, TraversalInput, Traversa
 /// One-voxel lips are ramps. Taller faces stay walls.
 pub const SEAM_VOXELS: i32 = 1;
 
+/// Climb permission and the tick passed into [`deformed_step`].
+///
+/// Kept together so the step stays within Clippy's argument limit without
+/// changing the movement.
+#[derive(Clone, Copy, Debug)]
+pub struct ClimbTick {
+    pub flags: FractureFlags,
+    pub tick: u64,
+}
+
 /// Nine column tops around the cell under the feet. Index `[dz + 1][dx + 1]`.
 #[derive(Clone, Copy, Debug)]
 pub struct ColumnStamp {
@@ -24,9 +34,9 @@ pub struct ColumnStamp {
 impl ColumnStamp {
     pub fn from_samples(x: i32, z: i32, mut sample: impl FnMut(i32, i32) -> i32) -> Self {
         let mut heights = [[0; 3]; 3];
-        for dz in 0..3 {
-            for dx in 0..3 {
-                heights[dz][dx] = sample(x + dx as i32 - 1, z + dz as i32 - 1);
+        for (dz, row) in heights.iter_mut().enumerate() {
+            for (dx, height) in row.iter_mut().enumerate() {
+                *height = sample(x + dx as i32 - 1, z + dz as i32 - 1);
             }
         }
         Self { x, z, heights }
@@ -121,9 +131,10 @@ pub fn deformed_step(
     notices: &[GeometryNotice],
     anchor: &mut [i32; 3],
     attached: &mut bool,
-    climb_flags: FractureFlags,
-    tick: u64,
+    climb: ClimbTick,
 ) {
+    let climb_flags = climb.flags;
+    let tick = climb.tick;
     let destroyed = notices.iter().any(|notice| cell_in_notice(notice, *anchor));
     if *attached && destroyed {
         *attached = false;
@@ -293,8 +304,10 @@ pub fn deformed_replay() -> DeformedReplay {
             &notices[..count],
             &mut anchor,
             &mut attached,
-            FractureFlags::CLIMBABLE,
-            tick,
+            ClimbTick {
+                flags: FractureFlags::CLIMBABLE,
+                tick,
+            },
         );
         if (16..36).contains(&tick)
             && body.pos.x > min_x_after_seam
@@ -362,8 +375,10 @@ mod tests {
                 &[],
                 &mut anchor,
                 &mut attached,
-                FractureFlags::CLIMBABLE,
-                tick,
+                ClimbTick {
+                    flags: FractureFlags::CLIMBABLE,
+                    tick,
+                },
             );
             assert!(
                 body.pos.x > last_x,
@@ -405,8 +420,10 @@ mod tests {
             &[notice],
             &mut anchor,
             &mut attached,
-            FractureFlags::CLIMBABLE,
-            3,
+            ClimbTick {
+                flags: FractureFlags::CLIMBABLE,
+                tick: 3,
+            },
         );
         assert!(!attached);
         assert_eq!(body.mode, TraversalMode::Air);
@@ -435,8 +452,7 @@ mod tests {
             &[],
             &mut anchor,
             &mut attached,
-            flags,
-            0,
+            ClimbTick { flags, tick: 0 },
         );
         assert_ne!(body.mode, TraversalMode::Climb);
         assert!(!attached);

@@ -5,7 +5,7 @@ Advanced persona system with LLM integration for dynamic personality evolution,
 context-aware prompt generation, and adaptive behavior.
 */
 
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -881,16 +881,12 @@ Respond as {{persona.name}} would, staying true to your personality, current sta
     pub async fn maintenance(&self) -> Result<()> {
         let rag = self.rag_pipeline.read().await;
 
-        // Trigger consolidation
-        if let Err(e) = rag.trigger_consolidation().await {
-            eprintln!("Consolidation error: {}", e);
-        }
-
-        // Trigger forgetting
-        if let Err(e) = rag.trigger_forgetting().await {
-            eprintln!("Forgetting error: {}", e);
-        }
-
+        rag.trigger_consolidation()
+            .await
+            .context("persona memory consolidation")?;
+        rag.trigger_forgetting()
+            .await
+            .context("persona memory forgetting")?;
         Ok(())
     }
 }

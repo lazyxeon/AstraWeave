@@ -641,7 +641,13 @@ fn note_decision(
     mode: AIMode,
     result: &Result<(), astraweave_core::EngineError>,
 ) {
-    let _ = planner_code(mode);
+    let _ = (
+        planner_code(mode),
+        snap.t,
+        u64::from(comp),
+        plan.steps.len(),
+        result.is_ok(),
+    );
     astraweave_ai::decision_record!({
         let mut trace = astraweave_ai::decision_trace::DecisionTrace::new();
         let entity = u64::from(comp);

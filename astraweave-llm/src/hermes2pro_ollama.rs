@@ -274,7 +274,7 @@ impl Hermes2ProOllama {
                 .pool_idle_timeout(std::time::Duration::from_secs(90))
                 .timeout(std::time::Duration::from_secs(120)) // 2 min timeout
                 .build()
-                .expect("Failed to create HTTP client")
+                .unwrap_or_else(|_| reqwest::Client::new())
         });
 
         let url = format!("{}/api/chat", self.url);
@@ -411,7 +411,7 @@ impl LlmClient for Hermes2ProOllama {
                 .pool_idle_timeout(std::time::Duration::from_secs(90))
                 .timeout(std::time::Duration::from_secs(120)) // 2 min timeout
                 .build()
-                .expect("Failed to create HTTP client")
+                .unwrap_or_else(|_| reqwest::Client::new())
         });
 
         let url = format!("{}/api/chat", self.url);
@@ -536,7 +536,7 @@ impl LlmClient for Hermes2ProOllama {
                 .pool_idle_timeout(std::time::Duration::from_secs(90))
                 .timeout(std::time::Duration::from_secs(120))
                 .build()
-                .expect("Failed to create HTTP client")
+                .unwrap_or_else(|_| reqwest::Client::new())
         });
 
         let url = format!("{}/api/chat", self.url);

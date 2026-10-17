@@ -32,12 +32,8 @@ pub fn decode_limited_image(bytes: &[u8]) -> Result<image::DynamicImage> {
 /// Open an image file with the same caps as [`decode_limited_image`].
 pub fn open_limited_image(path: impl AsRef<Path>) -> Result<image::DynamicImage> {
     let path = path.as_ref();
-    let mut reader =
-        image::ImageReader::open(path).with_context(|| format!("open image {}", path.display()))?;
-    reader.limits(capped_image_limits());
-    reader
-        .decode()
-        .with_context(|| format!("decode image {}", path.display()))
+    let bytes = std::fs::read(path).with_context(|| format!("open image {}", path.display()))?;
+    decode_limited_image(&bytes).with_context(|| format!("decode image {}", path.display()))
 }
 
 #[cfg(test)]

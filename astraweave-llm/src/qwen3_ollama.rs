@@ -384,7 +384,7 @@ impl Qwen3Ollama {
             reqwest::Client::builder()
                 .timeout(std::time::Duration::from_secs(120))
                 .build()
-                .expect("Failed to create HTTP client")
+                .unwrap_or_else(|_| reqwest::Client::new())
         });
 
         let url = format!("{}/api/chat", self.url);
@@ -444,7 +444,7 @@ impl Qwen3Ollama {
                 .pool_idle_timeout(std::time::Duration::from_secs(90))
                 .timeout(std::time::Duration::from_secs(300)) // 5 min timeout for slow hardware
                 .build()
-                .expect("Failed to create HTTP client")
+                .unwrap_or_else(|_| reqwest::Client::new())
         });
 
         let url = format!("{}/api/chat", self.url);
@@ -657,7 +657,7 @@ impl LlmClient for Qwen3Ollama {
                 .pool_idle_timeout(std::time::Duration::from_secs(90))
                 .timeout(std::time::Duration::from_secs(300)) // 5 min timeout for slow hardware
                 .build()
-                .expect("Failed to create HTTP client")
+                .unwrap_or_else(|_| reqwest::Client::new())
         });
 
         let url = format!("{}/api/chat", self.url);
@@ -770,7 +770,7 @@ impl LlmClient for Qwen3Ollama {
                 .pool_idle_timeout(std::time::Duration::from_secs(90))
                 .connect_timeout(std::time::Duration::from_secs(30))
                 .build()
-                .expect("Failed to create HTTP client")
+                .unwrap_or_else(|_| reqwest::Client::new())
         });
 
         let url = format!("{}/api/chat", self.url);
