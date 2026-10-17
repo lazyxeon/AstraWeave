@@ -167,6 +167,34 @@ fn draw_into_heavy_path_timestamps_and_models() {
                 measured,
                 "frame {frame_index} wrote no positive span\n{report}"
             );
+            let trace_report = profiler.submission_report();
+            eprintln!("{trace_report}");
+            let trace = profiler.stamp_trace();
+            let resolve = trace
+                .iter()
+                .find(|stamp| stamp.kind == astraweave_render::gpu_profiler::StampKind::Resolve)
+                .unwrap_or_else(|| panic!("draw_into did not resolve\n{trace_report}"));
+            let writes: Vec<_> = trace
+                .iter()
+                .filter(|stamp| stamp.kind == astraweave_render::gpu_profiler::StampKind::Write)
+                .collect();
+            assert!(
+                !writes.is_empty(),
+                "draw_into recorded no timestamp writes\n{trace_report}"
+            );
+            for write in writes {
+                assert_eq!(
+                    write.submit, resolve.submit,
+                    "write {} index {} is submit {}, resolve is submit {}\n{trace_report}",
+                    write.label, write.index, write.submit, resolve.submit
+                );
+                assert_eq!(
+                    write.query_set, resolve.query_set,
+                    "write {} query_set {} != resolve query_set {}\n{trace_report}",
+                    write.label, write.query_set, resolve.query_set
+                );
+                assert_ne!(write.submit, 0, "{trace_report}");
+            }
         }
         let err = device.pop_error_scope().await;
         if let Some(err) = err {

@@ -173,7 +173,7 @@ fn probe_isolated(device: &wgpu::Device, queue: &wgpu::Queue, has_timestamps: bo
             if let Some(ref p) = profiler {
                 p.end_frame(&mut enc);
             }
-            GpuProfiler::submit_frame(profiler.as_ref(), queue, device, enc.finish())
+            GpuProfiler::submit_frame(profiler.as_mut(), queue, device, enc.finish())
                 .expect("timestamp submit");
             let _ = device.poll(wgpu::PollType::Wait);
 
@@ -273,7 +273,7 @@ fn probe_isolated(device: &wgpu::Device, queue: &wgpu::Queue, has_timestamps: bo
             if let Some(ref p) = profiler {
                 p.end_frame(&mut enc);
             }
-            GpuProfiler::submit_frame(profiler.as_ref(), queue, device, enc.finish())
+            GpuProfiler::submit_frame(profiler.as_mut(), queue, device, enc.finish())
                 .expect("timestamp submit");
             let _ = device.poll(wgpu::PollType::Wait);
             if let Some(ref mut p) = profiler {
@@ -1075,7 +1075,7 @@ fn measure_water_pass(
         if let Some(p) = profiler.as_ref() {
             p.end_frame(&mut enc);
         }
-        GpuProfiler::submit_frame(profiler.as_ref(), queue, device, enc.finish())
+        GpuProfiler::submit_frame(profiler.as_mut(), queue, device, enc.finish())
             .expect("timestamp submit");
         let _ = device.poll(wgpu::PollType::Wait);
         if let Some(p) = profiler.as_mut() {

@@ -805,7 +805,7 @@ pub struct Renderer {
     /// Per-pass GPU timestamp profiler; `None` when `TIMESTAMP_QUERY` is unsupported.
     gpu_profiler: Option<crate::gpu_profiler::GpuProfiler>,
     /// End query of the `frame` bracket. Written just before resolve.
-    frame_ts_end: Option<u32>,
+    frame_stamp: Option<crate::gpu_profiler::OpenStamp>,
     gpu_adapter_name: String,
     gpu_backend: String,
     /// Ring buffer for transient per-frame GPU allocations (uniforms, storage).
@@ -3619,7 +3619,7 @@ fn vs(input: VSIn) -> VSOut {
             pipeline_cache,
             _pipeline_cache_mgr: pipeline_cache_mgr,
             gpu_profiler,
-            frame_ts_end: None,
+            frame_stamp: None,
             gpu_adapter_name: String::new(),
             gpu_backend: String::new(),
             staging_ring,
@@ -3917,11 +3917,13 @@ fn vs(input: VSIn) -> VSOut {
     /// deadlocks on NVIDIA: the resolve waits for queries that have not
     /// landed, and `device.poll(Wait)` does not return. The resolve is the
     /// second command buffer of this submit. The copy follows a 5s poll.
-    pub fn submit_timestamped(&self, frame: wgpu::CommandBuffer) -> Result<()> {
+    pub fn submit_timestamped(&mut self, frame: wgpu::CommandBuffer) -> Result<()> {
+        let queue = self.queue.clone();
+        let device = self.device.clone();
         crate::gpu_profiler::GpuProfiler::submit_frame(
-            self.gpu_profiler.as_ref(),
-            &self.queue,
-            &self.device,
+            self.gpu_profiler.as_mut(),
+            &queue,
+            &device,
             frame,
         )
         .map_err(|err| anyhow::anyhow!(err))
@@ -7187,24 +7189,23 @@ fn vs(input: VSIn) -> VSOut {
             // GPU compute pass only needed when lights changed (offsets were recomputed above)
             enc.clear_buffer(&self.clustered_counts_buf, 0, None);
             {
-                let cluster_pair = self
+                let cluster_stamp = self
                     .gpu_profiler
                     .as_mut()
-                    .and_then(|p| p.allocate_pass("cluster_bin"));
-                let cluster_ts = cluster_pair.and_then(|(b, e)| {
-                    Some(wgpu::ComputePassTimestampWrites {
-                        query_set: self.gpu_profiler.as_ref()?.query_set(),
-                        beginning_of_pass_write_index: Some(b),
-                        end_of_pass_write_index: Some(e),
-                    })
-                });
+                    .and_then(|profiler| profiler.begin_stamp(enc, "cluster_bin"));
                 let mut cpass = enc.begin_compute_pass(&wgpu::ComputePassDescriptor {
                     label: Some("cluster bin"),
-                    timestamp_writes: cluster_ts,
+                    timestamp_writes: None,
                 });
                 cpass.set_pipeline(&self.clustered_comp_pipeline);
                 cpass.set_bind_group(0, &self.clustered_comp_bg, &[]);
                 cpass.dispatch_workgroups(light_count as u32, 1, 1);
+                drop(cpass);
+                if let Some(stamp) = cluster_stamp {
+                    if let Some(profiler) = self.gpu_profiler.as_mut() {
+                        profiler.end_stamp(enc, stamp);
+                    }
+                }
             }
         }
 
@@ -7299,17 +7300,10 @@ fn vs(input: VSIn) -> VSOut {
             if idx >= FIRST_CACHED_CASCADE && !far_rendered[idx - FIRST_CACHED_CASCADE] {
                 continue;
             }
-            let shadow_pair = self
+            let shadow_stamp = self
                 .gpu_profiler
                 .as_mut()
-                .and_then(|p| p.allocate_pass(SHADOW_PASS_LABELS[idx]));
-            let shadow_ts = shadow_pair.and_then(|(b, e)| {
-                Some(wgpu::RenderPassTimestampWrites {
-                    query_set: self.gpu_profiler.as_ref()?.query_set(),
-                    beginning_of_pass_write_index: Some(b),
-                    end_of_pass_write_index: Some(e),
-                })
-            });
+                .and_then(|profiler| profiler.begin_stamp(enc, SHADOW_PASS_LABELS[idx]));
             let mut sp = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("shadow pass"),
                 color_attachments: &[],
@@ -7321,7 +7315,7 @@ fn vs(input: VSIn) -> VSOut {
                     }),
                     stencil_ops: None,
                 }),
-                timestamp_writes: shadow_ts,
+                timestamp_writes: None,
                 occlusion_query_set: None,
             });
             sp.set_pipeline(&self.shadow_pipeline);
@@ -7473,6 +7467,12 @@ fn vs(input: VSIn) -> VSOut {
                     }
                 }
             }
+            drop(sp);
+            if let Some(stamp) = shadow_stamp {
+                if let Some(profiler) = self.gpu_profiler.as_mut() {
+                    profiler.end_stamp(enc, stamp);
+                }
+            }
         }
         // Commit the cached-cascade state only now that the passes have
         // actually run (two-phase commit — see `update_cascade_splits`).
@@ -7617,17 +7617,10 @@ fn vs(input: VSIn) -> VSOut {
         }
 
         {
-            let main_pair = self
+            let main_stamp = self
                 .gpu_profiler
                 .as_mut()
-                .and_then(|p| p.allocate_pass("main_render"));
-            let main_ts = main_pair.and_then(|(b, e)| {
-                Some(wgpu::RenderPassTimestampWrites {
-                    query_set: self.gpu_profiler.as_ref()?.query_set(),
-                    beginning_of_pass_write_index: Some(b),
-                    end_of_pass_write_index: Some(e),
-                })
-            });
+                .and_then(|profiler| profiler.begin_stamp(enc, "main_render"));
             let mut rp = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("main render pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -7647,7 +7640,7 @@ fn vs(input: VSIn) -> VSOut {
                     }),
                     stencil_ops: None,
                 }),
-                timestamp_writes: main_ts,
+                timestamp_writes: None,
                 occlusion_query_set: None,
             });
 
@@ -7830,6 +7823,12 @@ fn vs(input: VSIn) -> VSOut {
                 rp.set_vertex_buffer(1, self.weather.buffer().slice(..));
                 rp.draw_indexed(0..self.mesh_sphere.index_count, 0, 0..weather_count);
             }
+            drop(rp);
+            if let Some(stamp) = main_stamp {
+                if let Some(profiler) = self.gpu_profiler.as_mut() {
+                    profiler.end_stamp(enc, stamp);
+                }
+            }
         }
 
         // W.2b — split water pass (after the opaque main pass closes), aligned with
@@ -7923,17 +7922,10 @@ fn vs(input: VSIn) -> VSOut {
         // stage. Caller's `view` format must match config.format
         // (post_pipeline's hardcoded color target format at construction).
         {
-            let post_pair = self
+            let post_stamp = self
                 .gpu_profiler
                 .as_mut()
-                .and_then(|p| p.allocate_pass("post_process"));
-            let post_ts = post_pair.and_then(|(b, e)| {
-                Some(wgpu::RenderPassTimestampWrites {
-                    query_set: self.gpu_profiler.as_ref()?.query_set(),
-                    beginning_of_pass_write_index: Some(b),
-                    end_of_pass_write_index: Some(e),
-                })
-            });
+                .and_then(|profiler| profiler.begin_stamp(enc, "post_process"));
             let mut pp = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("post pass (external)"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -7945,13 +7937,19 @@ fn vs(input: VSIn) -> VSOut {
                     },
                 })],
                 depth_stencil_attachment: None,
-                timestamp_writes: post_ts,
+                timestamp_writes: None,
                 occlusion_query_set: None,
             });
             pp.set_pipeline(&self.post_pipeline);
             pp.set_bind_group(0, &self.post_bind_group, &[]);
             pp.set_bind_group(1, &self.scene_env_bg, &[]);
             pp.draw(0..3, 0..1);
+            drop(pp);
+            if let Some(stamp) = post_stamp {
+                if let Some(profiler) = self.gpu_profiler.as_mut() {
+                    profiler.end_stamp(enc, stamp);
+                }
+            }
         }
 
         self.record_hiz(enc, depth_view);
@@ -8031,7 +8029,7 @@ fn vs(input: VSIn) -> VSOut {
     /// brackets the whole `draw_into` recording, so that collapse does not
     /// erase the frame.
     fn open_frame_timestamp(&mut self, enc: &mut wgpu::CommandEncoder) {
-        self.frame_ts_end = None;
+        self.frame_stamp = None;
         if !self
             .device
             .features()
@@ -8039,36 +8037,19 @@ fn vs(input: VSIn) -> VSOut {
         {
             return;
         }
-        let Some((begin, end)) = self
+        self.frame_stamp = self
             .gpu_profiler
             .as_mut()
-            .and_then(|profiler| profiler.allocate_pass("frame"))
-        else {
-            return;
-        };
-        let Some(query_set) = self
-            .gpu_profiler
-            .as_ref()
-            .map(|profiler| profiler.query_set().clone())
-        else {
-            return;
-        };
-        enc.write_timestamp(&query_set, begin);
-        self.frame_ts_end = Some(end);
+            .and_then(|profiler| profiler.begin_stamp(enc, "frame"));
     }
 
     fn close_frame_timestamp(&mut self, enc: &mut wgpu::CommandEncoder) {
-        let Some(end) = self.frame_ts_end.take() else {
+        let Some(stamp) = self.frame_stamp.take() else {
             return;
         };
-        let Some(query_set) = self
-            .gpu_profiler
-            .as_ref()
-            .map(|profiler| profiler.query_set().clone())
-        else {
-            return;
-        };
-        enc.write_timestamp(&query_set, end);
+        if let Some(profiler) = self.gpu_profiler.as_mut() {
+            profiler.end_stamp(enc, stamp);
+        }
     }
 
     fn record_hiz(

@@ -145,6 +145,11 @@ fn main() -> anyhow::Result<()> {
                     .map_err(anyhow::Error::msg)?;
             }
         }
+        if debug_timestamps {
+            if let Some(profiler) = renderer.gpu_profiler() {
+                println!("{}", profiler.submission_report());
+            }
+        }
         let cpu_frame_ms = frame_started.elapsed().as_secs_f64() * 1_000.0 + encode_ms;
         Ok((encode_ms, cpu_frame_ms))
     };
@@ -188,7 +193,11 @@ fn main() -> anyhow::Result<()> {
                 }
             }
             Err(report) => {
-                println!("sample={sample_index}\n{report}");
+                let trace = renderer
+                    .gpu_profiler()
+                    .map(|profiler| profiler.submission_report())
+                    .unwrap_or_default();
+                println!("sample={sample_index}\n{report}\n{trace}");
                 gpu_error = Some(report);
                 break;
             }

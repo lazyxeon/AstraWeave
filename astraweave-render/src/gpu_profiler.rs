@@ -170,6 +170,53 @@ pub fn timestamp_duration_ms(begin: u64, end: u64, period_ns: f32) -> Result<f32
     Ok(ms as f32)
 }
 
+/// One timestamp write or the resolve/copy that publishes it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum StampKind {
+    Write,
+    Resolve,
+    Copy,
+}
+
+/// CPU record of which query set, index, and `queue.submit` a timestamp op used.
+///
+/// `submit == 0` means the command is recorded and not submitted yet.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct StampRecord {
+    pub kind: StampKind,
+    pub query_set: u64,
+    pub index: u32,
+    pub label: &'static str,
+    pub submit: u64,
+}
+
+/// End index of a pair opened by [`GpuProfiler::begin_stamp`].
+#[derive(Clone, Copy, Debug)]
+pub struct OpenStamp {
+    name: &'static str,
+    end: u32,
+}
+
+const STAMP_CAP: usize = 48;
+
+fn query_set_token(set: &wgpu::QuerySet) -> u64 {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+    let mut hasher = DefaultHasher::new();
+    set.hash(&mut hasher);
+    hasher.finish()
+}
+
+const fn empty_stamp() -> StampRecord {
+    StampRecord {
+        kind: StampKind::Write,
+        query_set: 0,
+        index: 0,
+        label: "",
+        submit: 0,
+    }
+}
+
 /// Manages GPU timestamp queries across render/compute passes.
 pub struct GpuProfiler {
     query_set: wgpu::QuerySet,
@@ -194,6 +241,10 @@ pub struct GpuProfiler {
     map_ok: Arc<AtomicBool>,
     /// Why the last readback could not be used.
     last_error: Option<&'static str>,
+    /// Fixed log so a frame does not allocate to remember where writes went.
+    stamps: [StampRecord; STAMP_CAP],
+    stamp_len: u8,
+    submit_serial: u64,
 }
 
 impl GpuProfiler {
@@ -235,6 +286,9 @@ impl GpuProfiler {
             map_ready: Arc::new(AtomicBool::new(false)),
             map_ok: Arc::new(AtomicBool::new(false)),
             last_error: None,
+            stamps: [empty_stamp(); STAMP_CAP],
+            stamp_len: 0,
+            submit_serial: 0,
         }
     }
 
@@ -242,6 +296,76 @@ impl GpuProfiler {
     pub fn begin_frame(&mut self) {
         self.next_query = 0;
         self.pass_queries.clear();
+        self.stamp_len = 0;
+    }
+
+    fn note_stamp(&mut self, kind: StampKind, index: u32, label: &'static str, submit: u64) {
+        let len = self.stamp_len as usize;
+        if len >= STAMP_CAP {
+            return;
+        }
+        self.stamps[len] = StampRecord {
+            kind,
+            query_set: query_set_token(&self.query_set),
+            index,
+            label,
+            submit,
+        };
+        self.stamp_len += 1;
+    }
+
+    /// `write_timestamp` on `encoder` for the begin index of `name`.
+    ///
+    /// This is the self-test's write. Pass descriptors are not used, so the
+    /// write cannot be dropped while the pass is built, and it lands in this
+    /// encoder rather than a pass-local command buffer.
+    pub fn begin_stamp(
+        &mut self,
+        encoder: &mut wgpu::CommandEncoder,
+        name: &'static str,
+    ) -> Option<OpenStamp> {
+        let (begin, end) = self.allocate_pass(name)?;
+        self.note_stamp(StampKind::Write, begin, name, 0);
+        let query_set = self.query_set.clone();
+        encoder.write_timestamp(&query_set, begin);
+        Some(OpenStamp { name, end })
+    }
+
+    /// Matching end `write_timestamp` for [`Self::begin_stamp`], on the same encoder.
+    pub fn end_stamp(&mut self, encoder: &mut wgpu::CommandEncoder, stamp: OpenStamp) {
+        self.note_stamp(StampKind::Write, stamp.end, stamp.name, 0);
+        let query_set = self.query_set.clone();
+        encoder.write_timestamp(&query_set, stamp.end);
+    }
+
+    fn assign_open_stamps(&mut self, submit: u64) {
+        for stamp in &mut self.stamps[..self.stamp_len as usize] {
+            if stamp.submit == 0 {
+                stamp.submit = submit;
+            }
+        }
+    }
+
+    /// Query-set token, index, and submit id for the stamps recorded since
+    /// [`Self::begin_frame`].
+    pub fn stamp_trace(&self) -> &[StampRecord] {
+        &self.stamps[..self.stamp_len as usize]
+    }
+
+    /// One line per write, plus the resolve and copy submits.
+    pub fn submission_report(&self) -> String {
+        let mut lines = Vec::with_capacity(self.stamp_len as usize + 1);
+        lines.push(format!("query_set={}", query_set_token(&self.query_set)));
+        for stamp in self.stamp_trace() {
+            lines.push(format!(
+                "submit={} kind={:?} label={} index={} query_set={}",
+                stamp.submit, stamp.kind, stamp.label, stamp.index, stamp.query_set
+            ));
+        }
+        if self.stamp_len == 0 {
+            lines.push("submit=(none)".to_string());
+        }
+        lines.join("\n")
     }
 
     /// Expose the underlying query set for constructing timestamp writes
@@ -360,7 +484,7 @@ impl GpuProfiler {
     /// The copy is a later submission (wgpu#6406). Every wait is a non-blocking
     /// poll with a 5s limit.
     pub fn submit_frame(
-        profiler: Option<&Self>,
+        profiler: Option<&mut Self>,
         queue: &wgpu::Queue,
         device: &wgpu::Device,
         frame: wgpu::CommandBuffer,
@@ -377,12 +501,24 @@ impl GpuProfiler {
             label: Some("gpu profiler timestamp resolve"),
         });
         profiler.resolve_queries(&mut resolve);
+        profiler.submit_serial += 1;
+        let write_submit = profiler.submit_serial;
+        profiler.assign_open_stamps(write_submit);
+        profiler.note_stamp(
+            StampKind::Resolve,
+            profiler.next_query,
+            "resolve",
+            write_submit,
+        );
         queue.submit([frame, resolve.finish()]);
         wait_for_gpu(device, "timestamp write+resolve")?;
         let mut copy = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("gpu profiler timestamp copy"),
         });
         profiler.copy_resolved(&mut copy);
+        profiler.submit_serial += 1;
+        let copy_submit = profiler.submit_serial;
+        profiler.note_stamp(StampKind::Copy, profiler.next_query, "copy", copy_submit);
         queue.submit(std::iter::once(copy.finish()));
         wait_for_gpu(device, "timestamp staging copy")
     }
@@ -520,13 +656,6 @@ impl GpuProfiler {
             ));
         }
         profiler.begin_frame();
-        let (begin, end) = profiler.allocate_pass("self_test").ok_or_else(|| {
-            "timestamp self-test: no query slot for the encoder bracket".to_string()
-        })?;
-        let (pass_begin, pass_end) = profiler
-            .allocate_pass("self_test_clear")
-            .ok_or_else(|| "timestamp self-test: no query slot for the clear pass".to_string())?;
-        let query_set = profiler.query_set().clone();
         let target = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("timestamp self-test target"),
             size: wgpu::Extent3d {
@@ -546,7 +675,14 @@ impl GpuProfiler {
         let mut writes = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("timestamp self-test writes"),
         });
-        writes.write_timestamp(&query_set, begin);
+        let outer = profiler
+            .begin_stamp(&mut writes, "self_test")
+            .ok_or_else(|| {
+                "timestamp self-test: no query slot for the encoder bracket".to_string()
+            })?;
+        let clear = profiler
+            .begin_stamp(&mut writes, "self_test_clear")
+            .ok_or_else(|| "timestamp self-test: no query slot for the clear pass".to_string())?;
         {
             let _pass = writes.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("timestamp self-test clear"),
@@ -559,19 +695,16 @@ impl GpuProfiler {
                     },
                 })],
                 depth_stencil_attachment: None,
-                timestamp_writes: Some(wgpu::RenderPassTimestampWrites {
-                    query_set: &query_set,
-                    beginning_of_pass_write_index: Some(pass_begin),
-                    end_of_pass_write_index: Some(pass_end),
-                }),
+                timestamp_writes: None,
                 occlusion_query_set: None,
             });
         }
-        writes.write_timestamp(&query_set, end);
+        profiler.end_stamp(&mut writes, clear);
+        profiler.end_stamp(&mut writes, outer);
         profiler.end_frame(&mut writes);
 
         let frame = writes.finish();
-        Self::submit_frame(Some(&profiler), queue, device, frame)
+        Self::submit_frame(Some(&mut profiler), queue, device, frame)
             .map_err(|err| format!("timestamp self-test: {err}\ntimestamp_period_ns={period}"))?;
         profiler.request_readback();
         if let Err(err) = profiler.block_on_readback(device) {
@@ -596,7 +729,7 @@ impl GpuProfiler {
         if profiler.results().is_empty() {
             return Err(format!("timestamp self-test read no slots\n{report}"));
         }
-        Ok(report)
+        Ok(format!("{report}\n{}", profiler.submission_report()))
     }
 
     /// Nanoseconds per GPU tick. Zero means the device did not report a period.
@@ -777,7 +910,7 @@ mod tests {
             profiler.staging_copy_pending(),
             "the first frame must have queries to resolve"
         );
-        GpuProfiler::submit_frame(Some(&profiler), &queue, &device, frame)
+        GpuProfiler::submit_frame(Some(&mut profiler), &queue, &device, frame)
             .expect("first timestamp submit");
         profiler.request_readback();
         let frame = record(&mut profiler);
