@@ -15,8 +15,8 @@ struct UpsampleParams {
 };
 
 @group(0) @binding(0) var half_gi: texture_2d<f32>;      // Half-res SSGI result
-@group(0) @binding(1) var full_depth: texture_2d<f32>;    // Full-res depth
-@group(0) @binding(2) var half_depth: texture_2d<f32>;    // Half-res depth (for bilateral weight)
+@group(0) @binding(1) var full_depth: texture_depth_2d;
+@group(0) @binding(2) var half_depth: texture_depth_2d;
 @group(0) @binding(3) var samp: sampler;
 @group(0) @binding(4) var<uniform> params: UpsampleParams;
 @group(0) @binding(5) var full_output: texture_storage_2d<rgba16float, write>;
@@ -35,7 +35,7 @@ fn upsample_main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let full_uv = (vec2<f32>(pixel) + 0.5) / params.full_resolution;
 
     // Reference depth at this full-res pixel
-    let ref_depth = textureSampleLevel(full_depth, samp, full_uv, 0.0).r;
+    let ref_depth = textureLoad(full_depth, pixel, 0);
 
     // Map to half-res texel center
     let half_texel = full_uv * params.half_resolution - 0.5;
@@ -59,7 +59,7 @@ fn upsample_main(@builtin(global_invocation_id) gid: vec3<u32>) {
             let bilinear_w = bx * by;
 
             // Depth-aware bilateral weight
-            let sample_depth = textureSampleLevel(half_depth, samp, half_uv, 0.0).r;
+            let sample_depth = textureLoad(half_depth, coord, 0);
             let depth_diff = abs(ref_depth - sample_depth);
             let bilateral_w = exp(-depth_diff * depth_diff / (params.depth_threshold * params.depth_threshold));
 

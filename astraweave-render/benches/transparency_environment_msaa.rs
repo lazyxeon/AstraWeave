@@ -275,7 +275,6 @@ fn bench_blend_mode_filtering(c: &mut Criterion) {
 pub struct TimeOfDay {
     pub current_time: f32, // 0.0 - 24.0
     pub time_scale: f32,
-    start_time: Instant,
     pub day_length: f32,
 }
 
@@ -284,7 +283,6 @@ impl Default for TimeOfDay {
         Self {
             current_time: 12.0,
             time_scale: 60.0,
-            start_time: Instant::now(),
             day_length: 1440.0,
         }
     }
@@ -295,16 +293,13 @@ impl TimeOfDay {
         Self {
             current_time: start_time,
             time_scale,
-            start_time: Instant::now(),
             day_length: 1440.0,
         }
     }
 
-    pub fn update(&mut self) {
-        let elapsed = self.start_time.elapsed().as_secs_f32();
-        let game_hours = (elapsed * self.time_scale) / 3600.0;
-        self.current_time = (self.current_time + game_hours) % 24.0;
-        self.start_time = Instant::now();
+    pub fn update(&mut self, dt_seconds: f32) {
+        let game_hours = (dt_seconds * self.time_scale) / 3600.0;
+        self.current_time = (self.current_time + game_hours).rem_euclid(24.0);
     }
 
     pub fn get_sun_position(&self) -> Vec3 {
@@ -1107,7 +1102,7 @@ fn bench_full_environment_frame(c: &mut Criterion) {
 
         b.iter(|| {
             // Update time of day
-            tod.update();
+            tod.update(1.0 / 60.0);
 
             // Update weather
             weather.update(delta_time);

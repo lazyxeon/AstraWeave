@@ -205,31 +205,35 @@ impl IblManager {
             bind_group_layouts: &[],
             push_constant_ranges: &[],
         });
-        let brdf_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("ibl-brdf-pipeline"),
-            layout: Some(&unit_pl),
-            vertex: wgpu::VertexState {
-                module: &brdf_sm,
-                entry_point: Some("vs"),
-                buffers: &[],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
+        let brdf_pipeline = crate::pipeline_cache::create_render_pipeline(
+            device,
+            None,
+            wgpu::RenderPipelineDescriptor {
+                label: Some("ibl-brdf-pipeline"),
+                layout: Some(&unit_pl),
+                vertex: wgpu::VertexState {
+                    module: &brdf_sm,
+                    entry_point: Some("vs"),
+                    buffers: &[],
+                    compilation_options: wgpu::PipelineCompilationOptions::default(),
+                },
+                fragment: Some(wgpu::FragmentState {
+                    module: &brdf_sm,
+                    entry_point: Some("fs"),
+                    targets: &[Some(wgpu::ColorTargetState {
+                        format: wgpu::TextureFormat::Rg16Float,
+                        blend: None,
+                        write_mask: wgpu::ColorWrites::ALL,
+                    })],
+                    compilation_options: wgpu::PipelineCompilationOptions::default(),
+                }),
+                primitive: wgpu::PrimitiveState::default(),
+                depth_stencil: None,
+                multisample: wgpu::MultisampleState::default(),
+                multiview: None,
+                cache: None,
             },
-            fragment: Some(wgpu::FragmentState {
-                module: &brdf_sm,
-                entry_point: Some("fs"),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: wgpu::TextureFormat::Rg16Float,
-                    blend: None,
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-            }),
-            primitive: wgpu::PrimitiveState::default(),
-            depth_stencil: None,
-            multisample: wgpu::MultisampleState::default(),
-            multiview: None,
-            cache: None,
-        });
+        );
 
         // Env sampling BGL for irradiance/specular passes
         let env_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -303,83 +307,95 @@ impl IblManager {
             bind_group_layouts: &[&env_bgl, &prefilter_params_bgl],
             push_constant_ranges: &[],
         });
-        let sky_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("ibl-sky-pipeline"),
-            layout: Some(&sky_pl),
-            vertex: wgpu::VertexState {
-                module: &sky_sm,
-                entry_point: Some("vs"),
-                buffers: &[],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
+        let sky_pipeline = crate::pipeline_cache::create_render_pipeline(
+            device,
+            None,
+            wgpu::RenderPipelineDescriptor {
+                label: Some("ibl-sky-pipeline"),
+                layout: Some(&sky_pl),
+                vertex: wgpu::VertexState {
+                    module: &sky_sm,
+                    entry_point: Some("vs"),
+                    buffers: &[],
+                    compilation_options: wgpu::PipelineCompilationOptions::default(),
+                },
+                fragment: Some(wgpu::FragmentState {
+                    module: &sky_sm,
+                    entry_point: Some("fs"),
+                    targets: &[Some(wgpu::ColorTargetState {
+                        format: wgpu::TextureFormat::Rgba16Float,
+                        blend: None,
+                        write_mask: wgpu::ColorWrites::ALL,
+                    })],
+                    compilation_options: wgpu::PipelineCompilationOptions::default(),
+                }),
+                primitive: wgpu::PrimitiveState::default(),
+                depth_stencil: None,
+                multisample: wgpu::MultisampleState::default(),
+                multiview: None,
+                cache: None,
             },
-            fragment: Some(wgpu::FragmentState {
-                module: &sky_sm,
-                entry_point: Some("fs"),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: wgpu::TextureFormat::Rgba16Float,
-                    blend: None,
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-            }),
-            primitive: wgpu::PrimitiveState::default(),
-            depth_stencil: None,
-            multisample: wgpu::MultisampleState::default(),
-            multiview: None,
-            cache: None,
-        });
+        );
 
-        let irr_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("ibl-irr-pipeline"),
-            layout: Some(&conv_pl),
-            vertex: wgpu::VertexState {
-                module: &irr_sm,
-                entry_point: Some("vs"),
-                buffers: &[],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
+        let irr_pipeline = crate::pipeline_cache::create_render_pipeline(
+            device,
+            None,
+            wgpu::RenderPipelineDescriptor {
+                label: Some("ibl-irr-pipeline"),
+                layout: Some(&conv_pl),
+                vertex: wgpu::VertexState {
+                    module: &irr_sm,
+                    entry_point: Some("vs"),
+                    buffers: &[],
+                    compilation_options: wgpu::PipelineCompilationOptions::default(),
+                },
+                fragment: Some(wgpu::FragmentState {
+                    module: &irr_sm,
+                    entry_point: Some("fs"),
+                    targets: &[Some(wgpu::ColorTargetState {
+                        format: wgpu::TextureFormat::Rgba16Float,
+                        blend: None,
+                        write_mask: wgpu::ColorWrites::ALL,
+                    })],
+                    compilation_options: wgpu::PipelineCompilationOptions::default(),
+                }),
+                primitive: wgpu::PrimitiveState::default(),
+                depth_stencil: None,
+                multisample: wgpu::MultisampleState::default(),
+                multiview: None,
+                cache: None,
             },
-            fragment: Some(wgpu::FragmentState {
-                module: &irr_sm,
-                entry_point: Some("fs"),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: wgpu::TextureFormat::Rgba16Float,
-                    blend: None,
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-            }),
-            primitive: wgpu::PrimitiveState::default(),
-            depth_stencil: None,
-            multisample: wgpu::MultisampleState::default(),
-            multiview: None,
-            cache: None,
-        });
+        );
 
-        let spec_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("ibl-spec-pipeline"),
-            layout: Some(&spec_pl),
-            vertex: wgpu::VertexState {
-                module: &spec_sm,
-                entry_point: Some("vs"),
-                buffers: &[],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
+        let spec_pipeline = crate::pipeline_cache::create_render_pipeline(
+            device,
+            None,
+            wgpu::RenderPipelineDescriptor {
+                label: Some("ibl-spec-pipeline"),
+                layout: Some(&spec_pl),
+                vertex: wgpu::VertexState {
+                    module: &spec_sm,
+                    entry_point: Some("vs"),
+                    buffers: &[],
+                    compilation_options: wgpu::PipelineCompilationOptions::default(),
+                },
+                fragment: Some(wgpu::FragmentState {
+                    module: &spec_sm,
+                    entry_point: Some("fs"),
+                    targets: &[Some(wgpu::ColorTargetState {
+                        format: wgpu::TextureFormat::Rgba16Float,
+                        blend: None,
+                        write_mask: wgpu::ColorWrites::ALL,
+                    })],
+                    compilation_options: wgpu::PipelineCompilationOptions::default(),
+                }),
+                primitive: wgpu::PrimitiveState::default(),
+                depth_stencil: None,
+                multisample: wgpu::MultisampleState::default(),
+                multiview: None,
+                cache: None,
             },
-            fragment: Some(wgpu::FragmentState {
-                module: &spec_sm,
-                entry_point: Some("fs"),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: wgpu::TextureFormat::Rgba16Float,
-                    blend: None,
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-            }),
-            primitive: wgpu::PrimitiveState::default(),
-            depth_stencil: None,
-            multisample: wgpu::MultisampleState::default(),
-            multiview: None,
-            cache: None,
-        });
+        );
 
         // Equirectangular to cube pipeline
         let eqr_sm = device.create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -412,31 +428,35 @@ impl IblManager {
             bind_group_layouts: &[&eqr_bgl, &eqr_face_bgl],
             push_constant_ranges: &[],
         });
-        let eqr_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("ibl-eqr-pipeline"),
-            layout: Some(&eqr_pl),
-            vertex: wgpu::VertexState {
-                module: &eqr_sm,
-                entry_point: Some("vs"),
-                buffers: &[],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
+        let eqr_pipeline = crate::pipeline_cache::create_render_pipeline(
+            device,
+            None,
+            wgpu::RenderPipelineDescriptor {
+                label: Some("ibl-eqr-pipeline"),
+                layout: Some(&eqr_pl),
+                vertex: wgpu::VertexState {
+                    module: &eqr_sm,
+                    entry_point: Some("vs"),
+                    buffers: &[],
+                    compilation_options: wgpu::PipelineCompilationOptions::default(),
+                },
+                fragment: Some(wgpu::FragmentState {
+                    module: &eqr_sm,
+                    entry_point: Some("fs"),
+                    targets: &[Some(wgpu::ColorTargetState {
+                        format: wgpu::TextureFormat::Rgba16Float,
+                        blend: None,
+                        write_mask: wgpu::ColorWrites::ALL,
+                    })],
+                    compilation_options: wgpu::PipelineCompilationOptions::default(),
+                }),
+                primitive: wgpu::PrimitiveState::default(),
+                depth_stencil: None,
+                multisample: wgpu::MultisampleState::default(),
+                multiview: None,
+                cache: None,
             },
-            fragment: Some(wgpu::FragmentState {
-                module: &eqr_sm,
-                entry_point: Some("fs"),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: wgpu::TextureFormat::Rgba16Float,
-                    blend: None,
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-            }),
-            primitive: wgpu::PrimitiveState::default(),
-            depth_stencil: None,
-            multisample: wgpu::MultisampleState::default(),
-            multiview: None,
-            cache: None,
-        });
+        );
 
         let mgr = Self {
             enabled: true,
@@ -1320,28 +1340,16 @@ fn dir_to_equirect_uv(dir: vec3<f32>) -> vec2<f32> {
 /// different HDRIs produce consistent terrain lighting.
 #[cfg(feature = "textures")]
 fn compute_hdr_avg_luminance(img: &image::DynamicImage) -> f32 {
-    // L.2 CALIBRATION NOTE (measured, kloppenheim_02): this averages
-    // `to_rgba8()` bytes, clamping every HDR value > 1.0 — but the deeper
-    // issue is the scheme: a linear image-average of a puresky WITHOUT its
-    // sun spike reads ~0.146 (unclamped stride-4: 0.1459; clamped: 0.1397;
-    // full-res incl. sun core: 0.2292; log-avg: 0.1004), driving
-    // ibl_intensity to 2.4–2.5 and over-lighting terrain ~1.6–2.5× vs the
-    // director-previewed placements. Left as-is pending the L.2 calibration
-    // ratification (docs/audits/L2_OUTCOME.md §5).
-    let rgba = img.to_rgba8();
-    let (w, h) = (rgba.width() as usize, rgba.height() as usize);
-    // Sample every 4th pixel for speed on large HDRIs
+    // Diagnostic only. The shipped IBL intensity is the fixed 1.5 from L.2.
+    // Sample linear radiance so a sun core above 1 is not clamped to 8-bit.
+    let (w, h) = (img.width() as usize, img.height() as usize);
     let stride = 4;
     let mut sum = 0.0f64;
     let mut count = 0u64;
     for y in (0..h).step_by(stride) {
         for x in (0..w).step_by(stride) {
-            let px = rgba.get_pixel(x as u32, y as u32);
-            // Rec. 709 luminance from sRGB-encoded bytes (approximate)
-            let r = px[0] as f64 / 255.0;
-            let g = px[1] as f64 / 255.0;
-            let b = px[2] as f64 / 255.0;
-            let lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+            let [r, g, b, _] = linear_rgba_at(img, x as u32, y as u32);
+            let lum = 0.2126 * r as f64 + 0.7152 * g as f64 + 0.0722 * b as f64;
             sum += lum;
             count += 1;
         }
@@ -1350,6 +1358,28 @@ fn compute_hdr_avg_luminance(img: &image::DynamicImage) -> f32 {
         return 1.0;
     }
     (sum / count as f64) as f32
+}
+
+/// Linear RGBA at one pixel. Float images stay float. 8-bit images are
+/// already at most 1.0 and are only used when the source was not HDR.
+#[cfg(feature = "textures")]
+fn linear_rgba_at(img: &image::DynamicImage, x: u32, y: u32) -> [f32; 4] {
+    match img {
+        image::DynamicImage::ImageRgb32F(buf) => {
+            let p = buf.get_pixel(x, y).0;
+            [p[0], p[1], p[2], 1.0]
+        }
+        image::DynamicImage::ImageRgba32F(buf) => buf.get_pixel(x, y).0,
+        other => {
+            let p = other.get_pixel(x, y).0;
+            [
+                p[0] as f32 / 255.0,
+                p[1] as f32 / 255.0,
+                p[2] as f32 / 255.0,
+                p[3] as f32 / 255.0,
+            ]
+        }
+    }
 }
 
 /// Maximum HDRI dimension allowed.  A 16384×8192 panorama at Rgba16Float
@@ -1362,35 +1392,124 @@ const MAX_HDR_DIMENSION: u32 = 8192;
 #[cfg(feature = "textures")]
 fn load_hdr_equirectangular(path: &Path) -> Result<image::DynamicImage> {
     let img = astraweave_asset::open_limited_image(path)?;
+    prepare_hdr_image(img)
+}
+
+/// Cap the long side at [`MAX_HDR_DIMENSION`] without sending HDR through
+/// `to_rgba8`. Float sources stay `Rgb32F` / `Rgba32F`, so radiance above 1
+/// survives. 8-bit sources have no values above 1 and resize as 8-bit.
+#[cfg(feature = "textures")]
+pub(crate) fn prepare_hdr_image(img: image::DynamicImage) -> Result<image::DynamicImage> {
     let (w, h) = img.dimensions();
-    if w > MAX_HDR_DIMENSION || h > MAX_HDR_DIMENSION {
-        log::info!(
-            "HDRI {}x{} exceeds max {}; downsampling",
-            w,
-            h,
-            MAX_HDR_DIMENSION
-        );
-        let aspect = w as f32 / h as f32;
-        let (tw, th) = if w >= h {
-            (
-                MAX_HDR_DIMENSION,
-                (MAX_HDR_DIMENSION as f32 / aspect) as u32,
-            )
-        } else {
-            (
-                (MAX_HDR_DIMENSION as f32 * aspect) as u32,
-                MAX_HDR_DIMENSION,
-            )
-        };
-        Ok(image::DynamicImage::ImageRgba8(image::imageops::resize(
-            &img.to_rgba8(),
-            tw.max(1),
-            th.max(1),
-            image::imageops::FilterType::Lanczos3,
-        )))
-    } else {
-        Ok(img)
+    if w <= MAX_HDR_DIMENSION && h <= MAX_HDR_DIMENSION {
+        return Ok(img);
     }
+    log::info!(
+        "HDRI {}x{} exceeds max {}; downsampling in the source precision",
+        w,
+        h,
+        MAX_HDR_DIMENSION
+    );
+    let aspect = w as f32 / h as f32;
+    let (tw, th) = if w >= h {
+        (
+            MAX_HDR_DIMENSION,
+            (MAX_HDR_DIMENSION as f32 / aspect) as u32,
+        )
+    } else {
+        (
+            (MAX_HDR_DIMENSION as f32 * aspect) as u32,
+            MAX_HDR_DIMENSION,
+        )
+    };
+    let tw = tw.max(1);
+    let th = th.max(1);
+    // `imageops::resize` clamps float samples into `[0, 1]`. HDR has to use a
+    // box average that keeps radiance above 1.
+    let resized = match img {
+        image::DynamicImage::ImageRgb32F(buf) => {
+            image::DynamicImage::ImageRgb32F(box_downsample_rgb32f(&buf, tw, th))
+        }
+        image::DynamicImage::ImageRgba32F(buf) => {
+            image::DynamicImage::ImageRgba32F(box_downsample_rgba32f(&buf, tw, th))
+        }
+        other => image::DynamicImage::ImageRgba8(image::imageops::resize(
+            &other.to_rgba8(),
+            tw,
+            th,
+            image::imageops::FilterType::Triangle,
+        )),
+    };
+    Ok(resized)
+}
+
+#[cfg(feature = "textures")]
+fn box_downsample_rgb32f(src: &image::Rgb32FImage, tw: u32, th: u32) -> image::Rgb32FImage {
+    let (sw, sh) = src.dimensions();
+    let mut out = image::Rgb32FImage::new(tw, th);
+    for y in 0..th {
+        let y0 = (y as u64 * sh as u64) / th as u64;
+        let y1 = (((y as u64 + 1) * sh as u64) / th as u64)
+            .max(y0 + 1)
+            .min(sh as u64);
+        for x in 0..tw {
+            let x0 = (x as u64 * sw as u64) / tw as u64;
+            let x1 = (((x as u64 + 1) * sw as u64) / tw as u64)
+                .max(x0 + 1)
+                .min(sw as u64);
+            let mut acc = [0.0f32; 3];
+            let mut n = 0.0f32;
+            for yy in y0..y1 {
+                for xx in x0..x1 {
+                    let p = src.get_pixel(xx as u32, yy as u32).0;
+                    acc[0] += p[0];
+                    acc[1] += p[1];
+                    acc[2] += p[2];
+                    n += 1.0;
+                }
+            }
+            let inv = 1.0 / n;
+            out.put_pixel(x, y, image::Rgb([acc[0] * inv, acc[1] * inv, acc[2] * inv]));
+        }
+    }
+    out
+}
+
+#[cfg(feature = "textures")]
+fn box_downsample_rgba32f(src: &image::Rgba32FImage, tw: u32, th: u32) -> image::Rgba32FImage {
+    let (sw, sh) = src.dimensions();
+    let mut out = image::Rgba32FImage::new(tw, th);
+    for y in 0..th {
+        let y0 = (y as u64 * sh as u64) / th as u64;
+        let y1 = (((y as u64 + 1) * sh as u64) / th as u64)
+            .max(y0 + 1)
+            .min(sh as u64);
+        for x in 0..tw {
+            let x0 = (x as u64 * sw as u64) / tw as u64;
+            let x1 = (((x as u64 + 1) * sw as u64) / tw as u64)
+                .max(x0 + 1)
+                .min(sw as u64);
+            let mut acc = [0.0f32; 4];
+            let mut n = 0.0f32;
+            for yy in y0..y1 {
+                for xx in x0..x1 {
+                    let p = src.get_pixel(xx as u32, yy as u32).0;
+                    acc[0] += p[0];
+                    acc[1] += p[1];
+                    acc[2] += p[2];
+                    acc[3] += p[3];
+                    n += 1.0;
+                }
+            }
+            let inv = 1.0 / n;
+            out.put_pixel(
+                x,
+                y,
+                image::Rgba([acc[0] * inv, acc[1] * inv, acc[2] * inv, acc[3] * inv]),
+            );
+        }
+    }
+    out
 }
 
 #[cfg(feature = "textures")]
@@ -1481,6 +1600,46 @@ fn create_hdr2d(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(feature = "textures")]
+    #[test]
+    fn exr_equirect_decode_keeps_radiance_above_one() {
+        let path = std::env::temp_dir().join(format!("aw-exr-probe-{}.exr", std::process::id()));
+        let mut buf = image::Rgba32FImage::new(2, 1);
+        let hot = image::Rgba([3.5, 1.25, 0.5, 1.0]);
+        buf.put_pixel(0, 0, hot);
+        buf.put_pixel(1, 0, hot);
+        image::DynamicImage::ImageRgba32F(buf)
+            .save(&path)
+            .expect("image crate must write OpenEXR");
+        let loaded = load_hdr_equirectangular(&path).expect("decode exr through the HDRI loader");
+        let _ = std::fs::remove_file(&path);
+        let px = match &loaded {
+            image::DynamicImage::ImageRgba32F(image) => image.get_pixel(0, 0).0,
+            image::DynamicImage::ImageRgb32F(image) => {
+                let rgb = image.get_pixel(0, 0).0;
+                [rgb[0], rgb[1], rgb[2], 1.0]
+            }
+            other => panic!("EXR decoded as {other:?}; the loader must keep a float image"),
+        };
+        assert!(px[0] > 1.0, "EXR radiance above 1 collapsed to {}", px[0]);
+    }
+
+    #[cfg(feature = "textures")]
+    #[test]
+    fn hdr_resize_keeps_radiance_above_one() {
+        let mut buf = image::Rgb32FImage::new(9000, 2);
+        for pixel in buf.pixels_mut() {
+            *pixel = image::Rgb([4.0, 0.25, 0.125]);
+        }
+        let prepared = prepare_hdr_image(image::DynamicImage::ImageRgb32F(buf)).unwrap();
+        assert!(prepared.width() <= MAX_HDR_DIMENSION);
+        let px = match &prepared {
+            image::DynamicImage::ImageRgb32F(image) => image.get_pixel(0, 0).0,
+            other => panic!("float HDR resized into {other:?}"),
+        };
+        assert!(px[0] > 1.0, "radiance above 1 was clamped to {}", px[0]);
+    }
 
     #[test]
     fn test_ibl_quality_presets() {

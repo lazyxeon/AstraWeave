@@ -1,0 +1,65 @@
+name: Render device validation
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  lavapipe:
+    name: Startup passes (lavapipe)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: dtolnay/rust-toolchain@d77020bf130f2e8c39c025bf9c4c3a445fe2b9fa # 1.89.0
+      - name: Install lavapipe
+        run: sudo apt-get update && sudo apt-get install -y mesa-vulkan-drivers libvulkan1 pkg-config libudev-dev
+      - name: Submit startup passes under validation
+        env:
+          WGPU_BACKEND: vulkan
+          WGPU_VALIDATION: "1"
+        run: |
+          if [ -f /usr/share/vulkan/icd.d/lvp_icd.x86_64.json ]; then
+            export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.x86_64.json
+          else
+            export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json
+          fi
+          cargo test -p astraweave-render --test created_pass_validation -- --nocapture
+      - name: Assert draw_into allocates nothing after warmup
+        env:
+          WGPU_BACKEND: vulkan
+          WGPU_VALIDATION: "1"
+        run: |
+          if [ -f /usr/share/vulkan/icd.d/lvp_icd.x86_64.json ]; then
+            export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.x86_64.json
+          else
+            export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json
+          fi
+          cargo test -p astraweave-render --features alloc-counter --test frame_alloc -- --nocapture
+      - name: Timestamp readback is non-zero
+        env:
+          WGPU_BACKEND: vulkan
+          WGPU_VALIDATION: "1"
+        run: |
+          if [ -f /usr/share/vulkan/icd.d/lvp_icd.x86_64.json ]; then
+            export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.x86_64.json
+          else
+            export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json
+          fi
+          cargo test -p astraweave-render --test gpu_timestamp -- --nocapture
+
+  windows:
+    name: Startup passes (Windows)
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: dtolnay/rust-toolchain@d77020bf130f2e8c39c025bf9c4c3a445fe2b9fa # 1.89.0
+      - name: Submit startup passes under validation
+        env:
+          WGPU_VALIDATION: "1"
+        run: cargo test -p astraweave-render --test created_pass_validation -- --nocapture

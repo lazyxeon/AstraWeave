@@ -23,6 +23,9 @@
 struct IblParams {
     ibl_intensity: f32,
     max_spec_lod: f32,
+    // Cloud-shadow bake center, world XZ. `compute_ibl` does not read this.
+    // Sampling the transmittance map with the live camera would slide the
+    // shadow between slice updates; the bake center holds it.
     _pad: vec2<f32>,
 };
 

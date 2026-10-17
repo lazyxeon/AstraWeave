@@ -282,7 +282,7 @@ impl SsgiPass {
         let gi_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("ssgi_gi_bgl"),
             entries: &[
-                bgl_texture(0),            // depth
+                bgl_depth(0),              // scene depth
                 bgl_texture(1),            // normals
                 bgl_texture(2),            // color
                 bgl_sampler(3),            // sampler
@@ -297,7 +297,7 @@ impl SsgiPass {
             entries: &[
                 bgl_texture(0),            // gi current
                 bgl_texture(1),            // gi history
-                bgl_texture(2),            // depth
+                bgl_depth(2),              // scene depth
                 bgl_texture(3),            // velocity
                 bgl_sampler(4),            // sampler
                 bgl_uniform(5),            // denoise params
@@ -310,8 +310,8 @@ impl SsgiPass {
             label: Some("ssgi_upsample_bgl"),
             entries: &[
                 bgl_texture(0),            // half-res GI
-                bgl_texture(1),            // full-res depth
-                bgl_texture(2),            // half-res depth
+                bgl_depth(1),              // full-res depth
+                bgl_depth(2),              // half-res depth
                 bgl_sampler(3),            // sampler
                 bgl_uniform(4),            // upsample params
                 bgl_storage_rw(5, gi_fmt), // full-res output
@@ -701,6 +701,19 @@ impl SsgiPass {
 }
 
 // Helper functions for bind group layout entries
+fn bgl_depth(binding: u32) -> wgpu::BindGroupLayoutEntry {
+    wgpu::BindGroupLayoutEntry {
+        binding,
+        visibility: wgpu::ShaderStages::COMPUTE,
+        ty: wgpu::BindingType::Texture {
+            sample_type: wgpu::TextureSampleType::Depth,
+            view_dimension: wgpu::TextureViewDimension::D2,
+            multisampled: false,
+        },
+        count: None,
+    }
+}
+
 fn bgl_texture(binding: u32) -> wgpu::BindGroupLayoutEntry {
     wgpu::BindGroupLayoutEntry {
         binding,
@@ -800,6 +813,9 @@ mod tests {
         let (device, _queue) =
             pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
                 .expect("device");
+        if crate::gpu_fault::skip_without_depth_texture_load(&device, "ssgi_pass_creation") {
+            return;
+        }
 
         let pass = SsgiPass::new(&device, 1920, 1080);
         assert_eq!(pass.dimensions(), (1920, 1080));
@@ -829,6 +845,9 @@ mod tests {
         let (device, _queue) =
             pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
                 .expect("device");
+        if crate::gpu_fault::skip_without_depth_texture_load(&device, "ssgi_pass_half_res") {
+            return;
+        }
 
         let config = SsgiConfig {
             half_res: true,

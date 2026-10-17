@@ -66,6 +66,20 @@ impl PipelineCacheManager {
     }
 }
 
+/// Create a render pipeline through the one engine entry point.
+///
+/// `cache` is the device pipeline cache when `Features::PIPELINE_CACHE` is
+/// present. Pass `None` when that feature is absent. The argument wins over
+/// any `cache` already stored on `descriptor`.
+pub fn create_render_pipeline<'a>(
+    device: &wgpu::Device,
+    cache: Option<&'a wgpu::PipelineCache>,
+    mut descriptor: wgpu::RenderPipelineDescriptor<'a>,
+) -> wgpu::RenderPipeline {
+    descriptor.cache = cache.or(descriptor.cache);
+    device.create_render_pipeline(&descriptor)
+}
+
 impl Drop for PipelineCacheManager {
     fn drop(&mut self) {
         self.save();

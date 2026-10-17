@@ -1368,6 +1368,7 @@ dependencies = [
  "astraweave-camera",
  "astraweave-cinematics",
  "astraweave-core",
+ "astraweave-ecs",
  "astraweave-materials",
  "astraweave-profiling",
  "astraweave-security",

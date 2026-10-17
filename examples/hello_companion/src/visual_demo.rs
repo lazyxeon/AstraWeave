@@ -671,30 +671,13 @@ impl CompanionApp {
             tod.time_scale = 0.0; // Freeze time for consistent lighting
         }
 
-        // Initialize HDRI environment
-        {
-            println!("Initializing HDRI environment...");
-            // Set to HDRI mode
-            renderer.ibl_mut().mode = astraweave_render::ibl::SkyMode::HdrPath {
-                biome: "default".to_string(),
-                path: "assets/hdri/polyhaven/kloppenheim_02_puresky_2k.hdr".to_string(),
-            };
-
-            // Bake environment (offline process step)
-            if let Err(e) = renderer.bake_environment(astraweave_render::ibl::IblQuality::Medium) {
-                eprintln!(
-                    "Failed to bake environment: {:?} (falling back to procedural)",
-                    e
-                );
-                // Switch back to procedural if failed
-                renderer.ibl_mut().mode = astraweave_render::ibl::SkyMode::Procedural {
-                    last_capture_time: 0.0,
-                    recapture_interval: 0.0,
-                };
-            } else {
-                println!("✓ HDRI environment baked successfully");
-            }
-        }
+        // Bake the terrain pack's spruit_sunrise EXR (kloppenheim_02 if that
+        // file is absent). A missing plate is a startup error: the 1×1
+        // fallback cubemap is not a sky.
+        let baked = renderer
+            .bake_showcase_environment(astraweave_render::ibl::IblQuality::Medium)
+            .context("bake showcase IBL")?;
+        println!("✓ HDRI environment baked from {}", baked.display());
 
         // Generate and upload procedural terrain
         println!("Generating procedural terrain...");

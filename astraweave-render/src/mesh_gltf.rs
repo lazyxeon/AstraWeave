@@ -138,6 +138,7 @@ pub fn load_gltf(path: &std::path::Path, opts: &GltfOptions) -> Result<Vec<CpuMe
             meshes_out.push(cpu);
         }
     }
+    attach_sidecar_pbr_maps(path, &mut meshes_out)?;
     Ok(meshes_out)
 }
 
@@ -167,10 +168,7 @@ mod jail_tests {
 }
 
 #[cfg(feature = "gltf-assets")]
-fn image_from_texture<'a, T>(
-    images: &'a [gltf::image::Data],
-    info: Option<T>,
-) -> Result<Option<CpuImage>>
+fn image_from_texture<T>(images: &[gltf::image::Data], info: Option<T>) -> Result<Option<CpuImage>>
 where
     T: TextureInfo,
 {
@@ -341,6 +339,193 @@ pub fn load_gltf(_path: &std::path::Path, _opts: &GltfOptions) -> Result<Vec<Cpu
     Err(anyhow!("gltf-assets feature not enabled"))
 }
 
+/// Fill empty normal / metallic-roughness / occlusion slots from sibling
+/// Poly Haven files.
+///
+/// Looks beside the model (and in `textures` / `Textures` next to it or its
+/// parent) for `*nor_gl*.{png,jpg,jpeg}` and `*_arm*.{png,jpg,jpeg}` whose
+/// names contain the model stem or a material hint. `nor_gl` is stored
+/// unchanged. ARM is stored as glTF metallic-roughness (G = roughness,
+/// B = metallic) plus occlusion, so upload converts it once. Embedded glTF
+/// images are left in place. A file that does not share the model stem is
+/// ignored, so a pack directory cannot attach a neighbor's maps.
+#[cfg(all(feature = "gltf-assets", feature = "textures"))]
+pub fn attach_sidecar_pbr_maps(model_path: &std::path::Path, meshes: &mut [CpuMesh]) -> Result<()> {
+    use crate::mesh::CpuImage;
+    use anyhow::Context;
+
+    if meshes.is_empty() {
+        return Ok(());
+    }
+    let needs_normal = meshes.iter().any(|mesh| mesh.normal_image.is_none());
+    let needs_arm = meshes
+        .iter()
+        .any(|mesh| mesh.metallic_roughness_image.is_none() || mesh.occlusion_image.is_none());
+    if !needs_normal && !needs_arm {
+        return Ok(());
+    }
+
+    let stems = identity_stems(model_path, meshes);
+    let mut nor_path = None;
+    let mut arm_path = None;
+    for dir in sidecar_dirs(model_path) {
+        if !dir.is_dir() {
+            continue;
+        }
+        let entries = std::fs::read_dir(&dir)
+            .with_context(|| format!("read PBR sidecar directory {}", dir.display()))?;
+        for entry in entries {
+            let entry =
+                entry.with_context(|| format!("read PBR sidecar entry in {}", dir.display()))?;
+            if !entry
+                .file_type()
+                .with_context(|| format!("stat {}", entry.path().display()))?
+                .is_file()
+            {
+                continue;
+            }
+            let name = entry.file_name();
+            let name = name.to_string_lossy();
+            let Some(kind) = crate::pbr_maps::classify_pbr_sidecar(&name) else {
+                continue;
+            };
+            if !name_matches_stem(&name, &stems) {
+                continue;
+            }
+            match kind {
+                crate::pbr_maps::SidecarMapKind::NorGl if nor_path.is_none() => {
+                    nor_path = Some(entry.path());
+                }
+                crate::pbr_maps::SidecarMapKind::Arm if arm_path.is_none() => {
+                    arm_path = Some(entry.path());
+                }
+                _ => {}
+            }
+        }
+    }
+
+    let normal_image = if needs_normal {
+        if let Some(path) = nor_path {
+            Some(load_rgba8(&path).with_context(|| format!("load nor_gl {}", path.display()))?)
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+    let arm_maps = if needs_arm {
+        if let Some(path) = arm_path {
+            let image =
+                load_rgba8(&path).with_context(|| format!("load arm map {}", path.display()))?;
+            let (mr, ao) = crate::pbr_maps::arm_to_gltf_mr_and_occlusion(&image.pixels);
+            Some((image.width, image.height, mr, ao))
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    for mesh in meshes.iter_mut() {
+        if mesh.normal_image.is_none() {
+            if let Some(image) = &normal_image {
+                mesh.normal_image = Some(image.clone());
+            }
+        }
+        if let Some((width, height, mr, ao)) = &arm_maps {
+            if mesh.metallic_roughness_image.is_none() {
+                mesh.metallic_roughness_image = Some(CpuImage {
+                    width: *width,
+                    height: *height,
+                    pixels: mr.clone(),
+                });
+            }
+            if mesh.occlusion_image.is_none() {
+                mesh.occlusion_image = Some(CpuImage {
+                    width: *width,
+                    height: *height,
+                    pixels: ao.clone(),
+                });
+            }
+        }
+    }
+    Ok(())
+}
+
+#[cfg(not(all(feature = "gltf-assets", feature = "textures")))]
+pub fn attach_sidecar_pbr_maps(
+    _model_path: &std::path::Path,
+    _meshes: &mut [CpuMesh],
+) -> Result<()> {
+    Ok(())
+}
+
+#[cfg(all(feature = "gltf-assets", feature = "textures"))]
+fn identity_stems(model_path: &std::path::Path, meshes: &[CpuMesh]) -> Vec<String> {
+    let mut stems = Vec::new();
+    if let Some(stem) = model_path.file_stem().and_then(|stem| stem.to_str()) {
+        push_stem(&mut stems, stem);
+    }
+    for mesh in meshes {
+        if let Some(hint) = &mesh.texture_source_hint {
+            push_stem(&mut stems, hint);
+            let lower = hint.to_ascii_lowercase();
+            for suffix in [
+                "_diff",
+                "_albedo",
+                "_basecolor",
+                "_base_color",
+                "_color",
+                "_diffuse",
+            ] {
+                if let Some(stripped) = lower.strip_suffix(suffix) {
+                    push_stem(&mut stems, stripped);
+                }
+            }
+        }
+    }
+    stems
+}
+
+#[cfg(all(feature = "gltf-assets", feature = "textures"))]
+fn push_stem(stems: &mut Vec<String>, stem: &str) {
+    let lower = stem.to_ascii_lowercase();
+    if lower.len() >= 3 && !stems.iter().any(|existing| existing == &lower) {
+        stems.push(lower);
+    }
+}
+
+#[cfg(all(feature = "gltf-assets", feature = "textures"))]
+fn name_matches_stem(file_name: &str, stems: &[String]) -> bool {
+    let lower = file_name.to_ascii_lowercase();
+    stems.iter().any(|stem| lower.contains(stem))
+}
+
+#[cfg(all(feature = "gltf-assets", feature = "textures"))]
+fn sidecar_dirs(model_path: &std::path::Path) -> Vec<std::path::PathBuf> {
+    let mut dirs = Vec::new();
+    if let Some(parent) = model_path.parent() {
+        dirs.push(parent.to_path_buf());
+        dirs.push(parent.join("textures"));
+        dirs.push(parent.join("Textures"));
+        if let Some(grand) = parent.parent() {
+            dirs.push(grand.join("textures"));
+            dirs.push(grand.join("Textures"));
+        }
+    }
+    dirs
+}
+
+#[cfg(all(feature = "gltf-assets", feature = "textures"))]
+fn load_rgba8(path: &std::path::Path) -> Result<crate::mesh::CpuImage> {
+    let image = image::open(path)?.to_rgba8();
+    Ok(crate::mesh::CpuImage {
+        width: image.width(),
+        height: image.height(),
+        pixels: image.into_raw(),
+    })
+}
+
 #[cfg(feature = "gltf-assets")]
 pub fn generate_mikktspace_tangents(mesh: &mut CpuMesh) -> Result<()> {
     compute_tangents(mesh);
@@ -350,4 +535,71 @@ pub fn generate_mikktspace_tangents(mesh: &mut CpuMesh) -> Result<()> {
 #[cfg(not(feature = "gltf-assets"))]
 pub fn generate_mikktspace_tangents(_mesh: &mut CpuMesh) -> Result<()> {
     Ok(())
+}
+
+#[cfg(all(test, feature = "gltf-assets", feature = "textures"))]
+mod tests {
+    use super::*;
+    use crate::mesh::{CpuImage, CpuMesh};
+
+    fn write_png(path: &std::path::Path, pixel: [u8; 4]) {
+        let image = image::RgbaImage::from_pixel(1, 1, image::Rgba(pixel));
+        image.save(path).expect("write sidecar png");
+    }
+
+    #[test]
+    fn polyhaven_sidecars_fill_empty_slots_and_leave_embedded_maps() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let model = dir.path().join("barrel.glb");
+        std::fs::write(&model, b"not-a-glb").expect("write stub glb");
+        write_png(
+            &dir.path().join("barrel_nor_gl_2k.png"),
+            [128, 200, 255, 255],
+        );
+        write_png(&dir.path().join("barrel_arm_2k.png"), [10, 80, 250, 255]);
+        write_png(&dir.path().join("neighbor_nor_gl_2k.png"), [1, 2, 3, 255]);
+
+        let embedded_normal = CpuImage {
+            width: 1,
+            height: 1,
+            pixels: vec![9, 9, 9, 255],
+        };
+        let mut meshes = vec![
+            CpuMesh::default(),
+            CpuMesh {
+                normal_image: Some(embedded_normal.clone()),
+                ..CpuMesh::default()
+            },
+        ];
+        attach_sidecar_pbr_maps(&model, &mut meshes).expect("attach");
+
+        let normal = meshes[0].normal_image.as_ref().expect("nor_gl");
+        assert_eq!(&normal.pixels[..3], &[128, 200, 255]);
+        let mr = meshes[0]
+            .metallic_roughness_image
+            .as_ref()
+            .expect("arm as gltf mr");
+        assert_eq!(mr.pixels[1], 80);
+        assert_eq!(mr.pixels[2], 250);
+        let ao = meshes[0].occlusion_image.as_ref().expect("arm ao");
+        assert_eq!(ao.pixels[0], 10);
+
+        let kept = meshes[1].normal_image.as_ref().expect("embedded normal");
+        assert_eq!(kept.pixels, embedded_normal.pixels);
+        assert!(meshes[1].metallic_roughness_image.is_some());
+    }
+
+    #[test]
+    fn unrelated_sidecar_is_not_attached() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let model = dir.path().join("rogue.glb");
+        std::fs::write(&model, b"not-a-glb").expect("write stub glb");
+        write_png(&dir.path().join("warm_armor.png"), [1, 2, 3, 255]);
+        write_png(&dir.path().join("crate_nor_gl.png"), [4, 5, 6, 255]);
+        let mut meshes = vec![CpuMesh::default()];
+        attach_sidecar_pbr_maps(&model, &mut meshes).expect("attach");
+        assert!(meshes[0].normal_image.is_none());
+        assert!(meshes[0].metallic_roughness_image.is_none());
+        assert!(meshes[0].occlusion_image.is_none());
+    }
 }

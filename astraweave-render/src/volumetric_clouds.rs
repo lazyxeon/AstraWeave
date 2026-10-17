@@ -91,6 +91,10 @@ pub struct CloudShadowParams {
     pub shadow_steps: u32,
     pub resolution: f32,
     pub _pad0: f32,
+    pub y_begin: u32,
+    pub row_count: u32,
+    pub _pad1: u32,
+    pub _pad2: u32,
 }
 
 // ---------------------------------------------------------------------------
@@ -291,7 +295,7 @@ impl VolumetricCloudsPass {
                 bgl_uniform(0),            // CloudCompositeParams
                 bgl_texture_2d(1),         // scene color
                 bgl_texture_2d(2),         // cloud result
-                bgl_texture_2d(3),         // depth
+                bgl_depth(3),              // scene depth
                 bgl_sampler(4),            // linear sampler
                 bgl_storage_2d_rw(5, fmt), // output
             ],
@@ -307,6 +311,7 @@ impl VolumetricCloudsPass {
                 include_str!("../shaders/volumetrics/cloud_raymarching.wgsl")
             ),
             "cloud_raymarch_main",
+            &[],
         );
         let composite_pipeline = create_compute_pipeline(
             device,
@@ -314,6 +319,7 @@ impl VolumetricCloudsPass {
             "cloud_composite",
             include_str!("../shaders/volumetrics/cloud_composite.wgsl"),
             "cloud_composite_main",
+            &[],
         );
 
         // --- Sampler ---
@@ -592,6 +598,58 @@ const CLOUD_SHADOW_RES: u32 = 512;
 /// Default shadow map world-space half-extent (covers 2048 × 2048 m).
 const CLOUD_SHADOW_EXTENT: f32 = 1024.0;
 
+/// March steps through the cloud layer. 16 matches a 32-step integral on
+/// this noise scale (the column is a fraction of a Worley cell). See the
+/// shader header for the lavapipe measurement.
+pub const CLOUD_SHADOW_STEPS: u32 = 16;
+
+/// One frame writes `resolution / CLOUD_SHADOW_SLICES` rows. Thirty-two
+/// slices measured 0.189 ms on lavapipe for the steady heavy-scene frame.
+/// At the 8.599/4.485 ratio that is about 0.36 ms on the 1660 Ti. The map
+/// refreshes every 32 sim frames, at one cloud time for the whole cycle.
+pub const CLOUD_SHADOW_SLICES: u32 = 32;
+
+/// Which rows a presentation frame owns, and the cloud time for that cycle.
+/// Time is `(frame_index / slices) * slices / 60`, so every slice in a cycle
+/// shares one time and the same index always selects the same rows.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct CloudShadowSlice {
+    pub cycle: u64,
+    pub slice: u32,
+    pub time: f32,
+    pub y_begin: u32,
+    pub row_count: u32,
+}
+
+pub fn cloud_shadow_slice(frame_index: u64, resolution: u32) -> CloudShadowSlice {
+    let slices = u64::from(CLOUD_SHADOW_SLICES.max(1));
+    let cycle = frame_index / slices;
+    let slice = (frame_index % slices) as u32;
+    let base = resolution / CLOUD_SHADOW_SLICES.max(1);
+    let y_begin = slice.saturating_mul(base);
+    let row_count = if slice + 1 == CLOUD_SHADOW_SLICES.max(1) {
+        resolution.saturating_sub(y_begin)
+    } else {
+        base
+    };
+    CloudShadowSlice {
+        cycle,
+        slice,
+        time: (cycle * slices) as f32 / 60.0,
+        y_begin,
+        row_count,
+    }
+}
+
+/// Compute workgroup. 8×8, 16×8, and 16×16 were within 1% on lavapipe.
+const CLOUD_SHADOW_WG_X: u32 = 8;
+const CLOUD_SHADOW_WG_Y: u32 = 8;
+
+const CLOUD_SHADOW_SHADER: &str = concat!(
+    include_str!("../shaders/constants.wgsl"),
+    include_str!("../shaders/volumetrics/cloud_shadow_map.wgsl")
+);
+
 /// Generates a 2D cloud shadow transmittance map from the sun direction.
 ///
 /// The map covers a square region centered on the camera, projected through
@@ -607,7 +665,10 @@ pub struct CloudShadowPass {
     shadow_sampler: wgpu::Sampler,
     resolution: u32,
     extent: f32,
-    time: f32,
+    baked_cycle: Option<u64>,
+    baked_center_xz: [f32; 2],
+    dispatch_groups_x: u32,
+    dispatch_groups_y: u32,
     cached_bg: CachedBindGroup,
 }
 
@@ -632,6 +693,7 @@ impl CloudShadowPass {
             format: fmt,
             usage: wgpu::TextureUsages::STORAGE_BINDING
                 | wgpu::TextureUsages::TEXTURE_BINDING
+                | wgpu::TextureUsages::COPY_SRC
                 | wgpu::TextureUsages::COPY_DST,
             view_formats: &[],
         });
@@ -693,16 +755,7 @@ impl CloudShadowPass {
             entries: &[bgl_uniform(0), bgl_storage_2d_rw(1, fmt)],
         });
 
-        let pipeline = create_compute_pipeline(
-            device,
-            &bgl,
-            "cloud_shadow",
-            concat!(
-                include_str!("../shaders/constants.wgsl"),
-                include_str!("../shaders/volumetrics/cloud_shadow_map.wgsl")
-            ),
-            "cloud_shadow_main",
-        );
+        let pipeline = create_cloud_shadow_pipeline(device, &bgl);
 
         Self {
             pipeline,
@@ -713,7 +766,10 @@ impl CloudShadowPass {
             shadow_sampler,
             resolution,
             extent,
-            time: 0.0,
+            baked_cycle: None,
+            baked_center_xz: [0.0, 0.0],
+            dispatch_groups_x: resolution.div_ceil(CLOUD_SHADOW_WG_X),
+            dispatch_groups_y: resolution.div_ceil(CLOUD_SHADOW_WG_Y),
             cached_bg: CachedBindGroup::new(),
         }
     }
@@ -739,12 +795,22 @@ impl CloudShadowPass {
     }
 
     /// Half-extent in world units. The shadow map covers
-    /// `[-extent, extent]×[-extent, extent]` centered on the camera.
+    /// `[-extent, extent]×[-extent, extent]` centered on the baked camera XZ.
     pub fn extent(&self) -> f32 {
         self.extent
     }
 
-    /// Update the uniform buffer for the current frame and queue dispatch.
+    /// World XZ the current cycle was baked around. Sampling uses this, not
+    /// the live camera, so the map stays put between slice updates.
+    pub fn baked_center_xz(&self) -> [f32; 2] {
+        self.baked_center_xz
+    }
+
+    /// Update the uniform buffer for this presentation frame.
+    ///
+    /// `frame_index` selects the row slice and the cloud time. The same index
+    /// always selects the same rows and the same time. The cycle's camera XZ
+    /// is captured on the first frame of that cycle that this pass sees.
     #[allow(clippy::too_many_arguments)]
     pub fn prepare_frame(
         &mut self,
@@ -754,12 +820,22 @@ impl CloudShadowPass {
         config: &CloudConfig,
         extinction: f32,
         shadow_steps: u32,
-        dt: f32,
+        frame_index: u64,
     ) {
-        self.time += dt;
+        let slice = cloud_shadow_slice(frame_index, self.resolution);
+        if self.baked_cycle != Some(slice.cycle) {
+            self.baked_cycle = Some(slice.cycle);
+            self.baked_center_xz = [camera_pos.x, camera_pos.z];
+        }
+        self.dispatch_groups_x = self.resolution.div_ceil(CLOUD_SHADOW_WG_X);
+        self.dispatch_groups_y = slice.row_count.div_ceil(CLOUD_SHADOW_WG_Y);
 
         let params = CloudShadowParams {
-            center: [camera_pos.x, config.cloud_altitude, camera_pos.z],
+            center: [
+                self.baked_center_xz[0],
+                config.cloud_altitude,
+                self.baked_center_xz[1],
+            ],
             extent: self.extent,
             sun_dir: sun_dir.to_array(),
             cloud_altitude: config.cloud_altitude,
@@ -768,11 +844,15 @@ impl CloudShadowPass {
             cloud_density: config.cloud_density,
             cloud_speed: config.cloud_speed,
             wind_dir: config.wind_dir.to_array(),
-            time: self.time,
+            time: slice.time,
             extinction,
             shadow_steps,
             resolution: self.resolution as f32,
             _pad0: 0.0,
+            y_begin: slice.y_begin,
+            row_count: slice.row_count,
+            _pad1: 0,
+            _pad2: 0,
         };
         queue.write_buffer(&self.params_buf, 0, bytemuck::bytes_of(&params));
     }
@@ -812,7 +892,7 @@ impl CloudShadowPass {
                 .cached_bg
                 .get_or_rebuild(resource_gen, || unreachable!());
             pass.set_bind_group(0, bg, &[]);
-            pass.dispatch_workgroups(self.resolution.div_ceil(8), self.resolution.div_ceil(8), 1);
+            pass.dispatch_workgroups(self.dispatch_groups_x, self.dispatch_groups_y, 1);
         }
     }
 }
@@ -821,12 +901,30 @@ impl CloudShadowPass {
 // Pipeline / BGL helpers (local to this module)
 // ---------------------------------------------------------------------------
 
+fn create_cloud_shadow_pipeline(
+    device: &wgpu::Device,
+    bgl: &wgpu::BindGroupLayout,
+) -> wgpu::ComputePipeline {
+    create_compute_pipeline(
+        device,
+        bgl,
+        "cloud_shadow",
+        CLOUD_SHADOW_SHADER,
+        "cloud_shadow_main",
+        &[
+            ("WG_X", f64::from(CLOUD_SHADOW_WG_X)),
+            ("WG_Y", f64::from(CLOUD_SHADOW_WG_Y)),
+        ],
+    )
+}
+
 fn create_compute_pipeline(
     device: &wgpu::Device,
     bgl: &wgpu::BindGroupLayout,
     label: &str,
     source: &str,
     entry_point: &str,
+    constants: &[(&str, f64)],
 ) -> wgpu::ComputePipeline {
     let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
         label: Some(label),
@@ -842,7 +940,10 @@ fn create_compute_pipeline(
         layout: Some(&pl),
         module: &shader,
         entry_point: Some(entry_point),
-        compilation_options: Default::default(),
+        compilation_options: wgpu::PipelineCompilationOptions {
+            constants,
+            zero_initialize_workgroup_memory: false,
+        },
         cache: None,
     })
 }
@@ -855,6 +956,19 @@ fn bgl_uniform(binding: u32) -> wgpu::BindGroupLayoutEntry {
             ty: wgpu::BufferBindingType::Uniform,
             has_dynamic_offset: false,
             min_binding_size: None,
+        },
+        count: None,
+    }
+}
+
+fn bgl_depth(binding: u32) -> wgpu::BindGroupLayoutEntry {
+    wgpu::BindGroupLayoutEntry {
+        binding,
+        visibility: wgpu::ShaderStages::COMPUTE,
+        ty: wgpu::BindingType::Texture {
+            sample_type: wgpu::TextureSampleType::Depth,
+            view_dimension: wgpu::TextureViewDimension::D2,
+            multisampled: false,
         },
         count: None,
     }
@@ -994,6 +1108,9 @@ mod tests {
                 ..Default::default()
             }))
             .unwrap();
+        if crate::gpu_fault::skip_without_depth_texture_load(&device, "cloud_pass_creation") {
+            return;
+        }
 
         let config = CloudConfig::default();
         let pass = VolumetricCloudsPass::new(&device, 1920, 1080, config);
@@ -1004,8 +1121,8 @@ mod tests {
 
     #[test]
     fn cloud_shadow_params_size() {
-        // vec3+f32(16) + vec3+f32(16) + 4×f32(16) + vec3+f32(16) + f32+u32+f32+f32(16) = 80
-        assert_eq!(std::mem::size_of::<CloudShadowParams>(), 80);
+        // 80-byte march block plus y_begin, row_count, and two pads (16) = 96.
+        assert_eq!(std::mem::size_of::<CloudShadowParams>(), 96);
     }
 
     #[test]
@@ -1026,5 +1143,261 @@ mod tests {
     fn cloud_shadow_default_extent() {
         assert_eq!(CLOUD_SHADOW_RES, 512);
         assert_eq!(CLOUD_SHADOW_EXTENT, 1024.0);
+        assert_eq!(CLOUD_SHADOW_RES % CLOUD_SHADOW_SLICES, 0);
+    }
+
+    #[test]
+    fn cloud_shadow_slice_is_a_function_of_frame_index() {
+        let first = cloud_shadow_slice(3, 512);
+        let again = cloud_shadow_slice(3, 512);
+        assert_eq!(first, again);
+        assert_eq!(first.time, 0.0);
+        let mut covered = vec![false; 512];
+        let cycle_end = cloud_shadow_slice(u64::from(CLOUD_SHADOW_SLICES) - 1, 512);
+        assert_eq!(cycle_end.time, first.time);
+        assert_eq!(cycle_end.slice, CLOUD_SHADOW_SLICES - 1);
+        let next = cloud_shadow_slice(u64::from(CLOUD_SHADOW_SLICES), 512);
+        assert!((next.time - (CLOUD_SHADOW_SLICES as f32) / 60.0).abs() < 1.0e-6);
+        assert_eq!(next.slice, 0);
+        for frame in 0..u64::from(CLOUD_SHADOW_SLICES) {
+            let slice = cloud_shadow_slice(frame, 512);
+            for y in slice.y_begin..slice.y_begin + slice.row_count {
+                assert!(!covered[y as usize], "row {y} written twice");
+                covered[y as usize] = true;
+            }
+        }
+        assert!(covered.iter().all(|row| *row));
+    }
+
+    #[test]
+    fn cloud_shadow_slices_match_a_full_bake() {
+        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::from_env_or_default());
+        let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
+            power_preference: wgpu::PowerPreference::LowPower,
+            compatible_surface: None,
+            force_fallback_adapter: false,
+        }));
+        let adapter = match adapter {
+            Ok(adapter) => adapter,
+            Err(_) => {
+                eprintln!("SKIP: no GPU adapter available");
+                return;
+            }
+        };
+        let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
+            label: Some("cloud_shadow_slice"),
+            ..Default::default()
+        }))
+        .expect("device");
+        let mut pass = CloudShadowPass::new_default(&device, &queue);
+        let config = CloudConfig::default();
+        let camera = Vec3::new(4.0, 2.0, 4.0);
+        let sun = Vec3::new(0.0, 1.0, 0.0);
+        let full = cloud_shadow_slice(0, pass.resolution);
+        pass.baked_cycle = Some(full.cycle);
+        pass.baked_center_xz = [camera.x, camera.z];
+        pass.dispatch_groups_x = pass.resolution.div_ceil(CLOUD_SHADOW_WG_X);
+        pass.dispatch_groups_y = pass.resolution.div_ceil(CLOUD_SHADOW_WG_Y);
+        let params = CloudShadowParams {
+            center: [camera.x, config.cloud_altitude, camera.z],
+            extent: pass.extent,
+            sun_dir: sun.to_array(),
+            cloud_altitude: config.cloud_altitude,
+            cloud_thickness: config.cloud_thickness,
+            cloud_coverage: config.cloud_coverage,
+            cloud_density: config.cloud_density,
+            cloud_speed: config.cloud_speed,
+            wind_dir: config.wind_dir.to_array(),
+            time: full.time,
+            extinction: config.extinction_coeff,
+            shadow_steps: CLOUD_SHADOW_STEPS,
+            resolution: pass.resolution as f32,
+            _pad0: 0.0,
+            y_begin: 0,
+            row_count: pass.resolution,
+            _pad1: 0,
+            _pad2: 0,
+        };
+        queue.write_buffer(&pass.params_buf, 0, bytemuck::bytes_of(&params));
+        let mut enc = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("cloud_shadow_full"),
+        });
+        pass.execute(&device, &mut enc, 1);
+        queue.submit(std::iter::once(enc.finish()));
+        let baked = read_shadow(&device, &queue, &pass);
+        clear_shadow(&queue, &pass);
+
+        pass.baked_cycle = None;
+        pass.prepare_frame(
+            &queue,
+            camera,
+            sun,
+            &config,
+            config.extinction_coeff,
+            CLOUD_SHADOW_STEPS,
+            0,
+        );
+        assert_eq!(pass.baked_center_xz(), [camera.x, camera.z]);
+        pass.prepare_frame(
+            &queue,
+            Vec3::new(80.0, 2.0, -40.0),
+            sun,
+            &config,
+            config.extinction_coeff,
+            CLOUD_SHADOW_STEPS,
+            3,
+        );
+        assert_eq!(
+            pass.baked_center_xz(),
+            [camera.x, camera.z],
+            "center stays at the cycle start"
+        );
+        pass.baked_cycle = None;
+        for frame in 0..u64::from(CLOUD_SHADOW_SLICES) {
+            pass.prepare_frame(
+                &queue,
+                camera,
+                sun,
+                &config,
+                config.extinction_coeff,
+                CLOUD_SHADOW_STEPS,
+                frame,
+            );
+            let mut enc = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("cloud_shadow_slice"),
+            });
+            pass.execute(&device, &mut enc, 1);
+            queue.submit(std::iter::once(enc.finish()));
+        }
+        let sliced = read_shadow(&device, &queue, &pass);
+        pass.prepare_frame(
+            &queue,
+            Vec3::new(80.0, 2.0, -40.0),
+            sun,
+            &config,
+            config.extinction_coeff,
+            CLOUD_SHADOW_STEPS,
+            u64::from(CLOUD_SHADOW_SLICES),
+        );
+        assert_eq!(pass.baked_center_xz(), [80.0, -40.0]);
+        let mut max_diff = 0.0f32;
+        for (a, b) in baked.iter().zip(sliced.iter()) {
+            max_diff = max_diff.max((a - b).abs());
+        }
+        println!("cloud_shadow slice_vs_full max_abs={max_diff:.6}");
+        write_ground_ppm("/opt/cursor/artifacts/cloud_shadow_full_bake.ppm", &baked);
+        write_ground_ppm("/opt/cursor/artifacts/cloud_shadow_sliced.ppm", &sliced);
+        assert!(
+            max_diff < 1.0e-5,
+            "a finished slice cycle must match a one-shot bake, max_abs={max_diff}"
+        );
+    }
+
+    fn clear_shadow(queue: &wgpu::Queue, pass: &CloudShadowPass) {
+        let res = pass.resolution;
+        let bytes = (res * res * 8) as usize;
+        queue.write_texture(
+            wgpu::TexelCopyTextureInfo {
+                texture: &pass.shadow_texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            &vec![0u8; bytes],
+            wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(res * 8),
+                rows_per_image: Some(res),
+            },
+            wgpu::Extent3d {
+                width: res,
+                height: res,
+                depth_or_array_layers: 1,
+            },
+        );
+    }
+
+    fn read_shadow(device: &wgpu::Device, queue: &wgpu::Queue, pass: &CloudShadowPass) -> Vec<f32> {
+        use std::sync::mpsc;
+        let res = pass.resolution;
+        let row_bytes = res * 8;
+        let readback = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("cloud_shadow_readback"),
+            size: u64::from(row_bytes) * u64::from(res),
+            usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        let mut enc = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("cloud_shadow_readback"),
+        });
+        enc.copy_texture_to_buffer(
+            wgpu::TexelCopyTextureInfo {
+                texture: &pass.shadow_texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            wgpu::TexelCopyBufferInfo {
+                buffer: &readback,
+                layout: wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(row_bytes),
+                    rows_per_image: Some(res),
+                },
+            },
+            wgpu::Extent3d {
+                width: res,
+                height: res,
+                depth_or_array_layers: 1,
+            },
+        );
+        queue.submit(std::iter::once(enc.finish()));
+        let (tx, rx) = mpsc::channel();
+        readback
+            .slice(..)
+            .map_async(wgpu::MapMode::Read, move |result| {
+                let _ = tx.send(result);
+            });
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        loop {
+            let _ = device.poll(wgpu::PollType::Poll);
+            if let Ok(result) = rx.try_recv() {
+                result.expect("shadow map");
+                break;
+            }
+            if std::time::Instant::now() > deadline {
+                panic!("cloud shadow readback timed out");
+            }
+            std::thread::sleep(std::time::Duration::from_millis(1));
+        }
+        let raw = readback.slice(..).get_mapped_range();
+        let mut texels = Vec::with_capacity((res * res) as usize);
+        for y in 0..res {
+            let row = (y * row_bytes) as usize;
+            for x in 0..res {
+                let offset = row + (x * 8) as usize;
+                let bits = u16::from_le_bytes([raw[offset], raw[offset + 1]]);
+                texels.push(half::f16::from_bits(bits).to_f32());
+            }
+        }
+        drop(raw);
+        readback.unmap();
+        texels
+    }
+
+    fn write_ground_ppm(path: &str, transmittance: &[f32]) {
+        let res = (transmittance.len() as f32).sqrt() as u32;
+        let mut body = Vec::with_capacity(transmittance.len() * 3);
+        for t in transmittance {
+            let lit = 0.45 * (0.18 + 1.15 * t.clamp(0.0, 1.0));
+            let srgb = lit.clamp(0.0, 1.0).powf(1.0 / 2.2);
+            let byte = (srgb * 255.0).round() as u8;
+            body.extend_from_slice(&[byte, byte, byte]);
+        }
+        let mut file = format!("P6\n{res} {res}\n255\n").into_bytes();
+        file.extend_from_slice(&body);
+        if std::fs::create_dir_all("/opt/cursor/artifacts").is_ok() {
+            let _ = std::fs::write(path, file);
+        }
     }
 }

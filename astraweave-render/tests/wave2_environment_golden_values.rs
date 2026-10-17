@@ -630,93 +630,57 @@ fn default_values_exact() {
 
 // ─── TimeOfDay::update ──────────────────────────────────────────────────────
 
-/// After update(), current_time changes by (elapsed × time_scale) / 3600 mod 24.
-/// Since elapsed is near-zero in tests, we verify:
-///  1. current_time doesn't jump to zero (modulo bug)
-///  2. The function doesn't panic
-///  3. Time stays in [0, 24)
+/// A fixed step stays inside `[0, 24)`.
 #[test]
 fn update_keeps_time_in_range() {
-    let mut tod = TimeOfDay::new(23.99, 1.0);
-    tod.update();
+    let mut tod = TimeOfDay::new(23.99, 3600.0);
+    tod.update(1.0);
     assert!(tod.current_time >= 0.0, "Time must be ≥ 0 after update");
     assert!(tod.current_time < 24.0, "Time must be < 24 after update");
 }
 
-/// Update with time_scale 0 should result in negligible change
+/// Update with time_scale 0 does not move the hour.
 #[test]
 fn update_zero_scale_no_change() {
     let mut tod = TimeOfDay::new(10.0, 0.0);
     let before = tod.current_time;
-    tod.update();
-    // With scale=0, game_hours ≈ 0, so time shouldn't change
-    assert!(
-        (tod.current_time - before).abs() < 0.01,
-        "Zero scale = no time change"
-    );
+    tod.update(10.0);
+    assert_eq!(tod.current_time.to_bits(), before.to_bits());
 }
 
-/// update() doesn't replace body with () — after update, time is still reasonable
+/// A non-zero step at a non-zero scale changes the hour.
 #[test]
 fn update_does_not_noop() {
-    // Set time just below 24.0 with a large scale and call update in rapid
-    // succession. Even if elapsed is tiny, with huge scale the delta should
-    // be non-trivial after a few calls.
-    let mut tod = TimeOfDay::new(12.0, 3_600_000.0); // extreme scale
-                                                     // Multiple updates to accumulate even tiny elapsed times
-    for _ in 0..100 {
-        tod.update();
-    }
-    // Time should still be valid
-    assert!(tod.current_time >= 0.0 && tod.current_time < 24.0);
+    let mut tod = TimeOfDay::new(12.0, 3600.0);
+    tod.update(1.0);
+    assert!((tod.current_time - 13.0).abs() < 1e-4);
 }
 
-/// Verify the modulo 24.0 wrapping
+/// Hours wrap with `rem_euclid`, so a step past midnight stays non-negative.
 #[test]
 fn update_modulo_wrap() {
-    let mut tod = TimeOfDay::new(23.999, 100_000.0);
-    // Even a tiny elapsed time at huge scale should push past 24.0
-    // and wrap back to near 0 via modulo
-    std::thread::sleep(std::time::Duration::from_millis(1));
-    tod.update();
-    assert!(tod.current_time >= 0.0, "Wrapped time >= 0");
-    assert!(tod.current_time < 24.0, "Wrapped time < 24");
+    let mut tod = TimeOfDay::new(23.0, 3600.0);
+    tod.update(2.0);
+    assert!((tod.current_time - 1.0).abs() < 1e-4);
 }
 
-/// Verify time_scale multiplier is used (not ignored)
+/// `time_scale` multiplies the step.
 #[test]
 fn update_respects_time_scale() {
     let mut slow = TimeOfDay::new(0.0, 1.0);
-    let mut fast = TimeOfDay::new(0.0, 100000.0);
-    std::thread::sleep(std::time::Duration::from_millis(2));
-    slow.update();
-    fast.update();
-    // fast should have advanced more (or at least equal) to slow
-    // This catches mutations that remove the time_scale multiplication
-    // Note: with very small elapsed, both might be ≈0, but the delta should differ
-    assert!(
-        fast.current_time >= slow.current_time,
-        "High scale should advance faster: fast={} slow={}",
-        fast.current_time,
-        slow.current_time
-    );
+    let mut fast = TimeOfDay::new(0.0, 3600.0);
+    slow.update(1.0);
+    fast.update(1.0);
+    assert!(fast.current_time > slow.current_time);
+    assert!((fast.current_time - 1.0).abs() < 1e-4);
 }
 
-/// Verify division by 3600.0 (seconds→hours conversion)
+/// Seconds become hours by dividing by 3600.
 #[test]
 fn update_uses_hours_conversion() {
-    // With scale=3600 and 1ms elapsed: game_hours = (0.001 × 3600)/3600 = 0.001
-    // If / were replaced with %, game_hours would be wrong
     let mut tod = TimeOfDay::new(0.0, 3600.0);
-    std::thread::sleep(std::time::Duration::from_millis(5));
-    tod.update();
-    // 5ms × 3600 / 3600 = 0.005 hours
-    // With %, it would be 5ms × 3600 = 18 % 3600 = 18 → totally wrong
-    assert!(
-        tod.current_time < 1.0,
-        "Should be small increment, got {}",
-        tod.current_time
-    );
+    tod.update(0.005);
+    assert!((tod.current_time - 0.005).abs() < 1e-5);
 }
 
 // ─── SkyConfig defaults ─────────────────────────────────────────────────────

@@ -1,0 +1,39 @@
+# Step 8 capture. workflow_dispatch only. This does not run on pull requests
+# and it does not invent an 11 ms number. Lavapipe time is not the budget.
+#
+# The job targets a self-hosted Windows runner with a GTX 1660 Ti-class GPU
+# (labels: self-hosted, Windows, gpu). Until that runner is connected, run
+# the same binary locally:
+#
+#   cargo run -p astraweave-render --release --features gpu-frame-budget --bin gpu_frame_budget -- --glb "assets/The Complete KayKit Collection v4/KayKit Adventurers 2.0/Characters/gltf/Rogue.glb"
+#
+# It prints median_gpu_frame_ms. budget_11ms is pass when that median is <= 11,
+# fail when it is over, and not_decided only when the frame bracket is missing.
+# The min-spec record is the GTX 1660 Ti heavy scene, not lavapipe.
+
+name: GPU frame budget
+
+on:
+  workflow_dispatch:
+    inputs:
+      glb:
+        description: Textured GLB, passed to add_composite_model
+        required: false
+        default: assets/The Complete KayKit Collection v4/KayKit Adventurers 2.0/Characters/gltf/Rogue.glb
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  capture:
+    name: gpu_frame_budget
+    runs-on: [self-hosted, Windows, gpu]
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: dtolnay/rust-toolchain@d77020bf130f2e8c39c025bf9c4c3a445fe2b9fa # 1.89.0
+      - name: Median draw_into
+        shell: pwsh
+        run: |
+          cargo run -p astraweave-render --release --features gpu-frame-budget --bin gpu_frame_budget -- --scene heavy --glb "${{ inputs.glb }}"

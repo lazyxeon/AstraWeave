@@ -11,6 +11,9 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+permissions:
+  contents: read
+
 jobs:
   build-sdk-and-c:
     name: SDK and C harness (${{ matrix.os }})
@@ -27,7 +30,7 @@ jobs:
         uses: ./.github/actions/rust-ci-setup
       - name: MSVC developer environment
         if: matrix.os == 'windows-latest'
-        uses: ilammy/msvc-dev-cmd@v1
+        uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1
       - name: Build SDK
         run: cargo build -p astraweave-sdk --release
       - name: Install cbindgen
@@ -35,7 +38,7 @@ jobs:
       - name: Generate header
         run: cbindgen astraweave-sdk --lang c -o astraweave-sdk/aw_sdk.h
       - name: Upload header artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: aw_sdk-header
           path: astraweave-sdk/aw_sdk.h
@@ -101,7 +104,8 @@ jobs:
           '@
           # staticlib embeds Rust std objects. Those reference Winsock, the
           # user profile directory, and ntdll. A cdylib would already carry
-          # them; the .lib archive does not.
+          # them; the .lib archive does not. windows-latest does not supply
+          # them as defaultlibs (LNK2019 on PR #216, 2026-10-15).
           cl /I. c_harness.c /link /LIBPATH:target\release astraweave_sdk.lib ws2_32.lib userenv.lib ntdll.lib
           if (Test-Path target\release\astraweave_sdk.dll) { Copy-Item target\release\astraweave_sdk.dll . }
           .\c_harness.exe | Tee-Object -FilePath harness_out.txt | Out-Null

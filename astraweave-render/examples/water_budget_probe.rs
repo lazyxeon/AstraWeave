@@ -170,10 +170,12 @@ fn probe_isolated(device: &wgpu::Device, queue: &wgpu::Queue, has_timestamps: bo
                 });
                 water.render(&mut rp);
             }
-            if let Some(ref p) = profiler {
+            if let Some(p) = profiler.as_mut() {
+                p.resolve_queries(&mut enc);
                 p.end_frame(&mut enc);
             }
-            queue.submit(Some(enc.finish()));
+            GpuProfiler::submit_frame(profiler.as_mut(), queue, device, enc.finish())
+                .expect("timestamp submit");
             let _ = device.poll(wgpu::PollType::Wait);
 
             if let Some(ref mut p) = profiler {
@@ -269,10 +271,12 @@ fn probe_isolated(device: &wgpu::Device, queue: &wgpu::Queue, has_timestamps: bo
                 });
                 water.render(&mut rp);
             }
-            if let Some(ref p) = profiler {
+            if let Some(p) = profiler.as_mut() {
+                p.resolve_queries(&mut enc);
                 p.end_frame(&mut enc);
             }
-            queue.submit(Some(enc.finish()));
+            GpuProfiler::submit_frame(profiler.as_mut(), queue, device, enc.finish())
+                .expect("timestamp submit");
             let _ = device.poll(wgpu::PollType::Wait);
             if let Some(ref mut p) = profiler {
                 p.request_readback();
@@ -733,8 +737,6 @@ fn probe_refraction(device: &wgpu::Device, queue: &wgpu::Queue, has_timestamps: 
             );
             if copy_ts {
                 enc.write_timestamp(&copy_qset, 1);
-                enc.resolve_query_set(&copy_qset, 0..2, &copy_resolve, 0);
-                enc.copy_buffer_to_buffer(&copy_resolve, 0, &copy_read, 0, 16);
             }
             // 3. Water pass (read-only depth, samples scene_color + depth).
             {
@@ -761,11 +763,37 @@ fn probe_refraction(device: &wgpu::Device, queue: &wgpu::Queue, has_timestamps: 
                 });
                 water.render(&mut wp);
             }
-            if let Some(ref p) = profiler {
+            if let Some(p) = profiler.as_mut() {
+                p.resolve_queries(&mut enc);
                 p.end_frame(&mut enc);
             }
-            queue.submit(Some(enc.finish()));
-            let _ = device.poll(wgpu::PollType::Wait);
+            // The probe's own query set was written on `enc`. Resolve it there.
+            // A later resolve reads unavailable queries on NVIDIA.
+            if copy_ts {
+                enc.resolve_query_set(&copy_qset, 0..2, &copy_resolve, 0);
+            }
+            queue.submit(std::iter::once(enc.finish()));
+            astraweave_render::gpu_profiler::wait_for_gpu(device, "probe write+resolve")
+                .expect("probe write+resolve");
+            let mut staging = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("probe timestamp copy"),
+            });
+            let mut staged = false;
+            if copy_ts {
+                staging.copy_buffer_to_buffer(&copy_resolve, 0, &copy_read, 0, 16);
+                staged = true;
+            }
+            if let Some(p) = profiler.as_mut() {
+                if p.staging_copy_pending() {
+                    p.copy_resolved(&mut staging);
+                    staged = true;
+                }
+            }
+            if staged {
+                queue.submit(Some(staging.finish()));
+                astraweave_render::gpu_profiler::wait_for_gpu(device, "probe timestamp copy")
+                    .expect("probe copy");
+            }
             // read copy timestamps
             if copy_ts {
                 let slice = copy_read.slice(..);
@@ -1041,10 +1069,12 @@ fn measure_water_pass(
             });
             water.render(&mut rp);
         }
-        if let Some(p) = profiler.as_ref() {
+        if let Some(p) = profiler.as_mut() {
+            p.resolve_queries(&mut enc);
             p.end_frame(&mut enc);
         }
-        queue.submit(Some(enc.finish()));
+        GpuProfiler::submit_frame(profiler.as_mut(), queue, device, enc.finish())
+            .expect("timestamp submit");
         let _ = device.poll(wgpu::PollType::Wait);
         if let Some(p) = profiler.as_mut() {
             p.request_readback();

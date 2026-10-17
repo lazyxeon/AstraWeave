@@ -249,7 +249,7 @@ async fn test_render_systems_logic() {
     vxgi.update_voxel_field(&mut encoder);
 
     // 5. Texture Streaming
-    let _streaming = TextureStreamingManager::new(100); // 100MB
+    let _streaming = TextureStreamingManager::new(100).expect("texture streaming runtime"); // 100MB
     let dummy_data = vec![0u8; 64 * 64 * 4];
     let _tex = device.create_texture_with_data(
         &queue,
@@ -540,7 +540,7 @@ async fn test_renderer_full_pipeline() {
         queue.submit(Some(mega_encoder.finish()));
 
         // 9. Exercise Texture Streaming more thoroughly
-        let mut streaming = TextureStreamingManager::new(10);
+        let mut streaming = TextureStreamingManager::new(10).expect("texture streaming runtime");
         streaming.request_texture("nonexistent.png".to_string(), 1, 10.0);
         streaming.process_next_load(&Arc::new(device.clone()), &Arc::new(queue.clone()));
     }
@@ -1485,7 +1485,7 @@ fn test_texture_streaming_sync() {
     use glam::Vec3;
 
     // Create manager with 100MB budget
-    let mut manager = TextureStreamingManager::new(100);
+    let mut manager = TextureStreamingManager::new(100).expect("texture streaming runtime");
 
     // Test request_texture on non-existent texture (returns None, queues for load)
     let result = manager.request_texture("test_texture.png".to_string(), 10, 5.0);
@@ -1906,7 +1906,7 @@ async fn test_render_graph_module() {
 async fn test_texture_streaming_comprehensive() {
     use astraweave_render::texture_streaming::TextureStreamingManager;
 
-    let mut manager = TextureStreamingManager::new(50); // 50MB budget
+    let mut manager = TextureStreamingManager::new(50).expect("texture streaming runtime"); // 50MB budget
 
     // Test initial state
     let stats = manager.get_stats();
@@ -2075,7 +2075,7 @@ async fn test_sky_and_time_comprehensive() {
 
     // Progress time
     for _ in 0..1000 {
-        tod.update();
+        tod.update(1.0);
     }
 
     // Get positions at different times
@@ -2121,7 +2121,7 @@ async fn test_sky_and_time_comprehensive() {
     // Test time_of_day accessors
     let _tod_ref = sky.time_of_day();
     let tod_mut = sky.time_of_day_mut();
-    tod_mut.update();
+    tod_mut.update(1.0 / 60.0);
 
     // Initialize GPU resources
     let init_result = sky.init_gpu_resources(&device, wgpu::TextureFormat::Rgba16Float);
@@ -2435,7 +2435,7 @@ async fn test_texture_streaming_eviction_and_stats() {
     use astraweave_render::texture_streaming::TextureStreamingManager;
 
     // Create manager with low memory budget to trigger eviction
-    let mut manager = TextureStreamingManager::new(1); // 1MB budget
+    let mut manager = TextureStreamingManager::new(1).expect("texture streaming runtime"); // 1MB budget
 
     // Test initial stats
     let stats = manager.get_stats();
@@ -2545,7 +2545,7 @@ async fn test_environment_weather_comprehensive() {
     // Test update - takes no args
     tod.current_time = 0.0;
     for _ in 0..100 {
-        tod.update(); // Simulate time passing
+        tod.update(1.0); // Simulate time passing
     }
     assert!(tod.current_time > 0.0);
 
@@ -4125,7 +4125,8 @@ async fn test_texture_streaming_manager_full() {
     let budgets_mb = [16usize, 64, 256];
 
     for budget_mb in budgets_mb {
-        let mut manager = TextureStreamingManager::new(budget_mb);
+        let mut manager =
+            TextureStreamingManager::new(budget_mb).expect("texture streaming runtime");
 
         // Test get_stats - field is memory_budget_bytes
         let stats = manager.get_stats();
@@ -4641,6 +4642,12 @@ async fn test_advanced_post_processing() {
         .request_device(&wgpu::DeviceDescriptor::default())
         .await
         .unwrap();
+    if !astraweave_render::gpu_fault::depth_texture_load_supported(&device) {
+        eprintln!(
+            "skip test_advanced_post_processing: this adapter does not support textureLoad on depth textures"
+        );
+        return;
+    }
 
     // Test config structs
     let _taa_config = TaaConfig::default();
@@ -4789,7 +4796,7 @@ async fn test_texture_streaming_detailed() {
     let queue = Arc::new(queue);
 
     // Create manager with small budget
-    let mut manager = TextureStreamingManager::new(16);
+    let mut manager = TextureStreamingManager::new(16).expect("texture streaming runtime");
 
     // Test request_texture (returns None since not resident)
     let result = manager.request_texture("test_texture_1".to_string(), 1, 10.0);
@@ -4839,7 +4846,7 @@ async fn test_environment_time_of_day_detailed() {
     assert_eq!(tod.time_scale, 1.0);
 
     // Test update
-    tod.update();
+    tod.update(1.0);
 
     // Test sun position at various times
     let times = [0.0f32, 6.0, 12.0, 18.0, 23.99];
@@ -5400,7 +5407,7 @@ async fn test_environment_additional_coverage() {
     // Test TimeOfDay update across day boundary
     tod.current_time = 23.9;
     tod.time_scale = 100.0; // Fast forward
-    tod.update(); // Should wrap around
+    tod.update(1.0); // Should wrap around
 
     // Test SkyConfig variations
     let config1 = SkyConfig {
@@ -5619,7 +5626,7 @@ fn test_texture_streaming_structures() {
     // Test TextureStreamingManager creation
     use astraweave_render::texture_streaming::TextureStreamingManager;
 
-    let mut manager = TextureStreamingManager::new(512); // 512 MB budget
+    let mut manager = TextureStreamingManager::new(512).expect("texture streaming runtime"); // 512 MB budget
 
     // Test get_stats on empty manager
     let stats = manager.get_stats();
@@ -5658,7 +5665,7 @@ fn test_texture_streaming_structures() {
 fn test_texture_streaming_stats_coverage() {
     use astraweave_render::texture_streaming::{TextureStreamingManager, TextureStreamingStats};
 
-    let mut manager = TextureStreamingManager::new(256);
+    let mut manager = TextureStreamingManager::new(256).expect("texture streaming runtime");
 
     // Test initial stats
     let stats = manager.get_stats();
@@ -5693,7 +5700,7 @@ fn test_texture_streaming_stats_coverage() {
 fn test_texture_streaming_priority_ordering() {
     use astraweave_render::texture_streaming::TextureStreamingManager;
 
-    let mut manager = TextureStreamingManager::new(128);
+    let mut manager = TextureStreamingManager::new(128).expect("texture streaming runtime");
 
     // Queue multiple textures with different priorities
     // Higher priority should be processed first
@@ -6090,7 +6097,7 @@ fn test_sky_renderer_extended() {
 
     // Test TimeOfDay update
     let mut time = TimeOfDay::default();
-    time.update();
+    time.update(1.0 / 60.0);
 
     println!("Sky renderer extended tested.");
 }
@@ -6382,7 +6389,7 @@ fn test_environment_full_coverage() {
     assert!(ambient.x >= 0.0);
 
     // Test update
-    tod.update();
+    tod.update(1.0);
 
     // Test WeatherSystem exhaustively
     let mut weather = WeatherSystem::new();
@@ -6465,7 +6472,7 @@ fn test_texture_streaming_detailed_wave14() {
     use glam::Vec3;
 
     // Create manager
-    let mut manager = TextureStreamingManager::new(512);
+    let mut manager = TextureStreamingManager::new(512).expect("texture streaming runtime");
 
     // Test get_stats
     let stats = manager.get_stats();
@@ -6632,7 +6639,7 @@ fn test_renderer_more_accessors_wave14() {
 
         // Test time_of_day_mut
         let tod = renderer.time_of_day_mut();
-        tod.update();
+        tod.update(1.0);
 
         // Test ibl_mut
         let _ibl = renderer.ibl_mut();
@@ -7081,7 +7088,7 @@ fn test_texture_streaming_wave18() {
     use glam::Vec3;
 
     // Create a manager with 100MB budget
-    let mut manager = TextureStreamingManager::new(100);
+    let mut manager = TextureStreamingManager::new(100).expect("texture streaming runtime");
 
     // Test initial stats
     let stats = manager.get_stats();
@@ -7723,7 +7730,7 @@ fn test_texture_streaming_manager_comprehensive_wave19() {
     use glam::Vec3;
 
     // Create manager with 100MB budget
-    let mut manager = TextureStreamingManager::new(100);
+    let mut manager = TextureStreamingManager::new(100).expect("texture streaming runtime");
 
     // Verify initial stats
     let stats = manager.get_stats();
@@ -8736,7 +8743,7 @@ fn test_texture_streaming_additional_wave20() {
     use astraweave_render::texture_streaming::TextureStreamingManager;
     use glam::Vec3;
 
-    let mut manager = TextureStreamingManager::new(64); // 64MB budget
+    let mut manager = TextureStreamingManager::new(64).expect("texture streaming runtime"); // 64MB budget
 
     // Test initial stats
     let stats = manager.get_stats();
@@ -11437,16 +11444,16 @@ fn test_time_of_day_extended_wave23() {
 
     // Test time update with different speeds
     let mut fast_day = TimeOfDay::new(0.0, 10.0); // 10x speed
-    fast_day.update(); // Update uses internal timing
-                       // Time should have advanced
+    fast_day.update(1.0); // One simulated second at the caller's dt.
+                          // Time should have advanced
 
     let mut slow_day = TimeOfDay::new(0.0, 0.1); // 0.1x speed
-    slow_day.update(); // Update uses internal timing
+    slow_day.update(1.0);
 
     // Test paused time
     let mut paused = TimeOfDay::new(12.0, 0.0); // Zero speed = paused at noon
     let initial_pos = paused.get_sun_position();
-    paused.update(); // Should not change much with zero speed
+    paused.update(5.0); // Zero scale must not move the hour.
     let final_pos = paused.get_sun_position();
     // With zero time_scale, position should be essentially the same
     let dist = ((final_pos.x - initial_pos.x).powi(2)
@@ -12118,9 +12125,9 @@ fn test_texture_streaming_manager_methods_wave24() {
     use astraweave_render::texture_streaming::TextureStreamingManager;
 
     // Test TextureStreamingManager creation with different budgets
-    let small_manager = TextureStreamingManager::new(64); // 64 MB
-    let medium_manager = TextureStreamingManager::new(256); // 256 MB budget
-    let large_manager = TextureStreamingManager::new(1024); // 1 GB
+    let small_manager = TextureStreamingManager::new(64).expect("texture streaming runtime"); // 64 MB
+    let medium_manager = TextureStreamingManager::new(256).expect("texture streaming runtime"); // 256 MB budget
+    let large_manager = TextureStreamingManager::new(1024).expect("texture streaming runtime"); // 1 GB
 
     // Managers should be created successfully
     let _ = small_manager;
@@ -12902,7 +12909,7 @@ fn test_texture_streaming_extended_wave25() {
     use glam::Vec3;
 
     // Test various manager operations
-    let mut manager = TextureStreamingManager::new(64); // 64MB budget
+    let mut manager = TextureStreamingManager::new(64).expect("texture streaming runtime"); // 64MB budget
 
     // Initial stats
     let stats = manager.get_stats();
@@ -12943,7 +12950,7 @@ fn test_texture_streaming_multiple_requests_wave25() {
     use astraweave_render::texture_streaming::TextureStreamingManager;
     use glam::Vec3;
 
-    let mut manager = TextureStreamingManager::new(128);
+    let mut manager = TextureStreamingManager::new(128).expect("texture streaming runtime");
 
     // Queue multiple texture requests with different priorities
     let textures = [
@@ -13211,7 +13218,7 @@ fn test_time_of_day_update_cycle_wave26() {
 
     // Simulate many frames to advance past midnight
     for _ in 0..100 {
-        tod.update();
+        tod.update(1.0);
     }
 
     // After updates, sun position changes
@@ -13225,7 +13232,7 @@ fn test_time_of_day_update_cycle_wave26() {
     let dawn_sun = tod_fast.get_sun_position();
 
     for _ in 0..100 {
-        tod_fast.update();
+        tod_fast.update(1.0 / 60.0);
     }
 
     // Sun position should have changed
