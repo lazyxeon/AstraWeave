@@ -57,11 +57,11 @@ These also run on a non-docs pull request when their paths match, and are not in
 | Work | When |
 |---|---|
 | Full 3-OS `cargo nextest` plus a release build of the core crates, and demo validation | `ci.yml` on push, schedule 04:30 UTC, dispatch. Not on pull requests. |
-| 6-toolchain matrix (stable, 1.89.0, 1.88.0, beta, nightly) | `toolchain-management.yml` on push to main, schedule 05:40 UTC, dispatch. MSRV stays on the pull request. |
+| 6-toolchain matrix (stable, 1.89.0, 1.88.0, beta, nightly) | `toolchain-management.yml` on push to main, schedule 05:40 UTC, dispatch. The checkout sets `lfs: true` (#348) so `ASSET_MANIFEST.tsv` hashes the Aravath blobs, not the pointer files. MSRV stays on the pull request. |
 | Sanitizers | `sanitizers.yml` on push and schedule 03:00 UTC. Not on pull requests. |
 | Coverage | `coverage.yml` on push to main, schedule 06:10 UTC, dispatch. |
 | CodeQL | push to main and weekly (Sunday 03:00 UTC). Not on pull requests. |
-| Benchmarks, including `aw_build` | see item 1 above. Shard count stays 12 on this branch. |
+| Benchmarks, including `aw_build` | see item 1 above. Shard count is 14 (`shard_index` 0–13, `--shard-count 14`). Shard 0 is `astraweave-net`, `astraweave-profiling`, `astraweave-water`, and `astraweave-localsim` (#351). Each sharded bench target gets `timeout 600` after `cargo bench --no-run`. Compilation is outside that limit. The `aw_build` job is separate and uses its 30-minute job timeout. |
 | Integration tests other than the replay hash | `integration-tests.yml` on push and schedule 04:00 UTC. |
 | PBR build and editor tests, all three OS | `pbr-pipeline-ci.yml`, `editor-ci.yml`, `aw-editor-tests.yml` on push, their nightly schedules, and `workflow_dispatch`. Not on pull requests. |
 | Allocation ceilings, zero-alloc hot paths, CPU tick-time artifact | `allocation-measurement.yml` on push to `main`, schedule 05:45 UTC, and `workflow_dispatch`. Not on pull requests. The 11 ms GTX 1660 Ti check is the `gpu_frame_budget` dispatch input on a self-hosted runner labeled `gpu`. |
@@ -109,7 +109,7 @@ Most jobs are 30 or 45 minutes. Longer than 45, on purpose:
 |---|---|---|
 | `Test (windows, build archive)` | 75 | One Windows debug compile of this workspace is about 50 minutes. The old per-partition jobs each compiled and were cancelled at 45. This job compiles once, archives, and uploads. `CARGO_PROFILE_TEST_DEBUG=0` keeps the archive small enough to upload. The three partition jobs are 30 minutes and do not compile. |
 | `Test full (${{ matrix.os }})` | 60 | The old Windows debug workspace test ran about 50 minutes. Nightly only. |
-| Benchmark shard | 60 | Existing job cap. The 600s per-package cap inside the runner script is not raised. |
+| Benchmark shard | 60 | Existing job cap. Each bench target still gets 600s after compilation. |
 | AddressSanitizer full suite | 90 | Existing nightly sanitizer budget. |
 | ThreadSanitizer | 60 | Existing. |
 | Miri / Kani / mutation jobs | 60–360 | Existing formal and mutation budgets. |
