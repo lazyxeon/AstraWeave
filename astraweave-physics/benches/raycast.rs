@@ -289,6 +289,10 @@ fn raycast_batch_8_rays(c: &mut Criterion) {
 fn raycast_with_and_without_normal(c: &mut Criterion) {
     let mut world = PhysicsWorld::new(vec3(0.0, -9.8, 0.0));
     world.create_ground_plane(vec3(50.0, 0.5, 50.0), 0.9);
+    // Same as raycast_ground_plane: the query pipeline is empty until step().
+    // This bench used to abort the binary only after raycast_batch_8_rays, so
+    // the miss was not reached until that earlier assert passed.
+    world.step();
 
     let mut group = c.benchmark_group("raycast_normal_retrieval");
 
