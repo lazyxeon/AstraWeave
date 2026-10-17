@@ -4,8 +4,8 @@
 #
 # Vulnerability IDs below have no upgrade that keeps the current parents.
 # Unmaintained IDs have no patched release. Each one has a tracking issue.
-# `zip` 1.1.4 stays as a yanked warning: cargo-audit cannot ignore a
-# single yanked crate. candle-core 0.8.4 is the parent.
+# zip 1.1.4 is gone. third_party/candle-core depends on zip >= 9.0.0,
+# which is the patched line for RUSTSEC-2026-0367, 0368, and 0369.
 # https://github.com/lazyxeon/AstraWeave/issues/324
 
 [advisories]

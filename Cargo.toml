@@ -153,6 +153,9 @@ members = [
 ]
 exclude = [
   "astraweave-ecs/fuzz",  # Fuzz targets must be built separately
+  # Patched candle-core. A workspace member would be built on its own; the
+  # crates.io patch is what llm and embeddings resolve.
+  "third_party/candle-core",
 ]
 resolver = "2"
 
@@ -295,4 +298,11 @@ inherits = "release"
 strip = true
 debug = false
 incremental = false
+
+# candle-core 0.8.4 (and 0.11.0, and current candle main) depend on zip < 9.
+# RUSTSEC-2026-0367, 0368, and 0369 are patched only in zip >= 9.0.0. This
+# copy is crates.io 0.8.4 with that dependency, so zip 1.1.4 leaves the lock.
+# Asset packs stay on the workspace zip 9.0.3.
+[patch.crates-io]
+candle-core = { path = "third_party/candle-core" }
 
