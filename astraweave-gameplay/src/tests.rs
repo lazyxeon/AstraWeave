@@ -4,6 +4,7 @@
 use crate::combat::{AttackKind, AttackState, ComboChain, ComboStep};
 use crate::crafting::{CraftCost, CraftRecipe, RecipeBook};
 use crate::dialogue::{Choice, Cond, Dialogue, DialogueState, Line, Node};
+pub use crate::test_support::{test_panic, TestValue};
 use crate::{DamageType, Inventory, ItemKind, ResourceKind, Stats};
 use glam::Vec3;
 
@@ -152,13 +153,13 @@ fn test_crafting_deterministic() {
     let result1 = book.craft_seeded("iron_sword", &mut inv1, &mut rng1);
     assert!(result1.is_some(), "Crafting should succeed with resources");
 
-    let item = result1.unwrap();
+    let item = result1.test_unwrap();
     assert_eq!(item.name, "iron_sword");
     match item.kind {
         ItemKind::Weapon { base_damage, .. } => {
             assert_eq!(base_damage, 25, "Weapon damage should match recipe");
         }
-        _ => panic!("Should be a weapon"),
+        _ => test_panic(format_args!("Should be a weapon")),
     }
 
     // Verify resources consumed
@@ -341,12 +342,12 @@ fn test_gameplay_loop_deterministic() {
         result.is_some(),
         "Should craft weapon with looted resources"
     );
-    let weapon = result.unwrap();
+    let weapon = result.test_unwrap();
     match weapon.kind {
         ItemKind::Weapon { base_damage, .. } => {
             assert_eq!(base_damage, 35, "Crafted weapon should have correct stats");
         }
-        _ => panic!("Should be weapon"),
+        _ => test_panic(format_args!("Should be weapon")),
     }
 
     // Verify resources consumed

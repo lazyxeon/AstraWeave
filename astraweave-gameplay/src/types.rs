@@ -75,6 +75,7 @@ pub struct InventoryEntry {
 #[cfg(test)]
 mod tests {
     use super::*;
+    pub use crate::test_support::TestValue;
 
     // DamageType tests
     #[test]
@@ -107,8 +108,8 @@ mod tests {
     #[test]
     fn test_damage_type_serialization() {
         let dt = DamageType::Frost;
-        let json = serde_json::to_string(&dt).unwrap();
-        let deserialized: DamageType = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&dt).test_unwrap();
+        let deserialized: DamageType = serde_json::from_str(&json).test_unwrap();
         assert!(matches!(deserialized, DamageType::Frost));
     }
 
@@ -137,8 +138,8 @@ mod tests {
     #[test]
     fn test_resource_kind_serialization() {
         let kind = ResourceKind::Essence;
-        let json = serde_json::to_string(&kind).unwrap();
-        let deserialized: ResourceKind = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&kind).test_unwrap();
+        let deserialized: ResourceKind = serde_json::from_str(&json).test_unwrap();
         assert_eq!(deserialized, ResourceKind::Essence);
     }
 
@@ -165,8 +166,8 @@ mod tests {
             max: 10,
             weight: 1.0,
         };
-        let json = serde_json::to_string(&entry).unwrap();
-        let deserialized: DropTableEntry = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&entry).test_unwrap();
+        let deserialized: DropTableEntry = serde_json::from_str(&json).test_unwrap();
         assert_eq!(deserialized.kind, ResourceKind::Wood);
         assert_eq!(deserialized.min, 2);
         assert_eq!(deserialized.max, 10);
@@ -215,8 +216,8 @@ mod tests {
             faction_disposition: 100,
             weather_shift: Some("calm".to_string()),
         };
-        let json = serde_json::to_string(&c).unwrap();
-        let deserialized: WeaveConsequence = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&c).test_unwrap();
+        let deserialized: WeaveConsequence = serde_json::from_str(&json).test_unwrap();
         assert_eq!(deserialized.faction_disposition, 100);
     }
 
@@ -274,8 +275,8 @@ mod tests {
             b: Some(Vec3::new(10.0, 0.0, 10.0)),
             budget_cost: 15,
         };
-        let json = serde_json::to_string(&op).unwrap();
-        let deserialized: WeaveOp = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&op).test_unwrap();
+        let deserialized: WeaveOp = serde_json::from_str(&json).test_unwrap();
         assert!(matches!(deserialized.kind, WeaveOpKind::RedirectWind));
         assert_eq!(deserialized.budget_cost, 15);
     }
@@ -297,8 +298,8 @@ mod tests {
             terrain_edits: 100,
             weather_ops: 50,
         };
-        let json = serde_json::to_string(&budget).unwrap();
-        let deserialized: WeaveBudget = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&budget).test_unwrap();
+        let deserialized: WeaveBudget = serde_json::from_str(&json).test_unwrap();
         assert_eq!(deserialized.terrain_edits, 100);
         assert_eq!(deserialized.weather_ops, 50);
     }
@@ -330,8 +331,8 @@ mod tests {
             kind: ResourceKind::Crystal,
             count: 100,
         };
-        let json = serde_json::to_string(&entry).unwrap();
-        let deserialized: InventoryEntry = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&entry).test_unwrap();
+        let deserialized: InventoryEntry = serde_json::from_str(&json).test_unwrap();
         assert_eq!(deserialized.kind, ResourceKind::Crystal);
         assert_eq!(deserialized.count, 100);
     }

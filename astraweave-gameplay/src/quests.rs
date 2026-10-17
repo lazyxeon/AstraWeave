@@ -63,6 +63,7 @@ impl QuestLog {
 #[cfg(test)]
 mod tests {
     use super::*;
+    pub use crate::test_support::{test_panic, TestValue};
 
     #[test]
     fn test_quest_log_add_quest() {
@@ -138,13 +139,13 @@ mod tests {
         // Gather 3 wood, should reduce count from 10 to 7
         log.progress_gather("gather_wood", "wood", 3);
 
-        let q = log.quests.get("gather_wood").unwrap();
+        let q = log.quests.get("gather_wood").test_unwrap();
         if let TaskKind::Gather { count, .. } = &q.tasks[0].kind {
             assert_eq!(*count, 7);
             assert!(!q.tasks[0].done);
             assert!(!q.completed);
         } else {
-            panic!("Expected Gather task");
+            test_panic(format_args!("Expected Gather task"));
         }
     }
 
@@ -170,13 +171,13 @@ mod tests {
         // Gather 10 fiber (more than needed)
         log.progress_gather("gather_fiber", "fiber", 10);
 
-        let q = log.quests.get("gather_fiber").unwrap();
+        let q = log.quests.get("gather_fiber").test_unwrap();
         if let TaskKind::Gather { count, .. } = &q.tasks[0].kind {
             assert_eq!(*count, 0);
             assert!(q.tasks[0].done);
             assert!(q.completed); // Quest should auto-complete
         } else {
-            panic!("Expected Gather task");
+            test_panic(format_args!("Expected Gather task"));
         }
     }
 
@@ -211,11 +212,11 @@ mod tests {
 
         // Complete wood task
         log.progress_gather("multi_gather", "wood", 5);
-        assert!(!log.quests.get("multi_gather").unwrap().completed);
+        assert!(!log.quests.get("multi_gather").test_unwrap().completed);
 
         // Complete stone task
         log.progress_gather("multi_gather", "stone", 3);
-        assert!(log.quests.get("multi_gather").unwrap().completed);
+        assert!(log.quests.get("multi_gather").test_unwrap().completed);
     }
 
     #[test]
@@ -241,7 +242,7 @@ mod tests {
         log.progress_gather("q1", "wood", 5);
 
         // Count should stay at 0 (not go negative or change)
-        let q = log.quests.get("q1").unwrap();
+        let q = log.quests.get("q1").test_unwrap();
         if let TaskKind::Gather { count, .. } = &q.tasks[0].kind {
             assert_eq!(*count, 0);
         }
@@ -269,7 +270,7 @@ mod tests {
         // Try to progress with wrong resource kind
         log.progress_gather("q1", "stone", 5);
 
-        let q = log.quests.get("q1").unwrap();
+        let q = log.quests.get("q1").test_unwrap();
         if let TaskKind::Gather { count, .. } = &q.tasks[0].kind {
             assert_eq!(*count, 10); // Should remain unchanged
             assert!(!q.tasks[0].done);

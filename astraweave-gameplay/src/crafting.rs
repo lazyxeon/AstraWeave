@@ -153,6 +153,7 @@ mod tests {
 
     #[test]
     fn test_recipe_book_craft_success() {
+        use crate::test_support::TestValue;
         let recipe_book = RecipeBook {
             recipes: vec![CraftRecipe {
                 name: "Basic Armor".to_string(),
@@ -169,7 +170,7 @@ mod tests {
         let mut rng = seeded_rng();
         let item = recipe_book.craft_seeded("Basic Armor", &mut inv, &mut rng);
         assert!(item.is_some());
-        let item = item.unwrap();
+        let item = item.test_unwrap();
         assert_eq!(item.name, "Basic Armor");
         // Resources should be consumed
         assert_eq!(inv.resources[0], (ResourceKind::Ore, 5));
@@ -416,25 +417,27 @@ mod tests {
 
     #[test]
     fn test_craft_cost_serialization() {
+        use crate::test_support::TestValue;
         let cost = CraftCost {
             kind: ResourceKind::Essence,
             count: 3,
         };
-        let json = serde_json::to_string(&cost).expect("serialize");
-        let deserialized: CraftCost = serde_json::from_str(&json).expect("deserialize");
+        let json = serde_json::to_string(&cost).test_expect("serialize");
+        let deserialized: CraftCost = serde_json::from_str(&json).test_expect("deserialize");
         assert_eq!(deserialized.kind, ResourceKind::Essence);
         assert_eq!(deserialized.count, 3);
     }
 
     #[test]
     fn test_recipe_serialization() {
+        use crate::test_support::TestValue;
         let recipe = CraftRecipe {
             name: "Test".to_string(),
             output_item: ItemKind::Consumable { heal: 20 },
             costs: vec![],
         };
-        let json = serde_json::to_string(&recipe).expect("serialize");
-        let deserialized: CraftRecipe = serde_json::from_str(&json).expect("deserialize");
+        let json = serde_json::to_string(&recipe).test_expect("serialize");
+        let deserialized: CraftRecipe = serde_json::from_str(&json).test_expect("deserialize");
         assert_eq!(deserialized.name, "Test");
     }
 
@@ -457,6 +460,7 @@ mod tests {
 
     #[test]
     fn craft_legacy_returns_some_on_success() {
+        use crate::test_support::TestValue;
         // Catches: replace RecipeBook::craft -> Option<Item> with None
         let book = RecipeBook {
             recipes: vec![CraftRecipe {
@@ -476,12 +480,13 @@ mod tests {
             result.is_some(),
             "craft() must return Some on valid recipe with resources"
         );
-        let item = result.unwrap();
+        let item = result.test_unwrap();
         assert_eq!(item.name, "Potion");
     }
 
     #[test]
     fn craft_legacy_finds_correct_recipe_by_name() {
+        use crate::test_support::TestValue;
         // Catches: replace == with != in RecipeBook::craft (line 27 name match)
         let book = RecipeBook {
             recipes: vec![
@@ -502,7 +507,7 @@ mod tests {
         let result = book.craft_seeded("Beta", &mut inv, &mut rng);
         assert!(result.is_some());
         assert_eq!(
-            result.unwrap().name,
+            result.test_unwrap().name,
             "Beta",
             "Must find recipe by exact name match"
         );
@@ -639,6 +644,7 @@ mod tests {
 
     #[test]
     fn gameplay_rng_craft_id_is_seed_locked() {
+        use crate::test_support::TestValue;
         let book = RecipeBook {
             recipes: vec![CraftRecipe {
                 name: "Blade".into(),
@@ -653,7 +659,7 @@ mod tests {
             let mut inv = Inventory::default();
             inv.add_resource(ResourceKind::Ore, 5);
             book.craft_with_seed("Blade", &mut inv, 0xA11C, tick)
-                .expect("craft")
+                .test_expect("craft")
                 .id
         };
         let id = craft(3);

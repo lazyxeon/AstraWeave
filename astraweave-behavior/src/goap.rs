@@ -387,6 +387,7 @@ mod tests {
 
     #[test]
     fn test_simple_plan() {
+        use crate::test_support::TestValue;
         let actions = vec![
             GoapAction::new("gather_herbs")
                 .with_cost(5.0)
@@ -401,7 +402,7 @@ mod tests {
         let goal = GoapGoal::new("get_food", WorldState::from_facts(&[("has_food", true)]));
 
         let planner = GoapPlanner::new();
-        let plan = planner.plan(&current_state, &goal, &actions).unwrap();
+        let plan = planner.plan(&current_state, &goal, &actions).test_unwrap();
 
         assert_eq!(plan.len(), 2);
         assert_eq!(plan[0].name, "gather_herbs");
@@ -410,6 +411,7 @@ mod tests {
 
     #[test]
     fn test_plan_optimality() {
+        use crate::test_support::TestValue;
         // Two paths: expensive direct vs cheap chained
         let actions = vec![
             GoapAction::new("expensive_direct")
@@ -428,7 +430,7 @@ mod tests {
         let goal = GoapGoal::new("get_food", WorldState::from_facts(&[("has_food", true)]));
 
         let planner = GoapPlanner::new();
-        let plan = planner.plan(&current_state, &goal, &actions).unwrap();
+        let plan = planner.plan(&current_state, &goal, &actions).test_unwrap();
 
         // Should choose cheaper path (gather + craft = 8.0 < direct = 20.0)
         assert_eq!(plan.len(), 2);
@@ -438,6 +440,7 @@ mod tests {
 
     #[test]
     fn test_deterministic_planning() {
+        use crate::test_support::TestValue;
         let actions = vec![
             GoapAction::new("action_a")
                 .with_cost(5.0)
@@ -453,9 +456,9 @@ mod tests {
         let planner = GoapPlanner::new();
 
         // Run multiple times, should get same result (deterministic tie-breaking)
-        let plan1 = planner.plan(&current_state, &goal, &actions).unwrap();
-        let plan2 = planner.plan(&current_state, &goal, &actions).unwrap();
-        let plan3 = planner.plan(&current_state, &goal, &actions).unwrap();
+        let plan1 = planner.plan(&current_state, &goal, &actions).test_unwrap();
+        let plan2 = planner.plan(&current_state, &goal, &actions).test_unwrap();
+        let plan3 = planner.plan(&current_state, &goal, &actions).test_unwrap();
 
         assert_eq!(plan1.len(), plan2.len());
         assert_eq!(plan1.len(), plan3.len());
@@ -483,19 +486,21 @@ mod tests {
 
     #[test]
     fn test_already_satisfied_goal() {
+        use crate::test_support::TestValue;
         let mut current_state = WorldState::new();
         current_state.set("has_food", true);
 
         let goal = GoapGoal::new("get_food", WorldState::from_facts(&[("has_food", true)]));
 
         let planner = GoapPlanner::new();
-        let plan = planner.plan(&current_state, &goal, &[]).unwrap();
+        let plan = planner.plan(&current_state, &goal, &[]).test_unwrap();
 
         assert!(plan.is_empty());
     }
 
     #[test]
     fn test_plan_execution() {
+        use crate::test_support::TestValue;
         let actions = vec![
             GoapAction::new("step1"),
             GoapAction::new("step2"),
@@ -504,15 +509,15 @@ mod tests {
 
         let mut plan = GoapPlan::new(actions);
 
-        assert_eq!(plan.current_action.as_ref().unwrap().name, "step1");
+        assert_eq!(plan.current_action.as_ref().test_unwrap().name, "step1");
         assert!(!plan.is_complete());
 
         plan.advance();
-        assert_eq!(plan.current_action.as_ref().unwrap().name, "step2");
+        assert_eq!(plan.current_action.as_ref().test_unwrap().name, "step2");
         assert_eq!(plan.completed.len(), 1);
 
         plan.advance();
-        assert_eq!(plan.current_action.as_ref().unwrap().name, "step3");
+        assert_eq!(plan.current_action.as_ref().test_unwrap().name, "step3");
         assert_eq!(plan.completed.len(), 2);
 
         plan.advance();
@@ -569,6 +574,7 @@ mod tests {
 
     #[test]
     fn mutation_plan_node_f_cost_is_sum() {
+        use crate::test_support::TestValue;
         // Targets: goap.rs:161 replace + with - in PlanNode::f_cost
         // We verify indirectly: planner should find cheapest path
         let actions = vec![
@@ -584,13 +590,14 @@ mod tests {
         let state = WorldState::from_facts(&[("start", true)]);
         let goal = GoapGoal::new("g", WorldState::from_facts(&[("goal", true)]));
         let planner = GoapPlanner::new();
-        let plan = planner.plan(&state, &goal, &actions).unwrap();
+        let plan = planner.plan(&state, &goal, &actions).test_unwrap();
         assert_eq!(plan.len(), 1);
         assert_eq!(plan[0].name, "cheap", "Should pick cheapest action");
     }
 
     #[test]
     fn mutation_f_cost_sum_with_high_heuristic() {
+        use crate::test_support::TestValue;
         // Targets: goap.rs:161 replace + with - in PlanNode::f_cost
         //
         // With g+h: "useful" (f=1+0=1) beats distracts (f=0.1+5=5.1) -> found in ~2 iters
@@ -632,13 +639,14 @@ mod tests {
             plan.is_some(),
             "Planner MUST find plan with correct f_cost = g + h"
         );
-        let plan = plan.unwrap();
+        let plan = plan.test_unwrap();
         assert_eq!(plan.len(), 1, "Should find single-step plan via 'useful'");
         assert_eq!(plan[0].name, "useful");
     }
 
     #[test]
     fn mutation_plan_node_eq_checks_state() {
+        use crate::test_support::TestValue;
         // Targets: goap.rs:167 replace eq -> bool with true/false
         // and goap.rs:167 replace == with !=
         // Indirectly verified: planner deduplication uses eq
@@ -653,7 +661,7 @@ mod tests {
         let state = WorldState::from_facts(&[("s", true)]);
         let goal = GoapGoal::new("g", WorldState::from_facts(&[("done", true)]));
         let planner = GoapPlanner::new();
-        let plan = planner.plan(&state, &goal, &actions).unwrap();
+        let plan = planner.plan(&state, &goal, &actions).test_unwrap();
         assert_eq!(plan.len(), 2);
     }
 
@@ -683,6 +691,7 @@ mod tests {
 
     #[test]
     fn mutation_plan_cost_addition() {
+        use crate::test_support::TestValue;
         // Targets: goap.rs:296 replace + with * in GoapPlanner::plan (g_cost += action.cost)
         let actions = vec![
             GoapAction::new("step1")
@@ -697,7 +706,7 @@ mod tests {
         let state = WorldState::from_facts(&[("s", true)]);
         let goal = GoapGoal::new("g", WorldState::from_facts(&[("g", true)]));
         let planner = GoapPlanner::new();
-        let plan = planner.plan(&state, &goal, &actions).unwrap();
+        let plan = planner.plan(&state, &goal, &actions).test_unwrap();
         // Plan should find both steps
         assert_eq!(plan.len(), 2);
     }

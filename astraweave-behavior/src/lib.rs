@@ -3,6 +3,8 @@
 
 #[cfg(test)]
 mod mutation_tests;
+#[cfg(test)]
+mod test_support;
 
 pub mod ecs;
 pub mod goap;
@@ -667,12 +669,13 @@ mod tests {
 
     #[test]
     fn test_repeat_success() {
+        use crate::test_support::TestValue;
         use std::sync::{Arc, Mutex};
         let count = Arc::new(Mutex::new(0));
         let count_clone = count.clone();
         let mut ctx = BehaviorContext::new();
         ctx.register_action("increment", move || {
-            *count_clone.lock().unwrap() += 1;
+            *count_clone.lock().test_unwrap() += 1;
             BehaviorStatus::Success
         });
 
@@ -682,18 +685,19 @@ mod tests {
         );
 
         assert_eq!(node.tick(&ctx), BehaviorStatus::Success);
-        assert_eq!(*count.lock().unwrap(), 5);
+        assert_eq!(*count.lock().test_unwrap(), 5);
     }
 
     #[test]
     fn test_repeat_early_failure() {
+        use crate::test_support::TestValue;
         use std::sync::{Arc, Mutex};
         let count = Arc::new(Mutex::new(0));
         let count_clone = count.clone();
         let mut ctx = BehaviorContext::new();
         ctx.register_action("fail_at_3", move || {
-            *count_clone.lock().unwrap() += 1;
-            if *count_clone.lock().unwrap() < 3 {
+            *count_clone.lock().test_unwrap() += 1;
+            if *count_clone.lock().test_unwrap() < 3 {
                 BehaviorStatus::Success
             } else {
                 BehaviorStatus::Failure
@@ -706,18 +710,19 @@ mod tests {
         );
 
         assert_eq!(node.tick(&ctx), BehaviorStatus::Failure);
-        assert_eq!(*count.lock().unwrap(), 3);
+        assert_eq!(*count.lock().test_unwrap(), 3);
     }
 
     #[test]
     fn test_retry_eventual_success() {
+        use crate::test_support::TestValue;
         use std::sync::{Arc, Mutex};
         let attempt = Arc::new(Mutex::new(0));
         let attempt_clone = attempt.clone();
         let mut ctx = BehaviorContext::new();
         ctx.register_action("succeed_at_3", move || {
-            *attempt_clone.lock().unwrap() += 1;
-            if *attempt_clone.lock().unwrap() >= 3 {
+            *attempt_clone.lock().test_unwrap() += 1;
+            if *attempt_clone.lock().test_unwrap() >= 3 {
                 BehaviorStatus::Success
             } else {
                 BehaviorStatus::Failure
@@ -730,7 +735,7 @@ mod tests {
         );
 
         assert_eq!(node.tick(&ctx), BehaviorStatus::Success);
-        assert_eq!(*attempt.lock().unwrap(), 3);
+        assert_eq!(*attempt.lock().test_unwrap(), 3);
     }
 
     #[test]

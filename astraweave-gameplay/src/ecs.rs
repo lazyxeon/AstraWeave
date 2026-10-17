@@ -214,6 +214,7 @@ impl astraweave_ecs::Plugin for QuestPlugin {
 #[cfg(test)]
 mod tests {
     use super::*;
+    pub use crate::test_support::TestValue;
     use astraweave_core::{CHealth, CPos, IVec2};
     use astraweave_ecs::{App, Plugin};
 
@@ -268,7 +269,7 @@ mod tests {
         app = app.run_fixed(1);
 
         // Check damage applied
-        let health = app.world.get::<CHealth>(target).unwrap();
+        let health = app.world.get::<CHealth>(target).test_unwrap();
         assert_eq!(health.hp, 80);
     }
 
@@ -301,7 +302,7 @@ mod tests {
         }
 
         // Check completed
-        let queue = app.world.get::<CCraftingQueue>(crafter).unwrap();
+        let queue = app.world.get::<CCraftingQueue>(crafter).test_unwrap();
         assert!(queue.recipes.is_empty());
         assert!(queue.progress.is_empty());
     }
@@ -332,7 +333,7 @@ mod tests {
         app = app.run_fixed(1);
 
         // Check completed
-        let log = app.world.get::<CQuestLog>(quester).unwrap();
+        let log = app.world.get::<CQuestLog>(quester).test_unwrap();
         assert!(log.active_quests.is_empty());
         assert_eq!(log.completed_quests, vec!["test_quest".to_string()]);
     }
@@ -348,7 +349,7 @@ mod tests {
         let target = CTarget::from_entity(entity);
         let resolved = target.resolve(&world);
         assert!(resolved.is_some(), "resolve() must return Some, not None");
-        assert_eq!(resolved.unwrap().to_raw(), 42);
+        assert_eq!(resolved.test_unwrap().to_raw(), 42);
     }
 
     #[test]
@@ -404,7 +405,7 @@ mod tests {
 
         app = app.run_fixed(1);
 
-        let health = app.world.get::<CHealth>(target).unwrap();
+        let health = app.world.get::<CHealth>(target).test_unwrap();
         assert_eq!(health.hp, 75, "Manhattan dist=5, reach=5 → hit, damage 25");
     }
 
@@ -457,7 +458,7 @@ mod tests {
 
         app = app.run_fixed(1);
 
-        let health = app.world.get::<CHealth>(target).unwrap();
+        let health = app.world.get::<CHealth>(target).test_unwrap();
         assert_eq!(
             health.hp, 100,
             "Manhattan dist=7, reach=5 → miss, no damage"
@@ -519,7 +520,7 @@ mod tests {
 
         app = app.run_fixed(1);
 
-        let health = app.world.get::<CHealth>(target).unwrap();
+        let health = app.world.get::<CHealth>(target).test_unwrap();
         assert_eq!(health.hp, 90, "dist=5, reach=6 → hit, damage=10");
     }
 
@@ -576,7 +577,7 @@ mod tests {
 
         app = app.run_fixed(1);
 
-        let health = app.world.get::<CHealth>(target).unwrap();
+        let health = app.world.get::<CHealth>(target).test_unwrap();
         assert_eq!(
             health.hp, 85,
             "t_since_last must += dt to reach window; *= would keep it at 0"
@@ -634,7 +635,7 @@ mod tests {
 
         app = app.run_fixed(1); // t=0.016 — outside window [10.0, 10.5]
 
-        let health = app.world.get::<CHealth>(target).unwrap();
+        let health = app.world.get::<CHealth>(target).test_unwrap();
         assert_eq!(health.hp, 100, "Window at 10s must not trigger at t=0.016");
     }
 
@@ -697,19 +698,19 @@ mod tests {
 
         // First hit — should do step[0].damage = 10
         app = app.run_fixed(1);
-        let health = app.world.get::<CHealth>(target).unwrap();
+        let health = app.world.get::<CHealth>(target).test_unwrap();
         assert_eq!(health.hp, 90, "First step should deal 10 damage");
 
         // Second hit — should do step[1].damage = 20
         app = app.run_fixed(1);
-        let health = app.world.get::<CHealth>(target).unwrap();
+        let health = app.world.get::<CHealth>(target).test_unwrap();
         assert_eq!(
             health.hp, 70,
             "Second step should deal 20 more damage (idx must advance)"
         );
 
         // Attack should now be inactive (idx >= steps.len())
-        let attack = app.world.get::<CAttackState>(attacker).unwrap();
+        let attack = app.world.get::<CAttackState>(attacker).test_unwrap();
         assert!(!attack.active, "Chain should deactivate after last step");
     }
 
@@ -762,12 +763,12 @@ mod tests {
 
         // One hit
         app = app.run_fixed(1);
-        let health = app.world.get::<CHealth>(target).unwrap();
+        let health = app.world.get::<CHealth>(target).test_unwrap();
         assert_eq!(health.hp, 190);
 
         // Chain should not fire again
         app = app.run_fixed(1);
-        let health = app.world.get::<CHealth>(target).unwrap();
+        let health = app.world.get::<CHealth>(target).test_unwrap();
         assert_eq!(
             health.hp, 190,
             "Chain must stop dealing damage after deactivating"
@@ -800,7 +801,7 @@ mod tests {
 
         app = app.run_fixed(1); // progress becomes 5.0
 
-        let queue = app.world.get::<CCraftingQueue>(crafter).unwrap();
+        let queue = app.world.get::<CCraftingQueue>(crafter).test_unwrap();
         assert!(
             queue.recipes.is_empty(),
             "Recipe at progress 5.0 must be removed (>= 5.0)"

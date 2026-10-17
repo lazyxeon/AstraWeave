@@ -61,3 +61,6 @@ mod tests;
 
 #[cfg(test)]
 mod mutation_tests;
+
+#[cfg(test)]
+mod test_support;

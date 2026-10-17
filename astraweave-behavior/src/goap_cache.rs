@@ -384,6 +384,7 @@ mod tests {
 
     #[test]
     fn test_cache_hit() {
+        use crate::test_support::TestValue;
         let mut cache = PlanCache::new(10);
         let state = create_test_state();
         let goal = create_test_goal();
@@ -397,7 +398,7 @@ mod tests {
         let cached = cache.get(&state, &goal, &actions);
         assert!(cached.is_some(), "Cache should hit for stored plan");
         assert_eq!(
-            cached.unwrap().len(),
+            cached.test_unwrap().len(),
             2,
             "Cached plan should have 2 actions"
         );
@@ -474,6 +475,7 @@ mod tests {
 
     #[test]
     fn test_cached_planner_integration() {
+        use crate::test_support::TestValue;
         let mut planner = CachedGoapPlanner::new(10);
         let state = create_test_state();
         let goal = create_test_goal();
@@ -492,7 +494,7 @@ mod tests {
         assert_eq!(planner.cache_stats().misses, 1);
 
         // Plans should be identical
-        assert_eq!(plan1.unwrap().len(), plan2.unwrap().len());
+        assert_eq!(plan1.test_unwrap().len(), plan2.test_unwrap().len());
     }
 
     #[test]
@@ -718,6 +720,7 @@ mod tests {
 
     #[test]
     fn stress_rapid_plan_invalidate_replan_cycles() {
+        use crate::test_support::TestValue;
         // Production scenario: Agent rapidly re-plans as world state changes.
         // Verify cache never returns stale plans after action set changes.
         let mut planner = CachedGoapPlanner::new(100);
@@ -748,11 +751,11 @@ mod tests {
         let plan2 = planner.plan(&state, &goal, &actions_v2);
         assert!(plan2.is_some(), "v2 plan should succeed");
         assert_eq!(
-            plan2.as_ref().unwrap().len(),
+            plan2.as_ref().test_unwrap().len(),
             1,
             "v2 plan should use snipe (1 action)"
         );
-        assert_eq!(plan2.as_ref().unwrap()[0].name, "snipe");
+        assert_eq!(plan2.as_ref().test_unwrap()[0].name, "snipe");
 
         // Note: different action counts produce different cache keys (miss, not invalidation).
         // But the fact that a correct v2 plan was returned proves no stale v1 plan leaked.
@@ -800,6 +803,7 @@ mod tests {
 
     #[test]
     fn stress_cache_coherence_different_states_same_goal() {
+        use crate::test_support::TestValue;
         // Production scenario: Many agents share the same goal but have different
         // world states. Each agent should get a plan tailored to their state.
         let mut planner = CachedGoapPlanner::new(50);
@@ -818,19 +822,19 @@ mod tests {
 
         // Agent A: already has ammo → 1-step plan (attack)
         let state_a = WorldState::from_facts(&[("has_ammo", true)]);
-        let plan_a = planner.plan(&state_a, &goal, &actions).unwrap();
+        let plan_a = planner.plan(&state_a, &goal, &actions).test_unwrap();
         assert_eq!(plan_a.len(), 1, "Agent A should just attack");
         assert_eq!(plan_a[0].name, "attack");
 
         // Agent B: no ammo → 2-step plan (find_ammo + attack)
         let state_b = WorldState::from_facts(&[("has_ammo", false)]);
-        let plan_b = planner.plan(&state_b, &goal, &actions).unwrap();
+        let plan_b = planner.plan(&state_b, &goal, &actions).test_unwrap();
         assert_eq!(plan_b.len(), 2, "Agent B needs to find ammo first");
         assert_eq!(plan_b[0].name, "find_ammo");
 
         // Agent C: same as Agent A → should get cached plan
         let state_c = WorldState::from_facts(&[("has_ammo", true)]);
-        let plan_c = planner.plan(&state_c, &goal, &actions).unwrap();
+        let plan_c = planner.plan(&state_c, &goal, &actions).test_unwrap();
         assert_eq!(plan_c.len(), 1, "Agent C should get cached 1-step plan");
         assert_eq!(plan_c[0].name, "attack");
 

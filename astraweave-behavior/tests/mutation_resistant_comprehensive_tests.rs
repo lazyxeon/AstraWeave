@@ -135,18 +135,20 @@ mod goap_plan_tests {
 
     #[test]
     fn new_single_action_has_current_not_complete() {
+        use crate::test_support::TestValue;
         let plan = GoapPlan::new(vec![make_action("a")]);
         assert!(!plan.is_complete());
         assert!(plan.current_action.is_some());
-        assert_eq!(plan.current_action.as_ref().unwrap().name, "a");
+        assert_eq!(plan.current_action.as_ref().test_unwrap().name, "a");
         assert!(plan.actions.is_empty()); // rest of queue empty
     }
 
     #[test]
     fn new_two_actions_first_is_current() {
+        use crate::test_support::TestValue;
         let plan = GoapPlan::new(vec![make_action("a"), make_action("b")]);
         assert!(!plan.is_complete());
-        assert_eq!(plan.current_action.as_ref().unwrap().name, "a");
+        assert_eq!(plan.current_action.as_ref().test_unwrap().name, "a");
         assert_eq!(plan.actions.len(), 1);
     }
 
@@ -160,16 +162,17 @@ mod goap_plan_tests {
 
     #[test]
     fn advance_moves_to_next_action() {
+        use crate::test_support::TestValue;
         let mut plan = GoapPlan::new(vec![make_action("a"), make_action("b"), make_action("c")]);
-        assert_eq!(plan.current_action.as_ref().unwrap().name, "a");
+        assert_eq!(plan.current_action.as_ref().test_unwrap().name, "a");
 
         plan.advance();
-        assert_eq!(plan.current_action.as_ref().unwrap().name, "b");
+        assert_eq!(plan.current_action.as_ref().test_unwrap().name, "b");
         assert_eq!(plan.completed.len(), 1);
         assert_eq!(plan.completed[0].name, "a");
 
         plan.advance();
-        assert_eq!(plan.current_action.as_ref().unwrap().name, "c");
+        assert_eq!(plan.current_action.as_ref().test_unwrap().name, "c");
         assert_eq!(plan.completed.len(), 2);
 
         plan.advance();
@@ -421,6 +424,7 @@ mod goap_planner_optimality_tests {
 
     #[test]
     fn planner_chooses_cheapest_path() {
+        use crate::test_support::TestValue;
         // Two paths to same goal:
         // Path A: action_cheap (cost 1.0) x 3 = 3.0 total
         // Path B: action_expensive (cost 4.0) x 1 = 4.0 total
@@ -451,7 +455,7 @@ mod goap_planner_optimality_tests {
         let planner = GoapPlanner::new();
         let plan = planner
             .plan(&state, &goal, &actions)
-            .expect("should find plan");
+            .test_expect("should find plan");
         // Cheaper 3-step path (3.0) preferred over 1-step expensive path (4.0)
         assert_eq!(plan.len(), 3);
         let total_cost: f32 = plan.iter().map(|a| a.cost).sum();
@@ -460,6 +464,7 @@ mod goap_planner_optimality_tests {
 
     #[test]
     fn planner_chooses_single_cheap_over_multi_expensive() {
+        use crate::test_support::TestValue;
         // Path A: single step (cost 2.0)
         // Path B: 3 steps (cost 1.0 each = 3.0 total)
         // Should choose Path A
@@ -487,7 +492,9 @@ mod goap_planner_optimality_tests {
         ];
 
         let planner = GoapPlanner::new();
-        let plan = planner.plan(&state, &goal, &actions).expect("plan exists");
+        let plan = planner
+            .plan(&state, &goal, &actions)
+            .test_expect("plan exists");
         let total_cost: f32 = plan.iter().map(|a| a.cost).sum();
         assert!(
             total_cost <= 2.001,
@@ -521,6 +528,7 @@ mod goap_planner_optimality_tests {
 
     #[test]
     fn planner_with_max_iterations_1000_finds_plan() {
+        use crate::test_support::TestValue;
         let state = WorldState::from_facts(&[("a", true)]);
         let desired = WorldState::from_facts(&[("c", true)]);
         let goal = GoapGoal::new("reach_c", desired);
@@ -537,18 +545,19 @@ mod goap_planner_optimality_tests {
         let planner = GoapPlanner::new().with_max_iterations(1000);
         let plan = planner.plan(&state, &goal, &actions);
         assert!(plan.is_some());
-        assert_eq!(plan.unwrap().len(), 2);
+        assert_eq!(plan.test_unwrap().len(), 2);
     }
 
     #[test]
     fn planner_already_satisfied_returns_empty() {
+        use crate::test_support::TestValue;
         let state = WorldState::from_facts(&[("goal", true)]);
         let desired = WorldState::from_facts(&[("goal", true)]);
         let goal = GoapGoal::new("already_done", desired);
         let planner = GoapPlanner::new();
         let plan = planner.plan(&state, &goal, &[]);
         assert!(plan.is_some());
-        assert_eq!(plan.unwrap().len(), 0);
+        assert_eq!(plan.test_unwrap().len(), 0);
     }
 
     #[test]
@@ -566,6 +575,7 @@ mod goap_planner_optimality_tests {
 
     #[test]
     fn planner_depth_increments_correctly() {
+        use crate::test_support::TestValue;
         // Verify that depth + 1 arithmetic is correct
         // If depth + 1 -> depth - 1, this would cause tie-breaking issues
         // Two equal-cost paths: planner should prefer fewer steps
@@ -595,7 +605,9 @@ mod goap_planner_optimality_tests {
         ];
 
         let planner = GoapPlanner::new();
-        let plan = planner.plan(&state, &goal, &actions).expect("plan found");
+        let plan = planner
+            .plan(&state, &goal, &actions)
+            .test_expect("plan found");
         // Both paths cost 3.0, but tie-breaking prefers fewer depth (fewer actions)
         assert_eq!(plan.len(), 1, "should prefer 1-step at equal cost");
         assert_eq!(plan[0].name, "direct");
@@ -1555,6 +1567,7 @@ mod cached_goap_planner_tests {
 
     #[test]
     fn cached_plan_matches_direct_plan() {
+        use crate::test_support::TestValue;
         let mut cached = CachedGoapPlanner::new(10);
         let state = WorldState::from_facts(&[("a", true)]);
         let desired = WorldState::from_facts(&[("b", true)]);
@@ -1570,8 +1583,8 @@ mod cached_goap_planner_tests {
         assert_eq!(cached.cache_stats().misses, 1);
 
         // Plans should have same structure
-        let p1 = plan1.unwrap();
-        let p2 = plan2.unwrap();
+        let p1 = plan1.test_unwrap();
+        let p2 = plan2.test_unwrap();
         assert_eq!(p1.len(), p2.len());
         assert_eq!(p1[0].name, p2[0].name);
     }
@@ -1838,3 +1851,6 @@ mod interner_tests {
         assert_eq!(interner.resolve(c), Some("gamma"));
     }
 }
+
+#[path = "../src/test_support.rs"]
+mod test_support;

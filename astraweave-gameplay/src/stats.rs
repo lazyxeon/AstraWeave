@@ -147,6 +147,7 @@ impl Stats {
 #[cfg(test)]
 mod tests {
     use super::*;
+    pub use crate::test_support::TestValue;
 
     #[test]
     fn test_stats_new_creates_default_values() {
@@ -313,8 +314,8 @@ mod tests {
     #[test]
     fn test_stats_serialization() {
         let stats = Stats::new(75);
-        let json = serde_json::to_string(&stats).expect("serialize");
-        let deserialized: Stats = serde_json::from_str(&json).expect("deserialize");
+        let json = serde_json::to_string(&stats).test_expect("serialize");
+        let deserialized: Stats = serde_json::from_str(&json).test_expect("deserialize");
         assert_eq!(deserialized.hp, 75);
         assert_eq!(deserialized.stamina, 100);
     }
@@ -325,7 +326,7 @@ mod tests {
             dps: 5.0,
             time: 3.0,
         };
-        let json = serde_json::to_string(&effect).expect("serialize");
+        let json = serde_json::to_string(&effect).test_expect("serialize");
         assert!(json.contains("Bleed"));
     }
 

@@ -7,6 +7,7 @@
 
 #![allow(clippy::nonminimal_bool, clippy::bool_assert_comparison)]
 
+pub use crate::test_support::{test_panic, TestValue};
 use crate::{DamageType, Stats, StatusEffect};
 
 // ============================================================================
@@ -152,7 +153,7 @@ mod status_effect_tests {
                 "Bleed time should decrease by dt"
             );
         } else {
-            panic!("Effect should be Bleed");
+            test_panic(format_args!("Effect should be Bleed"));
         }
     }
 
@@ -416,8 +417,8 @@ mod behavioral_tests {
             time: 2.0,
         });
 
-        let json = serde_json::to_string(&stats).expect("serialize");
-        let deserialized: Stats = serde_json::from_str(&json).expect("deserialize");
+        let json = serde_json::to_string(&stats).test_expect("serialize");
+        let deserialized: Stats = serde_json::from_str(&json).test_expect("deserialize");
 
         assert_eq!(deserialized.hp, 75);
         assert_eq!(deserialized.power, 15);
@@ -896,7 +897,7 @@ mod boundary_condition_tests {
         });
 
         log.progress_gather("q1", "wood", 10);
-        let q = log.quests.get("q1").unwrap();
+        let q = log.quests.get("q1").test_unwrap();
         assert!(q.tasks[0].done, "Task should be done with exactly enough");
         assert!(q.completed, "Quest should be completed");
     }
@@ -922,7 +923,7 @@ mod boundary_condition_tests {
         });
 
         log.progress_gather("q1", "wood", 9);
-        let q = log.quests.get("q1").unwrap();
+        let q = log.quests.get("q1").test_unwrap();
         assert!(!q.tasks[0].done, "Task should not be done with one short");
     }
 
@@ -947,7 +948,7 @@ mod boundary_condition_tests {
         });
 
         log.progress_gather("q1", "wood", 100);
-        let q = log.quests.get("q1").unwrap();
+        let q = log.quests.get("q1").test_unwrap();
         assert!(q.tasks[0].done, "Task should be done with more than needed");
     }
 }
@@ -1632,7 +1633,7 @@ mod boolean_return_path_tests {
         });
 
         log.progress_gather("q1", "wood", 10);
-        let q = log.quests.get("q1").unwrap();
+        let q = log.quests.get("q1").test_unwrap();
 
         assert!(q.tasks[0].done, "Task should be done after completion");
         assert_eq!(q.tasks[0].done, true, "done should be exactly true");
@@ -1688,7 +1689,7 @@ mod boolean_return_path_tests {
 
         log.progress_gather("q1", "wood", 100); // Complete both tasks
 
-        let q = log.quests.get("q1").unwrap();
+        let q = log.quests.get("q1").test_unwrap();
         assert!(q.completed, "Quest should be completed when all tasks done");
         assert_eq!(q.completed, true, "completed should be exactly true");
     }
@@ -1724,7 +1725,7 @@ mod boolean_return_path_tests {
 
         log.progress_gather("q1", "wood", 100); // Complete only gather task
 
-        let q = log.quests.get("q1").unwrap();
+        let q = log.quests.get("q1").test_unwrap();
         assert!(
             !q.completed,
             "Quest should not be completed with incomplete tasks"
@@ -2103,6 +2104,7 @@ mod combat_weapon_damage_mutation_tests {
 // ============================================================================
 
 mod combat_physics_sweep_mutation_tests {
+    use super::TestValue;
     use crate::combat_physics::{perform_attack_sweep, Combatant};
     use crate::{DamageType, Stats};
     use astraweave_physics::PhysicsWorld;
@@ -2207,7 +2209,7 @@ mod combat_physics_sweep_mutation_tests {
             result.is_some(),
             "target at 2m within 10m sweep should be hit"
         );
-        let hit = result.unwrap();
+        let hit = result.test_unwrap();
         assert_eq!(hit.damage, 25, "should deal full base damage");
         assert_eq!(targets[0].stats.hp, 75, "target HP should decrease by 25");
     }
@@ -2246,7 +2248,7 @@ mod combat_physics_sweep_mutation_tests {
             result.is_some(),
             "correctly offset ray (y=1.0) must hit elevated target (y=[1.0,2.0])"
         );
-        assert_eq!(result.unwrap().damage, 30);
+        assert_eq!(result.test_unwrap().damage, 30);
         assert_eq!(targets[0].stats.hp, 70);
     }
 
@@ -2284,7 +2286,7 @@ mod combat_physics_sweep_mutation_tests {
         // With == : 2.5 == 3.0 is false → NOT filtered → still hits (this specific case may not catch ==)
         // We need a hit EXACTLY at distance. Let's just check it hits and deal expected damage.
         assert!(result.is_some(), "target at boundary should be hit");
-        assert_eq!(result.unwrap().damage, 15);
+        assert_eq!(result.test_unwrap().damage, 15);
     }
 
     /// Additional test for distance check: target BEYOND range must NOT hit.
@@ -2932,6 +2934,7 @@ mod water_forces_mutation_tests {
 // ============================================================================
 
 mod weaving_mutation_tests {
+    use super::TestValue;
     use crate::{WeaveBudget, WeaveOp, WeaveOpKind};
     use astraweave_core::World;
     use astraweave_physics::PhysicsWorld;
@@ -3047,7 +3050,7 @@ mod weaving_mutation_tests {
             &op,
             &mut logger,
         )
-        .unwrap();
+        .test_unwrap();
 
         assert!(
             world.obstacles.len() > initial_obstacles,
@@ -3087,7 +3090,7 @@ mod weaving_mutation_tests {
             &op,
             &mut logger,
         )
-        .unwrap();
+        .test_unwrap();
 
         // Wind should be in +x direction (default: (a+(1,0,0)-a).normalize = (1,0,0))
         // set_wind normalizes and multiplies by strength=10.0 → wind = (10,0,0)
@@ -3133,7 +3136,7 @@ mod weaving_mutation_tests {
             &op,
             &mut logger,
         )
-        .unwrap();
+        .test_unwrap();
 
         // Correct dir = (2,0,3).normalize(), set_wind multiplies by 10
         let expected_dir = vec3(2.0, 0.0, 3.0).normalize();
@@ -3152,6 +3155,7 @@ mod weaving_mutation_tests {
 // ============================================================================
 
 mod weave_portals_mutation_tests {
+    use super::TestValue;
     use crate::weave_portals::{build_portals, string_pull, Portal, PortalGraph};
     use astraweave_nav::{NavMesh, Triangle};
     use glam::Vec3;
@@ -3249,7 +3253,7 @@ mod weave_portals_mutation_tests {
         assert!(waypoints.len() >= 2, "must have at least start and goal");
         assert_eq!(waypoints[0], start, "first waypoint must be start");
         assert_eq!(
-            *waypoints.last().unwrap(),
+            *waypoints.last().test_unwrap(),
             goal,
             "last waypoint must be goal"
         );
@@ -3290,7 +3294,7 @@ mod weave_portals_mutation_tests {
 
         assert!(waypoints.len() >= 2, "path must have at least 2 points");
         assert_eq!(waypoints[0], start);
-        assert_eq!(*waypoints.last().unwrap(), goal);
+        assert_eq!(*waypoints.last().test_unwrap(), goal);
 
         // Path should go generally from left to right (x increasing)
         for w in waypoints.windows(2) {
@@ -3381,7 +3385,7 @@ mod weave_portals_mutation_tests {
             waypoints
         );
         assert_eq!(waypoints[0], start, "First must be start");
-        assert_eq!(*waypoints.last().unwrap(), goal, "Last must be goal");
+        assert_eq!(*waypoints.last().test_unwrap(), goal, "Last must be goal");
 
         // Intermediate waypoints are the bottom (right) portal points
         assert_eq!(
@@ -3436,7 +3440,7 @@ mod weave_portals_mutation_tests {
             waypoints
         );
         assert_eq!(waypoints[0], start, "First must be start");
-        assert_eq!(*waypoints.last().unwrap(), goal, "Last must be goal");
+        assert_eq!(*waypoints.last().test_unwrap(), goal, "Last must be goal");
 
         // Intermediate waypoint should be at the portal's right (b) point
         assert_eq!(
@@ -3655,6 +3659,6 @@ mod weave_portals_mutation_tests {
             waypoints
         );
         assert_eq!(waypoints[0], start, "First must be start");
-        assert_eq!(*waypoints.last().unwrap(), goal, "Last must be goal");
+        assert_eq!(*waypoints.last().test_unwrap(), goal, "Last must be goal");
     }
 }

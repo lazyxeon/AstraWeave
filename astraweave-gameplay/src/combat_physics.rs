@@ -180,6 +180,7 @@ mod tests {
     /// Verifies that a basic attack sweep hits a single enemy and applies damage
     #[test]
     fn test_single_enemy_hit() {
+        use crate::test_support::TestValue;
         let mut phys = PhysicsWorld::new(Vec3::new(0.0, -9.81, 0.0));
 
         // Create attacker and target
@@ -205,7 +206,7 @@ mod tests {
 
         // Verify hit was registered
         assert!(result.is_some(), "Attack should hit the target");
-        let hit = result.unwrap();
+        let hit = result.test_unwrap();
         assert_eq!(hit.target, target_id);
         assert_eq!(hit.damage, 20);
         assert!(!hit.parried);
@@ -253,6 +254,7 @@ mod tests {
     /// Verifies that attack stops at first hit (doesn't pierce through)
     #[test]
     fn test_first_hit_only() {
+        use crate::test_support::TestValue;
         let mut phys = PhysicsWorld::new(Vec3::new(0.0, -9.81, 0.0));
 
         // Create attacker and two targets in line
@@ -282,7 +284,7 @@ mod tests {
 
         // Verify only first target was hit
         assert!(result.is_some(), "Attack should hit first target");
-        let hit = result.unwrap();
+        let hit = result.test_unwrap();
         assert_eq!(hit.target, target1_id, "Should hit first target in line");
 
         // Verify only first target took damage
@@ -326,6 +328,7 @@ mod tests {
     /// Verifies that active parry windows block damage and are consumed
     #[test]
     fn test_parry_blocks_damage() {
+        use crate::test_support::TestValue;
         let mut phys = PhysicsWorld::new(Vec3::new(0.0, -9.81, 0.0));
 
         // Create attacker and target with active parry
@@ -366,7 +369,7 @@ mod tests {
 
         // Verify hit was parried
         assert!(result.is_some(), "Attack should register as hit");
-        let hit = result.unwrap();
+        let hit = result.test_unwrap();
         assert_eq!(hit.target, target_id);
         assert_eq!(hit.damage, 0, "Parried attack should deal no damage");
         assert!(hit.parried, "Attack should be marked as parried");
@@ -377,12 +380,12 @@ mod tests {
             "Target should take no damage from parry"
         );
         assert_eq!(
-            targets[0].parry.as_ref().unwrap().window,
+            targets[0].parry.as_ref().test_unwrap().window,
             0.0,
             "Parry window should be consumed"
         );
         assert!(
-            !targets[0].parry.as_ref().unwrap().active,
+            !targets[0].parry.as_ref().test_unwrap().active,
             "Parry should be deactivated"
         );
     }
@@ -391,6 +394,7 @@ mod tests {
     /// Verifies that iframes block damage without being consumed
     #[test]
     fn test_iframes_block_damage() {
+        use crate::test_support::TestValue;
         let mut phys = PhysicsWorld::new(Vec3::new(0.0, -9.81, 0.0));
 
         // Create attacker and target with iframes
@@ -428,7 +432,7 @@ mod tests {
 
         // Verify hit was blocked by iframes
         assert!(result.is_some(), "Attack should register as hit");
-        let hit = result.unwrap();
+        let hit = result.test_unwrap();
         assert_eq!(hit.damage, 0, "Attack during iframes should deal no damage");
         assert!(!hit.parried, "iframes are not parries");
 
@@ -438,7 +442,7 @@ mod tests {
             "Target should take no damage during iframes"
         );
         assert_eq!(
-            targets[0].iframes.as_ref().unwrap().time_left,
+            targets[0].iframes.as_ref().test_unwrap().time_left,
             0.5,
             "iframes should not be consumed by attack"
         );
@@ -453,6 +457,7 @@ mod tests {
     /// If mutated to `>= 0.0`, it would incorrectly parry.
     #[test]
     fn test_parry_window_zero_does_not_parry() {
+        use crate::test_support::TestValue;
         let mut phys = PhysicsWorld::new(Vec3::new(0.0, -9.81, 0.0));
         let attacker_id = phys.add_character(Vec3::ZERO, Vec3::new(0.5, 1.0, 0.5));
         let target_id = phys.add_character(Vec3::new(2.0, 0.0, 0.0), Vec3::new(0.5, 1.0, 0.5));
@@ -487,7 +492,7 @@ mod tests {
         );
 
         assert!(result.is_some());
-        let hit = result.unwrap();
+        let hit = result.test_unwrap();
         assert!(!hit.parried, "Parry with window=0.0 should NOT activate");
         assert_eq!(
             hit.damage, 20,
@@ -500,6 +505,7 @@ mod tests {
     /// If mutated to `||`, it would incorrectly parry because window > 0.0 alone is true.
     #[test]
     fn test_parry_inactive_does_not_parry() {
+        use crate::test_support::TestValue;
         let mut phys = PhysicsWorld::new(Vec3::new(0.0, -9.81, 0.0));
         let attacker_id = phys.add_character(Vec3::ZERO, Vec3::new(0.5, 1.0, 0.5));
         let target_id = phys.add_character(Vec3::new(2.0, 0.0, 0.0), Vec3::new(0.5, 1.0, 0.5));
@@ -534,7 +540,7 @@ mod tests {
         );
 
         assert!(result.is_some());
-        let hit = result.unwrap();
+        let hit = result.test_unwrap();
         assert!(!hit.parried, "Inactive parry should NOT block damage");
         assert_eq!(
             hit.damage, 20,
@@ -547,6 +553,7 @@ mod tests {
     /// If mutated to `>= 0.0`, it would incorrectly block.
     #[test]
     fn test_iframe_zero_time_does_not_block() {
+        use crate::test_support::TestValue;
         let mut phys = PhysicsWorld::new(Vec3::new(0.0, -9.81, 0.0));
         let attacker_id = phys.add_character(Vec3::ZERO, Vec3::new(0.5, 1.0, 0.5));
         let target_id = phys.add_character(Vec3::new(2.0, 0.0, 0.0), Vec3::new(0.5, 1.0, 0.5));
@@ -578,7 +585,7 @@ mod tests {
         );
 
         assert!(result.is_some());
-        let hit = result.unwrap();
+        let hit = result.test_unwrap();
         assert_eq!(
             hit.damage, 20,
             "Expired iframes (time_left=0.0) should NOT block damage"
@@ -623,6 +630,7 @@ mod tests {
     /// direction the physics engine may compute wrong intersection.
     #[test]
     fn test_direction_normalization_matters() {
+        use crate::test_support::TestValue;
         let mut phys = PhysicsWorld::new(Vec3::new(0.0, -9.81, 0.0));
         let attacker_id = phys.add_character(Vec3::ZERO, Vec3::new(0.5, 1.0, 0.5));
         let target_id = phys.add_character(Vec3::new(2.0, 0.0, 0.0), Vec3::new(0.5, 1.0, 0.5));
@@ -646,7 +654,7 @@ mod tests {
             result.is_some(),
             "Target at 2m within 5m sweep should be hit"
         );
-        assert_eq!(result.unwrap().damage, 20);
+        assert_eq!(result.test_unwrap().damage, 20);
     }
 
     /// Catches: `from + Vec3::new(0.0, 1.0, 0.0)` → `from - Vec3(0,1,0)` (line ~58)
