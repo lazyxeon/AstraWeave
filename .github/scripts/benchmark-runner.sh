@@ -71,13 +71,13 @@ BENCHMARK_SHARD_GROUPS=(
     "astraweave-sdk astraweave-coordination astraweave-persona astraweave-behavior"
     "astraweave-ui astraweave-pcg astraweave-security astraweave-stress-test"
     "astraweave-ai"
-    # astraweave-render is one package and two shards. @a and @b are
-    # alphabetical halves of its bench targets (see select_bench_targets).
-    # Shard 13 on ceff979a (run 39089221901) and on #374 (run 39091616710)
-    # was cancelled at the 60-minute job limit after two targets each used
-    # the full 600s. The halves keep every target. The 600s cap stays.
+    # astraweave-render is one package and three shards. @a @b @c are the
+    # explicit target lists in RENDER_BENCH_A/B/C. Run 39109443441 put the
+    # alphabetical halves at 51m45s and 49m08s. The thirds stay near 40
+    # minutes. Every target is still listed. The 600s cap stays.
     "astraweave-render@a"
     "astraweave-render@b"
+    "astraweave-render@c"
 )
 
 RESULTS_DIR="${BENCHMARK_RESULTS_DIR:-benchmark_results}"
@@ -191,10 +191,11 @@ discover_benchmark_packages() {
                 mapping_error=1
             fi
         done
-        if [[ -v "assigned_lookup[astraweave-render@a]" && ! -v "assigned_lookup[astraweave-render@b]" ]] \
-            || [[ -v "assigned_lookup[astraweave-render@b]" && ! -v "assigned_lookup[astraweave-render@a]" ]]; then
-            log_error "astraweave-render must be listed as both @a and @b"
-            mapping_error=1
+        if [[ -v "assigned_lookup[astraweave-render@a]" || -v "assigned_lookup[astraweave-render@b]" || -v "assigned_lookup[astraweave-render@c]" ]]; then
+            if [[ ! -v "assigned_lookup[astraweave-render@a]" || ! -v "assigned_lookup[astraweave-render@b]" || ! -v "assigned_lookup[astraweave-render@c]" ]]; then
+                log_error "astraweave-render must be listed as @a, @b, and @c"
+                mapping_error=1
+            fi
         fi
 
         if [ "$mapping_error" -ne 0 ]; then
@@ -351,8 +352,62 @@ bench_target_names() {
     ' <<<"$METADATA_JSON"
 }
 
-# astraweave-render@a / @b: alphabetical halves. A new bench target
-# lands in one half automatically. Neither half drops a target.
+# Per-target walls from run 39109443441. Each list is about 30 minutes
+# of bench time, so with compile the job stays under 40 minutes.
+# A new render bench target must be added to exactly one list.
+RENDER_BENCH_A=(
+    culling_lod
+    post_processing
+    mesh_optimization
+    graph_mesh_material_texture
+    camera_primitives_instancing
+    biome_transition
+    rendering_performance
+    phase2_benches
+)
+RENDER_BENCH_B=(
+    texture_streaming_vxgi
+    gpu_particles_water
+    animation_skinning
+    transparency_environment_msaa
+    ibl_deferred
+    cluster_gpu_vs_cpu
+)
+RENDER_BENCH_C=(
+    nanite_shadow_csm
+    ssr_decals_weather
+    clustered_megalights_residency
+    gpu_memory_terrain_skinning_depth_overlay
+)
+
+render_bench_lists_match() {
+    local -a all_targets=("$@")
+    local -A seen=()
+    local target
+    local listed
+    for listed in "${RENDER_BENCH_A[@]}" "${RENDER_BENCH_B[@]}" "${RENDER_BENCH_C[@]}"; do
+        if [[ -n "${seen[$listed]:-}" ]]; then
+            log_error "Render bench target listed twice: $listed"
+            return 1
+        fi
+        seen[$listed]=1
+    done
+    for target in "${all_targets[@]}"; do
+        if [[ -z "${seen[$target]:-}" ]]; then
+            log_error "Render bench target is not in shard a, b, or c: $target"
+            return 1
+        fi
+        seen[$target]=seen
+    done
+    for listed in "${!seen[@]}"; do
+        if [ "${seen[$listed]}" = "1" ]; then
+            log_error "Render bench list names a target that is not built: $listed"
+            return 1
+        fi
+    done
+    return 0
+}
+
 select_bench_targets() {
     local pkg_token="$1"
     local pkg_base="${pkg_token%@*}"
@@ -368,17 +423,18 @@ select_bench_targets() {
         fi
         return
     fi
-    if [ "$half" != "a" ] && [ "$half" != "b" ]; then
-        log_error "Unknown bench half '$half' on $pkg_token"
-        return 1
-    fi
-    local total=${#all_targets[@]}
-    local mid=$(((total + 1) / 2))
     local -a chosen=()
-    if [ "$half" = "a" ]; then
-        chosen=("${all_targets[@]:0:mid}")
-    else
-        chosen=("${all_targets[@]:mid}")
+    case "$half" in
+        a) chosen=("${RENDER_BENCH_A[@]}") ;;
+        b) chosen=("${RENDER_BENCH_B[@]}") ;;
+        c) chosen=("${RENDER_BENCH_C[@]}") ;;
+        *)
+            log_error "Unknown bench third '$half' on $pkg_token"
+            return 1
+            ;;
+    esac
+    if ! render_bench_lists_match "${all_targets[@]}"; then
+        return 1
     fi
     if [ "${#chosen[@]}" -gt 0 ]; then
         printf '%s\n' "${chosen[@]}"

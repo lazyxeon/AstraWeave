@@ -35,7 +35,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard_index: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]
+        shard_index: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
     
     steps:
       - name: Checkout repository
@@ -60,7 +60,7 @@ jobs:
           # Run this deterministic shard of the full discovered package list
           ./.github/scripts/benchmark-runner.sh \
             --shard-index "${{ matrix.shard_index }}" \
-            --shard-count 15
+            --shard-count 16
       
       - name: Upload benchmark artifacts
         uses: actions/upload-artifact@v4
@@ -130,7 +130,7 @@ jobs:
           done
 
           : > benchmark_results/missing-shards.txt
-          for shard_index in {0..14}; do
+          for shard_index in {0..15}; do
             if ! find benchmark-shards -mindepth 1 -maxdepth 1 -type d \
               -name "*-shard-${shard_index}" -print -quit 2>/dev/null |
               grep -q .; then
@@ -162,33 +162,33 @@ jobs:
             benchmark_results/package-status.json > benchmark_results/failed-packages.txt
 
           complete=false
-          if [ "${#result_files[@]}" -eq 15 ] &&
-             [ "${#status_files[@]}" -eq 15 ] &&
-             [ "${#timing_files[@]}" -eq 15 ] &&
-             [ "$package_count" -eq 52 ] &&
-             [ "$unique_package_count" -eq 52 ]; then
+          if [ "${#result_files[@]}" -eq 16 ] &&
+             [ "${#status_files[@]}" -eq 16 ] &&
+             [ "${#timing_files[@]}" -eq 16 ] &&
+             [ "$package_count" -eq 53 ] &&
+             [ "$unique_package_count" -eq 53 ]; then
             complete=true
           fi
 
           healthy=false
           if [ "$complete" = true ] &&
              [ "$failed_package_count" -eq 0 ] &&
-             [ "$collection_accounted_count" -eq 52 ]; then
+             [ "$collection_accounted_count" -eq 53 ]; then
             healthy=true
           fi
 
           {
             echo "=== Benchmark Aggregation Summary ==="
-            echo "Shard result files: ${#result_files[@]}/15"
-            echo "Shard status files: ${#status_files[@]}/15"
-            echo "Shard timing files: ${#timing_files[@]}/15"
-            echo "Package records: $package_count (unique: $unique_package_count; expected: 52)"
-            echo "Package records accounted for: $record_accounted_count/52"
+            echo "Shard result files: ${#result_files[@]}/16"
+            echo "Shard status files: ${#status_files[@]}/16"
+            echo "Shard timing files: ${#timing_files[@]}/16"
+            echo "Package records: $package_count (unique: $unique_package_count; expected: 53)"
+            echo "Package records accounted for: $record_accounted_count/53"
             echo "Packages with collected results: $collected_package_count"
             echo "Named collection exceptions: $exception_count"
             echo "Named no-output execution failures: $no_output_failure_count"
-            echo "Packages with Criterion output or collection exception: $collection_accounted_count/52"
-            echo "Outcome accounting: $collected_package_count collected + $named_accounting_exception_count named accounting exceptions = $outcome_accounted_count/52"
+            echo "Packages with Criterion output or collection exception: $collection_accounted_count/53"
+            echo "Outcome accounting: $collected_package_count collected + $named_accounting_exception_count named accounting exceptions = $outcome_accounted_count/53"
             echo "Failed packages: $failed_package_count"
             echo "Benchmark results collected: $benchmark_count"
             echo "Complete: $complete"
@@ -240,7 +240,11 @@ jobs:
           benchmark-data-dir-path: 'dev/bench'
           max-items-in-chart: 100
           gh-pages-branch: gh-pages
-          gh-repository: ${{ github.repository }}
+          # The action builds https://x-access-token:$TOKEN@$gh-repository.git.
+          # github.repository is owner/repo, so the host becomes the owner.
+          # Pass host/owner/repo. Same-repo PRs can clone and comment with
+          # GITHUB_TOKEN because contents and pull-requests are write above.
+          gh-repository: github.com/${{ github.repository }}
           
       - name: Comment benchmark results on PR
         uses: benchmark-action/github-action-benchmark@v1.20.7
@@ -257,7 +261,9 @@ jobs:
           comment-on-alert: true
           summary-always: true
           alert-threshold: '150%'
-          gh-repository: ${{ github.repository }}
+          # Same host/owner/repo form as the push step. auto-push stays false;
+          # this step clones gh-pages only to compare and post the PR comment.
+          gh-repository: github.com/${{ github.repository }}
           
       - name: Validate benchmark results (Basic)
         if: steps.merge.outputs.complete == 'true'
