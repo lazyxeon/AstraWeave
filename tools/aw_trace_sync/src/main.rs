@@ -178,7 +178,7 @@ fn load_traces(arch_dir: &Path) -> Result<Vec<TraceDoc>> {
             .with_context(|| format!("reading {}", path.display()))?;
         let (fm, fm_error) = match extract_front_matter(&content) {
             None => (None, Some("no YAML front-matter block".to_string())),
-            Some(yaml) => match serde_yaml::from_str::<FrontMatter>(&yaml) {
+            Some(yaml) => match yaml_serde::from_str::<FrontMatter>(&yaml) {
                 Ok(fm) => (Some(fm), None),
                 Err(e) => (None, Some(format!("invalid front-matter: {e}"))),
             },
@@ -738,7 +738,7 @@ mod tests {
         );
         TraceDoc {
             stem: stem.to_string(),
-            fm: Some(serde_yaml::from_str(&y).expect("valid front-matter")),
+            fm: Some(yaml_serde::from_str(&y).expect("valid front-matter")),
             fm_error: None,
         }
     }
@@ -763,7 +763,7 @@ mod tests {
         let y = "schema_version: 1\ntrace_id: x\ntitle: T\ndescription: D\nprimary_crate: c\n\
                  domain: core\nlifecycle_status: active\nintegration_status: wired\n\
                  doc_version: \"1\"\nlast_verified_commit: a\ntypo_field: 1\n";
-        assert!(serde_yaml::from_str::<FrontMatter>(y).is_err());
+        assert!(yaml_serde::from_str::<FrontMatter>(y).is_err());
     }
 
     #[test]
@@ -887,7 +887,7 @@ mod tests {
     fn tdoc(stem: &str, yaml: &str) -> TraceDoc {
         TraceDoc {
             stem: stem.to_string(),
-            fm: Some(serde_yaml::from_str(yaml).expect("valid front-matter")),
+            fm: Some(yaml_serde::from_str(yaml).expect("valid front-matter")),
             fm_error: None,
         }
     }
