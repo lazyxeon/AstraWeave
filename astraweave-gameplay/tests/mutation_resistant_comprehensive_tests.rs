@@ -7,6 +7,7 @@
 
 #![allow(clippy::field_reassign_with_default)]
 
+pub use crate::test_support::{test_panic, TestValue};
 use astraweave_gameplay::*;
 use glam::Vec3;
 use std::collections::HashMap;
@@ -558,7 +559,7 @@ mod combat_tick_mutations {
                     "stagger time must match step.stagger"
                 );
             }
-            other => panic!("expected Stagger, got {:?}", other),
+            other => test_panic(format_args!("expected Stagger, got {:?}", other)),
         }
     }
 
@@ -1481,7 +1482,7 @@ mod dialogue_mutations {
                 assert_eq!(key, "mood");
                 assert_eq!(val, "happy");
             }
-            other => panic!("expected Cond::Ne, got {:?}", other),
+            other => test_panic(format_args!("expected Cond::Ne, got {:?}", other)),
         }
     }
 
@@ -1498,7 +1499,7 @@ mod dialogue_mutations {
                 assert_eq!(key, "state");
                 assert_eq!(val, "ready");
             }
-            other => panic!("expected Cond::Eq, got {:?}", other),
+            other => test_panic(format_args!("expected Cond::Eq, got {:?}", other)),
         }
     }
 
@@ -1508,7 +1509,7 @@ mod dialogue_mutations {
     fn compile_banter_set_var_with_spaces() {
         let src = "[Guard] Welcome!\n->  mood = happy ";
         let d = compile_banter_to_nodes("sv", src);
-        let line = d.nodes[0].line.as_ref().unwrap();
+        let line = d.nodes[0].line.as_ref().test_unwrap();
         assert_eq!(line.set_vars.len(), 1);
         assert_eq!(line.set_vars[0].0, "mood");
         assert_eq!(line.set_vars[0].1, "happy");
@@ -1796,8 +1797,8 @@ mod items_mutations {
         };
         infuse(&mut item, echo);
         assert!(item.echo.is_some());
-        assert_eq!(item.echo.as_ref().unwrap().name, "Fire");
-        assert!((item.echo.as_ref().unwrap().power_mult - 1.5).abs() < f32::EPSILON);
+        assert_eq!(item.echo.as_ref().test_unwrap().name, "Fire");
+        assert!((item.echo.as_ref().test_unwrap().power_mult - 1.5).abs() < f32::EPSILON);
     }
 
     // --- load_echo_defs parses TOML correctly ---
@@ -1810,7 +1811,7 @@ name = "Ember"
 rarity = "Rare"
 power_mult = 1.35
 "#;
-        let defs = load_echo_defs(toml).unwrap();
+        let defs = load_echo_defs(toml).test_unwrap();
         assert_eq!(defs.len(), 1);
         assert!((defs[0].power_mult - 1.35).abs() < 0.001);
         assert_eq!(defs[0].rarity, Rarity::Rare);
@@ -1826,7 +1827,7 @@ power_mult = 2.0
 dtype_override = "Shock"
 special = "chain_lightning"
 "#;
-        let defs = load_echo_defs(toml).unwrap();
+        let defs = load_echo_defs(toml).test_unwrap();
         assert!(defs[0].dtype_override.is_some());
         assert_eq!(defs[0].special.as_deref(), Some("chain_lightning"));
     }
@@ -2417,3 +2418,6 @@ mod combat_stats_integration {
         assert_eq!(target.hp, 434); // 500 - 66
     }
 }
+
+#[path = "../src/test_support.rs"]
+mod test_support;

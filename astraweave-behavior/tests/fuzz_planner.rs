@@ -3,11 +3,12 @@ use rand::prelude::*;
 
 #[test]
 fn test_planner_fuzz() {
+    use crate::test_support::TestValue;
     let mut rng = StdRng::seed_from_u64(42);
     let planner = GoapPlanner::new();
 
     for i in 0..100 {
-        println!("Fuzz iteration {}", i);
+        let _ = i;
 
         // 1. Generate random facts
         let facts = [
@@ -26,7 +27,7 @@ fn test_planner_fuzz() {
         }
 
         // 2. Generate random goal
-        let goal_fact = facts.choose(&mut rng).unwrap();
+        let goal_fact = facts.choose(&mut rng).test_unwrap();
         let goal_val = rng.random_bool(0.5);
         let goal = GoapGoal::new(
             "fuzz_goal",
@@ -40,12 +41,12 @@ fn test_planner_fuzz() {
 
             // Random preconditions
             if rng.random_bool(0.7) {
-                let pre_fact = facts.choose(&mut rng).unwrap();
+                let pre_fact = facts.choose(&mut rng).test_unwrap();
                 action = action.with_precondition(pre_fact, rng.random_bool(0.5));
             }
 
             // Random effects
-            let eff_fact = facts.choose(&mut rng).unwrap();
+            let eff_fact = facts.choose(&mut rng).test_unwrap();
             action = action.with_effect(eff_fact, rng.random_bool(0.5));
 
             actions.push(action);
@@ -74,3 +75,6 @@ fn test_planner_fuzz() {
         }
     }
 }
+
+#[path = "../src/test_support.rs"]
+mod test_support;

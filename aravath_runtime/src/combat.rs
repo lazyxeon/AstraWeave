@@ -321,7 +321,7 @@ impl Combat {
                 if wary {
                     speed *= 0.5;
                 }
-                let wish = steer(flat, pos, &spots, enemy.body) * speed;
+                let wish = steer(flat, pos, spots, enemy.body) * speed;
                 physics.control_character(enemy.body, wish, dt, false);
             } else {
                 enemy.closing = false;

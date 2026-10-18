@@ -38,11 +38,10 @@ pub struct BehaviorPlugin;
 
 impl astraweave_ecs::Plugin for BehaviorPlugin {
     fn build(&self, app: &mut astraweave_ecs::App) {
-        app.add_system(
+        app.add_system_known_stage(
             SIMULATION_STAGE,
             behavior_tick_system as astraweave_ecs::SystemFn,
-        )
-        .expect("registered schedule stage");
+        );
     }
 }
 
@@ -80,6 +79,7 @@ mod tests {
 
     #[test]
     fn test_behavior_tick_system_updates_status() {
+        use crate::test_support::TestValue;
         // Verify behavior_tick_system updates entity status
         let mut world = astraweave_ecs::World::new();
 
@@ -104,12 +104,13 @@ mod tests {
         // Check status was updated
         let bg = world
             .get::<CBehaviorGraph>(entity)
-            .expect("Component should exist");
+            .test_expect("Component should exist");
         assert_eq!(bg.status, BehaviorStatus::Success);
     }
 
     #[test]
     fn test_behavior_tick_system_multiple_entities() {
+        use crate::test_support::TestValue;
         // Verify behavior_tick_system handles multiple entities
         let mut world = astraweave_ecs::World::new();
         let context = create_test_context();
@@ -157,13 +158,13 @@ mod tests {
         assert!(world.get::<CBehaviorGraph>(entity3).is_some());
 
         // Verify statuses updated correctly
-        let bg1 = world.get::<CBehaviorGraph>(entity1).unwrap();
+        let bg1 = world.get::<CBehaviorGraph>(entity1).test_unwrap();
         assert_eq!(bg1.status, BehaviorStatus::Success);
 
-        let bg2 = world.get::<CBehaviorGraph>(entity2).unwrap();
+        let bg2 = world.get::<CBehaviorGraph>(entity2).test_unwrap();
         assert_eq!(bg2.status, BehaviorStatus::Failure);
 
-        let bg3 = world.get::<CBehaviorGraph>(entity3).unwrap();
+        let bg3 = world.get::<CBehaviorGraph>(entity3).test_unwrap();
         assert_eq!(bg3.status, BehaviorStatus::Running);
     }
 
@@ -182,6 +183,7 @@ mod tests {
 
     #[test]
     fn test_behavior_plugin_adds_system() {
+        use crate::test_support::TestValue;
         // Verify BehaviorPlugin adds the tick system
         let mut app = astraweave_ecs::App::new();
         let plugin = BehaviorPlugin;
@@ -209,12 +211,13 @@ mod tests {
         let bg = app
             .world
             .get::<CBehaviorGraph>(entity)
-            .expect("Component should exist");
+            .test_expect("Component should exist");
         assert_eq!(bg.status, BehaviorStatus::Success);
     }
 
     #[test]
     fn test_behavior_running_node_tracking() {
+        use crate::test_support::TestValue;
         // Verify running_node field is updated with current node name
         let mut world = astraweave_ecs::World::new();
 
@@ -245,7 +248,7 @@ mod tests {
         // Check running_node was updated
         let bg = world
             .get::<CBehaviorGraph>(entity)
-            .expect("Component should exist");
+            .test_expect("Component should exist");
         assert!(
             bg.running_node.is_some(),
             "running_node should be set after tick"

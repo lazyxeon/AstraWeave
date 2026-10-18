@@ -89,6 +89,7 @@ pub fn load_echo_defs(toml_txt: &str) -> anyhow::Result<Vec<EchoModDef>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    pub use crate::test_support::{test_panic, TestValue};
 
     #[test]
     fn test_item_kind_weapon() {
@@ -100,7 +101,7 @@ mod tests {
             assert_eq!(base_damage, 25);
             assert!(matches!(dtype, DamageType::Physical));
         } else {
-            panic!("Expected Weapon");
+            test_panic(format_args!("Expected Weapon"));
         }
     }
 
@@ -110,7 +111,7 @@ mod tests {
         if let ItemKind::Armor { defense } = armor {
             assert_eq!(defense, 15);
         } else {
-            panic!("Expected Armor");
+            test_panic(format_args!("Expected Armor"));
         }
     }
 
@@ -120,7 +121,7 @@ mod tests {
         if let ItemKind::Consumable { heal } = potion {
             assert_eq!(heal, 50);
         } else {
-            panic!("Expected Consumable");
+            test_panic(format_args!("Expected Consumable"));
         }
     }
 
@@ -132,7 +133,7 @@ mod tests {
         if let ItemKind::Material { r#type } = material {
             assert_eq!(r#type, ResourceKind::Crystal);
         } else {
-            panic!("Expected Material");
+            test_panic(format_args!("Expected Material"));
         }
     }
 
@@ -264,7 +265,7 @@ mod tests {
         };
         infuse(&mut item, echo);
         assert!(item.echo.is_some());
-        assert_eq!(item.echo.as_ref().unwrap().name, "Frost");
+        assert_eq!(item.echo.as_ref().test_unwrap().name, "Frost");
     }
 
     #[test]
@@ -290,7 +291,7 @@ mod tests {
             special: None,
         };
         infuse(&mut item, new_echo);
-        assert_eq!(item.echo.as_ref().unwrap().name, "New");
+        assert_eq!(item.echo.as_ref().test_unwrap().name, "New");
     }
 
     #[test]
@@ -314,7 +315,7 @@ name = "Ice Shard"
 rarity = "Rare"
 power_mult = 1.3
 "#;
-        let defs = load_echo_defs(toml).expect("parse toml");
+        let defs = load_echo_defs(toml).test_expect("parse toml");
         assert_eq!(defs.len(), 2);
         assert_eq!(defs[0].name, "Fire Storm");
         assert_eq!(defs[0].rarity, Rarity::Epic);
@@ -325,7 +326,7 @@ power_mult = 1.3
     #[test]
     fn test_load_echo_defs_empty() {
         let toml = "echoes = []";
-        let defs = load_echo_defs(toml).expect("parse toml");
+        let defs = load_echo_defs(toml).test_expect("parse toml");
         assert!(defs.is_empty());
     }
 
@@ -344,8 +345,8 @@ power_mult = 1.3
             kind: ItemKind::Consumable { heal: 25 },
             echo: None,
         };
-        let json = serde_json::to_string(&item).expect("serialize");
-        let deserialized: Item = serde_json::from_str(&json).expect("deserialize");
+        let json = serde_json::to_string(&item).test_expect("serialize");
+        let deserialized: Item = serde_json::from_str(&json).test_expect("deserialize");
         assert_eq!(deserialized.id, 100);
         assert_eq!(deserialized.name, "Test Item");
     }
@@ -354,8 +355,8 @@ power_mult = 1.3
     fn test_inventory_serialization() {
         let mut inv = Inventory::default();
         inv.add_resource(ResourceKind::Wood, 50);
-        let json = serde_json::to_string(&inv).expect("serialize");
-        let deserialized: Inventory = serde_json::from_str(&json).expect("deserialize");
+        let json = serde_json::to_string(&inv).test_expect("serialize");
+        let deserialized: Inventory = serde_json::from_str(&json).test_expect("deserialize");
         assert_eq!(deserialized.resources.len(), 1);
         assert_eq!(deserialized.resources[0], (ResourceKind::Wood, 50));
     }
@@ -368,8 +369,8 @@ power_mult = 1.3
             dtype_override: Some(DamageType::Shock),
             special: Some("stun".to_string()),
         };
-        let json = serde_json::to_string(&echo).expect("serialize");
-        let deserialized: EchoMod = serde_json::from_str(&json).expect("deserialize");
+        let json = serde_json::to_string(&echo).test_expect("serialize");
+        let deserialized: EchoMod = serde_json::from_str(&json).test_expect("deserialize");
         assert_eq!(deserialized.name, "Test Echo");
         assert!(matches!(
             deserialized.dtype_override,
@@ -405,7 +406,7 @@ name = "Legendary Echo"
 rarity = "Legendary"
 power_mult = 2.0
 "#;
-        let defs = load_echo_defs(toml).expect("parse toml");
+        let defs = load_echo_defs(toml).test_expect("parse toml");
         assert_eq!(defs.len(), 5);
         assert_eq!(defs[0].rarity, Rarity::Common);
         assert_eq!(defs[1].rarity, Rarity::Uncommon);

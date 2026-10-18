@@ -83,6 +83,15 @@ pub struct MotorInput {
     pub prone: bool,
 }
 
+/// Deformable-ground inputs for [`Motor::tick_deformed`].
+pub struct DeformedStep<'a> {
+    pub stamp: &'a astraweave_physics::deformed::ColumnStamp,
+    pub notices: &'a [astraweave_physics::deformed::GeometryNotice],
+    pub anchor: &'a mut [i32; 3],
+    pub attached: &'a mut bool,
+    pub climb_flags: astraweave_physics::deformed::FractureFlags,
+}
+
 impl Motor {
     pub fn apply_damage_multiplier(&self, blocking: bool) -> f32 {
         if self.invulnerable {
@@ -156,12 +165,13 @@ impl Motor {
         player: &mut Player,
         camera_yaw: f32,
         input: MotorInput,
-        stamp: &astraweave_physics::deformed::ColumnStamp,
-        notices: &[astraweave_physics::deformed::GeometryNotice],
-        anchor: &mut [i32; 3],
-        attached: &mut bool,
-        climb_flags: astraweave_physics::deformed::FractureFlags,
+        ground: DeformedStep<'_>,
     ) -> Vec3 {
+        let stamp = ground.stamp;
+        let notices = ground.notices;
+        let anchor = ground.anchor;
+        let attached = ground.attached;
+        let climb_flags = ground.climb_flags;
         self.sync_feet(physics, player);
         let (move_x, move_y) = if input.feet_locked {
             (0.0, 0.0)
@@ -188,8 +198,10 @@ impl Motor {
             notices,
             anchor,
             attached,
-            climb_flags,
-            0,
+            astraweave_physics::deformed::ClimbTick {
+                flags: climb_flags,
+                tick: 0,
+            },
         );
         self.publish(physics, player);
         Vec3::new(self.body.vel.x, 0.0, self.body.vel.z)
@@ -562,11 +574,13 @@ mod tests {
                 climb: true,
                 ..MotorInput::default()
             },
-            &stamp,
-            &[notice],
-            &mut anchor,
-            &mut attached,
-            FractureFlags::CLIMBABLE,
+            DeformedStep {
+                stamp: &stamp,
+                notices: &[notice],
+                anchor: &mut anchor,
+                attached: &mut attached,
+                climb_flags: FractureFlags::CLIMBABLE,
+            },
         );
         assert!(!attached);
         assert!((wish.x - 1.25).abs() < 1e-4, "wish {wish:?}");

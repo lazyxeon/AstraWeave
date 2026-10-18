@@ -174,6 +174,7 @@ pub fn tutorial_anchor_events(world: &mut World) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    pub use crate::test_support::TestValue;
     use astraweave_scene::world_partition::GridCoord;
 
     fn make_test_metadata() -> VeilweaverSliceMetadata {
@@ -315,7 +316,7 @@ mod tests {
         let anchor = state
             .anchors
             .get("anchor_1")
-            .expect("anchor_1 should exist");
+            .test_expect("anchor_1 should exist");
         assert!(!anchor.stabilized);
         assert!(anchor.activation_order.is_none());
         assert_eq!(anchor.spec.anchor_id, "anchor_1");
@@ -328,7 +329,7 @@ mod tests {
 
         state.mark_anchor_stabilized("anchor_1");
 
-        let anchor = state.anchors.get("anchor_1").unwrap();
+        let anchor = state.anchors.get("anchor_1").test_unwrap();
         assert!(anchor.stabilized);
         assert_eq!(anchor.activation_order, Some(0));
         assert_eq!(state.anchor_sequence.len(), 1);
@@ -347,8 +348,8 @@ mod tests {
         assert_eq!(state.anchor_sequence[0], "anchor_1");
         assert_eq!(state.anchor_sequence[1], "anchor_2");
 
-        let anchor1 = state.anchors.get("anchor_1").unwrap();
-        let anchor2 = state.anchors.get("anchor_2").unwrap();
+        let anchor1 = state.anchors.get("anchor_1").test_unwrap();
+        let anchor2 = state.anchors.get("anchor_2").test_unwrap();
         assert_eq!(anchor1.activation_order, Some(0));
         assert_eq!(anchor2.activation_order, Some(1));
     }
@@ -362,7 +363,7 @@ mod tests {
         state.mark_anchor_stabilized("anchor_1"); // Second call should be ignored
 
         assert_eq!(state.anchor_sequence.len(), 1);
-        let anchor = state.anchors.get("anchor_1").unwrap();
+        let anchor = state.anchors.get("anchor_1").test_unwrap();
         assert_eq!(anchor.activation_order, Some(0));
     }
 
@@ -462,7 +463,7 @@ mod tests {
         // First call should initialize
         tutorial_anchor_sync(&mut world);
 
-        let _state = world.get_resource::<WeaveTutorialState>().unwrap();
+        let _state = world.get_resource::<WeaveTutorialState>().test_unwrap();
         // The initialized flag should now be true (internal state)
         // We can verify this by calling again and seeing no panic
         tutorial_anchor_sync(&mut world);
@@ -506,10 +507,10 @@ mod tests {
         let zone = state
             .trigger_zones
             .get("zone_1")
-            .expect("zone_1 should exist");
+            .test_expect("zone_1 should exist");
         assert_eq!(zone.trigger_id, "zone_1");
         assert_eq!(zone.shape, Some("sphere".to_string()));
-        assert!((zone.radius.unwrap() - 5.0).abs() < f32::EPSILON);
+        assert!((zone.radius.test_unwrap() - 5.0).abs() < f32::EPSILON);
     }
 
     #[test]
@@ -520,7 +521,7 @@ mod tests {
         let prompt = state
             .decision_prompts
             .get("decision_1")
-            .expect("decision_1 should exist");
+            .test_expect("decision_1 should exist");
         assert_eq!(prompt.trigger_id, "decision_1");
         assert_eq!(prompt.options.len(), 2);
     }
@@ -533,7 +534,7 @@ mod tests {
         let trigger = state
             .encounter_triggers
             .get("encounter_1")
-            .expect("encounter_1 should exist");
+            .test_expect("encounter_1 should exist");
         assert_eq!(trigger.script, Some("battle.lua".to_string()));
     }
 
@@ -545,7 +546,7 @@ mod tests {
         let complete = state
             .encounter_completes
             .get("complete_1")
-            .expect("complete_1 should exist");
+            .test_expect("complete_1 should exist");
         assert!(complete.next_cell.is_some());
     }
 
@@ -575,7 +576,7 @@ mod tests {
 
         tutorial_anchor_sync(&mut world);
 
-        let state_after = world.get_resource::<WeaveTutorialState>().unwrap();
+        let state_after = world.get_resource::<WeaveTutorialState>().test_unwrap();
         assert!(
             state_after.initialized,
             "tutorial_anchor_sync must set initialized=true on first call"
@@ -583,7 +584,7 @@ mod tests {
 
         // Calling again should not change anything (already initialized)
         tutorial_anchor_sync(&mut world);
-        let state_after2 = world.get_resource::<WeaveTutorialState>().unwrap();
+        let state_after2 = world.get_resource::<WeaveTutorialState>().test_unwrap();
         assert!(
             state_after2.initialized,
             "tutorial_anchor_sync must remain initialized after second call"
@@ -604,7 +605,7 @@ mod tests {
         // Should be a no-op
         tutorial_anchor_sync(&mut world);
 
-        let state_after = world.get_resource::<WeaveTutorialState>().unwrap();
+        let state_after = world.get_resource::<WeaveTutorialState>().test_unwrap();
         assert!(state_after.initialized);
     }
 
@@ -626,7 +627,7 @@ mod tests {
 
         tutorial_trigger_system(&mut world);
 
-        let state = world.get_resource::<WeaveTutorialState>().unwrap();
+        let state = world.get_resource::<WeaveTutorialState>().test_unwrap();
         assert!(
             state.active_triggers.contains("zone_1"),
             "tutorial_trigger_system must process entering events"
@@ -652,7 +653,7 @@ mod tests {
 
         tutorial_trigger_system(&mut world);
 
-        let state = world.get_resource::<WeaveTutorialState>().unwrap();
+        let state = world.get_resource::<WeaveTutorialState>().test_unwrap();
         assert!(
             !state.active_triggers.contains("zone_1"),
             "tutorial_trigger_system must process leaving events"
@@ -667,7 +668,7 @@ mod tests {
         let state = WeaveTutorialState::from_metadata(meta);
 
         // Verify anchor starts unstabilized
-        assert!(!state.anchors.get("anchor_1").unwrap().stabilized);
+        assert!(!state.anchors.get("anchor_1").test_unwrap().stabilized);
         world.insert_resource(state);
 
         let mut events = Events::<AnchorStabilizedEvent>::default();
@@ -678,9 +679,9 @@ mod tests {
 
         tutorial_anchor_events(&mut world);
 
-        let state = world.get_resource::<WeaveTutorialState>().unwrap();
+        let state = world.get_resource::<WeaveTutorialState>().test_unwrap();
         assert!(
-            state.anchors.get("anchor_1").unwrap().stabilized,
+            state.anchors.get("anchor_1").test_unwrap().stabilized,
             "tutorial_anchor_events must mark anchor as stabilized"
         );
         assert!(

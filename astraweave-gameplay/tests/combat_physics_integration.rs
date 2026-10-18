@@ -8,6 +8,7 @@
 //! Unlike unit tests which test `perform_attack_sweep()` in isolation,
 //! these tests verify the complete gameplay loop from AI decision to physics result.
 
+pub use crate::test_support::TestValue;
 use astraweave_gameplay::combat_physics::{
     perform_attack_sweep, Combatant, HitResult, IFrame, Parry,
 };
@@ -119,7 +120,7 @@ fn simulate_ai_attack_decision(
     );
 
     // Update target with damage results
-    *target = targets.into_iter().next().unwrap();
+    *target = targets.into_iter().next().test_unwrap();
 
     (decision_made, result, target.stats.hp)
 }
@@ -159,7 +160,7 @@ fn test_ai_attack_decision_to_damage_feedback() {
 
     // Verify attack hit
     assert!(result.is_some(), "Attack should hit enemy");
-    let hit = result.unwrap();
+    let hit = result.test_unwrap();
     assert_eq!(hit.target, enemy_id, "Should hit correct enemy");
     assert_eq!(hit.damage, 20, "Should deal expected damage");
     assert!(!hit.parried, "Attack should not be parried");
@@ -234,19 +235,19 @@ fn test_ai_attack_parried_by_enemy() {
 
     // Verify attack was parried
     assert!(result.is_some(), "Attack should register hit");
-    let hit = result.unwrap();
+    let hit = result.test_unwrap();
     assert_eq!(hit.damage, 0, "Parried attack should deal no damage");
     assert!(hit.parried, "Attack should be marked as parried");
 
     // Verify parry feedback
     assert_eq!(hp_after, 100, "Enemy should take no damage from parry");
     assert_eq!(
-        enemy.parry.as_ref().unwrap().window,
+        enemy.parry.as_ref().test_unwrap().window,
         0.0,
         "Parry window should be consumed"
     );
     assert!(
-        !enemy.parry.as_ref().unwrap().active,
+        !enemy.parry.as_ref().test_unwrap().active,
         "Parry should be deactivated after use"
     );
 }
@@ -281,14 +282,14 @@ fn test_ai_attack_blocked_by_iframes() {
 
     // Verify attack was blocked by iframes
     assert!(result.is_some(), "Attack should register hit");
-    let hit = result.unwrap();
+    let hit = result.test_unwrap();
     assert_eq!(hit.damage, 0, "Attack during iframes should deal no damage");
     assert!(!hit.parried, "iframes are not parries");
 
     // Verify iframe feedback
     assert_eq!(hp_after, 100, "Enemy should take no damage during iframes");
     assert_eq!(
-        enemy.iframes.as_ref().unwrap().time_left,
+        enemy.iframes.as_ref().test_unwrap().time_left,
         0.5,
         "iframes should not be consumed by attack"
     );
@@ -377,7 +378,7 @@ fn test_ai_multi_attack_iframe_timing() {
     // Verify AI 2's attack was blocked
     assert!(decision2, "AI 2 should decide to attack");
     assert!(result2.is_some(), "Attack should register hit");
-    let hit2 = result2.unwrap();
+    let hit2 = result2.test_unwrap();
     assert_eq!(
         hit2.damage, 0,
         "Attack during iframes should deal no damage"
@@ -397,7 +398,7 @@ fn test_ai_multi_attack_iframe_timing() {
     // Verify AI 2's second attack succeeds
     assert!(decision3, "AI 2 should decide to attack again");
     assert!(result3.is_some(), "Attack should hit after iframes expire");
-    let hit3 = result3.unwrap();
+    let hit3 = result3.test_unwrap();
     assert_eq!(
         hit3.damage, 20,
         "Attack should deal full damage without iframes"
@@ -460,7 +461,7 @@ fn test_ai_attack_cone_positioning() {
         result_front.is_some(),
         "Attack from front should hit (within attack cone)"
     );
-    let hit_front = result_front.unwrap();
+    let hit_front = result_front.test_unwrap();
     assert_eq!(
         hit_front.damage, 20,
         "Frontal attack should deal full damage"
@@ -536,12 +537,12 @@ fn test_ai_attack_chain_parry_timing() {
 
     assert!(decision1, "AI 1 should decide to attack");
     assert!(result1.is_some(), "AI 1 attack should register");
-    let hit1 = result1.unwrap();
+    let hit1 = result1.test_unwrap();
     assert!(hit1.parried, "AI 1 attack should be parried");
     assert_eq!(hit1.damage, 0, "Parried attack should deal no damage");
     assert_eq!(hp_after_1, 100, "Enemy HP should remain 100 after parry");
     assert!(
-        !enemy.parry.as_ref().unwrap().active,
+        !enemy.parry.as_ref().test_unwrap().active,
         "Parry should be consumed after first attack"
     );
 
@@ -551,7 +552,7 @@ fn test_ai_attack_chain_parry_timing() {
 
     assert!(decision2, "AI 2 should decide to attack");
     assert!(result2.is_some(), "AI 2 attack should register");
-    let hit2 = result2.unwrap();
+    let hit2 = result2.test_unwrap();
     assert!(
         !hit2.parried,
         "AI 2 attack should not be parried (window consumed)"
@@ -562,3 +563,6 @@ fn test_ai_attack_chain_parry_timing() {
         "Enemy HP should be 80 after AI 2's successful attack"
     );
 }
+
+#[path = "../src/test_support.rs"]
+mod test_support;

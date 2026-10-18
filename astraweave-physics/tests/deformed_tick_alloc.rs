@@ -4,7 +4,7 @@ use std::alloc::{GlobalAlloc, Layout, System};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use astraweave_destruction::FractureFlags;
-use astraweave_physics::deformed::{deformed_step, ColumnStamp};
+use astraweave_physics::deformed::{deformed_step, ClimbTick, ColumnStamp};
 use astraweave_physics::traversal::{TraversalBody, TraversalInput};
 use glam::Vec3;
 
@@ -54,8 +54,10 @@ fn deformed_movement_tick_does_not_allocate() {
             &[],
             &mut anchor,
             &mut attached,
-            FractureFlags::CLIMBABLE,
-            tick,
+            ClimbTick {
+                flags: FractureFlags::CLIMBABLE,
+                tick,
+            },
         );
     }
     ALLOCS.store(0, Ordering::SeqCst);
@@ -67,8 +69,10 @@ fn deformed_movement_tick_does_not_allocate() {
             &[],
             &mut anchor,
             &mut attached,
-            FractureFlags::CLIMBABLE,
-            tick,
+            ClimbTick {
+                flags: FractureFlags::CLIMBABLE,
+                tick,
+            },
         );
     }
     let allocs = ALLOCS.load(Ordering::SeqCst);

@@ -574,8 +574,7 @@ impl Plugin for ScriptingPlugin {
         if app.world.get_resource::<Events>().is_none() {
             app.world.insert_resource(Events::default());
         }
-        app.add_system(SystemStage::SIMULATION, script_system)
-            .expect("registered schedule stage");
+        app.add_system_known_stage(SystemStage::SIMULATION, script_system);
     }
 }
 

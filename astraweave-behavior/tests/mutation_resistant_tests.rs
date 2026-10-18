@@ -241,6 +241,7 @@ mod plan_cache_tests {
 
     #[test]
     fn get_returns_stored_plan() {
+        use crate::test_support::TestValue;
         let mut cache = PlanCache::new(10);
         let state = create_state_a();
         let goal = create_goal();
@@ -251,7 +252,7 @@ mod plan_cache_tests {
         let cached = cache.get(&state, &goal, &actions);
 
         assert!(cached.is_some());
-        assert_eq!(cached.unwrap().len(), 1);
+        assert_eq!(cached.test_unwrap().len(), 1);
     }
 
     #[test]
@@ -589,6 +590,7 @@ mod goap_planner_tests {
 
     #[test]
     fn planner_finds_single_step_plan() {
+        use crate::test_support::TestValue;
         let planner = GoapPlanner::new();
         let state = WorldState::from_facts(&[("has_key", true)]);
         let goal = GoapGoal::new("open_door", WorldState::from_facts(&[("door_open", true)]));
@@ -598,11 +600,12 @@ mod goap_planner_tests {
 
         let plan = planner.plan(&state, &goal, &actions);
         assert!(plan.is_some());
-        assert_eq!(plan.unwrap().len(), 1);
+        assert_eq!(plan.test_unwrap().len(), 1);
     }
 
     #[test]
     fn planner_finds_multi_step_plan() {
+        use crate::test_support::TestValue;
         let planner = GoapPlanner::new();
         let state = WorldState::from_facts(&[("at_home", true)]);
         let goal = GoapGoal::new("have_sword", WorldState::from_facts(&[("has_sword", true)]));
@@ -618,7 +621,7 @@ mod goap_planner_tests {
 
         let plan = planner.plan(&state, &goal, &actions);
         assert!(plan.is_some());
-        let plan = plan.unwrap();
+        let plan = plan.test_unwrap();
         assert_eq!(plan.len(), 2);
         assert_eq!(plan[0].name, "go_to_shop");
         assert_eq!(plan[1].name, "buy_sword");
@@ -639,6 +642,7 @@ mod goap_planner_tests {
 
     #[test]
     fn planner_prefers_lower_cost_plan() {
+        use crate::test_support::TestValue;
         let planner = GoapPlanner::new();
         let state = WorldState::from_facts(&[("start", true)]);
         let goal = GoapGoal::new("goal", WorldState::from_facts(&[("done", true)]));
@@ -655,13 +659,14 @@ mod goap_planner_tests {
 
         let plan = planner.plan(&state, &goal, &actions);
         assert!(plan.is_some());
-        let plan = plan.unwrap();
+        let plan = plan.test_unwrap();
         assert_eq!(plan.len(), 1);
         assert_eq!(plan[0].name, "cheap");
     }
 
     #[test]
     fn planner_returns_empty_for_already_satisfied_goal() {
+        use crate::test_support::TestValue;
         let planner = GoapPlanner::new();
         let state = WorldState::from_facts(&[("goal_met", true)]);
         let goal = GoapGoal::new("done", WorldState::from_facts(&[("goal_met", true)]));
@@ -670,7 +675,7 @@ mod goap_planner_tests {
         let plan = planner.plan(&state, &goal, &actions);
         // Already satisfied - returns empty plan or Some(vec![])
         assert!(plan.is_some());
-        assert!(plan.unwrap().is_empty());
+        assert!(plan.test_unwrap().is_empty());
     }
 }
 
@@ -751,3 +756,6 @@ mod cached_goap_planner_tests {
         // Default cache capacity is 1000 (from PlanCache::default())
     }
 }
+
+#[path = "../src/test_support.rs"]
+mod test_support;

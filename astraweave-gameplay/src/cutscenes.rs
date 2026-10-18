@@ -205,6 +205,7 @@ mod tests {
 
     #[test]
     fn test_camera_to_cue_during_transition() {
+        use crate::test_support::test_panic;
         let mut state = CutsceneState::new();
         let pos = Vec3::new(1.0, 2.0, 3.0);
         let look_at = pos + Vec3::X; // +X-forward equivalent
@@ -228,12 +229,13 @@ mod tests {
                 assert_eq!(state.idx, 0);
                 assert_eq!(state.t, 0.5);
             }
-            other => panic!("Expected Camera event, got {:?}", other),
+            other => test_panic(format_args!("Expected Camera event, got {:?}", other)),
         }
     }
 
     #[test]
     fn test_camera_to_cue_completes() {
+        use crate::test_support::test_panic;
         let mut state = CutsceneState::new();
         let pos = Vec3::new(5.0, 6.0, 7.0);
         let look_at = pos + Vec3::X;
@@ -255,12 +257,16 @@ mod tests {
                 assert_eq!(state.idx, 1);
                 assert_eq!(state.t, 0.0);
             }
-            other => panic!("Expected Camera event on completion tick, got {:?}", other),
+            other => test_panic(format_args!(
+                "Expected Camera event on completion tick, got {:?}",
+                other
+            )),
         }
     }
 
     #[test]
     fn test_title_cue_displays_text() {
+        use crate::test_support::test_panic;
         let mut state = CutsceneState::new();
         let timeline = Timeline {
             cues: vec![Cue::Title {
@@ -276,7 +282,7 @@ mod tests {
                 assert_eq!(text, "Chapter 1");
                 assert_eq!(state.idx, 0);
             }
-            other => panic!("Expected Title event, got {:?}", other),
+            other => test_panic(format_args!("Expected Title event, got {:?}", other)),
         }
 
         // Tick to completion
@@ -286,7 +292,10 @@ mod tests {
                 assert_eq!(text, "Chapter 1");
                 assert_eq!(state.idx, 1);
             }
-            other => panic!("Expected Title event on completion tick, got {:?}", other),
+            other => test_panic(format_args!(
+                "Expected Title event on completion tick, got {:?}",
+                other
+            )),
         }
     }
 
@@ -310,6 +319,7 @@ mod tests {
 
     #[test]
     fn test_multiple_cues_progression() {
+        use crate::test_support::test_panic;
         let mut state = CutsceneState::new();
         let pos = Vec3::ZERO;
         let look_at = pos + Vec3::X;
@@ -333,7 +343,7 @@ mod tests {
         let event = state.tick(1.5, &timeline);
         match event {
             CutsceneTickEvent::Title(text) => assert_eq!(text, "Intro"),
-            other => panic!("Expected Title event, got {:?}", other),
+            other => test_panic(format_args!("Expected Title event, got {:?}", other)),
         }
         assert_eq!(state.idx, 1);
 
@@ -347,7 +357,7 @@ mod tests {
         let event = state.tick(1.1, &timeline);
         match event {
             CutsceneTickEvent::Camera(_) => {}
-            other => panic!("Expected Camera event, got {:?}", other),
+            other => test_panic(format_args!("Expected Camera event, got {:?}", other)),
         }
         assert_eq!(state.idx, 3);
     }

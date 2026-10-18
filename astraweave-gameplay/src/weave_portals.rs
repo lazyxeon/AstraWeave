@@ -137,6 +137,7 @@ fn triangle_area2(a: Vec3, b: Vec3, c: Vec3) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    pub use crate::test_support::TestValue;
     use astraweave_nav::Triangle;
 
     fn create_simple_navmesh() -> NavMesh {
@@ -173,7 +174,7 @@ mod tests {
 
         let edge = shared_edge(&a, &b, 1e-3);
         assert!(edge.is_some());
-        let (p0, p1) = edge.unwrap();
+        let (p0, p1) = edge.test_unwrap();
 
         // Should find the two shared vertices
         let shared_verts = [Vec3::new(1.0, 0.0, 0.0), Vec3::new(0.5, 0.0, 1.0)];
@@ -287,7 +288,7 @@ mod tests {
         // Should return at least start and goal
         assert!(waypoints.len() >= 2);
         assert_eq!(waypoints[0], start);
-        assert_eq!(*waypoints.last().unwrap(), goal);
+        assert_eq!(*waypoints.last().test_unwrap(), goal);
     }
 
     #[test]

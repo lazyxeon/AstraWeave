@@ -191,6 +191,7 @@ pub fn compile_banter_to_nodes(id: &str, src: &str) -> Dialogue {
 #[cfg(test)]
 mod tests {
     use super::*;
+    pub use crate::test_support::TestValue;
 
     fn create_simple_dialogue() -> Dialogue {
         Dialogue {
@@ -262,7 +263,7 @@ mod tests {
         let node = state.current(&dialogue);
         assert_eq!(node.id, "n0");
         assert!(node.line.is_some());
-        assert_eq!(node.line.as_ref().unwrap().speaker, "Guard");
+        assert_eq!(node.line.as_ref().test_unwrap().speaker, "Guard");
     }
 
     #[test]
@@ -396,8 +397,14 @@ mod tests {
         assert_eq!(dialogue.id, "banter1");
         assert_eq!(dialogue.start, "n0");
         assert_eq!(dialogue.nodes.len(), 2);
-        assert_eq!(dialogue.nodes[0].line.as_ref().unwrap().speaker, "Guard");
-        assert_eq!(dialogue.nodes[1].line.as_ref().unwrap().speaker, "Player");
+        assert_eq!(
+            dialogue.nodes[0].line.as_ref().test_unwrap().speaker,
+            "Guard"
+        );
+        assert_eq!(
+            dialogue.nodes[1].line.as_ref().test_unwrap().speaker,
+            "Player"
+        );
     }
 
     #[test]
@@ -406,7 +413,7 @@ mod tests {
         let dialogue = compile_banter_to_nodes("banter2", src);
 
         assert_eq!(dialogue.nodes.len(), 1);
-        let line = dialogue.nodes[0].line.as_ref().unwrap();
+        let line = dialogue.nodes[0].line.as_ref().test_unwrap();
         assert_eq!(line.set_vars.len(), 1);
         assert_eq!(line.set_vars[0], ("mood".to_string(), "happy".to_string()));
     }
@@ -428,7 +435,7 @@ mod tests {
         let src = "[Guard] Goodbye!";
         let dialogue = compile_banter_to_nodes("banter4", src);
 
-        assert!(dialogue.nodes.last().unwrap().end);
+        assert!(dialogue.nodes.last().test_unwrap().end);
     }
 
     // ===== Mutation-resistant compile_banter tests =====
@@ -440,7 +447,7 @@ mod tests {
         // If mutated to `end - 1` or `end * 1`, text would include `]` or extra chars
         let src = "[Guard] Hello there!";
         let dialogue = compile_banter_to_nodes("txt_test", src);
-        let line = dialogue.nodes[0].line.as_ref().unwrap();
+        let line = dialogue.nodes[0].line.as_ref().test_unwrap();
         assert_eq!(
             line.text, "Hello there!",
             "Text must not include ] bracket; got: {}",
@@ -465,7 +472,7 @@ mod tests {
         // Ensures trimming works correctly after skipping `]`
         let src = "[A]   spaced text  ";
         let dialogue = compile_banter_to_nodes("space_test", src);
-        let line = dialogue.nodes[0].line.as_ref().unwrap();
+        let line = dialogue.nodes[0].line.as_ref().test_unwrap();
         assert_eq!(line.speaker, "A");
         assert_eq!(line.text, "spaced text");
     }

@@ -12,8 +12,7 @@ fn main() -> anyhow::Result<()> {
         .insert_resource(astraweave_ai::SpatialTick::demo_agent());
 
     // Add movement system (from ecs_adapter)
-    app.add_system("simulation", move_system as ecs::SystemFn)
-        .expect("registered schedule stage");
+    app.add_system_known_stage("simulation", move_system as ecs::SystemFn);
 
     // Spawn entities
     let player = app.world.spawn();

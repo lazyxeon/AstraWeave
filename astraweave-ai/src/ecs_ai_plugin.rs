@@ -1303,8 +1303,7 @@ mod tests {
         // Don't add plugin (to test event initialization in sys_ai_planning)
         // Manually add system
         app.schedule
-            .add_system("ai_planning", sys_ai_planning as ecs::SystemFn)
-            .expect("registered schedule stage");
+            .add_system_known_stage("ai_planning", sys_ai_planning as ecs::SystemFn);
 
         // Spawn companion
         let ally = app.world.spawn();

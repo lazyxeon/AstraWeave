@@ -79,8 +79,7 @@ impl Plugin for ObservabilityPlugin {
             .insert_resource(ObservabilityState::new(self.config.clone()));
 
         // Add observability systems
-        app.add_system("presentation", observability_system)
-            .expect("registered schedule stage");
+        app.add_system_known_stage("presentation", observability_system);
     }
 }
 

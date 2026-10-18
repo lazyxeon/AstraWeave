@@ -37,7 +37,7 @@ impl Plugin for {{ProjectName}}Plugin {
         app.world.insert_resource(self.config.clone());
 
         // Add systems
-        app.add_system("{{stage}}", {{project_name}}_system).expect("registered schedule stage");
+        app.add_system_known_stage("{{stage}}", {{project_name}}_system);
     }
 }
 

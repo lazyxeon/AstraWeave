@@ -158,9 +158,10 @@ mod tests {
 
     #[test]
     fn test_attack_kind_serialization() {
+        use crate::test_support::TestValue;
         let kind = AttackKind::Light;
-        let json = serde_json::to_string(&kind).unwrap();
-        let deserialized: AttackKind = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&kind).test_unwrap();
+        let deserialized: AttackKind = serde_json::from_str(&json).test_unwrap();
         assert!(matches!(deserialized, AttackKind::Light));
     }
 
@@ -196,6 +197,7 @@ mod tests {
 
     #[test]
     fn test_combo_step_serialization() {
+        use crate::test_support::TestValue;
         let step = ComboStep {
             kind: AttackKind::Light,
             window: (0.1, 0.3),
@@ -203,8 +205,8 @@ mod tests {
             reach: 1.5,
             stagger: 0.2,
         };
-        let json = serde_json::to_string(&step).unwrap();
-        let deserialized: ComboStep = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&step).test_unwrap();
+        let deserialized: ComboStep = serde_json::from_str(&json).test_unwrap();
         assert_eq!(deserialized.damage, 15);
     }
 
@@ -273,12 +275,13 @@ mod tests {
 
     #[test]
     fn test_combo_chain_serialization() {
+        use crate::test_support::TestValue;
         let chain = ComboChain {
             name: "Test".to_string(),
             steps: vec![],
         };
-        let json = serde_json::to_string(&chain).unwrap();
-        let deserialized: ComboChain = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&chain).test_unwrap();
+        let deserialized: ComboChain = serde_json::from_str(&json).test_unwrap();
         assert_eq!(deserialized.name, "Test");
     }
 

@@ -659,18 +659,12 @@ fn main() -> Result<()> {
     // Register systems in AI-native order. The ECS schedule is deterministic
     // single-threaded; see docs/audits/parallel_schedule_removal_2026-04-18.md
     // for the rationale behind the single-threaded-ECS choice.
-    app.add_system("perception", ai_perception_system)
-        .expect("registered schedule stage");
-    app.add_system("ai_planning", ai_planning_system)
-        .expect("registered schedule stage");
-    app.add_system("simulation", ai_behavior_system)
-        .expect("registered schedule stage");
-    app.add_system("simulation", movement_system)
-        .expect("registered schedule stage");
-    app.add_system("simulation", combat_system)
-        .expect("registered schedule stage");
-    app.add_system("post_simulation", stats_display_system)
-        .expect("registered schedule stage");
+    app.add_system_known_stage("perception", ai_perception_system);
+    app.add_system_known_stage("ai_planning", ai_planning_system);
+    app.add_system_known_stage("simulation", ai_behavior_system);
+    app.add_system_known_stage("simulation", movement_system);
+    app.add_system_known_stage("simulation", combat_system);
+    app.add_system_known_stage("post_simulation", stats_display_system);
 
     setup_world(&mut app, enemy_count);
 

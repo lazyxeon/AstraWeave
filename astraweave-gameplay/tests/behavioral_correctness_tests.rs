@@ -11,6 +11,7 @@
 //! - Crafting: Recipe cost checking, success chance formula
 //! - Harvesting: Resource depletion, respawn mechanics
 
+pub use crate::test_support::TestValue;
 use astraweave_gameplay::{
     AttackKind, AttackState, ComboChain, ComboStep, CraftBench, CraftCost, CraftRecipe, DamageType,
     FactionStanding, Inventory, ItemKind, Rarity, RecipeBook, ResourceKind, ResourceNode, Stats,
@@ -750,8 +751,8 @@ fn test_seeded_crafting_deterministic() {
         "Both crafts should succeed"
     );
     assert_eq!(
-        item1.unwrap().id,
-        item2.unwrap().id,
+        item1.test_unwrap().id,
+        item2.test_unwrap().id,
         "Same seed should produce same item ID"
     );
 }
@@ -964,8 +965,8 @@ fn test_resource_kind_serialization() {
     ];
 
     for kind in &kinds {
-        let json = serde_json::to_string(kind).expect("serialize");
-        let parsed: ResourceKind = serde_json::from_str(&json).expect("deserialize");
+        let json = serde_json::to_string(kind).test_expect("serialize");
+        let parsed: ResourceKind = serde_json::from_str(&json).test_expect("deserialize");
         assert_eq!(*kind, parsed, "Roundtrip should preserve value");
     }
 }
@@ -1085,3 +1086,6 @@ fn create_test_recipe_book() -> RecipeBook {
         ],
     }
 }
+
+#[path = "../src/test_support.rs"]
+mod test_support;

@@ -399,12 +399,6 @@ impl BiomePack {
             }
         };
         if pack.root_dir != actual_root {
-            eprintln!(
-                "BiomePack '{}': overriding root_dir '{}' -> '{}'",
-                pack.name,
-                pack.root_dir.display(),
-                actual_root.display(),
-            );
             pack.root_dir = actual_root;
         }
 

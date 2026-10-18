@@ -270,6 +270,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    pub use crate::test_support::TestValue;
     use astraweave_asset::cell_loader::ComponentData;
     use astraweave_scene::world_partition::{Cell, CellEntityBlueprint, CellState, AABB};
     use glam::Vec3;
@@ -424,7 +425,7 @@ mod tests {
             next_cell: Some(GridCoord::new(1, 0, 0)),
         };
         assert!(complete.next_cell.is_some());
-        assert_eq!(complete.next_cell.unwrap().x, 1);
+        assert_eq!(complete.next_cell.test_unwrap().x, 1);
     }
 
     #[test]
@@ -450,7 +451,7 @@ mod tests {
             intensity: Some(0.8),
         };
         assert_eq!(effect.effect, Some("particle_fire".to_string()));
-        assert!((effect.intensity.unwrap() - 0.8).abs() < f32::EPSILON);
+        assert!((effect.intensity.test_unwrap() - 0.8).abs() < f32::EPSILON);
     }
 
     #[test]
@@ -527,11 +528,12 @@ mod tests {
             r#"{"anchor_id": "anchor_test", "type": "stability", "stability": "medium", "echo_cost": 3.5}"#,
         )]);
         let mut meta = VeilweaverSliceMetadata::default();
-        meta.extend_cell(&cell).expect("extend_cell should succeed");
+        meta.extend_cell(&cell)
+            .test_expect("extend_cell should succeed");
         assert_eq!(meta.anchors.len(), 1);
         assert_eq!(meta.anchors[0].anchor_id, "anchor_test");
         assert_eq!(meta.anchors[0].anchor_type, Some("stability".to_string()));
-        assert!((meta.anchors[0].echo_cost.unwrap() - 3.5).abs() < f32::EPSILON);
+        assert!((meta.anchors[0].echo_cost.test_unwrap() - 3.5).abs() < f32::EPSILON);
     }
 
     #[test]
@@ -541,7 +543,8 @@ mod tests {
             r#"{"trigger_id": "zone_1", "shape": "sphere", "radius": 5.0}"#,
         )]);
         let mut meta = VeilweaverSliceMetadata::default();
-        meta.extend_cell(&cell).expect("extend_cell should succeed");
+        meta.extend_cell(&cell)
+            .test_expect("extend_cell should succeed");
         assert_eq!(meta.trigger_zones.len(), 1);
         assert_eq!(meta.trigger_zones[0].trigger_id, "zone_1");
         assert_eq!(meta.trigger_zones[0].shape, Some("sphere".to_string()));
@@ -554,7 +557,8 @@ mod tests {
             r#"{"trigger_id": "prompt_1", "options": ["Yes", "No"]}"#,
         )]);
         let mut meta = VeilweaverSliceMetadata::default();
-        meta.extend_cell(&cell).expect("extend_cell should succeed");
+        meta.extend_cell(&cell)
+            .test_expect("extend_cell should succeed");
         assert_eq!(meta.decision_prompts.len(), 1);
         assert_eq!(meta.decision_prompts[0].options.len(), 2);
     }
@@ -566,7 +570,8 @@ mod tests {
             r#"{"trigger_id": "enc_1", "script": "battle.lua"}"#,
         )]);
         let mut meta = VeilweaverSliceMetadata::default();
-        meta.extend_cell(&cell).expect("extend_cell should succeed");
+        meta.extend_cell(&cell)
+            .test_expect("extend_cell should succeed");
         assert_eq!(meta.encounter_triggers.len(), 1);
         assert_eq!(
             meta.encounter_triggers[0].script,
@@ -581,7 +586,8 @@ mod tests {
             r#"{"trigger_id": "complete_1", "next_cell": [1, 0, 0]}"#,
         )]);
         let mut meta = VeilweaverSliceMetadata::default();
-        meta.extend_cell(&cell).expect("extend_cell should succeed");
+        meta.extend_cell(&cell)
+            .test_expect("extend_cell should succeed");
         assert_eq!(meta.encounter_completes.len(), 1);
         assert!(meta.encounter_completes[0].next_cell.is_some());
     }
@@ -593,7 +599,8 @@ mod tests {
             r#"{"trigger_id": "fx_1", "effect": "smoke", "intensity": 0.5}"#,
         )]);
         let mut meta = VeilweaverSliceMetadata::default();
-        meta.extend_cell(&cell).expect("extend_cell should succeed");
+        meta.extend_cell(&cell)
+            .test_expect("extend_cell should succeed");
         assert_eq!(meta.effect_anchors.len(), 1);
         assert_eq!(meta.effect_anchors[0].effect, Some("smoke".to_string()));
     }
@@ -605,7 +612,8 @@ mod tests {
             r#"{"id": "spawn_1", "facing": [1.0, 0.0, 0.0]}"#,
         )]);
         let mut meta = VeilweaverSliceMetadata::default();
-        meta.extend_cell(&cell).expect("extend_cell should succeed");
+        meta.extend_cell(&cell)
+            .test_expect("extend_cell should succeed");
         assert_eq!(meta.spawn_points.len(), 1);
         assert_eq!(meta.spawn_points[0].spawn_id, "spawn_1");
     }
@@ -618,7 +626,8 @@ mod tests {
             ("SpawnPoint", r#"{"id": "spawn_1"}"#),
         ]);
         let mut meta = VeilweaverSliceMetadata::default();
-        meta.extend_cell(&cell).expect("extend_cell should succeed");
+        meta.extend_cell(&cell)
+            .test_expect("extend_cell should succeed");
         assert_eq!(meta.anchors.len(), 1);
         assert_eq!(meta.trigger_zones.len(), 1);
         assert_eq!(meta.spawn_points.len(), 1);
@@ -628,7 +637,8 @@ mod tests {
     fn test_extend_cell_empty_cell() {
         let cell = make_cell_with_components(vec![]);
         let mut meta = VeilweaverSliceMetadata::default();
-        meta.extend_cell(&cell).expect("extend_cell should succeed");
+        meta.extend_cell(&cell)
+            .test_expect("extend_cell should succeed");
         assert!(meta.anchors.is_empty());
         assert!(meta.trigger_zones.is_empty());
     }
@@ -642,7 +652,8 @@ mod tests {
             ("SpawnPoint", r#"{"id": "spawn_1"}"#),
         ]);
         let cells = vec![&cell1, &cell2];
-        let meta = VeilweaverSliceMetadata::from_cells(&cells).expect("from_cells should succeed");
+        let meta =
+            VeilweaverSliceMetadata::from_cells(&cells).test_expect("from_cells should succeed");
         assert_eq!(meta.anchors.len(), 2);
         assert_eq!(meta.spawn_points.len(), 1);
     }
@@ -650,7 +661,8 @@ mod tests {
     #[test]
     fn test_from_cells_empty_slice() {
         let cells: Vec<&Cell> = vec![];
-        let meta = VeilweaverSliceMetadata::from_cells(&cells).expect("from_cells should succeed");
+        let meta =
+            VeilweaverSliceMetadata::from_cells(&cells).test_expect("from_cells should succeed");
         assert!(meta.anchors.is_empty());
     }
 
@@ -670,7 +682,8 @@ mod tests {
     fn test_extend_cell_minimal_weave_anchor() {
         let cell = make_cell_with_components(vec![("WeaveAnchor", r#"{"anchor_id": "minimal"}"#)]);
         let mut meta = VeilweaverSliceMetadata::default();
-        meta.extend_cell(&cell).expect("extend_cell should succeed");
+        meta.extend_cell(&cell)
+            .test_expect("extend_cell should succeed");
         assert_eq!(meta.anchors[0].anchor_id, "minimal");
         assert!(meta.anchors[0].anchor_type.is_none());
         assert!(meta.anchors[0].stability.is_none());
@@ -684,8 +697,9 @@ mod tests {
             r#"{"trigger_id": "box", "shape": "box", "extents": [10.0, 5.0, 10.0]}"#,
         )]);
         let mut meta = VeilweaverSliceMetadata::default();
-        meta.extend_cell(&cell).expect("extend_cell should succeed");
-        let extents = meta.trigger_zones[0].extents.unwrap();
+        meta.extend_cell(&cell)
+            .test_expect("extend_cell should succeed");
+        let extents = meta.trigger_zones[0].extents.test_unwrap();
         assert!((extents[0] - 10.0).abs() < f32::EPSILON);
         assert!((extents[1] - 5.0).abs() < f32::EPSILON);
     }
@@ -697,7 +711,8 @@ mod tests {
             r#"{"trigger_id": "empty_prompt"}"#,
         )]);
         let mut meta = VeilweaverSliceMetadata::default();
-        meta.extend_cell(&cell).expect("extend_cell should succeed");
+        meta.extend_cell(&cell)
+            .test_expect("extend_cell should succeed");
         assert!(meta.decision_prompts[0].options.is_empty());
     }
 
@@ -706,7 +721,8 @@ mod tests {
         let cell =
             make_cell_with_components(vec![("EncounterComplete", r#"{"trigger_id": "final"}"#)]);
         let mut meta = VeilweaverSliceMetadata::default();
-        meta.extend_cell(&cell).expect("extend_cell should succeed");
+        meta.extend_cell(&cell)
+            .test_expect("extend_cell should succeed");
         assert!(meta.encounter_completes[0].next_cell.is_none());
     }
 
@@ -714,7 +730,8 @@ mod tests {
     fn test_spec_position_preserved() {
         let cell = make_cell_with_components(vec![("WeaveAnchor", r#"{"anchor_id": "pos_test"}"#)]);
         let mut meta = VeilweaverSliceMetadata::default();
-        meta.extend_cell(&cell).expect("extend_cell should succeed");
+        meta.extend_cell(&cell)
+            .test_expect("extend_cell should succeed");
         // Position comes from entity blueprint: [1.0, 2.0, 3.0]
         assert!((meta.anchors[0].position[0] - 1.0).abs() < f32::EPSILON);
         assert!((meta.anchors[0].position[1] - 2.0).abs() < f32::EPSILON);
@@ -726,7 +743,8 @@ mod tests {
         let cell =
             make_cell_with_components(vec![("WeaveAnchor", r#"{"anchor_id": "coord_test"}"#)]);
         let mut meta = VeilweaverSliceMetadata::default();
-        meta.extend_cell(&cell).expect("extend_cell should succeed");
+        meta.extend_cell(&cell)
+            .test_expect("extend_cell should succeed");
         // Coord is [0, 0, 0] from make_cell_with_components
         assert_eq!(meta.anchors[0].cell.x, 0);
         assert_eq!(meta.anchors[0].cell.y, 0);
@@ -737,7 +755,8 @@ mod tests {
     fn test_effect_anchor_all_optional() {
         let cell = make_cell_with_components(vec![("EffectAnchor", r#"{}"#)]);
         let mut meta = VeilweaverSliceMetadata::default();
-        meta.extend_cell(&cell).expect("extend_cell should succeed");
+        meta.extend_cell(&cell)
+            .test_expect("extend_cell should succeed");
         assert!(meta.effect_anchors[0].trigger_id.is_none());
         assert!(meta.effect_anchors[0].effect.is_none());
         assert!(meta.effect_anchors[0].intensity.is_none());
@@ -747,7 +766,8 @@ mod tests {
     fn test_spawn_point_no_facing() {
         let cell = make_cell_with_components(vec![("SpawnPoint", r#"{"id": "no_facing"}"#)]);
         let mut meta = VeilweaverSliceMetadata::default();
-        meta.extend_cell(&cell).expect("extend_cell should succeed");
+        meta.extend_cell(&cell)
+            .test_expect("extend_cell should succeed");
         assert!(meta.spawn_points[0].facing.is_none());
     }
 }

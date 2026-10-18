@@ -150,6 +150,7 @@ pub fn apply_weave_op(
 #[cfg(test)]
 mod tests {
     use super::*;
+    pub use crate::test_support::{TestErr, TestValue};
     use glam::vec3;
 
     fn create_test_world() -> World {
@@ -194,7 +195,7 @@ mod tests {
         assert!(result.is_ok(), "ReinforcePath should succeed");
         assert_eq!(budget.terrain_edits, 4, "Should consume 1 terrain edit");
 
-        let consequence = result.unwrap();
+        let consequence = result.test_unwrap();
         assert_eq!(consequence.drop_multiplier, 1.1);
         assert_eq!(consequence.faction_disposition, 5);
         assert_eq!(consequence.weather_shift, None);
@@ -229,7 +230,7 @@ mod tests {
 
         assert!(result.is_err(), "Should fail with no budget");
         assert!(result
-            .unwrap_err()
+            .test_unwrap_err()
             .to_string()
             .contains("No terrain budget"));
     }
@@ -261,7 +262,7 @@ mod tests {
         assert!(result.is_ok(), "CollapseBridge should succeed");
         assert_eq!(budget.terrain_edits, 4, "Should consume 1 terrain edit");
 
-        let consequence = result.unwrap();
+        let consequence = result.test_unwrap();
         assert_eq!(consequence.drop_multiplier, 0.9);
         assert_eq!(consequence.faction_disposition, -10);
     }
@@ -292,7 +293,7 @@ mod tests {
 
         assert!(result.is_err(), "Should fail without point B");
         assert!(result
-            .unwrap_err()
+            .test_unwrap_err()
             .to_string()
             .contains("Collapse needs A->B"));
     }
@@ -328,7 +329,7 @@ mod tests {
             "Should log wind redirect"
         );
 
-        let consequence = result.unwrap();
+        let consequence = result.test_unwrap();
         assert_eq!(consequence.weather_shift, Some("windy".to_string()));
     }
 
@@ -361,7 +362,7 @@ mod tests {
 
         assert!(result.is_err(), "Should fail with no weather budget");
         assert!(result
-            .unwrap_err()
+            .test_unwrap_err()
             .to_string()
             .contains("No weather budget"));
     }
@@ -397,7 +398,7 @@ mod tests {
             "Should log water lowering"
         );
 
-        let consequence = result.unwrap();
+        let consequence = result.test_unwrap();
         assert_eq!(consequence.weather_shift, Some("dry".to_string()));
     }
 
@@ -428,7 +429,7 @@ mod tests {
         assert!(result.is_ok(), "RaisePlatform should succeed");
         assert_eq!(budget.terrain_edits, 4, "Should consume 1 terrain edit");
 
-        let consequence = result.unwrap();
+        let consequence = result.test_unwrap();
         assert_eq!(consequence.drop_multiplier, 1.05);
         assert_eq!(consequence.faction_disposition, 0);
     }
@@ -457,7 +458,7 @@ mod tests {
             &op1,
             &mut logger,
         )
-        .unwrap();
+        .test_unwrap();
 
         // Apply RedirectWind
         let op2 = WeaveOp {
@@ -474,7 +475,7 @@ mod tests {
             &op2,
             &mut logger,
         )
-        .unwrap();
+        .test_unwrap();
 
         assert_eq!(budget.terrain_edits, 4, "Should have used 1 terrain edit");
         assert_eq!(budget.weather_ops, 2, "Should have used 1 weather op");
@@ -554,7 +555,7 @@ mod tests {
             &op,
             &mut logger,
         )
-        .unwrap();
+        .test_unwrap();
 
         assert!(
             (consequence.drop_multiplier - 1.1).abs() < f32::EPSILON,
@@ -589,7 +590,7 @@ mod tests {
             &op,
             &mut logger,
         )
-        .unwrap();
+        .test_unwrap();
 
         assert!(
             (consequence.drop_multiplier - 0.9).abs() < f32::EPSILON,
