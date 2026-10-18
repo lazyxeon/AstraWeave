@@ -9,9 +9,26 @@
 //! - Deferred light accumulation
 //! - BRDF LUT generation
 
-use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
+use criterion::{
+    criterion_group, criterion_main, BenchmarkGroup, BenchmarkId, Criterion, SamplingMode,
+};
 use std::f32::consts::PI;
 use std::hint::black_box;
+use std::time::Duration;
+
+// Run 39100674332 shard 14 killed this target at 600s. Same flat sample
+// budget as graph_mesh_material_texture. Every function still runs.
+fn ci_budget<'a>(
+    c: &'a mut Criterion,
+    name: &str,
+) -> BenchmarkGroup<'a, criterion::measurement::WallTime> {
+    let mut group = c.benchmark_group(name);
+    group.sampling_mode(SamplingMode::Flat);
+    group.sample_size(10);
+    group.warm_up_time(Duration::from_millis(1));
+    group.measurement_time(Duration::from_secs(1));
+    group
+}
 
 // =============================================================================
 
@@ -144,7 +161,7 @@ fn reconstruct_irradiance_sh(coeffs: &[[f32; 3]], dir: &[f32; 3]) -> [f32; 3] {
 }
 
 fn bench_spherical_harmonics(c: &mut Criterion) {
-    let mut group = c.benchmark_group("ibl_deferred/spherical_harmonics");
+    let mut group = ci_budget(c, "ibl_deferred/spherical_harmonics");
     group.sample_size(50);
 
     // Benchmark SH coefficient generation for different band counts
@@ -302,7 +319,7 @@ fn sample_cubemap_bilinear(dir: [f32; 3], mip_size: u32) -> [f32; 4] {
 }
 
 fn bench_cubemap_sampling(c: &mut Criterion) {
-    let mut group = c.benchmark_group("ibl_deferred/cubemap_sampling");
+    let mut group = ci_budget(c, "ibl_deferred/cubemap_sampling");
 
     // Benchmark direction to UV conversion
     let dirs: Vec<[f32; 3]> = (0..1000)
@@ -433,7 +450,7 @@ fn normalize(v: &[f32; 3]) -> [f32; 3] {
 }
 
 fn bench_ggx_sampling(c: &mut Criterion) {
-    let mut group = c.benchmark_group("ibl_deferred/ggx_importance_sampling");
+    let mut group = ci_budget(c, "ibl_deferred/ggx_importance_sampling");
 
     // Benchmark Hammersley sequence generation
     for sample_count in [64u32, 256, 1024, 4096] {
@@ -565,7 +582,7 @@ struct GBufferPixel {
 }
 
 fn bench_gbuffer_operations(c: &mut Criterion) {
-    let mut group = c.benchmark_group("ibl_deferred/gbuffer_operations");
+    let mut group = ci_budget(c, "ibl_deferred/gbuffer_operations");
 
     // Benchmark octahedral normal packing
     let normals: Vec<[f32; 3]> = (0..1000)
@@ -720,7 +737,7 @@ fn integrate_brdf(n_dot_v: f32, roughness: f32, sample_count: u32) -> [f32; 2] {
 }
 
 fn bench_brdf_lut(c: &mut Criterion) {
-    let mut group = c.benchmark_group("ibl_deferred/brdf_lut");
+    let mut group = ci_budget(c, "ibl_deferred/brdf_lut");
     group.sample_size(30);
 
     // Benchmark single BRDF sample integration
@@ -862,7 +879,7 @@ fn calculate_point_light(
 }
 
 fn bench_deferred_lighting(c: &mut Criterion) {
-    let mut group = c.benchmark_group("ibl_deferred/deferred_lighting");
+    let mut group = ci_budget(c, "ibl_deferred/deferred_lighting");
 
     // Generate test scene data
     let world_pos = [5.0f32, 2.0, 3.0];

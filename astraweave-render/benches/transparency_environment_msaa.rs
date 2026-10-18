@@ -7,10 +7,28 @@
 //!
 //! Part of the AstraWeave AI-Native Game Engine benchmark infrastructure.
 
-use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+use criterion::{
+    criterion_group, criterion_main, BenchmarkGroup, BenchmarkId, Criterion, SamplingMode,
+    Throughput,
+};
 use glam::{vec3, Vec3};
 use std::hint::black_box;
-use std::time::Instant;
+use std::time::{Duration, Instant};
+
+// Shard 14 was cancelled at 60 minutes before this target finished
+// (run 39100674332). Same flat sample budget so it cannot take 600s.
+// Every function still runs. The caps stay.
+fn ci_budget<'a>(
+    c: &'a mut Criterion,
+    name: &str,
+) -> BenchmarkGroup<'a, criterion::measurement::WallTime> {
+    let mut group = c.benchmark_group(name);
+    group.sampling_mode(SamplingMode::Flat);
+    group.sample_size(10);
+    group.warm_up_time(Duration::from_millis(1));
+    group.measurement_time(Duration::from_secs(1));
+    group
+}
 
 // ============================================================================
 // SECTION 1: TRANSPARENCY & DEPTH SORTING BENCHMARKS
@@ -131,7 +149,7 @@ impl Default for TransparencyManager {
 }
 
 fn bench_transparency_manager(c: &mut Criterion) {
-    let mut group = c.benchmark_group("Transparency_Manager");
+    let mut group = ci_budget(c, "Transparency_Manager");
 
     // Benchmark creation
     group.bench_function("new", |b| {
@@ -180,7 +198,7 @@ fn bench_transparency_manager(c: &mut Criterion) {
 }
 
 fn bench_depth_sorting(c: &mut Criterion) {
-    let mut group = c.benchmark_group("Depth_Sorting");
+    let mut group = ci_budget(c, "Depth_Sorting");
 
     // Different instance counts for sorting
     for count in [100, 500, 1000, 2000, 5000, 10000] {
@@ -218,7 +236,7 @@ fn bench_depth_sorting(c: &mut Criterion) {
 }
 
 fn bench_blend_mode_filtering(c: &mut Criterion) {
-    let mut group = c.benchmark_group("Blend_Mode_Filter");
+    let mut group = ci_budget(c, "Blend_Mode_Filter");
 
     // Pre-populate with mixed blend modes
     let count = 3000;
@@ -373,7 +391,7 @@ impl TimeOfDay {
 }
 
 fn bench_time_of_day(c: &mut Criterion) {
-    let mut group = c.benchmark_group("Time_Of_Day");
+    let mut group = ci_budget(c, "Time_Of_Day");
 
     group.bench_function("new", |b| {
         b.iter(|| {
@@ -637,7 +655,7 @@ impl WeatherSystem {
 }
 
 fn bench_weather_system(c: &mut Criterion) {
-    let mut group = c.benchmark_group("Weather_System");
+    let mut group = ci_budget(c, "Weather_System");
 
     group.bench_function("new", |b| {
         b.iter(|| {
@@ -831,7 +849,7 @@ impl WeatherParticles {
 }
 
 fn bench_weather_particles(c: &mut Criterion) {
-    let mut group = c.benchmark_group("Weather_Particles");
+    let mut group = ci_budget(c, "Weather_Particles");
 
     group.bench_function("new_1000", |b| {
         b.iter(|| {
@@ -1006,7 +1024,7 @@ impl Default for MsaaRenderTarget {
 }
 
 fn bench_msaa(c: &mut Criterion) {
-    let mut group = c.benchmark_group("MSAA");
+    let mut group = ci_budget(c, "MSAA");
 
     group.bench_function("mode_sample_count", |b| {
         b.iter(|| {
@@ -1087,7 +1105,7 @@ fn bench_msaa(c: &mut Criterion) {
 // ============================================================================
 
 fn bench_full_environment_frame(c: &mut Criterion) {
-    let mut group = c.benchmark_group("Full_Environment_Frame");
+    let mut group = ci_budget(c, "Full_Environment_Frame");
 
     // Simulate a complete frame update for environment systems
     group.bench_function("typical_frame", |b| {
