@@ -57,7 +57,7 @@ These also run on a non-docs pull request when their paths match, and are not in
 | Work | When |
 |---|---|
 | Full 3-OS `cargo nextest` plus a release build of the core crates, and demo validation | `ci.yml` on push, schedule 04:30 UTC, dispatch. Not on pull requests. |
-| 6-toolchain matrix (stable, 1.89.0, 1.88.0, beta, nightly) | `toolchain-management.yml` on push to main, schedule 05:40 UTC, dispatch. The checkout sets `lfs: true` (#348) so `ASSET_MANIFEST.tsv` hashes the Aravath blobs, not the pointer files. `Toolchain Validation (1.89.0)` runs workspace clippy `-D warnings`, with that workflow's package excludes. #360 closed the `expect` on schedule registration. #358 is closed. The fix is #360. That 1.89.0 clippy step is expected green. The CI agent is confirming it on main. MSRV stays on the pull request. |
+| 5-toolchain matrix (stable, 1.89.0, 1.88.0, beta, nightly) | `toolchain-management.yml` on push to main, schedule 05:40 UTC, dispatch. The checkout sets `lfs: true` (#348) so `ASSET_MANIFEST.tsv` hashes the Aravath blobs, not the pointer files. `Toolchain Validation (1.89.0)` runs workspace clippy `-D warnings`, with that workflow's package excludes. #360 closed the `expect` on schedule registration. #358 is closed. The fix is #360. That 1.89.0 clippy step is expected green. The CI agent is confirming it on main. MSRV stays on the pull request. |
 | Sanitizers | `sanitizers.yml` on push and schedule 03:00 UTC. Not on pull requests. |
 | Coverage | `coverage.yml` on push to main, schedule 06:10 UTC, dispatch. |
 | CodeQL | push to main and weekly (Sunday 03:00 UTC). Not on pull requests. |

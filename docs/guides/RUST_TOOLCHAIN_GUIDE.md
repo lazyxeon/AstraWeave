@@ -1,6 +1,6 @@
 # Rust toolchain
 
-Checked against `main` at `cdea968c` (2026-10-16).
+Checked against `main` at `cdea968c` (2026-10-16). The status line under Pull-request compile is current as of `c1cff4c2` (2026-10-18).
 
 AstraWeave pins Rust **1.89.0** in `rust-toolchain.toml`, with `rustfmt`, `clippy`, `rust-src`, `rust-analyzer`, and `llvm-tools-preview`. Targets listed there:
 
