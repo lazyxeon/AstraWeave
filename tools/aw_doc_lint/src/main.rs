@@ -40,7 +40,7 @@ const ALLOWLIST_REL: &str = "docs/campaigns/doc-truth/CLOSED_VOCABULARY_ALLOWLIS
 const REPLAY_WORKFLOW_REL: &str = ".github/workflows/determinism-replay.yml";
 const README_REL: &str = "README.md";
 
-const IN_PROGRESS_ISSUES: &[&str] = &["#216", "#366", "#367"];
+const IN_PROGRESS_ISSUES: &[&str] = &["#366", "#367"];
 
 const VOCAB_A_START: &str = "<!-- VOCAB-A-START -->";
 const VOCAB_A_END: &str = "<!-- VOCAB-A-END -->";
@@ -440,7 +440,7 @@ fn front_door_errors(
         }
     }
     for phrase in [
-        "not yet measured",
+        "3.688 ms",
         "11 ms",
         "GTX 1660 Ti",
         "CC0",
@@ -806,11 +806,11 @@ mod tests {
         [
             "Local LLMs propose. The deterministic simulation validates and executes.",
             "The game is Aravath. Assets are CC0 only.",
-            "under 11 ms per frame on a GTX 1660 Ti-class GPU. It is not yet measured.",
+            "under 11 ms per frame on a GTX 1660 Ti-class GPU. The heavy scene measured 3.688 ms.",
             "planner_pure perception_world gameplay_rng fixed64 combat_resolve",
             "destruction gameplay_qa_aravath_slice nav_reroute causal_bridge scripted_system weaving traversal traversal_deformed worldgen_columns deformed_chunk local_sim greybox_checkpoint quest_ticks persist_replay",
             "## In progress",
-            "#216 are in progress. #366 are in progress. #367 are in progress",
+            "#366 are in progress. #367 are in progress",
             "## Next",
         ]
         .join("\n")
@@ -844,14 +844,14 @@ mod tests {
 
     #[test]
     fn front_door_rejects_an_extra_in_progress_issue() {
-        let readme = sample_readme().replace("#216 are in progress", "#216 #999 are in progress");
+        let readme = sample_readme().replace("#366 are in progress", "#366 #999 are in progress");
         let errors = front_door_errors(&readme, &sample_workflow(), &[]);
         assert!(
             errors.iter().any(|error| error.contains("#999")),
             "{errors:?}"
         );
         assert!(
-            !errors.iter().any(|error| error.contains("missing #216")),
+            !errors.iter().any(|error| error.contains("missing #366")),
             "{errors:?}"
         );
     }

@@ -2,7 +2,7 @@
 
 > **Version**: 5.62 | **Date**: 2026-10-16 | **Framework**: Criterion.rs (statistical)
 >
-> **2026-10-16:** This report does not show a passing full-frame budget. The target is under 11 ms per frame on a GTX 1660 Ti-class GPU. It is not yet measured on that hardware (GPU timer read 0 ms; readback is in progress in #216). The 0.97 ms / 0.71 ms rows are CPU `profiling_demo` times at 1,000 entities, measured 2026-06-27. The 12,700-agent row is a CPU AI-loop capacity estimate on an i5-10300H, not a rendered frame. "100% bit-identical" in older rows means the replay cases that existed when that sentence was written; `main` at `d0452d3e` requires fifteen named cases. No letter grade is claimed from this page.
+> **2026-10-18:** The heavy-scene GPU frame on a GTX 1660 Ti Max-Q is 3.688 ms, `budget_11ms=pass`, with the amortized cloud shadow at 0.323 ms (#216, on `main` at `92727109`). #371 and #372 stay open. The 0.97 ms / 0.71 ms rows are CPU `profiling_demo` times at 1,000 entities, measured 2026-06-27. The 12,700-agent row is a CPU AI-loop capacity estimate on an i5-10300H, not a rendered frame. "100% bit-identical" in older rows means the replay cases that existed when that sentence was written; `main` at `d0452d3e` requires fifteen named cases. No letter grade is claimed from this page.
 
 ---
 
@@ -14,7 +14,7 @@
 | **Crates Benchmarked** | 40+ |
 | **Framework** | Criterion.rs (statistical confidence intervals) |
 | **Overall Grade** | Not graded on this revision. The previous A+ label was a June 2026 summary, not a full-frame result. |
-| **Frame Time** | CPU `profiling_demo`: ~0.97 ms (system) / ~0.71 ms (mimalloc) @ 1,000 entities (2026-06-27). 2.70 ms was the Week-8 target. The GTX 1660 Ti full-frame target (under 11 ms) is not yet measured (#216). |
+| **Frame Time** | CPU `profiling_demo`: ~0.97 ms (system) / ~0.71 ms (mimalloc) @ 1,000 entities (2026-06-27). 2.70 ms was the Week-8 target. The heavy-scene GPU frame on a GTX 1660 Ti Max-Q is 3.688 ms, `budget_11ms=pass` (#216). The amortized cloud shadow is 0.323 ms. #371 and #372 stay open. |
 | **Agent Capacity** | 12,700+ is a CPU AI-loop estimate @ a 16.67 ms budget (2026-06-27, i5-10300H). Not a rendered 60 FPS frame. |
 | **Validation Throughput** | 6.48M checks/sec (MoveTo path, 2026-06-27) |
 | **Determinism** | Fifteen required cross-OS SHA-256 cases on `main` at `d0452d3e`, including `worldgen_columns` and `deformed_chunk`. See the repository README. |
@@ -857,7 +857,7 @@ Sub-nanosecond operations discovered: 998 ps, 999 ps, 929 ps. DOF focus plane op
 
 ## Known Limitations
 
-- **Rendering**: Full-frame GPU time on a GTX 1660 Ti-class GPU is not measured. The timer read 0 ms. #216 is in progress. CPU `profiling_demo` times are not that measurement.
+- **Rendering**: The heavy-scene GPU frame on a GTX 1660 Ti Max-Q is 3.688 ms, `budget_11ms=pass` (#216). The amortized cloud shadow is 0.323 ms. #371 and #372 stay open. CPU `profiling_demo` times are not that measurement.
 - **LLM latency**: Older blocking-latency rows in this report name a specific local model and machine. They are not a current frame budget. The orchestrator default when `OLLAMA_MODEL` is unset is `phi3:medium`.
 - **Terrain 10K triangles**: 473 ms navmesh bake — must be async/precomputed (dated bench; not re-run 2026-10-16).
 - **Compile exclusions**: A June 2026 audit recorded `ui_controls_demo`, `debug_overlay`, `astraweave-author`, `rhai_authoring`, and `astraweave-llm` as compiling. This pass did not re-run `cargo check --workspace`. Do not treat the older "won't compile" sentences as current.
