@@ -177,6 +177,97 @@ pub fn legacy_utility_plan(snap: &WorldSnapshot) -> PlanIntent {
     legacy_steps(snap, plan_id)
 }
 
+/// One-step engage heuristic. The plan id stays `goap-{millis}` so the
+/// `planner_pure` replay bytes do not move. [`crate::GoapOrchestrator`]
+/// delegates here.
+#[must_use]
+pub fn legacy_goap_plan(snap: &WorldSnapshot) -> PlanIntent {
+    let plan_id = format!("goap-{}", (snap.t * 1000.0) as i64);
+    if let Some(enemy) = snap.enemies.first() {
+        let me = &snap.me;
+        let dx = enemy.pos.x.saturating_sub(me.pos.x).abs();
+        let dy = enemy.pos.y.saturating_sub(me.pos.y).abs();
+        let dist = dx.saturating_add(dy);
+        if dist <= 2 {
+            return PlanIntent {
+                plan_id,
+                steps: vec![ActionStep::CoverFire {
+                    target_id: enemy.id,
+                    duration: 1.5,
+                }],
+            };
+        }
+        return PlanIntent {
+            plan_id,
+            steps: vec![ActionStep::MoveTo {
+                speed: None,
+                x: me.pos.x + (enemy.pos.x - me.pos.x).signum(),
+                y: me.pos.y + (enemy.pos.y - me.pos.y).signum(),
+            }],
+        };
+    }
+    PlanIntent {
+        plan_id,
+        steps: vec![],
+    }
+}
+
+/// Same choice as [`legacy_goap_plan`], as one step. No enemies wait 1 second.
+#[must_use]
+pub fn legacy_goap_step(snap: &WorldSnapshot) -> ActionStep {
+    if let Some(enemy) = snap.enemies.first() {
+        let me = &snap.me;
+        let dx = enemy.pos.x - me.pos.x;
+        let dy = enemy.pos.y - me.pos.y;
+        let dist = dx.abs() + dy.abs();
+        if dist <= 2 {
+            return ActionStep::CoverFire {
+                target_id: enemy.id,
+                duration: 1.5,
+            };
+        }
+        return ActionStep::MoveTo {
+            speed: None,
+            x: me.pos.x + dx.signum(),
+            y: me.pos.y + dy.signum(),
+        };
+    }
+    ActionStep::Wait { duration: 1.0 }
+}
+
+/// Fixed gather methods. `gather` or `craft` in the policy name keeps wood
+/// and food. Any other policy only cooks food. No search and no fact map.
+#[must_use]
+pub fn gather_method(policy: Option<&str>) -> PlanIntent {
+    let keep_wood = policy.is_some_and(|name| name.contains("gather") || name.contains("craft"));
+    let steps = if keep_wood {
+        vec![
+            site_step(10, 10),
+            site_step(10, 10),
+            site_step(5, 5),
+            site_step(5, 5),
+            site_step(10, 10),
+            site_step(10, 10),
+        ]
+    } else {
+        vec![
+            site_step(10, 10),
+            site_step(10, 10),
+            site_step(5, 5),
+            site_step(5, 5),
+        ]
+    };
+    let len = steps.len();
+    PlanIntent {
+        plan_id: format!("goap_{len}"),
+        steps,
+    }
+}
+
+fn site_step(x: i32, y: i32) -> ActionStep {
+    ActionStep::MoveTo { x, y, speed: None }
+}
+
 /// Copy nav breaches and lost cover into a perception buffer. No allocation.
 pub fn fill_observation(tiles: &NavTiles, buf: &mut ObservationBuf) {
     buf.breach_len = 0;

@@ -1,6 +1,5 @@
 #![allow(clippy::too_many_arguments)]
 
-use astraweave_behavior::goap::{GoapAction, GoapGoal, WorldState};
 use astraweave_core::{ActionStep, MovementSpeed, PlanIntent, WorldSnapshot};
 use astraweave_observability::{log_companion_action, CompanionActionEvent};
 use tracing::info;
@@ -13,23 +12,15 @@ const ACTION_EXECUTE_COMBO: &str = "execute_combo";
 const ACTION_MARK_TARGET: &str = "mark_target";
 const ACTION_REPOSITION: &str = "reposition";
 
-/// Hybrid GOAP planner tailored to Veilweaver companion behaviors.
-pub struct VeilweaverCompanionOrchestrator {
-    actions: Vec<GoapAction>,
-    goals: Vec<GoapGoal>,
-}
+/// Slice companion. Method order is priority, then lower method id.
+pub struct VeilweaverCompanionOrchestrator;
 
 impl VeilweaverCompanionOrchestrator {
     pub fn new() -> Self {
-        Self {
-            actions: build_actions(),
-            goals: build_goals(),
-        }
+        Self
     }
 
     fn plan_internal(&self, snap: &WorldSnapshot) -> PlanIntent {
-        debug_assert_eq!(self.actions.len(), 5);
-        debug_assert_eq!(self.goals.len(), 4);
         let heuristics = HeuristicState::from_snapshot(snap);
         let action = select_slice_action(&heuristics);
         let plan_id = format!("vw-companion-{}", (snap.t * 1000.0) as i64);
@@ -93,58 +84,6 @@ impl Orchestrator for VeilweaverCompanionOrchestrator {
     fn propose_plan(&self, snap: &WorldSnapshot) -> PlanIntent {
         self.plan_internal(snap)
     }
-}
-
-fn build_actions() -> Vec<GoapAction> {
-    vec![
-        GoapAction::new(ACTION_STABILITY_PULSE)
-            .with_precondition("anchor_unstable", true)
-            .with_precondition("has_echo", true)
-            .with_effect("anchor_unstable", false)
-            .with_effect("has_echo", false)
-            .with_cost(1.0),
-        GoapAction::new(ACTION_HEAL_PLAYER)
-            .with_precondition("player_low", true)
-            .with_effect("player_low", false)
-            .with_cost(1.2),
-        GoapAction::new(ACTION_EXECUTE_COMBO)
-            .with_precondition("enemy_vulnerable", true)
-            .with_effect("enemy_vulnerable", false)
-            .with_cost(1.1),
-        GoapAction::new(ACTION_MARK_TARGET)
-            .with_precondition("enemy_tagged", false)
-            .with_effect("enemy_tagged", true)
-            .with_cost(0.8),
-        GoapAction::new(ACTION_REPOSITION)
-            .with_precondition("position_good", false)
-            .with_effect("position_good", true)
-            .with_cost(0.6),
-    ]
-}
-
-fn build_goals() -> Vec<GoapGoal> {
-    vec![
-        GoapGoal::new(
-            "protect_player",
-            WorldState::from_facts(&[("player_low", false)]),
-        )
-        .with_priority(3.0),
-        GoapGoal::new(
-            "stabilize_threads",
-            WorldState::from_facts(&[("anchor_unstable", false)]),
-        )
-        .with_priority(2.8),
-        GoapGoal::new(
-            "exploit_stagger",
-            WorldState::from_facts(&[("enemy_vulnerable", false)]),
-        )
-        .with_priority(2.2),
-        GoapGoal::new(
-            "maintain_positioning",
-            WorldState::from_facts(&[("position_good", true)]),
-        )
-        .with_priority(1.5),
-    ]
 }
 
 fn map_action_to_steps(action: &str, heuristics: &HeuristicState<'_>) -> Vec<ActionStep> {
@@ -296,16 +235,15 @@ mod tests {
     #[test]
     fn test_orchestrator_new() {
         let orch = VeilweaverCompanionOrchestrator::new();
-        // Should have the expected number of actions and goals
-        assert_eq!(orch.actions.len(), 5, "Should have 5 GOAP actions");
-        assert_eq!(orch.goals.len(), 4, "Should have 4 GOAP goals");
+        let snap = minimal_snapshot();
+        assert!(!orch.propose_plan(&snap).plan_id.is_empty());
     }
 
     #[test]
     fn test_orchestrator_default() {
         let orch = VeilweaverCompanionOrchestrator::default();
-        assert_eq!(orch.actions.len(), 5);
-        assert_eq!(orch.goals.len(), 4);
+        let snap = minimal_snapshot();
+        assert!(!orch.propose_plan(&snap).plan_id.is_empty());
     }
 
     #[test]
@@ -526,50 +464,13 @@ mod tests {
         assert_eq!(avg.y, 10, "Average Y should be 10");
     }
 
-    // ==========================================================================
-    // build_actions Tests
-    // ==========================================================================
-
     #[test]
-    fn test_build_actions_count() {
-        let actions = build_actions();
-        assert_eq!(actions.len(), 5);
-    }
-
-    #[test]
-    fn test_build_actions_names() {
-        let actions = build_actions();
-        let names: Vec<&str> = actions.iter().map(|a| a.name.as_str()).collect();
-        assert!(names.contains(&ACTION_STABILITY_PULSE));
-        assert!(names.contains(&ACTION_HEAL_PLAYER));
-        assert!(names.contains(&ACTION_EXECUTE_COMBO));
-        assert!(names.contains(&ACTION_MARK_TARGET));
-        assert!(names.contains(&ACTION_REPOSITION));
-    }
-
-    // ==========================================================================
-    // build_goals Tests
-    // ==========================================================================
-
-    #[test]
-    fn test_build_goals_count() {
-        let goals = build_goals();
-        assert_eq!(goals.len(), 4);
-    }
-
-    #[test]
-    fn test_build_goals_priorities() {
-        let goals = build_goals();
-        // Find protect_player goal - should have highest priority
-        let protect = goals.iter().find(|g| g.name == "protect_player").unwrap();
-        assert_eq!(protect.priority, 3.0);
-
-        // Find maintain_positioning - should have lowest priority
-        let position = goals
-            .iter()
-            .find(|g| g.name == "maintain_positioning")
-            .unwrap();
-        assert_eq!(position.priority, 1.5);
+    fn slice_methods_stay_named() {
+        assert_eq!(ACTION_HEAL_PLAYER, "heal_player");
+        assert_eq!(ACTION_STABILITY_PULSE, "stability_pulse");
+        assert_eq!(ACTION_EXECUTE_COMBO, "execute_combo");
+        assert_eq!(ACTION_MARK_TARGET, "mark_target");
+        assert_eq!(ACTION_REPOSITION, "reposition");
     }
 
     // ==========================================================================

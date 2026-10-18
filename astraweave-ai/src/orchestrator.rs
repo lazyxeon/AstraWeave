@@ -209,11 +209,9 @@ impl OrchestratorAsync for UtilityOrchestrator {
 
 /// Heuristic MoveTo / CoverFire chain toward the first enemy in the snapshot.
 ///
-/// This is not the symbolic A* planner (`GoapPlanner` in the behavior crate).
-/// That planner breaks equal costs with `(f_cost, depth, action name)`. This
-/// type keeps the name `GoapOrchestrator` because the A2 wired-path contract
-/// and `hello_companion` call it by that name. The ECS tick uses
-/// [`RuleOrchestrator`] for every companion.
+/// The steps are [`crate::htn::legacy_goap_plan`]. This type keeps the name
+/// `GoapOrchestrator` because the replay case and `hello_companion` call it.
+/// The ECS tick uses [`RuleOrchestrator`] for every companion.
 ///
 /// Preconditions: an enemy exists. Within 2 cells the plan is CoverFire for
 /// 1.5s; otherwise it is one step closer.
@@ -278,68 +276,13 @@ impl GoapOrchestrator {
     pub fn next_action(&self, snap: &WorldSnapshot) -> ActionStep {
         #[cfg(feature = "profiling")]
         span!("AI::GoapOrchestrator::next_action");
-
-        // Fast path: if enemy exists, move toward or engage
-        if let Some(enemy) = snap.enemies.first() {
-            let me = &snap.me;
-            let dx = enemy.pos.x - me.pos.x;
-            let dy = enemy.pos.y - me.pos.y;
-            let dist = dx.abs() + dy.abs();
-
-            if dist <= 2 {
-                // In range: cover fire
-                ActionStep::CoverFire {
-                    target_id: enemy.id,
-                    duration: 1.5,
-                }
-            } else {
-                // Out of range: move one step closer
-                ActionStep::MoveTo {
-                    speed: None,
-                    x: me.pos.x + dx.signum(),
-                    y: me.pos.y + dy.signum(),
-                }
-            }
-        } else {
-            // No enemies: wait
-            ActionStep::Wait { duration: 1.0 }
-        }
+        crate::htn::legacy_goap_step(snap)
     }
 }
 
 impl Orchestrator for GoapOrchestrator {
     fn propose_plan(&self, snap: &WorldSnapshot) -> PlanIntent {
-        let plan_id = format!("goap-{}", (snap.t * 1000.0) as i64);
-        if let Some(enemy) = snap.enemies.first() {
-            let me = &snap.me;
-            // Use saturating arithmetic to prevent overflow with extreme coordinates
-            let dx = enemy.pos.x.saturating_sub(me.pos.x).abs();
-            let dy = enemy.pos.y.saturating_sub(me.pos.y).abs();
-            let dist = dx.saturating_add(dy);
-            if dist <= 2 {
-                return PlanIntent {
-                    plan_id,
-                    steps: vec![ActionStep::CoverFire {
-                        target_id: enemy.id,
-                        duration: 1.5,
-                    }],
-                };
-            } else {
-                // Move one step closer; replan next tick
-                return PlanIntent {
-                    plan_id,
-                    steps: vec![ActionStep::MoveTo {
-                        speed: None,
-                        x: me.pos.x + (enemy.pos.x - me.pos.x).signum(),
-                        y: me.pos.y + (enemy.pos.y - me.pos.y).signum(),
-                    }],
-                };
-            }
-        }
-        PlanIntent {
-            plan_id,
-            steps: vec![],
-        }
+        crate::htn::legacy_goap_plan(snap)
     }
 }
 

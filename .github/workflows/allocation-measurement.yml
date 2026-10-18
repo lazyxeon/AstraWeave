@@ -41,7 +41,7 @@ jobs:
           - crate: astraweave-render
             features: alloc-counter
           - crate: astraweave-ai
-            features: alloc-counter,planner_advanced
+            features: alloc-counter
     steps:
       - name: Checkout
         uses: actions/checkout@v5
