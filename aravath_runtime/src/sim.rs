@@ -1133,6 +1133,18 @@ mod tests {
         );
         let mut restored = Greybox::open(0);
         restored.restore(loaded).unwrap();
+        assert_eq!(restored.tick, 40);
+        assert_eq!(restored.motor.mode, crate::motor::MotorMode::Roll);
+        assert_eq!(restored.combat.attack.time.to_bits(), 0.12f32.to_bits());
+        assert!(restored.combat.attack.swinging);
+        assert!(restored.combat.attack.hit_landed);
+        assert_eq!(restored.combat.lock, Some(0));
+        assert!(restored.combat.cover_broken);
+        assert_eq!(restored.combat.enemies.len(), 1);
+        assert_eq!(
+            restored.combat.enemies[0].health.to_bits(),
+            17.0f32.to_bits()
+        );
         assert_eq!(
             crate::save::gameplay_hash(&restored.checkpoint()),
             crate::save::gameplay_hash(&checkpoint)

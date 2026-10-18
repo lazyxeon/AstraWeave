@@ -215,21 +215,6 @@ fn replay_log(world: &World) -> Vec<ReplayEvent> {
     rows.into_iter().map(|(_, event)| event).collect()
 }
 
-fn inventory_credits(ecs_blob: &[u8]) -> u64 {
-    if ecs_blob.is_empty() {
-        return 0;
-    }
-    let Ok(serialized) = postcard::from_bytes::<SerializedWorld>(ecs_blob) else {
-        return 0;
-    };
-    serialized
-        .entities
-        .iter()
-        .filter_map(|entity| entity.ammo)
-        .map(|ammo| u64::try_from(ammo.rounds).unwrap_or(0))
-        .fold(0u64, u64::saturating_add)
-}
-
 fn encode_replay_events(events: &[ReplayEvent]) -> String {
     events
         .iter()
@@ -326,8 +311,11 @@ impl CPersistenceManager {
         replay_events: &[ReplayEvent],
     ) -> Result<PathBuf> {
         let companions = Vec::new();
+        // `PlayerInventory` is the example slot on the bundle. No component
+        // stores a credit balance, so this stays zero rather than borrowing
+        // another field.
         let inventory = aw_save::PlayerInventory {
-            credits: inventory_credits(&ecs_blob),
+            credits: 0,
             items: Vec::new(),
         };
 
