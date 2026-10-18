@@ -375,12 +375,26 @@ mod tests {
             .get("sky_equirect")
             .expect("main catalog includes sky_equirect");
         assert_eq!(equirect.file, "sky_equirect.png");
-        assert!(catalog.get("spruit_sunrise").is_some());
+        let spruit = catalog.get("spruit_sunrise").expect("spruit entry");
+        assert!(
+            spruit
+                .file
+                .ends_with("pine_forest/hdri/spruit_sunrise_2k.exr"),
+            "spruit must use the terrain pack EXR, not a second copy"
+        );
         for entry in catalog.entries() {
             if entry.sha256.is_empty() {
                 continue;
             }
             let path = root.join(&entry.file);
+            // Pack bytes under assets/hdri/polyhaven are gitignored. ci-guard
+            // rejects committing them. The spruit EXR is owned by the terrain
+            // pack (PR #215). When a file is absent, the catalog still records
+            // its sha256; when it is present, the bytes must match.
+            if !path.is_file() {
+                assert_eq!(entry.sha256.len(), 64, "{}", entry.name);
+                continue;
+            }
             let bytes =
                 std::fs::read(&path).unwrap_or_else(|err| panic!("{}: {err}", path.display()));
             let digest = Sha256::digest(&bytes);

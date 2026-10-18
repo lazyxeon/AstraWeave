@@ -15,6 +15,13 @@ use astraweave_camera::{FreeFly, RenderView};
 use astraweave_cinematics as awc;
 use astraweave_materials::MaterialPackage;
 
+/// Demo sky. The terrain pack already vendors this Poly Haven CC0 plate.
+/// Do not add a second copy under `assets/hdri`.
+pub const SHOWCASE_HDRI_PRIMARY: &str =
+    "assets/terrain/polyhaven/pine_forest/hdri/spruit_sunrise_2k.exr";
+/// Used when the primary plate is not on disk.
+pub const SHOWCASE_HDRI_FALLBACK: &str = "assets/hdri/polyhaven/kloppenheim_02_puresky_2k.hdr";
+
 pub(crate) const SHADER_SRC: &str = concat!(
     include_str!("../shaders/constants.wgsl"),
     include_str!("../shaders/brdf_common.wgsl"),
@@ -82,8 +89,12 @@ struct MaterialUbo {
 @group(3) @binding(1) var albedo_samp: sampler;
 @group(3) @binding(2) var mr_tex: texture_2d<f32>;      // R: metallic, G: roughness
 @group(3) @binding(3) var mr_samp: sampler;
-@group(3) @binding(4) var normal_tex: texture_2d<f32>;  // tangent-space normal in RGB
+@group(3) @binding(4) var normal_tex: texture_2d<f32>;  // tangent-space normal in RGB, nor_gl (Y up)
 @group(3) @binding(5) var normal_samp: sampler;
+@group(3) @binding(7) var occlusion_tex: texture_2d<f32>; // R: ambient occlusion
+@group(3) @binding(8) var occlusion_samp: sampler;
+@group(3) @binding(9) var emissive_tex: texture_2d<f32>;
+@group(3) @binding(10) var emissive_samp: sampler;
 
 // ── Scene Environment (fog, ambient, tint) ─────────
 struct SceneEnv {
@@ -126,7 +137,7 @@ struct SceneEnv {
 
 fn sample_cloud_shadow(world_pos: vec3<f32>) -> f32 {
     let shadow_extent = 1024.0;
-    let uv = (world_pos.xz - uCamera.camera_pos.xz) / (2.0 * shadow_extent) + vec2<f32>(0.5, 0.5);
+    let uv = (world_pos.xz - uIbl._pad) / (2.0 * shadow_extent) + vec2<f32>(0.5, 0.5);
     if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) {
         return 1.0;
     }
@@ -253,19 +264,22 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
     // fragments got a 1-sample diffuse-only approximation) — that gate shared
     // the tiers' footprint-2.0 threshold and died with them in T.2d.F, so
     // every fragment now takes the full IBL path.
+    let ao = textureSample(occlusion_tex, occlusion_samp, input.uv).r;
     let ibl_color = compute_ibl(N, V, base_color, metallic, roughness, F0);
-    lit_color = lit_color + ibl_color;
+    // glTF: occlusion scales indirect light only, not the direct sun.
+    lit_color = lit_color + ibl_color * ao;
 
     // Screen-space GI: sample indirect diffuse from SSGI/Lumen pipeline.
     // When no GI pass is active, gi_tex is a 1x1 black texture → adds zero.
     let gi_dims = vec2<f32>(textureDimensions(gi_tex));
     let gi_uv = input.pos.xy / gi_dims;
     let gi_indirect = textureSampleLevel(gi_tex, gi_samp, gi_uv, 0.0).rgb;
-    lit_color += gi_indirect * base_color * (1.0 - metallic);
+    lit_color += gi_indirect * base_color * (1.0 - metallic) * ao;
 
     // Scene ambient as fallback floor (provides fill when IBL is low)
     let ambient = uScene.ambient_color * uScene.ambient_intensity * 0.35;
-    lit_color = lit_color + base_color * ambient;
+    lit_color = lit_color + base_color * ambient * ao;
+    lit_color = lit_color + textureSample(emissive_tex, emissive_samp, input.uv).rgb;
         // Clustered point lights accumulation (Lambert + simple attenuation)
     // Clustered lighting disabled for this example build; use lit_color directly
 
@@ -458,6 +472,10 @@ struct MainLightUbo { view_proj0: mat4x4<f32>, view_proj1: mat4x4<f32>, view_pro
 @group(3) @binding(3) var mr_samp: sampler;
 @group(3) @binding(4) var normal_tex: texture_2d<f32>;
 @group(3) @binding(5) var normal_samp: sampler;
+@group(3) @binding(7) var occlusion_tex: texture_2d<f32>;
+@group(3) @binding(8) var occlusion_samp: sampler;
+@group(3) @binding(9) var emissive_tex: texture_2d<f32>;
+@group(3) @binding(10) var emissive_samp: sampler;
 struct Skinning { mats: array<mat4x4<f32>> };
 @group(3) @binding(6) var<storage, read> skin: Skinning;
 
@@ -480,13 +498,21 @@ struct SceneEnv {
 };
 @group(4) @binding(0) var<uniform> uScene: SceneEnv;
 
-// Group 5 shares the main PBR IBL layout; skinned shader uses cloud shadow bindings.
+// Group 5 shares the main PBR IBL layout. `_pad` is the cloud-shadow bake
+// center; the struct matches `IblParams` in ibl_common.wgsl. This shader does
+// not call `compute_ibl`, so the cubemap bindings stay undeclared.
+struct IblParams {
+    ibl_intensity: f32,
+    max_spec_lod: f32,
+    _pad: vec2<f32>,
+};
+@group(5) @binding(4) var<uniform> uIbl: IblParams;
 @group(5) @binding(7) var cloud_shadow_tex: texture_2d<f32>;
 @group(5) @binding(8) var cloud_shadow_samp: sampler;
 
 fn sample_cloud_shadow(world_pos: vec3<f32>) -> f32 {
     let shadow_extent = 1024.0;
-    let uv = (world_pos.xz - uCamera.camera_pos.xz) / (2.0 * shadow_extent) + vec2<f32>(0.5, 0.5);
+    let uv = (world_pos.xz - uIbl._pad) / (2.0 * shadow_extent) + vec2<f32>(0.5, 0.5);
     if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) {
         return 1.0;
     }
@@ -602,7 +628,11 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
     }
     // Direct lighting (evaluate_brdf already includes NdotL) + ambient lift
     let cloud_shadow = sample_cloud_shadow(input.world_pos);
-    let lit_color = brdf_result * radiance * shadow * cloud_shadow + base_color * 0.08;
+    // Skinned vertices carry no UVs. Sample the map origin so a 1×1 default
+    // (white AO, black emissive) is exact, and a real map is not ignored.
+    let ao = textureSampleLevel(occlusion_tex, occlusion_samp, vec2<f32>(0.0), 0.0).r;
+    let emissive = textureSampleLevel(emissive_tex, emissive_samp, vec2<f32>(0.0), 0.0).rgb;
+    let lit_color = brdf_result * radiance * shadow * cloud_shadow + base_color * 0.08 * ao + emissive;
     return vec4<f32>(lit_color, uMaterial.base_color.a * input.color.a);
 }
 "#
@@ -616,7 +646,18 @@ struct CameraUBO {
     camera_pos_pad: [f32; 4],
 }
 
+/// Matches `IblParams` in `ibl_common.wgsl`. `_pad` is the cloud-shadow bake
+/// center (world XZ). It is not shading data; `compute_ibl` does not read it.
+#[repr(C)]
+#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+struct IblParamsGpu {
+    ibl_intensity: f32,
+    max_spec_lod: f32,
+    _pad: [f32; 2],
+}
+
 /// A named model with its mesh and instance data for multi-model rendering.
+#[derive(Clone)]
 pub struct RenderModelPrimitive {
     /// The GPU mesh (vertex/index buffers) for one primitive.
     pub mesh: Mesh,
@@ -624,6 +665,10 @@ pub struct RenderModelPrimitive {
     pub tex_bind_group: Option<wgpu::BindGroup>,
     /// Retained GPU textures to keep the bind group's texture views alive.
     pub _retained_textures: Vec<wgpu::Texture>,
+    /// Increments only when [`Renderer::write_mesh`] replaces the GPU buffers.
+    pub storage_generation: u32,
+    /// Index into the bindless material SSBO. `None` on the bind-group path.
+    pub bindless_index: Option<u32>,
 }
 
 pub struct RenderModel {
@@ -637,12 +682,94 @@ pub struct RenderModel {
     pub aabb: Option<([f32; 3], [f32; 3])>,
     /// GPU memory used by this model's texture (for budget tracking).
     pub tex_gpu_bytes: u64,
+    /// Asset path queued with [`Renderer::request_streamed_albedo`].
+    pub stream_albedo_id: Option<String>,
+    /// True after the resident texture replaced the 1×1 fallback bind.
+    pub stream_resident: bool,
 }
 
 pub struct ModelSurfaceMaps<'a> {
     pub albedo: (u32, u32, &'a [u8]),
+    /// Tangent-space normal, OpenGL / glTF / Poly Haven `nor_gl` (Y up).
     pub normal: (u32, u32, &'a [u8]),
+    /// Engine layout: R = metallic, G = roughness. Convert glTF or ARM with
+    /// [`crate::pbr_maps`] before passing bytes in.
     pub metallic_roughness: (u32, u32, &'a [u8]),
+    /// R = ambient occlusion. `None` binds a 1×1 white map (no darkening).
+    pub occlusion: Option<(u32, u32, &'a [u8])>,
+    /// RGB emissive, added after lighting. `None` binds a 1×1 black map.
+    pub emissive: Option<(u32, u32, &'a [u8])>,
+}
+
+fn texture_layout_entry(binding: u32) -> wgpu::BindGroupLayoutEntry {
+    wgpu::BindGroupLayoutEntry {
+        binding,
+        visibility: wgpu::ShaderStages::FRAGMENT,
+        ty: wgpu::BindingType::Texture {
+            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+            view_dimension: wgpu::TextureViewDimension::D2,
+            multisampled: false,
+        },
+        count: None,
+    }
+}
+
+fn sampler_layout_entry(binding: u32) -> wgpu::BindGroupLayoutEntry {
+    wgpu::BindGroupLayoutEntry {
+        binding,
+        visibility: wgpu::ShaderStages::FRAGMENT,
+        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+        count: None,
+    }
+}
+
+fn solid_rgba_texture(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    label: &str,
+    pixel: [u8; 4],
+) -> (wgpu::Texture, wgpu::TextureView, wgpu::Sampler) {
+    let texture = device.create_texture(&wgpu::TextureDescriptor {
+        label: Some(label),
+        size: wgpu::Extent3d {
+            width: 1,
+            height: 1,
+            depth_or_array_layers: 1,
+        },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: wgpu::TextureFormat::Rgba8Unorm,
+        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+        view_formats: &[],
+    });
+    queue.write_texture(
+        wgpu::TexelCopyTextureInfo {
+            texture: &texture,
+            mip_level: 0,
+            origin: wgpu::Origin3d::ZERO,
+            aspect: wgpu::TextureAspect::All,
+        },
+        &pixel,
+        wgpu::TexelCopyBufferLayout {
+            offset: 0,
+            bytes_per_row: Some(4),
+            rows_per_image: Some(1),
+        },
+        wgpu::Extent3d {
+            width: 1,
+            height: 1,
+            depth_or_array_layers: 1,
+        },
+    );
+    let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+    let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+        label: Some(label),
+        mag_filter: wgpu::FilterMode::Linear,
+        min_filter: wgpu::FilterMode::Linear,
+        ..Default::default()
+    });
+    (texture, view, sampler)
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -695,6 +822,12 @@ pub struct Renderer {
     _pipeline_cache_mgr: Option<crate::pipeline_cache::PipelineCacheManager>,
     /// Per-pass GPU timestamp profiler; `None` when `TIMESTAMP_QUERY` is unsupported.
     gpu_profiler: Option<crate::gpu_profiler::GpuProfiler>,
+    /// End query of the `frame` bracket. Written just before resolve.
+    frame_stamp: Option<crate::gpu_profiler::OpenStamp>,
+    /// Open interval between named passes, so uncovered GPU time gets a name.
+    timing_gap: Option<crate::gpu_profiler::OpenStamp>,
+    gpu_adapter_name: String,
+    gpu_backend: String,
     /// Ring buffer for transient per-frame GPU allocations (uniforms, storage).
     staging_ring: crate::staging_ring::StagingRing,
     /// Monotonic counter bumped on resize and resource invalidation; drives
@@ -856,6 +989,10 @@ pub struct Renderer {
     /// Whether `set_terrain_ground_plane()` has positioned the plane for terrain.
     /// When true, `draw_into()` skips the default plane overwrite.
     terrain_ground_set: bool,
+    /// The default ground-plane instance was written. Later frames skip the write.
+    plane_instance_uploaded: bool,
+    /// Last visible-instance bytes uploaded. A matching frame skips `write_buffer`.
+    visible_uploaded: Vec<u8>,
     /// Cached clustered lighting offsets to skip recomputation when lights are static.
     clustered_offsets_cache: Option<Vec<u32>>,
     /// Debug flag: when true, force shadow factor to 1.0 (shadows off) in the shader.
@@ -876,6 +1013,18 @@ pub struct Renderer {
     normal_tex: wgpu::Texture,
     normal_view: wgpu::TextureView,
     normal_sampler: wgpu::Sampler,
+    /// 1×1 white. AO = 1 when a model has no occlusion map.
+    /// The texture is retained so `occlusion_view` stays valid.
+    #[allow(dead_code)]
+    occlusion_tex: wgpu::Texture,
+    occlusion_view: wgpu::TextureView,
+    occlusion_sampler: wgpu::Sampler,
+    /// 1×1 black. No emissive when a model has no emissive map.
+    /// The texture is retained so `emissive_view` stays valid.
+    #[allow(dead_code)]
+    emissive_tex: wgpu::Texture,
+    emissive_view: wgpu::TextureView,
+    emissive_sampler: wgpu::Sampler,
     // Extra textures bind group layout and group (for future extensibility)
     // extra texture bind group layout/bg removed; combined tex_bgl/tex_bg used
     camera_ubo: CameraUBO,
@@ -892,8 +1041,50 @@ pub struct Renderer {
     mesh_external: Option<Mesh>,
     /// Named models for multi-model rendering (terrain, trees, rocks, etc.)
     models: std::collections::HashMap<String, RenderModel>,
+    /// One Hi-Z pyramid. SSR, SSGI, and occlusion sample its R32Float copy.
+    hiz: Option<crate::hiz_pyramid::HizPyramid>,
+    /// GL rejects `textureLoad` on `texture_depth_2d`, so the pyramid stays off.
+    hiz_depth_load: bool,
+    /// Presentation-only particle sim. `None` until an emitter is enabled.
+    particle_sim: Option<crate::gpu_particles::GpuParticleSystem>,
+    particle_draw: Option<crate::particle_render::ParticleRenderPass>,
+    particle_sort: Option<wgpu::Buffer>,
+    particle_emitter: Option<crate::gpu_particles::EmitterParams>,
+    /// Copy of scene depth sampled when soft particles also write depth.
+    /// The default pipeline does not write depth and leaves this `None`.
+    particle_depth_copy: Option<(u32, u32, wgpu::Texture, wgpu::TextureView)>,
+    /// Optional presentation passes. Off by default so `draw_into` does not
+    /// record them. #227 and #228 stay on PR #205.
+    atmosphere_on: bool,
+    cloud_raymarch_on: bool,
+    ssgi_on: bool,
+    taa_on: bool,
+    upscale_on: bool,
+    dof_on: bool,
+    atmosphere: Option<crate::atmosphere::AtmospherePass>,
+    cloud_raymarch: Option<crate::volumetric_clouds::VolumetricCloudsPass>,
+    ssgi_pass: Option<crate::ssgi::SsgiPass>,
+    taa_pass: Option<crate::taa::TaaPass>,
+    upscale_pass: Option<crate::temporal_upscale::TemporalUpscalePass>,
+    dof_pass: Option<crate::advanced_post::AdvancedPostFx>,
+    gated_normal: Option<(wgpu::Texture, wgpu::TextureView)>,
+    gated_velocity: Option<(wgpu::Texture, wgpu::TextureView)>,
+    /// Camera-distance texture requests. `draw_into` uploads from its ring.
+    streaming: crate::texture_streaming::TextureStreamingManager,
+    /// Present when the device was created with the binding-array features.
+    bindless: Option<crate::material_bindless::BindlessMaterialSystem>,
+    /// When false, uploads stay on group-3 bind groups even if `bindless` exists.
+    bindless_active: bool,
 
     instances: Vec<Instance>,
+    /// Reused `InstanceRaw` upload for [`Self::update_instances`].
+    /// Cleared and refilled each call. Capacity stays, so a stable instance
+    /// count does not allocate.
+    instance_raw_scratch: Vec<InstanceRaw>,
+    /// Last bytes written by [`Self::update_instances`]. An identical upload skips the GPU write.
+    instance_uploaded: Vec<u8>,
+    /// Reused frustum-visible list filled by [`Self::build_visible_instances`].
+    visible_raw_scratch: Vec<InstanceRaw>,
 
     /// Optional light direction/intensity override from the editor's world panel.
     /// When Some, `update_camera_matrices` uses this instead of TimeOfDay.
@@ -969,6 +1160,13 @@ pub struct Renderer {
     /// Whether to dispatch the per-frame cloud shadow compute pass.
     /// Disable in editor modes to avoid noisy shadow patterns on terrain.
     cloud_shadows_enabled: bool,
+    /// Set by `set_presentation_frame` and consumed by the next draw.
+    presentation_frame: Option<u64>,
+    /// Used when the caller does not set a presentation frame. Advances once
+    /// per cloud-shadow record so the slice stays a function of draw count.
+    cloud_shadow_frame: u64,
+    ibl_intensity: f32,
+    ibl_max_spec_lod: f32,
 
     // Water rendering
     water_renderer: Option<crate::water::WaterRenderer>,
@@ -1067,6 +1265,40 @@ impl Renderer {
                 source: wgpu::ShaderSource::Wgsl(std::borrow::Cow::Owned(full)),
             })
     }
+    fn requested_device(
+        adapter: &wgpu::Adapter,
+        gpu_tests: bool,
+    ) -> (wgpu::Features, wgpu::Limits) {
+        let mut features = wgpu::Features::empty();
+        if gpu_tests {
+            features |= wgpu::Features::TIMESTAMP_QUERY;
+        }
+        if adapter.features().contains(wgpu::Features::PIPELINE_CACHE) {
+            features |= wgpu::Features::PIPELINE_CACHE;
+        }
+        for feature in [
+            wgpu::Features::TIMESTAMP_QUERY,
+            wgpu::Features::TIMESTAMP_QUERY_INSIDE_PASSES,
+            wgpu::Features::TIMESTAMP_QUERY_INSIDE_ENCODERS,
+        ] {
+            if adapter.features().contains(feature) {
+                features |= feature;
+            }
+        }
+        let mut limits = wgpu::Limits {
+            max_bind_groups: 8,
+            ..wgpu::Limits::default()
+        };
+        if crate::material_bindless::supports_bindless(adapter) {
+            let cap = adapter.limits().max_binding_array_elements_per_shader_stage;
+            if cap >= 4 {
+                features |= crate::material_bindless::required_features();
+                limits.max_binding_array_elements_per_shader_stage = 4.min(cap);
+            }
+        }
+        (features, limits)
+    }
+
     pub async fn new(window: std::sync::Arc<winit::window::Window>) -> Result<Self> {
         let boot = std::time::Instant::now();
         let instance = gpu_instance();
@@ -1078,27 +1310,12 @@ impl Renderer {
             warp_requested()
         );
 
+        let (features, limits) = Self::requested_device(&adapter, cfg!(feature = "gpu-tests"));
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor {
                 label: Some("device"),
-                required_features: {
-                    let mut f = wgpu::Features::empty();
-                    #[cfg(feature = "gpu-tests")]
-                    {
-                        f |= wgpu::Features::TIMESTAMP_QUERY;
-                    }
-                    if adapter.features().contains(wgpu::Features::PIPELINE_CACHE) {
-                        f |= wgpu::Features::PIPELINE_CACHE;
-                    }
-                    if adapter.features().contains(wgpu::Features::TIMESTAMP_QUERY) {
-                        f |= wgpu::Features::TIMESTAMP_QUERY;
-                    }
-                    f
-                },
-                required_limits: wgpu::Limits {
-                    max_bind_groups: 8,
-                    ..wgpu::Limits::default()
-                },
+                required_features: features,
+                required_limits: limits,
                 memory_hints: Default::default(),
                 trace: Default::default(),
             })
@@ -1141,30 +1358,23 @@ impl Renderer {
         );
         surface.configure(&device, &config);
 
-        Self::new_from_device_monitored(device, queue, Some(surface), config, device_lost).await
+        let mut renderer =
+            Self::new_from_device_monitored(device, queue, Some(surface), config, device_lost)
+                .await?;
+        renderer.note_adapter(&adapter);
+        Ok(renderer)
     }
 
     pub async fn new_headless(width: u32, height: u32) -> Result<Self> {
         let instance = gpu_instance();
         let adapter = choose_adapter(&instance, None).await?;
 
+        let (features, limits) = Self::requested_device(&adapter, false);
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor {
                 label: Some("headless device"),
-                required_features: {
-                    let mut f = wgpu::Features::empty();
-                    if adapter.features().contains(wgpu::Features::PIPELINE_CACHE) {
-                        f |= wgpu::Features::PIPELINE_CACHE;
-                    }
-                    if adapter.features().contains(wgpu::Features::TIMESTAMP_QUERY) {
-                        f |= wgpu::Features::TIMESTAMP_QUERY;
-                    }
-                    f
-                },
-                required_limits: wgpu::Limits {
-                    max_bind_groups: 8,
-                    ..wgpu::Limits::default()
-                },
+                required_features: features,
+                required_limits: limits,
                 memory_hints: Default::default(),
                 trace: Default::default(),
             })
@@ -1185,7 +1395,10 @@ impl Renderer {
             desired_maximum_frame_latency: 2,
         };
 
-        Self::new_from_device_monitored(device, queue, None, config, device_lost).await
+        let mut renderer =
+            Self::new_from_device_monitored(device, queue, None, config, device_lost).await?;
+        renderer.note_adapter(&adapter);
+        Ok(renderer)
     }
 
     pub async fn new_from_device(
@@ -1646,31 +1859,35 @@ impl Renderer {
             push_constant_ranges: &[],
         });
         #[cfg(feature = "postfx")]
-        let _post_pipeline_ssr = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            cache: pipeline_cache.as_ref(),
-            label: Some("ssr pipeline"),
-            layout: Some(&ssr_pl),
-            vertex: wgpu::VertexState {
-                module: &ssr_shader,
-                entry_point: Some("vs_main"),
-                buffers: &[],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
+        let _post_pipeline_ssr = crate::pipeline_cache::create_render_pipeline(
+            &device,
+            pipeline_cache.as_ref(),
+            wgpu::RenderPipelineDescriptor {
+                cache: pipeline_cache.as_ref(),
+                label: Some("ssr pipeline"),
+                layout: Some(&ssr_pl),
+                vertex: wgpu::VertexState {
+                    module: &ssr_shader,
+                    entry_point: Some("vs_main"),
+                    buffers: &[],
+                    compilation_options: wgpu::PipelineCompilationOptions::default(),
+                },
+                fragment: Some(wgpu::FragmentState {
+                    module: &ssr_shader,
+                    entry_point: Some("fs_main"),
+                    targets: &[Some(wgpu::ColorTargetState {
+                        format: wgpu::TextureFormat::Rgba16Float,
+                        blend: Some(wgpu::BlendState::REPLACE),
+                        write_mask: wgpu::ColorWrites::ALL,
+                    })],
+                    compilation_options: wgpu::PipelineCompilationOptions::default(),
+                }),
+                primitive: wgpu::PrimitiveState::default(),
+                depth_stencil: None,
+                multisample: wgpu::MultisampleState::default(),
+                multiview: None,
             },
-            fragment: Some(wgpu::FragmentState {
-                module: &ssr_shader,
-                entry_point: Some("fs_main"),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: wgpu::TextureFormat::Rgba16Float,
-                    blend: Some(wgpu::BlendState::REPLACE),
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-            }),
-            primitive: wgpu::PrimitiveState::default(),
-            depth_stencil: None,
-            multisample: wgpu::MultisampleState::default(),
-            multiview: None,
-        });
+        );
 
         // SSAO
         #[cfg(feature = "postfx")]
@@ -1722,31 +1939,35 @@ impl Renderer {
             push_constant_ranges: &[],
         });
         #[cfg(feature = "postfx")]
-        let _post_pipeline_ssao = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            cache: pipeline_cache.as_ref(),
-            label: Some("ssao pipeline"),
-            layout: Some(&ssao_pl),
-            vertex: wgpu::VertexState {
-                module: &ssao_shader,
-                entry_point: Some("vs_main"),
-                buffers: &[],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
+        let _post_pipeline_ssao = crate::pipeline_cache::create_render_pipeline(
+            &device,
+            pipeline_cache.as_ref(),
+            wgpu::RenderPipelineDescriptor {
+                cache: pipeline_cache.as_ref(),
+                label: Some("ssao pipeline"),
+                layout: Some(&ssao_pl),
+                vertex: wgpu::VertexState {
+                    module: &ssao_shader,
+                    entry_point: Some("vs_main"),
+                    buffers: &[],
+                    compilation_options: wgpu::PipelineCompilationOptions::default(),
+                },
+                fragment: Some(wgpu::FragmentState {
+                    module: &ssao_shader,
+                    entry_point: Some("fs_main"),
+                    targets: &[Some(wgpu::ColorTargetState {
+                        format: wgpu::TextureFormat::Rgba16Float,
+                        blend: Some(wgpu::BlendState::REPLACE),
+                        write_mask: wgpu::ColorWrites::ALL,
+                    })],
+                    compilation_options: wgpu::PipelineCompilationOptions::default(),
+                }),
+                primitive: wgpu::PrimitiveState::default(),
+                depth_stencil: None,
+                multisample: wgpu::MultisampleState::default(),
+                multiview: None,
             },
-            fragment: Some(wgpu::FragmentState {
-                module: &ssao_shader,
-                entry_point: Some("fs_main"),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: wgpu::TextureFormat::Rgba16Float,
-                    blend: Some(wgpu::BlendState::REPLACE),
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-            }),
-            primitive: wgpu::PrimitiveState::default(),
-            depth_stencil: None,
-            multisample: wgpu::MultisampleState::default(),
-            multiview: None,
-        });
+        );
 
         // SSGI
         #[cfg(feature = "postfx")]
@@ -1812,31 +2033,35 @@ impl Renderer {
             push_constant_ranges: &[],
         });
         #[cfg(feature = "postfx")]
-        let _post_pipeline_ssgi = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            cache: pipeline_cache.as_ref(),
-            label: Some("ssgi pipeline"),
-            layout: Some(&ssgi_pl),
-            vertex: wgpu::VertexState {
-                module: &ssgi_shader,
-                entry_point: Some("vs_main"),
-                buffers: &[],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
+        let _post_pipeline_ssgi = crate::pipeline_cache::create_render_pipeline(
+            &device,
+            pipeline_cache.as_ref(),
+            wgpu::RenderPipelineDescriptor {
+                cache: pipeline_cache.as_ref(),
+                label: Some("ssgi pipeline"),
+                layout: Some(&ssgi_pl),
+                vertex: wgpu::VertexState {
+                    module: &ssgi_shader,
+                    entry_point: Some("vs_main"),
+                    buffers: &[],
+                    compilation_options: wgpu::PipelineCompilationOptions::default(),
+                },
+                fragment: Some(wgpu::FragmentState {
+                    module: &ssgi_shader,
+                    entry_point: Some("fs_main"),
+                    targets: &[Some(wgpu::ColorTargetState {
+                        format: wgpu::TextureFormat::Rgba16Float,
+                        blend: Some(wgpu::BlendState::REPLACE),
+                        write_mask: wgpu::ColorWrites::ALL,
+                    })],
+                    compilation_options: wgpu::PipelineCompilationOptions::default(),
+                }),
+                primitive: wgpu::PrimitiveState::default(),
+                depth_stencil: None,
+                multisample: wgpu::MultisampleState::default(),
+                multiview: None,
             },
-            fragment: Some(wgpu::FragmentState {
-                module: &ssgi_shader,
-                entry_point: Some("fs_main"),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: wgpu::TextureFormat::Rgba16Float,
-                    blend: Some(wgpu::BlendState::REPLACE),
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-            }),
-            primitive: wgpu::PrimitiveState::default(),
-            depth_stencil: None,
-            multisample: wgpu::MultisampleState::default(),
-            multiview: None,
-        });
+        );
 
         // Post-fx composition pipeline
         #[cfg(feature = "postfx")]
@@ -1995,6 +2220,10 @@ impl Renderer {
                     },
                     count: None,
                 },
+                texture_layout_entry(7),
+                sampler_layout_entry(8),
+                texture_layout_entry(9),
+                sampler_layout_entry(10),
             ],
         });
 
@@ -2112,17 +2341,14 @@ impl Renderer {
         let cloud_shadow_pass =
             crate::volumetric_clouds::CloudShadowPass::new_default(&device, &queue);
 
-        // IBL params uniform buffer
-        #[repr(C)]
-        #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
-        struct IblParamsGpu {
-            ibl_intensity: f32,
-            max_spec_lod: f32,
-            _pad: [f32; 2],
-        }
+        // IBL params uniform buffer. `_pad` is filled with the cloud-shadow
+        // bake center on each draw. Intensity and LOD stay at these defaults
+        // until a bake overwrites them.
+        let ibl_intensity = 1.0f32;
+        let ibl_max_spec_lod = 4.0f32;
         let ibl_params_data = IblParamsGpu {
-            ibl_intensity: 1.0,
-            max_spec_lod: 4.0,
+            ibl_intensity,
+            max_spec_lod: ibl_max_spec_lod,
             _pad: [0.0; 2],
         };
         let ibl_params_buf = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -2370,45 +2596,49 @@ impl Renderer {
             push_constant_ranges: &[],
         });
 
-        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            cache: pipeline_cache.as_ref(),
-            label: Some("pipeline"),
-            layout: Some(&pipeline_layout),
-            vertex: wgpu::VertexState {
-                module: &shader,
-                entry_point: Some("vs"),
-                buffers: &[
-                    crate::types::Vertex::layout(),
-                    crate::types::InstanceRaw::layout(),
-                ],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
+        let pipeline = crate::pipeline_cache::create_render_pipeline(
+            &device,
+            pipeline_cache.as_ref(),
+            wgpu::RenderPipelineDescriptor {
+                cache: pipeline_cache.as_ref(),
+                label: Some("pipeline"),
+                layout: Some(&pipeline_layout),
+                vertex: wgpu::VertexState {
+                    module: &shader,
+                    entry_point: Some("vs"),
+                    buffers: &[
+                        crate::types::Vertex::layout(),
+                        crate::types::InstanceRaw::layout(),
+                    ],
+                    compilation_options: wgpu::PipelineCompilationOptions::default(),
+                },
+                fragment: Some(wgpu::FragmentState {
+                    module: &shader,
+                    entry_point: Some("fs"),
+                    targets: &[Some(wgpu::ColorTargetState {
+                        format: wgpu::TextureFormat::Rgba16Float,
+                        blend: Some(wgpu::BlendState::ALPHA_BLENDING),
+                        write_mask: wgpu::ColorWrites::ALL,
+                    })],
+                    compilation_options: wgpu::PipelineCompilationOptions::default(),
+                }),
+                primitive: wgpu::PrimitiveState {
+                    topology: wgpu::PrimitiveTopology::TriangleList,
+                    front_face: wgpu::FrontFace::Ccw,
+                    cull_mode: Some(wgpu::Face::Back),
+                    ..Default::default()
+                },
+                depth_stencil: Some(wgpu::DepthStencilState {
+                    format: depth.format,
+                    depth_write_enabled: true,
+                    depth_compare: wgpu::CompareFunction::Less,
+                    stencil: wgpu::StencilState::default(),
+                    bias: wgpu::DepthBiasState::default(),
+                }),
+                multisample: wgpu::MultisampleState::default(),
+                multiview: None,
             },
-            fragment: Some(wgpu::FragmentState {
-                module: &shader,
-                entry_point: Some("fs"),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: wgpu::TextureFormat::Rgba16Float,
-                    blend: Some(wgpu::BlendState::ALPHA_BLENDING),
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-            }),
-            primitive: wgpu::PrimitiveState {
-                topology: wgpu::PrimitiveTopology::TriangleList,
-                front_face: wgpu::FrontFace::Ccw,
-                cull_mode: Some(wgpu::Face::Back),
-                ..Default::default()
-            },
-            depth_stencil: Some(wgpu::DepthStencilState {
-                format: depth.format,
-                depth_write_enabled: true,
-                depth_compare: wgpu::CompareFunction::Less,
-                stencil: wgpu::StencilState::default(),
-                bias: wgpu::DepthBiasState::default(),
-            }),
-            multisample: wgpu::MultisampleState::default(),
-            multiview: None,
-        });
+        );
 
         // ED-3: wireframe variant of the main static-mesh pipeline —
         // identical descriptor, polygon_mode Line. Feature-gated: the
@@ -2419,8 +2649,10 @@ impl Renderer {
             .features()
             .contains(wgpu::Features::POLYGON_MODE_LINE)
         {
-            Some(
-                device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            Some(crate::pipeline_cache::create_render_pipeline(
+                &device,
+                pipeline_cache.as_ref(),
+                wgpu::RenderPipelineDescriptor {
                     cache: pipeline_cache.as_ref(),
                     label: Some("pipeline-wire"),
                     layout: Some(&pipeline_layout),
@@ -2459,8 +2691,8 @@ impl Renderer {
                     }),
                     multisample: wgpu::MultisampleState::default(),
                     multiview: None,
-                }),
-            )
+                },
+            ))
         } else {
             None
         };
@@ -2481,37 +2713,41 @@ impl Renderer {
         #[cfg(feature = "postfx")]
         let post_pipeline_layout = post_fx_pl;
 
-        let post_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            cache: pipeline_cache.as_ref(),
-            label: Some("post pipeline"),
-            layout: Some(&post_pipeline_layout),
-            vertex: wgpu::VertexState {
-                #[cfg(not(feature = "postfx"))]
-                module: &post_shader,
-                #[cfg(feature = "postfx")]
-                module: &post_fx_shader,
-                entry_point: Some("vs_main"),
-                buffers: &[],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
+        let post_pipeline = crate::pipeline_cache::create_render_pipeline(
+            &device,
+            pipeline_cache.as_ref(),
+            wgpu::RenderPipelineDescriptor {
+                cache: pipeline_cache.as_ref(),
+                label: Some("post pipeline"),
+                layout: Some(&post_pipeline_layout),
+                vertex: wgpu::VertexState {
+                    #[cfg(not(feature = "postfx"))]
+                    module: &post_shader,
+                    #[cfg(feature = "postfx")]
+                    module: &post_fx_shader,
+                    entry_point: Some("vs_main"),
+                    buffers: &[],
+                    compilation_options: wgpu::PipelineCompilationOptions::default(),
+                },
+                fragment: Some(wgpu::FragmentState {
+                    #[cfg(not(feature = "postfx"))]
+                    module: &post_shader,
+                    #[cfg(feature = "postfx")]
+                    module: &post_fx_shader,
+                    entry_point: Some("fs_main"),
+                    targets: &[Some(wgpu::ColorTargetState {
+                        format: config.format,
+                        blend: Some(wgpu::BlendState::REPLACE),
+                        write_mask: wgpu::ColorWrites::ALL,
+                    })],
+                    compilation_options: wgpu::PipelineCompilationOptions::default(),
+                }),
+                primitive: wgpu::PrimitiveState::default(),
+                depth_stencil: None,
+                multisample: wgpu::MultisampleState::default(),
+                multiview: None,
             },
-            fragment: Some(wgpu::FragmentState {
-                #[cfg(not(feature = "postfx"))]
-                module: &post_shader,
-                #[cfg(feature = "postfx")]
-                module: &post_fx_shader,
-                entry_point: Some("fs_main"),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: config.format,
-                    blend: Some(wgpu::BlendState::REPLACE),
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-            }),
-            primitive: wgpu::PrimitiveState::default(),
-            depth_stencil: None,
-            multisample: wgpu::MultisampleState::default(),
-            multiview: None,
-        });
+        );
 
         // Editor-Engine Render Parity P.3: hdr_blit_pipeline construction
         // removed. Was the passthrough HDR→HDR blit selected by
@@ -2693,38 +2929,42 @@ fn vs(input: VSIn) -> VSOut {
                 bind_group_layouts: &[&shadow_bgl_light],
                 push_constant_ranges: &[],
             });
-        let shadow_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            cache: pipeline_cache.as_ref(),
-            label: Some("shadow pipeline"),
-            layout: Some(&shadow_pipeline_layout),
-            vertex: wgpu::VertexState {
-                module: &shadow_shader,
-                entry_point: Some("vs"),
-                buffers: &[
-                    crate::types::Vertex::layout(),
-                    crate::types::InstanceRaw::layout(),
-                ],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-            },
-            fragment: None,
-            primitive: wgpu::PrimitiveState {
-                cull_mode: Some(wgpu::Face::Back),
-                ..Default::default()
-            },
-            depth_stencil: Some(wgpu::DepthStencilState {
-                format: wgpu::TextureFormat::Depth32Float,
-                depth_write_enabled: true,
-                depth_compare: wgpu::CompareFunction::LessEqual,
-                stencil: wgpu::StencilState::default(),
-                bias: wgpu::DepthBiasState {
-                    constant: 2,
-                    slope_scale: 2.0,
-                    clamp: 0.0,
+        let shadow_pipeline = crate::pipeline_cache::create_render_pipeline(
+            &device,
+            pipeline_cache.as_ref(),
+            wgpu::RenderPipelineDescriptor {
+                cache: pipeline_cache.as_ref(),
+                label: Some("shadow pipeline"),
+                layout: Some(&shadow_pipeline_layout),
+                vertex: wgpu::VertexState {
+                    module: &shadow_shader,
+                    entry_point: Some("vs"),
+                    buffers: &[
+                        crate::types::Vertex::layout(),
+                        crate::types::InstanceRaw::layout(),
+                    ],
+                    compilation_options: wgpu::PipelineCompilationOptions::default(),
                 },
-            }),
-            multisample: wgpu::MultisampleState::default(),
-            multiview: None,
-        });
+                fragment: None,
+                primitive: wgpu::PrimitiveState {
+                    cull_mode: Some(wgpu::Face::Back),
+                    ..Default::default()
+                },
+                depth_stencil: Some(wgpu::DepthStencilState {
+                    format: wgpu::TextureFormat::Depth32Float,
+                    depth_write_enabled: true,
+                    depth_compare: wgpu::CompareFunction::LessEqual,
+                    stencil: wgpu::StencilState::default(),
+                    bias: wgpu::DepthBiasState {
+                        constant: 2,
+                        slope_scale: 2.0,
+                        clamp: 0.0,
+                    },
+                }),
+                multisample: wgpu::MultisampleState::default(),
+                multiview: None,
+            },
+        );
 
         // Default 1x1 white albedo
         let albedo_tex = device.create_texture(&wgpu::TextureDescriptor {
@@ -2871,7 +3111,12 @@ fn vs(input: VSIn) -> VSOut {
             },
         );
 
-        // Combined bind group for albedo, mr, normal, and skin palette (bindings 0..6)
+        let (occlusion_tex, occlusion_view, occlusion_sampler) =
+            solid_rgba_texture(&device, &queue, "occlusion tex", [255, 255, 255, 255]);
+        let (emissive_tex, emissive_view, emissive_sampler) =
+            solid_rgba_texture(&device, &queue, "emissive tex", [0, 0, 0, 255]);
+
+        // Combined bind group for albedo, mr, normal, occlusion, emissive, and skin palette
         let tex_bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("combined tex bg"),
             layout: &tex_bgl,
@@ -2903,6 +3148,22 @@ fn vs(input: VSIn) -> VSOut {
                 wgpu::BindGroupEntry {
                     binding: 6,
                     resource: skin_palette_buf.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 7,
+                    resource: wgpu::BindingResource::TextureView(&occlusion_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 8,
+                    resource: wgpu::BindingResource::Sampler(&occlusion_sampler),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 9,
+                    resource: wgpu::BindingResource::TextureView(&emissive_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 10,
+                    resource: wgpu::BindingResource::Sampler(&emissive_sampler),
                 },
             ],
         });
@@ -2954,45 +3215,49 @@ fn vs(input: VSIn) -> VSOut {
             label: Some("skinned shader"),
             source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(SKINNED_SHADER_SRC)),
         });
-        let skinned_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            cache: pipeline_cache.as_ref(),
-            label: Some("skinned pipeline"),
-            layout: Some(&skinned_pipeline_layout),
-            vertex: wgpu::VertexState {
-                module: &skinned_shader,
-                entry_point: Some("vs"),
-                buffers: &[
-                    crate::types::SkinnedVertex::layout(),
-                    crate::types::InstanceRaw::layout(),
-                ],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
+        let skinned_pipeline = crate::pipeline_cache::create_render_pipeline(
+            &device,
+            pipeline_cache.as_ref(),
+            wgpu::RenderPipelineDescriptor {
+                cache: pipeline_cache.as_ref(),
+                label: Some("skinned pipeline"),
+                layout: Some(&skinned_pipeline_layout),
+                vertex: wgpu::VertexState {
+                    module: &skinned_shader,
+                    entry_point: Some("vs"),
+                    buffers: &[
+                        crate::types::SkinnedVertex::layout(),
+                        crate::types::InstanceRaw::layout(),
+                    ],
+                    compilation_options: wgpu::PipelineCompilationOptions::default(),
+                },
+                fragment: Some(wgpu::FragmentState {
+                    module: &skinned_shader,
+                    entry_point: Some("fs"),
+                    targets: &[Some(wgpu::ColorTargetState {
+                        format: wgpu::TextureFormat::Rgba16Float,
+                        blend: Some(wgpu::BlendState::ALPHA_BLENDING),
+                        write_mask: wgpu::ColorWrites::ALL,
+                    })],
+                    compilation_options: wgpu::PipelineCompilationOptions::default(),
+                }),
+                primitive: wgpu::PrimitiveState {
+                    topology: wgpu::PrimitiveTopology::TriangleList,
+                    front_face: wgpu::FrontFace::Ccw,
+                    cull_mode: Some(wgpu::Face::Back),
+                    ..Default::default()
+                },
+                depth_stencil: Some(wgpu::DepthStencilState {
+                    format: depth.format,
+                    depth_write_enabled: true,
+                    depth_compare: wgpu::CompareFunction::Less,
+                    stencil: wgpu::StencilState::default(),
+                    bias: wgpu::DepthBiasState::default(),
+                }),
+                multisample: wgpu::MultisampleState::default(),
+                multiview: None,
             },
-            fragment: Some(wgpu::FragmentState {
-                module: &skinned_shader,
-                entry_point: Some("fs"),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: wgpu::TextureFormat::Rgba16Float,
-                    blend: Some(wgpu::BlendState::ALPHA_BLENDING),
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-            }),
-            primitive: wgpu::PrimitiveState {
-                topology: wgpu::PrimitiveTopology::TriangleList,
-                front_face: wgpu::FrontFace::Ccw,
-                cull_mode: Some(wgpu::Face::Back),
-                ..Default::default()
-            },
-            depth_stencil: Some(wgpu::DepthStencilState {
-                format: depth.format,
-                depth_write_enabled: true,
-                depth_compare: wgpu::CompareFunction::Less,
-                stencil: wgpu::StencilState::default(),
-                bias: wgpu::DepthBiasState::default(),
-            }),
-            multisample: wgpu::MultisampleState::default(),
-            multiview: None,
-        });
+        );
 
         // Default extra textures
         let mr_tex = device.create_texture(&wgpu::TextureDescriptor {
@@ -3092,12 +3357,12 @@ fn vs(input: VSIn) -> VSOut {
         let cube_vb = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("mesh_cube vertex_buf"),
             contents: bytemuck::cast_slice(&cube_v),
-            usage: wgpu::BufferUsages::VERTEX,
+            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
         });
         let cube_ib = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("mesh_cube index_buf"),
             contents: bytemuck::cast_slice(&cube_i),
-            usage: wgpu::BufferUsages::INDEX,
+            usage: wgpu::BufferUsages::INDEX | wgpu::BufferUsages::COPY_DST,
         });
         let mesh_cube = Mesh {
             vertex_buf: cube_vb,
@@ -3107,12 +3372,12 @@ fn vs(input: VSIn) -> VSOut {
         let sphere_vb = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("mesh_sphere vertex_buf"),
             contents: bytemuck::cast_slice(&sphere_v),
-            usage: wgpu::BufferUsages::VERTEX,
+            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
         });
         let sphere_ib = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("mesh_sphere index_buf"),
             contents: bytemuck::cast_slice(&sphere_i),
-            usage: wgpu::BufferUsages::INDEX,
+            usage: wgpu::BufferUsages::INDEX | wgpu::BufferUsages::COPY_DST,
         });
         let mesh_sphere = Mesh {
             vertex_buf: sphere_vb,
@@ -3124,12 +3389,12 @@ fn vs(input: VSIn) -> VSOut {
         let plane_vb = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("mesh_plane vertex_buf"),
             contents: bytemuck::cast_slice(&plane_v),
-            usage: wgpu::BufferUsages::VERTEX,
+            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
         });
         let plane_ib = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("mesh_plane index_buf"),
             contents: bytemuck::cast_slice(&plane_i),
-            usage: wgpu::BufferUsages::INDEX,
+            usage: wgpu::BufferUsages::INDEX | wgpu::BufferUsages::COPY_DST,
         });
         let mesh_plane = Mesh {
             vertex_buf: plane_vb,
@@ -3326,6 +3591,24 @@ fn vs(input: VSIn) -> VSOut {
         });
 
         let ext_inst_buf = None;
+        let bindless_features = crate::material_bindless::required_features();
+        let bindless = if device.features().contains(bindless_features) {
+            let slots = device
+                .limits()
+                .max_binding_array_elements_per_shader_stage
+                .clamp(4, 32);
+            Some(crate::material_bindless::BindlessMaterialSystem::new(
+                &device,
+                &queue,
+                crate::material_bindless::BindlessMaterialConfig {
+                    max_textures: slots,
+                    max_materials: 64,
+                },
+            ))
+        } else {
+            None
+        };
+        let bindless_active = bindless.is_some();
 
         let ibl = crate::ibl::IblManager::new(&device, crate::ibl::IblQuality::Medium)
             .context("Failed to init IBL")?;
@@ -3352,6 +3635,9 @@ fn vs(input: VSIn) -> VSOut {
         }
 
         log::info!("renderer pipelines ready {} ms", boot.elapsed().as_millis());
+        let streaming = crate::texture_streaming::TextureStreamingManager::new(256)
+            .context("texture streaming runtime")?;
+        let hiz_depth_load = crate::gpu_fault::depth_texture_load_supported(&device);
 
         Ok(Self {
             surface,
@@ -3360,6 +3646,10 @@ fn vs(input: VSIn) -> VSOut {
             pipeline_cache,
             _pipeline_cache_mgr: pipeline_cache_mgr,
             gpu_profiler,
+            frame_stamp: None,
+            timing_gap: None,
+            gpu_adapter_name: String::new(),
+            gpu_backend: String::new(),
             staging_ring,
             resource_generation,
             #[cfg(feature = "camera-relative")]
@@ -3422,8 +3712,10 @@ fn vs(input: VSIn) -> VSOut {
             max_draw_distance: 0.0, // 0 = use fog_end fallback
             rendered_model_count: 0,
             terrain_ground_set: false, // No terrain ground plane set yet
+            plane_instance_uploaded: false,
+            visible_uploaded: Vec::new(),
             clustered_offsets_cache: None, // Force first-frame computation
-            force_shadow_override: false, // Normal runtime: use computed PCF shadows
+            force_shadow_override: false,  // Normal runtime: use computed PCF shadows
             albedo_tex,
             albedo_view,
             albedo_sampler,
@@ -3435,6 +3727,12 @@ fn vs(input: VSIn) -> VSOut {
             normal_tex,
             normal_view,
             normal_sampler,
+            occlusion_tex,
+            occlusion_view,
+            occlusion_sampler,
+            emissive_tex,
+            emissive_view,
+            emissive_sampler,
             // combined tex_bgl/tex_bg used
             camera_ubo: CameraUBO {
                 view_proj: Mat4::IDENTITY.to_cols_array_2d(),
@@ -3448,7 +3746,34 @@ fn vs(input: VSIn) -> VSOut {
             mesh_plane,
             mesh_external: None,
             models: std::collections::HashMap::new(),
+            hiz: None,
+            hiz_depth_load,
+            particle_sim: None,
+            particle_draw: None,
+            particle_sort: None,
+            particle_emitter: None,
+            particle_depth_copy: None,
+            atmosphere_on: false,
+            cloud_raymarch_on: false,
+            ssgi_on: false,
+            taa_on: false,
+            upscale_on: false,
+            dof_on: false,
+            atmosphere: None,
+            cloud_raymarch: None,
+            ssgi_pass: None,
+            taa_pass: None,
+            upscale_pass: None,
+            dof_pass: None,
+            gated_normal: None,
+            gated_velocity: None,
+            streaming,
+            bindless,
+            bindless_active,
             instances: Vec::new(),
+            instance_raw_scratch: Vec::new(),
+            instance_uploaded: Vec::new(),
+            visible_raw_scratch: Vec::new(),
             light_override: None,
             instance_buf,
             overlay,
@@ -3495,6 +3820,10 @@ fn vs(input: VSIn) -> VSOut {
             gi_sampler,
             cloud_shadow_pass,
             cloud_shadows_enabled: true,
+            presentation_frame: None,
+            cloud_shadow_frame: 0,
+            ibl_intensity,
+            ibl_max_spec_lod,
             water_renderer: None,
             hdr_overlay: None,
             biome_system: crate::biome_material::BiomeMaterialSystem::new(
@@ -3581,8 +3910,78 @@ fn vs(input: VSIn) -> VSOut {
         }
     }
 
+    pub fn note_adapter(&mut self, adapter: &wgpu::Adapter) {
+        let info = adapter.get_info();
+        self.gpu_adapter_name = info.name;
+        self.gpu_backend = format!("{:?}", info.backend);
+    }
+
+    pub fn gpu_adapter_name(&self) -> &str {
+        &self.gpu_adapter_name
+    }
+
+    pub fn gpu_backend(&self) -> &str {
+        &self.gpu_backend
+    }
+
+    pub fn gpu_features(&self) -> wgpu::Features {
+        self.device.features()
+    }
+
+    pub fn timestamps_supported(&self) -> bool {
+        self.gpu_profiler.is_some()
+            && self
+                .gpu_profiler
+                .as_ref()
+                .is_some_and(|profiler| profiler.timestamp_period_ns() > 0.0)
+    }
+
+    /// Map the timestamp buffer after [`Self::submit_timestamped`].
+    /// That submit waits for the writes, then resolves and copies.
+    pub fn request_gpu_profiler_readback(&mut self) {
+        if let Some(profiler) = self.gpu_profiler.as_mut() {
+            profiler.request_readback();
+        }
+    }
+
+    /// Submit the encoder that already contains the timestamp writes and resolve.
+    ///
+    /// [`crate::gpu_profiler::GpuProfiler::resolve_queries`] runs on that
+    /// encoder before `finish`. A second resolve encoder reads unavailable
+    /// queries on NVIDIA. The copy follows a 5s poll of this submission.
+    pub fn submit_timestamped(&mut self, frame: wgpu::CommandBuffer) -> Result<()> {
+        let queue = self.queue.clone();
+        let device = self.device.clone();
+        crate::gpu_profiler::GpuProfiler::submit_frame(
+            self.gpu_profiler.as_mut(),
+            &queue,
+            &device,
+            frame,
+        )
+        .map_err(|err| anyhow::anyhow!(err))
+    }
+
     pub fn gpu_profiler(&self) -> Option<&crate::gpu_profiler::GpuProfiler> {
         self.gpu_profiler.as_ref()
+    }
+
+    pub fn gpu_profiler_mut(&mut self) -> Option<&mut crate::gpu_profiler::GpuProfiler> {
+        self.gpu_profiler.as_mut()
+    }
+
+    /// New query set, resolve buffer, and staging buffer.
+    ///
+    /// Mirrors the self-test, which reads a set that has never been written.
+    /// The frame path otherwise keeps one set and changes how many queries
+    /// it resolves after the first frame.
+    pub fn recreate_timestamp_set(&mut self) -> Result<()> {
+        let device = self.device.clone();
+        let Some(profiler) = self.gpu_profiler.as_mut() else {
+            anyhow::bail!("timestamps are unsupported; there is no query set to recreate");
+        };
+        profiler
+            .recreate(&device)
+            .map_err(|err| anyhow::anyhow!(err))
     }
 
     /// Returns a reference to the per-frame staging ring buffer.
@@ -3723,6 +4122,50 @@ fn vs(input: VSIn) -> VSOut {
         Ok(())
     }
 
+    /// Bake the demo sky. Tries the terrain pack's `spruit_sunrise` EXR, then
+    /// `kloppenheim_02_puresky`. The returned path is the file that was baked.
+    /// Missing files are an error, not a silent 1×1 cubemap.
+    pub fn bake_showcase_environment(
+        &mut self,
+        quality: crate::ibl::IblQuality,
+    ) -> Result<std::path::PathBuf> {
+        let chosen = [SHOWCASE_HDRI_PRIMARY, SHOWCASE_HDRI_FALLBACK]
+            .into_iter()
+            .map(std::path::PathBuf::from)
+            .find(|path| path.is_file())
+            .with_context(|| {
+                format!(
+                    "showcase HDRI missing: tried {SHOWCASE_HDRI_PRIMARY} and {SHOWCASE_HDRI_FALLBACK}"
+                )
+            })?;
+        if chosen != std::path::Path::new(SHOWCASE_HDRI_PRIMARY) {
+            log::warn!(
+                "primary showcase HDRI {SHOWCASE_HDRI_PRIMARY} missing; baking {}",
+                chosen.display()
+            );
+        }
+        self.ibl.mode = crate::ibl::SkyMode::HdrPath {
+            biome: "showcase".to_string(),
+            path: chosen.display().to_string(),
+        };
+        self.bake_environment(quality)?;
+        Ok(chosen)
+    }
+
+    /// Upload one glTF primitive through the same path as
+    /// [`Self::add_composite_model`]. Albedo-only meshes keep the albedo bind
+    /// group. A normal, metallic-roughness, occlusion, or emissive map binds
+    /// all five slots. glTF metallic-roughness is converted to engine layout
+    /// (R = metallic, G = roughness) inside [`crate::pbr_maps::pack_gltf_surface`].
+    pub fn add_cpu_mesh_model(
+        &mut self,
+        name: impl Into<String>,
+        cpu: &crate::mesh::CpuMesh,
+        instances: &[Instance],
+    ) {
+        self.add_composite_model(name, vec![cpu.clone()], instances);
+    }
+
     /// Install an environment baked elsewhere (L.2: the editor's worker-thread
     /// init bake — a second `IblManager` on that thread bakes and sends its
     /// `IblResources` back; wgpu resources are internally refcounted, so the
@@ -3749,13 +4192,6 @@ fn vs(input: VSIn) -> VSOut {
             ..Default::default()
         });
 
-        #[repr(C)]
-        #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
-        struct IblParamsGpu {
-            ibl_intensity: f32,
-            max_spec_lod: f32,
-            _pad: [f32; 2],
-        }
         // L.2 calibration (director-ratified 2026-07-28): fixed default IBL
         // intensity, replacing the former image-average normalisation
         // (`0.35/avg_luminance`). Measured for kloppenheim_02: the linear
@@ -3772,13 +4208,9 @@ fn vs(input: VSIn) -> VSOut {
             ibl_intensity,
             res.mips_specular,
         );
-        let params = IblParamsGpu {
-            ibl_intensity,
-            max_spec_lod: res.mips_specular.saturating_sub(1).max(1) as f32,
-            _pad: [0.0; 2],
-        };
-        self.queue
-            .write_buffer(&self.ibl_params_buf, 0, bytemuck::bytes_of(&params));
+        self.ibl_intensity = ibl_intensity;
+        self.ibl_max_spec_lod = res.mips_specular.saturating_sub(1).max(1) as f32;
+        self.write_ibl_params();
 
         // Recreate bind group with actual IBL textures.
         // We need the layout — extract from the current bind group's pipeline.
@@ -4873,6 +5305,531 @@ fn vs(input: VSIn) -> VSOut {
         self.create_mesh_from_full_arrays(&positions, &normals, &tangents, &uvs, &cpu_mesh.indices)
     }
 
+    /// Rewrite a named model's first primitive from a CPU mesh.
+    ///
+    /// The CPU mesh is the source of truth (the sim already committed it).
+    /// When the vertex and index bytes fit the existing GPU buffers, this
+    /// writes in place and leaves [`RenderModelPrimitive::storage_generation`]
+    /// unchanged. Growth allocates the next power-of-two size and bumps the
+    /// generation. The model's world AABB is updated from the CPU mesh.
+    pub fn write_mesh(&mut self, name: &str, cpu: &crate::mesh::CpuMesh) -> Result<()> {
+        if cpu.vertices.is_empty() || cpu.indices.is_empty() {
+            anyhow::bail!("model '{name}' write has no vertices or indices");
+        }
+        let verts: Vec<crate::types::Vertex> = cpu
+            .vertices
+            .iter()
+            .map(|v| crate::types::Vertex {
+                position: v.position,
+                normal: v.normal,
+                tangent: v.tangent,
+                uv: v.uv,
+            })
+            .collect();
+        let vbytes = bytemuck::cast_slice(&verts);
+        let ibytes = bytemuck::cast_slice(&cpu.indices);
+        let aabb = cpu
+            .aabb()
+            .map(|(min, max)| (min.to_array(), max.to_array()));
+
+        let (fits, vertex_buf, index_buf) = {
+            let model = self
+                .models
+                .get_mut(name)
+                .with_context(|| format!("model '{name}' is not loaded"))?;
+            let primitive = model
+                .primitives
+                .first_mut()
+                .with_context(|| format!("model '{name}' has no primitives"))?;
+            let fits = (vbytes.len() as u64) <= primitive.mesh.vertex_buf.size()
+                && (ibytes.len() as u64) <= primitive.mesh.index_buf.size();
+            let vertex_buf = primitive.mesh.vertex_buf.clone();
+            let index_buf = primitive.mesh.index_buf.clone();
+            primitive.mesh.index_count = cpu.indices.len() as u32;
+            model.aabb = aabb;
+            (fits, vertex_buf, index_buf)
+        };
+
+        if fits {
+            self.queue.write_buffer(&vertex_buf, 0, vbytes);
+            self.queue.write_buffer(&index_buf, 0, ibytes);
+            return Ok(());
+        }
+
+        let vsize = (vbytes.len() as u64).next_power_of_two().max(64);
+        let isize = (ibytes.len() as u64).next_power_of_two().max(12);
+        let new_vb = self.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("mesh vertex rewrite"),
+            size: vsize,
+            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        let new_ib = self.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("mesh index rewrite"),
+            size: isize,
+            usage: wgpu::BufferUsages::INDEX | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        self.queue.write_buffer(&new_vb, 0, vbytes);
+        self.queue.write_buffer(&new_ib, 0, ibytes);
+        let model = self
+            .models
+            .get_mut(name)
+            .with_context(|| format!("model '{name}' disappeared during rewrite"))?;
+        let primitive = model
+            .primitives
+            .first_mut()
+            .with_context(|| format!("model '{name}' has no primitives"))?;
+        primitive.mesh.vertex_buf = new_vb;
+        primitive.mesh.index_buf = new_ib;
+        primitive.storage_generation = primitive.storage_generation.saturating_add(1);
+        Ok(())
+    }
+
+    /// Queue `path` for the named model. Distance is from `world_pos` to the
+    /// camera. Until the decode worker finishes, the model keeps a 1×1 white
+    /// albedo bind. `draw_into` uploads at most one resident texture per frame
+    /// and does not allocate while the fallback is still bound.
+    pub fn request_streamed_albedo(
+        &mut self,
+        model_name: &str,
+        path: &str,
+        world_pos: glam::Vec3,
+    ) -> Result<()> {
+        if !self.models.contains_key(model_name) {
+            anyhow::bail!("model '{model_name}' is not loaded");
+        }
+        let (fallback_bg, fallback_textures, _) =
+            self.create_model_albedo_bind_group(1, 1, &[255, 255, 255, 255]);
+        let model = self
+            .models
+            .get_mut(model_name)
+            .context("model disappeared while requesting a stream")?;
+        model.stream_albedo_id = Some(path.to_string());
+        model.stream_resident = false;
+        for primitive in &mut model.primitives {
+            primitive.tex_bind_group = Some(fallback_bg.clone());
+            primitive._retained_textures = fallback_textures.clone();
+        }
+        let camera = glam::Vec3::new(
+            self.camera_ubo.camera_pos_pad[0],
+            self.camera_ubo.camera_pos_pad[1],
+            self.camera_ubo.camera_pos_pad[2],
+        );
+        self.streaming.set_camera(camera);
+        self.streaming.request_at(path, world_pos);
+        Ok(())
+    }
+
+    /// `true` while `model_name` is waiting on a streamed albedo and still
+    /// draws the 1×1 fallback.
+    pub fn streamed_albedo_is_fallback(&self, model_name: &str) -> bool {
+        self.models
+            .get(model_name)
+            .map(|model| model.stream_albedo_id.is_some() && !model.stream_resident)
+            .unwrap_or(false)
+    }
+
+    pub fn stream_failure(&self, path: &str) -> Option<&str> {
+        self.streaming.failure(path)
+    }
+
+    fn tick_texture_streaming(&mut self) {
+        let camera = glam::Vec3::new(
+            self.camera_ubo.camera_pos_pad[0],
+            self.camera_ubo.camera_pos_pad[1],
+            self.camera_ubo.camera_pos_pad[2],
+        );
+        let device = self.device.clone();
+        let queue = self.queue.clone();
+        self.streaming.set_camera(camera);
+        self.streaming.tick(&device, &queue, 1);
+        self.refresh_streamed_albedo();
+    }
+
+    fn refresh_streamed_albedo(&mut self) {
+        let mut ready_name: Option<String> = None;
+        for (name, model) in &self.models {
+            let Some(id) = model.stream_albedo_id.as_deref() else {
+                continue;
+            };
+            if model.stream_resident {
+                continue;
+            }
+            if self.streaming.resident_texture(id).is_some() {
+                ready_name = Some(name.clone());
+                break;
+            }
+        }
+        let Some(name) = ready_name else {
+            return;
+        };
+        let Some(id) = self
+            .models
+            .get(&name)
+            .and_then(|model| model.stream_albedo_id.clone())
+        else {
+            return;
+        };
+        let Some(texture) = self.streaming.resident_texture(&id) else {
+            return;
+        };
+        let view = texture.view.clone();
+        let gpu_texture = texture.texture.clone();
+        let bg = self.bind_group_for_albedo_view(&view);
+        let Some(model) = self.models.get_mut(&name) else {
+            return;
+        };
+        for primitive in &mut model.primitives {
+            primitive.tex_bind_group = Some(bg.clone());
+            primitive._retained_textures = vec![gpu_texture.clone()];
+        }
+        model.stream_resident = true;
+    }
+
+    fn bind_group_for_albedo_view(&self, view: &wgpu::TextureView) -> wgpu::BindGroup {
+        self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("streamed albedo bg"),
+            layout: &self.tex_bgl,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&self.albedo_sampler),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: wgpu::BindingResource::TextureView(&self.mr_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: wgpu::BindingResource::Sampler(&self.mr_sampler),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 4,
+                    resource: wgpu::BindingResource::TextureView(&self.normal_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 5,
+                    resource: wgpu::BindingResource::Sampler(&self.normal_sampler),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 6,
+                    resource: self.skin_palette_buf.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 7,
+                    resource: wgpu::BindingResource::TextureView(&self.occlusion_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 8,
+                    resource: wgpu::BindingResource::Sampler(&self.occlusion_sampler),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 9,
+                    resource: wgpu::BindingResource::TextureView(&self.emissive_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 10,
+                    resource: wgpu::BindingResource::Sampler(&self.emissive_sampler),
+                },
+            ],
+        })
+    }
+
+    pub fn set_atmosphere_enabled(&mut self, enabled: bool) {
+        self.atmosphere_on = enabled;
+    }
+
+    pub fn set_cloud_raymarch_enabled(&mut self, enabled: bool) {
+        self.cloud_raymarch_on = enabled;
+    }
+
+    pub fn set_ssgi_enabled(&mut self, enabled: bool) {
+        self.ssgi_on = enabled;
+    }
+
+    pub fn set_taa_enabled(&mut self, enabled: bool) {
+        self.taa_on = enabled;
+    }
+
+    pub fn set_temporal_upscale_enabled(&mut self, enabled: bool) {
+        self.upscale_on = enabled;
+    }
+
+    pub fn set_dof_enabled(&mut self, enabled: bool) {
+        self.dof_on = enabled;
+    }
+
+    fn ensure_gated_aux(&mut self) {
+        if self.gated_normal.is_some() {
+            return;
+        }
+        let size = wgpu::Extent3d {
+            width: self.config.width.max(1),
+            height: self.config.height.max(1),
+            depth_or_array_layers: 1,
+        };
+        let normal = self.device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("gated normal"),
+            size,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba16Float,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::RENDER_ATTACHMENT,
+            view_formats: &[],
+        });
+        let normal_view = normal.create_view(&wgpu::TextureViewDescriptor::default());
+        let velocity = self.device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("gated velocity"),
+            size,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rg16Float,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::RENDER_ATTACHMENT,
+            view_formats: &[],
+        });
+        let velocity_view = velocity.create_view(&wgpu::TextureViewDescriptor::default());
+        self.gated_normal = Some((normal, normal_view));
+        self.gated_velocity = Some((velocity, velocity_view));
+    }
+
+    /// Presentation passes that stay off unless a setter turned them on.
+    /// History and GI stay out of the simulation.
+    fn record_gated_presentation(
+        &mut self,
+        enc: &mut wgpu::CommandEncoder,
+        depth: &wgpu::TextureView,
+    ) {
+        let gen = self.resource_generation;
+        let hdr = self.hdr_view.clone();
+        let device = self.device.clone();
+        let queue = self.queue.clone();
+        let width = self.config.width.max(1);
+        let height = self.config.height.max(1);
+        let inv = self.cached_proj * self.cached_view;
+        let eye = glam::Vec3::new(
+            self.camera_ubo.camera_pos_pad[0],
+            self.camera_ubo.camera_pos_pad[1],
+            self.camera_ubo.camera_pos_pad[2],
+        );
+
+        if self.atmosphere_on {
+            if self.atmosphere.is_none() {
+                self.atmosphere = Some(crate::atmosphere::AtmospherePass::new(
+                    &self.device,
+                    width,
+                    height,
+                    crate::atmosphere::AtmosphereConfig::default(),
+                ));
+            }
+            if let Some(pass) = self.atmosphere.as_mut() {
+                pass.prepare_frame(
+                    &queue,
+                    inv,
+                    eye,
+                    glam::Vec3::Y,
+                    glam::Vec3::NEG_Y,
+                    0.1,
+                    200.0,
+                );
+                pass.execute(&device, enc, &hdr, depth, gen);
+                enc.copy_texture_to_texture(
+                    pass.aerial_texture().as_image_copy(),
+                    self.hdr_tex.as_image_copy(),
+                    wgpu::Extent3d {
+                        width,
+                        height,
+                        depth_or_array_layers: 1,
+                    },
+                );
+            }
+        }
+        if self.cloud_raymarch_on {
+            if self.cloud_raymarch.is_none() {
+                self.cloud_raymarch = Some(crate::volumetric_clouds::VolumetricCloudsPass::new(
+                    &self.device,
+                    width,
+                    height,
+                    crate::volumetric_clouds::CloudConfig::default(),
+                ));
+            }
+            if let Some(pass) = self.cloud_raymarch.as_mut() {
+                pass.prepare_frame(
+                    &queue,
+                    inv,
+                    eye,
+                    glam::Vec3::Y,
+                    glam::Vec3::ONE,
+                    1.0,
+                    0.2,
+                    0.1,
+                    200.0,
+                    1.0 / 60.0,
+                );
+                pass.execute(&device, enc, &hdr, depth, gen);
+                pass.copy_cloud_to_history(enc);
+            }
+        }
+        if self.ssgi_on || self.taa_on || self.upscale_on {
+            self.ensure_gated_aux();
+        }
+        let normal = self.gated_normal.as_ref().map(|(_, view)| view.clone());
+        let velocity = self.gated_velocity.as_ref().map(|(_, view)| view.clone());
+        if self.ssgi_on {
+            if self.ssgi_pass.is_none() {
+                self.ssgi_pass = Some(crate::ssgi::SsgiPass::new(&self.device, width, height));
+            }
+            if let (Some(pass), Some(normal), Some(velocity)) =
+                (self.ssgi_pass.as_mut(), normal.as_ref(), velocity.as_ref())
+            {
+                pass.update_params(&queue, self.cached_proj);
+                pass.execute(&device, enc, depth, normal, &hdr, velocity, gen);
+            }
+        }
+        if self.taa_on {
+            if self.taa_pass.is_none() {
+                self.taa_pass = Some(crate::taa::TaaPass::new(&self.device, width, height));
+            }
+            if let (Some(pass), Some(velocity)) = (self.taa_pass.as_mut(), velocity.as_ref()) {
+                pass.update_params(&queue);
+                pass.execute(&device, enc, &hdr, depth, velocity, gen);
+            }
+        }
+        if self.upscale_on {
+            if self.upscale_pass.is_none() {
+                let config = crate::temporal_upscale::UpscaleConfig::default();
+                self.upscale_pass = Some(crate::temporal_upscale::TemporalUpscalePass::new(
+                    &self.device,
+                    width,
+                    height,
+                    &config,
+                ));
+            }
+            if let (Some(pass), Some(velocity)) = (self.upscale_pass.as_mut(), velocity.as_ref()) {
+                pass.update_params(&queue);
+                pass.execute(&device, enc, &hdr, depth, velocity, gen);
+            }
+        }
+        if self.dof_on {
+            if self.dof_pass.is_none() {
+                match crate::advanced_post::AdvancedPostFx::new(
+                    &self.device,
+                    width,
+                    height,
+                    wgpu::TextureFormat::Rgba16Float,
+                ) {
+                    Ok(pass) => self.dof_pass = Some(pass),
+                    Err(err) => log::error!("depth of field pass was not created: {err:#}"),
+                }
+            }
+            if let Some(pass) = self.dof_pass.as_mut() {
+                let history = pass.history_view().clone();
+                pass.apply_dof(&device, &queue, enc, &hdr, depth, &history);
+            }
+        }
+    }
+
+    /// Enable a presentation-only particle emitter. `None` disables it.
+    /// The seed and `delta_time` on `params` come from the caller. This does
+    /// not write simulation state.
+    pub fn set_particle_emitter(
+        &mut self,
+        params: Option<crate::gpu_particles::EmitterParams>,
+    ) -> Result<()> {
+        if params.is_some() && self.particle_sim.is_none() {
+            const MAX: u32 = 256;
+            self.particle_sim = Some(
+                crate::gpu_particles::GpuParticleSystem::new(&self.device, MAX)
+                    .context("create presentation particle sim")?,
+            );
+            self.particle_draw = Some(crate::particle_render::ParticleRenderPass::new(
+                &self.device,
+                &self.queue,
+                self.config.format,
+                self.depth.format,
+                crate::particle_render::ParticleRenderConfig::default(),
+            ));
+            #[repr(C)]
+            #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+            struct SortEntry {
+                index: u32,
+                distance: f32,
+            }
+            let entries: Vec<SortEntry> = (0..MAX)
+                .map(|index| SortEntry {
+                    index,
+                    distance: 0.0,
+                })
+                .collect();
+            self.particle_sort = Some(self.device.create_buffer_init(
+                &wgpu::util::BufferInitDescriptor {
+                    label: Some("particle sort identity"),
+                    contents: bytemuck::cast_slice(&entries),
+                    usage: wgpu::BufferUsages::STORAGE,
+                },
+            ));
+        }
+        self.particle_emitter = params;
+        Ok(())
+    }
+
+    /// Turn bindless registration on or off. Enabling does nothing when the
+    /// device was created without the binding-array features. Shading stays on
+    /// the group-3 bind groups either way; the SSBO is the indexed copy.
+    pub fn set_bindless_enabled(&mut self, enabled: bool) {
+        self.bindless_active = enabled && self.bindless.is_some();
+    }
+
+    pub fn bindless_supported(&self) -> bool {
+        self.bindless.is_some()
+    }
+
+    pub fn bindless_material_index(&self, name: &str) -> Option<u32> {
+        self.models
+            .get(name)
+            .and_then(|model| model.primitives.first())
+            .and_then(|primitive| primitive.bindless_index)
+    }
+
+    fn register_bindless_maps(&mut self, textures: &[wgpu::Texture]) -> Option<u32> {
+        if !self.bindless_active || textures.len() < 3 {
+            return None;
+        }
+        let system = self.bindless.as_mut()?;
+        let view =
+            |texture: &wgpu::Texture| texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let albedo = system.add_texture(view(&textures[0]))?;
+        let metallic_roughness = system.add_texture(view(&textures[1]))?;
+        let normal = system.add_texture(view(&textures[2]))?;
+        system.add_material(crate::material_bindless::GpuMaterialEntry {
+            albedo_index: albedo,
+            normal_index: normal,
+            orm_index: metallic_roughness,
+            flags: crate::material_bindless::MAT_FLAG_HAS_ALBEDO
+                | crate::material_bindless::MAT_FLAG_HAS_NORMAL
+                | crate::material_bindless::MAT_FLAG_HAS_ORM,
+            metallic_factor: 1.0,
+            roughness_factor: 1.0,
+            occlusion_factor: 1.0,
+            base_color: [1.0, 1.0, 1.0, 1.0],
+            ..Default::default()
+        })
+    }
+
+    /// Generation of the GPU buffers for `name`. `None` if the model is absent.
+    pub fn mesh_storage_generation(&self, name: &str) -> Option<u32> {
+        self.models
+            .get(name)
+            .and_then(|model| model.primitives.first())
+            .map(|primitive| primitive.storage_generation)
+    }
+
     pub fn set_external_mesh(&mut self, mesh: Mesh) {
         self.mesh_external = Some(mesh);
     }
@@ -4884,34 +5841,42 @@ fn vs(input: VSIn) -> VSOut {
         // When camera-relative, offset every model matrix so its translation
         // is relative to the camera origin.  The f64 subtraction preserves
         // sub-centimetre precision even at 20 000+ km from world origin.
+        self.instance_raw_scratch.clear();
+        self.instance_raw_scratch.reserve(self.instances.len());
         #[cfg(feature = "camera-relative")]
-        let raws: Vec<InstanceRaw> = {
+        {
             let cam = self.camera_world_pos;
-            self.instances
-                .iter()
-                .map(|inst| {
-                    let mut model = inst.transform;
-                    let wp = glam::DVec3::new(
-                        model.w_axis.x as f64,
-                        model.w_axis.y as f64,
-                        model.w_axis.z as f64,
-                    );
-                    let rel = (wp - cam).as_vec3();
-                    model.w_axis = glam::Vec4::new(rel.x, rel.y, rel.z, model.w_axis.w);
+            for inst in &self.instances {
+                let mut model = inst.transform;
+                let wp = glam::DVec3::new(
+                    model.w_axis.x as f64,
+                    model.w_axis.y as f64,
+                    model.w_axis.z as f64,
+                );
+                let rel = (wp - cam).as_vec3();
+                model.w_axis = glam::Vec4::new(rel.x, rel.y, rel.z, model.w_axis.w);
+                self.instance_raw_scratch.push(
                     Instance {
                         transform: model,
                         color: inst.color,
                         material_id: inst.material_id,
                     }
-                    .raw()
-                })
-                .collect()
-        };
+                    .raw(),
+                );
+            }
+        }
         #[cfg(not(feature = "camera-relative"))]
-        let raws: Vec<InstanceRaw> = self.instances.iter().map(|i| i.raw()).collect();
+        {
+            for inst in &self.instances {
+                self.instance_raw_scratch.push(inst.raw());
+            }
+        }
 
-        let size = (raws.len() * std::mem::size_of::<InstanceRaw>()) as u64;
-
+        let bytes = bytemuck::cast_slice(&self.instance_raw_scratch);
+        if self.instance_uploaded.as_slice() == bytes {
+            return;
+        }
+        let size = bytes.len() as u64;
         if size > self.instance_buf.size() {
             self.instance_buf = self.device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some("instance buf (resized)"),
@@ -4922,8 +5887,10 @@ fn vs(input: VSIn) -> VSOut {
                 mapped_at_creation: false,
             });
         }
+        self.instance_uploaded.clear();
+        self.instance_uploaded.extend_from_slice(bytes);
         self.queue
-            .write_buffer(&self.instance_buf, 0, bytemuck::cast_slice(&raws));
+            .write_buffer(&self.instance_buf, 0, &self.instance_uploaded);
     }
 
     /// Reads back the instance buffer from the GPU.
@@ -5276,12 +6243,74 @@ fn vs(input: VSIn) -> VSOut {
         self.force_shadow_override = !enabled;
     }
 
+    /// The 512² cloud-shadow compute is on unless this is false.
+    pub fn cloud_shadows_enabled(&self) -> bool {
+        self.cloud_shadows_enabled
+    }
+
     /// Enable or disable the per-frame cloud shadow compute pass.
     /// When disabled the cloud shadow texture retains its initial all-white
     /// state (1.0 = fully lit), so direct sunlight is preserved without
     /// the noisy pattern from the low-resolution 512x512 transmittance map.
     pub fn set_cloud_shadows_enabled(&mut self, enabled: bool) {
         self.cloud_shadows_enabled = enabled;
+    }
+
+    /// Presentation frame for the cloud-shadow slice. The next draw consumes
+    /// it. The same index always selects the same rows and the same cloud
+    /// time (`(index / slices) * slices / 60` seconds). Callers that never
+    /// set this get a counter that advances once per draw.
+    pub fn set_presentation_frame(&mut self, frame: u64) {
+        self.presentation_frame = Some(frame);
+    }
+
+    fn cloud_shadow_frame_index(&mut self) -> u64 {
+        if let Some(frame) = self.presentation_frame.take() {
+            self.cloud_shadow_frame = frame.saturating_add(1);
+            frame
+        } else {
+            let frame = self.cloud_shadow_frame;
+            self.cloud_shadow_frame = self.cloud_shadow_frame.saturating_add(1);
+            frame
+        }
+    }
+
+    fn write_ibl_params(&self) {
+        let params = IblParamsGpu {
+            ibl_intensity: self.ibl_intensity,
+            max_spec_lod: self.ibl_max_spec_lod,
+            _pad: self.cloud_shadow_pass.baked_center_xz(),
+        };
+        self.queue
+            .write_buffer(&self.ibl_params_buf, 0, bytemuck::bytes_of(&params));
+    }
+
+    fn record_cloud_shadow(&mut self, encoder: &mut wgpu::CommandEncoder) {
+        let frame = self.cloud_shadow_frame_index();
+        let cam_pos = glam::Vec3::new(
+            self.camera_ubo.camera_pos_pad[0],
+            self.camera_ubo.camera_pos_pad[1],
+            self.camera_ubo.camera_pos_pad[2],
+        );
+        let sun_dir = -glam::Vec3::new(
+            self.camera_ubo.light_dir_pad[0],
+            self.camera_ubo.light_dir_pad[1],
+            self.camera_ubo.light_dir_pad[2],
+        )
+        .normalize_or_zero();
+        let cloud_cfg = crate::volumetric_clouds::CloudConfig::default();
+        self.cloud_shadow_pass.prepare_frame(
+            &self.queue,
+            cam_pos,
+            sun_dir,
+            &cloud_cfg,
+            cloud_cfg.extinction_coeff,
+            crate::volumetric_clouds::CLOUD_SHADOW_STEPS,
+            frame,
+        );
+        self.write_ibl_params();
+        self.cloud_shadow_pass
+            .execute(&self.device, encoder, self.resource_generation);
     }
 
     /// Set the post-processing chain configuration.
@@ -5430,6 +6459,13 @@ fn vs(input: VSIn) -> VSOut {
     /// crosses into the renderer**, so `astraweave-render` stays independent of the
     /// gameplay crates (the WeaveOp → WeaveInstance translation lives in the binary
     /// glue). No-op when no water renderer is installed.
+    /// The heavy frame-budget scene does not install a water surface.
+    pub fn water_is_drawn(&self) -> bool {
+        self.water_renderer
+            .as_ref()
+            .is_some_and(|water| water.has_renderable_content())
+    }
+
     pub fn set_water_weave_instances(&mut self, instances: &[crate::water::WeaveInstance]) {
         if let Some(ref mut water) = self.water_renderer {
             water.set_weave_instances(instances);
@@ -5752,10 +6788,13 @@ fn vs(input: VSIn) -> VSOut {
             self.queue.write_buffer(buf, 0, bytemuck::bytes_of(&inst));
         }
         // Frustum cull instances
-        let (vis_raws, vis_count) = self.build_visible_instances();
+        let vis_count = self.build_visible_instances();
         if vis_count > 0 {
-            self.queue
-                .write_buffer(&self.instance_buf, 0, bytemuck::cast_slice(&vis_raws));
+            self.queue.write_buffer(
+                &self.instance_buf,
+                0,
+                bytemuck::cast_slice(&self.visible_raw_scratch[..vis_count]),
+            );
         }
         // Shadow passes (depth only) — skip when shadows are disabled or there
         // is no shadow-casting geometry.
@@ -5922,29 +6961,7 @@ fn vs(input: VSIn) -> VSOut {
         // Skipped when cloud_shadows_enabled is false — the 512×512 transmittance
         // map produces a noisy pattern on terrain at this resolution.
         if self.cloud_shadows_enabled {
-            let cam_pos = glam::Vec3::new(
-                self.camera_ubo.camera_pos_pad[0],
-                self.camera_ubo.camera_pos_pad[1],
-                self.camera_ubo.camera_pos_pad[2],
-            );
-            let sun_dir = -glam::Vec3::new(
-                self.camera_ubo.light_dir_pad[0],
-                self.camera_ubo.light_dir_pad[1],
-                self.camera_ubo.light_dir_pad[2],
-            )
-            .normalize_or_zero();
-            let cloud_cfg = crate::volumetric_clouds::CloudConfig::default();
-            self.cloud_shadow_pass.prepare_frame(
-                &self.queue,
-                cam_pos,
-                sun_dir,
-                &cloud_cfg,
-                cloud_cfg.extinction_coeff,
-                32,
-                1.0 / 60.0,
-            );
-            self.cloud_shadow_pass
-                .execute(&self.device, &mut enc, self.resource_generation);
+            self.record_cloud_shadow(&mut enc);
         }
 
         {
@@ -6131,12 +7148,14 @@ fn vs(input: VSIn) -> VSOut {
             pp.draw(0..3, 0..1);
         }
 
-        // --- GPU profiler: resolve timestamp queries into readback buffer ---
+        // Pass timestamps in `render` are recorded on `enc`. Resolve them
+        // here. `submit_timestamped` does not open a second encoder.
         if let Some(ref mut p) = self.gpu_profiler {
+            p.resolve_queries(&mut enc);
             p.end_frame(&mut enc);
         }
 
-        self.queue.submit(Some(enc.finish()));
+        self.submit_timestamped(enc.finish())?;
         frame.present();
 
         // --- GPU profiler: initiate async readback of timestamp data ---
@@ -6166,35 +7185,34 @@ fn vs(input: VSIn) -> VSOut {
             p.poll_readback(&self.device);
             p.begin_frame();
         }
+        self.timing_gap = None;
+        self.open_frame_timestamp(enc);
+        self.open_timing_gap(enc, "before_passes");
         self.poll_fog_timestamps();
+        if self.bindless_active {
+            if let Some(system) = self.bindless.as_mut() {
+                system.update(&self.device, &self.queue);
+            }
+        }
         // Advance the staging ring buffer for this frame.
         self.staging_ring.begin_frame();
+        self.tick_texture_streaming();
 
-        let di_ts_cluster = self
-            .gpu_profiler
-            .as_mut()
-            .and_then(|p| p.allocate_pass("cluster_bin"));
-        // One profiler pass per cascade — labels are static strings indexed by
-        // cascade so the array cannot fall behind CASCADE_COUNT.
+        // Timestamp slots are allocated only for passes that actually begin.
+        // A resolve range that includes a query nobody wrote comes back as
+        // zeros on Vulkan, which is what made every pass read 0 ms.
         const SHADOW_PASS_LABELS: [&str; CASCADE_COUNT] = [
             "shadow_cascade_0",
             "shadow_cascade_1",
             "shadow_cascade_2",
             "shadow_cascade_3",
         ];
-        let di_ts_shadow: [Option<(u32, u32)>; CASCADE_COUNT] = std::array::from_fn(|i| {
-            self.gpu_profiler
-                .as_mut()
-                .and_then(|p| p.allocate_pass(SHADOW_PASS_LABELS[i]))
-        });
-        let di_ts_main = self
-            .gpu_profiler
-            .as_mut()
-            .and_then(|p| p.allocate_pass("main_render"));
-        let di_ts_post = self
-            .gpu_profiler
-            .as_mut()
-            .and_then(|p| p.allocate_pass("post_process"));
+        const AFTER_SHADOW: [&str; CASCADE_COUNT] = [
+            "after_shadow_0",
+            "after_shadow_1",
+            "after_shadow_2",
+            "after_shadow_3",
+        ];
 
         // Clustered lighting setup — only recompute when lights change.
         // The default two hardcoded lights never change, so after the first
@@ -6261,23 +7279,28 @@ fn vs(input: VSIn) -> VSOut {
             self.clustered_offsets_cache = Some(offsets_cpu);
 
             // GPU compute pass only needed when lights changed (offsets were recomputed above)
+            self.close_timing_gap(enc);
             enc.clear_buffer(&self.clustered_counts_buf, 0, None);
             {
-                let cluster_ts = di_ts_cluster.and_then(|(b, e)| {
-                    Some(wgpu::ComputePassTimestampWrites {
-                        query_set: self.gpu_profiler.as_ref()?.query_set(),
-                        beginning_of_pass_write_index: Some(b),
-                        end_of_pass_write_index: Some(e),
-                    })
-                });
+                let cluster_stamp = self
+                    .gpu_profiler
+                    .as_mut()
+                    .and_then(|profiler| profiler.begin_stamp(enc, "cluster_bin"));
                 let mut cpass = enc.begin_compute_pass(&wgpu::ComputePassDescriptor {
                     label: Some("cluster bin"),
-                    timestamp_writes: cluster_ts,
+                    timestamp_writes: None,
                 });
                 cpass.set_pipeline(&self.clustered_comp_pipeline);
                 cpass.set_bind_group(0, &self.clustered_comp_bg, &[]);
                 cpass.dispatch_workgroups(light_count as u32, 1, 1);
+                drop(cpass);
+                if let Some(stamp) = cluster_stamp {
+                    if let Some(profiler) = self.gpu_profiler.as_mut() {
+                        profiler.end_stamp(enc, stamp);
+                    }
+                }
             }
+            self.open_timing_gap(enc, "after_cluster");
         }
 
         // Update pre-allocated plane instance buffer ONLY if terrain hasn't
@@ -6285,7 +7308,7 @@ fn vs(input: VSIn) -> VSOut {
         // extent for terrain rendering — overwriting it here would place a
         // small dark plane at Y=-0.2 right inside the camera's shadow cascade,
         // producing a massive shadow that follows the camera.
-        if !self.terrain_ground_set {
+        if !self.terrain_ground_set && !self.plane_instance_uploaded {
             let plane_xform = glam::Mat4::from_translation(vec3(0.0, -0.2, 0.0))
                 * glam::Mat4::from_scale(vec3(50.0, 1.0, 50.0));
             let plane_inst = Instance {
@@ -6296,13 +7319,19 @@ fn vs(input: VSIn) -> VSOut {
             .raw();
             self.queue
                 .write_buffer(&self.plane_inst_buf, 0, bytemuck::bytes_of(&plane_inst));
+            self.plane_instance_uploaded = true;
         }
 
         // Frustum cull - TEST 4
-        let (vis_raws, vis_count) = self.build_visible_instances();
+        let vis_count = self.build_visible_instances();
         if vis_count > 0 {
-            self.queue
-                .write_buffer(&self.instance_buf, 0, bytemuck::cast_slice(&vis_raws));
+            let bytes = bytemuck::cast_slice(&self.visible_raw_scratch[..vis_count]);
+            if self.visible_uploaded.as_slice() != bytes {
+                self.visible_uploaded.clear();
+                self.visible_uploaded.extend_from_slice(bytes);
+                self.queue
+                    .write_buffer(&self.instance_buf, 0, &self.visible_uploaded);
+            }
         }
 
         // Shadow passes — skip entirely when shadows disabled or no geometry visible.
@@ -6338,6 +7367,8 @@ fn vs(input: VSIn) -> VSOut {
         // the passes are skipped this frame, nothing is overwritten and the
         // request must stay pending rather than snapshot a stale map.
         if self.c3_copy_pending && has_shadow_casters {
+            self.close_timing_gap(enc);
+            let copy_stamp = self.begin_named_stamp(enc, "c3_shadow_copy");
             let layer = |z: u32| wgpu::TexelCopyTextureInfo {
                 texture: &self.shadow_tex,
                 mip_level: 0,
@@ -6353,7 +7384,9 @@ fn vs(input: VSIn) -> VSOut {
                     depth_or_array_layers: 1,
                 },
             );
+            self.end_named_stamp(enc, copy_stamp);
             self.c3_copy_pending = false;
+            self.open_timing_gap(enc, "after_c3_copy");
         }
 
         for (idx, layer_view) in self.shadow_layer_views.iter().enumerate() {
@@ -6365,13 +7398,15 @@ fn vs(input: VSIn) -> VSOut {
             if idx >= FIRST_CACHED_CASCADE && !far_rendered[idx - FIRST_CACHED_CASCADE] {
                 continue;
             }
-            let shadow_ts = di_ts_shadow[idx].and_then(|(b, e)| {
-                Some(wgpu::RenderPassTimestampWrites {
-                    query_set: self.gpu_profiler.as_ref()?.query_set(),
-                    beginning_of_pass_write_index: Some(b),
-                    end_of_pass_write_index: Some(e),
-                })
-            });
+            if let Some(stamp) = self.timing_gap.take() {
+                if let Some(profiler) = self.gpu_profiler.as_mut() {
+                    profiler.end_stamp(enc, stamp);
+                }
+            }
+            let shadow_stamp = self
+                .gpu_profiler
+                .as_mut()
+                .and_then(|profiler| profiler.begin_stamp(enc, SHADOW_PASS_LABELS[idx]));
             let mut sp = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("shadow pass"),
                 color_attachments: &[],
@@ -6383,7 +7418,7 @@ fn vs(input: VSIn) -> VSOut {
                     }),
                     stencil_ops: None,
                 }),
-                timestamp_writes: shadow_ts,
+                timestamp_writes: None,
                 occlusion_query_set: None,
             });
             sp.set_pipeline(&self.shadow_pipeline);
@@ -6535,6 +7570,16 @@ fn vs(input: VSIn) -> VSOut {
                     }
                 }
             }
+            drop(sp);
+            if let Some(stamp) = shadow_stamp {
+                if let Some(profiler) = self.gpu_profiler.as_mut() {
+                    profiler.end_stamp(enc, stamp);
+                }
+            }
+            self.timing_gap = self
+                .gpu_profiler
+                .as_mut()
+                .and_then(|profiler| profiler.begin_stamp(enc, AFTER_SHADOW[idx]));
         }
         // Commit the cached-cascade state only now that the passes have
         // actually run (two-phase commit — see `update_cascade_splits`).
@@ -6566,10 +7611,20 @@ fn vs(input: VSIn) -> VSOut {
         vp_sky.w_axis.z = 0.0;
         vp_sky = self.cached_proj * vp_sky;
 
-        let sky_tex = self.ibl_resources.as_ref().map(|r| &r.env_cube);
+        let sky_tex = self
+            .ibl_resources
+            .as_ref()
+            .map(|resources| resources.env_cube.clone());
+        let sky_equirect = self
+            .ibl_resources
+            .as_ref()
+            .and_then(|resources| resources.hdr_equirect.clone());
 
-        self.sky
-            .render(
+        // Bruneton is a sky mode, not a second layer on the HDRI sky.
+        if !self.atmosphere_on {
+            self.close_timing_gap(enc);
+            let sky_stamp = self.begin_named_stamp(enc, "sky");
+            let sky_result = self.sky.render(
                 &self.device,
                 enc,
                 &self.hdr_view,
@@ -6577,12 +7632,13 @@ fn vs(input: VSIn) -> VSOut {
                 depth_view.unwrap_or(&self.depth.view),
                 vp_sky,
                 &self.queue,
-                sky_tex,
-                self.ibl_resources
-                    .as_ref()
-                    .and_then(|r| r.hdr_equirect.as_ref()),
-            )
-            .context("Sky render failed")?;
+                sky_tex.as_ref(),
+                sky_equirect.as_ref(),
+            );
+            self.end_named_stamp(enc, sky_stamp);
+            self.open_timing_gap(enc, "after_sky");
+            sky_result.context("Sky render failed")?;
+        }
 
         // Upload scene environment UBO (fog, ambient, tint) — aligned with render() path
         {
@@ -6595,29 +7651,11 @@ fn vs(input: VSIn) -> VSOut {
         // Skipped when cloud_shadows_enabled is false — the 512×512 transmittance
         // map produces a noisy pattern on terrain at this resolution.
         if self.cloud_shadows_enabled {
-            let cam_pos = glam::Vec3::new(
-                self.camera_ubo.camera_pos_pad[0],
-                self.camera_ubo.camera_pos_pad[1],
-                self.camera_ubo.camera_pos_pad[2],
-            );
-            let sun_dir = -glam::Vec3::new(
-                self.camera_ubo.light_dir_pad[0],
-                self.camera_ubo.light_dir_pad[1],
-                self.camera_ubo.light_dir_pad[2],
-            )
-            .normalize_or_zero();
-            let cloud_cfg = crate::volumetric_clouds::CloudConfig::default();
-            self.cloud_shadow_pass.prepare_frame(
-                &self.queue,
-                cam_pos,
-                sun_dir,
-                &cloud_cfg,
-                cloud_cfg.extinction_coeff,
-                32,
-                1.0 / 60.0,
-            );
-            self.cloud_shadow_pass
-                .execute(&self.device, enc, self.resource_generation);
+            self.close_timing_gap(enc);
+            let cloud_stamp = self.begin_named_stamp(enc, "cloud_shadow");
+            self.record_cloud_shadow(enc);
+            self.end_named_stamp(enc, cloud_stamp);
+            self.open_timing_gap(enc, "after_cloud_shadow");
         }
 
         // Phase 1 — prepare forward-lit terrain state for this frame
@@ -6676,13 +7714,11 @@ fn vs(input: VSIn) -> VSOut {
         }
 
         {
-            let main_ts = di_ts_main.and_then(|(b, e)| {
-                Some(wgpu::RenderPassTimestampWrites {
-                    query_set: self.gpu_profiler.as_ref()?.query_set(),
-                    beginning_of_pass_write_index: Some(b),
-                    end_of_pass_write_index: Some(e),
-                })
-            });
+            self.close_timing_gap(enc);
+            let main_stamp = self
+                .gpu_profiler
+                .as_mut()
+                .and_then(|profiler| profiler.begin_stamp(enc, "main_render"));
             let mut rp = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("main render pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -6702,7 +7738,7 @@ fn vs(input: VSIn) -> VSOut {
                     }),
                     stencil_ops: None,
                 }),
-                timestamp_writes: main_ts,
+                timestamp_writes: None,
                 occlusion_query_set: None,
             });
 
@@ -6885,19 +7921,34 @@ fn vs(input: VSIn) -> VSOut {
                 rp.set_vertex_buffer(1, self.weather.buffer().slice(..));
                 rp.draw_indexed(0..self.mesh_sphere.index_count, 0, 0..weather_count);
             }
+            drop(rp);
+            if let Some(stamp) = main_stamp {
+                if let Some(profiler) = self.gpu_profiler.as_mut() {
+                    profiler.end_stamp(enc, stamp);
+                }
+            }
         }
+        self.open_timing_gap(enc, "after_main");
 
         // W.2b — split water pass (after the opaque main pass closes), aligned with
         // `render()`, so the editor viewport renders the same refracted water. Pass
         // the caller-supplied depth so the water pass tests/samples the depth the
         // editor's opaque geometry actually wrote (not the internal self.depth).
+        self.close_timing_gap(enc);
+        let water_stamp = self.begin_named_stamp(enc, "water");
         self.run_water_pass(enc, depth_view);
+        self.end_named_stamp(enc, water_stamp);
+        self.open_timing_gap(enc, "after_water");
+        self.close_timing_gap(enc);
+        let atmosphere_stamp = self.begin_named_stamp(enc, "atmosphere");
         if let Some(external_depth) = depth_view {
             self.composite_atmosphere(enc, external_depth);
         } else {
             let depth = self.depth.view.clone();
             self.composite_atmosphere(enc, &depth);
         }
+        self.end_named_stamp(enc, atmosphere_stamp);
+        self.open_timing_gap(enc, "after_atmosphere");
 
         // --- Post-processing: bloom compute pass (runs on HDR, before blit) ---
         let bloom_intensity = if self.post_chain.bloom_enabled {
@@ -6924,6 +7975,8 @@ fn vs(input: VSIn) -> VSOut {
                 }
             };
             let cfg = bloom.config().clone();
+            self.close_timing_gap(enc);
+            let bloom_stamp = self.begin_named_stamp(enc, "bloom");
             bloom.execute(
                 &self.device,
                 &self.queue,
@@ -6933,6 +7986,8 @@ fn vs(input: VSIn) -> VSOut {
                 cfg.intensity,
                 self.resource_generation,
             );
+            self.end_named_stamp(enc, bloom_stamp);
+            self.open_timing_gap(enc, "after_bloom");
             let intensity = cfg.intensity;
             // Editor-Engine Render Parity P.3: first-create HDR blit bind
             // group rebuild removed (only existed so hdr_blit_pipeline could
@@ -6950,6 +8005,19 @@ fn vs(input: VSIn) -> VSOut {
         } else {
             0.0
         };
+        if self.atmosphere_on
+            || self.cloud_raymarch_on
+            || self.ssgi_on
+            || self.taa_on
+            || self.upscale_on
+            || self.dof_on
+        {
+            let depth = depth_view
+                .cloned()
+                .unwrap_or_else(|| self.depth.view.clone());
+            self.record_gated_presentation(enc, &depth);
+        }
+
         // Upload blit compositing params (16 bytes — always written, cheap).
         self.queue.write_buffer(
             &self.postfx_params_buf,
@@ -6965,13 +8033,11 @@ fn vs(input: VSIn) -> VSOut {
         // stage. Caller's `view` format must match config.format
         // (post_pipeline's hardcoded color target format at construction).
         {
-            let post_ts = di_ts_post.and_then(|(b, e)| {
-                Some(wgpu::RenderPassTimestampWrites {
-                    query_set: self.gpu_profiler.as_ref()?.query_set(),
-                    beginning_of_pass_write_index: Some(b),
-                    end_of_pass_write_index: Some(e),
-                })
-            });
+            self.close_timing_gap(enc);
+            let post_stamp = self
+                .gpu_profiler
+                .as_mut()
+                .and_then(|profiler| profiler.begin_stamp(enc, "post_process"));
             let mut pp = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("post pass (external)"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -6983,21 +8049,282 @@ fn vs(input: VSIn) -> VSOut {
                     },
                 })],
                 depth_stencil_attachment: None,
-                timestamp_writes: post_ts,
+                timestamp_writes: None,
                 occlusion_query_set: None,
             });
             pp.set_pipeline(&self.post_pipeline);
             pp.set_bind_group(0, &self.post_bind_group, &[]);
             pp.set_bind_group(1, &self.scene_env_bg, &[]);
             pp.draw(0..3, 0..1);
+            drop(pp);
+            if let Some(stamp) = post_stamp {
+                if let Some(profiler) = self.gpu_profiler.as_mut() {
+                    profiler.end_stamp(enc, stamp);
+                }
+            }
         }
+        self.open_timing_gap(enc, "after_post");
 
-        // --- GPU profiler: resolve timestamp queries into readback buffer ---
-        if let Some(ref mut p) = self.gpu_profiler {
-            p.end_frame(enc);
+        self.close_timing_gap(enc);
+        let hiz_stamp = self.begin_named_stamp(enc, "hiz");
+        self.record_hiz(enc, depth_view);
+        self.end_named_stamp(enc, hiz_stamp);
+        self.open_timing_gap(enc, "after_hiz");
+        self.close_timing_gap(enc);
+        let particle_stamp = self.begin_named_stamp(enc, "particles");
+        self.record_particles(enc, view, depth_view);
+        self.end_named_stamp(enc, particle_stamp);
+        self.open_timing_gap(enc, "after_particles");
+        self.close_timing_gap(enc);
+
+        // The frame end tick is the last `write_timestamp`. Resolve after it
+        // so that query is inside the resolved range. Sky, water, atmosphere,
+        // Hi-Z, and particles record into `enc`. `draw_into` does not create
+        // a command encoder and does not call `queue.submit`.
+        self.close_frame_timestamp(enc);
+        if let Some(profiler) = self.gpu_profiler.as_mut() {
+            profiler.resolve_queries(enc);
+            profiler.end_frame(enc);
         }
 
         Ok(())
+    }
+
+    fn record_particles(
+        &mut self,
+        enc: &mut wgpu::CommandEncoder,
+        view: &wgpu::TextureView,
+        depth_view: Option<&wgpu::TextureView>,
+    ) {
+        let Some(params) = self.particle_emitter else {
+            return;
+        };
+        if let Some(sim) = self.particle_sim.as_mut() {
+            sim.update(&self.queue, enc, &params);
+        }
+        let (buffer, count) = match self.particle_sim.as_ref() {
+            Some(sim) if sim.particle_count() > 0 => {
+                (sim.particle_buffer().clone(), sim.particle_count())
+            }
+            _ => return,
+        };
+        let depth = depth_view
+            .cloned()
+            .unwrap_or_else(|| self.depth.view.clone());
+        // Soft particles textureLoad scene depth. `depth_ops: Some` marks that
+        // texture DEPTH_STENCIL_WRITE while the bind group uses it as RESOURCE,
+        // and wgpu drops the whole encoder. The default pipeline does not write
+        // depth, so the attachment is read-only and the depth test still runs.
+        // A pipeline that does write depth samples a copy made after the
+        // geometry pass, and writes the live attachment.
+        let writes_depth = self
+            .particle_draw
+            .as_ref()
+            .is_some_and(|draw| draw.config().depth_write);
+        let sample_depth = if writes_depth {
+            self.copy_scene_depth_for_particles(enc)
+        } else {
+            depth.clone()
+        };
+        let Some(draw) = self.particle_draw.as_ref() else {
+            return;
+        };
+        let Some(sort) = self.particle_sort.as_ref() else {
+            return;
+        };
+        let depth_ops = if writes_depth {
+            Some(wgpu::Operations {
+                load: wgpu::LoadOp::Load,
+                store: wgpu::StoreOp::Store,
+            })
+        } else {
+            None
+        };
+        let mut pass = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("presentation particles"),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view,
+                resolve_target: None,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Load,
+                    store: wgpu::StoreOp::Store,
+                },
+            })],
+            depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                view: &depth,
+                depth_ops,
+                stencil_ops: None,
+            }),
+            timestamp_writes: None,
+            occlusion_query_set: None,
+        });
+        draw.render(
+            &self.device,
+            &mut pass,
+            &buffer,
+            sort,
+            &sample_depth,
+            count,
+            None,
+        );
+    }
+
+    /// Copy the geometry depth after the writing passes have closed.
+    ///
+    /// Soft particles that also write depth cannot sample the attachment they
+    /// write. The copy is the sampled texture. It is rebuilt only when the
+    /// surface size changes.
+    fn copy_scene_depth_for_particles(
+        &mut self,
+        enc: &mut wgpu::CommandEncoder,
+    ) -> wgpu::TextureView {
+        let width = self.config.width.max(1);
+        let height = self.config.height.max(1);
+        let current = self
+            .particle_depth_copy
+            .as_ref()
+            .is_some_and(|(stored_w, stored_h, _, _)| *stored_w == width && *stored_h == height);
+        if !current {
+            let texture = self.device.create_texture(&wgpu::TextureDescriptor {
+                label: Some("particle depth sample"),
+                size: wgpu::Extent3d {
+                    width,
+                    height,
+                    depth_or_array_layers: 1,
+                },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: self.depth.format,
+                usage: wgpu::TextureUsages::COPY_DST | wgpu::TextureUsages::TEXTURE_BINDING,
+                view_formats: &[],
+            });
+            let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+            self.particle_depth_copy = Some((width, height, texture, view));
+        }
+        let Some((_, _, texture, view)) = self.particle_depth_copy.as_ref() else {
+            return self.depth.view.clone();
+        };
+        let texture = texture.clone();
+        let view = view.clone();
+        enc.copy_texture_to_texture(
+            wgpu::TexelCopyTextureInfo {
+                texture: &self.depth.texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            wgpu::TexelCopyTextureInfo {
+                texture: &texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            wgpu::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
+            },
+        );
+        view
+    }
+
+    /// Copy this frame's depth into the shared Hi-Z pyramid.
+    ///
+    /// The pyramid is presentation-only. Occlusion may consult it next frame.
+    /// It is not read back into the simulation. The first frame builds it;
+    /// later frames only dispatch the copy and the min-depth downsample.
+    /// Begin the `frame` pair when the device can write timestamps on the encoder.
+    ///
+    /// Pass-boundary timestamps on Vulkan are `BOTTOM_OF_PIPE`. A pass that
+    /// does no draws can land both writes on the same tick. The encoder pair
+    /// brackets the whole `draw_into` recording, so that collapse does not
+    /// erase the frame.
+    fn close_timing_gap(&mut self, enc: &mut wgpu::CommandEncoder) {
+        if let Some(stamp) = self.timing_gap.take() {
+            self.end_named_stamp(enc, Some(stamp));
+        }
+    }
+
+    fn open_timing_gap(&mut self, enc: &mut wgpu::CommandEncoder, name: &'static str) {
+        self.close_timing_gap(enc);
+        self.timing_gap = self.begin_named_stamp(enc, name);
+    }
+
+    fn begin_named_stamp(
+        &mut self,
+        enc: &mut wgpu::CommandEncoder,
+        name: &'static str,
+    ) -> Option<crate::gpu_profiler::OpenStamp> {
+        self.gpu_profiler
+            .as_mut()
+            .and_then(|profiler| profiler.begin_stamp(enc, name))
+    }
+
+    fn end_named_stamp(
+        &mut self,
+        enc: &mut wgpu::CommandEncoder,
+        stamp: Option<crate::gpu_profiler::OpenStamp>,
+    ) {
+        let Some(stamp) = stamp else {
+            return;
+        };
+        if let Some(profiler) = self.gpu_profiler.as_mut() {
+            profiler.end_stamp(enc, stamp);
+        }
+    }
+
+    fn open_frame_timestamp(&mut self, enc: &mut wgpu::CommandEncoder) {
+        self.frame_stamp = None;
+        if !self
+            .device
+            .features()
+            .contains(wgpu::Features::TIMESTAMP_QUERY_INSIDE_ENCODERS)
+        {
+            return;
+        }
+        self.frame_stamp = self
+            .gpu_profiler
+            .as_mut()
+            .and_then(|profiler| profiler.begin_stamp(enc, "frame"));
+    }
+
+    fn close_frame_timestamp(&mut self, enc: &mut wgpu::CommandEncoder) {
+        let Some(stamp) = self.frame_stamp.take() else {
+            return;
+        };
+        if let Some(profiler) = self.gpu_profiler.as_mut() {
+            profiler.end_stamp(enc, stamp);
+        }
+    }
+
+    fn record_hiz(
+        &mut self,
+        enc: &mut wgpu::CommandEncoder,
+        depth_view: Option<&wgpu::TextureView>,
+    ) {
+        if !self.hiz_depth_load {
+            return;
+        }
+        let width = self.config.width.max(1);
+        let height = self.config.height.max(1);
+        let source = depth_view.unwrap_or(&self.depth.view).clone();
+        let rebuild = self
+            .hiz
+            .as_ref()
+            .map(|pyramid| pyramid.dimensions() != (width, height))
+            .unwrap_or(true);
+        if rebuild {
+            self.hiz = Some(crate::hiz_pyramid::HizPyramid::new(
+                &self.device,
+                width,
+                height,
+                &source,
+            ));
+        }
+        if let Some(pyramid) = self.hiz.as_ref() {
+            pyramid.build(enc);
+        }
     }
 
     pub fn surface_size(&self) -> (u32, u32) {
@@ -7170,14 +8497,14 @@ fn vs(input: VSIn) -> VSOut {
             .create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some("terrain-forward-chunk-vertices"),
                 contents: bytemuck::cast_slice(vertices),
-                usage: wgpu::BufferUsages::VERTEX,
+                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
             });
         let index_buffer = self
             .device
             .create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some("terrain-forward-chunk-indices"),
                 contents: bytemuck::cast_slice(indices),
-                usage: wgpu::BufferUsages::INDEX,
+                usage: wgpu::BufferUsages::INDEX | wgpu::BufferUsages::COPY_DST,
             });
 
         tf.manager
@@ -7341,7 +8668,7 @@ fn vs(input: VSIn) -> VSOut {
             self.surface_size(),
         );
 
-        self.queue.submit(std::iter::once(enc.finish()));
+        self.submit_timestamped(enc.finish())?;
         frame.present();
 
         // --- GPU profiler: initiate async readback of timestamp data ---
@@ -7383,13 +8710,12 @@ fn vs(input: VSIn) -> VSOut {
                 label: Some("headless validation"),
             });
         self.draw_into(&view, None, &mut enc)?;
-        self.queue.submit(std::iter::once(enc.finish()));
+        self.submit_timestamped(enc.finish())?;
         if let Some(profiler) = self.gpu_profiler.as_mut() {
             profiler.request_readback();
         }
-        self.device
-            .poll(wgpu::PollType::Wait)
-            .map_err(|err| anyhow::anyhow!("device poll: {err}"))?;
+        crate::gpu_profiler::wait_for_gpu(&self.device, "headless validation")
+            .map_err(|err| anyhow::anyhow!(err))?;
         if let Some(err) = crate::gpu_fault::finish_scope(&self.device) {
             self.note_scope_device_loss();
             anyhow::bail!("wgpu validation: {err}");
@@ -7509,8 +8835,10 @@ fn vs(input: VSIn) -> VSOut {
                 bind_group_layouts: &[&bgl],
                 push_constant_ranges: &[],
             });
-        self.device
-            .create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        crate::pipeline_cache::create_render_pipeline(
+            &self.device,
+            self.pipeline_cache.as_ref(),
+            wgpu::RenderPipelineDescriptor {
                 cache: self.pipeline_cache.as_ref(),
                 label: Some("material preview pipeline"),
                 layout: Some(&layout),
@@ -7534,10 +8862,11 @@ fn vs(input: VSIn) -> VSOut {
                 depth_stencil: None,
                 multisample: wgpu::MultisampleState::default(),
                 multiview: None,
-            })
+            },
+        )
     }
 
-    fn build_visible_instances(&self) -> (Vec<InstanceRaw>, usize) {
+    fn build_visible_instances(&mut self) -> usize {
         // Allocation-measurement instrumentation (audit 2026-04-17, §2.3 #5).
         #[cfg(feature = "profiling")]
         astraweave_profiling::measured_span!("render.visible_instances");
@@ -7564,7 +8893,11 @@ fn vs(input: VSIn) -> VSOut {
             (n / len, p.w / len)
         });
 
-        let mut out = Vec::with_capacity(self.instances.len());
+        let needed = self.instances.len();
+        if self.visible_raw_scratch.capacity() < needed {
+            self.visible_raw_scratch.reserve(needed);
+        }
+        self.visible_raw_scratch.clear();
         for inst in &self.instances {
             let center = inst.transform.w_axis.truncate();
             // approximate radius from basis vectors length (half-extents length)
@@ -7573,11 +8906,10 @@ fn vs(input: VSIn) -> VSOut {
             let sz = inst.transform.z_axis.truncate().length();
             let radius = 0.5 * glam::Vec3::new(sx, sy, sz).length();
             if inside_frustum_sphere(center, radius, &norm_planes) {
-                out.push(inst.raw());
+                self.visible_raw_scratch.push(inst.raw());
             }
         }
-        let count = out.len();
-        (out, count)
+        self.visible_raw_scratch.len()
     }
 
     /// Load a texture from disk for smoke testing / dev validation.
@@ -7779,6 +9111,22 @@ fn vs(input: VSIn) -> VSOut {
                     binding: 6,
                     resource: self.skin_palette_buf.as_entire_binding(),
                 },
+                wgpu::BindGroupEntry {
+                    binding: 7,
+                    resource: wgpu::BindingResource::TextureView(&self.occlusion_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 8,
+                    resource: wgpu::BindingResource::Sampler(&self.occlusion_sampler),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 9,
+                    resource: wgpu::BindingResource::TextureView(&self.emissive_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 10,
+                    resource: wgpu::BindingResource::Sampler(&self.emissive_sampler),
+                },
             ],
         });
     }
@@ -7853,6 +9201,22 @@ fn vs(input: VSIn) -> VSOut {
                 wgpu::BindGroupEntry {
                     binding: 6,
                     resource: self.skin_palette_buf.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 7,
+                    resource: wgpu::BindingResource::TextureView(&self.occlusion_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 8,
+                    resource: wgpu::BindingResource::Sampler(&self.occlusion_sampler),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 9,
+                    resource: wgpu::BindingResource::TextureView(&self.emissive_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 10,
+                    resource: wgpu::BindingResource::Sampler(&self.emissive_sampler),
                 },
             ],
         });
@@ -7929,6 +9293,22 @@ fn vs(input: VSIn) -> VSOut {
                     binding: 6,
                     resource: self.skin_palette_buf.as_entire_binding(),
                 },
+                wgpu::BindGroupEntry {
+                    binding: 7,
+                    resource: wgpu::BindingResource::TextureView(&self.occlusion_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 8,
+                    resource: wgpu::BindingResource::Sampler(&self.occlusion_sampler),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 9,
+                    resource: wgpu::BindingResource::TextureView(&self.emissive_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 10,
+                    resource: wgpu::BindingResource::Sampler(&self.emissive_sampler),
+                },
             ],
         });
     }
@@ -7940,14 +9320,14 @@ fn vs(input: VSIn) -> VSOut {
             .create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some("skinned vbuf"),
                 contents: bytemuck::cast_slice(vertices),
-                usage: wgpu::BufferUsages::VERTEX,
+                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
             });
         let ibuf = self
             .device
             .create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some("skinned ibuf"),
                 contents: bytemuck::cast_slice(indices),
-                usage: wgpu::BufferUsages::INDEX,
+                usage: wgpu::BufferUsages::INDEX | wgpu::BufferUsages::COPY_DST,
             });
         self.skinned_mesh = Some((vbuf, ibuf, indices.len() as u32));
     }
@@ -8026,8 +9406,10 @@ fn vs(input: VSIn) -> VSOut {
     /// Add or replace a named model composed of multiple primitives.
     ///
     /// Each CPU mesh becomes a separate draw within the model while sharing
-    /// the same instance buffer. Embedded albedo textures are preserved on a
-    /// per-primitive basis.
+    /// the same instance buffer. KayKit and Poly Haven GLBs land here.
+    /// Albedo-only primitives keep the albedo bind group. A primitive with a
+    /// normal, metallic-roughness, occlusion, or emissive map uses
+    /// [`ModelSurfaceMaps`] (engine metallic-roughness layout).
     pub fn add_composite_model(
         &mut self,
         name: impl Into<String>,
@@ -8061,6 +9443,34 @@ fn vs(input: VSIn) -> VSOut {
         }
     }
 
+    /// Place one more copy of `source`, sharing its GPU meshes and textures.
+    ///
+    /// The copy draws a single instance. The heavy frame-budget scene uses
+    /// this so 64 placements are 64 models, not one instanced draw.
+    pub fn duplicate_model(
+        &mut self,
+        source: &str,
+        name: impl Into<String>,
+        instance: Instance,
+    ) -> bool {
+        let Some(source) = self.models.get(source) else {
+            return false;
+        };
+        let primitives = source.primitives.clone();
+        let instance_buf = self.create_model_instance_buffer(std::slice::from_ref(&instance));
+        let model = RenderModel {
+            primitives,
+            instance_buf,
+            instance_count: 1,
+            aabb: None,
+            tex_gpu_bytes: 0,
+            stream_albedo_id: None,
+            stream_resident: false,
+        };
+        self.insert_model(name.into(), model);
+        true
+    }
+
     fn add_model_impl(
         &mut self,
         name: impl Into<String>,
@@ -8074,11 +9484,15 @@ fn vs(input: VSIn) -> VSOut {
                 mesh,
                 tex_bind_group: None,
                 _retained_textures: Vec::new(),
+                storage_generation: 0,
+                bindless_index: None,
             }],
             instance_buf,
             instance_count: instances.len() as u32,
             aabb,
             tex_gpu_bytes: 0,
+            stream_albedo_id: None,
+            stream_resident: false,
         };
         self.insert_model(name.into(), model);
     }
@@ -8100,7 +9514,37 @@ fn vs(input: VSIn) -> VSOut {
 
         for cpu_mesh in cpu_meshes {
             let mesh = self.create_mesh_from_cpu_mesh(&cpu_mesh);
-            if let Some(img) = cpu_mesh.albedo_image.as_ref() {
+            if let Some(packed) = crate::pbr_maps::pack_gltf_surface(&cpu_mesh) {
+                let occlusion = packed
+                    .occlusion
+                    .as_ref()
+                    .map(|(w, h, px)| (*w, *h, px.as_slice()));
+                let emissive = packed
+                    .emissive
+                    .as_ref()
+                    .map(|(w, h, px)| (*w, *h, px.as_slice()));
+                let maps = ModelSurfaceMaps {
+                    albedo: (packed.albedo_size.0, packed.albedo_size.1, &packed.albedo),
+                    normal: (packed.normal_size.0, packed.normal_size.1, &packed.normal),
+                    metallic_roughness: (
+                        packed.metallic_roughness_size.0,
+                        packed.metallic_roughness_size.1,
+                        &packed.metallic_roughness,
+                    ),
+                    occlusion,
+                    emissive,
+                };
+                let (tex_bg, textures, bytes) = self.create_model_pbr_bind_group(&maps);
+                tex_gpu_bytes += bytes;
+                let bindless_index = self.register_bindless_maps(&textures);
+                primitives.push(RenderModelPrimitive {
+                    mesh,
+                    tex_bind_group: Some(tex_bg),
+                    _retained_textures: textures,
+                    storage_generation: 0,
+                    bindless_index,
+                });
+            } else if let Some(img) = cpu_mesh.albedo_image.as_ref() {
                 let (tex_bg, textures, bytes) =
                     self.create_model_albedo_bind_group(img.width, img.height, &img.pixels);
                 tex_gpu_bytes += bytes;
@@ -8108,12 +9552,16 @@ fn vs(input: VSIn) -> VSOut {
                     mesh,
                     tex_bind_group: Some(tex_bg),
                     _retained_textures: textures,
+                    storage_generation: 0,
+                    bindless_index: None,
                 });
             } else {
                 primitives.push(RenderModelPrimitive {
                     mesh,
                     tex_bind_group: None,
                     _retained_textures: Vec::new(),
+                    storage_generation: 0,
+                    bindless_index: None,
                 });
             }
         }
@@ -8124,6 +9572,8 @@ fn vs(input: VSIn) -> VSOut {
             instance_count: instances.len() as u32,
             aabb,
             tex_gpu_bytes,
+            stream_albedo_id: None,
+            stream_resident: false,
         };
         self.insert_model(name.into(), model);
     }
@@ -8337,6 +9787,22 @@ fn vs(input: VSIn) -> VSOut {
                     binding: 6,
                     resource: self.skin_palette_buf.as_entire_binding(),
                 },
+                wgpu::BindGroupEntry {
+                    binding: 7,
+                    resource: wgpu::BindingResource::TextureView(&self.occlusion_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 8,
+                    resource: wgpu::BindingResource::Sampler(&self.occlusion_sampler),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 9,
+                    resource: wgpu::BindingResource::TextureView(&self.emissive_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 10,
+                    resource: wgpu::BindingResource::Sampler(&self.emissive_sampler),
+                },
             ],
         });
 
@@ -8377,6 +9843,44 @@ fn vs(input: VSIn) -> VSOut {
         let metallic_roughness_view =
             metallic_roughness_texture.create_view(&wgpu::TextureViewDescriptor::default());
         let normal_view = normal_texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let (occlusion_texture, occlusion_bytes) = match surface_maps.occlusion {
+            Some((w, h, data)) => self.create_model_rgba_texture(
+                "model occlusion",
+                w,
+                h,
+                data,
+                wgpu::TextureFormat::Rgba8Unorm,
+                false,
+            ),
+            None => self.create_model_rgba_texture(
+                "model occlusion default",
+                1,
+                1,
+                &[255, 255, 255, 255],
+                wgpu::TextureFormat::Rgba8Unorm,
+                false,
+            ),
+        };
+        let (emissive_texture, emissive_bytes) = match surface_maps.emissive {
+            Some((w, h, data)) => self.create_model_rgba_texture(
+                "model emissive",
+                w,
+                h,
+                data,
+                wgpu::TextureFormat::Rgba8UnormSrgb,
+                false,
+            ),
+            None => self.create_model_rgba_texture(
+                "model emissive default",
+                1,
+                1,
+                &[0, 0, 0, 255],
+                wgpu::TextureFormat::Rgba8UnormSrgb,
+                false,
+            ),
+        };
+        let occlusion_view = occlusion_texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let emissive_view = emissive_texture.create_view(&wgpu::TextureViewDescriptor::default());
 
         let tex_bg = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("model pbr tex bg"),
@@ -8410,13 +9914,39 @@ fn vs(input: VSIn) -> VSOut {
                     binding: 6,
                     resource: self.skin_palette_buf.as_entire_binding(),
                 },
+                wgpu::BindGroupEntry {
+                    binding: 7,
+                    resource: wgpu::BindingResource::TextureView(&occlusion_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 8,
+                    resource: wgpu::BindingResource::Sampler(&self.occlusion_sampler),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 9,
+                    resource: wgpu::BindingResource::TextureView(&emissive_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 10,
+                    resource: wgpu::BindingResource::Sampler(&self.emissive_sampler),
+                },
             ],
         });
 
         (
             tex_bg,
-            vec![albedo_texture, metallic_roughness_texture, normal_texture],
-            albedo_bytes + metallic_roughness_bytes + normal_bytes,
+            vec![
+                albedo_texture,
+                metallic_roughness_texture,
+                normal_texture,
+                occlusion_texture,
+                emissive_texture,
+            ],
+            albedo_bytes
+                + metallic_roughness_bytes
+                + normal_bytes
+                + occlusion_bytes
+                + emissive_bytes,
         )
     }
 
@@ -8443,11 +9973,15 @@ fn vs(input: VSIn) -> VSOut {
                 mesh,
                 tex_bind_group: Some(tex_bg),
                 _retained_textures: textures,
+                storage_generation: 0,
+                bindless_index: None,
             }],
             instance_buf,
             instance_count: instances.len() as u32,
             aabb: None,
             tex_gpu_bytes,
+            stream_albedo_id: None,
+            stream_resident: false,
         };
         self.insert_model(name.into(), model);
     }
@@ -8498,11 +10032,15 @@ fn vs(input: VSIn) -> VSOut {
                 mesh,
                 tex_bind_group: Some(tex_bg),
                 _retained_textures: textures,
+                storage_generation: 0,
+                bindless_index: None,
             }],
             instance_buf,
             instance_count: instances.len() as u32,
             aabb,
             tex_gpu_bytes,
+            stream_albedo_id: None,
+            stream_resident: false,
         };
         self.insert_model(name.into(), model);
     }
@@ -8569,11 +10107,15 @@ fn vs(input: VSIn) -> VSOut {
                 mesh,
                 tex_bind_group: shared_bg,
                 _retained_textures: shared_textures,
+                storage_generation: 0,
+                bindless_index: None,
             }],
             instance_buf,
             instance_count: instances.len() as u32,
             aabb,
             tex_gpu_bytes: 0, // Don't double-count — source owns the budget
+            stream_albedo_id: None,
+            stream_resident: false,
         };
         self.insert_model(name.into(), model);
         true

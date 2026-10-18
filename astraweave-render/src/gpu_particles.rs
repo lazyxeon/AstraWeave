@@ -46,6 +46,21 @@ pub struct EmitterParams {
     pub _padding: u32,
 }
 
+fn zeroed_storage(device: &wgpu::Device, label: &str, size: u64) -> wgpu::Buffer {
+    let buffer = device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some(label),
+        size,
+        usage: wgpu::BufferUsages::STORAGE
+            | wgpu::BufferUsages::VERTEX
+            | wgpu::BufferUsages::COPY_DST
+            | wgpu::BufferUsages::COPY_SRC,
+        mapped_at_creation: true,
+    });
+    buffer.slice(..).get_mapped_range_mut().fill(0);
+    buffer.unmap();
+    buffer
+}
+
 /// GPU particle system with compute-based simulation
 pub struct GpuParticleSystem {
     /// Particle buffer (double-buffered for ping-pong)
@@ -58,8 +73,7 @@ pub struct GpuParticleSystem {
     /// Compute pipeline for particle update
     update_pipeline: wgpu::ComputePipeline,
 
-    /// Compute pipeline for particle emission (reserved for future use)
-    #[allow(dead_code)]
+    /// Compute pipeline for particle emission.
     emit_pipeline: wgpu::ComputePipeline,
 
     /// Bind group layout (used in new())
@@ -86,23 +100,8 @@ impl GpuParticleSystem {
         let particle_buffer_size =
             (max_particles as u64) * std::mem::size_of::<GpuParticle>() as u64;
 
-        let particle_buffer_a = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("Particle Buffer A"),
-            size: particle_buffer_size,
-            usage: wgpu::BufferUsages::STORAGE
-                | wgpu::BufferUsages::VERTEX
-                | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-
-        let particle_buffer_b = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("Particle Buffer B"),
-            size: particle_buffer_size,
-            usage: wgpu::BufferUsages::STORAGE
-                | wgpu::BufferUsages::VERTEX
-                | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
+        let particle_buffer_a = zeroed_storage(device, "Particle Buffer A", particle_buffer_size);
+        let particle_buffer_b = zeroed_storage(device, "Particle Buffer B", particle_buffer_size);
 
         // Create emitter params buffer
         let emitter_params_buffer = device.create_buffer(&wgpu::BufferDescriptor {
@@ -252,6 +251,25 @@ impl GpuParticleSystem {
         // Upload emitter params
         queue.write_buffer(&self.emitter_params_buffer, 0, bytemuck::bytes_of(params));
 
+        // Emit, then integrate. Both dispatches use the caller's seed and dt.
+        // Nothing here is read by the simulation.
+        let emit_group = if self.active_buffer {
+            &self.bind_group_b
+        } else {
+            &self.bind_group_a
+        };
+        {
+            let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+                label: Some("Particle Emit Pass"),
+                timestamp_writes: None,
+            });
+            pass.set_pipeline(&self.emit_pipeline);
+            pass.set_bind_group(0, emit_group, &[]);
+            let workgroups = self.max_particles.div_ceil(64);
+            pass.dispatch_workgroups(workgroups, 1, 1);
+        }
+        self.active_buffer = !self.active_buffer;
+
         // Dispatch compute shader
         let bind_group = if self.active_buffer {
             &self.bind_group_b
@@ -400,9 +418,22 @@ fn emit_particles(@builtin(global_invocation_id) global_id: vec3<u32>) {
     if (idx >= params.max_particles) {
         return;
     }
-    
-    // Simple emission logic (can be extended)
-    particles_out[idx] = particles_in[idx];
+    if (idx >= params.particle_count) {
+        particles_out[idx] = particles_in[idx];
+        return;
+    }
+    let incoming = particles_in[idx];
+    let alive = incoming.position.w > 0.0 && incoming.velocity.w < incoming.position.w;
+    if (alive) {
+        particles_out[idx] = incoming;
+        return;
+    }
+    let n = rand(params.random_seed + idx);
+    let jitter = (n - 0.5) * params.velocity_randomness;
+    particles_out[idx].position = vec4<f32>(params.position.xyz, params.lifetime);
+    particles_out[idx].velocity = vec4<f32>(params.velocity.xyz * (1.0 + jitter), 0.0);
+    particles_out[idx].color = vec4<f32>(1.0, 1.0, 1.0, 1.0);
+    particles_out[idx].scale = vec4<f32>(0.1, 0.1, 0.1, 1.0);
 }
 "#;
 

@@ -14,7 +14,7 @@ struct DenoiseParams {
 
 @group(0) @binding(0) var gi_current: texture_2d<f32>;
 @group(0) @binding(1) var gi_history: texture_2d<f32>;
-@group(0) @binding(2) var depth_tex: texture_2d<f32>;
+@group(0) @binding(2) var depth_tex: texture_depth_2d;
 @group(0) @binding(3) var velocity_tex: texture_2d<f32>;
 @group(0) @binding(4) var samp: sampler;
 @group(0) @binding(5) var<uniform> params: DenoiseParams;
@@ -48,7 +48,7 @@ fn denoise_main(
         let py = clamp(base_y + i32(ty), 0, i32(dims.y) - 1);
         let coord = vec2<i32>(px, py);
         s_gi[i] = textureLoad(gi_current, coord, 0).rgb;
-        s_dn_depth[i] = textureLoad(depth_tex, coord, 0).r;
+        s_dn_depth[i] = textureLoad(depth_tex, coord, 0);
     }
     workgroupBarrier();
 

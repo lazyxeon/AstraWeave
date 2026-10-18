@@ -20,7 +20,7 @@ struct CloudCompositeParams {
 @group(0) @binding(0) var<uniform>  params:      CloudCompositeParams;
 @group(0) @binding(1) var           t_scene:     texture_2d<f32>;     // full-res scene color (HDR)
 @group(0) @binding(2) var           t_cloud:     texture_2d<f32>;     // half-res cloud result
-@group(0) @binding(3) var           t_depth:     texture_2d<f32>;     // full-res depth buffer
+@group(0) @binding(3) var           t_depth:     texture_depth_2d;
 @group(0) @binding(4) var           s_linear:    sampler;
 @group(0) @binding(5) var           t_output:    texture_storage_2d<rgba16float, write>;
 
@@ -47,7 +47,8 @@ fn cloud_composite_main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let scene_color = textureSampleLevel(t_scene, s_linear, uv, 0.0).rgb;
 
     // Read depth
-    let raw_depth = textureSampleLevel(t_depth, s_linear, uv, 0.0).r;
+    let depth_size = vec2<f32>(textureDimensions(t_depth));
+    let raw_depth = textureLoad(t_depth, vec2<i32>(uv * depth_size), 0);
     let linear_depth = linearize_depth(raw_depth);
 
     // Read cloud result (bilinear upscale from half-res)

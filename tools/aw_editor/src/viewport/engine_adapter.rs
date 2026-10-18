@@ -2428,6 +2428,8 @@ impl EngineRenderAdapter {
                 surface_set.metallic_roughness.1,
                 &surface_set.metallic_roughness.2,
             ),
+            occlusion: None,
+            emissive: None,
         };
         self.renderer.add_model_with_pbr_textures(
             &prototype_name,
@@ -3235,61 +3237,72 @@ impl EngineRenderAdapter {
                                     quad.iter().map(|(_, inst)| inst.clone()).collect();
 
                                 if !self.renderer.update_model_instances(&sub_name, &instances) {
-                                    let mesh = self.renderer.create_mesh_from_cpu_mesh(cpu_mesh);
-                                    if let Some(ref source) = first_lod0_source {
-                                        if !self.renderer.add_model_sharing_texture(
-                                            &sub_name,
-                                            mesh.clone(),
-                                            &instances,
-                                            source,
-                                        ) {
-                                            self.renderer.add_model(&sub_name, mesh, &instances);
-                                        }
-                                    } else if let Some((w, h, pixels)) = prim_external_tex.as_ref()
+                                    if first_lod0_source.is_none()
+                                        && astraweave_render::pbr_maps::pack_gltf_surface(cpu_mesh)
+                                            .is_some()
                                     {
-                                        self.renderer.add_model_with_texture(
-                                            &sub_name, mesh, &instances, *w, *h, pixels,
-                                        );
-                                    } else if let Some(img) = cpu_mesh.albedo_image.as_ref() {
-                                        let tw = img.width.min(SCATTER_MAX_TEX_SIZE);
-                                        let th = img.height.min(SCATTER_MAX_TEX_SIZE);
-                                        if tw < img.width || th < img.height {
-                                            let src = image::RgbaImage::from_raw(
-                                                img.width,
-                                                img.height,
-                                                img.pixels.clone(),
+                                        self.renderer
+                                            .add_cpu_mesh_model(&sub_name, cpu_mesh, &instances);
+                                    } else {
+                                        let mesh =
+                                            self.renderer.create_mesh_from_cpu_mesh(cpu_mesh);
+                                        if let Some(ref source) = first_lod0_source {
+                                            if !self.renderer.add_model_sharing_texture(
+                                                &sub_name,
+                                                mesh.clone(),
+                                                &instances,
+                                                source,
+                                            ) {
+                                                self.renderer
+                                                    .add_model(&sub_name, mesh, &instances);
+                                            }
+                                        } else if let Some((w, h, pixels)) =
+                                            prim_external_tex.as_ref()
+                                        {
+                                            self.renderer.add_model_with_texture(
+                                                &sub_name, mesh, &instances, *w, *h, pixels,
                                             );
-                                            if let Some(src_img) = src {
-                                                let resized = image::imageops::resize(
-                                                    &src_img,
-                                                    tw,
-                                                    th,
-                                                    image::imageops::FilterType::Triangle,
+                                        } else if let Some(img) = cpu_mesh.albedo_image.as_ref() {
+                                            let tw = img.width.min(SCATTER_MAX_TEX_SIZE);
+                                            let th = img.height.min(SCATTER_MAX_TEX_SIZE);
+                                            if tw < img.width || th < img.height {
+                                                let src = image::RgbaImage::from_raw(
+                                                    img.width,
+                                                    img.height,
+                                                    img.pixels.clone(),
                                                 );
+                                                if let Some(src_img) = src {
+                                                    let resized = image::imageops::resize(
+                                                        &src_img,
+                                                        tw,
+                                                        th,
+                                                        image::imageops::FilterType::Triangle,
+                                                    );
+                                                    self.renderer.add_model_with_texture(
+                                                        &sub_name,
+                                                        mesh,
+                                                        &instances,
+                                                        tw,
+                                                        th,
+                                                        &resized.into_raw(),
+                                                    );
+                                                } else {
+                                                    self.renderer
+                                                        .add_model(&sub_name, mesh, &instances);
+                                                }
+                                            } else {
                                                 self.renderer.add_model_with_texture(
                                                     &sub_name,
                                                     mesh,
                                                     &instances,
-                                                    tw,
-                                                    th,
-                                                    &resized.into_raw(),
+                                                    img.width,
+                                                    img.height,
+                                                    &img.pixels,
                                                 );
-                                            } else {
-                                                self.renderer
-                                                    .add_model(&sub_name, mesh, &instances);
                                             }
                                         } else {
-                                            self.renderer.add_model_with_texture(
-                                                &sub_name,
-                                                mesh,
-                                                &instances,
-                                                img.width,
-                                                img.height,
-                                                &img.pixels,
-                                            );
+                                            self.renderer.add_model(&sub_name, mesh, &instances);
                                         }
-                                    } else {
-                                        self.renderer.add_model(&sub_name, mesh, &instances);
                                     }
                                 }
 

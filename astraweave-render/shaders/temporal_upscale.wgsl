@@ -25,7 +25,7 @@ struct UpscaleParams {
 @group(0) @binding(0) var t_current:   texture_2d<f32>;     // reduced-res current frame
 @group(0) @binding(1) var t_history:   texture_2d<f32>;     // native-res history
 @group(0) @binding(2) var t_velocity:  texture_2d<f32>;     // motion vectors (at input res)
-@group(0) @binding(3) var t_depth:     texture_2d<f32>;     // depth buffer (at input res)
+@group(0) @binding(3) var t_depth:     texture_depth_2d;
 @group(0) @binding(4) var samp:        sampler;
 @group(0) @binding(5) var<uniform>     params: UpscaleParams;
 @group(0) @binding(6) var t_output:    texture_storage_2d<rgba16float, write>;
@@ -130,7 +130,8 @@ fn find_closest_velocity(uv: vec2<f32>) -> vec2<f32> {
     for (var dy = -1; dy <= 1; dy++) {
         for (var dx = -1; dx <= 1; dx++) {
             let sample_uv = uv + vec2<f32>(f32(dx), f32(dy)) * texel;
-            let d = textureSampleLevel(t_depth, samp, sample_uv, 0.0).r;
+            let depth_size = vec2<f32>(textureDimensions(t_depth));
+            let d = textureLoad(t_depth, vec2<i32>(sample_uv * depth_size), 0);
             if (d < closest_depth) {
                 closest_depth = d;
                 best_uv = sample_uv;

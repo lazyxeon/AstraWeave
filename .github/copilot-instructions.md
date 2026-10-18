@@ -23,6 +23,24 @@ AstraWeave is a **scientific proof of concept**: a production-grade game engine 
 - **Warnings may be deferred** — document for future cleanup.
 - Run `cargo check -p <crate>` after **every** code change. This is mandatory.
 
+### User core directives (2026-10-15)
+
+These bind every change. The rendering-architecture plan that follows from them is `docs/current/RENDER_ARCHITECTURE_PHASE_PLAN.md`. Do not start that phase until the plan is approved.
+
+1. Performance first. Idiomatic safe Rust. Parallel jobs only where the workload pays for them. Frame budgets are hard.
+2. Dynamic world. Terrain voxels, structural assets, and environment elements deform, break, and persist. Physics and rendering must not assume static geometry.
+3. Weaving is one data-driven API. A weave is a programmable modifier of world state (density, local gravity, structural decay). It is not a hardcoded script event. Player-facing text says Aravath, never "Veilweaver".
+4. AI is HTN or utility, built for a large open world. Pathfinding graphs update when the world breaks. Agents use destructible cover.
+5. Spatial partition is a dynamic sparse voxel DAG or chunk octree. Destruction queries run off the frame path. Compute shaders may accelerate them. A large collapse must not stutter the CPU.
+6. Local simulation is a grid or particle hybrid for fluid, gas, and heat, active only near players and AI.
+7. Traversal follows deformed surfaces: dynamic normals, ledges, climbing, momentum. No snagging on voxel seams.
+8. Rendering uses bindless wgpu where the device supports it, and the current bind-group path where it does not. Pipeline creation is one layer. Particles, frustum culling, and occlusion culling are GPU-driven. Assets stream asynchronously. The frame budget is under 11 ms on a GTX 1660 Ti-class GPU.
+9. Data-oriented ECS. No heap allocation in a frame update, a hot loop, or a physics tick. No lock contention in multi-threaded jobs.
+
+Determinism does not bend. Simulation state is replay-identical on Windows, Linux, and macOS from fixed ticks and the canonical `SimRng` (Fixed64 or f32 plus libm, per the subsystem contract). No wall clock and no unseeded RNG in the sim. GPU or async work may write simulation state only when the result is bit-exact and order-independent and a cross-OS replay test proves it. Otherwise the GPU is presentation-only, or the CPU computes the sim result and the GPU only draws it.
+
+Pre-existing failures are fixed, or deferred with a GitHub issue labeled `deferred-failure` that names an owner and a plan. Work stays on a branch. Do not merge. CC0 assets only.
+
 ---
 
 ## 2. Workflow & Process

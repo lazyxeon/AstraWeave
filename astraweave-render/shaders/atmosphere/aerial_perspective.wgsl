@@ -32,7 +32,7 @@ struct AerialParams {
 
 @group(0) @binding(0) var<uniform>  params:          AerialParams;
 @group(0) @binding(1) var           t_scene:         texture_2d<f32>;   // lit scene color
-@group(0) @binding(2) var           t_depth:         texture_2d<f32>;   // scene depth
+@group(0) @binding(2) var           t_depth:         texture_depth_2d;  // scene depth
 @group(0) @binding(3) var           t_transmittance: texture_2d<f32>;   // atmosphere LUT
 @group(0) @binding(4) var           s_linear:        sampler;
 @group(0) @binding(5) var           t_output:        texture_storage_2d<rgba16float, write>;
@@ -95,7 +95,7 @@ fn aerial_perspective_main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let uv = (vec2<f32>(gid.xy) + 0.5) * params.inv_resolution;
 
     let scene_color = textureSampleLevel(t_scene, s_linear, uv, 0.0).rgb;
-    let depth_raw = textureLoad(t_depth, pixel, 0).r;
+    let depth_raw = textureLoad(t_depth, pixel, 0);
 
     // Sky pixels: pass through unchanged (already rendered by sky pass)
     if (depth_raw >= 0.9999) {

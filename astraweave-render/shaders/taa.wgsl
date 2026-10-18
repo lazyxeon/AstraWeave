@@ -16,7 +16,7 @@ struct TaaParams {
 @group(0) @binding(0) var current_tex: texture_2d<f32>;   // Current jittered frame
 @group(0) @binding(1) var history_tex: texture_2d<f32>;    // Previous resolved frame
 @group(0) @binding(2) var velocity_tex: texture_2d<f32>;   // Motion vectors (RG16F)
-@group(0) @binding(3) var depth_tex: texture_2d<f32>;      // Depth buffer
+@group(0) @binding(3) var depth_tex: texture_depth_2d;
 @group(0) @binding(4) var samp: sampler;
 @group(0) @binding(5) var<uniform> params: TaaParams;
 @group(0) @binding(6) var output_tex: texture_storage_2d<rgba16float, write>;
@@ -159,7 +159,7 @@ fn taa_resolve(
         let py = clamp(base_y + i32(ty), 0, dims.y - 1);
         let coord = vec2<i32>(px, py);
         s_current[i] = textureLoad(current_tex, coord, 0).rgb;
-        s_taa_depth[i] = textureLoad(depth_tex, coord, 0).r;
+        s_taa_depth[i] = textureLoad(depth_tex, coord, 0);
     }
     workgroupBarrier();
 

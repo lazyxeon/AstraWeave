@@ -54,7 +54,9 @@ pub struct FrameGraphConfig {
     pub enable_ssr: bool,
     /// Whether bloom post-processing is enabled.
     pub enable_bloom: bool,
-    /// Whether froxel-based volumetric fog is enabled.
+    /// Kept so existing graph configs still compile. The stub node is gone.
+    /// Live fog is `VolumetricFogPass` on PR #205.
+    #[allow(dead_code)]
     pub enable_volumetric_fog: bool,
 }
 
@@ -141,11 +143,9 @@ impl RenderNode for ShadowPassNode {
     }
 }
 
-/// Sky rendering pass.
-///
-/// Renders the skybox/procedural sky into the HDR color target and
-/// initialises the depth buffer. Executes before the main scene pass
-/// so that geometry is rendered on top of the sky.
+/// Reserves `hdr_color` and `depth` in the graph. The live sky draw is
+/// `SkyRenderer` inside `Renderer::draw_into` (or `AtmospherePass` when
+/// that gate is on). This node does not record a second sky.
 pub struct SkyPassNode;
 
 impl SkyPassNode {
@@ -373,40 +373,6 @@ impl RenderNode for BloomNode {
     }
 }
 
-/// Froxel-based volumetric fog pass.
-///
-/// Reads the depth buffer and shadow map to compute in-scattering and
-/// extinction per froxel. Produces a 3D fog volume that the main scene
-/// pass composites during forward rendering.
-pub struct VolumetricFogNode;
-
-impl VolumetricFogNode {
-    pub fn new() -> Self {
-        Self
-    }
-}
-
-impl Default for VolumetricFogNode {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl RenderNode for VolumetricFogNode {
-    fn name(&self) -> &str {
-        "volumetric_fog"
-    }
-    fn run(&mut self, ctx: &mut GraphContext) -> Result<()> {
-        let _enc = ctx
-            .encoder
-            .as_deref_mut()
-            .context("VolumetricFogNode requires encoder")?;
-        let _ = ctx.resources.view("depth")?;
-        let _ = ctx.resources.view("shadow_map")?;
-        Ok(())
-    }
-}
-
 // ---------------------------------------------------------------------------
 // Graph Builder
 // ---------------------------------------------------------------------------
@@ -517,22 +483,7 @@ pub fn build_default_graph(config: &FrameGraphConfig) -> RenderGraph {
         });
     }
 
-    // Pass 6 (optional): Volumetric fog — froxel scattering from depth + shadow
-    if config.enable_volumetric_fog {
-        graph.add_pass(PassDecl {
-            name: "volumetric_fog".into(),
-            inputs: vec!["depth".into(), "shadow_map".into()],
-            outputs: vec![PassOutput {
-                name: "fog_volume".into(),
-                desc: TransientTextureDesc::color(
-                    "fog_volume",
-                    config.width / 2,
-                    config.height / 2,
-                ),
-            }],
-            node: Box::new(VolumetricFogNode::new()),
-        });
-    }
+    // Volumetric fog is VolumetricFogPass on PR #205, not a frame-graph stub.
 
     // Pass 7: Main scene rendering (reads upstream resources, produces scene_color)
     let mut main_inputs = vec!["shadow_map".into(), "hdr_color".into(), "depth".into()];
@@ -544,9 +495,6 @@ pub fn build_default_graph(config: &FrameGraphConfig) -> RenderGraph {
     }
     if config.enable_ssgi {
         main_inputs.push("gi_irradiance".into());
-    }
-    if config.enable_volumetric_fog {
-        main_inputs.push("fog_volume".into());
     }
 
     graph.add_pass(PassDecl {
@@ -846,9 +794,9 @@ mod tests {
         };
         let mut graph = build_default_graph(&cfg);
         let compiled = graph.compile().expect("full graph should compile");
-        // All passes: cluster_bin + shadow + sky + gtao + ssgi + volumetric_fog +
-        //             main_scene + ssr + bloom + tonemap = 10
-        assert_eq!(compiled.execution_order.len(), 10);
+        // cluster_bin + shadow + sky + gtao + ssgi + main_scene + ssr + bloom + tonemap = 9
+        // The empty volumetric-fog node is gone. Live fog stays on PR #205.
+        assert_eq!(compiled.execution_order.len(), 9);
     }
 
     #[test]

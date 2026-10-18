@@ -178,7 +178,7 @@ impl TaaPass {
                 tex_entry(0),          // current / sharpen input
                 tex_entry(1),          // history
                 tex_entry(2),          // velocity
-                tex_entry(3),          // depth
+                depth_entry(3),        // scene depth
                 sampler_entry(4),      // sampler
                 uniform_entry(5),      // params
                 storage_entry(6, fmt), // output
@@ -459,6 +459,19 @@ impl TaaPass {
     }
 }
 
+fn depth_entry(binding: u32) -> wgpu::BindGroupLayoutEntry {
+    wgpu::BindGroupLayoutEntry {
+        binding,
+        visibility: wgpu::ShaderStages::COMPUTE,
+        ty: wgpu::BindingType::Texture {
+            sample_type: wgpu::TextureSampleType::Depth,
+            view_dimension: wgpu::TextureViewDimension::D2,
+            multisampled: false,
+        },
+        count: None,
+    }
+}
+
 fn tex_entry(binding: u32) -> wgpu::BindGroupLayoutEntry {
     wgpu::BindGroupLayoutEntry {
         binding,
@@ -577,6 +590,9 @@ mod tests {
         let (device, _queue) =
             pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
                 .expect("device");
+        if crate::gpu_fault::skip_without_depth_texture_load(&device, "taa_pass_creation") {
+            return;
+        }
 
         let pass = TaaPass::new(&device, 1920, 1080);
         assert_eq!(pass.dimensions(), (1920, 1080));
@@ -605,6 +621,9 @@ mod tests {
         let (device, _queue) =
             pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
                 .expect("device");
+        if crate::gpu_fault::skip_without_depth_texture_load(&device, "taa_next_frame_advances") {
+            return;
+        }
 
         let mut pass = TaaPass::new(&device, 800, 600);
         assert_eq!(pass.frame_index(), 0);

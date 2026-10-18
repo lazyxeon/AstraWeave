@@ -27,7 +27,7 @@ impl DemoMode {
         match self {
             DemoMode::PureLlm => "assets/hdri/polyhaven/venice_sunset/venice_sunset_2k.hdr",
             DemoMode::PureGoap => "assets/hdri/polyhaven/kloppenheim_02_puresky_2k.hdr",
-            DemoMode::Arbiter => "assets/hdri/polyhaven/spruit_sunrise/spruit_sunrise_2k.hdr",
+            DemoMode::Arbiter => "assets/terrain/polyhaven/pine_forest/hdri/spruit_sunrise_2k.exr",
         }
     }
 
@@ -103,7 +103,7 @@ pub mod assets {
     /// HDRI skyboxes
     pub mod hdri {
         pub const SPRUIT_SUNRISE: &str =
-            "assets/hdri/polyhaven/spruit_sunrise/spruit_sunrise_2k.hdr";
+            "assets/terrain/polyhaven/pine_forest/hdri/spruit_sunrise_2k.exr";
         pub const VENICE_SUNSET: &str = "assets/hdri/polyhaven/venice_sunset/venice_sunset_2k.hdr";
         pub const KLOPPENHEIM: &str = "assets/hdri/polyhaven/kloppenheim_02_puresky_2k.hdr";
     }

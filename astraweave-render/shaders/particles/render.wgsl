@@ -32,7 +32,7 @@ struct SortEntry {
 @group(0) @binding(0) var<uniform>         camera:    CameraUniforms;
 @group(0) @binding(1) var<storage, read>   particles: array<Particle>;
 @group(0) @binding(2) var<storage, read>   sort_indices: array<SortEntry>;
-@group(0) @binding(3) var                  t_depth:   texture_2d<f32>;
+@group(0) @binding(3) var                  t_depth:   texture_depth_2d;
 @group(0) @binding(4) var                  t_texture: texture_2d<f32>;
 @group(0) @binding(5) var                  s_linear:  sampler;
 
@@ -106,7 +106,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
     // Soft particles: fade near depth buffer intersection
     let screen_uv = in.position.xy * camera.inv_resolution;
-    let scene_depth = textureLoad(t_depth, vec2<i32>(in.position.xy), 0).r;
+    let scene_depth = textureLoad(t_depth, vec2<i32>(in.position.xy), 0);
     let particle_depth = in.position.z;
     let depth_diff = abs(scene_depth - particle_depth);
     let soft_fade = saturate(depth_diff / camera.soft_depth_range);

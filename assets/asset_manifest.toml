@@ -447,3 +447,107 @@ type = "texture"
 id = "snow_02"
 resolution = "2k"
 format = "png"
+
+# Checked-in Poly Haven CC0 HDRIs (2k Radiance). sha256 is the file bytes.
+# sky_equirect.png was removed: it was not a Poly Haven asset and was not on disk.
+
+# Bytes live in the terrain pack (PR #215). Not copied here.
+[[assets]]
+handle = "hdri_spruit_sunrise"
+provider = "polyhaven"
+type = "hdri"
+id = "spruit_sunrise"
+resolution = "2k"
+format = "exr"
+license = "CC0-1.0"
+sha256 = "6db7045b78c3872843aa42563b851d4792f828082f2e5d9df6b3b510806103b7"
+
+[[assets]]
+handle = "hdri_kloppenheim_02"
+provider = "polyhaven"
+type = "hdri"
+id = "kloppenheim_02_puresky"
+resolution = "2k"
+format = "hdr"
+license = "CC0-1.0"
+sha256 = "e06091a38c4c778b06123ba13dca8f2c91a21c13c14eec91048c5003815d21b8"
+
+[[assets]]
+handle = "hdri_kloppenheim_06"
+provider = "polyhaven"
+type = "hdri"
+id = "kloppenheim_06_puresky"
+resolution = "2k"
+format = "hdr"
+license = "CC0-1.0"
+sha256 = "99451201586489ef3288c97bfac2a2ac232a5491c51a1faf0ec8ea39f3ccd533"
+
+[[assets]]
+handle = "hdri_venice_sunset"
+provider = "polyhaven"
+type = "hdri"
+id = "venice_sunset"
+resolution = "2k"
+format = "hdr"
+license = "CC0-1.0"
+sha256 = "cbfac020ee17ab36016ccc7fbe9020b828587b9864af6ecda0a93089914889a6"
+
+[[assets]]
+handle = "hdri_goegap"
+provider = "polyhaven"
+type = "hdri"
+id = "goegap"
+resolution = "2k"
+format = "hdr"
+license = "CC0-1.0"
+sha256 = "734bd0fa0ec0241a0fc08a2ffefd6f2f1180d53da51bb740c3bf70512e6679e0"
+
+[[assets]]
+handle = "hdri_table_mountain_2"
+provider = "polyhaven"
+type = "hdri"
+id = "table_mountain_2"
+resolution = "2k"
+format = "hdr"
+license = "CC0-1.0"
+sha256 = "199c89b6a872c2db260dd480f0109aa2330c5d30ff5f62f32fd05879e5623e7b"
+
+[[assets]]
+handle = "hdri_rainforest_trail"
+provider = "polyhaven"
+type = "hdri"
+id = "rainforest_trail"
+resolution = "2k"
+format = "hdr"
+license = "CC0-1.0"
+sha256 = "2e90cae8db4d85d50040d4e57bd1448d7ddc29d2f795c902896763fd4011cee0"
+
+[[assets]]
+handle = "hdri_misty_pines"
+provider = "polyhaven"
+type = "hdri"
+id = "misty_pines"
+resolution = "2k"
+format = "hdr"
+license = "CC0-1.0"
+sha256 = "3fcc1574bd6b07bddc2c946a7025d47d48aa4ec84e8454b1ffb22c0c996ec5b3"
+
+[[assets]]
+handle = "hdri_qwantani_moonrise"
+provider = "polyhaven"
+type = "hdri"
+id = "qwantani_moonrise_puresky"
+resolution = "2k"
+format = "hdr"
+license = "CC0-1.0"
+sha256 = "810443e6c76c60505e389ce52f29096d6d574251e29c1ae95de1b1972f2998d8"
+
+[[assets]]
+handle = "hdri_rogland_clear_night"
+provider = "polyhaven"
+type = "hdri"
+id = "rogland_clear_night"
+resolution = "2k"
+format = "hdr"
+license = "CC0-1.0"
+sha256 = "6f4f09d4385c5774a0d093882b053d97eb63fa331b3878c8e66707426eb031b9"
