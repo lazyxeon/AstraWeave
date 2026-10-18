@@ -48,6 +48,8 @@ harness = false
 name = "fluid_baseline_20k"
 harness = false
 
+# 50k still steps 50_000 particles. Flat sample_size 10 (see the bench)
+# is what fits the 600s cap after run 39073094307. Do not skip the target.
 [[bench]]
 name = "fluid_baseline_50k"
 harness = false
