@@ -250,13 +250,13 @@ Status vocabulary: **VERIFIED-AT-HEAD** (re-checked this campaign at HEAD via th
 
 ### frame-budget-gtx1660
 - metric: Full-frame GPU budget on a GTX 1660 Ti-class GPU
-- value: TARGET under 11 ms. NOT MEASURED. The GPU timer read 0 ms. Readback fix is in progress in #216 and is not on `main`.
-- status: PENDING (target only; do not cite as achieved)
-- repro: not available until #216 lands a non-zero timestamp read on that GPU class
-- hardware: GTX 1660 Ti-class (the target machine class; this row has no passing sample)
-- canonical_source: repository README + issue #216
-- referenced_by: README.md; docs/masters/MASTER_BENCHMARK_REPORT.md
-- note: CPU `profiling_demo` times (system 0.965 ms / mimalloc 0.709 ms @ 1,000 entities, 2026-06-27) are a different measurement. Do not substitute them for this row.
+- value: TARGET under 11 ms. MEASURED on the heavy scene: `median_gpu_frame_ms=3.688`, `budget_11ms=pass`, amortized `cloud_shadow` 0.323 ms. #216 is on `main` (`92727109`). The capture commit is `939a21bb`.
+- status: VERIFIED for that heavy-scene capture. #371 (no water in the heavy scene) and #372 (`gpu_cull=cpu_fallback`) stay open.
+- repro: `gpu_frame_budget --scene heavy` at 1920×1080, 30 warmup + 120 samples, `budget_basis=gpu_frame`
+- hardware: GTX 1660 Ti Max-Q, Vulkan, 1920×1080, 2026-10-17
+- canonical_source: `docs/architecture/render_pipeline_material_system_shader_infrastructure.md` invariant 22 and the open question "11 ms frame budget"; `astraweave-render/src/bin/gpu_frame_budget.rs`
+- referenced_by: README.md; docs/masters/MASTER_BENCHMARK_REPORT.md; docs/current/PROJECT_STATUS.md
+- note: CPU `profiling_demo` times (system 0.965 ms / mimalloc 0.709 ms @ 1,000 entities, 2026-06-27) are a different measurement. Do not substitute them for this row. Lavapipe time is not this record.
 
 ## Retired (deleted across the corpus — no registry row, recorded here so D.1.B/D.2 never re-home them)
 
@@ -277,6 +277,7 @@ Status vocabulary: **VERIFIED-AT-HEAD** (re-checked this campaign at HEAD via th
 
 | Version | Date | Change |
 |---|---|---|
+| 1.7 | 2026-10-18 | `frame-budget-gtx1660` records the heavy-scene GTX 1660 Ti Max-Q capture: 3.688 ms, `budget_11ms=pass`, cloud shadow 0.323 ms. #216 is on `main` (`92727109`). #371 and #372 stay open. |
 | 0.1 (D.1.A skeleton) | 2026-06-13 | Created. 11 VERIFIED-AT-HEAD count/version rows; 7 PENDING-D2 benchmark/coverage rows; Retired table seeded. PENDING-D2 rows to be filled by D.2 measurement. |
 | 0.2 (D.1.B hygiene) | 2026-06-13 | Hygiene pass: `canonical_source` for agents-capacity-60fps / frame-time-1000-entities / coverage-weighted / miri-tests changed from doc-references to the bench/llvm-cov/miri **command** (doc-cites-doc break). Denominators confirmed named ("test markers", not "tests"). `referenced_by` lists are representative load-bearing sites, not exhaustive — D.1.B added registry-comment back-links across the long-tail corpus. |
 | 0.3 (D.2.A.1) | 2026-06-25 | **W.1-contamination re-resolution.** Re-resolved the 4 W.1-invalidated rows (fluids-loc 80,222→24,251 src; fluids-test-markers 2,560→738; rust-loc-total ~1.16M→~1.10M raw / ~892K→~854K code; dormant-loc-inventory 108,753→52,782). Fixed 2 broken repro commands (fluids-loc `**`-glob returned 0; rust-loc-total `xargs … wc -l \| tail -1` batching). Added 4 NEW rows for the W.2–F.4 water successor: water-facade-loc, water-surface-loc, water-system (narrative), water-budget (PENDING-D2, single-machine/provisional). Dated D.2.A snapshots in the execution reports left byte-identical (per-row resolution principle). Authority: `D_RESUME_0_RECON.md`. |

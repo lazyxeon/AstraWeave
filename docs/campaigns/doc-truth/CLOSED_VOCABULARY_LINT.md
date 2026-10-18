@@ -89,8 +89,8 @@ The union of acted + kept occurrences is the complete closed-vocabulary inventor
 `aw_doc_lint` enforces this even in `--mode warn` (the vocabulary scan stays warn-only):
 
 - Both `required` lists in `.github/workflows/determinism-replay.yml` must agree, and `README.md` must name each case.
-- `README.md` must state that the under-11 ms GTX 1660 Ti frame budget is not yet measured, that assets are CC0, that local LLMs propose, and that the deterministic simulation validates.
-- `README.md` must have a `## In progress` section listing #216, and no other issue number. That section must not call the work shipped, landed, or merged. #253 is on main as `astraweave-localsim` (#330). #217, #275, #327, #252, #205, #215, and #244 are on main and are not in that list.
+- `README.md` must state the under-11 ms GTX 1660 Ti frame budget and the measured heavy-scene `3.688 ms`, that assets are CC0, that local LLMs propose, and that the deterministic simulation validates. #216 is on main. #371 and #372 stay open.
+- `README.md` must have a `## In progress` section listing #366 and #367, and no other issue number. That section must not call the work shipped, landed, or merged. #216 is on main and is not in that list.
 - Player-facing files (`README.md`, `CONTRIBUTING.md`, `docs/README.md`, `docs/QUICKSTART.md`, `docs/guides/**/*.md`) must not use the retired game title. `veilweaver_` crate names and the archive directory `projects/veilweaver` are allowed.
 
 ## Frame-time carve-out (D.3.1) — why `2.70 ms` is NOT in Vocabulary A

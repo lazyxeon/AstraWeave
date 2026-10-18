@@ -85,7 +85,7 @@ The egui overlay is the HUD only. It is drawn after the engine frame.
 
 ## Performance budget
 
-Stay inside this box on a GTX 1660 at 1080p, and do not treat an RTX 4070 as a reason to raise it. The whole frame stays under 11 ms on a GTX 1660 Ti. `--frame-times` reports the CPU sim-and-skin time against that budget.
+Stay inside this box on a GTX 1660 at 1080p, and do not treat an RTX 4070 as a reason to raise it. The budget is under 11 ms on a GTX 1660 Ti. The heavy-scene capture is 3.688 ms (`budget_11ms=pass`, #216); the amortized cloud shadow is 0.323 ms. #371 and #372 stay open. `--frame-times` reports the CPU sim-and-skin time against that budget, which is not the heavy-scene GPU capture.
 
 - Stream radius 3. Do not fill a multi-kilometre voxel volume.
 - Block-bit albedo crops for the voxel materials, the wood plank map, and the small KayKit atlases. Props are instanced, not a mesh per blade of grass.
