@@ -116,7 +116,6 @@ ignore = [
     { id = "RUSTSEC-2026-0195", reason = "quick-xml NsReader DoS has the same parent constraint as RUSTSEC-2026-0194. https://github.com/lazyxeon/AstraWeave/issues/308" },
     { id = "RUSTSEC-2026-0249", reason = "smartstring 1.0.1 has no patched release. rhai 1.23.4 pins it. https://github.com/lazyxeon/AstraWeave/issues/309" },
     { id = "RUSTSEC-2026-0192", reason = "ttf-parser 0.25.1 has no patched release. egui 0.32 pulls it through ab_glyph. https://github.com/lazyxeon/AstraWeave/issues/310" },
-    { id = "RUSTSEC-2024-0449", reason = "unsafe-libyaml has no patched release. aw_trace_sync is the only serde_yaml caller. https://github.com/lazyxeon/AstraWeave/issues/311" },
 ]
 
 # Threshold for security vulnerabilities, any vulnerability with a CVSS score

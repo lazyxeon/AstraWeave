@@ -111,7 +111,7 @@ This prevents the failure where, e.g., `astraweave-physics`'s node inherits `wat
 
 ## 6. The tool — `tools/aw_trace_sync` (Rust, cargo-native)
 
-Rust chosen over Python: aligns with the repo's cargo-native, zero-human-code ethos; CI already has the toolchain (`Swatinem/rust-cache` is in `docs.yml`); typed enums make schema validation natural; uses the `cargo_metadata` crate directly. Likely deps: `cargo_metadata`, `serde`, `serde_yaml`, `serde_json`, `clap`, `anyhow`/`thiserror`, `similar` (for `--check` diff output).
+Rust chosen over Python: aligns with the repo's cargo-native, zero-human-code ethos; CI already has the toolchain (`Swatinem/rust-cache` is in `docs.yml`); typed enums make schema validation natural; uses the `cargo_metadata` crate directly. Likely deps: `cargo_metadata`, `serde`, `yaml_serde`, `serde_json`, `clap`, `anyhow`/`thiserror`, `similar` (for `--check` diff output).
 
 **Commands:**
 ```bash
