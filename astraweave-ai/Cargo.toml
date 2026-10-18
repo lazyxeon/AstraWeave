@@ -34,6 +34,8 @@ default = []
 llm_orchestrator = ["astraweave-llm", "astraweave-llm/ollama", "dep:tokio", "dep:futures"]
 ai-goap = ["dep:astraweave-behavior"]
 ai-bt = ["dep:astraweave-behavior"]
+# Advanced GOAP planner with learning, risk-awareness, and multi-goal support
+planner_advanced = []
 rag = []
 profiling = ["astraweave-profiling/profiling", "tracy-client", "tracy-client/enable"]
 # Pull in astraweave-profiling's alloc-counter for bench assertions.
@@ -68,7 +70,7 @@ harness = false
 [[bench]]
 name = "alloc_measure"
 harness = false
-required-features = ["alloc-counter"]
+required-features = ["alloc-counter", "planner_advanced"]
 
 [[bench]]
 name = "htn_budget"
@@ -90,6 +92,13 @@ harness = false
 name = "multi_agent_pipeline"
 harness = false
 
+[[bench]]
+name = "goap_performance_bench"
+harness = false
+
+[[bench]]
+name = "goap_vs_rule_bench"
+harness = false
 
 # Production-lib unwrap gate. Enforced by the single workspace clippy --lib pass.
 # Tests are not part of --lib, so test unwraps stay allowed.

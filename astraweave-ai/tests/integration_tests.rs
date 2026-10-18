@@ -66,6 +66,7 @@ fn test_full_ai_loop_60fps() {
     let controller = CAiController {
         mode: PlannerMode::Rule,
         policy: None,
+        gather: astraweave_ai::htn::GatherGoal::CookFood,
     };
 
     let agent_count = 676;
@@ -139,6 +140,7 @@ fn test_boss_ai_stress() {
     let controller = CAiController {
         mode: PlannerMode::Rule,
         policy: None,
+        gather: astraweave_ai::htn::GatherGoal::CookFood,
     };
 
     // Simulate boss AI with complex decision-making
@@ -192,6 +194,7 @@ fn test_multi_agent_coordination() {
     let controller = CAiController {
         mode: PlannerMode::Rule,
         policy: None,
+        gather: astraweave_ai::htn::GatherGoal::CookFood,
     };
 
     // Create a squad of 4 agents
@@ -241,6 +244,7 @@ fn test_perception_planning_pipeline() {
     let controller = CAiController {
         mode: PlannerMode::Rule,
         policy: None,
+        gather: astraweave_ai::htn::GatherGoal::CookFood,
     };
 
     let agent_count = 100;
@@ -288,6 +292,7 @@ fn test_ai_loop_memory_efficiency() {
     let controller = CAiController {
         mode: PlannerMode::Rule,
         policy: None,
+        gather: astraweave_ai::htn::GatherGoal::CookFood,
     };
 
     // Test that repeated planning doesn't leak memory (simple check)

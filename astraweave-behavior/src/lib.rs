@@ -7,6 +7,8 @@ mod mutation_tests;
 mod test_support;
 
 pub mod ecs;
+pub mod goap;
+pub mod goap_cache; // Week 3 Action 9: GOAP plan caching with LRU eviction
 pub mod interner;
 
 use serde::{Deserialize, Serialize};

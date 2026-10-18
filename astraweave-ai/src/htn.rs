@@ -235,27 +235,38 @@ pub fn legacy_goap_step(snap: &WorldSnapshot) -> ActionStep {
     ActionStep::Wait { duration: 1.0 }
 }
 
-/// Fixed gather methods. `gather` or `craft` in the policy name keeps wood
-/// and food. Any other policy only cooks food. No search and no fact map.
+/// Which gather method the controller asked for. Callers set this value.
+/// The planner does not read the policy string.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum GatherGoal {
+    /// Cook food. Four steps. Wood is spent.
+    #[default]
+    CookFood,
+    /// Cook food and chop again so wood remains. Six steps.
+    KeepWood,
+}
+
+/// Fixed gather methods. The goal is an explicit value, not a substring of a
+/// policy name. No search and no fact map.
 #[must_use]
-pub fn gather_method(policy: Option<&str>) -> PlanIntent {
-    let keep_wood = policy.is_some_and(|name| name.contains("gather") || name.contains("craft"));
-    let steps = if keep_wood {
-        vec![
+pub fn gather_method(goal: GatherGoal) -> PlanIntent {
+    let steps = match goal {
+        GatherGoal::KeepWood => {
+            vec![
+                site_step(10, 10),
+                site_step(10, 10),
+                site_step(5, 5),
+                site_step(5, 5),
+                site_step(10, 10),
+                site_step(10, 10),
+            ]
+        }
+        GatherGoal::CookFood => vec![
             site_step(10, 10),
             site_step(10, 10),
             site_step(5, 5),
             site_step(5, 5),
-            site_step(10, 10),
-            site_step(10, 10),
-        ]
-    } else {
-        vec![
-            site_step(10, 10),
-            site_step(10, 10),
-            site_step(5, 5),
-            site_step(5, 5),
-        ]
+        ],
     };
     let len = steps.len();
     PlanIntent {

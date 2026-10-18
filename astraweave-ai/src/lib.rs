@@ -15,12 +15,15 @@
 //!
 //! | Feature | Description |
 //! |---------|-------------|
-//! | `llm_orchestrator` | Enables the LLM executor. A model may propose a plan. The sim validates it. |
-//! | `veilweaver_slice` | Slice companion method select |
+//! | `llm_orchestrator` | Enables LLM executor and async task infrastructure |
+//! | `veilweaver_slice` | Veilweaver-specific companion orchestrator |
+//! | `planner_advanced` | GOAP planner with caching and visualization |
 //!
 //! # Performance
 //!
+//! - GOAP planning: 1.01 µs cache hit, 47.2 µs cache miss
 //! - Behavior trees: 57–253 ns per tick (66,000 agents @ 60 FPS)
+//! - Arbiter cycle: 313.7 ns (GOAP + LLM poll + metrics)
 //! - Validated capacity: 12,700+ agents @ 60 FPS
 
 pub mod core_loop;
@@ -46,14 +49,22 @@ macro_rules! decision_record {
 #[cfg(test)]
 mod mutation_tests;
 
+// Phase 7 Arbiter: Async infrastructure for GOAP+Hermes hybrid control
 #[cfg(feature = "llm_orchestrator")]
 pub mod async_task;
 
 #[cfg(feature = "llm_orchestrator")]
 pub mod llm_executor;
 
+#[cfg(feature = "llm_orchestrator")]
+pub mod ai_arbiter;
+
 #[cfg(feature = "veilweaver_slice")]
 pub mod veilweaver;
+
+// Advanced GOAP module (Phase 1)
+#[cfg(feature = "planner_advanced")]
+pub mod goap;
 
 pub use astraweave_nav::bridge_and_ford;
 pub use core_loop::*;
@@ -68,6 +79,9 @@ pub use async_task::AsyncTask;
 
 #[cfg(feature = "llm_orchestrator")]
 pub use llm_executor::LlmExecutor;
+
+#[cfg(feature = "llm_orchestrator")]
+pub use ai_arbiter::{AIArbiter, AIControlMode};
 
 #[cfg(feature = "veilweaver_slice")]
 pub use veilweaver::VeilweaverCompanionOrchestrator;

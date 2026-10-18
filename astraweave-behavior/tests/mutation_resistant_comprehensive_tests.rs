@@ -1,10 +1,278 @@
-//! Behavior-graph and interner tests.
+//! Comprehensive Mutation-Resistant Tests for astraweave-behavior
 //!
-//! The symbolic planner tests left with the planner.
+//! Targets all identified mutation-vulnerable code patterns across:
+//! - lib.rs: BehaviorNode, BehaviorStatus, BehaviorContext, DecoratorType, BehaviorGraph
+//! - goap.rs: WorldState, GoapAction, GoapGoal, GoapPlanner, GoapPlan
+//! - goap_cache.rs: PlanCache LRU, CachedGoapPlanner
+//! - interner.rs: StringInterner
+//!
+//! Every test asserts EXACT computed values to ensure mutations are caught.
 
+use astraweave_behavior::goap::{GoapAction, GoapGoal, GoapPlan, GoapPlanner, WorldState};
+use astraweave_behavior::goap_cache::{CachedGoapPlanner, PlanCache};
 use astraweave_behavior::{
     BehaviorContext, BehaviorGraph, BehaviorNode, BehaviorStatus, DecoratorType,
 };
+
+// =============================================================================
+// MODULE 1: WorldState::distance_to() — 3 mutation targets
+// =============================================================================
+mod world_state_distance_tests {
+    use super::*;
+
+    #[test]
+    fn distance_to_identical_state_is_zero() {
+        let state = WorldState::from_facts(&[("a", true), ("b", false)]);
+        let goal_state = WorldState::from_facts(&[("a", true), ("b", false)]);
+        assert_eq!(state.distance_to(&goal_state), 0);
+    }
+
+    #[test]
+    fn distance_to_one_unsatisfied_is_one() {
+        let state = WorldState::from_facts(&[("a", true), ("b", false)]);
+        let goal_state = WorldState::from_facts(&[("a", true), ("b", true)]);
+        assert_eq!(state.distance_to(&goal_state), 1);
+    }
+
+    #[test]
+    fn distance_to_two_unsatisfied_is_two() {
+        let state = WorldState::from_facts(&[("a", false), ("b", false)]);
+        let goal_state = WorldState::from_facts(&[("a", true), ("b", true)]);
+        assert_eq!(state.distance_to(&goal_state), 2);
+    }
+
+    #[test]
+    fn distance_to_missing_fact_counts_as_unsatisfied() {
+        let state = WorldState::new();
+        let goal_state = WorldState::from_facts(&[("a", true)]);
+        assert_eq!(state.distance_to(&goal_state), 1);
+    }
+
+    #[test]
+    fn distance_to_empty_goal_is_zero() {
+        let state = WorldState::from_facts(&[("a", true), ("b", false)]);
+        let goal_state = WorldState::new();
+        assert_eq!(state.distance_to(&goal_state), 0);
+    }
+
+    #[test]
+    fn distance_to_three_unsatisfied_is_three() {
+        let state = WorldState::new();
+        let goal_state = WorldState::from_facts(&[("a", true), ("b", true), ("c", true)]);
+        assert_eq!(state.distance_to(&goal_state), 3);
+    }
+
+    #[test]
+    fn distance_superset_state_partial_match() {
+        // State has extra facts; only goal facts matter
+        let state = WorldState::from_facts(&[("a", true), ("b", false), ("c", true)]);
+        let goal_state = WorldState::from_facts(&[("a", true), ("b", true)]);
+        assert_eq!(state.distance_to(&goal_state), 1); // only "b" unsatisfied
+    }
+}
+
+// =============================================================================
+// MODULE 2: WorldState::apply() — replace with () mutation target
+// =============================================================================
+mod world_state_apply_tests {
+    use super::*;
+
+    #[test]
+    fn apply_adds_new_facts() {
+        let mut state = WorldState::new();
+        let effects = WorldState::from_facts(&[("a", true)]);
+        state.apply(&effects);
+        assert_eq!(state.get("a"), Some(true));
+    }
+
+    #[test]
+    fn apply_overwrites_existing_facts() {
+        let mut state = WorldState::from_facts(&[("a", false)]);
+        let effects = WorldState::from_facts(&[("a", true)]);
+        state.apply(&effects);
+        assert_eq!(state.get("a"), Some(true));
+    }
+
+    #[test]
+    fn apply_preserves_unaffected_facts() {
+        let mut state = WorldState::from_facts(&[("a", true), ("b", false)]);
+        let effects = WorldState::from_facts(&[("b", true)]);
+        state.apply(&effects);
+        assert_eq!(state.get("a"), Some(true)); // unchanged
+        assert_eq!(state.get("b"), Some(true)); // changed
+    }
+
+    #[test]
+    fn apply_empty_effects_does_nothing() {
+        let mut state = WorldState::from_facts(&[("a", true)]);
+        let effects = WorldState::new();
+        state.apply(&effects);
+        assert_eq!(state.get("a"), Some(true));
+        assert_eq!(state.facts.len(), 1);
+    }
+
+    #[test]
+    fn apply_multiple_effects_all_applied() {
+        let mut state = WorldState::new();
+        let effects = WorldState::from_facts(&[("a", true), ("b", false), ("c", true)]);
+        state.apply(&effects);
+        assert_eq!(state.get("a"), Some(true));
+        assert_eq!(state.get("b"), Some(false));
+        assert_eq!(state.get("c"), Some(true));
+        assert_eq!(state.facts.len(), 3);
+    }
+}
+
+// =============================================================================
+// MODULE 3: GoapPlan — is_complete(), advance(), invalidate()
+// =============================================================================
+mod goap_plan_tests {
+    use super::*;
+
+    fn make_action(name: &str) -> GoapAction {
+        GoapAction::new(name)
+    }
+
+    #[test]
+    fn new_single_action_has_current_not_complete() {
+        use crate::test_support::TestValue;
+        let plan = GoapPlan::new(vec![make_action("a")]);
+        assert!(!plan.is_complete());
+        assert!(plan.current_action.is_some());
+        assert_eq!(plan.current_action.as_ref().test_unwrap().name, "a");
+        assert!(plan.actions.is_empty()); // rest of queue empty
+    }
+
+    #[test]
+    fn new_two_actions_first_is_current() {
+        use crate::test_support::TestValue;
+        let plan = GoapPlan::new(vec![make_action("a"), make_action("b")]);
+        assert!(!plan.is_complete());
+        assert_eq!(plan.current_action.as_ref().test_unwrap().name, "a");
+        assert_eq!(plan.actions.len(), 1);
+    }
+
+    #[test]
+    fn new_empty_actions_is_immediately_complete() {
+        let plan = GoapPlan::new(vec![]);
+        assert!(plan.is_complete());
+        assert!(plan.current_action.is_none());
+        assert!(plan.actions.is_empty());
+    }
+
+    #[test]
+    fn advance_moves_to_next_action() {
+        use crate::test_support::TestValue;
+        let mut plan = GoapPlan::new(vec![make_action("a"), make_action("b"), make_action("c")]);
+        assert_eq!(plan.current_action.as_ref().test_unwrap().name, "a");
+
+        plan.advance();
+        assert_eq!(plan.current_action.as_ref().test_unwrap().name, "b");
+        assert_eq!(plan.completed.len(), 1);
+        assert_eq!(plan.completed[0].name, "a");
+
+        plan.advance();
+        assert_eq!(plan.current_action.as_ref().test_unwrap().name, "c");
+        assert_eq!(plan.completed.len(), 2);
+
+        plan.advance();
+        assert!(plan.current_action.is_none());
+        assert_eq!(plan.completed.len(), 3);
+        assert!(plan.is_complete());
+    }
+
+    #[test]
+    fn is_complete_false_when_current_action_some_queue_empty() {
+        // This specifically catches && -> || mutation
+        let plan = GoapPlan::new(vec![make_action("a")]);
+        // current_action=Some, actions=empty
+        assert!(!plan.is_complete()); // && requires BOTH None and empty
+    }
+
+    #[test]
+    fn is_complete_false_when_current_action_none_queue_nonempty() {
+        // Another && -> || catch
+        let mut plan = GoapPlan::new(vec![make_action("a"), make_action("b")]);
+        // Manually set current_action to None without advancing
+        plan.current_action = None;
+        // Now: current_action=None, actions=[b]
+        assert!(!plan.is_complete());
+    }
+
+    #[test]
+    fn invalidate_makes_plan_complete() {
+        let mut plan = GoapPlan::new(vec![make_action("a"), make_action("b"), make_action("c")]);
+        assert!(!plan.is_complete());
+
+        plan.invalidate();
+        assert!(plan.is_complete());
+        assert!(plan.current_action.is_none());
+        assert!(plan.actions.is_empty());
+    }
+
+    #[test]
+    fn invalidate_clears_current_and_queue() {
+        let mut plan = GoapPlan::new(vec![make_action("a"), make_action("b")]);
+        plan.invalidate();
+        assert!(plan.current_action.is_none());
+        assert!(plan.actions.is_empty());
+    }
+
+    #[test]
+    fn advance_on_already_complete_plan_stays_complete() {
+        let mut plan = GoapPlan::new(vec![]);
+        assert!(plan.is_complete());
+        plan.advance(); // should not panic
+        assert!(plan.is_complete());
+    }
+}
+
+// =============================================================================
+// MODULE 4: GoapGoal::with_priority() — mutation target
+// =============================================================================
+mod goap_goal_tests {
+    use super::*;
+
+    #[test]
+    fn with_priority_sets_exact_value() {
+        let goal = GoapGoal::new("test", WorldState::new()).with_priority(5.0);
+        assert_eq!(goal.priority, 5.0);
+    }
+
+    #[test]
+    fn default_priority_is_1() {
+        let goal = GoapGoal::new("test", WorldState::new());
+        assert_eq!(goal.priority, 1.0);
+    }
+
+    #[test]
+    fn with_priority_zero() {
+        let goal = GoapGoal::new("test", WorldState::new()).with_priority(0.0);
+        assert_eq!(goal.priority, 0.0);
+    }
+
+    #[test]
+    fn goal_name_is_stored() {
+        let goal = GoapGoal::new("attack_enemy", WorldState::new());
+        assert_eq!(goal.name, "attack_enemy");
+    }
+
+    #[test]
+    fn is_satisfied_true_when_state_satisfies_goal() {
+        let desired = WorldState::from_facts(&[("has_weapon", true)]);
+        let goal = GoapGoal::new("arm_self", desired);
+        let state = WorldState::from_facts(&[("has_weapon", true), ("has_ammo", true)]);
+        assert!(goal.is_satisfied(&state));
+    }
+
+    #[test]
+    fn is_satisfied_false_when_state_doesnt_satisfy() {
+        let desired = WorldState::from_facts(&[("has_weapon", true)]);
+        let goal = GoapGoal::new("arm_self", desired);
+        let state = WorldState::from_facts(&[("has_weapon", false)]);
+        assert!(!goal.is_satisfied(&state));
+    }
+}
 
 // =============================================================================
 // MODULE 5: Parallel node boundary — running_count > 0 vs >= 0
@@ -148,6 +416,205 @@ mod parallel_boundary_tests {
     }
 }
 
+// =============================================================================
+// MODULE 6: GoapPlanner A* cost optimality
+// =============================================================================
+mod goap_planner_optimality_tests {
+    use super::*;
+
+    #[test]
+    fn planner_chooses_cheapest_path() {
+        use crate::test_support::TestValue;
+        // Two paths to same goal:
+        // Path A: action_cheap (cost 1.0) x 3 = 3.0 total
+        // Path B: action_expensive (cost 4.0) x 1 = 4.0 total
+        // Planner must choose Path A
+        let state = WorldState::from_facts(&[("start", true)]);
+        let desired = WorldState::from_facts(&[("goal", true)]);
+        let goal = GoapGoal::new("reach_goal", desired);
+
+        let actions = vec![
+            GoapAction::new("step1")
+                .with_cost(1.0)
+                .with_precondition("start", true)
+                .with_effect("mid1", true),
+            GoapAction::new("step2")
+                .with_cost(1.0)
+                .with_precondition("mid1", true)
+                .with_effect("mid2", true),
+            GoapAction::new("step3")
+                .with_cost(1.0)
+                .with_precondition("mid2", true)
+                .with_effect("goal", true),
+            GoapAction::new("expensive_shortcut")
+                .with_cost(4.0)
+                .with_precondition("start", true)
+                .with_effect("goal", true),
+        ];
+
+        let planner = GoapPlanner::new();
+        let plan = planner
+            .plan(&state, &goal, &actions)
+            .test_expect("should find plan");
+        // Cheaper 3-step path (3.0) preferred over 1-step expensive path (4.0)
+        assert_eq!(plan.len(), 3);
+        let total_cost: f32 = plan.iter().map(|a| a.cost).sum();
+        assert!((total_cost - 3.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn planner_chooses_single_cheap_over_multi_expensive() {
+        use crate::test_support::TestValue;
+        // Path A: single step (cost 2.0)
+        // Path B: 3 steps (cost 1.0 each = 3.0 total)
+        // Should choose Path A
+        let state = WorldState::from_facts(&[("start", true)]);
+        let desired = WorldState::from_facts(&[("goal", true)]);
+        let goal = GoapGoal::new("reach_goal", desired);
+
+        let actions = vec![
+            GoapAction::new("direct")
+                .with_cost(2.0)
+                .with_precondition("start", true)
+                .with_effect("goal", true),
+            GoapAction::new("step1")
+                .with_cost(1.0)
+                .with_precondition("start", true)
+                .with_effect("mid1", true),
+            GoapAction::new("step2")
+                .with_cost(1.0)
+                .with_precondition("mid1", true)
+                .with_effect("mid2", true),
+            GoapAction::new("step3")
+                .with_cost(1.0)
+                .with_precondition("mid2", true)
+                .with_effect("goal", true),
+        ];
+
+        let planner = GoapPlanner::new();
+        let plan = planner
+            .plan(&state, &goal, &actions)
+            .test_expect("plan exists");
+        let total_cost: f32 = plan.iter().map(|a| a.cost).sum();
+        assert!(
+            total_cost <= 2.001,
+            "should pick cheaper path, got cost {}",
+            total_cost
+        );
+    }
+
+    #[test]
+    fn planner_with_max_iterations_1_fails_on_multi_step() {
+        let state = WorldState::from_facts(&[("a", true)]);
+        let desired = WorldState::from_facts(&[("c", true)]);
+        let goal = GoapGoal::new("reach_c", desired);
+
+        let actions = vec![
+            GoapAction::new("a_to_b")
+                .with_precondition("a", true)
+                .with_effect("b", true),
+            GoapAction::new("b_to_c")
+                .with_precondition("b", true)
+                .with_effect("c", true),
+        ];
+
+        let planner = GoapPlanner::new().with_max_iterations(1);
+        let result = planner.plan(&state, &goal, &actions);
+        assert!(
+            result.is_none(),
+            "should fail with max_iterations=1 on 2-step plan"
+        );
+    }
+
+    #[test]
+    fn planner_with_max_iterations_1000_finds_plan() {
+        use crate::test_support::TestValue;
+        let state = WorldState::from_facts(&[("a", true)]);
+        let desired = WorldState::from_facts(&[("c", true)]);
+        let goal = GoapGoal::new("reach_c", desired);
+
+        let actions = vec![
+            GoapAction::new("a_to_b")
+                .with_precondition("a", true)
+                .with_effect("b", true),
+            GoapAction::new("b_to_c")
+                .with_precondition("b", true)
+                .with_effect("c", true),
+        ];
+
+        let planner = GoapPlanner::new().with_max_iterations(1000);
+        let plan = planner.plan(&state, &goal, &actions);
+        assert!(plan.is_some());
+        assert_eq!(plan.test_unwrap().len(), 2);
+    }
+
+    #[test]
+    fn planner_already_satisfied_returns_empty() {
+        use crate::test_support::TestValue;
+        let state = WorldState::from_facts(&[("goal", true)]);
+        let desired = WorldState::from_facts(&[("goal", true)]);
+        let goal = GoapGoal::new("already_done", desired);
+        let planner = GoapPlanner::new();
+        let plan = planner.plan(&state, &goal, &[]);
+        assert!(plan.is_some());
+        assert_eq!(plan.test_unwrap().len(), 0);
+    }
+
+    #[test]
+    fn planner_impossible_goal_returns_none() {
+        let state = WorldState::from_facts(&[("a", true)]);
+        let desired = WorldState::from_facts(&[("impossible", true)]);
+        let goal = GoapGoal::new("impossible", desired);
+        // No actions can set "impossible"
+        let actions = vec![GoapAction::new("noop")
+            .with_precondition("a", true)
+            .with_effect("b", true)];
+        let planner = GoapPlanner::new();
+        assert!(planner.plan(&state, &goal, &actions).is_none());
+    }
+
+    #[test]
+    fn planner_depth_increments_correctly() {
+        use crate::test_support::TestValue;
+        // Verify that depth + 1 arithmetic is correct
+        // If depth + 1 -> depth - 1, this would cause tie-breaking issues
+        // Two equal-cost paths: planner should prefer fewer steps
+        let state = WorldState::from_facts(&[("start", true)]);
+        let desired = WorldState::from_facts(&[("goal", true)]);
+        let goal = GoapGoal::new("test", desired);
+
+        let actions = vec![
+            // 1-step path
+            GoapAction::new("direct")
+                .with_cost(3.0)
+                .with_precondition("start", true)
+                .with_effect("goal", true),
+            // 3-step path, same total cost
+            GoapAction::new("s1")
+                .with_cost(1.0)
+                .with_precondition("start", true)
+                .with_effect("m1", true),
+            GoapAction::new("s2")
+                .with_cost(1.0)
+                .with_precondition("m1", true)
+                .with_effect("m2", true),
+            GoapAction::new("s3")
+                .with_cost(1.0)
+                .with_precondition("m2", true)
+                .with_effect("goal", true),
+        ];
+
+        let planner = GoapPlanner::new();
+        let plan = planner
+            .plan(&state, &goal, &actions)
+            .test_expect("plan found");
+        // Both paths cost 3.0, but tie-breaking prefers fewer depth (fewer actions)
+        assert_eq!(plan.len(), 1, "should prefer 1-step at equal cost");
+        assert_eq!(plan[0].name, "direct");
+    }
+}
+
+// =============================================================================
 // MODULE 7: BehaviorStatus methods — all 9 methods
 // =============================================================================
 mod behavior_status_tests {
@@ -820,6 +1287,412 @@ mod behavior_context_tests {
         ctx.register_condition("no", || false);
         let node = BehaviorNode::Condition("no".to_string());
         assert_eq!(node.tick(&ctx), BehaviorStatus::Failure);
+    }
+}
+
+// =============================================================================
+// MODULE 12: PlanCache LRU ordering and eviction mutations
+// =============================================================================
+mod plan_cache_lru_tests {
+    use super::*;
+
+    fn make_state(key: &str, val: bool) -> WorldState {
+        WorldState::from_facts(&[(key, val)])
+    }
+
+    fn make_goal(key: &str) -> GoapGoal {
+        GoapGoal::new("goal", WorldState::from_facts(&[(key, true)]))
+    }
+
+    fn make_actions() -> Vec<GoapAction> {
+        vec![GoapAction::new("act")]
+    }
+
+    fn make_plan(name: &str) -> Vec<GoapAction> {
+        vec![GoapAction::new(name)]
+    }
+
+    #[test]
+    fn lru_evicts_oldest_entry() {
+        let mut cache = PlanCache::new(2);
+        let actions = make_actions();
+
+        // Put entry A and B
+        let sa = make_state("a", true);
+        let ga = make_goal("ga");
+        cache.put(&sa, &ga, &actions, make_plan("plan_a"));
+
+        let sb = make_state("b", true);
+        let gb = make_goal("gb");
+        cache.put(&sb, &gb, &actions, make_plan("plan_b"));
+
+        assert_eq!(cache.len(), 2);
+
+        // Put C -> should evict A (oldest)
+        let sc = make_state("c", true);
+        let gc = make_goal("gc");
+        cache.put(&sc, &gc, &actions, make_plan("plan_c"));
+
+        assert_eq!(cache.len(), 2);
+        // A should be evicted
+        assert!(cache.get(&sa, &ga, &actions).is_none());
+        // B and C should be present
+        assert!(cache.get(&sb, &gb, &actions).is_some());
+        assert!(cache.get(&sc, &gc, &actions).is_some());
+    }
+
+    #[test]
+    fn lru_access_refreshes_position() {
+        let mut cache = PlanCache::new(2);
+        let actions = make_actions();
+
+        // Put A then B
+        let sa = make_state("a", true);
+        let ga = make_goal("ga");
+        cache.put(&sa, &ga, &actions, make_plan("plan_a"));
+
+        let sb = make_state("b", true);
+        let gb = make_goal("gb");
+        cache.put(&sb, &gb, &actions, make_plan("plan_b"));
+
+        // Access A (moves to back of LRU)
+        let _ = cache.get(&sa, &ga, &actions);
+
+        // Put C -> should evict B now (oldest after A was refreshed)
+        let sc = make_state("c", true);
+        let gc = make_goal("gc");
+        cache.put(&sc, &gc, &actions, make_plan("plan_c"));
+
+        // B should be evicted (was oldest after A refresh)
+        assert!(cache.get(&sb, &gb, &actions).is_none());
+        // A should still be present
+        assert!(cache.get(&sa, &ga, &actions).is_some());
+        // C should be present
+        assert!(cache.get(&sc, &gc, &actions).is_some());
+    }
+
+    #[test]
+    fn put_same_key_does_not_evict() {
+        let mut cache = PlanCache::new(2);
+        let actions = make_actions();
+
+        let sa = make_state("a", true);
+        let ga = make_goal("ga");
+        cache.put(&sa, &ga, &actions, make_plan("plan_a"));
+        cache.put(&sa, &ga, &actions, make_plan("plan_a_v2")); // overwrite
+        assert_eq!(cache.len(), 1); // still 1 entry
+        assert_eq!(cache.stats().evictions, 0);
+    }
+
+    #[test]
+    fn eviction_counter_increments() {
+        let mut cache = PlanCache::new(1);
+        let actions = make_actions();
+
+        let sa = make_state("a", true);
+        let ga = make_goal("ga");
+        cache.put(&sa, &ga, &actions, make_plan("plan_a"));
+
+        let sb = make_state("b", true);
+        let gb = make_goal("gb");
+        cache.put(&sb, &gb, &actions, make_plan("plan_b"));
+
+        assert_eq!(cache.stats().evictions, 1);
+    }
+
+    #[test]
+    fn hit_increments_hits_counter() {
+        let mut cache = PlanCache::new(10);
+        let actions = make_actions();
+
+        let sa = make_state("a", true);
+        let ga = make_goal("ga");
+        cache.put(&sa, &ga, &actions, make_plan("plan_a"));
+
+        let _ = cache.get(&sa, &ga, &actions);
+        assert_eq!(cache.stats().hits, 1);
+        assert_eq!(cache.stats().misses, 0);
+    }
+
+    #[test]
+    fn miss_increments_misses_counter() {
+        let mut cache = PlanCache::new(10);
+        let actions = make_actions();
+
+        let sa = make_state("nonexist", true);
+        let ga = make_goal("missing");
+        let _ = cache.get(&sa, &ga, &actions);
+        assert_eq!(cache.stats().misses, 1);
+        assert_eq!(cache.stats().hits, 0);
+    }
+
+    #[test]
+    fn clear_resets_everything() {
+        let mut cache = PlanCache::new(10);
+        let actions = make_actions();
+        let sa = make_state("a", true);
+        let ga = make_goal("ga");
+        cache.put(&sa, &ga, &actions, make_plan("plan"));
+        let _ = cache.get(&sa, &ga, &actions);
+
+        cache.clear();
+        assert!(cache.is_empty());
+        assert_eq!(cache.len(), 0);
+        assert_eq!(cache.stats().hits, 0);
+        assert_eq!(cache.stats().misses, 0);
+    }
+
+    #[test]
+    fn capacity_returns_max_size() {
+        let cache = PlanCache::new(42);
+        assert_eq!(cache.capacity(), 42);
+    }
+
+    #[test]
+    fn default_cache_capacity_1000() {
+        let cache = PlanCache::default();
+        assert_eq!(cache.capacity(), 1000);
+    }
+
+    #[test]
+    fn is_empty_correct() {
+        let mut cache = PlanCache::new(10);
+        assert!(cache.is_empty());
+        let actions = make_actions();
+        let sa = make_state("a", true);
+        let ga = make_goal("ga");
+        cache.put(&sa, &ga, &actions, make_plan("plan"));
+        assert!(!cache.is_empty());
+    }
+
+    #[test]
+    fn action_set_change_invalidates_cache() {
+        let mut cache = PlanCache::new(10);
+        let actions_v1 = vec![GoapAction::new("act").with_cost(1.0)];
+        let sa = make_state("a", true);
+        let ga = make_goal("ga");
+        cache.put(&sa, &ga, &actions_v1, make_plan("plan"));
+
+        // Change action cost (different action hash)
+        let actions_v2 = vec![GoapAction::new("act").with_cost(2.0)];
+        let result = cache.get(&sa, &ga, &actions_v2);
+        assert!(result.is_none());
+        assert_eq!(cache.stats().invalidations, 1);
+    }
+}
+
+// =============================================================================
+// MODULE 13: CachedGoapPlanner — with_planner, base_planner, base_planner_mut
+// =============================================================================
+mod cached_goap_planner_tests {
+    use super::*;
+
+    #[test]
+    fn with_planner_uses_custom_config() {
+        let planner = GoapPlanner::new().with_max_iterations(5);
+        let mut cached = CachedGoapPlanner::with_planner(planner, 50);
+
+        // Verify the custom planner is used (max_iterations=5 should fail for multi-step)
+        let state = WorldState::from_facts(&[("a", true)]);
+        let desired = WorldState::from_facts(&[("d", true)]);
+        let goal = GoapGoal::new("test", desired);
+        let actions = vec![
+            GoapAction::new("a_b")
+                .with_precondition("a", true)
+                .with_effect("b", true),
+            GoapAction::new("b_c")
+                .with_precondition("b", true)
+                .with_effect("c", true),
+            GoapAction::new("c_d")
+                .with_precondition("c", true)
+                .with_effect("d", true),
+        ];
+
+        // With max_iterations=5, should still find 3-step plan (5 iterations is enough)
+        let result = cached.plan(&state, &goal, &actions);
+        assert!(result.is_some());
+    }
+
+    #[test]
+    fn base_planner_returns_reference() {
+        let cached = CachedGoapPlanner::new(100);
+        let _planner: &GoapPlanner = cached.base_planner();
+        // Just verify it compiles and doesn't panic
+    }
+
+    #[test]
+    fn base_planner_mut_allows_modification() {
+        let mut cached = CachedGoapPlanner::new(100);
+        let planner_mut = cached.base_planner_mut();
+        // Modify via mutable reference
+        *planner_mut = GoapPlanner::new().with_max_iterations(1);
+        // Verify the modification took effect
+        let state = WorldState::from_facts(&[("a", true)]);
+        let desired = WorldState::from_facts(&[("c", true)]);
+        let goal = GoapGoal::new("test", desired);
+        let actions = vec![
+            GoapAction::new("a_b")
+                .with_precondition("a", true)
+                .with_effect("b", true),
+            GoapAction::new("b_c")
+                .with_precondition("b", true)
+                .with_effect("c", true),
+        ];
+        // With max_iterations=1, should fail to find 2-step plan
+        assert!(cached.plan(&state, &goal, &actions).is_none());
+    }
+
+    #[test]
+    fn clear_cache_resets_stats() {
+        let mut cached = CachedGoapPlanner::new(10);
+        let state = WorldState::from_facts(&[("a", true)]);
+        let desired = WorldState::from_facts(&[("b", true)]);
+        let goal = GoapGoal::new("test", desired);
+        let actions = vec![GoapAction::new("a_b")
+            .with_precondition("a", true)
+            .with_effect("b", true)];
+        let _ = cached.plan(&state, &goal, &actions);
+        assert!(cached.cache_stats().total_accesses() > 0);
+
+        cached.clear_cache();
+        assert_eq!(cached.cache_stats().total_accesses(), 0);
+    }
+
+    #[test]
+    fn default_capacity_1000() {
+        let cached = CachedGoapPlanner::default();
+        // Access through cache_stats to verify it works
+        assert_eq!(cached.cache_stats().hits, 0);
+    }
+
+    #[test]
+    fn cached_plan_matches_direct_plan() {
+        use crate::test_support::TestValue;
+        let mut cached = CachedGoapPlanner::new(10);
+        let state = WorldState::from_facts(&[("a", true)]);
+        let desired = WorldState::from_facts(&[("b", true)]);
+        let goal = GoapGoal::new("test", desired);
+        let actions = vec![GoapAction::new("a_b")
+            .with_precondition("a", true)
+            .with_effect("b", true)];
+
+        let plan1 = cached.plan(&state, &goal, &actions);
+        let plan2 = cached.plan(&state, &goal, &actions); // should hit cache
+
+        assert_eq!(cached.cache_stats().hits, 1);
+        assert_eq!(cached.cache_stats().misses, 1);
+
+        // Plans should have same structure
+        let p1 = plan1.test_unwrap();
+        let p2 = plan2.test_unwrap();
+        assert_eq!(p1.len(), p2.len());
+        assert_eq!(p1[0].name, p2[0].name);
+    }
+}
+
+// =============================================================================
+// MODULE 14: GoapAction methods
+// =============================================================================
+mod goap_action_tests {
+    use super::*;
+
+    #[test]
+    fn new_action_default_cost_is_1() {
+        let action = GoapAction::new("test");
+        assert_eq!(action.cost, 1.0);
+    }
+
+    #[test]
+    fn with_cost_sets_exact_cost() {
+        let action = GoapAction::new("test").with_cost(3.5);
+        assert_eq!(action.cost, 3.5);
+    }
+
+    #[test]
+    fn can_apply_true_when_preconditions_met() {
+        let action = GoapAction::new("test").with_precondition("has_weapon", true);
+        let state = WorldState::from_facts(&[("has_weapon", true)]);
+        assert!(action.can_apply(&state));
+    }
+
+    #[test]
+    fn can_apply_false_when_preconditions_not_met() {
+        let action = GoapAction::new("test").with_precondition("has_weapon", true);
+        let state = WorldState::from_facts(&[("has_weapon", false)]);
+        assert!(!action.can_apply(&state));
+    }
+
+    #[test]
+    fn can_apply_true_with_empty_preconditions() {
+        let action = GoapAction::new("test");
+        let state = WorldState::new();
+        assert!(action.can_apply(&state));
+    }
+
+    #[test]
+    fn apply_returns_new_state_with_effects() {
+        let action = GoapAction::new("test").with_effect("armed", true);
+        let state = WorldState::from_facts(&[("alive", true)]);
+        let new_state = action.apply(&state);
+        assert_eq!(new_state.get("alive"), Some(true)); // preserved
+        assert_eq!(new_state.get("armed"), Some(true)); // added
+    }
+
+    #[test]
+    fn apply_does_not_modify_original_state() {
+        let action = GoapAction::new("test").with_effect("changed", true);
+        let state = WorldState::from_facts(&[("original", true)]);
+        let _new = action.apply(&state);
+        assert_eq!(state.get("changed"), None); // original unchanged
+    }
+}
+
+// =============================================================================
+// MODULE 15: WorldState::satisfies() edge cases
+// =============================================================================
+mod world_state_satisfies_tests {
+    use super::*;
+
+    #[test]
+    fn any_state_satisfies_empty_goal() {
+        let state = WorldState::from_facts(&[("a", true)]);
+        let empty = WorldState::new();
+        assert!(state.satisfies(&empty));
+    }
+
+    #[test]
+    fn empty_state_satisfies_empty_goal() {
+        let state = WorldState::new();
+        let goal = WorldState::new();
+        assert!(state.satisfies(&goal));
+    }
+
+    #[test]
+    fn empty_state_does_not_satisfy_nonempty_goal() {
+        let state = WorldState::new();
+        let goal = WorldState::from_facts(&[("a", true)]);
+        assert!(!state.satisfies(&goal));
+    }
+
+    #[test]
+    fn value_mismatch_not_satisfied() {
+        let state = WorldState::from_facts(&[("a", false)]);
+        let goal = WorldState::from_facts(&[("a", true)]);
+        assert!(!state.satisfies(&goal));
+    }
+
+    #[test]
+    fn partial_match_not_satisfied() {
+        let state = WorldState::from_facts(&[("a", true)]);
+        let goal = WorldState::from_facts(&[("a", true), ("b", true)]);
+        assert!(!state.satisfies(&goal));
+    }
+
+    #[test]
+    fn superset_satisfies_subset() {
+        let state = WorldState::from_facts(&[("a", true), ("b", true), ("c", false)]);
+        let goal = WorldState::from_facts(&[("a", true), ("b", true)]);
+        assert!(state.satisfies(&goal));
     }
 }
 

@@ -68,6 +68,7 @@ fn test_rule_mode_deterministic_planning() {
     let controller = CAiController {
         mode: PlannerMode::Rule,
         policy: None,
+        gather: astraweave_ai::htn::GatherGoal::CookFood,
     };
 
     // Run planning cycle
@@ -105,6 +106,7 @@ fn test_rule_mode_multi_tick_determinism() {
     let controller = CAiController {
         mode: PlannerMode::Rule,
         policy: None,
+        gather: astraweave_ai::htn::GatherGoal::CookFood,
     };
 
     // Track state over multiple ticks
@@ -161,6 +163,7 @@ fn test_rule_mode_no_enemies() {
     let controller = CAiController {
         mode: PlannerMode::Rule,
         policy: None,
+        gather: astraweave_ai::htn::GatherGoal::CookFood,
     };
 
     // Build snapshot with no enemies
@@ -211,6 +214,7 @@ fn test_rule_mode_golden_trace() {
     let controller = CAiController {
         mode: PlannerMode::Rule,
         policy: None,
+        gather: astraweave_ai::htn::GatherGoal::CookFood,
     };
 
     // Tick 0: Initial plan with smoke available
@@ -268,6 +272,7 @@ fn test_rule_mode_reproducibility() {
     let controller = CAiController {
         mode: PlannerMode::Rule,
         policy: None,
+        gather: astraweave_ai::htn::GatherGoal::CookFood,
     };
 
     // Generate plans from identical worlds

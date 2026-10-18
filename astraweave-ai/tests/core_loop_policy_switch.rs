@@ -53,6 +53,7 @@ fn test_switch_rule_to_rule() {
     let mut controller = CAiController {
         mode: PlannerMode::Rule,
         policy: None,
+        gather: astraweave_ai::htn::GatherGoal::CookFood,
     };
 
     let snapshot = create_test_snapshot(0.0, true);
@@ -81,6 +82,7 @@ fn test_switch_rule_to_goap() {
     let mut controller = CAiController {
         mode: PlannerMode::Rule,
         policy: None,
+        gather: astraweave_ai::htn::GatherGoal::CookFood,
     };
 
     // Start with Rule planning
@@ -138,6 +140,7 @@ fn test_switch_goap_to_rule() {
     let mut controller = CAiController {
         mode: PlannerMode::GOAP,
         policy: Some("gather_craft_policy".to_string()),
+        gather: astraweave_ai::htn::GatherGoal::CookFood,
     };
 
     // Start with GOAP planning
@@ -195,6 +198,7 @@ fn test_multi_switch_cycle() {
     let mut controller = CAiController {
         mode: PlannerMode::Rule,
         policy: None,
+        gather: astraweave_ai::htn::GatherGoal::CookFood,
     };
 
     let snapshot_rule = create_test_snapshot(0.0, true);
@@ -291,6 +295,7 @@ fn test_switch_determinism() {
         let mut controller = CAiController {
             mode: PlannerMode::Rule,
             policy: None,
+            gather: astraweave_ai::htn::GatherGoal::CookFood,
         };
 
         // Rule → GOAP → Rule
@@ -327,6 +332,7 @@ fn test_switch_preserves_policy() {
     let mut controller = CAiController {
         mode: PlannerMode::Rule,
         policy: Some("custom_policy".to_string()),
+        gather: astraweave_ai::htn::GatherGoal::CookFood,
     };
 
     assert_eq!(

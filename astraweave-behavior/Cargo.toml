@@ -22,6 +22,10 @@ criterion = { workspace = true }
 rand = { workspace = true }
 
 [[bench]]
+name = "goap_planning"
+harness = false
+
+[[bench]]
 name = "behavior_tree"
 harness = false
 

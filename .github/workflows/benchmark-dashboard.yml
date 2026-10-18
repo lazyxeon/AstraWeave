@@ -47,7 +47,7 @@ jobs:
           # Run core benchmarks (limit to 30 min)
           cargo bench -p astraweave-core --bench ecs_benchmarks || true
           cargo bench -p astraweave-ai --bench ai_core_loop || true
-          cargo bench -p astraweave-behavior --bench behavior_tree || true
+          cargo bench -p astraweave-behavior --bench goap_planning || true
           cargo bench -p astraweave-behavior --bench behavior_tree || true
           cargo bench -p astraweave-terrain --bench terrain_generation || true
           cargo bench -p astraweave-input --bench input_benchmarks || true

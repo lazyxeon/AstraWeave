@@ -21,6 +21,7 @@ fn test_goap_mode_basic_planning() {
     let controller = CAiController {
         mode: PlannerMode::GOAP,
         policy: Some("gather_craft_policy".to_string()),
+        gather: astraweave_ai::htn::GatherGoal::CookFood,
     };
 
     let snapshot = WorldSnapshot {
@@ -75,6 +76,7 @@ fn test_goap_mode_deterministic_planning() {
     let controller = CAiController {
         mode: PlannerMode::GOAP,
         policy: Some("gather_craft_policy".to_string()),
+        gather: astraweave_ai::htn::GatherGoal::CookFood,
     };
 
     let snapshot = WorldSnapshot {
@@ -126,6 +128,7 @@ fn test_goap_mode_goal_satisfaction() {
     let controller = CAiController {
         mode: PlannerMode::GOAP,
         policy: Some("gather_craft_policy".to_string()),
+        gather: astraweave_ai::htn::GatherGoal::CookFood,
     };
 
     let snapshot = WorldSnapshot {
@@ -190,26 +193,28 @@ fn test_goap_mode_policy_variants() {
         hazard_count: 0,
     };
 
-    // Policy with "gather_craft" should produce crafting plan
+    // The method is the typed goal. The policy string does not select it.
     let controller1 = CAiController {
         mode: PlannerMode::GOAP,
         policy: Some("gather_craft_policy".to_string()),
+        gather: astraweave_ai::htn::GatherGoal::KeepWood,
     };
 
     let plan1 = dispatch_planner(&controller1, &snapshot).expect("GOAP planning should succeed");
-    assert!(
-        !plan1.steps.is_empty(),
-        "Gather/craft policy should produce steps"
-    );
+    assert_eq!(plan1.steps.len(), 6, "KeepWood cooks and chops again");
 
-    // Policy with different name should still work (uses default goal)
     let controller2 = CAiController {
         mode: PlannerMode::GOAP,
-        policy: Some("other_policy".to_string()),
+        policy: Some("gather_craft_policy".to_string()),
+        gather: astraweave_ai::htn::GatherGoal::CookFood,
     };
 
     let plan2 = dispatch_planner(&controller2, &snapshot).expect("GOAP planning should succeed");
-    assert!(!plan2.steps.is_empty(), "Other policy should produce steps");
+    assert_eq!(
+        plan2.steps.len(),
+        4,
+        "CookFood does not read the policy name"
+    );
 
     println!("Policy variants validated");
     println!("  gather_craft: {} steps", plan1.steps.len());
@@ -223,6 +228,7 @@ fn test_goap_mode_reproducibility() {
     let controller = CAiController {
         mode: PlannerMode::GOAP,
         policy: Some("gather_craft_policy".to_string()),
+        gather: astraweave_ai::htn::GatherGoal::CookFood,
     };
 
     let snapshot = WorldSnapshot {
@@ -285,6 +291,7 @@ fn test_goap_mode_feature_gate() {
     let controller = CAiController {
         mode: PlannerMode::GOAP,
         policy: None,
+        gather: astraweave_ai::htn::GatherGoal::CookFood,
     };
 
     let snapshot = WorldSnapshot {

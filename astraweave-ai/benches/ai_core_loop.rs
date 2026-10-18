@@ -204,6 +204,7 @@ fn bench_rule_planner_simple(c: &mut Criterion) {
         let controller = CAiController {
             mode: PlannerMode::Rule,
             policy: None,
+            gather: astraweave_ai::htn::GatherGoal::CookFood,
         };
         let snapshot = create_simple_snapshot();
 
@@ -220,6 +221,7 @@ fn bench_rule_planner_moderate(c: &mut Criterion) {
         let controller = CAiController {
             mode: PlannerMode::Rule,
             policy: None,
+            gather: astraweave_ai::htn::GatherGoal::CookFood,
         };
         let snapshot = create_moderate_snapshot();
 
@@ -236,6 +238,7 @@ fn bench_rule_planner_complex(c: &mut Criterion) {
         let controller = CAiController {
             mode: PlannerMode::Rule,
             policy: None,
+            gather: astraweave_ai::htn::GatherGoal::CookFood,
         };
         let snapshot = create_complex_snapshot();
 
@@ -252,6 +255,7 @@ fn bench_full_ai_loop_simple(c: &mut Criterion) {
         let controller = CAiController {
             mode: PlannerMode::Rule,
             policy: None,
+            gather: astraweave_ai::htn::GatherGoal::CookFood,
         };
 
         b.iter(|| {
@@ -268,6 +272,7 @@ fn bench_full_ai_loop_moderate(c: &mut Criterion) {
         let controller = CAiController {
             mode: PlannerMode::Rule,
             policy: None,
+            gather: astraweave_ai::htn::GatherGoal::CookFood,
         };
 
         b.iter(|| {
@@ -284,6 +289,7 @@ fn bench_full_ai_loop_complex(c: &mut Criterion) {
         let controller = CAiController {
             mode: PlannerMode::Rule,
             policy: None,
+            gather: astraweave_ai::htn::GatherGoal::CookFood,
         };
 
         b.iter(|| {
@@ -300,6 +306,7 @@ fn bench_plan_validation(c: &mut Criterion) {
         let controller = CAiController {
             mode: PlannerMode::Rule,
             policy: None,
+            gather: astraweave_ai::htn::GatherGoal::CookFood,
         };
         let snapshot = create_moderate_snapshot();
 
