@@ -363,7 +363,9 @@ select_bench_targets() {
     local -a all_targets=()
     mapfile -t all_targets < <(bench_target_names "$pkg_base" | sort)
     if [ -z "$half" ]; then
-        printf '%s\n' "${all_targets[@]}"
+        if [ "${#all_targets[@]}" -gt 0 ]; then
+            printf '%s\n' "${all_targets[@]}"
+        fi
         return
     fi
     if [ "$half" != "a" ] && [ "$half" != "b" ]; then
@@ -378,7 +380,9 @@ select_bench_targets() {
     else
         chosen=("${all_targets[@]:mid}")
     fi
-    printf '%s\n' "${chosen[@]}"
+    if [ "${#chosen[@]}" -gt 0 ]; then
+        printf '%s\n' "${chosen[@]}"
+    fi
 }
 
 for pkg in "${BENCHMARK_PACKAGES[@]}"; do
