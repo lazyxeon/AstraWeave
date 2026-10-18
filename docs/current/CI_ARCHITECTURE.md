@@ -57,7 +57,7 @@ These also run on a non-docs pull request when their paths match, and are not in
 | Work | When |
 |---|---|
 | Full 3-OS `cargo nextest` plus a release build of the core crates, and demo validation | `ci.yml` on push, schedule 04:30 UTC, dispatch. Not on pull requests. |
-| 6-toolchain matrix (stable, 1.89.0, 1.88.0, beta, nightly) | `toolchain-management.yml` on push to main, schedule 05:40 UTC, dispatch. The checkout sets `lfs: true` (#348) so `ASSET_MANIFEST.tsv` hashes the Aravath blobs, not the pointer files. MSRV stays on the pull request. |
+| 6-toolchain matrix (stable, 1.89.0, 1.88.0, beta, nightly) | `toolchain-management.yml` on push to main, schedule 05:40 UTC, dispatch. The checkout sets `lfs: true` (#348) so `ASSET_MANIFEST.tsv` hashes the Aravath blobs, not the pointer files. `Toolchain Validation (1.89.0)` runs workspace clippy `-D warnings`, with that workflow's package excludes. #360 closed the `expect` on schedule registration. #358 is closed. The fix is #360. That 1.89.0 clippy step is expected green. The CI agent is confirming it on main. MSRV stays on the pull request. |
 | Sanitizers | `sanitizers.yml` on push and schedule 03:00 UTC. Not on pull requests. |
 | Coverage | `coverage.yml` on push to main, schedule 06:10 UTC, dispatch. |
 | CodeQL | push to main and weekly (Sunday 03:00 UTC). Not on pull requests. |
@@ -154,7 +154,7 @@ Issue #254 is the workspace nextest failure from head `7839f930`. #217 fixed the
 | Fluids GPU smokes | 3 | Still excluded from profile `ci-pr`. Do not touch the caustics golden. |
 | LLM `test_qwen3_variants` | 1 | Still excluded from profile `ci-pr`. Make it hermetic or gate it on a local model. |
 
-Profile `ci-pr` excludes the rows that remain in `scripts/ci/deferred_pr_tests.txt`. Profile `ci` on main and the nightly schedule does not. Replay cases are not in the list. Delete a line from the list when that test is green on profile `ci`. #356 split the cinematics, net-ecs, and scene benches (shards 1, 5, and 9) into per-group targets. #361 did the same for dialogue, embeddings, and fluids on shards 2 and 4. #359 is closed. The 600s limit stays. The fluids GPU timing walk runs only when `AW_FLUID_GPU_TIMINGS` is set. #224 stays open.
+Profile `ci-pr` excludes the rows that remain in `scripts/ci/deferred_pr_tests.txt`. Profile `ci` on main and the nightly schedule does not. Replay cases are not in the list. Delete a line from the list when that test is green on profile `ci`. #356 split the cinematics, net-ecs, and scene benches (shards 1, 5, and 9) into per-group targets. #361 did the same for dialogue, embeddings, and fluids on shards 2 and 4. #359 is closed. The 600s limit stays. Shard 4's `astraweave-fluids` target `fluid_baseline_50k` still times out at 600s on main. The CI agent is handling that timeout. The fluids GPU timing walk runs only when `AW_FLUID_GPU_TIMINGS` is set. #224 stays open.
 
 Windows partition jobs use profile `ci-pr-archive`, which adds `scripts/ci/archive_only_skips.txt`. On `0a8ffcec` those were a render crash (`test_renderer_bake_environment_wave16`, exit 2173), two fluids GPU tests that hit the 240s slow-timeout, and the `aw-net-client` binary tests. Linux profile `ci-pr` still runs all of those; that Linux job passed. The client-binary tests use `CARGO_BIN_EXE`, which points at the build runner, so the archive build job runs those two test targets before it uploads. The explicit GPU skip from #217 is on `main` and still runs on profile `ci`.
 
