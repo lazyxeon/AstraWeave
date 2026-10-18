@@ -2,9 +2,11 @@
 
 use std::path::PathBuf;
 
+use astraweave_core::ecs_components::{CAmmo, CHealth};
 use astraweave_ecs::{App, Plugin, Schedule, World};
 use astraweave_persistence_ecs::{
-    AppliedReplay, CPersistenceManager, CReplayState, CSimClock, PersistencePlugin, ReplayEvent,
+    deserialize_ecs_world, serialize_ecs_world, AppliedReplay, CPersistenceManager, CReplayState,
+    CSimClock, PersistencePlugin, ReplayEvent, SerializedWorld,
 };
 use aw_save::{sim_save_id, SaveManager};
 use sha2::{Digest, Sha256};
@@ -118,6 +120,97 @@ fn persist_replay_is_stable_and_written() {
     let body = format!("[\n  {{ \"case\": \"persist_replay\", \"sha256\": \"{digest}\" }}\n]\n");
     std::fs::write(&path, body).expect("write replay hash");
     println!("persist_replay {digest}");
+}
+
+fn payload_hash(world: &SerializedWorld) -> u64 {
+    let mut hash = 0xcbf2_9ce4_8422_2325u64;
+    let mix = |hash: &mut u64, bytes: &[u8]| {
+        for byte in bytes {
+            *hash ^= u64::from(*byte);
+            *hash = hash.wrapping_mul(0x1000_0000_01B3);
+        }
+    };
+    mix(&mut hash, &world.world_tick.to_le_bytes());
+    for entity in &world.entities {
+        if let Some(health) = entity.health {
+            mix(&mut hash, &health.hp.to_le_bytes());
+        }
+        if let Some(ammo) = entity.ammo {
+            mix(&mut hash, &ammo.rounds.to_le_bytes());
+        }
+    }
+    hash
+}
+
+#[test]
+fn restored_health_hashes_like_the_source() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let mut app = app();
+    let plugin = PersistencePlugin::new(dir.path().to_path_buf());
+    plugin.build(&mut app);
+    let actor = app.world.spawn();
+    app.world.insert(actor, CHealth { hp: 100 });
+    app.world.insert(actor, CAmmo { rounds: 7 });
+    app.world.insert(
+        actor,
+        CReplayState {
+            is_replaying: true,
+            current_tick: 0,
+            total_ticks: 1,
+            events: vec![ReplayEvent {
+                tick: 0,
+                event_type: "health".into(),
+                data: 40i32.to_le_bytes().to_vec(),
+            }],
+        },
+    );
+    let saver = app.world.spawn();
+    app.world.insert(
+        saver,
+        CPersistenceManager {
+            save_manager: SaveManager::new(dir.path()),
+            current_player: "aravath".into(),
+        },
+    );
+    app.world.insert_resource(CSimClock {
+        world_seed: 0xA2A7,
+        tick: 8,
+        save_every: 1,
+        last_saved_tick: None,
+        slot: 0,
+    });
+    app.schedule.run(&mut app.world);
+    assert_eq!(app.world.get::<CHealth>(actor).expect("health").hp, 40);
+
+    let (bundle, _) = SaveManager::new(dir.path())
+        .load_latest_slot("aravath", 0)
+        .expect("autosave");
+    let replay = CPersistenceManager {
+        save_manager: SaveManager::new(dir.path()),
+        current_player: "aravath".into(),
+    }
+    .start_replay(0)
+    .expect("replay");
+    assert_eq!(replay.events.len(), 1);
+    assert_eq!(replay.events[0].event_type, "health");
+
+    let source: SerializedWorld = postcard::from_bytes(&bundle.world.ecs_blob).expect("blob");
+    let mut fresh = World::new();
+    deserialize_ecs_world(&bundle.world.ecs_blob, &mut fresh).expect("restore");
+    let again = serialize_ecs_world(&fresh).expect("reserialize");
+    let restored: SerializedWorld = postcard::from_bytes(&again).expect("restored blob");
+    assert_eq!(source.world_tick, 8);
+    assert_eq!(payload_hash(&source), payload_hash(&restored));
+    assert_eq!(
+        restored
+            .entities
+            .iter()
+            .filter_map(|entity| entity.health)
+            .next()
+            .expect("hp")
+            .hp,
+        40
+    );
 }
 
 fn hex_encode(bytes: &[u8]) -> String {

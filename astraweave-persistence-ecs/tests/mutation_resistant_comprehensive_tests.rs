@@ -981,8 +981,8 @@ fn persistence_manager_save_has_credits() {
     pm.save_game(0, 0, 0, vec![]).unwrap();
     let (bundle, _) = pm.load_game(0).unwrap();
     assert_eq!(
-        bundle.inventory.credits, 1000,
-        "hardcoded credits must be 1000"
+        bundle.inventory.credits, 0,
+        "no component stores a credit balance"
     );
 }
 
