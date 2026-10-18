@@ -11,8 +11,10 @@
 // `print_gpu_pass_breakdown` runs only when `AW_FLUID_GPU_TIMINGS` is set.
 // CI does not set it. The 600s cap stays.
 
+use std::time::Duration;
+
 use astraweave_fluids::FluidSystem;
-use criterion::{criterion_group, BenchmarkId, Criterion};
+use criterion::{criterion_group, BenchmarkId, Criterion, SamplingMode};
 
 const DT: f32 = 1.0 / 60.0;
 
@@ -72,7 +74,23 @@ fn bench_fluid_system_step_count(c: &mut Criterion, count: u32) {
         return;
     };
     let mut group = c.benchmark_group("fluid_system_step");
-    group.sample_size(30);
+    if count == 50_000 {
+        // Run 39073094307 shard 4: 10k ~191.90 ms/step, 20k ~339.67 ms/step
+        // (finished), 50k hit the 600s per-target cap. Linear sampling at
+        // sample_size 30 is 465 iterations. A ~0.85 s step does not fit.
+        // Flat sampling with the minimum sample size still calls
+        // FluidSystem::step at 50_000 particles. The 1 ms warm-up stops
+        // after the first step (that step is far longer than 1 ms), and the
+        // 1 s measurement keeps one iteration per sample while a step is
+        // slower than 100 ms. The 600s cap is unchanged. This target is not
+        // skipped. The 30 settle steps below match the 10k and 20k benches.
+        group.sampling_mode(SamplingMode::Flat);
+        group.sample_size(10);
+        group.warm_up_time(Duration::from_millis(1));
+        group.measurement_time(Duration::from_secs(1));
+    } else {
+        group.sample_size(30);
+    }
     group.bench_with_input(
         BenchmarkId::new("step_submit_wait", count),
         &count,
