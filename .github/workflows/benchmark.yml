@@ -239,7 +239,11 @@ jobs:
           alert-comment-cc-users: '@lazyxeon'
           benchmark-data-dir-path: 'dev/bench'
           max-items-in-chart: 100
-          gh-pages-branch: gh-pages
+          # The action clones the default branch, then runs `git checkout <gh-pages-branch>`.
+          # main contains a directory named gh-pages/, and origin/gh-pages is the docs site,
+          # so that checkout is ambiguous (`could be both a local file and a tracking branch`).
+          # benchmark-data is not a path on main. It holds dev/bench/data.js only.
+          gh-pages-branch: benchmark-data
           # The action builds https://x-access-token:$TOKEN@$gh-repository.git.
           # github.repository is owner/repo, so the host becomes the owner.
           # Pass host/owner/repo. Same-repo PRs can clone and comment with
@@ -261,8 +265,14 @@ jobs:
           comment-on-alert: true
           summary-always: true
           alert-threshold: '150%'
-          # Same host/owner/repo form as the push step. auto-push stays false;
-          # this step clones gh-pages only to compare and post the PR comment.
+          # Same store as the push step. auto-push stays false: this step
+          # checks out benchmark-data, compares, writes the job summary, and
+          # posts a PR comment when a result exceeds the alert threshold.
+          # comment-always stays false. The full suite is thousands of rows
+          # and does not fit in a GitHub comment body.
+          comment-always: false
+          gh-pages-branch: benchmark-data
+          benchmark-data-dir-path: 'dev/bench'
           gh-repository: github.com/${{ github.repository }}
           
       - name: Validate benchmark results (Basic)
