@@ -135,13 +135,16 @@ struct SceneEnv {
 @group(5) @binding(7) var cloud_shadow_tex: texture_2d<f32>;
 @group(5) @binding(8) var cloud_shadow_samp: sampler;
 
-fn sample_cloud_shadow(world_pos: vec3<f32>) -> f32 {
+fn sample_cloud_shadow(world_pos: vec3<f32>) -> vec2<f32> {
     let shadow_extent = 1024.0;
     let uv = (world_pos.xz - uIbl._pad) / (2.0 * shadow_extent) + vec2<f32>(0.5, 0.5);
     if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) {
-        return 1.0;
+        return vec2<f32>(1.0, 1.0);
     }
-    return textureSampleLevel(cloud_shadow_tex, cloud_shadow_samp, uv, 0.0).r;
+    // .r is direct transmittance. .g is the indirect weight. .y is the
+    // factor for IBL and ambient, 1 when the weight is 0.
+    let s = textureSampleLevel(cloud_shadow_tex, cloud_shadow_samp, uv, 0.0);
+    return vec2<f32>(s.r, mix(1.0, s.r, s.g));
 }
 
 // Distance-based fog (linear + exponential blend)
@@ -258,7 +261,7 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
     }
     // Direct lighting (evaluate_brdf already includes NdotL)
     let cloud_shadow = sample_cloud_shadow(input.world_pos);
-    var lit_color = brdf_result * radiance * shadow * cloud_shadow;
+    var lit_color = brdf_result * radiance * shadow * cloud_shadow.x;
 
     // IBL indirect lighting. Formerly gated on the material-LOD tier (distant
     // fragments got a 1-sample diffuse-only approximation) — that gate shared
@@ -267,18 +270,18 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
     let ao = textureSample(occlusion_tex, occlusion_samp, input.uv).r;
     let ibl_color = compute_ibl(N, V, base_color, metallic, roughness, F0);
     // glTF: occlusion scales indirect light only, not the direct sun.
-    lit_color = lit_color + ibl_color * ao;
+    lit_color = lit_color + ibl_color * ao * cloud_shadow.y;
 
     // Screen-space GI: sample indirect diffuse from SSGI/Lumen pipeline.
     // When no GI pass is active, gi_tex is a 1x1 black texture → adds zero.
     let gi_dims = vec2<f32>(textureDimensions(gi_tex));
     let gi_uv = input.pos.xy / gi_dims;
     let gi_indirect = textureSampleLevel(gi_tex, gi_samp, gi_uv, 0.0).rgb;
-    lit_color += gi_indirect * base_color * (1.0 - metallic) * ao;
+    lit_color += gi_indirect * base_color * (1.0 - metallic) * ao * cloud_shadow.y;
 
     // Scene ambient as fallback floor (provides fill when IBL is low)
     let ambient = uScene.ambient_color * uScene.ambient_intensity * 0.35;
-    lit_color = lit_color + base_color * ambient * ao;
+    lit_color = lit_color + base_color * ambient * ao * cloud_shadow.y;
     lit_color = lit_color + textureSample(emissive_tex, emissive_samp, input.uv).rgb;
         // Clustered point lights accumulation (Lambert + simple attenuation)
     // Clustered lighting disabled for this example build; use lit_color directly
@@ -510,13 +513,16 @@ struct IblParams {
 @group(5) @binding(7) var cloud_shadow_tex: texture_2d<f32>;
 @group(5) @binding(8) var cloud_shadow_samp: sampler;
 
-fn sample_cloud_shadow(world_pos: vec3<f32>) -> f32 {
+fn sample_cloud_shadow(world_pos: vec3<f32>) -> vec2<f32> {
     let shadow_extent = 1024.0;
     let uv = (world_pos.xz - uIbl._pad) / (2.0 * shadow_extent) + vec2<f32>(0.5, 0.5);
     if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) {
-        return 1.0;
+        return vec2<f32>(1.0, 1.0);
     }
-    return textureSampleLevel(cloud_shadow_tex, cloud_shadow_samp, uv, 0.0).r;
+    // .r is direct transmittance. .g is the indirect weight. .y is the
+    // factor for IBL and ambient, 1 when the weight is 0.
+    let s = textureSampleLevel(cloud_shadow_tex, cloud_shadow_samp, uv, 0.0);
+    return vec2<f32>(s.r, mix(1.0, s.r, s.g));
 }
 
 @vertex
@@ -632,7 +638,7 @@ fn fs(input: VSOut) -> @location(0) vec4<f32> {
     // (white AO, black emissive) is exact, and a real map is not ignored.
     let ao = textureSampleLevel(occlusion_tex, occlusion_samp, vec2<f32>(0.0), 0.0).r;
     let emissive = textureSampleLevel(emissive_tex, emissive_samp, vec2<f32>(0.0), 0.0).rgb;
-    let lit_color = brdf_result * radiance * shadow * cloud_shadow + base_color * 0.08 * ao + emissive;
+    let lit_color = brdf_result * radiance * shadow * cloud_shadow.x + base_color * 0.08 * ao * cloud_shadow.y + emissive;
     return vec4<f32>(lit_color, uMaterial.base_color.a * input.color.a);
 }
 "#
@@ -1165,6 +1171,8 @@ pub struct Renderer {
     /// Used when the caller does not set a presentation frame. Advances once
     /// per cloud-shadow record so the slice stays a function of draw count.
     cloud_shadow_frame: u64,
+    /// Multiplier on the cloud-shadow extinction. See `CLOUD_SHADOW_STRENGTH`.
+    cloud_shadow_strength: f32,
     ibl_intensity: f32,
     ibl_max_spec_lod: f32,
 
@@ -3822,6 +3830,7 @@ fn vs(input: VSIn) -> VSOut {
             cloud_shadows_enabled: true,
             presentation_frame: None,
             cloud_shadow_frame: 0,
+            cloud_shadow_strength: crate::volumetric_clouds::CLOUD_SHADOW_STRENGTH,
             ibl_intensity,
             ibl_max_spec_lod,
             water_renderer: None,
@@ -6256,6 +6265,19 @@ fn vs(input: VSIn) -> VSOut {
         self.cloud_shadows_enabled = enabled;
     }
 
+    /// Cloud-shadow darkness. `1` is the Beer transmittance. The default is
+    /// [`crate::volumetric_clouds::CLOUD_SHADOW_STRENGTH`]. Values above 1
+    /// darken the same march; they do not add steps or change the slice.
+    pub fn cloud_shadow_strength(&self) -> f32 {
+        self.cloud_shadow_strength
+    }
+
+    /// Set the cloud-shadow darkness used on the next bake. Negative values
+    /// clamp to 0 (no extinction, a fully lit map).
+    pub fn set_cloud_shadow_strength(&mut self, strength: f32) {
+        self.cloud_shadow_strength = strength.max(0.0);
+    }
+
     /// Presentation frame for the cloud-shadow slice. The next draw consumes
     /// it. The same index always selects the same rows and the same cloud
     /// time (`(index / slices) * slices / 60` seconds). Callers that never
@@ -6307,6 +6329,7 @@ fn vs(input: VSIn) -> VSOut {
             cloud_cfg.extinction_coeff,
             crate::volumetric_clouds::CLOUD_SHADOW_STEPS,
             frame,
+            self.cloud_shadow_strength,
         );
         self.write_ibl_params();
         self.cloud_shadow_pass
