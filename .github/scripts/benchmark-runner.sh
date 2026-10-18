@@ -71,7 +71,13 @@ BENCHMARK_SHARD_GROUPS=(
     "astraweave-sdk astraweave-coordination astraweave-persona astraweave-behavior"
     "astraweave-ui astraweave-pcg astraweave-security astraweave-stress-test"
     "astraweave-ai"
-    "astraweave-render"
+    # astraweave-render is one package and two shards. @a and @b are
+    # alphabetical halves of its bench targets (see select_bench_targets).
+    # Shard 13 on ceff979a (run 39089221901) and on #374 (run 39091616710)
+    # was cancelled at the 60-minute job limit after two targets each used
+    # the full 600s. The halves keep every target. The 600s cap stays.
+    "astraweave-render@a"
+    "astraweave-render@b"
 )
 
 RESULTS_DIR="${BENCHMARK_RESULTS_DIR:-benchmark_results}"
@@ -165,7 +171,8 @@ discover_benchmark_packages() {
 
         for shard_packages in "${BENCHMARK_SHARD_GROUPS[@]}"; do
             for configured_pkg in $shard_packages; do
-                if [[ ! -v "discovered_lookup[$configured_pkg]" ]]; then
+                local pkg_base="${configured_pkg%@*}"
+                if [[ ! -v "discovered_lookup[$pkg_base]" ]]; then
                     log_error "Measured shard map contains undiscovered package: $configured_pkg"
                     mapping_error=1
                 elif [[ -v "assigned_lookup[$configured_pkg]" ]]; then
@@ -173,6 +180,7 @@ discover_benchmark_packages() {
                     mapping_error=1
                 else
                     assigned_lookup["$configured_pkg"]=1
+                    assigned_lookup["$pkg_base"]=1
                 fi
             done
         done
@@ -183,6 +191,11 @@ discover_benchmark_packages() {
                 mapping_error=1
             fi
         done
+        if [[ -v "assigned_lookup[astraweave-render@a]" && ! -v "assigned_lookup[astraweave-render@b]" ]] \
+            || [[ -v "assigned_lookup[astraweave-render@b]" && ! -v "assigned_lookup[astraweave-render@a]" ]]; then
+            log_error "astraweave-render must be listed as both @a and @b"
+            mapping_error=1
+        fi
 
         if [ "$mapping_error" -ne 0 ]; then
             return 1
@@ -338,8 +351,39 @@ bench_target_names() {
     ' <<<"$METADATA_JSON"
 }
 
+# astraweave-render@a / @b: alphabetical halves. A new bench target
+# lands in one half automatically. Neither half drops a target.
+select_bench_targets() {
+    local pkg_token="$1"
+    local pkg_base="${pkg_token%@*}"
+    local half=""
+    if [[ "$pkg_token" == *@* ]]; then
+        half="${pkg_token#*@}"
+    fi
+    local -a all_targets=()
+    mapfile -t all_targets < <(bench_target_names "$pkg_base" | sort)
+    if [ -z "$half" ]; then
+        printf '%s\n' "${all_targets[@]}"
+        return
+    fi
+    if [ "$half" != "a" ] && [ "$half" != "b" ]; then
+        log_error "Unknown bench half '$half' on $pkg_token"
+        return 1
+    fi
+    local total=${#all_targets[@]}
+    local mid=$(((total + 1) / 2))
+    local -a chosen=()
+    if [ "$half" = "a" ]; then
+        chosen=("${all_targets[@]:0:mid}")
+    else
+        chosen=("${all_targets[@]:mid}")
+    fi
+    printf '%s\n' "${chosen[@]}"
+}
+
 for pkg in "${BENCHMARK_PACKAGES[@]}"; do
-    if [ -d "$pkg/benches" ]; then
+    pkg_base="${pkg%@*}"
+    if [ -d "$pkg_base/benches" ]; then
         log_info "Running benchmarks for $pkg..."
 
         # Clear previous criterion results to avoid cross-contamination
@@ -359,7 +403,7 @@ for pkg in "${BENCHMARK_PACKAGES[@]}"; do
         # hung rustc. Each bench target then gets its own 600s so one crate
         # with many targets is split instead of raising the limit.
         set +e
-        cargo bench -p "$pkg" --benches --no-run \
+        cargo bench -p "$pkg_base" --benches --no-run \
             >> "$stdout_log" \
             2>> "$stderr_log"
         compile_exit=$?
@@ -374,17 +418,27 @@ for pkg in "${BENCHMARK_PACKAGES[@]}"; do
             OVERALL_FAILURE=1
             log_error "Benchmark compile failed for $pkg with exit $compile_exit"
         else
-            mapfile -t bench_targets < <(bench_target_names "$pkg")
+            mapfile -t bench_targets < <(select_bench_targets "$pkg")
+            log_info "Selected ${#bench_targets[@]} bench targets for $pkg: ${bench_targets[*]}"
             if [ "${#bench_targets[@]}" -eq 0 ]; then
-                bench_targets=("__all__")
+                if [[ "$pkg" == *@* ]]; then
+                    log_error "Bench half $pkg selected no targets"
+                    execution_exit=1
+                    execution_status="failed"
+                    EXECUTION_FAILURE_COUNT=$((EXECUTION_FAILURE_COUNT + 1))
+                    OVERALL_FAILURE=1
+                    bench_targets=()
+                else
+                    bench_targets=("__all__")
+                fi
             fi
             for target in "${bench_targets[@]}"; do
                 set +e
                 if [ "$target" = "__all__" ]; then
-                    timeout 600 cargo bench -p "$pkg" --benches \
+                    timeout 600 cargo bench -p "$pkg_base" --benches \
                         >> "$stdout_log" 2>> "$stderr_log"
                 else
-                    timeout 600 cargo bench -p "$pkg" --bench "$target" \
+                    timeout 600 cargo bench -p "$pkg_base" --bench "$target" \
                         >> "$stdout_log" 2>> "$stderr_log"
                 fi
                 one_exit=$?

@@ -12,9 +12,27 @@
 // 6. Advanced Post-Processing - TAA, Motion Blur, DOF, Color Grading config
 // 7. Combined Scenarios - Full frame setup, pipeline integration
 
-use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+use criterion::{
+    criterion_group, criterion_main, BenchmarkGroup, BenchmarkId, Criterion, SamplingMode,
+    Throughput,
+};
 use std::collections::HashMap;
 use std::hint::black_box;
+use std::time::Duration;
+
+// Same 600s failure as camera_primitives_instancing. See that file.
+// Runs 39089221901 and 39091616710. Every function below still runs.
+fn ci_budget<'a>(
+    c: &'a mut Criterion,
+    name: &str,
+) -> BenchmarkGroup<'a, criterion::measurement::WallTime> {
+    let mut group = c.benchmark_group(name);
+    group.sampling_mode(SamplingMode::Flat);
+    group.sample_size(10);
+    group.warm_up_time(Duration::from_millis(1));
+    group.measurement_time(Duration::from_secs(1));
+    group
+}
 
 // ============================================================================
 // MOCK TYPES FOR GPU MEMORY BUDGET BENCHMARKS
@@ -825,7 +843,7 @@ fn halton_sequence(index: u32, base: u32) -> f32 {
 // ============================================================================
 
 fn bench_gpu_memory_budget(c: &mut Criterion) {
-    let mut group = c.benchmark_group("gpu_memory_budget");
+    let mut group = ci_budget(c, "gpu_memory_budget");
 
     // 1. Budget manager creation
     group.bench_function("manager_creation_default", |b| {
@@ -947,7 +965,7 @@ fn bench_gpu_memory_budget(c: &mut Criterion) {
 }
 
 fn bench_terrain_materials(c: &mut Criterion) {
-    let mut group = c.benchmark_group("terrain_materials");
+    let mut group = ci_budget(c, "terrain_materials");
 
     // 1. Layer GPU creation (default)
     group.bench_function("layer_gpu_default", |b| {
@@ -1062,7 +1080,7 @@ fn bench_terrain_materials(c: &mut Criterion) {
 }
 
 fn bench_skinning_gpu(c: &mut Criterion) {
-    let mut group = c.benchmark_group("skinning_gpu");
+    let mut group = ci_budget(c, "skinning_gpu");
 
     // 1. Joint palette handle creation
     group.bench_function("handle_creation", |b| {
@@ -1157,7 +1175,7 @@ fn bench_skinning_gpu(c: &mut Criterion) {
 }
 
 fn bench_depth_buffer(c: &mut Criterion) {
-    let mut group = c.benchmark_group("depth_buffer");
+    let mut group = ci_budget(c, "depth_buffer");
 
     // 1. Depth format bytes per pixel
     group.bench_function("format_bytes_per_pixel", |b| {
@@ -1232,7 +1250,7 @@ fn bench_depth_buffer(c: &mut Criterion) {
 }
 
 fn bench_overlay_effects(c: &mut Criterion) {
-    let mut group = c.benchmark_group("overlay_effects");
+    let mut group = ci_budget(c, "overlay_effects");
 
     // 1. Overlay params default
     group.bench_function("params_default", |b| {
@@ -1333,7 +1351,7 @@ fn bench_overlay_effects(c: &mut Criterion) {
 }
 
 fn bench_advanced_post_processing(c: &mut Criterion) {
-    let mut group = c.benchmark_group("advanced_post_processing");
+    let mut group = ci_budget(c, "advanced_post_processing");
 
     // TAA benchmarks
     group.bench_function("taa_config_default", |b| {
@@ -1414,7 +1432,7 @@ fn bench_advanced_post_processing(c: &mut Criterion) {
 }
 
 fn bench_combined_scenarios(c: &mut Criterion) {
-    let mut group = c.benchmark_group("combined_scenarios");
+    let mut group = ci_budget(c, "combined_scenarios");
 
     // 1. Full terrain setup (8 layers + material)
     group.bench_function("terrain_full_setup", |b| {

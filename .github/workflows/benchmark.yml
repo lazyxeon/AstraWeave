@@ -35,7 +35,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard_index: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]
+        shard_index: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]
     
     steps:
       - name: Checkout repository
@@ -60,7 +60,7 @@ jobs:
           # Run this deterministic shard of the full discovered package list
           ./.github/scripts/benchmark-runner.sh \
             --shard-index "${{ matrix.shard_index }}" \
-            --shard-count 14
+            --shard-count 15
       
       - name: Upload benchmark artifacts
         uses: actions/upload-artifact@v4
@@ -130,7 +130,7 @@ jobs:
           done
 
           : > benchmark_results/missing-shards.txt
-          for shard_index in {0..13}; do
+          for shard_index in {0..14}; do
             if ! find benchmark-shards -mindepth 1 -maxdepth 1 -type d \
               -name "*-shard-${shard_index}" -print -quit 2>/dev/null |
               grep -q .; then
