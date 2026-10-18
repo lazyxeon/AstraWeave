@@ -8,10 +8,31 @@
 //! - Overlay effects (parameters, updates)
 //! - Effects system (weather particles)
 
-use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+use criterion::{
+    criterion_group, criterion_main, BenchmarkGroup, BenchmarkId, Criterion, SamplingMode,
+    Throughput,
+};
 use glam::{Mat4, Quat, Vec2, Vec3};
 use std::hint::black_box;
 use std::hint::black_box as bb;
+use std::time::Duration;
+
+// Shard 13 on main ceff979a (run 39089221901) and on #374 (run 39091616710)
+// killed this target at 600s. Default sample_size 100 is linear sampling
+// (5_050 iterations) plus a 3s warm-up and a 5s measurement per function.
+// Flat sampling with the minimum sample size still runs every function,
+// including the 10_000-tree scatter. The 600s cap is unchanged.
+fn ci_budget<'a>(
+    c: &'a mut Criterion,
+    name: &str,
+) -> BenchmarkGroup<'a, criterion::measurement::WallTime> {
+    let mut group = c.benchmark_group(name);
+    group.sampling_mode(SamplingMode::Flat);
+    group.sample_size(10);
+    group.warm_up_time(Duration::from_millis(1));
+    group.measurement_time(Duration::from_secs(1));
+    group
+}
 
 // ============================================================================
 // Mock Types (matching actual API without wgpu dependencies)
@@ -581,8 +602,9 @@ impl InstancePatternBuilder {
     }
 
     pub fn random_scatter(mut self, count: usize, bounds: f32) -> Self {
-        use rand::Rng;
-        let mut rng = rand::rng();
+        use rand::rngs::StdRng;
+        use rand::{Rng, SeedableRng};
+        let mut rng = StdRng::seed_from_u64(0xA57A_13E7);
         for _ in 0..count {
             let x = rng.random_range(-bounds..bounds);
             let z = rng.random_range(-bounds..bounds);
@@ -648,7 +670,7 @@ impl OverlayParams {
 // ============================================================================
 
 fn bench_camera_operations(c: &mut Criterion) {
-    let mut group = c.benchmark_group("camera_operations");
+    let mut group = ci_budget(c, "camera_operations");
 
     let camera = Camera::default();
 
@@ -687,7 +709,7 @@ fn bench_camera_operations(c: &mut Criterion) {
 }
 
 fn bench_camera_controller(c: &mut Criterion) {
-    let mut group = c.benchmark_group("camera_controller");
+    let mut group = ci_budget(c, "camera_controller");
 
     // Controller creation
     group.bench_function("new", |b| {
@@ -755,7 +777,7 @@ fn bench_camera_controller(c: &mut Criterion) {
 // ============================================================================
 
 fn bench_primitive_generation(c: &mut Criterion) {
-    let mut group = c.benchmark_group("primitive_generation");
+    let mut group = ci_budget(c, "primitive_generation");
 
     // Cube
     group.bench_function("cube", |b| b.iter(|| bb(cube())));
@@ -793,7 +815,7 @@ fn bench_primitive_generation(c: &mut Criterion) {
 // ============================================================================
 
 fn bench_instance_transforms(c: &mut Criterion) {
-    let mut group = c.benchmark_group("instance_transforms");
+    let mut group = ci_budget(c, "instance_transforms");
 
     // Instance creation
     group.bench_function("new_identity", |b| b.iter(|| bb(Instance::identity())));
@@ -836,7 +858,7 @@ fn bench_instance_transforms(c: &mut Criterion) {
 }
 
 fn bench_instance_batching(c: &mut Criterion) {
-    let mut group = c.benchmark_group("instance_batching");
+    let mut group = ci_budget(c, "instance_batching");
 
     // Batch creation
     group.bench_function("batch_new", |b| {
@@ -888,7 +910,7 @@ fn bench_instance_batching(c: &mut Criterion) {
 }
 
 fn bench_instance_manager(c: &mut Criterion) {
-    let mut group = c.benchmark_group("instance_manager");
+    let mut group = ci_budget(c, "instance_manager");
 
     // Manager creation
     group.bench_function("new", |b| b.iter(|| bb(InstanceManager::new())));
@@ -969,7 +991,7 @@ fn bench_instance_manager(c: &mut Criterion) {
 }
 
 fn bench_instance_patterns(c: &mut Criterion) {
-    let mut group = c.benchmark_group("instance_patterns");
+    let mut group = ci_budget(c, "instance_patterns");
 
     // Grid pattern
     for &(rows, cols) in &[(10, 10), (32, 32), (100, 100)] {
@@ -1019,7 +1041,7 @@ fn bench_instance_patterns(c: &mut Criterion) {
 // ============================================================================
 
 fn bench_overlay_params(c: &mut Criterion) {
-    let mut group = c.benchmark_group("overlay_params");
+    let mut group = ci_budget(c, "overlay_params");
 
     // Parameter creation
     group.bench_function("new", |b| {
@@ -1056,7 +1078,7 @@ fn bench_overlay_params(c: &mut Criterion) {
 // ============================================================================
 
 fn bench_combined_scenarios(c: &mut Criterion) {
-    let mut group = c.benchmark_group("combined_scenarios");
+    let mut group = ci_budget(c, "combined_scenarios");
 
     // Typical frame: camera update + instance transforms
     group.bench_function("typical_frame_100_instances", |b| {

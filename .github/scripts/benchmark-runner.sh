@@ -71,7 +71,13 @@ BENCHMARK_SHARD_GROUPS=(
     "astraweave-sdk astraweave-coordination astraweave-persona astraweave-behavior"
     "astraweave-ui astraweave-pcg astraweave-security astraweave-stress-test"
     "astraweave-ai"
-    "astraweave-render"
+    # astraweave-render is one package and three shards. @a @b @c are the
+    # explicit target lists in RENDER_BENCH_A/B/C. Run 39109443441 put the
+    # alphabetical halves at 51m45s and 49m08s. The thirds stay near 40
+    # minutes. Every target is still listed. The 600s cap stays.
+    "astraweave-render@a"
+    "astraweave-render@b"
+    "astraweave-render@c"
 )
 
 RESULTS_DIR="${BENCHMARK_RESULTS_DIR:-benchmark_results}"
@@ -165,7 +171,8 @@ discover_benchmark_packages() {
 
         for shard_packages in "${BENCHMARK_SHARD_GROUPS[@]}"; do
             for configured_pkg in $shard_packages; do
-                if [[ ! -v "discovered_lookup[$configured_pkg]" ]]; then
+                local pkg_base="${configured_pkg%@*}"
+                if [[ ! -v "discovered_lookup[$pkg_base]" ]]; then
                     log_error "Measured shard map contains undiscovered package: $configured_pkg"
                     mapping_error=1
                 elif [[ -v "assigned_lookup[$configured_pkg]" ]]; then
@@ -173,6 +180,7 @@ discover_benchmark_packages() {
                     mapping_error=1
                 else
                     assigned_lookup["$configured_pkg"]=1
+                    assigned_lookup["$pkg_base"]=1
                 fi
             done
         done
@@ -183,6 +191,12 @@ discover_benchmark_packages() {
                 mapping_error=1
             fi
         done
+        if [[ -v "assigned_lookup[astraweave-render@a]" || -v "assigned_lookup[astraweave-render@b]" || -v "assigned_lookup[astraweave-render@c]" ]]; then
+            if [[ ! -v "assigned_lookup[astraweave-render@a]" || ! -v "assigned_lookup[astraweave-render@b]" || ! -v "assigned_lookup[astraweave-render@c]" ]]; then
+                log_error "astraweave-render must be listed as @a, @b, and @c"
+                mapping_error=1
+            fi
+        fi
 
         if [ "$mapping_error" -ne 0 ]; then
             return 1
@@ -338,8 +352,98 @@ bench_target_names() {
     ' <<<"$METADATA_JSON"
 }
 
+# Per-target walls from run 39109443441. Each list is about 30 minutes
+# of bench time, so with compile the job stays under 40 minutes.
+# A new render bench target must be added to exactly one list.
+RENDER_BENCH_A=(
+    culling_lod
+    post_processing
+    mesh_optimization
+    graph_mesh_material_texture
+    camera_primitives_instancing
+    biome_transition
+    rendering_performance
+    phase2_benches
+)
+RENDER_BENCH_B=(
+    texture_streaming_vxgi
+    gpu_particles_water
+    animation_skinning
+    transparency_environment_msaa
+    ibl_deferred
+    cluster_gpu_vs_cpu
+)
+RENDER_BENCH_C=(
+    nanite_shadow_csm
+    ssr_decals_weather
+    clustered_megalights_residency
+    gpu_memory_terrain_skinning_depth_overlay
+)
+
+render_bench_lists_match() {
+    local -a all_targets=("$@")
+    local -A seen=()
+    local target
+    local listed
+    for listed in "${RENDER_BENCH_A[@]}" "${RENDER_BENCH_B[@]}" "${RENDER_BENCH_C[@]}"; do
+        if [[ -n "${seen[$listed]:-}" ]]; then
+            log_error "Render bench target listed twice: $listed"
+            return 1
+        fi
+        seen[$listed]=1
+    done
+    for target in "${all_targets[@]}"; do
+        if [[ -z "${seen[$target]:-}" ]]; then
+            log_error "Render bench target is not in shard a, b, or c: $target"
+            return 1
+        fi
+        seen[$target]=seen
+    done
+    for listed in "${!seen[@]}"; do
+        if [ "${seen[$listed]}" = "1" ]; then
+            log_error "Render bench list names a target that is not built: $listed"
+            return 1
+        fi
+    done
+    return 0
+}
+
+select_bench_targets() {
+    local pkg_token="$1"
+    local pkg_base="${pkg_token%@*}"
+    local half=""
+    if [[ "$pkg_token" == *@* ]]; then
+        half="${pkg_token#*@}"
+    fi
+    local -a all_targets=()
+    mapfile -t all_targets < <(bench_target_names "$pkg_base" | sort)
+    if [ -z "$half" ]; then
+        if [ "${#all_targets[@]}" -gt 0 ]; then
+            printf '%s\n' "${all_targets[@]}"
+        fi
+        return
+    fi
+    local -a chosen=()
+    case "$half" in
+        a) chosen=("${RENDER_BENCH_A[@]}") ;;
+        b) chosen=("${RENDER_BENCH_B[@]}") ;;
+        c) chosen=("${RENDER_BENCH_C[@]}") ;;
+        *)
+            log_error "Unknown bench third '$half' on $pkg_token"
+            return 1
+            ;;
+    esac
+    if ! render_bench_lists_match "${all_targets[@]}"; then
+        return 1
+    fi
+    if [ "${#chosen[@]}" -gt 0 ]; then
+        printf '%s\n' "${chosen[@]}"
+    fi
+}
+
 for pkg in "${BENCHMARK_PACKAGES[@]}"; do
-    if [ -d "$pkg/benches" ]; then
+    pkg_base="${pkg%@*}"
+    if [ -d "$pkg_base/benches" ]; then
         log_info "Running benchmarks for $pkg..."
 
         # Clear previous criterion results to avoid cross-contamination
@@ -359,7 +463,7 @@ for pkg in "${BENCHMARK_PACKAGES[@]}"; do
         # hung rustc. Each bench target then gets its own 600s so one crate
         # with many targets is split instead of raising the limit.
         set +e
-        cargo bench -p "$pkg" --benches --no-run \
+        cargo bench -p "$pkg_base" --benches --no-run \
             >> "$stdout_log" \
             2>> "$stderr_log"
         compile_exit=$?
@@ -374,17 +478,27 @@ for pkg in "${BENCHMARK_PACKAGES[@]}"; do
             OVERALL_FAILURE=1
             log_error "Benchmark compile failed for $pkg with exit $compile_exit"
         else
-            mapfile -t bench_targets < <(bench_target_names "$pkg")
+            mapfile -t bench_targets < <(select_bench_targets "$pkg")
+            log_info "Selected ${#bench_targets[@]} bench targets for $pkg: ${bench_targets[*]}"
             if [ "${#bench_targets[@]}" -eq 0 ]; then
-                bench_targets=("__all__")
+                if [[ "$pkg" == *@* ]]; then
+                    log_error "Bench half $pkg selected no targets"
+                    execution_exit=1
+                    execution_status="failed"
+                    EXECUTION_FAILURE_COUNT=$((EXECUTION_FAILURE_COUNT + 1))
+                    OVERALL_FAILURE=1
+                    bench_targets=()
+                else
+                    bench_targets=("__all__")
+                fi
             fi
             for target in "${bench_targets[@]}"; do
                 set +e
                 if [ "$target" = "__all__" ]; then
-                    timeout 600 cargo bench -p "$pkg" --benches \
+                    timeout 600 cargo bench -p "$pkg_base" --benches \
                         >> "$stdout_log" 2>> "$stderr_log"
                 else
-                    timeout 600 cargo bench -p "$pkg" --bench "$target" \
+                    timeout 600 cargo bench -p "$pkg_base" --bench "$target" \
                         >> "$stdout_log" 2>> "$stderr_log"
                 fi
                 one_exit=$?

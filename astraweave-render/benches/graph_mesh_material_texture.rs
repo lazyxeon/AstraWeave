@@ -8,10 +8,29 @@
 //!
 //! v5.33: ~65 benchmarks covering fundamental rendering pipeline infrastructure
 
-use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+use criterion::{
+    criterion_group, criterion_main, BenchmarkGroup, BenchmarkId, Criterion, SamplingMode,
+    Throughput,
+};
 use glam::{Vec2, Vec3, Vec4};
 use std::collections::{BTreeMap, HashMap};
 use std::hint::black_box;
+use std::time::Duration;
+
+// Run 39100674332 shard 13 killed this target at 600s. Default sample_size
+// 100 is 5_050 linear iterations plus 3s warm-up and 5s measurement per
+// function. Flat sampling still runs every function. The 600s cap stays.
+fn ci_budget<'a>(
+    c: &'a mut Criterion,
+    name: &str,
+) -> BenchmarkGroup<'a, criterion::measurement::WallTime> {
+    let mut group = c.benchmark_group(name);
+    group.sampling_mode(SamplingMode::Flat);
+    group.sample_size(10);
+    group.warm_up_time(Duration::from_millis(1));
+    group.measurement_time(Duration::from_secs(1));
+    group
+}
 
 // ============================================================================
 // MOCK IMPLEMENTATIONS (CPU-side benchmarks without GPU dependencies)
@@ -851,7 +870,7 @@ impl MeshRegistry {
 // ============================================================================
 
 fn bench_render_graph(c: &mut Criterion) {
-    let mut group = c.benchmark_group("render_graph");
+    let mut group = ci_budget(c, "render_graph");
 
     // Resource table operations
     group.bench_function("resource_table_insert", |b| {
@@ -980,7 +999,7 @@ fn bench_render_graph(c: &mut Criterion) {
 // ============================================================================
 
 fn bench_mesh_operations(c: &mut Criterion) {
-    let mut group = c.benchmark_group("mesh_operations");
+    let mut group = ci_budget(c, "mesh_operations");
 
     // Vertex creation
     group.bench_function("vertex_new", |b| {
@@ -1096,7 +1115,7 @@ fn bench_mesh_operations(c: &mut Criterion) {
 // ============================================================================
 
 fn bench_material_system(c: &mut Criterion) {
-    let mut group = c.benchmark_group("material_system");
+    let mut group = ci_budget(c, "material_system");
 
     // MaterialGpu creation
     group.bench_function("material_gpu_neutral", |b| {
@@ -1233,7 +1252,7 @@ fn bench_material_system(c: &mut Criterion) {
 // ============================================================================
 
 fn bench_texture_operations(c: &mut Criterion) {
-    let mut group = c.benchmark_group("texture_operations");
+    let mut group = ci_budget(c, "texture_operations");
 
     // Texture usage classification
     group.bench_function("texture_usage_format", |b| {
@@ -1372,7 +1391,7 @@ fn bench_texture_operations(c: &mut Criterion) {
 // ============================================================================
 
 fn bench_mesh_registry(c: &mut Criterion) {
-    let mut group = c.benchmark_group("mesh_registry");
+    let mut group = ci_budget(c, "mesh_registry");
 
     group.bench_function("registry_new", |b| {
         b.iter(|| {
@@ -1447,7 +1466,7 @@ fn bench_mesh_registry(c: &mut Criterion) {
 // ============================================================================
 
 fn bench_combined_scenarios(c: &mut Criterion) {
-    let mut group = c.benchmark_group("combined_scenarios");
+    let mut group = ci_budget(c, "combined_scenarios");
 
     // Typical frame setup
     group.bench_function("typical_frame_setup", |b| {
