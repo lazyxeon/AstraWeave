@@ -978,11 +978,15 @@ fn persistence_manager_save_has_credits() {
         current_player: String::new(),
     };
     pm.set_player("p");
-    pm.save_game(0, 0, 0, vec![]).unwrap();
+    let mut world = astraweave_ecs::World::new();
+    let entity = world.spawn();
+    world.insert(entity, CAmmo { rounds: 7 });
+    let blob = serialize_ecs_world(&world).unwrap();
+    pm.save_game(0, 0, 0, blob).unwrap();
     let (bundle, _) = pm.load_game(0).unwrap();
     assert_eq!(
-        bundle.inventory.credits, 1000,
-        "hardcoded credits must be 1000"
+        bundle.inventory.credits, 7,
+        "credits come from CAmmo in the blob"
     );
 }
 

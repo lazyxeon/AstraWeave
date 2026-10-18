@@ -536,6 +536,9 @@ impl Greybox {
         self.physics
             .set_body_position(self.player.body, checkpoint.position);
         self.camera.pivot = checkpoint.position;
+        if checkpoint.edits.is_empty() && checkpoint.demolition == self.ground.demolition_log() {
+            return Ok(Vec::new());
+        }
         self.ground
             .restore_dug(checkpoint.edits, &checkpoint.demolition)?;
         let uploads = self.ground.sync_dirty(&mut self.physics);
@@ -1102,6 +1105,39 @@ mod tests {
         dig_at(&mut loaded, 18, 16);
         assert_eq!(loaded.ground.edits.len(), live.ground.edits.len());
         assert_eq!(loaded.state_hash(), expected);
+    }
+
+    #[test]
+    fn restored_fight_hashes_like_the_source() {
+        let mut source = Greybox::open(0);
+        source.spawn_enemy(Vec3::new(4.0, 2.0, 6.0));
+        source.tick = 40;
+        source.motor.mode = crate::motor::MotorMode::Roll;
+        source.motor.stamina = 61.0;
+        source.player.facing_yaw = 0.4;
+        source.combat.player_hp = 80.0;
+        source.combat.attack.time = 0.12;
+        source.combat.attack.swinging = true;
+        source.combat.attack.hit_landed = true;
+        source.combat.lock = Some(0);
+        source.combat.cover_broken = true;
+        source.combat.enemies[0].health = 17.0;
+        let before = source.state_hash();
+        let checkpoint = source.checkpoint();
+        let dir = tempfile::tempdir().unwrap();
+        crate::save::save_checkpoint(dir.path(), &checkpoint).unwrap();
+        let loaded = crate::save::load_checkpoint(dir.path()).unwrap();
+        assert_eq!(
+            crate::save::gameplay_hash(&loaded),
+            crate::save::gameplay_hash(&checkpoint)
+        );
+        let mut restored = Greybox::open(0);
+        restored.restore(loaded).unwrap();
+        assert_eq!(
+            crate::save::gameplay_hash(&restored.checkpoint()),
+            crate::save::gameplay_hash(&checkpoint)
+        );
+        assert_eq!(restored.state_hash(), before);
     }
 
     #[test]

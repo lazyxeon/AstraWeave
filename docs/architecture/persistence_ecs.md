@@ -9,7 +9,7 @@ lifecycle_status: unknown
 integration_status: unknown
 summary: "Save ids and timestamps come from the sim tick. replay_system applies due events in order. auto_save runs on CSimClock. persistence_ecs.md §1"
 owns: [astraweave-persistence-ecs, aw-save]
-doc_version: "1.4"
+doc_version: "1.5"
 last_verified_commit: a2474c5b7
 ---
 
@@ -25,12 +25,12 @@ last_verified_commit: a2474c5b7
 |---|---|
 | **System name** | Persistence-ECS (save / load / migrate / replay) |
 | **Primary crates** | `astraweave-persistence-ecs` (ECS Plugin + world serialization + hashing); `persistence/aw-save` (file format, atomic I/O, versioning, migration) |
-| **Document version** | 1.4 |
+| **Document version** | 1.5 |
 | **Last verified against commit** | `a2474c5b7` |
 | **Last verified date** | 2026-05-12 |
-| **Status** | Active. File format is production-shaped. `replay_system` applies due events into `AppliedReplay`. `auto_save_system` writes when `CSimClock` hits its interval. Inventory and companion extraction are still placeholders. |
+| **Status** | Active. File format is production-shaped. `replay_system` applies due `health` events onto `CHealth` and records them in `AppliedReplay`. `auto_save_system` writes when `CSimClock` hits its interval and stores the replay log. Inventory credits are the sum of `CAmmo.rounds` in the blob. Companions are still empty. |
 | **Revision history** | 1.3 (2026-10-15): `.awsv` load rejects a declared compressed length above 4 MiB before allocation, and an LZ4 uncompressed prefix above 16 MiB. Schema stays 2. `postcard_and_lz4_bytes_are_stable` locks the postcard 1.1 and lz4_flex 0.11 bytes. 1.2 (2026-05-12): Deep investigation pass. **Closed Open Question 13** (CLI tools location) — purely factual question, comprehensively answered (`tools/aw_save_cli/` exists, was created in the same commit as `aw-save` itself). Resolution moved to §4 / §6. **New emergent finding**: a separate sibling crate `crates/astraweave-persistence-player` exists for player-profile persistence (TOML-based, distinct data model). Has zero dependency relationship with this subsystem; only a single doc-comment reference. Added to §6 as a coexisting-but-disjoint abstraction so future agents don't conflate them. Enriched §11 Q1, Q2, Q11 with commit-date provenance: the `astraweave-stress-test` declaration of both `astraweave-net-ecs` and `astraweave-persistence-ecs` and the `astraweave-memory` declaration in `astraweave-persistence-ecs/Cargo.toml` all landed in the **same commit** `08befc6ec` (2025-10-01, "phase 6 implementation"); test artifacts (`slot*.awsv`, `savegame.bin`) were committed in unrelated subsequent commits with misleading titles.<br><br>1.1 (2026-05-12): Verification pass. **Major corrections**: (1) The §4 `[INFERRED]` claim that CLI tools "may live elsewhere or be planned" was wrong — `tools/aw_save_cli/src/main.rs` (110 lines, clap-based) is a real binary that consumes `aw-save`. Added to §4 downstream table; resolved the marker. (2) Discovered second `aw-save` consumer not previously documented: `examples/save_integration/src/main.rs` (234 lines) imports `aw-save` types directly. Added to §4. (3) Resolved §9 `[INFERRED]` about auto-pruning absence — direct grep `fs::remove\|remove_file\|tokio::fs::remove persistence/aw-save/src` returns zero matches, conclusively confirming no auto-prune path exists. (4) Verified `Entity::to_raw()` layout claim in §3 against actual source at `astraweave-ecs/src/entity_allocator.rs:95-103` — claim is exact. |
-| **Owner notes** | `aw-save` (file format and SaveManager) is fully production-shaped: atomic writes via tmp+fsync+rename, CRC32 + LZ4, explicit V1→V2 migration, 256 slots per player. Save ids and timestamps come from the sim (`sim_save_id`, `sim_timestamp`). `auto_save_system` writes when `CSimClock` hits its interval. `replay_system` copies due events into `AppliedReplay` in canonical order. `CPersistenceManager::save_game` still hardcodes inventory (`credits: 1000`, `items: []`) and emits zero companions. **`astraweave-stress-test/Cargo.toml:21` declares `astraweave-persistence-ecs` as a dep but no source file imports anything from it** — same pattern as `net-ecs` (declared-but-unused). The companion `astraweave-memory` workspace dep declared at `astraweave-persistence-ecs/Cargo.toml:20` is also never imported in the crate's source. |
+| **Owner notes** | `aw-save` (file format and SaveManager) is fully production-shaped: atomic writes via tmp+fsync+rename, CRC32 + LZ4, explicit V1→V2 migration, 256 slots per player. Save ids and timestamps come from the sim (`sim_save_id`, `sim_timestamp`). `auto_save_system` writes when `CSimClock` hits its interval. `replay_system` copies due events into `AppliedReplay` in canonical order. `CPersistenceManager::save_game` sets inventory credits from `CAmmo.rounds` in the blob and still emits zero companions. **`astraweave-stress-test/Cargo.toml:21` declares `astraweave-persistence-ecs` as a dep but no source file imports anything from it** — same pattern as `net-ecs` (declared-but-unused). The companion `astraweave-memory` workspace dep declared at `astraweave-persistence-ecs/Cargo.toml:20` is also never imported in the crate's source. |
 
 ---
 
@@ -623,7 +623,7 @@ Auto-save path (scaffolded, empty body):
 | 13 | Atomic write uses tmp file + sync_all + rename | Yes | `aw-save/lib.rs:275-286`. |
 | 14 | `index.json` is sorted by `(slot, created_at)` after each save | Yes | `aw-save/lib.rs:225`. |
 | 15 | Sanitized player_id only contains `[A-Za-z0-9_-]` | Yes | `aw-save/lib.rs:342-352` — all other characters become `_`. |
-| 16 | Save bundle's `save_id` is unique per save call (new `Uuid::v4()`) | Yes (probabilistic) | `persistence-ecs/lib.rs:138`, `aw-save/lib.rs:186` (migration). Uuid v4 collision probability is negligible. |
+| 16 | Save bundle's `save_id` and `created_at` come from `sim_save_id` / `sim_timestamp` | Yes | `aw-save` `sim_save_id`, `persistence-ecs` `save_game_with_replay`. The same seed, tick, and slot rewrite the same id. |
 
 ---
 
@@ -714,6 +714,8 @@ Auto-save path (scaffolded, empty body):
 ---
 
 ## 12. Maintenance Notes
+
+**Revision 1.5 (2026-10-18):** `replay_system` writes due `health` events onto `CHealth`. `SerializedWorld.world_tick` comes from `CSimClock`. Autosave stores the replay log, and `start_replay` loads it. Inventory credits are the sum of `CAmmo.rounds`.
 
 **Revision 1.4 (2026-10-16):** save filenames use `bundle.created_at`. `sim_save_id` / `sim_timestamp` replace `Uuid::new_v4` and `OffsetDateTime::now_utc` on the persistence and greybox paths. `replay_system` applies due events. `auto_save_system` follows `CSimClock`. Entity blobs are sorted by `Entity::to_raw`.
 

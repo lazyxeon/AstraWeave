@@ -98,13 +98,14 @@ fn auto_save_system(world: &mut World) {
     let Ok(blob) = serialize_ecs_world(world) else {
         return;
     };
+    let events = replay_log(world);
     let hash = fnv64(&blob);
     for entity in managers {
         let Some(manager) = world.get::<CPersistenceManager>(entity) else {
             continue;
         };
         if manager
-            .save_game(clock.slot, clock.tick, hash, blob.clone())
+            .save_game_with_replay(clock.slot, clock.tick, hash, blob.clone(), &events)
             .is_err()
         {
             return;
@@ -149,32 +150,152 @@ fn replay_system(world: &mut World) {
 
     let mut applied = Vec::new();
     for entity in entities_to_update {
-        if let Some(replay) = world.get_mut::<CReplayState>(entity) {
-            if replay.current_tick < replay.total_ticks {
-                let now = replay.current_tick;
-                let mut due: Vec<ReplayEvent> = replay
-                    .events
-                    .iter()
-                    .filter(|event| event.tick == now)
-                    .cloned()
-                    .collect();
-                due.sort_by(|a, b| {
-                    a.event_type
-                        .cmp(&b.event_type)
-                        .then_with(|| a.data.cmp(&b.data))
-                });
-                applied.extend(due);
-                replay.current_tick += 1;
-            } else {
+        let due = {
+            let Some(replay) = world.get_mut::<CReplayState>(entity) else {
+                continue;
+            };
+            if replay.current_tick >= replay.total_ticks {
                 replay.is_replaying = false;
+                continue;
             }
+            let now = replay.current_tick;
+            let mut due: Vec<ReplayEvent> = replay
+                .events
+                .iter()
+                .filter(|event| event.tick == now)
+                .cloned()
+                .collect();
+            due.sort_by(|a, b| {
+                a.event_type
+                    .cmp(&b.event_type)
+                    .then_with(|| a.data.cmp(&b.data))
+            });
+            replay.current_tick += 1;
+            due
+        };
+        for event in &due {
+            apply_replay_event(world, entity, event);
         }
+        applied.extend(due);
     }
     let log = world.get_resource_mut::<AppliedReplay>();
     if let Some(log) = log {
         log.records.extend(applied);
     } else if !applied.is_empty() {
         world.insert_resource(AppliedReplay { records: applied });
+    }
+}
+
+/// `health` writes the first four little-endian bytes into `CHealth.hp`.
+fn apply_replay_event(world: &mut World, entity: Entity, event: &ReplayEvent) {
+    if event.event_type.as_str() != "health" || event.data.len() < 4 {
+        return;
+    }
+    let hp = i32::from_le_bytes([event.data[0], event.data[1], event.data[2], event.data[3]]);
+    if let Some(health) = world.get_mut::<CHealth>(entity) {
+        health.hp = hp;
+    }
+}
+
+fn replay_log(world: &World) -> Vec<ReplayEvent> {
+    let query = Query::<CReplayState>::new(world);
+    let mut rows = Vec::new();
+    for (entity, replay) in query {
+        for event in &replay.events {
+            rows.push((entity.to_raw(), event.clone()));
+        }
+    }
+    rows.sort_by(|left, right| {
+        left.0
+            .cmp(&right.0)
+            .then_with(|| left.1.tick.cmp(&right.1.tick))
+            .then_with(|| left.1.event_type.cmp(&right.1.event_type))
+            .then_with(|| left.1.data.cmp(&right.1.data))
+    });
+    rows.into_iter().map(|(_, event)| event).collect()
+}
+
+fn inventory_credits(ecs_blob: &[u8]) -> u64 {
+    if ecs_blob.is_empty() {
+        return 0;
+    }
+    let Ok(serialized) = postcard::from_bytes::<SerializedWorld>(ecs_blob) else {
+        return 0;
+    };
+    serialized
+        .entities
+        .iter()
+        .filter_map(|entity| entity.ammo)
+        .map(|ammo| u64::try_from(ammo.rounds).unwrap_or(0))
+        .fold(0u64, u64::saturating_add)
+}
+
+fn encode_replay_events(events: &[ReplayEvent]) -> String {
+    events
+        .iter()
+        .map(|event| {
+            format!(
+                "{}\t{}\t{}",
+                event.tick,
+                event.event_type,
+                hex_encode(&event.data)
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn decode_replay_events(encoded: Option<&str>) -> Vec<ReplayEvent> {
+    let Some(encoded) = encoded else {
+        return Vec::new();
+    };
+    encoded
+        .lines()
+        .filter_map(|line| {
+            let mut parts = line.split('\t');
+            let tick = parts.next()?.parse().ok()?;
+            let event_type = parts.next()?.to_string();
+            let data = hex_decode(parts.next()?)?;
+            Some(ReplayEvent {
+                tick,
+                event_type,
+                data,
+            })
+        })
+        .collect()
+}
+
+fn hex_encode(bytes: &[u8]) -> String {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let mut out = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        out.push(HEX[(byte >> 4) as usize] as char);
+        out.push(HEX[(byte & 0x0f) as usize] as char);
+    }
+    out
+}
+
+fn hex_decode(text: &str) -> Option<Vec<u8>> {
+    if text.len() % 2 != 0 {
+        return None;
+    }
+    let raw = text.as_bytes();
+    let mut out = Vec::with_capacity(text.len() / 2);
+    let mut index = 0;
+    while index < raw.len() {
+        let hi = hex_nibble(raw[index])?;
+        let lo = hex_nibble(raw[index + 1])?;
+        out.push((hi << 4) | lo);
+        index += 2;
+    }
+    Some(out)
+}
+
+fn hex_nibble(byte: u8) -> Option<u8> {
+    match byte {
+        b'0'..=b'9' => Some(byte - b'0'),
+        b'a'..=b'f' => Some(byte - b'a' + 10),
+        _ => None,
     }
 }
 
@@ -192,21 +313,32 @@ impl CPersistenceManager {
         world_hash: u64,
         ecs_blob: Vec<u8>,
     ) -> Result<PathBuf> {
-        // Create companion profiles from ECS data
-        let companions = Vec::new(); // TODO: Query ECS for companion data
+        self.save_game_with_replay(slot, world_tick, world_hash, ecs_blob, &[])
+    }
 
-        // Create inventory from ECS data
+    /// Save game state and the replay events that produced it.
+    pub fn save_game_with_replay(
+        &self,
+        slot: u8,
+        world_tick: u64,
+        world_hash: u64,
+        ecs_blob: Vec<u8>,
+        replay_events: &[ReplayEvent],
+    ) -> Result<PathBuf> {
+        let companions = Vec::new();
         let inventory = aw_save::PlayerInventory {
-            credits: 1000,     // TODO: Get from ECS
-            items: Vec::new(), // TODO: Get from ECS
+            credits: inventory_credits(&ecs_blob),
+            items: Vec::new(),
         };
 
-        // Create metadata
         let mut meta = HashMap::new();
         meta.insert(
             "engine_version".to_string(),
             env!("CARGO_PKG_VERSION").to_string(),
         );
+        if !replay_events.is_empty() {
+            meta.insert("replay".to_string(), encode_replay_events(replay_events));
+        }
 
         let player_seed = self.current_player.bytes().fold(0u64, |acc, byte| {
             acc.wrapping_mul(0x1000_0000_01B3)
@@ -241,11 +373,12 @@ impl CPersistenceManager {
     pub fn start_replay(&self, slot: u8) -> Result<CReplayState> {
         let (bundle, _) = self.load_game(slot)?;
 
+        let events = decode_replay_events(bundle.meta.get("replay").map(String::as_str));
         Ok(CReplayState {
             is_replaying: true,
             current_tick: 0,
             total_ticks: bundle.world.tick,
-            events: Vec::new(), // TODO: Load replay events from save data
+            events,
         })
     }
 
@@ -439,9 +572,13 @@ pub fn serialize_ecs_world(world: &World) -> Result<Vec<u8>> {
         entities.push(serialized);
     }
 
+    let world_tick = world
+        .get_resource::<CSimClock>()
+        .map(|clock| clock.tick)
+        .unwrap_or(0);
     let serialized_world = SerializedWorld {
         entities,
-        world_tick: 0, // TODO: Get from world state when available
+        world_tick,
     };
 
     // Use postcard for compact binary serialization
@@ -583,6 +720,18 @@ pub fn deserialize_ecs_world(ecs_blob: &[u8], world: &mut World) -> Result<()> {
         if let Some(memory) = &serialized_entity.memory {
             world.insert(entity, memory.clone());
         }
+    }
+
+    if let Some(clock) = world.get_resource_mut::<CSimClock>() {
+        clock.tick = serialized.world_tick;
+    } else {
+        world.insert_resource(CSimClock {
+            world_seed: 0,
+            tick: serialized.world_tick,
+            save_every: 0,
+            last_saved_tick: None,
+            slot: 0,
+        });
     }
 
     Ok(())
