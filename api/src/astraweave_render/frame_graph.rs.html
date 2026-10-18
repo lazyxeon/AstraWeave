@@ -54,98 +54,98 @@
 <a href=#54 id=54 data-nosnippet>54</a>    </span><span class="kw">pub </span>enable_ssr: bool,
 <a href=#55 id=55 data-nosnippet>55</a>    <span class="doccomment">/// Whether bloom post-processing is enabled.
 <a href=#56 id=56 data-nosnippet>56</a>    </span><span class="kw">pub </span>enable_bloom: bool,
-<a href=#57 id=57 data-nosnippet>57</a>    <span class="doccomment">/// Whether froxel-based volumetric fog is enabled.
-<a href=#58 id=58 data-nosnippet>58</a>    </span><span class="kw">pub </span>enable_volumetric_fog: bool,
-<a href=#59 id=59 data-nosnippet>59</a>}
-<a href=#60 id=60 data-nosnippet>60</a>
-<a href=#61 id=61 data-nosnippet>61</a><span class="kw">impl </span>Default <span class="kw">for </span>FrameGraphConfig {
-<a href=#62 id=62 data-nosnippet>62</a>    <span class="kw">fn </span>default() -&gt; <span class="self">Self </span>{
-<a href=#63 id=63 data-nosnippet>63</a>        <span class="self">Self </span>{
-<a href=#64 id=64 data-nosnippet>64</a>            width: <span class="number">1920</span>,
-<a href=#65 id=65 data-nosnippet>65</a>            height: <span class="number">1080</span>,
-<a href=#66 id=66 data-nosnippet>66</a>            shadow_resolution: <span class="number">2048</span>,
-<a href=#67 id=67 data-nosnippet>67</a>            cascade_count: <span class="number">2</span>,
-<a href=#68 id=68 data-nosnippet>68</a>            enable_clustered_lighting: <span class="bool-val">true</span>,
-<a href=#69 id=69 data-nosnippet>69</a>            enable_gtao: <span class="bool-val">true</span>,
-<a href=#70 id=70 data-nosnippet>70</a>            enable_ssgi: <span class="bool-val">false</span>,
-<a href=#71 id=71 data-nosnippet>71</a>            enable_ssr: <span class="bool-val">true</span>,
-<a href=#72 id=72 data-nosnippet>72</a>            enable_bloom: <span class="bool-val">true</span>,
-<a href=#73 id=73 data-nosnippet>73</a>            enable_volumetric_fog: <span class="bool-val">false</span>,
-<a href=#74 id=74 data-nosnippet>74</a>        }
-<a href=#75 id=75 data-nosnippet>75</a>    }
-<a href=#76 id=76 data-nosnippet>76</a>}
-<a href=#77 id=77 data-nosnippet>77</a>
-<a href=#78 id=78 data-nosnippet>78</a><span class="comment">// ---------------------------------------------------------------------------
-<a href=#79 id=79 data-nosnippet>79</a>// Pass Nodes
-<a href=#80 id=80 data-nosnippet>80</a>// ---------------------------------------------------------------------------
-<a href=#81 id=81 data-nosnippet>81</a>
-<a href=#82 id=82 data-nosnippet>82</a></span><span class="doccomment">/// Clustered light binning compute pass.
-<a href=#83 id=83 data-nosnippet>83</a>///
-<a href=#84 id=84 data-nosnippet>84</a>/// Reads point light data from the renderer's light buffers and writes
-<a href=#85 id=85 data-nosnippet>85</a>/// per-cluster light indices/counts for the main scene pass.
-<a href=#86 id=86 data-nosnippet>86</a></span><span class="kw">pub struct </span>ClusterBinNode;
-<a href=#87 id=87 data-nosnippet>87</a>
-<a href=#88 id=88 data-nosnippet>88</a><span class="kw">impl </span>ClusterBinNode {
-<a href=#89 id=89 data-nosnippet>89</a>    <span class="kw">pub fn </span>new() -&gt; <span class="self">Self </span>{
-<a href=#90 id=90 data-nosnippet>90</a>        <span class="self">Self
-<a href=#91 id=91 data-nosnippet>91</a>    </span>}
-<a href=#92 id=92 data-nosnippet>92</a>}
-<a href=#93 id=93 data-nosnippet>93</a>
-<a href=#94 id=94 data-nosnippet>94</a><span class="kw">impl </span>Default <span class="kw">for </span>ClusterBinNode {
-<a href=#95 id=95 data-nosnippet>95</a>    <span class="kw">fn </span>default() -&gt; <span class="self">Self </span>{
-<a href=#96 id=96 data-nosnippet>96</a>        <span class="self">Self</span>::new()
-<a href=#97 id=97 data-nosnippet>97</a>    }
-<a href=#98 id=98 data-nosnippet>98</a>}
-<a href=#99 id=99 data-nosnippet>99</a>
-<a href=#100 id=100 data-nosnippet>100</a><span class="kw">impl </span>RenderNode <span class="kw">for </span>ClusterBinNode {
-<a href=#101 id=101 data-nosnippet>101</a>    <span class="kw">fn </span>name(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="kw-2">&amp;</span>str {
-<a href=#102 id=102 data-nosnippet>102</a>        <span class="string">"cluster_bin"
-<a href=#103 id=103 data-nosnippet>103</a>    </span>}
-<a href=#104 id=104 data-nosnippet>104</a>    <span class="kw">fn </span>run(<span class="kw-2">&amp;mut </span><span class="self">self</span>, ctx: <span class="kw-2">&amp;mut </span>GraphContext) -&gt; <span class="prelude-ty">Result</span>&lt;()&gt; {
-<a href=#105 id=105 data-nosnippet>105</a>        <span class="kw">let </span>_enc = ctx
-<a href=#106 id=106 data-nosnippet>106</a>            .encoder
-<a href=#107 id=107 data-nosnippet>107</a>            .as_deref_mut()
-<a href=#108 id=108 data-nosnippet>108</a>            .context(<span class="string">"ClusterBinNode requires encoder"</span>)<span class="question-mark">?</span>;
-<a href=#109 id=109 data-nosnippet>109</a>        <span class="prelude-val">Ok</span>(())
-<a href=#110 id=110 data-nosnippet>110</a>    }
-<a href=#111 id=111 data-nosnippet>111</a>}
-<a href=#112 id=112 data-nosnippet>112</a>
-<a href=#113 id=113 data-nosnippet>113</a><span class="doccomment">/// Shadow depth pass for all cascades.
-<a href=#114 id=114 data-nosnippet>114</a>///
-<a href=#115 id=115 data-nosnippet>115</a>/// Renders depth-only geometry into a layered shadow map. Each layer
-<a href=#116 id=116 data-nosnippet>116</a>/// corresponds to one CSM cascade with its own orthographic projection.
-<a href=#117 id=117 data-nosnippet>117</a></span><span class="kw">pub struct </span>ShadowPassNode {
-<a href=#118 id=118 data-nosnippet>118</a>    cascade_count: u32,
-<a href=#119 id=119 data-nosnippet>119</a>}
-<a href=#120 id=120 data-nosnippet>120</a>
-<a href=#121 id=121 data-nosnippet>121</a><span class="kw">impl </span>ShadowPassNode {
-<a href=#122 id=122 data-nosnippet>122</a>    <span class="kw">pub fn </span>new(cascade_count: u32) -&gt; <span class="self">Self </span>{
-<a href=#123 id=123 data-nosnippet>123</a>        <span class="self">Self </span>{ cascade_count }
-<a href=#124 id=124 data-nosnippet>124</a>    }
-<a href=#125 id=125 data-nosnippet>125</a>
-<a href=#126 id=126 data-nosnippet>126</a>    <span class="kw">pub fn </span>cascade_count(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; u32 {
-<a href=#127 id=127 data-nosnippet>127</a>        <span class="self">self</span>.cascade_count
-<a href=#128 id=128 data-nosnippet>128</a>    }
-<a href=#129 id=129 data-nosnippet>129</a>}
-<a href=#130 id=130 data-nosnippet>130</a>
-<a href=#131 id=131 data-nosnippet>131</a><span class="kw">impl </span>RenderNode <span class="kw">for </span>ShadowPassNode {
-<a href=#132 id=132 data-nosnippet>132</a>    <span class="kw">fn </span>name(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="kw-2">&amp;</span>str {
-<a href=#133 id=133 data-nosnippet>133</a>        <span class="string">"shadow"
-<a href=#134 id=134 data-nosnippet>134</a>    </span>}
-<a href=#135 id=135 data-nosnippet>135</a>    <span class="kw">fn </span>run(<span class="kw-2">&amp;mut </span><span class="self">self</span>, ctx: <span class="kw-2">&amp;mut </span>GraphContext) -&gt; <span class="prelude-ty">Result</span>&lt;()&gt; {
-<a href=#136 id=136 data-nosnippet>136</a>        <span class="kw">let </span>_enc = ctx
-<a href=#137 id=137 data-nosnippet>137</a>            .encoder
-<a href=#138 id=138 data-nosnippet>138</a>            .as_deref_mut()
-<a href=#139 id=139 data-nosnippet>139</a>            .context(<span class="string">"ShadowPassNode requires encoder"</span>)<span class="question-mark">?</span>;
-<a href=#140 id=140 data-nosnippet>140</a>        <span class="prelude-val">Ok</span>(())
-<a href=#141 id=141 data-nosnippet>141</a>    }
-<a href=#142 id=142 data-nosnippet>142</a>}
-<a href=#143 id=143 data-nosnippet>143</a>
-<a href=#144 id=144 data-nosnippet>144</a><span class="doccomment">/// Sky rendering pass.
-<a href=#145 id=145 data-nosnippet>145</a>///
-<a href=#146 id=146 data-nosnippet>146</a>/// Renders the skybox/procedural sky into the HDR color target and
-<a href=#147 id=147 data-nosnippet>147</a>/// initialises the depth buffer. Executes before the main scene pass
-<a href=#148 id=148 data-nosnippet>148</a>/// so that geometry is rendered on top of the sky.
+<a href=#57 id=57 data-nosnippet>57</a>    <span class="doccomment">/// Kept so existing graph configs still compile. The stub node is gone.
+<a href=#58 id=58 data-nosnippet>58</a>    /// Live fog is `VolumetricFogPass` on PR #205.
+<a href=#59 id=59 data-nosnippet>59</a>    </span><span class="attr">#[allow(dead_code)]
+<a href=#60 id=60 data-nosnippet>60</a>    </span><span class="kw">pub </span>enable_volumetric_fog: bool,
+<a href=#61 id=61 data-nosnippet>61</a>}
+<a href=#62 id=62 data-nosnippet>62</a>
+<a href=#63 id=63 data-nosnippet>63</a><span class="kw">impl </span>Default <span class="kw">for </span>FrameGraphConfig {
+<a href=#64 id=64 data-nosnippet>64</a>    <span class="kw">fn </span>default() -&gt; <span class="self">Self </span>{
+<a href=#65 id=65 data-nosnippet>65</a>        <span class="self">Self </span>{
+<a href=#66 id=66 data-nosnippet>66</a>            width: <span class="number">1920</span>,
+<a href=#67 id=67 data-nosnippet>67</a>            height: <span class="number">1080</span>,
+<a href=#68 id=68 data-nosnippet>68</a>            shadow_resolution: <span class="number">2048</span>,
+<a href=#69 id=69 data-nosnippet>69</a>            cascade_count: <span class="number">2</span>,
+<a href=#70 id=70 data-nosnippet>70</a>            enable_clustered_lighting: <span class="bool-val">true</span>,
+<a href=#71 id=71 data-nosnippet>71</a>            enable_gtao: <span class="bool-val">true</span>,
+<a href=#72 id=72 data-nosnippet>72</a>            enable_ssgi: <span class="bool-val">false</span>,
+<a href=#73 id=73 data-nosnippet>73</a>            enable_ssr: <span class="bool-val">true</span>,
+<a href=#74 id=74 data-nosnippet>74</a>            enable_bloom: <span class="bool-val">true</span>,
+<a href=#75 id=75 data-nosnippet>75</a>            enable_volumetric_fog: <span class="bool-val">false</span>,
+<a href=#76 id=76 data-nosnippet>76</a>        }
+<a href=#77 id=77 data-nosnippet>77</a>    }
+<a href=#78 id=78 data-nosnippet>78</a>}
+<a href=#79 id=79 data-nosnippet>79</a>
+<a href=#80 id=80 data-nosnippet>80</a><span class="comment">// ---------------------------------------------------------------------------
+<a href=#81 id=81 data-nosnippet>81</a>// Pass Nodes
+<a href=#82 id=82 data-nosnippet>82</a>// ---------------------------------------------------------------------------
+<a href=#83 id=83 data-nosnippet>83</a>
+<a href=#84 id=84 data-nosnippet>84</a></span><span class="doccomment">/// Clustered light binning compute pass.
+<a href=#85 id=85 data-nosnippet>85</a>///
+<a href=#86 id=86 data-nosnippet>86</a>/// Reads point light data from the renderer's light buffers and writes
+<a href=#87 id=87 data-nosnippet>87</a>/// per-cluster light indices/counts for the main scene pass.
+<a href=#88 id=88 data-nosnippet>88</a></span><span class="kw">pub struct </span>ClusterBinNode;
+<a href=#89 id=89 data-nosnippet>89</a>
+<a href=#90 id=90 data-nosnippet>90</a><span class="kw">impl </span>ClusterBinNode {
+<a href=#91 id=91 data-nosnippet>91</a>    <span class="kw">pub fn </span>new() -&gt; <span class="self">Self </span>{
+<a href=#92 id=92 data-nosnippet>92</a>        <span class="self">Self
+<a href=#93 id=93 data-nosnippet>93</a>    </span>}
+<a href=#94 id=94 data-nosnippet>94</a>}
+<a href=#95 id=95 data-nosnippet>95</a>
+<a href=#96 id=96 data-nosnippet>96</a><span class="kw">impl </span>Default <span class="kw">for </span>ClusterBinNode {
+<a href=#97 id=97 data-nosnippet>97</a>    <span class="kw">fn </span>default() -&gt; <span class="self">Self </span>{
+<a href=#98 id=98 data-nosnippet>98</a>        <span class="self">Self</span>::new()
+<a href=#99 id=99 data-nosnippet>99</a>    }
+<a href=#100 id=100 data-nosnippet>100</a>}
+<a href=#101 id=101 data-nosnippet>101</a>
+<a href=#102 id=102 data-nosnippet>102</a><span class="kw">impl </span>RenderNode <span class="kw">for </span>ClusterBinNode {
+<a href=#103 id=103 data-nosnippet>103</a>    <span class="kw">fn </span>name(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="kw-2">&amp;</span>str {
+<a href=#104 id=104 data-nosnippet>104</a>        <span class="string">"cluster_bin"
+<a href=#105 id=105 data-nosnippet>105</a>    </span>}
+<a href=#106 id=106 data-nosnippet>106</a>    <span class="kw">fn </span>run(<span class="kw-2">&amp;mut </span><span class="self">self</span>, ctx: <span class="kw-2">&amp;mut </span>GraphContext) -&gt; <span class="prelude-ty">Result</span>&lt;()&gt; {
+<a href=#107 id=107 data-nosnippet>107</a>        <span class="kw">let </span>_enc = ctx
+<a href=#108 id=108 data-nosnippet>108</a>            .encoder
+<a href=#109 id=109 data-nosnippet>109</a>            .as_deref_mut()
+<a href=#110 id=110 data-nosnippet>110</a>            .context(<span class="string">"ClusterBinNode requires encoder"</span>)<span class="question-mark">?</span>;
+<a href=#111 id=111 data-nosnippet>111</a>        <span class="prelude-val">Ok</span>(())
+<a href=#112 id=112 data-nosnippet>112</a>    }
+<a href=#113 id=113 data-nosnippet>113</a>}
+<a href=#114 id=114 data-nosnippet>114</a>
+<a href=#115 id=115 data-nosnippet>115</a><span class="doccomment">/// Shadow depth pass for all cascades.
+<a href=#116 id=116 data-nosnippet>116</a>///
+<a href=#117 id=117 data-nosnippet>117</a>/// Renders depth-only geometry into a layered shadow map. Each layer
+<a href=#118 id=118 data-nosnippet>118</a>/// corresponds to one CSM cascade with its own orthographic projection.
+<a href=#119 id=119 data-nosnippet>119</a></span><span class="kw">pub struct </span>ShadowPassNode {
+<a href=#120 id=120 data-nosnippet>120</a>    cascade_count: u32,
+<a href=#121 id=121 data-nosnippet>121</a>}
+<a href=#122 id=122 data-nosnippet>122</a>
+<a href=#123 id=123 data-nosnippet>123</a><span class="kw">impl </span>ShadowPassNode {
+<a href=#124 id=124 data-nosnippet>124</a>    <span class="kw">pub fn </span>new(cascade_count: u32) -&gt; <span class="self">Self </span>{
+<a href=#125 id=125 data-nosnippet>125</a>        <span class="self">Self </span>{ cascade_count }
+<a href=#126 id=126 data-nosnippet>126</a>    }
+<a href=#127 id=127 data-nosnippet>127</a>
+<a href=#128 id=128 data-nosnippet>128</a>    <span class="kw">pub fn </span>cascade_count(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; u32 {
+<a href=#129 id=129 data-nosnippet>129</a>        <span class="self">self</span>.cascade_count
+<a href=#130 id=130 data-nosnippet>130</a>    }
+<a href=#131 id=131 data-nosnippet>131</a>}
+<a href=#132 id=132 data-nosnippet>132</a>
+<a href=#133 id=133 data-nosnippet>133</a><span class="kw">impl </span>RenderNode <span class="kw">for </span>ShadowPassNode {
+<a href=#134 id=134 data-nosnippet>134</a>    <span class="kw">fn </span>name(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="kw-2">&amp;</span>str {
+<a href=#135 id=135 data-nosnippet>135</a>        <span class="string">"shadow"
+<a href=#136 id=136 data-nosnippet>136</a>    </span>}
+<a href=#137 id=137 data-nosnippet>137</a>    <span class="kw">fn </span>run(<span class="kw-2">&amp;mut </span><span class="self">self</span>, ctx: <span class="kw-2">&amp;mut </span>GraphContext) -&gt; <span class="prelude-ty">Result</span>&lt;()&gt; {
+<a href=#138 id=138 data-nosnippet>138</a>        <span class="kw">let </span>_enc = ctx
+<a href=#139 id=139 data-nosnippet>139</a>            .encoder
+<a href=#140 id=140 data-nosnippet>140</a>            .as_deref_mut()
+<a href=#141 id=141 data-nosnippet>141</a>            .context(<span class="string">"ShadowPassNode requires encoder"</span>)<span class="question-mark">?</span>;
+<a href=#142 id=142 data-nosnippet>142</a>        <span class="prelude-val">Ok</span>(())
+<a href=#143 id=143 data-nosnippet>143</a>    }
+<a href=#144 id=144 data-nosnippet>144</a>}
+<a href=#145 id=145 data-nosnippet>145</a>
+<a href=#146 id=146 data-nosnippet>146</a><span class="doccomment">/// Reserves `hdr_color` and `depth` in the graph. The live sky draw is
+<a href=#147 id=147 data-nosnippet>147</a>/// `SkyRenderer` inside `Renderer::draw_into` (or `AtmospherePass` when
+<a href=#148 id=148 data-nosnippet>148</a>/// that gate is on). This node does not record a second sky.
 <a href=#149 id=149 data-nosnippet>149</a></span><span class="kw">pub struct </span>SkyPassNode;
 <a href=#150 id=150 data-nosnippet>150</a>
 <a href=#151 id=151 data-nosnippet>151</a><span class="kw">impl </span>SkyPassNode {
@@ -373,496 +373,444 @@
 <a href=#373 id=373 data-nosnippet>373</a>    }
 <a href=#374 id=374 data-nosnippet>374</a>}
 <a href=#375 id=375 data-nosnippet>375</a>
-<a href=#376 id=376 data-nosnippet>376</a><span class="doccomment">/// Froxel-based volumetric fog pass.
-<a href=#377 id=377 data-nosnippet>377</a>///
-<a href=#378 id=378 data-nosnippet>378</a>/// Reads the depth buffer and shadow map to compute in-scattering and
-<a href=#379 id=379 data-nosnippet>379</a>/// extinction per froxel. Produces a 3D fog volume that the main scene
-<a href=#380 id=380 data-nosnippet>380</a>/// pass composites during forward rendering.
-<a href=#381 id=381 data-nosnippet>381</a></span><span class="kw">pub struct </span>VolumetricFogNode;
-<a href=#382 id=382 data-nosnippet>382</a>
-<a href=#383 id=383 data-nosnippet>383</a><span class="kw">impl </span>VolumetricFogNode {
-<a href=#384 id=384 data-nosnippet>384</a>    <span class="kw">pub fn </span>new() -&gt; <span class="self">Self </span>{
-<a href=#385 id=385 data-nosnippet>385</a>        <span class="self">Self
-<a href=#386 id=386 data-nosnippet>386</a>    </span>}
-<a href=#387 id=387 data-nosnippet>387</a>}
-<a href=#388 id=388 data-nosnippet>388</a>
-<a href=#389 id=389 data-nosnippet>389</a><span class="kw">impl </span>Default <span class="kw">for </span>VolumetricFogNode {
-<a href=#390 id=390 data-nosnippet>390</a>    <span class="kw">fn </span>default() -&gt; <span class="self">Self </span>{
-<a href=#391 id=391 data-nosnippet>391</a>        <span class="self">Self</span>::new()
-<a href=#392 id=392 data-nosnippet>392</a>    }
-<a href=#393 id=393 data-nosnippet>393</a>}
-<a href=#394 id=394 data-nosnippet>394</a>
-<a href=#395 id=395 data-nosnippet>395</a><span class="kw">impl </span>RenderNode <span class="kw">for </span>VolumetricFogNode {
-<a href=#396 id=396 data-nosnippet>396</a>    <span class="kw">fn </span>name(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="kw-2">&amp;</span>str {
-<a href=#397 id=397 data-nosnippet>397</a>        <span class="string">"volumetric_fog"
-<a href=#398 id=398 data-nosnippet>398</a>    </span>}
-<a href=#399 id=399 data-nosnippet>399</a>    <span class="kw">fn </span>run(<span class="kw-2">&amp;mut </span><span class="self">self</span>, ctx: <span class="kw-2">&amp;mut </span>GraphContext) -&gt; <span class="prelude-ty">Result</span>&lt;()&gt; {
-<a href=#400 id=400 data-nosnippet>400</a>        <span class="kw">let </span>_enc = ctx
-<a href=#401 id=401 data-nosnippet>401</a>            .encoder
-<a href=#402 id=402 data-nosnippet>402</a>            .as_deref_mut()
-<a href=#403 id=403 data-nosnippet>403</a>            .context(<span class="string">"VolumetricFogNode requires encoder"</span>)<span class="question-mark">?</span>;
-<a href=#404 id=404 data-nosnippet>404</a>        <span class="kw">let _ </span>= ctx.resources.view(<span class="string">"depth"</span>)<span class="question-mark">?</span>;
-<a href=#405 id=405 data-nosnippet>405</a>        <span class="kw">let _ </span>= ctx.resources.view(<span class="string">"shadow_map"</span>)<span class="question-mark">?</span>;
-<a href=#406 id=406 data-nosnippet>406</a>        <span class="prelude-val">Ok</span>(())
-<a href=#407 id=407 data-nosnippet>407</a>    }
-<a href=#408 id=408 data-nosnippet>408</a>}
-<a href=#409 id=409 data-nosnippet>409</a>
-<a href=#410 id=410 data-nosnippet>410</a><span class="comment">// ---------------------------------------------------------------------------
-<a href=#411 id=411 data-nosnippet>411</a>// Graph Builder
-<a href=#412 id=412 data-nosnippet>412</a>// ---------------------------------------------------------------------------
-<a href=#413 id=413 data-nosnippet>413</a>
-<a href=#414 id=414 data-nosnippet>414</a></span><span class="doccomment">/// Build the default frame render graph with proper DAG topology.
-<a href=#415 id=415 data-nosnippet>415</a>///
-<a href=#416 id=416 data-nosnippet>416</a>/// The resulting graph encodes a forward+ pipeline with optional post-processing:
-<a href=#417 id=417 data-nosnippet>417</a>///
-<a href=#418 id=418 data-nosnippet>418</a>/// | Pass | Reads | Writes |
-<a href=#419 id=419 data-nosnippet>419</a>/// |------|-------|--------|
-<a href=#420 id=420 data-nosnippet>420</a>/// | `cluster_bin` | — | `cluster_data` |
-<a href=#421 id=421 data-nosnippet>421</a>/// | `shadow` | — | `shadow_map` |
-<a href=#422 id=422 data-nosnippet>422</a>/// | `sky` | — | `hdr_color`, `depth` |
-<a href=#423 id=423 data-nosnippet>423</a>/// | `gtao` | `depth` | `ao_texture` |
-<a href=#424 id=424 data-nosnippet>424</a>/// | `ssgi` | `depth`, `hdr_color` | `gi_irradiance` |
-<a href=#425 id=425 data-nosnippet>425</a>/// | `volumetric_fog` | `depth`, `shadow_map` | `fog_volume` |
-<a href=#426 id=426 data-nosnippet>426</a>/// | `main_scene` | `shadow_map`, `hdr_color`, `depth`, `cluster_data`, `ao_texture`, `gi_irradiance`, `fog_volume` | `scene_color` |
-<a href=#427 id=427 data-nosnippet>427</a>/// | `ssr` | `scene_color`, `depth` | `ssr_reflections` |
-<a href=#428 id=428 data-nosnippet>428</a>/// | `bloom` | `scene_color` | `bloom_texture` |
-<a href=#429 id=429 data-nosnippet>429</a>/// | `tonemap` | `scene_color`, `ssr_reflections`, `bloom_texture` | — (writes to surface) |
-<a href=#430 id=430 data-nosnippet>430</a>///
-<a href=#431 id=431 data-nosnippet>431</a>/// Resource dependencies create edges in the DAG that enforce correct
-<a href=#432 id=432 data-nosnippet>432</a>/// execution ordering via topological sort.
-<a href=#433 id=433 data-nosnippet>433</a></span><span class="kw">pub fn </span>build_default_graph(config: <span class="kw-2">&amp;</span>FrameGraphConfig) -&gt; RenderGraph {
-<a href=#434 id=434 data-nosnippet>434</a>    <span class="kw">let </span><span class="kw-2">mut </span>graph = RenderGraph::new();
-<a href=#435 id=435 data-nosnippet>435</a>
-<a href=#436 id=436 data-nosnippet>436</a>    <span class="comment">// Pass 1: Cluster binning (compute, produces cluster index data)
-<a href=#437 id=437 data-nosnippet>437</a>    </span><span class="kw">if </span>config.enable_clustered_lighting {
-<a href=#438 id=438 data-nosnippet>438</a>        graph.add_pass(PassDecl {
-<a href=#439 id=439 data-nosnippet>439</a>            name: <span class="string">"cluster_bin"</span>.into(),
-<a href=#440 id=440 data-nosnippet>440</a>            inputs: <span class="macro">vec!</span>[],
-<a href=#441 id=441 data-nosnippet>441</a>            outputs: <span class="macro">vec!</span>[PassOutput {
-<a href=#442 id=442 data-nosnippet>442</a>                name: <span class="string">"cluster_data"</span>.into(),
-<a href=#443 id=443 data-nosnippet>443</a>                desc: TransientTextureDesc::color(
-<a href=#444 id=444 data-nosnippet>444</a>                    <span class="string">"cluster_data"</span>,
-<a href=#445 id=445 data-nosnippet>445</a>                    (config.width / <span class="number">16</span>).max(<span class="number">1</span>),
-<a href=#446 id=446 data-nosnippet>446</a>                    (config.height / <span class="number">16</span>).max(<span class="number">1</span>),
-<a href=#447 id=447 data-nosnippet>447</a>                ),
-<a href=#448 id=448 data-nosnippet>448</a>            }],
-<a href=#449 id=449 data-nosnippet>449</a>            node: Box::new(ClusterBinNode::new()),
-<a href=#450 id=450 data-nosnippet>450</a>        });
-<a href=#451 id=451 data-nosnippet>451</a>    }
-<a href=#452 id=452 data-nosnippet>452</a>
-<a href=#453 id=453 data-nosnippet>453</a>    <span class="comment">// Pass 2: Shadow map generation (depth-only render per cascade)
-<a href=#454 id=454 data-nosnippet>454</a>    </span>graph.add_pass(PassDecl {
-<a href=#455 id=455 data-nosnippet>455</a>        name: <span class="string">"shadow"</span>.into(),
-<a href=#456 id=456 data-nosnippet>456</a>        inputs: <span class="macro">vec!</span>[],
-<a href=#457 id=457 data-nosnippet>457</a>        outputs: <span class="macro">vec!</span>[PassOutput {
-<a href=#458 id=458 data-nosnippet>458</a>            name: <span class="string">"shadow_map"</span>.into(),
-<a href=#459 id=459 data-nosnippet>459</a>            desc: TransientTextureDesc::depth(
-<a href=#460 id=460 data-nosnippet>460</a>                <span class="string">"shadow_map"</span>,
-<a href=#461 id=461 data-nosnippet>461</a>                config.shadow_resolution,
-<a href=#462 id=462 data-nosnippet>462</a>                config.shadow_resolution,
-<a href=#463 id=463 data-nosnippet>463</a>            )
-<a href=#464 id=464 data-nosnippet>464</a>            .with_layers(config.cascade_count),
-<a href=#465 id=465 data-nosnippet>465</a>        }],
-<a href=#466 id=466 data-nosnippet>466</a>        node: Box::new(ShadowPassNode::new(config.cascade_count)),
-<a href=#467 id=467 data-nosnippet>467</a>    });
+<a href=#376 id=376 data-nosnippet>376</a><span class="comment">// ---------------------------------------------------------------------------
+<a href=#377 id=377 data-nosnippet>377</a>// Graph Builder
+<a href=#378 id=378 data-nosnippet>378</a>// ---------------------------------------------------------------------------
+<a href=#379 id=379 data-nosnippet>379</a>
+<a href=#380 id=380 data-nosnippet>380</a></span><span class="doccomment">/// Build the default frame render graph with proper DAG topology.
+<a href=#381 id=381 data-nosnippet>381</a>///
+<a href=#382 id=382 data-nosnippet>382</a>/// The resulting graph encodes a forward+ pipeline with optional post-processing:
+<a href=#383 id=383 data-nosnippet>383</a>///
+<a href=#384 id=384 data-nosnippet>384</a>/// | Pass | Reads | Writes |
+<a href=#385 id=385 data-nosnippet>385</a>/// |------|-------|--------|
+<a href=#386 id=386 data-nosnippet>386</a>/// | `cluster_bin` | — | `cluster_data` |
+<a href=#387 id=387 data-nosnippet>387</a>/// | `shadow` | — | `shadow_map` |
+<a href=#388 id=388 data-nosnippet>388</a>/// | `sky` | — | `hdr_color`, `depth` |
+<a href=#389 id=389 data-nosnippet>389</a>/// | `gtao` | `depth` | `ao_texture` |
+<a href=#390 id=390 data-nosnippet>390</a>/// | `ssgi` | `depth`, `hdr_color` | `gi_irradiance` |
+<a href=#391 id=391 data-nosnippet>391</a>/// | `volumetric_fog` | `depth`, `shadow_map` | `fog_volume` |
+<a href=#392 id=392 data-nosnippet>392</a>/// | `main_scene` | `shadow_map`, `hdr_color`, `depth`, `cluster_data`, `ao_texture`, `gi_irradiance`, `fog_volume` | `scene_color` |
+<a href=#393 id=393 data-nosnippet>393</a>/// | `ssr` | `scene_color`, `depth` | `ssr_reflections` |
+<a href=#394 id=394 data-nosnippet>394</a>/// | `bloom` | `scene_color` | `bloom_texture` |
+<a href=#395 id=395 data-nosnippet>395</a>/// | `tonemap` | `scene_color`, `ssr_reflections`, `bloom_texture` | — (writes to surface) |
+<a href=#396 id=396 data-nosnippet>396</a>///
+<a href=#397 id=397 data-nosnippet>397</a>/// Resource dependencies create edges in the DAG that enforce correct
+<a href=#398 id=398 data-nosnippet>398</a>/// execution ordering via topological sort.
+<a href=#399 id=399 data-nosnippet>399</a></span><span class="kw">pub fn </span>build_default_graph(config: <span class="kw-2">&amp;</span>FrameGraphConfig) -&gt; RenderGraph {
+<a href=#400 id=400 data-nosnippet>400</a>    <span class="kw">let </span><span class="kw-2">mut </span>graph = RenderGraph::new();
+<a href=#401 id=401 data-nosnippet>401</a>
+<a href=#402 id=402 data-nosnippet>402</a>    <span class="comment">// Pass 1: Cluster binning (compute, produces cluster index data)
+<a href=#403 id=403 data-nosnippet>403</a>    </span><span class="kw">if </span>config.enable_clustered_lighting {
+<a href=#404 id=404 data-nosnippet>404</a>        graph.add_pass(PassDecl {
+<a href=#405 id=405 data-nosnippet>405</a>            name: <span class="string">"cluster_bin"</span>.into(),
+<a href=#406 id=406 data-nosnippet>406</a>            inputs: <span class="macro">vec!</span>[],
+<a href=#407 id=407 data-nosnippet>407</a>            outputs: <span class="macro">vec!</span>[PassOutput {
+<a href=#408 id=408 data-nosnippet>408</a>                name: <span class="string">"cluster_data"</span>.into(),
+<a href=#409 id=409 data-nosnippet>409</a>                desc: TransientTextureDesc::color(
+<a href=#410 id=410 data-nosnippet>410</a>                    <span class="string">"cluster_data"</span>,
+<a href=#411 id=411 data-nosnippet>411</a>                    (config.width / <span class="number">16</span>).max(<span class="number">1</span>),
+<a href=#412 id=412 data-nosnippet>412</a>                    (config.height / <span class="number">16</span>).max(<span class="number">1</span>),
+<a href=#413 id=413 data-nosnippet>413</a>                ),
+<a href=#414 id=414 data-nosnippet>414</a>            }],
+<a href=#415 id=415 data-nosnippet>415</a>            node: Box::new(ClusterBinNode::new()),
+<a href=#416 id=416 data-nosnippet>416</a>        });
+<a href=#417 id=417 data-nosnippet>417</a>    }
+<a href=#418 id=418 data-nosnippet>418</a>
+<a href=#419 id=419 data-nosnippet>419</a>    <span class="comment">// Pass 2: Shadow map generation (depth-only render per cascade)
+<a href=#420 id=420 data-nosnippet>420</a>    </span>graph.add_pass(PassDecl {
+<a href=#421 id=421 data-nosnippet>421</a>        name: <span class="string">"shadow"</span>.into(),
+<a href=#422 id=422 data-nosnippet>422</a>        inputs: <span class="macro">vec!</span>[],
+<a href=#423 id=423 data-nosnippet>423</a>        outputs: <span class="macro">vec!</span>[PassOutput {
+<a href=#424 id=424 data-nosnippet>424</a>            name: <span class="string">"shadow_map"</span>.into(),
+<a href=#425 id=425 data-nosnippet>425</a>            desc: TransientTextureDesc::depth(
+<a href=#426 id=426 data-nosnippet>426</a>                <span class="string">"shadow_map"</span>,
+<a href=#427 id=427 data-nosnippet>427</a>                config.shadow_resolution,
+<a href=#428 id=428 data-nosnippet>428</a>                config.shadow_resolution,
+<a href=#429 id=429 data-nosnippet>429</a>            )
+<a href=#430 id=430 data-nosnippet>430</a>            .with_layers(config.cascade_count),
+<a href=#431 id=431 data-nosnippet>431</a>        }],
+<a href=#432 id=432 data-nosnippet>432</a>        node: Box::new(ShadowPassNode::new(config.cascade_count)),
+<a href=#433 id=433 data-nosnippet>433</a>    });
+<a href=#434 id=434 data-nosnippet>434</a>
+<a href=#435 id=435 data-nosnippet>435</a>    <span class="comment">// Pass 3: Sky rendering (creates HDR color target + depth buffer)
+<a href=#436 id=436 data-nosnippet>436</a>    </span>graph.add_pass(PassDecl {
+<a href=#437 id=437 data-nosnippet>437</a>        name: <span class="string">"sky"</span>.into(),
+<a href=#438 id=438 data-nosnippet>438</a>        inputs: <span class="macro">vec!</span>[],
+<a href=#439 id=439 data-nosnippet>439</a>        outputs: <span class="macro">vec!</span>[
+<a href=#440 id=440 data-nosnippet>440</a>            PassOutput {
+<a href=#441 id=441 data-nosnippet>441</a>                name: <span class="string">"hdr_color"</span>.into(),
+<a href=#442 id=442 data-nosnippet>442</a>                desc: TransientTextureDesc::color(<span class="string">"hdr_color"</span>, config.width, config.height),
+<a href=#443 id=443 data-nosnippet>443</a>            },
+<a href=#444 id=444 data-nosnippet>444</a>            PassOutput {
+<a href=#445 id=445 data-nosnippet>445</a>                name: <span class="string">"depth"</span>.into(),
+<a href=#446 id=446 data-nosnippet>446</a>                desc: TransientTextureDesc::depth(<span class="string">"depth"</span>, config.width, config.height),
+<a href=#447 id=447 data-nosnippet>447</a>            },
+<a href=#448 id=448 data-nosnippet>448</a>        ],
+<a href=#449 id=449 data-nosnippet>449</a>        node: Box::new(SkyPassNode::new()),
+<a href=#450 id=450 data-nosnippet>450</a>    });
+<a href=#451 id=451 data-nosnippet>451</a>
+<a href=#452 id=452 data-nosnippet>452</a>    <span class="comment">// Pass 4 (optional): GTAO — ambient occlusion from depth
+<a href=#453 id=453 data-nosnippet>453</a>    </span><span class="kw">if </span>config.enable_gtao {
+<a href=#454 id=454 data-nosnippet>454</a>        graph.add_pass(PassDecl {
+<a href=#455 id=455 data-nosnippet>455</a>            name: <span class="string">"gtao"</span>.into(),
+<a href=#456 id=456 data-nosnippet>456</a>            inputs: <span class="macro">vec!</span>[<span class="string">"depth"</span>.into()],
+<a href=#457 id=457 data-nosnippet>457</a>            outputs: <span class="macro">vec!</span>[PassOutput {
+<a href=#458 id=458 data-nosnippet>458</a>                name: <span class="string">"ao_texture"</span>.into(),
+<a href=#459 id=459 data-nosnippet>459</a>                desc: TransientTextureDesc::color(
+<a href=#460 id=460 data-nosnippet>460</a>                    <span class="string">"ao_texture"</span>,
+<a href=#461 id=461 data-nosnippet>461</a>                    config.width / <span class="number">2</span>,
+<a href=#462 id=462 data-nosnippet>462</a>                    config.height / <span class="number">2</span>,
+<a href=#463 id=463 data-nosnippet>463</a>                ),
+<a href=#464 id=464 data-nosnippet>464</a>            }],
+<a href=#465 id=465 data-nosnippet>465</a>            node: Box::new(GtaoNode::new()),
+<a href=#466 id=466 data-nosnippet>466</a>        });
+<a href=#467 id=467 data-nosnippet>467</a>    }
 <a href=#468 id=468 data-nosnippet>468</a>
-<a href=#469 id=469 data-nosnippet>469</a>    <span class="comment">// Pass 3: Sky rendering (creates HDR color target + depth buffer)
-<a href=#470 id=470 data-nosnippet>470</a>    </span>graph.add_pass(PassDecl {
-<a href=#471 id=471 data-nosnippet>471</a>        name: <span class="string">"sky"</span>.into(),
-<a href=#472 id=472 data-nosnippet>472</a>        inputs: <span class="macro">vec!</span>[],
-<a href=#473 id=473 data-nosnippet>473</a>        outputs: <span class="macro">vec!</span>[
-<a href=#474 id=474 data-nosnippet>474</a>            PassOutput {
-<a href=#475 id=475 data-nosnippet>475</a>                name: <span class="string">"hdr_color"</span>.into(),
-<a href=#476 id=476 data-nosnippet>476</a>                desc: TransientTextureDesc::color(<span class="string">"hdr_color"</span>, config.width, config.height),
-<a href=#477 id=477 data-nosnippet>477</a>            },
-<a href=#478 id=478 data-nosnippet>478</a>            PassOutput {
-<a href=#479 id=479 data-nosnippet>479</a>                name: <span class="string">"depth"</span>.into(),
-<a href=#480 id=480 data-nosnippet>480</a>                desc: TransientTextureDesc::depth(<span class="string">"depth"</span>, config.width, config.height),
-<a href=#481 id=481 data-nosnippet>481</a>            },
-<a href=#482 id=482 data-nosnippet>482</a>        ],
-<a href=#483 id=483 data-nosnippet>483</a>        node: Box::new(SkyPassNode::new()),
-<a href=#484 id=484 data-nosnippet>484</a>    });
+<a href=#469 id=469 data-nosnippet>469</a>    <span class="comment">// Pass 5 (optional): SSGI — indirect diffuse from depth + color
+<a href=#470 id=470 data-nosnippet>470</a>    </span><span class="kw">if </span>config.enable_ssgi {
+<a href=#471 id=471 data-nosnippet>471</a>        graph.add_pass(PassDecl {
+<a href=#472 id=472 data-nosnippet>472</a>            name: <span class="string">"ssgi"</span>.into(),
+<a href=#473 id=473 data-nosnippet>473</a>            inputs: <span class="macro">vec!</span>[<span class="string">"depth"</span>.into(), <span class="string">"hdr_color"</span>.into()],
+<a href=#474 id=474 data-nosnippet>474</a>            outputs: <span class="macro">vec!</span>[PassOutput {
+<a href=#475 id=475 data-nosnippet>475</a>                name: <span class="string">"gi_irradiance"</span>.into(),
+<a href=#476 id=476 data-nosnippet>476</a>                desc: TransientTextureDesc::color(
+<a href=#477 id=477 data-nosnippet>477</a>                    <span class="string">"gi_irradiance"</span>,
+<a href=#478 id=478 data-nosnippet>478</a>                    config.width / <span class="number">2</span>,
+<a href=#479 id=479 data-nosnippet>479</a>                    config.height / <span class="number">2</span>,
+<a href=#480 id=480 data-nosnippet>480</a>                ),
+<a href=#481 id=481 data-nosnippet>481</a>            }],
+<a href=#482 id=482 data-nosnippet>482</a>            node: Box::new(SsgiNode::new()),
+<a href=#483 id=483 data-nosnippet>483</a>        });
+<a href=#484 id=484 data-nosnippet>484</a>    }
 <a href=#485 id=485 data-nosnippet>485</a>
-<a href=#486 id=486 data-nosnippet>486</a>    <span class="comment">// Pass 4 (optional): GTAO — ambient occlusion from depth
-<a href=#487 id=487 data-nosnippet>487</a>    </span><span class="kw">if </span>config.enable_gtao {
-<a href=#488 id=488 data-nosnippet>488</a>        graph.add_pass(PassDecl {
-<a href=#489 id=489 data-nosnippet>489</a>            name: <span class="string">"gtao"</span>.into(),
-<a href=#490 id=490 data-nosnippet>490</a>            inputs: <span class="macro">vec!</span>[<span class="string">"depth"</span>.into()],
-<a href=#491 id=491 data-nosnippet>491</a>            outputs: <span class="macro">vec!</span>[PassOutput {
-<a href=#492 id=492 data-nosnippet>492</a>                name: <span class="string">"ao_texture"</span>.into(),
-<a href=#493 id=493 data-nosnippet>493</a>                desc: TransientTextureDesc::color(
-<a href=#494 id=494 data-nosnippet>494</a>                    <span class="string">"ao_texture"</span>,
-<a href=#495 id=495 data-nosnippet>495</a>                    config.width / <span class="number">2</span>,
-<a href=#496 id=496 data-nosnippet>496</a>                    config.height / <span class="number">2</span>,
-<a href=#497 id=497 data-nosnippet>497</a>                ),
-<a href=#498 id=498 data-nosnippet>498</a>            }],
-<a href=#499 id=499 data-nosnippet>499</a>            node: Box::new(GtaoNode::new()),
-<a href=#500 id=500 data-nosnippet>500</a>        });
-<a href=#501 id=501 data-nosnippet>501</a>    }
-<a href=#502 id=502 data-nosnippet>502</a>
-<a href=#503 id=503 data-nosnippet>503</a>    <span class="comment">// Pass 5 (optional): SSGI — indirect diffuse from depth + color
-<a href=#504 id=504 data-nosnippet>504</a>    </span><span class="kw">if </span>config.enable_ssgi {
-<a href=#505 id=505 data-nosnippet>505</a>        graph.add_pass(PassDecl {
-<a href=#506 id=506 data-nosnippet>506</a>            name: <span class="string">"ssgi"</span>.into(),
-<a href=#507 id=507 data-nosnippet>507</a>            inputs: <span class="macro">vec!</span>[<span class="string">"depth"</span>.into(), <span class="string">"hdr_color"</span>.into()],
-<a href=#508 id=508 data-nosnippet>508</a>            outputs: <span class="macro">vec!</span>[PassOutput {
-<a href=#509 id=509 data-nosnippet>509</a>                name: <span class="string">"gi_irradiance"</span>.into(),
-<a href=#510 id=510 data-nosnippet>510</a>                desc: TransientTextureDesc::color(
-<a href=#511 id=511 data-nosnippet>511</a>                    <span class="string">"gi_irradiance"</span>,
-<a href=#512 id=512 data-nosnippet>512</a>                    config.width / <span class="number">2</span>,
-<a href=#513 id=513 data-nosnippet>513</a>                    config.height / <span class="number">2</span>,
-<a href=#514 id=514 data-nosnippet>514</a>                ),
-<a href=#515 id=515 data-nosnippet>515</a>            }],
-<a href=#516 id=516 data-nosnippet>516</a>            node: Box::new(SsgiNode::new()),
-<a href=#517 id=517 data-nosnippet>517</a>        });
-<a href=#518 id=518 data-nosnippet>518</a>    }
-<a href=#519 id=519 data-nosnippet>519</a>
-<a href=#520 id=520 data-nosnippet>520</a>    <span class="comment">// Pass 6 (optional): Volumetric fog — froxel scattering from depth + shadow
-<a href=#521 id=521 data-nosnippet>521</a>    </span><span class="kw">if </span>config.enable_volumetric_fog {
-<a href=#522 id=522 data-nosnippet>522</a>        graph.add_pass(PassDecl {
-<a href=#523 id=523 data-nosnippet>523</a>            name: <span class="string">"volumetric_fog"</span>.into(),
-<a href=#524 id=524 data-nosnippet>524</a>            inputs: <span class="macro">vec!</span>[<span class="string">"depth"</span>.into(), <span class="string">"shadow_map"</span>.into()],
-<a href=#525 id=525 data-nosnippet>525</a>            outputs: <span class="macro">vec!</span>[PassOutput {
-<a href=#526 id=526 data-nosnippet>526</a>                name: <span class="string">"fog_volume"</span>.into(),
-<a href=#527 id=527 data-nosnippet>527</a>                desc: TransientTextureDesc::color(
-<a href=#528 id=528 data-nosnippet>528</a>                    <span class="string">"fog_volume"</span>,
-<a href=#529 id=529 data-nosnippet>529</a>                    config.width / <span class="number">2</span>,
-<a href=#530 id=530 data-nosnippet>530</a>                    config.height / <span class="number">2</span>,
-<a href=#531 id=531 data-nosnippet>531</a>                ),
-<a href=#532 id=532 data-nosnippet>532</a>            }],
-<a href=#533 id=533 data-nosnippet>533</a>            node: Box::new(VolumetricFogNode::new()),
-<a href=#534 id=534 data-nosnippet>534</a>        });
-<a href=#535 id=535 data-nosnippet>535</a>    }
-<a href=#536 id=536 data-nosnippet>536</a>
-<a href=#537 id=537 data-nosnippet>537</a>    <span class="comment">// Pass 7: Main scene rendering (reads upstream resources, produces scene_color)
-<a href=#538 id=538 data-nosnippet>538</a>    </span><span class="kw">let </span><span class="kw-2">mut </span>main_inputs = <span class="macro">vec!</span>[<span class="string">"shadow_map"</span>.into(), <span class="string">"hdr_color"</span>.into(), <span class="string">"depth"</span>.into()];
-<a href=#539 id=539 data-nosnippet>539</a>    <span class="kw">if </span>config.enable_clustered_lighting {
-<a href=#540 id=540 data-nosnippet>540</a>        main_inputs.push(<span class="string">"cluster_data"</span>.into());
-<a href=#541 id=541 data-nosnippet>541</a>    }
-<a href=#542 id=542 data-nosnippet>542</a>    <span class="kw">if </span>config.enable_gtao {
-<a href=#543 id=543 data-nosnippet>543</a>        main_inputs.push(<span class="string">"ao_texture"</span>.into());
+<a href=#486 id=486 data-nosnippet>486</a>    <span class="comment">// Volumetric fog is VolumetricFogPass on PR #205, not a frame-graph stub.
+<a href=#487 id=487 data-nosnippet>487</a>
+<a href=#488 id=488 data-nosnippet>488</a>    // Pass 7: Main scene rendering (reads upstream resources, produces scene_color)
+<a href=#489 id=489 data-nosnippet>489</a>    </span><span class="kw">let </span><span class="kw-2">mut </span>main_inputs = <span class="macro">vec!</span>[<span class="string">"shadow_map"</span>.into(), <span class="string">"hdr_color"</span>.into(), <span class="string">"depth"</span>.into()];
+<a href=#490 id=490 data-nosnippet>490</a>    <span class="kw">if </span>config.enable_clustered_lighting {
+<a href=#491 id=491 data-nosnippet>491</a>        main_inputs.push(<span class="string">"cluster_data"</span>.into());
+<a href=#492 id=492 data-nosnippet>492</a>    }
+<a href=#493 id=493 data-nosnippet>493</a>    <span class="kw">if </span>config.enable_gtao {
+<a href=#494 id=494 data-nosnippet>494</a>        main_inputs.push(<span class="string">"ao_texture"</span>.into());
+<a href=#495 id=495 data-nosnippet>495</a>    }
+<a href=#496 id=496 data-nosnippet>496</a>    <span class="kw">if </span>config.enable_ssgi {
+<a href=#497 id=497 data-nosnippet>497</a>        main_inputs.push(<span class="string">"gi_irradiance"</span>.into());
+<a href=#498 id=498 data-nosnippet>498</a>    }
+<a href=#499 id=499 data-nosnippet>499</a>
+<a href=#500 id=500 data-nosnippet>500</a>    graph.add_pass(PassDecl {
+<a href=#501 id=501 data-nosnippet>501</a>        name: <span class="string">"main_scene"</span>.into(),
+<a href=#502 id=502 data-nosnippet>502</a>        inputs: main_inputs,
+<a href=#503 id=503 data-nosnippet>503</a>        outputs: <span class="macro">vec!</span>[PassOutput {
+<a href=#504 id=504 data-nosnippet>504</a>            name: <span class="string">"scene_color"</span>.into(),
+<a href=#505 id=505 data-nosnippet>505</a>            desc: TransientTextureDesc::color(<span class="string">"scene_color"</span>, config.width, config.height),
+<a href=#506 id=506 data-nosnippet>506</a>        }],
+<a href=#507 id=507 data-nosnippet>507</a>        node: Box::new(MainSceneNode::new()),
+<a href=#508 id=508 data-nosnippet>508</a>    });
+<a href=#509 id=509 data-nosnippet>509</a>
+<a href=#510 id=510 data-nosnippet>510</a>    <span class="comment">// Pass 8 (optional): SSR — screen-space reflections from scene_color + depth
+<a href=#511 id=511 data-nosnippet>511</a>    </span><span class="kw">if </span>config.enable_ssr {
+<a href=#512 id=512 data-nosnippet>512</a>        graph.add_pass(PassDecl {
+<a href=#513 id=513 data-nosnippet>513</a>            name: <span class="string">"ssr"</span>.into(),
+<a href=#514 id=514 data-nosnippet>514</a>            inputs: <span class="macro">vec!</span>[<span class="string">"scene_color"</span>.into(), <span class="string">"depth"</span>.into()],
+<a href=#515 id=515 data-nosnippet>515</a>            outputs: <span class="macro">vec!</span>[PassOutput {
+<a href=#516 id=516 data-nosnippet>516</a>                name: <span class="string">"ssr_reflections"</span>.into(),
+<a href=#517 id=517 data-nosnippet>517</a>                desc: TransientTextureDesc::color(<span class="string">"ssr_reflections"</span>, config.width, config.height),
+<a href=#518 id=518 data-nosnippet>518</a>            }],
+<a href=#519 id=519 data-nosnippet>519</a>            node: Box::new(SsrNode::new()),
+<a href=#520 id=520 data-nosnippet>520</a>        });
+<a href=#521 id=521 data-nosnippet>521</a>    }
+<a href=#522 id=522 data-nosnippet>522</a>
+<a href=#523 id=523 data-nosnippet>523</a>    <span class="comment">// Pass 9 (optional): Bloom — physically-based bloom from scene_color
+<a href=#524 id=524 data-nosnippet>524</a>    </span><span class="kw">if </span>config.enable_bloom {
+<a href=#525 id=525 data-nosnippet>525</a>        graph.add_pass(PassDecl {
+<a href=#526 id=526 data-nosnippet>526</a>            name: <span class="string">"bloom"</span>.into(),
+<a href=#527 id=527 data-nosnippet>527</a>            inputs: <span class="macro">vec!</span>[<span class="string">"scene_color"</span>.into()],
+<a href=#528 id=528 data-nosnippet>528</a>            outputs: <span class="macro">vec!</span>[PassOutput {
+<a href=#529 id=529 data-nosnippet>529</a>                name: <span class="string">"bloom_texture"</span>.into(),
+<a href=#530 id=530 data-nosnippet>530</a>                desc: TransientTextureDesc::color(
+<a href=#531 id=531 data-nosnippet>531</a>                    <span class="string">"bloom_texture"</span>,
+<a href=#532 id=532 data-nosnippet>532</a>                    config.width / <span class="number">2</span>,
+<a href=#533 id=533 data-nosnippet>533</a>                    config.height / <span class="number">2</span>,
+<a href=#534 id=534 data-nosnippet>534</a>                ),
+<a href=#535 id=535 data-nosnippet>535</a>            }],
+<a href=#536 id=536 data-nosnippet>536</a>            node: Box::new(BloomNode::new()),
+<a href=#537 id=537 data-nosnippet>537</a>        });
+<a href=#538 id=538 data-nosnippet>538</a>    }
+<a href=#539 id=539 data-nosnippet>539</a>
+<a href=#540 id=540 data-nosnippet>540</a>    <span class="comment">// Pass 10: Tonemap (reads scene_color + post-process outputs, writes to surface)
+<a href=#541 id=541 data-nosnippet>541</a>    </span><span class="kw">let </span><span class="kw-2">mut </span>tonemap_inputs = <span class="macro">vec!</span>[<span class="string">"scene_color"</span>.into()];
+<a href=#542 id=542 data-nosnippet>542</a>    <span class="kw">if </span>config.enable_ssr {
+<a href=#543 id=543 data-nosnippet>543</a>        tonemap_inputs.push(<span class="string">"ssr_reflections"</span>.into());
 <a href=#544 id=544 data-nosnippet>544</a>    }
-<a href=#545 id=545 data-nosnippet>545</a>    <span class="kw">if </span>config.enable_ssgi {
-<a href=#546 id=546 data-nosnippet>546</a>        main_inputs.push(<span class="string">"gi_irradiance"</span>.into());
+<a href=#545 id=545 data-nosnippet>545</a>    <span class="kw">if </span>config.enable_bloom {
+<a href=#546 id=546 data-nosnippet>546</a>        tonemap_inputs.push(<span class="string">"bloom_texture"</span>.into());
 <a href=#547 id=547 data-nosnippet>547</a>    }
-<a href=#548 id=548 data-nosnippet>548</a>    <span class="kw">if </span>config.enable_volumetric_fog {
-<a href=#549 id=549 data-nosnippet>549</a>        main_inputs.push(<span class="string">"fog_volume"</span>.into());
-<a href=#550 id=550 data-nosnippet>550</a>    }
-<a href=#551 id=551 data-nosnippet>551</a>
-<a href=#552 id=552 data-nosnippet>552</a>    graph.add_pass(PassDecl {
-<a href=#553 id=553 data-nosnippet>553</a>        name: <span class="string">"main_scene"</span>.into(),
-<a href=#554 id=554 data-nosnippet>554</a>        inputs: main_inputs,
-<a href=#555 id=555 data-nosnippet>555</a>        outputs: <span class="macro">vec!</span>[PassOutput {
-<a href=#556 id=556 data-nosnippet>556</a>            name: <span class="string">"scene_color"</span>.into(),
-<a href=#557 id=557 data-nosnippet>557</a>            desc: TransientTextureDesc::color(<span class="string">"scene_color"</span>, config.width, config.height),
-<a href=#558 id=558 data-nosnippet>558</a>        }],
-<a href=#559 id=559 data-nosnippet>559</a>        node: Box::new(MainSceneNode::new()),
-<a href=#560 id=560 data-nosnippet>560</a>    });
-<a href=#561 id=561 data-nosnippet>561</a>
-<a href=#562 id=562 data-nosnippet>562</a>    <span class="comment">// Pass 8 (optional): SSR — screen-space reflections from scene_color + depth
-<a href=#563 id=563 data-nosnippet>563</a>    </span><span class="kw">if </span>config.enable_ssr {
-<a href=#564 id=564 data-nosnippet>564</a>        graph.add_pass(PassDecl {
-<a href=#565 id=565 data-nosnippet>565</a>            name: <span class="string">"ssr"</span>.into(),
-<a href=#566 id=566 data-nosnippet>566</a>            inputs: <span class="macro">vec!</span>[<span class="string">"scene_color"</span>.into(), <span class="string">"depth"</span>.into()],
-<a href=#567 id=567 data-nosnippet>567</a>            outputs: <span class="macro">vec!</span>[PassOutput {
-<a href=#568 id=568 data-nosnippet>568</a>                name: <span class="string">"ssr_reflections"</span>.into(),
-<a href=#569 id=569 data-nosnippet>569</a>                desc: TransientTextureDesc::color(<span class="string">"ssr_reflections"</span>, config.width, config.height),
-<a href=#570 id=570 data-nosnippet>570</a>            }],
-<a href=#571 id=571 data-nosnippet>571</a>            node: Box::new(SsrNode::new()),
-<a href=#572 id=572 data-nosnippet>572</a>        });
-<a href=#573 id=573 data-nosnippet>573</a>    }
-<a href=#574 id=574 data-nosnippet>574</a>
-<a href=#575 id=575 data-nosnippet>575</a>    <span class="comment">// Pass 9 (optional): Bloom — physically-based bloom from scene_color
-<a href=#576 id=576 data-nosnippet>576</a>    </span><span class="kw">if </span>config.enable_bloom {
-<a href=#577 id=577 data-nosnippet>577</a>        graph.add_pass(PassDecl {
-<a href=#578 id=578 data-nosnippet>578</a>            name: <span class="string">"bloom"</span>.into(),
-<a href=#579 id=579 data-nosnippet>579</a>            inputs: <span class="macro">vec!</span>[<span class="string">"scene_color"</span>.into()],
-<a href=#580 id=580 data-nosnippet>580</a>            outputs: <span class="macro">vec!</span>[PassOutput {
-<a href=#581 id=581 data-nosnippet>581</a>                name: <span class="string">"bloom_texture"</span>.into(),
-<a href=#582 id=582 data-nosnippet>582</a>                desc: TransientTextureDesc::color(
-<a href=#583 id=583 data-nosnippet>583</a>                    <span class="string">"bloom_texture"</span>,
-<a href=#584 id=584 data-nosnippet>584</a>                    config.width / <span class="number">2</span>,
-<a href=#585 id=585 data-nosnippet>585</a>                    config.height / <span class="number">2</span>,
-<a href=#586 id=586 data-nosnippet>586</a>                ),
-<a href=#587 id=587 data-nosnippet>587</a>            }],
-<a href=#588 id=588 data-nosnippet>588</a>            node: Box::new(BloomNode::new()),
-<a href=#589 id=589 data-nosnippet>589</a>        });
-<a href=#590 id=590 data-nosnippet>590</a>    }
-<a href=#591 id=591 data-nosnippet>591</a>
-<a href=#592 id=592 data-nosnippet>592</a>    <span class="comment">// Pass 10: Tonemap (reads scene_color + post-process outputs, writes to surface)
-<a href=#593 id=593 data-nosnippet>593</a>    </span><span class="kw">let </span><span class="kw-2">mut </span>tonemap_inputs = <span class="macro">vec!</span>[<span class="string">"scene_color"</span>.into()];
-<a href=#594 id=594 data-nosnippet>594</a>    <span class="kw">if </span>config.enable_ssr {
-<a href=#595 id=595 data-nosnippet>595</a>        tonemap_inputs.push(<span class="string">"ssr_reflections"</span>.into());
+<a href=#548 id=548 data-nosnippet>548</a>
+<a href=#549 id=549 data-nosnippet>549</a>    graph.add_pass(PassDecl {
+<a href=#550 id=550 data-nosnippet>550</a>        name: <span class="string">"tonemap"</span>.into(),
+<a href=#551 id=551 data-nosnippet>551</a>        inputs: tonemap_inputs,
+<a href=#552 id=552 data-nosnippet>552</a>        outputs: <span class="macro">vec!</span>[],
+<a href=#553 id=553 data-nosnippet>553</a>        node: Box::new(TonemapNode::new()),
+<a href=#554 id=554 data-nosnippet>554</a>    });
+<a href=#555 id=555 data-nosnippet>555</a>
+<a href=#556 id=556 data-nosnippet>556</a>    graph
+<a href=#557 id=557 data-nosnippet>557</a>}
+<a href=#558 id=558 data-nosnippet>558</a>
+<a href=#559 id=559 data-nosnippet>559</a><span class="comment">// ---------------------------------------------------------------------------
+<a href=#560 id=560 data-nosnippet>560</a>// Tests
+<a href=#561 id=561 data-nosnippet>561</a>// ---------------------------------------------------------------------------
+<a href=#562 id=562 data-nosnippet>562</a>
+<a href=#563 id=563 data-nosnippet>563</a></span><span class="attr">#[cfg(test)]
+<a href=#564 id=564 data-nosnippet>564</a></span><span class="kw">mod </span>tests {
+<a href=#565 id=565 data-nosnippet>565</a>    <span class="kw">use super</span>::<span class="kw-2">*</span>;
+<a href=#566 id=566 data-nosnippet>566</a>
+<a href=#567 id=567 data-nosnippet>567</a>    <span class="attr">#[test]
+<a href=#568 id=568 data-nosnippet>568</a>    </span><span class="kw">fn </span>default_config() {
+<a href=#569 id=569 data-nosnippet>569</a>        <span class="kw">let </span>cfg = FrameGraphConfig::default();
+<a href=#570 id=570 data-nosnippet>570</a>        <span class="macro">assert_eq!</span>(cfg.width, <span class="number">1920</span>);
+<a href=#571 id=571 data-nosnippet>571</a>        <span class="macro">assert_eq!</span>(cfg.height, <span class="number">1080</span>);
+<a href=#572 id=572 data-nosnippet>572</a>        <span class="macro">assert_eq!</span>(cfg.shadow_resolution, <span class="number">2048</span>);
+<a href=#573 id=573 data-nosnippet>573</a>        <span class="macro">assert_eq!</span>(cfg.cascade_count, <span class="number">2</span>);
+<a href=#574 id=574 data-nosnippet>574</a>        <span class="macro">assert!</span>(cfg.enable_clustered_lighting);
+<a href=#575 id=575 data-nosnippet>575</a>    }
+<a href=#576 id=576 data-nosnippet>576</a>
+<a href=#577 id=577 data-nosnippet>577</a>    <span class="attr">#[test]
+<a href=#578 id=578 data-nosnippet>578</a>    </span><span class="kw">fn </span>build_graph_compiles() {
+<a href=#579 id=579 data-nosnippet>579</a>        <span class="kw">let </span>cfg = FrameGraphConfig::default();
+<a href=#580 id=580 data-nosnippet>580</a>        <span class="kw">let </span><span class="kw-2">mut </span>graph = build_default_graph(<span class="kw-2">&amp;</span>cfg);
+<a href=#581 id=581 data-nosnippet>581</a>        <span class="kw">let </span>compiled = graph.compile().expect(<span class="string">"graph should compile"</span>);
+<a href=#582 id=582 data-nosnippet>582</a>        <span class="comment">// Default: cluster_bin + shadow + sky + gtao + main_scene + ssr + bloom + tonemap = 8
+<a href=#583 id=583 data-nosnippet>583</a>        </span><span class="macro">assert_eq!</span>(compiled.execution_order.len(), <span class="number">8</span>);
+<a href=#584 id=584 data-nosnippet>584</a>    }
+<a href=#585 id=585 data-nosnippet>585</a>
+<a href=#586 id=586 data-nosnippet>586</a>    <span class="attr">#[test]
+<a href=#587 id=587 data-nosnippet>587</a>    </span><span class="kw">fn </span>build_graph_without_clustering_compiles() {
+<a href=#588 id=588 data-nosnippet>588</a>        <span class="kw">let </span>cfg = FrameGraphConfig {
+<a href=#589 id=589 data-nosnippet>589</a>            enable_clustered_lighting: <span class="bool-val">false</span>,
+<a href=#590 id=590 data-nosnippet>590</a>            ..Default::default()
+<a href=#591 id=591 data-nosnippet>591</a>        };
+<a href=#592 id=592 data-nosnippet>592</a>        <span class="kw">let </span><span class="kw-2">mut </span>graph = build_default_graph(<span class="kw-2">&amp;</span>cfg);
+<a href=#593 id=593 data-nosnippet>593</a>        <span class="kw">let </span>compiled = graph.compile().expect(<span class="string">"graph should compile"</span>);
+<a href=#594 id=594 data-nosnippet>594</a>        <span class="comment">// Without clustering: shadow, sky, gtao, main_scene, ssr, bloom, tonemap = 7
+<a href=#595 id=595 data-nosnippet>595</a>        </span><span class="macro">assert_eq!</span>(compiled.execution_order.len(), <span class="number">7</span>);
 <a href=#596 id=596 data-nosnippet>596</a>    }
-<a href=#597 id=597 data-nosnippet>597</a>    <span class="kw">if </span>config.enable_bloom {
-<a href=#598 id=598 data-nosnippet>598</a>        tonemap_inputs.push(<span class="string">"bloom_texture"</span>.into());
-<a href=#599 id=599 data-nosnippet>599</a>    }
-<a href=#600 id=600 data-nosnippet>600</a>
-<a href=#601 id=601 data-nosnippet>601</a>    graph.add_pass(PassDecl {
-<a href=#602 id=602 data-nosnippet>602</a>        name: <span class="string">"tonemap"</span>.into(),
-<a href=#603 id=603 data-nosnippet>603</a>        inputs: tonemap_inputs,
-<a href=#604 id=604 data-nosnippet>604</a>        outputs: <span class="macro">vec!</span>[],
-<a href=#605 id=605 data-nosnippet>605</a>        node: Box::new(TonemapNode::new()),
-<a href=#606 id=606 data-nosnippet>606</a>    });
-<a href=#607 id=607 data-nosnippet>607</a>
-<a href=#608 id=608 data-nosnippet>608</a>    graph
-<a href=#609 id=609 data-nosnippet>609</a>}
-<a href=#610 id=610 data-nosnippet>610</a>
-<a href=#611 id=611 data-nosnippet>611</a><span class="comment">// ---------------------------------------------------------------------------
-<a href=#612 id=612 data-nosnippet>612</a>// Tests
-<a href=#613 id=613 data-nosnippet>613</a>// ---------------------------------------------------------------------------
-<a href=#614 id=614 data-nosnippet>614</a>
-<a href=#615 id=615 data-nosnippet>615</a></span><span class="attr">#[cfg(test)]
-<a href=#616 id=616 data-nosnippet>616</a></span><span class="kw">mod </span>tests {
-<a href=#617 id=617 data-nosnippet>617</a>    <span class="kw">use super</span>::<span class="kw-2">*</span>;
-<a href=#618 id=618 data-nosnippet>618</a>
-<a href=#619 id=619 data-nosnippet>619</a>    <span class="attr">#[test]
-<a href=#620 id=620 data-nosnippet>620</a>    </span><span class="kw">fn </span>default_config() {
-<a href=#621 id=621 data-nosnippet>621</a>        <span class="kw">let </span>cfg = FrameGraphConfig::default();
-<a href=#622 id=622 data-nosnippet>622</a>        <span class="macro">assert_eq!</span>(cfg.width, <span class="number">1920</span>);
-<a href=#623 id=623 data-nosnippet>623</a>        <span class="macro">assert_eq!</span>(cfg.height, <span class="number">1080</span>);
-<a href=#624 id=624 data-nosnippet>624</a>        <span class="macro">assert_eq!</span>(cfg.shadow_resolution, <span class="number">2048</span>);
-<a href=#625 id=625 data-nosnippet>625</a>        <span class="macro">assert_eq!</span>(cfg.cascade_count, <span class="number">2</span>);
-<a href=#626 id=626 data-nosnippet>626</a>        <span class="macro">assert!</span>(cfg.enable_clustered_lighting);
-<a href=#627 id=627 data-nosnippet>627</a>    }
-<a href=#628 id=628 data-nosnippet>628</a>
-<a href=#629 id=629 data-nosnippet>629</a>    <span class="attr">#[test]
-<a href=#630 id=630 data-nosnippet>630</a>    </span><span class="kw">fn </span>build_graph_compiles() {
-<a href=#631 id=631 data-nosnippet>631</a>        <span class="kw">let </span>cfg = FrameGraphConfig::default();
-<a href=#632 id=632 data-nosnippet>632</a>        <span class="kw">let </span><span class="kw-2">mut </span>graph = build_default_graph(<span class="kw-2">&amp;</span>cfg);
-<a href=#633 id=633 data-nosnippet>633</a>        <span class="kw">let </span>compiled = graph.compile().expect(<span class="string">"graph should compile"</span>);
-<a href=#634 id=634 data-nosnippet>634</a>        <span class="comment">// Default: cluster_bin + shadow + sky + gtao + main_scene + ssr + bloom + tonemap = 8
-<a href=#635 id=635 data-nosnippet>635</a>        </span><span class="macro">assert_eq!</span>(compiled.execution_order.len(), <span class="number">8</span>);
-<a href=#636 id=636 data-nosnippet>636</a>    }
-<a href=#637 id=637 data-nosnippet>637</a>
-<a href=#638 id=638 data-nosnippet>638</a>    <span class="attr">#[test]
-<a href=#639 id=639 data-nosnippet>639</a>    </span><span class="kw">fn </span>build_graph_without_clustering_compiles() {
-<a href=#640 id=640 data-nosnippet>640</a>        <span class="kw">let </span>cfg = FrameGraphConfig {
-<a href=#641 id=641 data-nosnippet>641</a>            enable_clustered_lighting: <span class="bool-val">false</span>,
-<a href=#642 id=642 data-nosnippet>642</a>            ..Default::default()
-<a href=#643 id=643 data-nosnippet>643</a>        };
-<a href=#644 id=644 data-nosnippet>644</a>        <span class="kw">let </span><span class="kw-2">mut </span>graph = build_default_graph(<span class="kw-2">&amp;</span>cfg);
-<a href=#645 id=645 data-nosnippet>645</a>        <span class="kw">let </span>compiled = graph.compile().expect(<span class="string">"graph should compile"</span>);
-<a href=#646 id=646 data-nosnippet>646</a>        <span class="comment">// Without clustering: shadow, sky, gtao, main_scene, ssr, bloom, tonemap = 7
-<a href=#647 id=647 data-nosnippet>647</a>        </span><span class="macro">assert_eq!</span>(compiled.execution_order.len(), <span class="number">7</span>);
-<a href=#648 id=648 data-nosnippet>648</a>    }
-<a href=#649 id=649 data-nosnippet>649</a>
-<a href=#650 id=650 data-nosnippet>650</a>    <span class="attr">#[test]
-<a href=#651 id=651 data-nosnippet>651</a>    </span><span class="kw">fn </span>execution_order_respects_dependencies() {
-<a href=#652 id=652 data-nosnippet>652</a>        <span class="kw">let </span>cfg = FrameGraphConfig::default();
-<a href=#653 id=653 data-nosnippet>653</a>        <span class="kw">let </span><span class="kw-2">mut </span>graph = build_default_graph(<span class="kw-2">&amp;</span>cfg);
-<a href=#654 id=654 data-nosnippet>654</a>        graph.compile().expect(<span class="string">"compile"</span>);
-<a href=#655 id=655 data-nosnippet>655</a>
-<a href=#656 id=656 data-nosnippet>656</a>        <span class="kw">let </span>order = <span class="kw-2">&amp;</span>graph.compiled().unwrap().execution_order;
-<a href=#657 id=657 data-nosnippet>657</a>
-<a href=#658 id=658 data-nosnippet>658</a>        <span class="comment">// Find indices of each pass in execution order
-<a href=#659 id=659 data-nosnippet>659</a>        </span><span class="kw">let </span>pos = |name: <span class="kw-2">&amp;</span>str| -&gt; usize {
-<a href=#660 id=660 data-nosnippet>660</a>            order
-<a href=#661 id=661 data-nosnippet>661</a>                .iter()
-<a href=#662 id=662 data-nosnippet>662</a>                .position(|<span class="kw-2">&amp;</span>idx| graph.node_name(idx).unwrap() == name)
-<a href=#663 id=663 data-nosnippet>663</a>                .unwrap_or_else(|| <span class="macro">panic!</span>(<span class="string">"pass '{}' not found in execution order"</span>, name))
-<a href=#664 id=664 data-nosnippet>664</a>        };
-<a href=#665 id=665 data-nosnippet>665</a>
-<a href=#666 id=666 data-nosnippet>666</a>        <span class="kw">let </span>cluster_bin_pos = pos(<span class="string">"cluster_bin"</span>);
-<a href=#667 id=667 data-nosnippet>667</a>        <span class="kw">let </span>shadow_pos = pos(<span class="string">"shadow"</span>);
-<a href=#668 id=668 data-nosnippet>668</a>        <span class="kw">let </span>sky_pos = pos(<span class="string">"sky"</span>);
-<a href=#669 id=669 data-nosnippet>669</a>        <span class="kw">let </span>gtao_pos = pos(<span class="string">"gtao"</span>);
-<a href=#670 id=670 data-nosnippet>670</a>        <span class="kw">let </span>main_scene_pos = pos(<span class="string">"main_scene"</span>);
-<a href=#671 id=671 data-nosnippet>671</a>        <span class="kw">let </span>ssr_pos = pos(<span class="string">"ssr"</span>);
-<a href=#672 id=672 data-nosnippet>672</a>        <span class="kw">let </span>bloom_pos = pos(<span class="string">"bloom"</span>);
-<a href=#673 id=673 data-nosnippet>673</a>        <span class="kw">let </span>tonemap_pos = pos(<span class="string">"tonemap"</span>);
-<a href=#674 id=674 data-nosnippet>674</a>
-<a href=#675 id=675 data-nosnippet>675</a>        <span class="comment">// main_scene must come after all its producers
-<a href=#676 id=676 data-nosnippet>676</a>        </span><span class="macro">assert!</span>(
-<a href=#677 id=677 data-nosnippet>677</a>            shadow_pos &lt; main_scene_pos,
-<a href=#678 id=678 data-nosnippet>678</a>            <span class="string">"shadow must execute before main_scene"
-<a href=#679 id=679 data-nosnippet>679</a>        </span>);
-<a href=#680 id=680 data-nosnippet>680</a>        <span class="macro">assert!</span>(
-<a href=#681 id=681 data-nosnippet>681</a>            sky_pos &lt; main_scene_pos,
-<a href=#682 id=682 data-nosnippet>682</a>            <span class="string">"sky must execute before main_scene"
-<a href=#683 id=683 data-nosnippet>683</a>        </span>);
-<a href=#684 id=684 data-nosnippet>684</a>        <span class="macro">assert!</span>(
-<a href=#685 id=685 data-nosnippet>685</a>            cluster_bin_pos &lt; main_scene_pos,
-<a href=#686 id=686 data-nosnippet>686</a>            <span class="string">"cluster_bin must execute before main_scene"
-<a href=#687 id=687 data-nosnippet>687</a>        </span>);
-<a href=#688 id=688 data-nosnippet>688</a>        <span class="macro">assert!</span>(
-<a href=#689 id=689 data-nosnippet>689</a>            gtao_pos &lt; main_scene_pos,
-<a href=#690 id=690 data-nosnippet>690</a>            <span class="string">"gtao must execute before main_scene"
-<a href=#691 id=691 data-nosnippet>691</a>        </span>);
-<a href=#692 id=692 data-nosnippet>692</a>        <span class="comment">// post-processing after main_scene
-<a href=#693 id=693 data-nosnippet>693</a>        </span><span class="macro">assert!</span>(
-<a href=#694 id=694 data-nosnippet>694</a>            main_scene_pos &lt; ssr_pos,
-<a href=#695 id=695 data-nosnippet>695</a>            <span class="string">"main_scene must execute before ssr"
-<a href=#696 id=696 data-nosnippet>696</a>        </span>);
-<a href=#697 id=697 data-nosnippet>697</a>        <span class="macro">assert!</span>(
-<a href=#698 id=698 data-nosnippet>698</a>            main_scene_pos &lt; bloom_pos,
-<a href=#699 id=699 data-nosnippet>699</a>            <span class="string">"main_scene must execute before bloom"
-<a href=#700 id=700 data-nosnippet>700</a>        </span>);
-<a href=#701 id=701 data-nosnippet>701</a>        <span class="comment">// tonemap after post-processing
-<a href=#702 id=702 data-nosnippet>702</a>        </span><span class="macro">assert!</span>(ssr_pos &lt; tonemap_pos, <span class="string">"ssr must execute before tonemap"</span>);
-<a href=#703 id=703 data-nosnippet>703</a>        <span class="macro">assert!</span>(bloom_pos &lt; tonemap_pos, <span class="string">"bloom must execute before tonemap"</span>);
-<a href=#704 id=704 data-nosnippet>704</a>    }
-<a href=#705 id=705 data-nosnippet>705</a>
-<a href=#706 id=706 data-nosnippet>706</a>    <span class="attr">#[test]
-<a href=#707 id=707 data-nosnippet>707</a>    </span><span class="kw">fn </span>execution_order_without_clustering() {
-<a href=#708 id=708 data-nosnippet>708</a>        <span class="kw">let </span>cfg = FrameGraphConfig {
-<a href=#709 id=709 data-nosnippet>709</a>            enable_clustered_lighting: <span class="bool-val">false</span>,
-<a href=#710 id=710 data-nosnippet>710</a>            ..Default::default()
-<a href=#711 id=711 data-nosnippet>711</a>        };
-<a href=#712 id=712 data-nosnippet>712</a>        <span class="kw">let </span><span class="kw-2">mut </span>graph = build_default_graph(<span class="kw-2">&amp;</span>cfg);
-<a href=#713 id=713 data-nosnippet>713</a>        graph.compile().expect(<span class="string">"compile"</span>);
-<a href=#714 id=714 data-nosnippet>714</a>
-<a href=#715 id=715 data-nosnippet>715</a>        <span class="kw">let </span>order = <span class="kw-2">&amp;</span>graph.compiled().unwrap().execution_order;
+<a href=#597 id=597 data-nosnippet>597</a>
+<a href=#598 id=598 data-nosnippet>598</a>    <span class="attr">#[test]
+<a href=#599 id=599 data-nosnippet>599</a>    </span><span class="kw">fn </span>execution_order_respects_dependencies() {
+<a href=#600 id=600 data-nosnippet>600</a>        <span class="kw">let </span>cfg = FrameGraphConfig::default();
+<a href=#601 id=601 data-nosnippet>601</a>        <span class="kw">let </span><span class="kw-2">mut </span>graph = build_default_graph(<span class="kw-2">&amp;</span>cfg);
+<a href=#602 id=602 data-nosnippet>602</a>        graph.compile().expect(<span class="string">"compile"</span>);
+<a href=#603 id=603 data-nosnippet>603</a>
+<a href=#604 id=604 data-nosnippet>604</a>        <span class="kw">let </span>order = <span class="kw-2">&amp;</span>graph.compiled().unwrap().execution_order;
+<a href=#605 id=605 data-nosnippet>605</a>
+<a href=#606 id=606 data-nosnippet>606</a>        <span class="comment">// Find indices of each pass in execution order
+<a href=#607 id=607 data-nosnippet>607</a>        </span><span class="kw">let </span>pos = |name: <span class="kw-2">&amp;</span>str| -&gt; usize {
+<a href=#608 id=608 data-nosnippet>608</a>            order
+<a href=#609 id=609 data-nosnippet>609</a>                .iter()
+<a href=#610 id=610 data-nosnippet>610</a>                .position(|<span class="kw-2">&amp;</span>idx| graph.node_name(idx).unwrap() == name)
+<a href=#611 id=611 data-nosnippet>611</a>                .unwrap_or_else(|| <span class="macro">panic!</span>(<span class="string">"pass '{}' not found in execution order"</span>, name))
+<a href=#612 id=612 data-nosnippet>612</a>        };
+<a href=#613 id=613 data-nosnippet>613</a>
+<a href=#614 id=614 data-nosnippet>614</a>        <span class="kw">let </span>cluster_bin_pos = pos(<span class="string">"cluster_bin"</span>);
+<a href=#615 id=615 data-nosnippet>615</a>        <span class="kw">let </span>shadow_pos = pos(<span class="string">"shadow"</span>);
+<a href=#616 id=616 data-nosnippet>616</a>        <span class="kw">let </span>sky_pos = pos(<span class="string">"sky"</span>);
+<a href=#617 id=617 data-nosnippet>617</a>        <span class="kw">let </span>gtao_pos = pos(<span class="string">"gtao"</span>);
+<a href=#618 id=618 data-nosnippet>618</a>        <span class="kw">let </span>main_scene_pos = pos(<span class="string">"main_scene"</span>);
+<a href=#619 id=619 data-nosnippet>619</a>        <span class="kw">let </span>ssr_pos = pos(<span class="string">"ssr"</span>);
+<a href=#620 id=620 data-nosnippet>620</a>        <span class="kw">let </span>bloom_pos = pos(<span class="string">"bloom"</span>);
+<a href=#621 id=621 data-nosnippet>621</a>        <span class="kw">let </span>tonemap_pos = pos(<span class="string">"tonemap"</span>);
+<a href=#622 id=622 data-nosnippet>622</a>
+<a href=#623 id=623 data-nosnippet>623</a>        <span class="comment">// main_scene must come after all its producers
+<a href=#624 id=624 data-nosnippet>624</a>        </span><span class="macro">assert!</span>(
+<a href=#625 id=625 data-nosnippet>625</a>            shadow_pos &lt; main_scene_pos,
+<a href=#626 id=626 data-nosnippet>626</a>            <span class="string">"shadow must execute before main_scene"
+<a href=#627 id=627 data-nosnippet>627</a>        </span>);
+<a href=#628 id=628 data-nosnippet>628</a>        <span class="macro">assert!</span>(
+<a href=#629 id=629 data-nosnippet>629</a>            sky_pos &lt; main_scene_pos,
+<a href=#630 id=630 data-nosnippet>630</a>            <span class="string">"sky must execute before main_scene"
+<a href=#631 id=631 data-nosnippet>631</a>        </span>);
+<a href=#632 id=632 data-nosnippet>632</a>        <span class="macro">assert!</span>(
+<a href=#633 id=633 data-nosnippet>633</a>            cluster_bin_pos &lt; main_scene_pos,
+<a href=#634 id=634 data-nosnippet>634</a>            <span class="string">"cluster_bin must execute before main_scene"
+<a href=#635 id=635 data-nosnippet>635</a>        </span>);
+<a href=#636 id=636 data-nosnippet>636</a>        <span class="macro">assert!</span>(
+<a href=#637 id=637 data-nosnippet>637</a>            gtao_pos &lt; main_scene_pos,
+<a href=#638 id=638 data-nosnippet>638</a>            <span class="string">"gtao must execute before main_scene"
+<a href=#639 id=639 data-nosnippet>639</a>        </span>);
+<a href=#640 id=640 data-nosnippet>640</a>        <span class="comment">// post-processing after main_scene
+<a href=#641 id=641 data-nosnippet>641</a>        </span><span class="macro">assert!</span>(
+<a href=#642 id=642 data-nosnippet>642</a>            main_scene_pos &lt; ssr_pos,
+<a href=#643 id=643 data-nosnippet>643</a>            <span class="string">"main_scene must execute before ssr"
+<a href=#644 id=644 data-nosnippet>644</a>        </span>);
+<a href=#645 id=645 data-nosnippet>645</a>        <span class="macro">assert!</span>(
+<a href=#646 id=646 data-nosnippet>646</a>            main_scene_pos &lt; bloom_pos,
+<a href=#647 id=647 data-nosnippet>647</a>            <span class="string">"main_scene must execute before bloom"
+<a href=#648 id=648 data-nosnippet>648</a>        </span>);
+<a href=#649 id=649 data-nosnippet>649</a>        <span class="comment">// tonemap after post-processing
+<a href=#650 id=650 data-nosnippet>650</a>        </span><span class="macro">assert!</span>(ssr_pos &lt; tonemap_pos, <span class="string">"ssr must execute before tonemap"</span>);
+<a href=#651 id=651 data-nosnippet>651</a>        <span class="macro">assert!</span>(bloom_pos &lt; tonemap_pos, <span class="string">"bloom must execute before tonemap"</span>);
+<a href=#652 id=652 data-nosnippet>652</a>    }
+<a href=#653 id=653 data-nosnippet>653</a>
+<a href=#654 id=654 data-nosnippet>654</a>    <span class="attr">#[test]
+<a href=#655 id=655 data-nosnippet>655</a>    </span><span class="kw">fn </span>execution_order_without_clustering() {
+<a href=#656 id=656 data-nosnippet>656</a>        <span class="kw">let </span>cfg = FrameGraphConfig {
+<a href=#657 id=657 data-nosnippet>657</a>            enable_clustered_lighting: <span class="bool-val">false</span>,
+<a href=#658 id=658 data-nosnippet>658</a>            ..Default::default()
+<a href=#659 id=659 data-nosnippet>659</a>        };
+<a href=#660 id=660 data-nosnippet>660</a>        <span class="kw">let </span><span class="kw-2">mut </span>graph = build_default_graph(<span class="kw-2">&amp;</span>cfg);
+<a href=#661 id=661 data-nosnippet>661</a>        graph.compile().expect(<span class="string">"compile"</span>);
+<a href=#662 id=662 data-nosnippet>662</a>
+<a href=#663 id=663 data-nosnippet>663</a>        <span class="kw">let </span>order = <span class="kw-2">&amp;</span>graph.compiled().unwrap().execution_order;
+<a href=#664 id=664 data-nosnippet>664</a>
+<a href=#665 id=665 data-nosnippet>665</a>        <span class="kw">let </span>pos = |name: <span class="kw-2">&amp;</span>str| -&gt; usize {
+<a href=#666 id=666 data-nosnippet>666</a>            order
+<a href=#667 id=667 data-nosnippet>667</a>                .iter()
+<a href=#668 id=668 data-nosnippet>668</a>                .position(|<span class="kw-2">&amp;</span>idx| graph.node_name(idx).unwrap() == name)
+<a href=#669 id=669 data-nosnippet>669</a>                .unwrap_or_else(|| <span class="macro">panic!</span>(<span class="string">"pass '{}' not found"</span>, name))
+<a href=#670 id=670 data-nosnippet>670</a>        };
+<a href=#671 id=671 data-nosnippet>671</a>
+<a href=#672 id=672 data-nosnippet>672</a>        <span class="kw">let </span>shadow_pos = pos(<span class="string">"shadow"</span>);
+<a href=#673 id=673 data-nosnippet>673</a>        <span class="kw">let </span>sky_pos = pos(<span class="string">"sky"</span>);
+<a href=#674 id=674 data-nosnippet>674</a>        <span class="kw">let </span>main_scene_pos = pos(<span class="string">"main_scene"</span>);
+<a href=#675 id=675 data-nosnippet>675</a>        <span class="kw">let </span>tonemap_pos = pos(<span class="string">"tonemap"</span>);
+<a href=#676 id=676 data-nosnippet>676</a>
+<a href=#677 id=677 data-nosnippet>677</a>        <span class="macro">assert!</span>(shadow_pos &lt; main_scene_pos);
+<a href=#678 id=678 data-nosnippet>678</a>        <span class="macro">assert!</span>(sky_pos &lt; main_scene_pos);
+<a href=#679 id=679 data-nosnippet>679</a>        <span class="macro">assert!</span>(main_scene_pos &lt; tonemap_pos);
+<a href=#680 id=680 data-nosnippet>680</a>    }
+<a href=#681 id=681 data-nosnippet>681</a>
+<a href=#682 id=682 data-nosnippet>682</a>    <span class="attr">#[test]
+<a href=#683 id=683 data-nosnippet>683</a>    </span><span class="kw">fn </span>transient_resources_declared() {
+<a href=#684 id=684 data-nosnippet>684</a>        <span class="kw">let </span>cfg = FrameGraphConfig::default();
+<a href=#685 id=685 data-nosnippet>685</a>        <span class="kw">let </span><span class="kw-2">mut </span>graph = build_default_graph(<span class="kw-2">&amp;</span>cfg);
+<a href=#686 id=686 data-nosnippet>686</a>        graph.compile().expect(<span class="string">"compile"</span>);
+<a href=#687 id=687 data-nosnippet>687</a>
+<a href=#688 id=688 data-nosnippet>688</a>        <span class="kw">let </span>compiled = graph.compiled().unwrap();
+<a href=#689 id=689 data-nosnippet>689</a>        <span class="kw">let </span>resource_names: Vec&lt;<span class="kw-2">&amp;</span>str&gt; = compiled
+<a href=#690 id=690 data-nosnippet>690</a>            .transient_descs
+<a href=#691 id=691 data-nosnippet>691</a>            .iter()
+<a href=#692 id=692 data-nosnippet>692</a>            .map(|(n, <span class="kw">_</span>)| n.as_str())
+<a href=#693 id=693 data-nosnippet>693</a>            .collect();
+<a href=#694 id=694 data-nosnippet>694</a>
+<a href=#695 id=695 data-nosnippet>695</a>        <span class="macro">assert!</span>(
+<a href=#696 id=696 data-nosnippet>696</a>            resource_names.contains(<span class="kw-2">&amp;</span><span class="string">"shadow_map"</span>),
+<a href=#697 id=697 data-nosnippet>697</a>            <span class="string">"shadow_map transient must be declared"
+<a href=#698 id=698 data-nosnippet>698</a>        </span>);
+<a href=#699 id=699 data-nosnippet>699</a>        <span class="macro">assert!</span>(
+<a href=#700 id=700 data-nosnippet>700</a>            resource_names.contains(<span class="kw-2">&amp;</span><span class="string">"hdr_color"</span>),
+<a href=#701 id=701 data-nosnippet>701</a>            <span class="string">"hdr_color transient must be declared"
+<a href=#702 id=702 data-nosnippet>702</a>        </span>);
+<a href=#703 id=703 data-nosnippet>703</a>        <span class="macro">assert!</span>(
+<a href=#704 id=704 data-nosnippet>704</a>            resource_names.contains(<span class="kw-2">&amp;</span><span class="string">"depth"</span>),
+<a href=#705 id=705 data-nosnippet>705</a>            <span class="string">"depth transient must be declared"
+<a href=#706 id=706 data-nosnippet>706</a>        </span>);
+<a href=#707 id=707 data-nosnippet>707</a>        <span class="macro">assert!</span>(
+<a href=#708 id=708 data-nosnippet>708</a>            resource_names.contains(<span class="kw-2">&amp;</span><span class="string">"scene_color"</span>),
+<a href=#709 id=709 data-nosnippet>709</a>            <span class="string">"scene_color transient must be declared"
+<a href=#710 id=710 data-nosnippet>710</a>        </span>);
+<a href=#711 id=711 data-nosnippet>711</a>        <span class="macro">assert!</span>(
+<a href=#712 id=712 data-nosnippet>712</a>            resource_names.contains(<span class="kw-2">&amp;</span><span class="string">"cluster_data"</span>),
+<a href=#713 id=713 data-nosnippet>713</a>            <span class="string">"cluster_data transient must be declared"
+<a href=#714 id=714 data-nosnippet>714</a>        </span>);
+<a href=#715 id=715 data-nosnippet>715</a>    }
 <a href=#716 id=716 data-nosnippet>716</a>
-<a href=#717 id=717 data-nosnippet>717</a>        <span class="kw">let </span>pos = |name: <span class="kw-2">&amp;</span>str| -&gt; usize {
-<a href=#718 id=718 data-nosnippet>718</a>            order
-<a href=#719 id=719 data-nosnippet>719</a>                .iter()
-<a href=#720 id=720 data-nosnippet>720</a>                .position(|<span class="kw-2">&amp;</span>idx| graph.node_name(idx).unwrap() == name)
-<a href=#721 id=721 data-nosnippet>721</a>                .unwrap_or_else(|| <span class="macro">panic!</span>(<span class="string">"pass '{}' not found"</span>, name))
-<a href=#722 id=722 data-nosnippet>722</a>        };
-<a href=#723 id=723 data-nosnippet>723</a>
-<a href=#724 id=724 data-nosnippet>724</a>        <span class="kw">let </span>shadow_pos = pos(<span class="string">"shadow"</span>);
-<a href=#725 id=725 data-nosnippet>725</a>        <span class="kw">let </span>sky_pos = pos(<span class="string">"sky"</span>);
-<a href=#726 id=726 data-nosnippet>726</a>        <span class="kw">let </span>main_scene_pos = pos(<span class="string">"main_scene"</span>);
-<a href=#727 id=727 data-nosnippet>727</a>        <span class="kw">let </span>tonemap_pos = pos(<span class="string">"tonemap"</span>);
-<a href=#728 id=728 data-nosnippet>728</a>
-<a href=#729 id=729 data-nosnippet>729</a>        <span class="macro">assert!</span>(shadow_pos &lt; main_scene_pos);
-<a href=#730 id=730 data-nosnippet>730</a>        <span class="macro">assert!</span>(sky_pos &lt; main_scene_pos);
-<a href=#731 id=731 data-nosnippet>731</a>        <span class="macro">assert!</span>(main_scene_pos &lt; tonemap_pos);
-<a href=#732 id=732 data-nosnippet>732</a>    }
-<a href=#733 id=733 data-nosnippet>733</a>
-<a href=#734 id=734 data-nosnippet>734</a>    <span class="attr">#[test]
-<a href=#735 id=735 data-nosnippet>735</a>    </span><span class="kw">fn </span>transient_resources_declared() {
-<a href=#736 id=736 data-nosnippet>736</a>        <span class="kw">let </span>cfg = FrameGraphConfig::default();
-<a href=#737 id=737 data-nosnippet>737</a>        <span class="kw">let </span><span class="kw-2">mut </span>graph = build_default_graph(<span class="kw-2">&amp;</span>cfg);
-<a href=#738 id=738 data-nosnippet>738</a>        graph.compile().expect(<span class="string">"compile"</span>);
-<a href=#739 id=739 data-nosnippet>739</a>
-<a href=#740 id=740 data-nosnippet>740</a>        <span class="kw">let </span>compiled = graph.compiled().unwrap();
-<a href=#741 id=741 data-nosnippet>741</a>        <span class="kw">let </span>resource_names: Vec&lt;<span class="kw-2">&amp;</span>str&gt; = compiled
-<a href=#742 id=742 data-nosnippet>742</a>            .transient_descs
-<a href=#743 id=743 data-nosnippet>743</a>            .iter()
-<a href=#744 id=744 data-nosnippet>744</a>            .map(|(n, <span class="kw">_</span>)| n.as_str())
-<a href=#745 id=745 data-nosnippet>745</a>            .collect();
+<a href=#717 id=717 data-nosnippet>717</a>    <span class="attr">#[test]
+<a href=#718 id=718 data-nosnippet>718</a>    </span><span class="kw">fn </span>release_points_exist() {
+<a href=#719 id=719 data-nosnippet>719</a>        <span class="kw">let </span>cfg = FrameGraphConfig::default();
+<a href=#720 id=720 data-nosnippet>720</a>        <span class="kw">let </span><span class="kw-2">mut </span>graph = build_default_graph(<span class="kw-2">&amp;</span>cfg);
+<a href=#721 id=721 data-nosnippet>721</a>        graph.compile().expect(<span class="string">"compile"</span>);
+<a href=#722 id=722 data-nosnippet>722</a>
+<a href=#723 id=723 data-nosnippet>723</a>        <span class="kw">let </span>compiled = graph.compiled().unwrap();
+<a href=#724 id=724 data-nosnippet>724</a>        <span class="comment">// At least some resources should have release points
+<a href=#725 id=725 data-nosnippet>725</a>        </span><span class="macro">assert!</span>(
+<a href=#726 id=726 data-nosnippet>726</a>            !compiled.release_points.is_empty(),
+<a href=#727 id=727 data-nosnippet>727</a>            <span class="string">"release points should be computed"
+<a href=#728 id=728 data-nosnippet>728</a>        </span>);
+<a href=#729 id=729 data-nosnippet>729</a>    }
+<a href=#730 id=730 data-nosnippet>730</a>
+<a href=#731 id=731 data-nosnippet>731</a>    <span class="attr">#[test]
+<a href=#732 id=732 data-nosnippet>732</a>    </span><span class="kw">fn </span>node_names_correct() {
+<a href=#733 id=733 data-nosnippet>733</a>        <span class="kw">let </span>cfg = FrameGraphConfig::default();
+<a href=#734 id=734 data-nosnippet>734</a>        <span class="kw">let </span>graph = build_default_graph(<span class="kw-2">&amp;</span>cfg);
+<a href=#735 id=735 data-nosnippet>735</a>        <span class="comment">// Default: cluster_bin, shadow, sky, gtao, main_scene, ssr, bloom, tonemap = 8
+<a href=#736 id=736 data-nosnippet>736</a>        </span><span class="macro">assert_eq!</span>(graph.node_count(), <span class="number">8</span>);
+<a href=#737 id=737 data-nosnippet>737</a>        <span class="macro">assert_eq!</span>(graph.node_name(<span class="number">0</span>), <span class="prelude-val">Some</span>(<span class="string">"cluster_bin"</span>));
+<a href=#738 id=738 data-nosnippet>738</a>        <span class="macro">assert_eq!</span>(graph.node_name(<span class="number">1</span>), <span class="prelude-val">Some</span>(<span class="string">"shadow"</span>));
+<a href=#739 id=739 data-nosnippet>739</a>        <span class="macro">assert_eq!</span>(graph.node_name(<span class="number">2</span>), <span class="prelude-val">Some</span>(<span class="string">"sky"</span>));
+<a href=#740 id=740 data-nosnippet>740</a>        <span class="macro">assert_eq!</span>(graph.node_name(<span class="number">3</span>), <span class="prelude-val">Some</span>(<span class="string">"gtao"</span>));
+<a href=#741 id=741 data-nosnippet>741</a>        <span class="macro">assert_eq!</span>(graph.node_name(<span class="number">4</span>), <span class="prelude-val">Some</span>(<span class="string">"main_scene"</span>));
+<a href=#742 id=742 data-nosnippet>742</a>        <span class="macro">assert_eq!</span>(graph.node_name(<span class="number">5</span>), <span class="prelude-val">Some</span>(<span class="string">"ssr"</span>));
+<a href=#743 id=743 data-nosnippet>743</a>        <span class="macro">assert_eq!</span>(graph.node_name(<span class="number">6</span>), <span class="prelude-val">Some</span>(<span class="string">"bloom"</span>));
+<a href=#744 id=744 data-nosnippet>744</a>        <span class="macro">assert_eq!</span>(graph.node_name(<span class="number">7</span>), <span class="prelude-val">Some</span>(<span class="string">"tonemap"</span>));
+<a href=#745 id=745 data-nosnippet>745</a>    }
 <a href=#746 id=746 data-nosnippet>746</a>
-<a href=#747 id=747 data-nosnippet>747</a>        <span class="macro">assert!</span>(
-<a href=#748 id=748 data-nosnippet>748</a>            resource_names.contains(<span class="kw-2">&amp;</span><span class="string">"shadow_map"</span>),
-<a href=#749 id=749 data-nosnippet>749</a>            <span class="string">"shadow_map transient must be declared"
-<a href=#750 id=750 data-nosnippet>750</a>        </span>);
-<a href=#751 id=751 data-nosnippet>751</a>        <span class="macro">assert!</span>(
-<a href=#752 id=752 data-nosnippet>752</a>            resource_names.contains(<span class="kw-2">&amp;</span><span class="string">"hdr_color"</span>),
-<a href=#753 id=753 data-nosnippet>753</a>            <span class="string">"hdr_color transient must be declared"
-<a href=#754 id=754 data-nosnippet>754</a>        </span>);
-<a href=#755 id=755 data-nosnippet>755</a>        <span class="macro">assert!</span>(
-<a href=#756 id=756 data-nosnippet>756</a>            resource_names.contains(<span class="kw-2">&amp;</span><span class="string">"depth"</span>),
-<a href=#757 id=757 data-nosnippet>757</a>            <span class="string">"depth transient must be declared"
-<a href=#758 id=758 data-nosnippet>758</a>        </span>);
-<a href=#759 id=759 data-nosnippet>759</a>        <span class="macro">assert!</span>(
-<a href=#760 id=760 data-nosnippet>760</a>            resource_names.contains(<span class="kw-2">&amp;</span><span class="string">"scene_color"</span>),
-<a href=#761 id=761 data-nosnippet>761</a>            <span class="string">"scene_color transient must be declared"
-<a href=#762 id=762 data-nosnippet>762</a>        </span>);
-<a href=#763 id=763 data-nosnippet>763</a>        <span class="macro">assert!</span>(
-<a href=#764 id=764 data-nosnippet>764</a>            resource_names.contains(<span class="kw-2">&amp;</span><span class="string">"cluster_data"</span>),
-<a href=#765 id=765 data-nosnippet>765</a>            <span class="string">"cluster_data transient must be declared"
-<a href=#766 id=766 data-nosnippet>766</a>        </span>);
-<a href=#767 id=767 data-nosnippet>767</a>    }
-<a href=#768 id=768 data-nosnippet>768</a>
-<a href=#769 id=769 data-nosnippet>769</a>    <span class="attr">#[test]
-<a href=#770 id=770 data-nosnippet>770</a>    </span><span class="kw">fn </span>release_points_exist() {
-<a href=#771 id=771 data-nosnippet>771</a>        <span class="kw">let </span>cfg = FrameGraphConfig::default();
-<a href=#772 id=772 data-nosnippet>772</a>        <span class="kw">let </span><span class="kw-2">mut </span>graph = build_default_graph(<span class="kw-2">&amp;</span>cfg);
-<a href=#773 id=773 data-nosnippet>773</a>        graph.compile().expect(<span class="string">"compile"</span>);
-<a href=#774 id=774 data-nosnippet>774</a>
-<a href=#775 id=775 data-nosnippet>775</a>        <span class="kw">let </span>compiled = graph.compiled().unwrap();
-<a href=#776 id=776 data-nosnippet>776</a>        <span class="comment">// At least some resources should have release points
-<a href=#777 id=777 data-nosnippet>777</a>        </span><span class="macro">assert!</span>(
-<a href=#778 id=778 data-nosnippet>778</a>            !compiled.release_points.is_empty(),
-<a href=#779 id=779 data-nosnippet>779</a>            <span class="string">"release points should be computed"
-<a href=#780 id=780 data-nosnippet>780</a>        </span>);
-<a href=#781 id=781 data-nosnippet>781</a>    }
-<a href=#782 id=782 data-nosnippet>782</a>
-<a href=#783 id=783 data-nosnippet>783</a>    <span class="attr">#[test]
-<a href=#784 id=784 data-nosnippet>784</a>    </span><span class="kw">fn </span>node_names_correct() {
-<a href=#785 id=785 data-nosnippet>785</a>        <span class="kw">let </span>cfg = FrameGraphConfig::default();
-<a href=#786 id=786 data-nosnippet>786</a>        <span class="kw">let </span>graph = build_default_graph(<span class="kw-2">&amp;</span>cfg);
-<a href=#787 id=787 data-nosnippet>787</a>        <span class="comment">// Default: cluster_bin, shadow, sky, gtao, main_scene, ssr, bloom, tonemap = 8
-<a href=#788 id=788 data-nosnippet>788</a>        </span><span class="macro">assert_eq!</span>(graph.node_count(), <span class="number">8</span>);
-<a href=#789 id=789 data-nosnippet>789</a>        <span class="macro">assert_eq!</span>(graph.node_name(<span class="number">0</span>), <span class="prelude-val">Some</span>(<span class="string">"cluster_bin"</span>));
-<a href=#790 id=790 data-nosnippet>790</a>        <span class="macro">assert_eq!</span>(graph.node_name(<span class="number">1</span>), <span class="prelude-val">Some</span>(<span class="string">"shadow"</span>));
-<a href=#791 id=791 data-nosnippet>791</a>        <span class="macro">assert_eq!</span>(graph.node_name(<span class="number">2</span>), <span class="prelude-val">Some</span>(<span class="string">"sky"</span>));
-<a href=#792 id=792 data-nosnippet>792</a>        <span class="macro">assert_eq!</span>(graph.node_name(<span class="number">3</span>), <span class="prelude-val">Some</span>(<span class="string">"gtao"</span>));
-<a href=#793 id=793 data-nosnippet>793</a>        <span class="macro">assert_eq!</span>(graph.node_name(<span class="number">4</span>), <span class="prelude-val">Some</span>(<span class="string">"main_scene"</span>));
-<a href=#794 id=794 data-nosnippet>794</a>        <span class="macro">assert_eq!</span>(graph.node_name(<span class="number">5</span>), <span class="prelude-val">Some</span>(<span class="string">"ssr"</span>));
-<a href=#795 id=795 data-nosnippet>795</a>        <span class="macro">assert_eq!</span>(graph.node_name(<span class="number">6</span>), <span class="prelude-val">Some</span>(<span class="string">"bloom"</span>));
-<a href=#796 id=796 data-nosnippet>796</a>        <span class="macro">assert_eq!</span>(graph.node_name(<span class="number">7</span>), <span class="prelude-val">Some</span>(<span class="string">"tonemap"</span>));
-<a href=#797 id=797 data-nosnippet>797</a>    }
-<a href=#798 id=798 data-nosnippet>798</a>
-<a href=#799 id=799 data-nosnippet>799</a>    <span class="attr">#[test]
-<a href=#800 id=800 data-nosnippet>800</a>    </span><span class="kw">fn </span>shadow_pass_cascade_count() {
-<a href=#801 id=801 data-nosnippet>801</a>        <span class="kw">let </span>node = ShadowPassNode::new(<span class="number">4</span>);
-<a href=#802 id=802 data-nosnippet>802</a>        <span class="macro">assert_eq!</span>(node.cascade_count(), <span class="number">4</span>);
-<a href=#803 id=803 data-nosnippet>803</a>        <span class="macro">assert_eq!</span>(node.name(), <span class="string">"shadow"</span>);
-<a href=#804 id=804 data-nosnippet>804</a>    }
-<a href=#805 id=805 data-nosnippet>805</a>
-<a href=#806 id=806 data-nosnippet>806</a>    <span class="attr">#[test]
-<a href=#807 id=807 data-nosnippet>807</a>    </span><span class="kw">fn </span>small_resolution_does_not_panic() {
-<a href=#808 id=808 data-nosnippet>808</a>        <span class="kw">let </span>cfg = FrameGraphConfig {
-<a href=#809 id=809 data-nosnippet>809</a>            width: <span class="number">1</span>,
-<a href=#810 id=810 data-nosnippet>810</a>            height: <span class="number">1</span>,
-<a href=#811 id=811 data-nosnippet>811</a>            shadow_resolution: <span class="number">64</span>,
-<a href=#812 id=812 data-nosnippet>812</a>            cascade_count: <span class="number">1</span>,
-<a href=#813 id=813 data-nosnippet>813</a>            ..Default::default()
-<a href=#814 id=814 data-nosnippet>814</a>        };
-<a href=#815 id=815 data-nosnippet>815</a>        <span class="kw">let </span><span class="kw-2">mut </span>graph = build_default_graph(<span class="kw-2">&amp;</span>cfg);
-<a href=#816 id=816 data-nosnippet>816</a>        graph.compile().expect(<span class="string">"tiny resolution should compile"</span>);
-<a href=#817 id=817 data-nosnippet>817</a>    }
-<a href=#818 id=818 data-nosnippet>818</a>
-<a href=#819 id=819 data-nosnippet>819</a>    <span class="attr">#[test]
-<a href=#820 id=820 data-nosnippet>820</a>    </span><span class="kw">fn </span>minimal_graph_compiles() {
-<a href=#821 id=821 data-nosnippet>821</a>        <span class="kw">let </span>cfg = FrameGraphConfig {
-<a href=#822 id=822 data-nosnippet>822</a>            enable_clustered_lighting: <span class="bool-val">false</span>,
-<a href=#823 id=823 data-nosnippet>823</a>            enable_gtao: <span class="bool-val">false</span>,
-<a href=#824 id=824 data-nosnippet>824</a>            enable_ssgi: <span class="bool-val">false</span>,
-<a href=#825 id=825 data-nosnippet>825</a>            enable_ssr: <span class="bool-val">false</span>,
-<a href=#826 id=826 data-nosnippet>826</a>            enable_bloom: <span class="bool-val">false</span>,
-<a href=#827 id=827 data-nosnippet>827</a>            enable_volumetric_fog: <span class="bool-val">false</span>,
-<a href=#828 id=828 data-nosnippet>828</a>            ..Default::default()
-<a href=#829 id=829 data-nosnippet>829</a>        };
-<a href=#830 id=830 data-nosnippet>830</a>        <span class="kw">let </span><span class="kw-2">mut </span>graph = build_default_graph(<span class="kw-2">&amp;</span>cfg);
-<a href=#831 id=831 data-nosnippet>831</a>        <span class="kw">let </span>compiled = graph.compile().expect(<span class="string">"minimal graph should compile"</span>);
-<a href=#832 id=832 data-nosnippet>832</a>        <span class="comment">// shadow, sky, main_scene, tonemap = 4
-<a href=#833 id=833 data-nosnippet>833</a>        </span><span class="macro">assert_eq!</span>(compiled.execution_order.len(), <span class="number">4</span>);
-<a href=#834 id=834 data-nosnippet>834</a>    }
-<a href=#835 id=835 data-nosnippet>835</a>
-<a href=#836 id=836 data-nosnippet>836</a>    <span class="attr">#[test]
-<a href=#837 id=837 data-nosnippet>837</a>    </span><span class="kw">fn </span>full_graph_compiles() {
-<a href=#838 id=838 data-nosnippet>838</a>        <span class="kw">let </span>cfg = FrameGraphConfig {
-<a href=#839 id=839 data-nosnippet>839</a>            enable_clustered_lighting: <span class="bool-val">true</span>,
-<a href=#840 id=840 data-nosnippet>840</a>            enable_gtao: <span class="bool-val">true</span>,
-<a href=#841 id=841 data-nosnippet>841</a>            enable_ssgi: <span class="bool-val">true</span>,
-<a href=#842 id=842 data-nosnippet>842</a>            enable_ssr: <span class="bool-val">true</span>,
-<a href=#843 id=843 data-nosnippet>843</a>            enable_bloom: <span class="bool-val">true</span>,
-<a href=#844 id=844 data-nosnippet>844</a>            enable_volumetric_fog: <span class="bool-val">true</span>,
-<a href=#845 id=845 data-nosnippet>845</a>            ..Default::default()
-<a href=#846 id=846 data-nosnippet>846</a>        };
-<a href=#847 id=847 data-nosnippet>847</a>        <span class="kw">let </span><span class="kw-2">mut </span>graph = build_default_graph(<span class="kw-2">&amp;</span>cfg);
-<a href=#848 id=848 data-nosnippet>848</a>        <span class="kw">let </span>compiled = graph.compile().expect(<span class="string">"full graph should compile"</span>);
-<a href=#849 id=849 data-nosnippet>849</a>        <span class="comment">// All passes: cluster_bin + shadow + sky + gtao + ssgi + volumetric_fog +
-<a href=#850 id=850 data-nosnippet>850</a>        //             main_scene + ssr + bloom + tonemap = 10
-<a href=#851 id=851 data-nosnippet>851</a>        </span><span class="macro">assert_eq!</span>(compiled.execution_order.len(), <span class="number">10</span>);
-<a href=#852 id=852 data-nosnippet>852</a>    }
-<a href=#853 id=853 data-nosnippet>853</a>
-<a href=#854 id=854 data-nosnippet>854</a>    <span class="attr">#[test]
-<a href=#855 id=855 data-nosnippet>855</a>    </span><span class="kw">fn </span>cluster_data_aliasable_with_depth() {
-<a href=#856 id=856 data-nosnippet>856</a>        <span class="comment">// cluster_data and depth have non-overlapping lifetimes if
-<a href=#857 id=857 data-nosnippet>857</a>        // cluster_data is consumed by main_scene (same as depth).
-<a href=#858 id=858 data-nosnippet>858</a>        // The aliasing analysis should consider them as candidates.
-<a href=#859 id=859 data-nosnippet>859</a>        </span><span class="kw">let </span>cfg = FrameGraphConfig::default();
-<a href=#860 id=860 data-nosnippet>860</a>        <span class="kw">let </span><span class="kw-2">mut </span>graph = build_default_graph(<span class="kw-2">&amp;</span>cfg);
-<a href=#861 id=861 data-nosnippet>861</a>        graph.compile().expect(<span class="string">"compile"</span>);
-<a href=#862 id=862 data-nosnippet>862</a>
-<a href=#863 id=863 data-nosnippet>863</a>        <span class="kw">let </span>compiled = graph.compiled().unwrap();
-<a href=#864 id=864 data-nosnippet>864</a>        <span class="comment">// Just verify aliasing analysis ran without panicking and
-<a href=#865 id=865 data-nosnippet>865</a>        // produced groups (may or may not alias depending on format).
-<a href=#866 id=866 data-nosnippet>866</a>        </span><span class="kw">let </span>_groups = <span class="kw-2">&amp;</span>compiled.alias_groups;
-<a href=#867 id=867 data-nosnippet>867</a>    }
-<a href=#868 id=868 data-nosnippet>868</a>}</code></pre></div></section></main></body></html>
+<a href=#747 id=747 data-nosnippet>747</a>    <span class="attr">#[test]
+<a href=#748 id=748 data-nosnippet>748</a>    </span><span class="kw">fn </span>shadow_pass_cascade_count() {
+<a href=#749 id=749 data-nosnippet>749</a>        <span class="kw">let </span>node = ShadowPassNode::new(<span class="number">4</span>);
+<a href=#750 id=750 data-nosnippet>750</a>        <span class="macro">assert_eq!</span>(node.cascade_count(), <span class="number">4</span>);
+<a href=#751 id=751 data-nosnippet>751</a>        <span class="macro">assert_eq!</span>(node.name(), <span class="string">"shadow"</span>);
+<a href=#752 id=752 data-nosnippet>752</a>    }
+<a href=#753 id=753 data-nosnippet>753</a>
+<a href=#754 id=754 data-nosnippet>754</a>    <span class="attr">#[test]
+<a href=#755 id=755 data-nosnippet>755</a>    </span><span class="kw">fn </span>small_resolution_does_not_panic() {
+<a href=#756 id=756 data-nosnippet>756</a>        <span class="kw">let </span>cfg = FrameGraphConfig {
+<a href=#757 id=757 data-nosnippet>757</a>            width: <span class="number">1</span>,
+<a href=#758 id=758 data-nosnippet>758</a>            height: <span class="number">1</span>,
+<a href=#759 id=759 data-nosnippet>759</a>            shadow_resolution: <span class="number">64</span>,
+<a href=#760 id=760 data-nosnippet>760</a>            cascade_count: <span class="number">1</span>,
+<a href=#761 id=761 data-nosnippet>761</a>            ..Default::default()
+<a href=#762 id=762 data-nosnippet>762</a>        };
+<a href=#763 id=763 data-nosnippet>763</a>        <span class="kw">let </span><span class="kw-2">mut </span>graph = build_default_graph(<span class="kw-2">&amp;</span>cfg);
+<a href=#764 id=764 data-nosnippet>764</a>        graph.compile().expect(<span class="string">"tiny resolution should compile"</span>);
+<a href=#765 id=765 data-nosnippet>765</a>    }
+<a href=#766 id=766 data-nosnippet>766</a>
+<a href=#767 id=767 data-nosnippet>767</a>    <span class="attr">#[test]
+<a href=#768 id=768 data-nosnippet>768</a>    </span><span class="kw">fn </span>minimal_graph_compiles() {
+<a href=#769 id=769 data-nosnippet>769</a>        <span class="kw">let </span>cfg = FrameGraphConfig {
+<a href=#770 id=770 data-nosnippet>770</a>            enable_clustered_lighting: <span class="bool-val">false</span>,
+<a href=#771 id=771 data-nosnippet>771</a>            enable_gtao: <span class="bool-val">false</span>,
+<a href=#772 id=772 data-nosnippet>772</a>            enable_ssgi: <span class="bool-val">false</span>,
+<a href=#773 id=773 data-nosnippet>773</a>            enable_ssr: <span class="bool-val">false</span>,
+<a href=#774 id=774 data-nosnippet>774</a>            enable_bloom: <span class="bool-val">false</span>,
+<a href=#775 id=775 data-nosnippet>775</a>            enable_volumetric_fog: <span class="bool-val">false</span>,
+<a href=#776 id=776 data-nosnippet>776</a>            ..Default::default()
+<a href=#777 id=777 data-nosnippet>777</a>        };
+<a href=#778 id=778 data-nosnippet>778</a>        <span class="kw">let </span><span class="kw-2">mut </span>graph = build_default_graph(<span class="kw-2">&amp;</span>cfg);
+<a href=#779 id=779 data-nosnippet>779</a>        <span class="kw">let </span>compiled = graph.compile().expect(<span class="string">"minimal graph should compile"</span>);
+<a href=#780 id=780 data-nosnippet>780</a>        <span class="comment">// shadow, sky, main_scene, tonemap = 4
+<a href=#781 id=781 data-nosnippet>781</a>        </span><span class="macro">assert_eq!</span>(compiled.execution_order.len(), <span class="number">4</span>);
+<a href=#782 id=782 data-nosnippet>782</a>    }
+<a href=#783 id=783 data-nosnippet>783</a>
+<a href=#784 id=784 data-nosnippet>784</a>    <span class="attr">#[test]
+<a href=#785 id=785 data-nosnippet>785</a>    </span><span class="kw">fn </span>full_graph_compiles() {
+<a href=#786 id=786 data-nosnippet>786</a>        <span class="kw">let </span>cfg = FrameGraphConfig {
+<a href=#787 id=787 data-nosnippet>787</a>            enable_clustered_lighting: <span class="bool-val">true</span>,
+<a href=#788 id=788 data-nosnippet>788</a>            enable_gtao: <span class="bool-val">true</span>,
+<a href=#789 id=789 data-nosnippet>789</a>            enable_ssgi: <span class="bool-val">true</span>,
+<a href=#790 id=790 data-nosnippet>790</a>            enable_ssr: <span class="bool-val">true</span>,
+<a href=#791 id=791 data-nosnippet>791</a>            enable_bloom: <span class="bool-val">true</span>,
+<a href=#792 id=792 data-nosnippet>792</a>            enable_volumetric_fog: <span class="bool-val">true</span>,
+<a href=#793 id=793 data-nosnippet>793</a>            ..Default::default()
+<a href=#794 id=794 data-nosnippet>794</a>        };
+<a href=#795 id=795 data-nosnippet>795</a>        <span class="kw">let </span><span class="kw-2">mut </span>graph = build_default_graph(<span class="kw-2">&amp;</span>cfg);
+<a href=#796 id=796 data-nosnippet>796</a>        <span class="kw">let </span>compiled = graph.compile().expect(<span class="string">"full graph should compile"</span>);
+<a href=#797 id=797 data-nosnippet>797</a>        <span class="comment">// cluster_bin + shadow + sky + gtao + ssgi + main_scene + ssr + bloom + tonemap = 9
+<a href=#798 id=798 data-nosnippet>798</a>        // The empty volumetric-fog node is gone. Live fog stays on PR #205.
+<a href=#799 id=799 data-nosnippet>799</a>        </span><span class="macro">assert_eq!</span>(compiled.execution_order.len(), <span class="number">9</span>);
+<a href=#800 id=800 data-nosnippet>800</a>    }
+<a href=#801 id=801 data-nosnippet>801</a>
+<a href=#802 id=802 data-nosnippet>802</a>    <span class="attr">#[test]
+<a href=#803 id=803 data-nosnippet>803</a>    </span><span class="kw">fn </span>cluster_data_aliasable_with_depth() {
+<a href=#804 id=804 data-nosnippet>804</a>        <span class="comment">// cluster_data and depth have non-overlapping lifetimes if
+<a href=#805 id=805 data-nosnippet>805</a>        // cluster_data is consumed by main_scene (same as depth).
+<a href=#806 id=806 data-nosnippet>806</a>        // The aliasing analysis should consider them as candidates.
+<a href=#807 id=807 data-nosnippet>807</a>        </span><span class="kw">let </span>cfg = FrameGraphConfig::default();
+<a href=#808 id=808 data-nosnippet>808</a>        <span class="kw">let </span><span class="kw-2">mut </span>graph = build_default_graph(<span class="kw-2">&amp;</span>cfg);
+<a href=#809 id=809 data-nosnippet>809</a>        graph.compile().expect(<span class="string">"compile"</span>);
+<a href=#810 id=810 data-nosnippet>810</a>
+<a href=#811 id=811 data-nosnippet>811</a>        <span class="kw">let </span>compiled = graph.compiled().unwrap();
+<a href=#812 id=812 data-nosnippet>812</a>        <span class="comment">// Just verify aliasing analysis ran without panicking and
+<a href=#813 id=813 data-nosnippet>813</a>        // produced groups (may or may not alias depending on format).
+<a href=#814 id=814 data-nosnippet>814</a>        </span><span class="kw">let </span>_groups = <span class="kw-2">&amp;</span>compiled.alias_groups;
+<a href=#815 id=815 data-nosnippet>815</a>    }
+<a href=#816 id=816 data-nosnippet>816</a>}</code></pre></div></section></main></body></html>

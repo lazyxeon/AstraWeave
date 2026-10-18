@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"struct":["PipelineCacheManager"]};
+window.SIDEBAR_ITEMS = {"fn":["create_render_pipeline"],"struct":["PipelineCacheManager"]};

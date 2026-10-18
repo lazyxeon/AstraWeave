@@ -197,12 +197,12 @@
 <a href=#197 id=197 data-nosnippet>197</a>                    },
 <a href=#198 id=198 data-nosnippet>198</a>                    count: <span class="prelude-val">None</span>,
 <a href=#199 id=199 data-nosnippet>199</a>                },
-<a href=#200 id=200 data-nosnippet>200</a>                <span class="comment">// 3: depth texture
+<a href=#200 id=200 data-nosnippet>200</a>                <span class="comment">// 3: scene depth. texture_depth_2d, sampled with textureLoad.
 <a href=#201 id=201 data-nosnippet>201</a>                </span>wgpu::BindGroupLayoutEntry {
 <a href=#202 id=202 data-nosnippet>202</a>                    binding: <span class="number">3</span>,
 <a href=#203 id=203 data-nosnippet>203</a>                    visibility: wgpu::ShaderStages::FRAGMENT,
 <a href=#204 id=204 data-nosnippet>204</a>                    ty: wgpu::BindingType::Texture {
-<a href=#205 id=205 data-nosnippet>205</a>                        sample_type: wgpu::TextureSampleType::Float { filterable: <span class="bool-val">true </span>},
+<a href=#205 id=205 data-nosnippet>205</a>                        sample_type: wgpu::TextureSampleType::Depth,
 <a href=#206 id=206 data-nosnippet>206</a>                        view_dimension: wgpu::TextureViewDimension::D2,
 <a href=#207 id=207 data-nosnippet>207</a>                        multisampled: <span class="bool-val">false</span>,
 <a href=#208 id=208 data-nosnippet>208</a>                    },
@@ -242,202 +242,212 @@
 <a href=#242 id=242 data-nosnippet>242</a>            push_constant_ranges: <span class="kw-2">&amp;</span>[],
 <a href=#243 id=243 data-nosnippet>243</a>        });
 <a href=#244 id=244 data-nosnippet>244</a>
-<a href=#245 id=245 data-nosnippet>245</a>        <span class="kw">let </span>pipeline = device.create_render_pipeline(<span class="kw-2">&amp;</span>wgpu::RenderPipelineDescriptor {
-<a href=#246 id=246 data-nosnippet>246</a>            label: <span class="prelude-val">Some</span>(<span class="string">"particle_render_pipeline"</span>),
-<a href=#247 id=247 data-nosnippet>247</a>            layout: <span class="prelude-val">Some</span>(<span class="kw-2">&amp;</span>pl),
-<a href=#248 id=248 data-nosnippet>248</a>            vertex: wgpu::VertexState {
-<a href=#249 id=249 data-nosnippet>249</a>                module: <span class="kw-2">&amp;</span>shader,
-<a href=#250 id=250 data-nosnippet>250</a>                entry_point: <span class="prelude-val">Some</span>(<span class="string">"vs_main"</span>),
-<a href=#251 id=251 data-nosnippet>251</a>                buffers: <span class="kw-2">&amp;</span>[], <span class="comment">// No vertex buffers — all data from storage buffers
-<a href=#252 id=252 data-nosnippet>252</a>                </span>compilation_options: Default::default(),
-<a href=#253 id=253 data-nosnippet>253</a>            },
-<a href=#254 id=254 data-nosnippet>254</a>            fragment: <span class="prelude-val">Some</span>(wgpu::FragmentState {
-<a href=#255 id=255 data-nosnippet>255</a>                module: <span class="kw-2">&amp;</span>shader,
-<a href=#256 id=256 data-nosnippet>256</a>                entry_point: <span class="prelude-val">Some</span>(<span class="string">"fs_main"</span>),
-<a href=#257 id=257 data-nosnippet>257</a>                targets: <span class="kw-2">&amp;</span>[<span class="prelude-val">Some</span>(wgpu::ColorTargetState {
-<a href=#258 id=258 data-nosnippet>258</a>                    format: color_format,
-<a href=#259 id=259 data-nosnippet>259</a>                    blend: <span class="prelude-val">Some</span>(config.blend_mode.to_blend_state()),
-<a href=#260 id=260 data-nosnippet>260</a>                    write_mask: wgpu::ColorWrites::ALL,
-<a href=#261 id=261 data-nosnippet>261</a>                })],
-<a href=#262 id=262 data-nosnippet>262</a>                compilation_options: Default::default(),
-<a href=#263 id=263 data-nosnippet>263</a>            }),
-<a href=#264 id=264 data-nosnippet>264</a>            primitive: wgpu::PrimitiveState {
-<a href=#265 id=265 data-nosnippet>265</a>                topology: wgpu::PrimitiveTopology::TriangleList,
-<a href=#266 id=266 data-nosnippet>266</a>                front_face: wgpu::FrontFace::Ccw,
-<a href=#267 id=267 data-nosnippet>267</a>                cull_mode: <span class="prelude-val">None</span>, <span class="comment">// Billboards face both ways
-<a href=#268 id=268 data-nosnippet>268</a>                </span>..Default::default()
-<a href=#269 id=269 data-nosnippet>269</a>            },
-<a href=#270 id=270 data-nosnippet>270</a>            depth_stencil: <span class="prelude-val">Some</span>(wgpu::DepthStencilState {
-<a href=#271 id=271 data-nosnippet>271</a>                format: depth_format,
-<a href=#272 id=272 data-nosnippet>272</a>                depth_write_enabled: config.depth_write,
-<a href=#273 id=273 data-nosnippet>273</a>                depth_compare: wgpu::CompareFunction::LessEqual,
-<a href=#274 id=274 data-nosnippet>274</a>                stencil: Default::default(),
-<a href=#275 id=275 data-nosnippet>275</a>                bias: Default::default(),
-<a href=#276 id=276 data-nosnippet>276</a>            }),
-<a href=#277 id=277 data-nosnippet>277</a>            multisample: Default::default(),
-<a href=#278 id=278 data-nosnippet>278</a>            multiview: <span class="prelude-val">None</span>,
-<a href=#279 id=279 data-nosnippet>279</a>            cache: <span class="prelude-val">None</span>,
-<a href=#280 id=280 data-nosnippet>280</a>        });
-<a href=#281 id=281 data-nosnippet>281</a>
-<a href=#282 id=282 data-nosnippet>282</a>        <span class="self">Self </span>{
-<a href=#283 id=283 data-nosnippet>283</a>            config,
-<a href=#284 id=284 data-nosnippet>284</a>            pipeline,
-<a href=#285 id=285 data-nosnippet>285</a>            bgl,
-<a href=#286 id=286 data-nosnippet>286</a>            camera_buf,
-<a href=#287 id=287 data-nosnippet>287</a>            default_texture,
-<a href=#288 id=288 data-nosnippet>288</a>            default_view,
-<a href=#289 id=289 data-nosnippet>289</a>            sampler,
-<a href=#290 id=290 data-nosnippet>290</a>        }
-<a href=#291 id=291 data-nosnippet>291</a>    }
-<a href=#292 id=292 data-nosnippet>292</a>
-<a href=#293 id=293 data-nosnippet>293</a>    <span class="kw">pub fn </span>config(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="kw-2">&amp;</span>ParticleRenderConfig {
-<a href=#294 id=294 data-nosnippet>294</a>        <span class="kw-2">&amp;</span><span class="self">self</span>.config
+<a href=#245 id=245 data-nosnippet>245</a>        <span class="kw">let </span>pipeline = <span class="kw">crate</span>::pipeline_cache::create_render_pipeline(
+<a href=#246 id=246 data-nosnippet>246</a>            device,
+<a href=#247 id=247 data-nosnippet>247</a>            <span class="prelude-val">None</span>,
+<a href=#248 id=248 data-nosnippet>248</a>            wgpu::RenderPipelineDescriptor {
+<a href=#249 id=249 data-nosnippet>249</a>                label: <span class="prelude-val">Some</span>(<span class="string">"particle_render_pipeline"</span>),
+<a href=#250 id=250 data-nosnippet>250</a>                layout: <span class="prelude-val">Some</span>(<span class="kw-2">&amp;</span>pl),
+<a href=#251 id=251 data-nosnippet>251</a>                vertex: wgpu::VertexState {
+<a href=#252 id=252 data-nosnippet>252</a>                    module: <span class="kw-2">&amp;</span>shader,
+<a href=#253 id=253 data-nosnippet>253</a>                    entry_point: <span class="prelude-val">Some</span>(<span class="string">"vs_main"</span>),
+<a href=#254 id=254 data-nosnippet>254</a>                    buffers: <span class="kw-2">&amp;</span>[], <span class="comment">// No vertex buffers — all data from storage buffers
+<a href=#255 id=255 data-nosnippet>255</a>                    </span>compilation_options: Default::default(),
+<a href=#256 id=256 data-nosnippet>256</a>                },
+<a href=#257 id=257 data-nosnippet>257</a>                fragment: <span class="prelude-val">Some</span>(wgpu::FragmentState {
+<a href=#258 id=258 data-nosnippet>258</a>                    module: <span class="kw-2">&amp;</span>shader,
+<a href=#259 id=259 data-nosnippet>259</a>                    entry_point: <span class="prelude-val">Some</span>(<span class="string">"fs_main"</span>),
+<a href=#260 id=260 data-nosnippet>260</a>                    targets: <span class="kw-2">&amp;</span>[<span class="prelude-val">Some</span>(wgpu::ColorTargetState {
+<a href=#261 id=261 data-nosnippet>261</a>                        format: color_format,
+<a href=#262 id=262 data-nosnippet>262</a>                        blend: <span class="prelude-val">Some</span>(config.blend_mode.to_blend_state()),
+<a href=#263 id=263 data-nosnippet>263</a>                        write_mask: wgpu::ColorWrites::ALL,
+<a href=#264 id=264 data-nosnippet>264</a>                    })],
+<a href=#265 id=265 data-nosnippet>265</a>                    compilation_options: Default::default(),
+<a href=#266 id=266 data-nosnippet>266</a>                }),
+<a href=#267 id=267 data-nosnippet>267</a>                primitive: wgpu::PrimitiveState {
+<a href=#268 id=268 data-nosnippet>268</a>                    topology: wgpu::PrimitiveTopology::TriangleList,
+<a href=#269 id=269 data-nosnippet>269</a>                    front_face: wgpu::FrontFace::Ccw,
+<a href=#270 id=270 data-nosnippet>270</a>                    cull_mode: <span class="prelude-val">None</span>, <span class="comment">// Billboards face both ways
+<a href=#271 id=271 data-nosnippet>271</a>                    </span>..Default::default()
+<a href=#272 id=272 data-nosnippet>272</a>                },
+<a href=#273 id=273 data-nosnippet>273</a>                depth_stencil: <span class="prelude-val">Some</span>(wgpu::DepthStencilState {
+<a href=#274 id=274 data-nosnippet>274</a>                    format: depth_format,
+<a href=#275 id=275 data-nosnippet>275</a>                    depth_write_enabled: config.depth_write,
+<a href=#276 id=276 data-nosnippet>276</a>                    depth_compare: wgpu::CompareFunction::LessEqual,
+<a href=#277 id=277 data-nosnippet>277</a>                    stencil: Default::default(),
+<a href=#278 id=278 data-nosnippet>278</a>                    bias: Default::default(),
+<a href=#279 id=279 data-nosnippet>279</a>                }),
+<a href=#280 id=280 data-nosnippet>280</a>                multisample: Default::default(),
+<a href=#281 id=281 data-nosnippet>281</a>                multiview: <span class="prelude-val">None</span>,
+<a href=#282 id=282 data-nosnippet>282</a>                cache: <span class="prelude-val">None</span>,
+<a href=#283 id=283 data-nosnippet>283</a>            },
+<a href=#284 id=284 data-nosnippet>284</a>        );
+<a href=#285 id=285 data-nosnippet>285</a>
+<a href=#286 id=286 data-nosnippet>286</a>        <span class="self">Self </span>{
+<a href=#287 id=287 data-nosnippet>287</a>            config,
+<a href=#288 id=288 data-nosnippet>288</a>            pipeline,
+<a href=#289 id=289 data-nosnippet>289</a>            bgl,
+<a href=#290 id=290 data-nosnippet>290</a>            camera_buf,
+<a href=#291 id=291 data-nosnippet>291</a>            default_texture,
+<a href=#292 id=292 data-nosnippet>292</a>            default_view,
+<a href=#293 id=293 data-nosnippet>293</a>            sampler,
+<a href=#294 id=294 data-nosnippet>294</a>        }
 <a href=#295 id=295 data-nosnippet>295</a>    }
 <a href=#296 id=296 data-nosnippet>296</a>
-<a href=#297 id=297 data-nosnippet>297</a>    <span class="doccomment">/// Update camera uniforms for this frame.
-<a href=#298 id=298 data-nosnippet>298</a>    </span><span class="kw">pub fn </span>update_camera(
-<a href=#299 id=299 data-nosnippet>299</a>        <span class="kw-2">&amp;</span><span class="self">self</span>,
-<a href=#300 id=300 data-nosnippet>300</a>        queue: <span class="kw-2">&amp;</span>wgpu::Queue,
-<a href=#301 id=301 data-nosnippet>301</a>        view: Mat4,
-<a href=#302 id=302 data-nosnippet>302</a>        proj: Mat4,
-<a href=#303 id=303 data-nosnippet>303</a>        camera_pos: Vec3,
-<a href=#304 id=304 data-nosnippet>304</a>        width: u32,
-<a href=#305 id=305 data-nosnippet>305</a>        height: u32,
-<a href=#306 id=306 data-nosnippet>306</a>    ) {
-<a href=#307 id=307 data-nosnippet>307</a>        <span class="kw">let </span>view_proj = proj * view;
-<a href=#308 id=308 data-nosnippet>308</a>        <span class="kw">let </span>inv_view = view.inverse();
-<a href=#309 id=309 data-nosnippet>309</a>        <span class="kw">let </span>right = Vec3::new(inv_view.col(<span class="number">0</span>).x, inv_view.col(<span class="number">0</span>).y, inv_view.col(<span class="number">0</span>).z);
-<a href=#310 id=310 data-nosnippet>310</a>        <span class="kw">let </span>up = Vec3::new(inv_view.col(<span class="number">1</span>).x, inv_view.col(<span class="number">1</span>).y, inv_view.col(<span class="number">1</span>).z);
-<a href=#311 id=311 data-nosnippet>311</a>
-<a href=#312 id=312 data-nosnippet>312</a>        <span class="kw">let </span>uniforms = ParticleCameraUniforms {
-<a href=#313 id=313 data-nosnippet>313</a>            view_proj: view_proj.to_cols_array_2d(),
-<a href=#314 id=314 data-nosnippet>314</a>            camera_pos: camera_pos.to_array(),
-<a href=#315 id=315 data-nosnippet>315</a>            _pad0: <span class="number">0.0</span>,
-<a href=#316 id=316 data-nosnippet>316</a>            camera_right: right.to_array(),
-<a href=#317 id=317 data-nosnippet>317</a>            _pad1: <span class="number">0.0</span>,
-<a href=#318 id=318 data-nosnippet>318</a>            camera_up: up.to_array(),
-<a href=#319 id=319 data-nosnippet>319</a>            near_plane: <span class="number">0.1</span>,
-<a href=#320 id=320 data-nosnippet>320</a>            inv_resolution: [<span class="number">1.0 </span>/ width <span class="kw">as </span>f32, <span class="number">1.0 </span>/ height <span class="kw">as </span>f32],
-<a href=#321 id=321 data-nosnippet>321</a>            soft_depth_range: <span class="self">self</span>.config.soft_depth_range,
-<a href=#322 id=322 data-nosnippet>322</a>            _pad2: <span class="number">0.0</span>,
-<a href=#323 id=323 data-nosnippet>323</a>        };
-<a href=#324 id=324 data-nosnippet>324</a>        queue.write_buffer(<span class="kw-2">&amp;</span><span class="self">self</span>.camera_buf, <span class="number">0</span>, bytemuck::bytes_of(<span class="kw-2">&amp;</span>uniforms));
-<a href=#325 id=325 data-nosnippet>325</a>    }
-<a href=#326 id=326 data-nosnippet>326</a>
-<a href=#327 id=327 data-nosnippet>327</a>    <span class="doccomment">/// Render particles into the given render pass.
-<a href=#328 id=328 data-nosnippet>328</a>    /// `particle_count` is the actual number of live particles (not max capacity).
-<a href=#329 id=329 data-nosnippet>329</a>    </span><span class="attr">#[allow(clippy::too_many_arguments)]
-<a href=#330 id=330 data-nosnippet>330</a>    </span><span class="kw">pub fn </span>render&lt;<span class="lifetime">'a</span>&gt;(
-<a href=#331 id=331 data-nosnippet>331</a>        <span class="kw-2">&amp;</span><span class="lifetime">'a </span><span class="self">self</span>,
-<a href=#332 id=332 data-nosnippet>332</a>        device: <span class="kw-2">&amp;</span>wgpu::Device,
-<a href=#333 id=333 data-nosnippet>333</a>        pass: <span class="kw-2">&amp;mut </span>wgpu::RenderPass&lt;<span class="lifetime">'a</span>&gt;,
-<a href=#334 id=334 data-nosnippet>334</a>        particle_buffer: <span class="kw-2">&amp;</span><span class="lifetime">'a </span>wgpu::Buffer,
-<a href=#335 id=335 data-nosnippet>335</a>        sort_entries_buffer: <span class="kw-2">&amp;</span><span class="lifetime">'a </span>wgpu::Buffer,
-<a href=#336 id=336 data-nosnippet>336</a>        depth_view: <span class="kw-2">&amp;</span><span class="lifetime">'a </span>wgpu::TextureView,
-<a href=#337 id=337 data-nosnippet>337</a>        particle_count: u32,
-<a href=#338 id=338 data-nosnippet>338</a>        texture_view: <span class="prelude-ty">Option</span>&lt;<span class="kw-2">&amp;</span><span class="lifetime">'a </span>wgpu::TextureView&gt;,
-<a href=#339 id=339 data-nosnippet>339</a>    ) {
-<a href=#340 id=340 data-nosnippet>340</a>        <span class="kw">if </span>particle_count == <span class="number">0 </span>{
-<a href=#341 id=341 data-nosnippet>341</a>            <span class="kw">return</span>;
-<a href=#342 id=342 data-nosnippet>342</a>        }
-<a href=#343 id=343 data-nosnippet>343</a>
-<a href=#344 id=344 data-nosnippet>344</a>        <span class="kw">let </span>tex_view = texture_view.unwrap_or(<span class="kw-2">&amp;</span><span class="self">self</span>.default_view);
-<a href=#345 id=345 data-nosnippet>345</a>
-<a href=#346 id=346 data-nosnippet>346</a>        <span class="kw">let </span>bg = device.create_bind_group(<span class="kw-2">&amp;</span>wgpu::BindGroupDescriptor {
-<a href=#347 id=347 data-nosnippet>347</a>            label: <span class="prelude-val">Some</span>(<span class="string">"particle_render_bg"</span>),
-<a href=#348 id=348 data-nosnippet>348</a>            layout: <span class="kw-2">&amp;</span><span class="self">self</span>.bgl,
-<a href=#349 id=349 data-nosnippet>349</a>            entries: <span class="kw-2">&amp;</span>[
-<a href=#350 id=350 data-nosnippet>350</a>                wgpu::BindGroupEntry {
-<a href=#351 id=351 data-nosnippet>351</a>                    binding: <span class="number">0</span>,
-<a href=#352 id=352 data-nosnippet>352</a>                    resource: <span class="self">self</span>.camera_buf.as_entire_binding(),
-<a href=#353 id=353 data-nosnippet>353</a>                },
+<a href=#297 id=297 data-nosnippet>297</a>    <span class="kw">pub fn </span>config(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="kw-2">&amp;</span>ParticleRenderConfig {
+<a href=#298 id=298 data-nosnippet>298</a>        <span class="kw-2">&amp;</span><span class="self">self</span>.config
+<a href=#299 id=299 data-nosnippet>299</a>    }
+<a href=#300 id=300 data-nosnippet>300</a>
+<a href=#301 id=301 data-nosnippet>301</a>    <span class="doccomment">/// Update camera uniforms for this frame.
+<a href=#302 id=302 data-nosnippet>302</a>    </span><span class="kw">pub fn </span>update_camera(
+<a href=#303 id=303 data-nosnippet>303</a>        <span class="kw-2">&amp;</span><span class="self">self</span>,
+<a href=#304 id=304 data-nosnippet>304</a>        queue: <span class="kw-2">&amp;</span>wgpu::Queue,
+<a href=#305 id=305 data-nosnippet>305</a>        view: Mat4,
+<a href=#306 id=306 data-nosnippet>306</a>        proj: Mat4,
+<a href=#307 id=307 data-nosnippet>307</a>        camera_pos: Vec3,
+<a href=#308 id=308 data-nosnippet>308</a>        width: u32,
+<a href=#309 id=309 data-nosnippet>309</a>        height: u32,
+<a href=#310 id=310 data-nosnippet>310</a>    ) {
+<a href=#311 id=311 data-nosnippet>311</a>        <span class="kw">let </span>view_proj = proj * view;
+<a href=#312 id=312 data-nosnippet>312</a>        <span class="kw">let </span>inv_view = view.inverse();
+<a href=#313 id=313 data-nosnippet>313</a>        <span class="kw">let </span>right = Vec3::new(inv_view.col(<span class="number">0</span>).x, inv_view.col(<span class="number">0</span>).y, inv_view.col(<span class="number">0</span>).z);
+<a href=#314 id=314 data-nosnippet>314</a>        <span class="kw">let </span>up = Vec3::new(inv_view.col(<span class="number">1</span>).x, inv_view.col(<span class="number">1</span>).y, inv_view.col(<span class="number">1</span>).z);
+<a href=#315 id=315 data-nosnippet>315</a>
+<a href=#316 id=316 data-nosnippet>316</a>        <span class="kw">let </span>uniforms = ParticleCameraUniforms {
+<a href=#317 id=317 data-nosnippet>317</a>            view_proj: view_proj.to_cols_array_2d(),
+<a href=#318 id=318 data-nosnippet>318</a>            camera_pos: camera_pos.to_array(),
+<a href=#319 id=319 data-nosnippet>319</a>            _pad0: <span class="number">0.0</span>,
+<a href=#320 id=320 data-nosnippet>320</a>            camera_right: right.to_array(),
+<a href=#321 id=321 data-nosnippet>321</a>            _pad1: <span class="number">0.0</span>,
+<a href=#322 id=322 data-nosnippet>322</a>            camera_up: up.to_array(),
+<a href=#323 id=323 data-nosnippet>323</a>            near_plane: <span class="number">0.1</span>,
+<a href=#324 id=324 data-nosnippet>324</a>            inv_resolution: [<span class="number">1.0 </span>/ width <span class="kw">as </span>f32, <span class="number">1.0 </span>/ height <span class="kw">as </span>f32],
+<a href=#325 id=325 data-nosnippet>325</a>            soft_depth_range: <span class="self">self</span>.config.soft_depth_range,
+<a href=#326 id=326 data-nosnippet>326</a>            _pad2: <span class="number">0.0</span>,
+<a href=#327 id=327 data-nosnippet>327</a>        };
+<a href=#328 id=328 data-nosnippet>328</a>        queue.write_buffer(<span class="kw-2">&amp;</span><span class="self">self</span>.camera_buf, <span class="number">0</span>, bytemuck::bytes_of(<span class="kw-2">&amp;</span>uniforms));
+<a href=#329 id=329 data-nosnippet>329</a>    }
+<a href=#330 id=330 data-nosnippet>330</a>
+<a href=#331 id=331 data-nosnippet>331</a>    <span class="doccomment">/// Render particles into the given render pass.
+<a href=#332 id=332 data-nosnippet>332</a>    /// `particle_count` is the actual number of live particles (not max capacity).
+<a href=#333 id=333 data-nosnippet>333</a>    </span><span class="attr">#[allow(clippy::too_many_arguments)]
+<a href=#334 id=334 data-nosnippet>334</a>    </span><span class="kw">pub fn </span>render&lt;<span class="lifetime">'a</span>&gt;(
+<a href=#335 id=335 data-nosnippet>335</a>        <span class="kw-2">&amp;</span><span class="lifetime">'a </span><span class="self">self</span>,
+<a href=#336 id=336 data-nosnippet>336</a>        device: <span class="kw-2">&amp;</span>wgpu::Device,
+<a href=#337 id=337 data-nosnippet>337</a>        pass: <span class="kw-2">&amp;mut </span>wgpu::RenderPass&lt;<span class="lifetime">'a</span>&gt;,
+<a href=#338 id=338 data-nosnippet>338</a>        particle_buffer: <span class="kw-2">&amp;</span><span class="lifetime">'a </span>wgpu::Buffer,
+<a href=#339 id=339 data-nosnippet>339</a>        sort_entries_buffer: <span class="kw-2">&amp;</span><span class="lifetime">'a </span>wgpu::Buffer,
+<a href=#340 id=340 data-nosnippet>340</a>        depth_view: <span class="kw-2">&amp;</span><span class="lifetime">'a </span>wgpu::TextureView,
+<a href=#341 id=341 data-nosnippet>341</a>        particle_count: u32,
+<a href=#342 id=342 data-nosnippet>342</a>        texture_view: <span class="prelude-ty">Option</span>&lt;<span class="kw-2">&amp;</span><span class="lifetime">'a </span>wgpu::TextureView&gt;,
+<a href=#343 id=343 data-nosnippet>343</a>    ) {
+<a href=#344 id=344 data-nosnippet>344</a>        <span class="kw">if </span>particle_count == <span class="number">0 </span>{
+<a href=#345 id=345 data-nosnippet>345</a>            <span class="kw">return</span>;
+<a href=#346 id=346 data-nosnippet>346</a>        }
+<a href=#347 id=347 data-nosnippet>347</a>
+<a href=#348 id=348 data-nosnippet>348</a>        <span class="kw">let </span>tex_view = texture_view.unwrap_or(<span class="kw-2">&amp;</span><span class="self">self</span>.default_view);
+<a href=#349 id=349 data-nosnippet>349</a>
+<a href=#350 id=350 data-nosnippet>350</a>        <span class="kw">let </span>bg = device.create_bind_group(<span class="kw-2">&amp;</span>wgpu::BindGroupDescriptor {
+<a href=#351 id=351 data-nosnippet>351</a>            label: <span class="prelude-val">Some</span>(<span class="string">"particle_render_bg"</span>),
+<a href=#352 id=352 data-nosnippet>352</a>            layout: <span class="kw-2">&amp;</span><span class="self">self</span>.bgl,
+<a href=#353 id=353 data-nosnippet>353</a>            entries: <span class="kw-2">&amp;</span>[
 <a href=#354 id=354 data-nosnippet>354</a>                wgpu::BindGroupEntry {
-<a href=#355 id=355 data-nosnippet>355</a>                    binding: <span class="number">1</span>,
-<a href=#356 id=356 data-nosnippet>356</a>                    resource: particle_buffer.as_entire_binding(),
+<a href=#355 id=355 data-nosnippet>355</a>                    binding: <span class="number">0</span>,
+<a href=#356 id=356 data-nosnippet>356</a>                    resource: <span class="self">self</span>.camera_buf.as_entire_binding(),
 <a href=#357 id=357 data-nosnippet>357</a>                },
 <a href=#358 id=358 data-nosnippet>358</a>                wgpu::BindGroupEntry {
-<a href=#359 id=359 data-nosnippet>359</a>                    binding: <span class="number">2</span>,
-<a href=#360 id=360 data-nosnippet>360</a>                    resource: sort_entries_buffer.as_entire_binding(),
+<a href=#359 id=359 data-nosnippet>359</a>                    binding: <span class="number">1</span>,
+<a href=#360 id=360 data-nosnippet>360</a>                    resource: particle_buffer.as_entire_binding(),
 <a href=#361 id=361 data-nosnippet>361</a>                },
 <a href=#362 id=362 data-nosnippet>362</a>                wgpu::BindGroupEntry {
-<a href=#363 id=363 data-nosnippet>363</a>                    binding: <span class="number">3</span>,
-<a href=#364 id=364 data-nosnippet>364</a>                    resource: wgpu::BindingResource::TextureView(depth_view),
+<a href=#363 id=363 data-nosnippet>363</a>                    binding: <span class="number">2</span>,
+<a href=#364 id=364 data-nosnippet>364</a>                    resource: sort_entries_buffer.as_entire_binding(),
 <a href=#365 id=365 data-nosnippet>365</a>                },
 <a href=#366 id=366 data-nosnippet>366</a>                wgpu::BindGroupEntry {
-<a href=#367 id=367 data-nosnippet>367</a>                    binding: <span class="number">4</span>,
-<a href=#368 id=368 data-nosnippet>368</a>                    resource: wgpu::BindingResource::TextureView(tex_view),
+<a href=#367 id=367 data-nosnippet>367</a>                    binding: <span class="number">3</span>,
+<a href=#368 id=368 data-nosnippet>368</a>                    resource: wgpu::BindingResource::TextureView(depth_view),
 <a href=#369 id=369 data-nosnippet>369</a>                },
 <a href=#370 id=370 data-nosnippet>370</a>                wgpu::BindGroupEntry {
-<a href=#371 id=371 data-nosnippet>371</a>                    binding: <span class="number">5</span>,
-<a href=#372 id=372 data-nosnippet>372</a>                    resource: wgpu::BindingResource::Sampler(<span class="kw-2">&amp;</span><span class="self">self</span>.sampler),
+<a href=#371 id=371 data-nosnippet>371</a>                    binding: <span class="number">4</span>,
+<a href=#372 id=372 data-nosnippet>372</a>                    resource: wgpu::BindingResource::TextureView(tex_view),
 <a href=#373 id=373 data-nosnippet>373</a>                },
-<a href=#374 id=374 data-nosnippet>374</a>            ],
-<a href=#375 id=375 data-nosnippet>375</a>        });
-<a href=#376 id=376 data-nosnippet>376</a>
-<a href=#377 id=377 data-nosnippet>377</a>        pass.set_pipeline(<span class="kw-2">&amp;</span><span class="self">self</span>.pipeline);
-<a href=#378 id=378 data-nosnippet>378</a>        pass.set_bind_group(<span class="number">0</span>, <span class="kw-2">&amp;</span>bg, <span class="kw-2">&amp;</span>[]);
-<a href=#379 id=379 data-nosnippet>379</a>        <span class="comment">// 6 vertices per quad (2 triangles), instanced by particle count
-<a href=#380 id=380 data-nosnippet>380</a>        </span>pass.draw(<span class="number">0</span>..<span class="number">6</span>, <span class="number">0</span>..particle_count);
-<a href=#381 id=381 data-nosnippet>381</a>    }
-<a href=#382 id=382 data-nosnippet>382</a>}
-<a href=#383 id=383 data-nosnippet>383</a>
-<a href=#384 id=384 data-nosnippet>384</a><span class="attr">#[cfg(test)]
-<a href=#385 id=385 data-nosnippet>385</a></span><span class="kw">mod </span>tests {
-<a href=#386 id=386 data-nosnippet>386</a>    <span class="kw">use super</span>::<span class="kw-2">*</span>;
+<a href=#374 id=374 data-nosnippet>374</a>                wgpu::BindGroupEntry {
+<a href=#375 id=375 data-nosnippet>375</a>                    binding: <span class="number">5</span>,
+<a href=#376 id=376 data-nosnippet>376</a>                    resource: wgpu::BindingResource::Sampler(<span class="kw-2">&amp;</span><span class="self">self</span>.sampler),
+<a href=#377 id=377 data-nosnippet>377</a>                },
+<a href=#378 id=378 data-nosnippet>378</a>            ],
+<a href=#379 id=379 data-nosnippet>379</a>        });
+<a href=#380 id=380 data-nosnippet>380</a>
+<a href=#381 id=381 data-nosnippet>381</a>        pass.set_pipeline(<span class="kw-2">&amp;</span><span class="self">self</span>.pipeline);
+<a href=#382 id=382 data-nosnippet>382</a>        pass.set_bind_group(<span class="number">0</span>, <span class="kw-2">&amp;</span>bg, <span class="kw-2">&amp;</span>[]);
+<a href=#383 id=383 data-nosnippet>383</a>        <span class="comment">// 6 vertices per quad (2 triangles), instanced by particle count
+<a href=#384 id=384 data-nosnippet>384</a>        </span>pass.draw(<span class="number">0</span>..<span class="number">6</span>, <span class="number">0</span>..particle_count);
+<a href=#385 id=385 data-nosnippet>385</a>    }
+<a href=#386 id=386 data-nosnippet>386</a>}
 <a href=#387 id=387 data-nosnippet>387</a>
-<a href=#388 id=388 data-nosnippet>388</a>    <span class="attr">#[test]
-<a href=#389 id=389 data-nosnippet>389</a>    </span><span class="kw">fn </span>camera_uniforms_size() {
-<a href=#390 id=390 data-nosnippet>390</a>        <span class="comment">// mat4(64) + vec3+pad(16) + vec3+pad(16) + vec3+f32(16) + 4×f32(16) = 128
-<a href=#391 id=391 data-nosnippet>391</a>        </span><span class="macro">assert_eq!</span>(std::mem::size_of::&lt;ParticleCameraUniforms&gt;(), <span class="number">128</span>);
-<a href=#392 id=392 data-nosnippet>392</a>    }
-<a href=#393 id=393 data-nosnippet>393</a>
-<a href=#394 id=394 data-nosnippet>394</a>    <span class="attr">#[test]
-<a href=#395 id=395 data-nosnippet>395</a>    </span><span class="kw">fn </span>default_config() {
-<a href=#396 id=396 data-nosnippet>396</a>        <span class="kw">let </span>c = ParticleRenderConfig::default();
-<a href=#397 id=397 data-nosnippet>397</a>        <span class="macro">assert_eq!</span>(c.blend_mode, ParticleBlendMode::Additive);
-<a href=#398 id=398 data-nosnippet>398</a>        <span class="macro">assert!</span>(!c.depth_write);
-<a href=#399 id=399 data-nosnippet>399</a>        <span class="macro">assert!</span>(c.soft_depth_range &gt; <span class="number">0.0</span>);
-<a href=#400 id=400 data-nosnippet>400</a>    }
-<a href=#401 id=401 data-nosnippet>401</a>
-<a href=#402 id=402 data-nosnippet>402</a>    <span class="attr">#[test]
-<a href=#403 id=403 data-nosnippet>403</a>    </span><span class="kw">fn </span>blend_modes() {
-<a href=#404 id=404 data-nosnippet>404</a>        <span class="kw">let </span>additive = ParticleBlendMode::Additive.to_blend_state();
-<a href=#405 id=405 data-nosnippet>405</a>        <span class="macro">assert_eq!</span>(additive.color.dst_factor, wgpu::BlendFactor::One);
-<a href=#406 id=406 data-nosnippet>406</a>
-<a href=#407 id=407 data-nosnippet>407</a>        <span class="kw">let </span>alpha = ParticleBlendMode::AlphaBlend.to_blend_state();
-<a href=#408 id=408 data-nosnippet>408</a>        <span class="macro">assert_eq!</span>(alpha.color.dst_factor, wgpu::BlendFactor::OneMinusSrcAlpha);
-<a href=#409 id=409 data-nosnippet>409</a>    }
+<a href=#388 id=388 data-nosnippet>388</a><span class="attr">#[cfg(test)]
+<a href=#389 id=389 data-nosnippet>389</a></span><span class="kw">mod </span>tests {
+<a href=#390 id=390 data-nosnippet>390</a>    <span class="kw">use super</span>::<span class="kw-2">*</span>;
+<a href=#391 id=391 data-nosnippet>391</a>
+<a href=#392 id=392 data-nosnippet>392</a>    <span class="attr">#[test]
+<a href=#393 id=393 data-nosnippet>393</a>    </span><span class="kw">fn </span>camera_uniforms_size() {
+<a href=#394 id=394 data-nosnippet>394</a>        <span class="comment">// mat4(64) + vec3+pad(16) + vec3+pad(16) + vec3+f32(16) + 4×f32(16) = 128
+<a href=#395 id=395 data-nosnippet>395</a>        </span><span class="macro">assert_eq!</span>(std::mem::size_of::&lt;ParticleCameraUniforms&gt;(), <span class="number">128</span>);
+<a href=#396 id=396 data-nosnippet>396</a>    }
+<a href=#397 id=397 data-nosnippet>397</a>
+<a href=#398 id=398 data-nosnippet>398</a>    <span class="attr">#[test]
+<a href=#399 id=399 data-nosnippet>399</a>    </span><span class="kw">fn </span>default_config() {
+<a href=#400 id=400 data-nosnippet>400</a>        <span class="kw">let </span>c = ParticleRenderConfig::default();
+<a href=#401 id=401 data-nosnippet>401</a>        <span class="macro">assert_eq!</span>(c.blend_mode, ParticleBlendMode::Additive);
+<a href=#402 id=402 data-nosnippet>402</a>        <span class="macro">assert!</span>(!c.depth_write);
+<a href=#403 id=403 data-nosnippet>403</a>        <span class="macro">assert!</span>(c.soft_depth_range &gt; <span class="number">0.0</span>);
+<a href=#404 id=404 data-nosnippet>404</a>    }
+<a href=#405 id=405 data-nosnippet>405</a>
+<a href=#406 id=406 data-nosnippet>406</a>    <span class="attr">#[test]
+<a href=#407 id=407 data-nosnippet>407</a>    </span><span class="kw">fn </span>blend_modes() {
+<a href=#408 id=408 data-nosnippet>408</a>        <span class="kw">let </span>additive = ParticleBlendMode::Additive.to_blend_state();
+<a href=#409 id=409 data-nosnippet>409</a>        <span class="macro">assert_eq!</span>(additive.color.dst_factor, wgpu::BlendFactor::One);
 <a href=#410 id=410 data-nosnippet>410</a>
-<a href=#411 id=411 data-nosnippet>411</a>    <span class="attr">#[test]
-<a href=#412 id=412 data-nosnippet>412</a>    </span><span class="kw">fn </span>particle_render_pass_creation() {
-<a href=#413 id=413 data-nosnippet>413</a>        <span class="kw">let </span>instance = wgpu::Instance::new(<span class="kw-2">&amp;</span>wgpu::InstanceDescriptor::default());
-<a href=#414 id=414 data-nosnippet>414</a>        <span class="kw">let </span>adapter =
-<a href=#415 id=415 data-nosnippet>415</a>            <span class="kw">match </span>pollster::block_on(instance.request_adapter(<span class="kw-2">&amp;</span>wgpu::RequestAdapterOptions {
-<a href=#416 id=416 data-nosnippet>416</a>                power_preference: wgpu::PowerPreference::LowPower,
-<a href=#417 id=417 data-nosnippet>417</a>                compatible_surface: <span class="prelude-val">None</span>,
-<a href=#418 id=418 data-nosnippet>418</a>                force_fallback_adapter: <span class="bool-val">false</span>,
-<a href=#419 id=419 data-nosnippet>419</a>            })) {
-<a href=#420 id=420 data-nosnippet>420</a>                <span class="prelude-val">Ok</span>(adapter) =&gt; adapter,
-<a href=#421 id=421 data-nosnippet>421</a>                <span class="prelude-val">Err</span>(err) =&gt; {
-<a href=#422 id=422 data-nosnippet>422</a>                    <span class="kw">let </span>reason = <span class="macro">format!</span>(<span class="string">"no wgpu adapter: {err}"</span>);
-<a href=#423 id=423 data-nosnippet>423</a>                    <span class="kw">if </span><span class="kw">crate</span>::gpu_capability::skip_if_unavailable() {
-<a href=#424 id=424 data-nosnippet>424</a>                        <span class="kw">crate</span>::gpu_capability::note_skip(<span class="kw-2">&amp;</span>reason);
-<a href=#425 id=425 data-nosnippet>425</a>                        <span class="kw">return</span>;
-<a href=#426 id=426 data-nosnippet>426</a>                    }
-<a href=#427 id=427 data-nosnippet>427</a>                    <span class="macro">panic!</span>(<span class="string">"Failed to find adapter: {reason}"</span>);
-<a href=#428 id=428 data-nosnippet>428</a>                }
-<a href=#429 id=429 data-nosnippet>429</a>            };
-<a href=#430 id=430 data-nosnippet>430</a>        <span class="kw">let </span>(device, queue) =
-<a href=#431 id=431 data-nosnippet>431</a>            pollster::block_on(adapter.request_device(<span class="kw-2">&amp;</span>wgpu::DeviceDescriptor::default()))
-<a href=#432 id=432 data-nosnippet>432</a>                .expect(<span class="string">"device"</span>);
-<a href=#433 id=433 data-nosnippet>433</a>
-<a href=#434 id=434 data-nosnippet>434</a>        <span class="kw">let </span>pass = ParticleRenderPass::new(
-<a href=#435 id=435 data-nosnippet>435</a>            <span class="kw-2">&amp;</span>device,
-<a href=#436 id=436 data-nosnippet>436</a>            <span class="kw-2">&amp;</span>queue,
-<a href=#437 id=437 data-nosnippet>437</a>            wgpu::TextureFormat::Rgba8UnormSrgb,
-<a href=#438 id=438 data-nosnippet>438</a>            wgpu::TextureFormat::Depth32Float,
-<a href=#439 id=439 data-nosnippet>439</a>            ParticleRenderConfig::default(),
-<a href=#440 id=440 data-nosnippet>440</a>        );
-<a href=#441 id=441 data-nosnippet>441</a>        <span class="macro">assert_eq!</span>(pass.config().blend_mode, ParticleBlendMode::Additive);
-<a href=#442 id=442 data-nosnippet>442</a>    }
-<a href=#443 id=443 data-nosnippet>443</a>}</code></pre></div></section></main></body></html>
+<a href=#411 id=411 data-nosnippet>411</a>        <span class="kw">let </span>alpha = ParticleBlendMode::AlphaBlend.to_blend_state();
+<a href=#412 id=412 data-nosnippet>412</a>        <span class="macro">assert_eq!</span>(alpha.color.dst_factor, wgpu::BlendFactor::OneMinusSrcAlpha);
+<a href=#413 id=413 data-nosnippet>413</a>    }
+<a href=#414 id=414 data-nosnippet>414</a>
+<a href=#415 id=415 data-nosnippet>415</a>    <span class="attr">#[test]
+<a href=#416 id=416 data-nosnippet>416</a>    </span><span class="kw">fn </span>particle_render_pass_creation() {
+<a href=#417 id=417 data-nosnippet>417</a>        <span class="kw">let </span>instance = wgpu::Instance::new(<span class="kw-2">&amp;</span>wgpu::InstanceDescriptor::default());
+<a href=#418 id=418 data-nosnippet>418</a>        <span class="kw">let </span>adapter =
+<a href=#419 id=419 data-nosnippet>419</a>            <span class="kw">match </span>pollster::block_on(instance.request_adapter(<span class="kw-2">&amp;</span>wgpu::RequestAdapterOptions {
+<a href=#420 id=420 data-nosnippet>420</a>                power_preference: wgpu::PowerPreference::LowPower,
+<a href=#421 id=421 data-nosnippet>421</a>                compatible_surface: <span class="prelude-val">None</span>,
+<a href=#422 id=422 data-nosnippet>422</a>                force_fallback_adapter: <span class="bool-val">false</span>,
+<a href=#423 id=423 data-nosnippet>423</a>            })) {
+<a href=#424 id=424 data-nosnippet>424</a>                <span class="prelude-val">Ok</span>(adapter) =&gt; adapter,
+<a href=#425 id=425 data-nosnippet>425</a>                <span class="prelude-val">Err</span>(err) =&gt; {
+<a href=#426 id=426 data-nosnippet>426</a>                    <span class="kw">let </span>reason = <span class="macro">format!</span>(<span class="string">"no wgpu adapter: {err}"</span>);
+<a href=#427 id=427 data-nosnippet>427</a>                    <span class="kw">if </span><span class="kw">crate</span>::gpu_capability::skip_if_unavailable() {
+<a href=#428 id=428 data-nosnippet>428</a>                        <span class="kw">crate</span>::gpu_capability::note_skip(<span class="kw-2">&amp;</span>reason);
+<a href=#429 id=429 data-nosnippet>429</a>                        <span class="kw">return</span>;
+<a href=#430 id=430 data-nosnippet>430</a>                    }
+<a href=#431 id=431 data-nosnippet>431</a>                    <span class="macro">panic!</span>(<span class="string">"Failed to find adapter: {reason}"</span>);
+<a href=#432 id=432 data-nosnippet>432</a>                }
+<a href=#433 id=433 data-nosnippet>433</a>            };
+<a href=#434 id=434 data-nosnippet>434</a>        <span class="kw">let </span>(device, queue) =
+<a href=#435 id=435 data-nosnippet>435</a>            pollster::block_on(adapter.request_device(<span class="kw-2">&amp;</span>wgpu::DeviceDescriptor::default()))
+<a href=#436 id=436 data-nosnippet>436</a>                .expect(<span class="string">"device"</span>);
+<a href=#437 id=437 data-nosnippet>437</a>        <span class="kw">if </span><span class="kw">crate</span>::gpu_fault::skip_without_depth_texture_load(
+<a href=#438 id=438 data-nosnippet>438</a>            <span class="kw-2">&amp;</span>device,
+<a href=#439 id=439 data-nosnippet>439</a>            <span class="string">"particle_render_pass_creation"</span>,
+<a href=#440 id=440 data-nosnippet>440</a>        ) {
+<a href=#441 id=441 data-nosnippet>441</a>            <span class="kw">return</span>;
+<a href=#442 id=442 data-nosnippet>442</a>        }
+<a href=#443 id=443 data-nosnippet>443</a>
+<a href=#444 id=444 data-nosnippet>444</a>        <span class="kw">let </span>pass = ParticleRenderPass::new(
+<a href=#445 id=445 data-nosnippet>445</a>            <span class="kw-2">&amp;</span>device,
+<a href=#446 id=446 data-nosnippet>446</a>            <span class="kw-2">&amp;</span>queue,
+<a href=#447 id=447 data-nosnippet>447</a>            wgpu::TextureFormat::Rgba8UnormSrgb,
+<a href=#448 id=448 data-nosnippet>448</a>            wgpu::TextureFormat::Depth32Float,
+<a href=#449 id=449 data-nosnippet>449</a>            ParticleRenderConfig::default(),
+<a href=#450 id=450 data-nosnippet>450</a>        );
+<a href=#451 id=451 data-nosnippet>451</a>        <span class="macro">assert_eq!</span>(pass.config().blend_mode, ParticleBlendMode::Additive);
+<a href=#452 id=452 data-nosnippet>452</a>    }
+<a href=#453 id=453 data-nosnippet>453</a>}</code></pre></div></section></main></body></html>

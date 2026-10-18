@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"struct":["GpuProfiler","PassTiming"]};
+window.SIDEBAR_ITEMS = {"constant":["FRAME_EXEC_MAGIC"],"enum":["StampKind","TimestampKind"],"fn":["classify_timestamp","timestamp_duration_ms","wait_for_gpu"],"struct":["GpuProfiler","GpuStampSummary","OpenStamp","PassTiming","StampRecord"]};

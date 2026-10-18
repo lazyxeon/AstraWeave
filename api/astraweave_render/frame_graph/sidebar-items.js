@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"fn":["build_default_graph"],"struct":["BloomNode","ClusterBinNode","FrameGraphConfig","GtaoNode","MainSceneNode","ShadowPassNode","SkyPassNode","SsgiNode","SsrNode","TonemapNode","VolumetricFogNode"]};
+window.SIDEBAR_ITEMS = {"fn":["build_default_graph"],"struct":["BloomNode","ClusterBinNode","FrameGraphConfig","GtaoNode","MainSceneNode","ShadowPassNode","SkyPassNode","SsgiNode","SsrNode","TonemapNode"]};

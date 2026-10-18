@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"fn":["gltf_metallic_roughness_to_engine","nor_gl_unchanged","split_polyhaven_arm"]};
+window.SIDEBAR_ITEMS = {"enum":["SidecarMapKind"],"fn":["arm_to_gltf_mr_and_occlusion","classify_pbr_sidecar","gltf_metallic_roughness_to_engine","nor_gl_unchanged","pack_gltf_surface","split_polyhaven_arm"],"struct":["PackedSurface"]};

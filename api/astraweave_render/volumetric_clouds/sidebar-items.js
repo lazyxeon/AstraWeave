@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"enum":["CloudQuality"],"struct":["CloudCompositeParams","CloudConfig","CloudParams","CloudShadowParams","CloudShadowPass","VolumetricCloudsPass"]};
+window.SIDEBAR_ITEMS = {"constant":["CLOUD_SHADOW_SLICES","CLOUD_SHADOW_STEPS"],"enum":["CloudQuality"],"fn":["cloud_shadow_slice"],"struct":["CloudCompositeParams","CloudConfig","CloudParams","CloudShadowParams","CloudShadowPass","CloudShadowSlice","VolumetricCloudsPass"]};

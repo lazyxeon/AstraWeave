@@ -375,20 +375,34 @@
 <a href=#375 id=375 data-nosnippet>375</a>            .get(<span class="string">"sky_equirect"</span>)
 <a href=#376 id=376 data-nosnippet>376</a>            .expect(<span class="string">"main catalog includes sky_equirect"</span>);
 <a href=#377 id=377 data-nosnippet>377</a>        <span class="macro">assert_eq!</span>(equirect.file, <span class="string">"sky_equirect.png"</span>);
-<a href=#378 id=378 data-nosnippet>378</a>        <span class="macro">assert!</span>(catalog.get(<span class="string">"spruit_sunrise"</span>).is_some());
-<a href=#379 id=379 data-nosnippet>379</a>        <span class="kw">for </span>entry <span class="kw">in </span>catalog.entries() {
-<a href=#380 id=380 data-nosnippet>380</a>            <span class="kw">if </span>entry.sha256.is_empty() {
-<a href=#381 id=381 data-nosnippet>381</a>                <span class="kw">continue</span>;
-<a href=#382 id=382 data-nosnippet>382</a>            }
-<a href=#383 id=383 data-nosnippet>383</a>            <span class="kw">let </span>path = root.join(<span class="kw-2">&amp;</span>entry.file);
-<a href=#384 id=384 data-nosnippet>384</a>            <span class="kw">let </span>bytes =
-<a href=#385 id=385 data-nosnippet>385</a>                std::fs::read(<span class="kw-2">&amp;</span>path).unwrap_or_else(|err| <span class="macro">panic!</span>(<span class="string">"{}: {err}"</span>, path.display()));
-<a href=#386 id=386 data-nosnippet>386</a>            <span class="kw">let </span>digest = Sha256::digest(<span class="kw-2">&amp;</span>bytes);
-<a href=#387 id=387 data-nosnippet>387</a>            <span class="kw">let </span>hex = digest
-<a href=#388 id=388 data-nosnippet>388</a>                .iter()
-<a href=#389 id=389 data-nosnippet>389</a>                .map(|byte| <span class="macro">format!</span>(<span class="string">"{byte:02x}"</span>))
-<a href=#390 id=390 data-nosnippet>390</a>                .collect::&lt;String&gt;();
-<a href=#391 id=391 data-nosnippet>391</a>            <span class="macro">assert_eq!</span>(hex, entry.sha256, <span class="string">"{}"</span>, entry.name);
-<a href=#392 id=392 data-nosnippet>392</a>        }
-<a href=#393 id=393 data-nosnippet>393</a>    }
-<a href=#394 id=394 data-nosnippet>394</a>}</code></pre></div></section></main></body></html>
+<a href=#378 id=378 data-nosnippet>378</a>        <span class="kw">let </span>spruit = catalog.get(<span class="string">"spruit_sunrise"</span>).expect(<span class="string">"spruit entry"</span>);
+<a href=#379 id=379 data-nosnippet>379</a>        <span class="macro">assert!</span>(
+<a href=#380 id=380 data-nosnippet>380</a>            spruit
+<a href=#381 id=381 data-nosnippet>381</a>                .file
+<a href=#382 id=382 data-nosnippet>382</a>                .ends_with(<span class="string">"pine_forest/hdri/spruit_sunrise_2k.exr"</span>),
+<a href=#383 id=383 data-nosnippet>383</a>            <span class="string">"spruit must use the terrain pack EXR, not a second copy"
+<a href=#384 id=384 data-nosnippet>384</a>        </span>);
+<a href=#385 id=385 data-nosnippet>385</a>        <span class="kw">for </span>entry <span class="kw">in </span>catalog.entries() {
+<a href=#386 id=386 data-nosnippet>386</a>            <span class="kw">if </span>entry.sha256.is_empty() {
+<a href=#387 id=387 data-nosnippet>387</a>                <span class="kw">continue</span>;
+<a href=#388 id=388 data-nosnippet>388</a>            }
+<a href=#389 id=389 data-nosnippet>389</a>            <span class="kw">let </span>path = root.join(<span class="kw-2">&amp;</span>entry.file);
+<a href=#390 id=390 data-nosnippet>390</a>            <span class="comment">// Pack bytes under assets/hdri/polyhaven are gitignored. ci-guard
+<a href=#391 id=391 data-nosnippet>391</a>            // rejects committing them. The spruit EXR is owned by the terrain
+<a href=#392 id=392 data-nosnippet>392</a>            // pack (PR #215). When a file is absent, the catalog still records
+<a href=#393 id=393 data-nosnippet>393</a>            // its sha256; when it is present, the bytes must match.
+<a href=#394 id=394 data-nosnippet>394</a>            </span><span class="kw">if </span>!path.is_file() {
+<a href=#395 id=395 data-nosnippet>395</a>                <span class="macro">assert_eq!</span>(entry.sha256.len(), <span class="number">64</span>, <span class="string">"{}"</span>, entry.name);
+<a href=#396 id=396 data-nosnippet>396</a>                <span class="kw">continue</span>;
+<a href=#397 id=397 data-nosnippet>397</a>            }
+<a href=#398 id=398 data-nosnippet>398</a>            <span class="kw">let </span>bytes =
+<a href=#399 id=399 data-nosnippet>399</a>                std::fs::read(<span class="kw-2">&amp;</span>path).unwrap_or_else(|err| <span class="macro">panic!</span>(<span class="string">"{}: {err}"</span>, path.display()));
+<a href=#400 id=400 data-nosnippet>400</a>            <span class="kw">let </span>digest = Sha256::digest(<span class="kw-2">&amp;</span>bytes);
+<a href=#401 id=401 data-nosnippet>401</a>            <span class="kw">let </span>hex = digest
+<a href=#402 id=402 data-nosnippet>402</a>                .iter()
+<a href=#403 id=403 data-nosnippet>403</a>                .map(|byte| <span class="macro">format!</span>(<span class="string">"{byte:02x}"</span>))
+<a href=#404 id=404 data-nosnippet>404</a>                .collect::&lt;String&gt;();
+<a href=#405 id=405 data-nosnippet>405</a>            <span class="macro">assert_eq!</span>(hex, entry.sha256, <span class="string">"{}"</span>, entry.name);
+<a href=#406 id=406 data-nosnippet>406</a>        }
+<a href=#407 id=407 data-nosnippet>407</a>    }
+<a href=#408 id=408 data-nosnippet>408</a>}</code></pre></div></section></main></body></html>
