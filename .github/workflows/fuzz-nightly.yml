@@ -57,4 +57,6 @@ jobs:
 
       - name: Fuzz ${{ matrix.target }} for two minutes
         working-directory: ${{ matrix.dir }}
-        run: cargo fuzz run ${{ matrix.target }} -- -max_total_time=120
+        # rust-toolchain.toml pins 1.89.0, so a bare `cargo` is stable.
+        # cargo-fuzz passes -Z, which stable rejects.
+        run: cargo +nightly fuzz run ${{ matrix.target }} -- -max_total_time=120
