@@ -27,7 +27,7 @@ The game this engine is being built for is **Aravath**.
 
 ---
 
-## Current state (2026-10-18)
+## Current state (2026-10-20)
 
 Checked against `main` at `74ba375b`. Numbers that were not re-measured in this pass are dated below. This page does not assign a letter grade.
 

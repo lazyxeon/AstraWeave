@@ -457,15 +457,16 @@ fn front_door_errors(
     match in_progress_body(readme) {
         None => errors.push(format!("{README_REL}: missing a '## In progress' section")),
         Some(body) => {
+            let found = issue_numbers(&body);
             for issue in IN_PROGRESS_ISSUES {
-                if !body.contains(issue) {
+                if !found.iter().any(|token| token == issue) {
                     errors.push(format!("{README_REL}: in-progress section missing {issue}"));
                 }
             }
-            for found in issue_numbers(&body) {
-                if !IN_PROGRESS_ISSUES.contains(&found.as_str()) {
+            for token in &found {
+                if !IN_PROGRESS_ISSUES.contains(&token.as_str()) {
                     errors.push(format!(
-                        "{README_REL}: in-progress section lists {found}, which is not in the in-progress list"
+                        "{README_REL}: in-progress section lists {token}, which is not in the in-progress list"
                     ));
                 }
             }
@@ -840,6 +841,16 @@ mod tests {
     fn front_door_accepts_a_honest_readme() {
         let errors = front_door_errors(&sample_readme(), &sample_workflow(), &[]);
         assert!(errors.is_empty(), "{errors:?}");
+    }
+
+    #[test]
+    fn front_door_rejects_a_suffixed_issue_token() {
+        let readme = sample_readme().replace("#383 are in progress", "#383foo are in progress");
+        let errors = front_door_errors(&readme, &sample_workflow(), &[]);
+        assert!(
+            errors.iter().any(|error| error.contains("missing #383")),
+            "{errors:?}"
+        );
     }
 
     #[test]
