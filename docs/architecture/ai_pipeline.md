@@ -317,7 +317,7 @@ These four paths do not call each other.
 | **`VeilweaverCompanionOrchestrator`** | Feature-gated (`veilweaver_slice`) GOAP-based companion AI tailored to Veilweaver gameplay verbs (`stability_pulse`, `heal_player`, `execute_combo`, `mark_target`, `reposition`). Wraps `GoapPlanner`. | `astraweave-ai/src/veilweaver.rs:19-23` |
 | **`BossDirector`** | Heuristic boss-AI planner producing `DirectorPlan` (terrain edits, spawns, etc.) under a `DirectorBudget`. | `astraweave-director/src/lib.rs:7+` |
 | **`AiPlannedEvent` / `AiPlanningFailedEvent`** | ECS events emitted by `AiPlanningPlugin::sys_ai_planning` to surface plan production and failures. | `astraweave-core/src/ecs_events.rs` (re-imported by `ecs_ai_plugin.rs:2`) |
-| **`AiPlanningPlugin`** | ECS plugin: `build_app_with_ai()` and the `sys_ai_planning` system registered in stage `"ai_planning"`. | `astraweave-ai/src/ecs_ai_plugin.rs:16, 45-…` |
+| **`AiPlanningPlugin`** | ECS plugin: `build_app_with_ai()` and the `sys_ai_planning` system registered in stage `"ai_planning"`. | `astraweave-ai/src/ecs_ai_plugin.rs`. The struct is line 16. `sys_ai_planning` is line 68. |
 | **`EntityBridge`** | Maps legacy `astraweave_core::Entity` (u32) ↔ ECS `astraweave_ecs::Entity` (generational). Used by `sys_ai_planning` to map back when applying decisions. See `docs/architecture/ecs_math_core_sdk_foundation.md` §3. | `astraweave-core/src/ecs_bridge.rs` |
 
 ### Terms to NOT confuse
