@@ -4,11 +4,11 @@
 //! those commands into [`FieldWrite`]s.
 
 use crate::field::{
-    encode_write, milli_corner, FieldWrite, NullField, Shape, SimField, WriteOp, MAX_FIELD_WRITES,
+    encode_write, FieldWrite, NullField, Shape, SimField, WriteOp, CELL_MM, MAX_FIELD_WRITES,
 };
 use crate::mod_queue::{
-    WeaveCommand, WeaveNode, WeaveScratch, KIND_DECAY, KIND_DENSITY, KIND_GRAVITY, KIND_HEAT,
-    KIND_PHASE, KIND_VOLUME, KIND_WIND, MAX_WEAVE_COMMANDS,
+    WeaveCommand, WeaveNode, WeaveScratch, ISLAND_HALF_CELLS, KIND_DECAY, KIND_DENSITY,
+    KIND_GRAVITY, KIND_HEAT, KIND_PHASE, KIND_VOLUME, KIND_WIND, MAX_WEAVE_COMMANDS,
 };
 use crate::templates::{builtin, writes_for, TEMPLATE_FREEZE};
 use astraweave_nav::{NavChange, NavChangeKind};
@@ -230,25 +230,23 @@ fn store_writes(frame: &mut WeaveFrame, writes: &[FieldWrite]) -> u32 {
 }
 
 fn push_ice(frame: &mut WeaveFrame, tick: u64, seq: u32, origin: [i32; 3], radius: u8) {
+    debug_assert!(
+        origin
+            .iter()
+            .all(|cell| (-ISLAND_HALF_CELLS..=ISLAND_HALF_CELLS).contains(cell)),
+        "freeze origin is outside the island; queue_weave rejects it before writes are stored"
+    );
     let radius = radius as i32;
-    let Some(min_milli) = milli_corner(
-        origin[0].checked_sub(radius),
-        Some(origin[1]),
-        origin[2].checked_sub(radius),
-    ) else {
-        return;
-    };
-    let Some(max_milli) = milli_corner(
-        origin[0]
-            .checked_add(radius)
-            .and_then(|cell| cell.checked_add(1)),
-        origin[1].checked_add(1),
-        origin[2]
-            .checked_add(radius)
-            .and_then(|cell| cell.checked_add(1)),
-    ) else {
-        return;
-    };
+    let min_milli = [
+        (origin[0] - radius) * CELL_MM,
+        origin[1] * CELL_MM,
+        (origin[2] - radius) * CELL_MM,
+    ];
+    let max_milli = [
+        (origin[0] + radius + 1) * CELL_MM,
+        (origin[1] + 1) * CELL_MM,
+        (origin[2] + radius + 1) * CELL_MM,
+    ];
     let sheet_index = frame.sheet_count as usize;
     if sheet_index < MAX_SINKS {
         frame.sheets[sheet_index] = IceSheet {

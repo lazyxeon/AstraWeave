@@ -80,7 +80,10 @@ pub fn compile_legacy(kind: u8, points: LegacyPoints) -> CompiledOp {
             compiled.write_count = count;
         }
         1 => {
-            if let (Some(bx), Some(bz)) = (bx, bz) {
+            if let (Some(bx), Some(by), Some(bz)) = (bx, by, bz) {
+                if cell_origin(bx, by, bz).is_none() {
+                    return empty_compiled();
+                }
                 compiled.collapse = Some(DirectorCollapse {
                     ax: ax as i32,
                     ay: az as i32,
@@ -88,7 +91,6 @@ pub fn compile_legacy(kind: u8, points: LegacyPoints) -> CompiledOp {
                     by: bz as i32,
                 });
             }
-            let _ = by;
         }
         2 => {
             let (mods, count) = writes_for(&builtin(TEMPLATE_WIND).unwrap(), origin, 1);
@@ -238,5 +240,54 @@ mod tests {
         let min = edge.ice_min_milli.unwrap();
         assert_eq!(min[0], (ISLAND_HALF_CELLS - 2) * crate::field::CELL_MM);
         assert_eq!(min[1], 0);
+    }
+
+    #[test]
+    fn non_finite_and_i32_edge_origins_drop_the_op() {
+        for origin in [
+            f32::NAN,
+            f32::INFINITY,
+            f32::NEG_INFINITY,
+            (i32::MAX as f32) / 1000.0,
+            (i32::MIN as f32) / 1000.0,
+        ] {
+            let compiled = compile_legacy(
+                5,
+                LegacyPoints {
+                    a: [origin, 0.0, 0.0],
+                    b: None,
+                    tick: 1,
+                    seq: 1,
+                },
+            );
+            assert_eq!(compiled.write_count, 0, "{origin}");
+            assert!(compiled.ice_min_milli.is_none(), "{origin}");
+        }
+    }
+
+    #[test]
+    fn far_collapse_endpoint_is_rejected() {
+        let compiled = compile_legacy(
+            1,
+            LegacyPoints {
+                a: [0.0, 0.0, 0.0],
+                b: Some([1.0e20, 0.0, 0.0]),
+                tick: 0,
+                seq: 0,
+            },
+        );
+        assert!(compiled.collapse.is_none());
+        assert_eq!(compiled.write_count, 0);
+        let kept = compile_legacy(
+            1,
+            LegacyPoints {
+                a: [0.0, 0.0, 0.0],
+                b: Some([10.0, 0.0, 10.0]),
+                tick: 0,
+                seq: 0,
+            },
+        );
+        let line = kept.collapse.unwrap();
+        assert_eq!((line.ax, line.ay, line.bx, line.by), (0, 0, 10, 10));
     }
 }

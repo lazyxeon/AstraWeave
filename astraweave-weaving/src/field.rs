@@ -41,7 +41,9 @@ pub fn meters_to_cell(m: f32) -> Option<i32> {
         return None;
     }
     let milli = m * 1000.0;
-    if milli < i32::MIN as f32 || milli > i32::MAX as f32 {
+    // `i32::MAX as f32` is `2^31`. `>` lets that value through and `as i32`
+    // saturates. Every smaller finite `f32` is at most `2147483392` and fits.
+    if milli < i32::MIN as f32 || milli >= i32::MAX as f32 {
         return None;
     }
     Some((milli as i32).div_euclid(CELL_MM))
@@ -253,6 +255,25 @@ mod tests {
     use super::*;
 
     #[test]
+    fn meters_to_cell_rejects_non_finite_and_the_i32_edge() {
+        let positive = (i32::MAX as f32) / 1000.0;
+        assert!(
+            meters_to_cell(positive).is_none(),
+            "nearest f32 to 2^31/1000 ({positive}) must not saturate"
+        );
+        let negative = (i32::MIN as f32) / 1000.0;
+        assert_eq!(
+            meters_to_cell(negative),
+            Some(-2_147_484),
+            "negative edge ({negative}) must stay negative and must not saturate"
+        );
+        assert!(meters_to_cell(f32::NAN).is_none());
+        assert!(meters_to_cell(f32::INFINITY).is_none());
+        assert!(meters_to_cell(f32::NEG_INFINITY).is_none());
+        assert_eq!(meters_to_cell(1.0), Some(1));
+        assert_eq!(meters_to_cell(-1.5), Some(-2));
+    }
+
     fn gravity_conversion_matches_9810() {
         assert_eq!(gravity_mm_s2(WORLD_GRAVITY_MILLI_G), -9810);
         assert_eq!(gravity_mm_s2(0), 0);

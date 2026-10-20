@@ -9,7 +9,7 @@ lifecycle_status: active
 integration_status: mixed
 summary: "Wired TYPES (QuestLog/Stats/Inventory->ui; BiomeRule/ResourceNode->terrain; Dialogue->audio), but combat (perform_attack_sweep), apply_weave_op & the Combat/Crafting/Quest plugins are example-only; water_movement.rs fully dormant. gameplay.md §1,§6"
 owns: [astraweave-gameplay]
-doc_version: "1.3"
+doc_version: "1.4"
 last_verified_commit: 1e306e13
 ---
 
@@ -21,7 +21,7 @@ last_verified_commit: 1e306e13
 |---|---|
 | **System name** | Gameplay System (combat, crafting, quests/dialogue, Veilweaver slice/tutorial, in-crate weaving glue, water-movement logic) |
 | **Primary crates** | `astraweave-gameplay` (single crate) |
-| **Document version** | 1.3 |
+| **Document version** | 1.4 |
 | **Last verified against commit** | `1e306e13` |
 | **Last verified date** | 2026-10-15 |
 | **Status** | Active (mixed wiring: a subset of types are consumed by other engine crates; the ECS combat/craft/quest plugins, `perform_attack_sweep`, `apply_weave_op`, and `water_movement` are wired only by examples/the slice-runtime crate, not by an in-engine runtime caller) |
@@ -304,7 +304,7 @@ WeaveTutorialState mutated (anchors stabilized, triggers active)
 | 1 | `perform_attack_sweep` returns `None` for sweeps shorter than `1e-3` | Yes | Test `test_negligible_sweep_distance_returns_none` (`combat_physics.rs:591`) |
 | 2 | A parry blocks damage exactly once: it is consumed (`window=0.0, active=false`) on the hit it blocks | Yes | Tests `test_parry_blocks_damage`, `test_parry_window_zero_does_not_parry`, `test_parry_inactive_does_not_parry` (`combat_physics.rs`) |
 | 3 | Iframes block damage **without** being consumed | Yes | Test `test_iframes_block_damage` (`combat_physics.rs:393`) |
-| 4 | `apply_weave_op` bails (no mutation) when the relevant budget field is `<= 0`, else decrements it by exactly 1 | Yes | Tests `*_no_budget`, `redirect_wind_budget_decrements`, `test_apply_weave_op_budget_depletion` (`weaving.rs`) |
+| 4 | `apply_weave_op` bails (no mutation, no budget spend) when the relevant budget field is `<= 0`, and when `compile_legacy` drops the op because an origin is outside the island. A kept op decrements the matching budget by exactly 1 | Yes | Tests `*_no_budget`, `redirect_wind_budget_decrements`, `test_apply_weave_op_budget_depletion`, `dropped_origin_does_not_spend_budget_or_return_a_consequence`, `far_collapse_endpoint_does_not_spend_budget` (`weaving.rs`) |
 | 5 | `FreezeWater` performs no truth mutation (consumes `weather_ops` only) | Partial | Doc-only (verified 2026-06-25). Enforced by the inline comment + budget decrement at `weaving.rs:94-105`; the `FreezeWater` arm provably contains no `w`/`phys` mutation. Confirmed there is **no** dedicated test asserting physics/world are unchanged — `mutation_tests.rs` has no `FreezeWater` truth-mutation test (only a budget-path test). |
 | 6 | `WaterPlayerState::update` clamps `submersion` to `[0,1]` before mode selection | Yes | `water_movement.rs:207`; tests `update_threshold_boundaries_exact` and others |
 | 7 | ECS `combat_system` uses Manhattan distance (`|dx|+|dy|`), not Euclidean | Yes | Tests `combat_distance_check_with_offset_positions`, `combat_system_distance_subtraction_matters` (`ecs.rs`) |
@@ -348,6 +348,8 @@ No benchmarks live in this crate's runtime path beyond `benches/combat_pipeline`
 ---
 
 ## 12. Maintenance Notes
+
+**Revision 1.4 (2026-10-20):** `apply_weave_op` returns an error and does not spend budget when `compile_legacy` drops an origin. Invariant 4.
 
 **Update this doc when:**
 - Any Active file in §5 gains/loses a production caller (re-run the wired-vs-dormant grep — this is the doc's highest-value signal).

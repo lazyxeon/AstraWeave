@@ -58,7 +58,7 @@ pub use field::{
 };
 pub use gameplay_qa::{load_bundled_scenario, run_scenario, FailureArtifact, RunOutcome};
 pub use intents::{IntentProposer, WeaveIntent};
-pub use legacy::{compile_legacy, LegacyPoints};
+pub use legacy::{compile_legacy, CompiledOp, LegacyPoints};
 pub use level::{Camera, LevelStats, Player, VeilweaverLevel};
 pub use mod_queue::{
     parse_template_toml, queue_weave, QueueError, WeaveCommand, WeaveScratch, WeaveTemplate,

@@ -45,6 +45,9 @@ pub fn apply_weave_op(
     if matches!(op.kind, WeaveOpKind::CollapseBridge) && op.b.is_none() {
         anyhow::bail!("Collapse needs A->B");
     }
+    if !legacy_geometry_kept(kind, &compiled) {
+        anyhow::bail!("weave origin is outside the island");
+    }
     match op.kind {
         WeaveOpKind::ReinforcePath | WeaveOpKind::RaisePlatform | WeaveOpKind::CollapseBridge => {
             if budget.terrain_edits <= 0 {
@@ -145,6 +148,16 @@ pub fn apply_weave_op(
     };
 
     Ok(consequence)
+}
+
+fn legacy_geometry_kept(kind: u8, compiled: &astraweave_weaving::CompiledOp) -> bool {
+    match kind {
+        0 | 4 => compiled.fortify.is_some(),
+        1 => compiled.collapse.is_some(),
+        2 | 3 => compiled.write_count > 0,
+        5 => compiled.ice_min_milli.is_some(),
+        _ => false,
+    }
 }
 
 #[cfg(test)]
@@ -662,5 +675,76 @@ mod tests {
             initial_weather - 1,
             "RedirectWind must decrement weather_ops by exactly 1"
         );
+    }
+
+    #[test]
+    fn dropped_origin_does_not_spend_budget_or_return_a_consequence() {
+        let mut world = create_test_world();
+        let mut physics = create_test_physics();
+        let nav_src = vec![];
+        let mut budget = create_test_budget();
+        let op = WeaveOp {
+            kind: WeaveOpKind::FreezeWater,
+            a: vec3(1.0e20, f32::NAN, f32::INFINITY),
+            b: None,
+            budget_cost: 1,
+        };
+        let mut logger = |_: String| {};
+        let err = apply_weave_op(
+            &mut world,
+            &mut physics,
+            &nav_src,
+            &mut budget,
+            &op,
+            &mut logger,
+        )
+        .expect_err("a dropped freeze must not succeed");
+        assert!(err.to_string().contains("outside the island"));
+        assert_eq!(budget.weather_ops, 3);
+        assert_eq!(budget.terrain_edits, 5);
+
+        let reinforce = WeaveOp {
+            kind: WeaveOpKind::ReinforcePath,
+            a: vec3(f32::NEG_INFINITY, 0.0, 0.0),
+            b: None,
+            budget_cost: 1,
+        };
+        let err = apply_weave_op(
+            &mut world,
+            &mut physics,
+            &nav_src,
+            &mut budget,
+            &reinforce,
+            &mut logger,
+        )
+        .expect_err("a dropped reinforce must not succeed");
+        assert!(err.to_string().contains("outside the island"));
+        assert_eq!(budget.terrain_edits, 5);
+    }
+
+    #[test]
+    fn far_collapse_endpoint_does_not_spend_budget() {
+        let mut world = create_test_world();
+        let mut physics = create_test_physics();
+        let nav_src = vec![];
+        let mut budget = create_test_budget();
+        let op = WeaveOp {
+            kind: WeaveOpKind::CollapseBridge,
+            a: vec3(0.0, 0.0, 0.0),
+            b: Some(vec3(1.0e20, 0.0, (i32::MAX as f32) / 1000.0)),
+            budget_cost: 1,
+        };
+        let mut logger = |_: String| {};
+        let err = apply_weave_op(
+            &mut world,
+            &mut physics,
+            &nav_src,
+            &mut budget,
+            &op,
+            &mut logger,
+        )
+        .expect_err("a far collapse endpoint must not succeed");
+        assert!(err.to_string().contains("outside the island"));
+        assert_eq!(budget.terrain_edits, 5);
     }
 }
