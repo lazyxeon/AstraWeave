@@ -1656,7 +1656,7 @@ const ONE_LINERS = {
   'astraweave-dialogue':       'Mixed. Basic DialogueGraph/DialogueRunner production-wired; llm_dialogue.rs (60% of crate) dormant.',
   'astraweave-net':            'Snapshot-based server. IVec2 grid. JSON over WebSocket. Disjoint from astraweave-net-ecs.',
   'astraweave-net-ecs':        'Matchmaking ECS layer. Plugin layer is dormant. Wire format mismatch with standalone server.',
-  'astraweave-persistence-ecs':'Roundtrip works. A due health payload updates CHealth on the replay entity. Autosave drops a save error.',
+  'astraweave-persistence-ecs':'A health write is a little-endian i32 into an existing CHealth on the CReplayState entity. A later save error leaves earlier managers saved.',
   'astraweave-input':          'Pure facade over winit + gilrs. Declared-but-unused by gameplay/ui. Editor reinvents in 2,511-LoC panel.',
   'astraweave-audio':          'rodio facade. 5 buses (master/music/ambient/voice/SFX). !Send+!Sync so cannot be ECS Resource.',
   'astraweave-scene':          'Transform, Node, Scene + animation ECS components. compute_poses_stub is documented stub.',
