@@ -1237,7 +1237,10 @@ fn paint_hud(hud: &mut EguiHud, frame: HudFrame<'_>) {
 
 fn light_the_world(renderer: &mut Renderer, volumetrics: bool) {
     renderer.set_shadows_enabled(true);
-    renderer.set_cloud_shadows_enabled(false);
+    // The chunk meshes are the static PBR path, which samples the cloud-shadow
+    // map. The default strength darkens that soft lobe so it reads on the ground.
+    renderer.set_cloud_shadows_enabled(true);
+    renderer.set_cloud_shadow_strength(astraweave_render::volumetric_clouds::CLOUD_SHADOW_STRENGTH);
     renderer
         .scene_environment_mut()
         .set_biome(BiomeType::Grassland);

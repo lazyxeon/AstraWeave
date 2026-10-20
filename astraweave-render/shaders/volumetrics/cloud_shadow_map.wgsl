@@ -36,7 +36,10 @@ struct CloudShadowParams {
     extinction:      f32,
     shadow_steps:    u32,          // march steps through cloud layer
     resolution:      f32,          // shadow map resolution (pixels, square)
-    _pad0:           f32,
+    // 1 keeps the weather weight and the Beer extinction. Above 1 darkens
+    // the same march: the weather weight is scaled (then clamped) and the
+    // extinction is already scaled by the CPU before upload.
+    strength:        f32,
     // This dispatch writes rows [y_begin, y_begin + row_count). The frame
     // index picks the slice. gid.y is the row inside the slice, not the
     // texture row, because the dispatch is only `row_count` tall.
@@ -134,9 +137,14 @@ fn cloud_shadow_main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let xz = params.center.xz + (uv - 0.5) * 2.0 * params.extent;
 
     // Clear columns used to pay for coverage on every step, then skip the FBM.
-    let coverage = weather_coverage(xz);
+    // strength scales the weather weight. 1 is the unscaled lobe. Clear
+    // weather stays clear because the weight is still 0.
+    let coverage = clamp(weather_coverage(xz) * max(params.strength, 0.0), 0.0, 1.0);
+    // .g is how much of the indirect light follows the shadow. strength 1
+    // stores 0, so skylight stays put. Higher strength closes that gap.
+    let sky_w = clamp(1.0 - 1.0 / max(params.strength, 1.0), 0.0, 1.0);
     if (coverage < 0.001) {
-        textureStore(t_out, vec2<i32>(i32(gid.x), i32(row)), vec4<f32>(1.0, 0.0, 0.0, 0.0));
+        textureStore(t_out, vec2<i32>(i32(gid.x), i32(row)), vec4<f32>(1.0, sky_w, 0.0, 0.0));
         return;
     }
 
@@ -167,5 +175,5 @@ fn cloud_shadow_main(@builtin(global_invocation_id) gid: vec3<u32>) {
     }
 
     let transmittance = exp(-optical_depth * params.extinction);
-    textureStore(t_out, vec2<i32>(i32(gid.x), i32(row)), vec4<f32>(transmittance, 0.0, 0.0, 0.0));
+    textureStore(t_out, vec2<i32>(i32(gid.x), i32(row)), vec4<f32>(transmittance, sky_w, 0.0, 0.0));
 }

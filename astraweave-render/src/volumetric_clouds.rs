@@ -90,7 +90,8 @@ pub struct CloudShadowParams {
     pub extinction: f32,
     pub shadow_steps: u32,
     pub resolution: f32,
-    pub _pad0: f32,
+    /// See `CLOUD_SHADOW_STRENGTH`. 1 leaves the weather weight unchanged.
+    pub strength: f32,
     pub y_begin: u32,
     pub row_count: u32,
     pub _pad1: u32,
@@ -609,6 +610,20 @@ pub const CLOUD_SHADOW_STEPS: u32 = 16;
 /// refreshes every 32 sim frames, at one cloud time for the whole cycle.
 pub const CLOUD_SHADOW_SLICES: u32 = 32;
 
+/// Darkens cloud shadows without extra march steps.
+///
+/// Two effects, one value. The weather weight is multiplied by this and
+/// clamped, so a column the unscaled march left clear can carry a shadow.
+/// Extinction is multiplied by the same value, so an existing lobe gets
+/// darker (`transmittance ^ strength`). `1` is the unscaled march. A weather
+/// weight of 0 stays clear. The 16-step, 32-slice dispatch is unchanged.
+pub const CLOUD_SHADOW_STRENGTH: f32 = 4.0;
+
+/// Extinction uploaded to the cloud-shadow march.
+pub fn cloud_shadow_extinction(extinction: f32, strength: f32) -> f32 {
+    extinction * strength.max(0.0)
+}
+
 /// Which rows a presentation frame owns, and the cloud time for that cycle.
 /// Time is `(frame_index / slices) * slices / 60`, so every slice in a cycle
 /// shares one time and the same index always selects the same rows.
@@ -821,6 +836,7 @@ impl CloudShadowPass {
         extinction: f32,
         shadow_steps: u32,
         frame_index: u64,
+        strength: f32,
     ) {
         let slice = cloud_shadow_slice(frame_index, self.resolution);
         if self.baked_cycle != Some(slice.cycle) {
@@ -845,10 +861,10 @@ impl CloudShadowPass {
             cloud_speed: config.cloud_speed,
             wind_dir: config.wind_dir.to_array(),
             time: slice.time,
-            extinction,
+            extinction: cloud_shadow_extinction(extinction, strength),
             shadow_steps,
             resolution: self.resolution as f32,
-            _pad0: 0.0,
+            strength,
             y_begin: slice.y_begin,
             row_count: slice.row_count,
             _pad1: 0,
@@ -1147,6 +1163,24 @@ mod tests {
     }
 
     #[test]
+    fn cloud_shadow_strength_darkens_without_touching_clear_sky() {
+        assert_eq!(CLOUD_SHADOW_STRENGTH, 4.0);
+        let extinction = CloudConfig::default().extinction_coeff;
+        let scaled = cloud_shadow_extinction(extinction, CLOUD_SHADOW_STRENGTH);
+        assert!((scaled - extinction * 4.0).abs() < 1.0e-6);
+        assert_eq!(cloud_shadow_extinction(extinction, -2.0), 0.0);
+        // transmittance^strength. A lit texel stays lit. A soft lobe gets darker.
+        let soft = 0.8_f32;
+        let darkened = soft.powf(CLOUD_SHADOW_STRENGTH);
+        assert!((1.0_f32.powf(CLOUD_SHADOW_STRENGTH) - 1.0).abs() < 1.0e-6);
+        assert!(darkened < soft);
+        assert!(darkened > 0.3);
+        // Indirect light follows (strength - 1) / strength. strength 1 stores 0.
+        let sky = 1.0 - 1.0 / CLOUD_SHADOW_STRENGTH;
+        assert!((sky - 0.75).abs() < 1.0e-6);
+    }
+
+    #[test]
     fn cloud_shadow_slice_is_a_function_of_frame_index() {
         let first = cloud_shadow_slice(3, 512);
         let again = cloud_shadow_slice(3, 512);
@@ -1212,7 +1246,7 @@ mod tests {
             extinction: config.extinction_coeff,
             shadow_steps: CLOUD_SHADOW_STEPS,
             resolution: pass.resolution as f32,
-            _pad0: 0.0,
+            strength: 1.0,
             y_begin: 0,
             row_count: pass.resolution,
             _pad1: 0,
@@ -1236,6 +1270,7 @@ mod tests {
             config.extinction_coeff,
             CLOUD_SHADOW_STEPS,
             0,
+            1.0,
         );
         assert_eq!(pass.baked_center_xz(), [camera.x, camera.z]);
         pass.prepare_frame(
@@ -1246,6 +1281,7 @@ mod tests {
             config.extinction_coeff,
             CLOUD_SHADOW_STEPS,
             3,
+            1.0,
         );
         assert_eq!(
             pass.baked_center_xz(),
@@ -1262,6 +1298,7 @@ mod tests {
                 config.extinction_coeff,
                 CLOUD_SHADOW_STEPS,
                 frame,
+                1.0,
             );
             let mut enc = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("cloud_shadow_slice"),
@@ -1278,6 +1315,7 @@ mod tests {
             config.extinction_coeff,
             CLOUD_SHADOW_STEPS,
             u64::from(CLOUD_SHADOW_SLICES),
+            1.0,
         );
         assert_eq!(pass.baked_center_xz(), [80.0, -40.0]);
         let mut max_diff = 0.0f32;
