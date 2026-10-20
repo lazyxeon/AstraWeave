@@ -11,10 +11,9 @@ use astraweave_profiling::span;
 use anyhow::Result;
 use astraweave_core::{PlanIntent, WorldSnapshot};
 
-#[cfg(feature = "ai-goap")]
-use astraweave_behavior::goap::{GoapAction, GoapGoal, GoapPlanner, WorldState};
+use crate::htn::GatherGoal;
 
-#[cfg(any(feature = "ai-goap", feature = "ai-bt"))]
+#[cfg(feature = "ai-bt")]
 use astraweave_core::ActionStep;
 
 #[cfg(feature = "ai-bt")]
@@ -97,15 +96,17 @@ impl PlannerMode {
 /// let controller = CAiController {
 ///     mode: PlannerMode::GOAP,
 ///     policy: Some("gather_craft_policy".to_string()),
+///     gather: GatherGoal::KeepWood,
 /// };
 /// ```
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CAiController {
     /// Which planner to use for this entity.
     pub mode: PlannerMode,
-    /// Optional policy identifier for BT/GOAP configuration.
-    /// Can be used to load specific behavior trees or GOAP action sets.
+    /// Optional behavior-tree policy name. GOAP dispatch does not read it.
     pub policy: Option<String>,
+    /// Explicit gather method. Ignored by rule and behavior-tree modes.
+    pub gather: GatherGoal,
 }
 
 impl std::fmt::Display for CAiController {
@@ -122,6 +123,7 @@ impl Default for CAiController {
         Self {
             mode: PlannerMode::Rule,
             policy: None,
+            gather: GatherGoal::CookFood,
         }
     }
 }
@@ -130,7 +132,11 @@ impl CAiController {
     /// Create a new AI controller with the specified planner mode.
     #[must_use]
     pub fn new(mode: PlannerMode) -> Self {
-        Self { mode, policy: None }
+        Self {
+            mode,
+            policy: None,
+            gather: GatherGoal::CookFood,
+        }
     }
 
     /// Create a new AI controller with a policy.
@@ -139,6 +145,7 @@ impl CAiController {
         Self {
             mode,
             policy: Some(policy.into()),
+            gather: GatherGoal::CookFood,
         }
     }
 
@@ -158,6 +165,13 @@ impl CAiController {
     #[must_use]
     pub fn goap() -> Self {
         Self::new(PlannerMode::GOAP)
+    }
+
+    /// Set the gather method. This does not inspect `policy`.
+    #[must_use]
+    pub fn with_gather(mut self, gather: GatherGoal) -> Self {
+        self.gather = gather;
+        self
     }
 
     /// Check if this controller has a policy.
@@ -208,6 +222,7 @@ impl CAiController {
 /// let controller = CAiController {
 ///     mode: PlannerMode::Rule,
 ///     policy: None,
+///     gather: astraweave_ai::htn::GatherGoal::CookFood,
 /// };
 ///
 /// // Create snapshot with an enemy so the planner returns non-empty steps
@@ -363,120 +378,13 @@ fn tick_default_companion_tree(snapshot: &WorldSnapshot) -> PlanIntent {
     }
 }
 
-/// Dispatch to GOAP planner (feature-gated).
+/// Gather methods live in the HTN module. The feature gate stays so existing
+/// controllers still select this mode by name.
 #[cfg(feature = "ai-goap")]
-fn dispatch_goap(controller: &CAiController, snapshot: &WorldSnapshot) -> Result<PlanIntent> {
+fn dispatch_goap(controller: &CAiController, _snapshot: &WorldSnapshot) -> Result<PlanIntent> {
     #[cfg(feature = "profiling")]
     span!("AI::dispatch_goap");
-
-    // Convert WorldSnapshot to GOAP WorldState
-    let world_state = snapshot_to_goap_state(snapshot)?;
-
-    // Define goal based on policy or default
-    let goal = if let Some(policy_name) = &controller.policy {
-        if policy_name.contains("gather") || policy_name.contains("craft") {
-            GoapGoal::new(
-                "gather_and_craft",
-                WorldState::from_facts(&[("has_wood", true), ("has_food", true)]),
-            )
-        } else {
-            GoapGoal::new("get_food", WorldState::from_facts(&[("has_food", true)]))
-        }
-    } else {
-        GoapGoal::new("get_food", WorldState::from_facts(&[("has_food", true)]))
-    };
-
-    // Define available actions
-    let actions = create_goap_actions();
-
-    // Run GOAP planner
-    let planner = GoapPlanner::new().with_max_iterations(100);
-    let plan = planner
-        .plan(&world_state, &goal, &actions)
-        .ok_or_else(|| anyhow::anyhow!("GOAP planning failed - no plan found"))?;
-
-    // Convert GOAP action sequence to ActionSteps
-    let steps = goap_actions_to_steps(&plan)?;
-
-    Ok(PlanIntent {
-        plan_id: format!("goap_{}", plan.len()),
-        steps,
-    })
-}
-
-/// Convert WorldSnapshot to GOAP WorldState.
-#[cfg(feature = "ai-goap")]
-fn snapshot_to_goap_state(snapshot: &WorldSnapshot) -> Result<WorldState> {
-    let mut state = WorldState::new();
-    state.set("has_wood", false);
-    state.set("has_food", false);
-    state.set("at_tree", false);
-    state.set("at_campfire", false);
-    state.set("hungry", snapshot.player.hp < 50);
-    Ok(state)
-}
-
-/// Create standard GOAP action set for gathering and crafting.
-#[cfg(feature = "ai-goap")]
-fn create_goap_actions() -> Vec<GoapAction> {
-    vec![
-        GoapAction::new("GoToTree")
-            .with_effect("at_tree", true)
-            .with_cost(5.0),
-        GoapAction::new("ChopWood")
-            .with_precondition("at_tree", true)
-            .with_effect("has_wood", true)
-            .with_effect("at_tree", false)
-            .with_cost(10.0),
-        GoapAction::new("GoToCampfire")
-            .with_precondition("has_wood", true)
-            .with_effect("at_campfire", true)
-            .with_cost(5.0),
-        GoapAction::new("CookFood")
-            .with_precondition("has_wood", true)
-            .with_precondition("at_campfire", true)
-            .with_effect("has_food", true)
-            .with_effect("has_wood", false)
-            .with_effect("at_campfire", false)
-            .with_cost(8.0),
-    ]
-}
-
-/// Convert GOAP action sequence to ActionSteps.
-#[cfg(feature = "ai-goap")]
-fn goap_actions_to_steps(actions: &[GoapAction]) -> Result<Vec<ActionStep>> {
-    let mut steps = Vec::new();
-
-    for action in actions {
-        let step = match action.name.as_str() {
-            "GoToTree" => ActionStep::MoveTo {
-                x: 10,
-                y: 10,
-                speed: None,
-            },
-            "ChopWood" => ActionStep::MoveTo {
-                x: 10,
-                y: 10,
-                speed: None,
-            },
-            "GoToCampfire" => ActionStep::MoveTo {
-                x: 5,
-                y: 5,
-                speed: None,
-            },
-            "CookFood" => ActionStep::MoveTo {
-                x: 5,
-                y: 5,
-                speed: None,
-            },
-            _ => {
-                anyhow::bail!("Unknown GOAP action: {}", action.name)
-            }
-        };
-        steps.push(step);
-    }
-
-    Ok(steps)
+    Ok(crate::htn::gather_method(controller.gather))
 }
 
 #[cfg(test)]
@@ -529,6 +437,7 @@ mod tests {
         let controller = CAiController {
             mode: PlannerMode::Rule,
             policy: None,
+            gather: GatherGoal::CookFood,
         };
 
         let snapshot = make_test_snapshot();
@@ -550,6 +459,7 @@ mod tests {
         let controller = CAiController {
             mode: PlannerMode::BehaviorTree,
             policy: Some("default".to_string()),
+            gather: GatherGoal::CookFood,
         };
         let plan = dispatch_planner(&controller, &make_test_snapshot()).expect("default tree");
         assert!(
@@ -566,6 +476,7 @@ mod tests {
         let controller = CAiController {
             mode: PlannerMode::BehaviorTree,
             policy: Some("missing-graph".to_string()),
+            gather: GatherGoal::CookFood,
         };
         let err = dispatch_planner(&controller, &make_test_snapshot()).expect_err("unbound");
         assert!(err.downcast_ref::<BehaviorDispatchError>().is_some());
@@ -578,6 +489,7 @@ mod tests {
             let controller = CAiController {
                 mode: PlannerMode::BehaviorTree,
                 policy: None,
+                gather: GatherGoal::CookFood,
             };
 
             let snapshot = make_test_snapshot();
@@ -593,6 +505,7 @@ mod tests {
         let controller = CAiController {
             mode: PlannerMode::GOAP,
             policy: Some("gather_craft_policy".to_string()),
+            gather: GatherGoal::KeepWood,
         };
 
         let mut snapshot = make_test_snapshot();
@@ -602,29 +515,29 @@ mod tests {
         let result = dispatch_planner(&controller, &snapshot);
         assert!(result.is_ok());
         let plan = result.unwrap();
-        assert!(!plan.steps.is_empty());
+        assert_eq!(plan.steps.len(), 6, "gather keeps wood after cooking");
         assert!(plan.plan_id.contains("goap"));
     }
 
     #[test]
     #[cfg(feature = "ai-goap")]
-    fn test_snapshot_to_goap_state() {
-        let snapshot = make_test_snapshot();
-        let state = snapshot_to_goap_state(&snapshot).unwrap();
-        assert_eq!(state.get("has_wood"), Some(false));
-        assert_eq!(state.get("has_food"), Some(false));
-        assert_eq!(state.get("hungry"), Some(false)); // Player HP = 100
+    fn cook_only_method_is_four_steps() {
+        let controller = CAiController {
+            mode: PlannerMode::GOAP,
+            policy: None,
+            gather: GatherGoal::CookFood,
+        };
+        let plan = dispatch_planner(&controller, &make_test_snapshot()).unwrap();
+        assert_eq!(plan.steps.len(), 4);
+        assert_eq!(plan.plan_id, "goap_4");
     }
 
     #[test]
     #[cfg(feature = "ai-goap")]
     fn test_create_goap_actions() {
-        let actions = create_goap_actions();
-        assert_eq!(actions.len(), 4);
-        assert_eq!(actions[0].name, "GoToTree");
-        assert_eq!(actions[1].name, "ChopWood");
-        assert_eq!(actions[2].name, "GoToCampfire");
-        assert_eq!(actions[3].name, "CookFood");
+        let plan = crate::htn::gather_method(GatherGoal::KeepWood);
+        assert_eq!(plan.steps.len(), 6);
+        assert_eq!(plan.plan_id, "goap_6");
     }
 
     // ===== NEW TESTS (5 tests added) =====
@@ -635,6 +548,7 @@ mod tests {
         let controller = CAiController {
             mode: PlannerMode::GOAP,
             policy: Some("custom_combat_policy".to_string()),
+            gather: GatherGoal::CookFood,
         };
 
         assert_eq!(controller.mode, PlannerMode::GOAP);
@@ -647,6 +561,7 @@ mod tests {
         let controller1 = CAiController {
             mode: PlannerMode::BehaviorTree,
             policy: Some("patrol_policy".to_string()),
+            gather: GatherGoal::CookFood,
         };
 
         let controller2 = controller1.clone();
@@ -672,6 +587,7 @@ mod tests {
         let controller = CAiController {
             mode: PlannerMode::Rule,
             policy: None,
+            gather: GatherGoal::CookFood,
         };
 
         let snapshot = WorldSnapshot {
@@ -713,6 +629,7 @@ mod tests {
         let controller = CAiController {
             mode: PlannerMode::GOAP,
             policy: None,
+            gather: GatherGoal::CookFood,
         };
 
         let snapshot = make_test_snapshot();

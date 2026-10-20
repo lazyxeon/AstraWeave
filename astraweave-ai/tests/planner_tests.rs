@@ -118,6 +118,7 @@ fn test_rule_orchestrator_correctness() {
     let controller = CAiController {
         mode: PlannerMode::Rule,
         policy: None,
+        gather: astraweave_ai::htn::GatherGoal::CookFood,
     };
 
     // Test 1: Enemy present, no cooldowns -> should plan aggressive action
@@ -163,6 +164,7 @@ fn test_rule_orchestrator_performance() {
     let controller = CAiController {
         mode: PlannerMode::Rule,
         policy: None,
+        gather: astraweave_ai::htn::GatherGoal::CookFood,
     };
 
     // Test planning performance
@@ -210,6 +212,7 @@ fn test_planner_mode_switching() {
     let controller_rule = CAiController {
         mode: PlannerMode::Rule,
         policy: None,
+        gather: astraweave_ai::htn::GatherGoal::CookFood,
     };
     let plan = dispatch_planner(&controller_rule, &snapshot);
     assert!(plan.is_ok(), "Rule mode should work");
@@ -221,6 +224,7 @@ fn test_planner_mode_switching() {
         let controller_bt = CAiController {
             mode: PlannerMode::BehaviorTree,
             policy: Some("default".to_string()),
+            gather: astraweave_ai::htn::GatherGoal::CookFood,
         };
         let plan = dispatch_planner(&controller_bt, &snapshot);
         assert!(plan.is_ok(), "BehaviorTree mode should work");
@@ -237,6 +241,7 @@ fn test_planner_mode_switching() {
         let controller_goap = CAiController {
             mode: PlannerMode::GOAP,
             policy: Some("default".to_string()),
+            gather: astraweave_ai::htn::GatherGoal::CookFood,
         };
         let plan = dispatch_planner(&controller_goap, &snapshot);
         assert!(plan.is_ok(), "GOAP mode should work");
@@ -257,6 +262,7 @@ fn test_multi_agent_planning_scalability() {
     let controller = CAiController {
         mode: PlannerMode::Rule,
         policy: None,
+        gather: astraweave_ai::htn::GatherGoal::CookFood,
     };
 
     // Test different agent counts
@@ -312,6 +318,7 @@ fn test_plan_consistency() {
     let controller = CAiController {
         mode: PlannerMode::Rule,
         policy: None,
+        gather: astraweave_ai::htn::GatherGoal::CookFood,
     };
     let snapshot = create_tactical_snapshot();
 
@@ -341,6 +348,7 @@ fn test_planning_under_load() {
     let controller = CAiController {
         mode: PlannerMode::Rule,
         policy: None,
+        gather: astraweave_ai::htn::GatherGoal::CookFood,
     };
 
     // Simulate sustained planning load

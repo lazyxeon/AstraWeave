@@ -114,6 +114,7 @@ fn test_deterministic_planning() {
     let controller = CAiController {
         mode: PlannerMode::Rule,
         policy: None,
+        gather: astraweave_ai::htn::GatherGoal::CookFood,
     };
 
     let frame_count = 100;
@@ -188,6 +189,7 @@ fn test_planning_stability() {
     let controller = CAiController {
         mode: PlannerMode::Rule,
         policy: None,
+        gather: astraweave_ai::htn::GatherGoal::CookFood,
     };
 
     // Test stability over an extended period (10 seconds)
@@ -230,6 +232,7 @@ fn test_memory_stability_marathon() {
     let controller = CAiController {
         mode: PlannerMode::Rule,
         policy: None,
+        gather: astraweave_ai::htn::GatherGoal::CookFood,
     };
 
     let duration_hours = 1.0;
@@ -288,6 +291,7 @@ fn test_error_recovery() {
     let controller = CAiController {
         mode: PlannerMode::Rule,
         policy: None,
+        gather: astraweave_ai::htn::GatherGoal::CookFood,
     };
 
     // Test planning with various edge cases
@@ -365,6 +369,7 @@ fn test_concurrent_planning() {
             let controller = CAiController {
                 mode: PlannerMode::Rule,
                 policy: None,
+                gather: astraweave_ai::htn::GatherGoal::CookFood,
             };
 
             let mut success_count = 0;

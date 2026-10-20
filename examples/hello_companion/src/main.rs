@@ -696,11 +696,7 @@ fn generate_plan(snap: &WorldSnapshot, mode: AIMode) -> Result<PlanIntent> {
 
         #[cfg(feature = "llm_orchestrator")]
         AIMode::Arbiter => {
-            // Note: Arbiter requires stateful usage for proper operation.
-            // This single-call demo doesn't showcase the full hybrid pattern.
-            // See arbiter example in the arbiter module for proper usage.
-            println!("⚠️  Arbiter mode requires stateful usage");
-            println!("   Using GOAP for this single-shot demo");
+            println!("The model is not on this tick. The sim validates the proposed steps.");
             generate_goap_plan(snap)
         }
     }

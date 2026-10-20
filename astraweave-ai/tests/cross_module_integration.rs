@@ -215,6 +215,7 @@ fn test_perception_to_planning_pipeline() {
     let controller = CAiController {
         mode: PlannerMode::Rule,
         policy: None,
+        gather: astraweave_ai::htn::GatherGoal::CookFood,
     };
 
     // Phase 1: Perception
@@ -260,6 +261,7 @@ fn test_planning_to_physics_pipeline() {
     let controller = CAiController {
         mode: PlannerMode::Rule,
         policy: None,
+        gather: astraweave_ai::htn::GatherGoal::CookFood,
     };
 
     // Phase 1: Perception
@@ -323,6 +325,7 @@ fn test_physics_to_ecs_feedback_loop() {
     let controller = CAiController {
         mode: PlannerMode::Rule,
         policy: None,
+        gather: astraweave_ai::htn::GatherGoal::CookFood,
     };
 
     let frame_count = 10;
@@ -440,6 +443,7 @@ fn test_ai_planning_with_navmesh() {
     let controller = CAiController {
         mode: PlannerMode::Rule,
         policy: None,
+        gather: astraweave_ai::htn::GatherGoal::CookFood,
     };
 
     // Extract snapshot and plan
@@ -495,6 +499,7 @@ fn test_full_loop_determinism() {
         let controller = CAiController {
             mode: PlannerMode::Rule,
             policy: None,
+            gather: astraweave_ai::htn::GatherGoal::CookFood,
         };
 
         // Run 5 frames of the loop
@@ -556,6 +561,7 @@ fn test_multi_agent_full_pipeline() {
     let controller = CAiController {
         mode: PlannerMode::Rule,
         policy: None,
+        gather: astraweave_ai::htn::GatherGoal::CookFood,
     };
 
     let start = Instant::now();
@@ -636,6 +642,7 @@ fn test_60fps_budget_multi_system() {
     let controller = CAiController {
         mode: PlannerMode::Rule,
         policy: None,
+        gather: astraweave_ai::htn::GatherGoal::CookFood,
     };
 
     let mut frame_times = vec![];

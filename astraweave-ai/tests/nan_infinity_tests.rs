@@ -51,6 +51,7 @@ fn test_dispatch_planner_with_nan_timestamp() {
         let controller = CAiController {
             mode: PlannerMode::Rule,
             policy: None,
+            gather: astraweave_ai::htn::GatherGoal::CookFood,
         };
         let mut snapshot = create_baseline_snapshot();
         snapshot.t = f32::NAN;
@@ -65,6 +66,7 @@ fn test_dispatch_planner_with_infinity_timestamp() {
         let controller = CAiController {
             mode: PlannerMode::Rule,
             policy: None,
+            gather: astraweave_ai::htn::GatherGoal::CookFood,
         };
         let mut snapshot = create_baseline_snapshot();
         snapshot.t = f32::INFINITY;
@@ -79,6 +81,7 @@ fn test_dispatch_planner_with_neg_infinity_timestamp() {
         let controller = CAiController {
             mode: PlannerMode::Rule,
             policy: None,
+            gather: astraweave_ai::htn::GatherGoal::CookFood,
         };
         let mut snapshot = create_baseline_snapshot();
         snapshot.t = f32::NEG_INFINITY;
@@ -97,6 +100,7 @@ fn test_dispatch_planner_with_nan_morale() {
         let controller = CAiController {
             mode: PlannerMode::Rule,
             policy: None,
+            gather: astraweave_ai::htn::GatherGoal::CookFood,
         };
         let mut snapshot = create_baseline_snapshot();
         snapshot.me.morale = f32::NAN;
@@ -111,6 +115,7 @@ fn test_dispatch_planner_with_infinity_morale() {
         let controller = CAiController {
             mode: PlannerMode::Rule,
             policy: None,
+            gather: astraweave_ai::htn::GatherGoal::CookFood,
         };
         let mut snapshot = create_baseline_snapshot();
         snapshot.me.morale = f32::INFINITY;
@@ -125,6 +130,7 @@ fn test_dispatch_planner_with_neg_infinity_morale() {
         let controller = CAiController {
             mode: PlannerMode::Rule,
             policy: None,
+            gather: astraweave_ai::htn::GatherGoal::CookFood,
         };
         let mut snapshot = create_baseline_snapshot();
         snapshot.me.morale = f32::NEG_INFINITY;
@@ -143,6 +149,7 @@ fn test_dispatch_planner_with_nan_cooldown() {
         let controller = CAiController {
             mode: PlannerMode::Rule,
             policy: None,
+            gather: astraweave_ai::htn::GatherGoal::CookFood,
         };
         let mut snapshot = create_baseline_snapshot();
         snapshot.me.cooldowns.insert("attack".to_string(), f32::NAN);
@@ -157,6 +164,7 @@ fn test_dispatch_planner_with_infinity_cooldown() {
         let controller = CAiController {
             mode: PlannerMode::Rule,
             policy: None,
+            gather: astraweave_ai::htn::GatherGoal::CookFood,
         };
         let mut snapshot = create_baseline_snapshot();
         snapshot
@@ -174,6 +182,7 @@ fn test_dispatch_planner_with_neg_infinity_cooldown() {
         let controller = CAiController {
             mode: PlannerMode::Rule,
             policy: None,
+            gather: astraweave_ai::htn::GatherGoal::CookFood,
         };
         let mut snapshot = create_baseline_snapshot();
         snapshot
@@ -191,6 +200,7 @@ fn test_dispatch_planner_with_multiple_nan_cooldowns() {
         let controller = CAiController {
             mode: PlannerMode::Rule,
             policy: None,
+            gather: astraweave_ai::htn::GatherGoal::CookFood,
         };
         let mut snapshot = create_baseline_snapshot();
         snapshot.me.cooldowns.insert("attack".to_string(), f32::NAN);
@@ -259,6 +269,7 @@ fn test_dispatch_planner_all_nan_floats() {
         let controller = CAiController {
             mode: PlannerMode::Rule,
             policy: None,
+            gather: astraweave_ai::htn::GatherGoal::CookFood,
         };
         let mut snapshot = create_baseline_snapshot();
         snapshot.t = f32::NAN;
@@ -276,6 +287,7 @@ fn test_dispatch_planner_all_infinity_floats() {
         let controller = CAiController {
             mode: PlannerMode::Rule,
             policy: None,
+            gather: astraweave_ai::htn::GatherGoal::CookFood,
         };
         let mut snapshot = create_baseline_snapshot();
         snapshot.t = f32::INFINITY;
@@ -299,6 +311,7 @@ fn test_dispatch_planner_mixed_nan_infinity() {
         let controller = CAiController {
             mode: PlannerMode::Rule,
             policy: None,
+            gather: astraweave_ai::htn::GatherGoal::CookFood,
         };
         let mut snapshot = create_baseline_snapshot();
         snapshot.t = f32::NAN;
@@ -322,6 +335,7 @@ fn test_dispatch_planner_with_zero_morale() {
         let controller = CAiController {
             mode: PlannerMode::Rule,
             policy: None,
+            gather: astraweave_ai::htn::GatherGoal::CookFood,
         };
         let mut snapshot = create_baseline_snapshot();
         snapshot.me.morale = 0.0;
@@ -336,6 +350,7 @@ fn test_dispatch_planner_with_negative_morale() {
         let controller = CAiController {
             mode: PlannerMode::Rule,
             policy: None,
+            gather: astraweave_ai::htn::GatherGoal::CookFood,
         };
         let mut snapshot = create_baseline_snapshot();
         snapshot.me.morale = -1.0;
@@ -350,6 +365,7 @@ fn test_dispatch_planner_with_max_float_morale() {
         let controller = CAiController {
             mode: PlannerMode::Rule,
             policy: None,
+            gather: astraweave_ai::htn::GatherGoal::CookFood,
         };
         let mut snapshot = create_baseline_snapshot();
         snapshot.me.morale = f32::MAX;
@@ -364,6 +380,7 @@ fn test_dispatch_planner_with_min_float_morale() {
         let controller = CAiController {
             mode: PlannerMode::Rule,
             policy: None,
+            gather: astraweave_ai::htn::GatherGoal::CookFood,
         };
         let mut snapshot = create_baseline_snapshot();
         snapshot.me.morale = f32::MIN;
@@ -378,6 +395,7 @@ fn test_dispatch_planner_with_subnormal_morale() {
         let controller = CAiController {
             mode: PlannerMode::Rule,
             policy: None,
+            gather: astraweave_ai::htn::GatherGoal::CookFood,
         };
         let mut snapshot = create_baseline_snapshot();
         snapshot.me.morale = f32::MIN_POSITIVE / 2.0;
@@ -392,6 +410,7 @@ fn test_dispatch_planner_with_negative_zero_morale() {
         let controller = CAiController {
             mode: PlannerMode::Rule,
             policy: None,
+            gather: astraweave_ai::htn::GatherGoal::CookFood,
         };
         let mut snapshot = create_baseline_snapshot();
         snapshot.me.morale = -0.0;
@@ -410,6 +429,7 @@ fn test_dispatch_planner_with_negative_timestamp() {
         let controller = CAiController {
             mode: PlannerMode::Rule,
             policy: None,
+            gather: astraweave_ai::htn::GatherGoal::CookFood,
         };
         let mut snapshot = create_baseline_snapshot();
         snapshot.t = -100.0;
@@ -424,6 +444,7 @@ fn test_dispatch_planner_with_max_float_timestamp() {
         let controller = CAiController {
             mode: PlannerMode::Rule,
             policy: None,
+            gather: astraweave_ai::htn::GatherGoal::CookFood,
         };
         let mut snapshot = create_baseline_snapshot();
         snapshot.t = f32::MAX;
@@ -438,6 +459,7 @@ fn test_dispatch_planner_with_min_float_timestamp() {
         let controller = CAiController {
             mode: PlannerMode::Rule,
             policy: None,
+            gather: astraweave_ai::htn::GatherGoal::CookFood,
         };
         let mut snapshot = create_baseline_snapshot();
         snapshot.t = f32::MIN;
@@ -456,6 +478,7 @@ fn test_dispatch_planner_with_zero_cooldown() {
         let controller = CAiController {
             mode: PlannerMode::Rule,
             policy: None,
+            gather: astraweave_ai::htn::GatherGoal::CookFood,
         };
         let mut snapshot = create_baseline_snapshot();
         snapshot.me.cooldowns.insert("attack".to_string(), 0.0);
@@ -470,6 +493,7 @@ fn test_dispatch_planner_with_negative_cooldown() {
         let controller = CAiController {
             mode: PlannerMode::Rule,
             policy: None,
+            gather: astraweave_ai::htn::GatherGoal::CookFood,
         };
         let mut snapshot = create_baseline_snapshot();
         snapshot.me.cooldowns.insert("attack".to_string(), -5.0);
@@ -484,6 +508,7 @@ fn test_dispatch_planner_with_max_float_cooldown() {
         let controller = CAiController {
             mode: PlannerMode::Rule,
             policy: None,
+            gather: astraweave_ai::htn::GatherGoal::CookFood,
         };
         let mut snapshot = create_baseline_snapshot();
         snapshot.me.cooldowns.insert("attack".to_string(), f32::MAX);
@@ -507,6 +532,7 @@ fn test_all_planner_modes_with_nan_inputs() {
         let controller = CAiController {
             mode: PlannerMode::Rule,
             policy: None,
+            gather: astraweave_ai::htn::GatherGoal::CookFood,
         };
         let _ = dispatch_planner(&controller, &snapshot);
     });
@@ -518,6 +544,7 @@ fn test_rule_planner_with_extreme_values() {
         let controller = CAiController {
             mode: PlannerMode::Rule,
             policy: None,
+            gather: astraweave_ai::htn::GatherGoal::CookFood,
         };
         let mut snapshot = create_baseline_snapshot();
         snapshot.t = f32::MAX;
@@ -539,6 +566,7 @@ fn test_repeated_dispatch_with_nan() {
         let controller = CAiController {
             mode: PlannerMode::Rule,
             policy: None,
+            gather: astraweave_ai::htn::GatherGoal::CookFood,
         };
         let mut snapshot = create_baseline_snapshot();
         snapshot.me.morale = f32::NAN;
@@ -555,6 +583,7 @@ fn test_alternating_valid_invalid_dispatch() {
         let controller = CAiController {
             mode: PlannerMode::Rule,
             policy: None,
+            gather: astraweave_ai::htn::GatherGoal::CookFood,
         };
 
         for i in 0..50 {

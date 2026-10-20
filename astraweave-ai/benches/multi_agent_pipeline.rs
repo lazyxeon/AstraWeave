@@ -86,6 +86,7 @@ fn planning_phase(snapshots: &[WorldSnapshot]) -> Vec<PlanIntent> {
     let controller = CAiController {
         mode: PlannerMode::Rule,
         policy: None,
+        gather: astraweave_ai::htn::GatherGoal::CookFood,
     };
 
     snapshots
