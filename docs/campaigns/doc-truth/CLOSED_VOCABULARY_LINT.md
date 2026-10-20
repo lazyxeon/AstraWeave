@@ -90,7 +90,7 @@ The union of acted + kept occurrences is the complete closed-vocabulary inventor
 
 - Both `required` lists in `.github/workflows/determinism-replay.yml` must agree, and `README.md` must name each case.
 - `README.md` must state the under-11 ms GTX 1660 Ti frame budget and the measured heavy-scene `3.688 ms`, that assets are CC0, that local LLMs propose, and that the deterministic simulation validates. #216 is on main. #371 and #372 stay open.
-- `README.md` must have a `## In progress` section listing #366, and no other issue number. That section must not call the work shipped, landed, or merged. #216, #367, #374, and #377 are on main and are not in that list.
+- `README.md` must have a `## In progress` section listing #334, #366, and #383, and no other issue number. That section must not call the work shipped, landed, or merged. #216, #257, #258, #281, #283, #284, #307, #335, #367, #374, and #377 are on main and are not in that list.
 - Player-facing files (`README.md`, `CONTRIBUTING.md`, `docs/README.md`, `docs/QUICKSTART.md`, `docs/guides/**/*.md`) must not use the retired game title. `veilweaver_` crate names and the archive directory `projects/veilweaver` are allowed.
 
 ## Frame-time carve-out (D.3.1) — why `2.70 ms` is NOT in Vocabulary A
