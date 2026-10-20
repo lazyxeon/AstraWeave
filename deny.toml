@@ -101,7 +101,6 @@ ignore = [
     # Unmaintained, no patched release. One advisory ID, one issue.
     { id = "RUSTSEC-2024-0384", reason = "instant 0.1.13 has no patched release. parking_lot 0.11 (sled 0.34) and rhai 1.23.4 pin it. https://github.com/lazyxeon/AstraWeave/issues/322" },
     { id = "RUSTSEC-2024-0436", reason = "paste 1.0.15 has no patched release. egui_dock, rav1e, simba, steamworks, and tokenizers pin it. https://github.com/lazyxeon/AstraWeave/issues/323" },
-    { id = "RUSTSEC-2023-0089", reason = "atomic-polyfill 1.0.3 has no patched release. heapless 0.7.17 (postcard) pins it. https://github.com/lazyxeon/AstraWeave/issues/320" },
     { id = "RUSTSEC-2025-0057", reason = "fxhash 0.2.1 has no patched release. sled 0.34.7 (aw-net-server) pins it. https://github.com/lazyxeon/AstraWeave/issues/321" },
 
     # RESOLVED VULNERABILITIES (historical record):
