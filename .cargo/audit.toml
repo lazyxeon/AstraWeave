@@ -26,8 +26,6 @@ ignore = [
     # Unmaintained, no patched release. Same IDs as deny.toml.
     # https://github.com/lazyxeon/AstraWeave/issues/305
     "RUSTSEC-2025-0141",
-    # https://github.com/lazyxeon/AstraWeave/issues/307
-    "RUSTSEC-2025-0119",
     # https://github.com/lazyxeon/AstraWeave/issues/309
     "RUSTSEC-2026-0249",
     # https://github.com/lazyxeon/AstraWeave/issues/310
