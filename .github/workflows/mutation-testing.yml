@@ -141,10 +141,14 @@ jobs:
 
   # P1 AI & Infrastructure Crates
   mutants-ai:
-    name: Mutants - astraweave-ai
+    name: Mutants - astraweave-ai (${{ matrix.shard }}/8)
     runs-on: ubuntu-latest
     timeout-minutes: 360
     if: github.event.inputs.crates == 'p1' || github.event.inputs.crates == 'astraweave-ai' || github.event_name == 'schedule'
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5, 6, 7]
     steps:
       - uses: actions/checkout@v5
       
@@ -173,6 +177,8 @@ jobs:
             --in-place \
             --timeout-multiplier ${{ env.MUTANTS_TIMEOUT_MULTIPLIER }} \
             --exclude-re "fn metrics\b" \
+            --sharding round-robin \
+            --shard ${{ matrix.shard }}/8 \
             --output mutants-ai-results \
             --json
         continue-on-error: true
@@ -203,7 +209,7 @@ jobs:
       - name: Upload mutation results
         uses: actions/upload-artifact@v4
         with:
-          name: mutants-ai-results
+          name: mutants-ai-results-${{ matrix.shard }}
           path: mutants-ai-results/
           retention-days: 30
 
