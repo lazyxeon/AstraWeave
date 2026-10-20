@@ -1047,8 +1047,12 @@ pub struct Renderer {
     mesh_external: Option<Mesh>,
     /// Named models for multi-model rendering (terrain, trees, rocks, etc.)
     models: std::collections::HashMap<String, RenderModel>,
-    /// One Hi-Z pyramid. SSR, SSGI, and occlusion sample its R32Float copy.
+    /// One Hi-Z pyramid. Built only when [`Self::sample_hiz`] is set, because
+    /// each mip is its own wgpu compute pass (#269).
     hiz: Option<crate::hiz_pyramid::HizPyramid>,
+    /// A recorded pass will sample [`crate::hiz_pyramid::HizPyramid::view`].
+    /// SSGI reads scene depth directly, so this stays false until that wiring exists.
+    sample_hiz: bool,
     /// GL rejects `textureLoad` on `texture_depth_2d`, so the pyramid stays off.
     hiz_depth_load: bool,
     /// Presentation-only particle sim. `None` until an emitter is enabled.
@@ -3755,6 +3759,7 @@ fn vs(input: VSIn) -> VSOut {
             mesh_external: None,
             models: std::collections::HashMap::new(),
             hiz: None,
+            sample_hiz: false,
             hiz_depth_load,
             particle_sim: None,
             particle_draw: None,
@@ -8089,9 +8094,7 @@ fn vs(input: VSIn) -> VSOut {
         self.open_timing_gap(enc, "after_post");
 
         self.close_timing_gap(enc);
-        let hiz_stamp = self.begin_named_stamp(enc, "hiz");
         self.record_hiz(enc, depth_view);
-        self.end_named_stamp(enc, hiz_stamp);
         self.open_timing_gap(enc, "after_hiz");
         self.close_timing_gap(enc);
         let particle_stamp = self.begin_named_stamp(enc, "particles");
@@ -8326,7 +8329,11 @@ fn vs(input: VSIn) -> VSOut {
         enc: &mut wgpu::CommandEncoder,
         depth_view: Option<&wgpu::TextureView>,
     ) {
-        if !self.hiz_depth_load {
+        if !self.hiz_depth_load || !self.sample_hiz {
+            // Nothing in draw_into reads HizPyramid::view. SSGI samples the
+            // scene depth. Building the chain anyway is one wgpu command
+            // list per mip (#269): six passes at 64×64, about +108 allocs,
+            // and 0.275 ms on the 1660 Ti heavy scene.
             return;
         }
         let width = self.config.width.max(1);
@@ -8345,9 +8352,11 @@ fn vs(input: VSIn) -> VSOut {
                 &source,
             ));
         }
+        let stamp = self.begin_named_stamp(enc, "hiz");
         if let Some(pyramid) = self.hiz.as_ref() {
             pyramid.build(enc);
         }
+        self.end_named_stamp(enc, stamp);
     }
 
     pub fn surface_size(&self) -> (u32, u32) {

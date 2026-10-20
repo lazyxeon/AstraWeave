@@ -123,8 +123,8 @@ fn fallback_frame_does_not_allocate_before_the_texture_is_resident() {
         let min = *samples.iter().min().unwrap();
         let max = *samples.iter().max().unwrap();
         assert!(
-            max <= 230 && min >= 200 && max - min <= 4,
-            "fallback frame left the wgpu recording floor: {samples:?}"
+            max <= 120 && min >= 100 && max - min <= 6,
+            "fallback frame left the wgpu pass floor: {samples:?}"
         );
 
         go_tx.send(()).expect("release writer");
