@@ -928,7 +928,9 @@ use glam::Vec3;
 mod tests {
     use super::*;
     use astraweave_core::{LocalHazardHook, WeaveEffectHook};
-    use astraweave_nav::{bridge_and_ford, NavChangeKind, NavScratch, FRAME_BUDGET_MS};
+    #[cfg(not(miri))]
+    use astraweave_nav::FRAME_BUDGET_MS;
+    use astraweave_nav::{bridge_and_ford, NavChangeKind, NavScratch};
 
     #[test]
     fn spatial_tick_does_not_call_goap_or_a_live_model() {
@@ -1022,6 +1024,8 @@ mod tests {
         let tiles = bridge_and_ford();
         let mut scratch = NavScratch::new();
         let hooks = SpatialHooks::none();
+        // Miri's interpreter time is not a frame. The expansion count is the budget there.
+        #[cfg(not(miri))]
         let start = std::time::Instant::now();
         let mut budget = HTN_EXPANSIONS_PER_TICK as u32;
         let mut plan = AgentPlan::empty();
@@ -1041,12 +1045,15 @@ mod tests {
                 break;
             }
         }
-        let elapsed_ms = start.elapsed().as_secs_f32() * 1000.0;
         assert!(plan.len > 0);
-        assert!(
-            elapsed_ms < FRAME_BUDGET_MS,
-            "{HTN_EXPANSIONS_PER_TICK} expansions took {elapsed_ms} ms"
-        );
+        #[cfg(not(miri))]
+        {
+            let elapsed_ms = start.elapsed().as_secs_f32() * 1000.0;
+            assert!(
+                elapsed_ms < FRAME_BUDGET_MS,
+                "{HTN_EXPANSIONS_PER_TICK} expansions took {elapsed_ms} ms"
+            );
+        }
     }
 
     #[test]
