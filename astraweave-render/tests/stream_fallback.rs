@@ -122,8 +122,10 @@ fn fallback_frame_does_not_allocate_before_the_texture_is_resident() {
         eprintln!("stream fallback draw_into alloc samples: {samples:?}");
         let min = *samples.iter().min().unwrap();
         let max = *samples.iter().max().unwrap();
+        // Same floor as `frame_alloc`: high sample 119, spread 4.
+        // Ceiling 130 leaves 11 of room and still fails one extra pass.
         assert!(
-            max <= 120 && min >= 100 && max - min <= 6,
+            max <= 130 && min >= 100 && max - min <= 4,
             "fallback frame left the wgpu pass floor: {samples:?}"
         );
 
