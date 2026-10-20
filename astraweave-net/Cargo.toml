@@ -26,7 +26,7 @@ rand = { workspace = true }
 # TLS support (optional) - using ring for Windows compatibility
 tokio-rustls = { version = "0.26", optional = true, default-features = false, features = ["ring"] }
 rustls = { version = "0.23", optional = true, default-features = false, features = ["ring", "std"] }
-webpki-roots = { version = "0.26", optional = true }
+webpki-roots = { version = "1", optional = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util"] }

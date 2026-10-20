@@ -32,8 +32,6 @@ ignore = [
     "RUSTSEC-2026-0192",
 
     # Older unmaintained parents. No patched release.
-    # https://github.com/lazyxeon/AstraWeave/issues/320
-    "RUSTSEC-2023-0089",
     # https://github.com/lazyxeon/AstraWeave/issues/321
     "RUSTSEC-2025-0057",
     # https://github.com/lazyxeon/AstraWeave/issues/322
