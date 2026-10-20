@@ -9,7 +9,7 @@ lifecycle_status: active
 integration_status: partial
 summary: "weave_tick is on main (#252). The greybox runs run_aravath_slice once at startup and reuses sword_hp (#275, #343). Replay case weaving still hashes NullField. local_sim is the local field."
 owns: [astraweave-weaving]
-doc_version: "1.8"
+doc_version: "1.9"
 last_verified_commit: fb1c8ec2
 ---
 
@@ -21,7 +21,7 @@ last_verified_commit: fb1c8ec2
 |---|---|
 | **System name** | Weaving / Fate-Weaving System (the Veilweaver signature mechanic) |
 | **Primary crates** | `astraweave-weaving` |
-| **Document version** | 1.8 |
+| **Document version** | 1.9 |
 | **Last verified against commit** | `fb1c8ec2` |
 | **Last verified date** | 2026-10-16 |
 | **Status** | The data-driven cast path is on main (#252). `Greybox::new` and `Greybox::open` run `run_aravath_slice` once. Each sword hit reuses that `sword_hp` and `cover_intact` (#275, #343). Required replay case `weaving` still hashes `NullField`. The local field is required case `local_sim` (#330). #253 is closed. Anchor-slice helpers are still plain functions. |
@@ -378,7 +378,7 @@ This crate hosts **two distinct pipelines** that do not call each other. Both ar
 | 10 | Enemy patrol targets and wave spawn positions are a function of `(world_seed, draw_index, SIM_SYSTEM_ENEMY_PATROL \| SIM_SYSTEM_SPAWNER)`. Offsets are rejection samples in the disk (`disk_xz`); no `thread_rng` and no `sin`/`cos`. Active spawn ids are sorted before round-robin. | Yes | `enemy.rs`, `spawner.rs`; tests `patrol_target_is_bit_identical_for_the_same_seed`, `spawn_positions_are_bit_identical_for_the_same_seed`. |
 | 11 | `run_aravath_slice` is one resolve at `ARAVATH_SLICE_SEED`. The scripted and goal policies of `aravath_slice_sword` finish on the same SHA-256 trace. That digest is required case `gameplay_qa_aravath_slice`. | Yes | `gameplay_qa.rs` test `replay_aravath_slice_scenario`. `determinism-replay.yml` merges `replay-hash-gameplay-qa.json`. |
 | 12 | `weave_tick` does not allocate. Modifiers are stamped in command order. One reaction per cell. Freeze emits one ice AABB and one `NavChange` with `NavChangeKind::Weave` on the command's start tick. | Yes | `eval.rs`, `tests/no_alloc.rs`, `astraweave-core/tests/replay_hash.rs` case `weaving`. |
-| 13 | `queue_weave` rejects an origin outside ±`ISLAND_HALF_CELLS` (2048) on any axis. It does not saturate. `parse_template_toml` rejects an id that does not fit `u16` before the cast (`template id {id} does not fit u16`). `0` and ids 1–7 are engine ids. In-range casts keep their bytes. | Yes | `mod_queue.rs` tests `origins_outside_the_island_are_rejected_without_saturation` and `parse_rejects_engine_ids_and_accepts_modifier_data`. |
+| 13 | `queue_weave` rejects an origin outside ±`ISLAND_HALF_CELLS` (2048) on any axis. It does not saturate. `meters_to_cell` returns `None` before the float-to-int cast when the millimetre value does not fit in `i32`, and `compile_legacy` drops the op when the cell is outside that cube. Ice bounds use `checked_mul`. `parse_template_toml` rejects an id that does not fit `u16` before the cast (`template id {id} does not fit u16`). `0` and ids 1–7 are engine ids. In-range casts keep their bytes. | Yes | `mod_queue.rs` tests `origins_outside_the_island_are_rejected_without_saturation` and `parse_rejects_engine_ids_and_accepts_modifier_data`. `legacy.rs` test `far_origin_does_not_saturate_into_a_milli_aabb`. |
 
 ---
 
@@ -428,6 +428,7 @@ This is a pure-CPU logic crate; performance is benchmark-tracked but not a runti
 
 | Version | Date | Notes |
 |---|---|---|
+| 1.9 | 2026-10-20 | `meters_to_cell` rejects a non-finite or out-of-`i32` metre value before the saturating cast. `compile_legacy` drops an origin outside ±2048 cells. Ice millimetres use checked multiply. In-range `weaving` bytes stay on the same path. |
 | 1.8 | 2026-10-16 | Restamp `fb1c8ec2`. Summary, status, and the §4 greybox row match the startup cache. `weaving` still hashes `NullField`. |
 | 1.7 | 2026-10-16 | Restamp `1e275a9e`. Cargo consumers are the greybox, gameplay, scripting, security, the core replay test, `aravath_weave`, and the two older quest examples. |
 | 1.6 | 2026-10-16 | Greybox caller. `Combat::tick` calls `run_aravath_slice` and the window shows `Cover broke` when `cover_intact` is false. |

@@ -1,6 +1,7 @@
 //! Compiles the six legacy ops into templates and director rectangles.
 
-use crate::field::{meters_to_cell, FieldWrite, WriteOp};
+use crate::field::{meters_to_cell, milli_corner, FieldWrite, WriteOp};
+use crate::mod_queue::ISLAND_HALF_CELLS;
 use crate::templates::{
     builtin, writes_for, MAX_NODES, TEMPLATE_DENSITY, TEMPLATE_FREEZE, TEMPLATE_LOWER_WATER,
     TEMPLATE_WIND,
@@ -51,7 +52,9 @@ pub fn compile_legacy(kind: u8, points: LegacyPoints) -> CompiledOp {
     };
     let tick = points.tick;
     let seq = points.seq;
-    let origin = [meters_to_cell(ax), meters_to_cell(ay), meters_to_cell(az)];
+    let Some(origin) = cell_origin(ax, ay, az) else {
+        return empty_compiled();
+    };
     let mut compiled = CompiledOp {
         writes: writes_for(&builtin(TEMPLATE_DENSITY).unwrap(), origin, 1).0,
         write_count: 0,
@@ -110,29 +113,61 @@ pub fn compile_legacy(kind: u8, points: LegacyPoints) -> CompiledOp {
             compiled.writes = mods;
             compiled.write_count = count;
             let radius = template.ice_radius as i32;
-            let min_milli = [
-                (origin[0] - radius) * crate::field::CELL_MM,
-                origin[1] * crate::field::CELL_MM,
-                (origin[2] - radius) * crate::field::CELL_MM,
-            ];
-            let max_milli = [
-                (origin[0] + radius + 1) * crate::field::CELL_MM,
-                (origin[1] + 1) * crate::field::CELL_MM,
-                (origin[2] + radius + 1) * crate::field::CELL_MM,
-            ];
-            compiled.ice_min_milli = Some(min_milli);
-            compiled.ice_max_milli = Some(max_milli);
-            compiled.nav = Some(NavChange::new(
-                tick,
-                seq,
-                min_milli,
-                max_milli,
-                NavChangeKind::Weave,
-            ));
+            if let (Some(min_milli), Some(max_milli)) = (
+                milli_corner(
+                    origin[0].checked_sub(radius),
+                    Some(origin[1]),
+                    origin[2].checked_sub(radius),
+                ),
+                milli_corner(
+                    origin[0]
+                        .checked_add(radius)
+                        .and_then(|cell| cell.checked_add(1)),
+                    origin[1].checked_add(1),
+                    origin[2]
+                        .checked_add(radius)
+                        .and_then(|cell| cell.checked_add(1)),
+                ),
+            ) {
+                compiled.ice_min_milli = Some(min_milli);
+                compiled.ice_max_milli = Some(max_milli);
+                compiled.nav = Some(NavChange::new(
+                    tick,
+                    seq,
+                    min_milli,
+                    max_milli,
+                    NavChangeKind::Weave,
+                ));
+            }
         }
         _ => {}
     }
     compiled
+}
+
+fn cell_origin(x: f32, y: f32, z: f32) -> Option<[i32; 3]> {
+    let origin = [meters_to_cell(x)?, meters_to_cell(y)?, meters_to_cell(z)?];
+    if origin
+        .iter()
+        .all(|cell| (-ISLAND_HALF_CELLS..=ISLAND_HALF_CELLS).contains(cell))
+    {
+        Some(origin)
+    } else {
+        None
+    }
+}
+
+fn empty_compiled() -> CompiledOp {
+    let (writes, _) = writes_for(&builtin(TEMPLATE_DENSITY).unwrap(), [0, 0, 0], 1);
+    CompiledOp {
+        writes,
+        write_count: 0,
+        fortify: None,
+        collapse: None,
+        ice_min_milli: None,
+        ice_max_milli: None,
+        nav: None,
+    }
 }
 
 #[cfg(test)]
@@ -175,5 +210,33 @@ mod tests {
         );
         let rect = compiled.fortify.unwrap();
         assert_eq!((rect.x0, rect.y0, rect.x1, rect.y1), (4, 4, 6, 6));
+    }
+
+    #[test]
+    fn far_origin_does_not_saturate_into_a_milli_aabb() {
+        let compiled = compile_legacy(
+            5,
+            LegacyPoints {
+                a: [1.0e20, 0.0, 0.0],
+                b: None,
+                tick: 4,
+                seq: 2,
+            },
+        );
+        assert_eq!(compiled.write_count, 0);
+        assert!(compiled.ice_min_milli.is_none());
+        assert!(compiled.nav.is_none());
+        let edge = compile_legacy(
+            5,
+            LegacyPoints {
+                a: [ISLAND_HALF_CELLS as f32, 0.0, 0.0],
+                b: None,
+                tick: 1,
+                seq: 1,
+            },
+        );
+        let min = edge.ice_min_milli.unwrap();
+        assert_eq!(min[0], (ISLAND_HALF_CELLS - 2) * crate::field::CELL_MM);
+        assert_eq!(min[1], 0);
     }
 }
