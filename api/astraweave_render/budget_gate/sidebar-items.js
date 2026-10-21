@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["flag_on","reject_gated_flags"]};
