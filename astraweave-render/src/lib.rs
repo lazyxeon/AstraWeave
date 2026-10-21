@@ -74,7 +74,7 @@ pub mod graph_adapter; // runs a graph on Renderer frames
 pub mod gtao; // Ground Truth Ambient Occlusion with visibility bitmask
 pub mod hdr_pipeline; // HDR rendering pipeline orchestration (tonemap, color grading, post-FX chain)
 pub mod hdri_catalog;
-pub mod hiz_pyramid; // Shared Hi-Z min-depth pyramid for SSR/SSGI ray acceleration
+pub mod hiz_pyramid; // Shared Hi-Z min-depth pyramid; draw_into records it only when sample_hiz is set
 pub mod lumen; // Lumen Global Illumination orchestrator (Phase 5)
 pub mod material; // shared authored materials API + GPU arrays
 pub mod material_extended; // Phase PBR-E: Advanced materials (clearcoat, anisotropy, SSS, sheen, transmission)

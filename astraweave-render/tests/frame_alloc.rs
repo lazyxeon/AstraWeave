@@ -111,19 +111,18 @@ fn draw_into_allocates_nothing_after_warmup() {
         eprintln!("draw_into alloc samples: {samples:?}");
         let min = *samples.iter().min().unwrap();
         let max = *samples.iter().max().unwrap();
-        // #269 measured this scene at 110-120 before the Hi-Z pyramid
-        // (samples [113, 111, 111, 110, 111, 110]). `BasePass::new` in
-        // wgpu-core 25 allocates a command Vec and a label String for every
-        // render or compute pass. The pyramid at 64×64 has
-        // ceil(log2(64)) = 6 passes (one depth copy plus one downsample per
-        // coarser mip). wgpu barriers only at pass boundaries, so those mips
-        // cannot share a pass. 6 passes × ~18 allocations is about +108, which
-        // is the jump to [219, 217, 217, 216, 217, 216]. The band is that
-        // sum, not a silent widen of the old 100-120 gate. A new pass moves
-        // the band. Engine scratch stays at zero (`update_instances` above).
+        // Lavapipe, 64×64, validation on and off, five runs each:
+        // [119, 116, 115, 116, 115, 115]. Spread inside a run is 4.
+        // `draw_into` does not build the pyramid unless `sample_hiz` is set.
+        // The six mip passes were the jump to ~217 (about 18 allocations
+        // each). What remains is wgpu-core 25 `BasePass::new` for the passes
+        // that still record. Engine scratch stays at zero (`update_instances`
+        // above). Ceiling 130 is 11 above the high sample and still under
+        // one extra pass (119 + 18). Floor 100 is 15 under the low sample,
+        // so a dropped pass fails too.
         assert!(
-            max <= 230 && min >= 200 && max - min <= 4,
-            "draw_into allocs left the explained Hi-Z floor: {samples:?}"
+            max <= 130 && min >= 100 && max - min <= 4,
+            "draw_into allocs left the wgpu pass floor: {samples:?}"
         );
     });
 }

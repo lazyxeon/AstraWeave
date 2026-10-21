@@ -1,6 +1,7 @@
 // Copy a depth attachment into Hi-Z mip 0.
 // The source is texture_depth_2d. The destination is R32Float storage.
-// SSR/SSGI and occlusion both read that R32Float copy with textureLoad.
+// draw_into records this only when sample_hiz is set.
+// Occlusion, SSR, and SSGI do not sample that R32Float copy.
 
 @group(0) @binding(0) var src_depth: texture_depth_2d;
 @group(0) @binding(1) var dst: texture_storage_2d<r32float, write>;

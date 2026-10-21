@@ -1047,8 +1047,13 @@ pub struct Renderer {
     mesh_external: Option<Mesh>,
     /// Named models for multi-model rendering (terrain, trees, rocks, etc.)
     models: std::collections::HashMap<String, RenderModel>,
-    /// One Hi-Z pyramid. SSR, SSGI, and occlusion sample its R32Float copy.
+    /// One Hi-Z pyramid. Built only when [`Self::sample_hiz`] is set, because
+    /// each mip is its own wgpu compute pass (#269). [`Self::set_sample_hiz`]
+    /// drops it so the next frame copies that frame's depth view.
     hiz: Option<crate::hiz_pyramid::HizPyramid>,
+    /// Set with [`Self::set_sample_hiz`]. Default false: no pass samples
+    /// [`crate::hiz_pyramid::HizPyramid::view`]. SSGI reads scene depth.
+    sample_hiz: bool,
     /// GL rejects `textureLoad` on `texture_depth_2d`, so the pyramid stays off.
     hiz_depth_load: bool,
     /// Presentation-only particle sim. `None` until an emitter is enabled.
@@ -3755,6 +3760,7 @@ fn vs(input: VSIn) -> VSOut {
             mesh_external: None,
             models: std::collections::HashMap::new(),
             hiz: None,
+            sample_hiz: false,
             hiz_depth_load,
             particle_sim: None,
             particle_draw: None,
@@ -8089,9 +8095,7 @@ fn vs(input: VSIn) -> VSOut {
         self.open_timing_gap(enc, "after_post");
 
         self.close_timing_gap(enc);
-        let hiz_stamp = self.begin_named_stamp(enc, "hiz");
         self.record_hiz(enc, depth_view);
-        self.end_named_stamp(enc, hiz_stamp);
         self.open_timing_gap(enc, "after_hiz");
         self.close_timing_gap(enc);
         let particle_stamp = self.begin_named_stamp(enc, "particles");
@@ -8252,12 +8256,12 @@ fn vs(input: VSIn) -> VSOut {
         view
     }
 
-    /// Copy this frame's depth into the shared Hi-Z pyramid.
+    /// Close the open pass-boundary timing gap.
     ///
-    /// The pyramid is presentation-only. Occlusion may consult it next frame.
-    /// It is not read back into the simulation. The first frame builds it;
-    /// later frames only dispatch the copy and the min-depth downsample.
-    /// Begin the `frame` pair when the device can write timestamps on the encoder.
+    /// Hi-Z is not this gap. [`Self::record_hiz`] builds the pyramid only when
+    /// [`Self::sample_hiz`] is set, and that build copies the depth view from
+    /// the `draw_into` that enabled it. Occlusion, SSR, and SSGI do not sample
+    /// the pyramid. It is not read back into the simulation.
     ///
     /// Pass-boundary timestamps on Vulkan are `BOTTOM_OF_PIPE`. A pass that
     /// does no draws can land both writes on the same tick. The encoder pair
@@ -8321,12 +8325,40 @@ fn vs(input: VSIn) -> VSOut {
         }
     }
 
+    /// Turn Hi-Z recording on or off.
+    ///
+    /// The default is off. No pass samples [`crate::hiz_pyramid::HizPyramid::view`].
+    /// Turning the flag on drops any pyramid so the next [`Self::draw_into`]
+    /// copies the depth view from that call, including when the size matches
+    /// a view captured earlier. Turning it off drops the pyramid too.
+    pub fn set_sample_hiz(&mut self, enabled: bool) {
+        if self.sample_hiz != enabled {
+            self.hiz = None;
+        }
+        self.sample_hiz = enabled;
+    }
+
+    /// The pyramid from the last frame that recorded Hi-Z, if that flag is on.
+    pub fn hiz_pyramid(&self) -> Option<&crate::hiz_pyramid::HizPyramid> {
+        self.hiz.as_ref()
+    }
+
+    /// Build the Hi-Z pyramid when [`Self::sample_hiz`] is on.
+    ///
+    /// The copy source is `depth_view`, or the renderer's own depth when the
+    /// caller passes `None`. A frame whose depth view is a different object
+    /// builds a new pyramid even when the size is unchanged. Each mip is its
+    /// own compute pass (#269). Nothing in `draw_into` samples the result.
     fn record_hiz(
         &mut self,
         enc: &mut wgpu::CommandEncoder,
         depth_view: Option<&wgpu::TextureView>,
     ) {
-        if !self.hiz_depth_load {
+        if !self.hiz_depth_load || !self.sample_hiz {
+            // Nothing in draw_into reads HizPyramid::view. SSGI samples the
+            // scene depth. Building the chain anyway is one wgpu command
+            // list per mip (#269): six passes at 64×64, about +108 allocs,
+            // and 0.275 ms on the 1660 Ti heavy scene.
             return;
         }
         let width = self.config.width.max(1);
@@ -8335,7 +8367,7 @@ fn vs(input: VSIn) -> VSOut {
         let rebuild = self
             .hiz
             .as_ref()
-            .map(|pyramid| pyramid.dimensions() != (width, height))
+            .map(|pyramid| pyramid.dimensions() != (width, height) || !pyramid.copies_from(&source))
             .unwrap_or(true);
         if rebuild {
             self.hiz = Some(crate::hiz_pyramid::HizPyramid::new(
@@ -8345,9 +8377,11 @@ fn vs(input: VSIn) -> VSOut {
                 &source,
             ));
         }
+        let stamp = self.begin_named_stamp(enc, "hiz");
         if let Some(pyramid) = self.hiz.as_ref() {
             pyramid.build(enc);
         }
+        self.end_named_stamp(enc, stamp);
     }
 
     pub fn surface_size(&self) -> (u32, u32) {

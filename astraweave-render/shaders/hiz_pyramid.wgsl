@@ -1,6 +1,7 @@
 // Min-depth downsample of the R32Float Hi-Z pyramid.
 // textureLoad does not filter, so a uniform depth stays uniform in every mip.
-// SSR, SSGI, and occlusion sample this same pyramid.
+// draw_into records this only when sample_hiz is set.
+// Occlusion, SSR, and SSGI do not sample this pyramid.
 
 @group(0) @binding(0) var src: texture_2d<f32>;
 @group(0) @binding(1) var dst_mip: texture_storage_2d<r32float, write>;

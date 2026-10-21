@@ -1,14 +1,14 @@
-//! Shared Hi-Z (Hierarchical Depth) min-depth pyramid for screen-space tracing.
+//! Shared Hi-Z (Hierarchical Depth) min-depth pyramid.
 //!
-//! Builds a min-depth mip chain from the depth buffer. Used by SSR and SSGI
-//! to accelerate ray traversal by skipping empty space at coarse mip levels.
+//! Builds a min-depth mip chain from a depth view. `Renderer::draw_into`
+//! records it only when `sample_hiz` is set, and that build copies the depth
+//! view from the frame that enabled it. Occlusion, SSR, and SSGI do not
+//! sample the pyramid. SSGI reads scene depth.
 //!
-//! The pyramid stores the **minimum** depth in each 2×2 block, so the tracer
-//! knows that if the ray depth is less than the stored min-depth at a given
-//! mip level, there is no surface intersection in that region and the ray
-//! can safely advance to the next cell.
+//! The pyramid stores the **minimum** depth in each 2×2 block, so a future
+//! tracer can skip a region whose ray depth is less than that minimum.
 
-/// Min-depth Hi-Z pyramid for screen-space ray tracing (SSR, SSGI).
+/// Min-depth Hi-Z pyramid. Nothing samples [`HizPyramid::view`] until a pass is wired to it.
 pub struct HizPyramid {
     copy_pipeline: wgpu::ComputePipeline,
     downsample_pipeline: wgpu::ComputePipeline,
@@ -19,7 +19,7 @@ pub struct HizPyramid {
     /// Per-mip views for downsample dispatch (single-mip views).
     #[allow(dead_code)] // views must be kept alive for bind groups to remain valid
     mip_views: Vec<wgpu::TextureView>,
-    /// Full mip-chain view for sampling in SSR/SSGI shaders.
+    /// Full mip-chain view. No pass samples this until one is wired to it.
     full_view: wgpu::TextureView,
     /// bind_groups[0]: copy — src depth → mip 0.
     /// bind_groups[1..]: downsample — mip[i-1] → mip[i].
@@ -27,14 +27,18 @@ pub struct HizPyramid {
     mip_count: u32,
     width: u32,
     height: u32,
+    /// Depth view bound into the mip-0 copy. A later frame with a different
+    /// view, even at the same size, must build a new pyramid.
+    src_depth: wgpu::TextureView,
 }
 
 impl HizPyramid {
     /// Create a new Hi-Z pyramid for the given resolution.
     ///
     /// `src_depth_view` is a `texture_depth_2d` view (`Depth32Float`). The copy
-    /// stores it into mip 0 as `R32Float`. Downsample and SSR/SSGI read that
-    /// copy with `textureLoad`.
+    /// stores it into mip 0 as `R32Float`. Downsample reads that copy with
+    /// `textureLoad`. The view is kept so a later frame can tell whether this
+    /// pyramid still copies that source.
     pub fn new(
         device: &wgpu::Device,
         width: u32,
@@ -211,17 +215,26 @@ impl HizPyramid {
             mip_count,
             width,
             height,
+            src_depth: src_depth_view.clone(),
         }
     }
 
-    /// Returns the full mip-chain view for SSR/SSGI shader sampling.
+    /// Full mip-chain view. No pass samples this until one is wired to it.
     pub fn view(&self) -> &wgpu::TextureView {
         &self.full_view
     }
 
-    /// The R32Float pyramid texture. SSR, SSGI, and occlusion sample [`Self::view`].
+    /// The R32Float pyramid texture. A consumer samples [`Self::view`].
     pub fn texture(&self) -> &wgpu::Texture {
         &self.hiz_texture
+    }
+
+    /// The mip-0 copy was bound from this depth view.
+    ///
+    /// wgpu compares view identity, so a second view of the same texture is
+    /// a different source and needs its own pyramid.
+    pub fn copies_from(&self, view: &wgpu::TextureView) -> bool {
+        &self.src_depth == view
     }
 
     /// Number of mip levels in the pyramid.
@@ -274,7 +287,7 @@ impl HizPyramid {
         height: u32,
         src_depth_view: &wgpu::TextureView,
     ) {
-        if self.width == width && self.height == height {
+        if self.width == width && self.height == height && self.copies_from(src_depth_view) {
             return;
         }
         *self = Self::new(device, width, height, src_depth_view);
@@ -348,5 +361,11 @@ mod tests {
         let pyramid = HizPyramid::new(&device, 1920, 1080, &depth_view);
         assert_eq!(pyramid.dimensions(), (1920, 1080));
         assert_eq!(pyramid.mip_count(), 11);
+        assert!(pyramid.copies_from(&depth_view));
+        let other = depth_tex.create_view(&wgpu::TextureViewDescriptor::default());
+        assert!(
+            !pyramid.copies_from(&other),
+            "a second view of the same texture is a different copy source"
+        );
     }
 }

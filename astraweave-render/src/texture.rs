@@ -5,6 +5,50 @@ use image::{DynamicImage, GenericImageView};
 #[cfg(feature = "textures")]
 use std::path::Path;
 
+/// Read an image file without exceeding [`astraweave_asset::image_limits::MAX_IMAGE_ALLOC`].
+///
+/// A regular file longer than the cap is rejected from its metadata, before
+/// any byte is read. A regular file is then read only up to that length.
+/// A fifo or other non-regular file is read with `take(cap)` and stopped
+/// there: probing one byte past the cap would block if the writer stalled
+/// after exactly that many bytes.
+pub(crate) async fn read_capped_image(path: &str) -> Result<Vec<u8>, String> {
+    use tokio::io::AsyncReadExt;
+
+    let cap = astraweave_asset::image_limits::MAX_IMAGE_ALLOC;
+    let meta = tokio::fs::metadata(path)
+        .await
+        .map_err(|err| format!("read failed: {err}"))?;
+    if meta.is_file() {
+        if meta.len() > cap {
+            return Err(format!("image is {} bytes, cap is {cap}", meta.len()));
+        }
+        let mut file = tokio::fs::File::open(path)
+            .await
+            .map_err(|err| format!("read failed: {err}"))?;
+        let mut bytes = Vec::new();
+        (&mut file)
+            .take(meta.len())
+            .read_to_end(&mut bytes)
+            .await
+            .map_err(|err| format!("read failed: {err}"))?;
+        return Ok(bytes);
+    }
+    let mut file = tokio::fs::File::open(path)
+        .await
+        .map_err(|err| format!("read failed: {err}"))?;
+    let mut bytes = Vec::new();
+    (&mut file)
+        .take(cap)
+        .read_to_end(&mut bytes)
+        .await
+        .map_err(|err| format!("read failed: {err}"))?;
+    if bytes.len() as u64 == cap {
+        return Err(format!("image exceeds {cap} bytes"));
+    }
+    Ok(bytes)
+}
+
 /// Defines how a texture should be interpreted for correct color space handling
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
@@ -326,13 +370,12 @@ impl Texture {
         path: &str,
         usage: TextureUsage,
     ) -> Result<Self> {
-        use std::path::Path;
-
-        // Phase 1: Async file I/O (off main thread)
-        let path_buf = Path::new(path).to_path_buf();
-        let bytes = tokio::fs::read(&path_buf)
+        // Phase 1: Async file I/O (off main thread). Same 64 MiB cap as
+        // `texture_streaming::decode_texture`: length is checked before the
+        // read, and a non-regular file is not probed one byte past the cap.
+        let bytes = read_capped_image(path)
             .await
-            .map_err(|e| anyhow::anyhow!("Failed to read texture file {}: {}", path, e))?;
+            .map_err(|e| anyhow::anyhow!("Failed to read texture file {path}: {e}"))?;
 
         // Phase 2: Async image decoding (on thread pool)
         let label = path.to_string();
