@@ -5642,13 +5642,15 @@ fn vs(input: VSIn) -> VSOut {
         self.gated_velocity = Some((velocity, velocity_view));
     }
 
-    /// Presentation passes that stay off unless a setter turned them on.
-    /// History and GI stay out of the simulation.
-    fn record_gated_presentation(
-        &mut self,
-        enc: &mut wgpu::CommandEncoder,
-        depth: &wgpu::TextureView,
-    ) {
+    /// Bruneton sky and aerial, copied onto HDR before fog and god rays.
+    ///
+    /// Cleared pixels become the Bruneton sky. Fog and shafts then composite
+    /// over that color, so a sky pixel keeps both. When fog or shafts are
+    /// already on, geometry is not scattered a second time.
+    fn record_bruneton(&mut self, enc: &mut wgpu::CommandEncoder, depth: &wgpu::TextureView) {
+        if !self.atmosphere_on {
+            return;
+        }
         let gen = self.resource_generation;
         let hdr = self.hdr_view.clone();
         let device = self.device.clone();
@@ -5674,43 +5676,63 @@ fn vs(input: VSIn) -> VSOut {
         };
         let (near, far) = clip_planes(self.cached_proj);
         let scatter_geometry = !self.volumetric_fog_enabled() && !self.god_rays_enabled();
-
-        if self.atmosphere_on {
-            if self.atmosphere.is_none() {
-                self.atmosphere = Some(crate::atmosphere::AtmospherePass::new(
-                    &self.device,
-                    width,
-                    height,
-                    crate::atmosphere::AtmosphereConfig::default(),
-                ));
-            }
-            if let Some(pass) = self.atmosphere.as_mut() {
-                let (pass_w, pass_h) = pass.dimensions();
-                if pass_w != width || pass_h != height {
-                    pass.resize(&device, width, height);
-                }
-                pass.prepare_frame(
-                    &queue,
-                    inv,
-                    eye,
-                    toward_sun,
-                    -toward_sun,
-                    near,
-                    far,
-                    scatter_geometry,
-                );
-                pass.execute(&device, enc, &hdr, depth, gen);
-                enc.copy_texture_to_texture(
-                    pass.aerial_texture().as_image_copy(),
-                    self.hdr_tex.as_image_copy(),
-                    wgpu::Extent3d {
-                        width,
-                        height,
-                        depth_or_array_layers: 1,
-                    },
-                );
-            }
+        if self.atmosphere.is_none() {
+            self.atmosphere = Some(crate::atmosphere::AtmospherePass::new(
+                &self.device,
+                width,
+                height,
+                crate::atmosphere::AtmosphereConfig::default(),
+            ));
         }
+        let Some(pass) = self.atmosphere.as_mut() else {
+            return;
+        };
+        let (pass_w, pass_h) = pass.dimensions();
+        if pass_w != width || pass_h != height {
+            pass.resize(&device, width, height);
+        }
+        pass.prepare_frame(
+            &queue,
+            inv,
+            eye,
+            toward_sun,
+            -toward_sun,
+            near,
+            far,
+            scatter_geometry,
+        );
+        pass.execute(&device, enc, &hdr, depth, gen);
+        enc.copy_texture_to_texture(
+            pass.aerial_texture().as_image_copy(),
+            self.hdr_tex.as_image_copy(),
+            wgpu::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
+            },
+        );
+    }
+
+    /// Presentation passes that stay off unless a setter turned them on.
+    /// History and GI stay out of the simulation.
+    fn record_gated_presentation(
+        &mut self,
+        enc: &mut wgpu::CommandEncoder,
+        depth: &wgpu::TextureView,
+    ) {
+        let gen = self.resource_generation;
+        let hdr = self.hdr_view.clone();
+        let device = self.device.clone();
+        let queue = self.queue.clone();
+        let width = self.config.width.max(1);
+        let height = self.config.height.max(1);
+        let view_proj = self.cached_proj * self.cached_view;
+        let inv = view_proj.inverse();
+        let eye = glam::Vec3::new(
+            self.camera_ubo.camera_pos_pad[0],
+            self.camera_ubo.camera_pos_pad[1],
+            self.camera_ubo.camera_pos_pad[2],
+        );
         if self.cloud_raymarch_on {
             if self.cloud_raymarch.is_none() {
                 self.cloud_raymarch = Some(crate::volumetric_clouds::VolumetricCloudsPass::new(
@@ -6184,8 +6206,10 @@ fn vs(input: VSIn) -> VSOut {
 
     /// Composite engine volumetric fog, then screen-space light shafts, into HDR.
     ///
-    /// Both passes no-op while their configs are disabled. Fog samples the
-    /// cascaded shadow map. Shafts are added before the tonemap blit.
+    /// Runs after Bruneton has copied its sky into HDR, so fog and shafts
+    /// apply over cleared pixels. Both passes no-op while their configs are
+    /// disabled. Fog samples the cascaded shadow map. Shafts are added before
+    /// the tonemap blit.
     fn composite_atmosphere(&mut self, enc: &mut wgpu::CommandEncoder, depth: &wgpu::TextureView) {
         let light = glam::Vec3::new(
             self.camera_ubo.light_dir_pad[0],
@@ -8046,9 +8070,11 @@ fn vs(input: VSIn) -> VSOut {
         self.close_timing_gap(enc);
         let atmosphere_stamp = self.begin_named_stamp(enc, "atmosphere");
         if let Some(external_depth) = depth_view {
+            self.record_bruneton(enc, external_depth);
             self.composite_atmosphere(enc, external_depth);
         } else {
             let depth = self.depth.view.clone();
+            self.record_bruneton(enc, &depth);
             self.composite_atmosphere(enc, &depth);
         }
         self.end_named_stamp(enc, atmosphere_stamp);
@@ -8109,13 +8135,7 @@ fn vs(input: VSIn) -> VSOut {
         } else {
             0.0
         };
-        if self.atmosphere_on
-            || self.cloud_raymarch_on
-            || self.ssgi_on
-            || self.taa_on
-            || self.upscale_on
-            || self.dof_on
-        {
+        if self.cloud_raymarch_on || self.ssgi_on || self.taa_on || self.upscale_on || self.dof_on {
             let depth = depth_view
                 .cloned()
                 .unwrap_or_else(|| self.depth.view.clone());

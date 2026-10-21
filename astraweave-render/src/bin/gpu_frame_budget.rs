@@ -149,9 +149,9 @@ fn main() -> anyhow::Result<()> {
     add_heavy_terrain(&mut renderer)?;
     renderer.set_particle_emitter(Some(emitter()))?;
     // Cloud shadows stay at the renderer default (on). That is
-    // `CloudShadowPass`, not `VolumetricCloudsPass`. `--atmosphere` also
-    // turns on Aravath's fog and god rays so the median is that frame.
-    // Aerial then keeps those pixels instead of scattering them again.
+    // `CloudShadowPass`, not `VolumetricCloudsPass`. `--atmosphere` writes
+    // the Bruneton sky first, then Aravath's fog and god rays composite
+    // over it. A failed fog or shaft build is not that frame.
     // GPU indirect culling is not the draw path on any adapter: each model
     // still binds its own group 3, so one indirect buffer cannot select
     // those groups. The CPU frustum remains the filter.
@@ -173,15 +173,14 @@ fn main() -> anyhow::Result<()> {
         });
         renderer.set_atmosphere_enabled(true);
     }
+    let fog = renderer.volumetric_fog_enabled();
+    let shafts = renderer.god_rays_enabled();
+    let measure = gated_measure_label(atmosphere, fog, shafts);
     println!("gated_atmosphere={}", if atmosphere { "on" } else { "off" });
-    println!(
-        "gated_measure={}",
-        if atmosphere {
-            "atmosphere_with_aravath_fog"
-        } else {
-            "baseline"
-        }
-    );
+    println!("gated_measure={measure}");
+    if atmosphere && (!fog || !shafts) {
+        anyhow::bail!("degraded atmosphere measurement: {measure}");
+    }
     let gpu_cull = "cpu_fallback";
 
     let device = renderer.device().clone();
@@ -804,6 +803,18 @@ fn renderer_limits(limits: &wgpu::Limits) -> [(&'static str, u64); 15] {
     ]
 }
 
+fn gated_measure_label(atmosphere: bool, fog: bool, shafts: bool) -> &'static str {
+    if !atmosphere {
+        return "baseline";
+    }
+    match (fog, shafts) {
+        (true, true) => "atmosphere_with_aravath_fog",
+        (true, false) => "atmosphere_without_shafts",
+        (false, true) => "atmosphere_without_fog",
+        (false, false) => "atmosphere_without_volumetrics",
+    }
+}
+
 /// `--atmosphere` alone draws the Aravath fog frame with Bruneton sky.
 /// Every other enabled gated flag is rejected, including a second flag beside it.
 /// `false` is off and does not bail.
@@ -982,5 +993,37 @@ fn median(values: &mut [f64]) -> f64 {
         (values[mid - 1] + values[mid]) * 0.5
     } else {
         values[mid]
+    }
+}
+
+#[cfg(test)]
+mod measure_label_tests {
+    use super::gated_measure_label;
+
+    #[test]
+    fn degraded_volumetrics_are_not_the_aravath_fog_frame() {
+        assert_eq!(gated_measure_label(false, false, false), "baseline");
+        assert_eq!(
+            gated_measure_label(true, true, true),
+            "atmosphere_with_aravath_fog"
+        );
+        assert_eq!(
+            gated_measure_label(true, false, true),
+            "atmosphere_without_fog"
+        );
+        assert_eq!(
+            gated_measure_label(true, true, false),
+            "atmosphere_without_shafts"
+        );
+        assert_eq!(
+            gated_measure_label(true, false, false),
+            "atmosphere_without_volumetrics"
+        );
+        for (fog, shafts) in [(false, true), (true, false), (false, false)] {
+            assert_ne!(
+                gated_measure_label(true, fog, shafts),
+                "atmosphere_with_aravath_fog"
+            );
+        }
     }
 }

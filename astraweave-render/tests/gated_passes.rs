@@ -275,5 +275,44 @@ fn atmosphere_sky_differs_from_geometry_and_aerial_tints_distance() {
             channel_distance(far, far_off) > 20,
             "aerial perspective did not change the far quad: on {far:?} off {far_off:?} sky {sky:?}"
         );
+
+        // Aim the sun at the empty sky pixel so shafts have a source there.
+        renderer.set_light_direction_override(glam::Vec3::new(-0.9, 0.0, 0.4), 1.0);
+        renderer.update_view(&astraweave_camera::RenderView::new(
+            view,
+            &projection,
+            eye,
+            (target - eye).normalize(),
+        ));
+        let sky_only = sample(&draw_and_read(&mut renderer, true), WIDTH, 60, 32);
+        renderer.set_volumetric_fog_config(
+            astraweave_render::volumetric_fog::VolumetricFogPass::gameplay_config(),
+        );
+        assert!(
+            renderer.volumetric_fog_enabled(),
+            "fog pipeline did not build"
+        );
+        let sky_fog = sample(&draw_and_read(&mut renderer, true), WIDTH, 60, 32);
+        renderer.set_god_ray_config(astraweave_render::GodRayConfig {
+            enabled: true,
+            half_res: true,
+            num_samples: 32,
+            exposure: 0.22,
+            ..astraweave_render::GodRayConfig::default()
+        });
+        assert!(renderer.god_rays_enabled(), "shaft pipeline did not build");
+        let sky_both = sample(&draw_and_read(&mut renderer, true), WIDTH, 60, 32);
+        assert!(
+            channel_distance(sky_fog, sky_only) > 8,
+            "fog did not survive on the sky pixel: fog {sky_fog:?} sky {sky_only:?}"
+        );
+        assert!(
+            channel_distance(sky_both, sky_fog) > 5,
+            "shafts did not survive on the sky pixel: both {sky_both:?} fog {sky_fog:?}"
+        );
+        assert!(
+            channel_distance(sky_both, magenta) > 40,
+            "fogged sky {sky_both:?} is the debug magenta clear {magenta:?}"
+        );
     });
 }
