@@ -40,6 +40,17 @@ jobs:
             export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json
           fi
           cargo test -p astraweave-render --features alloc-counter --test frame_alloc -- --nocapture
+      - name: Assert the streamed fallback stays on the allocation floor
+        env:
+          WGPU_BACKEND: vulkan
+          WGPU_VALIDATION: "1"
+        run: |
+          if [ -f /usr/share/vulkan/icd.d/lvp_icd.x86_64.json ]; then
+            export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.x86_64.json
+          else
+            export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json
+          fi
+          cargo test -p astraweave-render --features alloc-counter --test stream_fallback -- --nocapture
       - name: Timestamp readback is non-zero
         env:
           WGPU_BACKEND: vulkan

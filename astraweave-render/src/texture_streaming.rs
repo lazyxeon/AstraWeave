@@ -134,13 +134,13 @@ pub struct TextureStreamingManager {
 /// and only joins it when the caller is not already inside a runtime.
 struct DecodeRuntime {
     handle: tokio::runtime::Handle,
-    shutdown: Option<std::sync::mpsc::Sender<()>>,
+    shutdown: Option<tokio::sync::oneshot::Sender<()>>,
     thread: Option<std::thread::JoinHandle<()>>,
 }
 
 impl DecodeRuntime {
     fn start() -> anyhow::Result<Self> {
-        let (shutdown_tx, shutdown_rx) = std::sync::mpsc::channel::<()>();
+        let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel::<()>();
         let (ready_tx, ready_rx) = std::sync::mpsc::channel();
         let thread = std::thread::Builder::new()
             .name("texture-stream".into())
@@ -159,8 +159,13 @@ impl DecodeRuntime {
                 if ready_tx.send(Ok(handle)).is_err() {
                     return;
                 }
-                let _ = shutdown_rx.recv();
-                drop(runtime);
+                // A current-thread runtime polls `Handle::spawn` tasks only
+                // while this thread is inside `block_on`. Waiting on a std
+                // channel left every decode queued, so the fifo reader in
+                // `stream_fallback` never opened.
+                runtime.block_on(async move {
+                    let _ = shutdown_rx.await;
+                });
             })
             .context("texture streaming runtime")?;
         let handle = ready_rx
