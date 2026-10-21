@@ -1,6 +1,6 @@
 """
 Render crate full-sweep driver: 20 shards, sequential execution.
-Usage: python run_render_sweep.py [start_shard]
+Usage: python scripts/run_render_sweep.py [start_shard]
 Saves aggregate.json and summary.txt after each shard.
 """
 import json, os, shutil, subprocess, sys, time

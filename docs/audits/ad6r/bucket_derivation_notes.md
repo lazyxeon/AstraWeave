@@ -59,7 +59,7 @@ Source of truth: **`AD3R_PACK_PARTITION_PROPOSAL.md` Phase 2** (the recon that c
 | `gh-pages/` (assets logo + graphs 3) | 4 | RETAINED | AD3R Phase 2 ("gh-pages/ 4") |
 | `astraweave-render/tests/visual_regression/golden/*` | 3 | RETAINED | AD3R Phase 2 ("astraweave-render/ 3") |
 | `tools/benchmark-dashboard/graphs/*` | 3 | RETAINED | AD3R Phase 2 ("tools/ 3") |
-| repo-root editor screenshots (`editor_ss.png`, `editor_screenshot.{png,jpg}`) | 3 | RETAINED | AD3R Phase 2 ("3 repo-root editor screenshots") |
+| repo-root editor screenshots (`docs/archive/root-scratch/editor_ss.png`, `editor_screenshot.{png,jpg}`) | 3 | RETAINED | AD3R Phase 2 ("3 repo-root editor screenshots") |
 | **RETAINED total** | **54** | | |
 
 **Reconciliation of the AD3R off-by-one (documented, not ungrounded):** AD3R Phase 2's prose enumeration *textually* also lists `assets/Astraweave_logo.jpg`, which would sum its list to 55. But `assets/Astraweave_logo.jpg` is a **sample row** (`SAMPLE_SET_PROPOSAL.md` Table C; `LFS_REMOVAL_PLAN.md` §4's 2 jpg sample rows). Placing it in SAMPLE (as done here) makes RETAINED = 54 exactly. Note the three distinct logo files: `assets/Astraweave_logo.jpg` (SAMPLE), `docs/branding/Astraweave_logo.jpg` (RETAINED, "logo derivative"), `gh-pages/assets/Astraweave_logo.jpg` (RETAINED) — all correctly separated.

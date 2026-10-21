@@ -283,7 +283,7 @@ Tags: **D0** = SWEPT-BY-D0 · **D0.1** = SWEEP-NOW-D0.1 (this sub-phase). `docs/
 | D0.1 | `docs/current/TERRAIN_ASSET_QUALITY_CAMPAIGN.md` | 1071 | 0 |
 | D0.1 | `docs/current/TERRAIN_GENERATION_QUALITY_CAMPAIGN.md` | 2174 | 0 |
 | D0.1 | `docs/current/TERRAIN_MATERIAL_SYSTEM_CAMPAIGN.md` | 1003 | 0 |
-| D0.1 | `docs/current/TERRAIN_MATERIAL_SYSTEM_PHASE_1E_HANDOFF.md` | 346 | 0 |
+| D0.1 | `docs/current/TERRAIN_MATERIAL_SYSTEM_PHASE_1E_docs/archive/root-notes/HANDOFF.md` | 346 | 0 |
 | D0.1 | `docs/current/TERRAIN_SCATTER_FIX_PLAN.md` | 270 | 0 |
 | D0.1 | `docs/current/UNWRAP_REMEDIATION_PROGRESS.md` | 286 | 2 |
 | D0.1 | `docs/current/VEILWEAVER_VERTICAL_SLICE_ANALYSIS.md` | 480 | 12 |
@@ -447,14 +447,14 @@ Tags: **D0** = SWEPT-BY-D0 · **D0.1** = SWEEP-NOW-D0.1 (this sub-phase). `docs/
 | D0 | `.github/copilot-instructions.md` | 16 |
 | D0 | `.zencoder/rules/repo.md` | 21 |
 | D0 | `AGENTS.md` | 0 |
-| D0 | `CAMPAIGN_NOTES.md` | 0 |
-| D0 | `CAMPAIGN_PROGRESS.md` | 2 |
+| D0 | `docs/archive/root-notes/CAMPAIGN_NOTES.md` | 0 |
+| D0 | `docs/archive/root-notes/CAMPAIGN_PROGRESS.md` | 2 |
 | D0 | `CHANGELOG.md` | 4 |
 | D0 | `CLAUDE.md` | 34 |
 | D0 | `CONTRIBUTING.md` | 2 |
-| D0 | `HANDOFF.md` | 4 |
-| D0 | `HANDOFF_HISTORY.md` | 1 |
-| D0 | `LOD_VIEWPORT_AUDIT_REPORT.md` | 4 |
+| D0 | `docs/archive/root-notes/HANDOFF.md` | 4 |
+| D0 | `docs/archive/root-notes/HANDOFF_HISTORY.md` | 1 |
+| D0 | `docs/archive/root-notes/LOD_VIEWPORT_AUDIT_REPORT.md` | 4 |
 | D0 | `README.md` | 59 |
 | D0 | `SECURITY.md` | 0 |
 | D0 | `docs/README.md` | 11 |

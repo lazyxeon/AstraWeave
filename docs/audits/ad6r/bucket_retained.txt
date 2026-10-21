@@ -28,9 +28,9 @@ docs/screenshots/unified_showcase_enhanced.png
 docs/screenshots/unified_showcase_final.png
 docs/screenshots/unified_showcase_skybox.png
 docs/screenshots/unified_showcase_startup.png
-editor_screenshot.jpg
-editor_screenshot.png
-editor_ss.png
+docs/archive/root-scratch/editor_screenshot.jpg
+docs/archive/root-scratch/editor_screenshot.png
+docs/archive/root-scratch/editor_ss.png
 examples/fluids_demo/captures/f0030_800x600.png
 examples/fluids_demo/captures/f0120_1600x900.png
 examples/fluids_demo/captures/f0160_1600x900.png

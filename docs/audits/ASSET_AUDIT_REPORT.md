@@ -186,7 +186,7 @@ Rules applied mechanically, one verdict per asset, evidence string per row in th
 
 - **GOOD** — parses/decodes clean in a supported format; or intentional test fixture. Orphaned-but-clean pack content stays GOOD (status column carries the orphan signal). Non-PoT noted but not penalized (sprites/UI).
 - **FIX** — specific correctable defect: broken external texture refs (123 GLBs, B8); referenced-or-catalog-listed unsupported format → convert (FBX 326, OBJ 428, BLEND 138); oversize runtime textures (5); AW_TEX2 with live reference (1); USDC (1); HDR/EXR 8K in runtime dirs (5).
-- **DELETE** — orphaned AND unsuitable: unsupported-format duplicates whose same-stem `.glb/.gltf` twin exists in the same pack (FBX 13,075 / OBJ 8,939 / DAE 1,264 / BLEND 28 — KayKit ships every model ×4 formats; the GLB is the only loadable one), stale AW_TEX2 bakes (87), repo-root screenshots (3 files: `editor_screenshot.jpg/png`, `editor_ss.png`), unreferenced docs images (5 png / 1 jpg).
+- **DELETE** — orphaned AND unsuitable: unsupported-format duplicates whose same-stem `.glb/.gltf` twin exists in the same pack (FBX 13,075 / OBJ 8,939 / DAE 1,264 / BLEND 28 — KayKit ships every model ×4 formats; the GLB is the only loadable one), stale AW_TEX2 bakes (87), repo-root screenshots (3 files: `docs/archive/root-scratch/editor_screenshot.jpg/png`, `docs/archive/root-scratch/editor_ss.png`), unreferenced docs images (5 png / 1 jpg).
 - **REPLACE** — referenced/catalog-listed but fundamentally defective: the 3 empty Kenney OBJ character exports.
 - **UNKNOWN** — 4 gh-pages images (site-branch mirror; references not scanned).
 

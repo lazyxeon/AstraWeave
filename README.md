@@ -1,77 +1,43 @@
-<p align="center">
-  <img src="assets/Astraweave_logo.jpg" alt="AstraWeave nebula logomark" width="360" />
-</p>
+# AstraWeave
 
-<h1 align="center">AstraWeave — AI-Native Game Engine</h1>
-
-<div align="center">
+AstraWeave is an AI-native game engine with a deterministic ECS. AI agents are first-class citizens. The game this engine is being built for is **Aravath**. Local LLMs propose. The deterministic simulation validates and executes. Assets in the tree are CC0. The frame target is under 11 ms on a GTX 1660 Ti. The measured heavy-scene GPU frame on that card is 3.688 ms (`budget_11ms=pass`). The full write-up, with the supply-chain pins and the per-system table, is [ENGINE_STATUS.md](docs/current/ENGINE_STATUS.md).
 
 [![Kani Formal Verification](https://github.com/lazyxeon/AstraWeave/actions/workflows/kani.yml/badge.svg)](https://github.com/lazyxeon/AstraWeave/actions/workflows/kani.yml) [![OpenSSF Scorecard](https://github.com/lazyxeon/AstraWeave/actions/workflows/scorecard.yml/badge.svg)](https://github.com/lazyxeon/AstraWeave/actions/workflows/scorecard.yml) [![Miri UB Detection](https://github.com/lazyxeon/AstraWeave/actions/workflows/miri.yml/badge.svg)](https://github.com/lazyxeon/AstraWeave/actions/workflows/miri.yml) [![Security Audit](https://github.com/lazyxeon/AstraWeave/actions/workflows/security-audit.yml/badge.svg)](https://github.com/lazyxeon/AstraWeave/actions/workflows/security-audit.yml) [![Mutation Testing](https://github.com/lazyxeon/AstraWeave/actions/workflows/mutation-testing.yml/badge.svg)](https://github.com/lazyxeon/AstraWeave/actions/workflows/mutation-testing.yml) [![Sanitizers](https://github.com/lazyxeon/AstraWeave/actions/workflows/sanitizers.yml/badge.svg)](https://github.com/lazyxeon/AstraWeave/actions/workflows/sanitizers.yml) [![CodeQL Analysis](https://github.com/lazyxeon/AstraWeave/actions/workflows/codeql-analysis.yml/badge.svg)](https://github.com/lazyxeon/AstraWeave/actions/workflows/codeql-analysis.yml)
 
-</div>
+## Current status
 
-<p align="center">
-  <a href="https://github.com/lazyxeon/AstraWeave/blob/main/LICENSE"><img src="https://img.shields.io/github/license/lazyxeon/AstraWeave?style=for-the-badge" alt="License" /></a>
-  <a href="https://github.com/lazyxeon/AstraWeave/blob/main/rust-toolchain.toml"><img src="https://img.shields.io/badge/rust-1.89.0-orange.svg?style=for-the-badge" alt="Rust toolchain" /></a>
-  <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-blue.svg?style=for-the-badge" alt="Platforms" />
-</p>
+Checked against `main` at `5a52b039` (#390). The rows below were checked at `556a305c` except the CI badge row.
 
-<div align="center">
-
-**An AI-native game engine with a deterministic ECS. AI agents are first-class citizens.**
-The game this engine is being built for is **Aravath**.
-
-📚 [Documentation](docs/) • 📊 [Benchmarks](docs/masters/MASTER_BENCHMARK_REPORT.md) • 🗺️ [Roadmap](docs/masters/MASTER_ROADMAP.md) • 🧪 [Coverage](docs/current/MASTER_COVERAGE_REPORT.md) • 🕸️ [Workspace Map](https://lazyxeon.github.io/AstraWeave/architecture/) • ⚡ [Benchmark dashboard](https://lazyxeon.github.io/AstraWeave/dashboard/benchmark_dashboard/) • 🌐 [GitHub Pages](https://lazyxeon.github.io/AstraWeave/)
-
-</div>
-
----
-
-## Current state (2026-10-20)
-
-Checked against `main` at `556a305c`. Numbers that were not re-measured in this pass are dated below. This page does not assign a letter grade.
-
-| Topic | What is true on this commit |
+| Topic | State |
 | --- | --- |
-| **Workspace** | **142** members via `cargo metadata --no-deps` at `10757c81`. **59** of those names start with `astraweave-` (`astraweave-localsim` is the new one). **60** manifests live under `examples/`. The count before #330 was 141. |
-| **Toolchain** | Rust **1.89.0**, pinned in `rust-toolchain.toml`. Targets: Linux x86_64, Windows MSVC, macOS x86_64 and Apple Silicon. |
-| **CI platforms** | Pull-request replay hashes run on `ubuntu-latest`, `windows-latest`, and `macos-latest`. That is the supported cross-OS determinism matrix. It is not a claim that every example window has been run on all three. |
-| **Determinism** | Nineteen required replay cases, including `local_sim`, `greybox_checkpoint`, `quest_ticks`, and `persist_replay`. The compare job fails if any case is missing or its SHA-256 differs across the three OS artifacts. See [Determinism](#determinism). |
-| **AI rule** | Local LLMs propose. The deterministic simulation validates and executes. `AIArbiter` stays behind `llm_orchestrator` (default off) and is not on `sys_ai_planning` or `sys_spatial_tick`. `GoapPlanner` stays off that tick (#331). `gravity.rs` was deleted in #330. #336 is closed. `recorded_line` is a pure helper intended as the dialogue boundary. It does not draw, and it is not wired in yet: the only callers are its own tests. The orchestrator default, when `OLLAMA_MODEL` is unset, is `phi3:medium` (`astraweave-ai`). The Qwen client constant is `qwen3.5:4b`. Ollama constructors keep a loopback URL. A non-loopback URL is replaced with `http://127.0.0.1:11434` unless the caller uses `allowing_remote` (#316). |
-| **Assets** | The project rule is **CC0 only**. `assets/README.md` still says "Mixed" and this pass did not re-audit every file's license. |
-| **Frame time** | The target is under 11 ms per frame on a GTX 1660 Ti-class GPU. #216 is on main. The heavy scene on a GTX 1660 Ti Max-Q, Vulkan, 1920×1080, 30 warmup + 120 samples, measured `median_gpu_frame_ms=3.688` at commit `939a21bb`. `budget_11ms=pass`. The amortized cloud shadow is 0.323 ms. `CLOUD_SHADOW_STRENGTH` is 4 (#384). The heavy scene still draws no water (#371). `gpu_cull=cpu_fallback` because group 3 is per model (#372). Do not treat the older CPU `profiling_demo` times as this measurement. |
-| **Coverage and Miri** | Whole-workspace line coverage **57.35%** was measured 2026-06-29 and has not been re-run on the 141-member tree. Miri **1,059** tests, 0 UB, was measured 2026-06-27 across ecs, math, core, and sdk. The February 2026 report records an older, smaller run. Kani proof attributes were **69** on 2026-06-13 and were not re-counted here. |
-| **Build** | This pass did not run `cargo check --workspace`. The last clean workspace check written into these docs is 2026-06-10, at 130 members. |
-| **Supply chain** | #325 (`8e5dd73c`) makes `cargo deny` advisories and `cargo audit` pass aside from later advisories. Patched crates are locked (`rustls` 0.23.46, `tokio-rustls` 0.26.4, `openh264` 0.9.9). Ignored leftovers are #305, #306, #308–#310, and #321–#323. #320 no longer has an ignore: postcard is `default-features = false` plus `alloc`, so `atomic-polyfill` is gone. #320 is closed. The fix is #387. `rustls-webpki` is 0.103.16 and `webpki-roots` is 1.0.10. RUSTSEC-2026-0381 and RUSTSEC-2026-0382 are fixed with no ignore. #311 no longer has an ignore: `aw_trace_sync` uses `yaml_serde`. #307 no longer has an ignore: `indicatif` 0.18 replaces `number_prefix`. #353 vendors `third_party/candle-core` (crates.io `candle-core` 0.8.4) and pins it to `zip` 9.0.3. #350 vendors `third_party/rapier3d` (crates.io `rapier3d` 0.22) on the same `[patch.crates-io]` table so a settled `PhysicsWorld::step` allocates nothing. An in-house physics engine is not planned work. Re-apply steps are in [VENDORED.md](third_party/rapier3d/VENDORED.md). The maintainer draft is [RAPIER_BUFFER_REUSE_UPSTREAM.md](docs/current/RAPIER_BUFFER_REUSE_UPSTREAM.md) and is not filed upstream. That is the patched line for RUSTSEC-2026-0367, 0368, and 0369. `Cargo.lock` has no `zip` 1.1.4. There is no audit ignore for those three zip IDs. #324 is closed. The fix is #353. #365 resolved RUSTSEC-2026-0370, 0371, and 0372 with no ignore: `eframe` is built without AccessKit, so screen readers do not receive the egui tree, and editor file dialogs are `rfd` 0.17 (`libdbus` or `zenity` on Linux). The editor `kittest` feature is gone. #368 covers the six toolbar and menu clicks with synthetic `RawInput` on a plain `egui::Context`. #366 stays open for step 2: bring `egui_kittest` back once `accesskit_unix` uses zbus 6. Drop the vendor directory and the `[patch.crates-io]` entry once candle upstream depends on `zip >= 9`. #217 removed `openssl` from the lockfile. `deny.toml` still bans `openssl` and `openssl-sys`. #219 and #256 are closed. #327 (`87fbe079`) drops `net` from the workspace `tokio` features. `astraweave-net`, `astraweave-ipc`, and `astraweave-net-ecs` opt in. #326 is closed. |
-| **Traces** | **31** subsystem traces under `docs/architecture/`, including `veil.md`, listed in the generated table in `CLAUDE.md`. The June "13 traces" figure is the original campaign, not the current set. |
+| Toolchain | Rust 1.89.0, pinned in `rust-toolchain.toml` |
+| Workspace | 142 members at `10757c81` |
+| Determinism | Nineteen required replay cases, compared on Linux, Windows, and macOS |
+| Greybox golden | `b6a9d5a2c5da28a6` |
+| Frame budget | 3.688 ms GPU frame, 11 ms target, GTX 1660 Ti. #371 and #372 stay open |
+| Supply chain | Postcard is alloc-only. `rustls-webpki` is 0.103.16. `webpki-roots` is 1.0.10. Ignored leftovers are #305, #306, #308–#310, and #321–#323 |
+| CI badges | #390 dropped the Clippy unwrap-prevention badge. That workflow was deleted in #223. `astraweave-ai` mutants run as 8 round-robin shards. The 70% gate is caught / (caught + missed). Timeouts are not caught. `cargo-mutants` is 27.1.0 |
 
-### On main since the June snapshot
+The nineteen cases are `planner_pure`, `perception_world`, `gameplay_rng`, `fixed64`, `combat_resolve`, `destruction`, `gameplay_qa_aravath_slice`, `nav_reroute`, `causal_bridge`, `scripted_system`, `weaving`, `traversal`, `traversal_deformed`, `worldgen_columns`, `deformed_chunk`, `local_sim`, `greybox_checkpoint`, `quest_ticks`, and `persist_replay`.
 
-- **AI orchestration and dynamic nav reroute (#251).** `NavTiles` can take a geometry change and recompute a route. Replay case `nav_reroute`.
-- **Bridge reroute and `aravath_runtime` (#263, #329).** `BridgeAgent` walks a bridge-and-ford graph, detaches the deck at tick 30, and leaves the span for the ford. `Greybox::step` calls `bridge.step` after the motor and does not call the motor again. The window does not draw that body. `state_hash` includes `route_x_milli`, `setup_ok`, and `cut_milli`. Player-facing scene label is `Aravath`.
-- **Security caps (#312, #316).** #312 bounds model text, imports, admin auth, and socket frames, on top of the Rhai sandbox ceilings (operation budget, string/array/map sizes, mod counts). `default_allowed_llm_domains` is localhost only. #316 caps image decode at a 4096-pixel edge and 64 MiB (`open_limited_image` / `decode_limited_image`). Render, the editor, blend import, and `aw_asset_cli` call that decoder. `astraweave-asset-pipeline` doc comments still show an uncapped open; that crate is the dormant cook path, not a live caller. `aw_asset_cli` rejects glTF buffer and image file URIs that fail `safe_under` before import. `OllamaClient::new` keeps only loopback URLs unless `allowing_remote` is used.
-- **AI decision debugger (#287).** Zero-cost decision ring plus the headless `aw_decision` inspector (`show` / `diff`). Tracing is off unless the caller records.
-- **Causal consequence engine (#286).** `CausalWorld::tick` admits recorded inputs and fires a baked rule table. It does not call a model. Replay case `causal_bridge`. Editor play does not call it. The causality crate does not read a geometry notice; `BridgeAgent` drains the collapse into the cut.
-- **Rhai mod sandbox and loader (#214, #318).** Gameplay and mod scripts run on the security sandbox. `build_app` installs `ModScriptPlugin` after `register_mod_runtime`. Replay case `scripted_system`. Gameplay `script_system` does not inject `PhysicsProxy` or `NavMeshProxy` (#318). The host still uses `PhysicsWorld` for collision events and spawned bodies. `scripting_advanced_demo` still inserts physics and nav resources, and `advanced_ai.rhai` no longer calls them: sight is distance under 20, and a finished patrol point clears `path`. `scripting_playground` still runs triggers and `apply_damage`, and the player script no longer raycasts.
-- **Destruction (#243).** Command log, support graph, fracture, terrain deltas, and debris. Sim state is `Fixed64`. Display meshes are outside the hash. Replay case `destruction`.
-- **Gameplay QA (#277, replay #280).** Headless Aravath-slice scenario hashed as `gameplay_qa_aravath_slice`. The #277 document is the plan; the required replay case is what landed.
-- **Weaving framework (#252).** `weave_tick` stamps data-driven templates (heat, freeze, density, gravity, and the other built-in ids) into `FieldWrite`s on a `SimField`. Replay case `weaving` still runs 300 ticks on `NullField`, so that digest stays zeros. The local field is the separate required case `local_sim` (#330). Freeze records an ice sheet and a nav change. `examples/aravath_weave` is the headless caller. `astraweave-core`, `astraweave-gameplay`, `astraweave-scripting`, and `astraweave-security` depend on the crate. The anchor-slice helpers are still plain functions.
-- **Aravath greybox (#205).** `cargo run -p aravath_runtime --bin aravath_greybox` opens the window. The on-screen player is the CC0 KayKit knight with the KayKit sword and shield. The three foes are CC0 KayKit skeletons. Ground albedos are CC0 Poly Haven maps. Foliage is CC0 KayKit and Kenney. Credits are in `assets/aravath/CREDITS.md`. The world streams a three-chunk ring. Sword hits land once, inside the active window, and lock-on drops when that enemy dies. `dig_sphere` applies a sphere `Subtract` brush through `DestructionWorld::apply_brush_now`. That loads every chunk the brush radius touches, then carves the island mesh by the occupancy drop. A checkpoint stores the command log (`persist_bytes`, save meta `demolition`). `restore_dug` replays it before the next dig. An empty log starts a fresh column world. Place still writes voxels with `place_sphere`. The edit log is still hashed. The greybox replay hash is `b6a9d5a2c5da28a6` in `aravath_runtime/golden/replay.hash`. #381 runs that check on Linux, Windows, and macOS. x86-64 pins the baseline CPU with FMA off. aarch64 uses the default baseline CPU. The hash is unchanged. The checkpoint stores tick, motor mode, attack phase (time, swinging, and hit), lock, `cover_broken`, and enemies. #281, #283, and #284 are closed. The fix is #381. It is a separate hash from the nineteen three-OS cases. Since #215, `ColumnStream` is the keep and evict set for the radius-3 ring. Those chunks still fill from the island heightfield. Greybox startup runs `run_aravath_slice` once (`prime_sword_slice` from `Greybox::new` and `Greybox::open`, #275, #343). Each connecting sword hit reuses that cached `sword_hp`. Dealt damage is `40 - sword_hp`. The slice test locks that remainder at 15, so the hit deals 25, and a broken cover bond shows the notice `Cover broke` once. The heavy-scene GPU frame on a GTX 1660 Ti Max-Q is 3.688 ms (`budget_11ms=pass`, #216). The amortized cloud shadow is 0.323 ms. `CLOUD_SHADOW_STRENGTH` is 4 (#384). #371 and #372 stay open.
-- **Traversal (#244).** `astraweave-physics` steps movement at a fixed 60 Hz. The sim owns displacement. Ground, jump, and roll are hashed for 180 ticks as required case `traversal`. `traversal_deformed` walks and climbs terrain that a brush cuts mid-run: a one-voxel seam ramps, a destroyed handhold detaches, and horizontal momentum is kept. Climb is hybrid (markup wins, otherwise a flagged surface). The Aravath motor (ground, air, crouch, sprint, roll) steps once per tick. Roll invulnerability is ticks 5 through 19. Swim, slide, prone, wall-run, glide, ledge, and shimmy are in the course script. Foot and hand IK stay on the presentation graph and are outside the hash.
-- **Toolchain LFS and benchmark shards (#348, #351).** `toolchain-management.yml` checks out Git LFS. `ASSET_MANIFEST.tsv` then hashes the Aravath model blobs, including `AnimationLibrary_Godot_Standard.bin`, not the pointer files. Benchmark shard 0 measures `astraweave-localsim` with `astraweave-net`, `astraweave-profiling`, and `astraweave-water`. The matrix is 16 shards (`0`–`15`, `--shard-count 16`). The aggregate expects 53 package records. `astraweave-render` is shards 13, 14, and 15 (`@a`, `@b`, and `@c`). #377 flat-samples `camera_primitives_instancing`, `gpu_memory_terrain_skinning_depth_overlay`, `graph_mesh_material_texture`, `ibl_deferred`, and `transparency_environment_msaa`: `SamplingMode::Flat`, `sample_size(10)`, a 1 ms warm-up, and a 1 s measurement. In `ibl_deferred`, spherical harmonics then sets `sample_size(50)` and the BRDF LUT row sets `sample_size(30)`. `large_forest_10k_trees` scatters with `StdRng` seeded `0xA57A_13E7`. `github-action-benchmark` stores `dev/bench` on branch `benchmark-data`. `gh-pages` is the docs site, and main also has a `gh-pages/` directory, so the old checkout never published that history. The PR comment step clones `github.com/<owner>/<repo>`, does not auto-push, and comments only when a result exceeds the alert threshold. #361 split the dialogue, embeddings, and fluids benches on shards 2 and 4 into per-group targets. #359 is closed. The 600s limit stays. #374 flat-samples shard 4's `fluid_baseline_50k`: `SamplingMode::Flat`, `sample_size(10)`, a 1 ms warm-up, and a 1 s measurement. It still steps 50_000 particles. 10k and 20k stay at `sample_size(30)`. The 600s cap is unchanged. #367 calls `world.step()` in `raycast_with_and_without_normal` before the cast, so shard 7 no longer exits 101 on an empty query pipeline. The fluids GPU timing walk runs only when `AW_FLUID_GPU_TIMINGS` is set. Each sharded bench target gets 600s after compilation. The `aw_build` job is separate and uses its 30-minute job timeout.
-- **Forest LOD budget (#375).** `view_ring_lod_keeps_the_forest_under_budget` still requires `total > 400` and `kept < 900`. The 50 ms debug wall-clock assert is gone. macOS 1.89 on run 39084152246 measured 50.776916 ms, failed `as_millis() < 50`, and skipped `Run clippy with toolchain`. Ubuntu and Windows in that run stayed under 50 ms. Counts were total=2009 and kept=727. `docs/architecture/terrain.md` is version 1.16.
-- **Schedule registration (#360).** `add_system` still returns `Err(UnknownStage)` when the stage was never registered. `add_system_known_stage` calls `add_stage` first and aborts only if the stage is still missing. Call sites use that helper. There is no `expect` and no lint allow. #358 is closed. The fix is #360. `Toolchain Validation (1.89.0)` runs workspace clippy `-D warnings`, with that workflow's package excludes, and is expected green. The CI agent is confirming that job on main.
-- **Frame budget (#216).** `gpu_frame_budget --scene heavy` on a GTX 1660 Ti Max-Q, Vulkan, 1920×1080, 30 warmup + 120 samples, recorded `median_gpu_frame_ms=3.688` at `939a21bb`. `budget_11ms=pass` on `budget_basis=gpu_frame`. The amortized `cloud_shadow` pass is 0.323 ms. The heavy scene draws no water (#371). `gpu_cull=cpu_fallback` on every adapter (#372).
-- **CI burndown (#217).** `aw-editor-tests.yml` and the sanitizer jobs install `pkg-config` and `libudev-dev`. Audio nextest fixtures live under `astraweave-audio/target/audio-test-assets/<pid>`. `fluid.wgsl` uses `safe_normalize` and takes velocity from the pre-clamp prediction so a zero vector and a wall hit stay finite on lavapipe. reqwest, the websocket client, and `hf-hub` use rustls. `ort` does not enable `download-binaries`. The fifteen replay cases are unchanged. The disposition of the older red checks is `docs/current/CI_FAILURE_LEDGER.md`.
-- **Editor/engine parity (#340).** `editor_engine_render_parity` bakes the default HDRI once and installs that `IblResources` on both renderers. The editor path in that test does not start the worker bake. #273 and #338 are closed. `test_async_task_is_finished_lifecycle` waits on a oneshot. `test_perception_stress` checks snapshot identity.
-- **Workspace test reds (#333).** Profile `ci-pr` no longer excludes the terrain goldens or `ecs_integration_tests`. Noise goldens lock `NoiseConfig::default`. `sys_ai_planning` keeps `RuleOrchestrator` when `veilweaver_slice` is unified in. The voice-folder scan is a sorted `.ogg` / `.wav` list. Still excluded: GPU render passes, the lavapipe fluid smokes, and `test_qwen3_variants`. #254, #242, and #314 stay open. #218 is closed. #304 and #274 stay open.
-- **Greybox tokio graph (#327).** The workspace `tokio` features are `fs`, `io-util`, `macros`, `rt`, `rt-multi-thread`, `sync`, and `time`. `astraweave-net`, `astraweave-ipc`, and `astraweave-net-ecs` add `net`. `astraweave-blend` adds `process`. `aw_asset_cli` does not depend on tokio. #326 is closed.
-- **Greybox combat slice (#275, #343).** `Greybox::new` and `Greybox::open` call `prime_sword_slice`, which runs `astraweave_weaving::run_aravath_slice` once. `Combat::tick` reads that cache. The foe loses `40 - sword_hp`. The slice test locks the remainder at 15, so the hit deals 25. `cover_intact == false` sets `cover_broken`, and the window shows `Cover broke` for 2.5 seconds, once.
-- **Greybox showcase (#329).** `ColumnFns` binds `column_gen::surface_height` and the seed material. `FlatColumnBase` stays the unbound terrain, so the required `destruction` replay case is unchanged. #329 moved the Linux-and-Windows golden from `b663da52ea1d566e` to `0a576578512f25d2` because the scripted dig and the bridge route entered the hash. #330 moved it again to `b6a9d5a2c5da28a6` because `state_hash` now includes `LocalSim::field_digest`. #261, #250, and #249 are still open on the tracker.
-- **Off-tick models, GOAP, and gravity (#331, #382).** `llm_dialogue` compiles as a module. `recorded_line` returns a recorded string, or `scripted:` plus the prompt, and does not draw `SimRng`. Nothing outside its tests calls it yet. `sys_ai_planning` stays on `RuleOrchestrator` and does not name `AIArbiter`, `GoapPlanner`, or `LlmDialogueSystem::generate_response`. With the `ai-goap` feature, `PlannerMode::GOAP` calls `htn::gather_method` with `CAiController.gather` and does not scan the policy string. The default build leaves `ai-goap` off, so that mode returns an error and does not read `gather`. `AIArbiter` compiles only with `llm_orchestrator`. `astraweave-ai/src/goap` compiles only with `planner_advanced`. `GoapPlanner` compiles with `astraweave-behavior` and is not feature-gated. None of them is on `sys_ai_planning`. #257, #258, and #335 are closed. The fix is #382. #334 and #383 stay open. `PhysicsWorld::step` still reads the Rapier gravity vector only. `gravity.rs` is gone (#330, #336 closed).
-- **Local field (#330).** `astraweave-localsim` is on main. `Greybox` ticks a `LocalSim` after the motor, writes water columns, and hashes `field_digest`. Cell acceleration is `gravity_mm_s2` of the zone's milli-g. Wood ignites at 300 and the freeze hold is -200. Required replay case `local_sim` is the SHA-256 of `local_sim_case_bytes`, written to `replay-hash-localsim.json`. The three-OS digest recorded with the case is `77768119e8ef4377a23268b522bf3d2303b44cf4ca0cda39eb15c7fef5eb29c8`. #253 is closed. The `weaving` case still hashes `NullField`.
-- **Save, quest, and replay clocks (#332, #381).** Save ids and timestamps come from the sim tick. Quest stamps are tick counts. The greybox checkpoint stores the fight, including tick, motor mode, attack phase, lock, `cover_broken`, and enemies. A reload hashes like the source when the ground log is unchanged. The first four bytes of a `health` payload are a little-endian `i32`. The write updates `CHealth.hp` only when that component is already on the replay entity, and it does not insert `CHealth`. Every other due event is recorded in `AppliedReplay` and left unapplied. The saved replay log drops the entity id. `start_replay` returns one `CReplayState`. The health write, when replay runs, is on that entity and only when `CHealth` is already there. `persist_replay` hashes `bundle.save_id`, `bundle.world.tick` as a little-endian `u64`, then each record's tick, type length as a little-endian `u64`, type bytes, and data. The records are `hit`, `hit`, and `cover`. Autosave serializes before the manager loop. `save_every == 0` and a missing `CSimClock` return with no save. A failed serialize returns before any manager saves. A later `save_game_with_replay` error returns after earlier managers have saved. `last_saved_tick` stays unset in both cases. `start_replay` reloads the `replay` meta string onto one `CReplayState`, sets `total_ticks` from `bundle.world.tick`, and starts `current_tick` at 0. `SerializedWorld.world_tick` is `CSimClock.tick`, or 0 when that clock is absent. `PlayerInventory.credits` stays 0 because no component stores a credit balance. Required cases `greybox_checkpoint`, `quest_ticks`, and `persist_replay` bring the cross-OS set to nineteen. The greybox golden stays `b6a9d5a2c5da28a6` and now runs on macOS too. #281, #283, and #284 are closed. The fix is #381.
-- **Terrain columns and scatter (#215).** `column_gen` is the integer forest record. Height, material, and a prop are functions of `(FOREST_WORLD_SEED, x, z)` with wrapping integer arithmetic. Species and yaw come from `SimRng` on `SIM_SYSTEM_FOREST_SCATTER`. The road stays empty. `worldgen_columns` is the SHA-256 of `worldgen_record()`: three chunks, including a negative coordinate and a road chunk. `deformed_chunk` is the SHA-256 of a sphere brush and one scatter detach on chunk `(-1, 2)`, then the occupancy after that chunk is evicted and loaded again. A `Detach` stays down across that reload. `ColumnStream` is the greybox keep set. The window still fills those chunks from the island heightfield, and its props still come from `aravath_runtime`'s local scatter. The editor climate mesh is the preview. Scene save and the Aravath checkpoint store `worldgen_record()`. Apply Erosion appends destruction commands and leaves that record in place. The CC0 pine-forest files, including Poly Haven `pine_tree_01`, are hashed in `assets/terrain/polyhaven/pine_forest/manifest.json`. KayKit and Kenney stay the greybox props.
+## Features
+
+- Single-threaded deterministic tick. Replay hashes must match across operating systems.
+- `sys_ai_planning` runs `RuleOrchestrator`. `dispatch_planner` is not on that tick. `PlannerMode::GOAP` reads `CAiController.gather` only when `ai-goap` is on.
+- Windowed Aravath greybox: CC0 props, sword combat, and a checkpoint of the fight fields.
+- wgpu rendering with a shared editor and engine path. Cloud-shadow strength is 4. The 0.323 ms figure is the measurement at `939a21bb`.
+- Rapier is vendored so a settled physics step allocates nothing. An in-house physics engine is not planned work.
+
+## Quick start
+
+```bash
+cargo check -p astraweave-core
+cargo test -p aravath_runtime --lib replay_matches_golden_hash
+cargo run -p hello_companion --release
+cargo editor
+```
+
+Docs gates: `cargo run -p aw_doc_lint -- --mode warn` and `cargo run -p aw_trace_sync -- --check`.
 
 ## In progress
 
@@ -81,123 +47,11 @@ These pulls are not on `main`.
 - **#366** — step 2: `egui_kittest` waits on upstream AccessKit and zbus 6
 - **#383** — port advanced GOAP and `AIArbiter` into the deterministic HTN tick
 
----
+## Docs
 
-## Determinism
-
-Determinism is non-negotiable. `.github/workflows/determinism-replay.yml` runs on every pull request and on push to `main`, with no path filter. Each OS pins a baseline CPU (`target-cpu=x86-64` on x86_64; Apple Silicon stays on the default aarch64 baseline). `cargo test` in this workflow is not retried.
-
-The compare job requires these nineteen cases to be present and byte-identical across Linux, Windows, and macOS:
-
-`planner_pure`, `perception_world`, `gameplay_rng`, `fixed64`, `combat_resolve`, `destruction`, `gameplay_qa_aravath_slice`, `nav_reroute`, `causal_bridge`, `scripted_system`, `weaving`, `traversal`, `traversal_deformed`, `worldgen_columns`, `deformed_chunk`, `local_sim`, `greybox_checkpoint`, `quest_ticks`, `persist_replay`.
-
-`worldgen_columns` and `deformed_chunk` are written into `target/replay-hash.json` by `cargo test -p astraweave-terrain --test worldgen_hash` before the merge step. They do not have a separate artifact file. `local_sim` is written to `target/replay-hash-localsim.json` by `cargo test -p astraweave-localsim --test replay_hash`. `greybox_checkpoint` is `cargo test -p aravath_runtime --test checkpoint_replay` (`replay-hash-greybox.json`): the save id and timestamp come from the sim tick, and the digest covers the restored fight. `quest_ticks` is `cargo test -p astraweave-quests --test quest_tick_replay` (`replay-hash-quests.json`): quest stamps are sim ticks. `persist_replay` is `cargo test -p astraweave-persistence-ecs --test persist_replay` (`replay-hash-persist.json`): replay applies due events in order, and autosave ids come from `CSimClock`. The merge step concatenates those files.
-
-The ECS schedule itself is single-threaded per tick, in this order: `PRE_SIMULATION`, `PERCEPTION`, `SIMULATION`, `SYNC`, `AI_PLANNING`, `PHYSICS`, `POST_SIMULATION`, `PRESENTATION`. `ParallelSchedule` was removed on 2026-04-18 ([audit](docs/audits/parallel_schedule_removal_2026-04-18.md)). Rayon, tokio, and GPU compute live in subsystems, not inside the tick schedule.
-
----
-
-## Quick start
-
-```bash
-git clone https://github.com/lazyxeon/AstraWeave.git
-cd AstraWeave
-
-# Toolchain is pinned. Confirm it before a long build.
-rustup show
-
-# Core library
-cargo build --release -p astraweave-core
-
-# Flagship companion demo. Seven modes; several need extra features.
-cargo run -p hello_companion --release
-
-# Visual editor. Fetch packs first. Alias runs aw_editor with the release-fast profile.
-cargo xtask fetch-assets
-cargo editor
-```
-
-Editor aliases in `.cargo/config.toml`: `editor`, `editor-release`, `editor-dev`. Use `cargo check -p <crate>` or `cargo check --workspace`.
-
-Setup notes: [build quick reference](docs/guides/BUILD_QUICK_REFERENCE.md), [toolchain](docs/guides/RUST_TOOLCHAIN_GUIDE.md), [contributing](CONTRIBUTING.md). The file `docs/QUICKSTART.md` is the feature-gated advanced GOAP tutorial, not the engine install guide.
-
----
-
-## How the loop works
-
-```text
-Perception → local model proposes → plan → deterministic validation → simulation
-```
-
-1. **Perception.** Agents read a `WorldSnapshot`.
-2. **Proposal.** A local LLM, a utility score, or a behavior tree proposes a plan. The deterministic tick does not call `AIArbiter` or `GoapPlanner` (#331). `gravity.rs` was deleted in #330.
-3. **Validation.** The tool sandbox and the sim accept or reject the plan.
-4. **Action.** Accepted steps run as deterministic ECS commands.
-
-`hello_companion` exposes seven modes: Classical, Behavior Tree, Utility, LLM, Hybrid, Ensemble, and Arbiter. Behavior Tree, Utility, and Ensemble need `--features llm`. LLM and Hybrid need `--features ollama`. Arbiter needs `--features llm_orchestrator`. A default `cargo run -p hello_companion` does not enable all seven.
-
-The 12,700-agent figure is a CPU capacity estimate for a mid-complexity AI loop on an i5-10300H with the platform allocator, measured 2026-06-27. It is not a full-frame GPU result. See [CLAIMS_REGISTRY.md](docs/campaigns/doc-truth/CLAIMS_REGISTRY.md#agents-capacity-60fps) and the [benchmark hardware note](docs/masters/MASTER_BENCHMARK_REPORT.md#benchmark-hardware).
-
----
-
-## Systems on this tree
-
-| Area | State on `556a305c` |
-| --- | --- |
-| **ECS, math, core, sdk** | Single-threaded archetype schedule. `add_system` still returns `Err(UnknownStage)` for an unregistered stage. `add_system_known_stage` registers the stage first and aborts only if it is still missing (#360). #358 is closed. The fix is #360. Miri-clean as of the 2026-06-27 run (1,059 tests). |
-| **Combat** | `astraweave-combat` resolves damage in Q32.32. Replay case `combat_resolve`. |
-| **Navigation** | Navmesh plus tile routes. `nav_reroute` is a required replay case. |
-| **Destruction** | `astraweave-destruction`, `Fixed64` sim, required replay case. |
-| **Causality** | `astraweave-causality`, baked rules, required replay case. Headless Aravath caller only. |
-| **Scripting** | Sandboxed Rhai, mod loader, tick-boundary reload. Required replay case `scripted_system`. Gameplay scripts do not receive physics or nav proxies (#318). See [scripting.md](docs/architecture/scripting.md). |
-| **Security** | Path checks, the deterministic Rhai sandbox, the #312 bounds, and the #316 image, glTF, and Ollama caps are wired. Anticheat, signatures, and the secrets crate stay dormant. See [security.md](docs/architecture/security.md). |
-| **Decision inspector** | `tools/aw_decision`. |
-| **Aravath greybox** | Windowed demo `aravath_greybox` (#205, #329). CC0 KayKit characters, streamed three-chunk world, sword combat. Startup runs `run_aravath_slice` once (#275, #343). Each hit reuses that `sword_hp` and can show `Cover broke` once. `Greybox::step` calls `BridgeAgent` after the motor. The window does not draw that body. Dig is a sphere `Subtract` brush on `ColumnFns`. The brush loads every chunk its radius touches. A checkpoint stores the demolition command log and `restore_dug` replays it. Golden `b6a9d5a2c5da28a6` on Linux, Windows, and macOS (#381). The checkpoint stores the fight fields from #283. The greybox ticks `LocalSim` (#330). |
-| **Rendering** | wgpu path: Disney BRDF with multi-scatter compensation, clustered forward lighting, IBL cubemaps, ACES / AgX / Reinhard in one post pipeline, 4-cascade CSM. Editor and engine share that path. `editor_engine_render_parity` shares one HDRI bake (#340, #273 closed). A SHA-256 parity harness covers the May 2026 seams ([architecture map](docs/architecture/ARCHITECTURE_MAP.md)). Nanite-style and VXGI surfaces exist in-tree; this page does not claim they hold the frame budget. |
-| **Camera** | `astraweave-camera` is the upload contract (`RenderView`). |
-| **Physics** | Rapier3D wrapper. `[patch.crates-io]` points `rapier3d` 0.22 at `third_party/rapier3d` (#350) so the modified-collider buffer is reused. A settled `PhysicsWorld::step` allocates nothing. An in-house physics engine is not planned work. Re-apply steps are in [VENDORED.md](third_party/rapier3d/VENDORED.md). The maintainer draft is [RAPIER_BUFFER_REUSE_UPSTREAM.md](docs/current/RAPIER_BUFFER_REUSE_UPSTREAM.md) and is not filed upstream. The in-crate `SpatialHash` is not the broadphase. Traversal (#244) is a 60 Hz tick sim in this crate. Required cases `traversal` and `traversal_deformed`. `gravity.rs` was deleted in #330. #336 is closed. `PhysicsWorld::step` still reads the Rapier gravity vector. Cell acceleration is `gravity_mm_s2`. |
-| **Terrain** | Integer columns in `column_gen` are the saved ground (#215). Required cases `worldgen_columns` and `deformed_chunk`. The editor climate heightmap is the preview mesh. The greybox collider still comes from the island voxel fill. The June 2026 asset-quality note still stands: the BC7/KTX2 cook path was non-functional and runtime uploads were uncompressed RGBA8. Not re-tested here. |
-| **Weaving** | Data-driven casts on main (#252). Required replay case `weaving` still hashes `NullField`. The local field is required case `local_sim` (#330). See [weaving.md](docs/architecture/weaving.md). |
-| **Water** | View-side `astraweave-water` facade plus `astraweave-render` surface. `astraweave-fluids` is the deprecated accent remnant, not a game-loop solver. The greybox local field is `astraweave-localsim` (#330), not that fluids crate. |
-| **Networking** | Snapshot net (`astraweave-net`, JSON over WebSocket) and a separate ECS/matchmaking stack. Matchmaking input frames use HMAC-SHA256, verify-first, kick by default (June 2026). No replay protection. Server-to-client messages are unsigned. See [net_ecs.md](docs/architecture/net_ecs.md). |
-| **Editor** | `aw_editor`, reached with `cargo editor`. June 2026 multi-tool sub-phase 5 was still open in the campaign doc; this pass did not close it. |
-| **Memory, RAG, coordination, advanced GOAP** | Memory, RAG, and coordination are present and tested, and they are not on the default sim tick. Advanced GOAP compiles only with `planner_advanced`. `AIArbiter` compiles only with `llm_orchestrator`. `GoapPlanner` compiles with `astraweave-behavior` and is not on `sys_ai_planning` (#382). With `ai-goap` on, `PlannerMode::GOAP` reads `CAiController.gather`. The default build returns an error instead. #335 is closed. #334 and #383 stay open. `VectorStore::search` is a linear scan. |
-
----
-
-## Build, test, and docs gates
-
-```bash
-cargo check -p <crate>
-cargo test -p <crate>
-cargo fmt --all
-cargo clippy -p <crate> --all-features -- -D warnings
-cargo run -p aw_doc_lint -- --mode warn
-cargo run -p aw_trace_sync -- --check
-```
-
-Pull-request Rust work is tiered. The required replay check is `determinism-replay / compare`. Docs-only diffs skip the workspace compile; they still run the replay hashes. The full job list is [CI_ARCHITECTURE.md](docs/current/CI_ARCHITECTURE.md). #217 and #327 are on `main`. #326 is closed.
-
-`aw_doc_lint` reads the closed vocabulary in [CLOSED_VOCABULARY_LINT.md](docs/campaigns/doc-truth/CLOSED_VOCABULARY_LINT.md). It also checks this README against the replay workflow: every required case name, the unmeasured 11 ms target, the in-progress issue list, and the absence of the retired game title in player-facing docs. That front-door check fails the process even while the vocabulary scan is still in warn mode.
-
----
-
-## Older write-ups
-
-These are dated records. Where they disagree with the table at the top, the table wins.
-
-- [Architecture map](docs/architecture/ARCHITECTURE_MAP.md) — crate graph and seams. Header counts were reconciled 2026-10-16; the long body still contains June campaign notes.
-- [Miri report](docs/current/MIRI_VALIDATION_REPORT.md) — February 2026 run. The later count is 1,059.
-- [Coverage report](docs/current/MASTER_COVERAGE_REPORT.md) — 57.35% headline is 2026-06-29. Per-crate tiers below that headline are older.
-- [Benchmark report](docs/masters/MASTER_BENCHMARK_REPORT.md) — CPU and historical GPU probes. Not a passing full-frame budget.
-- [Roadmap](docs/masters/MASTER_ROADMAP.md) — strategy log. The June 2026 "current state" table is a snapshot.
-- [Editor behavioral audit](docs/current/EDITOR_BEHAVIORAL_CORRECTNESS_AUDIT.md) and [unified pipeline campaign](docs/current/FIX27_UNIFIED_PIPELINE_CAMPAIGN.md) — April 2026 correctness work. They are not a current health grade.
-- [Project status](docs/current/PROJECT_STATUS.md) — session log. A 2026-10-16 banner sits above the June narrative.
-
----
-
-<div align="center">
-
-If this experiment interests you, star the repo.
-
-</div>
+- [Engine status](docs/current/ENGINE_STATUS.md) — the long status page this file used to be
+- [Project status](docs/current/PROJECT_STATUS.md)
+- [Architecture map](docs/architecture/ARCHITECTURE_MAP.md)
+- [CI](docs/current/CI_ARCHITECTURE.md)
+- [Contributing](CONTRIBUTING.md)
+- [Security](SECURITY.md)
