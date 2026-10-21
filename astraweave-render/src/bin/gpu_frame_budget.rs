@@ -5,6 +5,10 @@
 //!
 //! ```text
 //! cargo run -p astraweave-render --release --features gpu-frame-budget --bin gpu_frame_budget -- --scene heavy --debug-timestamps --glb "assets/The Complete KayKit Collection v4/KayKit Adventurers 2.0/Characters/gltf/Rogue.glb"
+//!
+//! An enabled gated flag is rejected, including `--atmosphere`.
+//! `--flag=false` and `--flag false` are off and do not bail. The printed
+//! `median_gpu_frame_ms` is the baseline frame. No gated cell is filled here.
 //! ```
 
 use anyhow::Context;
@@ -31,6 +35,8 @@ const SAMPLES: usize = 120;
 
 fn main() -> anyhow::Result<()> {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("warn")).init();
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    astraweave_render::budget_gate::reject_gated_flags(&args)?;
     let glb = glb_path();
     let heavy = scene_is_heavy();
     let debug_timestamps = debug_timestamps();
@@ -141,11 +147,14 @@ fn main() -> anyhow::Result<()> {
     renderer.set_shadows_enabled(true);
     add_heavy_terrain(&mut renderer)?;
     renderer.set_particle_emitter(Some(emitter()))?;
-    // Cloud shadows stay at the renderer default (on): a 512² compute march
-    // between the sky pass and the main pass. Volumetric fog and god rays
-    // are not called. GPU indirect culling is not the draw path on any
-    // adapter: each model still binds its own group 3, so one indirect
-    // buffer cannot select those groups. The CPU frustum remains the filter.
+    // Cloud shadows stay at the renderer default (on). That is
+    // `CloudShadowPass`, not `VolumetricCloudsPass`. Volumetric fog, god
+    // rays, and every gated presentation pass stay off. GPU indirect culling
+    // is not the draw path on any adapter: each model still binds its own
+    // group 3, so one indirect buffer cannot select those groups. The CPU
+    // frustum remains the filter.
+    println!("gated_atmosphere=off");
+    println!("gated_measure=baseline");
     let gpu_cull = "cpu_fallback";
 
     let device = renderer.device().clone();

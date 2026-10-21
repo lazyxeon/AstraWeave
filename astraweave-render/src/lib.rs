@@ -62,6 +62,7 @@ pub mod biome_detector;
 pub mod biome_material;
 pub mod biome_transition;
 pub mod bloom; // Physically-based bloom with 13-tap downsample and tent upsample
+pub mod budget_gate; // gpu_frame_budget gated-flag parser
 pub mod culling; // GPU-driven frustum culling (Phase 2 Task 3)
 pub mod culling_node; // Culling node for render graph
 pub mod disney_material; // Disney principled BRDF evaluation + WGSL source (Phase 9)
