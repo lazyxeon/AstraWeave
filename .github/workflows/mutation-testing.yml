@@ -317,10 +317,39 @@ jobs:
           echo "|-------|--------|-------|" >> $GITHUB_STEP_SUMMARY
           echo "| astraweave-ecs | ${{ needs.mutants-ecs.result == 'success' && '✅' || '⚠️' }} | P0 Core |" >> $GITHUB_STEP_SUMMARY
           echo "| astraweave-core | ${{ needs.mutants-core.result == 'success' && '✅' || '⚠️' }} | P0 Core |" >> $GITHUB_STEP_SUMMARY
-          echo "| astraweave-ai | ${{ needs.mutants-ai.result == 'success' && '✅' || '⚠️' }} | P1 AI |" >> $GITHUB_STEP_SUMMARY
           echo "| astraweave-behavior | ${{ needs.mutants-behavior.result == 'success' && '✅' || '⚠️' }} | P1 AI |" >> $GITHUB_STEP_SUMMARY
           echo "| astraweave-nav | ${{ needs.mutants-nav.result == 'success' && '✅' || '⚠️' }} | P1 Infra |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
+
+          # One astraweave-ai total. Each shard uploads its own outcomes.json.
+          mapfile -t ai_files < <(find all-results -type f -name outcomes.json | sort | grep '/mutants-ai-results-' || true)
+          echo "astraweave-ai shard files: ${#ai_files[@]}"
+          printf '%s\n' "${ai_files[@]}"
+          if [ "${#ai_files[@]}" -ne 8 ]; then
+            echo "::error::Expected 8 astraweave-ai shard outcomes, found ${#ai_files[@]}"
+            exit 1
+          fi
+          TOTAL=$(jq -s '[.[] | .outcomes[] | select(.scenario != "Baseline")] | length' "${ai_files[@]}")
+          CAUGHT=$(jq -s '[.[] | .outcomes[] | select(.scenario != "Baseline") | select(.summary == "CaughtMutant")] | length' "${ai_files[@]}")
+          MISSED=$(jq -s '[.[] | .outcomes[] | select(.scenario != "Baseline") | select(.summary == "MissedMutant")] | length' "${ai_files[@]}")
+          TIMEOUT=$(jq -s '[.[] | .outcomes[] | select(.scenario != "Baseline") | select(.summary == "Timeout")] | length' "${ai_files[@]}")
+          if [ "$TOTAL" -le 0 ]; then
+            echo "::error::astraweave-ai outcomes contained no mutants"
+            exit 1
+          fi
+          # Same score as the shard report: timeouts count with caught.
+          SCORE=$(( (CAUGHT + TIMEOUT) * 100 / TOTAL ))
+          if [ "$SCORE" -ge 70 ]; then
+            AI_MARK="✅"
+            MEETS="meets"
+          else
+            AI_MARK="⚠️"
+            MEETS="below"
+          fi
+          echo "| astraweave-ai | ${AI_MARK} ${SCORE}% (${MEETS} 70%) | P1 AI, 8 shards, total ${TOTAL}, caught ${CAUGHT}, missed ${MISSED}, timeout ${TIMEOUT} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Target**: 80%+ mutation score on P0, 70%+ on P1" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "astraweave-ai combined score: ${SCORE}% (target 70%, ${MEETS}). Caught ${CAUGHT}, missed ${MISSED}, timeout ${TIMEOUT}, total ${TOTAL}." >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "Detailed results available in workflow artifacts." >> $GITHUB_STEP_SUMMARY

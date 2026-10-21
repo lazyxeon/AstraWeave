@@ -267,7 +267,7 @@ jobs:
               $regressionList
               ''
               '**Commit**: ${{ github.sha }}'
-              '**Branch**: ${{ github.ref_name }}'
+              ('**Branch**: ' + $env:GITHUB_REF_NAME)
               '**Workflow**: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}'
               ''
               '### Action Required'
