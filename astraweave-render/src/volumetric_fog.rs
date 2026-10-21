@@ -495,10 +495,7 @@ impl VolumetricFogPass {
             device,
             &density_bgl,
             "vol_density",
-            concat!(
-                include_str!("../shaders/screen_ndc.wgsl"),
-                include_str!("../shaders/volumetrics/fog_density.wgsl")
-            ),
+            include_str!("../shaders/volumetrics/fog_density.wgsl"),
             "fog_density_main",
         );
         let scatter_pipeline = create_compute_pipeline(
@@ -507,7 +504,6 @@ impl VolumetricFogPass {
             "vol_scatter",
             concat!(
                 include_str!("../shaders/constants.wgsl"),
-                include_str!("../shaders/screen_ndc.wgsl"),
                 include_str!("../shaders/volumetrics/scatter.wgsl")
             ),
             "scatter_main",

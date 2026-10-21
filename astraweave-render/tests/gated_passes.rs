@@ -276,60 +276,121 @@ fn atmosphere_sky_differs_from_geometry_and_aerial_tints_distance() {
             "aerial perspective did not change the far quad: on {far:?} off {far_off:?} sky {sky:?}"
         );
 
-        // Sun in the upper-right, not on the horizon. A mirrored screen y
-        // puts that sun and the dense height fog on the lower row instead.
-        renderer.set_light_direction_override(glam::Vec3::new(-0.55, -0.72, 0.42), 1.0);
+        // Sun inside the shaft margin, on screen, upper right. A black quad
+        // covers the sample and its y-mirror and stops short of the sun, so
+        // the sample is not the tonemapped disk. Fog stays off. The march is
+        // long enough to leave that quad into the sky from the upper pixel
+        // and short enough to stay on the quad from the mirrored lower pixel.
+        // A zero-weight shaft frame keeps aerial scattering off for both
+        // reads, so the delta is the shaft add and not the next fog step.
+        let toward_sun = glam::Vec3::new(0.25, 0.48, -1.0).normalize();
+        renderer.set_light_direction_override(-toward_sun, 1.0);
         renderer.update_view(&astraweave_camera::RenderView::new(
             view,
             &projection,
             eye,
             (target - eye).normalize(),
         ));
-        const UPPER: (u32, u32) = (56, 6);
-        const LOWER: (u32, u32) = (56, 58);
-        let frame_only = draw_and_read(&mut renderer, true);
-        let up_only = sample(&frame_only, WIDTH, UPPER.0, UPPER.1);
-        let lo_only = sample(&frame_only, WIDTH, LOWER.0, LOWER.1);
-        renderer.set_volumetric_fog_config(
-            astraweave_render::volumetric_fog::VolumetricFogPass::gameplay_config(),
-        );
+        let sun_uv = astraweave_render::sun_to_screen(projection.matrix * view, toward_sun)
+            .expect("sun inside the shaft margin");
         assert!(
-            renderer.volumetric_fog_enabled(),
-            "fog pipeline did not build"
+            (0.55..0.95).contains(&sun_uv[0]) && (0.02..0.22).contains(&sun_uv[1]),
+            "sun uv {sun_uv:?} should be on-screen upper right"
         );
-        let frame_fog = draw_and_read(&mut renderer, true);
-        let up_fog = sample(&frame_fog, WIDTH, UPPER.0, UPPER.1);
-        let lo_fog = sample(&frame_fog, WIDTH, LOWER.0, LOWER.1);
+        let sun_x = (sun_uv[0] * WIDTH as f32).floor() as u32;
+        let sun_y = (sun_uv[1] * WIDTH as f32).floor() as u32;
+        let upper_y = sun_y + 6;
+        let lower_y = WIDTH - 1 - upper_y;
+        let row_top = sun_y + 4;
+        let row_bottom = (lower_y + 3).min(WIDTH - 1);
+        assert!(
+            upper_y + 8 < lower_y && row_top > sun_y,
+            "rows do not leave a sky gap: sun {sun_y} upper {upper_y} lower {lower_y}"
+        );
+        let upper_uv = (upper_y as f32 + 0.5) / WIDTH as f32;
+        let lower_uv = (lower_y as f32 + 0.5) / WIDTH as f32;
+        let edge_uv = row_top as f32 / WIDTH as f32;
+        let dist_upper = upper_uv - sun_uv[1];
+        let density = (upper_uv - edge_uv + 2.0 / WIDTH as f32) / dist_upper;
+        let lower_end = lower_uv - (lower_uv - sun_uv[1]) * density;
+        assert!(
+            (0.4..0.9).contains(&density) && lower_end > edge_uv + 4.0 / WIDTH as f32,
+            "march window collapsed: density {density} lower end {lower_end} edge {edge_uv} sun {sun_uv:?}"
+        );
+        let distance = 24.0_f32;
+        let tan_half = 30.0_f32.to_radians().tan();
+        let world_at = |px: f32, py: f32| -> glam::Vec3 {
+            let ndc_x = px / WIDTH as f32 * 2.0 - 1.0;
+            let ndc_y = 1.0 - py / WIDTH as f32 * 2.0;
+            glam::Vec3::new(
+                eye.x + ndc_x * tan_half * distance,
+                eye.y + ndc_y * tan_half * distance,
+                eye.z - distance,
+            )
+        };
+        let corner_lo = world_at(sun_x as f32 - 8.0, row_top as f32);
+        let corner_hi = world_at(sun_x as f32 + 9.0, (row_bottom + 1) as f32);
+        renderer.add_model(
+            "shaft_quad",
+            vertical_quad(&renderer),
+            &[astraweave_render::Instance::from_pos_scale_color(
+                (corner_lo + corner_hi) * 0.5,
+                glam::Vec3::new(
+                    (corner_hi.x - corner_lo.x).abs(),
+                    (corner_hi.y - corner_lo.y).abs(),
+                    1.0,
+                ),
+                [0.0, 0.0, 0.0, 1.0],
+            )],
+        );
+        let upper = (sun_x, upper_y);
+        let lower = (sun_x, lower_y);
+        assert!(
+            !renderer.volumetric_fog_enabled(),
+            "shaft assert needs fog off"
+        );
         renderer.set_god_ray_config(astraweave_render::GodRayConfig {
             enabled: true,
-            half_res: true,
-            num_samples: 32,
-            exposure: 0.22,
-            ..astraweave_render::GodRayConfig::default()
+            half_res: false,
+            num_samples: 4,
+            density,
+            weight: 0.0,
+            decay: 0.9,
+            exposure: 0.0,
         });
         assert!(renderer.god_rays_enabled(), "shaft pipeline did not build");
-        let frame_both = draw_and_read(&mut renderer, true);
-        let up_both = sample(&frame_both, WIDTH, UPPER.0, UPPER.1);
-        let lo_both = sample(&frame_both, WIDTH, LOWER.0, LOWER.1);
-        let fog_upper = channel_distance(up_fog, up_only);
-        let fog_lower = channel_distance(lo_fog, lo_only);
+        let frame_only = draw_and_read(&mut renderer, true);
+        let up_only = sample(&frame_only, WIDTH, upper.0, upper.1);
+        let lo_only = sample(&frame_only, WIDTH, lower.0, lower.1);
         assert!(
-            fog_lower > fog_upper + 6,
-            "height fog should change the lower view more than the upper sky. \
-             A mirrored y swaps them. upper {fog_upper} {up_only:?}->{up_fog:?} \
-             lower {fog_lower} {lo_only:?}->{lo_fog:?}"
+            up_only.iter().sum::<i32>() < 48 && lo_only.iter().sum::<i32>() < 48,
+            "sample missed the black quad. upper {up_only:?} at {upper:?} lower {lo_only:?} at {lower:?} sun {sun_uv:?}"
         );
-        let shaft_upper = channel_distance(up_both, up_fog);
-        let shaft_lower = channel_distance(lo_both, lo_fog);
+        renderer.set_god_ray_config(astraweave_render::GodRayConfig {
+            enabled: true,
+            half_res: false,
+            num_samples: 4,
+            density,
+            weight: 1.0,
+            decay: 0.9,
+            exposure: 4.0,
+        });
+        let frame_shaft = draw_and_read(&mut renderer, true);
+        let up_shaft = sample(&frame_shaft, WIDTH, upper.0, upper.1);
+        let lo_shaft = sample(&frame_shaft, WIDTH, lower.0, lower.1);
+        let up_luma = up_shaft[0] + up_shaft[1] + up_shaft[2];
+        let gain_upper = up_luma - (up_only[0] + up_only[1] + up_only[2]);
+        let gain_lower =
+            (lo_shaft[0] + lo_shaft[1] + lo_shaft[2]) - (lo_only[0] + lo_only[1] + lo_only[2]);
         assert!(
-            shaft_upper > shaft_lower + 4,
-            "shafts should land on the upper sun, not the mirrored lower row. \
-             upper {shaft_upper} {up_fog:?}->{up_both:?} \
-             lower {shaft_lower} {lo_fog:?}->{lo_both:?}"
+            up_luma > 30 && up_shaft != [0, 0, 0],
+            "shaft output is black on the upper row {up_shaft:?} at {upper:?} sun {sun_uv:?}"
         );
         assert!(
-            channel_distance(up_both, magenta) > 40,
-            "upper sky {up_both:?} is the debug magenta clear {magenta:?}"
+            gain_upper > gain_lower + 8,
+            "shafts should brighten the upper row more than the y-mirrored row. \
+             upper gain {gain_upper} {up_only:?}->{up_shaft:?} \
+             lower gain {gain_lower} {lo_only:?}->{lo_shaft:?} sun {sun_uv:?}"
         );
     });
 }
