@@ -249,6 +249,44 @@ choices = [{ text = "Go", go_to = "does_not_exist" }]
     }
 
     #[test]
+    fn player_facing_assets_do_not_say_veilweaver() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../assets");
+        let mut files = vec![
+            root.join("dialogue_intro.toml"),
+            root.join("quests_main.toml"),
+            root.join("echoes.toml"),
+            root.join("voices.toml"),
+        ];
+        for dir in [root.join("npc"), root.join("cinematics")] {
+            if !dir.is_dir() {
+                continue;
+            }
+            let mut nested: Vec<_> = std::fs::read_dir(&dir)
+                .unwrap_or_else(|err| panic!("reading {}: {err}", dir.display()))
+                .map(|entry| entry.unwrap().path())
+                .filter(|path| path.is_file())
+                .collect();
+            nested.sort();
+            files.extend(nested);
+        }
+        let mut hits = Vec::new();
+        for path in files {
+            if !path.is_file() {
+                continue;
+            }
+            let text = std::fs::read_to_string(&path)
+                .unwrap_or_else(|err| panic!("reading {}: {err}", path.display()));
+            if text.to_ascii_lowercase().contains("veilweaver") {
+                hits.push(path.display().to_string());
+            }
+        }
+        assert!(
+            hits.is_empty(),
+            "player-facing assets must not say Veilweaver: {hits:?}"
+        );
+    }
+
+    #[test]
     fn load_actual_intro_dialogue() {
         let path =
             std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../assets/dialogue_intro.toml");

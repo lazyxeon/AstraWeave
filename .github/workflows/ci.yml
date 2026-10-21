@@ -97,6 +97,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
+      - name: Player-facing name check
+        run: bash scripts/ci/player_facing_names.sh
+
       - name: Rust CI setup
         if: needs.changes.outputs.docs_only != 'true'
         uses: ./.github/actions/rust-ci-setup
