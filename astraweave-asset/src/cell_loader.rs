@@ -234,9 +234,8 @@ pub async fn load_asset(asset_ref: &AssetRef, assets_root: &Path) -> Result<Vec<
             Ok(bytes)
         }
         AssetKind::Texture => {
-            let bytes = fs::read(&asset_path)
-                .await
-                .context(format!("Failed to load texture: {}", asset_path.display()))?;
+            let bytes = crate::read_limited_image_bytes(&asset_path)
+                .with_context(|| format!("Failed to load texture: {}", asset_path.display()))?;
             // Additional validation for texture formats
             validate_texture_format(&bytes, &asset_ref.path)?;
             Ok(bytes)
