@@ -185,13 +185,15 @@ jobs:
       
       - name: Generate mutation report
         run: |
-          if [ -f mutants-ai-results/outcomes.json ]; then
+          # cargo-mutants 27.1.0 writes outcomes under mutants.out, not next to --output.
+          outcomes=mutants-ai-results/mutants.out/outcomes.json
+          if [ -f "$outcomes" ]; then
             echo "## Mutation Testing: astraweave-ai" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
             
-            CAUGHT=$(jq '[.outcomes[] | select(.scenario != "Baseline") | select(.summary == "CaughtMutant")] | length' mutants-ai-results/outcomes.json)
-            MISSED=$(jq '[.outcomes[] | select(.scenario != "Baseline") | select(.summary == "MissedMutant")] | length' mutants-ai-results/outcomes.json)
-            TIMEOUT=$(jq '[.outcomes[] | select(.scenario != "Baseline") | select(.summary == "Timeout")] | length' mutants-ai-results/outcomes.json)
+            CAUGHT=$(jq '[.outcomes[] | select(.scenario != "Baseline") | select(.summary == "CaughtMutant")] | length' "$outcomes")
+            MISSED=$(jq '[.outcomes[] | select(.scenario != "Baseline") | select(.summary == "MissedMutant")] | length' "$outcomes")
+            TIMEOUT=$(jq '[.outcomes[] | select(.scenario != "Baseline") | select(.summary == "Timeout")] | length' "$outcomes")
             DECIDED=$((CAUGHT + MISSED))
 
             echo "| Metric | Count |" >> $GITHUB_STEP_SUMMARY
