@@ -3767,7 +3767,7 @@ fn vs(input: VSIn) -> VSOut {
             particle_sort: None,
             particle_emitter: None,
             particle_depth_copy: None,
-            atmosphere_on: false,
+            atmosphere_on: true,
             cloud_raymarch_on: false,
             ssgi_on: false,
             taa_on: false,
@@ -5557,6 +5557,12 @@ fn vs(input: VSIn) -> VSOut {
 
     pub fn set_atmosphere_enabled(&mut self, enabled: bool) {
         self.atmosphere_on = enabled;
+    }
+
+    /// Bruneton sky plus aerial perspective. On unless a caller turns it off.
+    #[must_use]
+    pub fn atmosphere_enabled(&self) -> bool {
+        self.atmosphere_on
     }
 
     pub fn set_cloud_raymarch_enabled(&mut self, enabled: bool) {

@@ -352,6 +352,7 @@ impl AtmospherePass {
                 bgl_texture_2d(3), // transmittance LUT
                 bgl_sampler(4),
                 bgl_storage_2d_rw(5, fmt),
+                bgl_texture_load(6), // Bruneton sky, textureLoad
             ],
         });
 
@@ -686,6 +687,10 @@ impl AtmospherePass {
                             binding: 5,
                             resource: wgpu::BindingResource::TextureView(&self.aerial_view),
                         },
+                        wgpu::BindGroupEntry {
+                            binding: 6,
+                            resource: wgpu::BindingResource::TextureView(&self.sky_view),
+                        },
                     ],
                 });
                 self.cached_aerial_bg =
@@ -766,6 +771,19 @@ fn bgl_depth(binding: u32) -> wgpu::BindGroupLayoutEntry {
         visibility: wgpu::ShaderStages::COMPUTE,
         ty: wgpu::BindingType::Texture {
             sample_type: wgpu::TextureSampleType::Depth,
+            view_dimension: wgpu::TextureViewDimension::D2,
+            multisampled: false,
+        },
+        count: None,
+    }
+}
+
+fn bgl_texture_load(binding: u32) -> wgpu::BindGroupLayoutEntry {
+    wgpu::BindGroupLayoutEntry {
+        binding,
+        visibility: wgpu::ShaderStages::COMPUTE,
+        ty: wgpu::BindingType::Texture {
+            sample_type: wgpu::TextureSampleType::Float { filterable: false },
             view_dimension: wgpu::TextureViewDimension::D2,
             multisampled: false,
         },

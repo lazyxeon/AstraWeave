@@ -36,6 +36,14 @@ fn submit(renderer: &mut Renderer, view: &wgpu::TextureView) {
 }
 
 #[test]
+fn atmosphere_is_on_without_a_setter() {
+    pollster::block_on(async {
+        let renderer = Renderer::new_headless(64, 64).await.expect("headless");
+        assert!(renderer.atmosphere_enabled());
+    });
+}
+
+#[test]
 fn gated_passes_submit_with_scene_depth() {
     pollster::block_on(async {
         let mut renderer = Renderer::new_headless(64, 64).await.expect("headless");

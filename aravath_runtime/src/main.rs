@@ -1241,6 +1241,7 @@ fn light_the_world(renderer: &mut Renderer, volumetrics: bool) {
     // map. The default strength darkens that soft lobe so it reads on the ground.
     renderer.set_cloud_shadows_enabled(true);
     renderer.set_cloud_shadow_strength(astraweave_render::volumetric_clouds::CLOUD_SHADOW_STRENGTH);
+    renderer.set_atmosphere_enabled(true);
     renderer
         .scene_environment_mut()
         .set_biome(BiomeType::Grassland);
@@ -1436,6 +1437,13 @@ fn smoke_test(volumetrics: bool) -> anyhow::Result<()> {
         Err(err) => return Err(err),
     };
     startup::stage("headless renderer ready");
+    renderer.set_atmosphere_enabled(true);
+    if !renderer.atmosphere_enabled() {
+        anyhow::bail!(
+            "atmosphere did not stay enabled. {}",
+            startup::log_locations()
+        );
+    }
     if volumetrics {
         startup::stage("volumetrics on");
         renderer.set_volumetric_fog_config(

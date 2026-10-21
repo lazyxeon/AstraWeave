@@ -36,6 +36,7 @@ struct AerialParams {
 @group(0) @binding(3) var           t_transmittance: texture_2d<f32>;   // atmosphere LUT
 @group(0) @binding(4) var           s_linear:        sampler;
 @group(0) @binding(5) var           t_output:        texture_storage_2d<rgba16float, write>;
+@group(0) @binding(6) var           t_sky:           texture_2d<f32>;
 
 // PI, TWO_PI, HALF_PI, INV_PI provided by constants.wgsl (prepended on Rust side).
 const AERIAL_STEPS: u32 = 16u;
@@ -97,9 +98,10 @@ fn aerial_perspective_main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let scene_color = textureSampleLevel(t_scene, s_linear, uv, 0.0).rgb;
     let depth_raw = textureLoad(t_depth, pixel, 0);
 
-    // Sky pixels: pass through unchanged (already rendered by sky pass)
+    // Sky pixels take the Bruneton sky. The HDRI sky is not drawn in this mode.
     if (depth_raw >= 0.9999) {
-        textureStore(t_output, pixel, vec4<f32>(scene_color, 1.0));
+        let sky = textureLoad(t_sky, pixel, 0);
+        textureStore(t_output, pixel, vec4<f32>(sky.rgb, 1.0));
         return;
     }
 
