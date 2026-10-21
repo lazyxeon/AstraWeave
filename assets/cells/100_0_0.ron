@@ -74,8 +74,8 @@
     ],
     assets: [],
     metadata: Some((
-        description: Some("Veilweaver slice start platform at Loom Gate"),
-        tags: ["veilweaver", "loomspire", "start"],
+        description: Some("Start platform at Loom Gate"),
+        tags: ["aravath", "loomspire", "start"],
         version: 1,
     )),
 )

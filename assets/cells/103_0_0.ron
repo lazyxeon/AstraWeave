@@ -117,7 +117,7 @@
     assets: [],
     metadata: Some((
         description: Some("Loom Crossroads decision arena with storm conduits"),
-        tags: ["veilweaver", "loomspire", "choice"],
+        tags: ["aravath", "loomspire", "choice"],
         version: 1,
     )),
 )

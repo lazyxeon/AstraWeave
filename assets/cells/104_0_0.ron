@@ -145,7 +145,7 @@
     assets: [],
     metadata: Some((
         description: Some("Oathbound Warden boss arena with adaptive anchors"),
-        tags: ["veilweaver", "loomspire", "boss"],
+        tags: ["aravath", "loomspire", "boss"],
         version: 1,
     )),
 )
