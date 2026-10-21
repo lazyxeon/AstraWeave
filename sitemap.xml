@@ -6880,6 +6880,12 @@
     <priority>0.8</priority>
   </url>
   <url>
+    <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_render/budget_gate/constant.ATMOSPHERE_REASON.html</loc>
+    <lastmod>2026-10-21</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
     <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_render/volumetric_clouds/struct.CloudParams.html</loc>
     <lastmod>2026-10-21</lastmod>
     <changefreq>weekly</changefreq>
@@ -9928,6 +9934,12 @@
     <priority>0.8</priority>
   </url>
   <url>
+    <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_render/god_rays/fn.ndc_to_screen_uv.html</loc>
+    <lastmod>2026-10-21</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
     <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_render/god_rays/fn.sun_to_screen.html</loc>
     <lastmod>2026-10-21</lastmod>
     <changefreq>weekly</changefreq>
@@ -10319,6 +10331,12 @@
   </url>
   <url>
     <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_render/renderer/index.html</loc>
+    <lastmod>2026-10-21</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_render/renderer/enum.PresentationQuality.html</loc>
     <lastmod>2026-10-21</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>

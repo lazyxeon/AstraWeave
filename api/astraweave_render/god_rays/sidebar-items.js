@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"fn":["sun_to_screen"],"struct":["GodRayConfig","GodRayParams","GodRayPass"]};
+window.SIDEBAR_ITEMS = {"fn":["ndc_to_screen_uv","sun_to_screen"],"struct":["GodRayConfig","GodRayParams","GodRayPass"]};

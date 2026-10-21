@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"fn":["flag_on","reject_gated_flags"]};
+window.SIDEBAR_ITEMS = {"constant":["ATMOSPHERE_REASON"],"fn":["flag_on","reject_gated_flags"]};
