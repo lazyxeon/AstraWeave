@@ -1028,7 +1028,7 @@ impl ApplicationHandler for VeilweaverHandler {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         if self.app.is_none() {
             let window_attrs = Window::default_attributes()
-                .with_title("Veilweaver — AI-Native Game Engine")
+                .with_title("AstraWeave")
                 .with_inner_size(winit::dpi::LogicalSize::new(1280, 720));
 
             let window = Arc::new(
@@ -1100,7 +1100,7 @@ impl ApplicationHandler for VeilweaverHandler {
 /// Launch the full 3D windowed Veilweaver demo.
 pub fn run_visual_demo() -> Result<()> {
     println!("╔════════════════════════════════════════════════════════════╗");
-    println!("║   Veilweaver — AI-Native Game Engine (Visual Mode)         ║");
+    println!("║   AstraWeave (Visual Mode)                                  ║");
     println!("║   WASD: move camera · Mouse: look · ESC: toggle grab       ║");
     println!("╚════════════════════════════════════════════════════════════╝\n");
 
