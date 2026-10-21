@@ -40,7 +40,7 @@ const ALLOWLIST_REL: &str = "docs/campaigns/doc-truth/CLOSED_VOCABULARY_ALLOWLIS
 const REPLAY_WORKFLOW_REL: &str = ".github/workflows/determinism-replay.yml";
 const README_REL: &str = "README.md";
 
-const IN_PROGRESS_ISSUES: &[&str] = &["#366"];
+const IN_PROGRESS_ISSUES: &[&str] = &["#334", "#366", "#383"];
 
 const VOCAB_A_START: &str = "<!-- VOCAB-A-START -->";
 const VOCAB_A_END: &str = "<!-- VOCAB-A-END -->";
@@ -457,15 +457,16 @@ fn front_door_errors(
     match in_progress_body(readme) {
         None => errors.push(format!("{README_REL}: missing a '## In progress' section")),
         Some(body) => {
+            let found = issue_numbers(&body);
             for issue in IN_PROGRESS_ISSUES {
-                if !body.contains(issue) {
+                if !found.iter().any(|token| token == issue) {
                     errors.push(format!("{README_REL}: in-progress section missing {issue}"));
                 }
             }
-            for found in issue_numbers(&body) {
-                if !IN_PROGRESS_ISSUES.contains(&found.as_str()) {
+            for token in &found {
+                if !IN_PROGRESS_ISSUES.contains(&token.as_str()) {
                     errors.push(format!(
-                        "{README_REL}: in-progress section lists {found}, which is not in the in-progress list"
+                        "{README_REL}: in-progress section lists {token}, which is not in the in-progress list"
                     ));
                 }
             }
@@ -810,7 +811,7 @@ mod tests {
             "planner_pure perception_world gameplay_rng fixed64 combat_resolve",
             "destruction gameplay_qa_aravath_slice nav_reroute causal_bridge scripted_system weaving traversal traversal_deformed worldgen_columns deformed_chunk local_sim greybox_checkpoint quest_ticks persist_replay",
             "## In progress",
-            "#366 are in progress",
+            "#334 are in progress. #366 are in progress. #383 are in progress",
             "## Next",
         ]
         .join("\n")
@@ -840,6 +841,16 @@ mod tests {
     fn front_door_accepts_a_honest_readme() {
         let errors = front_door_errors(&sample_readme(), &sample_workflow(), &[]);
         assert!(errors.is_empty(), "{errors:?}");
+    }
+
+    #[test]
+    fn front_door_rejects_a_suffixed_issue_token() {
+        let readme = sample_readme().replace("#383 are in progress", "#383foo are in progress");
+        let errors = front_door_errors(&readme, &sample_workflow(), &[]);
+        assert!(
+            errors.iter().any(|error| error.contains("missing #383")),
+            "{errors:?}"
+        );
     }
 
     #[test]

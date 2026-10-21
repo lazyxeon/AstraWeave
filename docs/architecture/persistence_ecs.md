@@ -7,10 +7,10 @@ primary_crate: astraweave-persistence-ecs
 domain: networking
 lifecycle_status: unknown
 integration_status: unknown
-summary: "Save ids and timestamps come from the sim tick. replay_system applies due events in order. auto_save runs on CSimClock. persistence_ecs.md §1"
+summary: "A health write is a little-endian i32 into an existing CHealth. The replay log drops the entity id. Autosave is not one transaction. persistence_ecs.md §1"
 owns: [astraweave-persistence-ecs, aw-save]
-doc_version: "1.5"
-last_verified_commit: a2474c5b7
+doc_version: "1.9"
+last_verified_commit: 556a305c
 ---
 
 # Architecture Trace: Persistence-ECS (Save/Load + ECS Integration)
@@ -25,12 +25,12 @@ last_verified_commit: a2474c5b7
 |---|---|
 | **System name** | Persistence-ECS (save / load / migrate / replay) |
 | **Primary crates** | `astraweave-persistence-ecs` (ECS Plugin + world serialization + hashing); `persistence/aw-save` (file format, atomic I/O, versioning, migration) |
-| **Document version** | 1.5 |
-| **Last verified against commit** | `a2474c5b7` |
-| **Last verified date** | 2026-05-12 |
-| **Status** | Active. File format is production-shaped. `replay_system` applies due `health` events onto `CHealth` and records them in `AppliedReplay`. `auto_save_system` writes when `CSimClock` hits its interval and stores the replay log. `PlayerInventory.credits` stays 0: no component stores a credit balance. Companions are still empty. |
+| **Document version** | 1.9 |
+| **Last verified against commit** | `556a305c` |
+| **Last verified date** | 2026-10-20 |
+| **Status** | Active. File format is production-shaped. A `health` payload shorter than four bytes is ignored. The first four bytes are a little-endian `i32` written to `CHealth.hp` only when that component is already on the replay entity. The write does not insert `CHealth`. Bytes after the fourth are ignored. Every other due event is recorded in `AppliedReplay` and left unapplied. `replay_log` sorts by `Entity::to_raw` and then drops that id. `apply_replay_event` writes that `CHealth` only on the entity that owns `CReplayState`. A `CHealth` on any other entity is left alone. `start_replay` (line 361) returns one `CReplayState` and does not search the world. `persist_replay` hashes `bundle.save_id`, `bundle.world.tick` as little-endian bytes, then each record's tick, type length, type, and data. Those records are `hit` and `cover`. Autosave serializes before the manager loop. `save_every == 0` and a missing `CSimClock` return with no save. A failed serialize returns before any manager saves and leaves `last_saved_tick` unset. A later `save_game_with_replay` error returns after earlier managers, in `to_raw` order, have already saved, and `last_saved_tick` stays unset. The error is dropped. `PlayerInventory.credits` stays 0. Companions stay empty. |
 | **Revision history** | 1.3 (2026-10-15): `.awsv` load rejects a declared compressed length above 4 MiB before allocation, and an LZ4 uncompressed prefix above 16 MiB. Schema stays 2. `postcard_and_lz4_bytes_are_stable` locks the postcard 1.1 and lz4_flex 0.11 bytes. 1.2 (2026-05-12): Deep investigation pass. **Closed Open Question 13** (CLI tools location) — purely factual question, comprehensively answered (`tools/aw_save_cli/` exists, was created in the same commit as `aw-save` itself). Resolution moved to §4 / §6. **New emergent finding**: a separate sibling crate `crates/astraweave-persistence-player` exists for player-profile persistence (TOML-based, distinct data model). Has zero dependency relationship with this subsystem; only a single doc-comment reference. Added to §6 as a coexisting-but-disjoint abstraction so future agents don't conflate them. Enriched §11 Q1, Q2, Q11 with commit-date provenance: the `astraweave-stress-test` declaration of both `astraweave-net-ecs` and `astraweave-persistence-ecs` and the `astraweave-memory` declaration in `astraweave-persistence-ecs/Cargo.toml` all landed in the **same commit** `08befc6ec` (2025-10-01, "phase 6 implementation"); test artifacts (`slot*.awsv`, `savegame.bin`) were committed in unrelated subsequent commits with misleading titles.<br><br>1.1 (2026-05-12): Verification pass. **Major corrections**: (1) The §4 `[INFERRED]` claim that CLI tools "may live elsewhere or be planned" was wrong — `tools/aw_save_cli/src/main.rs` (110 lines, clap-based) is a real binary that consumes `aw-save`. Added to §4 downstream table; resolved the marker. (2) Discovered second `aw-save` consumer not previously documented: `examples/save_integration/src/main.rs` (234 lines) imports `aw-save` types directly. Added to §4. (3) Resolved §9 `[INFERRED]` about auto-pruning absence — direct grep `fs::remove\|remove_file\|tokio::fs::remove persistence/aw-save/src` returns zero matches, conclusively confirming no auto-prune path exists. (4) Verified `Entity::to_raw()` layout claim in §3 against actual source at `astraweave-ecs/src/entity_allocator.rs:95-103` — claim is exact. |
-| **Owner notes** | `aw-save` (file format and SaveManager) is fully production-shaped: atomic writes via tmp+fsync+rename, CRC32 + LZ4, explicit V1→V2 migration, 256 slots per player. Save ids and timestamps come from the sim (`sim_save_id`, `sim_timestamp`). `auto_save_system` writes when `CSimClock` hits its interval. `replay_system` copies due events into `AppliedReplay` in canonical order. `CPersistenceManager::save_game` writes `PlayerInventory.credits` as 0 because no component stores a credit balance, and still emits zero companions. **`astraweave-stress-test/Cargo.toml:21` declares `astraweave-persistence-ecs` as a dep but no source file imports anything from it** — same pattern as `net-ecs` (declared-but-unused). The companion `astraweave-memory` workspace dep declared at `astraweave-persistence-ecs/Cargo.toml:20` is also never imported in the crate's source. |
+| **Owner notes** | `aw-save` (file format and SaveManager) is fully production-shaped: atomic writes via tmp+fsync+rename, CRC32 + LZ4, explicit V1→V2 migration, 256 slots per player. Save ids and timestamps come from the sim (`sim_save_id`, `sim_timestamp`). `auto_save_system` writes when `CSimClock` hits its interval. A failed serialize returns with no save and no `last_saved_tick` update. The first save error returns and skips later managers. The error is dropped. `replay_system` records every due event. A `health` write is the first four little-endian bytes into an existing `CHealth` on the replay entity. The saved log drops the entity id. `CPersistenceManager::save_game` writes `PlayerInventory.credits` as 0 because no component stores a credit balance, and still emits zero companions. **`astraweave-stress-test/Cargo.toml:21` declares `astraweave-persistence-ecs` as a dep but no source file imports anything from it** — same pattern as `net-ecs` (declared-but-unused). The companion `astraweave-memory` workspace dep declared at `astraweave-persistence-ecs/Cargo.toml:20` is also never imported in the crate's source. |
 
 ---
 
@@ -53,7 +53,7 @@ Saving game state across crashes and version upgrades is hard. The two-layer spl
 - `astraweave-persistence-ecs/savegame.bin` — 2-byte test artifact at the crate root.
 
 **Status note:**
-The disk-format layer (`aw-save`) is fully production-grade and CI-covered. Save identity comes from the sim tick. `replay_system` applies due events and `auto_save_system` follows `CSimClock`. Inventory and companion extraction stay placeholders (see §6). **No production code outside the crates' own tests uses `astraweave-persistence-ecs`.** It is scaffolding ready to be wired.
+The disk-format layer (`aw-save`) is fully production-grade and CI-covered. Save identity comes from the sim tick. A `health` write is a little-endian `i32` into an existing `CHealth`, and the saved log drops the entity id. `auto_save_system` follows `CSimClock` and is not one transaction. Inventory and companion extraction stay placeholders (see §6). **No production code outside the crates' own tests uses `astraweave-persistence-ecs`.** It is scaffolding ready to be wired.
 
 ---
 
@@ -62,7 +62,7 @@ The disk-format layer (`aw-save`) is fully production-grade and CI-covered. Save
 ```text
 [ECS World — astraweave_ecs::World with entities + components]
     │
-    │ serialize_ecs_world(&world)                          (persistence-ecs/lib.rs:278-366)
+    │ serialize_ecs_world(&world)                          (starts at line 479)
     ▼
 [Entity discovery (10 separate Query<C> passes)]
     │
@@ -88,27 +88,30 @@ The disk-format layer (`aw-save`) is fully production-grade and CI-covered. Save
     │     }
     │
     ▼
-[SerializedWorld { entities: Vec<SerializedEntity>, world_tick: 0 }]
-    │  ↑ world_tick HARDCODED to 0 — TODO at lib.rs:361 ("Get from world state when available")
+[SerializedWorld { entities: Vec<SerializedEntity>, world_tick }]
+    │  world_tick is CSimClock.tick, or 0 when that resource is absent
     │
-    │ postcard::to_allocvec(&serialized_world)            (lib.rs:365)
+    │ postcard::to_allocvec(&serialized_world) at the end of serialize_ecs_world
     ▼
 [Vec<u8> ECS blob]
     │
     │ This blob becomes WorldState.ecs_blob in aw-save's bundle:
     │
-    │ CPersistenceManager::save_game(slot, world_tick, world_hash, ecs_blob)  (persistence-ecs/lib.rs:113-153)
+    │ CPersistenceManager::save_game_with_replay(...)  (starts at line 305)
     │
     │   bundle = SaveBundleV2 {
     │       schema: SAVE_SCHEMA_VERSION (= 2),
-    │       save_id: Uuid::new_v4(),
-    │       created_at: OffsetDateTime::now_utc(),
+    │       save_id: sim_save_id(player_seed, world_tick, slot),
+    │       created_at: sim_timestamp(world_tick),
     │       player_id: self.current_player.clone(),
     │       slot,
-    │       world: WorldState { tick, ecs_blob, state_hash },
-    │       companions: vec![],          // TODO at lib.rs:121
-    │       inventory: PlayerInventory { credits: 1000, items: vec![] },   // both TODO at lib.rs:125-126
-    │       meta: { "engine_version" → CARGO_PKG_VERSION },
+    │       world: WorldState { tick, ecs_blob, state_hash: fnv64(&blob) },
+    │       // state_hash is FNV-1a of the postcard blob
+    │       // (offset 0xcbf29ce484222325, prime 0x100000001b3).
+    │       // calculate_world_hash is not called on this path.
+    │       companions: vec![],          // line 313. No companion component is read.
+    │       inventory: PlayerInventory { credits: 0, items: vec![] },
+    │       meta: engine_version, and "replay" when the log is non-empty,
     │   }
     │
     ▼
@@ -169,9 +172,9 @@ Load path:
     │
     │ Caller (e.g. game code) extracts bundle.world.ecs_blob and calls:
     │
-    │ deserialize_ecs_world(&ecs_blob, &mut world)        (persistence-ecs/lib.rs:446-504)
+    │ deserialize_ecs_world(&ecs_blob, &mut world)        (starts at line 656)
     │
-    │   if ecs_blob.is_empty(): return Ok(())             (lib.rs:447-450 — silent no-op)
+    │   if ecs_blob.is_empty(): return Ok(())             (deserialize_ecs_world line 657 — silent no-op)
     │   else:
     │     - postcard::from_bytes::<SerializedWorld>(blob)
     │     - First pass: spawn N new entities, build HashMap<u64, Entity> id_map
@@ -188,7 +191,7 @@ Load path:
 ──────────────────────────────────────────────────────────────────────
 Hash path (for integrity check / replay / cheat detection):
     │
-    │ calculate_world_hash(&world)                        (persistence-ecs/lib.rs:612-663)
+    │ calculate_world_hash(&world)                        (starts at line 834)
     ▼
 [Entity discovery (only 2 component types: CPos OR CHealth)]
     │
@@ -210,7 +213,7 @@ Hash path (for integrity check / replay / cheat detection):
     │     if CTeam:   hash id
     │     if CAmmo:   hash rounds
     │     (CCooldowns, CDesiredPos, CAiAgent, CLegacyId, CPersona, CMemory NOT hashed)
-    │     ↑ TODO at lib.rs:596 — "Add CCooldowns, CAiAgent, CPersona, CMemory for complete coverage"
+    │     ↑ coverage TODO is the doc comment at lib.rs:818
     │
     ▼
 [u64 hash via hasher.finish()]
@@ -224,9 +227,9 @@ Migration path (legacy V1 → current V2):
     │
     │ 1. read_any_version(path) → AnySave { version, blob }
     │ 2. match version:
-    │      1 → postcard::from_bytes::<SaveBundleV1>(blob) → v1.into_v2()    (aw-save/lib.rs:182-196)
+    │      1 → postcard::from_bytes::<SaveBundleV1>(blob) → v1.into_v2()    (aw-save/lib.rs:226-240)
     │           · companions = self.companion.into_iter().collect()    (Option<Companion> → Vec)
-    │           · save_id = Uuid::new_v4()                              (generated fresh)
+    │           · save_id = sim_save_id(seed, world.tick, slot)         (same V1 bytes, same id)
     │           · schema = SAVE_SCHEMA_VERSION                          (bumped to 2)
     │      2 → already current
     │      other → bail
@@ -236,7 +239,7 @@ Migration path (legacy V1 → current V2):
 ──────────────────────────────────────────────────────────────────────
 Replay path (scaffolded, partial):
     │
-    │ CPersistenceManager::start_replay(slot)             (persistence-ecs/lib.rs:161-171)
+    │ CPersistenceManager::start_replay(slot)             (starts at line 361)
     ▼
 [Load bundle from slot]
     │
@@ -244,7 +247,7 @@ Replay path (scaffolded, partial):
     │   is_replaying: true,
     │   current_tick: 0,
     │   total_ticks: bundle.world.tick,
-    │   events: vec![],                  // TODO at lib.rs:169 — "Load replay events from save data"
+    │   events: decode of bundle.meta["replay"]
     │ }
     │
     ▼
@@ -254,38 +257,43 @@ Replay path (scaffolded, partial):
     │   Entities sorted by Entity::to_raw.
     │   For each CReplayState where is_replaying:
     │     if current_tick < total_ticks:
-    │       copy events with tick == current_tick into AppliedReplay
+    │       record events with tick == current_tick in AppliedReplay
     │       sorted by (event_type, data), then current_tick += 1
+    │       a health payload writes CHealth.hp only when that component is already present
+    │       on this entity; every other due event is left unapplied
     │     else:
     │       is_replaying = false
 
 ──────────────────────────────────────────────────────────────────────
-Auto-save path (scaffolded, empty body):
+Auto-save path:
     │
     │ PersistencePlugin::build adds auto_save_system to "post_simulation" stage  (lib.rs:66)
     ▼
 [auto_save_system(world)]
     │
     │ If CSimClock.tick is a multiple of save_every, and a CPersistenceManager
-    │ is present, write the ECS blob with sim_save_id and sim_timestamp.
+    │ is present, write the ECS blob and the replay log.
+    │ A failed serialize returns with no save and no last_saved_tick update.
+    │ The first save_game_with_replay error returns and skips later managers.
+    │ That error is dropped.
 ```
 
 ### Stage-by-stage detail
 
-#### Stage 1: ECS world → `SerializedWorld` (`persistence-ecs/lib.rs:278-366`)
+#### Stage 1: ECS world → `SerializedWorld` (`serialize_ecs_world`, starts at line 479)
 **Role:** Walk all ECS entities that carry any of 10 supported components and produce a postcard-encodable struct.
 **Inputs:** `&World`.
 **Outputs:** `Result<Vec<u8>>` (postcard-encoded `SerializedWorld`).
 **Notes:**
-- Entity discovery does **9 separate `Query<C>` passes** to populate a `HashSet<Entity>`. The 10th component, `CLegacyId`, is **not** in the discovery loop — entities holding only `CLegacyId` won't be saved. (`CLegacyId` IS collected in the per-entity inner loop at `lib.rs:352`, so entities discovered via any of the other 9 still get their `CLegacyId` saved.)
-- `entity_raw: entity.to_raw()` packs Entity's (id, generation) into a u64 (`lib.rs:344` + doc comment at `lib.rs:233-238`).
-- `SerializedWorld.world_tick` is **hardcoded to 0** with `// TODO: Get from world state when available` (`lib.rs:361`). The `CPersistenceManager::save_game` function does pass a `world_tick: u64` parameter through, but it lands in `WorldState.tick` (the aw-save side), not in the ECS-side `SerializedWorld.world_tick`.
+- Entity discovery is nine `Query` passes starting at line 488. `CLegacyId` is not in that loop, so an entity that holds only `CLegacyId` is not saved. The collect loop reads `CLegacyId` at line 556 when the entity was found through another component.
+- `entity_raw` is `entity.to_raw()` at line 548. The layout comment is `Entity::to_raw` in `astraweave-ecs/src/entity_allocator.rs` (lines 93–102). Lines 233–238 of this crate are `decode_replay_events`.
+- `SerializedWorld.world_tick` is `CSimClock.tick`, or 0 when that resource is absent. `CPersistenceManager::save_game` still passes its `world_tick` argument into `WorldState.tick`.
 
-#### Stage 2: `SaveBundleV2` construction (`persistence-ecs/lib.rs:113-153`)
+#### Stage 2: `SaveBundleV2` construction (`save_game_with_replay`, starts at line 305)
 **Role:** Build the wire-shaped save bundle that `aw-save` understands.
 **Inputs:** `slot, world_tick, world_hash, ecs_blob`.
 **Outputs:** `Result<PathBuf>` (final on-disk path).
-**Notes:** The companion list is hardcoded empty (`lib.rs:121`: `// TODO: Query ECS for companion data`); the inventory is `PlayerInventory { credits: 1000, items: vec![] }` (`lib.rs:124-127`, both fields tagged TODO). Only the `engine_version → CARGO_PKG_VERSION` meta entry is populated. Callers cannot supply richer save data through this API as of `a2474c5b7`.
+**Notes:** The companion list is empty. The inventory is `PlayerInventory { credits: 0, items: vec![] }` because no component stores a credit balance. `engine_version` is set from `CARGO_PKG_VERSION`. A non-empty replay log is also stored under meta key `replay`.
 
 #### Stage 3: `aw-save` atomic write (`aw-save/lib.rs:258-288`)
 **Role:** Write the bundle to disk with crash-safety, compression, and integrity.
@@ -313,28 +321,27 @@ Auto-save path (scaffolded, empty body):
 **Outputs:** `SaveBundleV2`.
 **Notes:**
 - `companions = self.companion.into_iter().collect()` (`lib.rs:191`) maps `Option<CompanionProfile>` → `Vec<CompanionProfile>` (empty vec if `None`).
-- The migration **generates a fresh `Uuid::new_v4()`** (`lib.rs:186`) — the migrated save has a new ID, not the old one. If callers use `save_id` for deduplication, they need to remember this.
+- `into_v2` sets `save_id` from `sim_save_id(seed, self.world.tick, slot)` and keeps the V1 `created_at`. The same V1 bytes migrate to the same id.
 - `created_at` is preserved from the original V1.
 
-#### Stage 6: ECS deserialization with ID remapping (`persistence-ecs/lib.rs:446-504`)
+#### Stage 6: ECS deserialization with ID remapping (`deserialize_ecs_world`, starts at line 656)
 **Role:** Spawn fresh ECS entities and insert all saved components, remapping old entity IDs to new ones.
 **Inputs:** `&[u8]`, `&mut World`.
 **Outputs:** `Result<()>`.
 **Notes:**
-- Empty blob is a **silent no-op** (`lib.rs:447-450`: `if ecs_blob.is_empty() { return Ok(()) }`).
+- Empty blob is a **silent no-op** (`deserialize_ecs_world` at line 657: `if ecs_blob.is_empty() { return Ok(()) }`).
 - Two-pass design: first pass `world.spawn()` per saved entity and build `HashMap<u64, Entity>`; second pass `world.insert(remapped_entity, component)`.
-- `CLegacyId` is **inserted as-is** (`lib.rs:490-493`) with comment `// Remap entity reference in CLegacyId if needed / For now, insert as-is (may need entity ID translation logic)`. If `CLegacyId` carries a reference to another entity by id, that reference is **not** remapped through the id_map.
+- `CLegacyId` is **inserted as-is** (lines 701–702) with comment `// Remap entity reference in CLegacyId if needed / For now, insert as-is`. If `CLegacyId` carries a reference to another entity by id, that reference is **not** remapped through the id_map.
 
-#### Stage 7: Deterministic world hash (`persistence-ecs/lib.rs:612-663`)
+#### Stage 7: Deterministic world hash (`calculate_world_hash`, starts at line 834)
 **Role:** Produce a `u64` hash of the current ECS world state for validation / replay verification.
 **Inputs:** `&World`.
 **Outputs:** `u64`.
 **Notes:**
-- Uses `std::collections::hash_map::DefaultHasher` (currently SipHash-1-3 per the rustc default; see doc comment at `lib.rs:536`).
-- **Only entities with `CPos` OR `CHealth`** are included in the hash (`lib.rs:619-633`). Entities holding only `CTeam`, `CAmmo`, etc. are silently excluded.
-- **Only 4 component types are hashed**: `CPos.{x, y}`, `CHealth.hp`, `CTeam.id`, `CAmmo.rounds` (`lib.rs:637-660`). Six other supported components (`CCooldowns`, `CDesiredPos`, `CAiAgent`, `CLegacyId`, `CPersona`, `CMemory`) are NOT hashed. The function's own doc comment acknowledges this at `lib.rs:596`: `**TODO**: Add CCooldowns, CAiAgent, CPersona, CMemory for complete coverage`.
-- `entity_list.sort_unstable()` ensures deterministic iteration order (`lib.rs:634`).
-- Documented as cryptographically weak ("DO NOT use for security", `lib.rs:537`). The hash is for integrity / replay validation only.
+- Uses `DefaultHasher::new()`. On current rustc that is SipHash-1-3 with zero keys. The doc comment at lines 757–759 says "DO NOT use for security". The same comment calls the hash "viable for cheat detection" (line 743) and "bit-identical" (line 750). It is not a security boundary, and it is not stable across rustc upgrades.
+- **Only entities with `CPos` OR `CHealth`** are included in the hash. Entities holding only `CTeam`, `CAmmo`, etc. are silently excluded.
+- **Only 4 component types are hashed**: `CPos.{x, y}`, `CHealth.hp`, `CTeam.id`, `CAmmo.rounds`. `calculate_world_hash` starts at line 834. Six other supported components (`CCooldowns`, `CDesiredPos`, `CAiAgent`, `CLegacyId`, `CPersona`, `CMemory`) are NOT hashed. The coverage TODO is the doc comment at line 818.
+- `entity_list.sort_unstable()` is line 856. It orders by `Entity`'s `Ord`: `id`, then `generation`. Unique entities keep that order across rustc upgrades. The cross-rustc break is `DefaultHasher::new()` in the bullet above. `serialize_ecs_world` sorts with `sort_by_key(|entity| entity.to_raw())` at line 543. `to_raw` puts `generation` in the high 32 bits, so the blob order and this hash order diverge when any generation is non-zero.
 
 #### Stage 8: ECS Plugin systems (`persistence-ecs/lib.rs:63-104`)
 **Role:** Wire `auto_save_system` and `replay_system` into the App's stage scheduler.
@@ -343,7 +350,7 @@ Auto-save path (scaffolded, empty body):
 **Notes:**
 - `PersistencePlugin.save_directory: PathBuf` is stored on the plugin struct but **never read** by `build()`. The field is `#[allow(dead_code)]` (`lib.rs:52-55`). Setting up a real `SaveManager` would require the caller to do that work outside the plugin.
 - `auto_save_system` saves when `CSimClock` lands on `save_every`. No clock resource means no save and no wall-clock fallback.
-- `replay_system` copies due events into `AppliedReplay` in `(event_type, data)` order, then advances `current_tick`.
+- `replay_system` records due events in `AppliedReplay` in `(event_type, data)` order, then advances `current_tick`. A `health` write is a little-endian `i32` from the first four bytes, and only when `CHealth` is already on that entity. A missing component is a no-op. Other event types are recorded and left unapplied.
 
 ---
 
@@ -363,7 +370,7 @@ Auto-save path (scaffolded, empty body):
 | **CPersistenceManager** | ECS component wrapping `{ save_manager: SaveManager, current_player: String }`. | `persistence-ecs/lib.rs:18-21` |
 | **PersistencePlugin** | ECS Plugin holding `save_directory: PathBuf` (unused) that registers `auto_save_system` + `replay_system`. | `persistence-ecs/lib.rs:52-69` |
 | **SerializedEntity** | Per-entity serialization shape: `entity_raw: u64` (packed id+generation) + 10 `Option<C>` component fields. | `persistence-ecs/lib.rs:185-198` |
-| **SerializedWorld** | `{ entities: Vec<SerializedEntity>, world_tick: u64 }`. Note: `world_tick` is hardcoded `0` at write time. | `persistence-ecs/lib.rs:201-205` |
+| **SerializedWorld** | `{ entities: Vec<SerializedEntity>, world_tick: u64 }`. `world_tick` is `CSimClock.tick`, or 0 when that resource is absent. | `persistence-ecs/lib.rs` `serialize_ecs_world` |
 | **CReplayState** | ECS component: `{ is_replaying: bool, current_tick: u64, total_ticks: u64, events: Vec<ReplayEvent> }`. | `persistence-ecs/lib.rs:36-41` |
 | **ReplayEvent** | `{ tick: u64, event_type: String, data: Vec<u8> }`. Opaque payload. | `persistence-ecs/lib.rs:44-49` |
 | **SaveMetadata** | Distinct from `aw-save::SaveMeta`. ECS-layer struct: `{ player_id, slot, save_id, created_at, world_tick, world_hash }`. Used as a serializable summary, not for indexing. | `persistence-ecs/lib.rs:24-32` |
@@ -372,7 +379,7 @@ Auto-save path (scaffolded, empty body):
 ### Terms to NOT confuse
 
 - **`aw-save::SaveMeta` (file index entry) vs. `persistence-ecs::SaveMetadata` (ECS-layer summary):** Different fields, different purposes. `SaveMeta` lives in `index.json` and is keyed by `save_id`. `SaveMetadata` is a higher-level summary type that includes `world_tick` and `world_hash` — fields `SaveMeta` does not carry.
-- **`aw-save::WorldState.tick` vs. `persistence-ecs::SerializedWorld.world_tick`:** The first is the authoritative tick stored at the bundle level. The second is supposed to be the ECS-layer tick but is **hardcoded to 0** at serialization time (`lib.rs:361`). `CPersistenceManager::save_game` passes `world_tick` to the bundle's `WorldState.tick` — that's the only place the actual tick ends up.
+- **`aw-save::WorldState.tick` vs. `persistence-ecs::SerializedWorld.world_tick`:** The bundle tick is the `world_tick` argument to `save_game`. The ECS blob tick is `CSimClock.tick` at serialize time, or 0 when that resource is absent. Autosave passes `clock.tick` as both.
 - **`aw-save::WorldState.state_hash` vs. the `world_hash` parameter to `save_game`:** They're meant to be the same value, plumbed through. `save_game(slot, world_tick, world_hash, ecs_blob)` writes `world_hash` into `WorldState { state_hash: world_hash }` (`persistence-ecs/lib.rs:145`).
 - **`SerializedEntity.entity_raw` (u64) vs. `astraweave_ecs::Entity`:** The serialized form is `u64`. `Entity::to_raw()` and the new entity from `world.spawn()` are bridged through the `id_map` HashMap during deserialization.
 
@@ -401,7 +408,7 @@ Auto-save path (scaffolded, empty body):
 ### Bidirectional / Coupled
 
 - **`CPersistenceManager.save_manager`** owns the on-disk root directory; every save/load call routes through it. The component is held inside the ECS world, so an ECS world without a `CPersistenceManager` entity cannot save through the standard path.
-- **`CReplayState` ↔ `replay_system`**: The component holds the replay state; the system advances it. But event application is TODO, so the replay loop is currently a pure tick-counter.
+- **`CReplayState` ↔ `replay_system`**: The component holds the replay state. The system records every due event and advances `current_tick`. A `health` write is a little-endian `i32` from the first four bytes, and only when `CHealth` is already on that entity. A missing component is a no-op. `start_replay` reloads meta key `replay`, sets `total_ticks` from `bundle.world.tick`, and starts `current_tick` at 0.
 - **`aw-save::WorldState.ecs_blob: Vec<u8>`** is the integration seam between the two crates. `aw-save` treats it as opaque (it's just bytes inside the postcard-encoded V2 bundle). `astraweave-persistence-ecs` is the only producer/consumer of those bytes.
 
 ### Documentation references with no code backing
@@ -422,7 +429,7 @@ Auto-save path (scaffolded, empty body):
 | `persistence/aw-save/README.md` | Feature list + file format + usage examples | Active | Accurate for the file-format layer (matches code). |
 | `persistence/aw-save/index.json` | Test artifact from running save tests | Active (test artifact) | Checked in alongside `.awsv` files; not git-ignored. |
 | `persistence/aw-save/slot00_2026-03-13T08-45-25Z_*.awsv` × 2, `slot01_*.awsv`, `slot02_*.awsv`, `slot05_*.awsv` | Test artifacts | Active (test artifacts) | 5 `.awsv` files checked into the repo from a 2026-03-13 test run. |
-| `astraweave-persistence-ecs/src/lib.rs` | ECS Plugin + components + 3 pipeline functions (`serialize_ecs_world`, `deserialize_ecs_world`, `calculate_world_hash`) + inline tests (28) | Active (mixed: Plugin systems are stubs; pipeline functions are production-grade) | 1292 lines. Most line count is doc comments. `#![forbid(unsafe_code)]` (line 1). |
+| `astraweave-persistence-ecs/src/lib.rs` | ECS Plugin + components + `serialize_ecs_world`, `deserialize_ecs_world`, `calculate_world_hash`, `auto_save_system`, `replay_system` | Active | `serialize_ecs_world` reads `CSimClock.tick`. `replay_system` applies `health` on the replay entity and records every due event. `auto_save_system` drops a serialize or save error. `#![forbid(unsafe_code)]` (line 1). |
 | `astraweave-persistence-ecs/tests/save_load_tests.rs` | End-to-end save/load via `CPersistenceManager` | Active (tests) | 11 tests. |
 | `astraweave-persistence-ecs/tests/corruption_recovery_tests.rs` | Corruption-detection scenarios (bad magic, bad CRC, truncated files) | Active (tests) | 13 tests. |
 | `astraweave-persistence-ecs/tests/large_world_tests.rs` | Performance tests on large worlds | Active (tests) | 8 tests. |
@@ -448,12 +455,12 @@ Auto-save path (scaffolded, empty body):
 | Abstraction | Files | Status | Disposition |
 |---|---|---|---|
 | `aw-save::SaveMeta` vs. `persistence-ecs::SaveMetadata` | `aw-save/lib.rs:201-208` vs. `persistence-ecs/lib.rs:24-32` | Two metadata types | `SaveMeta` is the on-disk index entry (`save_id, file, created_at, player_id, slot, schema`). `SaveMetadata` is a higher-level ECS-layer summary that adds `world_tick` and `world_hash`. They are not derived from each other; both are emitted independently. |
-| Two different "tick" fields in the persisted state | `aw-save::WorldState.tick` (live) vs. `persistence-ecs::SerializedWorld.world_tick` (hardcoded 0) | Live vs. dormant | The bundle-level `WorldState.tick` is set from the `world_tick` parameter passed into `save_game`. The ECS-level `SerializedWorld.world_tick` is hardcoded to 0 (`persistence-ecs/lib.rs:361`) with TODO comment. The two should arguably equal each other but currently don't. |
+| Two different "tick" fields in the persisted state | `aw-save::WorldState.tick` vs. `persistence-ecs::SerializedWorld.world_tick` | Both live | The bundle tick is the `save_game` argument. The blob tick is `CSimClock.tick`, or 0 when the clock resource is absent. Autosave passes the same clock tick to both. |
 | `astraweave-stress-test` declares `astraweave-persistence-ecs` but doesn't use it | `astraweave-stress-test/Cargo.toml:21` vs. (no source-file `use` in that crate) | Unused dep | Same pattern as that crate's `astraweave-net-ecs` declaration (see `docs/architecture/net_ecs.md`). |
 | `astraweave-memory` declared as a dep of `astraweave-persistence-ecs` but not imported | `astraweave-persistence-ecs/Cargo.toml:20` vs. (no `use astraweave_memory` in `astraweave-persistence-ecs/src/`) | Unused dep | The dep was probably added in anticipation of saving `CMemory`/`CPersona` through some `astraweave-memory` helper, but the current `SerializedEntity.memory` field stores `Option<CMemory>` directly via `serde`-derived encoding. |
-| `auto_save_system` registered as a system but has empty body | `persistence-ecs/lib.rs:66, 72-75` | Active stub | The Plugin wires it into `"post_simulation"`, but the function body is a comment-only TODO. Running the Plugin produces no autosaves. |
-| `replay_system` advances `CReplayState.current_tick` but never applies events | `persistence-ecs/lib.rs:67, 78-104` | Active partial stub | The tick counter advances toward `total_ticks`; nothing reads or applies the `events: Vec<ReplayEvent>` field during replay. |
-| `CPersistenceManager::save_game` hardcoded companions/inventory | `persistence-ecs/lib.rs:121, 124-127` | Active stub | All bundles emitted through this API have `companions: vec![]` and `inventory: { credits: 1000, items: vec![] }`. Saving a real game requires bypassing or extending this method. |
+| `auto_save_system` drops a failed serialize or the first save error | `persistence-ecs/src/lib.rs` `auto_save_system` | Active | A failed `serialize_ecs_world` returns with no save and no `last_saved_tick` update. The first `save_game_with_replay` error returns and skips later managers. The `Result` is dropped. |
+| `replay_system` applies only `health` | `persistence-ecs/src/lib.rs` `apply_replay_event` | Active | A `health` write is a little-endian `i32` from the first four bytes, and only when `CHealth` is already on the `CReplayState` entity. A missing component is a no-op. Every other due event is recorded and left unapplied. |
+| `CPersistenceManager::save_game` companions and credits | `persistence-ecs/src/lib.rs` `save_game_with_replay` | Active | Bundles still emit `companions: vec![]` and `credits: 0`. No component stores a credit balance. |
 | Saved files checked into repo: `persistence/aw-save/slot00_*.awsv`, `slot01_*.awsv`, `slot02_*.awsv`, `slot05_*.awsv` + `index.json` | `persistence/aw-save/` | Test artifacts in source tree | 5 `.awsv` files and `index.json` are present at the crate root, not under a `target/` or `tests/fixtures/` subdirectory. Created 2026-03-13 per filename timestamps. |
 | `astraweave-persistence-ecs/savegame.bin` (2 bytes) | crate root | Test artifact in source tree | Generated by a doc-example run that wrote `savegame.bin`. |
 | Sibling persistence crate `astraweave-persistence-player` (player profiles) | `crates/astraweave-persistence-player/` | Coexisting but disjoint | A separate, workspace-listed crate (`Cargo.toml:106`) for **player-profile** persistence — settings, stats, unlocks, achievements, progression. Uses **TOML** for human-readability (not `.awsv`); has its own postcard-based binary serialization too. **Has zero dependency relationship with `aw-save` or `astraweave-persistence-ecs`** — workspace grep confirms no `use aw_save\|use astraweave_persistence_ecs` in `crates/astraweave-persistence-player/`. Only mention is a single doc-comment hint at `src/save_slots.rs:62`: "`world_state` - Serialized ECS world (from astraweave-persistence-ecs)". The crate carries its own checked-in artifacts: `save.bin`, `saves/`, `test_saves3/`. Functionally orthogonal to the `aw-save`/`persistence-ecs` ECS-world-save subsystem this trace covers. |
@@ -466,37 +473,37 @@ Auto-save path (scaffolded, empty body):
 
 ### Known cognitive traps
 
-- **Trap:** `auto_save_system` runs every tick of `"post_simulation"` but does nothing.
-  - **Why it's confusing:** It's wired into the Plugin's `build` method; the system is registered.
-  - **What's actually true:** `persistence-ecs/lib.rs:72-75` is a comment-only TODO function body. The Plugin will tick this no-op forever. Adding `PersistencePlugin::new(...)` to an App produces zero automatic saves.
+- **Trap:** `auto_save_system` always writes.
+  - **Why it's confusing:** The system is registered on `post_simulation` and keys off `CSimClock`.
+  - **What's actually true:** Serialize runs before the manager loop. `save_every == 0` and a missing `CSimClock` return with no save. A failed serialize returns before any manager saves and leaves `last_saved_tick` unset. A later `save_game_with_replay` error returns after earlier managers, in `to_raw` order, have already saved. `last_saved_tick` stays unset either way. The `Result` is dropped.
 
-- **Trap:** `replay_system` advances the replay tick counter but the actual event application is not implemented.
-  - **Why it's confusing:** `is_replaying` flips to `false` at `total_ticks`, suggesting forward progress.
-  - **What's actually true:** `persistence-ecs/lib.rs:96` is `// TODO: Implement replay event application`. The system counts ticks but applies nothing. A loaded `CReplayState` will reach `total_ticks` without changing the world.
+- **Trap:** `replay_system` applies every due event to the world.
+  - **Why it's confusing:** Every due event is copied into `AppliedReplay`.
+  - **What's actually true:** A shorter payload is ignored. The first four bytes are a little-endian `i32` written to `CHealth.hp` only when that component is already present. The write does not insert `CHealth`. The saved log drops `Entity::to_raw`. `start_replay` returns one `CReplayState` and does not search the world for `CHealth`. The write, when replay runs, is only on the entity that owns that component. `hit` and `cover` are recorded and left unapplied.
 
 - **Trap:** `calculate_world_hash` covers only 4 of 10 component types.
   - **Why it's confusing:** The doc comment for `serialize_ecs_world` lists 10 components; an agent might assume the hash covers all.
-  - **What's actually true:** Only `CPos`, `CHealth`, `CTeam`, `CAmmo` enter the hash (`persistence-ecs/lib.rs:641-660`). The function's own doc at `lib.rs:596` admits: `**TODO**: Add CCooldowns, CAiAgent, CPersona, CMemory for complete coverage`. Two worlds differing only in `CMemory` or `CPersona` produce the same hash.
+  - **What's actually true:** Only `CPos`, `CHealth`, `CTeam`, and `CAmmo` enter the hash. `calculate_world_hash` starts at line 834. The coverage TODO is the doc comment at line 818. Two worlds differing only in `CMemory` or `CPersona` produce the same hash.
 
 - **Trap:** `calculate_world_hash` skips entities that lack both `CPos` and `CHealth`.
   - **Why it's confusing:** The function presents itself as "hash of the current ECS world state."
-  - **What's actually true:** Entity discovery walks only `Query<CPos>` and `Query<CHealth>` (`persistence-ecs/lib.rs:619-633`). An entity holding only `CTeam` or only `CAmmo` doesn't enter the entity list, so its components don't contribute to the hash.
+  - **What's actually true:** Entity discovery walks only `Query<CPos>` and `Query<CHealth>`, just after `calculate_world_hash` starts at line 834. An entity holding only `CTeam` or only `CAmmo` doesn't enter the entity list, so its components don't contribute to the hash.
 
 - **Trap:** `SerializedWorld.world_tick` is always 0.
   - **Why it's confusing:** The struct has a `world_tick: u64` field that looks like it carries the simulation tick.
-  - **What's actually true:** `persistence-ecs/lib.rs:361`: `world_tick: 0, // TODO: Get from world state when available`. The actual tick is plumbed through `WorldState.tick` at the `aw-save` layer instead.
+  - **What's actually true:** Line 361 is `start_replay`. Serialize sets `world_tick` from `CSimClock.tick` around lines 563–566, and uses 0 only when that resource is absent.
 
 - **Trap:** `CPersistenceManager::save_game` emits hardcoded inventory and zero companions.
   - **Why it's confusing:** Looks like a complete save API.
-  - **What's actually true:** `persistence-ecs/lib.rs:121, 124-127` hardcodes everything except the ECS blob. Production code wanting real companion/inventory data must bypass this method and build `SaveBundleV2` directly.
+  - **What's actually true:** The empty companion vec is line 313. `credits: 0` is lines 317–318 inside `save_game_with_replay`. No component stores a credit balance. `fnv64` (lines 102 and 119) hashes the postcard blob. It is not the inventory write.
 
 - **Trap:** `deserialize_ecs_world` on an empty blob returns `Ok(())` without changing the world.
   - **Why it's confusing:** Looks like a successful load.
-  - **What's actually true:** `persistence-ecs/lib.rs:447-450` short-circuits on empty input. The caller needs to verify the world has the expected entities; a successful Result does not imply data was loaded.
+  - **What's actually true:** `deserialize_ecs_world` at line 657 short-circuits on empty input. The caller needs to verify the world has the expected entities; a successful Result does not imply data was loaded.
 
 - **Trap:** `CLegacyId` references are NOT remapped on load.
   - **Why it's confusing:** The doc comment at `persistence-ecs/lib.rs:386-398` describes entity-ID remapping at length.
-  - **What's actually true:** Stage 6 above. The id_map is built, but `CLegacyId` is inserted as-is (`lib.rs:490-493`) with a TODO comment. If `CLegacyId` carries an entity reference, the reference points at a (potentially nonexistent) old entity after load.
+  - **What's actually true:** Stage 6 above. The id_map is built, but `CLegacyId` is inserted as-is (lines 701–702). If `CLegacyId` carries an entity reference, the reference points at a (potentially nonexistent) old entity after load.
 
 - **Trap:** V1 migration used to mint a fresh `Uuid::new_v4` save id.
   - **Why it's confusing:** Older notes say migration identity is random.
@@ -504,7 +511,7 @@ Auto-save path (scaffolded, empty body):
 
 - **Trap:** `entity_set` in `serialize_ecs_world` is collected through a `HashSet<Entity>`.
   - **Why it's confusing:** A `HashSet` walk is not a stable order.
-  - **What's actually true:** After discovery the entities are sorted by `Entity::to_raw` before postcard encoding. The blob order matches `calculate_world_hash`'s sorted walk. An empty-world load therefore restores the same ids when the source was spawned in raw-id order.
+  - **What's actually true:** After discovery the entities are sorted by `Entity::to_raw` at line 543. `calculate_world_hash` sorts by `Entity` `id`, then `generation`. Those orders diverge when any generation is non-zero.
 
 - **Trap:** Test artifacts (`.awsv`, `index.json`, `savegame.bin`) are checked into the repo source tree.
   - **Why it's confusing:** Looks like fixture files used by integration tests.
@@ -532,7 +539,7 @@ Auto-save path (scaffolded, empty body):
 - **Alternatives considered:** [Reasoning not recovered from available sources]
 - **Consequences:**
   - `read_any_version` and `migrate_file_to_latest` must be extended for every new schema bump.
-  - V1→V2 migration generates a fresh `save_id` (no preserved Uuid in V1).
+  - V1→V2 migration sets `save_id` from `sim_save_id` and keeps the V1 `created_at`. The same V1 bytes migrate to the same id.
 
 ### Decision: Atomic write via tmp + sync_all + rename
 - **Date:** 2025-09-09 commit `c0d3b0f11`.
@@ -615,11 +622,11 @@ Auto-save path (scaffolded, empty body):
 | 5 | Save filename is `slot{NN}_{timestamp}_{uuid}.awsv` with timestamp using `-` (not `:`) for Windows compatibility | Yes | `aw-save/lib.rs:57-64`; test `test_windows_safe_timestamp` (`lib.rs:358-402`) asserts no invalid Windows characters. |
 | 6 | `load_latest_slot` returns the lexicographically-greatest filename, which (per format) is the most recent save | Yes | `aw-save/lib.rs:82-90` — filter + sort + last. Test coverage in `tests/integration_test.rs`. |
 | 7 | Migration `SaveBundleV1::into_v2` populates `companions` from the optional `companion` field | Yes | `aw-save/lib.rs:191`. |
-| 8 | `serialize_ecs_world` always produces non-empty output even for empty worlds | Yes | Test `serialize_empty_world` (`persistence-ecs/lib.rs:697-703`) asserts. |
-| 9 | `deserialize_ecs_world` on empty blob is `Ok(())` no-op | Yes | `persistence-ecs/lib.rs:447-450`; test `deserialize_empty_blob` (`lib.rs:1039-1045`). |
-| 10 | Entity IDs are remapped (NOT preserved) on deserialization | Yes | `persistence-ecs/lib.rs:456-501`; roundtrip tests verify components survive (`lib.rs:715-775`) but entity IDs differ. |
-| 11 | `calculate_world_hash` is deterministic for the same world state (via `entity_list.sort_unstable()`) | Yes | `persistence-ecs/lib.rs:634`; test `world_hash_consistency` (`lib.rs:777-795`). |
-| 12 | Hash changes when any of CPos / CHealth / CTeam / CAmmo changes | Yes | Tests `world_hash_changes_with_modification`, `world_hash_team_component`, `world_hash_ammo_component`, `world_hash_health_only` (`lib.rs:1116-1209`). |
+| 8 | `serialize_ecs_world` always produces non-empty output even for empty worlds | Yes | Test `serialize_empty_world` starts at line 920. |
+| 9 | `deserialize_ecs_world` on empty blob is `Ok(())` no-op | Yes | `deserialize_ecs_world` line 657; test `deserialize_empty_blob`. |
+| 10 | Entity IDs are remapped (NOT preserved) on deserialization | Yes | The id map is built at lines 665–672. Line 715 assigns `CSimClock.tick` at the end of `deserialize_ecs_world`. |
+| 11 | `calculate_world_hash` sorts entities before hashing | Yes | `sort_unstable` at line 856 orders by `Entity` `id`, then `generation`. That order does not move with the rustc hasher. `DefaultHasher::new()` is the cross-rustc break. |
+| 12 | Hash changes when any of CPos / CHealth / CTeam / CAmmo changes | Yes | `world_hash_consistency` starts at line 1000. `world_hash_changes_with_modification` starts at line 1339. |
 | 13 | Atomic write uses tmp file + sync_all + rename | Yes | `aw-save/lib.rs:275-286`. |
 | 14 | `index.json` is sorted by `(slot, created_at)` after each save | Yes | `aw-save/lib.rs:225`. |
 | 15 | Sanitized player_id only contains `[A-Za-z0-9_-]` | Yes | `aw-save/lib.rs:342-352` — all other characters become `_`. |
@@ -640,8 +647,8 @@ Auto-save path (scaffolded, empty body):
 
 - **`SaveManager::list_saves`** — `read_index(dir)` first, falling back to `scan_dir_for_meta(dir)` which decompresses every `.awsv` file in the directory just to extract metadata. Called once per UI render of the save selection screen, typically.
 - **`migrate_file_to_latest`** — invoked once per legacy save on first load post-upgrade.
-- **`replay_system`** — runs every tick of `"pre_simulation"` but does no actual work (event apply is TODO).
-- **`auto_save_system`** — same: runs every tick of `"post_simulation"` and does nothing.
+- **`replay_system`** — records due events. A `health` write is a little-endian `i32` into an existing `CHealth`. Other event types are not applied.
+- **`auto_save_system`** — writes when `CSimClock` hits a non-zero interval. A failed serialize or a later save error leaves `last_saved_tick` unset. Earlier managers in that loop may already have saved.
 
 ### Resource ownership
 
@@ -689,17 +696,17 @@ Auto-save path (scaffolded, empty body):
 
 - **Why is `astraweave-memory` declared as a dep of `astraweave-persistence-ecs` but never imported?** `Cargo.toml:20` pulls the dep in; `grep -rn "use astraweave_memory" astraweave-persistence-ecs/src/` returns no matches. **Investigation (2026-05-12):** The dep was added in commit `08befc6ec` (2025-10-01, "phase 6 implementation") — same commit that created the crate. The dep has never been imported in any subsequent commit. The crate apparently intended to use `astraweave-memory` for `CMemory`/`CPersona` save plumbing but currently emits those fields directly via `serde`-derived encoding. Andrew's call on whether to remove the dep, wire it through, or leave as pre-positioned scaffolding.
 
-- **`auto_save_system` is registered but has a comment-only TODO body.** Should the system be removed pending implementation, gated behind a `feature = "autosave"` flag, or left as a marker for future work? Andrew's call.
+- **`auto_save_system` drops errors.** Closed as a behavior note, 2026-10-20. The system does write. A failed serialize or the first save error returns without updating `last_saved_tick`, and later managers in the sorted list are skipped. The `Result` is dropped.
 
-- **`replay_system` advances `current_tick` but doesn't apply events.** The replay loop will run to `total_ticks` without changing the world. Is the missing event application a parked feature, or should the system be removed until implementation lands?
+- **`replay_system` applies only `health`.** Closed as a behavior note, 2026-10-20. Other due events are recorded in `AppliedReplay` and left unapplied. `persist_replay` hashes `hit` and `cover` records; it does not change `CHealth`.
 
-- **`CPersistenceManager::save_game` hardcodes inventory and emits zero companions.** Should this API be extended with full inventory / companion parameters, or are callers expected to bypass it and build `SaveBundleV2` directly? Andrew's call.
+- **`CPersistenceManager::save_game` emits zero companions and `credits: 0`.** Companions stay empty. Credits stay 0 because no component stores a credit balance. Extending the inventory API is still open.
 
 - **`calculate_world_hash` covers only 4 of 10 components.** The function's own doc comment lists this as a TODO. Should the missing components (`CCooldowns`, `CAiAgent`, `CPersona`, `CMemory`) be added for save-integrity checking? Note that adding fields would change the hash output, breaking any persisted hashes.
 
 - **`calculate_world_hash` uses `DefaultHasher` (SipHash-1-3 via rustc default).** If stdlib changes the DefaultHasher algorithm in a future Rust release, hashes from old builds will not match new ones. Should the crate pin to a specific hasher (e.g., `siphasher` crate) for cross-version stability?
 
-- **`SerializedWorld.world_tick` is hardcoded to 0.** Should the tick be plumbed from the ECS world (which would require an ECS-side "current tick" accessor that doesn't currently exist), or removed from the struct in favor of the bundle-level `WorldState.tick`?
+- **`SerializedWorld.world_tick` when `CSimClock` is absent.** Closed for the present clock, 2026-10-20. Serialize reads `CSimClock.tick` and uses 0 only when that resource is missing. A world with no clock still writes tick 0.
 
 - **Saved entity references via `CLegacyId` are not remapped through `id_map`.** The comment at `persistence-ecs/lib.rs:491` admits this is parked. Should `CLegacyId`'s entity-reference semantics be defined (and the remap implemented), or is the type currently used only for legacy id storage that doesn't reference other entities?
 
@@ -715,6 +722,14 @@ Auto-save path (scaffolded, empty body):
 
 ## 12. Maintenance Notes
 
+**Revision 1.9 (2026-10-20):** Verified at `556a305c`. Autosave stores `fnv64` of the postcard blob, not `calculate_world_hash`. `sort_unstable` is stable across rustc. V1 migration uses `sim_save_id`. Stage and invariant citations match the current lines.
+
+**Revision 1.8 (2026-10-20):** Verified at `556a305c`. The save diagram uses `sim_save_id` and `sim_timestamp`. A health write stays on the `CReplayState` entity. Hash and deserialize citations point at lines 834, 856, 657, and 701.
+
+**Revision 1.7 (2026-10-20):** Verified at `556a305c`. The health write is a little-endian `i32` into an existing `CHealth`. The replay log drops the entity id. Autosave is not one transaction. §9, the cognitive traps, and Appendix A match §3.
+
+**Revision 1.6 (2026-10-20):** Verified at `556a305c`. A due `health` payload of at least four bytes updates `CHealth` on the replay entity. Other due events are recorded and left unapplied. `start_replay` reloads meta `replay`. Autosave drops a serialize failure and the first save error. §3, §4, and the file map match that path.
+
 **Revision 1.5 (2026-10-18):** `replay_system` writes due `health` events onto `CHealth`. `SerializedWorld.world_tick` comes from `CSimClock`. Autosave stores the replay log, and `start_replay` loads it. `PlayerInventory.credits` stays 0 because no component stores a credit balance.
 
 **Revision 1.4 (2026-10-16):** save filenames use `bundle.created_at`. `sim_save_id` / `sim_timestamp` replace `Uuid::new_v4` and `OffsetDateTime::now_utc` on the persistence and greybox paths. `replay_system` applies due events. `auto_save_system` follows `CSimClock`. Entity blobs are sorted by `Entity::to_raw`.
@@ -722,7 +737,7 @@ Auto-save path (scaffolded, empty body):
 **Update this doc when:**
 - A new component is added to `astraweave-core::ecs_components` (§3 vocabulary, §5 file map, §6 component-count row, §7 sixth decision).
 - `SAVE_SCHEMA_VERSION` is bumped (§3, §7 second decision, §8 invariant 2).
-- `auto_save_system` or `replay_system` body is implemented (§2 stages 7-8, §6 stub rows, §11 questions).
+- `auto_save_system` or `replay_system` changes its error or apply rules (§2, §6, §8).
 - `calculate_world_hash` gains support for additional components or switches its hash algorithm (§2 stage 7, §6 hash trap, §7 eighth decision, §11 hash questions).
 - Hash determinism is hardened (§11 stdlib hasher question).
 - `astraweave-persistence-ecs` lands a real production consumer (§4 downstream table, §11 first question).
@@ -745,7 +760,7 @@ Auto-save path (scaffolded, empty body):
 **If you're working on this system, remember:**
 1. The system is **two layers**: `aw-save` (file format, atomic I/O, migration) and `astraweave-persistence-ecs` (ECS adapter). They communicate via `WorldState.ecs_blob: Vec<u8>` which is opaque to `aw-save`.
 2. **`aw-save` is production-grade**: atomic writes, CRC32, LZ4, schema migration, Windows-safe timestamps, 256 slots per player.
-3. **`astraweave-persistence-ecs` is partially stub**: `auto_save_system` and `replay_system` are TODO; `CPersistenceManager::save_game` hardcodes inventory and companions; `calculate_world_hash` covers only 4 of 10 components; `SerializedWorld.world_tick` is always 0.
+3. **`astraweave-persistence-ecs` is not a full game save**: a `health` write needs an existing `CHealth` and does not keep the entity id; autosave is not one transaction; companions stay empty and `credits` stay 0; `calculate_world_hash` covers 4 of 10 components; `world_tick` is 0 only when `CSimClock` is absent.
 4. **No production consumer**: only the crates' own tests/benches use `astraweave-persistence-ecs`. The `astraweave-stress-test` declared dep is unused.
 5. **Entity IDs are remapped on load, not preserved.** Cross-entity references via `CLegacyId` are NOT remapped (insertion is as-is).
 6. **The `_temp.rs` / temp-file orphans pattern from `astraweave-net-ecs` does NOT exist here.**
@@ -763,10 +778,10 @@ Auto-save path (scaffolded, empty body):
 **Common mistakes when changing this system:**
 - **Adding a new component to the engine without updating `SerializedEntity`, both passes of `serialize_ecs_world`, `deserialize_ecs_world`, and (optionally) `calculate_world_hash`.** The 5-site list in the doc comment is load-bearing.
 - **Bumping `SAVE_SCHEMA_VERSION` without writing `SaveBundleVN::into_v(N+1)`.** Old saves become unreadable.
-- **Assuming `auto_save_system` produces saves.** It doesn't — body is empty.
+- **Assuming `auto_save_system` is one transaction.** It serializes first. A failed serialize saves nothing. A later save error leaves earlier managers saved and leaves `last_saved_tick` unset.
 - **Assuming `calculate_world_hash` covers all components.** It covers only 4.
 - **Storing `calculate_world_hash` results long-term across rustc upgrades.** Hash algorithm depends on stdlib's DefaultHasher.
-- **Assuming `SerializedWorld.world_tick` carries the tick.** It's always 0; check `WorldState.tick` instead.
+- **Assuming `SerializedWorld.world_tick` is always 0.** It is `CSimClock.tick`, or 0 only when that resource is absent.
 - **Trusting `deserialize_ecs_world`'s `Ok(())` to mean "data loaded".** On empty blob it's a silent no-op.
 - **Relying on cross-load entity-reference stability via `CLegacyId`.** References are not remapped.
 
@@ -778,6 +793,6 @@ The `aw-save` crate was created **2025-09-09** in commit `c0d3b0f11` ("Implement
 
 `astraweave-persistence-ecs` arrived **2025-10-01** in commit `08befc6ec` ("phase 6 implementation") — the same commit that introduced `astraweave-net-ecs`. The two ECS-Plugin layers landed together, both with similar "production-shape stub" issues (declared-but-unused deps, TODO-body systems, scaffolding ready to wire).
 
-The schema has seen one explicit migration (V1 → V2). The V1 shape held a single `Option<CompanionProfile>`; V2 generalizes to `Vec<CompanionProfile>`. V1→V2 migration mints a fresh `save_id` (Uuid::v4) because V1 had no Uuid field.
+The schema has seen one explicit migration (V1 → V2). The V1 shape held a single `Option<CompanionProfile>`; V2 generalizes to `Vec<CompanionProfile>`. `into_v2` sets `save_id` from `sim_save_id` and keeps the V1 `created_at`. The same V1 bytes migrate to the same id.
 
 The 5 `.awsv` files at `persistence/aw-save/` carry timestamps from 2026-03-13, indicating a test run on that date that produced the artifacts and they were committed (possibly inadvertently) rather than ignored.

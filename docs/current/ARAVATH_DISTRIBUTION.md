@@ -111,11 +111,11 @@ Compare the hash to the `aravath_greybox.exe` line in `SHA256SUMS.txt` from the 
 What #325 (`8e5dd73c`) changed, checked against `Cargo.lock`:
 
 - `cargo deny check` (advisories, bans, licenses, sources) and `cargo audit` pass. `.cargo/audit.toml` and `deny.toml` ignore the same leftover IDs.
-- `net/aw-net-server` and `astraweave-net` depend on `tokio-rustls` 0.26 and `rustls` 0.23. The lockfile has one `rustls` (0.23.46), one `tokio-rustls` (0.26.4), one `rustls-webpki` (0.103.16), and one `webpki-roots` (1.0.10). `aw-net-client` uses `tokio-tungstenite`'s `rustls-tls-native-roots` feature. `tokio-tungstenite` 0.28 through 0.30 still pins `webpki-roots` 0.26, which RUSTSEC-2026-0381 does not patch. `rustls-pemfile` is not in the lockfile. Certificate PEM is parsed with `rustls-pki-types`.
+- `net/aw-net-server` and `astraweave-net` depend on `tokio-rustls` 0.26 and `rustls` 0.23. The lockfile has one `rustls` (0.23.46), one `tokio-rustls` (0.26.4), one `rustls-webpki` (0.103.16), and one `webpki-roots` (1.0.10). `aw-net-client` uses `tokio-tungstenite`'s `rustls-tls-native-roots` feature. The webpki-roots feature is off, and `webpki-roots` 0.26 is not in `Cargo.lock`. The locked crates are the patched releases. RUSTSEC-2026-0381 and RUSTSEC-2026-0382 are fixed with no ignore. The fix is #387. `rustls-pemfile` is not in the lockfile. Certificate PEM is parsed with `rustls-pki-types`.
 - `tools/aw_editor` requires `openh264` 0.9. The lock is `openh264` 0.9.9 and `openh264-sys2` 0.9.9. The 0.6 pin is gone.
 - Also locked at the patched versions: `bytes` 1.12.1, `crossbeam-epoch` 0.9.21, `h2` 0.4.20, `lz4_flex` 0.11.6, the Quinn protocol crate 0.11.19, `thin-vec` 0.2.21, `time` 0.3.55, `webbrowser` 1.2.4, `anyhow` 1.0.104, `event-listener` 5.4.2, `memmap2` 0.9.11, `rand` 0.8.8 and 0.9.5, `lru` 0.18.5, `steamworks` 0.13.1, `serial_test` 3.5.0. `scc` 2.4.0 is not in the lockfile. The greybox save loader calls `lz4_flex` 0.11.6.
 - `opentelemetry-jaeger`, `async-std`, `derivative`, `openssl`, and `openssl-sys` are not in the lockfile. `deny.toml` still bans `openssl`.
-- `postcard` is built with `default-features = false` and `alloc`. `heapless` 0.7 and `atomic-polyfill` are not in the lockfile.
+- `postcard` is built with `default-features = false` and `alloc`. `heapless` 0.7 and `atomic-polyfill` are not in the lockfile. #320 is closed. The fix is #387.
 
 The advisory check passes because the leftovers are ignored, not because they are gone. Each ignored ID has a tracking issue:
 

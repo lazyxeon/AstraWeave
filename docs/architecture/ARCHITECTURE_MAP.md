@@ -31,7 +31,7 @@
 | Terrain Material System | [`terrain_materials.md`](terrain_materials.md) | Canonical 32-layer pipeline active; legacy 8-layer `texture_splatting` test-only; simple `terrain.rs` path transitional (1 caller) |
 | Render Pipeline + Material System + Shader Infrastructure | [`render_pipeline_material_system_shader_infrastructure.md`](render_pipeline_material_system_shader_infrastructure.md) | Active workzone — Multi-Tool Sub-phases 3/4 closed (2026-05-14 / 2026-06-06), SP5 in flight; Editor-Engine Render Parity P.1–P.7 closed 2026-05-17 (bit-identical parity harness); 123 source files + 71 WGSL shaders + editor viewport |
 | Physics | [`physics.md`](physics.md) | Active core (`PhysicsWorld` + `CharacterController` + Rapier broadphase) with feature-gated and dormant subsystems; `SpatialHash` module dormant despite doc-comment advertising |
-| Persistence (aw-save + persistence-ecs) | [`persistence_ecs.md`](persistence_ecs.md) | `aw-save` production-grade; `astraweave-persistence-ecs` has working roundtrip but `auto_save_system` and replay event apply are TODO stubs; declared by stress-test but unused |
+| Persistence (aw-save + persistence-ecs) | [`persistence_ecs.md`](persistence_ecs.md) | `aw-save` production-grade; a `health` write is a little-endian `i32` into an existing `CHealth` on the `CReplayState` entity; a missing component is a no-op; autosave serializes first and a later save error leaves earlier managers saved; declared by stress-test but unused |
 | Net (snapshot-based server) | [`net.md`](net.md) | Active; 2D grid `IVec2` model; JSON over WebSocket; coexists with `astraweave-net-ecs` (different model entirely) |
 | Net-ECS + standalone matchmaking | [`net_ecs.md`](net_ecs.md) | Standalone server/client production-style; ECS Plugin layer **dormant** (zero production consumers despite declared dep); the former HMAC-vs-XOR sig mismatch is **RESOLVED** — HMAC-SHA256 signing now enforced end-to-end, kick-by-default (Net-Trio-Remediation; `net_ecs.md` §6/§7) |
 | Input | [`input.md`](input.md) | Pure facade over winit + gilrs; declared by `astraweave-gameplay` and `astraweave-ui` but neither imports the crate; editor reinvents the entire input domain in a 2,511-LoC panel that doesn't drain its action queue |
@@ -355,8 +355,8 @@ These are not properties of any one subsystem — they're cross-cutting rules th
 
 | Shape | Location | Source |
 |---|---|---|
-| `auto_save_system` body is comment-only TODO | `astraweave-persistence-ecs/src/lib.rs:72-75` | `persistence_ecs.md` §6 |
-| `replay_system` advances tick but never applies events | `astraweave-persistence-ecs/src/lib.rs:96` | `persistence_ecs.md` §6 |
+| `auto_save_system` drops a failed serialize and the first save error | `astraweave-persistence-ecs/src/lib.rs` `auto_save_system` | `persistence_ecs.md` §6 |
+| `replay_system` records non-`health` events and does not apply them | `astraweave-persistence-ecs/src/lib.rs` `apply_replay_event` | `persistence_ecs.md` §6 |
 | `apply_delta` silent no-op on tick mismatch | `astraweave-net/src/lib.rs:404-406` | `net.md` §6 |
 | `process_destructible_hits` no-op stub | `astraweave-physics/src/lib.rs:1587` | `physics.md` §6 |
 | `add_water_aabb` no-op stub (function body `{}`) | `astraweave-physics/src/lib.rs:1449` | `physics.md` §6 |
@@ -395,14 +395,12 @@ Reconciled from per-subsystem trace §11 / §13 sections. Each entry: subsystem,
 | **Dialogue LLM layer (`llm_dialogue.rs`)** | ~2.9K | 60% of crate. Zero external consumers. The basic `DialogueGraph`/`DialogueRunner`/`toml_loader` path IS actively production-wired into `veilweaver_slice_runtime` and the editor, but the LLM-enhanced layer is dormant. | `ai_pipeline.md` §13.4 |
 | **NPC** (isolated subsystem) | ~1.7K | Fully isolated AI subsystem with its own parallel vocabulary (`NpcAction`/`NpcPlan`/`NpcWorldView`/`LlmAdapter`/`CommandSink`). Zero imports of canonical AI types. Direct physics/audio integration rather than ECS-loop participation. Single direct consumer in `astraweave-npc` itself. | `ai_pipeline.md` §13.3 |
 | **`astraweave-net-ecs` ECS Plugin layer** | (small) | Working tests, **no production consumer**. The Cargo-declared dep in `astraweave-stress-test/Cargo.toml:20` is not imported in any source file. Async helpers `connect_to_server` / `start_network_server` use `Codec::Bincode` (incompatible with standalone server's `Codec::PostcardLz4`). | `net_ecs.md` §1, §6 |
-| **`astraweave-persistence-ecs` ECS layer (the Plugin parts)** | (medium) | Working roundtrip serialization but `auto_save_system` body is comment-only TODO; replay event apply is TODO; `CPersistenceManager::save_game` hardcodes inventory + zero companions; `calculate_world_hash` covers only 4 of 10 components; `SerializedWorld.world_tick` always 0. No production consumer outside crate's own tests. | `persistence_ecs.md` §1, §6 |
+| **`astraweave-persistence-ecs` ECS layer (the Plugin parts)** | (medium) | Roundtrip serialization works. A `health` write is a little-endian `i32` from the first four bytes, and only when `CHealth` is already on the `CReplayState` entity. A missing component is a no-op. Other due events are recorded and left unapplied. Autosave serializes first. A failed serialize saves nothing. A later save error leaves earlier managers saved. Companions stay empty and `credits` stay 0. `calculate_world_hash` covers 4 of 10 components. `world_tick` is `CSimClock.tick`, or 0 when that clock is absent. No production consumer outside the crate's own tests. | `persistence_ecs.md` §1, §6 |
 
 ### 5.2 Dormant scaffolding (module exists, body is TODO comments)
 
 | Location | Trace |
 |---|---|
-| `astraweave-persistence-ecs::auto_save_system` body | `persistence_ecs.md` §6 |
-| `astraweave-persistence-ecs::replay_system` event apply | `persistence_ecs.md` §6 |
 | `astraweave-llm::llm_adapter::safe_llm_invoke` (zero callers; `MAX_PROMPT_LENGTH = 4096` unreachable) | `ai_pipeline.md` §6, §11, §13.7 |
 | `astraweave-scene::compute_poses_stub` (checks components but doesn't write poses) | `animation.md` §6 |
 | `astraweave-physics::process_destructible_hits` (no-op with `#[allow(dead_code)]`) | `physics.md` §6, §8 (invariant 19) |
@@ -533,8 +531,8 @@ Treat `docs/src/` content as **historical/aspirational** unless cross-validated 
 | HNSW vector index for embeddings | `astraweave-embeddings/src/lib.rs:9` advertises HNSW with `hnsw_rs` dependency declared, feature default-on | Actual `VectorStore::search` is a **linear scan over a DashMap**. | CLAUDE.md, `ai_pipeline.md` §13.8 |
 | `SpatialHash` is the physics broadphase | `astraweave-physics/src/lib.rs:25-26` doc-comment advertises "99.96% pair reduction" | Actual broadphase is Rapier's `DefaultBroadPhase`. `SpatialHash` (1,038 LoC) is dormant. | `physics.md` §1, §6 |
 | Audio crate is "4-bus mixer (master, music, SFX, voice)" | `astraweave-audio/src/lib.rs:8` docstring | Actual `AudioEngine` has **5** buses (ambient added separately). Doc string drifted; engine grew the 5th bus in commit `745c100a8` alongside biome materials. | `audio.md` §6 |
-| `auto_save_system` runs autosaves | `astraweave-persistence-ecs::PersistencePlugin` registers it | Body is comment-only TODO; produces zero saves. | `persistence_ecs.md` §6 |
-| `replay_system` applies events | Same | Advances `current_tick` counter only; never applies the `events` field. | `persistence_ecs.md` §6 |
+| `auto_save_system` always saves | `astraweave-persistence-ecs::PersistencePlugin` registers it | A failed serialize returns with no save and no `last_saved_tick` update. The first save error returns and skips later managers. The error is dropped. | `persistence_ecs.md` §6 |
+| `replay_system` applies every due event | Same | Only a `health` payload of at least four bytes writes `CHealth` on the replay entity. Other due events are recorded and left unapplied. | `persistence_ecs.md` §6 |
 | `RagPipeline` supports HNSW + memory consolidation | `astraweave-rag/src/lib.rs` | HNSW is linear-scan; `VectorStoreWrapper::get_all_memories` returns empty Vec making consolidation a no-op. | `ai_pipeline.md` §13.8 |
 | `compute_poses` is the ECS pose-compute system | `astraweave-scene/src/lib.rs` | Function is named `compute_poses_stub`; checks for components but doesn't write poses. Canonical compute is render-side `compute_joint_matrices`. | `animation.md` §6, §11 |
 | AudioPanel HRTF/Doppler/distance-model/reverb knobs work | `tools/aw_editor/src/panels/audio_panel.rs` | 10+ `AudioAction` variants have bodyless or comment-only match arms in `audio_bridge.rs:165-205`. Forward-design UI placeholders. | `audio.md` §6, §11 |
@@ -953,7 +951,7 @@ These are decisional questions that cross subsystem boundaries or affect the bro
 
 17. **Standalone server signature mismatch — RESOLVED** (Net-Trio-Remediation `561b20957`+`79424389e`+`066cd6cfd`; refute `eb9977b88`). Client and server now sign/verify canonical HMAC-SHA256 (`aw-net-proto`) over `input_frame_sig_payload`; server verifies FIRST and kicks by default (`SignatureFailurePolicy::Kick`). `sign16`/`SessionKey`/`session_key_hint` deleted; `InputFrame.sig` is `[u8; 32]`; 104-test regression net. Deliberate residual boundaries (out of scope, not defects): no replay protection; server→client unsigned. `net_ecs.md` §6/§7/§11; `docs/audits/net_trio_signature_remediation_findings_2026-06.md`.
 
-18. **`astraweave-persistence-ecs` Plugin layer disposition.** `auto_save_system` body is comment-only TODO; `replay_system` doesn't apply events; `CPersistenceManager::save_game` hardcodes inventory; `calculate_world_hash` covers only 4 of 10 components; `SerializedWorld.world_tick` always 0. No production consumer. `persistence_ecs.md` §11.
+18. **`astraweave-persistence-ecs` Plugin layer disposition.** Autosave drops a serialize or save error. Only `health` is applied, on the replay entity. Companions stay empty and `credits` stay 0. `calculate_world_hash` covers 4 of 10 components. `world_tick` is 0 when `CSimClock` is absent. No production consumer. `persistence_ecs.md` §11.
 
 19. **`SpatialHash` physics module — wire in or remove?** Advertised as broadphase in lib.rs doc-comment; actual broadphase is Rapier's `DefaultBroadPhase`. 1,038 LoC dormant. `physics.md` §11.
 
