@@ -6,9 +6,11 @@
 //! ```text
 //! cargo run -p astraweave-render --release --features gpu-frame-budget --bin gpu_frame_budget -- --scene heavy --debug-timestamps --glb "assets/The Complete KayKit Collection v4/KayKit Adventurers 2.0/Characters/gltf/Rogue.glb"
 //!
-//! One of `--atmosphere`, `--ssgi`, `--taa`, `--dof`, or `--clouds` enables
-//! that gated pass for the printed `median_gpu_frame_ms`. The default run
-//! leaves them off.
+//! `--atmosphere` is the only gated flag that fills a cell. It replaces
+//! `SkyRenderer`. The printed `median_gpu_frame_ms` is that whole frame, not
+//! a term to add to 3.688 ms. `--ssgi`, `--taa`, `--upscale`, `--dof`, and
+//! `--clouds` are rejected: those passes sample or load uncleared textures,
+//! or they do not write HDR. Two flags at once are rejected.
 //! ```
 
 use anyhow::Context;
@@ -151,21 +153,17 @@ fn main() -> anyhow::Result<()> {
     // was given that one argument. GPU indirect culling is not the draw path
     // on any adapter: each model still binds its own group 3, so one indirect
     // buffer cannot select those groups. The CPU frustum remains the filter.
-    let atmosphere = flag_on("--atmosphere");
-    let ssgi = flag_on("--ssgi");
-    let taa = flag_on("--taa");
-    let dof = flag_on("--dof");
-    let clouds = flag_on("--clouds");
+    let atmosphere = single_gated_pass()?;
     renderer.set_atmosphere_enabled(atmosphere);
-    renderer.set_ssgi_enabled(ssgi);
-    renderer.set_taa_enabled(taa);
-    renderer.set_dof_enabled(dof);
-    renderer.set_cloud_raymarch_enabled(clouds);
     println!("gated_atmosphere={}", on_off(atmosphere));
-    println!("gated_ssgi={}", on_off(ssgi));
-    println!("gated_taa={}", on_off(taa));
-    println!("gated_dof={}", on_off(dof));
-    println!("gated_clouds={}", on_off(clouds));
+    println!(
+        "gated_measure={}",
+        if atmosphere {
+            "atmosphere_replaces_sky"
+        } else {
+            "baseline"
+        }
+    );
     let gpu_cull = "cpu_fallback";
 
     let device = renderer.device().clone();
@@ -789,7 +787,49 @@ fn renderer_limits(limits: &wgpu::Limits) -> [(&'static str, u64); 15] {
 }
 
 fn flag_on(name: &str) -> bool {
-    std::env::args().any(|arg| arg == name)
+    std::env::args().any(|arg| arg == name || arg == format!("{name}=true"))
+}
+
+/// At most one gated pass. Only `--atmosphere` is a clean frame today.
+fn single_gated_pass() -> anyhow::Result<bool> {
+    const BLOCKED: &[(&str, &str)] = &[
+        (
+            "--ssgi",
+            "normal and velocity targets are allocated and never written",
+        ),
+        (
+            "--taa",
+            "normal and velocity targets are allocated and never written",
+        ),
+        (
+            "--upscale",
+            "normal and velocity targets are allocated and never written",
+        ),
+        (
+            "--dof",
+            "the depth-of-field history target is uncleared and the result is not copied onto HDR",
+        ),
+        (
+            "--clouds",
+            "the raymarch samples cloud_history before writing it, and the composite is not copied onto HDR",
+        ),
+    ];
+    let mut chosen = Vec::new();
+    if flag_on("--atmosphere") {
+        chosen.push("--atmosphere");
+    }
+    for (flag, why) in BLOCKED {
+        if flag_on(flag) {
+            anyhow::bail!("{flag} cannot fill a measurement cell: {why}");
+        }
+    }
+    if chosen.len() > 1 {
+        anyhow::bail!(
+            "pass exactly one gated flag. A sum of passes is not a cell. Got {}.",
+            chosen.join(" ")
+        );
+    }
+    Ok(chosen.len() == 1)
 }
 
 fn on_off(enabled: bool) -> &'static str {

@@ -16,16 +16,14 @@ The same heavy scene was 11.085 ms before the cloud-shadow amortization and 3.68
 
 ## Measured column
 
-`gpu_frame_budget` accepts one gated flag at a time: `--atmosphere`, `--ssgi`, `--taa`, `--dof`, `--clouds`. Each run prints `median_gpu_frame_ms` and `budget_11ms`. The cell stays blank until a GTX 1660 Ti heavy-scene run fills it. A blank cell means the default stays off.
+A cell is filled only by a GTX 1660 Ti heavy-scene run whose validation scope is clean and whose command line enables exactly one gated pass. `gpu_frame_budget` rejects a second flag. It also rejects `--ssgi`, `--taa`, `--upscale`, `--dof`, and `--clouds` before drawing: those paths sample or `LoadOp::Load` an uncleared texture, or they never write HDR, so the scope fails and no median is printed.
+
+`--atmosphere` is the one flag that can finish. It replaces `SkyRenderer` (the HDRI sky clear and draw). The printed `median_gpu_frame_ms` is that whole frame. It is not a number to add to 3.688 ms.
 
 | System | Flag | `median_gpu_frame_ms` on GTX 1660 Ti heavy | Default |
 |---|---|---|---|
-| Baseline (no gated pass) | none | 3.688 | The captured scene |
-| Atmosphere | `--atmosphere` | | Off until this cell is ≤ 11 |
-| SSGI | `--ssgi` | | Off until this cell is ≤ 11. Blocked on the normal and velocity row below |
-| TAA | `--taa` | | Off until this cell is ≤ 11. Blocked on the same row |
-| Depth of field | `--dof` | | Off until this cell is ≤ 11 |
-| Cloud raymarch | `--clouds` | | Off until this cell is ≤ 11. Not the 7.397 ms shadow delta |
+| Baseline (HDRI sky, no gated pass) | none | 3.688 | The captured scene |
+| Atmosphere, replacing `SkyRenderer` | `--atmosphere` | | Off until this cell is ≤ 11 |
 
 Fog and god rays are already on in Aravath (`set_volumetric_fog_config`, `set_god_ray_config`, unless `--no-volumetrics` or `--safe`). They are not in the 3.688 ms capture. Their heavy-scene medians are also blank. Do not add them into an unmeasured sum.
 
@@ -52,11 +50,11 @@ Defaults stay off. A later pull flips a default only after the measured cell abo
 | Order | System | Issue | Current state | Wiring plan | Owner crate | Exit test |
 |---|---|---|---|---|---|---|
 | 1 | Atmosphere (`AtmospherePass`) | #226 | Flag defaults false. No runtime caller. Aerial depth is `texture_depth_2d` and the shader uses `textureLoad`. Sky-depth pixels copy the scene color while the HDRI sky is skipped, so the Bruneton sky does not reach the frame. | Sky-depth pixels load the Bruneton sky. Aravath calls `set_atmosphere_enabled` from a quality setting whose default is off. | `astraweave-render`, `aravath_runtime` | Default flag false. The quality setting can turn it on. `gpu_frame_budget --scene heavy --atmosphere` is the measurement, not an estimate. Replay hashes unchanged. |
-| 2 | Depth of field | #232 | `set_dof_enabled` defaults false. The live shader is `advanced_post.rs` `DOF_SHADER`: `texture_depth_2d`, center sample plus 8 offsets (9 taps). `shaders/dof.wgsl` is a different 16-tap `texture_2d<f32>` shader and is not this pass. | Quality setting default off. Runtime caller uses that setting. | `astraweave-render`, `aravath_runtime` | Default flag false. `--dof` fills the measured cell before any default change. |
-| 3 | Cloud raymarch (`VolumetricCloudsPass`) | #229 | `set_cloud_raymarch_enabled` defaults false. `CloudShadowPass` stays the live shadow. | Quality setting default off. Do not replace cloud shadows. | `astraweave-render` | Default flag false. `--clouds` fills the measured cell. |
-| 4 | SSGI | #230 | `set_ssgi_enabled` defaults false. Depth is `texture_depth_2d`. Normal and velocity are unread garbage. | After the prerequisite row. Quality setting default off. Preset stays 4 rays × 32 steps until a measurement says otherwise. | `astraweave-render`, `aravath_runtime` | Default flag false. `--ssgi` fills the measured cell. |
-| 5 | TAA | #231 | `set_taa_enabled` defaults false. History is presentation-only. Same empty normal and velocity targets. | After the prerequisite row. Quality setting default off. | `astraweave-render`, `aravath_runtime` | Default flag false. `--taa` fills the measured cell. History is not sim state. |
-| 6 | Temporal upscale | #233 | `upscale_on` defaults false. | Quality setting default off. Native resolution stays the default until a measurement chooses otherwise. | `astraweave-render` | Default flag false. |
+| 2 | Depth of field | #232 | `set_dof_enabled` defaults false. Live shader is `advanced_post.rs` `DOF_SHADER`: `texture_depth_2d`, center sample plus 8 offsets (9 taps). `apply_dof` uses `LoadOp::Load` on a history texture `AdvancedPostFx::new` never clears, and the fragment result stays in that history view. The post pass still reads HDR. `shaders/dof.wgsl` is a different 16-tap `texture_2d<f32>` shader and is not this pass. | Clear or discard the history target on the first frame and make the post pass read the 9-tap output. Then add `--dof`. Not before. | `astraweave-render` | A clean validation scope and a median that includes the 9-tap image. Default stays off until that cell is ≤ 11. |
+| 3 | Cloud raymarch (`VolumetricCloudsPass`) | #229 | `execute` samples `cloud_history` and writes `composited_texture`. `copy_cloud_to_history` runs after the sample. `record_gated_presentation` does not copy the composite onto HDR. | Write history before the sample, and copy the composite onto HDR. Then add `--clouds`. Not the 7.397 ms shadow delta. | `astraweave-render` | A clean scope and a median of a frame that shows the composite. Default stays off until that cell is ≤ 11. |
+| 4 | SSGI | #230 | `set_ssgi_enabled` defaults false. Depth is `texture_depth_2d`. Normal, velocity, and `ssgi_history` are not written. `copy_to_history` is not called. | After the normal and velocity row, and after history is written before it is sampled. | `astraweave-render` | No `--ssgi` cell until then. |
+| 5 | TAA | #231 | `set_taa_enabled` defaults false. `next_frame` and `apply_jitter_to_projection` have no caller. `taa_history` is sampled and never copied. | After the normal and velocity row, with jitter applied and history written first. | `astraweave-render` | No `--taa` cell until then. |
+| 6 | Temporal upscale | #233 | `upscale_on` defaults false. It reads the same unwritten velocity target. | After the normal and velocity row. No `--upscale` until then. | `astraweave-render` | Default stays false. |
 
 ## Do not add a second pipeline
 
@@ -79,7 +77,7 @@ Defaults stay off. A later pull flips a default only after the measured cell abo
 
 ## Order
 
-1. This inventory, and `gpu_frame_budget` flags that print `median_gpu_frame_ms` for one gated pass.
+1. This inventory. `gpu_frame_budget --scene heavy --atmosphere` is the only gated measurement. It replaces `SkyRenderer`. The other gated flags are rejected until their frames are valid.
 2. Atmosphere caller and quality setting, default off (#226).
 3. Normal and velocity targets, default off.
 4. Depth of field, cloud raymarch, SSGI, TAA, temporal upscale. Each default stays off until its measured cell is ≤ 11 on a GTX 1660 Ti.
