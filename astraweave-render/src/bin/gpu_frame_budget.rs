@@ -37,7 +37,8 @@ const SAMPLES: usize = 120;
 
 fn main() -> anyhow::Result<()> {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("warn")).init();
-    let atmosphere = gated_atmosphere()?;
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    let atmosphere = astraweave_render::budget_gate::reject_gated_flags(&args)?;
     let glb = glb_path();
     let heavy = scene_is_heavy();
     let debug_timestamps = debug_timestamps();
@@ -813,55 +814,6 @@ fn gated_measure_label(atmosphere: bool, fog: bool, shafts: bool) -> &'static st
         (false, true) => "atmosphere_without_fog",
         (false, false) => "atmosphere_without_volumetrics",
     }
-}
-
-/// `--atmosphere` alone draws the Aravath fog frame with Bruneton sky.
-/// Every other enabled gated flag is rejected, including a second flag beside it.
-/// `false` is off and does not bail.
-fn gated_atmosphere() -> anyhow::Result<bool> {
-    let args: Vec<String> = std::env::args().skip(1).collect();
-    let on = |name: &str| astraweave_render::budget_gate::flag_on(&args, name);
-    const BLOCKED: &[(&str, &str)] = &[
-        (
-            "--ssgi",
-            "normal and velocity targets are allocated and never written",
-        ),
-        (
-            "--taa",
-            "normal and velocity targets are allocated and never written",
-        ),
-        (
-            "--upscale",
-            "normal and velocity targets are allocated and never written",
-        ),
-        (
-            "--dof",
-            "the depth-of-field history target is uncleared and the result is not copied onto HDR",
-        ),
-        (
-            "--clouds",
-            "the raymarch samples cloud_history before writing it, and the composite is not copied onto HDR",
-        ),
-    ];
-    let atmosphere = on("--atmosphere");
-    let mut hits: Vec<String> = BLOCKED
-        .iter()
-        .filter(|(flag, _)| on(flag))
-        .map(|(flag, why)| format!("{flag} ({why})"))
-        .collect();
-    if atmosphere && !hits.is_empty() {
-        hits.insert(
-            0,
-            "--atmosphere (a second gated flag is not a cell)".to_string(),
-        );
-    }
-    if hits.is_empty() {
-        return Ok(atmosphere);
-    }
-    anyhow::bail!(
-        "gated flags cannot fill a measurement cell: {}",
-        hits.join("; ")
-    )
 }
 
 fn debug_timestamps() -> bool {

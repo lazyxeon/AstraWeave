@@ -583,7 +583,7 @@ impl GodRayPass {
     }
 }
 
-/// Screen UV for this Y-up view. uv.y 0 is NDC y +1, matching `screen_ndc.wgsl`.
+/// Screen UV for this Y-up view. uv.y 0 is NDC y +1, the same pair as `pbr.wgsl`.
 pub fn ndc_to_screen_uv(ndc: glam::Vec2) -> glam::Vec2 {
     glam::Vec2::new(ndc.x * 0.5 + 0.5, 0.5 - ndc.y * 0.5)
 }
