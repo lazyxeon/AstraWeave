@@ -35,15 +35,15 @@ pub fn reject_gated_flags(args: &[String]) -> anyhow::Result<()> {
         ),
         (
             "--ssgi",
-            "normal and velocity targets are allocated and never written, and ssgi_history is sampled before copy_to_history",
+            "normal and velocity targets are allocated and never written, and ssgi_history is sampled before copy_to_history; the pass writes denoised_view, and record_gated_presentation never copies it onto hdr_tex, so the post pass samples a frame that does not show it",
         ),
         (
             "--taa",
-            "normal and velocity targets are allocated and never written, and taa_history is sampled before copy_to_history",
+            "normal and velocity targets are allocated and never written, and taa_history is sampled before copy_to_history; the pass writes resolved_view and sharpened_view, and record_gated_presentation never copies them onto hdr_tex, so the post pass samples a frame that does not show them",
         ),
         (
             "--upscale",
-            "normal and velocity targets are allocated and never written, and upscale_history is sampled before copy_to_history",
+            "normal and velocity targets are allocated and never written, and upscale_history is sampled before copy_to_history; the pass writes sharpened_view, and record_gated_presentation never copies it onto hdr_tex, so the post pass samples a frame that does not show it",
         ),
         (
             "--dof",
@@ -111,9 +111,20 @@ mod tests {
         assert!(pair.contains("--atmosphere"), "{pair}");
         assert!(pair.contains("--ssgi"), "{pair}");
         assert!(pair.contains("ssgi_history"), "{pair}");
-        assert!(rejected(&["--taa"]).contains("taa_history"));
-        assert!(rejected(&["--upscale"]).contains("upscale_history"));
-        assert!(rejected(&["--ssgi"]).contains("copy_to_history"));
+        let ssgi = rejected(&["--ssgi"]);
+        assert!(ssgi.contains("copy_to_history"), "{ssgi}");
+        assert!(ssgi.contains("denoised_view"), "{ssgi}");
+        assert!(ssgi.contains("hdr_tex"), "{ssgi}");
+        assert!(ssgi.contains("record_gated_presentation"), "{ssgi}");
+        let taa = rejected(&["--taa"]);
+        assert!(taa.contains("taa_history"), "{taa}");
+        assert!(taa.contains("resolved_view"), "{taa}");
+        assert!(taa.contains("sharpened_view"), "{taa}");
+        assert!(taa.contains("hdr_tex"), "{taa}");
+        let upscale = rejected(&["--upscale"]);
+        assert!(upscale.contains("upscale_history"), "{upscale}");
+        assert!(upscale.contains("sharpened_view"), "{upscale}");
+        assert!(upscale.contains("hdr_tex"), "{upscale}");
         let false_then_ssgi = rejected(&["--atmosphere", "false", "--ssgi"]);
         assert!(
             !false_then_ssgi.contains("--atmosphere"),
