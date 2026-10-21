@@ -1001,111 +1001,175 @@
 <a href=#1001 id=1001 data-nosnippet>1001</a>
 <a href=#1002 id=1002 data-nosnippet>1002</a>    <span class="attr">#[cfg(feature = <span class="string">"textures"</span>)]
 <a href=#1003 id=1003 data-nosnippet>1003</a>    #[test]
-<a href=#1004 id=1004 data-nosnippet>1004</a>    </span><span class="kw">fn </span>decode_bytes_rejects_an_edge_past_4096() {
-<a href=#1005 id=1005 data-nosnippet>1005</a>        <span class="kw">let </span>image = image::RgbImage::from_pixel(<span class="number">5_000</span>, <span class="number">1</span>, image::Rgb([<span class="number">1</span>, <span class="number">2</span>, <span class="number">3</span>]));
-<a href=#1006 id=1006 data-nosnippet>1006</a>        <span class="kw">let </span><span class="kw-2">mut </span>bytes = Vec::new();
-<a href=#1007 id=1007 data-nosnippet>1007</a>        image
-<a href=#1008 id=1008 data-nosnippet>1008</a>            .write_to(
-<a href=#1009 id=1009 data-nosnippet>1009</a>                <span class="kw-2">&amp;mut </span>std::io::Cursor::new(<span class="kw-2">&amp;mut </span>bytes),
-<a href=#1010 id=1010 data-nosnippet>1010</a>                image::ImageFormat::Png,
-<a href=#1011 id=1011 data-nosnippet>1011</a>            )
-<a href=#1012 id=1012 data-nosnippet>1012</a>            .expect(<span class="string">"encode png"</span>);
-<a href=#1013 id=1013 data-nosnippet>1013</a>        <span class="kw">let </span>err = decode_bytes(<span class="kw-2">&amp;</span>bytes).expect_err(<span class="string">"wide image must be rejected"</span>);
-<a href=#1014 id=1014 data-nosnippet>1014</a>        <span class="kw">let </span>msg = <span class="macro">format!</span>(<span class="string">"{err:#}"</span>).to_lowercase();
-<a href=#1015 id=1015 data-nosnippet>1015</a>        <span class="macro">assert!</span>(
-<a href=#1016 id=1016 data-nosnippet>1016</a>            msg.contains(<span class="string">"limit"</span>) || msg.contains(<span class="string">"dimension"</span>) || msg.contains(<span class="string">"4096"</span>),
-<a href=#1017 id=1017 data-nosnippet>1017</a>            <span class="string">"{msg}"
-<a href=#1018 id=1018 data-nosnippet>1018</a>        </span>);
-<a href=#1019 id=1019 data-nosnippet>1019</a>    }
-<a href=#1020 id=1020 data-nosnippet>1020</a>
-<a href=#1021 id=1021 data-nosnippet>1021</a>    <span class="attr">#[cfg(unix)]
-<a href=#1022 id=1022 data-nosnippet>1022</a>    #[test]
-<a href=#1023 id=1023 data-nosnippet>1023</a>    </span><span class="kw">fn </span>drop_returns_while_a_fifo_read_is_blocked() {
-<a href=#1024 id=1024 data-nosnippet>1024</a>        <span class="kw">let </span>dir = tempfile::tempdir().expect(<span class="string">"tempdir"</span>);
-<a href=#1025 id=1025 data-nosnippet>1025</a>        <span class="kw">let </span>path = dir.path().join(<span class="string">"blocked.png"</span>);
-<a href=#1026 id=1026 data-nosnippet>1026</a>        <span class="kw">let </span>made = std::process::Command::new(<span class="string">"mkfifo"</span>)
-<a href=#1027 id=1027 data-nosnippet>1027</a>            .arg(<span class="kw-2">&amp;</span>path)
-<a href=#1028 id=1028 data-nosnippet>1028</a>            .status()
-<a href=#1029 id=1029 data-nosnippet>1029</a>            .expect(<span class="string">"mkfifo"</span>);
-<a href=#1030 id=1030 data-nosnippet>1030</a>        <span class="macro">assert!</span>(made.success(), <span class="string">"mkfifo"</span>);
-<a href=#1031 id=1031 data-nosnippet>1031</a>        <span class="kw">let </span><span class="kw-2">mut </span>mgr = TextureStreamingManager::new(<span class="number">64</span>).expect(<span class="string">"texture streaming runtime"</span>);
-<a href=#1032 id=1032 data-nosnippet>1032</a>        <span class="kw">let </span>path_str = path.to_string_lossy().into_owned();
-<a href=#1033 id=1033 data-nosnippet>1033</a>        mgr.request_at(<span class="kw-2">&amp;</span>path_str, Vec3::ZERO);
-<a href=#1034 id=1034 data-nosnippet>1034</a>        <span class="macro">assert!</span>(mgr.start_one_decode(), <span class="string">"decode should start"</span>);
-<a href=#1035 id=1035 data-nosnippet>1035</a>        std::thread::sleep(Duration::from_millis(<span class="number">100</span>));
-<a href=#1036 id=1036 data-nosnippet>1036</a>        <span class="kw">let </span>started = std::time::Instant::now();
-<a href=#1037 id=1037 data-nosnippet>1037</a>        drop(mgr);
-<a href=#1038 id=1038 data-nosnippet>1038</a>        <span class="kw">let </span>elapsed = started.elapsed();
-<a href=#1039 id=1039 data-nosnippet>1039</a>        <span class="comment">// O_NONBLOCK: a write open returns ENXIO when no reader is waiting
-<a href=#1040 id=1040 data-nosnippet>1040</a>        // instead of blocking until one appears.
-<a href=#1041 id=1041 data-nosnippet>1041</a>        </span>unblock_fifo_writer(<span class="kw-2">&amp;</span>path);
-<a href=#1042 id=1042 data-nosnippet>1042</a>        <span class="macro">assert!</span>(
-<a href=#1043 id=1043 data-nosnippet>1043</a>            elapsed &lt; Duration::from_secs(<span class="number">2</span>),
-<a href=#1044 id=1044 data-nosnippet>1044</a>            <span class="string">"drop blocked for {elapsed:?} while a fifo read was open"
-<a href=#1045 id=1045 data-nosnippet>1045</a>        </span>);
-<a href=#1046 id=1046 data-nosnippet>1046</a>    }
-<a href=#1047 id=1047 data-nosnippet>1047</a>
-<a href=#1048 id=1048 data-nosnippet>1048</a>    <span class="attr">#[cfg(unix)]
-<a href=#1049 id=1049 data-nosnippet>1049</a>    #[test]
-<a href=#1050 id=1050 data-nosnippet>1050</a>    </span><span class="kw">fn </span>fifo_at_the_cap_does_not_read_one_more_byte() {
-<a href=#1051 id=1051 data-nosnippet>1051</a>        <span class="kw">let </span>dir = tempfile::tempdir().expect(<span class="string">"tempdir"</span>);
-<a href=#1052 id=1052 data-nosnippet>1052</a>        <span class="kw">let </span>path = dir.path().join(<span class="string">"exact.fifo"</span>);
-<a href=#1053 id=1053 data-nosnippet>1053</a>        <span class="kw">let </span>made = std::process::Command::new(<span class="string">"mkfifo"</span>)
-<a href=#1054 id=1054 data-nosnippet>1054</a>            .arg(<span class="kw-2">&amp;</span>path)
-<a href=#1055 id=1055 data-nosnippet>1055</a>            .status()
-<a href=#1056 id=1056 data-nosnippet>1056</a>            .expect(<span class="string">"mkfifo"</span>);
-<a href=#1057 id=1057 data-nosnippet>1057</a>        <span class="macro">assert!</span>(made.success(), <span class="string">"mkfifo"</span>);
-<a href=#1058 id=1058 data-nosnippet>1058</a>        <span class="kw">let </span>cap = astraweave_asset::image_limits::MAX_IMAGE_ALLOC;
-<a href=#1059 id=1059 data-nosnippet>1059</a>        <span class="kw">let </span>path_for_writer = path.clone();
-<a href=#1060 id=1060 data-nosnippet>1060</a>        <span class="kw">let </span>(stop_tx, stop_rx) = std::sync::mpsc::channel::&lt;()&gt;();
-<a href=#1061 id=1061 data-nosnippet>1061</a>        <span class="kw">let </span>writer = std::thread::spawn(<span class="kw">move </span>|| {
-<a href=#1062 id=1062 data-nosnippet>1062</a>            <span class="kw">use </span>std::io::Write;
-<a href=#1063 id=1063 data-nosnippet>1063</a>            <span class="kw">let </span><span class="kw-2">mut </span>file = std::fs::OpenOptions::new()
-<a href=#1064 id=1064 data-nosnippet>1064</a>                .write(<span class="bool-val">true</span>)
-<a href=#1065 id=1065 data-nosnippet>1065</a>                .open(<span class="kw-2">&amp;</span>path_for_writer)
-<a href=#1066 id=1066 data-nosnippet>1066</a>                .expect(<span class="string">"fifo writer"</span>);
-<a href=#1067 id=1067 data-nosnippet>1067</a>            <span class="kw">let </span>chunk = <span class="macro">vec!</span>[<span class="number">0u8</span>; <span class="number">1024 </span>* <span class="number">1024</span>];
-<a href=#1068 id=1068 data-nosnippet>1068</a>            <span class="kw">let </span><span class="kw-2">mut </span>left = cap;
-<a href=#1069 id=1069 data-nosnippet>1069</a>            <span class="kw">while </span>left &gt; <span class="number">0 </span>{
-<a href=#1070 id=1070 data-nosnippet>1070</a>                <span class="kw">let </span>n = std::cmp::min(left, chunk.len() <span class="kw">as </span>u64) <span class="kw">as </span>usize;
-<a href=#1071 id=1071 data-nosnippet>1071</a>                <span class="kw">if </span>file.write_all(<span class="kw-2">&amp;</span>chunk[..n]).is_err() {
-<a href=#1072 id=1072 data-nosnippet>1072</a>                    <span class="kw">return</span>;
-<a href=#1073 id=1073 data-nosnippet>1073</a>                }
-<a href=#1074 id=1074 data-nosnippet>1074</a>                left -= n <span class="kw">as </span>u64;
-<a href=#1075 id=1075 data-nosnippet>1075</a>            }
-<a href=#1076 id=1076 data-nosnippet>1076</a>            <span class="kw">let _ </span>= stop_rx.recv();
-<a href=#1077 id=1077 data-nosnippet>1077</a>        });
-<a href=#1078 id=1078 data-nosnippet>1078</a>        <span class="kw">let </span>runtime = tokio::runtime::Builder::new_current_thread()
-<a href=#1079 id=1079 data-nosnippet>1079</a>            .enable_all()
-<a href=#1080 id=1080 data-nosnippet>1080</a>            .build()
-<a href=#1081 id=1081 data-nosnippet>1081</a>            .expect(<span class="string">"runtime"</span>);
-<a href=#1082 id=1082 data-nosnippet>1082</a>        <span class="kw">let </span>path_str = path.to_string_lossy().into_owned();
-<a href=#1083 id=1083 data-nosnippet>1083</a>        <span class="kw">let </span>started = std::time::Instant::now();
-<a href=#1084 id=1084 data-nosnippet>1084</a>        <span class="kw">let </span>msg = runtime.block_on(<span class="kw">crate</span>::texture::read_capped_image(<span class="kw-2">&amp;</span>path_str));
-<a href=#1085 id=1085 data-nosnippet>1085</a>        <span class="kw">let </span>elapsed = started.elapsed();
-<a href=#1086 id=1086 data-nosnippet>1086</a>        <span class="kw">let _ </span>= stop_tx.send(());
-<a href=#1087 id=1087 data-nosnippet>1087</a>        <span class="kw">let _ </span>= writer.join();
-<a href=#1088 id=1088 data-nosnippet>1088</a>        <span class="kw">match </span>msg {
-<a href=#1089 id=1089 data-nosnippet>1089</a>            <span class="prelude-val">Err</span>(error) =&gt; <span class="macro">assert!</span>(error.contains(<span class="kw-2">&amp;</span>cap.to_string()), <span class="string">"{error}"</span>),
-<a href=#1090 id=1090 data-nosnippet>1090</a>            <span class="prelude-val">Ok</span>(bytes) =&gt; <span class="macro">panic!</span>(<span class="string">"read {} bytes and waited for more"</span>, bytes.len()),
-<a href=#1091 id=1091 data-nosnippet>1091</a>        }
-<a href=#1092 id=1092 data-nosnippet>1092</a>        <span class="macro">assert!</span>(
-<a href=#1093 id=1093 data-nosnippet>1093</a>            elapsed &lt; Duration::from_secs(<span class="number">30</span>),
-<a href=#1094 id=1094 data-nosnippet>1094</a>            <span class="string">"read blocked past the cap for {elapsed:?}"
-<a href=#1095 id=1095 data-nosnippet>1095</a>        </span>);
-<a href=#1096 id=1096 data-nosnippet>1096</a>    }
-<a href=#1097 id=1097 data-nosnippet>1097</a>
-<a href=#1098 id=1098 data-nosnippet>1098</a>    <span class="attr">#[cfg(unix)]
-<a href=#1099 id=1099 data-nosnippet>1099</a>    </span><span class="kw">fn </span>unblock_fifo_writer(path: <span class="kw-2">&amp;</span>std::path::Path) {
-<a href=#1100 id=1100 data-nosnippet>1100</a>        <span class="kw">use </span>std::os::unix::fs::OpenOptionsExt;
-<a href=#1101 id=1101 data-nosnippet>1101</a>        <span class="comment">// Linux and Android use 0x800. The other Unix targets use 0x4.
-<a href=#1102 id=1102 data-nosnippet>1102</a>        </span><span class="attr">#[cfg(any(target_os = <span class="string">"linux"</span>, target_os = <span class="string">"android"</span>))]
-<a href=#1103 id=1103 data-nosnippet>1103</a>        </span><span class="kw">const </span>O_NONBLOCK: i32 = <span class="number">0x800</span>;
-<a href=#1104 id=1104 data-nosnippet>1104</a>        <span class="attr">#[cfg(not(any(target_os = <span class="string">"linux"</span>, target_os = <span class="string">"android"</span>)))]
-<a href=#1105 id=1105 data-nosnippet>1105</a>        </span><span class="kw">const </span>O_NONBLOCK: i32 = <span class="number">0x4</span>;
-<a href=#1106 id=1106 data-nosnippet>1106</a>        <span class="kw">let _ </span>= std::fs::OpenOptions::new()
-<a href=#1107 id=1107 data-nosnippet>1107</a>            .write(<span class="bool-val">true</span>)
-<a href=#1108 id=1108 data-nosnippet>1108</a>            .custom_flags(O_NONBLOCK)
-<a href=#1109 id=1109 data-nosnippet>1109</a>            .open(path);
+<a href=#1004 id=1004 data-nosnippet>1004</a>    </span><span class="kw">fn </span>from_file_with_usage_rejects_a_file_over_the_cap() {
+<a href=#1005 id=1005 data-nosnippet>1005</a>        <span class="kw">let </span>dir = tempfile::tempdir().expect(<span class="string">"tempdir"</span>);
+<a href=#1006 id=1006 data-nosnippet>1006</a>        <span class="kw">let </span>path = dir.path().join(<span class="string">"huge.bin"</span>);
+<a href=#1007 id=1007 data-nosnippet>1007</a>        <span class="kw">let </span>file = std::fs::File::create(<span class="kw-2">&amp;</span>path).expect(<span class="string">"create"</span>);
+<a href=#1008 id=1008 data-nosnippet>1008</a>        <span class="kw">let </span>cap = astraweave_asset::image_limits::MAX_IMAGE_ALLOC;
+<a href=#1009 id=1009 data-nosnippet>1009</a>        file.set_len(cap + <span class="number">1</span>).expect(<span class="string">"set_len"</span>);
+<a href=#1010 id=1010 data-nosnippet>1010</a>        drop(file);
+<a href=#1011 id=1011 data-nosnippet>1011</a>        <span class="kw">let </span>instance = wgpu::Instance::new(<span class="kw-2">&amp;</span>wgpu::InstanceDescriptor::default());
+<a href=#1012 id=1012 data-nosnippet>1012</a>        <span class="kw">let </span><span class="prelude-val">Ok</span>(adapter) =
+<a href=#1013 id=1013 data-nosnippet>1013</a>            pollster::block_on(instance.request_adapter(<span class="kw-2">&amp;</span>wgpu::RequestAdapterOptions {
+<a href=#1014 id=1014 data-nosnippet>1014</a>                power_preference: wgpu::PowerPreference::LowPower,
+<a href=#1015 id=1015 data-nosnippet>1015</a>                compatible_surface: <span class="prelude-val">None</span>,
+<a href=#1016 id=1016 data-nosnippet>1016</a>                force_fallback_adapter: <span class="bool-val">false</span>,
+<a href=#1017 id=1017 data-nosnippet>1017</a>            }))
+<a href=#1018 id=1018 data-nosnippet>1018</a>        <span class="kw">else </span>{
+<a href=#1019 id=1019 data-nosnippet>1019</a>            <span class="macro">eprintln!</span>(<span class="string">"skip from_file_with_usage cap: no wgpu adapter"</span>);
+<a href=#1020 id=1020 data-nosnippet>1020</a>            <span class="kw">return</span>;
+<a href=#1021 id=1021 data-nosnippet>1021</a>        };
+<a href=#1022 id=1022 data-nosnippet>1022</a>        <span class="kw">let </span>(device, queue) =
+<a href=#1023 id=1023 data-nosnippet>1023</a>            pollster::block_on(adapter.request_device(<span class="kw-2">&amp;</span>wgpu::DeviceDescriptor::default()))
+<a href=#1024 id=1024 data-nosnippet>1024</a>                .expect(<span class="string">"device"</span>);
+<a href=#1025 id=1025 data-nosnippet>1025</a>        <span class="kw">let </span>err = <span class="kw">crate</span>::texture::Texture::from_file_with_usage(
+<a href=#1026 id=1026 data-nosnippet>1026</a>            <span class="kw-2">&amp;</span>device,
+<a href=#1027 id=1027 data-nosnippet>1027</a>            <span class="kw-2">&amp;</span>queue,
+<a href=#1028 id=1028 data-nosnippet>1028</a>            <span class="kw-2">&amp;</span>path,
+<a href=#1029 id=1029 data-nosnippet>1029</a>            <span class="kw">crate</span>::texture::TextureUsage::Albedo,
+<a href=#1030 id=1030 data-nosnippet>1030</a>        )
+<a href=#1031 id=1031 data-nosnippet>1031</a>        .expect_err(<span class="string">"file over the cap must fail"</span>);
+<a href=#1032 id=1032 data-nosnippet>1032</a>        <span class="kw">let </span>msg = <span class="macro">format!</span>(<span class="string">"{err:#}"</span>);
+<a href=#1033 id=1033 data-nosnippet>1033</a>        <span class="macro">assert!</span>(
+<a href=#1034 id=1034 data-nosnippet>1034</a>            msg.contains(<span class="kw-2">&amp;</span>cap.to_string()) &amp;&amp; msg.contains(<span class="kw-2">&amp;</span>(cap + <span class="number">1</span>).to_string()),
+<a href=#1035 id=1035 data-nosnippet>1035</a>            <span class="string">"{msg}"
+<a href=#1036 id=1036 data-nosnippet>1036</a>        </span>);
+<a href=#1037 id=1037 data-nosnippet>1037</a>    }
+<a href=#1038 id=1038 data-nosnippet>1038</a>
+<a href=#1039 id=1039 data-nosnippet>1039</a>    <span class="attr">#[cfg(feature = <span class="string">"textures"</span>)]
+<a href=#1040 id=1040 data-nosnippet>1040</a>    #[test]
+<a href=#1041 id=1041 data-nosnippet>1041</a>    </span><span class="kw">fn </span>smoke_ktx2_fallback_rejects_a_file_over_the_cap() {
+<a href=#1042 id=1042 data-nosnippet>1042</a>        <span class="kw">let </span>dir = tempfile::tempdir().expect(<span class="string">"tempdir"</span>);
+<a href=#1043 id=1043 data-nosnippet>1043</a>        <span class="kw">let </span>path = dir.path().join(<span class="string">"huge.ktx2"</span>);
+<a href=#1044 id=1044 data-nosnippet>1044</a>        <span class="kw">let </span>file = std::fs::File::create(<span class="kw-2">&amp;</span>path).expect(<span class="string">"create"</span>);
+<a href=#1045 id=1045 data-nosnippet>1045</a>        <span class="kw">let </span>cap = astraweave_asset::image_limits::MAX_IMAGE_ALLOC;
+<a href=#1046 id=1046 data-nosnippet>1046</a>        file.set_len(cap + <span class="number">1</span>).expect(<span class="string">"set_len"</span>);
+<a href=#1047 id=1047 data-nosnippet>1047</a>        drop(file);
+<a href=#1048 id=1048 data-nosnippet>1048</a>        <span class="kw">let </span><span class="kw-2">mut </span>renderer =
+<a href=#1049 id=1049 data-nosnippet>1049</a>            pollster::block_on(<span class="kw">crate</span>::Renderer::new_headless(<span class="number">64</span>, <span class="number">64</span>)).expect(<span class="string">"headless renderer"</span>);
+<a href=#1050 id=1050 data-nosnippet>1050</a>        <span class="kw">let </span>path_string = path.to_string_lossy().into_owned();
+<a href=#1051 id=1051 data-nosnippet>1051</a>        <span class="kw">let </span>panicked = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+<a href=#1052 id=1052 data-nosnippet>1052</a>            renderer.set_smoke_test_texture(<span class="kw-2">&amp;</span>path_string);
+<a href=#1053 id=1053 data-nosnippet>1053</a>        }));
+<a href=#1054 id=1054 data-nosnippet>1054</a>        <span class="kw">let </span>payload = panicked.expect_err(<span class="string">"oversized ktx2 fallback must fail"</span>);
+<a href=#1055 id=1055 data-nosnippet>1055</a>        <span class="kw">let </span>msg = payload
+<a href=#1056 id=1056 data-nosnippet>1056</a>            .downcast_ref::&lt;String&gt;()
+<a href=#1057 id=1057 data-nosnippet>1057</a>            .map(String::as_str)
+<a href=#1058 id=1058 data-nosnippet>1058</a>            .or_else(|| payload.downcast_ref::&lt;<span class="kw-2">&amp;</span>str&gt;().copied())
+<a href=#1059 id=1059 data-nosnippet>1059</a>            .unwrap_or(<span class="string">"non-string panic"</span>);
+<a href=#1060 id=1060 data-nosnippet>1060</a>        <span class="macro">assert!</span>(
+<a href=#1061 id=1061 data-nosnippet>1061</a>            msg.contains(<span class="kw-2">&amp;</span>cap.to_string()) &amp;&amp; msg.contains(<span class="kw-2">&amp;</span>(cap + <span class="number">1</span>).to_string()),
+<a href=#1062 id=1062 data-nosnippet>1062</a>            <span class="string">"{msg}"
+<a href=#1063 id=1063 data-nosnippet>1063</a>        </span>);
+<a href=#1064 id=1064 data-nosnippet>1064</a>    }
+<a href=#1065 id=1065 data-nosnippet>1065</a>
+<a href=#1066 id=1066 data-nosnippet>1066</a>    <span class="attr">#[cfg(feature = <span class="string">"textures"</span>)]
+<a href=#1067 id=1067 data-nosnippet>1067</a>    #[test]
+<a href=#1068 id=1068 data-nosnippet>1068</a>    </span><span class="kw">fn </span>decode_bytes_rejects_an_edge_past_4096() {
+<a href=#1069 id=1069 data-nosnippet>1069</a>        <span class="kw">let </span>image = image::RgbImage::from_pixel(<span class="number">5_000</span>, <span class="number">1</span>, image::Rgb([<span class="number">1</span>, <span class="number">2</span>, <span class="number">3</span>]));
+<a href=#1070 id=1070 data-nosnippet>1070</a>        <span class="kw">let </span><span class="kw-2">mut </span>bytes = Vec::new();
+<a href=#1071 id=1071 data-nosnippet>1071</a>        image
+<a href=#1072 id=1072 data-nosnippet>1072</a>            .write_to(
+<a href=#1073 id=1073 data-nosnippet>1073</a>                <span class="kw-2">&amp;mut </span>std::io::Cursor::new(<span class="kw-2">&amp;mut </span>bytes),
+<a href=#1074 id=1074 data-nosnippet>1074</a>                image::ImageFormat::Png,
+<a href=#1075 id=1075 data-nosnippet>1075</a>            )
+<a href=#1076 id=1076 data-nosnippet>1076</a>            .expect(<span class="string">"encode png"</span>);
+<a href=#1077 id=1077 data-nosnippet>1077</a>        <span class="kw">let </span>err = decode_bytes(<span class="kw-2">&amp;</span>bytes).expect_err(<span class="string">"wide image must be rejected"</span>);
+<a href=#1078 id=1078 data-nosnippet>1078</a>        <span class="kw">let </span>msg = <span class="macro">format!</span>(<span class="string">"{err:#}"</span>).to_lowercase();
+<a href=#1079 id=1079 data-nosnippet>1079</a>        <span class="macro">assert!</span>(
+<a href=#1080 id=1080 data-nosnippet>1080</a>            msg.contains(<span class="string">"limit"</span>) || msg.contains(<span class="string">"dimension"</span>) || msg.contains(<span class="string">"4096"</span>),
+<a href=#1081 id=1081 data-nosnippet>1081</a>            <span class="string">"{msg}"
+<a href=#1082 id=1082 data-nosnippet>1082</a>        </span>);
+<a href=#1083 id=1083 data-nosnippet>1083</a>    }
+<a href=#1084 id=1084 data-nosnippet>1084</a>
+<a href=#1085 id=1085 data-nosnippet>1085</a>    <span class="attr">#[cfg(unix)]
+<a href=#1086 id=1086 data-nosnippet>1086</a>    #[test]
+<a href=#1087 id=1087 data-nosnippet>1087</a>    </span><span class="kw">fn </span>drop_returns_while_a_fifo_read_is_blocked() {
+<a href=#1088 id=1088 data-nosnippet>1088</a>        <span class="kw">let </span>dir = tempfile::tempdir().expect(<span class="string">"tempdir"</span>);
+<a href=#1089 id=1089 data-nosnippet>1089</a>        <span class="kw">let </span>path = dir.path().join(<span class="string">"blocked.png"</span>);
+<a href=#1090 id=1090 data-nosnippet>1090</a>        <span class="kw">let </span>made = std::process::Command::new(<span class="string">"mkfifo"</span>)
+<a href=#1091 id=1091 data-nosnippet>1091</a>            .arg(<span class="kw-2">&amp;</span>path)
+<a href=#1092 id=1092 data-nosnippet>1092</a>            .status()
+<a href=#1093 id=1093 data-nosnippet>1093</a>            .expect(<span class="string">"mkfifo"</span>);
+<a href=#1094 id=1094 data-nosnippet>1094</a>        <span class="macro">assert!</span>(made.success(), <span class="string">"mkfifo"</span>);
+<a href=#1095 id=1095 data-nosnippet>1095</a>        <span class="kw">let </span><span class="kw-2">mut </span>mgr = TextureStreamingManager::new(<span class="number">64</span>).expect(<span class="string">"texture streaming runtime"</span>);
+<a href=#1096 id=1096 data-nosnippet>1096</a>        <span class="kw">let </span>path_str = path.to_string_lossy().into_owned();
+<a href=#1097 id=1097 data-nosnippet>1097</a>        mgr.request_at(<span class="kw-2">&amp;</span>path_str, Vec3::ZERO);
+<a href=#1098 id=1098 data-nosnippet>1098</a>        <span class="macro">assert!</span>(mgr.start_one_decode(), <span class="string">"decode should start"</span>);
+<a href=#1099 id=1099 data-nosnippet>1099</a>        std::thread::sleep(Duration::from_millis(<span class="number">100</span>));
+<a href=#1100 id=1100 data-nosnippet>1100</a>        <span class="kw">let </span>started = std::time::Instant::now();
+<a href=#1101 id=1101 data-nosnippet>1101</a>        drop(mgr);
+<a href=#1102 id=1102 data-nosnippet>1102</a>        <span class="kw">let </span>elapsed = started.elapsed();
+<a href=#1103 id=1103 data-nosnippet>1103</a>        <span class="comment">// O_NONBLOCK: a write open returns ENXIO when no reader is waiting
+<a href=#1104 id=1104 data-nosnippet>1104</a>        // instead of blocking until one appears.
+<a href=#1105 id=1105 data-nosnippet>1105</a>        </span>unblock_fifo_writer(<span class="kw-2">&amp;</span>path);
+<a href=#1106 id=1106 data-nosnippet>1106</a>        <span class="macro">assert!</span>(
+<a href=#1107 id=1107 data-nosnippet>1107</a>            elapsed &lt; Duration::from_secs(<span class="number">2</span>),
+<a href=#1108 id=1108 data-nosnippet>1108</a>            <span class="string">"drop blocked for {elapsed:?} while a fifo read was open"
+<a href=#1109 id=1109 data-nosnippet>1109</a>        </span>);
 <a href=#1110 id=1110 data-nosnippet>1110</a>    }
-<a href=#1111 id=1111 data-nosnippet>1111</a>}</code></pre></div></section></main></body></html>
+<a href=#1111 id=1111 data-nosnippet>1111</a>
+<a href=#1112 id=1112 data-nosnippet>1112</a>    <span class="attr">#[cfg(unix)]
+<a href=#1113 id=1113 data-nosnippet>1113</a>    #[test]
+<a href=#1114 id=1114 data-nosnippet>1114</a>    </span><span class="kw">fn </span>fifo_at_the_cap_does_not_read_one_more_byte() {
+<a href=#1115 id=1115 data-nosnippet>1115</a>        <span class="kw">let </span>dir = tempfile::tempdir().expect(<span class="string">"tempdir"</span>);
+<a href=#1116 id=1116 data-nosnippet>1116</a>        <span class="kw">let </span>path = dir.path().join(<span class="string">"exact.fifo"</span>);
+<a href=#1117 id=1117 data-nosnippet>1117</a>        <span class="kw">let </span>made = std::process::Command::new(<span class="string">"mkfifo"</span>)
+<a href=#1118 id=1118 data-nosnippet>1118</a>            .arg(<span class="kw-2">&amp;</span>path)
+<a href=#1119 id=1119 data-nosnippet>1119</a>            .status()
+<a href=#1120 id=1120 data-nosnippet>1120</a>            .expect(<span class="string">"mkfifo"</span>);
+<a href=#1121 id=1121 data-nosnippet>1121</a>        <span class="macro">assert!</span>(made.success(), <span class="string">"mkfifo"</span>);
+<a href=#1122 id=1122 data-nosnippet>1122</a>        <span class="kw">let </span>cap = astraweave_asset::image_limits::MAX_IMAGE_ALLOC;
+<a href=#1123 id=1123 data-nosnippet>1123</a>        <span class="kw">let </span>path_for_writer = path.clone();
+<a href=#1124 id=1124 data-nosnippet>1124</a>        <span class="kw">let </span>(stop_tx, stop_rx) = std::sync::mpsc::channel::&lt;()&gt;();
+<a href=#1125 id=1125 data-nosnippet>1125</a>        <span class="kw">let </span>writer = std::thread::spawn(<span class="kw">move </span>|| {
+<a href=#1126 id=1126 data-nosnippet>1126</a>            <span class="kw">use </span>std::io::Write;
+<a href=#1127 id=1127 data-nosnippet>1127</a>            <span class="kw">let </span><span class="kw-2">mut </span>file = std::fs::OpenOptions::new()
+<a href=#1128 id=1128 data-nosnippet>1128</a>                .write(<span class="bool-val">true</span>)
+<a href=#1129 id=1129 data-nosnippet>1129</a>                .open(<span class="kw-2">&amp;</span>path_for_writer)
+<a href=#1130 id=1130 data-nosnippet>1130</a>                .expect(<span class="string">"fifo writer"</span>);
+<a href=#1131 id=1131 data-nosnippet>1131</a>            <span class="kw">let </span>chunk = <span class="macro">vec!</span>[<span class="number">0u8</span>; <span class="number">1024 </span>* <span class="number">1024</span>];
+<a href=#1132 id=1132 data-nosnippet>1132</a>            <span class="kw">let </span><span class="kw-2">mut </span>left = cap;
+<a href=#1133 id=1133 data-nosnippet>1133</a>            <span class="kw">while </span>left &gt; <span class="number">0 </span>{
+<a href=#1134 id=1134 data-nosnippet>1134</a>                <span class="kw">let </span>n = std::cmp::min(left, chunk.len() <span class="kw">as </span>u64) <span class="kw">as </span>usize;
+<a href=#1135 id=1135 data-nosnippet>1135</a>                <span class="kw">if </span>file.write_all(<span class="kw-2">&amp;</span>chunk[..n]).is_err() {
+<a href=#1136 id=1136 data-nosnippet>1136</a>                    <span class="kw">return</span>;
+<a href=#1137 id=1137 data-nosnippet>1137</a>                }
+<a href=#1138 id=1138 data-nosnippet>1138</a>                left -= n <span class="kw">as </span>u64;
+<a href=#1139 id=1139 data-nosnippet>1139</a>            }
+<a href=#1140 id=1140 data-nosnippet>1140</a>            <span class="kw">let _ </span>= stop_rx.recv();
+<a href=#1141 id=1141 data-nosnippet>1141</a>        });
+<a href=#1142 id=1142 data-nosnippet>1142</a>        <span class="kw">let </span>runtime = tokio::runtime::Builder::new_current_thread()
+<a href=#1143 id=1143 data-nosnippet>1143</a>            .enable_all()
+<a href=#1144 id=1144 data-nosnippet>1144</a>            .build()
+<a href=#1145 id=1145 data-nosnippet>1145</a>            .expect(<span class="string">"runtime"</span>);
+<a href=#1146 id=1146 data-nosnippet>1146</a>        <span class="kw">let </span>path_str = path.to_string_lossy().into_owned();
+<a href=#1147 id=1147 data-nosnippet>1147</a>        <span class="kw">let </span>started = std::time::Instant::now();
+<a href=#1148 id=1148 data-nosnippet>1148</a>        <span class="kw">let </span>msg = runtime.block_on(<span class="kw">crate</span>::texture::read_capped_image(<span class="kw-2">&amp;</span>path_str));
+<a href=#1149 id=1149 data-nosnippet>1149</a>        <span class="kw">let </span>elapsed = started.elapsed();
+<a href=#1150 id=1150 data-nosnippet>1150</a>        <span class="kw">let _ </span>= stop_tx.send(());
+<a href=#1151 id=1151 data-nosnippet>1151</a>        <span class="kw">let _ </span>= writer.join();
+<a href=#1152 id=1152 data-nosnippet>1152</a>        <span class="kw">match </span>msg {
+<a href=#1153 id=1153 data-nosnippet>1153</a>            <span class="prelude-val">Err</span>(error) =&gt; <span class="macro">assert!</span>(error.contains(<span class="kw-2">&amp;</span>cap.to_string()), <span class="string">"{error}"</span>),
+<a href=#1154 id=1154 data-nosnippet>1154</a>            <span class="prelude-val">Ok</span>(bytes) =&gt; <span class="macro">panic!</span>(<span class="string">"read {} bytes and waited for more"</span>, bytes.len()),
+<a href=#1155 id=1155 data-nosnippet>1155</a>        }
+<a href=#1156 id=1156 data-nosnippet>1156</a>        <span class="macro">assert!</span>(
+<a href=#1157 id=1157 data-nosnippet>1157</a>            elapsed &lt; Duration::from_secs(<span class="number">30</span>),
+<a href=#1158 id=1158 data-nosnippet>1158</a>            <span class="string">"read blocked past the cap for {elapsed:?}"
+<a href=#1159 id=1159 data-nosnippet>1159</a>        </span>);
+<a href=#1160 id=1160 data-nosnippet>1160</a>    }
+<a href=#1161 id=1161 data-nosnippet>1161</a>
+<a href=#1162 id=1162 data-nosnippet>1162</a>    <span class="attr">#[cfg(unix)]
+<a href=#1163 id=1163 data-nosnippet>1163</a>    </span><span class="kw">fn </span>unblock_fifo_writer(path: <span class="kw-2">&amp;</span>std::path::Path) {
+<a href=#1164 id=1164 data-nosnippet>1164</a>        <span class="kw">use </span>std::os::unix::fs::OpenOptionsExt;
+<a href=#1165 id=1165 data-nosnippet>1165</a>        <span class="comment">// Linux and Android use 0x800. The other Unix targets use 0x4.
+<a href=#1166 id=1166 data-nosnippet>1166</a>        </span><span class="attr">#[cfg(any(target_os = <span class="string">"linux"</span>, target_os = <span class="string">"android"</span>))]
+<a href=#1167 id=1167 data-nosnippet>1167</a>        </span><span class="kw">const </span>O_NONBLOCK: i32 = <span class="number">0x800</span>;
+<a href=#1168 id=1168 data-nosnippet>1168</a>        <span class="attr">#[cfg(not(any(target_os = <span class="string">"linux"</span>, target_os = <span class="string">"android"</span>)))]
+<a href=#1169 id=1169 data-nosnippet>1169</a>        </span><span class="kw">const </span>O_NONBLOCK: i32 = <span class="number">0x4</span>;
+<a href=#1170 id=1170 data-nosnippet>1170</a>        <span class="kw">let _ </span>= std::fs::OpenOptions::new()
+<a href=#1171 id=1171 data-nosnippet>1171</a>            .write(<span class="bool-val">true</span>)
+<a href=#1172 id=1172 data-nosnippet>1172</a>            .custom_flags(O_NONBLOCK)
+<a href=#1173 id=1173 data-nosnippet>1173</a>            .open(path);
+<a href=#1174 id=1174 data-nosnippet>1174</a>    }
+<a href=#1175 id=1175 data-nosnippet>1175</a>}</code></pre></div></section></main></body></html>
