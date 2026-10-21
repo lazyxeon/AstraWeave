@@ -518,7 +518,8 @@ fn sidecar_dirs(model_path: &std::path::Path) -> Vec<std::path::PathBuf> {
 
 #[cfg(all(feature = "gltf-assets", feature = "textures"))]
 fn load_rgba8(path: &std::path::Path) -> Result<crate::mesh::CpuImage> {
-    let image = image::open(path)?.to_rgba8();
+    let bytes = astraweave_asset::read_limited_image_bytes(path)?;
+    let image = astraweave_asset::decode_limited_image(&bytes)?.to_rgba8();
     Ok(crate::mesh::CpuImage {
         width: image.width(),
         height: image.height(),

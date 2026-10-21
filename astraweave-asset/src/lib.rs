@@ -14,7 +14,8 @@ pub mod nanite_preprocess;
 
 pub mod image_limits;
 pub use image_limits::{
-    capped_image_limits, decode_limited_image, open_limited_image, read_limited_image_bytes,
+    capped_image_limits, decode_limited_image, open_limited_image, read_capped_data_image,
+    read_limited_image_bytes,
 };
 
 // World Partition cell loader
@@ -829,8 +830,11 @@ pub mod gltf_loader {
                 decode_image_bytes(data)
             }
             gltf::image::Source::Uri { uri, .. } => {
-                let bytes = if uri.starts_with("data:") {
-                    load_uri_bytes(uri)?
+                let bytes = if uri
+                    .split_once(':')
+                    .is_some_and(|(scheme, _)| scheme.eq_ignore_ascii_case("data"))
+                {
+                    crate::read_capped_data_image(uri)?
                 } else {
                     let base = std::env::current_dir().context("asset jail base")?;
                     let path =
