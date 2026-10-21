@@ -34,6 +34,7 @@ The nineteen cases are `planner_pure`, `perception_world`, `gameplay_rng`, `fixe
 cargo check -p astraweave-core
 cargo test -p aravath_runtime --lib replay_matches_golden_hash
 cargo run -p hello_companion --release
+cargo xtask fetch-assets
 cargo editor
 ```
 

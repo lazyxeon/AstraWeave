@@ -179,7 +179,7 @@ cargo run -p aw_trace_sync -- --check
 
 Pull-request Rust work is tiered. The required replay check is `determinism-replay / compare`. Docs-only diffs skip the workspace compile; they still run the replay hashes. The full job list is [CI_ARCHITECTURE.md](CI_ARCHITECTURE.md). #217 and #327 are on `main`. #326 is closed.
 
-`aw_doc_lint` reads the closed vocabulary in [CLOSED_VOCABULARY_LINT.md](../campaigns/doc-truth/CLOSED_VOCABULARY_LINT.md). It also checks this README against the replay workflow: every required case name, the unmeasured 11 ms target, the in-progress issue list, and the absence of the retired game title in player-facing docs. That front-door check fails the process even while the vocabulary scan is still in warn mode.
+`aw_doc_lint` reads the closed vocabulary in [CLOSED_VOCABULARY_LINT.md](../campaigns/doc-truth/CLOSED_VOCABULARY_LINT.md). It also checks the root README against the replay workflow: every required case name, the unmeasured 11 ms target, the in-progress issue list, and the absence of the retired game title in player-facing docs. That front-door check fails the process even while the vocabulary scan is still in warn mode.
 
 ---
 

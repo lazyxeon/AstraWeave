@@ -96,6 +96,15 @@ build-timing.txt
 release-timing.txt
 audit-report.md
 
+# Root-only scratch dumps. The leading slash matches the repository root
+# and does not ignore the same names under docs/, scripts/, or assets/.
+# Already-tracked files are unaffected.
+/*.txt
+/*.png
+/*.jpg
+/*.jpeg
+/*.webp
+
 # Temporary build/test output files (root level)
 build_*.txt
 cargo_*.txt

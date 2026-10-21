@@ -341,7 +341,7 @@ Auto-save path:
 **Inputs:** `&World`.
 **Outputs:** `u64`.
 **Notes:**
-- Uses `DefaultHasher::new()`. On current rustc that is SipHash-1-3 with zero keys. The doc comment at lines 757–759 says "DO NOT use for security". The same comment calls the hash "viable for cheat detection" (line 743) and "bit-identical" (line 750). It is not a security boundary, and it is not stable across rustc upgrades.
+- Uses `DefaultHasher::new()`. On current rustc that is SipHash-1-3 with zero keys. The doc comment says "DO NOT use for security" (line 761) and "Do not use it for cheat detection" (line 735). It is not a security boundary, and it is not stable across rustc upgrades.
 - **Only entities with `CPos` OR `CHealth`** are included in the hash. Entities holding only `CTeam`, `CAmmo`, etc. are silently excluded.
 - **Only 4 component types are hashed**: `CPos.{x, y}`, `CHealth.hp`, `CTeam.id`, `CAmmo.rounds`. `calculate_world_hash` starts at line 834. Six other supported components (`CCooldowns`, `CDesiredPos`, `CAiAgent`, `CLegacyId`, `CPersona`, `CMemory`) are NOT hashed. The coverage TODO is the doc comment at line 818.
 - `entity_list.sort_unstable()` is line 856. It orders by `Entity`'s `Ord`: `id`, then `generation`. Unique entities keep that order across rustc upgrades. The cross-rustc break is `DefaultHasher::new()` in the bullet above. `serialize_ecs_world` sorts with `sort_by_key(|entity| entity.to_raw())` at line 543. `to_raw` puts `generation` in the high 32 bits, so the blob order and this hash order diverge when any generation is non-zero.
@@ -599,7 +599,7 @@ Auto-save path:
 - **Status:** Accepted (`calculate_world_hash` starts at line 834).
 - **Context:** The hash is for integrity / replay validation, not security.
 - **Decision:** Use Rust's stdlib `DefaultHasher` (which is currently SipHash-1-3 per the rustc default at the time of `a2474c5b7`).
-- **Alternatives considered:** Faster non-cryptographic hashes (xxh64, FNV) and stronger cryptographic ones (BLAKE3). The warning "Cryptographically weak (DO NOT use for security)" is the doc comment at lines 757–759. Line 536 is the `CPersona` query, not that warning.
+- **Alternatives considered:** Faster non-cryptographic hashes (xxh64, FNV) and stronger cryptographic ones (BLAKE3). The warning "Cryptographically weak (DO NOT use for security)" is the doc comment at line 761. Line 536 is `Query::<CMemory>`. `Query::<CPersona>` is line 530. Neither line is that warning.
 - **Consequences:**
   - The hash output value depends on rustc's stdlib hasher choice. If stdlib swaps DefaultHasher's algorithm in a future Rust version, **identical world state would produce different hashes across compilers** — breaking cross-version save validation.
   - Caller code should not store these hashes long-term without versioning.

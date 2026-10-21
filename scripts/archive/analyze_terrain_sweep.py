@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Analyze completed terrain sweep results and generate a classification report.
-Reads the aggregate.json produced by scripts/run_terrain_sweep.py and generates
+Reads the aggregate.json produced by scripts/archive/run_terrain_sweep.py and generates
 a detailed markdown report.
 """
 import json

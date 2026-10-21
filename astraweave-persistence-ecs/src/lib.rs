@@ -730,7 +730,9 @@ pub fn deserialize_ecs_world(ecs_blob: &[u8], world: &mut World) -> Result<()> {
 /// This function iterates through all entities with CPos or CHealth components (as a proxy
 /// for "all entities"), sorts them for deterministic ordering, and hashes each entity's
 /// ID plus component data using Rust's `DefaultHasher`. The result is a 64-bit hash
-/// suitable for save validation, cheat detection, or replay verification.
+/// suitable for save validation or replay verification.
+/// `DefaultHasher::new()` is SipHash-1-3 with zero keys. Anyone who can see
+/// the entity list can recompute it. Do not use it for cheat detection.
 ///
 /// # Performance
 /// - **Linear Scaling**: O(n) where n = number of entities, R² = 0.999 (perfect linear fit)
@@ -740,7 +742,7 @@ pub fn deserialize_ecs_world(ecs_blob: &[u8], world: &mut World) -> Result<()> {
 /// - **Projections**: 5.9 ms @ 10,000 entities, 59 ms @ 100,000 entities
 ///
 /// # 60 FPS Impact
-/// - **Per-frame validation**: 0.594 ms → 3.6% of 16.67 ms budget → viable for cheat detection
+/// - **Per-frame validation**: 0.594 ms → 3.6% of 16.67 ms budget. This is a timing note, not a cheat check.
 /// - **Autosave validation**: 0.594 ms + 0.686 ms = 1.28 ms → still only 7.7% budget
 /// - **Capacity**: Can hash 28× per frame (28 × 0.594 ms = 16.6 ms)
 ///
@@ -791,16 +793,8 @@ pub fn deserialize_ecs_world(ecs_blob: &[u8], world: &mut World) -> Result<()> {
 ///    assert_eq!(hash_before, hash_after, "Save corrupted!");
 ///    ```
 ///
-/// 2. **Cheat Detection (Multiplayer)**: Compare client hash to server hash each frame
-///    ```ignore
-///    let client_hash = calculate_world_hash(&client_world);
-///    let server_hash = calculate_world_hash(&server_world);
-///    if client_hash != server_hash {
-///        println!("DESYNC DETECTED - possible cheat or network issue");
-///    }
-///    ```
-///
-/// 3. **Deterministic Replay Verification**: Same inputs → same hash after N frames
+/// 2. **Deterministic Replay Verification**: Same inputs → same hash after N frames
+///    on one rustc. Zero-key SipHash is not a cheat-detection boundary.
 ///    ```ignore
 ///    let hash_before = calculate_world_hash(&world);
 ///    // ... simulate 60 frames with recorded inputs ...

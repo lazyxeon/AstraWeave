@@ -283,7 +283,7 @@ Tags: **D0** = SWEPT-BY-D0 · **D0.1** = SWEEP-NOW-D0.1 (this sub-phase). `docs/
 | D0.1 | `docs/current/TERRAIN_ASSET_QUALITY_CAMPAIGN.md` | 1071 | 0 |
 | D0.1 | `docs/current/TERRAIN_GENERATION_QUALITY_CAMPAIGN.md` | 2174 | 0 |
 | D0.1 | `docs/current/TERRAIN_MATERIAL_SYSTEM_CAMPAIGN.md` | 1003 | 0 |
-| D0.1 | `docs/current/TERRAIN_MATERIAL_SYSTEM_PHASE_1E_docs/archive/root-notes/HANDOFF.md` | 346 | 0 |
+| D0.1 | `docs/current/TERRAIN_MATERIAL_SYSTEM_PHASE_1E_HANDOFF.md` | 346 | 0 |
 | D0.1 | `docs/current/TERRAIN_SCATTER_FIX_PLAN.md` | 270 | 0 |
 | D0.1 | `docs/current/UNWRAP_REMEDIATION_PROGRESS.md` | 286 | 2 |
 | D0.1 | `docs/current/VEILWEAVER_VERTICAL_SLICE_ANALYSIS.md` | 480 | 12 |
