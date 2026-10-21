@@ -274,6 +274,7 @@ mod tests {
         assert_eq!(meters_to_cell(-1.5), Some(-2));
     }
 
+    #[test]
     fn gravity_conversion_matches_9810() {
         assert_eq!(gravity_mm_s2(WORLD_GRAVITY_MILLI_G), -9810);
         assert_eq!(gravity_mm_s2(0), 0);

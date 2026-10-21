@@ -93,6 +93,11 @@ pub fn compile_legacy(kind: u8, points: LegacyPoints) -> CompiledOp {
             }
         }
         2 => {
+            if let (Some(bx), Some(by), Some(bz)) = (bx, by, bz) {
+                if !(bx.is_finite() && by.is_finite() && bz.is_finite()) {
+                    return empty_compiled();
+                }
+            }
             let (mods, count) = writes_for(&builtin(TEMPLATE_WIND).unwrap(), origin, 1);
             compiled.writes = mods;
             compiled.write_count = count;
@@ -289,5 +294,31 @@ mod tests {
         );
         let line = kept.collapse.unwrap();
         assert_eq!((line.ax, line.ay, line.bx, line.by), (0, 0, 10, 10));
+    }
+
+    #[test]
+    fn non_finite_wind_endpoint_drops_the_op() {
+        for endpoint in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
+            let compiled = compile_legacy(
+                2,
+                LegacyPoints {
+                    a: [0.0, 0.0, 0.0],
+                    b: Some([endpoint, 0.0, 1.0]),
+                    tick: 0,
+                    seq: 0,
+                },
+            );
+            assert_eq!(compiled.write_count, 0, "{endpoint}");
+        }
+        let kept = compile_legacy(
+            2,
+            LegacyPoints {
+                a: [0.0, 0.0, 0.0],
+                b: Some([1.0, 0.0, 0.0]),
+                tick: 0,
+                seq: 0,
+            },
+        );
+        assert!(kept.write_count > 0);
     }
 }

@@ -747,4 +747,32 @@ mod tests {
         assert!(err.to_string().contains("outside the island"));
         assert_eq!(budget.terrain_edits, 5);
     }
+
+    #[test]
+    fn non_finite_wind_endpoint_does_not_spend_weather() {
+        let mut world = create_test_world();
+        let mut physics = create_test_physics();
+        let nav_src = vec![];
+        let mut budget = create_test_budget();
+        let mut logger = |_: String| {};
+        for endpoint in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
+            let op = WeaveOp {
+                kind: WeaveOpKind::RedirectWind,
+                a: vec3(0.0, 0.0, 0.0),
+                b: Some(vec3(endpoint, 0.0, 1.0)),
+                budget_cost: 1,
+            };
+            let err = apply_weave_op(
+                &mut world,
+                &mut physics,
+                &nav_src,
+                &mut budget,
+                &op,
+                &mut logger,
+            )
+            .expect_err("a non-finite wind endpoint must not succeed");
+            assert!(err.to_string().contains("outside the island"));
+            assert_eq!(budget.weather_ops, 3, "{endpoint}");
+        }
+    }
 }

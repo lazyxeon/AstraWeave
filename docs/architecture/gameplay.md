@@ -94,7 +94,7 @@ caller (example/test): apply_weave_op(w, phys, nav_src, &mut budget, &op, &mut l
 weaving.rs:11
   role: match op.kind → either build a core DirectorPlan (Fortify/Collapse)
         or mutate PhysicsWorld directly (set_wind / clear_water), decrementing
-        the matching WeaveBudget field; FreezeWater is presentation-only (no truth)
+        the matching WeaveBudget field; FreezeWater adds a static ice AABB
     │  apply_director_plan(w, &mut core_budget, &plan, log)  [core::validation:400]
     ▼
 World terrain mutated (for terrain ops) and/or PhysicsWorld wind/water mutated
@@ -105,7 +105,7 @@ Ok(WeaveConsequence{drop_multiplier, faction_disposition, weather_shift})
 
 #### Stage detail
 **File:** `astraweave-gameplay/src/weaving.rs:11-150`
-**Role:** Translates a positional `WeaveOp` into either a `astraweave_core::DirectorPlan` (`ReinforcePath`/`RaisePlatform` → `DirectorOp::Fortify`; `CollapseBridge` → `DirectorOp::Collapse`) applied via `apply_director_plan`, or a direct physics mutation (`RedirectWind` → `phys.set_wind`; `LowerWater` → `phys.clear_water`). Each arm bails if the relevant `WeaveBudget` field (`terrain_edits` or `weather_ops`) is `<= 0`, else decrements it by 1. `FreezeWater` (lines 94-105) is **presentation-only**: it consumes `weather_ops` and carries `op.a` for a render layer but makes **no** truth mutation (documented inline).
+**Role:** Translates a positional `WeaveOp` into either a `astraweave_core::DirectorPlan` (`ReinforcePath`/`RaisePlatform` → `DirectorOp::Fortify`; `CollapseBridge` → `DirectorOp::Collapse`) applied via `apply_director_plan`, or a direct physics mutation (`RedirectWind` → `phys.set_wind`; `LowerWater` → `phys.clear_water`; `FreezeWater` → `phys.add_static_aabb` from the compiled ice bounds). Each arm bails if the relevant `WeaveBudget` field (`terrain_edits` or `weather_ops`) is `<= 0`, else decrements it by 1. A dropped origin bails before that spend.
 **Inputs:** `&mut World`, `&mut PhysicsWorld`, `&[Triangle]` nav source, `&mut WeaveBudget`, `&WeaveOp`, log closure.
 **Outputs:** `Result<WeaveConsequence>`.
 **Notes:** Re-bakes a throwaway navmesh each call (`NavMesh::bake(nav_src, 0.5, 55.0)` → `_nav`, line 113) that is immediately discarded — a demo-pathing artifact. The actual W-series "weave gameplay producer" that turns these ops into render-side `WeaveInstance`s lives in `examples/weaving_playground/src/weave_producer.rs` (commit `3edf15e25`), **not** in this crate.
@@ -265,11 +265,11 @@ WeaveTutorialState mutated (anchors stabilized, triggers active)
 
 ### Decision: `FreezeWater` weave op is presentation-only
 - **Date:** 2026-06-24 (commit `3edf15e25`, W-series W.2c.3.2)
-- **Status:** Accepted (in active code)
+- **Status:** Superseded. `apply_weave_op` now places a static AABB from the compiled ice millimetre bounds (`phys.add_static_aabb`). That is a physics mutation. The 2026-06-24 "no physics change" sentence is not in force.
 - **Context:** The W-series surface arc needed water to deform from real fate-weaving casts without yet committing to gameplay-truth coupling.
-- **Decision:** `WeaveOpKind::FreezeWater` (`types.rs:48-53`) consumes the weather budget and carries `op.a` for the render layer, with **no** physics/collision/traversal change (`weaving.rs:94-105`). `WeaveConsequence` arm returns `weather_shift: "frozen"`.
+- **Decision:** `WeaveOpKind::FreezeWater` (`types.rs:48-53`) consumes the weather budget and carries `op.a` for the render layer. The later ice-bound path also inserts a static body. `WeaveConsequence` still returns `weather_shift: "frozen"`.
 - **Alternatives considered:** A truth-bearing freeze (walkable ice / buoyancy block) — explicitly deferred to a "post-surface-arc gameplay-truth-coupling phase" per the commit message and inline comments.
-- **Consequences:** The enum is `#[non_exhaustive]`, so the variant addition is non-breaking. `astraweave-render` gains no dependency on gameplay (the producer translation lives in `examples/weaving_playground/src/weave_producer.rs`).
+- **Consequences:** The enum is `#[non_exhaustive]`, so the variant addition is non-breaking. `astraweave-render` gains no dependency on gameplay (the producer translation lives in `examples/weaving_playground/src/weave_producer.rs`). Do not cite this decision as "FreezeWater performs no physics mutation."
 
 ### Decision: Player water-movement direction abandoned
 - **Date:** W-series W.1 (2026-06-21 era), commit `1a57fdd41` (recovery anchor `w0-pre-deprecation` — local-only since 2026-07-20, see `fluids.md` §0.5 recovery note)
@@ -305,7 +305,7 @@ WeaveTutorialState mutated (anchors stabilized, triggers active)
 | 2 | A parry blocks damage exactly once: it is consumed (`window=0.0, active=false`) on the hit it blocks | Yes | Tests `test_parry_blocks_damage`, `test_parry_window_zero_does_not_parry`, `test_parry_inactive_does_not_parry` (`combat_physics.rs`) |
 | 3 | Iframes block damage **without** being consumed | Yes | Test `test_iframes_block_damage` (`combat_physics.rs:393`) |
 | 4 | `apply_weave_op` bails (no mutation, no budget spend) when the relevant budget field is `<= 0`, and when `compile_legacy` drops the op because an origin is outside the island. A kept op decrements the matching budget by exactly 1 | Yes | Tests `*_no_budget`, `redirect_wind_budget_decrements`, `test_apply_weave_op_budget_depletion`, `dropped_origin_does_not_spend_budget_or_return_a_consequence`, `far_collapse_endpoint_does_not_spend_budget` (`weaving.rs`) |
-| 5 | `FreezeWater` performs no truth mutation (consumes `weather_ops` only) | Partial | Doc-only (verified 2026-06-25). Enforced by the inline comment + budget decrement at `weaving.rs:94-105`; the `FreezeWater` arm provably contains no `w`/`phys` mutation. Confirmed there is **no** dedicated test asserting physics/world are unchanged — `mutation_tests.rs` has no `FreezeWater` truth-mutation test (only a budget-path test). |
+| 5 | `FreezeWater` consumes one `weather_ops` and, when the origin is kept, inserts one static AABB from `ice_min_milli`/`ice_max_milli`. It is not a no-physics op | Yes | `weaving.rs` `add_static_aabb` on the ice bounds. A dropped origin does not spend `weather_ops` (`dropped_origin_does_not_spend_budget_or_return_a_consequence`). |
 | 6 | `WaterPlayerState::update` clamps `submersion` to `[0,1]` before mode selection | Yes | `water_movement.rs:207`; tests `update_threshold_boundaries_exact` and others |
 | 7 | ECS `combat_system` uses Manhattan distance (`|dx|+|dy|`), not Euclidean | Yes | Tests `combat_distance_check_with_offset_positions`, `combat_system_distance_subtraction_matters` (`ecs.rs`) |
 | 8 | `CombatPlugin`/`CraftingPlugin`/`QuestPlugin` register into the `"simulation"` stage | Yes (inspect `ecs.rs:188-212`) | Doc-only |
@@ -349,7 +349,7 @@ No benchmarks live in this crate's runtime path beyond `benches/combat_pipeline`
 
 ## 12. Maintenance Notes
 
-**Revision 1.4 (2026-10-20):** `apply_weave_op` returns an error and does not spend budget when `compile_legacy` drops an origin. Invariant 4.
+**Revision 1.4 (2026-10-20):** `apply_weave_op` returns an error and does not spend budget when `compile_legacy` drops an origin. Invariant 4. Invariant 5 no longer says `FreezeWater` performs no physics mutation: a kept freeze inserts a static AABB.
 
 **Update this doc when:**
 - Any Active file in §5 gains/loses a production caller (re-run the wired-vs-dormant grep — this is the doc's highest-value signal).
@@ -373,7 +373,7 @@ No benchmarks live in this crate's runtime path beyond `benches/combat_pipeline`
 2. **The headline behavioral functions are example-driven.** `perform_attack_sweep`, `apply_weave_op`, and the ECS combat/craft/quest plugins have no in-engine production caller. Adding a new one is a real integration step, not a no-op.
 3. **`water_movement.rs` is dormant residue** from an abandoned plan — and it is NOT the W-series render water. Don't wire new water gameplay through it without first resolving §11.
 4. **"Weave"/"Veilweaver"/"Quest"/"Combat"/"Anchor" each name two different things** across this crate and `astraweave-weaving`. Always qualify the crate.
-5. **`FreezeWater` is presentation-only** (no truth mutation) by deliberate decision (§7).
+5. **`FreezeWater` inserts a static ice AABB** when the origin is kept (§7). The 2026-06-24 presentation-only decision is superseded.
 
 **Files you'll most likely touch:**
 - `astraweave-gameplay/src/combat_physics.rs` (physics combat)
