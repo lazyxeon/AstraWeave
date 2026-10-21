@@ -637,7 +637,7 @@ impl TextureStreamingManager {
 }
 
 async fn decode_texture(id: String) -> StreamMsg {
-    let bytes = match read_capped_image(&id).await {
+    let bytes = match crate::texture::read_capped_image(&id).await {
         Ok(bytes) => bytes,
         Err(error) => {
             return StreamMsg::Failed { id, error };
@@ -660,40 +660,6 @@ async fn decode_texture(id: String) -> StreamMsg {
             error: format!("decode worker stopped: {err}"),
         },
     }
-}
-
-/// Reject a file whose length is already over the image cap, then read at
-/// most that many bytes. A fifo reports length 0, so the `take` is what
-/// stops a stream that never ends.
-async fn read_capped_image(path: &str) -> Result<Vec<u8>, String> {
-    let cap = astraweave_asset::image_limits::MAX_IMAGE_ALLOC;
-    let meta = tokio::fs::metadata(path)
-        .await
-        .map_err(|err| format!("read failed: {err}"))?;
-    if meta.len() > cap {
-        return Err(format!("image is {} bytes, cap is {cap}", meta.len()));
-    }
-    let mut file = tokio::fs::File::open(path)
-        .await
-        .map_err(|err| format!("read failed: {err}"))?;
-    let mut bytes = Vec::new();
-    use tokio::io::AsyncReadExt;
-    (&mut file)
-        .take(cap)
-        .read_to_end(&mut bytes)
-        .await
-        .map_err(|err| format!("read failed: {err}"))?;
-    if bytes.len() as u64 == cap {
-        let mut extra = [0u8; 1];
-        let more = file
-            .read(&mut extra)
-            .await
-            .map_err(|err| format!("read failed: {err}"))?;
-        if more > 0 {
-            return Err(format!("image exceeds {cap} bytes"));
-        }
-    }
-    Ok(bytes)
 }
 
 fn decode_bytes(bytes: &[u8]) -> anyhow::Result<(u32, u32, Vec<u8>)> {
@@ -993,6 +959,48 @@ mod tests {
 
     #[cfg(feature = "textures")]
     #[test]
+    fn load_texture_async_rejects_a_file_over_the_cap() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("huge.bin");
+        let file = std::fs::File::create(&path).expect("create");
+        let cap = astraweave_asset::image_limits::MAX_IMAGE_ALLOC;
+        file.set_len(cap + 1).expect("set_len");
+        drop(file);
+        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
+        let Ok(adapter) =
+            pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
+                power_preference: wgpu::PowerPreference::LowPower,
+                compatible_surface: None,
+                force_fallback_adapter: false,
+            }))
+        else {
+            eprintln!("skip load_texture_async cap: no wgpu adapter");
+            return;
+        };
+        let (device, queue) =
+            pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
+                .expect("device");
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("runtime");
+        let err = runtime
+            .block_on(crate::texture::Texture::load_texture_async(
+                &device,
+                &queue,
+                &path.to_string_lossy(),
+                crate::texture::TextureUsage::Albedo,
+            ))
+            .expect_err("file over the cap must fail");
+        let msg = format!("{err:#}");
+        assert!(
+            msg.contains(&cap.to_string()) && msg.contains(&(cap + 1).to_string()),
+            "{msg}"
+        );
+    }
+
+    #[cfg(feature = "textures")]
+    #[test]
     fn decode_bytes_rejects_an_edge_past_4096() {
         let image = image::RgbImage::from_pixel(5_000, 1, image::Rgb([1, 2, 3]));
         let mut bytes = Vec::new();
@@ -1010,29 +1018,94 @@ mod tests {
         );
     }
 
+    #[cfg(unix)]
     #[test]
     fn drop_returns_while_a_fifo_read_is_blocked() {
-        let path = format!("/tmp/aw-stream-drop-{}.png", std::process::id());
-        let _ = std::fs::remove_file(&path);
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("blocked.png");
         let made = std::process::Command::new("mkfifo")
             .arg(&path)
             .status()
             .expect("mkfifo");
         assert!(made.success(), "mkfifo");
         let mut mgr = TextureStreamingManager::new(64).expect("texture streaming runtime");
-        mgr.request_at(&path, Vec3::ZERO);
+        let path_str = path.to_string_lossy().into_owned();
+        mgr.request_at(&path_str, Vec3::ZERO);
         assert!(mgr.start_one_decode(), "decode should start");
         std::thread::sleep(Duration::from_millis(100));
         let started = std::time::Instant::now();
         drop(mgr);
         let elapsed = started.elapsed();
-        // The abandoned read is still in open. A writer lets that thread exit
-        // so this process does not stay up after the assertion.
-        let _ = std::fs::OpenOptions::new().write(true).open(&path);
-        let _ = std::fs::remove_file(&path);
+        // O_NONBLOCK: a write open returns ENXIO when no reader is waiting
+        // instead of blocking until one appears.
+        unblock_fifo_writer(&path);
         assert!(
             elapsed < Duration::from_secs(2),
             "drop blocked for {elapsed:?} while a fifo read was open"
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn fifo_at_the_cap_does_not_read_one_more_byte() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("exact.fifo");
+        let made = std::process::Command::new("mkfifo")
+            .arg(&path)
+            .status()
+            .expect("mkfifo");
+        assert!(made.success(), "mkfifo");
+        let cap = astraweave_asset::image_limits::MAX_IMAGE_ALLOC;
+        let path_for_writer = path.clone();
+        let (stop_tx, stop_rx) = std::sync::mpsc::channel::<()>();
+        let writer = std::thread::spawn(move || {
+            use std::io::Write;
+            let mut file = std::fs::OpenOptions::new()
+                .write(true)
+                .open(&path_for_writer)
+                .expect("fifo writer");
+            let chunk = vec![0u8; 1024 * 1024];
+            let mut left = cap;
+            while left > 0 {
+                let n = std::cmp::min(left, chunk.len() as u64) as usize;
+                if file.write_all(&chunk[..n]).is_err() {
+                    return;
+                }
+                left -= n as u64;
+            }
+            let _ = stop_rx.recv();
+        });
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("runtime");
+        let path_str = path.to_string_lossy().into_owned();
+        let started = std::time::Instant::now();
+        let msg = runtime.block_on(crate::texture::read_capped_image(&path_str));
+        let elapsed = started.elapsed();
+        let _ = stop_tx.send(());
+        let _ = writer.join();
+        match msg {
+            Err(error) => assert!(error.contains(&cap.to_string()), "{error}"),
+            Ok(bytes) => panic!("read {} bytes and waited for more", bytes.len()),
+        }
+        assert!(
+            elapsed < Duration::from_secs(30),
+            "read blocked past the cap for {elapsed:?}"
+        );
+    }
+
+    #[cfg(unix)]
+    fn unblock_fifo_writer(path: &std::path::Path) {
+        use std::os::unix::fs::OpenOptionsExt;
+        // Linux and Android use 0x800. The other Unix targets use 0x4.
+        #[cfg(any(target_os = "linux", target_os = "android"))]
+        const O_NONBLOCK: i32 = 0x800;
+        #[cfg(not(any(target_os = "linux", target_os = "android")))]
+        const O_NONBLOCK: i32 = 0x4;
+        let _ = std::fs::OpenOptions::new()
+            .write(true)
+            .custom_flags(O_NONBLOCK)
+            .open(path);
     }
 }
