@@ -94,7 +94,7 @@ pub fn compile_legacy(kind: u8, points: LegacyPoints) -> CompiledOp {
         }
         2 => {
             if let (Some(bx), Some(by), Some(bz)) = (bx, by, bz) {
-                if !(bx.is_finite() && by.is_finite() && bz.is_finite()) {
+                if !wind_delta_fits(ax, ay, az, bx, by, bz) {
                     return empty_compiled();
                 }
             }
@@ -150,6 +150,16 @@ pub fn compile_legacy(kind: u8, points: LegacyPoints) -> CompiledOp {
         _ => {}
     }
     compiled
+}
+
+fn wind_delta_fits(ax: f32, ay: f32, az: f32, bx: f32, by: f32, bz: f32) -> bool {
+    let dx = bx - ax;
+    let dy = by - ay;
+    let dz = bz - az;
+    if !(dx.is_finite() && dy.is_finite() && dz.is_finite()) {
+        return false;
+    }
+    (dx * dx + dy * dy + dz * dz).is_finite()
 }
 
 fn cell_origin(x: f32, y: f32, z: f32) -> Option<[i32; 3]> {
@@ -320,5 +330,15 @@ mod tests {
             },
         );
         assert!(kept.write_count > 0);
+        let huge = compile_legacy(
+            2,
+            LegacyPoints {
+                a: [0.0, 0.0, 0.0],
+                b: Some([1.9e19, 0.0, 0.0]),
+                tick: 0,
+                seq: 0,
+            },
+        );
+        assert_eq!(huge.write_count, 0);
     }
 }

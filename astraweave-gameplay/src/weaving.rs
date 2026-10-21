@@ -45,6 +45,15 @@ pub fn apply_weave_op(
     if matches!(op.kind, WeaveOpKind::CollapseBridge) && op.b.is_none() {
         anyhow::bail!("Collapse needs A->B");
     }
+    let wind = if matches!(op.kind, WeaveOpKind::RedirectWind) {
+        let end = op.b.unwrap_or(op.a + vec3(1.0, 0.0, 0.0));
+        Some(
+            wind_direction(op.a, end)
+                .ok_or_else(|| anyhow::anyhow!("weave origin is outside the island"))?,
+        )
+    } else {
+        None
+    };
     if !legacy_geometry_kept(kind, &compiled) {
         anyhow::bail!("weave origin is outside the island");
     }
@@ -86,7 +95,9 @@ pub fn apply_weave_op(
         });
     }
     if matches!(op.kind, WeaveOpKind::RedirectWind) {
-        let dir = (op.b.unwrap_or(op.a + vec3(1.0, 0.0, 0.0)) - op.a).normalize_or_zero();
+        let Some(dir) = wind else {
+            anyhow::bail!("weave origin is outside the island");
+        };
         phys.set_wind(dir, 10.0);
         log("Weave: Wind redirected".into());
     }
@@ -148,6 +159,18 @@ pub fn apply_weave_op(
     };
 
     Ok(consequence)
+}
+
+fn wind_direction(from: glam::Vec3, to: glam::Vec3) -> Option<glam::Vec3> {
+    let delta = to - from;
+    if !(delta.x.is_finite() && delta.y.is_finite() && delta.z.is_finite()) {
+        return None;
+    }
+    let len2 = delta.length_squared();
+    if !len2.is_finite() {
+        return None;
+    }
+    Some(delta.normalize_or_zero())
 }
 
 fn legacy_geometry_kept(kind: u8, compiled: &astraweave_weaving::CompiledOp) -> bool {
@@ -774,5 +797,24 @@ mod tests {
             assert!(err.to_string().contains("outside the island"));
             assert_eq!(budget.weather_ops, 3, "{endpoint}");
         }
+        physics.wind = vec3(3.0, 0.0, 0.0);
+        let huge = WeaveOp {
+            kind: WeaveOpKind::RedirectWind,
+            a: vec3(0.0, 0.0, 0.0),
+            b: Some(vec3(1.9e19, 0.0, 0.0)),
+            budget_cost: 1,
+        };
+        let err = apply_weave_op(
+            &mut world,
+            &mut physics,
+            &nav_src,
+            &mut budget,
+            &huge,
+            &mut logger,
+        )
+        .expect_err("a wind endpoint whose square overflows must not succeed");
+        assert!(err.to_string().contains("outside the island"));
+        assert_eq!(budget.weather_ops, 3);
+        assert_eq!(physics.wind, vec3(3.0, 0.0, 0.0));
     }
 }

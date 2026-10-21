@@ -31,7 +31,8 @@ pub fn gravity_mm_s2(milli_g: i32) -> i32 {
     milli_g.saturating_mul(981) / 100
 }
 
-/// Cell index from metres. Truncates toward zero after scaling to millimetres.
+/// Cell index from metres. Floors after scaling to millimetres (`div_euclid`),
+/// so `-1.5` is cell `-2`, not `-1`.
 ///
 /// Returns `None` when `m` is not finite or `m * 1000` does not fit in `i32`.
 /// The float-to-int cast saturates, so that range is rejected before the cast.
@@ -42,7 +43,7 @@ pub fn meters_to_cell(m: f32) -> Option<i32> {
     }
     let milli = m * 1000.0;
     // `i32::MAX as f32` is `2^31`. `>` lets that value through and `as i32`
-    // saturates. Every smaller finite `f32` is at most `2147483392` and fits.
+    // saturates. The predecessor finite `f32` is `2147483520`, which fits.
     if milli < i32::MIN as f32 || milli >= i32::MAX as f32 {
         return None;
     }
@@ -272,6 +273,9 @@ mod tests {
         assert!(meters_to_cell(f32::NEG_INFINITY).is_none());
         assert_eq!(meters_to_cell(1.0), Some(1));
         assert_eq!(meters_to_cell(-1.5), Some(-2));
+        let predecessor = f32::from_bits((i32::MAX as f32).to_bits() - 1);
+        assert_eq!(predecessor, 2_147_483_520.0);
+        assert!(predecessor < i32::MAX as f32);
     }
 
     #[test]
