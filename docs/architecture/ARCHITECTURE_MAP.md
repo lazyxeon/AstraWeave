@@ -245,12 +245,12 @@ There are no dependency cycles in the workspace graph as of 2026-05-13. The "rev
 ### Physics (Trace: [`physics.md`](physics.md))
 
 **astraweave-physics**
-- Types: `PhysicsWorld`, `CharacterController`, `SpatialHash` (**dormant** — see below), `ProjectileManager`, `GravityManager`, `Ragdoll`, `Vehicle`, `ClothManager`, `DestructionManager`, `EnvironmentManager`
+- Types: `PhysicsWorld`, `CharacterController`, `SpatialHash` (**dormant** — see below), `ProjectileManager`, `GravityManager` (historical; `gravity.rs` is deleted), `Ragdoll`, `Vehicle`, `ClothManager`, `EnvironmentManager`. `DestructionManager` and `process_destructible_hits` were deleted in #406.
 - Type used by editor viewport: `DebugLine` (debug geometry for physics wireframes, brush cursor, zone overlays)
 - Wraps Rapier3D 0.22, re-exports all Rapier types
 - Features (verified 2026-05-12 per trace v1.2 — **5 features, not 3**): `async-physics`, `profiling`, `ecs` (`PhysicsPlugin` for `astraweave-ecs`), `alloc-counter` (bench-only — `alloc_measure` bench `required-features`), `fast-alloc` (bench-only — mimalloc allocator swap)
 - **Reconciliation note (v0.7.0 — SpatialHash dormancy)**: The crate-level doc-comment at `lib.rs:25-26` advertises `SpatialHash` as the broadphase with "99.96% pair reduction vs brute-force." Actual broadphase is Rapier's `DefaultBroadPhase` (`lib.rs:907`). `SpatialHash` (1,038 LoC) is dormant in production; only test-file consumers (4 test files / 33 `#[test]` attributes; zero benches). See `physics.md` §6 (Trap) and §11.
-- **Reconciliation note (v0.7.0 — stub functions)**: `process_destructible_hits` (`lib.rs:1587`) has zero callers workspace-wide (`physics.md` §11). `add_water_aabb` (`lib.rs:1449`) is a no-op stub (function body `{}`, all params underscored). `add_destructible_box`'s `_health`/`_break_impulse` params are ignored.
+- **Reconciliation note (2026-10-21 — removed stubs)**: `process_destructible_hits` was an empty `PhysicsWorld` method and #406 deleted it. It was not a symbol of `destruction.rs`. `add_water_aabb` (`lib.rs:1522`) calls `self.water.add_aabb`. It is not an empty body. `add_destructible_box`'s `_health`/`_break_impulse` params are still ignored.
 - **Reconciliation note (v0.7.0)**: `PhysicsWorld` is `Send + Sync` (auto-derived; compile-time-proven by `astraweave-scripting/src/lib.rs:148, 336, 453, 506` using `World::get_resource<PhysicsWorld>` which requires `Send + Sync`). The prior trace claim "Send but NOT Sync" was wrong. See `physics.md` §8 Invariant 18.
 
 **astraweave-fluids**
@@ -358,8 +358,8 @@ These are not properties of any one subsystem — they're cross-cutting rules th
 | `auto_save_system` drops a failed serialize and the first save error | `astraweave-persistence-ecs/src/lib.rs` `auto_save_system` | `persistence_ecs.md` §6 |
 | `replay_system` records non-`health` events and does not apply them | `astraweave-persistence-ecs/src/lib.rs` `apply_replay_event` | `persistence_ecs.md` §6 |
 | `apply_delta` silent no-op on tick mismatch | `astraweave-net/src/lib.rs:404-406` | `net.md` §6 |
-| `process_destructible_hits` no-op stub | `astraweave-physics/src/lib.rs:1587` | `physics.md` §6 |
-| `add_water_aabb` no-op stub (function body `{}`) | `astraweave-physics/src/lib.rs:1449` | `physics.md` §6 |
+| `process_destructible_hits` deleted in #406 | was an empty `PhysicsWorld` method in `lib.rs`, not `destruction.rs` | `physics.md` §6 |
+| `add_water_aabb` registers an AABB (`lib.rs:1522`) | `astraweave-physics/src/lib.rs:1522` | `physics.md` §6 |
 | `compute_poses_stub` checks components but doesn't write poses | `astraweave-scene/src/lib.rs:941` | `animation.md` §6 |
 | ~~HMAC server verification always fails (16-byte sig vs 32-byte HMAC-SHA256 OutputSize), failure only `warn!`~~ **RESOLVED** (`561b20957`+`79424389e`+`066cd6cfd`; refute `eb9977b88`) — client+server unified on canonical HMAC-SHA256 (`aw-net-proto`), server verifies FIRST and kicks by default; `sign16`/`SessionKey`/`session_key_hint` deleted | `net/aw-net-server/src/lib.rs` (`on_client_msg{,_tls}`), `net/aw-net-proto/src/lib.rs` | `net_ecs.md` §6/§7; `docs/audits/net_trio_signature_remediation_findings_2026-06.md` |
 | `deserialize_ecs_world` on empty blob returns `Ok(())` silently | `astraweave-persistence-ecs/src/lib.rs:447-450` | `persistence_ecs.md` §6 |
@@ -403,8 +403,8 @@ Reconciled from per-subsystem trace §11 / §13 sections. Each entry: subsystem,
 |---|---|
 | `astraweave-llm::llm_adapter::safe_llm_invoke` (zero callers; `MAX_PROMPT_LENGTH = 4096` unreachable) | `ai_pipeline.md` §6, §11, §13.7 |
 | `astraweave-scene::compute_poses_stub` (checks components but doesn't write poses) | `animation.md` §6 |
-| `astraweave-physics::process_destructible_hits` (no-op with `#[allow(dead_code)]`) | `physics.md` §6, §8 (invariant 19) |
-| `astraweave-physics::add_water_aabb` (no-op stub) | `physics.md` §6, §8 (invariant 17) |
+| `astraweave-physics::process_destructible_hits` deleted in #406 | `physics.md` §6, §8 (invariant 19) |
+| `astraweave-physics::add_water_aabb` registers a water AABB (`lib.rs:1522`) | `physics.md` §6, §8 (invariant 17) |
 | `astraweave-physics::add_destructible_box` `_health`/`_break_impulse` params (ignored, underscored) | `physics.md` §6 |
 | `astraweave-coordination` 3 commented-out `pub mod` declarations (source files never created) | `ai_pipeline.md` §6 |
 

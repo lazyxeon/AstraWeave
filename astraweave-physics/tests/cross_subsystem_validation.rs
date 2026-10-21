@@ -1,8 +1,11 @@
 //! Cross-Subsystem Physics Validation Tests (Phase 8.8)
 //!
-//! These tests validate physics correctness across multiple subsystems working together.
-//! Ensures that gravity affects cloth, friction curves describe a surface, and ragdolls
-//! respond to collisions.
+//! These tests check three presets, not a stepped collision.
+//! Cloth must not rise (`final_y` stays at or below the start, and the assert is
+//! skipped when every sample is non-finite). Friction presets order tarmac above
+//! gravel above ice at `optimal_slip`. A ragdoll config has a positive mass scale
+//! and non-negative joint stiffness and damping. No test builds a ragdoll, a
+//! vehicle body, or a contact.
 
 use astraweave_physics::{
     cloth::{ClothConfig, ClothManager},
@@ -76,7 +79,7 @@ fn test_cloth_responds_to_gravity() {
 }
 
 // ============================================================================
-// RAGDOLL + GRAVITY INTEGRATION
+// RAGDOLL CONFIG DEFAULTS
 // ============================================================================
 
 #[test]

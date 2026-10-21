@@ -1,6 +1,6 @@
 # Destruction Archaeology
 
-**Status:** Phase 1 survey. No runtime code in this change.
+**Status:** Phase 1 survey, read 2026-10-15. #406 deleted `astraweave-physics/src/destruction.rs` and the empty `PhysicsWorld::process_destructible_hits` method. Rows below that still say DORMANT or STUBBED for those two are the survey, not the current tree.
 **Base:** `main` `85d09a2c` (merge of PR #211), read 2026-10-15.
 **Open PRs read, not merged:** [#205](https://github.com/lazyxeon/AstraWeave/pull/205) Aravath demo, [#212](https://github.com/lazyxeon/AstraWeave/pull/212) combat, [#215](https://github.com/lazyxeon/AstraWeave/pull/215) terrain, [#216](https://github.com/lazyxeon/AstraWeave/pull/216) render, [#223](https://github.com/lazyxeon/AstraWeave/pull/223) CI tiers.
 **Design:** [`DESTRUCTION_DESIGN.md`](DESTRUCTION_DESIGN.md).
