@@ -31,7 +31,7 @@
 //! - **[`Ragdoll`] / [`RagdollBuilder`]** — Multi-bone ragdoll creation and simulation.
 //! - **[`Vehicle`] / [`VehicleManager`]** — Vehicle dynamics with drivetrain and wheels.
 //! - **[`EnvironmentManager`]** — Wind zones, water volumes, and buoyancy.
-//! - **[`DestructionManager`]** — Fracture patterns and debris spawning.
+//! - **`break_destructible`** — removes a rigid body. Fracture and debris live in `astraweave-destruction`.
 //! - **[`ClothManager`]** — Particle-based cloth with distance constraints.
 //!
 //! # Feature Flags
@@ -167,13 +167,6 @@ pub use vehicle::{
 pub mod environment;
 pub use environment::{
     EnvironmentManager, GustEvent, WindType, WindZone, WindZoneConfig, WindZoneId, WindZoneShape,
-};
-
-// Destruction system
-pub mod destruction;
-pub use destruction::{
-    Debris, DebrisConfig, DebrisId, DebrisShape, Destructible, DestructibleConfig, DestructibleId,
-    DestructibleState, DestructionEvent, DestructionManager, DestructionTrigger, FracturePattern,
 };
 
 // Cloth simulation
@@ -1677,12 +1670,6 @@ impl PhysicsWorld {
     pub fn break_destructible(&mut self, id: BodyId) {
         self.remove_body(id);
     }
-
-    /// Empty on purpose. Hits that change destruction state go through
-    /// `astraweave-destruction`'s command log. Deletion of this stub is part
-    /// of retiring `destruction.rs` (deferred-failure issue #255).
-    #[allow(dead_code)]
-    fn process_destructible_hits(&mut self) {}
 
     pub fn set_body_position(&mut self, id: BodyId, pos: Vec3) {
         if let Some(h) = self.handle_of(id) {

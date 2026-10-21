@@ -1,12 +1,10 @@
-//! Integration tests for Phase 6: Environmental & Soft Body Physics
+//! Integration tests for wind zones, cloth, and buoyancy.
 //!
-//! Tests wind zones, destruction, cloth, and buoyancy systems.
+//! The float destruction tests left with `destruction.rs`.
 
 use astraweave_physics::{
     cloth::{Cloth, ClothCollider, ClothConfig, ClothId, ClothManager},
-    destruction::{DestructibleConfig, DestructionManager, DestructionTrigger, FracturePattern},
     environment::{EnvironmentManager, WindType, WindZoneConfig, WindZoneShape},
-    PhysicsWorld,
 };
 use glam::Vec3;
 
@@ -152,163 +150,6 @@ fn test_gust_events() {
     env.update(1.0);
     let force_after = env.wind_force_at(Vec3::ZERO, 1.0, 1.0);
     assert_eq!(force_after, Vec3::ZERO, "Gust should expire");
-}
-
-// ============================================================================
-// Destruction Integration Tests
-// ============================================================================
-
-/// Test basic destruction workflow
-#[test]
-fn test_destruction_workflow() {
-    let mut manager = DestructionManager::new();
-
-    let id = manager.add_destructible(
-        DestructibleConfig {
-            fracture_pattern: FracturePattern::uniform(10, Vec3::splat(1.0), 10.0),
-            trigger: DestructionTrigger::Health,
-            max_health: 100.0,
-            ..Default::default()
-        },
-        Vec3::ZERO,
-    );
-
-    // Apply damage
-    manager.apply_damage(id, 50.0);
-    assert_eq!(manager.get(id).unwrap().health, 50.0);
-
-    // Destroy
-    manager.apply_damage(id, 60.0);
-
-    // Update to process destruction
-    manager.update(0.016, Vec3::new(0.0, -9.81, 0.0));
-
-    // Should have spawned debris
-    assert!(manager.debris_count() > 0);
-
-    // Should have generated event
-    let events = manager.take_events();
-    assert_eq!(events.len(), 1);
-}
-
-/// Test force-based destruction
-#[test]
-fn test_force_destruction() {
-    let mut manager = DestructionManager::new();
-
-    let id = manager.add_destructible(
-        DestructibleConfig {
-            fracture_pattern: FracturePattern::uniform(5, Vec3::splat(0.5), 5.0),
-            trigger: DestructionTrigger::Force { threshold: 100.0 },
-            ..Default::default()
-        },
-        Vec3::ZERO,
-    );
-
-    // Below threshold (force is reset each frame, so needs 100+ in one frame)
-    manager.apply_force(id, 50.0);
-    manager.update(0.016, Vec3::ZERO);
-    assert_eq!(
-        manager.debris_count(),
-        0,
-        "Should not break below threshold"
-    );
-
-    // Above threshold - apply enough force in single frame
-    manager.apply_force(id, 110.0);
-    manager.update(0.016, Vec3::ZERO);
-    assert!(manager.debris_count() > 0, "Should break above threshold");
-}
-
-/// Test collision-triggered destruction
-#[test]
-fn test_collision_destruction() {
-    let mut manager = DestructionManager::new();
-
-    let id = manager.add_destructible(
-        DestructibleConfig {
-            fracture_pattern: FracturePattern::uniform(3, Vec3::splat(0.3), 3.0),
-            trigger: DestructionTrigger::Collision,
-            ..Default::default()
-        },
-        Vec3::ZERO,
-    );
-
-    // Any collision should destroy
-    manager.on_collision(id, 1.0);
-    manager.update(0.016, Vec3::ZERO);
-
-    assert!(manager.debris_count() > 0);
-}
-
-/// Test radial fracture pattern
-#[test]
-fn test_radial_fracture() {
-    let pattern = FracturePattern::radial(20, 2.0, 10.0);
-    assert_eq!(pattern.debris.len(), 20);
-
-    // All debris should be within radius
-    for debris in &pattern.debris {
-        let dist = debris.local_position.length();
-        assert!(dist <= 2.0, "Debris should be within radius");
-    }
-}
-
-/// Test layered fracture pattern
-#[test]
-fn test_layered_fracture() {
-    let pattern = FracturePattern::layered(4, 6, Vec3::new(2.0, 4.0, 2.0), 24.0);
-    assert_eq!(pattern.debris.len(), 24);
-}
-
-/// Test debris lifetime and cleanup
-#[test]
-fn test_debris_lifetime() {
-    let mut manager = DestructionManager::new();
-
-    let id = manager.add_destructible(
-        DestructibleConfig {
-            fracture_pattern: FracturePattern {
-                debris: vec![astraweave_physics::destruction::DebrisConfig {
-                    lifetime: 0.5,
-                    ..Default::default()
-                }],
-                center_of_mass: Vec3::ZERO,
-            },
-            trigger: DestructionTrigger::Manual,
-            ..Default::default()
-        },
-        Vec3::ZERO,
-    );
-
-    manager.destroy(id);
-    manager.update(0.016, Vec3::ZERO);
-    assert_eq!(manager.debris_count(), 1);
-
-    // After lifetime
-    manager.update(1.0, Vec3::ZERO);
-    assert_eq!(manager.debris_count(), 0, "Debris should expire");
-}
-
-/// Test debris limit
-#[test]
-fn test_debris_limit() {
-    let mut manager = DestructionManager::new();
-    manager.max_debris = 5;
-
-    let id = manager.add_destructible(
-        DestructibleConfig {
-            fracture_pattern: FracturePattern::uniform(20, Vec3::splat(1.0), 20.0),
-            trigger: DestructionTrigger::Manual,
-            ..Default::default()
-        },
-        Vec3::ZERO,
-    );
-
-    manager.destroy(id);
-    manager.update(0.016, Vec3::ZERO);
-
-    assert!(manager.debris_count() <= 5, "Should respect debris limit");
 }
 
 // ============================================================================
@@ -596,31 +437,4 @@ fn test_environment_cloth_integration() {
         "Cloth should not significantly oppose wind: moved {}",
         moved
     );
-}
-
-/// Test destruction with physics world integration
-#[test]
-fn test_destruction_physics_integration() {
-    let mut _physics = PhysicsWorld::new(Vec3::new(0.0, -9.81, 0.0));
-    let mut destruction = DestructionManager::new();
-
-    // Create destructible wall
-    let wall_id = destruction.add_destructible(
-        DestructibleConfig {
-            fracture_pattern: FracturePattern::layered(3, 4, Vec3::new(2.0, 3.0, 0.5), 50.0),
-            trigger: DestructionTrigger::Force { threshold: 500.0 },
-            destruction_force: 10.0,
-            ..Default::default()
-        },
-        Vec3::new(0.0, 1.5, 0.0),
-    );
-
-    // Simulate projectile impact
-    destruction.apply_force(wall_id, 600.0);
-    destruction.update(0.016, Vec3::new(0.0, -9.81, 0.0));
-
-    // Wall should be destroyed
-    let events = destruction.take_events();
-    assert_eq!(events.len(), 1);
-    assert!(events[0].debris_count > 0);
 }

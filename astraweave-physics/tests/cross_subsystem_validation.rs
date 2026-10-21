@@ -6,7 +6,6 @@
 
 use astraweave_physics::{
     cloth::{ClothConfig, ClothManager},
-    destruction::{DestructibleConfig, DestructibleId, DestructionManager},
     projectile::{ProjectileConfig, ProjectileKind, ProjectileManager},
     ragdoll::RagdollConfig,
     spatial_hash::SpatialHash,
@@ -74,50 +73,6 @@ fn test_cloth_responds_to_gravity() {
             final_y
         );
     }
-}
-
-// ============================================================================
-// VEHICLE + DESTRUCTION INTEGRATION
-// ============================================================================
-
-#[test]
-fn test_vehicle_config_with_destruction_compatible_mass() {
-    let vehicle_config = VehicleConfig::default();
-    let destruction_config = DestructibleConfig::default();
-
-    // Vehicle mass should be reasonable for destruction calculations
-    // Impact force = mass * acceleration
-    let impact_velocity = 10.0; // m/s collision
-    let impact_force = vehicle_config.mass * impact_velocity;
-
-    assert!(
-        impact_force > destruction_config.damage_threshold * 0.1,
-        "Vehicle mass should generate meaningful destruction forces"
-    );
-}
-
-#[test]
-fn test_destruction_debris_generation() {
-    let mut destruction_mgr = DestructionManager::new();
-
-    let config = DestructibleConfig {
-        max_health: 100.0,
-        ..Default::default()
-    };
-
-    let id = destruction_mgr.add_destructible(config, Vec3::ZERO);
-
-    // Apply enough damage to destroy
-    destruction_mgr.apply_damage(id, 150.0);
-    destruction_mgr.update(1.0 / 60.0, Vec3::new(0.0, -9.81, 0.0));
-
-    // Object should be destroyed or have spawned debris
-    let obj = destruction_mgr.get(id);
-    // After heavy damage, object may be destroyed
-    assert!(
-        obj.is_none() || obj.unwrap().health <= 0.0,
-        "Object should be destroyed after excessive damage"
-    );
 }
 
 // ============================================================================
@@ -299,45 +254,12 @@ fn test_projectile_trajectory_determinism() {
 #[test]
 fn test_empty_managers_handle_updates() {
     let mut cloth_mgr = ClothManager::new();
-    let mut destruction_mgr = DestructionManager::new();
     let mut projectile_mgr = ProjectileManager::new();
 
-    // Should not panic with no objects
     cloth_mgr.update(1.0 / 60.0);
-    destruction_mgr.update(1.0 / 60.0, Vec3::new(0.0, -9.81, 0.0));
     projectile_mgr.update(1.0 / 60.0, |_, _, _| None);
 
     assert_eq!(cloth_mgr.count(), 0);
-}
-
-#[test]
-fn test_many_simultaneous_objects() {
-    let mut destruction_mgr = DestructionManager::new();
-
-    // Create many destructibles
-    for i in 0..100 {
-        destruction_mgr.add_destructible(
-            DestructibleConfig::default(),
-            Vec3::new(i as f32 * 2.0, 0.0, 0.0),
-        );
-    }
-
-    // Update should handle all
-    destruction_mgr.update(1.0 / 60.0, Vec3::new(0.0, -9.81, 0.0));
-
-    // Should have all objects
-    // Count active destructibles
-    let mut count = 0;
-    for i in 1..=100 {
-        if destruction_mgr.get(DestructibleId(i)).is_some() {
-            count += 1;
-        }
-    }
-    assert!(
-        count >= 50,
-        "Should maintain many simultaneous objects, got {}",
-        count
-    );
 }
 
 // ============================================================================
