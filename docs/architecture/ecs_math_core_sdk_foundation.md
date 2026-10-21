@@ -8,7 +8,7 @@ domain: core
 lifecycle_status: active
 integration_status: wired
 owns: [astraweave-alloc, astraweave-core, astraweave-ecs, astraweave-math, astraweave-sdk]
-doc_version: "1.6"
+doc_version: "1.7"
 last_verified_commit: 90a976a4
 ---
 
@@ -20,7 +20,7 @@ last_verified_commit: 90a976a4
 |---|---|
 | **System name** | ECS substrate + Math / Core / SDK primitives (foundation layer) |
 | **Primary crates** | `astraweave-ecs`, `astraweave-math`, `astraweave-core`, `astraweave-sdk` |
-| **Document version** | 1.6 |
+| **Document version** | 1.7 |
 | **Last verified against commit** | `1c858370` |
 | **Last verified date** | 2026-10-15 |
 | **Status** | Active foundation. `astraweave-ecs` and `astraweave-math` are canonical; `astraweave-core` contains a canonical schema **plus** a transitional legacy `World` that bridges to ECS; `astraweave-sdk` is a stable C ABI surface with a single in-tree consumer (`examples/sdk_c_harness`) and an otherwise out-of-tree audience. |
@@ -294,7 +294,7 @@ There are several distinct flows through this layer. The first is the canonical 
 |---|---|---|---|
 | `astraweave-math/src/lib.rs` | Top-level: re-export modules, `enable_flush_to_zero()` | Active | Declares `fixed64` plus the SIMD modules. The `simd` feature in `Cargo.toml` is still an empty no-op; SIMD activation is via `target_feature = "sse2"` cfg-gates. |
 | `astraweave-math/src/fixed64.rs` | Q32.32 `Fixed64`. Mul through `i128`, saturating cast, `from_ratio` toward zero, `mul_ratio` via `div_euclid` | Active | No `f32`/`f64` conversion. `fixed64_contract_bytes` is the `fixed64` replay case. Consumed by `astraweave-core`'s replay test (dev-dependency). |
-| `astraweave-math/src/simd_vec.rs` | SIMD Vec3/Vec4 dot, cross, normalize, length | Active | SSE2 fast-path with `glam` fallback (`simd_vec.rs:64-75`) |
+| `astraweave-math/src/simd_vec.rs` | SIMD Vec3/Vec4 dot, cross, normalize, length | Active | SSE2 fast-path. `cross` and `length` fall back to glam. `normalize_simd` uses the SSE2 near-zero guard on the non-SSE2 path |
 | `astraweave-math/src/simd_mat.rs` | SIMD Mat4 multiply, transpose, transform | Active | Uses `unsafe` for intrinsics; SAFETY comments document target-feature gates |
 | `astraweave-math/src/simd_quat.rs` | SIMD Quat multiply, normalize, slerp | Active | `mul_quat_simd`, `slerp_simd` |
 | `astraweave-math/src/simd_movement.rs` | Batched SIMD `position += velocity * dt` for 1k+ entities | Active | `update_positions_simd` |
@@ -435,7 +435,7 @@ There are several distinct flows through this layer. The first is the canonical 
 - **Date:** Week 5 Action 21 (Vec3/Vec4) and Week 6 Action 26 (Mat4 / Quat), per the module header at `astraweave-math/src/lib.rs:14-18`. SIMD movement landed in Week 8 Day 3 (`docs/journey/daily/WEEK_8_DAY_3_SIMD_MOVEMENT_PLAN.md` dated October 12, 2025; implementation completion documented in `WEEK_8_DAY_3_COMPLETE.md` and `WEEK_8_DAY_3_IMPLEMENTATION_COMPLETE.md`).
 - **Status:** Accepted (in active code)
 - **Context:** Profile data identified the movement system as a hot path (861 µs/frame for 1,000 entities, 30% of 2.87 ms total — see `WEEK_8_DAY_3_SIMD_MOVEMENT_PLAN.md:14-22`). The `lib.rs` module header documents 1.7-2.5× speedups (lines 47-58) via SSE2 with `glam` scalar fallback.
-- **Decision:** `astraweave-math` exposes `simd_vec`, `simd_mat`, `simd_quat`, `simd_movement` modules. Each function `#[cfg]`-gates on `target_feature = "sse2"` (x86_64) and falls back to `glam`'s own scalar path otherwise.
+- **Decision:** `astraweave-math` exposes `simd_vec`, `simd_mat`, `simd_quat`, `simd_movement` modules. Each function `#[cfg]`-gates on `target_feature = "sse2"` (x86_64) and falls back to `glam`'s own scalar path otherwise. `normalize_simd` is the exception as of 2026-10-21: the non-SSE2 arm uses the same `len_sq < 1e-16` zero guard as the SSE2 path, then `v / len_sq.sqrt()`. A NaN length propagates. `cross_simd` and `length_simd` still use glam.
 - **Alternatives considered:** AVX2 (Intel Haswell+ 2013 / AMD Excavator+ 2015) was evaluated for theoretical 8× speedup but rejected in favour of broader baseline compatibility — see `WEEK_8_DAY_3_SIMD_MOVEMENT_PLAN.md:32-41` for the SIMD-architecture trade-off discussion. CLAUDE.md item 5 in "Key Lessons" captures the post-hoc principle: "Trust glam auto-vectorization (80-85% of hand-written AVX2)". Manual AVX2 intrinsics were not adopted; SSE2 plus glam-fallback was retained.
 - **Consequences:** Portable across x86_64/ARM/other with predictable performance. `debug_assert!(a.is_finite(), …)` checks NaN/Inf inputs in debug builds (e.g. `simd_vec.rs:62-63`). All SIMD entry points are `unsafe` from the intrinsics perspective; SAFETY comments at each call site cite the cfg-gate target-feature guarantee (e.g. `simd_vec.rs:64-69`).
 
@@ -474,7 +474,7 @@ There are several distinct flows through this layer. The first is the canonical 
 | 10 | C ABI entry points reject NULL handles and NULL string pointers without UB | Yes | `astraweave-sdk/src/lib.rs:177, 245, 265, 389-393` explicit null checks; `astraweave-sdk/src/lib_kani.rs` proves FFI safety properties |
 | 11 | `Schedule::add_system` for an unregistered stage name does not panic — it either logs (debug) or silently drops (release) | Yes (behavioural) | `astraweave-ecs/src/lib.rs:708-724`. This is the documented behavioural contract — silent-drop is intentional for optional custom stages, while debug-mode logging surfaces typos |
 | 12 | `Component` and `Resource` traits are blanket-implemented for `'static + Send + Sync` types — any such type can be both | Yes (compile-time) | `astraweave-ecs/src/lib.rs:85-90` |
-| 13 | SIMD math functions handle NaN/Inf input — `debug_assert!(a.is_finite())` in debug; production paths fall through to scalar `glam` for non-x86_64 | Yes (debug) | E.g. `astraweave-math/src/simd_vec.rs:62-63`, `simd_quat.rs:33-34`. Release builds do not check finiteness |
+| 13 | SIMD math functions handle NaN/Inf input — `debug_assert!(a.is_finite())` in debug. `cross_simd` and `length_simd` fall through to scalar glam on non-x86_64. `normalize_simd` does not: the non-SSE2 arm returns zero when `len_sq < 1e-16` and otherwise divides by `sqrt`, so a NaN length propagates instead of becoming `Vec3::ZERO` | Yes (debug) | `astraweave-math/src/simd_vec.rs` normalize arm; `simd_quat.rs:33-34`. Release builds do not check finiteness |
 | 14 | Perception queries that feed a snapshot are ordered. `all_of_team`, `enemies_of`, and `entities` sort by entity id. Obstacle snapshots sort by `(x, y)`. The replay hash does not re-sort those lists | Yes | `world.rs` `sorted_entities` / `sorted_obstacles`; `perception.rs` `assemble_snapshot`. `astraweave-core/tests/perception_order.rs` builds two worlds and compares enemy ids, the first-enemy plan, and SHA-256 |
 | 15 | `Fixed64` is Q32.32 (`SCALE = 1 << 32`). `from_ratio` truncates toward zero and yields zero when `den == 0`. `mul_ratio` uses `div_euclid`. Mul and the saturating add/sub clamp to `i64`. The sim path has no float conversion | Yes | `astraweave-math/src/fixed64.rs`. `fixed64_contract_bytes` is hashed as the required `fixed64` case in `determinism-replay.yml` |
 | 16 | `build_app` installs sim extensions recorded with `register_sim_extension` before `sys_sim`, and records each function pointer once. With no registration, `build_app` is the legacy bridge only | Yes | `astraweave-scripting` test `mod_loaded_through_build_app_replays_identically` |
@@ -560,6 +560,7 @@ There are several distinct flows through this layer. The first is the canonical 
 
 | Version | Date | Change |
 |---|---|---|
+| 1.7 | 2026-10-21 | Non-SSE2 `normalize_simd` uses the SSE2 `len_sq < 1e-16` guard, not glam `normalize_or_zero` (invariant 13). `cross_simd` and `length_simd` stay on the glam fallback. |
 | 1.5 | 2026-10-15 | `aw_last_error_string` is per calling thread (invariant 17). The process-global slot raced under parallel lib tests. |
 | 1.4 | 2026-05-10 | Deep-investigation pass recorded in the metadata owner notes. |
 
@@ -591,7 +592,7 @@ There are several distinct flows through this layer. The first is the canonical 
 4. **All `unsafe` in this layer must round-trip through Miri and Kani.** Don't ship new `unsafe` to `astraweave-ecs`, `astraweave-math`, `astraweave-core`, or `astraweave-sdk` without a Kani proof or a Miri-validated test and a `// SAFETY:` comment documenting the invariant.
 5. **Stage names matter.** Registering a system on a stage name not in `App::new()`'s canonical eight will silently drop the registration in release builds.
 6. **Stale entity handles are silent.** They do not panic — they return `None` or no-op. Code reasoning about entity liveness should call `World::is_alive` first if a stale handle could be meaningful.
-7. **Math primitives are stateless and `glam`-compatible.** Take `glam::Vec3`/`Mat4`/`Quat` in, give them back. The SSE2 path uses `#[target_feature]` gating; non-x86_64 falls through to `glam`'s scalar path.
+7. **Math primitives are stateless and `glam`-compatible.** Take `glam::Vec3`/`Mat4`/`Quat` in, give them back. The SSE2 path uses `#[target_feature]` gating. `cross_simd` and `length_simd` fall through to glam on non-x86_64. `normalize_simd` uses the SSE2 near-zero guard on that path instead.
 8. **The SDK has one in-tree consumer and an otherwise out-of-tree audience.** `examples/sdk_c_harness` exercises the FFI surface via `#[link]` + `extern "C"` (`examples/sdk_c_harness/src/main.rs:4-8`) and statically links the SDK. Beyond that example, no engine crate `use`s `astraweave-sdk` — so most C ABI changes affect out-of-tree embedders plus the one harness example.
 
 **Files you'll most likely touch:**

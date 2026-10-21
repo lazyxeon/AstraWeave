@@ -46,7 +46,7 @@ jobs:
         uses: dtolnay/rust-toolchain@1.89.0
       
       - name: Install cargo-mutants
-        run: cargo install cargo-mutants --locked
+        run: cargo install cargo-mutants --version 27.1.0 --locked
       
       - name: Cache cargo registry
         uses: actions/cache@v4
@@ -110,7 +110,7 @@ jobs:
         uses: dtolnay/rust-toolchain@1.89.0
       
       - name: Install cargo-mutants
-        run: cargo install cargo-mutants --locked
+        run: cargo install cargo-mutants --version 27.1.0 --locked
       
       - name: Cache cargo registry
         uses: actions/cache@v4
@@ -156,7 +156,7 @@ jobs:
         uses: dtolnay/rust-toolchain@1.89.0
       
       - name: Install cargo-mutants
-        run: cargo install cargo-mutants --locked
+        run: cargo install cargo-mutants --version 27.1.0 --locked
       
       - name: Cache cargo registry
         uses: actions/cache@v4
@@ -225,7 +225,7 @@ jobs:
         uses: dtolnay/rust-toolchain@1.89.0
       
       - name: Install cargo-mutants
-        run: cargo install cargo-mutants --locked
+        run: cargo install cargo-mutants --version 27.1.0 --locked
       
       - name: Cache cargo registry
         uses: actions/cache@v4
@@ -266,7 +266,7 @@ jobs:
         uses: dtolnay/rust-toolchain@1.89.0
       
       - name: Install cargo-mutants
-        run: cargo install cargo-mutants --locked
+        run: cargo install cargo-mutants --version 27.1.0 --locked
       
       - name: Cache cargo registry
         uses: actions/cache@v4
@@ -321,35 +321,37 @@ jobs:
           echo "| astraweave-nav | ${{ needs.mutants-nav.result == 'success' && '✅' || '⚠️' }} | P1 Infra |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
-          # One astraweave-ai total. Each shard uploads its own outcomes.json.
-          mapfile -t ai_files < <(find all-results -type f -name outcomes.json | sort | grep '/mutants-ai-results-' || true)
-          echo "astraweave-ai shard files: ${#ai_files[@]}"
-          printf '%s\n' "${ai_files[@]}"
-          if [ "${#ai_files[@]}" -ne 8 ]; then
-            echo "::error::Expected 8 astraweave-ai shard outcomes, found ${#ai_files[@]}"
-            exit 1
-          fi
-          TOTAL=$(jq -s '[.[] | .outcomes[] | select(.scenario != "Baseline")] | length' "${ai_files[@]}")
-          CAUGHT=$(jq -s '[.[] | .outcomes[] | select(.scenario != "Baseline") | select(.summary == "CaughtMutant")] | length' "${ai_files[@]}")
-          MISSED=$(jq -s '[.[] | .outcomes[] | select(.scenario != "Baseline") | select(.summary == "MissedMutant")] | length' "${ai_files[@]}")
-          TIMEOUT=$(jq -s '[.[] | .outcomes[] | select(.scenario != "Baseline") | select(.summary == "Timeout")] | length' "${ai_files[@]}")
-          if [ "$TOTAL" -le 0 ]; then
-            echo "::error::astraweave-ai outcomes contained no mutants"
-            exit 1
-          fi
-          # Same score as the shard report: timeouts count with caught.
-          SCORE=$(( (CAUGHT + TIMEOUT) * 100 / TOTAL ))
-          if [ "$SCORE" -ge 70 ]; then
-            AI_MARK="✅"
-            MEETS="meets"
+          # p0 dispatch skips the AI matrix. A timeout or a missing shard still fails.
+          if [ "${{ needs.mutants-ai.result }}" = "skipped" ]; then
+            echo "| astraweave-ai | skipped | P1 AI not selected |" >> "$GITHUB_STEP_SUMMARY"
           else
-            AI_MARK="⚠️"
-            MEETS="below"
+            mapfile -t ai_files < <(find all-results -type f -name outcomes.json | sort | grep '/mutants-ai-results-' || true)
+            echo "astraweave-ai shard files: ${#ai_files[@]}"
+            printf '%s\n' "${ai_files[@]}"
+            if [ "${#ai_files[@]}" -ne 8 ]; then
+              echo "::error::Expected 8 astraweave-ai shard outcomes, found ${#ai_files[@]}"
+              exit 1
+            fi
+            # cargo-mutants 27.1.0 writes summary as CaughtMutant, MissedMutant, or Timeout.
+            CAUGHT=$(jq -s '[.[] | .outcomes[] | select(.scenario != "Baseline") | select(.summary == "CaughtMutant")] | length' "${ai_files[@]}")
+            MISSED=$(jq -s '[.[] | .outcomes[] | select(.scenario != "Baseline") | select(.summary == "MissedMutant")] | length' "${ai_files[@]}")
+            TIMEOUT=$(jq -s '[.[] | .outcomes[] | select(.scenario != "Baseline") | select(.summary == "Timeout")] | length' "${ai_files[@]}")
+            DECIDED=$((CAUGHT + MISSED))
+            if [ "$DECIDED" -le 0 ]; then
+              echo "::error::astraweave-ai has no caught or missed mutants (timeouts ${TIMEOUT})"
+              exit 1
+            fi
+            # Timeouts are not caught. The 70% gate is killed / (killed + missed).
+            SCORE=$(( CAUGHT * 100 / DECIDED ))
+            echo "| astraweave-ai | ${SCORE}% | P1 AI, 8 shards, caught ${CAUGHT}, missed ${MISSED}, timeout ${TIMEOUT}, target 70% |" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "astraweave-ai combined score: ${SCORE}% (target 70%). Caught ${CAUGHT}, missed ${MISSED}, timeout ${TIMEOUT}." >> "$GITHUB_STEP_SUMMARY"
+            if [ "$SCORE" -lt 70 ]; then
+              echo "::error::astraweave-ai mutation score ${SCORE}% is below the 70% target"
+              exit 1
+            fi
           fi
-          echo "| astraweave-ai | ${AI_MARK} ${SCORE}% (${MEETS} 70%) | P1 AI, 8 shards, total ${TOTAL}, caught ${CAUGHT}, missed ${MISSED}, timeout ${TIMEOUT} |" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Target**: 80%+ mutation score on P0, 70%+ on P1" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "astraweave-ai combined score: ${SCORE}% (target 70%, ${MEETS}). Caught ${CAUGHT}, missed ${MISSED}, timeout ${TIMEOUT}, total ${TOTAL}." >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Detailed results available in workflow artifacts." >> $GITHUB_STEP_SUMMARY
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Target**: 80%+ mutation score on P0, 70%+ on P1" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Detailed results available in workflow artifacts." >> "$GITHUB_STEP_SUMMARY"
