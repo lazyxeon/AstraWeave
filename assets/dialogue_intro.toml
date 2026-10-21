@@ -19,7 +19,7 @@ choices = [
 
 [[nodes]]
 id = "n2"
-line = { speaker = "Companion", text = "Spoken like a true Veilweaver. Confidence helps, but the bridge still needs stitching." }
+line = { speaker = "Companion", text = "Spoken like a true thread-binder. Confidence helps, but the bridge still needs stitching." }
 choices = [
   { text = "Give me the plan.", go_to = "n3" },
   { text = "Lead on.", go_to = "n4" }
