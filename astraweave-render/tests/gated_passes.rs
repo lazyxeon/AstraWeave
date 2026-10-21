@@ -38,12 +38,13 @@ fn submit(renderer: &mut Renderer, view: &wgpu::TextureView) {
 #[test]
 fn atmosphere_follows_the_measured_default() {
     pollster::block_on(async {
-        let renderer = Renderer::new_headless(64, 64).await.expect("headless");
+        let mut renderer = Renderer::new_headless(64, 64).await.expect("headless");
         let quality = astraweave_render::PresentationQuality::default();
         assert_eq!(renderer.atmosphere_enabled(), quality.atmosphere());
-        // The `--atmosphere` cell is blank, so the default stays off.
-        assert!(!quality.atmosphere());
-        assert!(astraweave_render::PresentationQuality::Atmosphere.atmosphere());
+        assert!(quality.atmosphere());
+        assert!(!astraweave_render::PresentationQuality::Measured.atmosphere());
+        renderer.set_atmosphere_enabled(false);
+        assert!(!renderer.atmosphere_enabled());
     });
 }
 

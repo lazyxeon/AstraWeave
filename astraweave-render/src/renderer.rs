@@ -1270,13 +1270,14 @@ pub struct Renderer {
     terrain_shadow_stats: [(u32, u32); CASCADE_COUNT],
 }
 
-/// Gated presentation choices. `Measured` leaves atmosphere off.
+/// Gated presentation choices. The measured heavy scene leaves Bruneton on.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum PresentationQuality {
-    /// Matches the published heavy scene: atmosphere off.
-    #[default]
+    /// Atmosphere off. The 3.688 ms heavy scene.
     Measured,
-    /// Atmosphere on. Not the default until a 1660 Ti heavy-scene median is ≤ 11 ms.
+    /// Bruneton sky plus the Aravath fog path. `set_atmosphere_enabled(false)`
+    /// or this variant turns it off.
+    #[default]
     Atmosphere,
 }
 
@@ -3914,7 +3915,7 @@ fn vs(input: VSIn) -> VSOut {
             particle_sort: None,
             particle_emitter: None,
             particle_depth_copy: None,
-            atmosphere_on: false,
+            atmosphere_on: PresentationQuality::default().atmosphere(),
             cloud_raymarch_on: false,
             ssgi_on: false,
             taa_on: false,
@@ -5709,9 +5710,8 @@ fn vs(input: VSIn) -> VSOut {
         self.atmosphere_on = enabled;
     }
 
-    /// Bruneton sky plus aerial perspective. Off until
-    /// `gpu_frame_budget --scene heavy --atmosphere` prints
-    /// `median_gpu_frame_ms` at or under 11 on a GTX 1660 Ti.
+    /// Bruneton sky plus aerial perspective. On after the 1660 Ti capture
+    /// (`median_gpu_frame_ms=4.474`). `PresentationQuality::Measured` turns it off.
     #[must_use]
     pub fn atmosphere_enabled(&self) -> bool {
         self.atmosphere_on
