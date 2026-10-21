@@ -75,14 +75,15 @@ The disk-format layer (`aw-save`) is fully production-grade and CI-covered. Save
     │ Query::<CAiAgent> ...
     │ Query::<CPersona> ...
     │ Query::<CMemory> ...
-    │ (Note: CLegacyId is read in the per-entity collect pass at :352 but is NOT used to seed entity_set)
+    │ (Note: CLegacyId is read in the collect loop at line 556. It does not seed discovery.)
     │
     ▼
 [Per-entity collect into SerializedEntity]
     │
-    │ for entity in entity_set:
+    │ ordered.sort_by_key(|entity| entity.to_raw()) at line 543, then walk ordered.
+    │ Discovery uses a HashSet. Postcard does not.
     │     SerializedEntity {
-    │         entity_raw: entity.to_raw(),     // u64 packing id + generation (lib.rs:344)
+    │         entity_raw: entity.to_raw(),     // line 548. Layout is Entity::to_raw.
     │         pos: world.get::<CPos>(entity).copied(),
     │         health, team, ammo, cooldowns, desired_pos, ai_agent, legacy_id, persona, memory: ...
     │     }
@@ -105,10 +106,12 @@ The disk-format layer (`aw-save`) is fully production-grade and CI-covered. Save
     │       created_at: sim_timestamp(world_tick),
     │       player_id: self.current_player.clone(),
     │       slot,
-    │       world: WorldState { tick, ecs_blob, state_hash: fnv64(&blob) },
-    │       // state_hash is FNV-1a of the postcard blob
-    │       // (offset 0xcbf29ce484222325, prime 0x100000001b3).
-    │       // calculate_world_hash is not called on this path.
+    │       world: WorldState { tick, ecs_blob, state_hash: world_hash },
+    │       // save_game_with_replay stores the caller's world_hash at line 344.
+    │       // auto_save_system passes fnv64(&blob) (line 102): FNV-1a,
+    │       // offset 0xcbf29ce484222325, prime 0x100000001b3.
+    │       // save_load_tests and corruption_recovery_tests pass calculate_world_hash.
+    │       // Benches pass integer literals. Those hashes are not the same bytes.
     │       companions: vec![],          // line 313. No companion component is read.
     │       inventory: PlayerInventory { credits: 0, items: vec![] },
     │       meta: engine_version, and "replay" when the log is non-empty,
@@ -185,11 +188,11 @@ Load path:
 [Restored ECS world with fresh entity IDs]
     │  ↑ Entity IDs are NEW — the saved id_map → new_entity translation breaks
     │  ↑ stable cross-save references unless callers walk CLegacyId / similar.
-    │  ↑ The function doesn't remap CLegacyId itself — comment at lib.rs:491 says
+    │  ↑ The function doesn't remap CLegacyId itself — comment at lines 701–702 says
     │  ↑ "Insert as-is (may need entity ID translation logic)"
 
 ──────────────────────────────────────────────────────────────────────
-Hash path (for integrity check / replay / cheat detection):
+Hash path (integrity and replay only. Zero-key SipHash is not cheat detection.):
     │
     │ calculate_world_hash(&world)                        (starts at line 834)
     ▼
@@ -315,12 +318,12 @@ Auto-save path:
 - Bails on unknown codec — only `CODEC_LZ4 = 1` is recognized (`lib.rs:330-333`).
 - Version dispatch happens in the caller (`read_awsv` at `lib.rs:290-300`); `read_any_version` returns the raw decompressed blob plus the version byte.
 
-#### Stage 5: V1 → V2 migration (`aw-save/lib.rs:170-196`)
-**Role:** Translate a `SaveBundleV1` (legacy single-companion shape) into the current `SaveBundleV2` (Vec-of-companions shape, with a fresh `save_id` Uuid).
+#### Stage 5: V1 → V2 migration (`SaveBundleV1::into_v2`, lines 226–240)
+**Role:** Translate a `SaveBundleV1` into `SaveBundleV2`. `save_id` is `sim_save_id`. `created_at` stays the V1 timestamp.
 **Inputs:** `SaveBundleV1`.
 **Outputs:** `SaveBundleV2`.
 **Notes:**
-- `companions = self.companion.into_iter().collect()` (`lib.rs:191`) maps `Option<CompanionProfile>` → `Vec<CompanionProfile>` (empty vec if `None`).
+- `companions = self.companion.into_iter().collect()` (line 238) maps `Option<CompanionProfile>` → `Vec<CompanionProfile>` (empty vec if `None`).
 - `into_v2` sets `save_id` from `sim_save_id(seed, self.world.tick, slot)` and keeps the V1 `created_at`. The same V1 bytes migrate to the same id.
 - `created_at` is preserved from the original V1.
 
@@ -338,7 +341,7 @@ Auto-save path:
 **Inputs:** `&World`.
 **Outputs:** `u64`.
 **Notes:**
-- Uses `DefaultHasher::new()`. On current rustc that is SipHash-1-3 with zero keys. The doc comment at lines 757–759 says "DO NOT use for security". The same comment calls the hash "viable for cheat detection" (line 743) and "bit-identical" (line 750). It is not a security boundary, and it is not stable across rustc upgrades.
+- Uses `DefaultHasher::new()`. On current rustc that is SipHash-1-3 with zero keys. The doc comment says "DO NOT use for security" (line 761) and "Do not use it for cheat detection" (line 735). It is not a security boundary, and it is not stable across rustc upgrades.
 - **Only entities with `CPos` OR `CHealth`** are included in the hash. Entities holding only `CTeam`, `CAmmo`, etc. are silently excluded.
 - **Only 4 component types are hashed**: `CPos.{x, y}`, `CHealth.hp`, `CTeam.id`, `CAmmo.rounds`. `calculate_world_hash` starts at line 834. Six other supported components (`CCooldowns`, `CDesiredPos`, `CAiAgent`, `CLegacyId`, `CPersona`, `CMemory`) are NOT hashed. The coverage TODO is the doc comment at line 818.
 - `entity_list.sort_unstable()` is line 856. It orders by `Entity`'s `Ord`: `id`, then `generation`. Unique entities keep that order across rustc upgrades. The cross-rustc break is `DefaultHasher::new()` in the bullet above. `serialize_ecs_world` sorts with `sort_by_key(|entity| entity.to_raw())` at line 543. `to_raw` puts `generation` in the high 32 bits, so the blob order and this hash order diverge when any generation is non-zero.
@@ -369,18 +372,18 @@ Auto-save path:
 | **index.json** | Per-player JSON file listing all `SaveMeta` entries, sorted by `(slot, created_at)`. Rebuilt from disk scan if missing or unreadable. | `aw-save/lib.rs:210-254` |
 | **CPersistenceManager** | ECS component wrapping `{ save_manager: SaveManager, current_player: String }`. | `persistence-ecs/lib.rs:18-21` |
 | **PersistencePlugin** | ECS Plugin holding `save_directory: PathBuf` (unused) that registers `auto_save_system` + `replay_system`. | `persistence-ecs/lib.rs:52-69` |
-| **SerializedEntity** | Per-entity serialization shape: `entity_raw: u64` (packed id+generation) + 10 `Option<C>` component fields. | `persistence-ecs/lib.rs:185-198` |
+| **SerializedEntity** | Per-entity serialization shape: `entity_raw: u64` (packed id+generation) + 10 `Option<C>` component fields. | `persistence-ecs/lib.rs` lines 386–398 |
 | **SerializedWorld** | `{ entities: Vec<SerializedEntity>, world_tick: u64 }`. `world_tick` is `CSimClock.tick`, or 0 when that resource is absent. | `persistence-ecs/lib.rs` `serialize_ecs_world` |
 | **CReplayState** | ECS component: `{ is_replaying: bool, current_tick: u64, total_ticks: u64, events: Vec<ReplayEvent> }`. | `persistence-ecs/lib.rs:36-41` |
 | **ReplayEvent** | `{ tick: u64, event_type: String, data: Vec<u8> }`. Opaque payload. | `persistence-ecs/lib.rs:44-49` |
 | **SaveMetadata** | Distinct from `aw-save::SaveMeta`. ECS-layer struct: `{ player_id, slot, save_id, created_at, world_tick, world_hash }`. Used as a serializable summary, not for indexing. | `persistence-ecs/lib.rs:24-32` |
-| **entity_raw** | Stable `u64` packing of an `astraweave_ecs::Entity` via `entity.to_raw()`. Layout: `(id as u64) | ((generation as u64) << 32)`. | `persistence-ecs/lib.rs:233-238, 344` |
+| **entity_raw** | Stable `u64` packing of an `astraweave_ecs::Entity` via `entity.to_raw()`. Layout: `(id as u64) | ((generation as u64) << 32)`. | `astraweave-ecs/src/entity_allocator.rs` lines 93–102. The collect call is persistence-ecs line 548. |
 
 ### Terms to NOT confuse
 
 - **`aw-save::SaveMeta` (file index entry) vs. `persistence-ecs::SaveMetadata` (ECS-layer summary):** Different fields, different purposes. `SaveMeta` lives in `index.json` and is keyed by `save_id`. `SaveMetadata` is a higher-level summary type that includes `world_tick` and `world_hash` — fields `SaveMeta` does not carry.
 - **`aw-save::WorldState.tick` vs. `persistence-ecs::SerializedWorld.world_tick`:** The bundle tick is the `world_tick` argument to `save_game`. The ECS blob tick is `CSimClock.tick` at serialize time, or 0 when that resource is absent. Autosave passes `clock.tick` as both.
-- **`aw-save::WorldState.state_hash` vs. the `world_hash` parameter to `save_game`:** They're meant to be the same value, plumbed through. `save_game(slot, world_tick, world_hash, ecs_blob)` writes `world_hash` into `WorldState { state_hash: world_hash }` (`persistence-ecs/lib.rs:145`).
+- **`aw-save::WorldState.state_hash` vs. the `world_hash` parameter:** `save_game_with_replay` writes that argument at line 344. Autosave passes `fnv64` of the postcard blob. Other tests pass `calculate_world_hash`. The two algorithms are not the same bytes.
 - **`SerializedEntity.entity_raw` (u64) vs. `astraweave_ecs::Entity`:** The serialized form is `u64`. `Entity::to_raw()` and the new entity from `world.spawn()` are bridged through the `id_map` HashMap during deserialization.
 
 ---
@@ -573,17 +576,17 @@ Auto-save path:
 
 ### Decision: 10 supported components in `SerializedEntity`
 - **Date:** 2025-10-01 commit `08befc6ec`.
-- **Status:** Accepted (`persistence-ecs/lib.rs:185-198`).
+- **Status:** Accepted (`SerializedEntity` is lines 386–398).
 - **Context:** AstraWeave's `astraweave-core::ecs_components` exposes 10 components. The serialization layer mirrors them as `Option<C>` fields.
 - **Decision:** Hardcode a closed 10-field struct rather than use a runtime component registry.
 - **Alternatives considered:** [Reasoning not recovered from available sources]
 - **Consequences:**
-  - Adding a new component requires editing this crate (5 sites enumerated in the doc comment at `lib.rs:262-268`).
+  - Adding a new component requires editing this crate (5 sites enumerated in the "Adding New Components" comment at lines 462–468).
   - No "unknown component" tolerance — saves are bound to a specific component set version.
 
 ### Decision: Entity ID remapping (not preservation) on load
 - **Date:** 2025-10-01 commit `08befc6ec`.
-- **Status:** Accepted (`persistence-ecs/lib.rs:456-462`).
+- **Status:** Accepted (the id map is built at lines 665–672).
 - **Context:** ECS may have other entities already present, or the spawn order may differ across loads.
 - **Decision:** Build a `HashMap<u64, Entity>` mapping old `entity_raw` to fresh spawned `Entity`. Old IDs are NOT preserved.
 - **Alternatives considered:** [Reasoning not recovered from available sources]
@@ -593,10 +596,10 @@ Auto-save path:
 
 ### Decision: `calculate_world_hash` uses `DefaultHasher` (SipHash-1-3)
 - **Date:** 2025-10-01 commit `08befc6ec`.
-- **Status:** Accepted (`persistence-ecs/lib.rs:612-616`).
+- **Status:** Accepted (`calculate_world_hash` starts at line 834).
 - **Context:** The hash is for integrity / replay validation, not security.
 - **Decision:** Use Rust's stdlib `DefaultHasher` (which is currently SipHash-1-3 per the rustc default at the time of `a2474c5b7`).
-- **Alternatives considered:** Faster non-cryptographic hashes (xxh64, FNV) and stronger cryptographic ones (BLAKE3); both rejected by the doc comment at `lib.rs:536-539` (`"Cryptographically weak (DO NOT use for security) / Fast for integrity checking"`).
+- **Alternatives considered:** Faster non-cryptographic hashes (xxh64, FNV) and stronger cryptographic ones (BLAKE3). The warning "Cryptographically weak (DO NOT use for security)" is the doc comment at line 761. Line 536 is `Query::<CMemory>`. `Query::<CPersona>` is line 530. Neither line is that warning.
 - **Consequences:**
   - The hash output value depends on rustc's stdlib hasher choice. If stdlib swaps DefaultHasher's algorithm in a future Rust version, **identical world state would produce different hashes across compilers** — breaking cross-version save validation.
   - Caller code should not store these hashes long-term without versioning.
@@ -626,7 +629,7 @@ Auto-save path:
 | 9 | `deserialize_ecs_world` on empty blob is `Ok(())` no-op | Yes | `deserialize_ecs_world` line 657; test `deserialize_empty_blob`. |
 | 10 | Entity IDs are remapped (NOT preserved) on deserialization | Yes | The id map is built at lines 665–672. Line 715 assigns `CSimClock.tick` at the end of `deserialize_ecs_world`. |
 | 11 | `calculate_world_hash` sorts entities before hashing | Yes | `sort_unstable` at line 856 orders by `Entity` `id`, then `generation`. That order does not move with the rustc hasher. `DefaultHasher::new()` is the cross-rustc break. |
-| 12 | Hash changes when any of CPos / CHealth / CTeam / CAmmo changes | Yes | `world_hash_consistency` starts at line 1000. `world_hash_changes_with_modification` starts at line 1339. |
+| 12 | Hash changes when any of CPos / CHealth / CTeam / CAmmo changes | Yes | `world_hash_changes_with_modification` (line 1339) changes `CPos`. `world_hash_health_only` is line 1372. `world_hash_team_component` is line 1389. `world_hash_ammo_component` is line 1412. `world_hash_consistency` (line 1000) only asserts two hashes of one world are equal. |
 | 13 | Atomic write uses tmp file + sync_all + rename | Yes | `aw-save/lib.rs:275-286`. |
 | 14 | `index.json` is sorted by `(slot, created_at)` after each save | Yes | `aw-save/lib.rs:225`. |
 | 15 | Sanitized player_id only contains `[A-Za-z0-9_-]` | Yes | `aw-save/lib.rs:342-352` — all other characters become `_`. |
@@ -698,7 +701,7 @@ Auto-save path:
 
 - **`auto_save_system` drops errors.** Closed as a behavior note, 2026-10-20. The system does write. A failed serialize or the first save error returns without updating `last_saved_tick`, and later managers in the sorted list are skipped. The `Result` is dropped.
 
-- **`replay_system` applies only `health`.** Closed as a behavior note, 2026-10-20. Other due events are recorded in `AppliedReplay` and left unapplied. `persist_replay` hashes `hit` and `cover` records; it does not change `CHealth`.
+- **`replay_system` applies only `health`.** Closed as a behavior note, 2026-10-20. A missing `CHealth` is a no-op. Other due events are recorded and left unapplied. `persist_replay` hashes `bundle.save_id`, `bundle.world.tick` as a little-endian `u64`, then each record's tick, type length, type, and data. Those records are `hit`, `hit`, and `cover`. The hash does not change `CHealth`.
 
 - **`CPersistenceManager::save_game` emits zero companions and `credits: 0`.** Companions stay empty. Credits stay 0 because no component stores a credit balance. Extending the inventory API is still open.
 
@@ -708,9 +711,9 @@ Auto-save path:
 
 - **`SerializedWorld.world_tick` when `CSimClock` is absent.** Closed for the present clock, 2026-10-20. Serialize reads `CSimClock.tick` and uses 0 only when that resource is missing. A world with no clock still writes tick 0.
 
-- **Saved entity references via `CLegacyId` are not remapped through `id_map`.** The comment at `persistence-ecs/lib.rs:491` admits this is parked. Should `CLegacyId`'s entity-reference semantics be defined (and the remap implemented), or is the type currently used only for legacy id storage that doesn't reference other entities?
+- **Saved entity references via `CLegacyId` are not remapped through `id_map`.** The comment at lines 701–702 inserts the component as-is. Line 491 is `entity_set.insert` in the `CPos` query. Should `CLegacyId`'s entity-reference semantics be defined, or is the type only legacy id storage?
 
-- **`HashSet<Entity>` iteration determinism claim in the doc comment.** `serialize_ecs_world`'s doc claims byte-identical output for the same world state, but stdlib `HashSet` uses a randomized hasher. Whether this is actually byte-deterministic across program runs depends on stdlib internals not enforced by the code. Should the entity discovery be switched to a sorted `Vec` to provide a real guarantee?
+- **`HashSet` discovery order.** Closed 2026-10-21. `serialize_ecs_world` sorts with `sort_by_key(|entity| entity.to_raw())` at line 543. The doc comment at lines 475–478 says the blob does not follow `HashSet` order.
 
 - **Test artifacts (5 `.awsv` files + `index.json`) checked into `persistence/aw-save/`** with 2026-03-13 timestamps. **Investigation (2026-05-12):** Committed in `c9ed24c0c` (2026-03-13, "Add input, materials, and PCG scans; implement save file structure") — the commit title is unrelated to the file content, suggesting incidental check-in. `savegame.bin` (2 bytes) at `astraweave-persistence-ecs/` was committed in `3e51f6521` (2025-12-05, "feat: Introduce extensive documentation, new test suites, and core module files…"). Neither commit was about test fixtures. No `persistence/aw-save/tests/fixtures/` directory exists. Comprehensive `grep -rn "slot00_\|slot01_\|slot02_\|slot05_\|savegame\.bin" persistence/aw-save/tests astraweave-persistence-ecs/tests` returns no name-based loads — confirming the files are not test fixtures, they're inadvertent test-run outputs. Should these be moved to a `tests/fixtures/` directory, added to `.gitignore`, or deleted? Andrew's call.
 
@@ -767,7 +770,7 @@ Auto-save path:
 7. **CI**: `aw-save` is in `integration-tests.yml`; `astraweave-persistence-ecs` is not in any workflow.
 
 **Files you'll most likely touch:**
-- `astraweave-persistence-ecs/src/lib.rs` — serialization changes (add a component → 5 sites enumerated in the doc comment at `lib.rs:262-268`).
+- `astraweave-persistence-ecs/src/lib.rs` — serialization changes (add a component → 5 sites enumerated in the doc comment at lines 462–468).
 - `persistence/aw-save/src/lib.rs` — file format changes (rare); schema migration (one new `SaveBundleVN` + `into_v(N+1)` per bump).
 
 **Files you should NOT touch without strong reason:**

@@ -22,7 +22,7 @@ Run a full behavioral correctness audit of the AstraWeave editor (`tools/aw_edit
 
 ### Remediation Campaign (26 tracked fixes committed across 30 commits)
 - **3,894 tests passing, 0 failures** maintained throughout all 30 commits
-- Campaign state tracked in `CAMPAIGN_PROGRESS.md` and `CAMPAIGN_NOTES.md`
+- Campaign state tracked in `docs/archive/root-notes/CAMPAIGN_PROGRESS.md` and `docs/archive/root-notes/CAMPAIGN_NOTES.md`
 
 #### Tier 1 — COMPLETE (5/5)
 - `dc95b220d` — VC-1: GGX NDF epsilon corrected to `max(PI * denom^2, 1e-7)` in `entity.wgsl:163`
@@ -152,8 +152,8 @@ Run a full behavioral correctness audit of the AstraWeave editor (`tools/aw_edit
 ### Documentation
 - `docs/current/EDITOR_BEHAVIORAL_CORRECTNESS_AUDIT.md` — master audit report (new)
 - `docs/current/FIX27_UNIFIED_PIPELINE_CAMPAIGN.md` — Fix 27 detailed 7-phase plan (new)
-- `CAMPAIGN_PROGRESS.md` — running status checklist (new)
-- `CAMPAIGN_NOTES.md` — decisions and surprises log (new)
+- `docs/archive/root-notes/CAMPAIGN_PROGRESS.md` — running status checklist (new)
+- `docs/archive/root-notes/CAMPAIGN_NOTES.md` — decisions and surprises log (new)
 - `docs/current/VEILWEAVER_VERTICAL_SLICE_ANALYSIS.md` — updated
 - Various lore/guide docs — updated
 
