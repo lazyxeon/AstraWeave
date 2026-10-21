@@ -9,8 +9,8 @@ lifecycle_status: active
 integration_status: wired
 summary: "Gameplay and mod scripts run on the security sandbox. script_system does not inject PhysicsProxy or NavMeshProxy. The scripting examples no longer call them."
 owns: [astraweave-scripting, astraweave-author]
-doc_version: "1.5"
-last_verified_commit: a9837f2f
+doc_version: "1.6"
+last_verified_commit: 49d289eb
 runtime_edges:
   - to: astraweave-security
     note: "ScriptEngineResource and mod_script_system call sandbox::SandboxEngine / execute_deterministic"
@@ -28,8 +28,8 @@ runtime_edges:
 |---|---|
 | **System name** | Scripting and mod API |
 | **Primary crates** | `astraweave-scripting`, `astraweave-author` |
-| **Document version** | 1.5 |
-| **Last verified against commit** | `a9837f2f` |
+| **Document version** | 1.6 |
+| **Last verified against commit** | `49d289eb` |
 | **Last verified date** | 2026-10-21 |
 | **Status** | Active for the sandboxed Rhai path. `register_mod_runtime` plus `build_app` is how the editor, `veilweaver_slice_runtime`, and `hello_companion` run mods. `script_system` does not inject physics or nav proxies (#318). The editor does not feed `CScript` entities. |
 | **Owner notes** | WS-MOD. One sandbox implementation lives in `astraweave-security::sandbox`. This trace is the caller side. |
@@ -186,7 +186,7 @@ Mods need a single sandboxed command set whose results are sim inputs. A second 
 | 5 | `scripted_system` SHA-256 is `362e4c6d3085d2a95d1219b988326beb4cbe898408de4a91e5b2abe3c3294d78` for seed `0xA11CE5E0`, 32 ticks, three agents, and the checked-in script. | Yes | `tests/script_replay_hash.rs` |
 | 6 | A script swap recorded as `(tick, path, content hash, source)` and replayed from `ScriptReplayLog` matches the live digest. | Yes | `reload_mid_run_replays_to_the_identical_hash` |
 | 8 | `build_app` installs `ModScriptPlugin` after `register_mod_runtime`. A mod loaded onto that app, including a mid-run swap in `ScriptReplayLog`, replays to the same digest. Manifest script map keys are the relative manifest paths. | Yes | `mod_loaded_through_build_app_replays_identically`, `load_mod_dir_keys_are_manifest_paths` |
-| 9 | `queue_weave` is capability `Weave` at command API 2. The script passes a template id and an origin. The host fills tick, seq, and caster and calls `astraweave_weaving::queue_weave`. Ids 1 through 7 are engine ids. Ids outside `u16`, and cells outside ±2048, are rejected in the script call before a cast is stored. A script error applies none of that script's casts. `max_weaves` defaults to 64 and does not spend `terrain_edits`. Two runs enqueue the same commands. | Yes | `queue_weave_is_a_weave_command_and_weaves_do_not_spend_terrain`, `queue_weave_through_build_app_replays_identically`, `queue_weave_edges_fail_closed` |
+| 9 | `queue_weave` is capability `Weave` at command API 2. The script passes a template id and an origin. The host fills tick, seq, and caster and calls `astraweave_weaving::queue_weave`. Ids 1 through 7 are engine ids. Ids outside `u16`, and cells outside ±2048, are rejected in the script call before a cast is stored. A failed `run_one` applies none of that agent's casts. `apply_weave_casts` runs only on `Ok` (`sim_mod.rs:383-396`). An earlier agent whose run already returned `Ok` keeps those casts. `max_weaves` defaults to 64 and does not spend `terrain_edits`. Two runs enqueue the same commands. | Yes | `queue_weave_is_a_weave_command_and_weaves_do_not_spend_terrain`, `queue_weave_through_build_app_replays_identically`, `queue_weave_edges_fail_closed` |
 | 10 | The mod tick does not register `PhysicsProxy` or `NavMeshProxy`. The sim sandbox keeps the operation budget and `timeout_ms = 0`. `advertised_memory_bytes` is the structural product of the string, array, and map caps, not a process limit. | Yes | `mod_tick_rejects_physics_and_nav_proxies`, `sim_sandbox_keeps_the_op_budget_and_no_wall_clock` |
 | 11 | Gameplay `script_system` does not inject `PhysicsProxy` or `NavMeshProxy`, even when `PhysicsWorld` and `NavMesh` resources are present. The event-callback scope is built the same way. | Yes | `script_system_rejects_physics_and_nav_proxies` |
 | 7 | Author `configure` output that exceeds the director ceilings is an error. Hints cannot contain floats. | Yes | `sandboxed_configure_is_deterministic_and_capped` |
@@ -231,6 +231,7 @@ Each mod script is compiled on the tick it runs. The replay case is 32 ticks of 
 
 | Version | Date | Notes |
 |---|---|---|
+| 1.6 | 2026-10-21 | A failed `run_one` drops only that agent's casts. An earlier `Ok` run stays applied. Verified at `49d289eb`. |
 | 1.5 | 2026-10-21 | Script `queue_weave` rejects an origin outside ±2048 before storing the cast. `queue_weave_edges_fail_closed` covers ids, the island, the 64 cap, and replay equality. |
 | 1.0 | 2026-10-14 | WS-MOD. Sandbox, mod loader, tick-boundary reload, `scripted_system` hash. |
 | 1.1 | 2026-10-14 | `build_app` installs `ModScriptPlugin` via `register_mod_runtime`. Editor, game runtime, and `hello_companion` call it. |
