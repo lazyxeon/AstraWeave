@@ -111,17 +111,16 @@ fn draw_into_allocates_nothing_after_warmup() {
         eprintln!("draw_into alloc samples: {samples:?}");
         let min = *samples.iter().min().unwrap();
         let max = *samples.iter().max().unwrap();
-        // Lavapipe, 64×64, validation on and off, five runs each:
-        // [119, 116, 115, 116, 115, 115]. Spread inside a run is 4.
+        // Lavapipe, 64×64, Bruneton on by default:
+        // [150, 147, 147, 146, 146, 147]. Spread inside a run is 4.
+        // The pre-atmosphere floor was [119, 116, 115, 116, 115, 115].
         // `draw_into` does not build the pyramid unless `sample_hiz` is set.
-        // The six mip passes were the jump to ~217 (about 18 allocations
-        // each). What remains is wgpu-core 25 `BasePass::new` for the passes
-        // that still record. Engine scratch stays at zero (`update_instances`
-        // above). Ceiling 130 is 11 above the high sample and still under
-        // one extra pass (119 + 18). Floor 100 is 15 under the low sample,
-        // so a dropped pass fails too.
+        // One extra recorded pass is about 18 allocations. Engine scratch
+        // stays at zero (`update_instances` above). Ceiling 161 is 11 above
+        // the high sample and still under one extra pass (150 + 18). Floor
+        // 131 is 15 under the low sample, so a dropped pass fails too.
         assert!(
-            max <= 130 && min >= 100 && max - min <= 4,
+            max <= 161 && min >= 131 && max - min <= 4,
             "draw_into allocs left the wgpu pass floor: {samples:?}"
         );
     });
