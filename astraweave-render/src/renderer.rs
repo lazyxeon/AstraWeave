@@ -1056,6 +1056,19 @@ pub struct Renderer {
     sample_hiz: bool,
     /// GL rejects `textureLoad` on `texture_depth_2d`, so the pyramid stays off.
     hiz_depth_load: bool,
+    /// Quality setting (#372). Default off, so frames keep the CPU frustum
+    /// until a heavy-scene capture opts in.
+    gpu_cull_on: bool,
+    indirect_cull: Option<crate::culling::IndirectDrawPipeline>,
+    indirect_cull_resources: Option<crate::culling::IndirectDrawResources>,
+    /// Sorted model names. Updated when a model is added or removed, not per frame.
+    gpu_cull_names: Vec<String>,
+    /// World bounds used only by the GPU-cull dispatch. The CPU frustum ignores
+    /// them, so the default-off path does not start culling models that had none.
+    gpu_cull_bounds: std::collections::HashMap<String, ([f32; 3], [f32; 3])>,
+    /// Local mesh bounds for models whose world AABB is not `model.aabb`.
+    /// `duplicate_model` and instance updates transform these.
+    gpu_cull_local: std::collections::HashMap<String, ([f32; 3], [f32; 3])>,
     /// Presentation-only particle sim. `None` until an emitter is enabled.
     particle_sim: Option<crate::gpu_particles::GpuParticleSystem>,
     particle_draw: Option<crate::particle_render::ParticleRenderPass>,
@@ -1263,6 +1276,69 @@ impl PresentationQuality {
     pub const fn atmosphere(self) -> bool {
         matches!(self, Self::Atmosphere)
     }
+}
+
+fn union_aabb(a: ([f32; 3], [f32; 3]), b: ([f32; 3], [f32; 3])) -> ([f32; 3], [f32; 3]) {
+    (
+        [a.0[0].min(b.0[0]), a.0[1].min(b.0[1]), a.0[2].min(b.0[2])],
+        [a.1[0].max(b.1[0]), a.1[1].max(b.1[1]), a.1[2].max(b.1[2])],
+    )
+}
+
+fn transformed_aabb(
+    local_min: [f32; 3],
+    local_max: [f32; 3],
+    transform: &glam::Mat4,
+) -> ([f32; 3], [f32; 3]) {
+    let min = glam::Vec3::from_array(local_min);
+    let max = glam::Vec3::from_array(local_max);
+    let mut world_min = glam::Vec3::splat(f32::INFINITY);
+    let mut world_max = glam::Vec3::splat(f32::NEG_INFINITY);
+    for (x, y, z) in [
+        (min.x, min.y, min.z),
+        (max.x, min.y, min.z),
+        (min.x, max.y, min.z),
+        (max.x, max.y, min.z),
+        (min.x, min.y, max.z),
+        (max.x, min.y, max.z),
+        (min.x, max.y, max.z),
+        (max.x, max.y, max.z),
+    ] {
+        let point = transform.transform_point3(glam::Vec3::new(x, y, z));
+        world_min = world_min.min(point);
+        world_max = world_max.max(point);
+    }
+    (world_min.to_array(), world_max.to_array())
+}
+
+fn mesh_local_bounds(meshes: &[crate::mesh::CpuMesh]) -> Option<([f32; 3], [f32; 3])> {
+    let mut acc = None;
+    for mesh in meshes {
+        let Some((min, max)) = mesh.aabb() else {
+            continue;
+        };
+        let next = (min.to_array(), max.to_array());
+        acc = Some(match acc {
+            Some(prev) => union_aabb(prev, next),
+            None => next,
+        });
+    }
+    acc
+}
+
+fn world_bounds_for_instances(
+    local: ([f32; 3], [f32; 3]),
+    instances: &[Instance],
+) -> Option<([f32; 3], [f32; 3])> {
+    let mut acc = None;
+    for instance in instances {
+        let next = transformed_aabb(local.0, local.1, &instance.transform);
+        acc = Some(match acc {
+            Some(prev) => union_aabb(prev, next),
+            None => next,
+        });
+    }
+    acc
 }
 
 impl Renderer {
@@ -3779,6 +3855,12 @@ fn vs(input: VSIn) -> VSOut {
             hiz: None,
             sample_hiz: false,
             hiz_depth_load,
+            gpu_cull_on: false,
+            indirect_cull: None,
+            indirect_cull_resources: None,
+            gpu_cull_names: Vec::new(),
+            gpu_cull_bounds: std::collections::HashMap::new(),
+            gpu_cull_local: std::collections::HashMap::new(),
             particle_sim: None,
             particle_draw: None,
             particle_sort: None,
@@ -6014,6 +6096,59 @@ fn vs(input: VSIn) -> VSOut {
         result
     }
 
+    /// Reads `instance_count` from the last GPU-cull indirect commands.
+    #[cfg(test)]
+    pub async fn read_gpu_cull_instance_counts(&self) -> Vec<u32> {
+        let (buffer, batches) = {
+            let Some(resources) = &self.indirect_cull_resources else {
+                return Vec::new();
+            };
+            (
+                resources.draw_commands_buffer.clone(),
+                resources.batch_count as usize,
+            )
+        };
+        if batches == 0 {
+            return Vec::new();
+        }
+        let stride = std::mem::size_of::<crate::culling::DrawIndexedIndirectCommand>();
+        let size = (batches * stride) as u64;
+        let staging = self.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("gpu cull instance counts"),
+            size,
+            usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        let mut encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("gpu cull readback"),
+            });
+        encoder.copy_buffer_to_buffer(&buffer, 0, &staging, 0, size);
+        self.queue.submit(Some(encoder.finish()));
+        let buffer_slice = staging.slice(..);
+        let (tx, rx) = std::sync::mpsc::channel();
+        buffer_slice.map_async(wgpu::MapMode::Read, move |res| {
+            tx.send(res).unwrap();
+        });
+        let _ = self.device.poll(wgpu::MaintainBase::Wait);
+        rx.recv().unwrap().unwrap();
+        let data = buffer_slice.get_mapped_range();
+        let mut counts = Vec::with_capacity(batches);
+        for batch in 0..batches {
+            let offset = batch * stride + 4;
+            counts.push(u32::from_ne_bytes([
+                data[offset],
+                data[offset + 1],
+                data[offset + 2],
+                data[offset + 3],
+            ]));
+        }
+        drop(data);
+        staging.unmap();
+        counts
+    }
+
     pub fn set_weather(&mut self, kind: crate::effects::WeatherKind) {
         self.weather.set_kind(kind);
         // Bridge: update scene environment fog/ambient from weather kind
@@ -7841,6 +7976,10 @@ fn vs(input: VSIn) -> VSOut {
             }
         }
 
+        if self.gpu_cull_on {
+            self.prepare_gpu_model_cull(enc);
+        }
+
         {
             self.close_timing_gap(enc);
             let main_stamp = self
@@ -7911,10 +8050,9 @@ fn vs(input: VSIn) -> VSOut {
                 }
             }
 
-            // Render all named models (terrain, trees, rocks, etc.) with frustum + distance culling
+            // Render all named models (terrain, trees, rocks, etc.) with frustum + distance culling.
+            // The setting-off loop is the CPU frustum. It does not collect a model list.
             {
-                let vp = self.cached_proj * self.cached_view;
-                let frustum = crate::culling::FrustumPlanes::from_view_proj(&vp);
                 let cam_pos = glam::Vec3::new(
                     self.camera_ubo.camera_pos_pad[0],
                     self.camera_ubo.camera_pos_pad[1],
@@ -7929,48 +8067,127 @@ fn vs(input: VSIn) -> VSOut {
                 };
                 let max_draw_dist_sq = max_draw_dist * max_draw_dist;
                 let mut drawn_models = 0u32;
-                for model in self.models.values() {
-                    if model.instance_count == 0 {
-                        continue;
-                    }
-                    // Skip models whose AABB is entirely outside the frustum or beyond draw distance
-                    if let Some((aabb_min, aabb_max)) = &model.aabb {
-                        let center = glam::Vec3::new(
-                            (aabb_min[0] + aabb_max[0]) * 0.5,
-                            (aabb_min[1] + aabb_max[1]) * 0.5,
-                            (aabb_min[2] + aabb_max[2]) * 0.5,
-                        );
-                        let extent = glam::Vec3::new(
-                            (aabb_max[0] - aabb_min[0]) * 0.5,
-                            (aabb_max[1] - aabb_min[1]) * 0.5,
-                            (aabb_max[2] - aabb_min[2]) * 0.5,
-                        );
-                        // Distance cull: skip models entirely beyond draw distance
-                        let to_cam = center - cam_pos;
-                        let closest_dist_sq = (to_cam.x.abs() - extent.x).max(0.0).powi(2)
-                            + (to_cam.z.abs() - extent.z).max(0.0).powi(2);
-                        if closest_dist_sq > max_draw_dist_sq {
+                if self.gpu_cull_on {
+                    let indirect_stride =
+                        std::mem::size_of::<crate::culling::DrawIndexedIndirectCommand>() as u64;
+                    let indirect_buf = self
+                        .indirect_cull_resources
+                        .as_ref()
+                        .map(|resources| resources.draw_commands_buffer.clone());
+                    let mut gpu_slot = 0u32;
+                    let name_count = self.gpu_cull_names.len();
+                    for index in 0..name_count {
+                        let gpu_bounds = self
+                            .gpu_cull_bounds
+                            .get(&self.gpu_cull_names[index])
+                            .copied();
+                        let Some(model) = self.models.get(&self.gpu_cull_names[index]) else {
+                            continue;
+                        };
+                        if model.instance_count == 0 {
                             continue;
                         }
-                        if !frustum.test_aabb(center, extent) {
+                        let mut gpu_batch = false;
+                        let bounds = model.aabb.or(gpu_bounds);
+                        if let Some((aabb_min, aabb_max)) = bounds {
+                            let center = glam::Vec3::new(
+                                (aabb_min[0] + aabb_max[0]) * 0.5,
+                                (aabb_min[1] + aabb_max[1]) * 0.5,
+                                (aabb_min[2] + aabb_max[2]) * 0.5,
+                            );
+                            let extent = glam::Vec3::new(
+                                (aabb_max[0] - aabb_min[0]) * 0.5,
+                                (aabb_max[1] - aabb_min[1]) * 0.5,
+                                (aabb_max[2] - aabb_min[2]) * 0.5,
+                            );
+                            let to_cam = center - cam_pos;
+                            let closest_dist_sq = (to_cam.x.abs() - extent.x).max(0.0).powi(2)
+                                + (to_cam.z.abs() - extent.z).max(0.0).powi(2);
+                            if closest_dist_sq > max_draw_dist_sq {
+                                continue;
+                            }
+                            gpu_batch = true;
+                        }
+                        for primitive in &model.primitives {
+                            if let Some(ref mtex) = primitive.tex_bind_group {
+                                rp.set_bind_group(3, mtex, &[]);
+                            } else {
+                                rp.set_bind_group(3, &self.tex_bg, &[]);
+                            }
+                            rp.set_vertex_buffer(0, primitive.mesh.vertex_buf.slice(..));
+                            rp.set_index_buffer(
+                                primitive.mesh.index_buf.slice(..),
+                                wgpu::IndexFormat::Uint32,
+                            );
+                            rp.set_vertex_buffer(1, model.instance_buf.slice(..));
+                            if gpu_batch {
+                                if let Some(buf) = indirect_buf.as_ref() {
+                                    rp.draw_indexed_indirect(
+                                        buf,
+                                        gpu_slot as u64 * indirect_stride,
+                                    );
+                                    gpu_slot += 1;
+                                    continue;
+                                }
+                            }
+                            rp.draw_indexed(
+                                0..primitive.mesh.index_count,
+                                0,
+                                0..model.instance_count,
+                            );
+                        }
+                        drawn_models += 1;
+                    }
+                } else {
+                    let vp = self.cached_proj * self.cached_view;
+                    let frustum = crate::culling::FrustumPlanes::from_view_proj(&vp);
+                    for model in self.models.values() {
+                        if model.instance_count == 0 {
                             continue;
                         }
-                    }
-                    for primitive in &model.primitives {
-                        if let Some(ref mtex) = primitive.tex_bind_group {
-                            rp.set_bind_group(3, mtex, &[]);
-                        } else {
-                            rp.set_bind_group(3, &self.tex_bg, &[]);
+                        // Skip models whose AABB is entirely outside the frustum or beyond draw distance
+                        if let Some((aabb_min, aabb_max)) = &model.aabb {
+                            let center = glam::Vec3::new(
+                                (aabb_min[0] + aabb_max[0]) * 0.5,
+                                (aabb_min[1] + aabb_max[1]) * 0.5,
+                                (aabb_min[2] + aabb_max[2]) * 0.5,
+                            );
+                            let extent = glam::Vec3::new(
+                                (aabb_max[0] - aabb_min[0]) * 0.5,
+                                (aabb_max[1] - aabb_min[1]) * 0.5,
+                                (aabb_max[2] - aabb_min[2]) * 0.5,
+                            );
+                            // Distance cull: skip models entirely beyond draw distance
+                            let to_cam = center - cam_pos;
+                            let closest_dist_sq = (to_cam.x.abs() - extent.x).max(0.0).powi(2)
+                                + (to_cam.z.abs() - extent.z).max(0.0).powi(2);
+                            if closest_dist_sq > max_draw_dist_sq {
+                                continue;
+                            }
+                            if !frustum.test_aabb(center, extent) {
+                                continue;
+                            }
                         }
-                        rp.set_vertex_buffer(0, primitive.mesh.vertex_buf.slice(..));
-                        rp.set_index_buffer(
-                            primitive.mesh.index_buf.slice(..),
-                            wgpu::IndexFormat::Uint32,
-                        );
-                        rp.set_vertex_buffer(1, model.instance_buf.slice(..));
-                        rp.draw_indexed(0..primitive.mesh.index_count, 0, 0..model.instance_count);
+                        for primitive in &model.primitives {
+                            if let Some(ref mtex) = primitive.tex_bind_group {
+                                rp.set_bind_group(3, mtex, &[]);
+                            } else {
+                                rp.set_bind_group(3, &self.tex_bg, &[]);
+                            }
+                            rp.set_vertex_buffer(0, primitive.mesh.vertex_buf.slice(..));
+                            rp.set_index_buffer(
+                                primitive.mesh.index_buf.slice(..),
+                                wgpu::IndexFormat::Uint32,
+                            );
+                            rp.set_vertex_buffer(1, model.instance_buf.slice(..));
+                            rp.draw_indexed(
+                                0..primitive.mesh.index_count,
+                                0,
+                                0..model.instance_count,
+                            );
+                        }
+                        drawn_models += 1;
                     }
-                    drawn_models += 1;
                 }
                 self.rendered_model_count = drawn_models;
             }
@@ -8418,6 +8635,126 @@ fn vs(input: VSIn) -> VSOut {
         if let Some(profiler) = self.gpu_profiler.as_mut() {
             profiler.end_stamp(enc, stamp);
         }
+    }
+
+    /// Turn GPU frustum culling on or off.
+    ///
+    /// The default is off. `draw_into` then keeps `FrustumPlanes::test_aabb`
+    /// and `draw_indexed`, and it does not build the indirect buffers.
+    /// When on, `draw_into` dispatches [`crate::culling::IndirectDrawPipeline`]
+    /// and each model with bounds uses `draw_indexed_indirect`. That model's
+    /// own group 3 is bound immediately before the draw. [`Self::render`]
+    /// keeps the CPU loop. `CullingPipeline` is not dispatched.
+    pub fn set_gpu_cull_enabled(&mut self, enabled: bool) {
+        self.gpu_cull_on = enabled;
+    }
+
+    /// `off` while the quality setting is off, `gpu` while it is on.
+    pub fn gpu_cull_mode(&self) -> &'static str {
+        if self.gpu_cull_on {
+            "gpu"
+        } else {
+            "off"
+        }
+    }
+
+    /// `quality_off` or `indirect`.
+    pub fn gpu_cull_reason(&self) -> &'static str {
+        if self.gpu_cull_on {
+            "indirect"
+        } else {
+            "quality_off"
+        }
+    }
+
+    /// Indirect batches from the last `draw_into` that dispatched GPU cull.
+    /// Zero while the setting is off.
+    pub fn gpu_cull_batch_count(&self) -> u32 {
+        if !self.gpu_cull_on {
+            return 0;
+        }
+        self.indirect_cull_resources
+            .as_ref()
+            .map(|resources| resources.batch_count)
+            .unwrap_or(0)
+    }
+
+    fn prepare_gpu_model_cull(&mut self, enc: &mut wgpu::CommandEncoder) {
+        let vp = self.cached_proj * self.cached_view;
+        let frustum = crate::culling::FrustumPlanes::from_view_proj(&vp);
+        let cam_pos = glam::Vec3::new(
+            self.camera_ubo.camera_pos_pad[0],
+            self.camera_ubo.camera_pos_pad[1],
+            self.camera_ubo.camera_pos_pad[2],
+        );
+        let max_draw_dist = if self.max_draw_distance > 0.0 {
+            self.max_draw_distance
+        } else {
+            self.scene_env.visuals.fog_end * 1.2
+        };
+        let max_draw_dist_sq = max_draw_dist * max_draw_dist;
+        let mut aabbs = Vec::new();
+        let mut templates = Vec::new();
+        for name in &self.gpu_cull_names {
+            let Some(model) = self.models.get(name) else {
+                continue;
+            };
+            if model.instance_count == 0 {
+                continue;
+            }
+            let Some((aabb_min, aabb_max)) = model
+                .aabb
+                .or_else(|| self.gpu_cull_bounds.get(name).copied())
+            else {
+                continue;
+            };
+            let center = glam::Vec3::new(
+                (aabb_min[0] + aabb_max[0]) * 0.5,
+                (aabb_min[1] + aabb_max[1]) * 0.5,
+                (aabb_min[2] + aabb_max[2]) * 0.5,
+            );
+            let extent = glam::Vec3::new(
+                (aabb_max[0] - aabb_min[0]) * 0.5,
+                (aabb_max[1] - aabb_min[1]) * 0.5,
+                (aabb_max[2] - aabb_min[2]) * 0.5,
+            );
+            let to_cam = center - cam_pos;
+            let closest_dist_sq = (to_cam.x.abs() - extent.x).max(0.0).powi(2)
+                + (to_cam.z.abs() - extent.z).max(0.0).powi(2);
+            if closest_dist_sq > max_draw_dist_sq {
+                continue;
+            }
+            for primitive in &model.primitives {
+                aabbs.push(crate::culling::InstanceAABB::new(center, extent, 0));
+                templates.push(crate::culling::DrawIndexedIndirectCommand::new(
+                    primitive.mesh.index_count,
+                    model.instance_count,
+                    0,
+                    0,
+                    0,
+                ));
+            }
+        }
+        if aabbs.is_empty() {
+            self.indirect_cull_resources = None;
+            return;
+        }
+        if self.indirect_cull.is_none() {
+            self.indirect_cull = Some(crate::culling::IndirectDrawPipeline::new(&self.device));
+        }
+        let Some(pipeline) = self.indirect_cull.as_ref() else {
+            return;
+        };
+        let resources = pipeline.update_or_create_resources(
+            &self.device,
+            &self.queue,
+            &aabbs,
+            &templates,
+            &frustum,
+            self.indirect_cull_resources.take(),
+        );
+        pipeline.execute(enc, &resources);
+        self.indirect_cull_resources = Some(resources);
     }
 
     /// Turn Hi-Z recording on or off.
@@ -9585,7 +9922,42 @@ fn vs(input: VSIn) -> VSOut {
         self.add_model_impl(name, mesh, instances, Some((aabb_min, aabb_max)));
     }
 
+    fn note_gpu_cull_name(&mut self, name: &str) {
+        if let Err(pos) = self
+            .gpu_cull_names
+            .binary_search_by(|existing| existing.as_str().cmp(name))
+        {
+            self.gpu_cull_names.insert(pos, name.to_string());
+        }
+    }
+
+    fn forget_gpu_cull_model(&mut self, name: &str) {
+        self.gpu_cull_bounds.remove(name);
+        self.gpu_cull_local.remove(name);
+        if let Ok(pos) = self
+            .gpu_cull_names
+            .binary_search_by(|existing| existing.as_str().cmp(name))
+        {
+            self.gpu_cull_names.remove(pos);
+        }
+    }
+
+    fn store_gpu_cull_mesh_bounds(
+        &mut self,
+        name: &str,
+        local: ([f32; 3], [f32; 3]),
+        instances: &[Instance],
+    ) {
+        self.gpu_cull_local.insert(name.to_string(), local);
+        if let Some(world) = world_bounds_for_instances(local, instances) {
+            self.gpu_cull_bounds.insert(name.to_string(), world);
+        }
+    }
+
     fn insert_model(&mut self, name: String, model: RenderModel) {
+        self.gpu_cull_bounds.remove(&name);
+        self.gpu_cull_local.remove(&name);
+        self.note_gpu_cull_name(&name);
         if let Some(old_model) = self.models.insert(name, model) {
             if old_model.tex_gpu_bytes > 0 {
                 self.gpu_memory_budget.deallocate(
@@ -9606,10 +9978,13 @@ fn vs(input: VSIn) -> VSOut {
         name: impl Into<String>,
         instance: Instance,
     ) -> bool {
-        let Some(source) = self.models.get(source) else {
-            return false;
+        let local = self.gpu_cull_local.get(source).copied();
+        let primitives = {
+            let Some(source_model) = self.models.get(source) else {
+                return false;
+            };
+            source_model.primitives.clone()
         };
-        let primitives = source.primitives.clone();
         let instance_buf = self.create_model_instance_buffer(std::slice::from_ref(&instance));
         let model = RenderModel {
             primitives,
@@ -9620,7 +9995,11 @@ fn vs(input: VSIn) -> VSOut {
             stream_albedo_id: None,
             stream_resident: false,
         };
-        self.insert_model(name.into(), model);
+        let placed = name.into();
+        self.insert_model(placed.clone(), model);
+        if let Some(local) = local {
+            self.store_gpu_cull_mesh_bounds(&placed, local, std::slice::from_ref(&instance));
+        }
         true
     }
 
@@ -9661,6 +10040,7 @@ fn vs(input: VSIn) -> VSOut {
             return;
         }
 
+        let local = mesh_local_bounds(&cpu_meshes);
         let instance_buf = self.create_model_instance_buffer(instances);
         let mut tex_gpu_bytes = 0;
         let mut primitives = Vec::with_capacity(cpu_meshes.len());
@@ -9728,7 +10108,15 @@ fn vs(input: VSIn) -> VSOut {
             stream_albedo_id: None,
             stream_resident: false,
         };
-        self.insert_model(name.into(), model);
+        let placed = name.into();
+        self.insert_model(placed.clone(), model);
+        if let Some(local) = local {
+            if aabb.is_none() {
+                self.store_gpu_cull_mesh_bounds(&placed, local, instances);
+            } else {
+                self.gpu_cull_local.insert(placed, local);
+            }
+        }
     }
 
     fn create_model_instance_buffer(&self, instances: &[Instance]) -> wgpu::Buffer {
@@ -10276,6 +10664,7 @@ fn vs(input: VSIn) -> VSOut {
 
     /// Remove a named model and release its GPU resources.
     pub fn clear_model(&mut self, name: &str) {
+        self.forget_gpu_cull_model(name);
         if let Some(model) = self.models.remove(name) {
             if model.tex_gpu_bytes > 0 {
                 self.gpu_memory_budget.deallocate(
@@ -10331,8 +10720,14 @@ fn vs(input: VSIn) -> VSOut {
             return false;
         }
         let buf = model.instance_buf.clone();
+        let has_aabb = model.aabb.is_some();
         model.instance_count = 1;
         self.queue.write_buffer(&buf, 0, bytes);
+        if !has_aabb {
+            if let Some(local) = self.gpu_cull_local.get(name).copied() {
+                self.store_gpu_cull_mesh_bounds(name, local, std::slice::from_ref(&instance));
+            }
+        }
         true
     }
 
@@ -10355,7 +10750,13 @@ fn vs(input: VSIn) -> VSOut {
             self.queue
                 .write_buffer(&model.instance_buf, 0, bytemuck::cast_slice(&raw));
         }
+        let has_aabb = model.aabb.is_some();
         model.instance_count = instances.len() as u32;
+        if !has_aabb {
+            if let Some(local) = self.gpu_cull_local.get(name).copied() {
+                self.store_gpu_cull_mesh_bounds(name, local, instances);
+            }
+        }
         true
     }
 
@@ -11079,6 +11480,19 @@ fn aabb_in_view_space(view: &glam::Mat4, corners_ws: &[glam::Vec3; 8]) -> (glam:
 }
 
 #[cfg(test)]
+#[test]
+fn gpu_cull_transformed_aabb_follows_scale_and_translation() {
+    let transform = glam::Mat4::from_scale_rotation_translation(
+        glam::Vec3::splat(2.0),
+        glam::Quat::IDENTITY,
+        glam::Vec3::new(10.0, 0.0, -3.0),
+    );
+    let (min, max) = transformed_aabb([0.0, 0.0, 0.0], [1.0, 2.0, 0.5], &transform);
+    assert_eq!(min, [10.0, 0.0, -3.0]);
+    assert_eq!(max, [12.0, 4.0, -2.0]);
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use glam::{vec3, Mat4, Vec3};
@@ -11317,6 +11731,86 @@ mod tests {
             brdf_src.contains("multiscatter"),
             "the Kulla-Conty multiscatter term must survive the tier removal"
         );
+    }
+
+    #[test]
+    fn gpu_cull_indirect_instance_count_matches_the_cpu_frustum() {
+        pollster::block_on(async {
+            let mut renderer = Renderer::new_headless(64, 64)
+                .await
+                .expect("headless renderer");
+            let eye = Vec3::new(0.0, 0.0, 8.0);
+            let view = Mat4::look_at_rh(eye, Vec3::ZERO, Vec3::Y);
+            let projection =
+                astraweave_camera::Projection::perspective(60.0_f32.to_radians(), 1.0, 0.1, 100.0);
+            let render_view = astraweave_camera::RenderView::new(
+                view,
+                &projection,
+                eye,
+                Vec3::new(0.0, 0.0, -1.0),
+            );
+            renderer.update_view(&render_view);
+            let frustum =
+                crate::culling::FrustumPlanes::from_view_proj(&renderer.current_view_proj());
+            let inside_center = Vec3::ZERO;
+            let inside_extent = Vec3::splat(0.5);
+            let outside_center = Vec3::new(40.0, 0.0, 0.0);
+            let outside_extent = Vec3::splat(0.5);
+            assert!(frustum.test_aabb(inside_center, inside_extent));
+            assert!(!frustum.test_aabb(outside_center, outside_extent));
+
+            let positions = [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]];
+            let normals = [[0.0, 0.0, 1.0]; 3];
+            let indices = [0, 1, 2];
+            let mesh = renderer.create_mesh_from_arrays(&positions, &normals, &indices);
+            let instance =
+                crate::Instance::from_pos_scale_color(Vec3::ZERO, Vec3::ONE, [1.0, 1.0, 1.0, 1.0]);
+            renderer.add_model_with_bounds(
+                "inside",
+                mesh,
+                &[instance.clone()],
+                (inside_center - inside_extent).to_array(),
+                (inside_center + inside_extent).to_array(),
+            );
+            let mesh = renderer.create_mesh_from_arrays(&positions, &normals, &indices);
+            renderer.add_model_with_bounds(
+                "outside",
+                mesh,
+                &[instance],
+                (outside_center - outside_extent).to_array(),
+                (outside_center + outside_extent).to_array(),
+            );
+
+            let device = renderer.device().clone();
+            let target = device.create_texture(&wgpu::TextureDescriptor {
+                label: Some("gpu cull color"),
+                size: wgpu::Extent3d {
+                    width: 64,
+                    height: 64,
+                    depth_or_array_layers: 1,
+                },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: wgpu::TextureFormat::Rgba8UnormSrgb,
+                usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+                view_formats: &[],
+            });
+            let view = target.create_view(&wgpu::TextureViewDescriptor::default());
+            renderer.set_gpu_cull_enabled(true);
+            device.push_error_scope(wgpu::ErrorFilter::Validation);
+            let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("gpu cull dispatch"),
+            });
+            renderer.draw_into(&view, None, &mut encoder).expect("draw");
+            renderer.queue().submit(std::iter::once(encoder.finish()));
+            let _ = device.poll(wgpu::MaintainBase::Wait);
+            let validation = device.pop_error_scope().await;
+            assert!(validation.is_none(), "validation {validation:?}");
+            assert_eq!(renderer.gpu_cull_batch_count(), 2);
+            let counts = renderer.read_gpu_cull_instance_counts().await;
+            assert_eq!(counts, vec![1, 0]);
+        });
     }
 }
 

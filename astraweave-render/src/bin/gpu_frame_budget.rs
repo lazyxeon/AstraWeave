@@ -153,9 +153,9 @@ fn main() -> anyhow::Result<()> {
     // `CloudShadowPass`, not `VolumetricCloudsPass`. `--atmosphere` writes
     // the Bruneton sky first, then Aravath's fog and god rays composite
     // over it. A failed fog or shaft build is not that frame.
-    // GPU indirect culling is not the draw path on any adapter: each model
-    // still binds its own group 3, so one indirect buffer cannot select
-    // those groups. The CPU frustum remains the filter.
+    // GPU cull is a quality setting, default off on the renderer. This
+    // capture opts in. Each model still binds its own group 3 immediately
+    // before its indirect draw.
     if atmosphere {
         {
             let clock = renderer.time_of_day_mut();
@@ -182,7 +182,9 @@ fn main() -> anyhow::Result<()> {
     if atmosphere && (!fog || !shafts) {
         anyhow::bail!("degraded atmosphere measurement: {measure}");
     }
-    let gpu_cull = "cpu_fallback";
+    renderer.set_gpu_cull_enabled(true);
+    let gpu_cull = renderer.gpu_cull_mode();
+    let gpu_cull_reason = renderer.gpu_cull_reason();
 
     let device = renderer.device().clone();
     let exec_src = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -365,9 +367,10 @@ fn main() -> anyhow::Result<()> {
     println!("hdri={}", hdri.display());
     println!("glb={}", glb.display());
     println!(
-        "instances={} rendered_models={} particles=on shadows=on volumetrics=off gpu_cull={gpu_cull} gpu_cull_reason=group3_per_model water_drawn={} cloud_shadows={}",
+        "instances={} rendered_models={} particles=on shadows=on volumetrics=off gpu_cull={gpu_cull} gpu_cull_reason={gpu_cull_reason} gpu_cull_batches={} water_drawn={} cloud_shadows={}",
         instances.len(),
         renderer.rendered_model_count(),
+        renderer.gpu_cull_batch_count(),
         if renderer.water_is_drawn() { "yes" } else { "no" },
         if renderer.cloud_shadows_enabled() {
             "on"
