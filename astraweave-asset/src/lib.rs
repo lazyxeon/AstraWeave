@@ -12,10 +12,11 @@ use tokio::sync::watch;
 // Nanite preprocessing module
 pub mod nanite_preprocess;
 
+pub mod data_uri;
 pub mod image_limits;
+pub use data_uri::{read_capped_data_image, read_capped_data_uri};
 pub use image_limits::{
-    capped_image_limits, decode_limited_image, open_limited_image, read_capped_data_image,
-    read_limited_image_bytes,
+    capped_image_limits, decode_limited_image, open_limited_image, read_limited_image_bytes,
 };
 
 // World Partition cell loader
