@@ -1,7 +1,8 @@
 //! Command-line gate for `gpu_frame_budget`.
 //!
-//! An enabled gated flag is rejected before the scene is built.
-//! `--name=false` and `--name false` are off and do not bail.
+//! `--atmosphere` alone is the measurement. Every other enabled gated flag
+//! is rejected before the scene is built. `--name=false` and `--name false`
+//! are off and do not bail.
 
 /// True when `name` is enabled on this command line.
 ///
@@ -26,13 +27,15 @@ fn bare_flag(next: Option<&str>) -> bool {
     }
 }
 
-/// Scaffolding only. No enabled gated flag draws a frame, so no cell can be filled.
-pub fn reject_gated_flags(args: &[String]) -> anyhow::Result<()> {
+/// What `--atmosphere` does on this head. The flag is accepted alone.
+pub const ATMOSPHERE_REASON: &str = "draw_into clears HDR and depth, the main pass loads both, and record_bruneton copies the time-of-day sun onto that sky";
+
+/// Accept `--atmosphere` alone. Every other enabled gated flag bails, including
+/// a second flag beside `--atmosphere`. `false` is off and does not bail.
+///
+/// `Ok(true)` means the atmosphere measurement runs.
+pub fn reject_gated_flags(args: &[String]) -> anyhow::Result<bool> {
     const BLOCKED: &[(&str, &str)] = &[
-        (
-            "--atmosphere",
-            "enabling it skips the HDR and depth clear, so the heavy scene does not land",
-        ),
         (
             "--ssgi",
             "normal and velocity targets are allocated and never written, and ssgi_history is sampled before copy_to_history; the pass writes denoised_view, and record_gated_presentation never copies it onto hdr_tex, so the post pass samples a frame that does not show it",
@@ -54,13 +57,20 @@ pub fn reject_gated_flags(args: &[String]) -> anyhow::Result<()> {
             "the raymarch samples cloud_history before writing it, and the composite is not copied onto HDR",
         ),
     ];
-    let hits: Vec<String> = BLOCKED
+    let atmosphere = flag_on(args, "--atmosphere");
+    let mut hits: Vec<String> = BLOCKED
         .iter()
         .filter(|(flag, _)| flag_on(args, flag))
         .map(|(flag, why)| format!("{flag} ({why})"))
         .collect();
+    if atmosphere && !hits.is_empty() {
+        hits.insert(
+            0,
+            format!("--atmosphere ({ATMOSPHERE_REASON}; a second gated flag is not a cell)"),
+        );
+    }
     if hits.is_empty() {
-        return Ok(());
+        return Ok(atmosphere);
     }
     anyhow::bail!(
         "gated flags cannot fill a measurement cell: {}",
@@ -70,7 +80,7 @@ pub fn reject_gated_flags(args: &[String]) -> anyhow::Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{flag_on, reject_gated_flags};
+    use super::{flag_on, reject_gated_flags, ATMOSPHERE_REASON};
 
     fn args(parts: &[&str]) -> Vec<String> {
         parts.iter().map(|part| (*part).to_string()).collect()
@@ -84,15 +94,23 @@ mod tests {
 
     #[test]
     fn reject_gated_flags_covers_each_form() {
-        assert!(reject_gated_flags(&args(&["--scene", "heavy"])).is_ok());
-        for flag in [
-            "--atmosphere",
-            "--ssgi",
-            "--taa",
-            "--upscale",
-            "--dof",
-            "--clouds",
-        ] {
+        assert_eq!(
+            reject_gated_flags(&args(&["--scene", "heavy"])).expect("baseline"),
+            false
+        );
+        assert!(
+            ATMOSPHERE_REASON.contains("clears HDR and depth"),
+            "{ATMOSPHERE_REASON}"
+        );
+        assert!(
+            ATMOSPHERE_REASON.contains("record_bruneton"),
+            "{ATMOSPHERE_REASON}"
+        );
+        assert!(
+            !ATMOSPHERE_REASON.contains("skips the HDR"),
+            "{ATMOSPHERE_REASON}"
+        );
+        for flag in ["--ssgi", "--taa", "--upscale", "--dof", "--clouds"] {
             let message = rejected(&[flag]);
             assert!(message.contains(flag), "{message}");
             assert!(flag_on(&args(&[flag]), flag));
@@ -100,15 +118,37 @@ mod tests {
             assert!(flag_on(&args(&[flag, "true"]), flag));
             assert!(!flag_on(&args(&[&format!("{flag}=false")]), flag));
             assert!(!flag_on(&args(&[flag, "false"]), flag));
-            assert!(reject_gated_flags(&args(&[&format!("{flag}=false")])).is_ok());
-            assert!(reject_gated_flags(&args(&[flag, "false"])).is_ok());
+            assert_eq!(
+                reject_gated_flags(&args(&[&format!("{flag}=false")])).expect("off"),
+                false
+            );
+            assert_eq!(
+                reject_gated_flags(&args(&[flag, "false"])).expect("off"),
+                false
+            );
         }
-        let equals = rejected(&["--atmosphere=true"]);
-        assert!(equals.contains("--atmosphere"), "{equals}");
-        let two_token = rejected(&["--atmosphere", "true"]);
-        assert!(two_token.contains("--atmosphere"), "{two_token}");
+        for parts in [
+            &["--atmosphere"][..],
+            &["--atmosphere=true"],
+            &["--atmosphere", "true"],
+        ] {
+            assert_eq!(
+                reject_gated_flags(&args(parts)).expect("atmosphere"),
+                true,
+                "{parts:?}"
+            );
+        }
+        assert_eq!(
+            reject_gated_flags(&args(&["--atmosphere=false"])).expect("off"),
+            false
+        );
+        assert_eq!(
+            reject_gated_flags(&args(&["--atmosphere", "false"])).expect("off"),
+            false
+        );
         let pair = rejected(&["--atmosphere", "--ssgi"]);
         assert!(pair.contains("--atmosphere"), "{pair}");
+        assert!(pair.contains("record_bruneton"), "{pair}");
         assert!(pair.contains("--ssgi"), "{pair}");
         assert!(pair.contains("ssgi_history"), "{pair}");
         let ssgi = rejected(&["--ssgi"]);
@@ -134,6 +174,9 @@ mod tests {
             false_then_ssgi.contains("ssgi_history"),
             "{false_then_ssgi}"
         );
-        assert!(rejected(&["--atmosphere", "false", "--atmosphere"]).contains("--atmosphere"));
+        assert_eq!(
+            reject_gated_flags(&args(&["--atmosphere", "false", "--atmosphere"])).expect("on"),
+            true
+        );
     }
 }

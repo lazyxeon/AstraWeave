@@ -352,6 +352,7 @@ impl AtmospherePass {
                 bgl_texture_2d(3), // transmittance LUT
                 bgl_sampler(4),
                 bgl_storage_2d_rw(5, fmt),
+                bgl_texture_load(6), // Bruneton sky, textureLoad
             ],
         });
 
@@ -467,6 +468,7 @@ impl AtmospherePass {
         moon_dir: Vec3,
         near: f32,
         far: f32,
+        scatter_geometry: bool,
     ) {
         let c = &self.config;
 
@@ -540,7 +542,14 @@ impl AtmospherePass {
             sun_dir: sun_dir.to_array(),
             sun_intensity: c.sun_intensity,
             sun_color: c.sun_color.to_array(),
-            max_distance: c.max_aerial_distance,
+            // Fog and god rays already scattered the scene into HDR. A second
+            // integral would scatter those pixels again, so geometry keeps
+            // that color. Sky pixels still take the Bruneton sky.
+            max_distance: if scatter_geometry {
+                c.max_aerial_distance
+            } else {
+                0.0
+            },
             resolution: [self.width as f32, self.height as f32],
             inv_resolution: [1.0 / self.width as f32, 1.0 / self.height as f32],
             near_plane: near,
@@ -686,6 +695,10 @@ impl AtmospherePass {
                             binding: 5,
                             resource: wgpu::BindingResource::TextureView(&self.aerial_view),
                         },
+                        wgpu::BindGroupEntry {
+                            binding: 6,
+                            resource: wgpu::BindingResource::TextureView(&self.sky_view),
+                        },
                     ],
                 });
                 self.cached_aerial_bg =
@@ -766,6 +779,19 @@ fn bgl_depth(binding: u32) -> wgpu::BindGroupLayoutEntry {
         visibility: wgpu::ShaderStages::COMPUTE,
         ty: wgpu::BindingType::Texture {
             sample_type: wgpu::TextureSampleType::Depth,
+            view_dimension: wgpu::TextureViewDimension::D2,
+            multisampled: false,
+        },
+        count: None,
+    }
+}
+
+fn bgl_texture_load(binding: u32) -> wgpu::BindGroupLayoutEntry {
+    wgpu::BindGroupLayoutEntry {
+        binding,
+        visibility: wgpu::ShaderStages::COMPUTE,
+        ty: wgpu::BindingType::Texture {
+            sample_type: wgpu::TextureSampleType::Float { filterable: false },
             view_dimension: wgpu::TextureViewDimension::D2,
             multisampled: false,
         },

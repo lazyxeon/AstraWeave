@@ -1248,6 +1248,23 @@ pub struct Renderer {
     terrain_shadow_stats: [(u32, u32); CASCADE_COUNT],
 }
 
+/// Gated presentation choices. `Measured` leaves atmosphere off.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum PresentationQuality {
+    /// Matches the published heavy scene: atmosphere off.
+    #[default]
+    Measured,
+    /// Atmosphere on. Not the default until a 1660 Ti heavy-scene median is ≤ 11 ms.
+    Atmosphere,
+}
+
+impl PresentationQuality {
+    #[must_use]
+    pub const fn atmosphere(self) -> bool {
+        matches!(self, Self::Atmosphere)
+    }
+}
+
 impl Renderer {
     /// Compose a standalone fragment shader from a `MaterialPackage` for validation/pipeline creation.
     /// Returns a `ShaderModule` ready to be used in a pipeline (caller wires layouts/bindings).
@@ -4654,6 +4671,9 @@ fn vs(input: VSIn) -> VSOut {
         if let Some(rays) = self.god_rays.as_mut() {
             rays.resize(&self.device, self.config.width, self.config.height);
         }
+        if let Some(atmosphere) = self.atmosphere.as_mut() {
+            atmosphere.resize(&self.device, self.config.width, self.config.height);
+        }
         // W.2b — keep the scene-color snapshot sized to the surface.
         self.water_scene_color = self.device.create_texture(&wgpu::TextureDescriptor {
             label: Some("water scene color"),
@@ -5559,6 +5579,14 @@ fn vs(input: VSIn) -> VSOut {
         self.atmosphere_on = enabled;
     }
 
+    /// Bruneton sky plus aerial perspective. Off until
+    /// `gpu_frame_budget --scene heavy --atmosphere` prints
+    /// `median_gpu_frame_ms` at or under 11 on a GTX 1660 Ti.
+    #[must_use]
+    pub fn atmosphere_enabled(&self) -> bool {
+        self.atmosphere_on
+    }
+
     pub fn set_cloud_raymarch_enabled(&mut self, enabled: bool) {
         self.cloud_raymarch_on = enabled;
     }
@@ -5614,6 +5642,77 @@ fn vs(input: VSIn) -> VSOut {
         self.gated_velocity = Some((velocity, velocity_view));
     }
 
+    /// Bruneton sky and aerial, copied onto HDR before fog and god rays.
+    ///
+    /// Cleared pixels become the Bruneton sky. Fog and shafts then composite
+    /// over that color, so a sky pixel keeps both. When fog or shafts are
+    /// already on, geometry is not scattered a second time.
+    fn record_bruneton(&mut self, enc: &mut wgpu::CommandEncoder, depth: &wgpu::TextureView) {
+        if !self.atmosphere_on {
+            return;
+        }
+        let gen = self.resource_generation;
+        let hdr = self.hdr_view.clone();
+        let device = self.device.clone();
+        let queue = self.queue.clone();
+        let width = self.config.width.max(1);
+        let height = self.config.height.max(1);
+        let view_proj = self.cached_proj * self.cached_view;
+        let inv = view_proj.inverse();
+        let eye = glam::Vec3::new(
+            self.camera_ubo.camera_pos_pad[0],
+            self.camera_ubo.camera_pos_pad[1],
+            self.camera_ubo.camera_pos_pad[2],
+        );
+        let light = glam::Vec3::new(
+            self.camera_ubo.light_dir_pad[0],
+            self.camera_ubo.light_dir_pad[1],
+            self.camera_ubo.light_dir_pad[2],
+        );
+        let toward_sun = if light.length_squared() > 1e-6 {
+            -light.normalize()
+        } else {
+            self.sky.time_of_day().get_sun_position()
+        };
+        let (near, far) = clip_planes(self.cached_proj);
+        let scatter_geometry = !self.volumetric_fog_enabled() && !self.god_rays_enabled();
+        if self.atmosphere.is_none() {
+            self.atmosphere = Some(crate::atmosphere::AtmospherePass::new(
+                &self.device,
+                width,
+                height,
+                crate::atmosphere::AtmosphereConfig::default(),
+            ));
+        }
+        let Some(pass) = self.atmosphere.as_mut() else {
+            return;
+        };
+        let (pass_w, pass_h) = pass.dimensions();
+        if pass_w != width || pass_h != height {
+            pass.resize(&device, width, height);
+        }
+        pass.prepare_frame(
+            &queue,
+            inv,
+            eye,
+            toward_sun,
+            -toward_sun,
+            near,
+            far,
+            scatter_geometry,
+        );
+        pass.execute(&device, enc, &hdr, depth, gen);
+        enc.copy_texture_to_texture(
+            pass.aerial_texture().as_image_copy(),
+            self.hdr_tex.as_image_copy(),
+            wgpu::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
+            },
+        );
+    }
+
     /// Presentation passes that stay off unless a setter turned them on.
     /// History and GI stay out of the simulation.
     fn record_gated_presentation(
@@ -5627,44 +5726,13 @@ fn vs(input: VSIn) -> VSOut {
         let queue = self.queue.clone();
         let width = self.config.width.max(1);
         let height = self.config.height.max(1);
-        let inv = self.cached_proj * self.cached_view;
+        let view_proj = self.cached_proj * self.cached_view;
+        let inv = view_proj.inverse();
         let eye = glam::Vec3::new(
             self.camera_ubo.camera_pos_pad[0],
             self.camera_ubo.camera_pos_pad[1],
             self.camera_ubo.camera_pos_pad[2],
         );
-
-        if self.atmosphere_on {
-            if self.atmosphere.is_none() {
-                self.atmosphere = Some(crate::atmosphere::AtmospherePass::new(
-                    &self.device,
-                    width,
-                    height,
-                    crate::atmosphere::AtmosphereConfig::default(),
-                ));
-            }
-            if let Some(pass) = self.atmosphere.as_mut() {
-                pass.prepare_frame(
-                    &queue,
-                    inv,
-                    eye,
-                    glam::Vec3::Y,
-                    glam::Vec3::NEG_Y,
-                    0.1,
-                    200.0,
-                );
-                pass.execute(&device, enc, &hdr, depth, gen);
-                enc.copy_texture_to_texture(
-                    pass.aerial_texture().as_image_copy(),
-                    self.hdr_tex.as_image_copy(),
-                    wgpu::Extent3d {
-                        width,
-                        height,
-                        depth_or_array_layers: 1,
-                    },
-                );
-            }
-        }
         if self.cloud_raymarch_on {
             if self.cloud_raymarch.is_none() {
                 self.cloud_raymarch = Some(crate::volumetric_clouds::VolumetricCloudsPass::new(
@@ -6138,8 +6206,10 @@ fn vs(input: VSIn) -> VSOut {
 
     /// Composite engine volumetric fog, then screen-space light shafts, into HDR.
     ///
-    /// Both passes no-op while their configs are disabled. Fog samples the
-    /// cascaded shadow map. Shafts are added before the tonemap blit.
+    /// Runs after Bruneton has copied its sky into HDR, so fog and shafts
+    /// apply over cleared pixels. Both passes no-op while their configs are
+    /// disabled. Fog samples the cascaded shadow map. Shafts are added before
+    /// the tonemap blit.
     fn composite_atmosphere(&mut self, enc: &mut wgpu::CommandEncoder, depth: &wgpu::TextureView) {
         let light = glam::Vec3::new(
             self.camera_ubo.light_dir_pad[0],
@@ -6149,7 +6219,7 @@ fn vs(input: VSIn) -> VSOut {
         let toward_sun = if light.length_squared() > 1e-6 {
             -light.normalize()
         } else {
-            glam::Vec3::Y
+            self.sky.time_of_day().get_sun_position()
         };
         let camera_pos = glam::Vec3::new(
             self.camera_ubo.camera_pos_pad[0],
@@ -7649,8 +7719,37 @@ fn vs(input: VSIn) -> VSOut {
             .as_ref()
             .and_then(|resources| resources.hdr_equirect.clone());
 
-        // Bruneton is a sky mode, not a second layer on the HDRI sky.
-        if !self.atmosphere_on {
+        // Bruneton replaces the HDRI sky. The sky pass is also the clear of
+        // HDR and of scene depth, so that clear still has to run.
+        if self.atmosphere_on {
+            self.close_timing_gap(enc);
+            let sky_stamp = self.begin_named_stamp(enc, "sky");
+            {
+                let _clear = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
+                    label: Some("atmosphere depth and hdr clear"),
+                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                        view: &self.hdr_view,
+                        resolve_target: None,
+                        ops: wgpu::Operations {
+                            load: wgpu::LoadOp::Clear(crate::environment::hdri_sky_clear_color()),
+                            store: wgpu::StoreOp::Store,
+                        },
+                    })],
+                    depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                        view: depth_view.unwrap_or(&self.depth.view),
+                        depth_ops: Some(wgpu::Operations {
+                            load: wgpu::LoadOp::Clear(1.0),
+                            store: wgpu::StoreOp::Store,
+                        }),
+                        stencil_ops: None,
+                    }),
+                    timestamp_writes: None,
+                    occlusion_query_set: None,
+                });
+            }
+            self.end_named_stamp(enc, sky_stamp);
+            self.open_timing_gap(enc, "after_sky");
+        } else {
             self.close_timing_gap(enc);
             let sky_stamp = self.begin_named_stamp(enc, "sky");
             let sky_result = self.sky.render(
@@ -7971,9 +8070,11 @@ fn vs(input: VSIn) -> VSOut {
         self.close_timing_gap(enc);
         let atmosphere_stamp = self.begin_named_stamp(enc, "atmosphere");
         if let Some(external_depth) = depth_view {
+            self.record_bruneton(enc, external_depth);
             self.composite_atmosphere(enc, external_depth);
         } else {
             let depth = self.depth.view.clone();
+            self.record_bruneton(enc, &depth);
             self.composite_atmosphere(enc, &depth);
         }
         self.end_named_stamp(enc, atmosphere_stamp);
@@ -8034,13 +8135,7 @@ fn vs(input: VSIn) -> VSOut {
         } else {
             0.0
         };
-        if self.atmosphere_on
-            || self.cloud_raymarch_on
-            || self.ssgi_on
-            || self.taa_on
-            || self.upscale_on
-            || self.dof_on
-        {
+        if self.cloud_raymarch_on || self.ssgi_on || self.taa_on || self.upscale_on || self.dof_on {
             let depth = depth_view
                 .cloned()
                 .unwrap_or_else(|| self.depth.view.clone());
@@ -10565,14 +10660,17 @@ fn warp_requested() -> bool {
 fn clip_planes(proj: glam::Mat4) -> (f32, f32) {
     let c = proj.z_axis.z;
     let d = proj.w_axis.z;
-    if c.abs() < 1e-5 {
-        return (0.1, 500.0);
+    if c.abs() < 1e-8 {
+        return (astraweave_camera::GAME_ZNEAR, astraweave_camera::GAME_ZFAR);
     }
-    let near = (d / c).abs().clamp(0.01, 50.0);
-    let far = if (1.0 + c).abs() < 1e-4 {
-        500.0
+    let near = (d / c).abs();
+    let denom = 1.0 + c;
+    // A 20 km far plane at near 0.1 makes |1+c| about 5e-6. That is still a
+    // finite plane. Only an infinite projection stores c at -1.
+    let far = if denom.abs() < 1e-8 {
+        f32::MAX
     } else {
-        (c * near / (1.0 + c)).abs().clamp(near + 1.0, 20000.0)
+        (c * near / denom).abs()
     };
     (near, far)
 }
@@ -10587,6 +10685,12 @@ mod atmosphere_tests {
         let (near, far) = clip_planes(proj);
         assert!((near - 0.1).abs() < 0.02, "near {near}");
         assert!((far - 500.0).abs() < 5.0, "far {far}");
+        let wide = glam::Mat4::perspective_rh(1.0, 1.0, 0.1, 20_000.0);
+        let (near, far) = clip_planes(wide);
+        assert!((near - 0.1).abs() < 0.02, "wide near {near}");
+        // f32 in the perspective matrix loses about 27 m at 20 km. 500 m
+        // is the old fallback and must not come back.
+        assert!((far - 20_000.0).abs() < 50.0, "wide far {far}");
     }
 }
 

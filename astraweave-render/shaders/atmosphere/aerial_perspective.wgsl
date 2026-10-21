@@ -36,6 +36,7 @@ struct AerialParams {
 @group(0) @binding(3) var           t_transmittance: texture_2d<f32>;   // atmosphere LUT
 @group(0) @binding(4) var           s_linear:        sampler;
 @group(0) @binding(5) var           t_output:        texture_storage_2d<rgba16float, write>;
+@group(0) @binding(6) var           t_sky:           texture_2d<f32>;
 
 // PI, TWO_PI, HALF_PI, INV_PI provided by constants.wgsl (prepended on Rust side).
 const AERIAL_STEPS: u32 = 16u;
@@ -76,7 +77,8 @@ fn linearize_depth(d: f32) -> f32 {
 }
 
 fn reconstruct_world_pos(uv: vec2<f32>, depth: f32) -> vec3<f32> {
-    let ndc = vec4<f32>(uv * 2.0 - 1.0, depth, 1.0);
+    // uv.y 0 is the top of the texture. This view is Y-up, so NDC y is +1 there.
+    let ndc = vec4<f32>(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0, depth, 1.0);
     let world_h = params.inv_view_proj * ndc;
     return world_h.xyz / world_h.w;
 }
@@ -97,9 +99,11 @@ fn aerial_perspective_main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let scene_color = textureSampleLevel(t_scene, s_linear, uv, 0.0).rgb;
     let depth_raw = textureLoad(t_depth, pixel, 0);
 
-    // Sky pixels: pass through unchanged (already rendered by sky pass)
-    if (depth_raw >= 0.9999) {
-        textureStore(t_output, pixel, vec4<f32>(scene_color, 1.0));
+    // Only the cleared far plane is sky. A looser cutoff treats distant
+    // geometry (about 333 m at zfar 500) as sky.
+    if (depth_raw == 1.0) {
+        let sky = textureLoad(t_sky, pixel, 0);
+        textureStore(t_output, pixel, vec4<f32>(sky.rgb, 1.0));
         return;
     }
 
@@ -108,10 +112,11 @@ fn aerial_perspective_main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let distance_m = length(world_pos - params.view_pos);
     let distance_km = distance_m * 0.001;
 
-    // Clamp integration distance
+    // Clamp integration distance. A max of 0 keeps the scene color: fog and
+    // god rays already scattered this pixel, and a second integral would
+    // scatter it again. Sky pixels returned above.
     let max_dist = min(distance_km, params.max_distance);
 
-    // Short-circuit for very close geometry
     if (max_dist < 0.001) {
         textureStore(t_output, pixel, vec4<f32>(scene_color, 1.0));
         return;

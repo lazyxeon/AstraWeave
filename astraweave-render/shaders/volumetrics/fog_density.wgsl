@@ -107,6 +107,11 @@ fn fbm(p: vec3<f32>) -> f32 {
 }
 
 // ---- Froxel world position ----
+// uv.y 0 is the top of the texture. NDC y is +1 there. Same pair as pbr.wgsl.
+
+fn screen_uv_to_ndc(uv: vec2<f32>) -> vec2<f32> {
+    return vec2<f32>(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0);
+}
 
 fn froxel_to_world(froxel: vec3<u32>) -> vec3<f32> {
     let dims = vec3<f32>(params.froxel_dims);
@@ -124,7 +129,7 @@ fn froxel_to_world(froxel: vec3<u32>) -> vec3<f32> {
     let depth = z_near * pow(z_far / z_near, linear_t);
 
     // Unproject screen UV + depth to world space
-    let ndc_xy = screen_uv * 2.0 - 1.0;
+    let ndc_xy = screen_uv_to_ndc(screen_uv);
     // Convert linear depth to NDC depth (reverse-Z or standard)
     let ndc_z = (z_far * (depth - z_near)) / (depth * (z_far - z_near));
 

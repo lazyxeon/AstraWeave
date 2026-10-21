@@ -6,9 +6,11 @@
 //! ```text
 //! cargo run -p astraweave-render --release --features gpu-frame-budget --bin gpu_frame_budget -- --scene heavy --debug-timestamps --glb "assets/The Complete KayKit Collection v4/KayKit Adventurers 2.0/Characters/gltf/Rogue.glb"
 //!
-//! An enabled gated flag is rejected, including `--atmosphere`.
-//! `--flag=false` and `--flag false` are off and do not bail. The printed
-//! `median_gpu_frame_ms` is the baseline frame. No gated cell is filled here.
+//! `--atmosphere` is the one gated flag that draws a frame. It replaces
+//! `SkyRenderer`, keeps the HDR and depth clear, and turns on the same fog
+//! and god-ray path Aravath uses. The printed median is that whole frame.
+//! `--atmosphere false` is off. `--ssgi`, `--taa`, `--upscale`, `--dof`,
+//! and `--clouds` are rejected when enabled.
 //! ```
 
 use anyhow::Context;
@@ -36,7 +38,7 @@ const SAMPLES: usize = 120;
 fn main() -> anyhow::Result<()> {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("warn")).init();
     let args: Vec<String> = std::env::args().skip(1).collect();
-    astraweave_render::budget_gate::reject_gated_flags(&args)?;
+    let atmosphere = astraweave_render::budget_gate::reject_gated_flags(&args)?;
     let glb = glb_path();
     let heavy = scene_is_heavy();
     let debug_timestamps = debug_timestamps();
@@ -148,13 +150,38 @@ fn main() -> anyhow::Result<()> {
     add_heavy_terrain(&mut renderer)?;
     renderer.set_particle_emitter(Some(emitter()))?;
     // Cloud shadows stay at the renderer default (on). That is
-    // `CloudShadowPass`, not `VolumetricCloudsPass`. Volumetric fog, god
-    // rays, and every gated presentation pass stay off. GPU indirect culling
-    // is not the draw path on any adapter: each model still binds its own
-    // group 3, so one indirect buffer cannot select those groups. The CPU
-    // frustum remains the filter.
-    println!("gated_atmosphere=off");
-    println!("gated_measure=baseline");
+    // `CloudShadowPass`, not `VolumetricCloudsPass`. `--atmosphere` writes
+    // the Bruneton sky first, then Aravath's fog and god rays composite
+    // over it. A failed fog or shaft build is not that frame.
+    // GPU indirect culling is not the draw path on any adapter: each model
+    // still binds its own group 3, so one indirect buffer cannot select
+    // those groups. The CPU frustum remains the filter.
+    if atmosphere {
+        {
+            let clock = renderer.time_of_day_mut();
+            clock.current_time = 16.4;
+            clock.time_scale = 0.0;
+        }
+        renderer.set_volumetric_fog_config(
+            astraweave_render::volumetric_fog::VolumetricFogPass::gameplay_config(),
+        );
+        renderer.set_god_ray_config(astraweave_render::GodRayConfig {
+            enabled: true,
+            half_res: true,
+            num_samples: 32,
+            exposure: 0.22,
+            ..astraweave_render::GodRayConfig::default()
+        });
+        renderer.set_atmosphere_enabled(true);
+    }
+    let fog = renderer.volumetric_fog_enabled();
+    let shafts = renderer.god_rays_enabled();
+    let measure = gated_measure_label(atmosphere, fog, shafts);
+    println!("gated_atmosphere={}", if atmosphere { "on" } else { "off" });
+    println!("gated_measure={measure}");
+    if atmosphere && (!fog || !shafts) {
+        anyhow::bail!("degraded atmosphere measurement: {measure}");
+    }
     let gpu_cull = "cpu_fallback";
 
     let device = renderer.device().clone();
@@ -777,6 +804,18 @@ fn renderer_limits(limits: &wgpu::Limits) -> [(&'static str, u64); 15] {
     ]
 }
 
+fn gated_measure_label(atmosphere: bool, fog: bool, shafts: bool) -> &'static str {
+    if !atmosphere {
+        return "baseline";
+    }
+    match (fog, shafts) {
+        (true, true) => "atmosphere_with_aravath_fog",
+        (true, false) => "atmosphere_without_shafts",
+        (false, true) => "atmosphere_without_fog",
+        (false, false) => "atmosphere_without_volumetrics",
+    }
+}
+
 fn debug_timestamps() -> bool {
     std::env::args().any(|arg| arg == "--debug-timestamps" || arg == "--debug-timestamps=true")
 }
@@ -888,8 +927,8 @@ fn fixed_camera() -> RenderView {
     let projection = Projection::perspective(
         60_f32.to_radians(),
         WIDTH as f32 / HEIGHT as f32,
-        0.1,
-        200.0,
+        astraweave_camera::GAME_ZNEAR,
+        astraweave_camera::GAME_ZFAR,
     );
     RenderView::new(
         view,
@@ -906,5 +945,37 @@ fn median(values: &mut [f64]) -> f64 {
         (values[mid - 1] + values[mid]) * 0.5
     } else {
         values[mid]
+    }
+}
+
+#[cfg(test)]
+mod measure_label_tests {
+    use super::gated_measure_label;
+
+    #[test]
+    fn degraded_volumetrics_are_not_the_aravath_fog_frame() {
+        assert_eq!(gated_measure_label(false, false, false), "baseline");
+        assert_eq!(
+            gated_measure_label(true, true, true),
+            "atmosphere_with_aravath_fog"
+        );
+        assert_eq!(
+            gated_measure_label(true, false, true),
+            "atmosphere_without_fog"
+        );
+        assert_eq!(
+            gated_measure_label(true, true, false),
+            "atmosphere_without_shafts"
+        );
+        assert_eq!(
+            gated_measure_label(true, false, false),
+            "atmosphere_without_volumetrics"
+        );
+        for (fog, shafts) in [(false, true), (true, false), (false, false)] {
+            assert_ne!(
+                gated_measure_label(true, fog, shafts),
+                "atmosphere_with_aravath_fog"
+            );
+        }
     }
 }

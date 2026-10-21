@@ -98,7 +98,8 @@ fn ray_sphere_dist(origin_h: f32, cos_zenith: f32, sphere_r: f32) -> f32 {
 
 fn pixel_to_ray(pixel: vec2<f32>) -> vec3<f32> {
     let uv = pixel * params.inv_resolution;
-    let ndc = vec4<f32>(uv * 2.0 - 1.0, 1.0, 1.0);
+    // uv.y 0 is the top of the texture. This view is Y-up, so NDC y is +1 there.
+    let ndc = vec4<f32>(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0, 1.0, 1.0);
     let world_h = params.inv_view_proj * ndc;
     let world_pos = world_h.xyz / world_h.w;
     return normalize(world_pos - params.view_pos);

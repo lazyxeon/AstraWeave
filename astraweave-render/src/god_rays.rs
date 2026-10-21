@@ -386,7 +386,7 @@ impl GodRayPass {
 
         let (sun_screen, visible) = if clip.w > 0.0 {
             let ndc = glam::Vec2::new(clip.x / clip.w, clip.y / clip.w);
-            let uv = ndc * 0.5 + 0.5;
+            let uv = ndc_to_screen_uv(ndc);
             // Check if on screen (with some margin)
             let on_screen = uv.x >= -0.2 && uv.x <= 1.2 && uv.y >= -0.2 && uv.y <= 1.2;
             (uv.to_array(), if on_screen { 1.0_f32 } else { 0.0 })
@@ -583,6 +583,11 @@ impl GodRayPass {
     }
 }
 
+/// Screen UV for this Y-up view. uv.y 0 is NDC y +1, the same pair as `pbr.wgsl`.
+pub fn ndc_to_screen_uv(ndc: glam::Vec2) -> glam::Vec2 {
+    glam::Vec2::new(ndc.x * 0.5 + 0.5, 0.5 - ndc.y * 0.5)
+}
+
 /// Project a sun direction to screen-space UV (CPU utility).
 pub fn sun_to_screen(view_proj: Mat4, sun_dir: Vec3) -> Option<[f32; 2]> {
     let clip = view_proj * (sun_dir * 10000.0).extend(1.0);
@@ -590,7 +595,7 @@ pub fn sun_to_screen(view_proj: Mat4, sun_dir: Vec3) -> Option<[f32; 2]> {
         return None;
     }
     let ndc = glam::Vec2::new(clip.x / clip.w, clip.y / clip.w);
-    let uv = ndc * 0.5 + 0.5;
+    let uv = ndc_to_screen_uv(ndc);
     if uv.x >= -0.2 && uv.x <= 1.2 && uv.y >= -0.2 && uv.y <= 1.2 {
         Some(uv.to_array())
     } else {
@@ -637,6 +642,26 @@ mod tests {
         // Should be near center of screen
         assert!((u - 0.5).abs() < 0.1, "u={u}");
         assert!((v - 0.5).abs() < 0.1, "v={v}");
+    }
+
+    #[test]
+    fn sun_above_the_view_is_the_top_of_the_texture() {
+        let vp = Mat4::perspective_rh(1.0, 1.0, 0.1, 1000.0)
+            * Mat4::look_at_rh(Vec3::ZERO, Vec3::NEG_Z, Vec3::Y);
+        let [u, v] = sun_to_screen(vp, Vec3::new(0.25, 0.35, -1.0).normalize()).expect("in front");
+        assert!((u - 0.5).abs() > 0.02, "sun should sit off center, u={u}");
+        assert!(
+            v < 0.5,
+            "uv.y {v} should be the top half, not the mirrored bottom"
+        );
+    }
+
+    #[test]
+    fn ndc_y_up_is_the_top_of_the_texture() {
+        let top = ndc_to_screen_uv(glam::Vec2::new(0.0, 1.0));
+        let bottom = ndc_to_screen_uv(glam::Vec2::new(0.0, -1.0));
+        assert!(top.y.abs() < 1e-5, "uv.y {}", top.y);
+        assert!((bottom.y - 1.0).abs() < 1e-5, "uv.y {}", bottom.y);
     }
 
     #[test]

@@ -54,6 +54,12 @@ fn phase_hg(cos_theta: f32, g: f32) -> f32 {
 }
 
 // ---- Froxel → world position (same exponential distribution as density pass) ----
+// uv.y 0 is the top of the texture. NDC y is +1 there. Same pair as pbr.wgsl.
+
+fn screen_uv_to_ndc(uv: vec2<f32>) -> vec2<f32> {
+    return vec2<f32>(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0);
+}
+
 fn froxel_to_world(froxel: vec3<u32>) -> vec3<f32> {
     let dims = vec3<f32>(params.froxel_dims);
     let uvw = (vec3<f32>(froxel) + 0.5) / dims;
@@ -61,7 +67,7 @@ fn froxel_to_world(froxel: vec3<u32>) -> vec3<f32> {
     let z_near = params.near_plane;
     let z_far = params.far_plane;
     let depth = z_near * pow(z_far / z_near, uvw.z);
-    let ndc_xy = screen_uv * 2.0 - 1.0;
+    let ndc_xy = screen_uv_to_ndc(screen_uv);
     let ndc_z = (z_far * (depth - z_near)) / (depth * (z_far - z_near));
     let clip = vec4<f32>(ndc_xy, ndc_z, 1.0);
     let world_h = params.inv_view_proj * clip;

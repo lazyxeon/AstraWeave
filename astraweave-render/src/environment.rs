@@ -199,6 +199,27 @@ pub struct SkyRenderer {
     cached_cube_bg: Option<wgpu::BindGroup>,
 }
 
+/// Clear used by the HDRI sky pass. Debug builds use magenta so a missing
+/// skybox is visible. Release builds use dark grey. Bruneton uses this same
+/// clear when it replaces the sky pass.
+pub(crate) fn hdri_sky_clear_color() -> wgpu::Color {
+    if cfg!(debug_assertions) {
+        wgpu::Color {
+            r: 1.0,
+            g: 0.0,
+            b: 1.0,
+            a: 1.0,
+        }
+    } else {
+        wgpu::Color {
+            r: 0.05,
+            g: 0.05,
+            b: 0.05,
+            a: 1.0,
+        }
+    }
+}
+
 impl SkyRenderer {
     /// Create a new sky renderer
     pub fn new(config: SkyConfig) -> Self {
@@ -575,23 +596,7 @@ impl SkyRenderer {
                 view: target_view,
                 resolve_target: None,
                 ops: wgpu::Operations {
-                    // In debug builds use magenta so a missing skybox is
-                    // immediately visible; in release use dark grey.
-                    load: wgpu::LoadOp::Clear(if cfg!(debug_assertions) {
-                        wgpu::Color {
-                            r: 1.0,
-                            g: 0.0,
-                            b: 1.0,
-                            a: 1.0,
-                        }
-                    } else {
-                        wgpu::Color {
-                            r: 0.05,
-                            g: 0.05,
-                            b: 0.05,
-                            a: 1.0,
-                        }
-                    }),
+                    load: wgpu::LoadOp::Clear(hdri_sky_clear_color()),
                     store: wgpu::StoreOp::Store,
                 },
             })],
