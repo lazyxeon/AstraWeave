@@ -140,8 +140,8 @@ pub use environment::{
 };
 pub use error::{RenderError, RenderResult};
 pub use renderer::{
-    CascadeFit, FarCascadePolicy, ModelSurfaceMaps, Renderer, SHOWCASE_HDRI_FALLBACK,
-    SHOWCASE_HDRI_PRIMARY,
+    CascadeFit, FarCascadePolicy, ModelSurfaceMaps, PresentationQuality, Renderer,
+    SHOWCASE_HDRI_FALLBACK, SHOWCASE_HDRI_PRIMARY,
 };
 pub use terrain::{TerrainMesh, TerrainRenderer, TerrainVertex, VegetationRenderInstance};
 pub use texture::Texture;

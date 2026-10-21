@@ -36,10 +36,12 @@ fn submit(renderer: &mut Renderer, view: &wgpu::TextureView) {
 }
 
 #[test]
-fn atmosphere_is_on_without_a_setter() {
+fn atmosphere_stays_off_until_measured() {
     pollster::block_on(async {
         let renderer = Renderer::new_headless(64, 64).await.expect("headless");
-        assert!(renderer.atmosphere_enabled());
+        assert!(!renderer.atmosphere_enabled());
+        assert!(!astraweave_render::PresentationQuality::default().atmosphere());
+        assert!(astraweave_render::PresentationQuality::Atmosphere.atmosphere());
     });
 }
 

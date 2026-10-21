@@ -1248,6 +1248,23 @@ pub struct Renderer {
     terrain_shadow_stats: [(u32, u32); CASCADE_COUNT],
 }
 
+/// Gated presentation choices. `Measured` leaves atmosphere off.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum PresentationQuality {
+    /// Matches the published heavy scene: atmosphere off.
+    #[default]
+    Measured,
+    /// Atmosphere on. Not the default until a 1660 Ti heavy-scene median is ≤ 11 ms.
+    Atmosphere,
+}
+
+impl PresentationQuality {
+    #[must_use]
+    pub const fn atmosphere(self) -> bool {
+        matches!(self, Self::Atmosphere)
+    }
+}
+
 impl Renderer {
     /// Compose a standalone fragment shader from a `MaterialPackage` for validation/pipeline creation.
     /// Returns a `ShaderModule` ready to be used in a pipeline (caller wires layouts/bindings).
@@ -3767,7 +3784,7 @@ fn vs(input: VSIn) -> VSOut {
             particle_sort: None,
             particle_emitter: None,
             particle_depth_copy: None,
-            atmosphere_on: true,
+            atmosphere_on: false,
             cloud_raymarch_on: false,
             ssgi_on: false,
             taa_on: false,
@@ -5559,7 +5576,8 @@ fn vs(input: VSIn) -> VSOut {
         self.atmosphere_on = enabled;
     }
 
-    /// Bruneton sky plus aerial perspective. On unless a caller turns it off.
+    /// Bruneton sky plus aerial perspective. Off until a GTX 1660 Ti
+    /// heavy-scene `median_gpu_frame_ms` with `--atmosphere` is at or under 11.
     #[must_use]
     pub fn atmosphere_enabled(&self) -> bool {
         self.atmosphere_on
