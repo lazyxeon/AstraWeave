@@ -1,11 +1,10 @@
-//! Integration tests for Phase 6: Environmental & Soft Body Physics
+//! Integration tests for wind zones, cloth, and buoyancy.
 //!
-//! Tests wind zones, destruction, cloth, and buoyancy systems.
+//! The float destruction tests left with `destruction.rs`.
 
 use astraweave_physics::{
     cloth::{Cloth, ClothCollider, ClothConfig, ClothId, ClothManager},
     environment::{EnvironmentManager, WindType, WindZoneConfig, WindZoneShape},
-    PhysicsWorld,
 };
 use glam::Vec3;
 

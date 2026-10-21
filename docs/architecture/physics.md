@@ -11,7 +11,7 @@ runtime_edges:
   - to: astraweave-water
     note: "buoyancy (apply_buoyancy_forces, lib.rs:1464) consumes WaterQuery/AnalyticWater"
 owns: [astraweave-physics]
-doc_version: "1.14"
+doc_version: "1.15"
 last_verified_commit: 6c238fc0
 ---
 
@@ -23,7 +23,7 @@ last_verified_commit: 6c238fc0
 |---|---|
 | **System name** | Physics (Rigid Body Simulation + Subsystems) |
 | **Primary crates** | `astraweave-physics` (12 source files / ~31K LoC), wraps `rapier3d 0.22` |
-| **Document version** | 1.14 |
+| **Document version** | 1.15 |
 | **Last verified against commit** | `6c238fc0` |
 | **Last verified date** | 2026-10-21 |
 | **Status** | **Active core** (`PhysicsWorld` + `CharacterController` + Rapier broadphase) **with feature-gated and dormant subsystems** (async-physics, ECS plugin, in-house SpatialHash). The core rigid-body / character / raycast surface is production-wired through `astraweave-gameplay` and `astraweave-npc`. 1.14: `destruction.rs`, `DestructionManager`, `process_destructible_hits`, and `benches/destruction.rs` are removed. `PhysicsWorld` does not write `DestructionCommand`. `break_destructible` only removes the Rapier body. Fracture lives in `astraweave-destruction` and is not called from `PhysicsWorld`. 1.3: `PhysicsWorld::remove_body` is the shared removal path; `break_destructible` delegates to it. `aravath_runtime` uses it to replace chunk trimeshes. Several subsystems (projectile, ragdoll, vehicle, environment, cloth) are independent managers with rich APIs but limited production wiring. The `SpatialHash` module is **dormant** despite being advertised in the crate doc-comment. |
@@ -227,7 +227,7 @@ Note: This path requires `astraweave-physics/features = ["ecs"]` to be enabled b
 - **Rapier `RigidBodyHandle` vs engine `BodyId`**: `RigidBodyHandle` is Rapier's internal generational index. `BodyId` is the engine-stable `u64` handle. Game code uses `BodyId`; only `PhysicsWorld` internals translate via `body_ids: HashMap<RigidBodyHandle, BodyId>` and `handle_of` accessor.
 - **`SpatialHash` (in-crate) vs `DefaultBroadPhase` (Rapier)**: The in-crate `SpatialHash` is a standalone data structure with its own tests + doc-comments claiming "99.96% pair reduction." It is NOT used by `PhysicsWorld` — Rapier's `DefaultBroadPhase` is the actual broadphase. See §6 Conflict Map.
 - **`PhysicsWorld::gravity` vs `PhysicsConfig::gravity`**: `PhysicsConfig::gravity` is the constructor parameter. `PhysicsWorld::gravity` is the Rapier vector consumed each step. `GravityManager` left with `gravity.rs` (#330).
-- **`buoyancy_bodies` (per-body) vs `add_water_aabb` (volume)**: `add_buoyancy(id, volume, drag)` (`lib.rs:1413`) tags a single body for buoyancy. `add_water_aabb` (`lib.rs:1449`) takes `_min`, `_max`, `_density`, `_linear_damp` but its body is a stub — **all parameters are underscored and the function body is empty** (`pub fn add_water_aabb(...) {}`). Water-volume-based buoyancy is not implemented in `PhysicsWorld`; only per-body buoyancy is.
+- **`buoyancy_bodies` (per-body) vs `add_water_aabb` (volume)**: `add_buoyancy` (`lib.rs:1462`) stores volume and drag for one body. `add_water_aabb` (`lib.rs:1522`) calls `self.water.add_aabb` and is not a stub. `apply_buoyancy_forces` samples that volume only for bodies already in `buoyancy_bodies`, and the impulse multiplies `BuoyancyData.drag`. The AABB `linear_drag` is stored authoring data.
 - **`break_destructible(id)` vs the removed `DestructionManager`**: `DestructionManager` is historical. `break_destructible` only calls `remove_body`. `PhysicsWorld` does not write `DestructionCommand`.
 
 ---
@@ -317,8 +317,8 @@ Public modules, in `lib.rs` declaration order: `deformed`, `traversal`, `async_s
 | `DestructionManager` + `Destructible` + `FracturePattern` | `destruction.rs` (removed) | **Removed** (historical) | Deleted. `PhysicsWorld` does not write `DestructionCommand`. `break_destructible` only removes the Rapier body. Fracture is `astraweave-destruction`. |
 | `process_destructible_hits` | was `lib.rs` | **Removed** | The stub is deleted. No symbol remains in `astraweave-physics`. |
 | `benches/destruction.rs` | removed bench | **Removed** (historical) | The `[[bench]] name = "destruction"` entry is gone. The integer fracture bench is `astraweave-destruction/benches/destruction.rs`. |
-| `PhysicsWorld::add_water_aabb` (stub) | `lib.rs:1449` | **Stub** | All parameters (`_min, _max, _density, _linear_damp`) underscored; function body is `{}`. Water-volume-based buoyancy in `PhysicsWorld` is not implemented; per-body buoyancy via `add_buoyancy(id, volume, drag)` (`:1413`) IS implemented. |
-| `EnvironmentManager::WaterVolume` + `WaterVolumeId` | `environment.rs` | Active (module-level) | Volume-based water system exists in environment module independent of the stub. |
+| `PhysicsWorld::add_water_aabb` | `lib.rs:1522` | Active | Calls `self.water.add_aabb`. The box and density are live on `AnalyticWater`. Buoyancy impulses still require a `buoyancy_bodies` entry and use `BuoyancyData.drag`. The AABB `linear_drag` is stored and is not that drag. |
+| `EnvironmentManager::WaterVolume` + `WaterVolumeId` | `environment.rs` | Active (module-level) | Separate volume manager. It is not `PhysicsWorld.water`. |
 | `astraweave-physics::ecs::PhysicsPlugin` (`ecs` feature) | `ecs.rs` (84 LoC) | Dormant | Feature-gated; no production consumer enables `ecs` feature. The plugin is the designed ECS integration path. |
 | `astraweave-gameplay::combat_physics::perform_attack_sweep` (direct `&mut PhysicsWorld`) | `astraweave-gameplay/src/combat_physics.rs` | Active | Bypasses ECS integration; takes raw `&mut PhysicsWorld` argument. The canonical production combat path. |
 | `astraweave-physics::AsyncPhysicsScheduler` (`async-physics` feature) | `async_scheduler.rs` (979 LoC) | Dormant | Feature-gated; only the bench `physics_async` enables it (`Cargo.toml:55`). |
@@ -329,7 +329,7 @@ Public modules, in `lib.rs` declaration order: `deformed`, `traversal`, `async_s
 - **`broad_phase`**: In `PhysicsWorld.broad_phase: DefaultBroadPhase` (`lib.rs:907`), means Rapier's broadphase. In `spatial_hash.rs` doc-comment, refers to the dormant in-crate `SpatialHash` advertised as "broad-phase collision optimization." Two different things in the same crate.
 - **`step` / `step_internal`**: `step` is the public entry point (`lib.rs:1039`); `step_internal` is the private body (`:1070`). `step` chooses between async and sync paths.
 - **Wind**: `PhysicsWorld.wind: Vec3` is a bare global. `EnvironmentManager::WindZone` is zonal. Both exist in the same crate.
-- **`add_water_aabb` vs `add_buoyancy`**: `add_water_aabb` (`lib.rs:1449`) is a body-less stub. `add_buoyancy(body, volume, drag)` (`lib.rs:1413`) is the actual buoyancy attachment. Don't expect the former to do anything.
+- **`add_water_aabb` vs `add_buoyancy`**: `add_water_aabb` (`lib.rs:1522`) registers the volume. `add_buoyancy` (`lib.rs:1462`) attaches volume and drag to one body. The impulse uses the body's drag.
 - **`break_destructible` (`PhysicsWorld`) vs the removed `DestructionManager`**: `DestructionManager` is historical. `break_destructible` only calls `remove_body`. It does not fracture, spawn debris, or read health. `PhysicsWorld` does not write `DestructionCommand`.
 - **`Layers` (bitflags, in-crate) vs Rapier's `Group`**: `Layers::DEFAULT | Layers::CHARACTER` is the engine-side bitset (`lib.rs:383-389`). Rapier's `InteractionGroups::new(Group::from_bits_truncate(layers.bits()), Group::ALL)` is the per-collider filter. Conversion happens at collider construction time inside `add_*` methods.
 - **Two `RigidBodyHandle ↔ BodyId` maps**: `body_ids: HashMap<RigidBodyHandle, BodyId>` and `body_kinds: HashMap<RigidBodyHandle, ActorKind>` are parallel. The first translates handles to engine IDs; the second tracks actor kind per handle. Both have the same key set after `tag_body`.
@@ -339,8 +339,8 @@ Public modules, in `lib.rs` declaration order: `deformed`, `traversal`, `async_s
 - **Trap**: Reading the crate doc-comment at `lib.rs:25-26` ("`SpatialHash` — Grid-based broadphase for O(n log n) collision culling (99.96% pair reduction vs brute-force)") and assuming `PhysicsWorld` uses it.
   **What's actually true**: `PhysicsWorld` uses Rapier's `DefaultBroadPhase` (`lib.rs:907`). `SpatialHash` is a standalone data structure with its own tests but no production consumers. Verified 2026-05-12.
 
-- **Trap**: Calling `add_water_aabb(min, max, density, linear_damp)` expecting it to enable water-volume buoyancy.
-  **What's actually true**: The function body is `{}` (`lib.rs:1449`); all parameters are underscored. Use `add_buoyancy(body, volume, drag)` (`:1413`) for per-body buoyancy. Volume-based water requires either `EnvironmentManager::WaterVolume` or a custom integration.
+- **Trap**: Calling `add_water_aabb(min, max, density, linear_damp)` and expecting every body inside the box to float, or expecting `linear_damp` to be the impulse drag.
+  **What's actually true**: `lib.rs:1522` stores the box on `AnalyticWater`. `apply_buoyancy_forces` samples it only for bodies already in `buoyancy_bodies`. The impulse multiplies `BuoyancyData.drag`. The AABB damp is authoring data.
 
 - **Trap**: Reading `add_destructible_box(pos, half, mass, health, break_impulse)` and assuming `health` / `break_impulse` are tracked.
   **What's actually true**: `_health` and `_break_impulse` are ignored. The function calls `add_dynamic_box` and returns that `BodyId`. `destruction.rs` and `DestructionManager` are removed. Fracture is `astraweave-destruction`.
@@ -349,7 +349,7 @@ Public modules, in `lib.rs` declaration order: `deformed`, `traversal`, `async_s
   **What's actually true**: `step_internal` updates the query pipeline at `lib.rs:1105` (`self.query_pipeline.update(&self.colliders)`) AFTER Rapier's step. Raycasts before `step()` see geometry from the previous frame's post-step state. This was the bug fixed in "Week 2 Day 3" per the inline comment at `:1102-1104`.
 
 - **Trap**: Treating `PhysicsWorld::break_destructible(id)` as just a "mark for destruction" hook.
-  **What's actually true**: It immediately removes the body from Rapier's set + `body_ids` + `body_kinds` + `char_map` + `buoyancy_bodies` (`lib.rs:1566-1584`). Caller code that holds the `BodyId` after this call gets `None` from `handle_of(id)` on subsequent queries.
+  **What's actually true**: It calls `remove_body` (`lib.rs:1652`), which removes the Rapier body and clears `body_ids`, `body_kinds`, `char_map`, `buoyancy_bodies`, and `climb_flags`. A later `handle_of(id)` returns `None`.
 
 - **Trap**: Enabling the `ecs` feature on `astraweave-physics` and expecting it to wire automatically with `astraweave-ecs`.
   **What's actually true**: The `ecs` feature exists in `Cargo.toml:13` (`ecs = ["astraweave-ecs", "astraweave-scene"]`) and provides `PhysicsPlugin` (`ecs.rs:11-23`), but no production crate enables it. Production consumers (`astraweave-gameplay`, `astraweave-npc`) take `&mut PhysicsWorld` directly and call `step()` themselves.
@@ -440,7 +440,7 @@ Public modules, in `lib.rs` declaration order: `deformed`, `traversal`, `async_s
 | 4 | `apply_buoyancy_forces` runs BEFORE `pipeline.step` | Yes (code) | `lib.rs:1084` precedes `:1086` |
 | 5 | `add_character` always creates a `RigidBodyType::KinematicPositionBased` body, NOT dynamic | Yes (code) | `lib.rs:1206`: `RigidBodyBuilder::kinematic_position_based()` |
 | 6 | `add_character` always inserts a `CharacterController` entry into `char_map` keyed by the new `BodyId` | Yes (code) | `lib.rs:1218-1235`: `self.char_map.insert(id, CharacterController { ... })` |
-| 7 | `break_destructible(id)` removes the body from ALL internal maps (`body_ids`, `body_kinds`, `char_map`, `buoyancy_bodies`) | Yes (code) | `lib.rs:1566-1584`: explicit 4-line cleanup after Rapier `bodies.remove` |
+| 7 | `break_destructible(id)` calls `remove_body`, which removes the Rapier body and clears five maps: `body_ids`, `body_kinds`, `char_map`, `buoyancy_bodies`, and `climb_flags` | Yes (code) | `lib.rs:1670` calls `remove_body` at `lib.rs:1652` |
 | 8 | `PhysicsConfig::default()` time_step = `1.0/60.0` (60 Hz target) | Yes (code) | `lib.rs:618` |
 | 8b | `traversal::step` advances exactly one `TICK_DT` and does not read `Instant` | Yes (code) | `traversal.rs` `TICK_DT`; replay test `traversal_replay` |
 | 9 | `PhysicsConfig::default()` gravity = `(0.0, -9.81, 0.0)` (Earth-like) | Yes (code) | `lib.rs:615` |
@@ -451,7 +451,7 @@ Public modules, in `lib.rs` declaration order: `deformed`, `traversal`, `async_s
 | 14 | `CharState` is `#[non_exhaustive]` with exactly 1 variant: Grounded | Yes (code) | `lib.rs:391-395` |
 | 15 | `JointType` is `#[non_exhaustive]` with exactly 4 variants: Fixed / Revolute / Prismatic / Spherical | Yes (code) | `lib.rs:635-648` |
 | 16 | `ProjectileKind` is `#[non_exhaustive]` with exactly 2 variants: Hitscan / Kinematic; default = Kinematic | Yes (code) | `projectile.rs:43-52` |
-| 17 | `add_water_aabb` is a no-op stub (function body is `{}`) | Yes (code) | `lib.rs:1449`: `pub fn add_water_aabb(&mut self, _min: Vec3, _max: Vec3, _density: f32, _linear_damp: f32) {}` |
+| 17 | `add_water_aabb` registers an AABB on `PhysicsWorld.water`. It is not a stub | Yes (code) | `lib.rs:1522` calls `self.water.add_aabb`. `AnalyticWater::sample` can return that box's top face and density. `apply_buoyancy_forces` uses the sample only for bodies in `buoyancy_bodies`, and the impulse multiplies `BuoyancyData.drag` |
 | 18 | `PhysicsWorld` is `Send + Sync` (auto-derived) — must hold for use as `astraweave-ecs::World` resource | Yes (compile-time, transitively proven) | Verified 2026-05-12: `astraweave-ecs::World::get_resource<T>` / `insert_resource<T>` require `T: 'static + Send + Sync` (per `astraweave-ecs/src/lib.rs:466, 482, 486`). Multiple call sites compile: `astraweave-scripting/src/lib.rs:148, 336, 453, 506` (`world.get_resource::<PhysicsWorld>()`) and `astraweave-physics/tests/ecs_integration_test.rs:20` (`app.world.get_resource_mut::<PhysicsWorld>().unwrap()`). Therefore `PhysicsWorld` MUST be `Send + Sync`. The previous trace claim "Send but NOT Sync" was incorrect. |
 | 19 | `PhysicsWorld` does not write `DestructionCommand`. `break_destructible` only removes the Rapier body | Yes | `break_destructible` calls `remove_body` and stops. It does not fracture, spawn debris, or read health. `process_destructible_hits` is deleted. |
 | 20 | Crate uses `#![forbid(unsafe_code)]`; no unsafe blocks in any of the source files | Yes (compile-time + grep) | `lib.rs:1` |
@@ -484,7 +484,7 @@ Per the crate-level doc-comment at `lib.rs:43-48`:
 | Path | Frequency | Budget |
 |---|---|---|
 | `add_dynamic_box` / `add_static_trimesh` / `add_character` | At spawn time | Looser budget; can afford HashMap inserts and Rapier builder chains |
-| `break_destructible` | On destruction events | Looser budget; one body removal + 4 HashMap cleanups |
+| `break_destructible` | On destruction events | Looser budget; one body removal plus five map clears: `body_ids`, `body_kinds`, `char_map`, `buoyancy_bodies`, `climb_flags` |
 | `add_joint` | At spawn time | Single `ImpulseJointSet::insert` after a `match joint_type` chain |
 | `enable_ccd(id)` | On-demand toggle | Single `rb.enable_ccd(true)` |
 | `set_body_position(id, pos)` | Editor-driven or scripted | Single `rb.set_translation` |
@@ -497,7 +497,7 @@ Per the crate-level doc-comment at `lib.rs:43-48`:
 | `RigidBodySet`, `ColliderSet`, `ImpulseJointSet`, `MultibodyJointSet` | `PhysicsWorld` (public fields) | `PhysicsWorld` lifetime | Mutated only during `step`, `add_*`, `break_destructible`, `set_*` |
 | `PhysicsPipeline`, `IslandManager`, `DefaultBroadPhase`, `NarrowPhase`, `QueryPipeline`, `CCDSolver` | `PhysicsWorld` (public fields) | `PhysicsWorld` lifetime | Mutated during `step` |
 | `ChannelEventCollector` + crossbeam channels (`collision_recv`, `contact_force_recv`) | `PhysicsWorld` | `PhysicsWorld` lifetime | Events emitted during `step`; caller drains via `try_recv` / `recv` |
-| `body_ids`, `body_kinds`, `char_map`, `buoyancy_bodies` HashMaps | `PhysicsWorld` (private + public) | `PhysicsWorld` lifetime | Inserted on `add_*`, removed on `break_destructible` |
+| `body_ids`, `body_kinds`, `char_map`, `buoyancy_bodies`, `climb_flags` | `PhysicsWorld` | `PhysicsWorld` lifetime | Inserted on `add_*` or climb setup; `remove_body` clears all five |
 | `DebugRenderPipeline` | `PhysicsWorld` (private field) | `PhysicsWorld` lifetime | Used by debug-render API; otherwise idle |
 
 ### Allocation profile
@@ -530,7 +530,7 @@ Per inline `lib.rs:1071-1075`: "Allocation-measurement instrumentation (audit 20
 - **`SpatialHash` module — wire in or remove?** [Decisional / factual, **enriched 2026-05-12 deep investigation**.] Factual state (re-verified 2026-05-12): the `spatial_hash.rs` module (1,038 LoC) defines a complete grid-broadphase data structure with `AABB` + `SpatialHash<T>` and is advertised in the crate-level doc-comment at `lib.rs:25-26` as the broadphase. Workspace grep for `use astraweave_physics::SpatialHash` or `use astraweave_physics::spatial_hash` outside the crate's own `src` + `tests` returned zero matches. `PhysicsWorld` uses Rapier's `DefaultBroadPhase` (`lib.rs:907`). **Test surface is more extensive than previously documented:** 4 test files reference `SpatialHash` — `tests/behavioral_correctness_tests.rs` (3+ tests including `test_spatial_hash_no_false_negatives` at `:652`, `test_spatial_hash_no_false_positives` at `:684`, `test_mutation_spatial_hash_cell_boundary` at `:996`), `tests/coverage_boost_tests.rs:868-…` (`spatial_hash_coverage` mod with multiple tests), `tests/cross_subsystem_validation.rs:13, :280-…` (including `test_spatial_hash_with_multiple_physics_objects` and `test_spatial_hash_determinism`), and `tests/spatial_hash_character_tests.rs` (33 `#[test]` attributes total, mixed with character_controller tests — first ~20 are SpatialHash + AABB tests at lines `:18-:240`). **No dedicated benchmark file:** workspace grep for `SpatialHash\|spatial_hash` in `benches/*.rs` returned zero matches; the previous trace claim about `benches/raycast.rs` mentioning spatial-hash patterns was incorrect (`grep -c "SpatialHash\|spatial_hash" benches/raycast.rs` returned `0`). The "3.77 ms vs 5.61 ms" comparison cited at `lib.rs:48` and `Cargo.toml:32` was a Phase B measurement preserved in code comments, not an ongoing bench harness. Whether to wire `SpatialHash` into `PhysicsWorld` (replacing or supplementing `DefaultBroadPhase`), expose it as a public utility for external broadphase needs, or remove it is undecided. The doc-comment claim "99.96% pair reduction vs brute-force" is sourced from the Phase B comment, not from a currently-running bench.
 - **`async-physics` feature — production-wire or experimental?** [Decisional.] Factual: the `async-physics` feature gates `AsyncPhysicsScheduler` + `PhysicsStepProfile` + `enable_async_physics` (`lib.rs:1010-1031`). Verified 2026-05-12: only `astraweave-physics/Cargo.toml:55` (the `physics_async` bench) enables it. No production consumer sets `features = ["async-physics"]`. The scheduler integrates by recording telemetry inside the existing `step()` path; Rapier itself uses Rayon's global thread pool when available (per inline comment at `lib.rs:1045-1047`). Whether to enable the feature by default, make it on-by-default opt-out, or keep as opt-in experimental is undecided.
 - **`ecs` feature — production-wire `PhysicsPlugin` or rely on direct `&mut PhysicsWorld` passthrough?** [Decisional, **enriched 2026-05-12 deep investigation**.] Factual: `PhysicsPlugin` exists in `ecs.rs:11-23` and registers `physics_step_system` + `sync_physics_to_transform_system` on `SystemStage::PHYSICS`. Verified 2026-05-12: no production consumer enables `features = ["ecs"]` (workspace grep for `astraweave-physics.*features.*ecs` in `.toml` files returned zero matches outside the physics crate's own declaration at `Cargo.toml:11`). **Three de facto consumer patterns exist today:** (a) Direct `&mut PhysicsWorld` passthrough — `astraweave-gameplay::combat_physics::perform_attack_sweep` (`combat_physics.rs:36`), `astraweave-npc::NpcManager` (`runtime.rs:21`). (b) ECS-resource pattern WITHOUT the `ecs` feature — `astraweave-scripting/src/lib.rs:148, 336, 453, 506` uses `World::insert_resource(physics)` + `get_resource::<PhysicsWorld>()` which works because `World::*_resource<T>` only requires `T: 'static + Send + Sync`, NOT the physics-side `ecs` feature. (c) The designed `PhysicsPlugin` path — gated on the `ecs` feature, exercised only by `tests/ecs_integration_test.rs:1` (which declares `#[cfg(feature = "ecs")]`). The decisional question is whether to migrate (a) and (b) onto (c), keep all three patterns in parallel, or formalize (b) as a documented third pattern.
-- **`add_water_aabb` stub — implement or remove?** [Decisional / factual.] Factual: `lib.rs:1449` defines `pub fn add_water_aabb(&mut self, _min: Vec3, _max: Vec3, _density: f32, _linear_damp: f32) {}` — all parameters underscored, function body is `{}`. The per-body `add_buoyancy` (`:1413`) IS implemented. `EnvironmentManager::WaterVolume` (`environment.rs`) exists as a parallel volume-based system. Whether to implement `add_water_aabb` (integrating with `EnvironmentManager::WaterVolume`), document the stub status, or remove the function entirely is undecided.
+- **`add_water_aabb`.** [Closed 2026-10-21.] `lib.rs:1522` calls `self.water.add_aabb(min, max, density, linear_damp)`. The empty body is gone. `AnalyticWater::sample` can return that box. `apply_buoyancy_forces` still iterates only `buoyancy_bodies`, and the impulse uses `BuoyancyData.drag`. `EnvironmentManager::WaterVolume` stays a separate manager.
 - **`add_destructible_box` — passthrough.** [Closed as a passthrough, 2026-10-21.] `add_destructible_box` ignores `_health` and `_break_impulse` and calls `add_dynamic_box`. `DestructionManager`, `destruction.rs`, `process_destructible_hits`, and `benches/destruction.rs` are removed. `PhysicsWorld` does not write `DestructionCommand`. `break_destructible` only removes the Rapier body. Fracture is `astraweave-destruction`. `examples/physics_demo3d` key M still only deletes a body. That window is deferred in #411.
 - **`PhysicsWorld.wind: Vec3` vs `EnvironmentManager::WindZone` — unify or document parallel intent?** [Decisional / factual.] Factual: `PhysicsWorld.wind: Vec3` (`lib.rs:923`) is a bare global wind vector. `EnvironmentManager::WindZone` (`environment.rs`, 3,401 LoC) is a zonal wind system with shape + type variants. The two are not integrated. Whether to drive `PhysicsWorld.wind` from `EnvironmentManager`, keep them parallel, or remove the bare field is undecided.
 - **`PhysicsWorld.gravity` vs zonal `GravityManager`.** [Closed 2026-10-16, #330.] `astraweave-physics/src/gravity.rs` is deleted. #336 is closed. `PhysicsWorld::step` still reads the Rapier vector. Cell acceleration is `astraweave_weaving::gravity_mm_s2` of the zone's milli-g, sampled by `LocalSim`. Older paragraphs in this trace that cite `gravity.rs` describe the removed file.
@@ -544,6 +544,8 @@ Per inline `lib.rs:1071-1075`: "Allocation-measurement instrumentation (audit 20
 
 ## 12. Maintenance Notes
 
+**Revision 1.15 (2026-10-21):** `add_water_aabb` is not a stub. `lib.rs:1522` registers an AABB on `AnalyticWater`. Invariant 17, the §6 row, the §11 question, and Appendix A items 4 and 5 match that. Invariant 7 and Appendix A item 11: `remove_body` clears five maps, including `climb_flags`.
+
 **Revision 1.14 (2026-10-21):** §5 matches the `pub mod` list. `destruction.rs`, `DestructionManager`, `process_destructible_hits`, and `benches/destruction.rs` are removed (historical), as is `gravity.rs`. Invariant 19: `PhysicsWorld` does not write `DestructionCommand`. `break_destructible` only removes the Rapier body.
 
 **Revision 1.13 (2026-10-21):** Deleted the dormant float `destruction.rs` manager and `process_destructible_hits`. Piece count and break strength stay on `astraweave-destruction` (`planar_children`, `BreakRule::stone`). `break_destructible` still calls `remove_body`. The render path is unchanged.
@@ -556,7 +558,7 @@ Per inline `lib.rs:1071-1075`: "Allocation-measurement instrumentation (audit 20
 - `SpatialHash` is wired into `PhysicsWorld` or removed (touch §5 status + §6 conflict map + §11 closure)
 - `async-physics` or `ecs` features gain production consumers (touch §5 status + §11 closure)
 - A new consumer crate adds an `astraweave-physics` dep (touch §4 downstream table + §5 file map)
-- `add_water_aabb` or another stub is implemented or removed (touch §6 stub list + §8 invariants). `process_destructible_hits` is already removed.
+- `add_water_aabb` sampling or the buoyancy impulse changes (touch §6 and invariant 17). `process_destructible_hits` is already removed.
 - Rapier3D is upgraded to a new major version (touch §1 status + crate-level doc-comment + every public re-export at `lib.rs:53-103`)
 
 **Verification process:**
@@ -576,14 +578,14 @@ Per inline `lib.rs:1071-1075`: "Allocation-measurement instrumentation (audit 20
 1. **`PhysicsWorld` is the single mutable owner.** All add/remove/step/query operations require `&mut PhysicsWorld`. Game code stores `BodyId: u64` (NOT Rapier `RigidBodyHandle`).
 2. **`step()` always updates `query_pipeline` AFTER Rapier's step.** Raycasts within the same tick see post-step geometry (per `lib.rs:1102-1104` "Week 2 Day 3" fix).
 3. **`SpatialHash` is dormant.** The crate doc-comment advertises it as the broadphase but `PhysicsWorld` uses Rapier's `DefaultBroadPhase`. Do not assume `SpatialHash` is in the live path.
-4. **`add_water_aabb` and the `_health`/`_break_impulse` params of `add_destructible_box` are stubs.** `process_destructible_hits` is removed. `break_destructible` only calls `remove_body`.
-5. **Per-body `add_buoyancy` works.** Volume-based water buoyancy in `PhysicsWorld` is not implemented; for richer water you need `EnvironmentManager::WaterVolume` from `environment.rs`.
+4. **`add_water_aabb` registers a water volume** at `lib.rs:1522` (`self.water.add_aabb`). It is not a stub. The `_health` and `_break_impulse` params of `add_destructible_box` are still ignored. `process_destructible_hits` is removed. `break_destructible` only calls `remove_body`.
+5. **`add_buoyancy` stores per-body volume and drag.** `add_water_aabb` supplies the box and density that `water.sample` can return. The impulse multiplies `BuoyancyData.drag`, not the AABB's stored damp. `EnvironmentManager::WaterVolume` is a separate manager.
 6. **`PhysicsWorld.wind: Vec3` and `EnvironmentManager::WindZone` are parallel systems**, not unified. `GravityManager` left with `gravity.rs` (#330). `PhysicsWorld.gravity` is the Rapier vector.
 7. **All AI/game-loop callers pass fixed `dt = 1.0/60.0` to `control_character`.** The function uses `dt` internally for timer + gravity updates, but `astraweave-npc/src/runtime.rs:33-34` hardcodes the value. Variable-dt callers must call themselves at game-tick rate.
 8. **All event channels (`collision_recv`, `contact_force_recv`) are unbounded.** Unconsumed events accumulate in memory; drain them every tick.
 9. **`#![forbid(unsafe_code)]` is enforced at crate level.** No SIMD intrinsics or raw FFI here; rely on glam auto-vectorization + Rapier's internal optimizations.
 10. **All `#[non_exhaustive]` enums are forward-compatible.** Adding a variant within the crate works; external matches must include a wildcard arm. Adding a variant to `ActorKind`, `CharState`, `JointType`, `ProjectileKind`, `BoneShape`, `WindZoneShape`, or `WindType` requires touching dispatch + dependents per CLAUDE.md Integration Completeness #2. `GravityZoneShape` and `DebrisShape` left with the removed `gravity.rs` and `destruction.rs`.
-11. **`break_destructible(id)` is wholesale.** It deletes the body from Rapier + 4 internal HashMaps. Subsequent `handle_of(id)` returns `None`.
+11. **`break_destructible(id)` calls `remove_body`.** That deletes the Rapier body and clears five maps: `body_ids`, `body_kinds`, `char_map`, `buoyancy_bodies`, and `climb_flags`. Subsequent `handle_of(id)` returns `None`.
 12. **Five feature gates exist but none are production-wired today**: `async-physics`, `profiling`, `ecs`, `alloc-counter`, `fast-alloc`. The first three are designed (`AsyncPhysicsScheduler`, Tracy spans, `PhysicsPlugin`); the last two are bench-only (`alloc_measure` bench `required-features`, `fast-alloc` for benchmark allocator swap). Production wiring of any of them is undecided.
 
 **Files you'll most likely touch:**
@@ -602,7 +604,7 @@ Per inline `lib.rs:1071-1075`: "Allocation-measurement instrumentation (audit 20
 **Common mistakes when changing this system:**
 
 - **Assuming `SpatialHash` is wired in.** It isn't. The lib.rs doc-comment is aspirational. Don't extend `SpatialHash` thinking it affects production performance.
-- **Calling `add_water_aabb` and expecting buoyancy.** Use `add_buoyancy(body, volume, drag)` instead.
+- **Calling `add_water_aabb` and expecting every body in the box to float.** The box is registered. Buoyancy still needs `add_buoyancy`, and the impulse uses that body's drag.
 - **Forgetting to drain `collision_recv` + `contact_force_recv`.** Unbounded channels grow forever.
 - **Adding a variant to a `#[non_exhaustive]` enum without checking dispatch.** Match arms in subsystems (e.g. `add_joint` matching `JointType`) need updates.
 - **Trying to share `PhysicsWorld` across threads.** Even if `Send + Sync` auto-derive permits it, the API requires exclusive `&mut` access for the entire `step` + `add_*` + `set_*` surface.
