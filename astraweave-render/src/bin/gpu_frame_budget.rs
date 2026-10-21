@@ -156,6 +156,9 @@ fn main() -> anyhow::Result<()> {
     // GPU cull is a quality setting, default off on the renderer. This
     // capture opts in. Each model still binds its own group 3 immediately
     // before its indirect draw.
+    // The constructor follows `PresentationQuality`, which is on. A no-flag
+    // run and `--atmosphere false` must record the HDRI baseline instead.
+    renderer.set_atmosphere_enabled(atmosphere);
     if atmosphere {
         {
             let clock = renderer.time_of_day_mut();
@@ -172,7 +175,6 @@ fn main() -> anyhow::Result<()> {
             exposure: 0.22,
             ..astraweave_render::GodRayConfig::default()
         });
-        renderer.set_atmosphere_enabled(true);
     }
     let fog = renderer.volumetric_fog_enabled();
     let shafts = renderer.god_rays_enabled();

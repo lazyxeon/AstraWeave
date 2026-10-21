@@ -1,6 +1,6 @@
 //! Optional presentation passes submit under lavapipe with a real depth view.
-//! They stay off in `draw_into` unless a setter enables them, so the allocation
-//! gate does not count their passes.
+//! Bruneton follows `PresentationQuality` and starts on. The other gated
+//! passes stay off unless a setter enables them.
 
 use astraweave_render::Renderer;
 
@@ -45,6 +45,30 @@ fn atmosphere_follows_the_measured_default() {
         assert!(!astraweave_render::PresentationQuality::Measured.atmosphere());
         renderer.set_atmosphere_enabled(false);
         assert!(!renderer.atmosphere_enabled());
+    });
+}
+
+/// A default-on renderer plus a false or absent flag ends with Bruneton off.
+/// Fog and shafts stay off because this test does not call those setters.
+#[test]
+fn false_atmosphere_flag_disables_the_default_sky() {
+    pollster::block_on(async {
+        let mut renderer = Renderer::new_headless(64, 64).await.expect("headless");
+        assert!(renderer.atmosphere_enabled());
+        assert!(!renderer.volumetric_fog_enabled());
+        assert!(!renderer.god_rays_enabled());
+        for parts in [&[][..], &["--atmosphere=false"], &["--atmosphere", "false"]] {
+            let args = parts
+                .iter()
+                .map(|part| (*part).to_string())
+                .collect::<Vec<_>>();
+            let on = astraweave_render::budget_gate::reject_gated_flags(&args).expect("parse");
+            assert!(!on, "{parts:?}");
+            renderer.set_atmosphere_enabled(on);
+            assert!(!renderer.atmosphere_enabled(), "{parts:?}");
+            assert!(!renderer.volumetric_fog_enabled());
+            assert!(!renderer.god_rays_enabled());
+        }
     });
 }
 

@@ -1241,7 +1241,6 @@ fn light_the_world(renderer: &mut Renderer, volumetrics: bool) {
     // map. The default strength darkens that soft lobe so it reads on the ground.
     renderer.set_cloud_shadows_enabled(true);
     renderer.set_cloud_shadow_strength(astraweave_render::volumetric_clouds::CLOUD_SHADOW_STRENGTH);
-    renderer.set_atmosphere_enabled(astraweave_render::PresentationQuality::default().atmosphere());
     renderer
         .scene_environment_mut()
         .set_biome(BiomeType::Grassland);
@@ -1262,9 +1261,12 @@ fn light_the_world(renderer: &mut Renderer, volumetrics: bool) {
         ..SkyConfig::default()
     });
     if !volumetrics {
+        // Bruneton without fog was not the 4.474 ms cell.
+        renderer.set_atmosphere_enabled(false);
         startup::line("volumetrics off (--no-volumetrics, --safe, or aravath.cfg)");
         return;
     }
+    renderer.set_atmosphere_enabled(astraweave_render::PresentationQuality::default().atmosphere());
     startup::stage("build volumetrics");
     let built = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         renderer.set_volumetric_fog_config(
@@ -1473,6 +1475,8 @@ fn smoke_test(volumetrics: bool) -> anyhow::Result<()> {
             );
         }
         startup::stage("volumetrics ready");
+    } else {
+        renderer.set_atmosphere_enabled(false);
     }
     startup::stage("smoke ok");
     Ok(())

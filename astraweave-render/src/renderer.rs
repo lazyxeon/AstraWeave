@@ -1270,13 +1270,17 @@ pub struct Renderer {
     terrain_shadow_stats: [(u32, u32); CASCADE_COUNT],
 }
 
-/// Gated presentation choices. The measured heavy scene leaves Bruneton on.
+/// Gated presentation choices.
+///
+/// `Atmosphere` is the default after the 4.474 ms capture. It turns Bruneton
+/// on and does not enable volumetric fog. `Measured` is the 3.688 ms HDRI
+/// scene and turns Bruneton off. A caller applies either with
+/// `set_atmosphere_enabled(quality.atmosphere())`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum PresentationQuality {
-    /// Atmosphere off. The 3.688 ms heavy scene.
+    /// Bruneton off. The 3.688 ms HDRI heavy scene.
     Measured,
-    /// Bruneton sky plus the Aravath fog path. `set_atmosphere_enabled(false)`
-    /// or this variant turns it off.
+    /// Bruneton on. Fog stays `set_volumetric_fog_config`.
     #[default]
     Atmosphere,
 }
