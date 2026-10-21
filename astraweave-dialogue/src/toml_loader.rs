@@ -145,6 +145,59 @@ pub fn load_dialogue_from_file(path: &std::path::Path) -> Result<LoadedDialogue>
 
 // ── Tests ──────────────────────────────────────────────────────────────────
 
+/// Text files a player can read: dialogue, quests, echoes, voices, recipes,
+/// npc lines, cinematic cards, and cell copy. Walks those directories
+/// recursively. Tooling manifests and binary packs are not included.
+fn player_facing_asset_files(root: &std::path::Path) -> Vec<std::path::PathBuf> {
+    const FILES: &[&str] = &[
+        "dialogue_intro.toml",
+        "dialogue_audio_map.toml",
+        "quests_main.toml",
+        "echoes.toml",
+        "voices.toml",
+        "recipes.toml",
+        "zones.json",
+    ];
+    const DIRS: &[&str] = &["npc", "cinematics", "cells"];
+    let mut files = Vec::new();
+    for name in FILES {
+        let path = root.join(name);
+        if path.is_file() {
+            files.push(path);
+        }
+    }
+    for name in DIRS {
+        walk_player_text(&root.join(name), &mut files);
+    }
+    files.sort();
+    files
+}
+
+fn walk_player_text(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    let mut paths: Vec<_> = entries
+        .filter_map(|entry| entry.ok())
+        .map(|entry| entry.path())
+        .collect();
+    paths.sort();
+    for path in paths {
+        if path.is_dir() {
+            walk_player_text(&path, out);
+        } else if is_player_text(&path) {
+            out.push(path);
+        }
+    }
+}
+
+fn is_player_text(path: &std::path::Path) -> bool {
+    matches!(
+        path.extension().and_then(|ext| ext.to_str()),
+        Some("toml" | "ron" | "txt" | "json")
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -249,31 +302,46 @@ choices = [{ text = "Go", go_to = "does_not_exist" }]
     }
 
     #[test]
+    fn player_facing_walk_includes_nested_files_and_cells() {
+        let root = std::env::temp_dir().join(format!("aw-player-facing-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let nested = [
+            root.join("npc/crew/deep/line.toml"),
+            root.join("cinematics/act/finale/card.ron"),
+            root.join("cells/region/start.ron"),
+            root.join("quests_main.toml"),
+        ];
+        for path in &nested {
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, "ok\n").unwrap();
+        }
+        // A binary and a tooling manifest must stay out of the scan.
+        std::fs::create_dir_all(root.join("models")).unwrap();
+        std::fs::write(root.join("models/prop.bin"), [0u8, 1]).unwrap();
+        std::fs::write(root.join("asset_manifest.toml"), "tooling\n").unwrap();
+
+        let files = player_facing_asset_files(&root);
+        let _ = std::fs::remove_dir_all(&root);
+        for path in &nested {
+            assert!(
+                files.iter().any(|found| found == path),
+                "missing {} from {files:?}",
+                path.display()
+            );
+        }
+        assert!(files
+            .iter()
+            .all(|path| path != &root.join("models/prop.bin")));
+        assert!(files
+            .iter()
+            .all(|path| path != &root.join("asset_manifest.toml")));
+    }
+
+    #[test]
     fn player_facing_assets_do_not_say_veilweaver() {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../assets");
-        let mut files = vec![
-            root.join("dialogue_intro.toml"),
-            root.join("quests_main.toml"),
-            root.join("echoes.toml"),
-            root.join("voices.toml"),
-        ];
-        for dir in [root.join("npc"), root.join("cinematics")] {
-            if !dir.is_dir() {
-                continue;
-            }
-            let mut nested: Vec<_> = std::fs::read_dir(&dir)
-                .unwrap_or_else(|err| panic!("reading {}: {err}", dir.display()))
-                .map(|entry| entry.unwrap().path())
-                .filter(|path| path.is_file())
-                .collect();
-            nested.sort();
-            files.extend(nested);
-        }
         let mut hits = Vec::new();
-        for path in files {
-            if !path.is_file() {
-                continue;
-            }
+        for path in player_facing_asset_files(&root) {
             let text = std::fs::read_to_string(&path)
                 .unwrap_or_else(|err| panic!("reading {}: {err}", path.display()));
             if text.to_ascii_lowercase().contains("veilweaver") {

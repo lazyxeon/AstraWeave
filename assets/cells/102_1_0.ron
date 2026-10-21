@@ -65,7 +65,7 @@
     assets: [],
     metadata: Some((
         description: Some("Optional echo shard alcove accessed via updraft"),
-        tags: ["veilweaver", "loomspire", "secret"],
+        tags: ["aravath", "loomspire", "secret"],
         version: 1,
     )),
 )

@@ -111,7 +111,7 @@
     assets: [],
     metadata: Some((
         description: Some("Crystal-thread grove combat arena with cover weaving"),
-        tags: ["veilweaver", "loomspire", "combat"],
+        tags: ["aravath", "loomspire", "combat"],
         version: 1,
     )),
 )

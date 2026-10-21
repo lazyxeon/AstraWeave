@@ -107,7 +107,7 @@
     assets: [],
     metadata: Some((
         description: Some("Frayed causeway tutorial zone with weaving anchors"),
-        tags: ["veilweaver", "loomspire", "causeway"],
+        tags: ["aravath", "loomspire", "causeway"],
         version: 1,
     )),
 )
