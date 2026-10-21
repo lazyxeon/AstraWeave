@@ -10,7 +10,7 @@ integration_status: wired
 summary: "Gameplay and mod scripts run on the security sandbox. script_system does not inject PhysicsProxy or NavMeshProxy. The scripting examples no longer call them."
 owns: [astraweave-scripting, astraweave-author]
 doc_version: "1.7"
-last_verified_commit: 49d289eb
+last_verified_commit: 79122e78
 runtime_edges:
   - to: astraweave-security
     note: "ScriptEngineResource and mod_script_system call sandbox::SandboxEngine / execute_deterministic"
@@ -29,7 +29,7 @@ runtime_edges:
 | **System name** | Scripting and mod API |
 | **Primary crates** | `astraweave-scripting`, `astraweave-author` |
 | **Document version** | 1.7 |
-| **Last verified against commit** | `49d289eb` |
+| **Last verified against commit** | `79122e78` |
 | **Last verified date** | 2026-10-21 |
 | **Status** | Active for the sandboxed Rhai path. `register_mod_runtime` plus `build_app` is how the editor, `veilweaver_slice_runtime`, and `hello_companion` run mods. `script_system` does not inject physics or nav proxies (#318). The editor does not feed `CScript` entities. |
 | **Owner notes** | WS-MOD. One sandbox implementation lives in `astraweave-security::sandbox`. This trace is the caller side. |
