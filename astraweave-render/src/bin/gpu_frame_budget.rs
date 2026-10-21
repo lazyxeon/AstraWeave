@@ -5,6 +5,10 @@
 //!
 //! ```text
 //! cargo run -p astraweave-render --release --features gpu-frame-budget --bin gpu_frame_budget -- --scene heavy --debug-timestamps --glb "assets/The Complete KayKit Collection v4/KayKit Adventurers 2.0/Characters/gltf/Rogue.glb"
+//!
+//! One of `--atmosphere`, `--ssgi`, `--taa`, `--dof`, or `--clouds` enables
+//! that gated pass for the printed `median_gpu_frame_ms`. The default run
+//! leaves them off.
 //! ```
 
 use anyhow::Context;
@@ -141,11 +145,27 @@ fn main() -> anyhow::Result<()> {
     renderer.set_shadows_enabled(true);
     add_heavy_terrain(&mut renderer)?;
     renderer.set_particle_emitter(Some(emitter()))?;
-    // Cloud shadows stay at the renderer default (on): a 512² compute march
-    // between the sky pass and the main pass. Volumetric fog and god rays
-    // are not called. GPU indirect culling is not the draw path on any
-    // adapter: each model still binds its own group 3, so one indirect
+    // Cloud shadows stay at the renderer default (on). That is
+    // `CloudShadowPass`, not `VolumetricCloudsPass`. Volumetric fog and god
+    // rays are not called. Each gated flag below is off unless this process
+    // was given that one argument. GPU indirect culling is not the draw path
+    // on any adapter: each model still binds its own group 3, so one indirect
     // buffer cannot select those groups. The CPU frustum remains the filter.
+    let atmosphere = flag_on("--atmosphere");
+    let ssgi = flag_on("--ssgi");
+    let taa = flag_on("--taa");
+    let dof = flag_on("--dof");
+    let clouds = flag_on("--clouds");
+    renderer.set_atmosphere_enabled(atmosphere);
+    renderer.set_ssgi_enabled(ssgi);
+    renderer.set_taa_enabled(taa);
+    renderer.set_dof_enabled(dof);
+    renderer.set_cloud_raymarch_enabled(clouds);
+    println!("gated_atmosphere={}", on_off(atmosphere));
+    println!("gated_ssgi={}", on_off(ssgi));
+    println!("gated_taa={}", on_off(taa));
+    println!("gated_dof={}", on_off(dof));
+    println!("gated_clouds={}", on_off(clouds));
     let gpu_cull = "cpu_fallback";
 
     let device = renderer.device().clone();
@@ -766,6 +786,18 @@ fn renderer_limits(limits: &wgpu::Limits) -> [(&'static str, u64); 15] {
             u64::from(limits.max_vertex_attributes),
         ),
     ]
+}
+
+fn flag_on(name: &str) -> bool {
+    std::env::args().any(|arg| arg == name)
+}
+
+fn on_off(enabled: bool) -> &'static str {
+    if enabled {
+        "on"
+    } else {
+        "off"
+    }
 }
 
 fn debug_timestamps() -> bool {
