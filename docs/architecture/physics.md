@@ -11,7 +11,7 @@ runtime_edges:
   - to: astraweave-water
     note: "buoyancy (apply_buoyancy_forces, lib.rs:1464) consumes WaterQuery/AnalyticWater"
 owns: [astraweave-physics]
-doc_version: "1.15"
+doc_version: "1.16"
 last_verified_commit: d98b1657
 ---
 
@@ -23,7 +23,7 @@ last_verified_commit: d98b1657
 |---|---|
 | **System name** | Physics (Rigid Body Simulation + Subsystems) |
 | **Primary crates** | `astraweave-physics` (12 source files / ~31K LoC), wraps `rapier3d 0.22` |
-| **Document version** | 1.15 |
+| **Document version** | 1.16 |
 | **Last verified against commit** | `d98b1657` |
 | **Last verified date** | 2026-10-21 |
 | **Status** | **Active core** (`PhysicsWorld` + `CharacterController` + Rapier broadphase) **with feature-gated and dormant subsystems** (async-physics, ECS plugin, in-house SpatialHash). The core rigid-body / character / raycast surface is production-wired through `astraweave-gameplay` and `astraweave-npc`. 1.14: `destruction.rs`, `DestructionManager`, `process_destructible_hits`, and `benches/destruction.rs` are removed. `PhysicsWorld` does not write `DestructionCommand`. `break_destructible` only removes the Rapier body. Fracture lives in `astraweave-destruction` and is not called from `PhysicsWorld`. 1.3: `PhysicsWorld::remove_body` is the shared removal path; `break_destructible` delegates to it. `aravath_runtime` uses it to replace chunk trimeshes. Several subsystems (projectile, ragdoll, vehicle, environment, cloth) are independent managers with rich APIs but limited production wiring. The `SpatialHash` module is **dormant** despite being advertised in the crate doc-comment. |
@@ -285,7 +285,7 @@ Note: This path requires `astraweave-physics/features = ["ecs"]` to be enabled b
 | `astraweave-physics/src/ragdoll.rs` (3,062 LoC) | `Ragdoll`, `RagdollBuilder`, `BoneDef`, `BoneJointType`, `BoneShape`, `RagdollConfig`, `RagdollId`, `RagdollPresets`, `RagdollState` | Active (module-level) | `RagdollBuilder::build(&mut PhysicsWorld, spawn_pos)` is the Bridge into `PhysicsWorld`. Per `ragdoll.rs:25-28` doc-comment. |
 | `astraweave-physics/src/vehicle.rs` (4,869 LoC) | `Vehicle`, `VehicleManager`, `VehicleConfig`, `WheelConfig`, `WheelPosition`, `WheelState`, `DrivetrainType`, `EngineConfig`, `FrictionCurve`, `TransmissionConfig`, `VehicleInput`, `VehicleId` | Active (module-level) | Raycast-suspension model (industry standard). Per `vehicle.rs:1-7` doc-comment. |
 | `astraweave-physics/src/environment.rs` (3,401 LoC) | `EnvironmentManager`, `WindZone`, `WindZoneConfig`, `WindType`, `WindZoneShape`, `WindZoneId`, `WaterVolume`, `WaterVolumeId`, `GustEvent` | Active (module-level) | Separate from `PhysicsWorld::wind: Vec3` (a bare global wind vector on `PhysicsWorld` itself). |
-| `astraweave-physics/src/destruction.rs` | `DestructionManager`, `Destructible`, `FracturePattern`, `Debris`, `DebrisShape`, `process_destructible_hits` | **Removed** (historical) | Deleted. Not a `pub mod`. `PhysicsWorld` does not write `DestructionCommand`. `break_destructible` only removes the Rapier body. Fracture is `astraweave-destruction`. |
+| `astraweave-physics/src/destruction.rs` | `DestructionManager`, `Destructible`, `FracturePattern`, `Debris`, `DebrisShape` | **Removed** (historical) | Deleted. Not a `pub mod`. `process_destructible_hits` was an empty method on `PhysicsWorld` in `lib.rs`, not a symbol of this file. It is deleted. See the §6 row. `PhysicsWorld` does not write `DestructionCommand`. `break_destructible` only removes the Rapier body. Fracture is `astraweave-destruction`. |
 | `astraweave-physics/src/cloth.rs` (4,359 LoC) | `Cloth`, `ClothManager`, `ClothCollider`, `ClothConfig`, `ClothId`, `ClothParticle`, `DistanceConstraint` | Active (module-level) | Verlet integration + distance constraints. Per `cloth.rs:1-7` doc-comment. |
 | `astraweave-physics/src/mutation_tests.rs` (1,259 LoC) | Mutation-killing inline tests inside `#[cfg(test)] mod mutation_tests` | Active (test-only) | |
 | `astraweave-physics/tests/*` (22 files) | `behavioral_correctness_tests`, `buoyancy_test`, `coverage_boost_tests`, `cross_subsystem_validation`, `debug_render_test`, `deformed_tick_alloc`, `determinism`, `ecs_integration_test`, `environment_tests`, `mutation_resistant_comprehensive_tests`, `mutation_resistant_tests`, `nan_infinity_tests`, `panic_safety_tests`, `phase1_verification`, `physics_core_tests`, `physics_laws_tests`, `projectile_tests`, `ragdoll_tests`, `spatial_hash_character_tests`, `traversal_replay`, `vehicle_tests`, `zero_alloc_step` | Active | `gravity_tests` is removed with `gravity.rs` |
@@ -543,6 +543,8 @@ Per inline `lib.rs:1071-1075`: "Allocation-measurement instrumentation (audit 20
 ---
 
 ## 12. Maintenance Notes
+
+**Revision 1.16 (2026-10-21):** The §5 row for removed `destruction.rs` no longer lists `process_destructible_hits`. That name was an empty `PhysicsWorld` method in `lib.rs`. The §6 row already records that.
 
 **Revision 1.15 (2026-10-21):** `add_water_aabb` is not a stub. `lib.rs:1522` registers an AABB on `AnalyticWater`. Invariant 17, the §6 row, the §11 question, and Appendix A items 4 and 5 match that. Invariant 7 and Appendix A item 11: `remove_body` clears five maps, including `climb_flags`.
 

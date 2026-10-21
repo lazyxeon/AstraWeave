@@ -1,15 +1,15 @@
 //! Cross-Subsystem Physics Validation Tests (Phase 8.8)
 //!
 //! These tests validate physics correctness across multiple subsystems working together.
-//! Ensures that gravity affects cloth, vehicles interact with destruction, ragdolls
-//! respond to collisions, etc.
+//! Ensures that gravity affects cloth, friction curves describe a surface, and ragdolls
+//! respond to collisions.
 
 use astraweave_physics::{
     cloth::{ClothConfig, ClothManager},
     projectile::{ProjectileConfig, ProjectileKind, ProjectileManager},
     ragdoll::RagdollConfig,
     spatial_hash::SpatialHash,
-    vehicle::{FrictionCurve, VehicleConfig},
+    vehicle::FrictionCurve,
     PhysicsWorld, AABB,
 };
 use glam::Vec3;
