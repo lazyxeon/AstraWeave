@@ -1142,6 +1142,43 @@ scripts = ["scripts/tick.rhai"]
     }
 
     #[test]
+    fn failed_script_keeps_an_earlier_ok_for_the_same_agent() {
+        let mut app = App::new().add_plugin(ModScriptPlugin);
+        app.world.insert_resource(ModClock::new(0xA11C));
+        app.world.insert_resource(ModPrograms {
+            scripts: vec![
+                ModScriptSource::new(
+                    "demo.mod",
+                    "scripts/a.rhai",
+                    "weaves.queue_weave(1, 0, 0, 0);",
+                ),
+                ModScriptSource::new(
+                    "demo.mod",
+                    "scripts/b.rhai",
+                    "weaves.queue_weave(1, 3000, 0, 0);",
+                ),
+            ],
+        });
+        let entity = app.world.spawn();
+        app.world.insert(entity, CModAgent { x: 0, y: 0 });
+        mod_script_system(&mut app.world);
+        let scratch = app.world.get_resource::<WeaveScratch>().unwrap();
+        assert_eq!(scratch.command_count(), 1);
+        let command = scratch.command(0).unwrap();
+        assert_eq!(command.template, 1);
+        assert_eq!(command.origin, [0, 0, 0]);
+        let errors = app.world.get_resource::<ModScriptErrors>().unwrap();
+        assert!(
+            errors
+                .messages
+                .iter()
+                .any(|message| message.contains("outside the island")),
+            "{:?}",
+            errors.messages
+        );
+    }
+
+    #[test]
     fn queue_weave_through_build_app_replays_identically() {
         use astraweave_core::ecs_adapter::build_app;
         use astraweave_core::World as LegacyWorld;
