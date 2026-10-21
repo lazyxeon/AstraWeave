@@ -1,4 +1,4 @@
 ---
 alwaysApply: true
 ---
-always reference .github/copilot-instructions.md for full rules and instructions. update copilot-instructions.md with updates periodically to ensure accuracy over time.
+Follow AGENTS.md. It is the constitution for every path. Do not copy those rules into this file. Cursor project rules outrank AGENTS.md only for tool mechanics, and this rule has none.

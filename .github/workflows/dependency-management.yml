@@ -75,7 +75,7 @@ jobs:
       - name: Run security audit
         run: |
           echo "Running cargo audit..."
-          if cargo audit --ignore RUSTSEC-2020-0071; then
+          if cargo audit; then
             echo "✅ Cargo audit passed"
           else
             echo "⚠️  Cargo audit found issues - check output above"
