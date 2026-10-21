@@ -72,23 +72,15 @@ jobs:
           cargo install --locked cargo-deny || echo "cargo-deny already installed"
           cargo install --locked cargo-outdated || echo "cargo-outdated already installed"
 
+      # Fails the job. This is not the pull-request gate, and it does not
+      # close the ignore list. The nine IDs stay in deny.toml and
+      # .cargo/audit.toml. security-audit.yml is the pull-request gate.
+      # #423 tracks a check that the ignore count does not rise.
       - name: Run security audit
-        run: |
-          echo "Running cargo audit..."
-          if cargo audit; then
-            echo "✅ Cargo audit passed"
-          else
-            echo "⚠️  Cargo audit found issues - check output above"
-          fi
+        run: cargo audit
 
       - name: Run cargo-deny check
-        run: |
-          if [ -f "deny.toml" ]; then
-            echo "Running cargo deny check..."
-            cargo deny check || echo "Deny check completed with warnings"
-          else
-            echo "deny.toml not found; skipping cargo-deny"
-          fi
+        run: cargo deny check
 
       - name: Check for outdated dependencies
         run: |

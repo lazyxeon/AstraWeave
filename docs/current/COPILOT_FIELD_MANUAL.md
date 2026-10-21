@@ -1,10 +1,10 @@
 # Copilot field manual
 
-This is the moved body of `.github/copilot-instructions.md`. [AGENTS.md](../../AGENTS.md) is the constitution. If they disagree, follow AGENTS.md. Copilot-only command examples below are historical notes, not a second rule set. "Zero Human Intervention" in the moved mandate does not override owner sign-off or the rule that agents do not merge.
+This is the moved body of `.github/copilot-instructions.md`. [AGENTS.md](../../AGENTS.md) is the constitution. This file is reference, not a binding directive. If a sentence here disagrees with AGENTS.md, follow AGENTS.md.
 
 # AstraWeave: AI-Native Game Engine — Field Manual
 
-**This file is your behavioral directive.** It tells you *how* to work in this codebase. For project status, detailed API docs, and documentation navigation, read the reference files listed at the end.
+Historical notes from the old Copilot instructions. Not a directive. For project status, read `docs/current/ENGINE_STATUS.md`.
 
 ---
 
@@ -16,7 +16,7 @@ AstraWeave is a **scientific proof of concept**: a production-grade game engine 
 
 ### Your Mandate
 
-1. **Zero Human Intervention**: You are the sole architect and implementer. Generate all code — never defer to the user.
+1. **Follow AGENTS.md**: Generate the code the task asks for. Owner instructions, and the rule that agents do not merge, still apply.
 2. **Mission-Critical Standards**: Treat every line as spacecraft-grade. **90%+ confidence** before marking any task complete.
 3. **Exhaustive Testing**: "It compiles" is insufficient. Verify through tests, benchmarks, and validation.
 4. **Production Ready**: No toy code. All systems must be scalable, performant, and secure.
@@ -29,7 +29,7 @@ AstraWeave is a **scientific proof of concept**: a production-grade game engine 
 
 ### User core directives (2026-10-15)
 
-These bind every change. The rendering-architecture plan that follows from them is `docs/current/RENDER_ARCHITECTURE_PHASE_PLAN.md`. Do not start that phase until the plan is approved.
+Historical notes. They do not override AGENTS.md. The rendering-architecture plan that follows from them is `docs/current/RENDER_ARCHITECTURE_PHASE_PLAN.md`.
 
 1. Performance first. Idiomatic safe Rust. Parallel jobs only where the workload pays for them. Frame budgets are hard.
 2. Dynamic world. Terrain voxels, structural assets, and environment elements deform, break, and persist. Physics and rendering must not assume static geometry.
@@ -41,9 +41,9 @@ These bind every change. The rendering-architecture plan that follows from them 
 8. Rendering uses bindless wgpu where the device supports it, and the current bind-group path where it does not. Pipeline creation is one layer. Particles, frustum culling, and occlusion culling are GPU-driven. Assets stream asynchronously. The frame budget is under 11 ms on a GTX 1660 Ti-class GPU.
 9. Data-oriented ECS. No heap allocation in a frame update, a hot loop, or a physics tick. No lock contention in multi-threaded jobs.
 
-Determinism does not bend. Simulation state is replay-identical on Windows, Linux, and macOS from fixed ticks and the canonical `SimRng` (Fixed64 or f32 plus libm, per the subsystem contract). No wall clock and no unseeded RNG in the sim. GPU or async work may write simulation state only when the result is bit-exact and order-independent and a cross-OS replay test proves it. Otherwise the GPU is presentation-only, or the CPU computes the sim result and the GPU only draws it.
+Determinism does not bend. Simulation state is replay-identical on Windows, Linux, and macOS from fixed ticks and the canonical `SimRng` (Fixed64 or f32 plus libm, per the subsystem contract). No wall clock and no unseeded RNG in the sim. GPU readback does not write sim state. Do not add that write.
 
-Pre-existing failures are fixed, or deferred with a GitHub issue labeled `deferred-failure` that names an owner and a plan. Work stays on a branch. Do not merge. CC0 assets only.
+A failure this branch introduced is fixed here. Deferral rules are in AGENTS.md. Work stays on a branch. Agents do not merge. CC0 assets only.
 
 ---
 
@@ -242,7 +242,7 @@ WorldSnapshot  AI Model   PlanIntent  Tool Validation
 | AI Systems | `astraweave-ai/src/{orchestrator,tool_sandbox,core_loop}.rs` |
 | ECS Internals | `astraweave-ecs/src/{archetype,system_param,events}.rs` |
 | Rendering | `astraweave-render/src/{lib,material,skinning_gpu,vertex_compression}.rs` |
-| Physics | `astraweave-physics/src/{character_controller,spatial_hash}.rs` |
+| Physics | `astraweave-physics/src/lib.rs` (`CharacterController`, line 422) and `astraweave-physics/src/spatial_hash.rs`. There is no `character_controller.rs`. |
 | Combat | `astraweave-gameplay/src/combat_physics.rs` |
 | SIMD Math | `astraweave-math/src/{simd_vec,simd_mat,simd_quat,simd_movement}.rs` |
 | Terrain | `astraweave-terrain/src/{voxel_mesh,biome_pack,biome,scatter}.rs` |
@@ -275,9 +275,8 @@ Any new or modified `unsafe` code **MUST** pass both verification pipelines:
 
 ### Known Issues
 
-- **Graphics examples**: `ui_controls_demo`, `debug_overlay` won't compile (egui/winit version drift)
-- **Rhai crates**: `astraweave-author`, `rhai_authoring` have Sync trait errors
-- **LLM crates**: `astraweave-llm`, `llm_toolcall` excluded from standard builds
+The 2026-06-10 audit closed the old breakages. `ui_controls_demo`, `debug_overlay`, `astraweave-author`, `rhai_authoring`, and `astraweave-llm` compile. Do not treat them as broken.
+
 - **`.unwrap()` in test code only**: All `.unwrap()` calls are inside `#[cfg(test)]` modules — justified for test assertions. Zero production-path unwraps in engine runtime crates.
 
 ### Build Timings

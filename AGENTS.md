@@ -14,7 +14,9 @@ Every other rule: the owner task instruction, for that task only; then a nearer 
 
 ⛔ No `AGENTS.override.md` anywhere. Codex reads that file instead of this one.
 
-`CLAUDE.md`, `GROK.md`, `.github/copilot-instructions.md`, and `.cursor/rules/` are one-line pointers. `aw_trace_sync` writes the trace table in `CLAUDE.md`. Do not edit between the markers.
+`GROK.md`, `.github/copilot-instructions.md`, and `.cursor/rules/` are one-line pointers at this file. `CLAUDE.md` starts with `@AGENTS.md` and also holds the generated trace table. `aw_trace_sync` reads only `CLAUDE.md` and fails `--check` when the markers are missing. Do not truncate that file. Do not edit between the markers.
+
+[`docs/current/AGENT_FIELD_MANUAL.md`](docs/current/AGENT_FIELD_MANUAL.md) and [`docs/current/COPILOT_FIELD_MANUAL.md`](docs/current/COPILOT_FIELD_MANUAL.md) are reference. They are not a second constitution. This file wins.
 
 ## ⛔
 

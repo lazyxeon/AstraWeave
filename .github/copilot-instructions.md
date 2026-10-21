@@ -1,1 +1,1 @@
-Follow [AGENTS.md](../../AGENTS.md).
+Follow [AGENTS.md](../AGENTS.md).
