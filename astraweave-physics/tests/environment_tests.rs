@@ -439,4 +439,3 @@ fn test_environment_cloth_integration() {
         moved
     );
 }
-
