@@ -15,6 +15,16 @@ use wgpu::util::DeviceExt;
 
 use super::nanite_visibility::{Frustum, GpuMeshlet};
 
+/// Mip count wgpu will accept for a 2D texture of this size.
+/// `ceil(log2(1))` is 0, which `TextureDescriptor` rejects. The upper bound
+/// is `floor(log2(max(width, height))) + 1`.
+fn hiz_mip_level_count(width: u32, height: u32) -> u32 {
+    let edge = width.max(height).max(1);
+    let full = 32 - edge.leading_zeros();
+    let raw = (edge as f32).log2().ceil() as u32;
+    raw.clamp(1, full)
+}
+
 /// Statistics for GPU culling performance
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Default, bytemuck::Pod, bytemuck::Zeroable)]
@@ -193,8 +203,10 @@ impl NaniteCullingPipeline {
             mapped_at_creation: false,
         });
 
-        // Create Hi-Z pyramid texture (mipmapped depth)
-        let mip_count = (screen_width.max(screen_height) as f32).log2().ceil() as u32;
+        // Create Hi-Z pyramid texture (mipmapped depth).
+        // ceil(log2(1)) is 0, and wgpu rejects mip_level_count 0. Clamp to
+        // the valid chain for this extent.
+        let mip_count = hiz_mip_level_count(screen_width, screen_height);
         let hiz_texture = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("Hi-Z Pyramid"),
             size: wgpu::Extent3d {
@@ -1000,3 +1012,18 @@ impl NaniteCullingPipeline {
 #[cfg(test)]
 #[path = "nanite_gpu_culling_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+mod mip_count_tests {
+    use super::hiz_mip_level_count;
+
+    #[test]
+    fn one_pixel_is_one_mip_and_the_chain_stays_in_range() {
+        assert_eq!(hiz_mip_level_count(1, 1), 1);
+        assert_eq!(hiz_mip_level_count(0, 0), 1);
+        let count = hiz_mip_level_count(1920, 1080);
+        let edge = 1920u32;
+        let full = 32 - edge.leading_zeros();
+        assert!(count >= 1 && count <= full, "{count} vs {full}");
+    }
+}
