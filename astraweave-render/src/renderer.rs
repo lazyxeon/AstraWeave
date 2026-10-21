@@ -5716,8 +5716,11 @@ fn vs(input: VSIn) -> VSOut {
         self.atmosphere_on = enabled;
     }
 
-    /// Bruneton sky plus aerial perspective. On after the 1660 Ti capture
-    /// (`median_gpu_frame_ms=4.474`). `PresentationQuality::Measured` turns it off.
+    /// Bruneton sky plus aerial perspective. The field starts false.
+    /// Turning it on with fog and shafts off makes `record_bruneton` scatter
+    /// geometry out to 50 km. The 4.474 ms cell builds both passes, so that
+    /// distance is 0. The game sets the field only after those passes build.
+    /// `PresentationQuality::Measured` is the off value a caller can apply.
     #[must_use]
     pub fn atmosphere_enabled(&self) -> bool {
         self.atmosphere_on

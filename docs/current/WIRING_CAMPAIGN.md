@@ -16,7 +16,7 @@ The same heavy scene was 11.085 ms before the cloud-shadow amortization and 3.68
 
 ## Measured column
 
-A cell is filled only by a GTX 1660 Ti heavy-scene run whose validation scope is clean and whose command line enables exactly one gated pass. This binary accepts `--atmosphere` alone and calls `set_atmosphere_enabled` with that parse result, including `false` for no flag and for `--atmosphere false`. Those runs record the HDRI baseline. `--atmosphere` builds Bruneton, Aravath fog, and god rays. The run prints `atmosphere_with_aravath_fog` only when both fog and shafts build. Otherwise it bails and prints no median. The capture command is `cargo run -p astraweave-render --release --features gpu-frame-budget --bin gpu_frame_budget -- --scene heavy --atmosphere`.
+A cell is filled only by a GTX 1660 Ti heavy-scene run whose validation scope is clean and whose command line enables exactly one gated pass. This binary accepts `--atmosphere` alone and calls `set_atmosphere_enabled` with that parse result, including `false` for no flag and for `--atmosphere false`. Those runs record the HDRI sky with Hi-Z off. They are not the `939a21bb` 3.688 ms row, which included `hiz` at 0.275 ms. `--atmosphere` builds Bruneton, Aravath fog, and god rays. The run prints `atmosphere_with_aravath_fog` only when both fog and shafts build. Otherwise it bails and prints no median. The capture command is `cargo run -p astraweave-render --release --features gpu-frame-budget --bin gpu_frame_budget -- --scene heavy --atmosphere`.
 
 | System | Flag | `median_gpu_frame_ms` on GTX 1660 Ti heavy | Default |
 |---|---|---|---|

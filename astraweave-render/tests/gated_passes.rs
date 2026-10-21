@@ -1,6 +1,7 @@
 //! Optional presentation passes submit under lavapipe with a real depth view.
-//! Bruneton follows `PresentationQuality` and starts on. The other gated
-//! passes stay off unless a setter enables them.
+//! The constructor leaves Bruneton off. The game turns it on only after fog
+//! and shafts both build. The other gated passes stay off unless a setter
+//! enables them.
 
 use astraweave_render::Renderer;
 
