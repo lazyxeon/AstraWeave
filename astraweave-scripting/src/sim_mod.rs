@@ -15,7 +15,7 @@ use astraweave_security::sandbox::{
 use astraweave_security::ScriptSandbox;
 use astraweave_weaving::{
     parse_template_toml, queue_weave, QueueError, WeaveScratch, ENGINE_TEMPLATE_MAX,
-    MAX_WEAVE_COMMANDS,
+    ISLAND_HALF_CELLS, MAX_WEAVE_COMMANDS,
 };
 use rhai::{Engine, Scope};
 use sha2::{Digest, Sha256};
@@ -266,6 +266,12 @@ fn register_sim_host(engine: &mut Engine) {
                     i32::try_from(y).map_err(|_| weave_runtime("origin y"))?,
                     i32::try_from(z).map_err(|_| weave_runtime("origin z"))?,
                 ];
+                if origin
+                    .iter()
+                    .any(|cell| !(-ISLAND_HALF_CELLS..=ISLAND_HALF_CELLS).contains(cell))
+                {
+                    return Err(weave_runtime("weave origin is outside the island"));
+                }
                 let used = buf.already.saturating_add(buf.count);
                 if u16::from(used) >= u16::from(buf.ceiling)
                     || buf.count as usize >= buf.casts.len()
@@ -929,6 +935,210 @@ scripts = ["scripts/tick.rhai"]
         );
         let agent = app.world.get::<CModAgent>(entity).unwrap();
         assert_eq!((agent.x, agent.y), (0, 0));
+    }
+
+    #[test]
+    fn queue_weave_edges_fail_closed() {
+        let sixty_four = (0..64)
+            .map(|_| "weaves.queue_weave(1, 0, 0, 0);")
+            .collect::<Vec<_>>()
+            .join("\n");
+        let sixty_five = format!("{sixty_four}\nweaves.queue_weave(1, 1, 0, 0);");
+        let cases = [
+            (
+                "engine origin",
+                "weaves.queue_weave(1, 0, 0, 0);",
+                None,
+                vec![(1, [0, 0, 0])],
+                None,
+            ),
+            (
+                "island edge",
+                "weaves.queue_weave(7, 2048, 0, -2048);",
+                None,
+                vec![(7, [2048, 0, -2048])],
+                None,
+            ),
+            (
+                "outside island",
+                "weaves.queue_weave(1, 2049, 0, 0);",
+                None,
+                vec![],
+                Some("outside the island"),
+            ),
+            (
+                "origin does not fit",
+                "weaves.queue_weave(1, 9223372036854775807, 0, 0);",
+                None,
+                vec![],
+                Some("origin x"),
+            ),
+            (
+                "origin min",
+                "weaves.queue_weave(1, -9223372036854775808, 0, 0);",
+                None,
+                vec![],
+                Some("origin x"),
+            ),
+            (
+                "template 0",
+                "weaves.queue_weave(0, 0, 0, 0);",
+                None,
+                vec![],
+                Some("unknown weave template"),
+            ),
+            (
+                "template -1",
+                "weaves.queue_weave(-1, 0, 0, 0);",
+                None,
+                vec![],
+                Some("template id"),
+            ),
+            (
+                "template above u16",
+                "weaves.queue_weave(65536, 0, 0, 0);",
+                None,
+                vec![],
+                Some("template id"),
+            ),
+            (
+                "unknown mod id",
+                "weaves.queue_weave(8, 0, 0, 0);",
+                None,
+                vec![],
+                Some("unknown weave template"),
+            ),
+            (
+                "loaded mod template",
+                "weaves.queue_weave(8, 1, 2, 3);",
+                Some("id = 8\nduration = 4\n[[nodes]]\nkind = \"gravity\"\na = 1\n"),
+                vec![(8, [1, 2, 3])],
+                None,
+            ),
+            (
+                "engine id toml is rejected and engine cast still lands",
+                "weaves.queue_weave(1, 0, 0, 0);",
+                Some("id = 1\n[[nodes]]\nkind = \"heat\"\n"),
+                vec![(1, [0, 0, 0])],
+                Some("engine id"),
+            ),
+            (
+                "valid cast then outside island drops the script",
+                "weaves.queue_weave(1, 0, 0, 0);\nweaves.queue_weave(1, 3000, 0, 0);",
+                None,
+                vec![],
+                Some("outside the island"),
+            ),
+        ];
+        for (name, script, toml, commands, error) in cases {
+            check_case(name, script, toml, &commands, error, None);
+        }
+        check_case("sixty four casts", &sixty_four, None, &[], None, Some(64));
+        check_case(
+            "sixty fifth cast drops the script",
+            &sixty_five,
+            None,
+            &[],
+            Some("full"),
+            Some(0),
+        );
+
+        fn check_case(
+            name: &str,
+            script: &str,
+            toml: Option<&str>,
+            commands: &[(u16, [i32; 3])],
+            error: Option<&str>,
+            count: Option<usize>,
+        ) {
+            let first = run_case(script, toml);
+            let second = run_case(script, toml);
+            assert_eq!(first.0, second.0, "{name}");
+            assert_eq!(first.1, second.1, "{name}");
+            if let Some(count) = count {
+                assert_eq!(first.0.len(), count, "{name}");
+            } else {
+                assert_eq!(first.0, commands, "{name}");
+            }
+            if name == "loaded mod template" {
+                assert_eq!(first.2, 4, "{name}");
+            }
+            match error {
+                Some(needle) => assert!(
+                    first.1.iter().any(|message| message.contains(needle)),
+                    "{name} errors {:?}",
+                    first.1
+                ),
+                None => assert!(first.1.is_empty(), "{name} errors {:?}", first.1),
+            }
+            assert_eq!(first.3, (0, 0), "{name}");
+        }
+
+        fn run_case(
+            script: &str,
+            toml: Option<&str>,
+        ) -> (Vec<(u16, [i32; 3])>, Vec<String>, u64, (i32, i32)) {
+            use astraweave_security::sandbox::{BudgetLimits, LoadedMod, ModManifest, SemVer};
+            let mut app = App::new().add_plugin(ModScriptPlugin);
+            app.world.insert_resource(ModClock::new(0xA11C));
+            if let Some(toml) = toml {
+                let loaded = LoadedMod {
+                    manifest: ModManifest {
+                        schema: 1,
+                        id: "demo.mod".into(),
+                        name: "Demo".into(),
+                        version: SemVer {
+                            major: 1,
+                            minor: 0,
+                            patch: 0,
+                        },
+                        api: 1,
+                        load_after: Vec::new(),
+                        load_before: Vec::new(),
+                        scripts: vec!["scripts/tick.rhai".into()],
+                        weaves: vec!["weaves/extra.toml".into()],
+                        capabilities: Default::default(),
+                        budget: BudgetLimits {
+                            traps: 0,
+                            terrain_edits: 0,
+                            spawns: 0,
+                        },
+                    },
+                    scripts: Default::default(),
+                    weaves: std::collections::BTreeMap::from([(
+                        "weaves/extra.toml".into(),
+                        toml.to_string(),
+                    )]),
+                };
+                app.world.insert_resource(loaded);
+            }
+            app.world.insert_resource(ModPrograms {
+                scripts: vec![ModScriptSource::new(
+                    "demo.mod",
+                    "scripts/tick.rhai",
+                    script,
+                )],
+            });
+            let entity = app.world.spawn();
+            app.world.insert(entity, CModAgent { x: 0, y: 0 });
+            mod_script_system(&mut app.world);
+            let scratch = app.world.get_resource::<WeaveScratch>().unwrap();
+            let queued = (0..scratch.command_count())
+                .map(|index| {
+                    let command = scratch.command(index).unwrap();
+                    (command.template, command.origin)
+                })
+                .collect();
+            let until = scratch.command(0).map(|command| command.until).unwrap_or(0);
+            let errors = app
+                .world
+                .get_resource::<ModScriptErrors>()
+                .unwrap()
+                .messages
+                .clone();
+            let agent = app.world.get::<CModAgent>(entity).copied().unwrap();
+            (queued, errors, until, (agent.x, agent.y))
+        }
     }
 
     #[test]
