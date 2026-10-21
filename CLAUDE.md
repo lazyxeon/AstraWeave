@@ -1,13 +1,5 @@
 @AGENTS.md
 
-# Claude Code
-
-The import above is required. Claude Code does not load `AGENTS.md` when this file exists.
-
-The field manual that used to live here is [`docs/current/AGENT_FIELD_MANUAL.md`](docs/current/AGENT_FIELD_MANUAL.md). `AGENTS.md` wins if they disagree.
-
-`aw_trace_sync` rewrites only the table between the markers below. Do not edit that table by hand.
-
 <!-- TRACE-TABLE:START -->
 | Trace | Subsystem |
 |---|---|
