@@ -36,7 +36,7 @@ Claims enumerated from `FIX27_UNIFIED_PIPELINE_CAMPAIGN.md` (campaign plan, stil
 | C9 | `tools/aw_editor/Cargo.toml`: `astraweave-render` is non-optional | **CONFIRMED** | [tools/aw_editor/Cargo.toml:72](tools/aw_editor/Cargo.toml#L72) — no `optional = true`. Only `astraweave-alloc` (line 71) and `egui_kittest` (line 95) are optional. |
 | C10 | All `#[cfg(feature = "astraweave-render")]` guards removed (~30) | **CONFIRMED** | 0 occurrences in `tools/aw_editor/` |
 | C11 | `RenderBackend { Engine, LegacyPreview, Headless }` replaces `RenderMode` (Campaign Phase 0) | **FALSIFIED** | `RenderMode { EnginePBR, FastPreview }` still present at [engine_adapter.rs:16-23](tools/aw_editor/src/viewport/engine_adapter.rs#L16-L23); re-exported from `renderer::RenderMode` in [mod.rs:73](tools/aw_editor/src/viewport/mod.rs#L73). No `RenderBackend` enum exists in the workspace. |
-| C12 | `EditorOverlayHooks` trait added to `astraweave-render` (Campaign Phase 4) | **FALSIFIED** | Trait appears only in the campaign plan document and `HANDOFF.md:125` (where it is listed as pending). No definition in `astraweave-render/src/`. |
+| C12 | `EditorOverlayHooks` trait added to `astraweave-render` (Campaign Phase 4) | **FALSIFIED** | Trait appears only in the campaign plan document and `docs/archive/root-notes/HANDOFF.md:125` (where it is listed as pending). No definition in `astraweave-render/src/`. |
 | C13 | `draw_into_with_hooks()` added to `astraweave-render::Renderer` | **FALSIFIED** | Only `pub fn draw_into` exists at [astraweave-render/src/renderer.rs:5184](astraweave-render/src/renderer.rs#L5184). No `draw_into_with_hooks` anywhere in the workspace. |
 | C14 | `entity_renderer` module declaration removed from `viewport/mod.rs` | **CONFIRMED** | Not present in [viewport/mod.rs](tools/aw_editor/src/viewport/mod.rs) |
 | C15 | `EngineRenderAdapter` expanded from ~568 LOC to ~740 LOC (§11) | **FALSIFIED** | Actual size: **3,985 LOC** (5.4× the claim). [engine_adapter.rs](tools/aw_editor/src/viewport/engine_adapter.rs) |
@@ -258,7 +258,7 @@ pub trait EditorOverlayHooks {
 // Plus: engine exposes draw_into_with_hooks(...) that calls the hooks at the correct points.
 ```
 
-This trait and the `draw_into_with_hooks` entry point do not exist in the workspace (grep returned matches only in the campaign document itself and a HANDOFF.md forward-reference). Consequently, the editor's grid/physics-debug passes (intended for HDR + depth injection) and gizmo pass (intended for LDR injection) currently run as *post-`draw_into`* overlay passes inside the editor's `CommandEncoder`. The ordering described in Architecture Map §6.3 ("Grid overlay (on top of engine scene)" on HDR, then "HDR → LDR Blit", then "Gizmo Overlays") matches the current code, but it runs in the editor instead of via the engine hook.
+This trait and the `draw_into_with_hooks` entry point do not exist in the workspace (grep returned matches only in the campaign document itself and a docs/archive/root-notes/HANDOFF.md forward-reference). Consequently, the editor's grid/physics-debug passes (intended for HDR + depth injection) and gizmo pass (intended for LDR injection) currently run as *post-`draw_into`* overlay passes inside the editor's `CommandEncoder`. The ordering described in Architecture Map §6.3 ("Grid overlay (on top of engine scene)" on HDR, then "HDR → LDR Blit", then "Gizmo Overlays") matches the current code, but it runs in the editor instead of via the engine hook.
 
 ---
 
@@ -390,7 +390,7 @@ No `[patch]` or `[replace]` sections were found in either `tools/aw_editor/Cargo
 
 9. **Architecture Map §6.1 omits four viewport files**: `terrain_splat.rs`, `terrain_splat_builder.rs`, `impostor_registry.rs`, `impostor_wiring.rs`. The map lists 13 files; the directory has 15 Rust files + 3 WGSL.
 
-10. **`HANDOFF.md:125`** explicitly lists Fix 27 Phases 2-4 (Shadow/IBL unification, Tonemap/post-processing unification, `EditorOverlayHooks` trait) as pending work estimated at 11-14 days. This corroborates the falsified claims in §2.
+10. **`docs/archive/root-notes/HANDOFF.md:125`** explicitly lists Fix 27 Phases 2-4 (Shadow/IBL unification, Tonemap/post-processing unification, `EditorOverlayHooks` trait) as pending work estimated at 11-14 days. This corroborates the falsified claims in §2.
 
 ---
 

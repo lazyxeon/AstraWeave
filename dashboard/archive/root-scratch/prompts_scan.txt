@@ -1,0 +1,5 @@
+Found 792 mutants to test
+ok       Unmutated baseline in 1s build + 6s test
+ INFO Auto-set test timeout to 28s
+TIMEOUT  astraweave-prompts/src/lib.rs:508:17: replace < with > in TemplateMetadata::age_display in 13s build + 32s test
+TIMEOUT  astraweave-prompts/src/lib.rs:510:24: replace < with == in TemplateMetadata::age_display in 15s build + 28s test

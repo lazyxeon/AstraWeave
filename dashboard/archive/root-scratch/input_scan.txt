@@ -1,0 +1,26 @@
+Found 240 mutants to test
+ok       Unmutated baseline in 2s build + 1s test
+ INFO Auto-set test timeout to 20s
+MISSED   astraweave-input/src/actions.rs:235:31: replace < with <= in Axis2::is_zero in 2s build + 1s test
+MISSED   astraweave-input/src/actions.rs:241:16: replace > with >= in Axis2::normalized in 2s build + 1s test
+MISSED   astraweave-input/src/actions.rs:251:16: replace > with >= in Axis2::clamped in 2s build + 1s test
+MISSED   astraweave-input/src/bindings.rs:333:22: replace < with <= in AxisBinding::apply in 2s build + 1s test
+MISSED   astraweave-input/src/bindings.rs:337:33: replace * with / in AxisBinding::apply in 3s build + 1s test
+MISSED   astraweave-input/src/bindings.rs:409:9: replace BindingSet::non_empty_binding_count -> usize with 1 in 3s build + 1s test
+MISSED   astraweave-input/src/bindings.rs:409:42: delete ! in BindingSet::non_empty_binding_count in 3s build + 1s test
+MISSED   astraweave-input/src/manager.rs:73:9: replace InputManager::process_window_event with () in 3s build + 1s test
+MISSED   astraweave-input/src/manager.rs:74:13: delete match arm WindowEvent::KeyboardInput{event:KeyEvent{state, physical_key:PhysicalKey::Code(code), ..}, ..} in InputManager::process_window_event in 2s build + 1s test
+MISSED   astraweave-input/src/manager.rs:100:13: delete match arm WindowEvent::MouseInput{state, button, ..} in InputManager::process_window_event in 3s build + 1s test
+MISSED   astraweave-input/src/manager.rs:118:13: delete match arm WindowEvent::Touch(Touch{phase, id, location, ..}) in InputManager::process_window_event in 3s build + 2s test
+MISSED   astraweave-input/src/manager.rs:88:34: replace == with != in InputManager::process_window_event in 2s build + 2s test
+MISSED   astraweave-input/src/manager.rs:97:52: replace == with != in InputManager::process_window_event in 3s build + 2s test
+MISSED   astraweave-input/src/manager.rs:106:36: replace == with != in InputManager::process_window_event in 3s build + 2s test
+MISSED   astraweave-input/src/manager.rs:115:52: replace == with != in InputManager::process_window_event in 2s build + 1s test
+MISSED   astraweave-input/src/manager.rs:131:42: replace && with || in InputManager::process_window_event in 2s build + 1s test
+MISSED   astraweave-input/src/manager.rs:131:59: replace == with != in InputManager::process_window_event in 2s build + 1s test
+MISSED   astraweave-input/src/manager.rs:136:38: replace == with != in InputManager::process_window_event in 2s build + 1s test
+MISSED   astraweave-input/src/manager.rs:162:17: delete match arm ButtonPressed(b, _) in InputManager::poll_gamepads in 2s build + 1s test
+MISSED   astraweave-input/src/manager.rs:163:17: delete match arm ButtonReleased(b, _) in InputManager::poll_gamepads in 3s build + 1s test
+MISSED   astraweave-input/src/manager.rs:164:17: delete match arm AxisChanged(a, v, _) in InputManager::poll_gamepads in 2s build + 1s test
+MISSED   astraweave-input/src/manager.rs:227:24: replace < with <= in InputManager::handle_axis in 3s build + 1s test
+240 mutants tested in 18m: 22 missed, 200 caught, 18 unviable

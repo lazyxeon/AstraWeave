@@ -1,0 +1,10 @@
+Found 240 mutants to test
+ok       Unmutated baseline in 0s build + 1s test
+ INFO Auto-set test timeout to 20s
+MISSED   astraweave-cinematics/src/lib.rs:38:9: replace Time::zero -> Self with Default::default() in 2s build + 1s test
+MISSED   astraweave-cinematics/src/lib.rs:300:51: replace - with + in CameraKey::lerp in 2s build + 1s test
+MISSED   astraweave-cinematics/src/lib.rs:301:51: replace - with + in CameraKey::lerp in 2s build + 1s test
+MISSED   astraweave-cinematics/src/lib.rs:338:9: replace Timeline::empty -> Self with Default::default() in 3s build + 1s test
+MISSED   astraweave-cinematics/src/lib.rs:443:21: replace > with >= in Sequencer::step in 2s build + 1s test
+MISSED   astraweave-cinematics/src/lib.rs:489:32: replace > with >= in Sequencer::step in 2s build + 1s test
+240 mutants tested in 13m: 6 missed, 222 caught, 12 unviable

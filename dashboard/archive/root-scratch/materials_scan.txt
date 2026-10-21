@@ -1,0 +1,120 @@
+Found 373 mutants to test
+ok       Unmutated baseline in 0s build + 1s test
+ INFO Auto-set test timeout to 20s
+MISSED   astraweave-materials/src/lib.rs:164:9: replace Graph::has_anisotropy -> bool with false in 2s build + 1s test
+MISSED   astraweave-materials/src/lib.rs:169:9: replace Graph::has_transmission -> bool with false in 2s build + 1s test
+MISSED   astraweave-materials/src/lib.rs:1017:9: replace MaterialPackage::wgsl_size -> usize with 1 in 2s build + 1s test
+MISSED   astraweave-materials/src/lib.rs:1189:35: replace / with % in MaterialBaker::bake in 2s build + 1s test
+MISSED   astraweave-materials/src/lib.rs:1189:35: replace / with * in MaterialBaker::bake in 2s build + 1s test
+MISSED   astraweave-materials/src/lib.rs:1189:42: replace - with + in MaterialBaker::bake in 2s build + 1s test
+MISSED   astraweave-materials/src/lib.rs:1189:42: replace - with / in MaterialBaker::bake in 2s build + 1s test
+MISSED   astraweave-materials/src/lib.rs:1190:35: replace / with % in MaterialBaker::bake in 2s build + 1s test
+MISSED   astraweave-materials/src/lib.rs:1190:35: replace / with * in MaterialBaker::bake in 2s build + 1s test
+MISSED   astraweave-materials/src/lib.rs:1190:42: replace - with + in MaterialBaker::bake in 2s build + 1s test
+MISSED   astraweave-materials/src/lib.rs:1190:42: replace - with / in MaterialBaker::bake in 3s build + 2s test
+MISSED   astraweave-materials/src/lib.rs:1234:42: replace + with - in MaterialBaker::validate in 2s build + 1s test
+MISSED   astraweave-materials/src/lib.rs:1234:32: replace + with - in MaterialBaker::validate in 2s build + 1s test
+MISSED   astraweave-materials/src/lib.rs:1234:32: replace + with * in MaterialBaker::validate in 2s build + 1s test
+MISSED   astraweave-materials/src/lib.rs:1234:27: replace * with + in MaterialBaker::validate in 2s build + 1s test
+MISSED   astraweave-materials/src/lib.rs:1234:27: replace * with / in MaterialBaker::validate in 2s build + 2s test
+MISSED   astraweave-materials/src/lib.rs:1234:37: replace * with + in MaterialBaker::validate in 3s build + 1s test
+MISSED   astraweave-materials/src/lib.rs:1234:37: replace * with / in MaterialBaker::validate in 2s build + 1s test
+MISSED   astraweave-materials/src/lib.rs:1234:47: replace * with / in MaterialBaker::validate in 2s build + 1s test
+MISSED   astraweave-materials/src/lib.rs:1235:34: replace > with == in MaterialBaker::validate in 2s build + 1s test
+MISSED   astraweave-materials/src/lib.rs:1235:34: replace > with >= in MaterialBaker::validate in 2s build + 1s test
+MISSED   astraweave-materials/src/lib.rs:1310:42: replace + with * in validate_brdf in 2s build + 1s test
+MISSED   astraweave-materials/src/lib.rs:1310:23: replace * with / in validate_brdf in 2s build + 1s test
+MISSED   astraweave-materials/src/lib.rs:1310:30: replace - with + in validate_brdf in 2s build + 1s test
+MISSED   astraweave-materials/src/lib.rs:1311:42: replace + with * in validate_brdf in 2s build + 1s test
+MISSED   astraweave-materials/src/lib.rs:1311:23: replace * with / in validate_brdf in 2s build + 1s test
+MISSED   astraweave-materials/src/lib.rs:1311:30: replace - with + in validate_brdf in 2s build + 1s test
+MISSED   astraweave-materials/src/lib.rs:1312:42: replace + with * in validate_brdf in 2s build + 1s test
+MISSED   astraweave-materials/src/lib.rs:1312:23: replace * with / in validate_brdf in 2s build + 1s test
+MISSED   astraweave-materials/src/lib.rs:1312:30: replace - with + in validate_brdf in 2s build + 1s test
+MISSED   astraweave-materials/src/lib.rs:1316:30: replace - with + in validate_brdf in 2s build + 1s test
+MISSED   astraweave-materials/src/lib.rs:1319:21: replace + with - in validate_brdf in 2s build + 1s test
+MISSED   astraweave-materials/src/lib.rs:1319:21: replace + with * in validate_brdf in 2s build + 1s test
+MISSED   astraweave-materials/src/lib.rs:1327:51: replace && with || in validate_brdf in 2s build + 1s test
+MISSED   astraweave-materials/src/lib.rs:1361:9: replace BrdfLut::sample -> Option<[f32; 2]> with Some([0.0; 2]) in 3s build + 1s test
+MISSED   astraweave-materials/src/lib.rs:1361:9: replace BrdfLut::sample -> Option<[f32; 2]> with Some([1.0; 2]) in 3s build + 1s test
+MISSED   astraweave-materials/src/lib.rs:1361:42: replace * with / in BrdfLut::sample in 3s build + 1s test
+MISSED   astraweave-materials/src/lib.rs:1362:44: replace * with / in BrdfLut::sample in 2s build + 1s test
+MISSED   astraweave-materials/src/lib.rs:1363:40: replace + with - in BrdfLut::sample in 2s build + 1s test
+MISSED   astraweave-materials/src/lib.rs:1363:22: replace * with + in BrdfLut::sample in 2s build + 1s test
+MISSED   astraweave-materials/src/lib.rs:1363:22: replace * with / in BrdfLut::sample in 3s build + 1s test
+MISSED   astraweave-materials/src/lib.rs:1374:46: replace / with % in BrdfLut::generate in 2s build + 1s test
+MISSED   astraweave-materials/src/lib.rs:1374:46: replace / with * in BrdfLut::generate in 2s build + 1s test
+MISSED   astraweave-materials/src/lib.rs:1374:39: replace + with - in BrdfLut::generate in 2s build + 1s test
+MISSED   astraweave-materials/src/lib.rs:1374:39: replace + with * in BrdfLut::generate in 2s build + 1s test
+MISSED   astraweave-materials/src/lib.rs:1375:31: replace * with + in BrdfLut::generate in 2s build + 1s test
+MISSED   astraweave-materials/src/lib.rs:1375:31: replace * with / in BrdfLut::generate in 2s build + 1s test
+MISSED   astraweave-materials/src/lib.rs:1378:48: replace / with % in BrdfLut::generate in 2s build + 1s test
+MISSED   astraweave-materials/src/lib.rs:1378:48: replace / with * in BrdfLut::generate in 2s build + 2s test
+MISSED   astraweave-materials/src/lib.rs:1378:41: replace + with - in BrdfLut::generate in 3s build + 1s test
+MISSED   astraweave-materials/src/lib.rs:1378:41: replace + with * in BrdfLut::generate in 2s build + 1s test
+MISSED   astraweave-materials/src/lib.rs:1392:9: replace BrdfLut::integrate_brdf -> (f32, f32) with (0.0, 0.0) in 2s build + 1s test
+MISSED   astraweave-materials/src/lib.rs:1392:9: replace BrdfLut::integrate_brdf -> (f32, f32) with (0.0, 1.0) in 2s build + 1s test
+MISSED   astraweave-materials/src/lib.rs:1392:9: replace BrdfLut::integrate_brdf -> (f32, f32) with (1.0, 0.0) in 2s build + 1s test
+MISSED   astraweave-materials/src/lib.rs:1392:9: replace BrdfLut::integrate_brdf -> (f32, f32) with (1.0, 1.0) in 2s build + 1s test
+MISSED   astraweave-materials/src/lib.rs:1392:33: replace * with / in BrdfLut::integrate_brdf in 2s build + 1s test
+MISSED   astraweave-materials/src/lib.rs:1405:53: replace + with - in BrdfLut::integrate_brdf in 2s build + 2s test
+MISSED   astraweave-materials/src/lib.rs:1405:53: replace + with * in BrdfLut::integrate_brdf in 3s build + 1s test
+MISSED   astraweave-materials/src/lib.rs:1405:39: replace + with - in BrdfLut::integrate_brdf in 2s build + 1s test
+MISSED   astraweave-materials/src/lib.rs:1405:39: replace + with * in BrdfLut::integrate_brdf in 2s build + 1s test
+MISSED   astraweave-materials/src/lib.rs:1405:46: replace * with / in BrdfLut::integrate_brdf in 3s build + 1s test
+MISSED   astraweave-materials/src/lib.rs:1407:38: replace - with + in BrdfLut::integrate_brdf in 2s build + 1s test
+MISSED   astraweave-materials/src/lib.rs:1407:38: replace - with / in BrdfLut::integrate_brdf in 2s build + 1s test
+MISSED   astraweave-materials/src/lib.rs:1407:31: replace * with + in BrdfLut::integrate_brdf in 2s build + 1s test
+MISSED   astraweave-materials/src/lib.rs:1407:31: replace * with / in BrdfLut::integrate_brdf in 2s build + 1s test
+MISSED   astraweave-materials/src/lib.rs:1407:21: replace * with + in BrdfLut::integrate_brdf in 2s build + 1s test
+MISSED   astraweave-materials/src/lib.rs:1407:21: replace * with / in BrdfLut::integrate_brdf in 2s build + 1s test
+MISSED   astraweave-materials/src/lib.rs:1408:38: replace - with + in BrdfLut::integrate_brdf in 2s build + 1s test
+MISSED   astraweave-materials/src/lib.rs:1408:38: replace - with / in BrdfLut::integrate_brdf in 2s build + 1s test
+MISSED   astraweave-materials/src/lib.rs:1408:31: replace * with + in BrdfLut::integrate_brdf in 2s build + 2s test
+MISSED   astraweave-materials/src/lib.rs:1408:31: replace * with / in BrdfLut::integrate_brdf in 3s build + 1s test
+MISSED   astraweave-materials/src/lib.rs:1408:21: replace * with + in BrdfLut::integrate_brdf in 2s build + 1s test
+MISSED   astraweave-materials/src/lib.rs:1408:21: replace * with / in BrdfLut::integrate_brdf in 3s build + 1s test
+MISSED   astraweave-materials/src/lib.rs:1416:24: replace > with == in BrdfLut::integrate_brdf in 2s build + 2s test
+MISSED   astraweave-materials/src/lib.rs:1416:24: replace > with < in BrdfLut::integrate_brdf in 3s build + 1s test
+MISSED   astraweave-materials/src/lib.rs:1416:24: replace > with >= in BrdfLut::integrate_brdf in 2s build + 2s test
+MISSED   astraweave-materials/src/lib.rs:1418:41: replace / with % in BrdfLut::integrate_brdf in 4s build + 1s test
+MISSED   astraweave-materials/src/lib.rs:1418:41: replace / with * in BrdfLut::integrate_brdf in 2s build + 2s test
+MISSED   astraweave-materials/src/lib.rs:1418:52: replace * with + in BrdfLut::integrate_brdf in 3s build + 1s test
+MISSED   astraweave-materials/src/lib.rs:1418:52: replace * with / in BrdfLut::integrate_brdf in 3s build + 1s test
+MISSED   astraweave-materials/src/lib.rs:1421:19: replace += with *= in BrdfLut::integrate_brdf in 3s build + 1s test
+MISSED   astraweave-materials/src/lib.rs:1421:27: replace - with + in BrdfLut::integrate_brdf in 2s build + 1s test
+MISSED   astraweave-materials/src/lib.rs:1422:19: replace += with *= in BrdfLut::integrate_brdf in 3s build + 2s test
+MISSED   astraweave-materials/src/lib.rs:1422:25: replace * with + in BrdfLut::integrate_brdf in 3s build + 1s test
+MISSED   astraweave-materials/src/lib.rs:1430:9: replace BrdfLut::hammersley -> [f32; 2] with [0.0; 2] in 3s build + 1s test
+MISSED   astraweave-materials/src/lib.rs:1430:9: replace BrdfLut::hammersley -> [f32; 2] with [1.0; 2] in 3s build + 1s test
+MISSED   astraweave-materials/src/lib.rs:1430:9: replace BrdfLut::hammersley -> [f32; 2] with [-1.0; 2] in 3s build + 1s test
+MISSED   astraweave-materials/src/lib.rs:1431:43: replace * with + in BrdfLut::hammersley in 4s build + 1s test
+MISSED   astraweave-materials/src/lib.rs:1431:43: replace * with / in BrdfLut::hammersley in 5s build + 2s test
+MISSED   astraweave-materials/src/lib.rs:1435:9: replace BrdfLut::importance_sample_ggx -> [f32; 3] with [0.0; 3] in 10s build + 1s test
+MISSED   astraweave-materials/src/lib.rs:1438:28: replace * with / in BrdfLut::importance_sample_ggx in 2s build + 1s test
+MISSED   astraweave-materials/src/lib.rs:1438:23: replace * with + in BrdfLut::importance_sample_ggx in 2s build + 1s test
+MISSED   astraweave-materials/src/lib.rs:1439:31: replace - with + in BrdfLut::importance_sample_ggx in 2s build + 2s test
+MISSED   astraweave-materials/src/lib.rs:1439:31: replace - with / in BrdfLut::importance_sample_ggx in 4s build + 1s test
+MISSED   astraweave-materials/src/lib.rs:1439:47: replace + with * in BrdfLut::importance_sample_ggx in 3s build + 1s test
+MISSED   astraweave-materials/src/lib.rs:1439:63: replace * with / in BrdfLut::importance_sample_ggx in 3s build + 1s test
+MISSED   astraweave-materials/src/lib.rs:1439:52: replace * with + in BrdfLut::importance_sample_ggx in 3s build + 1s test
+MISSED   astraweave-materials/src/lib.rs:1440:42: replace * with / in BrdfLut::importance_sample_ggx in 2s build + 1s test
+MISSED   astraweave-materials/src/lib.rs:1442:43: replace * with + in BrdfLut::importance_sample_ggx in 2s build + 1s test
+MISSED   astraweave-materials/src/lib.rs:1442:43: replace * with / in BrdfLut::importance_sample_ggx in 2s build + 1s test
+MISSED   astraweave-materials/src/lib.rs:1446:9: replace BrdfLut::geometry_smith -> f32 with 0.0 in 2s build + 1s test
+MISSED   astraweave-materials/src/lib.rs:1447:25: replace / with % in BrdfLut::geometry_smith in 3s build + 2s test
+MISSED   astraweave-materials/src/lib.rs:1447:25: replace / with * in BrdfLut::geometry_smith in 2s build + 1s test
+MISSED   astraweave-materials/src/lib.rs:1447:20: replace * with + in BrdfLut::geometry_smith in 2s build + 2s test
+MISSED   astraweave-materials/src/lib.rs:1449:29: replace / with % in BrdfLut::geometry_smith in 3s build + 1s test
+MISSED   astraweave-materials/src/lib.rs:1449:29: replace / with * in BrdfLut::geometry_smith in 2s build + 1s test
+MISSED   astraweave-materials/src/lib.rs:1449:40: replace * with + in BrdfLut::geometry_smith in 2s build + 2s test
+MISSED   astraweave-materials/src/lib.rs:1449:40: replace * with / in BrdfLut::geometry_smith in 3s build + 1s test
+MISSED   astraweave-materials/src/lib.rs:1449:47: replace - with + in BrdfLut::geometry_smith in 2s build + 1s test
+MISSED   astraweave-materials/src/lib.rs:1449:47: replace - with / in BrdfLut::geometry_smith in 2s build + 1s test
+MISSED   astraweave-materials/src/lib.rs:1450:29: replace / with % in BrdfLut::geometry_smith in 3s build + 1s test
+MISSED   astraweave-materials/src/lib.rs:1450:29: replace / with * in BrdfLut::geometry_smith in 3s build + 1s test
+MISSED   astraweave-materials/src/lib.rs:1450:40: replace * with + in BrdfLut::geometry_smith in 3s build + 1s test
+MISSED   astraweave-materials/src/lib.rs:1450:40: replace * with / in BrdfLut::geometry_smith in 2s build + 1s test
+MISSED   astraweave-materials/src/lib.rs:1450:47: replace - with + in BrdfLut::geometry_smith in 3s build + 1s test
+MISSED   astraweave-materials/src/lib.rs:1450:47: replace - with / in BrdfLut::geometry_smith in 3s build + 1s test
+373 mutants tested in 24m: 116 missed, 241 caught, 16 unviable

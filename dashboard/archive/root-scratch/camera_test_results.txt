@@ -1,0 +1,156 @@
+    Blocking waiting for file lock on package cache
+    Blocking waiting for file lock on build directory
+   Compiling astraweave-render v0.1.0 (C:\Users\pv2br\AstraWeave-AI-Native-Gaming-Engine\astraweave-render)
+warning: unused import: `InstanceRaw`
+  --> astraweave-render\tests\wave2_types_culling_primitives_remediation.rs:19:43
+   |
+19 |     cluster_index, ClusterDims, Instance, InstanceRaw, Material, Vertex,
+   |                                           ^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` on by default
+
+warning: unused variable: `verts`
+   --> astraweave-render\tests\wave2_types_culling_primitives_remediation.rs:542:10
+    |
+542 |     let (verts, indices) = primitives::cube();
+    |          ^^^^^ help: if this is intentional, prefix it with an underscore: `_verts`
+    |
+    = note: `#[warn(unused_variables)]` on by default
+
+warning: `astraweave-render` (test "wave2_types_culling_primitives_remediation") generated 2 warnings (run `cargo fix --test "wave2_types_culling_primitives_remediation"` to apply 1 suggestion)
+warning: unused import: `JointPalette`
+  --> astraweave-render\tests\wave2_extended_coverage_tests.rs:10:27
+   |
+10 |     Interpolation, Joint, JointPalette, Skeleton, Transform,
+   |                           ^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` on by default
+
+warning: unused import: `InstanceAABB`
+  --> astraweave-render\tests\wave2_extended_coverage_tests.rs:15:5
+   |
+15 |     InstanceAABB,
+   |     ^^^^^^^^^^^^
+
+warning: unused import: `CompressedVertex`
+  --> astraweave-render\tests\wave2_extended_coverage_tests.rs:21:45
+   |
+21 | use astraweave_render::vertex_compression::{CompressedVertex, VertexCompressor};
+   |                                             ^^^^^^^^^^^^^^^^
+
+warning: unused import: `Quat`
+  --> astraweave-render\tests\wave2_extended_coverage_tests.rs:23:18
+   |
+23 | use glam::{Mat4, Quat, Vec2, Vec3};
+   |                  ^^^^
+
+warning: unused variable: `if_result`
+   --> astraweave-render\tests\wave3_mutation_remediation.rs:577:13
+    |
+577 |         let if_result = 2.0 * t * t;
+    |             ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_if_result`
+    |
+    = note: `#[warn(unused_variables)]` on by default
+
+warning: `astraweave-render` (test "wave3_mutation_remediation") generated 1 warning
+warning: comparison is useless due to type limits
+   --> astraweave-render\tests\wave2_vertex_compression_remediation.rs:145:32
+    |
+145 |         assert!(x >= -32767 && x <= 32767, "x={x} out of range");
+    |                                ^^^^^^^^^^
+    |
+    = note: `#[warn(unused_comparisons)]` on by default
+
+warning: comparison is useless due to type limits
+   --> astraweave-render\tests\wave2_vertex_compression_remediation.rs:146:32
+    |
+146 |         assert!(y >= -32767 && y <= 32767, "y={y} out of range");
+    |                                ^^^^^^^^^^
+
+warning: unused import: `Mat4`
+  --> astraweave-render\tests\wave2_camera_remediation.rs:12:12
+   |
+12 | use glam::{Mat4, Vec2, Vec3};
+   |            ^^^^
+   |
+   = note: `#[warn(unused_imports)]` on by default
+
+warning: variable does not need to be mutable
+   --> astraweave-render\tests\wave2_camera_remediation.rs:111:9
+    |
+111 |     let mut c1 = default_camera();
+    |         ----^^
+    |         |
+    |         help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` on by default
+
+warning: variable does not need to be mutable
+   --> astraweave-render\tests\wave2_camera_remediation.rs:119:9
+    |
+119 |     let mut c1 = default_camera();
+    |         ----^^
+    |         |
+    |         help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> astraweave-render\tests\wave2_camera_remediation.rs:133:9
+    |
+133 |     let mut c1 = default_camera();
+    |         ----^^
+    |         |
+    |         help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> astraweave-render\tests\wave2_camera_remediation.rs:141:9
+    |
+141 |     let mut c1 = default_camera();
+    |         ----^^
+    |         |
+    |         help: remove this `mut`
+
+warning: `astraweave-render` (test "wave2_extended_coverage_tests") generated 4 warnings (run `cargo fix --test "wave2_extended_coverage_tests"` to apply 4 suggestions)
+warning: `astraweave-render` (test "wave2_vertex_compression_remediation") generated 2 warnings
+warning: `astraweave-render` (test "wave2_camera_remediation") generated 5 warnings (run `cargo fix --test "wave2_camera_remediation"` to apply 5 suggestions)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 3m 25s
+     Running unittests src\lib.rs (target\debug\deps\astraweave_render-28c7a1327c5f8bac.exe)
+
+running 17 tests
+test mutation_tests::camera_tests::test_camera_controller_mouse_drag ... ok
+test mutation_tests::camera_tests::test_camera_controller_sprint_modifier ... ok
+test mutation_tests::camera_tests::test_camera_controller_strafe ... ok
+test mutation_tests::camera_tests::test_camera_controller_keyboard_movement ... ok
+
+thread 'mutation_tests::camera_tests::test_camera_dir_pitch_up' panicked at astraweave-render\src\mutation_tests.rs:435:9:
+pitch up should have positive y
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+thread 'mutation_tests::camera_tests::test_camera_dir_yaw_90' panicked at astraweave-render\src\mutation_tests.rs:450:9:
+yaw 90 should look along Z
+
+thread 'mutation_tests::camera_tests::test_camera_dir_pitch_down' panicked at astraweave-render\src\mutation_tests.rs:443:9:
+pitch down should have negative y
+test mutation_tests::camera_tests::test_camera_controller_begin_frame_resets_flag ... ok
+test mutation_tests::camera_tests::test_camera_controller_precision_modifier ... ok
+test mutation_tests::camera_tests::test_camera_controller_scroll_zoom ... ok
+test mutation_tests::camera_tests::test_camera_dir_at_zero_angles ... ok
+test mutation_tests::camera_tests::test_camera_dir_pitch_up ... FAILED
+test mutation_tests::camera_tests::test_camera_dir_yaw_90 ... FAILED
+test mutation_tests::camera_tests::test_camera_orbit_mode_zoom_distance ... ok
+test mutation_tests::camera_tests::test_camera_dir_pitch_down ... FAILED
+test mutation_tests::camera_tests::test_camera_set_orbit_target ... ok
+test mutation_tests::camera_tests::test_proj_matrix_aspect_ratio ... ok
+test mutation_tests::camera_tests::test_camera_orbit_target_movement ... ok
+test mutation_tests::camera_tests::test_view_matrix_at_origin_looking_forward ... ok
+test mutation_tests::camera_tests::test_vp_is_proj_times_view ... ok
+
+failures:
+
+failures:
+    mutation_tests::camera_tests::test_camera_dir_pitch_down
+    mutation_tests::camera_tests::test_camera_dir_pitch_up
+    mutation_tests::camera_tests::test_camera_dir_yaw_90
+
+test result: FAILED. 14 passed; 3 failed; 0 ignored; 0 measured; 789 filtered out; finished in 0.05s
+
+error: test failed, to rerun pass `-p astraweave-render --lib`

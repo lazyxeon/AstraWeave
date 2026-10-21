@@ -1,0 +1,10 @@
+Found 106 mutants to test
+ok       Unmutated baseline in 0s build + 1s test
+ INFO Auto-set test timeout to 20s
+MISSED   astraweave-pcg/src/encounters.rs:68:34: replace * with + in EncounterGenerator::generate in 3s build + 1s test
+TIMEOUT  astraweave-pcg/src/encounters.rs:71:49: replace && with || in EncounterGenerator::generate in 2s build + 20s test
+MISSED   astraweave-pcg/src/encounters.rs:71:32: replace < with <= in EncounterGenerator::generate in 2s build + 1s test
+MISSED   astraweave-pcg/src/encounters.rs:71:61: replace < with <= in EncounterGenerator::generate in 2s build + 1s test
+TIMEOUT  astraweave-pcg/src/encounters.rs:72:22: replace += with *= in EncounterGenerator::generate in 2s build + 20s test
+ERROR Worker thread failed: "\\\\?\\C:\\Users\\pv2br\\AstraWeave-AI-Native-Gaming-Engine\\astraweave-pcg\\src\\encounters.rs" is not a file
+Error: "\\\\?\\C:\\Users\\pv2br\\AstraWeave-AI-Native-Gaming-Engine\\astraweave-pcg\\src\\encounters.rs" is not a file

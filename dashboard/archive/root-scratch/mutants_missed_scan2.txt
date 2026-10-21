@@ -1,0 +1,14 @@
+veilweaver_slice_runtime/src/cinematic_player.rs:107:9: replace CinematicPlayer::load_from_ron -> Result<()> with Ok(())
+veilweaver_slice_runtime/src/cinematic_player.rs:281:16: replace > with >= in CinematicPlayer::progress
+veilweaver_slice_runtime/src/game_loop.rs:82:9: replace <impl std::fmt::Debug for GameLoop>::fmt -> std::fmt::Result with Ok(Default::default())
+veilweaver_slice_runtime/src/game_loop.rs:333:33: replace || with && in GameLoop::process_dialogues
+veilweaver_slice_runtime/src/game_loop.rs:335:61: replace == with != in GameLoop::process_dialogues
+veilweaver_slice_runtime/src/game_loop.rs:341:33: replace && with || in GameLoop::process_dialogues
+veilweaver_slice_runtime/src/game_loop.rs:340:33: replace || with && in GameLoop::process_dialogues
+veilweaver_slice_runtime/src/game_loop.rs:339:33: replace || with && in GameLoop::process_dialogues
+veilweaver_slice_runtime/src/game_loop.rs:341:61: replace == with != in GameLoop::process_dialogues
+veilweaver_slice_runtime/src/game_loop.rs:349:65: replace == with != in GameLoop::process_dialogues
+veilweaver_slice_runtime/src/game_loop.rs:353:37: replace && with || in GameLoop::process_dialogues
+veilweaver_slice_runtime/src/game_loop.rs:352:51: replace == with != in GameLoop::process_dialogues
+veilweaver_slice_runtime/src/game_loop.rs:353:65: replace == with != in GameLoop::process_dialogues
+veilweaver_slice_runtime/src/game_loop.rs:373:24: replace && with || in GameLoop::process_cinematics

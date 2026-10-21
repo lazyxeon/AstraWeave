@@ -1,0 +1,69 @@
+   Compiling aw_editor v0.1.0 (C:\Users\pv2br\AstraWeave-AI-Native-Gaming-Engine\tools\aw_editor)
+warning: unused import: `super::*`
+    --> tools\aw_editor\src\mutation_tests.rs:1090:9
+     |
+1090 |     use super::*;
+     |         ^^^^^^^^
+     |
+     = note: `#[warn(unused_imports)]` on by default
+
+warning: unused import: `crate::panel_type::PanelType`
+    --> tools\aw_editor\src\mutation_tests.rs:1429:13
+     |
+1429 |         use crate::panel_type::PanelType;
+     |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `crate::panel_type::PanelType`
+    --> tools\aw_editor\src\mutation_tests.rs:1440:13
+     |
+1440 |         use crate::panel_type::PanelType;
+     |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `SceneStateStats`
+    --> tools\aw_editor\src\mutation_tests.rs:2015:65
+     |
+2015 |     use crate::scene_state::{EditorSceneState, SceneStateIssue, SceneStateStats};
+     |                                                                 ^^^^^^^^^^^^^^^
+
+warning: unused variable: `panel`
+    --> tools\aw_editor\src\panels\entity_panel.rs:2778:13
+     |
+2778 |         let panel = EntityPanel::new();
+     |             ^^^^^ help: if this is intentional, prefix it with an underscore: `_panel`
+     |
+     = note: `#[warn(unused_variables)]` on by default
+
+warning: unused variable: `panel`
+    --> tools\aw_editor\src\panels\profiler_panel.rs:1315:13
+     |
+1315 |         let panel = ProfilerPanel::new();
+     |             ^^^^^ help: if this is intentional, prefix it with an underscore: `_panel`
+
+warning: unused variable: `entity`
+    --> tools\aw_editor\src\mutation_tests.rs:2482:25
+     |
+2482 |         let (mut state, entity) = state_with_entity("probe", 5, 10);
+     |                         ^^^^^^ help: if this is intentional, prefix it with an underscore: `_entity`
+
+warning: unused variable: `entity`
+    --> tools\aw_editor\src\mutation_tests.rs:2554:25
+     |
+2554 |         let (mut state, entity) = state_with_entity("sync_test", 5, 5);
+     |                         ^^^^^^ help: if this is intentional, prefix it with an underscore: `_entity`
+
+warning: `aw_editor` (lib test) generated 8 warnings (run `cargo fix --lib -p aw_editor --tests` to apply 4 suggestions)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 17.20s
+     Running unittests src\lib.rs (target\debug\deps\aw_editor_lib-57a95c41f9f1948c.exe)
+
+running 1 test
+test terrain_integration::tests::test_mountain_generation_full_flow has been running for over 60 seconds
+Mountain generation OK: 25 chunks
+Heights: min=0.0, max=243.4, avg=83.8
+GPU chunks: 25
+Total vertices: 409600, indices: 2419350
+Scatter OK: 2974 placements
+=== Mountain full flow test PASSED ===
+test terrain_integration::tests::test_mountain_generation_full_flow ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 3835 filtered out; finished in 416.76s
+

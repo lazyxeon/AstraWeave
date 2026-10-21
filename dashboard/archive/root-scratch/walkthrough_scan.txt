@@ -1,0 +1,51 @@
+Found 136 mutants to test
+ok       Unmutated baseline in 1s build + 14s test
+ INFO Auto-set test timeout to 57s
+MISSED   veilweaver_slice_runtime/src/walkthrough.rs:214:9: replace <impl std::fmt::Debug for SliceOrchestrator>::fmt -> std::fmt::Result with Ok(Default::default()) in 38s build + 7s test
+MISSED   veilweaver_slice_runtime/src/walkthrough.rs:333:17: delete match arm GameLoopEvent::StormDecisionMade{choice} in SliceOrchestrator::process_game_events in 34s build + 7s test
+MISSED   veilweaver_slice_runtime/src/walkthrough.rs:336:17: delete match arm GameLoopEvent::StormResolved{choice} in SliceOrchestrator::process_game_events in 20s build + 7s test
+MISSED   veilweaver_slice_runtime/src/walkthrough.rs:357:9: replace SliceOrchestrator::process_combat_events with () in 21s build + 7s test
+MISSED   veilweaver_slice_runtime/src/walkthrough.rs:359:17: delete match arm CombatEvent::EnemyDefeated{remaining, ..} in SliceOrchestrator::process_combat_events in 21s build + 6s test
+MISSED   veilweaver_slice_runtime/src/walkthrough.rs:362:17: delete match arm CombatEvent::EncounterCleared{encounter_id} in SliceOrchestrator::process_combat_events in 20s build + 7s test
+MISSED   veilweaver_slice_runtime/src/walkthrough.rs:376:17: delete match arm CombatEvent::PlayerDamaged{amount, ..} in SliceOrchestrator::feed_combat_telemetry in 20s build + 7s test
+MISSED   veilweaver_slice_runtime/src/walkthrough.rs:384:17: delete match arm CombatEvent::ComboLanded{..} in SliceOrchestrator::feed_combat_telemetry in 20s build + 7s test
+MISSED   veilweaver_slice_runtime/src/walkthrough.rs:431:17: delete match arm CombatEvent::EncounterCleared{..} in SliceOrchestrator::sync_hud_from_combat_events in 39s build + 7s test
+MISSED   veilweaver_slice_runtime/src/walkthrough.rs:435:17: delete match arm CombatEvent::PlayerDamaged{..} in SliceOrchestrator::sync_hud_from_combat_events in 21s build + 7s test
+MISSED   veilweaver_slice_runtime/src/walkthrough.rs:428:60: replace * with + in SliceOrchestrator::sync_hud_from_combat_events in 20s build + 7s test
+MISSED   veilweaver_slice_runtime/src/walkthrough.rs:449:17: delete match arm WalkthroughEvent::EchoCollected{amount, total} in SliceOrchestrator::sync_hud_from_walkthrough_events in 21s build + 7s test
+MISSED   veilweaver_slice_runtime/src/walkthrough.rs:457:17: delete match arm WalkthroughEvent::AnchorRepaired{anchor_id, total_repaired,} in SliceOrchestrator::sync_hud_from_walkthrough_events in 21s build + 7s test
+MISSED   veilweaver_slice_runtime/src/walkthrough.rs:500:17: delete match arm WalkthroughEvent::PlayerDamaged{new_hp, ..} in SliceOrchestrator::sync_hud_from_walkthrough_events in 20s build + 7s test
+MISSED   veilweaver_slice_runtime/src/walkthrough.rs:506:17: delete match arm WalkthroughEvent::RunComplete{..} in SliceOrchestrator::sync_hud_from_walkthrough_events in 20s build + 7s test
+MISSED   veilweaver_slice_runtime/src/walkthrough.rs:453:41: replace >= with < in SliceOrchestrator::sync_hud_from_walkthrough_events in 21s build + 6s test
+MISSED   veilweaver_slice_runtime/src/walkthrough.rs:462:24: delete ! in SliceOrchestrator::sync_hud_from_walkthrough_events in 19s build + 7s test
+MISSED   veilweaver_slice_runtime/src/walkthrough.rs:482:25: delete match arm WalkthroughBeat::BossDefeated in SliceOrchestrator::sync_hud_from_walkthrough_events in 21s build + 7s test
+MISSED   veilweaver_slice_runtime/src/walkthrough.rs:507:24: delete ! in SliceOrchestrator::sync_hud_from_walkthrough_events in 21s build + 7s test
+MISSED   veilweaver_slice_runtime/src/walkthrough.rs:539:17: delete match arm CombatEvent::ComboLanded{combo_hits} in SliceOrchestrator::sync_vfx_combat in 20s build + 7s test
+MISSED   veilweaver_slice_runtime/src/walkthrough.rs:540:36: replace >= with < in SliceOrchestrator::sync_vfx_combat in 20s build + 7s test
+MISSED   veilweaver_slice_runtime/src/walkthrough.rs:559:9: replace SliceOrchestrator::tick_ai_subsystems with () in 20s build + 7s test
+MISSED   veilweaver_slice_runtime/src/walkthrough.rs:566:20: replace && with || in SliceOrchestrator::tick_ai_subsystems in 21s build + 7s test
+MISSED   veilweaver_slice_runtime/src/walkthrough.rs:579:30: replace > with == in SliceOrchestrator::tick_ai_subsystems in 20s build + 7s test
+MISSED   veilweaver_slice_runtime/src/walkthrough.rs:579:30: replace > with < in SliceOrchestrator::tick_ai_subsystems in 21s build + 7s test
+MISSED   veilweaver_slice_runtime/src/walkthrough.rs:579:30: replace > with >= in SliceOrchestrator::tick_ai_subsystems in 21s build + 7s test
+MISSED   veilweaver_slice_runtime/src/walkthrough.rs:580:39: replace - with + in SliceOrchestrator::tick_ai_subsystems in 21s build + 7s test
+MISSED   veilweaver_slice_runtime/src/walkthrough.rs:580:39: replace - with / in SliceOrchestrator::tick_ai_subsystems in 20s build + 7s test
+MISSED   veilweaver_slice_runtime/src/walkthrough.rs:580:59: replace * with + in SliceOrchestrator::tick_ai_subsystems in 20s build + 7s test
+MISSED   veilweaver_slice_runtime/src/walkthrough.rs:580:59: replace * with / in SliceOrchestrator::tick_ai_subsystems in 21s build + 7s test
+MISSED   veilweaver_slice_runtime/src/walkthrough.rs:582:54: replace * with + in SliceOrchestrator::tick_ai_subsystems in 21s build + 7s test
+MISSED   veilweaver_slice_runtime/src/walkthrough.rs:582:54: replace * with / in SliceOrchestrator::tick_ai_subsystems in 19s build + 7s test
+MISSED   veilweaver_slice_runtime/src/walkthrough.rs:589:21: delete match arm crate::boss_encounter::BossEncounterEvent::Defeated in SliceOrchestrator::tick_ai_subsystems in 21s build + 7s test
+MISSED   veilweaver_slice_runtime/src/walkthrough.rs:593:21: delete match arm crate::boss_encounter::BossEncounterEvent::EncounterStarted{..} in SliceOrchestrator::tick_ai_subsystems in 20s build + 14s test
+MISSED   veilweaver_slice_runtime/src/walkthrough.rs:606:20: delete ! in SliceOrchestrator::tick_ai_subsystems in 24s build + 7s test
+MISSED   veilweaver_slice_runtime/src/walkthrough.rs:622:9: replace SliceOrchestrator::build_world_snapshot -> astraweave_core::WorldSnapshot with Default::default() in 21s build + 7s test
+MISSED   veilweaver_slice_runtime/src/walkthrough.rs:639:46: replace + with - in SliceOrchestrator::build_world_snapshot in 22s build + 7s test
+MISSED   veilweaver_slice_runtime/src/walkthrough.rs:639:46: replace + with * in SliceOrchestrator::build_world_snapshot in 20s build + 7s test
+MISSED   veilweaver_slice_runtime/src/walkthrough.rs:654:9: replace SliceOrchestrator::build_enemy_snapshot -> Vec<astraweave_core::EnemyState> with vec![] in 23s build + 8s test
+MISSED   veilweaver_slice_runtime/src/walkthrough.rs:654:9: replace SliceOrchestrator::build_enemy_snapshot -> Vec<astraweave_core::EnemyState> with vec![Default::default()] in 21s build + 7s test
+MISSED   veilweaver_slice_runtime/src/walkthrough.rs:656:12: delete ! in SliceOrchestrator::build_enemy_snapshot in 39s build + 7s test
+MISSED   veilweaver_slice_runtime/src/walkthrough.rs:669:40: replace + with - in SliceOrchestrator::build_enemy_snapshot in 20s build + 8s test
+MISSED   veilweaver_slice_runtime/src/walkthrough.rs:669:40: replace + with * in SliceOrchestrator::build_enemy_snapshot in 25s build + 20s test
+MISSED   veilweaver_slice_runtime/src/walkthrough.rs:669:51: replace * with + in SliceOrchestrator::build_enemy_snapshot in 28s build + 7s test
+MISSED   veilweaver_slice_runtime/src/walkthrough.rs:669:51: replace * with / in SliceOrchestrator::build_enemy_snapshot in 22s build + 7s test
+MISSED   veilweaver_slice_runtime/src/walkthrough.rs:802:34: replace || with && in SliceOrchestrator::evaluate_beat in 21s build + 7s test
+MISSED   veilweaver_slice_runtime/src/walkthrough.rs:875:32: replace || with && in SliceOrchestrator::damage_player in 24s build + 7s test
+136 mutants tested in 62m: 47 missed, 82 caught, 7 unviable

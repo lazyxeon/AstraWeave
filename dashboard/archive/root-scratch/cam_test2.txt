@@ -1,0 +1,132 @@
+    Blocking waiting for file lock on package cache
+   Compiling astraweave-render v0.1.0 (C:\Users\pv2br\AstraWeave-AI-Native-Gaming-Engine\astraweave-render)
+warning: unused import: `InstanceRaw`
+  --> astraweave-render\tests\wave2_types_culling_primitives_remediation.rs:19:43
+   |
+19 |     cluster_index, ClusterDims, Instance, InstanceRaw, Material, Vertex,
+   |                                           ^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` on by default
+
+warning: unused variable: `verts`
+   --> astraweave-render\tests\wave2_types_culling_primitives_remediation.rs:542:10
+    |
+542 |     let (verts, indices) = primitives::cube();
+    |          ^^^^^ help: if this is intentional, prefix it with an underscore: `_verts`
+    |
+    = note: `#[warn(unused_variables)]` on by default
+
+warning: `astraweave-render` (test "wave2_types_culling_primitives_remediation") generated 2 warnings (run `cargo fix --test "wave2_types_culling_primitives_remediation"` to apply 1 suggestion)
+warning: comparison is useless due to type limits
+   --> astraweave-render\tests\wave2_vertex_compression_remediation.rs:145:32
+    |
+145 |         assert!(x >= -32767 && x <= 32767, "x={x} out of range");
+    |                                ^^^^^^^^^^
+    |
+    = note: `#[warn(unused_comparisons)]` on by default
+
+warning: comparison is useless due to type limits
+   --> astraweave-render\tests\wave2_vertex_compression_remediation.rs:146:32
+    |
+146 |         assert!(y >= -32767 && y <= 32767, "y={y} out of range");
+    |                                ^^^^^^^^^^
+
+warning: `astraweave-render` (test "wave2_vertex_compression_remediation") generated 2 warnings
+warning: unused variable: `if_result`
+   --> astraweave-render\tests\wave3_mutation_remediation.rs:577:13
+    |
+577 |         let if_result = 2.0 * t * t;
+    |             ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_if_result`
+    |
+    = note: `#[warn(unused_variables)]` on by default
+
+warning: unused import: `Mat4`
+  --> astraweave-render\tests\wave2_camera_remediation.rs:12:12
+   |
+12 | use glam::{Mat4, Vec2, Vec3};
+   |            ^^^^
+   |
+   = note: `#[warn(unused_imports)]` on by default
+
+warning: variable does not need to be mutable
+   --> astraweave-render\tests\wave2_camera_remediation.rs:111:9
+    |
+111 |     let mut c1 = default_camera();
+    |         ----^^
+    |         |
+    |         help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` on by default
+
+warning: variable does not need to be mutable
+   --> astraweave-render\tests\wave2_camera_remediation.rs:119:9
+    |
+119 |     let mut c1 = default_camera();
+    |         ----^^
+    |         |
+    |         help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> astraweave-render\tests\wave2_camera_remediation.rs:133:9
+    |
+133 |     let mut c1 = default_camera();
+    |         ----^^
+    |         |
+    |         help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> astraweave-render\tests\wave2_camera_remediation.rs:141:9
+    |
+141 |     let mut c1 = default_camera();
+    |         ----^^
+    |         |
+    |         help: remove this `mut`
+
+warning: `astraweave-render` (test "wave3_mutation_remediation") generated 1 warning
+warning: `astraweave-render` (test "wave2_camera_remediation") generated 5 warnings (run `cargo fix --test "wave2_camera_remediation"` to apply 5 suggestions)
+memory allocation of 2097152 bytes failed
+warning: unused import: `JointPalette`
+  --> astraweave-render\tests\wave2_extended_coverage_tests.rs:10:27
+   |
+10 |     Interpolation, Joint, JointPalette, Skeleton, Transform,
+   |                           ^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` on by default
+
+warning: unused import: `InstanceAABB`
+  --> astraweave-render\tests\wave2_extended_coverage_tests.rs:15:5
+   |
+15 |     InstanceAABB,
+   |     ^^^^^^^^^^^^
+
+warning: unused import: `CompressedVertex`
+  --> astraweave-render\tests\wave2_extended_coverage_tests.rs:21:45
+   |
+21 | use astraweave_render::vertex_compression::{CompressedVertex, VertexCompressor};
+   |                                             ^^^^^^^^^^^^^^^^
+
+warning: unused import: `Quat`
+  --> astraweave-render\tests\wave2_extended_coverage_tests.rs:23:18
+   |
+23 | use glam::{Mat4, Quat, Vec2, Vec3};
+   |                  ^^^^
+
+error: crate `basis_universal_sys` required to be available in rlib format, but was not found in this form
+
+error: crate `winnow` required to be available in rlib format, but was not found in this form
+
+error: crate `tracing` required to be available in rlib format, but was not found in this form
+
+error: crate `ravif` required to be available in rlib format, but was not found in this form
+
+error: crate `rav1e` required to be available in rlib format, but was not found in this form
+
+error: could not compile `astraweave-render` (test "wave2_biome_transition_golden")
+
+Caused by:
+  process didn't exit successfully: `C:\Users\pv2br\.rustup\toolchains\1.89.0-x86_64-pc-windows-msvc\bin\rustc.exe --crate-name wave2_biome_transition_golden --edition=2021 astraweave-render\tests\wave2_biome_transition_golden.rs --error-format=json --json=diagnostic-rendered-ansi,artifacts,future-incompat --emit=dep-info,link -C embed-bitcode=no -C debuginfo=2 --test --cfg "feature=\"default\"" --cfg "feature=\"image\"" --cfg "feature=\"postfx\"" --cfg "feature=\"textures\"" --check-cfg cfg(docsrs,test) --check-cfg "cfg(feature, values(\"advanced-post\", \"assets\", \"astraweave-profiling\", \"bloom\", \"decals\", \"default\", \"deferred\", \"gltf\", \"gltf-assets\", \"gpu-particles\", \"gpu-tests\", \"ibl\", \"image\", \"megalights\", \"msaa\", \"nanite\", \"obj-assets\", \"postfx\", \"profiling\", \"skinning-cpu\", \"skinning-gpu\", \"ssao\", \"textures\", \"tobj\", \"tracy-client\"))" -C metadata=1e0026aafce3ac26 -C extra-filename=-60d7dba522ca0b14 --out-dir C:\Users\pv2br\AstraWeave-AI-Native-Gaming-Engine\target\debug\deps -C incremental=C:\Users\pv2br\AstraWeave-AI-Native-Gaming-Engine\target\debug\incremental -L dependency=C:\Users\pv2br\AstraWeave-AI-Native-Gaming-Engine\target\debug\deps --extern anyhow=C:\Users\pv2br\AstraWeave-AI-Native-Gaming-Engine\target\debug\deps\libanyhow-9d6b47ad7282fddb.rlib --extern approx=C:\Users\pv2br\AstraWeave-AI-Native-Gaming-Engine\target\debug\deps\libapprox-4486d8dc692a71b9.rlib --extern astraweave_asset=C:\Users\pv2br\AstraWeave-AI-Native-Gaming-Engine\target\debug\deps\libastraweave_asset-6fa18bc209bc1fd5.rlib --extern astraweave_cinematics=C:\Users\pv2br\AstraWeave-AI-Native-Gaming-Engine\target\debug\deps\libastraweave_cinematics-ae4bbf30f4f97df9.rlib --extern astraweave_core=C:\Users\pv2br\AstraWeave-AI-Native-Gaming-Engine\target\debug\deps\libastraweave_core-f950fd0e25f99c0a.rlib --extern astraweave_materials=C:\Users\pv2br\AstraWeave-AI-Native-Gaming-Engine\target\debug\deps\libastraweave_materials-4a9ade4a254c1533.rlib --extern astraweave_render=C:\Users\pv2br\AstraWeave-AI-Native-Gaming-Engine\target\debug\deps\libastraweave_render-3ab802fd0baf56aa.rlib --extern astraweave_terrain=C:\Users\pv2br\AstraWeave-AI-Native-Gaming-Engine\target\debug\deps\libastraweave_terrain-7d9efe14e6f83075.rlib --extern aw_asset_cli=C:\Users\pv2br\AstraWeave-AI-Native-Gaming-Engine\target\debug\deps\libaw_asset_cli-a656262eaacf31f4.rlib --extern basis_universal=C:\Users\pv2br\AstraWeave-AI-Native-Gaming-Engine\target\debug\deps\libbasis_universal-4c03eef5f618e873.rlib --extern bytemuck=C:\Users\pv2br\AstraWeave-AI-Native-Gaming-Engine\target\debug\deps\libbytemuck-2c52d789581dc2dd.rlib --extern bytes=C:\Users\pv2br\AstraWeave-AI-Native-Gaming-Engine\target\debug\deps\libbytes-e1c78f6a1dadda36.rlib --extern criterion=C:\Users\pv2br\AstraWeave-AI-Native-Gaming-Engine\target\debug\deps\libcriterion-511acbc829bb8ff4.rlib --extern egui=C:\Users\pv2br\AstraWeave-AI-Native-Gaming-Engine\target\debug\deps\libegui-6ddfecd1f732fb9d.rlib --extern egui_wgpu=C:\Users\pv2br\AstraWeave-AI-Native-Gaming-Engine\target\debug\deps\libegui_wgpu-59b745a93feeac2f.rlib --extern egui_winit=C:\Users\pv2br\AstraWeave-AI-Native-Gaming-Engine\target\debug\deps\libegui_winit-2ce6cb4828d41e4e.rlib --extern env_logger=C:\Users\pv2br\AstraWeave-AI-Native-Gaming-Engine\target\debug\deps\libenv_logger-3ef89d700c144dec.rlib --extern glam=C:\Users\pv2br\AstraWeave-AI-Native-Gaming-Engine\target\debug\deps\libglam-80082f3700777896.rlib --extern glob=C:\Users\pv2br\AstraWeave-AI-Native-Gaming-Engine\target\debug\deps\libglob-498e747f02d04213.rlib --extern half=C:\Users\pv2br\AstraWeave-AI-Native-Gaming-Engine\target\debug\deps\libhalf-808f80c81a4909f1.rlib --extern image=C:\Users\pv2br\AstraWeave-AI-Native-Gaming-Engine\target\debug\deps\libimage-53b70bf4548ca39e.rlib --extern ktx2=C:\Users\pv2br\AstraWeave-AI-Native-Gaming-Engine\target\debug\deps\libktx2-3bb9db10816cff59.rlib --extern log=C:\Users\pv2br\AstraWeave-AI-Native-Gaming-Engine\target\debug\deps\liblog-54acc5db6cd7defa.rlib --extern naga=C:\Users\pv2br\AstraWeave-AI-Native-Gaming-Engine\target\debug\deps\libnaga-ee6930d4d23b3e7f.rlib --extern png=C:\Users\pv2br\AstraWeave-AI-Native-Gaming-Engine\target\debug\deps\libpng-37a3f73034aa520d.rlib --extern pollster=C:\Users\pv2br\AstraWeave-AI-Native-Gaming-Engine\target\debug\deps\libpollster-e605e0a73ca69486.rlib --extern rand=C:\Users\pv2br\AstraWeave-AI-Native-Gaming-Engine\target\debug\deps\librand-d3ae1a92faa03fa5.rlib --extern serde=C:\Users\pv2br\AstraWeave-AI-Native-Gaming-Engine\target\debug\deps\libserde-eb3fa45531fbf8e6.rlib --extern serde_json=C:\Users\pv2br\AstraWeave-AI-Native-Gaming-Engine\target\debug\deps\libserde_json-f50ac94f401ed3ac.rlib --extern tempfile=C:\Users\pv2br\AstraWeave-AI-Native-Gaming-Engine\target\debug\deps\libtempfile-fd980f0f41645d56.rlib --extern texture2ddecoder=C:\Users\pv2br\AstraWeave-AI-Native-Gaming-Engine\target\debug\deps\libtexture2ddecoder-46166271aa80ea68.rlib --extern thiserror=C:\Users\pv2br\AstraWeave-AI-Native-Gaming-Engine\target\debug\deps\libthiserror-6db2773736ed017f.rlib --extern tokio=C:\Users\pv2br\AstraWeave-AI-Native-Gaming-Engine\target\debug\deps\libtokio-d06802099c0dba82.rlib --extern toml=C:\Users\pv2br\AstraWeave-AI-Native-Gaming-Engine\target\debug\deps\libtoml-fe54ffee851014ce.rlib --extern wgpu=C:\Users\pv2br\AstraWeave-AI-Native-Gaming-Engine\target\debug\deps\libwgpu-58b23c1254a15400.rlib --extern winit=C:\Users\pv2br\AstraWeave-AI-Native-Gaming-Engine\target\debug\deps\libwinit-47632e32ba869659.rlib -C link-args=/STACK:16777216 -L native=C:\Users\pv2br\AstraWeave-AI-Native-Gaming-Engine\target\debug\build\basis-universal-sys-943f5d309ce03c57\out -L native=C:\Users\pv2br\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\windows_x86_64_msvc-0.53.1\lib -L native=C:\Users\pv2br\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\windows_x86_64_msvc-0.52.6\lib` (exit code: 0xc0000409, STATUS_STACK_BUFFER_OVERRUN)
+warning: build failed, waiting for other jobs to finish...
+error: could not compile `astraweave-render` (test "wave2_mesh_instancing_biomedet_remediation") due to 2 previous errors
+warning: `astraweave-render` (test "wave2_extended_coverage_tests") generated 4 warnings
+error: could not compile `astraweave-render` (test "wave2_extended_coverage_tests") due to 1 previous error; 4 warnings emitted
+error: could not compile `astraweave-render` (test "wave2_scene_clustered_instancing_tests") due to 2 previous errors

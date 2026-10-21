@@ -1,0 +1,491 @@
+[BRUSH-DBG] renderer-texture-array-init: max_layers=8, layer_count_config=8, layers_supplied=8, layers_dropped_at_cap=0, slot_albedo_loaded=[0=T,1=T,2=T,3=T,4=T,5=T,6=T,7=T]
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=11189, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=10619, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=12720, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=14028, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=12776, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=12373, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=11256, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=13301, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=11036, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=9961, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=11927, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] ui-material-selected: idx=0, name="grass", material_id=0, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=0, written_to_vertex=0, translated=false, max_terrain_layers=8, in_range=true
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=12387, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] ui-material-selected: idx=0, name="grass", material_id=0, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=0, written_to_vertex=0, translated=false, max_terrain_layers=8, in_range=true
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=12407, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] ui-material-selected: idx=0, name="grass", material_id=0, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=0, written_to_vertex=0, translated=false, max_terrain_layers=8, in_range=true
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=12418, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] ui-material-selected: idx=0, name="grass", material_id=0, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=0, written_to_vertex=0, translated=false, max_terrain_layers=8, in_range=true
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=12418, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] ui-material-selected: idx=0, name="grass", material_id=0, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=0, written_to_vertex=0, translated=false, max_terrain_layers=8, in_range=true
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=12422, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] ui-material-selected: idx=0, name="grass", material_id=0, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=0, written_to_vertex=0, translated=false, max_terrain_layers=8, in_range=true
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=12424, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] ui-material-selected: idx=0, name="grass", material_id=0, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=0, written_to_vertex=0, translated=false, max_terrain_layers=8, in_range=true
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=12424, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] ui-material-selected: idx=0, name="grass", material_id=0, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=0, written_to_vertex=0, translated=false, max_terrain_layers=8, in_range=true
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=12429, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] ui-material-selected: idx=0, name="grass", material_id=0, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=0, written_to_vertex=0, translated=false, max_terrain_layers=8, in_range=true
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=12438, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] ui-material-selected: idx=0, name="grass", material_id=0, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=0, written_to_vertex=0, translated=false, max_terrain_layers=8, in_range=true
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=12449, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] ui-material-selected: idx=0, name="grass", material_id=0, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=0, written_to_vertex=0, translated=false, max_terrain_layers=8, in_range=true
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=12451, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] ui-material-selected: idx=0, name="grass", material_id=0, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=0, written_to_vertex=0, translated=false, max_terrain_layers=8, in_range=true
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=12184, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] ui-material-selected: idx=1, name="sand", material_id=1, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=1, written_to_vertex=1, translated=false, max_terrain_layers=8, in_range=true
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=12222, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] ui-material-selected: idx=1, name="sand", material_id=1, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=1, written_to_vertex=1, translated=false, max_terrain_layers=8, in_range=true
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=12374, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] ui-material-selected: idx=1, name="sand", material_id=1, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=1, written_to_vertex=1, translated=false, max_terrain_layers=8, in_range=true
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=12504, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] ui-material-selected: idx=1, name="sand", material_id=1, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=1, written_to_vertex=1, translated=false, max_terrain_layers=8, in_range=true
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=12506, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] ui-material-selected: idx=1, name="sand", material_id=1, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=1, written_to_vertex=1, translated=false, max_terrain_layers=8, in_range=true
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=12514, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] ui-material-selected: idx=1, name="sand", material_id=1, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=1, written_to_vertex=1, translated=false, max_terrain_layers=8, in_range=true
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=12646, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] ui-material-selected: idx=1, name="sand", material_id=1, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=1, written_to_vertex=1, translated=false, max_terrain_layers=8, in_range=true
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=10946, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=10977, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] ui-material-selected: idx=2, name="forest_floor", material_id=2, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=2, written_to_vertex=2, translated=false, max_terrain_layers=8, in_range=true
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=10997, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=11018, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] ui-material-selected: idx=2, name="forest_floor", material_id=2, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=2, written_to_vertex=2, translated=false, max_terrain_layers=8, in_range=true
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=11029, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=11036, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] ui-material-selected: idx=2, name="forest_floor", material_id=2, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=2, written_to_vertex=2, translated=false, max_terrain_layers=8, in_range=true
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=11052, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=11069, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] ui-material-selected: idx=2, name="forest_floor", material_id=2, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=2, written_to_vertex=2, translated=false, max_terrain_layers=8, in_range=true
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=12653, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=12657, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=12659, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=12659, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] ui-material-selected: idx=2, name="forest_floor", material_id=2, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=2, written_to_vertex=2, translated=false, max_terrain_layers=8, in_range=true
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=12659, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=12985, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=12987, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] ui-material-selected: idx=3, name="mountain_rock", material_id=3, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=3, written_to_vertex=3, translated=false, max_terrain_layers=8, in_range=true
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=12818, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=12831, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] ui-material-selected: idx=3, name="mountain_rock", material_id=3, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=3, written_to_vertex=3, translated=false, max_terrain_layers=8, in_range=true
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=12989, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=12974, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=12974, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=12975, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] ui-material-selected: idx=3, name="mountain_rock", material_id=3, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=3, written_to_vertex=3, translated=false, max_terrain_layers=8, in_range=true
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=12975, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=12975, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=12975, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=12975, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] ui-material-selected: idx=3, name="mountain_rock", material_id=3, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=3, written_to_vertex=3, translated=false, max_terrain_layers=8, in_range=true
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=12977, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=12977, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=12866, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] ui-material-selected: idx=3, name="mountain_rock", material_id=3, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=3, written_to_vertex=3, translated=false, max_terrain_layers=8, in_range=true
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=12914, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=12942, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] ui-material-selected: idx=3, name="mountain_rock", material_id=3, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=3, written_to_vertex=3, translated=false, max_terrain_layers=8, in_range=true
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=12946, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=12946, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] ui-material-selected: idx=4, name="snow", material_id=4, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=4, written_to_vertex=4, translated=false, max_terrain_layers=8, in_range=true
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=13337, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] ui-material-selected: idx=4, name="snow", material_id=4, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=4, written_to_vertex=4, translated=false, max_terrain_layers=8, in_range=true
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=13346, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] ui-material-selected: idx=4, name="snow", material_id=4, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=4, written_to_vertex=4, translated=false, max_terrain_layers=8, in_range=true
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=13421, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] ui-material-selected: idx=4, name="snow", material_id=4, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=4, written_to_vertex=4, translated=false, max_terrain_layers=8, in_range=true
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=13490, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] ui-material-selected: idx=4, name="snow", material_id=4, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=4, written_to_vertex=4, translated=false, max_terrain_layers=8, in_range=true
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=13507, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] ui-material-selected: idx=4, name="snow", material_id=4, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=4, written_to_vertex=4, translated=false, max_terrain_layers=8, in_range=true
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=13507, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] ui-material-selected: idx=4, name="snow", material_id=4, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=4, written_to_vertex=4, translated=false, max_terrain_layers=8, in_range=true
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=13632, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=13643, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] ui-material-selected: idx=4, name="snow", material_id=4, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=4, written_to_vertex=4, translated=false, max_terrain_layers=8, in_range=true
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=13643, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=13644, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] ui-material-selected: idx=4, name="snow", material_id=4, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=4, written_to_vertex=4, translated=false, max_terrain_layers=8, in_range=true
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=13709, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] ui-material-selected: idx=4, name="snow", material_id=4, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=4, written_to_vertex=4, translated=false, max_terrain_layers=8, in_range=true
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=13763, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] ui-material-selected: idx=4, name="snow", material_id=4, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=4, written_to_vertex=4, translated=false, max_terrain_layers=8, in_range=true
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=13763, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] ui-material-selected: idx=4, name="snow", material_id=4, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=4, written_to_vertex=4, translated=false, max_terrain_layers=8, in_range=true
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=14276, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] ui-material-selected: idx=5, name="mud", material_id=5, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=5, written_to_vertex=5, translated=false, max_terrain_layers=8, in_range=true
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=14292, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] ui-material-selected: idx=5, name="mud", material_id=5, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=5, written_to_vertex=5, translated=false, max_terrain_layers=8, in_range=true
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=14708, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] ui-material-selected: idx=5, name="mud", material_id=5, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=5, written_to_vertex=5, translated=false, max_terrain_layers=8, in_range=true
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=14805, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] ui-material-selected: idx=5, name="mud", material_id=5, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=5, written_to_vertex=5, translated=false, max_terrain_layers=8, in_range=true
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=14819, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] ui-material-selected: idx=5, name="mud", material_id=5, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=5, written_to_vertex=5, translated=false, max_terrain_layers=8, in_range=true
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=14892, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] ui-material-selected: idx=5, name="mud", material_id=5, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=5, written_to_vertex=5, translated=false, max_terrain_layers=8, in_range=true
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=14892, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] ui-material-selected: idx=5, name="mud", material_id=5, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=5, written_to_vertex=5, translated=false, max_terrain_layers=8, in_range=true
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=15051, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] ui-material-selected: idx=5, name="mud", material_id=5, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=5, written_to_vertex=5, translated=false, max_terrain_layers=8, in_range=true
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=15065, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] ui-material-selected: idx=5, name="mud", material_id=5, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=5, written_to_vertex=5, translated=false, max_terrain_layers=8, in_range=true
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=15108, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] ui-material-selected: idx=5, name="mud", material_id=5, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=5, written_to_vertex=5, translated=false, max_terrain_layers=8, in_range=true
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=15128, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] ui-material-selected: idx=5, name="mud", material_id=5, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=5, written_to_vertex=5, translated=false, max_terrain_layers=8, in_range=true
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=15131, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] ui-material-selected: idx=5, name="mud", material_id=5, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=5, written_to_vertex=5, translated=false, max_terrain_layers=8, in_range=true
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=15139, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] ui-material-selected: idx=5, name="mud", material_id=5, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=5, written_to_vertex=5, translated=false, max_terrain_layers=8, in_range=true
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=15630, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] ui-material-selected: idx=6, name="wood_planks", material_id=6, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=6, written_to_vertex=6, translated=false, max_terrain_layers=8, in_range=true
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=15694, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=15698, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] ui-material-selected: idx=6, name="wood_planks", material_id=6, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=6, written_to_vertex=6, translated=false, max_terrain_layers=8, in_range=true
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=15698, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=15701, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] ui-material-selected: idx=6, name="wood_planks", material_id=6, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=6, written_to_vertex=6, translated=false, max_terrain_layers=8, in_range=true
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=15736, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=15845, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] ui-material-selected: idx=6, name="wood_planks", material_id=6, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=6, written_to_vertex=6, translated=false, max_terrain_layers=8, in_range=true
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=13333, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] ui-material-selected: idx=6, name="wood_planks", material_id=6, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=6, written_to_vertex=6, translated=false, max_terrain_layers=8, in_range=true
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=13363, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=13414, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] ui-material-selected: idx=6, name="wood_planks", material_id=6, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=6, written_to_vertex=6, translated=false, max_terrain_layers=8, in_range=true
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=13452, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=13452, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] ui-material-selected: idx=6, name="wood_planks", material_id=6, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=6, written_to_vertex=6, translated=false, max_terrain_layers=8, in_range=true
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=13458, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=13459, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] ui-material-selected: idx=6, name="wood_planks", material_id=6, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=6, written_to_vertex=6, translated=false, max_terrain_layers=8, in_range=true
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=13459, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=13469, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] ui-material-selected: idx=6, name="wood_planks", material_id=6, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=6, written_to_vertex=6, translated=false, max_terrain_layers=8, in_range=true
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=13503, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=13584, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] ui-material-selected: idx=6, name="wood_planks", material_id=6, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=6, written_to_vertex=6, translated=false, max_terrain_layers=8, in_range=true
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=16015, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] ui-material-selected: idx=7, name="stone", material_id=7, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=7, written_to_vertex=7, translated=false, max_terrain_layers=8, in_range=true
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=16066, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] ui-material-selected: idx=7, name="stone", material_id=7, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=7, written_to_vertex=7, translated=false, max_terrain_layers=8, in_range=true
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=16114, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] ui-material-selected: idx=7, name="stone", material_id=7, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=7, written_to_vertex=7, translated=false, max_terrain_layers=8, in_range=true
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=13093, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] ui-material-selected: idx=7, name="stone", material_id=7, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=7, written_to_vertex=7, translated=false, max_terrain_layers=8, in_range=true
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=13093, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] ui-material-selected: idx=7, name="stone", material_id=7, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=7, written_to_vertex=7, translated=false, max_terrain_layers=8, in_range=true
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=16136, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] ui-material-selected: idx=7, name="stone", material_id=7, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=7, written_to_vertex=7, translated=false, max_terrain_layers=8, in_range=true
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=16155, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] ui-material-selected: idx=7, name="stone", material_id=7, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=7, written_to_vertex=7, translated=false, max_terrain_layers=8, in_range=true
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=16165, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] ui-material-selected: idx=7, name="stone", material_id=7, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=7, written_to_vertex=7, translated=false, max_terrain_layers=8, in_range=true
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=16166, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] ui-material-selected: idx=7, name="stone", material_id=7, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=7, written_to_vertex=7, translated=false, max_terrain_layers=8, in_range=true
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=16207, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] ui-material-selected: idx=7, name="stone", material_id=7, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=7, written_to_vertex=7, translated=false, max_terrain_layers=8, in_range=true
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=16221, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=16240, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] ui-material-selected: idx=7, name="stone", material_id=7, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=7, written_to_vertex=7, translated=false, max_terrain_layers=8, in_range=true
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=16242, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=16242, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] ui-material-selected: idx=7, name="stone", material_id=7, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=7, written_to_vertex=7, translated=false, max_terrain_layers=8, in_range=true
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=16243, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=16245, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] ui-material-selected: idx=7, name="stone", material_id=7, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=7, written_to_vertex=7, translated=false, max_terrain_layers=8, in_range=true
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=16246, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=16246, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] ui-material-selected: idx=7, name="stone", material_id=7, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=7, written_to_vertex=7, translated=false, max_terrain_layers=8, in_range=true
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=16246, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=16246, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] ui-material-selected: idx=7, name="stone", material_id=7, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=7, written_to_vertex=7, translated=false, max_terrain_layers=8, in_range=true
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=16246, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=16246, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] ui-material-selected: idx=7, name="stone", material_id=7, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=7, written_to_vertex=7, translated=false, max_terrain_layers=8, in_range=true
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=13608, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] ui-material-selected: idx=7, name="stone", material_id=7, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=7, written_to_vertex=7, translated=false, max_terrain_layers=8, in_range=true
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=13625, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] ui-material-selected: idx=7, name="stone", material_id=7, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=7, written_to_vertex=7, translated=false, max_terrain_layers=8, in_range=true
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=13653, dropped_slots=0, dropped_ids_sample=[]
+[BRUSH-DBG] ui-material-selected: idx=7, name="stone", material_id=7, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=7, written_to_vertex=7, translated=false, max_terrain_layers=8, in_range=true
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=16228, dropped_slots=270, dropped_ids_sample=[8]
+[BRUSH-DBG] ui-material-selected: idx=8, name="rock_slate", material_id=8, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=8, written_to_vertex=8, translated=false, max_terrain_layers=8, in_range=false
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=16200, dropped_slots=405, dropped_ids_sample=[8]
+[BRUSH-DBG] ui-material-selected: idx=8, name="rock_slate", material_id=8, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=8, written_to_vertex=8, translated=false, max_terrain_layers=8, in_range=false
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=16150, dropped_slots=581, dropped_ids_sample=[8]
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=16150, dropped_slots=581, dropped_ids_sample=[8]
+[BRUSH-DBG] ui-material-selected: idx=8, name="rock_slate", material_id=8, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=8, written_to_vertex=8, translated=false, max_terrain_layers=8, in_range=false
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=16150, dropped_slots=581, dropped_ids_sample=[8]
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=16145, dropped_slots=603, dropped_ids_sample=[8]
+[BRUSH-DBG] ui-material-selected: idx=8, name="rock_slate", material_id=8, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=8, written_to_vertex=8, translated=false, max_terrain_layers=8, in_range=false
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=16145, dropped_slots=651, dropped_ids_sample=[8]
+[BRUSH-DBG] ui-material-selected: idx=8, name="rock_slate", material_id=8, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=8, written_to_vertex=8, translated=false, max_terrain_layers=8, in_range=false
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=16145, dropped_slots=676, dropped_ids_sample=[8]
+[BRUSH-DBG] ui-material-selected: idx=8, name="rock_slate", material_id=8, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=8, written_to_vertex=8, translated=false, max_terrain_layers=8, in_range=false
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=16145, dropped_slots=690, dropped_ids_sample=[8]
+[BRUSH-DBG] ui-material-selected: idx=8, name="rock_slate", material_id=8, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=8, written_to_vertex=8, translated=false, max_terrain_layers=8, in_range=false
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=16145, dropped_slots=690, dropped_ids_sample=[8]
+[BRUSH-DBG] ui-material-selected: idx=8, name="rock_slate", material_id=8, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=8, written_to_vertex=8, translated=false, max_terrain_layers=8, in_range=false
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=16144, dropped_slots=1039, dropped_ids_sample=[8]
+[BRUSH-DBG] ui-material-selected: idx=8, name="rock_slate", material_id=8, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=8, written_to_vertex=8, translated=false, max_terrain_layers=8, in_range=false
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=16144, dropped_slots=1150, dropped_ids_sample=[8]
+[BRUSH-DBG] ui-material-selected: idx=9, name="dirt", material_id=9, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=9, written_to_vertex=9, translated=false, max_terrain_layers=8, in_range=false
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=16094, dropped_slots=1528, dropped_ids_sample=[8, 9]
+[BRUSH-DBG] ui-material-selected: idx=9, name="dirt", material_id=9, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=9, written_to_vertex=9, translated=false, max_terrain_layers=8, in_range=false
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=16094, dropped_slots=1776, dropped_ids_sample=[8, 9]
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=13093, dropped_slots=314, dropped_ids_sample=[11]
+[BRUSH-DBG] ui-material-selected: idx=11, name="cloth", material_id=11, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=11, written_to_vertex=11, translated=false, max_terrain_layers=8, in_range=false
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=13093, dropped_slots=334, dropped_ids_sample=[11]
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=13093, dropped_slots=354, dropped_ids_sample=[11]
+[BRUSH-DBG] ui-material-selected: idx=11, name="cloth", material_id=11, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=11, written_to_vertex=11, translated=false, max_terrain_layers=8, in_range=false
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=13093, dropped_slots=387, dropped_ids_sample=[11]
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=13093, dropped_slots=448, dropped_ids_sample=[11]
+[BRUSH-DBG] ui-material-selected: idx=11, name="cloth", material_id=11, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=11, written_to_vertex=11, translated=false, max_terrain_layers=8, in_range=false
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=13071, dropped_slots=612, dropped_ids_sample=[11]
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=13071, dropped_slots=615, dropped_ids_sample=[11]
+[BRUSH-DBG] ui-material-selected: idx=11, name="cloth", material_id=11, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=11, written_to_vertex=11, translated=false, max_terrain_layers=8, in_range=false
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=16092, dropped_slots=1911, dropped_ids_sample=[8, 9, 11]
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=13643, dropped_slots=55, dropped_ids_sample=[8, 12]
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=13643, dropped_slots=57, dropped_ids_sample=[8, 12]
+[BRUSH-DBG] ui-material-selected: idx=12, name="default", material_id=12, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=12, written_to_vertex=12, translated=false, max_terrain_layers=8, in_range=false
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=13643, dropped_slots=62, dropped_ids_sample=[8, 12]
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=13643, dropped_slots=62, dropped_ids_sample=[8, 12]
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=13643, dropped_slots=64, dropped_ids_sample=[8, 12]
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=13643, dropped_slots=64, dropped_ids_sample=[8, 12]
+[BRUSH-DBG] ui-material-selected: idx=12, name="default", material_id=12, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=12, written_to_vertex=12, translated=false, max_terrain_layers=8, in_range=false
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=11094, dropped_slots=274, dropped_ids_sample=[12, 11]
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=11094, dropped_slots=333, dropped_ids_sample=[12, 11]
+[BRUSH-DBG] ui-material-selected: idx=12, name="default", material_id=12, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=12, written_to_vertex=12, translated=false, max_terrain_layers=8, in_range=false
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=11094, dropped_slots=348, dropped_ids_sample=[12, 11]
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=13641, dropped_slots=92, dropped_ids_sample=[8, 13, 12]
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=13641, dropped_slots=114, dropped_ids_sample=[8, 13, 12]
+[BRUSH-DBG] ui-material-selected: idx=13, name="gravel", material_id=13, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=13, written_to_vertex=13, translated=false, max_terrain_layers=8, in_range=false
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=13641, dropped_slots=115, dropped_ids_sample=[8, 13, 12]
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=13641, dropped_slots=129, dropped_ids_sample=[8, 13, 12]
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=13641, dropped_slots=136, dropped_ids_sample=[8, 13, 12]
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=13641, dropped_slots=136, dropped_ids_sample=[8, 13, 12]
+[BRUSH-DBG] ui-material-selected: idx=13, name="gravel", material_id=13, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=13, written_to_vertex=13, translated=false, max_terrain_layers=8, in_range=false
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=13641, dropped_slots=136, dropped_ids_sample=[8, 13, 12]
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=13641, dropped_slots=136, dropped_ids_sample=[8, 13, 12]
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=10993, dropped_slots=456, dropped_ids_sample=[13, 12, 11, 14]
+[BRUSH-DBG] ui-material-selected: idx=14, name="ice", material_id=14, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=14, written_to_vertex=14, translated=false, max_terrain_layers=8, in_range=false
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=10973, dropped_slots=476, dropped_ids_sample=[13, 12, 11, 14]
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=10954, dropped_slots=495, dropped_ids_sample=[13, 12, 11, 14]
+[BRUSH-DBG] ui-material-selected: idx=14, name="ice", material_id=14, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=14, written_to_vertex=14, translated=false, max_terrain_layers=8, in_range=false
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=10951, dropped_slots=499, dropped_ids_sample=[13, 12, 11, 14]
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=10951, dropped_slots=499, dropped_ids_sample=[13, 12, 11, 14]
+[BRUSH-DBG] ui-material-selected: idx=15, name="metal_rusted", material_id=15, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=15, written_to_vertex=15, translated=false, max_terrain_layers=8, in_range=false
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=10928, dropped_slots=531, dropped_ids_sample=[13, 12, 11, 14, 15]
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=11954, dropped_slots=2343, dropped_ids_sample=[12, 13, 15, 14, 11]
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=16029, dropped_slots=2215, dropped_ids_sample=[8, 9, 13, 12, 15]
+[BRUSH-DBG] ui-material-selected: idx=15, name="metal_rusted", material_id=15, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=15, written_to_vertex=15, translated=false, max_terrain_layers=8, in_range=false
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=16021, dropped_slots=2303, dropped_ids_sample=[8, 9, 13, 15, 12]
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=16019, dropped_slots=2323, dropped_ids_sample=[8, 9, 13, 15, 12]
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=16019, dropped_slots=2323, dropped_ids_sample=[8, 9, 13, 15, 12]
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=16019, dropped_slots=2327, dropped_ids_sample=[8, 9, 13, 15, 12]
+[BRUSH-DBG] ui-material-selected: idx=15, name="metal_rusted", material_id=15, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=15, written_to_vertex=15, translated=false, max_terrain_layers=8, in_range=false
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=16019, dropped_slots=2328, dropped_ids_sample=[8, 9, 13, 15, 12]
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=16019, dropped_slots=2328, dropped_ids_sample=[8, 9, 13, 15, 12]
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=16019, dropped_slots=2328, dropped_ids_sample=[8, 9, 13, 15, 12]
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=16019, dropped_slots=2330, dropped_ids_sample=[8, 9, 13, 15, 12]
+[BRUSH-DBG] ui-material-selected: idx=15, name="metal_rusted", material_id=15, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=15, written_to_vertex=15, translated=false, max_terrain_layers=8, in_range=false
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=16019, dropped_slots=2330, dropped_ids_sample=[8, 9, 13, 15, 12]
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=16019, dropped_slots=2330, dropped_ids_sample=[8, 9, 13, 15, 12]
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=16019, dropped_slots=2330, dropped_ids_sample=[8, 9, 13, 15, 12]
+[BRUSH-DBG] ui-material-selected: idx=16, name="moss", material_id=16, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=16, written_to_vertex=16, translated=false, max_terrain_layers=8, in_range=false
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=15900, dropped_slots=2659, dropped_ids_sample=[8, 9, 16, 13, 15, 12]
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=15843, dropped_slots=2927, dropped_ids_sample=[8, 9, 16, 13, 15, 12]
+[BRUSH-DBG] ui-material-selected: idx=16, name="moss", material_id=16, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=16, written_to_vertex=16, translated=false, max_terrain_layers=8, in_range=false
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=15841, dropped_slots=2953, dropped_ids_sample=[8, 9, 16, 13, 15, 12]
+[BRUSH-DBG] ui-material-selected: idx=16, name="moss", material_id=16, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=16, written_to_vertex=16, translated=false, max_terrain_layers=8, in_range=false
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=13608, dropped_slots=412, dropped_ids_sample=[8, 16, 13, 15, 12]
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=13593, dropped_slots=495, dropped_ids_sample=[8, 16, 13, 15, 12]
+[BRUSH-DBG] ui-material-selected: idx=16, name="moss", material_id=16, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=16, written_to_vertex=16, translated=false, max_terrain_layers=8, in_range=false
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=13581, dropped_slots=524, dropped_ids_sample=[8, 16, 13, 15, 12]
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=13581, dropped_slots=526, dropped_ids_sample=[8, 16, 13, 15, 12]
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=15533, dropped_slots=3380, dropped_ids_sample=[8, 9, 16, 20, 13, 15, 12]
+[BRUSH-DBG] ui-material-selected: idx=20, name="tree_bark", material_id=20, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=20, written_to_vertex=20, translated=false, max_terrain_layers=8, in_range=false
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=15365, dropped_slots=3825, dropped_ids_sample=[8, 9, 16, 20, 13, 15, 12]
+[BRUSH-DBG] ui-material-selected: idx=20, name="tree_bark", material_id=20, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=20, written_to_vertex=20, translated=false, max_terrain_layers=8, in_range=false
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=15266, dropped_slots=3943, dropped_ids_sample=[8, 9, 16, 20, 13, 15, 12]
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=15266, dropped_slots=3943, dropped_ids_sample=[8, 9, 16, 20, 13, 15, 12]
+[BRUSH-DBG] ui-material-selected: idx=20, name="tree_bark", material_id=20, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=20, written_to_vertex=20, translated=false, max_terrain_layers=8, in_range=false
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=15266, dropped_slots=3999, dropped_ids_sample=[8, 9, 16, 20, 13, 15, 12]
+[BRUSH-DBG] ui-material-selected: idx=20, name="tree_bark", material_id=20, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=20, written_to_vertex=20, translated=false, max_terrain_layers=8, in_range=false
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=15266, dropped_slots=4029, dropped_ids_sample=[8, 9, 16, 20, 13, 15, 12]
+[BRUSH-DBG] ui-material-selected: idx=19, name="roof_tile", material_id=19, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=19, written_to_vertex=19, translated=false, max_terrain_layers=8, in_range=false
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=13535, dropped_slots=1167, dropped_ids_sample=[19, 8, 16, 13, 15, 12]
+[BRUSH-DBG] ui-material-selected: idx=19, name="roof_tile", material_id=19, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=19, written_to_vertex=19, translated=false, max_terrain_layers=8, in_range=false
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=13535, dropped_slots=1526, dropped_ids_sample=[19, 8, 16, 13, 15, 12]
+[BRUSH-DBG] ui-material-selected: idx=19, name="roof_tile", material_id=19, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=19, written_to_vertex=19, translated=false, max_terrain_layers=8, in_range=false
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=13535, dropped_slots=1682, dropped_ids_sample=[19, 8, 16, 13, 15, 12]
+[BRUSH-DBG] ui-material-selected: idx=19, name="roof_tile", material_id=19, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=19, written_to_vertex=19, translated=false, max_terrain_layers=8, in_range=false
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=13535, dropped_slots=2071, dropped_ids_sample=[19, 8, 16, 13, 15, 12]
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=13535, dropped_slots=2411, dropped_ids_sample=[19, 8, 16, 13, 15, 12]
+[BRUSH-DBG] ui-material-selected: idx=19, name="roof_tile", material_id=19, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=19, written_to_vertex=19, translated=false, max_terrain_layers=8, in_range=false
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=15001, dropped_slots=4645, dropped_ids_sample=[8, 19, 18, 9, 16, 20, 13, 15]
+[BRUSH-DBG] ui-material-selected: idx=18, name="rock_lichen", material_id=18, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=18, written_to_vertex=18, translated=false, max_terrain_layers=8, in_range=false
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=14699, dropped_slots=5234, dropped_ids_sample=[8, 19, 18, 9, 16, 20, 13, 15]
+[BRUSH-DBG] ui-material-selected: idx=18, name="rock_lichen", material_id=18, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=18, written_to_vertex=18, translated=false, max_terrain_layers=8, in_range=false
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=14579, dropped_slots=5598, dropped_ids_sample=[8, 19, 18, 9, 16, 20, 13, 15]
+[BRUSH-DBG] ui-material-selected: idx=18, name="rock_lichen", material_id=18, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=18, written_to_vertex=18, translated=false, max_terrain_layers=8, in_range=false
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=14573, dropped_slots=6268, dropped_ids_sample=[8, 19, 18, 9, 16, 20, 13, 15]
+[BRUSH-DBG] ui-material-selected: idx=18, name="rock_lichen", material_id=18, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=18, written_to_vertex=18, translated=false, max_terrain_layers=8, in_range=false
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=14573, dropped_slots=6757, dropped_ids_sample=[8, 19, 18, 9, 16, 20, 13, 15]
+[BRUSH-DBG] ui-material-selected: idx=18, name="rock_lichen", material_id=18, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=18, written_to_vertex=18, translated=false, max_terrain_layers=8, in_range=false
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=14573, dropped_slots=6871, dropped_ids_sample=[8, 19, 18, 9, 16, 20, 13, 15]
+[BRUSH-DBG] ui-material-selected: idx=18, name="rock_lichen", material_id=18, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=18, written_to_vertex=18, translated=false, max_terrain_layers=8, in_range=false
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=14573, dropped_slots=6933, dropped_ids_sample=[8, 19, 18, 9, 16, 20, 13, 15]
+[BRUSH-DBG] ui-material-selected: idx=18, name="rock_lichen", material_id=18, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=18, written_to_vertex=18, translated=false, max_terrain_layers=8, in_range=false
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=11892, dropped_slots=2567, dropped_ids_sample=[16, 12, 13, 15, 20, 18, 14, 11]
+[BRUSH-DBG] ui-material-selected: idx=21, name="tree_leaves", material_id=21, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=21, written_to_vertex=21, translated=false, max_terrain_layers=8, in_range=false
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=11892, dropped_slots=2602, dropped_ids_sample=[16, 12, 13, 15, 20, 18, 14, 11]
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=11892, dropped_slots=2602, dropped_ids_sample=[16, 12, 13, 15, 20, 18, 14, 11]
+[BRUSH-DBG] ui-material-selected: idx=21, name="tree_leaves", material_id=21, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=21, written_to_vertex=21, translated=false, max_terrain_layers=8, in_range=false
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=11892, dropped_slots=2604, dropped_ids_sample=[16, 12, 13, 15, 20, 18, 14, 11]
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=11892, dropped_slots=2613, dropped_ids_sample=[16, 12, 13, 15, 20, 18, 14, 11]
+[BRUSH-DBG] ui-material-selected: idx=21, name="tree_leaves", material_id=21, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=21, written_to_vertex=21, translated=false, max_terrain_layers=8, in_range=false
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=11892, dropped_slots=2636, dropped_ids_sample=[16, 12, 13, 15, 20, 18, 14, 11]
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=11892, dropped_slots=2643, dropped_ids_sample=[16, 12, 13, 15, 20, 18, 14, 11]
+[BRUSH-DBG] ui-material-selected: idx=21, name="tree_leaves", material_id=21, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=21, written_to_vertex=21, translated=false, max_terrain_layers=8, in_range=false
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=11892, dropped_slots=2644, dropped_ids_sample=[16, 12, 13, 15, 20, 18, 14, 11]
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=11892, dropped_slots=2650, dropped_ids_sample=[16, 12, 13, 15, 20, 18, 14, 11]

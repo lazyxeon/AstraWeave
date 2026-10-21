@@ -1,0 +1,68 @@
+   Compiling astraweave-render v0.1.0 (C:\Users\pv2br\AstraWeave-AI-Native-Gaming-Engine\astraweave-render)
+error[E0599]: no method named `get_current_weather` found for struct `environment::WeatherSystem` in the current scope
+    --> astraweave-render\src\mutation_tests.rs:2370:21
+     |
+2370 |             weather.get_current_weather(),
+     |                     ^^^^^^^^^^^^^^^^^^^
+     |
+    ::: astraweave-render\src\environment.rs:1051:1
+     |
+1051 | pub struct WeatherSystem {
+     | ------------------------ method `get_current_weather` not found for this struct
+     |
+help: there is a method `current_weather` with a similar name
+     |
+2370 -             weather.get_current_weather(),
+2370 +             weather.current_weather(),
+     |
+
+error[E0599]: no variant or associated item named `Thunderstorm` found for enum `environment::WeatherType` in the current scope
+    --> astraweave-render\src\mutation_tests.rs:2380:42
+     |
+2380 |         weather.set_weather(WeatherType::Thunderstorm, 5.0);
+     |                                          ^^^^^^^^^^^^ variant or associated item not found in `environment::WeatherType`
+     |
+    ::: astraweave-render\src\environment.rs:1039:1
+     |
+1039 | pub enum WeatherType {
+     | -------------------- variant or associated item `Thunderstorm` not found for this enum
+
+error[E0599]: no method named `get_current_weather` found for struct `environment::WeatherSystem` in the current scope
+    --> astraweave-render\src\mutation_tests.rs:2383:31
+     |
+2383 |         let current = weather.get_current_weather();
+     |                               ^^^^^^^^^^^^^^^^^^^
+     |
+    ::: astraweave-render\src\environment.rs:1051:1
+     |
+1051 | pub struct WeatherSystem {
+     | ------------------------ method `get_current_weather` not found for this struct
+     |
+help: there is a method `current_weather` with a similar name
+     |
+2383 -         let current = weather.get_current_weather();
+2383 +         let current = weather.current_weather();
+     |
+
+error[E0599]: no variant or associated item named `Thunderstorm` found for enum `environment::WeatherType` in the current scope
+    --> astraweave-render\src\mutation_tests.rs:2387:70
+     |
+2387 |             current == WeatherType::Clear || current == WeatherType::Thunderstorm,
+     |                                                                      ^^^^^^^^^^^^ variant or associated item not found in `environment::WeatherType`
+     |
+    ::: astraweave-render\src\environment.rs:1039:1
+     |
+1039 | pub enum WeatherType {
+     | -------------------- variant or associated item `Thunderstorm` not found for this enum
+
+warning: unused variable: `pos`
+    --> astraweave-render\src\mutation_tests.rs:2332:13
+     |
+2332 |         let pos = time.get_sun_position();
+     |             ^^^ help: if this is intentional, prefix it with an underscore: `_pos`
+     |
+     = note: `#[warn(unused_variables)]` on by default
+
+For more information about this error, try `rustc --explain E0599`.
+warning: `astraweave-render` (lib test) generated 1 warning
+error: could not compile `astraweave-render` (lib test) due to 4 previous errors; 1 warning emitted
