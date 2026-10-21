@@ -10,7 +10,7 @@ integration_status: mixed
 summary: "Voxel meshing/biome/noise/scatter/streaming (complements terrain_materials.md). terrain.md"
 owns: [astraweave-terrain]
 doc_version: "1.17"
-last_verified_commit: 85c13ff4
+last_verified_commit: 94040794
 ---
 
 # Architecture Trace: Terrain System (Generation, Voxels, Biomes, Noise, Scatter, Streaming)
@@ -22,8 +22,8 @@ last_verified_commit: 85c13ff4
 | **System name** | Terrain System (procedural generation, voxel meshing, biome/noise pipeline, scatter, chunk streaming) |
 | **Primary crates** | `astraweave-terrain` (with reverse dep into `astraweave-gameplay`); consumers in `tools/aw_editor`, `examples/hybrid_voxel_demo`, `astraweave-render` |
 | **Document version** | 1.17 |
-| **Last verified against commit** | `85c13ff4` (v1.16: forest LOD budget is the kept-prop count). Prior `d0452d3e` (v1.13: fifteen required replay cases). v1.14 locks the noise golden tests to the E3 amplitudes (base 100, mountains 480, detail 3, base Fbm, mountains Billow) and moves the halo 0.01 identity to the pre-modulation crop. Prior ED-3 working tree over `aca627436` (v1.7: amplitude Open Question closed); prior `d4c4479d4` (v1.6), prior `03f9d9a2d` (v1.5: T.2d third pass, two new §11 Open Questions), prior `611c8edc7` (v1.3/v1.4: T.2a boreal band + `expect()` retirement), `8232b150b`. Note: v1.4 bumped the front-matter `doc_version` and the revision table only, leaving this row at 1.3 — corrected here. |
-| **Last verified date** | 2026-10-18 (v1.16: `view_ring_lod_keeps_the_forest_under_budget` keeps `total > 400` and `kept < 900`. The 50ms debug wall-clock assert is gone. macOS 1.89 on run 39084152246 measured 50.776916ms, failed that assert, and skipped clippy. Counts were total=2009 kept=727.); 2026-10-16 (v1.15); 2026-07-26 (v1.7) |
+| **Last verified against commit** | `94040794` (v1.17: window props follow `column_gen::scatter_chunk`). Prior `85c13ff4` (v1.16: forest LOD budget is the kept-prop count). Prior `d0452d3e` (v1.13: fifteen required replay cases). v1.14 locks the noise golden tests to the E3 amplitudes (base 100, mountains 480, detail 3, base Fbm, mountains Billow) and moves the halo 0.01 identity to the pre-modulation crop. Prior ED-3 working tree over `aca627436` (v1.7: amplitude Open Question closed); prior `d4c4479d4` (v1.6), prior `03f9d9a2d` (v1.5: T.2d third pass, two new §11 Open Questions), prior `611c8edc7` (v1.3/v1.4: T.2a boreal band + `expect()` retirement), `8232b150b`. Note: v1.4 bumped the front-matter `doc_version` and the revision table only, leaving this row at 1.3 — corrected here. |
+| **Last verified date** | 2026-10-21 (v1.17); 2026-10-18 (v1.16: `view_ring_lod_keeps_the_forest_under_budget` keeps `total > 400` and `kept < 900`. The 50ms debug wall-clock assert is gone. macOS 1.89 on run 39084152246 measured 50.776916ms, failed that assert, and skipped clippy. Counts were total=2009 kept=727.); 2026-10-16 (v1.15); 2026-07-26 (v1.7) |
 | **Status** | Active. Editor preview is the climate heightmap. Saved ground is the integer seed record. Deformation is a `DestructionCommand` log replayed into `ColumnStream`. The async heightmap loader, clipmap, GPU erosion trait, voxel modifier, and Phase 10 persistence format are removed. `DualContouring` stores one vertex per crossed edge. `aravath_runtime` collides with that mesh. |
 | **Owner notes** | Complements [`terrain_materials.md`](terrain_materials.md), which covers ONLY the material/splat-weight slice. This trace covers the REST: noise → heightmap → biome → erosion → chunk generation, voxel meshing, scatter/vegetation, and chunk streaming. Where the two overlap (biome semantics, `astraweave-render` terrain paths) this doc cross-references rather than duplicates. |
 
