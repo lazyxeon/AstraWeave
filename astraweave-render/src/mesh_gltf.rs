@@ -139,6 +139,80 @@ fn load_capped_gltf_images(
     Ok(images)
 }
 
+/// One external glTF buffer, BIN chunk, or `data:` buffer. Four times the
+/// image cap. A mesh can be larger than 64 MiB; it cannot be unbounded.
+#[cfg(feature = "gltf-assets")]
+const MAX_GLTF_BUFFER: u64 = 256 * 1024 * 1024;
+
+#[cfg(feature = "gltf-assets")]
+fn read_capped_path(path: &std::path::Path, cap: u64) -> Result<Vec<u8>> {
+    let meta = std::fs::metadata(path).with_context(|| format!("open {}", path.display()))?;
+    if meta.is_file() && meta.len() > cap {
+        anyhow::bail!("{} is {} bytes, cap is {cap}", path.display(), meta.len());
+    }
+    let mut file = std::fs::File::open(path).with_context(|| format!("open {}", path.display()))?;
+    let mut bytes = Vec::new();
+    std::io::Read::read_to_end(&mut std::io::Read::take(&mut file, cap), &mut bytes)
+        .with_context(|| format!("read {}", path.display()))?;
+    if !meta.is_file() && bytes.len() as u64 == cap {
+        anyhow::bail!("{} exceeds {cap} bytes", path.display());
+    }
+    Ok(bytes)
+}
+
+#[cfg(feature = "gltf-assets")]
+fn load_capped_gltf_buffers(
+    document: &gltf::Document,
+    base: &std::path::Path,
+    mut blob: Option<Vec<u8>>,
+) -> Result<Vec<gltf::buffer::Data>> {
+    let mut buffers = Vec::new();
+    for buffer in document.buffers() {
+        let declared = buffer.length() as u64;
+        if declared > MAX_GLTF_BUFFER {
+            anyhow::bail!(
+                "glTF buffer {} is {declared} bytes, cap is {MAX_GLTF_BUFFER}",
+                buffer.index()
+            );
+        }
+        let mut data = match buffer.source() {
+            gltf::buffer::Source::Bin => blob
+                .take()
+                .ok_or_else(|| anyhow!("missing glTF BIN for buffer {}", buffer.index()))?,
+            gltf::buffer::Source::Uri(uri)
+                if uri
+                    .split_once(':')
+                    .is_some_and(|(scheme, _)| scheme.eq_ignore_ascii_case("data")) =>
+            {
+                astraweave_asset::read_capped_data_uri(uri, MAX_GLTF_BUFFER)?
+            }
+            gltf::buffer::Source::Uri(uri) => {
+                jail_gltf_uri(base, uri)?;
+                let path_part = uri.split('?').next().unwrap_or(uri);
+                read_capped_path(&base.join(path_part), MAX_GLTF_BUFFER)?
+            }
+        };
+        if data.len() as u64 > MAX_GLTF_BUFFER {
+            anyhow::bail!(
+                "glTF buffer {} is {} bytes, cap is {MAX_GLTF_BUFFER}",
+                buffer.index(),
+                data.len()
+            );
+        }
+        if (data.len() as u64) < declared {
+            anyhow::bail!(
+                "glTF buffer {} is shorter than its declared length {declared}",
+                buffer.index()
+            );
+        }
+        while data.len() % 4 != 0 {
+            data.push(0);
+        }
+        buffers.push(gltf::buffer::Data(data));
+    }
+    Ok(buffers)
+}
+
 #[cfg(feature = "gltf-assets")]
 pub fn load_gltf(path: &std::path::Path, opts: &GltfOptions) -> Result<Vec<CpuMesh>> {
     use gltf::mesh::util::ReadIndices;
@@ -148,8 +222,7 @@ pub fn load_gltf(path: &std::path::Path, opts: &GltfOptions) -> Result<Vec<CpuMe
         document: doc,
         blob,
     } = gltf::Gltf::open(path).map_err(|err| anyhow!("open glTF: {err}"))?;
-    let buffers = gltf::import_buffers(&doc, Some(base), blob)
-        .map_err(|err| anyhow!("import glTF buffers: {err}"))?;
+    let buffers = load_capped_gltf_buffers(&doc, base, blob)?;
     let images = load_capped_gltf_images(&doc, base, &buffers)?;
     let mut meshes_out = Vec::new();
     for mesh in doc.meshes() {
@@ -267,6 +340,130 @@ mod jail_tests {
             msg.contains("traversal") || msg.contains("rejected"),
             "{msg}"
         );
+    }
+
+    #[test]
+    fn load_gltf_reads_a_jailed_external_buffer() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let mut bin = Vec::new();
+        for value in [0.0f32, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0] {
+            bin.extend_from_slice(&value.to_le_bytes());
+        }
+        bin.extend_from_slice(&0u16.to_le_bytes());
+        bin.extend_from_slice(&1u16.to_le_bytes());
+        bin.extend_from_slice(&2u16.to_le_bytes());
+        bin.extend_from_slice(&[0, 0]);
+        std::fs::write(dir.path().join("tri.bin"), &bin).expect("write bin");
+        let path = dir.path().join("tri.gltf");
+        std::fs::write(
+            &path,
+            r#"{
+                "asset": {"version": "2.0"},
+                "buffers": [{"uri": "tri.bin", "byteLength": 44}],
+                "bufferViews": [
+                    {"buffer": 0, "byteOffset": 0, "byteLength": 36},
+                    {"buffer": 0, "byteOffset": 36, "byteLength": 6}
+                ],
+                "accessors": [
+                    {
+                        "bufferView": 0,
+                        "componentType": 5126,
+                        "count": 3,
+                        "type": "VEC3",
+                        "max": [1.0, 1.0, 0.0],
+                        "min": [0.0, 0.0, 0.0]
+                    },
+                    {
+                        "bufferView": 1,
+                        "componentType": 5123,
+                        "count": 3,
+                        "type": "SCALAR"
+                    }
+                ],
+                "meshes": [{
+                    "primitives": [{
+                        "attributes": {"POSITION": 0},
+                        "indices": 1
+                    }]
+                }]
+            }"#,
+        )
+        .expect("write gltf");
+        let meshes = load_gltf(
+            &path,
+            &GltfOptions {
+                generate_tangents: false,
+            },
+        )
+        .expect("load external buffer");
+        assert_eq!(meshes.len(), 1);
+        assert_eq!(meshes[0].vertices.len(), 3);
+        assert_eq!(meshes[0].indices, vec![0, 1, 2]);
+    }
+
+    #[test]
+    fn load_gltf_rejects_an_external_buffer_over_256_mib_from_metadata() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let bin = dir.path().join("big.bin");
+        let file = std::fs::File::create(&bin).expect("create");
+        let cap = MAX_GLTF_BUFFER;
+        file.set_len(cap + 1).expect("set_len");
+        drop(file);
+        let path = dir.path().join("big.gltf");
+        std::fs::write(
+            &path,
+            r#"{
+                "asset": {"version": "2.0"},
+                "buffers": [{"uri": "big.bin", "byteLength": 4}]
+            }"#,
+        )
+        .expect("write gltf");
+        let err = load_gltf(
+            &path,
+            &GltfOptions {
+                generate_tangents: false,
+            },
+        )
+        .expect_err("oversized external buffer");
+        let msg = format!("{err:#}");
+        assert!(
+            msg.contains(&cap.to_string()) && msg.contains(&(cap + 1).to_string()),
+            "{msg}"
+        );
+    }
+
+    #[test]
+    fn load_gltf_rejects_a_declared_buffer_over_256_mib() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("declared.gltf");
+        let cap = MAX_GLTF_BUFFER;
+        let declared = cap + 1;
+        std::fs::write(
+            &path,
+            format!(
+                r#"{{
+                    "asset": {{"version": "2.0"}},
+                    "buffers": [{{
+                        "uri": "data:application/octet-stream;base64,AAAA",
+                        "byteLength": {declared}
+                    }}]
+                }}"#
+            ),
+        )
+        .expect("write gltf");
+        let err = load_gltf(
+            &path,
+            &GltfOptions {
+                generate_tangents: false,
+            },
+        )
+        .expect_err("declared buffer over the cap");
+        let msg = format!("{err:#}");
+        assert!(
+            msg.contains(&declared.to_string()) && msg.contains(&cap.to_string()),
+            "{msg}"
+        );
+        assert!(!msg.contains("decode"), "{msg}");
     }
 }
 
