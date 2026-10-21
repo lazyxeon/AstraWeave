@@ -731,8 +731,10 @@ pub fn deserialize_ecs_world(ecs_blob: &[u8], world: &mut World) -> Result<()> {
 /// for "all entities"), sorts them for deterministic ordering, and hashes each entity's
 /// ID plus component data using Rust's `DefaultHasher`. The result is a 64-bit hash
 /// suitable for save validation or replay verification.
-/// `DefaultHasher::new()` is SipHash-1-3 with zero keys. Anyone who can see
-/// the entity list can recompute it. Do not use it for cheat detection.
+/// `DefaultHasher::new()` is SipHash-1-3 with zero keys. The digest covers
+/// each `Entity` (`id`, then `generation`) and, when present, `CPos.x`,
+/// `CPos.y`, `CHealth.hp`, `CTeam.id`, and `CAmmo.rounds`. Anyone who knows
+/// those fields can recompute it. Do not use it for cheat detection.
 ///
 /// # Performance
 /// - **Linear Scaling**: O(n) where n = number of entities, R² = 0.999 (perfect linear fit)
@@ -747,14 +749,10 @@ pub fn deserialize_ecs_world(ecs_blob: &[u8], world: &mut World) -> Result<()> {
 /// - **Capacity**: Can hash 28× per frame (28 × 0.594 ms = 16.6 ms)
 ///
 /// # Determinism
-/// **CRITICAL**: This hash is **deterministic** for the same world state:
-/// - Entities are sorted before hashing (stable iteration order)
-/// - Same entities + same components → **same hash** (bit-identical)
-/// - Useful for multiplayer sync, replay validation, save corruption detection
-///
-/// **Ordering**: Entities are sorted by their internal ID via `sort_unstable()`, ensuring
-/// the same world state always produces the same hash, even if entities were created in
-/// different orders across runs.
+/// On one rustc, the same `Entity` ids and the same hashed fields produce the same `u64`.
+/// `sort_unstable` orders by `id`, then `generation`.
+/// `DefaultHasher::new()` is not stable across rustc upgrades.
+/// The digest is not authentication and is not a multiplayer-sync check.
 ///
 /// # Hash Algorithm
 /// Uses Rust's `DefaultHasher` (currently SipHash-1-3 on most platforms):
@@ -782,15 +780,17 @@ pub fn deserialize_ecs_world(ecs_blob: &[u8], world: &mut World) -> Result<()> {
 /// ```
 ///
 /// # Use Cases
-/// 1. **Save Validation**: Store hash with save, verify on load to detect corruption
+/// 1. **Save bytes**: aw-save's CRC covers the compressed postcard blob.
+///    This hash includes `Entity` ids. `deserialize_ecs_world` spawns new ids
+///    and does not clear the destination, so hashing the same `World` after a
+///    load does not detect corruption. Load into an empty `World` and compare
+///    component values, or compare the blob.
 ///    ```ignore
-///    let hash_before = calculate_world_hash(&world);
-///    let blob = serialize_ecs_world(&world)?;
-///    // ... save blob to disk ...
-///    // ... later, load blob ...
-///    deserialize_ecs_world(&blob, &mut world)?;
-///    let hash_after = calculate_world_hash(&world);
-///    assert_eq!(hash_before, hash_after, "Save corrupted!");
+///    let blob = serialize_ecs_world(&source)?;
+///    let mut restored = World::new();
+///    deserialize_ecs_world(&blob, &mut restored)?;
+///    // `restored` has new entity ids, so calculate_world_hash differs
+///    // even when `blob` is intact.
 ///    ```
 ///
 /// 2. **Deterministic Replay Verification**: Same inputs → same hash after N frames
