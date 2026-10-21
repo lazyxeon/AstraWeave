@@ -975,7 +975,7 @@ fn fixed_camera() -> RenderView {
     let projection = Projection::perspective(
         60_f32.to_radians(),
         WIDTH as f32 / HEIGHT as f32,
-        0.1,
+        astraweave_camera::GAME_ZNEAR,
         astraweave_camera::GAME_ZFAR,
     );
     RenderView::new(

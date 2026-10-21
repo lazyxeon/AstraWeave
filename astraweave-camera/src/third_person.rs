@@ -11,6 +11,9 @@ use glam::{Mat4, Vec3};
 use crate::freefly::FreeFly;
 use crate::{CameraProducer, Projection, RenderView};
 
+/// Near plane of the Aravath third-person camera. The heavy-scene budget uses it.
+pub const GAME_ZNEAR: f32 = 0.1;
+
 /// Far plane of the Aravath third-person camera. The heavy-scene budget uses it.
 pub const GAME_ZFAR: f32 = 500.0;
 
@@ -36,7 +39,7 @@ impl ThirdPersonCamera {
             distance: 6.0,
             fovy: 60_f32.to_radians(),
             aspect: 16.0 / 9.0,
-            znear: 0.1,
+            znear: GAME_ZNEAR,
             zfar: GAME_ZFAR,
         }
     }

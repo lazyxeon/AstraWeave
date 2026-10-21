@@ -5672,7 +5672,7 @@ fn vs(input: VSIn) -> VSOut {
         let toward_sun = if light.length_squared() > 1e-6 {
             -light.normalize()
         } else {
-            glam::Vec3::Y
+            self.sky.time_of_day().get_sun_position()
         };
         let (near, far) = clip_planes(self.cached_proj);
         let scatter_geometry = !self.volumetric_fog_enabled() && !self.god_rays_enabled();
@@ -6219,7 +6219,7 @@ fn vs(input: VSIn) -> VSOut {
         let toward_sun = if light.length_squared() > 1e-6 {
             -light.normalize()
         } else {
-            glam::Vec3::Y
+            self.sky.time_of_day().get_sun_position()
         };
         let camera_pos = glam::Vec3::new(
             self.camera_ubo.camera_pos_pad[0],
@@ -10661,7 +10661,7 @@ fn clip_planes(proj: glam::Mat4) -> (f32, f32) {
     let c = proj.z_axis.z;
     let d = proj.w_axis.z;
     if c.abs() < 1e-8 {
-        return (0.1, 500.0);
+        return (astraweave_camera::GAME_ZNEAR, astraweave_camera::GAME_ZFAR);
     }
     let near = (d / c).abs();
     let denom = 1.0 + c;

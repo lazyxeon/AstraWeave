@@ -41,4 +41,4 @@ pub use freefly::{CameraController, CameraMode, FreeFly};
 pub use producer::CameraProducer;
 pub use projection::Projection;
 pub use render_view::RenderView;
-pub use third_person::{ThirdPersonCamera, GAME_ZFAR};
+pub use third_person::{ThirdPersonCamera, GAME_ZFAR, GAME_ZNEAR};
