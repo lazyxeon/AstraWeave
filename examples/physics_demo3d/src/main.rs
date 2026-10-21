@@ -1,7 +1,11 @@
+mod break_box;
+
 use astraweave_camera::{CameraController, CameraProducer, FreeFly as Camera};
 use astraweave_physics::{Layers, PhysicsWorld};
 use astraweave_render::{Instance, Renderer};
-use glam::{vec3, Vec2, Vec3};
+use break_box::{fixed_to_f32, BreakStage, IntactBox};
+use glam::{vec3, Mat4, Vec2, Vec3};
+use std::collections::HashMap;
 use std::{sync::Arc, time::Instant};
 use winit::{
     application::ApplicationHandler,
@@ -18,9 +22,11 @@ struct PhysicsApp {
     camera: Camera,
     cam_ctl: CameraController,
     phys: PhysicsWorld,
+    breaks: BreakStage,
     instances: Vec<Instance>,
     char_id: u64,
-    destruct_ids: Vec<u64>,
+    intact: Vec<Shown>,
+    piece_half: HashMap<u64, Vec3>,
     water_on: bool,
     wind_on: bool,
     move_dir: Vec3,
@@ -28,8 +34,13 @@ struct PhysicsApp {
     last_time: Instant,
 }
 
+struct Shown {
+    sim: IntactBox,
+    body: u64,
+}
+
 impl PhysicsApp {
-    fn new() -> Self {
+    fn new() -> anyhow::Result<Self> {
         let camera = Camera {
             position: vec3(0.0, 8.0, 16.0),
             yaw: -std::f32::consts::FRAC_PI_2,
@@ -58,33 +69,59 @@ impl PhysicsApp {
         );
 
         let char_id = phys.add_character(vec3(-2.0, 1.0, 0.0), vec3(0.4, 0.9, 0.4));
-
-        let destruct_ids: Vec<u64> = vec![phys.add_destructible_box(
-            vec3(-1.0, 1.0, 2.0),
-            vec3(0.4, 0.4, 0.4),
-            3.0,
-            50.0,
-            12.0,
-        )];
+        let mut breaks = BreakStage::new(1)
+            .map_err(|err| anyhow::anyhow!("anchor command rejected: {err:?}"))?;
+        let intact = vec![spawn_shown(
+            &mut phys,
+            &mut breaks,
+            [-1, 1, 2],
+            [1, 1, 1],
+            3,
+            50,
+            50,
+        )?];
 
         phys.add_water_aabb(vec3(-2.0, 0.0, -2.0), vec3(2.0, 1.2, 2.0), 1000.0, 0.8);
 
-        Self {
+        Ok(Self {
             window: None,
             renderer: None,
             camera,
             cam_ctl,
             phys,
+            breaks,
             instances: vec![],
             char_id,
-            destruct_ids,
+            intact,
+            piece_half: HashMap::new(),
             water_on: true,
             wind_on: false,
             move_dir: Vec3::ZERO,
             climb_try: false,
             last_time: Instant::now(),
-        }
+        })
     }
+}
+
+fn spawn_shown(
+    phys: &mut PhysicsWorld,
+    breaks: &mut BreakStage,
+    pos: [i64; 3],
+    half: [i64; 3],
+    mass: i64,
+    health: i64,
+    impulse: i64,
+) -> anyhow::Result<Shown> {
+    let sim = breaks
+        .spawn_box(pos, half, mass, health, impulse)
+        .map_err(|err| anyhow::anyhow!("spawn command rejected: {err:?}"))?;
+    let body = phys.add_dynamic_box(
+        vec3(pos[0] as f32, pos[1] as f32, pos[2] as f32),
+        vec3(sim.half[0] as f32, sim.half[1] as f32, sim.half[2] as f32),
+        mass as f32,
+        Layers::DEFAULT,
+    );
+    Ok(Shown { sim, body })
 }
 
 impl ApplicationHandler for PhysicsApp {
@@ -212,24 +249,60 @@ impl ApplicationHandler for PhysicsApp {
                         );
                         println!("Spawned ragdoll (box placeholder)");
                     }
-                    KeyCode::KeyN if down => {
-                        let id = self.phys.add_destructible_box(
-                            vec3(-0.5, 1.0, -1.0),
-                            vec3(0.4, 0.4, 0.4),
-                            3.0,
-                            60.0,
-                            14.0,
-                        );
-                        self.destruct_ids.push(id);
-                        println!("Spawned destructible");
-                    }
+                    KeyCode::KeyN if down => match spawn_shown(
+                        &mut self.phys,
+                        &mut self.breaks,
+                        [0, 1, -1],
+                        [1, 1, 1],
+                        3,
+                        60,
+                        60,
+                    ) {
+                        Ok(shown) => {
+                            println!(
+                                "Spawned destructible health {} impulse {}",
+                                shown.sim.health, shown.sim.impulse
+                            );
+                            self.intact.push(shown);
+                        }
+                        Err(err) => eprintln!("spawn rejected: {err:#}"),
+                    },
                     KeyCode::KeyM if down => {
-                        // Deferred: #411. This only deletes the Rapier body.
-                        // Health and break impulse are ignored. A DestructionWorld
-                        // retarget needs a mesh this window does not have.
-                        if let Some(id) = self.destruct_ids.pop() {
-                            self.phys.break_destructible(id);
-                            println!("Break destructible");
+                        if let Some(shown) = self.intact.pop() {
+                            match self.breaks.strike(shown.sim.node_id, shown.sim.impulse) {
+                                Ok(hit) if !hit.pieces.is_empty() => {
+                                    self.phys.remove_body(shown.body);
+                                    for piece in hit.pieces {
+                                        let pos = vec3(
+                                            fixed_to_f32(piece.pos_raw[0]),
+                                            fixed_to_f32(piece.pos_raw[1]),
+                                            fixed_to_f32(piece.pos_raw[2]),
+                                        );
+                                        let half = vec3(
+                                            fixed_to_f32(piece.half_raw[0]),
+                                            fixed_to_f32(piece.half_raw[1]),
+                                            fixed_to_f32(piece.half_raw[2]),
+                                        );
+                                        let mass = fixed_to_f32(piece.mass_raw).max(0.1);
+                                        let id = self.phys.add_dynamic_box(
+                                            pos,
+                                            half,
+                                            mass,
+                                            Layers::DEFAULT,
+                                        );
+                                        self.piece_half.insert(id, half);
+                                    }
+                                    println!("Break command {} bytes", hit.log_bytes.len());
+                                }
+                                Ok(_) => {
+                                    self.intact.push(shown);
+                                    println!("Impact recorded; the box still holds");
+                                }
+                                Err(err) => {
+                                    self.intact.push(shown);
+                                    eprintln!("break command rejected: {err:?}");
+                                }
+                            }
                         }
                     }
                     _ => {}
@@ -278,13 +351,17 @@ impl ApplicationHandler for PhysicsApp {
                 if let Some(m) = self.phys.body_transform(id) {
                     let color = if self.phys.char_map.contains_key(&id) {
                         [0.2, 1.0, 0.4, 1.0]
+                    } else if self.piece_half.contains_key(&id) {
+                        [0.95, 0.45, 0.15, 1.0]
                     } else {
                         [0.8, 0.8, 0.85, 1.0]
                     };
-                    self.instances.push(astraweave_render::Instance {
-                        transform: m,
+                    let (_, rot, pos) = m.to_scale_rotation_translation();
+                    let scale = self.piece_half.get(&id).copied().unwrap_or(Vec3::ONE);
+                    self.instances.push(Instance {
+                        transform: Mat4::from_scale_rotation_translation(scale, rot, pos),
                         color,
-                        material_id: 0, // Added material_id
+                        material_id: 0,
                     });
                 }
             }
@@ -302,7 +379,7 @@ impl ApplicationHandler for PhysicsApp {
 
 fn main() -> anyhow::Result<()> {
     let event_loop = EventLoop::new()?;
-    let mut app = PhysicsApp::new();
+    let mut app = PhysicsApp::new()?;
     event_loop.run_app(&mut app)?;
     Ok(())
 }
