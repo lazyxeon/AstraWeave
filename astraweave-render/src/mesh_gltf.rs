@@ -1,7 +1,7 @@
 use crate::mesh::CpuMesh;
 #[cfg(feature = "gltf-assets")]
 use crate::mesh::{compute_tangents, CpuImage, MeshVertex};
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Context, Result};
 
 pub struct GltfOptions {
     pub generate_tangents: bool,
@@ -44,10 +44,113 @@ fn reject_escaping_gltf_uris(path: &std::path::Path) -> Result<()> {
 }
 
 #[cfg(feature = "gltf-assets")]
+fn dynamic_to_gltf_image(image: image::DynamicImage) -> gltf::image::Data {
+    let width = image.width();
+    let height = image.height();
+    let le = |values: &[u8]| values.to_vec();
+    let (pixels, format) = match &image {
+        image::DynamicImage::ImageLuma8(img) => (le(img.as_raw()), gltf::image::Format::R8),
+        image::DynamicImage::ImageLumaA8(img) => (le(img.as_raw()), gltf::image::Format::R8G8),
+        image::DynamicImage::ImageRgb8(img) => (le(img.as_raw()), gltf::image::Format::R8G8B8),
+        image::DynamicImage::ImageRgba8(img) => (le(img.as_raw()), gltf::image::Format::R8G8B8A8),
+        image::DynamicImage::ImageLuma16(img) => (
+            bytemuck::cast_slice(img.as_raw()).to_vec(),
+            gltf::image::Format::R16,
+        ),
+        image::DynamicImage::ImageLumaA16(img) => (
+            bytemuck::cast_slice(img.as_raw()).to_vec(),
+            gltf::image::Format::R16G16,
+        ),
+        image::DynamicImage::ImageRgb16(img) => (
+            bytemuck::cast_slice(img.as_raw()).to_vec(),
+            gltf::image::Format::R16G16B16,
+        ),
+        image::DynamicImage::ImageRgba16(img) => (
+            bytemuck::cast_slice(img.as_raw()).to_vec(),
+            gltf::image::Format::R16G16B16A16,
+        ),
+        image::DynamicImage::ImageRgb32F(img) => (
+            bytemuck::cast_slice(img.as_raw()).to_vec(),
+            gltf::image::Format::R32G32B32FLOAT,
+        ),
+        image::DynamicImage::ImageRgba32F(img) => (
+            bytemuck::cast_slice(img.as_raw()).to_vec(),
+            gltf::image::Format::R32G32B32A32FLOAT,
+        ),
+        _ => (
+            image.clone().to_rgba8().into_raw(),
+            gltf::image::Format::R8G8B8A8,
+        ),
+    };
+    gltf::image::Data {
+        pixels,
+        format,
+        width,
+        height,
+    }
+}
+
+#[cfg(feature = "gltf-assets")]
+fn load_capped_gltf_images(
+    document: &gltf::Document,
+    base: &std::path::Path,
+    buffers: &[gltf::buffer::Data],
+) -> Result<Vec<gltf::image::Data>> {
+    let cap = astraweave_asset::image_limits::MAX_IMAGE_ALLOC;
+    let mut images = Vec::new();
+    for image in document.images() {
+        let bytes = match image.source() {
+            gltf::image::Source::Uri { uri, .. }
+                if uri
+                    .split_once(':')
+                    .is_some_and(|(scheme, _)| scheme.eq_ignore_ascii_case("data")) =>
+            {
+                astraweave_asset::read_capped_data_image(uri)?
+            }
+            gltf::image::Source::Uri { uri, .. } => {
+                jail_gltf_uri(base, uri)?;
+                let path_part = uri.split('?').next().unwrap_or(uri);
+                let path = base.join(path_part);
+                astraweave_asset::read_limited_image_bytes(&path)
+                    .with_context(|| format!("read glTF image {}", path.display()))?
+            }
+            gltf::image::Source::View { view, .. } => {
+                let length = view.length() as u64;
+                if length > cap {
+                    anyhow::bail!("glTF image view is {length} bytes, cap is {cap}");
+                }
+                let parent = buffers
+                    .get(view.buffer().index())
+                    .ok_or_else(|| anyhow!("missing glTF buffer {}", view.buffer().index()))?;
+                let begin = view.offset();
+                let end = begin
+                    .checked_add(view.length())
+                    .ok_or_else(|| anyhow!("glTF image view offset overflows"))?;
+                if end > parent.0.len() {
+                    anyhow::bail!("glTF image view exceeds its buffer");
+                }
+                parent.0[begin..end].to_vec()
+            }
+        };
+        let decoded =
+            astraweave_asset::decode_limited_image(&bytes).context("decode glTF image")?;
+        images.push(dynamic_to_gltf_image(decoded));
+    }
+    Ok(images)
+}
+
+#[cfg(feature = "gltf-assets")]
 pub fn load_gltf(path: &std::path::Path, opts: &GltfOptions) -> Result<Vec<CpuMesh>> {
     use gltf::mesh::util::ReadIndices;
     reject_escaping_gltf_uris(path)?;
-    let (doc, buffers, images) = gltf::import(path)?;
+    let base = path.parent().unwrap_or_else(|| std::path::Path::new("."));
+    let gltf::Gltf {
+        document: doc,
+        blob,
+    } = gltf::Gltf::open(path).map_err(|err| anyhow!("open glTF: {err}"))?;
+    let buffers = gltf::import_buffers(&doc, Some(base), blob)
+        .map_err(|err| anyhow!("import glTF buffers: {err}"))?;
+    let images = load_capped_gltf_images(&doc, base, &buffers)?;
     let mut meshes_out = Vec::new();
     for mesh in doc.meshes() {
         for prim in mesh.primitives() {
@@ -602,5 +705,30 @@ mod tests {
         assert!(meshes[0].normal_image.is_none());
         assert!(meshes[0].metallic_roughness_image.is_none());
         assert!(meshes[0].occlusion_image.is_none());
+    }
+
+    #[test]
+    fn load_gltf_rejects_an_oversized_data_image_before_decode() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("huge.gltf");
+        let payload_len = (astraweave_asset::image_limits::MAX_IMAGE_ALLOC as usize * 4 / 3) + 8;
+        let mut doc = String::from(
+            r#"{"asset":{"version":"2.0"},"images":[{"uri":"data:application/octet-stream;base64,"#,
+        );
+        doc.extend(std::iter::repeat('A').take(payload_len));
+        doc.push_str(r#""}]}"#);
+        std::fs::write(&path, doc).expect("write gltf");
+        let err = load_gltf(
+            &path,
+            &GltfOptions {
+                generate_tangents: false,
+            },
+        )
+        .expect_err("oversized data image");
+        let msg = format!("{err:#}");
+        assert!(
+            msg.contains(&astraweave_asset::image_limits::MAX_IMAGE_ALLOC.to_string()),
+            "{msg}"
+        );
     }
 }
