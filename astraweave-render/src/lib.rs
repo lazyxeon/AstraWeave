@@ -94,6 +94,7 @@ pub mod pbr_maps;
 pub mod pipeline_cache; // Disk-backed Vulkan/DX12 pipeline cache (eliminates cold-start stalls)
 pub mod residency;
 pub mod scene_environment;
+pub mod scene_vectors; // Gated scene normal and motion into the aux targets
 pub mod shader_manager; // Shader hot-reload: hash-based change detection + pipeline invalidation
 pub mod shader_permutation; // Compile-time permutation system for Disney BRDF lobes
 pub mod ssgi; // Screen-Space Global Illumination with temporal denoise
