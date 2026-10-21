@@ -1143,38 +1143,58 @@ scripts = ["scripts/tick.rhai"]
 
     #[test]
     fn failed_script_keeps_an_earlier_ok_for_the_same_agent() {
-        let mut app = App::new().add_plugin(ModScriptPlugin);
-        app.world.insert_resource(ModClock::new(0xA11C));
-        app.world.insert_resource(ModPrograms {
-            scripts: vec![
-                ModScriptSource::new(
-                    "demo.mod",
-                    "scripts/a.rhai",
-                    "weaves.queue_weave(1, 0, 0, 0);",
-                ),
-                ModScriptSource::new(
-                    "demo.mod",
-                    "scripts/b.rhai",
-                    "weaves.queue_weave(1, 3000, 0, 0);",
-                ),
-            ],
-        });
-        let entity = app.world.spawn();
-        app.world.insert(entity, CModAgent { x: 0, y: 0 });
-        mod_script_system(&mut app.world);
-        let scratch = app.world.get_resource::<WeaveScratch>().unwrap();
-        assert_eq!(scratch.command_count(), 1);
-        let command = scratch.command(0).unwrap();
-        assert_eq!(command.template, 1);
-        assert_eq!(command.origin, [0, 0, 0]);
-        let errors = app.world.get_resource::<ModScriptErrors>().unwrap();
-        assert!(
-            errors
+        fn once() -> (Vec<(u16, [i32; 3])>, Vec<String>) {
+            let mut app = App::new().add_plugin(ModScriptPlugin);
+            app.world.insert_resource(ModClock::new(0xA11C));
+            app.world.insert_resource(ModPrograms {
+                scripts: vec![
+                    ModScriptSource::new(
+                        "demo.mod",
+                        "scripts/a.rhai",
+                        "weaves.queue_weave(1, 0, 0, 0);",
+                    ),
+                    ModScriptSource::new(
+                        "demo.mod",
+                        "scripts/b.rhai",
+                        "weaves.queue_weave(1, 3000, 0, 0);",
+                    ),
+                    ModScriptSource::new(
+                        "demo.mod",
+                        "scripts/c.rhai",
+                        "weaves.queue_weave(1, 2, 0, 0);",
+                    ),
+                ],
+            });
+            let entity = app.world.spawn();
+            app.world.insert(entity, CModAgent { x: 0, y: 0 });
+            mod_script_system(&mut app.world);
+            let scratch = app.world.get_resource::<WeaveScratch>().unwrap();
+            let queued = (0..scratch.command_count())
+                .map(|index| {
+                    let command = scratch.command(index).unwrap();
+                    (command.template, command.origin)
+                })
+                .collect();
+            let errors = app
+                .world
+                .get_resource::<ModScriptErrors>()
+                .unwrap()
                 .messages
-                .iter()
-                .any(|message| message.contains("outside the island")),
+                .clone();
+            (queued, errors)
+        }
+
+        let first = once();
+        let second = once();
+        assert_eq!(first.0, second.0);
+        assert_eq!(first.1, second.1);
+        assert_eq!(first.0, vec![(1, [0, 0, 0]), (1, [2, 0, 0])]);
+        assert!(
+            first.1.iter().any(|message| {
+                message.contains("scripts/b.rhai:") && message.contains("outside the island")
+            }),
             "{:?}",
-            errors.messages
+            first.1
         );
     }
 

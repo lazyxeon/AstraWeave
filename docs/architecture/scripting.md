@@ -231,8 +231,8 @@ Each mod script is compiled on the tick it runs. The replay case is 32 ticks of 
 
 | Version | Date | Notes |
 |---|---|---|
-| 1.7 | 2026-10-21 | A failed `run_one` drops that call only. An earlier script for the same agent stays applied. Section 10 says nineteen replay cases. `failed_script_keeps_an_earlier_ok_for_the_same_agent` locks the two-script case. |
-| 1.6 | 2026-10-21 | A failed `run_one` drops only that agent's casts. An earlier `Ok` run stays applied. Verified at `49d289eb`. |
+| 1.7 | 2026-10-21 | A failed `run_one` drops that call only. An earlier script for the same agent stays applied, and a later success still lands. `failed_script_keeps_an_earlier_ok_for_the_same_agent` queues `a`, then a failing `b`, then `c`, and compares two runs. Section 10 says nineteen replay cases. |
+| 1.6 | 2026-10-21 | Withdrawn in 1.7. It said a failed run drops only that agent's casts and marked that wording verified at `49d289eb`. The host does not roll back an earlier `Ok` for the same agent. |
 | 1.5 | 2026-10-21 | Script `queue_weave` rejects an origin outside ±2048 before storing the cast. `queue_weave_edges_fail_closed` covers ids, the island, the 64 cap, and replay equality. |
 | 1.0 | 2026-10-14 | WS-MOD. Sandbox, mod loader, tick-boundary reload, `scripted_system` hash. |
 | 1.1 | 2026-10-14 | `build_app` installs `ModScriptPlugin` via `register_mod_runtime`. Editor, game runtime, and `hello_companion` call it. |
