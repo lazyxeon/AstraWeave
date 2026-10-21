@@ -11,6 +11,9 @@ use glam::{Mat4, Vec3};
 use crate::freefly::FreeFly;
 use crate::{CameraProducer, Projection, RenderView};
 
+/// Far plane of the Aravath third-person camera. The heavy-scene budget uses it.
+pub const GAME_ZFAR: f32 = 500.0;
+
 /// Follow camera orbiting a pivot (usually the character center).
 pub struct ThirdPersonCamera {
     pub pivot: Vec3,
@@ -34,7 +37,7 @@ impl ThirdPersonCamera {
             fovy: 60_f32.to_radians(),
             aspect: 16.0 / 9.0,
             znear: 0.1,
-            zfar: 500.0,
+            zfar: GAME_ZFAR,
         }
     }
 

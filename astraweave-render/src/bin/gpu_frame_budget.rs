@@ -976,7 +976,7 @@ fn fixed_camera() -> RenderView {
         60_f32.to_radians(),
         WIDTH as f32 / HEIGHT as f32,
         0.1,
-        200.0,
+        astraweave_camera::GAME_ZFAR,
     );
     RenderView::new(
         view,

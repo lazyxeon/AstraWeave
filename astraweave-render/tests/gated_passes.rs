@@ -276,15 +276,20 @@ fn atmosphere_sky_differs_from_geometry_and_aerial_tints_distance() {
             "aerial perspective did not change the far quad: on {far:?} off {far_off:?} sky {sky:?}"
         );
 
-        // Aim the sun at the empty sky pixel so shafts have a source there.
-        renderer.set_light_direction_override(glam::Vec3::new(-0.9, 0.0, 0.4), 1.0);
+        // Sun in the upper-right, not on the horizon. A mirrored screen y
+        // puts that sun and the dense height fog on the lower row instead.
+        renderer.set_light_direction_override(glam::Vec3::new(-0.55, -0.72, 0.42), 1.0);
         renderer.update_view(&astraweave_camera::RenderView::new(
             view,
             &projection,
             eye,
             (target - eye).normalize(),
         ));
-        let sky_only = sample(&draw_and_read(&mut renderer, true), WIDTH, 60, 32);
+        const UPPER: (u32, u32) = (56, 6);
+        const LOWER: (u32, u32) = (56, 58);
+        let frame_only = draw_and_read(&mut renderer, true);
+        let up_only = sample(&frame_only, WIDTH, UPPER.0, UPPER.1);
+        let lo_only = sample(&frame_only, WIDTH, LOWER.0, LOWER.1);
         renderer.set_volumetric_fog_config(
             astraweave_render::volumetric_fog::VolumetricFogPass::gameplay_config(),
         );
@@ -292,7 +297,9 @@ fn atmosphere_sky_differs_from_geometry_and_aerial_tints_distance() {
             renderer.volumetric_fog_enabled(),
             "fog pipeline did not build"
         );
-        let sky_fog = sample(&draw_and_read(&mut renderer, true), WIDTH, 60, 32);
+        let frame_fog = draw_and_read(&mut renderer, true);
+        let up_fog = sample(&frame_fog, WIDTH, UPPER.0, UPPER.1);
+        let lo_fog = sample(&frame_fog, WIDTH, LOWER.0, LOWER.1);
         renderer.set_god_ray_config(astraweave_render::GodRayConfig {
             enabled: true,
             half_res: true,
@@ -301,18 +308,28 @@ fn atmosphere_sky_differs_from_geometry_and_aerial_tints_distance() {
             ..astraweave_render::GodRayConfig::default()
         });
         assert!(renderer.god_rays_enabled(), "shaft pipeline did not build");
-        let sky_both = sample(&draw_and_read(&mut renderer, true), WIDTH, 60, 32);
+        let frame_both = draw_and_read(&mut renderer, true);
+        let up_both = sample(&frame_both, WIDTH, UPPER.0, UPPER.1);
+        let lo_both = sample(&frame_both, WIDTH, LOWER.0, LOWER.1);
+        let fog_upper = channel_distance(up_fog, up_only);
+        let fog_lower = channel_distance(lo_fog, lo_only);
         assert!(
-            channel_distance(sky_fog, sky_only) > 8,
-            "fog did not survive on the sky pixel: fog {sky_fog:?} sky {sky_only:?}"
+            fog_lower > fog_upper + 6,
+            "height fog should change the lower view more than the upper sky. \
+             A mirrored y swaps them. upper {fog_upper} {up_only:?}->{up_fog:?} \
+             lower {fog_lower} {lo_only:?}->{lo_fog:?}"
+        );
+        let shaft_upper = channel_distance(up_both, up_fog);
+        let shaft_lower = channel_distance(lo_both, lo_fog);
+        assert!(
+            shaft_upper > shaft_lower + 4,
+            "shafts should land on the upper sun, not the mirrored lower row. \
+             upper {shaft_upper} {up_fog:?}->{up_both:?} \
+             lower {shaft_lower} {lo_fog:?}->{lo_both:?}"
         );
         assert!(
-            channel_distance(sky_both, sky_fog) > 5,
-            "shafts did not survive on the sky pixel: both {sky_both:?} fog {sky_fog:?}"
-        );
-        assert!(
-            channel_distance(sky_both, magenta) > 40,
-            "fogged sky {sky_both:?} is the debug magenta clear {magenta:?}"
+            channel_distance(up_both, magenta) > 40,
+            "upper sky {up_both:?} is the debug magenta clear {magenta:?}"
         );
     });
 }

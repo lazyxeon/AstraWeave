@@ -61,7 +61,7 @@ fn froxel_to_world(froxel: vec3<u32>) -> vec3<f32> {
     let z_near = params.near_plane;
     let z_far = params.far_plane;
     let depth = z_near * pow(z_far / z_near, uvw.z);
-    let ndc_xy = screen_uv * 2.0 - 1.0;
+    let ndc_xy = screen_uv_to_ndc(screen_uv);
     let ndc_z = (z_far * (depth - z_near)) / (depth * (z_far - z_near));
     let clip = vec4<f32>(ndc_xy, ndc_z, 1.0);
     let world_h = params.inv_view_proj * clip;

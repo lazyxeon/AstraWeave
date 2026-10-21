@@ -124,7 +124,7 @@ fn froxel_to_world(froxel: vec3<u32>) -> vec3<f32> {
     let depth = z_near * pow(z_far / z_near, linear_t);
 
     // Unproject screen UV + depth to world space
-    let ndc_xy = screen_uv * 2.0 - 1.0;
+    let ndc_xy = screen_uv_to_ndc(screen_uv);
     // Convert linear depth to NDC depth (reverse-Z or standard)
     let ndc_z = (z_far * (depth - z_near)) / (depth * (z_far - z_near));
 
