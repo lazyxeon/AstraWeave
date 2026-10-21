@@ -5576,8 +5576,9 @@ fn vs(input: VSIn) -> VSOut {
         self.atmosphere_on = enabled;
     }
 
-    /// Bruneton sky plus aerial perspective. Off until a GTX 1660 Ti
-    /// heavy-scene `median_gpu_frame_ms` with `--atmosphere` is at or under 11.
+    /// Bruneton sky plus aerial perspective. Off until
+    /// `gpu_frame_budget --scene heavy --atmosphere` prints
+    /// `median_gpu_frame_ms` at or under 11 on a GTX 1660 Ti.
     #[must_use]
     pub fn atmosphere_enabled(&self) -> bool {
         self.atmosphere_on
@@ -5651,12 +5652,24 @@ fn vs(input: VSIn) -> VSOut {
         let queue = self.queue.clone();
         let width = self.config.width.max(1);
         let height = self.config.height.max(1);
-        let inv = self.cached_proj * self.cached_view;
+        let view_proj = self.cached_proj * self.cached_view;
+        let inv = view_proj.inverse();
         let eye = glam::Vec3::new(
             self.camera_ubo.camera_pos_pad[0],
             self.camera_ubo.camera_pos_pad[1],
             self.camera_ubo.camera_pos_pad[2],
         );
+        let light = glam::Vec3::new(
+            self.camera_ubo.light_dir_pad[0],
+            self.camera_ubo.light_dir_pad[1],
+            self.camera_ubo.light_dir_pad[2],
+        );
+        let toward_sun = if light.length_squared() > 1e-6 {
+            -light.normalize()
+        } else {
+            glam::Vec3::Y
+        };
+        let (near, far) = clip_planes(self.cached_proj);
 
         if self.atmosphere_on {
             if self.atmosphere.is_none() {
@@ -5668,15 +5681,7 @@ fn vs(input: VSIn) -> VSOut {
                 ));
             }
             if let Some(pass) = self.atmosphere.as_mut() {
-                pass.prepare_frame(
-                    &queue,
-                    inv,
-                    eye,
-                    glam::Vec3::Y,
-                    glam::Vec3::NEG_Y,
-                    0.1,
-                    200.0,
-                );
+                pass.prepare_frame(&queue, inv, eye, toward_sun, -toward_sun, near, far);
                 pass.execute(&device, enc, &hdr, depth, gen);
                 enc.copy_texture_to_texture(
                     pass.aerial_texture().as_image_copy(),
@@ -7673,8 +7678,37 @@ fn vs(input: VSIn) -> VSOut {
             .as_ref()
             .and_then(|resources| resources.hdr_equirect.clone());
 
-        // Bruneton is a sky mode, not a second layer on the HDRI sky.
-        if !self.atmosphere_on {
+        // Bruneton replaces the HDRI sky. The sky pass is also the clear of
+        // HDR and of scene depth, so that clear still has to run.
+        if self.atmosphere_on {
+            self.close_timing_gap(enc);
+            let sky_stamp = self.begin_named_stamp(enc, "sky");
+            {
+                let _clear = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
+                    label: Some("atmosphere depth and hdr clear"),
+                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                        view: &self.hdr_view,
+                        resolve_target: None,
+                        ops: wgpu::Operations {
+                            load: wgpu::LoadOp::Clear(crate::environment::hdri_sky_clear_color()),
+                            store: wgpu::StoreOp::Store,
+                        },
+                    })],
+                    depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                        view: depth_view.unwrap_or(&self.depth.view),
+                        depth_ops: Some(wgpu::Operations {
+                            load: wgpu::LoadOp::Clear(1.0),
+                            store: wgpu::StoreOp::Store,
+                        }),
+                        stencil_ops: None,
+                    }),
+                    timestamp_writes: None,
+                    occlusion_query_set: None,
+                });
+            }
+            self.end_named_stamp(enc, sky_stamp);
+            self.open_timing_gap(enc, "after_sky");
+        } else {
             self.close_timing_gap(enc);
             let sky_stamp = self.begin_named_stamp(enc, "sky");
             let sky_result = self.sky.render(
