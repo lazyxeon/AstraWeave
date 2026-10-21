@@ -6,11 +6,8 @@
 //! ```text
 //! cargo run -p astraweave-render --release --features gpu-frame-budget --bin gpu_frame_budget -- --scene heavy --debug-timestamps --glb "assets/The Complete KayKit Collection v4/KayKit Adventurers 2.0/Characters/gltf/Rogue.glb"
 //!
-//! `--atmosphere` is the only gated flag that fills a cell. It replaces
-//! `SkyRenderer`. The printed `median_gpu_frame_ms` is that whole frame, not
-//! a term to add to 3.688 ms. `--ssgi`, `--taa`, `--upscale`, `--dof`, and
-//! `--clouds` are rejected: those passes sample or load uncleared textures,
-//! or they do not write HDR. Two flags at once are rejected.
+//! Every gated flag is rejected, including `--atmosphere`. The printed
+//! `median_gpu_frame_ms` is the baseline frame. No gated cell is filled here.
 //! ```
 
 use anyhow::Context;
@@ -37,6 +34,7 @@ const SAMPLES: usize = 120;
 
 fn main() -> anyhow::Result<()> {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("warn")).init();
+    reject_gated_flags()?;
     let glb = glb_path();
     let heavy = scene_is_heavy();
     let debug_timestamps = debug_timestamps();
@@ -148,22 +146,13 @@ fn main() -> anyhow::Result<()> {
     add_heavy_terrain(&mut renderer)?;
     renderer.set_particle_emitter(Some(emitter()))?;
     // Cloud shadows stay at the renderer default (on). That is
-    // `CloudShadowPass`, not `VolumetricCloudsPass`. Volumetric fog and god
-    // rays are not called. Each gated flag below is off unless this process
-    // was given that one argument. GPU indirect culling is not the draw path
-    // on any adapter: each model still binds its own group 3, so one indirect
-    // buffer cannot select those groups. The CPU frustum remains the filter.
-    let atmosphere = single_gated_pass()?;
-    renderer.set_atmosphere_enabled(atmosphere);
-    println!("gated_atmosphere={}", on_off(atmosphere));
-    println!(
-        "gated_measure={}",
-        if atmosphere {
-            "atmosphere_replaces_sky"
-        } else {
-            "baseline"
-        }
-    );
+    // `CloudShadowPass`, not `VolumetricCloudsPass`. Volumetric fog, god
+    // rays, and every gated presentation pass stay off. GPU indirect culling
+    // is not the draw path on any adapter: each model still binds its own
+    // group 3, so one indirect buffer cannot select those groups. The CPU
+    // frustum remains the filter.
+    println!("gated_atmosphere=off");
+    println!("gated_measure=baseline");
     let gpu_cull = "cpu_fallback";
 
     let device = renderer.device().clone();
@@ -790,9 +779,13 @@ fn flag_on(name: &str) -> bool {
     std::env::args().any(|arg| arg == name || arg == format!("{name}=true"))
 }
 
-/// At most one gated pass. Only `--atmosphere` is a clean frame today.
-fn single_gated_pass() -> anyhow::Result<bool> {
+/// Scaffolding only. No gated flag draws a frame, so no cell can be filled.
+fn reject_gated_flags() -> anyhow::Result<()> {
     const BLOCKED: &[(&str, &str)] = &[
+        (
+            "--atmosphere",
+            "enabling it skips the HDR and depth clear, so the heavy scene does not land",
+        ),
         (
             "--ssgi",
             "normal and velocity targets are allocated and never written",
@@ -814,30 +807,18 @@ fn single_gated_pass() -> anyhow::Result<bool> {
             "the raymarch samples cloud_history before writing it, and the composite is not copied onto HDR",
         ),
     ];
-    let mut chosen = Vec::new();
-    if flag_on("--atmosphere") {
-        chosen.push("--atmosphere");
+    let hits: Vec<String> = BLOCKED
+        .iter()
+        .filter(|(flag, _)| flag_on(flag))
+        .map(|(flag, why)| format!("{flag} ({why})"))
+        .collect();
+    if hits.is_empty() {
+        return Ok(());
     }
-    for (flag, why) in BLOCKED {
-        if flag_on(flag) {
-            anyhow::bail!("{flag} cannot fill a measurement cell: {why}");
-        }
-    }
-    if chosen.len() > 1 {
-        anyhow::bail!(
-            "pass exactly one gated flag. A sum of passes is not a cell. Got {}.",
-            chosen.join(" ")
-        );
-    }
-    Ok(chosen.len() == 1)
-}
-
-fn on_off(enabled: bool) -> &'static str {
-    if enabled {
-        "on"
-    } else {
-        "off"
-    }
+    anyhow::bail!(
+        "gated flags cannot fill a measurement cell: {}",
+        hits.join("; ")
+    )
 }
 
 fn debug_timestamps() -> bool {

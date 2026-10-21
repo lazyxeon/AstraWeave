@@ -16,23 +16,21 @@ The same heavy scene was 11.085 ms before the cloud-shadow amortization and 3.68
 
 ## Measured column
 
-A cell is filled only by a GTX 1660 Ti heavy-scene run whose validation scope is clean and whose command line enables exactly one gated pass. `gpu_frame_budget` rejects a second flag. It also rejects `--ssgi`, `--taa`, `--upscale`, `--dof`, and `--clouds` before drawing: those paths sample or `LoadOp::Load` an uncleared texture, or they never write HDR, so the scope fails and no median is printed.
-
-`--atmosphere` is the one flag that can finish. It replaces `SkyRenderer` (the HDRI sky clear and draw). The printed `median_gpu_frame_ms` is that whole frame. It is not a number to add to 3.688 ms.
+A cell is filled only by a GTX 1660 Ti heavy-scene run whose validation scope is clean and whose command line enables exactly one gated pass. This binary rejects every gated flag before it builds the scene, including `--atmosphere`, `--ssgi`, `--taa`, `--upscale`, `--dof`, and `--clouds`. Every gated cell stays blank. Every gated default stays off.
 
 | System | Flag | `median_gpu_frame_ms` on GTX 1660 Ti heavy | Default |
 |---|---|---|---|
 | Baseline (HDRI sky, no gated pass) | none | 3.688 | The captured scene |
-| Atmosphere, replacing `SkyRenderer` | `--atmosphere` | | Off until this cell is ≤ 11 |
+| Atmosphere, replacing `SkyRenderer` | `--atmosphere` | | Off. This binary rejects the flag. |
 
-Fog and god rays are already on in Aravath (`set_volumetric_fog_config`, `set_god_ray_config`, unless `aravath.cfg` contains `volumetrics=off`, or the process is started with `--no-volumetrics` or `--safe`). They are not in the 3.688 ms capture. Their heavy-scene medians are also blank. Do not add them into an unmeasured sum.
+Fog and god rays are already on in Aravath. `parse_volumetrics_cfg` strips spaces and a `#` comment, then matches the whole remainder to `volumetrics=off` or `volumetrics=on`. The last matching line wins. A missing file stays on. A read or parse error stops startup. `launch_options` applies the file first. `--no-volumetrics` and `--safe` force off. `--volumetrics` forces on, including over a cfg-off file. They are not in the 3.688 ms capture. Their heavy-scene medians are also blank. Do not add them into an unmeasured sum.
 
 ## Already on a runtime caller
 
 | System | State | Owner | Default |
 |---|---|---|---|
-| Volumetric fog (`VolumetricFogPass`) | `aravath_runtime` calls `set_volumetric_fog_config` with `gameplay_config` unless `aravath.cfg` contains `volumetrics=off`, or the process is started with `--no-volumetrics` or `--safe`. | `astraweave-render`, `aravath_runtime` | On in the game. Issue #227. Heavy-scene median is unmeasured. |
-| God rays (`GodRayPass`) | `aravath_runtime` calls `set_god_ray_config` (half resolution, 32 samples) on that same path, including the `aravath.cfg` switch. | `astraweave-render`, `aravath_runtime` | On in the game. Issue #228. Heavy-scene median is unmeasured. |
+| Volumetric fog (`VolumetricFogPass`) | `aravath_runtime` calls `set_volumetric_fog_config` with `gameplay_config` unless the last `aravath.cfg` line is `volumetrics=off`, or the process is started with `--no-volumetrics` or `--safe`. `--volumetrics` forces the pass on. | `astraweave-render`, `aravath_runtime` | On in the game. Issue #227. Heavy-scene median is unmeasured. |
+| God rays (`GodRayPass`) | `aravath_runtime` calls `set_god_ray_config` (half resolution, 32 samples) on that same path. | `astraweave-render`, `aravath_runtime` | On in the game. Issue #228. Heavy-scene median is unmeasured. |
 | Cloud shadows | `CloudShadowPass` is built in `Renderer::new`. The 3.688 ms capture includes it at 0.323 ms. | `astraweave-render` | On. This is not `VolumetricCloudsPass`. |
 
 ## Prerequisite before SSGI and TAA
@@ -41,7 +39,7 @@ Fog and god rays are already on in Aravath (`set_volumetric_fog_config`, `set_go
 
 | Order | System | Current state | Wiring plan | Owner crate | Exit test |
 |---|---|---|---|---|---|
-| 0 | Scene normal and velocity | Empty `Rgba16Float` and `Rg16Float` targets. No draw call stores a normal or a motion vector into them. | A presentation pass writes both before SSGI or TAA sample them. Quality default off. | `astraweave-render` | With the pass enabled, a headless frame's normal and velocity textures are not the cleared value. With it disabled, SSGI and TAA stay off. Replay hashes unchanged. |
+| 0 | Scene normal and velocity | Uninitialized `Rgba16Float` and `Rg16Float` targets. Nothing clears them. No draw call stores a normal or a motion vector. | A presentation pass clears both, draws them, and only then may SSGI or TAA sample them. Quality default off. | `astraweave-render` | With the pass enabled, a headless frame's normal and velocity textures hold the drawn values. With it disabled, SSGI and TAA stay off. Replay hashes unchanged. |
 
 ## Wire next, one PR each
 
@@ -49,7 +47,7 @@ Defaults stay off. A later pull flips a default only after the measured cell abo
 
 | Order | System | Issue | Current state | Wiring plan | Owner crate | Exit test |
 |---|---|---|---|---|---|---|
-| 1 | Atmosphere (`AtmospherePass`) | #226 | Flag defaults false. No runtime caller. Aerial depth is `texture_depth_2d` and the shader uses `textureLoad`. Sky-depth pixels copy the scene color while the HDRI sky is skipped, so the Bruneton sky does not reach the frame. | Sky-depth pixels load the Bruneton sky. Aravath calls `set_atmosphere_enabled` from a quality setting whose default is off. | `astraweave-render`, `aravath_runtime` | Default flag false. The quality setting can turn it on. `gpu_frame_budget --scene heavy --atmosphere` is the measurement, not an estimate. Replay hashes unchanged. |
+| 1 | Atmosphere (`AtmospherePass`) | #226 | Flag defaults false. No runtime caller. This binary rejects `--atmosphere`. Enabling the flag on the current renderer skips the HDR and depth clear, and sky-depth pixels do not sample the Bruneton sky. | The atmosphere pull owns the clear, the sky sample, Aravath's fog and god-ray path, and one scatter. Default stays off until that pull's measured cell is ≤ 11. | `astraweave-render`, `aravath_runtime` | This inventory does not enable the flag. Replay hashes unchanged. |
 | 2 | Depth of field | #232 | `set_dof_enabled` defaults false. Live shader is `advanced_post.rs` `DOF_SHADER`: `texture_depth_2d`, center sample plus 8 offsets (9 taps). `apply_dof` uses `LoadOp::Load` on a history texture `AdvancedPostFx::new` never clears, and the fragment result stays in that history view. The post pass still reads HDR. `shaders/dof.wgsl` is a different 16-tap `texture_2d<f32>` shader and is not this pass. | Clear or discard the history target on the first frame and make the post pass read the 9-tap output. Then add `--dof`. Not before. | `astraweave-render` | A clean validation scope and a median that includes the 9-tap image. Default stays off until that cell is ≤ 11. |
 | 3 | Cloud raymarch (`VolumetricCloudsPass`) | #229 | `execute` samples `cloud_history` and writes `composited_texture`. `copy_cloud_to_history` runs after the sample. `record_gated_presentation` does not copy the composite onto HDR. | Write history before the sample, and copy the composite onto HDR. Then add `--clouds`. Not the 7.397 ms shadow delta. | `astraweave-render` | A clean scope and a median of a frame that shows the composite. Default stays off until that cell is ≤ 11. |
 | 4 | SSGI | #230 | `set_ssgi_enabled` defaults false. Depth is `texture_depth_2d`. Normal, velocity, and `ssgi_history` are not written. `copy_to_history` is not called. | After the normal and velocity row, and after history is written before it is sampled. | `astraweave-render` | No `--ssgi` cell until then. |
@@ -60,7 +58,7 @@ Defaults stay off. A later pull flips a default only after the measured cell abo
 
 | System | Issue | What is in the tree | Why it is not a wiring target |
 |---|---|---|---|
-| `SkyPassNode` | #234 | `frame_graph.rs`. `run` returns `Ok(())`. | Live sky is `SkyRenderer`, or `AtmospherePass` when that flag is on. |
+| `SkyPassNode` | #234 | `frame_graph.rs`. `run` returns `Ok(())`. | Live sky is `SkyRenderer`. `AtmospherePass` is not a second sky on screen. |
 | `weather_system.rs` | #236 | Still compiled. Tests construct `WeatherTransition`. | Live weather is `effects::WeatherFx` and `SceneEnvironment`. A second weather model is not a feature. |
 | `shadow_csm.rs` | #238 | Still compiled. This is a second cascade map. | Live cascades are `renderer.rs` and `shaders/shadow_common.wgsl`. |
 | `shadow_quality.rs`, `shadow_sampling.wgsl` | #238 | Still compiled. This is the PCSS / Poisson filter and `ShadowParamsGpu`. It is not another cascade atlas. | The live cascade path does not sample this filter. |
@@ -78,7 +76,7 @@ Defaults stay off. A later pull flips a default only after the measured cell abo
 
 ## Order
 
-1. This inventory. `gpu_frame_budget --scene heavy --atmosphere` is the only gated measurement. It replaces `SkyRenderer`. The other gated flags are rejected until their frames are valid.
+1. This inventory. `gpu_frame_budget` rejects every gated flag, including `--atmosphere`. Every gated cell stays blank. Defaults stay off.
 2. Atmosphere caller and quality setting, default off (#226).
 3. Normal and velocity targets, default off.
 4. Depth of field, cloud raymarch, SSGI, TAA, temporal upscale. Each default stays off until its measured cell is ≤ 11 on a GTX 1660 Ti.
