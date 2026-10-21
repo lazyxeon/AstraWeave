@@ -304,8 +304,8 @@ struct VsOut { @builtin(position) pos: vec4<f32>, @location(0) uv: vec2<f32> };
     pub(crate) fn load_ktx2_to_rgba(path: &Path) -> Result<image::RgbaImage> {
         use basis_universal::*;
 
-        let data =
-            std::fs::read(path).with_context(|| format!("read ktx2 file {}", path.display()))?;
+        let data = astraweave_asset::read_limited_image_bytes(path)
+            .with_context(|| format!("read ktx2 file {}", path.display()))?;
 
         let reader = ktx2::Reader::new(&data).context("failed to parse KTX2 header")?;
 
