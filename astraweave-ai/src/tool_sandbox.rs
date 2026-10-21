@@ -607,7 +607,9 @@ mod tests {
             .contains("insufficient ammo"));
     }
 
+    // Attaching a Rapier collider calls libm's x86 sqrtss. Miri does not execute that asm.
     #[test]
+    #[cfg(not(miri))]
     fn validate_move_to_physics_blocked() {
         // Create a minimal physics world with a collider at the target position
         let mut rigid_body_set = RigidBodySet::new();

@@ -134,8 +134,14 @@ pub fn normalize_simd(v: Vec3) -> Vec3 {
 
     #[cfg(not(all(target_arch = "x86_64", target_feature = "sse2")))]
     {
-        // Fallback to glam
-        v.normalize_or_zero()
+        // Same near-zero guard as the SSE2 path. glam's normalize_or_zero
+        // uses a different cutoff, so a 1e-9 vector became a unit vector
+        // on Apple Silicon.
+        let len_sq = v.length_squared();
+        if len_sq < 1e-16 {
+            return Vec3::ZERO;
+        }
+        v / len_sq.sqrt()
     }
 }
 

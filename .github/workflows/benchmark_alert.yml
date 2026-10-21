@@ -255,43 +255,32 @@ jobs:
             }
             
             $regressionList = $regressions -join "`n"
-            
-            # Save to file for issue creation
-            @"
-          ## 🚨 Performance Regression Detected
-          
-          Automated benchmark validation found performance regressions in the following benchmarks:
-          
-          $regressionList
-          
-          **Commit**: ${{ github.sha }}
-          **Branch**: ${{ github.ref_name }}
-          **Workflow**: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          
-          ### Action Required
-          
-          1. **Review the regression**: Check the [benchmark results](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
-          2. **Investigate the cause**: Use \`git bisect\` to find the introducing commit
-          3. **Optimize or document**: Either fix the regression or update thresholds with justification
-          4. **Update baselines** (if intentional): Run \`./scripts/check_benchmark_thresholds.ps1 -UpdateBaseline\`
-          
-          ### Benchmark Threshold Policy
-          
-          - **Default max regression**: 50% slower than baseline
-          - **Critical benchmarks**: May have stricter limits
-          - **Baseline updates**: Require review and approval
-          
-          ### Related Documentation
-          
-          - [CI Benchmark Pipeline](../blob/main/CI_BENCHMARK_PIPELINE.md)
-          - [Baseline Metrics](../blob/main/BASELINE_METRICS.md)
-          - [Week 3 Action 11](../blob/main/WEEK_3_ACTION_11_COMPLETE.md)
-          
-          ---
-          
-          *This issue was automatically created by the Benchmark Regression Alerts workflow.*
-          *To disable alerts, update \`.github/workflows/benchmark_alert.yml\`.*
-          "@" | Out-File -FilePath "regression_report.md" -Encoding utf8
+
+            # A here-string terminator must sit at column 0, so this script
+            # writes the report as an array. The indented "@ | Out-File" form
+            # is a ParserError before any threshold is checked.
+            $lines = @(
+              '## Performance Regression Detected'
+              ''
+              'Automated benchmark validation found performance regressions in the following benchmarks:'
+              ''
+              $regressionList
+              ''
+              '**Commit**: ${{ github.sha }}'
+              ('**Branch**: ' + $env:GITHUB_REF_NAME)
+              '**Workflow**: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}'
+              ''
+              '### Action Required'
+              ''
+              '1. Review the regression in the workflow run linked above.'
+              '2. Investigate the cause.'
+              '3. Fix the regression, or update the threshold with a written reason.'
+              ''
+              'Default max regression is 50% slower than baseline.'
+              ''
+              'This issue was created by the Benchmark Regression Alerts workflow.'
+            )
+            Set-Content -Path regression_report.md -Value $lines -Encoding utf8
             
           } else {
             Write-Host "No regressions detected" -ForegroundColor Green

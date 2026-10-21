@@ -31,6 +31,10 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.89.0
 
+      - name: Install Linux build libraries
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y pkg-config libudev-dev
+
       - name: Terrain bit-identity
         run: |
           cargo test -p astraweave-terrain --lib --release --locked -- temperature_golden_value_default_config -- --exact
