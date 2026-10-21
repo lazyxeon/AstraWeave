@@ -9,7 +9,7 @@ lifecycle_status: active
 integration_status: mixed
 summary: "Voxel meshing/biome/noise/scatter/streaming (complements terrain_materials.md). terrain.md"
 owns: [astraweave-terrain]
-doc_version: "1.16"
+doc_version: "1.17"
 last_verified_commit: 85c13ff4
 ---
 
@@ -21,7 +21,7 @@ last_verified_commit: 85c13ff4
 |---|---|
 | **System name** | Terrain System (procedural generation, voxel meshing, biome/noise pipeline, scatter, chunk streaming) |
 | **Primary crates** | `astraweave-terrain` (with reverse dep into `astraweave-gameplay`); consumers in `tools/aw_editor`, `examples/hybrid_voxel_demo`, `astraweave-render` |
-| **Document version** | 1.16 |
+| **Document version** | 1.17 |
 | **Last verified against commit** | `85c13ff4` (v1.16: forest LOD budget is the kept-prop count). Prior `d0452d3e` (v1.13: fifteen required replay cases). v1.14 locks the noise golden tests to the E3 amplitudes (base 100, mountains 480, detail 3, base Fbm, mountains Billow) and moves the halo 0.01 identity to the pre-modulation crop. Prior ED-3 working tree over `aca627436` (v1.7: amplitude Open Question closed); prior `d4c4479d4` (v1.6), prior `03f9d9a2d` (v1.5: T.2d third pass, two new §11 Open Questions), prior `611c8edc7` (v1.3/v1.4: T.2a boreal band + `expect()` retirement), `8232b150b`. Note: v1.4 bumped the front-matter `doc_version` and the revision table only, leaving this row at 1.3 — corrected here. |
 | **Last verified date** | 2026-10-18 (v1.16: `view_ring_lod_keeps_the_forest_under_budget` keeps `total > 400` and `kept < 900`. The 50ms debug wall-clock assert is gone. macOS 1.89 on run 39084152246 measured 50.776916ms, failed that assert, and skipped clippy. Counts were total=2009 kept=727.); 2026-10-16 (v1.15); 2026-07-26 (v1.7) |
 | **Status** | Active. Editor preview is the climate heightmap. Saved ground is the integer seed record. Deformation is a `DestructionCommand` log replayed into `ColumnStream`. The async heightmap loader, clipmap, GPU erosion trait, voxel modifier, and Phase 10 persistence format are removed. `DualContouring` stores one vertex per crossed edge. `aravath_runtime` collides with that mesh. |
@@ -283,7 +283,7 @@ Wiredness verified by workspace grep for non-test/non-example production callers
 | Simple CA erosion (`apply_erosion`) | `chunk.rs:204` | Active (legacy `generate_chunk` path) | Bypassed by the climate path |
 | Droplet erosion (`AdvancedErosionSimulator`) | `advanced_erosion.rs` | Active (climate path) | Both erosion algorithms coexist |
 | Synchronous chunk gen (editor) | `lib.rs` + `terrain_integration.rs` | Active (wired) | What the editor actually uses |
-| Column stream | `column_stream.rs`, `destruction_seam.rs`, `aravath_runtime/src/ground.rs` | Active | One ring. Eviction order is an in-place `(x, z)` merge. Command types and `VoxelDag` come from `astraweave-destruction`. The ring keeps its own occupancy replay because that crate's `Terrain` slot set is four chunks. Island `fill_height_chunk` still writes the demo voxels. |
+| Column stream | `column_stream.rs`, `destruction_seam.rs`, `aravath_runtime/src/ground.rs` | Active | One ring. Eviction order is an in-place `(x, z)` merge. Command types and `VoxelDag` come from `astraweave-destruction`. The ring keeps its own occupancy replay because that crate's `Terrain` slot set is four chunks. Island `fill_height_chunk` still writes the demo voxels. Window props are `column_gen::scatter_chunk`. Their Y is the island surface. |
 | Single-archetype gen | `lib.rs` climate path | Active | A stored mask does not change heights. |
 
 ### Naming collisions
@@ -479,6 +479,7 @@ Wiredness verified by workspace grep for non-test/non-example production callers
 | Version | Date | Change |
 |---|---|---|
 | 1.16 | 2026-10-18 | **Forest LOD budget.** `view_ring_lod_keeps_the_forest_under_budget` still requires `total > 400` and `kept < 900`. The `as_millis() < 50` assert is removed. macOS 1.89 on run 39084152246 measured 50.776916ms (total=2009, kept=727), failed the wall-clock assert, and skipped `Run clippy with toolchain`. Ubuntu and Windows in that run stayed under 50ms. Scatter code and `worldgen_columns` are unchanged. |
+| 1.17 | 2026-10-21 | Greybox window props follow `column_gen::scatter_chunk`. Y stays on the island surface. `fill_height_chunk` still writes the voxels. The replay golden is unchanged. |
 | 1.9 | 2026-10-15 | **Edge-keyed isosurface.** `DualContouring` again stores one vertex per crossed marching-cubes edge (`HashMap<EdgeKey, u32>`, Bourke corner order). A cell-position cache left triangle lookups empty, so the Aravath island collider did not hold the character. `aravath_runtime` is a caller of `generate_mesh` via `Ground::sync_dirty`. Invariant 10. |
 | 1.8 | 2026-10-14 | **WS-D2.** `TerrainSolver::new` requires an explicit `u64` seed. `SystemTime` is gone from the solver and from terrain save headers/filenames (`timestamp` is a sim tick, default 0). `meshing.rs` was not modified. |
 | 1.13 | 2026-10-16 | **Case count on `d0452d3e`.** The compare job requires fifteen names: the thirteen already on main, plus `worldgen_columns` and `deformed_chunk`. `worldgen_hash` appends both rows to `replay-hash.json`. Greybox `ColumnStream` only chooses the loaded ring; `fill_height_chunk` still writes the island voxels, and window props still come from `aravath_runtime`'s local scatter. Checkpoint `ground` must equal `worldgen_record()` when the key is present. |
