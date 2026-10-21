@@ -1266,7 +1266,6 @@ fn light_the_world(renderer: &mut Renderer, volumetrics: bool) {
         startup::line("volumetrics off (--no-volumetrics, --safe, or aravath.cfg)");
         return;
     }
-    renderer.set_atmosphere_enabled(astraweave_render::PresentationQuality::default().atmosphere());
     startup::stage("build volumetrics");
     let built = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         renderer.set_volumetric_fog_config(
@@ -1280,10 +1279,17 @@ fn light_the_world(renderer: &mut Renderer, volumetrics: bool) {
             ..astraweave_render::GodRayConfig::default()
         });
     }));
+    let ready = built.is_ok()
+        && renderer.volumetric_fog_enabled()
+        && renderer.god_rays_enabled()
+        && astraweave_render::PresentationQuality::default().atmosphere();
+    renderer.set_atmosphere_enabled(ready);
     if built.is_err() {
         startup::line(
-            "volumetrics panicked during setup; continuing without fog and light shafts. Relaunch with --no-volumetrics.",
+            "volumetrics panicked during setup; continuing without fog, light shafts, and Bruneton. Relaunch with --no-volumetrics.",
         );
+    } else if !renderer.volumetric_fog_enabled() || !renderer.god_rays_enabled() {
+        startup::line("fog or light shafts did not build; Bruneton left off.");
     } else {
         startup::stage("volumetrics ready");
     }
@@ -1439,14 +1445,6 @@ fn smoke_test(volumetrics: bool) -> anyhow::Result<()> {
         Err(err) => return Err(err),
     };
     startup::stage("headless renderer ready");
-    let quality = astraweave_render::PresentationQuality::default();
-    renderer.set_atmosphere_enabled(quality.atmosphere());
-    if renderer.atmosphere_enabled() != quality.atmosphere() {
-        anyhow::bail!(
-            "atmosphere flag does not follow PresentationQuality. {}",
-            startup::log_locations()
-        );
-    }
     if volumetrics {
         startup::stage("volumetrics on");
         renderer.set_volumetric_fog_config(
@@ -1462,6 +1460,16 @@ fn smoke_test(volumetrics: bool) -> anyhow::Result<()> {
         if !renderer.volumetric_fog_enabled() || !renderer.god_rays_enabled() {
             anyhow::bail!(
                 "volumetrics or light shafts did not stay enabled. {}",
+                startup::log_locations()
+            );
+        }
+        renderer
+            .set_atmosphere_enabled(astraweave_render::PresentationQuality::default().atmosphere());
+        if renderer.atmosphere_enabled()
+            != astraweave_render::PresentationQuality::default().atmosphere()
+        {
+            anyhow::bail!(
+                "atmosphere flag does not follow PresentationQuality. {}",
                 startup::log_locations()
             );
         }

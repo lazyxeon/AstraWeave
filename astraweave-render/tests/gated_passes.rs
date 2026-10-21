@@ -40,7 +40,8 @@ fn atmosphere_follows_the_measured_default() {
     pollster::block_on(async {
         let mut renderer = Renderer::new_headless(64, 64).await.expect("headless");
         let quality = astraweave_render::PresentationQuality::default();
-        assert_eq!(renderer.atmosphere_enabled(), quality.atmosphere());
+        // The constructor stays off. The game turns Bruneton on after fog builds.
+        assert!(!renderer.atmosphere_enabled());
         assert!(quality.atmosphere());
         assert!(!astraweave_render::PresentationQuality::Measured.atmosphere());
         renderer.set_atmosphere_enabled(false);
@@ -54,6 +55,7 @@ fn atmosphere_follows_the_measured_default() {
 fn false_atmosphere_flag_disables_the_default_sky() {
     pollster::block_on(async {
         let mut renderer = Renderer::new_headless(64, 64).await.expect("headless");
+        renderer.set_atmosphere_enabled(true);
         assert!(renderer.atmosphere_enabled());
         assert!(!renderer.volumetric_fog_enabled());
         assert!(!renderer.god_rays_enabled());

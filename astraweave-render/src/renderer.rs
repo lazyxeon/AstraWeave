@@ -3919,7 +3919,9 @@ fn vs(input: VSIn) -> VSOut {
             particle_sort: None,
             particle_emitter: None,
             particle_depth_copy: None,
-            atmosphere_on: PresentationQuality::default().atmosphere(),
+            // Off until a caller has built Aravath fog. Sky-only Bruneton
+            // scatters geometry out to 50 km, which is not the 4.474 ms cell.
+            atmosphere_on: false,
             cloud_raymarch_on: false,
             ssgi_on: false,
             taa_on: false,
