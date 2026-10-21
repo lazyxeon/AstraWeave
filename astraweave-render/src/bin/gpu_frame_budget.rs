@@ -6,9 +6,11 @@
 //! ```text
 //! cargo run -p astraweave-render --release --features gpu-frame-budget --bin gpu_frame_budget -- --scene heavy --debug-timestamps --glb "assets/The Complete KayKit Collection v4/KayKit Adventurers 2.0/Characters/gltf/Rogue.glb"
 //!
-//! An enabled gated flag is rejected, including `--atmosphere`.
-//! `--flag=false` and `--flag false` are off and do not bail. The printed
-//! `median_gpu_frame_ms` is the baseline frame. No gated cell is filled here.
+//! `--atmosphere` is the one gated flag that draws a frame. It replaces
+//! `SkyRenderer`, keeps the HDR and depth clear, and turns on the same fog
+//! and god-ray path Aravath uses. The printed median is that whole frame.
+//! `--atmosphere false` is off. `--ssgi`, `--taa`, `--upscale`, `--dof`,
+//! and `--clouds` are rejected when enabled.
 //! ```
 
 use anyhow::Context;
@@ -35,8 +37,7 @@ const SAMPLES: usize = 120;
 
 fn main() -> anyhow::Result<()> {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("warn")).init();
-    let args: Vec<String> = std::env::args().skip(1).collect();
-    astraweave_render::budget_gate::reject_gated_flags(&args)?;
+    let atmosphere = gated_atmosphere()?;
     let glb = glb_path();
     let heavy = scene_is_heavy();
     let debug_timestamps = debug_timestamps();
@@ -148,13 +149,39 @@ fn main() -> anyhow::Result<()> {
     add_heavy_terrain(&mut renderer)?;
     renderer.set_particle_emitter(Some(emitter()))?;
     // Cloud shadows stay at the renderer default (on). That is
-    // `CloudShadowPass`, not `VolumetricCloudsPass`. Volumetric fog, god
-    // rays, and every gated presentation pass stay off. GPU indirect culling
-    // is not the draw path on any adapter: each model still binds its own
-    // group 3, so one indirect buffer cannot select those groups. The CPU
-    // frustum remains the filter.
-    println!("gated_atmosphere=off");
-    println!("gated_measure=baseline");
+    // `CloudShadowPass`, not `VolumetricCloudsPass`. `--atmosphere` also
+    // turns on Aravath's fog and god rays so the median is that frame.
+    // Aerial then keeps those pixels instead of scattering them again.
+    // GPU indirect culling is not the draw path on any adapter: each model
+    // still binds its own group 3, so one indirect buffer cannot select
+    // those groups. The CPU frustum remains the filter.
+    if atmosphere {
+        {
+            let clock = renderer.time_of_day_mut();
+            clock.current_time = 16.4;
+            clock.time_scale = 0.0;
+        }
+        renderer.set_volumetric_fog_config(
+            astraweave_render::volumetric_fog::VolumetricFogPass::gameplay_config(),
+        );
+        renderer.set_god_ray_config(astraweave_render::GodRayConfig {
+            enabled: true,
+            half_res: true,
+            num_samples: 32,
+            exposure: 0.22,
+            ..astraweave_render::GodRayConfig::default()
+        });
+        renderer.set_atmosphere_enabled(true);
+    }
+    println!("gated_atmosphere={}", if atmosphere { "on" } else { "off" });
+    println!(
+        "gated_measure={}",
+        if atmosphere {
+            "atmosphere_with_aravath_fog"
+        } else {
+            "baseline"
+        }
+    );
     let gpu_cull = "cpu_fallback";
 
     let device = renderer.device().clone();
@@ -775,6 +802,55 @@ fn renderer_limits(limits: &wgpu::Limits) -> [(&'static str, u64); 15] {
             u64::from(limits.max_vertex_attributes),
         ),
     ]
+}
+
+/// `--atmosphere` alone draws the Aravath fog frame with Bruneton sky.
+/// Every other enabled gated flag is rejected, including a second flag beside it.
+/// `false` is off and does not bail.
+fn gated_atmosphere() -> anyhow::Result<bool> {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    let on = |name: &str| astraweave_render::budget_gate::flag_on(&args, name);
+    const BLOCKED: &[(&str, &str)] = &[
+        (
+            "--ssgi",
+            "normal and velocity targets are allocated and never written",
+        ),
+        (
+            "--taa",
+            "normal and velocity targets are allocated and never written",
+        ),
+        (
+            "--upscale",
+            "normal and velocity targets are allocated and never written",
+        ),
+        (
+            "--dof",
+            "the depth-of-field history target is uncleared and the result is not copied onto HDR",
+        ),
+        (
+            "--clouds",
+            "the raymarch samples cloud_history before writing it, and the composite is not copied onto HDR",
+        ),
+    ];
+    let atmosphere = on("--atmosphere");
+    let mut hits: Vec<String> = BLOCKED
+        .iter()
+        .filter(|(flag, _)| on(flag))
+        .map(|(flag, why)| format!("{flag} ({why})"))
+        .collect();
+    if atmosphere && !hits.is_empty() {
+        hits.insert(
+            0,
+            "--atmosphere (a second gated flag is not a cell)".to_string(),
+        );
+    }
+    if hits.is_empty() {
+        return Ok(atmosphere);
+    }
+    anyhow::bail!(
+        "gated flags cannot fill a measurement cell: {}",
+        hits.join("; ")
+    )
 }
 
 fn debug_timestamps() -> bool {

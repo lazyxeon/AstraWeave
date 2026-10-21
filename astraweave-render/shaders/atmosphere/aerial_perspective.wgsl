@@ -112,10 +112,11 @@ fn aerial_perspective_main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let distance_m = length(world_pos - params.view_pos);
     let distance_km = distance_m * 0.001;
 
-    // Clamp integration distance
+    // Clamp integration distance. A max of 0 keeps the scene color: fog and
+    // god rays already scattered this pixel, and a second integral would
+    // scatter it again. Sky pixels returned above.
     let max_dist = min(distance_km, params.max_distance);
 
-    // Short-circuit for very close geometry
     if (max_dist < 0.001) {
         textureStore(t_output, pixel, vec4<f32>(scene_color, 1.0));
         return;

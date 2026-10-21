@@ -4671,6 +4671,9 @@ fn vs(input: VSIn) -> VSOut {
         if let Some(rays) = self.god_rays.as_mut() {
             rays.resize(&self.device, self.config.width, self.config.height);
         }
+        if let Some(atmosphere) = self.atmosphere.as_mut() {
+            atmosphere.resize(&self.device, self.config.width, self.config.height);
+        }
         // W.2b — keep the scene-color snapshot sized to the surface.
         self.water_scene_color = self.device.create_texture(&wgpu::TextureDescriptor {
             label: Some("water scene color"),
@@ -5670,6 +5673,7 @@ fn vs(input: VSIn) -> VSOut {
             glam::Vec3::Y
         };
         let (near, far) = clip_planes(self.cached_proj);
+        let scatter_geometry = !self.volumetric_fog_enabled() && !self.god_rays_enabled();
 
         if self.atmosphere_on {
             if self.atmosphere.is_none() {
@@ -5681,7 +5685,20 @@ fn vs(input: VSIn) -> VSOut {
                 ));
             }
             if let Some(pass) = self.atmosphere.as_mut() {
-                pass.prepare_frame(&queue, inv, eye, toward_sun, -toward_sun, near, far);
+                let (pass_w, pass_h) = pass.dimensions();
+                if pass_w != width || pass_h != height {
+                    pass.resize(&device, width, height);
+                }
+                pass.prepare_frame(
+                    &queue,
+                    inv,
+                    eye,
+                    toward_sun,
+                    -toward_sun,
+                    near,
+                    far,
+                    scatter_geometry,
+                );
                 pass.execute(&device, enc, &hdr, depth, gen);
                 enc.copy_texture_to_texture(
                     pass.aerial_texture().as_image_copy(),
@@ -10623,14 +10640,17 @@ fn warp_requested() -> bool {
 fn clip_planes(proj: glam::Mat4) -> (f32, f32) {
     let c = proj.z_axis.z;
     let d = proj.w_axis.z;
-    if c.abs() < 1e-5 {
+    if c.abs() < 1e-8 {
         return (0.1, 500.0);
     }
-    let near = (d / c).abs().clamp(0.01, 50.0);
-    let far = if (1.0 + c).abs() < 1e-4 {
-        500.0
+    let near = (d / c).abs();
+    let denom = 1.0 + c;
+    // A 20 km far plane at near 0.1 makes |1+c| about 5e-6. That is still a
+    // finite plane. Only an infinite projection stores c at -1.
+    let far = if denom.abs() < 1e-8 {
+        f32::MAX
     } else {
-        (c * near / (1.0 + c)).abs().clamp(near + 1.0, 20000.0)
+        (c * near / denom).abs()
     };
     (near, far)
 }
@@ -10645,6 +10665,12 @@ mod atmosphere_tests {
         let (near, far) = clip_planes(proj);
         assert!((near - 0.1).abs() < 0.02, "near {near}");
         assert!((far - 500.0).abs() < 5.0, "far {far}");
+        let wide = glam::Mat4::perspective_rh(1.0, 1.0, 0.1, 20_000.0);
+        let (near, far) = clip_planes(wide);
+        assert!((near - 0.1).abs() < 0.02, "wide near {near}");
+        // f32 in the perspective matrix loses about 27 m at 20 km. 500 m
+        // is the old fallback and must not come back.
+        assert!((far - 20_000.0).abs() < 50.0, "wide far {far}");
     }
 }
 

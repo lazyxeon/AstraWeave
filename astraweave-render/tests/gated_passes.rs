@@ -85,6 +85,35 @@ fn channel_distance(a: [i32; 3], b: [i32; 3]) -> i32 {
     (a[0] - b[0]).abs() + (a[1] - b[1]).abs() + (a[2] - b[2]).abs()
 }
 
+fn aces(x: f32) -> f32 {
+    let a = 2.51;
+    let b = 0.03;
+    let c = 2.43;
+    let d = 0.59;
+    let e = 0.14;
+    ((x * (a * x + b)) / (x * (c * x + d) + e)).clamp(0.0, 1.0)
+}
+
+fn srgb_byte(linear: f32) -> i32 {
+    let x = linear.clamp(0.0, 1.0);
+    let encoded = if x <= 0.003_130_8 {
+        12.92 * x
+    } else {
+        1.055 * x.powf(1.0 / 2.4) - 0.055
+    };
+    (encoded * 255.0).round() as i32
+}
+
+/// Tonemap a clear color the way the post pass does, then encode sRGB.
+fn tonemapped_clear(rgb: [f32; 3]) -> [i32; 3] {
+    const EXPOSURE: f32 = 1.35;
+    [
+        srgb_byte(aces(rgb[0] * EXPOSURE)),
+        srgb_byte(aces(rgb[1] * EXPOSURE)),
+        srgb_byte(aces(rgb[2] * EXPOSURE)),
+    ]
+}
+
 fn draw_and_read(renderer: &mut Renderer, atmosphere: bool) -> Vec<u8> {
     const WIDTH: u32 = 64;
     const HEIGHT: u32 = 64;
@@ -214,10 +243,25 @@ fn atmosphere_sky_differs_from_geometry_and_aerial_tints_distance() {
         let near = sample(&on, WIDTH, 10, 32);
         let far = sample(&on, WIDTH, 32, 32);
         let sky = sample(&on, WIDTH, 60, 32);
+        let sky_off = sample(&off, WIDTH, 60, 32);
         let far_off = sample(&off, WIDTH, 32, 32);
+        let magenta = tonemapped_clear([1.0, 0.0, 1.0]);
+        let grey = tonemapped_clear([0.05, 0.05, 0.05]);
         assert!(
             near[0] > near[1] + 40 && near[0] > near[2] + 40,
             "near geometry should stay red, got {near:?}"
+        );
+        assert!(
+            channel_distance(sky, magenta) > 40,
+            "sky {sky:?} is the debug magenta clear {magenta:?}"
+        );
+        assert!(
+            channel_distance(sky, grey) > 40,
+            "sky {sky:?} is the release grey clear {grey:?}"
+        );
+        assert!(
+            channel_distance(sky, sky_off) > 40,
+            "sky {sky:?} matched the HDRI sky {sky_off:?}"
         );
         assert!(
             channel_distance(sky, near) > 40,
