@@ -254,10 +254,10 @@ fn compute_tangents_triangle() {
         ..Default::default()
     };
     compute_tangents(&mut mesh);
-    // After computing tangents, they should be non-zero
+    // MikkTSpace on this right triangle is +X with positive handedness.
+    // The glam backend must stay bit-identical with the old nalgebra backend.
     for v in &mesh.vertices {
-        let len = (v.tangent[0].powi(2) + v.tangent[1].powi(2) + v.tangent[2].powi(2)).sqrt();
-        assert!(len > 0.5, "Tangent should be computed: {len}");
+        assert_eq!(v.tangent, [1.0, 0.0, 0.0, 1.0]);
     }
 }
 
