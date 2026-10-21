@@ -6,7 +6,7 @@ AstraWeave is an AI-native game engine with a deterministic ECS. AI agents are f
 
 ## Current status
 
-Main is `98335926` (#392). #390 is merged as `5a52b039`. The rows below were checked at `556a305c` except the CI badge row.
+Main is `49d289eb` (#397). #390 is merged as `5a52b039`. The older rows were checked at `556a305c` except the CI badge row. The weave, name, Hi-Z, and wiring rows were checked at `49d289eb`.
 
 | Topic | State |
 | --- | --- |
@@ -17,6 +17,10 @@ Main is `98335926` (#392). #390 is merged as `5a52b039`. The rows below were che
 | Frame budget | 3.688 ms GPU frame, 11 ms target, GTX 1660 Ti. #371 and #372 stay open |
 | Supply chain | Postcard is alloc-only. `rustls-webpki` is 0.103.16. `webpki-roots` is 1.0.10. Ignored leftovers are #305, #306, #308–#310, and #321–#323 |
 | CI badges | #390 is merged. It dropped the Clippy unwrap-prevention badge. That workflow was deleted in #223. `astraweave-ai` mutants run as 8 round-robin shards. The 70% gate is caught / (caught + missed). Timeouts are not caught. `cargo-mutants` is 27.1.0 |
+| Weave origins | #388 closed #295. `queue_weave` returns `OutsideIsland` outside ±2048 cells and does not saturate. #397 rejects that origin in the mod host before the cast is stored. A failed `run_one` drops that call's casts. An earlier script for the same agent that already returned `Ok` stays applied. #260 is closed. GitHub linked it to #397. The `weaving` case still hashes `NullField` |
+| Player-facing name | #394. The intro companion line says thread-binder. The Gate script scans dialogue, quests, echoes, voices, npc lines, and cinematics. The dialogue test uses dialogue, quests, echoes, and voices, then one directory level of npc and cinematics. `assets/cells` is outside both scans |
+| Hi-Z | #269 is closed. The fix is #389. GitHub cross-referenced that pull. The close was not attributed. `draw_into` records the forward Hi-Z pyramid only when `hiz_depth_load` and `sample_hiz` are both set. The default of `sample_hiz` is off. The 0.275 ms figure is the capture at `939a21bb` |
+| Wiring | #393. [WIRING_CAMPAIGN.md](docs/current/WIRING_CAMPAIGN.md) is the inventory. `gpu_frame_budget` rejects an enabled `--atmosphere`, `--ssgi`, `--taa`, `--upscale`, `--dof`, or `--clouds` before the scene. #403 is open |
 
 The nineteen cases are `planner_pure`, `perception_world`, `gameplay_rng`, `fixed64`, `combat_resolve`, `destruction`, `gameplay_qa_aravath_slice`, `nav_reroute`, `causal_bridge`, `scripted_system`, `weaving`, `traversal`, `traversal_deformed`, `worldgen_columns`, `deformed_chunk`, `local_sim`, `greybox_checkpoint`, `quest_ticks`, and `persist_replay`.
 
