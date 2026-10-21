@@ -1,0 +1,150 @@
+assets/3D assets/Castle Kit/Models/GLB format/Textures/colormap.png
+assets/3D assets/Castle Kit/Models/GLB format/tower-square.glb
+assets/3D assets/Fantasy Town Kit/Models/GLB format/Textures/colormap.png
+assets/3D assets/Fantasy Town Kit/Models/GLB format/cart.glb
+assets/3D assets/Nature Kit/Models/GLTF format/grass_large.glb
+assets/3D assets/Nature Kit/Models/GLTF format/grass_leafs.glb
+assets/3D assets/Nature Kit/Models/GLTF format/grass_leafsLarge.glb
+assets/3D assets/Nature Kit/Models/GLTF format/hanging_moss.glb
+assets/3D assets/Nature Kit/Models/GLTF format/lily_large.glb
+assets/3D assets/Nature Kit/Models/GLTF format/lily_small.glb
+assets/3D assets/Nature Kit/Models/GLTF format/mushroom_redTall.glb
+assets/3D assets/Nature Kit/Models/GLTF format/mushroom_tanTall.glb
+assets/3D assets/Nature Kit/Models/GLTF format/plant_bushSmall.glb
+assets/3D assets/Nature Kit/Models/GLTF format/rock_largeB.glb
+assets/3D assets/Nature Kit/Models/GLTF format/rock_smallB.glb
+assets/3D assets/Nature Kit/Models/GLTF format/rock_smallFlatA.glb
+assets/3D assets/Nature Kit/Models/GLTF format/rock_tallA.glb
+assets/3D assets/Nature Kit/Models/GLTF format/stone_largeA.glb
+assets/3D assets/Nature Kit/Models/GLTF format/stone_smallA.glb
+assets/3D assets/Nature Kit/Models/GLTF format/stump_old.glb
+assets/3D assets/Nature Kit/Models/GLTF format/tree_pineGroundA.glb
+assets/3D assets/Nature Kit/Models/GLTF format/tree_pineSmallA.glb
+assets/3D assets/Survival Kit/Models/GLB format/Textures/colormap.png
+assets/3D assets/Survival Kit/Models/GLB format/box-large.glb
+assets/3D assets/Survival Kit/Models/GLB format/campfire-pit.glb
+assets/3D assets/Survival Kit/Models/GLB format/rock-a.glb
+assets/Astraweave_logo.jpg
+assets/The Complete KayKit Collection v4/KayKit Adventurers 2.0/Characters/gltf/Barbarian.glb
+assets/The Complete KayKit Collection v4/KayKit Adventurers 2.0/Characters/gltf/Knight.glb
+assets/The Complete KayKit Collection v4/KayKit Adventurers 2.0/Characters/gltf/Mage.glb
+assets/The Complete KayKit Collection v4/KayKit Adventurers 2.0/Characters/gltf/Rogue.glb
+assets/The Complete KayKit Collection v4/KayKit Forest Nature Pack 1.0/Assets/gltf/Color1/Rock_3_A_Color1.gltf
+assets/The Complete KayKit Collection v4/KayKit Forest Nature Pack 1.0/Assets/gltf/Color1/Tree_3_C_Color1.gltf
+assets/The Complete KayKit Collection v4/KayKit Forest Nature Pack 1.0/Assets/gltf/Color1/Tree_5_C_Color1.gltf
+assets/The Complete KayKit Collection v4/KayKit Forest Nature Pack 1.0/Assets/gltf/Color1/Tree_7_A_Color1.gltf
+assets/The Complete KayKit Collection v4/KayKit Forest Nature Pack 1.0/Assets/gltf/Color1/Tree_Bare_1_A_Color1.gltf
+assets/The Complete KayKit Collection v4/KayKit Forest Nature Pack 1.0/Assets/gltf/Color1/forest_texture.png
+assets/The Complete KayKit Collection v4/KayKit Forest Nature Pack 1.0/Assets/gltf/Color2/Tree_6_C_Color2.gltf
+assets/The Complete KayKit Collection v4/KayKit Forest Nature Pack 1.0/Assets/gltf/Color2/Tree_Bare_1_B_Color2.gltf
+assets/The Complete KayKit Collection v4/KayKit Forest Nature Pack 1.0/Assets/gltf/Color2/Tree_Bare_1_C_Color2.gltf
+assets/The Complete KayKit Collection v4/KayKit Forest Nature Pack 1.0/Assets/gltf/Color2/Tree_Bare_2_B_Color2.gltf
+assets/The Complete KayKit Collection v4/KayKit Forest Nature Pack 1.0/Assets/gltf/Color2/forest_texture.png
+assets/The Complete KayKit Collection v4/KayKit Skeletons 1.1/characters/gltf/Skeleton_Golem.glb
+assets/The Complete KayKit Collection v4/KayKit Skeletons 1.1/characters/gltf/Skeleton_Warrior.glb
+assets/hdri/polyhaven/kloppenheim/kloppenheim_06_puresky_2k.hdr
+assets/hdri/polyhaven/kloppenheim_02_puresky_2k.hdr
+assets/hdri/polyhaven/spruit_sunrise/spruit_sunrise_2k.hdr
+assets/hdri/polyhaven/venice_sunset/venice_sunset_2k.hdr
+assets/imported/verdant_trail/meshes/dead_tree_trunk.001.glb
+assets/imported/verdant_trail/meshes/dead_tree_trunk_02.glb
+assets/imported/verdant_trail/meshes/dry_branches_medium_01_a.002.glb
+assets/imported/verdant_trail/meshes/grass_medium_02_a.glb
+assets/imported/verdant_trail/meshes/grass_medium_02_b.glb
+assets/imported/verdant_trail/meshes/grass_medium_02_c.glb
+assets/imported/verdant_trail/meshes/grass_medium_02_d.glb
+assets/imported/verdant_trail/meshes/grass_medium_02_e.glb
+assets/imported/verdant_trail/meshes/jacaranda_tree_trunk.glb
+assets/imported/verdant_trail/meshes/rock_07.001.glb
+assets/imported/verdant_trail/meshes/rock_08.001.glb
+assets/imported/verdant_trail/meshes/shrub_01_a.glb
+assets/imported/verdant_trail/meshes/shrub_01_b.glb
+assets/imported/verdant_trail/meshes/shrub_01_d.glb
+assets/imported/verdant_trail/meshes/shrub_02_a.glb
+assets/imported/verdant_trail/meshes/shrub_02_c.glb
+assets/imported/verdant_trail/meshes/shrub_03_a.glb
+assets/imported/verdant_trail/meshes/shrub_03_b.glb
+assets/imported/verdant_trail/meshes/shrub_04_a.glb
+assets/imported/verdant_trail/meshes/shrub_04_b.glb
+assets/imported/verdant_trail/meshes/stone_01_LOD0.001.glb
+assets/imported/verdant_trail/meshes/tree_small_02_a.glb
+assets/materials/derived_1k/cloth.png
+assets/materials/derived_1k/cloth_mra.png
+assets/materials/derived_1k/cloth_n.png
+assets/materials/derived_1k/cobblestone.png
+assets/materials/derived_1k/cobblestone_mra.png
+assets/materials/derived_1k/cobblestone_n.png
+assets/materials/derived_1k/gravel.png
+assets/materials/derived_1k/gravel_mra.png
+assets/materials/derived_1k/gravel_n.png
+assets/materials/derived_1k/ice.png
+assets/materials/derived_1k/ice_mra.png
+assets/materials/derived_1k/ice_n.png
+assets/materials/derived_1k/metal_rusted.png
+assets/materials/derived_1k/metal_rusted_mra.png
+assets/materials/derived_1k/metal_rusted_n.png
+assets/materials/derived_1k/moss.png
+assets/materials/derived_1k/moss_mra.png
+assets/materials/derived_1k/moss_n.png
+assets/materials/derived_1k/plaster.png
+assets/materials/derived_1k/plaster_mra.png
+assets/materials/derived_1k/plaster_n.png
+assets/materials/derived_1k/rock_lichen.png
+assets/materials/derived_1k/rock_lichen_mra.png
+assets/materials/derived_1k/rock_lichen_n.png
+assets/materials/derived_1k/roof_tile.png
+assets/materials/derived_1k/roof_tile_mra.png
+assets/materials/derived_1k/roof_tile_n.png
+assets/materials/derived_1k/tree_bark.png
+assets/materials/derived_1k/tree_bark_mra.png
+assets/materials/derived_1k/tree_bark_n.png
+assets/materials/derived_1k/tree_leaves.png
+assets/materials/derived_1k/tree_leaves_mra.png
+assets/materials/derived_1k/tree_leaves_n.png
+assets/materials/derived_1k/wood_planks.png
+assets/materials/derived_1k/wood_planks_mra.png
+assets/materials/derived_1k/wood_planks_n.png
+assets/materials/dirt.png
+assets/materials/dirt_mra.png
+assets/materials/dirt_n.png
+assets/materials/forest_floor.png
+assets/materials/forest_floor_mra.png
+assets/materials/forest_floor_n.png
+assets/materials/grass.png
+assets/materials/grass_mra.png
+assets/materials/grass_n.png
+assets/materials/mountain_rock.png
+assets/materials/mountain_rock_mra.png
+assets/materials/mountain_rock_n.png
+assets/materials/mud.png
+assets/materials/mud_mra.png
+assets/materials/mud_n.png
+assets/materials/rock_slate.png
+assets/materials/rock_slate_mra.png
+assets/materials/rock_slate_n.png
+assets/materials/sand.png
+assets/materials/sand_mra.png
+assets/materials/sand_n.png
+assets/materials/snow.png
+assets/materials/snow_mra.png
+assets/materials/snow_n.png
+assets/materials/stone.png
+assets/materials/stone_mra.png
+assets/materials/stone_n.png
+assets/models/barrels.glb
+assets/models/bed.glb
+assets/models/campfire_logs.glb
+assets/models/grass.glb
+assets/models/greybox/boss_courtyard_greybox.gltf
+assets/models/greybox/echo_grove_greybox.gltf
+assets/models/greybox/fractured_cliffs_greybox.gltf
+assets/models/greybox/loom_crossroads_greybox.gltf
+assets/models/greybox/loomspire_sanctum_greybox.gltf
+assets/models/greybox/side_alcove_greybox.gltf
+assets/models/tent_detailedClosed.glb
+assets/models/tent_smallOpen.glb
+assets/models/tree_default.glb
+assets/models/tree_pineDefaultA.glb
+assets/models/tree_pineRoundA.glb
+assets/models/tree_pineTallA.glb
+assets/textures/grass_bermuda_01_diff_1k.jpg

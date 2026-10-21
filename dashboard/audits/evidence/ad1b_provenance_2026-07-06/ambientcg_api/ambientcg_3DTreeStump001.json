@@ -1,0 +1,268 @@
+{
+    "searchQuery": {
+        "forceSpecificAssetId": false,
+        "category": [],
+        "assetId": [
+            "3dtreestump001"
+        ],
+        "dataType": [],
+        "creationMethod": null,
+        "queryString": "",
+        "sort": "Popular",
+        "createdUsingAssetId": null,
+        "basedOnAssetId": null,
+        "variationsOfAssetId": null,
+        "limit": 100,
+        "offset": 0
+    },
+    "numberOfResults": 1,
+    "currentPageHttp": "https://ambientcg.com/api/v2/full_json?id=3dtreestump001&sort=popular&limit=100&include=statisticsData%2ClabelData%2CpreviewData%2CtechnicalData%2CfileData",
+    "foundAssets": [
+        {
+            "assetId": "3DTreeStump001",
+            "releaseDate": "2021-08-08 00:00:00",
+            "earlyReleaseDate": "2021-08-08 00:00:00",
+            "dataType": "3DModel",
+            "creationMethod": "UnknownOrOther",
+            "category": null,
+            "downloadCount": 29254,
+            "downloadCountMonth": 430,
+            "downloadCountWeek": 112,
+            "popularityScore": 3.7665687849598846,
+            "tags": [
+                "1",
+                "3d",
+                "stump",
+                "tree",
+                "wood"
+            ],
+            "dataTypeName": "3D Model",
+            "dataTypeDescription": "A photo texture with PBR maps.",
+            "creationMethodName": "Height field photogrammetry",
+            "creationMethodDescription": "Displacement generated using photogrammetry.",
+            "displayName": "3D Tree Stump 001",
+            "customDisplayName": "",
+            "description": "",
+            "displayCategory": "3D Tree Stump",
+            "shortLink": "https://ambientcg.com/a/3DTreeStump001",
+            "dimensionX": 0,
+            "dimensionY": 0,
+            "dimensionZ": 0,
+            "createdUsing": [],
+            "basedOnThis": [],
+            "variations": [],
+            "nextVariationAssetId": null,
+            "previousVariationAssetId": null,
+            "nextAssetId": null,
+            "previousAssetId": null,
+            "downloadFolders": {
+                "default": {
+                    "title": "default",
+                    "downloadFiletypeCategories": {
+                        "zip": {
+                            "title": "zip",
+                            "downloads": [
+                                {
+                                    "fullDownloadPath": "https://ambientcg.com/get?file=3DTreeStump001_LQ-1K-JPG.zip",
+                                    "downloadLink": "https://ambientcg.com/get?file=3DTreeStump001_LQ-1K-JPG.zip",
+                                    "fileName": "3DTreeStump001_LQ-1K-JPG.zip",
+                                    "size": 5694798,
+                                    "filetype": "zip",
+                                    "attribute": "LQ-1K-JPG",
+                                    "zipContent": []
+                                },
+                                {
+                                    "fullDownloadPath": "https://ambientcg.com/get?file=3DTreeStump001_LQ-2K-JPG.zip",
+                                    "downloadLink": "https://ambientcg.com/get?file=3DTreeStump001_LQ-2K-JPG.zip",
+                                    "fileName": "3DTreeStump001_LQ-2K-JPG.zip",
+                                    "size": 18883580,
+                                    "filetype": "zip",
+                                    "attribute": "LQ-2K-JPG",
+                                    "zipContent": []
+                                },
+                                {
+                                    "fullDownloadPath": "https://ambientcg.com/get?file=3DTreeStump001_LQ-4K-JPG.zip",
+                                    "downloadLink": "https://ambientcg.com/get?file=3DTreeStump001_LQ-4K-JPG.zip",
+                                    "fileName": "3DTreeStump001_LQ-4K-JPG.zip",
+                                    "size": 66652971,
+                                    "filetype": "zip",
+                                    "attribute": "LQ-4K-JPG",
+                                    "zipContent": []
+                                },
+                                {
+                                    "fullDownloadPath": "https://ambientcg.com/get?file=3DTreeStump001_LQ-1K-PNG.zip",
+                                    "downloadLink": "https://ambientcg.com/get?file=3DTreeStump001_LQ-1K-PNG.zip",
+                                    "fileName": "3DTreeStump001_LQ-1K-PNG.zip",
+                                    "size": 10679507,
+                                    "filetype": "zip",
+                                    "attribute": "LQ-1K-PNG",
+                                    "zipContent": []
+                                },
+                                {
+                                    "fullDownloadPath": "https://ambientcg.com/get?file=3DTreeStump001_LQ-2K-PNG.zip",
+                                    "downloadLink": "https://ambientcg.com/get?file=3DTreeStump001_LQ-2K-PNG.zip",
+                                    "fileName": "3DTreeStump001_LQ-2K-PNG.zip",
+                                    "size": 37807226,
+                                    "filetype": "zip",
+                                    "attribute": "LQ-2K-PNG",
+                                    "zipContent": []
+                                },
+                                {
+                                    "fullDownloadPath": "https://ambientcg.com/get?file=3DTreeStump001_LQ-4K-PNG.zip",
+                                    "downloadLink": "https://ambientcg.com/get?file=3DTreeStump001_LQ-4K-PNG.zip",
+                                    "fileName": "3DTreeStump001_LQ-4K-PNG.zip",
+                                    "size": 70732276,
+                                    "filetype": "zip",
+                                    "attribute": "LQ-4K-PNG",
+                                    "zipContent": []
+                                },
+                                {
+                                    "fullDownloadPath": "https://ambientcg.com/get?file=3DTreeStump001_SQ-1K-JPG.zip",
+                                    "downloadLink": "https://ambientcg.com/get?file=3DTreeStump001_SQ-1K-JPG.zip",
+                                    "fileName": "3DTreeStump001_SQ-1K-JPG.zip",
+                                    "size": 14862158,
+                                    "filetype": "zip",
+                                    "attribute": "SQ-1K-JPG",
+                                    "zipContent": []
+                                },
+                                {
+                                    "fullDownloadPath": "https://ambientcg.com/get?file=3DTreeStump001_SQ-2K-JPG.zip",
+                                    "downloadLink": "https://ambientcg.com/get?file=3DTreeStump001_SQ-2K-JPG.zip",
+                                    "fileName": "3DTreeStump001_SQ-2K-JPG.zip",
+                                    "size": 32332056,
+                                    "filetype": "zip",
+                                    "attribute": "SQ-2K-JPG",
+                                    "zipContent": []
+                                },
+                                {
+                                    "fullDownloadPath": "https://ambientcg.com/get?file=3DTreeStump001_SQ-4K-JPG.zip",
+                                    "downloadLink": "https://ambientcg.com/get?file=3DTreeStump001_SQ-4K-JPG.zip",
+                                    "fileName": "3DTreeStump001_SQ-4K-JPG.zip",
+                                    "size": 93335654,
+                                    "filetype": "zip",
+                                    "attribute": "SQ-4K-JPG",
+                                    "zipContent": []
+                                },
+                                {
+                                    "fullDownloadPath": "https://ambientcg.com/get?file=3DTreeStump001_SQ-1K-PNG.zip",
+                                    "downloadLink": "https://ambientcg.com/get?file=3DTreeStump001_SQ-1K-PNG.zip",
+                                    "fileName": "3DTreeStump001_SQ-1K-PNG.zip",
+                                    "size": 22229752,
+                                    "filetype": "zip",
+                                    "attribute": "SQ-1K-PNG",
+                                    "zipContent": []
+                                },
+                                {
+                                    "fullDownloadPath": "https://ambientcg.com/get?file=3DTreeStump001_SQ-2K-PNG.zip",
+                                    "downloadLink": "https://ambientcg.com/get?file=3DTreeStump001_SQ-2K-PNG.zip",
+                                    "fileName": "3DTreeStump001_SQ-2K-PNG.zip",
+                                    "size": 61041272,
+                                    "filetype": "zip",
+                                    "attribute": "SQ-2K-PNG",
+                                    "zipContent": []
+                                },
+                                {
+                                    "fullDownloadPath": "https://ambientcg.com/get?file=3DTreeStump001_SQ-4K-PNG.zip",
+                                    "downloadLink": "https://ambientcg.com/get?file=3DTreeStump001_SQ-4K-PNG.zip",
+                                    "fileName": "3DTreeStump001_SQ-4K-PNG.zip",
+                                    "size": 99610706,
+                                    "filetype": "zip",
+                                    "attribute": "SQ-4K-PNG",
+                                    "zipContent": []
+                                },
+                                {
+                                    "fullDownloadPath": "https://ambientcg.com/get?file=3DTreeStump001_HQ-1K-JPG.zip",
+                                    "downloadLink": "https://ambientcg.com/get?file=3DTreeStump001_HQ-1K-JPG.zip",
+                                    "fileName": "3DTreeStump001_HQ-1K-JPG.zip",
+                                    "size": 94733199,
+                                    "filetype": "zip",
+                                    "attribute": "HQ-1K-JPG",
+                                    "zipContent": []
+                                },
+                                {
+                                    "fullDownloadPath": "https://ambientcg.com/get?file=3DTreeStump001_HQ-2K-JPG.zip",
+                                    "downloadLink": "https://ambientcg.com/get?file=3DTreeStump001_HQ-2K-JPG.zip",
+                                    "fileName": "3DTreeStump001_HQ-2K-JPG.zip",
+                                    "size": 114813922,
+                                    "filetype": "zip",
+                                    "attribute": "HQ-2K-JPG",
+                                    "zipContent": []
+                                },
+                                {
+                                    "fullDownloadPath": "https://ambientcg.com/get?file=3DTreeStump001_HQ-4K-JPG.zip",
+                                    "downloadLink": "https://ambientcg.com/get?file=3DTreeStump001_HQ-4K-JPG.zip",
+                                    "fileName": "3DTreeStump001_HQ-4K-JPG.zip",
+                                    "size": 185186032,
+                                    "filetype": "zip",
+                                    "attribute": "HQ-4K-JPG",
+                                    "zipContent": []
+                                },
+                                {
+                                    "fullDownloadPath": "https://ambientcg.com/get?file=3DTreeStump001_HQ-1K-PNG.zip",
+                                    "downloadLink": "https://ambientcg.com/get?file=3DTreeStump001_HQ-1K-PNG.zip",
+                                    "fileName": "3DTreeStump001_HQ-1K-PNG.zip",
+                                    "size": 102466768,
+                                    "filetype": "zip",
+                                    "attribute": "HQ-1K-PNG",
+                                    "zipContent": []
+                                },
+                                {
+                                    "fullDownloadPath": "https://ambientcg.com/get?file=3DTreeStump001_HQ-2K-PNG.zip",
+                                    "downloadLink": "https://ambientcg.com/get?file=3DTreeStump001_HQ-2K-PNG.zip",
+                                    "fileName": "3DTreeStump001_HQ-2K-PNG.zip",
+                                    "size": 145208697,
+                                    "filetype": "zip",
+                                    "attribute": "HQ-2K-PNG",
+                                    "zipContent": []
+                                },
+                                {
+                                    "fullDownloadPath": "https://ambientcg.com/get?file=3DTreeStump001_HQ-4K-PNG.zip",
+                                    "downloadLink": "https://ambientcg.com/get?file=3DTreeStump001_HQ-4K-PNG.zip",
+                                    "fileName": "3DTreeStump001_HQ-4K-PNG.zip",
+                                    "size": 190739014,
+                                    "filetype": "zip",
+                                    "attribute": "HQ-4K-PNG",
+                                    "zipContent": []
+                                }
+                            ]
+                        }
+                    }
+                }
+            },
+            "previewLinks": [],
+            "previewType": "Default",
+            "maps": [
+                "color",
+                "normal",
+                "ambient-occlusion"
+            ],
+            "hasUsd": false,
+            "previewImage": {
+                "64-PNG": "https://acg-media.struffelproductions.com/file/ambientCG-Web/media/thumbnail/64-PNG/3DTreeStump001.png",
+                "128-PNG": "https://acg-media.struffelproductions.com/file/ambientCG-Web/media/thumbnail/128-PNG/3DTreeStump001.png",
+                "256-PNG": "https://acg-media.struffelproductions.com/file/ambientCG-Web/media/thumbnail/256-PNG/3DTreeStump001.png",
+                "512-PNG": "https://acg-media.struffelproductions.com/file/ambientCG-Web/media/thumbnail/512-PNG/3DTreeStump001.png",
+                "1024-PNG": "https://acg-media.struffelproductions.com/file/ambientCG-Web/media/thumbnail/1024-PNG/3DTreeStump001.png",
+                "2048-PNG": "https://acg-media.struffelproductions.com/file/ambientCG-Web/media/thumbnail/2048-PNG/3DTreeStump001.png",
+                "64-JPG-FFFFFF": "https://acg-media.struffelproductions.com/file/ambientCG-Web/media/thumbnail/64-JPG-FFFFFF/3DTreeStump001.jpg",
+                "128-JPG-FFFFFF": "https://acg-media.struffelproductions.com/file/ambientCG-Web/media/thumbnail/128-JPG-FFFFFF/3DTreeStump001.jpg",
+                "256-JPG-FFFFFF": "https://acg-media.struffelproductions.com/file/ambientCG-Web/media/thumbnail/256-JPG-FFFFFF/3DTreeStump001.jpg",
+                "512-JPG-FFFFFF": "https://acg-media.struffelproductions.com/file/ambientCG-Web/media/thumbnail/512-JPG-FFFFFF/3DTreeStump001.jpg",
+                "1024-JPG-FFFFFF": "https://acg-media.struffelproductions.com/file/ambientCG-Web/media/thumbnail/1024-JPG-FFFFFF/3DTreeStump001.jpg",
+                "2048-JPG-FFFFFF": "https://acg-media.struffelproductions.com/file/ambientCG-Web/media/thumbnail/2048-JPG-FFFFFF/3DTreeStump001.jpg",
+                "64-JPG-242424": "https://acg-media.struffelproductions.com/file/ambientCG-Web/media/thumbnail/64-JPG-242424/3DTreeStump001.jpg",
+                "128-JPG-242424": "https://acg-media.struffelproductions.com/file/ambientCG-Web/media/thumbnail/128-JPG-242424/3DTreeStump001.jpg",
+                "256-JPG-242424": "https://acg-media.struffelproductions.com/file/ambientCG-Web/media/thumbnail/256-JPG-242424/3DTreeStump001.jpg",
+                "512-JPG-242424": "https://acg-media.struffelproductions.com/file/ambientCG-Web/media/thumbnail/512-JPG-242424/3DTreeStump001.jpg",
+                "1024-JPG-242424": "https://acg-media.struffelproductions.com/file/ambientCG-Web/media/thumbnail/1024-JPG-242424/3DTreeStump001.jpg",
+                "2048-JPG-242424": "https://acg-media.struffelproductions.com/file/ambientCG-Web/media/thumbnail/2048-JPG-242424/3DTreeStump001.jpg",
+                "64-WEBP": "https://acg-media.struffelproductions.com/file/ambientCG-Web/media/thumbnail/64-WEBP/3DTreeStump001.webp",
+                "128-WEBP": "https://acg-media.struffelproductions.com/file/ambientCG-Web/media/thumbnail/128-WEBP/3DTreeStump001.webp",
+                "256-WEBP": "https://acg-media.struffelproductions.com/file/ambientCG-Web/media/thumbnail/256-WEBP/3DTreeStump001.webp",
+                "512-WEBP": "https://acg-media.struffelproductions.com/file/ambientCG-Web/media/thumbnail/512-WEBP/3DTreeStump001.webp",
+                "1024-WEBP": "https://acg-media.struffelproductions.com/file/ambientCG-Web/media/thumbnail/1024-WEBP/3DTreeStump001.webp",
+                "2048-WEBP": "https://acg-media.struffelproductions.com/file/ambientCG-Web/media/thumbnail/2048-WEBP/3DTreeStump001.webp"
+            }
+        }
+    ]
+}

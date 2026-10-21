@@ -1,0 +1,2709 @@
+# Editor Multi-Tool Architecture Campaign — Phase 1.X
+
+**Status**: **Sub-phase 5 (RegionalArchetypePanel ActiveTool implementation + registration) COMPLETE** as of Sub-phase 5.C closeout 2026-07-22 — commits `2f6f853a5` (5.A, live dispatcher Y=0 projection) + `9bae816e3` (5.B, real-panel ActiveTool implementation, registration, side-channel paint drain, and undo) + `2e92b8a3b` (5.C permanent real-panel pointer-consumption guard) + this commit (5.C record closeout). Required §7.4 Andrew-gate **PASS declared 2026-07-20**, recorded in `docs/audits/T_SERIES_RATIFICATION_2026-07-20.md` §1. G-pointer-events-fix verdict: **SUBSUMED**; Regional Archetype Variation resumes at H-saveload-diagnostic after this campaign's remaining Mediator Removal + Sub-phase 6 sessions.
+
+**Architectural objective achieved**: Eight-round instrument-and-narrow campaign chain produced four canonical-pattern fixes resolving four §7.7 instances at three granularity scales (component-boundary / struct-attribute-set / UI-renderer-capacity-boundary) + one integrative tool (ZoneBlend) composing onto canonical primitives + four cleanup commits dismantling Mediator Brush Fix era + one state-propagation pathway equivalence fix (Cleanup-D fix-pass `eb5e6c4a0`). 8/8 brush modes operational; all 22 materials reach renderer; erosion chunk seams eliminated; chunk-boundary continuity preserved; skirt decoupling resolved. Andrew-gate verification 2026-05-08: "all brushes work, and i cant recreate the seam splits with the erosion tool anymore."
+
+**Methodology body of practice consolidated** (canonical input for Sub-phase 4+ AAA-fidelity foundational architectural work and any future foundational architectural campaign in AstraWeave). Nine canonical methodology lessons (§7.1-§7.9):
+- §7.1 (Round 3): three-rounds-wrong-from-code-reading; instrument-and-narrow is canonical.
+- §7.2 (Round 3): pre-execution actual-code verification mandatory.
+- §7.3 (Round 3): symbol/signature pinning by re-grep before instrumentation/fix.
+- §7.4 (Round 3): drift-finding documentation as commit-body discipline.
+- §7.5 (Round 3): chunk-test-fixture-grounded test discipline (line-number-pinning hazardous).
+- §7.6 (Round 4): derived-value reasoning trap.
+- §7.7 (Round 5 → 6 → 7 → 8 → **STRUCTURAL AXIOM**): wrapped-component resource-identity at every boundary; four layers + three granularity scales validated.
+- **§7.8 (Cleanup-B finding; elevated at this closeout per Andrew-gate §7.8-A)**: audit-era hypothesis framings can be retrospectively imprecise as campaign chain progresses; verify cleanup scope against post-campaign-chain canonical state, not just audit specifications.
+- **§7.9 (Cleanup-D mechanism characterization; elevated at this closeout per Andrew-gate §7.9-A)**: state-propagation pathway equivalence — pathways mutating state must produce equivalent end-states regardless of pathway; brush dispatch pathway must produce equivalent chunk-boundary end-state to initial-generation pathway.
+
+**§7.7 structural axiom validated** at four layers (depth-target Real-Fix.A + mesh-data Real-Fix.B + texture-data Real-Fix.C + UI/renderer-capacity Real-Fix.D) + three granularity scales (component-boundary + struct-attribute-set + UI-renderer-capacity-boundary). CLAUDE.md amendment cycle elevation (resource-identity rule from sub-rule of Edit 2 to first-class top-level Edit) suggested in Round-8-Closure §12 entry remains pending separate amendment session.
+
+**Edit 2 multi-granularity discipline established**: no-second-implementation principle enforced at four granularity scales:
+- Boundary-resource-identity (Real-Fix.A/B/C/D per §7.7).
+- Architectural-level (Cleanup-A: no parallel implementation surviving in tree; -334 net lines legacy cluster path deletion).
+- Era-mechanism-level (Cleanup-B finding: bypass-era mechanism residue removal; Cleanup-B itself was no-op-by-attrition).
+- State-propagation-pathway-equivalence (Cleanup-D fix-pass per §7.9: pathways producing equivalent end-states).
+
+**Canonical pipeline composability demonstrated**: Real-Fix.E ZoneBlend implementation landed in 2 files / +635/−24 lines / zero new architectural primitives because Real-Fix.A/B/C/D canonical primitives did the heavy lifting. Composability is the empirical payoff of resource-identity unification at every boundary.
+
+**Body of practice carry-forward** documented in §13 (NEW section): nine methodology lessons + §7.7 structural axiom + Edit 2 multi-granularity discipline + canonical pipeline composability + single-concern session discipline + Andrew-gate routing + multi-session forward-chain structure are canonical input for Sub-phase 4+ work and any future foundational architectural campaign in AstraWeave.
+
+**Pending** (separate sessions):
+- Mediator Removal session.
+- Sub-phase 6 closeout (editor multi-tool architecture campaign COMPLETE).
+
+(Sub-phase 5 — RegionalArchetypePanel ActiveTool implementation + registration — **COMPLETE 2026-07-22**; see §11 + §12 Sub-phase 5 entry.)
+
+**Parallel work items** (any time):
+- CLAUDE.md amendment cycle elevation (§7.7 resource-identity rule to first-class top-level Edit; possibly §7.9 state-propagation pathway equivalence rule as new top-level Edit).
+- Defect Class 10 content work (texture assets for slots 8-21; possibly bundles with KayKit asset migration).
+- Defect Class 6/7/8 brush mathematics campaign (potential Sub-phase 7 "Brush Mathematics Polish").
+
+**Prior chain status** (preserved for archeology; Sub-phase 3.C closeout §12 entry consolidates the chronological narrative): Sub-phase 3 Mediator Brush Cleanup-D fix-pass COMPLETE 2026-05-08 commit `eb5e6c4a0`. Cleanup-D research-pass COMPLETE 2026-05-08 commits `47a33e476` + `e44f74c56`. Cleanup-B (no-op marker) `f7732d5d9`. Cleanup-A `1900bdc8e`. Real-Fix.E `609f85357`. Real-Fix.D `7067cc03d`. Round 8 chain `518e01582`/`4ee7e751f`/`e3d07f366`/`e784f0c91`. Real-Fix.C `ded9a0457`. Round 7 chain `c4d09ee86`/`9cd4f7e48`/`2ddc77a39`/`a71f0d52e`. Real-Fix.B `eaaa53433`. Round 6 chain `d7b9e7bc2`/`18f48f08b`/`c7f3b50b3`/`a6732af03`. Real-Fix.A `0f569d212`. Round 5 chain `5203e7fbe`/`2eb0903a5`/`569415a7a`/`793ddea7c`. CLAUDE.md hardening `f9e6f6935`. Round 4 chain `de1986301`/`bc9c8d5bd`/`3bf425053`/`fec08d11f`. Round 3 audit `7dc342a42` + `19eccad3c` + `1e4de6522`. Earlier rounds + initial diagnostics preserved (chronological archeology captured in §12 closure entries; Sub-phase 3.C closeout §12 entry consolidates the campaign chain narrative). **Campaign-design pass COMPLETE 2026-05-04**, commits `75b68e7c7` + `8fad61bd3` + `8c92890b9`. **Sub-phase 1 — Diagnostic COMPLETE 2026-05-04**, commits `4556c267b` + `0a7df3cdf` + `6924e39db`. **Sub-phase 2 — ActiveTool trait + dispatcher core + register_tool API COMPLETE 2026-05-04**, commits `813ac29a1` + `2c791fa39` + `ece7bb3b4` + `6016b3c8f`. **Sub-phase 3 — TerrainPanel ActiveTool implementation (additive)** 3.A `0dea0bebc` + 3.B `41ec3b192` landed; 3.C closeout (this commit) lands Sub-phase 3 COMPLETE. **Sub-phase 3 Mediator Brush diagnostic chain + fix chain + cleanup chain** (Rounds 1-8 + Mediator Brush Fix `8f4668599` + Real-Fix.A/B/C/D/E + Cleanup-A/B + Cleanup-D research-pass + Cleanup-D fix-pass) consolidated in §12 Sub-phase 3.C closeout entry; chronological closure entries in §12 preserved for archeology.
+
+**Scope**: Replace AstraWeave editor's approach (B) — viewport widget + main.rs per-frame mediator hardcoded for TerrainPanel — with canonical Approach I+II hybrid dispatcher architecture per research audit §7.7 synthesis (registry/manager owns trait-object collection; per-event dispatch on active trait-implementation; UUID identity for open-set extensibility). Production-readiness threshold per Q3: level (ii) — full multi-tool dispatcher with proper mutex arbitration + lifecycle + Pattern A regression test coverage for dispatcher class. Both TerrainPanel + RegionalArchetypePanel migrated to ActiveTool; mediator code removed; campaign closes with editor's foundational tool architecture canonical and forward-compatible for future paint tools (splat, scatter, vegetation override, weather zones) per Q1 timeline.
+
+**Author**: Plan drafted 2026-05-04 by the campaign-design pass session, against research audit §7 5-approach taxonomy + audit §7.7 Approach I+II hybrid synthesis + Andrew strategic-factors enumeration Q1-Q10.
+
+**Prior work**:
+- `docs/audits/editor_multi_tool_architecture_research_2026-05-03.md` — Editor Multi-Tool Architecture research audit; Session 2 of spinoff sequence; load-bearing input to §2 architectural decisions.
+- `docs/audits/g_pointer_events_research_2026-05-03.md` — G-research audit; predecessor research inherited by reference in Editor Multi-Tool Architecture research audit §2.
+- `docs/audits/g_pointer_events_diagnostic_2026-05-03.md` — G-diagnostic audit; AstraWeave classified as approach (B) with main.rs mediator; single-reference for AstraWeave classification.
+- `docs/current/REGIONAL_ARCHETYPE_VARIATION_CAMPAIGN.md` — paused parent campaign; pause.B §10 entry contains methodological lesson about §0 discipline pattern inheritance.
+- `docs/audits/f5_paint_panel_registration_diagnostic_2026-05-03.md` — F.5-paint.E-diagnostic audit; canonical reference for editor surface addition methodology.
+
+**Outcome on completion**:
+- Editor uses canonical `ActiveTool` trait + `Dispatcher` struct + explicit `register_tool(Box<dyn ActiveTool>)` API.
+- TerrainPanel + RegionalArchetypePanel both registered tools; brush UX functional via dispatcher routing.
+- main.rs:3833-3877 mediator code removed; ViewportWidget per-tool fields removed.
+- Pattern A regression tests cover dispatcher class comprehensively (registration, activation, mutex enforcement, lifecycle transitions, EventDisposition routing, set_active_tool transitions, dispatch_pointer_event routing).
+- Future paint tools register via `dispatcher.register_tool(...)` — tool addition becomes a registration session rather than an architectural debate.
+- Regional Archetype Variation campaign resumes; G-pointer-events-fix likely subsumed by Sub-phase 5 of this campaign per research audit §8.4.
+
+---
+
+## §0 — How to use this document and anti-drift discipline
+
+This plan is the authoritative design reference for the Editor Multi-Tool Architecture campaign. It inherits Regional Archetype Variation's §0 structure with multi-tool architecture-specific framing per Q10.
+
+### Discipline imposed
+
+- **Sub-phase completion**: each sub-phase's success criteria must be met before §11 status block advances. Code-level success (compile, tests pass) is necessary but not sufficient for visible-output sub-phases — those require Andrew-gate per §0 lesson application.
+- **Andrew-gate authoritative for visible-output sub-phases**: per Q9, only changes requiring visual verification or architectural decisions are Andrew-gated. Visible-output sub-phases (Sub-phase 3 TerrainPanel ActiveTool implementation; Sub-phase 5 RegionalArchetypePanel ActiveTool registration; Mediator Removal session) require Andrew-gate. Architectural-decision touchpoints (Sub-phase 1 Diagnostic IF it surfaces gaps in §2 decisions) require Andrew-gate.
+- **Status header maintenance**: §11 phase status block updated in same commit as sub-phase closeout; Status header at top of doc updated similarly.
+- **§2 architectural commitments respected**: §2 decisions are load-bearing; sub-phase execution implements per §2; sub-phase execution does NOT revise §2 decisions without explicit halt-and-re-research per §0 scope-creep discipline.
+
+### Lesson application — Andrew-gate authoritative for visual verification + architectural decisions (per Q9)
+
+Per Q9 strategic factor: only changes requiring visual verification or architectural decisions are Andrew-gated. The discipline policy:
+
+- **Sub-phase 1 — Diagnostic**: Andrew-gate REQUIRED if diagnostic surfaces gaps in §2 decisions (architectural-decision touchpoint). Andrew makes the call: proceed with adjusted §2; halt-and-re-research per §0; spin off another foundational campaign. If diagnostic confirms §2 decisions, no Andrew-gate (code-level verification only).
+- **Sub-phase 2 — ActiveTool trait + dispatcher core + register_tool API**: NOT Andrew-gated (code-level only; no visual verification needed; no architectural decision beyond §2's existing commitments).
+- **Sub-phase 3 — TerrainPanel ActiveTool implementation (additive)**: Andrew-gate REQUIRED. TerrainPanel's brush must still work post-implementation; no regression in any of the 8 sculpt/paint/lower/smooth/flatten/erode/noise/zoneblend brush modes.
+- **Sub-phase 4 — Pattern A regression infrastructure for dispatcher class**: NOT Andrew-gated (code-level only; comprehensive test coverage validated by `cargo test`).
+- **Sub-phase 5 — RegionalArchetypePanel ActiveTool implementation + registration**: Andrew-gate REQUIRED. RegionalArchetypePanel's brush UX must work end-to-end; click+drag in viewport with Paint mode active produces visible paint feedback.
+- **Mediator Removal session** (dedicated; not numbered sub-phase per Q6): Andrew-gate REQUIRED. Both TerrainPanel + RegionalArchetypePanel brushes must work post-removal; comprehensive verification of all 8 TerrainPanel brush modes + RegionalArchetypePanel paint/erase modes.
+- **Sub-phase 6 — Closeout**: NOT Andrew-gated (doc-only).
+
+### Scope-creep discipline — research-pass-before-reframe (inherited from Regional Archetype Variation §0)
+
+Per Q10 + Regional Archetype Variation §0: standing authorization for halt-and-spinoff if Editor Multi-Tool Architecture surfaces foundational architectural gaps it doesn't cover.
+
+The discipline pattern: if a sub-phase surfaces an architectural gap that requires reframing the campaign's scope, treat that as evidence of insufficient research-pass depth and consider another research pass rather than continuing to expand the campaign in-flight.
+
+**Regional Archetype Variation campaign's pause is canonical precedent**: F.5-paint hit this exact failure mode; pause.B §10 entry documents the discipline pattern's application; the existence of THIS campaign is the result of that discipline. Honoring it again if needed produces canonical reference material that compounds across future campaigns.
+
+**Specific halt-and-spinoff scenarios for this campaign**:
+- Sub-phase 1 Diagnostic surfaces architectural gaps in ViewportWidget integration that §2.7 didn't anticipate. Andrew-gate; halt; assess whether new research pass needed.
+- Sub-phase 3 TerrainPanel migration surfaces tight coupling between viewport renderer + brush state that §2 didn't anticipate. Andrew-gate; halt; assess.
+- Mediator Removal session surfaces coupling that §2.6 didn't anticipate. Andrew-gate; halt; assess.
+
+This discipline is NOT a license to halt at minor friction. It's reserved for foundational architectural gaps — the same threshold Regional Archetype Variation §0 used.
+
+### Anti-pattern this plan explicitly prevents
+
+- **Research-uninformed campaign-design**: §2 decisions ground in research audit §7 framework + Andrew Q1-Q10 strategic factors. Not first-principles; not "what feels right." The research audit is load-bearing input.
+- **Bundled high-risk refactoring**: per Q6, mediator removal is dedicated session with fresh context. Bundling it with sub-phase containing other concerns produces context muddying — F.5-paint cascade's failure mode.
+- **Premature optimization**: tool composition (§2.9), tool state persistence patterns (§2.10), tool action transactionality (§2.11) deferred per Q3 production-readiness threshold (level ii not iii). Forward concerns; explicit deferral keeps campaign focused.
+- **Per-tool dispatcher logic** (god-object failure mode per research audit §6.3): dispatcher routes events; tools implement logic. The Mediator pattern's god-object risk is mitigated by trait-object dispatch — dispatcher knows nothing tool-specific.
+- **Stringly-typed tool registration**: Approach I-only registration uses string IDs (UE pattern) which lose compile-time checking. Approach I+II hybrid per §2.5 uses UUID + Box<dyn ActiveTool> + explicit `register_tool` calls; failures surface at registration site rather than at activation.
+
+### Methodological inheritance from Regional Archetype Variation
+
+This campaign inherits Regional Archetype Variation's §0 discipline pattern wholesale. Specifically:
+
+- **"Research-pass-before-reframe"** standing authorization (§0 scope-creep discipline above).
+- **Andrew-gate authoritative for visible-output sub-phases** lesson application (§0 lesson application above).
+- **Sub-phase completion requires success criteria + Andrew-gate where applicable** discipline.
+- **§2 architectural commitments respected** — sub-phase execution implements per §2; revisions require halt-and-re-research.
+- **Status header + §11 + §12 maintenance discipline** mirroring Regional Archetype Variation's §9 + §10 (note: this campaign uses §11 for status + §12 for deviations to leave room for §10 out-of-scope; functionally equivalent).
+
+The campaign-pause-and-spinoff workflow pattern Regional Archetype Variation demonstrated is canonical; future spinoffs from this campaign (if any) inherit it.
+
+---
+
+## §1 — Design summary
+
+### §1.1 The problem being solved
+
+Per G-pointer-events-diagnostic audit §3-§6 + research audit §1.1: AstraWeave editor uses approach (B) per research audit §7.1 — viewport widget checks active-tool state internally; main.rs:3833-3877 acts as per-frame mediator that syncs `TerrainPanel.is_brush_active()` → `viewport.set_terrain_brush_active()` pre-render and drains `viewport.take_terrain_brush_hits()` → `dock_tab_viewer.apply_terrain_brush_at(...)` post-render. ViewportWidget at `tools/aw_editor/src/viewport/widget.rs:163` has typed `terrain_brush_active: bool` field + 5 supporting tool-specific fields (`terrain_brush_radius`, `terrain_brush_is_paint`, `terrain_brush_hits`, `terrain_brush_stroke_ended`, `last_brush_time`). Hardcoded for TerrainPanel; no abstraction; doesn't scale to multi-tool without per-tool ViewportWidget edits.
+
+F.5-paint hit this structural ceiling. RegionalArchetypePanel has all building blocks (`paint_active`, `queue_paint_op`, `apply_pending_paint_ops_to_owned`) but zero references in main.rs — the (B)-pattern plumbing was missing entirely; F.5-paint.A's panel was never wired into the viewport's pointer-event flow. G-fix's pre-pause B-extend scope would have entrenched the (B) pattern by mirroring TerrainPanel's plumbing for RegionalArchetypePanel; the next paint tool campaign (splat per Q1 timeline) would have hit the same architectural wall.
+
+### §1.2 The target
+
+Per research audit §7.7 Approach I+II hybrid synthesis: registry/manager owns trait-object collection; dispatcher uses per-event method calls on the active trait-implementation; UUID identity provides open-set extensibility. Fyrox `InteractionMode` trait per research audit §5.1 is the production-grade Rust + egui canonical reference.
+
+Concrete architecture commitment per §2 below:
+
+- **`ActiveTool` trait** with method surface mirroring Fyrox InteractionMode pattern (§2.2): per-event handlers (mouse, keyboard, UI), lifecycle (activate/deactivate/update/on_drop), UI integration (make_button), UUID identity.
+- **`EventDisposition` enum** binary Consumed/PassThrough at campaign close; `#[non_exhaustive]` for forward-compatibility per Q4 (§2.3).
+- **Dispatcher** push-based per-event subscription; tracks active tool by UUID; framework-enforced mutex (§2.4 + §2.8).
+- **Explicit `register_tool(Box<dyn ActiveTool>)` API** per Q5 mod-friendliness (§2.5).
+- **Mediator removal** as dedicated session with fresh context per Q6 (§2.6).
+- **ViewportWidget integration**: ViewportWidget owns rendering + raw input capture; dispatcher owns tool arbitration (§2.7).
+- **Tool composition + state persistence + action transactionality** deferred per Q1 + Q3 (§2.9 + §2.10 + §2.11).
+
+### §1.3 Sub-phase breakdown
+
+Per Q8 scope-driven sizing + Q2 + Q6 + Q7 + Q9 strategic factors. 6 numbered sub-phases + 1 dedicated Mediator Removal session = 7 distinct campaign sessions:
+
+- **Sub-phase 1** — Diagnostic (per Q7). Andrew-gate IF gaps surface.
+- **Sub-phase 2** — ActiveTool trait + dispatcher core + register_tool API. Code-level only.
+- **Sub-phase 3** — TerrainPanel ActiveTool implementation (additive). Andrew-gate REQUIRED.
+- **Sub-phase 4** — Pattern A regression infrastructure for dispatcher class. Code-level only.
+- **Sub-phase 5** — RegionalArchetypePanel ActiveTool implementation + registration. Andrew-gate REQUIRED. Likely subsumes G-pointer-events-fix per research audit §8.4.
+- **Dedicated Mediator Removal session** (per Q6). Andrew-gate REQUIRED.
+- **Sub-phase 6** — Closeout. Doc-only; no Andrew-gate.
+
+Detailed treatment in §3-§9 below.
+
+### §1.4 Integration with existing AstraWeave editor
+
+Sub-phase 3 implements ActiveTool for TerrainPanel additively (both ActiveTool path + main.rs mediator coexist). Sub-phase 5 implements ActiveTool for RegionalArchetypePanel + registers via `register_tool`. After both proven via Andrew-gate, Mediator Removal session removes main.rs:3833-3877 mediator code + ViewportWidget per-tool fields. Pattern A regression tests cover dispatcher class throughout.
+
+Single AstraWeave reference points used for §2 grounding (per anti-anchoring discipline allowing G-diagnostic findings as single reference points without exploratory inspection):
+- ViewportWidget at `tools/aw_editor/src/viewport/widget.rs:163` — current `terrain_brush_active` field site.
+- main.rs at `tools/aw_editor/src/main.rs:3833-3877` — current mediator code site.
+- TerrainPanel at `tools/aw_editor/src/panels/terrain_panel.rs:797` — `is_brush_active()` method site (called by main.rs mediator).
+- RegionalArchetypePanel at `tools/aw_editor/src/panels/regional_archetype_panel.rs:75` — unused `paint_active: bool` field site (G-diagnostic §9.6 forward observation).
+- ViewportWidget at `tools/aw_editor/src/viewport/widget.rs:1219-1234` — depth-buffer access for ray-plane projection (used by TerrainPanel's brush per §2.7).
+
+---
+
+## §2 — Technical architecture
+
+The load-bearing section. Resolves research audit §8.1's ten architectural decisions per audit §7 framework + Andrew Q1-Q10 strategic factors. Each §2.X subsection corresponds to one audit §8.1.X decision.
+
+### §2.1 Data flow at the end state
+
+Post-campaign-closure end state:
+
+1. Editor input event arrives (mouse press, mouse move, mouse release, key press, key release, hot key).
+2. ViewportWidget captures raw input via existing `Sense::click_and_drag()` + pointer position tracking + depth-buffer access.
+3. ViewportWidget builds an `InputEvent` payload + `EventContext` (depth-buffer query closure, pointer position in viewport-local coordinates, modifier states).
+4. ViewportWidget calls `dispatcher.dispatch_pointer_event(event, context)`.
+5. Dispatcher checks `active_tool: Option<Uuid>`. If `None`, returns `EventDisposition::PassThrough` immediately.
+6. If `Some(uuid)`, dispatcher looks up `tools.get_mut(&uuid) -> Option<&mut Box<dyn ActiveTool>>`.
+7. Dispatcher calls the matching trait method on the active tool (e.g., `tool.on_left_mouse_button_down(event, context)`).
+8. Tool's per-event method updates internal state (e.g., RegionalArchetypePanel's `queue_paint_op(world_x, world_z)` per F.5-paint.B).
+9. Tool returns `EventDisposition`.
+10. Dispatcher returns `EventDisposition` to ViewportWidget.
+11. ViewportWidget consumes raw input if `Disposition::Consumed`; passes to camera handler if `Disposition::PassThrough`.
+
+No mediator code in main.rs. No per-tool fields in ViewportWidget. Tool state lives in tool's ActiveTool implementation. Dispatcher is the only mediation layer.
+
+### §2.2 ActiveTool trait shape (resolves audit §8.1.1)
+
+**Decision**: ActiveTool trait surface mirrors Fyrox InteractionMode pattern per research audit §5.1, with adjustments for AstraWeave's egui + wgpu stack composition.
+
+**Trait surface** (concrete sketch; sub-phase 2 produces final form):
+
+```rust
+pub trait ActiveTool {
+    /// UUID identity for open-set extensibility per Q5 mod-friendliness.
+    /// Replaces enum-based identity (which would close the set to first-party tools).
+    fn uuid(&self) -> Uuid;
+
+    /// Display name for UI integration (toolbar button label, settings panel header, etc.).
+    fn name(&self) -> &str;
+
+    /// Lifecycle: activated when user selects this tool; transitions previous active tool's
+    /// deactivate before this is called.
+    fn activate(&mut self, context: &mut ToolContext) {}
+
+    /// Lifecycle: deactivated when user selects another tool or sets active to None.
+    fn deactivate(&mut self, context: &mut ToolContext) {}
+
+    /// Per-frame update; called only when this tool is active.
+    fn update(&mut self, context: &mut ToolContext) {}
+
+    /// Lifecycle: tool dropped from registry (rare; e.g., editor shutdown or hot-reload scenarios).
+    fn on_drop(&mut self, context: &mut ToolContext) {}
+
+    /// Per-event handlers; called only when this tool is active.
+    /// Each defaults to PassThrough so tools only override what they care about.
+    fn on_left_mouse_button_down(
+        &mut self, _event: &MouseEvent, _context: &mut ToolContext,
+    ) -> EventDisposition { EventDisposition::PassThrough }
+
+    fn on_left_mouse_button_up(
+        &mut self, _event: &MouseEvent, _context: &mut ToolContext,
+    ) -> EventDisposition { EventDisposition::PassThrough }
+
+    fn on_mouse_move(
+        &mut self, _event: &MouseEvent, _context: &mut ToolContext,
+    ) -> EventDisposition { EventDisposition::PassThrough }
+
+    fn on_mouse_enter(&mut self, _context: &mut ToolContext) {}
+    fn on_mouse_leave(&mut self, _context: &mut ToolContext) {}
+
+    fn on_key_down(
+        &mut self, _key: &KeyEvent, _context: &mut ToolContext,
+    ) -> EventDisposition { EventDisposition::PassThrough }
+
+    fn on_key_up(
+        &mut self, _key: &KeyEvent, _context: &mut ToolContext,
+    ) -> EventDisposition { EventDisposition::PassThrough }
+
+    /// UI integration: tool provides its own toolbar button widget.
+    /// Mirrors Fyrox `make_button` pattern per research audit §5.1.
+    fn make_button(&mut self, ui: &mut egui::Ui, selected: bool) {}
+}
+```
+
+**`ToolContext`** carries dispatcher → tool → tool-state communication: depth-buffer query closure, viewport rect, world-XZ projection helpers, current modifier states, scene-state mutability. Sub-phase 2 produces final shape.
+
+**`MouseEvent`** + **`KeyEvent`** carry per-event payload: button state, modifier flags, viewport-local coordinates, world-XZ projection (where applicable).
+
+**Forward extensibility per Q4**: trait surface accepts additions via default-implementation methods. Future hover-feedback tools (per Q4 ConsumedSelective enum variant) add `on_hover_started` / `on_hover_ended` methods with default empty implementations; existing ActiveTool implementations don't need updating.
+
+**Per-tool implementation**: each tool implements only the methods it cares about. TerrainPanel implements `on_left_mouse_button_down` + `on_mouse_move` + `on_left_mouse_button_up` + `on_mouse_enter` + `on_mouse_leave` + brush-mode-switching key handlers + lifecycle. RegionalArchetypePanel implements similar set, calling existing `queue_paint_op` from F.5-paint.B.
+
+**Rationale**: Fyrox's surface is the production-grade Rust + egui canonical reference per research audit §5.1 + §7.7 synthesis. AstraWeave's stack composition matches Fyrox closely (Rust + egui + custom rendering pipeline); precedent inheritance is high-fidelity. Per-event default-implementation methods (returning PassThrough) match Fyrox's pattern of empty defaults; tool implementations override only relevant methods.
+
+### §2.3 EventDisposition enum semantics (resolves audit §8.1.2)
+
+**Decision**: binary `Consumed` / `PassThrough` at campaign close per Q4. Enum declared `#[non_exhaustive]` for forward-compatibility.
+
+**Concrete enum**:
+
+```rust
+#[non_exhaustive]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EventDisposition {
+    /// Tool claimed the event; block downstream handling (camera control, etc.).
+    Consumed,
+    /// Tool didn't claim; let camera/default handler process.
+    PassThrough,
+    // Future: ConsumedSelective (Godot 4 CUSTOM-analog) for hover-feedback tools per Q4.
+    // Variant added via #[non_exhaustive] without breaking consumers using match guards.
+}
+```
+
+**`#[non_exhaustive]` discipline**: consumers must use match guards rather than wildcard patterns:
+
+```rust
+// CORRECT (forward-compatible):
+match disposition {
+    EventDisposition::Consumed => { /* handle */ },
+    EventDisposition::PassThrough => { /* handle */ },
+    _ => unreachable!("EventDisposition is non_exhaustive; new variants must be handled"),
+    // OR explicit handling for future variants when added.
+}
+
+// FRAGILE (will break when third variant lands):
+match disposition {
+    EventDisposition::Consumed => { /* handle */ },
+    EventDisposition::PassThrough => { /* handle */ },
+    // No catch-all; compile-fails when third variant lands. Acceptable IF intent is "audit when extending."
+}
+```
+
+**Pattern A regression test for variant addition**: when the third variant lands (likely `ConsumedSelective` for hover-feedback tools per Q4 timeline), all existing ActiveTool implementations + the dispatcher must continue compiling without modification. Test verifies via compile-only check that existing code doesn't pattern-match on EventDisposition with wildcards that would silently swallow new variants. (Specific test pattern: add a hypothetical `#[cfg(test)] EventDisposition::__TestOnlyVariant`; confirm dispatcher + tools compile.)
+
+**Rationale**: Q4 explicitly named binary as sufficient for current scope while requiring extensibility. Godot 4 `AfterGUIInput` `PASS/STOP/CUSTOM` evolution per research audit §3.3 demonstrates this is a real industry need (Godot specifically introduced CUSTOM in v4 to address hover-feedback semantics that bool-only couldn't express). `#[non_exhaustive]` encodes the forward-compatibility commitment in Rust's type system.
+
+### §2.4 Dispatcher mechanism (resolves audit §8.1.3)
+
+**Decision**: push-based event subscription per research audit §7.2 + §7.7 synthesis. Dispatcher tracks active tool by UUID; per-event method calls only on active tool. Pull-based per-frame iteration NOT used.
+
+**Concrete dispatcher structure**:
+
+```rust
+pub struct Dispatcher {
+    active_tool: Option<Uuid>,
+    tools: HashMap<Uuid, Box<dyn ActiveTool>>,
+}
+
+impl Dispatcher {
+    pub fn new() -> Self { /* ... */ }
+
+    pub fn register_tool(&mut self, tool: Box<dyn ActiveTool>) {
+        let uuid = tool.uuid();
+        self.tools.insert(uuid, tool);
+    }
+
+    pub fn set_active_tool(&mut self, uuid: Option<Uuid>, context: &mut ToolContext) {
+        // Deactivate previous if any
+        if let Some(prev_uuid) = self.active_tool {
+            if let Some(prev_tool) = self.tools.get_mut(&prev_uuid) {
+                prev_tool.deactivate(context);
+            }
+        }
+        // Activate new if any
+        if let Some(new_uuid) = uuid {
+            if let Some(new_tool) = self.tools.get_mut(&new_uuid) {
+                new_tool.activate(context);
+            }
+        }
+        self.active_tool = uuid;
+    }
+
+    pub fn dispatch_mouse_event(
+        &mut self,
+        event: &MouseEvent,
+        kind: MouseEventKind,
+        context: &mut ToolContext,
+    ) -> EventDisposition {
+        let Some(uuid) = self.active_tool else {
+            return EventDisposition::PassThrough;
+        };
+        let Some(tool) = self.tools.get_mut(&uuid) else {
+            return EventDisposition::PassThrough;
+        };
+        match kind {
+            MouseEventKind::LeftButtonDown => tool.on_left_mouse_button_down(event, context),
+            MouseEventKind::LeftButtonUp => tool.on_left_mouse_button_up(event, context),
+            MouseEventKind::Move => tool.on_mouse_move(event, context),
+        }
+    }
+
+    // Similar dispatch_key_event, dispatch_mouse_enter, etc.
+
+    pub fn update_active_tool(&mut self, context: &mut ToolContext) {
+        if let Some(uuid) = self.active_tool {
+            if let Some(tool) = self.tools.get_mut(&uuid) {
+                tool.update(context);
+            }
+        }
+    }
+}
+```
+
+**Inactive tools' methods are NOT called**: dispatcher routes only to active tool. This is push-based per research audit §7.2 push-based optimization. Performance: HashMap lookup is O(1); trait-object dispatch through `Box<dyn ActiveTool>` adds ~one virtual call indirection (negligible vs frame budget).
+
+**Rationale**: Fyrox uses push-based; UE UInputRouter is functionally push-based (only the captured behavior receives events); Unity OnToolGUI is pull-based but has documented performance issues per research audit §3.2 (tool self-checks via `IsActiveTool`). AstraWeave's stack favors push-based per Rust trait-object dispatch ergonomics + frame-budget-conscious editor performance.
+
+### §2.5 Registration model (resolves audit §8.1.4)
+
+**Decision**: explicit `register_tool(Box<dyn ActiveTool>)` API at editor init per Q5 mod-friendliness.
+
+**Registration call sites**:
+
+```rust
+// First-party tools registered at Editor::new():
+impl Editor {
+    pub fn new() -> Self {
+        let mut dispatcher = Dispatcher::new();
+        dispatcher.register_tool(Box::new(TerrainPanel::default()));
+        dispatcher.register_tool(Box::new(RegionalArchetypePanel::default()));
+        // Future: dispatcher.register_tool(Box::new(SplatPaintPanel::default())); etc.
+        Self { dispatcher, /* ... */ }
+    }
+}
+
+// Third-party tools (mod-friendly per Q5):
+impl Editor {
+    pub fn register_external_tool(&mut self, tool: Box<dyn ActiveTool>) {
+        self.dispatcher.register_tool(tool);
+    }
+}
+// Or expose dispatcher directly:
+pub fn dispatcher_mut(&mut self) -> &mut Dispatcher {
+    &mut self.dispatcher
+}
+```
+
+**Approach I + II hybrid synthesis per research audit §7.7**: explicit registry (Approach I — `register_tool` API) owns trait-object collection (Approach II — `HashMap<Uuid, Box<dyn ActiveTool>>`). Per-event dispatch on active trait-implementation. Fyrox's actual implementation matches this hybrid per research audit §5.1.
+
+**UUID identity** open-set per Q5: third-party UUIDs don't conflict with first-party (random UUID generation; collision probability negligible). First-party tools' UUIDs are documented constants (e.g., `TERRAIN_PANEL_UUID: Uuid = uuid!("...")`); third-party tools generate their own.
+
+**Registration order doesn't matter**: HashMap-based lookup is order-independent. `set_active_tool(uuid)` activates regardless of registration order. Tool palette UI iterates `dispatcher.tools.values()` for display (sub-phase 5 produces final UI).
+
+**Rationale**: explicit registration is debuggable (registration call sites are greppable; failures surface at registration site rather than at activation) + Rust-idiomatic (explicit `Box<dyn Trait>` is the canonical Rust pattern) + mod-support-friendly per Q5. Attribute-based discovery (Approach III via `inventory` crate) introduces a heavyweight dependency; compile-time const arrays (research audit §3.4 alternative) prevent future plugin support. Explicit `register_tool` calls are the right call.
+
+### §2.6 Mediator pattern fate (resolves audit §8.1.5)
+
+**Decision**: replace completely per Q6. Mediator removal is its own dedicated campaign session with fresh context, NOT a sub-phase bundled with other work.
+
+**Implementation strategy**:
+
+- **Sub-phase 3** implements ActiveTool for TerrainPanel additively. ActiveTool path coexists with main.rs mediator code; both work simultaneously. ViewportWidget calls `dispatcher.dispatch_*` AND existing `terrain_brush_active`-branched code. TerrainPanel's `on_mouse_*` methods do the actual brush work; existing main.rs mediator code becomes redundant but doesn't break.
+- **Sub-phase 5** implements ActiveTool for RegionalArchetypePanel + registers via `register_tool`. Dispatcher proven with two registered tools.
+- **Dedicated Mediator Removal session** (between Sub-phase 5 and Sub-phase 6): full fresh context for careful refactoring; removes main.rs:3833-3877 mediator code; removes ViewportWidget `terrain_brush_active` field + 5 supporting fields + setters; removes `is_terrain_brush_active`/`apply_terrain_brush_at`/`take_terrain_brush_hits`/etc. accessors on tab_viewer; verifies TerrainPanel + RegionalArchetypePanel still work via Andrew-gate.
+
+**Rationale per Q6**: mediator removal is high-risk refactoring of working code. Bundling it with a sub-phase containing other concerns (e.g., RegionalArchetypePanel registration in Sub-phase 5) produces context muddying that's been the F.5-paint cascade's failure mode. Discrete dedicated session with full context budget honors the discipline pattern. The session has only one concern — removal — so the agent can focus carefully without being pulled toward "while-I'm-here" extensions.
+
+**Forward implication**: campaign closeout (Sub-phase 6) confirms mediator code removed + dispatcher is sole mediation layer + Pattern A regression tests in place + ARCHITECTURE_MAP.md editor section updated to reflect post-removal state.
+
+### §2.7 Integration with existing ViewportWidget (resolves audit §8.1.6)
+
+**Decision**: ViewportWidget retains responsibility for raw input event capture (`Sense::click_and_drag()`; pointer position tracking; depth-buffer access for ray-plane projection). Dispatcher handles tool arbitration + routing.
+
+**Integration pattern**:
+
+```rust
+impl ViewportWidget {
+    pub fn handle_input(&mut self, /* ... */) {
+        // Existing Sense::click_and_drag() rect allocation; preserved.
+        let (rect, response) = ui.allocate_exact_size(available, egui::Sense::click_and_drag());
+
+        // Build context for dispatcher.
+        let mut context = ToolContext {
+            depth_buffer: self.depth_buffer.as_ref(),
+            world_xz_at_pointer: |viewport_pointer| { /* depth-buffer + ray-plane projection */ },
+            viewport_rect: rect,
+            modifiers: ui.ctx().input(|i| i.modifiers),
+            // ...
+        };
+
+        // Route mouse-press to dispatcher.
+        if response.dragged_by(egui::PointerButton::Primary) {
+            let mouse_event = MouseEvent { /* ... */ };
+            let disposition = self.dispatcher.dispatch_mouse_event(
+                &mouse_event,
+                MouseEventKind::Move,  // dragged → continuous Move events
+                &mut context,
+            );
+            match disposition {
+                EventDisposition::Consumed => { /* tool handled it */ },
+                EventDisposition::PassThrough => {
+                    // Camera handles it
+                    self.camera.orbit(response.drag_delta().x, response.drag_delta().y);
+                },
+                _ => { /* future variants */ },
+            }
+        }
+
+        // Similar for click + release + key events + etc.
+    }
+}
+```
+
+**Post-Mediator-Removal end state**: ViewportWidget has NO per-tool fields. No `terrain_brush_active`. No `regional_archetype_paint_active`. Tool state lives entirely in tool's ActiveTool implementation (e.g., TerrainPanel's `brush_enabled` + `brush_mode`; RegionalArchetypePanel's `paint_active` + `paint_mode`).
+
+**Depth-buffer access** for ray-plane projection (per G-diagnostic audit at viewport/widget.rs:1219-1234): ViewportWidget exposes depth-buffer query as a method on `ToolContext`. Tools that need depth-accurate world projection (TerrainPanel sculpt brush — surface-following) call `context.world_xz_at_pointer()` which uses depth-buffer + camera unprojection. Tools that don't (RegionalArchetypePanel paint per F.5-paint.B's `screen_to_world_xz_y0` ray-plane projection at y=0 plane) ignore it or use a simpler `context.world_xz_at_y0()` helper.
+
+**Rationale**: ViewportWidget owns rendering + raw input capture; dispatcher owns tool arbitration. Clean separation of concerns; matches Fyrox precedent where Editor's scene_view owns rendering and the InteractionMode trait owns tool logic.
+
+### §2.8 Mutex arbitration semantics (resolves audit §8.1.7)
+
+**Decision**: framework-enforced mutex via dispatcher's `active_tool: Option<Uuid>` field. Single active tool at a time; `set_active_tool` transitions previous → new with proper `deactivate` → `activate` lifecycle calls.
+
+Implementation per §2.4 dispatcher snippet above. `active_tool` starts `None` (no tool active; events pass through to camera). `set_active_tool(Some(uuid))` calls previous active tool's `deactivate()` (if any) then new tool's `activate()`. `set_active_tool(None)` calls active tool's `deactivate()`; subsequent events pass through to camera.
+
+**Forward extensibility for multi-active scenarios** per research audit §3.1 (UE supports per-input-device active tools for VR): future `#[non_exhaustive]` dispatcher API additions can extend to multi-active. NOT in current scope per Q1 + Q3.
+
+**Rationale**: framework-enforced mutex matches research audit §7.4 majority pattern. Tool-self-arbitrated mutex (Unity OnToolGUI's `IsActiveTool` check) has documented bugs per research audit §3.2; framework-enforced is universally preferred.
+
+### §2.9 Tool composition rules (resolves audit §8.1.8)
+
+**Decision**: composition support deferred to follow-up campaigns. Current campaign produces single-active-tool dispatcher; tool composition (nested tools, sub-tool delegation, parent-child tool relationships) is forward concern.
+
+**Forward extensibility commitments** per Q4 + Q1: trait surface + dispatcher API designed to NOT preclude future composition extensions:
+
+- **Sub-tool pattern** (parent tool delegates to child tool via parent's per-event methods calling child's): documentable as a pattern; doesn't require dispatcher changes. A parent ActiveTool implementation can hold a child `Box<dyn ActiveTool>` and delegate to its methods.
+- **Per-input-device active tools** per research audit §3.1 (UE VR pattern): dispatcher's `active_tool: Option<Uuid>` extends to `HashMap<InputDevice, Option<Uuid>>` when needed. Out of scope for current campaign.
+- **Tool-of-tools manager** per research audit §3.1 (UE meta-tool pattern): out of scope.
+
+**Rationale per Q1 + Q3**: production-readiness threshold is level (ii) — full multi-tool dispatcher with mutex/lifecycle/Pattern A regression. Composition rules are level (iii) tooling beyond current scope. Deferring keeps campaign focused.
+
+### §2.10 Tool state persistence (resolves audit §8.1.9)
+
+**Decision**: per-tool persistence is each tool's responsibility; dispatcher doesn't enforce a persistence pattern.
+
+Tools that need persistent state (TerrainPanel brush settings; RegionalArchetypePanel brush size + falloff radius + selected archetype) implement their own save/load via existing AstraWeave editor preferences mechanism. Dispatcher doesn't know or care about per-tool settings.
+
+**Forward pattern reference** per research audit §3.1 (UE `UInteractiveToolPropertySet`) + §4.1 (Krita `KisPaintopPreset`): when AstraWeave needs per-tool preferences UX (preset save/load; settings panel layouts), follow these canonical references. Implementation deferred to per-tool sub-phases or follow-up campaigns.
+
+**Rationale**: tool state persistence is orthogonal to dispatcher architecture. Coupling persistence into ActiveTool trait surface adds complexity without clear current need. Tools handle their own; dispatcher focuses on event routing + lifecycle.
+
+### §2.11 Tool action transactionality (resolves audit §8.1.10)
+
+**Decision**: action transactionality (Command pattern integration with undo/redo) is each tool's responsibility; dispatcher doesn't enforce a Command pattern.
+
+Tools that need undo/redo (TerrainPanel brush actions per existing `TerrainBrushCommand`; RegionalArchetypePanel paint operations) emit Commands at appropriate transaction granularity (typically stroke end). Dispatcher doesn't know or care about Commands.
+
+**Forward pattern reference** per research audit §6.2 Command + Memento composition: composite Commands for transactional bulk operations (e.g., "paint stroke = N hits as one undo action") is the canonical pattern. AstraWeave's existing undo/redo infrastructure (likely main.rs-level command history; needs verification by Sub-phase 1 Diagnostic per Q7) is the integration target.
+
+**Pattern A regression test scope**: dispatcher class only (registration + activation + mutex + lifecycle + EventDisposition routing). NOT undo/redo integration tests; those belong to per-tool sub-phases or undo/redo follow-up campaigns.
+
+**Rationale**: transactionality is orthogonal to dispatcher architecture. Coupling Command pattern into ActiveTool trait surface adds complexity without clear current need; existing AstraWeave undo/redo infrastructure may already serve this need (Sub-phase 1 Diagnostic confirms).
+
+---
+
+## §3 — Sub-phase 1 — Diagnostic
+
+Per Q7. Compares AstraWeave's actual editor architecture against research audit pattern catalog. Confirms or surfaces gaps in §2 decisions.
+
+### §3.1 Goal
+
+Inspect editor code; classify against research audit §7.1 5-approach taxonomy; confirm AstraWeave matches expected approach (B) per G-diagnostic; surface any architectural gaps in §2 decisions; document observations + recommendations in audit at `docs/audits/editor_multi_tool_architecture_diagnostic_<YYYY-MM-DD>.md`.
+
+### §3.2 Scope
+
+**In-scope** (single AstraWeave references; not exploratory):
+
+- `tools/aw_editor/src/main.rs` — main.rs:3833-3877 mediator code; broader Editor struct context.
+- `tools/aw_editor/src/viewport/widget.rs` — ViewportWidget per-tool fields + handle_input dispatch; depth-buffer access pattern.
+- `tools/aw_editor/src/panels/terrain_panel.rs` — TerrainPanel state machine; integration points for ActiveTool implementation.
+- `tools/aw_editor/src/panels/regional_archetype_panel.rs` — RegionalArchetypePanel state machine; existing F.5-paint.B brush logic.
+- `tools/aw_editor/src/tab_viewer/mod.rs` — EditorTabViewer struct; per-tool accessors.
+- `tools/aw_editor/src/panel_type.rs` — PanelType enum; current tool registration pattern (panel-level, not tool-level).
+- `tools/aw_editor/src/dock_panels.rs` — DockPanelContext; placeholder dispatch for non-field-based panels.
+- Existing undo/redo infrastructure (locate; assess Command pattern integration target).
+
+**Out-of-scope**:
+
+- Implementation; recommendation of single approach (research audit §7 already produced taxonomy + tradeoff matrix; §2 already commits).
+- Deep dive into wgpu integration beyond what's needed to ground §2 decisions.
+- Diagnostic-level evaluation of additional concerns (tool composition, state persistence, action transactionality) — those are explicitly deferred per §2.9 + §2.10 + §2.11.
+
+### §3.3 Success criteria
+
+- Diagnostic audit produced at `docs/audits/editor_multi_tool_architecture_diagnostic_<YYYY-MM-DD>.md`.
+- §2 decision validation: confirmed (audit §7 §2.1-§2.11 each marked validated against AstraWeave) OR gaps surfaced + §0 halt-and-re-research authorized + Andrew-gate triggered.
+- No production code changes; no test changes.
+
+### §3.4 Andrew-gate
+
+Per Q9: architectural-decision touchpoint. If diagnostic surfaces gaps in §2 decisions, Andrew-gate triggers; Andrew makes the call (proceed with adjusted §2; halt-and-re-research per §0; spin off another foundational campaign). If diagnostic confirms §2 decisions, no Andrew-gate needed (code-level verification only).
+
+### §3.5 Reversibility
+
+Doc-only; trivial revert via `git revert`.
+
+### §3.6 Expected commits
+
+- **Diagnostic.A**: audit document.
+- **Diagnostic.B**: campaign doc Status header + §11 update + §12 entry capturing diagnostic findings.
+- Optional hash-fixup.
+
+---
+
+## §4 — Sub-phase 2 — ActiveTool trait + dispatcher core + register_tool API
+
+### §4.1 Goal
+
+Implement §2.2 ActiveTool trait + §2.3 EventDisposition enum + §2.4 dispatcher mechanism + §2.5 register_tool API. Produces working dispatcher infrastructure with no tools registered yet.
+
+### §4.2 Scope
+
+**In-scope**:
+
+- New module `tools/aw_editor/src/active_tool/mod.rs` (or similar; Sub-phase 2 picks final path).
+- `ActiveTool` trait + `EventDisposition` enum + `MouseEvent` + `KeyEvent` + `MouseEventKind` + `ToolContext` types.
+- `Dispatcher` struct + `register_tool` + `set_active_tool` + `dispatch_mouse_event` + `dispatch_key_event` + `update_active_tool` + supporting methods.
+- Module-level unit tests for dispatcher mechanics: registration, activation transitions (deactivate-then-activate), mutex enforcement (single active), default-implementation pass-through.
+- No integration with ViewportWidget or main.rs yet.
+
+**Out-of-scope**:
+
+- Integration with existing editor runtime path (Sub-phase 3 + Sub-phase 5 + Mediator Removal session).
+- Tool implementations (Sub-phase 3 + Sub-phase 5).
+- Pattern A regression test infrastructure (Sub-phase 4).
+
+### §4.3 Success criteria
+
+- Trait + enum + dispatcher compile.
+- Module-level unit tests pass: registration + activation transitions + mutex.
+- `cargo check -p aw_editor` clean.
+- No integration with editor's runtime path (verified by grep — `Dispatcher` referenced only in `active_tool/` module + its tests).
+
+### §4.4 Andrew-gate
+
+Per Q9: code-level only; no visual verification or architectural decision. NOT Andrew-gated.
+
+### §4.5 Reversibility
+
+New file additions; trivial revert via `git revert`. ViewportWidget + main.rs untouched.
+
+### §4.6 Expected commits
+
+- **Core.A**: ActiveTool trait + types.
+- **Core.B**: Dispatcher struct + methods.
+- **Core.C**: Module-level unit tests.
+- **Core.D**: Closeout (campaign doc §11 update; §12 deviations entry if any).
+
+Sub-phase prompts decide actual sub-commit shape; this is the expected breakdown.
+
+---
+
+## §5 — Sub-phase 3 — TerrainPanel ActiveTool implementation (additive)
+
+### §5.1 Goal
+
+Implement ActiveTool for TerrainPanel; both ActiveTool path + main.rs mediator coexist; verify TerrainPanel's brush still works via Andrew-gate.
+
+### §5.2 Scope
+
+**In-scope**:
+
+- Modifications to `tools/aw_editor/src/panels/terrain_panel.rs` — `impl ActiveTool for TerrainPanel`. Uses Fyrox-style per-event method delegation: `on_left_mouse_button_down` triggers brush start; `on_mouse_move` continues brush stroke (with throttling per existing `last_brush_time`); `on_left_mouse_button_up` ends brush stroke + emits TerrainBrushCommand.
+- Modifications to `tools/aw_editor/src/main.rs` — call `dispatcher.register_tool(Box::new(TerrainPanel))` at editor init (after dispatcher construction). Existing main.rs mediator code (line 3833-3877) is **preserved** — both paths coexist additively.
+- Modifications to `tools/aw_editor/src/viewport/widget.rs` — `handle_input` calls `dispatcher.dispatch_*` for input events (alongside existing `terrain_brush_active`-branched code). Both ActiveTool path + existing `terrain_brush_active`-branching coexist; TerrainPanel's brush works via either path.
+- TerrainPanel `is_brush_active()` → `set_active_tool(Some(TERRAIN_PANEL_UUID))` integration: when user enters brush mode in TerrainPanel UI, panel sets dispatcher's active tool to itself.
+
+**Out-of-scope**:
+
+- Removing existing main.rs mediator code (deferred to Mediator Removal session per §2.6).
+- Removing ViewportWidget per-tool fields (deferred to Mediator Removal session).
+- RegionalArchetypePanel changes (Sub-phase 5).
+- Pattern A regression tests for dispatcher class (Sub-phase 4).
+
+### §5.3 Success criteria
+
+- `impl ActiveTool for TerrainPanel` compiles.
+- Dispatcher registers TerrainPanel at editor init.
+- ViewportWidget routes events to dispatcher (alongside existing main.rs mediator).
+- TerrainPanel's brush works via dispatcher path: clicks/drags route to `on_*` methods → existing brush logic → TerrainBrushCommand emission preserved.
+- TerrainPanel's brush ALSO works via existing main.rs mediator path (both paths active simultaneously per Q2 risk-bounding).
+- All 8 brush modes (sculpt/paint/lower/smooth/flatten/erode/noise/zoneblend) functional.
+
+### §5.4 Andrew-gate (REQUIRED per Q9)
+
+Visible-output sub-phase. Andrew opens editor; selects TerrainPanel brush mode; click+drags in viewport. Expected:
+
+- Brush feedback visible (cursor circle drape on terrain; brush hits accumulating).
+- All 8 brush modes work as before (Andrew tests at least 3-4 modes).
+- No regression in stroke timing, brush size visualization, depth-buffer-based hit detection.
+- Stroke end produces undo entry (TerrainBrushCommand emitted to undo stack).
+
+### §5.5 Reversibility
+
+Additive code; revert removes ActiveTool impl + register_tool call + ViewportWidget dispatcher.dispatch_* calls. main.rs mediator code untouched (still works).
+
+### §5.6 Expected commits
+
+- **Sub-phase 3.A**: `impl ActiveTool for TerrainPanel` in terrain_panel.rs.
+- **Sub-phase 3.B**: dispatcher registration in main.rs + ViewportWidget dispatcher.dispatch_* integration.
+- **Sub-phase 3.C** (Andrew-gate PASS): closeout — campaign doc §11 update; §12 entry.
+
+Sub-phase prompts decide actual sub-commit shape.
+
+---
+
+## §6 — Sub-phase 4 — Pattern A regression infrastructure for dispatcher class
+
+### §6.1 Goal
+
+Implement Pattern A regression tests covering dispatcher class — registration, activation, mutex enforcement, lifecycle transitions (activate/deactivate/update), EventDisposition routing, set_active_tool transitions, dispatch_pointer_event routing.
+
+### §6.2 Scope
+
+**In-scope**:
+
+- New tests file `tools/aw_editor/src/active_tool/tests.rs` (or co-located in `mod.rs`).
+- Test fixtures: synthetic `MockActiveTool` implementations exposing internal state for assertion.
+- Coverage of dispatcher API:
+  - `register_tool` adds tool to registry (verify via UUID lookup).
+  - `register_tool` with same UUID overwrites (verify; document semantic).
+  - `set_active_tool(Some)` transitions previous-deactivate → new-activate.
+  - `set_active_tool(None)` deactivates current; subsequent dispatch returns PassThrough.
+  - `dispatch_mouse_event` routes to active tool's matching method; returns tool's EventDisposition.
+  - `dispatch_mouse_event` with no active tool returns PassThrough.
+  - `dispatch_mouse_event` with active tool whose UUID is no longer registered returns PassThrough (graceful handling).
+  - `update_active_tool` calls active tool's update() once per tick.
+  - Lifecycle ordering: register → set_active → activate called; set_active(other) → deactivate-then-activate sequence.
+  - Default-implementation pass-through: tool that doesn't override `on_left_mouse_button_down` returns PassThrough by default.
+  - Mutex enforcement: only one active tool at a time; `set_active_tool` transitions properly.
+- No production code changes beyond test infrastructure.
+
+**Out-of-scope**:
+
+- Tool-specific tests (TerrainPanel brush mode tests; RegionalArchetypePanel paint mode tests) — those belong to per-tool sub-phases.
+- Integration tests that exercise the full editor runtime path — out of Pattern A regression scope (those would be sub-phase 3 / sub-phase 5 visual-verification Andrew-gate territory).
+
+### §6.3 Success criteria
+
+- Pattern A regression test suite covers dispatcher class comprehensively.
+- All tests pass.
+- Suite runs as part of `cargo test -p aw_editor` workflow.
+- Coverage measurement: dispatcher class methods all exercised by at least one test.
+
+### §6.4 Andrew-gate
+
+Per Q9: code-level only. NOT Andrew-gated.
+
+### §6.5 Reversibility
+
+Test additions; trivial revert.
+
+### §6.6 Expected commits
+
+- **Sub-phase 4.A**: test fixtures + dispatcher mechanics tests.
+- **Sub-phase 4.B**: lifecycle + EventDisposition tests.
+- **Sub-phase 4.C**: closeout.
+
+---
+
+## §7 — Sub-phase 5 — RegionalArchetypePanel ActiveTool implementation + registration
+
+### §7.1 Goal
+
+Implement ActiveTool for RegionalArchetypePanel; register via `dispatcher.register_tool`; verify brush UX works (subsumes G-pointer-events-fix scope per research audit §8.4).
+
+### §7.2 Scope
+
+**In-scope**:
+
+- Modifications to `tools/aw_editor/src/panels/regional_archetype_panel.rs`:
+  - `impl ActiveTool for RegionalArchetypePanel`.
+  - `on_left_mouse_button_down`: activate paint mode + start stroke (set internal state per existing F.5-paint.B `paint_active` flag at line 75; activate via Q5 forward observation).
+  - `on_mouse_move`: continue stroke; call existing `queue_paint_op(world_x, world_z)` from F.5-paint.B.
+  - `on_left_mouse_button_up`: end stroke; flush via `apply_pending_paint_ops_to_owned()`.
+  - `activate`/`deactivate` lifecycle methods.
+  - `make_button` UI integration.
+  - UUID identity (constant `REGIONAL_ARCHETYPE_PANEL_UUID`).
+- Modifications to `tools/aw_editor/src/main.rs` — register RegionalArchetypePanel alongside TerrainPanel at editor init.
+- No new ViewportWidget fields (per §2.7 separation; ViewportWidget routes events to dispatcher; dispatcher routes to active tool).
+- UI integration: when user enters Paint mode in RegionalArchetypePanel UI, panel sets dispatcher's active tool to itself.
+
+**Out-of-scope**:
+
+- TerrainPanel changes (Sub-phase 3 done; coexistence preserved).
+- Removing existing main.rs mediator code (Mediator Removal session).
+- H-saveload diagnostic / fix (separate session post-resumption).
+- F.5-overlay-and-gate (separate session post-resumption).
+- Pattern A regression for tool-specific behavior (out of Pattern A scope).
+
+### §7.3 Success criteria
+
+- `impl ActiveTool for RegionalArchetypePanel` compiles.
+- Dispatcher registers RegionalArchetypePanel at editor init alongside TerrainPanel.
+- Click+drag with Paint mode active routes events to RegionalArchetypePanel.queue_paint_op.
+- Brush UX works end-to-end:
+  - User opens RegionalArchetypePanel, selects archetype + paint mode.
+  - Click+drag in viewport produces paint operations.
+  - Mask state updates as expected.
+  - Save/Load operations functional (per F.5-paint.C; not regressed).
+
+### §7.4 Andrew-gate (REQUIRED per Q9)
+
+Visible-output sub-phase. Andrew opens editor; selects RegionalArchetypePanel; selects archetype (e.g., Boreal); enters Paint mode; click+drags in viewport. Expected:
+
+- Visual paint feedback (mask updates visible if rendered; or at minimum, painted regions accumulate in panel's owned mask).
+- Click+drag routes to RegionalArchetypePanel's brush queue (not consumed by camera pan, which was the F.5-paint.F-fix Andrew-gate REGRESS).
+- Switching to TerrainPanel brush mode (Sub-phase 3 still works; tools coexist via dispatcher).
+- Brush UX click+drag does NOT route to camera pan (the original F.5-paint REGRESS is fixed).
+
+### §7.5 Forward implication for Regional Archetype Variation resumption
+
+Sub-phase 5 likely subsumes G-pointer-events-fix per research audit §8.4. If subsumed: Regional Archetype Variation resumes at H-saveload-diagnostic post-Sub-phase 5 + Mediator Removal + Sub-phase 6 closeout.
+
+If not fully subsumed (e.g., Sub-phase 5 only registers + minimal integration; full G-pointer-events-fix needed for additional integration like undo/redo wiring): G-pointer-events-fix runs as small Regional Archetype Variation session post-this-campaign closeout. Estimated 1 small commit if needed.
+
+### §7.6 Reversibility
+
+Additive code; revert removes ActiveTool impl + register_tool call + Paint mode activation logic.
+
+### §7.7 Expected commits
+
+- **Sub-phase 5.A**: `impl ActiveTool for RegionalArchetypePanel` in regional_archetype_panel.rs.
+- **Sub-phase 5.B**: dispatcher registration in main.rs + UI integration for Paint mode activation.
+- **Sub-phase 5.C** (Andrew-gate PASS): closeout — campaign doc §11 update; §12 entry; cross-reference Regional Archetype Variation campaign doc with G-pointer-events-fix subsumption confirmation.
+
+---
+
+## §8 — Dedicated Session — Mediator Removal
+
+Per Q6: NOT a sub-phase; dedicated session with fresh context for high-risk refactoring.
+
+### §8.1 Goal
+
+Remove main.rs:3833-3877 mediator code; remove ViewportWidget `terrain_brush_active` field + 5 supporting tool-specific fields + setters; verify TerrainPanel + RegionalArchetypePanel still work post-removal via Andrew-gate.
+
+### §8.2 Scope
+
+**In-scope** (pure removal; no new code):
+
+- Modifications to `tools/aw_editor/src/main.rs`:
+  - Remove pre-render terrain brush sync block (lines ~3834-3846 per G-diagnostic findings: `let brush_active = ...` through `viewport.set_terrain_brush_active(brush_active);` etc.).
+  - Remove post-render hit drain block (lines ~3862-3877: `viewport.take_terrain_brush_hits()` through stroke end detection).
+- Modifications to `tools/aw_editor/src/viewport/widget.rs`:
+  - Remove `terrain_brush_active: bool` field (line 163).
+  - Remove 5 supporting tool-specific fields (`terrain_brush_radius`, `terrain_brush_is_paint`, `terrain_brush_hits`, `terrain_brush_stroke_ended`, `last_brush_time`).
+  - Remove setters (`set_terrain_brush_active`, `set_terrain_brush_params`, `take_terrain_brush_hits`, `take_terrain_brush_stroke_ended`).
+  - Remove `terrain_brush_active`-branched code in `handle_input` (lines 1180-1255 per G-diagnostic findings).
+- Modifications to `tools/aw_editor/src/tab_viewer/mod.rs`:
+  - Remove `is_terrain_brush_active`, `apply_terrain_brush_at`, `terrain_brush_radius`, `terrain_brush_is_paint`, `terrain_brush_mode_name`, `end_terrain_brush_stroke` accessors (assess via grep; remove all that were main.rs-mediator-only).
+- Build verification + Pattern A regression test runs.
+
+**Out-of-scope**:
+
+- New code (pure removal session; if new code emerges as needed, halt-and-surface per §0).
+- Adding new dispatcher capabilities (sub-phase work; not removal session).
+- Per-tool feature additions (sub-phase work).
+
+### §8.3 Success criteria
+
+- Mediator code removed (lines 3833-3877 of main.rs deleted; no `terrain_brush_*` accessor calls remain).
+- ViewportWidget has no per-tool fields (grep `tools/aw_editor/src/viewport/widget.rs` for `terrain_*` returns nothing).
+- TerrainPanel + RegionalArchetypePanel both work via dispatcher (no regression).
+- Pattern A regression tests pass.
+- Build clean (`cargo check -p aw_editor`; `cargo test -p aw_editor`).
+
+### §8.4 Andrew-gate (REQUIRED per Q9)
+
+Visible-output session. Comprehensive verification:
+
+- Andrew opens editor; selects TerrainPanel; tests all 8 brush modes (sculpt/paint/lower/smooth/flatten/erode/noise/zoneblend). Each mode functional.
+- Andrew selects RegionalArchetypePanel; tests Paint + Erase modes. Both functional.
+- Andrew switches between TerrainPanel + RegionalArchetypePanel. Tools coexist correctly; activation transitions work.
+- No new wgpu validation errors or panics on editor startup.
+- FPS in expected range (no per-frame mediator overhead removed actually accounted for slight FPS regression? If so, log §12).
+- Existing TerrainPanel functionality preserved (terrain regeneration, undo/redo, brush settings).
+
+### §8.5 Why dedicated session
+
+Per Q6: high-risk refactoring of working code. Bundling with sub-phase containing other concerns produces context muddying (F.5-paint cascade's failure mode). Discrete dedicated session honors discipline pattern; full context for careful work.
+
+The session has only one concern — removal — so the agent can focus on correctness without being pulled toward "while-I'm-here" extensions or new features. If the removal surfaces unexpected coupling, halt-and-surface per §0; new code creation is out of session scope.
+
+### §8.6 Reversibility
+
+Pure removal; revert restores mediator code via `git revert`. Functional regression risk is contained by Andrew-gate verification.
+
+### §8.7 Expected commits
+
+- **Mediator-Removal.A**: main.rs mediator code removal.
+- **Mediator-Removal.B**: ViewportWidget per-tool field removal + setter removal.
+- **Mediator-Removal.C**: tab_viewer accessor cleanup.
+- **Mediator-Removal.D** (Andrew-gate PASS): closeout — campaign doc §11 update; §12 entry.
+
+Session prompt decides actual sub-commit shape.
+
+---
+
+## §9 — Sub-phase 6 — Closeout
+
+### §9.1 Goal
+
+Updates parent campaign references; updates ARCHITECTURE_MAP.md editor section; cross-references Regional Archetype Variation resumption; standard housekeeping.
+
+### §9.2 Scope
+
+**In-scope**:
+
+- Updates to `docs/current/REGIONAL_ARCHETYPE_VARIATION_CAMPAIGN.md`:
+  - Status header line: Editor Multi-Tool Architecture campaign COMPLETE entry.
+  - §9 status block: Editor Multi-Tool Architecture COMPLETE; Regional Archetype Variation resumption pointer (post-Sub-phase 5, G-pointer-events-fix likely subsumed).
+  - §10 entry capturing Editor Multi-Tool Architecture campaign closure + Regional Archetype Variation resumption shape.
+- Updates to `docs/architecture/ARCHITECTURE_MAP.md` editor section: reflect ActiveTool dispatcher + register_tool API + canonical pattern. Document the post-removal end-state architecture.
+- Updates to this campaign's §11: mark all sub-phases COMPLETE.
+- Updates to this campaign's Status header: COMPLETE.
+
+**Out-of-scope**:
+
+- New audit documents (campaign closes without producing additional audits).
+- Production code changes (closeout is doc-only).
+- Sub-phase prompt drafting for follow-up campaigns (those are separate sessions).
+
+### §9.3 Success criteria
+
+- Doc updates land.
+- Campaign marked COMPLETE.
+- Regional Archetype Variation resumption point unambiguous.
+- ARCHITECTURE_MAP.md editor section accurately reflects post-campaign state.
+
+### §9.4 Andrew-gate
+
+Per Q9: doc-only; not Andrew-gated.
+
+### §9.5 Reversibility
+
+Doc-only; trivial revert.
+
+### §9.6 Expected commits
+
+- **Sub-phase 6.A**: campaign doc + Regional Archetype Variation cross-reference + ARCHITECTURE_MAP update.
+- Optional hash-fixup.
+
+---
+
+## §10 — Out of scope for entire campaign
+
+Items explicitly out of scope per Q1 + Q3 + Q9 production-readiness threshold:
+
+- **Tool composition rules** (deferred per §2.9; future paint tool campaigns or follow-up). Sub-tool delegation, parent-child tool relationships, tool-of-tools manager — all forward concerns. Trait surface designed to NOT preclude these extensions per §2.9 forward extensibility commitment.
+
+- **Tool state persistence pattern** (deferred per §2.10; per-tool responsibility). UI for preset save/load; per-tool settings panel layouts; cross-session preference persistence — all per-tool concerns. Dispatcher doesn't enforce a persistence pattern.
+
+- **Tool action transactionality / Command pattern integration** (deferred per §2.11; per-tool responsibility). Composite Commands for transactional bulk operations; undo/redo integration — all per-tool concerns. Dispatcher doesn't enforce Command pattern.
+
+- **Hover-feedback tool semantics** (deferred per Q4; future when hover-feedback tools land). `EventDisposition` extends to `ConsumedSelective` variant when needed; `#[non_exhaustive]` enables forward addition without breaking consumers.
+
+- **ECS-style component-based tool registration** (Approach V per research audit §7.1; deferred per Q5 mod-friendliness via Approach I+II hybrid). AstraWeave's custom-ECS could theoretically support tools-as-components; not in scope for current campaign.
+
+- **Per-input-device multi-active tools** (UE VR pattern per research audit §3.1; deferred per Q1 scope). Future `#[non_exhaustive]` dispatcher API extensions can support multi-active when needed.
+
+- **Developer documentation tooling** (level (iii) per Q3; not in current scope). Tutorial documentation, code examples beyond §2 specification, developer guides — all forward concerns. Pattern A regression tests serve as canonical reference for dispatcher class behavior.
+
+- **Wgpu integration beyond what's needed for ViewportWidget event capture** (deferred to wgpu-specific follow-up if needed). Sub-phase 3 + Sub-phase 5 use existing ViewportWidget depth-buffer access pattern; campaign doesn't reframe wgpu integration.
+
+- **Editor preferences UX** (forward concern; per-tool implementations leverage existing preferences mechanism if/when needed).
+
+- **Tool palette UI redesign** (forward concern; Sub-phase 5 + Mediator Removal session use existing UI structure; full palette UI redesign is separate campaign).
+
+---
+
+## §11 — Phase status
+
+This section must be updated in the same commit that completes each sub-phase per §0 discipline.
+
+```text
+Editor Multi-Tool Architecture campaign-design pass: COMPLETE 2026-05-04, commits 75b68e7c7 + 8fad61bd3 + 8c92890b9.
+Sub-phase 1 — Diagnostic: COMPLETE 2026-05-04, commits 4556c267b (Diagnostic.A audit) + 0a7df3cdf (Diagnostic.B campaign doc update) + 6924e39db (Diagnostic.C hash-fixup). All ten §2.X commitments compatibility-confirmed; zero gap-evidence; 2 open-questions deferred to Sub-phase 2 + Sub-phase 5 prompt drafting; NO Andrew-gate triggered.
+Sub-phase 2 — ActiveTool trait + dispatcher core + register_tool API: COMPLETE 2026-05-04, commits 813ac29a1 (Core.A trait + types + ToolContext) + 2c791fa39 (Core.B Dispatcher) + ece7bb3b4 (Core.C 15 unit tests + MockActiveTool fixture) + 6016b3c8f (Core.D campaign doc update). New module at tools/aw_editor/src/active_tool/ with mod.rs (~280 lines: trait + types) + dispatcher.rs (~190 lines: Dispatcher impl) + tests.rs (~470 lines: MockActiveTool + DefaultOnlyTool fixtures + 15 test scenarios). §2.7 ToolContext open question resolved via pre-computed world-XZ projection fields + world_xz_at_pointer/world_xz_at_y0 method accessors. Module isolation verified: Dispatcher + ActiveTool referenced only within active_tool/ (no external usages). Code-level only; NOT Andrew-gated per Q9.
+Sub-phase 3 — TerrainPanel ActiveTool implementation (additive): IN PROGRESS — 3.A 0dea0bebc + 3.B 41ec3b192 landed (build clean; 15/15 active_tool tests pass); Andrew-gate REGRESS verdict 2026-05-04 surfaced upstream mediator brush regression (NOT caused by Sub-phase 3 per Andrew Q1 verification at 79e483e6c); Sub-phase 3.C closeout DEFERRED pending mediator brush fix.
+Sub-phase 3 Mediator Brush Diagnostic — TerrainPanel brush mediator path failure-diagnosis: COMPLETE 2026-05-05, commits e5e32f486 (Diagnostic.A audit) + f5c96836f (Diagnostic.B campaign doc update). Single confirmed root cause: H5 mediator drain logic regression at f84eb09049 (2026-03-17) — viewport.set_terrain_brush_active + viewport.set_terrain_brush_params at main.rs:3869-3870 placed inside `if let (Some(world), Some(viewport))` gate, brush state never reaches viewport when no scene loaded. H1 (F.5-paint cascade) REFUTED. Recommended fix: small (~10 lines), single-commit, no architectural changes.
+Sub-phase 3 Mediator Brush Fix — relocate brush sync calls outside Some(world) gate: LANDED 2026-05-05 commit 8f4668599 BUT REGRESS at Andrew-gate (Path 1 brush UX unchanged; FPS spike disappearance only). Retroactively classified as harmless redundancy per Round 1 evidence. Revert deferred to eventual real-fix session for clean recovery narrative.
+Sub-phase 3 Mediator Brush Diagnostic Instrumentation Round 1 — 5-point eprintln supplement for runtime evidence capture: COMPLETE 2026-05-06, commits e037d63b5 (Round 1 Instrumentation.A) + 040d90b16 (Round 1 Instrumentation.B revert) + df4a50e74 (Round-1-Closure.A this commit). Defects A (input routing) + B (render body silent no-op) identified. Three hypotheses contradicted (H5; tab_viewer:142; audit §4.4 H4 REFUTAL).
+Sub-phase 3 Mediator Brush Diagnostic Instrumentation Round 2 — 6-point eprintln supplement to disambiguate Defects A + B: COMPLETE 2026-05-06, commits 0b6bc6f50 (Round 2 Instrumentation.A) + 4a2aca24b (Round 2 Instrumentation.B revert). Defect A framing REFUTED (egui captures input correctly); Defect B framing PARTIALLY REFUTED (render body executes with valid-looking parameters); rendering-pipeline defect class identified.
+Sub-phase 3 Mediator Brush Round 3 Re-Diagnostic — formal synthesizing audit per Andrew's Option B directive: COMPLETE 2026-05-06, commits 7dc342a42 (Round-3-Re-Diagnostic.A audit ~700 lines) + 19eccad3c (Round-3-Re-Diagnostic.B campaign doc update this commit). 8 hypothesis classes enumerated; 12 Round 4 instrumentation targets specified; 5 methodology lessons codified.
+Sub-phase 3 Mediator Brush Round 4 Instrumentation — 12-point eprintln supplement targeting hypothesis classes 1-7: COMPLETE 2026-05-06, commits de1986301 (Round 4 Instrumentation.A — 10 functional targets, ~14 actual eprintln points after code-drift adjustments per Round-4-Instrumentation.A commit body; T3.B+C and T4.B skipped because pipeline state is in astraweave_physics crate; T5.B subsumed by T5.A since renderer uses same OrbitCamera reference) + bc9c8d5bd (Round 4 Instrumentation.B revert). Captured brush-dbg-r4.txt (6,641 BRUSH-DBG lines). Hypothesis classes 1, 2, 4, 5, 6, 7 all REFUTED. Class 3 (z-depth) DOWNSTREAM SYMPTOM not root cause (line0_ndc_z=1.0167 is consequence of cursor_center=cam_pos; ring vertices necessarily fall outside view frustum when their center IS the camera position). Outcome 5 per Round 4 prompt §5: unexpected mechanism — defect class is upstream of all eight Round 3 audit §3 enumerated mechanisms.
+Sub-phase 3 Mediator Brush Round-4-Closure.A — campaign doc codification of corrected analysis: COMPLETE 2026-05-06, commit 3bf425053 (this commit). Defect class narrows to depth pick chain (read_depth_at_pixel + unproject_depth_to_world + depth target binding lifecycle). Brush IS fully functional at data layer; ring-not-visible + terrain-modification-not-visible are downstream symptoms of cursor_center invariantly equal to cam_pos regardless of screen click position. Supersedes bc9c8d5bd commit-message body (codifies wrong conclusion preserved as methodology-lesson exhibit on derived-value reasoning trap). New methodology lesson surfaces (sibling to Round 3 audit §7.1-§7.5).
+Sub-phase 3 Mediator Brush Round 5 Instrumentation — 5-point eprintln supplement targeting depth pick chain per Round 4 closure §12 mechanism enumeration: COMPLETE 2026-05-07, commits 5203e7fbe (Round 5 Instrumentation.A — T8.A read_depth_at_pixel raw return + T8.B depth target write/read identity + T8.C terrain pipeline depth-write state at adapter dispatch + T8.D pixel coords + viewport_rect alignment + T8.E unproject_depth_to_world math sanity; throttle 5 Hz for high-frequency calls, once-per-frame for T8.B, once-at-init for T8.C) + 2eb0903a5 (Round 5 Instrumentation.B clean revert; production code identical to post-bc9c8d5bd). Tighter scope than Round 4's 12 targets per narrowed hypothesis space (1 defect class, 6 mechanisms vs Round 3's 8 classes). Captured brush-dbg-r5.txt (1,955 BRUSH-DBG lines).
+Sub-phase 3 Mediator Brush Round-5-Closure.A — campaign doc codification of Round 5 outcome with three fix candidate designs for Andrew-gate: COMPLETE 2026-05-07, commit 569415a7a (this commit). Outcome 1 per Round 5 prompt §3.6: Mechanism 1 (wrong texture, "different render target" sub-class) DEFINITIVELY CONFIRMED. T8.A=0.0 invariant + T8.B handle mismatch every frame + T8.C confirms adapter API has no depth attachment param + T8.D inside_viewport=true 650/650 + T8.E math consistent (depth=0 → ndc_z=0 → near-plane unprojection). 5 rounds of evidence-grounded narrowing converged on single mechanism in one capture session. New methodology lesson candidate: §7.7 wrapped-component resource identity trap (sibling to §7.6 derived-value reasoning trap).
+Sub-phase 3 Mediator Brush Real-Fix.A — Option (a) per Andrew-gate decision: pass Option<&wgpu::TextureView> depth_view parameter through engine_adapter::render_to_texture + Renderer::draw_into: LANDED 2026-05-07, commit 0f569d212. Cross-crate API addition; +33/-9 lines across 5 files (astraweave-render renderer.rs + tonemap_probe + coverage_booster_render; aw_editor viewport/engine_adapter.rs + viewport/renderer.rs). Andrew-gate verification 2026-05-07 partial PASS (ring renders at cursor; cursor follows click → Mechanism 1 fixed) + partial REGRESS (brush effects don't visibly modify terrain → NEW defect class downstream surfaced).
+Sub-phase 3 Mediator Brush Round 6 Instrumentation — 6-point eprintln supplement targeting mesh-update chain per Round 5 closure §7.7 candidate framing extended to mesh-data layer: COMPLETE 2026-05-07, commits d7b9e7bc2 (Round 6 Instrumentation.A — T9.A apply_brush_at world coords + T9.E chunk height delta paired + T9.B emit/handle 2-paired sites + T9.C update_terrain_chunk 3-sub-path always-on + T9.D terrain render source 60-frame throttle + T9.F adapter instance identity once-only) + 18f48f08b (Round 6 Instrumentation.B clean revert; +118/-118 lines across 5 files). Captured brush-dbg-r6.log (5,459 BRUSH-DBG lines).
+Sub-phase 3 Mediator Brush Round-6-Closure.A — campaign doc codification of Round 6 outcome with two fix candidate designs for Andrew-gate + §7.7 graduation to canonical: COMPLETE 2026-05-07, commit c7f3b50b3 (this commit). Outcome 3 per Round 6 prompt §3.7: Mechanism C (mesh resource identity trap, sibling §7.7 instance at mesh-data layer) DEFINITIVELY CONFIRMED with dual-variant sub-mechanism. T9.C smoking gun #3 (1749/1749 success entries with affected_clusters=0) + T9.D paired confirmation (terrain_cluster_models=0 across 238 samples) + T9.E heights changing correctly (delta ≈ 4.96) + T9.A/B/F refuted other mechanisms. 6 rounds of evidence-grounded narrowing converged on second of two §7.7 instances in same campaign. **§7.7 graduates from candidate to confirmed canonical pattern with multi-layer evidence** (depth-target Round 5 + mesh-data Round 6). Suggested CLAUDE.md amendment cycle: extend Edit 2 with resource-identity corollary.
+Sub-phase 3 Mediator Brush Real-Fix.B — Option 1 (refactor with shared helper) per Andrew-gate decision: LANDED 2026-05-07 commit eaaa53433. Extract shared upload_or_update_terrain_chunk_forward helper called by both initial upload_terrain_chunks and incremental update_terrain_chunk paths; aligns with CLAUDE.md v0.10.1 Edit 2 (no-second-implementation). Andrew-gate verification 2026-05-07 partial PASS (6/8 brush modes — sculpt, flatten, lower, smooth, erode, noise — visibly modify terrain → Mechanism C / mesh-data layer §7.7 instance CONFIRMED FIXED) + partial REGRESS (paint and zoneblend produce no visible texture change → NEW defect class downstream surfaced; tracks height-vs-texture data axis cleanly).
+Sub-phase 3 Mediator Brush Diagnostic Round 7 Instrumentation — 5-point eprintln supplement targeting paint/zoneblend texture-mutation chain per Round 6 closure §7.7 canonical-pattern framing extended to texture-data layer: COMPLETE 2026-05-08, commit c4d09ee86 (Round 7 Instrumentation.A — T10.A paint/zoneblend brush-apply data flow at terrain_panel.rs apply_brush_at + T10.B helper-entry splat data state at viewport/engine_adapter.rs upload_or_update_terrain_chunk_forward with biome_weights + material_* hash content tracking + T10.C renderer upload-pre at astraweave-render renderer.rs Renderer::upload_terrain_chunk + T10.D renderer draw-frame chunks survival at astraweave-render renderer.rs draw_into terrain pass + T10.E paint/zoneblend emit gating at terrain_panel.rs; throttled 5 Hz / once-per-12-frames except T10.D once-per-60-frames; +147 lines across 3 files; cargo check clean; 15/15 active_tool tests pass). Round-7-Instrumentation.B revert NOT YET LANDED (separate following session per discipline shift — Round 7 separates instrument / closure / revert / fix into single-concern sessions). Captured brush-dbg-r7.txt (220,423 lines / 6,954 BRUSH-DBG entries).
+Sub-phase 3 Mediator Brush Round-7-Closure.A — campaign doc codification of Round 7 outcome with three fix candidate designs for paint + ZoneBlend bundled-vs-split scoping for Andrew-gate + §7.7 elevation to fundamental architectural anti-pattern: COMPLETE 2026-05-08, commit 2ddc77a39 (this commit). Outcome 1 per Round 7 prompt §3.6: Mechanism H1 (wrapped-component sibling-attribute drift; intra-component variant of §7.7 at texture-data layer) DEFINITIVELY CONFIRMED via smoking-gun chunk_index=40 paint sequence (lines 202462-203435 of brush-dbg-r7.txt: 10 helper invocations with hash_biome=2d3d6543c332d0f4 invariant + hash_material varying + splat_0_hash=71cd3d8b30b4adce invariant). Paint mutates vertex.material_ids and vertex.material_weights; build_chunk_splat_maps reads only vertex.biome_weights_0/1; the two attribute sets never converge. ZoneBlend independent no-op-stub mechanism (orthogonal to §7.7) noted at terrain_integration.rs:1915 (BrushMode::ZoneBlend => current_h placeholder). 7 rounds of evidence-grounded narrowing converged on the third of three §7.7 instances in same campaign. **§7.7 ELEVATES from canonical pattern to fundamental architectural anti-pattern** with three-layer evidence (depth-target Round 5 + mesh-data Round 6 + texture-data Round 7) + intra-component sub-variant + two granularity scales (component-boundary + struct-attribute-set). Three fix candidate designs for paint (Option A mirror writes; Option B switch reader; Option C unify) + ZoneBlend bundled-vs-split scoping (Real-Fix.C or Real-Fix.D) presented for Andrew-gate decisions. Suggested CLAUDE.md amendment cycle elevation: resource-identity rule may elevate from corollary to first-class case in Edit 2.
+Sub-phase 3 Mediator Brush Diagnostic Round 7 Instrumentation.B — clean mechanical revert of c4d09ee86's 5 eprintlns: COMPLETE 2026-05-08, commit 9cd4f7e48 (single-purpose; no analytical content; symmetric -147 line diff matches +147 from .A; production code returns to post-Real-Fix.B eaaa53433 state — verified via git diff eaaa53433 returning 0 lines). Note T10.E paired with T10.A in apply_brush_at via shared throttle gate (different from prompt's anticipated separate-event-emission-site site).
+Sub-phase 3 Mediator Brush Real-Fix.C — Option C per Andrew-gate decision (a): unify TerrainVertex biome_weights_* and material_* into single canonical material_* attribute set: LANDED 2026-05-08, commit ded9a0457. Multi-system attribute unification: 2 sister TerrainVertex structs (viewport/types.rs:19 + terrain_integration.rs:64) — biome_weights_0/1 ELIMINATED; material_ids/material_weights preserved as canonical. New helper biome_weights_8_to_material_slots (terrain_integration.rs:1100) — shared core logic between splat-map-driven generation and elevation-derived fallback path. build_chunk_splat_maps (terrain_splat_builder.rs:39) reader update — reconstructs 8-channel splat from sparse 4-pair material_*. TerrainSurfaceSummary::add_vertex (engine_adapter.rs:124) biome aggregator reconstructed from material_* layers 0-7. 7 caller-site vertex constructions updated. +297/-140 lines across 9 files. Andrew-gate verification 2026-05-08 partial PASS (8/22 materials paint correctly — grass, sand, forest_floor, mountain_rock, snow, mud, wood_planks, stone) + partial REGRESS (14/22 non-working materials — rock_slate, dirt, cobblestone, cloth, default, gravel, ice, metal_rusted, moss, plaster, rock_lichen, roof_tile, tree_bark, tree_leaves — produce "pixelated green splotches"; NEW defect class downstream surfaced).
+Sub-phase 3 Mediator Brush Diagnostic Round 8 Instrumentation — 4-point eprintln supplement targeting material library coverage chain per Round 7 closure §7.7 fundamental-anti-pattern framing extended to UI/renderer capacity boundary: COMPLETE 2026-05-08, commit 518e01582 (Round 8 Instrumentation.A — T11.A UI panel material library + selected-material logging with throttle 5 Hz at terrain_panel.rs apply_brush_at + T11.B paint dispatch material ID write at terrain_integration.rs:2071 with in_range check + T11.C splat-build layer-drop at terrain_splat_builder.rs with kept/dropped counts + dropped_ids_sample + T11.D renderer texture array state at astraweave-render terrain_material_manager.rs set_material init). Round-8-Instrumentation.B revert NOT YET LANDED (separate following session per discipline shift continued from Round 7). Captured brush-dbg-r8.txt (76,584 lines / 491 BRUSH-DBG entries; T11.A 134, T11.B 134, T11.C 222, T11.D 1).
+Sub-phase 3 Mediator Brush Round-8-Closure.A — campaign doc codification of Round 8 outcome with three fix candidate designs for Andrew-gate + §7.7 elevation to structural axiom: COMPLETE 2026-05-08, commit e3d07f366 (this commit). Outcome 1 per Round 8 prompt §3.5: Mechanism H8.1 (UI/renderer material library capacity boundary mismatch; FOURTH §7.7 instance in same campaign) DEFINITIVELY CONFIRMED via smoking-gun first-non-working-onset at rock_slate idx=8 (paint-dispatch-write in_range=false paired with splat-build-cap dropped_slots=270, dropped_ids_sample=[8]). 100% correlation between in_range=false and dropped_slots>0 across 13 tested non-working materials; 100% correlation between in_range=true and dropped_slots=0 across 8 working materials. UI library offers 22; splat-build caps at 8; renderer texture array allocates 8 slots. 8 rounds of evidence-grounded narrowing converged on the fourth of four §7.7 instances in same campaign. **§7.7 ELEVATES from fundamental architectural anti-pattern to STRUCTURAL AXIOM** characterizing the editor's resource-management at every architectural boundary, with four-layer evidence (depth-target Round 5 + mesh-data Round 6 + texture-data Round 7 + UI/renderer-capacity-boundary Round 8) + three granularity scales (component-boundary + struct-attribute-set + UI-renderer-capacity-boundary). Three fix candidate designs (Option D-1 raise cap; D-2 canonical library; D-3 reduce UI) presented for Andrew-gate decision (h). Suggested CLAUDE.md amendment cycle elevation: resource-identity rule may elevate to first-class top-level Edit (possibly Edit 4 or Edit 5; ~150-word suggested wording in §12 entry).
+Sub-phase 3 Mediator Brush Real-Fix.D — canonical material library shared between UI + renderer (Option D-2 FULL-32: 22 named + 10 reserved = 32 slots): COMPLETE 2026-05-08, commit 7067cc03d. Resolves FOURTH §7.7 instance at UI/renderer material library capacity boundary; new astraweave-render/src/material_library.rs with MAX_TERRAIN_LAYERS=32 + NUM_SPLAT_MAPS=8; pbr_terrain.wgsl + pbr_terrain_forward.wgsl updated array<TerrainLayer, 8> -> 32 + 8 splat texture bindings; terrain_material_manager.rs ChunkSplat 8-texture array; 9 new material_library unit tests + 28/28 terrain_material tests pass + 16/16 terrain_splat_builder tests pass. Andrew-gate verification 2026-05-08 PASS: all 22 materials reach renderer mechanically; 8 paint with distinct textures (Defect Class 10 texture-asset-content gap surfaced for parallel work; not §7.7).
+Sub-phase 3 Mediator Brush Real-Fix.E — ZoneBlend brush mode (active brush + passive global pass; biome boundary feathering): COMPLETE 2026-05-08, commit 609f85357. Andrew-gate (l) l-1 + (m) m-3 design decisions. Composes onto Real-Fix.A/B/C/D canonical primitives mechanically simple: 2 files / +635/-24 lines / zero new architectural primitives. New apply_brush_zoneblend + apply_zoneblend_pass in terrain_integration.rs; 5 pure-CPU helpers (expand_sparse_to_dense_32 / top4_from_dense_32 / weighted_average_dense_32 / lerp_dense_32 / dense_32_max_channel_variance); 12 new zoneblend unit tests pass; ZoneBlend button + slider in terrain_panel.rs BiomeBlendParams. Andrew-gate verification 2026-05-08 PASS: 8/8 brush modes operational; Sub-phase 3 architectural objective achieved. **Canonical pipeline composability demonstrated** — Real-Fix.E is empirical payoff of Real-Fix.A/B/C/D resource-identity unification.
+Sub-phase 3 Mediator Brush Cleanup-A — delete dead-code legacy cluster path (rebuild_terrain_clusters_for_chunk + terrain_clusters Vec + self.models["terrain_cluster_*"] writes): COMPLETE 2026-05-08, commit 1900bdc8e. -334/+30 net lines across 2 files; engine_adapter.rs legacy cluster surfaces fully deleted; renderer.rs:5749 doc-comment updated to post-Cleanup-A state. 2 legacy cluster tests deleted alongside production code. Boundary invariant verified: 0 grep matches for legacy cluster symbols in tools/aw_editor + astraweave-render/src. Edit 2 architectural-level discipline completed: no parallel implementation surviving in tree. Cleanup-A PASS: canonical pipeline (Real-Fix.A/B/C/D/E) is single source of truth for terrain rendering.
+Sub-phase 3 Mediator Brush Cleanup-B — Mediator Brush Fix 8f4668599 revert per audit §5.1: COMPLETE 2026-05-08 as NO-OP MARKER commit, f7732d5d9. Pre-execution finding: 8f4668599's entire 11-line content is canonical pipeline foundation (TerrainPanel-only flow brush activation), not bypass-mechanism residue. Revert would regress 8/8 brush modes per detailed mechanism analysis. No-op marker commit records the determination. §7.8 methodology lesson candidate surfaced (audit-era misclassification): audit-era hypothesis framings can be retrospectively imprecise as campaign chain progresses; verify cleanup scope against post-campaign-chain canonical state, not just audit specifications. §7.8 elevation deferred to Sub-phase 3.C closeout (this commit).
+Sub-phase 3 Mediator Brush Cleanup-D research-pass — analytical-only chunk-boundary continuity layer characterization: COMPLETE 2026-05-08, commits 47a33e476 + e44f74c56 (hash-fixup). Audit at docs/audits/editor_multi_tool_architecture_subphase_3_mediator_brush_cleanup_d_research_pass_2026-05-08.md (~3,500 words; 9 sections). Three confirmed mechanisms: M-D5 erosion per-chunk avg_height divergence (primary; terrain_integration.rs:1874-1896); M-D9 post-brush normal-stitching gap (primary; stitch_edge_normals called at line 423 initial generation but NOT from apply_brush line 1824); M-SK skirt vertex height freeze (secondary; skirt_drop = chunk_size * 0.015 frozen at generation time). Multiple ChatGPT hypotheses refuted by code-reading (LOD discontinuity REFUTED; vertex position discontinuity REFUTED; brush radius clipped per chunk REFUTED; async/race REFUTED). Methodology recommendation: Andrew-gate (q) q-1 (direct fix, 1 session). §7.9 methodology lesson candidate surfaced (state-propagation pathway equivalence): pathways mutating state must produce equivalent end-states regardless of pathway; brush dispatch must produce equivalent chunk-boundary end-state to initial-generation pathway. §7.9 elevation deferred to Sub-phase 3.C closeout (this commit).
+Sub-phase 3 Mediator Brush Cleanup-D fix-pass — state-propagation pathway equivalence at three sites (M-D5 + M-D9 + M-SK): COMPLETE 2026-05-08, commit eb5e6c4a0. Andrew-gate (q) q-1 (direct fix) + (sk) sk-A (M-SK bundled). +259/-24 lines / single file (terrain_integration.rs). M-D5: refactored apply_brush with global avg_height PASS 1 across all affected chunks before per-chunk dispatch. M-D9: invoke stitch_edge_normals(chunk_size) at end of apply_brush if any chunk modified. M-SK: new compute_skirt_indices(gx, gz, resolution) helper + fast-path patch extended to update skirt vertex Y = surface Y - skirt_drop for edge surface vertices. 11 new cleanup_d_skirt_indices_* tests pass (interior + 4 single-edges + 4 corners + bounds + corner distinctness); ZoneBlend tests 12/12 preserved; terrain_splat_builder tests 12/12 preserved; aw_editor lib 4017+11=4028 total pass; 1 pre-existing failure (test_terrain_panel_creation chunk_radius default drift) unchanged out-of-scope. Andrew-gate verification 2026-05-08 PASS: "all brushes work, and i cant recreate the seam splits with the erosion tool anymore." Erosion chunk seam artifacts ELIMINATED; chunk-boundary continuity preserved; skirt decoupling resolved.
+Sub-phase 3.C — closeout: COMPLETE 2026-05-08, this commit. Campaign doc Status header + §11 entries + §12 Sub-phase 3.C closeout entry + §13 Methodology Body of Practice (NEW section). §7.8 elevated from candidate to canonical methodology lesson per Andrew-gate (§7.8) §7.8-A. §7.9 elevated from candidate to canonical methodology lesson per Andrew-gate (§7.9) §7.9-A. §7.7 structural axiom narrative consolidated (four layers + three granularity scales). Edit 2 multi-granularity discipline documented (four granularity scales). Canonical pipeline composability demonstrated. Body of practice carry-forward established as canonical input for Sub-phase 4+ AAA-fidelity foundational architectural work. **The most architecturally significant single-feature campaign in AstraWeave's history FINISHES.**
+Sub-phase 4 — Pattern A regression infrastructure for dispatcher class: COMPLETE 2026-06-06, commits 372e6d6f9 (4.A — 4 dispatcher-mechanics gap-fill tests reusing the MockActiveTool fixture) + ea3eae2e6 (4.B — deactivate-before-activate ORDER test + EventDisposition #[non_exhaustive] forward-compat tripwire + OrderRecordingTool fixture) + this commit (4.C — doc closeout). active_tool unit tests 15 -> 21; every §6.2 coverage item covered (register/dup-overwrite; set_active transitions incl. strict deactivate->activate ORDER; set_active(None) + same-UUID no-ops; dispatch_mouse/key/enter/leave routing; graceful no-active + unregistered-active PassThrough; active-tool-passes-through disambiguation; update once-per-tick + no-op-when-idle; default-impl pass-through; mutex enforcement; empty/negative registry invariants; forward-compat tripwire). cargo test -p aw_editor --lib: 4010 passed / 1 pre-existing unrelated failure (panels::terrain_panel::tests::test_terrain_panel_creation, chunk_radius default drift — out of scope per §3). Landed-API drift recorded in §12: spec §6.1/§6.2 referenced dispatch_pointer_event; landed API is dispatch_mouse_event/dispatch_key_event (tested the landed API per §7.3). Code-level only; NOT Andrew-gated per Q9; test-only diff (zero production-code changes).
+Sub-phase 5 — RegionalArchetypePanel ActiveTool implementation + registration: COMPLETE 2026-07-22, commits 2f6f853a5 (5.A — live dispatcher Y=0 projection, landed 2026-06-06) + 9bae816e3 (5.B — RegionalArchetypePanel ActiveTool implementation + dispatcher registration + side-channel paint drain/undo, landed 2026-06-06) + 2e92b8a3b (5.C — real-panel click+drag EventDisposition::Consumed regression guard) + this commit (5.C record closeout). Required §7.4 Andrew-gate PASS declared 2026-07-20 and recorded in docs/audits/T_SERIES_RATIFICATION_2026-07-20.md §1. G-pointer-events-fix SUBSUMED; Regional Archetype Variation resumption pointer advances to H-saveload-diagnostic after Mediator Removal + Sub-phase 6 close this campaign.
+Dedicated Session — Mediator Removal: NOT STARTED.
+Sub-phase 6 — Closeout: NOT STARTED.
+```
+
+Format for completion updates: `<sub-phase>: COMPLETE <YYYY-MM-DD>, commit <hash>`.
+
+---
+
+## §12 — Deviations log
+
+This section records any design decisions made during execution that deviate from this plan. Every deviation must be recorded here before or in the same commit as the deviation itself.
+
+Format for entries:
+
+```text
+### <YYYY-MM-DD>, Sub-phase <N>, commit <hash>
+**Deviation:** <short description>
+**Rationale:** <why>
+**Impact:** <what parts of later sub-phases or other systems are affected>
+```
+
+### 2026-05-04, Campaign-design pass, commits 75b68e7c7 + 8fad61bd3 + 8c92890b9 (hash-fixup)
+
+**No deviations from research audit §7 framework or Andrew Q1-Q10 strategic factors.** Campaign-design pass committed to Approach I+II hybrid synthesis per research audit §7.7 + concrete §2 architectural decisions per audit §8.1's ten enumeration. Sub-phase chain sized per Q8 scope-driven framing (6 sub-phases + 1 dedicated Mediator Removal session = 7 distinct campaign sessions per Q2 + Q6 + Q7 + Q8 strategic factors).
+
+**Inheritance from Regional Archetype Variation §0** preserved per Q10: research-pass-before-reframe discipline pattern; Andrew-gate authoritative for visible-output sub-phases; sub-phase completion + status header maintenance discipline; §2 architectural commitments respected.
+
+### 2026-05-04, Sub-phase 1 Diagnostic, commits 4556c267b (Diagnostic.A audit) + 0a7df3cdf (Diagnostic.B campaign doc update)
+
+**Sub-phase 1 Diagnostic — captures pre-implementation feasibility audit findings. Cross-reference entry; the diagnostic audit at `docs/audits/editor_multi_tool_architecture_diagnostic_2026-05-04.md` is the load-bearing artifact.**
+
+**Pre-execution verification** (per Sub-phase 1 prompt §1):
+- §1.1 Campaign doc re-read for §2 commitments: complete; §2.X verification map produced inline.
+- §1.2 Predecessor diagnostic methodology re-read: complete; F.5-paint.E-diagnostic §3 methodology revision + G-diagnostic §7 four-option decision-request precedent applied (§2-decision-organized structure per Q1; precedent-driven discovery per F.5-paint.E precedent).
+- §1.3 Campaign doc state confirmed at commits 75b68e7c7 + 8fad61bd3 + 8c92890b9.
+- §1.4 Anti-drift discipline reaffirmation: held; no implementation sketches; no §2 revision; no exploratory inspection beyond §3.1 scope.
+
+**Deliverables**:
+
+- **Diagnostic.A** (commit `4556c267b`): audit document at `docs/audits/editor_multi_tool_architecture_diagnostic_2026-05-04.md` (~470 lines, §1-§13 structure with §2-decision-organized verification per Q1).
+- **Diagnostic.B** (this commit): cross-reference §12 entry + Status header line + §11 phase status block update in this campaign doc.
+
+**Findings summary**:
+
+**All ten §2.X commitments verified COMPATIBILITY-CONFIRMED. Zero gap-evidence findings; NO Andrew-gate triggered. Sub-phase 2 prompt drafting + execution may proceed with §2 commitments intact.**
+
+Per-decision verification:
+
+- **§2.2 ActiveTool trait shape**: COMPATIBILITY CONFIRMED. TerrainPanel + RegionalArchetypePanel API surfaces map cleanly to Fyrox-style trait. Identical signature `fn(&mut self, world_x: f32, world_z: f32)` across `apply_brush_at` (terrain_panel.rs:819) + `queue_paint_op` (regional_archetype_panel.rs:138).
+- **§2.3 EventDisposition enum**: COMPATIBILITY CONFIRMED. Existing ViewportWidget event-handling has binary tool-consumed-or-camera-pass-through semantics implicitly (viewport/widget.rs:1180-1255 per G-diagnostic).
+- **§2.4 Dispatcher mechanism**: COMPATIBILITY CONFIRMED. egui `Sense::click_and_drag()` + `Response` API produces discrete events compatible with push-based per-event dispatch.
+- **§2.5 Registration model**: COMPATIBILITY CONFIRMED. Editor::new() pattern (main.rs:472+) structurally additive for `register_tool` calls. PanelType enum and ActiveTool registration orthogonal concerns.
+- **§2.6 Mediator removal**: COMPATIBILITY CONFIRMED. Extent bounded — 51 grep occurrences across 3 files; 44 lines of mediator code (main.rs:3833-3877) + 6 ViewportWidget fields (viewport/widget.rs:163-177) + 4 handle_input branches + 6 tab_viewer accessors. Dedicated session scope per Q6 appropriately sized.
+- **§2.7 ViewportWidget integration**: COMPATIBILITY CONFIRMED. Post-removal end-state achievable.
+- **§2.8 Mutex arbitration**: COMPATIBILITY CONFIRMED. Existing single-active-tool pattern (hardcoded `terrain_brush_active`) generalizes cleanly to `active_tool: Option<Uuid>`.
+- **§2.9 Tool composition**: COMPATIBILITY CONFIRMED. No cross-tool composition patterns; deferral uncomplicated. TerrainPanel BrushMode (terrain_panel.rs:509-595) correctly classified as tool-internal state.
+- **§2.10 State persistence**: COMPATIBILITY CONFIRMED. Per-panel state patterns already each panel's responsibility.
+- **§2.11 Action transactionality**: COMPATIBILITY CONFIRMED. Existing `EditorCommand` trait (command.rs:71) + `UndoStack` (command.rs:236) + `TerrainBrushCommand` (command.rs:1691) is appropriate integration target.
+
+**Open questions** (do NOT trigger Andrew-gate; deferred per audit §12.4):
+
+1. **§2.7 ToolContext exposure mechanism for depth-buffer access**: concrete API shape for `ToolContext::world_xz_at_pointer()` closure wrapping the existing depth-buffer read at viewport/widget.rs:1219-1234. **Deferral target**: Sub-phase 2 prompt drafting (when ToolContext type is concretely defined).
+
+2. **§2.11 undo_stack access mechanism from tool event methods**: ergonomic choice between (a) pass `&mut UndoStack` through `ToolContext`; (b) tool emits `EditorAction` analog of TerrainAction with main.rs draining; (c) tool returns `Box<dyn EditorCommand>` from event methods. **Deferral target**: Sub-phase 5 prompt drafting (when second tool's undo/redo plumbing forces the choice).
+
+**Methodology lessons** (audit §13):
+
+- **§13.1 Pre-implementation feasibility audit pattern as canonical for foundational architectural campaigns**: three-mode evidence framework (compatibility / gap / open-question) + Andrew-gate-only-on-gap behavior + open-question deferral to downstream sub-phases. Future foundational campaigns inherit this pattern.
+- **§13.2 §2-decision-organized vs hypothesis-classification audit structure**: choice based on audit purpose. Pre-implementation feasibility audits use §2-decision-organized; failure-diagnosis audits (F.5-paint.E-diagnostic, G-diagnostic) use hypothesis-classification.
+- **§13.3 Single-reference-points discipline**: predecessor findings are reference points; bounded inspection scope expansion per §2.X verification need.
+
+**Forward chain**:
+
+1. **Sub-phase 2 prompt drafting** (next session): drafts execution prompt for ActiveTool trait + dispatcher core + register_tool API. References this audit's §2.7 open-question for ToolContext design + §2.5 PanelType-orthogonal classification + Editor::new() additive pattern.
+2. **Sub-phase 2 execution** (Sessions 5+): per the Sub-phase 2 prompt.
+3. Through Sub-phase 6 + Mediator Removal session per campaign doc §3-§9.
+
+**Scope held**: Sub-phase 1 Diagnostic session only modified `docs/audits/editor_multi_tool_architecture_diagnostic_2026-05-04.md` (commit `4556c267b`) and this Editor Multi-Tool Architecture campaign doc Status header + §11 phase status block + §12 (this commit). NO production code changes. NO test changes. NO implementation sketches. NO sub-phase prompt drafting.
+
+### 2026-05-04, Sub-phase 2 ActiveTool trait + dispatcher core + register_tool API, commits 813ac29a1 (Core.A) + 2c791fa39 (Core.B) + ece7bb3b4 (Core.C) + 6016b3c8f (Core.D)
+
+**Sub-phase 2 — captures execution of foundational dispatcher infrastructure per campaign doc §4. Code-level only per Q9 (NOT Andrew-gated). Resolves §2.7 ToolContext open question per Sub-phase 1 Diagnostic audit §12.4.**
+
+**Pre-execution verification** (per Sub-phase 2 prompt §1):
+
+- §1.1 Campaign doc re-read for §2.2-§2.5 + §2.7-§2.8 commitments: complete.
+- §1.2 Sub-phase 1 Diagnostic audit re-read for §12.4 deferrals + §2.X verification findings: complete; §2.7 open question resolved this sub-phase, §2.11 deferred to Sub-phase 5.
+- §1.3 ViewportWidget inspection for ToolContext design: complete; OrbitCamera::ray_from_screen + unproject_depth_to_world located at viewport/camera.rs:511 + 541; ViewportRenderer::read_depth_at_pixel located at viewport/renderer.rs:1145; existing depth-then-Y0-fallback pattern at viewport/widget.rs:1219-1247; F.5-paint.B's `screen_to_world_xz_y0` standalone function located at panels/regional_archetype_panel.rs:414. ToolContext design committed to pre-computed world-XZ values (fields) + method accessors (avoids Arc<Mutex<Renderer>> lock + tight camera coupling).
+- §1.4 Anti-drift discipline reaffirmation: held; 9 specific drift temptations enumerated and resisted (no ViewportWidget/main.rs/panels modifications; no TerrainPanel/RegionalArchetypePanel impls; no Pattern A regression infrastructure; no §2.11 undo_stack via ToolContext; no multi-active-tool support; no hover-feedback methods; no tool composition primitives; no §2 architectural revisions).
+
+**Deliverables**:
+
+- **Core.A** (commit `813ac29a1`): ActiveTool trait + EventDisposition enum + MouseEvent/KeyEvent/MouseEventKind/KeyEventKind types + ToolContext struct at `tools/aw_editor/src/active_tool/mod.rs`. lib.rs gets single-line `pub mod active_tool;` addition. Default-implementation pattern per Andrew Q4 (a)(b); `#[non_exhaustive]` enum per Q4. ToolContext owned struct (no lifetime parameter); pre-computed world-XZ fields + method accessors per Andrew Q2 (b). Per-event handlers default to PassThrough; lifecycle methods + on_mouse_enter/on_mouse_leave default to no-op; make_button defaults to selectable_label using name() per Andrew Q4 (b). UUID identity per Q5 mod-friendliness.
+
+- **Core.B** (commit `2c791fa39`): Dispatcher struct + register_tool/set_active_tool/dispatch_mouse_event/dispatch_key_event/dispatch_mouse_enter/dispatch_mouse_leave/update_active_tool methods + helper accessors (is_registered/active_tool_uuid/registered_uuids/tool_count) at `tools/aw_editor/src/active_tool/dispatcher.rs`. Approach I+II hybrid synthesis per research audit §7.7. HashMap<Uuid, Box<dyn ActiveTool>> tool collection. Push-based per-event dispatch routes to active tool only. Framework-enforced single-active-tool mutex via active_tool: Option<Uuid>. Graceful handling: dispatch returns PassThrough if active_tool is None OR active tool's UUID is not registered. set_active_tool no-op for re-setting same UUID (avoids spurious deactivate/activate).
+
+- **Core.C** (commit `ece7bb3b4`): module-level unit tests + MockActiveTool fixture + DefaultOnlyTool fixture at `tools/aw_editor/src/active_tool/tests.rs`. 15 test scenarios (12 prompt-spec + 3 additional). MockActiveTool tracks lifecycle + per-event calls via Rc<RefCell<MockToolState>> shared state; configurable return_disposition for per-event method returns. DefaultOnlyTool overrides ONLY required methods (uuid, name) to verify default-implementation pass-through.
+
+- **Core.D** (this commit): campaign doc Status header + §11 phase status block + §12 entry.
+
+**§2.7 ToolContext open question resolution per audit §12.4**:
+
+ToolContext shape (final):
+
+```rust
+pub struct ToolContext {
+    pub viewport_rect: egui::Rect,
+    pub pointer_pos: Option<egui::Pos2>,
+    pub modifiers: egui::Modifiers,
+    world_xz_at_pointer_cached: Option<(f32, f32)>,  // private; method accessor
+    world_xz_at_y0_cached: Option<(f32, f32)>,        // private; method accessor
+}
+
+impl ToolContext {
+    pub fn new(viewport_rect, pointer_pos, modifiers, world_xz_at_pointer, world_xz_at_y0) -> Self;
+    #[cfg(test)] pub fn for_test() -> Self;
+    pub fn world_xz_at_pointer(&self) -> Option<(f32, f32)>;
+    pub fn world_xz_at_y0(&self) -> Option<(f32, f32)>;
+}
+```
+
+Design rationale per §1.3 ViewportWidget inspection:
+
+- **Pre-computed world-XZ projections** rather than exposing camera + depth_buffer references directly. ViewportWidget computes per-frame before dispatching events; tools just read via method accessors. Avoids exposing `Arc<Mutex<Renderer>>` lock pattern (viewport/widget.rs:333 `with_renderer` closure) + tight coupling to OrbitCamera type.
+- **Owned struct (no lifetime parameter)** simplifies dispatcher API + enables synthetic test fixtures via `for_test()` constructor without borrow orchestration.
+- **Mutable scene-state access deferred** to Sub-phase 3+ tools' choice. TerrainPanel + RegionalArchetypePanel may add ToolContext fields, use existing pending_actions queue patterns, or pass scene references through other mechanisms. Sub-phase 5 prompt drafting may resolve when RegionalArchetypePanel registration forces the decision (analogous to §2.11 undo_stack deferral).
+- **Methods wrap two canonical projection patterns**: `world_xz_at_pointer()` wraps depth-buffer + unprojection per viewport/widget.rs:1219-1234; `world_xz_at_y0()` wraps F.5-paint.B's `screen_to_world_xz_y0` ray-plane projection per regional_archetype_panel.rs:414.
+
+**Test scoreboard at Sub-phase 2 close**:
+
+- 15 active_tool::tests scenarios: pass.
+- All upstream tests: still green (regression check; no other code modified).
+- `cargo check -p aw_editor --lib`: clean (only pre-existing nalgebra warning unrelated).
+- Module isolation: `Dispatcher` + `ActiveTool` referenced only within `active_tool/` (verified via grep).
+
+**Forward chain**:
+
+1. **Sub-phase 3 — TerrainPanel ActiveTool implementation (additive)** (next session): implements `impl ActiveTool for TerrainPanel`; adds dispatcher field to EditorApp + register_tool call at Editor::new(); ViewportWidget routes events to dispatcher (alongside existing main.rs mediator). Andrew-gate REQUIRED per Q9. Both ActiveTool path + main.rs mediator coexist additively per Q2 risk-bounding.
+
+2. **Sub-phase 4 — Pattern A regression infrastructure** (later): extends MockActiveTool fixture for comprehensive dispatcher class regression coverage. Code-level only.
+
+3. **Sub-phase 5 — RegionalArchetypePanel ActiveTool implementation + registration**: implements ActiveTool for RegionalArchetypePanel; resolves §2.11 undo_stack access mechanism per audit §12.4. Andrew-gate REQUIRED. Likely subsumes G-pointer-events-fix per research audit §8.4.
+
+4. **Dedicated Mediator Removal session** + **Sub-phase 6 Closeout**.
+
+**Scope held**: Sub-phase 2 only modified `tools/aw_editor/src/active_tool/` (3 new files: mod.rs + dispatcher.rs + tests.rs) + `tools/aw_editor/src/lib.rs` (single `pub mod active_tool;` addition) + this Editor Multi-Tool Architecture campaign doc Status header + §11 + §12 (this commit). NO modifications to ViewportWidget, panels, tab_viewer, main.rs runtime path. NO Pattern A regression infrastructure beyond minimal MockActiveTool fixture (Sub-phase 4's job). NO §2 architectural revisions.
+
+### 2026-05-04, Sub-phase 3.A + 3.B (TerrainPanel ActiveTool implementation — additive), commits 0dea0bebc (3.A) + 41ec3b192 (3.B)
+
+**Sub-phase 3 in-progress entry — captures execution of TerrainPanel ActiveTool integration. Sub-phase 3.C closeout DEFERRED pending Sub-phase 3 Mediator Brush Diagnostic findings + fix (see next entry).**
+
+**Pre-execution verification** (per Sub-phase 3 prompt §1):
+- Sub-phase 1 Diagnostic + Sub-phase 2 commitments preserved unchanged.
+- §2.7 ToolContext API as resolved by Sub-phase 2 (pre-computed world-XZ fields + accessor methods) used as-is.
+
+**Deliverables**:
+
+- **Sub-phase 3.A** (commit `0dea0bebc`): `impl ActiveTool for TerrainPanel` block at `tools/aw_editor/src/panels/terrain_panel.rs` (~165 lines added) + `TERRAIN_PANEL_UUID` constant (`uuid!("a3f1b8c2-7e4d-4a5b-9f3c-1d2e8b7a4c6f")`) + `TerrainAction::SetActiveTool { uuid: Option<Uuid> }` variant + UI emission at brush-mode toggle (line ~1180: pushes SetActiveTool action when brush_enabled flips). main.rs gets single `mod active_tool;` declaration. Per-event handlers: on_left_mouse_button_down + on_mouse_move route to existing `apply_brush_at(world_x, world_z)` via `ToolContext::world_xz_at_pointer()`. on_left_mouse_button_up returns PassThrough per option (b) coexistence — existing main.rs:3891 mediator handles stroke-end. Throttling preservation per Sub-phase 1 Diagnostic audit §2.2.2.
+
+- **Sub-phase 3.B** (commit `41ec3b192`): tab_viewer SetActiveTool capture (`pending_set_active_tool: Vec<Option<Uuid>>` field + capture in TerrainAction drain sites + `take_pending_set_active_tool_actions` accessor) + EditorApp.dispatcher field (initialized with TerrainPanel::default() registered) + per-frame drain in main.rs that applies pending SetActiveTool to dispatcher.set_active_tool + ViewportWidget cached-then-dispatch integration (8 cache fields + `cache_active_tool_events` helper called from ui() + `dispatch_cached_events` public method drained from main.rs). Cached-then-dispatch design rationale (vs prompt §2.4 illustrative sketch with `&mut Dispatcher` parameter): avoids threading parameter through 5 ui() call sites; preserves additive coexistence with existing main.rs:3833-3877 mediator path; isolates dispatcher integration to single accessor.
+
+**Coexistence design** (per Q2 additive risk-bounding):
+
+- Existing main.rs mediator path remains canonical functional path during Sub-phase 3.
+- Dispatcher path is wired-up but inert: `dispatcher.register_tool(Box::new(TerrainPanel::default()))` creates a structurally-distinct TerrainPanel from the dock-rendered instance; its `apply_brush_at` receives no terrain state, so dispatch produces no observable effect. Mediator Removal session per Q6 resolves dual ownership.
+
+**Test scoreboard at Sub-phase 3.B close**:
+- 15/15 active_tool::tests pass.
+- 3990 other lib tests pass.
+- 1 pre-existing test_terrain_panel_creation failure (chunk_radius drift documented in F-fix.A-supplement; UNRELATED to Sub-phase 3; not investigated/fixed per anti-drift discipline).
+- cargo build -p aw_editor: clean.
+
+**Andrew-gate REGRESS 2026-05-04**:
+
+Andrew tested all 8 brush modes per Q9 verification criteria. Verdict: REGRESS. All 8 modes non-functional on TerrainPanel-generated terrain (no cursor change, no ring overlay, no terrain modification on click+drag; no panic; FPS spike on paint mode switch). Q1 confirmed: pre-Sub-phase 3 also broken (verified at commit `79e483e6c` Sub-phase 2 Core.E pre-Sub-phase 3 state). Q4: "scult and flatten worked at one point in past"; uncertain when last functional. Defect predates Sub-phase 3 — surfaced by Sub-phase 3 Andrew-gate's required comprehensive verification, not introduced by Sub-phase 3.
+
+Sub-phase 3.C closeout DEFERRED. Sub-phase 3 Mediator Brush Diagnostic session triggered per Andrew Q2 (diagnostic-only, no fixes; fix prompt drafted post-Andrew-review).
+
+**Forward chain**:
+
+1. **Sub-phase 3 Mediator Brush Diagnostic** (next session, this entry): root-cause TerrainPanel brush mediator regression. See next §12 entry.
+2. **Mediator Brush Fix session** (post-Andrew-review): per diagnostic findings.
+3. **Sub-phase 3 Andrew-gate re-run** (post-fix): all 8 brush modes verified.
+4. **Sub-phase 3.C closeout** (post-Andrew-gate-PASS).
+5. Sub-phase 4 + Sub-phase 5 + Mediator Removal session + Sub-phase 6 per campaign doc §3-§9.
+
+**Scope held**: Sub-phase 3.A + 3.B only modified `tools/aw_editor/src/panels/terrain_panel.rs` + `tools/aw_editor/src/main.rs` + `tools/aw_editor/src/tab_viewer/mod.rs` + `tools/aw_editor/src/viewport/widget.rs`. NO modifications to existing main.rs:3833-3877 mediator code (preserved unchanged for additive coexistence). NO Sub-phase 4/5/6 work scope. NO Mediator Removal work.
+
+### 2026-05-05, Sub-phase 3 Mediator Brush Diagnostic, commits e5e32f486 (Diagnostic.A audit) + f5c96836f
+
+**Sub-phase 3 sub-task — failure-diagnosis of TerrainPanel brush mediator path regression. Triggered by Sub-phase 3 Andrew-gate REGRESS 2026-05-04. Defect predates Sub-phase 3 per Andrew Q1 verification. Cross-reference entry; the diagnostic audit at `docs/audits/editor_multi_tool_architecture_subphase_3_mediator_brush_diagnostic_2026-05-05.md` is the load-bearing artifact.**
+
+**Pre-execution verification** (per Sub-phase 3 Mediator Brush Diagnostic prompt §1):
+- §1.1 Sub-phase 3 status confirmed (3.A `0dea0bebc` + 3.B `41ec3b192` landed; 3.C deferred; build clean; 15/15 active_tool tests pass).
+- §1.2 Sub-phase 3 not-causal confirmed (3.A modifies `panels/terrain_panel.rs` + single `mod active_tool;` line in main.rs; 3.B adds new fields/methods to tab_viewer/main.rs/viewport/widget.rs but does NOT modify existing mediator branches at main.rs:3833-3902 nor handle_input branches at viewport/widget.rs brush sections).
+- §1.3 Predecessor diagnostic methodology re-read: F.5-paint.E-diagnostic + G-pointer-events-diagnostic precedent applied.
+- §1.4 F.5-paint cascade prime-suspect framing applied as initial investigation target — ultimately REFUTED (F.5-paint commits did NOT modify mediator-relevant files).
+- §1.5 Anti-drift discipline reaffirmation: held; 5 specific drift temptations enumerated and resisted (no fix sketching beyond §5.3 recommended scope; no architectural refactoring; no scope expansion to non-mediator concerns; no FPS-spike optimization; no unrelated fixes).
+
+**Deliverables**:
+
+- **Diagnostic.A** (commit `e5e32f486`): audit document at `docs/audits/editor_multi_tool_architecture_subphase_3_mediator_brush_diagnostic_2026-05-05.md` (~470 lines, hypothesis-classification structure per Sub-phase 1 Diagnostic audit §13.2 + F.5-paint.E-diagnostic + G-pointer-events-diagnostic precedent).
+- **Diagnostic.B** (this commit): cross-reference §12 entry + Status header line + §11 phase status block update.
+
+**Findings summary — single confirmed root cause**:
+
+H5 (Mediator drain logic regression) CONFIRMED at commit `f84eb09049` (2026-03-17, "imported kaykit complete asset package"). The brush sync calls at `tools/aw_editor/src/main.rs:3869-3870`:
+
+```rust
+viewport.set_terrain_brush_active(brush_active);
+viewport.set_terrain_brush_params(brush_radius, brush_is_paint);
+```
+
+are placed inside an `if let (Some(world), Some(viewport)) = (world_opt, self.viewport.as_mut())` gate at line 3867. The `Some(world)` arm requires `self.scene_state` to be `Some`. When user generates terrain via TerrainPanel without first loading a scene, `scene_state` is `None`, `world_opt` is `None`, the `if let` arm doesn't execute, and `viewport.terrain_brush_active` remains its default `false` — silently defeating all three brush-active gates in viewport/widget.rs (lines 1365 hit collection, 1423 stroke-end, 1428 cursor + ring render).
+
+Single defect explains ALL three observable symptoms parsimoniously:
+- "No cursor change on brush activation" ← line 1428 gate false
+- "No ring overlay on terrain hover" ← same line 1428 gate (cursor + ring share render block)
+- "No terrain modification on click+drag" ← line 1365 gate false
+
+Andrew's Q4 "scult and flatten worked at one point" memory consistent with path-conditional behavior: brush works when scene IS loaded; silently fails when terrain is generated standalone. Bug has been latent on main for ~7 weeks since `f84eb09049`.
+
+**Hypotheses refuted**: H1 (F.5-paint cascade) — F.5-paint commits did NOT modify mediator-relevant files; H3 (TerrainPanel state machine) — internal logic correct; H4 (ViewportWidget input flow) — handle_input branches correct; H6 (tab_viewer accessor) — single-instance ownership + correct delegation; H8 (build-system / dependency) — no relevant Cargo or cfg changes.
+
+**Hypothesis partially confirmed (secondary observation)**: H7 (FPS spike on paint mode switch) — `ensure_thumbnails_loaded` first-call cost at terrain_panel.rs:1257 is bounded one-frame quirk; NOT brush regression cause.
+
+**Recommended fix scope per audit §5.3**: SMALL (~10 lines), single-commit, no architectural changes, no API changes. Relocate the two setter calls outside the `Some(world)` gate into a separate `if let Some(viewport) = self.viewport.as_mut()` block. Two sequential `&mut self.viewport` borrows in the same closure are non-overlapping; borrow checker accepts.
+
+**Methodology lessons** (audit §7):
+- §7.1 Sub-phase Andrew-gate as defect-discovery mechanism: comprehensive verification surfaces latent defects in surrounding code beyond current sub-phase scope.
+- §7.2 Sub-phase Andrew-gate REGRESS-not-from-sub-phase pattern: verify causality before assuming sub-phase regression; route fix per causality (in-scope expansion vs separate session).
+- §7.3 Symptom-to-code-path tracing as primary investigation tool when prime-suspect framing is wrong.
+- §7.4 "Catch-all gate" anti-pattern: independent state syncs should not aggregate under a conjunction stricter than necessary.
+
+**Forward chain**:
+
+1. **Andrew reviews diagnostic findings** (next session): Andrew assesses confirmed root cause + recommended fix scope; decides on fix prompt drafting approach.
+2. **Mediator brush fix session**: per Andrew's call. Likely small (1-3 commits) once root cause known. Fix re-runs Sub-phase 3 Andrew-gate post-fix.
+3. **Sub-phase 3.C closeout**: lands after fix Andrew-gate PASSES.
+4. **Sub-phase 4 + Sub-phase 5 + Mediator Removal session + Sub-phase 6**: per campaign doc.
+
+**Scope held**: Sub-phase 3 Mediator Brush Diagnostic session only modified `docs/audits/editor_multi_tool_architecture_subphase_3_mediator_brush_diagnostic_2026-05-05.md` (commit `e5e32f486`) and this Editor Multi-Tool Architecture campaign doc Status header + §11 phase status block + §12 (this commit). NO production code changes. NO test changes. NO fixes. NO Sub-phase 3.C closeout. NO modifications to Sub-phase 3.A + 3.B commits (preserved unchanged).
+
+### 2026-05-05, Sub-phase 3 Mediator Brush Fix.A, commit 8f4668599
+
+**Sub-phase 3 sub-task — code fix per Sub-phase 3 Mediator Brush Diagnostic audit findings. Single-file +11/-2 line relocation of `viewport.set_terrain_brush_active` + `viewport.set_terrain_brush_params` setter calls outside the `if let (Some(world), Some(viewport))` gate at main.rs:3867 into a preceding `if let Some(viewport) = self.viewport.as_mut()` block.**
+
+**Andrew-gate verdict 2026-05-05**: REGRESS in Path 1 brush UX. All three observable symptoms (no cursor change, no ring overlay, no terrain modification on click+drag) unchanged from pre-fix. **However**: FPS spike on paint mode switch disappeared post-fix — behavioral change indicating fix DID reach intended code path. This rules out fix-didn't-land-semantically-correctly; rules out H5-mechanism-entirely-wrong; points to H5 partial — second defect downstream of setter call.
+
+**Forward chain**: Andrew Q4 directive 2026-05-05 — "option a and then b if that doesnt work". Option A = instrument-and-rerun (Round 1 supplement). Option B = re-open diagnostic with broader hypothesis space (deferred per Andrew's branching directive).
+
+**Retroactive classification (per Round 1 closure below)**: harmless redundancy. Setter relocation operates on a gate that wasn't blocking at runtime (default scene auto-populates per main.rs:2700-2703 — Diagnostic H5 mechanism contradicted at runtime). Revert deferred to eventual real-fix session for clean recovery narrative.
+
+**Scope held**: Sub-phase 3 Mediator Brush Fix.A session only modified `tools/aw_editor/src/main.rs` (commit `8f4668599`). NO investigation/fix of analogous catch-all gate bugs. NO ViewportWidget per-tool fields removal. NO RegionalArchetypePanel changes. NO test additions beyond Andrew-gate verification. NO architectural changes to mediator pattern.
+
+### 2026-05-06, Sub-phase 3 Mediator Brush Diagnostic Instrumentation Round 1 closure, commits e037d63b5 (Round 1 Instrumentation.A) + 040d90b16 (Round 1 Instrumentation.B revert) + df4a50e74 (this commit)
+
+**Sub-phase 3 sub-task — runtime evidence capture supplement to Sub-phase 3 Mediator Brush Diagnostic. Triggered by Mediator Brush Fix REGRESS verdict 2026-05-05 with FPS-spike disappearance indicating fix reached intended code path. Pure data-gathering; 5 eprintln points added (Round 1 Instrumentation.A) + reverted (Round 1 Instrumentation.B); production code returned to post-fix state. Round 1 closure entry codifies findings + outcome classification + methodology lessons.**
+
+**Pre-execution discovery** (per Instrumentation.A prompt §1.3, surfaced before instrumentation):
+
+The Sub-phase 3 Mediator Brush Diagnostic audit §4.5 H5 mechanism rests on `scene_state` being None in Path 1 (no scene loaded). Code inspection at `main.rs:2700-2703` revealed `EditorApp::new()` auto-populates `scene_state` with a default world during construction; `main.rs:5598-5601` has a secondary safety net that re-creates `scene_state` on every frame if somehow nulled. **scene_state is therefore NEVER None after editor startup.** The H5 mechanism contradicted at code-read level; "Path 1 vs Path 2" distinction collapsed (both functionally have a default scene). The Mediator Brush Fix at `8f4668599` was harmless but likely redundant.
+
+New prime suspect surfaced: `tab_viewer/mod.rs:142-147` catch-all gate — `if let (Some(viewport), Some(world), Some(entity_manager), Some(undo_stack))` inside `EditorDrawContext::ui()` for `PanelType::Viewport`. This gate was visible during Sub-phase 1 Diagnostic but not classified as brush-relevant since it didn't appear in the explicit TerrainPanel→viewport mediator data-flow chain.
+
+**Andrew approved refined Option α 2026-05-05**: instrumentation supplement with 5-point set retargeting at the new prime suspect, over Option β (immediate revert + re-diagnose). Runtime confirmation cheap; Points 3-5 capture the actual silent-failure site regardless of which hypothesis prevails.
+
+**Round 1 captured output** (frames at 2026-05-06T01:13:18-20Z timestamps; ~60 frames; consistent every frame):
+
+```
+[BRUSH-DBG] scene_state.is_some()=true, world_opt.is_some()=true
+[BRUSH-DBG] tab_viewer-gate: viewport=true, world=true, entity=true, undo=true, full=true
+[BRUSH-DBG] handle_input-entry: terrain_brush_active=true, terrain_brush_radius=50, terrain_brush_is_paint=false
+[BRUSH-DBG] hit-gate: brush_active=true, no_gizmo=true, pointer=false, full=false
+[BRUSH-DBG] render-gate: brush_active=true, no_gizmo=true, full=true
+```
+
+AstraWeave's own `Selection check: clicked=false, pointer_over=true, gizmo_active=false` — egui sees pointer over rect but registers zero clicks.
+
+**Hypothesis evaluation post-Round 1**:
+
+- Sub-phase 3 Mediator Brush Diagnostic H5 (`Some(world)` gate blocks setter): **REFUTED**. scene_state always Some.
+- tab_viewer:142 catch-all gate (Round 1 prime suspect): **REFUTED**. Gate fires every frame.
+- Audit §4.4 H4 REFUTAL ("ViewportWidget input-flow regression" REFUTED): **WRONG**. egui response is broken — sense rect not capturing clicks despite `Sense::click_and_drag()` in source.
+
+**Two distinct defects identified**:
+
+- **Defect A — Input routing**: egui response's `dragged_by(Primary)` + `clicked_by(Primary)` return false despite confirmed user click+drag. Possible causes: overlay layer interception, sense rect vs render rect geometry mismatch, missing sense flags, layer ordering issue.
+- **Defect B — Render body silent no-op**: render code body executes every frame yet produces no visible cursor or ring overlay. Render uses `set_brush_cursor_lines(lines)` (renderer-side debug-line pipeline at viewport/renderer.rs:832) NOT egui painter. Possible causes: invalid pointer position used for ring center, off-screen coords, zero alpha, lines never reaching renderer's combined output, debug-line render disabled.
+
+May share root cause (e.g., geometry mismatch causing both lost clicks AND invisible ring) or be independent.
+
+**Mediator Brush Fix `8f4668599` retroactive classification**: harmless redundancy. Relocated setter calls outside a gate that wasn't blocking them at runtime. Setters work either way. Revert deferred to eventual real-fix session for clean recovery narrative ("H5 fix landed, was redundant; real defect at <X>; H5 fix reverted as cleanup").
+
+**FPS spike on paint mode**: post-fix disappearance was coincidence; reappeared in Round 1 capture. Audit §4.7 H7 (`ensure_thumbnails_loaded` first-call cost) was right after all.
+
+**Methodology lesson — Code-reading-derived hypotheses keep being wrong in this stack**:
+
+Three rounds where code-reading-based hypotheses produced confident-but-wrong root causes:
+1. Sub-phase 3 Mediator Brush Diagnostic H5 (`Some(world)` gate) — wrong. Default scene auto-populates.
+2. tab_viewer:142 catch-all gate (new prime suspect) — wrong. Gate fires correctly.
+3. Audit §4.4 H4 REFUTAL ("ViewportWidget input-flow regression") — wrong. egui response is broken.
+
+Pattern: AstraWeave's editor has multiple layered abstractions (egui dock → tab_viewer → viewport widget → renderer → mediator); code-reading misses runtime behavior in this stack. **Targeted instrumentation produces actionable evidence; code-reading-on-paper does not.**
+
+**Future foundational architectural campaigns**: when paper-hypotheses miss runtime, runtime instrumentation is more reliable than another paper-round. Mediator Removal session per Q6 will collapse some of these layers; this experience adds empirical weight to that architectural motivation.
+
+**Forward chain**:
+
+1. **Round 2 instrumentation supplement** (next commits): 6 targeted eprintlns in viewport/widget.rs disambiguating Defect A (response state + global pointer + geometry + layer detection) + Defect B (render body pointer + render body draw call).
+2. **Per Round 2 outcome**: small fix prompt (Outcomes 1-4 of Round 2 prompt §0.4); formal Option B re-diagnostic (Outcome 5); Round 3 instrumentation (Outcome 6).
+3. **Mediator Brush Fix `8f4668599` revert** as cleanup at real-fix session closeout.
+4. **Sub-phase 3.C closeout** post-real-fix Andrew-gate-PASS.
+5. **Sub-phase 4 + Sub-phase 5 + Mediator Removal session + Sub-phase 6** per campaign doc.
+
+**Scope held**: Round 1 instrumentation supplement session only modified `tools/aw_editor/src/main.rs` + `tools/aw_editor/src/tab_viewer/mod.rs` + `tools/aw_editor/src/viewport/widget.rs` (added at `e037d63b5`; reverted at `040d90b16`) + this Editor Multi-Tool Architecture campaign doc Status header + §11 phase status block + §12 (this commit). NO production behavior retained post-revert. NO fixes applied. NO Mediator Brush Fix revert (deferred). NO formal Option B re-diagnostic (held pending Round 2 outcome).
+
+### 2026-05-06, Sub-phase 3 Mediator Brush Diagnostic Round 2 Instrumentation closure, commits 0b6bc6f50 (Round-2-Instrumentation.A) + 4a2aca24b (Round-2-Instrumentation.B) + 7dc342a42 (Round-3-Re-Diagnostic.A audit) + 19eccad3c (this commit, Round-2-Closure landed inline)
+
+**Round 2 instrumentation supplement closure — captures runtime evidence + outcome classification + methodology lesson. Round-2-Closure entry deferred from Round 2 session per Round 2 prompt §3.4; landed in Round 3 Re-Diagnostic session inline with Round-3-Re-Diagnostic.B campaign doc update.**
+
+**Round 2 captured output** (multiple sections; active brush use section is load-bearing):
+
+```
+[BRUSH-DBG] response-state: rect=(236,52)..(1250,614), contains_pointer=true,
+  dragged_primary=true, clicked_primary=false, is_pointer_button_down_on=true,
+  sense_click=true, sense_drag=true
+[BRUSH-DBG] global-pointer: any_pressed=false, any_released=true,
+  primary_clicked=false, primary_down=false, latest_pos=Some([860.8 296.0])
+[BRUSH-DBG] render-body-pointer: hover_pos=Some([621.6 452.0]),
+  response_rect=(236,52)..(1250,614)
+[BRUSH-DBG] render-body-drawcall: cursor_center=(809.78,888.48,809.96),
+  radius=50.0, line_count=48, depth_pick_succeeded=true, color=[0.2, 1.0, 0.3]
+[BRUSH-DBG] layer-at-pointer: pos=(1134,138),
+  layer_id=Some(LayerId { Foreground F84F }),
+  viewport_layer=Some(LayerId { Background 5A3E })
+```
+
+AstraWeave's own logs during the same session: `Mouse released: press=[752.0 429.6], release=[860.8 296.0], drag_dist=172.3` + `Brush stroke end: 1 chunks modified` + `Recorded: Terrain Sculpt`.
+
+**Hypothesis evaluation post-Round 2**:
+
+- Defect A (input routing) framing: **REFUTED**. egui captures input correctly during click+drag — `contains_pointer=true, dragged_primary=true, is_pointer_button_down_on=true, sense_click=true, sense_drag=true`. Sense flags correct.
+- Defect B (render body silent no-op) framing: **PARTIALLY REFUTED**. Render body executes every frame with valid-looking parameters; not silently skipped. Whatever is wrong is downstream of draw call execution.
+- Round 1 `pointer=false` data was misleading capture-timing artifact: Andrew's actual click+drag timing didn't align with the capture window when only Round 1's hit-gate filter was firing.
+
+**Defect class identified post-Round-2**: rendering-pipeline failure between draw call and visible pixel. Brush is fully functional at data layer (clicks captured; hits collected; chunks modified; undo recorded); ring drawing code executes with valid-looking parameters; yet Andrew sees nothing visually. Narrower hypothesis space than original "TerrainPanel brush mediator path regression" framing.
+
+**Outcome classification per Round 2 prompt §0.4**: Outcome 6 — unexpected mechanism. Original Defect A + Defect B framings revealed incomplete/wrong; rendering-pipeline defect class wasn't enumerated in Round 2's outcome decision tree.
+
+**Methodology lesson — capture-timing artifacts in Round 1 misled hypothesis space**: Round 1's `pointer=false` data led to Defect A framing that was wrong. Future instrumentation sessions should verify capture-timing alignment with user actions; log when filter conditions fire (meta-instrumentation) to confirm captures happen during expected user activity; use less-restrictive filters when defect's runtime triggers are uncertain.
+
+**Forward chain post-Round 2**:
+
+1. Round 3 formal re-diagnostic audit (`7dc342a42`) synthesizing three rounds + enumerating remaining hypothesis classes (rendering-pipeline failures).
+2. Round 4 instrumentation prompt drafting (next session per Andrew's two-session-minimum directive).
+3. Round 4 instrumentation execution (session after that).
+4. Per Round 4 outcome: small fix prompt; further instrumentation; architectural reconsideration.
+
+**Scope held**: Round 2 instrumentation supplement session only modified `tools/aw_editor/src/viewport/widget.rs` (added at `0b6bc6f50`; reverted at `4a2aca24b`) + this Editor Multi-Tool Architecture campaign doc §12 (this commit, Round-2-Closure landed inline with Round-3-Re-Diagnostic.B). NO production behavior retained post-revert. NO fixes applied. NO Mediator Brush Fix revert (deferred). NO Round 4 instrumentation in this entry.
+
+### 2026-05-06, Sub-phase 3 Mediator Brush Round 3 Re-Diagnostic, commits 7dc342a42 (Round-3-Re-Diagnostic.A audit) + 19eccad3c (this commit)
+
+**Sub-phase 3 sub-task — formal re-diagnostic audit synthesizing three rounds of prior runtime evidence + enumerating remaining hypothesis space for rendering-pipeline defect class. Cross-reference entry; the audit at `docs/audits/editor_multi_tool_architecture_subphase_3_mediator_brush_diagnostic_round_3_re_diagnostic_2026-05-06.md` is the load-bearing artifact.**
+
+Honors Andrew's earlier Option B directive ("option a then b if a doesn't work") — Option A produced two rounds of instrumentation (Round 1 + Round 2); Round 2 revealed defect class is rendering-pipeline rather than data-flow; Option B re-diagnostic now warranted.
+
+**Pre-execution verification** (per Round 3 prompt §1):
+
+- §1.1 Predecessor re-read with synthesis intent: complete; original audit's §4.4 H4 REFUTAL + §4.5 H5 mechanism + §4.7 H7 classification all retroactively wrong (code-reading-derived; never runtime-verified).
+- §1.2 Sub-phase 3 status confirmed (10 commits landed pre-Round-3) + Round 2 Instrumentation.B status drift surfaced (NOT yet landed; landed inline as `4a2aca24b` before audit lands per §1.2 directive).
+- §1.3 Codified evidence inventory verified.
+- §1.4 Anti-drift discipline reaffirmation: held (6 specific drift temptations enumerated).
+
+**Deliverables**:
+
+- **Round-3-Re-Diagnostic.A** (commit `7dc342a42`): audit document at `docs/audits/editor_multi_tool_architecture_subphase_3_mediator_brush_diagnostic_round_3_re_diagnostic_2026-05-06.md` (~700 lines, hypothesis-classification structure with synthesis emphasis).
+- **Round-3-Re-Diagnostic.B** (this commit): cross-reference §12 entries (Round-2-Closure inline + Round-3-Re-Diagnostic) + Status header line + §11 phase status block update.
+
+**Findings summary — 8 hypothesis classes for rendering-pipeline defect**:
+
+- **Class 1 — World-to-screen projection lands ring outside visible viewport rect**: PLAUSIBLE (prime candidate). Round 4 targets T1.A-D.
+- **Class 2 — Render target mismatch (ring drawn to wgpu pass not composited into visible egui frame)**: PLAUSIBLE. Round 4 targets T2.A-C.
+- **Class 3 — Z-depth occlusion (ring drawn behind terrain)**: PLAUSIBLE-MEDIUM. Round 4 targets T3.A-D.
+- **Class 4 — Color/alpha/visibility properties effectively-invisible**: PLAUSIBLE-LOW. Round 4 targets T4.A-D.
+- **Class 5 — Coordinate system mismatch (ring uses one camera; terrain uses another)**: PLAUSIBLE-MEDIUM. Round 4 targets T5.A-C.
+- **Class 6 — Terrain mesh not regenerating after modification**: PLAUSIBLE-MEDIUM. Round 4 targets T6.A-C.
+- **Class 7 — Frame-timing / state-mutation issue**: PLAUSIBLE-LOW. Round 4 targets T7.A-B.
+- **Class 8 — Something else not yet enumerated**: ACKNOWLEDGED. Comprehensive state-logging in T1+T2+T5 captures unexpected anomalies.
+
+**Round 4 instrumentation specifications**: 12 eprintln points across 8 hypothesis classes. Coverage commitment: every PLAUSIBLE + PLAUSIBLE-MEDIUM class has at least one runtime check. Filter patterns prevent log spam (state-change + throttling + first-N-frames-only + interesting-events-only).
+
+**Mediator Brush Fix `8f4668599` retroactive classification**: harmless redundancy (relocated setter calls outside non-blocking gate). Revert deferred to eventual real-fix session for clean recovery narrative.
+
+**Methodology lessons (audit §7)**:
+
+- §7.1 — Three-rounds-wrong-from-code-reading pattern. AstraWeave's editor has multiple layered abstractions (egui dock → tab_viewer → viewport widget → wgpu renderer → mediator) where code-reading misses runtime behavior.
+- §7.2 — Multi-round instrument-and-narrow as canonical pattern. Two-rounds soft threshold; three-rounds canonical threshold for formal synthesis.
+- §7.3 — Pre-execution actual-code verification as discipline pattern. Predecessor audit findings should be runtime-verified during pre-execution, not assumed-as-true.
+- §7.4 — Audit-confidence-calibration honesty. Hypothesis-classification audits should annotate each CONFIRMED / REFUTED rating with evidence type (code-reading vs runtime-verified vs mixed).
+- §7.5 — Synthesizing-artifact threshold (round-3-or-later). Empirical not prescriptive; depends on hypothesis space complexity + audit reliability degradation.
+
+**Forward chain**:
+
+1. Round 4 instrumentation prompt drafting (next session per Andrew's two-session-minimum directive). References this audit's §3 hypothesis classes + §4.2 instrumentation specifications as load-bearing input.
+2. Round 4 instrumentation execution (session after that). Andrew runs editor; captures `[BRUSH-DBG]` output; agent reverts.
+3. Per Round 4 outcome: small fix prompt; further instrumentation; architectural reconsideration.
+4. Real-fix Andrew-gate-PASS → Mediator Brush Fix `8f4668599` reverted as cleanup → Sub-phase 3.C closeout → campaign chain proceeds (Sub-phase 4 + 5 + Mediator Removal session + Sub-phase 6).
+
+**Forward observations** (per audit §6, NOT in this audit's scope):
+
+- §6.1 Original audit's confidence calibration (three wrong code-reading hypotheses) — methodology-lesson territory; no fix in this audit.
+- §6.2 Architectural fragility of multi-painter rendering pipeline — Mediator Removal session per Q6 motivates simplification.
+- §6.3 Capture-timing artifacts in Round 1 misled hypothesis space — future instrumentation sessions should verify capture-timing alignment.
+- §6.4 Observability gap (existing Selection check log line useful; similar built-in observability for rendering pipeline would prevent diagnostic burden) — future logging additions could prevent.
+
+**Scope held**: Round 3 Re-Diagnostic session only modified `docs/audits/editor_multi_tool_architecture_subphase_3_mediator_brush_diagnostic_round_3_re_diagnostic_2026-05-06.md` (commit `7dc342a42`) + `tools/aw_editor/src/viewport/widget.rs` (Round 2 Instrumentation.B revert at `4a2aca24b` per §1.2 deferred-precondition discipline) + this Editor Multi-Tool Architecture campaign doc Status header + §11 phase status block + §12 (Round-2-Closure entry above + Round-3-Re-Diagnostic entry, this commit). NO production behavior retained post-revert. NO Round 4 instrumentation. NO fixes. NO Mediator Brush Fix revert (deferred). NO architectural reconsideration. NO new code-reading-derived mechanism claims.
+
+### 2026-05-06, Sub-phase 3 Mediator Brush Diagnostic Round 4 Closure, commit 3bf425053
+
+**Round 4 instrumentation closure — captures runtime evidence resolving rendering-pipeline defect class to depth pick chain. 12 targeted eprintlns across 8 hypothesis classes per Round 3 audit §4.2; aggressive scope per Andrew's directive; ~14 actual eprintln points landed per code-drift adjustments in Round-4-Instrumentation.A `de1986301`. Captured output `brush-dbg-r4.txt` totals 6,641 BRUSH-DBG lines.**
+
+**Defect class narrows to depth pick chain**: `read_depth_at_pixel` (viewport/camera.rs:~1145) + `unproject_depth_to_world` (viewport/camera.rs:~541) + depth target binding lifecycle. Brush IS fully functional at data layer; ring-not-visible + terrain-modification-not-visible are downstream symptoms of cursor_center being computed at cam_pos rather than at terrain surface.
+
+**Round 4 captured signal lines** (representative samples from 6,641 total BRUSH-DBG lines):
+
+T1.A+B+D first frame (depth pick falls back to Y=0 plane raycast):
+
+```
+[BRUSH-DBG] proj-cursor: world=(-123.49,0.00,885.05), screen=(384.8,567.2),
+  ndc_z=0.9996, clip_w=970.27, cam_pos=(810.1,888.8,810.1),
+  cam_target=(0.0,227.4,0.0), cam_dist=1291.2, screen_radius=18.1,
+  viewport_size=(1014,562), response_rect=(236,52)..(1250,614)
+```
+
+T1.A+B+D subsequent frames (depth pick "succeeds" — but returns near-plane depth):
+
+```
+[BRUSH-DBG] proj-cursor: world=(809.77,888.45,809.99), screen=(592.5,495.5),
+  ndc_z=0.0000, clip_w=0.5000, cam_pos=(810.1,888.8,810.1),
+  cam_target=(0.0,227.4,0.0), cam_dist=0.5, screen_radius=615.5,
+  viewport_size=(1014,562), response_rect=(236,52)..(1250,614)
+```
+
+T3.A every frame (line0 clip-z beyond far plane):
+
+```
+[BRUSH-DBG] ring-z: line0_start_ndc_z=1.0167, line0_end_ndc_z=1.0148,
+  line0_y_offset=0.15
+```
+
+T2.A only one fire (dock-based path; standalone never fires):
+
+```
+[BRUSH-DBG] render-path: dock-based-viewport-ui (tab_viewer:142)
+```
+
+T2.B every render (composite reaches with 48 lines; renderer initialized):
+
+```
+[BRUSH-DBG] render-lines-at-composite: brush_cursor_lines.len()=48,
+  gizmo_lines=0, phys_lines=0, zone_overlay_lines=0, total=48,
+  physics_renderer_init=true
+```
+
+T4.A first call (RGB only; DebugLine has no alpha):
+
+```
+[BRUSH-DBG] line-color-rgb: r=0.200, g=1.000, b=0.300, line_count=48
+  (NOTE: DebugLine has no alpha; alpha is shader-implicit)
+```
+
+T5.A every throttle (cam-widget matrices stable across frames):
+
+```
+[BRUSH-DBG] cam-widget: view_row0=(0.7071,0.0000,-0.7071,-0.0000),
+  proj_row0=(0.9611,0.0000,0.0000,0.0000),
+  proj_diag=(0.9611,1.7321,-1.0001,0.0000)
+```
+
+T6.A every brush apply (modified=true; chunk consistently 242):
+
+```
+[BRUSH-DBG] apply-brush-at: world_x=809.87, world_z=809.89, mode=Sculpt,
+  radius=50.0, strength=1.00, modified=true, pending_actions_len=0
+```
+
+T6.B every brush event (chunk 242 dirty; viewport available):
+
+```
+[BRUSH-DBG] terrain-brush-update-event: dirty_count=1,
+  dirty_indices=[242], viewport_is_some=true
+```
+
+T7.A every set-lines call (success-1489 dominates during active hover; fallback-1494-no-hover-pos when pointer leaves; no wipe pattern within frame):
+
+```
+[BRUSH-DBG] set-lines-call: site=success-1489, lines_count=48
+[BRUSH-DBG] set-lines-call: site=fallback-1494-no-hover-pos, lines_count=0
+[BRUSH-DBG] set-lines-call: site=fallback-1497-gate-off, lines_count=0,
+  brush_active=false, gizmo_active=false
+```
+
+**Hypothesis class confirmation per Round 4 evidence**:
+
+| Class | Status | Evidence |
+|-------|--------|----------|
+| 1 — World-to-screen projection off-screen | REFUTED at projection level | screen positions all INSIDE response_rect=(236,52)..(1250,614). The projection math itself is fine. |
+| 2 — Render target mismatch | REFUTED | T2.A only fires dock-based path; T2.B shows brush_cursor_lines.len()=48 reaches composite; physics_renderer_init=true. |
+| 3 — Z-depth occlusion | DOWNSTREAM SYMPTOM, not root cause | line0_ndc_z=1.0167 > 1.0 (beyond far plane) is downstream of cursor_center being placed at cam_pos. Ring vertices necessarily fall outside view frustum when their center IS the camera position. Class 3 framing assumed ring center was at terrain surface and vertices were near-plane occluded; actual mechanism is different. |
+| 4 — Color/alpha | REFUTED | r=0.200, g=1.000, b=0.300 (bright green); 48 lines; DebugLine API has no alpha field — alpha is shader-implicit (set per-pipeline, not per-line). |
+| 5 — Coordinate system mismatch | REFUTED | T5.A cam-widget matrices stable across hundreds of throttled samples; renderer uses same OrbitCamera reference. |
+| 6 — Terrain mesh not regenerating | REFUTED at the data layer; downstream visibility issue remains | T6.A modified=true on every apply-brush-at; T6.B dirty_count=1, dirty_indices=[242] every event; viewport_is_some=true. Modification IS reaching the GPU — the chunk being modified happens to be at world (~810, ~810) which corresponds to camera position, so visual confirmation requires looking at chunk 242 specifically. Not a regen failure; a "modification happens at unexpected world location" consequence of upstream defect. |
+| 7 — Set-lines wipe | REFUTED | T7.A shows clean control flow: `success-1489` during active hover; `fallback-1494-no-hover-pos` only when pointer leaves viewport (no hover position); no interleaved wipe pattern within a single frame. |
+| 8 — Unenumerated mechanism | NOT NEEDED for primary root cause | Depth pick chain explanation sufficient. |
+
+**Outcome classification per Round 4 prompt §5**: **Outcome 5 (unexpected mechanism)** — the rendering-pipeline defect class enumeration in Round 3 audit §3 was incomplete. None of the enumerated mechanisms within Classes 1-7 capture the actual root cause. Round 4 evidence narrows defect to a sub-class not separately enumerated: **depth pick chain (read_depth_at_pixel → unproject_depth_to_world → cursor_center) returns near-plane depth instead of terrain surface depth**. This is upstream of all eight enumerated rendering-pipeline classes; its consequences masquerade as Class 3 (z-depth) symptoms.
+
+**Critical correction — supersedes `bc9c8d5bd` commit message body**:
+
+`bc9c8d5bd` (Round-4-Instrumentation.B) commit body codifies the analysis: *"Class 3 confirmed at clip-plane level, root-caused by camera positioning. cam_dist=0.5 world units while ring radius=50 world units; camera is geometrically INSIDE the ring; Andrew zoomed in extremely close to a mountain peak."* This analysis is **wrong**. The §12 entry corrects it forward.
+
+Why the agent's interpretation is wrong:
+
+1. **Camera was not zoomed in.** cam_pos=(810.1, 888.8, 810.1) and cam_target=(0.0, 227.4, 0.0). Distance from cam_pos to cam_target is sqrt(810² + 661² + 810²) ≈ 1322 world units. The OrbitCamera is at default-orbit-distance from its pivot — not zoomed in. If Andrew had truly zoomed in to a mountain peak at (810, 888, 810), the orbit camera's `cam_target` would be at or near (810, 888, 810), not at world origin.
+
+2. **First-frame evidence directly disproves the "zoomed in" interpretation.** The very first capture frame shows the depth-pick fallback path: `world=(-123.49, 0.00, 885.05), cam_dist=1291.2`. This is the Y=0 ground-plane raycast that fires when depth pick fails. cam_dist=1291.2 in this frame proves the camera was at normal orbit distance — nowhere near "zoomed in." Yet cam_pos and cam_target did NOT change between this first frame and subsequent frames showing cam_dist=0.5. Only the depth-pick result changed.
+
+3. **`cam_dist=0.5` is a derived value, not a primary fact.** `cam_dist` is computed from cam_pos and cursor_center at log-time: `cam_dist = (cursor_center - cam_pos).length()`. When cursor_center ≈ cam_pos, cam_dist ≈ 0 by definition. The agent treated this derived equality as causal evidence ("camera close to brush") when it is actually a *consequence* of cursor_center being incorrectly computed at cam_pos.
+
+4. **`cursor_center` is computed by the depth pick chain, not by Andrew's input.** Andrew's screen cursor position varies substantially across frames (screen=(592.5,495.5) → (706.5,499.5) → (740.4,495.5) → (1079.5,133.5) → many distinct positions during a 6,641-line capture). Yet cursor_center stays invariantly within a tiny range: x ∈ (809.5, 810.0), y ∈ (888.4, 888.6), z ∈ (809.7, 810.0) ≈ cam_pos to within ~0.5 world units. **Regardless of where Andrew clicks on screen, the brush position is computed at the camera position.** This is the diagnostic signal: the depth pick chain is broken.
+
+5. **NDC z=0.0000, clip_w=0.5000 directly indicates near-plane unprojection.** Standard wgpu projection has NDC z ∈ [0, 1] where 0 is near plane and 1 is far plane. `unproject_depth_to_world(screen_pos, depth=0.0)` returns the world-space point on the near clip plane along the screen ray. For a near plane at ~0.5 world units in front of the camera, this returns a world position approximately at cam_pos plus a tiny screen-position-dependent offset — exactly the pattern observed in cursor_center.
+
+6. **The agent's verification recommendation (zoom out and re-test) would not work.** Zooming out moves cam_pos farther from cam_target along the orbit radius. cursor_center would still equal cam_pos because the depth pick still returns ~0.0; the brush would still modify the chunk under the camera, just a *different* chunk. The agent's prediction that "brush will work visually at normal zoom levels" is falsified by Round 4's own data — the camera was already at normal zoom levels (cam_dist-to-target=1322) and the brush still didn't work.
+
+**Updated defect framing**:
+
+The brush has **always been working at the data layer**: T6.A modified=true on every apply-brush-at; T6.B dirty_count=1 dirty_indices=[242] on every event; viewport_is_some=true. The defect is upstream in the **depth pick chain**: when Andrew clicks on screen at pixel (px, py), the chain `read_depth_at_pixel(px, py) → unproject_depth_to_world(screen_uv, depth) → cursor_center` returns a world position at the camera's near plane (≈cam_pos) regardless of what's actually rendered at (px, py).
+
+This explains every Andrew-gate symptom across all rounds simultaneously:
+
+- **No visible ring** — ring center is at cam_pos; ring vertices project to behind near plane (negative w; discarded by GPU clip) and beyond far plane (line0_ndc_z=1.0167; clipped). Only a degenerate sliver of ring would be in NDC range; with line width 1px, invisible.
+- **No visible terrain modification** — modification IS happening at world (~810, ~810) because that's what the broken depth pick returns; chunk 242 IS being dirtied; upload IS reaching GPU. But chunk 242 corresponds to a world position at the camera, not under Andrew's cursor. The modification is happening "under the camera" or behind it relative to view direction (since cam_target is far from cam_pos, the camera is looking AWAY from cam_pos toward origin).
+- **No cursor change** — same mechanism as no visible ring.
+
+**Possible mechanisms within depth pick chain** (Round 5 instrumentation will runtime-verify):
+
+1. `read_depth_at_pixel` reads from a depth texture that doesn't contain terrain depth — perhaps a different render target, perhaps the depth for an overlay pass, perhaps an uninitialized buffer.
+2. `read_depth_at_pixel` reads correctly but the depth buffer is cleared between terrain render and the depth read — reads return ~0 (cleared depth value).
+3. `read_depth_at_pixel` reads correctly but the pixel coordinates being sampled are outside the terrain-rendered region — reads return cleared near-plane value.
+4. `unproject_depth_to_world` has a math error that handles depth=0.0 incorrectly (e.g., reverse-Z assumption when buffer uses standard projection, or vice versa).
+5. The depth buffer has correct values but `read_depth_at_pixel` reads the wrong mip level / wrong texture array slice / wrong region.
+6. Some other unenumerated mechanism within the chain.
+
+Round 5 instrumentation specifications target these candidates: log raw depth value returned by `read_depth_at_pixel`, log depth target binding lifecycle, log pixel coordinates used for depth pick + viewport rect alignment, log depth texture handle/binding identity.
+
+**Forward chain**:
+
+1. **Round 5 instrumentation prompt drafted next session** (per Andrew's two-session-minimum directive) — targets depth pick chain at 5-6 eprintln points: `read_depth_at_pixel` raw return value, depth texture identity at sample time, depth target binding lifecycle (create / clear / bind), terrain pipeline depth-write-enabled state, pixel coords + viewport rect alignment. Smaller scope than Round 4's 12 targets; one capture session expected to resolve.
+2. **Round 5 Instrumentation.A lands** following session.
+3. **Andrew runs editor + captures `brush-dbg-r5.txt`**.
+4. **Round-5-Closure.A** classifies outcome — single mechanism confirmed → small fix prompt; multiple mechanisms → combined or sequential fix; all refuted → Round 6 instrumentation or architectural reconsideration of depth pick chain.
+5. **Real-fix Andrew-gate-PASS** → Mediator Brush Fix `8f4668599` reverted as cleanup → Sub-phase 3.C closeout.
+6. **Sub-phase 4 + 5 + Mediator Removal session + Sub-phase 6 closeout** per established forward chain.
+
+**Methodology lesson surfacing — derived-value reasoning trap**:
+
+This is a new lesson candidate, sibling to Round 3 audit §7.1-§7.5. Future re-diagnostic audits (Round 6+ if needed) can compile this into §7 audit lessons. Codified here for first-pass reference.
+
+**Pattern**: When an evidence-collection session captures multiple values, some primary (read directly from runtime state) and some derived (computed from primary values at log-time), reasoning about value relationships requires distinguishing primary from derived. The agent treated `cam_dist=0.5` as primary causal evidence ("camera close to brush") when it is a derived quantity computed from cam_pos and cursor_center. The actual primary fact is: cursor_center ≈ cam_pos invariantly. The derived fact (cam_dist≈0) is a consequence.
+
+This lesson generalizes: **when two values are unexpectedly equal, ask whether one is being computed from the other before reasoning about the equality as causal**. If yes, the equality is mathematical, not empirical — reasoning must trace upstream to whatever produced the input that, when computed, yielded the equality.
+
+Sibling-lesson cross-references:
+
+- **§7.1 (three-rounds-wrong-from-code-reading)** — both lessons concern misattribution of causation. §7.1: code-reading produces mechanism hypotheses that don't survive runtime; §7.6 candidate: derived values produce causation hypotheses that don't survive primary-value tracing.
+- **§7.4 (audit-confidence-calibration honesty)** — both concern the importance of distinguishing evidence types. §7.4: code-reading vs runtime-verified claims; §7.6 candidate: primary vs derived evidence within a single runtime capture.
+
+**Anti-drift safeguard for future closure-drafting agents**: the prior agent's `bc9c8d5bd` commit body is preserved as a methodology-lesson exhibit. Future agents reading this §12 entry should also read `git show bc9c8d5bd` to see the wrong analysis in full context — recognizing the trap-pattern is the lesson's intent.
+
+**Scope held**: Round-4-Closure.A session only landed campaign-doc updates (Status header + §11 entries + this §12 Round-4-Closure entry). NO production code changes. NO fixes applied. NO Mediator Brush Fix `8f4668599` revert. NO modifications to prior commits including `bc9c8d5bd` (preserved as-landed; campaign doc supersedes its commit message body as authoritative source of truth).
+
+### 2026-05-07, Sub-phase 3 Mediator Brush Diagnostic Round 5 Closure, commit 569415a7a
+
+**Round 5 instrumentation closure — captures runtime evidence DEFINITIVELY CONFIRMING Mechanism 1 (wrong texture, "different render target" sub-class) per Round 4 closure §12 enumeration. 5 targeted eprintlns across depth pick chain per Round 4 audit. Captured output `brush-dbg-r5.txt` totals 1,955 BRUSH-DBG lines (filtered from `brush_dbg-r5.log`).**
+
+**Outcome classification per Round 5 instrumentation prompt §3.6 outcome decision tree**: **Outcome 1** — single mechanism confirmed cleanly. Row matches: T8.A=0.0 (depth read returns near-plane invariantly) + T8.B=mismatch (terrain-pass-write target ≠ depth-pick-read source) + T8.E=consistent (math is correct for depth=0 input). 5 rounds of evidence-grounded narrowing converged in one Round 5 capture session.
+
+**Round 5 captured signal patterns** (representative samples from 1,955 total BRUSH-DBG lines):
+
+T8.A (`read_depth_at_pixel` raw return; 650/650 reads):
+
+```
+[BRUSH-DBG] depth-pick-raw: pixel=(<varies>, <varies>), depth_value=Some(0.000000)
+```
+
+Pattern: invariant `Some(0.000000)` regardless of pixel position. 650/650 reads return same value.
+
+T8.B (depth target write/read identity per frame):
+
+```
+[BRUSH-DBG] depth-target-write: frame=N, target_handle=<engine_adapter_internal>, ...
+[BRUSH-DBG] depth-target-read: frame=N, source_handle="Viewport Depth Texture", size=(W,H), format=Depth32Float
+```
+
+Pattern: write target is engine adapter's internal depth target (allocated within adapter; not the same handle as aw_editor's `self.depth_texture`). Read source is `self.depth_texture` ("Viewport Depth Texture", Depth32Float). **Handle mismatch every frame** — smoking gun.
+
+T8.C (terrain pipeline depth-write state at adapter dispatch site):
+
+```
+[BRUSH-DBG] terrain-pipeline-depth-state: render_to_texture call site — scene_target_view passed as color attachment; NO depth attachment parameter
+```
+
+Pattern: `engine_adapter::render_to_texture(scene_target_view, encoder)` API has no depth attachment parameter. Adapter manages its own internal depth target inside the call. aw_editor's `self.depth_view` is NEVER reachable to the terrain pass.
+
+T8.D (pixel coords + viewport_rect alignment; 650/650 samples):
+
+```
+[BRUSH-DBG] depth-pick-coords: pixel=(<varies>, <varies>), viewport_rect=(<x0>,<y0>)..(<x1>,<y1>), inside_viewport=true, depth_texture_present=true, depth_staging_present=true
+```
+
+Pattern: 650/650 inside_viewport=true. Mechanism 3 (coords outside terrain region) refuted definitively.
+
+T8.E (`unproject_depth_to_world` math sanity; 649/649 samples):
+
+```
+[BRUSH-DBG] unproject-input: depth_value=0.0, ndc_z=0.0, world≈cam_pos, dist=0.51-0.52
+```
+
+Pattern: 649/649 with depth_value=0.0 → ndc_z=0.0 → world position on near plane ≈ cam_pos plus tiny screen-position offset (dist=0.51-0.52 from cam_pos). Math is consistent with standard projection convention; no reverse-Z flip needed; no math error. Mechanism 4 (math error) refuted definitively.
+
+**Hypothesis confirmation per Round 5 evidence**:
+
+| Mechanism (per Round 4 closure §12) | Round 5 Verdict | Evidence |
+|-------------------------------------|----------------|----------|
+| 1 — Wrong depth texture (different render target / overlay pass / uninitialized) | **CONFIRMED ("different render target" sub-class)** | T8.B handle mismatch + T8.A=0.0 invariant + T8.C confirms adapter API has no depth attachment param |
+| 2 — Depth buffer cleared between terrain render and depth read | REFUTED | Already refuted by T8.B mismatch evidence — terrain never wrote to the read texture in the first place; "cleared between" is moot |
+| 3 — Pixel coords sampled outside terrain-rendered region | REFUTED | T8.D 650/650 inside_viewport=true |
+| 4 — `unproject_depth_to_world` math error | REFUTED | T8.E 649/649 math consistent with standard projection convention |
+| 5 — Wrong mip / array slice / region of correct texture | REFUTED by elimination | T8.B identifies the issue at texture-handle level, not mip/slice level |
+| 6 — Unenumerated mechanism within depth pick chain | NOT NEEDED | Mechanism 1 explanation sufficient |
+
+**Root cause statement**:
+
+`tools/aw_editor/src/viewport/renderer.rs` invokes `engine_adapter.render_to_texture(scene_target_view, encoder)` to render terrain. The adapter's API accepts only a color target (`scene_target_view`); the adapter manages its own internal depth target inside the call (terrain depth values written to that internal target).
+
+`tools/aw_editor/src/viewport/camera.rs::read_depth_at_pixel` samples a separately-allocated depth texture, `self.depth_texture` ("Viewport Depth Texture", Depth32Float). This texture is written ONLY by aw_editor-local overlay passes — grid lines, debug shapes, gizmos. Most of the texture is never written; cleared/uninitialized pixels return depth=0.0 on sample.
+
+When user clicks at (px, py): `read_depth_at_pixel` returns `Some(0.000000)` (cleared value at unwritten pixel). `unproject_depth_to_world(screen_uv, 0.0)` returns world position on the near clip plane ≈ cam_pos plus screen-position-dependent offset (~0.5 world units). Brush position becomes cam_pos. Brush modifies chunk under camera (chunk 242 in Round 4 capture); modification not visible to user looking at terrain elsewhere; ring vertices project to clip-volume edges → not visible.
+
+**Latent companion bug** (not in scope for fix decision but worth recording): aw_editor's overlay passes (gizmos, debug shapes) currently depth-test against `self.depth_view`. Since terrain renders to a *different* depth target, overlay passes cannot depth-test against terrain — gizmos that should be hidden behind a mountain currently render in front of it. Fix candidates (a) and (c) resolve both the depth-pick bug AND this latent overlay-vs-terrain depth-test bug; fix candidate (b) leaves the latent bug in place.
+
+**Three fix candidate designs (Andrew-gate decision required)**:
+
+**Candidate (a) — pass depth attachment to `engine_adapter::render_to_texture`**:
+
+API change: `render_to_texture(scene_target_view, encoder)` → `render_to_texture(scene_target_view, depth_view: Option<&TextureView>, encoder)`. When `Some(depth_view)` is passed, terrain pass binds it as depth attachment; when `None`, adapter falls back to internal depth target (preserving current behavior for any non-aw_editor callers).
+
+aw_editor's `viewport/renderer.rs` updated to pass `Some(&self.depth_view)` at the adapter call site. `read_depth_at_pixel` continues sampling `self.depth_texture` (no change) — but now terrain pass has written terrain depth to it, so reads return correct values.
+
+Pros:
+- Architecturally correct: wgpu RenderPass canonical convention is "caller provides color + depth attachments." Adapter's internal depth target becomes optional fallback.
+- Resolves latent overlay-vs-terrain depth-test bug as a side effect (overlay passes now share depth buffer with terrain).
+- Aligns with `CLAUDE.md` v0.10.1 Edit 2 (no-second-implementation): collapses two depth targets serving the same logical "viewport depth buffer" role into one.
+- Backwards-compatible: `Option<&TextureView>` with `None` preserves existing adapter behavior for any non-aw_editor callers.
+- Other future depth-pick consumers benefit (screen-space effects, shadow caster culling, etc.).
+
+Cons:
+- Cross-crate API change touches `astraweave_render`.
+- Adapter's internal multi-pass setup may need adjustment if other internal passes depend on the internal depth target's identity (needs verification at fix-prompt drafting time).
+- Existing non-aw_editor callers need the new `None` parameter added to call sites (compiler error surfaces all callers; mechanical fix).
+
+**Candidate (b) — expose engine adapter's internal depth target via accessor**:
+
+API change: add `engine_adapter::terrain_depth_view() -> &TextureView` (or similar accessor) to `astraweave_render`.
+
+aw_editor's `read_depth_at_pixel` updated to sample from `engine_adapter.terrain_depth_view()` instead of `self.depth_texture`. `self.depth_texture` continues serving overlay passes only.
+
+Pros:
+- No render-call API change.
+- aw_editor's overlay passes can still use `self.depth_texture` without modification.
+- Smaller cross-crate touch (accessor only, no signature change to `render_to_texture`).
+
+Cons:
+- aw_editor becomes coupled to adapter's internal depth target identity. If adapter evolves (multi-pass, MSAA resolve, deferred shadow setup with depth pyramid, etc.), aw_editor's depth-pick breaks silently.
+- Latent overlay-vs-terrain depth-test bug NOT resolved: overlay passes still depth-test against `self.depth_texture`, which still doesn't contain terrain depth. Gizmos still render in front of mountains incorrectly.
+- Two depth targets formally maintained in the viewport architecture (one in adapter, one in aw_editor) — anti-pattern per `CLAUDE.md` v0.10.1 Edit 2 spirit.
+- Leaky abstraction: aw_editor pierces engine adapter's encapsulation to read internal state.
+
+**Candidate (c) — aw_editor-local depth pre-pass re-rendering terrain depth into `self.depth_view`**:
+
+After `engine_adapter::render_to_texture` runs, aw_editor performs a separate depth-only pass that re-renders terrain geometry (depth-only pipeline) into `self.depth_view`.
+
+Requires aw_editor to access terrain mesh data from adapter (still cross-crate, just via different API — mesh data accessor instead of depth target accessor).
+
+Pros:
+- `self.depth_view` remains the authoritative viewport depth target.
+- Overlay passes' depth-test against terrain works correctly (both share `self.depth_view`).
+- No render-call API change for primary terrain pass.
+
+Cons:
+- Redundant rendering work: terrain rasterized twice (once for color in adapter pass, once for depth in aw_editor pre-pass). Performance cost scales with terrain complexity.
+- Still cross-crate: requires mesh data accessor on engine adapter (different cross-crate change than (a) or (b)).
+- Precision-mismatch risk: two separate depth passes with potentially different shaders / transform matrices / precision can produce slightly different depth values, leading to subtle inconsistencies in depth pick + overlay tests near terrain edges.
+- Architectural duplication remains: terrain renders happen in two places.
+
+**Andrew-gate decision required**: Andrew picks (a), (b), (c), or specifies a 4th alternative. Decision documented in chat or follow-up commit. Small-fix prompt drafted in subsequent session per two-session-minimum directive.
+
+**Forward chain**:
+
+1. **Andrew-gate fix design decision** — Andrew picks (a), (b), (c), or alternative.
+2. **Next session**: Small-fix prompt drafted per chosen design (per two-session-minimum). Specifies API changes, callers to update, cargo check + build + active_tool tests verification, Andrew-gate verification protocol.
+3. **Following session**: Small-fix lands as single commit. cargo check + build + tests pass.
+4. **Andrew-gate-PASS verification**: Andrew runs editor; brush ring visible; cursor follows screen click; terrain modifies under cursor (not under camera); modification visible.
+5. **Cleanup session**: Mediator Brush Fix `8f4668599` reverted as cleanup (clean recovery narrative — `8f4668599` was harmless redundancy per Round 1 closure and Round 3 audit §5.1; reverting now produces a clean diff narrative).
+6. **Sub-phase 3.C closeout** lands.
+7. **Sub-phase 4 + 5 + Mediator Removal session + Sub-phase 6 closeout** per established forward chain.
+
+**Methodology lesson surfacing — wrapped-component resource identity trap**:
+
+This is a new lesson candidate, sibling to Round 4 closure §12's derived-value reasoning trap (§7.6 candidate). Future re-diagnostic audits (Round 6+ if needed; or a future audit reflecting on the fix's success) can compile this into §7 audit lessons. Codified here for first-pass reference.
+
+**Pattern**: When a higher-level component (aw_editor's viewport) wraps a lower-level component (engine_adapter) that manages its own internal resources of the same logical type as the wrapping component (depth target), the higher-level component's reads from its own resource don't reflect the lower-level component's writes to its own resource — even though both call themselves "the depth buffer for this viewport."
+
+The Round 5 case: aw_editor allocates `self.depth_texture` ("Viewport Depth Texture") as the viewport's depth target. engine_adapter allocates its own internal depth target. Terrain rasterizes into adapter's internal target; depth pick samples aw_editor's target. Both components believe they're working with "the viewport depth buffer." Neither is wrong about its own scope. The bug is at the boundary: the wrapping component never verified the wrapped component's resource identity.
+
+This lesson generalizes: **when component A wraps component B and both manage similar resources, verify the resource identity matches before reasoning about resource content**. Equivalent observation: shared logical state across component boundaries needs explicit identity verification, not just content-level reasoning.
+
+Sibling-lesson cross-references:
+
+- **§7.6 candidate (derived-value reasoning trap, Round 4 closure)** — both lessons concern misattribution of state. §7.6: derived values misattributed as primary causes (cam_dist=0.5 vs cursor_center=cam_pos). §7.7 candidate: resource identity at component boundaries misattributed as resource content.
+- **`CLAUDE.md` v0.10.1 Edit 2 (no-second-implementation rule)** — direct architectural sibling: "no-second-resource" is the resource-level corollary of "no-second-pipeline." Round 5 case (two depth targets serving the same logical role) is exactly the kind of duplication that Edit 2 forbids in the implementation-level sense; this lesson extends the rule to the resource-management level.
+- **`CLAUDE.md` v0.10.1 Edit 3 (Integration Completeness checklist)** — possible future bullet: "verify resource identity at component boundaries when wrapping components that manage their own resources." Could be added to Edit 3 list if this pattern recurs across audits.
+
+**Anti-drift safeguard for future closure-drafting agents**: this closure entry is structurally similar to Round-4-Closure §12 entry (same campaign-archeology resilience, same methodology-lesson surfacing pattern, same forward-chain structure). The §3.6 outcome decision tree mapped Round 5 evidence directly to Outcome 1 — no analytical correction needed, unlike Round 4's `bc9c8d5bd` derived-value trap. This confirms the methodology pattern: pre-baked outcome decision trees in instrumentation prompts protect against derived-value reasoning traps in closure analysis. Future instrumentation prompts should include outcome decision trees as a standard section.
+
+**Scope held**: Round-5-Closure.A session only landed campaign-doc updates (Status header + §11 entries + this §12 Round-5-Closure entry). NO production code changes. NO fixes applied. NO Mediator Brush Fix `8f4668599` revert. NO modifications to prior commits. NO fix-prompt drafting (deferred to subsequent session per two-session-minimum directive). NO pre-deciding fix design (Andrew-gate decision required).
+
+### 2026-05-07, Sub-phase 3 Mediator Brush Diagnostic Round 6 Closure, commit c7f3b50b3
+
+**Round 6 instrumentation closure — captures runtime evidence DEFINITIVELY CONFIRMING Mechanism C (mesh resource identity trap, sibling §7.7 instance at mesh-data layer) with dual-variant sub-mechanism per Round 6 prompt §3.7 outcome decision tree. 6 targeted eprintlns across mesh-update chain per Round 5 closure §7.7 candidate framing extended to mesh-data layer. Captured output `brush-dbg-r6.log` totals 5,459 BRUSH-DBG lines.**
+
+**Outcome classification per Round 6 instrumentation prompt §3.7 outcome decision tree**: **Outcome 3** — Mechanism C confirmed cleanly via T9.C smoking gun #3 (`update_terrain_chunk-success, affected_clusters=0` invariant across 1749/1749 entries) + T9.D paired confirmation (terrain_cluster_models=0 in self.models across all 238 samples) + heights changing correctly (T9.E delta ≈ 4.96) + other mechanisms refuted. 6 rounds of evidence-grounded narrowing converged on the second of two §7.7 instances in the same campaign.
+
+**Round 6 captured signal patterns** (representative samples from 5,459 total BRUSH-DBG lines):
+
+T9.A (`apply_brush_at` world coords; 67 samples):
+
+```
+[BRUSH-DBG] brush-apply-at: world=(277.09, 499.67), mode=Sculpt, radius=50.0, strength=1.00, height_pre=Some(101.71081)
+[BRUSH-DBG] brush-apply-at: world=(256.78, 526.38), mode=Sculpt, radius=50.0, strength=1.00, height_pre=Some(126.991425)
+[BRUSH-DBG] brush-apply-at: world=(284.86, 568.80), mode=Sculpt, radius=50.0, strength=1.00, height_pre=Some(169.1598)
+```
+
+Pattern: 67/67 brush apply calls show world coords vary across viewport (Andrew clicked across distinct screen positions). Mechanism A (cursor source mismatch) refuted — brush world coords match where Andrew clicked.
+
+T9.E (chunk height delta pre/post; 67 samples paired with T9.A):
+
+```
+[BRUSH-DBG] brush-height-delta: world=(277.09, 499.67), height_pre=Some(101.71081), height_post=Some(106.66818), delta=Some(4.9573746), modified=true
+[BRUSH-DBG] brush-height-delta: world=(256.78, 526.38), height_pre=Some(126.991425), height_post=Some(131.95161), delta=Some(4.96019), modified=true
+[BRUSH-DBG] brush-height-delta: world=(284.86, 568.80), height_pre=Some(169.1598), height_post=Some(174.12067), delta=Some(4.960861), modified=true
+```
+
+Pattern: 67/67 height deltas ≈ 4.96 (close to 5.0 uniform sculpt strength). Heights ARE changing measurably at data layer. Mechanism E (sub-perceptible delta) refuted; Mechanism 6 (brush logic regression) refuted.
+
+T9.B (event emission + consumption; 794 paired entries):
+
+```
+[BRUSH-DBG] terrain-brush-update-emit: site=...
+[BRUSH-DBG] terrain-brush-update-handle: received_dirty_count=<n>, dirty_indices=<vec>, viewport_is_some=true, upload_call_made_per_chunk=true
+```
+
+Pattern: 794 emit / 794 handle 1:1 ratio. Event chain intact. Mechanism B (event handler missing or skipping upload) refuted.
+
+T9.C (`update_terrain_chunk` 3-sub-path tracing; 1749 success entries):
+
+```
+[BRUSH-DBG] mesh-upload: site=update_terrain_chunk-entry, ...
+[BRUSH-DBG] mesh-upload: site=update_terrain_chunk-success, affected_clusters=0
+```
+
+Pattern: 1749/1749 entry events fire success path; 0 early-return-no-slot-map; 0 early-return-no-stored-chunk. **All 1749 success entries show affected_clusters=0.** Smoking gun #3 — the `terrain_clusters.filter(|c| c.chunk_indices.contains(stored))` filter at engine_adapter.rs:1898 returns empty in EVERY case → `rebuild_terrain_clusters_for_chunk` is a no-op every time → legacy cluster GPU buffers never updated.
+
+T9.D (terrain render source identity; 238 samples):
+
+```
+[BRUSH-DBG] terrain-render-source: models_total=0, drawn_models=0, terrain_cluster_models=0  (startup)
+[BRUSH-DBG] terrain-render-source: models_total=96, drawn_models=39, terrain_cluster_models=0  (steady-state)
+```
+
+Pattern: 238 samples, 2 unique line patterns. `self.models` HashMap NEVER contains entries with `terrain_cluster_*` prefix at any point during runtime. **The legacy cluster path is DEAD CODE at this editor's configuration** — writes occur via `update_terrain_chunk` → `rebuild_terrain_clusters_for_chunk` (T9.C 1749 success entries) but nobody reads `self.models["terrain_cluster_*"]` at render time.
+
+T9.F (engine_adapter instance identity; single fire at first render):
+
+```
+[BRUSH-DBG] engine-adapter-id: site=render_to_texture, adapter_ptr=0x489943a3020, terrain_chunks_len=0, terrain_clusters_len=0
+```
+
+Pattern: single adapter_ptr identity. Multi-instance trap (Mechanism C variant) refuted.
+
+**Hypothesis confirmation per Round 6 evidence**:
+
+| Mechanism | Round 6 Verdict | Evidence |
+|----|----|----|
+| A — Cursor source mismatch | REFUTED | T9.A 67/67 brush_world coords vary correctly |
+| B — Event handler missing/skipping upload | REFUTED | T9.B 794 emit / 794 handle 1:1 |
+| C — Mesh resource identity trap (sibling §7.7 at mesh-data layer) | **CONFIRMED with dual-variant sub-mechanism** | T9.C 1749/1749 affected_clusters=0 (smoking gun #3); T9.D 238/238 terrain_cluster_models=0 (paired confirmation) |
+| D — Renderer mesh staleness | n/a (subsumed by C) | T9.D shows legacy path is dead code; staleness moot when path is unread |
+| E — Sub-perceptible visual delta | REFUTED | T9.E 67/67 delta ≈ 4.96 |
+| 6 — Brush logic regression | REFUTED | Heights mutate correctly per brush parameters |
+| 7 — Multi-instance trap | REFUTED | T9.F single adapter_ptr |
+
+**Root cause statement — dual-variant §7.7 trap at mesh layer**:
+
+The editor has TWO separate terrain rendering abstractions in the renderer:
+
+1. **Live path**: `Renderer::terrain_forward.chunks` HashMap. Populated by `Renderer::upload_terrain_chunk` (at astraweave-render/src/renderer.rs:6050). Drawn at runtime under `#[cfg(feature="terrain-splat-arrays")]` at renderer.rs:5755 via `if let Some(tf) = self.terrain_forward.as_ref() { for (key, chunk_gpu) in &tf.chunks { ... } }`.
+
+2. **Legacy path**: `engine_adapter`'s `terrain_clusters` Vec + `self.models["terrain_cluster_*"]` HashMap entries. Populated by `engine_adapter::rebuild_terrain_clusters_for_chunk`. **At the current editor configuration, T9.D evidence proves nobody reads `self.models["terrain_cluster_*"]` at render time** (terrain_cluster_models=0 across all 238 samples).
+
+The dual-variant §7.7 sub-mechanism — initial-upload and incremental-update route to DIFFERENT abstractions:
+
+- **Initial terrain upload** (`engine_adapter::upload_terrain_chunks` at engine_adapter.rs:1421) routes through `Renderer::upload_terrain_chunk` → populates live `Renderer::terrain_forward.chunks`. Initial render shows terrain correctly.
+- **Incremental brush update** (`engine_adapter::update_terrain_chunk` at engine_adapter.rs:2460) mutates aw_editor's local `self.terrain_chunks` Vec + calls `rebuild_terrain_clusters_for_chunk` → legacy cluster path. T9.D proves dead code.
+
+So the chain post-Real-Fix.A:
+- Brush apply at cursor (Mechanism 1 fixed by Real-Fix.A) ✓
+- Heights mutate correctly at data layer (T9.E delta ≈ 4.96) ✓
+- 794 events fire correctly (T9.B) ✓
+- 1749 chunk uploads succeed at slot_map level (T9.C) ✓
+- BUT: `rebuild_terrain_clusters_for_chunk` finds affected_clusters=0 every time → no rebuild → legacy cluster GPU buffers stay empty
+- Meanwhile, the live abstraction (`Renderer::terrain_forward.chunks`) is never touched by `update_terrain_chunk`
+- Mesh stays stale forever despite all upstream chain components working
+
+This explains every Andrew-gate symptom from Real-Fix.A's partial-REGRESS verification:
+- Brush ring visible at cursor (Mechanism 1 fixed; depth pick chain works) ✓
+- Cursor follows screen click (Mechanism 1 fixed) ✓
+- **Brush effects don't visibly modify terrain** ✗ — because `update_terrain_chunk` writes to a dead-code legacy abstraction; the live abstraction never sees the modification.
+
+**§7.7 graduation — methodology gold**:
+
+Round-5-Closure §12 entry codified §7.7 candidate at depth-target layer:
+- aw_editor allocates `self.depth_view`; engine_adapter manages internal depth target inside `render_to_texture`; trap at boundary.
+- Real-Fix.A `0f569d212` resolved via Option (a) — pass `Option<&TextureView>` depth attachment through `render_to_texture` + `Renderer::draw_into`. Both depth targets unified at the boundary.
+
+Round 6 confirms §7.7 at mesh-data layer with dual-variant:
+- aw_editor's engine_adapter has `self.models["terrain_cluster_*"]` + `terrain_clusters` Vec (legacy, dead code).
+- astraweave_render's Renderer has `terrain_forward.chunks` HashMap (live, used at render time).
+- Trap with sub-variant: initial-upload routes to live path (works); incremental-update routes to legacy dead path (broken).
+- Both believed to be "the terrain mesh"; neither component is wrong about its own scope; bug is at the boundary.
+
+**Same architectural anti-pattern; different layers; different sub-variants. Two layers in the same campaign means it's not a one-off; it's a structural pattern in the editor's architecture.** §7.7 graduates from CANDIDATE (Round 5 single-layer evidence) to CONFIRMED CANONICAL PATTERN (Round 6 multi-layer evidence).
+
+**Suggested CLAUDE.md amendment cycle** (closure surfaces; does not pre-apply): extend Edit 2 (no-second-implementation) with a resource-identity corollary. Suggested wording (one-sentence append):
+
+> Same rule applies to **resources** (depth targets, vertex buffers, render targets) shared across component boundaries: when component A wraps component B, verify they reference the same resource (not parallel resources of the same logical role) — Sub-phase 3 mediator brush diagnostic took six instrumentation rounds to unwind two such resource-identity traps.
+
+Approximately 50 words; tight, action-oriented, references empirical evidence, naturally extends Edit 2's existing pattern. Future CLAUDE.md amendment cycle decides whether and when to amend; this closure surfaces only.
+
+**Two fix candidate designs (Andrew-gate decision required)**:
+
+**Option 1 — refactor with shared helper**:
+
+Extract a shared helper function `upload_or_update_terrain_chunk_forward(chunk_index, vertices, indices)` that builds the splat-vertex array, filters surface triangles, builds splat maps, and calls `self.renderer.upload_terrain_chunk(key, splat_vertices, indices, splat_0, splat_1, splat_dims)`. The helper is called by both:
+- `upload_terrain_chunks` (initial upload; engine_adapter.rs:1421) — replaces the existing splat-build logic at engine_adapter.rs:1551-1670 with a call to the shared helper.
+- `update_terrain_chunk` (incremental update; engine_adapter.rs:2460) — replaces the call to `rebuild_terrain_clusters_for_chunk` (or augments alongside it during transition) with a call to the shared helper.
+
+`Renderer::upload_terrain_chunk` inserts into `terrain_forward.chunks` HashMap by key, so re-uploading with the same key replaces the existing entry (incremental update semantics work without additional API changes).
+
+Pros:
+- Architecturally clean: single canonical implementation; both paths use it.
+- Aligns with CLAUDE.md v0.10.1 Edit 2 (no-second-implementation): collapses two routing paths to one canonical implementation.
+- Easier to maintain: future modifications to splat-build / filter / upload logic happen in one place.
+- Future depth-pick-style consumers (e.g., screen-space effects, shadow culling) benefit from canonical implementation.
+
+Cons:
+- Medium fix size: requires careful refactoring of existing splat-build logic (lines 1551-1670) + integration into shared helper + caller updates at both sites.
+- Pre-execution analysis needed at Real-Fix.B drafting time to verify exact splat-build logic dependencies + HashMap re-upload semantics + whether legacy cluster path can be left in place during fix.
+
+**Option 2 — inline copy of splat-build logic**:
+
+Copy the splat-vertex build, surface triangle filter, splat map build, and `upload_terrain_chunk` call from `upload_terrain_chunks` (engine_adapter.rs:1551-1670) into `update_terrain_chunk` (engine_adapter.rs:2460). Two parallel implementations of identical splat-build logic.
+
+Pros:
+- Smaller cross-function change: only `update_terrain_chunk` is modified; `upload_terrain_chunks` is left untouched.
+- Faster to write (mechanical copy-paste).
+
+Cons:
+- **Creates the exact second-implementation anti-pattern that CLAUDE.md v0.10.1 Edit 2 forbids**. Two parallel implementations of identical splat-build / filter / upload logic in the same crate. Future modifications would have to be applied in two places; drift between the two implementations is a sibling failure mode of the anti-pattern this campaign just confirmed at multi-layer.
+- Ironic given Round 5 + Round 6 evidence just confirmed Edit 2 canonically. Choosing Option 2 immediately would be a methodology-violation precedent.
+- Adds maintenance burden indefinitely.
+
+**Andrew-gate decision required**: Andrew picks Option 1, Option 2, or specifies a 4th alternative. Decision documented in chat or follow-up commit. Real-Fix.B prompt drafted in subsequent session per two-session-minimum directive.
+
+**Dead-code observation (separate cleanup concern)**:
+
+T9.D evidence proves the legacy cluster path is dead code at this editor's configuration:
+- 238/238 samples show `terrain_cluster_models=0` in `self.models`.
+- Writes occur (T9.C 1749 success entries write to `terrain_clusters` Vec).
+- But nothing reads `self.models["terrain_cluster_*"]` at render time.
+
+This is worse-than-dormant code: it actively maintains state nobody consumes. CLAUDE.md v0.10.1 Edit 3 (Integration Completeness checklist) point 1 directly applies — production caller exists for the *write*, but no production consumer exists for the *read*.
+
+**Cleanup-A session** (separate session post-Real-Fix.B-PASS per §0.2 forward chain):
+- Delete `rebuild_terrain_clusters_for_chunk` (engine_adapter.rs:1880-1920 area).
+- Delete `terrain_clusters` Vec field from engine_adapter.
+- Delete `self.models["terrain_cluster_*"]` insertion calls in `upload_terrain_chunks`.
+- Verify cargo check + build + tests still pass post-cleanup.
+
+This is a focused single-concern commit; reviewable on its own; trivial revert if unexpected friction. Bundling cleanup with Real-Fix.B muddles the diff narrative.
+
+**Forward chain**:
+
+1. **Andrew-gate fix design decision** — Andrew picks Option 1 (refactor) or Option 2 (inline) or alternative.
+2. **Next session**: Real-Fix.B prompt drafted per chosen design (per two-session-minimum). Specifies internal refactoring (Option 1 — helper is private; no API surface change), file modifications (engine_adapter.rs primarily; possibly renderer.rs if any helpers exposed), cargo check + build + active_tool tests verification protocol, Andrew-gate verification protocol (full §8 protocol of Real-Fix.A re-applied).
+3. **Following session**: Real-Fix.B lands as single commit.
+4. **Andrew-gate-PASS verification**: brush ring visible at cursor (preserved from Real-Fix.A); cursor follows click (preserved); **terrain modifies under cursor visibly** (the new Real-Fix.B target); all 8 brush modes functional; gizmos hidden behind terrain.
+5. **Cleanup-A session**: delete dead-code legacy cluster path. Single commit.
+6. **Cleanup-B session**: Mediator Brush Fix `8f4668599` revert per audit §5.1. Single commit.
+7. **Sub-phase 3.C closeout**: campaign doc updates marking Sub-phase 3 COMPLETE.
+8. **Sub-phase 4 (Pattern A regression infrastructure) + Sub-phase 5 (RegionalArchetypePanel ActiveTool) + Mediator Removal session + Sub-phase 6 closeout** per established forward chain.
+
+**Methodology lessons accumulated post-Round 6**:
+
+The campaign chain has now produced six methodology lessons codified at audit-§7-or-equivalent locations:
+
+- §7.1 (three-rounds-wrong-from-code-reading) — Round 3 audit
+- §7.2 (multi-round instrument-and-narrow as canonical) — Round 3 audit; **strengthened by Round 6 evidence**
+- §7.3 (pre-execution actual-code verification) — Round 3 audit
+- §7.4 (audit-confidence-calibration honesty) — Round 3 audit
+- §7.5 (synthesizing-artifact threshold at round-3) — Round 3 audit
+- §7.6 candidate (derived-value reasoning trap) — Round-4-Closure §12; awaits future audit absorption
+- **§7.7 (wrapped-component resource identity trap) — Round-5-Closure candidate; Round-6-Closure CONFIRMED CANONICAL** with multi-layer evidence
+
+§7.2 + §7.7 are the most architecturally load-bearing lessons. Future foundational architectural campaigns inherit them as canonical methodology. The pattern: when defect localization in a layered abstraction stack proves resistant to code-reading hypotheses, multi-round instrument-and-narrow with pre-baked outcome decision trees per round produces evidence-grounded convergence in 5-6 rounds; resource-identity traps at component boundaries are the canonical anti-pattern this methodology surfaces.
+
+**Anti-drift safeguard for future closure-drafting agents**: this closure entry is structurally similar to Round-5-Closure §12 entry (same campaign-archeology resilience, same methodology-lesson surfacing pattern, same forward-chain structure, same fix-candidate-presentation pattern with Andrew-gate decision marker). The §3.7 outcome decision tree mapped Round 6 evidence directly to Outcome 3 — no analytical correction needed (matching Round 5; protecting against derived-value reasoning trap). This further confirms the methodology pattern: pre-baked outcome decision trees in instrumentation prompts protect against derived-value reasoning traps in closure analysis. Future instrumentation prompts include outcome decision trees as a STANDARD section (no longer a candidate practice; canonical from Round 6 onward).
+
+**Scope held**: Round-6-Closure.A session only landed campaign-doc updates (Status header + §11 entries + this §12 Round-6-Closure entry). NO production code changes. NO fixes applied. NO Mediator Brush Fix `8f4668599` revert. NO modifications to prior commits. NO Real-Fix.B prompt drafting (deferred to subsequent session per two-session-minimum directive). NO pre-deciding fix design (Andrew-gate decision required). NO dead-code legacy cluster path deletion (Cleanup-A separate session). NO CLAUDE.md amendment application (separate amendment cycle). NO ARCHITECTURE_MAP.md updates (deferred).
+
+### 2026-05-08, Sub-phase 3 Mediator Brush Diagnostic Round 7 Closure, commit 2ddc77a39
+
+**Round 7 instrumentation closure — captures runtime evidence DEFINITIVELY CONFIRMING Mechanism H1 (wrapped-component sibling-attribute drift; intra-component variant of §7.7 at texture-data layer) per Round 7 prompt §3.6 outcome decision tree (Outcome 1). 5 targeted eprintlns across paint/zoneblend texture-mutation chain per Round-6-Closure §7.7 canonical-pattern framing extended to texture-data layer. Captured output `brush-dbg-r7.txt` totals 220,423 lines / 6,954 BRUSH-DBG entries.**
+
+**Outcome classification per Round 7 instrumentation prompt §3.6 outcome decision tree**: **Outcome 1** — H1 confirmed cleanly via smoking-gun chunk_index=40 paint sequence (lines 202462-203435 of captured log). 7 rounds of evidence-grounded narrowing converged on the third of three §7.7 instances in the same campaign.
+
+**Round 7 captured signal patterns** (representative samples from 6,954 total BRUSH-DBG entries):
+
+T10.A (paint/zoneblend brush-apply data flow; 870 entries):
+
+```
+mode tally:
+  Sculpt:    333 (height-mutation; baseline)
+  Flatten:   275 (height-mutation; baseline)
+  Erode:     181 (height-mutation; baseline)
+  Paint:      65 (texture-mutation; defect target)
+  Smooth:     16 (height-mutation; baseline)
+  ZoneBlend:   0 in this run (separate mechanism; not exercised by Andrew during capture)
+```
+
+Pattern: paint dispatches fire normally with `mode=Paint, modified=true, emission_will_fire=true` (T10.E paired). Brush IS reaching code; reporting changes; emission gate not blocking. Mechanisms H3 (parallel code path) + H6 (parameter issue) refuted at this layer.
+
+T10.B (helper-entry splat data state; 1041 entries) — **smoking gun**:
+
+```
+chunk_index=40 paint sequence (10 consecutive helper invocations, lines 202462-203434):
+Helper #1: hash_biome=2d3d6543c332d0f4, hash_material=94e7422be132b19f, splat_0_hash=71cd3d8b30b4adce
+Helper #2: hash_biome=2d3d6543c332d0f4, hash_material=522903686df0c06d, splat_0_hash=71cd3d8b30b4adce
+Helper #3: hash_biome=2d3d6543c332d0f4, hash_material=266fd10e0f3184ec, splat_0_hash=71cd3d8b30b4adce
+Helper #4: hash_biome=2d3d6543c332d0f4, hash_material=989f2754cb789d61, splat_0_hash=71cd3d8b30b4adce
+Helper #5: hash_biome=2d3d6543c332d0f4, hash_material=9981a48399d11cc6, splat_0_hash=71cd3d8b30b4adce
+Helper #6: hash_biome=2d3d6543c332d0f4, hash_material=260496ad0b427beb, splat_0_hash=71cd3d8b30b4adce
+Helper #7: hash_biome=2d3d6543c332d0f4, hash_material=a8b6c7b516192b41, splat_0_hash=71cd3d8b30b4adce
+Helper #8: hash_biome=2d3d6543c332d0f4, hash_material=596c09b7ff34cc26, splat_0_hash=71cd3d8b30b4adce
+Helper #9: hash_biome=2d3d6543c332d0f4, hash_material=8aa6756e2c77a6bb, splat_0_hash=71cd3d8b30b4adce
+Helper #10: hash_biome=2d3d6543c332d0f4, hash_material=a8811f1e471460bf, splat_0_hash=71cd3d8b30b4adce
+```
+
+**Pattern: hash_biome INVARIANT + hash_material CHANGES + splat_0_hash INVARIANT.** This is the smoking gun. Paint IS mutating vertex attributes (hash_material varies — paint writes to `vertex.material_ids`/`vertex.material_weights`). Paint is NOT touching biome attributes (hash_biome=2d3d6543c332d0f4 invariant — paint doesn't write to `vertex.biome_weights_0/1`). Splat texture stays the same (`build_chunk_splat_maps` reads only `vertex.biome_weights_*`, so produces identical splat output every call regardless of paint changes).
+
+T10.C (renderer upload-pre; 1041 entries; 1:1 with T10.B):
+
+Pattern: 1041 / 1041 entries paired with T10.B helper invocations. Upload chain at helper-to-renderer boundary is clean — every helper call produces a corresponding `Renderer::upload_terrain_chunk` call. Splat content hashes match T10.B values (e.g., `splat_0_hash=71cd3d8b30b4adce` invariant for chunk_index=40 across 10 paint dispatches). No upload-side defect.
+
+T10.D (renderer draw-frame / draw-chunk; 783 / 2349 entries):
+
+Pattern: chunks survive to draw with valid buffers; render-side reads correctly from `terrain_forward.chunks`; `chunks_count` and `index_count` non-zero across all sampled frames. Mechanism H5 (render-side splat sampling mismatch — third inter-component §7.7 layer) refuted: defect is upstream at helper-input layer, not render layer.
+
+T10.E (paint/zoneblend event emission; 870 entries; 1:1 with T10.A):
+
+Pattern: paint dispatches AND emit events at expected cadence. `modified=true, emission_will_fire=true` on every paint dispatch. Mechanism H4 (paint emission gated) refuted.
+
+**Hypothesis confirmation per Round 7 evidence**:
+
+| Mechanism (per Round 7 prompt §3.6) | Round 7 Verdict | Evidence |
+|----|----|----|
+| H1 — Paint writes to wrong attribute set; helper rebuilds invariant splat from sibling attribute | **CONFIRMED — smoking gun chunk_index=40 paint sequence** | T10.B hash_biome invariant + hash_material varying + splat_0_hash invariant across 10 consecutive helper calls; paint writes `material_*`; splat builder reads `biome_weights_*` only |
+| H2 — Helper rebuilds invariant splat (subsumed by H1 sub-mechanism) | n/a (subsumed) | H1's specific shape includes H2's "invariant splat from invariant source" pattern |
+| H3 — Paint takes parallel code path | REFUTED | T10.A 65 paint dispatches at instrumented site; paint reaches `apply_brush_at` chain normally |
+| H4 — Paint events gated | REFUTED | T10.E 870 emissions with `emission_will_fire=true`; paint emits events normally |
+| H5 — Render-side splat sampling mismatch (third §7.7 inter-component layer) | REFUTED at this layer | T10.D entries show chunks survive to draw with valid buffers; render-side reads correctly; defect is upstream at helper-input layer |
+| H6 — Paint mode parameter issue | REFUTED | T10.A `modified=true` on every paint dispatch; brush parameters reach apply path correctly |
+
+**Root cause statement — wrapped-component sibling-attribute drift (intra-component variant of §7.7)**:
+
+The defect is at the **boundary between paint's write target and splat builder's read source**, *within* the engine_adapter component (intra-component, not inter-component like Layers 1+2). Specifically:
+
+- **`apply_brush_paint_material`** (paint's write target, terrain_integration.rs:2048): mutates `vertex.material_ids` and `vertex.material_weights`. Paint's intent: change the material identity at the brush position.
+- **`build_chunk_splat_maps`** (splat builder's read source, viewport/terrain_splat_builder.rs:64-70): reads `vertex.biome_weights_0` and `vertex.biome_weights_1`. Splat builder's intent: produce splat texture maps from biome attribute data.
+
+These two functions operate on the **same `TerrainVertex` struct**, but on **different sibling attribute fields**. The struct holds both `biome_weights_*` and `material_*` as parallel attribute sets, each treated as authoritative for its own concept (biome vs material). Paint modifies one; splat reads the other; they never converge.
+
+This is structurally identical to the Layer 1 (depth target) and Layer 2 (mesh data) §7.7 traps:
+- Layer 1: aw_editor's `self.depth_view` vs engine_adapter's internal depth target. Two resources at component boundary.
+- Layer 2: engine_adapter's `terrain_clusters` Vec / `self.models["terrain_cluster_*"]` (legacy dead path) vs Renderer's `terrain_forward.chunks` HashMap (live path). Two resources at component boundary, dual-variant routing.
+- Layer 3: TerrainVertex's `biome_weights_*` (splat builder's read source) vs `material_*` (paint's write target). Two attribute sets at struct boundary, sibling-attribute drift.
+
+Same root anti-pattern: state of the same logical role (terrain material identity at chunk pixels) split across multiple representations; bug at the boundary; fix shape unifies resource identity. Different granularity scale: Layers 1+2 at component boundaries; Layer 3 at struct attribute-set boundary.
+
+**§7.7 elevation — methodology gold at fundamental level**:
+
+Round 5 codified §7.7 as candidate at single-layer evidence (depth-target inter-component).
+
+Round 6 graduated §7.7 from candidate to confirmed canonical with multi-layer evidence (depth-target + mesh-data; both inter-component; mesh-data dual-variant).
+
+Round 7 (this commit) elevates §7.7 from canonical pattern to **fundamental architectural anti-pattern** with:
+- **Three-layer evidence**: depth-target (Round 5) + mesh-data (Round 6) + texture-data (Round 7).
+- **New intra-component sub-variant**: sibling-attribute drift within shared struct, in addition to inter-component manifestations at component boundaries.
+- **Two granularity scales confirmed**: component-boundary + struct-attribute-set.
+- **Same root anti-pattern at every scale**: state of same logical role split across multiple representations; bug at the boundary; fix unifies resource identity at the boundary.
+
+This is methodology gold at fundamental level. §7.7 transitions from "canonical pattern" to "axiomatic methodology" — fundamental check during architecture review for any future foundational architectural campaign.
+
+**Suggested CLAUDE.md amendment cycle elevation** (closure surfaces; does not pre-apply): three-layer + multi-granularity-scale evidence may elevate the resource-identity rule from "candidate corollary appended to Edit 2" to "first-class case in Edit 2 itself, structured at multiple granularity scales." Suggested elevated wording (one possible shape, ~130 words):
+
+> **Edit 2 (canonical) — No second implementation of a logical system**: Never build a second implementation of a logical system that already exists (rendering path, vertex format, material pipeline, scheduler, tonemap chain, scene serializer). Before adding any such system, run `rg 'struct <Name>\|trait <Name>'` workspace-wide; if a peer implementation exists, extend it or surface the conflict to the user. The Fix-27 campaign and the editor-render-divergence audit each took weeks to unwind a duplicate pipeline that was created without this check.
+>
+> **Edit 2 sub-rule (canonical) — Same identity at every boundary**: The same rule applies to **resources at any granularity scale** — depth targets, vertex buffers, render targets, material pipelines, sampler sets across component boundaries; sibling attribute fields within shared structs; parallel data structures within a single component. When state of the same logical role is split across multiple representations (component A vs B; struct attribute X vs Y; storage P vs Q), the bug is at the boundary. Verify identity at every boundary. Sub-phase 3 mediator brush diagnostic took seven instrumentation rounds to unwind three such resource-identity traps spanning depth targets (inter-component), mesh-data routing (inter-component, dual-variant), and attribute-set drift (intra-component sibling).
+
+Future CLAUDE.md amendment cycle decides shape + timing; this closure surfaces only.
+
+**Three fix candidate designs for paint (Andrew-gate decision (a) required)**:
+
+**Option A — `apply_brush_paint_material` mirrors writes to `biome_weights_*`**:
+
+`apply_brush_paint_material` writes to `vertex.material_ids` and `vertex.material_weights` AND additionally writes the equivalent change to `vertex.biome_weights_0` and `vertex.biome_weights_1`. Splat builder unchanged.
+
+Pros:
+- Smallest fix size: localized to paint brush implementation.
+- Splat builder unchanged: minimal risk to other code paths.
+- Existing biome rendering pipeline unchanged.
+- Fastest path to 7/8 brush modes (with ZoneBlend separate).
+
+Cons:
+- **Doesn't unify resource identity at the §7.7 boundary**; just patches over it. Two attribute sets stay independently maintained.
+- **Drift risk persists**: future changes to either side could resurrect the same trap.
+- **Conflates semantics**: "paint material" semantics get encoded into "biome" attribute fields; future biome-vs-material distinctions become harder.
+- **Other authoring tools may also need updating**: any future tool that writes to `material_*` would need to mirror to `biome_weights_*`; pattern not enforced architecturally.
+- **Anti-pattern**: violates the spirit of CLAUDE.md Edit 2's resource-identity-at-boundaries rule (suggested elevated form). Choosing Option A immediately after Round 7's three-layer §7.7 confirmation would be a methodology-violation precedent at fundamental level.
+
+**Option B — `build_chunk_splat_maps` reads from `material_*` instead of `biome_weights_*`**:
+
+`build_chunk_splat_maps` switches its read source from `vertex.biome_weights_0/1` to `vertex.material_ids/material_weights`. Paint's writes flow naturally to splat. Biome generation (whatever populates `biome_weights_*` initially at terrain creation) becomes irrelevant to splat output OR needs redirection to populate `material_*` instead.
+
+Pros:
+- **Eliminates the sibling-attribute trap at the §7.7 boundary**: splat output reflects what paint writes; resource identity unified at the read-write boundary.
+- **Cleaner semantic model**: splat texture = material, period. "biome" becomes the abstract concept (used for terrain generation classification); "material" becomes the concrete renderable identity.
+- **Aligns with elevated Edit 2 resource-identity rule**: same identity at the boundary.
+- **Future paint tools work without mirror writes**: any tool that writes to `material_*` propagates to splat; pattern enforced architecturally.
+
+Cons:
+- **Initial biome generation needs updating**: whatever populates `biome_weights_*` at terrain creation must be redirected to populate `material_*` instead (or in addition to).
+- **Other consumers of `biome_weights_*` may exist**: if any other system reads `biome_weights_*` for non-splat purposes (e.g., region classification, save/load, AI biome decisions), Option B may require those to switch reading from `material_*`. Pre-execution verification at Real-Fix.C drafting time enumerates consumers.
+- **Larger blast radius than Option A**: touches biome generation + possibly other consumers.
+
+**Option C — Unify into single canonical attribute set**:
+
+Eliminate the `biome_weights_*` vs `material_*` distinction entirely. Choose one canonical attribute set (likely `material_*` since paint already uses it; possibly rename for semantic clarity, e.g., `terrain_material_*`); eliminate the other. Update all writers (biome generation, paint, ZoneBlend if implemented) to write the canonical attribute. Splat builder reads the canonical attribute.
+
+Pros:
+- **Most architecturally clean**: single canonical attribute; no possibility of drift.
+- **Fully aligns with elevated Edit 2 resource-identity rule**: one resource for the logical role of "terrain material identity at chunk pixels."
+- **Most thorough §7.7 fix**: eliminates the boundary entirely, not just unifies it.
+- **Best maintenance posture for Sub-phase 4+ AAA-fidelity work**: terrain material system has clean, single-source-of-truth attribute model.
+
+Cons:
+- **Largest blast radius**: touches biome generation, paint, ZoneBlend (if implemented now), splat builder, possibly save/load, region classification, AI biome decisions, terrain authoring tools.
+- **Semantic decision required**: is "biome" still a meaningful concept distinct from "material" post-fix? If yes (biome = abstract classification used for generation; material = concrete renderable identity), Option C requires defining the relationship clearly without redundant attributes. If no, the entire "biome" concept may need re-examination.
+- **Risk of scope expansion**: Real-Fix.C session could become a multi-system refactor instead of a focused brush-fix. May need to be split across multiple Real-Fix sessions if blast radius is large.
+- **May surface additional latent defects**: walking through every consumer of either attribute set during the unification could surface other §7.7 instances that haven't yet manifested as runtime bugs.
+
+**Andrew-gate decision (a)**: Andrew picks Option A, B, C, or specifies a 4th alternative based on his read of the codebase semantics + biome-vs-material distinction in Veilweaver's terrain authoring model. Decision documented in chat or follow-up commit. Real-Fix.C prompt drafted in subsequent session per two-session-minimum directive.
+
+**ZoneBlend independent fix shape (Andrew-gate decision (b) required: bundled-vs-split scoping)**:
+
+Per Andrew's runtime analysis: `BrushMode::ZoneBlend => current_h` no-op stub at `terrain_integration.rs:1915`. Match arm explicitly returns current height unchanged. ZoneBlend has placeholder logic.
+
+This is missing-implementation, not resource-identity-trap. Different mechanism class entirely from paint's §7.7 instance. Treated as orthogonal:
+
+- **Paint defect**: §7.7 instance at texture-data layer (intra-component sibling-attribute drift). Real-Fix.C addresses via Option A/B/C.
+- **ZoneBlend defect**: missing implementation. Fix is implementing ZoneBlend's intended semantics.
+
+Bundled-vs-split scoping decision:
+
+**Bundled (Real-Fix.C addresses both paint and ZoneBlend)**:
+- Faster path to 8/8 brush modes + Sub-phase 3 closeout.
+- Single fix culminates the campaign chain.
+- Risk: ZoneBlend's intended semantics may need design discussion that doesn't fit cleanly with paint's mechanical fix.
+
+**Split (Real-Fix.C for paint; Real-Fix.D for ZoneBlend, post-PASS)**:
+- Cleaner separation of concerns: paint's §7.7 fix is mechanical; ZoneBlend's missing-implementation is design-driven.
+- ZoneBlend gets dedicated semantic + design treatment (what does Veilweaver mean by "zone blend"? Height gradient? Material blend? Both?).
+- Risk: extra round-trip; Sub-phase 3 closeout slightly delayed.
+
+**Andrew-gate decision (b)**: Andrew picks bundled vs split based on his read of ZoneBlend's intended semantics. If Veilweaver has a clear "zone blend" concept (e.g., blending two biome materials at a zone boundary), bundle is fine — ZoneBlend's implementation is mechanical. If ZoneBlend's semantics are unclear or need design discussion, split for design clarity.
+
+**Discipline shift documented — single-concern session pattern canonical from Round 7 onward**:
+
+Rounds 4-6 bundled .A (instrument) + .B (revert) into single sessions; closure happened in subsequent session. This was efficient (fewer session transitions) but produced multi-concern commits / closer coupling between instrument-and-revert.
+
+Round 7 separates these into four single-concern sessions:
+- **.A landing**: instrument only (`c4d09ee86`).
+- **Closure**: analytical synthesis only (this commit; campaign doc only; no production code).
+- **.B revert**: mechanical revert only (separate following session).
+- **Real-Fix.C**: surgical fix only (separate session post-Andrew-gate decision).
+
+Why the shift now:
+- Closure session has more analytical content (three-layer §7.7 elevation + dual-defect framing + three fix candidates) than prior closures; deserves dedicated session.
+- Andrew-gate decision happens between closure and fix; cleanly bracketed by session boundaries.
+- Each session's diff is purely focused on one concern (campaign-doc updates / production-code revert / production-code fix); reviewable independently.
+- Establishes pattern for future round closures that surface multi-candidate fix decisions: single-concern sessions are canonical going forward.
+
+**Forward chain**:
+
+1. **Round-7-Closure.A** (this commit) lands.
+2. **Andrew-gate decision (a)**: paint fix design (Option A vs B vs C vs alternative).
+3. **Andrew-gate decision (b)**: ZoneBlend bundled-vs-split scoping.
+4. **Following session — Round-7-Instrumentation.B**: revert 5 eprintlns from `c4d09ee86`. Production code returns to post-Real-Fix.B `eaaa53433` state. Single-purpose mechanical revert.
+5. **Subsequent session — Real-Fix.C prompt drafted**: per Andrew's chosen paint fix design (and ZoneBlend bundled in if (b) bundled).
+6. **Following session — Real-Fix.C lands**: single commit; cargo check + build + active_tool tests + Andrew-gate verification protocol (full §8 protocol of Real-Fix.A re-applied; **8/8 brush modes** PASS criterion this time).
+7. **Andrew-gate-PASS verification**: brush ring at cursor + cursor follows click + gizmos hidden + height-mutation brushes work + paint visibly changes textures + zoneblend visibly works (if bundled) + no validation errors.
+8. **If ZoneBlend split**: Real-Fix.D session implements ZoneBlend per Andrew-decided semantics.
+9. **If 8/8 PASS** → **Cleanup-A session**: delete dead-code legacy cluster path. Single commit. Finally proceeds.
+10. **Cleanup-B session**: revert `8f4668599` per audit §5.1.
+11. **Sub-phase 3.C closeout**: campaign doc updates marking Sub-phase 3 COMPLETE.
+12. **Sub-phase 4 + 5 + Mediator Removal session + Sub-phase 6** per established forward chain.
+
+**Methodology lessons accumulated post-Round 7**:
+
+The campaign chain has now produced seven methodology lessons codified at audit-§7-or-equivalent locations:
+
+- §7.1 (three-rounds-wrong-from-code-reading) — Round 3 audit
+- §7.2 (multi-round instrument-and-narrow as canonical) — Round 3 audit; **strengthened by Round 7 evidence to axiomatic-level**
+- §7.3 (pre-execution actual-code verification) — Round 3 audit
+- §7.4 (audit-confidence-calibration honesty) — Round 3 audit
+- §7.5 (synthesizing-artifact threshold at round-3) — Round 3 audit
+- §7.6 candidate (derived-value reasoning trap) — Round-4-Closure §12; awaits future audit absorption
+- **§7.7 (wrapped-component resource identity trap) — Round-7-Closure ELEVATED to fundamental architectural anti-pattern** with three-layer evidence + intra-component sub-variant + two granularity scales
+
+§7.2 + §7.7 are the most architecturally load-bearing lessons. Future foundational architectural campaigns inherit them as **axiomatic methodology**, not just canonical pattern. The pattern: when defect localization in a layered abstraction stack proves resistant to code-reading hypotheses, multi-round instrument-and-narrow with pre-baked outcome decision trees per round produces evidence-grounded convergence in 5-7 rounds; resource-identity traps at *any* granularity boundary (component / struct attribute / storage) are the canonical anti-pattern this methodology surfaces.
+
+**Anti-drift safeguard for future closure-drafting agents**: this closure entry is structurally similar to Round-6-Closure §12 entry (same campaign-archeology resilience, same methodology-lesson surfacing pattern, same forward-chain structure, same fix-candidate-presentation pattern with Andrew-gate decision marker). Round 7 adds: dual-defect framing (paint §7.7 + ZoneBlend independent); three fix candidates instead of two (paint's complexity warrants Option C as architecturally clean alternative); discipline shift documentation (single-concern session pattern); §7.7 elevation framing (canonical → fundamental). Future closures with multi-mechanism + multi-candidate findings inherit Round-7-Closure shape.
+
+**Scope held**: Round-7-Closure.A session only landed campaign-doc updates (Status header + §11 entries + this §12 Round-7-Closure entry). NO production code changes. NO fixes applied. NO Round-7-Instrumentation.B revert (separate following session per discipline shift). NO Mediator Brush Fix `8f4668599` revert. NO modifications to prior commits. NO Real-Fix.C prompt drafting (deferred to subsequent session per two-session-minimum directive). NO pre-deciding fix design (Andrew-gate decisions (a) + (b) required). NO dead-code legacy cluster path deletion (Cleanup-A separate session post-8/8-PASS). NO CLAUDE.md amendment elevation application (separate amendment cycle). NO ARCHITECTURE_MAP.md updates (deferred). NO modifications to Round-5-Closure or Round-6-Closure §12 entries (predecessor closure entries preserved as-landed; the elevation chronology is deliberately archeologically preserved across the three closure entries). NO revert of Real-Fix.A `0f569d212` or Real-Fix.B `eaaa53433` (both fixes are correct for what they targeted; partial regresses are sibling defects, not regressions).
+
+### 2026-05-08, Sub-phase 3 Mediator Brush Diagnostic Round 8 Closure, commit e3d07f366
+
+**Round 8 instrumentation closure — captures runtime evidence DEFINITIVELY CONFIRMING Mechanism H8.1 (UI/renderer material library capacity boundary mismatch; FOURTH §7.7 instance in same campaign) per Round 8 prompt §3.5 outcome decision tree (Outcome 1). 4 targeted eprintlns across material library coverage chain. Captured output `brush-dbg-r8.txt` totals 76,584 lines / 491 BRUSH-DBG entries (T11.A 134, T11.B 134, T11.C 222, T11.D 1 — clean 1:1 pairing of T11.A and T11.B).**
+
+**Outcome classification per Round 8 instrumentation prompt §3.5 outcome decision tree**: **Outcome 1** — H8.1 confirmed cleanly. 8 rounds of evidence-grounded narrowing converged on the fourth of four §7.7 instances in the same campaign.
+
+**Round 8 captured signal patterns** (representative samples):
+
+T11.D (renderer texture array init; once at startup):
+
+```
+[BRUSH-DBG] renderer-texture-array-init: max_layers=8, layer_count_config=8, layers_supplied=8, layers_dropped_at_cap=0, slot_albedo_loaded=[0=T,1=T,2=T,3=T,4=T,5=T,6=T,7=T]
+```
+
+Pattern: 8 texture slots loaded; layers 0-7 only. Layers 8-21 never had textures bound to renderer pipeline.
+
+T11.C (splat-build cap; per chunk splat-build call) — smoking gun progression:
+
+```
+(working materials early in capture)
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=11189, dropped_slots=0, dropped_ids_sample=[]
+... continues with dropped_slots=0 across all working-material exercise ...
+
+(first non-working material onset — rock_slate idx=8)
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=16228, dropped_slots=270, dropped_ids_sample=[8]
+
+(progression as Andrew paints with non-working materials)
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=16200, dropped_slots=405, dropped_ids_sample=[8]
+[BRUSH-DBG] splat-build-cap: max_layers=8, vert_count=9216, kept_slots=16150, dropped_slots=581, dropped_ids_sample=[8]
+... (cumulative drops as multiple non-working materials painted; max observed dropped_slots in capture ~6933)
+```
+
+Pattern: dropped_slots monotonically grows as non-working materials are painted. dropped_ids_sample accumulates IDs of every layer ≥ 8 ever painted.
+
+T11.A + T11.B (UI material selected + paint dispatch write; per material selection + paint click) — 100% correlation:
+
+For working materials (idx 0-7):
+
+```
+[BRUSH-DBG] ui-material-selected: idx=0, name="grass", material_id=0, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=0, written_to_vertex=0, translated=false, max_terrain_layers=8, in_range=true
+```
+
+Pattern across all 8 working materials: `in_range=true`. Concurrent T11.C: `dropped_slots=0`.
+
+For non-working materials (idx 8-21):
+
+```
+[BRUSH-DBG] ui-material-selected: idx=8, name="rock_slate", material_id=8, ui_library_total=22, max_terrain_layers=8
+[BRUSH-DBG] paint-dispatch-write: ui_material_id=8, written_to_vertex=8, translated=false, max_terrain_layers=8, in_range=false
+```
+
+Pattern across 13 tested non-working materials (rock_slate idx=8 through tree_leaves idx=21): `in_range=false`. Concurrent T11.C: `dropped_slots > 0` and `dropped_ids_sample` includes the material's ID.
+
+**Hypothesis confirmation per Round 8 evidence** (100% correlation across all observations):
+
+| Material ID | Name | T11.B `in_range` | T11.C `dropped_slots` | T11.C `dropped_ids` includes ID | UI status |
+|------------|------|-----------|----------------|---|---|
+| 0 | grass | true | 0 | n/a | working |
+| 1 | sand | true | 0 | n/a | working |
+| 2 | forest_floor | true | 0 | n/a | working |
+| 3 | mountain_rock | true | 0 | n/a | working |
+| 4 | snow | true | 0 | n/a | working |
+| 5 | mud | true | 0 | n/a | working |
+| 6 | wood_planks | true | 0 | n/a | working |
+| 7 | stone | true | 0 | n/a | working |
+| 8 | rock_slate | false | 270-1150 | yes | non-working |
+| 9 | dirt | false | 1528-1776 | yes | non-working |
+| 11 | cloth | false | 314-612 | yes | non-working |
+| 12 | default | false | 62-348 | yes | non-working |
+| 13 | gravel | false | 92-136 | yes | non-working |
+| 14 | ice | false | 456-499 | yes | non-working |
+| 15 | metal_rusted | false | 531-2330 | yes | non-working |
+| 16 | moss | false | 412-2953 | yes | non-working |
+| 18 | rock_lichen | false | 2567-6933 | yes | non-working |
+| 19 | roof_tile | false | 1167-2411 | yes | non-working |
+| 20 | tree_bark | false | 3380-4029 | yes | non-working |
+| 21 | tree_leaves | false | 2602-2650 | yes | non-working |
+
+(Materials 10 cobblestone and 17 plaster not exercised in this capture session — Andrew tested most but not all 22.)
+
+**Hypothesis class outcomes per Round 8 evidence**:
+
+| Mechanism (per Round 8 prompt §3.5) | Round 8 Verdict | Evidence |
+|----|----|----|
+| H8.1 — UI/renderer material library capacity mismatch (4th §7.7 instance) | **CONFIRMED — 100% correlation across 13 tested non-working materials + 8 tested working materials** | T11.A ui_library_total=22 + max_terrain_layers=8; T11.B in_range=false for all idx ≥ 8; T11.C dropped_slots > 0 + dropped_ids match for all layer-≥8 materials; T11.D slot_albedo_loaded only for layers 0-7 |
+| H8.2 — Asset/texture pipeline incomplete (some slots not loaded) | n/a (subsumed by H8.1; same root architectural mismatch but framed differently) | T11.D shows layers 0-7 loaded, 8+ never loaded — but this IS the capacity mismatch, not a separate asset pipeline gap |
+| H8.3 — Slot-index → layer-ID mapping bug in Real-Fix.C helper | REFUTED | T11.B `translated=false` (no translation step active in current capture); paint writes raw UI material_id to vertex; Real-Fix.C helper is not the source of the cap |
+| H8.4 — UI library configuration drift | REFUTED | UI library is intentionally 22 entries (`MATERIAL_NAMES: [&str; 22]`); not configuration drift |
+| H8.5 — Default fallback at render time produces green | Subsumed by H8.1 | Green appears because dropped layers contribute zero to splat → render samples default texel color (green); H8.1 is the upstream cause |
+
+**Root cause statement — UI/renderer material library capacity boundary mismatch (4th §7.7 instance)**:
+
+The editor has a THREE-TIER capacity boundary for material library:
+
+1. **UI material library** at `tools/aw_editor/src/viewport/types.rs:175` defines `MATERIAL_NAMES: [&str; 22]` — offers 22 materials (grass, sand, forest_floor, mountain_rock, snow, mud, wood_planks, stone, rock_slate, dirt, cobblestone, cloth, default, gravel, ice, metal_rusted, moss, plaster, rock_lichen, roof_tile, tree_bark, tree_leaves) with sequential IDs 0-21.
+
+2. **Splat-build cap** at `terrain_splat_builder.rs:80` filters `if (0..8).contains(&layer)` — drops any layer ≥ 8.
+
+3. **Renderer texture array** at `astraweave-render/src/terrain_material_manager.rs:53` defines `MAX_TERRAIN_LAYERS: u32 = 8` — allocates 8 GPU texture slots; loads textures for layers 0-7 only.
+
+The boundary mismatch: UI offers 22 entries; splat-build + renderer cap at 8. When user selects a material with idx ≥ 8 and paints, paint dispatch writes the raw UI ID (e.g., 15 for metal_rusted) to `vertex.material_*`. Splat builder iterates vertices, encounters `material_id=15`, fails the `(0..8).contains(&15)` check, drops the slot from the splat texture build. Resulting splat texture has zero contribution from those vertices. Renderer samples splat texture at affected texels → samples default texel color (green) → user sees green pixelated splotches without texture rendering.
+
+This is structurally identical to the prior three §7.7 instances:
+
+- Layer 1 (depth-target): aw_editor's depth_view vs engine_adapter's internal depth target. Two resources at component boundary; bug at boundary.
+- Layer 2 (mesh-data, dual-variant): live `terrain_forward.chunks` HashMap vs legacy `terrain_clusters` Vec. Two resources at component boundary; routing bug at boundary.
+- Layer 3 (texture-data, intra-component): `vertex.biome_weights_*` vs `vertex.material_*`. Two attribute sets at struct boundary; sibling drift.
+- **Layer 4 (UI-renderer-capacity-boundary)**: UI library count (22) vs splat-build cap (8) vs renderer texture array (8). Three-tier capacity coordination at UI/renderer boundary; capacity numbers don't agree.
+
+Same root anti-pattern: state of the same logical role (available paintable materials) split across multiple representations; bug at the boundary; fix shape unifies resource identity. Different granularity scale: Layer 4 at UI/renderer cross-component capacity-coordination boundary (NEW scale).
+
+**§7.7 elevation to structural axiom — methodology gold at definitional level**:
+
+Round 5 codified §7.7 candidate at depth-target layer (single-layer evidence; inter-component manifestation).
+Round 6 graduated §7.7 from candidate to confirmed canonical with multi-layer evidence (depth-target + mesh-data; both inter-component; mesh-data dual-variant).
+Round 7 elevated §7.7 from canonical pattern to fundamental architectural anti-pattern with three-layer evidence + intra-component sub-variant + two granularity scales.
+Round 8 (this commit) elevates §7.7 from fundamental architectural anti-pattern to **STRUCTURAL AXIOM characterizing the editor's resource-management at every architectural boundary** with:
+
+- **Four-layer evidence**: depth-target + mesh-data + texture-data + UI/renderer-capacity-boundary.
+- **Three granularity scales**: component-boundary + struct-attribute-set + UI-renderer-capacity-boundary (NEW scale).
+- **Same root anti-pattern at every layer + every scale**: state of same logical role split across multiple representations; bug at boundary; fix unifies resource identity.
+
+**§7.7 transitions from canonical pattern to definitional methodology — structural axiom of this editor's resource-management.**
+
+Implications:
+
+- **CLAUDE.md amendment cycle strongly indicated**: resource-identity rule should elevate from "candidate corollary appended to Edit 2" or "sub-rule of Edit 2" to **first-class top-level Edit** (Edit 4 or Edit 5; number depends on post-amendment count). Suggested top-level wording (one possible shape, ~150 words):
+
+> **Edit N (canonical) — Resource identity at every boundary**: When state of the same logical role is split across multiple representations — across component boundaries (component A vs B), within shared structs (sibling attribute fields X vs Y), across UI/renderer capacity coordination, or across any interface boundary at any granularity scale — the bug is at the boundary. Unify identity at every boundary; verify identity matches via accessor or canonical source. The editor's component-boundary architecture is §7.7-ridden surface by default; unification is mandatory architectural review at every boundary scale.
+>
+> Sub-phase 3 mediator brush diagnostic took eight instrumentation rounds to unwind four such resource-identity traps spanning depth targets (inter-component), mesh-data routing (inter-component, dual-variant), attribute-set drift (intra-component sibling), and UI/renderer material library capacity mismatch (UI/renderer cross-component capacity coordination). §7.7 is structural axiom characterizing this editor's resource management.
+
+Future CLAUDE.md amendment cycle decides shape + position + timing; this closure surfaces only.
+
+- **Future foundational architectural campaigns** inherit §7.7 as **definitional methodology** (not just canonical pattern, not just fundamental anti-pattern). When defect localization in this stack proves resistant to code-reading hypotheses, multi-round instrument-and-narrow with pre-baked outcome decision trees per round produces evidence-grounded convergence; resource-identity traps at *any* granularity boundary (component / struct attribute / UI-renderer / capacity / where-else?) are the canonical anti-pattern this methodology surfaces.
+
+- **Editor architecture refactor priority** for Sub-phase 4+ AAA-fidelity foundational work: every component / struct / UI-renderer / capacity / interface boundary in the editor is a §7.7 candidate site requiring resource-identity unification check. The editor's architecture has §7.7 instances at every meaningful boundary by default until explicitly unified. AAA-fidelity work gains a quantified architectural priority + multi-round campaign ROI documentation.
+
+**Three fix candidate designs for paint material library coverage gap (Andrew-gate decision (h) required)**:
+
+**Option D-1 — Raise `MAX_TERRAIN_LAYERS` from 8 to 22 (or 32)**:
+
+Update three constants/sites:
+
+- `tools/aw_editor/src/viewport/terrain_splat_builder.rs:80` change `(0..8).contains(&layer)` to `(0..22).contains(&layer)` or use `MAX_TERRAIN_LAYERS` constant.
+- `astraweave-render/src/terrain_material_manager.rs:53` change `MAX_TERRAIN_LAYERS: u32 = 8` to `22` or `32`.
+- WGSL shader's corresponding constant (if exists) updated to match.
+- Renderer texture array allocation updated to match new size; load textures for all 22 (or 32) materials.
+
+Pros:
+- Mechanically simplest. Three constants + texture loading.
+- Same shape as Real-Fix.A's parameter plumbing — minimum architectural friction.
+- UI library count (22) becomes the canonical capacity; renderer matches.
+- No structural refactor.
+
+Cons:
+- **Doesn't unify identity at the boundary**; just raises the boundary. Two representations of "available materials" still exist (UI MATERIAL_NAMES + renderer MAX_TERRAIN_LAYERS); they happen to match at a higher number now but if UI grows to 23+, the trap returns.
+- **Methodologically ironic post-§7.7 structural-axiom-elevation**: Round 8 just confirmed §7.7 as definitional anti-pattern at four layers. Choosing D-1 (which doesn't unify identity) immediately would be the same "ironic A-immediately-after-elevation" pattern that Round 7 Andrew-gate rejected for paint Option A.
+- **GPU concerns**: 22-layer or 32-layer texture array is larger memory footprint (likely fine for AAA-fidelity targets but worth noting); some hardware platforms have sampler-count caps that 32+ may approach.
+- **Sets up future trap**: every future material added to UI requires renderer cap update; coordination is manual + error-prone.
+
+**Option D-2 — Canonical material library shared between UI + renderer**:
+
+Refactor material library as first-class data structure with single source of truth. Possibilities:
+
+- A `MaterialLibrary` struct (location TBD via pre-execution at Real-Fix.D drafting time) that:
+  - Defines the canonical material list (materials 0..N).
+  - Provides accessor methods used by BOTH UI panel rendering AND renderer texture array allocation.
+  - UI library count derived from `MaterialLibrary::len()` or similar.
+  - Renderer texture array sized at startup from `MaterialLibrary::len()`.
+  - `MAX_TERRAIN_LAYERS` constant either eliminated (replaced with dynamic size) OR derived from `MaterialLibrary::len()`.
+
+- OR: biome pack manifest config defining materials per biome; loaded at startup; UI + renderer both query the loaded manifest. Aligns with biome pack architecture in Veilweaver's regional archetype system.
+
+- OR: resource manifest pattern (like asset packs) where materials are registered at startup; UI + renderer query the registered material set.
+
+Pros:
+- **Identity unified at the boundary**: ONE canonical material library; UI offers what renderer can render; capacity coordination is automatic.
+- **Aligns with elevated Edit 2 / suggested top-level Resource Identity rule**: same architectural pattern as Real-Fix.B's helper extraction (one canonical implementation; multiple consumers) and Real-Fix.C's attribute unification (one canonical attribute; multiple writers/readers). Real-Fix.D continues that pattern at Layer 4.
+- **No future trap**: adding a material updates the canonical library; UI + renderer automatically reflect the new material.
+- **Ties cleanly into Sub-phase 4+ AAA-fidelity work**: material library becomes a first-class subsystem with clean single-source-of-truth semantics.
+
+Cons:
+- **Larger blast radius**: requires defining material library data structure + refactoring UI to query it + refactoring renderer to size texture array from it + possibly biome pack manifest integration.
+- **Pre-execution complexity**: Real-Fix.D drafting will need to enumerate current material-library-related state (UI MATERIAL_NAMES, renderer texture loading, biome pack manifest if exists, biome generation material assignments, save/load if any) — similar pre-execution rigor to Real-Fix.C's multi-system refactor.
+
+**Option D-3 — Reduce UI library to 8 entries matching renderer**:
+
+Cap UI to 8 entries (likely the existing 8 working: grass, sand, forest_floor, mountain_rock, snow, mud, wood_planks, stone).
+
+Pros:
+- Trivial fix; matches existing renderer capacity; no architectural change.
+
+Cons:
+- **Reverses Andrew's design intent**: the 22-material library exists because Veilweaver wants that breadth (rock_slate, dirt, cobblestone, cloth, default, gravel, ice, metal_rusted, moss, plaster, rock_lichen, roof_tile, tree_bark, tree_leaves are all distinct authoring choices).
+- **Almost certainly wrong direction**; surfaced for completeness only.
+
+**Andrew-gate decision (h)**: Andrew picks Option D-1, D-2, D-3, or specifies a 4th alternative based on his read of Veilweaver's material library design intent + GPU capacity considerations + Sub-phase 4+ AAA-fidelity priorities. Decision documented in chat or follow-up commit. Real-Fix.D prompt drafted in subsequent session per two-session-minimum directive.
+
+**Forward chain**:
+
+1. **Round-8-Closure.A** (this commit) lands.
+2. **Andrew-gate decision (h)**: paint material library coverage fix design (Option D-1 vs D-2 vs D-3 vs alternative).
+3. **Following session — Round-8-Instrumentation.B**: revert 4 eprintlns from `518e01582`. Production code returns to post-Real-Fix.C `ded9a0457` state. Single-purpose mechanical revert.
+4. **Subsequent session — Real-Fix.D prompt drafted**: per Andrew's chosen design.
+5. **Following session — Real-Fix.D lands**: cargo check + build + active_tool tests + Andrew-gate verification protocol (all 22 materials paint visibly; height-mutation brushes preserved; ZoneBlend still no-op stub by design; no validation errors).
+6. **Andrew-gate-PASS verification**: paint works for ALL 22 materials.
+7. **ZoneBlend design discussion session**: Andrew + Claude clarify intended semantics in Veilweaver.
+8. **Real-Fix.E prompt drafted + landed**: 8/8 brush modes PASS verification.
+9. **Cleanup-D session**: erosion chunk seam artifacts (broadened per ChatGPT analysis to height-mutation chunk-boundary continuity).
+10. **Cleanup-A session**: dead-code legacy cluster path deletion.
+11. **Cleanup-B session**: revert `8f4668599`.
+12. **Sub-phase 3.C closeout**: campaign doc Sub-phase 3 COMPLETE.
+13. **Sub-phase 4 + 5 + Mediator Removal session + Sub-phase 6 closeout**.
+
+**Methodology lessons accumulated post-Round 8**:
+
+The campaign chain has now produced eight instrumentation rounds + four §7.7 instances + seven methodology lessons (§7.1-§7.7) + one elevated structural axiom (§7.7 itself). Plus:
+
+- **Discipline shift to single-concern sessions** (Round 7 codified; Round 8 continued): canonical for closures with multi-candidate fix designs + multi-mechanism findings.
+- **Pre-execution-vs-runtime correlation**: Round 8's pre-execution code-read prediction matched runtime evidence with 100% correlation. Earlier rounds had less direct pre-execution-prediction → runtime-confirmation correlation; Round 8 is the cleanest. This validates the §1.2 actual-code-verification discipline + §3.5 outcome-decision-tree pre-baking pattern as canonical methodology going forward.
+
+§7.2 + §7.7 are now the most architecturally load-bearing lessons. §7.7 specifically is **structural axiom** — definitional, not just canonical. Future foundational architectural campaigns inherit them as **axiomatic methodology**.
+
+**Anti-drift safeguard for future closure-drafting agents**: this closure entry is structurally similar to Round-7-Closure §12 entry (same campaign-archeology resilience, same methodology-lesson surfacing pattern, same forward-chain structure, same fix-candidate-presentation pattern with Andrew-gate decision marker). Round 8 adds: §7.7 elevation to structural axiom (one tier above Round 7's "fundamental architectural anti-pattern"); three-tier capacity boundary framing (UI / splat-build / renderer); methodology-gold framing of pre-execution-vs-runtime correlation cleanliness. Future closures with structural-axiom-level findings inherit Round-8-Closure shape.
+
+**Scope held**: Round-8-Closure.A session only landed campaign-doc updates (Status header + §11 entries + this §12 Round-8-Closure entry). NO production code changes. NO fixes applied. NO Round-8-Instrumentation.B revert (separate following session per discipline shift). NO Mediator Brush Fix `8f4668599` revert. NO modifications to prior commits. NO Real-Fix.D prompt drafting (deferred to subsequent session per two-session-minimum directive). NO pre-deciding fix design (Andrew-gate decision (h) required). NO dead-code legacy cluster path deletion (Cleanup-A separate session post-all-22-materials-PASS + 8/8-PASS). NO CLAUDE.md amendment elevation application (separate amendment cycle). NO ARCHITECTURE_MAP.md updates (deferred). NO modifications to Round-5-Closure or Round-6-Closure or Round-7-Closure §12 entries (predecessor closure entries preserved as-landed; the elevation chronology is deliberately archeologically preserved across the four closure entries: candidate → canonical → fundamental → structural-axiom). NO revert of Real-Fix.A `0f569d212` or Real-Fix.B `eaaa53433` or Real-Fix.C `ded9a0457` (all three correct for what they targeted; partial regresses are sibling defects at successively-deeper layers, not regressions). NO ZoneBlend implementation (Real-Fix.E deferred per Andrew-gate (e) E-2). NO erosion seam investigation (Cleanup-D deferred per Andrew-gate (d) D-2). NO Defect Class 6/7/8 brush mathematics investigation (deferred to potential Sub-phase 7).
+
+### 2026-05-08, Sub-phase 3 Mediator Brush Cleanup-D Research-Pass, commit `47a33e476`
+
+**Deviation:** Analytical-only research-pass session per Andrew-gate (n) n-3; produces audit document characterizing chunk-boundary continuity layer + recommends Cleanup-D fix-pass methodology. NO production code changes.
+
+**Rationale:** ChatGPT screen recording analysis surfaced multiple plausible mechanisms for chunk-boundary continuity defects without unambiguous primary candidate; combined with Andrew's verbatim erosion-seam observation (Real-Fix.C gate 2026-05-07), the situation warranted formal characterization before fix-pass methodology decision. Pattern parallels Round 3 audit precedent: when surface observations don't converge on a clear mechanism, formal re-diagnostic synthesis produces documentation that informs next-session methodology.
+
+**Impact:**
+
+- **New audit document**: `docs/audits/editor_multi_tool_architecture_subphase_3_mediator_brush_cleanup_d_research_pass_2026-05-08.md` (~3,500 words; 9 sections; characterizes chunk-boundary continuity layer architecturally + per-defect mechanism enumeration + methodology recommendation).
+- **Three confirmed mechanisms** (code-reading evidence, not runtime instrumentation):
+  - **M-D5 (Defect Class 5 erosion-specific seam — primary)**: erosion's per-chunk-local `avg_height` computation diverges between adjacent chunks (`terrain_integration.rs:1874-1896`). Erosion's 10% blend toward avg_height (`terrain_integration.rs:1923-1926`) settles adjacent chunks' edge vertices to different averages → measurable height step at boundary. Smooth has the same mechanism with much smaller settling factor; explains why Andrew observed seams *specifically* with erosion.
+  - **M-D9 (Defect Class 9 general continuity — primary; also contributes to Defect Class 5)**: `stitch_edge_normals` (`terrain_integration.rs:961-1081`) is called ONLY at initial generation (line 423); the brush dispatch's fast-path patch (`terrain_integration.rs:1946-1965`) recomputes vertex normals using single-chunk `calculate_normal` which falls back to `h_center` at chunk edges (clamped half-gradient). After any height-mutation brush stroke, adjacent chunks' edge-vertex normals revert to single-chunk-local — visible lighting seam.
+  - **M-SK (secondary — skirt height freeze)**: skirts generated with `skirt_drop = chunk_size * 0.015` from surface vertex height at generation time (`terrain_integration.rs:861-919`); brush dispatch's fast-path patch limited to surface vertices (`idx < gen_chunk.vertices.len()` with surface-only iteration); skirts decouple from surface after brush stroke. Visible in edge cases with large height deltas.
+- **ChatGPT hypotheses refuted by code-reading**:
+  - LOD discontinuity: REFUTED (no LOD system in editor terrain rendering).
+  - Vertex position discontinuity: REFUTED (heightmaps coherent at boundaries; brush dispatch coherently updates same world position from both chunks).
+  - Brush radius clipped per chunk: REFUTED (brush footprint is world-coordinate-driven; correctly extends across boundaries).
+  - Neighboring chunk data fetched asynchronously: REFUTED (single-threaded dispatch).
+  - Compute dispatch overlap gaps: REFUTED (no parallel compute).
+  - Brush influence evaluated in chunk-local space incorrectly: REFUTED (brush uses world coordinates throughout).
+  - Per-chunk normal calculation: CONFIRMED + REFINED to M-D9 specific mechanism.
+  - Skirt geometry interaction: CONFIRMED + REFINED to M-SK specific mechanism.
+- **Defect Class 5 + 9 classification**: shared root mechanism (M-D9) + erosion-specific addition (M-D5); joint fix appropriate.
+- **Methodology recommendation**: Andrew-gate (q) q-1 (direct fix, 1 session; ~30-80 LoC; 4-6 new tests; single file `terrain_integration.rs`). Mechanisms surfaced by code-reading without ambiguity; instrumentation chain (parallel to Rounds 1-8) would add overhead without epistemic gain.
+- **Andrew-gate (q) decisions pending**:
+  - **(q) primary**: Cleanup-D fix-pass methodology. Options: q-1 direct fix (✅ recommended); q-2 instrumentation chain; q-3 hybrid; q-4 defer to Sub-phase 7.
+  - **(sk) secondary**: include M-SK in same fix-pass session (sk-A) vs defer to follow-up (sk-B).
+  - **(§7.8) tertiary**: promote §7.8 methodology lesson candidate (audit-era misclassification per Cleanup-B finding) at Sub-phase 3.C closeout vs keep as candidate.
+- **§7.7 graduation NOT extended**: Cleanup-D's mechanisms are state-propagation gaps within a single component (chunk-edge state at brush dispatch vs initial-generation pathways) — different anti-pattern class from §7.7 wrapped-component resource identity. Cleanup-D fix-pass would add a separate methodology lesson about "state-propagation pathway equivalence" — brush dispatch should produce equivalent end-state to initial-generation, but pathways diverged at `stitch_edge_normals` + avg_height scope.
+- **Methodology lesson §7.8 candidate (from Cleanup-B; preserved for Sub-phase 3.C closeout)**: audit-era hypothesis framings can be retrospectively imprecise as campaign chain progresses (Cleanup-B's discovery that `8f4668599` was canonical pipeline foundation, not bypass mechanism, demonstrates this). Verify cleanup scope against post-campaign-chain canonical state, not just audit specifications. This research-pass document records the candidate; Sub-phase 3.C closeout decides elevation.
+
+**Scope held:** Cleanup-D research-pass session only produced the new audit document + this §12 entry + Status header note + §11 Cleanup-D entry update. NO production code changes. NO instrumentation. NO fix application. NO Sub-phase 3.C closeout (separate session per (p) p-1). NO modifications to Real-Fix.A/B/C/D/E or Cleanup-A/B or any prior commit. NO ARCHITECTURE_MAP.md updates. NO CLAUDE.md amendment elevation. NO §7.1-§7.7 methodology lesson revision. NO broadening research scope beyond chunk-boundary continuity. NO Defect Class 10 content work. NO Defect Class 6/7/8 brush mathematics work. Working-tree changes from prior unrelated work (workspace_map.html modification + diagnose_filter.py + ARCHITECTURE_MAP.md modification) intentionally not staged.
+
+---
+
+### 2026-05-08, Sub-phase 3.C Closeout, this commit
+
+**Sub-phase 3 (Mediator Brush Architecture) ARCHITECTURAL OBJECTIVE + CLEANUP CHAIN COMPLETE. The most architecturally significant single-feature campaign in AstraWeave's history finishes.**
+
+**Campaign chain commit summary** (~45+ commits across ~30 sub-tasks):
+
+| Sub-task | Commit(s) | Result |
+|----------|-----------|--------|
+| Sub-phase 3 mediator brush diagnostic Rounds 1-2 | Round 1 `e037d63b5`/`040d90b16`/`df4a50e74`; Round 2 `0b6bc6f50`/`4a2aca24b` | Instrument-and-narrow start; mechanism hypotheses surfaced |
+| Round 3 audit (re-diagnostic synthesis) | `7dc342a42` + `19eccad3c` + `1e4de6522` | Methodology lessons §7.1-§7.5 codified |
+| Round 4 instrumentation + closure | `de1986301`/`bc9c8d5bd`/`3bf425053`/`fec08d11f` | §7.6 derived-value reasoning trap codified |
+| CLAUDE.md hardening | `f9e6f6935` | Edit 2 + Edit 3 codified |
+| Round 5 (Layer 1 §7.7 instrument) | `5203e7fbe`/`2eb0903a5`; `569415a7a`/`793ddea7c` | §7.7 candidate codified at depth-target inter-component layer |
+| **Real-Fix.A** | `0f569d212` | Layer 1 §7.7 fix: depth target parameter plumbing |
+| Round 6 (Layer 2 §7.7 instrument) | `d7b9e7bc2`/`18f48f08b`/`c7f3b50b3`/`a6732af03` | §7.7 canonical pattern; mesh-data layer dual-variant |
+| **Real-Fix.B** | `eaaa53433` | Layer 2 §7.7 fix: `upload_or_update_terrain_chunk_forward` helper extraction |
+| Round 7 (Layer 3 §7.7 instrument) | `c4d09ee86`/`9cd4f7e48`/`2ddc77a39`/`a71f0d52e` | §7.7 fundamental architectural anti-pattern; texture-data intra-component sibling-attribute drift |
+| **Real-Fix.C** | `ded9a0457` | Layer 3 §7.7 fix: canonical `material_*` attribute set; `biome_weights_8_to_material_slots` helper |
+| Round 8 (Layer 4 §7.7 instrument) | `518e01582`/`4ee7e751f`/`e3d07f366`/`e784f0c91` | §7.7 STRUCTURAL AXIOM elevation; UI/renderer cross-component capacity coordination |
+| **Real-Fix.D** | `7067cc03d` | Layer 4 §7.7 fix: canonical `MaterialLibrary` (32-slot; 22 named + 10 reserved) |
+| **Real-Fix.E** | `609f85357` | ZoneBlend integrative tool; biome boundary feathering (active brush + passive global pass) |
+| **Cleanup-A** | `1900bdc8e` | Legacy cluster path deletion; Edit 2 architectural-level discipline completed |
+| Cleanup-B (no-op marker) | `f7732d5d9` | `8f4668599` classified as canonical pipeline foundation; §7.8 candidate surfaced |
+| Cleanup-D research-pass | `47a33e476`/`e44f74c56` | Three-mechanism characterization (M-D5, M-D9, M-SK); §7.9 candidate surfaced |
+| **Cleanup-D fix-pass** | `eb5e6c4a0` | State-propagation pathway equivalence at three sites; erosion seams eliminated |
+| Sub-phase 3.C closeout | this commit | Campaign chain consolidation; methodology body of practice |
+
+**§7.7 structural axiom validated at four layers + three granularity scales** (chronological elevation across closure entries preserved):
+
+| Layer | §7.7 Instance | Fix Commit | Granularity Scale |
+|-------|---------------|------------|-------------------|
+| 1 | depth-target inter-component | Real-Fix.A `0f569d212` | Component-boundary |
+| 2 | mesh-data inter-component dual-variant | Real-Fix.B `eaaa53433` | Component-boundary |
+| 3 | texture-data intra-component sibling-attribute drift | Real-Fix.C `ded9a0457` | Struct-attribute-set |
+| 4 | UI/renderer cross-component capacity coordination | Real-Fix.D `7067cc03d` | UI-renderer-capacity-boundary |
+
+Same architectural principle (resource identity unification at the boundary) at four different layers + three different granularity scales. §7.7 transitions from canonical pattern to definitional methodology — structural axiom characterizing the editor's resource-management at every architectural boundary.
+
+**Elevation chronology preserved across closure entries** (Round-5-Closure / Round-6-Closure / Round-7-Closure / Round-8-Closure §12 entries unchanged):
+- Round 5 closure (`569415a7a`): §7.7 candidate at single-layer (depth-target).
+- Round 6 closure (`c7f3b50b3`): §7.7 canonical pattern; multi-layer evidence (depth-target + mesh-data).
+- Round 7 closure (`2ddc77a39`): §7.7 fundamental architectural anti-pattern; three-layer + intra-component sub-variant + two granularity scales.
+- Round 8 closure (`e3d07f366`): §7.7 STRUCTURAL AXIOM; four-layer evidence + three granularity scales.
+
+Sub-phase 3.C closeout adds capstone framing without retroactive revision: §7.7 as definitional methodology; resource-identity rule pending elevation to first-class top-level CLAUDE.md Edit in separate amendment cycle.
+
+**§7.9 — state-propagation pathway equivalence — elevated to canonical methodology lesson** per Andrew-gate (§7.9) §7.9-A:
+
+Cleanup-D research-pass surfaced a sibling architectural anti-pattern class distinct from §7.7. Where §7.7 addresses "state of same logical role split across multiple representations" (resource identity at boundaries), §7.9 addresses "pathways mutating state must produce equivalent end-states regardless of pathway."
+
+In Sub-phase 3 evidence: brush dispatch pathway (`apply_brush`) and initial-generation pathway (`generate_chunks_around`) BOTH produce vertex normals + chunk-edge state. Initial-generation pathway invoked `stitch_edge_normals` for cross-chunk normal correctness; brush dispatch pathway did not. Pathways diverged in end-state for the same logical state (chunk-edge vertex normals). M-D5 (avg_height) + M-D9 (normal stitching) + M-SK (skirt update) are three instances of this divergence.
+
+Cleanup-D fix-pass `eb5e6c4a0` unified pathways' end-states at all three sites. Architecturally analogous to Real-Fix.A/B/C/D's resource-identity unification — same overall discipline of "make boundaries explicit + unified" but at pathway-equivalence granularity rather than resource-identity granularity.
+
+§7.9 as methodology lesson: when defect localizes at chunk-boundary or component-boundary state mismatch, AND multiple pathways could produce that state, verify pathways' end-states are equivalent. If divergent, unify (either invoke common end-state-producing function from all pathways, or refactor pathways to share a common state-producing primitive).
+
+**§7.8 — audit-era misclassification — elevated to canonical methodology lesson** per Andrew-gate (§7.8) §7.8-A:
+
+Cleanup-B research surfaced that `8f4668599`'s "bypass-driven mode collapse approach" framing in the audit was retrospectively imprecise — `8f4668599` was actually a minimal 11-line surgical fix that enabled brush sync in TerrainPanel-only flows, not a bypass mechanism. The audit-era hypothesis framing didn't match the actual commit content.
+
+§7.8 as methodology lesson: audit-era hypothesis framings can be retrospectively imprecise as campaign chain progresses. Verify cleanup scope against post-campaign-chain canonical state, not just audit specifications. The §7.7 framework wasn't available when audit §5.1 was written; with §7.7 framework, the actual mechanism became visible. Audit hypotheses aren't load-bearing until verified against canonical pipeline evolution.
+
+**Edit 2 multi-granularity discipline established**:
+
+The campaign chain enforces Edit 2 (no second implementation) at four granularity scales:
+
+| Granularity | Mechanism | Campaign chain instance |
+|-------------|-----------|--------------------------|
+| Boundary-resource-identity | §7.7 structural axiom | Real-Fix.A/B/C/D at four layers |
+| Architectural-level | No parallel implementation surviving in tree | Cleanup-A `1900bdc8e` legacy cluster path deletion (-334 net lines) |
+| Era-mechanism | Bypass-era mechanism residue removal | Cleanup-B `f7732d5d9` (no-op marker; revealed era-mechanism residue had already been removed by attrition during canonical pipeline establishment) |
+| State-propagation-pathway-equivalence | §7.9 pathways producing equivalent end-states | Cleanup-D fix-pass `eb5e6c4a0` at three sites |
+
+Edit 2 enforcement at multiple granularity scales is the campaign chain's architectural discipline payoff. Future foundational architectural campaigns inherit this multi-granularity framework.
+
+**Canonical pipeline composability demonstrated**:
+
+Real-Fix.E `609f85357` (ZoneBlend) landed in 2 files / +635/−24 lines / zero new architectural primitives. ZoneBlend reused:
+- Real-Fix.A's depth target plumbing.
+- Real-Fix.B's `upload_or_update_terrain_chunk_forward` helper.
+- Real-Fix.C's canonical `material_*` attribute set + `biome_weights_8_to_material_slots` helper.
+- Real-Fix.D's canonical `MaterialLibrary`.
+
+Architecturally: once resource identity is unified at every boundary (§7.7 structural axiom), new features compose mechanically simple. The prior canonical work did the heavy lifting; Real-Fix.E just added brush dispatch logic + UI button.
+
+Composability is the empirical payoff of resource-identity unification. Future foundational campaigns inherit composability as expected outcome — when the resource-identity unification is done correctly, new features land in small commits.
+
+**Methodology body of practice carry-forward** (consolidated in §13 of campaign doc):
+
+Nine canonical methodology lessons (§7.1-§7.9) + §7.7 structural axiom + Edit 2 multi-granularity discipline + canonical pipeline composability are canonical input for:
+
+- **Sub-phase 4** (Pattern A regression infrastructure): test infrastructure must validate §7.7 + §7.9 patterns explicitly.
+- **Sub-phase 5** (RegionalArchetypePanel + ActiveTool implementation): biome archetype authoring composes naturally with ZoneBlend; canonical-pipeline-composability empirically demonstrated.
+- **Mediator Removal session**: dismantle Mediator architecture per audit §5.1; clean architectural endpoint.
+- **Sub-phase 6 closeout**: editor multi-tool architecture campaign COMPLETE.
+- **Any future foundational architectural campaign in AstraWeave**: methodology body of practice applies (instrument-and-narrow when defect localization is unclear + §7.7 + §7.9 + Edit 2 multi-granularity + composability).
+
+**Andrew-gate verification verdicts across the campaign chain** (preserved for archeology):
+
+- Real-Fix.A PASS: depth target plumbing eliminated double-buffer artifact.
+- Real-Fix.B PASS: mesh upload helper extraction unified routing.
+- Real-Fix.C PARTIAL PASS / PARTIAL REGRESS: 8 materials worked; 14 surfaced sibling defect at next layer (Defect Class 4).
+- Real-Fix.D PASS: all 22 materials reach renderer mechanically.
+- Real-Fix.E PASS: 8/8 brush modes operational; Sub-phase 3 architectural objective achieved.
+- Cleanup-A PASS: legacy cluster path deletion preserved correctness.
+- Cleanup-B PASS as no-op marker: `8f4668599` reclassified.
+- Cleanup-D research-pass: analytical-only; three mechanisms characterized.
+- Cleanup-D fix-pass PASS: "all brushes work, and i cant recreate the seam splits with the erosion tool anymore."
+
+Each Andrew-gate PASS/REGRESS verdict shaped subsequent session; partial-PASS surfaced sibling defects at next layer (Real-Fix.C → Defect Class 4 → Real-Fix.D pattern). Andrew-gate routing is the canonical campaign chain progression mechanism.
+
+**Discipline shift to single-concern sessions** (codified Round 7; sustained through closeout):
+
+Round 7 codified single-concern session discipline for closures with multi-candidate fix designs + multi-mechanism findings. Sub-phase 3 sustained this discipline through closeout: instrument / closure / revert / fix in separate sessions; closures don't bundle fixes; reverts don't bundle analytical content. Multi-session sequencing protects against drift + produces clean atomic commits + maintains single-concern history. **Discipline shift becomes canonical campaign chain methodology.**
+
+**Counterfactual reflection**: had the campaign chain attempted to fix Defect Class 4 + Defect Class 5/9 + chunk-boundary continuity in single sessions without instrument-and-narrow + single-concern discipline + Andrew-gate routing, the architectural quality would have been substantially lower. Methodology body of practice is empirically validated by the campaign chain's outcomes.
+
+**Anti-drift safeguard for future closeout-drafting agents**: this closeout entry is the culminating analytical synthesis; it consolidates without revising. Predecessor §12 closure entries preserve chronological methodology archeology. Future foundational architectural campaign closeouts in AstraWeave may follow this entry's structure (campaign chain commit summary + §7.7 structural axiom validation across layers + sibling lesson elevations + Edit 2 multi-granularity table + composability demonstration + body of practice carry-forward + Andrew-gate verification archeology + discipline shift documentation + counterfactual reflection).
+
+**Scope held**: Sub-phase 3.C closeout session only landed campaign-doc updates (Status header + §11 entries + §12 Sub-phase 3.C closeout entry + §13 Methodology Body of Practice section). NO production code changes. NO CLAUDE.md amendment elevation application. NO ARCHITECTURE_MAP.md updates. NO modifications to predecessor §12 closure entries. NO new methodology lesson generation beyond §7.8 + §7.9 elevations. NO Sub-phase 4 work. NO Defect Class 10 / 6/7/8 / brush math investigation.
+
+---
+
+### 2026-06-06, Sub-phase 4 — Pattern A regression infrastructure for the dispatcher class, commits 372e6d6f9 (4.A) + ea3eae2e6 (4.B) + this commit (4.C closeout)
+
+**Entry state archaeology**: SP4 opened after a two-session reconnaissance chain established the true frontier (a pre-flight + a frontier-reconciliation pass; the original queue note's "research pass pending" entry-state was stale by an entire campaign-design pass plus three sub-phases). SP4 entered against `main` @ `61332f75c`, clean, with SP1/SP2/SP3 COMPLETE and SP4/SP5/Mediator-Removal/SP6 NOT STARTED. Per §7.2 (pre-execution actual-code verification) + §7.3 (symbol pinning by re-grep), the §6 spec — authored before Core landed — was verified against current code before any test was written.
+
+**What landed (test-only)**: gap-fill + formalization of the dispatcher Pattern A regression suite, NOT write-from-scratch. SP2 Core.C had already landed 15 unit tests + the `MockActiveTool`/`DefaultOnlyTool` fixtures; the SP2 deviation log deferred "Pattern A regression infrastructure beyond minimal MockActiveTool fixture" to SP4. SP4 inventoried Core.C against the §6.2 coverage list + the located Pattern A convention, then closed six gaps (`active_tool` tests 15 → 21):
+- **SP4.A** (`372e6d6f9`, reuses MockActiveTool, no new fixture so 4.A stays warning-free): `update_active_tool_with_no_active_tool_is_noop`; `set_active_none_with_no_active_tool_is_noop`; `empty_and_negative_registry_invariants` (`is_registered` false on unknown UUID; empty `tool_count`/`registered_uuids`; `Dispatcher::default() == new()`); `active_tool_returning_passthrough_is_still_invoked` (disambiguates tool-chose-PassThrough from the no-active-tool short-circuit).
+- **SP4.B** (`ea3eae2e6`): `set_active_transition_deactivates_prev_before_activating_next` (asserts the deactivate-BEFORE-activate transition ORDER — Scenario 10 only checked counts — via the new `OrderRecordingTool` fixture appending labeled entries to a shared `Rc<RefCell<Vec<String>>>` log); `event_disposition_forward_compat_tripwire` (resolves §2.3 + audit §8.1.2).
+
+**Pattern A convention conformed**: located the canonical convention at the F.5-paint.F-fix precedent (`tools/aw_editor/src/panel_type.rs:761` + `tools/aw_editor/src/tab_viewer/mod.rs:8157`): a regression test asserting a STRUCTURAL/WIRING contract — not a unit behavior — so a future copy-paste/omission regression is caught at `cargo test` time rather than slipping to an Andrew-gate, each carrying a banner naming the failure mode it guards. SP4's tests carry that banner form (failure-mode rationale + the contract section reference).
+
+**Forward-compat tripwire mechanism (§2.3, non-invasive)**: `event_disposition_forward_compat_tripwire` matches `EventDisposition` EXHAUSTIVELY with NO wildcard inside a `#[cfg(test)]` fn. `#[non_exhaustive]` does not require a wildcard for same-crate matches, so it compiles today but fails to compile the moment a variant (the documented `ConsumedSelective`) is added — forcing internal dispatcher + ViewportWidget routing to be revisited while external-crate consumers stay protected by the attribute's wildcard requirement. The §2.3 STOP-gate (would the mechanism modify the `EventDisposition` definition, e.g. add a `#[cfg(test)]` variant?) was checked and NOT triggered: no production enum change.
+
+**Landed-API drift finding (per §7.3/§7.4 drift-documentation discipline)**: the §6.1/§6.2 spec references `dispatch_pointer_event`; the landed Core.B API is `dispatch_mouse_event(MouseEvent, MouseEventKind, …)` + `dispatch_key_event(KeyEvent, KeyEventKind, …)` + `dispatch_mouse_enter` / `dispatch_mouse_leave`. Tests target the landed API. The §6 spec body + §54-§60 Outcome statement were left unrevised (historical record preserved; this entry records the drift rather than silently correcting the spec). Forward note for SP6 closeout: the Outcome statement's "dispatch_pointer_event routing" phrasing may be reconciled then.
+
+**Observation (flag-only; no action taken)**: the `ActiveTool::on_drop` trait method has NO call site in `Dispatcher` — there is no `unregister_tool`/drop path, so `on_drop` is currently unreachable from the dispatcher. This is a design gap, not a dispatcher bug; §6.2 does not require exercising it; SP4 did not test the absence nor add an unregister API (that would be a production/architectural change, out of test-only scope). Surfaced for Andrew / SP6.
+
+**Verification**: `cargo test -p aw_editor --lib` → 4010 passed, 1 failed, 5 ignored. The single failure is the pre-existing, documented, out-of-scope `panels::terrain_panel::tests::test_terrain_panel_creation` (`chunk_radius` asserted 5, actual 10 — TerrainPanel default drift tracked separately in the RAV doc). No new failures; `cargo check -p aw_editor` clean. Module isolation preserved: `Dispatcher`/`ActiveTool` still referenced only within `active_tool/` + the existing SP3 wiring.
+
+**Scope held**: SP4 touched only `tools/aw_editor/src/active_tool/tests.rs` (4.A/4.B test-only diffs) + this campaign-doc closeout (4.C doc-only diff). NO production code in `mod.rs`/`dispatcher.rs`/panels/`main.rs`/`viewport`/`tab_viewer`. NO TerrainPanel/RegionalArchetypePanel-specific tests. NO SP5 scaffolding. NO mediator/coexistence changes. NO `24b1b2150` log-gap backfill (SP6 reconciliation item, left untouched). NO CLAUDE.md / ARCHITECTURE_MAP.md / methodology-lesson changes. Did NOT begin SP5.
+
+---
+
+### 2026-07-22, Sub-phase 5.C — RegionalArchetypePanel closeout, commits 2f6f853a5 (5.A) + 9bae816e3 (5.B) + 2e92b8a3b (5.C regression guard) + this commit (5.C record closeout)
+
+**Landed implementation verified, not assumed**: 5.A and 5.B both landed 2026-06-06. `RegionalArchetypePanel` implements `ActiveTool` (`tools/aw_editor/src/panels/regional_archetype_panel.rs:548`); its press, drag, and release paths return `EventDisposition::Consumed` (`:593`, `:611`, `:627`) so camera pan cannot receive the paint gesture. The dispatcher-owned real panel is registered at editor initialization (`tools/aw_editor/src/main.rs:2797-2801`). Its handlers emit `StrokeBegin`/paint/`StrokeEnd` through the side channel, which the per-frame drain forwards to the canonical panel (`main.rs:4124-4142`; `tab_viewer/mod.rs:1485,1503`) and records on the undo stack (`main.rs:4149`).
+
+**§7.4 gate**: PASS declared by Andrew on 2026-07-20 — “paint works properly; fine-tuning needed but fundamentally works” — and formally recorded in `docs/audits/T_SERIES_RATIFICATION_2026-07-20.md` §1. Fine-tuning is outside §7.4 and this closeout.
+
+**Permanent guard**: `real_panel_paint_click_drag_consumes_pointer_events` constructs `RegionalArchetypePanel::new_dispatch_tool`, dispatches press + move + release against the real `ActiveTool` implementation, asserts all three dispositions are `Consumed`, and checks the emitted action sequence. Focused run: **1 passed; 4023 filtered out**. Surrounding panel suite: **31 passed; 3993 filtered out**. Dispatcher suite: **21 passed; 4003 filtered out**. Full editor library suite: **4019 passed; 0 failed; 5 ignored; 0 filtered out**. `cargo check -p aw_editor` completed successfully (one pre-existing unused-import warning in `gizmo/mod.rs`).
+
+**G-pointer-events-fix verdict — SUBSUMED**: the RAV pause record narrowed post-pause G-fix to exactly “implement `ActiveTool` for `RegionalArchetypePanel` + register with the dispatcher” (`REGIONAL_ARCHETYPE_VARIATION_CAMPAIGN.md` Pause-Artifacts §10). 5.B delivers both, plus the side-channel drain and undo path; §7.4 PASS confirms end-to-end behavior; 5.C adds the requested pointer-event regression guard. Nothing remains in G. H-saveload-diagnostic remains a distinct, unfixed RAV concern. RAV stays paused until this campaign's Mediator Removal + Sub-phase 6 closure, then resumes at H-saveload-diagnostic.
+
+**Scope held**: 5.C adds only the real-panel regression test and closeout records. No mediator removal, Sub-phase 6 work, RAV implementation, editor polish, terrain/water changes, or save/load remediation landed.
+
+---
+
+## §13 — Methodology Body of Practice (Sub-phase 3 Carry-Forward)
+
+Established by Sub-phase 3 (Mediator Brush Architecture) campaign chain. Canonical input for Sub-phase 4+ AAA-fidelity foundational architectural work and any future foundational architectural campaign in AstraWeave.
+
+### §13.1 Methodology Lessons (§7.1-§7.9)
+
+#### §7.1 — Three-rounds-wrong-from-code-reading: instrument-and-narrow is canonical
+
+When defect localization in a layered stack proves resistant to code-reading hypotheses (three or more rounds of fix attempts failed before this lesson was codified at Round 3 audit), instrument-and-narrow methodology with pre-baked outcome decision trees per round produces evidence-grounded convergence. Code-reading-derived hypotheses about runtime behavior in this editor stack have been wrong consistently; runtime instrumentation is mandatory.
+
+#### §7.2 — Pre-execution actual-code verification mandatory
+
+Before applying any fix or instrumentation, verify exact symbols, signatures, call sites, dependencies, and inter-subsystem relationships by re-grep. Do not pin to line numbers from prior audits or commit bodies. Do not assume prior subsystem knowledge transfers without verification. Pre-execution verification scales with fix blast radius (Real-Fix.D had nine sub-items; Real-Fix.E had six; Cleanup-D fix-pass had five focused on verification-of-audit).
+
+#### §7.3 — Symbol/signature pinning by re-grep before instrumentation/fix
+
+Per-target verification at the symbol level. The right line numbers come from grep at fix-time, not from audit-era citations. Symbol/signature pinning protects against drift between audit and execution.
+
+#### §7.4 — Drift-finding documentation as commit-body discipline
+
+Each fix commit body documents pre-execution drift findings — what the audit said vs what actual code revealed. This protects future agents from inheriting stale audit citations + provides archeological record of architectural evolution.
+
+#### §7.5 — Chunk-test-fixture-grounded test discipline (line-number-pinning hazardous)
+
+Tests pinned to specific vertex indices or chunk coordinates are brittle. Tests grounded in semantic invariants (e.g., "biome weights sum to 1.0 post-blend"; "all 22 materials accessible by `get(id)`"; "erosion at chunk boundary produces no height step") survive refactor.
+
+#### §7.6 — Derived-value reasoning trap
+
+Inferring conclusions from compound reasoning chains is hazardous. When closure analysis depends on multiple derived intermediate values, each link can be wrong independently; failure compounds. Pre-baked outcome decision trees in instrumentation prompts protect closure analysis from this trap.
+
+#### §7.7 — STRUCTURAL AXIOM — wrapped-component resource identity at every boundary
+
+Validated at four layers + three granularity scales in Sub-phase 3:
+- Layer 1 (depth-target inter-component): Real-Fix.A `0f569d212`.
+- Layer 2 (mesh-data inter-component dual-variant): Real-Fix.B `eaaa53433`.
+- Layer 3 (texture-data intra-component sibling-attribute drift): Real-Fix.C `ded9a0457`.
+- Layer 4 (UI/renderer cross-component capacity coordination): Real-Fix.D `7067cc03d`.
+
+When state of the same logical role is split across multiple representations — across component boundaries (component A vs B), within shared structs (sibling attribute fields X vs Y), across UI/renderer capacity coordination, or across any interface boundary at any granularity scale — the bug is at the boundary. Unify identity at every boundary; verify identity matches via accessor or canonical source. **The editor's component-boundary architecture is §7.7-ridden surface by default; unification is mandatory architectural review at every boundary scale.**
+
+§7.7 transitions from "fundamental architectural anti-pattern" to **definitional methodology** characterizing this editor's resource-management at every architectural boundary.
+
+CLAUDE.md amendment cycle elevation suggested (resource-identity rule from sub-rule of Edit 2 to first-class top-level Edit) pending separate amendment session.
+
+#### §7.8 — Audit-era misclassification per Cleanup-B finding
+
+Audit-era hypothesis framings can be retrospectively imprecise as campaign chain progresses. Verify cleanup scope against post-campaign-chain canonical state, not just audit specifications. The §7.7 framework wasn't available when audit §5.1 was written; with §7.7 framework, the actual mechanism became visible. Audit hypotheses aren't load-bearing until verified against canonical pipeline evolution.
+
+Cleanup-B `f7732d5d9` (no-op marker commit) is canonical example: audit anticipated bypass-mechanism residue removal; Cleanup-B's pre-execution verification revealed `8f4668599` was canonical pipeline foundation, not bypass mechanism. Verification protected against retroactive miscategorization.
+
+#### §7.9 — State-propagation pathway equivalence
+
+Sibling architectural anti-pattern class to §7.7. Where §7.7 addresses "state of same logical role split across multiple representations" (resource identity at boundaries), §7.9 addresses "pathways mutating state must produce equivalent end-states regardless of pathway."
+
+Validated in Sub-phase 3 at three sites:
+- M-D5: brush dispatch's per-chunk `avg_height` diverged from initial-generation's coherent-cross-chunk calculation. Cleanup-D fix-pass unified pathways via global avg_height pass.
+- M-D9: brush dispatch's `calculate_normal` used clamped half-gradient at edges; initial generation's `stitch_edge_normals` applied cross-chunk normalization. Cleanup-D fix-pass unified pathways via post-brush `stitch_edge_normals` invocation.
+- M-SK: brush dispatch updated surface vertices but left skirt vertices stale; initial generation produced surface + skirt consistently. Cleanup-D fix-pass extended brush dispatch's fast-path patch to update skirts.
+
+When defect localizes at chunk-boundary or component-boundary state mismatch, AND multiple pathways could produce that state, verify pathways' end-states are equivalent. If divergent, unify (either invoke common end-state-producing function from all pathways, or refactor pathways to share a common state-producing primitive).
+
+### §13.2 Edit 2 Multi-Granularity Discipline
+
+Edit 2 (no second implementation) enforced at four granularity scales:
+
+| Granularity | Mechanism | Sub-phase 3 instance |
+|-------------|-----------|----------------------|
+| Boundary-resource-identity | §7.7 structural axiom | Real-Fix.A/B/C/D at four layers |
+| Architectural-level | No parallel implementation surviving in tree | Cleanup-A `1900bdc8e` legacy cluster path deletion |
+| Era-mechanism | Bypass-era mechanism residue removal (verified post-canonical-pipeline) | Cleanup-B `f7732d5d9` no-op marker |
+| State-propagation-pathway-equivalence | §7.9 pathways producing equivalent end-states | Cleanup-D fix-pass `eb5e6c4a0` at three sites |
+
+Future foundational architectural campaigns inherit this multi-granularity framework. When applying Edit 2, consider all four scales.
+
+### §13.3 Canonical Pipeline Composability
+
+Empirical payoff of resource-identity unification (§7.7) + state-propagation pathway equivalence (§7.9) + Edit 2 multi-granularity. Real-Fix.E (ZoneBlend) demonstrated:
+
+- 2 files modified.
+- +635/−24 lines.
+- Zero new architectural primitives.
+- 12/12 new tests pass.
+
+Pre-canonical-work, equivalent feature would have required new architectural primitives at every consumed-resource boundary. Post-canonical-work, canonical primitives compose; new features land mechanically simple.
+
+Future foundational campaigns: when canonical work is correct, new features compose. Composability is the test of canonical work's correctness.
+
+### §13.4 Discipline Shift to Single-Concern Sessions
+
+Codified Round 7; sustained through Sub-phase 3.C closeout. Single-concern sessions:
+- Instrument / closure / revert / fix in separate sessions.
+- Closures don't bundle fixes.
+- Reverts don't bundle analytical content.
+- Multi-candidate fix designs trigger separate sessions per candidate decision.
+- Atomic commits; clean revert capability; single-concern history.
+
+Multi-session sequencing protects against drift + produces clean atomic commits + maintains single-concern history.
+
+### §13.5 Andrew-Gate Routing
+
+Each PASS/REGRESS verdict shapes next session. Partial-PASS surfaces sibling defects at next layer. Examples:
+- Real-Fix.C PARTIAL PASS (8 materials worked; 14 didn't) → Defect Class 4 → Real-Fix.D.
+- Real-Fix.D PASS (mechanical; all materials reach renderer) → Defect Class 10 (texture asset content) decoupled.
+- Cleanup-B PASS as no-op marker → §7.8 candidate surfaced → §7.8 elevation at closeout.
+- Cleanup-D research-pass complete → Andrew-gate (q) selects q-1 → Cleanup-D fix-pass.
+
+Andrew-gate routing is the canonical campaign chain progression mechanism.
+
+### §13.6 Multi-Session Forward-Chain Structure for Future Foundational Campaigns
+
+Sub-phase 3 forward-chain structure: research-pass → diagnostic-pass(es) → fix-pass(es) → cleanup-pass(es) → closeout. Future foundational campaigns may follow:
+
+1. Research-pass when mechanism is unclear (analytical-only; characterize layer).
+2. Diagnostic-pass(es) when runtime verification needed (instrument-and-narrow methodology).
+3. Fix-pass(es) per Andrew-gate decision (direct fix / instrumentation chain / hybrid).
+4. Cleanup-pass(es) (architectural-level Edit 2 enforcement; era-mechanism removal; state-propagation pathway equivalence).
+5. Closeout (campaign chain consolidation; methodology body of practice carry-forward).
+
+This forward-chain template scales to foundational architectural campaigns of any size.
+
+### §13.7 Body of Practice Carry-Forward
+
+The Sub-phase 3 campaign chain's body of practice is canonical input for:
+- Sub-phase 4 (Pattern A regression infrastructure).
+- Sub-phase 5 (RegionalArchetypePanel + ActiveTool).
+- Mediator Removal session.
+- Sub-phase 6 closeout.
+- Any future foundational architectural campaign in AstraWeave.
+
+Future campaigns inherit:
+- Nine methodology lessons (§7.1-§7.9).
+- §7.7 structural axiom (with CLAUDE.md amendment cycle pending).
+- Edit 2 multi-granularity discipline.
+- Canonical pipeline composability as expected outcome.
+- Single-concern session discipline.
+- Andrew-gate routing.
+- Multi-session forward-chain structure.
+
+Foundational architectural quality scales with methodology body of practice adherence.
+
+---
+
+*End of plan*

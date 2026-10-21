@@ -1,0 +1,304 @@
+    Checking astraweave-gameplay v0.1.0 (C:\Users\pv2br\AstraWeave-AI-Native-Gaming-Engine\astraweave-gameplay)
+warning: unexpected `cfg` condition value: `small_rng`
+  --> astraweave-embeddings\src\client.rs:99:7
+   |
+99 | #[cfg(feature = "small_rng")]
+   |       ^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: expected values for `feature` are: `candle`, `candle-core`, `candle-nn`, `candle-transformers`, `default`, `hnsw`, `hnsw_rs`, `http`, `onnx`, `ort`, and `reqwest`
+   = help: consider adding `small_rng` as a feature in `Cargo.toml`
+   = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+   = note: `#[warn(unexpected_cfgs)]` on by default
+
+warning: `astraweave-embeddings` (lib) generated 1 warning
+warning: fields `generation_interval_ms` and `max_concurrent_quests` are never read
+  --> astraweave-quests\src\systems.rs:13:5
+   |
+11 | pub struct QuestLlmSystem {
+   |            -------------- fields in this struct
+12 |     quest_generator: Arc<LlmQuestGenerator>,
+13 |     generation_interval_ms: u64,
+   |     ^^^^^^^^^^^^^^^^^^^^^^
+14 |     max_concurrent_quests: usize,
+   |     ^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` on by default
+
+warning: `astraweave-quests` (lib) generated 1 warning
+    Checking aw_editor v0.1.0 (C:\Users\pv2br\AstraWeave-AI-Native-Gaming-Engine\tools\aw_editor)
+    Checking astraweave-stress-test v0.1.0 (C:\Users\pv2br\AstraWeave-AI-Native-Gaming-Engine\astraweave-stress-test)
+warning: method `build_prompt` is never used
+   --> astraweave-llm-eval\src\lib.rs:324:8
+    |
+130 | impl EvaluationSuite {
+    | -------------------- method in this implementation
+...
+324 |     fn build_prompt(&self, scenario: &Scenario) -> String {
+    |        ^^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` on by default
+
+warning: `astraweave-llm-eval` (lib) generated 1 warning
+    Checking naga v27.0.3
+warning: method `thumbnail_path` is never used
+  --> crates\astraweave-persistence-player\src\save_slots.rs:52:8
+   |
+17 | impl SaveSlotManager {
+   | -------------------- method in this implementation
+...
+52 |     fn thumbnail_path(&self, slot_id: usize) -> PathBuf {
+   |        ^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` on by default
+
+    Checking aw_headless v0.1.0 (C:\Users\pv2br\AstraWeave-AI-Native-Gaming-Engine\tools\aw_headless)
+warning: `astraweave-persistence-player` (lib) generated 1 warning
+    Checking astraweave-sdk v0.4.0 (C:\Users\pv2br\AstraWeave-AI-Native-Gaming-Engine\astraweave-sdk)
+    Checking astraweave-weaving v0.1.0 (C:\Users\pv2br\AstraWeave-AI-Native-Gaming-Engine\astraweave-weaving)
+    Checking profiling_demo v0.1.0 (C:\Users\pv2br\AstraWeave-AI-Native-Gaming-Engine\examples\profiling_demo)
+error[E0277]: a value of type `HashMap<u64, (usize, Vec3)>` cannot be built from an iterator over elements of type `(u32, (usize, Vec3))`
+    --> examples\profiling_demo\src\main.rs:444:18
+     |
+444  |                 .collect();
+     |                  ^^^^^^^ value of type `HashMap<u64, (usize, Vec3)>` cannot be built from `std::iter::Iterator<Item=(u32, (usize, Vec3))>`
+     |
+     = help: the trait `FromIterator<(u32, (_, Vec3))>` is not implemented for `HashMap<u64, (usize, Vec3)>`
+             but trait `FromIterator<(u64, (_, Vec3))>` is implemented for it
+     = help: for that trait implementation, expected `u64`, found `u32`
+note: the method call chain might not have had the expected associated types
+    --> examples\profiling_demo\src\main.rs:443:18
+     |
+433  |           let entities_data: Vec<(Entity, Vec3)> = {
+     |  __________________________________________________-
+434  | |             let query = Query2::<Position, RigidBody>::new(world);
+435  | |             query.map(|(entity, pos, _)| (entity, pos.0)).collect()
+436  | |         };
+     | |_________- this expression has type `Vec<(Entity, Vec3)>`
+...
+441  |                   .iter()
+     |                    ------ `Iterator::Item` is `&(Entity, Vec3)` here
+442  |                   .enumerate()
+     |                    ----------- `Iterator::Item` changed to `(usize, &(Entity, Vec3))` here
+443  |                   .map(|(i, (e, pos))| (e.id(), (i, *pos)))
+     |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `Iterator::Item` changed to `(u32, (usize, Vec3))` here
+note: required by a bound in `collect`
+    --> C:\Users\pv2br\.rustup\toolchains\1.89.0-x86_64-pc-windows-msvc\lib/rustlib/src/rust\library\core\src\iter\traits\iterator.rs:2014:19
+     |
+2014 |     fn collect<B: FromIterator<Self::Item>>(self) -> B
+     |                   ^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `Iterator::collect`
+
+error: expected expression, found `%`
+  --> astraweave-gameplay\src\veilweaver_tutorial.rs:98:49
+   |
+98 |                 info!("Anchor stabilized", id = %anchor_id, order = ?anchor.activation_order);
+   |                                                 ^ expected expression
+
+error: expected expression, found `%`
+   --> astraweave-gameplay\src\veilweaver_tutorial.rs:105:41
+    |
+105 |         info!("Trigger activated", id = %trigger_id);
+    |                                         ^ expected expression
+
+error: expected expression, found `%`
+   --> astraweave-gameplay\src\veilweaver_tutorial.rs:110:43
+    |
+110 |             info!("Trigger cleared", id = %trigger_id);
+    |                                           ^ expected expression
+
+error[E0308]: mismatched types
+   --> examples\profiling_demo\src\main.rs:462:71
+    |
+462 |                     if let Some(&(j, candidate_pos)) = entity_map.get(&candidate_id) {
+    |                                                                   --- ^^^^^^^^^^^^^ expected `&u64`, found `&u32`
+    |                                                                   |
+    |                                                                   arguments to this method are incorrect
+    |
+    = note: expected reference `&u64`
+               found reference `&u32`
+note: method defined here
+   --> C:\Users\pv2br\.rustup\toolchains\1.89.0-x86_64-pc-windows-msvc\lib/rustlib/src/rust\library\std\src\collections\hash\map.rs:905:12
+    |
+905 |     pub fn get<Q: ?Sized>(&self, k: &Q) -> Option<&V>
+    |            ^^^
+
+error[E0432]: unresolved import `astraweave_scene::world_partition::CellComponentView`
+ --> astraweave-gameplay\src\veilweaver_slice.rs:2:47
+  |
+2 | use astraweave_scene::world_partition::{Cell, CellComponentView, GridCoord};
+  |                                               ^^^^^^^^^^^^^^^^^ no `CellComponentView` in `world_partition`
+
+warning: unused variable: `cache_hit_rate`
+   --> examples\profiling_demo\src\main.rs:369:9
+    |
+369 |     let cache_hit_rate = if planning_count > 0 {
+    |         ^^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_cache_hit_rate`
+    |
+    = note: `#[warn(unused_variables)]` on by default
+
+warning: variable `moved_count` is assigned to, but never used
+   --> examples\profiling_demo\src\main.rs:392:13
+    |
+392 |     let mut moved_count = 0;
+    |             ^^^^^^^^^^^
+    |
+    = note: consider using `_moved_count` instead
+
+warning: variable `draw_calls` is assigned to, but never used
+   --> examples\profiling_demo\src\main.rs:505:13
+    |
+505 |     let mut draw_calls = 0;
+    |             ^^^^^^^^^^
+    |
+    = note: consider using `_draw_calls` instead
+
+warning: variable `vertex_count` is assigned to, but never used
+   --> examples\profiling_demo\src\main.rs:506:13
+    |
+506 |     let mut vertex_count = 0;
+    |             ^^^^^^^^^^^^
+    |
+    = note: consider using `_vertex_count` instead
+
+Some errors have detailed explanations: E0277, E0308.
+For more information about an error, try `rustc --explain E0277`.
+warning: `profiling_demo` (bin "profiling_demo") generated 4 warnings
+error: could not compile `profiling_demo` (bin "profiling_demo") due to 2 previous errors; 4 warnings emitted
+warning: build failed, waiting for other jobs to finish...
+error[E0277]: the trait bound `alloc::string::String: WriteColor` is not satisfied
+  --> C:\Users\pv2br\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\naga-27.0.3\src\error.rs:50:17
+   |
+50 |                 writer.inner_mut(),
+   |                 ^^^^^^^^^^^^^^^^^^ the trait `WriteColor` is not implemented for `alloc::string::String`
+   |
+   = help: the following other types implement trait `WriteColor`:
+             &'a mut T
+             Ansi<W>
+             Box<T>
+             Buffer
+             BufferedStandardStream
+             NoColor<W>
+             StandardStream
+             StandardStreamLock<'a>
+           and 2 others
+   = note: required for the cast from `&mut alloc::string::String` to `&mut dyn WriteColor`
+
+error[E0599]: no method named `components_of_type` found for reference `&astraweave_scene::world_partition::Cell` in the current scope
+   --> astraweave-gameplay\src\veilweaver_slice.rs:119:10
+    |
+119 |     cell.components_of_type(component_type)
+    |          ^^^^^^^^^^^^^^^^^^ method not found in `&astraweave_scene::world_partition::Cell`
+
+error[E0277]: the trait bound `alloc::string::String: WriteColor` is not satisfied
+   --> C:\Users\pv2br\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\naga-27.0.3\src\span.rs:326:20
+    |
+326 |         term::emit(writer.inner_mut(), &config, &files, &self.diagnostic())
+    |                    ^^^^^^^^^^^^^^^^^^ the trait `WriteColor` is not implemented for `alloc::string::String`
+    |
+    = help: the following other types implement trait `WriteColor`:
+              &'a mut T
+              Ansi<W>
+              Box<T>
+              Buffer
+              BufferedStandardStream
+              NoColor<W>
+              StandardStream
+              StandardStreamLock<'a>
+            and 2 others
+    = note: required for the cast from `&mut alloc::string::String` to `&mut dyn WriteColor`
+
+warning: variable does not need to be mutable
+   --> astraweave-gameplay\src\veilweaver_tutorial.rs:120:17
+    |
+120 |     if let Some(mut state) = world.get_resource_mut::<WeaveTutorialState>() {
+    |                 ----^^^^^
+    |                 |
+    |                 help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` on by default
+
+warning: variable does not need to be mutable
+   --> astraweave-gameplay\src\veilweaver_tutorial.rs:134:18
+    |
+134 |     if let (Some(mut state), Some(mut reader)) = (
+    |                  ----^^^^^
+    |                  |
+    |                  help: remove this `mut`
+
+error[E0499]: cannot borrow `*world` as mutable more than once at a time
+   --> astraweave-gameplay\src\veilweaver_tutorial.rs:136:9
+    |
+134 |       if let (Some(mut state), Some(mut reader)) = (
+    |  __________________________________________________-
+135 | |         world.get_resource_mut::<WeaveTutorialState>(),
+    | |         ----- first mutable borrow occurs here
+136 | |         world
+    | |         ^^^^^ second mutable borrow occurs here
+137 | |             .get_resource_mut::<Events<TriggerVolumeEvent>>()
+138 | |             .map(|events| events.reader()),
+139 | |     ) {
+    | |_____- first borrow later used here
+    |
+help: try adding a local storing this...
+   --> astraweave-gameplay\src\veilweaver_tutorial.rs:136:9
+    |
+136 | /         world
+137 | |             .get_resource_mut::<Events<TriggerVolumeEvent>>()
+    | |_____________________________________________________________^
+help: ...and then using that local here
+   --> astraweave-gameplay\src\veilweaver_tutorial.rs:134:50
+    |
+134 |       if let (Some(mut state), Some(mut reader)) = (
+    |  __________________________________________________^
+135 | |         world.get_resource_mut::<WeaveTutorialState>(),
+136 | |         world
+137 | |             .get_resource_mut::<Events<TriggerVolumeEvent>>()
+138 | |             .map(|events| events.reader()),
+139 | |     ) {
+    | |_____^
+
+warning: variable does not need to be mutable
+   --> astraweave-gameplay\src\veilweaver_tutorial.rs:151:18
+    |
+151 |     if let (Some(mut state), Some(mut reader)) = (
+    |                  ----^^^^^
+    |                  |
+    |                  help: remove this `mut`
+
+error[E0499]: cannot borrow `*world` as mutable more than once at a time
+   --> astraweave-gameplay\src\veilweaver_tutorial.rs:153:9
+    |
+151 |       if let (Some(mut state), Some(mut reader)) = (
+    |  __________________________________________________-
+152 | |         world.get_resource_mut::<WeaveTutorialState>(),
+    | |         ----- first mutable borrow occurs here
+153 | |         world
+    | |         ^^^^^ second mutable borrow occurs here
+154 | |             .get_resource_mut::<Events<AnchorStabilizedEvent>>()
+155 | |             .map(|events| events.reader()),
+156 | |     ) {
+    | |_____- first borrow later used here
+    |
+help: try adding a local storing this...
+   --> astraweave-gameplay\src\veilweaver_tutorial.rs:153:9
+    |
+153 | /         world
+154 | |             .get_resource_mut::<Events<AnchorStabilizedEvent>>()
+    | |________________________________________________________________^
+help: ...and then using that local here
+   --> astraweave-gameplay\src\veilweaver_tutorial.rs:151:50
+    |
+151 |       if let (Some(mut state), Some(mut reader)) = (
+    |  __________________________________________________^
+152 | |         world.get_resource_mut::<WeaveTutorialState>(),
+153 | |         world
+154 | |             .get_resource_mut::<Events<AnchorStabilizedEvent>>()
+155 | |             .map(|events| events.reader()),
+156 | |     ) {
+    | |_____^
+
+Some errors have detailed explanations: E0432, E0499, E0599.
+For more information about an error, try `rustc --explain E0432`.
+warning: `astraweave-gameplay` (lib) generated 3 warnings
+error: could not compile `astraweave-gameplay` (lib) due to 7 previous errors; 3 warnings emitted
+For more information about this error, try `rustc --explain E0277`.
+error: could not compile `naga` (lib) due to 2 previous errors

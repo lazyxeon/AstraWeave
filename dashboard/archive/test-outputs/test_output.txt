@@ -1,0 +1,45 @@
+
+running 40 tests
+test test_directory_listing_blocked ... ok
+test test_conditional_logic_allowed ... ok
+test test_dns_lookup_blocked ... ok
+test test_compile_blocked ... ok
+test test_deep_recursion_blocked ... ok
+test test_eval_blocked ... ok
+test test_exec_blocked ... ok
+test test_array_operations_allowed ... ok
+test test_file_read_blocked ... ok
+test test_file_delete_blocked ... ok
+test test_http_post_blocked ... ok
+test test_file_open_blocked ... ok
+test test_file_write_blocked ... ok
+test test_fast_loop_completes ... ok
+test test_http_get_blocked ... ok
+test test_function_definition_allowed ... ok
+test test_infinite_loop_times_out ... ok
+test test_import_blocked ... ok
+test test_infinite_while_loop_times_out ... ok
+test test_loadfile_blocked ... ok
+test test_large_string_blocked ... ok
+test test_large_array_blocked ... ok
+test test_long_running_computation_times_out ... ok
+test test_math_operations_allowed ... ok
+test test_nested_arrays_blocked ... ok
+test test_nested_function_calls ... ok
+test test_require_blocked ... ok
+test test_mutual_recursion_blocked ... ok
+test test_shallow_recursion_allowed ... ok
+test test_small_array_allowed ... ok
+test test_nested_loops_timeout ... ok
+test test_shell_command_blocked ... ok
+test test_spawn_process_blocked ... ok
+test test_small_string_allowed ... ok
+test test_socket_connect_blocked ... ok
+test test_subprocess_blocked ... ok
+test test_string_manipulation_allowed ... ok
+test test_system_call_blocked ... ok
+test test_websocket_blocked ... ok
+test test_tail_recursion_optimization ... ok
+
+test result: ok. 40 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+

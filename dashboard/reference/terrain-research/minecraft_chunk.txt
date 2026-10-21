@@ -1,0 +1,323 @@
+Title: Chunk – Minecraft Wiki
+
+URL Source: https://minecraft.wiki/w/Chunk
+
+Markdown Content:
+[![Image 1](https://minecraft.wiki/images/thumb/Chunk.png/150px-Chunk.png?0cc7f)](https://minecraft.wiki/w/File:Chunk.png)
+
+Visualization of the ground portion of a single chunk. The entire chunk extends up to a height of 319.
+
+A **chunk** is a 16×16 segment of a [world](https://minecraft.wiki/w/World "World"). Chunks are the method used by the game to divide maps into manageable pieces. They are further divided in 16-block tall **sections**, which are also often called "subchunks".
+
+Description[[edit](https://minecraft.wiki/w/Chunk?section=1&veaction=edit "Edit section: Description") | [edit source](https://minecraft.wiki/w/Chunk?action=edit&section=1 "Edit section's source code: Description")]
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Chunks are 16 blocks wide by 16 blocks long. They extend from the bottom void of the world all the way up to the [build limit](https://minecraft.wiki/w/Build_limit "Build limit"). In the [Overworld](https://minecraft.wiki/w/Overworld "Overworld"), their height is 384 blocks, and they have 98,304 blocks total. In the [Nether](https://minecraft.wiki/w/Nether "Nether"), their heights are 256 blocks in _[Java Edition](https://minecraft.wiki/w/Java\_Edition "Java Edition")_ and 128 blocks in _[Bedrock Edition](https://minecraft.wiki/w/Bedrock\_Edition "Bedrock Edition")_. In [the End](https://minecraft.wiki/w/The_End "The End"), their height is 256 blocks.
+
+Chunks generate around players [when they first enter the world](https://minecraft.wiki/w/World_Spawn "World Spawn"). In [_Java Edition_](https://minecraft.wiki/w/Java_Edition "Java Edition"), the generating and loading progress are displayed on the [loading world screen](https://minecraft.wiki/w/Loading_world_screen "Loading world screen"). As players wander around the world, new chunks generate as needed.
+
+Chunks generate with the help of the map [seed](https://minecraft.wiki/w/Seed_(world_generation) "Seed (world generation)"), which means that each chunk generates largely the same if you would use the same seed again, as long as the map generator and [version number](https://minecraft.wiki/w/Versions "Versions") remain the same; however, basic world information is not the only information that contributes to the generation of a chunk. if an entity that can load chunks, including the player, loads from a certain direction the chunk may generate with slight variations such as the direction or variant of certain world elements, or very slight changes to the shape of the world itself.
+
+Chunk loading[[edit](https://minecraft.wiki/w/Chunk?section=2&veaction=edit "Edit section: Chunk loading") | [edit source](https://minecraft.wiki/w/Chunk?action=edit&section=2 "Edit section's source code: Chunk loading")]
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Since _Minecraft_ worlds are 30 million blocks in each [cardinal direction](https://en.wikipedia.org/wiki/Cardinal_direction "w:Cardinal direction")‌[_[Java Edition](https://minecraft.wiki/w/Java\_Edition "Java Edition") only_] and contain an extreme number of chunks, the game loads only certain chunks in order to make the game playable. Unloaded chunks are unprocessed by the game and do not process any of the game aspects.
+
+The game always loads the entire chunk when it decides a chunk needs to be processed. The division into sections is only used for display purposes (e.g. to limit the amount of data to transfer to the game client) and certain game mechanics (e.g. [village mechanics](https://minecraft.wiki/w/Village_mechanics "Village mechanics")).
+
+Java Edition chunk loading[[edit](https://minecraft.wiki/w/Chunk?section=3&veaction=edit "Edit section: Java Edition chunk loading") | [edit source](https://minecraft.wiki/w/Chunk?action=edit&section=3 "Edit section's source code: Java Edition chunk loading")]
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+### Tickets[[edit](https://minecraft.wiki/w/Chunk?section=4&veaction=edit "Edit section: Tickets") | [edit source](https://minecraft.wiki/w/Chunk?action=edit&section=4 "Edit section's source code: Tickets")]
+
+Loading starts when a chunk receives a **ticket**. All loaded chunks originate from the ticket. Each load ticket has three properties: _Ticket type_, _load level_, and _ticks remaining_. The initial time to live of a ticket is based on the ticket type.
+
+### Level and load type[[edit](https://minecraft.wiki/w/Chunk?section=5&veaction=edit "Edit section: Level and load type") | [edit source](https://minecraft.wiki/w/Chunk?action=edit&section=5 "Edit section's source code: Level and load type")]
+
+**Levels** are numbers that determine what **load type** the chunk is in. A lower level represents a higher load type. For a given chunk, it may get different levels from different tickets, but only the lowest level matters.
+
+Load levels range from 22 to 44 in regular gameplay, while only 22 to 33 are relevant to chunk loading. Load levels less than 22 are valid but possible only with a modded game. Load levels above 44 are instantly unloaded in vanilla.
+
+There are four chunk load types; each load type has different properties. This excludes unloaded chunks.
+
+| Load Type | Level | Properties |
+| --- | --- | --- |
+|  | Entity Ticking | 31 and below | All game aspects are available. |
+|  | Block Ticking | 32 | All game aspects are available except that entities are not naturally spawned and are not processed (but are still accessible) and [chunk ticks](https://minecraft.wiki/w/Tick#Chunk_tick "Tick") aren't processed either. These are sometimes referred to as "lazy chunks". |
+|  | Border | 33 | No game aspect is available, but entities and blocks are still accessible (can be detected or modified). |
+|  | Inaccessible | 34 and above | No game aspect is available or accessible, but [world generation](https://minecraft.wiki/w/World_generation "World generation") occurs here. |
+
+### Level propagation[[edit](https://minecraft.wiki/w/Chunk?section=6&veaction=edit "Edit section: Level propagation") | [edit source](https://minecraft.wiki/w/Chunk?action=edit&section=6 "Edit section's source code: Level propagation")]
+
+Load levels "propagate" or flow from source chunk with a ticket to neighboring chunks, but each time it increases its level by 1 until the maximum of 44.
+
+The chunks that get load level from level propagation activate the assigned load type.
+
+Level propagation with a level of 31. Note that levels 35 and more are ignored because they are identical to 34. 34 34 34 34 34 34 34
+34 33 33 33 33 33 34
+34 33 32 32 32 33 34
+34 33 32 31 32 33 34
+34 33 32 32 32 33 34
+34 33 33 33 33 33 34
+34 34 34 34 34 34 34
+
+Same level propagation but with load type instead of Level with abbreviations of the load types. IN IN IN IN IN IN IN
+IN BO BO BO BO BO IN
+IN BO BT BT BT BO IN
+IN BO BT ET BT BO IN
+IN BO BT BT BT BO IN
+IN BO BO BO BO BO IN
+IN IN IN IN IN IN IN
+
+### Ticket types[[edit](https://minecraft.wiki/w/Chunk?section=7&veaction=edit "Edit section: Ticket types") | [edit source](https://minecraft.wiki/w/Chunk?action=edit&section=7 "Edit section's source code: Ticket types")]
+
+[![Image 2](https://minecraft.wiki/images/thumb/Painting_JE2_BE2.png/16px-Painting_JE2_BE2.png?45334)](https://minecraft.wiki/w/File:Painting.png "File:Painting.png")
+
+This section would benefit from the addition of more images.
+
+Please remove this notice once you've added suitable images to the article. 
+
+ The specific instructions are: Update start ticket image to 1.20.5
+
+There are different ticket types, which come from various sources. If a ticket type defines a non-zero timeout, tickets of that type expire after that number of ticks. Each ticket type also has one or more flags that define how tickets of that type are handled.
+
+The possible flags are:
+
+*   Persist – The ticket is persisted when the world is shut down, meaning when the world starts up again, the ticket is restored. This flag is set only for force-loading and portal tickets.
+*   Does load – Tickets with this flag load chunks. This flag is set for all ticket types.
+*   Does simulate – Tickets with this flag define an area where blocks and entities are updated.
+*   Should keep dimension active – Tickets with this flag prevent a dimension from stopping entity and block entity ticking altogether.
+*   Can expire if unloaded – Tickets with this flag, which is only the "unknown" ticket type, count down their remaining ticks even when their chunks are not fully loaded yet (or at all).
+
+The following ticket types exist:
+
+Player spawn
+This type of ticket is created when a player (re)joins a world, at the location where the player will enter the world. It has a timeout of 1 second, but is refreshed while the (re)spawn area for the player is prepared. Tickets of this type are created at level 30 with radius 3 and only load chunks. The main purpose of this ticket type is to have the player spawn in a fully-generated chunk.
+
+Spawn search
+This type of ticket is created when a player's (re)spawn location needs to be determined, whether it's the player's first spawn in the world, or the player is respawning after dying or returning from the end, whether the player has a valid respawn point or uses the world spawn position. It has a timeout of 1 game tick. Tickets of this type are created at level 33 with a radius of 0 and only load chunks.
+
+Dragon
+This type of ticket is created and maintained by the [Ender Dragon](https://minecraft.wiki/w/Ender_Dragon "Ender Dragon") fight logic, for as long as any players can see the dragon's boss bar. When the ticket exists, it is positioned at chunk coordinates 0,0 in the end, has load level 24 with a radius of 9, has no timeout, and both loads and simulates chunks. It does not necessarily keep the end dimension active, though.
+
+Player loading
+Tickets of this type define the area players load around themselves. They are created at level 31, have no timeout, and only load chunks at level 31.
+
+Player simulation
+This type of ticket defines the area around a player where entity and block entity updates are actually processed. Tickets of this type are created at a level corresponding to an appropriate radius for the configured [simulation distance](https://minecraft.wiki/w/Simulation_distance "Simulation distance"). They have no timeout, and not just load and simulate chunks, but are also responsible for keeping the player's dimension active.
+
+Forced
+This type of ticket is created by the [/forceload](https://minecraft.wiki/w/Commands/forceload "Commands/forceload") command. Tickets of this type have no timeout, are persisted, load and simulate chunks, and keep the dimension active. They are created individually at load level 31 for each chunk specified in the command.
+
+Portal
+This type of ticket is created whenever any entity (e.g. items, projectiles, mobs, or even a player) is teleported via a [nether portal](https://minecraft.wiki/w/Nether_portal "Nether portal"), [end portal](https://minecraft.wiki/w/End_portal "End portal"), or [end gateway](https://minecraft.wiki/w/End_gateway "End gateway"). The ticket is placed at the block position the entity was teleported to, which is not necessarily the same as the corresponding "exit side" of the portal or gateway that teleported the entity. The ticket has a timeout of 15 seconds, is persisted, loads and simulates chunks, and keeps the target dimension active. Portal tickets are created at level 30 with a radius of 3.
+
+Ender pearl
+This type of ticket is associated with a thrown [ender pearl](https://minecraft.wiki/w/Ender_pearl "Ender pearl") in the world. Tickets of this type have a timeout of 2 seconds, but are updated by the ender pearl whenever the timeout is about to run out or the ender pearl moved to a new chunk, for as long as the ender pearl exists. Note that if an ender pearl is moved into a lazy chunk through other means than its own movement (e.g. via a [piston](https://minecraft.wiki/w/Piston "Piston") push), the pearl does not get an opportunity to update its ticket accordingly. Ender pearl tickets load and simulate chunks, and keep their dimension active. They are not persisted, but instead are tracked for each player and get restored when the player owning the ender pearl rejoins the world.
+
+Unknown
+When the game needs to immediately use the data of a chunk, but the chunk has not yet been created or generated to the required step, the game automatically gives a ticket named "unknown" to the chunk. Unknown tickets are inherently temporary and expire during the chunk source tick phase even if the chunk has not been fully loaded by then. They only load chunks and have a timeout of 1 game tick.
+
+### Limitations[[edit](https://minecraft.wiki/w/Chunk?section=8&veaction=edit "Edit section: Limitations") | [edit source](https://minecraft.wiki/w/Chunk?action=edit&section=8 "Edit section's source code: Limitations")]
+
+#### Ticking[[edit](https://minecraft.wiki/w/Chunk?section=9&veaction=edit "Edit section: Ticking") | [edit source](https://minecraft.wiki/w/Chunk?action=edit&section=9 "Edit section's source code: Ticking")]
+
+Though chunk loading tickets allow game features to occur relative to ticket type, some processes are subject to further restrictions.
+
+Chunk loading caused by a player ticket allows entities to be ticked only if the chunk is in a square around the chunk which has the player ticket, as defined by the formulas described below. Entity despawning is not affected by this.
+
+In singleplayer, "[Simulation Distance](https://minecraft.wiki/w/Simulation_Distance "Simulation Distance")" in [options](https://minecraft.wiki/w/Options "Options") decides the side length of the square. It follows the formula l=m i n(2 s+1,6 3), where _s_ is the selected simulation distance, and _l_ is the side length (in chunks) of the square.
+
+In multiplayer, "simulation-distance" configured in [server.properties](https://minecraft.wiki/w/Server.properties "Server.properties") decides the side length of the square. It also follows the same formula l=m i n(2 s+1,6 3) where _s_ is the configured "simulation-distance" and _l_ is the side length of the square region.
+
+Chunk loading caused by a player ticket allows block entities to be ticked and [scheduled tick](https://minecraft.wiki/w/Tick#Scheduled_tick "Tick") and [chunk tick](https://minecraft.wiki/w/Tick#Chunk_tick "Tick") (without mob spawning) to be processed only if the chunk is in the aforementioned square region along with a one-chunk-thick square frame surrounding this region. That is, a square region with side length of l=m i n(2 s+3,6 5).
+
+For example,
+
+*   With a simulation distance of 5 and a render distance of 10, entities move normally within a 11×11 chunk column around the player chunk. One more chunk out, within a one-chunk-thick square frame surrounding this region, redstone and command blocks still run, fluids flow, and crops grow. Zombies stop despawning naturally beyond 21×21 chunks.
+*   With a simulation distance of 5 and a render distance of 5, entities move normally within a 11×11 chunk column around the player chunk. One more chunk out, within a one-chunk-thick square frame surrounding this region, redstone and command blocks still run and fluids still flow, but crops stop growing. Zombies won't despawn because they are unloaded before being 128 blocks away from the player.
+*   With a simulation distance of 5 and a render distance of 2, entities move normally within a 5×5 chunk column around the player chunk. One more chunk out, within a one-chunk-thick square frame surrounding this region, redstone and command blocks still run and fluids still flow, but crops stop growing. Zombies won't despawn.
+
+Technically, the above game aspects are controlled by another different ticket system named ticking ticket.
+
+#### Idle timeout[[edit](https://minecraft.wiki/w/Chunk?section=10&veaction=edit "Edit section: Idle timeout") | [edit source](https://minecraft.wiki/w/Chunk?action=edit&section=10 "Edit section's source code: Idle timeout")]
+
+Each [dimension](https://minecraft.wiki/w/Dimension "Dimension") has its own **idle timeout**. It increases by 1 every game tick, while the game is not in `/tick freeze` mode. If there are chunk loading tickets in the dimension that keep the dimension active (i.e. any player, force-loaded chunks, active portal tickets, or ender pearls) or an entity enters the dimension via portal travel, the timeout is reset to 0.
+
+If the timeout reaches 300 [game ticks](https://minecraft.wiki/w/Tick "Tick"), the dimension stops processing certain actions. These include entity and block entity ticking, [ender dragon](https://minecraft.wiki/w/Ender_dragon "Ender dragon") fight, and global entities ([lightning](https://minecraft.wiki/w/Lightning "Lightning")).
+
+#### Others[[edit](https://minecraft.wiki/w/Chunk?section=11&veaction=edit "Edit section: Others") | [edit source](https://minecraft.wiki/w/Chunk?action=edit&section=11 "Edit section's source code: Others")]
+
+Some game aspects don't always get processed in loading chunks because there may be other conditions for their progress, which includes the following:
+
+*   Chunk tick (including mob spawning) 
+    *   Only chunks with centers within 128 blocks of a player are ticked on every game tick. See also [Tick](https://minecraft.wiki/w/Tick "Tick").
+
+*   Entities 
+    *   Hostile mobs instantly despawn if they spawn more than 128 blocks from all players. 
+        *   This includes [zombified piglins](https://minecraft.wiki/w/Zombified_piglin "Zombified piglin") at [Nether portals](https://minecraft.wiki/w/Nether_portal "Nether portal") and [witches](https://minecraft.wiki/w/Witch "Witch") in [witch huts](https://minecraft.wiki/w/Witch_hut "Witch hut").
+
+    *   Passive mobs do not spawn naturally outside a 240 block X 240 block area around a player. 
+        *   The passive mob spawn cap is limited by the number of friendly mobs loaded into memory.
+
+    *   See also [Mob spawn](https://minecraft.wiki/w/Mob_spawn "Mob spawn").
+
+### Exceptions[[edit](https://minecraft.wiki/w/Chunk?section=12&veaction=edit "Edit section: Exceptions") | [edit source](https://minecraft.wiki/w/Chunk?action=edit&section=12 "Edit section's source code: Exceptions")]
+
+Events in a chunk may affect blocks in outside chunks. If the outside chunk is inactive, the effects are suspended in most cases. Specifically,
+
+*   Block changing on the edge of a block ticking chunk can spread updates to blocks outside the block ticking chunk and make them respond appropriately. The update may be propagated block by block until outside the border chunks, at which time it creates an unknown ticket to continue propagation.
+*   Block in a chunk with a 33 level can request a scheduled tick, but it does not get processed until the chunk gets a load level of 32 or below.
+*   Flowing water or lava can spread to the first adjacent block outside a block ticking chunk, but the flow becomes suspended there until the border chunk has a greater load level.
+*   Fire can spread to the first adjacent flammable block outside the block ticking chunk. Like water and lava, it becomes suspended there. It cannot spread further until the outside chunk gets a level of 32 or below.
+*   Grass and mycelium can spread to the first adjacent block outside an entity ticking chunk.
+*   Pumpkin and melon stem growing on the edge of an entity ticking chunk can place their fruits on an adjacent block outside the entity ticking chunk.
+*   An entity (mob, minecart, arrow, etc.) that attempts to move into a block ticking chunk from an entity ticking chunk becomes suspended as soon as it leaves the entity ticking chunk. When the block ticking chunk gets a greater level, the entity resumes moving.
+*   Exploding TNT in entity ticking chunks can damage or destroy blocks in a non-entity-ticking chunk.
+
+Bedrock Edition chunk loading[[edit](https://minecraft.wiki/w/Chunk?section=13&veaction=edit "Edit section: Bedrock Edition chunk loading") | [edit source](https://minecraft.wiki/w/Chunk?action=edit&section=13 "Edit section's source code: Bedrock Edition chunk loading")]
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+All game aspects are active in loading chunks, including chunks within a player's [simulation distance](https://minecraft.wiki/w/Simulation_distance "Simulation distance") and chunks loaded by [Commands/tickingarea](https://minecraft.wiki/w/Commands/tickingarea "Commands/tickingarea"). Unloaded chunks are unprocessed by the game and do not process any of the game aspects.
+
+[![Image 3](https://minecraft.wiki/images/thumb/Bedrock_chunk_loading_radius.png/300px-Bedrock_chunk_loading_radius.png?701cc)](https://minecraft.wiki/w/File:Bedrock_chunk_loading_radius.png)
+
+Visualization of chunks loaded around a player-occupied chunk (colored purple).
+
+### Player loaded chunks[[edit](https://minecraft.wiki/w/Chunk?section=14&veaction=edit "Edit section: Player loaded chunks") | [edit source](https://minecraft.wiki/w/Chunk?action=edit&section=14 "Edit section's source code: Player loaded chunks")]
+
+Chunks are loaded around the player in a circle with a [taxicab distance](https://minecraft.wiki/w/Taxicab_distance "Taxicab distance") radius equal to one plus the simulation distance, except for the edges in cardinal directions, where the radius is equal to the simulation distance (see image).
+
+If your simulation distance is set to 4, chunks around the player will be loaded in a taxicab "circle" with a radius of 5 centered on the chunk occupied by the player, but the north, east, south, and west edges will be cut off and have a taxicab radius of 4.
+
+Loaded chunks can also be created with the `/tickingarea` command.
+
+### Limit[[edit](https://minecraft.wiki/w/Chunk?section=15&veaction=edit "Edit section: Limit") | [edit source](https://minecraft.wiki/w/Chunk?action=edit&section=15 "Edit section's source code: Limit")]
+
+*   Entities 
+    *   Mob spawning is evaluated for every chunk within a 6 chunk cylindrical radius of the player that is loaded.
+
+### Exception[[edit](https://minecraft.wiki/w/Chunk?section=16&veaction=edit "Edit section: Exception") | [edit source](https://minecraft.wiki/w/Chunk?action=edit&section=16 "Edit section's source code: Exception")]
+
+Events in a ticking area may affect blocks in outside chunks. If the outside chunk is inactive, the effects are suspended in most cases. Specifically,
+
+*   Block changing on the edge of a ticking area can spread updates to blocks outside the ticking area and respond appropriately.
+*   Flowing water or lava can spread to the first adjacent block in an outside chunk, but the flow becomes suspended there until the outside chunk becomes active.
+*   Fire can spread to the first adjacent flammable block outside the ticking area. Like water and lava, it becomes suspended there; although visible, its animation does not run, and it cannot spread further until the outside chunk becomes active.
+*   Grass and mycelium can spread to the first adjacent block in an outside chunk, but the affected block does not actually change its appearance until its chunk becomes active; it then changes instantly. Grass and mycelium cannot spread beyond the first such block, nor from such a block into the ticking area until the outside chunk becomes active.
+*   Pumpkin and melon stem growing on the edge of a ticking area can place their fruits on an adjacent block in an outside chunk.
+*   An entity (mob, minecart, arrow, etc.) that attempts to move into an outside chunk becomes suspended as soon as it leaves the ticking area. It remains visible but motionless. When the outside block becomes active, the entity resumes moving.
+*   Exploding TNT can damage or destroy blocks in an inactive chunk, and unlike other events, its effects are not limited to adjacent blocks. However, secondary effects in the outside chunk are suspended until the chunk becomes active. For instance, if an explosion destroys a block that supported sand or gravel, the sand or gravel does not fall immediately. The same thing happens with items that were attached to destroyed blocks, such as item frames and redstone torches; they do not drop until the chunk is activated.
+*   Primed TNT launched into an inactive chunk is suspended in mid-air within the first outside block it enters. It disappears until the outer chunk becomes active, at which time it resumes its flight and countdown.
+
+Finding chunk edges[[edit](https://minecraft.wiki/w/Chunk?section=17&veaction=edit "Edit section: Finding chunk edges") | [edit source](https://minecraft.wiki/w/Chunk?action=edit&section=17 "Edit section's source code: Finding chunk edges")]
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+[![Image 4](https://minecraft.wiki/images/thumb/Chunkf32.png/300px-Chunkf32.png?2d69e)](https://minecraft.wiki/w/File:Chunkf32.png)
+
+Chunk coordinates shown in Java Edition Debug screens.
+
+X and Z coordinates that are divisible by 16 represent the boundaries between chunks. EG: (96, -32) is a corner where four chunks meet. One of those chunks is between X coordinates 80 to 96 and Z coordinates -48 to -32. Another one is between X coordinates 96 to 112 and Z coordinates -32 to -16, and so on. When either X or Z crosses a multiple of 16, the player is moving across chunks.
+
+Essentially, the player is in the top-left corner (north-western) of a chunk when both X and Z coordinates are divisible by 16.
+
+Additionally, the player can know the chunk they are on by this formula:
+
+The X of a chunk is `floor(X coordinate / 16)`
+
+ The Z of a chunk is `floor(Z coordinate / 16)`
+
+Where floor is the largest previous integer. E.g. floor( 27.18 ) is 27, and floor( -3.14 ) is -4.
+
+Also, the coordinates of a block within a chunk can be found by taking the coordinate mod 16.
+
+For example, if the X coordinate of a player is 27, Z coordinate is −15, that player is on chunk (Floor(27/16), Floor(−15/16)), or chunk (1, −1), and at (27 mod 16, −15 mod 16), or (11, 1) within the chunk.
+
+In [_Java Edition_](https://minecraft.wiki/w/Java_Edition "Java Edition"), the key F3 + G can be used to display chunk boundaries. Alternately, pressing the "F3" button opens the [Debug screen](https://minecraft.wiki/w/Debug_screen "Debug screen") that shows the player's X, Y, and Z coordinates, in addition to the "chunk" variable. These coordinates change as the player moves around. The player can know the chunk they are in by the variable "chunk".
+
+In [_Bedrock Edition_](https://minecraft.wiki/w/Bedrock_Edition "Bedrock Edition"), when toggling fancy graphics, the world renders again, loading only the chunk the player is in for a split second, briefly showing the chunk boundaries. When the player changes the render distance rapidly, chunk barriers appear as a blue line. Also, if in mid-air and bridging with full blocks, the next block placed fades into view when a chunk border is intersected, showing the chunk border. This is sometimes unreliable, and it happens only on chunk borders. This does not happen underground or when the block placed is close to more than one block.
+
+Slime chunks[[edit](https://minecraft.wiki/w/Chunk?section=18&veaction=edit "Edit section: Slime chunks") | [edit source](https://minecraft.wiki/w/Chunk?action=edit&section=18 "Edit section's source code: Slime chunks")]
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Each chunk has a 1⁄10 chance of generating as a **slime chunk**, a chunk that [slimes](https://minecraft.wiki/w/Slime "Slime") are able to spawn in below Y=40 and regardless of [light level](https://minecraft.wiki/w/Light_level "Light level"). These chunks are otherwise identical to normal chunks.
+
+In [_Java Edition_](https://minecraft.wiki/w/Java_Edition "Java Edition"), whether a chunk at a particular set of coordinates becomes a slime chunk is determined by the world's [seed](https://minecraft.wiki/w/Seed_(world_generation) "Seed (world generation)"). In [_Bedrock Edition_](https://minecraft.wiki/w/Bedrock_Edition "Bedrock Edition"), however, they are generated at the same coordinates in every world.
+
+History[[edit](https://minecraft.wiki/w/Chunk?section=19&veaction=edit "Edit section: History") | [edit source](https://minecraft.wiki/w/Chunk?action=edit&section=19 "Edit section's source code: History")]
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+[![Image 5](https://minecraft.wiki/images/thumb/Info.png/16px-Info.png?24414)](https://minecraft.wiki/w/File:Info.png "File:Info.png")
+
+This section is missing information about: _[Bedrock Edition](https://minecraft.wiki/w/Bedrock\_Edition "Bedrock Edition")_ history
+
+Please expand the section to include this information. Further details may exist on the [talk page](https://minecraft.wiki/w/Talk:Chunk).
+
+### _Java Edition_[[edit](https://minecraft.wiki/w/Chunk?section=20&veaction=edit "Edit section: Java Edition") | [edit source](https://minecraft.wiki/w/Chunk?action=edit&section=20 "Edit section's source code: Java Edition")]
+
+| [hide][Java Edition pre-Classic](https://minecraft.wiki/w/Java_Edition_pre-Classic "Java Edition pre-Classic") |
+| --- |
+| [rd-131655](https://minecraft.wiki/w/Java_Edition_pre-Classic_rd-131655 "Java Edition pre-Classic rd-131655") | The precursors to chunks are showcased. |
+| [hide][Java Edition Infdev](https://minecraft.wiki/w/Java_Edition_Infdev "Java Edition Infdev") |
+| [20100227-1414](https://minecraft.wiki/w/Java_Edition_Infdev_20100227-1414 "Java Edition Infdev 20100227-1414") | Map height is not custom anymore. The world height has been changed to 128. |
+| [20100327](https://minecraft.wiki/w/Java_Edition_Infdev_20100327 "Java Edition Infdev 20100327") | The game now saves the map in chunks, as part of the transition from [Indev](https://minecraft.wiki/w/Java_Edition_Indev_level_format "Java Edition Indev level format") to [Alpha file format](https://minecraft.wiki/w/Java_Edition_Alpha_level_format "Java Edition Alpha level format"). |
+| [hide][_Java Edition_](https://minecraft.wiki/w/Java_Edition_version_history "Java Edition version history") |
+| [1.2.1](https://minecraft.wiki/w/Java_Edition_1.2.1 "Java Edition 1.2.1") | [12w07a](https://minecraft.wiki/w/Java_Edition_12w07a "Java Edition 12w07a") | The chunk height has been increased to 256, as part of the transition from [Region](https://minecraft.wiki/w/Region_file_format "Region file format") to [Anvil file format](https://minecraft.wiki/w/Anvil_file_format "Anvil file format"). |
+| [1.4.2](https://minecraft.wiki/w/Java_Edition_1.4.2 "Java Edition 1.4.2") | [12w39a](https://minecraft.wiki/w/Java_Edition_12w39a "Java Edition 12w39a") | The [debug screen](https://minecraft.wiki/w/Debug_screen "Debug screen") now shows the [coordinates](https://minecraft.wiki/w/Coordinates "Coordinates") of the chunk the player is in, and the player's coordinates in that chunk. |
+| [1.10](https://minecraft.wiki/w/Java_Edition_1.10 "Java Edition 1.10") | [16w20a](https://minecraft.wiki/w/Java_Edition_16w20a "Java Edition 16w20a") | F3 + G now toggles the visible chunk borders around the [player](https://minecraft.wiki/w/Player "Player"). |
+| [1.14](https://minecraft.wiki/w/Java_Edition_1.14 "Java Edition 1.14") | [?](https://minecraft.wiki/w/Category:Unknown_version_history "Category:Unknown version history") | The method of chunk loading has changed. |
+| [1.17](https://minecraft.wiki/w/Java_Edition_1.17 "Java Edition 1.17") | [20w49a](https://minecraft.wiki/w/Java_Edition_20w49a "Java Edition 20w49a") | Map height is now custom again. |
+| [21w06a](https://minecraft.wiki/w/Java_Edition_21w06a "Java Edition 21w06a") | Maximum buiding height in Overworld has been increased to 319 and minimum height has been dropped to -64, making chunks 384 blocks high in total. |
+| [21w15a](https://minecraft.wiki/w/Java_Edition_21w15a "Java Edition 21w15a") | The chunk height changes have been reverted. |
+| [1.18](https://minecraft.wiki/w/Java_Edition_1.18 "Java Edition 1.18") | [Experimental Snapshot 1](https://minecraft.wiki/w/Java_Edition_1.18_Experimental_Snapshot_1 "Java Edition 1.18 Experimental Snapshot 1") | Chunks in Overworld are again 384 blocks high. |
+| [21w37a](https://minecraft.wiki/w/Java_Edition_21w37a "Java Edition 21w37a") | Render distance now causes chunks to load in a cylinder shape around the player instead of a square. |
+| [21w38a](https://minecraft.wiki/w/Java_Edition_21w38a "Java Edition 21w38a") | Added simulation distance, which affects entity ticking. |
+| [1.20.5](https://minecraft.wiki/w/Java_Edition_1.20.5 "Java Edition 1.20.5") | [24w03a](https://minecraft.wiki/w/Java_Edition_24w03a "Java Edition 24w03a") | Added `/gamerule spawnChunkRadius`. The default [spawn chunk](https://minecraft.wiki/w/Spawn_chunk "Spawn chunk") radius has been decreased to 2 (from 10). |
+| [1.21.9](https://minecraft.wiki/w/Java_Edition_1.21.9 "Java Edition 1.21.9") | [25w31a](https://minecraft.wiki/w/Java_Edition_25w31a "Java Edition 25w31a") | Removed the aforementioned game rule, along with spawn chunks altogether. |
+| A dimension that has any player activity, forceloaded chunks, active portals, or ender pearls in flight will be considered "active" and will keep processing chunks and entities. |
+| The game will ensure that the following chunks are fully loaded before the player joins or the server starts, in the same way as spawn chunks formerly were: chunks loaded by the `/forceload` command, chunks active due to portal activity, thrown ender pearls (Singleplayer only), the small area of chunks around the player (Singleplayer only), chunks required to assign the global world spawn (World creation only). |
+| [hide][Upcoming _Java Edition_](https://minecraft.wiki/w/Planned_versions#Java_Edition "Planned versions") |
+| [1.21.11](https://minecraft.wiki/w/Java_Edition_1.21.11 "Java Edition 1.21.11") | [25w44a](https://minecraft.wiki/w/Java_Edition_25w44a "Java Edition 25w44a") | Chunks now fade in instead of appearing out of nowhere, with the fade-in time adjustable through Video Settings. |
+
+### Legacy Console Edition[[edit](https://minecraft.wiki/w/Chunk?section=21&veaction=edit "Edit section: Legacy Console Edition") | [edit source](https://minecraft.wiki/w/Chunk?action=edit&section=21 "Edit section's source code: Legacy Console Edition")]
+
+| [hide][Legacy Console Edition](https://minecraft.wiki/w/Legacy_Console_Edition_version_history "Legacy Console Edition version history") |
+| --- |
+| [Xbox 360](https://minecraft.wiki/w/Xbox_360_Edition "Xbox 360 Edition") | [Xbox One](https://minecraft.wiki/w/Xbox_One_Edition "Xbox One Edition") | [PS3](https://minecraft.wiki/w/PlayStation_3_Edition "PlayStation 3 Edition") | [PS4](https://minecraft.wiki/w/PlayStation_4_Edition "PlayStation 4 Edition") | [PS Vita](https://minecraft.wiki/w/PlayStation_Vita_Edition "PlayStation Vita Edition") | [Wii U](https://minecraft.wiki/w/Wii_U_Edition "Wii U Edition") | [Switch](https://minecraft.wiki/w/Nintendo_Switch_Edition "Nintendo Switch Edition") |  |
+| [TU1](https://minecraft.wiki/w/Xbox_360_Edition_TU1 "Xbox 360 Edition TU1") | [CU1](https://minecraft.wiki/w/Xbox_One_Edition_CU1 "Xbox One Edition CU1") | [1.00](https://minecraft.wiki/w/PlayStation_3_Edition_1.00 "PlayStation 3 Edition 1.00") | [1.00](https://minecraft.wiki/w/PlayStation_4_Edition_1.00 "PlayStation 4 Edition 1.00") | [1.00](https://minecraft.wiki/w/PlayStation_Vita_Edition_1.00 "PlayStation Vita Edition 1.00") | [Patch 1](https://minecraft.wiki/w/Wii_U_Edition_Patch_1 "Wii U Edition Patch 1") | [1.0.1](https://minecraft.wiki/w/Nintendo_Switch_Edition_1.0.1 "Nintendo Switch Edition 1.0.1") | Added chunks. |
+| [TU12](https://minecraft.wiki/w/Xbox_360_Edition_TU12 "Xbox 360 Edition TU12") | The chunk height has been increased to 256. |
+
+Issues[[edit](https://minecraft.wiki/w/Chunk?section=22&veaction=edit "Edit section: Issues") | [edit source](https://minecraft.wiki/w/Chunk?action=edit&section=22 "Edit section's source code: Issues")]
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Issues relating to "Chunk" are maintained on the [bug tracker](https://minecraft.wiki/w/Bug_tracker "Bug tracker"). Issues should be reported and viewed [there](https://bugs.mojang.com/issues/?jql=project%20in%20%28MC%2C%20MCPE%29%20AND%20%28resolution%20is%20EMPTY%20OR%20resolution%20in%20%281%2C%202%2C%206%29%29%20AND%20%28summary%20~%20%22Chunk%22%29%20ORDER%20BY%20resolution%20DESC).
+
+Trivia[[edit](https://minecraft.wiki/w/Chunk?section=23&veaction=edit "Edit section: Trivia") | [edit source](https://minecraft.wiki/w/Chunk?action=edit&section=23 "Edit section's source code: Trivia")]
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+*   If a [player](https://minecraft.wiki/w/Player "Player") stands in a chunk that has not generated yet, the world immediately becomes invisible until they are in a valid chunk. This does not happen if the Y coordinates are beyond the chunk boundaries.
+*   In [_Bedrock Edition_](https://minecraft.wiki/w/Bedrock_Edition "Bedrock Edition"), if one of the sixteen 16×16×16 sections of a chunk doesn't have any [blocks](https://minecraft.wiki/w/Block "Block") in it, placing a block there shows the same animation as a chunk loading. This bug makes the block that the player placed to turn to the same color of the sky in the direction the player is facing for about 1 second and starts fading away into the normal block texture. If the time is sunrise or sunset and the player places a block there, it actually changes colors constantly for 1 second if the player keeps bobbing their head up and down. The block also makes blocks behind it appear invisible.
+
+See also[[edit](https://minecraft.wiki/w/Chunk?section=24&veaction=edit "Edit section: See also") | [edit source](https://minecraft.wiki/w/Chunk?action=edit&section=24 "Edit section's source code: See also")]
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+*   [Chunk format](https://minecraft.wiki/w/Chunk_format "Chunk format")
+*   [Frame rate](https://minecraft.wiki/w/Frame_rate "Frame rate")
+*   [Altitude](https://minecraft.wiki/w/Altitude "Altitude")
+
+Navigation[[edit](https://minecraft.wiki/w/Chunk?section=25&veaction=edit "Edit section: Navigation") | [edit source](https://minecraft.wiki/w/Chunk?action=edit&section=25 "Edit section's source code: Navigation")]
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+| [hide] * [v](https://minecraft.wiki/w/Template:Navbox_environment "Template:Navbox environment") * [t](https://minecraft.wiki/w/Special:TalkPage/Template:Navbox_environment "Special:TalkPage/Template:Navbox environment") * [e](https://minecraft.wiki/w/Special:EditPage/Template:Navbox_environment "Special:EditPage/Template:Navbox environment") [Environment](https://minecraft.wiki/w/Category:Environment "Category:Environment") |
+| --- |
+| Geography | * [![Image 6](https://minecraft.wiki/images/EnvSprite_altitude.png?9b274)](https://minecraft.wiki/w/Altitude "Altitude")[Altitude](https://minecraft.wiki/w/Altitude "Altitude") * [![Image 7](https://minecraft.wiki/images/EnvSprite_biomes.png?0a976)](https://minecraft.wiki/w/Biome "Biome")[Biome](https://minecraft.wiki/w/Biome "Biome") * [![Image 8](https://minecraft.wiki/images/EnvSprite_chunk.png?b2cf1)](https://minecraft.wiki/w/Chunk "Chunk")[Chunks](https://minecraft.wiki/w/Chunk) * [![Image 9](https://minecraft.wiki/images/EnvSprite_oak.png?742a4)](https://minecraft.wiki/w/Feature "Feature")[Feature](https://minecraft.wiki/w/Feature "Feature") * [![Image 10](https://minecraft.wiki/images/EnvSprite_light.png?50d50)](https://minecraft.wiki/w/Light "Light")[Light](https://minecraft.wiki/w/Light "Light") * [![Image 11](https://minecraft.wiki/images/BlockSprite_bedrock.png?75357)](https://minecraft.wiki/w/Nether_roof "Nether roof")[Nether roof](https://minecraft.wiki/w/Nether_roof "Nether roof") * [![Image 12](https://minecraft.wiki/images/EnvSprite_new-village.png?3e8a5)](https://minecraft.wiki/w/Structure "Structure")[Structure](https://minecraft.wiki/w/Structure "Structure") * [![Image 13](https://minecraft.wiki/images/EnvSprite_embankment.png?954c1)](https://minecraft.wiki/w/Terrain_features "Terrain features")[Terrain features](https://minecraft.wiki/w/Terrain_features "Terrain features") * [![Image 14](https://minecraft.wiki/images/EnvSprite_the-void.png?68bec)](https://minecraft.wiki/w/Void "Void")[Void](https://minecraft.wiki/w/Void "Void") * [![Image 15](https://minecraft.wiki/images/EnvSprite_world.png?95994)](https://minecraft.wiki/w/World "World")[World](https://minecraft.wiki/w/World "World") * [![Image 16](https://minecraft.wiki/images/EnvSprite_border.png?68d3f)](https://minecraft.wiki/w/World_border "World border")[World border](https://minecraft.wiki/w/World_border "World border") * [![Image 17](https://minecraft.wiki/images/EnvSprite_world-boundary.png?a692e)](https://minecraft.wiki/w/World_boundary "World boundary")[World boundary](https://minecraft.wiki/w/World_boundary "World boundary") * [![Image 18](https://minecraft.wiki/images/EnvSprite_default.png?7091f)](https://minecraft.wiki/w/World_generation "World generation")[World generation](https://minecraft.wiki/w/World_generation "World generation") |
+| Sky and fog | * [![Image 19](https://minecraft.wiki/images/EnvSprite_cloud.png?6f9a0)](https://minecraft.wiki/w/Cloud "Cloud")[Cloud](https://minecraft.wiki/w/Cloud "Cloud") * [![Image 20](https://minecraft.wiki/images/EnvSprite_daylight-cycle.png?edf42)](https://minecraft.wiki/w/Daylight_cycle "Daylight cycle")[Daylight cycle](https://minecraft.wiki/w/Daylight_cycle "Daylight cycle") * [![Image 21](https://minecraft.wiki/images/EnvSprite_end-sky.png?2b328)](https://minecraft.wiki/w/End_sky "End sky")[End sky](https://minecraft.wiki/w/End_sky "End sky") * [![Image 22](https://minecraft.wiki/images/EnvSprite_fog.png?963f1)](https://minecraft.wiki/w/Fog "Fog")[Fog](https://minecraft.wiki/w/Fog "Fog") * [![Image 23](https://minecraft.wiki/images/EnvSprite_sky.png?558de)](https://minecraft.wiki/w/Sky "Sky")[Sky](https://minecraft.wiki/w/Sky "Sky") * [![Image 24](https://minecraft.wiki/images/EnvSprite_full-moon.png?a459f)](https://minecraft.wiki/w/Moon "Moon")[Moon](https://minecraft.wiki/w/Moon "Moon") * [![Image 25](https://minecraft.wiki/images/EnvSprite_sun.png?912d3)](https://minecraft.wiki/w/Sun "Sun")[Sun](https://minecraft.wiki/w/Sun "Sun") * [![Image 26](https://minecraft.wiki/images/EnvSprite_stars.png?b2521)](https://minecraft.wiki/w/Star "Star")[Star](https://minecraft.wiki/w/Star "Star") |
+| [Weather](https://minecraft.wiki/w/Weather "Weather") | * [![Image 27](https://minecraft.wiki/images/EnvSprite_rain.png?927ad)](https://minecraft.wiki/w/Rain "Rain")[Rain](https://minecraft.wiki/w/Rain "Rain") * [![Image 28](https://minecraft.wiki/images/EnvSprite_snowfall.png?1c1c4)](https://minecraft.wiki/w/Snowfall "Snowfall")[Snowfall](https://minecraft.wiki/w/Snowfall "Snowfall") * [![Image 29](https://minecraft.wiki/images/EnvSprite_thunderstorm.png?ab84e)](https://minecraft.wiki/w/Thunderstorm "Thunderstorm")[Thunderstorm](https://minecraft.wiki/w/Thunderstorm "Thunderstorm") | Visual only | * [![Image 30](https://minecraft.wiki/images/EnvSprite_end-flash.png?5506e)](https://minecraft.wiki/w/End_flash "End flash")[End flash](https://minecraft.wiki/w/End_flash "End flash") | | --- | |
+| [Dimensions](https://minecraft.wiki/w/Dimension "Dimension") | * [![Image 31](https://minecraft.wiki/images/EnvSprite_overworld.png?1a94a)](https://minecraft.wiki/w/Overworld "Overworld")[Overworld](https://minecraft.wiki/w/Overworld "Overworld") * [![Image 32](https://minecraft.wiki/images/EnvSprite_the-nether.png?68bec)](https://minecraft.wiki/w/The_Nether "The Nether")[The Nether](https://minecraft.wiki/w/The_Nether "The Nether") * [![Image 33](https://minecraft.wiki/images/EnvSprite_the-end.png?95a60)](https://minecraft.wiki/w/The_End "The End")[The End](https://minecraft.wiki/w/The_End "The End") |
+| [World types](https://minecraft.wiki/w/World_type "World type") | * [![Image 34](https://minecraft.wiki/images/EnvSprite_default.png?7091f)](https://minecraft.wiki/w/Overworld "Overworld")[Default](https://minecraft.wiki/w/Overworld "Overworld") * [![Image 35](https://minecraft.wiki/images/EnvSprite_superflat.png?54c14)](https://minecraft.wiki/w/Superflat "Superflat")[Superflat](https://minecraft.wiki/w/Superflat "Superflat") | _[JE](https://minecraft.wiki/w/Java\_Edition "Java Edition")_ only | * [![Image 36](https://minecraft.wiki/images/EnvSprite_amplified.png?ee820)](https://minecraft.wiki/w/Amplified "Amplified")[Amplified](https://minecraft.wiki/w/Amplified "Amplified") * [![Image 37](https://minecraft.wiki/images/EnvSprite_biomes.png?0a976)](https://minecraft.wiki/w/Single_biome "Single biome")[Single biome](https://minecraft.wiki/w/Single_biome "Single biome") * [![Image 38](https://minecraft.wiki/images/EnvSprite_debug.png?128cf)](https://minecraft.wiki/w/Debug_mode "Debug mode")[Debug mode](https://minecraft.wiki/w/Debug_mode "Debug mode") * [![Image 39](https://minecraft.wiki/images/EnvSprite_large-biomes.png?b2630)](https://minecraft.wiki/w/Large_Biomes "Large Biomes")[Large Biomes](https://minecraft.wiki/w/Large_Biomes "Large Biomes") | | --- | | _[Editor](https://minecraft.wiki/w/Editor "Editor")_ only | * [![Image 40](https://minecraft.wiki/images/BlockSprite_air.png?037f8)](https://minecraft.wiki/w/Void_world "Void world")[Void](https://minecraft.wiki/w/Void_world "Void world") | | --- | |
+| Player constructions | * [![Image 41](https://minecraft.wiki/images/EnvSprite_beacon-pyramid.png?0a976)](https://minecraft.wiki/w/Beacon_pyramid "Beacon pyramid")[Beacon pyramid](https://minecraft.wiki/w/Beacon_pyramid "Beacon pyramid") * [![Image 42](https://minecraft.wiki/images/EnvSprite_conduit.png?67121)](https://minecraft.wiki/w/Conduit_frame "Conduit frame")[Conduit frame](https://minecraft.wiki/w/Conduit_frame "Conduit frame") * [![Image 43](https://minecraft.wiki/images/EnvSprite_enchanting-library.png?13f4b)](https://minecraft.wiki/w/Enchantment_mechanics#Bookshelf_placement "Enchantment mechanics")[Enchanting library](https://minecraft.wiki/w/Enchantment_mechanics#Bookshelf_placement "Enchantment mechanics") * [![Image 44](https://minecraft.wiki/images/EnvSprite_nether-portal.png?47646)](https://minecraft.wiki/w/Nether_portal "Nether portal")[Nether portal](https://minecraft.wiki/w/Nether_portal "Nether portal") | Pre-generated | * [![Image 45](https://minecraft.wiki/images/EnvSprite_end-portal.png?0bc7c)](https://minecraft.wiki/w/End_portal "End portal")[End portal](https://minecraft.wiki/w/End_portal "End portal") | | --- | |
+| Matter | * [Blocks](https://minecraft.wiki/w/Block "Block") * [![Image 46](https://minecraft.wiki/images/EnvSprite_block.png?c98e2)](https://minecraft.wiki/w/Solid_block "Solid block")[Solid](https://minecraft.wiki/w/Solid_block "Solid block") * [![Image 47](https://minecraft.wiki/images/EnvSprite_fluids.png?58a6a)](https://minecraft.wiki/w/Fluid "Fluid")[Liquid](https://minecraft.wiki/w/Fluid "Fluid") * [![Image 48](https://minecraft.wiki/images/EnvSprite_gas.png?7ca61)](https://minecraft.wiki/w/Air "Air")[Gas](https://minecraft.wiki/w/Air "Air") * [![Image 49](https://minecraft.wiki/images/BlockSprite_glass.png?791aa)](https://minecraft.wiki/w/Opacity "Opacity")[Opacity](https://minecraft.wiki/w/Opacity "Opacity") * [Placement](https://minecraft.wiki/w/Opacity/Placement "Opacity/Placement") * [![Image 50](https://minecraft.wiki/images/EnvSprite_entities.png?94711)](https://minecraft.wiki/w/Entity "Entity")[Entities](https://minecraft.wiki/w/Entity "Entity") * [![Image 51](https://minecraft.wiki/images/EnvSprite_mob.png?dfda1)](https://minecraft.wiki/w/Mob "Mob")[Mobs](https://minecraft.wiki/w/Mob "Mob") * [![Image 52](https://minecraft.wiki/images/EnvSprite_player.png?7d5f1)](https://minecraft.wiki/w/Player "Player")[Player](https://minecraft.wiki/w/Player "Player") * [![Image 53](https://minecraft.wiki/images/EnvSprite_item.png?89d23)](https://minecraft.wiki/w/Item "Item")[Items](https://minecraft.wiki/w/Item "Item") * [![Image 54](https://minecraft.wiki/images/EnvSprite_non-renewable-resource.png?44294)](https://minecraft.wiki/w/Non-renewable_resource "Non-renewable resource")[Non-renewable resources](https://minecraft.wiki/w/Non-renewable_resource "Non-renewable resource") * [![Image 55](https://minecraft.wiki/images/EnvSprite_renewable-resource.png?a0f1f)](https://minecraft.wiki/w/Renewable_resource "Renewable resource")[Renewable resources](https://minecraft.wiki/w/Renewable_resource "Renewable resource") |
+| Sound | * [![Image 56](https://minecraft.wiki/images/EnvSprite_ambience.png?d7c92)](https://minecraft.wiki/w/Music "Music")[Music](https://minecraft.wiki/w/Music "Music") * [Ambience](https://minecraft.wiki/w/Ambience "Ambience") |
+| [Joke](https://minecraft.wiki/w/April_Fools%27_Day_jokes "April Fools' Day jokes") | | [Dimensions](https://minecraft.wiki/w/Dimension "Dimension") | * [Bridge](https://minecraft.wiki/w/Java_Edition_20w14%E2%88%9E#bridges_dimension "Java Edition 20w14∞") * [![Image 57](https://minecraft.wiki/images/EnvSprite_custom-mode.png?8bfa4)](https://minecraft.wiki/w/Java_Edition_20w14%E2%88%9E#World_generation "Java Edition 20w14∞")[Generated dimensions](https://minecraft.wiki/w/Java_Edition_20w14%E2%88%9E#World_generation "Java Edition 20w14∞") * [Hub](https://minecraft.wiki/w/Hub "Hub") * [Mine](https://minecraft.wiki/w/Mine_(dimension) "Mine (dimension)") * [![Image 58](https://minecraft.wiki/images/EnvSprite_the-moon.png?4669b)](https://minecraft.wiki/w/The_Moon "The Moon")[The Moon](https://minecraft.wiki/w/The_Moon "The Moon") * [![Image 59](https://minecraft.wiki/images/EnvSprite_potato.png?f84f1)](https://minecraft.wiki/w/Poisonous_Potato_Dimension "Poisonous Potato Dimension")[Potato](https://minecraft.wiki/w/Poisonous_Potato_Dimension "Poisonous Potato Dimension") | | --- | | Sky and fog | * [![Image 60](https://minecraft.wiki/images/EnvSprite_earth-%28april-fools%27-joke%29.png?bbc43)](https://minecraft.wiki/w/Earth_(April_Fools%27_joke) "Earth (April Fools' joke)")[Earth](https://minecraft.wiki/w/Earth_(April_Fools%27_joke) "Earth (April Fools' joke)") | | Player constructions | * [![Image 61](https://minecraft.wiki/images/EnvSprite_funky-portal.png?d8914)](https://minecraft.wiki/w/Funky_Portal "Funky Portal")[Funky Portal](https://minecraft.wiki/w/Funky_Portal "Funky Portal") * [![Image 62](https://minecraft.wiki/images/EnvSprite_other-portal.png?ca57b)](https://minecraft.wiki/w/Other_Portal "Other Portal")[Other Portal](https://minecraft.wiki/w/Other_Portal "Other Portal") | Pre-generated | * [![Image 63](https://minecraft.wiki/images/EnvSprite_lunar-base.png?648e4)](https://minecraft.wiki/w/Lunar_Base "Lunar Base")[Lunar Base](https://minecraft.wiki/w/Lunar_Base "Lunar Base") | | --- | | |
+| Bugs | * [Distance effects](https://minecraft.wiki/w/Distance_effects "Distance effects") * [_Bedrock Edition_](https://minecraft.wiki/w/Bedrock_Edition_distance_effects "Bedrock Edition distance effects") * [_Java Edition_](https://minecraft.wiki/w/Java_Edition_distance_effects "Java Edition distance effects") | Removed | * [![Image 64](https://minecraft.wiki/images/EnvSprite_far-lands.png?6dfeb)](https://minecraft.wiki/w/Far_Lands "Far Lands")[Far Lands](https://minecraft.wiki/w/Far_Lands "Far Lands") | | --- | |
+| Removed | | _[Java Edition](https://minecraft.wiki/w/Java\_Edition "Java Edition")_ only | * [![Image 65](https://minecraft.wiki/images/EnvSprite_custom.png?705ce)](https://minecraft.wiki/w/Custom "Custom")[Custom](https://minecraft.wiki/w/Custom "Custom") * [![Image 66](https://minecraft.wiki/images/EnvSprite_map.png?b863e)](https://minecraft.wiki/w/Indev_map_settings "Indev map settings")[Map theme](https://minecraft.wiki/w/Indev_map_settings "Indev map settings") * [![Image 67](https://minecraft.wiki/images/EnvSprite_map.png?b863e)](https://minecraft.wiki/w/Indev_map_settings "Indev map settings")[Map shape](https://minecraft.wiki/w/Indev_map_settings "Indev map settings") * [![Image 68](https://minecraft.wiki/images/EnvSprite_map.png?b863e)](https://minecraft.wiki/w/Indev_map_settings "Indev map settings")[Map type](https://minecraft.wiki/w/Indev_map_settings "Indev map settings") * [![Image 69](https://minecraft.wiki/images/EnvSprite_spectator.png?219a4)](https://minecraft.wiki/w/Infinite_Map_Visualizer "Infinite Map Visualizer")[Infinite Map Visualizer](https://minecraft.wiki/w/Infinite_Map_Visualizer "Infinite Map Visualizer") * [![Image 70](https://minecraft.wiki/images/EnvSprite_custom.png?705ce)](https://minecraft.wiki/w/Old_Customized "Old Customized")[Old Customized](https://minecraft.wiki/w/Old_Customized "Old Customized") * [![Image 71](https://minecraft.wiki/images/EnvSprite_snowfall.png?1c1c4)](https://minecraft.wiki/w/Java_Edition_removed_features#%22Winter_Mode%22_map_type "Java Edition removed features")[Winter mode](https://minecraft.wiki/w/Java_Edition_removed_features#%22Winter_Mode%22_map_type "Java Edition removed features") | | --- | | _[Bedrock Edition](https://minecraft.wiki/w/Bedrock\_Edition "Bedrock Edition")_ only | * [![Image 72](https://minecraft.wiki/images/EnvSprite_chunk.png?b2cf1)](https://minecraft.wiki/w/Old "Old")[Old](https://minecraft.wiki/w/Old "Old") * [![Image 73](https://minecraft.wiki/images/EnvSprite_nether-reactor.png?00b2c)](https://minecraft.wiki/w/Nether_Reactor "Nether Reactor")[Nether Reactor](https://minecraft.wiki/w/Nether_Reactor "Nether Reactor") | | [LCE](https://minecraft.wiki/w/Legacy_Console_Edition "Legacy Console Edition")&_[New 3DS](https://minecraft.wiki/w/New\_Nintendo\_3DS\_Edition "New Nintendo 3DS Edition")_ only | * [![Image 74](https://minecraft.wiki/images/EnvSprite_amplified.png?ee820)](https://minecraft.wiki/w/AMPLIFIED "AMPLIFIED")[Amplified Worlds](https://minecraft.wiki/w/AMPLIFIED "AMPLIFIED") * [![Image 75](https://minecraft.wiki/images/EnvSprite_map.png?b863e)](https://minecraft.wiki/w/World_size "World size")[World size](https://minecraft.wiki/w/World_size "World size") | |

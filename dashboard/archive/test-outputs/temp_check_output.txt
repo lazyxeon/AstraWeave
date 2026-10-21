@@ -1,0 +1,3022 @@
+    Checking astraweave-gameplay v0.1.0 (C:\Users\pv2br\AstraWeave-AI-Native-Gaming-Engine\astraweave-gameplay)
+warning: unexpected `cfg` condition value: `small_rng`
+  --> astraweave-embeddings\src\client.rs:99:7
+   |
+99 | #[cfg(feature = "small_rng")]
+   |       ^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: expected values for `feature` are: `candle`, `candle-core`, `candle-nn`, `candle-transformers`, `default`, `hnsw`, `hnsw_rs`, `http`, `onnx`, `ort`, and `reqwest`
+   = help: consider adding `small_rng` as a feature in `Cargo.toml`
+   = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+   = note: `#[warn(unexpected_cfgs)]` on by default
+
+warning: `astraweave-embeddings` (lib) generated 1 warning
+warning: unused import: `error`
+ --> astraweave-quests\src\llm_quests.rs:7:22
+  |
+7 | use tracing::{debug, error, info, warn};
+  |                      ^^^^^
+  |
+  = note: `#[warn(unused_imports)]` on by default
+
+warning: fields `conversation_history` and `quest_templates` are never read
+   --> astraweave-quests\src\llm_quests.rs:196:5
+    |
+193 | pub struct LlmQuestGenerator {
+    |            ----------------- fields in this struct
+...
+196 |     conversation_history: Arc<RwLock<ConversationHistory>>,
+    |     ^^^^^^^^^^^^^^^^^^^^
+...
+199 |     quest_templates: Arc<RwLock<HashMap<String, QuestTemplate>>>,
+    |     ^^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` on by default
+
+warning: fields `generation_interval_ms` and `max_concurrent_quests` are never read
+  --> astraweave-quests\src\systems.rs:13:5
+   |
+11 | pub struct QuestLlmSystem {
+   |            -------------- fields in this struct
+12 |     quest_generator: Arc<LlmQuestGenerator>,
+13 |     generation_interval_ms: u64,
+   |     ^^^^^^^^^^^^^^^^^^^^^^
+14 |     max_concurrent_quests: usize,
+   |     ^^^^^^^^^^^^^^^^^^^^^
+
+warning: `astraweave-quests` (lib) generated 3 warnings (run `cargo fix --lib -p astraweave-quests` to apply 1 suggestion)
+warning: missing documentation for a module
+  --> astraweave-render-bevy\src\extensions\mod.rs:12:1
+   |
+12 | pub mod megalights;
+   | ^^^^^^^^^^^^^^^^^^
+   |
+note: the lint level is defined here
+  --> astraweave-render-bevy\src\lib.rs:51:9
+   |
+51 | #![warn(missing_docs)]
+   |         ^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> astraweave-render-bevy\src\extensions\megalights.rs:44:5
+   |
+44 |     pub min_pos: [f32; 3],
+   |     ^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> astraweave-render-bevy\src\extensions\megalights.rs:45:5
+   |
+45 |     pub _pad1: f32,
+   |     ^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> astraweave-render-bevy\src\extensions\megalights.rs:46:5
+   |
+46 |     pub max_pos: [f32; 3],
+   |     ^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> astraweave-render-bevy\src\extensions\megalights.rs:47:5
+   |
+47 |     pub _pad2: f32,
+   |     ^^^^^^^^^^^^^^
+
+warning: unused imports: `DirectorPlan` and `IVec2`
+ --> astraweave-director\src\llm_director.rs:9:51
+  |
+9 | use astraweave_core::{DirectorBudget, DirectorOp, DirectorPlan, IVec2, WorldSnapshot};
+  |                                                   ^^^^^^^^^^^^  ^^^^^
+  |
+  = note: `#[warn(unused_imports)]` on by default
+
+warning: variable does not need to be mutable
+   --> astraweave-director\src\llm_director.rs:332:13
+    |
+332 |         let mut history = self.conversation_history.write().await;
+    |             ----^^^^^^^
+    |             |
+    |             help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` on by default
+
+warning: variable does not need to be mutable
+   --> astraweave-director\src\llm_director.rs:352:13
+    |
+352 |         let mut history = self.conversation_history.write().await;
+    |             ----^^^^^^^
+    |             |
+    |             help: remove this `mut`
+
+warning: unused variable: `memory_text`
+   --> astraweave-director\src\llm_director.rs:450:13
+    |
+450 |         let memory_text = format!(
+    |             ^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_memory_text`
+    |
+    = note: `#[warn(unused_variables)]` on by default
+
+warning: variable does not need to be mutable
+   --> astraweave-director\src\llm_director.rs:481:13
+    |
+481 |         let mut history = self.conversation_history.write().await;
+    |             ----^^^^^^^
+    |             |
+    |             help: remove this `mut`
+
+warning: `astraweave-render-bevy` (lib) generated 5 warnings
+warning: `astraweave-director` (lib) generated 5 warnings (run `cargo fix --lib -p astraweave-director` to apply 4 suggestions)
+warning: unused variable: `distance_from_center`
+   --> tools\aw_editor\src\gizmo\picking.rs:326:9
+    |
+326 |     let distance_from_center = to_intersection.length();
+    |         ^^^^^^^^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_distance_from_center`
+    |
+    = note: `#[warn(unused_variables)]` on by default
+
+warning: unused variable: `cone_radius`
+  --> tools\aw_editor\src\gizmo\rendering.rs:66:13
+   |
+66 |         let cone_radius = shaft_radius * 2.5;
+   |             ^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_cone_radius`
+
+warning: `aw_editor` (lib) generated 2 warnings
+warning: method `build_prompt` is never used
+   --> astraweave-llm-eval\src\lib.rs:324:8
+    |
+130 | impl EvaluationSuite {
+    | -------------------- method in this implementation
+...
+324 |     fn build_prompt(&self, scenario: &Scenario) -> String {
+    |        ^^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` on by default
+
+warning: `astraweave-llm-eval` (lib) generated 1 warning
+    Checking naga v27.0.3
+warning: unused import: `Path`
+ --> crates\astraweave-persistence-player\src\save_slots.rs:7:17
+  |
+7 | use std::path::{Path, PathBuf};
+  |                 ^^^^
+  |
+  = note: `#[warn(unused_imports)]` on by default
+
+warning: unused import: `progression::*`
+  --> crates\astraweave-persistence-player\src\lib.rs:40:9
+   |
+40 | pub use progression::*;
+   |         ^^^^^^^^^^^^^^
+
+warning: unused import: `settings::*`
+  --> crates\astraweave-persistence-player\src\lib.rs:42:9
+   |
+42 | pub use settings::*;
+   |         ^^^^^^^^^^^
+
+warning: method `thumbnail_path` is never used
+  --> crates\astraweave-persistence-player\src\save_slots.rs:52:8
+   |
+17 | impl SaveSlotManager {
+   | -------------------- method in this implementation
+...
+52 |     fn thumbnail_path(&self, slot_id: usize) -> PathBuf {
+   |        ^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` on by default
+
+warning: `astraweave-persistence-player` (lib) generated 4 warnings (run `cargo fix --lib -p astraweave-persistence-player` to apply 3 suggestions)
+    Checking profiling_demo v0.1.0 (C:\Users\pv2br\AstraWeave-AI-Native-Gaming-Engine\examples\profiling_demo)
+warning: `astraweave-render-bevy` (lib test) generated 5 warnings (5 duplicates)
+warning: unused import: `VertexDataAdapter`
+ --> astraweave-asset-pipeline\src\mesh.rs:6:38
+  |
+6 | use meshopt::{optimize_vertex_cache, VertexDataAdapter};
+  |                                      ^^^^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` on by default
+
+warning: unused import: `Context`
+ --> astraweave-asset-pipeline\src\texture.rs:6:14
+  |
+6 | use anyhow::{Context, Result};
+  |              ^^^^^^^
+
+warning: unused imports: `Context` and `Result`
+ --> astraweave-asset-pipeline\src\validator.rs:3:14
+  |
+3 | use anyhow::{Context, Result};
+  |              ^^^^^^^  ^^^^^^
+
+warning: unused variable: `vertex_count`
+   --> astraweave-asset-pipeline\src\mesh.rs:178:36
+    |
+178 | fn calculate_acmr(indices: &[u32], vertex_count: usize) -> f32 {
+    |                                    ^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_vertex_count`
+    |
+    = note: `#[warn(unused_variables)]` on by default
+
+warning: `astraweave-asset-pipeline` (lib) generated 4 warnings (run `cargo fix --lib -p astraweave-asset-pipeline` to apply 3 suggestions)
+warning: `astraweave-asset-pipeline` (lib test) generated 4 warnings (4 duplicates)
+    Checking coop_client v0.1.0 (C:\Users\pv2br\AstraWeave-AI-Native-Gaming-Engine\examples\coop_client)
+warning: unused import: `constraints::apply_constraint`
+  --> tools\aw_editor\src\gizmo\mod.rs:25:9
+   |
+25 | pub use constraints::apply_constraint;
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` on by default
+
+warning: unused import: `input::NumericInput`
+  --> tools\aw_editor\src\gizmo\mod.rs:26:9
+   |
+26 | pub use input::NumericInput;
+   |         ^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `Ray`
+  --> tools\aw_editor\src\gizmo\mod.rs:27:45
+   |
+27 | pub use picking::{GizmoHandle, GizmoPicker, Ray};
+   |                                             ^^^
+
+warning: unused imports: `CameraController`, `SceneViewport`, and `Transform`
+  --> tools\aw_editor\src\gizmo\mod.rs:31:26
+   |
+31 | pub use scene_viewport::{CameraController, SceneViewport, Transform};
+   |                          ^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^  ^^^^^^^^^
+
+warning: unused import: `transform_panel::TransformPanel`
+  --> tools\aw_editor\src\panels\mod.rs:37:9
+   |
+37 | pub use transform_panel::TransformPanel;
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `Context`
+  --> tools\aw_editor\src\viewport\entity_renderer.rs:20:14
+   |
+20 | use anyhow::{Context, Result};
+   |              ^^^^^^^
+
+warning: unused import: `Context`
+ --> tools\aw_editor\src\viewport\gizmo_renderer.rs:6:14
+  |
+6 | use anyhow::{Context, Result};
+  |              ^^^^^^^
+
+warning: unused import: `Mat4`
+ --> tools\aw_editor\src\viewport\gizmo_renderer.rs:8:12
+  |
+8 | use glam::{Mat4, Quat, Vec3};
+  |            ^^^^
+
+warning: unused import: `Context`
+  --> tools\aw_editor\src\viewport\grid_renderer.rs:17:14
+   |
+17 | use anyhow::{Context, Result};
+   |              ^^^^^^^
+
+warning: unused import: `glam::Mat4`
+  --> tools\aw_editor\src\viewport\grid_renderer.rs:19:5
+   |
+19 | use glam::Mat4;
+   |     ^^^^^^^^^^
+
+warning: unused import: `GizmoMode`
+  --> tools\aw_editor\src\viewport\renderer.rs:29:20
+   |
+29 | use crate::gizmo::{GizmoMode, GizmoState};
+   |                    ^^^^^^^^^
+
+warning: unused import: `Context`
+ --> tools\aw_editor\src\viewport\skybox_renderer.rs:6:14
+  |
+6 | use anyhow::{Context, Result};
+  |              ^^^^^^^
+
+warning: unused import: `glam::Mat4`
+ --> tools\aw_editor\src\viewport\skybox_renderer.rs:8:5
+  |
+8 | use glam::Mat4;
+  |     ^^^^^^^^^^
+
+warning: unused imports: `OrbitCamera` and `Ray`
+  --> tools\aw_editor\src\viewport\mod.rs:43:18
+   |
+43 | pub use camera::{OrbitCamera, Ray};
+   |                  ^^^^^^^^^^^  ^^^
+
+warning: unused import: `entity_renderer::EntityRenderer`
+  --> tools\aw_editor\src\viewport\mod.rs:44:9
+   |
+44 | pub use entity_renderer::EntityRenderer;
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `gizmo_renderer::GizmoRendererWgpu`
+  --> tools\aw_editor\src\viewport\mod.rs:45:9
+   |
+45 | pub use gizmo_renderer::GizmoRendererWgpu;
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `grid_renderer::GridRenderer`
+  --> tools\aw_editor\src\viewport\mod.rs:46:9
+   |
+46 | pub use grid_renderer::GridRenderer;
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `renderer::ViewportRenderer`
+  --> tools\aw_editor\src\viewport\mod.rs:47:9
+   |
+47 | pub use renderer::ViewportRenderer;
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `skybox_renderer::SkyboxRenderer`
+  --> tools\aw_editor\src\viewport\mod.rs:48:9
+   |
+48 | pub use skybox_renderer::SkyboxRenderer;
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `PerformanceStats`, `ShadingMode`, and `ViewportToolbar`
+  --> tools\aw_editor\src\viewport\mod.rs:49:19
+   |
+49 | pub use toolbar::{PerformanceStats, ShadingMode, ViewportToolbar};
+   |                   ^^^^^^^^^^^^^^^^  ^^^^^^^^^^^  ^^^^^^^^^^^^^^^
+
+warning: unused variable: `world`
+  --> tools\aw_editor\src\panels\advanced_widgets_panel.rs:86:13
+   |
+86 |         let world = self
+   |             ^^^^^ help: if this is intentional, prefix it with an underscore: `_world`
+
+warning: unused variable: `ray`
+   --> tools\aw_editor\src\viewport\widget.rs:432:21
+    |
+432 |                 let ray = self
+    |                     ^^^ help: if this is intentional, prefix it with an underscore: `_ray`
+
+warning: unused variable: `world`
+   --> tools\aw_editor\src\viewport\widget.rs:339:9
+    |
+339 |         world: &World,
+    |         ^^^^^ help: if this is intentional, prefix it with an underscore: `_world`
+
+warning: unused variable: `ui`
+    --> tools\aw_editor\src\main.rs:1017:55
+     |
+1017 |                         ui.collapsing("≡ƒÄ¼ Animation", |ui| {
+     |                                                        ^^ help: if this is intentional, prefix it with an underscore: `_ui`
+
+warning: method `set_lighting` is never used
+  --> tools\aw_editor\src\brdf_preview.rs:65:12
+   |
+50 | impl BrdfPreview {
+   | ---------------- method in this implementation
+...
+65 |     pub fn set_lighting(&mut self, direction: Vec3, intensity: f32, color: [f32; 3]) {
+   |            ^^^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` on by default
+
+warning: function `apply_constraint` is never used
+ --> tools\aw_editor\src\gizmo\constraints.rs:7:8
+  |
+7 | pub fn apply_constraint(value: Vec3, constraint: AxisConstraint) -> Vec3 {
+  |        ^^^^^^^^^^^^^^^^
+
+warning: struct `NumericInput` is never constructed
+ --> tools\aw_editor\src\gizmo\input.rs:5:12
+  |
+5 | pub struct NumericInput {
+  |            ^^^^^^^^^^^^
+
+warning: associated items `new`, `push_char`, `pop_char`, `clear`, `parse`, and `text` are never used
+  --> tools\aw_editor\src\gizmo\input.rs:10:12
+   |
+9  | impl NumericInput {
+   | ----------------- associated items in this implementation
+10 |     pub fn new() -> Self {
+   |            ^^^
+...
+14 |     pub fn push_char(&mut self, c: char) {
+   |            ^^^^^^^^^
+...
+18 |     pub fn pop_char(&mut self) {
+   |            ^^^^^^^^
+...
+22 |     pub fn clear(&mut self) {
+   |            ^^^^^
+...
+26 |     pub fn parse(&self) -> Option<f32> {
+   |            ^^^^^
+...
+30 |     pub fn text(&self) -> &str {
+   |            ^^^^
+
+warning: enum `GizmoHandle` is never used
+  --> tools\aw_editor\src\gizmo\picking.rs:15:10
+   |
+15 | pub enum GizmoHandle {
+   |          ^^^^^^^^^^^
+
+warning: methods `to_constraint` and `mode` are never used
+  --> tools\aw_editor\src\gizmo\picking.rs:30:12
+   |
+28 | impl GizmoHandle {
+   | ---------------- methods in this implementation
+29 |     /// Convert to AxisConstraint (for state machine).
+30 |     pub fn to_constraint(self) -> AxisConstraint {
+   |            ^^^^^^^^^^^^^
+...
+46 |     pub fn mode(self) -> GizmoMode {
+   |            ^^^^
+
+warning: struct `Ray` is never constructed
+  --> tools\aw_editor\src\gizmo\picking.rs:71:12
+   |
+71 | pub struct Ray {
+   |            ^^^
+
+warning: associated items `from_screen` and `point_at` are never used
+   --> tools\aw_editor\src\gizmo\picking.rs:88:12
+    |
+76  | impl Ray {
+    | -------- associated items in this implementation
+...
+88  |     pub fn from_screen(screen_pos: Vec2, inv_view_proj: Mat4) -> Self {
+    |            ^^^^^^^^^^^
+...
+111 |     pub fn point_at(&self, t: f32) -> Vec3 {
+    |            ^^^^^^^^
+
+warning: struct `GizmoPicker` is never constructed
+   --> tools\aw_editor\src\gizmo\picking.rs:118:12
+    |
+118 | pub struct GizmoPicker {
+    |            ^^^^^^^^^^^
+
+warning: methods `pick_handle`, `pick_translate_handle`, `pick_rotate_handle`, and `pick_scale_handle` are never used
+   --> tools\aw_editor\src\gizmo\picking.rs:150:12
+    |
+139 | impl GizmoPicker {
+    | ---------------- methods in this implementation
+...
+150 |     pub fn pick_handle(
+    |            ^^^^^^^^^^^
+...
+168 |     fn pick_translate_handle(&self, ray: &Ray, gizmo_pos: Vec3) -> Option<GizmoHandle> {
+    |        ^^^^^^^^^^^^^^^^^^^^^
+...
+201 |     fn pick_rotate_handle(&self, ray: &Ray, gizmo_pos: Vec3) -> Option<GizmoHandle> {
+    |        ^^^^^^^^^^^^^^^^^^
+...
+231 |     fn pick_scale_handle(&self, ray: &Ray, gizmo_pos: Vec3) -> Option<GizmoHandle> {
+    |        ^^^^^^^^^^^^^^^^^
+
+warning: function `ray_line_segment_distance` is never used
+   --> tools\aw_editor\src\gizmo\picking.rs:271:4
+    |
+271 | fn ray_line_segment_distance(ray: &Ray, segment_start: Vec3, segment_end: Vec3) -> f32 {
+    |    ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `ray_circle_distance` is never used
+   --> tools\aw_editor\src\gizmo\picking.rs:310:4
+    |
+310 | fn ray_circle_distance(ray: &Ray, center: Vec3, normal: Vec3, radius: f32) -> f32 {
+    |    ^^^^^^^^^^^^^^^^^^^
+
+warning: function `ray_aabb_intersection` is never used
+   --> tools\aw_editor\src\gizmo\picking.rs:340:4
+    |
+340 | fn ray_aabb_intersection(ray: &Ray, min: Vec3, max: Vec3) -> Option<f32> {
+    |    ^^^^^^^^^^^^^^^^^^^^^
+
+warning: constant `COLOR_GRAY` is never used
+  --> tools\aw_editor\src\gizmo\rendering.rs:19:11
+   |
+19 | pub const COLOR_GRAY: [f32; 3] = [0.5, 0.5, 0.5]; // Gray (inactive)
+   |           ^^^^^^^^^^
+
+warning: fields `position`, `rotation`, `camera_pos`, `view_proj`, and `mode` are never read
+  --> tools\aw_editor\src\gizmo\rendering.rs:25:9
+   |
+23 | pub struct GizmoRenderParams {
+   |            ----------------- fields in this struct
+24 |     /// Gizmo world position (center)
+25 |     pub position: Vec3,
+   |         ^^^^^^^^
+...
+28 |     pub rotation: Quat,
+   |         ^^^^^^^^
+...
+34 |     pub camera_pos: Vec3,
+   |         ^^^^^^^^^^
+...
+37 |     pub view_proj: Mat4,
+   |         ^^^^^^^^^
+...
+40 |     pub mode: GizmoMode,
+   |         ^^^^
+   |
+   = note: `GizmoRenderParams` has derived impls for the traits `Debug` and `Clone`, but these are intentionally ignored during dead code analysis
+
+warning: associated functions `transform_vertices` and `generate_label_position` are never used
+   --> tools\aw_editor\src\gizmo\rendering.rs:302:12
+    |
+52  | impl GizmoRenderer {
+    | ------------------ associated functions in this implementation
+...
+302 |     pub fn transform_vertices(vertices: &[Vec3], position: Vec3, rotation: Quat) -> Vec<Vec3> {
+    |            ^^^^^^^^^^^^^^^^^^
+...
+313 |     pub fn generate_label_position(axis: Vec3, params: &GizmoRenderParams) -> Vec3 {
+    |            ^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: struct `RotateGizmo` is never constructed
+ --> tools\aw_editor\src\gizmo\rotate.rs:7:12
+  |
+7 | pub struct RotateGizmo;
+  |            ^^^^^^^^^^^
+
+warning: associated functions `calculate_rotation`, `calculate_rotation_numeric`, and `get_rotation_angle` are never used
+   --> tools\aw_editor\src\gizmo\rotate.rs:22:12
+    |
+9   | impl RotateGizmo {
+    | ---------------- associated functions in this implementation
+...
+22  |     pub fn calculate_rotation(
+    |            ^^^^^^^^^^^^^^^^^^
+...
+76  |     pub fn calculate_rotation_numeric(
+    |            ^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+110 |     pub fn get_rotation_angle(rotation: Quat, axis: Vec3) -> f32 {
+    |            ^^^^^^^^^^^^^^^^^^
+
+warning: struct `ScaleGizmo` is never constructed
+  --> tools\aw_editor\src\gizmo\scale.rs:15:12
+   |
+15 | pub struct ScaleGizmo;
+   |            ^^^^^^^^^^
+
+warning: associated items `MIN_SCALE`, `MAX_SCALE`, `calculate_scale`, and `calculate_scale_numeric` are never used
+   --> tools\aw_editor\src\gizmo\scale.rs:19:11
+    |
+17  | impl ScaleGizmo {
+    | --------------- associated items in this implementation
+18  |     /// Minimum scale factor (prevent negative/zero scale)
+19  |     const MIN_SCALE: f32 = 0.01;
+    |           ^^^^^^^^^
+...
+22  |     const MAX_SCALE: f32 = 100.0;
+    |           ^^^^^^^^^
+...
+46  |     pub fn calculate_scale(
+    |            ^^^^^^^^^^^^^^^
+...
+100 |     pub fn calculate_scale_numeric(value: f32, constraint: AxisConstraint, uniform: bool) -> Vec3 {
+    |            ^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: struct `CameraController` is never constructed
+  --> tools\aw_editor\src\gizmo\scene_viewport.rs:19:12
+   |
+19 | pub struct CameraController {
+   |            ^^^^^^^^^^^^^^^^
+
+warning: multiple methods are never used
+   --> tools\aw_editor\src\gizmo\scene_viewport.rs:52:12
+    |
+50  | impl CameraController {
+    | --------------------- methods in this implementation
+51  |     /// Get view matrix.
+52  |     pub fn view_matrix(&self) -> Mat4 {
+    |            ^^^^^^^^^^^
+...
+57  |     pub fn projection_matrix(&self) -> Mat4 {
+    |            ^^^^^^^^^^^^^^^^^
+...
+62  |     pub fn view_projection_matrix(&self) -> Mat4 {
+    |            ^^^^^^^^^^^^^^^^^^^^^^
+...
+67  |     pub fn inverse_view_projection_matrix(&self) -> Mat4 {
+    |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+76  |     pub fn orbit(&mut self, delta: Vec2, sensitivity: f32) {
+    |            ^^^^^
+...
+99  |     pub fn pan(&mut self, delta: Vec2, sensitivity: f32) {
+    |            ^^^
+...
+121 |     pub fn zoom(&mut self, delta: f32, sensitivity: f32) {
+    |            ^^^^
+...
+133 |     pub fn distance(&self) -> f32 {
+    |            ^^^^^^^^
+
+warning: struct `Transform` is never constructed
+   --> tools\aw_editor\src\gizmo\scene_viewport.rs:140:12
+    |
+140 | pub struct Transform {
+    |            ^^^^^^^^^
+
+warning: method `matrix` is never used
+   --> tools\aw_editor\src\gizmo\scene_viewport.rs:158:12
+    |
+156 | impl Transform {
+    | -------------- method in this implementation
+157 |     /// Get transform matrix.
+158 |     pub fn matrix(&self) -> Mat4 {
+    |            ^^^^^^
+
+warning: struct `SceneViewport` is never constructed
+   --> tools\aw_editor\src\gizmo\scene_viewport.rs:164:12
+    |
+164 | pub struct SceneViewport {
+    |            ^^^^^^^^^^^^^
+
+warning: multiple associated items are never used
+   --> tools\aw_editor\src\gizmo\scene_viewport.rs:200:12
+    |
+198 | impl SceneViewport {
+    | ------------------ associated items in this implementation
+199 |     /// Create new scene viewport.
+200 |     pub fn new() -> Self {
+    |            ^^^
+...
+205 |     pub fn set_aspect_ratio(&mut self, width: f32, height: f32) {
+    |            ^^^^^^^^^^^^^^^^
+...
+210 |     pub fn handle_key(&mut self, key: KeyCode) {
+    |            ^^^^^^^^^^
+...
+215 |     pub fn update_mouse(&mut self, pos: Vec2) {
+    |            ^^^^^^^^^^^^
+...
+222 |     pub fn mouse_delta(&self) -> Vec2 {
+    |            ^^^^^^^^^^^
+...
+227 |     pub fn handle_mouse_down(&mut self) {
+    |            ^^^^^^^^^^^^^^^^^
+...
+250 |     pub fn handle_mouse_up(&mut self) {
+    |            ^^^^^^^^^^^^^^^
+...
+258 |     pub fn update_hover(&mut self) {
+    |            ^^^^^^^^^^^^
+...
+275 |     pub fn apply_gizmo_transform(&mut self) {
+    |            ^^^^^^^^^^^^^^^^^^^^^
+...
+355 |     pub fn gizmo_render_params(&self) -> Option<GizmoRenderParams> {
+    |            ^^^^^^^^^^^^^^^^^^^
+
+warning: methods `axis_vector`, `is_planar`, and `is_single_axis` are never used
+  --> tools\aw_editor\src\gizmo\state.rs:46:12
+   |
+44 | impl AxisConstraint {
+   | ------------------- methods in this implementation
+45 |     /// Get the constraint axis vector(s).
+46 |     pub fn axis_vector(self) -> Vec3 {
+   |            ^^^^^^^^^^^
+...
+59 |     pub fn is_planar(self) -> bool {
+   |            ^^^^^^^^^
+...
+67 |     pub fn is_single_axis(self) -> bool {
+   |            ^^^^^^^^^^^^^^
+
+warning: fields `position`, `rotation`, and `scale` are never read
+   --> tools\aw_editor\src\gizmo\state.rs:101:9
+    |
+100 | pub struct TransformSnapshot {
+    |            ----------------- fields in this struct
+101 |     pub position: Vec3,
+    |         ^^^^^^^^
+102 |     pub rotation: Quat,
+    |         ^^^^^^^^
+103 |     pub scale: Vec3,
+    |         ^^^^^
+    |
+    = note: `TransformSnapshot` has derived impls for the traits `Clone` and `Debug`, but these are intentionally ignored during dead code analysis
+
+warning: fields `start_transform` and `local_space` are never read
+   --> tools\aw_editor\src\gizmo\state.rs:126:9
+    |
+118 | pub struct GizmoState {
+    |            ---------- fields in this struct
+...
+126 |     pub start_transform: Option<TransformSnapshot>,
+    |         ^^^^^^^^^^^^^^^
+...
+144 |     pub local_space: bool,
+    |         ^^^^^^^^^^^
+    |
+    = note: `GizmoState` has derived impls for the traits `Clone` and `Debug`, but these are intentionally ignored during dead code analysis
+
+warning: methods `update_mouse`, `mouse_delta`, `parse_numeric_input`, `is_active`, `constraint_text`, and `mode_text` are never used
+   --> tools\aw_editor\src\gizmo\state.rs:276:12
+    |
+163 | impl GizmoState {
+    | --------------- methods in this implementation
+...
+276 |     pub fn update_mouse(&mut self, pos: Vec2) {
+    |            ^^^^^^^^^^^^
+...
+284 |     pub fn mouse_delta(&self) -> Vec2 {
+    |            ^^^^^^^^^^^
+...
+292 |     pub fn parse_numeric_input(&self) -> Option<f32> {
+    |            ^^^^^^^^^^^^^^^^^^^
+...
+301 |     pub fn is_active(&self) -> bool {
+    |            ^^^^^^^^^
+...
+315 |     pub fn constraint_text(&self) -> String {
+    |            ^^^^^^^^^^^^^^^
+...
+335 |     pub fn mode_text(&self) -> String {
+    |            ^^^^^^^^^
+
+warning: struct `TranslateGizmo` is never constructed
+ --> tools\aw_editor\src\gizmo\translate.rs:7:12
+  |
+7 | pub struct TranslateGizmo;
+  |            ^^^^^^^^^^^^^^
+
+warning: associated functions `calculate_translation`, `calculate_translation_numeric`, `apply_constraint_world`, and `apply_constraint_local` are never used
+   --> tools\aw_editor\src\gizmo\translate.rs:21:12
+    |
+9   | impl TranslateGizmo {
+    | ------------------- associated functions in this implementation
+...
+21  |     pub fn calculate_translation(
+    |            ^^^^^^^^^^^^^^^^^^^^^
+...
+68  |     pub fn calculate_translation_numeric(
+    |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+95  |     fn apply_constraint_world(delta: Vec3, constraint: AxisConstraint) -> Vec3 {
+    |        ^^^^^^^^^^^^^^^^^^^^^^
+...
+108 |     fn apply_constraint_local(delta: Vec3, constraint: AxisConstraint) -> Vec3 {
+    |        ^^^^^^^^^^^^^^^^^^^^^^
+
+warning: field `pan_offset` is never read
+  --> tools\aw_editor\src\material_inspector.rs:37:9
+   |
+22 | pub struct MaterialInspector {
+   |            ----------------- field in this struct
+...
+37 |     pub pan_offset: (f32, f32),
+   |         ^^^^^^^^^^
+
+warning: variant `Split` is never constructed
+   --> tools\aw_editor\src\material_inspector.rs:126:5
+    |
+122 | pub enum DisplayMode {
+    |          ----------- variant in this enum
+...
+126 |     Split, // Side-by-side comparison
+    |     ^^^^^
+    |
+    = note: `DisplayMode` has derived impls for the traits `Clone` and `Debug`, but these are intentionally ignored during dead code analysis
+
+warning: method `name` is never used
+  --> tools\aw_editor\src\panels\mod.rs:11:8
+   |
+9  | pub trait Panel {
+   |           ----- method in this trait
+10 |     /// Panel display name (shown in tabs/titles)
+11 |     fn name(&self) -> &str;
+   |        ^^^^
+
+warning: field `initialized` is never read
+  --> tools\aw_editor\src\panels\advanced_widgets_panel.rs:21:5
+   |
+5  | pub struct AdvancedWidgetsPanel {
+   |            -------------------- field in this struct
+...
+21 |     initialized: bool,
+   |     ^^^^^^^^^^^
+
+warning: methods `initialize_tree_views` and `update` are never used
+   --> tools\aw_editor\src\panels\advanced_widgets_panel.rs:80:8
+    |
+30  | impl AdvancedWidgetsPanel {
+    | ------------------------- methods in this implementation
+...
+80  |     fn initialize_tree_views(&mut self) {
+    |        ^^^^^^^^^^^^^^^^^^^^^
+...
+188 |     pub fn update(&mut self) {
+    |            ^^^^^^
+
+warning: struct `SceneEntity` is never constructed
+  --> tools\aw_editor\src\panels\transform_panel.rs:14:12
+   |
+14 | pub struct SceneEntity {
+   |            ^^^^^^^^^^^
+
+warning: struct `TransformPanel` is never constructed
+  --> tools\aw_editor\src\panels\transform_panel.rs:31:12
+   |
+31 | pub struct TransformPanel {
+   |            ^^^^^^^^^^^^^^
+
+warning: multiple associated items are never used
+   --> tools\aw_editor\src\panels\transform_panel.rs:99:12
+    |
+97  | impl TransformPanel {
+    | ------------------- associated items in this implementation
+98  |     /// Create new transform panel
+99  |     pub fn new() -> Self {
+    |            ^^^
+...
+104 |     pub fn add_entity(&mut self, name: String, transform: Transform) -> u32 {
+    |            ^^^^^^^^^^
+...
+119 |     pub fn remove_entity(&mut self, id: u32) {
+    |            ^^^^^^^^^^^^^
+...
+127 |     pub fn select_entity(&mut self, id: u32) {
+    |            ^^^^^^^^^^^^^
+...
+136 |     pub fn set_selected(&mut self, transform: Transform) {
+    |            ^^^^^^^^^^^^
+...
+141 |     pub fn get_transform(&self) -> Option<&Transform> {
+    |            ^^^^^^^^^^^^^
+...
+146 |     pub fn get_transform_mut(&mut self) -> Option<&mut Transform> {
+    |            ^^^^^^^^^^^^^^^^^
+...
+151 |     pub fn clear_selection(&mut self) {
+    |            ^^^^^^^^^^^^^^^
+...
+157 |     pub fn start_translate(&mut self) {
+    |            ^^^^^^^^^^^^^^^
+...
+169 |     pub fn start_rotate(&mut self) {
+    |            ^^^^^^^^^^^^
+...
+181 |     pub fn start_scale(&mut self) {
+    |            ^^^^^^^^^^^
+...
+193 |     pub fn confirm_transform(&mut self) {
+    |            ^^^^^^^^^^^^^^^^^
+...
+206 |     pub fn cancel_transform(&mut self) {
+    |            ^^^^^^^^^^^^^^^^
+...
+219 |     fn apply_numeric_input(&mut self, value: f32) {
+    |        ^^^^^^^^^^^^^^^^^^^
+...
+255 |     fn calculate_translation_numeric(
+    |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+269 |     fn calculate_rotation_numeric(
+    |        ^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+284 |     fn calculate_scale_numeric(value: f32, constraint: AxisConstraint, uniform: bool) -> Vec3 {
+    |        ^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: type alias `ViewportResult` is never used
+  --> tools\aw_editor\src\viewport\mod.rs:53:10
+   |
+53 | pub type ViewportResult<T> = anyhow::Result<T>;
+   |          ^^^^^^^^^^^^^^
+
+warning: associated items `new`, `frame_entity`, `right`, and `up` are never used
+   --> tools\aw_editor\src\viewport\camera.rs:115:12
+    |
+106 | impl OrbitCamera {
+    | ---------------- associated items in this implementation
+...
+115 |     pub fn new(focal_point: Vec3, distance: f32, yaw: f32, pitch: f32) -> Self {
+    |            ^^^
+...
+203 |     pub fn frame_entity(&mut self, entity_pos: Vec3, entity_radius: f32) {
+    |            ^^^^^^^^^^^^
+...
+255 |     pub fn right(&self) -> Vec3 {
+    |            ^^^^^
+...
+260 |     pub fn up(&self) -> Vec3 {
+    |            ^^
+
+warning: fields `origin` and `direction` are never read
+   --> tools\aw_editor\src\viewport\camera.rs:319:9
+    |
+317 | pub struct Ray {
+    |            --- fields in this struct
+318 |     /// Ray origin (world space)
+319 |     pub origin: Vec3,
+    |         ^^^^^^
+...
+322 |     pub direction: Vec3,
+    |         ^^^^^^^^^
+    |
+    = note: `Ray` has derived impls for the traits `Clone` and `Debug`, but these are intentionally ignored during dead code analysis
+
+warning: associated items `new` and `at` are never used
+   --> tools\aw_editor\src\viewport\camera.rs:327:12
+    |
+325 | impl Ray {
+    | -------- associated items in this implementation
+326 |     /// Create new ray
+327 |     pub fn new(origin: Vec3, direction: Vec3) -> Self {
+    |            ^^^
+...
+335 |     pub fn at(&self, t: f32) -> Vec3 {
+    |            ^^
+
+warning: field `bind_group_layout` is never read
+  --> tools\aw_editor\src\viewport\entity_renderer.rs:38:5
+   |
+33 | pub struct EntityRenderer {
+   |            -------------- field in this struct
+...
+38 |     bind_group_layout: wgpu::BindGroupLayout,
+   |     ^^^^^^^^^^^^^^^^^
+
+warning: fields `bind_group_layout` and `device` are never read
+  --> tools\aw_editor\src\viewport\gizmo_renderer.rs:25:5
+   |
+20 | pub struct GizmoRendererWgpu {
+   |            ----------------- fields in this struct
+...
+25 |     bind_group_layout: wgpu::BindGroupLayout,
+   |     ^^^^^^^^^^^^^^^^^
+...
+40 |     device: wgpu::Device,
+   |     ^^^^^^
+
+warning: field `bind_group_layout` is never read
+  --> tools\aw_editor\src\viewport\grid_renderer.rs:30:5
+   |
+25 | pub struct GridRenderer {
+   |            ------------ field in this struct
+...
+30 |     bind_group_layout: wgpu::BindGroupLayout,
+   |     ^^^^^^^^^^^^^^^^^
+
+warning: methods `size` and `selected_entity` are never used
+   --> tools\aw_editor\src\viewport\renderer.rs:289:12
+    |
+68  | impl ViewportRenderer {
+    | --------------------- methods in this implementation
+...
+289 |     pub fn size(&self) -> (u32, u32) {
+    |            ^^^^
+...
+309 |     pub fn selected_entity(&self) -> Option<Entity> {
+    |            ^^^^^^^^^^^^^^^
+
+warning: fields `bind_group_layout` and `vertex_buffer` are never read
+  --> tools\aw_editor\src\viewport\skybox_renderer.rs:22:5
+   |
+17 | pub struct SkyboxRenderer {
+   |            -------------- fields in this struct
+...
+22 |     bind_group_layout: wgpu::BindGroupLayout,
+   |     ^^^^^^^^^^^^^^^^^
+...
+31 |     vertex_buffer: wgpu::Buffer,
+   |     ^^^^^^^^^^^^^
+
+warning: methods `camera` and `camera_mut` are never used
+   --> tools\aw_editor\src\viewport\widget.rs:643:12
+    |
+85  | impl ViewportWidget {
+    | ------------------- methods in this implementation
+...
+643 |     pub fn camera(&self) -> &OrbitCamera {
+    |            ^^^^^^
+...
+648 |     pub fn camera_mut(&mut self) -> &mut OrbitCamera {
+    |            ^^^^^^^^^^
+
+warning: `astraweave-persistence-player` (lib test) generated 4 warnings (4 duplicates)
+warning: `aw_editor` (bin "aw_editor") generated 76 warnings (2 duplicates) (run `cargo fix --bin "aw_editor"` to apply 20 suggestions)
+warning: unused import: `super::*`
+   --> tools\aw_editor\src\viewport\renderer.rs:316:9
+    |
+316 |     use super::*;
+    |         ^^^^^^^^
+
+warning: unused variable: `mode`
+   --> tools\aw_editor\src\gizmo\picking.rs:501:13
+    |
+501 |         let mode = GizmoMode::Translate {
+    |             ^^^^ help: if this is intentional, prefix it with an underscore: `_mode`
+
+warning: method `clear` is never used
+  --> tools\aw_editor\src\gizmo\input.rs:22:12
+   |
+9  | impl NumericInput {
+   | ----------------- method in this implementation
+...
+22 |     pub fn clear(&mut self) {
+   |            ^^^^^
+
+warning: variants `RotateX` and `RotateZ` are never constructed
+  --> tools\aw_editor\src\gizmo\picking.rs:19:5
+   |
+15 | pub enum GizmoHandle {
+   |          ----------- variants in this enum
+...
+19 |     RotateX,
+   |     ^^^^^^^
+20 |     RotateY,
+21 |     RotateZ,
+   |     ^^^^^^^
+   |
+   = note: `GizmoHandle` has derived impls for the traits `Clone` and `Debug`, but these are intentionally ignored during dead code analysis
+
+warning: field `max_distance` is never read
+   --> tools\aw_editor\src\gizmo\picking.rs:120:9
+    |
+118 | pub struct GizmoPicker {
+    |            ----------- field in this struct
+119 |     /// Maximum pick distance (in world units).
+120 |     pub max_distance: f32,
+    |         ^^^^^^^^^^^^
+    |
+    = note: `GizmoPicker` has derived impls for the traits `Clone` and `Debug`, but these are intentionally ignored during dead code analysis
+
+warning: methods `pick_handle` and `pick_rotate_handle` are never used
+   --> tools\aw_editor\src\gizmo\picking.rs:150:12
+    |
+139 | impl GizmoPicker {
+    | ---------------- methods in this implementation
+...
+150 |     pub fn pick_handle(
+    |            ^^^^^^^^^^^
+...
+201 |     fn pick_rotate_handle(&self, ray: &Ray, gizmo_pos: Vec3) -> Option<GizmoHandle> {
+    |        ^^^^^^^^^^^^^^^^^^
+
+warning: associated function `generate_label_position` is never used
+   --> tools\aw_editor\src\gizmo\rendering.rs:313:12
+    |
+52  | impl GizmoRenderer {
+    | ------------------ associated function in this implementation
+...
+313 |     pub fn generate_label_position(axis: Vec3, params: &GizmoRenderParams) -> Vec3 {
+    |            ^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: fields `fov`, `aspect`, `near`, and `far` are never read
+  --> tools\aw_editor\src\gizmo\scene_viewport.rs:27:9
+   |
+19 | pub struct CameraController {
+   |            ---------------- fields in this struct
+...
+27 |     pub fov: f32,
+   |         ^^^
+28 |     /// Aspect ratio (width / height).
+29 |     pub aspect: f32,
+   |         ^^^^^^
+30 |     /// Near plane distance.
+31 |     pub near: f32,
+   |         ^^^^
+32 |     /// Far plane distance.
+33 |     pub far: f32,
+   |         ^^^
+   |
+   = note: `CameraController` has derived impls for the traits `Clone` and `Debug`, but these are intentionally ignored during dead code analysis
+
+warning: methods `projection_matrix`, `view_projection_matrix`, and `inverse_view_projection_matrix` are never used
+  --> tools\aw_editor\src\gizmo\scene_viewport.rs:57:12
+   |
+50 | impl CameraController {
+   | --------------------- methods in this implementation
+...
+57 |     pub fn projection_matrix(&self) -> Mat4 {
+   |            ^^^^^^^^^^^^^^^^^
+...
+62 |     pub fn view_projection_matrix(&self) -> Mat4 {
+   |            ^^^^^^^^^^^^^^^^^^^^^^
+...
+67 |     pub fn inverse_view_projection_matrix(&self) -> Mat4 {
+   |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: fields `camera` and `gizmo_picker` are never read
+   --> tools\aw_editor\src\gizmo\scene_viewport.rs:166:9
+    |
+164 | pub struct SceneViewport {
+    |            ------------- fields in this struct
+165 |     /// Camera controller.
+166 |     pub camera: CameraController,
+    |         ^^^^^^
+...
+170 |     pub gizmo_picker: GizmoPicker,
+    |         ^^^^^^^^^^^^
+
+warning: methods `set_aspect_ratio`, `handle_key`, `update_hover`, `apply_gizmo_transform`, and `gizmo_render_params` are never used
+   --> tools\aw_editor\src\gizmo\scene_viewport.rs:205:12
+    |
+198 | impl SceneViewport {
+    | ------------------ methods in this implementation
+...
+205 |     pub fn set_aspect_ratio(&mut self, width: f32, height: f32) {
+    |            ^^^^^^^^^^^^^^^^
+...
+210 |     pub fn handle_key(&mut self, key: KeyCode) {
+    |            ^^^^^^^^^^
+...
+258 |     pub fn update_hover(&mut self) {
+    |            ^^^^^^^^^^^^
+...
+275 |     pub fn apply_gizmo_transform(&mut self) {
+    |            ^^^^^^^^^^^^^^^^^^^^^
+...
+355 |     pub fn gizmo_render_params(&self) -> Option<GizmoRenderParams> {
+    |            ^^^^^^^^^^^^^^^^^^^
+
+warning: method `update` is never used
+   --> tools\aw_editor\src\panels\advanced_widgets_panel.rs:188:12
+    |
+30  | impl AdvancedWidgetsPanel {
+    | ------------------------- method in this implementation
+...
+188 |     pub fn update(&mut self) {
+    |            ^^^^^^
+
+warning: associated function `new` is never used
+   --> tools\aw_editor\src\viewport\camera.rs:115:12
+    |
+106 | impl OrbitCamera {
+    | ---------------- associated function in this implementation
+...
+115 |     pub fn new(focal_point: Vec3, distance: f32, yaw: f32, pitch: f32) -> Self {
+    |            ^^^
+
+warning: `aw_editor` (bin "aw_editor" test) generated 57 warnings (44 duplicates) (run `cargo fix --bin "aw_editor" --tests` to apply 1 suggestion)
+warning: unused imports: `Signature`, `SigningKey`, and `VerifyingKey`
+ --> astraweave-security\src\signature_tests.rs:9:21
+  |
+9 | use ed25519_dalek::{Signature, SigningKey, VerifyingKey};
+  |                     ^^^^^^^^^  ^^^^^^^^^^  ^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` on by default
+
+warning: `astraweave-security` (lib test) generated 1 warning (run `cargo fix --lib -p astraweave-security --tests` to apply 1 suggestion)
+    Checking asset_signing v0.1.0 (C:\Users\pv2br\AstraWeave-AI-Native-Gaming-Engine\tools\asset_signing)
+warning: unexpected `cfg` condition value: `veilweaver_slice`
+ --> examples\adaptive_boss\src\main.rs:3:7
+  |
+3 | #[cfg(feature = "veilweaver_slice")]
+  |       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: remove the condition
+  |
+  = note: no expected values for `feature`
+  = help: consider adding `veilweaver_slice` as a feature in `Cargo.toml`
+  = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+  = note: `#[warn(unexpected_cfgs)]` on by default
+
+warning: unexpected `cfg` condition value: `veilweaver_slice`
+  --> examples\adaptive_boss\src\main.rs:45:11
+   |
+45 |     #[cfg(feature = "veilweaver_slice")]
+   |           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: remove the condition
+   |
+   = note: no expected values for `feature`
+   = help: consider adding `veilweaver_slice` as a feature in `Cargo.toml`
+   = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+
+warning: unexpected `cfg` condition value: `veilweaver_slice`
+  --> examples\adaptive_boss\src\main.rs:61:15
+   |
+61 |     #[cfg(not(feature = "veilweaver_slice"))]
+   |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: remove the condition
+   |
+   = note: no expected values for `feature`
+   = help: consider adding `veilweaver_slice` as a feature in `Cargo.toml`
+   = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+
+warning: `adaptive_boss` (bin "adaptive_boss") generated 3 warnings
+    Checking unified_showcase v0.1.0 (C:\Users\pv2br\AstraWeave-AI-Native-Gaming-Engine\examples\unified_showcase)
+error[E0063]: missing field `speed` in initializer of `ActionStep`
+  --> examples\coop_client\src\main.rs:34:13
+   |
+34 |             ActionStep::MoveTo { x: 4, y: 3 },
+   |             ^^^^^^^^^^^^^^^^^^ missing `speed`
+
+error[E0027]: pattern does not mention field `speed`
+  --> examples\coop_client\src\main.rs:70:16
+   |
+70 |         if let ActionStep::MoveTo { x, y } = s {
+   |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^ missing field `speed`
+   |
+help: include the missing field in the pattern
+   |
+70 |         if let ActionStep::MoveTo { x, y, speed } = s {
+   |                                         +++++++
+help: if you don't care about this missing field, you can explicitly ignore it
+   |
+70 |         if let ActionStep::MoveTo { x, y, speed: _ } = s {
+   |                                         ++++++++++
+help: or always ignore missing fields here
+   |
+70 |         if let ActionStep::MoveTo { x, y, .. } = s {
+   |                                         ++++
+
+error[E0027]: pattern does not mention field `speed`
+   --> examples\coop_client\src\main.rs:116:49
+    |
+116 | ...                   if let Some(ActionStep::MoveTo { x, y }) = intent.steps.first()
+    |                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^ missing field `speed`
+    |
+help: include the missing field in the pattern
+    |
+116 |                                     if let Some(ActionStep::MoveTo { x, y, speed }) = intent.steps.first()
+    |                                                                          +++++++
+help: if you don't care about this missing field, you can explicitly ignore it
+    |
+116 |                                     if let Some(ActionStep::MoveTo { x, y, speed: _ }) = intent.steps.first()
+    |                                                                          ++++++++++
+help: or always ignore missing fields here
+    |
+116 |                                     if let Some(ActionStep::MoveTo { x, y, .. }) = intent.steps.first()
+    |                                                                          ++++
+
+Some errors have detailed explanations: E0027, E0063.
+For more information about an error, try `rustc --explain E0027`.
+error: could not compile `coop_client` (bin "coop_client") due to 3 previous errors
+warning: build failed, waiting for other jobs to finish...
+error: expected expression, found `%`
+  --> astraweave-gameplay\src\veilweaver_tutorial.rs:98:49
+   |
+98 |                 info!("Anchor stabilized", id = %anchor_id, order = ?anchor.activation_order);
+   |                                                 ^ expected expression
+
+error: expected expression, found `%`
+   --> astraweave-gameplay\src\veilweaver_tutorial.rs:105:41
+    |
+105 |         info!("Trigger activated", id = %trigger_id);
+    |                                         ^ expected expression
+
+error: expected expression, found `%`
+   --> astraweave-gameplay\src\veilweaver_tutorial.rs:110:43
+    |
+110 |             info!("Trigger cleared", id = %trigger_id);
+    |                                           ^ expected expression
+
+error[E0277]: the trait bound `OsRng: rand_core::CryptoRngCore` is not satisfied
+   --> tools\asset_signing\src\lib.rs:42:39
+    |
+42  |         let sk = SigningKey::generate(&mut OsRng);
+    |                  -------------------- ^^^^^^^^^^ the trait `rand_core::CryptoRng` is not implemented for `OsRng`
+    |                  |
+    |                  required by a bound introduced by this call
+    |
+note: there are multiple different versions of crate `rand_core` in the dependency graph
+   --> C:\Users\pv2br\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\rand_core-0.6.4\src\lib.rs:209:1
+    |
+209 | pub trait CryptoRng {}
+    | ^^^^^^^^^^^^^^^^^^^ this is the required trait
+    |
+   ::: tools\asset_signing\src\lib.rs:2:5
+    |
+2   | use ed25519_dalek::{Signature, Signer, SigningKey, VerifyingKey, SECRET_KEY_LENGTH};
+    |     ------------- one version of crate `rand_core` used here, as a dependency of crate `ed25519_dalek`
+...
+37  |     use rand::rngs::OsRng;
+    |         ---- one version of crate `rand_core` used here, as a dependency of crate `rand`
+    |
+   ::: C:\Users\pv2br\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\rand_core-0.9.3\src\os.rs:47:1
+    |
+47  | pub struct OsRng;
+    | ---------------- this type doesn't implement the required trait
+    |
+   ::: C:\Users\pv2br\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\rand_core-0.6.4\src\os.rs:48:1
+    |
+48  | pub struct OsRng;
+    | ---------------- this type implements the required trait
+    |
+   ::: C:\Users\pv2br\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\rand_core-0.9.3\src\block.rs:67:1
+    |
+67  | pub trait BlockRngCore {
+    | ---------------------- this is the found trait
+    = note: two types coming from two different versions of the same crate are different types even if they look the same
+    = help: you can use `cargo tree` to explore your dependency tree
+    = note: required for `OsRng` to implement `rand_core::CryptoRngCore`
+note: required by a bound in `ed25519_dalek::SigningKey::generate`
+   --> C:\Users\pv2br\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\ed25519-dalek-2.2.0\src\signing.rs:202:24
+    |
+202 |     pub fn generate<R: CryptoRngCore + ?Sized>(csprng: &mut R) -> SigningKey {
+    |                        ^^^^^^^^^^^^^ required by this bound in `SigningKey::generate`
+
+error[E0277]: the trait bound `OsRng: rand_core::CryptoRngCore` is not satisfied
+   --> tools\asset_signing\src\lib.rs:42:39
+    |
+42  |         let sk = SigningKey::generate(&mut OsRng);
+    |                  -------------------- ^^^^^^^^^^ the trait `rand_core::RngCore` is not implemented for `OsRng`
+    |                  |
+    |                  required by a bound introduced by this call
+    |
+note: there are multiple different versions of crate `rand_core` in the dependency graph
+   --> C:\Users\pv2br\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\rand_core-0.6.4\src\lib.rs:142:1
+    |
+142 | pub trait RngCore {
+    | ^^^^^^^^^^^^^^^^^ this is the required trait
+    |
+   ::: tools\asset_signing\src\lib.rs:2:5
+    |
+2   | use ed25519_dalek::{Signature, Signer, SigningKey, VerifyingKey, SECRET_KEY_LENGTH};
+    |     ------------- one version of crate `rand_core` used here, as a dependency of crate `ed25519_dalek`
+...
+37  |     use rand::rngs::OsRng;
+    |         ---- one version of crate `rand_core` used here, as a dependency of crate `rand`
+    |
+   ::: C:\Users\pv2br\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\rand_core-0.9.3\src\os.rs:47:1
+    |
+47  | pub struct OsRng;
+    | ---------------- this type doesn't implement the required trait
+    |
+   ::: C:\Users\pv2br\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\rand_core-0.6.4\src\os.rs:48:1
+    |
+48  | pub struct OsRng;
+    | ---------------- this type implements the required trait
+    |
+   ::: C:\Users\pv2br\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\rand_core-0.9.3\src\block.rs:67:1
+    |
+67  | pub trait BlockRngCore {
+    | ---------------------- this is the found trait
+    = note: two types coming from two different versions of the same crate are different types even if they look the same
+    = help: you can use `cargo tree` to explore your dependency tree
+    = note: required for `OsRng` to implement `rand_core::CryptoRngCore`
+note: required by a bound in `ed25519_dalek::SigningKey::generate`
+   --> C:\Users\pv2br\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\ed25519-dalek-2.2.0\src\signing.rs:202:24
+    |
+202 |     pub fn generate<R: CryptoRngCore + ?Sized>(csprng: &mut R) -> SigningKey {
+    |                        ^^^^^^^^^^^^^ required by this bound in `SigningKey::generate`
+
+error: could not compile `coop_client` (bin "coop_client" test) due to 3 previous errors
+For more information about this error, try `rustc --explain E0277`.
+error[E0432]: unresolved import `astraweave_scene::world_partition::CellComponentView`
+ --> astraweave-gameplay\src\veilweaver_slice.rs:2:47
+  |
+2 | use astraweave_scene::world_partition::{Cell, CellComponentView, GridCoord};
+  |                                               ^^^^^^^^^^^^^^^^^ no `CellComponentView` in `world_partition`
+
+error: could not compile `asset_signing` (lib test) due to 2 previous errors
+error[E0277]: a value of type `HashMap<u64, (usize, Vec3)>` cannot be built from an iterator over elements of type `(u32, (usize, Vec3))`
+    --> examples\profiling_demo\src\main.rs:444:18
+     |
+444  |                 .collect();
+     |                  ^^^^^^^ value of type `HashMap<u64, (usize, Vec3)>` cannot be built from `std::iter::Iterator<Item=(u32, (usize, Vec3))>`
+     |
+     = help: the trait `FromIterator<(u32, (_, Vec3))>` is not implemented for `HashMap<u64, (usize, Vec3)>`
+             but trait `FromIterator<(u64, (_, Vec3))>` is implemented for it
+     = help: for that trait implementation, expected `u64`, found `u32`
+note: the method call chain might not have had the expected associated types
+    --> examples\profiling_demo\src\main.rs:443:18
+     |
+433  |           let entities_data: Vec<(Entity, Vec3)> = {
+     |  __________________________________________________-
+434  | |             let query = Query2::<Position, RigidBody>::new(world);
+435  | |             query.map(|(entity, pos, _)| (entity, pos.0)).collect()
+436  | |         };
+     | |_________- this expression has type `Vec<(Entity, Vec3)>`
+...
+441  |                   .iter()
+     |                    ------ `Iterator::Item` is `&(Entity, Vec3)` here
+442  |                   .enumerate()
+     |                    ----------- `Iterator::Item` changed to `(usize, &(Entity, Vec3))` here
+443  |                   .map(|(i, (e, pos))| (e.id(), (i, *pos)))
+     |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `Iterator::Item` changed to `(u32, (usize, Vec3))` here
+note: required by a bound in `collect`
+    --> C:\Users\pv2br\.rustup\toolchains\1.89.0-x86_64-pc-windows-msvc\lib/rustlib/src/rust\library\core\src\iter\traits\iterator.rs:2014:19
+     |
+2014 |     fn collect<B: FromIterator<Self::Item>>(self) -> B
+     |                   ^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `Iterator::collect`
+
+error[E0308]: mismatched types
+   --> examples\profiling_demo\src\main.rs:462:71
+    |
+462 |                     if let Some(&(j, candidate_pos)) = entity_map.get(&candidate_id) {
+    |                                                                   --- ^^^^^^^^^^^^^ expected `&u64`, found `&u32`
+    |                                                                   |
+    |                                                                   arguments to this method are incorrect
+    |
+    = note: expected reference `&u64`
+               found reference `&u32`
+note: method defined here
+   --> C:\Users\pv2br\.rustup\toolchains\1.89.0-x86_64-pc-windows-msvc\lib/rustlib/src/rust\library\std\src\collections\hash\map.rs:905:12
+    |
+905 |     pub fn get<Q: ?Sized>(&self, k: &Q) -> Option<&V>
+    |            ^^^
+
+warning: unused variable: `cache_hit_rate`
+   --> examples\profiling_demo\src\main.rs:369:9
+    |
+369 |     let cache_hit_rate = if planning_count > 0 {
+    |         ^^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_cache_hit_rate`
+    |
+    = note: `#[warn(unused_variables)]` on by default
+
+warning: variable `moved_count` is assigned to, but never used
+   --> examples\profiling_demo\src\main.rs:392:13
+    |
+392 |     let mut moved_count = 0;
+    |             ^^^^^^^^^^^
+    |
+    = note: consider using `_moved_count` instead
+
+warning: variable `draw_calls` is assigned to, but never used
+   --> examples\profiling_demo\src\main.rs:505:13
+    |
+505 |     let mut draw_calls = 0;
+    |             ^^^^^^^^^^
+    |
+    = note: consider using `_draw_calls` instead
+
+warning: variable `vertex_count` is assigned to, but never used
+   --> examples\profiling_demo\src\main.rs:506:13
+    |
+506 |     let mut vertex_count = 0;
+    |             ^^^^^^^^^^^^
+    |
+    = note: consider using `_vertex_count` instead
+
+Some errors have detailed explanations: E0277, E0308.
+For more information about an error, try `rustc --explain E0277`.
+warning: `profiling_demo` (bin "profiling_demo") generated 4 warnings
+error: could not compile `profiling_demo` (bin "profiling_demo") due to 2 previous errors; 4 warnings emitted
+warning: `profiling_demo` (bin "profiling_demo" test) generated 4 warnings (4 duplicates)
+error: could not compile `profiling_demo` (bin "profiling_demo" test) due to 2 previous errors; 4 warnings emitted
+error[E0412]: cannot find type `Vec3` in this scope
+   --> examples\unified_showcase\src\main_bevy_v2.rs:37:15
+    |
+37  |     position: Vec3,
+    |               ^^^^
+    |
+   ::: C:\Users\pv2br\.rustup\toolchains\1.89.0-x86_64-pc-windows-msvc\lib/rustlib/src/rust\library\alloc\src\vec\mod.rs:414:1
+    |
+414 | pub struct Vec<T, #[unstable(feature = "allocator_api", issue = "32838")] A: Allocator = Global> {
+    | ------------------------------------------------------------------------------------------------ similarly named struct `Vec` defined here
+    |
+help: a struct with a similar name exists
+    |
+37  -     position: Vec3,
+37  +     position: Vec,
+    |
+help: consider importing this struct
+    |
+27  + use glam::Vec3;
+    |
+
+error[E0433]: failed to resolve: use of undeclared type `Vec3`
+  --> examples\unified_showcase\src\main_bevy_v2.rs:49:23
+   |
+49 |             position: Vec3::new(0.0, 2.0, 10.0),
+   |                       ^^^^ use of undeclared type `Vec3`
+   |
+help: a struct with a similar name exists
+   |
+49 -             position: Vec3::new(0.0, 2.0, 10.0),
+49 +             position: Vec::new(0.0, 2.0, 10.0),
+   |
+help: consider importing this struct
+   |
+27 + use glam::Vec3;
+   |
+
+error[E0412]: cannot find type `Mat4` in this scope
+  --> examples\unified_showcase\src\main_bevy_v2.rs:59:30
+   |
+59 |     fn view_matrix(&self) -> Mat4 {
+   |                              ^^^^ not found in this scope
+   |
+help: consider importing this struct
+   |
+27 + use glam::Mat4;
+   |
+
+error[E0433]: failed to resolve: use of undeclared type `Vec3`
+  --> examples\unified_showcase\src\main_bevy_v2.rs:60:23
+   |
+60 |         let forward = Vec3::new(
+   |                       ^^^^ use of undeclared type `Vec3`
+   |
+help: a struct with a similar name exists
+   |
+60 -         let forward = Vec3::new(
+60 +         let forward = Vec::new(
+   |
+help: consider importing this struct
+   |
+27 + use glam::Vec3;
+   |
+
+error[E0433]: failed to resolve: use of undeclared type `Mat4`
+  --> examples\unified_showcase\src\main_bevy_v2.rs:65:9
+   |
+65 |         Mat4::look_at_rh(self.position, self.position + forward, Vec3::Y)
+   |         ^^^^ use of undeclared type `Mat4`
+   |
+help: consider importing this struct
+   |
+27 + use glam::Mat4;
+   |
+
+error[E0433]: failed to resolve: use of undeclared type `Vec3`
+  --> examples\unified_showcase\src\main_bevy_v2.rs:65:66
+   |
+65 |         Mat4::look_at_rh(self.position, self.position + forward, Vec3::Y)
+   |                                                                  ^^^^ use of undeclared type `Vec3`
+   |
+help: a struct with a similar name exists
+   |
+65 -         Mat4::look_at_rh(self.position, self.position + forward, Vec3::Y)
+65 +         Mat4::look_at_rh(self.position, self.position + forward, Vec::Y)
+   |
+help: consider importing this struct
+   |
+27 + use glam::Vec3;
+   |
+
+error[E0412]: cannot find type `Mat4` in this scope
+  --> examples\unified_showcase\src\main_bevy_v2.rs:68:36
+   |
+68 |     fn projection_matrix(&self) -> Mat4 {
+   |                                    ^^^^ not found in this scope
+   |
+help: consider importing this struct
+   |
+27 + use glam::Mat4;
+   |
+
+error[E0433]: failed to resolve: use of undeclared type `Mat4`
+  --> examples\unified_showcase\src\main_bevy_v2.rs:69:9
+   |
+69 |         Mat4::perspective_rh(self.fov, self.aspect, self.near, self.far)
+   |         ^^^^ use of undeclared type `Mat4`
+   |
+help: consider importing this struct
+   |
+27 + use glam::Mat4;
+   |
+
+error[E0412]: cannot find type `Vec2` in this scope
+   --> examples\unified_showcase\src\main_bevy_v2.rs:81:18
+    |
+81  |     mouse_delta: Vec2,
+    |                  ^^^^
+    |
+   ::: C:\Users\pv2br\.rustup\toolchains\1.89.0-x86_64-pc-windows-msvc\lib/rustlib/src/rust\library\alloc\src\vec\mod.rs:414:1
+    |
+414 | pub struct Vec<T, #[unstable(feature = "allocator_api", issue = "32838")] A: Allocator = Global> {
+    | ------------------------------------------------------------------------------------------------ similarly named struct `Vec` defined here
+    |
+help: a struct with a similar name exists
+    |
+81  -     mouse_delta: Vec2,
+81  +     mouse_delta: Vec,
+    |
+help: consider importing this struct
+    |
+27  + use glam::Vec2;
+    |
+
+error[E0433]: failed to resolve: use of undeclared type `Vec2`
+  --> examples\unified_showcase\src\main_bevy_v2.rs:94:26
+   |
+94 |             mouse_delta: Vec2::ZERO,
+   |                          ^^^^ use of undeclared type `Vec2`
+   |
+help: a struct with a similar name exists
+   |
+94 -             mouse_delta: Vec2::ZERO,
+94 +             mouse_delta: Vec::ZERO,
+   |
+help: consider importing this struct
+   |
+27 + use glam::Vec2;
+   |
+
+error[E0433]: failed to resolve: use of undeclared type `Vec3`
+   --> examples\unified_showcase\src\main_bevy_v2.rs:355:26
+    |
+355 |         let normal_vec = Vec3::new(x, 0.5, z).normalize();
+    |                          ^^^^ use of undeclared type `Vec3`
+    |
+help: a struct with a similar name exists
+    |
+355 -         let normal_vec = Vec3::new(x, 0.5, z).normalize();
+355 +         let normal_vec = Vec::new(x, 0.5, z).normalize();
+    |
+help: consider importing this struct
+    |
+27  + use glam::Vec3;
+    |
+
+error[E0433]: failed to resolve: use of undeclared type `Vec3`
+   --> examples\unified_showcase\src\main_bevy_v2.rs:624:18
+    |
+624 |         let v0 = Vec3::from(vertices[i0].position);
+    |                  ^^^^ use of undeclared type `Vec3`
+    |
+help: a struct with a similar name exists
+    |
+624 -         let v0 = Vec3::from(vertices[i0].position);
+624 +         let v0 = Vec::from(vertices[i0].position);
+    |
+help: consider importing this struct
+    |
+27  + use glam::Vec3;
+    |
+
+error[E0433]: failed to resolve: use of undeclared type `Vec3`
+   --> examples\unified_showcase\src\main_bevy_v2.rs:625:18
+    |
+625 |         let v1 = Vec3::from(vertices[i1].position);
+    |                  ^^^^ use of undeclared type `Vec3`
+    |
+help: a struct with a similar name exists
+    |
+625 -         let v1 = Vec3::from(vertices[i1].position);
+625 +         let v1 = Vec::from(vertices[i1].position);
+    |
+help: consider importing this struct
+    |
+27  + use glam::Vec3;
+    |
+
+error[E0433]: failed to resolve: use of undeclared type `Vec3`
+   --> examples\unified_showcase\src\main_bevy_v2.rs:626:18
+    |
+626 |         let v2 = Vec3::from(vertices[i2].position);
+    |                  ^^^^ use of undeclared type `Vec3`
+    |
+help: a struct with a similar name exists
+    |
+626 -         let v2 = Vec3::from(vertices[i2].position);
+626 +         let v2 = Vec::from(vertices[i2].position);
+    |
+help: consider importing this struct
+    |
+27  + use glam::Vec3;
+    |
+
+error[E0412]: cannot find type `Arc` in this scope
+   --> examples\unified_showcase\src\main_bevy_v2.rs:643:20
+    |
+643 |     window: Option<Arc<Window>>,
+    |                    ^^^ not found in this scope
+    |
+help: consider importing this struct
+    |
+27  + use std::sync::Arc;
+    |
+
+error[E0412]: cannot find type `Instant` in this scope
+   --> examples\unified_showcase\src\main_bevy_v2.rs:652:17
+    |
+652 |     last_frame: Instant,
+    |                 ^^^^^^^ not found in this scope
+    |
+help: consider importing this struct
+    |
+27  + use std::time::Instant;
+    |
+
+error[E0412]: cannot find type `Vec3` in this scope
+   --> examples\unified_showcase\src\main_bevy_v2.rs:668:26
+    |
+668 |     tree_positions: Vec<(Vec3, u32)>, // (position, material_index)
+    |                          ^^^^
+    |
+   ::: C:\Users\pv2br\.rustup\toolchains\1.89.0-x86_64-pc-windows-msvc\lib/rustlib/src/rust\library\alloc\src\vec\mod.rs:414:1
+    |
+414 | pub struct Vec<T, #[unstable(feature = "allocator_api", issue = "32838")] A: Allocator = Global> {
+    | ------------------------------------------------------------------------------------------------ similarly named struct `Vec` defined here
+    |
+help: a struct with a similar name exists
+    |
+668 -     tree_positions: Vec<(Vec3, u32)>, // (position, material_index)
+668 +     tree_positions: Vec<(Vec, u32)>, // (position, material_index)
+    |
+help: consider importing this struct
+    |
+27  + use glam::Vec3;
+    |
+
+error[E0412]: cannot find type `Vec3` in this scope
+   --> examples\unified_showcase\src\main_bevy_v2.rs:673:30
+    |
+673 |     building_positions: Vec<(Vec3, u32)>,
+    |                              ^^^^
+    |
+   ::: C:\Users\pv2br\.rustup\toolchains\1.89.0-x86_64-pc-windows-msvc\lib/rustlib/src/rust\library\alloc\src\vec\mod.rs:414:1
+    |
+414 | pub struct Vec<T, #[unstable(feature = "allocator_api", issue = "32838")] A: Allocator = Global> {
+    | ------------------------------------------------------------------------------------------------ similarly named struct `Vec` defined here
+    |
+help: a struct with a similar name exists
+    |
+673 -     building_positions: Vec<(Vec3, u32)>,
+673 +     building_positions: Vec<(Vec, u32)>,
+    |
+help: consider importing this struct
+    |
+27  + use glam::Vec3;
+    |
+
+error[E0412]: cannot find type `Vec3` in this scope
+   --> examples\unified_showcase\src\main_bevy_v2.rs:678:25
+    |
+678 |     npc_positions: Vec<(Vec3, u32)>,
+    |                         ^^^^
+    |
+   ::: C:\Users\pv2br\.rustup\toolchains\1.89.0-x86_64-pc-windows-msvc\lib/rustlib/src/rust\library\alloc\src\vec\mod.rs:414:1
+    |
+414 | pub struct Vec<T, #[unstable(feature = "allocator_api", issue = "32838")] A: Allocator = Global> {
+    | ------------------------------------------------------------------------------------------------ similarly named struct `Vec` defined here
+    |
+help: a struct with a similar name exists
+    |
+678 -     npc_positions: Vec<(Vec3, u32)>,
+678 +     npc_positions: Vec<(Vec, u32)>,
+    |
+help: consider importing this struct
+    |
+27  + use glam::Vec3;
+    |
+
+error[E0412]: cannot find type `Vec3` in this scope
+   --> examples\unified_showcase\src\main_bevy_v2.rs:683:28
+    |
+683 |     animal_positions: Vec<(Vec3, u32)>,
+    |                            ^^^^
+    |
+   ::: C:\Users\pv2br\.rustup\toolchains\1.89.0-x86_64-pc-windows-msvc\lib/rustlib/src/rust\library\alloc\src\vec\mod.rs:414:1
+    |
+414 | pub struct Vec<T, #[unstable(feature = "allocator_api", issue = "32838")] A: Allocator = Global> {
+    | ------------------------------------------------------------------------------------------------ similarly named struct `Vec` defined here
+    |
+help: a struct with a similar name exists
+    |
+683 -     animal_positions: Vec<(Vec3, u32)>,
+683 +     animal_positions: Vec<(Vec, u32)>,
+    |
+help: consider importing this struct
+    |
+27  + use glam::Vec3;
+    |
+
+error[E0412]: cannot find type `Vec3` in this scope
+   --> examples\unified_showcase\src\main_bevy_v2.rs:685:25
+    |
+685 |     companion_position: Vec3,
+    |                         ^^^^
+    |
+   ::: C:\Users\pv2br\.rustup\toolchains\1.89.0-x86_64-pc-windows-msvc\lib/rustlib/src/rust\library\alloc\src\vec\mod.rs:414:1
+    |
+414 | pub struct Vec<T, #[unstable(feature = "allocator_api", issue = "32838")] A: Allocator = Global> {
+    | ------------------------------------------------------------------------------------------------ similarly named struct `Vec` defined here
+    |
+help: a struct with a similar name exists
+    |
+685 -     companion_position: Vec3,
+685 +     companion_position: Vec,
+    |
+help: consider importing this struct
+    |
+27  + use glam::Vec3;
+    |
+
+error[E0433]: failed to resolve: use of undeclared type `Instant`
+   --> examples\unified_showcase\src\main_bevy_v2.rs:717:25
+    |
+717 |             last_frame: Instant::now(),
+    |                         ^^^^^^^ use of undeclared type `Instant`
+    |
+help: consider importing this struct
+    |
+27  + use std::time::Instant;
+    |
+
+error[E0433]: failed to resolve: use of undeclared type `Vec3`
+   --> examples\unified_showcase\src\main_bevy_v2.rs:741:33
+    |
+741 |             companion_position: Vec3::new(5.0, 0.0, 5.0),
+    |                                 ^^^^ use of undeclared type `Vec3`
+    |
+help: a struct with a similar name exists
+    |
+741 -             companion_position: Vec3::new(5.0, 0.0, 5.0),
+741 +             companion_position: Vec::new(5.0, 0.0, 5.0),
+    |
+help: consider importing this struct
+    |
+27  + use glam::Vec3;
+    |
+
+error[E0433]: failed to resolve: use of undeclared type `Vec3`
+   --> examples\unified_showcase\src\main_bevy_v2.rs:942:30
+    |
+942 |                         0 => Vec3::new(1.0, -vc, -uc),   // +X (right)
+    |                              ^^^^ use of undeclared type `Vec3`
+    |
+help: a struct with a similar name exists
+    |
+942 -                         0 => Vec3::new(1.0, -vc, -uc),   // +X (right)
+942 +                         0 => Vec::new(1.0, -vc, -uc),   // +X (right)
+    |
+help: consider importing this struct
+    |
+27  + use glam::Vec3;
+    |
+
+error[E0433]: failed to resolve: use of undeclared type `Vec3`
+   --> examples\unified_showcase\src\main_bevy_v2.rs:943:30
+    |
+943 |                         1 => Vec3::new(-1.0, -vc, uc),   // -X (left)
+    |                              ^^^^ use of undeclared type `Vec3`
+    |
+help: a struct with a similar name exists
+    |
+943 -                         1 => Vec3::new(-1.0, -vc, uc),   // -X (left)
+943 +                         1 => Vec::new(-1.0, -vc, uc),   // -X (left)
+    |
+help: consider importing this struct
+    |
+27  + use glam::Vec3;
+    |
+
+error[E0433]: failed to resolve: use of undeclared type `Vec3`
+   --> examples\unified_showcase\src\main_bevy_v2.rs:944:30
+    |
+944 |                         2 => Vec3::new(uc, 1.0, vc),     // +Y (top)
+    |                              ^^^^ use of undeclared type `Vec3`
+    |
+help: a struct with a similar name exists
+    |
+944 -                         2 => Vec3::new(uc, 1.0, vc),     // +Y (top)
+944 +                         2 => Vec::new(uc, 1.0, vc),     // +Y (top)
+    |
+help: consider importing this struct
+    |
+27  + use glam::Vec3;
+    |
+
+error[E0433]: failed to resolve: use of undeclared type `Vec3`
+   --> examples\unified_showcase\src\main_bevy_v2.rs:945:30
+    |
+945 |                         3 => Vec3::new(uc, -1.0, -vc),   // -Y (bottom)
+    |                              ^^^^ use of undeclared type `Vec3`
+    |
+help: a struct with a similar name exists
+    |
+945 -                         3 => Vec3::new(uc, -1.0, -vc),   // -Y (bottom)
+945 +                         3 => Vec::new(uc, -1.0, -vc),   // -Y (bottom)
+    |
+help: consider importing this struct
+    |
+27  + use glam::Vec3;
+    |
+
+error[E0433]: failed to resolve: use of undeclared type `Vec3`
+   --> examples\unified_showcase\src\main_bevy_v2.rs:946:30
+    |
+946 |                         4 => Vec3::new(uc, -vc, 1.0),    // +Z (front)
+    |                              ^^^^ use of undeclared type `Vec3`
+    |
+help: a struct with a similar name exists
+    |
+946 -                         4 => Vec3::new(uc, -vc, 1.0),    // +Z (front)
+946 +                         4 => Vec::new(uc, -vc, 1.0),    // +Z (front)
+    |
+help: consider importing this struct
+    |
+27  + use glam::Vec3;
+    |
+
+error[E0433]: failed to resolve: use of undeclared type `Vec3`
+   --> examples\unified_showcase\src\main_bevy_v2.rs:947:30
+    |
+947 |                         5 => Vec3::new(-uc, -vc, -1.0),  // -Z (back)
+    |                              ^^^^ use of undeclared type `Vec3`
+    |
+help: a struct with a similar name exists
+    |
+947 -                         5 => Vec3::new(-uc, -vc, -1.0),  // -Z (back)
+947 +                         5 => Vec::new(-uc, -vc, -1.0),  // -Z (back)
+    |
+help: consider importing this struct
+    |
+27  + use glam::Vec3;
+    |
+
+error[E0433]: failed to resolve: use of undeclared type `Vec3`
+   --> examples\unified_showcase\src\main_bevy_v2.rs:948:30
+    |
+948 |                         _ => Vec3::ZERO,
+    |                              ^^^^ use of undeclared type `Vec3`
+    |
+help: a struct with a similar name exists
+    |
+948 -                         _ => Vec3::ZERO,
+948 +                         _ => Vec::ZERO,
+    |
+help: consider importing this struct
+    |
+27  + use glam::Vec3;
+    |
+
+error[E0433]: failed to resolve: use of undeclared type `Vec3`
+    --> examples\unified_showcase\src\main_bevy_v2.rs:1567:13
+     |
+1567 |             Vec3::new(-30.0, 0.0, -40.0), Vec3::new(-20.0, 0.0, -35.0), Vec3::new(-10.0, 0.0, -30.0),
+     |             ^^^^ use of undeclared type `Vec3`
+     |
+help: a struct with a similar name exists
+     |
+1567 -             Vec3::new(-30.0, 0.0, -40.0), Vec3::new(-20.0, 0.0, -35.0), Vec3::new(-10.0, 0.0, -30.0),
+1567 +             Vec::new(-30.0, 0.0, -40.0), Vec3::new(-20.0, 0.0, -35.0), Vec3::new(-10.0, 0.0, -30.0),
+     |
+help: consider importing this struct
+     |
+27   + use glam::Vec3;
+     |
+
+error[E0433]: failed to resolve: use of undeclared type `Vec3`
+    --> examples\unified_showcase\src\main_bevy_v2.rs:1567:43
+     |
+1567 |             Vec3::new(-30.0, 0.0, -40.0), Vec3::new(-20.0, 0.0, -35.0), Vec3::new(-10.0, 0.0, -30.0),
+     |                                           ^^^^ use of undeclared type `Vec3`
+     |
+help: a struct with a similar name exists
+     |
+1567 -             Vec3::new(-30.0, 0.0, -40.0), Vec3::new(-20.0, 0.0, -35.0), Vec3::new(-10.0, 0.0, -30.0),
+1567 +             Vec3::new(-30.0, 0.0, -40.0), Vec::new(-20.0, 0.0, -35.0), Vec3::new(-10.0, 0.0, -30.0),
+     |
+help: consider importing this struct
+     |
+27   + use glam::Vec3;
+     |
+
+error[E0433]: failed to resolve: use of undeclared type `Vec3`
+    --> examples\unified_showcase\src\main_bevy_v2.rs:1567:73
+     |
+1567 |             Vec3::new(-30.0, 0.0, -40.0), Vec3::new(-20.0, 0.0, -35.0), Vec3::new(-10.0, 0.0, -30.0),
+     |                                                                         ^^^^ use of undeclared type `Vec3`
+     |
+help: a struct with a similar name exists
+     |
+1567 -             Vec3::new(-30.0, 0.0, -40.0), Vec3::new(-20.0, 0.0, -35.0), Vec3::new(-10.0, 0.0, -30.0),
+1567 +             Vec3::new(-30.0, 0.0, -40.0), Vec3::new(-20.0, 0.0, -35.0), Vec::new(-10.0, 0.0, -30.0),
+     |
+help: consider importing this struct
+     |
+27   + use glam::Vec3;
+     |
+
+error[E0433]: failed to resolve: use of undeclared type `Vec3`
+    --> examples\unified_showcase\src\main_bevy_v2.rs:1568:13
+     |
+1568 |             Vec3::new(25.0, 0.0, -38.0), Vec3::new(35.0, 0.0, -32.0), Vec3::new(-40.0, 0.0, 15.0),
+     |             ^^^^ use of undeclared type `Vec3`
+     |
+help: a struct with a similar name exists
+     |
+1568 -             Vec3::new(25.0, 0.0, -38.0), Vec3::new(35.0, 0.0, -32.0), Vec3::new(-40.0, 0.0, 15.0),
+1568 +             Vec::new(25.0, 0.0, -38.0), Vec3::new(35.0, 0.0, -32.0), Vec3::new(-40.0, 0.0, 15.0),
+     |
+help: consider importing this struct
+     |
+27   + use glam::Vec3;
+     |
+
+error[E0433]: failed to resolve: use of undeclared type `Vec3`
+    --> examples\unified_showcase\src\main_bevy_v2.rs:1568:42
+     |
+1568 |             Vec3::new(25.0, 0.0, -38.0), Vec3::new(35.0, 0.0, -32.0), Vec3::new(-40.0, 0.0, 15.0),
+     |                                          ^^^^ use of undeclared type `Vec3`
+     |
+help: a struct with a similar name exists
+     |
+1568 -             Vec3::new(25.0, 0.0, -38.0), Vec3::new(35.0, 0.0, -32.0), Vec3::new(-40.0, 0.0, 15.0),
+1568 +             Vec3::new(25.0, 0.0, -38.0), Vec::new(35.0, 0.0, -32.0), Vec3::new(-40.0, 0.0, 15.0),
+     |
+help: consider importing this struct
+     |
+27   + use glam::Vec3;
+     |
+
+error[E0433]: failed to resolve: use of undeclared type `Vec3`
+    --> examples\unified_showcase\src\main_bevy_v2.rs:1568:71
+     |
+1568 |             Vec3::new(25.0, 0.0, -38.0), Vec3::new(35.0, 0.0, -32.0), Vec3::new(-40.0, 0.0, 15.0),
+     |                                                                       ^^^^ use of undeclared type `Vec3`
+     |
+help: a struct with a similar name exists
+     |
+1568 -             Vec3::new(25.0, 0.0, -38.0), Vec3::new(35.0, 0.0, -32.0), Vec3::new(-40.0, 0.0, 15.0),
+1568 +             Vec3::new(25.0, 0.0, -38.0), Vec3::new(35.0, 0.0, -32.0), Vec::new(-40.0, 0.0, 15.0),
+     |
+help: consider importing this struct
+     |
+27   + use glam::Vec3;
+     |
+
+error[E0433]: failed to resolve: use of undeclared type `Vec3`
+    --> examples\unified_showcase\src\main_bevy_v2.rs:1569:13
+     |
+1569 |             Vec3::new(-25.0, 0.0, 20.0), Vec3::new(30.0, 0.0, 18.0), Vec3::new(40.0, 0.0, 25.0),
+     |             ^^^^ use of undeclared type `Vec3`
+     |
+help: a struct with a similar name exists
+     |
+1569 -             Vec3::new(-25.0, 0.0, 20.0), Vec3::new(30.0, 0.0, 18.0), Vec3::new(40.0, 0.0, 25.0),
+1569 +             Vec::new(-25.0, 0.0, 20.0), Vec3::new(30.0, 0.0, 18.0), Vec3::new(40.0, 0.0, 25.0),
+     |
+help: consider importing this struct
+     |
+27   + use glam::Vec3;
+     |
+
+error[E0433]: failed to resolve: use of undeclared type `Vec3`
+    --> examples\unified_showcase\src\main_bevy_v2.rs:1569:42
+     |
+1569 |             Vec3::new(-25.0, 0.0, 20.0), Vec3::new(30.0, 0.0, 18.0), Vec3::new(40.0, 0.0, 25.0),
+     |                                          ^^^^ use of undeclared type `Vec3`
+     |
+help: a struct with a similar name exists
+     |
+1569 -             Vec3::new(-25.0, 0.0, 20.0), Vec3::new(30.0, 0.0, 18.0), Vec3::new(40.0, 0.0, 25.0),
+1569 +             Vec3::new(-25.0, 0.0, 20.0), Vec::new(30.0, 0.0, 18.0), Vec3::new(40.0, 0.0, 25.0),
+     |
+help: consider importing this struct
+     |
+27   + use glam::Vec3;
+     |
+
+error[E0433]: failed to resolve: use of undeclared type `Vec3`
+    --> examples\unified_showcase\src\main_bevy_v2.rs:1569:70
+     |
+1569 |             Vec3::new(-25.0, 0.0, 20.0), Vec3::new(30.0, 0.0, 18.0), Vec3::new(40.0, 0.0, 25.0),
+     |                                                                      ^^^^ use of undeclared type `Vec3`
+     |
+help: a struct with a similar name exists
+     |
+1569 -             Vec3::new(-25.0, 0.0, 20.0), Vec3::new(30.0, 0.0, 18.0), Vec3::new(40.0, 0.0, 25.0),
+1569 +             Vec3::new(-25.0, 0.0, 20.0), Vec3::new(30.0, 0.0, 18.0), Vec::new(40.0, 0.0, 25.0),
+     |
+help: consider importing this struct
+     |
+27   + use glam::Vec3;
+     |
+
+error[E0433]: failed to resolve: use of undeclared type `Vec3`
+    --> examples\unified_showcase\src\main_bevy_v2.rs:1570:13
+     |
+1570 |             Vec3::new(0.0, 0.0, -25.0), Vec3::new(-8.0, 0.0, -20.0), Vec3::new(8.0, 0.0, -18.0),
+     |             ^^^^ use of undeclared type `Vec3`
+     |
+help: a struct with a similar name exists
+     |
+1570 -             Vec3::new(0.0, 0.0, -25.0), Vec3::new(-8.0, 0.0, -20.0), Vec3::new(8.0, 0.0, -18.0),
+1570 +             Vec::new(0.0, 0.0, -25.0), Vec3::new(-8.0, 0.0, -20.0), Vec3::new(8.0, 0.0, -18.0),
+     |
+help: consider importing this struct
+     |
+27   + use glam::Vec3;
+     |
+
+error[E0433]: failed to resolve: use of undeclared type `Vec3`
+    --> examples\unified_showcase\src\main_bevy_v2.rs:1570:41
+     |
+1570 |             Vec3::new(0.0, 0.0, -25.0), Vec3::new(-8.0, 0.0, -20.0), Vec3::new(8.0, 0.0, -18.0),
+     |                                         ^^^^ use of undeclared type `Vec3`
+     |
+help: a struct with a similar name exists
+     |
+1570 -             Vec3::new(0.0, 0.0, -25.0), Vec3::new(-8.0, 0.0, -20.0), Vec3::new(8.0, 0.0, -18.0),
+1570 +             Vec3::new(0.0, 0.0, -25.0), Vec::new(-8.0, 0.0, -20.0), Vec3::new(8.0, 0.0, -18.0),
+     |
+help: consider importing this struct
+     |
+27   + use glam::Vec3;
+     |
+
+error[E0433]: failed to resolve: use of undeclared type `Vec3`
+    --> examples\unified_showcase\src\main_bevy_v2.rs:1570:70
+     |
+1570 |             Vec3::new(0.0, 0.0, -25.0), Vec3::new(-8.0, 0.0, -20.0), Vec3::new(8.0, 0.0, -18.0),
+     |                                                                      ^^^^ use of undeclared type `Vec3`
+     |
+help: a struct with a similar name exists
+     |
+1570 -             Vec3::new(0.0, 0.0, -25.0), Vec3::new(-8.0, 0.0, -20.0), Vec3::new(8.0, 0.0, -18.0),
+1570 +             Vec3::new(0.0, 0.0, -25.0), Vec3::new(-8.0, 0.0, -20.0), Vec::new(8.0, 0.0, -18.0),
+     |
+help: consider importing this struct
+     |
+27   + use glam::Vec3;
+     |
+
+error[E0433]: failed to resolve: use of undeclared type `Vec3`
+    --> examples\unified_showcase\src\main_bevy_v2.rs:1571:13
+     |
+1571 |             Vec3::new(-15.0, 0.0, 5.0), Vec3::new(15.0, 0.0, 8.0), Vec3::new(-5.0, 0.0, 30.0),
+     |             ^^^^ use of undeclared type `Vec3`
+     |
+help: a struct with a similar name exists
+     |
+1571 -             Vec3::new(-15.0, 0.0, 5.0), Vec3::new(15.0, 0.0, 8.0), Vec3::new(-5.0, 0.0, 30.0),
+1571 +             Vec::new(-15.0, 0.0, 5.0), Vec3::new(15.0, 0.0, 8.0), Vec3::new(-5.0, 0.0, 30.0),
+     |
+help: consider importing this struct
+     |
+27   + use glam::Vec3;
+     |
+
+error[E0433]: failed to resolve: use of undeclared type `Vec3`
+    --> examples\unified_showcase\src\main_bevy_v2.rs:1571:41
+     |
+1571 |             Vec3::new(-15.0, 0.0, 5.0), Vec3::new(15.0, 0.0, 8.0), Vec3::new(-5.0, 0.0, 30.0),
+     |                                         ^^^^ use of undeclared type `Vec3`
+     |
+help: a struct with a similar name exists
+     |
+1571 -             Vec3::new(-15.0, 0.0, 5.0), Vec3::new(15.0, 0.0, 8.0), Vec3::new(-5.0, 0.0, 30.0),
+1571 +             Vec3::new(-15.0, 0.0, 5.0), Vec::new(15.0, 0.0, 8.0), Vec3::new(-5.0, 0.0, 30.0),
+     |
+help: consider importing this struct
+     |
+27   + use glam::Vec3;
+     |
+
+error[E0433]: failed to resolve: use of undeclared type `Vec3`
+    --> examples\unified_showcase\src\main_bevy_v2.rs:1571:68
+     |
+1571 |             Vec3::new(-15.0, 0.0, 5.0), Vec3::new(15.0, 0.0, 8.0), Vec3::new(-5.0, 0.0, 30.0),
+     |                                                                    ^^^^ use of undeclared type `Vec3`
+     |
+help: a struct with a similar name exists
+     |
+1571 -             Vec3::new(-15.0, 0.0, 5.0), Vec3::new(15.0, 0.0, 8.0), Vec3::new(-5.0, 0.0, 30.0),
+1571 +             Vec3::new(-15.0, 0.0, 5.0), Vec3::new(15.0, 0.0, 8.0), Vec::new(-5.0, 0.0, 30.0),
+     |
+help: consider importing this struct
+     |
+27   + use glam::Vec3;
+     |
+
+error[E0433]: failed to resolve: use of undeclared type `Vec3`
+    --> examples\unified_showcase\src\main_bevy_v2.rs:1572:13
+     |
+1572 |             Vec3::new(20.0, 0.0, -10.0), Vec3::new(-35.0, 0.0, -15.0), Vec3::new(10.0, 0.0, 35.0),
+     |             ^^^^ use of undeclared type `Vec3`
+     |
+help: a struct with a similar name exists
+     |
+1572 -             Vec3::new(20.0, 0.0, -10.0), Vec3::new(-35.0, 0.0, -15.0), Vec3::new(10.0, 0.0, 35.0),
+1572 +             Vec::new(20.0, 0.0, -10.0), Vec3::new(-35.0, 0.0, -15.0), Vec3::new(10.0, 0.0, 35.0),
+     |
+help: consider importing this struct
+     |
+27   + use glam::Vec3;
+     |
+
+error[E0433]: failed to resolve: use of undeclared type `Vec3`
+    --> examples\unified_showcase\src\main_bevy_v2.rs:1572:42
+     |
+1572 |             Vec3::new(20.0, 0.0, -10.0), Vec3::new(-35.0, 0.0, -15.0), Vec3::new(10.0, 0.0, 35.0),
+     |                                          ^^^^ use of undeclared type `Vec3`
+     |
+help: a struct with a similar name exists
+     |
+1572 -             Vec3::new(20.0, 0.0, -10.0), Vec3::new(-35.0, 0.0, -15.0), Vec3::new(10.0, 0.0, 35.0),
+1572 +             Vec3::new(20.0, 0.0, -10.0), Vec::new(-35.0, 0.0, -15.0), Vec3::new(10.0, 0.0, 35.0),
+     |
+help: consider importing this struct
+     |
+27   + use glam::Vec3;
+     |
+
+error[E0433]: failed to resolve: use of undeclared type `Vec3`
+    --> examples\unified_showcase\src\main_bevy_v2.rs:1572:72
+     |
+1572 |             Vec3::new(20.0, 0.0, -10.0), Vec3::new(-35.0, 0.0, -15.0), Vec3::new(10.0, 0.0, 35.0),
+     |                                                                        ^^^^ use of undeclared type `Vec3`
+     |
+help: a struct with a similar name exists
+     |
+1572 -             Vec3::new(20.0, 0.0, -10.0), Vec3::new(-35.0, 0.0, -15.0), Vec3::new(10.0, 0.0, 35.0),
+1572 +             Vec3::new(20.0, 0.0, -10.0), Vec3::new(-35.0, 0.0, -15.0), Vec::new(10.0, 0.0, 35.0),
+     |
+help: consider importing this struct
+     |
+27   + use glam::Vec3;
+     |
+
+error[E0433]: failed to resolve: use of undeclared type `Vec3`
+    --> examples\unified_showcase\src\main_bevy_v2.rs:1616:13
+     |
+1616 |             Vec3::new(-45.0, 0.0, 10.0),
+     |             ^^^^ use of undeclared type `Vec3`
+     |
+help: a struct with a similar name exists
+     |
+1616 -             Vec3::new(-45.0, 0.0, 10.0),
+1616 +             Vec::new(-45.0, 0.0, 10.0),
+     |
+help: consider importing this struct
+     |
+27   + use glam::Vec3;
+     |
+
+error[E0433]: failed to resolve: use of undeclared type `Vec3`
+    --> examples\unified_showcase\src\main_bevy_v2.rs:1617:13
+     |
+1617 |             Vec3::new(40.0, 0.0, -8.0),
+     |             ^^^^ use of undeclared type `Vec3`
+     |
+help: a struct with a similar name exists
+     |
+1617 -             Vec3::new(40.0, 0.0, -8.0),
+1617 +             Vec::new(40.0, 0.0, -8.0),
+     |
+help: consider importing this struct
+     |
+27   + use glam::Vec3;
+     |
+
+error[E0433]: failed to resolve: use of undeclared type `Vec3`
+    --> examples\unified_showcase\src\main_bevy_v2.rs:1618:13
+     |
+1618 |             Vec3::new(0.0, 0.0, 25.0),
+     |             ^^^^ use of undeclared type `Vec3`
+     |
+help: a struct with a similar name exists
+     |
+1618 -             Vec3::new(0.0, 0.0, 25.0),
+1618 +             Vec::new(0.0, 0.0, 25.0),
+     |
+help: consider importing this struct
+     |
+27   + use glam::Vec3;
+     |
+
+error[E0433]: failed to resolve: use of undeclared type `Vec3`
+    --> examples\unified_showcase\src\main_bevy_v2.rs:1619:13
+     |
+1619 |             Vec3::new(-20.0, 0.0, -20.0),
+     |             ^^^^ use of undeclared type `Vec3`
+     |
+help: a struct with a similar name exists
+     |
+1619 -             Vec3::new(-20.0, 0.0, -20.0),
+1619 +             Vec::new(-20.0, 0.0, -20.0),
+     |
+help: consider importing this struct
+     |
+27   + use glam::Vec3;
+     |
+
+error[E0433]: failed to resolve: use of undeclared type `Vec3`
+    --> examples\unified_showcase\src\main_bevy_v2.rs:1620:13
+     |
+1620 |             Vec3::new(25.0, 0.0, 15.0),
+     |             ^^^^ use of undeclared type `Vec3`
+     |
+help: a struct with a similar name exists
+     |
+1620 -             Vec3::new(25.0, 0.0, 15.0),
+1620 +             Vec::new(25.0, 0.0, 15.0),
+     |
+help: consider importing this struct
+     |
+27   + use glam::Vec3;
+     |
+
+error[E0433]: failed to resolve: use of undeclared type `Vec3`
+    --> examples\unified_showcase\src\main_bevy_v2.rs:1664:13
+     |
+1664 |             Vec3::new(-42.0, 0.0, 12.0),   // Near building 1
+     |             ^^^^ use of undeclared type `Vec3`
+     |
+help: a struct with a similar name exists
+     |
+1664 -             Vec3::new(-42.0, 0.0, 12.0),   // Near building 1
+1664 +             Vec::new(-42.0, 0.0, 12.0),   // Near building 1
+     |
+help: consider importing this struct
+     |
+27   + use glam::Vec3;
+     |
+
+error[E0433]: failed to resolve: use of undeclared type `Vec3`
+    --> examples\unified_showcase\src\main_bevy_v2.rs:1665:13
+     |
+1665 |             Vec3::new(38.0, 0.0, -6.0),    // Near building 2
+     |             ^^^^ use of undeclared type `Vec3`
+     |
+help: a struct with a similar name exists
+     |
+1665 -             Vec3::new(38.0, 0.0, -6.0),    // Near building 2
+1665 +             Vec::new(38.0, 0.0, -6.0),    // Near building 2
+     |
+help: consider importing this struct
+     |
+27   + use glam::Vec3;
+     |
+
+error[E0433]: failed to resolve: use of undeclared type `Vec3`
+    --> examples\unified_showcase\src\main_bevy_v2.rs:1666:13
+     |
+1666 |             Vec3::new(2.0, 0.0, 23.0),     // Near building 3
+     |             ^^^^ use of undeclared type `Vec3`
+     |
+help: a struct with a similar name exists
+     |
+1666 -             Vec3::new(2.0, 0.0, 23.0),     // Near building 3
+1666 +             Vec::new(2.0, 0.0, 23.0),     // Near building 3
+     |
+help: consider importing this struct
+     |
+27   + use glam::Vec3;
+     |
+
+error[E0433]: failed to resolve: use of undeclared type `Vec3`
+    --> examples\unified_showcase\src\main_bevy_v2.rs:1667:13
+     |
+1667 |             Vec3::new(-18.0, 0.0, -18.0),  // Near building 4
+     |             ^^^^ use of undeclared type `Vec3`
+     |
+help: a struct with a similar name exists
+     |
+1667 -             Vec3::new(-18.0, 0.0, -18.0),  // Near building 4
+1667 +             Vec::new(-18.0, 0.0, -18.0),  // Near building 4
+     |
+help: consider importing this struct
+     |
+27   + use glam::Vec3;
+     |
+
+error[E0433]: failed to resolve: use of undeclared type `Vec3`
+    --> examples\unified_showcase\src\main_bevy_v2.rs:1668:13
+     |
+1668 |             Vec3::new(27.0, 0.0, 17.0),    // Near building 5
+     |             ^^^^ use of undeclared type `Vec3`
+     |
+help: a struct with a similar name exists
+     |
+1668 -             Vec3::new(27.0, 0.0, 17.0),    // Near building 5
+1668 +             Vec::new(27.0, 0.0, 17.0),    // Near building 5
+     |
+help: consider importing this struct
+     |
+27   + use glam::Vec3;
+     |
+
+error[E0433]: failed to resolve: use of undeclared type `Vec3`
+    --> examples\unified_showcase\src\main_bevy_v2.rs:1669:13
+     |
+1669 |             Vec3::new(0.0, 0.0, 0.0),      // Center (companion)
+     |             ^^^^ use of undeclared type `Vec3`
+     |
+help: a struct with a similar name exists
+     |
+1669 -             Vec3::new(0.0, 0.0, 0.0),      // Center (companion)
+1669 +             Vec::new(0.0, 0.0, 0.0),      // Center (companion)
+     |
+help: consider importing this struct
+     |
+27   + use glam::Vec3;
+     |
+
+error[E0433]: failed to resolve: use of undeclared type `Vec3`
+    --> examples\unified_showcase\src\main_bevy_v2.rs:1670:13
+     |
+1670 |             Vec3::new(-10.0, 0.0, 5.0),    // Extra NPC 1
+     |             ^^^^ use of undeclared type `Vec3`
+     |
+help: a struct with a similar name exists
+     |
+1670 -             Vec3::new(-10.0, 0.0, 5.0),    // Extra NPC 1
+1670 +             Vec::new(-10.0, 0.0, 5.0),    // Extra NPC 1
+     |
+help: consider importing this struct
+     |
+27   + use glam::Vec3;
+     |
+
+error[E0433]: failed to resolve: use of undeclared type `Vec3`
+    --> examples\unified_showcase\src\main_bevy_v2.rs:1671:13
+     |
+1671 |             Vec3::new(15.0, 0.0, -5.0),    // Extra NPC 2
+     |             ^^^^ use of undeclared type `Vec3`
+     |
+help: a struct with a similar name exists
+     |
+1671 -             Vec3::new(15.0, 0.0, -5.0),    // Extra NPC 2
+1671 +             Vec::new(15.0, 0.0, -5.0),    // Extra NPC 2
+     |
+help: consider importing this struct
+     |
+27   + use glam::Vec3;
+     |
+
+error[E0433]: failed to resolve: use of undeclared type `Vec3`
+    --> examples\unified_showcase\src\main_bevy_v2.rs:1715:13
+     |
+1715 |             Vec3::new(-25.0, 0.0, -15.0),
+     |             ^^^^ use of undeclared type `Vec3`
+     |
+help: a struct with a similar name exists
+     |
+1715 -             Vec3::new(-25.0, 0.0, -15.0),
+1715 +             Vec::new(-25.0, 0.0, -15.0),
+     |
+help: consider importing this struct
+     |
+27   + use glam::Vec3;
+     |
+
+error[E0433]: failed to resolve: use of undeclared type `Vec3`
+    --> examples\unified_showcase\src\main_bevy_v2.rs:1716:13
+     |
+1716 |             Vec3::new(30.0, 0.0, 12.0),
+     |             ^^^^ use of undeclared type `Vec3`
+     |
+help: a struct with a similar name exists
+     |
+1716 -             Vec3::new(30.0, 0.0, 12.0),
+1716 +             Vec::new(30.0, 0.0, 12.0),
+     |
+help: consider importing this struct
+     |
+27   + use glam::Vec3;
+     |
+
+error[E0433]: failed to resolve: use of undeclared type `Vec3`
+    --> examples\unified_showcase\src\main_bevy_v2.rs:1717:13
+     |
+1717 |             Vec3::new(-12.0, 0.0, -8.0),
+     |             ^^^^ use of undeclared type `Vec3`
+     |
+help: a struct with a similar name exists
+     |
+1717 -             Vec3::new(-12.0, 0.0, -8.0),
+1717 +             Vec::new(-12.0, 0.0, -8.0),
+     |
+help: consider importing this struct
+     |
+27   + use glam::Vec3;
+     |
+
+error[E0433]: failed to resolve: use of undeclared type `Vec3`
+    --> examples\unified_showcase\src\main_bevy_v2.rs:1718:13
+     |
+1718 |             Vec3::new(18.0, 0.0, -25.0),
+     |             ^^^^ use of undeclared type `Vec3`
+     |
+help: a struct with a similar name exists
+     |
+1718 -             Vec3::new(18.0, 0.0, -25.0),
+1718 +             Vec::new(18.0, 0.0, -25.0),
+     |
+help: consider importing this struct
+     |
+27   + use glam::Vec3;
+     |
+
+error[E0433]: failed to resolve: use of undeclared type `Vec3`
+    --> examples\unified_showcase\src\main_bevy_v2.rs:1719:13
+     |
+1719 |             Vec3::new(-5.0, 0.0, 20.0),
+     |             ^^^^ use of undeclared type `Vec3`
+     |
+help: a struct with a similar name exists
+     |
+1719 -             Vec3::new(-5.0, 0.0, 20.0),
+1719 +             Vec::new(-5.0, 0.0, 20.0),
+     |
+help: consider importing this struct
+     |
+27   + use glam::Vec3;
+     |
+
+error[E0433]: failed to resolve: use of undeclared type `Vec3`
+    --> examples\unified_showcase\src\main_bevy_v2.rs:1759:32
+     |
+1759 |         self.camera.position = Vec3::new(0.0, 35.0, 70.0); // Higher and farther for better view
+     |                                ^^^^ use of undeclared type `Vec3`
+     |
+help: a struct with a similar name exists
+     |
+1759 -         self.camera.position = Vec3::new(0.0, 35.0, 70.0); // Higher and farther for better view
+1759 +         self.camera.position = Vec::new(0.0, 35.0, 70.0); // Higher and farther for better view
+     |
+help: consider importing this struct
+     |
+27   + use glam::Vec3;
+     |
+
+error[E0433]: failed to resolve: use of undeclared type `Instant`
+    --> examples\unified_showcase\src\main_bevy_v2.rs:1796:27
+     |
+1796 |         self.last_frame = Instant::now();
+     |                           ^^^^^^^ use of undeclared type `Instant`
+     |
+help: consider importing this struct
+     |
+27   + use std::time::Instant;
+     |
+
+error[E0433]: failed to resolve: use of undeclared type `Vec2`
+    --> examples\unified_showcase\src\main_bevy_v2.rs:1806:34
+     |
+1806 |         self.input.mouse_delta = Vec2::ZERO;
+     |                                  ^^^^ use of undeclared type `Vec2`
+     |
+help: a struct with a similar name exists
+     |
+1806 -         self.input.mouse_delta = Vec2::ZERO;
+1806 +         self.input.mouse_delta = Vec::ZERO;
+     |
+help: consider importing this struct
+     |
+27   + use glam::Vec2;
+     |
+
+error[E0433]: failed to resolve: use of undeclared type `Vec3`
+    --> examples\unified_showcase\src\main_bevy_v2.rs:1819:23
+     |
+1819 |         let forward = Vec3::new(
+     |                       ^^^^ use of undeclared type `Vec3`
+     |
+help: a struct with a similar name exists
+     |
+1819 -         let forward = Vec3::new(
+1819 +         let forward = Vec::new(
+     |
+help: consider importing this struct
+     |
+27   + use glam::Vec3;
+     |
+
+error[E0433]: failed to resolve: use of undeclared type `Vec3`
+    --> examples\unified_showcase\src\main_bevy_v2.rs:1825:21
+     |
+1825 |         let right = Vec3::new(
+     |                     ^^^^ use of undeclared type `Vec3`
+     |
+help: a struct with a similar name exists
+     |
+1825 -         let right = Vec3::new(
+1825 +         let right = Vec::new(
+     |
+help: consider importing this struct
+     |
+27   + use glam::Vec3;
+     |
+
+error[E0433]: failed to resolve: use of undeclared type `Vec3`
+    --> examples\unified_showcase\src\main_bevy_v2.rs:1831:18
+     |
+1831 |         let up = Vec3::Y;
+     |                  ^^^^ use of undeclared type `Vec3`
+     |
+help: a struct with a similar name exists
+     |
+1831 -         let up = Vec3::Y;
+1831 +         let up = Vec::Y;
+     |
+help: consider importing this struct
+     |
+27   + use glam::Vec3;
+     |
+
+error[E0433]: failed to resolve: use of undeclared type `Vec3`
+    --> examples\unified_showcase\src\main_bevy_v2.rs:1833:28
+     |
+1833 |         let mut velocity = Vec3::ZERO;
+     |                            ^^^^ use of undeclared type `Vec3`
+     |
+help: a struct with a similar name exists
+     |
+1833 -         let mut velocity = Vec3::ZERO;
+1833 +         let mut velocity = Vec::ZERO;
+     |
+help: consider importing this struct
+     |
+27   + use glam::Vec3;
+     |
+
+error[E0433]: failed to resolve: use of undeclared type `Mat4`
+    --> examples\unified_showcase\src\main_bevy_v2.rs:1891:24
+     |
+1891 |                 model: Mat4::IDENTITY.to_cols_array_2d(),
+     |                        ^^^^ use of undeclared type `Mat4`
+     |
+help: consider importing this struct
+     |
+27   + use glam::Mat4;
+     |
+
+error[E0433]: failed to resolve: use of undeclared type `Arc`
+    --> examples\unified_showcase\src\main_bevy_v2.rs:2067:22
+     |
+2067 |         let window = Arc::new(event_loop.create_window(window_attrs).unwrap());
+     |                      ^^^ use of undeclared type `Arc`
+     |
+help: consider importing this struct
+     |
+27   + use std::sync::Arc;
+     |
+
+warning: use of deprecated type alias `wgpu::ImageCopyTexture`: This has been renamed to `TexelCopyTextureInfo`, and will be removed in 25.0.0.
+   --> examples\unified_showcase\src\main_bevy_v2.rs:809:19
+    |
+809 |             wgpu::ImageCopyTexture {
+    |                   ^^^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(deprecated)]` on by default
+
+warning: use of deprecated type alias `wgpu::ImageDataLayout`: This has been renamed to `TexelCopyBufferLayout`, and will be removed in 25.0.0.
+   --> examples\unified_showcase\src\main_bevy_v2.rs:816:19
+    |
+816 |             wgpu::ImageDataLayout {
+    |                   ^^^^^^^^^^^^^^^
+
+warning: use of deprecated type alias `wgpu::ImageCopyTexture`: This has been renamed to `TexelCopyTextureInfo`, and will be removed in 25.0.0.
+   --> examples\unified_showcase\src\main_bevy_v2.rs:874:23
+    |
+874 |                 wgpu::ImageCopyTexture {
+    |                       ^^^^^^^^^^^^^^^^
+
+warning: use of deprecated type alias `wgpu::ImageDataLayout`: This has been renamed to `TexelCopyBufferLayout`, and will be removed in 25.0.0.
+   --> examples\unified_showcase\src\main_bevy_v2.rs:881:23
+    |
+881 |                 wgpu::ImageDataLayout {
+    |                       ^^^^^^^^^^^^^^^
+
+warning: use of deprecated type alias `wgpu::ImageCopyTexture`: This has been renamed to `TexelCopyTextureInfo`, and will be removed in 25.0.0.
+   --> examples\unified_showcase\src\main_bevy_v2.rs:986:23
+    |
+986 |                 wgpu::ImageCopyTexture {
+    |                       ^^^^^^^^^^^^^^^^
+
+warning: use of deprecated type alias `wgpu::ImageDataLayout`: This has been renamed to `TexelCopyBufferLayout`, and will be removed in 25.0.0.
+   --> examples\unified_showcase\src\main_bevy_v2.rs:993:23
+    |
+993 |                 wgpu::ImageDataLayout {
+    |                       ^^^^^^^^^^^^^^^
+
+warning: use of deprecated type alias `wgpu::ImageCopyTexture`: This has been renamed to `TexelCopyTextureInfo`, and will be removed in 25.0.0.
+    --> examples\unified_showcase\src\main_bevy_v2.rs:1161:31
+     |
+1161 |                         wgpu::ImageCopyTexture {
+     |                               ^^^^^^^^^^^^^^^^
+
+warning: use of deprecated type alias `wgpu::ImageDataLayout`: This has been renamed to `TexelCopyBufferLayout`, and will be removed in 25.0.0.
+    --> examples\unified_showcase\src\main_bevy_v2.rs:1168:31
+     |
+1168 |                         wgpu::ImageDataLayout {
+     |                               ^^^^^^^^^^^^^^^
+
+warning: use of deprecated type alias `wgpu::ImageCopyTexture`: This has been renamed to `TexelCopyTextureInfo`, and will be removed in 25.0.0.
+    --> examples\unified_showcase\src\main_bevy_v2.rs:1201:31
+     |
+1201 |                         wgpu::ImageCopyTexture {
+     |                               ^^^^^^^^^^^^^^^^
+
+warning: use of deprecated type alias `wgpu::ImageDataLayout`: This has been renamed to `TexelCopyBufferLayout`, and will be removed in 25.0.0.
+    --> examples\unified_showcase\src\main_bevy_v2.rs:1208:31
+     |
+1208 |                         wgpu::ImageDataLayout {
+     |                               ^^^^^^^^^^^^^^^
+
+warning: use of deprecated type alias `wgpu::ImageCopyTexture`: This has been renamed to `TexelCopyTextureInfo`, and will be removed in 25.0.0.
+    --> examples\unified_showcase\src\main_bevy_v2.rs:1241:31
+     |
+1241 |                         wgpu::ImageCopyTexture {
+     |                               ^^^^^^^^^^^^^^^^
+
+warning: use of deprecated type alias `wgpu::ImageDataLayout`: This has been renamed to `TexelCopyBufferLayout`, and will be removed in 25.0.0.
+    --> examples\unified_showcase\src\main_bevy_v2.rs:1248:31
+     |
+1248 |                         wgpu::ImageDataLayout {
+     |                               ^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `create_buffer_init` found for reference `&wgpu::Device` in the current scope
+    --> examples\unified_showcase\src\main_bevy_v2.rs:1530:49
+     |
+1530 |         self.ground_vertex_buffer = Some(device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+     |                                          -------^^^^^^^^^^^^^^^^^^
+     |
+     = help: items from traits can only be used if the trait is in scope
+help: trait `DeviceExt` which provides `create_buffer_init` is implemented but not in scope; perhaps you want to import it
+     |
+24   + use wgpu::util::DeviceExt;
+     |
+help: there is a method `create_buffer` with a similar name
+     |
+1530 -         self.ground_vertex_buffer = Some(device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+1530 +         self.ground_vertex_buffer = Some(device.create_buffer(&wgpu::util::BufferInitDescriptor {
+     |
+
+error[E0599]: no method named `create_buffer_init` found for reference `&wgpu::Device` in the current scope
+    --> examples\unified_showcase\src\main_bevy_v2.rs:1536:48
+     |
+1536 |         self.ground_index_buffer = Some(device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+     |                                         -------^^^^^^^^^^^^^^^^^^
+     |
+     = help: items from traits can only be used if the trait is in scope
+help: trait `DeviceExt` which provides `create_buffer_init` is implemented but not in scope; perhaps you want to import it
+     |
+24   + use wgpu::util::DeviceExt;
+     |
+help: there is a method `create_buffer` with a similar name
+     |
+1536 -         self.ground_index_buffer = Some(device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+1536 +         self.ground_index_buffer = Some(device.create_buffer(&wgpu::util::BufferInitDescriptor {
+     |
+
+error[E0277]: the trait bound `alloc::string::String: WriteColor` is not satisfied
+  --> C:\Users\pv2br\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\naga-27.0.3\src\error.rs:50:17
+   |
+50 |                 writer.inner_mut(),
+   |                 ^^^^^^^^^^^^^^^^^^ the trait `WriteColor` is not implemented for `alloc::string::String`
+   |
+   = help: the following other types implement trait `WriteColor`:
+             &'a mut T
+             Ansi<W>
+             Box<T>
+             Buffer
+             BufferedStandardStream
+             NoColor<W>
+             StandardStream
+             StandardStreamLock<'a>
+           and 2 others
+   = note: required for the cast from `&mut alloc::string::String` to `&mut dyn WriteColor`
+
+error[E0599]: no method named `components_of_type` found for reference `&astraweave_scene::world_partition::Cell` in the current scope
+   --> astraweave-gameplay\src\veilweaver_slice.rs:119:10
+    |
+119 |     cell.components_of_type(component_type)
+    |          ^^^^^^^^^^^^^^^^^^ method not found in `&astraweave_scene::world_partition::Cell`
+
+error[E0599]: no method named `create_buffer_init` found for reference `&wgpu::Device` in the current scope
+    --> examples\unified_showcase\src\main_bevy_v2.rs:1599:47
+     |
+1599 |         self.tree_vertex_buffer = Some(device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+     |                                        -------^^^^^^^^^^^^^^^^^^
+     |
+     = help: items from traits can only be used if the trait is in scope
+help: trait `DeviceExt` which provides `create_buffer_init` is implemented but not in scope; perhaps you want to import it
+     |
+24   + use wgpu::util::DeviceExt;
+     |
+help: there is a method `create_buffer` with a similar name
+     |
+1599 -         self.tree_vertex_buffer = Some(device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+1599 +         self.tree_vertex_buffer = Some(device.create_buffer(&wgpu::util::BufferInitDescriptor {
+     |
+
+error[E0599]: no method named `create_buffer_init` found for reference `&wgpu::Device` in the current scope
+    --> examples\unified_showcase\src\main_bevy_v2.rs:1605:46
+     |
+1605 |         self.tree_index_buffer = Some(device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+     |                                       -------^^^^^^^^^^^^^^^^^^
+     |
+     = help: items from traits can only be used if the trait is in scope
+help: trait `DeviceExt` which provides `create_buffer_init` is implemented but not in scope; perhaps you want to import it
+     |
+24   + use wgpu::util::DeviceExt;
+     |
+help: there is a method `create_buffer` with a similar name
+     |
+1605 -         self.tree_index_buffer = Some(device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+1605 +         self.tree_index_buffer = Some(device.create_buffer(&wgpu::util::BufferInitDescriptor {
+     |
+
+error[E0599]: no method named `create_buffer_init` found for reference `&wgpu::Device` in the current scope
+    --> examples\unified_showcase\src\main_bevy_v2.rs:1647:51
+     |
+1647 |         self.building_vertex_buffer = Some(device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+     |                                            -------^^^^^^^^^^^^^^^^^^
+     |
+     = help: items from traits can only be used if the trait is in scope
+help: trait `DeviceExt` which provides `create_buffer_init` is implemented but not in scope; perhaps you want to import it
+     |
+24   + use wgpu::util::DeviceExt;
+     |
+help: there is a method `create_buffer` with a similar name
+     |
+1647 -         self.building_vertex_buffer = Some(device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+1647 +         self.building_vertex_buffer = Some(device.create_buffer(&wgpu::util::BufferInitDescriptor {
+     |
+
+error[E0599]: no method named `create_buffer_init` found for reference `&wgpu::Device` in the current scope
+    --> examples\unified_showcase\src\main_bevy_v2.rs:1653:50
+     |
+1653 |         self.building_index_buffer = Some(device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+     |                                           -------^^^^^^^^^^^^^^^^^^
+     |
+     = help: items from traits can only be used if the trait is in scope
+help: trait `DeviceExt` which provides `create_buffer_init` is implemented but not in scope; perhaps you want to import it
+     |
+24   + use wgpu::util::DeviceExt;
+     |
+help: there is a method `create_buffer` with a similar name
+     |
+1653 -         self.building_index_buffer = Some(device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+1653 +         self.building_index_buffer = Some(device.create_buffer(&wgpu::util::BufferInitDescriptor {
+     |
+
+error[E0599]: no method named `create_buffer_init` found for reference `&wgpu::Device` in the current scope
+    --> examples\unified_showcase\src\main_bevy_v2.rs:1698:46
+     |
+1698 |         self.npc_vertex_buffer = Some(device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+     |                                       -------^^^^^^^^^^^^^^^^^^
+     |
+     = help: items from traits can only be used if the trait is in scope
+help: trait `DeviceExt` which provides `create_buffer_init` is implemented but not in scope; perhaps you want to import it
+     |
+24   + use wgpu::util::DeviceExt;
+     |
+help: there is a method `create_buffer` with a similar name
+     |
+1698 -         self.npc_vertex_buffer = Some(device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+1698 +         self.npc_vertex_buffer = Some(device.create_buffer(&wgpu::util::BufferInitDescriptor {
+     |
+
+error[E0599]: no method named `create_buffer_init` found for reference `&wgpu::Device` in the current scope
+    --> examples\unified_showcase\src\main_bevy_v2.rs:1704:45
+     |
+1704 |         self.npc_index_buffer = Some(device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+     |                                      -------^^^^^^^^^^^^^^^^^^
+     |
+     = help: items from traits can only be used if the trait is in scope
+help: trait `DeviceExt` which provides `create_buffer_init` is implemented but not in scope; perhaps you want to import it
+     |
+24   + use wgpu::util::DeviceExt;
+     |
+help: there is a method `create_buffer` with a similar name
+     |
+1704 -         self.npc_index_buffer = Some(device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+1704 +         self.npc_index_buffer = Some(device.create_buffer(&wgpu::util::BufferInitDescriptor {
+     |
+
+error[E0599]: no method named `create_buffer_init` found for reference `&wgpu::Device` in the current scope
+    --> examples\unified_showcase\src\main_bevy_v2.rs:1746:49
+     |
+1746 |         self.animal_vertex_buffer = Some(device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+     |                                          -------^^^^^^^^^^^^^^^^^^
+     |
+     = help: items from traits can only be used if the trait is in scope
+help: trait `DeviceExt` which provides `create_buffer_init` is implemented but not in scope; perhaps you want to import it
+     |
+24   + use wgpu::util::DeviceExt;
+     |
+help: there is a method `create_buffer` with a similar name
+     |
+1746 -         self.animal_vertex_buffer = Some(device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+1746 +         self.animal_vertex_buffer = Some(device.create_buffer(&wgpu::util::BufferInitDescriptor {
+     |
+
+error[E0599]: no method named `create_buffer_init` found for reference `&wgpu::Device` in the current scope
+    --> examples\unified_showcase\src\main_bevy_v2.rs:1752:48
+     |
+1752 |         self.animal_index_buffer = Some(device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+     |                                         -------^^^^^^^^^^^^^^^^^^
+     |
+     = help: items from traits can only be used if the trait is in scope
+help: trait `DeviceExt` which provides `create_buffer_init` is implemented but not in scope; perhaps you want to import it
+     |
+24   + use wgpu::util::DeviceExt;
+     |
+help: there is a method `create_buffer` with a similar name
+     |
+1752 -         self.animal_index_buffer = Some(device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+1752 +         self.animal_index_buffer = Some(device.create_buffer(&wgpu::util::BufferInitDescriptor {
+     |
+
+warning: unused import: `image::GenericImageView`
+   --> examples\unified_showcase\src\main_bevy_v2.rs:902:13
+    |
+902 |         use image::GenericImageView;
+    |             ^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(unused_imports)]` on by default
+
+Some errors have detailed explanations: E0412, E0433, E0599.
+For more information about an error, try `rustc --explain E0412`.
+warning: `unified_showcase` (bin "unified_showcase") generated 13 warnings
+error: could not compile `unified_showcase` (bin "unified_showcase") due to 85 previous errors; 13 warnings emitted
+error[E0277]: the trait bound `alloc::string::String: WriteColor` is not satisfied
+   --> C:\Users\pv2br\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\naga-27.0.3\src\span.rs:326:20
+    |
+326 |         term::emit(writer.inner_mut(), &config, &files, &self.diagnostic())
+    |                    ^^^^^^^^^^^^^^^^^^ the trait `WriteColor` is not implemented for `alloc::string::String`
+    |
+    = help: the following other types implement trait `WriteColor`:
+              &'a mut T
+              Ansi<W>
+              Box<T>
+              Buffer
+              BufferedStandardStream
+              NoColor<W>
+              StandardStream
+              StandardStreamLock<'a>
+            and 2 others
+    = note: required for the cast from `&mut alloc::string::String` to `&mut dyn WriteColor`
+
+warning: variable does not need to be mutable
+   --> astraweave-gameplay\src\veilweaver_tutorial.rs:120:17
+    |
+120 |     if let Some(mut state) = world.get_resource_mut::<WeaveTutorialState>() {
+    |                 ----^^^^^
+    |                 |
+    |                 help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` on by default
+
+warning: variable does not need to be mutable
+   --> astraweave-gameplay\src\veilweaver_tutorial.rs:134:18
+    |
+134 |     if let (Some(mut state), Some(mut reader)) = (
+    |                  ----^^^^^
+    |                  |
+    |                  help: remove this `mut`
+
+error[E0499]: cannot borrow `*world` as mutable more than once at a time
+   --> astraweave-gameplay\src\veilweaver_tutorial.rs:136:9
+    |
+134 |       if let (Some(mut state), Some(mut reader)) = (
+    |  __________________________________________________-
+135 | |         world.get_resource_mut::<WeaveTutorialState>(),
+    | |         ----- first mutable borrow occurs here
+136 | |         world
+    | |         ^^^^^ second mutable borrow occurs here
+137 | |             .get_resource_mut::<Events<TriggerVolumeEvent>>()
+138 | |             .map(|events| events.reader()),
+139 | |     ) {
+    | |_____- first borrow later used here
+    |
+help: try adding a local storing this...
+   --> astraweave-gameplay\src\veilweaver_tutorial.rs:136:9
+    |
+136 | /         world
+137 | |             .get_resource_mut::<Events<TriggerVolumeEvent>>()
+    | |_____________________________________________________________^
+help: ...and then using that local here
+   --> astraweave-gameplay\src\veilweaver_tutorial.rs:134:50
+    |
+134 |       if let (Some(mut state), Some(mut reader)) = (
+    |  __________________________________________________^
+135 | |         world.get_resource_mut::<WeaveTutorialState>(),
+136 | |         world
+137 | |             .get_resource_mut::<Events<TriggerVolumeEvent>>()
+138 | |             .map(|events| events.reader()),
+139 | |     ) {
+    | |_____^
+
+warning: variable does not need to be mutable
+   --> astraweave-gameplay\src\veilweaver_tutorial.rs:151:18
+    |
+151 |     if let (Some(mut state), Some(mut reader)) = (
+    |                  ----^^^^^
+    |                  |
+    |                  help: remove this `mut`
+
+error[E0499]: cannot borrow `*world` as mutable more than once at a time
+   --> astraweave-gameplay\src\veilweaver_tutorial.rs:153:9
+    |
+151 |       if let (Some(mut state), Some(mut reader)) = (
+    |  __________________________________________________-
+152 | |         world.get_resource_mut::<WeaveTutorialState>(),
+    | |         ----- first mutable borrow occurs here
+153 | |         world
+    | |         ^^^^^ second mutable borrow occurs here
+154 | |             .get_resource_mut::<Events<AnchorStabilizedEvent>>()
+155 | |             .map(|events| events.reader()),
+156 | |     ) {
+    | |_____- first borrow later used here
+    |
+help: try adding a local storing this...
+   --> astraweave-gameplay\src\veilweaver_tutorial.rs:153:9
+    |
+153 | /         world
+154 | |             .get_resource_mut::<Events<AnchorStabilizedEvent>>()
+    | |________________________________________________________________^
+help: ...and then using that local here
+   --> astraweave-gameplay\src\veilweaver_tutorial.rs:151:50
+    |
+151 |       if let (Some(mut state), Some(mut reader)) = (
+    |  __________________________________________________^
+152 | |         world.get_resource_mut::<WeaveTutorialState>(),
+153 | |         world
+154 | |             .get_resource_mut::<Events<AnchorStabilizedEvent>>()
+155 | |             .map(|events| events.reader()),
+156 | |     ) {
+    | |_____^
+
+Some errors have detailed explanations: E0432, E0499, E0599.
+For more information about an error, try `rustc --explain E0432`.
+warning: `astraweave-gameplay` (lib) generated 3 warnings
+error: could not compile `astraweave-gameplay` (lib) due to 7 previous errors; 3 warnings emitted
+error: could not compile `naga` (lib) due to 2 previous errors

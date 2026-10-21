@@ -1,0 +1,62 @@
+[package]
+name = "astraweave-render-bevy"
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+description = "Bevy-based renderer for AstraWeave (Phase 1: Foundation)"
+
+[dependencies]
+# Core rendering (from Bevy)
+wgpu = "25.0"
+naga = "25.0"
+
+# Math (Bevy uses glam 0.29, we already have it)
+glam = "0.29"
+
+# GPU data structures (Bevy uses encase)
+encase = "0.10"
+bytemuck = { version = "1.18", features = ["derive"] }
+
+# Error handling
+anyhow = "1.0"
+thiserror = "2.0"
+
+# Collections
+smallvec = "1.13"
+hashbrown = "0.15"
+
+# Async (for resource loading)
+futures-lite = "2.3"
+
+# Serialization (for materials)
+serde = { version = "1.0", features = ["derive"] }
+toml = "0.8"
+
+# Logging
+tracing = "0.1"
+
+# AstraWeave ECS (for adapter)
+astraweave-ecs = { path = "../astraweave-ecs" }
+
+[dev-dependencies]
+pollster = "0.3"
+env_logger = "0.11"
+
+[features]
+default = ["csm", "materials", "ibl", "megalights"]
+
+# Core features (Phase 1)
+csm = []                    # Cascade shadow maps
+materials = []              # PBR materials (albedo, normal, MRA)
+ibl = []                    # Image-based lighting
+point-shadows = []          # Omnidirectional shadow maps
+post-processing = []        # Bloom, tonemapping
+
+# AstraWeave Extensions (original work)
+megalights = []             # GPU-accelerated light culling (100k+ lights)
+nanite = []                 # Virtualized geometry (10M+ polys)
+
+# Advanced features (Phase 2+)
+ssao = []                   # Screen-space ambient occlusion
+ssr = []                    # Screen-space reflections
+volumetric-fog = []         # Volumetric fog

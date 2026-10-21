@@ -1,0 +1,8 @@
+error: invalid string
+expected `"`, `'`
+   --> Cargo.toml:206:8
+    |
+206 | name = \
+endering_performance\`nharness = false
+    |        ^
+    |

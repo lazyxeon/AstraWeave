@@ -1,0 +1,207 @@
+assets/3D assets/Nature Kit (Classic)/Models/FBX format/Materials/natureKit-_defaultMat.mat
+assets/3D assets/Nature Kit (Classic)/Models/FBX format/Materials/natureKit-leaves.mat
+assets/3D assets/Nature Kit (Classic)/Models/FBX format/Materials/natureKit-leavesFall.mat
+assets/3D assets/Nature Kit (Classic)/Models/FBX format/Materials/natureKit-leavesGreen.mat
+assets/3D assets/Nature Kit (Classic)/Models/FBX format/Materials/natureKit-mushroom.mat
+assets/3D assets/Nature Kit (Classic)/Models/FBX format/Materials/natureKit-mushroomDark.mat
+assets/3D assets/Nature Kit (Classic)/Models/FBX format/Materials/natureKit-stone.mat
+assets/3D assets/Nature Kit (Classic)/Models/FBX format/Materials/natureKit-water.mat
+assets/3D assets/Nature Kit (Classic)/Models/FBX format/Materials/natureKit-wood.mat
+assets/3D assets/Nature Kit (Classic)/Models/FBX format/Materials/natureKit-woodLight.mat
+assets/3D assets/Nature Kit (Classic)/Models/OBJ format/Materials/natureKit-_defaultMat.mat
+assets/3D assets/Nature Kit (Classic)/Models/OBJ format/Materials/natureKit-leaves.mat
+assets/3D assets/Nature Kit (Classic)/Models/OBJ format/Materials/natureKit-leavesFall.mat
+assets/3D assets/Nature Kit (Classic)/Models/OBJ format/Materials/natureKit-leavesGreen.mat
+assets/3D assets/Nature Kit (Classic)/Models/OBJ format/Materials/natureKit-mushroom.mat
+assets/3D assets/Nature Kit (Classic)/Models/OBJ format/Materials/natureKit-mushroomDark.mat
+assets/3D assets/Nature Kit (Classic)/Models/OBJ format/Materials/natureKit-stone.mat
+assets/3D assets/Nature Kit (Classic)/Models/OBJ format/Materials/natureKit-water.mat
+assets/3D assets/Nature Kit (Classic)/Models/OBJ format/Materials/natureKit-wood.mat
+assets/3D assets/Nature Kit (Classic)/Models/OBJ format/Materials/natureKit-woodLight.mat
+assets/Archive/Mini Car Kit/Models/FBX format/Materials/Gray6.mat
+assets/Archive/Mini Car Kit/Models/FBX format/Materials/_defaultMat.mat
+assets/Archive/Mini Car Kit/Models/FBX format/Materials/backLight.mat
+assets/Archive/Mini Car Kit/Models/FBX format/Materials/blueLight.mat
+assets/Archive/Mini Car Kit/Models/FBX format/Materials/carTire.mat
+assets/Archive/Mini Car Kit/Models/FBX format/Materials/frontLight.mat
+assets/Archive/Mini Car Kit/Models/FBX format/Materials/glass.mat
+assets/Archive/Mini Car Kit/Models/FBX format/Materials/paintBlue.mat
+assets/Archive/Mini Car Kit/Models/FBX format/Materials/paintGreen.mat
+assets/Archive/Mini Car Kit/Models/FBX format/Materials/paintRed.mat
+assets/Archive/Mini Car Kit/Models/FBX format/Materials/paintWhite.mat
+assets/Archive/Mini Car Kit/Models/FBX format/Materials/paintYellow.mat
+assets/Archive/Mini Car Kit/Models/FBX format/Materials/plastic.mat
+assets/Archive/Mini Car Kit/Models/FBX format/Materials/wheelCover.mat
+assets/Archive/Mini Car Kit/Models/OBJ format/Materials/Gray6.mat
+assets/Archive/Mini Car Kit/Models/OBJ format/Materials/_defaultMat.mat
+assets/Archive/Mini Car Kit/Models/OBJ format/Materials/backLight.mat
+assets/Archive/Mini Car Kit/Models/OBJ format/Materials/blueLight.mat
+assets/Archive/Mini Car Kit/Models/OBJ format/Materials/carTire.mat
+assets/Archive/Mini Car Kit/Models/OBJ format/Materials/frontLight.mat
+assets/Archive/Mini Car Kit/Models/OBJ format/Materials/glass.mat
+assets/Archive/Mini Car Kit/Models/OBJ format/Materials/paintBlue.mat
+assets/Archive/Mini Car Kit/Models/OBJ format/Materials/paintGreen.mat
+assets/Archive/Mini Car Kit/Models/OBJ format/Materials/paintRed.mat
+assets/Archive/Mini Car Kit/Models/OBJ format/Materials/paintWhite.mat
+assets/Archive/Mini Car Kit/Models/OBJ format/Materials/paintYellow.mat
+assets/Archive/Mini Car Kit/Models/OBJ format/Materials/plastic.mat
+assets/Archive/Mini Car Kit/Models/OBJ format/Materials/wheelCover.mat
+assets/Archive/Space Kit (Legacy)/Models/Materials/_defaultMat.mat
+assets/Archive/Space Kit (Legacy)/Models/Materials/alien.mat
+assets/Archive/Space Kit (Legacy)/Models/Materials/alienBone.mat
+assets/Archive/Space Kit (Legacy)/Models/Materials/alienPlant.mat
+assets/Archive/Space Kit (Legacy)/Models/Materials/astronaut.mat
+assets/Archive/Space Kit (Legacy)/Models/Materials/glass.mat
+assets/Archive/Space Kit (Legacy)/Models/Materials/light.mat
+assets/Archive/Space Kit (Legacy)/Models/Materials/metal.mat
+assets/Archive/Space Kit (Legacy)/Models/Materials/net.mat
+assets/Archive/Space Kit (Legacy)/Models/Materials/pipe.mat
+assets/Archive/Space Kit (Legacy)/Models/Materials/portal.mat
+assets/Archive/Space Kit (Legacy)/Models/Materials/rock.mat
+assets/Icons/Input Prompts/Flairs/Fonts/kenney_input_flairs.otf
+assets/Icons/Input Prompts/Flairs/Fonts/kenney_input_flairs.ttf
+assets/Icons/Input Prompts/Generic/Fonts/kenney_input_generic.otf
+assets/Icons/Input Prompts/Generic/Fonts/kenney_input_generic.ttf
+assets/Icons/Input Prompts/Keyboard & Mouse/Fonts/kenney_input_keyboard_&_mouse.otf
+assets/Icons/Input Prompts/Keyboard & Mouse/Fonts/kenney_input_keyboard_&_mouse.ttf
+assets/Icons/Input Prompts/Nintendo Gamecube/Fonts/kenney_input_nintendo_gamecube.otf
+assets/Icons/Input Prompts/Nintendo Gamecube/Fonts/kenney_input_nintendo_gamecube.ttf
+assets/Icons/Input Prompts/Nintendo Switch 2/Fonts/kenney_input_nintendo_switch_2.otf
+assets/Icons/Input Prompts/Nintendo Switch 2/Fonts/kenney_input_nintendo_switch_2.ttf
+assets/Icons/Input Prompts/Nintendo Switch/Fonts/kenney_input_nintendo_switch.otf
+assets/Icons/Input Prompts/Nintendo Switch/Fonts/kenney_input_nintendo_switch.ttf
+assets/Icons/Input Prompts/Nintendo Wii/Fonts/kenney_input_nintendo_wii.otf
+assets/Icons/Input Prompts/Nintendo Wii/Fonts/kenney_input_nintendo_wii.ttf
+assets/Icons/Input Prompts/Nintendo WiiU/Fonts/kenney_input_nintendo_wiiu.otf
+assets/Icons/Input Prompts/Nintendo WiiU/Fonts/kenney_input_nintendo_wiiu.ttf
+assets/Icons/Input Prompts/PlayStation Series/Fonts/kenney_input_playstation_series.otf
+assets/Icons/Input Prompts/PlayStation Series/Fonts/kenney_input_playstation_series.ttf
+assets/Icons/Input Prompts/Playdate/Fonts/kenney_input_playdate.otf
+assets/Icons/Input Prompts/Playdate/Fonts/kenney_input_playdate.ttf
+assets/Icons/Input Prompts/Steam Controller/Fonts/kenney_input_steam_controller.otf
+assets/Icons/Input Prompts/Steam Controller/Fonts/kenney_input_steam_controller.ttf
+assets/Icons/Input Prompts/Steam Deck/Fonts/kenney_input_steam_deck.otf
+assets/Icons/Input Prompts/Steam Deck/Fonts/kenney_input_steam_deck.ttf
+assets/Icons/Input Prompts/Touch/Fonts/kenney_input_touch.otf
+assets/Icons/Input Prompts/Touch/Fonts/kenney_input_touch.ttf
+assets/Icons/Input Prompts/Xbox Series/Fonts/kenney_input_xbox_series.otf
+assets/Icons/Input Prompts/Xbox Series/Fonts/kenney_input_xbox_series.ttf
+assets/Other/Fonts/Kenney Blocks.ttf
+assets/Other/Fonts/Kenney Bold.ttf
+assets/Other/Fonts/Kenney Future Narrow.ttf
+assets/Other/Fonts/Kenney Future Square.ttf
+assets/Other/Fonts/Kenney Future.ttf
+assets/Other/Fonts/Kenney High Square.ttf
+assets/Other/Fonts/Kenney High.ttf
+assets/Other/Fonts/Kenney Mini Square Mono.ttf
+assets/Other/Fonts/Kenney Mini Square.ttf
+assets/Other/Fonts/Kenney Mini.ttf
+assets/Other/Fonts/Kenney Pixel Square.ttf
+assets/Other/Fonts/Kenney Pixel.ttf
+assets/Other/Fonts/Kenney Rocket Square.ttf
+assets/Other/Fonts/Kenney Rocket.ttf
+assets/Other/Fonts/Kenney Space.ttf
+assets/Other/Fonts/Kenney Thick.ttf
+assets/Symphonie/Ruins/Build_IN/Materials/MT_archway_pillar02_Built-in.mat
+assets/Symphonie/Ruins/Build_IN/Prefabs/archway_pillar02.prefab
+assets/Symphonie/Ruins/HDRP/Materials/MT_archway_pillar02_HDRP.mat
+assets/Symphonie/Ruins/HDRP/Prefabs/archway_pillar02.prefab
+assets/Symphonie/Ruins/URP/Materials/MT_archway_pillar02_URP.mat
+assets/Symphonie/Ruins/URP/Prefabs/archway_pillar02.prefab
+assets/UI assets/UI Pack - Sci-fi/Font/Kenney Future Narrow.ttf
+assets/UI assets/UI Pack - Sci-fi/Font/Kenney Future.ttf
+assets/UI assets/UI Pack - Sci-fi/Fonts/kenvector_future.ttf
+assets/UI assets/UI Pack - Sci-fi/Fonts/kenvector_future_thin.ttf
+assets/UI assets/UI Pack/Font/Kenney Future Narrow.ttf
+assets/UI assets/UI Pack/Font/Kenney Future.ttf
+assets/materials/baked/cloth.ktx2
+assets/materials/baked/cloth_mra.ktx2
+assets/materials/baked/cloth_n.ktx2
+assets/materials/baked/dirt.ktx2
+assets/materials/baked/dirt_mra.ktx2
+assets/materials/baked/dirt_n.ktx2
+assets/materials/baked/forest_floor.ktx2
+assets/materials/baked/forest_floor_mra.ktx2
+assets/materials/baked/forest_floor_n.ktx2
+assets/materials/baked/grass.ktx2
+assets/materials/baked/grass_mra.ktx2
+assets/materials/baked/grass_n.ktx2
+assets/materials/baked/plaster.ktx2
+assets/materials/baked/plaster_mra.ktx2
+assets/materials/baked/plaster_n.ktx2
+assets/materials/baked/rock_lichen.ktx2
+assets/materials/baked/rock_lichen_mra.ktx2
+assets/materials/baked/rock_lichen_n.ktx2
+assets/materials/baked/rock_slate.ktx2
+assets/materials/baked/rock_slate_mra.ktx2
+assets/materials/baked/rock_slate_n.ktx2
+assets/materials/baked/roof_tile.ktx2
+assets/materials/baked/roof_tile_mra.ktx2
+assets/materials/baked/roof_tile_n.ktx2
+assets/materials/baked/sand.ktx2
+assets/materials/baked/sand_mra.ktx2
+assets/materials/baked/sand_n.ktx2
+assets/materials/baked/stone.ktx2
+assets/materials/baked/stone_mra.ktx2
+assets/materials/baked/stone_n.ktx2
+assets/materials/baked/tree_bark.ktx2
+assets/materials/baked/tree_bark_mra.ktx2
+assets/materials/baked/tree_bark_n.ktx2
+assets/materials/baked/tree_leaves.ktx2
+assets/materials/baked/tree_leaves_mra.ktx2
+assets/materials/baked/tree_leaves_n.ktx2
+assets/materials/cloth.ktx2
+assets/materials/cloth_mra.ktx2
+assets/materials/cloth_n.ktx2
+assets/materials/dirt.ktx2
+assets/materials/dirt_mra.ktx2
+assets/materials/dirt_n.ktx2
+assets/materials/forest_floor.ktx2
+assets/materials/forest_floor_mra.ktx2
+assets/materials/forest_floor_n.ktx2
+assets/materials/grass.ktx2
+assets/materials/grass_mra.ktx2
+assets/materials/grass_n.ktx2
+assets/materials/plaster.ktx2
+assets/materials/plaster_mra.ktx2
+assets/materials/plaster_n.ktx2
+assets/materials/rock_lichen.ktx2
+assets/materials/rock_lichen_mra.ktx2
+assets/materials/rock_lichen_n.ktx2
+assets/materials/rock_slate.ktx2
+assets/materials/rock_slate_mra.ktx2
+assets/materials/rock_slate_n.ktx2
+assets/materials/roof_tile.ktx2
+assets/materials/roof_tile_mra.ktx2
+assets/materials/roof_tile_n.ktx2
+assets/materials/sand.ktx2
+assets/materials/sand_mra.ktx2
+assets/materials/sand_n.ktx2
+assets/materials/stone.ktx2
+assets/materials/stone_mra.ktx2
+assets/materials/stone_n.ktx2
+assets/materials/tree_bark.ktx2
+assets/materials/tree_bark_mra.ktx2
+assets/materials/tree_bark_n.ktx2
+assets/materials/tree_leaves.ktx2
+assets/materials/tree_leaves_mra.ktx2
+assets/materials/tree_leaves_n.ktx2
+assets/models/3DTreeStump001_SQ-1K-JPG.usdc
+astraweave-asset/tests/fixtures/corrupted.gltf
+astraweave-asset/tests/fixtures/cube.gltf
+astraweave-asset/tests/fixtures/missing_buffer.gltf
+baked_materials/dirt.ktx2
+baked_materials/dirt_mra.ktx2
+baked_materials/dirt_n.ktx2
+baked_materials/forest_floor.ktx2
+baked_materials/grass.ktx2
+baked_materials/grass_mra.ktx2
+baked_materials/grass_n.ktx2
+baked_materials/sand.ktx2
+baked_materials/sand_mra.ktx2
+baked_materials/sand_n.ktx2
+baked_materials/stone.ktx2
+baked_materials/stone_mra.ktx2
+baked_materials/stone_n.ktx2
+docs/src/assets/Astraweave_logo.jpg
+docs/src/assets/top_series_time.png

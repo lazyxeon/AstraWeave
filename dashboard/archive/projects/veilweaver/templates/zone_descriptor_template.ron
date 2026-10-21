@@ -1,0 +1,202 @@
+// Zone Descriptor Template for Veilweaver Greybox
+// Version: 1.0
+// Date: November 8, 2025
+// Usage: Copy this template to assets/cells/<zone_id>.ron and customize
+
+(
+    // ===== REQUIRED FIELDS =====
+    
+    // Unique zone identifier (used in code for zone loading)
+    // Convention: "Z{number}_{zone_name_snake_case}"
+    // Example: "Z0_loomspire_sanctum", "Z1_echo_grove", "Z2_fractured_cliffs"
+    zone_id: "Z0_template_zone",
+    
+    // Path to GLTF mesh (relative to assets/ directory)
+    // Convention: "models/greybox/{zone_name}_greybox.glb"
+    // Example: "models/greybox/loomspire_sanctum_greybox.glb"
+    mesh_path: "models/greybox/template_zone_greybox.glb",
+    
+    // Player spawn points (at least 1 required)
+    // Fields:
+    //   pos: (x, y, z) in meters (world coordinates)
+    //   facing: (x, y, z) unit vector (direction player faces)
+    // Example spawn 20m south of center, facing north:
+    //   (pos: (0.0, 0.0, -20.0), facing: (0.0, 0.0, 1.0))
+    spawn_points: [
+        (pos: (0.0, 0.0, -20.0), facing: (0.0, 0.0, 1.0)),
+    ],
+    
+    // ===== OPTIONAL FIELDS (Day 6-7 work) =====
+    
+    // Event triggers (dialogue, combat, cinematics)
+    // Fields:
+    //   name: String identifier for trigger
+    //   bounds: ((min_x, min_z), (max_x, max_z)) AABB box in world space
+    //   action: String identifying what happens (e.g., "StartWeavingTutorial")
+    // Example: 10m × 10m trigger box at center
+    //   (name: "tutorial_start", bounds: ((-5.0, -5.0), (5.0, 5.0)), action: "StartWeavingTutorial")
+    triggers: [
+        (
+            name: "example_trigger",
+            bounds: ((-5.0, -5.0), (5.0, 5.0)),
+            action: "ExampleAction",
+        ),
+    ],
+    
+    // Weaving anchors (fate-weaving system integration)
+    // Fields:
+    //   id: String identifier for anchor
+    //   pos: (x, y, z) world position
+    //   stability: f32 (0.0-1.0, current stability value)
+    //   repair_cost: i32 (weave energy required to repair)
+    //   max_stability: f32 (maximum stability, usually 1.0)
+    // Example: Central anchor at ground level
+    //   (id: "central_anchor", pos: (0.0, 1.0, 0.0), stability: 1.0, repair_cost: 10, max_stability: 1.0)
+    anchors: [
+        (
+            id: "example_anchor",
+            pos: (0.0, 1.0, 0.0),
+            stability: 1.0,
+            repair_cost: 10,
+            max_stability: 1.0,
+        ),
+    ],
+    
+    // Navigation mesh path (pathfinding, defer generation to Week 2)
+    // Convention: "navmeshes/{zone_name}_navmesh.ron"
+    // Example: "navmeshes/loomspire_sanctum_navmesh.ron"
+    // Note: For Week 1 greybox, use placeholder path (actual file doesn't need to exist yet)
+    navigation_mesh: "navmeshes/template_zone_navmesh.ron",
+    
+    // Dialogue nodes (linked to triggers, references dialogue_intro.toml)
+    // Each string must match a node ID in assets/dialogue_intro.toml
+    // Example: ["intro_awakening", "tutorial_start"]
+    // Note: Day 6 work, map triggers to dialogue nodes
+    dialogue_nodes: [
+        "example_dialogue_node",
+    ],
+    
+    // Cinematic triggers (play on zone enter or specific events)
+    // Each string must match a cinematic ID in cinematics/*.ron
+    // Example: ["loom_awakening"]
+    // Note: Day 7 work, script cinematics first
+    cinematic_triggers: [
+        "example_cinematic",
+    ],
+)
+
+// ===== USAGE EXAMPLES =====
+
+// Example 1: Minimal Zone (Day 4 initial descriptor)
+// (
+//     zone_id: "Z1_echo_grove",
+//     mesh_path: "models/greybox/echo_grove_greybox.glb",
+//     spawn_points: [
+//         (pos: (-40.0, 0.0, -40.0), facing: (1.0, 0.0, 1.0)),
+//     ],
+//     triggers: [],
+//     anchors: [],
+//     navigation_mesh: "navmeshes/echo_grove_navmesh.ron",
+//     dialogue_nodes: [],
+//     cinematic_triggers: [],
+// )
+
+// Example 2: Full Zone (Day 6-7 complete descriptor)
+// (
+//     zone_id: "Z0_loomspire_sanctum",
+//     mesh_path: "models/greybox/loomspire_sanctum_greybox.glb",
+//     spawn_points: [
+//         (pos: (0.0, 0.0, -20.0), facing: (0.0, 0.0, 1.0)),
+//     ],
+//     triggers: [
+//         (name: "tutorial_start", bounds: ((-5.0, -5.0), (5.0, 5.0)), action: "StartWeavingTutorial"),
+//         (name: "cinematic_trigger", bounds: ((-1.0, -1.0), (1.0, 1.0)), action: "TriggerGuidedApproach"),
+//     ],
+//     anchors: [
+//         (id: "loomspire_central_anchor", pos: (0.0, 1.0, 0.0), stability: 1.0, repair_cost: 10, max_stability: 1.0),
+//     ],
+//     navigation_mesh: "navmeshes/loomspire_sanctum_navmesh.ron",
+//     dialogue_nodes: [
+//         "intro_awakening",
+//         "tutorial_start",
+//         "anchor_repair_instructions",
+//     ],
+//     cinematic_triggers: [
+//         "loom_awakening",
+//     ],
+// )
+
+// ===== VALIDATION =====
+
+// To validate this .ron file parses correctly:
+// 1. Save to assets/cells/<zone_id>.ron
+// 2. Run: cargo test -p astraweave-scene --test zone_descriptor_parsing
+// 3. Or manually: ron::from_str::<ZoneDescriptor>(ron_content)?
+
+// ===== COORDINATE SYSTEM =====
+
+// AstraWeave uses Y-up right-handed coordinate system:
+//   +X = Right
+//   +Y = Up
+//   +Z = Forward (North)
+//
+// GLTF exports from Blender should use "+Y Up" setting
+//
+// Example positions:
+//   (0, 0, 0)      = World center, ground level
+//   (0, 10, 0)     = 10m above world center
+//   (50, 0, 0)     = 50m east of center
+//   (0, 0, -50)    = 50m south of center
+//
+// Example facing directions:
+//   (0, 0, 1)      = North (forward)
+//   (0, 0, -1)     = South (backward)
+//   (1, 0, 0)      = East (right)
+//   (-1, 0, 0)     = West (left)
+//   (0.707, 0, 0.707) = Northeast (45°)
+
+// ===== ZONE ID CONVENTIONS =====
+
+// Veilweaver vertical slice zones:
+//   Z0 = Loomspire Sanctum (central hub, tutorial)
+//   Z1 = Echo Grove (combat encounter)
+//   Z2 = Fractured Cliffs (narrative zone)
+//   Z3 = Reserved (future zones)
+//   Z4 = Reserved (future zones)
+//
+// Naming convention: Z{tier}_{descriptive_name}
+//   tier: 0-9 (0 = hub, 1-2 = main path, 3-9 = optional)
+//   descriptive_name: snake_case, descriptive, 2-4 words max
+
+// ===== TRIGGER ACTION STRINGS =====
+
+// Common trigger actions (extend as needed):
+//   "StartWeavingTutorial"     = Begin tutorial sequence
+//   "StartCombatEncounter"     = Spawn enemies, begin combat
+//   "TriggerDialogue_Intro"    = Play intro dialogue
+//   "TriggerDialogue_Lore"     = Play lore reveal
+//   "TriggerDialogue_Vista"    = Play vista overlook dialogue
+//   "TriggerGuidedApproach"    = Start cinematic B (companion guide)
+//   "EnablePlayerControl"      = Give control back to player after cinematic
+
+// ===== FILE NAMING CONVENTIONS =====
+
+// Zone descriptor files:
+//   assets/cells/Z{num}_{zone_name}.ron
+//
+// Greybox mesh files:
+//   assets/models/greybox/{zone_name}_greybox.glb
+//
+// Navmesh files (Week 2):
+//   assets/navmeshes/{zone_name}_navmesh.ron
+//
+// Cinematic files (Day 7):
+//   assets/cinematics/{cinematic_name}.ron
+
+// ===== NEXT STEPS =====
+
+// Day 4: Create minimal descriptor (zone_id, mesh_path, spawn_points only)
+// Day 5: Validate all 3 zone descriptors parse correctly
+// Day 6: Expand with triggers, anchors, dialogue_nodes
+// Day 7: Add cinematic_triggers
+// Week 2: Generate navigation_mesh files (replace placeholders)

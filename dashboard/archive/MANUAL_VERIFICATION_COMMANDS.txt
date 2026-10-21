@@ -1,0 +1,52 @@
+# Manual Verification Commands for Naga Fix
+# Copy and paste these commands one at a time into PowerShell
+
+# ============================================
+# Step 1: Check WGPU version (should be 22.1.0)
+# ============================================
+cargo tree -p astraweave-render | Select-String "wgpu v" | Select-Object -First 3
+
+
+# ============================================
+# Step 2: Check naga versions (should all be 22.x)
+# ============================================
+cargo tree -p astraweave-render | Select-String "naga v" | Select-Object -First 5
+
+
+# ============================================
+# Step 3: Compile astraweave-render
+# ============================================
+cargo check -p astraweave-render
+
+
+# ============================================
+# Step 4: Check for naga WriteColor errors
+# ============================================
+cargo check -p astraweave-render 2>&1 | Select-String "WriteColor"
+# If this returns nothing, the fix worked!
+
+
+# ============================================
+# Step 5: Build in release mode
+# ============================================
+cargo build -p astraweave-render --release
+
+
+# ============================================
+# Step 6: Test with an example
+# ============================================
+cargo run -p hello_companion --release
+
+
+# ============================================
+# Optional: Check all graphics crates
+# ============================================
+cargo check -p astraweave-materials
+cargo check -p astraweave-ui
+cargo check -p astraweave-scene
+
+
+# ============================================
+# Optional: Full workspace check (with exclusions)
+# ============================================
+cargo check --workspace --exclude astraweave-author --exclude visual_3d --exclude ui_controls_demo --exclude npc_town_demo --exclude rhai_authoring --exclude debug_overlay --exclude cutscene_render_demo

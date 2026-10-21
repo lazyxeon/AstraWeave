@@ -1,0 +1,275 @@
+Title: Procedural generation
+
+URL Source: https://no-mans-sky.fandom.com/wiki/Procedural_generation
+
+Markdown Content:
+[](https://www.fandom.com/)
+
+[No Man's Sky Wiki](https://nomanssky-archive.fandom.com/)
+*   Explore  
+
+    *   [Main Page](https://nomanssky-archive.fandom.com/wiki/No_Man%27s_Sky_Wiki)
+    *   [Discuss](https://nomanssky-archive.fandom.com/f)
+    *   [All Pages](https://nomanssky-archive.fandom.com/wiki/Special:AllPages)
+    *   [Community](https://nomanssky-archive.fandom.com/wiki/Special:Community)
+    *   [Interactive Maps](https://nomanssky-archive.fandom.com/wiki/Special:AllMaps)
+    *   [Recent Blog Posts](https://nomanssky-archive.fandom.com/Blog:Recent_posts)
+
+*   
+    *   Recently Changed Pages 
+
+        *   [Planet](https://nomanssky-archive.fandom.com/wiki/Planet)
+        *   [Solar system](https://nomanssky-archive.fandom.com/wiki/Solar_system)
+        *   [Star system](https://nomanssky-archive.fandom.com/wiki/Star_system)
+        *   [Ferrite Dust](https://nomanssky-archive.fandom.com/wiki/Ferrite_Dust)
+        *   [Pure Ferrite](https://nomanssky-archive.fandom.com/wiki/Pure_Ferrite)
+        *   [Ammonia](https://nomanssky-archive.fandom.com/wiki/Ammonia)
+        *   [Frostwort](https://nomanssky-archive.fandom.com/wiki/Frostwort)
+
+    *   [Biology](https://nomanssky-archive.fandom.com/wiki/Category:Biology)
+
+        *   [Flora](https://nomanssky-archive.fandom.com/wiki/Flora)
+        *   [Biology](https://nomanssky-archive.fandom.com/wiki/Biology)
+        *   [Fauna](https://nomanssky-archive.fandom.com/wiki/Fauna)
+        *   [Flora](https://nomanssky-archive.fandom.com/wiki/Category:Flora)
+        *   [Strange blue headed jellyfish](https://nomanssky-archive.fandom.com/wiki/Strange_blue_headed_jellyfish)
+        *   [Fauna](https://nomanssky-archive.fandom.com/wiki/Category:Fauna)
+        *   [Alien Species](https://nomanssky-archive.fandom.com/wiki/Category:Alien_Species)
+
+    *   [Gameplay](https://nomanssky-archive.fandom.com/wiki/Category:Gameplay)
+
+        *   [Galactic Map](https://nomanssky-archive.fandom.com/wiki/Galactic_Map)
+        *   [HUD](https://nomanssky-archive.fandom.com/wiki/HUD)
+        *   [Wanted level](https://nomanssky-archive.fandom.com/wiki/Wanted_level)
+        *   [Points of interest](https://nomanssky-archive.fandom.com/wiki/Points_of_interest)
+        *   [User interface](https://nomanssky-archive.fandom.com/wiki/User_interface)
+        *   [Atlas](https://nomanssky-archive.fandom.com/wiki/Atlas)
+        *   [Controls](https://nomanssky-archive.fandom.com/wiki/Controls)
+
+    *   [Geography](https://nomanssky-archive.fandom.com/wiki/Category:Geography)
+
+        *   [Biomes](https://nomanssky-archive.fandom.com/wiki/Biomes)
+        *   [Elements](https://nomanssky-archive.fandom.com/wiki/Elements)
+        *   [Resources](https://nomanssky-archive.fandom.com/wiki/Category:Resources)
+        *   [Alloys](https://nomanssky-archive.fandom.com/wiki/Category:Alloys)
+        *   [Mining](https://nomanssky-archive.fandom.com/wiki/Mining)
+        *   [Crystals](https://nomanssky-archive.fandom.com/wiki/Crystals)
+        *   [Minerals](https://nomanssky-archive.fandom.com/wiki/Minerals)
+
+    *   [Technology](https://nomanssky-archive.fandom.com/wiki/Category:Technology)
+
+        *   [Starships](https://nomanssky-archive.fandom.com/wiki/Starships)
+        *   [Exosuit](https://nomanssky-archive.fandom.com/wiki/Exosuit)
+        *   [Multi-tool](https://nomanssky-archive.fandom.com/wiki/Multi-tool)
+        *   [Blueprint](https://nomanssky-archive.fandom.com/wiki/Blueprint)
+        *   [Technology](https://nomanssky-archive.fandom.com/wiki/Technology)
+        *   [Components](https://nomanssky-archive.fandom.com/wiki/Components)
+        *   [Starship Technology](https://nomanssky-archive.fandom.com/wiki/Category:Starship_Technology)
+
+*   
+    *   Templates on Fandom 
+
+        *   [Pre-Planet](https://nomanssky-archive.fandom.com/wiki/Template:Infobox_pre_planet)
+        *   [Planet](https://nomanssky-archive.fandom.com/wiki/Template:Infobox_planet)
+        *   [Pre-System](https://nomanssky-archive.fandom.com/wiki/Template:Infobox_pre_system)
+        *   [Element](https://nomanssky-archive.fandom.com/wiki/Template:Infobox_Element)
+        *   [Tech](https://nomanssky-archive.fandom.com/wiki/Template:Infobox_tech)
+        *   [Fauna](https://nomanssky-archive.fandom.com/wiki/Template:Infobox_Fauna)
+        *   [Biome](https://nomanssky-archive.fandom.com/wiki/Template:Infobox_Biome)
+
+    *   [Recent blog posts](https://nomanssky-archive.fandom.com/wiki/Blog:Recent_posts)
+    *   [Discussion](http://nomanssky.wikia.com/d/)
+    *   [Categories List](https://nomanssky-archive.fandom.com/wiki/Special:Categories)
+    *   [Policies](https://nomanssky-archive.fandom.com/wiki/No_Man%27s_Sky_Wiki:Policies)
+
+        *   [General Policy](https://nomanssky-archive.fandom.com/wiki/No_Man%27s_Sky_Wiki:Policy)
+        *   [Manual of Style](https://nomanssky-archive.fandom.com/wiki/No_Man%27s_Sky_Wiki:Manual_of_Style)
+        *   [Achievement Policy](https://nomanssky-archive.fandom.com/wiki/No_Man%27s_Sky_Wiki:Achievement_policy)
+
+[Skip to content](https://no-mans-sky.fandom.com/wiki/Procedural_generation#page-header)
+
+[![Image 1: No Man's Sky Wiki](https://static.wikia.nocookie.net/nomanssky/images/e/e6/Site-logo.png/revision/latest?cb=20210713152555)](https://nomanssky-archive.fandom.com/)
+*   Explore  
+
+    *   [Main Page](https://nomanssky-archive.fandom.com/wiki/No_Man%27s_Sky_Wiki)
+    *   [Discuss](https://nomanssky-archive.fandom.com/f)
+    *   [All Pages](https://nomanssky-archive.fandom.com/wiki/Special:AllPages)
+    *   [Community](https://nomanssky-archive.fandom.com/wiki/Special:Community)
+    *   [Interactive Maps](https://nomanssky-archive.fandom.com/wiki/Special:AllMaps)
+    *   [Recent Blog Posts](https://nomanssky-archive.fandom.com/Blog:Recent_posts)
+
+*   
+    *   Recently Changed Pages 
+
+        *   [Planet](https://nomanssky-archive.fandom.com/wiki/Planet)
+        *   [Solar system](https://nomanssky-archive.fandom.com/wiki/Solar_system)
+        *   [Star system](https://nomanssky-archive.fandom.com/wiki/Star_system)
+        *   [Ferrite Dust](https://nomanssky-archive.fandom.com/wiki/Ferrite_Dust)
+        *   [Pure Ferrite](https://nomanssky-archive.fandom.com/wiki/Pure_Ferrite)
+        *   [Ammonia](https://nomanssky-archive.fandom.com/wiki/Ammonia)
+        *   [Frostwort](https://nomanssky-archive.fandom.com/wiki/Frostwort)
+
+    *   [Biology](https://nomanssky-archive.fandom.com/wiki/Category:Biology)
+
+        *   [Flora](https://nomanssky-archive.fandom.com/wiki/Flora)
+        *   [Biology](https://nomanssky-archive.fandom.com/wiki/Biology)
+        *   [Fauna](https://nomanssky-archive.fandom.com/wiki/Fauna)
+        *   [Flora](https://nomanssky-archive.fandom.com/wiki/Category:Flora)
+        *   [Strange blue headed jellyfish](https://nomanssky-archive.fandom.com/wiki/Strange_blue_headed_jellyfish)
+        *   [Fauna](https://nomanssky-archive.fandom.com/wiki/Category:Fauna)
+        *   [Alien Species](https://nomanssky-archive.fandom.com/wiki/Category:Alien_Species)
+
+    *   [Gameplay](https://nomanssky-archive.fandom.com/wiki/Category:Gameplay)
+
+        *   [Galactic Map](https://nomanssky-archive.fandom.com/wiki/Galactic_Map)
+        *   [HUD](https://nomanssky-archive.fandom.com/wiki/HUD)
+        *   [Wanted level](https://nomanssky-archive.fandom.com/wiki/Wanted_level)
+        *   [Points of interest](https://nomanssky-archive.fandom.com/wiki/Points_of_interest)
+        *   [User interface](https://nomanssky-archive.fandom.com/wiki/User_interface)
+        *   [Atlas](https://nomanssky-archive.fandom.com/wiki/Atlas)
+        *   [Controls](https://nomanssky-archive.fandom.com/wiki/Controls)
+
+    *   [Geography](https://nomanssky-archive.fandom.com/wiki/Category:Geography)
+
+        *   [Biomes](https://nomanssky-archive.fandom.com/wiki/Biomes)
+        *   [Elements](https://nomanssky-archive.fandom.com/wiki/Elements)
+        *   [Resources](https://nomanssky-archive.fandom.com/wiki/Category:Resources)
+        *   [Alloys](https://nomanssky-archive.fandom.com/wiki/Category:Alloys)
+        *   [Mining](https://nomanssky-archive.fandom.com/wiki/Mining)
+        *   [Crystals](https://nomanssky-archive.fandom.com/wiki/Crystals)
+        *   [Minerals](https://nomanssky-archive.fandom.com/wiki/Minerals)
+
+    *   [Technology](https://nomanssky-archive.fandom.com/wiki/Category:Technology)
+
+        *   [Starships](https://nomanssky-archive.fandom.com/wiki/Starships)
+        *   [Exosuit](https://nomanssky-archive.fandom.com/wiki/Exosuit)
+        *   [Multi-tool](https://nomanssky-archive.fandom.com/wiki/Multi-tool)
+        *   [Blueprint](https://nomanssky-archive.fandom.com/wiki/Blueprint)
+        *   [Technology](https://nomanssky-archive.fandom.com/wiki/Technology)
+        *   [Components](https://nomanssky-archive.fandom.com/wiki/Components)
+        *   [Starship Technology](https://nomanssky-archive.fandom.com/wiki/Category:Starship_Technology)
+
+*   
+    *   Templates on Fandom 
+
+        *   [Pre-Planet](https://nomanssky-archive.fandom.com/wiki/Template:Infobox_pre_planet)
+        *   [Planet](https://nomanssky-archive.fandom.com/wiki/Template:Infobox_planet)
+        *   [Pre-System](https://nomanssky-archive.fandom.com/wiki/Template:Infobox_pre_system)
+        *   [Element](https://nomanssky-archive.fandom.com/wiki/Template:Infobox_Element)
+        *   [Tech](https://nomanssky-archive.fandom.com/wiki/Template:Infobox_tech)
+        *   [Fauna](https://nomanssky-archive.fandom.com/wiki/Template:Infobox_Fauna)
+        *   [Biome](https://nomanssky-archive.fandom.com/wiki/Template:Infobox_Biome)
+
+    *   [Recent blog posts](https://nomanssky-archive.fandom.com/wiki/Blog:Recent_posts)
+    *   [Discussion](http://nomanssky.wikia.com/d/)
+    *   [Categories List](https://nomanssky-archive.fandom.com/wiki/Special:Categories)
+    *   [Policies](https://nomanssky-archive.fandom.com/wiki/No_Man%27s_Sky_Wiki:Policies)
+
+        *   [General Policy](https://nomanssky-archive.fandom.com/wiki/No_Man%27s_Sky_Wiki:Policy)
+        *   [Manual of Style](https://nomanssky-archive.fandom.com/wiki/No_Man%27s_Sky_Wiki:Manual_of_Style)
+        *   [Achievement Policy](https://nomanssky-archive.fandom.com/wiki/No_Man%27s_Sky_Wiki:Achievement_policy)
+
+[Just as Fandom has joined forces with Gamepedia, this wiki has joined forces with our Gamepedia equivalent. The wiki has been archived and we ask that readers and editors move to the [now combined wiki](https://nomanssky.gamepedia.com/?utm_source=Fandom&utm_medium=banner&utm_campaign=nomanssky "now combined wiki") on Gamepedia.](https://nomanssky.gamepedia.com/?utm_source=Fandom&utm_medium=banner&utm_campaign=nomanssky)
+
+Procedural generation
+---------------------
+
+_[No Man's Sky](https://nomanssky-archive.fandom.com/wiki/No\_Man%27s\_Sky "No Man's Sky")_ features a **procedurally generated** open universe of 18 quintillion planets, which means the game is generated algorithmically rather than manually. It is the first game to use procedural generation to the extent it does.[[1]](https://no-mans-sky.fandom.com/wiki/Procedural_generation#cite_note-1)
+
+Nearly all elements of the game are procedurally generated, including [solar systems](https://nomanssky-archive.fandom.com/wiki/Solar_system "Solar system"), [planets](https://nomanssky-archive.fandom.com/wiki/Planet "Planet") and their [ecosystems](https://nomanssky-archive.fandom.com/wiki/Biomes "Biomes"), [flora, fauna and their behavioral patterns](https://nomanssky-archive.fandom.com/wiki/Biology "Biology"), artificial structures, and [alien factions](https://nomanssky-archive.fandom.com/wiki/NPCs "NPCs") and their [spacecraft](https://nomanssky-archive.fandom.com/wiki/Starship "Starship"). The game's engine employs several algorithms that can mimic a wide range of geometry and structure found in nature. Art elements created by human artists are used and altered as well within these generation systems. The game's audio, including ambient sounds and its underlying soundtrack, also use procedural generation methods from base samples developed by Paul Weir and the musical group [65daysofstatic](https://en.wikipedia.org/wiki/65daysofstatic "wikipedia:65daysofstatic").
+
+Overview[]
+----------
+
+> "In computing, procedural generation is a method of creating data algorithmically as opposed to manually. In computer graphics it is commonly used to create textures and 3D models. In video games it is used to create large amounts of content in a game. Advantages of procedural generation include smaller file sizes, larger amounts of content, and randomness for less predictable gameplay." — [From Wikipedia](https://en.wikipedia.org/wiki/Procedural_generation "wikipedia:Procedural generation")
+
+All life is spawned initially by a process called procedural generation - in this case a rules engine using a bio-mathematical field called L-systems - underlying the production of the natural features in the game. Whilst it uses mathematical noise and chaos theory, it is not simply random, as TheSeaOfThySoul[[2]](https://no-mans-sky.fandom.com/wiki/Procedural_generation#cite_note-:1-2) points out: “The rules of the game dictate how the world works... ecosystems are cohesive, and environments are structured as if hand designed, because they make sense within the rules crafted.”
+
+Whilst procedural generation will start from scratch for any new visitor to a planet, the initial factors being fed into the algorithm should be identical, such that each character will see the same types of creatures and behaviours, if not the identical individuals (unless two characters are close enough to each other); indeed it appears that species extinctions are not possible.
+
+The process[]
+-------------
+
+The game’s art director, Grant Duncan, told Gameinformer:[[3]](https://no-mans-sky.fandom.com/wiki/Procedural_generation#cite_note-:7-3) ”When it came to creatures, we built the kind of creatures that exist on the Earth... and it's quite surprising how few different types of skeletons there are.” Gameinformer further notes, “Hello Games looked at these basic templates (_i.e. skeletons_) – which they call blueprints – as the basic foundational essence of their creatures.” TheSeaOfThySoul goes on to add that these blueprints,
+
+> _can be fed into this system, interacting with each rule before they end up as an animal or plant in an environment that suits them... As height changes, weight can change, the proportions the animal has can change, as this changes the animations can change, the bones can get bigger, thicker, and the voice can get deeper, etc. What is the environment like? What kind of creature is it? Where is it in the food chain? What will it prey on, what will prey on it? How will it interact with other creatures? As this blob is fed through the system you’re creating an animal that will make sense in the end, which even has behaviours, a male and female of the species, and variation among the species, for instance one might be a bit taller, have longer horns, etc._
+
+[![Image 2: Animal L to R: Template - Accessories - Layering - Scaling](https://static.wikia.nocookie.net/nomanssky/images/4/43/Animal_generation.JPG/revision/latest/scale-to-width-down/220?cb=20160803174603)](https://static.wikia.nocookie.net/nomanssky/images/4/43/Animal_generation.JPG/revision/latest?cb=20160803174603)
+
+Animal L to R: Template - Accessories - Layering - Scaling
+
+At the detailed level, Grant Duncan[[4]](https://no-mans-sky.fandom.com/wiki/Procedural_generation#cite_note-4) has talked about two levels of procedural generation - one which creates terrain, and another which adds props (i.e. everything else). The blueprint system uses the following process:
+
+[![Image 3: Tree L to R: Template - Accessories - Layering - Scaling](https://static.wikia.nocookie.net/nomanssky/images/2/29/Tree_generation.JPG/revision/latest/scale-to-width-down/220?cb=20160803190735)](https://static.wikia.nocookie.net/nomanssky/images/2/29/Tree_generation.JPG/revision/latest?cb=20160803190735)
+
+Tree L to R: Template - Accessories - Layering - Scaling
+
+1.   As worlds are generated, their [biomes](https://nomanssky-archive.fandom.com/wiki/Biomes "Biomes") are tagged to allow props to be consistent with their features.
+2.   Artists have drafted hundreds if not thousands of base templates for animals, plants, space ships, multi-tools, space stations, etc. Shared rigs are generally used to reduce unnecessary complexity (e.g. 'horse' and 'deer' templates start with the same skeleton; 'sharks' and 'dolphins' share one too). Templates are also tagged with attributes for later use (e.g. lizards or types of trees will tend to have a suite of constraints associated with them).
+3.   Accessories are added to the template - for animals this might be the snout type or horns; for trees this would be its branching and leaf structure. A large library of such accessories are available. Tags are also added such that large teeth or spikes will relate to behaviour or location later on in the process.
+4.   Layering is then added - for animals it could include skin or scale type and colour; for plants it would be bark texture, moss and colour. Again, a library of materials can be dipped into by the procedural generator and tags are again used, e.g. glowing layering may be associated with subterranean habitats.
+5.   Bone scaling is then applied - for animals this affects body size and relative limb lengths; for plants the 'bone' is code for other attributes like pose.
+6.   Appropriate behaviours are then added - for animals, this might mean sprightly or plodding gait or voice pitch, depending on the bone scaling; for plants it could mean preferred altitude or terrain slope angle. Tags again come into play - lizards tend to behave 'lizardishly'.
+7.   Rules are recursively applied throughout the process to avoid ugliness and to improve consistency. Termed a recipe, these rules include using a custom colour pallete to match or complement plant and animal colours to terrain and atmospheric features, matching animal types and skin (or plant bark and moss) layering to biomes, and matching overall animal aggression to biome hostility. (NB: These rules are progressivly waived the closer to the centre of the universe one travels.)
+
+References[]
+------------
+
+1.   [↑](https://no-mans-sky.fandom.com/wiki/Procedural_generation#cite_ref-1 "Jump up")[A Behind-The-Scenes Tour Of No Man's Sky's Technology](https://www.youtube.com/watch?v=h-kifCYToAU&list=UUK-65DO2oOxxMwphl2tYtcw&t=6m01s)
+2.   [↑](https://no-mans-sky.fandom.com/wiki/Procedural_generation#cite_ref-:1_2-0 "Jump up")[“What do you do in No Man’s Sky?” and other questions – Answered](https://www.reddit.com/r/NoMansSkyTheGame/comments/4didkh/what_do_you_do_in_no_mans_sky_and_other_questions/)
+3.   [↑](https://no-mans-sky.fandom.com/wiki/Procedural_generation#cite_ref-:7_3-0 "Jump up")[A Look At No Man’s Sky’s Creature Features](http://www.gameinformer.com/b/features/archive/2014/12/24/a-look-at-no-mans-skys-creature-features.aspx)
+4.   [↑](https://no-mans-sky.fandom.com/wiki/Procedural_generation#cite_ref-4 "Jump up")[No Man's Sky: How I Learned to Love Procedural Art](https://www.youtube.com/watch?v=vcEA41eBOGs)
+
+Comments
+
+### Start a conversation
+
+#### Sign in to share your thoughts and get the conversation going.
+
+[SIGN IN](https://nomanssky-archive.fandom.com/login?metadata=anonymous-article-comments-login-source&redirect=https%3A%2F%2Fnomanssky-archive.fandom.com%2Fwiki%2FProcedural_generation%3Fanon-comments-auth-source%3Dlogin%23articleComments)
+Don't have account? [Register now](https://nomanssky-archive.fandom.com/register?metadata=anonymous-article-comments-register-source&redirect=https%3A%2F%2Fnomanssky-archive.fandom.com%2Fwiki%2FProcedural_generation%3Fanon-comments-auth-source%3Dregister%23articleComments)
+
+![Image 4](https://ids4.ad.gt/api/v1/ip_match?id=AU1D-0100-001765065943-GJLEJCS3-W1V5)![Image 5](https://secure.adnxs.com/getuid?https://ids.ad.gt/api/v1/match?id=AU1D-0100-001765065943-GJLEJCS3-W1V5&adnxs_id=$UID&gdpr=0)![Image 6](https://match.adsrvr.org/track/cmf/generic?ttd_pid=8gkxb6n&ttd_tpi=1&ttd_puid=AU1D-0100-001765065943-GJLEJCS3-W1V5&gdpr=0)![Image 7](https://image2.pubmatic.com/AdServer/UCookieSetPug?rd=https%3A%2F%2Fids.ad.gt%2Fapi%2Fv1%2Fpbm_match%3Fpbm%3D%23PM_USER_ID%26id%3DAU1D-0100-001765065943-GJLEJCS3-W1V5&gdpr=0)![Image 8](https://cm.g.doubleclick.net/pixel?google_nid=audigent_dmp&google_hm=QVUxRC0wMTAwLTAwMTc2NTA2NTk0My1HSkxFSkNTMy1XMVY1&google_redir=https%3A%2F%2Fids.ad.gt%2Fapi%2Fv1%2Fg_match&id=AU1D-0100-001765065943-GJLEJCS3-W1V5&gdpr=0)![Image 9](https://u.openx.net/w/1.0/cm?id=998eaf06-9905-4eae-9e26-9fac75960c53&r=https%3A%2F%2Fids.ad.gt%2Fapi%2Fv1%2Fopenx%3Fopenx_id%3D%7BOPENX_ID%7D%26id%3DAU1D-0100-001765065943-GJLEJCS3-W1V5%26auid%3DAU1D-0100-001765065943-GJLEJCS3-W1V5&gdpr=0)![Image 10](https://token.rubiconproject.com/token?pid=50242&puid=AU1D-0100-001765065943-GJLEJCS3-W1V5&gdpr=0)![Image 11](https://pixel.tapad.com/idsync/ex/receive?partner_id=3185&partner_device_id=AU1D-0100-001765065943-GJLEJCS3-W1V5&partner_url=https://ids.ad.gt%2Fapi%2Fv1%2Ftapad_match%3Fid%3DAU1D-0100-001765065943-GJLEJCS3-W1V5%26tapad_id%3D%24%7BTA_DEVICE_ID%7D&gdpr=0)![Image 12](https://d.turn.com/r/dd/id/L2NzaWQvMS9jaWQvMTc0ODI0MTY1OC90LzA/url/https%3A%2F%2Fids.ad.gt%2Fapi%2Fv1%2Famo_match%3Fturn_id%3D%24!%7BTURN_UUID%7D%26id%3DAU1D-0100-001765065943-GJLEJCS3-W1V5)![Image 13](https://sync.go.sonobi.com/us?https://ids.ad.gt/api/v1/son_match?id=AU1D-0100-001765065943-GJLEJCS3-W1V5&uid=[UID]&gdpr=0)![Image 14](https://sync.1rx.io/usersync/audigent/0?dspret=1&redir=https%3A%2F%2Fids.ad.gt%2Fapi%2Fv1%2Funruly%3Fid%3DAU1D-0100-001765065943-GJLEJCS3-W1V5%26unruly_id%3D%5BRX_UUID%5D&gdpr=0)
+
+![Image 15: Fandom Logo](https://cdn.cookielaw.org/logos/67a90ba4-3081-4d74-98ab-8ed228a512fa/dea70a1b-c82d-4fe0-86ff-5e164b0a6022/60784ed6-408d-422b-8b03-9345c2d1683e/Fandom_logo_2021_lockup_1.png)
+
+Your Opt Out Preference Signal is Honored
+
+Do Not Sell My Personal Information
+-----------------------------------
+
+### Manage Consent Preferences
+
+These cookies are necessary for the website to function and cannot be switched off in our systems. They are usually only set in response to actions made by you which amount to a request for services, such as setting your privacy preferences, logging in or filling in forms. You can set your browser to block or alert you about these cookies, but some parts of the site will not then work. These cookies do not store any personally identifiable information.
+
+#### Functional Cookies
+
+Functional Cookies 
+
+These cookies enable the website to provide enhanced functionality and personalisation. They may be set by us or by third party providers whose services we have added to our pages. If you do not allow these cookies then some or all of these services may not function properly.
+
+#### Performance Cookies
+
+Performance Cookies 
+
+These cookies allow us to count visits and traffic sources so we can measure and improve the performance of our site. They help us to know which pages are the most and least popular and see how visitors move around the site. All information these cookies collect is aggregated and therefore anonymous. If you do not allow these cookies we will not know when you have visited our site, and will not be able to monitor its performance.
+
+#### Targeting Cookies
+
+Targeting Cookies 
+
+These cookies may be set through our site by our advertising partners. They may be used by those companies to build a profile of your interests and show you relevant adverts on other sites. They do not store directly personal information, but are based on uniquely identifying your browser and internet device. If you do not allow these cookies, you will experience less targeted advertising.
+
+#### Social Media Cookies
+
+Social Media Cookies 
+
+These cookies are set by a range of social media services that we have added to the site to enable you to share our content with your friends and networks. They are capable of tracking your browser across other sites and building up a profile of your interests. This may impact the content and messages you see on other websites you visit. If you do not allow these cookies you may not be able to use or see these sharing tools.
+
+Consent Leg.Interest
+
+checkbox label label
+
+checkbox label label
+
+checkbox label label

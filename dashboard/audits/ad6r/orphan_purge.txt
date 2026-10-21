@@ -1,0 +1,13 @@
+examples/unified_showcase/src/main_backup.rs
+examples/unified_showcase/src/main_backup_before_refactor.rs
+examples/unified_showcase/src/main_bevy.rs
+examples/unified_showcase/src/main_bevy_v2.rs
+examples/unified_showcase/src/main_clean.rs
+examples/unified_showcase/src/main_temp.rs
+assets/materials/polyhaven/README.md
+assets/materials/polyhaven/arrays.toml
+assets/materials/polyhaven/cobblestone/README.md
+assets/materials/polyhaven/materials.toml
+assets/materials/polyhaven/metal_plate/README.md
+assets/materials/polyhaven/plastered_wall/README.md
+assets/materials/polyhaven/wood_floor/README.md

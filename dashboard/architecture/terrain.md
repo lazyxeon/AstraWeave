@@ -1,0 +1,502 @@
+---
+schema_version: 1
+trace_id: terrain
+title: "Terrain System (Generation, Voxels, Biomes, Noise, Scatter, Streaming)"
+description: "Terrain System — voxel meshing, biomes, noise, scatter, streaming (complements `terrain_materials.md`, which is the material-splat slice)"
+primary_crate: astraweave-terrain
+domain: physics-world
+lifecycle_status: active
+integration_status: mixed
+summary: "Voxel meshing/biome/noise/scatter/streaming (complements terrain_materials.md). terrain.md"
+owns: [astraweave-terrain]
+doc_version: "1.16"
+last_verified_commit: 85c13ff4
+---
+
+# Architecture Trace: Terrain System (Generation, Voxels, Biomes, Noise, Scatter, Streaming)
+
+## Metadata
+
+| Field | Value |
+|---|---|
+| **System name** | Terrain System (procedural generation, voxel meshing, biome/noise pipeline, scatter, chunk streaming) |
+| **Primary crates** | `astraweave-terrain` (with reverse dep into `astraweave-gameplay`); consumers in `tools/aw_editor`, `examples/hybrid_voxel_demo`, `astraweave-render` |
+| **Document version** | 1.16 |
+| **Last verified against commit** | `85c13ff4` (v1.16: forest LOD budget is the kept-prop count). Prior `d0452d3e` (v1.13: fifteen required replay cases). v1.14 locks the noise golden tests to the E3 amplitudes (base 100, mountains 480, detail 3, base Fbm, mountains Billow) and moves the halo 0.01 identity to the pre-modulation crop. Prior ED-3 working tree over `aca627436` (v1.7: amplitude Open Question closed); prior `d4c4479d4` (v1.6), prior `03f9d9a2d` (v1.5: T.2d third pass, two new §11 Open Questions), prior `611c8edc7` (v1.3/v1.4: T.2a boreal band + `expect()` retirement), `8232b150b`. Note: v1.4 bumped the front-matter `doc_version` and the revision table only, leaving this row at 1.3 — corrected here. |
+| **Last verified date** | 2026-10-18 (v1.16: `view_ring_lod_keeps_the_forest_under_budget` keeps `total > 400` and `kept < 900`. The 50ms debug wall-clock assert is gone. macOS 1.89 on run 39084152246 measured 50.776916ms, failed that assert, and skipped clippy. Counts were total=2009 kept=727.); 2026-10-16 (v1.15); 2026-07-26 (v1.7) |
+| **Status** | Active. Editor preview is the climate heightmap. Saved ground is the integer seed record. Deformation is a `DestructionCommand` log replayed into `ColumnStream`. The async heightmap loader, clipmap, GPU erosion trait, voxel modifier, and Phase 10 persistence format are removed. `DualContouring` stores one vertex per crossed edge. `aravath_runtime` collides with that mesh. |
+| **Owner notes** | Complements [`terrain_materials.md`](terrain_materials.md), which covers ONLY the material/splat-weight slice. This trace covers the REST: noise → heightmap → biome → erosion → chunk generation, voxel meshing, scatter/vegetation, and chunk streaming. Where the two overlap (biome semantics, `astraweave-render` terrain paths) this doc cross-references rather than duplicates. |
+
+---
+
+## 1. Executive Summary
+
+**What this system does:**
+Procedurally generates terrain from a seed: layered fractal noise produces heightmaps, a climate field plus biome configuration classify each vertex, optional erosion reshapes the surface, and the result is packaged into `TerrainChunk`s; a parallel voxel subsystem (Sparse Voxel Octree + Dual Contouring) supports destructible/3D terrain; a scatter subsystem places vegetation and resource nodes; and streaming/LOD subsystems exist to load/unload chunks around a viewpoint.
+
+**Why it exists:**
+Provides the world substrate — heightfield + biome + vegetation — that the editor authors and that downstream render/collision systems consume.
+
+**Where it primarily lives:**
+- `astraweave-terrain/src/` — the entire generation, voxel, biome, noise, scatter, and streaming surface (42 source modules, ~35K LoC incl. tests).
+- `tools/aw_editor/src/terrain_integration.rs` + `panels/terrain_panel.rs` + `panels/regional_archetype_panel.rs` — the production consumer of the **heightmap** generation path.
+- `examples/hybrid_voxel_demo/src/main.rs` — the only production consumer of the **voxel meshing** path (`DualContouring`, `LodMeshGenerator`).
+- `astraweave-render/src/terrain.rs` — render-side terrain consumer (traced in [`render_pipeline_material_system_shader_infrastructure.md`](render_pipeline_material_system_shader_infrastructure.md); see §4). Clipmap terrain and the GPU erosion bridge were removed.
+
+**Status note:**
+This is **not one system but several loosely-coupled subsystems** sharing a crate. The wired-into-the-editor path is the **heightmap** path (`WorldGenerator::generate_chunk_with_climate` → `TerrainChunk` → editor splat/mesh conversion). The **voxel** path (`VoxelChunk` / `DualContouring`) is wired only into one example. The **async streaming/LOD** subsystems (`BackgroundChunkLoader`, `LodManager`, `StreamingDiagnostics`, `MorphingLodManager`) and the **multi-archetype** data path (`RegionalArchetypeMask` Some-branch) are present and tested but have **no production caller** that exercises them end-to-end (§5, §6, §11). Treat per-subsystem wiredness as the load-bearing honesty signal.
+
+---
+
+## 2. Authoritative Pipeline
+
+The wired editor heightmap path (the path an agent will most often touch):
+
+```text
+[WorldConfig { seed, chunk_size, heightmap_resolution, noise, climate, biomes, structures }]
+    │
+    │ WorldGenerator::new(config)
+    ▼
+[Stage 0: Generator construction]
+    file: astraweave-terrain/src/lib.rs:180-198
+    role: builds TerrainNoise(seed), ClimateMap(seed+1), ChunkManager, StructureGenerator(seed+2)
+    key data: deterministic noise/climate functions seeded off config.seed
+    │
+    │ generate_chunk_with_climate(chunk_id, climate_bias)   (editor path)
+    │   OR generate_chunk(chunk_id)                          (legacy/simple path)
+    ▼
+[Stage 1: Halo heightmap sampling]
+    file: astraweave-terrain/src/lib.rs:683-730 (generate_halo_heightmap)
+    role: samples TerrainNoise::sample_height over a 3×3-chunk halo at per-vertex world coords
+    key data: Heightmap covering target chunk + 1-chunk halo (seam-safe erosion input)
+    │
+    │ apply_per_biome_modulation_to_halo(...)
+    ▼
+[Stage 2: Per-vertex biome modulation + archetype splines]
+    file: astraweave-terrain/src/lib.rs:488-682
+    role: per vertex: climate sample → SELECTED archetype's BootstrapParams
+          (spline_types / regional_archetype_mask) → params-based PROVISIONAL
+          height → Whittaker biome classification at that height
+          (biome_param_blending, coastal-gated lookup) → final height =
+          same params × blended per-biome mountains_amplitude
+    key data: modulated halo heights + per-vertex Vec<BiomeId>
+    │
+    │ crop_halo_to_chunk (pre-erosion) → biome_weights via elevation_to_biome_weights
+    ▼
+[Stage 3: Erosion on the halo]
+    file: astraweave-terrain/src/advanced_erosion.rs (apply_preset_at_world_offset)
+          driven from lib.rs:395-428
+    role: world-coordinate droplet hydraulic/thermal erosion on the full halo (seam-safe)
+    key data: post-erosion halo heightmap
+    │
+    │ crop_halo_to_chunk (post-erosion) + assign_biomes(pre-erosion heights, climate)
+    ▼
+[Stage 4: Chunk assembly]
+    file: astraweave-terrain/src/chunk.rs (TerrainChunk::new_with_climate_field)
+    role: bundles post-erosion heightmap + biome_map + pre-erosion biome_weights[8] + biome_ids
+    key data: TerrainChunk
+    │
+    ├──► [Scatter] scatter_chunk_content (lib.rs:218-264)
+    │       file: astraweave-terrain/src/scatter.rs (VegetationScatter), structures.rs
+    │       role: Poisson-disk vegetation + spawn_resources (gameplay) + structures
+    │       key data: ScatterResult { vegetation, resources, structures }
+    │
+    └──► [Editor consumption] tools/aw_editor/src/terrain_integration.rs:343
+            role: converts TerrainChunk → editor vertices → splat bake (see terrain_materials.md)
+            key data: render-ready terrain (material path is terrain_materials.md's domain)
+```
+
+The parallel **voxel** path (wired in `examples/hybrid_voxel_demo` and `aravath_runtime`):
+
+```text
+[VoxelChunk (Sparse Voxel Octree of Voxel{density, material})]
+    file: astraweave-terrain/src/voxel_data.rs (CHUNK_SIZE=32, MAX_OCTREE_DEPTH=5)
+    │
+    │ DualContouring::generate_mesh(chunk)  (meshing.rs)
+    │   uses marching_cubes_tables.rs (MC_EDGE_TABLE / MC_TRI_TABLE / EDGE_ENDPOINTS)
+    ▼
+[ChunkMesh { Vec<MeshVertex{position,normal,material:u16}>, Vec<u32> indices }]
+    file: astraweave-terrain/src/meshing.rs
+    role: isosurface extraction; add_skirts() hides LOD seam cracks
+    │
+    │ LodMeshGenerator::generate_mesh_lod(chunk, distance, ...)  (LOD decimation)
+    ▼
+[render-ready voxel mesh]   (hybrid_voxel_demo, and aravath_runtime ground colliders)
+```
+
+### Stage-by-stage detail
+
+#### Stage 0: Generator construction
+**File:** `astraweave-terrain/src/lib.rs:180-198`
+**Role:** Constructs the deterministic generators. `TerrainNoise::new(&config.noise, config.seed)`, `ClimateMap::new(&config.climate, config.seed + 1)`, `StructureGenerator` at `config.seed + 2`. Within `TerrainNoise::new` (noise_gen.rs:410-461) the layers are seeded `seed`, `seed+1`, `seed+2`, ridged mountains `seed+42`, continental `seed + continental_seed_offset` (default 7).
+**Notes:** `regional_archetype_mask` defaults to `None` (lib.rs:196). Since the E3 build (`d506658d8`), the `None` path is single-archetype but **not** CT-hardcoded — it evaluates the selected archetype's splines (see Stage 2). The pre-E3 "F.3 byte-identity to the D5FIX baseline" contract no longer holds as stated: the spline sets deliberately diverged from `d5fix_baseline_spline_set()` (`spline_types.rs:507`), which is why the D5FIX baseline-assertion tests fail by design pending the T.G re-bake (see §10).
+
+#### Stage 1: Halo heightmap sampling
+**File:** `astraweave-terrain/src/lib.rs:683-730`
+**Role:** Samples a heightmap covering the target chunk plus a 1-chunk halo on each side, so erosion droplets can travel across chunk boundaries within the halo without seams. Uses `TerrainNoise::sample_height(wx, wz)` directly (not the SIMD ChunkId-tied path) and relies on the noise field being a pure function of world coordinates for center-crop byte-identity (comment at lib.rs:705-710).
+**Notes:** f32 step arithmetic is load-bearing — lib.rs:496-504 documents that an f64 `step` produced a 125-WU divergence at chunk borders.
+
+#### Stage 2: Per-vertex biome modulation + archetype splines
+**File:** `astraweave-terrain/src/lib.rs:488-682`
+**Role:** For each halo vertex: samples the climate field, evaluates the archetype `BootstrapSplineSet` into `BootstrapParams` (elevation-independent — splines read only continentalness/erosion/PV), computes a **params-based provisional height** (`sample_height_with_params(&bootstrap_params, wx, wz, 1.0)`, lib.rs:649-651), classifies the dominant `BiomeId` at that provisional height via `biome_param_blending::blend_biome_parameters` (N jittered samples; Whittaker lookup is `lookup_biome_coastal_gated`, production call `biome_param_blending.rs:204`), then computes the final height by composing the same `BootstrapParams` with the blended per-biome `mountains_amplitude` (lib.rs:670-675).
+**Notes (E3 build, commit `d506658d8`, 2026-07-03 — reverses the v1.1 statement here):**
+- The `None`-mask branch evaluates the **SELECTED archetype's** bootstrap splines — `self.climate.archetype().bootstrap_splines` (lib.rs:568-577), not hardcoded Continental Temperate. The editor sets `config.climate.archetype` from the World Archetype dropdown; each of the six `WorldArchetypeId` presets carries a **distinct** spline set (`spline_types.rs:661-758`; Custom = CT baseline by design). The pre-E3 CT-only behavior was why all archetypes rendered the same landform.
+- The **provisional-height seam fix** (lib.rs:587-651 comment block): classification previously ran on the legacy halo height (`sample_height` regime) while rendering used the spline regime — once E3 Phase A diverged the splines from the D5FIX baseline, snow/alpine classified onto 20-30 m flats (build-commit measurement: mountain-character biomes 48.8% → 3.9% after the fix). Classification elevation and render height now derive from the same spline regime.
+- The `Some`-mask branch (regional_archetype_mask, lib.rs:620-643) blends per-vertex across archetypes — present and unit-tested but **not reached in production** because no caller assigns `regional_archetype_mask` (§6, §11; still true at `8232b150b`).
+
+#### Stage 3: Erosion on the halo
+**File:** `astraweave-terrain/src/advanced_erosion.rs`, driven from `lib.rs:395-428`
+**Role:** Maps the climate bias to an `ErosionPreset` (`erosion_preset_for_climate`) and runs `AdvancedErosionSimulator::apply_preset_at_world_offset` over the full halo using world-cell-hashed droplet spawns for cross-chunk determinism. Only runs when `config.noise.erosion_enabled`.
+**Notes:** The simulator's `new(seed)` is no longer the primary determinism driver in the world-coord path; per-droplet RNG derives from world-cell hash (lib.rs:401-407). The legacy simple cellular-automaton erosion (`TerrainChunk::apply_erosion`, chunk.rs:204) is bypassed by this path and used only by the simpler `generate_chunk` route (lib.rs:299-301).
+
+#### Stage 4: Chunk assembly
+**File:** `astraweave-terrain/src/chunk.rs` (`TerrainChunk::new` / `new_with_biome_weights` / `new_with_climate_field`)
+**Role:** Bundles the post-erosion heightmap, the `Vec<BiomeType>` biome_map (from PRE-erosion heights + climate), optional pre-erosion `biome_weights: Vec<[f32;8]>`, and optional per-vertex `biome_ids: Vec<BiomeId>`.
+**Notes:** §2.5 authorial-intent invariant: biome weights/IDs are computed from PRE-erosion heights so that erosion does not geologically reclassify a vertex's biome (chunk.rs:69-91).
+
+#### Voxel meshing detail
+**File:** `astraweave-terrain/src/meshing.rs`, `voxel_data.rs`, `marching_cubes_tables.rs`
+**Role:** `DualContouring::generate_mesh` extracts an isosurface from a `VoxelChunk` (32³ SVO of `Voxel{density:f32, material:u16}`), using marching-cubes edge/tri tables for connectivity. Corner bits follow Bourke order (`BOURKE_CORNERS`), the same order as `EDGE_ENDPOINTS`. Each crossed edge stores one vertex, deduped by `EdgeKey` (`meshing.rs`). `ChunkMesh::add_skirts` (meshing.rs:68) generates vertical skirt geometry on the 6 boundary faces to hide LOD-seam cracks. `LodMeshGenerator` / `AsyncMeshGenerator` provide LOD and async variants.
+**Notes:** This voxel representation is **independent** of the heightmap `TerrainChunk` path — they share the crate, not the data flow. `ChunkCoord` (3D, voxel_data.rs:29) and `ChunkId` (2D, chunk.rs:11) are different coordinate types (§3, §6).
+
+---
+
+## 3. Semantic Vocabulary
+
+| Term | Definition | Used in |
+|---|---|---|
+| **`ChunkId`** | 2D `{x:i32, z:i32}` identifier for a heightmap terrain chunk | `chunk.rs:11`, `lib.rs`, `background_loader.rs` |
+| **`ChunkCoord`** | 3D `{x,y,z:i32}` identifier for a voxel chunk (32³) | `voxel_data.rs:29`, `meshing.rs` |
+| **`TerrainChunk`** | Heightmap-based chunk: heightmap + biome_map + optional biome_weights/biome_ids | `chunk.rs:65` |
+| **`VoxelChunk`** | Sparse-voxel-octree chunk of `Voxel{density, material}` | `voxel_data.rs` |
+| **`Heightmap`** | 2D grid of f32 heights at a given resolution | `heightmap.rs`, `noise_gen.rs` |
+| **`BiomeType`** | 8-variant ecological enum (Grassland/Desert/Forest/Mountain/Tundra/Swamp/Beach/River) | `biome.rs:12` |
+| **`BiomeId`** | Whittaker climate-lookup biome identity used by the F.4.B.3.D climate-field path | `biome_lookup.rs`, `chunk.rs:91` |
+| **`biome_weights`** | Per-vertex `[f32;8]` soft biome blend, pre-erosion | `chunk.rs:81`, `elevation_biome.rs` |
+| **`WorldArchetypeId`** | One of 6 climate-envelope presets (ContinentalTemperate, EquatorialTropical, BorealSubarctic, Mediterranean, Desert, Custom) | `world_archetypes.rs`, `lib.rs:542-561` |
+| **`RegionalArchetypeMask`** | Paintable 1024² uint8 archetype-id grid + falloff distance field | `regional_archetype_mask.rs:67` |
+| **`BootstrapParams` / `BootstrapSplineSet`** | Per-archetype noise bootstrap parameters and the climate→params splines that produce them | `spline_types.rs` |
+| **`NoiseLayer`** | One fractal noise layer (scale, amplitude, octaves, persistence, lacunarity, type, domain-warp) | `noise_gen.rs` |
+| **Continental modulation** | Low-frequency spatial field that scales mountain amplitude for regional highland/lowland clustering | `noise_gen.rs:29-50` |
+| **Halo** | A chunk plus its 1-chunk border, generated together so erosion is seam-safe | `lib.rs:683` |
+| **Scatter** | Procedural placement of vegetation instances and resource nodes | `scatter.rs`, `zone_scatter.rs` |
+| **Blueprint zone** | Polygon region driving `.blend`-sourced replica/inspired scatter + heightmap injection | `blueprint_zone.rs`, `zone_scatter.rs` |
+
+### Terms to NOT confuse
+
+- **`ChunkId` (2D heightmap) vs `ChunkCoord` (3D voxel):** different types, different subsystems. `ChunkId` indexes the editor heightmap world; `ChunkCoord` indexes the voxel demo world. They do not interoperate.
+- **`BiomeType` (8-enum) vs `BiomeId` (Whittaker lookup):** `BiomeType` is the original ecological enum scored from height/temp/moisture (`find_best_biome`, lib.rs:859). `BiomeId` is the newer climate-field lookup identity carried per-vertex. A `TerrainChunk` may carry both (`biome_map: Vec<BiomeType>` AND `biome_ids: Option<Vec<BiomeId>>`).
+- **"chunk" in this crate vs "chunk" in `terrain_materials.md`:** here a chunk is a generation/storage unit (`TerrainChunk`/`VoxelChunk`); in the material trace a "chunk" owns splat textures on the render side. Related spatially, distinct ownership.
+- **Erosion: simple CA vs `AdvancedErosionSimulator`:** `TerrainChunk::apply_erosion` (chunk.rs:204) is a cheap cellular automaton used by `generate_chunk`. The climate path uses `AdvancedErosionSimulator` (droplet hydraulic/thermal). They are different algorithms; the climate path explicitly bypasses the CA (lib.rs:336-337).
+- **"Splat":** see [`terrain_materials.md`](terrain_materials.md) §3 — `texture_splatting.rs` (8-layer, test-only) vs the render 32-layer pipeline. This trace does not own the splat path.
+
+---
+
+## 4. Cross-System Touchpoints
+
+### Upstream (what feeds this system)
+
+| Source system | Interface | Data | Notes |
+|---|---|---|---|
+| Caller config | `WorldGenerator::new(WorldConfig)` | seed, chunk_size, resolution, noise/climate/biome/structure config | `lib.rs:180`. Editor builds this in `terrain_integration.rs:302` |
+| `astraweave-gameplay` (**reverse dep**) | `astraweave_gameplay::{spawn_resources, ResourceNode}` (scatter.rs:4); `astraweave_gameplay::{types::ResourceKind, BiomeRule}` (biome.rs:3-4) | resource-node spawning + biome rule types | **Directional anomaly** documented in [`ARCHITECTURE_MAP.md`](ARCHITECTURE_MAP.md):108,148 and Cargo.toml:14. World-gen imports gameplay types; conceptually should flow the other way. Verified present at commit `7c29b8182` |
+| `astraweave-blend` (schema-mirror, no dep) | local `FixedPlacement` / `SourceHeightmap` structs mirroring `astraweave_blend::heightmap_raster` JSON | `.blend` placements + rasterized heightmaps | `zone_scatter.rs:31-70` deliberately re-declares the schema to AVOID a cross-crate dep |
+
+### Downstream (what consumes this system's output)
+
+| Consumer system | Interface | Data | Notes |
+|---|---|---|---|
+| `tools/aw_editor` (heightmap path) | `WorldGenerator::generate_chunk_with_climate(chunk_id, climate_bias)` | `TerrainChunk` | `terrain_integration.rs:343`. THE wired production consumer of generation |
+| `tools/aw_editor` (vegetation) | `VegetationScatter::new(...).scatter_vegetation_hierarchical(...)` | `Vec<VegetationInstance>` | `terrain_integration.rs:2728-2760` |
+| `tools/aw_editor` (blueprint zones) | `ZoneScatterGenerator::new(64.0, 65).generate_zone_scatter(&bz, &chunk_refs, seed)` | `ZoneGenerationResult` | `main.rs:7458-7465`. Note: editor seeds this from `SystemTime` (main.rs:7459) — non-deterministic at that call site |
+| `examples/hybrid_voxel_demo` (voxel path) | `DualContouring::generate_mesh(chunk)`, `LodMeshGenerator::generate_mesh_lod(...)` | `ChunkMesh` | `examples/hybrid_voxel_demo/src/main.rs:120,183` |
+| `aravath_runtime` (voxel path) | `DualContouring::generate_mesh` via `Ground::sync_dirty` | `ChunkMesh` turned into a static trimesh and render parts | `aravath_runtime/src/ground.rs`. The greybox island stands on this mesh |
+| `astraweave-render` (terrain GPU bridge) | `astraweave_terrain::gpu_bridge::TerrainGpuAccelerator` impl `WgpuTerrainAccelerator` | `GpuHeightmapRequest`/`GpuNoiseRequest`/`GpuErosionRequest` | `astraweave-render/src/terrain_gpu_bridge.rs:11-67`. The impl exists but has no production caller outside its own file (§11). Traced in [`render_pipeline_material_system_shader_infrastructure.md`](render_pipeline_material_system_shader_infrastructure.md) |
+| Material/splat path | biome data → editor splat bake | biome → material slot influence | Out of scope here; see [`terrain_materials.md`](terrain_materials.md) §4 (the exact biome→material-slot interface is marked NEEDS VERIFICATION there) |
+
+### Bidirectional / Coupled
+
+- **`BiomeType` shared with gameplay/render:** `BiomeType` (terrain) is consumed by render and scatter and flows through the gameplay reverse-dep. [`ARCHITECTURE_MAP.md`](ARCHITECTURE_MAP.md):439 rates this HIGH blast-radius: changing gameplay biome types breaks terrain generation.
+- **`RegionalArchetypeMask` ↔ editor panel:** `regional_archetype_panel.rs` owns a `RegionalArchetypeMask` and documents `WorldGenerator.regional_archetype_mask` as its "integration surface" (regional_archetype_panel.rs:12), but no code assigns the mask onto a generator — the coupling is documented, not yet wired (§6, §11).
+
+---
+
+## 5. Active File Map
+
+Wiredness verified by workspace grep for non-test/non-example production callers at commit `7c29b8182`.
+
+| File | Role | Status | Notes |
+|---|---|---|---|
+| `lib.rs` | `WorldGenerator`, `WorldConfig`, halo/crop/biome-modulation orchestration | Active | Wired via editor `terrain_integration.rs`. Central entry point |
+| `noise_gen.rs` | `TerrainNoise`, `NoiseConfig`, layered fBm + domain warp + continental + derivative-weighted + per-octave weights | Active | Deterministic; seeded off `config.seed`. E3 defaults: base layer `NoiseType::Fbm` 4-octave (noise_gen.rs:226), mountains `NoiseType::Billow` (:241, replacing RidgedMulti's knife-ridge networks), detail amplitude 3.0 (:247). `continental_enabled` default **false — deliberate** (:120-139): the erosion-driven `mountains_amplitude` spline now gates mountain regions; continentalness gating on top would double-gate. `base_derivative_weighted` default false (:202-204). `mountain_octave_weights` field is read-but-no-effect (infrastructure-only, noise_gen.rs:84-97) |
+| `noise_simd.rs` | `SimdHeightmapGenerator` (SIMD heightmap, default `simd-noise` feature) | Active | Used by `generate_chunk` under `#[cfg(feature="simd-noise")]` (lib.rs:270) |
+| `perlin_gradient.rs` | Analytical-derivative Perlin + derivative-weighted fBm | Active (noise layer) | Backs `base_derivative_weighted` path |
+| `heightmap.rs` | `Heightmap`, `HeightmapConfig` | Active | Core storage type |
+| `chunk.rs` | `ChunkId`, `TerrainChunk`, `ChunkManager`, `smooth_shared_vertices` | Active | Heightmap chunk + manager; legacy `apply_erosion` CA lives here (line 204) |
+| `climate.rs` | `ClimateMap`, `ClimateConfig` (temperature/moisture field) | Active | Feeds biome classification |
+| `biome.rs` | `BiomeType` (8), `BiomeConfig`, `BiomeVegetation`, `VegetationType` | Active | Imports gameplay `ResourceKind`/`BiomeRule` (reverse dep) |
+| `elevation_biome.rs` | `elevation_to_biome_weights`, `ClimateBias`, `SEA_LEVEL` | Active | Produces 8-slot pre-erosion biome weights |
+| `biome_lookup.rs` | Whittaker `BiomeId` lookup (climate × elevation) | Active | F.4.B.3.D.2 |
+| `biome_parameters.rs` | Per-`BiomeId` parameter table (mountains_amplitude wired; ridge_strength defined-unwired) | Active (partial) | F.4.B.3.D.3 |
+| `biome_param_blending.rs` | Scattered-convolution blend of biome parameters | Active | F.4.B.3.D.4; called in lib.rs:583 |
+| `world_archetypes.rs` | 6-archetype climate-envelope catalog | Active | F.4.B.3.D.5 |
+| `spline_types.rs` | `BootstrapParams`, `Spline1D`, per-archetype `BootstrapSplineSet` | Active | Evaluated in lib.rs:534-644. E3: six **distinct** per-archetype factories (`bootstrap_splines_*`, :661-758; CT = `climate_driven_spline_set()`, Custom = CT by design; Boreal sharp alpine to amp 880 / Desert flat-biased + sharp tail + high floor / Equatorial broad massifs / Mediterranean intermediate). `d5fix_baseline_spline_set()` retained at :507 for the held baseline tests. **T.2a (2026-07-24): the six production `expect()`s are retired.** They were at :575/:594/:609/:641/:651/:656 at that point (docs long cited :571/… — a uniform +4 drift from the repo-wide fmt `1ef81c239`, not from any logic change). `Result` propagation is *blocked*, not merely costly: the factories are reached through `impl Default for WorldArchetype` (`climate.rs`) and cross-crate `impl Default for TerrainPanel`, and `Default::default()` cannot return `Result`. Replaced by `Spline1D::from_literal_control_points` (infallible + `debug_assert`, following the file's own `Spline1D::constant` precedent) with the invariant asserted in CI by `bootstrap_spline_sets_are_well_formed` across all six archetype factories. `from_control_points` remains the validated path for non-literal control points |
+| `biome_blending.rs` | `BiomeBlender`, `PackedBiomeBlend` (MAX_BLEND_BIOMES=4) | Active (biome layer) | Also covered by `terrain_materials.md` §5 |
+| `biome_pack.rs` | `.blend`-decomposition asset-pack format (`BiomePack`, manifest bridge) | Active (biome layer) | Consumed by editor panels; see `terrain_materials.md` §5 |
+| `advanced_erosion.rs` | `AdvancedErosionSimulator`, presets, `erosion_preset_for_climate` | Active | Wired via `generate_chunk_with_climate` (lib.rs:395-428). NOTE: contradicts the CLAUDE.md "AdvancedErosionSimulator dormant/removed" claim — see §6 |
+| `erosion.rs` | Small standalone erosion helpers | Active (small) | 155 LoC |
+| `runevision_erosion.rs` | Gradient-aligned gully extrusion filter (Skovbo Johansen, MPL-2.0) | Active (opt-in) | Applied only when `base_derivative_weighted` + `runevision: Some` |
+| `scatter.rs` | `VegetationScatter`, `ScatterConfig`, `VegetationInstance`, `density_at_distance`, `spawn_resources` bridge | Active | Wired via editor `terrain_integration.rs:2728` and `generate_chunk_with_scatter` |
+| `zone_scatter.rs` | `ZoneScatterGenerator`, `.blend` replica/inspired scatter, heightmap injection | Active | Wired via editor `main.rs:7458` (blueprint zones) |
+| `blueprint_zone.rs` | `BlueprintZone`, `ZoneRegistry`, polygon math | Active | Backing data for zone_scatter |
+| `structures.rs` | `StructureGenerator`, `StructureType`, structure scatter | Active | Wired via `scatter_chunk_content` (lib.rs:256) |
+| `regional_archetype_mask.rs` | `RegionalArchetypeMask` (paint + I/O), `RegionalArchetypeBlend` sampler, `blend_bootstrap_params` | Active type / **dormant data path** | Type wired into editor `RegionalArchetypePanel`; the generation `Some`-branch is unreachable because no caller assigns the mask (§6, §11) |
+| `meshing.rs` | `DualContouring`, `LodMeshGenerator`, `AsyncMeshGenerator`, `ChunkMesh`, `MeshVertex` | Active | Callers: `examples/hybrid_voxel_demo` and `aravath_runtime/src/ground.rs`. One vertex per crossed edge (`EdgeKey`) |
+| `column_gen.rs` | Integer forest columns, road, scatter, LOD keep, `worldgen_record` | Active (determinism gate) | `SimRng` stream `SIM_SYSTEM_FOREST_SCATTER`. No libm. Hash case `worldgen_columns`. `view_ring_lod_keeps_the_forest_under_budget` asserts density and `kept < 900`. It does not assert host wall-clock. |
+| `column_stream.rs` | `ColumnStream`, `StreamDelta`, `LodSet` | Active (demo) | Pre-sized ring, in-place `(x, z)` sort, at most 4 DAG rebuilds per call. `Ground::stream_around` is the caller. The loaded set is the deformation slot set. |
+| `voxel_data.rs` | `VoxelChunk` (SVO), `Voxel`, `ChunkCoord`, `VoxelGrid`, `CHUNK_SIZE=32` | Active | Same callers as `meshing.rs` |
+| `marching_cubes_tables.rs` | MC edge/tri tables for dual contouring | Active | Data tables for `meshing.rs` |
+| `collision.rs` | `collision_mesh_from_chunk` / `_from_heightmap`, `CollisionMesh` | In-design-but-tested | No non-test production caller found |
+| `partition_integration.rs` | `VoxelPartitionManager`, World-Partition streaming events | In-design-but-tested | Left in place. Not the demo streamer. |
+| `solver.rs` | `TerrainSolver` (Phase 10), `ResolvedLocation` | Kept | `SIM_SYSTEM_TERRAIN_SOLVER`. The modifier, compressed-voxel, and second save format were removed. |
+| `texture_splatting.rs` | 8-layer procedural splat (`MAX_SPLAT_LAYERS`) | Deprecated (test-only) | See `terrain_materials.md` §5/§11 — zero production callers |
+| `mutation_tests.rs` / `chunk_tests.rs` / `voxel_data_tests.rs` | `#[cfg(test)]` mutation/comprehensive suites | Test-only | 3,670 + 532 + 532 LoC |
+
+**Status definitions:**
+- **Active**: load-bearing in the wired editor path; edit with care.
+- **Active in example only**: exercised by exactly one example (`hybrid_voxel_demo`), not by the engine runtime or editor.
+- **In-design-but-tested**: compiles, has passing tests, but **zero production callers** (per CLAUDE.md Key Lesson 8 taxonomy). Dormant until wired.
+- **Deprecated (test-only)** / **Trait active, caller dormant**: see notes.
+
+---
+
+## 6. Conflict Map / Residue
+
+### Coexisting abstractions
+
+| Abstraction | Files | Status | Notes |
+|---|---|---|---|
+| Heightmap terrain (`TerrainChunk`/`Heightmap`/`ChunkId`) | `chunk.rs`, `heightmap.rs`, `lib.rs` | Active (wired) | The editor's terrain world |
+| Voxel terrain (`VoxelChunk`/`ChunkCoord`/`DualContouring`) | `voxel_data.rs`, `meshing.rs` | Active | Independent of the heightmap path. Callers: `hybrid_voxel_demo` and `aravath_runtime` |
+| `BiomeType` (8-enum, scored) | `biome.rs`, `lib.rs:859` | Active | Original classification |
+| `BiomeId` (Whittaker climate lookup) | `biome_lookup.rs`, `chunk.rs:91` | Active | Newer per-vertex identity; coexists with `BiomeType` on the same chunk |
+| Simple CA erosion (`apply_erosion`) | `chunk.rs:204` | Active (legacy `generate_chunk` path) | Bypassed by the climate path |
+| Droplet erosion (`AdvancedErosionSimulator`) | `advanced_erosion.rs` | Active (climate path) | Both erosion algorithms coexist |
+| Synchronous chunk gen (editor) | `lib.rs` + `terrain_integration.rs` | Active (wired) | What the editor actually uses |
+| Column stream | `column_stream.rs`, `destruction_seam.rs`, `aravath_runtime/src/ground.rs` | Active | One ring. Eviction order is an in-place `(x, z)` merge. Command types and `VoxelDag` come from `astraweave-destruction`. The ring keeps its own occupancy replay because that crate's `Terrain` slot set is four chunks. Island `fill_height_chunk` still writes the demo voxels. |
+| Single-archetype gen | `lib.rs` climate path | Active | A stored mask does not change heights. |
+
+### Naming collisions
+
+- **`ChunkId` vs `ChunkCoord`:** 2D heightmap chunk id vs 3D voxel chunk coord. Both named "chunk". Always check the type.
+- **`LodConfig`:** `meshing::LodConfig` is the voxel mesh LOD. `ViewParams` lives next to it. The old hysteresis LOD type was removed with the unused loader.
+- **`MeshVertex` (meshing.rs:18) vs render/editor terrain vertex formats:** the voxel `MeshVertex{position,normal,material:u16}` is distinct from the editor `TerrainVertex` (see `terrain_materials.md`). Do not cross-wire.
+- **"Erosion":** four modules touch erosion (`erosion.rs`, `advanced_erosion.rs`, `runevision_erosion.rs`, `chunk.rs::apply_erosion`). Specify which.
+
+### Known cognitive traps
+
+- **Trap:** The CLAUDE.md "Integration Completeness" list states `AdvancedErosionSimulator` "shipped — and [was] later removed or rewritten" and that `RegionalArchetypePanel` was shipped then removed.
+  **What's actually true at `7c29b8182`:** Both are PRESENT. `AdvancedErosionSimulator` is wired into `generate_chunk_with_climate` (lib.rs:395-428; `apply_preset_at_world_offset` call at lib.rs:419) and exported from lib.rs:46-49. `RegionalArchetypePanel` is instantiated (`tab_viewer/mod.rs:994` `RegionalArchetypePanel::new()`; dispatcher tool at `main.rs:2664`) and shown via the `PanelType::RegionalArchetype` handler (`tab_viewer/mod.rs:7796`, `dock_panels.rs:234`); the variant is declared at panel_type.rs:232. The aw_editor trace ([`aw_editor.md`](aw_editor.md):203) records that its *multi-tool migration* (not the panel itself) was deferred to Sub-phase 5. The CLAUDE.md statement is stale/imprecise for these two; treat the code as ground truth. [NEEDS VERIFICATION whether a prior commit truly removed them and they were re-added — only current state was traced. Git evidence found: `astraweave-terrain/src/advanced_erosion.rs` shows zero `--diff-filter=D` (delete) commits, and `regional_archetype_panel.rs` was added once (`26a3864b8`, F.5-paint.A) with no prior delete — i.e. no delete+re-add of these two files is visible. The "rewritten" half of the CLAUDE.md claim is broader than a file-delete check and remains unverified; a full per-symbol history diff would resolve it.]
+- **Trap:** Assuming the whole crate is wired because the editor uses "terrain."
+  **What's actually true:** Only the heightmap generation + scatter + biome path is wired into the editor. The voxel meshing path is example-only; streaming/LOD, partition, persistence, terrain-modifier, solver, collision, and the multi-archetype data path are in-design-but-tested with no production caller.
+- **Trap:** Editing the `Some`-mask branch in `apply_per_biome_modulation_to_halo` expecting to see a visual change.
+  **What's actually true:** No production code assigns `regional_archetype_mask`, so the branch is never taken at runtime — only by `tests/phase_1_x_f4_regional_mask_integration.rs`.
+- **Trap:** Expecting `ZoneScatterGenerator` scatter to be reproducible across editor runs.
+  **What's actually true:** The editor seeds it from `SystemTime::now()` (main.rs:7459), so that call site is non-deterministic even though the generator itself is seed-deterministic.
+
+---
+
+## 7. Decision Log
+
+### Decision: Reverse dependency `terrain → gameplay`
+- **Date:** [Reasoning not recovered from available sources]
+- **Status:** Accepted (in active code; flagged as anomaly)
+- **Context:** Terrain biome/scatter needs gameplay's `ResourceKind`, `BiomeRule`, `ResourceNode`, and `spawn_resources`.
+- **Decision:** `astraweave-terrain` depends on `astraweave-gameplay` (Cargo.toml:14) and imports those types directly (biome.rs:3-4, scatter.rs:4).
+- **Alternatives considered:** [Reasoning not recovered]. The `zone_scatter.rs` schema-mirror approach (re-declaring `astraweave_blend` structs locally to avoid a dep, zone_scatter.rs:28-35) shows the codebase sometimes avoids cross-crate deps; that pattern was NOT applied to gameplay types.
+- **Consequences:** Directional anomaly recorded in [`ARCHITECTURE_MAP.md`](ARCHITECTURE_MAP.md):148. HIGH blast radius via `BiomeType`. Not a cycle (ARCHITECTURE_MAP.md:157).
+
+### Decision: Halo-based seam-safe erosion + pre-erosion biome stability
+- **Date:** [Reasoning visible in code comments; exact date not recovered]
+- **Status:** Accepted (lib.rs:317-456 documents it extensively)
+- **Context:** Per-chunk erosion would create seams at chunk boundaries; and erosion lowering a peak would otherwise reclassify a "mountain" vertex as lowland.
+- **Decision:** Generate a 1-chunk halo, erode the full halo with world-cell-hashed droplet RNG, then crop. Compute biome weights/IDs from PRE-erosion heights (§2.5 authorial-intent invariant).
+- **Alternatives considered:** [Reasoning not recovered]. Phase-0 measured droplet p95 travel = 120 WU < one chunk width, justifying halo=1 (lib.rs:329-331).
+- **Consequences:** Adjacent chunks' overlapping halos iterate identical world cells → near-identical erosion in overlap (seam-safe). Requires f32 step arithmetic to match the SIMD path exactly (lib.rs:496-504).
+
+### Decision: f32 (not f64) step arithmetic in halo generation
+- **Date:** [Reasoning visible in code comments]
+- **Status:** Accepted (lib.rs:496-504)
+- **Context:** A regression (F.4.B.3.D.3b) found f64 `step` produced 125 WU divergence at chunk borders, breaking the shared-edge invariant.
+- **Decision:** Mirror `generate_halo_heightmap`'s f32 arithmetic exactly in `apply_per_biome_modulation_to_halo`.
+- **Consequences:** Operation-order discipline is load-bearing for byte-identity; documented again in noise_gen.rs:544-560 for `sample_height_with_params`.
+
+### Decision: `regional_archetype_mask` defaults to `None`
+- **Date:** Phase 1.X-F.4.E (per inline comment)
+- **Status:** Accepted (lib.rs:170-197)
+- **Context:** F.3 established a single-archetype byte-identity contract; F.4 adds a multi-archetype mask path.
+- **Decision:** Default `None` preserves the F.3 byte-identical output; `Some(mask)` opts into the multi-archetype blend.
+- **Consequences:** The multi-archetype path is a strictly additive, opt-in branch. Because no production caller sets it, the branch is currently dormant (§6, §11).
+
+### Decision: Continental modulation defaults retuned for Target B scale
+- **Date:** Phases F.2-T.B.1 / F.4.B.2.F (per inline comments)
+- **Status:** Accepted (noise_gen.rs:120-162)
+- **Context:** At the original `continental_scale=0.0004`, seed-12345 produced no highland regions across the editor extent (diagnostic at noise_gen.rs:124-132); `continental_min` was too low, producing a "bed-of-nails" surface.
+- **Decision:** `continental_scale` retuned 0.0004 → 0.0012 → 0.0003 (Target B 11264 WU extent); `continental_min` raised 0.15 → 0.50.
+- **Consequences:** Regional highland/lowland clustering exists at practical seeds; documented numerically inline.
+
+### Decision: E3 real build — climate-driven splines, per-archetype landform, provisional-height classification (commit `d506658d8`)
+- **Date:** 2026-07-03 (director-gated over five visual-feedback rounds; scope ratified 2026-07-01 in `docs/audits/e3_terrain_generation_wiring_recon_2026-06.md` §6/§10)
+- **Status:** Accepted (shipped; the commit message is the sole contemporaneous record — reconstruction in `docs/audits/E3_PREFLIGHT_2026-07.md`)
+- **Context:** All archetypes rendered the same landform (the None-mask path hardcoded CT splines and the spline sets were inert single-control-point D5FIX constants); biome data never reached rendering (see `aw_editor.md` for the consumption side); the "labyrinth of mountains" came from RidgedMulti + amplitude regime.
+- **Decision:** (a) Erosion-driven `mountains_amplitude` splines replace the D5FIX constants, flat-biased so modal erosion reads as plains (Minecraft-1.18 multi-noise architecture per `docs/audits/terrain_generation_techniques_research_2026-07.md`); (b) the None-mask path reads the SELECTED archetype's `bootstrap_splines` with six distinct factories; (c) biome classification moves to a params-based provisional height (the seam fix); (d) `base_elevation_floor` becomes a continentalness-driven `ParamSpline` (water becomes low-continentalness basins, not noise dips); (e) coastal-gated Whittaker lookup (`lookup_biome_coastal_gated`, aquatic/beach only where continentalness < 0.40); (f) temperature becomes a smooth macro field (scale 0.0005, 1 octave); (g) base noise Perlin→Fbm, mountains RidgedMulti→Billow, continental gating deliberately off.
+- **Consequences:** Archetypes differ in landform AND biome palette; the D5FIX byte-identity contract is retired (63 baseline/golden assertions across 11 test targets fail by design pending the T.G re-bake — measured 2026-07-20, `E3_PREFLIGHT_2026-07.md` §2.4); E3.a-2 goldens stay held until T.G.
+
+### Decision: Dual Contouring over Marching Cubes for voxel meshing
+- **Date:** [Reasoning visible in module doc-comment]
+- **Status:** Accepted (meshing.rs:1-9)
+- **Decision:** Use Dual Contouring (preserves sharp features, fewer artifacts, more uniform triangles, handles hermite data) for voxel isosurface extraction.
+- **Consequences:** Marching-cubes tables retained for connectivity (`marching_cubes_tables.rs`). Skirt geometry (`add_skirts`) added for LOD-seam crack hiding.
+
+---
+
+## 8. Known Invariants
+
+| # | Invariant | Checkable? | Enforced by |
+|---|---|---|---|
+| 1 | `TerrainNoise::sample_height(x,z)` is a pure deterministic function of `(seed, world_x, world_z)` — same inputs → byte-identical output across runs/platforms | Yes | Doc-only + relied on for halo center-crop byte-identity (lib.rs:705-710); `halo_seed` determinism has explicit tests (lib.rs:895-917) |
+| 2 | The unmodulated halo center-crop is byte-identical (within 0.01) to single-chunk `generate_chunk` at the same world coords. The public climate heightmap is that crop after per-biome mountain amplitude, so it is not the legacy field | Yes | `phase_1_6_f3_phase_1_unmodulated_halo_crop_matches_generate_chunk`; f32-step discipline is the mechanism |
+| 3 | Biome weights/IDs are computed from PRE-erosion heights (authorial intent over post-erosion shape) | Yes | Structural (lib.rs:364-392); test `phase_1_6_f3_phase_1_biome_weights_pre_erosion.rs` |
+| 4 | `mask = None` evaluates exactly ONE archetype's splines — the selected `config.climate.archetype` (default CT). **Superseded form (pre-E3):** byte-identity to the F.3/D5FIX baseline no longer holds — the E3 spline sets deliberately diverged, and the D5FIX baseline-assertion tests fail by design pending T.G | Yes | Structural branch (lib.rs:618-619); `none_path_splines` from the selected archetype (lib.rs:577) |
+| 4b | Biome classification elevation and render height derive from the SAME spline regime: classification runs on the params-based provisional height (`sample_height_with_params(params, x, z, 1.0)`), never the legacy `sample_height` halo value (the E3 seam fix — violating this re-opens snow-on-plains) | Yes | Structural (lib.rs:587-651, provisional height at :649-651) |
+| 5 | Adjacent chunks' overlapping halos produce near-identical erosion in the overlap region (seam-safety) | Partially | `apply_preset_at_world_offset` world-cell determinism; `phase_1_6_f3_phase_2_continuity.rs`, `phase_1_6_f3_phase_3_diagnostic.rs` |
+| 6 | `ChunkId` (2D) and `ChunkCoord` (3D) are never interchanged | No (type system enforces non-coercion, but no cross-check) | Type system |
+| 7 | A `VoxelChunk` mesh's skirt geometry is generated only for vertices on a boundary face within `eps` | Yes | `add_skirts` boundary test (meshing.rs:74-94) + meshing tests |
+| 8 | `TUNDRA_MAX_TEMP_C` must stay **strictly above -10.0 degC**, and `BOREAL_MAX_TEMP_C` must not rise: the canonical-tundra test asserts `lookup_biome(-10.0, 200.0, 100.0) == Tundra` (moisture 200 is exactly `BOREAL_MIN_MOISTURE_MM`, so at -10.0 it flips to BorealForest), while the Equatorial and Desert distribution tests assert `frac(BorealForest) < 0.005`. T.2a lowered the floor 0.0 -> -5.0 within those bounds | Yes | `biome_lookup.rs` in-file `mod tests`; `world_archetypes.rs` 10K-sample distribution suite |
+| 9 | Elevation overlays are evaluated **before** the Whittaker polygon and preempt it: `SnowCap` at `elev >= 350` (`temp < 18`), `Alpine` at 280, `Scree` at 220 (`moisture < 600`). So the temperature band governs only terrain below ~220 m, and a warm archetype's small Tundra census is SnowCap, not Whittaker Tundra — the distinction that made T.2a's global band change safe | Yes | `biome_lookup.rs:186-190`, `:277-287` / `:332-340`; per-archetype census via `tools/aw_editor/tests/terrain_ab_stations.rs` |
+| 10 | Marching-cubes triangles index one vertex per crossed edge. The cache key is `EdgeKey`, and corner bits use Bourke order so they match `EDGE_ENDPOINTS`. A cache keyed by cell position does not feed the triangle table | Yes | `meshing.rs` `edge_vertex`; `marching_cubes_tests` and `meshing_mutations` |
+| 11 | Base columns are `surface_height` / `worldgen_record`. A deformed chunk is that base plus a replay of the `DestructionCommand` log. Scatter ids are `scatter_entity_id(x, z)`. A `Detach` in the log is not respawned. `around` and `lod_for_camera` allocate nothing after `ColumnStream::new`. At most 4 voxel DAGs rebuild per call | Yes | `deformed_chunk_replays_after_eviction`, `destroyed_scatter_stays_down_across_a_reload`, `stream_tick_allocates_nothing_after_warmup`, determinism case `deformed_chunk` |
+
+---
+
+## 9. Performance & Resource Profile
+
+### Hot paths
+- **`apply_per_biome_modulation_to_halo`** (lib.rs:488): per halo vertex does 1 raw noise sample + N (default 6) climate samples + N biome lookups + N parameter lookups + 1 modulated noise sample. For a 96-resolution chunk with halo=1 that is ~288² ≈ 83K vertices. Cost analysis is documented inline (lib.rs:481-487). Climate sampling and biome lookup are pure functions — cache-friendly.
+- **`AdvancedErosionSimulator` droplet pass:** droplet_count × max_droplet_lifetime steps over the full halo. Cost scales with preset droplet count and halo area.
+- **`DualContouring::generate_mesh`:** per voxel cell over a 32³ chunk; one vertex per crossed edge, deduped in `HashMap<EdgeKey, u32>`.
+
+### Cold paths
+- **Chunk generation** runs at chunk-load time, not per frame. The editor invokes it on demand.
+- **Scatter / structures** run per-chunk at generation time.
+
+### Resource ownership
+- **`WorldGenerator`** owns `TerrainNoise`, `ClimateMap`, `ChunkManager`, `StructureGenerator`, and the optional `regional_archetype_mask`. Lifetime = generator lifetime.
+- **`ChunkManager`** owns loaded `TerrainChunk`s and handles radius load/unload (`stream_chunks`, lib.rs:822).
+- **`VoxelChunk`** owns its SVO; `ChunkMesh` owns vertex/index buffers (`memory_usage` at meshing.rs:54).
+- **SIMD/rayon:** `noise_simd` (SIMD heightmap) is feature-gated default-on; `rayon` is a declared dependency (Cargo.toml:16). Verified: the only rayon call site in the crate is `AsyncMeshGenerator::generate_meshes_parallel` (`meshing.rs:472-484`, `into_par_iter` at meshing.rs:478) — i.e. parallel VOXEL meshing, part of the example-only voxel path. There is NO rayon usage in the heightmap generation/noise path (lib.rs/noise_gen.rs run single-threaded); the "parallel generation" reading is not supported by the code.
+
+---
+
+## 10. Testing & Validation
+
+- **Inline unit tests (`#[cfg(test)]`):** high density across modules — `regional_archetype_mask.rs` (33), `chunk.rs` (35), `lod_manager.rs` (28), `noise_gen.rs` (22), `background_loader.rs` (20), `zone_scatter.rs` (16), `scatter.rs` (12), `biome_pack.rs` (9), `biome.rs` (6), `voxel_data.rs` (6), `advanced_erosion.rs` (6), `meshing.rs` (5), `structures.rs` (4).
+- **Comprehensive/mutation test modules:** `mutation_tests.rs` (3,670 LoC), `chunk_tests.rs` (532), `voxel_data_tests.rs` (532), all `#[cfg(test)]`.
+- **Integration tests (`astraweave-terrain/tests/`):** 54 files, heavily weighted toward the `phase_1_6_f3*` / `phase_1_6_f4_b_3_d*` / `phase_1_x_f4*` campaign families (halo scaffolding, biome-weight pre-erosion, continuity, cross-archetype, regional-mask integration) plus Wave 2/3 mutation-remediation suites (scatter, meshing, voxel, erosion, structures, partition).
+- **Benchmarks:** `benches/terrain_generation.rs`.
+- **Mutation testing:** Wave 2/3 remediation present (multiple `wave2_*`/`wave3_*` test files). `texture_splatting.rs` mutation coverage is documented in `terrain_materials.md` §10.
+- **Manual validation:** the F-series campaign used editor-visual diagnostics (continental field highland presence, highland-Y-max regression, bed-of-nails surface) recorded inline in `noise_gen.rs` and in `docs/current/REGIONAL_ARCHETYPE_VARIATION_CAMPAIGN.md` (referenced in noise_gen.rs:552).
+- **Determinism note:** seed-determinism is strong inside the crate, but the editor's `ZoneScatterGenerator` call seeds from `SystemTime` (main.rs:7459), so that one production path is non-deterministic by construction.
+- **E3 golden re-lock (2026-10-16):** noise-config defaults and `golden_sample_height_*` / density fingerprints assert the current `NoiseConfig::default` (base amplitude 100 Fbm, mountains 480 Billow, detail 3). The halo 0.01 check compares the crop taken before per-biome modulation with `generate_chunk`. The July 2026 measurement (2,439 passed / 63 failed) was the pre-lock surface; see `E3_PREFLIGHT_2026-07.md` §2.4.
+  - **Updated 2026-07-24 (T.2a):** re-measured `--release` at T.2a HEAD: **2,440 passed / 64 failed / 15 ignored**. The +1 failure is `phase_1_6_f4_b_3_d_3_mixed_climate_chunk_produces_varied_biomes`, caused by T.2a Phase 3 (`TUNDRA_MAX_TEMP_C` 0.0 → −5.0; proven by flipping the constant — 6/0 at `0.0`, 5/1 at `−5.0`). **It is NOT re-bake class**: it is a structural liveness assertion that per-vertex biome lookup produces variation, not a baked value. So T.G inherits **63 re-bake-class + 1 structural**. The invariant itself holds — 15/25 probed chunks still carry ≥2 distinct BiomeIds. Left failing pending director ratification of the threshold, because the correct replacement sample depends on the final value. Full attribution: `docs/audits/T2A_OUTCOME.md` §8.1.
+
+---
+
+## 11. Open Questions / Parked Decisions
+
+- **CLOSED 2026-10-16.** `phase_1_6_f3_phase_2_end_to_end_timing` walked a 5×5 grid for six climates, printed a timing table, and asserted nothing. Windows CI terminated it at 240s on every retry. The test now generates one chunk per climate through the same halo-and-erosion path and asserts the heightmap is non-empty, finite, and has relief.
+
+- **Is the async streaming/LOD subsystem (`BackgroundChunkLoader`, `LodManager`, `MorphingLodManager`, `StreamingDiagnostics`, `partition_integration`) intended to become the runtime loader, or is it dormant scaffolding?** It is fully implemented and tested but has zero production callers at `7c29b8182`; the editor uses synchronous `generate_chunk_with_climate`. Resolving this determines whether these ~5K LoC are "in-design-but-tested" (per CLAUDE.md Lesson 8) or destined for wiring.
+- **Should the `RegionalArchetypeMask` `Some`-branch be wired into the editor?** The panel exists, owns a mask, and Multi-Tool SP5.B (2026-06-06) wired click+drag painting INTO the panel's mask — but no code assigns that mask onto a generator (`set_mask` callers are test-only; `regenerate_terrain` builds a fresh `TerrainState::new()`), so the multi-archetype generation branch (lib.rs:620-643) remains unreachable in production at `8232b150b`. Per the 2026-07-20 T-series ratification, spatial multi-archetype stays a **separately-ratifiable future feature** — explicitly NOT in the terrain T-series (`E3_PREFLIGHT_2026-07.md` §7).
+- **What is the runtime role of the voxel terrain path (`VoxelChunk`/`DualContouring`)?** `examples/hybrid_voxel_demo` and `aravath_runtime` (`Ground::sync_dirty`) both call `generate_mesh`. The greybox island collider and render mesh come from that call. The heightmap editor path is a separate system. Column deformation replays `astraweave-destruction` commands inside `ColumnStream`. `destruction_seam.rs` keeps the ring occupancy replay because `Terrain` holds four chunks.
+- **Does `WgpuTerrainAccelerator` (the `TerrainGpuAccelerator` impl in `astraweave-render`) have any intended caller?** The impl compiles but nothing invokes it outside its own file. GPU-accelerated heightmap/erosion is therefore dormant.
+- **Is the CLAUDE.md claim that `AdvancedErosionSimulator` and `RegionalArchetypePanel` were "removed" stale, or did a prior commit remove and re-add them?** Both are present and (for erosion) wired at `7c29b8182`. This trace verified only current state. [NEEDS VERIFICATION of git history.]
+- **Should the gameplay reverse dependency be inverted?** [`ARCHITECTURE_MAP.md`](ARCHITECTURE_MAP.md):148 flags it as a directional anomaly with HIGH blast radius. It is working code; the question is parked, not a recommendation.
+- ~~**The Terrain panel's "Base Amplitude" slider is inert — restore it, or remove it?**~~ **CLOSED 2026-07-26 by ED-3 (ratified direction: splines stay the authority).** `NoiseConfig::base_amplitude_scale` (serde-default 1.0 = bit-identical output, D5FIX discipline preserved) multiplies `params.base_elevation_amplitude` at its single consumption site in `sample_height_with_params`; the panel's slider is now "Amplitude x (spline scale)" via `TerrainState::set_amplitude_scale`. Regression: `lib.rs::ed3_base_amplitude_scale_is_live_and_identity_at_default` (identity at 1.0, live at 0.5) + render proof `tools/aw_editor/tests/ed3_proof.rs` (three scales pairwise ~99.5% different pixels). Classification uses the same scaled function, so biome assignment follows the terrain (no new §7.7 seam). **T.3's amplitude-finality gate is now actionable.** Original finding (T.2d third pass, 2026-07-25): `terrain_panel.rs:1064` (slider, 10..200) → `terrain_panel.rs:2016` `set_noise_params(..)` → `terrain_integration.rs:167` `config.noise.base_elevation.amplitude`; but `noise_gen.rs:575` documents that read as **replaced** by `params.base_elevation_amplitude` (applied at `:663`), which `regional_archetype_mask.rs:469` blends from archetype splines and never from `config`. Octaves / lacunarity / persistence are still read — amplitude alone is dead. `terrain_panel.rs:2004-2005`'s comment still claims all four "flow through", so this is doc-drift as well as a settable-but-never-read field (Integration-Completeness §3). Proven empirically: `tools/aw_editor/tests/t2d_camera_light.rs` Experiment F renders amplitudes 50/20/6 **byte-identical**. Decisional — the fix could be re-plumbing the slider into `BootstrapParams`, or deleting it because per-archetype splines are now the intended authority.
+- ~~**`compute_material_lod`'s hard tiers produce a visible boundary and far-field dithering on terrain.**~~ **CLOSED 2026-07-25 by T.2d.F (director-ratified option A: delete the tiers).** The LOD1|2 threshold (footprint = 2.0) was the director-observed hard edge, located to within 4 px in two independent frames; the per-pixel tier selection was 40-55% of far-field high-frequency energy. All four consumer surfaces removed; one BRDF everywhere; boundary signature and dithering measured gone (far-field grain −48.6%/−51.7%), close range unchanged to 1 LSB, min-spec −1.0% frame cost. Far field brightens up to +9.5% — T.2a/T.2c far-field frames rot (re-judgment ledger). Enforced by `renderer.rs::material_lod_tiers_are_retired`; full evidence `docs/audits/T2DF_OUTCOME.md`; render-trace Invariant 19.
+
+---
+
+## 12. Maintenance Notes
+
+**Update this doc when:**
+- `lib.rs` generation orchestration changes (halo size, modulation order, erosion wiring).
+- A subsystem currently "in-design-but-tested" gains a production caller (move it to Active and update §5/§6).
+- The `regional_archetype_mask` data path is wired into the editor (closes a §11 question; update §6 dormant-branch note).
+- The voxel path gains a runtime consumer beyond `hybrid_voxel_demo`.
+- The `terrain → gameplay` dependency direction changes.
+- Determinism guarantees (Invariants 1-5) are relaxed or newly enforced.
+
+**Verification process:**
+- Re-run the wiredness grep: `rg '<Type>::new|<fn>\(' --type rust -g '!*test*' -g '!*example*'` for each subsystem entry point in §5.
+- Spot-check the §2 pipeline against `lib.rs` (halo/crop/modulation/erosion order) and `meshing.rs` (voxel path).
+- Confirm the gameplay reverse dep at `astraweave-terrain/Cargo.toml:14`.
+- Stamp the new commit hash and date here after verification.
+
+---
+
+## Appendix A: Quick reference for agents
+
+**If you're working on this system, remember:**
+1. **This crate is several subsystems, not one.** Only the heightmap generation + biome + scatter path is wired into the editor. Voxel meshing is example-only; streaming/LOD, partition, persistence, terrain-modifier, solver, collision, GPU bridge, and the multi-archetype mask branch are in-design-but-tested with no production caller. Check wiredness before assuming a change is observable.
+2. **Determinism is a contract.** `TerrainNoise::sample_height` must stay a pure function of `(seed, x, z)`. The halo path's f32 step arithmetic is load-bearing for seam byte-identity (lib.rs:496-504). Do not "clean up" to f64.
+3. **Biome lives in two type systems** (`BiomeType` enum + `BiomeId` Whittaker lookup) and both can ride on the same `TerrainChunk`. The material/splat side is a *third* concern owned by [`terrain_materials.md`](terrain_materials.md).
+4. **The `terrain → gameplay` dependency is intentional-but-anomalous.** Adding more gameplay imports widens an already-flagged reverse dep.
+5. **CLAUDE.md's "AdvancedErosionSimulator/RegionalArchetypePanel removed" note is stale** for current code — both exist; erosion is wired.
+
+**Files you'll most likely touch:**
+- `astraweave-terrain/src/lib.rs` (generation orchestration)
+- `astraweave-terrain/src/noise_gen.rs` (noise tuning)
+- `astraweave-terrain/src/biome*.rs` (biome classification/parameters)
+- `astraweave-terrain/src/scatter.rs` / `zone_scatter.rs` (vegetation)
+- `tools/aw_editor/src/terrain_integration.rs` (the production consumer)
+
+**Files you should NOT touch without strong reason:**
+- `texture_splatting.rs` — deprecated/test-only; see `terrain_materials.md`.
+- The in-design-but-tested streaming/LOD/partition/persistence/solver modules — extending them adds dormant surface; confirm a wiring plan first (§11).
+- The `Some`-mask branch in `apply_per_biome_modulation_to_halo` — unreachable in production until the mask is wired.
+
+**Common mistakes when changing this system:**
+- **Mistake:** Conflating `ChunkId` (2D heightmap) with `ChunkCoord` (3D voxel). They belong to different subsystems.
+- **Mistake:** Computing biome weights from post-erosion heights. The invariant (§8.3) requires pre-erosion heights.
+- **Mistake:** Assuming a voxel-path or streaming-path edit affects the editor. It does not — the editor uses the synchronous heightmap path.
+- **Mistake:** Changing halo step arithmetic precision; it breaks seam byte-identity.
+
+---
+
+## Revision History
+
+| Version | Date | Change |
+|---|---|---|
+| 1.16 | 2026-10-18 | **Forest LOD budget.** `view_ring_lod_keeps_the_forest_under_budget` still requires `total > 400` and `kept < 900`. The `as_millis() < 50` assert is removed. macOS 1.89 on run 39084152246 measured 50.776916ms (total=2009, kept=727), failed the wall-clock assert, and skipped `Run clippy with toolchain`. Ubuntu and Windows in that run stayed under 50ms. Scatter code and `worldgen_columns` are unchanged. |
+| 1.9 | 2026-10-15 | **Edge-keyed isosurface.** `DualContouring` again stores one vertex per crossed marching-cubes edge (`HashMap<EdgeKey, u32>`, Bourke corner order). A cell-position cache left triangle lookups empty, so the Aravath island collider did not hold the character. `aravath_runtime` is a caller of `generate_mesh` via `Ground::sync_dirty`. Invariant 10. |
+| 1.8 | 2026-10-14 | **WS-D2.** `TerrainSolver::new` requires an explicit `u64` seed. `SystemTime` is gone from the solver and from terrain save headers/filenames (`timestamp` is a sim tick, default 0). `meshing.rs` was not modified. |
+| 1.13 | 2026-10-16 | **Case count on `d0452d3e`.** The compare job requires fifteen names: the thirteen already on main, plus `worldgen_columns` and `deformed_chunk`. `worldgen_hash` appends both rows to `replay-hash.json`. Greybox `ColumnStream` only chooses the loaded ring; `fill_height_chunk` still writes the island voxels, and window props still come from `aravath_runtime`'s local scatter. Checkpoint `ground` must equal `worldgen_record()` when the key is present. |
+| 1.12 | 2026-10-16 | **Rebase onto #205.** Copied command, `Fixed64`, and `VoxelDag` types are gone. The ring uses `astraweave-destruction`. Demo voxels stay `fill_height_chunk`. `worldgen_columns` and `deformed_chunk` join the required set. |
+| 1.11 | 2026-10-15 | **Destruction seam.** `ColumnStream` is a pre-sized ring and the deformation slot set. Apply Erosion appends `DestructionCommand` bytes (`erosion.cmd`) and leaves `worldgen_record` as the base. Scatter ids come from `(seed, x, z)`. A detach is not respawned. Determinism case `deformed_chunk`. |
+| 1.10 | 2026-10-14 | **Golden re-lock and capability restore.** The seven pre-E3 lib goldens match the shared debug/release bits from PR #217 (persistence and lacunarity force 4 octaves). `build_chunks_sorted` commits worker results in `(x, z)` order. `lod_step` / `morphed_height` are the distant LOD and morph. `erode_chunk_heights` is the integer droplet bake the editor Apply Erosion button writes. |
+| 1.9 | 2026-10-14 | **U1, U2, U4.** `ColumnStream` is the demo streamer. Scene save and the Aravath checkpoint store `worldgen_record()`; erosion preview is not that file. Deleted: async heightmap loader, LOD hysteresis, LOD morph, streaming diagnostics, clipmap, GPU erosion trait and render impl, compressed voxels, voxel modifier, Phase 10 terrain persistence. `astraweave-pcg` `SeedRng` drives `WfcGrid::collapse_seeded`, called from the editor dungeon button. Mask generation branch removed. Solver kept. |
+| 1.8 | 2026-10-14 | **WS-RENDER-ENV-B P1–P2.** `DualContouring` stores one vertex per crossed edge (`vertex_cache: HashMap<EdgeKey, u32>`). `column_gen` is the integer forest/road/scatter record hashed as `worldgen_columns`. The f32 `WorldGenerator` path is unchanged and is not the sim ground. |
+| 1.7 | 2026-07-26 | **ED-3 — the Base-Amplitude Open Question is CLOSED.** New `NoiseConfig::base_amplitude_scale` (serde-default 1.0, bit-identical; consumed once in `sample_height_with_params` as a multiplier on the spline-derived `base_elevation_amplitude`); panel slider re-plumbed as "Amplitude x (spline scale)" via `TerrainState::set_amplitude_scale`. Regression + render proof cited in §11. T.3's amplitude-finality gate is actionable. See `docs/audits/ED3_OUTCOME.md`. |
+| 1.6 | 2026-07-25 | **T.2d.F — the `compute_material_lod` Open Question is CLOSED** (director-ratified deletion, executed same day). §11 entry struck through with the measured outcome (boundary signature + dithering gone, close range 1 LSB, far field +≤9.5%, min-spec −1.0%); the Base-Amplitude-slider question REMAINS OPEN and now blocks T.3's amplitude-finality gate (see `docs/audits/T2DF_OUTCOME.md` §8). Shader-side details live in the render trace (v1.12, Invariant 19) — no `astraweave-terrain` code changed. |
+| 1.5 | 2026-07-25 | **T.2d third pass — two new Open Questions, no code change.** (1) The Terrain panel's *Base Amplitude* slider is **inert**: it reaches `config.noise.base_elevation.amplitude`, but `noise_gen.rs:575` documents that read as replaced by `params.base_elevation_amplitude` (applied `:663`), which `regional_archetype_mask.rs:469` blends from archetype splines and never from `config`. Octaves/lacunarity/persistence are still read; amplitude alone is dead, and `terrain_panel.rs:2004-2005`'s comment claiming all four "flow through" is doc-drift. Proven by `t2d_camera_light.rs` Experiment F rendering amplitudes 50/20/6 **byte-identical**. (2) `compute_material_lod`'s hard tiers are convicted of the director-observed terrain boundary (LOD1\|2 at footprint 2.0, matched to 4 px in two frames) and of 40-55% of far-field high-frequency energy as per-pixel tier dithering — `fwidth(world_pos)` includes the height derivative, so the tier flickers over rough ground. Cross-material fix, parked as a STOP-with-options: `docs/audits/T2D_CAMERA_LIGHT.md` §10. |
+| 1.4 | 2026-07-24 | **T.2a post-sweep correction.** The full `--release` terrain sweep landed after v1.3 was written and falsified its "no new baseline rot" claim. §10 known-failing surface re-measured at T.2a HEAD: **2,440 passed / 64 failed / 15 ignored** (baseline 2,439/63). The +1 is `phase_1_6_f4_b_3_d_3_mixed_climate_chunk_produces_varied_biomes`, caused by the v1.3 `TUNDRA_MAX_TEMP_C` change and proven by flipping the constant (6/0 at `0.0`, 5/1 at `-5.0`). Classified **structural, not re-bake** — so T.G inherits 63 + 1, not 64. Invariant intact (15/25 probed chunks still carry >=2 BiomeIds); left failing pending threshold ratification. |
+| 1.3 | 2026-07-24 | **T.2a** (`611c8edc7`, `c0753b551`). §5 `spline_types` row: the six production `expect()`s are retired via `Spline1D::from_literal_control_points` + a CI invariant test (the `Result` route is blocked by two infallible `Default` impls); the long-cited :571/… line numbers were +4 stale from `1ef81c239`. §8: added Invariants 8 (the boreal band's binding test bounds) and 9 (elevation overlays preempt the Whittaker polygon). `TUNDRA_MAX_TEMP_C` lowered 0.0 -> **-5.0** so boreal forest threads through snow — measured, not guessed: the Boreal climate field is 100% below 0 degC (mean -7.46, p50 -6.55), which is why the census read 0.017% forest / 93.3% tundra, while Mediterranean / Continental Temperate / Desert each have **0.0%** below 0 degC and so cannot be reached by the change. Evidence, census tables and the per-archetype before/after: `docs/audits/T2A_OUTCOME.md`. |
+| 1.2 | 2026-07-21 | **T.0 trace-sync — pays the E3 build's documentation debt** (build `d506658d8` 2026-07-03 updated no traces; reconstruction: `docs/audits/E3_PREFLIGHT_2026-07.md`). Corrected the §2 Stage-2 None-mask statement (was: "evaluates Continental Temperate splines only" — reversed by E3 Phase A.2: reads the SELECTED archetype's splines, lib.rs:568-577). Added: provisional-height seam fix (Stage 2, Invariant 4b), six distinct per-archetype spline factories + production `expect()` inventory (§5 spline_types row), E3 noise-regime defaults incl. deliberate continental-off (§5 noise_gen row), rewritten Invariant 4 (D5FIX byte-identity retired), E3 decision-log entry, the measured 63-test by-design failing surface (§10), updated mask-branch line cites (:618-643) + SP5 status (§6, §11). Prior §2/§6/§8 line cites in the :595-645 range shifted; verified at `8232b150b`. |
+| ≤1.1 | ≤2026-06-25 | Pre-E3 revisions (creation + verification pass); this table added at 1.2 — earlier entries not reconstructed. |
+
+---
+
+## Appendix B: Historical context
+
+The terrain crate accreted in distinct campaign waves visible in module names and inline comments: an original heightmap+biome generator (`WorldGenerator`, `BiomeType`, simple CA erosion), a "hybrid voxel" subsystem (`voxel_data`, `meshing`, marching-cubes tables, Phase 10 modifier/persistence/solver), a Week-3/4 performance + streaming wave (`noise_simd`, `background_loader`, `lod_manager`, `streaming_diagnostics`), and a long Phase-1.6 "F-series" / Phase-1.X regional-archetype campaign that layered a climate-field architecture (`biome_lookup`, `biome_parameters`, `biome_param_blending`, `world_archetypes`, `spline_types`, `regional_archetype_mask`, halo-based seam-safe erosion) on top of the original generator. The F-series is the most heavily commented and tested area and is the active locus of the wired editor path. The voxel and streaming waves left substantial, well-tested surface that has not (yet) been wired into the engine runtime — the single largest honesty signal for agents working here.

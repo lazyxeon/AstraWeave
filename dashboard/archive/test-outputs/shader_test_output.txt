@@ -1,0 +1,94 @@
+﻿cargo : [1m[32m    Finished[0m `test` profile [optimized + debuginfo] target(s) in 2.42s
+At line:1 char:1
++ cargo test --test shader_validation -- --nocapture 2>&1 | Out-File -F ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ([1m[32m    Fi...get(s) in 2.42s:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+[1m[32m     Running[0m tests\shader_validation.rs (target\debug\deps\shader_validation-547f0b85aa0960a8.exe)
+
+running 3 tests
+≡ƒôª Found 51 WGSL shader files
+ΓÜá∩╕Å  Potential compatibility issues:
+   astraweave-render-bevy\src\shaders\mesh_view_bindings.wgsl: Has 40 bindings (WebGL2 limit: 16)
+   astraweave-render-bevy\src\shaders\pbr_bindings.wgsl: Has 27 bindings (WebGL2 limit: 16)
+Γ£à astraweave-render\shaders\megalights\count_lights.wgsl
+test test_shader_features_compatibility ... ok
+Γ£à astraweave-render\shaders\megalights\prefix_sum.wgsl
+Γ£à astraweave-render\shaders\megalights\write_indices.wgsl
+Γ£à astraweave-render\shaders\pbr_terrain.wgsl
+Γ£à astraweave-render\shaders\shadow_csm.wgsl
+Γ£à astraweave-render\src\shaders\anchor_vfx.wgsl
+Γ£à astraweave-render\src\shaders\nanite_cluster_cull.wgsl
+Γ£à astraweave-render\src\shaders\nanite_hiz_pyramid.wgsl
+Γ£à astraweave-render\src\shaders\nanite_material.wgsl
+Γ£à astraweave-render\src\shaders\nanite_sw_raster.wgsl
+Γ£à astraweave-render\src\shaders\nanite_visibility.wgsl
+Γ£à astraweave-render-bevy\shaders\megalights\count_lights.wgsl
+Γ£à astraweave-render-bevy\shaders\megalights\prefix_sum.wgsl
+Γ£à astraweave-render-bevy\shaders\megalights\write_indices.wgsl
+Γ£à astraweave-render-bevy\shaders\nanite_cluster_cull.wgsl
+Γ£à astraweave-render-bevy\shaders\nanite_hiz_pyramid.wgsl
+Γ£à astraweave-render-bevy\shaders\nanite_material.wgsl
+Γ£à astraweave-render-bevy\shaders\nanite_sw_raster.wgsl
+Γ£à astraweave-render-bevy\shaders\nanite_visibility.wgsl
+ΓÅ¡∩╕Å  astraweave-render-bevy\src\shaders\fog.wgsl (Bevy preprocessor shader - skipped)
+ΓÅ¡∩╕Å  astraweave-render-bevy\src\shaders\forward_io.wgsl (Bevy preprocessor shader - skipped)
+ΓÅ¡∩╕Å  astraweave-render-bevy\src\shaders\mesh.wgsl (Bevy preprocessor shader - skipped)
+ΓÅ¡∩╕Å  astraweave-render-bevy\src\shaders\mesh_bindings.wgsl (Bevy preprocessor shader - skipped)
+ΓÅ¡∩╕Å  astraweave-render-bevy\src\shaders\mesh_functions.wgsl (Bevy preprocessor shader - skipped)
+ΓÅ¡∩╕Å  astraweave-render-bevy\src\shaders\mesh_types.wgsl (Bevy preprocessor shader - skipped)
+ΓÅ¡∩╕Å  astraweave-render-bevy\src\shaders\mesh_view_bindings.wgsl (Bevy preprocessor shader - skipped)
+ΓÅ¡∩╕Å  astraweave-render-bevy\src\shaders\mesh_view_types.wgsl (Bevy preprocessor shader - skipped)
+ΓÅ¡∩╕Å  astraweave-render-bevy\src\shaders\morph.wgsl (Bevy preprocessor shader - skipped)
+ΓÅ¡∩╕Å  astraweave-render-bevy\src\shaders\pbr.wgsl (Bevy preprocessor shader - skipped)
+ΓÅ¡∩╕Å  astraweave-render-bevy\src\shaders\pbr_bindings.wgsl (Bevy preprocessor shader - skipped)
+ΓÅ¡∩╕Å  astraweave-render-bevy\src\shaders\pbr_fragment.wgsl (Bevy preprocessor shader - skipped)
+ΓÅ¡∩╕Å  astraweave-render-bevy\src\shaders\pbr_functions.wgsl (Bevy preprocessor shader - skipped)
+ΓÅ¡∩╕Å  astraweave-render-bevy\src\shaders\pbr_lighting.wgsl (Bevy preprocessor shader - skipped)
+ΓÅ¡∩╕Å  astraweave-render-bevy\src\shaders\pbr_types.wgsl (Bevy preprocessor shader - skipped)
+ΓÅ¡∩╕Å  astraweave-render-bevy\src\shaders\skinning.wgsl (Bevy preprocessor shader - skipped)
+ΓÅ¡∩╕Å  astraweave-render-bevy\src\shaders\utils.wgsl (Bevy preprocessor shader - skipped)
+ΓÅ¡∩╕Å  astraweave-render-bevy\src\shaders\view_transformations.wgsl (Bevy preprocessor shader - skipped)
+Γ£à tools\aw_editor\src\viewport\shaders\entity.wgsl
+Γ£à tools\aw_editor\src\viewport\shaders\gizmo.wgsl
+Γ£à tools\aw_editor\src\viewport\shaders\grid.wgsl
+ΓÜá∩╕Å  Shaders without entry points (may be libraries):
+   astraweave-render\shaders\pbr_terrain.wgsl
+   examples\unified_showcase\src\shaders\pbr_advanced.wgsl
+test test_shader_entry_points ... ok
+Γ£à tools\aw_editor\src\viewport\shaders\skybox.wgsl
+Γ£à examples\bevy_shadow_demo\src\shaders.wgsl
+ΓÅ¡∩╕Å  examples\unified_showcase\src\enhanced_shader.wgsl (Bevy preprocessor shader - skipped)
+Γ£à examples\unified_showcase\src\pbr_shader.wgsl
+Γ£à examples\unified_showcase\src\shader_clean.wgsl
+Γ£à examples\unified_showcase\src\shaders\pbr_lib.wgsl
+Γ£à examples\unified_showcase\src\skybox_shader.wgsl
+
+≡ƒôè Shader Validation Summary:
+   Total shaders: 51
+   Γ£à Passed: 47
+   ΓÜá∩╕Å  Warnings: 0
+   Γ¥î Failed: 4
+
+Γ¥î Failures:
+   Γ¥î astraweave-render\src\shaders\nanite_material_resolve.wgsl: Parse error: expected expression, found "|"
+   Γ¥î astraweave-render\src\shaders\vxgi_voxelize.wgsl: Parse error: unknown scalar type: `vec3<i32>`
+   Γ¥î astraweave-render-bevy\shaders\nanite_material_resolve.wgsl: Parse error: expected expression, found "|"
+   Γ¥î examples\unified_showcase\src\shaders\pbr_advanced.wgsl: Validation error: Function [22] 'sample_material_extended' is invalid
+
+thread 'test_all_shaders_compile' panicked at astraweave-render\tests\shader_validation.rs:171:9:
+
+≡ƒÆÑ 4 shader(s) failed validation!
+See errors above for details.
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test test_all_shaders_compile ... FAILED
+
+failures:
+
+failures:
+    test_all_shaders_compile
+
+test result: FAILED. 2 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.08s
+
+[1m[31merror[0m[1m:[0m test failed, to rerun pass `-p astraweave-render --test shader_validation`

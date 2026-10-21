@@ -1,0 +1,156 @@
+Title: Page not found – Interplay of Light
+
+URL Source: https://interplayoflight.wordpress.com/2013/12/02/lessons-learned-in-voxel-destructive-terrain/
+
+Warning: Target URL returned error 404: Not Found
+
+Markdown Content:
+Page not found – Interplay of Light
+
+===============
+
+[Skip to content](https://interplayoflight.wordpress.com/2013/12/02/lessons-learned-in-voxel-destructive-terrain/#content)
+
+[](https://interplayoflight.wordpress.com/)
+[Interplay of Light](https://interplayoflight.wordpress.com/)
+=============================================================
+
+Sidebar
+
+I am Kostas Anagnostou, a graphics programmer spending most of my waking hours making pixels prettier and faster. This blog is my scratchpad for graphics techniques I try and experiment with. The opinions expressed herein are my own.
+
+[Follow @KostasAAA](https://twitter.com/KostasAAA)
+
+Recent Posts
+============
+
+*   [Spatial hashing for raytraced ambient occlusion](https://interplayoflight.wordpress.com/2025/11/23/spatial-hashing-for-raytraced-ambient-occlusion/)
+*   [The performance impact of vertex shader exports](https://interplayoflight.wordpress.com/2025/09/21/the-performance-impact-of-vertex-shader-exports/)
+*   [GPU utilisation and performance improvements](https://interplayoflight.wordpress.com/2025/08/29/gpu-utilisation-and-performance-improvements/)
+*   [Async compute all the things](https://interplayoflight.wordpress.com/2025/05/27/async-compute-all-the-things/)
+*   [Meshlets and Mesh Shaders](https://interplayoflight.wordpress.com/2025/05/05/meshlets-and-mesh-shaders/)
+
+Categories
+==========
+
+*   [D3D11](https://interplayoflight.wordpress.com/category/d3d11/)
+*   [Education](https://interplayoflight.wordpress.com/category/education/)
+*   [Global Illumination](https://interplayoflight.wordpress.com/category/global-illumination/)
+*   [Graphics programming](https://interplayoflight.wordpress.com/category/graphics-programming/)
+*   [Graphics Techniques](https://interplayoflight.wordpress.com/category/graphics-techniques/)
+*   [Graphics Tricks](https://interplayoflight.wordpress.com/category/graphics-tricks/)
+*   [PBR](https://interplayoflight.wordpress.com/category/pbr/)
+*   [Performance](https://interplayoflight.wordpress.com/category/performance/)
+*   [Raytracing](https://interplayoflight.wordpress.com/category/raytracing/)
+*   [SharpDX](https://interplayoflight.wordpress.com/category/sharpdx/)
+*   [Signed Distance Fields](https://interplayoflight.wordpress.com/category/signed-distance-fields/)
+*   [Tools](https://interplayoflight.wordpress.com/category/tools/)
+*   [Uncategorized](https://interplayoflight.wordpress.com/category/uncategorized/)
+*   [Unity](https://interplayoflight.wordpress.com/category/unity/)
+*   [Unreal](https://interplayoflight.wordpress.com/category/unreal/)
+
+Archives
+========
+
+*   [November 2025](https://interplayoflight.wordpress.com/2025/11/)
+*   [September 2025](https://interplayoflight.wordpress.com/2025/09/)
+*   [August 2025](https://interplayoflight.wordpress.com/2025/08/)
+*   [May 2025](https://interplayoflight.wordpress.com/2025/05/)
+*   [January 2025](https://interplayoflight.wordpress.com/2025/01/)
+*   [September 2024](https://interplayoflight.wordpress.com/2024/09/)
+*   [June 2024](https://interplayoflight.wordpress.com/2024/06/)
+*   [December 2023](https://interplayoflight.wordpress.com/2023/12/)
+*   [July 2023](https://interplayoflight.wordpress.com/2023/07/)
+*   [January 2023](https://interplayoflight.wordpress.com/2023/01/)
+*   [December 2022](https://interplayoflight.wordpress.com/2022/12/)
+*   [September 2022](https://interplayoflight.wordpress.com/2022/09/)
+*   [July 2022](https://interplayoflight.wordpress.com/2022/07/)
+*   [June 2022](https://interplayoflight.wordpress.com/2022/06/)
+*   [May 2022](https://interplayoflight.wordpress.com/2022/05/)
+*   [April 2022](https://interplayoflight.wordpress.com/2022/04/)
+*   [March 2022](https://interplayoflight.wordpress.com/2022/03/)
+*   [January 2022](https://interplayoflight.wordpress.com/2022/01/)
+*   [December 2021](https://interplayoflight.wordpress.com/2021/12/)
+*   [November 2021](https://interplayoflight.wordpress.com/2021/11/)
+*   [October 2021](https://interplayoflight.wordpress.com/2021/10/)
+*   [July 2021](https://interplayoflight.wordpress.com/2021/07/)
+*   [May 2021](https://interplayoflight.wordpress.com/2021/05/)
+*   [April 2021](https://interplayoflight.wordpress.com/2021/04/)
+*   [December 2020](https://interplayoflight.wordpress.com/2020/12/)
+*   [November 2020](https://interplayoflight.wordpress.com/2020/11/)
+*   [July 2020](https://interplayoflight.wordpress.com/2020/07/)
+*   [June 2020](https://interplayoflight.wordpress.com/2020/06/)
+*   [May 2020](https://interplayoflight.wordpress.com/2020/05/)
+*   [April 2020](https://interplayoflight.wordpress.com/2020/04/)
+*   [February 2020](https://interplayoflight.wordpress.com/2020/02/)
+*   [September 2019](https://interplayoflight.wordpress.com/2019/09/)
+*   [March 2019](https://interplayoflight.wordpress.com/2019/03/)
+*   [September 2018](https://interplayoflight.wordpress.com/2018/09/)
+*   [July 2018](https://interplayoflight.wordpress.com/2018/07/)
+*   [May 2018](https://interplayoflight.wordpress.com/2018/05/)
+*   [March 2018](https://interplayoflight.wordpress.com/2018/03/)
+*   [January 2018](https://interplayoflight.wordpress.com/2018/01/)
+*   [December 2017](https://interplayoflight.wordpress.com/2017/12/)
+*   [November 2017](https://interplayoflight.wordpress.com/2017/11/)
+*   [October 2017](https://interplayoflight.wordpress.com/2017/10/)
+*   [July 2015](https://interplayoflight.wordpress.com/2015/07/)
+*   [April 2015](https://interplayoflight.wordpress.com/2015/04/)
+*   [December 2014](https://interplayoflight.wordpress.com/2014/12/)
+*   [March 2014](https://interplayoflight.wordpress.com/2014/03/)
+*   [December 2013](https://interplayoflight.wordpress.com/2013/12/)
+*   [September 2013](https://interplayoflight.wordpress.com/2013/09/)
+*   [July 2013](https://interplayoflight.wordpress.com/2013/07/)
+*   [May 2013](https://interplayoflight.wordpress.com/2013/05/)
+*   [April 2013](https://interplayoflight.wordpress.com/2013/04/)
+*   [March 2013](https://interplayoflight.wordpress.com/2013/03/)
+*   [February 2013](https://interplayoflight.wordpress.com/2013/02/)
+*   [January 2013](https://interplayoflight.wordpress.com/2013/01/)
+
+[![Image 1: RSS Feed](https://interplayoflight.wordpress.com/i/rss/orange-small.png?m=1391188133i)](https://interplayoflight.wordpress.com/feed/ "Subscribe to Posts")[RSS - Posts](https://interplayoflight.wordpress.com/feed/ "Subscribe to Posts")
+
+[![Image 2: RSS Feed](https://interplayoflight.wordpress.com/i/rss/orange-small.png?m=1391188133i)](https://interplayoflight.wordpress.com/comments/feed/ "Subscribe to Comments")[RSS - Comments](https://interplayoflight.wordpress.com/comments/feed/ "Subscribe to Comments")
+
+Meta
+====
+
+*   [Create account](https://wordpress.com/start?ref=wplogin)
+*   [Log in](https://interplayoflight.wordpress.com/wp-login.php)
+*   [Entries feed](https://interplayoflight.wordpress.com/feed/)
+*   [Comments feed](https://interplayoflight.wordpress.com/comments/feed/)
+*   [WordPress.com](https://wordpress.com/ "Powered by WordPress, state-of-the-art semantic personal publishing platform.")
+
+Search for: 
+
+Oops! That page can’t be found.
+===============================
+
+It looks like nothing was found at this location. Maybe try a search?
+
+Search for: 
+
+[Blog at WordPress.com.](https://wordpress.com/?ref=footer_blog)
+
+*   [Subscribe](https://interplayoflight.wordpress.com/2013/12/02/lessons-learned-in-voxel-destructive-terrain/)[Subscribed](https://interplayoflight.wordpress.com/2013/12/02/lessons-learned-in-voxel-destructive-terrain/)
+
+ 
+
+    *   [![Image 3](https://s0.wp.com/i/logo/wpcom-gray-white.png?m=1479929237i) Interplay of Light](https://interplayoflight.wordpress.com/)
+    
+
+Join 96 other subscribers
+
+ Sign me up 
+
+    *    Already have a WordPress.com account? [Log in now.](https://wordpress.com/log-in?signup_flow=account) 
+
+*   
+ 
+
+    *   [![Image 4](https://s0.wp.com/i/logo/wpcom-gray-white.png?m=1479929237i) Interplay of Light](https://interplayoflight.wordpress.com/)
+    *   [Subscribe](https://interplayoflight.wordpress.com/2013/12/02/lessons-learned-in-voxel-destructive-terrain/)[Subscribed](https://interplayoflight.wordpress.com/2013/12/02/lessons-learned-in-voxel-destructive-terrain/)
+    *   [Sign up](https://wordpress.com/start/)
+    *   [Log in](https://wordpress.com/log-in?signup_flow=account)
+    *   [Report this content](https://wordpress.com/abuse/?report_url=https://interplayoflight.wordpress.com)
+    *   [View site in Reader](https://wordpress.com/reader/feeds/7143350)
+    *   [Manage subscriptions](https://subscribe.wordpress.com/)
+    *   [Collapse this bar](https://interplayoflight.wordpress.com/2013/12/02/lessons-learned-in-voxel-destructive-terrain/)

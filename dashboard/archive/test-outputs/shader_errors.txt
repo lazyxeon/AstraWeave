@@ -1,0 +1,136 @@
+﻿cargo : [1m[32m   Compiling[0m astraweave-gameplay v0.1.0 
+(C:\Users\pv2br\AstraWeave-AI-Native-Gaming-Engine\astraweave-gameplay)
+At line:1 char:1
++ cargo test --test shader_validation test_all_shaders_compile --packag ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ([1m[32m   Com...weave-gameplay):String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+[1m[32m   Compiling[0m arboard v3.6.1
+[1m[32m   Compiling[0m noise v0.9.0
+[1m[32m   Compiling[0m ring v0.17.14
+[1m[32m   Compiling[0m webbrowser v1.0.5
+[1m[32m   Compiling[0m basis-universal-sys v0.3.1
+[1m[32m   Compiling[0m ktx2 v0.4.0
+[1m[32m   Compiling[0m egui-wgpu v0.32.3
+[1m[32m   Compiling[0m egui-winit v0.32.3
+[1m[32m   Compiling[0m astraweave-terrain v0.4.0 
+(C:\Users\pv2br\AstraWeave-AI-Native-Gaming-Engine\astraweave-terrain)
+[1m[32m   Compiling[0m aw_asset_cli v0.1.0 (C:\Users\pv2br\AstraWeave-AI-Native-Gaming-Engine\tools\aw_asset_cli)
+[1m[32m   Compiling[0m basis-universal v0.3.1
+[1m[32m   Compiling[0m ciborium v0.2.2
+[1m[32m   Compiling[0m env_filter v0.1.3
+[1m[32m   Compiling[0m tinytemplate v1.2.1
+[1m[32m   Compiling[0m astraweave-cinematics v0.1.0 
+(C:\Users\pv2br\AstraWeave-AI-Native-Gaming-Engine\astraweave-cinematics)
+[1m[32m   Compiling[0m astraweave-materials v0.1.0 
+(C:\Users\pv2br\AstraWeave-AI-Native-Gaming-Engine\astraweave-materials)
+[1m[32m   Compiling[0m tempfile v3.23.0
+[1m[32m   Compiling[0m criterion v0.7.0
+[1m[32m   Compiling[0m astraweave-render v0.1.0 
+(C:\Users\pv2br\AstraWeave-AI-Native-Gaming-Engine\astraweave-render)
+[1m[32m   Compiling[0m env_logger v0.11.8
+[0m[1m[38;5;11mwarning[0m[0m[1m[38;5;15m: fields `eqr_bgl`, `eqr_face_bgl`, and `eqr_pipeline` are never 
+read[0m
+[0m   [0m[0m[1m[38;5;14m--> [0m[0mastraweave-render\src\ibl.rs:105:5[0m
+[0m    [0m[0m[1m[38;5;14m|[0m
+[0m[1m[38;5;14m84[0m[0m  [0m[0m[1m[38;5;14m|[0m[0m [0m[0mpub struct IblManager {[0m
+[0m    [0m[0m[1m[38;5;14m|[0m[0m            [0m[0m[1m[38;5;14m----------[0m[0m 
+[0m[0m[1m[38;5;14mfields in this struct[0m
+[0m[1m[38;5;14m...[0m
+[0m[1m[38;5;14m105[0m[0m [0m[0m[1m[38;5;14m|[0m[0m [0m[0m    eqr_bgl: wgpu::BindGroupLayout,[0m
+[0m    [0m[0m[1m[38;5;14m|[0m[0m     [0m[0m[1m[38;5;11m^^^^^^^[0m
+[0m[1m[38;5;14m106[0m[0m [0m[0m[1m[38;5;14m|[0m[0m [0m[0m    eqr_face_bgl: wgpu::BindGroupLayout,[0m
+[0m    [0m[0m[1m[38;5;14m|[0m[0m     [0m[0m[1m[38;5;11m^^^^^^^^^^^^[0m
+[0m[1m[38;5;14m107[0m[0m [0m[0m[1m[38;5;14m|[0m[0m [0m[0m    eqr_pipeline: wgpu::RenderPipeline,[0m
+[0m    [0m[0m[1m[38;5;14m|[0m[0m     [0m[0m[1m[38;5;11m^^^^^^^^^^^^[0m
+[0m    [0m[0m[1m[38;5;14m|[0m
+[0m    [0m[0m[1m[38;5;14m= [0m[0m[1m[38;5;15mnote[0m[0m: `#[warn(dead_code)]` on by default[0m
+
+[0m[1m[38;5;11mwarning[0m[0m[1m[38;5;15m: trait `NormalizePath` is never used[0m
+[0m   [0m[0m[1m[38;5;14m--> [0m[0mastraweave-render\src\material.rs:597:7[0m
+[0m    [0m[0m[1m[38;5;14m|[0m
+[0m[1m[38;5;14m597[0m[0m [0m[0m[1m[38;5;14m|[0m[0m [0m[0mtrait NormalizePath {[0m
+[0m    [0m[0m[1m[38;5;14m|[0m[0m       [0m[0m[1m[38;5;11m^^^^^^^^^^^^^[0m
+
+[1m[33mwarning[0m[1m:[0m `astraweave-render` (lib) generated 2 warnings
+[1m[32m    Finished[0m `test` profile [optimized + debuginfo] target(s) in 1m 18s
+[1m[32m     Running[0m tests\shader_validation.rs (target\debug\deps\shader_validation-4ad0a246e3f8a51c.exe)
+
+running 1 test
+≡ƒôª Found 51 WGSL shader files
+Γ£à astraweave-render\shaders\megalights\count_lights.wgsl
+Γ£à astraweave-render\shaders\megalights\prefix_sum.wgsl
+Γ£à astraweave-render\shaders\megalights\write_indices.wgsl
+Γ£à astraweave-render\shaders\pbr_terrain.wgsl
+Γ£à astraweave-render\shaders\shadow_csm.wgsl
+Γ£à astraweave-render\src\shaders\anchor_vfx.wgsl
+Γ£à astraweave-render\src\shaders\nanite_cluster_cull.wgsl
+Γ£à astraweave-render\src\shaders\nanite_hiz_pyramid.wgsl
+Γ£à astraweave-render\src\shaders\nanite_material.wgsl
+Γ£à astraweave-render\src\shaders\nanite_sw_raster.wgsl
+Γ£à astraweave-render\src\shaders\nanite_visibility.wgsl
+Γ£à astraweave-render-bevy\shaders\megalights\count_lights.wgsl
+Γ£à astraweave-render-bevy\shaders\megalights\prefix_sum.wgsl
+Γ£à astraweave-render-bevy\shaders\megalights\write_indices.wgsl
+Γ£à astraweave-render-bevy\shaders\nanite_cluster_cull.wgsl
+Γ£à astraweave-render-bevy\shaders\nanite_hiz_pyramid.wgsl
+Γ£à astraweave-render-bevy\shaders\nanite_material.wgsl
+Γ£à astraweave-render-bevy\shaders\nanite_sw_raster.wgsl
+Γ£à astraweave-render-bevy\shaders\nanite_visibility.wgsl
+Γ£à tools\aw_editor\src\viewport\shaders\entity.wgsl
+Γ£à tools\aw_editor\src\viewport\shaders\gizmo.wgsl
+Γ£à tools\aw_editor\src\viewport\shaders\grid.wgsl
+Γ£à tools\aw_editor\src\viewport\shaders\skybox.wgsl
+Γ£à examples\bevy_shadow_demo\src\shaders.wgsl
+Γ£à examples\unified_showcase\src\pbr_shader.wgsl
+Γ£à examples\unified_showcase\src\shader_clean.wgsl
+Γ£à examples\unified_showcase\src\shaders\pbr_lib.wgsl
+Γ£à examples\unified_showcase\src\skybox_shader.wgsl
+
+≡ƒôè Shader Validation Summary:
+   Total shaders: 51
+   Γ£à Passed: 28
+   ΓÜá∩╕Å  Warnings: 0
+   Γ¥î Failed: 23
+
+Γ¥î Failures:
+   Γ¥î astraweave-render\src\shaders\nanite_material_resolve.wgsl: Parse error: expected expression, found "|"
+   Γ¥î astraweave-render\src\shaders\vxgi_voxelize.wgsl: Parse error: unknown scalar type: `vec3<i32>`
+   Γ¥î astraweave-render-bevy\shaders\nanite_material_resolve.wgsl: Parse error: expected expression, found "|"
+   Γ¥î astraweave-render-bevy\src\shaders\fog.wgsl: Parse error: expected global item (`struct`, `const`, `var`, `alias`, `fn`, `diagnostic`, `enable`, `requires`, `;`) or the end of the file, found "#"
+   Γ¥î astraweave-render-bevy\src\shaders\forward_io.wgsl: Parse error: expected global item (`struct`, `const`, `var`, `alias`, `fn`, `diagnostic`, `enable`, `requires`, `;`) or the end of the file, found "#"
+   Γ¥î astraweave-render-bevy\src\shaders\mesh.wgsl: Parse error: expected global item (`struct`, `const`, `var`, `alias`, `fn`, `diagnostic`, `enable`, `requires`, `;`) or the end of the file, found "#"
+   Γ¥î astraweave-render-bevy\src\shaders\mesh_bindings.wgsl: Parse error: expected global item (`struct`, `const`, `var`, `alias`, `fn`, `diagnostic`, `enable`, `requires`, `;`) or the end of the file, found "#"
+   Γ¥î astraweave-render-bevy\src\shaders\mesh_functions.wgsl: Parse error: expected global item (`struct`, `const`, `var`, `alias`, `fn`, `diagnostic`, `enable`, `requires`, `;`) or the end of the file, found "#"
+   Γ¥î astraweave-render-bevy\src\shaders\mesh_types.wgsl: Parse error: expected global item (`struct`, `const`, `var`, `alias`, `fn`, `diagnostic`, `enable`, `requires`, `;`) or the end of the file, found "#"
+   Γ¥î astraweave-render-bevy\src\shaders\mesh_view_bindings.wgsl: Parse error: expected global item (`struct`, `const`, `var`, `alias`, `fn`, `diagnostic`, `enable`, `requires`, `;`) or the end of the file, found "#"
+   Γ¥î astraweave-render-bevy\src\shaders\mesh_view_types.wgsl: Parse error: expected global item (`struct`, `const`, `var`, `alias`, `fn`, `diagnostic`, `enable`, `requires`, `;`) or the end of the file, found "#"
+   Γ¥î astraweave-render-bevy\src\shaders\morph.wgsl: Parse error: expected global item (`struct`, `const`, `var`, `alias`, `fn`, `diagnostic`, `enable`, `requires`, `;`) or the end of the file, found "#"
+   Γ¥î astraweave-render-bevy\src\shaders\pbr.wgsl: Parse error: expected global item (`struct`, `const`, `var`, `alias`, `fn`, `diagnostic`, `enable`, `requires`, `;`) or the end of the file, found "#"
+   Γ¥î astraweave-render-bevy\src\shaders\pbr_bindings.wgsl: Parse error: expected global item (`struct`, `const`, `var`, `alias`, `fn`, `diagnostic`, `enable`, `requires`, `;`) or the end of the file, found "#"
+   Γ¥î astraweave-render-bevy\src\shaders\pbr_fragment.wgsl: Parse error: expected global item (`struct`, `const`, `var`, `alias`, `fn`, `diagnostic`, `enable`, `requires`, `;`) or the end of the file, found "#"
+   Γ¥î astraweave-render-bevy\src\shaders\pbr_functions.wgsl: Parse error: expected global item (`struct`, `const`, `var`, `alias`, `fn`, `diagnostic`, `enable`, `requires`, `;`) or the end of the file, found "#"
+   Γ¥î astraweave-render-bevy\src\shaders\pbr_lighting.wgsl: Parse error: expected global item (`struct`, `const`, `var`, `alias`, `fn`, `diagnostic`, `enable`, `requires`, `;`) or the end of the file, found "#"
+   Γ¥î astraweave-render-bevy\src\shaders\pbr_types.wgsl: Parse error: expected global item (`struct`, `const`, `var`, `alias`, `fn`, `diagnostic`, `enable`, `requires`, `;`) or the end of the file, found "#"
+   Γ¥î astraweave-render-bevy\src\shaders\skinning.wgsl: Parse error: expected global item (`struct`, `const`, `var`, `alias`, `fn`, `diagnostic`, `enable`, `requires`, `;`) or the end of the file, found "#"
+   Γ¥î astraweave-render-bevy\src\shaders\utils.wgsl: Parse error: expected global item (`struct`, `const`, `var`, `alias`, `fn`, `diagnostic`, `enable`, `requires`, `;`) or the end of the file, found "#"
+   Γ¥î astraweave-render-bevy\src\shaders\view_transformations.wgsl: Parse error: expected global item (`struct`, `const`, `var`, `alias`, `fn`, `diagnostic`, `enable`, `requires`, `;`) or the end of the file, found "#"
+   Γ¥î examples\unified_showcase\src\enhanced_shader.wgsl: Parse error: expected `;`, found "?"
+   Γ¥î examples\unified_showcase\src\shaders\pbr_advanced.wgsl: Validation error: Function [22] 'sample_material_extended' is invalid
+
+thread 'test_all_shaders_compile' panicked at astraweave-render\tests\shader_validation.rs:163:9:
+
+≡ƒÆÑ 23 shader(s) failed validation!
+See errors above for details.
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test test_all_shaders_compile ... FAILED
+
+failures:
+
+failures:
+    test_all_shaders_compile
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.37s
+
+[1m[31merror[0m[1m:[0m test failed, to rerun pass `-p astraweave-render --test shader_validation`

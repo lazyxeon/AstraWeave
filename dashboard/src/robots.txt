@@ -1,0 +1,10 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://lazyxeon.github.io/AstraWeave/sitemap.xml
+
+Disallow: /api/src/
+Disallow: /api/implementors/
+Disallow: /benchmarks/data/
+
+Crawl-delay: 1

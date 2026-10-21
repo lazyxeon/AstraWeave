@@ -1,0 +1,1112 @@
+archive/test_outputs/test_baked/grass.ktx2
+archive/test_outputs/test_baked/grass_mra.ktx2
+archive/test_outputs/test_baked/grass_n.ktx2
+archive/test_outputs/test_output_dir/grass.ktx2
+assets/AO.jpg
+assets/Albedo.jpg
+assets/Displacement.exr
+assets/Displacement.jpg
+assets/Forest Scene/Assets/#Astra113/Forest.asset
+assets/Forest Scene/Assets/Assets/Conifers [BOTD]/CTI Runtime Components/CTI Windzone.prefab
+assets/Forest Scene/Assets/Assets/Conifers [BOTD]/CTI Runtime Components/Default Components/Resources/CTI_default_albedo_Texture2DArray.asset
+assets/Forest Scene/Assets/Assets/Conifers [BOTD]/CTI Runtime Components/Default Components/Resources/CTI_default_ao_trans_smoothness.psd
+assets/Forest Scene/Assets/Assets/Conifers [BOTD]/CTI Runtime Components/Default Components/Resources/CTI_default_billboard.asset
+assets/Forest Scene/Assets/Assets/Conifers [BOTD]/CTI Runtime Components/Default Components/Resources/CTI_default_billboard_material.mat
+assets/Forest Scene/Assets/Assets/Conifers [BOTD]/CTI Runtime Components/Default Components/Resources/CTI_default_normal_spec.psd
+assets/Forest Scene/Assets/Assets/Conifers [BOTD]/CTI Runtime Components/Default Components/Resources/CTI_default_normal_spec_ao.psd
+assets/Forest Scene/Assets/Assets/Conifers [BOTD]/CTI Runtime Components/Default Components/Resources/CTI_default_normal_spec_ao_Texture2DArray.asset
+assets/Forest Scene/Assets/Assets/Conifers [BOTD]/Conifers [BOTD] Documentation.pdf
+assets/Forest Scene/Assets/Assets/Conifers [BOTD]/Prefabs/PF Conifer Bare BOTD.prefab
+assets/Forest Scene/Assets/Assets/Conifers [BOTD]/Prefabs/PF Conifer Medium BOTD.prefab
+assets/Forest Scene/Assets/Assets/Conifers [BOTD]/Prefabs/PF Conifer Small BOTD.prefab
+assets/Forest Scene/Assets/Assets/Conifers [BOTD]/Prefabs/PF Conifer Tall BOTD.prefab
+assets/Forest Scene/Assets/Assets/Conifers [BOTD]/Sources/Billboards/Billboard Bare/Conifer Bare [Albedo].png
+assets/Forest Scene/Assets/Assets/Conifers [BOTD]/Sources/Billboards/Billboard Bare/Conifer Bare [Normal] [Trans] [Smoothness].png
+assets/Forest Scene/Assets/Assets/Conifers [BOTD]/Sources/Billboards/Billboard Bare/Conifer Bare_BillboardAsset.asset
+assets/Forest Scene/Assets/Assets/Conifers [BOTD]/Sources/Billboards/Billboard Bare/Conifer Bare_BillboardMaterial.mat
+assets/Forest Scene/Assets/Assets/Conifers [BOTD]/Sources/Billboards/Billboard Medium/Conifer Medium [Albedo].png
+assets/Forest Scene/Assets/Assets/Conifers [BOTD]/Sources/Billboards/Billboard Medium/Conifer Medium [Normal] [Trans] [Smoothness].png
+assets/Forest Scene/Assets/Assets/Conifers [BOTD]/Sources/Billboards/Billboard Medium/Conifer Medium_BillboardAsset.asset
+assets/Forest Scene/Assets/Assets/Conifers [BOTD]/Sources/Billboards/Billboard Medium/Conifer Medium_BillboardMaterial.mat
+assets/Forest Scene/Assets/Assets/Conifers [BOTD]/Sources/Billboards/Billboard Small/Conifer Small [Albedo].png
+assets/Forest Scene/Assets/Assets/Conifers [BOTD]/Sources/Billboards/Billboard Small/Conifer Small [Normal] [Trans] [Smoothness].png
+assets/Forest Scene/Assets/Assets/Conifers [BOTD]/Sources/Billboards/Billboard Small/Conifer Small_BillboardAsset.asset
+assets/Forest Scene/Assets/Assets/Conifers [BOTD]/Sources/Billboards/Billboard Small/Conifer Small_BillboardMaterial.mat
+assets/Forest Scene/Assets/Assets/Conifers [BOTD]/Sources/Billboards/Billboard Tall/Conifer Tall  [Normal] [Trans] [Smoothness].png
+assets/Forest Scene/Assets/Assets/Conifers [BOTD]/Sources/Billboards/Billboard Tall/Conifer Tall [Albedo].png
+assets/Forest Scene/Assets/Assets/Conifers [BOTD]/Sources/Billboards/Billboard Tall/Conifer Tall_BillboardAsset.asset
+assets/Forest Scene/Assets/Assets/Conifers [BOTD]/Sources/Billboards/Billboard Tall/Conifer Tall_BillboardMaterial.mat
+assets/Forest Scene/Assets/Assets/Conifers [BOTD]/Sources/Meshes/Conifer Bare LOD0.asset
+assets/Forest Scene/Assets/Assets/Conifers [BOTD]/Sources/Meshes/Conifer Bare LOD1.asset
+assets/Forest Scene/Assets/Assets/Conifers [BOTD]/Sources/Meshes/Conifer Medium LOD0.asset
+assets/Forest Scene/Assets/Assets/Conifers [BOTD]/Sources/Meshes/Conifer Medium LOD1.asset
+assets/Forest Scene/Assets/Assets/Conifers [BOTD]/Sources/Meshes/Conifer Small LOD0.asset
+assets/Forest Scene/Assets/Assets/Conifers [BOTD]/Sources/Meshes/Conifer Small LOD1.asset
+assets/Forest Scene/Assets/Assets/Conifers [BOTD]/Sources/Meshes/Conifer Tall LOD0.asset
+assets/Forest Scene/Assets/Assets/Conifers [BOTD]/Sources/Meshes/Conifer Tall LOD1.asset
+assets/Forest Scene/Assets/Assets/Conifers [BOTD]/Sources/Shared Materials/Conifer Bark Array BODT.mat
+assets/Forest Scene/Assets/Assets/Conifers [BOTD]/Sources/Shared Materials/Conifer Bark Simple BODT.mat
+assets/Forest Scene/Assets/Assets/Conifers [BOTD]/Sources/Shared Materials/Conifer Leaves BODT.mat
+assets/Forest Scene/Assets/Assets/Conifers [BOTD]/Sources/Shared Textures/BODT Conifer  Branches [Albedo] [Smoothness].tif
+assets/Forest Scene/Assets/Assets/Conifers [BOTD]/Sources/Shared Textures/BODT Conifer Bark Array [Albedo] [Smoothness].asset
+assets/Forest Scene/Assets/Assets/Conifers [BOTD]/Sources/Shared Textures/BODT Conifer Bark Array [Normal] [AO] [Specular].asset
+assets/Forest Scene/Assets/Assets/Conifers [BOTD]/Sources/Shared Textures/BODT Conifer Branches [Trans] [Smoothness].psd
+assets/Forest Scene/Assets/Assets/Conifers [BOTD]/Sources/Shared Textures/BODT Conifer Branches_Normal combined.tif
+assets/Forest Scene/Assets/Assets/Conifers [BOTD]/Sources/Shared Textures/BODT Conifer Trunk [Albedo] [Smoothness].tif
+assets/Forest Scene/Assets/Assets/Conifers [BOTD]/Sources/Shared Textures/BODT Conifer Trunk [Normal] [AO] [Specular].psd
+assets/Forest Scene/Assets/Assets/Conifers [BOTD]/Sources/Shared Textures/BODT Conifer x Stump [Albedo] [Smoothness].tif
+assets/Forest Scene/Assets/Assets/Conifers [BOTD]/Sources/Shared Textures/BODT Conifer x Stump [Normal] [AO] [Specular].tif
+assets/Forest Scene/Assets/Assets/Flare/Sun/Sun Glare.flare
+assets/Forest Scene/Assets/Assets/Flare/Sun/SunGlare.psd
+assets/Forest Scene/Assets/Assets/Flare/Sun/SunGlow.prefab
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Prefabs/Rock1A.prefab
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Prefabs/Rock1B.prefab
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Prefabs/Rock1C.prefab
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Prefabs/Rock1D.prefab
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Prefabs/Rock1E.prefab
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Prefabs/Rock1LOD_grup1.prefab
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Prefabs/Rock1LOD_grup2.prefab
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Prefabs/Rock1LOD_grup3.prefab
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Prefabs/Rock1LOD_grup4.prefab
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Prefabs/Rock1LOD_grup5.prefab
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Prefabs/Rock1_grup1.prefab
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Prefabs/Rock1_grup2.prefab
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Prefabs/Rock1_grup3.prefab
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Prefabs/Rock1_grup4.prefab
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Prefabs/Rock1_grup5.prefab
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Prefabs/Rock2.prefab
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Prefabs/Rock3.prefab
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Prefabs/Rock4A.prefab
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Prefabs/Rock4B.prefab
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Prefabs/Rock5A.prefab
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Prefabs/Rock5B.prefab
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Prefabs/Rock6A.prefab
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Prefabs/Rock6B.prefab
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Prefabs/Rock6C.prefab
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Source/Materials/Legacy/Rock1.mat
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Source/Materials/Legacy/Rock1_snow.mat
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Source/Materials/Legacy/Rock2.mat
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Source/Materials/Legacy/Rock2_snow.mat
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Source/Materials/Legacy/Rock3.mat
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Source/Materials/Legacy/Rock3_snow.mat
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Source/Materials/Legacy/Rock4.mat
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Source/Materials/Legacy/Rock4_snow.mat
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Source/Materials/Legacy/Rock5.mat
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Source/Materials/Legacy/Rock5_snow.mat
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Source/Materials/Legacy/Rock6.mat
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Source/Materials/Legacy/Rock6_snow.mat
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Source/Materials/Legacy/fix.mat
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Source/Materials/Legacy/normalfix.mat
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Source/Materials/Unity 5/Rock1.mat
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Source/Materials/Unity 5/Rock1_snow.mat
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Source/Materials/Unity 5/Rock2.mat
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Source/Materials/Unity 5/Rock2_snow.mat
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Source/Materials/Unity 5/Rock3.mat
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Source/Materials/Unity 5/Rock3_snow.mat
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Source/Materials/Unity 5/Rock4.mat
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Source/Materials/Unity 5/Rock4_snow.mat
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Source/Materials/Unity 5/Rock5.mat
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Source/Materials/Unity 5/Rock5_snow.mat
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Source/Materials/Unity 5/Rock6.mat
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Source/Materials/Unity 5/Rock6_snow.mat
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Source/Models/Rock1A.fbx
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Source/Models/Rock1B.fbx
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Source/Models/Rock1C.fbx
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Source/Models/Rock1D.fbx
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Source/Models/Rock1E.fbx
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Source/Models/Rock2.fbx
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Source/Models/Rock3.fbx
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Source/Models/Rock4A.fbx
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Source/Models/Rock4B.fbx
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Source/Models/Rock5A.fbx
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Source/Models/Rock5B.fbx
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Source/Models/Rock6A.fbx
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Source/Models/Rock6B.fbx
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Source/Models/Rock6C.fbx
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Source/Models/box.fbx
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Source/Textures/Rock1.tif
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Source/Textures/Rock1_ao.png
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Source/Textures/Rock1_h.png
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Source/Textures/Rock1_ms.png
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Source/Textures/Rock1_nmp.tif
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Source/Textures/Rock1_snow.tif
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Source/Textures/Rock2.tif
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Source/Textures/Rock2_ao.png
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Source/Textures/Rock2_h.png
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Source/Textures/Rock2_ms.png
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Source/Textures/Rock2_nmp.tif
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Source/Textures/Rock2_snow.tif
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Source/Textures/Rock3.tif
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Source/Textures/Rock3_ao.png
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Source/Textures/Rock3_h.png
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Source/Textures/Rock3_ms.png
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Source/Textures/Rock3_nmp.tif
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Source/Textures/Rock3_snow.tif
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Source/Textures/Rock4.tif
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Source/Textures/Rock4_ao.png
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Source/Textures/Rock4_h.png
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Source/Textures/Rock4_ms.png
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Source/Textures/Rock4_nmp.tif
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Source/Textures/Rock4_snow.tif
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Source/Textures/Rock5.tif
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Source/Textures/Rock5_ao.png
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Source/Textures/Rock5_h.png
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Source/Textures/Rock5_ms.png
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Source/Textures/Rock5_nmp.tif
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Source/Textures/Rock5_snow.tif
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Source/Textures/Rock6.tif
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Source/Textures/Rock6_ao.png
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Source/Textures/Rock6_h.png
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Source/Textures/Rock6_ms.png
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Source/Textures/Rock6_nmp.tif
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Source/Textures/Rock6_snow.tif
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Source/Textures/Rockdetail1.tif
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Source/Textures/Rockdetail10.tif
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Source/Textures/Rockdetail10_nmp.tif
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Source/Textures/Rockdetail11.tif
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Source/Textures/Rockdetail11_nmp.tif
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Source/Textures/Rockdetail12.tif
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Source/Textures/Rockdetail12_nmp.tif
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Source/Textures/Rockdetail1_nmp.tif
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Source/Textures/Rockdetail2.tif
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Source/Textures/Rockdetail2_nmp.tif
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Source/Textures/Rockdetail3.tif
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Source/Textures/Rockdetail3_nmp.tif
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Source/Textures/Rockdetail4.tif
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Source/Textures/Rockdetail4_nmp.tif
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Source/Textures/Rockdetail5.tif
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Source/Textures/Rockdetail5_nmp.tif
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Source/Textures/Rockdetail6.tif
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Source/Textures/Rockdetail6_nmp.tif
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Source/Textures/Rockdetail7.tif
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Source/Textures/Rockdetail7_nmp.tif
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Source/Textures/Rockdetail8.tif
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Source/Textures/Rockdetail8_nmp.tif
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Source/Textures/Rockdetail9.tif
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Source/Textures/Rockdetail9_nmp.tif
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Source/Textures/neutral.tif
+assets/Forest Scene/Assets/Assets/Rocks and Boulders 2/Rocks/Source/Textures/neutral_nmp.tif
+assets/Forest Scene/Assets/Assets/Standard Assets/Characters/FirstPersonCharacter/Audio/Footstep01.wav
+assets/Forest Scene/Assets/Assets/Standard Assets/Characters/FirstPersonCharacter/Audio/Footstep02.wav
+assets/Forest Scene/Assets/Assets/Standard Assets/Characters/FirstPersonCharacter/Audio/Footstep03.wav
+assets/Forest Scene/Assets/Assets/Standard Assets/Characters/FirstPersonCharacter/Audio/Footstep04.wav
+assets/Forest Scene/Assets/Assets/Standard Assets/Characters/FirstPersonCharacter/Audio/Jump.wav
+assets/Forest Scene/Assets/Assets/Standard Assets/Characters/FirstPersonCharacter/Audio/Land.wav
+assets/Forest Scene/Assets/Assets/Standard Assets/Characters/FirstPersonCharacter/Prefabs/FPSController.prefab
+assets/Forest Scene/Assets/Assets/Standard Assets/Characters/FirstPersonCharacter/Prefabs/RigidBodyFPSController.prefab
+assets/Forest Scene/Assets/Assets/Standard Assets/CrossPlatformInput/Prefabs/CarTiltControls.prefab
+assets/Forest Scene/Assets/Assets/Standard Assets/CrossPlatformInput/Prefabs/DualTouchControls.prefab
+assets/Forest Scene/Assets/Assets/Standard Assets/CrossPlatformInput/Prefabs/MobileAircraftControls.prefab
+assets/Forest Scene/Assets/Assets/Standard Assets/CrossPlatformInput/Prefabs/MobileSingleStickControl.prefab
+assets/Forest Scene/Assets/Assets/Standard Assets/CrossPlatformInput/Prefabs/MobileTiltControlRig.prefab
+assets/Forest Scene/Assets/Assets/Standard Assets/CrossPlatformInput/Sprites/ButtonAcceleratorOverSprite.png
+assets/Forest Scene/Assets/Assets/Standard Assets/CrossPlatformInput/Sprites/ButtonAcceleratorUpSprite.png
+assets/Forest Scene/Assets/Assets/Standard Assets/CrossPlatformInput/Sprites/ButtonArrowOverSprite.png
+assets/Forest Scene/Assets/Assets/Standard Assets/CrossPlatformInput/Sprites/ButtonArrowUpSprite.png
+assets/Forest Scene/Assets/Assets/Standard Assets/CrossPlatformInput/Sprites/ButtonBrakeOverSprite.png
+assets/Forest Scene/Assets/Assets/Standard Assets/CrossPlatformInput/Sprites/ButtonBrakeUpSprite.png
+assets/Forest Scene/Assets/Assets/Standard Assets/CrossPlatformInput/Sprites/ButtonCameraCycleUpSprite.png
+assets/Forest Scene/Assets/Assets/Standard Assets/CrossPlatformInput/Sprites/ButtonResetSprite.png
+assets/Forest Scene/Assets/Assets/Standard Assets/CrossPlatformInput/Sprites/ButtonSpacebarSprite.png
+assets/Forest Scene/Assets/Assets/Standard Assets/CrossPlatformInput/Sprites/ButtonThumbstickOverSprite.png
+assets/Forest Scene/Assets/Assets/Standard Assets/CrossPlatformInput/Sprites/ButtonThumbstickUpSprite.png
+assets/Forest Scene/Assets/Assets/Standard Assets/CrossPlatformInput/Sprites/ButtonTimescaleFullUpSprite.png
+assets/Forest Scene/Assets/Assets/Standard Assets/CrossPlatformInput/Sprites/ButtonTimescaleSlowUpSprite.png
+assets/Forest Scene/Assets/Assets/Standard Assets/CrossPlatformInput/Sprites/SliderBackgroundSprite.png
+assets/Forest Scene/Assets/Assets/Standard Assets/CrossPlatformInput/Sprites/SliderHandleSprite.png
+assets/Forest Scene/Assets/Assets/Standard Assets/CrossPlatformInput/Sprites/TouchpadSprite.png
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/SpeedTree/Broadleaf/BroadleafBark.tga
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/SpeedTree/Broadleaf/BroadleafBark_Normal.tga
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/SpeedTree/Broadleaf/Broadleaf_Desktop Materials/Billboard.mat
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/SpeedTree/Broadleaf/Broadleaf_Desktop Materials/LOD0/Branches_0.mat
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/SpeedTree/Broadleaf/Broadleaf_Desktop Materials/LOD0/Branches_1.mat
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/SpeedTree/Broadleaf/Broadleaf_Desktop Materials/LOD0/FacingLeaves_4.mat
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/SpeedTree/Broadleaf/Broadleaf_Desktop Materials/LOD0/Fronds_2.mat
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/SpeedTree/Broadleaf/Broadleaf_Desktop Materials/LOD0/Leaves_3.mat
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/SpeedTree/Broadleaf/Broadleaf_Desktop Materials/LOD1/Branches_0.mat
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/SpeedTree/Broadleaf/Broadleaf_Desktop Materials/LOD1/Branches_1.mat
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/SpeedTree/Broadleaf/Broadleaf_Desktop Materials/LOD1/FacingLeaves_4.mat
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/SpeedTree/Broadleaf/Broadleaf_Desktop Materials/LOD1/Fronds_2.mat
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/SpeedTree/Broadleaf/Broadleaf_Desktop Materials/LOD1/Leaves_3.mat
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/SpeedTree/Broadleaf/Broadleaf_Desktop Materials/LOD2/Branches_0.mat
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/SpeedTree/Broadleaf/Broadleaf_Desktop Materials/LOD2/Branches_1.mat
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/SpeedTree/Broadleaf/Broadleaf_Desktop Materials/LOD2/FacingLeaves_4.mat
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/SpeedTree/Broadleaf/Broadleaf_Desktop Materials/LOD2/Fronds_2.mat
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/SpeedTree/Broadleaf/Broadleaf_Desktop Materials/LOD2/Leaves_3.mat
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/SpeedTree/Broadleaf/Broadleaf_Desktop_Atlas.tga
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/SpeedTree/Broadleaf/Broadleaf_Desktop_Atlas_Billboards.tga
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/SpeedTree/Broadleaf/Broadleaf_Desktop_Atlas_Billboards_Normal.tga
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/SpeedTree/Broadleaf/Broadleaf_Desktop_Atlas_Normal.tga
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/SpeedTree/Broadleaf/Broadleaf_Desktop_Atlas_Specular.tga
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/SpeedTree/Broadleaf/Broadleaf_Mobile Materials/Billboard.mat
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/SpeedTree/Broadleaf/Broadleaf_Mobile Materials/LOD0/Branches_0.mat
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/SpeedTree/Broadleaf/Broadleaf_Mobile Materials/LOD0/Leaves_1.mat
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/SpeedTree/Broadleaf/Broadleaf_Mobile Materials/LOD1/Branches_0.mat
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/SpeedTree/Broadleaf/Broadleaf_Mobile Materials/LOD1/Leaves_1.mat
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/SpeedTree/Broadleaf/Broadleaf_Mobile Materials/LOD2/Branches_0.mat
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/SpeedTree/Broadleaf/Broadleaf_Mobile Materials/LOD2/Leaves_1.mat
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/SpeedTree/Broadleaf/Broadleaf_Mobile_Atlas.tga
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/SpeedTree/Broadleaf/Broadleaf_Mobile_Atlas_Billboards.tga
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/SpeedTree/Broadleaf/Broadleaf_Mobile_Atlas_Billboards_Normal.tga
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/SpeedTree/Broadleaf/Broadleaf_Mobile_Atlas_Normal.tga
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/SpeedTree/Broadleaf/Broadleaf_Mobile_Atlas_Specular.tga
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/SpeedTree/Broadleaf/Broadleaves_Card_Desktop.tga
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/SpeedTree/Broadleaf/Broadleaves_Card_Desktop_Normal.tga
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/SpeedTree/Broadleaf/Broadleaves_Card_Desktop_Spec.tga
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/SpeedTree/Broadleaf/Broadleaves_Desktop.tga
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/SpeedTree/Broadleaf/Broadleaves_Desktop_Normal.tga
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/SpeedTree/Broadleaf/Broadleaves_Desktop_Spec.tga
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/SpeedTree/Broadleaf/Broadleaves_Mobile.tga
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/SpeedTree/Broadleaf/Broadleaves_Mobile_Normal.tga
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/SpeedTree/Broadleaf/Broadleaves_Mobile_Spec.tga
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/SpeedTree/Broadleaf/Cap_01.tga
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/SpeedTree/Broadleaf/Cap_01_Normal.tga
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/SpeedTree/Broadleaf/Cap_02.tga
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/SpeedTree/Broadleaf/Cap_02_Normal.tga
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/SpeedTree/Broadleaf/ClippedFrond.tga
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/SpeedTree/Broadleaf/ClippedFrond_Normal.tga
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/SpeedTree/Conifer/ConiferBark.tga
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/SpeedTree/Conifer/ConiferBark_Normal.tga
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/SpeedTree/Conifer/Conifer_Desktop Materials/Billboard.mat
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/SpeedTree/Conifer/Conifer_Desktop Materials/LOD0/Branches_0.mat
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/SpeedTree/Conifer/Conifer_Desktop Materials/LOD0/Branches_1.mat
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/SpeedTree/Conifer/Conifer_Desktop Materials/LOD0/Fronds_2.mat
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/SpeedTree/Conifer/Conifer_Desktop Materials/LOD0/Leaves_3.mat
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/SpeedTree/Conifer/Conifer_Desktop Materials/LOD1/Branches_0.mat
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/SpeedTree/Conifer/Conifer_Desktop Materials/LOD1/Branches_1.mat
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/SpeedTree/Conifer/Conifer_Desktop Materials/LOD1/Fronds_2.mat
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/SpeedTree/Conifer/Conifer_Desktop Materials/LOD1/Leaves_3.mat
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/SpeedTree/Conifer/Conifer_Desktop Materials/LOD2/Branches_0.mat
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/SpeedTree/Conifer/Conifer_Desktop Materials/LOD2/Branches_1.mat
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/SpeedTree/Conifer/Conifer_Desktop Materials/LOD2/Leaves_3.mat
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/SpeedTree/Conifer/Conifer_Desktop_Atlas.tga
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/SpeedTree/Conifer/Conifer_Desktop_Atlas_Billboards.tga
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/SpeedTree/Conifer/Conifer_Desktop_Atlas_Billboards_Normal.tga
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/SpeedTree/Conifer/Conifer_Desktop_Atlas_Normal.tga
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/SpeedTree/Conifer/Conifer_Desktop_Atlas_Specular.tga
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/SpeedTree/Conifer/Conifer_Needles_Dekstop_Spec.tga
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/SpeedTree/Conifer/Conifer_Needles_Desktop.tga
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/SpeedTree/Conifer/Conifer_Needles_Desktop_Normal.tga
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/SpeedTree/Conifer/Thumb_Conifer_Desktop.jpg
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/SpeedTree/Palm/PalmBark.tga
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/SpeedTree/Palm/PalmBark_Detail.tga
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/SpeedTree/Palm/PalmBark_Detail_Normal.tga
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/SpeedTree/Palm/PalmBark_Normal.tga
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/SpeedTree/Palm/PalmFrond.tga
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/SpeedTree/Palm/PalmFrond_Normal.tga
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/SpeedTree/Palm/PalmFrond_Spec.tga
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/SpeedTree/Palm/Palm_Desktop Materials/Billboard.mat
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/SpeedTree/Palm/Palm_Desktop Materials/LOD0/Branches_0.mat
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/SpeedTree/Palm/Palm_Desktop Materials/LOD0/Branches_1.mat
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/SpeedTree/Palm/Palm_Desktop Materials/LOD0/Fronds_2.mat
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/SpeedTree/Palm/Palm_Desktop Materials/LOD0/Leaves_3.mat
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/SpeedTree/Palm/Palm_Desktop Materials/LOD1/Branches_0.mat
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/SpeedTree/Palm/Palm_Desktop Materials/LOD1/Fronds_2.mat
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/SpeedTree/Palm/Palm_Desktop Materials/LOD1/Leaves_3.mat
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/SpeedTree/Palm/Palm_Desktop Materials/LOD2/Branches_0.mat
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/SpeedTree/Palm/Palm_Desktop Materials/LOD2/Fronds_2.mat
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/SpeedTree/Palm/Palm_Desktop_Atlas.tga
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/SpeedTree/Palm/Palm_Desktop_Atlas_Billboards.tga
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/SpeedTree/Palm/Palm_Desktop_Atlas_Billboards_Normal.tga
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/SpeedTree/Palm/Palm_Desktop_Atlas_Normal.tga
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/SpeedTree/Palm/Palm_Desktop_Atlas_Specular.tga
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/SpeedTree/Palm/Thumb_Palm_Desktop.jpg
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/TerrainAssets/BillboardTextures/GrassFrond01AlbedoAlpha.psd
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/TerrainAssets/BillboardTextures/GrassFrond02AlbedoAlpha.psd
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/TerrainAssets/SurfaceTextures/CliffAlbedoSpecular.psd
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/TerrainAssets/SurfaceTextures/GrassHillAlbedo.psd
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/TerrainAssets/SurfaceTextures/GrassRockyAlbedo.psd
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/TerrainAssets/SurfaceTextures/SandAlbedo.psd
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/Water (Basic)/Materials/WaterBasicDaytime.mat
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/Water (Basic)/Materials/WaterBasicNighttime.mat
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/Water (Basic)/Materials/WaterDefault.mat
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/Water (Basic)/Models/WaterBasicPlane.fbx
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/Water (Basic)/Prefabs/WaterBasicDaytime.prefab
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/Water (Basic)/Prefabs/WaterBasicNightime.prefab
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/Water (Basic)/Textures/WaterBasicDaytimeGradient.psd
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/Water (Basic)/Textures/WaterBasicNighttimeGradient.psd
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/Water (Basic)/Textures/WaterBasicNormals.jpg
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/Water/Water/Materials/WaterPlaneMaterial.mat
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/Water/Water/Materials/WaterProDaytime.mat
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/Water/Water/Materials/WaterProNighttime.mat
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/Water/Water/Models/WaterPlane.fbx
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/Water/Water/Prefabs/WaterProDaytime.prefab
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/Water/Water/Prefabs/WaterProNighttime.prefab
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/Water/Water/Textures/WaterBump.jpg
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/Water/Water/Textures/WaterFresnel.psd
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/Water/Water/Textures/WaterProDaytimeGradient.psd
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/Water/Water/Textures/WaterProNighttimeGradient.psd
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/Water/Water4/Materials/OceanPlaneMaterial.mat
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/Water/Water4/Materials/Water4Advanced.mat
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/Water/Water4/Materials/Water4Simple.mat
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/Water/Water4/Models/OceanPlane.FBX
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/Water/Water4/Prefabs/Water4Advanced.prefab
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/Water/Water4/Prefabs/Water4Simple.prefab
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/Water/Water4/Textures/SimpleFoam.png
+assets/Forest Scene/Assets/Assets/Standard Assets/Environment/Water/Water4/Textures/SmallWaves.png
+assets/Forest Scene/Assets/Assets/Standard Assets/Utility/Prefabs/FramerateCounter.prefab
+assets/Forest Scene/Assets/Astra113 Assets/Materials/Sky -Lighter.mat
+assets/Forest Scene/Assets/Astra113 Assets/Materials/Sky.mat
+assets/Forest Scene/Assets/Astra113 Assets/Post Processing/Sketch.asset
+assets/Forest Scene/Assets/Astra113 Assets/Terrain Data/Example.asset
+assets/Forest Scene/Assets/Astra113 Assets/Textures/Bark.tif
+assets/Forest Scene/Assets/Astra113 Assets/Textures/Bark_Normal.tif
+assets/Forest Scene/Assets/Astra113 Assets/Textures/Forest_Ground_diffuseOriginal.png
+assets/Forest Scene/Assets/Astra113 Assets/Textures/Forest_Ground_normal.png
+assets/Forest Scene/Assets/Astra113 Assets/Textures/Mud.tif
+assets/Forest Scene/Assets/Astra113 Assets/Textures/Mud_Normal.tif
+assets/Forest Scene/Assets/Astra113 Assets/Textures/bloom dirt.png
+assets/Forest Scene/Assets/Astra113 Assets/YughuesFreeBushes2018/Materials/M_Bush01.mat
+assets/Forest Scene/Assets/Astra113 Assets/YughuesFreeBushes2018/Materials/M_Bush02.mat
+assets/Forest Scene/Assets/Astra113 Assets/YughuesFreeBushes2018/Materials/M_Bush03.mat
+assets/Forest Scene/Assets/Astra113 Assets/YughuesFreeBushes2018/Materials/M_Bush04.mat
+assets/Forest Scene/Assets/Astra113 Assets/YughuesFreeBushes2018/Materials/M_Bush05.mat
+assets/Forest Scene/Assets/Astra113 Assets/YughuesFreeBushes2018/Meshes/Bush01.FBX
+assets/Forest Scene/Assets/Astra113 Assets/YughuesFreeBushes2018/Meshes/Bush02.FBX
+assets/Forest Scene/Assets/Astra113 Assets/YughuesFreeBushes2018/Meshes/Bush03.FBX
+assets/Forest Scene/Assets/Astra113 Assets/YughuesFreeBushes2018/Meshes/Bush04.FBX
+assets/Forest Scene/Assets/Astra113 Assets/YughuesFreeBushes2018/Meshes/Bush05.FBX
+assets/Forest Scene/Assets/Astra113 Assets/YughuesFreeBushes2018/Meshes/OLD/bush_01.obj
+assets/Forest Scene/Assets/Astra113 Assets/YughuesFreeBushes2018/Meshes/OLD/bush_02.obj
+assets/Forest Scene/Assets/Astra113 Assets/YughuesFreeBushes2018/Meshes/OLD/bush_03.obj
+assets/Forest Scene/Assets/Astra113 Assets/YughuesFreeBushes2018/Meshes/OLD/bush_04.obj
+assets/Forest Scene/Assets/Astra113 Assets/YughuesFreeBushes2018/Meshes/OLD/bush_05.obj
+assets/Forest Scene/Assets/Astra113 Assets/YughuesFreeBushes2018/Prefabs/P_Bush01.prefab
+assets/Forest Scene/Assets/Astra113 Assets/YughuesFreeBushes2018/Prefabs/P_Bush02.prefab
+assets/Forest Scene/Assets/Astra113 Assets/YughuesFreeBushes2018/Prefabs/P_Bush03.prefab
+assets/Forest Scene/Assets/Astra113 Assets/YughuesFreeBushes2018/Prefabs/P_Bush04.prefab
+assets/Forest Scene/Assets/Astra113 Assets/YughuesFreeBushes2018/Prefabs/P_Bush05.prefab
+assets/Forest Scene/Assets/Astra113 Assets/YughuesFreeBushes2018/Textures/T_Bush01_ao.tga
+assets/Forest Scene/Assets/Astra113 Assets/YughuesFreeBushes2018/Textures/T_Bush01_d.tga
+assets/Forest Scene/Assets/Astra113 Assets/YughuesFreeBushes2018/Textures/T_Bush01_n.tga
+assets/Forest Scene/Assets/Astra113 Assets/YughuesFreeBushes2018/Textures/T_Bush01_s.tga
+assets/Forest Scene/Assets/Astra113 Assets/YughuesFreeBushes2018/Textures/T_Bush02_ao.tga
+assets/Forest Scene/Assets/Astra113 Assets/YughuesFreeBushes2018/Textures/T_Bush02_d.tga
+assets/Forest Scene/Assets/Astra113 Assets/YughuesFreeBushes2018/Textures/T_Bush02_n.tga
+assets/Forest Scene/Assets/Astra113 Assets/YughuesFreeBushes2018/Textures/T_Bush02_s.tga
+assets/Forest Scene/Assets/Astra113 Assets/YughuesFreeBushes2018/Textures/T_Bush03_ao.tga
+assets/Forest Scene/Assets/Astra113 Assets/YughuesFreeBushes2018/Textures/T_Bush03_d.tga
+assets/Forest Scene/Assets/Astra113 Assets/YughuesFreeBushes2018/Textures/T_Bush03_n.tga
+assets/Forest Scene/Assets/Astra113 Assets/YughuesFreeBushes2018/Textures/T_Bush03_s.tga
+assets/Forest Scene/Assets/Astra113 Assets/YughuesFreeBushes2018/Textures/T_Bush04_ao.tga
+assets/Forest Scene/Assets/Astra113 Assets/YughuesFreeBushes2018/Textures/T_Bush04_d.tga
+assets/Forest Scene/Assets/Astra113 Assets/YughuesFreeBushes2018/Textures/T_Bush04_n.tga
+assets/Forest Scene/Assets/Astra113 Assets/YughuesFreeBushes2018/Textures/T_Bush04_s.tga
+assets/Forest Scene/Assets/Astra113 Assets/YughuesFreeBushes2018/Textures/T_Bush05_ao.tga
+assets/Forest Scene/Assets/Astra113 Assets/YughuesFreeBushes2018/Textures/T_Bush05_d.tga
+assets/Forest Scene/Assets/Astra113 Assets/YughuesFreeBushes2018/Textures/T_Bush05_n.tga
+assets/Forest Scene/Assets/Astra113 Assets/YughuesFreeBushes2018/Textures/T_Bush05_s.tga
+assets/Forest Scene/Assets/Astra113 Assets/YughuesFreeBushes2018/demo/Ground.mat
+assets/Forest Scene/Assets/Forest.asset
+assets/Forest Scene/ProjectSettings/AudioManager.asset
+assets/Forest Scene/ProjectSettings/ClusterInputManager.asset
+assets/Forest Scene/ProjectSettings/DynamicsManager.asset
+assets/Forest Scene/ProjectSettings/EditorBuildSettings.asset
+assets/Forest Scene/ProjectSettings/EditorSettings.asset
+assets/Forest Scene/ProjectSettings/GraphicsSettings.asset
+assets/Forest Scene/ProjectSettings/InputManager.asset
+assets/Forest Scene/ProjectSettings/NavMeshAreas.asset
+assets/Forest Scene/ProjectSettings/Physics2DSettings.asset
+assets/Forest Scene/ProjectSettings/PresetManager.asset
+assets/Forest Scene/ProjectSettings/ProjectSettings.asset
+assets/Forest Scene/ProjectSettings/QualitySettings.asset
+assets/Forest Scene/ProjectSettings/TagManager.asset
+assets/Forest Scene/ProjectSettings/TimeManager.asset
+assets/Forest Scene/ProjectSettings/UnityConnectSettings.asset
+assets/Forest Scene/ProjectSettings/VFXManager.asset
+assets/Forest Scene/ProjectSettings/XRSettings.asset
+assets/Gloss.jpg
+assets/Goodies/Wallpapers/wallpaperAliens.jpg
+assets/Goodies/Wallpapers/wallpaperAssets.jpg
+assets/Goodies/Wallpapers/wallpaperCabin.jpg
+assets/Goodies/Wallpapers/wallpaperPirates.jpg
+assets/Goodies/Wallpapers/wallpaperRPG.jpg
+assets/Goodies/Wallpapers/wallpaperVoxel.jpg
+assets/Goodies/certificateOfAwesomeness.pdf
+assets/Goodies/kenneyPapercraft.pdf
+assets/Mesh/Window_Door_Obj.obj
+assets/Mesh/Window_Door_fbx.fbx
+assets/Namaqualand.blend
+assets/Normal.jpg
+assets/Other/Fonts/Preview.png
+assets/Other/Miniguides/Miniguide 1 - Tiles/miniguide1_tile1.png
+assets/Other/Miniguides/Miniguide 1 - Tiles/miniguide1_tile2.png
+assets/Other/Miniguides/Miniguide 1 - Tiles/miniguide1_tile3.png
+assets/Other/Miniguides/Miniguide 2 - Character/miniguide2_character_idle.png
+assets/Other/Miniguides/Miniguide 2 - Character/miniguide2_character_stand.png
+assets/Other/Miniguides/Miniguide 2 - Character/miniguide2_character_walk.png
+assets/Other/Miniguides/Miniguide 3 - 3D House/miniguide3_house.obj
+assets/Other/Miniguides/Miniguide 4 - Background/miniguide4_background.png
+assets/Other/Miniguides/Miniguide 5 - Game UI/miniguide5_button.png
+assets/Other/Miniguides/Miniguide 5 - Game UI/miniguide5_close.png
+assets/Other/Miniguides/Miniguide 5 - Game UI/miniguide5_panel.png
+assets/Other/Miniguides/Miniguide 5 - Game UI/miniguide5_panelInner.png
+assets/Other/Miniguides/Miniguide 5 - Game UI/miniguide5_stars.png
+assets/Other/Miniguides/Miniguide 5 - Game UI/miniguide5_uiFull.png
+assets/Other/Miniguides/Preview.png
+assets/Roughness.jpg
+assets/Symphonie/Ruins/Model/M_archway_pillar02.fbx
+assets/Symphonie/Ruins/Texture/archway_pillar02/T_archway_pillar02_D.png
+assets/Symphonie/Ruins/Texture/archway_pillar02/T_archway_pillar02_M.png
+assets/Symphonie/Ruins/Texture/archway_pillar02/T_archway_pillar02_N.png
+assets/Symphonie/Ruins/Texture/archway_pillar02/T_archway_pillar02_O.png
+assets/Texture/House_AO.jpg
+assets/Texture/House_BaseColor.jpg
+assets/Texture/House_Normal.jpg
+assets/Texture/House_Roughness.jpg
+assets/Texture/Wood_AO.jpg
+assets/Texture/Wood_BaseColor.jpg
+assets/Texture/Wood_Normal.jpg
+assets/Texture/Wood_Roughness.jpg
+assets/audio/Loops/AlkaKrab Music License Info.pdf
+assets/audio/Loops/mp3/1. Moonspire.mp3
+assets/audio/Loops/mp3/10. Elven Dawn.mp3
+assets/audio/Loops/mp3/2. Winds of Valor.mp3
+assets/audio/Loops/mp3/3. Darkwood Path.mp3
+assets/audio/Loops/mp3/4. Frostbound.mp3
+assets/audio/Loops/mp3/5. Emberlight.mp3
+assets/audio/Loops/mp3/6. Silverbrook.mp3
+assets/audio/Loops/mp3/7. Mystic Grove.mp3
+assets/audio/Loops/mp3/8. Throne of Storms.mp3
+assets/audio/Loops/mp3/9. Sorrow’s Edge.mp3
+assets/audio/Loops/ogg/1. Moonspire.ogg
+assets/audio/Loops/ogg/10. Elven Dawn.ogg
+assets/audio/Loops/ogg/2. Winds of Valor.ogg
+assets/audio/Loops/ogg/3. Darkwood Path.ogg
+assets/audio/Loops/ogg/4. Frostbound.ogg
+assets/audio/Loops/ogg/5. Emberlight.ogg
+assets/audio/Loops/ogg/6. Silverbrook.ogg
+assets/audio/Loops/ogg/7. Mystic Grove.ogg
+assets/audio/Loops/ogg/8. Throne of Storms.ogg
+assets/audio/Loops/ogg/9. Sorrow’s Edge.ogg
+assets/audio/Loops/ogg/AlkaKrab Music License Info.pdf
+assets/audio/Loops/wav/1. Moonspire.wav
+assets/audio/Loops/wav/10. Elven Dawn.wav
+assets/audio/Loops/wav/2. Winds of Valor.wav
+assets/audio/Loops/wav/3. Darkwood Path.wav
+assets/audio/Loops/wav/4. Frostbound.wav
+assets/audio/Loops/wav/5. Emberlight.wav
+assets/audio/Loops/wav/6. Silverbrook.wav
+assets/audio/Loops/wav/7. Mystic Grove.wav
+assets/audio/Loops/wav/8. Throne of Storms.wav
+assets/audio/Loops/wav/9. Sorrow’s Edge.wav
+assets/audio/Tracks/AlkaKrab Music License Info.pdf
+assets/audio/Tracks/mp3/1. Moonspire.mp3
+assets/audio/Tracks/mp3/10. Elven Dawn  .mp3
+assets/audio/Tracks/mp3/2. Winds of Valor.mp3
+assets/audio/Tracks/mp3/3. Darkwood Path.mp3
+assets/audio/Tracks/mp3/4. Frostbound.mp3
+assets/audio/Tracks/mp3/5. Emberlight .mp3
+assets/audio/Tracks/mp3/6. Silverbrook .mp3
+assets/audio/Tracks/mp3/7. Mystic Grove .mp3
+assets/audio/Tracks/mp3/8. Throne of Storms .mp3
+assets/audio/Tracks/mp3/9. Sorrow’s Edge  .mp3
+assets/audio/Tracks/ogg/1. Moonspire.ogg
+assets/audio/Tracks/ogg/10. Elven Dawn  .ogg
+assets/audio/Tracks/ogg/2. Winds of Valor.ogg
+assets/audio/Tracks/ogg/3. Darkwood Path.ogg
+assets/audio/Tracks/ogg/4. Frostbound.ogg
+assets/audio/Tracks/ogg/5. Emberlight .ogg
+assets/audio/Tracks/ogg/6. Silverbrook .ogg
+assets/audio/Tracks/ogg/7. Mystic Grove .ogg
+assets/audio/Tracks/ogg/8. Throne of Storms .ogg
+assets/audio/Tracks/ogg/9. Sorrow’s Edge  .ogg
+assets/audio/Tracks/wav/1. Moonspire.wav
+assets/audio/Tracks/wav/10. Elven Dawn  .wav
+assets/audio/Tracks/wav/2. Winds of Valor.wav
+assets/audio/Tracks/wav/3. Darkwood Path.wav
+assets/audio/Tracks/wav/4. Frostbound.wav
+assets/audio/Tracks/wav/5. Emberlight .wav
+assets/audio/Tracks/wav/6. Silverbrook .wav
+assets/audio/Tracks/wav/7. Mystic Grove .wav
+assets/audio/Tracks/wav/8. Throne of Storms .wav
+assets/audio/Tracks/wav/9. Sorrow’s Edge  .wav
+assets/audio/water_ambient_mono/Mono DRAIN (light, metal, birds).wav
+assets/audio/water_ambient_mono/Mono FLUSH (toilet).wav
+assets/audio/water_ambient_mono/Mono OCEAN (heavy waves, wind).wav
+assets/audio/water_ambient_mono/Mono OCEAN (heavy waves, wind, outside boat).wav
+assets/audio/water_ambient_mono/Mono OCEAN (light waves, outside boat).wav
+assets/audio/water_ambient_mono/Mono OCEAN (light waves, wind) 2.wav
+assets/audio/water_ambient_mono/Mono OCEAN (light waves, wind) 3.wav
+assets/audio/water_ambient_mono/Mono OCEAN (medium waves, wind) 2.wav
+assets/audio/water_ambient_mono/Mono OCEAN (medium waves, wind).wav
+assets/audio/water_ambient_mono/Mono OCEAN (squall, creaks, boat, wind).wav
+assets/audio/water_ambient_mono/Mono OCEAN (squall, wind).wav
+assets/audio/water_ambient_mono/Mono RAIN (heavy, roof) 2.wav
+assets/audio/water_ambient_mono/Mono RAIN (heavy, roof).wav
+assets/audio/water_ambient_mono/Mono RAIN (light, blackbird).wav
+assets/audio/water_ambient_mono/Mono RAIN (light, drip).wav
+assets/audio/water_ambient_mono/Mono RAIN (light, slushy, hail, sparrow).wav
+assets/audio/water_ambient_mono/Mono RAIN (medium, constant).wav
+assets/audio/water_ambient_mono/Mono RAIN (medium, drip, roof) 2.wav
+assets/audio/water_ambient_mono/Mono RAIN (medium, drip, roof).wav
+assets/audio/water_ambient_mono/Mono RAIN (medium, sleet, wind).wav
+assets/audio/water_ambient_mono/Mono RAIN (medium, thunder).wav
+assets/audio/water_ambient_mono/Mono RAIN (medium, wind, constant).wav
+assets/audio/water_ambient_mono/Mono RIVER (deep, stream).wav
+assets/audio/water_ambient_mono/Mono RIVER (large, river).wav
+assets/audio/water_ambient_mono/Mono RIVER (large, river, waterfall).wav
+assets/audio/water_ambient_mono/Mono RIVER (large, stream, insects).wav
+assets/audio/water_ambient_mono/Mono RIVER (large, waterfall).wav
+assets/audio/water_ambient_mono/Mono RIVER (light, stream, forest, birds).wav
+assets/audio/water_ambient_mono/Mono RIVER (medium, stream).wav
+assets/audio/water_ambient_mono/Mono RIVER (tunnel).wav
+assets/audio/water_ambient_mono/Mono STORM (hail, thunder).wav
+assets/audio/water_ambient_mono/Mono STORM (heavy, hail).wav
+assets/audio/water_ambient_mono/Mono STORM (heavy, hail, thunder).wav
+assets/audio/water_ambient_mono/Mono TAPS (porcerlain, sink).wav
+assets/audio/water_ambient_mono/Mono TIDE (light, beach, seagulls) 2.wav
+assets/audio/water_ambient_mono/Mono TIDE (light, beach, seagulls) 3.wav
+assets/audio/water_ambient_mono/Mono TIDE (light, stones, seagulls, basshorn).wav
+assets/audio/water_ambient_mono/Mono TIDE (medium, beach, insects).wav
+assets/audio/water_ambient_mono/Mono TIDE (medium, shore, beach).wav
+assets/audio/water_ambient_mono/Mono TIDE (shore, beach, seagulls).wav
+assets/audio/water_ambient_mono/Mono TIDE (shore, stone beach, heavy waves).wav
+assets/audio/water_ambient_mono/Mono WASHED UP (shore, beach, raft).wav
+assets/audio/water_ambient_stereo_1/Stereo DRAIN (light, metal, birds).wav
+assets/audio/water_ambient_stereo_1/Stereo FLUSH (toilet).wav
+assets/audio/water_ambient_stereo_1/Stereo RAIN (heavy, roof) 2.wav
+assets/audio/water_ambient_stereo_1/Stereo RAIN (heavy, roof).wav
+assets/audio/water_ambient_stereo_1/Stereo RAIN (light, blackbird).wav
+assets/audio/water_ambient_stereo_1/Stereo RAIN (light, drip).wav
+assets/audio/water_ambient_stereo_1/Stereo RAIN (light, slushy, hail, sparrow).wav
+assets/audio/water_ambient_stereo_1/Stereo RAIN (medium, constant).wav
+assets/audio/water_ambient_stereo_1/Stereo RAIN (medium, drip, roof) 2.wav
+assets/audio/water_ambient_stereo_1/Stereo RAIN (medium, drip, roof).wav
+assets/audio/water_ambient_stereo_1/Stereo RAIN (medium, sleet, wind).wav
+assets/audio/water_ambient_stereo_1/Stereo RAIN (medium, thunder).wav
+assets/audio/water_ambient_stereo_1/Stereo RAIN (medium, wind, constant).wav
+assets/audio/water_ambient_stereo_1/Stereo RIVER (deep, stream).wav
+assets/audio/water_ambient_stereo_1/Stereo RIVER (large, river).wav
+assets/audio/water_ambient_stereo_1/Stereo RIVER (large, river, waterfall).wav
+assets/audio/water_ambient_stereo_1/Stereo RIVER (large, stream, insects).wav
+assets/audio/water_ambient_stereo_1/Stereo RIVER (large, waterfall).wav
+assets/audio/water_ambient_stereo_1/Stereo RIVER (light, stream, forest, birds).wav
+assets/audio/water_ambient_stereo_1/Stereo RIVER (medium, stream).wav
+assets/audio/water_ambient_stereo_1/Stereo RIVER (tunnel).wav
+assets/audio/water_ambient_stereo_1/Stereo STORM (hail, thunder).wav
+assets/audio/water_ambient_stereo_1/Stereo STORM (heavy, hail).wav
+assets/audio/water_ambient_stereo_1/Stereo STORM (heavy, hail, thunder).wav
+assets/audio/water_ambient_stereo_1/Stereo TAPS (porcerlain, sink).wav
+assets/audio/water_ambient_stereo_1/Stereo WASHED UP (shore, beach, raft).wav
+assets/audio/water_ambient_stereo_2/Stereo OCEAN (heavy waves, wind).wav
+assets/audio/water_ambient_stereo_2/Stereo OCEAN (heavy waves, wind, outside boat).wav
+assets/audio/water_ambient_stereo_2/Stereo OCEAN (light waves, outside boat).wav
+assets/audio/water_ambient_stereo_2/Stereo OCEAN (light waves, wind) 2.wav
+assets/audio/water_ambient_stereo_2/Stereo OCEAN (light waves, wind) 3.wav
+assets/audio/water_ambient_stereo_2/Stereo OCEAN (medium waves, wind) 2.wav
+assets/audio/water_ambient_stereo_2/Stereo OCEAN (medium waves, wind).wav
+assets/audio/water_ambient_stereo_2/Stereo OCEAN (squall, creaks, boat, wind).wav
+assets/audio/water_ambient_stereo_2/Stereo OCEAN (squall, wind).wav
+assets/audio/water_ambient_stereo_2/Stereo TIDE (light, beach, seagulls) 2.wav
+assets/audio/water_ambient_stereo_2/Stereo TIDE (light, beach, seagulls) 3.wav
+assets/audio/water_ambient_stereo_2/Stereo TIDE (light, stones, seagulls, basshorn).wav
+assets/audio/water_ambient_stereo_2/Stereo TIDE (medium, beach, insects).wav
+assets/audio/water_ambient_stereo_2/Stereo TIDE (medium, shore, beach).wav
+assets/audio/water_ambient_stereo_2/Stereo TIDE (shore, beach, seagulls).wav
+assets/audio/water_ambient_stereo_2/Stereo TIDE (shore, stone beach, heavy waves).wav
+assets/cache/impostors/01f2084cb78526924a641931c6d0738a959e32af0f578dfb2f66ef4b48fa40b2/atlas.png
+assets/cache/impostors/0467e7a72b080625c1f831a4571ffca157cec68965390e0076a104abf4fda768/atlas.png
+assets/cache/impostors/0720b59405bbce67e046e615d28be0b31fa4c8c59000fee8186979a926743d75/atlas.png
+assets/cache/impostors/0b4edac0b509093a06bd234f41618417d620ab82353462b23e6b8c2047d207ce/atlas.png
+assets/cache/impostors/170e8e56393aecb7d30c76c7e91f6e2e3ea16052ec8cf2f506791261bdf46728/atlas.png
+assets/cache/impostors/1e26bf4f3c96299e33f21f5cb969a752de872cc1ffa1ccbe5927ac8d5d1187de/atlas.png
+assets/cache/impostors/1f85f56ca7aacf133060e5efffea9b1fb9fe1de3bde8af1d37580f25c6e4b126/atlas.png
+assets/cache/impostors/22103fc86adc57653c152d789cef775716a43a6b478d364619063fb97febb07d/atlas.png
+assets/cache/impostors/228f70942f87297b0dde5f6f0e0b0291630d3c1ff9e335db54178cdac8390dc9/atlas.png
+assets/cache/impostors/288ad064c1d9f2f5effc35b3e204fd0b4ed1bb6ded2b4539716d98ba1fc34021/atlas.png
+assets/cache/impostors/290e2dcf7459c7d8002dbad14caa88c69995843b7c7fa5c0b000dfc98eb4c4e6/atlas.png
+assets/cache/impostors/2a36aef7fa72d6088dfc5ff17de13e32cebf4cedac8282e26909b837525f7c10/atlas.png
+assets/cache/impostors/3be5f4efaf3605b11f7e5102343af6be418bb86b2ed557617a9b433b0973baab/atlas.png
+assets/cache/impostors/40ed5a2c3c799926ed47331e98b175b721986b7b08cbf468a6a08952d4d036b4/atlas.png
+assets/cache/impostors/42aaeb3b77bf8d69bfbd6bf57d49aaa1af4e25187cba1d07c3064ae0983abcf2/atlas.png
+assets/cache/impostors/438a9269f601895997e0d4abd7789834d5133687f40add9c97c18addc11b0279/atlas.png
+assets/cache/impostors/488ff828ef19f70c675b528911c158ca8e4cd8e63754791c0d5f636fb189b8b6/atlas.png
+assets/cache/impostors/4c1cf78f6eae5d6ae9c74be4f5fef95cc2d97017b64cd0dfa1cb293708ba6bb5/atlas.png
+assets/cache/impostors/4c56268b655f6896c6bbf670bd9aaa2cdaaf6675f78fa545dfe1c2c8cb43e6a0/atlas.png
+assets/cache/impostors/4e3808f49f40c0c982be7b1504dbed1460e6533769935727c9dc7a7c21222676/atlas.png
+assets/cache/impostors/4fbb42b16298bd22dffceab03da5c925805e9a305baef87fe39df841c642e1d7/atlas.png
+assets/cache/impostors/54af8d45fd19ebc964211629f1681b413ddfcbbbc7cb1787e520259ea3e94f70/atlas.png
+assets/cache/impostors/56c1212ee952ad4963f7d4978ac556b5dae499656b68a5f41df837f339f2105d/atlas.png
+assets/cache/impostors/5722b2c334171215d1c6feb0be5b597a5b9e3eab573b878959aeeb87e5b1732f/atlas.png
+assets/cache/impostors/579209ce630da4a73aead7fd96969daca71e7f25c792b87a90ee25e03569f978/atlas.png
+assets/cache/impostors/59f283a0291aed8c4e2d8a101b7d2207602a663b1783d03cf4c1f4e978d63316/atlas.png
+assets/cache/impostors/653a27a57d317c706425f498f66e7e7fc4fae1103b2b781fe2574f89213a46fe/atlas.png
+assets/cache/impostors/682f9654fc63ff02b1234ca59bb1f2e956befed53d090df169561d0d80f4a3b7/atlas.png
+assets/cache/impostors/696dbb09a75bb6c67ecf480faf127be823b17df4a5be02c10f9b425b48eb61da/atlas.png
+assets/cache/impostors/6ff02c2bb6c985ed409331de020097ef5eeb13585b10d9ece1371645a6607b5a/atlas.png
+assets/cache/impostors/70980c795471cbeb9c24cbf509380c50544af9744a5570b21e583996766ff233/atlas.png
+assets/cache/impostors/70f5b5045fb3dcfa223ed6ac2c975a336e9a20b5ebe347e6730f9da5d462a596/atlas.png
+assets/cache/impostors/72a7bfceed10049ee01193c406e5666b3ddc93c3f65dc78b7837a27eaf92895c/atlas.png
+assets/cache/impostors/7378405ddf12f445a9d82decc9b592360dae05f90e4569f2c9f8b8ea9d9fd772/atlas.png
+assets/cache/impostors/738c3d1675817558c0508f06a987ed6b2cc3067a901f63e5059b40c2e283367f/atlas.png
+assets/cache/impostors/7ab10912e182d6aed6ea780eedffc1675b572a02a3584c729005d641ed8cc864/atlas.png
+assets/cache/impostors/7ec817c5feddaccf018e12140ac40eb4e0feeab3484b43c8720093ede880e03a/atlas.png
+assets/cache/impostors/89d568220d4d5d48c89261addfd3329a720155c2a1d7e38819c542c39443f5e4/atlas.png
+assets/cache/impostors/912230bbcb39f3bb65ebc4dd5d5d45d337581ad4b935f084ada180b7b4036f9a/atlas.png
+assets/cache/impostors/9c4331248b3fee04699199b8435b3354c86231d03de21c48616f824fc0edbed3/atlas.png
+assets/cache/impostors/9cd4e24f6da421f8387cb027186bfcd37902c728b035e6fe50d8741ab0d26dc1/atlas.png
+assets/cache/impostors/a530e4d896dd45acb250478109b81724f60f62d7e18a0f8a313d591e6539a8f6/atlas.png
+assets/cache/impostors/a7a65b6e1b3fe4a8ac62661eaa646b71aa7ced695bf753c89cad024771fed093/atlas.png
+assets/cache/impostors/a92d9cdf16d4b43fc913860cbb08df95883524f8975d1fe47b574e6fc9cfc295/atlas.png
+assets/cache/impostors/a93beafbb1379de36c8778fa190a47008a191d5d6f4046174c69eab8d3cadcff/atlas.png
+assets/cache/impostors/ac93e246bfd62e418d9e11f4a0b76e083224115076ad547417a62ac1fda7d981/atlas.png
+assets/cache/impostors/b2edb0b331cb6b7e05c550970c5cdd03b89b9e91b684bed6156ffcd18ed35f97/atlas.png
+assets/cache/impostors/b38d563a5f7383c0336da7770ca35f202d88e5c1199890ae0ab0b345287abb5a/atlas.png
+assets/cache/impostors/b41f4b99049abfa437fb98f170b74fba7053462acd9f035928401221e4610133/atlas.png
+assets/cache/impostors/b657fc05fb775d9e95340e0b3b668c9a7d31aae5695e69811ca81f8db9a6775d/atlas.png
+assets/cache/impostors/be2c11a19eb8abdd67cec79c7949c01ab5a1faae3b4e632ae265edf92bfd57b5/atlas.png
+assets/cache/impostors/c449471a1d08844cc087910e668efb353e7b1b6f52709bd968713aff98e6d136/atlas.png
+assets/cache/impostors/c8150fbb1825d9bd00847121fe8d78972d12071f6ffc1db3bfa336db09360c2e/atlas.png
+assets/cache/impostors/c90e86d5252cd97ca951405cf37292a4edf929bfdd6d5104e833922408a00437/atlas.png
+assets/cache/impostors/c952cdd9c0e1e592cb5c4a83e3b2c48a006323878f3bad02b142d0a73e651b9d/atlas.png
+assets/cache/impostors/cc65ccb4259dce29102761a9693e890fcc385c1c79e4f3ef63ccd2e9cc2501c7/atlas.png
+assets/cache/impostors/cda6eacd9bd76bc0dba5563eb47487dc88396092dd870ccbf817bd0315c4d3c6/atlas.png
+assets/cache/impostors/d176bb0cdd79989991701602d4436b1d68d2dff156ceeb0f3d44d51afd8be327/atlas.png
+assets/cache/impostors/e4029bf6134f7ef04c323331232e5af5b0154e5df408bd880288cf7e6f29779b/atlas.png
+assets/cache/impostors/e5bbdb21a9552c413dc6953b0dd96d0ad5205ff43488e9bbf981b6f525e1edad/atlas.png
+assets/cache/impostors/e5f61f1564e6a8420e00391b913695ba659f57bd737a8a1fe3f32b6fa6ad32da/atlas.png
+assets/cache/impostors/e654690835f0e1c066453249e5039efe602ed4b383bb522efc4fc1716db9fcd2/atlas.png
+assets/cache/impostors/ec2d2d9695f62dcc6c0b74542014e2574b89f61176729cbcc664e8dd5649d49a/atlas.png
+assets/cache/impostors/f0fcdd9c0250d8504ad01283845c7146b34e60b41340733830b6a9c709fc54c9/atlas.png
+assets/cache/impostors/f3e217ded889751434eea8a8eac5f9c3ba485306d40bbdccae9e1618ee227d51/atlas.png
+assets/cache/impostors/f664f9ad3daf996a2f8e508238cfa5dd55dd7bd46ed16c5317dc511619f5a514/atlas.png
+assets/cache/impostors/feaeda0c2fa1c4191ace5075ea0b54e5140fd74ed1d091021d32a1ce49b174f0/atlas.png
+assets/castles_forts_asset_pack/Castles_and_Forts.glb
+assets/castles_forts_asset_pack/Iron.png
+assets/castles_forts_asset_pack/Walls.png
+assets/castles_forts_asset_pack/Window_1.png
+assets/castles_forts_asset_pack/Window_iron.png
+assets/imported/Namaqualand/meshes/fine_leaf_01_a.glb
+assets/imported/Namaqualand/meshes/fine_leaf_01_b.glb
+assets/imported/Namaqualand/meshes/fine_leaf_01_c.glb
+assets/imported/Namaqualand/textures/fine_leaf_01_ao.png.png
+assets/imported/Namaqualand/textures/fine_leaf_01_diff.png.002.png
+assets/imported/Namaqualand/textures/fine_leaf_01_mask.png.001.png
+assets/imported/Namaqualand/textures/fine_leaf_01_norm_gl.png.002.png
+assets/imported/Namaqualand/textures/fine_leaf_01_rough.png.png
+assets/imported/Namaqualand/textures/fine_leaf_01_translucency.png.png
+assets/imported/verdant_trail/meshes/dirt_bank.glb
+assets/imported/verdant_trail/meshes/dirt_bank_01.glb
+assets/imported/verdant_trail/meshes/grass_debris_a.glb
+assets/imported/verdant_trail/meshes/grass_debris_b.glb
+assets/imported/verdant_trail/meshes/sticks_debris_a.glb
+assets/imported/verdant_trail/meshes/sticks_debris_b.glb
+assets/imported/verdant_trail/meshes/sticks_debris_c.glb
+assets/imported/verdant_trail/meshes/sticks_debris_d.glb
+assets/materials/cloth.png
+assets/materials/cloth_mra.png
+assets/materials/cloth_n.png
+assets/materials/cobblestone.png
+assets/materials/cobblestone_mra.png
+assets/materials/cobblestone_n.png
+assets/materials/gravel.png
+assets/materials/gravel_mra.png
+assets/materials/gravel_n.png
+assets/materials/ice.png
+assets/materials/ice_mra.png
+assets/materials/ice_n.png
+assets/materials/metal_rusted.png
+assets/materials/metal_rusted_mra.png
+assets/materials/metal_rusted_n.png
+assets/materials/moss.png
+assets/materials/moss_mra.png
+assets/materials/moss_n.png
+assets/materials/plaster.png
+assets/materials/plaster_mra.png
+assets/materials/plaster_n.png
+assets/materials/rock_lichen.png
+assets/materials/rock_lichen_mra.png
+assets/materials/rock_lichen_n.png
+assets/materials/roof_tile.png
+assets/materials/roof_tile_mra.png
+assets/materials/roof_tile_n.png
+assets/materials/tree_bark.png
+assets/materials/tree_bark_mra.png
+assets/materials/tree_bark_n.png
+assets/materials/tree_leaves.png
+assets/materials/tree_leaves_mra.png
+assets/materials/tree_leaves_n.png
+assets/materials/wood_planks.png
+assets/materials/wood_planks_mra.png
+assets/materials/wood_planks_n.png
+assets/models/Amber-Npc/Amber.Fbx
+assets/models/Amber-Npc/Amber_Motion.Fbx
+assets/models/Amber-Npc/textures/Amber/Amber/CC_Base_Body/Std_Eyelash/Std_Eyelash_ResourceMap_Position.png
+assets/models/Amber-Npc/textures/Amber/Amber/CC_Base_Body/Std_Eyelash/Std_Eyelash_ResourceMap_WSNormal.png
+assets/models/Amber-Npc/textures/Amber/Amber/CC_Base_Body/Std_Eyelash/Std_Eyelash_ao.png
+assets/models/Amber-Npc/textures/Amber/Amber/CC_Base_Body/Std_Eyelash/Std_Eyelash_metallic.png
+assets/models/Amber-Npc/textures/Amber/Amber/CC_Base_Body/Std_Eyelash/Std_Eyelash_roughness.png
+assets/models/Amber-Npc/textures/Amber/Amber/CC_Base_Body/Std_Nails/Std_Nails_MicroNMask.jpg
+assets/models/Amber-Npc/textures/Amber/Amber/CC_Base_Body/Std_Nails/Std_Nails_RGBAMask.tga
+assets/models/Amber-Npc/textures/Amber/Amber/CC_Base_Body/Std_Nails/Std_Nails_ResourceMap_Position.png
+assets/models/Amber-Npc/textures/Amber/Amber/CC_Base_Body/Std_Nails/Std_Nails_ResourceMap_WSNormal.png
+assets/models/Amber-Npc/textures/Amber/Amber/CC_Base_Body/Std_Nails/Std_Nails_SSSMap.jpg
+assets/models/Amber-Npc/textures/Amber/Amber/CC_Base_Body/Std_Nails/Std_Nails_TransMap.png
+assets/models/Amber-Npc/textures/Amber/Amber/CC_Base_Body/Std_Nails/Std_Nails_ao.png
+assets/models/Amber-Npc/textures/Amber/Amber/CC_Base_Body/Std_Nails/Std_Nails_roughness.png
+assets/models/Amber-Npc/textures/Amber/Amber/CC_Base_Body/Std_Skin_Arm/Std_Skin_Arm_MicroNMask.jpg
+assets/models/Amber-Npc/textures/Amber/Amber/CC_Base_Body/Std_Skin_Arm/Std_Skin_Arm_RGBAMask.tga
+assets/models/Amber-Npc/textures/Amber/Amber/CC_Base_Body/Std_Skin_Arm/Std_Skin_Arm_ResourceMap_Position.png
+assets/models/Amber-Npc/textures/Amber/Amber/CC_Base_Body/Std_Skin_Arm/Std_Skin_Arm_ResourceMap_WSNormal.png
+assets/models/Amber-Npc/textures/Amber/Amber/CC_Base_Body/Std_Skin_Arm/Std_Skin_Arm_SSSMap.png
+assets/models/Amber-Npc/textures/Amber/Amber/CC_Base_Body/Std_Skin_Arm/Std_Skin_Arm_TransMap.png
+assets/models/Amber-Npc/textures/Amber/Amber/CC_Base_Body/Std_Skin_Arm/Std_Skin_Arm_ao.png
+assets/models/Amber-Npc/textures/Amber/Amber/CC_Base_Body/Std_Skin_Arm/Std_Skin_Arm_roughness.png
+assets/models/Amber-Npc/textures/Amber/Amber/CC_Base_Body/Std_Skin_Body/Std_Skin_Body_MicroNMask.jpg
+assets/models/Amber-Npc/textures/Amber/Amber/CC_Base_Body/Std_Skin_Body/Std_Skin_Body_RGBAMask.tga
+assets/models/Amber-Npc/textures/Amber/Amber/CC_Base_Body/Std_Skin_Body/Std_Skin_Body_ResourceMap_Position.png
+assets/models/Amber-Npc/textures/Amber/Amber/CC_Base_Body/Std_Skin_Body/Std_Skin_Body_ResourceMap_WSNormal.png
+assets/models/Amber-Npc/textures/Amber/Amber/CC_Base_Body/Std_Skin_Body/Std_Skin_Body_SSSMap.png
+assets/models/Amber-Npc/textures/Amber/Amber/CC_Base_Body/Std_Skin_Body/Std_Skin_Body_TransMap.png
+assets/models/Amber-Npc/textures/Amber/Amber/CC_Base_Body/Std_Skin_Body/Std_Skin_Body_ao.png
+assets/models/Amber-Npc/textures/Amber/Amber/CC_Base_Body/Std_Skin_Body/Std_Skin_Body_roughness.png
+assets/models/Amber-Npc/textures/Amber/Amber/CC_Base_Body/Std_Skin_Head/Std_Skin_Head_BCBMap.jpg
+assets/models/Amber-Npc/textures/Amber/Amber/CC_Base_Body/Std_Skin_Head/Std_Skin_Head_Blend Mask.png
+assets/models/Amber-Npc/textures/Amber/Amber/CC_Base_Body/Std_Skin_Head/Std_Skin_Head_CFULCMask.tga
+assets/models/Amber-Npc/textures/Amber/Amber/CC_Base_Body/Std_Skin_Head/Std_Skin_Head_ENMask.tga
+assets/models/Amber-Npc/textures/Amber/Amber/CC_Base_Body/Std_Skin_Head/Std_Skin_Head_MNAOMask.tga
+assets/models/Amber-Npc/textures/Amber/Amber/CC_Base_Body/Std_Skin_Head/Std_Skin_Head_MicroNMask.jpg
+assets/models/Amber-Npc/textures/Amber/Amber/CC_Base_Body/Std_Skin_Head/Std_Skin_Head_NBMap.jpg
+assets/models/Amber-Npc/textures/Amber/Amber/CC_Base_Body/Std_Skin_Head/Std_Skin_Head_NMUILMask.tga
+assets/models/Amber-Npc/textures/Amber/Amber/CC_Base_Body/Std_Skin_Head/Std_Skin_Head_ResourceMap_Position.png
+assets/models/Amber-Npc/textures/Amber/Amber/CC_Base_Body/Std_Skin_Head/Std_Skin_Head_ResourceMap_WSNormal.png
+assets/models/Amber-Npc/textures/Amber/Amber/CC_Base_Body/Std_Skin_Head/Std_Skin_Head_SSSMap.jpg
+assets/models/Amber-Npc/textures/Amber/Amber/CC_Base_Body/Std_Skin_Head/Std_Skin_Head_SpecMask.jpg
+assets/models/Amber-Npc/textures/Amber/Amber/CC_Base_Body/Std_Skin_Head/Std_Skin_Head_TransMap.png
+assets/models/Amber-Npc/textures/Amber/Amber/CC_Base_Body/Std_Skin_Head/Std_Skin_Head_ao.png
+assets/models/Amber-Npc/textures/Amber/Amber/CC_Base_Body/Std_Skin_Head/Std_Skin_Head_roughness.png
+assets/models/Amber-Npc/textures/Amber/Amber/CC_Base_Body/Std_Skin_Leg/Std_Skin_Leg_MicroNMask.jpg
+assets/models/Amber-Npc/textures/Amber/Amber/CC_Base_Body/Std_Skin_Leg/Std_Skin_Leg_RGBAMask.tga
+assets/models/Amber-Npc/textures/Amber/Amber/CC_Base_Body/Std_Skin_Leg/Std_Skin_Leg_ResourceMap_Position.png
+assets/models/Amber-Npc/textures/Amber/Amber/CC_Base_Body/Std_Skin_Leg/Std_Skin_Leg_ResourceMap_WSNormal.png
+assets/models/Amber-Npc/textures/Amber/Amber/CC_Base_Body/Std_Skin_Leg/Std_Skin_Leg_SSSMap.png
+assets/models/Amber-Npc/textures/Amber/Amber/CC_Base_Body/Std_Skin_Leg/Std_Skin_Leg_TransMap.png
+assets/models/Amber-Npc/textures/Amber/Amber/CC_Base_Body/Std_Skin_Leg/Std_Skin_Leg_ao.png
+assets/models/Amber-Npc/textures/Amber/Amber/CC_Base_Body/Std_Skin_Leg/Std_Skin_Leg_roughness.png
+assets/models/Amber-Npc/textures/Amber/Amber/CC_Base_Tongue/Std_Tongue/Std_Tongue_MicroN.png
+assets/models/Amber-Npc/textures/Amber/Amber/CC_Base_Tongue/Std_Tongue/Std_Tongue_ao.png
+assets/models/Amber-Npc/textures/Amber/Amber/CC_Base_Tongue/Std_Tongue/Std_Tongue_metallic.png
+assets/models/Amber-Npc/textures/Amber/Amber/CC_Base_Tongue/Std_Tongue/Std_Tongue_roughness.png
+assets/models/Amber-Npc/textures/Amber/Bang/Bang/Hair_Transparency/Hair_Transparency_Hair Flow Map.png
+assets/models/Amber-Npc/textures/Amber/Bang/Bang/Hair_Transparency/Hair_Transparency_Hair ID Map.png
+assets/models/Amber-Npc/textures/Amber/Bang/Bang/Hair_Transparency/Hair_Transparency_Hair Root Map.jpg
+assets/models/Amber-Npc/textures/Amber/Bang/Bang/Hair_Transparency/Hair_Transparency_WeightMap.png
+assets/models/Amber-Npc/textures/Amber/Bang/Bang/Hair_Transparency/Hair_Transparency_ao.png
+assets/models/Amber-Npc/textures/Amber/Bang/Bang/Hair_Transparency/Hair_Transparency_metallic.png
+assets/models/Amber-Npc/textures/Amber/Bang/Bang/Hair_Transparency/Hair_Transparency_roughness.png
+assets/models/Amber-Npc/textures/Amber/Bang/Bang/Hair_Transparency/Hair_Transparency_vertexcolormap.jpg
+assets/models/Amber-Npc/textures/Amber/Boots/Boots/Boots/Boots_Displacement.png
+assets/models/Amber-Npc/textures/Amber/Boots/Boots/Boots/Boots_Glow.png
+assets/models/Amber-Npc/textures/Amber/Boots/Boots/Boots/Boots_ao.png
+assets/models/Amber-Npc/textures/Amber/Boots/Boots/Boots/Boots_metallic.png
+assets/models/Amber-Npc/textures/Amber/Boots/Boots/Boots/Boots_roughness.png
+assets/models/Amber-Npc/textures/Amber/Bra/Bra/Bra/Bra_Displacement.png
+assets/models/Amber-Npc/textures/Amber/Bra/Bra/Bra/Bra_ao.png
+assets/models/Amber-Npc/textures/Amber/Bra/Bra/Bra/Bra_metallic.png
+assets/models/Amber-Npc/textures/Amber/Bra/Bra/Bra/Bra_roughness.png
+assets/models/Amber-Npc/textures/Amber/Bun/Bun/Hair_Transparency/Hair_Transparency_Hair Flow Map.png
+assets/models/Amber-Npc/textures/Amber/Bun/Bun/Hair_Transparency/Hair_Transparency_Hair ID Map.png
+assets/models/Amber-Npc/textures/Amber/Bun/Bun/Hair_Transparency/Hair_Transparency_Hair Root Map.jpg
+assets/models/Amber-Npc/textures/Amber/Bun/Bun/Hair_Transparency/Hair_Transparency_ao.png
+assets/models/Amber-Npc/textures/Amber/Bun/Bun/Hair_Transparency/Hair_Transparency_blend_multiply.png
+assets/models/Amber-Npc/textures/Amber/Bun/Bun/Hair_Transparency/Hair_Transparency_metallic.png
+assets/models/Amber-Npc/textures/Amber/Bun/Bun/Hair_Transparency/Hair_Transparency_roughness.png
+assets/models/Amber-Npc/textures/Amber/Bun/Bun/Hair_Transparency/Hair_Transparency_vertexcolormap.jpg
+assets/models/Amber-Npc/textures/Amber/CC_Base_Eye/CC_Base_Eye/Std_Cornea_L/Std_Cornea_L_Sclera.png
+assets/models/Amber-Npc/textures/Amber/CC_Base_Eye/CC_Base_Eye/Std_Cornea_L/Std_Cornea_L_ao.png
+assets/models/Amber-Npc/textures/Amber/CC_Base_Eye/CC_Base_Eye/Std_Cornea_L/Std_Cornea_L_metallic.png
+assets/models/Amber-Npc/textures/Amber/CC_Base_Eye/CC_Base_Eye/Std_Cornea_L/Std_Cornea_L_roughness.png
+assets/models/Amber-Npc/textures/Amber/CC_Base_Eye/CC_Base_Eye/Std_Cornea_R/Std_Cornea_R_BCBMap.jpg
+assets/models/Amber-Npc/textures/Amber/CC_Base_Eye/CC_Base_Eye/Std_Cornea_R/Std_Cornea_R_IrisMask.png
+assets/models/Amber-Npc/textures/Amber/CC_Base_Eye/CC_Base_Eye/Std_Cornea_R/Std_Cornea_R_IrisN.png
+assets/models/Amber-Npc/textures/Amber/CC_Base_Eye/CC_Base_Eye/Std_Cornea_R/Std_Cornea_R_Sclera.png
+assets/models/Amber-Npc/textures/Amber/CC_Base_Eye/CC_Base_Eye/Std_Cornea_R/Std_Cornea_R_ao.png
+assets/models/Amber-Npc/textures/Amber/CC_Base_Eye/CC_Base_Eye/Std_Cornea_R/Std_Cornea_R_metallic.png
+assets/models/Amber-Npc/textures/Amber/CC_Base_Eye/CC_Base_Eye/Std_Cornea_R/Std_Cornea_R_roughness.png
+assets/models/Amber-Npc/textures/Amber/CC_Base_Eye/CC_Base_Eye/Std_Eye_L/Std_Eye_L_metallic.png
+assets/models/Amber-Npc/textures/Amber/CC_Base_Eye/CC_Base_Eye/Std_Eye_L/Std_Eye_L_roughness.png
+assets/models/Amber-Npc/textures/Amber/CC_Base_Eye/CC_Base_Eye/Std_Eye_R/Std_Eye_R_metallic.png
+assets/models/Amber-Npc/textures/Amber/CC_Base_Eye/CC_Base_Eye/Std_Eye_R/Std_Eye_R_roughness.png
+assets/models/Amber-Npc/textures/Amber/CC_Base_EyeOcclusion/CC_Base_EyeOcclusion/Std_Eye_Occlusion_L/Std_Eye_Occlusion_L_metallic.png
+assets/models/Amber-Npc/textures/Amber/CC_Base_EyeOcclusion/CC_Base_EyeOcclusion/Std_Eye_Occlusion_L/Std_Eye_Occlusion_L_roughness.png
+assets/models/Amber-Npc/textures/Amber/CC_Base_EyeOcclusion/CC_Base_EyeOcclusion/Std_Eye_Occlusion_R/Std_Eye_Occlusion_R_metallic.png
+assets/models/Amber-Npc/textures/Amber/CC_Base_EyeOcclusion/CC_Base_EyeOcclusion/Std_Eye_Occlusion_R/Std_Eye_Occlusion_R_roughness.png
+assets/models/Amber-Npc/textures/Amber/CC_Base_TearLine/CC_Base_TearLine/Std_Tearline_L/Std_Tearline_L_metallic.png
+assets/models/Amber-Npc/textures/Amber/CC_Base_TearLine/CC_Base_TearLine/Std_Tearline_L/Std_Tearline_L_roughness.png
+assets/models/Amber-Npc/textures/Amber/CC_Base_TearLine/CC_Base_TearLine/Std_Tearline_R/Std_Tearline_R_metallic.png
+assets/models/Amber-Npc/textures/Amber/CC_Base_TearLine/CC_Base_TearLine/Std_Tearline_R/Std_Tearline_R_roughness.png
+assets/models/Amber-Npc/textures/Amber/CC_Base_Teeth/CC_Base_Teeth/Std_Lower_Teeth/Std_Lower_Teeth_GradAO.jpg
+assets/models/Amber-Npc/textures/Amber/CC_Base_Teeth/CC_Base_Teeth/Std_Lower_Teeth/Std_Lower_Teeth_GumsMask.jpg
+assets/models/Amber-Npc/textures/Amber/CC_Base_Teeth/CC_Base_Teeth/Std_Lower_Teeth/Std_Lower_Teeth_MicroN.png
+assets/models/Amber-Npc/textures/Amber/CC_Base_Teeth/CC_Base_Teeth/Std_Lower_Teeth/Std_Lower_Teeth_ao.png
+assets/models/Amber-Npc/textures/Amber/CC_Base_Teeth/CC_Base_Teeth/Std_Lower_Teeth/Std_Lower_Teeth_metallic.png
+assets/models/Amber-Npc/textures/Amber/CC_Base_Teeth/CC_Base_Teeth/Std_Lower_Teeth/Std_Lower_Teeth_roughness.png
+assets/models/Amber-Npc/textures/Amber/CC_Base_Teeth/CC_Base_Teeth/Std_Upper_Teeth/Std_Upper_Teeth_ao.png
+assets/models/Amber-Npc/textures/Amber/CC_Base_Teeth/CC_Base_Teeth/Std_Upper_Teeth/Std_Upper_Teeth_metallic.png
+assets/models/Amber-Npc/textures/Amber/CC_Base_Teeth/CC_Base_Teeth/Std_Upper_Teeth/Std_Upper_Teeth_roughness.png
+assets/models/Amber-Npc/textures/Amber/Camila_Brow/Camila_Brow/Female_Brow_Base_Transparency/Female_Brow_Base_Transparency_metallic.png
+assets/models/Amber-Npc/textures/Amber/Camila_Brow/Camila_Brow/Female_Brow_Base_Transparency/Female_Brow_Base_Transparency_roughness.png
+assets/models/Amber-Npc/textures/Amber/Camila_Brow/Camila_Brow/Female_Brow_Transparency/Female_Brow_Transparency_Hair ID Map.png
+assets/models/Amber-Npc/textures/Amber/Camila_Brow/Camila_Brow/Female_Brow_Transparency/Female_Brow_Transparency_Hair Root Map.jpg
+assets/models/Amber-Npc/textures/Amber/Camila_Brow/Camila_Brow/Female_Brow_Transparency/Female_Brow_Transparency_metallic.png
+assets/models/Amber-Npc/textures/Amber/Camila_Brow/Camila_Brow/Female_Brow_Transparency/Female_Brow_Transparency_roughness.png
+assets/models/Amber-Npc/textures/Amber/Camila_Brow/Camila_Brow/Female_Brow_Transparency/Female_Brow_Transparency_vertexcolormap.jpg
+assets/models/Amber-Npc/textures/Amber/Crop_T_Shirt/Crop_T_Shirt/Female_T_Shirt/Female_T_Shirt_Glow.png
+assets/models/Amber-Npc/textures/Amber/Crop_T_Shirt/Crop_T_Shirt/Female_T_Shirt/Female_T_Shirt_WeightMap.png
+assets/models/Amber-Npc/textures/Amber/Crop_T_Shirt/Crop_T_Shirt/Female_T_Shirt/Female_T_Shirt_ao.png
+assets/models/Amber-Npc/textures/Amber/Crop_T_Shirt/Crop_T_Shirt/Female_T_Shirt/Female_T_Shirt_roughness.png
+assets/models/Amber-Npc/textures/Amber/Hair_Base/Hair_Base/Hair_Transparency/Hair_Transparency_Hair Flow Map.png
+assets/models/Amber-Npc/textures/Amber/Hair_Base/Hair_Base/Hair_Transparency/Hair_Transparency_Hair ID Map.png
+assets/models/Amber-Npc/textures/Amber/Hair_Base/Hair_Base/Hair_Transparency/Hair_Transparency_Hair Root Map.jpg
+assets/models/Amber-Npc/textures/Amber/Hair_Base/Hair_Base/Hair_Transparency/Hair_Transparency_ao.png
+assets/models/Amber-Npc/textures/Amber/Hair_Base/Hair_Base/Hair_Transparency/Hair_Transparency_blend_multiply.png
+assets/models/Amber-Npc/textures/Amber/Hair_Base/Hair_Base/Hair_Transparency/Hair_Transparency_metallic.png
+assets/models/Amber-Npc/textures/Amber/Hair_Base/Hair_Base/Hair_Transparency/Hair_Transparency_roughness.png
+assets/models/Amber-Npc/textures/Amber/Hair_Base/Hair_Base/Hair_Transparency/Hair_Transparency_vertexcolormap.jpg
+assets/models/Amber-Npc/textures/Amber/Hair_Base/Hair_Base/Scalp_Transparency/Scalp_Transparency_metallic.png
+assets/models/Amber-Npc/textures/Amber/Hair_Base/Hair_Base/Scalp_Transparency/Scalp_Transparency_roughness.png
+assets/models/Amber-Npc/textures/Amber/Jeans/Jeans/Jeans/Jeans_WeightMap.png
+assets/models/Amber-Npc/textures/Amber/Jeans/Jeans/Jeans/Jeans_ao.png
+assets/models/Amber-Npc/textures/Amber/Jeans/Jeans/Jeans/Jeans_metallic.png
+assets/models/Amber-Npc/textures/Amber/Jeans/Jeans/Jeans/Jeans_roughness.png
+assets/models/Amber-Npc/textures/Amber/Punk_Leather_Jacket/Punk_Leather_Jacket/Punk_Leather_jacket/Punk_Leather_jacket_WeightMap.png
+assets/models/Amber-Npc/textures/Amber/Punk_Leather_Jacket/Punk_Leather_Jacket/Punk_Leather_jacket/Punk_Leather_jacket_ao.png
+assets/models/Amber-Npc/textures/Amber/Punk_Leather_Jacket/Punk_Leather_Jacket/Punk_Leather_jacket/Punk_Leather_jacket_metallic.png
+assets/models/Amber-Npc/textures/Amber/Punk_Leather_Jacket/Punk_Leather_Jacket/Punk_Leather_jacket/Punk_Leather_jacket_roughness.png
+assets/models/Amber-Npc/textures/Amber/Real_Hair/Real_Hair/Hair_Transparency/Hair_Transparency_Hair Flow Map.png
+assets/models/Amber-Npc/textures/Amber/Real_Hair/Real_Hair/Hair_Transparency/Hair_Transparency_Hair ID Map.png
+assets/models/Amber-Npc/textures/Amber/Real_Hair/Real_Hair/Hair_Transparency/Hair_Transparency_Hair Root Map.jpg
+assets/models/Amber-Npc/textures/Amber/Real_Hair/Real_Hair/Hair_Transparency/Hair_Transparency_WeightMap.png
+assets/models/Amber-Npc/textures/Amber/Real_Hair/Real_Hair/Hair_Transparency/Hair_Transparency_ao.png
+assets/models/Amber-Npc/textures/Amber/Real_Hair/Real_Hair/Hair_Transparency/Hair_Transparency_blend_multiply.png
+assets/models/Amber-Npc/textures/Amber/Real_Hair/Real_Hair/Hair_Transparency/Hair_Transparency_metallic.png
+assets/models/Amber-Npc/textures/Amber/Real_Hair/Real_Hair/Hair_Transparency/Hair_Transparency_roughness.png
+assets/models/Amber-Npc/textures/Amber/Real_Hair/Real_Hair/Hair_Transparency/Hair_Transparency_vertexcolormap.jpg
+assets/models/Amber-Npc/textures/Amber/Underwear_Bottoms/Underwear_Bottoms/Underwear_Bottoms/Underwear_Bottoms_Displacement.png
+assets/models/Amber-Npc/textures/Amber/Underwear_Bottoms/Underwear_Bottoms/Underwear_Bottoms/Underwear_Bottoms_Glow.png
+assets/models/Amber-Npc/textures/Amber/Underwear_Bottoms/Underwear_Bottoms/Underwear_Bottoms/Underwear_Bottoms_ao.png
+assets/models/Amber-Npc/textures/Amber/Underwear_Bottoms/Underwear_Bottoms/Underwear_Bottoms/Underwear_Bottoms_metallic.png
+assets/models/Amber-Npc/textures/Amber/Underwear_Bottoms/Underwear_Bottoms/Underwear_Bottoms/Underwear_Bottoms_roughness.png
+assets/models/arrow.fbx
+assets/models/box.fbx
+assets/models/coin.fbx
+assets/models/cone.fbx
+assets/models/cone1.fbx
+assets/models/cone2.fbx
+assets/models/cone3.fbx
+assets/models/cone4.fbx
+assets/models/cube.fbx
+assets/models/cube4.fbx
+assets/models/cube5.fbx
+assets/models/cube6.fbx
+assets/models/cube7.fbx
+assets/models/cube8.fbx
+assets/models/cube9.fbx
+assets/models/cylinder.fbx
+assets/models/cylinder1.fbx
+assets/models/cylinder2.fbx
+assets/models/cylinder3.fbx
+assets/models/cylinder4.fbx
+assets/models/cylinder5.fbx
+assets/models/demo_plane.gltf
+assets/models/door.fbx
+assets/models/door1.fbx
+assets/models/door2.fbx
+assets/models/door3.fbx
+assets/models/fence edge.fbx
+assets/models/fence wood.fbx
+assets/models/fence.fbx
+assets/models/fence2.fbx
+assets/models/fence3.fbx
+assets/models/ground corner.fbx
+assets/models/ground.fbx
+assets/models/ground1.fbx
+assets/models/house1.glb
+assets/models/house2.glb
+assets/models/house3.glb
+assets/models/house4.glb
+assets/models/house5.glb
+assets/models/key.fbx
+assets/models/ladder.fbx
+assets/models/ladder1.fbx
+assets/models/pillar.fbx
+assets/models/pillar1.fbx
+assets/models/pillar2.fbx
+assets/models/pillar3.fbx
+assets/models/pillar4.fbx
+assets/models/railing edge.fbx
+assets/models/railing.fbx
+assets/models/ramp.fbx
+assets/models/ramp1.fbx
+assets/models/sphere.fbx
+assets/models/sphere1.fbx
+assets/models/sphere2.fbx
+assets/models/spike.fbx
+assets/models/spikes big.fbx
+assets/models/spikes small.fbx
+assets/models/stairs corner.fbx
+assets/models/stairs corner1.fbx
+assets/models/stairs.fbx
+assets/models/stairs1.fbx
+assets/models/stairs2.fbx
+assets/models/toggle switch.fbx
+assets/models/torus.fbx
+assets/models/wall corner bottom.fbx
+assets/models/wall corner bottom1.fbx
+assets/models/wall corner bottom2.fbx
+assets/models/wall corner top.fbx
+assets/models/wall corner top1.fbx
+assets/models/wall corner.fbx
+assets/models/wall corner1.fbx
+assets/models/wall corner4.fbx
+assets/models/wall door.fbx
+assets/models/wall door1.fbx
+assets/models/wall door2.fbx
+assets/models/wall window.fbx
+assets/models/wall window1.fbx
+assets/models/wall.fbx
+assets/models/wall1.fbx
+assets/models/window.fbx
+assets/models/window1.fbx
+assets/tests/textures/texture-a.png
+assets/tests/textures/texture-b.png
+assets/tests/textures/texture-c.png
+assets/tests/textures/texture-d.png
+assets/tests/textures/texture-e.png
+assets/tests/textures/texture-f.png
+assets/tests/textures/texture-g.png
+assets/tests/textures/texture-h.png
+assets/tests/textures/texture-i.png
+assets/tests/textures/texture-j.png
+assets/tests/textures/texture-k.png
+assets/tests/textures/texture-l.png
+assets/tests/textures/texture-m.png
+assets/tests/textures/texture-n.png
+assets/tests/textures/texture-o.png
+assets/tests/textures/texture-p.png
+assets/tests/textures/texture-q.png
+assets/tests/textures/texture-r.png
+assets/textures/LoL_diff.jpg
+assets/textures/LoL_nor_gl.jpg
+assets/textures/bee.png
+assets/textures/billboard_foliage_billboards_albedo.psd
+assets/textures/billboard_foliage_billboards_alphamask.psd
+assets/textures/billboard_foliage_billboards_normal.psd
+assets/textures/cobblestone.png
+assets/textures/cobblestoneAlternative.png
+assets/textures/fine_leaf_01_ao.png
+assets/textures/fine_leaf_01_diff.png
+assets/textures/fine_leaf_01_mask.png
+assets/textures/fine_leaf_01_norm_gl.png
+assets/textures/fine_leaf_01_rough.png
+assets/textures/fine_leaf_01_translucency.png
+assets/textures/ground_mask_01.png
+assets/textures/ivy_alpha.png
+assets/textures/ivy_diff.png
+assets/textures/ivy_disp.png
+assets/textures/ivy_normal.png
+assets/textures/ivy_rough.png
+assets/textures/models/houses/house1_tex1.png
+assets/textures/models/houses/house1_tex2.png
+assets/textures/models/houses/house1_tex3.png
+assets/textures/models/houses/house2_tex1.png
+assets/textures/models/houses/house2_tex2.png
+assets/textures/models/houses/house2_tex3.png
+assets/textures/models/houses/house3_tex1.png
+assets/textures/models/houses/house3_tex2.png
+assets/textures/models/houses/house3_tex3.png
+assets/textures/models/houses/house4_tex1.png
+assets/textures/models/houses/house4_tex2.png
+assets/textures/models/houses/house4_tex3.png
+assets/textures/models/houses/house5_tex1.png
+assets/textures/models/houses/house5_tex2.png
+assets/textures/models/houses/house5_tex3.png
+assets/textures/pine_forest/dead_tree_diff.png
+assets/textures/pine_forest/dead_tree_disp.png
+assets/textures/pine_forest/dead_tree_nor_gl.png
+assets/textures/pine_forest/dead_tree_rough.png
+assets/textures/pine_forest/dead_tree_tiled_diff.png
+assets/textures/pine_forest/dead_tree_tiled_disp.png
+assets/textures/pine_forest/dead_tree_tiled_nor_gl.png
+assets/textures/pine_forest/dead_tree_tiled_rough.png
+assets/textures/pine_forest/fir_bark_diff.png
+assets/textures/pine_forest/fir_bark_disp.png
+assets/textures/pine_forest/fir_bark_nor_gl.png
+assets/textures/pine_forest/fir_bark_rough.png
+assets/textures/pine_forest/fir_trunk_01_diff.png
+assets/textures/pine_forest/fir_trunk_01_nor_gl.png
+assets/textures/pine_forest/fir_trunk_01_rough.png
+assets/textures/pine_forest/fir_trunk_03_diff.png
+assets/textures/pine_forest/fir_trunk_03_nor_gl.png
+assets/textures/pine_forest/fir_trunk_03_rough.png
+assets/textures/pine_forest/fir_twig_alpha.png
+assets/textures/pine_forest/fir_twig_diff.png
+assets/textures/pine_forest/fir_twig_mask01.png
+assets/textures/pine_forest/fir_twig_nor_gl.png
+assets/textures/pine_forest/fir_twig_rough.png
+assets/textures/pine_forest/montaigle_ruins_01_diff.jpg
+assets/textures/pine_forest/montaigle_ruins_01_nor_gl.jpg
+assets/textures/pine_forest/montaigle_ruins_01_rough.jpg
+assets/textures/pine_forest/montaigle_ruins_02_diff.jpg
+assets/textures/pine_forest/montaigle_ruins_02_nor_gl.jpg
+assets/textures/pine_forest/montaigle_ruins_02_rough.jpg
+assets/textures/pine_forest/montaigle_ruins_03_diff.jpg
+assets/textures/pine_forest/montaigle_ruins_03_nor_gl.jpg
+assets/textures/pine_forest/montaigle_ruins_03_rough.jpg
+assets/textures/pine_forest/pine_cover_01_diffuse.png
+assets/textures/pine_forest/pine_cover_01_diffuse_normal.png
+assets/textures/pine_forest/pine_cover_01_mask.png
+assets/textures/pine_forest/pine_cover_01_rough.png
+assets/textures/pine_forest/pine_trunk_01_diff.png
+assets/textures/pine_forest/pine_trunk_01_nor_gl.png
+assets/textures/pine_forest/pine_trunk_01_rough.png
+assets/textures/pine_forest/pine_trunk_02_diff.png
+assets/textures/pine_forest/pine_trunk_02_nor_gl.png
+assets/textures/pine_forest/pine_trunk_02_rough.png
+assets/textures/pine_forest/pine_trunk_03_diff.png
+assets/textures/pine_forest/pine_trunk_03_nor_gl.png
+assets/textures/pine_forest/pine_trunk_03_rough.png
+assets/textures/pine_forest/pine_twig_alpha.png
+assets/textures/pine_forest/pine_twig_diff.png
+assets/textures/pine_forest/pine_twig_mask.png
+assets/textures/pine_forest/pine_twig_nor_gl.png
+assets/textures/pine_forest/pine_twig_rough.png
+assets/textures/pine_forest/tree_roots_01_diff.png
+assets/textures/pine_forest/tree_roots_01_nor_gl.png
+assets/textures/pine_forest/tree_roots_01_rough.png
+assets/textures/pine_forest/tree_roots_02_diff.png
+assets/textures/pine_forest/tree_roots_02_nor_gl.png
+assets/textures/pine_forest/tree_roots_02_rough.png
+assets/textures/pine_forest/tree_trunk_diff.png
+assets/textures/pine_forest/tree_trunk_disp.png
+assets/textures/pine_forest/tree_trunk_nor_gl.png
+assets/textures/pine_forest/tree_trunk_rough.png
+assets/textures/planks.png
+assets/textures/roof.png
+assets/textures/square_alpha.png
+assets/textures/tiny_purple_succulant_diff.png
+assets/textures/tiny_purple_succulant_mask.png
+assets/textures/tiny_purple_succulant_nor_flat.png
+assets/textures/tiny_purple_succulant_rough.png
+assets/textures/transmission.png
+assets/textures/tree.png
+assets/verdant_trail.blend
+assets_src/materials/cloth.png
+assets_src/materials/cloth_mra.png
+assets_src/materials/cloth_n.png
+assets_src/materials/plaster.png
+assets_src/materials/plaster_mra.png
+assets_src/materials/plaster_n.png
+assets_src/materials/rock_lichen.png
+assets_src/materials/rock_lichen_mra.png
+assets_src/materials/rock_lichen_n.png
+assets_src/materials/roof_tile.png
+assets_src/materials/roof_tile_mra.png
+assets_src/materials/roof_tile_n.png
+assets_src/materials/tree_bark.png
+assets_src/materials/tree_bark_mra.png
+assets_src/materials/tree_bark_n.png
+assets_src/materials/tree_leaves.png
+assets_src/materials/tree_leaves_mra.png
+assets_src/materials/tree_leaves_n.png

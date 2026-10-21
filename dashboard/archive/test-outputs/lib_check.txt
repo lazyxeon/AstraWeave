@@ -1,0 +1,63 @@
+    Checking astraweave-prompts v0.1.0 (C:\Users\pv2br\AstraWeave-AI-Native-Gaming-Engine\astraweave-prompts)
+warning: unexpected `cfg` condition value: `small_rng`
+  --> astraweave-embeddings\src\client.rs:99:7
+   |
+99 | #[cfg(feature = "small_rng")]
+   |       ^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: expected values for `feature` are: `candle`, `candle-core`, `candle-nn`, `candle-transformers`, `default`, `hnsw`, `hnsw_rs`, `http`, `onnx`, `ort`, and `reqwest`
+   = help: consider adding `small_rng` as a feature in `Cargo.toml`
+   = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+   = note: `#[warn(unexpected_cfgs)]` on by default
+
+    Checking astraweave-context v0.1.0 (C:\Users\pv2br\AstraWeave-AI-Native-Gaming-Engine\astraweave-context)
+warning: `astraweave-embeddings` (lib) generated 1 warning
+    Checking astraweave-scene v0.1.0 (C:\Users\pv2br\AstraWeave-AI-Native-Gaming-Engine\astraweave-scene)
+    Checking astraweave-ai v0.1.0 (C:\Users\pv2br\AstraWeave-AI-Native-Gaming-Engine\astraweave-ai)
+    Checking aw_debug v0.1.0 (C:\Users\pv2br\AstraWeave-AI-Native-Gaming-Engine\tools\aw_debug)
+warning: unused import: `VertexDataAdapter`
+ --> astraweave-asset-pipeline\src\mesh.rs:6:38
+  |
+6 | use meshopt::{optimize_vertex_cache, VertexDataAdapter};
+  |                                      ^^^^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` on by default
+
+warning: unused import: `anyhow::Result`
+ --> astraweave-asset-pipeline\src\validator.rs:3:5
+  |
+3 | use anyhow::Result;
+  |     ^^^^^^^^^^^^^^
+
+warning: unused variable: `vertex_count`
+   --> astraweave-asset-pipeline\src\mesh.rs:178:36
+    |
+178 | fn calculate_acmr(indices: &[u32], vertex_count: usize) -> f32 {
+    |                                    ^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_vertex_count`
+    |
+    = note: `#[warn(unused_variables)]` on by default
+
+warning: `astraweave-asset-pipeline` (lib) generated 3 warnings (run `cargo fix --lib -p astraweave-asset-pipeline` to apply 2 suggestions)
+    Checking astraweave-llm-eval v0.1.0 (C:\Users\pv2br\AstraWeave-AI-Native-Gaming-Engine\astraweave-llm-eval)
+error[E0621]: explicit lifetime required in the type of `component_type`
+   --> astraweave-scene\src\world_partition.rs:383:9
+    |
+383 | /         self.entity_blueprints.iter().flat_map(move |entity| {
+384 | |             entity.components.iter().filter_map(move |component| {
+385 | |                 if component.component_type == component_type {
+386 | |                     Some(CellComponentView { entity, component })
+...   |
+390 | |             })
+391 | |         })
+    | |__________^ lifetime `'a` required
+    |
+help: add explicit lifetime `'a` to the type of `component_type`
+    |
+381 |         component_type: &'a str,
+    |                          ++
+
+    Checking astraweave-security v0.1.0 (C:\Users\pv2br\AstraWeave-AI-Native-Gaming-Engine\astraweave-security)
+    Checking astraweave-ipc v0.1.0 (C:\Users\pv2br\AstraWeave-AI-Native-Gaming-Engine\astraweave-ipc)
+For more information about this error, try `rustc --explain E0621`.
+error: could not compile `astraweave-scene` (lib) due to 1 previous error
+warning: build failed, waiting for other jobs to finish...

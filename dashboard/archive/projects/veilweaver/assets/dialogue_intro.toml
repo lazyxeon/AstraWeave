@@ -1,0 +1,149 @@
+id = "intro"
+start = "n0"
+
+[[nodes]]
+id = "n0"
+line = { speaker = "Companion", text = "The threads are restless tonight." }
+choices = [
+  { text = "What does that mean?", go_to = "n1" },
+  { text = "We weave anyway.", go_to = "n2" }
+]
+
+[[nodes]]
+id = "n1"
+line = { speaker = "Companion", text = "Storms, secrets—or both. The Loomspire is fraying faster than the charts predicted." }
+choices = [
+  { text = "Give me the plan.", go_to = "n3" },
+  { text = "No time—move out.", go_to = "n4" }
+]
+
+[[nodes]]
+id = "n2"
+line = { speaker = "Companion", text = "Spoken like a true Veilweaver. Confidence helps, but the bridge still needs stitching." }
+choices = [
+  { text = "Give me the plan.", go_to = "n3" },
+  { text = "Lead on.", go_to = "n4" }
+]
+
+[[nodes]]
+id = "n3"
+line = { speaker = "Companion", text = "First the frayed causeway. We gather Echo Shards, reinforce the anchors, then push into the grove." }
+choices = [
+  { text = "Walk me through the anchor flow again.", go_to = "n3a" },
+  { text = "I remember—let's go.", go_to = "n4" }
+]
+
+[[nodes]]
+id = "n3a"
+line = { speaker = "Companion", text = "Focus on the loom nodes, project the thread, hold until the stability crest lights. Release early and the span snaps back." }
+choices = [
+  { text = "Got it. Moving.", go_to = "n4" }
+]
+
+[[nodes]]
+id = "n4"
+line = { speaker = "Companion", text = "Anchor ahead. I'll monitor thread tension while you weave—call out if you see a surge." }
+choices = [
+  { text = "Stay close and mark any spikes.", go_to = "n5" },
+  { text = "Watch our flank instead.", go_to = "n5" }
+]
+
+[[nodes]]
+id = "n5"
+line = { speaker = "Companion", text = "Bridge stabilized. Echo reserves topped at two charges; save one for the grove barricades." }
+choices = [
+  { text = "Any more surprises before the grove?", go_to = "n6" },
+  { text = "Let's hit the grove.", go_to = "n6" }
+]
+
+[[nodes]]
+id = "n6"
+line = { speaker = "Companion", text = "Crystal-thread grove ahead. Rift Stalkers love that cover; Sentinels will shell us if we stay still." }
+choices = [
+  { text = "Prioritize the Sentinel—I'll stagger it.", go_to = "n6a" },
+  { text = "Keep me patched up if things tilt.", go_to = "n6b" }
+]
+
+[[nodes]]
+id = "n6a"
+line = { speaker = "Companion", text = "Copy. I'll mark its shield arcs and feed you openings." }
+choices = [
+  { text = "Move in.", go_to = "n7" }
+]
+
+[[nodes]]
+id = "n6b"
+line = { speaker = "Companion", text = "Understood. I'll pace my reserves and keep a stability pulse ready." }
+choices = [
+  { text = "Move in.", go_to = "n7" }
+]
+
+[[nodes]]
+id = "n7"
+line = { speaker = "Companion", text = "That's the last of them. Your stagger timing is tightening—keep banking those echoes." }
+choices = [
+  { text = "Crossroads next, right?", go_to = "n8" },
+  { text = "What's our next weave?", go_to = "n8" }
+]
+
+[[nodes]]
+id = "n8"
+line = { speaker = "Companion", text = "Loom Crossroads ahead. Three storm conduits, one decision: stabilize for clarity or redirect for chaos." }
+choices = [
+  { text = "Stabilize the storm—we need clear sightlines.", go_to = "storm_stabilize" },
+  { text = "Redirect the surge—I'll fight through the chaos.", go_to = "storm_redirect" }
+]
+
+[[nodes]]
+id = "storm_stabilize"
+line = { speaker = "Companion", text = "Stabilizing will calm the gale. You'll get open lanes, but the Warden will reinforce its armor plating." }
+choices = [
+  { text = "I'll take the safer arena.", go_to = "n9_stable" },
+  { text = "On second thought, chaos might help.", go_to = "storm_redirect" }
+]
+
+[[nodes]]
+id = "storm_redirect"
+line = { speaker = "Companion", text = "Redirecting the surge floods the arena with motes. Harder to see, yet the Warden loses its fog reinforcements." }
+choices = [
+  { text = "Let the storm work for us.", go_to = "n9_redirect" },
+  { text = "Actually, keep it steady.", go_to = "storm_stabilize" }
+]
+
+[[nodes]]
+id = "n9_stable"
+line = { speaker = "Companion", text = "Storm anchors locked. Expect heavier shields—I'll call out vented heat so you can break sigils." }
+choices = [
+  { text = "Ready the combo.", go_to = "n10_stable" }
+]
+
+[[nodes]]
+id = "n9_redirect"
+line = { speaker = "Companion", text = "Surge redirected. Visibility drops, but the Warden can't hide behind fog banks. Watch your footing." }
+choices = [
+  { text = "Ready the combo.", go_to = "n10_redirect" }
+]
+
+[[nodes]]
+id = "n10_stable"
+line = { speaker = "Companion", text = "When the Warden cracks, log the readings—we can reinforce this route for future runs." }
+choices = [
+  { text = "Let's end this.", go_to = "n11_stable" }
+]
+
+[[nodes]]
+id = "n10_redirect"
+line = { speaker = "Companion", text = "Storm's on our side now. I'll keep tracing the motes so you can execute the finisher clean." }
+choices = [
+  { text = "Let's end this.", go_to = "n11_redirect" }
+]
+
+[[nodes]]
+id = "n11_stable"
+line = { speaker = "Companion", text = "Sky pier awaits. Stable route should hold for one more cycle—plenty of time to savor the view." }
+end = true
+
+[[nodes]]
+id = "n11_redirect"
+line = { speaker = "Companion", text = "Sky pier awaits. Storm's still humming—ride the winds while they're on our side." }
+end = true

@@ -1,0 +1,122 @@
+# Closed-Vocabulary Lint Spec — Documentation Truth campaign
+
+**What this is.** Two closed vocabularies whose members are, by campaign decision, either *forbidden as a present-tense AstraWeave claim* (Vocab A poison strings) or *forbidden as provenance-free self-praise* (Vocab B superlatives). Unlike open-ended capability prose — which only the inventory sweep can audit — these are **closed sets**, so `git grep` is exhaustive where sampling is lossy (the D.1.A failure: it corrected `CLAUDE_MD_HARDENING:296` but missed the sibling at `:319`, and `COMPREHENSIVE:13` but missed `:1022`). This file is the authoritative spec the **D.3 regression lint** consumes; the evidence list of current occurrences is [`CLOSED_VOCABULARY_OCCURRENCES.md`](CLOSED_VOCABULARY_OCCURRENCES.md).
+
+**Lint scope.** All tracked prose: `*.md` plus `gh-pages/**` (`.md`/`.html`/`_config.yml`), `.zencoder/**/*.md`, `.github/*.md`, per-crate `README.md`. **Excluded** (never linted): `docs/journey/**`, `docs/archive/**` (historical artifacts), `docs/campaigns/doc-truth/**` (this campaign's audit trail legitimately *quotes* the forbidden strings as evidence), `.github/copilot-instructions-old-backup.md`. Source-code comments are out of scope (a separate concern from prose).
+
+**Lint posture (per the framework D.3 plan).** Warn-only for two weeks, then enforce. A match is a *candidate* violation; the keep-vs-act rule below defines the false-positive set the lint must allow (cited competitor figures, literal test params, registry-linked headlines, correctly-dated historical notes).
+
+---
+
+## Vocabulary A — poison strings (retired/fabricated values forbidden as current AstraWeave truth)
+
+Seeded from the `CLAIMS_REGISTRY.md` Retired table + D.0 §4 + D.0.1 §5. Each is a value that is FABRICATED (delete) or STALE/superseded (correct/retire) per `D0_CLAIMS_INVENTORY.md` §1.2 ground truth.
+
+<!-- VOCAB-A-START -->
+```
+# Retired entity-capacity / superseded counts
+103,500 | 103k | 610,000 | 610k
+4,907 | 2,560              # fluids tests -> 738 (registry: fluids-test-markers; 2,560 superseded by W.1 deletion 2026-06-20)
+27,000+                    # workspace tests -> ~39,900 markers (registry: test-markers-total)
+3,892 | 6,100+             # editor tests -> 9,427 markers (registry: editor-test-markers)
+82+ crates | 128 members | 128 workspace | 126 members | 49 production | 47 crates | 44+ crates | 55 crates | 59 library crates
+                           # -> 141 members at 2026-10-16 after #205 (registry: workspace-members). 130, 133, 139, and 140 are earlier snapshots, not poison.
+# Fabricated competitor multipliers / baselines
+10.4× | 10.4x | 2.1-5.2× | 2.1-5.2x | 3-6× | 3-6x
+Unity 9,900 | Unreal 20k-50k
+# Fluids surfaces that were deleted / never existed
+ResearchFluidSystem | UnifiedSolver | DFSPH (as live solver) | IISPH (as live solver) | SPH/FLIP (as the solver)
+# Dormant-advertised-as-live
+99.96%                     # SpatialHash broadphase -> dormant; real broadphase Rapier DefaultBroadPhase
+# Wrong runtime LLM default
+Hermes 2 Pro | hermes2pro | qwen3:8b | Qwen3-8B   # (as the LIVE default; runtime default is phi3:medium)
+# Stale structural counts
+7 stages | 7-stage         # -> 8 stages (incl. SYNC)
+6 AI modes | 6 planning modes   # -> 7 modes (feature-gated) (registry: ai-modes)
+# Phantom cargo aliases (only editor/editor-release/editor-dev exist)
+check-all | build-core | test-all | clippy-all | build-working
+# Wrong / nonexistent net security + transport
+TLS 1.3 | Ed25519          # (as live in-engine net security; real is HMAC-SHA256, no in-engine TLS)
+QUIC | quinn               # (as live transport; real is WebSocket / tokio-tungstenite)
+# Fabricated type names (do not exist in code)
+EntityView | HealthView | ObjectiveHint | HazardHint | MaterialGraph | ShaderTarget | CompileResult | dev_unsigned_assets
+# Stale measured metrics — minted by D.2.B (2026-06-27) / Path-B.2 (2026-06-29); see registry
+59.3% | 59.3 | 94.57% | 94.57   # coverage -> 57.35% whole-workspace (registry: coverage-weighted); 59.3 = 29-crate subset, 94.57 = v4.2.0 figure debunked by the v5.0.0 audit
+977                        # miri tests -> 1,059 (registry: miri-tests; 977 = the dated MIRI_VALIDATION_REPORT.md record)
+# (frame-time 2.70 ms / 370 FPS / 84% headroom are deliberately NOT listed — see "Frame-time carve-out" below)
+```
+<!-- VOCAB-A-END -->
+
+## Vocabulary B — provenance-free superlatives (forbidden as AstraWeave self-description)
+
+<!-- VOCAB-B-START -->
+```
+world-class | world class
+world's first | first AI-native | first ... engine
+industry-leading | industry precedent | sets the industry
+exceeds industry | exceeds AAA | exceeds Unity | exceeds Bevy | exceeds Unreal
+most validated | most comprehensive | most rigorously
+rivals Unity | rivals Unreal | matches Unity | matches UE5 | matches/exceeds
+parity with AAA | AAA-grade | AAA-class | AAA standards
+no other engine | unique in industry | no competitor has this
+competitive with UE5 | competitive with Unity
+production-grade | production-ready          # status words — see keep-vs-act rule (NOT auto-delete)
+```
+<!-- VOCAB-B-END -->
+
+---
+
+## Keep-vs-act rule (the false-positive allowlist the lint must honor)
+
+For each occurrence:
+
+1. **Poison string asserting the value as current AstraWeave truth** → ACT per four-action: retired numbers DELETE or retire-to-registry; stale-with-§1.2-arbiter CORRECT (link the registry); aspirational REWRITE.
+2. **Superlative describing AstraWeave** → remove the provenance-free adjective *surgically*; keep the factual remainder. "world-class geometry rendering but CPU-bound lighting" → drop "world-class", keep the rest. Deleting a superlative ≠ deleting the sentence.
+3. **`production-ready` / `production-grade`** → **KEEP** where the surface is genuinely shipped and has production callers; **REWRITE-to-honest** where dormant / in-design / example-scoped. Not an auto-delete.
+4. **KEEP byte-identical** when the occurrence is any of:
+   - a **cited competitor figure** with provenance (e.g. the Reddit-sourced Unity DOTS "1 million entities" number; "Fyrox is the production-grade Rust+egui reference" — about a *competitor*, not AstraWeave);
+   - a **literal test parameter** (e.g. `676` in `astraweave-ai/tests/planner_tests.rs`);
+   - the **registry-homed headline** (`12,700` agents) **provided it links** to `CLAIMS_REGISTRY.md#agents-capacity-60fps` rather than restating a bare comparative;
+   - a **correctly-dated historical note** in a campaign/audit doc that scopes itself to a past commit (e.g. F.0 audit findings under a "superseded by F.1" banner);
+   - an occurrence inside the **excluded paths** (journey/archive/doc-truth/old-backup).
+
+The union of acted + kept occurrences is the complete closed-vocabulary inventory. The lint flags any *new* occurrence (a string from A or B) that is not in the allowlist of rule 4.
+
+---
+
+## Front-door check (2026-10-16)
+
+`aw_doc_lint` enforces this even in `--mode warn` (the vocabulary scan stays warn-only):
+
+- Both `required` lists in `.github/workflows/determinism-replay.yml` must agree, and `README.md` must name each case.
+- `README.md` must state the under-11 ms GTX 1660 Ti frame budget and the measured heavy-scene `3.688 ms`, that assets are CC0, that local LLMs propose, and that the deterministic simulation validates. #216 is on main. #371 and #372 stay open.
+- `README.md` must have a `## In progress` section listing #334, #366, and #383, and no other issue number. That section must not call the work shipped, landed, or merged. #216, #257, #258, #281, #283, #284, #307, #320, #335, #367, #374, and #377 are on main and are not in that list.
+- Player-facing files (`README.md`, `CONTRIBUTING.md`, `docs/README.md`, `docs/QUICKSTART.md`, `docs/guides/**/*.md`) must not use the retired game title. `veilweaver_` crate names and the archive directory `projects/veilweaver` are allowed.
+
+## Frame-time carve-out (D.3.1) — why `2.70 ms` is NOT in Vocabulary A
+
+The frame-time poison generation (`2.70 ms` / `370 FPS` / `84% headroom`, **as-achieved** — superseded by the measured System **0.965 ms** / mimalloc **0.709 ms** @ 1,000 entities; `CLAIMS_REGISTRY.md#frame-time-1000-entities`) is **deliberately excluded** from the closed-vocabulary lint, per the D.3.0 ratification (Option A).
+
+**Why (it fails the closed-set test).** Unlike coverage/miri — whose superseded values (`59.3`, `94.57`, `977`) never legitimately recur except as a dated/superseded record — the string `2.70 ms` is, in the live corpus, *simultaneously*:
+
+1. the **sanctioned reframing** ("2.70 ms was the Week-8 *target*"), which must keep the string (≈10 sites: README, render README, gh-pages ×3, docs/src/README, MASTER_ROADMAP ×3, MASTER_BENCHMARK ×3);
+2. a **labeled target** (`gh-pages/benchmarks.md`);
+3. a **dated achievement record** (Week-8 sprint rows across `docs/lessons/**`, `docs/audits/**`);
+4. a **false positive** (Vec3-lerp `2.70 ns`, deserialize `2.70 ms` in `.bak`, `num_batch 2700ms`);
+5. genuine **present-tense poison**.
+
+A pure string match cannot separate (5) from (1)–(3). Listing it would either need ~30+ allowlist keys (mostly in dated docs → low signal) or chronically false-positive, eroding the warn→enforce credibility. So frame-time is **human-review-only**, not lint-enforced.
+
+**Baseline already established.** The present-tense frame-time survivors were one-time-corrected in D.3.1: `.zencoder/rules/repo.md:84` and `docs/lessons/WHAT_DIDNT.md:21` (the bare "**Current**:" claim). Dated Week-8 records (e.g. `docs/lessons/PERFORMANCE_PATTERNS.md` "Current Status (Week 8)" block at :62–73) were left byte-identical per the per-row principle (correcting a dated record falsifies history).
+
+**Documented alternative (Option B, not adopted).** A standing frame-time guard is possible via a *same-line-context* rule — flag `2.70 ms`/`2.7 ms`/`2.70ms` only on lines lacking `target`/`Week 8`/`Week-8` — at the cost of ~12 allowlist keys for the dated audits/lessons that assert it present-tense without those words. Revisit only if a frame-time regression recurs.
+
+---
+
+## Revision history
+
+| Version | Date | Change |
+|---|---|---|
+| 0.1 (D.1.B) | 2026-06-13 | Created. Vocab A (poison) + Vocab B (superlative) sets seeded from the registry Retired table + D.0/D.0.1 dispositions; keep-vs-act rule + exclusion scope defined for D.3 lint consumption. Pre-edit occurrence totals: 501 A + 415 B across 202 files (see occurrences doc). |
+| 0.3 | 2026-10-16 | Front-door check documented. Workspace-count comment now points at 139 members. `130` stays off the poison list. |
+| 0.2 (D.3.1) | 2026-06-29 | **New poison generation + machine-readable markers.** Added the D.2.B/Path-B.2 measured-metric poison to Vocab A: coverage `59.3`/`59.3%` + `94.57`/`94.57%` (→ 57.35% whole-workspace) and miri `977` (→ 1,059). Added the **Frame-time carve-out** (ratified Option A — `2.70 ms`/`370 FPS` deliberately NOT linted; human-review-only; present-tense survivors one-time-corrected). Wrapped Vocab A / Vocab B in `<!-- VOCAB-A/B-START/END -->` markers (and the allowlist table in `<!-- ALLOWLIST-START/END -->`) so the D.3.2 lint reads this spec as its single source of truth. Companion allowlist additions: 14 keys (supersession-context / version-comparison / debunking-context / dated-record / report-description). Authority: `D3_0_RECON.md`. |

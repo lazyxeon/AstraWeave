@@ -1,0 +1,276 @@
+info: cargo-llvm-cov currently setting cfg(coverage); you can opt-out it by passing --no-cfg-coverage
+[1m[32m   Compiling[0m astraweave-ecs v0.1.0 (C:\Users\pv2br\AstraWeave-AI-Native-Gaming-Engine\astraweave-ecs)
+[1m[32m   Compiling[0m astraweave-asset v0.1.0 (C:\Users\pv2br\AstraWeave-AI-Native-Gaming-Engine\astraweave-asset)
+[1m[32m   Compiling[0m astraweave-physics v0.1.0 (C:\Users\pv2br\AstraWeave-AI-Native-Gaming-Engine\astraweave-physics)
+[1m[32m   Compiling[0m astraweave-input v0.1.0 (C:\Users\pv2br\AstraWeave-AI-Native-Gaming-Engine\astraweave-input)
+[1m[32m   Compiling[0m astraweave-nav v0.1.0 (C:\Users\pv2br\AstraWeave-AI-Native-Gaming-Engine\astraweave-nav)
+[1m[32m   Compiling[0m astraweave-cinematics v0.1.0 (C:\Users\pv2br\AstraWeave-AI-Native-Gaming-Engine\astraweave-cinematics)
+[1m[32m   Compiling[0m astraweave-core v0.1.0 (C:\Users\pv2br\AstraWeave-AI-Native-Gaming-Engine\astraweave-core)
+[1m[32m   Compiling[0m astraweave-scene v0.1.0 (C:\Users\pv2br\AstraWeave-AI-Native-Gaming-Engine\astraweave-scene)
+[1m[32m   Compiling[0m astraweave-gameplay v0.1.0 (C:\Users\pv2br\AstraWeave-AI-Native-Gaming-Engine\astraweave-gameplay)
+[1m[32m   Compiling[0m astraweave-ui v0.1.0 (C:\Users\pv2br\AstraWeave-AI-Native-Gaming-Engine\astraweave-ui)
+[1m[32m    Finished[0m `test` profile [optimized + debuginfo] target(s) in 1m 06s
+[1m[32m     Running[0m unittests src\lib.rs (target\llvm-cov-target\debug\deps\astraweave_ui-7cd0b4337829bc61.exe)
+
+running 56 tests
+test hud::tests::test_damage_number_construction ... ok
+test hud::tests::test_damage_type_variants ... ok
+test hud::tests::test_dialogue_choice_no_next ... ok
+test hud::tests::test_dialogue_node_construction ... ok
+test hud::tests::test_enemy_faction_equality ... ok
+test hud::tests::test_enemy_data_construction ... ok
+test hud::tests::test_easing_ease_in_out_quad ... ok
+test hud::tests::test_easing_ease_out_cubic ... ok
+test hud::tests::test_health_animation_damage ... ok
+test hud::tests::test_health_animation_flash_alpha ... ok
+test hud::tests::test_health_animation_healing ... ok
+test hud::tests::test_health_animation_new ... ok
+test hud::tests::test_health_animation_update ... ok
+test hud::tests::test_hud_debug_toggle ... ok
+test hud::tests::test_hud_manager_creation ... ok
+test hud::tests::test_hud_set_visible ... ok
+test hud::tests::test_hud_state_get_set ... ok
+test hud::tests::test_hud_visibility_toggle ... ok
+test hud::tests::test_objective_completion ... ok
+test hud::tests::test_ping_marker_creation ... ok
+test hud::tests::test_player_stats_default ... ok
+test hud::tests::test_poi_marker_construction ... ok
+test hud::tests::test_poi_type_icon ... ok
+test hud::tests::test_poi_type_variants ... ok
+test hud::tests::test_quest_completion ... ok
+test hud::tests::test_quest_construction ... ok
+test hud::tests::test_tooltip_data_construction ... ok
+test hud::tests::test_tooltip_empty_stats ... ok
+test layer::tests::test_screen_descriptor_construction ... ok
+test layer::tests::test_screen_descriptor_high_dpi ... ok
+test menu::tests::test_audio_settings_default ... ok
+test menu::tests::test_controls_settings_default ... ok
+test menu::tests::test_graphics_settings_default ... ok
+test menu::tests::test_menu_action_equality ... ok
+test menu::tests::test_menu_manager_settings_modified ... ok
+test menu::tests::test_menu_manager_handle_new_game ... ok
+test menu::tests::test_menu_manager_reset_controls ... ok
+test menu::tests::test_menu_manager_settings_navigation ... ok
+test menu::tests::test_menu_manager_quit_from_pause ... ok
+test menu::tests::test_menu_manager_new_starts_at_main_menu ... ok
+test menu::tests::test_menu_manager_rebinding_state ... ok
+test menu::tests::test_menu_state_serialization ... ok
+test menu::tests::test_quality_preset_as_str ... ok
+test menu::tests::test_quality_preset_all ... ok
+test menu::tests::test_settings_state_serialization ... ok
+test menu::tests::test_menu_manager_apply_settings ... ok
+test persistence::tests::test_config_path ... ok
+test menu::tests::test_menu_manager_toggle_pause ... ok
+test state::tests::test_accessibility_colorblind_modes ... ok
+test state::tests::test_accessibility_subtitle_scale_ranges ... ok
+test state::tests::test_accessibility_default ... ok
+test persistence::tests::test_corrupted_file_fallback ... ok
+test state::tests::test_accessibility_serialization ... ok
+test state::tests::test_ui_flags_default ... ok
+test state::tests::test_ui_flags_toggle ... ok
+test persistence::tests::test_save_load_roundtrip ... ok
+
+test result: ok. 56 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+[1m[32m     Running[0m tests\hud_priority1_tests.rs (target\llvm-cov-target\debug\deps\hud_priority1_tests-6be3e7f5374b7fda.exe)
+
+running 19 tests
+test test_combo_tracker_cleanup_expired ... ok
+test test_combo_tracker_get_combo_count ... ok
+test test_combo_tracker_get_combo_damage ... ok
+test test_combo_tracker_record_hit_increments_count ... ok
+test test_damage_number_calculate_offset_arc_motion ... ok
+test test_combo_tracker_window_expiry ... ok
+test test_damage_number_calculate_shake_rotation ... ok
+test test_notification_queue_has_active ... ok
+test test_notification_queue_update_removes_expired ... ok
+test test_notification_queue_push ... ok
+test test_ping_marker_age_normalized ... ok
+test test_ping_marker_is_active_lifetime ... ok
+test test_quest_notification_calculate_alpha_fade ... ok
+test test_quest_notification_calculate_slide_offset_phases ... ok
+test test_ping_marker_new_active ... ok
+test test_quest_notification_new_quest ... ok
+test test_quest_notification_objective_complete ... ok
+test test_quest_notification_quest_complete ... ok
+test test_quest_notification_update_aging ... ok
+
+test result: ok. 19 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+[1m[32m     Running[0m tests\hud_priority2_tests.rs (target\llvm-cov-target\debug\deps\hud_priority2_tests-5301bb1625c697bb.exe)
+
+running 20 tests
+test test_hud_manager_end_dialogue_clears_state ... ok
+test test_hud_manager_hide_tooltip_clears_data ... ok
+test test_hud_manager_select_invalid_choice_returns_none ... ok
+test test_hud_manager_select_dialogue_choice_returns_next ... ok
+test test_hud_manager_set_visible_explicit ... ok
+test test_hud_manager_spawn_ping_adds_marker ... ok
+test test_hud_manager_show_tooltip_sets_data ... ok
+test test_hud_manager_spawn_damage_with_combo_tracking ... ok
+test test_hud_manager_start_dialogue_sets_state ... ok
+test test_hud_manager_toggle_debug ... ok
+test test_hud_manager_toggle_minimap ... ok
+test test_hud_manager_toggle_quest_tracker ... ok
+test test_hud_manager_toggle_visibility_master ... ok
+test test_hud_manager_update_cleans_expired_notifications ... ok
+test test_hud_manager_update_cleans_expired_pings ... ok
+test test_hud_manager_update_cleans_old_damage_numbers ... ok
+test test_hud_manager_update_progresses_animations ... ok
+test test_hud_state_default_values ... ok
+test test_hud_state_toggle_flags ... ok
+test test_poi_type_icon_color_mappings ... ok
+
+test result: ok. 20 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+[1m[32m     Running[0m tests\hud_priority3_tests.rs (target\llvm-cov-target\debug\deps\hud_priority3_tests-24be79f6f323de7d.exe)
+
+running 12 tests
+test test_accessibility_defaults ... ok
+test test_hud_manager_minimap_click_callback_invoked ... ok
+test test_hud_manager_minimap_zoom_getter ... ok
+test test_hud_manager_set_minimap_zoom_clamping ... ok
+test test_hud_manager_toggle_minimap_rotation ... ok
+test test_hud_manager_toggle_quest_collapse ... ok
+test test_hud_manager_ping_spawn_callback_invoked ... ok
+test test_poi_marker_all_types ... ok
+test test_poi_marker_creation ... ok
+test test_ui_flags_defaults ... ok
+test test_persistence_load_settings_never_panics ... ok
+test test_persistence_save_and_load_consistency ... ok
+
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+[1m[32m     Running[0m tests\hud_tests.rs (target\llvm-cov-target\debug\deps\hud_tests-295a0226c3e55ac2.exe)
+
+running 20 tests
+test test_damage_number_creation ... ok
+test test_damage_number_types ... ok
+test test_damage_number_has_velocity ... ok
+test test_enemy_data_creation ... ok
+test test_enemy_faction_types ... ok
+test test_damage_number_world_position ... ok
+test test_enemy_health_animation ... ok
+test test_health_animation_damage_flash_trigger ... ok
+test test_health_animation_flash_decay ... ok
+test test_health_animation_healing_detection ... ok
+test test_health_animation_initialization ... ok
+test test_health_animation_set_target ... ok
+test test_health_animation_update_progresses ... ok
+test test_hud_health_clamp_to_max ... ok
+test test_hud_health_clamp_to_zero ... ok
+test test_hud_health_percentage_calculation ... ok
+test test_hud_mana_boundaries ... ok
+test test_hud_multiple_resource_updates ... ok
+test test_hud_player_health_update ... ok
+test test_hud_player_stats_default ... ok
+
+test result: ok. 20 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+[1m[32m     Running[0m tests\input_tests.rs (target\llvm-cov-target\debug\deps\input_tests-54de6d131fe242d8.exe)
+
+running 22 tests
+test test_menu_action_load_game ... ok
+test test_menu_action_new_game ... ok
+test test_menu_action_quit ... ok
+test test_menu_action_none ... ok
+test test_menu_action_resume ... ok
+test test_menu_action_save_game ... ok
+test test_menu_action_settings ... ok
+test test_settings_audio_mute_toggle ... ok
+test test_settings_controls_key_rebind ... ok
+test test_settings_audio_volume_slider ... ok
+test test_settings_fullscreen_toggle ... ok
+test test_keyboard_pause_toggle ... ok
+test test_event_buffering_multiple_actions ... ok
+test test_keyboard_menu_actions ... ok
+test test_event_priority_pause_overrides_gameplay ... ok
+test test_event_priority_settings_over_main_menu ... ok
+test test_settings_graphics_quality_change ... ok
+test test_keyboard_settings_navigation ... ok
+test test_settings_invert_y_toggle ... ok
+test test_settings_mouse_sensitivity_slider ... ok
+test test_settings_resolution_change ... ok
+test test_settings_vsync_toggle ... ok
+
+test result: ok. 22 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+[1m[32m     Running[0m tests\menu_tests.rs (target\llvm-cov-target\debug\deps\menu_tests-9339e635ce234787.exe)
+
+running 17 tests
+test test_menu_navigation_pause_to_main ... ok
+test test_menu_navigation_settings_back_to_main ... ok
+test test_menu_navigation_main_to_settings ... ok
+test test_input_toggle_pause_on ... ok
+test test_input_resume_from_pause ... ok
+test test_input_toggle_pause_off ... ok
+test test_input_escape_from_settings ... ok
+test test_menu_navigation_new_game_to_gameplay ... ok
+test test_menu_state_multiple_transitions ... ok
+test test_menu_state_transition_tracking ... ok
+test test_menu_state_initial_is_main_menu ... ok
+test test_settings_key_rebinding_state ... ok
+test test_settings_modification_tracking ... ok
+test test_menu_state_visibility_tracking ... ok
+test test_settings_apply_saves_changes ... ok
+test test_settings_revert_discards_changes ... ok
+test test_settings_reset_controls ... ok
+
+test result: ok. 17 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+[1m[32m     Running[0m tests\panel_tests.rs (target\llvm-cov-target\debug\deps\panel_tests-c1c24d0f390b0478.exe)
+
+running 11 tests
+test test_accessibility_colorblind_modes ... ok
+test test_accessibility_high_contrast ... ok
+test test_accessibility_reduce_motion ... ok
+test test_accessibility_subtitle_scale ... ok
+test test_accessibility_subtitles ... ok
+test test_panel_state_default_initialization ... ok
+test test_panel_state_persistence ... ok
+test test_panel_visibility_all_panels ... ok
+test test_panel_visibility_multiple_panels ... ok
+test test_panel_visibility_toggle_crafting ... ok
+test test_panel_visibility_toggle_inventory ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+Filename                                           Regions    Missed Regions     Cover   Functions  Missed Functions  Executed       Lines      Missed Lines     Cover    Branches   Missed Branches     Cover
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+astraweave-asset\src\lib.rs                           2148              2148     0.00%         124               124     0.00%        1196              1196     0.00%           0                 0         -
+astraweave-asset\src\nanite_preprocess.rs                7                 7     0.00%           2                 2     0.00%           7                 7     0.00%           0                 0         -
+astraweave-cinematics\src\lib.rs                        72                72     0.00%           5                 5     0.00%          61                61     0.00%           0                 0         -
+astraweave-core\src\capture_replay.rs                   62                62     0.00%           4                 4     0.00%          35                35     0.00%           0                 0         -
+astraweave-core\src\ecs_adapter.rs                       4                 4     0.00%           1                 1     0.00%           1                 1     0.00%           0                 0         -
+astraweave-core\src\ecs_components.rs                   21                21     0.00%           3                 3     0.00%          13                13     0.00%           0                 0         -
+astraweave-core\src\ecs_events.rs                       20                20     0.00%           5                 5     0.00%          15                15     0.00%           0                 0         -
+astraweave-core\src\perception.rs                       26                26     0.00%           2                 2     0.00%          15                15     0.00%           0                 0         -
+astraweave-core\src\sim.rs                               5                 5     0.00%           1                 1     0.00%           3                 3     0.00%           0                 0         -
+astraweave-core\src\tool_vocabulary.rs                   2                 2     0.00%           1                 1     0.00%           1                 1     0.00%           0                 0         -
+astraweave-core\src\validation.rs                      367               367     0.00%          10                10     0.00%         317               317     0.00%           0                 0         -
+astraweave-core\src\world.rs                           170               170     0.00%          24                24     0.00%         118               118     0.00%           0                 0         -
+astraweave-ecs\src\archetype.rs                        217               217     0.00%          25                25     0.00%         139               139     0.00%           0                 0         -
+astraweave-ecs\src\blob_vec.rs                          93                93     0.00%           6                 6     0.00%          52                52     0.00%           0                 0         -
+astraweave-ecs\src\command_buffer.rs                     8                 8     0.00%           1                 1     0.00%           4                 4     0.00%           0                 0         -
+astraweave-ecs\src\entity_allocator.rs                   3                 3     0.00%           1                 1     0.00%           3                 3     0.00%           0                 0         -
+astraweave-ecs\src\lib.rs                                2                 2     0.00%           1                 1     0.00%           1                 1     0.00%           0                 0         -
+astraweave-ecs\src\sparse_set.rs                        99                99     0.00%          14                14     0.00%          68                68     0.00%           0                 0         -
+astraweave-ecs\src\system_param.rs                      99                99     0.00%           5                 5     0.00%          80                80     0.00%           0                 0         -
+astraweave-gameplay\src\crafting.rs                     50                50     0.00%           5                 5     0.00%          43                43     0.00%           0                 0         -
+astraweave-gameplay\src\dialogue.rs                      5                 5     0.00%           2                 2     0.00%           2                 2     0.00%           0                 0         -
+astraweave-gameplay\src\harvesting.rs                   23                23     0.00%           2                 2     0.00%          18                18     0.00%           0                 0         -
+astraweave-gameplay\src\items.rs                        36                36     0.00%           6                 6     0.00%          25                25     0.00%           0                 0         -
+astraweave-gameplay\src\stats.rs                        13                13     0.00%           1                 1     0.00%          12                12     0.00%           0                 0         -
+astraweave-gameplay\src\veilweaver_slice.rs            154               154     0.00%          13                13     0.00%         119               119     0.00%           0                 0         -
+astraweave-gameplay\src\veilweaver_tutorial.rs          18                18     0.00%           6                 6     0.00%          15                15     0.00%           0                 0         -
+astraweave-scene\src\partitioned_scene.rs                2                 2     0.00%           1                 1     0.00%           1                 1     0.00%           0                 0         -
+astraweave-scene\src\world_partition.rs                445               445     0.00%          45                45     0.00%         310               310     0.00%           0                 0         -
+astraweave-ui\src\hud.rs                              2668              1849    30.70%         154                60    61.04%        1882              1155    38.63%           0                 0         -
+astraweave-ui\src\layer.rs                             131               119     9.16%          10                 8    20.00%         132               116    12.12%           0                 0         -
+astraweave-ui\src\menu.rs                              332                26    92.17%          34                 2    94.12%         292                33    88.70%           0                 0         -
+astraweave-ui\src\menus.rs                             677               677     0.00%          33                33     0.00%         463               463     0.00%           0                 0         -
+astraweave-ui\src\panels.rs                            424               424     0.00%          18                18     0.00%         284               284     0.00%           0                 0         -
+astraweave-ui\src\persistence.rs                       112                20    82.14%           7                 0   100.00%          67                 4    94.03%           0                 0         -
+astraweave-ui\src\state.rs                              92                 0   100.00%           7                 0   100.00%          59                 0   100.00%           0                 0         -
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+TOTAL                                                 8607              7286    15.35%         579               437    24.53%        5853              4729    19.20%           0                 0         -
