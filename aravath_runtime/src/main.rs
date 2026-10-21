@@ -1279,16 +1279,21 @@ fn light_the_world(renderer: &mut Renderer, volumetrics: bool) {
             ..astraweave_render::GodRayConfig::default()
         });
     }));
-    let ready = built.is_ok()
-        && renderer.volumetric_fog_enabled()
-        && renderer.god_rays_enabled()
-        && astraweave_render::PresentationQuality::default().atmosphere();
-    renderer.set_atmosphere_enabled(ready);
     if built.is_err() {
+        // A setter that already returned keeps its pass. Drop both so the
+        // HDRI sky is not composited with a half-built fog or shaft pass.
+        renderer.clear_volumetric_passes();
+        renderer.set_atmosphere_enabled(false);
         startup::line(
             "volumetrics panicked during setup; continuing without fog, light shafts, and Bruneton. Relaunch with --no-volumetrics.",
         );
-    } else if !renderer.volumetric_fog_enabled() || !renderer.god_rays_enabled() {
+        return;
+    }
+    let ready = renderer.volumetric_fog_enabled()
+        && renderer.god_rays_enabled()
+        && astraweave_render::PresentationQuality::default().atmosphere();
+    renderer.set_atmosphere_enabled(ready);
+    if !ready {
         startup::line("fog or light shafts did not build; Bruneton left off.");
     } else {
         startup::stage("volumetrics ready");

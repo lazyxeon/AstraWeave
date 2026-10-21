@@ -37,6 +37,28 @@ fn submit(renderer: &mut Renderer, view: &wgpu::TextureView) {
 }
 
 #[test]
+fn clear_volumetric_passes_drops_a_stored_fog_pass() {
+    pollster::block_on(async {
+        let mut renderer = Renderer::new_headless(64, 64).await.expect("headless");
+        renderer.set_volumetric_fog_config(
+            astraweave_render::volumetric_fog::VolumetricFogPass::gameplay_config(),
+        );
+        assert!(
+            renderer.volumetric_fog_enabled(),
+            "gameplay fog should store a pass"
+        );
+        renderer.set_atmosphere_enabled(true);
+        renderer.clear_volumetric_passes();
+        assert!(!renderer.volumetric_fog_enabled());
+        assert!(!renderer.god_rays_enabled());
+        // The clear drops the passes. Bruneton is a separate flag.
+        assert!(renderer.atmosphere_enabled());
+        renderer.set_atmosphere_enabled(false);
+        assert!(!renderer.atmosphere_enabled());
+    });
+}
+
+#[test]
 fn constructor_stays_off_while_enum_default_is_atmosphere() {
     pollster::block_on(async {
         let mut renderer = Renderer::new_headless(64, 64).await.expect("headless");

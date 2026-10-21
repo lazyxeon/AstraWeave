@@ -6396,6 +6396,16 @@ fn vs(input: VSIn) -> VSOut {
             .is_some_and(|rays| rays.config().enabled)
     }
 
+    /// Drop froxel fog and light shafts.
+    ///
+    /// `catch_unwind` does not undo a setter that already stored its pass.
+    /// A panic between the two builds can leave fog enabled. This drops both
+    /// so the caller can continue on the HDRI sky.
+    pub fn clear_volumetric_passes(&mut self) {
+        self.volumetric_fog = None;
+        self.god_rays = None;
+    }
+
     /// Composite engine volumetric fog, then screen-space light shafts, into HDR.
     ///
     /// Runs after Bruneton has copied its sky into HDR, so fog and shafts
