@@ -108,7 +108,7 @@ Ok(WeaveConsequence{drop_multiplier, faction_disposition, weather_shift})
 **Role:** Translates a positional `WeaveOp` into either a `astraweave_core::DirectorPlan` (`ReinforcePath`/`RaisePlatform` → `DirectorOp::Fortify`; `CollapseBridge` → `DirectorOp::Collapse`) applied via `apply_director_plan`, or a direct physics mutation (`RedirectWind` → `phys.set_wind`; `LowerWater` → `phys.clear_water`; `FreezeWater` → `phys.add_static_aabb` from the compiled ice bounds). Each arm bails if the relevant `WeaveBudget` field (`terrain_edits` or `weather_ops`) is `<= 0`, else decrements it by 1. A dropped origin bails before that spend.
 **Inputs:** `&mut World`, `&mut PhysicsWorld`, `&[Triangle]` nav source, `&mut WeaveBudget`, `&WeaveOp`, log closure.
 **Outputs:** `Result<WeaveConsequence>`.
-**Notes:** Re-bakes a throwaway navmesh each call (`NavMesh::bake(nav_src, 0.5, 55.0)` → `_nav`, line 113) that is immediately discarded — a demo-pathing artifact. The actual W-series "weave gameplay producer" that turns these ops into render-side `WeaveInstance`s lives in `examples/weaving_playground/src/weave_producer.rs` (commit `3edf15e25`), **not** in this crate.
+**Notes:** `nav_src` is unused. `apply_weave_op` does not bake a navmesh. The W-series weave gameplay producer that turns these ops into render-side `WeaveInstance`s lives in `examples/weaving_playground/src/weave_producer.rs` (commit `3edf15e25`), **not** in this crate.
 
 ### 2.C Veilweaver slice metadata → tutorial state
 
@@ -172,7 +172,7 @@ WeaveTutorialState mutated (anchors stabilized, triggers active)
 | `astraweave-core` | `apply_director_plan` (`validation.rs:400`); `DirectorPlan`/`DirectorOp`/`DirectorBudget`/`Rect`/`IVec2`/`World`; ECS components `CHealth`/`CPos` | Terrain-edit plans; legacy world | `weaving.rs` builds a `DirectorPlan` and delegates terrain edits to core. `ecs.rs` reads/writes `CHealth`/`CPos`. |
 | `astraweave-ecs` | `World`, `App`, `Plugin`, `Query`/`Query2`, `Entity`, `Events<T>` | Component queries, system registration, event drains | `ecs.rs` plugins register into `"simulation"`; `veilweaver_tutorial.rs` drains `Events<TriggerVolumeEvent>`/`Events<AnchorStabilizedEvent>`. |
 | `astraweave-scene` | `world_partition::{Cell, CellComponentView, GridCoord}` | Designer-authored slice cell content | `veilweaver_slice.rs` parses typed component views from cells. |
-| `astraweave-nav` | `NavMesh::bake`, `Triangle` | Nav source for weave re-bake (`weaving.rs:113`, discarded) and portal graph (`weave_portals.rs`) | |
+| `astraweave-nav` | `Triangle` | Unused `nav_src` on `apply_weave_op`; portal graph in `weave_portals.rs` | `apply_weave_op` does not call `NavMesh::bake`. |
 | `astraweave-cinematics` | `CameraKey`, `Time` | Camera cue payload | `cutscenes.rs:151` builds a `CameraKey` inside `CutsceneState::tick`; dep added in the Unified Camera C.7.A chapter (Cargo.toml comment). |
 | Caller-supplied scalar | `WaterPlayerState::update(submersion, dt)` | `submersion: f32` | **No fluids/water-query dependency** — submersion is passed in. The crate has no `astraweave-fluids` dep (verified in `Cargo.toml`). |
 
@@ -304,7 +304,7 @@ WeaveTutorialState mutated (anchors stabilized, triggers active)
 | 1 | `perform_attack_sweep` returns `None` for sweeps shorter than `1e-3` | Yes | Test `test_negligible_sweep_distance_returns_none` (`combat_physics.rs:591`) |
 | 2 | A parry blocks damage exactly once: it is consumed (`window=0.0, active=false`) on the hit it blocks | Yes | Tests `test_parry_blocks_damage`, `test_parry_window_zero_does_not_parry`, `test_parry_inactive_does_not_parry` (`combat_physics.rs`) |
 | 3 | Iframes block damage **without** being consumed | Yes | Test `test_iframes_block_damage` (`combat_physics.rs:393`) |
-| 4 | `apply_weave_op` bails (no mutation, no budget spend) when the relevant budget field is `<= 0`, and when `compile_legacy` drops the op because an origin is outside the island. A kept op decrements the matching budget by exactly 1 | Yes | Tests `*_no_budget`, `redirect_wind_budget_decrements`, `test_apply_weave_op_budget_depletion`, `dropped_origin_does_not_spend_budget_or_return_a_consequence`, `far_collapse_endpoint_does_not_spend_budget` (`weaving.rs`) |
+| 4 | `apply_weave_op` bails (no mutation, no budget spend) when the relevant budget field is `<= 0`, when `compile_legacy` drops the op, and when a wind delta is zero or its square underflows. A kept op decrements the matching budget by exactly 1. `1e-22` is still a kept wind | Yes | `weaving.rs` `*_no_budget`, `redirect_wind_budget_decrements`, `test_apply_weave_op_budget_depletion`, `weave_op_edges_fail_closed` |
 | 5 | `FreezeWater` consumes one `weather_ops` and, when the origin is kept, inserts one static AABB from `ice_min_milli`/`ice_max_milli`. It is not a no-physics op | Yes | `weaving.rs` `add_static_aabb` on the ice bounds. A dropped origin does not spend `weather_ops` (`dropped_origin_does_not_spend_budget_or_return_a_consequence`). |
 | 6 | `WaterPlayerState::update` clamps `submersion` to `[0,1]` before mode selection | Yes | `water_movement.rs:207`; tests `update_threshold_boundaries_exact` and others |
 | 7 | ECS `combat_system` uses Manhattan distance (`|dx|+|dy|`), not Euclidean | Yes | Tests `combat_distance_check_with_offset_positions`, `combat_system_distance_subtraction_matters` (`ecs.rs`) |
@@ -318,7 +318,7 @@ WeaveTutorialState mutated (anchors stabilized, triggers active)
 
 This crate is CPU gameplay logic; no GPU resources. Most paths are per-entity, per-tick scalar work. The only notable cost note recovered:
 
-- **`apply_weave_op` re-bakes a navmesh per call** (`NavMesh::bake(nav_src, 0.5, 55.0)`, `weaving.rs:113`) and discards it. For the demo driver this is infrequent (player cast). [NEEDS VERIFICATION: whether this is ever called at tick frequency in any driver. Preserved 2026-06-25 — confirmed the only non-test caller is `examples/weaving_playground/src/main.rs` (no engine-runtime caller exists), but the per-frame vs on-keypress call frequency in that example was not traced; resolving requires reading the playground's input/update loop.]
+- **`apply_weave_op` does not bake a navmesh.** `nav_src` is unused (`let _ = nav_src`). The earlier `NavMesh::bake(nav_src, 0.5, 55.0)` note is not the current function.
 - **W-series render-side water deformation** (the consumer of weave-op *positions*, in `astraweave-render`, not this crate) is measured at ~0.0005 ms/instance, full surface ~0.19–0.21 ms (commit `3edf15e25`). This is render-crate cost, included here only for cross-reference.
 
 No benchmarks live in this crate's runtime path beyond `benches/combat_pipeline` (declared in `Cargo.toml`).
@@ -341,7 +341,7 @@ No benchmarks live in this crate's runtime path beyond `benches/combat_pipeline`
 - **Should the ECS combat/craft/quest plugins (`ecs.rs`) be considered the canonical gameplay ECS path, or are they superseded by `veilweaver_slice_runtime` / `astraweave-weaving` systems?** They currently have no production caller; their long-term role vs the slice-runtime's own systems is unresolved.
 - **Combat Path A vs Path B: which is canonical?** Both are example/test-driven. Is `perform_attack_sweep` intended for physics-integrated games and `combat_system` for grid/ECS games, or is one transitional?
 - **Does the gameplay-crate `weaving.rs` overlap intentionally with `astraweave-weaving`, or is one expected to absorb the other?** They are separate crates with overlapping vocabulary (§6); the relationship is not documented in a recovered source.
-- **Is `apply_weave_op`'s per-call `NavMesh::bake` (then discard) intended, or demo residue?** (`weaving.rs:113`).
+- **`apply_weave_op` does not bake a navmesh.** `nav_src` is unused. Closed 2026-10-21.
 - **`weave_portals.rs` / `weave_telemetry.rs` wiring:** no production caller surfaced in the §4 grep. Are these dormant, or driven by an example not exhaustively checked? *(Verification note 2026-06-25: exhaustive grep of `examples/`, `veilweaver_slice_runtime/`, and all `astraweave-*/src` for `weave_portals`/`weave_telemetry`/`PortalGraph`/`build_portals`/`string_pull`/`WeaveTelemetry` returns only `lib.rs` glob re-export + `mutation_tests.rs`; no example, runtime, or other-crate caller exists. §5 rows updated to "Dormant (tested only)". The remaining open question — whether they are forward-design or removable — is Andrew's call.)*
 - **Should `astraweave-terrain → astraweave-gameplay` (reverse dependency, via `BiomeRule`/`ResourceNode`/`spawn_resources`) be re-homed?** Flagged as an anomaly in `ARCHITECTURE_MAP.md`; not a defect, but a coupling worth noting.
 

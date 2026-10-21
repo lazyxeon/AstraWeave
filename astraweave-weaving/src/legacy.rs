@@ -159,7 +159,10 @@ fn wind_delta_fits(ax: f32, ay: f32, az: f32, bx: f32, by: f32, bz: f32) -> bool
     if !(dx.is_finite() && dy.is_finite() && dz.is_finite()) {
         return false;
     }
-    (dx * dx + dy * dy + dz * dz).is_finite()
+    let len2 = dx * dx + dy * dy + dz * dz;
+    // Exact zero and squares that underflow to +0 (1e-45, 1e-30, 1e-23)
+    // have no direction. 1e-22 still has a positive square and is kept.
+    len2.is_finite() && len2 > 0.0
 }
 
 fn cell_origin(x: f32, y: f32, z: f32) -> Option<[i32; 3]> {
@@ -330,7 +333,29 @@ mod tests {
             },
         );
         assert!(kept.write_count > 0);
-        let huge = compile_legacy(
+        let tiny = compile_legacy(
+            2,
+            LegacyPoints {
+                a: [0.0, 0.0, 0.0],
+                b: Some([1e-22, 0.0, 0.0]),
+                tick: 0,
+                seq: 0,
+            },
+        );
+        assert!(tiny.write_count > 0);
+        for underflow in [0.0_f32, 1e-45, 1e-30, 1e-23] {
+            let dropped = compile_legacy(
+                2,
+                LegacyPoints {
+                    a: [0.0, 0.0, 0.0],
+                    b: Some([underflow, 0.0, 0.0]),
+                    tick: 0,
+                    seq: 0,
+                },
+            );
+            assert_eq!(dropped.write_count, 0, "{underflow}");
+        }
+        let overflow = compile_legacy(
             2,
             LegacyPoints {
                 a: [0.0, 0.0, 0.0],
@@ -339,6 +364,6 @@ mod tests {
                 seq: 0,
             },
         );
-        assert_eq!(huge.write_count, 0);
+        assert_eq!(overflow.write_count, 0);
     }
 }
