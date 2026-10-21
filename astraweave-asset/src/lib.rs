@@ -13,7 +13,9 @@ use tokio::sync::watch;
 pub mod nanite_preprocess;
 
 pub mod image_limits;
-pub use image_limits::{capped_image_limits, decode_limited_image, open_limited_image};
+pub use image_limits::{
+    capped_image_limits, decode_limited_image, open_limited_image, read_limited_image_bytes,
+};
 
 // World Partition cell loader
 pub mod cell_loader;
@@ -827,7 +829,16 @@ pub mod gltf_loader {
                 decode_image_bytes(data)
             }
             gltf::image::Source::Uri { uri, .. } => {
-                let bytes = load_uri_bytes(uri)?;
+                let bytes = if uri.starts_with("data:") {
+                    load_uri_bytes(uri)?
+                } else {
+                    let base = std::env::current_dir().context("asset jail base")?;
+                    let path =
+                        astraweave_security::path::safe_under(&base, std::path::Path::new(uri))
+                            .map_err(|err| anyhow!("path traversal rejected: {err}"))?;
+                    crate::read_limited_image_bytes(&path)
+                        .with_context(|| format!("Read image uri {uri}"))?
+                };
                 decode_image_bytes(&bytes)
             }
         }

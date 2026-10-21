@@ -1001,6 +1001,70 @@ mod tests {
 
     #[cfg(feature = "textures")]
     #[test]
+    fn from_file_with_usage_rejects_a_file_over_the_cap() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("huge.bin");
+        let file = std::fs::File::create(&path).expect("create");
+        let cap = astraweave_asset::image_limits::MAX_IMAGE_ALLOC;
+        file.set_len(cap + 1).expect("set_len");
+        drop(file);
+        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
+        let Ok(adapter) =
+            pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
+                power_preference: wgpu::PowerPreference::LowPower,
+                compatible_surface: None,
+                force_fallback_adapter: false,
+            }))
+        else {
+            eprintln!("skip from_file_with_usage cap: no wgpu adapter");
+            return;
+        };
+        let (device, queue) =
+            pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
+                .expect("device");
+        let err = crate::texture::Texture::from_file_with_usage(
+            &device,
+            &queue,
+            &path,
+            crate::texture::TextureUsage::Albedo,
+        )
+        .expect_err("file over the cap must fail");
+        let msg = format!("{err:#}");
+        assert!(
+            msg.contains(&cap.to_string()) && msg.contains(&(cap + 1).to_string()),
+            "{msg}"
+        );
+    }
+
+    #[cfg(feature = "textures")]
+    #[test]
+    fn smoke_ktx2_fallback_rejects_a_file_over_the_cap() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("huge.ktx2");
+        let file = std::fs::File::create(&path).expect("create");
+        let cap = astraweave_asset::image_limits::MAX_IMAGE_ALLOC;
+        file.set_len(cap + 1).expect("set_len");
+        drop(file);
+        let mut renderer =
+            pollster::block_on(crate::Renderer::new_headless(64, 64)).expect("headless renderer");
+        let path_string = path.to_string_lossy().into_owned();
+        let panicked = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            renderer.set_smoke_test_texture(&path_string);
+        }));
+        let payload = panicked.expect_err("oversized ktx2 fallback must fail");
+        let msg = payload
+            .downcast_ref::<String>()
+            .map(String::as_str)
+            .or_else(|| payload.downcast_ref::<&str>().copied())
+            .unwrap_or("non-string panic");
+        assert!(
+            msg.contains(&cap.to_string()) && msg.contains(&(cap + 1).to_string()),
+            "{msg}"
+        );
+    }
+
+    #[cfg(feature = "textures")]
+    #[test]
     fn decode_bytes_rejects_an_edge_past_4096() {
         let image = image::RgbImage::from_pixel(5_000, 1, image::Rgb([1, 2, 3]));
         let mut bytes = Vec::new();

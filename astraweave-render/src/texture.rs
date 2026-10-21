@@ -13,40 +13,13 @@ use std::path::Path;
 /// there: probing one byte past the cap would block if the writer stalled
 /// after exactly that many bytes.
 pub(crate) async fn read_capped_image(path: &str) -> Result<Vec<u8>, String> {
-    use tokio::io::AsyncReadExt;
-
-    let cap = astraweave_asset::image_limits::MAX_IMAGE_ALLOC;
-    let meta = tokio::fs::metadata(path)
-        .await
-        .map_err(|err| format!("read failed: {err}"))?;
-    if meta.is_file() {
-        if meta.len() > cap {
-            return Err(format!("image is {} bytes, cap is {cap}", meta.len()));
-        }
-        let mut file = tokio::fs::File::open(path)
-            .await
-            .map_err(|err| format!("read failed: {err}"))?;
-        let mut bytes = Vec::new();
-        (&mut file)
-            .take(meta.len())
-            .read_to_end(&mut bytes)
-            .await
-            .map_err(|err| format!("read failed: {err}"))?;
-        return Ok(bytes);
-    }
-    let mut file = tokio::fs::File::open(path)
-        .await
-        .map_err(|err| format!("read failed: {err}"))?;
-    let mut bytes = Vec::new();
-    (&mut file)
-        .take(cap)
-        .read_to_end(&mut bytes)
-        .await
-        .map_err(|err| format!("read failed: {err}"))?;
-    if bytes.len() as u64 == cap {
-        return Err(format!("image exceeds {cap} bytes"));
-    }
-    Ok(bytes)
+    let path = path.to_string();
+    tokio::task::spawn_blocking(move || {
+        astraweave_asset::read_limited_image_bytes(std::path::Path::new(&path))
+            .map_err(|err| format!("{err:#}"))
+    })
+    .await
+    .map_err(|err| format!("read failed: {err}"))?
 }
 
 /// Defines how a texture should be interpreted for correct color space handling
@@ -228,7 +201,7 @@ impl Texture {
             ));
         }
 
-        let bytes = std::fs::read(path)?;
+        let bytes = astraweave_asset::read_limited_image_bytes(path)?;
         Self::from_bytes_with_usage(device, queue, &bytes, &path.to_string_lossy(), usage)
     }
 

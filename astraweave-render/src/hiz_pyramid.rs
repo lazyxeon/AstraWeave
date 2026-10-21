@@ -45,7 +45,9 @@ impl HizPyramid {
         height: u32,
         src_depth_view: &wgpu::TextureView,
     ) -> Self {
-        let mip_count = (width.max(height) as f32).log2().ceil() as u32;
+        let edge = width.max(height).max(1);
+        // log2(1) is 0. wgpu rejects mip_level_count 0, so a 1×1 frame is one mip.
+        let mip_count = (edge as f32).log2().ceil().max(1.0) as u32;
         let fmt = wgpu::TextureFormat::R32Float;
 
         let hiz_texture = device.create_texture(&wgpu::TextureDescriptor {
@@ -367,5 +369,29 @@ mod tests {
             !pyramid.copies_from(&other),
             "a second view of the same texture is a different copy source"
         );
+
+        let one = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("one pixel depth"),
+            size: wgpu::Extent3d {
+                width: 1,
+                height: 1,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Depth32Float,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::RENDER_ATTACHMENT,
+            view_formats: &[],
+        });
+        let one_view = one.create_view(&wgpu::TextureViewDescriptor::default());
+        let tiny = HizPyramid::new(&device, 1, 1, &one_view);
+        assert_eq!(tiny.dimensions(), (1, 1));
+        assert_eq!(tiny.mip_count(), 1, "a 1x1 frame is one mip, not zero");
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("1x1 hiz"),
+        });
+        tiny.build(&mut encoder);
+        drop(encoder);
     }
 }
