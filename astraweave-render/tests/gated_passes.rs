@@ -37,7 +37,7 @@ fn submit(renderer: &mut Renderer, view: &wgpu::TextureView) {
 }
 
 #[test]
-fn atmosphere_follows_the_measured_default() {
+fn constructor_stays_off_while_enum_default_is_atmosphere() {
     pollster::block_on(async {
         let mut renderer = Renderer::new_headless(64, 64).await.expect("headless");
         let quality = astraweave_render::PresentationQuality::default();
@@ -50,8 +50,10 @@ fn atmosphere_follows_the_measured_default() {
     });
 }
 
-/// A default-on renderer plus a false or absent flag ends with Bruneton off.
-/// Fog and shafts stay off because this test does not call those setters.
+/// `new_headless` leaves Bruneton off. This test turns it on itself, then
+/// applies `reject_gated_flags` for an empty argv and for `--atmosphere false`.
+/// That locks the setter. It does not lock the constructor. Fog and shafts
+/// stay off because this test does not call those setters.
 #[test]
 fn false_atmosphere_flag_disables_the_default_sky() {
     pollster::block_on(async {

@@ -1272,15 +1272,15 @@ pub struct Renderer {
 
 /// Gated presentation choices.
 ///
-/// `Atmosphere` is the default after the 4.474 ms capture. It turns Bruneton
-/// on and does not enable volumetric fog. `Measured` is the 3.688 ms HDRI
-/// scene and turns Bruneton off. A caller applies either with
+/// `Atmosphere` is the enum default after the 4.474 ms capture. It does not
+/// enable volumetric fog, and `Renderer::new` does not read this enum.
+/// `Measured` turns Bruneton off. A caller applies either with
 /// `set_atmosphere_enabled(quality.atmosphere())`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum PresentationQuality {
-    /// Bruneton off. The 3.688 ms HDRI heavy scene.
+    /// Bruneton off.
     Measured,
-    /// Bruneton on. Fog stays `set_volumetric_fog_config`.
+    /// Bruneton on when a caller applies it. Fog stays `set_volumetric_fog_config`.
     #[default]
     Atmosphere,
 }
