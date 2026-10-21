@@ -8119,6 +8119,8 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "astraweave-camera",
+ "astraweave-destruction",
+ "astraweave-math",
  "astraweave-physics",
  "astraweave-render",
  "glam",
