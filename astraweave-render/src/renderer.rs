@@ -1094,12 +1094,16 @@ pub struct Renderer {
     taa_on: bool,
     upscale_on: bool,
     dof_on: bool,
+    scene_vectors_on: bool,
+    scene_vectors_prev: glam::Mat4,
+    scene_vectors_prev_valid: bool,
     atmosphere: Option<crate::atmosphere::AtmospherePass>,
     cloud_raymarch: Option<crate::volumetric_clouds::VolumetricCloudsPass>,
     ssgi_pass: Option<crate::ssgi::SsgiPass>,
     taa_pass: Option<crate::taa::TaaPass>,
     upscale_pass: Option<crate::temporal_upscale::TemporalUpscalePass>,
     dof_pass: Option<crate::advanced_post::AdvancedPostFx>,
+    scene_vectors: Option<crate::scene_vectors::SceneVectorsPass>,
     gated_normal: Option<(wgpu::Texture, wgpu::TextureView)>,
     gated_velocity: Option<(wgpu::Texture, wgpu::TextureView)>,
     /// Camera-distance texture requests. `draw_into` uploads from its ring.
@@ -3927,12 +3931,16 @@ fn vs(input: VSIn) -> VSOut {
             taa_on: false,
             upscale_on: false,
             dof_on: false,
+            scene_vectors_on: false,
+            scene_vectors_prev: glam::Mat4::IDENTITY,
+            scene_vectors_prev_valid: false,
             atmosphere: None,
             cloud_raymarch: None,
             ssgi_pass: None,
             taa_pass: None,
             upscale_pass: None,
             dof_pass: None,
+            scene_vectors: None,
             gated_normal: None,
             gated_velocity: None,
             streaming,
@@ -4772,6 +4780,8 @@ fn vs(input: VSIn) -> VSOut {
             surface.configure(&self.device, &self.config);
         }
         self.depth = crate::depth::Depth::create(&self.device, &self.config);
+        self.gated_normal = None;
+        self.gated_velocity = None;
 
         // Allocate new render target memory in budget
         let new_rt_bytes = (new_w as u64) * (new_h as u64) * (8 + 4); // HDR(8) + Depth(4)
@@ -5734,8 +5744,18 @@ fn vs(input: VSIn) -> VSOut {
         self.ssgi_on = enabled;
     }
 
+    #[must_use]
+    pub fn ssgi_enabled(&self) -> bool {
+        self.ssgi_on
+    }
+
     pub fn set_taa_enabled(&mut self, enabled: bool) {
         self.taa_on = enabled;
+    }
+
+    #[must_use]
+    pub fn taa_enabled(&self) -> bool {
+        self.taa_on
     }
 
     pub fn set_temporal_upscale_enabled(&mut self, enabled: bool) {
@@ -5744,6 +5764,32 @@ fn vs(input: VSIn) -> VSOut {
 
     pub fn set_dof_enabled(&mut self, enabled: bool) {
         self.dof_on = enabled;
+    }
+
+    /// Write world normals and clip-space motion into the gated aux targets.
+    ///
+    /// The default is off. Turning this on does not enable SSGI, TAA, or
+    /// temporal upscale. Those passes stay on their own setters.
+    pub fn set_scene_vectors_enabled(&mut self, enabled: bool) {
+        self.scene_vectors_on = enabled;
+        if !enabled {
+            self.scene_vectors_prev_valid = false;
+        }
+    }
+
+    #[must_use]
+    pub fn scene_vectors_enabled(&self) -> bool {
+        self.scene_vectors_on
+    }
+
+    /// The normal and velocity textures after a frame that enabled the pass.
+    /// `None` while the pass is off and SSGI, TAA, and upscale are also off.
+    #[must_use]
+    pub fn scene_vector_targets(&self) -> Option<(&wgpu::Texture, &wgpu::Texture)> {
+        match (&self.gated_normal, &self.gated_velocity) {
+            (Some((normal, _)), Some((velocity, _))) => Some((normal, velocity)),
+            _ => None,
+        }
     }
 
     fn ensure_gated_aux(&mut self) {
@@ -5762,7 +5808,9 @@ fn vs(input: VSIn) -> VSOut {
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
             format: wgpu::TextureFormat::Rgba16Float,
-            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::RENDER_ATTACHMENT,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING
+                | wgpu::TextureUsages::RENDER_ATTACHMENT
+                | wgpu::TextureUsages::COPY_SRC,
             view_formats: &[],
         });
         let normal_view = normal.create_view(&wgpu::TextureViewDescriptor::default());
@@ -5773,7 +5821,9 @@ fn vs(input: VSIn) -> VSOut {
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
             format: wgpu::TextureFormat::Rg16Float,
-            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::RENDER_ATTACHMENT,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING
+                | wgpu::TextureUsages::RENDER_ATTACHMENT
+                | wgpu::TextureUsages::COPY_SRC,
             view_formats: &[],
         });
         let velocity_view = velocity.create_view(&wgpu::TextureViewDescriptor::default());
@@ -5850,6 +5900,103 @@ fn vs(input: VSIn) -> VSOut {
                 depth_or_array_layers: 1,
             },
         );
+    }
+
+    /// Clear and draw world normals and clip-space motion after the opaque pass.
+    ///
+    /// Off by default. The first enabled frame stores zero motion because the
+    /// previous matrix is the current one. SSGI, TAA, and upscale stay off
+    /// unless their own setters run.
+    fn record_scene_vectors(
+        &mut self,
+        enc: &mut wgpu::CommandEncoder,
+        depth_view: Option<&wgpu::TextureView>,
+    ) {
+        if !self.scene_vectors_on || self.is_device_lost() {
+            return;
+        }
+        self.ensure_gated_aux();
+        let (Some((_, normal_view)), Some((_, velocity_view))) =
+            (self.gated_normal.as_ref(), self.gated_velocity.as_ref())
+        else {
+            return;
+        };
+        let normal_view = normal_view.clone();
+        let velocity_view = velocity_view.clone();
+        let depth = depth_view
+            .cloned()
+            .unwrap_or_else(|| self.depth.view.clone());
+        let curr = self.cached_proj * self.cached_view;
+        let prev = if self.scene_vectors_prev_valid {
+            self.scene_vectors_prev
+        } else {
+            curr
+        };
+        let device = self.device.clone();
+        let queue = self.queue.clone();
+        if self.scene_vectors.is_none() {
+            self.scene_vectors = Some(crate::scene_vectors::SceneVectorsPass::new(&device));
+        }
+        let (pipeline, bind_group) = {
+            let Some(pass) = self.scene_vectors.as_ref() else {
+                return;
+            };
+            pass.write_matrices(&queue, curr, prev);
+            (pass.pipeline().clone(), pass.bind_group().clone())
+        };
+        let stamp = self.begin_named_stamp(enc, "scene_vectors");
+        {
+            let mut rp = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("scene vectors"),
+                color_attachments: &[
+                    Some(wgpu::RenderPassColorAttachment {
+                        view: &normal_view,
+                        resolve_target: None,
+                        ops: wgpu::Operations {
+                            load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
+                            store: wgpu::StoreOp::Store,
+                        },
+                    }),
+                    Some(wgpu::RenderPassColorAttachment {
+                        view: &velocity_view,
+                        resolve_target: None,
+                        ops: wgpu::Operations {
+                            load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
+                            store: wgpu::StoreOp::Store,
+                        },
+                    }),
+                ],
+                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                    view: &depth,
+                    depth_ops: Some(wgpu::Operations {
+                        load: wgpu::LoadOp::Load,
+                        store: wgpu::StoreOp::Store,
+                    }),
+                    stencil_ops: None,
+                }),
+                timestamp_writes: None,
+                occlusion_query_set: None,
+            });
+            rp.set_pipeline(&pipeline);
+            rp.set_bind_group(0, &bind_group, &[]);
+            for model in self.models.values() {
+                if model.instance_count == 0 {
+                    continue;
+                }
+                for primitive in &model.primitives {
+                    rp.set_vertex_buffer(0, primitive.mesh.vertex_buf.slice(..));
+                    rp.set_index_buffer(
+                        primitive.mesh.index_buf.slice(..),
+                        wgpu::IndexFormat::Uint32,
+                    );
+                    rp.set_vertex_buffer(1, model.instance_buf.slice(..));
+                    rp.draw_indexed(0..primitive.mesh.index_count, 0, 0..model.instance_count);
+                }
+            }
+        }
+        self.end_named_stamp(enc, stamp);
+        self.scene_vectors_prev = curr;
+        self.scene_vectors_prev_valid = true;
     }
 
     /// Presentation passes that stay off unless a setter turned them on.
@@ -8336,6 +8483,7 @@ fn vs(input: VSIn) -> VSOut {
             }
         }
         self.open_timing_gap(enc, "after_main");
+        self.record_scene_vectors(enc, depth_view);
 
         // W.2b — split water pass (after the opaque main pass closes), aligned with
         // `render()`, so the editor viewport renders the same refracted water. Pass
