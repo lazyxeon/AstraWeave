@@ -64,7 +64,9 @@ fn fallback_frame_does_not_allocate_before_the_texture_is_resident() {
         let (go_tx, go_rx) = std::sync::mpsc::channel::<()>();
         let writer_path = path.clone();
         let writer = std::thread::spawn(move || {
-            go_rx.recv().expect("release fifo");
+            if go_rx.recv().is_err() {
+                return;
+            }
             let mut file = std::fs::OpenOptions::new()
                 .write(true)
                 .open(&writer_path)
@@ -75,6 +77,9 @@ fn fallback_frame_does_not_allocate_before_the_texture_is_resident() {
         let mut renderer = Renderer::new_headless(64, 64)
             .await
             .expect("headless renderer");
+        // An assert before the explicit release still opens the fifo, so the
+        // decode read is not stuck in `open` when the renderer drops.
+        let mut release = ReleaseWriter { tx: Some(go_tx) };
         let positions = [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]];
         let normals = [[0.0, 0.0, 1.0]; 3];
         let indices = [0, 1, 2];
@@ -129,7 +134,7 @@ fn fallback_frame_does_not_allocate_before_the_texture_is_resident() {
             "fallback frame left the wgpu pass floor: {samples:?}"
         );
 
-        go_tx.send(()).expect("release writer");
+        release.release();
         let mut resident = false;
         for _ in 0..100 {
             record(&mut renderer, &view);
@@ -146,4 +151,24 @@ fn fallback_frame_does_not_allocate_before_the_texture_is_resident() {
         let _ = std::fs::remove_file(&path);
         assert!(resident, "texture never became resident");
     });
+}
+
+/// Sends on drop if `release` was not called. Declared after the renderer so
+/// this drops first and the writer is connected before `DecodeRuntime` joins.
+struct ReleaseWriter {
+    tx: Option<std::sync::mpsc::Sender<()>>,
+}
+
+impl ReleaseWriter {
+    fn release(&mut self) {
+        if let Some(tx) = self.tx.take() {
+            let _ = tx.send(());
+        }
+    }
+}
+
+impl Drop for ReleaseWriter {
+    fn drop(&mut self) {
+        self.release();
+    }
 }
