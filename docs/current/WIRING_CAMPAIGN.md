@@ -25,14 +25,14 @@ A cell is filled only by a GTX 1660 Ti heavy-scene run whose validation scope is
 | Baseline (HDRI sky, no gated pass) | none | 3.688 | The captured scene |
 | Atmosphere, replacing `SkyRenderer` | `--atmosphere` | | Off until this cell is ≤ 11 |
 
-Fog and god rays are already on in Aravath (`set_volumetric_fog_config`, `set_god_ray_config`, unless `--no-volumetrics` or `--safe`). They are not in the 3.688 ms capture. Their heavy-scene medians are also blank. Do not add them into an unmeasured sum.
+Fog and god rays are already on in Aravath (`set_volumetric_fog_config`, `set_god_ray_config`, unless `aravath.cfg` contains `volumetrics=off`, or the process is started with `--no-volumetrics` or `--safe`). They are not in the 3.688 ms capture. Their heavy-scene medians are also blank. Do not add them into an unmeasured sum.
 
 ## Already on a runtime caller
 
 | System | State | Owner | Default |
 |---|---|---|---|
-| Volumetric fog (`VolumetricFogPass`) | `aravath_runtime` calls `set_volumetric_fog_config` with `gameplay_config` unless `--no-volumetrics` or `--safe`. | `astraweave-render`, `aravath_runtime` | On in the game. Issue #227. Heavy-scene median is unmeasured. |
-| God rays (`GodRayPass`) | `aravath_runtime` calls `set_god_ray_config` (half resolution, 32 samples) on that same path. | `astraweave-render`, `aravath_runtime` | On in the game. Issue #228. Heavy-scene median is unmeasured. |
+| Volumetric fog (`VolumetricFogPass`) | `aravath_runtime` calls `set_volumetric_fog_config` with `gameplay_config` unless `aravath.cfg` contains `volumetrics=off`, or the process is started with `--no-volumetrics` or `--safe`. | `astraweave-render`, `aravath_runtime` | On in the game. Issue #227. Heavy-scene median is unmeasured. |
+| God rays (`GodRayPass`) | `aravath_runtime` calls `set_god_ray_config` (half resolution, 32 samples) on that same path, including the `aravath.cfg` switch. | `astraweave-render`, `aravath_runtime` | On in the game. Issue #228. Heavy-scene median is unmeasured. |
 | Cloud shadows | `CloudShadowPass` is built in `Renderer::new`. The 3.688 ms capture includes it at 0.323 ms. | `astraweave-render` | On. This is not `VolumetricCloudsPass`. |
 
 ## Prerequisite before SSGI and TAA
@@ -62,7 +62,8 @@ Defaults stay off. A later pull flips a default only after the measured cell abo
 |---|---|---|---|
 | `SkyPassNode` | #234 | `frame_graph.rs`. `run` returns `Ok(())`. | Live sky is `SkyRenderer`, or `AtmospherePass` when that flag is on. |
 | `weather_system.rs` | #236 | Still compiled. Tests construct `WeatherTransition`. | Live weather is `effects::WeatherFx` and `SceneEnvironment`. A second weather model is not a feature. |
-| `shadow_csm.rs`, `shadow_quality.rs`, `shadow_sampling.wgsl` | #238 | Still compiled. | Live cascades are `renderer.rs` and `shaders/shadow_common.wgsl`. |
+| `shadow_csm.rs` | #238 | Still compiled. This is a second cascade map. | Live cascades are `renderer.rs` and `shaders/shadow_common.wgsl`. |
+| `shadow_quality.rs`, `shadow_sampling.wgsl` | #238 | Still compiled. This is the PCSS / Poisson filter and `ShadowParamsGpu`. It is not another cascade atlas. | The live cascade path does not sample this filter. |
 
 `VolumetricFogNode`, `BrdfLutPass`, and `weather_gpu.rs` are not in the tree. They are not rows.
 
