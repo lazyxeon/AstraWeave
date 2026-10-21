@@ -189,6 +189,8 @@ mod tests {
         assert_eq!(a, b);
         assert!(a[0].id < a[1].id || a[0].id != a[1].id);
         assert_eq!(a[0].mass.saturating_add(a[1].mass), parent().mass);
+        assert_eq!(a.len(), 2);
+        assert_eq!(BreakRule::stone().strength, Fixed64::from_int(100));
     }
 
     #[test]

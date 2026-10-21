@@ -17,7 +17,7 @@ Provides rigid body dynamics, character controllers, broadphase spatial hashing,
 | `Ragdoll` / `RagdollBuilder` | Multi-bone ragdoll creation |
 | `Vehicle` / `VehicleManager` | Vehicle dynamics with drivetrain |
 | `ClothManager` | Particle-based cloth with distance constraints |
-| `DestructionManager` | Fracture patterns and debris |
+| `DestructionManager` | Removed. Fracture and debris are `astraweave-destruction` |
 | `EnvironmentManager` | Wind zones, water volumes, buoyancy |
 | `GravityManager` | Composable gravity zones |
 

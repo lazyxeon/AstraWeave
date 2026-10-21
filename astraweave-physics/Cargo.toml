@@ -72,10 +72,6 @@ name = "vehicle"
 harness = false
 
 [[bench]]
-name = "destruction"
-harness = false
-
-[[bench]]
 name = "ragdoll"
 harness = false
 

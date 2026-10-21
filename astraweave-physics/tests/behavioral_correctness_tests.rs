@@ -13,7 +13,6 @@
 //! Phase 8.8: Production-Ready Physics Validation
 
 use astraweave_physics::cloth::{Cloth, ClothConfig, ClothId, ClothParticle, DistanceConstraint};
-use astraweave_physics::destruction::{DestructibleConfig, DestructionManager, FracturePattern};
 use astraweave_physics::projectile::{
     ExplosionConfig, FalloffCurve, ProjectileConfig, ProjectileManager,
 };
@@ -715,64 +714,6 @@ fn test_suspension_hookes_law() {
         "Stiffness ratio should be 2.0, got {}",
         ratio
     );
-}
-
-// ============================================================================
-// DESTRUCTION PHYSICS CORRECTNESS
-// ============================================================================
-
-/// Verify damage reduces health correctly (mutation: adding instead of subtracting)
-#[test]
-fn test_destruction_damage_reduces_health() {
-    let mut manager = DestructionManager::new();
-    let config = DestructibleConfig {
-        max_health: 100.0,
-        ..Default::default()
-    };
-
-    let id = manager.add_destructible(config, Vec3::ZERO);
-
-    let initial_health = manager.get(id).unwrap().health;
-    assert!(
-        (initial_health - 100.0).abs() < 0.01,
-        "Initial health should be max"
-    );
-
-    // Apply 30 damage
-    manager.apply_damage(id, 30.0);
-    let after_damage = manager.get(id).unwrap().health;
-
-    assert!(
-        (after_damage - 70.0).abs() < 0.01,
-        "Health should be 70 after 30 damage. Got {}",
-        after_damage
-    );
-
-    // Apply more damage
-    manager.apply_damage(id, 50.0);
-    let final_health = manager.get(id).unwrap().health;
-
-    assert!(
-        (final_health - 20.0).abs() < 0.01,
-        "Health should be 20 after total 80 damage. Got {}",
-        final_health
-    );
-}
-
-/// Verify debris count matches fracture pattern
-#[test]
-fn test_destruction_debris_count_matches_pattern() {
-    for piece_count in [4, 8, 16, 32] {
-        let pattern = FracturePattern::uniform(piece_count, Vec3::splat(0.5), 10.0);
-
-        assert!(
-            pattern.debris.len() >= piece_count / 2,
-            "Pattern with {} pieces should have at least {} debris configs, got {}",
-            piece_count,
-            piece_count / 2,
-            pattern.debris.len()
-        );
-    }
 }
 
 // ============================================================================
