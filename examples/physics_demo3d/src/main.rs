@@ -224,6 +224,9 @@ impl ApplicationHandler for PhysicsApp {
                         println!("Spawned destructible");
                     }
                     KeyCode::KeyM if down => {
+                        // Deferred: #411. This only deletes the Rapier body.
+                        // Health and break impulse are ignored. A DestructionWorld
+                        // retarget needs a mesh this window does not have.
                         if let Some(id) = self.destruct_ids.pop() {
                             self.phys.break_destructible(id);
                             println!("Break destructible");

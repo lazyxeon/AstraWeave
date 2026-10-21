@@ -4,7 +4,7 @@ Full-featured physics simulation for AstraWeave, wrapping **Rapier3D 0.22**.
 
 ## Overview
 
-Provides rigid body dynamics, character controllers, broadphase spatial hashing, projectiles, ragdolls, vehicles, cloth, gravity zones, wind/water environments, and destructible objects.
+Provides rigid body dynamics, character controllers, broadphase spatial hashing, projectiles, ragdolls, vehicles, cloth, and wind/water environments. `break_destructible` only removes a Rapier body. Fracture is `astraweave-destruction`.
 
 ## Key Types
 
@@ -17,9 +17,9 @@ Provides rigid body dynamics, character controllers, broadphase spatial hashing,
 | `Ragdoll` / `RagdollBuilder` | Multi-bone ragdoll creation |
 | `Vehicle` / `VehicleManager` | Vehicle dynamics with drivetrain |
 | `ClothManager` | Particle-based cloth with distance constraints |
-| `DestructionManager` | Removed. Fracture and debris are `astraweave-destruction` |
+| `break_destructible` | Removes a Rapier body. Fracture and debris are `astraweave-destruction` |
 | `EnvironmentManager` | Wind zones, water volumes, buoyancy |
-| `GravityManager` | Composable gravity zones |
+| `PhysicsWorld::gravity` | Rapier gravity vector. `gravity.rs` and `GravityManager` are removed (#330) |
 
 ## Feature Flags
 

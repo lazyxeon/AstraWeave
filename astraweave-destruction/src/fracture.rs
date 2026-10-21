@@ -184,12 +184,37 @@ mod tests {
 
     #[test]
     fn planar_cut_is_stable() {
-        let a = planar_children(&parent());
-        let b = planar_children(&parent());
+        let source = parent();
+        let a = planar_children(&source);
+        let b = planar_children(&source);
         assert_eq!(a, b);
-        assert!(a[0].id < a[1].id || a[0].id != a[1].id);
-        assert_eq!(a[0].mass.saturating_add(a[1].mass), parent().mass);
-        assert_eq!(a.len(), 2);
+        assert_ne!(a[0].id, a[1].id);
+        assert_eq!(a[0].id, mix_sim_seed(source.id, 0, SIM_SYSTEM_DESTRUCTION));
+        assert_eq!(a[1].id, mix_sim_seed(source.id, 1, SIM_SYSTEM_DESTRUCTION));
+        let shift = source.half[0].mul_ratio(1, 2);
+        assert_eq!(a[0].half[0], shift);
+        assert_eq!(a[1].half[0], shift);
+        assert_eq!(a[0].pos[0], source.pos[0].saturating_sub(shift));
+        assert_eq!(a[1].pos[0], source.pos[0].saturating_add(shift));
+        for axis in 1..3 {
+            assert_eq!(a[0].pos[axis], source.pos[axis]);
+            assert_eq!(a[1].pos[axis], source.pos[axis]);
+            assert_eq!(a[0].half[axis], source.half[axis]);
+            assert_eq!(a[1].half[axis], source.half[axis]);
+        }
+        assert_eq!(a[0].mass, source.mass.mul_ratio(1, 2));
+        assert_eq!(a[1].mass, source.mass.saturating_sub(a[0].mass));
+        assert_eq!(a[0].mass.saturating_add(a[1].mass), source.mass);
+        assert_eq!(a[0].flags, source.flags);
+        assert_eq!(a[1].flags, source.flags);
+        assert_eq!(a[0].structure, source.structure);
+        assert_eq!(a[1].structure, source.structure);
+        assert_eq!(a[0].island, source.island);
+        assert_eq!(a[1].island, source.island);
+    }
+
+    #[test]
+    fn stone_break_strength_is_one_hundred() {
         assert_eq!(BreakRule::stone().strength, Fixed64::from_int(100));
     }
 

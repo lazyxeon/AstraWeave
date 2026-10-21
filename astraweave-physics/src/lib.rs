@@ -31,7 +31,6 @@
 //! - **[`Ragdoll`] / [`RagdollBuilder`]** — Multi-bone ragdoll creation and simulation.
 //! - **[`Vehicle`] / [`VehicleManager`]** — Vehicle dynamics with drivetrain and wheels.
 //! - **[`EnvironmentManager`]** — Wind zones, water volumes, and buoyancy.
-//! - **Character controller** — kinematic body movement with ground detection
 //! - **`break_destructible`** — removes a rigid body. Fracture and debris live in `astraweave-destruction`.
 //! - **[`ClothManager`]** — Particle-based cloth with distance constraints.
 //!
