@@ -31,11 +31,33 @@ pub fn gravity_mm_s2(milli_g: i32) -> i32 {
     milli_g.saturating_mul(981) / 100
 }
 
-/// Nearest cell from metres. Truncates toward zero after scaling to millimetres.
+/// Cell index from metres. Floors after scaling to millimetres (`div_euclid`),
+/// so `-1.5` is cell `-2`, not `-1`.
+///
+/// Returns `None` when `m` is not finite or `m * 1000` does not fit in `i32`.
+/// The float-to-int cast saturates, so that range is rejected before the cast.
 /// The replay path passes cell coordinates and does not call this.
-pub fn meters_to_cell(m: f32) -> i32 {
-    let milli = (m * 1000.0) as i32;
-    milli.div_euclid(CELL_MM)
+pub fn meters_to_cell(m: f32) -> Option<i32> {
+    if !m.is_finite() {
+        return None;
+    }
+    let milli = m * 1000.0;
+    // `i32::MAX as f32` is `2^31`. `>` lets that value through and `as i32`
+    // saturates. The predecessor finite `f32` is `2147483520`, which fits.
+    if milli < i32::MIN as f32 || milli >= i32::MAX as f32 {
+        return None;
+    }
+    Some((milli as i32).div_euclid(CELL_MM))
+}
+
+/// `cell * CELL_MM` when the product fits in `i32`. Does not saturate.
+pub fn cell_to_milli(cell: i32) -> Option<i32> {
+    cell.checked_mul(CELL_MM)
+}
+
+/// Three cell coordinates scaled to millimetres, or `None` if any product overflows.
+pub fn milli_corner(x: Option<i32>, y: Option<i32>, z: Option<i32>) -> Option<[i32; 3]> {
+    Some([cell_to_milli(x?)?, cell_to_milli(y?)?, cell_to_milli(z?)?])
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -232,6 +254,29 @@ impl SimField for TestSimField {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn meters_to_cell_rejects_non_finite_and_the_i32_edge() {
+        let positive = (i32::MAX as f32) / 1000.0;
+        assert!(
+            meters_to_cell(positive).is_none(),
+            "nearest f32 to 2^31/1000 ({positive}) must not saturate"
+        );
+        let negative = (i32::MIN as f32) / 1000.0;
+        assert_eq!(
+            meters_to_cell(negative),
+            Some(-2_147_484),
+            "negative edge ({negative}) must stay negative and must not saturate"
+        );
+        assert!(meters_to_cell(f32::NAN).is_none());
+        assert!(meters_to_cell(f32::INFINITY).is_none());
+        assert!(meters_to_cell(f32::NEG_INFINITY).is_none());
+        assert_eq!(meters_to_cell(1.0), Some(1));
+        assert_eq!(meters_to_cell(-1.5), Some(-2));
+        let predecessor = f32::from_bits((i32::MAX as f32).to_bits() - 1);
+        assert_eq!(predecessor, 2_147_483_520.0);
+        assert!(predecessor < i32::MAX as f32);
+    }
 
     #[test]
     fn gravity_conversion_matches_9810() {

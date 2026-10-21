@@ -45,6 +45,18 @@ pub fn apply_weave_op(
     if matches!(op.kind, WeaveOpKind::CollapseBridge) && op.b.is_none() {
         anyhow::bail!("Collapse needs A->B");
     }
+    let wind = if matches!(op.kind, WeaveOpKind::RedirectWind) {
+        let end = op.b.unwrap_or(op.a + vec3(1.0, 0.0, 0.0));
+        Some(
+            wind_direction(op.a, end)
+                .ok_or_else(|| anyhow::anyhow!("weave origin is outside the island"))?,
+        )
+    } else {
+        None
+    };
+    if !legacy_geometry_kept(kind, &compiled) {
+        anyhow::bail!("weave origin is outside the island");
+    }
     match op.kind {
         WeaveOpKind::ReinforcePath | WeaveOpKind::RaisePlatform | WeaveOpKind::CollapseBridge => {
             if budget.terrain_edits <= 0 {
@@ -83,7 +95,9 @@ pub fn apply_weave_op(
         });
     }
     if matches!(op.kind, WeaveOpKind::RedirectWind) {
-        let dir = (op.b.unwrap_or(op.a + vec3(1.0, 0.0, 0.0)) - op.a).normalize_or_zero();
+        let Some(dir) = wind else {
+            anyhow::bail!("weave origin is outside the island");
+        };
         phys.set_wind(dir, 10.0);
         log("Weave: Wind redirected".into());
     }
@@ -145,6 +159,32 @@ pub fn apply_weave_op(
     };
 
     Ok(consequence)
+}
+
+fn wind_direction(from: glam::Vec3, to: glam::Vec3) -> Option<glam::Vec3> {
+    let delta = to - from;
+    if !(delta.x.is_finite() && delta.y.is_finite() && delta.z.is_finite()) {
+        return None;
+    }
+    let len2 = delta.length_squared();
+    if !len2.is_finite() || len2 == 0.0 {
+        return None;
+    }
+    let dir = delta.normalize_or_zero();
+    if dir.length_squared() == 0.0 || !dir.is_finite() {
+        return None;
+    }
+    Some(dir)
+}
+
+fn legacy_geometry_kept(kind: u8, compiled: &astraweave_weaving::CompiledOp) -> bool {
+    match kind {
+        0 | 4 => compiled.fortify.is_some(),
+        1 => compiled.collapse.is_some(),
+        2 | 3 => compiled.write_count > 0,
+        5 => compiled.ice_min_milli.is_some(),
+        _ => false,
+    }
 }
 
 #[cfg(test)]
@@ -662,5 +702,449 @@ mod tests {
             initial_weather - 1,
             "RedirectWind must decrement weather_ops by exactly 1"
         );
+    }
+
+    #[test]
+    fn dropped_origin_does_not_spend_budget_or_return_a_consequence() {
+        let mut world = create_test_world();
+        let mut physics = create_test_physics();
+        let nav_src = vec![];
+        let mut budget = create_test_budget();
+        let op = WeaveOp {
+            kind: WeaveOpKind::FreezeWater,
+            a: vec3(1.0e20, f32::NAN, f32::INFINITY),
+            b: None,
+            budget_cost: 1,
+        };
+        let mut logger = |_: String| {};
+        let err = apply_weave_op(
+            &mut world,
+            &mut physics,
+            &nav_src,
+            &mut budget,
+            &op,
+            &mut logger,
+        )
+        .expect_err("a dropped freeze must not succeed");
+        assert!(err.to_string().contains("outside the island"));
+        assert_eq!(budget.weather_ops, 3);
+        assert_eq!(budget.terrain_edits, 5);
+
+        let reinforce = WeaveOp {
+            kind: WeaveOpKind::ReinforcePath,
+            a: vec3(f32::NEG_INFINITY, 0.0, 0.0),
+            b: None,
+            budget_cost: 1,
+        };
+        let err = apply_weave_op(
+            &mut world,
+            &mut physics,
+            &nav_src,
+            &mut budget,
+            &reinforce,
+            &mut logger,
+        )
+        .expect_err("a dropped reinforce must not succeed");
+        assert!(err.to_string().contains("outside the island"));
+        assert_eq!(budget.terrain_edits, 5);
+    }
+
+    #[test]
+    fn far_collapse_endpoint_does_not_spend_budget() {
+        let mut world = create_test_world();
+        let mut physics = create_test_physics();
+        let nav_src = vec![];
+        let mut budget = create_test_budget();
+        let op = WeaveOp {
+            kind: WeaveOpKind::CollapseBridge,
+            a: vec3(0.0, 0.0, 0.0),
+            b: Some(vec3(1.0e20, 0.0, (i32::MAX as f32) / 1000.0)),
+            budget_cost: 1,
+        };
+        let mut logger = |_: String| {};
+        let err = apply_weave_op(
+            &mut world,
+            &mut physics,
+            &nav_src,
+            &mut budget,
+            &op,
+            &mut logger,
+        )
+        .expect_err("a far collapse endpoint must not succeed");
+        assert!(err.to_string().contains("outside the island"));
+        assert_eq!(budget.terrain_edits, 5);
+    }
+
+    #[test]
+    fn non_finite_wind_endpoint_does_not_spend_weather() {
+        let mut world = create_test_world();
+        let mut physics = create_test_physics();
+        let nav_src = vec![];
+        let mut budget = create_test_budget();
+        let mut logger = |_: String| {};
+        for endpoint in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
+            let op = WeaveOp {
+                kind: WeaveOpKind::RedirectWind,
+                a: vec3(0.0, 0.0, 0.0),
+                b: Some(vec3(endpoint, 0.0, 1.0)),
+                budget_cost: 1,
+            };
+            let err = apply_weave_op(
+                &mut world,
+                &mut physics,
+                &nav_src,
+                &mut budget,
+                &op,
+                &mut logger,
+            )
+            .expect_err("a non-finite wind endpoint must not succeed");
+            assert!(err.to_string().contains("outside the island"));
+            assert_eq!(budget.weather_ops, 3, "{endpoint}");
+        }
+        physics.wind = vec3(3.0, 0.0, 0.0);
+        let huge = WeaveOp {
+            kind: WeaveOpKind::RedirectWind,
+            a: vec3(0.0, 0.0, 0.0),
+            b: Some(vec3(1.9e19, 0.0, 0.0)),
+            budget_cost: 1,
+        };
+        let err = apply_weave_op(
+            &mut world,
+            &mut physics,
+            &nav_src,
+            &mut budget,
+            &huge,
+            &mut logger,
+        )
+        .expect_err("a wind endpoint whose square overflows must not succeed");
+        assert!(err.to_string().contains("outside the island"));
+        assert_eq!(budget.weather_ops, 3);
+        assert_eq!(physics.wind, vec3(3.0, 0.0, 0.0));
+    }
+
+    #[test]
+    fn weave_op_edges_fail_closed() {
+        #[derive(Clone, Copy)]
+        struct Case {
+            name: &'static str,
+            kind: WeaveOpKind,
+            a: [f32; 3],
+            b: Option<[f32; 3]>,
+            keep: bool,
+        }
+        let cases = [
+            Case {
+                name: "reinforce origin",
+                kind: WeaveOpKind::ReinforcePath,
+                a: [0.0, 0.0, 0.0],
+                b: None,
+                keep: true,
+            },
+            Case {
+                name: "reinforce floor -1.5",
+                kind: WeaveOpKind::ReinforcePath,
+                a: [-1.5, 0.0, 0.0],
+                b: None,
+                keep: true,
+            },
+            Case {
+                name: "reinforce island edge",
+                kind: WeaveOpKind::ReinforcePath,
+                a: [2048.0, 0.0, -2048.0],
+                b: None,
+                keep: true,
+            },
+            Case {
+                name: "reinforce just outside",
+                kind: WeaveOpKind::ReinforcePath,
+                a: [2049.0, 0.0, 0.0],
+                b: None,
+                keep: false,
+            },
+            Case {
+                name: "reinforce negative floor edge",
+                kind: WeaveOpKind::ReinforcePath,
+                a: [-2047.1, 0.0, 0.0],
+                b: None,
+                keep: true,
+            },
+            Case {
+                name: "reinforce past negative edge",
+                kind: WeaveOpKind::ReinforcePath,
+                a: [-2048.1, 0.0, 0.0],
+                b: None,
+                keep: false,
+            },
+            Case {
+                name: "reinforce subnormal snaps to cell 0",
+                kind: WeaveOpKind::ReinforcePath,
+                a: [1e-45, 0.0, 0.0],
+                b: None,
+                keep: true,
+            },
+            Case {
+                name: "reinforce nan",
+                kind: WeaveOpKind::ReinforcePath,
+                a: [f32::NAN, 0.0, 0.0],
+                b: None,
+                keep: false,
+            },
+            Case {
+                name: "reinforce +inf",
+                kind: WeaveOpKind::ReinforcePath,
+                a: [f32::INFINITY, 0.0, 0.0],
+                b: None,
+                keep: false,
+            },
+            Case {
+                name: "reinforce -inf",
+                kind: WeaveOpKind::ReinforcePath,
+                a: [f32::NEG_INFINITY, 0.0, 0.0],
+                b: None,
+                keep: false,
+            },
+            Case {
+                name: "reinforce 1e20",
+                kind: WeaveOpKind::ReinforcePath,
+                a: [1.0e20, 0.0, 0.0],
+                b: None,
+                keep: false,
+            },
+            Case {
+                name: "reinforce 2^31/1000",
+                kind: WeaveOpKind::ReinforcePath,
+                a: [(i32::MAX as f32) / 1000.0, 0.0, 0.0],
+                b: None,
+                keep: false,
+            },
+            Case {
+                name: "raise origin",
+                kind: WeaveOpKind::RaisePlatform,
+                a: [1.0, 2.0, 3.0],
+                b: None,
+                keep: true,
+            },
+            Case {
+                name: "raise nan y",
+                kind: WeaveOpKind::RaisePlatform,
+                a: [0.0, f32::NAN, 0.0],
+                b: None,
+                keep: false,
+            },
+            Case {
+                name: "lower origin",
+                kind: WeaveOpKind::LowerWater,
+                a: [0.0, 0.0, 0.0],
+                b: None,
+                keep: true,
+            },
+            Case {
+                name: "lower inf z",
+                kind: WeaveOpKind::LowerWater,
+                a: [0.0, 0.0, f32::INFINITY],
+                b: None,
+                keep: false,
+            },
+            Case {
+                name: "freeze origin",
+                kind: WeaveOpKind::FreezeWater,
+                a: [1.0, 0.0, 1.0],
+                b: None,
+                keep: true,
+            },
+            Case {
+                name: "freeze nan",
+                kind: WeaveOpKind::FreezeWater,
+                a: [f32::NAN, f32::NAN, f32::NAN],
+                b: None,
+                keep: false,
+            },
+            Case {
+                name: "freeze 1e20",
+                kind: WeaveOpKind::FreezeWater,
+                a: [0.0, 1.0e20, 0.0],
+                b: None,
+                keep: false,
+            },
+            Case {
+                name: "collapse segment",
+                kind: WeaveOpKind::CollapseBridge,
+                a: [0.0, 0.0, 0.0],
+                b: Some([10.0, 0.0, 10.0]),
+                keep: true,
+            },
+            Case {
+                name: "collapse missing b",
+                kind: WeaveOpKind::CollapseBridge,
+                a: [0.0, 0.0, 0.0],
+                b: None,
+                keep: false,
+            },
+            Case {
+                name: "collapse point",
+                kind: WeaveOpKind::CollapseBridge,
+                a: [2.0, 0.0, 2.0],
+                b: Some([2.0, 0.0, 2.0]),
+                keep: true,
+            },
+            Case {
+                name: "collapse far b",
+                kind: WeaveOpKind::CollapseBridge,
+                a: [0.0, 0.0, 0.0],
+                b: Some([1.0e20, 0.0, 0.0]),
+                keep: false,
+            },
+            Case {
+                name: "collapse nan b",
+                kind: WeaveOpKind::CollapseBridge,
+                a: [0.0, 0.0, 0.0],
+                b: Some([f32::NAN, 0.0, 1.0]),
+                keep: false,
+            },
+            Case {
+                name: "collapse inf b",
+                kind: WeaveOpKind::CollapseBridge,
+                a: [0.0, 0.0, 0.0],
+                b: Some([0.0, f32::INFINITY, 0.0]),
+                keep: false,
+            },
+            Case {
+                name: "collapse -inf b",
+                kind: WeaveOpKind::CollapseBridge,
+                a: [0.0, 0.0, 0.0],
+                b: Some([0.0, 0.0, f32::NEG_INFINITY]),
+                keep: false,
+            },
+            Case {
+                name: "wind default +x",
+                kind: WeaveOpKind::RedirectWind,
+                a: [0.0, 0.0, 0.0],
+                b: None,
+                keep: true,
+            },
+            Case {
+                name: "wind finite step",
+                kind: WeaveOpKind::RedirectWind,
+                a: [0.0, 0.0, 0.0],
+                b: Some([1.0, 0.0, 0.0]),
+                keep: true,
+            },
+            Case {
+                name: "wind 1e-22",
+                kind: WeaveOpKind::RedirectWind,
+                a: [0.0, 0.0, 0.0],
+                b: Some([1e-22, 0.0, 0.0]),
+                keep: true,
+            },
+            Case {
+                name: "wind zero",
+                kind: WeaveOpKind::RedirectWind,
+                a: [1.0, 2.0, 3.0],
+                b: Some([1.0, 2.0, 3.0]),
+                keep: false,
+            },
+            Case {
+                name: "wind 1e-45",
+                kind: WeaveOpKind::RedirectWind,
+                a: [0.0, 0.0, 0.0],
+                b: Some([1e-45, 0.0, 0.0]),
+                keep: false,
+            },
+            Case {
+                name: "wind 1e-30",
+                kind: WeaveOpKind::RedirectWind,
+                a: [0.0, 0.0, 0.0],
+                b: Some([0.0, 1e-30, 0.0]),
+                keep: false,
+            },
+            Case {
+                name: "wind 1e-23",
+                kind: WeaveOpKind::RedirectWind,
+                a: [0.0, 0.0, 0.0],
+                b: Some([0.0, 0.0, 1e-23]),
+                keep: false,
+            },
+            Case {
+                name: "wind 1.9e19",
+                kind: WeaveOpKind::RedirectWind,
+                a: [0.0, 0.0, 0.0],
+                b: Some([1.9e19, 0.0, 0.0]),
+                keep: false,
+            },
+            Case {
+                name: "wind nan",
+                kind: WeaveOpKind::RedirectWind,
+                a: [0.0, 0.0, 0.0],
+                b: Some([f32::NAN, 0.0, 0.0]),
+                keep: false,
+            },
+            Case {
+                name: "wind +inf",
+                kind: WeaveOpKind::RedirectWind,
+                a: [0.0, 0.0, 0.0],
+                b: Some([f32::INFINITY, 0.0, 0.0]),
+                keep: false,
+            },
+            Case {
+                name: "wind -inf",
+                kind: WeaveOpKind::RedirectWind,
+                a: [0.0, 0.0, 0.0],
+                b: Some([f32::NEG_INFINITY, 0.0, 0.0]),
+                keep: false,
+            },
+            Case {
+                name: "wind nan origin",
+                kind: WeaveOpKind::RedirectWind,
+                a: [f32::NAN, 0.0, 0.0],
+                b: Some([1.0, 0.0, 0.0]),
+                keep: false,
+            },
+        ];
+        for case in cases {
+            let mut world = create_test_world();
+            let mut physics = create_test_physics();
+            physics.wind = vec3(3.0, 0.0, 0.0);
+            let nav_src = vec![];
+            let mut budget = create_test_budget();
+            let op = WeaveOp {
+                kind: case.kind,
+                a: vec3(case.a[0], case.a[1], case.a[2]),
+                b: case.b.map(|p| vec3(p[0], p[1], p[2])),
+                budget_cost: 1,
+            };
+            let mut logger = |_: String| {};
+            let result = apply_weave_op(
+                &mut world,
+                &mut physics,
+                &nav_src,
+                &mut budget,
+                &op,
+                &mut logger,
+            );
+            if case.keep {
+                assert!(result.is_ok(), "{}", case.name);
+                let weather = matches!(
+                    case.kind,
+                    WeaveOpKind::RedirectWind | WeaveOpKind::LowerWater | WeaveOpKind::FreezeWater
+                );
+                if weather {
+                    assert_eq!(budget.weather_ops, 2, "{}", case.name);
+                    assert_eq!(budget.terrain_edits, 5, "{}", case.name);
+                } else {
+                    assert_eq!(budget.terrain_edits, 4, "{}", case.name);
+                    assert_eq!(budget.weather_ops, 3, "{}", case.name);
+                }
+                if matches!(case.kind, WeaveOpKind::RedirectWind) {
+                    assert_ne!(physics.wind, vec3(3.0, 0.0, 0.0), "{}", case.name);
+                    assert!(physics.wind.is_finite(), "{}", case.name);
+                    assert!(physics.wind.length_squared() > 0.0, "{}", case.name);
+                }
+            } else {
+                assert!(result.is_err(), "{}", case.name);
+                assert_eq!(budget.terrain_edits, 5, "{}", case.name);
+                assert_eq!(budget.weather_ops, 3, "{}", case.name);
+                assert_eq!(physics.wind, vec3(3.0, 0.0, 0.0), "{}", case.name);
+            }
+        }
     }
 }

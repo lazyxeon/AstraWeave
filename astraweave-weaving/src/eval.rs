@@ -7,8 +7,8 @@ use crate::field::{
     encode_write, FieldWrite, NullField, Shape, SimField, WriteOp, CELL_MM, MAX_FIELD_WRITES,
 };
 use crate::mod_queue::{
-    WeaveCommand, WeaveNode, WeaveScratch, KIND_DECAY, KIND_DENSITY, KIND_GRAVITY, KIND_HEAT,
-    KIND_PHASE, KIND_VOLUME, KIND_WIND, MAX_WEAVE_COMMANDS,
+    WeaveCommand, WeaveNode, WeaveScratch, ISLAND_HALF_CELLS, KIND_DECAY, KIND_DENSITY,
+    KIND_GRAVITY, KIND_HEAT, KIND_PHASE, KIND_VOLUME, KIND_WIND, MAX_WEAVE_COMMANDS,
 };
 use crate::templates::{builtin, writes_for, TEMPLATE_FREEZE};
 use astraweave_nav::{NavChange, NavChangeKind};
@@ -230,6 +230,12 @@ fn store_writes(frame: &mut WeaveFrame, writes: &[FieldWrite]) -> u32 {
 }
 
 fn push_ice(frame: &mut WeaveFrame, tick: u64, seq: u32, origin: [i32; 3], radius: u8) {
+    debug_assert!(
+        origin
+            .iter()
+            .all(|cell| (-ISLAND_HALF_CELLS..=ISLAND_HALF_CELLS).contains(cell)),
+        "freeze origin is outside the island; queue_weave rejects it before writes are stored"
+    );
     let radius = radius as i32;
     let min_milli = [
         (origin[0] - radius) * CELL_MM,
