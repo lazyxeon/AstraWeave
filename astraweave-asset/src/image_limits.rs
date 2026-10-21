@@ -3,6 +3,7 @@
 //! also the allocation cap.
 
 use anyhow::{bail, Context, Result};
+use base64::Engine as _;
 use std::io::{Cursor, Read};
 use std::path::Path;
 
@@ -60,6 +61,30 @@ pub fn read_limited_image_bytes(path: &Path) -> Result<Vec<u8>> {
     Ok(bytes)
 }
 
+/// Decode a `data:` image URI without allocating a payload over [`MAX_IMAGE_ALLOC`].
+///
+/// The base64 length is checked before `decode`. The scheme match is
+/// case-insensitive, and that fold is paired with the length reject.
+pub fn read_capped_data_image(uri: &str) -> Result<Vec<u8>> {
+    let scheme_end = uri.find(':').context("data URI missing scheme")?;
+    let scheme = &uri[..scheme_end];
+    if !scheme.eq_ignore_ascii_case("data") {
+        bail!("not a data URI");
+    }
+    let rest = &uri[scheme_end + 1..];
+    let payload = rest
+        .split_once(',')
+        .map(|(_, data)| data)
+        .context("Invalid data URI")?;
+    let estimate = (payload.len() as u64).saturating_mul(3) / 4;
+    if estimate > MAX_IMAGE_ALLOC {
+        bail!("data URI image is {estimate} bytes, cap is {MAX_IMAGE_ALLOC}");
+    }
+    base64::engine::general_purpose::STANDARD
+        .decode(payload)
+        .context("decode data URI")
+}
+
 /// Open an image file with the same caps as [`decode_limited_image`].
 pub fn open_limited_image(path: impl AsRef<Path>) -> Result<image::DynamicImage> {
     let path = path.as_ref();
@@ -106,5 +131,22 @@ mod tests {
             msg.contains(&cap.to_string()) && msg.contains(&(cap + 1).to_string()),
             "{msg}"
         );
+    }
+
+    #[test]
+    fn data_image_under_the_cap_decodes() {
+        let bytes =
+            read_capped_data_image("DATA:application/octet-stream;base64,AAAA").expect("decode");
+        assert_eq!(bytes, vec![0, 0, 0]);
+    }
+
+    #[test]
+    fn data_image_over_the_cap_is_rejected_before_decode() {
+        let payload_len = ((MAX_IMAGE_ALLOC as usize) * 4 / 3) + 4;
+        let mut uri = String::from("data:application/octet-stream;base64,");
+        uri.extend(std::iter::repeat('A').take(payload_len));
+        let err = read_capped_data_image(&uri).expect_err("over cap");
+        let msg = format!("{err:#}");
+        assert!(msg.contains(&MAX_IMAGE_ALLOC.to_string()), "{msg}");
     }
 }
