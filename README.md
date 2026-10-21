@@ -6,7 +6,7 @@ AstraWeave is an AI-native game engine with a deterministic ECS. AI agents are f
 
 ## Current status
 
-Checked against `main` at `5a52b039` (#390). The rows below were checked at `556a305c` except the CI badge row.
+Main is `98335926` (#392). #390 is merged as `5a52b039`. The rows below were checked at `556a305c` except the CI badge row.
 
 | Topic | State |
 | --- | --- |
@@ -16,7 +16,7 @@ Checked against `main` at `5a52b039` (#390). The rows below were checked at `556
 | Greybox golden | `b6a9d5a2c5da28a6` |
 | Frame budget | 3.688 ms GPU frame, 11 ms target, GTX 1660 Ti. #371 and #372 stay open |
 | Supply chain | Postcard is alloc-only. `rustls-webpki` is 0.103.16. `webpki-roots` is 1.0.10. Ignored leftovers are #305, #306, #308–#310, and #321–#323 |
-| CI badges | #390 dropped the Clippy unwrap-prevention badge. That workflow was deleted in #223. `astraweave-ai` mutants run as 8 round-robin shards. The 70% gate is caught / (caught + missed). Timeouts are not caught. `cargo-mutants` is 27.1.0 |
+| CI badges | #390 is merged. It dropped the Clippy unwrap-prevention badge. That workflow was deleted in #223. `astraweave-ai` mutants run as 8 round-robin shards. The 70% gate is caught / (caught + missed). Timeouts are not caught. `cargo-mutants` is 27.1.0 |
 
 The nineteen cases are `planner_pure`, `perception_world`, `gameplay_rng`, `fixed64`, `combat_resolve`, `destruction`, `gameplay_qa_aravath_slice`, `nav_reroute`, `causal_bridge`, `scripted_system`, `weaving`, `traversal`, `traversal_deformed`, `worldgen_columns`, `deformed_chunk`, `local_sim`, `greybox_checkpoint`, `quest_ticks`, and `persist_replay`.
 
@@ -25,7 +25,7 @@ The nineteen cases are `planner_pure`, `perception_world`, `gameplay_rng`, `fixe
 - Single-threaded deterministic tick. Replay hashes must match across operating systems.
 - `sys_ai_planning` runs `RuleOrchestrator`. `dispatch_planner` is not on that tick. `PlannerMode::GOAP` reads `CAiController.gather` only when `ai-goap` is on.
 - Windowed Aravath greybox: CC0 props, sword combat, and a checkpoint of the fight fields.
-- wgpu rendering with a shared editor and engine path. Cloud-shadow strength is 4. The 0.323 ms figure is the measurement at `939a21bb`.
+- wgpu rendering with a shared editor and engine path. Cloud-shadow strength is 4. The amortized `cloud_shadow` pass is 0.323 ms at `939a21bb`, which is not the 3.688 ms GPU frame.
 - Rapier is vendored so a settled physics step allocates nothing. An in-house physics engine is not planned work.
 
 ## Quick start
