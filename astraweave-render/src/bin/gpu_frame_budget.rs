@@ -6,7 +6,8 @@
 //! ```text
 //! cargo run -p astraweave-render --release --features gpu-frame-budget --bin gpu_frame_budget -- --scene heavy --debug-timestamps --glb "assets/The Complete KayKit Collection v4/KayKit Adventurers 2.0/Characters/gltf/Rogue.glb"
 //!
-//! Every gated flag is rejected, including `--atmosphere`. The printed
+//! An enabled gated flag is rejected, including `--atmosphere`.
+//! `--flag=false` and `--flag false` are off and do not bail. The printed
 //! `median_gpu_frame_ms` is the baseline frame. No gated cell is filled here.
 //! ```
 
@@ -35,7 +36,7 @@ const SAMPLES: usize = 120;
 fn main() -> anyhow::Result<()> {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("warn")).init();
     let args: Vec<String> = std::env::args().skip(1).collect();
-    reject_gated_flags(&args)?;
+    astraweave_render::budget_gate::reject_gated_flags(&args)?;
     let glb = glb_path();
     let heavy = scene_is_heavy();
     let debug_timestamps = debug_timestamps();
@@ -776,56 +777,6 @@ fn renderer_limits(limits: &wgpu::Limits) -> [(&'static str, u64); 15] {
     ]
 }
 
-fn flag_on(args: &[String], name: &str) -> bool {
-    args.iter().enumerate().any(|(index, arg)| {
-        arg == name
-            || arg == &format!("{name}=true")
-            || (arg == name && args.get(index + 1).map(String::as_str) == Some("true"))
-    })
-}
-
-/// Scaffolding only. No gated flag draws a frame, so no cell can be filled.
-fn reject_gated_flags(args: &[String]) -> anyhow::Result<()> {
-    const BLOCKED: &[(&str, &str)] = &[
-        (
-            "--atmosphere",
-            "enabling it skips the HDR and depth clear, so the heavy scene does not land",
-        ),
-        (
-            "--ssgi",
-            "normal and velocity targets are allocated and never written, and ssgi_history is sampled before copy_to_history",
-        ),
-        (
-            "--taa",
-            "normal and velocity targets are allocated and never written, and taa_history is sampled before copy_to_history",
-        ),
-        (
-            "--upscale",
-            "normal and velocity targets are allocated and never written, and upscale_history is sampled before copy_to_history",
-        ),
-        (
-            "--dof",
-            "the depth-of-field history target is uncleared and the result is not copied onto HDR",
-        ),
-        (
-            "--clouds",
-            "the raymarch samples cloud_history before writing it, and the composite is not copied onto HDR",
-        ),
-    ];
-    let hits: Vec<String> = BLOCKED
-        .iter()
-        .filter(|(flag, _)| flag_on(args, flag))
-        .map(|(flag, why)| format!("{flag} ({why})"))
-        .collect();
-    if hits.is_empty() {
-        return Ok(());
-    }
-    anyhow::bail!(
-        "gated flags cannot fill a measurement cell: {}",
-        hits.join("; ")
-    )
-}
-
 fn debug_timestamps() -> bool {
     std::env::args().any(|arg| arg == "--debug-timestamps" || arg == "--debug-timestamps=true")
 }
@@ -955,47 +906,5 @@ fn median(values: &mut [f64]) -> f64 {
         (values[mid - 1] + values[mid]) * 0.5
     } else {
         values[mid]
-    }
-}
-
-#[cfg(test)]
-mod gated_flag_tests {
-    use super::reject_gated_flags;
-
-    fn args(parts: &[&str]) -> Vec<String> {
-        parts.iter().map(|part| (*part).to_string()).collect()
-    }
-
-    fn rejected(parts: &[&str]) -> String {
-        reject_gated_flags(&args(parts))
-            .expect_err("gated flag must fail before a frame")
-            .to_string()
-    }
-
-    #[test]
-    fn reject_gated_flags_covers_each_form() {
-        assert!(reject_gated_flags(&args(&["--scene", "heavy"])).is_ok());
-        for flag in [
-            "--atmosphere",
-            "--ssgi",
-            "--taa",
-            "--upscale",
-            "--dof",
-            "--clouds",
-        ] {
-            let message = rejected(&[flag]);
-            assert!(message.contains(flag), "{message}");
-        }
-        let equals = rejected(&["--atmosphere=true"]);
-        assert!(equals.contains("--atmosphere"), "{equals}");
-        let two_token = rejected(&["--atmosphere", "true"]);
-        assert!(two_token.contains("--atmosphere"), "{two_token}");
-        let pair = rejected(&["--atmosphere", "--ssgi"]);
-        assert!(pair.contains("--atmosphere"), "{pair}");
-        assert!(pair.contains("--ssgi"), "{pair}");
-        assert!(pair.contains("ssgi_history"), "{pair}");
-        assert!(rejected(&["--taa"]).contains("taa_history"));
-        assert!(rejected(&["--upscale"]).contains("upscale_history"));
-        assert!(rejected(&["--ssgi"]).contains("copy_to_history"));
     }
 }
