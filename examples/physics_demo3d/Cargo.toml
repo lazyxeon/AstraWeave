@@ -13,3 +13,5 @@ pollster = { workspace = true }
 astraweave-render = { path = "../../astraweave-render" }
 astraweave-camera = { path = "../../astraweave-camera" }
 astraweave-physics = { path = "../../astraweave-physics" }
+astraweave-destruction = { workspace = true }
+astraweave-math = { workspace = true }
