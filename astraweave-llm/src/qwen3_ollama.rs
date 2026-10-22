@@ -765,8 +765,9 @@ impl LlmClient for Qwen3Ollama {
         crate::ensure_model_request(&self.url, self.allow_remote)?;
         use futures_util::StreamExt;
 
-        // No overall timeout on the stored client. Streaming can outlive one
-        // generation. The connect timeout is on `build_model_client`.
+        // No total timeout. A chunked body can outlive `OLLAMA_TIMEOUT_SECS`.
+        // That value bounds the connect and the silence between reads.
+        let idle = crate::stream_read_idle();
         let client = &self.client;
 
         let url = format!("{}/api/chat", self.url);
@@ -849,7 +850,7 @@ impl LlmClient for Qwen3Ollama {
         // Convert bytes_stream to text chunk stream
         // Ollama streams NDJSON (newline-delimited JSON):
         //   {"message": {"content": "text"}, "done": false}\n
-        let byte_stream = response.bytes_stream();
+        let byte_stream = crate::with_read_idle(Box::pin(response.bytes_stream()), idle);
 
         // Transform bytes → NDJSON lines → text chunks
         // Uses a byte buffer to handle chunks that split UTF-8 characters or JSON lines

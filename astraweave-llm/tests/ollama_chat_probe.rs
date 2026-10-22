@@ -67,3 +67,143 @@ fn test_ollama_batch_execution() {
         "closed port should fail: {stdout} {stderr}"
     );
 }
+
+fn read_http_headers(sock: &mut std::net::TcpStream) {
+    use std::io::Read;
+    let _ = sock.set_read_timeout(Some(std::time::Duration::from_secs(2)));
+    let mut buf = Vec::new();
+    let mut byte = [0u8; 1];
+    while buf.len() < 8192 {
+        match sock.read(&mut byte) {
+            Ok(0) | Err(_) => break,
+            Ok(_) => {
+                buf.push(byte[0]);
+                if buf.ends_with(b"\r\n\r\n") {
+                    break;
+                }
+            }
+        }
+    }
+}
+
+fn write_chunk(sock: &mut std::net::TcpStream, data: &str) {
+    use std::io::Write;
+    let _ = write!(sock, "{:X}\r\n{data}\r\n", data.len());
+    let _ = sock.flush();
+}
+
+/// NDJSON chat chunks, one every 50 ms. `hang_after` stops writing and leaves
+/// the socket open so the client must idle out.
+fn serve_slow_chunks(count: usize, hang_after: Option<usize>) -> std::net::SocketAddr {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+    let addr = listener.local_addr().expect("addr");
+    std::thread::spawn(move || {
+        let Ok((mut sock, _)) = listener.accept() else {
+            return;
+        };
+        read_http_headers(&mut sock);
+        use std::io::Write;
+        let _ = sock.write_all(
+            b"HTTP/1.1 200 OK\r\nContent-Type: application/x-ndjson\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n",
+        );
+        let _ = sock.flush();
+        let stop = hang_after.unwrap_or(count);
+        for i in 0..count.min(stop) {
+            write_chunk(
+                &mut sock,
+                &format!("{{\"message\":{{\"content\":\"n{i:02}\"}},\"done\":false}}\n"),
+            );
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        if hang_after.is_none() {
+            write_chunk(
+                &mut sock,
+                "{\"message\":{\"content\":\"\"},\"done\":true}\n",
+            );
+            let _ = sock.write_all(b"0\r\n\r\n");
+            let _ = sock.flush();
+        } else {
+            std::thread::sleep(std::time::Duration::from_secs(30));
+        }
+    });
+    addr
+}
+
+fn run_against(
+    mode: &str,
+    addr: std::net::SocketAddr,
+) -> (std::time::Duration, std::process::Output) {
+    let started = std::time::Instant::now();
+    let exe = probe_exe(env!("CARGO_BIN_EXE_ollama_chat_probe"));
+    let out = std::process::Command::new(&exe)
+        .args([mode, &format!("http://{addr}")])
+        .env("OLLAMA_LOW_LATENCY", "1")
+        .env("OLLAMA_TIMEOUT_SECS", "2")
+        .env("OLLAMA_EARLY_EXIT", "0")
+        .output()
+        .unwrap_or_else(|err| panic!("spawn {}: {err}", exe.display()));
+    (started.elapsed(), out)
+}
+
+#[test]
+fn slow_chunks_longer_than_the_timeout_are_kept() {
+    let addr = serve_slow_chunks(60, None);
+    let (elapsed, out) = run_against("complete", addr);
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        out.status.success(),
+        "slow stream failed after {:?}: {stdout} {stderr}",
+        elapsed
+    );
+    for i in 0..60 {
+        assert!(
+            stdout.contains(&format!("n{i:02}")),
+            "dropped token n{i:02} after {:?}: {stdout}",
+            elapsed
+        );
+    }
+    assert!(
+        elapsed < std::time::Duration::from_secs(6),
+        "stream spun for {elapsed:?}"
+    );
+
+    let addr = serve_slow_chunks(60, None);
+    let (elapsed, out) = run_against("qwen-stream", addr);
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        out.status.success(),
+        "qwen stream failed after {:?}: {stdout} {stderr}",
+        elapsed
+    );
+    for i in 0..60 {
+        assert!(
+            stdout.contains(&format!("n{i:02}")),
+            "qwen dropped token n{i:02} after {:?}: {stdout}",
+            elapsed
+        );
+    }
+}
+
+#[test]
+fn idle_timeout_keeps_partial_chunks() {
+    let addr = serve_slow_chunks(5, Some(5));
+    let (elapsed, out) = run_against("complete", addr);
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        elapsed < std::time::Duration::from_secs(5),
+        "idle wait spun for {elapsed:?}: {stdout} {stderr}"
+    );
+    assert!(
+        out.status.success(),
+        "partial stream failed: {stdout} {stderr}"
+    );
+    for i in 0..5 {
+        assert!(
+            stdout.contains(&format!("n{i:02}")),
+            "dropped partial token n{i:02}: {stdout}"
+        );
+    }
+}

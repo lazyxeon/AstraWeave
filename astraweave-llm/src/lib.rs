@@ -126,6 +126,51 @@ pub(crate) fn build_model_client(url: &str, allow_remote: bool) -> Result<reqwes
         .build()
         .map_err(|err| anyhow::anyhow!("model http client: {err}"))
 }
+
+/// Silence allowed between streaming reads, from `OLLAMA_TIMEOUT_SECS` (default 180).
+#[cfg(feature = "ollama")]
+pub(crate) fn stream_read_idle() -> std::time::Duration {
+    let secs = std::env::var("OLLAMA_TIMEOUT_SECS")
+        .ok()
+        .and_then(|s| s.parse::<u64>().ok())
+        .unwrap_or(180)
+        .max(1);
+    std::time::Duration::from_secs(secs)
+}
+
+/// Stop a chunked body on the first read error or on `idle` of silence.
+///
+/// One error is yielded, then the stream ends, so a caller can keep bytes
+/// already produced. This is not a total deadline: chunks that keep arriving
+/// are not cut off.
+#[cfg(feature = "ollama")]
+pub(crate) fn with_read_idle<S, T, E>(
+    inner: S,
+    idle: std::time::Duration,
+) -> impl futures_util::Stream<Item = Result<T>>
+where
+    S: futures_util::Stream<Item = Result<T, E>> + Unpin,
+    E: std::fmt::Display,
+{
+    use futures_util::StreamExt;
+    futures_util::stream::unfold((inner, false), move |(mut inner, stop)| {
+        let idle = idle;
+        async move {
+            if stop {
+                return None;
+            }
+            match tokio::time::timeout(idle, inner.next()).await {
+                Ok(Some(Ok(item))) => Some((Ok(item), (inner, false))),
+                Ok(Some(Err(err))) => Some((
+                    Err(anyhow::anyhow!("stream body error: {err}")),
+                    (inner, true),
+                )),
+                Ok(None) => None,
+                Err(_) => Some((Err(anyhow::anyhow!("stream idle timeout")), (inner, true))),
+            }
+        }
+    })
+}
 use astraweave_core::{ActionStep, PlanIntent, ToolRegistry, WorldSnapshot};
 use tracing::{debug, info};
 
@@ -529,10 +574,7 @@ impl LlmClient for OllamaChatClient {
         // Some Ollama setups can take a long time to load a model initially (minutes) or
         // will stream responses. Allow a long configurable timeout and fall back to a
         // streaming read if a non-stream response isn't available.
-        let default_timeout = std::env::var("OLLAMA_TIMEOUT_SECS")
-            .ok()
-            .and_then(|s| s.parse::<u64>().ok())
-            .unwrap_or(180u64);
+        let idle = stream_read_idle();
 
         // First try a non-streaming request with a long timeout so we get a buffered JSON
         // response if the server supports it and the model responds within the window.
@@ -652,18 +694,18 @@ impl LlmClient for OllamaChatClient {
                 stream_body["keep_alive"] = serde_json::json!(ka);
             }
 
-            // Total streaming timeout to avoid hangs when the model never responds
-            let total_stream_timeout = std::time::Duration::from_secs(default_timeout * 2);
+            // The stored client already set `connect_timeout` in `build_model_client`.
+            // Do not set `RequestBuilder::timeout`: that deadline also covers the
+            // body, so a slow chunk stream fails mid-read. Silence between reads
+            // is bounded by `idle` below.
             let start = std::time::Instant::now();
 
             let stream_url = format!("{}/api/chat", self.url.trim_end_matches('/'));
             println!("[ollama] initiating streaming POST to {}", stream_url);
-            let request_timeout = std::time::Duration::from_secs(default_timeout);
             let resp = client
                 .post(&stream_url)
                 .header("Accept", "application/json")
                 .header("Content-Type", "application/json")
-                .timeout(request_timeout)
                 .json(&stream_body)
                 .send()
                 .await
@@ -691,7 +733,6 @@ impl LlmClient for OllamaChatClient {
                         .post(&gen_url)
                         .header("Accept", "application/json")
                         .header("Content-Type", "application/json")
-                        .timeout(request_timeout)
                         .json(&stream_body)
                         .send()
                         .await
@@ -747,12 +788,16 @@ impl LlmClient for OllamaChatClient {
             #[allow(unused_mut)]
             let mut last_flush = 0usize;
             let mut first_token_at: Option<std::time::Instant> = None;
-            while let Some(item) =
-                tokio::time::timeout(std::time::Duration::from_secs(10), stream.next())
-                    .await
-                    .ok()
-                    .flatten()
-            {
+            let mut body_error: Option<String> = None;
+            loop {
+                let item = match tokio::time::timeout(idle, stream.next()).await {
+                    Ok(Some(item)) => item,
+                    Ok(None) => break,
+                    Err(_) => {
+                        body_error = Some("streaming read idle timeout".to_string());
+                        break;
+                    }
+                };
                 match item {
                     Ok(chunk) => {
                         if let Ok(schunk) = std::str::from_utf8(&chunk) {
@@ -847,15 +892,18 @@ impl LlmClient for OllamaChatClient {
                         }
                     }
                     Err(e) => {
-                        // Non-fatal: keep trying until total timeout
-                        if start.elapsed() > total_stream_timeout {
-                            bail!("Streaming read timed out: {}", e);
-                        }
+                        body_error = Some(format!("streaming body error: {e}"));
+                        break;
                     }
                 }
 
-                if done_flag || start.elapsed() > total_stream_timeout {
+                if done_flag {
                     break;
+                }
+            }
+            if text.trim().is_empty() && assistant_acc.trim().is_empty() {
+                if let Some(err) = body_error {
+                    bail!(err);
                 }
             }
 
