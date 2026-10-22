@@ -19,7 +19,7 @@ AstraWeave is a scientific proof of concept: an AI-native game engine with a det
 3. **Exhaustive Testing**: "It compiles" is insufficient. Verify through tests, benchmarks, and validation.
 4. **Production Ready**: No toy code. All systems must be scalable, performant, and secure.
 5. **Maintain Context**: Read `docs/current/PROJECT_STATUS.md` at the start of every session before doing any work.
-6. **Pre-Existing Issues**: Never Ignore or defer pre-existing issues when found, fix all issues found to production ready standards.
+6. **Failures**: Fix a failure this branch introduced. Defer only a failure that reproduces on the base commit, with a `deferred-failure` issue as `AGENTS.md` requires. Do not edit a golden to make a replay mismatch pass.
 
 ### Scope Discipline
 
@@ -122,7 +122,7 @@ cargo fmt --all                     # Format all code
 cargo clippy -p <crate> --all-features -- -D warnings  # Lint a crate
 
 # Workspace-wide commands (no aliases defined — use the explicit forms)
-cargo check --workspace             # Workspace check (133 packages, 0 errors as of 2026-07-19)
+cargo check --workspace             # Workspace check (142 members in PROJECT_STATUS.md; the July 2026 note of 133 is older)
 cargo build -p astraweave-core -p astraweave-ecs -p astraweave-math -p astraweave-ai  # Core components
 cargo test --workspace              # Workspace tests (long-running)
 cargo clippy --workspace --all-features -- -D warnings  # Full linting
@@ -350,7 +350,7 @@ Any new or modified `unsafe` code **MUST** pass both verification pipelines:
 
 ### Known Build Issues
 
-**All previously-listed build breakages are resolved** (live `cargo check` audit, 2026-06-10): `ui_controls_demo`, `debug_overlay` (former egui/winit drift), `astraweave-author`, `rhai_authoring` (former Rhai `Sync` trait errors), and `astraweave-llm` all compile clean, and `cargo check --workspace` passes all members with 0 errors (130/130 at the 2026-06-10 audit; 133 packages per `cargo metadata --no-deps` at the 2026-07-19 re-check following the `unified_showcase` removal — the count grew with members added since June). The root `Cargo.toml` `[workspace.metadata.ci-excludes]` problematic list is empty.
+**All previously-listed build breakages are resolved** (live `cargo check` audit, 2026-06-10): `ui_controls_demo`, `debug_overlay` (former egui/winit drift), `astraweave-author`, `rhai_authoring` (former Rhai `Sync` trait errors), and `astraweave-llm` all compile clean, and `cargo check --workspace` passes all members with 0 errors (130/130 at the 2026-06-10 audit). The July 2026 note of 133 members is older. `docs/current/PROJECT_STATUS.md` records 142 members. The root `Cargo.toml` `[workspace.metadata.ci-excludes]` problematic list is empty.
 
 - **Residual warnings (deferred)**: 1 `dead_code` warning in `astraweave-ai`; 1 unused import in `tools/aw_editor/src/gizmo/mod.rs:32`; `nalgebra v0.26.2` future-incompat note from the dependency graph
 - **`.unwrap()` in test code only**: All `.unwrap()` calls are inside `#[cfg(test)]` modules — justified for test assertions. Zero production-path unwraps in engine runtime crates.

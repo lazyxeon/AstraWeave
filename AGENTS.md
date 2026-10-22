@@ -14,7 +14,7 @@ Every other rule: the owner task instruction, for that task only; then a nearer 
 
 ⛔ No `AGENTS.override.md` anywhere. Codex reads that file instead of this one.
 
-`GROK.md`, `.github/copilot-instructions.md`, and `.cursor/rules/` are one-line pointers at this file. `CLAUDE.md` starts with `@AGENTS.md` and also holds the generated trace table. `aw_trace_sync` reads only `CLAUDE.md` and fails `--check` when the markers are missing. Do not truncate that file. Do not edit between the markers.
+`GROK.md`, `.github/copilot-instructions.md`, and `.cursor/rules/` are one-line pointers at this file. `CLAUDE.md` starts with `@AGENTS.md` and also holds the generated trace table. `aw_trace_sync` writes that table and checks it against `docs/architecture/workspace_map.html` and the trace front-matter. `--check` fails if the markers are missing, or if the map or front-matter drifts. Do not truncate `CLAUDE.md`. Do not edit between the markers. Do not hand-edit the map's trace links.
 
 [`docs/current/AGENT_FIELD_MANUAL.md`](docs/current/AGENT_FIELD_MANUAL.md) and [`docs/current/COPILOT_FIELD_MANUAL.md`](docs/current/COPILOT_FIELD_MANUAL.md) are reference. They are not a second constitution. This file wins.
 
@@ -25,7 +25,7 @@ Every other rule: the owner task instruction, for that task only; then a nearer 
 - Do not add a `cargo audit` ignore or a `RUSTSEC` ignore.
 - Assets in the tree are CC0 only.
 - Never put `Veilweaver` in player-facing text. The player-facing name is Aravath. A `veilweaver_` identifier and `projects/veilweaver` are not that text.
-- Local LLMs only. Ollama stays on loopback unless the caller uses `allowing_remote`.
+- Local LLMs only. `loopback_model_url` keeps the caller URL when `allowing_remote` is set or `is_loopback_http_url` matches the text before the first colon (`localhost`, `127.0.0.1`, `::1`). That helper does not parse userinfo, so `http://127.0.0.1:11434@other-host/` is kept. A security follow-up owns that bypass. Do not describe the helper as a parsed-host check.
 - The GPU frame budget is under 11 ms on a GTX 1660 Ti. The measured sample is in [`docs/current/ENGINE_STATUS.md`](docs/current/ENGINE_STATUS.md). Do not invent another number. Lavapipe time is not that budget. A cloud agent cannot measure that card. The capture command is `cargo run -p astraweave-render --release --features gpu-frame-budget --bin gpu_frame_budget -- --scene heavy --glb <path>` ([`.github/workflows/gpu-frame-budget.yml`](.github/workflows/gpu-frame-budget.yml), `workflow_dispatch` only).
 - Do not delete a working capability without a replacement.
 - Agents do not merge. The Admin Authorization ruleset blocks agent merges.
@@ -39,7 +39,9 @@ Every other rule: the owner task instruction, for that task only; then a nearer 
 
 `NavMesh::find_path` (`astar_tri`) breaks equal `f` with `partial_cmp` and no node id. The hashed route is `NavTiles::query_path`, which breaks equal `f` by the lower node id. Do not call `find_path` from a replayed tick.
 
-The tick planner is `RuleOrchestrator`. `planner_pure` also hashes `GoapOrchestrator` (`legacy_goap_plan`). Neither calls a model. Do not add a model call to a replayed tick.
+`Greybox::step` calls `BridgeAgent::step`. `BridgeAgent::refresh` calls `NavTiles::query_path` and stores `route_x_milli` from `(point.x * 1000.0) as i32`. `greybox_checkpoint` hashes that state. Do not rewire that tick onto `RuleOrchestrator`.
+
+`RuleOrchestrator` is the planner `ecs_ai_plugin` boxes for every companion, and the `PlannerMode::Rule` arm of `dispatch_planner`. `planner_pure` hashes that plan and `GoapOrchestrator` (`legacy_goap_plan`). Neither calls a model. With `ai-goap`, `dispatch_goap` calls `htn::gather_method(controller.gather)` and ignores the snapshot. That function is not `GoapOrchestrator`. Do not add a model call to a replayed tick.
 
 GPU readback in `astraweave-render` does not write sim state. Do not add that write.
 
@@ -62,7 +64,7 @@ Use this order in the pull request body and the final message:
 
 ## What to run
 
-- Sim crate: `AW_CI_PACKAGES=<crate> bash scripts/ci/run-gate.sh`, then `AW_CI_PROFILE=ci-pr AW_CI_PACKAGES=<crate> bash scripts/ci/run-tests.sh`. If the crate is in the Replay hash step, also run that step's `cargo test` line. That test has no retry.
+- Sim crate: `AW_CI_PACKAGES=<crate> bash scripts/ci/run-gate.sh`, then `AW_CI_PROFILE=ci-pr AW_CI_PACKAGES=<crate> bash scripts/ci/run-tests.sh`. If the crate is in the Replay hash step, also run that step's `cargo test` line. A change to `astraweave-nav`, `astraweave-ai`, or `astraweave-destruction` also runs `cargo test -p astraweave-core --test replay_hash`. Those three crates are not `-p` lines in that step. The core replay support compiles them. That `cargo test` has no retry.
 - Render crate: the same two scripts with `astraweave-render`. The 1660 Ti capture is the command in the ⛔ list.
 - Docs-only: `bash scripts/ci/player_facing_names.sh` and `cargo run -p aw_doc_lint -- --mode warn`. The Gate job runs the name script on every pull request. `AW_CI_DOCS_ONLY=true bash scripts/ci/run-gate.sh` skips fmt, clippy, and check. When the diff touches `CLAUDE.md`, `docs/architecture/`, or a `Cargo.toml`, run `cargo run -p aw_trace_sync -- --check`.
 

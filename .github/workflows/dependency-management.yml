@@ -68,8 +68,8 @@ jobs:
 
       - name: Install audit tools
         run: |
-          cargo install --locked cargo-audit || echo "cargo-audit already installed"
-          cargo install --locked cargo-deny || echo "cargo-deny already installed"
+          cargo install --locked --version 0.22.2 cargo-audit
+          cargo install --locked --version 0.20.2 cargo-deny
           cargo install --locked cargo-outdated || echo "cargo-outdated already installed"
 
       # Fails the job. This is not the pull-request gate, and it does not

@@ -253,8 +253,8 @@ AstraWeave fully supports Apple Silicon:
 rustc --version --verbose | grep host
 # Should show: aarch64-apple-darwin
 
-# Build optimized for Apple Silicon
-RUSTFLAGS="-C target-cpu=native" cargo build --release
+# Release build. Replay forbids a native target CPU and pins the x86-64 baseline.
+cargo build --release
 ```
 
 ## Build Configurations
