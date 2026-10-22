@@ -51,7 +51,7 @@ async fn main() -> anyhow::Result<()> {
         let ollama_url =
             env::var("OLLAMA_URL").unwrap_or_else(|_| "http://127.0.0.1:11434".to_string());
 
-        println!("\n2. Testing Ollama Chat Client at {}", ollama_url);
+        println!("\n2. Testing Ollama Chat Client");
         println!(
             "   Default Model: Qwen instruct ({})",
             DEFAULT_QWEN_INSTRUCT_MODEL
@@ -239,25 +239,22 @@ async fn probe_ollama_tags(base_url: &str, allow_remote: bool) -> anyhow::Result
     let url = format!("{}/api/tags", base_url.trim_end_matches('/'));
     println!("Probing Ollama for available models at: {} (GET)", url);
     let client = astraweave_llm::build_model_client(base_url, allow_remote)?;
-    let resp = client
-        .get(&url)
-        .timeout(std::time::Duration::from_secs(5))
-        .send()
-        .await
-        .context("Failed to reach Ollama /api/tags")?;
+    let resp = astraweave_llm::send_for_headers(
+        std::time::Duration::from_secs(5),
+        client.get(&url).send(),
+    )
+    .await
+    .context("Failed to reach Ollama /api/tags")?;
 
     if !resp.status().is_success() {
         let status = resp.status();
-        let txt = resp
-            .text()
+        let txt = astraweave_llm::read_capped_text(resp)
             .await
             .with_context(|| format!("Ollama /api/tags status {status} body read failed"))?;
-        let txt = astraweave_llm::bounded_model_text(&txt);
         return Err(anyhow::anyhow!("Ollama /api/tags returned {status}: {txt}"));
     }
 
-    let body = resp
-        .text()
+    let body = astraweave_llm::read_capped_text(resp)
         .await
         .context("Ollama /api/tags body read failed")?;
     println!("Ollama /api/tags response: {}", body);

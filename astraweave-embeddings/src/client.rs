@@ -353,7 +353,7 @@ impl EmbeddingClient for RemoteEmbeddingClient {
             return Err(anyhow::anyhow!("API request failed: {}", response.status()));
         }
 
-        let response_data: EmbeddingResponse = response.json().await?;
+        let response_data: EmbeddingResponse = astraweave_llm::read_capped_json(response).await?;
 
         Ok(response_data
             .data

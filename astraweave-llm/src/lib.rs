@@ -18,6 +18,41 @@ pub fn bounded_model_text(text: &str) -> &str {
     &text[..end]
 }
 
+#[cfg(feature = "ollama")]
+fn append_capped(dst: &mut String, extra: &str) -> Result<()> {
+    let next = dst.len().saturating_add(extra.len());
+    if next > MAX_MODEL_JSON_BYTES {
+        bail!("model text exceeds 64 KiB cap ({next} bytes)");
+    }
+    dst.push_str(extra);
+    Ok(())
+}
+
+/// Read a model body, stopping at [`MAX_MODEL_JSON_BYTES`].
+#[cfg(feature = "ollama")]
+pub async fn read_capped_text(response: reqwest::Response) -> Result<String> {
+    use futures_util::StreamExt;
+    let mut stream = response.bytes_stream();
+    let mut buf = Vec::new();
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.context("model body read failed")?;
+        let next = buf.len().saturating_add(chunk.len());
+        if next > MAX_MODEL_JSON_BYTES {
+            bail!("model text exceeds 64 KiB cap ({next} bytes)");
+        }
+        buf.extend_from_slice(&chunk);
+    }
+    String::from_utf8(buf).context("model body is not utf-8")
+}
+
+/// Read and parse a model JSON body, stopping at [`MAX_MODEL_JSON_BYTES`].
+#[cfg(feature = "ollama")]
+pub async fn read_capped_json<T: serde::de::DeserializeOwned>(
+    response: reqwest::Response,
+) -> Result<T> {
+    parse_bounded_model_json(&read_capped_text(response).await?)
+}
+
 #[cfg(test)]
 mod bounded_model_text_tests {
     use super::*;
@@ -27,6 +62,53 @@ mod bounded_model_text_tests {
         let big = "y".repeat(MAX_MODEL_JSON_BYTES + 10);
         assert_eq!(bounded_model_text(&big).len(), MAX_MODEL_JSON_BYTES);
         assert_eq!(bounded_model_text("short"), "short");
+    }
+}
+
+#[cfg(all(test, feature = "ollama"))]
+mod read_capped_tests {
+    use super::*;
+    use std::io::Write;
+
+    #[tokio::test]
+    async fn stops_before_the_rest_of_the_body() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+        let addr = listener.local_addr().expect("addr");
+        std::thread::spawn(move || {
+            let Ok((mut sock, _)) = listener.accept() else {
+                return;
+            };
+            let mut buf = [0u8; 1];
+            let mut seen = Vec::new();
+            let _ = sock.set_read_timeout(Some(std::time::Duration::from_secs(2)));
+            while seen.len() < 8192 {
+                match std::io::Read::read(&mut sock, &mut buf) {
+                    Ok(0) | Err(_) => break,
+                    Ok(_) => {
+                        seen.push(buf[0]);
+                        if seen.ends_with(b"\r\n\r\n") {
+                            break;
+                        }
+                    }
+                }
+            }
+            let body = vec![b'a'; MAX_MODEL_JSON_BYTES + 4096];
+            let header = format!(
+                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                body.len()
+            );
+            let _ = sock.write_all(header.as_bytes());
+            let _ = sock.write_all(&body);
+            let _ = sock.flush();
+        });
+        let client = build_model_client(&format!("http://{addr}"), false).expect("client");
+        let response = client
+            .get(format!("http://{addr}/"))
+            .send()
+            .await
+            .expect("send");
+        let err = read_capped_text(response).await.expect_err("oversize");
+        assert!(err.to_string().contains("64 KiB"), "{err}");
     }
 }
 
@@ -449,21 +531,21 @@ impl LlmClient for OllamaClient {
             stream: false,
         };
 
-        let response = self
-            .client
-            .post(format!("{}/api/generate", self.url))
-            .json(&body)
-            .timeout(std::time::Duration::from_secs(30))
-            .send()
-            .await
-            .map_err(|e| anyhow::anyhow!("Failed to send request to Ollama: {}", e))?;
+        let response = send_for_headers(
+            stream_read_idle(),
+            self.client
+                .post(format!("{}/api/generate", self.url))
+                .json(&body)
+                .send(),
+        )
+        .await
+        .context("Failed to send request to Ollama")?;
 
         if !response.status().is_success() {
             bail!("Ollama API returned error status: {}", response.status());
         }
 
-        let parsed: Resp = response
-            .json()
+        let parsed: Resp = read_capped_json(response)
             .await
             .context("Failed to parse Ollama response")?;
 
@@ -574,26 +656,24 @@ impl OllamaChatClient {
         };
 
         let chat_url = format!("{}/api/chat", self.url.trim_end_matches('/'));
-        let response = self
-            .client
-            .post(&chat_url)
-            .header("Accept", "application/json")
-            .timeout(std::time::Duration::from_secs(timeout_secs))
-            .json(&body)
-            .send()
-            .await
-            .context("Ollama warmup request failed")?;
+        let response = send_for_headers(
+            std::time::Duration::from_secs(timeout_secs),
+            self.client
+                .post(&chat_url)
+                .header("Accept", "application/json")
+                .json(&body)
+                .send(),
+        )
+        .await
+        .context("Ollama warmup request failed")?;
         let status = response.status();
         if !status.is_success() {
-            let body = response
-                .text()
+            let body = read_capped_text(response)
                 .await
                 .with_context(|| format!("Ollama warmup status {status} body read failed"))?;
-            let body = bounded_model_text(&body);
             bail!("Ollama warmup returned error status {status}: {body}");
         }
-        response
-            .text()
+        read_capped_text(response)
             .await
             .context("Ollama warmup body read failed")?;
         Ok(())
@@ -674,13 +754,15 @@ impl LlmClient for OllamaChatClient {
             // Use .json() so reqwest sets Content-Length and proper headers. Some servers
             // close the connection or reject raw bodies without length which can cause
             // "error sending request" failures; using .json() is more reliable here.
-            match client
-                .post(&chat_url)
-                .header("Accept", "application/json")
-                .timeout(std::time::Duration::from_secs(nonstream_timeout_secs))
-                .json(&body)
-                .send()
-                .await
+            match send_for_headers(
+                std::time::Duration::from_secs(nonstream_timeout_secs),
+                client
+                    .post(&chat_url)
+                    .header("Accept", "application/json")
+                    .json(&body)
+                    .send(),
+            )
+            .await
             {
                 Ok(resp) => {
                     println!(
@@ -689,7 +771,7 @@ impl LlmClient for OllamaChatClient {
                     );
                     if resp.status().is_success() {
                         // Try to read as text (this will complete if the server returns a full body)
-                        match resp.text().await {
+                        match read_capped_text(resp).await {
                             Ok(t) if !t.trim().is_empty() => {
                                 println!(
                                     "[ollama] received non-empty buffered body ({} bytes)",
@@ -712,9 +794,8 @@ impl LlmClient for OllamaChatClient {
                         }
                     } else {
                         let status = resp.status();
-                        match resp.text().await {
+                        match read_capped_text(resp).await {
                             Ok(b) => {
-                                let b = bounded_model_text(&b);
                                 return Err(anyhow::anyhow!(
                                     "Ollama non-streaming request returned error status {status}: {b}"
                                 ));
@@ -780,7 +861,7 @@ impl LlmClient for OllamaChatClient {
                     .send(),
             )
             .await
-            .map_err(|e| anyhow::anyhow!("Failed to initiate streaming request to Ollama: {e}"))?;
+            .context("Failed to initiate streaming request to Ollama")?;
 
             println!(
                 "[ollama] streaming request returned status {}",
@@ -808,11 +889,7 @@ impl LlmClient for OllamaChatClient {
                             .send(),
                     )
                     .await
-                    .map_err(|e| {
-                        anyhow::anyhow!(
-                            "Failed to initiate streaming request to Ollama /api/generate: {e}"
-                        )
-                    })?;
+                    .context("Failed to initiate streaming request to Ollama /api/generate")?;
 
                     println!(
                         "[ollama] /api/generate returned status {}",
@@ -822,19 +899,17 @@ impl LlmClient for OllamaChatClient {
                         Some(gen_resp)
                     } else {
                         let s = gen_resp.status();
-                        let b = gen_resp.text().await.with_context(|| {
+                        let b = read_capped_text(gen_resp).await.with_context(|| {
                             format!("Ollama /api/generate status {s} body read failed")
                         })?;
-                        let b = bounded_model_text(&b);
                         return Err(anyhow::anyhow!(
                             "Ollama /api/generate returned error status {s}: {b}"
                         ));
                     }
                 } else {
-                    let txt = resp.text().await.with_context(|| {
+                    let txt = read_capped_text(resp).await.with_context(|| {
                         format!("Ollama chat API status {status} body read failed")
                     })?;
-                    let txt = bounded_model_text(&txt);
                     return Err(anyhow::anyhow!(
                         "Ollama chat API returned error status {status}: {txt}"
                     ));
@@ -877,7 +952,7 @@ impl LlmClient for OllamaChatClient {
                             if first_token_at.is_none() {
                                 first_token_at = Some(std::time::Instant::now());
                             }
-                            buf.push_str(schunk);
+                            append_capped(&mut buf, schunk)?;
 
                             // Process complete newline-terminated records
                             while let Some(pos) = buf.find('\n') {
@@ -892,7 +967,7 @@ impl LlmClient for OllamaChatClient {
                                             if let Some(content) =
                                                 msg.get("content").and_then(|c| c.as_str())
                                             {
-                                                assistant_acc.push_str(content);
+                                                append_capped(&mut assistant_acc, content)?;
                                             }
                                         }
 
@@ -900,7 +975,7 @@ impl LlmClient for OllamaChatClient {
                                         if let Some(resp_txt) =
                                             v.get("response").and_then(|r| r.as_str())
                                         {
-                                            assistant_acc.push_str(resp_txt);
+                                            append_capped(&mut assistant_acc, resp_txt)?;
                                         }
 
                                         if let Some(choices) =
@@ -911,7 +986,7 @@ impl LlmClient for OllamaChatClient {
                                                     if let Some(content) =
                                                         msg.get("content").and_then(|c| c.as_str())
                                                     {
-                                                        assistant_acc.push_str(content);
+                                                        append_capped(&mut assistant_acc, content)?;
                                                     }
                                                 }
                                             }
@@ -922,7 +997,7 @@ impl LlmClient for OllamaChatClient {
                                         }
                                     } else {
                                         // Not valid JSON line; append raw
-                                        assistant_acc.push_str(line);
+                                        append_capped(&mut assistant_acc, line)?;
                                     }
                                 }
 
@@ -1284,31 +1359,25 @@ impl LlmClient for LocalHttpClient {
         let mut request = self
             .client
             .post(format!("{}/v1/chat/completions", self.url))
-            .header("Content-Type", "application/json")
-            .timeout(std::time::Duration::from_secs(60));
+            .header("Content-Type", "application/json");
 
         if let Some(api_key) = &self.api_key {
             request = request.header("Authorization", format!("Bearer {}", api_key));
         }
 
-        let response = request
-            .json(&body)
-            .send()
+        let response = send_for_headers(stream_read_idle(), request.json(&body).send())
             .await
-            .map_err(|e| anyhow::anyhow!("Failed to send request to local LLM: {}", e))?;
+            .context("Failed to send request to local LLM")?;
 
         if !response.status().is_success() {
             let status = response.status();
-            let text = response
-                .text()
+            let text = read_capped_text(response)
                 .await
                 .with_context(|| format!("Local LLM API status {status} body read failed"))?;
-            let text = bounded_model_text(&text);
             bail!("Local LLM API returned error status {status}: {text}");
         }
 
-        let parsed: Resp = response
-            .json()
+        let parsed: Resp = read_capped_json(response)
             .await
             .context("Failed to parse local LLM response")?;
 

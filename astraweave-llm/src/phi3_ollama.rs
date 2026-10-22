@@ -201,8 +201,7 @@ impl Phi3Ollama {
         }
 
         // Parse available models
-        let body: serde_json::Value = response
-            .json()
+        let body: serde_json::Value = crate::read_capped_json(response)
             .await
             .context("Failed to parse Ollama response")?;
 
@@ -308,20 +307,18 @@ impl LlmClient for Phi3Ollama {
         tracing::debug!("Sending request to Ollama: {}", self.model);
         let start = std::time::Instant::now();
 
-        let response = client
-            .post(&url)
-            .json(&body)
-            .timeout(std::time::Duration::from_secs(120))
-            .send()
-            .await
-            .context("Failed to send request to Ollama")?;
+        let response = crate::send_for_headers(
+            crate::stream_read_idle(),
+            client.post(&url).json(&body).send(),
+        )
+        .await
+        .context("Failed to send request to Ollama")?;
 
         if !response.status().is_success() {
             anyhow::bail!("Ollama returned error: {}", response.status());
         }
 
-        let response_json: serde_json::Value = response
-            .json()
+        let response_json: serde_json::Value = crate::read_capped_json(response)
             .await
             .context("Failed to parse Ollama response")?;
 

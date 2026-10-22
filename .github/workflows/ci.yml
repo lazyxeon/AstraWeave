@@ -153,6 +153,14 @@ jobs:
           AW_CI_PROFILE: ci-pr
         run: bash scripts/ci/run-tests.sh
 
+      - name: Model HTTP tests
+        # Affected-crate nextest does not turn on astraweave-llm's ollama
+        # feature unless another selected package already depends on it.
+        # These two commands are that feature, on the same machine as the bins.
+        run: |
+          cargo nextest run --locked --profile ci-pr -p astraweave-llm --features ollama --lib --tests
+          cargo nextest run --locked --profile ci-pr -p astraweave-embeddings --features http --lib --tests
+
   test-windows-build:
     name: Test (windows, build archive)
     runs-on: windows-latest
@@ -200,7 +208,9 @@ jobs:
         # Keep the archive profile so this follow-up does not rebuild with debug info.
         env:
           CARGO_PROFILE_TEST_DEBUG: "0"
-        run: cargo nextest run --locked --profile ci -p astraweave-llm --features ollama --test loopback_http_proxy --test ollama_chat_probe
+        run: |
+          cargo nextest run --locked --profile ci -p astraweave-llm --features ollama --lib --test loopback_http_proxy --test ollama_chat_probe
+          cargo nextest run --locked --profile ci -p astraweave-embeddings --features http --lib --test declared_body_timeout
 
       - name: Upload the archive
         uses: actions/upload-artifact@v4
