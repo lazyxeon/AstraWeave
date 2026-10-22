@@ -111,14 +111,7 @@ impl JointPaletteManager {
 
     /// Allocate a new joint palette slot from the pool
     pub fn allocate(&mut self) -> JointPaletteHandle {
-        if self.free_slots.is_empty() {
-            self.grow();
-        }
-
-        let slot = self
-            .free_slots
-            .pop()
-            .expect("grow() should have added slots");
+        let slot = self.free_slots.pop().unwrap_or_else(|| self.grow());
         let handle = JointPaletteHandle(self.next_handle);
         self.next_handle += 1;
         self.handle_to_slot.insert(handle, slot);
@@ -194,9 +187,14 @@ impl JointPaletteManager {
         self.next_handle = 0;
     }
 
-    /// Double the pool capacity, copying existing data
-    fn grow(&mut self) {
-        let new_capacity = self.pool_capacity * 2;
+    /// Double the pool capacity, copying existing data.
+    ///
+    /// Returns the highest new slot. The caller used to `pop` that index
+    /// after `grow` pushed `old..new`. The pool starts at 64 and doubles, so
+    /// the new range is never empty.
+    fn grow(&mut self) -> u32 {
+        let old_capacity = self.pool_capacity;
+        let new_capacity = old_capacity * 2;
         let new_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("joint_palette_pool"),
             size: self.slot_stride * new_capacity as u64,
@@ -217,12 +215,14 @@ impl JointPaletteManager {
             0,
             &new_buffer,
             0,
-            self.slot_stride * self.pool_capacity as u64,
+            self.slot_stride * old_capacity as u64,
         );
         self.queue.submit(std::iter::once(encoder.finish()));
 
-        // Register new free slots
-        for i in self.pool_capacity..new_capacity {
+        // Keep the highest new index for this allocation. The rest stay free,
+        // which is what `pop` returned when every new index was pushed.
+        let reserved = new_capacity - 1;
+        for i in old_capacity..reserved {
             self.free_slots.push(i);
         }
 
@@ -243,6 +243,7 @@ impl JointPaletteManager {
                 }),
             }],
         });
+        reserved
     }
 }
 
