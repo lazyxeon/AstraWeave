@@ -445,7 +445,6 @@ fn front_door_errors(
     }
     for phrase in [
         "3.688 ms",
-        "3.117 ms",
         "11 ms",
         "GTX 1660 Ti",
         "CC0",
@@ -458,6 +457,11 @@ fn front_door_errors(
                 "{STATUS_REL}: missing front-door phrase `{phrase}`"
             ));
         }
+    }
+    if !status_has_measured_sample(status, "3.117 ms") {
+        errors.push(format!(
+            "{STATUS_REL}: missing front-door phrase `3.117 ms` on a measurement line"
+        ));
     }
     match in_progress_body(readme) {
         None => errors.push(format!("{README_REL}: missing a '## In progress' section")),
@@ -491,7 +495,21 @@ fn front_door_errors(
     errors
 }
 
-/// A frame figure is a number followed by `ms`. The landing page must not carry one.
+/// The sample must appear as a measurement. A sentence that only names the
+/// phrase for this gate does not count.
+fn status_has_measured_sample(status: &str, phrase: &str) -> bool {
+    status.lines().any(|line| {
+        let lower = line.to_ascii_lowercase();
+        lower.contains(phrase)
+            && !lower.contains("aw_doc_lint")
+            && !lower.contains("front door")
+            && !lower.contains("front-door")
+            && !lower.contains("looks for")
+    })
+}
+
+/// A frame figure is a number whose following text, after tags and the spacing
+/// this README uses, is `ms`.
 fn readme_frame_figure_errors(readme: &str) -> Vec<String> {
     let lower = readme.to_ascii_lowercase();
     let bytes = lower.as_bytes();
@@ -507,10 +525,7 @@ fn readme_frame_figure_errors(readme: &str) -> Vec<String> {
         while i < bytes.len() && (bytes[i].is_ascii_digit() || bytes[i] == b'.') {
             i += 1;
         }
-        let mut j = i;
-        while j < bytes.len() && bytes[j] == b' ' {
-            j += 1;
-        }
+        let j = skip_frame_gap(bytes, i);
         if bytes.get(j..j + 2) != Some(b"ms") {
             continue;
         }
@@ -524,6 +539,41 @@ fn readme_frame_figure_errors(readme: &str) -> Vec<String> {
         ));
     }
     errors
+}
+
+fn skip_frame_gap(bytes: &[u8], mut j: usize) -> usize {
+    loop {
+        if j >= bytes.len() {
+            return j;
+        }
+        match bytes[j] {
+            b' ' | b'\t' | b'\n' | b'\r' => j += 1,
+            b'<' => {
+                while j < bytes.len() && bytes[j] != b'>' {
+                    j += 1;
+                }
+                if j < bytes.len() {
+                    j += 1;
+                }
+            }
+            b'&' => {
+                let rest = &bytes[j..];
+                let skip = if rest.starts_with(b"&nbsp;") {
+                    6
+                } else if rest.starts_with(b"&#32;") {
+                    5
+                } else if rest.starts_with(b"&#160;") || rest.starts_with(b"&#x20;") {
+                    6
+                } else if rest.starts_with(b"&#xa0;") {
+                    6
+                } else {
+                    return j;
+                };
+                j += skip;
+            }
+            _ => return j,
+        }
+    }
 }
 
 fn resolve_root(cli: &Cli) -> Result<PathBuf> {
@@ -927,10 +977,33 @@ mod tests {
 
     #[test]
     fn front_door_rejects_a_frame_figure_on_the_readme() {
-        let readme = format!("{}\nThe frame is 3.688 ms.\n", sample_readme());
-        let errors = front_door_errors(&readme, &sample_status(), &sample_workflow(), &[]);
+        for figure in [
+            "3.688 ms",
+            "3.117&nbsp;ms",
+            "3.117&#32;ms",
+            "3.117<br>ms",
+            "3.117\nms",
+            "3.117\tms",
+            "<span>3.117</span> ms",
+        ] {
+            let readme = format!("{}\nThe frame is {figure}.\n", sample_readme());
+            let errors = front_door_errors(&readme, &sample_status(), &sample_workflow(), &[]);
+            assert!(
+                errors.iter().any(|error| error.contains("frame figure")),
+                "{figure}: {errors:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn front_door_does_not_count_the_gate_sentence_as_the_sample() {
+        let status = sample_status().replace(
+            "A later sample is 3.117 ms.",
+            "aw_doc_lint looks for 3.117 ms.",
+        );
+        let errors = front_door_errors(&sample_readme(), &status, &sample_workflow(), &[]);
         assert!(
-            errors.iter().any(|error| error.contains("frame figure")),
+            errors.iter().any(|error| error.contains("3.117 ms")),
             "{errors:?}"
         );
     }
