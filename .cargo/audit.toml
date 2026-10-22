@@ -12,11 +12,6 @@
 
 [advisories]
 ignore = [
-    # nalgebra 0.26.2 is pinned by mikktspace 0.3.0. Tangent generation
-    # does not deserialize VecStorage.
-    # https://github.com/lazyxeon/AstraWeave/issues/306
-    "RUSTSEC-2021-0070",
-
     # quick-xml < 0.41 is pulled by egui-winit/accesskit and wayland-scanner.
     # Those parents do not accept 0.41.
     # https://github.com/lazyxeon/AstraWeave/issues/308

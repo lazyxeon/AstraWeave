@@ -15,7 +15,7 @@ Main is `49d289eb` (#397). #390 is merged as `5a52b039`. The older rows were che
 | Determinism | Nineteen required replay cases, compared on Linux, Windows, and macOS |
 | Greybox golden | `b6a9d5a2c5da28a6` |
 | Frame budget | 3.688 ms GPU frame, 11 ms target, GTX 1660 Ti. #371 and #372 stay open |
-| Supply chain | Postcard is alloc-only. `rustls-webpki` is 0.103.16. `webpki-roots` is 1.0.10. Ignored leftovers are #305, #306, #308–#310, and #321–#323 |
+| Supply chain | Postcard is alloc-only. `rustls-webpki` is 0.103.16. `webpki-roots` is 1.0.10. Ignored leftovers are #305, #308–#310, and #321–#323. #306 no longer has an ignore: `mikktspace` uses its `glam` backend, so `nalgebra` 0.26 is gone. |
 | CI badges | #390 is merged. It dropped the Clippy unwrap-prevention badge. That workflow was deleted in #223. `astraweave-ai` mutants run as 8 round-robin shards. The 70% gate is caught / (caught + missed). Timeouts are not caught. `cargo-mutants` is 27.1.0 |
 | Weave origins | #388 closed #295. `queue_weave` returns `OutsideIsland` outside ±2048 cells and does not saturate. #397 rejects that origin in the mod host before the cast is stored. A failed `run_one` drops that call's casts. An earlier script for the same agent that already returned `Ok` stays applied. #260 is closed. GitHub linked it to #397. The `weaving` case still hashes `NullField` |
 | Player-facing name | #394. The intro companion line says thread-binder. The Gate script scans dialogue, quests, echoes, voices, npc lines, and cinematics. The dialogue test uses dialogue, quests, echoes, and voices, then one directory level of npc and cinematics. `assets/cells` is outside both scans |
