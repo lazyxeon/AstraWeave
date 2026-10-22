@@ -514,7 +514,7 @@ fn run_headless_demo() -> Result<()> {
     let mut metrics = TelemetryMetrics::default();
 
     // Initialize Qwen3-8B LLM client
-    let _llm_client = Qwen3Ollama::fast();
+    let _llm_client = Qwen3Ollama::fast().expect("model client");
 
     println!("  {GREEN}Engine ready.{RESET} {DIM}Qwen3-8B LLM loaded.{RESET}");
     println!("  {DIM}Starting 30-second simulation...{RESET}\n");

@@ -244,7 +244,12 @@ impl EmbeddingClient for CandleEmbeddingClient {
     }
 }
 
-/// Remote API embedding client (OpenAI-compatible)
+/// Remote API embedding client (OpenAI-compatible).
+///
+/// [`RemoteEmbeddingClient::new`] accepts a loopback URL and uses
+/// [`astraweave_llm::loopback_http_client`]. A URL that would be rewritten is an
+/// error, and the API key is not stored. [`RemoteEmbeddingClient::allowing_remote`]
+/// keeps a caller URL that has no userinfo on reqwest's default client.
 #[cfg(feature = "http")]
 pub struct RemoteEmbeddingClient {
     api_url: String,
@@ -256,31 +261,48 @@ pub struct RemoteEmbeddingClient {
 
 #[cfg(feature = "http")]
 impl RemoteEmbeddingClient {
-    /// Create a new remote embedding client
-    pub fn new(api_url: String, model: String, dimensions: usize) -> Self {
-        Self {
-            api_url,
-            api_key: None,
-            model,
-            dimensions,
-            client: reqwest::Client::new(),
-        }
+    /// Create a loopback embedding client. A URL that would be rewritten is an error.
+    pub fn new(api_url: String, model: String, dimensions: usize) -> Result<Self> {
+        Self::assemble(api_url, model, dimensions, None, false)
     }
 
-    /// Create a client with API key
+    /// Loopback client plus a bearer token. A rejected URL does not store the key.
     pub fn with_api_key(
         api_url: String,
         model: String,
         dimensions: usize,
         api_key: String,
-    ) -> Self {
-        Self {
+    ) -> Result<Self> {
+        Self::assemble(api_url, model, dimensions, Some(api_key), false)
+    }
+
+    /// Keep `api_url` even when it is not loopback.
+    ///
+    /// The client is reqwest's default: `HTTP_PROXY`, `HTTPS_PROXY`, and
+    /// `ALL_PROXY` apply, and redirects are followed.
+    pub fn allowing_remote(api_url: String, model: String, dimensions: usize) -> Result<Self> {
+        Self::assemble(api_url, model, dimensions, None, true)
+    }
+
+    fn assemble(
+        api_url: String,
+        model: String,
+        dimensions: usize,
+        api_key: Option<String>,
+        allow_remote: bool,
+    ) -> Result<Self> {
+        if astraweave_llm::model_url_has_userinfo(&api_url) {
+            anyhow::bail!("embedding URL has userinfo");
+        }
+        let api_url = astraweave_llm::require_kept_model_url(api_url, allow_remote)?;
+        let client = astraweave_llm::build_model_client(&api_url, allow_remote)?;
+        Ok(Self {
             api_url,
-            api_key: Some(api_key),
+            api_key,
             model,
             dimensions,
-            client: reqwest::Client::new(),
-        }
+            client,
+        })
     }
 }
 
@@ -324,7 +346,8 @@ impl EmbeddingClient for RemoteEmbeddingClient {
             req = req.header("Authorization", format!("Bearer {}", api_key));
         }
 
-        let response = req.send().await?;
+        let idle = astraweave_llm::stream_read_idle();
+        let response = astraweave_llm::send_for_headers(idle, req.send()).await?;
 
         if !response.status().is_success() {
             return Err(anyhow::anyhow!("API request failed: {}", response.status()));
@@ -502,5 +525,58 @@ mod tests {
             emb_a, emb_a2,
             "Same text from different clients should match (determinism)"
         );
+    }
+
+    #[cfg(feature = "http")]
+    #[test]
+    fn remote_embedding_client_rejects_userinfo_even_when_remote() {
+        let urls = [
+            "http://user:pass@api.openai.com/v1",
+            "http://127.0.0.1:11434@evil.example/api",
+            "http://@127.0.0.1:11434/",
+            "http://:@127.0.0.1/",
+        ];
+        for url in urls {
+            let remote = RemoteEmbeddingClient::allowing_remote(url.to_string(), "m".into(), 8)
+                .err()
+                .unwrap_or_else(|| panic!("remote userinfo was accepted: {url}"));
+            assert!(remote.to_string().contains("userinfo"), "{url}: {remote}");
+            let local = RemoteEmbeddingClient::new(url.to_string(), "m".into(), 8)
+                .err()
+                .unwrap_or_else(|| panic!("local userinfo was accepted: {url}"));
+            assert!(local.to_string().contains("userinfo"), "{url}: {local}");
+        }
+
+        let remote = RemoteEmbeddingClient::allowing_remote(
+            "https://api.openai.com/v1".to_string(),
+            "m".into(),
+            8,
+        )
+        .expect("remote");
+        assert!(remote
+            .model_info()
+            .description
+            .contains("https://api.openai.com/v1"));
+        let local = RemoteEmbeddingClient::new("http://127.0.0.1:11434".to_string(), "m".into(), 8)
+            .expect("loopback");
+        assert!(local
+            .model_info()
+            .description
+            .contains("http://127.0.0.1:11434"));
+
+        let key = "sk-test";
+        match RemoteEmbeddingClient::with_api_key(
+            "https://api.openai.com/v1".to_string(),
+            "m".into(),
+            8,
+            key.to_string(),
+        ) {
+            Ok(_) => panic!("rewritten embedding URL stored the API key"),
+            Err(err) => {
+                let msg = err.to_string();
+                assert!(msg.contains("rejected"), "{msg}");
+                assert!(!msg.contains(key), "{msg}");
+            }
+        }
     }
 }

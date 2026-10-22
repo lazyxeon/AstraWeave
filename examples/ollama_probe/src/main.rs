@@ -1,16 +1,20 @@
 use futures_util::StreamExt;
-use reqwest::Client;
 use std::env;
 
 const DEFAULT_OLLAMA_MODEL: &str = "qwen3.5:4b";
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let url = env::var("OLLAMA_URL").unwrap_or_else(|_| "http://127.0.0.1:11434".to_string());
+    let url = astraweave_llm::loopback_model_url(
+        env::var("OLLAMA_URL").unwrap_or_else(|_| "http://127.0.0.1:11434".to_string()),
+        false,
+    );
     let model = env::var("OLLAMA_MODEL").unwrap_or_else(|_| DEFAULT_OLLAMA_MODEL.to_string());
     println!("Probe Ollama {} model {}", url, model);
 
-    let client = Client::new();
+    let client = astraweave_llm::loopback_http_client()
+        .build()
+        .map_err(|err| anyhow::anyhow!("loopback http client: {err}"))?;
     // Build a realistic planning prompt (mirrors astraweave_llm::build_prompt)
     let snapshot = serde_json::json!({
         "t": 1.0,
@@ -54,13 +58,20 @@ Return ONLY JSON with no commentary.
             "top_k": 20
         }
     });
-    let resp = client
-        .post(format!("{}/api/chat", url.trim_end_matches('/')))
-        .json(&body)
-        .send()
-        .await?;
+    let idle = astraweave_llm::stream_read_idle();
+    let resp = astraweave_llm::send_for_headers(
+        idle,
+        client
+            .post(format!("{}/api/chat", url.trim_end_matches('/')))
+            .json(&body)
+            .send(),
+    )
+    .await?;
     println!("status {}", resp.status());
-    let mut stream = resp.bytes_stream();
+    let mut stream = Box::pin(astraweave_llm::with_read_idle(
+        Box::pin(resp.bytes_stream()),
+        idle,
+    ));
     let mut buf = String::new();
     let mut acc = String::new();
     while let Some(item) = stream.next().await {
@@ -94,7 +105,7 @@ Return ONLY JSON with no commentary.
                 }
             }
             Err(e) => {
-                println!("stream err: {}", e);
+                println!("stream err: {e:#}");
             }
         }
     }

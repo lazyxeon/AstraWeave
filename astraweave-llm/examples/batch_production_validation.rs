@@ -31,7 +31,8 @@ async fn main() -> anyhow::Result<()> {
         let client = OllamaChatClient::new(
             "http://localhost:11434".to_string(),
             "qwen3.5:4b".to_string(),
-        );
+        )
+        .expect("model client");
 
         // Initialize tool registry and fallback system
         let reg = astraweave_core::default_tool_registry();

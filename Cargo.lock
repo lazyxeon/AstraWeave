@@ -860,6 +860,7 @@ name = "astraweave-embeddings"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "astraweave-llm",
  "async-trait",
  "candle-core",
  "candle-nn",
@@ -982,6 +983,7 @@ dependencies = [
  "tokenizers",
  "tokio",
  "tracing",
+ "url",
  "uuid",
 ]
 
@@ -7708,9 +7710,10 @@ name = "ollama_probe"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "reqwest",
+ "astraweave-llm",
  "serde",
  "serde_json",
+ "tokio",
 ]
 
 [[package]]
@@ -7718,6 +7721,7 @@ name = "ollama_probe_example"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "astraweave-llm",
  "futures-util",
  "reqwest",
  "serde_json",

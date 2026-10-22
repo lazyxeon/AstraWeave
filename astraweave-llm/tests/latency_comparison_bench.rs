@@ -284,10 +284,11 @@ async fn latency_comparison_qwen3_vs_hermes2pro() {
     // use_mmap=true, keep_alive=-1. These are Ollama-level optimizations
     // that Hermes benefits from its smaller model size instead (7B vs 8.2B params).
     let qwen3 = Qwen3Ollama::fast()
+        .expect("model client")
         .with_temperature(0.7)
         .with_max_tokens(512); // fast() already sets: no-think, ctx=2048, minimal system prompt
 
-    let hermes = Hermes2ProOllama::localhost(); // defaults: temp=0.7, max_tokens=512, ctx=8192
+    let hermes = Hermes2ProOllama::localhost().expect("model client"); // defaults: temp=0.7, max_tokens=512, ctx=8192
 
     // ── Verify both models are available ──
     let qwen3_health = qwen3
@@ -349,7 +350,7 @@ async fn latency_qwen3_fast_mode() {
     println!("║  Non-thinking, reduced context, minimal tokens          ║");
     println!("╚══════════════════════════════════════════════════════════╝");
 
-    let client = Qwen3Ollama::fast(); // non-thinking, 128 max tokens, 8192 context
+    let client = Qwen3Ollama::fast().expect("model client"); // non-thinking, 128 max tokens, 8192 context
 
     let health = client.health_check().await.expect("Health check failed");
     assert!(health.is_ready(), "Qwen3 not ready");

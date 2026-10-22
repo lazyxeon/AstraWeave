@@ -157,13 +157,17 @@ impl LlmComprehensiveDemo {
         #[cfg(feature = "ollama")]
         {
             // Try to connect to Ollama
-            let ollama_url = std::env::var("OLLAMA_URL")
-                .unwrap_or_else(|_| "http://127.0.0.1:11434".to_string());
+            let ollama_url = astraweave_llm::loopback_model_url(
+                std::env::var("OLLAMA_URL")
+                    .unwrap_or_else(|_| "http://127.0.0.1:11434".to_string()),
+                false,
+            );
             let ollama_model =
                 std::env::var("OLLAMA_MODEL").unwrap_or_else(|_| "llama2".to_string());
 
             println!("🔗 Attempting to connect to Ollama at {}", ollama_url);
-            let ollama_client = OllamaChatClient::new(ollama_url, ollama_model);
+            let ollama_client =
+                OllamaChatClient::new(ollama_url, ollama_model).expect("model client");
 
             // Test connection with warmup
             match ollama_client.warmup(10).await {

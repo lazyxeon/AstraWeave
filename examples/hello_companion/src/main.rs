@@ -956,6 +956,7 @@ fn generate_llm_plan(snap: &WorldSnapshot) -> Result<PlanIntent> {
     // - Prevents overly verbose plans (~0.5-1s savings on generation)
     // - Combined with Tier 2 (SimplifiedLlm) for maximum latency reduction
     let client = Qwen3Ollama::localhost()
+        .expect("model client")
         .with_temperature(0.5) // ⚠️ MODIFY THIS for temperature experiments
         .with_max_tokens(256); // Reduced from 1024 for faster generation
 
@@ -990,13 +991,18 @@ fn check_ollama_available() -> Result<()> {
     let rt = tokio::runtime::Runtime::new().context("Failed to create tokio runtime")?;
 
     rt.block_on(async {
-        let client = reqwest::Client::builder()
+        let client = astraweave_llm::loopback_http_client()
             .timeout(std::time::Duration::from_secs(2))
             .build()
             .context("Failed to create HTTP client")?;
 
+        let tags_url = format!(
+            "{}/api/tags",
+            astraweave_llm::loopback_model_url("http://localhost:11434".to_string(), false)
+                .trim_end_matches('/')
+        );
         let response = client
-            .get("http://localhost:11434/api/tags")
+            .get(tags_url)
             .send()
             .await
             .context("Ollama not running. Start with: ollama serve")?;

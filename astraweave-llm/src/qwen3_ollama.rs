@@ -29,7 +29,7 @@
 //! use astraweave_llm::LlmClient;
 //!
 //! async fn example() -> anyhow::Result<()> {
-//!     let client = Qwen3Ollama::new("http://localhost:11434", DEFAULT_QWEN_INSTRUCT_MODEL);
+//!     let client = Qwen3Ollama::new("http://localhost:11434", DEFAULT_QWEN_INSTRUCT_MODEL).expect("model client");
 //!     let response = client.complete("You are a game AI. Plan your next action.").await?;
 //!     Ok(())
 //! }
@@ -143,7 +143,8 @@ impl ChatSession {
 #[derive(Debug, Clone)]
 pub struct Qwen3Ollama {
     /// Ollama API endpoint (default: http://localhost:11434)
-    pub url: String,
+    url: String,
+    allow_remote: bool,
 
     /// Model name (default: `DEFAULT_QWEN_INSTRUCT_MODEL`)
     pub model: String,
@@ -163,9 +164,16 @@ pub struct Qwen3Ollama {
 
     /// Context window length in tokens (default: 32768 for Qwen3-8B native)
     pub context_length: usize,
+
+    client: reqwest::Client,
 }
 
 impl Qwen3Ollama {
+    /// Stored endpoint. The first hop is checked again before each request.
+    pub fn url(&self) -> &str {
+        &self.url
+    }
+
     /// Create a new Qwen3-8B client with default settings
     ///
     /// # Arguments
@@ -175,27 +183,39 @@ impl Qwen3Ollama {
     /// # Example
     /// ```no_run
     /// # use astraweave_llm::qwen3_ollama::{Qwen3Ollama, DEFAULT_QWEN_INSTRUCT_MODEL};
-    /// let client = Qwen3Ollama::new("http://localhost:11434", DEFAULT_QWEN_INSTRUCT_MODEL);
+    /// let client = Qwen3Ollama::new("http://localhost:11434", DEFAULT_QWEN_INSTRUCT_MODEL).expect("model client");
     /// ```
-    pub fn new(url: impl Into<String>, model: impl Into<String>) -> Self {
+    pub fn new(url: impl Into<String>, model: impl Into<String>) -> Result<Self> {
         Self::assemble(url, model, false)
     }
 
-    /// Keep a non-loopback URL. `new` replaces one with `http://127.0.0.1:11434`.
-    pub fn allowing_remote(url: impl Into<String>, model: impl Into<String>) -> Self {
+    /// Keep a non-loopback URL and use reqwest's default client for it.
+    ///
+    /// That client honors `HTTP_PROXY`, `HTTPS_PROXY`, and `ALL_PROXY`, and it
+    /// follows redirects. A loopback URL still uses [`crate::loopback_http_client`].
+    /// `new` returns an error when the URL would be rewritten.
+    pub fn allowing_remote(url: impl Into<String>, model: impl Into<String>) -> Result<Self> {
         Self::assemble(url, model, true)
     }
 
-    fn assemble(url: impl Into<String>, model: impl Into<String>, allow_remote: bool) -> Self {
-        Self {
-            url: crate::loopback_model_url(url.into(), allow_remote),
+    fn assemble(
+        url: impl Into<String>,
+        model: impl Into<String>,
+        allow_remote: bool,
+    ) -> Result<Self> {
+        let url = crate::require_kept_model_url(url.into(), allow_remote)?;
+        let client = crate::build_model_client(&url, allow_remote)?;
+        Ok(Self {
+            url,
+            allow_remote,
             model: model.into(),
             temperature: 0.7,
             max_tokens: 512,
             system_prompt: Some(DEFAULT_SYSTEM_PROMPT.to_string()),
             enable_thinking: false,
             context_length: 32768,
-        }
+            client,
+        })
     }
 
     /// Create Qwen client for localhost (convenience method)
@@ -205,9 +225,9 @@ impl Qwen3Ollama {
     /// # Example
     /// ```no_run
     /// # use astraweave_llm::qwen3_ollama::Qwen3Ollama;
-    /// let client = Qwen3Ollama::localhost();
+    /// let client = Qwen3Ollama::localhost().expect("model client");
     /// ```
-    pub fn localhost() -> Self {
+    pub fn localhost() -> Result<Self> {
         Self::new("http://localhost:11434", DEFAULT_QWEN_INSTRUCT_MODEL)
     }
 
@@ -229,17 +249,17 @@ impl Qwen3Ollama {
     /// # Example
     /// ```no_run
     /// # use astraweave_llm::qwen3_ollama::Qwen3Ollama;
-    /// let client = Qwen3Ollama::fast(); // Low latency variant
+    /// let client = Qwen3Ollama::fast().expect("model client"); // Low latency variant
     /// ```
-    pub fn fast() -> Self {
-        let mut client = Self::new("http://localhost:11434", DEFAULT_QWEN_INSTRUCT_MODEL)
+    pub fn fast() -> Result<Self> {
+        let mut client = Self::new("http://localhost:11434", DEFAULT_QWEN_INSTRUCT_MODEL)?
             .with_temperature(0.5)
             .with_max_tokens(128)
             .with_thinking(false)
             .with_context_length(2048);
         // Ultra-short system prompt — every token saved reduces TTFC
         client.system_prompt = Some(FAST_SYSTEM_PROMPT.to_string());
-        client
+        Ok(client)
     }
 
     /// Create Qwen3-8B client for strategic planning (thinking mode)
@@ -251,14 +271,16 @@ impl Qwen3Ollama {
     /// # Example
     /// ```no_run
     /// # use astraweave_llm::qwen3_ollama::Qwen3Ollama;
-    /// let client = Qwen3Ollama::strategic(); // Thinking mode for complex plans
+    /// let client = Qwen3Ollama::strategic().expect("model client"); // Thinking mode for complex plans
     /// ```
-    pub fn strategic() -> Self {
-        Self::new("http://localhost:11434", DEFAULT_QWEN_INSTRUCT_MODEL)
-            .with_temperature(0.6)
-            .with_max_tokens(1024)
-            .with_thinking(true)
-            .with_context_length(32768)
+    pub fn strategic() -> Result<Self> {
+        Ok(
+            Self::new("http://localhost:11434", DEFAULT_QWEN_INSTRUCT_MODEL)?
+                .with_temperature(0.6)
+                .with_max_tokens(1024)
+                .with_thinking(true)
+                .with_context_length(32768),
+        )
     }
 
     /// Set temperature (Qwen3 docs: minimum 0.5 recommended, never 0.0)
@@ -372,20 +394,15 @@ impl Qwen3Ollama {
     /// ```no_run
     /// # use astraweave_llm::qwen3_ollama::Qwen3Ollama;
     /// # async fn demo() -> anyhow::Result<()> {
-    /// let client = Qwen3Ollama::fast();
+    /// let client = Qwen3Ollama::fast().expect("model client");
     /// client.preload().await?;  // Warm model + KV cache
     /// // First real call now has the same TTFC as subsequent calls
     /// # Ok(())
     /// # }
     /// ```
     pub async fn preload(&self) -> Result<()> {
-        static CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
-        let client = CLIENT.get_or_init(|| {
-            reqwest::Client::builder()
-                .timeout(std::time::Duration::from_secs(120))
-                .build()
-                .unwrap_or_else(|_| reqwest::Client::new())
-        });
+        crate::ensure_model_request(&self.url, self.allow_remote)?;
+        let client = &self.client;
 
         let url = format!("{}/api/chat", self.url);
 
@@ -415,6 +432,7 @@ impl Qwen3Ollama {
         let response = client
             .post(&url)
             .json(&body)
+            .timeout(std::time::Duration::from_secs(120))
             .send()
             .await
             .context("Failed to preload model")?;
@@ -423,8 +441,12 @@ impl Qwen3Ollama {
             anyhow::bail!("Ollama preload returned error: {}", response.status());
         }
 
-        // Consume the response body to complete the request
-        let _ = response.text().await;
+        // The 120s request timeout moves onto the body after the status line.
+        // A missing body is a failed preload, not a warm model.
+        response
+            .text()
+            .await
+            .context("Ollama preload body read failed")?;
 
         tracing::info!(
             "Model {} preloaded in {:.1}s (KV prefix cached)",
@@ -436,16 +458,8 @@ impl Qwen3Ollama {
 
     /// Internal chat method using /api/chat
     async fn chat(&self, messages: &[ChatMessage]) -> Result<String> {
-        // Use a static client with connection pooling for better performance
-        static CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
-        let client = CLIENT.get_or_init(|| {
-            reqwest::Client::builder()
-                .pool_max_idle_per_host(10) // Keep connections alive
-                .pool_idle_timeout(std::time::Duration::from_secs(90))
-                .timeout(std::time::Duration::from_secs(300)) // 5 min timeout for slow hardware
-                .build()
-                .unwrap_or_else(|_| reqwest::Client::new())
-        });
+        crate::ensure_model_request(&self.url, self.allow_remote)?;
+        let client = &self.client;
 
         let url = format!("{}/api/chat", self.url);
 
@@ -461,6 +475,7 @@ impl Qwen3Ollama {
         let response = client
             .post(&url)
             .json(&body)
+            .timeout(std::time::Duration::from_secs(300))
             .send()
             .await
             .context("Failed to send request to Ollama")?;
@@ -482,15 +497,15 @@ impl Qwen3Ollama {
 
     /// Check if Ollama server is running and model is available
     pub async fn health_check(&self) -> Result<HealthStatus> {
-        let client = reqwest::Client::new();
+        crate::ensure_model_request(&self.url, self.allow_remote)?;
+        let client = &self.client;
 
         // Check server is running
         let server_url = format!("{}/api/tags", self.url);
-        let response = client
-            .get(&server_url)
-            .send()
-            .await
-            .context("Failed to connect to Ollama server")?;
+        let response =
+            crate::send_for_headers(crate::stream_read_idle(), client.get(&server_url).send())
+                .await
+                .context("Failed to connect to Ollama server")?;
 
         if !response.status().is_success() {
             anyhow::bail!("Ollama server returned error: {}", response.status());
@@ -649,16 +664,8 @@ fn extract_ollama_content(response_json: &serde_json::Value) -> Result<String> {
 #[async_trait]
 impl LlmClient for Qwen3Ollama {
     async fn complete(&self, prompt: &str) -> Result<String> {
-        // Use a static client with connection pooling for better performance
-        static CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
-        let client = CLIENT.get_or_init(|| {
-            reqwest::Client::builder()
-                .pool_max_idle_per_host(10) // Keep connections alive
-                .pool_idle_timeout(std::time::Duration::from_secs(90))
-                .timeout(std::time::Duration::from_secs(300)) // 5 min timeout for slow hardware
-                .build()
-                .unwrap_or_else(|_| reqwest::Client::new())
-        });
+        crate::ensure_model_request(&self.url, self.allow_remote)?;
+        let client = &self.client;
 
         let url = format!("{}/api/chat", self.url);
 
@@ -692,6 +699,7 @@ impl LlmClient for Qwen3Ollama {
         let response = client
             .post(&url)
             .json(&body)
+            .timeout(std::time::Duration::from_secs(300))
             .send()
             .await
             .context("Failed to send request to Ollama")?;
@@ -741,7 +749,7 @@ impl LlmClient for Qwen3Ollama {
     /// # use astraweave_llm::LlmClient;
     /// # use futures_util::StreamExt;
     /// # async fn example() -> anyhow::Result<()> {
-    /// let client = Qwen3Ollama::localhost();
+    /// let client = Qwen3Ollama::localhost().expect("model client");
     /// let mut stream = client.complete_streaming("Generate plan").await?;
     ///
     /// let mut full_response = String::new();
@@ -757,21 +765,13 @@ impl LlmClient for Qwen3Ollama {
         &self,
         prompt: &str,
     ) -> Result<std::pin::Pin<Box<dyn futures_util::Stream<Item = Result<String>> + Send>>> {
+        crate::ensure_model_request(&self.url, self.allow_remote)?;
         use futures_util::StreamExt;
 
-        // Use static client with connection pooling
-        // NOTE: No overall `.timeout()` for streaming — the total lifecycle can
-        // be long as chunks arrive incrementally. We only set a connect timeout
-        // so the initial TCP handshake doesn't hang forever.
-        static CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
-        let client = CLIENT.get_or_init(|| {
-            reqwest::Client::builder()
-                .pool_max_idle_per_host(10)
-                .pool_idle_timeout(std::time::Duration::from_secs(90))
-                .connect_timeout(std::time::Duration::from_secs(30))
-                .build()
-                .unwrap_or_else(|_| reqwest::Client::new())
-        });
+        // `OLLAMA_TIMEOUT_SECS` bounds the header wait and each body read.
+        // It is not a total deadline, so a slow chunk stream is not cut off.
+        let idle = crate::stream_read_idle();
+        let client = &self.client;
 
         let url = format!("{}/api/chat", self.url);
 
@@ -802,10 +802,7 @@ impl LlmClient for Qwen3Ollama {
                 self.model
             );
 
-            let response = client
-                .post(&url)
-                .json(&body)
-                .send()
+            let response = crate::send_for_headers(idle, client.post(&url).json(&body).send())
                 .await
                 .context("Failed to send request to Ollama")?;
 
@@ -839,10 +836,7 @@ impl LlmClient for Qwen3Ollama {
 
         tracing::debug!("Sending streaming request to Ollama: {}", self.model);
 
-        let response = client
-            .post(&url)
-            .json(&body)
-            .send()
+        let response = crate::send_for_headers(idle, client.post(&url).json(&body).send())
             .await
             .context("Failed to send streaming request to Ollama")?;
 
@@ -853,7 +847,7 @@ impl LlmClient for Qwen3Ollama {
         // Convert bytes_stream to text chunk stream
         // Ollama streams NDJSON (newline-delimited JSON):
         //   {"message": {"content": "text"}, "done": false}\n
-        let byte_stream = response.bytes_stream();
+        let byte_stream = crate::with_read_idle(Box::pin(response.bytes_stream()), idle);
 
         // Transform bytes → NDJSON lines → text chunks
         // Uses a byte buffer to handle chunks that split UTF-8 characters or JSON lines
@@ -863,10 +857,9 @@ impl LlmClient for Qwen3Ollama {
                 let chunk = match chunk_result {
                     Ok(bytes) => bytes,
                     Err(e) => {
-                        return futures_util::future::ready(Some(vec![Err(anyhow::anyhow!(
-                            "Stream error: {}",
-                            e
-                        ))]));
+                        return futures_util::future::ready(Some(vec![Err(
+                            e.context("Stream error")
+                        )]));
                     }
                 };
 
@@ -963,8 +956,9 @@ mod tests {
 
     #[test]
     fn test_qwen3_ollama_creation() {
-        let client = Qwen3Ollama::new("http://localhost:11434", DEFAULT_QWEN_INSTRUCT_MODEL);
-        assert_eq!(client.url, "http://localhost:11434");
+        let client = Qwen3Ollama::new("http://localhost:11434", DEFAULT_QWEN_INSTRUCT_MODEL)
+            .expect("model client");
+        assert_eq!(client.url(), "http://localhost:11434");
         assert_eq!(client.model, DEFAULT_QWEN_INSTRUCT_MODEL);
         assert_eq!(client.temperature, 0.7);
         assert_eq!(client.max_tokens, 512);
@@ -975,14 +969,14 @@ mod tests {
 
     #[test]
     fn test_localhost_convenience() {
-        let client = Qwen3Ollama::localhost();
-        assert_eq!(client.url, "http://localhost:11434");
+        let client = Qwen3Ollama::localhost().expect("model client");
+        assert_eq!(client.url(), "http://localhost:11434");
         assert_eq!(client.model, DEFAULT_QWEN_INSTRUCT_MODEL);
     }
 
     #[test]
     fn test_fast_variant() {
-        let client = Qwen3Ollama::fast();
+        let client = Qwen3Ollama::fast().expect("model client");
         assert_eq!(client.model, DEFAULT_QWEN_INSTRUCT_MODEL);
         assert_eq!(client.temperature, 0.5);
         assert_eq!(client.max_tokens, 128);
@@ -992,7 +986,7 @@ mod tests {
 
     #[test]
     fn test_strategic_variant() {
-        let client = Qwen3Ollama::strategic();
+        let client = Qwen3Ollama::strategic().expect("model client");
         assert_eq!(client.model, DEFAULT_QWEN_INSTRUCT_MODEL);
         assert_eq!(client.temperature, 0.6);
         assert_eq!(client.max_tokens, 1024);
@@ -1003,6 +997,7 @@ mod tests {
     #[test]
     fn test_builder_pattern() {
         let client = Qwen3Ollama::localhost()
+            .expect("model client")
             .with_temperature(0.5)
             .with_max_tokens(256)
             .with_thinking(true)
@@ -1054,7 +1049,9 @@ mod tests {
 
     #[test]
     fn test_prepare_user_content_thinking() {
-        let client = Qwen3Ollama::localhost().with_thinking(true);
+        let client = Qwen3Ollama::localhost()
+            .expect("model client")
+            .with_thinking(true);
         let content = client.prepare_user_content("What should I do?");
         assert!(content.starts_with("/think\n"));
         assert!(content.contains("What should I do?"));
@@ -1062,7 +1059,9 @@ mod tests {
 
     #[test]
     fn test_prepare_user_content_no_thinking() {
-        let client = Qwen3Ollama::localhost().with_thinking(false);
+        let client = Qwen3Ollama::localhost()
+            .expect("model client")
+            .with_thinking(false);
         let content = client.prepare_user_content("What should I do?");
         // Optimized: no /no_think prefix — API body "think": false handles it
         assert_eq!(content, "What should I do?");
@@ -1070,7 +1069,7 @@ mod tests {
 
     #[test]
     fn test_build_options_non_thinking() {
-        let client = Qwen3Ollama::fast();
+        let client = Qwen3Ollama::fast().expect("model client");
         let opts = client.build_options();
         // Optimized: lean params — no top_p, top_k, repeat_penalty for speed
         assert_eq!(opts["temperature"], 0.5);
@@ -1089,7 +1088,7 @@ mod tests {
 
     #[test]
     fn test_build_options_thinking() {
-        let client = Qwen3Ollama::strategic();
+        let client = Qwen3Ollama::strategic().expect("model client");
         let opts = client.build_options();
         assert_eq!(opts["top_p"], 0.95);
         assert_eq!(opts["top_k"], 20);
@@ -1099,7 +1098,7 @@ mod tests {
     #[tokio::test]
     #[ignore] // Requires Ollama running
     async fn test_health_check() {
-        let client = Qwen3Ollama::localhost();
+        let client = Qwen3Ollama::localhost().expect("model client");
         let health = client.health_check().await;
 
         // If Ollama is running, this should succeed
@@ -1113,7 +1112,7 @@ mod tests {
     #[tokio::test]
     #[ignore] // Requires Ollama + qwen3.5:4b
     async fn test_complete() {
-        let client = Qwen3Ollama::localhost();
+        let client = Qwen3Ollama::localhost().expect("model client");
 
         // Check health first
         let health = client.health_check().await.expect("Health check failed");
@@ -1146,7 +1145,7 @@ mod tests {
     async fn test_complete_streaming() {
         use futures_util::StreamExt;
 
-        let client = Qwen3Ollama::localhost();
+        let client = Qwen3Ollama::localhost().expect("model client");
 
         // Check health first
         let health = client.health_check().await.expect("Health check failed");
@@ -1222,7 +1221,9 @@ mod tests {
     async fn test_streaming_vs_blocking_consistency() {
         use futures_util::StreamExt;
 
-        let client = Qwen3Ollama::localhost().with_temperature(0.5); // Low variance
+        let client = Qwen3Ollama::localhost()
+            .expect("model client")
+            .with_temperature(0.5); // Low variance
 
         let prompt = "Generate JSON: {\"action\": \"move\", \"x\": 5, \"y\": 10}";
 

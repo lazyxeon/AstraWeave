@@ -11,11 +11,11 @@
 //! ```rust,ignore
 //! // Old:
 //! use astraweave_llm::hermes2pro_ollama::Hermes2ProOllama;
-//! let client = Hermes2ProOllama::localhost();
+//! let client = Hermes2ProOllama::localhost().expect("model client");
 //!
 //! // New:
 //! use astraweave_llm::qwen3_ollama::Qwen3Ollama;
-//! let client = Qwen3Ollama::localhost();
+//! let client = Qwen3Ollama::localhost().expect("model client");
 //! ```
 //!
 //! ---
@@ -48,7 +48,7 @@
 //! use astraweave_llm::LlmClient;
 //!
 //! async fn example() -> anyhow::Result<()> {
-//!     let client = Hermes2ProOllama::new("http://localhost:11434", "adrienbrault/nous-hermes2pro:Q4_K_M");
+//!     let client = Hermes2ProOllama::new("http://localhost:11434", "adrienbrault/nous-hermes2pro:Q4_K_M").expect("model client");
 //!     let response = client.complete("You are a game AI. Plan your next action.").await?;
 //!     Ok(())
 //! }
@@ -154,7 +154,8 @@ impl ChatSession {
 #[derive(Debug, Clone)]
 pub struct Hermes2ProOllama {
     /// Ollama API endpoint (default: http://localhost:11434)
-    pub url: String,
+    url: String,
+    allow_remote: bool,
 
     /// Model name (default: "adrienbrault/nous-hermes2pro:Q4_K_M")
     pub model: String,
@@ -167,9 +168,16 @@ pub struct Hermes2ProOllama {
 
     /// System prompt for game AI context
     pub system_prompt: Option<String>,
+
+    client: reqwest::Client,
 }
 
 impl Hermes2ProOllama {
+    /// Stored endpoint. The first hop is checked again before each request.
+    pub fn url(&self) -> &str {
+        &self.url
+    }
+
     /// Create a new Hermes 2 Pro client with default settings
     ///
     /// # Arguments
@@ -179,25 +187,37 @@ impl Hermes2ProOllama {
     /// # Example
     /// ```no_run
     /// # use astraweave_llm::hermes2pro_ollama::Hermes2ProOllama;
-    /// let client = Hermes2ProOllama::new("http://localhost:11434", "adrienbrault/nous-hermes2pro:Q4_K_M");
+    /// let client = Hermes2ProOllama::new("http://localhost:11434", "adrienbrault/nous-hermes2pro:Q4_K_M").expect("model client");
     /// ```
-    pub fn new(url: impl Into<String>, model: impl Into<String>) -> Self {
+    pub fn new(url: impl Into<String>, model: impl Into<String>) -> Result<Self> {
         Self::assemble(url, model, false)
     }
 
-    /// Keep a non-loopback URL. `new` replaces one with `http://127.0.0.1:11434`.
-    pub fn allowing_remote(url: impl Into<String>, model: impl Into<String>) -> Self {
+    /// Keep a non-loopback URL and use reqwest's default client for it.
+    ///
+    /// That client honors `HTTP_PROXY`, `HTTPS_PROXY`, and `ALL_PROXY`, and it
+    /// follows redirects. A loopback URL still uses [`crate::loopback_http_client`].
+    /// `new` returns an error when the URL would be rewritten.
+    pub fn allowing_remote(url: impl Into<String>, model: impl Into<String>) -> Result<Self> {
         Self::assemble(url, model, true)
     }
 
-    fn assemble(url: impl Into<String>, model: impl Into<String>, allow_remote: bool) -> Self {
-        Self {
-            url: crate::loopback_model_url(url.into(), allow_remote),
+    fn assemble(
+        url: impl Into<String>,
+        model: impl Into<String>,
+        allow_remote: bool,
+    ) -> Result<Self> {
+        let url = crate::require_kept_model_url(url.into(), allow_remote)?;
+        let client = crate::build_model_client(&url, allow_remote)?;
+        Ok(Self {
+            url,
+            allow_remote,
             model: model.into(),
             temperature: 0.7,
             max_tokens: 512,
             system_prompt: Some(DEFAULT_SYSTEM_PROMPT.to_string()),
-        }
+            client,
+        })
     }
 
     /// Create Hermes 2 Pro client for localhost (convenience method)
@@ -207,9 +227,9 @@ impl Hermes2ProOllama {
     /// # Example
     /// ```no_run
     /// # use astraweave_llm::hermes2pro_ollama::Hermes2ProOllama;
-    /// let client = Hermes2ProOllama::localhost(); // Uses adrienbrault/nous-hermes2pro:Q4_K_M
+    /// let client = Hermes2ProOllama::localhost().expect("model client"); // Uses adrienbrault/nous-hermes2pro:Q4_K_M
     /// ```
-    pub fn localhost() -> Self {
+    pub fn localhost() -> Result<Self> {
         Self::new(
             "http://localhost:11434",
             "adrienbrault/nous-hermes2pro:Q4_K_M",
@@ -224,15 +244,15 @@ impl Hermes2ProOllama {
     /// # Example
     /// ```no_run
     /// # use astraweave_llm::hermes2pro_ollama::Hermes2ProOllama;
-    /// let client = Hermes2ProOllama::fast(); // Low latency variant
+    /// let client = Hermes2ProOllama::fast().expect("model client"); // Low latency variant
     /// ```
-    pub fn fast() -> Self {
-        Self::new(
+    pub fn fast() -> Result<Self> {
+        Ok(Self::new(
             "http://localhost:11434",
             "adrienbrault/nous-hermes2pro:Q4_K_M",
-        )
+        )?
         .with_temperature(0.5)
-        .with_max_tokens(128)
+        .with_max_tokens(128))
     }
 
     /// Set temperature (0.0 = deterministic, 1.0 = creative)
@@ -266,16 +286,8 @@ impl Hermes2ProOllama {
 
     /// Internal chat method using /api/chat
     async fn chat(&self, messages: &[ChatMessage]) -> Result<String> {
-        // Use a static client with connection pooling for better performance
-        static CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
-        let client = CLIENT.get_or_init(|| {
-            reqwest::Client::builder()
-                .pool_max_idle_per_host(10) // Keep connections alive
-                .pool_idle_timeout(std::time::Duration::from_secs(90))
-                .timeout(std::time::Duration::from_secs(120)) // 2 min timeout
-                .build()
-                .unwrap_or_else(|_| reqwest::Client::new())
-        });
+        crate::ensure_model_request(&self.url, self.allow_remote)?;
+        let client = &self.client;
 
         let url = format!("{}/api/chat", self.url);
 
@@ -293,6 +305,7 @@ impl Hermes2ProOllama {
         let response = client
             .post(&url)
             .json(&body)
+            .timeout(std::time::Duration::from_secs(120))
             .send()
             .await
             .context("Failed to send request to Ollama")?;
@@ -316,15 +329,15 @@ impl Hermes2ProOllama {
 
     /// Check if Ollama server is running and model is available
     pub async fn health_check(&self) -> Result<HealthStatus> {
-        let client = reqwest::Client::new();
+        crate::ensure_model_request(&self.url, self.allow_remote)?;
+        let client = &self.client;
 
         // Check server is running
         let server_url = format!("{}/api/tags", self.url);
-        let response = client
-            .get(&server_url)
-            .send()
-            .await
-            .context("Failed to connect to Ollama server")?;
+        let response =
+            crate::send_for_headers(crate::stream_read_idle(), client.get(&server_url).send())
+                .await
+                .context("Failed to connect to Ollama server")?;
 
         if !response.status().is_success() {
             anyhow::bail!("Ollama server returned error: {}", response.status());
@@ -403,16 +416,8 @@ Always prioritize team survival and tactical advantage."#;
 #[async_trait]
 impl LlmClient for Hermes2ProOllama {
     async fn complete(&self, prompt: &str) -> Result<String> {
-        // Use a static client with connection pooling for better performance
-        static CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
-        let client = CLIENT.get_or_init(|| {
-            reqwest::Client::builder()
-                .pool_max_idle_per_host(10) // Keep connections alive
-                .pool_idle_timeout(std::time::Duration::from_secs(90))
-                .timeout(std::time::Duration::from_secs(120)) // 2 min timeout
-                .build()
-                .unwrap_or_else(|_| reqwest::Client::new())
-        });
+        crate::ensure_model_request(&self.url, self.allow_remote)?;
+        let client = &self.client;
 
         let url = format!("{}/api/chat", self.url);
 
@@ -453,6 +458,7 @@ impl LlmClient for Hermes2ProOllama {
         let response = client
             .post(&url)
             .json(&body)
+            .timeout(std::time::Duration::from_secs(120))
             .send()
             .await
             .context("Failed to send request to Ollama")?;
@@ -510,7 +516,7 @@ impl LlmClient for Hermes2ProOllama {
     /// # use astraweave_llm::LlmClient;
     /// # use futures_util::StreamExt;
     /// # async fn example() -> anyhow::Result<()> {
-    /// let client = Hermes2ProOllama::localhost();
+    /// let client = Hermes2ProOllama::localhost().expect("model client");
     /// let mut stream = client.complete_streaming("Generate plan").await?;
     ///
     /// let mut full_response = String::new();
@@ -526,18 +532,11 @@ impl LlmClient for Hermes2ProOllama {
         &self,
         prompt: &str,
     ) -> Result<std::pin::Pin<Box<dyn futures_util::Stream<Item = Result<String>> + Send>>> {
+        crate::ensure_model_request(&self.url, self.allow_remote)?;
         use futures_util::StreamExt;
 
-        // Use static client with connection pooling
-        static CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
-        let client = CLIENT.get_or_init(|| {
-            reqwest::Client::builder()
-                .pool_max_idle_per_host(10)
-                .pool_idle_timeout(std::time::Duration::from_secs(90))
-                .timeout(std::time::Duration::from_secs(120))
-                .build()
-                .unwrap_or_else(|_| reqwest::Client::new())
-        });
+        let idle = crate::stream_read_idle();
+        let client = &self.client;
 
         let url = format!("{}/api/chat", self.url);
 
@@ -572,10 +571,7 @@ impl LlmClient for Hermes2ProOllama {
 
         tracing::debug!("Sending streaming request to Ollama: {}", self.model);
 
-        let response = client
-            .post(&url)
-            .json(&body)
-            .send()
+        let response = crate::send_for_headers(idle, client.post(&url).json(&body).send())
             .await
             .context("Failed to send streaming request to Ollama")?;
 
@@ -586,7 +582,7 @@ impl LlmClient for Hermes2ProOllama {
         // Convert bytes_stream to text chunk stream
         // Ollama streams NDJSON (newline-delimited JSON):
         //   {"message": {"content": "text"}, "done": false}\n
-        let byte_stream = response.bytes_stream();
+        let byte_stream = crate::with_read_idle(Box::pin(response.bytes_stream()), idle);
 
         // Transform bytes → NDJSON lines → text chunks
         // Uses a byte buffer to handle chunks that split UTF-8 characters or JSON lines
@@ -596,10 +592,9 @@ impl LlmClient for Hermes2ProOllama {
                 let chunk = match chunk_result {
                     Ok(bytes) => bytes,
                     Err(e) => {
-                        return futures_util::future::ready(Some(vec![Err(anyhow::anyhow!(
-                            "Stream error: {}",
-                            e
-                        ))]));
+                        return futures_util::future::ready(Some(vec![Err(
+                            e.context("Stream error")
+                        )]));
                     }
                 };
 
@@ -679,8 +674,9 @@ mod tests {
         let client = Hermes2ProOllama::new(
             "http://localhost:11434",
             "adrienbrault/nous-hermes2pro:Q4_K_M",
-        );
-        assert_eq!(client.url, "http://localhost:11434");
+        )
+        .expect("model client");
+        assert_eq!(client.url(), "http://localhost:11434");
         assert_eq!(client.model, "adrienbrault/nous-hermes2pro:Q4_K_M");
         assert_eq!(client.temperature, 0.7);
         assert_eq!(client.max_tokens, 512);
@@ -689,14 +685,15 @@ mod tests {
 
     #[test]
     fn test_localhost_convenience() {
-        let client = Hermes2ProOllama::localhost();
-        assert_eq!(client.url, "http://localhost:11434");
+        let client = Hermes2ProOllama::localhost().expect("model client");
+        assert_eq!(client.url(), "http://localhost:11434");
         assert_eq!(client.model, "adrienbrault/nous-hermes2pro:Q4_K_M");
     }
 
     #[test]
     fn test_builder_pattern() {
         let client = Hermes2ProOllama::localhost()
+            .expect("model client")
             .with_temperature(0.5)
             .with_max_tokens(256)
             .without_system_prompt();
@@ -709,7 +706,7 @@ mod tests {
     #[tokio::test]
     #[ignore] // Requires Ollama running
     async fn test_health_check() {
-        let client = Hermes2ProOllama::localhost();
+        let client = Hermes2ProOllama::localhost().expect("model client");
         let health = client.health_check().await;
 
         // If Ollama is running, this should succeed
@@ -723,7 +720,7 @@ mod tests {
     #[tokio::test]
     #[ignore] // Requires Ollama + adrienbrault/nous-hermes2pro:Q4_K_M
     async fn test_complete() {
-        let client = Hermes2ProOllama::localhost();
+        let client = Hermes2ProOllama::localhost().expect("model client");
 
         // Check health first
         let health = client.health_check().await.expect("Health check failed");
@@ -752,7 +749,7 @@ mod tests {
     async fn test_complete_streaming() {
         use futures_util::StreamExt;
 
-        let client = Hermes2ProOllama::localhost();
+        let client = Hermes2ProOllama::localhost().expect("model client");
 
         // Check health first
         let health = client.health_check().await.expect("Health check failed");
@@ -836,7 +833,9 @@ mod tests {
     async fn test_streaming_vs_blocking_consistency() {
         use futures_util::StreamExt;
 
-        let client = Hermes2ProOllama::localhost().with_temperature(0.0); // Deterministic for consistency check
+        let client = Hermes2ProOllama::localhost()
+            .expect("model client")
+            .with_temperature(0.0); // Deterministic for consistency check
 
         let prompt = "Generate JSON: {\"action\": \"move\", \"x\": 5, \"y\": 10}";
 

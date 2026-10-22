@@ -16,7 +16,7 @@ async fn main() -> anyhow::Result<()> {
 
     // Test 1: phi3:fast (optimized)
     println!("{}", "Testing phi3:fast (optimized)...".yellow());
-    let fast_client = Phi3Ollama::fast();
+    let fast_client = Phi3Ollama::fast().expect("model client");
 
     let start = std::time::Instant::now();
     let response = fast_client.complete(test_prompt).await?;
@@ -32,7 +32,7 @@ async fn main() -> anyhow::Result<()> {
 
     // Test 2: phi3:3.8b (mini - fastest)
     println!("{}", "Testing phi3:3.8b (mini)...".yellow());
-    let mini_client = Phi3Ollama::mini();
+    let mini_client = Phi3Ollama::mini().expect("model client");
 
     let start = std::time::Instant::now();
     let response = mini_client.complete(test_prompt).await?;

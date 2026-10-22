@@ -1,8 +1,34 @@
 #![forbid(unsafe_code)]
+#[cfg(feature = "ollama")]
+use anyhow::Context;
 use anyhow::{bail, Result};
 
 /// Model text above this is rejected before `serde_json` allocates a document.
 pub const MAX_MODEL_JSON_BYTES: usize = 64 * 1024;
+
+/// The prefix of `text` that fits in [`MAX_MODEL_JSON_BYTES`].
+pub fn bounded_model_text(text: &str) -> &str {
+    if text.len() <= MAX_MODEL_JSON_BYTES {
+        return text;
+    }
+    let mut end = MAX_MODEL_JSON_BYTES;
+    while end > 0 && !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    &text[..end]
+}
+
+#[cfg(test)]
+mod bounded_model_text_tests {
+    use super::*;
+
+    #[test]
+    fn stops_at_the_json_cap() {
+        let big = "y".repeat(MAX_MODEL_JSON_BYTES + 10);
+        assert_eq!(bounded_model_text(&big).len(), MAX_MODEL_JSON_BYTES);
+        assert_eq!(bounded_model_text("short"), "short");
+    }
+}
 
 /// Parse JSON that came from a local model. Hostile lengths never reach `serde_json`.
 pub fn parse_bounded_model_json<T: serde::de::DeserializeOwned>(text: &str) -> Result<T> {
@@ -12,14 +38,195 @@ pub fn parse_bounded_model_json<T: serde::de::DeserializeOwned>(text: &str) -> R
     serde_json::from_str(text).map_err(|err| anyhow::anyhow!("model json: {err}"))
 }
 
-/// Keep a loopback model URL. A non-loopback URL is replaced unless the caller opted in.
-#[cfg(feature = "ollama")]
-pub(crate) fn loopback_model_url(url: String, allow_remote: bool) -> String {
+/// Keep a loopback model URL.
+///
+/// A URL is kept only when it is `http` or `https` and has no userinfo. Userinfo,
+/// a non-http scheme, and a string the parser rejects are always replaced with
+/// `http://127.0.0.1:11434`, including when `allow_remote` is set. A non-loopback
+/// host is kept only when `allow_remote` is set. Otherwise the host must be
+/// `127.0.0.0/8`, `::1`, or `localhost`.
+///
+/// Every loopback URL check in the workspace goes through [`is_loopback_http_url`].
+pub fn loopback_model_url(url: String, allow_remote: bool) -> String {
+    const FALLBACK: &str = "http://127.0.0.1:11434";
+    // Userinfo is rejected even when `allow_remote` is set. The raw string is
+    // not returned until the URL parses as http(s) with an empty userinfo.
+    if !http_url_without_userinfo(&url) {
+        return FALLBACK.to_string();
+    }
     if allow_remote || is_loopback_http_url(&url) {
         url
     } else {
-        "http://127.0.0.1:11434".to_string()
+        FALLBACK.to_string()
     }
+}
+
+/// Keep `url` only when [`loopback_model_url`] would not rewrite it.
+///
+/// Constructors use this so a rejected host or userinfo cannot be stored, and
+/// a bearer token cannot be attached to the loopback fallback. The error does
+/// not include the URL.
+pub fn require_kept_model_url(url: String, allow_remote: bool) -> Result<String> {
+    let kept = loopback_model_url(url.clone(), allow_remote);
+    if kept != url {
+        bail!("model URL was rejected");
+    }
+    Ok(kept)
+}
+
+fn http_url_without_userinfo(url: &str) -> bool {
+    let Ok(parsed) = url::Url::parse(url) else {
+        return false;
+    };
+    (parsed.scheme() == "http" || parsed.scheme() == "https") && !url_has_userinfo(url, &parsed)
+}
+
+/// Re-check the URL that is about to be requested.
+///
+/// Userinfo is always rejected. A non-loopback host is rejected unless this
+/// client was built with `allowing_remote`.
+#[cfg(feature = "ollama")]
+pub(crate) fn ensure_model_request(url: &str, allow_remote: bool) -> Result<()> {
+    if !http_url_without_userinfo(url) {
+        bail!("model URL has userinfo or is not http(s)");
+    }
+    if !allow_remote && !is_loopback_http_url(url) {
+        bail!("model URL is not loopback");
+    }
+    Ok(())
+}
+
+/// Builder for a model HTTP client that cannot leave the machine.
+///
+/// `no_proxy` ignores `HTTP_PROXY`, `HTTPS_PROXY`, and `ALL_PROXY`. Redirects
+/// are followed only when the next hop is still loopback. The name `localhost`
+/// is pinned to `127.0.0.1`; the URL port is kept.
+///
+/// [`allowing_remote`](OllamaClient::allowing_remote) does not use this builder.
+/// It keeps the caller URL and uses reqwest's default client, which honors
+/// those proxy variables and follows redirects.
+#[cfg(feature = "ollama")]
+pub fn loopback_http_client() -> reqwest::ClientBuilder {
+    reqwest::Client::builder()
+        .no_proxy()
+        .redirect(loopback_redirect_policy())
+        .resolve(
+            "localhost",
+            std::net::SocketAddr::from((std::net::Ipv4Addr::LOCALHOST, 0)),
+        )
+        .resolve(
+            "localhost.",
+            std::net::SocketAddr::from((std::net::Ipv4Addr::LOCALHOST, 0)),
+        )
+}
+
+#[cfg(feature = "ollama")]
+fn loopback_redirect_policy() -> reqwest::redirect::Policy {
+    reqwest::redirect::Policy::custom(|attempt| {
+        if attempt.previous().len() >= 8 {
+            attempt.error("too many loopback redirects")
+        } else if is_loopback_http_url(attempt.url().as_str()) {
+            attempt.follow()
+        } else {
+            attempt.error("redirect is not loopback")
+        }
+    })
+}
+
+/// Loopback URLs use [`loopback_http_client`]. `allow_remote` keeps a
+/// non-loopback URL on reqwest's default client (proxy env and redirects).
+/// A build failure is returned. There is no [`reqwest::Client::new`] fallback.
+#[cfg(feature = "ollama")]
+pub fn build_model_client(url: &str, allow_remote: bool) -> Result<reqwest::Client> {
+    let remote = allow_remote && !is_loopback_http_url(url);
+    let builder = if remote {
+        reqwest::Client::builder()
+    } else {
+        loopback_http_client()
+    };
+    builder
+        .tcp_nodelay(true)
+        .pool_idle_timeout(std::time::Duration::from_secs(90))
+        .pool_max_idle_per_host(8)
+        .connect_timeout(std::time::Duration::from_secs(30))
+        // Per read, reset after each successful read. `.text()` and `.json()`
+        // use it. A chunk stream is not cut off while bytes keep arriving.
+        .read_timeout(stream_read_idle())
+        .build()
+        .map_err(|err| anyhow::anyhow!("model http client: {err}"))
+}
+
+/// Silence allowed on one read, from `OLLAMA_TIMEOUT_SECS` (default 180).
+///
+/// Clamped so a later scale to milliseconds cannot overflow `Duration`.
+#[cfg(feature = "ollama")]
+pub fn stream_read_idle() -> std::time::Duration {
+    const MAX_TIMEOUT_SECS: u64 = u64::MAX / 1_000;
+    let secs = std::env::var("OLLAMA_TIMEOUT_SECS")
+        .ok()
+        .and_then(|s| s.parse::<u64>().ok())
+        .unwrap_or(180)
+        .clamp(1, MAX_TIMEOUT_SECS);
+    std::time::Duration::from_secs(secs)
+}
+
+/// Wait `idle` for response headers. The body is not covered.
+///
+/// `RequestBuilder::timeout` would also cancel a chunked body. Callers that
+/// stream after the headers use [`with_read_idle`] for each read.
+#[cfg(feature = "ollama")]
+pub async fn send_for_headers(
+    idle: std::time::Duration,
+    send: impl std::future::Future<Output = Result<reqwest::Response, reqwest::Error>>,
+) -> Result<reqwest::Response> {
+    match tokio::time::timeout(idle, send).await {
+        Ok(Ok(response)) => Ok(response),
+        Ok(Err(err)) => {
+            let mut msg = format!("model request: {err}");
+            let mut source = std::error::Error::source(&err);
+            while let Some(next) = source {
+                msg.push_str(": ");
+                msg.push_str(&next.to_string());
+                source = next.source();
+            }
+            Err(anyhow::anyhow!(msg))
+        }
+        Err(_) => Err(anyhow::anyhow!("model headers idle timeout")),
+    }
+}
+
+/// Stop a chunked body on the first read error or on `idle` of silence.
+///
+/// One error is yielded, then the stream ends, so a caller can keep bytes
+/// already produced. This is not a total deadline: chunks that keep arriving
+/// are not cut off.
+#[cfg(feature = "ollama")]
+pub fn with_read_idle<S, T, E>(
+    inner: S,
+    idle: std::time::Duration,
+) -> impl futures_util::Stream<Item = Result<T>>
+where
+    S: futures_util::Stream<Item = Result<T, E>> + Unpin,
+    E: std::error::Error + Send + Sync + 'static,
+{
+    use futures_util::StreamExt;
+    futures_util::stream::unfold((inner, false), move |(mut inner, stop)| {
+        let idle = idle;
+        async move {
+            if stop {
+                return None;
+            }
+            match tokio::time::timeout(idle, inner.next()).await {
+                Ok(Some(Ok(item))) => Some((Ok(item), (inner, false))),
+                Ok(Some(Err(err))) => Some((
+                    Err(anyhow::Error::new(err).context("stream body error")),
+                    (inner, true),
+                )),
+                Ok(None) => None,
+                Err(_) => Some((Err(anyhow::anyhow!("stream idle timeout")), (inner, true))),
+            }
+        }
+    })
 }
 use astraweave_core::{ActionStep, PlanIntent, ToolRegistry, WorldSnapshot};
 use tracing::{debug, info};
@@ -174,27 +381,49 @@ impl LlmClient for AlwaysErrMock {
 
 #[cfg(feature = "ollama")]
 pub struct OllamaClient {
-    pub url: String,
+    url: String,
+    allow_remote: bool,
     pub model: String,
+    client: reqwest::Client,
 }
 
 #[cfg(feature = "ollama")]
 impl OllamaClient {
-    /// Keep a loopback URL. A non-loopback URL is replaced with `http://127.0.0.1:11434`.
-    pub fn new(url: impl Into<String>, model: impl Into<String>) -> Self {
+    /// Stored endpoint. The first hop is checked again before each request.
+    pub fn url(&self) -> &str {
+        &self.url
+    }
+}
+
+#[cfg(feature = "ollama")]
+impl OllamaClient {
+    /// Keep a loopback URL. A URL that would be rewritten is an error.
+    pub fn new(url: impl Into<String>, model: impl Into<String>) -> Result<Self> {
         Self::assemble(url, model, false)
     }
 
-    /// Keep a non-loopback URL. [`Self::new`] replaces one.
-    pub fn allowing_remote(url: impl Into<String>, model: impl Into<String>) -> Self {
+    /// Keep a non-loopback URL and use reqwest's default client for it.
+    ///
+    /// That client honors `HTTP_PROXY`, `HTTPS_PROXY`, and `ALL_PROXY`, and it
+    /// follows redirects. A loopback URL still uses [`loopback_http_client`].
+    /// Userinfo and any other URL [`loopback_model_url`] would rewrite is an error.
+    pub fn allowing_remote(url: impl Into<String>, model: impl Into<String>) -> Result<Self> {
         Self::assemble(url, model, true)
     }
 
-    fn assemble(url: impl Into<String>, model: impl Into<String>, allow_remote: bool) -> Self {
-        Self {
-            url: loopback_model_url(url.into(), allow_remote),
+    fn assemble(
+        url: impl Into<String>,
+        model: impl Into<String>,
+        allow_remote: bool,
+    ) -> Result<Self> {
+        let url = require_kept_model_url(url.into(), allow_remote)?;
+        let client = build_model_client(&url, allow_remote)?;
+        Ok(Self {
+            url,
+            allow_remote,
             model: model.into(),
-        }
+            client,
+        })
     }
 }
 
@@ -213,15 +442,15 @@ impl LlmClient for OllamaClient {
             response: String,
         }
 
+        ensure_model_request(&self.url, self.allow_remote)?;
         let body = Req {
             model: &self.model,
             prompt,
             stream: false,
         };
 
-        let client = reqwest::Client::new();
-
-        let response = client
+        let response = self
+            .client
             .post(format!("{}/api/generate", self.url))
             .json(&body)
             .timeout(std::time::Duration::from_secs(30))
@@ -236,7 +465,7 @@ impl LlmClient for OllamaClient {
         let parsed: Resp = response
             .json()
             .await
-            .map_err(|e| anyhow::anyhow!("Failed to parse Ollama response: {}", e))?;
+            .context("Failed to parse Ollama response")?;
 
         Ok(parsed.response)
     }
@@ -247,7 +476,8 @@ impl LlmClient for OllamaClient {
 #[cfg(feature = "ollama")]
 #[derive(Clone)]
 pub struct OllamaChatClient {
-    pub url: String,
+    url: String,
+    allow_remote: bool,
     pub model: String,
     client: reqwest::Client,
     // Low-latency tuning knobs
@@ -259,23 +489,27 @@ pub struct OllamaChatClient {
 
 #[cfg(feature = "ollama")]
 impl OllamaChatClient {
-    pub fn new(url: String, model: String) -> Self {
+    /// Stored endpoint. The first hop is checked again before each request.
+    pub fn url(&self) -> &str {
+        &self.url
+    }
+
+    pub fn new(url: String, model: String) -> Result<Self> {
         Self::assemble(url, model, false)
     }
 
-    /// Keep a non-loopback URL. [`Self::new`] replaces one with `http://127.0.0.1:11434`.
-    pub fn allowing_remote(url: String, model: String) -> Self {
+    /// Keep a non-loopback URL and use reqwest's default client for it.
+    ///
+    /// That client honors `HTTP_PROXY`, `HTTPS_PROXY`, and `ALL_PROXY`, and it
+    /// follows redirects. A loopback URL still uses [`loopback_http_client`].
+    /// Userinfo and any other URL [`loopback_model_url`] would rewrite is an error.
+    pub fn allowing_remote(url: String, model: String) -> Result<Self> {
         Self::assemble(url, model, true)
     }
 
-    fn assemble(url: String, model: String, allow_remote: bool) -> Self {
-        // Build a tuned reqwest client for local low-latency usage
-        let client = reqwest::Client::builder()
-            .tcp_nodelay(true)
-            .pool_idle_timeout(std::time::Duration::from_secs(90))
-            .pool_max_idle_per_host(8)
-            .build()
-            .unwrap_or_else(|_| reqwest::Client::new());
+    fn assemble(url: String, model: String, allow_remote: bool) -> Result<Self> {
+        let url = require_kept_model_url(url, allow_remote)?;
+        let client = build_model_client(&url, allow_remote)?;
 
         let low_latency = std::env::var("OLLAMA_LOW_LATENCY")
             .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
@@ -288,19 +522,21 @@ impl OllamaChatClient {
             .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
             .unwrap_or(true);
 
-        Self {
-            url: loopback_model_url(url, allow_remote),
+        Ok(Self {
+            url,
+            allow_remote,
             model,
             client,
             low_latency,
             keep_alive,
             force_format_json,
             early_exit_on_json,
-        }
+        })
     }
 
     /// Warm up the model to minimize cold-start latency. Attempts a tiny generation and requests the model to remain in memory.
     pub async fn warmup(&self, timeout_secs: u64) -> Result<()> {
+        ensure_model_request(&self.url, self.allow_remote)?;
         #[derive(serde::Serialize)]
         struct Msg<'a> {
             role: &'a str,
@@ -338,14 +574,28 @@ impl OllamaChatClient {
         };
 
         let chat_url = format!("{}/api/chat", self.url.trim_end_matches('/'));
-        let _ = self
+        let response = self
             .client
             .post(&chat_url)
             .header("Accept", "application/json")
             .timeout(std::time::Duration::from_secs(timeout_secs))
             .json(&body)
             .send()
-            .await?;
+            .await
+            .context("Ollama warmup request failed")?;
+        let status = response.status();
+        if !status.is_success() {
+            let body = response
+                .text()
+                .await
+                .with_context(|| format!("Ollama warmup status {status} body read failed"))?;
+            let body = bounded_model_text(&body);
+            bail!("Ollama warmup returned error status {status}: {body}");
+        }
+        response
+            .text()
+            .await
+            .context("Ollama warmup body read failed")?;
         Ok(())
     }
 
@@ -364,6 +614,7 @@ impl OllamaChatClient {
 #[async_trait::async_trait]
 impl LlmClient for OllamaChatClient {
     async fn complete(&self, prompt: &str) -> Result<String> {
+        ensure_model_request(&self.url, self.allow_remote)?;
         #[derive(serde::Serialize)]
         struct Msg<'a> {
             role: &'a str,
@@ -394,10 +645,7 @@ impl LlmClient for OllamaChatClient {
         // Some Ollama setups can take a long time to load a model initially (minutes) or
         // will stream responses. Allow a long configurable timeout and fall back to a
         // streaming read if a non-stream response isn't available.
-        let default_timeout = std::env::var("OLLAMA_TIMEOUT_SECS")
-            .ok()
-            .and_then(|s| s.parse::<u64>().ok())
-            .unwrap_or(180u64);
+        let idle = stream_read_idle();
 
         // First try a non-streaming request with a long timeout so we get a buffered JSON
         // response if the server supports it and the model responds within the window.
@@ -458,26 +706,25 @@ impl LlmClient for OllamaChatClient {
                             Ok(_) => {
                                 println!("[ollama] buffered body was empty on attempt {}, will retry/fallback", attempt);
                             }
-                            Err(e) => {
-                                println!(
-                                    "[ollama] error reading non-streaming response text: {:?}",
-                                    e
-                                );
+                            Err(err) => {
+                                return Err(err).context("Ollama non-streaming body read failed");
                             }
                         }
                     } else {
-                        // Read response body for diagnostics
                         let status = resp.status();
-                        let b = resp.text().await.unwrap_or_default();
-                        println!(
-                            "[ollama] non-streaming request returned non-success status: {}: {}",
-                            status, b
-                        );
-                        let total_ms = ns_attempt_start.elapsed().as_millis();
-                        println!(
-                            "[ollama] timing nonstream attempt {}: total={}ms (non-success)",
-                            attempt, total_ms
-                        );
+                        match resp.text().await {
+                            Ok(b) => {
+                                let b = bounded_model_text(&b);
+                                return Err(anyhow::anyhow!(
+                                    "Ollama non-streaming request returned error status {status}: {b}"
+                                ));
+                            }
+                            Err(err) => {
+                                return Err(err).context(format!(
+                                    "Ollama non-streaming status {status} body read failed"
+                                ));
+                            }
+                        }
                     }
                 }
                 Err(e) => {
@@ -517,22 +764,23 @@ impl LlmClient for OllamaChatClient {
                 stream_body["keep_alive"] = serde_json::json!(ka);
             }
 
-            // Total streaming timeout to avoid hangs when the model never responds
-            let total_stream_timeout = std::time::Duration::from_secs(default_timeout * 2);
+            // The stored client set `connect_timeout` in `build_model_client`.
+            // Header wait is a separate deadline. The body stays on the idle loop.
             let start = std::time::Instant::now();
 
             let stream_url = format!("{}/api/chat", self.url.trim_end_matches('/'));
             println!("[ollama] initiating streaming POST to {}", stream_url);
-            let resp = client
-                .post(&stream_url)
-                .header("Accept", "application/json")
-                .header("Content-Type", "application/json")
-                .json(&stream_body)
-                .send()
-                .await
-                .map_err(|e| {
-                    anyhow::anyhow!("Failed to initiate streaming request to Ollama: {}", e)
-                })?;
+            let resp = send_for_headers(
+                idle,
+                client
+                    .post(&stream_url)
+                    .header("Accept", "application/json")
+                    .header("Content-Type", "application/json")
+                    .json(&stream_body)
+                    .send(),
+            )
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to initiate streaming request to Ollama: {e}"))?;
 
             println!(
                 "[ollama] streaming request returned status {}",
@@ -550,19 +798,21 @@ impl LlmClient for OllamaChatClient {
                         status
                     );
                     let gen_url = format!("{}/api/generate", self.url.trim_end_matches('/'));
-                    let gen_resp = client
-                        .post(&gen_url)
-                        .header("Accept", "application/json")
-                        .header("Content-Type", "application/json")
-                        .json(&stream_body)
-                        .send()
-                        .await
-                        .map_err(|e| {
-                            anyhow::anyhow!(
-                                "Failed to initiate streaming request to Ollama /api/generate: {}",
-                                e
-                            )
-                        })?;
+                    let gen_resp = send_for_headers(
+                        idle,
+                        client
+                            .post(&gen_url)
+                            .header("Accept", "application/json")
+                            .header("Content-Type", "application/json")
+                            .json(&stream_body)
+                            .send(),
+                    )
+                    .await
+                    .map_err(|e| {
+                        anyhow::anyhow!(
+                            "Failed to initiate streaming request to Ollama /api/generate: {e}"
+                        )
+                    })?;
 
                     println!(
                         "[ollama] /api/generate returned status {}",
@@ -572,19 +822,21 @@ impl LlmClient for OllamaChatClient {
                         Some(gen_resp)
                     } else {
                         let s = gen_resp.status();
-                        let b = gen_resp.text().await.unwrap_or_default();
+                        let b = gen_resp.text().await.with_context(|| {
+                            format!("Ollama /api/generate status {s} body read failed")
+                        })?;
+                        let b = bounded_model_text(&b);
                         return Err(anyhow::anyhow!(
-                            "Ollama /api/generate returned error status {}: {}",
-                            s,
-                            b
+                            "Ollama /api/generate returned error status {s}: {b}"
                         ));
                     }
                 } else {
-                    let txt = resp.text().await.unwrap_or_default();
+                    let txt = resp.text().await.with_context(|| {
+                        format!("Ollama chat API status {status} body read failed")
+                    })?;
+                    let txt = bounded_model_text(&txt);
                     return Err(anyhow::anyhow!(
-                        "Ollama chat API returned error status {}: {}",
-                        status,
-                        txt
+                        "Ollama chat API returned error status {status}: {txt}"
                     ));
                 }
             };
@@ -609,12 +861,16 @@ impl LlmClient for OllamaChatClient {
             #[allow(unused_mut)]
             let mut last_flush = 0usize;
             let mut first_token_at: Option<std::time::Instant> = None;
-            while let Some(item) =
-                tokio::time::timeout(std::time::Duration::from_secs(10), stream.next())
-                    .await
-                    .ok()
-                    .flatten()
-            {
+            let mut body_error: Option<anyhow::Error> = None;
+            loop {
+                let item = match tokio::time::timeout(idle, stream.next()).await {
+                    Ok(Some(item)) => item,
+                    Ok(None) => break,
+                    Err(_) => {
+                        body_error = Some(anyhow::anyhow!("streaming read idle timeout"));
+                        break;
+                    }
+                };
                 match item {
                     Ok(chunk) => {
                         if let Ok(schunk) = std::str::from_utf8(&chunk) {
@@ -709,15 +965,18 @@ impl LlmClient for OllamaChatClient {
                         }
                     }
                     Err(e) => {
-                        // Non-fatal: keep trying until total timeout
-                        if start.elapsed() > total_stream_timeout {
-                            bail!("Streaming read timed out: {}", e);
-                        }
+                        body_error = Some(anyhow::Error::new(e).context("streaming body error"));
+                        break;
                     }
                 }
 
-                if done_flag || start.elapsed() > total_stream_timeout {
+                if done_flag {
                     break;
+                }
+            }
+            if text.trim().is_empty() && assistant_acc.trim().is_empty() {
+                if let Some(err) = body_error {
+                    return Err(err);
                 }
             }
 
@@ -865,66 +1124,129 @@ impl LlmClient for OllamaChatClient {
 /// This includes local services like text-generation-webui, LocalAI, etc.
 #[cfg(feature = "ollama")]
 pub struct LocalHttpClient {
-    pub url: String,
+    url: String,
+    allow_remote: bool,
     pub model: String,
     pub api_key: Option<String>,
+    client: reqwest::Client,
 }
 
 #[cfg(feature = "ollama")]
 impl LocalHttpClient {
-    /// Create a client. Non-loopback URLs are replaced with `http://127.0.0.1:11434`.
-    /// Use [`Self::allowing_remote`] to keep a caller-supplied host.
-    pub fn new(url: String, model: String) -> Self {
+    /// Stored endpoint. The first hop is checked again before each request.
+    pub fn url(&self) -> &str {
+        &self.url
+    }
+
+    /// Create a client. A URL that would be rewritten is an error, and no key is stored.
+    /// Use [`Self::allowing_remote`] to keep a caller-supplied host on reqwest's
+    /// default client (proxy env and redirects). A loopback URL still uses
+    /// [`loopback_http_client`].
+    pub fn new(url: String, model: String) -> Result<Self> {
         Self::assemble(url, model, None, false)
     }
 
     /// Create a client with an API key. The URL is loopback-only, same as [`Self::new`].
-    pub fn with_api_key(url: String, model: String, api_key: String) -> Self {
+    /// A URL that would be rewritten returns an error and does not store `api_key`.
+    pub fn with_api_key(url: String, model: String, api_key: String) -> Result<Self> {
         Self::assemble(url, model, Some(api_key), false)
     }
 
     /// Keep `url` even when it is not loopback. This is the explicit opt-in.
-    pub fn allowing_remote(url: String, model: String) -> Self {
+    ///
+    /// A non-loopback URL uses reqwest's default client: `HTTP_PROXY`,
+    /// `HTTPS_PROXY`, and `ALL_PROXY` apply, and redirects are followed. A
+    /// loopback URL still uses [`loopback_http_client`]. Userinfo is an error.
+    pub fn allowing_remote(url: String, model: String) -> Result<Self> {
         Self::assemble(url, model, None, true)
     }
 
-    /// [`Self::allowing_remote`] plus a bearer token.
-    pub fn allowing_remote_with_api_key(url: String, model: String, api_key: String) -> Self {
+    /// [`Self::allowing_remote`] plus a bearer token. A rejected URL does not store the key.
+    pub fn allowing_remote_with_api_key(
+        url: String,
+        model: String,
+        api_key: String,
+    ) -> Result<Self> {
         Self::assemble(url, model, Some(api_key), true)
     }
 
-    fn assemble(url: String, model: String, api_key: Option<String>, allow_remote: bool) -> Self {
-        let url = loopback_model_url(url, allow_remote);
-        Self {
+    fn assemble(
+        url: String,
+        model: String,
+        api_key: Option<String>,
+        allow_remote: bool,
+    ) -> Result<Self> {
+        let url = require_kept_model_url(url, allow_remote)?;
+        let client = build_model_client(&url, allow_remote)?;
+        Ok(Self {
             url,
+            allow_remote,
             model,
             api_key,
-        }
+            client,
+        })
     }
 }
 
-#[cfg(feature = "ollama")]
-fn is_loopback_http_url(url: &str) -> bool {
-    let Some(rest) = url
-        .strip_prefix("http://")
-        .or_else(|| url.strip_prefix("https://"))
-    else {
+/// `http` or `https` URL whose host is loopback: `127.0.0.0/8`, `::1`, or `localhost`.
+///
+/// Userinfo is rejected, including an empty `@`. This is the only host check.
+/// Socket binds use `IpAddr::is_loopback` after `SocketAddr` parsing, which is
+/// the same `127.0.0.0/8` and `::1` rule this function applies to a parsed host.
+pub fn is_loopback_http_url(url: &str) -> bool {
+    let Ok(parsed) = url::Url::parse(url) else {
         return false;
     };
-    let hostport = rest.split('/').next().unwrap_or("");
-    let host = if let Some(bracketed) = hostport.strip_prefix('[') {
-        bracketed.split(']').next().unwrap_or("")
-    } else {
-        hostport.split(':').next().unwrap_or("")
+    if parsed.scheme() != "http" && parsed.scheme() != "https" {
+        return false;
+    }
+    if url_has_userinfo(url, &parsed) {
+        return false;
+    }
+    match parsed.host() {
+        Some(url::Host::Domain(domain)) => is_localhost_domain(domain),
+        Some(url::Host::Ipv4(ip)) => ip.is_loopback(),
+        Some(url::Host::Ipv6(ip)) => ip.is_loopback(),
+        None => false,
+    }
+}
+
+/// `true` when `url` carries userinfo, including an empty `@` the parser drops.
+///
+/// An unparseable string is not userinfo. Callers that must also require
+/// `http` or `https` use [`loopback_model_url`] or [`is_loopback_http_url`].
+pub fn model_url_has_userinfo(url: &str) -> bool {
+    let Ok(parsed) = url::Url::parse(url) else {
+        return false;
     };
-    let host = host.trim().to_ascii_lowercase();
-    host == "localhost" || host == "127.0.0.1" || host == "::1"
+    url_has_userinfo(url, &parsed)
+}
+
+/// `http://127.0.0.1:11434@evil.example/` puts the loopback text in the userinfo
+/// and sends the request to `evil.example`. An empty `@` is userinfo too, even
+/// when the parser drops it and keeps a loopback host.
+fn url_has_userinfo(raw: &str, parsed: &url::Url) -> bool {
+    if !parsed.username().is_empty() || parsed.password().is_some() {
+        return true;
+    }
+    let Some(scheme_sep) = raw.find("://") else {
+        return true;
+    };
+    let rest = &raw[scheme_sep + 3..];
+    let authority = rest.split(['/', '?', '#', '\\']).next().unwrap_or("");
+    authority.contains('@')
+}
+
+fn is_localhost_domain(domain: &str) -> bool {
+    let bare = domain.trim_end_matches('.');
+    bare.eq_ignore_ascii_case("localhost") && domain.len() - bare.len() <= 1
 }
 
 #[cfg(feature = "ollama")]
 #[async_trait::async_trait]
 impl LlmClient for LocalHttpClient {
     async fn complete(&self, prompt: &str) -> Result<String> {
+        ensure_model_request(&self.url, self.allow_remote)?;
         #[derive(serde::Serialize, serde::Deserialize)]
         struct Message {
             role: String,
@@ -959,7 +1281,8 @@ impl LlmClient for LocalHttpClient {
             temperature: 0.1, // Low temperature for more consistent JSON output
         };
 
-        let mut request = reqwest::Client::new()
+        let mut request = self
+            .client
             .post(format!("{}/v1/chat/completions", self.url))
             .header("Content-Type", "application/json")
             .timeout(std::time::Duration::from_secs(60));
@@ -976,14 +1299,18 @@ impl LlmClient for LocalHttpClient {
 
         if !response.status().is_success() {
             let status = response.status();
-            let text = response.text().await.unwrap_or_default();
-            bail!("Local LLM API returned error status {}: {}", status, text);
+            let text = response
+                .text()
+                .await
+                .with_context(|| format!("Local LLM API status {status} body read failed"))?;
+            let text = bounded_model_text(&text);
+            bail!("Local LLM API returned error status {status}: {text}");
         }
 
         let parsed: Resp = response
             .json()
             .await
-            .map_err(|e| anyhow::anyhow!("Failed to parse local LLM response: {}", e))?;
+            .context("Failed to parse local LLM response")?;
 
         if parsed.choices.is_empty() {
             bail!("Local LLM returned no choices");
@@ -1555,32 +1882,222 @@ mod tests {
     #[test]
     fn other_ollama_clients_keep_only_loopback_urls() {
         let remote = "https://api.openai.com";
-        let qwen = qwen3_ollama::Qwen3Ollama::new(remote, "qwen");
-        let phi = phi3_ollama::Phi3Ollama::new(remote, "phi3");
-        let hermes = hermes2pro_ollama::Hermes2ProOllama::new(remote, "hermes");
-        let chat = OllamaChatClient::new(remote.to_string(), "chat".to_string());
-        for url in [qwen.url, phi.url, hermes.url, chat.url] {
-            assert!(
-                url.contains("127.0.0.1") || url.contains("localhost") || url.contains("[::1]"),
-                "stored a non-loopback endpoint: {url}"
+        assert!(qwen3_ollama::Qwen3Ollama::new(remote, "qwen").is_err());
+        assert!(phi3_ollama::Phi3Ollama::new(remote, "phi3").is_err());
+        assert!(hermes2pro_ollama::Hermes2ProOllama::new(remote, "hermes").is_err());
+        assert!(OllamaChatClient::new(remote.to_string(), "chat".to_string()).is_err());
+        let opted = qwen3_ollama::Qwen3Ollama::allowing_remote(remote, "qwen").expect("client");
+        assert_eq!(opted.url(), remote);
+    }
+
+    #[test]
+    fn loopback_model_url_rejects_userinfo_encoding_and_non_loopback_literals() {
+        const FALLBACK: &str = "http://127.0.0.1:11434";
+        // Decimal, octal, hex, and short IPv4 forms are kept only when the
+        // WHATWG parser (the same one reqwest uses) resolves them inside
+        // 127.0.0.0/8. `0177.0.0.1` is octal for 127.0.0.1. `0127.0.0.1` is
+        // octal for 87.0.0.1.
+        let kept = [
+            "http://127.0.0.1:11434",
+            "https://127.0.0.1/api",
+            "http://127.0.0.2:11434",
+            "http://127.255.255.255/",
+            "HTTP://127.0.0.1:11434",
+            "http://localhost:11434",
+            "http://LOCALHOST:11434",
+            "http://localhost.:11434",
+            "https://localhost/v1",
+            "http://[::1]:11434/api",
+            "http://[0:0:0:0:0:0:0:1]/",
+            "http://2130706433/",
+            "http://2130706434:11434/",
+            "http://0177.0.0.1:11434/",
+            "http://017700000001/",
+            "http://0x7f.0.0.1/",
+            "http://0x7f000001/",
+            "http://127.1/",
+            "http://127.0.1/",
+            "http://127%2e0%2e0%2e1:11434/",
+            "http://%6c%6f%63%61%6c%68%6f%73%74/",
+            "http://127.0.0.1:11434/api?q=@evil.example",
+            "http://127.0.0.1:11434/api#@evil.example",
+            "http://127.0.0.1:11434\\@evil.example",
+        ];
+        for url in kept {
+            assert_eq!(
+                loopback_model_url(url.to_string(), false),
+                url,
+                "expected to keep {url}"
             );
         }
-        let opted = qwen3_ollama::Qwen3Ollama::allowing_remote(remote, "qwen");
-        assert_eq!(opted.url, remote);
+
+        let rejected = [
+            "http://127.0.0.1:11434@evil.example/api/chat",
+            "http://127.0.0.1:11434@evil.example",
+            "https://127.0.0.1:11434@evil.example/v1",
+            "https://user:pass@127.0.0.1:11434/",
+            "http://user@127.0.0.1/",
+            "http://:secret@127.0.0.1/",
+            "http://@127.0.0.1:11434/",
+            "http://:@127.0.0.1/",
+            "http://127.0.0.1%40evil.example/",
+            "http://127.0.0.1%2eevil.example/",
+            "http://localhost%2eevil.example/",
+            "http://%6c%6f%63%61%6c%68%6f%73%74%2eevil.example/",
+            "http://127.0.0.1%00.evil.example/",
+            "http://127%2e0%2e0%2e1.evil.example/",
+            "http://[::2]/",
+            "http://[::ffff:127.0.0.1]/",
+            "http://[::ffff:7f00:1]/",
+            "http://[::1%25eth0]/",
+            "http://[2001:db8::1]/",
+            "http://0127.0.0.1/",
+            "http://012700000001/",
+            "http://167772161/",
+            "http://134744072/",
+            "http://0/",
+            "http://10.0.0.1/",
+            "http://0x08080808/",
+            "http://2130706433@evil.example/",
+            "http://0177.0.0.1@evil.example/",
+            "http://127.0.0.1.evil.example/",
+            "http://sub.localhost/",
+            "http://evil.example/",
+            "file:///etc/passwd",
+            "127.0.0.1:11434",
+            "",
+        ];
+        for url in rejected {
+            assert_eq!(
+                loopback_model_url(url.to_string(), false),
+                FALLBACK,
+                "expected to replace {url}"
+            );
+        }
+
+        let remote = "http://127.0.0.1:11434@evil.example/api";
+        assert_eq!(loopback_model_url(remote.to_string(), true), FALLBACK);
+        assert!(model_url_has_userinfo(remote));
+        assert!(model_url_has_userinfo("http://@127.0.0.1:11434/"));
+        assert!(model_url_has_userinfo("http://:@127.0.0.1/"));
+        assert!(!model_url_has_userinfo("https://api.openai.com"));
+        assert!(!model_url_has_userinfo("http://127.0.0.1:11434"));
+        assert_eq!(
+            loopback_model_url("https://api.openai.com".to_string(), true),
+            "https://api.openai.com"
+        );
+    }
+
+    #[cfg(feature = "ollama")]
+    #[test]
+    fn ensure_model_request_rejects_userinfo_even_when_remote() {
+        assert!(ensure_model_request("http://127.0.0.1:11434", false).is_ok());
+        assert!(ensure_model_request("https://api.openai.com", true).is_ok());
+        let userinfo =
+            ensure_model_request("http://user:pass@api.openai.com/v1", true).expect_err("userinfo");
+        assert!(userinfo.to_string().contains("userinfo"), "{userinfo}");
+        let remote = ensure_model_request("https://api.openai.com", false).expect_err("remote");
+        assert!(remote.to_string().contains("not loopback"), "{remote}");
+    }
+
+    #[cfg(feature = "ollama")]
+    #[tokio::test]
+    async fn request_rechecks_the_stored_url() {
+        let mut client = OllamaClient::new("http://127.0.0.1:11434", "m").expect("client");
+        client.url = "http://user:pass@evil.example/api".to_string();
+        client.allow_remote = true;
+        let err = client.complete("hi").await.expect_err("userinfo");
+        assert!(err.to_string().contains("userinfo"), "{err}");
+
+        let mut local = LocalHttpClient::new("http://127.0.0.1:11434".to_string(), "m".to_string())
+            .expect("client");
+        local.url = "https://api.openai.com".to_string();
+        let err = local.complete("hi").await.expect_err("remote");
+        assert!(err.to_string().contains("not loopback"), "{err}");
+    }
+
+    #[cfg(feature = "ollama")]
+    #[test]
+    fn loopback_http_client_rejects_remote_redirects() {
+        use std::io::{Read, Write};
+
+        fn spawn(response: String) -> std::net::SocketAddr {
+            let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+            let addr = listener.local_addr().expect("addr");
+            std::thread::spawn(move || {
+                if let Ok((mut sock, _)) = listener.accept() {
+                    let _ = sock.set_read_timeout(Some(std::time::Duration::from_secs(2)));
+                    let mut buf = [0u8; 4096];
+                    let _ = sock.read(&mut buf);
+                    let _ = sock.write_all(response.as_bytes());
+                }
+            });
+            addr
+        }
+
+        let runtime = tokio::runtime::Runtime::new().expect("runtime");
+        let remote = spawn(
+            "HTTP/1.1 302 Found\r\nLocation: http://example.com/steal\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                .to_string(),
+        );
+        let redirect_err = runtime.block_on(async {
+            loopback_http_client()
+                .timeout(std::time::Duration::from_secs(2))
+                .build()
+                .expect("redirect client")
+                .get(format!("http://{remote}/"))
+                .send()
+                .await
+        });
+        let redirect_err = redirect_err.expect_err("remote redirect must fail");
+        let mut redirect_msg = redirect_err.to_string();
+        let mut source = std::error::Error::source(&redirect_err);
+        while let Some(err) = source {
+            redirect_msg.push_str(" | ");
+            redirect_msg.push_str(&err.to_string());
+            source = err.source();
+        }
+        assert!(
+            redirect_msg.contains("redirect is not loopback"),
+            "{redirect_msg}"
+        );
+
+        let next = spawn(
+            "HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok".to_string(),
+        );
+        let hop = spawn(format!(
+            "HTTP/1.1 302 Found\r\nLocation: http://{next}/ok\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+        ));
+        let followed = runtime.block_on(async {
+            loopback_http_client()
+                .timeout(std::time::Duration::from_secs(2))
+                .build()
+                .expect("follow client")
+                .get(format!("http://{hop}/"))
+                .send()
+                .await
+                .expect("loopback redirect")
+                .text()
+                .await
+                .expect("followed body")
+        });
+        assert_eq!(followed, "ok");
     }
 
     #[cfg(feature = "ollama")]
     #[test]
     fn ollama_generate_client_keeps_only_loopback_urls() {
         let remote = "https://api.openai.com";
-        let client = OllamaClient::new(remote, "llama");
-        assert!(
-            client.url.contains("127.0.0.1"),
-            "stored a non-loopback endpoint: {}",
-            client.url
-        );
-        let opted = OllamaClient::allowing_remote(remote, "llama");
-        assert_eq!(opted.url, remote);
+        assert!(OllamaClient::new(remote, "llama").is_err());
+        let opted = OllamaClient::allowing_remote(remote, "llama").expect("client");
+        assert_eq!(opted.url(), remote);
+        let userinfo = "http://127.0.0.1:11434@evil.example/api";
+        let err = match OllamaClient::allowing_remote(userinfo, "llama") {
+            Ok(_) => panic!("userinfo URL was stored"),
+            Err(err) => err.to_string(),
+        };
+        assert!(err.contains("rejected"), "{err}");
+        assert!(!err.contains("evil.example"), "{err}");
     }
     use astraweave_core::{
         CompanionState, Constraints, EnemyState, IVec2, PlayerState, ToolSpec, WorldSnapshot,
@@ -1884,29 +2401,54 @@ mod tests {
         assert_eq!(plan.steps.len(), 4);
     }
 
-    /// SEC-POC SEC-LLM-1. Constructors must refuse a non-loopback model URL.
-    /// `LocalHttpClient` speaks the chat-completions shape and stores whatever
-    /// string it is given, including a cloud host.
+    /// SEC-POC SEC-LLM-1. Constructors must refuse a URL they would rewrite.
+    /// A bearer token is not stored for that URL.
     #[cfg(feature = "ollama")]
     #[test]
     fn poc_local_http_client_rejects_non_loopback_url() {
-        let client =
-            LocalHttpClient::new("https://api.openai.com".to_string(), "gpt-4".to_string());
-        let host = client.url.to_ascii_lowercase();
-        let loopback =
-            host.contains("127.0.0.1") || host.contains("localhost") || host.contains("[::1]");
-        assert!(
-            loopback,
-            "model client stored a non-loopback endpoint: {}",
-            client.url
-        );
+        let key = "sk-test";
+        let remote = "https://api.openai.com/v1";
+        let userinfo = "http://user:secret@evil.example/v1";
+        let cases = [
+            LocalHttpClient::new(remote.to_string(), "gpt-4".to_string()),
+            LocalHttpClient::with_api_key(remote.to_string(), "gpt-4".to_string(), key.to_string()),
+            LocalHttpClient::allowing_remote_with_api_key(
+                userinfo.to_string(),
+                "gpt-4".to_string(),
+                key.to_string(),
+            ),
+        ];
+        for result in cases {
+            let err = match result {
+                Ok(_) => panic!("rewritten URL was stored"),
+                Err(err) => err.to_string(),
+            };
+            assert!(err.contains("rejected"), "{err}");
+            assert!(!err.contains(key), "{err}");
+            assert!(!err.contains("secret"), "{err}");
+        }
+        let kept = LocalHttpClient::with_api_key(
+            "http://127.0.0.1:11434".to_string(),
+            "gpt-4".to_string(),
+            key.to_string(),
+        )
+        .expect("loopback");
+        assert_eq!(kept.api_key.as_deref(), Some(key));
+        let remote_key = LocalHttpClient::allowing_remote_with_api_key(
+            remote.to_string(),
+            "gpt-4".to_string(),
+            key.to_string(),
+        )
+        .expect("remote opt-in");
+        assert_eq!(remote_key.url(), remote);
+        assert_eq!(remote_key.api_key.as_deref(), Some(key));
     }
 
     #[cfg(feature = "ollama")]
     #[test]
     fn test_ollama_client_creation() {
-        let client = OllamaClient::new("http://localhost:11434", "llama2");
-        assert_eq!(client.url, "http://localhost:11434");
+        let client = OllamaClient::new("http://localhost:11434", "llama2").expect("client");
+        assert_eq!(client.url(), "http://localhost:11434");
         assert_eq!(client.model, "llama2");
     }
 
@@ -1916,8 +2458,9 @@ mod tests {
         let client = LocalHttpClient::new(
             "http://localhost:5000".to_string(),
             "test-model".to_string(),
-        );
-        assert_eq!(client.url, "http://localhost:5000");
+        )
+        .expect("client");
+        assert_eq!(client.url(), "http://localhost:5000");
         assert_eq!(client.model, "test-model");
         assert!(client.api_key.is_none());
 
@@ -1925,7 +2468,8 @@ mod tests {
             "http://localhost:5000".to_string(),
             "test-model".to_string(),
             "test-key".to_string(),
-        );
+        )
+        .expect("client");
         assert_eq!(client_with_key.api_key, Some("test-key".to_string()));
     }
 

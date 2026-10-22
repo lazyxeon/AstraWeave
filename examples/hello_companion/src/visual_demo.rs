@@ -823,6 +823,7 @@ impl CompanionApp {
                     "http://localhost:11434",
                     DEFAULT_QWEN_INSTRUCT_MODEL,
                 )
+                .expect("model client")
                 .with_temperature(0.6)
                 .with_max_tokens(192)
                 .with_system_prompt(
