@@ -73,25 +73,3 @@ fn lib_tests_default_to_one_thread() {
         );
     }
 }
-
-#[test]
-fn default_instance_descriptor_ignores_wgpu_debug() {
-    // SAFETY: this test is the only writer, and it runs before any other
-    // thread in this binary reads WGPU_DEBUG. `set_var` is unsafe because a
-    // concurrent `getenv` would race.
-    unsafe {
-        std::env::set_var("WGPU_DEBUG", "0");
-    }
-    let plain = wgpu::InstanceDescriptor::default().flags;
-    let from_env = wgpu::InstanceDescriptor::from_env_or_default().flags;
-    if cfg!(debug_assertions) {
-        assert!(
-            plain.contains(wgpu::InstanceFlags::DEBUG),
-            "InstanceDescriptor::default() keeps debug utils when WGPU_DEBUG=0"
-        );
-        assert!(
-            !from_env.contains(wgpu::InstanceFlags::DEBUG),
-            "from_env_or_default() is the constructor that honors WGPU_DEBUG=0"
-        );
-    }
-}

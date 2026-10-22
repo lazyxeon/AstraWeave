@@ -5,10 +5,6 @@
 
 #![cfg(all(feature = "impostor-bake", feature = "gpu-tests"))]
 
-#[cfg(target_os = "linux")]
-#[path = "support/linux_test_threads.rs"]
-mod linux_test_threads;
-
 use astraweave_render::impostor_lod3::{
     build_lod3_pipeline, Lod3Resources, Lod3SamplingConfig, SpeciesRowGpu,
 };

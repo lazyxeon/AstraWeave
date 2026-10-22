@@ -112,14 +112,12 @@ jobs:
         echo "::endgroup::"
     
     - name: Test terrain materials
-      continue-on-error: true
       run: |
         echo "::group::Testing terrain material system"
         cargo test -p astraweave-render test_terrain_material -- --nocapture
         echo "::endgroup::"
     
     - name: Test advanced materials
-      continue-on-error: true
       run: |
         echo "::group::Testing advanced PBR features"
         cargo test -p astraweave-render test_pbr_advanced -- --nocapture

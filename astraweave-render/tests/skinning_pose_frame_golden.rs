@@ -3,10 +3,6 @@
 //! Phase 2 Task 5 (Phase E): Validates that animation sampling produces
 //! deterministic, reproducible results at fixed time.
 
-#[cfg(target_os = "linux")]
-#[path = "support/linux_test_threads.rs"]
-mod linux_test_threads;
-
 mod test_utils;
 
 use astraweave_render::{
