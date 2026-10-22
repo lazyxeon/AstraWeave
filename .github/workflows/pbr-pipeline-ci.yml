@@ -112,6 +112,17 @@ jobs:
         WGPU_BACKEND: vulkan
       run: |
         echo "::group::draw_into allocation floor"
+        if [ -f /usr/share/vulkan/icd.d/lvp_icd.x86_64.json ]; then
+          icd=/usr/share/vulkan/icd.d/lvp_icd.x86_64.json
+        elif [ -f /usr/share/vulkan/icd.d/lvp_icd.json ]; then
+          icd=/usr/share/vulkan/icd.d/lvp_icd.json
+        else
+          echo "lavapipe ICD is not installed" >&2
+          exit 1
+        fi
+        export VK_ICD_FILENAMES="$icd"
+        export VK_DRIVER_FILES="$icd"
+        echo "VK_ICD_FILENAMES=$VK_ICD_FILENAMES"
         cargo test -p astraweave-render --all-features --test frame_alloc -- --nocapture
         echo "::endgroup::"
 
