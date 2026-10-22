@@ -70,6 +70,21 @@ const CURRENT_MODEL: [wgpu::VertexAttribute; 4] = [
     },
 ];
 
+const TERRAIN_PREV_POSITION: wgpu::VertexAttribute = wgpu::VertexAttribute {
+    offset: 0,
+    shader_location: 3,
+    format: wgpu::VertexFormat::Float32x3,
+};
+
+/// Previous terrain positions live in a copy of the splat vertex buffer.
+/// The stride matches `TerrainSplatVertex` so the copy can be bound as-is.
+const TERRAIN_PREV_LAYOUT: wgpu::VertexBufferLayout<'static> = wgpu::VertexBufferLayout {
+    array_stride: std::mem::size_of::<crate::terrain_material_manager::TerrainSplatVertex>()
+        as wgpu::BufferAddress,
+    step_mode: wgpu::VertexStepMode::Vertex,
+    attributes: &[TERRAIN_PREV_POSITION],
+};
+
 const PREV_MODEL: [wgpu::VertexAttribute; 4] = [
     wgpu::VertexAttribute {
         offset: 0,
@@ -176,9 +191,17 @@ impl SceneVectorsPass {
             depth_stencil: Some(wgpu::DepthStencilState {
                 format: wgpu::TextureFormat::Depth32Float,
                 depth_write_enabled: false,
-                depth_compare: wgpu::CompareFunction::LessEqual,
+                // Less matches the color pass. A negative bias lets the same
+                // triangles pass against the depth they already wrote.
+                // Equal-depth overlaps are drawn in reverse color order, so
+                // the last fragment here is the one the color pass kept.
+                depth_compare: wgpu::CompareFunction::Less,
+                bias: wgpu::DepthBiasState {
+                    constant: -2,
+                    slope_scale: -1.0,
+                    clamp: 0.0,
+                },
                 stencil: wgpu::StencilState::default(),
-                bias: wgpu::DepthBiasState::default(),
             }),
             multisample: wgpu::MultisampleState::default(),
             multiview: None,
@@ -190,7 +213,10 @@ impl SceneVectorsPass {
             vertex: wgpu::VertexState {
                 module: &shader,
                 entry_point: Some("vs_terrain"),
-                buffers: &[crate::terrain_material_manager::TerrainSplatVertex::LAYOUT],
+                buffers: &[
+                    crate::terrain_material_manager::TerrainSplatVertex::LAYOUT,
+                    TERRAIN_PREV_LAYOUT,
+                ],
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
             },
             fragment: Some(wgpu::FragmentState {
@@ -219,9 +245,17 @@ impl SceneVectorsPass {
             depth_stencil: Some(wgpu::DepthStencilState {
                 format: wgpu::TextureFormat::Depth32Float,
                 depth_write_enabled: false,
-                depth_compare: wgpu::CompareFunction::LessEqual,
+                // Less matches the color pass. A negative bias lets the same
+                // triangles pass against the depth they already wrote.
+                // Equal-depth overlaps are drawn in reverse color order, so
+                // the last fragment here is the one the color pass kept.
+                depth_compare: wgpu::CompareFunction::Less,
+                bias: wgpu::DepthBiasState {
+                    constant: -2,
+                    slope_scale: -1.0,
+                    clamp: 0.0,
+                },
                 stencil: wgpu::StencilState::default(),
-                bias: wgpu::DepthBiasState::default(),
             }),
             multisample: wgpu::MultisampleState::default(),
             multiview: None,

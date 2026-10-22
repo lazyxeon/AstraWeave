@@ -44,8 +44,8 @@ fn linearize_depth(d: f32) -> f32 {
 // Reconstruct view-space position from UV + depth
 fn reconstruct_view_pos(uv: vec2<f32>, depth: f32) -> vec3<f32> {
     let linear_z = linearize_depth(depth);
-    // Assumes standard perspective: x = (uv.x * 2 - 1) * z / proj_x, etc.
-    let ndc = uv * 2.0 - 1.0;
+    // uv.y = 0 is the top of the framebuffer. perspective_rh NDC Y is up.
+    let ndc = vec2<f32>(uv.x * 2.0 - 1.0, -(uv.y * 2.0 - 1.0));
     return vec3<f32>(
         ndc.x * linear_z * params.proj_info.w, // proj_info.w reused as aspect*tan(fov/2)
         ndc.y * linear_z,
