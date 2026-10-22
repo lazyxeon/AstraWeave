@@ -6,9 +6,8 @@
 
 #![cfg(feature = "alloc-counter")]
 
-#[cfg(target_os = "linux")]
-#[path = "support/linux_test_threads.rs"]
-mod linux_test_threads;
+#[path = "support/lib_backtrace.rs"]
+mod lib_backtrace;
 
 use astraweave_ecs::counting_alloc::{allocs, reset_allocs};
 use astraweave_render::{Instance, Renderer};
@@ -57,6 +56,7 @@ fn record(renderer: &mut Renderer, view: &wgpu::TextureView) {
 
 #[test]
 fn fallback_frame_does_not_allocate_before_the_texture_is_resident() {
+    lib_backtrace::disable_library_backtraces();
     pollster::block_on(async {
         let path = format!("/tmp/aw-stream-{}.png", std::process::id());
         let _ = std::fs::remove_file(&path);

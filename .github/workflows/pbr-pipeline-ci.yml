@@ -22,6 +22,11 @@ concurrency:
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
+  # Debug wgpu-core takes a snatch lock with Backtrace::capture. RUST_BACKTRACE
+  # makes that capture allocate (48 per draw_into). Panic backtraces stay on.
+  # The frame_alloc test also sets this before the device exists; the cache is
+  # fixed on the first capture, so the workflow sets it for every other test.
+  RUST_LIB_BACKTRACE: "0"
 
 jobs:
   build-pbr-components:
@@ -111,6 +116,14 @@ jobs:
         echo "::group::Testing astraweave-render"
         cargo test -p astraweave-render --all-features -- --nocapture
         echo "::endgroup::"
+
+    - name: Upload draw_into alloc sites
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: frame-alloc-trace
+        path: target/frame-alloc-trace.txt
+        if-no-files-found: warn
     
     - name: Test terrain materials
       id: terrain

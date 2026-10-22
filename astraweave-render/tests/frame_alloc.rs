@@ -5,11 +5,10 @@
 
 #![cfg(feature = "alloc-counter")]
 
-#[cfg(target_os = "linux")]
-#[path = "support/linux_test_threads.rs"]
-mod linux_test_threads;
+#[path = "support/lib_backtrace.rs"]
+mod lib_backtrace;
 
-use astraweave_ecs::counting_alloc::{allocs, reset_allocs};
+use astraweave_ecs::counting_alloc::{allocs, begin_alloc_trace, end_alloc_trace, reset_allocs};
 use astraweave_render::{Instance, Renderer};
 
 #[global_allocator]
@@ -49,6 +48,7 @@ fn record(renderer: &mut Renderer, view: &wgpu::TextureView) {
 
 #[test]
 fn draw_into_allocates_nothing_after_warmup() {
+    lib_backtrace::disable_library_backtraces();
     pollster::block_on(async {
         let mut renderer = Renderer::new_headless(64, 64)
             .await
@@ -100,18 +100,31 @@ fn draw_into_allocates_nothing_after_warmup() {
             "update_instances allocated after the scratch was warm"
         );
 
+        // Warm the trace table off the measured window. The first
+        // `thread_local` access must not land inside a sample.
+        begin_alloc_trace();
+        let _ = end_alloc_trace();
+
         let mut samples = [0usize; 6];
-        for sample in &mut samples {
+        let mut trace = None;
+        for (index, sample) in samples.iter_mut().enumerate() {
             let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("measured encoder"),
             });
             reset_allocs();
+            if index == 0 {
+                begin_alloc_trace();
+            }
             renderer
                 .draw_into(&view, None, &mut encoder)
                 .expect("measured draw_into");
             *sample = allocs();
+            if index == 0 {
+                trace = Some(end_alloc_trace());
+            }
             drop(encoder);
         }
+        let trace = trace.expect("first frame was traced");
         let features = renderer.gpu_features();
         let interesting = [
             ("timestamp", wgpu::Features::TIMESTAMP_QUERY),
@@ -130,13 +143,30 @@ fn draw_into_allocates_nothing_after_warmup() {
             .filter(|(_, bit)| features.contains(*bit))
             .map(|(name, _)| *name)
             .collect();
-        eprintln!(
-            "draw_into alloc adapter={} backend={} features={:?} color=Rgba8UnormSrgb atmosphere={} samples={samples:?}",
+        let header = format!(
+            "draw_into alloc adapter={} backend={} features={:?} color=Rgba8UnormSrgb atmosphere={} samples={samples:?}\n",
             renderer.gpu_adapter_name(),
             renderer.gpu_backend(),
             feature_bits,
             renderer.atmosphere_enabled(),
         );
+        eprintln!("{header}");
+        eprint!("{}", trace.report);
+        let trace_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../target/frame-alloc-trace.txt");
+        if let Some(parent) = trace_path.parent() {
+            std::fs::create_dir_all(parent).expect("create trace directory");
+        }
+        std::fs::write(&trace_path, format!("{header}{}", trace.report))
+            .expect("write alloc site trace");
+        eprintln!("alloc-sites file={}", trace_path.display());
+        if trace.report.starts_with("alloc-sites total=") {
+            assert_eq!(
+                trace.total, samples[0],
+                "first-frame trace does not cover the counted allocs\n{}",
+                trace.report
+            );
+        }
         let min = *samples.iter().min().unwrap();
         let max = *samples.iter().max().unwrap();
         // Lavapipe on Mesa 25.2 and on Mesa 26.0.8-1ubuntu0.3 (amd64 and
@@ -144,10 +174,15 @@ fn draw_into_allocates_nothing_after_warmup() {
         // alloc-counter only is [119, 116, 115, 116, 115, 115].
         // `--all-features` is [125, 122, 121, 122, 121, 121].
         // The GL backend is [196, 190, 188, 190, 188, 188].
-        // PBR CI on 8fc15bd9 (Mesa 26.0.8 amd64v3, libvulkan 1.4.341,
-        // `--all-features`) is [173, 170, 169, 170, 169, 169], the same
-        // shape plus 48. The line above names the adapter that produced
-        // the samples. Spread inside a run is 4.
+        // PBR CI on 8fc15bd9 printed [173, 170, 169, 170, 169, 169]. That is
+        // the `--all-features` shape plus 48. The workflow sets
+        // `RUST_BACKTRACE=1`, and wgpu-core's debug snatch lock then calls
+        // `Backtrace::capture` on every acquire. Those 48 allocations are
+        // that capture (`LockTrace::enter`), not another pass and not the
+        // adapter. `disable_library_backtraces` runs before the device
+        // exists so capture stays off and the ceiling stays 130. The first
+        // sample's call sites are `target/frame-alloc-trace.txt`.
+        // Spread inside a run is 4.
         // The constructor leaves Bruneton off. A sky-only Bruneton frame
         // was [150, 147, 147, 146, 146, 147] and is not this test.
         // `draw_into` does not build the pyramid unless `sample_hiz` is set.

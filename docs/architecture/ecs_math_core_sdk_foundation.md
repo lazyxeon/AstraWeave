@@ -8,8 +8,8 @@ domain: core
 lifecycle_status: active
 integration_status: wired
 owns: [astraweave-alloc, astraweave-core, astraweave-ecs, astraweave-math, astraweave-sdk]
-doc_version: "1.7"
-last_verified_commit: 90a976a4
+doc_version: "1.8"
+last_verified_commit: ada1aebe
 ---
 
 # Architecture Trace: ECS Substrate + Math / Core / SDK Primitives
@@ -20,12 +20,14 @@ last_verified_commit: 90a976a4
 |---|---|
 | **System name** | ECS substrate + Math / Core / SDK primitives (foundation layer) |
 | **Primary crates** | `astraweave-ecs`, `astraweave-math`, `astraweave-core`, `astraweave-sdk` |
-| **Document version** | 1.7 |
-| **Last verified against commit** | `1c858370` |
+| **Document version** | 1.8 |
+| **Last verified against commit** | `ada1aebe` |
 | **Last verified date** | 2026-10-15 |
 | **Status** | Active foundation. `astraweave-ecs` and `astraweave-math` are canonical; `astraweave-core` contains a canonical schema **plus** a transitional legacy `World` that bridges to ECS; `astraweave-sdk` is a stable C ABI surface with a single in-tree consumer (`examples/sdk_c_harness`) and an otherwise out-of-tree audience. |
 | **Owner notes** | This trace covers four related-but-distinct foundation crates as one document, per Andrew's request. Note: the doc is a foundation **layer**, not a single tightly-coupled system. Per-crate roles are kept distinct throughout. Deep investigation pass 2026-05-10 resolved the `lib_new.rs` status, corrected the SDK-consumer claim (one in-tree example exists), added the loom-tests + `simd`-feature-no-op findings, and refined Invariant 8 against the actual JSON-serializer code paths.<br><br>**R-series M1 trace-honesty (2026-06-30) — per-crate verified verdicts (the group `active/wired` front-matter syncs to the primary crate `astraweave-core` only):** `astraweave-core`, `astraweave-ecs`, `astraweave-sdk` are **VERIFIED-PRODUCTION** (`sdk` via the R3 island-by-design FFI boundary carve-out). **`astraweave-math` is individually COMPILES-BUT-ORPHANED** — off the v1.0 critical path; its only workspace consumer is `examples/profiling_demo` (the "canonical" framing above is aspirational for `math`). `astraweave-alloc` is **WIRED-BUT-UNTESTED** (0 tests). |
 
+> **Revision notice — 2026-10-22.** `counting_alloc::begin_alloc_trace` / `end_alloc_trace` record one measured region's call stacks. The site table is fixed-capacity. Re-entered allocations, including the capture itself, are not counted. Symbol names are resolved after the flag is clear. `last_verified_commit` names the parent `ada1aebe`.
+>
 > **Revision notice — 2026-10-20.** `normalize_simd` on non-SSE2 targets uses the same `len_sq < 1e-16` zero guard as `normalize_simd_sse2`. glam's `normalize_or_zero` does not, and `normalize_near_zero_boundary` failed on Apple Silicon because a 1e-9 vector became a unit vector.
 
 ---
@@ -278,7 +280,7 @@ There are several distinct flows through this layer. The first is the canonical 
 | `astraweave-ecs/src/type_registry.rs` | `TypeRegistry` with type-erased insert/remove handlers for `CommandBuffer` | Active | Required for `CommandBuffer` to operate on registered types |
 | `astraweave-ecs/src/events.rs` | `Event` marker, `Events<E>`, `EventReader<E>`, `EventEntry` | Active | Frame-stamped retention; cleanup via `cleanup(current_frame, keep_frames)` |
 | `astraweave-ecs/src/rng.rs` | `Rng` resource wrapping `ChaCha8Rng` | Active | Deterministic-AI requirement |
-| `astraweave-ecs/src/counting_alloc.rs` | Allocation-counting allocator for tests | Active (feature `alloc-counter`) | Behind `#[cfg(feature = "alloc-counter")]` (`lib.rs:48-49`) |
+| `astraweave-ecs/src/counting_alloc.rs` | Allocation-counting allocator for tests. `begin_alloc_trace` / `end_alloc_trace` group one region's stacks without counting the capture | Active (feature `alloc-counter`) | Behind `#[cfg(feature = "alloc-counter")]` (`lib.rs:48-49`) |
 | `astraweave-ecs/src/lib_new.rs` | 17-line stub containing only blanket-impl `Component`/`Resource` traits (identical to `lib.rs:85-90`) and module-level `use` imports | Dead (orphan scratch file) | Verified — not declared in `pub mod` list at `lib.rs:37-46`; workspace-wide grep finds zero non-self references to `lib_new`. Git log shows only two commits: original add in `400903a18` ("bug fixes, update ecs, nanite implementation, voxelization_pipeline") and a CI fmt sweep in `2702232fb`. Module-doc comment says "AstraWeave ECS / Provides Bevy-like API with Query tuples, Res/ResMut" — describes an API that the file does not actually implement |
 | `astraweave-ecs/src/blob_vec_kani.rs` | Kani proofs for `BlobVec` invariants | Active (kani gate) | `#[cfg(kani)]` (`lib.rs:64-65`) |
 | `astraweave-ecs/src/entity_allocator_kani.rs` | Kani proofs for generational-index correctness | Active (kani gate) | `#[cfg(kani)]` (`lib.rs:67-68`) |
@@ -479,6 +481,7 @@ There are several distinct flows through this layer. The first is the canonical 
 | 15 | `Fixed64` is Q32.32 (`SCALE = 1 << 32`). `from_ratio` truncates toward zero and yields zero when `den == 0`. `mul_ratio` uses `div_euclid`. Mul and the saturating add/sub clamp to `i64`. The sim path has no float conversion | Yes | `astraweave-math/src/fixed64.rs`. `fixed64_contract_bytes` is hashed as the required `fixed64` case in `determinism-replay.yml` |
 | 16 | `build_app` installs sim extensions recorded with `register_sim_extension` before `sys_sim`, and records each function pointer once. With no registration, `build_app` is the legacy bridge only | Yes | `astraweave-scripting` test `mod_loaded_through_build_app_replays_identically` |
 | 17 | `aw_last_error_string` returns the message set by the calling thread. Another thread's `set_last_error` does not replace it. A single-threaded host still sees the message from its own last `aw_world_submit_intent_json` | Yes | `LAST_ERROR` is `thread_local`. `last_error_is_set_on_intent_parse_error` and `last_error_survives_another_thread_clearing_its_own_slot` |
+| 18 | While `begin_alloc_trace` is active, a re-entered allocation is not counted and not recorded. `end_alloc_trace`'s `total` equals `allocs()` for a region whose sites fit the table. Tracing off is a relaxed load and does not allocate | Yes | `counting_alloc.rs`. `alloc_trace_is_quiet_until_a_frame_records`. `astraweave-render/tests/frame_alloc.rs` asserts `total` against the first `draw_into` sample |
 
 ---
 
@@ -560,6 +563,7 @@ There are several distinct flows through this layer. The first is the canonical 
 
 | Version | Date | Change |
 |---|---|---|
+| 1.8 | 2026-10-22 | `begin_alloc_trace` / `end_alloc_trace` record one region's call stacks. Re-entered captures are not counted (invariant 18). |
 | 1.7 | 2026-10-21 | Non-SSE2 `normalize_simd` uses the SSE2 `len_sq < 1e-16` guard, not glam `normalize_or_zero` (invariant 13). `cross_simd` and `length_simd` stay on the glam fallback. |
 | 1.5 | 2026-10-15 | `aw_last_error_string` is per calling thread (invariant 17). The process-global slot raced under parallel lib tests. |
 | 1.4 | 2026-05-10 | Deep-investigation pass recorded in the metadata owner notes. |

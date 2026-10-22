@@ -1,0 +1,53 @@
+name: Frame alloc sites
+
+# Same measurement as Test PBR Features (`--all-features`, no ICD pin,
+# RUST_BACKTRACE=1), limited to the draw_into floor so a pull request records
+# the first frame's call sites. The PBR workflow itself stays off pull_request.
+
+on:
+  pull_request:
+    paths:
+      - "astraweave-render/**"
+      - "astraweave-ecs/**"
+      - ".github/workflows/frame-alloc-sites.yml"
+      - ".github/workflows/pbr-pipeline-ci.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: frame-alloc-sites-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  sites:
+    name: draw_into alloc sites
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      CARGO_TERM_COLOR: always
+      RUST_BACKTRACE: "1"
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: ./.github/actions/rust-ci-setup
+
+      - name: Record one draw_into frame
+        env:
+          WGPU_BACKEND: vulkan
+        run: |
+          echo "RUST_BACKTRACE=${RUST_BACKTRACE:-unset}"
+          echo "RUST_LIB_BACKTRACE=${RUST_LIB_BACKTRACE:-unset}"
+          dpkg -l libvulkan1 mesa-vulkan-drivers | tee target/vulkan-packages.txt || true
+          cargo test -p astraweave-render --all-features --test frame_alloc -- --nocapture
+
+      - name: Upload alloc sites
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frame-alloc-trace
+          path: |
+            target/frame-alloc-trace.txt
+            target/vulkan-packages.txt
+          if-no-files-found: warn
