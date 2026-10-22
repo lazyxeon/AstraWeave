@@ -285,6 +285,11 @@ pub use skinning_gpu::{JointPaletteHandle, JointPaletteManager, SKINNING_GPU_SHA
 #[cfg(test)]
 mod renderer_tests;
 
+// Mesa 26 lavapipe SIGSEGVs when this crate's lib tests build wgpu instances
+// on several threads. Linux-only; other targets have no lavapipe in CI.
+#[cfg(all(test, target_os = "linux"))]
+mod serialize_lib_tests;
+
 #[cfg(test)]
 #[path = "../tests/support/gpu_capability.rs"]
 mod gpu_capability;

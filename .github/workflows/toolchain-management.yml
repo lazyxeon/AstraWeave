@@ -138,6 +138,10 @@ jobs:
 
       - name: Run minimal test suite
         run: |
+          # astraweave-render's Linux lib tests set RUST_TEST_THREADS=1 in
+          # .init_array (serialize_lib_tests.rs). Mesa 26 lavapipe SIGSEGVs
+          # when cargo test shares one process across wgpu instances (#434).
+          # Do not drop that default to speed this step up.
           cargo test --locked --workspace --lib ${{ env.EXCLUDED_PACKAGES }}
 
       - name: Report GPU skips
