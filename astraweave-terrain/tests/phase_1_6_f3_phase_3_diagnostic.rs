@@ -98,21 +98,18 @@ fn climate_name(c: ClimateBias) -> &'static str {
     }
 }
 
-/// Phase 1.6-F.3-phase-3.A.1: stitching divergence per climate.
-/// Measures edge-diff distribution at shared chunk boundaries after real
-/// erosion, for comparison against pre-erosion (which should be ~0 by
-/// noise determinism) and phase 3's fix target (≤ 1 world unit).
+/// Phase 1.6-F.3-phase-3.A.1: stitching divergence for one climate.
+///
+/// A 2×2 grid of every climate, before and after erosion, is a print-only
+/// diagnostic. On the debug CI profile it stays past the 120s slow-timeout
+/// and was the test still running when `Test (ubuntu, affected)` hit its
+/// 45 minute job cap after the other 27056 tests had passed. One temperate
+/// pair of chunks still runs the halo erosion path. Pre-erosion edges stay
+/// near zero because the noise field is deterministic.
 #[test]
 fn phase_1_6_f3_phase_3_stitching_per_climate() {
     const SIDE: i32 = 2;
-    let climates = [
-        ClimateBias::Temperate,
-        ClimateBias::Cold,
-        ClimateBias::Arid,
-        ClimateBias::Tropical,
-        ClimateBias::Wetland,
-        ClimateBias::Highland,
-    ];
+    let climates = [ClimateBias::Temperate];
 
     println!("======================================================");
     println!("F.3-phase-3.A.1: stitching divergence per climate");
@@ -125,6 +122,11 @@ fn phase_1_6_f3_phase_3_stitching_per_climate() {
     for c in climates {
         let chunks = grid(&gen_off, c, SIDE);
         let (mean, p50, p95, p99, max, _min) = distribution_summary(edge_divergences(&chunks));
+        assert!(
+            max < 1.0,
+            "{} pre-erosion edge divergence {max} exceeded 1",
+            climate_name(c)
+        );
         println!(
             "| {:<9} | {mean:6.3} | {p50:6.3} | {p95:6.3} | {p99:6.3} | {max:6.3} |",
             climate_name(c)
