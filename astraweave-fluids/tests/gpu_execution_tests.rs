@@ -102,6 +102,12 @@ fn run_step(system: &mut FluidSystem, device: &wgpu::Device, queue: &wgpu::Queue
     });
     system.step(device, &mut encoder, queue, dt);
     queue.submit([encoder.finish()]);
+    // Retire this submission before the next step. A few hundred unpolled
+    // command buffers stop the DX12 software adapter from signaling its
+    // fence, and the later `poll(Wait)` in `read_particles` never returns.
+    // 120 frames flaked between 58s and the 240s kill; 300 frames never
+    // returned. The timeout itself stays 240s.
+    let _ = device.poll(wgpu::MaintainBase::Wait);
 }
 
 /// Read the full particle buffer back to the CPU (blocking).
@@ -597,6 +603,31 @@ fn gpu_render_accents_smoke() {
     let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
         label: Some("accent render"),
     });
+    // The surface pass writes this depth before accents. A clear-only pass
+    // is that write: the DX12 software adapter does not finish a depth
+    // attachment that has never been stored.
+    {
+        let _clear = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("accent depth clear"),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view: &target.create_view(&Default::default()),
+                resolve_target: None,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
+                    store: wgpu::StoreOp::Store,
+                },
+            })],
+            depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                view: &scene_depth.create_view(&Default::default()),
+                depth_ops: Some(wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(1.0),
+                    store: wgpu::StoreOp::Store,
+                }),
+                stencil_ops: None,
+            }),
+            ..Default::default()
+        });
+    }
     // ONLY the billboard pass — no depth/smooth/shade SSFR surface render.
     renderer.render_accents(
         &queue,
