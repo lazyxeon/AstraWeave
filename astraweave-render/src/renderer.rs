@@ -6399,8 +6399,10 @@ fn vs(input: VSIn) -> VSOut {
     /// Drop froxel fog and light shafts.
     ///
     /// `catch_unwind` does not undo a setter that already stored its pass.
-    /// A panic between the two builds can leave fog enabled. This drops both
-    /// so the caller can continue on the HDRI sky.
+    /// A panic between the two builds can leave fog enabled. This drops both.
+    /// It does not change `atmosphere_on`. With fog and shafts gone, Bruneton
+    /// scatters geometry out to 50 km. The caller must also call
+    /// `set_atmosphere_enabled(false)` to stay on the HDRI sky.
     pub fn clear_volumetric_passes(&mut self) {
         self.volumetric_fog = None;
         self.god_rays = None;
