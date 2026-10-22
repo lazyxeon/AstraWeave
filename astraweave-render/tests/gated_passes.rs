@@ -111,8 +111,11 @@ fn false_atmosphere_flag_disables_the_default_sky() {
                 .map(|part| (*part).to_string())
                 .collect::<Vec<_>>();
             let on = astraweave_render::budget_gate::reject_gated_flags(&args).expect("parse");
-            assert!(!on, "{parts:?}");
-            renderer.set_atmosphere_enabled(on);
+            assert!(
+                matches!(on, astraweave_render::budget_gate::GatedCell::Baseline),
+                "{parts:?}"
+            );
+            renderer.set_atmosphere_enabled(false);
             assert!(!renderer.atmosphere_enabled(), "{parts:?}");
             assert!(renderer.god_rays_enabled());
             submit(&mut renderer, &view);

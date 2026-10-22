@@ -30,11 +30,21 @@ fn bare_flag(next: Option<&str>) -> bool {
 /// What `--atmosphere` does on this head. The flag is accepted alone.
 pub const ATMOSPHERE_REASON: &str = "draw_into clears HDR and depth, the main pass loads both, and record_bruneton copies the time-of-day sun onto that sky";
 
-/// Accept `--atmosphere` alone. Every other enabled gated flag bails, including
-/// a second flag beside `--atmosphere`. `false` is off and does not bail.
-///
-/// `Ok(true)` means the atmosphere measurement runs.
-pub fn reject_gated_flags(args: &[String]) -> anyhow::Result<bool> {
+/// One measurement cell. The default frame is `Baseline`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum GatedCell {
+    /// No gated pass.
+    Baseline,
+    /// Bruneton plus Aravath fog and shafts.
+    Atmosphere,
+    /// Cloud raymarch. The composite is copied onto HDR.
+    Clouds,
+}
+
+/// Accept `--atmosphere` alone or `--clouds` alone. Every other enabled gated
+/// flag bails, including a second flag beside either of those. `false` is off
+/// and does not bail.
+pub fn reject_gated_flags(args: &[String]) -> anyhow::Result<GatedCell> {
     const BLOCKED: &[(&str, &str)] = &[
         (
             "--ssgi",
@@ -52,12 +62,9 @@ pub fn reject_gated_flags(args: &[String]) -> anyhow::Result<bool> {
             "--dof",
             "the depth-of-field history target is uncleared and the result is not copied onto HDR",
         ),
-        (
-            "--clouds",
-            "the raymarch samples cloud_history before writing it, and the composite is not copied onto HDR",
-        ),
     ];
     let atmosphere = flag_on(args, "--atmosphere");
+    let clouds = flag_on(args, "--clouds");
     let mut hits: Vec<String> = BLOCKED
         .iter()
         .filter(|(flag, _)| flag_on(args, flag))
@@ -69,8 +76,24 @@ pub fn reject_gated_flags(args: &[String]) -> anyhow::Result<bool> {
             format!("--atmosphere ({ATMOSPHERE_REASON}; a second gated flag is not a cell)"),
         );
     }
+    if clouds && (atmosphere || !hits.is_empty()) {
+        if atmosphere && hits.iter().all(|hit| !hit.starts_with("--atmosphere")) {
+            hits.insert(
+                0,
+                format!("--atmosphere ({ATMOSPHERE_REASON}; a second gated flag is not a cell)"),
+            );
+        }
+        hits.push(
+            "--clouds (the composite is copied onto HDR; a second gated flag is not a cell)".into(),
+        );
+    }
     if hits.is_empty() {
-        return Ok(atmosphere);
+        return Ok(match (atmosphere, clouds) {
+            (false, false) => GatedCell::Baseline,
+            (true, false) => GatedCell::Atmosphere,
+            (false, true) => GatedCell::Clouds,
+            (true, true) => unreachable!("atmosphere with clouds is a hit"),
+        });
     }
     anyhow::bail!(
         "gated flags cannot fill a measurement cell: {}",
@@ -80,7 +103,7 @@ pub fn reject_gated_flags(args: &[String]) -> anyhow::Result<bool> {
 
 #[cfg(test)]
 mod tests {
-    use super::{flag_on, reject_gated_flags, ATMOSPHERE_REASON};
+    use super::{flag_on, reject_gated_flags, GatedCell, ATMOSPHERE_REASON};
 
     fn args(parts: &[&str]) -> Vec<String> {
         parts.iter().map(|part| (*part).to_string()).collect()
@@ -96,7 +119,7 @@ mod tests {
     fn reject_gated_flags_covers_each_form() {
         assert_eq!(
             reject_gated_flags(&args(&["--scene", "heavy"])).expect("baseline"),
-            false
+            GatedCell::Baseline
         );
         assert!(
             ATMOSPHERE_REASON.contains("clears HDR and depth"),
@@ -110,7 +133,7 @@ mod tests {
             !ATMOSPHERE_REASON.contains("skips the HDR"),
             "{ATMOSPHERE_REASON}"
         );
-        for flag in ["--ssgi", "--taa", "--upscale", "--dof", "--clouds"] {
+        for flag in ["--ssgi", "--taa", "--upscale", "--dof"] {
             let message = rejected(&[flag]);
             assert!(message.contains(flag), "{message}");
             assert!(flag_on(&args(&[flag]), flag));
@@ -120,11 +143,11 @@ mod tests {
             assert!(!flag_on(&args(&[flag, "false"]), flag));
             assert_eq!(
                 reject_gated_flags(&args(&[&format!("{flag}=false")])).expect("off"),
-                false
+                GatedCell::Baseline
             );
             assert_eq!(
                 reject_gated_flags(&args(&[flag, "false"])).expect("off"),
-                false
+                GatedCell::Baseline
             );
         }
         for parts in [
@@ -134,17 +157,17 @@ mod tests {
         ] {
             assert_eq!(
                 reject_gated_flags(&args(parts)).expect("atmosphere"),
-                true,
+                GatedCell::Atmosphere,
                 "{parts:?}"
             );
         }
         assert_eq!(
             reject_gated_flags(&args(&["--atmosphere=false"])).expect("off"),
-            false
+            GatedCell::Baseline
         );
         assert_eq!(
             reject_gated_flags(&args(&["--atmosphere", "false"])).expect("off"),
-            false
+            GatedCell::Baseline
         );
         let pair = rejected(&["--atmosphere", "--ssgi"]);
         assert!(pair.contains("--atmosphere"), "{pair}");
@@ -176,7 +199,21 @@ mod tests {
         );
         assert_eq!(
             reject_gated_flags(&args(&["--atmosphere", "false", "--atmosphere"])).expect("on"),
-            true
+            GatedCell::Atmosphere
         );
+        for parts in [&["--clouds"][..], &["--clouds=true"], &["--clouds", "true"]] {
+            assert_eq!(
+                reject_gated_flags(&args(parts)).expect("clouds"),
+                GatedCell::Clouds,
+                "{parts:?}"
+            );
+        }
+        assert_eq!(
+            reject_gated_flags(&args(&["--clouds=false"])).expect("off"),
+            GatedCell::Baseline
+        );
+        let both = rejected(&["--atmosphere", "--clouds"]);
+        assert!(both.contains("--atmosphere"), "{both}");
+        assert!(both.contains("--clouds"), "{both}");
     }
 }
