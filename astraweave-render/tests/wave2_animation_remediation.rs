@@ -9,6 +9,10 @@
 //!   - JointPalette overflow / empty / from_matrices
 //!   - compute_joint_matrices deep hierarchy, inverse bind
 
+#[cfg(target_os = "linux")]
+#[path = "support/linux_test_threads.rs"]
+mod linux_test_threads;
+
 use astraweave_render::animation::{
     compute_joint_matrices, skin_vertex_cpu, AnimationChannel, AnimationClip, AnimationState,
     ChannelData, Interpolation, Joint, JointMatrixGPU, JointPalette, Skeleton, Transform,

@@ -3,6 +3,10 @@
 //! Phase 2 Task 5 (Phase E): Validates that CPU skinning produces deterministic
 //! results for a skeleton in rest pose (no animation).
 
+#[cfg(target_os = "linux")]
+#[path = "support/linux_test_threads.rs"]
+mod linux_test_threads;
+
 mod test_utils;
 
 use astraweave_render::{compute_joint_matrices, skin_vertex_cpu, Joint, Skeleton, Transform};

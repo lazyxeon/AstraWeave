@@ -1,6 +1,10 @@
 // Unit tests for PBR BRDF functions and shader compilation
 // Tests Cook-Torrance BRDF components: GGX distribution, Smith geometry, Fresnel-Schlick
 
+#[cfg(target_os = "linux")]
+#[path = "support/linux_test_threads.rs"]
+mod linux_test_threads;
+
 use std::f32::consts::PI;
 
 /// Helper: Approximate GGX distribution calculation (matches WGSL implementation)

@@ -15,6 +15,10 @@
 //! Section references in test names and docstrings cite
 //! `docs/current/CAMERA_CONVENTIONS.md` §X.
 
+#[cfg(target_os = "linux")]
+#[path = "support/linux_test_threads.rs"]
+mod linux_test_threads;
+
 use astraweave_camera::FreeFly as Camera;
 use glam::{Mat4, Vec3, Vec4};
 

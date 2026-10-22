@@ -9,6 +9,10 @@
 //!   - CameraController scroll/orbit/toggle logic
 //!   - Speed modifiers (sprint/precision)
 
+#[cfg(target_os = "linux")]
+#[path = "support/linux_test_threads.rs"]
+mod linux_test_threads;
+
 use astraweave_camera::{CameraController, CameraMode, FreeFly as Camera};
 use glam::{Vec2, Vec3};
 

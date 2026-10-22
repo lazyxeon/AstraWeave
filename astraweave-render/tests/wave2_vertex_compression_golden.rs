@@ -8,6 +8,10 @@
 //! Strategy: Pin EXACT intermediate values (i16, u16, f32) so that any arithmetic
 //! mutation (replace *, /, +, -, sign flip, constant change) is immediately caught.
 
+#[cfg(target_os = "linux")]
+#[path = "support/linux_test_threads.rs"]
+mod linux_test_threads;
+
 use astraweave_render::vertex_compression::{
     CompressedVertex, HalfFloatEncoder, OctahedralEncoder, VertexCompressor,
 };

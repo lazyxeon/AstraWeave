@@ -87,7 +87,6 @@ jobs:
     name: Test PBR Features
     runs-on: ubuntu-latest
     timeout-minutes: 40
-    continue-on-error: true  # Allow workflow to pass if tests have platform issues
     needs: build-pbr-components
     
     steps:
@@ -104,18 +103,23 @@ jobs:
           libasound2-dev mesa-vulkan-drivers libvulkan1 libudev-dev pkg-config
     
     - name: Test astraweave-render
+      # A SIGSEGV here must fail the workflow. Do not put continue-on-error
+      # back on this step or on the job: libvulkan 1.4.341 faults when
+      # several threads load every Mesa ICD, and that exit used to go yellow.
       run: |
         echo "::group::Testing astraweave-render"
         cargo test -p astraweave-render --all-features -- --nocapture
         echo "::endgroup::"
     
     - name: Test terrain materials
+      continue-on-error: true
       run: |
         echo "::group::Testing terrain material system"
         cargo test -p astraweave-render test_terrain_material -- --nocapture
         echo "::endgroup::"
     
     - name: Test advanced materials
+      continue-on-error: true
       run: |
         echo "::group::Testing advanced PBR features"
         cargo test -p astraweave-render test_pbr_advanced -- --nocapture

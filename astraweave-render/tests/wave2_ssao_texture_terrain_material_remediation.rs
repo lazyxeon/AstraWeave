@@ -6,6 +6,10 @@
 //! - terrain.rs (84 mutants): biome_to_id, vegetation_type_to_id, TerrainRenderer
 //! - material_extended.rs (86 mutants): feature flags, presets, TOML to_gpu
 
+#[cfg(target_os = "linux")]
+#[path = "support/linux_test_threads.rs"]
+mod linux_test_threads;
+
 use astraweave_render::material_extended::{
     MaterialDefinitionExtended, MaterialGpuExtended, MATERIAL_FLAG_ANISOTROPY,
     MATERIAL_FLAG_CLEARCOAT, MATERIAL_FLAG_SHEEN, MATERIAL_FLAG_SUBSURFACE,

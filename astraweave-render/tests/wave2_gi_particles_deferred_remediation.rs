@@ -12,6 +12,10 @@
 //!   - EmitterParams (size, Pod/Zeroable)
 //!   - GBufferFormats (default texture formats)
 
+#[cfg(target_os = "linux")]
+#[path = "support/linux_test_threads.rs"]
+mod linux_test_threads;
+
 use glam::Vec3;
 
 use astraweave_render::deferred::GBufferFormats;

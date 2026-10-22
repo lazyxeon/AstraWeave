@@ -9,6 +9,10 @@
 //!   - TaaConfig, MotionBlurConfig, DofConfig, ColorGradingConfig (defaults)
 //!   - TextureStreamingManager (budget, request, stats, eviction)
 
+#[cfg(target_os = "linux")]
+#[path = "support/linux_test_threads.rs"]
+mod linux_test_threads;
+
 use std::collections::HashMap;
 use std::path::PathBuf;
 

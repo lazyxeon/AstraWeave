@@ -138,11 +138,14 @@ jobs:
 
       - name: Run minimal test suite
         run: |
-          # astraweave-render's Linux lib tests set RUST_TEST_THREADS=1 in
+          # astraweave-render's Linux tests set RUST_TEST_THREADS=1 in
           # .init_array (serialize_lib_tests.rs). libvulkan 1.4.341 SIGSEGVs
           # in vkSetDebugUtilsObjectNameEXT when several threads load every
-          # Mesa ICD (Vulkan-Loader #1863, fixed in 1.4.344). Do not drop
-          # that default until the runner's libvulkan1 is new enough (#434).
+          # Mesa ICD (Vulkan-Loader #1863). Tag v1.4.344 does not contain
+          # the fix; v1.4.345 does. Do not drop that default until the
+          # runner's libvulkan1 is new enough (#434). The .init_array in
+          # the test binary is what serializes the run; this step does not
+          # set RUST_TEST_THREADS itself.
           cargo test --locked --workspace --lib ${{ env.EXCLUDED_PACKAGES }}
 
       - name: Report GPU skips

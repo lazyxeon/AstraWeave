@@ -5,6 +5,10 @@
 
 #![cfg(all(feature = "impostor-bake", feature = "gpu-tests"))]
 
+#[cfg(target_os = "linux")]
+#[path = "support/linux_test_threads.rs"]
+mod linux_test_threads;
+
 use astraweave_render::impostor_bake::{
     fit_ortho_camera, upload_simplification_mesh, Aabb, ImpostorBaker, ImpostorBakerConfig,
 };

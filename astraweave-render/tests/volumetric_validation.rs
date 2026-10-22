@@ -4,6 +4,10 @@
 //! validation error fails the test, including a bad storage access, a depth
 //! binding, or a copy into a mapped profiler buffer.
 
+#[cfg(target_os = "linux")]
+#[path = "support/linux_test_threads.rs"]
+mod linux_test_threads;
+
 use astraweave_render::{GodRayConfig, Renderer};
 
 #[test]

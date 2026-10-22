@@ -4,6 +4,10 @@
 //! TaaConfig/MotionBlurConfig/DofConfig/ColorGradingConfig defaults, BloomConfig,
 //! MaterialGpuExtended defaults and factory methods, material flags.
 
+#[cfg(target_os = "linux")]
+#[path = "support/linux_test_threads.rs"]
+mod linux_test_threads;
+
 use astraweave_camera::{CameraController, FreeFly as Camera};
 use astraweave_render::material::MaterialGpu;
 use astraweave_render::material_extended::{

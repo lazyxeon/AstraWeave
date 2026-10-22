@@ -1,4 +1,8 @@
 // Minimal headless smoke test for the render graph scaffolding
+#[cfg(target_os = "linux")]
+#[path = "support/linux_test_threads.rs"]
+mod linux_test_threads;
+
 use astraweave_render::graph::{ClearNode, RendererMainNode};
 use astraweave_render::graph::{GraphContext, RenderGraph, RenderNode};
 use std::sync::atomic::{AtomicUsize, Ordering};

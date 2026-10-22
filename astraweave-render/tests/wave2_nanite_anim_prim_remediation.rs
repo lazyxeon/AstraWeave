@@ -3,6 +3,10 @@
 //! Targets: nanite_visibility.rs (126 mutants), animation.rs (93 mutants),
 //! primitives.rs (123 mutants), clustered_forward.rs (134 mutants — GpuLight only)
 
+#[cfg(target_os = "linux")]
+#[path = "support/linux_test_threads.rs"]
+mod linux_test_threads;
+
 use astraweave_render::animation::{
     compute_joint_matrices, AnimationChannel, AnimationClip, AnimationState, ChannelData,
     Interpolation, Joint, JointPalette, Skeleton, Transform,

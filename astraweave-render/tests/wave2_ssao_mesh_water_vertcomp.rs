@@ -3,6 +3,10 @@
 //! These tests target arithmetic operations, comparison operators, and constant values
 //! that are common cargo-mutants mutation targets.
 
+#[cfg(target_os = "linux")]
+#[path = "support/linux_test_threads.rs"]
+mod linux_test_threads;
+
 use astraweave_render::mesh::{compute_tangents, CpuMesh, MeshVertex, MeshVertexLayout};
 #[cfg(feature = "ssao")]
 use astraweave_render::ssao::{SsaoConfig, SsaoKernel, SsaoQuality, SsaoUniforms};

@@ -1,3 +1,7 @@
+#[cfg(target_os = "linux")]
+#[path = "support/linux_test_threads.rs"]
+mod linux_test_threads;
+
 use astraweave_render::Renderer;
 use std::sync::Arc;
 use winit::event_loop::EventLoop;

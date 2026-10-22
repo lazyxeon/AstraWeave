@@ -7,6 +7,10 @@
 //!
 //! Strategy: Pin exact numerical outputs so any arithmetic or logic mutation is caught.
 
+#[cfg(target_os = "linux")]
+#[path = "support/linux_test_threads.rs"]
+mod linux_test_threads;
+
 use astraweave_render::culling::{
     batch_visible_instances, build_indirect_commands_cpu, cpu_frustum_cull, BatchId, DrawBatch,
     DrawIndirectCommand, FrustumPlanes, InstanceAABB,

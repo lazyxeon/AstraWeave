@@ -7,6 +7,10 @@
 
 #![cfg(all(feature = "terrain-splat-arrays", feature = "gpu-tests"))]
 
+#[cfg(target_os = "linux")]
+#[path = "support/linux_test_threads.rs"]
+mod linux_test_threads;
+
 use astraweave_render::{
     LayerTextures, TerrainMaterialConfig, TerrainMaterialGpu, TerrainMaterialManager,
     TerrainSplatVertex, MAX_TERRAIN_LAYERS, NUM_SPLAT_MAPS,

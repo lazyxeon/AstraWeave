@@ -7,6 +7,10 @@
 //!   - LODGenerator::simplify — error threshold, already-below-target, actual reduction
 //!   - Edge cases: degenerate meshes, single triangle, empty mesh
 
+#[cfg(target_os = "linux")]
+#[path = "support/linux_test_threads.rs"]
+mod linux_test_threads;
+
 use astraweave_render::lod_generator::{LODConfig, LODGenerator, SimplificationMesh};
 use glam::Vec3;
 

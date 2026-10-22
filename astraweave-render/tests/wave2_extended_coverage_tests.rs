@@ -6,6 +6,10 @@
 //! TransparencyManager sorting/filtering, DrawBatch build, VertexCompressor,
 //! GpuMemoryBudget snapshot/set, LODGenerator, BiomeDetector, DayPeriod::all.
 
+#[cfg(target_os = "linux")]
+#[path = "support/linux_test_threads.rs"]
+mod linux_test_threads;
+
 use astraweave_render::animation::{
     compute_joint_matrices, AnimationChannel, AnimationClip, AnimationState, ChannelData,
     Interpolation, Joint, JointPalette, Skeleton, Transform,

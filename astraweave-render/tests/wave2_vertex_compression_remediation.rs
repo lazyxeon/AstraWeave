@@ -9,6 +9,10 @@
 //!   - calculate_savings zero/one/large vertex counts
 //!   - CompressedVertex constants
 
+#[cfg(target_os = "linux")]
+#[path = "support/linux_test_threads.rs"]
+mod linux_test_threads;
+
 use astraweave_render::vertex_compression::{
     CompressedVertex, HalfFloatEncoder, OctahedralEncoder, VertexCompressor,
 };

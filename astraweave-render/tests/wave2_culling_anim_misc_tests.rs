@@ -4,6 +4,10 @@
 //! Pins exact numeric constants and exercises pure-computation functions
 //! that don't require GPU access.
 
+#[cfg(target_os = "linux")]
+#[path = "support/linux_test_threads.rs"]
+mod linux_test_threads;
+
 use astraweave_render::animation::{
     skin_vertex_cpu, AnimationState, JointPalette, Transform, MAX_JOINTS,
 };

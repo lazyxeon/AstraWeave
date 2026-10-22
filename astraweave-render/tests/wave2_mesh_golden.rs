@@ -7,6 +7,10 @@
 //! Strategy: Pin exact field values and computed results so any
 //! arithmetic or constructor mutation is caught.
 
+#[cfg(target_os = "linux")]
+#[path = "support/linux_test_threads.rs"]
+mod linux_test_threads;
+
 use astraweave_render::mesh::{compute_tangents, CpuMesh, MeshVertex, MeshVertexLayout};
 use glam::{Vec2, Vec3, Vec4};
 

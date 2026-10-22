@@ -4,6 +4,10 @@
 //!
 //! Targets remaining high-mutant-count CPU-testable APIs.
 
+#[cfg(target_os = "linux")]
+#[path = "support/linux_test_threads.rs"]
+mod linux_test_threads;
+
 use astraweave_render::biome_audio::{BiomeAmbientMap, DEFAULT_AMBIENT_CROSSFADE};
 use astraweave_render::debug_quad::create_screen_quad;
 use astraweave_render::effects::WeatherKind;

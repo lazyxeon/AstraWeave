@@ -3,6 +3,10 @@
 //! Validates renderer output across different GPU backends (DX12, Vulkan, Metal)
 //! to ensure consistent, deterministic rendering.
 
+#[cfg(target_os = "linux")]
+#[path = "support/linux_test_threads.rs"]
+mod linux_test_threads;
+
 #[path = "support/gpu_capability.rs"]
 mod gpu_capability;
 

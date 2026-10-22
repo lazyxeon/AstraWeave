@@ -4,6 +4,10 @@
 //! Targets: bin_lights_cpu (251 mutants), TransitionEffect + EasingFunction +
 //! BiomeVisuals (130 mutants).
 
+#[cfg(target_os = "linux")]
+#[path = "support/linux_test_threads.rs"]
+mod linux_test_threads;
+
 use astraweave_render::biome_transition::{
     BiomeVisuals, EasingFunction, TransitionConfig, TransitionEffect,
 };

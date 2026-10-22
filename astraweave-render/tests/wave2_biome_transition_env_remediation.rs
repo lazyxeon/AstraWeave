@@ -3,6 +3,10 @@
 //! Golden-value tests for EasingFunction::apply, BiomeVisuals::for_biome,
 //! TransitionEffect state machine, and TimeOfDay lighting calculations.
 
+#[cfg(target_os = "linux")]
+#[path = "support/linux_test_threads.rs"]
+mod linux_test_threads;
+
 use astraweave_render::biome_transition::{
     BiomeVisuals, EasingFunction, TransitionConfig, TransitionEffect,
 };

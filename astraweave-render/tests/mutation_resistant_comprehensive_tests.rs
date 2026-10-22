@@ -7,6 +7,10 @@
 // ============================================================================
 // Module: environment (TimeOfDay, SkyConfig)
 // ============================================================================
+#[cfg(target_os = "linux")]
+#[path = "support/linux_test_threads.rs"]
+mod linux_test_threads;
+
 mod environment_mutations {
     use astraweave_render::environment::{SkyConfig, TimeOfDay};
 

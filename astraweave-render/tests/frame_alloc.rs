@@ -5,6 +5,10 @@
 
 #![cfg(feature = "alloc-counter")]
 
+#[cfg(target_os = "linux")]
+#[path = "support/linux_test_threads.rs"]
+mod linux_test_threads;
+
 use astraweave_ecs::counting_alloc::{allocs, reset_allocs};
 use astraweave_render::{Instance, Renderer};
 

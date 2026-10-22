@@ -1,6 +1,10 @@
 //! Bloom Post-Processing Integration Tests
 //! Tests the bloom pipeline with headless GPU execution
 
+#[cfg(target_os = "linux")]
+#[path = "support/linux_test_threads.rs"]
+mod linux_test_threads;
+
 #[cfg(feature = "bloom")]
 use astraweave_render::{BloomConfig, BloomPipeline};
 

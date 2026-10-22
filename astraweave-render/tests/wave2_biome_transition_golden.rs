@@ -8,6 +8,10 @@
 //! functions. Pin BiomeVisuals::for_biome key values per biome type. Test
 //! TransitionEffect state transitions with golden blend factors.
 
+#[cfg(target_os = "linux")]
+#[path = "support/linux_test_threads.rs"]
+mod linux_test_threads;
+
 use astraweave_render::biome_transition::{
     BiomeVisuals, EasingFunction, TransitionConfig, TransitionEffect,
 };

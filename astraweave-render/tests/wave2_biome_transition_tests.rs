@@ -4,6 +4,10 @@
 //! exercises EasingFunction::apply() exact formulas, TransitionConfig defaults,
 //! TransitionEffect state-machine, lerp boundaries, and to_sky_config conversion.
 
+#[cfg(target_os = "linux")]
+#[path = "support/linux_test_threads.rs"]
+mod linux_test_threads;
+
 use astraweave_render::biome_transition::{
     BiomeVisuals, EasingFunction, TransitionConfig, TransitionEffect,
 };

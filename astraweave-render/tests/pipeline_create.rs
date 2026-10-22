@@ -1,5 +1,9 @@
 //! The pipeline helper creates a pipeline when no pipeline cache exists.
 
+#[cfg(target_os = "linux")]
+#[path = "support/linux_test_threads.rs"]
+mod linux_test_threads;
+
 use astraweave_render::pipeline_cache;
 
 #[test]

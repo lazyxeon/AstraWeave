@@ -3,6 +3,10 @@
 //! applies no flag or `--atmosphere=false`, draws with Bruneton off. The
 //! other gated passes stay off unless their own setters enable them.
 
+#[cfg(target_os = "linux")]
+#[path = "support/linux_test_threads.rs"]
+mod linux_test_threads;
+
 use astraweave_render::Renderer;
 
 fn color_target(device: &wgpu::Device) -> wgpu::TextureView {

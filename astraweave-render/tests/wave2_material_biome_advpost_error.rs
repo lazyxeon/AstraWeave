@@ -3,6 +3,10 @@
 //!
 //! Targets pure CPU functions with golden values for mutation killing.
 
+#[cfg(target_os = "linux")]
+#[path = "support/linux_test_threads.rs"]
+mod linux_test_threads;
+
 use astraweave_render::biome_material::{BiomeMaterialConfig, BiomeMaterialSystem};
 use astraweave_render::error::{RenderError, RenderResult};
 use astraweave_render::hdri_catalog::DayPeriod;

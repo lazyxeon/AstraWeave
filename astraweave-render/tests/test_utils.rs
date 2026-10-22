@@ -2,6 +2,10 @@
 //!
 //! Provides wgpu context initialization for CI-safe headless tests
 
+#[cfg(target_os = "linux")]
+#[path = "support/linux_test_threads.rs"]
+mod linux_test_threads;
+
 #[path = "support/gpu_capability.rs"]
 mod gpu_capability;
 

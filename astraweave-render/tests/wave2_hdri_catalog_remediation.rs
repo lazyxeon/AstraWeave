@@ -6,6 +6,10 @@
 //!   - DayPeriod::as_str golden strings
 //!   - DayPeriod::all() count and contents
 
+#[cfg(target_os = "linux")]
+#[path = "support/linux_test_threads.rs"]
+mod linux_test_threads;
+
 use astraweave_render::hdri_catalog::DayPeriod;
 
 // ===========================================================================

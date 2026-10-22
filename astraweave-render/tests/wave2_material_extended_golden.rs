@@ -7,6 +7,10 @@
 //! Strategy: Pin EXACT field values and flags for every factory method.
 //! Pin to_gpu's flag computation boundaries (>0.0, abs()>0.001, fold/max).
 
+#[cfg(target_os = "linux")]
+#[path = "support/linux_test_threads.rs"]
+mod linux_test_threads;
+
 use astraweave_render::material_extended::{
     MaterialDefinitionExtended, MaterialGpuExtended, MATERIAL_FLAG_ANISOTROPY,
     MATERIAL_FLAG_CLEARCOAT, MATERIAL_FLAG_SHEEN, MATERIAL_FLAG_SUBSURFACE,

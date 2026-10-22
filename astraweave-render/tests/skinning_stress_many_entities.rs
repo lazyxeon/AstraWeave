@@ -3,6 +3,10 @@
 //! Phase 2 Task 5 (Phase E): Validates system stability under load with many entities.
 //! Tests for panics, buffer overflows, and reasonable performance.
 
+#[cfg(target_os = "linux")]
+#[path = "support/linux_test_threads.rs"]
+mod linux_test_threads;
+
 use astraweave_render::animation::*;
 use glam::{Mat4, Quat, Vec3};
 use std::time::Instant;

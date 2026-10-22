@@ -3,6 +3,10 @@
 //! Validates that GPU resources (buffers, textures, pipelines) are properly
 //! cleaned up and don't leak across renderer creation/destruction cycles.
 
+#[cfg(target_os = "linux")]
+#[path = "support/linux_test_threads.rs"]
+mod linux_test_threads;
+
 #[path = "support/gpu_capability.rs"]
 mod gpu_capability;
 

@@ -5,6 +5,10 @@
 //! outcomes), EdgeCollapse ordering, generate_lods ceiling math,
 //! calculate_reduction boundary cases, and simplify() early-return/error-threshold paths.
 
+#[cfg(target_os = "linux")]
+#[path = "support/linux_test_threads.rs"]
+mod linux_test_threads;
+
 use astraweave_render::lod_generator::{LODConfig, LODGenerator, SimplificationMesh};
 use glam::Vec3;
 

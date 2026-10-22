@@ -1,5 +1,9 @@
 //! Tests for indirect draw command generation and batching
 
+#[cfg(target_os = "linux")]
+#[path = "support/linux_test_threads.rs"]
+mod linux_test_threads;
+
 use astraweave_render::culling::{
     batch_visible_instances, build_indirect_commands_cpu, BatchId, DrawBatch, DrawIndirectCommand,
 };

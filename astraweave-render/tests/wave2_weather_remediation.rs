@@ -1,6 +1,10 @@
 //! Wave 2 weather_system remediation — golden values for multiplier constants,
 //! wind profile match arms, and boundary/edge-case arithmetic.
 
+#[cfg(target_os = "linux")]
+#[path = "support/linux_test_threads.rs"]
+mod linux_test_threads;
+
 use astraweave_render::effects::WeatherKind;
 use astraweave_render::weather_system::{BiomeWeatherMap, BiomeWindProfile, WeatherTransition};
 use astraweave_terrain::biome::BiomeType;

@@ -5,6 +5,10 @@
 //!          CameraController::update_camera smoothing, speed modifiers,
 //!          pitch clamping, mode-specific movement, orbit zoom.
 
+#[cfg(target_os = "linux")]
+#[path = "support/linux_test_threads.rs"]
+mod linux_test_threads;
+
 use astraweave_camera::{CameraController, CameraMode, FreeFly as Camera};
 use glam::{Mat4, Vec2, Vec3};
 use std::f32::consts::{FRAC_PI_2, FRAC_PI_4, PI};

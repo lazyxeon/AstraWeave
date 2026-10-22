@@ -5,6 +5,10 @@
 // ═══════════════════════════════════════════════════════════════════════
 //  Camera (155 mutants) — dir() trig math, view/proj matrices, controller
 // ═══════════════════════════════════════════════════════════════════════
+#[cfg(target_os = "linux")]
+#[path = "support/linux_test_threads.rs"]
+mod linux_test_threads;
+
 mod camera_tests {
     use astraweave_camera::{CameraController, CameraMode, FreeFly as Camera};
     use glam::{Mat4, Vec2, Vec3};

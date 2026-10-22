@@ -1,6 +1,10 @@
 //! CPU frustum tests and the culling module's CPU path accept the same boxes.
 //! Neither result is simulation state.
 
+#[cfg(target_os = "linux")]
+#[path = "support/linux_test_threads.rs"]
+mod linux_test_threads;
+
 use astraweave_render::culling::{cpu_frustum_cull, FrustumPlanes, InstanceAABB};
 use glam::Mat4;
 

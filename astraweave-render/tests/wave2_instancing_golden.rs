@@ -7,6 +7,10 @@
 //! Strategy: Pin exact matrix entries for known transforms, exact positions
 //! for grid/circle patterns, exact draw-call reduction math.
 
+#[cfg(target_os = "linux")]
+#[path = "support/linux_test_threads.rs"]
+mod linux_test_threads;
+
 use astraweave_render::instancing::{
     Instance, InstanceBatch, InstanceManager, InstancePatternBuilder, InstanceRaw,
 };

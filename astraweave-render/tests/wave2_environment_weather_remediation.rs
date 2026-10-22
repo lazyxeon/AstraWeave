@@ -5,6 +5,10 @@
 //! WeatherSystem (transitions, intensities, terrain color modifier, light attenuation,
 //! biome-appropriate weather), and WeatherParticles.
 
+#[cfg(target_os = "linux")]
+#[path = "support/linux_test_threads.rs"]
+mod linux_test_threads;
+
 use astraweave_render::environment::{TimeOfDay, WeatherParticles, WeatherSystem, WeatherType};
 
 // ─── TimeOfDay: sun position ────────────────────────────────────────────────

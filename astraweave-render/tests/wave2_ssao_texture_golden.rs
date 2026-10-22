@@ -10,6 +10,10 @@
 // ============================================================================
 // SSAO tests – feature-gated behind "ssao"
 // ============================================================================
+#[cfg(target_os = "linux")]
+#[path = "support/linux_test_threads.rs"]
+mod linux_test_threads;
+
 #[cfg(feature = "ssao")]
 mod ssao_tests {
     use astraweave_render::ssao::{SsaoConfig, SsaoKernel, SsaoQuality};

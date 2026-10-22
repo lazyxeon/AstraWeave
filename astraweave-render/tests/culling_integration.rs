@@ -1,6 +1,10 @@
 //! Integration tests for GPU-driven frustum culling
 //! Validates CPU vs GPU culling parity and headless execution
 
+#[cfg(target_os = "linux")]
+#[path = "support/linux_test_threads.rs"]
+mod linux_test_threads;
+
 #[path = "support/gpu_capability.rs"]
 mod gpu_capability;
 

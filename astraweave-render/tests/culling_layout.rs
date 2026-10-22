@@ -1,5 +1,9 @@
 //! Test to verify InstanceAABB struct layout matches GPU expectations
 
+#[cfg(target_os = "linux")]
+#[path = "support/linux_test_threads.rs"]
+mod linux_test_threads;
+
 use astraweave_render::culling::InstanceAABB;
 use bytemuck::cast_slice;
 use glam::Vec3;
