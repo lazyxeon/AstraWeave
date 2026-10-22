@@ -48,7 +48,7 @@ fn record(renderer: &mut Renderer, view: &wgpu::TextureView) {
 
 #[test]
 fn draw_into_allocates_nothing_after_warmup() {
-    lib_backtrace::disable_library_backtraces();
+    lib_backtrace::require_library_backtraces_off();
     pollster::block_on(async {
         let mut renderer = Renderer::new_headless(64, 64)
             .await
@@ -138,6 +138,11 @@ fn draw_into_allocates_nothing_after_warmup() {
             renderer.atmosphere_enabled(),
         );
         eprintln!("{header}");
+        let adapter = renderer.gpu_adapter_name();
+        assert!(
+            adapter.to_lowercase().contains("llvmpipe"),
+            "draw_into floor is the lavapipe count, adapter={adapter}"
+        );
         let min = *samples.iter().min().unwrap();
         let max = *samples.iter().max().unwrap();
         // Lavapipe on Mesa 25.2 and on Mesa 26.0.8-1ubuntu0.3 (amd64 and
@@ -150,8 +155,8 @@ fn draw_into_allocates_nothing_after_warmup() {
         // `RUST_BACKTRACE=1`, and wgpu-core's debug snatch lock then calls
         // `Backtrace::capture` on every acquire. Those 48 allocations are
         // that capture (`LockTrace::enter`), not another pass and not the
-        // adapter. `disable_library_backtraces` runs before the device
-        // exists so capture stays off and the ceiling stays 130. A per-site
+        // adapter. The process must be started with `RUST_LIB_BACKTRACE=0`
+        // so capture stays off and the ceiling stays 130. A per-site
         // breakdown is the manual heaptrack workflow, not an assert here.
         // Spread inside a run is 4.
         // The constructor leaves Bruneton off. A sky-only Bruneton frame

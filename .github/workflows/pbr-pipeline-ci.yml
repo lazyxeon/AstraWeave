@@ -24,8 +24,7 @@ env:
   RUST_BACKTRACE: 1
   # Debug wgpu-core takes a snatch lock with Backtrace::capture. RUST_BACKTRACE
   # makes that capture allocate (48 per draw_into). Panic backtraces stay on.
-  # The frame_alloc test also sets this before the device exists; the cache is
-  # fixed on the first capture, so the workflow sets it for every other test.
+  # Set before main. The floor tests only read this. They do not call set_var.
   RUST_LIB_BACKTRACE: "0"
 
 jobs:
@@ -107,11 +106,20 @@ jobs:
         sudo apt-get install -y libx11-dev libxcursor-dev libxrandr-dev libxi-dev \
           libasound2-dev mesa-vulkan-drivers libvulkan1 libudev-dev pkg-config
     
+    - name: CountingAlloc records alloc, alloc_zeroed, and realloc
+      run: |
+        echo "::group::alloc_trace_is_quiet"
+        set -o pipefail
+        cargo test -p astraweave-ecs --features alloc-counter --color never --test alloc_trace_quiet -- --nocapture | tee target/alloc-trace-quiet.txt
+        echo "::endgroup::"
+        grep -E 'test result: ok\. [1-9][0-9]* passed' target/alloc-trace-quiet.txt
+
     - name: draw_into allocation floor
       env:
         WGPU_BACKEND: vulkan
       run: |
         echo "::group::draw_into allocation floor"
+        unset VK_ADD_DRIVER_FILES
         if [ -f /usr/share/vulkan/icd.d/lvp_icd.x86_64.json ]; then
           icd=/usr/share/vulkan/icd.d/lvp_icd.x86_64.json
         elif [ -f /usr/share/vulkan/icd.d/lvp_icd.json ]; then
@@ -123,8 +131,11 @@ jobs:
         export VK_ICD_FILENAMES="$icd"
         export VK_DRIVER_FILES="$icd"
         echo "VK_ICD_FILENAMES=$VK_ICD_FILENAMES"
-        cargo test -p astraweave-render --all-features --test frame_alloc -- --nocapture
+        set -o pipefail
+        cargo test -p astraweave-render --all-features --color never --test frame_alloc -- --nocapture | tee target/frame-alloc-floor.txt
         echo "::endgroup::"
+        grep -E 'adapter=llvmpipe' target/frame-alloc-floor.txt
+        grep -E 'test result: ok\. [1-9][0-9]* passed' target/frame-alloc-floor.txt
 
     - name: Test astraweave-render
       continue-on-error: true

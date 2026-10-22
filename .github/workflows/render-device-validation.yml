@@ -13,54 +13,70 @@ jobs:
     name: Startup passes (lavapipe)
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    env:
+      # Floor tests read this. They do not call set_var.
+      RUST_LIB_BACKTRACE: "0"
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - uses: dtolnay/rust-toolchain@d77020bf130f2e8c39c025bf9c4c3a445fe2b9fa # 1.89.0
       - name: Install lavapipe
         run: sudo apt-get update && sudo apt-get install -y mesa-vulkan-drivers libvulkan1 pkg-config libudev-dev
+      - name: CountingAlloc records alloc, alloc_zeroed, and realloc
+        run: |
+          set -o pipefail
+          cargo test -p astraweave-ecs --features alloc-counter --color never --test alloc_trace_quiet -- --nocapture | tee target/alloc-trace-quiet.txt
+          grep -E 'test result: ok\. [1-9][0-9]* passed' target/alloc-trace-quiet.txt
       - name: Submit startup passes under validation
         env:
           WGPU_BACKEND: vulkan
           WGPU_VALIDATION: "1"
         run: |
+          unset VK_ADD_DRIVER_FILES
           if [ -f /usr/share/vulkan/icd.d/lvp_icd.x86_64.json ]; then
             export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.x86_64.json
           else
             export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json
           fi
+          export VK_DRIVER_FILES="$VK_ICD_FILENAMES"
           cargo test -p astraweave-render --test created_pass_validation -- --nocapture
       - name: Assert draw_into allocates nothing after warmup
         env:
           WGPU_BACKEND: vulkan
           WGPU_VALIDATION: "1"
         run: |
+          unset VK_ADD_DRIVER_FILES
           if [ -f /usr/share/vulkan/icd.d/lvp_icd.x86_64.json ]; then
             export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.x86_64.json
           else
             export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json
           fi
+          export VK_DRIVER_FILES="$VK_ICD_FILENAMES"
           cargo test -p astraweave-render --features alloc-counter --test frame_alloc -- --nocapture
       - name: Assert the streamed fallback stays on the allocation floor
         env:
           WGPU_BACKEND: vulkan
           WGPU_VALIDATION: "1"
         run: |
+          unset VK_ADD_DRIVER_FILES
           if [ -f /usr/share/vulkan/icd.d/lvp_icd.x86_64.json ]; then
             export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.x86_64.json
           else
             export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json
           fi
+          export VK_DRIVER_FILES="$VK_ICD_FILENAMES"
           cargo test -p astraweave-render --features alloc-counter --test stream_fallback -- --nocapture
       - name: Timestamp readback is non-zero
         env:
           WGPU_BACKEND: vulkan
           WGPU_VALIDATION: "1"
         run: |
+          unset VK_ADD_DRIVER_FILES
           if [ -f /usr/share/vulkan/icd.d/lvp_icd.x86_64.json ]; then
             export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.x86_64.json
           else
             export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json
           fi
+          export VK_DRIVER_FILES="$VK_ICD_FILENAMES"
           cargo test -p astraweave-render --test gpu_timestamp -- --nocapture
 
   windows:

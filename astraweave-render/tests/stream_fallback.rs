@@ -56,7 +56,7 @@ fn record(renderer: &mut Renderer, view: &wgpu::TextureView) {
 
 #[test]
 fn fallback_frame_does_not_allocate_before_the_texture_is_resident() {
-    lib_backtrace::disable_library_backtraces();
+    lib_backtrace::require_library_backtraces_off();
     pollster::block_on(async {
         let path = format!("/tmp/aw-stream-{}.png", std::process::id());
         let _ = std::fs::remove_file(&path);
