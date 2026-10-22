@@ -1,16 +1,32 @@
 #![allow(unsafe_code)]
-//! Keep `cargo test --lib` off a Mesa lavapipe crash.
+//! Keep `cargo test --lib` off a Vulkan-Loader race. This is a workaround.
 //!
-//! GitHub's Ubuntu 26.04 image is Mesa 26.0.8. `cargo test --lib` runs this
-//! crate's tests in one process, and the default thread count creates many
-//! wgpu instances at once. That process dies with SIGSEGV. The fault is not
-//! one test: toolchain run 39730108024 stopped around the particle tests, and
-//! run 39719984576 stopped around `volumetric_fog`, with no panic text.
-//! The same binary finishes on Mesa 25.2, and Ubuntu Test full stays green
-//! because nextest gives each test its own process.
+//! Ubuntu 26.04's `libvulkan1` is 1.4.341. `cargo test --lib` runs this
+//! crate's tests in one process. With every Mesa ICD loaded (the default;
+//! nothing sets `VK_ICD_FILENAMES`), debug builds call
+//! `vkSetDebugUtilsObjectNameEXT` from several threads. The loader SIGSEGVs
+//! in `loader_get_icd_and_device` / `terminator_SetDebugUtilsObjectNameEXT`.
+//! That is [Vulkan-Loader #1863](https://github.com/KhronosGroup/Vulkan-Loader/issues/1863),
+//! fixed by [PR #1866](https://github.com/KhronosGroup/Vulkan-Loader/pull/1866)
+//! (`5ee27b3`, "Use recursive mutexes to fix deadlocks in loader"), which
+//! first shipped in loader **1.4.344**. 1.4.341 is older, so Ubuntu 26.04
+//! still faults.
 //!
-//! `.init_array` runs before the libtest harness reads `RUST_TEST_THREADS`.
-//! An explicit `RUST_TEST_THREADS` or `--test-threads` still wins.
+//! Reproduced on Mesa 26.0.8-1ubuntu0.3 and libvulkan 1.4.341, gdb on the
+//! crashing thread (`gpu_cull_grow_…` → `Renderer::new_headless` →
+//! `create_bind_group_layout` → `set_object_name` → `libvulkan.so.1`).
+//! The same 1298 tests pass with `--test-threads=1` and with only lavapipe
+//! (`VK_ICD_FILENAMES` pointing at `lvp_icd.json`) at the default thread
+//! count. No renderer static owns an `Instance` or `Device`; each test
+//! builds and drops its own.
+//!
+//! **Remove this hook when** a parallel `cargo test -p astraweave-render --lib`
+//! (no `VK_ICD_FILENAMES`, no `RUST_TEST_THREADS`) finishes on Mesa 26.0.8
+//! with `libvulkan1` ≥ 1.4.344. Until that loader is on the runner, one
+//! thread is what keeps the process alive.
+//!
+//! `.init_array` runs before libtest reads `RUST_TEST_THREADS`. An explicit
+//! `RUST_TEST_THREADS` or `--test-threads` still wins.
 
 #[used]
 #[link_section = ".init_array"]
