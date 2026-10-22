@@ -63,63 +63,44 @@ async fn test_custom_streaming_client() {
 }
 
 #[cfg(feature = "ollama")]
-#[tokio::test]
-async fn test_ollama_client_connection_error() {
-    use astraweave_llm::OllamaChatClient;
+fn ollama_chat_probe(mode: &str) -> std::process::Output {
+    // Timeouts are on the child only. `Command::env` does not call `set_var`.
+    std::process::Command::new(env!("CARGO_BIN_EXE_ollama_chat_probe"))
+        .arg(mode)
+        .env("OLLAMA_TIMEOUT_SECS", "1")
+        .env("OLLAMA_NONSTREAM_TIMEOUT_SECS", "1")
+        .env("OLLAMA_NONSTREAM_ATTEMPTS", "1")
+        .output()
+        .expect("spawn ollama chat probe")
+}
 
-    // Point to a port that is likely closed
-    // This integration-test crate is not `forbid(unsafe_code)`. The library is.
-    // SAFETY: the harness is single-threaded for this test, and the variables
-    // are test-only timeouts.
-    unsafe {
-        std::env::set_var("OLLAMA_TIMEOUT_SECS", "1");
-        std::env::set_var("OLLAMA_NONSTREAM_TIMEOUT_SECS", "1");
-        std::env::set_var("OLLAMA_NONSTREAM_ATTEMPTS", "1");
-    }
-    let client = OllamaChatClient::new(
-        "http://localhost:12345".to_string(),
-        "test-model".to_string(),
-    )
-    .expect("client");
-
-    let result = client.complete("test").await;
-
-    // Should fail
-    assert!(result.is_err());
-    let err = result.unwrap_err().to_string();
-    // Error message depends on OS/network stack but should indicate connection failure or timeout
+#[cfg(feature = "ollama")]
+#[test]
+fn test_ollama_client_connection_error() {
+    let out = ollama_chat_probe("complete");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(
-        err.to_lowercase().contains("error")
-            || err.to_lowercase().contains("fail")
-            || err.to_lowercase().contains("timeout")
+        !out.status.success(),
+        "closed port should fail: {stdout} {stderr}"
+    );
+    let err = stdout.to_lowercase();
+    assert!(
+        err.contains("error") || err.contains("fail") || err.contains("timeout"),
+        "{stdout} {stderr}"
     );
 }
 
 #[cfg(feature = "ollama")]
-#[tokio::test]
-async fn test_ollama_batch_execution() {
-    use astraweave_llm::OllamaChatClient;
-
-    // We can't easily test success without a server, but we can test the API structure
-    // This integration-test crate is not `forbid(unsafe_code)`. The library is.
-    // SAFETY: the harness is single-threaded for this test, and the variables
-    // are test-only timeouts.
-    unsafe {
-        std::env::set_var("OLLAMA_TIMEOUT_SECS", "1");
-        std::env::set_var("OLLAMA_NONSTREAM_TIMEOUT_SECS", "1");
-        std::env::set_var("OLLAMA_NONSTREAM_ATTEMPTS", "1");
-    }
-    let client = OllamaChatClient::new(
-        "http://localhost:12345".to_string(),
-        "test-model".to_string(),
-    )
-    .expect("client");
-
-    let prompts = vec!["p1".to_string(), "p2".to_string()];
-    let result = client.complete_batch(&prompts).await;
-
-    // Should fail because server is down
-    assert!(result.is_err());
+#[test]
+fn test_ollama_batch_execution() {
+    let out = ollama_chat_probe("batch");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        !out.status.success(),
+        "closed port should fail: {stdout} {stderr}"
+    );
 }
 
 #[test]

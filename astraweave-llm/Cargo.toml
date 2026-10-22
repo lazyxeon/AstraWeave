@@ -57,6 +57,11 @@ name = "loopback_http_probe"
 path = "src/bin/loopback_http_probe.rs"
 required-features = ["ollama"]
 
+[[bin]]
+name = "ollama_chat_probe"
+path = "src/bin/ollama_chat_probe.rs"
+required-features = ["ollama"]
+
 [features]
 default = ["llm_cache"]
 ollama = ["dep:reqwest"]

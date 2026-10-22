@@ -14,9 +14,11 @@ pub fn parse_bounded_model_json<T: serde::de::DeserializeOwned>(text: &str) -> R
 
 /// Keep a loopback model URL.
 ///
-/// The URL is kept only when it is `http` or `https`, has no userinfo, and the
-/// host is `127.0.0.0/8`, `::1`, or `localhost`. Anything else, including a URL
-/// the parser rejects, is replaced unless the caller opted in.
+/// A URL is kept only when it is `http` or `https` and has no userinfo. Userinfo,
+/// a non-http scheme, and a string the parser rejects are always replaced with
+/// `http://127.0.0.1:11434`, including when `allow_remote` is set. A non-loopback
+/// host is kept only when `allow_remote` is set. Otherwise the host must be
+/// `127.0.0.0/8`, `::1`, or `localhost`.
 ///
 /// Every loopback URL check in the workspace goes through [`is_loopback_http_url`].
 pub fn loopback_model_url(url: String, allow_remote: bool) -> String {
