@@ -24,7 +24,7 @@ reviews:
         Shader changes sit on the frame path. The target is under 11 ms per frame on a GTX 1660 Ti Max-Q. The measured sample is in docs/current/ENGINE_STATUS.md. Do not invent a measurement. Flag extra passes or unbounded loops that have no budget note and no SHA-labeled measurement.
     - path: "README.md"
       instructions: |
-        Player-facing text uses Aravath. Flag the string Veilweaver. A crate name ending in veilweaver_ and the archive directory projects/veilweaver are not title uses. Assets are CC0 only. Local LLMs propose and the deterministic simulation validates and executes. The under-11 ms GTX 1660 Ti Max-Q frame budget is the target. The measured sample is in docs/current/ENGINE_STATUS.md. Do not invent a measurement.
+        Player-facing text uses Aravath. Flag the string Veilweaver. A crate name ending in veilweaver_ and the archive directory projects/veilweaver are not title uses. Assets are CC0 only. Local LLMs propose and the deterministic simulation validates and executes. Do not add a millisecond figure or a commit SHA to this file. The frame sample lives in docs/current/ENGINE_STATUS.md.
     - path: "CONTRIBUTING.md"
       instructions: |
         Player-facing text uses Aravath. Flag the string Veilweaver. A crate name ending in veilweaver_ and the archive directory projects/veilweaver are not title uses. Assets added to the tree are CC0 only. Local LLMs propose and the deterministic simulation validates and executes.
