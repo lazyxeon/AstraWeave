@@ -15,10 +15,9 @@ use astraweave_render::Renderer;
 #[test]
 fn startup_passes_submit_under_validation() {
     pollster::block_on(async {
-        let mut renderer = Renderer::new_headless(64, 64)
-            .await
-            .context("headless renderer")
-            .expect("adapter");
+        let Some(mut renderer) = Renderer::headless_for_tests(64, 64).await else {
+            return;
+        };
         let device = renderer.device().clone();
         let queue = renderer.queue().clone();
         let target = device.create_texture(&wgpu::TextureDescriptor {

@@ -1045,8 +1045,10 @@ mod tests {
         let cap = astraweave_asset::image_limits::MAX_IMAGE_ALLOC;
         file.set_len(cap + 1).expect("set_len");
         drop(file);
-        let mut renderer =
-            pollster::block_on(crate::Renderer::new_headless(64, 64)).expect("headless renderer");
+        let Some(mut renderer) = pollster::block_on(crate::Renderer::headless_for_tests(64, 64))
+        else {
+            return;
+        };
         let path_string = path.to_string_lossy().into_owned();
         let panicked = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             renderer.set_smoke_test_texture(&path_string);

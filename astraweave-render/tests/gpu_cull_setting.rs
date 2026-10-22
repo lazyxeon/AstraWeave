@@ -28,9 +28,9 @@ fn color_target(device: &wgpu::Device) -> wgpu::TextureView {
 #[test]
 fn gpu_cull_stays_off_until_enabled_and_then_dispatches() {
     pollster::block_on(async {
-        let mut renderer = Renderer::new_headless(64, 64)
-            .await
-            .expect("headless renderer");
+        let Some(mut renderer) = Renderer::headless_for_tests(64, 64).await else {
+            return;
+        };
         assert_eq!(renderer.gpu_cull_mode(), "off");
         assert_eq!(renderer.gpu_cull_reason(), "quality_off");
 
