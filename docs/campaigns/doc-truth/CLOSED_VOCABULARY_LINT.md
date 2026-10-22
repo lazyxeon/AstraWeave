@@ -88,8 +88,8 @@ The union of acted + kept occurrences is the complete closed-vocabulary inventor
 
 `aw_doc_lint` enforces this even in `--mode warn` (the vocabulary scan stays warn-only):
 
-- Both `required` lists in `.github/workflows/determinism-replay.yml` must agree, and `README.md` must name each case.
-- `README.md` must state the under-11 ms GTX 1660 Ti frame budget and the measured heavy-scene `3.688 ms`, that assets are CC0, that local LLMs propose, and that the deterministic simulation validates. #216 is on main. #371 and #372 stay open.
+- Both `required` lists in `.github/workflows/determinism-replay.yml` must agree, and `docs/current/ENGINE_STATUS.md` must name each case.
+- `docs/current/ENGINE_STATUS.md` must state the under-11 ms GTX 1660 Ti frame budget and the measured heavy-scene `3.688 ms`, that assets are CC0, that local LLMs propose, and that the deterministic simulation validates. #216 is on main. #371 and #372 stay open. The root README does not repeat those figures.
 - `README.md` must have a `## In progress` section listing #334, #366, and #383, and no other issue number. That section must not call the work shipped, landed, or merged. #216, #257, #258, #281, #283, #284, #307, #320, #335, #367, #374, and #377 are on main and are not in that list.
 - Player-facing files (`README.md`, `CONTRIBUTING.md`, `docs/README.md`, `docs/QUICKSTART.md`, `docs/guides/**/*.md`) must not use the retired game title. `veilweaver_` crate names and the archive directory `projects/veilweaver` are allowed.
 
@@ -118,5 +118,6 @@ A pure string match cannot separate (5) from (1)–(3). Listing it would either 
 | Version | Date | Change |
 |---|---|---|
 | 0.1 (D.1.B) | 2026-06-13 | Created. Vocab A (poison) + Vocab B (superlative) sets seeded from the registry Retired table + D.0/D.0.1 dispositions; keep-vs-act rule + exclusion scope defined for D.3 lint consumption. Pre-edit occurrence totals: 501 A + 415 B across 202 files (see occurrences doc). |
+| 0.4 | 2026-10-22 | Front-door phrases and replay names are checked on `docs/current/ENGINE_STATUS.md`. The `## In progress` list stays on `README.md`. |
 | 0.3 | 2026-10-16 | Front-door check documented. Workspace-count comment now points at 139 members. `130` stays off the poison list. |
 | 0.2 (D.3.1) | 2026-06-29 | **New poison generation + machine-readable markers.** Added the D.2.B/Path-B.2 measured-metric poison to Vocab A: coverage `59.3`/`59.3%` + `94.57`/`94.57%` (→ 57.35% whole-workspace) and miri `977` (→ 1,059). Added the **Frame-time carve-out** (ratified Option A — `2.70 ms`/`370 FPS` deliberately NOT linted; human-review-only; present-tense survivors one-time-corrected). Wrapped Vocab A / Vocab B in `<!-- VOCAB-A/B-START/END -->` markers (and the allowlist table in `<!-- ALLOWLIST-START/END -->`) so the D.3.2 lint reads this spec as its single source of truth. Companion allowlist additions: 14 keys (supersession-context / version-comparison / debunking-context / dated-record / report-description). Authority: `D3_0_RECON.md`. |

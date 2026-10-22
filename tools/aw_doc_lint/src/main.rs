@@ -25,9 +25,10 @@
 //! section documents why frame-time `2.70 ms` is deliberately NOT in Vocab A).
 //!
 //! A separate front-door check always fails the process, including in `--mode warn`:
-//! `README.md` must name every required replay case from `determinism-replay.yml`,
-//! must keep the 11 ms frame budget unmarked as measured, must list open pulls as
-//! in progress, and player-facing docs must not use the retired game title.
+//! `docs/current/ENGINE_STATUS.md` must name every required replay case from
+//! `determinism-replay.yml` and must keep the frame-budget phrases. `README.md`
+//! must list open pulls as in progress. Player-facing docs must not use the
+//! retired game title.
 
 use anyhow::{bail, Context, Result};
 use clap::{Parser, ValueEnum};
@@ -39,6 +40,7 @@ const SPEC_REL: &str = "docs/campaigns/doc-truth/CLOSED_VOCABULARY_LINT.md";
 const ALLOWLIST_REL: &str = "docs/campaigns/doc-truth/CLOSED_VOCABULARY_ALLOWLIST.md";
 const REPLAY_WORKFLOW_REL: &str = ".github/workflows/determinism-replay.yml";
 const README_REL: &str = "README.md";
+const STATUS_REL: &str = "docs/current/ENGINE_STATUS.md";
 
 const IN_PROGRESS_ISSUES: &[&str] = &["#334", "#366", "#383"];
 
@@ -415,6 +417,7 @@ fn retired_title_hits(path: &str, text: &str) -> Vec<String> {
 
 fn front_door_errors(
     readme: &str,
+    status: &str,
     workflow: &str,
     player_facing: &[(String, String)],
 ) -> Vec<String> {
@@ -432,9 +435,9 @@ fn front_door_errors(
     }
     if let Some(cases) = lists.first() {
         for case in cases {
-            if !contains_word(readme, case) {
+            if !contains_word(status, case) {
                 errors.push(format!(
-                    "{README_REL}: missing required replay case `{case}`"
+                    "{STATUS_REL}: missing required replay case `{case}`"
                 ));
             }
         }
@@ -448,9 +451,9 @@ fn front_door_errors(
         "deterministic simulation validates",
         "Aravath",
     ] {
-        if !readme.contains(phrase) {
+        if !status.contains(phrase) {
             errors.push(format!(
-                "{README_REL}: missing front-door phrase `{phrase}`"
+                "{STATUS_REL}: missing front-door phrase `{phrase}`"
             ));
         }
     }
@@ -568,6 +571,8 @@ fn main() -> Result<()> {
 
     let readme = std::fs::read_to_string(root.join(README_REL))
         .with_context(|| format!("reading {README_REL}"))?;
+    let status = std::fs::read_to_string(root.join(STATUS_REL))
+        .with_context(|| format!("reading {STATUS_REL}"))?;
     let workflow = std::fs::read_to_string(root.join(REPLAY_WORKFLOW_REL))
         .with_context(|| format!("reading {REPLAY_WORKFLOW_REL}"))?;
     let mut player_facing = Vec::new();
@@ -579,7 +584,7 @@ fn main() -> Result<()> {
             player_facing.push((f.clone(), text));
         }
     }
-    let front = front_door_errors(&readme, &workflow, &player_facing);
+    let front = front_door_errors(&readme, &status, &workflow, &player_facing);
     for e in &front {
         println!("{e}");
         if in_ci {
@@ -803,13 +808,19 @@ mod tests {
         assert!(should_fail(Mode::Enforce, 1)); // dirty enforce fails
     }
 
-    fn sample_readme() -> String {
+    fn sample_status() -> String {
         [
             "Local LLMs propose. The deterministic simulation validates and executes.",
             "The game is Aravath. Assets are CC0 only.",
             "under 11 ms per frame on a GTX 1660 Ti-class GPU. The heavy scene measured 3.688 ms.",
             "planner_pure perception_world gameplay_rng fixed64 combat_resolve",
             "destruction gameplay_qa_aravath_slice nav_reroute causal_bridge scripted_system weaving traversal traversal_deformed worldgen_columns deformed_chunk local_sim greybox_checkpoint quest_ticks persist_replay",
+        ]
+        .join("\n")
+    }
+
+    fn sample_readme() -> String {
+        [
             "## In progress",
             "#334 are in progress. #366 are in progress. #383 are in progress",
             "## Next",
@@ -839,14 +850,14 @@ mod tests {
 
     #[test]
     fn front_door_accepts_a_honest_readme() {
-        let errors = front_door_errors(&sample_readme(), &sample_workflow(), &[]);
+        let errors = front_door_errors(&sample_readme(), &sample_status(), &sample_workflow(), &[]);
         assert!(errors.is_empty(), "{errors:?}");
     }
 
     #[test]
     fn front_door_rejects_a_suffixed_issue_token() {
         let readme = sample_readme().replace("#383 are in progress", "#383foo are in progress");
-        let errors = front_door_errors(&readme, &sample_workflow(), &[]);
+        let errors = front_door_errors(&readme, &sample_status(), &sample_workflow(), &[]);
         assert!(
             errors.iter().any(|error| error.contains("missing #383")),
             "{errors:?}"
@@ -856,7 +867,7 @@ mod tests {
     #[test]
     fn front_door_rejects_an_extra_in_progress_issue() {
         let readme = sample_readme().replace("#366 are in progress", "#366 #999 are in progress");
-        let errors = front_door_errors(&readme, &sample_workflow(), &[]);
+        let errors = front_door_errors(&readme, &sample_status(), &sample_workflow(), &[]);
         assert!(
             errors.iter().any(|error| error.contains("#999")),
             "{errors:?}"
@@ -869,10 +880,9 @@ mod tests {
 
     #[test]
     fn front_door_rejects_a_missing_case_and_a_shipped_label() {
-        let readme = sample_readme()
-            .replace("nav_reroute", "nav")
-            .replace("are in progress", "are shipped");
-        let errors = front_door_errors(&readme, &sample_workflow(), &[]);
+        let readme = sample_readme().replace("are in progress", "are shipped");
+        let status = sample_status().replace("nav_reroute", "nav");
+        let errors = front_door_errors(&readme, &status, &sample_workflow(), &[]);
         assert!(errors.iter().any(|e| e.contains("nav_reroute")));
         assert!(errors.iter().any(|e| e.contains("shipped")));
     }
