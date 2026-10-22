@@ -271,10 +271,13 @@ pub struct FluidSystem {
     pub objects_buffer: wgpu::Buffer,
     /// Number of valid entries in `objects_buffer` (set by `update_objects`).
     object_count: u32,
-    /// True after `step` has built the SDF for `object_count == 0`. An empty
-    /// field does not change, so later steps reuse it instead of re-running
-    /// the 64³ JFA. `update_objects` clears it.
+    /// True only after an empty-field generate has been submitted and polled
+    /// to `PollStatus::wait_finished`. The caller encoder is not that build:
+    /// dropping it cannot leave this flag set. `update_objects` clears it.
     sdf_empty_ready: bool,
+    /// Empty-field generate whose fence is still open after `PollError::Timeout`.
+    /// The next `step` waits on this index before writing `texture_a` again.
+    sdf_empty_inflight: Option<wgpu::SubmissionIndex>,
     pub default_sampler: wgpu::Sampler,
     secondary_particle_buffer: wgpu::Buffer,
     secondary_counter: wgpu::Buffer,
@@ -830,6 +833,7 @@ impl FluidSystem {
             objects_buffer,
             object_count: 0,
             sdf_empty_ready: false,
+            sdf_empty_inflight: None,
             default_sampler,
             secondary_particle_buffer,
             secondary_counter,
@@ -914,7 +918,14 @@ impl FluidSystem {
         slice.map_async(wgpu::MapMode::Read, move |res| {
             let _ = tx.send(res);
         });
-        let _ = device.poll(wgpu::MaintainBase::Wait);
+        // `PollType::Wait` blocks for wgpu-core's `CLEANUP_WAIT_MS` (60s) and
+        // returns `PollError::Timeout` with the fence still open. That is not
+        // the 6.3s `Queue::drop` budget. A timeout must not fall through into
+        // `recv`, which would wait for a callback that never runs.
+        match device.poll(wgpu::PollType::Wait) {
+            Ok(status) if status.wait_finished() => {}
+            Ok(_) | Err(wgpu::PollError::Timeout) => return None,
+        }
         rx.recv().ok()?.ok()?;
         let timestamps: Vec<u64> = {
             let data = slice.get_mapped_range();
@@ -1153,6 +1164,73 @@ impl FluidSystem {
         despawned
     }
 
+    /// Dispatch `compute_lambda` once on a caller-supplied neighbor list.
+    ///
+    /// `build_grid` does not run, so a planted cycle is what the kernel walks.
+    /// `head` is one `i32` per grid cell (`-1` empty) and `next` is one `i32`
+    /// per particle. `gpu_cyclic_neighbor_is_not_applied` is the caller.
+    #[doc(hidden)]
+    pub fn lambda_on_planted_neighbors(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        encoder: &mut wgpu::CommandEncoder,
+        head: &[i32],
+        next: &[i32],
+    ) {
+        let params = SimParams {
+            smoothing_radius: self.smoothing_radius,
+            target_density: self.target_density,
+            viscosity: self.viscosity,
+            surface_tension: self.surface_tension,
+            gravity: self.gravity,
+            dt: 0.016,
+            particle_count: self.particle_count,
+            grid_width: self.grid_width,
+            grid_height: self.grid_height,
+            grid_depth: self.grid_depth,
+            cell_size: self.cell_size,
+            object_count: self.object_count,
+            _pad0: 0.0,
+            _pad1: 0.0,
+            _pad2: 0.0,
+            _pad3: 0.0,
+        };
+        queue.write_buffer(&self.params_buffer, 0, bytemuck::bytes_of(&params));
+        queue.write_buffer(&self.head_pointers, 0, bytemuck::cast_slice(head));
+        queue.write_buffer(&self.next_pointers, 0, bytemuck::cast_slice(next));
+
+        let sdf_view = self.sdf_system.texture_a.create_view(&Default::default());
+        let scene_bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Fluid Scene BG (planted neighbors)"),
+            layout: &self.scene_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: self.objects_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::TextureView(&sdf_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: wgpu::BindingResource::Sampler(&self.default_sampler),
+                },
+            ],
+        });
+        let mut cpass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+            label: Some("Fluid::Lambda planted"),
+            timestamp_writes: None,
+        });
+        cpass.set_pipeline(&self.lambda_pipeline);
+        cpass.set_bind_group(0, &self.global_bind_group, &[]);
+        cpass.set_bind_group(1, &self.particles_bind_group, &[]);
+        cpass.set_bind_group(2, &self.secondary_bind_group, &[]);
+        cpass.set_bind_group(3, &scene_bg, &[]);
+        cpass.dispatch_workgroups(self.particle_count.div_ceil(64).max(1), 1, 1);
+    }
+
     /// Record one simulation step into `encoder`.
     ///
     /// # Contract
@@ -1208,19 +1286,56 @@ impl FluidSystem {
         queue.write_buffer(&self.params_buffer, 0, bytemuck::bytes_of(&params));
 
         // 1. Generate SDF (timing span 0 brackets init -> finalize).
-        // An empty collider set produces the same field every frame. Rebuilding
-        // the 64³ JFA on every step is most of the software-adapter cost, and
-        // 300 of those steps do not finish inside the 240s test budget. A
-        // timing query still needs the passes so its begin/end slots are written.
-        let rebuild_sdf =
-            self.gpu_timing.is_some() || self.object_count > 0 || !self.sdf_empty_ready;
-        if rebuild_sdf {
+        // An empty collider set produces the same field every frame (`finalize`
+        // stores `world_size` in every voxel when there are no seeds). Rebuilding
+        // the 64³ JFA on every step is most of the software-adapter cost.
+        // The flag is armed only after this function's own submit reaches
+        // `wait_finished`. Recording the generate into `encoder` and setting the
+        // flag before the caller submits leaves the flag set when that encoder
+        // is dropped, and the next step then samples the initial zero field
+        // (inside the 0.15 particle radius). A timing query still records the
+        // passes on the caller encoder, and that path does not arm the flag.
+        if let Some(index) = self.sdf_empty_inflight.clone() {
+            match device.poll(wgpu::PollType::WaitForSubmissionIndex(index)) {
+                Ok(status) if status.wait_finished() => {
+                    self.sdf_empty_inflight = None;
+                    if self.object_count == 0 && self.gpu_timing.is_none() {
+                        self.sdf_empty_ready = true;
+                    }
+                }
+                Ok(_) | Err(wgpu::PollError::Timeout) => {
+                    // texture_a is still being written. A second generate, or a
+                    // particle pass that samples it, would overlap that fence.
+                    return;
+                }
+            }
+        }
+        let rebuild_on_caller = self.gpu_timing.is_some() || self.object_count > 0;
+        if rebuild_on_caller {
             self.sdf_system.generate_timed(
                 encoder,
                 queue,
                 self.gpu_timing.as_ref().map(|t| (&t.query_set, 0u32, 1u32)),
             );
-            self.sdf_empty_ready = self.object_count == 0;
+            self.sdf_empty_ready = false;
+        } else if !self.sdf_empty_ready {
+            let mut empty = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("fluid empty sdf"),
+            });
+            self.sdf_system.generate_timed(&mut empty, queue, None);
+            // `finish` consumes the encoder, so this build cannot be dropped
+            // unsubmitted. The flag stays false until the poll completes.
+            let index = queue.submit(Some(empty.finish()));
+            match device.poll(wgpu::PollType::WaitForSubmissionIndex(index.clone())) {
+                Ok(status) if status.wait_finished() => {
+                    self.sdf_empty_ready = true;
+                }
+                Ok(_) | Err(wgpu::PollError::Timeout) => {
+                    self.sdf_empty_inflight = Some(index);
+                    self.sdf_empty_ready = false;
+                    return;
+                }
+            }
         }
 
         let particle_workgroups = self.particle_count.div_ceil(64);

@@ -135,6 +135,33 @@ fn kernel_grad_w(r: f32, diff: vec3<f32>, h: f32) -> vec3<f32> {
     return (grad_q / r) * diff;
 }
 
+struct NeighborCursor {
+    current: i32,
+    walk: u32,
+    // 0 = visit `current`, 1 = stop and keep the visits so far, 2 = the hop
+    // cap hit a cycle that does not return to the entry id. That cell's
+    // accumulation is inflated and must be discarded.
+    kind: u32,
+}
+
+// A self-loop (`next == id`) is one visit: the walk breaks when `current`
+// comes back to the id it entered on, before the second load. An index past
+// `particle_count` breaks before the load. A tail into some other cycle never
+// returns to the entry id, so the hop cap stops it and the caller drops the
+// cell instead of storing the repeated density, lambda, or delta.
+fn neighbor_cursor(current: i32, walk: u32, entry: i32) -> NeighborCursor {
+    if (current < 0 || u32(current) >= params.particle_count) {
+        return NeighborCursor(current, walk, 1u);
+    }
+    if (walk > 0u && current == entry) {
+        return NeighborCursor(current, walk, 1u);
+    }
+    if (walk >= params.particle_count) {
+        return NeighborCursor(current, walk, 2u);
+    }
+    return NeighborCursor(current, walk + 1u, 0u);
+}
+
 @compute @workgroup_size(64)
 fn predict(@builtin(global_invocation_id) global_id: vec3<u32>) {
     let id = global_id.x;
@@ -215,26 +242,42 @@ fn compute_lambda(@builtin(global_invocation_id) global_id: vec3<u32>) {
                 if (cell_idx < 0) { continue; }
                 
                 var current = atomicLoad(&head_pointers[cell_idx]);
-                // A cyclic next_pointers chain never reaches -1, and the
-                // software adapter then never finishes the dispatch. A real
-                // chain has at most one link per particle.
+                let entry = current;
                 var walk = 0u;
-                while (current >= 0 && walk < params.particle_count) {
-                    walk = walk + 1u;
+                var cell_density = 0.0;
+                var cell_sum_grad = 0.0;
+                var cell_grad = vec3<f32>(0.0);
+                var corrupt = false;
+                loop {
+                    let step = neighbor_cursor(current, walk, entry);
+                    if (step.kind == 2u) {
+                        corrupt = true;
+                        break;
+                    }
+                    if (step.kind == 1u) {
+                        break;
+                    }
+                    current = step.current;
+                    walk = step.walk;
                     let neighbor_pos = particles[current].predicted_position.xyz;
                     let diff = pos - neighbor_pos;
                     let r = length(diff);
                     if (r < h) {
                         let w = kernel_w(r, h);
-                        density += w;
-                        
+                        cell_density += w;
+
                         if (u32(current) != id) {
                             let grad_wj = kernel_grad_w(r, diff, h) / params.target_density;
-                            sum_grad_c2 += dot(grad_wj, grad_wj);
-                            grad_ci += grad_wj;
+                            cell_sum_grad += dot(grad_wj, grad_wj);
+                            cell_grad += grad_wj;
                         }
                     }
                     current = next_pointers[current];
+                }
+                if (!corrupt) {
+                    density += cell_density;
+                    sum_grad_c2 += cell_sum_grad;
+                    grad_ci += cell_grad;
                 }
             }
         }
@@ -309,19 +352,28 @@ fn compute_delta_pos(@builtin(global_invocation_id) global_id: vec3<u32>) {
                 if (cell_idx < 0) { continue; }
                 
                 var current = atomicLoad(&head_pointers[cell_idx]);
-                // A cyclic next_pointers chain never reaches -1, and the
-                // software adapter then never finishes the dispatch. A real
-                // chain has at most one link per particle.
+                let entry = current;
                 var walk = 0u;
-                while (current >= 0 && walk < params.particle_count) {
-                    walk = walk + 1u;
+                var cell_delta = vec3<f32>(0.0);
+                var corrupt = false;
+                loop {
+                    let step = neighbor_cursor(current, walk, entry);
+                    if (step.kind == 2u) {
+                        corrupt = true;
+                        break;
+                    }
+                    if (step.kind == 1u) {
+                        break;
+                    }
+                    current = step.current;
+                    walk = step.walk;
                     if (u32(current) != id) {
                         let neighbor_pos = particles[current].predicted_position.xyz;
                         let diff = pos - neighbor_pos;
                         let r = length(diff);
                         if (r < h) {
                             let lambda_j = particles[current].lambda;
-                            
+
                             // Tensile instability correction (scorr)
                             // Tensile instability correction (scorr)
                             let scorr = -0.001 * pow(kernel_w(r, h) / kernel_w(0.1 * h, h), 4.0);
@@ -333,10 +385,13 @@ fn compute_delta_pos(@builtin(global_invocation_id) global_id: vec3<u32>) {
                             let cohesion_weight = kernel_w(r, h) * (r / h);
                             let cohesion = -params.surface_tension * cohesion_weight * safe_normalize(diff);
 
-                            delta_p += (lambda_i + lambda_j + scorr) * kernel_grad_w(r, diff, h) + cohesion;
+                            cell_delta += (lambda_i + lambda_j + scorr) * kernel_grad_w(r, diff, h) + cohesion;
                         }
                     }
                     current = next_pointers[current];
+                }
+                if (!corrupt) {
+                    delta_p += cell_delta;
                 }
             }
         }
@@ -437,12 +492,21 @@ fn integrate(@builtin(global_invocation_id) global_id: vec3<u32>) {
                 if (cell_idx < 0) { continue; }
                 
                 var current = atomicLoad(&head_pointers[cell_idx]);
-                // A cyclic next_pointers chain never reaches -1, and the
-                // software adapter then never finishes the dispatch. A real
-                // chain has at most one link per particle.
+                let entry = current;
                 var walk = 0u;
-                while (current >= 0 && walk < params.particle_count) {
-                    walk = walk + 1u;
+                var cell_curl = vec3<f32>(0.0);
+                var corrupt = false;
+                loop {
+                    let step = neighbor_cursor(current, walk, entry);
+                    if (step.kind == 2u) {
+                        corrupt = true;
+                        break;
+                    }
+                    if (step.kind == 1u) {
+                        break;
+                    }
+                    current = step.current;
+                    walk = step.walk;
                     if (u32(current) != id) {
                         let neighbor_pos = particles[current].predicted_position.xyz;
                         let neighbor_vel = (particles[current].predicted_position.xyz - particles[current].position.xyz) / params.dt;
@@ -450,10 +514,13 @@ fn integrate(@builtin(global_invocation_id) global_id: vec3<u32>) {
                         let r = length(diff);
                         if (r < h) {
                             let rel_vel = neighbor_vel - vel;
-                            curl += cross(rel_vel, kernel_grad_w(r, diff, h));
+                            cell_curl += cross(rel_vel, kernel_grad_w(r, diff, h));
                         }
                     }
                     current = next_pointers[current];
+                }
+                if (!corrupt) {
+                    curl += cell_curl;
                 }
             }
         }
@@ -474,22 +541,34 @@ fn integrate(@builtin(global_invocation_id) global_id: vec3<u32>) {
                 if (cell_idx < 0) { continue; }
                 
                 var current = atomicLoad(&head_pointers[cell_idx]);
-                // A cyclic next_pointers chain never reaches -1, and the
-                // software adapter then never finishes the dispatch. A real
-                // chain has at most one link per particle.
+                let entry = current;
                 var walk = 0u;
-                while (current >= 0 && walk < params.particle_count) {
-                    walk = walk + 1u;
+                var cell_xsph = vec3<f32>(0.0);
+                var corrupt = false;
+                loop {
+                    let step = neighbor_cursor(current, walk, entry);
+                    if (step.kind == 2u) {
+                        corrupt = true;
+                        break;
+                    }
+                    if (step.kind == 1u) {
+                        break;
+                    }
+                    current = step.current;
+                    walk = step.walk;
                     if (u32(current) != id) {
                         let neighbor_pos = particles[current].predicted_position.xyz;
                         let neighbor_vel = (particles[current].predicted_position.xyz - particles[current].position.xyz) / params.dt;
                         let diff = pred_pos - neighbor_pos;
                         let r = length(diff);
                         if (r < h) {
-                            xsph_vel += 0.01 * (neighbor_vel - vel) * kernel_w(r, h);
+                            cell_xsph += 0.01 * (neighbor_vel - vel) * kernel_w(r, h);
                         }
                     }
                     current = next_pointers[current];
+                }
+                if (!corrupt) {
+                    xsph_vel += cell_xsph;
                 }
             }
         }
@@ -529,12 +608,21 @@ fn mix_dye(@builtin(global_invocation_id) global_id: vec3<u32>) {
                 if (cell_idx < 0) { continue; }
                 
                 var current = atomicLoad(&head_pointers[cell_idx]);
-                // A cyclic next_pointers chain never reaches -1, and the
-                // software adapter then never finishes the dispatch. A real
-                // chain has at most one link per particle.
+                let entry = current;
                 var walk = 0u;
-                while (current >= 0 && walk < params.particle_count) {
-                    walk = walk + 1u;
+                var cell_laplacian = 0.0;
+                var corrupt = false;
+                loop {
+                    let step = neighbor_cursor(current, walk, entry);
+                    if (step.kind == 2u) {
+                        corrupt = true;
+                        break;
+                    }
+                    if (step.kind == 1u) {
+                        break;
+                    }
+                    current = step.current;
+                    walk = step.walk;
                     if (u32(current) != id) {
                         let neighbor_pos = particles[current].predicted_position.xyz;
                         let neighbor_temp = particles[current].temperature;
@@ -543,10 +631,13 @@ fn mix_dye(@builtin(global_invocation_id) global_id: vec3<u32>) {
                         if (r < h && r > 0.0001) {
                             // SPH Laplacian approximation for heat diffusion
                             let w = kernel_w(r, h);
-                            temp_laplacian += (neighbor_temp - temp) * w / max(params.target_density, 0.001);
+                            cell_laplacian += (neighbor_temp - temp) * w / max(params.target_density, 0.001);
                         }
                     }
                     current = next_pointers[current];
+                }
+                if (!corrupt) {
+                    temp_laplacian += cell_laplacian;
                 }
             }
         }

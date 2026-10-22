@@ -749,11 +749,13 @@ impl FluidRenderer {
     ///
     /// `depth_view` is the external scene depth (`Depth32Float`) the surface used,
     /// so accents are occluded by geometry/water. The pass loads that depth and
-    /// does not write it (`depth_write_enabled: false`). It does not bind a
-    /// read-only depth-stencil view: that view never completes on the DX12
-    /// software adapter when this is the texture's first use. At `secondary_count == 0`
-    /// this is a no-op: no render pass is begun, so the HDR target is byte-identical
-    /// (zero-accent identity).
+    /// does not write fragments into it (`depth_write_enabled: false`), then
+    /// stores the attachment. That store is a full `Depth32Float` writeback on
+    /// the frame that later samples this depth. It is not the 0.006–0.013 ms
+    /// read-only attachment the old accent figure measured. A read-only DSV
+    /// never completes on the DX12 software adapter when this is the texture's
+    /// first use. At `secondary_count == 0` this is a no-op: no render pass is
+    /// begun, so the HDR target is byte-identical (zero-accent identity).
     #[allow(clippy::too_many_arguments)]
     pub fn render_accents(
         &self,

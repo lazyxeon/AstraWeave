@@ -67,20 +67,53 @@ impl IblQuality {
     }
 }
 
-fn submit_and_finish(
+/// Retire one bake submission.
+///
+/// `PollType::WaitForSubmissionIndex` blocks inside wgpu-core
+/// `Device::maintain` for at most `CLEANUP_WAIT_MS` (60_000 ms) and then
+/// returns [`wgpu::PollError::Timeout`]. That is not the 6.3 s `Queue::drop`
+/// budget (`timeouts_in_ms` 100+200+400+800+1600+3200), which panics if it
+/// expires. This match is only `Timeout`. Device loss does not come back as
+/// `PollError`; wgpu-core treats it as fatal inside `poll`.
+///
+/// `Err` is the still-open [`wgpu::SubmissionIndex`]. The caller keeps the
+/// cubes alive with that index. `?` must not drop them while the fence is open.
+fn retire_submission(
     device: &wgpu::Device,
     queue: &wgpu::Queue,
     encoder: wgpu::CommandEncoder,
-) -> Result<()> {
-    queue.submit(Some(encoder.finish()));
-    // wgpu-core 25 drops the queue after waiting at most 6.3s for the last
-    // fence. The DX12 software adapter does not signal that fence while a
-    // chain of IBL passes is still queued, and `Queue::drop` panics. Retire
-    // each pass before the next one is recorded.
-    device
-        .poll(wgpu::MaintainBase::Wait)
-        .map_err(|err| anyhow::anyhow!("IBL submission did not finish: {err:?}"))?;
-    Ok(())
+) -> Result<wgpu::SubmissionIndex, wgpu::SubmissionIndex> {
+    let index = queue.submit(Some(encoder.finish()));
+    match device.poll(wgpu::PollType::WaitForSubmissionIndex(index.clone())) {
+        Ok(status) if status.wait_finished() => Ok(index),
+        Ok(_) => Err(index),
+        Err(wgpu::PollError::Timeout) => Err(index),
+    }
+}
+
+/// On `Timeout` (or a wait that did not finish), move the cubes into the
+/// manager and return. The idents are moved only on that path.
+macro_rules! finish_ibl_pass {
+    ($self:ident, $device:expr, $queue:expr, $enc:expr, $prefilter:expr,
+     $env:ident, $irr:ident, $spec:ident, $brdf:ident, $mips:expr, $hdr:expr) => {{
+        if let Err(index) = retire_submission($device, $queue, $enc) {
+            return Err($self.park_inflight(
+                index,
+                IblTextures {
+                    _env: $env,
+                    _irradiance: $irr,
+                    _specular: $spec,
+                    _brdf_lut: $brdf,
+                    _spec_mips: $mips,
+                    _hdr_equirect: $hdr,
+                },
+            ));
+        }
+        $self.finished_polls = $self.finished_polls.saturating_add(1);
+        if $prefilter {
+            $self.prefilter_polls = $self.prefilter_polls.saturating_add(1);
+        }
+    }};
 }
 
 /// Sky sources supported by the manager
@@ -135,6 +168,16 @@ pub struct IblManager {
     prefilter_params_bgl: wgpu::BindGroupLayout,
     // Keep textures alive across frames/bind group creations
     textures: Option<IblTextures>,
+    /// Cubes a timed-out bake is still writing. Dropping them on `?` would
+    /// destroy the attachment while the fence is open.
+    inflight_textures: Option<IblTextures>,
+    /// Fence from the last `PollError::Timeout`. A retry waits on this index
+    /// before replacing `inflight_textures`.
+    inflight: Option<wgpu::SubmissionIndex>,
+    /// Submissions in the latest bake whose poll returned `wait_finished`.
+    finished_polls: u32,
+    /// How many of `finished_polls` were specular prefilter passes.
+    prefilter_polls: u32,
     // Pipelines
     sky_pipeline: wgpu::RenderPipeline,
     irr_pipeline: wgpu::RenderPipeline,
@@ -501,6 +544,10 @@ impl IblManager {
             env_bgl,
             prefilter_params_bgl,
             textures: None,
+            inflight_textures: None,
+            inflight: None,
+            finished_polls: 0,
+            prefilter_polls: 0,
             sky_pipeline,
             irr_pipeline,
             spec_pipeline,
@@ -521,6 +568,44 @@ impl IblManager {
     }
     pub fn sampler(&self) -> &wgpu::Sampler {
         &self.sampler
+    }
+
+    /// `(finished_polls, prefilter_polls)` from the latest bake attempt that
+    /// got past an in-flight fence. Prefilter polls are the passes that ran
+    /// `SPECULAR_PREFILTER_WGSL` and then `poll` to `wait_finished`.
+    pub fn last_bake_polls(&self) -> (u32, u32) {
+        (self.finished_polls, self.prefilter_polls)
+    }
+
+    fn retire_inflight(&mut self, device: &wgpu::Device) -> Result<()> {
+        let Some(index) = self.inflight.clone() else {
+            return Ok(());
+        };
+        match device.poll(wgpu::PollType::WaitForSubmissionIndex(index)) {
+            Ok(status) if status.wait_finished() => {
+                self.inflight = None;
+                self.inflight_textures = None;
+                Ok(())
+            }
+            Ok(_) => Err(anyhow::anyhow!(
+                "previous IBL submission has not finished; the cubes stay parked"
+            )),
+            Err(wgpu::PollError::Timeout) => Err(anyhow::anyhow!(
+                "previous IBL submission timed out again after 60s (CLEANUP_WAIT_MS); the cubes stay parked"
+            )),
+        }
+    }
+
+    fn park_inflight(
+        &mut self,
+        index: wgpu::SubmissionIndex,
+        textures: IblTextures,
+    ) -> anyhow::Error {
+        self.inflight = Some(index);
+        self.inflight_textures = Some(textures);
+        anyhow::anyhow!(
+            "IBL poll timed out after 60s (wgpu-core CLEANUP_WAIT_MS), not the 6.3s Queue::drop budget. The submission is still executing, so the cubes stay on IblManager until a retry observes that fence."
+        )
     }
 
     /// Ensure BRDF LUT is baked (one-time cost)
@@ -601,6 +686,12 @@ impl IblManager {
         queue: &wgpu::Queue,
         quality: IblQuality,
     ) -> Result<IblResources> {
+        // A previous Timeout left the fence open. Wait for that index before
+        // replacing the cubes it is still writing.
+        self.retire_inflight(device)?;
+        self.finished_polls = 0;
+        self.prefilter_polls = 0;
+
         // Allocate textures
         let env_size = quality.env_size();
         let irr_size = quality.irradiance_size();
@@ -711,12 +802,16 @@ impl IblManager {
             rp.set_pipeline(&self.brdf_pipeline);
             rp.draw(0..3, 0..1);
             drop(rp);
-            submit_and_finish(device, queue, enc)?;
+            finish_ibl_pass!(
+                self, device, queue, enc, false, env_tex, irr_tex, spec_tex, brdf_tex, spec_mips,
+                None
+            );
         }
 
         // Sky capture into env cube (procedural or HDR-equirect conversion)
-        // returns (Option<Texture>, Option<TextureView>) describing source equirect
-        let (eqr_tex_opt, eqr_view_opt) = match &self.mode {
+        // returns (Option<Texture>, Option<TextureView>) describing source equirect.
+        // Clone the mode so a Timeout park can mutably borrow `self` inside the arm.
+        let (eqr_tex_opt, eqr_view_opt) = match self.mode.clone() {
             SkyMode::Procedural { .. } => {
                 let mut enc = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
                     label: Some("ibl-sky-enc"),
@@ -756,15 +851,18 @@ impl IblManager {
                     rp.draw(0..3, 0..1);
                     drop(rp);
                 }
-                submit_and_finish(device, queue, enc)?;
+                finish_ibl_pass!(
+                    self, device, queue, enc, false, env_tex, irr_tex, spec_tex, brdf_tex,
+                    spec_mips, None
+                );
                 (None, None)
             }
             #[cfg(feature = "textures")]
             SkyMode::HdrPath { biome: _, path } => {
-                let img = if let Some(img) = self.hdr_cache.get(path) {
+                let img = if let Some(img) = self.hdr_cache.get(&path) {
                     img.clone()
                 } else {
-                    let img = load_hdr_equirectangular(Path::new(path))
+                    let img = load_hdr_equirectangular(Path::new(&path))
                         .with_context(|| format!("load HDR {}", path))?;
                     self.hdr_cache.insert(path.clone(), img.clone());
                     img
@@ -841,7 +939,19 @@ impl IblManager {
                     rp.set_bind_group(1, &eqr_face_bg, &[]);
                     rp.draw(0..3, 0..1);
                     drop(rp);
-                    submit_and_finish(device, queue, enc)?;
+                    finish_ibl_pass!(
+                        self,
+                        device,
+                        queue,
+                        enc,
+                        false,
+                        env_tex,
+                        irr_tex,
+                        spec_tex,
+                        brdf_tex,
+                        spec_mips,
+                        Some(hdr_tex)
+                    );
                 }
                 (Some(hdr_tex), Some(hdr_view))
             }
@@ -921,7 +1031,19 @@ impl IblManager {
                 rp.draw(0..3, 0..1);
                 drop(rp);
             }
-            submit_and_finish(device, queue, enc)?;
+            finish_ibl_pass!(
+                self,
+                device,
+                queue,
+                enc,
+                false,
+                env_tex,
+                irr_tex,
+                spec_tex,
+                brdf_tex,
+                spec_mips,
+                eqr_tex_opt
+            );
         }
 
         // Specular prefilter for each mip and face with proper roughness encoding
@@ -1005,7 +1127,19 @@ impl IblManager {
                     rp.set_bind_group(1, &params_bg, &[]);
                     rp.draw(0..3, 0..1);
                     drop(rp);
-                    submit_and_finish(device, queue, enc)?;
+                    finish_ibl_pass!(
+                        self,
+                        device,
+                        queue,
+                        enc,
+                        true,
+                        env_tex,
+                        irr_tex,
+                        spec_tex,
+                        brdf_tex,
+                        spec_mips,
+                        eqr_tex_opt
+                    );
                 }
             }
         }
