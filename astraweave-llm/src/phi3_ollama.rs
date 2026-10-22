@@ -51,7 +51,8 @@ use crate::LlmClient;
 #[derive(Debug, Clone)]
 pub struct Phi3Ollama {
     /// Ollama API endpoint (default: http://localhost:11434)
-    pub url: String,
+    url: String,
+    allow_remote: bool,
 
     /// Model name (e.g., "phi3:medium")
     pub model: String,
@@ -69,6 +70,11 @@ pub struct Phi3Ollama {
 }
 
 impl Phi3Ollama {
+    /// Stored endpoint. The first hop is checked again before each request.
+    pub fn url(&self) -> &str {
+        &self.url
+    }
+
     /// Create a new Phi-3 client with default settings
     ///
     /// # Arguments
@@ -102,6 +108,7 @@ impl Phi3Ollama {
         let client = crate::build_model_client(&url, allow_remote)?;
         Ok(Self {
             url,
+            allow_remote,
             model: model.into(),
             temperature: 0.7,
             max_tokens: 512,
@@ -179,6 +186,7 @@ impl Phi3Ollama {
 
     /// Check if Ollama server is running and model is available
     pub async fn health_check(&self) -> Result<HealthStatus> {
+        crate::ensure_model_request(&self.url, self.allow_remote)?;
         let client = &self.client;
 
         // Check server is running
@@ -263,6 +271,7 @@ Always prioritize team survival and tactical advantage."#;
 #[async_trait]
 impl LlmClient for Phi3Ollama {
     async fn complete(&self, prompt: &str) -> Result<String> {
+        crate::ensure_model_request(&self.url, self.allow_remote)?;
         let client = &self.client;
 
         let url = format!("{}/api/generate", self.url);
@@ -352,7 +361,7 @@ mod tests {
     fn test_phi3_ollama_creation() {
         let client =
             Phi3Ollama::new("http://localhost:11434", "phi3:medium").expect("model client");
-        assert_eq!(client.url, "http://localhost:11434");
+        assert_eq!(client.url(), "http://localhost:11434");
         assert_eq!(client.model, "phi3:medium");
         assert_eq!(client.temperature, 0.7);
         assert_eq!(client.max_tokens, 512);
@@ -362,7 +371,7 @@ mod tests {
     #[test]
     fn test_localhost_convenience() {
         let client = Phi3Ollama::localhost().expect("model client");
-        assert_eq!(client.url, "http://localhost:11434");
+        assert_eq!(client.url(), "http://localhost:11434");
         assert_eq!(client.model, "phi3:medium");
     }
 

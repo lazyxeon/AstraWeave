@@ -290,6 +290,9 @@ impl RemoteEmbeddingClient {
         api_key: Option<String>,
         allow_remote: bool,
     ) -> Result<Self> {
+        if astraweave_llm::model_url_has_userinfo(&api_url) {
+            anyhow::bail!("embedding URL has userinfo");
+        }
         let api_url = astraweave_llm::loopback_model_url(api_url, allow_remote);
         let client = if allow_remote && !astraweave_llm::is_loopback_http_url(&api_url) {
             reqwest::Client::builder()
@@ -526,5 +529,43 @@ mod tests {
             emb_a, emb_a2,
             "Same text from different clients should match (determinism)"
         );
+    }
+
+    #[cfg(feature = "http")]
+    #[test]
+    fn remote_embedding_client_rejects_userinfo_even_when_remote() {
+        let urls = [
+            "http://user:pass@api.openai.com/v1",
+            "http://127.0.0.1:11434@evil.example/api",
+            "http://@127.0.0.1:11434/",
+            "http://:@127.0.0.1/",
+        ];
+        for url in urls {
+            let remote = RemoteEmbeddingClient::allowing_remote(url.to_string(), "m".into(), 8)
+                .err()
+                .unwrap_or_else(|| panic!("remote userinfo was accepted: {url}"));
+            assert!(remote.to_string().contains("userinfo"), "{url}: {remote}");
+            let local = RemoteEmbeddingClient::new(url.to_string(), "m".into(), 8)
+                .err()
+                .unwrap_or_else(|| panic!("local userinfo was accepted: {url}"));
+            assert!(local.to_string().contains("userinfo"), "{url}: {local}");
+        }
+
+        let remote = RemoteEmbeddingClient::allowing_remote(
+            "https://api.openai.com/v1".to_string(),
+            "m".into(),
+            8,
+        )
+        .expect("remote");
+        assert!(remote
+            .model_info()
+            .description
+            .contains("https://api.openai.com/v1"));
+        let local = RemoteEmbeddingClient::new("http://127.0.0.1:11434".to_string(), "m".into(), 8)
+            .expect("loopback");
+        assert!(local
+            .model_info()
+            .description
+            .contains("http://127.0.0.1:11434"));
     }
 }

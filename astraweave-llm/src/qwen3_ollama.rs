@@ -143,7 +143,8 @@ impl ChatSession {
 #[derive(Debug, Clone)]
 pub struct Qwen3Ollama {
     /// Ollama API endpoint (default: http://localhost:11434)
-    pub url: String,
+    url: String,
+    allow_remote: bool,
 
     /// Model name (default: `DEFAULT_QWEN_INSTRUCT_MODEL`)
     pub model: String,
@@ -168,6 +169,11 @@ pub struct Qwen3Ollama {
 }
 
 impl Qwen3Ollama {
+    /// Stored endpoint. The first hop is checked again before each request.
+    pub fn url(&self) -> &str {
+        &self.url
+    }
+
     /// Create a new Qwen3-8B client with default settings
     ///
     /// # Arguments
@@ -201,6 +207,7 @@ impl Qwen3Ollama {
         let client = crate::build_model_client(&url, allow_remote)?;
         Ok(Self {
             url,
+            allow_remote,
             model: model.into(),
             temperature: 0.7,
             max_tokens: 512,
@@ -394,6 +401,7 @@ impl Qwen3Ollama {
     /// # }
     /// ```
     pub async fn preload(&self) -> Result<()> {
+        crate::ensure_model_request(&self.url, self.allow_remote)?;
         let client = &self.client;
 
         let url = format!("{}/api/chat", self.url);
@@ -446,6 +454,7 @@ impl Qwen3Ollama {
 
     /// Internal chat method using /api/chat
     async fn chat(&self, messages: &[ChatMessage]) -> Result<String> {
+        crate::ensure_model_request(&self.url, self.allow_remote)?;
         let client = &self.client;
 
         let url = format!("{}/api/chat", self.url);
@@ -484,6 +493,7 @@ impl Qwen3Ollama {
 
     /// Check if Ollama server is running and model is available
     pub async fn health_check(&self) -> Result<HealthStatus> {
+        crate::ensure_model_request(&self.url, self.allow_remote)?;
         let client = &self.client;
 
         // Check server is running
@@ -651,6 +661,7 @@ fn extract_ollama_content(response_json: &serde_json::Value) -> Result<String> {
 #[async_trait]
 impl LlmClient for Qwen3Ollama {
     async fn complete(&self, prompt: &str) -> Result<String> {
+        crate::ensure_model_request(&self.url, self.allow_remote)?;
         let client = &self.client;
 
         let url = format!("{}/api/chat", self.url);
@@ -751,6 +762,7 @@ impl LlmClient for Qwen3Ollama {
         &self,
         prompt: &str,
     ) -> Result<std::pin::Pin<Box<dyn futures_util::Stream<Item = Result<String>> + Send>>> {
+        crate::ensure_model_request(&self.url, self.allow_remote)?;
         use futures_util::StreamExt;
 
         // No overall timeout on the stored client. Streaming can outlive one
@@ -949,7 +961,7 @@ mod tests {
     fn test_qwen3_ollama_creation() {
         let client = Qwen3Ollama::new("http://localhost:11434", DEFAULT_QWEN_INSTRUCT_MODEL)
             .expect("model client");
-        assert_eq!(client.url, "http://localhost:11434");
+        assert_eq!(client.url(), "http://localhost:11434");
         assert_eq!(client.model, DEFAULT_QWEN_INSTRUCT_MODEL);
         assert_eq!(client.temperature, 0.7);
         assert_eq!(client.max_tokens, 512);
@@ -961,7 +973,7 @@ mod tests {
     #[test]
     fn test_localhost_convenience() {
         let client = Qwen3Ollama::localhost().expect("model client");
-        assert_eq!(client.url, "http://localhost:11434");
+        assert_eq!(client.url(), "http://localhost:11434");
         assert_eq!(client.model, DEFAULT_QWEN_INSTRUCT_MODEL);
     }
 

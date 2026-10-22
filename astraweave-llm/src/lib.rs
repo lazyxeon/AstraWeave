@@ -20,11 +20,39 @@ pub fn parse_bounded_model_json<T: serde::de::DeserializeOwned>(text: &str) -> R
 ///
 /// Every loopback URL check in the workspace goes through [`is_loopback_http_url`].
 pub fn loopback_model_url(url: String, allow_remote: bool) -> String {
+    const FALLBACK: &str = "http://127.0.0.1:11434";
+    // Userinfo is rejected even when `allow_remote` is set. The raw string is
+    // not returned until the URL parses as http(s) with an empty userinfo.
+    if !http_url_without_userinfo(&url) {
+        return FALLBACK.to_string();
+    }
     if allow_remote || is_loopback_http_url(&url) {
         url
     } else {
-        "http://127.0.0.1:11434".to_string()
+        FALLBACK.to_string()
     }
+}
+
+fn http_url_without_userinfo(url: &str) -> bool {
+    let Ok(parsed) = url::Url::parse(url) else {
+        return false;
+    };
+    (parsed.scheme() == "http" || parsed.scheme() == "https") && !url_has_userinfo(url, &parsed)
+}
+
+/// Re-check the URL that is about to be requested.
+///
+/// Userinfo is always rejected. A non-loopback host is rejected unless this
+/// client was built with `allowing_remote`.
+#[cfg(feature = "ollama")]
+pub(crate) fn ensure_model_request(url: &str, allow_remote: bool) -> Result<()> {
+    if !http_url_without_userinfo(url) {
+        bail!("model URL has userinfo or is not http(s)");
+    }
+    if !allow_remote && !is_loopback_http_url(url) {
+        bail!("model URL is not loopback");
+    }
+    Ok(())
 }
 
 /// Builder for a model HTTP client that cannot leave the machine.
@@ -83,61 +111,6 @@ pub(crate) fn build_model_client(url: &str, allow_remote: bool) -> Result<reqwes
         .build()
         .map_err(|err| anyhow::anyhow!("model http client: {err}"))
 }
-
-/// Process-wide environment lock. [`EnvGuard`] restores variables on drop.
-static PROCESS_ENV: std::sync::Mutex<()> = std::sync::Mutex::new(());
-
-std::thread_local! {
-    static PROCESS_ENV_HELD: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
-}
-
-fn lock_process_env() -> std::sync::MutexGuard<'static, ()> {
-    PROCESS_ENV.lock().unwrap_or_else(|err| err.into_inner())
-}
-
-fn env_var(key: &str) -> std::result::Result<String, std::env::VarError> {
-    if PROCESS_ENV_HELD.with(|held| held.get()) {
-        return std::env::var(key);
-    }
-    let _guard = lock_process_env();
-    std::env::var(key)
-}
-
-/// Sets process environment variables and restores the previous values on drop.
-/// Holds [`PROCESS_ENV`] so a test cannot race another env read in this crate.
-pub struct EnvGuard {
-    saved: Vec<(&'static str, Option<String>)>,
-    _lock: std::sync::MutexGuard<'static, ()>,
-}
-
-impl EnvGuard {
-    /// Replace each key. `None` removes it. The previous value is restored on drop.
-    pub fn replace(pairs: &[(&'static str, Option<&str>)]) -> Self {
-        let lock = lock_process_env();
-        PROCESS_ENV_HELD.with(|held| held.set(true));
-        let mut saved = Vec::with_capacity(pairs.len());
-        for (key, value) in pairs {
-            saved.push((*key, std::env::var(key).ok()));
-            match value {
-                Some(next) => std::env::set_var(key, next),
-                None => std::env::remove_var(key),
-            }
-        }
-        Self { saved, _lock: lock }
-    }
-}
-
-impl Drop for EnvGuard {
-    fn drop(&mut self) {
-        for (key, value) in self.saved.drain(..).rev() {
-            match value {
-                Some(previous) => std::env::set_var(key, previous),
-                None => std::env::remove_var(key),
-            }
-        }
-        PROCESS_ENV_HELD.with(|held| held.set(false));
-    }
-}
 use astraweave_core::{ActionStep, PlanIntent, ToolRegistry, WorldSnapshot};
 use tracing::{debug, info};
 
@@ -187,7 +160,7 @@ use std::sync::LazyLock;
 #[cfg(feature = "llm_cache")]
 static GLOBAL_CACHE: LazyLock<PromptCache> = LazyLock::new(|| {
     // Read capacity from environment, default to 4096
-    let capacity = env_var("LLM_CACHE_CAP")
+    let capacity = std::env::var("LLM_CACHE_CAP")
         .ok()
         .and_then(|s| s.parse().ok())
         .unwrap_or(4096);
@@ -195,7 +168,7 @@ static GLOBAL_CACHE: LazyLock<PromptCache> = LazyLock::new(|| {
     // Phase 7: Similarity cache hits are nondeterministic across prompt variants and
     // can cause unexpected cross-test pollution when tests run in parallel.
     // Keep exact-match caching enabled by default, and make similarity matching opt-in.
-    let similarity_threshold = env_var("LLM_CACHE_SIM_THRESH")
+    let similarity_threshold = std::env::var("LLM_CACHE_SIM_THRESH")
         .ok()
         .and_then(|s| s.parse::<f32>().ok())
         .map(|v| v.clamp(0.0, 1.0))
@@ -291,9 +264,18 @@ impl LlmClient for AlwaysErrMock {
 
 #[cfg(feature = "ollama")]
 pub struct OllamaClient {
-    pub url: String,
+    url: String,
+    allow_remote: bool,
     pub model: String,
     client: reqwest::Client,
+}
+
+#[cfg(feature = "ollama")]
+impl OllamaClient {
+    /// Stored endpoint. The first hop is checked again before each request.
+    pub fn url(&self) -> &str {
+        &self.url
+    }
 }
 
 #[cfg(feature = "ollama")]
@@ -321,6 +303,7 @@ impl OllamaClient {
         let client = build_model_client(&url, allow_remote)?;
         Ok(Self {
             url,
+            allow_remote,
             model: model.into(),
             client,
         })
@@ -342,6 +325,7 @@ impl LlmClient for OllamaClient {
             response: String,
         }
 
+        ensure_model_request(&self.url, self.allow_remote)?;
         let body = Req {
             model: &self.model,
             prompt,
@@ -375,7 +359,8 @@ impl LlmClient for OllamaClient {
 #[cfg(feature = "ollama")]
 #[derive(Clone)]
 pub struct OllamaChatClient {
-    pub url: String,
+    url: String,
+    allow_remote: bool,
     pub model: String,
     client: reqwest::Client,
     // Low-latency tuning knobs
@@ -387,6 +372,11 @@ pub struct OllamaChatClient {
 
 #[cfg(feature = "ollama")]
 impl OllamaChatClient {
+    /// Stored endpoint. The first hop is checked again before each request.
+    pub fn url(&self) -> &str {
+        &self.url
+    }
+
     pub fn new(url: String, model: String) -> Result<Self> {
         Self::assemble(url, model, false)
     }
@@ -404,19 +394,20 @@ impl OllamaChatClient {
         let url = loopback_model_url(url, allow_remote);
         let client = build_model_client(&url, allow_remote)?;
 
-        let low_latency = env_var("OLLAMA_LOW_LATENCY")
+        let low_latency = std::env::var("OLLAMA_LOW_LATENCY")
             .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
             .unwrap_or(true);
-        let keep_alive = env_var("OLLAMA_KEEP_ALIVE").ok(); // e.g., "5m" or "3600s"
-        let force_format_json = env_var("OLLAMA_FORMAT_JSON")
+        let keep_alive = std::env::var("OLLAMA_KEEP_ALIVE").ok(); // e.g., "5m" or "3600s"
+        let force_format_json = std::env::var("OLLAMA_FORMAT_JSON")
             .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
             .unwrap_or(true);
-        let early_exit_on_json = env_var("OLLAMA_EARLY_EXIT")
+        let early_exit_on_json = std::env::var("OLLAMA_EARLY_EXIT")
             .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
             .unwrap_or(true);
 
         Ok(Self {
             url,
+            allow_remote,
             model,
             client,
             low_latency,
@@ -428,6 +419,7 @@ impl OllamaChatClient {
 
     /// Warm up the model to minimize cold-start latency. Attempts a tiny generation and requests the model to remain in memory.
     pub async fn warmup(&self, timeout_secs: u64) -> Result<()> {
+        ensure_model_request(&self.url, self.allow_remote)?;
         #[derive(serde::Serialize)]
         struct Msg<'a> {
             role: &'a str,
@@ -491,6 +483,7 @@ impl OllamaChatClient {
 #[async_trait::async_trait]
 impl LlmClient for OllamaChatClient {
     async fn complete(&self, prompt: &str) -> Result<String> {
+        ensure_model_request(&self.url, self.allow_remote)?;
         #[derive(serde::Serialize)]
         struct Msg<'a> {
             role: &'a str,
@@ -521,7 +514,7 @@ impl LlmClient for OllamaChatClient {
         // Some Ollama setups can take a long time to load a model initially (minutes) or
         // will stream responses. Allow a long configurable timeout and fall back to a
         // streaming read if a non-stream response isn't available.
-        let default_timeout = env_var("OLLAMA_TIMEOUT_SECS")
+        let default_timeout = std::env::var("OLLAMA_TIMEOUT_SECS")
             .ok()
             .and_then(|s| s.parse::<u64>().ok())
             .unwrap_or(180u64);
@@ -531,11 +524,11 @@ impl LlmClient for OllamaChatClient {
         let mut text = String::new();
         let chat_url = format!("{}/api/chat", self.url.trim_end_matches('/'));
         // Configure non-stream attempts/timeout via env with conservative defaults
-        let max_nonstream_attempts: u32 = env_var("OLLAMA_NONSTREAM_ATTEMPTS")
+        let max_nonstream_attempts: u32 = std::env::var("OLLAMA_NONSTREAM_ATTEMPTS")
             .ok()
             .and_then(|s| s.parse().ok())
             .unwrap_or(1);
-        let nonstream_timeout_secs: u64 = env_var("OLLAMA_NONSTREAM_TIMEOUT_SECS")
+        let nonstream_timeout_secs: u64 = std::env::var("OLLAMA_NONSTREAM_TIMEOUT_SECS")
             .ok()
             .and_then(|s| s.parse().ok())
             .unwrap_or(20);
@@ -992,7 +985,8 @@ impl LlmClient for OllamaChatClient {
 /// This includes local services like text-generation-webui, LocalAI, etc.
 #[cfg(feature = "ollama")]
 pub struct LocalHttpClient {
-    pub url: String,
+    url: String,
+    allow_remote: bool,
     pub model: String,
     pub api_key: Option<String>,
     client: reqwest::Client,
@@ -1000,6 +994,11 @@ pub struct LocalHttpClient {
 
 #[cfg(feature = "ollama")]
 impl LocalHttpClient {
+    /// Stored endpoint. The first hop is checked again before each request.
+    pub fn url(&self) -> &str {
+        &self.url
+    }
+
     /// Create a client. Non-loopback URLs are replaced with `http://127.0.0.1:11434`.
     /// Use [`Self::allowing_remote`] to keep a caller-supplied host on reqwest's
     /// default client (proxy env and redirects). A loopback URL still uses
@@ -1041,6 +1040,7 @@ impl LocalHttpClient {
         let client = build_model_client(&url, allow_remote)?;
         Ok(Self {
             url,
+            allow_remote,
             model,
             api_key,
             client,
@@ -1071,6 +1071,17 @@ pub fn is_loopback_http_url(url: &str) -> bool {
     }
 }
 
+/// `true` when `url` carries userinfo, including an empty `@` the parser drops.
+///
+/// An unparseable string is not userinfo. Callers that must also require
+/// `http` or `https` use [`loopback_model_url`] or [`is_loopback_http_url`].
+pub fn model_url_has_userinfo(url: &str) -> bool {
+    let Ok(parsed) = url::Url::parse(url) else {
+        return false;
+    };
+    url_has_userinfo(url, &parsed)
+}
+
 /// `http://127.0.0.1:11434@evil.example/` puts the loopback text in the userinfo
 /// and sends the request to `evil.example`. An empty `@` is userinfo too, even
 /// when the parser drops it and keeps a loopback host.
@@ -1095,6 +1106,7 @@ fn is_localhost_domain(domain: &str) -> bool {
 #[async_trait::async_trait]
 impl LlmClient for LocalHttpClient {
     async fn complete(&self, prompt: &str) -> Result<String> {
+        ensure_model_request(&self.url, self.allow_remote)?;
         #[derive(serde::Serialize, serde::Deserialize)]
         struct Message {
             role: String,
@@ -1730,14 +1742,14 @@ mod tests {
         let phi = phi3_ollama::Phi3Ollama::new(remote, "phi3").expect("client");
         let hermes = hermes2pro_ollama::Hermes2ProOllama::new(remote, "hermes").expect("client");
         let chat = OllamaChatClient::new(remote.to_string(), "chat".to_string()).expect("client");
-        for url in [qwen.url, phi.url, hermes.url, chat.url] {
+        for url in [qwen.url(), phi.url(), hermes.url(), chat.url()] {
             assert!(
                 is_loopback_http_url(&url),
                 "stored a non-loopback endpoint: {url}"
             );
         }
         let opted = qwen3_ollama::Qwen3Ollama::allowing_remote(remote, "qwen").expect("client");
-        assert_eq!(opted.url, remote);
+        assert_eq!(opted.url(), remote);
     }
 
     #[test]
@@ -1826,14 +1838,50 @@ mod tests {
         }
 
         let remote = "http://127.0.0.1:11434@evil.example/api";
-        assert_eq!(loopback_model_url(remote.to_string(), true), remote);
+        assert_eq!(loopback_model_url(remote.to_string(), true), FALLBACK);
+        assert!(model_url_has_userinfo(remote));
+        assert!(model_url_has_userinfo("http://@127.0.0.1:11434/"));
+        assert!(model_url_has_userinfo("http://:@127.0.0.1/"));
+        assert!(!model_url_has_userinfo("https://api.openai.com"));
+        assert!(!model_url_has_userinfo("http://127.0.0.1:11434"));
+        assert_eq!(
+            loopback_model_url("https://api.openai.com".to_string(), true),
+            "https://api.openai.com"
+        );
     }
 
     #[cfg(feature = "ollama")]
     #[test]
-    fn loopback_http_client_ignores_proxy_env_and_rejects_remote_redirects() {
+    fn ensure_model_request_rejects_userinfo_even_when_remote() {
+        assert!(ensure_model_request("http://127.0.0.1:11434", false).is_ok());
+        assert!(ensure_model_request("https://api.openai.com", true).is_ok());
+        let userinfo =
+            ensure_model_request("http://user:pass@api.openai.com/v1", true).expect_err("userinfo");
+        assert!(userinfo.to_string().contains("userinfo"), "{userinfo}");
+        let remote = ensure_model_request("https://api.openai.com", false).expect_err("remote");
+        assert!(remote.to_string().contains("not loopback"), "{remote}");
+    }
+
+    #[cfg(feature = "ollama")]
+    #[tokio::test]
+    async fn request_rechecks_the_stored_url() {
+        let mut client = OllamaClient::new("http://127.0.0.1:11434", "m").expect("client");
+        client.url = "http://user:pass@evil.example/api".to_string();
+        client.allow_remote = true;
+        let err = client.complete("hi").await.expect_err("userinfo");
+        assert!(err.to_string().contains("userinfo"), "{err}");
+
+        let mut local = LocalHttpClient::new("http://127.0.0.1:11434".to_string(), "m".to_string())
+            .expect("client");
+        local.url = "https://api.openai.com".to_string();
+        let err = local.complete("hi").await.expect_err("remote");
+        assert!(err.to_string().contains("not loopback"), "{err}");
+    }
+
+    #[cfg(feature = "ollama")]
+    #[test]
+    fn loopback_http_client_rejects_remote_redirects() {
         use std::io::{Read, Write};
-        use std::sync::atomic::{AtomicBool, Ordering};
 
         fn spawn(response: String) -> std::net::SocketAddr {
             let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
@@ -1849,77 +1897,7 @@ mod tests {
             addr
         }
 
-        let target = spawn(
-            "HTTP/1.1 200 OK\r\nContent-Length: 6\r\nConnection: close\r\n\r\ndirect".to_string(),
-        );
-        let proxy_hit = std::sync::Arc::new(AtomicBool::new(false));
-        let proxy_flag = std::sync::Arc::clone(&proxy_hit);
-        let proxy_listener = std::net::TcpListener::bind("127.0.0.1:0").expect("proxy bind");
-        let proxy_addr = proxy_listener.local_addr().expect("proxy addr");
-        std::thread::spawn(move || {
-            if let Ok((mut sock, _)) = proxy_listener.accept() {
-                proxy_flag.store(true, Ordering::SeqCst);
-                let _ = sock.set_read_timeout(Some(std::time::Duration::from_secs(2)));
-                let mut buf = [0u8; 4096];
-                let _ = sock.read(&mut buf);
-                let _ = sock.write_all(
-                    b"HTTP/1.1 200 OK\r\nContent-Length: 7\r\nConnection: close\r\n\r\nproxied",
-                );
-            }
-        });
-
-        let proxy_url = format!("http://{proxy_addr}");
-        let _guard = EnvGuard::replace(&[
-            ("HTTP_PROXY", Some(proxy_url.as_str())),
-            ("HTTPS_PROXY", Some(proxy_url.as_str())),
-            ("ALL_PROXY", Some(proxy_url.as_str())),
-            ("http_proxy", Some(proxy_url.as_str())),
-            ("https_proxy", Some(proxy_url.as_str())),
-            ("all_proxy", Some(proxy_url.as_str())),
-            ("NO_PROXY", None),
-            ("no_proxy", None),
-        ]);
-
-        let loopback = loopback_http_client()
-            .timeout(std::time::Duration::from_secs(2))
-            .build()
-            .expect("loopback client");
-        let open = reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(2))
-            .build()
-            .expect("default client");
-        drop(_guard);
-
-        let direct_url = format!("http://localhost:{}/", target.port());
         let runtime = tokio::runtime::Runtime::new().expect("runtime");
-        let body = runtime.block_on(async {
-            loopback
-                .get(&direct_url)
-                .send()
-                .await
-                .expect("direct send")
-                .text()
-                .await
-                .expect("direct body")
-        });
-        assert_eq!(body, "direct");
-        assert!(
-            !proxy_hit.load(Ordering::SeqCst),
-            "loopback client sent the request to the proxy"
-        );
-
-        let proxied = runtime.block_on(async {
-            open.get(&direct_url)
-                .send()
-                .await
-                .expect("proxy send")
-                .text()
-                .await
-                .expect("proxy body")
-        });
-        assert_eq!(proxied, "proxied");
-        assert!(proxy_hit.load(Ordering::SeqCst));
-
         let remote = spawn(
             "HTTP/1.1 302 Found\r\nLocation: http://example.com/steal\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
                 .to_string(),
@@ -1974,12 +1952,12 @@ mod tests {
         let remote = "https://api.openai.com";
         let client = OllamaClient::new(remote, "llama").expect("client");
         assert!(
-            is_loopback_http_url(&client.url),
+            is_loopback_http_url(&client.url()),
             "stored a non-loopback endpoint: {}",
-            client.url
+            client.url()
         );
         let opted = OllamaClient::allowing_remote(remote, "llama").expect("client");
-        assert_eq!(opted.url, remote);
+        assert_eq!(opted.url(), remote);
     }
     use astraweave_core::{
         CompanionState, Constraints, EnemyState, IVec2, PlayerState, ToolSpec, WorldSnapshot,
@@ -2293,9 +2271,9 @@ mod tests {
             LocalHttpClient::new("https://api.openai.com".to_string(), "gpt-4".to_string())
                 .expect("client");
         assert!(
-            is_loopback_http_url(&client.url),
+            is_loopback_http_url(&client.url()),
             "model client stored a non-loopback endpoint: {}",
-            client.url
+            client.url()
         );
     }
 
@@ -2303,7 +2281,7 @@ mod tests {
     #[test]
     fn test_ollama_client_creation() {
         let client = OllamaClient::new("http://localhost:11434", "llama2").expect("client");
-        assert_eq!(client.url, "http://localhost:11434");
+        assert_eq!(client.url(), "http://localhost:11434");
         assert_eq!(client.model, "llama2");
     }
 
@@ -2315,7 +2293,7 @@ mod tests {
             "test-model".to_string(),
         )
         .expect("client");
-        assert_eq!(client.url, "http://localhost:5000");
+        assert_eq!(client.url(), "http://localhost:5000");
         assert_eq!(client.model, "test-model");
         assert!(client.api_key.is_none());
 

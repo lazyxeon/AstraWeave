@@ -154,7 +154,8 @@ impl ChatSession {
 #[derive(Debug, Clone)]
 pub struct Hermes2ProOllama {
     /// Ollama API endpoint (default: http://localhost:11434)
-    pub url: String,
+    url: String,
+    allow_remote: bool,
 
     /// Model name (default: "adrienbrault/nous-hermes2pro:Q4_K_M")
     pub model: String,
@@ -172,6 +173,11 @@ pub struct Hermes2ProOllama {
 }
 
 impl Hermes2ProOllama {
+    /// Stored endpoint. The first hop is checked again before each request.
+    pub fn url(&self) -> &str {
+        &self.url
+    }
+
     /// Create a new Hermes 2 Pro client with default settings
     ///
     /// # Arguments
@@ -205,6 +211,7 @@ impl Hermes2ProOllama {
         let client = crate::build_model_client(&url, allow_remote)?;
         Ok(Self {
             url,
+            allow_remote,
             model: model.into(),
             temperature: 0.7,
             max_tokens: 512,
@@ -279,6 +286,7 @@ impl Hermes2ProOllama {
 
     /// Internal chat method using /api/chat
     async fn chat(&self, messages: &[ChatMessage]) -> Result<String> {
+        crate::ensure_model_request(&self.url, self.allow_remote)?;
         let client = &self.client;
 
         let url = format!("{}/api/chat", self.url);
@@ -321,6 +329,7 @@ impl Hermes2ProOllama {
 
     /// Check if Ollama server is running and model is available
     pub async fn health_check(&self) -> Result<HealthStatus> {
+        crate::ensure_model_request(&self.url, self.allow_remote)?;
         let client = &self.client;
 
         // Check server is running
@@ -408,6 +417,7 @@ Always prioritize team survival and tactical advantage."#;
 #[async_trait]
 impl LlmClient for Hermes2ProOllama {
     async fn complete(&self, prompt: &str) -> Result<String> {
+        crate::ensure_model_request(&self.url, self.allow_remote)?;
         let client = &self.client;
 
         let url = format!("{}/api/chat", self.url);
@@ -523,6 +533,7 @@ impl LlmClient for Hermes2ProOllama {
         &self,
         prompt: &str,
     ) -> Result<std::pin::Pin<Box<dyn futures_util::Stream<Item = Result<String>> + Send>>> {
+        crate::ensure_model_request(&self.url, self.allow_remote)?;
         use futures_util::StreamExt;
 
         let client = &self.client;
@@ -670,7 +681,7 @@ mod tests {
             "adrienbrault/nous-hermes2pro:Q4_K_M",
         )
         .expect("model client");
-        assert_eq!(client.url, "http://localhost:11434");
+        assert_eq!(client.url(), "http://localhost:11434");
         assert_eq!(client.model, "adrienbrault/nous-hermes2pro:Q4_K_M");
         assert_eq!(client.temperature, 0.7);
         assert_eq!(client.max_tokens, 512);
@@ -680,7 +691,7 @@ mod tests {
     #[test]
     fn test_localhost_convenience() {
         let client = Hermes2ProOllama::localhost().expect("model client");
-        assert_eq!(client.url, "http://localhost:11434");
+        assert_eq!(client.url(), "http://localhost:11434");
         assert_eq!(client.model, "adrienbrault/nous-hermes2pro:Q4_K_M");
     }
 
