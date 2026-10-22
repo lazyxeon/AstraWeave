@@ -4,26 +4,26 @@
 #[path = "support/linux_test_threads.rs"]
 mod linux_test_threads;
 
+#[path = "support/gpu_capability.rs"]
+mod gpu_capability;
+
 use astraweave_render::pipeline_cache;
 
 #[test]
 fn fallback_without_pipeline_cache_still_creates_pipeline() {
     pollster::block_on(async {
-        let instance = wgpu::Instance::default();
-        let adapter = instance
-            .request_adapter(&wgpu::RequestAdapterOptions::default())
-            .await
-            .expect("adapter");
-        let (device, _queue) = adapter
-            .request_device(&wgpu::DeviceDescriptor {
-                label: Some("pipeline fallback"),
-                required_features: wgpu::Features::empty(),
-                required_limits: wgpu::Limits::downlevel_defaults(),
-                memory_hints: wgpu::MemoryHints::default(),
-                trace: Default::default(),
-            })
-            .await
-            .expect("device");
+        let Some(gpu) = gpu_capability::request_headless(
+            "fallback_without_pipeline_cache_still_creates_pipeline",
+            wgpu::Features::empty(),
+            wgpu::Limits::downlevel_defaults(),
+            wgpu::PowerPreference::HighPerformance,
+            false,
+        )
+        .await
+        else {
+            return;
+        };
+        let device = gpu.device;
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("fallback shader"),
             source: wgpu::ShaderSource::Wgsl(

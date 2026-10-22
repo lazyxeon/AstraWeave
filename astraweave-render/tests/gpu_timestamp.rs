@@ -7,13 +7,18 @@ mod linux_test_threads;
 
 use std::future::Future;
 
+#[path = "support/gpu_capability.rs"]
+mod gpu_capability;
+
 use astraweave_render::Renderer;
 use wgpu::util::DeviceExt;
 
 #[test]
 fn recorded_pass_timestamp_is_positive() {
     pollster::block_on(async {
-        let mut renderer = Renderer::new_headless(64, 64).await.expect("headless");
+        let Some(mut renderer) = Renderer::headless_for_tests(64, 64).await else {
+            return;
+        };
         if !astraweave_render::gpu_fault::depth_texture_load_supported(renderer.device()) {
             eprintln!(
                 "skip recorded_pass_timestamp_is_positive: GL cannot textureLoad depth, so this frame is not the lavapipe measurement"
@@ -70,7 +75,9 @@ fn recorded_pass_timestamp_is_positive() {
 #[test]
 fn draw_into_heavy_path_timestamps_and_models() {
     pollster::block_on(async {
-        let mut renderer = Renderer::new_headless(256, 256).await.expect("headless");
+        let Some(mut renderer) = Renderer::headless_for_tests(256, 256).await else {
+            return;
+        };
         if !astraweave_render::gpu_fault::depth_texture_load_supported(renderer.device()) {
             eprintln!("skip draw_into_heavy_path: no depth textureLoad");
             return;
@@ -269,14 +276,24 @@ fn draw_into_heavy_path_timestamps_and_models() {
 fn timestamp_readback_self_test_is_nonzero() {
     pollster::block_on(async {
         let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::from_env_or_default());
-        let adapter = instance
+        let adapter = match instance
             .request_adapter(&wgpu::RequestAdapterOptions {
                 power_preference: wgpu::PowerPreference::HighPerformance,
                 compatible_surface: None,
                 force_fallback_adapter: false,
             })
             .await
-            .expect("adapter");
+        {
+            Ok(adapter) => adapter,
+            Err(err) => {
+                let reason = format!("timestamp self-test adapter: {err}");
+                if gpu_capability::skip_if_unavailable() {
+                    gpu_capability::note_skip(&reason);
+                    return;
+                }
+                panic!("Failed to find adapter: {reason}");
+            }
+        };
         let info = adapter.get_info();
         let adapter_features = adapter.features();
         let needed = wgpu::Features::TIMESTAMP_QUERY
@@ -332,7 +349,9 @@ fn timestamp_readback_self_test_is_nonzero() {
 #[test]
 fn aravath_draw_into_has_no_depth_conflict() {
     pollster::block_on(async {
-        let mut renderer = Renderer::new_headless(128, 128).await.expect("headless");
+        let Some(mut renderer) = Renderer::headless_for_tests(128, 128).await else {
+            return;
+        };
         if !astraweave_render::gpu_fault::depth_texture_load_supported(renderer.device()) {
             eprintln!("skip aravath_draw_into_has_no_depth_conflict: no depth textureLoad");
             return;

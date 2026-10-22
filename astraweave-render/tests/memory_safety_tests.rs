@@ -2,6 +2,9 @@
 #[path = "support/linux_test_threads.rs"]
 mod linux_test_threads;
 
+#[path = "support/gpu_capability.rs"]
+mod gpu_capability;
+
 use astraweave_render::mesh::{CpuMesh, MeshVertex};
 use astraweave_render::mesh_registry::{MeshKey, MeshRegistry};
 use glam::{Vec2, Vec3, Vec4};
@@ -14,26 +17,23 @@ use std::sync::Arc;
 // We can skip the actual wgpu test if it's too hard to set up, but the prompt requires "Unit Test Verification".
 // I'll assume we can create a headless device.
 
-async fn create_device() -> (wgpu::Device, wgpu::Queue) {
-    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
-    let adapter = instance
-        .request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::LowPower,
-            force_fallback_adapter: true,
-            compatible_surface: None,
-        })
-        .await
-        .unwrap();
-
-    adapter
-        .request_device(&wgpu::DeviceDescriptor::default())
-        .await
-        .unwrap()
+async fn create_device() -> Option<(wgpu::Device, wgpu::Queue)> {
+    gpu_capability::request_headless(
+        "memory_safety",
+        wgpu::Features::empty(),
+        wgpu::Limits::default(),
+        wgpu::PowerPreference::LowPower,
+        true,
+    )
+    .await
+    .map(|gpu| (gpu.device, gpu.queue))
 }
 
 #[tokio::test]
 async fn test_mesh_registry_pruning() {
-    let (device, queue) = create_device().await;
+    let Some((device, queue)) = create_device().await else {
+        return;
+    };
     let mut registry = MeshRegistry::new();
 
     let cpu_mesh = CpuMesh {

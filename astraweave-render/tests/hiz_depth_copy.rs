@@ -5,6 +5,9 @@
 #[path = "support/linux_test_threads.rs"]
 mod linux_test_threads;
 
+#[path = "support/gpu_capability.rs"]
+mod gpu_capability;
+
 use astraweave_render::hiz_pyramid::HizPyramid;
 
 fn read_r32(
@@ -70,15 +73,19 @@ fn read_r32(
 #[test]
 fn depth_copy_stays_uniform_for_ssr_and_ssgi() {
     pollster::block_on(async {
-        let instance = wgpu::Instance::default();
-        let adapter = instance
-            .request_adapter(&wgpu::RequestAdapterOptions::default())
-            .await
-            .expect("adapter");
-        let (device, queue) = adapter
-            .request_device(&wgpu::DeviceDescriptor::default())
-            .await
-            .expect("device");
+        let Some(gpu) = gpu_capability::request_headless(
+            "depth_copy_stays_uniform_for_ssr_and_ssgi",
+            wgpu::Features::empty(),
+            wgpu::Limits::default(),
+            wgpu::PowerPreference::HighPerformance,
+            false,
+        )
+        .await
+        else {
+            return;
+        };
+        let device = gpu.device;
+        let queue = gpu.queue;
         if !astraweave_render::gpu_fault::depth_texture_load_supported(&device) {
             eprintln!(
                 "skip depth_copy_stays_uniform_for_ssr_and_ssgi: this adapter does not support textureLoad on depth textures"

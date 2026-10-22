@@ -42,9 +42,9 @@ fn quad(lift: f32) -> CpuMesh {
 #[test]
 fn write_mesh_keeps_buffers_when_the_deformation_fits() {
     pollster::block_on(async {
-        let mut renderer = Renderer::new_headless(64, 64)
-            .await
-            .expect("headless renderer");
+        let Some(mut renderer) = Renderer::headless_for_tests(64, 64).await else {
+            return;
+        };
         let mesh = renderer.create_mesh_from_cpu_mesh(&quad(0.0));
         let instance = Instance::from_pos_scale_color(glam::Vec3::ZERO, glam::Vec3::ONE, [1.0; 4]);
         renderer.add_model_with_bounds(

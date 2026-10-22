@@ -1577,6 +1577,27 @@ impl Renderer {
         Ok(renderer)
     }
 
+    /// Headless renderer for tests.
+    ///
+    /// `None` only when `AW_GPU_SKIP_IF_UNAVAILABLE` is set and no adapter
+    /// exists. That skip is written to `target/gpu-skip-reasons.txt`. A
+    /// machine that should have lavapipe or a GPU still panics. The panic
+    /// stays in this function so every call site shares one failure path.
+    #[allow(clippy::panic)]
+    pub async fn headless_for_tests(width: u32, height: u32) -> Option<Self> {
+        match Self::new_headless(width, height).await {
+            Ok(renderer) => Some(renderer),
+            Err(err) => {
+                let reason = format!("headless renderer {width}x{height}: {err:#}");
+                if record_gpu_skip(&reason) {
+                    None
+                } else {
+                    panic!("Failed to create headless renderer: {reason}");
+                }
+            }
+        }
+    }
+
     pub async fn new_from_device(
         device: wgpu::Device,
         queue: wgpu::Queue,
@@ -11985,6 +12006,38 @@ fn install_device_error_handler(
     }));
 }
 
+fn record_gpu_skip(reason: &str) -> bool {
+    if std::env::var_os("AW_GPU_SKIP_IF_UNAVAILABLE").is_none() {
+        return false;
+    }
+    eprintln!("SKIP(gpu): {reason}");
+    let manifest = std::env::var("CARGO_MANIFEST_DIR").unwrap_or_else(|_| ".".to_string());
+    let path = std::path::PathBuf::from(manifest)
+        .join("..")
+        .join("target")
+        .join("gpu-skip-reasons.txt");
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    match std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+    {
+        Ok(mut file) => {
+            use std::io::Write;
+            let _ = writeln!(file, "SKIP(gpu): {reason}");
+        }
+        Err(err) => {
+            eprintln!(
+                "SKIP(gpu): could not record the skip at {}: {err}",
+                path.display()
+            );
+        }
+    }
+    true
+}
+
 fn warp_requested() -> bool {
     matches!(
         std::env::var("ARAVATH_WARP").ok().as_deref(),
@@ -12669,9 +12722,9 @@ mod tests {
     #[test]
     fn gpu_cull_indirect_instance_count_matches_the_cpu_frustum() {
         pollster::block_on(async {
-            let mut renderer = Renderer::new_headless(64, 64)
-                .await
-                .expect("headless renderer");
+            let Some(mut renderer) = Renderer::headless_for_tests(64, 64).await else {
+                return;
+            };
             let eye = Vec3::new(0.0, 0.0, 8.0);
             let view = Mat4::look_at_rh(eye, Vec3::ZERO, Vec3::Y);
             let projection =
@@ -12751,9 +12804,9 @@ mod tests {
     #[test]
     fn gpu_cull_grow_keeps_equal_slots_and_vertex_rewrite_moves_the_box() {
         pollster::block_on(async {
-            let mut renderer = Renderer::new_headless(64, 64)
-                .await
-                .expect("headless renderer");
+            let Some(mut renderer) = Renderer::headless_for_tests(64, 64).await else {
+                return;
+            };
             let eye = Vec3::new(0.0, 0.0, 8.0);
             let view = Mat4::look_at_rh(eye, Vec3::ZERO, Vec3::Y);
             let projection =
