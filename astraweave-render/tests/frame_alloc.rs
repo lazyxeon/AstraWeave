@@ -169,11 +169,13 @@ fn draw_into_allocates_nothing_after_warmup() {
         // The six mip passes were the jump to ~217 (about 18 allocations
         // each). What remains is wgpu-core 25 `BasePass::new` for the passes
         // that still record. Engine scratch stays at zero (`update_instances`
-        // above). Ceiling 130 is 11 above the high sample and still under
-        // one extra pass (119 + 18). Floor 100 is 15 under the low sample,
-        // so a dropped pass fails too.
+        // above). The PBR step builds `--all-features`. One pass is about 18,
+        // and `121 - 18 = 103` still passes `min >= 100`. `min >= 110` keeps
+        // the steady lows (115 and 121) and fails that drop (`103` or `97`).
+        // Ceiling 130 is 5 above the all-features high sample. `125 + 18 = 143`
+        // still fails.
         assert!(
-            max <= 130 && min >= 100 && max - min <= 4,
+            max <= 130 && min >= 110 && max - min <= 4,
             "draw_into allocs left the wgpu pass floor: {samples:?} adapter={} backend={} features={feature_bits:?}",
             renderer.gpu_adapter_name(),
             renderer.gpu_backend(),

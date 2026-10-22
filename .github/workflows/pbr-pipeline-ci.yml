@@ -163,10 +163,14 @@ jobs:
         set -o pipefail
         cargo test -p astraweave-render --all-features --color never --test stream_fallback -- --nocapture 2>&1 | tee target/stream-fallback-floor.txt
         echo "::endgroup::"
+        grep -E 'adapter=llvmpipe' target/stream-fallback-floor.txt
         grep -E 'test result: ok\. [1-9][0-9]* passed' target/stream-fallback-floor.txt
 
     - name: Test astraweave-render
       id: render
+      # A SIGSEGV here must fail the workflow. Do not put continue-on-error
+      # back on this step or on the job: libvulkan 1.4.341 faults when
+      # several threads load every Mesa ICD, and that exit used to go yellow.
       run: |
         echo "::group::Testing astraweave-render"
         cargo test -p astraweave-render --all-features -- --skip draw_into_allocates_nothing_after_warmup --skip fallback_frame_does_not_allocate_before_the_texture_is_resident --nocapture

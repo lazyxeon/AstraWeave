@@ -132,14 +132,24 @@ fn fallback_frame_does_not_allocate_before_the_texture_is_resident() {
                 "measured frame left the fallback"
             );
         }
-        eprintln!("stream fallback draw_into alloc samples: {samples:?}");
+        let adapter = renderer.gpu_adapter_name();
+        eprintln!(
+            "stream fallback draw_into alloc adapter={adapter} backend={} samples={samples:?}",
+            renderer.gpu_backend(),
+        );
+        assert!(
+            adapter.to_lowercase().contains("llvmpipe"),
+            "fallback floor is the lavapipe count, adapter={adapter}"
+        );
         let min = *samples.iter().min().unwrap();
         let max = *samples.iter().max().unwrap();
-        // Same gate as `frame_alloc`: min 100, max 130, spread 4.
-        // Alloc-counter samples were [119, 116, 115, 116, 115, 115].
-        // `--all-features` samples were [125, 122, 121, 122, 121, 121].
+        // Measured on lavapipe, four samples. Alloc-counter: [119, 116, 115, 116].
+        // `--all-features`: [125, 122, 121, 122]. The PBR step builds
+        // `--all-features`. One pass is about 18, and `121 - 18 = 103` still
+        // passes `min >= 100`. `min >= 110` keeps both steady lows and fails
+        // that drop. Ceiling 130 fails `125 + 18`. Spread inside a run is 4.
         assert!(
-            max <= 130 && min >= 100 && max - min <= 4,
+            max <= 130 && min >= 110 && max - min <= 4,
             "fallback frame left the wgpu pass floor: {samples:?}"
         );
 
