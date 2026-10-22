@@ -68,6 +68,8 @@ fn gpu_cull_stays_off_until_enabled_and_then_dispatches() {
             .expect("draw on");
         renderer.queue().submit(std::iter::once(encoder.finish()));
         let _ = renderer.device().poll(wgpu::MaintainBase::Wait);
+        assert!(renderer.gpu_cull_ran());
+        assert_eq!(renderer.gpu_cull_batch_count(), 1);
         assert_eq!(renderer.gpu_cull_mode(), "gpu");
     });
 }

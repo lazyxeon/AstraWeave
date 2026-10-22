@@ -722,11 +722,19 @@ struct DrawCmd {
     first_instance: u32,
 }
 
+struct BatchLimit {
+    count: u32,
+    pad0: u32,
+    pad1: u32,
+    pad2: u32,
+}
+
 @group(0) @binding(0) var<uniform> frustum: FrustumPlanes;
 @group(0) @binding(1) var<storage, read> batch_aabbs: array<BatchAABB>;
 @group(0) @binding(2) var<storage, read> draw_templates: array<DrawCmd>;
 @group(0) @binding(3) var<storage, read_write> draw_commands: array<DrawCmd>;
 @group(0) @binding(4) var<storage, read_write> visible_batch_count: atomic<u32>;
+@group(0) @binding(5) var<uniform> batch_limit: BatchLimit;
 
 fn is_batch_visible(center: vec3<f32>, extent: vec3<f32>) -> bool {
     // Plane 0 (left)
@@ -790,7 +798,13 @@ fn is_batch_visible(center: vec3<f32>, extent: vec3<f32>) -> bool {
 @compute @workgroup_size(64)
 fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let idx = gid.x;
+    // Stop at the logical batch count. A grown buffer is larger than that
+    // count, and the AABB array used to be the only limit, so threads walked
+    // off the shorter command buffer.
+    if (idx >= batch_limit.count) { return; }
     if (idx >= arrayLength(&batch_aabbs)) { return; }
+    if (idx >= arrayLength(&draw_templates)) { return; }
+    if (idx >= arrayLength(&draw_commands)) { return; }
 
     let aabb = batch_aabbs[idx];
     var cmd = draw_templates[idx];
@@ -812,8 +826,40 @@ pub struct IndirectDrawResources {
     pub draw_commands_buffer: wgpu::Buffer,
     pub frustum_buffer: wgpu::Buffer,
     pub batch_count_buffer: wgpu::Buffer,
+    pub batch_limit_buffer: wgpu::Buffer,
     pub bind_group: wgpu::BindGroup,
     pub batch_count: u32,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone, Pod, Zeroable)]
+struct BatchLimit {
+    count: u32,
+    _pad: [u32; 3],
+}
+
+struct IndirectBuffers<'a> {
+    frustum: &'a wgpu::Buffer,
+    aabbs: &'a wgpu::Buffer,
+    templates: &'a wgpu::Buffer,
+    commands: &'a wgpu::Buffer,
+    batch_count: &'a wgpu::Buffer,
+    batch_limit: &'a wgpu::Buffer,
+}
+
+fn storage_slots(size: u64, stride: u64) -> u64 {
+    if stride == 0 {
+        0
+    } else {
+        size / stride
+    }
+}
+
+/// Element capacity shared by the AABB buffer and both command buffers.
+/// Growing from an exact 1-slot buffer to 10 batches lands on 16 slots, not
+/// a 32-byte power-of-two that disagrees with a 20-byte one.
+fn grown_slot_count(needed: u64) -> u64 {
+    needed.max(1).next_power_of_two()
 }
 
 /// Compute pipeline that generates per-batch `DrawIndexedIndirectCommand`
@@ -890,6 +936,18 @@ impl IndirectDrawPipeline {
                     },
                     count: None,
                 },
+                // 5: Logical batch count. Threads past this return before
+                // indexing the storage arrays.
+                wgpu::BindGroupLayoutEntry {
+                    binding: 5,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
             ],
         });
 
@@ -912,6 +970,55 @@ impl IndirectDrawPipeline {
             pipeline,
             bind_group_layout,
         }
+    }
+
+    fn bind_indirect(
+        &self,
+        device: &wgpu::Device,
+        buffers: &IndirectBuffers<'_>,
+    ) -> wgpu::BindGroup {
+        device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("indirect_draw_bind_group"),
+            layout: &self.bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: buffers.frustum.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: buffers.aabbs.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: buffers.templates.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: buffers.commands.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 4,
+                    resource: buffers.batch_count.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 5,
+                    resource: buffers.batch_limit.as_entire_binding(),
+                },
+            ],
+        })
+    }
+
+    fn batch_limit_buffer(device: &wgpu::Device, count: u32) -> wgpu::Buffer {
+        let limit = BatchLimit {
+            count,
+            _pad: [0; 3],
+        };
+        device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("indirect_batch_limit"),
+            contents: bytemuck::bytes_of(&limit),
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        })
     }
 
     /// Allocate GPU resources for indirect draw command generation.
@@ -986,32 +1093,19 @@ impl IndirectDrawPipeline {
             mapped_at_creation: false,
         });
 
-        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("indirect_draw_bind_group"),
-            layout: &self.bind_group_layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: frustum_buffer.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: batch_aabb_buffer.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 2,
-                    resource: template_buffer.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 3,
-                    resource: draw_commands_buffer.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 4,
-                    resource: batch_count_buffer.as_entire_binding(),
-                },
-            ],
-        });
+        let logical = if batch_aabbs.is_empty() { 0 } else { count };
+        let batch_limit_buffer = Self::batch_limit_buffer(device, logical);
+        let bind_group = self.bind_indirect(
+            device,
+            &IndirectBuffers {
+                frustum: &frustum_buffer,
+                aabbs: &batch_aabb_buffer,
+                templates: &template_buffer,
+                commands: &draw_commands_buffer,
+                batch_count: &batch_count_buffer,
+                batch_limit: &batch_limit_buffer,
+            },
+        );
 
         IndirectDrawResources {
             batch_aabb_buffer,
@@ -1019,8 +1113,9 @@ impl IndirectDrawPipeline {
             draw_commands_buffer,
             frustum_buffer,
             batch_count_buffer,
+            batch_limit_buffer,
             bind_group,
-            batch_count: if batch_aabbs.is_empty() { 0 } else { count },
+            batch_count: logical,
         }
     }
 
@@ -1042,8 +1137,15 @@ impl IndirectDrawPipeline {
         assert_eq!(batch_aabbs.len(), templates.len());
 
         let count = batch_aabbs.len().max(1);
+        let logical = if batch_aabbs.is_empty() {
+            0
+        } else {
+            count as u32
+        };
 
-        // Check if buffers need reallocation
+        // Check if buffers need reallocation. AABB is 32 bytes and a draw
+        // command is 20, so rounding each buffer's byte size separately
+        // gives them different element counts. Grow them to one slot count.
         let dummy_aabb = InstanceAABB::new(Vec3::ZERO, Vec3::ZERO, 0);
         let dummy_tmpl = DrawIndexedIndirectCommand::default();
         let aabb_bytes: &[u8] = if batch_aabbs.is_empty() {
@@ -1056,84 +1158,71 @@ impl IndirectDrawPipeline {
         } else {
             bytemuck::cast_slice(templates)
         };
-        let cmd_size = (count * std::mem::size_of::<DrawIndexedIndirectCommand>()) as u64;
+        let aabb_stride = std::mem::size_of::<InstanceAABB>() as u64;
+        let cmd_stride = std::mem::size_of::<DrawIndexedIndirectCommand>() as u64;
+        let needed = count as u64;
+        let aabb_slots = storage_slots(existing.batch_aabb_buffer.size(), aabb_stride);
+        let tmpl_slots = storage_slots(existing.template_buffer.size(), cmd_stride);
+        let cmd_slots = storage_slots(existing.draw_commands_buffer.size(), cmd_stride);
+        let unequal = aabb_slots != cmd_slots || aabb_slots != tmpl_slots;
+        let short = needed > aabb_slots || needed > tmpl_slots || needed > cmd_slots;
+        let grow = unequal || short;
 
-        let aabb_grew = existing.batch_aabb_buffer.size() < aabb_bytes.len() as u64;
-        let tmpl_grew = existing.template_buffer.size() < tmpl_bytes.len() as u64;
-        let cmd_grew = existing.draw_commands_buffer.size() < cmd_size;
-        let needs_rebind = aabb_grew || tmpl_grew || cmd_grew;
-
-        let batch_aabb_buffer = if aabb_grew {
-            let alloc = (aabb_bytes.len() as u64).next_power_of_two().max(256);
-            device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some("indirect_batch_aabb_buffer"),
-                size: alloc,
-                usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
-                mapped_at_creation: false,
-            })
+        let (batch_aabb_buffer, template_buffer, draw_commands_buffer) = if grow {
+            let slots = grown_slot_count(needed);
+            (
+                device.create_buffer(&wgpu::BufferDescriptor {
+                    label: Some("indirect_batch_aabb_buffer"),
+                    size: slots * aabb_stride,
+                    usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+                    mapped_at_creation: false,
+                }),
+                device.create_buffer(&wgpu::BufferDescriptor {
+                    label: Some("indirect_template_buffer"),
+                    size: slots * cmd_stride,
+                    usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+                    mapped_at_creation: false,
+                }),
+                device.create_buffer(&wgpu::BufferDescriptor {
+                    label: Some("indirect_draw_commands_buffer"),
+                    size: slots * cmd_stride,
+                    usage: wgpu::BufferUsages::STORAGE
+                        | wgpu::BufferUsages::INDIRECT
+                        | wgpu::BufferUsages::COPY_SRC,
+                    mapped_at_creation: false,
+                }),
+            )
         } else {
-            existing.batch_aabb_buffer
+            (
+                existing.batch_aabb_buffer,
+                existing.template_buffer,
+                existing.draw_commands_buffer,
+            )
         };
         queue.write_buffer(&batch_aabb_buffer, 0, aabb_bytes);
-
-        let template_buffer = if tmpl_grew {
-            let alloc = (tmpl_bytes.len() as u64).next_power_of_two().max(256);
-            device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some("indirect_template_buffer"),
-                size: alloc,
-                usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
-                mapped_at_creation: false,
-            })
-        } else {
-            existing.template_buffer
-        };
         queue.write_buffer(&template_buffer, 0, tmpl_bytes);
-
-        let draw_commands_buffer = if cmd_grew {
-            let alloc = cmd_size.next_power_of_two().max(256);
-            device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some("indirect_draw_commands_buffer"),
-                size: alloc,
-                usage: wgpu::BufferUsages::STORAGE
-                    | wgpu::BufferUsages::INDIRECT
-                    | wgpu::BufferUsages::COPY_SRC,
-                mapped_at_creation: false,
-            })
-        } else {
-            existing.draw_commands_buffer
-        };
 
         // Update frustum uniform (always fits — fixed 96 bytes)
         queue.write_buffer(&existing.frustum_buffer, 0, bytemuck::bytes_of(frustum));
+        let limit = BatchLimit {
+            count: logical,
+            _pad: [0; 3],
+        };
+        queue.write_buffer(&existing.batch_limit_buffer, 0, bytemuck::bytes_of(&limit));
 
         // Re-create bind group when any storage buffer was reallocated
-        let bind_group = if needs_rebind {
-            device.create_bind_group(&wgpu::BindGroupDescriptor {
-                label: Some("indirect_draw_bind_group"),
-                layout: &self.bind_group_layout,
-                entries: &[
-                    wgpu::BindGroupEntry {
-                        binding: 0,
-                        resource: existing.frustum_buffer.as_entire_binding(),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 1,
-                        resource: batch_aabb_buffer.as_entire_binding(),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 2,
-                        resource: template_buffer.as_entire_binding(),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 3,
-                        resource: draw_commands_buffer.as_entire_binding(),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 4,
-                        resource: existing.batch_count_buffer.as_entire_binding(),
-                    },
-                ],
-            })
+        let bind_group = if grow {
+            self.bind_indirect(
+                device,
+                &IndirectBuffers {
+                    frustum: &existing.frustum_buffer,
+                    aabbs: &batch_aabb_buffer,
+                    templates: &template_buffer,
+                    commands: &draw_commands_buffer,
+                    batch_count: &existing.batch_count_buffer,
+                    batch_limit: &existing.batch_limit_buffer,
+                },
+            )
         } else {
             existing.bind_group
         };
@@ -1144,12 +1233,9 @@ impl IndirectDrawPipeline {
             draw_commands_buffer,
             frustum_buffer: existing.frustum_buffer,
             batch_count_buffer: existing.batch_count_buffer,
+            batch_limit_buffer: existing.batch_limit_buffer,
             bind_group,
-            batch_count: if batch_aabbs.is_empty() {
-                0
-            } else {
-                count as u32
-            },
+            batch_count: logical,
         }
     }
 
@@ -1564,6 +1650,16 @@ mod tests {
         assert_eq!(cmd.first_index, 0);
         assert_eq!(cmd.base_vertex, 0);
         assert_eq!(cmd.first_instance, 0);
+    }
+
+    #[test]
+    fn grown_indirect_buffers_share_one_slot_count() {
+        let slots = grown_slot_count(10);
+        assert_eq!(slots, 16);
+        let aabb = slots * std::mem::size_of::<InstanceAABB>() as u64;
+        let cmd = slots * std::mem::size_of::<DrawIndexedIndirectCommand>() as u64;
+        assert_eq!(storage_slots(aabb, 32), storage_slots(cmd, 20));
+        assert!(storage_slots(aabb, 32) >= 10);
     }
 
     #[test]

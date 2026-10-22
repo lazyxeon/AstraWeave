@@ -183,8 +183,6 @@ fn main() -> anyhow::Result<()> {
         anyhow::bail!("degraded atmosphere measurement: {measure}");
     }
     renderer.set_gpu_cull_enabled(true);
-    let gpu_cull = renderer.gpu_cull_mode();
-    let gpu_cull_reason = renderer.gpu_cull_reason();
 
     let device = renderer.device().clone();
     let exec_src = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -366,11 +364,21 @@ fn main() -> anyhow::Result<()> {
     println!("scene={scene} resolution=1920x1080 warmup={WARMUP} samples={SAMPLES}");
     println!("hdri={}", hdri.display());
     println!("glb={}", glb.display());
+    // Read after the samples. The flag is on before the first frame, but
+    // `gpu` is only true once a draw_into actually dispatched the compute.
+    let (gpu_cull, gpu_cull_reason) = if renderer.gpu_cull_ran() {
+        ("gpu", "indirect")
+    } else if renderer.gpu_cull_mode() == "off" {
+        ("off", "quality_off")
+    } else {
+        ("cpu_fallback", "no_dispatch")
+    };
     println!(
-        "instances={} rendered_models={} particles=on shadows=on volumetrics=off gpu_cull={gpu_cull} gpu_cull_reason={gpu_cull_reason} gpu_cull_batches={} water_drawn={} cloud_shadows={}",
+        "instances={} rendered_models={} particles=on shadows=on volumetrics=off gpu_cull={gpu_cull} gpu_cull_reason={gpu_cull_reason} gpu_cull_batches={} gpu_cull_visible={} water_drawn={} cloud_shadows={}",
         instances.len(),
         renderer.rendered_model_count(),
         renderer.gpu_cull_batch_count(),
+        renderer.gpu_cull_visible_draws(),
         if renderer.water_is_drawn() { "yes" } else { "no" },
         if renderer.cloud_shadows_enabled() {
             "on"

@@ -1061,6 +1061,13 @@ pub struct Renderer {
     gpu_cull_on: bool,
     indirect_cull: Option<crate::culling::IndirectDrawPipeline>,
     indirect_cull_resources: Option<crate::culling::IndirectDrawResources>,
+    /// Reused across frames so an enabled `draw_into` does not allocate.
+    gpu_cull_aabb_scratch: Vec<crate::culling::InstanceAABB>,
+    gpu_cull_template_scratch: Vec<crate::culling::DrawIndexedIndirectCommand>,
+    /// True after the last `draw_into` dispatched the cull compute.
+    gpu_cull_ran: bool,
+    /// Indirect commands whose frustum test kept `instance_count`.
+    gpu_cull_visible_draws: u32,
     /// Sorted model names. Updated when a model is added or removed, not per frame.
     gpu_cull_names: Vec<String>,
     /// World bounds used only by the GPU-cull dispatch. The CPU frustum ignores
@@ -1069,6 +1076,8 @@ pub struct Renderer {
     /// Local mesh bounds for models whose world AABB is not `model.aabb`.
     /// `duplicate_model` and instance updates transform these.
     gpu_cull_local: std::collections::HashMap<String, ([f32; 3], [f32; 3])>,
+    /// Instances that placed `gpu_cull_local`. Vertex rewrites use them again.
+    gpu_cull_instances: std::collections::HashMap<String, Vec<Instance>>,
     /// Presentation-only particle sim. `None` until an emitter is enabled.
     particle_sim: Option<crate::gpu_particles::GpuParticleSystem>,
     particle_draw: Option<crate::particle_render::ParticleRenderPass>,
@@ -1324,6 +1333,40 @@ fn mesh_local_bounds(meshes: &[crate::mesh::CpuMesh]) -> Option<([f32; 3], [f32;
         });
     }
     acc
+}
+
+fn aabb_rejected(
+    bounds: Option<([f32; 3], [f32; 3])>,
+    frustum: &crate::culling::FrustumPlanes,
+) -> bool {
+    let Some((min, max)) = bounds else {
+        return false;
+    };
+    let center = glam::Vec3::new(
+        (min[0] + max[0]) * 0.5,
+        (min[1] + max[1]) * 0.5,
+        (min[2] + max[2]) * 0.5,
+    );
+    let extent = glam::Vec3::new(
+        (max[0] - min[0]) * 0.5,
+        (max[1] - min[1]) * 0.5,
+        (max[2] - min[2]) * 0.5,
+    );
+    !frustum.test_aabb(center, extent)
+}
+
+fn vertex_position_bounds(vertices: &[crate::mesh::MeshVertex]) -> Option<([f32; 3], [f32; 3])> {
+    if vertices.is_empty() {
+        return None;
+    }
+    let mut min = glam::Vec3::splat(f32::INFINITY);
+    let mut max = glam::Vec3::splat(f32::NEG_INFINITY);
+    for vertex in vertices {
+        let point = glam::Vec3::from_array(vertex.position);
+        min = min.min(point);
+        max = max.max(point);
+    }
+    Some((min.to_array(), max.to_array()))
 }
 
 fn world_bounds_for_instances(
@@ -3858,9 +3901,14 @@ fn vs(input: VSIn) -> VSOut {
             gpu_cull_on: false,
             indirect_cull: None,
             indirect_cull_resources: None,
+            gpu_cull_aabb_scratch: Vec::new(),
+            gpu_cull_template_scratch: Vec::new(),
+            gpu_cull_ran: false,
+            gpu_cull_visible_draws: 0,
             gpu_cull_names: Vec::new(),
             gpu_cull_bounds: std::collections::HashMap::new(),
             gpu_cull_local: std::collections::HashMap::new(),
+            gpu_cull_instances: std::collections::HashMap::new(),
             particle_sim: None,
             particle_draw: None,
             particle_sort: None,
@@ -7124,20 +7172,11 @@ fn vs(input: VSIn) -> VSOut {
                 if name.starts_with("scatter_") {
                     continue;
                 }
-                if let Some((aabb_min, aabb_max)) = &model.aabb {
-                    let center = glam::Vec3::new(
-                        (aabb_min[0] + aabb_max[0]) * 0.5,
-                        (aabb_min[1] + aabb_max[1]) * 0.5,
-                        (aabb_min[2] + aabb_max[2]) * 0.5,
-                    );
-                    let extent = glam::Vec3::new(
-                        (aabb_max[0] - aabb_min[0]) * 0.5,
-                        (aabb_max[1] - aabb_min[1]) * 0.5,
-                        (aabb_max[2] - aabb_min[2]) * 0.5,
-                    );
-                    if !shadow_frustum.test_aabb(center, extent) {
-                        continue;
-                    }
+                let bounds = model
+                    .aabb
+                    .or_else(|| self.gpu_cull_bounds.get(name).copied());
+                if aabb_rejected(bounds, &shadow_frustum) {
+                    continue;
                 }
                 for primitive in &model.primitives {
                     sp.set_vertex_buffer(0, primitive.mesh.vertex_buf.slice(..));
@@ -7712,20 +7751,11 @@ fn vs(input: VSIn) -> VSOut {
                 // Frustum cull against the shadow cascade's ortho projection.
                 // Models outside the shadow camera's frustum don't
                 // contribute to visible shadows and are expensive to render.
-                if let Some((aabb_min, aabb_max)) = &model.aabb {
-                    let center = glam::Vec3::new(
-                        (aabb_min[0] + aabb_max[0]) * 0.5,
-                        (aabb_min[1] + aabb_max[1]) * 0.5,
-                        (aabb_min[2] + aabb_max[2]) * 0.5,
-                    );
-                    let extent = glam::Vec3::new(
-                        (aabb_max[0] - aabb_min[0]) * 0.5,
-                        (aabb_max[1] - aabb_min[1]) * 0.5,
-                        (aabb_max[2] - aabb_min[2]) * 0.5,
-                    );
-                    if !shadow_frustum.test_aabb(center, extent) {
-                        continue;
-                    }
+                let bounds = model
+                    .aabb
+                    .or_else(|| self.gpu_cull_bounds.get(name).copied());
+                if aabb_rejected(bounds, &shadow_frustum) {
+                    continue;
                 }
                 for primitive in &model.primitives {
                     sp.set_vertex_buffer(0, primitive.mesh.vertex_buf.slice(..));
@@ -7977,7 +8007,12 @@ fn vs(input: VSIn) -> VSOut {
         }
 
         if self.gpu_cull_on {
+            self.close_timing_gap(enc);
             self.prepare_gpu_model_cull(enc);
+            self.open_timing_gap(enc, "after_gpu_cull");
+        } else {
+            self.gpu_cull_ran = false;
+            self.gpu_cull_visible_draws = 0;
         }
 
         {
@@ -8068,6 +8103,8 @@ fn vs(input: VSIn) -> VSOut {
                 let max_draw_dist_sq = max_draw_dist * max_draw_dist;
                 let mut drawn_models = 0u32;
                 if self.gpu_cull_on {
+                    let vp = self.cached_proj * self.cached_view;
+                    let frustum = crate::culling::FrustumPlanes::from_view_proj(&vp);
                     let indirect_stride =
                         std::mem::size_of::<crate::culling::DrawIndexedIndirectCommand>() as u64;
                     let indirect_buf = self
@@ -8088,6 +8125,7 @@ fn vs(input: VSIn) -> VSOut {
                             continue;
                         }
                         let mut gpu_batch = false;
+                        let mut survived = true;
                         let bounds = model.aabb.or(gpu_bounds);
                         if let Some((aabb_min, aabb_max)) = bounds {
                             let center = glam::Vec3::new(
@@ -8106,6 +8144,7 @@ fn vs(input: VSIn) -> VSOut {
                             if closest_dist_sq > max_draw_dist_sq {
                                 continue;
                             }
+                            survived = frustum.test_aabb(center, extent);
                             gpu_batch = true;
                         }
                         for primitive in &model.primitives {
@@ -8136,7 +8175,9 @@ fn vs(input: VSIn) -> VSOut {
                                 0..model.instance_count,
                             );
                         }
-                        drawn_models += 1;
+                        if survived {
+                            drawn_models += 1;
+                        }
                     }
                 } else {
                     let vp = self.cached_proj * self.cached_view;
@@ -8679,7 +8720,31 @@ fn vs(input: VSIn) -> VSOut {
             .unwrap_or(0)
     }
 
+    /// True when the last `draw_into` dispatched the cull compute.
+    /// The flag alone is not enough: models with no bounds never build a batch.
+    pub fn gpu_cull_ran(&self) -> bool {
+        self.gpu_cull_ran
+    }
+
+    /// Commands whose frustum test left `instance_count` non-zero.
+    pub fn gpu_cull_visible_draws(&self) -> u32 {
+        self.gpu_cull_visible_draws
+    }
+
+    /// Element capacity of the AABB buffer and the command buffer.
+    /// `None` before the first dispatch. The two counts are equal.
+    pub fn gpu_cull_storage_slots(&self) -> Option<(u64, u64)> {
+        let resources = self.indirect_cull_resources.as_ref()?;
+        let aabb = resources.batch_aabb_buffer.size()
+            / std::mem::size_of::<crate::culling::InstanceAABB>() as u64;
+        let cmd = resources.draw_commands_buffer.size()
+            / std::mem::size_of::<crate::culling::DrawIndexedIndirectCommand>() as u64;
+        Some((aabb, cmd))
+    }
+
     fn prepare_gpu_model_cull(&mut self, enc: &mut wgpu::CommandEncoder) {
+        self.gpu_cull_ran = false;
+        self.gpu_cull_visible_draws = 0;
         let vp = self.cached_proj * self.cached_view;
         let frustum = crate::culling::FrustumPlanes::from_view_proj(&vp);
         let cam_pos = glam::Vec3::new(
@@ -8693,8 +8758,11 @@ fn vs(input: VSIn) -> VSOut {
             self.scene_env.visuals.fog_end * 1.2
         };
         let max_draw_dist_sq = max_draw_dist * max_draw_dist;
-        let mut aabbs = Vec::new();
-        let mut templates = Vec::new();
+        let mut aabbs = std::mem::take(&mut self.gpu_cull_aabb_scratch);
+        let mut templates = std::mem::take(&mut self.gpu_cull_template_scratch);
+        aabbs.clear();
+        templates.clear();
+        let mut visible = 0u32;
         for name in &self.gpu_cull_names {
             let Some(model) = self.models.get(name) else {
                 continue;
@@ -8724,7 +8792,11 @@ fn vs(input: VSIn) -> VSOut {
             if closest_dist_sq > max_draw_dist_sq {
                 continue;
             }
+            let in_frustum = frustum.test_aabb(center, extent);
             for primitive in &model.primitives {
+                if in_frustum {
+                    visible += 1;
+                }
                 aabbs.push(crate::culling::InstanceAABB::new(center, extent, 0));
                 templates.push(crate::culling::DrawIndexedIndirectCommand::new(
                     primitive.mesh.index_count,
@@ -8735,26 +8807,40 @@ fn vs(input: VSIn) -> VSOut {
                 ));
             }
         }
+        self.gpu_cull_visible_draws = visible;
         if aabbs.is_empty() {
+            self.gpu_cull_aabb_scratch = aabbs;
+            self.gpu_cull_template_scratch = templates;
             self.indirect_cull_resources = None;
             return;
         }
         if self.indirect_cull.is_none() {
             self.indirect_cull = Some(crate::culling::IndirectDrawPipeline::new(&self.device));
         }
-        let Some(pipeline) = self.indirect_cull.as_ref() else {
-            return;
+        let resources = {
+            let Some(pipeline) = self.indirect_cull.as_ref() else {
+                self.gpu_cull_aabb_scratch = aabbs;
+                self.gpu_cull_template_scratch = templates;
+                return;
+            };
+            pipeline.update_or_create_resources(
+                &self.device,
+                &self.queue,
+                &aabbs,
+                &templates,
+                &frustum,
+                self.indirect_cull_resources.take(),
+            )
         };
-        let resources = pipeline.update_or_create_resources(
-            &self.device,
-            &self.queue,
-            &aabbs,
-            &templates,
-            &frustum,
-            self.indirect_cull_resources.take(),
-        );
-        pipeline.execute(enc, &resources);
+        let stamp = self.begin_named_stamp(enc, "gpu_cull");
+        if let Some(pipeline) = self.indirect_cull.as_ref() {
+            pipeline.execute(enc, &resources);
+        }
+        self.end_named_stamp(enc, stamp);
+        self.gpu_cull_ran = resources.batch_count > 0;
         self.indirect_cull_resources = Some(resources);
+        self.gpu_cull_aabb_scratch = aabbs;
+        self.gpu_cull_template_scratch = templates;
     }
 
     /// Turn Hi-Z recording on or off.
@@ -9934,6 +10020,7 @@ fn vs(input: VSIn) -> VSOut {
     fn forget_gpu_cull_model(&mut self, name: &str) {
         self.gpu_cull_bounds.remove(name);
         self.gpu_cull_local.remove(name);
+        self.gpu_cull_instances.remove(name);
         if let Ok(pos) = self
             .gpu_cull_names
             .binary_search_by(|existing| existing.as_str().cmp(name))
@@ -9949,6 +10036,8 @@ fn vs(input: VSIn) -> VSOut {
         instances: &[Instance],
     ) {
         self.gpu_cull_local.insert(name.to_string(), local);
+        self.gpu_cull_instances
+            .insert(name.to_string(), instances.to_vec());
         if let Some(world) = world_bounds_for_instances(local, instances) {
             self.gpu_cull_bounds.insert(name.to_string(), world);
         }
@@ -9957,6 +10046,7 @@ fn vs(input: VSIn) -> VSOut {
     fn insert_model(&mut self, name: String, model: RenderModel) {
         self.gpu_cull_bounds.remove(&name);
         self.gpu_cull_local.remove(&name);
+        self.gpu_cull_instances.remove(&name);
         self.note_gpu_cull_name(&name);
         if let Some(old_model) = self.models.insert(name, model) {
             if old_model.tex_gpu_bytes > 0 {
@@ -10688,7 +10778,7 @@ fn vs(input: VSIn) -> VSOut {
     /// enough and have been created with `COPY_DST`. Returns false when the
     /// model is missing or the new vertex list does not fit.
     pub fn write_model_vertices(
-        &self,
+        &mut self,
         name: &str,
         primitive: usize,
         vertices: &[crate::mesh::MeshVertex],
@@ -10706,7 +10796,41 @@ fn vs(input: VSIn) -> VSOut {
             return false;
         }
         self.queue.write_buffer(&buf, 0, bytes);
+        self.refresh_gpu_cull_after_vertex_write(name, vertices);
         true
+    }
+
+    fn refresh_gpu_cull_after_vertex_write(
+        &mut self,
+        name: &str,
+        vertices: &[crate::mesh::MeshVertex],
+    ) {
+        if self.models.get(name).and_then(|model| model.aabb).is_some() {
+            return;
+        }
+        let Some(fresh) = vertex_position_bounds(vertices) else {
+            return;
+        };
+        let primitive_count = self
+            .models
+            .get(name)
+            .map(|model| model.primitives.len())
+            .unwrap_or(0);
+        let local = if primitive_count > 1 {
+            self.gpu_cull_local
+                .get(name)
+                .copied()
+                .map(|old| union_aabb(old, fresh))
+                .unwrap_or(fresh)
+        } else {
+            fresh
+        };
+        let instances = self.gpu_cull_instances.get(name).cloned();
+        if let Some(instances) = instances {
+            self.store_gpu_cull_mesh_bounds(name, local, &instances);
+        } else if self.gpu_cull_local.contains_key(name) {
+            self.gpu_cull_local.insert(name.to_string(), local);
+        }
     }
 
     /// Write a single instance without building a temporary instance list.
@@ -11808,8 +11932,130 @@ mod tests {
             let validation = device.pop_error_scope().await;
             assert!(validation.is_none(), "validation {validation:?}");
             assert_eq!(renderer.gpu_cull_batch_count(), 2);
+            assert_eq!(renderer.rendered_model_count(), 1);
+            assert_eq!(renderer.gpu_cull_visible_draws(), 1);
             let counts = renderer.read_gpu_cull_instance_counts().await;
             assert_eq!(counts, vec![1, 0]);
+        });
+    }
+
+    #[test]
+    fn gpu_cull_grow_keeps_equal_slots_and_vertex_rewrite_moves_the_box() {
+        pollster::block_on(async {
+            let mut renderer = Renderer::new_headless(64, 64)
+                .await
+                .expect("headless renderer");
+            let eye = Vec3::new(0.0, 0.0, 8.0);
+            let view = Mat4::look_at_rh(eye, Vec3::ZERO, Vec3::Y);
+            let projection =
+                astraweave_camera::Projection::perspective(60.0_f32.to_radians(), 1.0, 0.1, 100.0);
+            let render_view = astraweave_camera::RenderView::new(
+                view,
+                &projection,
+                eye,
+                Vec3::new(0.0, 0.0, -1.0),
+            );
+            renderer.update_view(&render_view);
+            renderer.set_gpu_cull_enabled(true);
+
+            let positions = [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]];
+            let normals = [[0.0, 0.0, 1.0]; 3];
+            let indices = [0, 1, 2];
+            let mesh = renderer.create_mesh_from_arrays(&positions, &normals, &indices);
+            let instance =
+                crate::Instance::from_pos_scale_color(Vec3::ZERO, Vec3::ONE, [1.0, 1.0, 1.0, 1.0]);
+            renderer.add_model_with_bounds(
+                "m00",
+                mesh,
+                &[instance.clone()],
+                [-0.5, -0.5, -0.5],
+                [1.5, 0.5, 0.5],
+            );
+
+            let device = renderer.device().clone();
+            let target = device.create_texture(&wgpu::TextureDescriptor {
+                label: Some("gpu cull grow color"),
+                size: wgpu::Extent3d {
+                    width: 64,
+                    height: 64,
+                    depth_or_array_layers: 1,
+                },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: wgpu::TextureFormat::Rgba8UnormSrgb,
+                usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+                view_formats: &[],
+            });
+            let view = target.create_view(&wgpu::TextureViewDescriptor::default());
+            let draw = |renderer: &mut Renderer, view: &wgpu::TextureView| {
+                let mut encoder =
+                    renderer
+                        .device()
+                        .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                            label: Some("gpu cull grow"),
+                        });
+                renderer.draw_into(view, None, &mut encoder).expect("draw");
+                renderer.queue().submit(std::iter::once(encoder.finish()));
+                let _ = renderer.device().poll(wgpu::MaintainBase::Wait);
+            };
+            device.push_error_scope(wgpu::ErrorFilter::Validation);
+            draw(&mut renderer, &view);
+            let first = renderer.gpu_cull_storage_slots().expect("first slots");
+            assert_eq!(first.0, first.1);
+            assert_eq!(first.0, 1);
+
+            for index in 1..10 {
+                let mesh = renderer.create_mesh_from_arrays(&positions, &normals, &indices);
+                let x = 40.0 + index as f32;
+                renderer.add_model_with_bounds(
+                    format!("m{index:02}"),
+                    mesh,
+                    &[instance.clone()],
+                    [x - 0.5, -0.5, -0.5],
+                    [x + 1.5, 0.5, 0.5],
+                );
+            }
+            draw(&mut renderer, &view);
+            let grown = renderer.gpu_cull_storage_slots().expect("grown slots");
+            assert_eq!(grown.0, grown.1);
+            assert!(grown.0 >= 10, "slots {}", grown.0);
+            assert!(grown.0 > first.0);
+            let counts = renderer.read_gpu_cull_instance_counts().await;
+            assert_eq!(counts.len(), 10);
+            assert_eq!(counts[0], 1);
+            assert!(counts[1..].iter().all(|count| *count == 0));
+            assert_eq!(renderer.rendered_model_count(), 1);
+            assert_eq!(renderer.gpu_cull_visible_draws(), 1);
+            assert!(renderer.gpu_cull_ran());
+
+            let mut cpu = crate::mesh::CpuMesh::default();
+            for position in [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]] {
+                cpu.vertices.push(crate::mesh::MeshVertex::from_arrays(
+                    position,
+                    [0.0, 0.0, 1.0],
+                    [1.0, 0.0, 0.0, 1.0],
+                    [0.0, 0.0],
+                ));
+            }
+            cpu.indices = vec![0, 1, 2];
+            renderer.add_composite_model("moved", vec![cpu], &[instance]);
+            draw(&mut renderer, &view);
+            assert_eq!(renderer.gpu_cull_visible_draws(), 2);
+            let mut far = Vec::new();
+            for position in [[80.0, 0.0, 0.0], [81.0, 0.0, 0.0], [80.0, 1.0, 0.0]] {
+                far.push(crate::mesh::MeshVertex::from_arrays(
+                    position,
+                    [0.0, 0.0, 1.0],
+                    [1.0, 0.0, 0.0, 1.0],
+                    [0.0, 0.0],
+                ));
+            }
+            assert!(renderer.write_model_vertices("moved", 0, &far));
+            draw(&mut renderer, &view);
+            assert_eq!(renderer.gpu_cull_visible_draws(), 1);
+            let validation = device.pop_error_scope().await;
+            assert!(validation.is_none(), "validation {validation:?}");
         });
     }
 }
