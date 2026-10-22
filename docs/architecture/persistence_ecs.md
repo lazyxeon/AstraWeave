@@ -9,8 +9,8 @@ lifecycle_status: unknown
 integration_status: unknown
 summary: "A health write is a little-endian i32 into an existing CHealth. The replay log drops the entity id. Autosave is not one transaction. persistence_ecs.md §1"
 owns: [astraweave-persistence-ecs, aw-save]
-doc_version: "1.10"
-last_verified_commit: 98335926
+doc_version: "1.11"
+last_verified_commit: 231617eb
 ---
 
 # Architecture Trace: Persistence-ECS (Save/Load + ECS Integration)
@@ -25,8 +25,8 @@ last_verified_commit: 98335926
 |---|---|
 | **System name** | Persistence-ECS (save / load / migrate / replay) |
 | **Primary crates** | `astraweave-persistence-ecs` (ECS Plugin + world serialization + hashing); `persistence/aw-save` (file format, atomic I/O, versioning, migration) |
-| **Document version** | 1.10 |
-| **Last verified against commit** | `98335926` |
+| **Document version** | 1.11 |
+| **Last verified against commit** | `231617eb` |
 | **Last verified date** | 2026-10-21 |
 | **Status** | Active. File format is production-shaped. A `health` payload shorter than four bytes is ignored. The first four bytes are a little-endian `i32` written to `CHealth.hp` only when that component is already on the replay entity. The write does not insert `CHealth`. Bytes after the fourth are ignored. Every other due event is recorded in `AppliedReplay` and left unapplied. `replay_log` sorts by `Entity::to_raw` and then drops that id. `apply_replay_event` writes that `CHealth` only on the entity that owns `CReplayState`. A `CHealth` on any other entity is left alone. `start_replay` (line 361) returns one `CReplayState` and does not search the world. `persist_replay` hashes `bundle.save_id`, `bundle.world.tick` as little-endian bytes, then each record's tick, type length, type, and data. Those records are `hit` and `cover`. Autosave serializes before the manager loop. `save_every == 0` and a missing `CSimClock` return with no save. A failed serialize returns before any manager saves and leaves `last_saved_tick` unset. A later `save_game_with_replay` error returns after earlier managers, in `to_raw` order, have already saved, and `last_saved_tick` stays unset. The error is dropped. `PlayerInventory.credits` stays 0. Companions stay empty. |
 | **Revision history** | 1.3 (2026-10-15): `.awsv` load rejects a declared compressed length above 4 MiB before allocation, and an LZ4 uncompressed prefix above 16 MiB. Schema stays 2. `postcard_and_lz4_bytes_are_stable` locks the postcard 1.1 and lz4_flex 0.11 bytes. 1.2 (2026-05-12): Deep investigation pass. **Closed Open Question 13** (CLI tools location) — purely factual question, comprehensively answered (`tools/aw_save_cli/` exists, was created in the same commit as `aw-save` itself). Resolution moved to §4 / §6. **New emergent finding**: a separate sibling crate `crates/astraweave-persistence-player` exists for player-profile persistence (TOML-based, distinct data model). Has zero dependency relationship with this subsystem; only a single doc-comment reference. Added to §6 as a coexisting-but-disjoint abstraction so future agents don't conflate them. Enriched §11 Q1, Q2, Q11 with commit-date provenance: the `astraweave-stress-test` declaration of both `astraweave-net-ecs` and `astraweave-persistence-ecs` and the `astraweave-memory` declaration in `astraweave-persistence-ecs/Cargo.toml` all landed in the **same commit** `08befc6ec` (2025-10-01, "phase 6 implementation"); test artifacts (`slot*.awsv`, `savegame.bin`) were committed in unrelated subsequent commits with misleading titles.<br><br>1.1 (2026-05-12): Verification pass. **Major corrections**: (1) The §4 `[INFERRED]` claim that CLI tools "may live elsewhere or be planned" was wrong — `tools/aw_save_cli/src/main.rs` (110 lines, clap-based) is a real binary that consumes `aw-save`. Added to §4 downstream table; resolved the marker. (2) Discovered second `aw-save` consumer not previously documented: `examples/save_integration/src/main.rs` (234 lines) imports `aw-save` types directly. Added to §4. (3) Resolved §9 `[INFERRED]` about auto-pruning absence — direct grep `fs::remove\|remove_file\|tokio::fs::remove persistence/aw-save/src` returns zero matches, conclusively confirming no auto-prune path exists. (4) Verified `Entity::to_raw()` layout claim in §3 against actual source at `astraweave-ecs/src/entity_allocator.rs:95-103` — claim is exact. |
@@ -211,12 +211,12 @@ Hash path (integrity and replay only. Zero-key SipHash is not cheat detection.):
     │
     │ for entity in entity_list:
     │     entity.hash(&mut hasher)
-    │     if CPos:   hash pos.x, pos.y
-    │     if CHealth: hash hp
-    │     if CTeam:   hash id
-    │     if CAmmo:   hash rounds
+    │     if CPos:   hash tag 1, then pos.pos.x, pos.pos.y
+    │     if CHealth: hash tag 2, then hp
+    │     if CTeam:   hash tag 3, then id
+    │     if CAmmo:   hash tag 4, then rounds
     │     (CCooldowns, CDesiredPos, CAiAgent, CLegacyId, CPersona, CMemory NOT hashed)
-    │     ↑ coverage TODO is the doc comment at lib.rs:818
+    │     ↑ coverage TODO is the doc comment at lib.rs:817
     │
     ▼
 [u64 hash via hasher.finish()]
@@ -341,9 +341,9 @@ Auto-save path:
 **Inputs:** `&World`.
 **Outputs:** `u64`.
 **Notes:**
-- Uses `DefaultHasher::new()`. On current rustc that is SipHash-1-3 with zero keys. The doc comment says "DO NOT use for security" (line 761) and "Do not use it for cheat detection" (line 735). It is not a security boundary, and it is not stable across rustc upgrades.
+- Uses `DefaultHasher::new()`. On current rustc that is SipHash-1-3 with zero keys. The doc comment says "DO NOT use for security" (line 762) and "Do not use it for cheat detection" (line 740). It is not a security boundary, and it is not stable across rustc upgrades.
 - **Only entities with `CPos` OR `CHealth`** are included in the hash. Entities holding only `CTeam`, `CAmmo`, etc. are silently excluded.
-- **Only 4 component types are hashed**: `CPos.{x, y}`, `CHealth.hp`, `CTeam.id`, `CAmmo.rounds`. `calculate_world_hash` starts at line 828. Six other supported components (`CCooldowns`, `CDesiredPos`, `CAiAgent`, `CLegacyId`, `CPersona`, `CMemory`) are NOT hashed. The coverage TODO is the doc comment at line 812.
+- **Only 4 component types are hashed**, each after a tag byte: tag `1` then `CPos.pos.x` and `CPos.pos.y`, tag `2` then `CHealth.hp`, tag `3` then `CTeam.id`, tag `4` then `CAmmo.rounds`. There is no `CPos.x`. A missing component writes nothing. `calculate_world_hash` starts at line 828. Six other supported components (`CCooldowns`, `CDesiredPos`, `CAiAgent`, `CLegacyId`, `CPersona`, `CMemory`) are NOT hashed. The coverage TODO is the doc comment at line 817.
 - `entity_list.sort_unstable()` is line 850. It orders by `Entity`'s `Ord`: `id`, then `generation`. Unique entities keep that order across rustc upgrades. The cross-rustc break is `DefaultHasher::new()` in the bullet above. `serialize_ecs_world` sorts with `sort_by_key(|entity| entity.to_raw())` at line 543. `to_raw` puts `generation` in the high 32 bits, so the blob order and this hash order diverge when any generation is non-zero.
 
 #### Stage 8: ECS Plugin systems (`persistence-ecs/lib.rs:63-104`)
@@ -486,7 +486,7 @@ Auto-save path:
 
 - **Trap:** `calculate_world_hash` covers only 4 of 10 component types.
   - **Why it's confusing:** The doc comment for `serialize_ecs_world` lists 10 components; an agent might assume the hash covers all.
-  - **What's actually true:** Only `CPos`, `CHealth`, `CTeam`, and `CAmmo` enter the hash. `calculate_world_hash` starts at line 828. The coverage TODO is the doc comment at line 812. Two worlds differing only in `CMemory` or `CPersona` produce the same hash.
+  - **What's actually true:** Only `CPos`, `CHealth`, `CTeam`, and `CAmmo` enter the hash, each after a tag byte. `CPos` contributes `pos.x` and `pos.y`, not `CPos.x`. `calculate_world_hash` starts at line 828. The coverage TODO is the doc comment at line 817. Two worlds differing only in `CMemory` or `CPersona` produce the same hash.
 
 - **Trap:** `calculate_world_hash` skips entities that lack both `CPos` and `CHealth`.
   - **Why it's confusing:** The function presents itself as "hash of the current ECS world state."
@@ -599,7 +599,7 @@ Auto-save path:
 - **Status:** Accepted (`calculate_world_hash` starts at line 828).
 - **Context:** The hash is for integrity / replay validation, not security.
 - **Decision:** Use Rust's stdlib `DefaultHasher` (which is currently SipHash-1-3 per the rustc default at the time of `a2474c5b7`).
-- **Alternatives considered:** Faster non-cryptographic hashes (xxh64, FNV) and stronger cryptographic ones (BLAKE3). The warning "Cryptographically weak (DO NOT use for security)" is the doc comment at line 761. Line 536 is `Query::<CMemory>`. `Query::<CPersona>` is line 530. Neither line is that warning.
+- **Alternatives considered:** Faster non-cryptographic hashes (xxh64, FNV) and stronger cryptographic ones (BLAKE3). The warning "Cryptographically weak (DO NOT use for security)" is the doc comment at line 762. Line 761 is the fast-integrity bullet. Line 536 is `Query::<CMemory>`. `Query::<CPersona>` is line 530. Neither line is that warning.
 - **Consequences:**
   - The hash output value depends on rustc's stdlib hasher choice. If stdlib swaps DefaultHasher's algorithm in a future Rust version, **identical world state would produce different hashes across compilers** — breaking cross-version save validation.
   - Caller code should not store these hashes long-term without versioning.
@@ -624,7 +624,7 @@ Auto-save path:
 | 4 | CRC32 is verified before decompression | Yes | `aw-save/lib.rs:322-328` — bail on mismatch. |
 | 5 | Save filename is `slot{NN}_{timestamp}_{uuid}.awsv` with timestamp using `-` (not `:`) for Windows compatibility | Yes | `aw-save/lib.rs:57-64`; test `test_windows_safe_timestamp` (`lib.rs:358-402`) asserts no invalid Windows characters. |
 | 6 | `load_latest_slot` returns the lexicographically-greatest filename, which (per format) is the most recent save | Yes | `aw-save/lib.rs:82-90` — filter + sort + last. Test coverage in `tests/integration_test.rs`. |
-| 7 | Migration `SaveBundleV1::into_v2` populates `companions` from the optional `companion` field | Yes | `aw-save/lib.rs` line 238 (`self.companion.into_iter().collect()`). Line 191 is `PlayerInventory.credits`. |
+| 7 | Migration `SaveBundleV1::into_v2` populates `companions` from the `companion` field at line 221 | Yes | `aw-save/lib.rs` line 238 (`self.companion.into_iter().collect()`). Line 191 is `PlayerInventory.credits`, not `companion`. |
 | 8 | `serialize_ecs_world` always produces non-empty output even for empty worlds | Yes | Test `serialize_empty_world` starts at line 920. |
 | 9 | `deserialize_ecs_world` on empty blob is `Ok(())` no-op | Yes | `deserialize_ecs_world` line 657; test `deserialize_empty_blob`. |
 | 10 | Entity IDs are remapped (NOT preserved) on deserialization | Yes | The id map is built at lines 665–672. Line 715 assigns `CSimClock.tick` at the end of `deserialize_ecs_world`. |
@@ -724,6 +724,8 @@ Auto-save path:
 ---
 
 ## 12. Maintenance Notes
+
+**Revision 1.11 (2026-10-21):** The empty-world example matches `test_world_hash_validation`: a fresh source loaded into an empty world keeps ids and the hash. An occupied destination changes the hash. The hashed position is `CPos.pos.x` and `CPos.pos.y`, each component after a tag byte. "DO NOT use for security" is line 762. Cheat detection is line 740. The coverage TODO is line 817. Invariant 7's `companion` field is line 221. Line 191 is `PlayerInventory.credits`.
 
 **Revision 1.10 (2026-10-21):** Verified at `98335926`. `calculate_world_hash` starts at line 828. The coverage TODO is line 812. `sort_unstable` is line 850. Invariant 7 cites `aw-save` line 238. The rustdoc does not call the hash bit-identical or a multiplayer-sync check, and the save example loads into an empty world.
 

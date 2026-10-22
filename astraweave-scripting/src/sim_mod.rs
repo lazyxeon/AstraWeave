@@ -1,7 +1,8 @@
 //! Deterministic mod script system.
 //!
-//! Scripts run at the start of the simulation stage, in mod-id then path order,
-//! and entities in id order. Draws come from [`roll_i64`] seeded by
+//! Scripts run at the start of the simulation stage in `ModPrograms` order.
+//! [`refill_sources`] copies that list in place. It does not sort by mod id or path.
+//! Entities run in id order. Draws come from [`roll_i64`] seeded by
 //! `(world_seed, tick, system_id, entity)`. Reloads staged in
 //! [`ScriptReloadQueue`] replace source bytes only at the next call of
 //! [`mod_script_system`]. They do not run mid-tick.

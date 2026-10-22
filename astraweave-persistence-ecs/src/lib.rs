@@ -732,9 +732,12 @@ pub fn deserialize_ecs_world(ecs_blob: &[u8], world: &mut World) -> Result<()> {
 /// ID plus component data using Rust's `DefaultHasher`. The result is a 64-bit hash
 /// suitable for save validation or replay verification.
 /// `DefaultHasher::new()` is SipHash-1-3 with zero keys. The digest covers
-/// each `Entity` (`id`, then `generation`) and, when present, `CPos.x`,
-/// `CPos.y`, `CHealth.hp`, `CTeam.id`, and `CAmmo.rounds`. Anyone who knows
-/// those fields can recompute it. Do not use it for cheat detection.
+/// each `Entity` (`id`, then `generation`) and, when that component is present,
+/// a tag byte then the fields: tag `1` and `CPos.pos.x`, `CPos.pos.y` (`IVec2`);
+/// tag `2` and `CHealth.hp`; tag `3` and `CTeam.id`; tag `4` and `CAmmo.rounds`.
+/// A missing component writes nothing. The tag keeps `hp` and `rounds` from
+/// sharing a digest. Anyone who knows the present components, their order, and
+/// this rustc's zero-key hasher can recompute it. Do not use it for cheat detection.
 ///
 /// # Performance
 /// - **Linear Scaling**: O(n) where n = number of entities, R² = 0.999 (perfect linear fit)
@@ -789,8 +792,10 @@ pub fn deserialize_ecs_world(ecs_blob: &[u8], world: &mut World) -> Result<()> {
 ///    let blob = serialize_ecs_world(&source)?;
 ///    let mut restored = World::new();
 ///    deserialize_ecs_world(&blob, &mut restored)?;
-///    // `restored` has new entity ids, so calculate_world_hash differs
-///    // even when `blob` is intact.
+///    // A fresh source sorted by raw id, loaded into an empty world, reissues
+///    // those ids. Generations stay 0, so the hash matches
+///    // (`test_world_hash_validation`). An occupied destination is not cleared,
+///    // so its ids differ and the hash changes.
 ///    ```
 ///
 /// 2. **Deterministic Replay Verification**: Same inputs → same hash after N frames
@@ -803,11 +808,11 @@ pub fn deserialize_ecs_world(ecs_blob: &[u8], world: &mut World) -> Result<()> {
 ///    ```
 ///
 /// # Hash Coverage
-/// Currently hashes these components (if present):
-/// - CPos (x, y coordinates)
-/// - CHealth (hp value)
-/// - CTeam (team ID)
-/// - CAmmo (rounds count)
+/// Currently hashes these components (if present), each preceded by a tag byte:
+/// - tag `1`, then `CPos.pos.x` and `CPos.pos.y`
+/// - tag `2`, then `CHealth.hp`
+/// - tag `3`, then `CTeam.id`
+/// - tag `4`, then `CAmmo.rounds`
 ///
 /// **TODO**: Add CCooldowns, CAiAgent, CPersona, CMemory for complete coverage.
 ///
@@ -855,22 +860,26 @@ pub fn calculate_world_hash(world: &World) -> u64 {
 
         // Hash position
         if let Some(pos) = world.get::<CPos>(entity) {
+            1u8.hash(&mut hasher);
             pos.pos.x.hash(&mut hasher);
             pos.pos.y.hash(&mut hasher);
         }
 
         // Hash health
         if let Some(health) = world.get::<CHealth>(entity) {
+            2u8.hash(&mut hasher);
             health.hp.hash(&mut hasher);
         }
 
         // Hash team
         if let Some(team) = world.get::<CTeam>(entity) {
+            3u8.hash(&mut hasher);
             team.id.hash(&mut hasher);
         }
 
         // Hash ammo
         if let Some(ammo) = world.get::<CAmmo>(entity) {
+            4u8.hash(&mut hasher);
             ammo.rounds.hash(&mut hasher);
         }
     }
