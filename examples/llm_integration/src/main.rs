@@ -46,8 +46,13 @@ async fn main() -> anyhow::Result<()> {
     // 2. Test Ollama Chat client with Qwen (default model for this project)
     #[cfg(feature = "ollama")]
     {
-        let ollama_url =
-            env::var("OLLAMA_URL").unwrap_or_else(|_| "http://127.0.0.1:11434".to_string());
+        let allow_remote = env::var("LOCAL_LLM_ALLOW_REMOTE")
+            .map(|value| value == "1" || value.eq_ignore_ascii_case("true"))
+            .unwrap_or(false);
+        let ollama_url = astraweave_llm::loopback_model_url(
+            env::var("OLLAMA_URL").unwrap_or_else(|_| "http://127.0.0.1:11434".to_string()),
+            allow_remote,
+        );
 
         println!("\n2. Testing Ollama Chat Client at {}", ollama_url);
         println!(

@@ -17,8 +17,9 @@ pub fn parse_bounded_model_json<T: serde::de::DeserializeOwned>(text: &str) -> R
 /// The URL is kept only when it is `http` or `https`, has no userinfo, and the
 /// host is `127.0.0.0/8`, `::1`, or `localhost`. Anything else, including a URL
 /// the parser rejects, is replaced unless the caller opted in.
-#[cfg(feature = "ollama")]
-pub(crate) fn loopback_model_url(url: String, allow_remote: bool) -> String {
+///
+/// Every loopback URL check in the workspace goes through [`is_loopback_http_url`].
+pub fn loopback_model_url(url: String, allow_remote: bool) -> String {
     if allow_remote || is_loopback_http_url(&url) {
         url
     } else {
@@ -907,8 +908,12 @@ impl LocalHttpClient {
     }
 }
 
-#[cfg(feature = "ollama")]
-fn is_loopback_http_url(url: &str) -> bool {
+/// `http` or `https` URL whose host is loopback: `127.0.0.0/8`, `::1`, or `localhost`.
+///
+/// Userinfo is rejected, including an empty `@`. This is the only host check.
+/// Socket binds use `IpAddr::is_loopback` after `SocketAddr` parsing, which is
+/// the same `127.0.0.0/8` and `::1` rule this function applies to a parsed host.
+pub fn is_loopback_http_url(url: &str) -> bool {
     let Ok(parsed) = url::Url::parse(url) else {
         return false;
     };
@@ -929,7 +934,6 @@ fn is_loopback_http_url(url: &str) -> bool {
 /// `http://127.0.0.1:11434@evil.example/` puts the loopback text in the userinfo
 /// and sends the request to `evil.example`. An empty `@` is userinfo too, even
 /// when the parser drops it and keeps a loopback host.
-#[cfg(feature = "ollama")]
 fn url_has_userinfo(raw: &str, parsed: &url::Url) -> bool {
     if !parsed.username().is_empty() || parsed.password().is_some() {
         return true;
@@ -942,7 +946,6 @@ fn url_has_userinfo(raw: &str, parsed: &url::Url) -> bool {
     authority.contains('@')
 }
 
-#[cfg(feature = "ollama")]
 fn is_localhost_domain(domain: &str) -> bool {
     let bare = domain.trim_end_matches('.');
     bare.eq_ignore_ascii_case("localhost") && domain.len() - bare.len() <= 1
@@ -1588,7 +1591,7 @@ mod tests {
         let chat = OllamaChatClient::new(remote.to_string(), "chat".to_string());
         for url in [qwen.url, phi.url, hermes.url, chat.url] {
             assert!(
-                url.contains("127.0.0.1") || url.contains("localhost") || url.contains("[::1]"),
+                is_loopback_http_url(&url),
                 "stored a non-loopback endpoint: {url}"
             );
         }
@@ -1596,7 +1599,6 @@ mod tests {
         assert_eq!(opted.url, remote);
     }
 
-    #[cfg(feature = "ollama")]
     #[test]
     fn loopback_model_url_rejects_userinfo_encoding_and_non_loopback_literals() {
         const FALLBACK: &str = "http://127.0.0.1:11434";
@@ -1692,7 +1694,7 @@ mod tests {
         let remote = "https://api.openai.com";
         let client = OllamaClient::new(remote, "llama");
         assert!(
-            client.url.contains("127.0.0.1"),
+            is_loopback_http_url(&client.url),
             "stored a non-loopback endpoint: {}",
             client.url
         );
@@ -2009,11 +2011,8 @@ mod tests {
     fn poc_local_http_client_rejects_non_loopback_url() {
         let client =
             LocalHttpClient::new("https://api.openai.com".to_string(), "gpt-4".to_string());
-        let host = client.url.to_ascii_lowercase();
-        let loopback =
-            host.contains("127.0.0.1") || host.contains("localhost") || host.contains("[::1]");
         assert!(
-            loopback,
+            is_loopback_http_url(&client.url),
             "model client stored a non-loopback endpoint: {}",
             client.url
         );

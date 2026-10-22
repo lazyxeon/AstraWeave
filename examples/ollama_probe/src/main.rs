@@ -6,7 +6,10 @@ const DEFAULT_OLLAMA_MODEL: &str = "qwen3.5:4b";
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let url = env::var("OLLAMA_URL").unwrap_or_else(|_| "http://127.0.0.1:11434".to_string());
+    let url = astraweave_llm::loopback_model_url(
+        env::var("OLLAMA_URL").unwrap_or_else(|_| "http://127.0.0.1:11434".to_string()),
+        false,
+    );
     let model = env::var("OLLAMA_MODEL").unwrap_or_else(|_| DEFAULT_OLLAMA_MODEL.to_string());
     println!("Probe Ollama {} model {}", url, model);
 

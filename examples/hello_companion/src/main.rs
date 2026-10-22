@@ -995,8 +995,13 @@ fn check_ollama_available() -> Result<()> {
             .build()
             .context("Failed to create HTTP client")?;
 
+        let tags_url = format!(
+            "{}/api/tags",
+            astraweave_llm::loopback_model_url("http://localhost:11434".to_string(), false)
+                .trim_end_matches('/')
+        );
         let response = client
-            .get("http://localhost:11434/api/tags")
+            .get(tags_url)
             .send()
             .await
             .context("Ollama not running. Start with: ollama serve")?;

@@ -9,7 +9,7 @@ anyhow = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 reqwest = { workspace = true, optional = true, features = ["stream"] }
-url = { version = "2.5", optional = true }
+url = "2.5"
 astraweave-core = { path = "../astraweave-core" }
 astraweave-observability = { path = "../astraweave-observability" }
 async-trait = "0.1"
@@ -54,7 +54,7 @@ required-features = ["ollama"]
 
 [features]
 default = ["llm_cache"]
-ollama = ["dep:reqwest", "dep:url"]
+ollama = ["dep:reqwest"]
 phi3 = ["candle-core", "candle-nn", "candle-transformers", "tokenizers", "hf-hub"]
 # Known cfgs for the device gates in phi3.rs. Empty until a candle GPU
 # backend is actually wired; declaring them keeps `unexpected_cfgs` quiet.

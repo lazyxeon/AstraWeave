@@ -6,7 +6,8 @@ fn main() -> Result<()> {
     let client = Client::builder()
         .timeout(std::time::Duration::from_secs(15))
         .build()?;
-    let url = "http://127.0.0.1:11434/api/chat";
+    let url =
+        astraweave_llm::loopback_model_url("http://127.0.0.1:11434/api/chat".to_string(), false);
     let body = serde_json::json!({
         "model": "phi3:medium",
         "messages": [{"role": "user", "content": "Please reply with only JSON: {\"plan_id\":\"test-plan\",\"steps\":[]}"}],

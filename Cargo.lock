@@ -7709,6 +7709,7 @@ name = "ollama_probe"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "astraweave-llm",
  "reqwest",
  "serde",
  "serde_json",
@@ -7719,6 +7720,7 @@ name = "ollama_probe_example"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "astraweave-llm",
  "futures-util",
  "reqwest",
  "serde_json",
