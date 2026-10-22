@@ -9,6 +9,10 @@
 //!   - has_feature/enable_feature/disable_feature: bitfield ops
 //!   - Feature flag constants: bitmask values
 
+#[cfg(target_os = "linux")]
+#[path = "support/linux_test_threads.rs"]
+mod linux_test_threads;
+
 use glam::Vec3;
 
 use astraweave_render::material_extended::{

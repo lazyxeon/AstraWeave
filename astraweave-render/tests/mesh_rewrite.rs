@@ -1,5 +1,9 @@
 //! A deformed mesh rewrites GPU buffers in place when the counts still fit.
 
+#[cfg(target_os = "linux")]
+#[path = "support/linux_test_threads.rs"]
+mod linux_test_threads;
+
 use astraweave_render::mesh::{CpuMesh, MeshVertex};
 use astraweave_render::{Instance, Renderer};
 

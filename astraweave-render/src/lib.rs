@@ -285,6 +285,13 @@ pub use skinning_gpu::{JointPaletteHandle, JointPaletteManager, SKINNING_GPU_SHA
 #[cfg(test)]
 mod renderer_tests;
 
+// libvulkan 1.4.341 SIGSEGVs in vkSetDebugUtilsObjectNameEXT when several
+// threads load every Mesa ICD. Lavapipe alone does not. Linux lib tests
+// compile this module; integration tests include it from tests/support.
+// Other CI images do not ship that loader.
+#[cfg(all(test, target_os = "linux"))]
+mod serialize_lib_tests;
+
 #[cfg(test)]
 #[path = "../tests/support/gpu_capability.rs"]
 mod gpu_capability;

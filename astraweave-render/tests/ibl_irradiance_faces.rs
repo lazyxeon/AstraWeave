@@ -41,6 +41,10 @@
 //! cargo test -p astraweave-render --test ibl_irradiance_faces -- --ignored --nocapture
 //! ```
 
+#[cfg(target_os = "linux")]
+#[path = "support/linux_test_threads.rs"]
+mod linux_test_threads;
+
 use anyhow::{Context, Result};
 use astraweave_render::{IblManager, IblQuality, SkyMode};
 

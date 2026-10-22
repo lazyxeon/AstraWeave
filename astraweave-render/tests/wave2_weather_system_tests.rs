@@ -4,6 +4,10 @@
 //! probability tables for all 8 biomes, BiomeWindProfile per-biome
 //! parameters, and effective_strength / effective_direction formulas.
 
+#[cfg(target_os = "linux")]
+#[path = "support/linux_test_threads.rs"]
+mod linux_test_threads;
+
 use astraweave_render::effects::WeatherKind;
 use astraweave_render::weather_system::{BiomeWeatherMap, BiomeWindProfile, WeatherTransition};
 use astraweave_terrain::biome::BiomeType;

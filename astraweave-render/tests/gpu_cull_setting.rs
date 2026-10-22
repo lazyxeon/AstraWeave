@@ -1,6 +1,10 @@
 //! GPU cull is off until a caller opts in. Opting in dispatches the indirect
 //! frustum pass from `draw_into` without a CPU readback.
 
+#[cfg(target_os = "linux")]
+#[path = "support/linux_test_threads.rs"]
+mod linux_test_threads;
+
 use astraweave_render::{Instance, Renderer};
 
 fn color_target(device: &wgpu::Device) -> wgpu::TextureView {

@@ -11,6 +11,10 @@
 //!   - MaterialDefinitionExtended::to_gpu auto-flag detection
 //!   - ClusterConfig::default() and GpuLight::new()
 
+#[cfg(target_os = "linux")]
+#[path = "support/linux_test_threads.rs"]
+mod linux_test_threads;
+
 use astraweave_render::biome_transition::BiomeVisuals;
 use astraweave_render::clustered_forward::{ClusterConfig, GpuLight};
 use astraweave_render::effects::WeatherKind;

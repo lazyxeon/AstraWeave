@@ -1,5 +1,9 @@
 //! Headless smoke test: load one biome pack, create canonical BGLs, make a minimal pipeline, ensure no panics.
 
+#[cfg(target_os = "linux")]
+#[path = "support/linux_test_threads.rs"]
+mod linux_test_threads;
+
 use std::path::PathBuf;
 
 #[path = "support/gpu_capability.rs"]

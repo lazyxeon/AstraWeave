@@ -9,6 +9,10 @@
 //! Complements the 32+ inline unit tests with exact golden-value assertions
 //! through the public API.
 
+#[cfg(target_os = "linux")]
+#[path = "support/linux_test_threads.rs"]
+mod linux_test_threads;
+
 use astraweave_render::effects::WeatherKind;
 use astraweave_render::weather_system::{BiomeWeatherMap, BiomeWindProfile, WeatherTransition};
 use astraweave_terrain::biome::BiomeType;

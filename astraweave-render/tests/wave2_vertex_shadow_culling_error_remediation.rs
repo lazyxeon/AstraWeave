@@ -13,6 +13,10 @@
 //!   - GpuLight (megalights): size 32 bytes, Pod/Zeroable
 //!   - RenderError: variant Display strings, From<io::Error>
 
+#[cfg(target_os = "linux")]
+#[path = "support/linux_test_threads.rs"]
+mod linux_test_threads;
+
 use glam::{Mat4, Vec2, Vec3};
 
 use astraweave_render::clustered_megalights::{ClusterBounds, GpuLight};

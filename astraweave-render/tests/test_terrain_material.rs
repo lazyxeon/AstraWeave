@@ -1,6 +1,10 @@
 // Phase PBR-F: Comprehensive Unit Tests for Terrain Layering System
 // Tests cover struct alignment, weight normalization, blending correctness, and factory methods
 
+#[cfg(target_os = "linux")]
+#[path = "support/linux_test_threads.rs"]
+mod linux_test_threads;
+
 #[cfg(test)]
 mod terrain_material_tests {
     use astraweave_render::{

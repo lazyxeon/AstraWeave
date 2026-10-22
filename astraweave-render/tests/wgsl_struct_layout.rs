@@ -5,6 +5,10 @@
 //! is 4-byte aligned. A missing pad makes the CPU buffer shorter than the
 //! shader, and wgpu rejects the dispatch.
 
+#[cfg(target_os = "linux")]
+#[path = "support/linux_test_threads.rs"]
+mod linux_test_threads;
+
 use std::fs;
 use std::path::{Path, PathBuf};
 

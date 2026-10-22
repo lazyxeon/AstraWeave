@@ -17,6 +17,10 @@
 //!     raw = (sin(azimuth) × horiz_dist, sun_height, cos(azimuth) × horiz_dist)
 //!     normalize → unit vector
 
+#[cfg(target_os = "linux")]
+#[path = "support/linux_test_threads.rs"]
+mod linux_test_threads;
+
 use astraweave_render::environment::TimeOfDay;
 use std::f32::consts::PI;
 

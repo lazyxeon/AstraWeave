@@ -5,6 +5,10 @@
 //!
 //! nanite_visibility is gated behind the `nanite` feature.
 
+#[cfg(target_os = "linux")]
+#[path = "support/linux_test_threads.rs"]
+mod linux_test_threads;
+
 #[cfg(feature = "nanite")]
 use astraweave_render::nanite_visibility::{Frustum, GpuMeshlet, LODSelector};
 #[cfg(feature = "nanite")]

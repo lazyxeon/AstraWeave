@@ -1,6 +1,10 @@
 // Phase PBR-E: Unit Tests for Advanced Materials
 // Tests clearcoat, anisotropy, subsurface scattering, sheen, and transmission
 
+#[cfg(target_os = "linux")]
+#[path = "support/linux_test_threads.rs"]
+mod linux_test_threads;
+
 use astraweave_render::material_extended::*;
 use glam::Vec3;
 

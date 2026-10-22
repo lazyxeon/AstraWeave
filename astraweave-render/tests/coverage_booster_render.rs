@@ -13,6 +13,10 @@
     clippy::useless_vec
 )]
 
+#[cfg(target_os = "linux")]
+#[path = "support/linux_test_threads.rs"]
+mod linux_test_threads;
+
 use astraweave_camera::{CameraController, CameraMode, CameraProducer, FreeFly as Camera};
 use astraweave_materials::{Graph, MaterialPackage, Node};
 use astraweave_render::{

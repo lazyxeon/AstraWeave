@@ -9,6 +9,10 @@
 //!
 //! These tests use headless wgpu with software fallback for CI compatibility.
 
+#[cfg(target_os = "linux")]
+#[path = "support/linux_test_threads.rs"]
+mod linux_test_threads;
+
 #[path = "support/gpu_capability.rs"]
 mod gpu_capability;
 

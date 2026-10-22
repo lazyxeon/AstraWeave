@@ -1,6 +1,10 @@
 // Visual validation tests for Phase PBR-E advanced materials
 // These tests generate sphere grid scenes for manual visual inspection
 
+#[cfg(target_os = "linux")]
+#[path = "support/linux_test_threads.rs"]
+mod linux_test_threads;
+
 use astraweave_render::material_extended::*;
 use glam::Vec3;
 

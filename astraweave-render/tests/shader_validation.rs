@@ -4,6 +4,10 @@
 //! This catches shader syntax errors, type mismatches, and unsupported features
 //! before they cause runtime failures.
 
+#[cfg(target_os = "linux")]
+#[path = "support/linux_test_threads.rs"]
+mod linux_test_threads;
+
 use naga::front::wgsl;
 use std::path::PathBuf;
 

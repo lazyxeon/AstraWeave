@@ -4,6 +4,10 @@
 //!
 //! Targets the highest-mutant-count APIs not covered by existing wave2 files.
 
+#[cfg(target_os = "linux")]
+#[path = "support/linux_test_threads.rs"]
+mod linux_test_threads;
+
 use astraweave_render::biome_transition::BiomeVisuals;
 use astraweave_render::clustered::{bin_lights_cpu, ClusterDims, CpuLight};
 use astraweave_render::clustered_forward::{ClusterConfig, GpuLight};

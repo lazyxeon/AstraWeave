@@ -1,6 +1,10 @@
 //! The Hi-Z copy stores depth into R32Float. A uniform clear stays uniform,
 //! which is what SSR and SSGI sample. A second build matches the first.
 
+#[cfg(target_os = "linux")]
+#[path = "support/linux_test_threads.rs"]
+mod linux_test_threads;
+
 use astraweave_render::hiz_pyramid::HizPyramid;
 
 fn read_r32(

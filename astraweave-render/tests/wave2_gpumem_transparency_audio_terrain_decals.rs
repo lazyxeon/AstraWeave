@@ -3,6 +3,10 @@
 //!
 //! Targets pure CPU functions with exact golden values to kill arithmetic mutations.
 
+#[cfg(target_os = "linux")]
+#[path = "support/linux_test_threads.rs"]
+mod linux_test_threads;
+
 use astraweave_render::biome_audio::{BiomeAmbientMap, DEFAULT_AMBIENT_CROSSFADE};
 use astraweave_render::decals::{Decal, DecalBlendMode, GpuDecal};
 use astraweave_render::gpu_memory::{BudgetEvent, CategoryBudget, GpuMemoryBudget, MemoryCategory};

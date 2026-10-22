@@ -5,6 +5,10 @@
 //! startup set, not the volumetric fog / god-ray passes owned by the Aravath
 //! demo's `volumetric_validation` test.
 
+#[cfg(target_os = "linux")]
+#[path = "support/linux_test_threads.rs"]
+mod linux_test_threads;
+
 use anyhow::Context;
 use astraweave_render::Renderer;
 

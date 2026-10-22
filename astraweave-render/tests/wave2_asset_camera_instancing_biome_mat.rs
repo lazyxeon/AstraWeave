@@ -7,6 +7,10 @@
 //!   - instancing.rs:   480 lines, gaps in draw-call math → reduction %, get_batch_mut
 //!   - biome_material.rs: 336 lines, 1 ext import → material_dir_for all biomes, state machine
 
+#[cfg(target_os = "linux")]
+#[path = "support/linux_test_threads.rs"]
+mod linux_test_threads;
+
 use astraweave_camera::{CameraController, CameraMode, FreeFly as Camera};
 use astraweave_render::asset_index::AssetIndex;
 use astraweave_render::biome_material::{BiomeMaterialConfig, BiomeMaterialSystem};

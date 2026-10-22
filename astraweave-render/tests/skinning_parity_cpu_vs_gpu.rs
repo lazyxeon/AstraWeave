@@ -6,6 +6,10 @@
 //! **NOTE**: These tests require a GPU context and are marked `#[ignore]` for CI.
 //! Run locally with: `cargo test -p astraweave-render --tests --features skinning-gpu -- --ignored`
 
+#[cfg(target_os = "linux")]
+#[path = "support/linux_test_threads.rs"]
+mod linux_test_threads;
+
 use astraweave_render::animation::*;
 #[cfg(feature = "skinning-gpu")]
 use astraweave_render::skinning_gpu::{JointPaletteManager, SKINNING_GPU_SHADER};

@@ -1,6 +1,10 @@
 //! A written timestamp pair must come back as a positive duration.
 //! Zero is an unread query, not a fast pass.
 
+#[cfg(target_os = "linux")]
+#[path = "support/linux_test_threads.rs"]
+mod linux_test_threads;
+
 use std::future::Future;
 
 use astraweave_render::Renderer;

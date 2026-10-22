@@ -3,6 +3,10 @@
 //! Targets: terrain.rs, debug_quad.rs, mesh_registry.rs, overlay.rs, effects.rs, clustered_forward.rs
 //! All tests are CPU-only (no GPU device required).
 
+#[cfg(target_os = "linux")]
+#[path = "support/linux_test_threads.rs"]
+mod linux_test_threads;
+
 use astraweave_render::clustered_forward::{ClusterConfig, GpuCluster, GpuLight};
 use astraweave_render::debug_quad::{create_screen_quad, DebugQuadVertex};
 use astraweave_render::effects::WeatherKind;

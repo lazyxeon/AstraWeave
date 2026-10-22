@@ -4,6 +4,10 @@
 //! with a different view of the same size must not keep the view captured
 //! earlier.
 
+#[cfg(target_os = "linux")]
+#[path = "support/linux_test_threads.rs"]
+mod linux_test_threads;
+
 use astraweave_render::Renderer;
 
 fn color_target(device: &wgpu::Device) -> wgpu::TextureView {

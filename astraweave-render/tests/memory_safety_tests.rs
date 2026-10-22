@@ -1,3 +1,7 @@
+#[cfg(target_os = "linux")]
+#[path = "support/linux_test_threads.rs"]
+mod linux_test_threads;
+
 use astraweave_render::mesh::{CpuMesh, MeshVertex};
 use astraweave_render::mesh_registry::{MeshKey, MeshRegistry};
 use glam::{Vec2, Vec3, Vec4};

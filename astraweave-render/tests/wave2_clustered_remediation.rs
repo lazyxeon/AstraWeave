@@ -3,6 +3,10 @@
 //! Tests for CPU light binning: bin_lights_cpu invariants, edge cases,
 //! and golden-value cluster assignments.
 
+#[cfg(target_os = "linux")]
+#[path = "support/linux_test_threads.rs"]
+mod linux_test_threads;
+
 use astraweave_render::clustered::{bin_lights_cpu, ClusterDims, CpuLight};
 use glam::Vec3;
 

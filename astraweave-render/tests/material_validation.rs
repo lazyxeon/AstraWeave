@@ -1,6 +1,10 @@
 //! Integration tests for MaterialManager validation functionality
 //! These tests run independently of the main crate to avoid renderer.rs compilation issues
 
+#[cfg(target_os = "linux")]
+#[path = "support/linux_test_threads.rs"]
+mod linux_test_threads;
+
 use astraweave_render::material::{
     validate_array_layout, validate_material_pack, ArrayLayout, MaterialLayerDesc, MaterialPackDesc,
 };

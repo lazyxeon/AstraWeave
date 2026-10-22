@@ -9,6 +9,10 @@
 //!   - material_dir_for, terrain_fallback_dir
 //!   - SkinnedVertex: size, Pod/Zeroable
 
+#[cfg(target_os = "linux")]
+#[path = "support/linux_test_threads.rs"]
+mod linux_test_threads;
+
 use astraweave_render::asset_index::AssetIndex;
 use astraweave_render::biome_material::{BiomeMaterialConfig, BiomeMaterialSystem};
 #[cfg(feature = "skinning-gpu")]

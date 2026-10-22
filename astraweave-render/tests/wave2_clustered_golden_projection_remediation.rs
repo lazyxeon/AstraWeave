@@ -12,6 +12,10 @@
 //!   Line 65:57  `* 0.5`    → `+ 0.5`    (radius pixel x, doubles spread)
 //!   Line 65:57  `* 0.5`    → `/ 0.5`    (radius pixel x, quadruples spread)
 
+#[cfg(target_os = "linux")]
+#[path = "support/linux_test_threads.rs"]
+mod linux_test_threads;
+
 use astraweave_render::clustered::{bin_lights_cpu, ClusterDims, CpuLight};
 use glam::Vec3;
 use std::collections::BTreeSet;

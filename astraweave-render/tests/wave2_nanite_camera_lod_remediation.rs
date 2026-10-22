@@ -11,6 +11,10 @@
 
 #![cfg(feature = "nanite")]
 
+#[cfg(target_os = "linux")]
+#[path = "support/linux_test_threads.rs"]
+mod linux_test_threads;
+
 use astraweave_render::nanite_visibility::{Frustum, GpuMeshlet, LODSelector};
 use glam::{Mat4, Vec3, Vec4};
 

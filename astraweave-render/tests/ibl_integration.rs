@@ -1,6 +1,10 @@
 //! IBL Integration Tests
 //! Tests the Image-Based Lighting pipeline with CPU-safe defaults
 
+#[cfg(target_os = "linux")]
+#[path = "support/linux_test_threads.rs"]
+mod linux_test_threads;
+
 #[cfg(feature = "ibl")]
 use astraweave_render::{IblManager, IblQuality};
 

@@ -4,6 +4,10 @@
 //! Targets specific mutation survivors identified by cargo-mutants analysis.
 //! Pins exact values, boundary operators, and per-variant return semantics.
 
+#[cfg(target_os = "linux")]
+#[path = "support/linux_test_threads.rs"]
+mod linux_test_threads;
+
 use astraweave_camera::FreeFly as Camera;
 use astraweave_render::{
     EasingFunction, FrustumPlanes, MaterialGpu, TimeOfDay, WeatherSystem, WeatherType,

@@ -2,6 +2,10 @@
 //! Targets: compute_tangents math, AABB boundary, Instance transforms,
 //! InstanceManager stats, InstancePatternBuilder geometry, BiomeDetector edge cases.
 
+#[cfg(target_os = "linux")]
+#[path = "support/linux_test_threads.rs"]
+mod linux_test_threads;
+
 use astraweave_render::biome_detector::{BiomeDetector, BiomeDetectorConfig};
 use astraweave_render::instancing::{
     Instance, InstanceBatch, InstanceManager, InstancePatternBuilder, InstanceRaw,

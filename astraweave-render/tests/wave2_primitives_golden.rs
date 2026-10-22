@@ -7,6 +7,10 @@
 //! Strategy: Pin EXACT float values at specific vertex indices so any
 //! arithmetic mutation (e.g., + → −, * → /) is immediately caught.
 
+#[cfg(target_os = "linux")]
+#[path = "support/linux_test_threads.rs"]
+mod linux_test_threads;
+
 use astraweave_render::primitives::{cube, plane, sphere};
 
 // ============================================================================

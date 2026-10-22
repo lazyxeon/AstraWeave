@@ -10,6 +10,10 @@
 //!   - WaterVertex (size, desc layout)
 //!   - MsaaMode (sample_count, is_enabled, multisample_state, default)
 
+#[cfg(target_os = "linux")]
+#[path = "support/linux_test_threads.rs"]
+mod linux_test_threads;
+
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
 

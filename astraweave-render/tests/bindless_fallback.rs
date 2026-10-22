@@ -1,5 +1,9 @@
 //! Bindless registration follows the device, and the bind-group path still draws.
 
+#[cfg(target_os = "linux")]
+#[path = "support/linux_test_threads.rs"]
+mod linux_test_threads;
+
 use astraweave_render::mesh::{CpuImage, CpuMesh, MeshVertex};
 use astraweave_render::{Instance, Renderer};
 

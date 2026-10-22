@@ -10,6 +10,10 @@
 //! - LOD: Quadric error metrics, mesh simplification
 //! - Environment: Time of day lighting, sun/moon positions
 
+#[cfg(target_os = "linux")]
+#[path = "support/linux_test_threads.rs"]
+mod linux_test_threads;
+
 use astraweave_camera::FreeFly as Camera;
 use astraweave_render::{
     culling::{FrustumPlanes, InstanceAABB},
