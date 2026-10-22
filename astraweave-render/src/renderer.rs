@@ -6244,7 +6244,7 @@ fn vs(input: VSIn) -> VSOut {
         }
         {
             #[cfg(feature = "impostor-bake")]
-            let mut impostor_draws = std::mem::take(&mut self.impostor_passes);
+            let impostor_draws = std::mem::take(&mut self.impostor_passes);
             #[cfg(feature = "impostor-bake")]
             for ip in impostor_draws.values() {
                 ip.prepare_scene_vectors(&queue, curr, prev, view);
