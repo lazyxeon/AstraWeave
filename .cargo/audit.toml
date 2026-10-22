@@ -12,12 +12,6 @@
 
 [advisories]
 ignore = [
-    # quick-xml < 0.41 is pulled by egui-winit/accesskit and wayland-scanner.
-    # Those parents do not accept 0.41.
-    # https://github.com/lazyxeon/AstraWeave/issues/308
-    "RUSTSEC-2026-0194",
-    "RUSTSEC-2026-0195",
-
     # Unmaintained, no patched release. Same IDs as deny.toml.
     # https://github.com/lazyxeon/AstraWeave/issues/305
     "RUSTSEC-2025-0141",
