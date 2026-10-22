@@ -40,7 +40,7 @@ jobs:
     
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v5
+      uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
     
     - name: Rust CI setup
       uses: ./.github/actions/rust-ci-setup
@@ -96,7 +96,7 @@ jobs:
     
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v5
+      uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
     - name: Rust CI setup
       uses: ./.github/actions/rust-ci-setup
@@ -110,7 +110,6 @@ jobs:
     - name: draw_into allocation floor
       env:
         WGPU_BACKEND: vulkan
-        RUSTFLAGS: ${{ env.RUSTFLAGS }} -C force-frame-pointers=yes
       run: |
         echo "::group::draw_into allocation floor"
         cargo test -p astraweave-render --all-features --test frame_alloc -- --nocapture
@@ -123,14 +122,6 @@ jobs:
         cargo test -p astraweave-render --all-features -- --skip draw_into_allocates_nothing_after_warmup --nocapture
         echo "::endgroup::"
 
-    - name: Upload draw_into alloc sites
-      if: always()
-      uses: actions/upload-artifact@v4
-      with:
-        name: frame-alloc-trace
-        path: target/frame-alloc-trace.txt
-        if-no-files-found: warn
-    
     - name: Test terrain materials
       continue-on-error: true
       run: |
@@ -182,7 +173,7 @@ jobs:
     
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v5
+      uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
     
     - name: Install wgsl-analyzer
       run: |

@@ -1,17 +1,14 @@
 name: Frame alloc sites
 
-# Same measurement as Test PBR Features (`--all-features`, no ICD pin,
-# RUST_BACKTRACE=1), limited to the draw_into floor so a pull request records
-# the first frame's call sites. The PBR workflow itself stays off pull_request.
+# Opt-in heap profile of one warm draw_into. This is not a pull-request
+# check and it does not assert symbol names. The allocation floor stays in
+# pbr-pipeline-ci.yml and render-device-validation.yml.
+#
+# Local equivalent:
+#   cargo test -p astraweave-render --all-features --test frame_alloc --no-run
+#   heaptrack -o target/frame-alloc-heaptrack target/debug/deps/frame_alloc-* --exact draw_into_allocates_nothing_after_warmup
 
 on:
-  pull_request:
-    paths:
-      - "astraweave-render/tests/frame_alloc.rs"
-      - "astraweave-render/tests/support/lib_backtrace.rs"
-      - "astraweave-ecs/src/counting_alloc.rs"
-      - ".github/workflows/frame-alloc-sites.yml"
-      - ".github/workflows/pbr-pipeline-ci.yml"
   workflow_dispatch:
 
 permissions:
@@ -23,7 +20,7 @@ concurrency:
 
 jobs:
   sites:
-    name: draw_into alloc sites
+    name: heaptrack draw_into
     runs-on: ubuntu-latest
     timeout-minutes: 60
     env:
@@ -33,26 +30,30 @@ jobs:
       # so a set_var inside the test cannot turn capture back off.
       RUST_LIB_BACKTRACE: "0"
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
       - uses: ./.github/actions/rust-ci-setup
+
+      - name: Install heaptrack and lavapipe
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y heaptrack mesa-vulkan-drivers libvulkan1 pkg-config libudev-dev
 
       - name: Record one draw_into frame
         env:
           WGPU_BACKEND: vulkan
-          RUSTFLAGS: ${{ env.RUSTFLAGS }} -C force-frame-pointers=yes
         run: |
           echo "RUST_BACKTRACE=${RUST_BACKTRACE:-unset}"
           echo "RUST_LIB_BACKTRACE=${RUST_LIB_BACKTRACE:-unset}"
-          dpkg -l libvulkan1 mesa-vulkan-drivers | tee target/vulkan-packages.txt || true
-          cargo test -p astraweave-render --all-features --test frame_alloc -- --nocapture
+          cargo test -p astraweave-render --all-features --test frame_alloc --no-run
+          bin=$(find target/debug/deps -type f -executable -name 'frame_alloc-*' ! -name '*.d' | head -n 1)
+          test -n "$bin"
+          heaptrack -o target/frame-alloc-heaptrack "$bin" --exact draw_into_allocates_nothing_after_warmup --nocapture
 
-      - name: Upload alloc sites
+      - name: Upload heaptrack
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: frame-alloc-trace
-          path: |
-            target/frame-alloc-trace.txt
-            target/vulkan-packages.txt
+          name: frame-alloc-heaptrack
+          path: target/frame-alloc-heaptrack*
           if-no-files-found: warn

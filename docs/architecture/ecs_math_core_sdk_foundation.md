@@ -8,8 +8,8 @@ domain: core
 lifecycle_status: active
 integration_status: wired
 owns: [astraweave-alloc, astraweave-core, astraweave-ecs, astraweave-math, astraweave-sdk]
-doc_version: "1.9"
-last_verified_commit: 4412e4d0
+doc_version: "1.10"
+last_verified_commit: c086feb3
 ---
 
 # Architecture Trace: ECS Substrate + Math / Core / SDK Primitives
@@ -20,13 +20,13 @@ last_verified_commit: 4412e4d0
 |---|---|
 | **System name** | ECS substrate + Math / Core / SDK primitives (foundation layer) |
 | **Primary crates** | `astraweave-ecs`, `astraweave-math`, `astraweave-core`, `astraweave-sdk` |
-| **Document version** | 1.9 |
-| **Last verified against commit** | `4412e4d0` |
+| **Document version** | 1.10 |
+| **Last verified against commit** | `c086feb3` |
 | **Last verified date** | 2026-10-15 |
 | **Status** | Active foundation. `astraweave-ecs` and `astraweave-math` are canonical; `astraweave-core` contains a canonical schema **plus** a transitional legacy `World` that bridges to ECS; `astraweave-sdk` is a stable C ABI surface with a single in-tree consumer (`examples/sdk_c_harness`) and an otherwise out-of-tree audience. |
 | **Owner notes** | This trace covers four related-but-distinct foundation crates as one document, per Andrew's request. Note: the doc is a foundation **layer**, not a single tightly-coupled system. Per-crate roles are kept distinct throughout. Deep investigation pass 2026-05-10 resolved the `lib_new.rs` status, corrected the SDK-consumer claim (one in-tree example exists), added the loom-tests + `simd`-feature-no-op findings, and refined Invariant 8 against the actual JSON-serializer code paths.<br><br>**R-series M1 trace-honesty (2026-06-30) — per-crate verified verdicts (the group `active/wired` front-matter syncs to the primary crate `astraweave-core` only):** `astraweave-core`, `astraweave-ecs`, `astraweave-sdk` are **VERIFIED-PRODUCTION** (`sdk` via the R3 island-by-design FFI boundary carve-out). **`astraweave-math` is individually COMPILES-BUT-ORPHANED** — off the v1.0 critical path; its only workspace consumer is `examples/profiling_demo` (the "canonical" framing above is aspirational for `math`). `astraweave-alloc` is **WIRED-BUT-UNTESTED** (0 tests). |
 
-> **Revision notice — 2026-10-22 (v1.9).** The allocator copies return addresses from the frame-pointer chain into a fixed buffer. It does not call `backtrace`. `end_alloc_trace` symbolizes after the flag is clear. The site insert and the `TRACED` increment share one lock. `total` is that snapshot, not a later `allocs()` read. A record that sees the flag already clear is not counted. A free while the tracer flag is set is not counted. `last_verified_commit` names the parent `4412e4d0`.
+> **Revision notice — 2026-10-22 (v1.10).** `CountingAlloc` only counts. The frame-pointer walk and its `asm` are gone. Invariant 9 still requires a Kani proof or a Miri test for `unsafe` in this layer, and the allocator no longer adds any. Every `alloc`, `dealloc`, and `realloc` increments the counters. Frees are not filtered to pointers recorded during a frame. `tests/alloc_trace_quiet.rs` installs `CountingAlloc` and checks a `Box` moves both counters. A per-site breakdown is the manual heaptrack workflow, not this allocator. `last_verified_commit` names the parent `c086feb3`.
 >
 > **Revision notice — 2026-10-22.** `counting_alloc::begin_alloc_trace` / `end_alloc_trace` record one measured region's call stacks. The site table is fixed-capacity. Re-entered allocations, including the capture itself, are not counted. Symbol names are resolved after the flag is clear. `last_verified_commit` names the parent `ada1aebe`. That parent does not contain `begin_alloc_trace`.
 >
@@ -282,7 +282,7 @@ There are several distinct flows through this layer. The first is the canonical 
 | `astraweave-ecs/src/type_registry.rs` | `TypeRegistry` with type-erased insert/remove handlers for `CommandBuffer` | Active | Required for `CommandBuffer` to operate on registered types |
 | `astraweave-ecs/src/events.rs` | `Event` marker, `Events<E>`, `EventReader<E>`, `EventEntry` | Active | Frame-stamped retention; cleanup via `cleanup(current_frame, keep_frames)` |
 | `astraweave-ecs/src/rng.rs` | `Rng` resource wrapping `ChaCha8Rng` | Active | Deterministic-AI requirement |
-| `astraweave-ecs/src/counting_alloc.rs` | Allocation-counting allocator for tests. `begin_alloc_trace` / `end_alloc_trace` group one region's stacks without counting the capture | Active (feature `alloc-counter`) | Behind `#[cfg(feature = "alloc-counter")]` (`lib.rs:48-49`) |
+| `astraweave-ecs/src/counting_alloc.rs` | Allocation-counting allocator for tests. Every alloc and free increments the counters. No stack walk | Active (feature `alloc-counter`) | Behind `#[cfg(feature = "alloc-counter")]` (`lib.rs:48-49`). `tests/alloc_trace_quiet.rs` installs it |
 | `astraweave-ecs/src/lib_new.rs` | 17-line stub containing only blanket-impl `Component`/`Resource` traits (identical to `lib.rs:85-90`) and module-level `use` imports | Dead (orphan scratch file) | Verified — not declared in `pub mod` list at `lib.rs:37-46`; workspace-wide grep finds zero non-self references to `lib_new`. Git log shows only two commits: original add in `400903a18` ("bug fixes, update ecs, nanite implementation, voxelization_pipeline") and a CI fmt sweep in `2702232fb`. Module-doc comment says "AstraWeave ECS / Provides Bevy-like API with Query tuples, Res/ResMut" — describes an API that the file does not actually implement |
 | `astraweave-ecs/src/blob_vec_kani.rs` | Kani proofs for `BlobVec` invariants | Active (kani gate) | `#[cfg(kani)]` (`lib.rs:64-65`) |
 | `astraweave-ecs/src/entity_allocator_kani.rs` | Kani proofs for generational-index correctness | Active (kani gate) | `#[cfg(kani)]` (`lib.rs:67-68`) |
@@ -290,7 +290,7 @@ There are several distinct flows through this layer. The first is the canonical 
 | `astraweave-ecs/src/property_tests.rs` | Inline property-based tests | Active (test gate) | `#[cfg(test)]` (`lib.rs:54-55`) |
 | `astraweave-ecs/src/mutation_tests.rs` | Inline mutation-resistance tests | Active (test gate) | `#[cfg(test)]` (`lib.rs:57-58`) |
 | `astraweave-ecs/src/mutation_resistance_tests.rs` | Additional mutation-resistance tests | Active (test gate) | `#[cfg(test)]` (`lib.rs:60-61`) |
-| `astraweave-ecs/tests/*.rs` | 14 integration test files (world_app, behavioral_correctness, mutation_resistant_comprehensive, panic_safety, full_pipeline_integration, sparse_set_additional, zero_alloc, blob_vec_entity_allocator, system_param, ecs_core, archetype_command_rng, stress, concurrency, coverage_booster) | Active | See §10 for counts. `concurrency_tests.rs:10-15` is `#[cfg(feature = "loom")]`-gated and uses `loom::sync::Arc` / `loom::thread` to model-check entity-spawn interleavings under the optional `loom` feature declared at `astraweave-ecs/Cargo.toml:33` |
+| `astraweave-ecs/tests/*.rs` | 15 integration test files (world_app, behavioral_correctness, mutation_resistant_comprehensive, panic_safety, full_pipeline_integration, sparse_set_additional, zero_alloc, alloc_trace_quiet, blob_vec_entity_allocator, system_param, ecs_core, archetype_command_rng, stress, concurrency, coverage_booster) | Active | See §10 for counts. `concurrency_tests.rs:10-15` is `#[cfg(feature = "loom")]`-gated and uses `loom::sync::Arc` / `loom::thread` to model-check entity-spawn interleavings under the optional `loom` feature declared at `astraweave-ecs/Cargo.toml:33` |
 
 ### `astraweave-math`
 
@@ -483,7 +483,7 @@ There are several distinct flows through this layer. The first is the canonical 
 | 15 | `Fixed64` is Q32.32 (`SCALE = 1 << 32`). `from_ratio` truncates toward zero and yields zero when `den == 0`. `mul_ratio` uses `div_euclid`. Mul and the saturating add/sub clamp to `i64`. The sim path has no float conversion | Yes | `astraweave-math/src/fixed64.rs`. `fixed64_contract_bytes` is hashed as the required `fixed64` case in `determinism-replay.yml` |
 | 16 | `build_app` installs sim extensions recorded with `register_sim_extension` before `sys_sim`, and records each function pointer once. With no registration, `build_app` is the legacy bridge only | Yes | `astraweave-scripting` test `mod_loaded_through_build_app_replays_identically` |
 | 17 | `aw_last_error_string` returns the message set by the calling thread. Another thread's `set_last_error` does not replace it. A single-threaded host still sees the message from its own last `aw_world_submit_intent_json` | Yes | `LAST_ERROR` is `thread_local`. `last_error_is_set_on_intent_parse_error` and `last_error_survives_another_thread_clearing_its_own_slot` |
-| 18 | While tracing, return addresses are copied into a fixed buffer. The allocator does not call `backtrace`. The site insert and the traced-allocation increment happen under one lock. `end_alloc_trace` snapshots that count before it clears the table, then symbolizes. `total` is that snapshot. A re-entered allocation is not counted, and a free on that thread while the tracer flag is set is not counted. A record that observes the flag already clear is not counted. Tracing off is a relaxed load and does not allocate | Yes | `counting_alloc.rs`. `alloc_trace_is_quiet_until_a_frame_records`. `frame_alloc` uses the snapshot as the first sample. The hard CI step passes `-C force-frame-pointers=yes` so the chain is present |
+| 18 | `CountingAlloc` counts every `alloc`, `alloc_zeroed`, `dealloc`, and `realloc`. It does not walk stacks, and it does not skip frees. A `realloc` increments both `allocs` and `deallocs`. `reset_allocs` stores zero in every local counter. The counters stay quiet until this binary installs `CountingAlloc` | Yes | `counting_alloc.rs`. `tests/alloc_trace_quiet.rs` `alloc_trace_is_quiet` installs the allocator, resets, then checks a `Box` moves `allocs` and `deallocs` |
 
 ---
 
@@ -522,7 +522,7 @@ There are several distinct flows through this layer. The first is the canonical 
   - `astraweave-core/src/mutation_tests.rs`
   - `astraweave-math/src/mutation_tests.rs`
 - **Integration tests (`tests/`):**
-  - `astraweave-ecs/tests/`: 14 files — `world_app_tests`, `behavioral_correctness_tests`, `mutation_resistant_comprehensive_tests`, `panic_safety_tests`, `full_pipeline_integration`, `sparse_set_additional_tests`, `zero_alloc_tests`, `blob_vec_entity_allocator_tests`, `system_param_tests`, `ecs_core_tests`, `archetype_command_rng_tests`, `stress_tests`, `concurrency_tests`, `coverage_booster_ecs`
+  - `astraweave-ecs/tests/`: 15 files — `world_app_tests`, `behavioral_correctness_tests`, `mutation_resistant_comprehensive_tests`, `panic_safety_tests`, `full_pipeline_integration`, `sparse_set_additional_tests`, `zero_alloc_tests`, `alloc_trace_quiet`, `blob_vec_entity_allocator_tests`, `system_param_tests`, `ecs_core_tests`, `archetype_command_rng_tests`, `stress_tests`, `concurrency_tests`, `coverage_booster_ecs`
   - `astraweave-core/tests/`: 10 files — `ecs_integration_tests`, `full_system_determinism`, `tools_tests`, `cross_crate_stability_tests`, `performance_integration`, `simulation`, `mutation_resistant_comprehensive_tests`, `schema_tests`, `perception_tests`, `behavioral_correctness_tests`
   - `astraweave-math/tests/mutation_resistant_comprehensive_tests.rs`
   - `astraweave-sdk/tests/mutation_resistant_comprehensive_tests.rs`
@@ -565,6 +565,7 @@ There are several distinct flows through this layer. The first is the canonical 
 
 | Version | Date | Change |
 |---|---|---|
+| 1.10 | 2026-10-22 | The frame-pointer walk is gone. Counters record every alloc and every free (invariant 18). `alloc_trace_is_quiet` installs `CountingAlloc`. |
 | 1.9 | 2026-10-22 | Return addresses are copied into a fixed buffer. No `backtrace` in the allocator. The count and the site share one lock (invariant 18). |
 | 1.8 | 2026-10-22 | `begin_alloc_trace` / `end_alloc_trace` record one region's call stacks. Re-entered captures are not counted (invariant 18). |
 | 1.7 | 2026-10-21 | Non-SSE2 `normalize_simd` uses the SSE2 `len_sq < 1e-16` guard, not glam `normalize_or_zero` (invariant 13). `cross_simd` and `length_simd` stay on the glam fallback. |

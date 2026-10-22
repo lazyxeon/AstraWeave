@@ -8,7 +8,7 @@
 #[path = "support/lib_backtrace.rs"]
 mod lib_backtrace;
 
-use astraweave_ecs::counting_alloc::{allocs, begin_alloc_trace, end_alloc_trace, reset_allocs};
+use astraweave_ecs::counting_alloc::{allocs, reset_allocs};
 use astraweave_render::{Instance, Renderer};
 
 #[global_allocator]
@@ -100,34 +100,18 @@ fn draw_into_allocates_nothing_after_warmup() {
             "update_instances allocated after the scratch was warm"
         );
 
-        // Warm the trace table off the measured window. The first
-        // `thread_local` access must not land inside a sample.
-        begin_alloc_trace();
-        let _ = end_alloc_trace();
-
         let mut samples = [0usize; 6];
-        let mut trace = None;
-        for (index, sample) in samples.iter_mut().enumerate() {
+        for sample in &mut samples {
             let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("measured encoder"),
             });
             reset_allocs();
-            if index == 0 {
-                begin_alloc_trace();
-            }
             renderer
                 .draw_into(&view, None, &mut encoder)
                 .expect("measured draw_into");
-            if index == 0 {
-                let recorded = end_alloc_trace();
-                *sample = recorded.total;
-                trace = Some(recorded);
-            } else {
-                *sample = allocs();
-            }
+            *sample = allocs();
             drop(encoder);
         }
-        let trace = trace.expect("first frame was traced");
         let features = renderer.gpu_features();
         let interesting = [
             ("timestamp", wgpu::Features::TIMESTAMP_QUERY),
@@ -154,27 +138,6 @@ fn draw_into_allocates_nothing_after_warmup() {
             renderer.atmosphere_enabled(),
         );
         eprintln!("{header}");
-        eprint!("{}", trace.report);
-        let trace_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../target/frame-alloc-trace.txt");
-        if let Some(parent) = trace_path.parent() {
-            std::fs::create_dir_all(parent).expect("create trace directory");
-        }
-        std::fs::write(&trace_path, format!("{header}{}", trace.report))
-            .expect("write alloc site trace");
-        eprintln!("alloc-sites file={}", trace_path.display());
-        if trace.report.starts_with("alloc-sites total=") {
-            assert_eq!(
-                trace.total, samples[0],
-                "first-frame snapshot diverged from the reported total\n{}",
-                trace.report
-            );
-            assert!(
-                trace.report.contains("draw_into") || trace.report.contains("Renderer"),
-                "frame-pointer capture did not reach draw_into\n{}",
-                trace.report
-            );
-        }
         let min = *samples.iter().min().unwrap();
         let max = *samples.iter().max().unwrap();
         // Lavapipe on Mesa 25.2 and on Mesa 26.0.8-1ubuntu0.3 (amd64 and
@@ -188,8 +151,8 @@ fn draw_into_allocates_nothing_after_warmup() {
         // `Backtrace::capture` on every acquire. Those 48 allocations are
         // that capture (`LockTrace::enter`), not another pass and not the
         // adapter. `disable_library_backtraces` runs before the device
-        // exists so capture stays off and the ceiling stays 130. The first
-        // sample's call sites are `target/frame-alloc-trace.txt`.
+        // exists so capture stays off and the ceiling stays 130. A per-site
+        // breakdown is the manual heaptrack workflow, not an assert here.
         // Spread inside a run is 4.
         // The constructor leaves Bruneton off. A sky-only Bruneton frame
         // was [150, 147, 147, 146, 146, 147] and is not this test.
