@@ -1,5 +1,7 @@
 #![forbid(unsafe_code)]
-use anyhow::{bail, Context, Result};
+#[cfg(feature = "ollama")]
+use anyhow::Context;
+use anyhow::{bail, Result};
 
 /// Model text above this is rejected before `serde_json` allocates a document.
 pub const MAX_MODEL_JSON_BYTES: usize = 64 * 1024;
