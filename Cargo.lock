@@ -860,6 +860,7 @@ name = "astraweave-embeddings"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "astraweave-llm",
  "async-trait",
  "candle-core",
  "candle-nn",

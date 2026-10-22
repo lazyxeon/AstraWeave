@@ -28,7 +28,7 @@ async fn main() -> anyhow::Result<()> {
     let client = OllamaClient::new(
         "http://localhost:11434".to_string(),
         "qwen3:8b".to_string(),
-    );
+    ).expect("model client");
     
     // Initialize tool registry and fallback system
     let reg = ToolRegistry::default();

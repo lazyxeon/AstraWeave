@@ -244,7 +244,11 @@ impl EmbeddingClient for CandleEmbeddingClient {
     }
 }
 
-/// Remote API embedding client (OpenAI-compatible)
+/// Remote API embedding client (OpenAI-compatible).
+///
+/// [`RemoteEmbeddingClient::new`] keeps a loopback URL and uses
+/// [`astraweave_llm::loopback_http_client`]. [`RemoteEmbeddingClient::allowing_remote`]
+/// is the explicit opt-in: it keeps the caller URL on reqwest's default client.
 #[cfg(feature = "http")]
 pub struct RemoteEmbeddingClient {
     api_url: String,
@@ -256,31 +260,51 @@ pub struct RemoteEmbeddingClient {
 
 #[cfg(feature = "http")]
 impl RemoteEmbeddingClient {
-    /// Create a new remote embedding client
-    pub fn new(api_url: String, model: String, dimensions: usize) -> Self {
-        Self {
-            api_url,
-            api_key: None,
-            model,
-            dimensions,
-            client: reqwest::Client::new(),
-        }
+    /// Create a loopback embedding client. A non-loopback URL is replaced.
+    pub fn new(api_url: String, model: String, dimensions: usize) -> Result<Self> {
+        Self::assemble(api_url, model, dimensions, None, false)
     }
 
-    /// Create a client with API key
+    /// Loopback client plus a bearer token.
     pub fn with_api_key(
         api_url: String,
         model: String,
         dimensions: usize,
         api_key: String,
-    ) -> Self {
-        Self {
+    ) -> Result<Self> {
+        Self::assemble(api_url, model, dimensions, Some(api_key), false)
+    }
+
+    /// Keep `api_url` even when it is not loopback.
+    ///
+    /// The client is reqwest's default: `HTTP_PROXY`, `HTTPS_PROXY`, and
+    /// `ALL_PROXY` apply, and redirects are followed.
+    pub fn allowing_remote(api_url: String, model: String, dimensions: usize) -> Result<Self> {
+        Self::assemble(api_url, model, dimensions, None, true)
+    }
+
+    fn assemble(
+        api_url: String,
+        model: String,
+        dimensions: usize,
+        api_key: Option<String>,
+        allow_remote: bool,
+    ) -> Result<Self> {
+        let api_url = astraweave_llm::loopback_model_url(api_url, allow_remote);
+        let client = if allow_remote && !astraweave_llm::is_loopback_http_url(&api_url) {
+            reqwest::Client::builder()
+        } else {
+            astraweave_llm::loopback_http_client()
+        }
+        .build()
+        .map_err(|err| anyhow::anyhow!("embedding http client: {err}"))?;
+        Ok(Self {
             api_url,
-            api_key: Some(api_key),
+            api_key,
             model,
             dimensions,
-            client: reqwest::Client::new(),
-        }
+            client,
+        })
     }
 }
 

@@ -22,7 +22,7 @@
 //! use astraweave_llm::LlmClient;
 //!
 //! # async fn example() -> anyhow::Result<()> {
-//! let client = Phi3Ollama::new("http://localhost:11434", "phi3:medium");
+//! let client = Phi3Ollama::new("http://localhost:11434", "phi3:medium").expect("model client");
 //! let response = client.complete("You are a game AI. Plan your next action.").await?;
 //! # Ok(())
 //! # }
@@ -78,9 +78,9 @@ impl Phi3Ollama {
     /// # Example
     /// ```no_run
     /// # use astraweave_llm::phi3_ollama::Phi3Ollama;
-    /// let client = Phi3Ollama::new("http://localhost:11434", "phi3:medium");
+    /// let client = Phi3Ollama::new("http://localhost:11434", "phi3:medium").expect("model client");
     /// ```
-    pub fn new(url: impl Into<String>, model: impl Into<String>) -> Self {
+    pub fn new(url: impl Into<String>, model: impl Into<String>) -> Result<Self> {
         Self::assemble(url, model, false)
     }
 
@@ -89,21 +89,25 @@ impl Phi3Ollama {
     /// That client honors `HTTP_PROXY`, `HTTPS_PROXY`, and `ALL_PROXY`, and it
     /// follows redirects. A loopback URL still uses [`crate::loopback_http_client`].
     /// `new` replaces a non-loopback URL and always uses that builder.
-    pub fn allowing_remote(url: impl Into<String>, model: impl Into<String>) -> Self {
+    pub fn allowing_remote(url: impl Into<String>, model: impl Into<String>) -> Result<Self> {
         Self::assemble(url, model, true)
     }
 
-    fn assemble(url: impl Into<String>, model: impl Into<String>, allow_remote: bool) -> Self {
+    fn assemble(
+        url: impl Into<String>,
+        model: impl Into<String>,
+        allow_remote: bool,
+    ) -> Result<Self> {
         let url = crate::loopback_model_url(url.into(), allow_remote);
-        let client = crate::build_model_client(&url, allow_remote);
-        Self {
+        let client = crate::build_model_client(&url, allow_remote)?;
+        Ok(Self {
             url,
             model: model.into(),
             temperature: 0.7,
             max_tokens: 512,
             system_prompt: Some(DEFAULT_SYSTEM_PROMPT.to_string()),
             client,
-        }
+        })
     }
 
     /// Create Phi-3 client for localhost (convenience method)
@@ -111,9 +115,9 @@ impl Phi3Ollama {
     /// # Example
     /// ```no_run
     /// # use astraweave_llm::phi3_ollama::Phi3Ollama;
-    /// let client = Phi3Ollama::localhost(); // Uses phi3:medium
+    /// let client = Phi3Ollama::localhost().expect("model client"); // Uses phi3:medium
     /// ```
-    pub fn localhost() -> Self {
+    pub fn localhost() -> Result<Self> {
         Self::new("http://localhost:11434", "phi3:medium")
     }
 
@@ -125,12 +129,12 @@ impl Phi3Ollama {
     /// # Example
     /// ```no_run
     /// # use astraweave_llm::phi3_ollama::Phi3Ollama;
-    /// let client = Phi3Ollama::fast(); // Low latency variant
+    /// let client = Phi3Ollama::fast().expect("model client"); // Low latency variant
     /// ```
-    pub fn fast() -> Self {
-        Self::new("http://localhost:11434", "phi3:game")
+    pub fn fast() -> Result<Self> {
+        Ok(Self::new("http://localhost:11434", "phi3:game")?
             .with_temperature(0.5)
-            .with_max_tokens(128)
+            .with_max_tokens(128))
     }
 
     /// Create ultra-fast Phi-3 client using the mini model
@@ -141,12 +145,12 @@ impl Phi3Ollama {
     /// # Example
     /// ```no_run
     /// # use astraweave_llm::phi3_ollama::Phi3Ollama;
-    /// let client = Phi3Ollama::mini(); // Fastest variant
+    /// let client = Phi3Ollama::mini().expect("model client"); // Fastest variant
     /// ```
-    pub fn mini() -> Self {
-        Self::new("http://localhost:11434", "phi3:3.8b")
+    pub fn mini() -> Result<Self> {
+        Ok(Self::new("http://localhost:11434", "phi3:3.8b")?
             .with_temperature(0.5)
-            .with_max_tokens(128)
+            .with_max_tokens(128))
     }
 
     /// Set temperature (0.0 = deterministic, 1.0 = creative)
@@ -346,7 +350,8 @@ mod tests {
 
     #[test]
     fn test_phi3_ollama_creation() {
-        let client = Phi3Ollama::new("http://localhost:11434", "phi3:medium");
+        let client =
+            Phi3Ollama::new("http://localhost:11434", "phi3:medium").expect("model client");
         assert_eq!(client.url, "http://localhost:11434");
         assert_eq!(client.model, "phi3:medium");
         assert_eq!(client.temperature, 0.7);
@@ -356,7 +361,7 @@ mod tests {
 
     #[test]
     fn test_localhost_convenience() {
-        let client = Phi3Ollama::localhost();
+        let client = Phi3Ollama::localhost().expect("model client");
         assert_eq!(client.url, "http://localhost:11434");
         assert_eq!(client.model, "phi3:medium");
     }
@@ -364,6 +369,7 @@ mod tests {
     #[test]
     fn test_builder_pattern() {
         let client = Phi3Ollama::localhost()
+            .expect("model client")
             .with_temperature(0.5)
             .with_max_tokens(256)
             .without_system_prompt();
@@ -376,7 +382,7 @@ mod tests {
     #[tokio::test]
     #[ignore] // Requires Ollama running
     async fn test_health_check() {
-        let client = Phi3Ollama::localhost();
+        let client = Phi3Ollama::localhost().expect("model client");
         let health = client.health_check().await;
 
         // If Ollama is running, this should succeed
@@ -390,7 +396,7 @@ mod tests {
     #[tokio::test]
     #[ignore] // Requires Ollama + phi3:medium
     async fn test_complete() {
-        let client = Phi3Ollama::localhost();
+        let client = Phi3Ollama::localhost().expect("model client");
 
         // Check health first
         let health = client.health_check().await.expect("Health check failed");

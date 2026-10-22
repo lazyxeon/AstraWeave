@@ -31,7 +31,7 @@ async fn main() -> Result<()> {
     println!("║  - Side-by-side blocking vs streaming comparison               ║");
     println!("╚═══════════════════════════════════════════════════════════════╝\n");
 
-    let client = Qwen3Ollama::localhost();
+    let client = Qwen3Ollama::localhost().expect("model client");
 
     // Health check first
     println!("🔍 Checking Ollama health...");

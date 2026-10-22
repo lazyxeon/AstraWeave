@@ -147,8 +147,9 @@ async fn test_ollama_client(
         .unwrap_or(false);
     let client = if allow_remote {
         astraweave_llm::OllamaChatClient::allowing_remote(url.to_string(), model)
+            .expect("model client")
     } else {
-        astraweave_llm::OllamaChatClient::new(url.to_string(), model)
+        astraweave_llm::OllamaChatClient::new(url.to_string(), model).expect("model client")
     };
 
     // Helpful link guidance: GET /api/tags is safe to open in a browser and will list models.
@@ -216,10 +217,15 @@ async fn test_local_http_client(
     let client = match (allow_remote, env::var("LOCAL_LLM_API_KEY")) {
         (true, Ok(api_key)) => {
             LocalHttpClient::allowing_remote_with_api_key(url.to_string(), model, api_key)
+                .expect("model client")
         }
-        (true, Err(_)) => LocalHttpClient::allowing_remote(url.to_string(), model),
-        (false, Ok(api_key)) => LocalHttpClient::with_api_key(url.to_string(), model, api_key),
-        (false, Err(_)) => LocalHttpClient::new(url.to_string(), model),
+        (true, Err(_)) => {
+            LocalHttpClient::allowing_remote(url.to_string(), model).expect("model client")
+        }
+        (false, Ok(api_key)) => {
+            LocalHttpClient::with_api_key(url.to_string(), model, api_key).expect("model client")
+        }
+        (false, Err(_)) => LocalHttpClient::new(url.to_string(), model).expect("model client"),
     };
 
     println!("Connecting to local LLM at: {}", url);

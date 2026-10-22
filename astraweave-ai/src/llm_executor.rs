@@ -28,7 +28,7 @@
 //! use std::sync::Arc;
 //!
 //! async fn example() -> anyhow::Result<()> {
-//!     let client = Qwen3Ollama::localhost();  // Qwen3-8B on port 11434
+//!     let client = Qwen3Ollama::localhost()?;  // Qwen3-8B on port 11434
 //!
 //!     let registry = default_tool_registry();
 //!     let orchestrator = Arc::new(astraweave_llm::fallback_system::FallbackOrchestrator::new(client, registry));

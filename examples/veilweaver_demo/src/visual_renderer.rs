@@ -743,7 +743,7 @@ impl VeilweaverApp {
             game_state.enemy_entities.push(e);
         }
 
-        let llm_client = Qwen3Ollama::fast();
+        let llm_client = Qwen3Ollama::fast().expect("model client");
 
         Ok(Self {
             window,

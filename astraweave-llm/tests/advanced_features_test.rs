@@ -84,13 +84,13 @@ fn test_few_shot_token_budgeting() {
 #[cfg(feature = "ollama")]
 fn test_phi3_variants() {
     // Test Fast variant
-    let fast = Phi3Ollama::fast();
+    let fast = Phi3Ollama::fast().expect("model client");
     assert_eq!(fast.model, "phi3:game");
     assert_eq!(fast.temperature, 0.5);
     assert_eq!(fast.max_tokens, 128);
 
     // Test Mini variant
-    let mini = Phi3Ollama::mini();
+    let mini = Phi3Ollama::mini().expect("model client");
     assert_eq!(mini.model, "phi3:3.8b");
     assert_eq!(mini.temperature, 0.5);
     assert_eq!(mini.max_tokens, 128);
@@ -100,7 +100,7 @@ fn test_phi3_variants() {
 #[cfg(feature = "ollama")]
 fn test_hermes2pro_variants() {
     // Test Fast variant (legacy — retained for backward compat)
-    let fast = Hermes2ProOllama::fast();
+    let fast = Hermes2ProOllama::fast().expect("model client");
     assert_eq!(fast.model, "adrienbrault/nous-hermes2pro:Q4_K_M");
     assert_eq!(fast.temperature, 0.5);
     assert_eq!(fast.max_tokens, 128);
@@ -110,7 +110,7 @@ fn test_hermes2pro_variants() {
 #[cfg(feature = "ollama")]
 fn test_qwen3_variants() {
     // Test Fast variant
-    let fast = Qwen3Ollama::fast();
+    let fast = Qwen3Ollama::fast().expect("model client");
     assert_eq!(fast.model, DEFAULT_QWEN_INSTRUCT_MODEL);
     assert_eq!(fast.temperature, 0.5);
     assert_eq!(fast.max_tokens, 128);
@@ -119,7 +119,7 @@ fn test_qwen3_variants() {
     assert_eq!(fast.context_length, 2048);
 
     // Test Strategic variant
-    let strategic = Qwen3Ollama::strategic();
+    let strategic = Qwen3Ollama::strategic().expect("model client");
     assert_eq!(strategic.model, DEFAULT_QWEN_INSTRUCT_MODEL);
     assert_eq!(strategic.temperature, 0.6);
     assert_eq!(strategic.max_tokens, 1024);
@@ -127,7 +127,7 @@ fn test_qwen3_variants() {
     assert_eq!(strategic.context_length, 32768);
 
     // Test Localhost default
-    let default = Qwen3Ollama::localhost();
+    let default = Qwen3Ollama::localhost().expect("model client");
     assert_eq!(default.model, DEFAULT_QWEN_INSTRUCT_MODEL);
     assert!(!default.enable_thinking);
     assert_eq!(default.context_length, 32768);

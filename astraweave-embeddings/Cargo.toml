@@ -35,6 +35,7 @@ hnsw_rs = { version = "0.3", optional = true }
 
 # HTTP client for embeddings API
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"], optional = true }
+astraweave-llm = { path = "../astraweave-llm", optional = true }
 
 # Concurrent data structures
 dashmap = "6.1"
@@ -43,7 +44,7 @@ parking_lot = "0.12"
 [features]
 default = ["hnsw"]
 hnsw = ["hnsw_rs"]
-http = ["reqwest"]
+http = ["reqwest", "dep:astraweave-llm", "astraweave-llm/ollama"]
 onnx = ["ort"]
 candle = ["candle-core", "candle-nn", "candle-transformers"]
 

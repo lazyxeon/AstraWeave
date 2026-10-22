@@ -956,6 +956,7 @@ fn generate_llm_plan(snap: &WorldSnapshot) -> Result<PlanIntent> {
     // - Prevents overly verbose plans (~0.5-1s savings on generation)
     // - Combined with Tier 2 (SimplifiedLlm) for maximum latency reduction
     let client = Qwen3Ollama::localhost()
+        .expect("model client")
         .with_temperature(0.5) // ⚠️ MODIFY THIS for temperature experiments
         .with_max_tokens(256); // Reduced from 1024 for faster generation
 

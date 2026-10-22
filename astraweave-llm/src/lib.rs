@@ -66,36 +66,76 @@ fn loopback_redirect_policy() -> reqwest::redirect::Policy {
 
 /// Loopback URLs use [`loopback_http_client`]. `allow_remote` keeps a
 /// non-loopback URL on reqwest's default client (proxy env and redirects).
+/// A build failure is returned. There is no [`reqwest::Client::new`] fallback.
 #[cfg(feature = "ollama")]
-pub(crate) fn build_model_client(url: &str, allow_remote: bool) -> reqwest::Client {
+pub(crate) fn build_model_client(url: &str, allow_remote: bool) -> Result<reqwest::Client> {
     let remote = allow_remote && !is_loopback_http_url(url);
     let builder = if remote {
         reqwest::Client::builder()
     } else {
         loopback_http_client()
     };
-    let tuned = builder
+    builder
         .tcp_nodelay(true)
         .pool_idle_timeout(std::time::Duration::from_secs(90))
         .pool_max_idle_per_host(8)
-        .connect_timeout(std::time::Duration::from_secs(30));
-    match tuned.build() {
-        Ok(client) => client,
-        Err(err) => {
-            tracing::error!("model http client: {err:#}");
-            let fallback = if remote {
-                reqwest::Client::builder()
-            } else {
-                reqwest::Client::builder()
-                    .no_proxy()
-                    .redirect(reqwest::redirect::Policy::none())
-                    .resolve(
-                        "localhost",
-                        std::net::SocketAddr::from((std::net::Ipv4Addr::LOCALHOST, 0)),
-                    )
-            };
-            fallback.build().unwrap_or_else(|_| reqwest::Client::new())
+        .connect_timeout(std::time::Duration::from_secs(30))
+        .build()
+        .map_err(|err| anyhow::anyhow!("model http client: {err}"))
+}
+
+/// Process-wide environment lock. [`EnvGuard`] restores variables on drop.
+static PROCESS_ENV: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+std::thread_local! {
+    static PROCESS_ENV_HELD: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+fn lock_process_env() -> std::sync::MutexGuard<'static, ()> {
+    PROCESS_ENV.lock().unwrap_or_else(|err| err.into_inner())
+}
+
+fn env_var(key: &str) -> std::result::Result<String, std::env::VarError> {
+    if PROCESS_ENV_HELD.with(|held| held.get()) {
+        return std::env::var(key);
+    }
+    let _guard = lock_process_env();
+    std::env::var(key)
+}
+
+/// Sets process environment variables and restores the previous values on drop.
+/// Holds [`PROCESS_ENV`] so a test cannot race another env read in this crate.
+pub struct EnvGuard {
+    saved: Vec<(&'static str, Option<String>)>,
+    _lock: std::sync::MutexGuard<'static, ()>,
+}
+
+impl EnvGuard {
+    /// Replace each key. `None` removes it. The previous value is restored on drop.
+    pub fn replace(pairs: &[(&'static str, Option<&str>)]) -> Self {
+        let lock = lock_process_env();
+        PROCESS_ENV_HELD.with(|held| held.set(true));
+        let mut saved = Vec::with_capacity(pairs.len());
+        for (key, value) in pairs {
+            saved.push((*key, std::env::var(key).ok()));
+            match value {
+                Some(next) => std::env::set_var(key, next),
+                None => std::env::remove_var(key),
+            }
         }
+        Self { saved, _lock: lock }
+    }
+}
+
+impl Drop for EnvGuard {
+    fn drop(&mut self) {
+        for (key, value) in self.saved.drain(..).rev() {
+            match value {
+                Some(previous) => std::env::set_var(key, previous),
+                None => std::env::remove_var(key),
+            }
+        }
+        PROCESS_ENV_HELD.with(|held| held.set(false));
     }
 }
 use astraweave_core::{ActionStep, PlanIntent, ToolRegistry, WorldSnapshot};
@@ -147,7 +187,7 @@ use std::sync::LazyLock;
 #[cfg(feature = "llm_cache")]
 static GLOBAL_CACHE: LazyLock<PromptCache> = LazyLock::new(|| {
     // Read capacity from environment, default to 4096
-    let capacity = std::env::var("LLM_CACHE_CAP")
+    let capacity = env_var("LLM_CACHE_CAP")
         .ok()
         .and_then(|s| s.parse().ok())
         .unwrap_or(4096);
@@ -155,7 +195,7 @@ static GLOBAL_CACHE: LazyLock<PromptCache> = LazyLock::new(|| {
     // Phase 7: Similarity cache hits are nondeterministic across prompt variants and
     // can cause unexpected cross-test pollution when tests run in parallel.
     // Keep exact-match caching enabled by default, and make similarity matching opt-in.
-    let similarity_threshold = std::env::var("LLM_CACHE_SIM_THRESH")
+    let similarity_threshold = env_var("LLM_CACHE_SIM_THRESH")
         .ok()
         .and_then(|s| s.parse::<f32>().ok())
         .map(|v| v.clamp(0.0, 1.0))
@@ -259,7 +299,7 @@ pub struct OllamaClient {
 #[cfg(feature = "ollama")]
 impl OllamaClient {
     /// Keep a loopback URL. A non-loopback URL is replaced with `http://127.0.0.1:11434`.
-    pub fn new(url: impl Into<String>, model: impl Into<String>) -> Self {
+    pub fn new(url: impl Into<String>, model: impl Into<String>) -> Result<Self> {
         Self::assemble(url, model, false)
     }
 
@@ -268,18 +308,22 @@ impl OllamaClient {
     /// That client honors `HTTP_PROXY`, `HTTPS_PROXY`, and `ALL_PROXY`, and it
     /// follows redirects. A loopback URL still uses [`loopback_http_client`].
     /// [`Self::new`] replaces a non-loopback URL and always uses that builder.
-    pub fn allowing_remote(url: impl Into<String>, model: impl Into<String>) -> Self {
+    pub fn allowing_remote(url: impl Into<String>, model: impl Into<String>) -> Result<Self> {
         Self::assemble(url, model, true)
     }
 
-    fn assemble(url: impl Into<String>, model: impl Into<String>, allow_remote: bool) -> Self {
+    fn assemble(
+        url: impl Into<String>,
+        model: impl Into<String>,
+        allow_remote: bool,
+    ) -> Result<Self> {
         let url = loopback_model_url(url.into(), allow_remote);
-        let client = build_model_client(&url, allow_remote);
-        Self {
+        let client = build_model_client(&url, allow_remote)?;
+        Ok(Self {
             url,
             model: model.into(),
             client,
-        }
+        })
     }
 }
 
@@ -343,7 +387,7 @@ pub struct OllamaChatClient {
 
 #[cfg(feature = "ollama")]
 impl OllamaChatClient {
-    pub fn new(url: String, model: String) -> Self {
+    pub fn new(url: String, model: String) -> Result<Self> {
         Self::assemble(url, model, false)
     }
 
@@ -352,26 +396,26 @@ impl OllamaChatClient {
     /// That client honors `HTTP_PROXY`, `HTTPS_PROXY`, and `ALL_PROXY`, and it
     /// follows redirects. A loopback URL still uses [`loopback_http_client`].
     /// [`Self::new`] replaces a non-loopback URL and always uses that builder.
-    pub fn allowing_remote(url: String, model: String) -> Self {
+    pub fn allowing_remote(url: String, model: String) -> Result<Self> {
         Self::assemble(url, model, true)
     }
 
-    fn assemble(url: String, model: String, allow_remote: bool) -> Self {
+    fn assemble(url: String, model: String, allow_remote: bool) -> Result<Self> {
         let url = loopback_model_url(url, allow_remote);
-        let client = build_model_client(&url, allow_remote);
+        let client = build_model_client(&url, allow_remote)?;
 
-        let low_latency = std::env::var("OLLAMA_LOW_LATENCY")
+        let low_latency = env_var("OLLAMA_LOW_LATENCY")
             .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
             .unwrap_or(true);
-        let keep_alive = std::env::var("OLLAMA_KEEP_ALIVE").ok(); // e.g., "5m" or "3600s"
-        let force_format_json = std::env::var("OLLAMA_FORMAT_JSON")
+        let keep_alive = env_var("OLLAMA_KEEP_ALIVE").ok(); // e.g., "5m" or "3600s"
+        let force_format_json = env_var("OLLAMA_FORMAT_JSON")
             .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
             .unwrap_or(true);
-        let early_exit_on_json = std::env::var("OLLAMA_EARLY_EXIT")
+        let early_exit_on_json = env_var("OLLAMA_EARLY_EXIT")
             .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
             .unwrap_or(true);
 
-        Self {
+        Ok(Self {
             url,
             model,
             client,
@@ -379,7 +423,7 @@ impl OllamaChatClient {
             keep_alive,
             force_format_json,
             early_exit_on_json,
-        }
+        })
     }
 
     /// Warm up the model to minimize cold-start latency. Attempts a tiny generation and requests the model to remain in memory.
@@ -477,7 +521,7 @@ impl LlmClient for OllamaChatClient {
         // Some Ollama setups can take a long time to load a model initially (minutes) or
         // will stream responses. Allow a long configurable timeout and fall back to a
         // streaming read if a non-stream response isn't available.
-        let default_timeout = std::env::var("OLLAMA_TIMEOUT_SECS")
+        let default_timeout = env_var("OLLAMA_TIMEOUT_SECS")
             .ok()
             .and_then(|s| s.parse::<u64>().ok())
             .unwrap_or(180u64);
@@ -487,11 +531,11 @@ impl LlmClient for OllamaChatClient {
         let mut text = String::new();
         let chat_url = format!("{}/api/chat", self.url.trim_end_matches('/'));
         // Configure non-stream attempts/timeout via env with conservative defaults
-        let max_nonstream_attempts: u32 = std::env::var("OLLAMA_NONSTREAM_ATTEMPTS")
+        let max_nonstream_attempts: u32 = env_var("OLLAMA_NONSTREAM_ATTEMPTS")
             .ok()
             .and_then(|s| s.parse().ok())
             .unwrap_or(1);
-        let nonstream_timeout_secs: u64 = std::env::var("OLLAMA_NONSTREAM_TIMEOUT_SECS")
+        let nonstream_timeout_secs: u64 = env_var("OLLAMA_NONSTREAM_TIMEOUT_SECS")
             .ok()
             .and_then(|s| s.parse().ok())
             .unwrap_or(20);
@@ -960,12 +1004,12 @@ impl LocalHttpClient {
     /// Use [`Self::allowing_remote`] to keep a caller-supplied host on reqwest's
     /// default client (proxy env and redirects). A loopback URL still uses
     /// [`loopback_http_client`].
-    pub fn new(url: String, model: String) -> Self {
+    pub fn new(url: String, model: String) -> Result<Self> {
         Self::assemble(url, model, None, false)
     }
 
     /// Create a client with an API key. The URL is loopback-only, same as [`Self::new`].
-    pub fn with_api_key(url: String, model: String, api_key: String) -> Self {
+    pub fn with_api_key(url: String, model: String, api_key: String) -> Result<Self> {
         Self::assemble(url, model, Some(api_key), false)
     }
 
@@ -974,24 +1018,33 @@ impl LocalHttpClient {
     /// A non-loopback URL uses reqwest's default client: `HTTP_PROXY`,
     /// `HTTPS_PROXY`, and `ALL_PROXY` apply, and redirects are followed. A
     /// loopback URL still uses [`loopback_http_client`].
-    pub fn allowing_remote(url: String, model: String) -> Self {
+    pub fn allowing_remote(url: String, model: String) -> Result<Self> {
         Self::assemble(url, model, None, true)
     }
 
     /// [`Self::allowing_remote`] plus a bearer token.
-    pub fn allowing_remote_with_api_key(url: String, model: String, api_key: String) -> Self {
+    pub fn allowing_remote_with_api_key(
+        url: String,
+        model: String,
+        api_key: String,
+    ) -> Result<Self> {
         Self::assemble(url, model, Some(api_key), true)
     }
 
-    fn assemble(url: String, model: String, api_key: Option<String>, allow_remote: bool) -> Self {
+    fn assemble(
+        url: String,
+        model: String,
+        api_key: Option<String>,
+        allow_remote: bool,
+    ) -> Result<Self> {
         let url = loopback_model_url(url, allow_remote);
-        let client = build_model_client(&url, allow_remote);
-        Self {
+        let client = build_model_client(&url, allow_remote)?;
+        Ok(Self {
             url,
             model,
             api_key,
             client,
-        }
+        })
     }
 }
 
@@ -1035,19 +1088,7 @@ fn url_has_userinfo(raw: &str, parsed: &url::Url) -> bool {
 
 fn is_localhost_domain(domain: &str) -> bool {
     let bare = domain.trim_end_matches('.');
-    if !(bare.eq_ignore_ascii_case("localhost") && domain.len() - bare.len() <= 1) {
-        return false;
-    }
-    // A hosts-file or DNS answer that is not 127.0.0.0/8 or ::1 is not loopback.
-    // A resolver failure stays allowed: the client pins the name to 127.0.0.1.
-    use std::net::ToSocketAddrs;
-    match ("localhost", 9u16).to_socket_addrs() {
-        Ok(addrs) => {
-            let ips: Vec<std::net::IpAddr> = addrs.map(|addr| addr.ip()).collect();
-            !ips.is_empty() && ips.iter().all(std::net::IpAddr::is_loopback)
-        }
-        Err(_) => true,
-    }
+    bare.eq_ignore_ascii_case("localhost") && domain.len() - bare.len() <= 1
 }
 
 #[cfg(feature = "ollama")]
@@ -1685,17 +1726,17 @@ mod tests {
     #[test]
     fn other_ollama_clients_keep_only_loopback_urls() {
         let remote = "https://api.openai.com";
-        let qwen = qwen3_ollama::Qwen3Ollama::new(remote, "qwen");
-        let phi = phi3_ollama::Phi3Ollama::new(remote, "phi3");
-        let hermes = hermes2pro_ollama::Hermes2ProOllama::new(remote, "hermes");
-        let chat = OllamaChatClient::new(remote.to_string(), "chat".to_string());
+        let qwen = qwen3_ollama::Qwen3Ollama::new(remote, "qwen").expect("client");
+        let phi = phi3_ollama::Phi3Ollama::new(remote, "phi3").expect("client");
+        let hermes = hermes2pro_ollama::Hermes2ProOllama::new(remote, "hermes").expect("client");
+        let chat = OllamaChatClient::new(remote.to_string(), "chat".to_string()).expect("client");
         for url in [qwen.url, phi.url, hermes.url, chat.url] {
             assert!(
                 is_loopback_http_url(&url),
                 "stored a non-loopback endpoint: {url}"
             );
         }
-        let opted = qwen3_ollama::Qwen3Ollama::allowing_remote(remote, "qwen");
+        let opted = qwen3_ollama::Qwen3Ollama::allowing_remote(remote, "qwen").expect("client");
         assert_eq!(opted.url, remote);
     }
 
@@ -1793,10 +1834,6 @@ mod tests {
     fn loopback_http_client_ignores_proxy_env_and_rejects_remote_redirects() {
         use std::io::{Read, Write};
         use std::sync::atomic::{AtomicBool, Ordering};
-        use std::sync::Mutex;
-
-        static ENV_LOCK: Mutex<()> = Mutex::new(());
-        let _guard = ENV_LOCK.lock().expect("env lock");
 
         fn spawn(response: String) -> std::net::SocketAddr {
             let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
@@ -1831,33 +1868,17 @@ mod tests {
             }
         });
 
-        let keys = [
-            "HTTP_PROXY",
-            "HTTPS_PROXY",
-            "ALL_PROXY",
-            "http_proxy",
-            "https_proxy",
-            "all_proxy",
-            "NO_PROXY",
-            "no_proxy",
-        ];
-        let saved: Vec<(&str, Option<String>)> = keys
-            .iter()
-            .map(|key| (*key, std::env::var(key).ok()))
-            .collect();
         let proxy_url = format!("http://{proxy_addr}");
-        for key in [
-            "HTTP_PROXY",
-            "HTTPS_PROXY",
-            "ALL_PROXY",
-            "http_proxy",
-            "https_proxy",
-            "all_proxy",
-        ] {
-            std::env::set_var(key, &proxy_url);
-        }
-        std::env::remove_var("NO_PROXY");
-        std::env::remove_var("no_proxy");
+        let _guard = EnvGuard::replace(&[
+            ("HTTP_PROXY", Some(proxy_url.as_str())),
+            ("HTTPS_PROXY", Some(proxy_url.as_str())),
+            ("ALL_PROXY", Some(proxy_url.as_str())),
+            ("http_proxy", Some(proxy_url.as_str())),
+            ("https_proxy", Some(proxy_url.as_str())),
+            ("all_proxy", Some(proxy_url.as_str())),
+            ("NO_PROXY", None),
+            ("no_proxy", None),
+        ]);
 
         let loopback = loopback_http_client()
             .timeout(std::time::Duration::from_secs(2))
@@ -1867,15 +1888,9 @@ mod tests {
             .timeout(std::time::Duration::from_secs(2))
             .build()
             .expect("default client");
+        drop(_guard);
 
-        for (key, value) in &saved {
-            match value {
-                Some(previous) => std::env::set_var(key, previous),
-                None => std::env::remove_var(key),
-            }
-        }
-
-        let direct_url = format!("http://{target}/");
+        let direct_url = format!("http://localhost:{}/", target.port());
         let runtime = tokio::runtime::Runtime::new().expect("runtime");
         let body = runtime.block_on(async {
             loopback
@@ -1957,13 +1972,13 @@ mod tests {
     #[test]
     fn ollama_generate_client_keeps_only_loopback_urls() {
         let remote = "https://api.openai.com";
-        let client = OllamaClient::new(remote, "llama");
+        let client = OllamaClient::new(remote, "llama").expect("client");
         assert!(
             is_loopback_http_url(&client.url),
             "stored a non-loopback endpoint: {}",
             client.url
         );
-        let opted = OllamaClient::allowing_remote(remote, "llama");
+        let opted = OllamaClient::allowing_remote(remote, "llama").expect("client");
         assert_eq!(opted.url, remote);
     }
     use astraweave_core::{
@@ -2275,7 +2290,8 @@ mod tests {
     #[test]
     fn poc_local_http_client_rejects_non_loopback_url() {
         let client =
-            LocalHttpClient::new("https://api.openai.com".to_string(), "gpt-4".to_string());
+            LocalHttpClient::new("https://api.openai.com".to_string(), "gpt-4".to_string())
+                .expect("client");
         assert!(
             is_loopback_http_url(&client.url),
             "model client stored a non-loopback endpoint: {}",
@@ -2286,7 +2302,7 @@ mod tests {
     #[cfg(feature = "ollama")]
     #[test]
     fn test_ollama_client_creation() {
-        let client = OllamaClient::new("http://localhost:11434", "llama2");
+        let client = OllamaClient::new("http://localhost:11434", "llama2").expect("client");
         assert_eq!(client.url, "http://localhost:11434");
         assert_eq!(client.model, "llama2");
     }
@@ -2297,7 +2313,8 @@ mod tests {
         let client = LocalHttpClient::new(
             "http://localhost:5000".to_string(),
             "test-model".to_string(),
-        );
+        )
+        .expect("client");
         assert_eq!(client.url, "http://localhost:5000");
         assert_eq!(client.model, "test-model");
         assert!(client.api_key.is_none());
@@ -2306,7 +2323,8 @@ mod tests {
             "http://localhost:5000".to_string(),
             "test-model".to_string(),
             "test-key".to_string(),
-        );
+        )
+        .expect("client");
         assert_eq!(client_with_key.api_key, Some("test-key".to_string()));
     }
 

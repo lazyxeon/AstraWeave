@@ -31,7 +31,7 @@ async fn main() -> anyhow::Result<()> {
     println!("{}", "🔍 Checking Phi-3 setup...".yellow());
 
     // Use fast variant for low-latency demo (phi3:game - optimized mini for 6GB VRAM)
-    let client = Phi3Ollama::fast();
+    let client = Phi3Ollama::fast().expect("model client");
 
     println!(
         "{}",

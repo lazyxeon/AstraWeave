@@ -407,10 +407,12 @@ pub fn make_system_orchestrator(
     {
         if _cfg.use_llm {
             // Build an Ollama-backed orchestrator (ollama feature is enabled via Cargo.toml feature wiring)
-            let client = astraweave_llm::OllamaChatClient::new(
+            let Ok(client) = astraweave_llm::OllamaChatClient::new(
                 _cfg.ollama_url.clone(),
                 _cfg.ollama_model.clone(),
-            );
+            ) else {
+                return Box::new(UtilityOrchestrator);
+            };
             // Optionally warm up model in the background to minimize first-token latency
             let do_warm = std::env::var("OLLAMA_WARMUP")
                 .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))

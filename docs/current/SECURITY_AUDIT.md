@@ -194,7 +194,7 @@ Local models only. No cloud provider crate is a dependency of the engine. The cl
 | `Phi3Ollama`, `Hermes2ProOllama` | `localhost` helpers | Yes. Same helper |
 | `LocalHttpClient` | Caller-supplied | Yes. Posts to `{url}/v1/chat/completions` and can attach `Authorization: Bearer` only through that client |
 
-`loopback_http_client` is the shared builder. It calls `no_proxy()`, so `HTTP_PROXY`, `HTTPS_PROXY`, and `ALL_PROXY` are ignored. Its redirect policy follows a hop only when `is_loopback_http_url` accepts the next URL, and it stops a chain at 8 hops. The name `localhost` is kept only when every resolved address is loopback, or when the resolver returns no answer. The client pins that name to `127.0.0.1` and still uses the URL port. `::1` and `127.0.0.0/8` are accepted as addresses. Userinfo is rejected.
+`loopback_http_client` is the shared builder. It calls `no_proxy()`, so `HTTP_PROXY`, `HTTPS_PROXY`, and `ALL_PROXY` are ignored. Its redirect policy follows a hop only when `is_loopback_http_url` accepts the next URL, and it stops a chain at 8 hops. The name `localhost` (optional trailing dot, any ASCII case) is a literal match. It is not resolved. The client pins that name to `127.0.0.1` and still uses the URL port. `::1` and `127.0.0.0/8` are accepted as addresses. Userinfo is rejected.
 
 `allowing_remote` is the explicit opt-in. It keeps the caller URL. When that URL is not loopback, the stored client is reqwest's default client: the proxy variables apply and redirects are followed. When the URL is still loopback, `allowing_remote` uses `loopback_http_client` anyway. `LOCAL_LLM_ALLOW_REMOTE=1` selects the opt-in in `examples/llm_integration`. The tags probe in that example uses the same split.
 

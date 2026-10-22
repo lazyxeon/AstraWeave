@@ -68,15 +68,16 @@ async fn test_ollama_client_connection_error() {
     use astraweave_llm::OllamaChatClient;
 
     // Point to a port that is likely closed
+    let _guard = astraweave_llm::EnvGuard::replace(&[
+        ("OLLAMA_TIMEOUT_SECS", Some("1")),
+        ("OLLAMA_NONSTREAM_TIMEOUT_SECS", Some("1")),
+        ("OLLAMA_NONSTREAM_ATTEMPTS", Some("1")),
+    ]);
     let client = OllamaChatClient::new(
         "http://localhost:12345".to_string(),
         "test-model".to_string(),
-    );
-
-    // Set a short timeout to fail fast
-    std::env::set_var("OLLAMA_TIMEOUT_SECS", "1");
-    std::env::set_var("OLLAMA_NONSTREAM_TIMEOUT_SECS", "1");
-    std::env::set_var("OLLAMA_NONSTREAM_ATTEMPTS", "1");
+    )
+    .expect("client");
 
     let result = client.complete("test").await;
 
@@ -97,14 +98,16 @@ async fn test_ollama_batch_execution() {
     use astraweave_llm::OllamaChatClient;
 
     // We can't easily test success without a server, but we can test the API structure
+    let _guard = astraweave_llm::EnvGuard::replace(&[
+        ("OLLAMA_TIMEOUT_SECS", Some("1")),
+        ("OLLAMA_NONSTREAM_TIMEOUT_SECS", Some("1")),
+        ("OLLAMA_NONSTREAM_ATTEMPTS", Some("1")),
+    ]);
     let client = OllamaChatClient::new(
         "http://localhost:12345".to_string(),
         "test-model".to_string(),
-    );
-
-    std::env::set_var("OLLAMA_TIMEOUT_SECS", "1");
-    std::env::set_var("OLLAMA_NONSTREAM_TIMEOUT_SECS", "1");
-    std::env::set_var("OLLAMA_NONSTREAM_ATTEMPTS", "1");
+    )
+    .expect("client");
 
     let prompts = vec!["p1".to_string(), "p2".to_string()];
     let result = client.complete_batch(&prompts).await;

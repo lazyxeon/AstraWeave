@@ -15,7 +15,7 @@ async fn test_ollama_chat_client_success() {
         .create_async()
         .await;
 
-    let client = OllamaChatClient::new(url, "test-model".to_string());
+    let client = OllamaChatClient::new(url, "test-model".to_string()).expect("model client");
     let response = client.complete("test prompt").await.unwrap();
 
     assert_eq!(response, "{\"plan_id\":\"test\"}");
@@ -33,7 +33,7 @@ async fn test_ollama_chat_client_failure() {
         .create_async()
         .await;
 
-    let client = OllamaChatClient::new(url, "test-model".to_string());
+    let client = OllamaChatClient::new(url, "test-model".to_string()).expect("model client");
     let result = client.complete("test prompt").await;
 
     assert!(result.is_err());
