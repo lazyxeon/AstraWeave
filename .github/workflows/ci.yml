@@ -332,7 +332,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        # Windows is test-full-windows-* below. One 60-minute job was still
+        # inside nextest when the clock ran out (issue #433).
+        os: [ubuntu-latest, macos-latest]
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -375,6 +377,102 @@ jobs:
               echo "$line"
             done < "$log"
           fi
+
+  # Windows Test full: compile once, then run the same profile-ci set in
+  # three partitions. Each job keeps timeout-minutes at 60. Profile ci has
+  # no default-filter, so this is the same test set as the old single job.
+  test-full-windows-build:
+    name: Test full (windows, build archive)
+    runs-on: windows-latest
+    needs: [changes, gate]
+    timeout-minutes: 60
+    if: github.event_name != 'pull_request' && needs.gate.result == 'success'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          lfs: true
+
+      - name: Rust CI setup
+        uses: ./.github/actions/rust-ci-setup
+        with:
+          install-nextest: "true"
+
+      - name: Archive tests once
+        env:
+          AW_CI_FULL: "true"
+          AW_CI_EXCLUDES: ${{ env.EXCLUDED_PACKAGES }}
+          AW_CI_ARCHIVE_OUT: target/nextest-archive.tar.zst
+          # Debuginfo is most of the Windows link time and the artifact size.
+          # Test behavior does not change.
+          CARGO_PROFILE_TEST_DEBUG: "0"
+        run: bash scripts/ci/run-tests.sh
+
+      - name: Upload the archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: nextest-archive-windows-full
+          path: target/nextest-archive.tar.zst
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+
+  test-full-windows-part:
+    name: Test full (windows, ${{ matrix.partition }}/3)
+    runs-on: windows-latest
+    needs: [changes, gate, test-full-windows-build]
+    timeout-minutes: 60
+    if: github.event_name != 'pull_request' && needs.gate.result == 'success'
+    strategy:
+      fail-fast: false
+      matrix:
+        partition: [1, 2, 3]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          lfs: true
+
+      - name: Rust CI setup
+        uses: ./.github/actions/rust-ci-setup
+        with:
+          install-nextest: "true"
+
+      - name: Build the audio device probe
+        run: cargo build --locked -p astraweave-audio --bin aw_audio_probe
+
+      - name: Download the archive
+        uses: actions/download-artifact@v4
+        with:
+          name: nextest-archive-windows-full
+          path: target
+
+      - name: Nextest partition
+        env:
+          AW_CI_ARCHIVE_RUN: target/nextest-archive.tar.zst
+          AW_CI_PARTITION: count:${{ matrix.partition }}/3
+          AW_CI_PROFILE: ci
+          AW_AUDIO_PROBE_BIN: ${{ github.workspace }}/target/debug/aw_audio_probe.exe
+        run: bash scripts/ci/run-tests.sh
+
+  test-full-windows:
+    name: Test full (windows-latest)
+    runs-on: ubuntu-latest
+    needs: [changes, gate, test-full-windows-build, test-full-windows-part]
+    if: >-
+      always() &&
+      github.event_name != 'pull_request' &&
+      needs.gate.result == 'success'
+    timeout-minutes: 5
+    steps:
+      - name: Require the archive build and every partition
+        run: |
+          set -euo pipefail
+          build="${{ needs.test-full-windows-build.result }}"
+          parts="${{ needs.test-full-windows-part.result }}"
+          echo "build=$build parts=$parts"
+          [ "$build" = "success" ]
+          [ "$parts" = "success" ]
 
   build-release:
     name: Build release (${{ matrix.os }})
