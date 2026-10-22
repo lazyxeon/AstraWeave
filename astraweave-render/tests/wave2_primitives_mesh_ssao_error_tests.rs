@@ -262,6 +262,51 @@ fn compute_tangents_triangle() {
 }
 
 #[test]
+fn compute_tangents_skewed_triangle_is_bit_exact() {
+    // Non-axis-aligned positions, normals, and UVs. The right-triangle case
+    // above is all zeros and ones, so a generator change can still pass it.
+    // These bits are the mikktspace 0.3 glam output, which matched the
+    // nalgebra 0.26 backend on the same input.
+    let mut mesh = CpuMesh {
+        vertices: vec![
+            MeshVertex::new(
+                Vec3::new(0.2, 0.1, 0.3),
+                Vec3::new(0.2, 0.3, 0.9),
+                Vec4::ZERO,
+                Vec2::new(0.15, 0.2),
+            ),
+            MeshVertex::new(
+                Vec3::new(1.7, -0.4, 0.2),
+                Vec3::new(0.1, 0.2, 0.97),
+                Vec4::ZERO,
+                Vec2::new(0.9, 0.1),
+            ),
+            MeshVertex::new(
+                Vec3::new(0.3, 1.2, -0.5),
+                Vec3::new(-0.1, 0.4, 0.91),
+                Vec4::ZERO,
+                Vec2::new(0.4, 0.85),
+            ),
+        ],
+        indices: vec![0, 1, 2],
+        ..Default::default()
+    };
+    compute_tangents(&mut mesh);
+    assert_eq!(
+        mesh.vertices[0].tangent,
+        [0.9666559, -0.21167073, -0.14412461, 1.0]
+    );
+    assert_eq!(
+        mesh.vertices[1].tangent,
+        [0.97886413, -0.19505063, -0.061484244, 1.0]
+    );
+    assert_eq!(
+        mesh.vertices[2].tangent,
+        [0.9848078, -0.0913371, 0.14768633, 1.0]
+    );
+}
+
+#[test]
 fn compute_tangents_non_divisible_by_3_is_noop() {
     let mut mesh = CpuMesh {
         vertices: vec![MeshVertex::new(Vec3::ZERO, Vec3::Y, Vec4::ZERO, Vec2::ZERO)],

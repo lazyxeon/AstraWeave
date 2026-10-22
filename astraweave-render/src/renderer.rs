@@ -1270,13 +1270,18 @@ pub struct Renderer {
     terrain_shadow_stats: [(u32, u32); CASCADE_COUNT],
 }
 
-/// Gated presentation choices. `Measured` leaves atmosphere off.
+/// Gated presentation choices.
+///
+/// `Atmosphere` is the enum default after the 4.474 ms capture. It does not
+/// enable volumetric fog, and `Renderer::new` does not read this enum.
+/// `Measured` turns Bruneton off. A caller applies either with
+/// `set_atmosphere_enabled(quality.atmosphere())`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum PresentationQuality {
-    /// Matches the published heavy scene: atmosphere off.
-    #[default]
+    /// Bruneton off.
     Measured,
-    /// Atmosphere on. Not the default until a 1660 Ti heavy-scene median is ≤ 11 ms.
+    /// Bruneton on when a caller applies it. Fog stays `set_volumetric_fog_config`.
+    #[default]
     Atmosphere,
 }
 
@@ -3914,6 +3919,8 @@ fn vs(input: VSIn) -> VSOut {
             particle_sort: None,
             particle_emitter: None,
             particle_depth_copy: None,
+            // Off until a caller has built Aravath fog. Sky-only Bruneton
+            // scatters geometry out to 50 km, which is not the 4.474 ms cell.
             atmosphere_on: false,
             cloud_raymarch_on: false,
             ssgi_on: false,
@@ -5709,9 +5716,11 @@ fn vs(input: VSIn) -> VSOut {
         self.atmosphere_on = enabled;
     }
 
-    /// Bruneton sky plus aerial perspective. Off until
-    /// `gpu_frame_budget --scene heavy --atmosphere` prints
-    /// `median_gpu_frame_ms` at or under 11 on a GTX 1660 Ti.
+    /// Bruneton sky plus aerial perspective. The field starts false.
+    /// Turning it on with fog and shafts off makes `record_bruneton` scatter
+    /// geometry out to 50 km. The 4.474 ms cell builds both passes, so that
+    /// distance is 0. The game sets the field only after those passes build.
+    /// `PresentationQuality::Measured` is the off value a caller can apply.
     #[must_use]
     pub fn atmosphere_enabled(&self) -> bool {
         self.atmosphere_on
@@ -6385,6 +6394,18 @@ fn vs(input: VSIn) -> VSOut {
         self.god_rays
             .as_ref()
             .is_some_and(|rays| rays.config().enabled)
+    }
+
+    /// Drop froxel fog and light shafts.
+    ///
+    /// `catch_unwind` does not undo a setter that already stored its pass.
+    /// A panic between the two builds can leave fog enabled. This drops both.
+    /// It does not change `atmosphere_on`. With fog and shafts gone, Bruneton
+    /// scatters geometry out to 50 km. The caller must also call
+    /// `set_atmosphere_enabled(false)` to stay on the HDRI sky.
+    pub fn clear_volumetric_passes(&mut self) {
+        self.volumetric_fog = None;
+        self.god_rays = None;
     }
 
     /// Composite engine volumetric fog, then screen-space light shafts, into HDR.

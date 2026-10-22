@@ -1241,7 +1241,6 @@ fn light_the_world(renderer: &mut Renderer, volumetrics: bool) {
     // map. The default strength darkens that soft lobe so it reads on the ground.
     renderer.set_cloud_shadows_enabled(true);
     renderer.set_cloud_shadow_strength(astraweave_render::volumetric_clouds::CLOUD_SHADOW_STRENGTH);
-    renderer.set_atmosphere_enabled(astraweave_render::PresentationQuality::default().atmosphere());
     renderer
         .scene_environment_mut()
         .set_biome(BiomeType::Grassland);
@@ -1262,6 +1261,8 @@ fn light_the_world(renderer: &mut Renderer, volumetrics: bool) {
         ..SkyConfig::default()
     });
     if !volumetrics {
+        // Bruneton without fog was not the 4.474 ms cell.
+        renderer.set_atmosphere_enabled(false);
         startup::line("volumetrics off (--no-volumetrics, --safe, or aravath.cfg)");
         return;
     }
@@ -1279,9 +1280,21 @@ fn light_the_world(renderer: &mut Renderer, volumetrics: bool) {
         });
     }));
     if built.is_err() {
+        // A setter that already returned keeps its pass. Drop both so the
+        // HDRI sky is not composited with a half-built fog or shaft pass.
+        renderer.clear_volumetric_passes();
+        renderer.set_atmosphere_enabled(false);
         startup::line(
-            "volumetrics panicked during setup; continuing without fog and light shafts. Relaunch with --no-volumetrics.",
+            "volumetrics panicked during setup; continuing without fog, light shafts, and Bruneton. Relaunch with --no-volumetrics.",
         );
+        return;
+    }
+    let ready = renderer.volumetric_fog_enabled()
+        && renderer.god_rays_enabled()
+        && astraweave_render::PresentationQuality::default().atmosphere();
+    renderer.set_atmosphere_enabled(ready);
+    if !ready {
+        startup::line("fog or light shafts did not build; Bruneton left off.");
     } else {
         startup::stage("volumetrics ready");
     }
@@ -1437,14 +1450,6 @@ fn smoke_test(volumetrics: bool) -> anyhow::Result<()> {
         Err(err) => return Err(err),
     };
     startup::stage("headless renderer ready");
-    let quality = astraweave_render::PresentationQuality::default();
-    renderer.set_atmosphere_enabled(quality.atmosphere());
-    if renderer.atmosphere_enabled() != quality.atmosphere() {
-        anyhow::bail!(
-            "atmosphere flag does not follow PresentationQuality. {}",
-            startup::log_locations()
-        );
-    }
     if volumetrics {
         startup::stage("volumetrics on");
         renderer.set_volumetric_fog_config(
@@ -1463,6 +1468,16 @@ fn smoke_test(volumetrics: bool) -> anyhow::Result<()> {
                 startup::log_locations()
             );
         }
+        renderer
+            .set_atmosphere_enabled(astraweave_render::PresentationQuality::default().atmosphere());
+        if renderer.atmosphere_enabled()
+            != astraweave_render::PresentationQuality::default().atmosphere()
+        {
+            anyhow::bail!(
+                "atmosphere flag does not follow PresentationQuality. {}",
+                startup::log_locations()
+            );
+        }
         startup::stage("submit validation frame");
         renderer.submit_headless_frame()?;
         renderer.submit_headless_frame()?;
@@ -1473,6 +1488,8 @@ fn smoke_test(volumetrics: bool) -> anyhow::Result<()> {
             );
         }
         startup::stage("volumetrics ready");
+    } else {
+        renderer.set_atmosphere_enabled(false);
     }
     startup::stage("smoke ok");
     Ok(())
