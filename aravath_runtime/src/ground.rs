@@ -138,6 +138,8 @@ impl Ground {
         }
         // ColumnStream is the loaded set. Island columns still fill the
         // voxels, so the #205 heightfield stays the one the replay hashes.
+        // Props are the integer forest record. Their Y is the island surface
+        // until those voxels switch.
         let delta = self.stream.around(center.x, center.z, radius);
         for &(x, z) in delta.added() {
             let coord = ChunkCoord::new(x, 0, z);
@@ -471,144 +473,34 @@ pub fn gather_spots(chunks: &HashMap<(i32, i32, i32), Vec<PropSpot>>) -> Vec<Pro
 
 fn scatter_chunk(coord: ChunkCoord) -> Vec<PropSpot> {
     let origin = coord.to_world_pos();
-    let mut spots = Vec::new();
-    let size = astraweave_terrain::CHUNK_SIZE;
-    let mut x = 2;
-    while x < size - 2 {
-        let mut z = 2;
-        while z < size - 2 {
-            let wx = origin.x as i32 + x;
-            let wz = origin.z as i32 + z;
-            if island::on_yaqar_road(wx, wz) {
-                z += 5;
-                continue;
+    column_gen::scatter_chunk(origin.x as i32, origin.z as i32)
+        .into_iter()
+        .map(|prop| {
+            let ground = island::surface_height(prop.x, prop.z);
+            PropSpot {
+                kind: prop_kind(prop.kind),
+                variant: 0,
+                position: Vec3::new(
+                    prop.x as f32 + 0.5,
+                    ground as f32 + 0.55,
+                    prop.z as f32 + 0.5,
+                ),
+                yaw: prop.yaw_quanta as f32 / 255.0 * std::f32::consts::TAU,
+                scale: f32::from(prop.scale_milli) / 1000.0,
             }
-            let h = island::surface_height(wx, wz);
-            let n = mix(wx, wz);
-            let yaw = (n & 255) as f32 / 255.0 * std::f32::consts::TAU;
-            let position = Vec3::new(wx as f32 + 0.5, h as f32 + 0.55, wz as f32 + 0.5);
-            match biome_at(wx, wz) {
-                Biome::Grass => {
-                    let scale = 0.9 + ((n >> 8) & 7) as f32 * 0.04;
-                    if n % 3 == 0 {
-                        spots.push(PropSpot {
-                            kind: PropKind::ForestTuft,
-                            variant: (n % 2) as u8,
-                            position,
-                            yaw,
-                            scale,
-                        });
-                    }
-                    if n % 6 == 0 {
-                        spots.push(PropSpot {
-                            kind: PropKind::ForestBush,
-                            variant: ((n / 6) % 2) as u8,
-                            position,
-                            yaw,
-                            scale,
-                        });
-                    }
-                    if n % 4 == 0 {
-                        spots.push(PropSpot {
-                            kind: PropKind::ForestTree,
-                            variant: (n % 4) as u8,
-                            position,
-                            yaw,
-                            scale: scale + 0.15,
-                        });
-                    }
-                    if n % 11 == 0 {
-                        spots.push(PropSpot {
-                            kind: PropKind::ForestRock,
-                            variant: (n % 2) as u8,
-                            position,
-                            yaw,
-                            scale: scale * 0.75,
-                        });
-                    }
-                    if n % 17 == 0 {
-                        spots.push(PropSpot {
-                            kind: PropKind::Crate,
-                            variant: 0,
-                            position,
-                            yaw,
-                            scale: 0.8,
-                        });
-                    }
-                    if n % 19 == 0 {
-                        spots.push(PropSpot {
-                            kind: PropKind::Gem,
-                            variant: 0,
-                            position,
-                            yaw,
-                            scale: 0.7,
-                        });
-                    }
-                    if n % 23 == 0 {
-                        spots.push(PropSpot {
-                            kind: PropKind::Nugget,
-                            variant: (n % 3) as u8,
-                            position,
-                            yaw,
-                            scale: 0.65,
-                        });
-                    }
-                    if n % 29 == 0 {
-                        spots.push(PropSpot {
-                            kind: PropKind::Gear,
-                            variant: (n % 2) as u8,
-                            position,
-                            yaw,
-                            scale: 0.7,
-                        });
-                    }
-                }
-                Biome::Sand => {
-                    if n % 6 == 0 {
-                        spots.push(PropSpot {
-                            kind: PropKind::Palm,
-                            variant: 0,
-                            position,
-                            yaw,
-                            scale: 3.0,
-                        });
-                    }
-                    if n % 8 == 0 {
-                        spots.push(PropSpot {
-                            kind: PropKind::Rock,
-                            variant: 0,
-                            position,
-                            yaw,
-                            scale: 1.8,
-                        });
-                    }
-                }
-                Biome::Rock => {
-                    if n % 4 == 0 {
-                        spots.push(PropSpot {
-                            kind: PropKind::Rock,
-                            variant: 0,
-                            position,
-                            yaw,
-                            scale: 2.4,
-                        });
-                    }
-                    if n % 11 == 0 {
-                        spots.push(PropSpot {
-                            kind: PropKind::Pine,
-                            variant: 0,
-                            position,
-                            yaw,
-                            scale: 2.6,
-                        });
-                    }
-                }
-            }
-            z += 5;
-        }
-        x += 5;
+        })
+        .collect()
+}
+
+fn prop_kind(kind: column_gen::ForestProp) -> PropKind {
+    match kind {
+        column_gen::ForestProp::Oak => PropKind::Oak,
+        column_gen::ForestProp::Pine => PropKind::Pine,
+        column_gen::ForestProp::Palm => PropKind::Palm,
+        column_gen::ForestProp::Rock => PropKind::Rock,
+        column_gen::ForestProp::Grass => PropKind::Grass,
+        column_gen::ForestProp::Bush => PropKind::Bush,
     }
-    spots
 }
 
 fn sort_coords(coords: &mut [ChunkCoord]) {
@@ -784,40 +676,26 @@ mod tests {
     }
 
     #[test]
-    fn grass_hills_scatter_kaykit_forest_props() {
-        let mut spots = Vec::new();
-        for x in 0..3 {
-            for z in 0..3 {
-                spots.extend(scatter_chunk(astraweave_terrain::ChunkCoord::new(x, 0, z)));
-            }
+    fn window_props_follow_the_column_record() {
+        let coord = astraweave_terrain::ChunkCoord::new(0, 0, 0);
+        let origin = coord.to_world_pos();
+        let record = column_gen::scatter_chunk(origin.x as i32, origin.z as i32);
+        let spots = scatter_chunk(coord);
+        assert_eq!(spots.len(), record.len());
+        assert!(!record.is_empty());
+        for (spot, prop) in spots.iter().zip(record.iter()) {
+            assert_eq!(spot.kind, prop_kind(prop.kind));
+            assert_eq!(spot.position.x, prop.x as f32 + 0.5);
+            assert_eq!(spot.position.z, prop.z as f32 + 0.5);
+            let ground = island::surface_height(prop.x, prop.z);
+            assert_eq!(spot.position.y, ground as f32 + 0.55);
+            assert_eq!(
+                spot.yaw,
+                prop.yaw_quanta as f32 / 255.0 * std::f32::consts::TAU
+            );
+            assert_eq!(spot.scale, f32::from(prop.scale_milli) / 1000.0);
+            assert!(!island::on_yaqar_road(prop.x, prop.z));
         }
-        assert!(
-            spots.iter().any(|spot| spot.kind == PropKind::ForestTree),
-            "western hills should include a forest tree"
-        );
-        assert!(spots.iter().any(|spot| spot.kind == PropKind::ForestTuft));
-        assert!(spots.iter().any(|spot| spot.kind == PropKind::Crate));
-        assert!(spots.iter().any(|spot| spot.kind == PropKind::Gem));
-        assert!(spots.iter().any(|spot| spot.kind == PropKind::Nugget));
-        assert!(spots
-            .iter()
-            .any(|spot| spot.kind == PropKind::Gear && spot.variant == 0));
-        assert!(spots
-            .iter()
-            .any(|spot| spot.kind == PropKind::Gear && spot.variant == 1));
-        assert!(spots.iter().all(|spot| match spot.kind {
-            PropKind::ForestTree
-            | PropKind::ForestBush
-            | PropKind::ForestTuft
-            | PropKind::ForestRock
-            | PropKind::Crate
-            | PropKind::Gem
-            | PropKind::Nugget
-            | PropKind::Gear => {
-                !island::on_yaqar_road(spot.position.x as i32, spot.position.z as i32)
-            }
-            _ => true,
-        }));
     }
 
     #[test]
