@@ -148,47 +148,57 @@ pub fn load_dialogue_from_file(path: &std::path::Path) -> Result<LoadedDialogue>
 /// Text files a player can read: dialogue, quests, echoes, voices, recipes,
 /// npc lines, cinematic cards, and cell copy. Walks those directories
 /// recursively. Tooling manifests and binary packs are not included.
-fn player_facing_asset_files(root: &std::path::Path) -> Vec<std::path::PathBuf> {
-    const FILES: &[&str] = &[
-        "dialogue_intro.toml",
-        "dialogue_audio_map.toml",
-        "quests_main.toml",
-        "echoes.toml",
-        "voices.toml",
-        "recipes.toml",
-        "zones.json",
-    ];
-    const DIRS: &[&str] = &["npc", "cinematics", "cells"];
+const PLAYER_FACING_FILES: &[&str] = &[
+    "dialogue_intro.toml",
+    "dialogue_audio_map.toml",
+    "quests_main.toml",
+    "echoes.toml",
+    "voices.toml",
+    "recipes.toml",
+    "zones.json",
+];
+const PLAYER_FACING_DIRS: &[&str] = &["npc", "cinematics", "cells"];
+/// Below this, a scan of the real asset tree dropped a directory or failed open.
+const MIN_PLAYER_FACING_FILES: usize = 20;
+
+fn player_facing_asset_files(root: &std::path::Path) -> Result<Vec<std::path::PathBuf>> {
     let mut files = Vec::new();
-    for name in FILES {
+    for name in PLAYER_FACING_FILES {
         let path = root.join(name);
-        if path.is_file() {
-            files.push(path);
+        if !path.is_file() {
+            anyhow::bail!("missing player-facing file {}", path.display());
         }
+        files.push(path);
     }
-    for name in DIRS {
-        walk_player_text(&root.join(name), &mut files);
+    for name in PLAYER_FACING_DIRS {
+        let dir = root.join(name);
+        if !dir.is_dir() {
+            anyhow::bail!("missing player-facing directory {}", dir.display());
+        }
+        walk_player_text(&dir, &mut files)?;
     }
     files.sort();
-    files
+    Ok(files)
 }
 
-fn walk_player_text(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
-    let Ok(entries) = std::fs::read_dir(dir) else {
-        return;
-    };
-    let mut paths: Vec<_> = entries
-        .filter_map(|entry| entry.ok())
-        .map(|entry| entry.path())
-        .collect();
+fn walk_player_text(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) -> Result<()> {
+    let entries = std::fs::read_dir(dir)
+        .with_context(|| format!("reading player-facing directory {}", dir.display()))?;
+    let mut paths = Vec::new();
+    for entry in entries {
+        let entry =
+            entry.with_context(|| format!("reading player-facing directory {}", dir.display()))?;
+        paths.push(entry.path());
+    }
     paths.sort();
     for path in paths {
         if path.is_dir() {
-            walk_player_text(&path, out);
+            walk_player_text(&path, out)?;
         } else if is_player_text(&path) {
             out.push(path);
         }
     }
+    Ok(())
 }
 
 fn is_player_text(path: &std::path::Path) -> bool {
@@ -315,12 +325,22 @@ choices = [{ text = "Go", go_to = "does_not_exist" }]
             std::fs::create_dir_all(path.parent().unwrap()).unwrap();
             std::fs::write(path, "ok\n").unwrap();
         }
+        for name in [
+            "dialogue_intro.toml",
+            "dialogue_audio_map.toml",
+            "echoes.toml",
+            "voices.toml",
+            "recipes.toml",
+            "zones.json",
+        ] {
+            std::fs::write(root.join(name), "ok\n").unwrap();
+        }
         // A binary and a tooling manifest must stay out of the scan.
         std::fs::create_dir_all(root.join("models")).unwrap();
         std::fs::write(root.join("models/prop.bin"), [0u8, 1]).unwrap();
         std::fs::write(root.join("asset_manifest.toml"), "tooling\n").unwrap();
 
-        let files = player_facing_asset_files(&root);
+        let files = player_facing_asset_files(&root).expect("player-facing scan");
         let _ = std::fs::remove_dir_all(&root);
         for path in &nested {
             assert!(
@@ -340,8 +360,14 @@ choices = [{ text = "Go", go_to = "does_not_exist" }]
     #[test]
     fn player_facing_assets_do_not_say_veilweaver() {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../assets");
+        let files = player_facing_asset_files(&root).expect("player-facing scan");
+        assert!(
+            files.len() >= MIN_PLAYER_FACING_FILES,
+            "scanned {} player-facing files, need at least {MIN_PLAYER_FACING_FILES}",
+            files.len()
+        );
         let mut hits = Vec::new();
-        for path in player_facing_asset_files(&root) {
+        for path in files {
             let text = std::fs::read_to_string(&path)
                 .unwrap_or_else(|err| panic!("reading {}: {err}", path.display()));
             if text.to_ascii_lowercase().contains("veilweaver") {
@@ -355,18 +381,32 @@ choices = [{ text = "Go", go_to = "does_not_exist" }]
     }
 
     #[test]
+    fn player_facing_scan_fails_when_a_required_file_is_missing() {
+        let root =
+            std::env::temp_dir().join(format!("aw-player-facing-miss-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("npc")).unwrap();
+        let err = player_facing_asset_files(&root).expect_err("missing files must fail");
+        let _ = std::fs::remove_dir_all(&root);
+        let message = format!("{err:#}");
+        assert!(
+            message.contains("missing player-facing"),
+            "unexpected scan error: {message}"
+        );
+    }
+
+    #[test]
     fn load_actual_intro_dialogue() {
         let path =
             std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../assets/dialogue_intro.toml");
-        if path.exists() {
-            let loaded = load_dialogue_from_file(&path).unwrap();
-            assert_eq!(loaded.dialogue_id, "intro");
-            assert_eq!(loaded.start_node, "n0");
-            assert!(loaded.graph.node_count() >= 15);
-            assert!(loaded.graph.is_valid());
-            // Storm choice node must be present.
-            assert!(loaded.graph.has_node("storm_stabilize"));
-            assert!(loaded.graph.has_node("storm_redirect"));
-        }
+        assert!(path.is_file(), "missing intro dialogue {}", path.display());
+        let loaded = load_dialogue_from_file(&path).unwrap();
+        assert_eq!(loaded.dialogue_id, "intro");
+        assert_eq!(loaded.start_node, "n0");
+        assert!(loaded.graph.node_count() >= 15);
+        assert!(loaded.graph.is_valid());
+        // Storm choice node must be present.
+        assert!(loaded.graph.has_node("storm_stabilize"));
+        assert!(loaded.graph.has_node("storm_redirect"));
     }
 }
