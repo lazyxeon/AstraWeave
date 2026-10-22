@@ -49,7 +49,7 @@ cargo editor
 | Toolchain | Rust 1.89.0, pinned in `rust-toolchain.toml` |
 | Replay | Nineteen required cases. The list and the golden are in [engine status](docs/current/ENGINE_STATUS.md). |
 | Frame | The target and the measured sample are in [engine status](docs/current/ENGINE_STATUS.md). |
-| Snapshot | The previous root page, citations included, is [the moved README](docs/current/ROOT_README_MOVED.md). |
+| Snapshot | The previous root page, citations included, is the [project brief](docs/current/PROJECT_BRIEF.md). |
 
 ## In progress
 

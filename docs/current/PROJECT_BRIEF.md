@@ -1,4 +1,4 @@
-# Root README, moved
+# Project brief
 
 This is the root README as it stood before the landing page. It is a snapshot. Live status is [ENGINE_STATUS.md](ENGINE_STATUS.md). Do not treat the commit SHAs in this file as the current main.
 
