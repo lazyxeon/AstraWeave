@@ -103,6 +103,7 @@ jobs:
           libasound2-dev mesa-vulkan-drivers libvulkan1 libudev-dev pkg-config
     
     - name: Test astraweave-render
+      id: render
       # A SIGSEGV here must fail the workflow. Do not put continue-on-error
       # back on this step or on the job: libvulkan 1.4.341 faults when
       # several threads load every Mesa ICD, and that exit used to go yellow.
@@ -112,28 +113,39 @@ jobs:
         echo "::endgroup::"
     
     - name: Test terrain materials
+      id: terrain
       run: |
         echo "::group::Testing terrain material system"
-        cargo test -p astraweave-render test_terrain_material -- --nocapture
+        cargo test -p astraweave-render --all-features test_terrain_material -- --nocapture
         echo "::endgroup::"
     
     - name: Test advanced materials
+      id: advanced
       run: |
         echo "::group::Testing advanced PBR features"
-        cargo test -p astraweave-render test_pbr_advanced -- --nocapture
+        cargo test -p astraweave-render --all-features test_pbr_advanced -- --nocapture
         echo "::endgroup::"
     
     - name: Generate test summary
       if: always()
       run: |
-        echo "## 🧪 PBR Test Summary" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo "### Tested Components:" >> $GITHUB_STEP_SUMMARY
-        echo "- ✅ astraweave-render (core PBR)" >> $GITHUB_STEP_SUMMARY
-        echo "- ✅ Terrain material system (Phase PBR-F)" >> $GITHUB_STEP_SUMMARY
-        echo "- ✅ Advanced materials (Phase PBR-E)" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo "See job logs for detailed test results." >> $GITHUB_STEP_SUMMARY
+        mark() {
+          if [ "$1" = "success" ]; then
+            printf '%s' "✅"
+          else
+            printf '%s' "❌"
+          fi
+        }
+        {
+          echo "## PBR Test Summary"
+          echo
+          echo "### Tested Components:"
+          echo "- $(mark "${{ steps.render.outcome }}") astraweave-render (core PBR)"
+          echo "- $(mark "${{ steps.terrain.outcome }}") Terrain material system (Phase PBR-F)"
+          echo "- $(mark "${{ steps.advanced.outcome }}") Advanced materials (Phase PBR-E)"
+          echo
+          echo "See job logs for detailed test results."
+        } >> "$GITHUB_STEP_SUMMARY"
   
   validate-shaders:
     name: Validate WGSL Shaders

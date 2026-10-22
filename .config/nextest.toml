@@ -12,10 +12,16 @@ retries = 0
 slow-timeout = { period = "300s", terminate-after = 1 }
 
 # aw_headless forbids unsafe, so it cannot link the render .init_array.
-# One libtest thread keeps InstanceDescriptor::default() off the loader race.
+# `ci-pr` and `ci-pr-archive` inherit this override. `max-threads` is the
+# nextest slot count for the group (one aw_headless test process at a time).
+# `threads` is not an override field. Nextest warns and ignores it, so that
+# line did not limit anything.
+[test-groups.aw-headless-serial]
+max-threads = 1
+
 [[profile.ci.overrides]]
 filter = 'package(aw_headless)'
-threads = 1
+test-group = 'aw-headless-serial'
 
 # Pull-request profile. Inherits retries and the determinism override.
 # default-filter drops only the tests named in scripts/ci/deferred_pr_tests.txt
