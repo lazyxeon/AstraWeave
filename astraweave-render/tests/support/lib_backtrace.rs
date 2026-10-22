@@ -7,15 +7,17 @@
 //! `draw_into`. The stacks are `LockTrace::enter` → `Backtrace::capture` →
 //! the unwind walker. Panic backtraces still follow `RUST_BACKTRACE`.
 //!
-//! The standard library caches the env var on the first capture, so this has
-//! to run before any device exists.
+//! `Backtrace::enabled` caches the first answer in a process-global
+//! `AtomicU8`. A later `set_var` does nothing once anything has captured.
+//! The CI job sets `RUST_LIB_BACKTRACE=0` in the environment before `main`.
+//! This call is only the local backstop, and it has to be the first thing
+//! the test does, before any other test in the binary constructs a device.
 
 /// Disable library backtraces for the rest of this process.
 pub fn disable_library_backtraces() {
-    // SAFETY: this test binary calls this on the test thread before it spawns
-    // work or creates a wgpu device, so nothing else is reading the backtrace
-    // environment cache yet. `set_var` is unsafe because a concurrent `getenv`
-    // would race; there is no such caller here.
+    // SAFETY: this test calls this before it spawns work or creates a wgpu
+    // device. `set_var` is unsafe because a concurrent `getenv` would race.
+    // It cannot undo a capture that already cached `enabled == true`.
     unsafe {
         std::env::set_var("RUST_LIB_BACKTRACE", "0");
     }

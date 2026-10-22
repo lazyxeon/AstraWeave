@@ -8,7 +8,6 @@ on:
   pull_request:
     paths:
       - "astraweave-render/**"
-      - "astraweave-ecs/**"
       - ".github/workflows/frame-alloc-sites.yml"
       - ".github/workflows/pbr-pipeline-ci.yml"
   workflow_dispatch:
@@ -28,6 +27,9 @@ jobs:
     env:
       CARGO_TERM_COLOR: always
       RUST_BACKTRACE: "1"
+      # Must be set before main. Backtrace::enabled caches the first read,
+      # so a set_var inside the test cannot turn capture back off.
+      RUST_LIB_BACKTRACE: "0"
     steps:
       - uses: actions/checkout@v5
 

@@ -48,6 +48,9 @@ fn record(renderer: &mut Renderer, view: &wgpu::TextureView) {
 
 #[test]
 fn draw_into_allocates_nothing_after_warmup() {
+    // Before `new_headless` starts `texture-stream`. The first `backtrace`
+    // loads `libgcc_s`; that must not happen inside the global allocator.
+    astraweave_ecs::counting_alloc::prime_alloc_trace();
     lib_backtrace::disable_library_backtraces();
     pollster::block_on(async {
         let mut renderer = Renderer::new_headless(64, 64)

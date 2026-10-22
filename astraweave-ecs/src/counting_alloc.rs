@@ -107,6 +107,13 @@ unsafe impl GlobalAlloc for CountingAlloc {
 
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
         let size = layout.size();
+        // A free that happens while this thread is inside the tracer belongs
+        // to the tracer, not the measured region. Counting it moves
+        // `deallocs` without a matching `allocs` entry.
+        #[cfg(unix)]
+        if trace::in_tracer() {
+            return INNER.dealloc(ptr, layout);
+        }
         DEALLOCS.fetch_add(1, Ordering::Relaxed);
         BYTES_DEALLOCATED.fetch_add(size, Ordering::Relaxed);
         astraweave_profiling::counters::record_dealloc(size);
@@ -230,12 +237,25 @@ pub struct AllocTrace {
     pub report: String,
 }
 
+/// Load the unwind library before any other thread exists.
+///
+/// `Renderer::new_headless` starts the `texture-stream` thread. The first
+/// `backtrace` `dlopen`s `libgcc_s` under the loader lock. That has to happen
+/// here, on the calling thread, not inside `GlobalAlloc::alloc`.
+pub fn prime_alloc_trace() {
+    #[cfg(unix)]
+    {
+        trace::prime();
+    }
+}
+
 /// Start recording call stacks for counted allocations.
 ///
 /// The table is fixed and reserved before the flag is set, so recording a site
 /// does not allocate. Call [`end_alloc_trace`] on the same thread when the
 /// region ends. Nested or re-entered allocations (the capture itself) are
-/// ignored until the outer allocation returns.
+/// ignored until the outer allocation returns. Call [`prime_alloc_trace`]
+/// before starting other threads.
 pub fn begin_alloc_trace() {
     #[cfg(unix)]
     {
@@ -283,7 +303,7 @@ mod trace {
     use std::cell::Cell;
     use std::cell::UnsafeCell;
     use std::collections::HashMap;
-    use std::ffi::{c_char, c_void};
+    use std::ffi::{c_char, c_void, CStr};
     use std::sync::atomic::{AtomicBool, Ordering};
 
     const MAX_FRAMES: usize = 24;
@@ -294,6 +314,8 @@ mod trace {
     thread_local! {
         static IN_TRACE: Cell<bool> = const { Cell::new(false) };
     }
+
+    static PRIMED: AtomicBool = AtomicBool::new(false);
 
     #[derive(Clone, Copy)]
     struct Site {
@@ -368,6 +390,22 @@ mod trace {
         TRACE.store(true, Ordering::SeqCst);
     }
 
+    /// Load `libgcc_s` on this thread. The first `backtrace` runs
+    /// `__libc_dlopen` of that library and takes the loader lock. Call this
+    /// before any other thread exists. `record` does not call `backtrace`
+    /// until this has run, so the allocator never performs that `dlopen`.
+    pub(super) fn prime() {
+        if PRIMED.swap(true, Ordering::SeqCst) {
+            return;
+        }
+        let mut raw = [std::ptr::null_mut::<c_void>(); 8];
+        // SAFETY: `raw` has 8 slots and that is the length passed in. This
+        // runs outside the allocator, on the thread that calls `prime`.
+        unsafe {
+            backtrace(raw.as_mut_ptr(), 8);
+        }
+    }
+
     pub(super) fn end() -> AllocTrace {
         let (sites, dropped) = {
             // Clear the flag while holding the lock so an in-flight recorder
@@ -383,48 +421,59 @@ mod trace {
         format_sites(&sites, dropped)
     }
 
-    /// Record this stack, or return `false` when already inside a capture.
-    pub(super) fn record_or_reentered(size: usize) -> bool {
-        let reentered = IN_TRACE.with(|flag| {
-            if flag.get() {
-                return true;
-            }
-            flag.set(true);
-            false
-        });
-        if reentered {
-            return false;
-        }
-        record(size);
-        IN_TRACE.with(|flag| flag.set(false));
-        true
+    pub(super) fn in_tracer() -> bool {
+        IN_TRACE.try_with(|flag| flag.get()).unwrap_or(false)
     }
 
-    fn record(size: usize) {
-        let mut raw = [std::ptr::null_mut::<c_void>(); MAX_FRAMES];
-        // SAFETY: `raw` holds `MAX_FRAMES` pointers and that length is the
-        // second argument. `backtrace` writes at most that many frames.
-        let n = unsafe { backtrace(raw.as_mut_ptr(), MAX_FRAMES as i32) };
-        let n = usize::try_from(n).unwrap_or(0).min(MAX_FRAMES);
-        let mut frames = [0usize; MAX_FRAMES];
-        for (slot, ptr) in frames.iter_mut().zip(raw.iter()).take(n) {
-            *slot = *ptr as usize;
+    /// Record this stack. `false` means do not count the allocation: this
+    /// thread is already inside the tracer, thread-local storage is gone, or
+    /// `end_alloc_trace` cleared the flag before the stack was stored.
+    pub(super) fn record_or_reentered(size: usize) -> bool {
+        let entered = match IN_TRACE.try_with(|flag| {
+            if flag.get() {
+                return false;
+            }
+            flag.set(true);
+            true
+        }) {
+            Ok(true) => true,
+            Ok(false) | Err(_) => return false,
+        };
+        let _ = entered;
+        // `try_with` during thread-local teardown must not panic and leave
+        // the flag set, or every later alloc on this thread would be skipped.
+        struct Reset;
+        impl Drop for Reset {
+            fn drop(&mut self) {
+                let _ = IN_TRACE.try_with(|flag| flag.set(false));
+            }
         }
+        let _reset = Reset;
+        record(size)
+    }
+
+    fn record(size: usize) -> bool {
+        let mut frames = [0usize; MAX_FRAMES];
+        let n = if PRIMED.load(Ordering::Relaxed) {
+            capture_with_backtrace(&mut frames)
+        } else {
+            0
+        };
         let nframes = u8::try_from(n).unwrap_or(u8::MAX);
         with_table(|table| {
             if !TRACE.load(Ordering::Relaxed) {
-                return;
+                return false;
             }
             for site in table.sites.iter_mut().take(table.used) {
                 if site.nframes == nframes && site.frames[..n] == frames[..n] {
                     site.count = site.count.saturating_add(1);
                     site.bytes = site.bytes.saturating_add(size as u64);
-                    return;
+                    return true;
                 }
             }
             if table.used >= MAX_SITES {
                 table.dropped = table.dropped.saturating_add(1);
-                return;
+                return true;
             }
             table.sites[table.used] = Site {
                 frames,
@@ -433,7 +482,21 @@ mod trace {
                 bytes: size as u64,
             };
             table.used += 1;
-        });
+            true
+        })
+    }
+
+    fn capture_with_backtrace(out: &mut [usize]) -> usize {
+        let mut raw = [std::ptr::null_mut::<c_void>(); MAX_FRAMES];
+        let slots = i32::try_from(raw.len()).unwrap_or(0);
+        // SAFETY: `raw` has `slots` entries. `libgcc_s` was loaded by `prime`
+        // before any other thread existed, so this call does not `dlopen`.
+        let n = unsafe { backtrace(raw.as_mut_ptr(), slots) };
+        let n = usize::try_from(n).unwrap_or(0).min(out.len());
+        for (slot, ptr) in out.iter_mut().zip(raw.iter()).take(n) {
+            *slot = *ptr as usize;
+        }
+        n
     }
 
     fn format_sites(sites: &[Site], dropped: u32) -> AllocTrace {
@@ -508,47 +571,45 @@ mod trace {
             || line.contains("alloc::alloc::")
     }
 
-    /// Resolve program-counter offsets with `addr2line` after tracing has
-    /// stopped. One process parses the debug info for every unique frame.
+    /// Resolve each PC against the object that contains it. `dladdr` runs
+    /// only after tracing has stopped. A frame in `libvulkan` or libc is not
+    /// looked up in the test executable.
     fn symbolize(pcs: &[usize]) -> HashMap<usize, String> {
         let mut map = HashMap::new();
-        let mut order = Vec::new();
-        let mut offsets = Vec::new();
+        let mut by_object: HashMap<String, Vec<(usize, usize)>> = HashMap::new();
         for &pc in pcs {
             if map.contains_key(&pc) {
                 continue;
             }
-            let offset = file_offset(pc);
+            let (object, offset) = object_offset(pc);
             map.insert(pc, format!("0x{offset:x}"));
-            order.push(pc);
-            offsets.push(offset);
-        }
-        if order.is_empty() {
-            return map;
-        }
-        let Ok(exe) = std::env::current_exe() else {
-            return map;
-        };
-        let mut cmd = std::process::Command::new("addr2line");
-        cmd.arg("-e").arg(exe).arg("-f").arg("-C");
-        for offset in &offsets {
-            cmd.arg(format!("0x{offset:x}"));
-        }
-        let Ok(output) = cmd.output() else {
-            return map;
-        };
-        if !output.status.success() {
-            return map;
-        }
-        let text = String::from_utf8_lossy(&output.stdout);
-        let lines: Vec<&str> = text.lines().collect();
-        for (index, pc) in order.iter().enumerate() {
-            let name = lines.get(index * 2).copied().unwrap_or("");
-            let loc = lines.get(index * 2 + 1).copied().unwrap_or("");
-            if name.is_empty() || name == "??" {
+            if object.is_empty() {
                 continue;
             }
-            map.insert(*pc, short_loc(name, loc));
+            by_object.entry(object).or_default().push((pc, offset));
+        }
+        for (object, frames) in &by_object {
+            let mut cmd = std::process::Command::new("addr2line");
+            cmd.arg("-e").arg(object).arg("-f").arg("-C");
+            for (_, offset) in frames {
+                cmd.arg(format!("0x{offset:x}"));
+            }
+            let Ok(output) = cmd.output() else {
+                continue;
+            };
+            if !output.status.success() {
+                continue;
+            }
+            let text = String::from_utf8_lossy(&output.stdout);
+            let lines: Vec<&str> = text.lines().collect();
+            for (index, (pc, _)) in frames.iter().enumerate() {
+                let name = lines.get(index * 2).copied().unwrap_or("");
+                let loc = lines.get(index * 2 + 1).copied().unwrap_or("");
+                if name.is_empty() || name == "??" {
+                    continue;
+                }
+                map.insert(*pc, short_loc(name, loc));
+            }
         }
         map
     }
@@ -562,20 +623,23 @@ mod trace {
         }
     }
 
-    fn file_offset(pc: usize) -> usize {
+    fn object_offset(pc: usize) -> (String, usize) {
         let mut info = DlInfo {
             dli_fname: std::ptr::null(),
             dli_fbase: std::ptr::null_mut(),
             dli_sname: std::ptr::null(),
             dli_saddr: std::ptr::null_mut(),
         };
-        // SAFETY: `info` is a writable `Dl_info`. `dladdr` only reads `pc` as
-        // an address and fills `info`. A zero return leaves the offset raw.
+        // SAFETY: `info` is a writable `Dl_info`. `dladdr` fills it from `pc`.
+        // A null name or base leaves the address unresolved.
         let found = unsafe { dladdr(pc as *const c_void, &mut info) };
-        if found == 0 || info.dli_fbase.is_null() {
-            return pc;
+        if found == 0 || info.dli_fbase.is_null() || info.dli_fname.is_null() {
+            return (String::new(), pc);
         }
-        pc.wrapping_sub(info.dli_fbase as usize)
+        let name = unsafe { CStr::from_ptr(info.dli_fname) }
+            .to_string_lossy()
+            .into_owned();
+        (name, pc.wrapping_sub(info.dli_fbase as usize))
     }
 
     #[repr(C)]
