@@ -161,7 +161,6 @@ fn main() -> anyhow::Result<()> {
     // `--atmosphere false` stay on the HDRI sky with Hi-Z off, which is not
     // the 939a21bb 3.688 ms row. Fog and shafts are built only when the flag
     // is on. If either setter fails, the bail below happens before draw_into.
-    renderer.set_atmosphere_enabled(atmosphere);
     if atmosphere {
         {
             let clock = renderer.time_of_day_mut();
@@ -181,6 +180,9 @@ fn main() -> anyhow::Result<()> {
     }
     let fog = renderer.volumetric_fog_enabled();
     let shafts = renderer.god_rays_enabled();
+    // Bruneton with neither pass scatters to 50 km. The setter refuses that
+    // pair, so the flag is written after the builds.
+    renderer.set_atmosphere_enabled(atmosphere && fog && shafts);
     let measure = gated_measure_label(atmosphere, fog, shafts);
     println!("gated_atmosphere={}", if atmosphere { "on" } else { "off" });
     println!("gated_measure={measure}");
