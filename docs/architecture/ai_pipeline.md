@@ -420,7 +420,7 @@ This section enumerates the load-bearing files. Per-file enumeration of all 112 
 | File | Role | Status | Notes |
 |---|---|---|---|
 | `astraweave-llm/src/lib.rs` | `LlmClient` trait + global `PromptCache` + `PlanSource` enum + `loopback_model_url` | Active | `#![forbid(unsafe_code)]` at line 1. `loopback_model_url` parses `http`/`https` with the `url` crate, rejects userinfo even when `allow_remote` is set, and allows only `127.0.0.0/8`, `::1`, or `localhost`. Constructors call `require_kept_model_url` and return `Err` instead of storing a rewritten URL or a bearer token. The model `url` field is private. `ensure_model_request` re-checks the first hop |
-| `astraweave-llm/src/bin/ollama_chat_probe.rs` | Closed-port chat probe | Test | `sprint2_llm_tests` sets timeouts with `Command::env`. The binary does not call `set_var` |
+| `astraweave-llm/src/bin/ollama_chat_probe.rs` | Closed-port chat probe | Test | `tests/ollama_chat_probe.rs` sets `OLLAMA_LOW_LATENCY` and `OLLAMA_TIMEOUT_SECS` with `Command::env`. The binary does not call `set_var`. Windows archive partitions skip this target |
 | `astraweave-llm/src/llm_adapter.rs` | `safe_llm_invoke`, prompt length/format validators (`MAX_PROMPT_LENGTH = 4096`) | **Dormant stub** | Verified 2026-05-12: zero workspace callers of `safe_llm_invoke`. File comment line 1 says "stub". `mock_llm_call` is a placeholder. The 4096-char limit is unreachable code. See §13.7.4 + §13.7.7 |
 | `astraweave-llm/src/plan_parser.rs` | `parse_llm_response`, `ExtractionMethod`, `ParseResult` | Active | 5-strategy extraction chain |
 | `astraweave-llm/src/fallback_system.rs` | `FallbackOrchestrator`, `FallbackTier`, `FallbackResult`, `FallbackAttempt` | Active | 4-tier degradation |

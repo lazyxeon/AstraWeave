@@ -4,6 +4,10 @@
 //!
 //! The variables are set on the child with `Command::env`. The library crate
 //! is `forbid(unsafe_code)` and does not call `set_var` or `remove_var`.
+//!
+//! `CARGO_BIN_EXE_loopback_http_probe` is an absolute path on the machine that
+//! compiled the test. Windows partition jobs only have the nextest archive, so
+//! profile `ci-pr-archive` skips this target and the archive build job runs it.
 
 use std::io::{Read, Write};
 use std::net::TcpListener;

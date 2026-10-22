@@ -15,3 +15,8 @@ test astraweave-fluids gpu_execution_tests gpu_settling_envelope_300_frames
 # The archive build job runs the two test targets on the build machine.
 binary aw-net-client family1_client_binary
 binary aw-net-client family3_client_binary_wrong_key
+#
+# Same path problem for the model HTTP probes (`CARGO_BIN_EXE_loopback_http_probe`
+# and `CARGO_BIN_EXE_ollama_chat_probe`).
+binary astraweave-llm loopback_http_proxy
+binary astraweave-llm ollama_chat_probe

@@ -188,6 +188,11 @@ jobs:
         # jobs only have the extracted archive, so they skip these two targets.
         run: cargo nextest run --locked --profile ci -p aw-net-client --test family1_client_binary --test family3_client_binary_wrong_key
 
+      - name: Model HTTP probes on this machine
+        # CARGO_BIN_EXE_loopback_http_probe and CARGO_BIN_EXE_ollama_chat_probe
+        # are this runner's target path. Partition jobs skip both targets.
+        run: cargo nextest run --locked --profile ci -p astraweave-llm --features ollama --test loopback_http_proxy --test ollama_chat_probe
+
       - name: Upload the archive
         uses: actions/upload-artifact@v4
         with:
