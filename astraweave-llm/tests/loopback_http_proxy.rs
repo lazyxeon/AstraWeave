@@ -45,9 +45,28 @@ fn serve(body: &'static str) -> Shot {
     Shot { addr, hit }
 }
 
+/// `CARGO_BIN_EXE_*` is absolute and already ends in `.exe` on Windows.
+/// If a toolchain omits that suffix, try it before giving up.
+fn probe_exe(compiled: &str) -> std::path::PathBuf {
+    let path = std::path::PathBuf::from(compiled);
+    if path.is_file() {
+        return path;
+    }
+    if path
+        .extension()
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("exe"))
+    {
+        return path;
+    }
+    let mut exe = path.into_os_string();
+    exe.push(".exe");
+    std::path::PathBuf::from(exe)
+}
+
 fn probe(mode: &str, url: &str, proxy: std::net::SocketAddr) -> std::process::Output {
     let proxy_url = format!("http://{proxy}");
-    Command::new(env!("CARGO_BIN_EXE_loopback_http_probe"))
+    let exe = probe_exe(env!("CARGO_BIN_EXE_loopback_http_probe"));
+    Command::new(&exe)
         .args([mode, url])
         .env("HTTP_PROXY", &proxy_url)
         .env("http_proxy", &proxy_url)
@@ -59,7 +78,7 @@ fn probe(mode: &str, url: &str, proxy: std::net::SocketAddr) -> std::process::Ou
         .env_remove("no_proxy")
         .env_remove("REQUEST_METHOD")
         .output()
-        .expect("spawn probe")
+        .unwrap_or_else(|err| panic!("spawn {}: {err}", exe.display()))
 }
 
 #[test]
