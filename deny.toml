@@ -109,8 +109,6 @@ ignore = [
     # No patched release, or the patched crate is pinned by a parent this
     # branch does not upgrade. One advisory ID, one reason, one issue.
     { id = "RUSTSEC-2025-0141", reason = "bincode 1 and 2 have no patched release. Replay and save bytes stay on bincode. https://github.com/lazyxeon/AstraWeave/issues/305" },
-    { id = "RUSTSEC-2026-0194", reason = "quick-xml < 0.41 comes from egui-winit/accesskit and wayland-scanner. Those parents do not accept 0.41. https://github.com/lazyxeon/AstraWeave/issues/308" },
-    { id = "RUSTSEC-2026-0195", reason = "quick-xml NsReader DoS has the same parent constraint as RUSTSEC-2026-0194. https://github.com/lazyxeon/AstraWeave/issues/308" },
     { id = "RUSTSEC-2026-0249", reason = "smartstring 1.0.1 has no patched release. rhai 1.23.4 pins it. https://github.com/lazyxeon/AstraWeave/issues/309" },
     { id = "RUSTSEC-2026-0192", reason = "ttf-parser 0.25.1 has no patched release. egui 0.32 pulls it through ab_glyph. https://github.com/lazyxeon/AstraWeave/issues/310" },
 ]

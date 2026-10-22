@@ -122,7 +122,6 @@ The advisory check passes because the leftovers are ignored, not because they ar
 | Advisory | Locked crate | Issue |
 | --- | --- | --- |
 | `RUSTSEC-2025-0141` | `bincode` 1.3.3 and 2.0.1 | [#305](https://github.com/lazyxeon/AstraWeave/issues/305) |
-| `RUSTSEC-2026-0194`, `RUSTSEC-2026-0195` | `quick-xml` 0.36.2 and 0.37.5 | [#308](https://github.com/lazyxeon/AstraWeave/issues/308) |
 | `RUSTSEC-2026-0249` | `smartstring` 1.0.1 | [#309](https://github.com/lazyxeon/AstraWeave/issues/309) |
 | `RUSTSEC-2026-0192` | `ttf-parser` 0.25.1 | [#310](https://github.com/lazyxeon/AstraWeave/issues/310) |
 | `RUSTSEC-2025-0057` | `fxhash` 0.2.1 | [#321](https://github.com/lazyxeon/AstraWeave/issues/321) |
