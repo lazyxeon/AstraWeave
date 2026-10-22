@@ -45,6 +45,11 @@ fn alloc_trace_is_quiet() {
     // SAFETY: `zeroed` came from this allocator with `zero_layout`. 64 is the
     // size of `grown_layout`, which is what the free uses.
     let grown = unsafe { realloc(zeroed, zero_layout, grown_layout.size()) };
+    if grown.is_null() {
+        // SAFETY: realloc left the original block allocated. Free it with the
+        // layout that allocated it so a failed growth does not leak 32 bytes.
+        unsafe { dealloc(zeroed, zero_layout) };
+    }
     assert!(!grown.is_null(), "realloc returned null");
     assert!(
         allocs() > allocs_before_realloc,

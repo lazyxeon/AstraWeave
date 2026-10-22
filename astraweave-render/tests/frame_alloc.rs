@@ -1,6 +1,6 @@
 //! `draw_into` must not touch the heap once a fixed scene is warm.
 //!
-//! Run with `cargo test -p astraweave-render --features alloc-counter --test frame_alloc`.
+//! Run with `RUST_LIB_BACKTRACE=0 cargo test -p astraweave-render --features alloc-counter --test frame_alloc`.
 //! The counting allocator is installed only for this binary.
 
 #![cfg(feature = "alloc-counter")]

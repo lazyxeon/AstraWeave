@@ -167,7 +167,6 @@ jobs:
 
     - name: Test astraweave-render
       id: render
-      continue-on-error: true
       run: |
         echo "::group::Testing astraweave-render"
         cargo test -p astraweave-render --all-features -- --skip draw_into_allocates_nothing_after_warmup --skip fallback_frame_does_not_allocate_before_the_texture_is_resident --nocapture
@@ -175,7 +174,6 @@ jobs:
 
     - name: Test terrain materials
       id: terrain
-      continue-on-error: true
       run: |
         echo "::group::Testing terrain material system"
         mkdir -p target
@@ -186,7 +184,6 @@ jobs:
     
     - name: Test advanced materials
       id: advanced
-      continue-on-error: true
       run: |
         echo "::group::Testing advanced PBR features"
         mkdir -p target

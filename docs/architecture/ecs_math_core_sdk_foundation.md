@@ -8,8 +8,8 @@ domain: core
 lifecycle_status: active
 integration_status: wired
 owns: [astraweave-alloc, astraweave-core, astraweave-ecs, astraweave-math, astraweave-sdk]
-doc_version: "1.11"
-last_verified_commit: 33abffa1
+doc_version: "1.12"
+last_verified_commit: 46be9024
 ---
 
 # Architecture Trace: ECS Substrate + Math / Core / SDK Primitives
@@ -20,13 +20,15 @@ last_verified_commit: 33abffa1
 |---|---|
 | **System name** | ECS substrate + Math / Core / SDK primitives (foundation layer) |
 | **Primary crates** | `astraweave-ecs`, `astraweave-math`, `astraweave-core`, `astraweave-sdk` |
-| **Document version** | 1.11 |
-| **Last verified against commit** | `33abffa1` |
+| **Document version** | 1.12 |
+| **Last verified against commit** | `46be9024` |
 | **Last verified date** | 2026-10-15 |
 | **Status** | Active foundation. `astraweave-ecs` and `astraweave-math` are canonical; `astraweave-core` contains a canonical schema **plus** a transitional legacy `World` that bridges to ECS; `astraweave-sdk` is a stable C ABI surface with a single in-tree consumer (`examples/sdk_c_harness`) and an otherwise out-of-tree audience. |
 | **Owner notes** | This trace covers four related-but-distinct foundation crates as one document, per Andrew's request. Note: the doc is a foundation **layer**, not a single tightly-coupled system. Per-crate roles are kept distinct throughout. Deep investigation pass 2026-05-10 resolved the `lib_new.rs` status, corrected the SDK-consumer claim (one in-tree example exists), added the loom-tests + `simd`-feature-no-op findings, and refined Invariant 8 against the actual JSON-serializer code paths.<br><br>**R-series M1 trace-honesty (2026-06-30) — per-crate verified verdicts (the group `active/wired` front-matter syncs to the primary crate `astraweave-core` only):** `astraweave-core`, `astraweave-ecs`, `astraweave-sdk` are **VERIFIED-PRODUCTION** (`sdk` via the R3 island-by-design FFI boundary carve-out). **`astraweave-math` is individually COMPILES-BUT-ORPHANED** — off the v1.0 critical path; its only workspace consumer is `examples/profiling_demo` (the "canonical" framing above is aspirational for `math`). `astraweave-alloc` is **WIRED-BUT-UNTESTED** (0 tests). |
 
-> **Revision notice — 2026-10-22 (v1.11).** `c086feb3` is not an ancestor of this branch. The counter-only allocator is `36e1e450`. `alloc_trace_is_quiet` installs `CountingAlloc` and moves `alloc`, `alloc_zeroed`, and `realloc`. `render-device-validation.yml` and the PBR floor job run that test with `--features alloc-counter` and fail if the log has no pass. `last_verified_commit` names the parent `33abffa1`.
+> **Revision notice — 2026-10-22 (v1.12).** `33abffa1` and `36e1e450` are not ancestors of this branch. The counter-only allocator on this branch is `a0d4a690`. `last_verified_commit` names the parent `46be9024`.
+>
+> **Revision notice — 2026-10-22 (v1.11).** `alloc_trace_is_quiet` installs `CountingAlloc` and moves `alloc`, `alloc_zeroed`, and `realloc`. `render-device-validation.yml` and the PBR floor job run that test with `--features alloc-counter` and fail if the log has no pass. The stamp on this notice named `33abffa1` and called the counter-only commit `36e1e450`. Neither hash is an ancestor.
 >
 > **Revision notice — 2026-10-22 (v1.10).** `CountingAlloc` only counts. The frame-pointer walk and its `asm` are gone. Invariant 9 still requires a Kani proof or a Miri test for `unsafe` in this layer, and the allocator no longer adds any. Every `alloc`, `dealloc`, and `realloc` increments the counters. Frees are not filtered to pointers recorded during a frame. `tests/alloc_trace_quiet.rs` installs `CountingAlloc`. A per-site breakdown is the manual heaptrack workflow, not this allocator. The stamp on this notice named `c086feb3`, which is not on this branch.
 >
@@ -567,6 +569,7 @@ There are several distinct flows through this layer. The first is the canonical 
 
 | Version | Date | Change |
 |---|---|---|
+| 1.12 | 2026-10-22 | Stamp names `46be9024`. The counter-only commit is `a0d4a690`. `33abffa1` and `36e1e450` are not ancestors. |
 | 1.11 | 2026-10-22 | Stamp names `33abffa1`. `c086feb3` is not an ancestor. `alloc_trace_is_quiet` covers `alloc_zeroed` and `realloc` (invariant 18). |
 | 1.10 | 2026-10-22 | The frame-pointer walk is gone. Counters record every alloc and every free (invariant 18). `alloc_trace_is_quiet` installs `CountingAlloc`. |
 | 1.9 | 2026-10-22 | Return addresses are copied into a fixed buffer. No `backtrace` in the allocator. The count and the site share one lock (invariant 18). |

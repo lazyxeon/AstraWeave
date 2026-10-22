@@ -2,7 +2,7 @@
 //! The frame that still binds that fallback does not allocate past the
 //! wgpu recording floor.
 //!
-//! `cargo test -p astraweave-render --features alloc-counter --test stream_fallback`
+//! `RUST_LIB_BACKTRACE=0 cargo test -p astraweave-render --features alloc-counter --test stream_fallback`
 
 #![cfg(feature = "alloc-counter")]
 
@@ -135,8 +135,9 @@ fn fallback_frame_does_not_allocate_before_the_texture_is_resident() {
         eprintln!("stream fallback draw_into alloc samples: {samples:?}");
         let min = *samples.iter().min().unwrap();
         let max = *samples.iter().max().unwrap();
-        // Same floor as `frame_alloc`: high sample 119, spread 4.
-        // Ceiling 130 leaves 11 of room and still fails one extra pass.
+        // Same gate as `frame_alloc`: min 100, max 130, spread 4.
+        // Alloc-counter samples were [119, 116, 115, 116, 115, 115].
+        // `--all-features` samples were [125, 122, 121, 122, 121, 121].
         assert!(
             max <= 130 && min >= 100 && max - min <= 4,
             "fallback frame left the wgpu pass floor: {samples:?}"
