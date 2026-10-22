@@ -783,19 +783,21 @@ impl LlmClient for OllamaChatClient {
                         Some(gen_resp)
                     } else {
                         let s = gen_resp.status();
-                        let b = gen_resp.text().await.unwrap_or_default();
+                        let b = gen_resp.text().await.map_err(|err| {
+                            anyhow::anyhow!(
+                                "Ollama /api/generate status {s} body read failed: {err}"
+                            )
+                        })?;
                         return Err(anyhow::anyhow!(
-                            "Ollama /api/generate returned error status {}: {}",
-                            s,
-                            b
+                            "Ollama /api/generate returned error status {s}: {b}"
                         ));
                     }
                 } else {
-                    let txt = resp.text().await.unwrap_or_default();
+                    let txt = resp.text().await.map_err(|err| {
+                        anyhow::anyhow!("Ollama chat API status {status} body read failed: {err}")
+                    })?;
                     return Err(anyhow::anyhow!(
-                        "Ollama chat API returned error status {}: {}",
-                        status,
-                        txt
+                        "Ollama chat API returned error status {status}: {txt}"
                     ));
                 }
             };
