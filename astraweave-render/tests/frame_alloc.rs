@@ -112,11 +112,42 @@ fn draw_into_allocates_nothing_after_warmup() {
             *sample = allocs();
             drop(encoder);
         }
-        eprintln!("draw_into alloc samples: {samples:?}");
+        let features = renderer.gpu_features();
+        let interesting = [
+            ("timestamp", wgpu::Features::TIMESTAMP_QUERY),
+            (
+                "timestamp_inside_encoders",
+                wgpu::Features::TIMESTAMP_QUERY_INSIDE_ENCODERS,
+            ),
+            (
+                "timestamp_inside_passes",
+                wgpu::Features::TIMESTAMP_QUERY_INSIDE_PASSES,
+            ),
+            ("pipeline_cache", wgpu::Features::PIPELINE_CACHE),
+        ];
+        let feature_bits: Vec<&str> = interesting
+            .iter()
+            .filter(|(_, bit)| features.contains(*bit))
+            .map(|(name, _)| *name)
+            .collect();
+        eprintln!(
+            "draw_into alloc adapter={} backend={} features={:?} color=Rgba8UnormSrgb atmosphere={} samples={samples:?}",
+            renderer.gpu_adapter_name(),
+            renderer.gpu_backend(),
+            feature_bits,
+            renderer.atmosphere_enabled(),
+        );
         let min = *samples.iter().min().unwrap();
         let max = *samples.iter().max().unwrap();
-        // Lavapipe, 64×64, validation on and off, five runs each:
-        // [119, 116, 115, 116, 115, 115]. Spread inside a run is 4.
+        // Lavapipe on Mesa 25.2 and on Mesa 26.0.8-1ubuntu0.3 (amd64 and
+        // amd64v3), validation layers installed or not, rayon 1/4/16:
+        // alloc-counter only is [119, 116, 115, 116, 115, 115].
+        // `--all-features` is [125, 122, 121, 122, 121, 121].
+        // The GL backend is [196, 190, 188, 190, 188, 188].
+        // PBR CI on 8fc15bd9 (Mesa 26.0.8 amd64v3, libvulkan 1.4.341,
+        // `--all-features`) is [173, 170, 169, 170, 169, 169], the same
+        // shape plus 48. The line above names the adapter that produced
+        // the samples. Spread inside a run is 4.
         // The constructor leaves Bruneton off. A sky-only Bruneton frame
         // was [150, 147, 147, 146, 146, 147] and is not this test.
         // `draw_into` does not build the pyramid unless `sample_hiz` is set.
@@ -128,7 +159,9 @@ fn draw_into_allocates_nothing_after_warmup() {
         // so a dropped pass fails too.
         assert!(
             max <= 130 && min >= 100 && max - min <= 4,
-            "draw_into allocs left the wgpu pass floor: {samples:?}"
+            "draw_into allocs left the wgpu pass floor: {samples:?} adapter={} backend={} features={feature_bits:?}",
+            renderer.gpu_adapter_name(),
+            renderer.gpu_backend(),
         );
     });
 }
