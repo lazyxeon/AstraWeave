@@ -23,8 +23,9 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y mesa-vulkan-drivers libvulkan1 pkg-config libudev-dev
       - name: CountingAlloc records alloc, alloc_zeroed, and realloc
         run: |
+          mkdir -p target
           set -o pipefail
-          cargo test -p astraweave-ecs --features alloc-counter --color never --test alloc_trace_quiet -- --nocapture | tee target/alloc-trace-quiet.txt
+          cargo test -p astraweave-ecs --features alloc-counter --color never --test alloc_trace_quiet -- --nocapture 2>&1 | tee target/alloc-trace-quiet.txt
           grep -E 'test result: ok\. [1-9][0-9]* passed' target/alloc-trace-quiet.txt
       - name: Submit startup passes under validation
         env:
@@ -33,11 +34,15 @@ jobs:
         run: |
           unset VK_ADD_DRIVER_FILES
           if [ -f /usr/share/vulkan/icd.d/lvp_icd.x86_64.json ]; then
-            export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.x86_64.json
+            icd=/usr/share/vulkan/icd.d/lvp_icd.x86_64.json
+          elif [ -f /usr/share/vulkan/icd.d/lvp_icd.json ]; then
+            icd=/usr/share/vulkan/icd.d/lvp_icd.json
           else
-            export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json
+            echo "lavapipe ICD is not installed" >&2
+            exit 1
           fi
-          export VK_DRIVER_FILES="$VK_ICD_FILENAMES"
+          export VK_ICD_FILENAMES="$icd"
+          export VK_DRIVER_FILES="$icd"
           cargo test -p astraweave-render --test created_pass_validation -- --nocapture
       - name: Assert draw_into allocates nothing after warmup
         env:
@@ -46,11 +51,15 @@ jobs:
         run: |
           unset VK_ADD_DRIVER_FILES
           if [ -f /usr/share/vulkan/icd.d/lvp_icd.x86_64.json ]; then
-            export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.x86_64.json
+            icd=/usr/share/vulkan/icd.d/lvp_icd.x86_64.json
+          elif [ -f /usr/share/vulkan/icd.d/lvp_icd.json ]; then
+            icd=/usr/share/vulkan/icd.d/lvp_icd.json
           else
-            export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json
+            echo "lavapipe ICD is not installed" >&2
+            exit 1
           fi
-          export VK_DRIVER_FILES="$VK_ICD_FILENAMES"
+          export VK_ICD_FILENAMES="$icd"
+          export VK_DRIVER_FILES="$icd"
           cargo test -p astraweave-render --features alloc-counter --test frame_alloc -- --nocapture
       - name: Assert the streamed fallback stays on the allocation floor
         env:
@@ -59,11 +68,15 @@ jobs:
         run: |
           unset VK_ADD_DRIVER_FILES
           if [ -f /usr/share/vulkan/icd.d/lvp_icd.x86_64.json ]; then
-            export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.x86_64.json
+            icd=/usr/share/vulkan/icd.d/lvp_icd.x86_64.json
+          elif [ -f /usr/share/vulkan/icd.d/lvp_icd.json ]; then
+            icd=/usr/share/vulkan/icd.d/lvp_icd.json
           else
-            export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json
+            echo "lavapipe ICD is not installed" >&2
+            exit 1
           fi
-          export VK_DRIVER_FILES="$VK_ICD_FILENAMES"
+          export VK_ICD_FILENAMES="$icd"
+          export VK_DRIVER_FILES="$icd"
           cargo test -p astraweave-render --features alloc-counter --test stream_fallback -- --nocapture
       - name: Timestamp readback is non-zero
         env:
@@ -72,11 +85,15 @@ jobs:
         run: |
           unset VK_ADD_DRIVER_FILES
           if [ -f /usr/share/vulkan/icd.d/lvp_icd.x86_64.json ]; then
-            export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.x86_64.json
+            icd=/usr/share/vulkan/icd.d/lvp_icd.x86_64.json
+          elif [ -f /usr/share/vulkan/icd.d/lvp_icd.json ]; then
+            icd=/usr/share/vulkan/icd.d/lvp_icd.json
           else
-            export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json
+            echo "lavapipe ICD is not installed" >&2
+            exit 1
           fi
-          export VK_DRIVER_FILES="$VK_ICD_FILENAMES"
+          export VK_ICD_FILENAMES="$icd"
+          export VK_DRIVER_FILES="$icd"
           cargo test -p astraweave-render --test gpu_timestamp -- --nocapture
 
   windows:

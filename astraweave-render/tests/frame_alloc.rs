@@ -5,6 +5,10 @@
 
 #![cfg(feature = "alloc-counter")]
 
+#[cfg(target_os = "linux")]
+#[path = "support/linux_test_threads.rs"]
+mod linux_test_threads;
+
 #[path = "support/lib_backtrace.rs"]
 mod lib_backtrace;
 

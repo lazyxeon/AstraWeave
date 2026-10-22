@@ -55,6 +55,7 @@ jobs:
           fi
           export VK_ICD_FILENAMES="$icd"
           export VK_DRIVER_FILES="$icd"
+          mkdir -p target
           cargo test -p astraweave-render --all-features --test frame_alloc --no-run --message-format=json > target/frame-alloc-build.json
           bin=$(python3 -c '
 import json, sys
