@@ -141,8 +141,8 @@ async fn test_ollama_client(
     };
 
     // A rejected URL returns before this GET. /api/tags is the browser-safe probe.
-    if let Err(e) = probe_ollama_tags(url).await {
-        println!("Warning: failed to probe Ollama /api/tags: {}", e);
+    if let Err(e) = probe_ollama_tags(url, allow_remote).await {
+        println!("Warning: failed to probe Ollama /api/tags: {e:#}");
         println!(
             "Proceeding to attempt a POST to the chat endpoint; this may fail if the model is not loaded."
         );
@@ -235,13 +235,10 @@ async fn test_local_http_client(
 }
 
 #[cfg(feature = "ollama")]
-async fn probe_ollama_tags(base_url: &str) -> anyhow::Result<()> {
+async fn probe_ollama_tags(base_url: &str, allow_remote: bool) -> anyhow::Result<()> {
     let url = format!("{}/api/tags", base_url.trim_end_matches('/'));
     println!("Probing Ollama for available models at: {} (GET)", url);
-    let client = astraweave_llm::loopback_http_client()
-        .read_timeout(astraweave_llm::stream_read_idle())
-        .build()
-        .context("loopback http client")?;
+    let client = astraweave_llm::build_model_client(base_url, allow_remote)?;
     let resp = client
         .get(&url)
         .timeout(std::time::Duration::from_secs(5))
@@ -255,11 +252,8 @@ async fn probe_ollama_tags(base_url: &str) -> anyhow::Result<()> {
             .text()
             .await
             .with_context(|| format!("Ollama /api/tags status {status} body read failed"))?;
-        return Err(anyhow::anyhow!(
-            "Ollama /api/tags returned {}: {}",
-            status,
-            txt
-        ));
+        let txt = astraweave_llm::bounded_model_text(&txt);
+        return Err(anyhow::anyhow!("Ollama /api/tags returned {status}: {txt}"));
     }
 
     let body = resp

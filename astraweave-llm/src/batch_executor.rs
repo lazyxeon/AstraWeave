@@ -368,14 +368,28 @@ impl BatchInferenceExecutor {
                     match BatchResponseParser::parse_batch_response(&accumulated, &batch) {
                         Ok(response) => return Ok(response),
                         Err(parse_err) => {
+                            let shown = crate::bounded_model_text(&accumulated);
                             return Err(parse_err.context(format!(
-                                "streaming chunk failed after partial text {accumulated}: {err:#}"
+                                "streaming chunk failed after partial text {shown}: {err:#}"
                             )));
                         }
                     }
                 }
             };
 
+            let next = accumulated.len().saturating_add(chunk.len());
+            if next > crate::MAX_MODEL_JSON_BYTES {
+                let room = crate::MAX_MODEL_JSON_BYTES.saturating_sub(accumulated.len());
+                let mut end = room.min(chunk.len());
+                while end > 0 && !chunk.is_char_boundary(end) {
+                    end -= 1;
+                }
+                accumulated.push_str(&chunk[..end]);
+                bail!(
+                    "batch text exceeds 64 KiB cap ({next} bytes): {}",
+                    crate::bounded_model_text(&accumulated)
+                );
+            }
             accumulated.push_str(&chunk);
             chunk_count += 1;
 
@@ -806,6 +820,25 @@ mod tests {
             .expect_err("incomplete batch");
         let msg = err.to_string();
         assert!(msg.contains("partial-plan"), "dropped partial text: {msg}");
+    }
+
+    #[tokio::test]
+    async fn test_execute_batch_caps_text_at_64kib() {
+        let mut executor = BatchInferenceExecutor::new();
+        executor.queue_agent(10, create_test_snapshot(1, 1));
+        let huge = "x".repeat(crate::MAX_MODEL_JSON_BYTES + 8);
+        let llm_client = ChunkThenErr::partial(&huge);
+
+        let err = executor
+            .execute_batch(&llm_client, "MoveTo")
+            .await
+            .expect_err("oversize batch");
+        let msg = err.to_string();
+        assert!(msg.contains("64 KiB"), "{msg}");
+        assert!(
+            !msg.contains(&"x".repeat(crate::MAX_MODEL_JSON_BYTES + 8)),
+            "error kept more than 64 KiB"
+        );
     }
 
     struct ChunkThenErr {

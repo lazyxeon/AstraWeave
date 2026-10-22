@@ -105,7 +105,7 @@ Return ONLY JSON with no commentary.
                 }
             }
             Err(e) => {
-                println!("stream err: {}", e);
+                println!("stream err: {e:#}");
             }
         }
     }

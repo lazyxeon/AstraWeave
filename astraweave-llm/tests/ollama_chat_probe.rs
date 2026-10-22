@@ -383,6 +383,71 @@ fn declared_body_that_never_arrives_fails_near_the_read_timeout() {
     );
 }
 
+/// A readable error body must be the `complete` result. `OLLAMA_LOW_LATENCY=0`
+/// used to log it and then start the streaming POST.
+fn serve_readable_error(body: &'static str) -> std::net::SocketAddr {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+    let addr = listener.local_addr().expect("addr");
+    std::thread::spawn(move || {
+        let Ok((mut sock, _)) = listener.accept() else {
+            return;
+        };
+        read_http_headers(&mut sock);
+        use std::io::Write;
+        let _ = sock.write_all(
+            format!(
+                "HTTP/1.1 500 Internal Server Error\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                body.len()
+            )
+            .as_bytes(),
+        );
+        let _ = sock.flush();
+    });
+    addr
+}
+
+#[test]
+fn readable_error_status_does_not_start_streaming() {
+    let addr = serve_readable_error("nope");
+    let exe = probe_exe(env!("CARGO_BIN_EXE_ollama_chat_probe"));
+    let started = std::time::Instant::now();
+    let mut child = std::process::Command::new(&exe)
+        .args(["complete", &format!("http://{addr}")])
+        .env("OLLAMA_LOW_LATENCY", "0")
+        .env("OLLAMA_TIMEOUT_SECS", "1")
+        .env("OLLAMA_EARLY_EXIT", "0")
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap_or_else(|err| panic!("spawn {}: {err}", exe.display()));
+    let status = loop {
+        if let Some(status) = child.try_wait().expect("wait") {
+            break status;
+        }
+        if started.elapsed() > std::time::Duration::from_secs(4) {
+            let _ = child.kill();
+            panic!(
+                "complete still running after a readable 500: {:?}",
+                started.elapsed()
+            );
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    };
+    let output = child.wait_with_output().expect("output");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let msg = format!("{stdout} {stderr}").to_lowercase();
+    assert!(!status.success(), "complete succeeded: {stdout} {stderr}");
+    assert!(
+        msg.contains("nope") && msg.contains("500"),
+        "missing the error body: {stdout} {stderr}"
+    );
+    assert!(
+        !msg.contains("initiating streaming post"),
+        "readable 500 started streaming: {stdout} {stderr}"
+    );
+}
+
 #[test]
 fn silent_accept_fails_near_the_header_timeout() {
     assert_headers_fail_near_timeout("complete", false);

@@ -857,10 +857,9 @@ impl LlmClient for Qwen3Ollama {
                 let chunk = match chunk_result {
                     Ok(bytes) => bytes,
                     Err(e) => {
-                        return futures_util::future::ready(Some(vec![Err(anyhow::anyhow!(
-                            "Stream error: {}",
-                            e
-                        ))]));
+                        return futures_util::future::ready(Some(vec![Err(
+                            e.context("Stream error")
+                        )]));
                     }
                 };
 

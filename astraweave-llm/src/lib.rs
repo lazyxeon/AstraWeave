@@ -6,6 +6,30 @@ use anyhow::{bail, Result};
 /// Model text above this is rejected before `serde_json` allocates a document.
 pub const MAX_MODEL_JSON_BYTES: usize = 64 * 1024;
 
+/// The prefix of `text` that fits in [`MAX_MODEL_JSON_BYTES`].
+pub fn bounded_model_text(text: &str) -> &str {
+    if text.len() <= MAX_MODEL_JSON_BYTES {
+        return text;
+    }
+    let mut end = MAX_MODEL_JSON_BYTES;
+    while end > 0 && !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    &text[..end]
+}
+
+#[cfg(test)]
+mod bounded_model_text_tests {
+    use super::*;
+
+    #[test]
+    fn stops_at_the_json_cap() {
+        let big = "y".repeat(MAX_MODEL_JSON_BYTES + 10);
+        assert_eq!(bounded_model_text(&big).len(), MAX_MODEL_JSON_BYTES);
+        assert_eq!(bounded_model_text("short"), "short");
+    }
+}
+
 /// Parse JSON that came from a local model. Hostile lengths never reach `serde_json`.
 pub fn parse_bounded_model_json<T: serde::de::DeserializeOwned>(text: &str) -> Result<T> {
     if text.len() > MAX_MODEL_JSON_BYTES {
@@ -183,7 +207,7 @@ pub fn with_read_idle<S, T, E>(
 ) -> impl futures_util::Stream<Item = Result<T>>
 where
     S: futures_util::Stream<Item = Result<T, E>> + Unpin,
-    E: std::fmt::Display,
+    E: std::error::Error + Send + Sync + 'static,
 {
     use futures_util::StreamExt;
     futures_util::stream::unfold((inner, false), move |(mut inner, stop)| {
@@ -195,7 +219,7 @@ where
             match tokio::time::timeout(idle, inner.next()).await {
                 Ok(Some(Ok(item))) => Some((Ok(item), (inner, false))),
                 Ok(Some(Err(err))) => Some((
-                    Err(anyhow::anyhow!("stream body error: {err}")),
+                    Err(anyhow::Error::new(err).context("stream body error")),
                     (inner, true),
                 )),
                 Ok(None) => None,
@@ -441,7 +465,7 @@ impl LlmClient for OllamaClient {
         let parsed: Resp = response
             .json()
             .await
-            .map_err(|e| anyhow::anyhow!("Failed to parse Ollama response: {}", e))?;
+            .context("Failed to parse Ollama response")?;
 
         Ok(parsed.response)
     }
@@ -565,6 +589,7 @@ impl OllamaChatClient {
                 .text()
                 .await
                 .with_context(|| format!("Ollama warmup status {status} body read failed"))?;
+            let body = bounded_model_text(&body);
             bail!("Ollama warmup returned error status {status}: {body}");
         }
         response
@@ -689,15 +714,10 @@ impl LlmClient for OllamaChatClient {
                         let status = resp.status();
                         match resp.text().await {
                             Ok(b) => {
-                                println!(
-                                    "[ollama] non-streaming request returned non-success status: {}: {}",
-                                    status, b
-                                );
-                                let total_ms = ns_attempt_start.elapsed().as_millis();
-                                println!(
-                                    "[ollama] timing nonstream attempt {}: total={}ms (non-success)",
-                                    attempt, total_ms
-                                );
+                                let b = bounded_model_text(&b);
+                                return Err(anyhow::anyhow!(
+                                    "Ollama non-streaming request returned error status {status}: {b}"
+                                ));
                             }
                             Err(err) => {
                                 return Err(err).context(format!(
@@ -805,6 +825,7 @@ impl LlmClient for OllamaChatClient {
                         let b = gen_resp.text().await.with_context(|| {
                             format!("Ollama /api/generate status {s} body read failed")
                         })?;
+                        let b = bounded_model_text(&b);
                         return Err(anyhow::anyhow!(
                             "Ollama /api/generate returned error status {s}: {b}"
                         ));
@@ -813,6 +834,7 @@ impl LlmClient for OllamaChatClient {
                     let txt = resp.text().await.with_context(|| {
                         format!("Ollama chat API status {status} body read failed")
                     })?;
+                    let txt = bounded_model_text(&txt);
                     return Err(anyhow::anyhow!(
                         "Ollama chat API returned error status {status}: {txt}"
                     ));
@@ -1281,13 +1303,14 @@ impl LlmClient for LocalHttpClient {
                 .text()
                 .await
                 .with_context(|| format!("Local LLM API status {status} body read failed"))?;
+            let text = bounded_model_text(&text);
             bail!("Local LLM API returned error status {status}: {text}");
         }
 
         let parsed: Resp = response
             .json()
             .await
-            .map_err(|e| anyhow::anyhow!("Failed to parse local LLM response: {}", e))?;
+            .context("Failed to parse local LLM response")?;
 
         if parsed.choices.is_empty() {
             bail!("Local LLM returned no choices");
