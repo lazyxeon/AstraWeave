@@ -58,9 +58,14 @@ fn probe_exe(compiled: &str) -> std::path::PathBuf {
     {
         return path;
     }
-    let mut exe = path.into_os_string();
-    exe.push(".exe");
-    std::path::PathBuf::from(exe)
+    let mut with_suffix = path.clone().into_os_string();
+    with_suffix.push(".exe");
+    let exe = std::path::PathBuf::from(with_suffix);
+    if exe.is_file() {
+        exe
+    } else {
+        path
+    }
 }
 
 fn probe(mode: &str, url: &str, proxy: std::net::SocketAddr) -> std::process::Output {

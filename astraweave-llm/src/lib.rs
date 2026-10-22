@@ -658,10 +658,12 @@ impl LlmClient for OllamaChatClient {
 
             let stream_url = format!("{}/api/chat", self.url.trim_end_matches('/'));
             println!("[ollama] initiating streaming POST to {}", stream_url);
+            let request_timeout = std::time::Duration::from_secs(default_timeout);
             let resp = client
                 .post(&stream_url)
                 .header("Accept", "application/json")
                 .header("Content-Type", "application/json")
+                .timeout(request_timeout)
                 .json(&stream_body)
                 .send()
                 .await
@@ -689,6 +691,7 @@ impl LlmClient for OllamaChatClient {
                         .post(&gen_url)
                         .header("Accept", "application/json")
                         .header("Content-Type", "application/json")
+                        .timeout(request_timeout)
                         .json(&stream_body)
                         .send()
                         .await
