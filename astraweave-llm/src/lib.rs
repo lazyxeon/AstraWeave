@@ -12,7 +12,11 @@ pub fn parse_bounded_model_json<T: serde::de::DeserializeOwned>(text: &str) -> R
     serde_json::from_str(text).map_err(|err| anyhow::anyhow!("model json: {err}"))
 }
 
-/// Keep a loopback model URL. A non-loopback URL is replaced unless the caller opted in.
+/// Keep a loopback model URL.
+///
+/// The URL is kept only when it is `http` or `https`, has no userinfo, and the
+/// host is `127.0.0.0/8`, `::1`, or `localhost`. Anything else, including a URL
+/// the parser rejects, is replaced unless the caller opted in.
 #[cfg(feature = "ollama")]
 pub(crate) fn loopback_model_url(url: String, allow_remote: bool) -> String {
     if allow_remote || is_loopback_http_url(&url) {
@@ -905,20 +909,43 @@ impl LocalHttpClient {
 
 #[cfg(feature = "ollama")]
 fn is_loopback_http_url(url: &str) -> bool {
-    let Some(rest) = url
-        .strip_prefix("http://")
-        .or_else(|| url.strip_prefix("https://"))
-    else {
+    let Ok(parsed) = url::Url::parse(url) else {
         return false;
     };
-    let hostport = rest.split('/').next().unwrap_or("");
-    let host = if let Some(bracketed) = hostport.strip_prefix('[') {
-        bracketed.split(']').next().unwrap_or("")
-    } else {
-        hostport.split(':').next().unwrap_or("")
+    if parsed.scheme() != "http" && parsed.scheme() != "https" {
+        return false;
+    }
+    if url_has_userinfo(url, &parsed) {
+        return false;
+    }
+    match parsed.host() {
+        Some(url::Host::Domain(domain)) => is_localhost_domain(domain),
+        Some(url::Host::Ipv4(ip)) => ip.is_loopback(),
+        Some(url::Host::Ipv6(ip)) => ip.is_loopback(),
+        None => false,
+    }
+}
+
+/// `http://127.0.0.1:11434@evil.example/` puts the loopback text in the userinfo
+/// and sends the request to `evil.example`. An empty `@` is userinfo too, even
+/// when the parser drops it and keeps a loopback host.
+#[cfg(feature = "ollama")]
+fn url_has_userinfo(raw: &str, parsed: &url::Url) -> bool {
+    if !parsed.username().is_empty() || parsed.password().is_some() {
+        return true;
+    }
+    let Some(scheme_sep) = raw.find("://") else {
+        return true;
     };
-    let host = host.trim().to_ascii_lowercase();
-    host == "localhost" || host == "127.0.0.1" || host == "::1"
+    let rest = &raw[scheme_sep + 3..];
+    let authority = rest.split(['/', '?', '#', '\\']).next().unwrap_or("");
+    authority.contains('@')
+}
+
+#[cfg(feature = "ollama")]
+fn is_localhost_domain(domain: &str) -> bool {
+    let bare = domain.trim_end_matches('.');
+    bare.eq_ignore_ascii_case("localhost") && domain.len() - bare.len() <= 1
 }
 
 #[cfg(feature = "ollama")]
@@ -1567,6 +1594,96 @@ mod tests {
         }
         let opted = qwen3_ollama::Qwen3Ollama::allowing_remote(remote, "qwen");
         assert_eq!(opted.url, remote);
+    }
+
+    #[cfg(feature = "ollama")]
+    #[test]
+    fn loopback_model_url_rejects_userinfo_encoding_and_non_loopback_literals() {
+        const FALLBACK: &str = "http://127.0.0.1:11434";
+        // Decimal, octal, hex, and short IPv4 forms are kept only when the
+        // WHATWG parser (the same one reqwest uses) resolves them inside
+        // 127.0.0.0/8. `0177.0.0.1` is octal for 127.0.0.1. `0127.0.0.1` is
+        // octal for 87.0.0.1.
+        let kept = [
+            "http://127.0.0.1:11434",
+            "https://127.0.0.1/api",
+            "http://127.0.0.2:11434",
+            "http://127.255.255.255/",
+            "HTTP://127.0.0.1:11434",
+            "http://localhost:11434",
+            "http://LOCALHOST:11434",
+            "http://localhost.:11434",
+            "https://localhost/v1",
+            "http://[::1]:11434/api",
+            "http://[0:0:0:0:0:0:0:1]/",
+            "http://2130706433/",
+            "http://2130706434:11434/",
+            "http://0177.0.0.1:11434/",
+            "http://017700000001/",
+            "http://0x7f.0.0.1/",
+            "http://0x7f000001/",
+            "http://127.1/",
+            "http://127.0.1/",
+            "http://127%2e0%2e0%2e1:11434/",
+            "http://%6c%6f%63%61%6c%68%6f%73%74/",
+            "http://127.0.0.1:11434/api?q=@evil.example",
+            "http://127.0.0.1:11434/api#@evil.example",
+            "http://127.0.0.1:11434\\@evil.example",
+        ];
+        for url in kept {
+            assert_eq!(
+                loopback_model_url(url.to_string(), false),
+                url,
+                "expected to keep {url}"
+            );
+        }
+
+        let rejected = [
+            "http://127.0.0.1:11434@evil.example/api/chat",
+            "http://127.0.0.1:11434@evil.example",
+            "https://127.0.0.1:11434@evil.example/v1",
+            "https://user:pass@127.0.0.1:11434/",
+            "http://user@127.0.0.1/",
+            "http://:secret@127.0.0.1/",
+            "http://@127.0.0.1:11434/",
+            "http://:@127.0.0.1/",
+            "http://127.0.0.1%40evil.example/",
+            "http://127.0.0.1%2eevil.example/",
+            "http://localhost%2eevil.example/",
+            "http://%6c%6f%63%61%6c%68%6f%73%74%2eevil.example/",
+            "http://127.0.0.1%00.evil.example/",
+            "http://127%2e0%2e0%2e1.evil.example/",
+            "http://[::2]/",
+            "http://[::ffff:127.0.0.1]/",
+            "http://[::ffff:7f00:1]/",
+            "http://[::1%25eth0]/",
+            "http://[2001:db8::1]/",
+            "http://0127.0.0.1/",
+            "http://012700000001/",
+            "http://167772161/",
+            "http://134744072/",
+            "http://0/",
+            "http://10.0.0.1/",
+            "http://0x08080808/",
+            "http://2130706433@evil.example/",
+            "http://0177.0.0.1@evil.example/",
+            "http://127.0.0.1.evil.example/",
+            "http://sub.localhost/",
+            "http://evil.example/",
+            "file:///etc/passwd",
+            "127.0.0.1:11434",
+            "",
+        ];
+        for url in rejected {
+            assert_eq!(
+                loopback_model_url(url.to_string(), false),
+                FALLBACK,
+                "expected to replace {url}"
+            );
+        }
+
+        let remote = "http://127.0.0.1:11434@evil.example/api";
+        assert_eq!(loopback_model_url(remote.to_string(), true), remote);
     }
 
     #[cfg(feature = "ollama")]

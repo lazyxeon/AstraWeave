@@ -27,7 +27,7 @@ These are in the caps pull request. Valid fixtures still decode to the same byte
 | SEC-NET-3 | `decode_msg` rejects an LZ4 declared output above 4 MiB. |
 | SEC-ASSET-1 | glTF file URIs and cell asset paths go through `safe_under`. |
 | SEC-MOD-4 | Script load and hot reload go through `safe_under`. |
-| SEC-LLM-1 | `LocalHttpClient::new` and `with_api_key` keep only loopback URLs. `allowing_remote` is the explicit opt-in. `LOCAL_LLM_ALLOW_REMOTE=1` selects it in the integration example. |
+| SEC-LLM-1 | `LocalHttpClient::new` and `with_api_key` keep only loopback URLs. The check parses the URL, rejects userinfo, and allows only `127.0.0.0/8`, `::1`, or `localhost`. `allowing_remote` is the explicit opt-in. `LOCAL_LLM_ALLOW_REMOTE=1` selects it in the integration example. |
 | SEC-NET-1 | `ServerConfig::default` binds `127.0.0.1`. `spawn_server` refuses the published dev key outside debug and test builds. Release CLI requires `--shared-key-hex`. |
 | SEC-NET-2 | The in-engine server ignores client actor ids and hello names. Outside debug/test, hello requires `AW_GAME_TOKEN` (not the literal `dev`). |
 
