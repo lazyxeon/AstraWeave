@@ -6929,6 +6929,35 @@ fn test_renderer_bake_environment_wave16() {
     }
 }
 
+/// Low bake runs the specular prefilter and polls each submission to
+/// `wait_finished`. `test_sample_count_by_quality` only checks the Rust
+/// integers; it does not dispatch `SPECULAR_PREFILTER_WGSL` or poll.
+#[test]
+fn test_prefilter_poll_finishes() {
+    use astraweave_render::ibl::IblQuality;
+
+    let Ok(mut renderer) = pollster::block_on(astraweave_render::Renderer::new_headless(64, 64))
+    else {
+        eprintln!("SKIPPED (no GPU adapter): test_prefilter_poll_finishes did NOT bake");
+        return;
+    };
+    renderer
+        .bake_environment(IblQuality::Low)
+        .expect("low IBL bake");
+    let (finished, prefilter) = renderer.ibl.last_bake_polls();
+    let spec_mips = 8u32; // Low spec cube is 128², log2(128)+1
+    let faces = 6u32;
+    assert_eq!(
+        prefilter,
+        spec_mips * faces,
+        "prefilter polls {prefilter} did not cover every mip face"
+    );
+    assert!(
+        finished > prefilter,
+        "bake polls {finished} never got past the prefilter"
+    );
+}
+
 /// Wave 16 Test 9: Renderer create_mesh_from_full_arrays
 #[test]
 fn test_renderer_full_mesh_creation_wave16() {

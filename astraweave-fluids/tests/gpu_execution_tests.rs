@@ -107,7 +107,24 @@ fn run_step(system: &mut FluidSystem, device: &wgpu::Device, queue: &wgpu::Queue
     // fence, and the later `poll(Wait)` in `read_particles` never returns.
     // 120 frames flaked between 58s and the 240s kill; 300 frames never
     // returned. The timeout itself stays 240s.
-    let _ = device.poll(wgpu::MaintainBase::Wait);
+    // `PollType::Wait` blocks for wgpu-core `CLEANUP_WAIT_MS` (60s) and
+    // returns `PollError::Timeout` with the fence still open. That is not
+    // the 6.3s `Queue::drop` budget. Dropping the error made `read_particles`
+    // block on `recv` for a callback that never ran.
+    expect_poll_finished(&device);
+}
+
+/// `poll(Wait)` either finished the submission or the step fails here.
+fn expect_poll_finished(device: &wgpu::Device) {
+    match device.poll(wgpu::PollType::Wait) {
+        Ok(status) => assert!(
+            status.wait_finished(),
+            "poll(Wait) returned {status:?} before the submission finished"
+        ),
+        Err(wgpu::PollError::Timeout) => panic!(
+            "poll(Wait) timed out after 60s (wgpu-core CLEANUP_WAIT_MS). This is not the 6.3s Queue::drop budget; the submission is still running."
+        ),
+    }
 }
 
 /// Read the full particle buffer back to the CPU (blocking).
@@ -134,7 +151,7 @@ fn read_particles(
     slice.map_async(wgpu::MapMode::Read, move |res| {
         tx.send(res).expect("map_async channel send");
     });
-    let _ = device.poll(wgpu::MaintainBase::Wait);
+    expect_poll_finished(&device);
     rx.recv()
         .expect("map_async channel recv")
         .expect("particle readback mapping failed");
@@ -185,7 +202,7 @@ fn gpu_smoke_construct_and_step() {
     for _ in 0..10 {
         run_step(&mut system, &device, &queue, DT);
     }
-    let _ = device.poll(wgpu::MaintainBase::Wait);
+    expect_poll_finished(&device);
     // Reaching here without a wgpu validation panic is the assertion; also
     // verify state is readable and finite.
     let particles = read_particles(&system, &device, &queue);
@@ -500,7 +517,7 @@ fn gpu_renderer_smoke() {
     );
     queue.submit([encoder.finish()]);
     let render_err = pollster::block_on(device.pop_error_scope());
-    let _ = device.poll(wgpu::MaintainBase::Wait);
+    expect_poll_finished(&device);
     assert!(
         render_err.is_none(),
         "FluidRenderer::render produced a validation error: {render_err:?}"
@@ -640,7 +657,7 @@ fn gpu_render_accents_smoke() {
     );
     queue.submit([encoder.finish()]);
     let err = pollster::block_on(device.pop_error_scope());
-    let _ = device.poll(wgpu::MaintainBase::Wait);
+    expect_poll_finished(&device);
     assert!(
         err.is_none(),
         "render_accents produced a validation error: {err:?}"
@@ -664,7 +681,7 @@ fn gpu_render_accents_smoke() {
     );
     queue.submit([encoder2.finish()]);
     let err2 = pollster::block_on(device.pop_error_scope());
-    let _ = device.poll(wgpu::MaintainBase::Wait);
+    expect_poll_finished(&device);
     assert!(err2.is_none(), "render_accents (empty) error: {err2:?}");
 }
 
@@ -751,4 +768,586 @@ fn gpu_respawn_reactivates_particles() {
             "respawned particle {i} fell out of the world (y = {y})"
         );
     }
+}
+
+fn kernel_w(r: f32, h: f32) -> f32 {
+    let q = r / h;
+    if q >= 1.0 {
+        return 0.0;
+    }
+    let alpha = 3.0 / (2.0 * std::f32::consts::PI * h * h * h);
+    if q < 0.5 {
+        alpha * (2.0 * (1.0 - q).powi(3) - (1.0 - 2.0 * q).powi(3))
+    } else {
+        alpha * (1.0 - q).powi(3)
+    }
+}
+
+fn plant_particle(at: [f32; 3]) -> Particle {
+    Particle {
+        position: [at[0], at[1], at[2], 1.0],
+        velocity: [0.0; 4],
+        predicted_position: [at[0], at[1], at[2], 1.0],
+        lambda: 0.0,
+        density: 0.0,
+        phase: 0,
+        temperature: 293.0,
+        color: [0.0, 0.0, 1.0, 1.0],
+    }
+}
+
+fn dispatch_planted_lambda(
+    system: &mut FluidSystem,
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    head: &[i32],
+    next: &[i32],
+) -> Vec<Particle> {
+    let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+        label: Some("planted lambda"),
+    });
+    system.lambda_on_planted_neighbors(device, queue, &mut encoder, head, next);
+    queue.submit([encoder.finish()]);
+    expect_poll_finished(&device);
+    read_particles(system, device, queue)
+}
+
+/// A self-loop is one visit. A tail into another cycle is discarded, not
+/// applied `particle_count` times. An index past `particle_count` is not loaded.
+#[test]
+fn gpu_cyclic_neighbor_is_not_applied() {
+    let _gpu = gpu_serial();
+    let Some((device, queue)) = try_create_test_device("gpu_cyclic_neighbor_is_not_applied") else {
+        return;
+    };
+    const N: u32 = 8;
+    let mut system = FluidSystem::new(&device, N);
+    let h = system.smoothing_radius;
+    let w0 = kernel_w(0.0, h);
+    let cells = (system.grid_width * system.grid_height * system.grid_depth) as usize;
+    let gx = i32::try_from(system.grid_width).expect("grid width");
+    let gy = i32::try_from(system.grid_height).expect("grid height");
+    // (0, 1, 0) with the constructor cell size 1.2 and the shader's +30 offset.
+    let cell = 25 + 25 * gx * gy;
+    let cell = usize::try_from(cell).expect("cell");
+    assert!(cell < cells);
+
+    let here = [0.0, 1.0, 0.0];
+    let far = [1.0e6, 1.0e6, 1.0e6];
+    let mut particles = vec![plant_particle(far); N as usize];
+    particles[0] = plant_particle(here);
+    queue.write_buffer(
+        system.get_particle_buffer(),
+        0,
+        bytemuck::cast_slice(&particles),
+    );
+
+    let mut head = vec![-1i32; cells];
+    head[cell] = 0;
+    let mut next = vec![-1i32; N as usize];
+    next[0] = 0; // self-loop
+    let got = dispatch_planted_lambda(&mut system, &device, &queue, &head, &next);
+    let density = got[0].density;
+    assert!(
+        (density - w0).abs() < w0 * 0.02,
+        "self-loop density {density} is not one kernel visit {w0}"
+    );
+    assert!(
+        density < w0 * 2.0,
+        "self-loop was applied more than once ({density} vs {w0})"
+    );
+
+    // 0 -> 1 -> 2 -> 1 ... never returns to the entry id. The hop cap must
+    // discard the cell instead of storing the repeated samples.
+    particles[1] = plant_particle(here);
+    particles[2] = plant_particle(here);
+    queue.write_buffer(
+        system.get_particle_buffer(),
+        0,
+        bytemuck::cast_slice(&particles),
+    );
+    next[0] = 1;
+    next[1] = 2;
+    next[2] = 1;
+    let got = dispatch_planted_lambda(&mut system, &device, &queue, &head, &next);
+    assert_eq!(
+        got[0].density, 0.0,
+        "a tail cycle was stored (density {})",
+        got[0].density
+    );
+
+    // The id past particle_count is not loaded. The one in-range visit remains.
+    particles[1] = plant_particle(far);
+    particles[2] = plant_particle(far);
+    queue.write_buffer(
+        system.get_particle_buffer(),
+        0,
+        bytemuck::cast_slice(&particles),
+    );
+    next = vec![-1i32; N as usize];
+    next[0] = 1_000_000;
+    let got = dispatch_planted_lambda(&mut system, &device, &queue, &head, &next);
+    let density = got[0].density;
+    assert!(
+        density.is_finite() && (density - w0).abs() < w0 * 0.02,
+        "out-of-range neighbor changed the one in-range visit: {density} vs {w0}"
+    );
+}
+
+fn read_sdf_r(system: &FluidSystem, device: &wgpu::Device, queue: &wgpu::Queue) -> f32 {
+    let staging = device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("sdf voxel readback"),
+        size: 256,
+        usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+        mapped_at_creation: false,
+    });
+    let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+        label: Some("sdf voxel copy"),
+    });
+    encoder.copy_texture_to_buffer(
+        wgpu::TexelCopyTextureInfo {
+            texture: &system.sdf_system.texture_a,
+            mip_level: 0,
+            origin: wgpu::Origin3d::ZERO,
+            aspect: wgpu::TextureAspect::All,
+        },
+        wgpu::TexelCopyBufferInfo {
+            buffer: &staging,
+            layout: wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(256),
+                rows_per_image: Some(1),
+            },
+        },
+        wgpu::Extent3d {
+            width: 1,
+            height: 1,
+            depth_or_array_layers: 1,
+        },
+    );
+    queue.submit([encoder.finish()]);
+    let slice = staging.slice(..);
+    let (tx, rx) = std::sync::mpsc::channel();
+    slice.map_async(wgpu::MapMode::Read, move |res| {
+        tx.send(res).expect("sdf map send");
+    });
+    expect_poll_finished(&device);
+    rx.recv().expect("sdf map recv").expect("sdf map");
+    let data = slice.get_mapped_range();
+    let r = f32::from_le_bytes(data[0..4].try_into().expect("sdf r"));
+    drop(data);
+    staging.unmap();
+    r
+}
+
+/// Dropping the caller encoder must not arm the empty-SDF reuse. The empty
+/// field is submitted on its own encoder and polled before the flag is set,
+/// so voxel 0 is `world_size` (60) even though the step encoder was dropped.
+#[test]
+fn gpu_dropped_step_encoder_still_fills_empty_sdf() {
+    let _gpu = gpu_serial();
+    let Some((device, queue)) =
+        try_create_test_device("gpu_dropped_step_encoder_still_fills_empty_sdf")
+    else {
+        return;
+    };
+    let mut system = FluidSystem::new(&device, 64);
+    {
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("dropped step"),
+        });
+        system.step(&device, &mut encoder, &queue, DT);
+        drop(encoder);
+    }
+    let r = read_sdf_r(&system, &device, &queue);
+    assert!(
+        (r - 60.0).abs() < 1.0e-3,
+        "empty SDF voxel 0 is {r}; a dropped encoder left the zero field in place"
+    );
+    {
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("dropped step reuse"),
+        });
+        system.step(&device, &mut encoder, &queue, DT);
+        drop(encoder);
+    }
+    let again = read_sdf_r(&system, &device, &queue);
+    assert!(
+        (again - 60.0).abs() < 1.0e-3,
+        "reused empty SDF voxel 0 is {again}"
+    );
+}
+
+const DEPTH_SAMPLE_WGSL: &str = r#"
+@group(0) @binding(0) var depth_tex: texture_depth_2d;
+
+struct VsOut {
+    @builtin(position) pos: vec4<f32>,
+    @location(0) uv: vec2<f32>,
+}
+
+@vertex
+fn vs(@builtin(vertex_index) vi: u32) -> VsOut {
+    var p = array<vec2<f32>, 3>(
+        vec2<f32>(-1.0, -1.0),
+        vec2<f32>(3.0, -1.0),
+        vec2<f32>(-1.0, 3.0),
+    );
+    let xy = p[vi];
+    var out: VsOut;
+    out.pos = vec4<f32>(xy, 0.0, 1.0);
+    out.uv = xy * 0.5 + vec2<f32>(0.5, 0.5);
+    return out;
+}
+
+@fragment
+fn fs(in: VsOut) -> @location(0) vec4<f32> {
+    let dims = vec2<f32>(textureDimensions(depth_tex));
+    let coord = vec2<i32>(in.uv * dims);
+    let d = textureLoad(depth_tex, coord, 0);
+    return vec4<f32>(d, 0.0, 0.0, 1.0);
+}
+"#;
+
+fn read_rgba16(device: &wgpu::Device, queue: &wgpu::Queue, texture: &wgpu::Texture) -> f32 {
+    let staging = device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("accent color readback"),
+        size: 256,
+        usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+        mapped_at_creation: false,
+    });
+    let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+        label: Some("accent color copy"),
+    });
+    encoder.copy_texture_to_buffer(
+        wgpu::TexelCopyTextureInfo {
+            texture,
+            mip_level: 0,
+            origin: wgpu::Origin3d::ZERO,
+            aspect: wgpu::TextureAspect::All,
+        },
+        wgpu::TexelCopyBufferInfo {
+            buffer: &staging,
+            layout: wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(256),
+                rows_per_image: Some(1),
+            },
+        },
+        wgpu::Extent3d {
+            width: 1,
+            height: 1,
+            depth_or_array_layers: 1,
+        },
+    );
+    queue.submit([encoder.finish()]);
+    let slice = staging.slice(..);
+    let (tx, rx) = std::sync::mpsc::channel();
+    slice.map_async(wgpu::MapMode::Read, move |res| {
+        tx.send(res).expect("color map send");
+    });
+    expect_poll_finished(&device);
+    rx.recv().expect("color map recv").expect("color map");
+    let data = slice.get_mapped_range();
+    let bits = u16::from_le_bytes(data[0..2].try_into().expect("f16"));
+    drop(data);
+    staging.unmap();
+    half_to_f32(bits)
+}
+
+fn half_to_f32(bits: u16) -> f32 {
+    let sign = ((bits >> 15) & 1) as u32;
+    let exp = ((bits >> 10) & 0x1f) as u32;
+    let frac = (bits & 0x3ff) as u32;
+    let out = if exp == 0 {
+        if frac == 0 {
+            sign << 31
+        } else {
+            let mut e = 127 - 15 + 1;
+            let mut f = frac;
+            while f & 0x400 == 0 {
+                f <<= 1;
+                e -= 1;
+            }
+            ((sign << 31) | (e << 23) | ((f & 0x3ff) << 13)) as u32
+        }
+    } else if exp == 31 {
+        (sign << 31) | 0x7f80_0000 | (frac << 13)
+    } else {
+        (sign << 31) | ((exp + (127 - 15)) << 23) | (frac << 13)
+    };
+    f32::from_bits(out)
+}
+
+/// The accent store keeps the depth the preceding pass stored, including a
+/// frame whose water-style read-only pass sits between that store and the
+/// accent load. A later sample of the same texture sees that depth, and the
+/// `Depth32Float` copy matches it.
+#[test]
+fn gpu_accent_depth_store_matches_later_sample() {
+    let _gpu = gpu_serial();
+    let Some((device, queue)) =
+        try_create_test_device("gpu_accent_depth_store_matches_later_sample")
+    else {
+        return;
+    };
+    const W: u32 = 8;
+    const H: u32 = 8;
+    const STORED: f32 = 0.4;
+    let format = wgpu::TextureFormat::Rgba16Float;
+    let mut system = FluidSystem::new(&device, 64);
+    let renderer = astraweave_fluids::FluidRenderer::new(&device, W, H, format);
+    let accents = [SecondaryParticle {
+        position: [0.0, 0.0, 0.0, 1.0],
+        velocity: [0.0, 1.0, 0.0, 0.0],
+        info: [0.1, 0.0, 0.9, 0.5],
+    }];
+    system.set_secondary_particles(&queue, &accents);
+
+    let depth = device.create_texture(&wgpu::TextureDescriptor {
+        label: Some("accent measured depth"),
+        size: wgpu::Extent3d {
+            width: W,
+            height: H,
+            depth_or_array_layers: 1,
+        },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: wgpu::TextureFormat::Depth32Float,
+        usage: wgpu::TextureUsages::RENDER_ATTACHMENT
+            | wgpu::TextureUsages::TEXTURE_BINDING
+            | wgpu::TextureUsages::COPY_SRC,
+        view_formats: &[],
+    });
+    let color = device.create_texture(&wgpu::TextureDescriptor {
+        label: Some("accent measured color"),
+        size: wgpu::Extent3d {
+            width: W,
+            height: H,
+            depth_or_array_layers: 1,
+        },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format,
+        usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
+        view_formats: &[],
+    });
+    let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+        label: Some("depth sample"),
+        source: wgpu::ShaderSource::Wgsl(DEPTH_SAMPLE_WGSL.into()),
+    });
+    let bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        label: Some("depth sample bgl"),
+        entries: &[wgpu::BindGroupLayoutEntry {
+            binding: 0,
+            visibility: wgpu::ShaderStages::FRAGMENT,
+            ty: wgpu::BindingType::Texture {
+                sample_type: wgpu::TextureSampleType::Depth,
+                view_dimension: wgpu::TextureViewDimension::D2,
+                multisampled: false,
+            },
+            count: None,
+        }],
+    });
+    let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+        label: Some("depth sample pl"),
+        bind_group_layouts: &[&bgl],
+        push_constant_ranges: &[],
+    });
+    let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        label: Some("depth sample pipeline"),
+        layout: Some(&layout),
+        vertex: wgpu::VertexState {
+            module: &shader,
+            entry_point: Some("vs"),
+            buffers: &[],
+            compilation_options: wgpu::PipelineCompilationOptions::default(),
+        },
+        fragment: Some(wgpu::FragmentState {
+            module: &shader,
+            entry_point: Some("fs"),
+            targets: &[Some(wgpu::ColorTargetState {
+                format,
+                blend: None,
+                write_mask: wgpu::ColorWrites::ALL,
+            })],
+            compilation_options: wgpu::PipelineCompilationOptions::default(),
+        }),
+        primitive: wgpu::PrimitiveState::default(),
+        depth_stencil: Some(wgpu::DepthStencilState {
+            format: wgpu::TextureFormat::Depth32Float,
+            depth_write_enabled: false,
+            depth_compare: wgpu::CompareFunction::Always,
+            stencil: wgpu::StencilState::default(),
+            bias: wgpu::DepthBiasState::default(),
+        }),
+        multisample: wgpu::MultisampleState::default(),
+        multiview: None,
+        cache: None,
+    });
+    let depth_sample_view = depth.create_view(&Default::default());
+    let depth_attach_view = depth.create_view(&Default::default());
+    let color_view = color.create_view(&Default::default());
+    let bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: Some("depth sample bg"),
+        layout: &bgl,
+        entries: &[wgpu::BindGroupEntry {
+            binding: 0,
+            resource: wgpu::BindingResource::TextureView(&depth_sample_view),
+        }],
+    });
+
+    let eye = glam::Vec3::new(0.0, 2.0, 6.0);
+    let view = glam::Mat4::look_at_rh(eye, glam::Vec3::ZERO, glam::Vec3::Y);
+    let proj = glam::Mat4::perspective_rh(1.0, 1.0, 0.1, 50.0);
+    let view_proj = proj * view;
+    let camera = astraweave_fluids::renderer::CameraUniform {
+        view_proj: view_proj.to_cols_array_2d(),
+        inv_view_proj: view_proj.inverse().to_cols_array_2d(),
+        view_inv: view.inverse().to_cols_array_2d(),
+        cam_pos: [eye.x, eye.y, eye.z, 1.0],
+        light_dir: [0.3, 0.9, 0.2, 0.0],
+        time: 0.0,
+        padding: [0.0; 19],
+    };
+
+    let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+        label: Some("accent depth measure"),
+    });
+    {
+        let _clear = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("store depth"),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view: &color_view,
+                resolve_target: None,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
+                    store: wgpu::StoreOp::Store,
+                },
+            })],
+            depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                view: &depth_attach_view,
+                depth_ops: Some(wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(STORED),
+                    store: wgpu::StoreOp::Store,
+                }),
+                stencil_ops: None,
+            }),
+            ..Default::default()
+        });
+    }
+    // Water's pass: the same depth texture is a read-only attachment and a sample.
+    {
+        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("water-style depth sample"),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view: &color_view,
+                resolve_target: None,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Load,
+                    store: wgpu::StoreOp::Store,
+                },
+            })],
+            depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                view: &depth_attach_view,
+                depth_ops: None,
+                stencil_ops: None,
+            }),
+            ..Default::default()
+        });
+        pass.set_pipeline(&pipeline);
+        pass.set_bind_group(0, &bg, &[]);
+        pass.draw(0..3, 0..1);
+    }
+    renderer.render_accents(
+        &queue,
+        &mut encoder,
+        &color_view,
+        &depth_attach_view,
+        system.secondary_particle_buffer(),
+        system.secondary_particle_count(),
+        camera,
+    );
+    {
+        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("later depth sample"),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view: &color_view,
+                resolve_target: None,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Load,
+                    store: wgpu::StoreOp::Store,
+                },
+            })],
+            depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                view: &depth_attach_view,
+                depth_ops: None,
+                stencil_ops: None,
+            }),
+            ..Default::default()
+        });
+        pass.set_pipeline(&pipeline);
+        pass.set_bind_group(0, &bg, &[]);
+        pass.draw(0..3, 0..1);
+    }
+    let bytes_per_row = 256u32;
+    let depth_read = device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("depth32 readback"),
+        size: u64::from(bytes_per_row) * u64::from(H),
+        usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+        mapped_at_creation: false,
+    });
+    encoder.copy_texture_to_buffer(
+        wgpu::TexelCopyTextureInfo {
+            texture: &depth,
+            mip_level: 0,
+            origin: wgpu::Origin3d::ZERO,
+            aspect: wgpu::TextureAspect::All,
+        },
+        wgpu::TexelCopyBufferInfo {
+            buffer: &depth_read,
+            layout: wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(bytes_per_row),
+                rows_per_image: Some(H),
+            },
+        },
+        wgpu::Extent3d {
+            width: W,
+            height: H,
+            depth_or_array_layers: 1,
+        },
+    );
+    queue.submit([encoder.finish()]);
+    let slice = depth_read.slice(..);
+    let (tx, rx) = std::sync::mpsc::channel();
+    slice.map_async(wgpu::MapMode::Read, move |res| {
+        tx.send(res).expect("depth map send");
+    });
+    expect_poll_finished(&device);
+    rx.recv().expect("depth map recv").expect("depth map");
+    let data = slice.get_mapped_range();
+    let stored_bits = STORED.to_bits();
+    for y in 0..H {
+        for x in 0..W {
+            let offset = (y * bytes_per_row + x * 4) as usize;
+            let bits = u32::from_le_bytes(data[offset..offset + 4].try_into().expect("depth"));
+            assert_eq!(
+                bits,
+                stored_bits,
+                "depth at ({x},{y}) is {:e}, the store was {STORED}",
+                f32::from_bits(bits)
+            );
+        }
+    }
+    drop(data);
+    depth_read.unmap();
+
+    let sampled = read_rgba16(&device, &queue, &color);
+    assert!(
+        (sampled - STORED).abs() < 0.01,
+        "later sample saw {sampled}, the stored depth is {STORED}"
+    );
 }
