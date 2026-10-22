@@ -89,9 +89,10 @@ The union of acted + kept occurrences is the complete closed-vocabulary inventor
 `aw_doc_lint` enforces this even in `--mode warn` (the vocabulary scan stays warn-only):
 
 - Both `required` lists in `.github/workflows/determinism-replay.yml` must agree, and `docs/current/ENGINE_STATUS.md` must name each case.
-- `docs/current/ENGINE_STATUS.md` must state the under-11 ms GTX 1660 Ti frame budget and the measured heavy-scene `3.688 ms`, that assets are CC0, that local LLMs propose, and that the deterministic simulation validates. #216 is on main. #371 and #372 stay open. The root README does not repeat those figures.
+- `docs/current/ENGINE_STATUS.md` must state the under-11 ms GTX 1660 Ti frame budget, the earlier heavy-scene `3.688 ms`, and the later `3.117 ms` sample at `3855715e`, that assets are CC0, that local LLMs propose, and that the deterministic simulation validates. #216 is on main. #371 and #372 stay open.
+- `README.md` must not contain a frame figure (a number followed by `ms`). The measured sample stays on the engine-status page.
 - `README.md` must have a `## In progress` section listing #334, #366, and #383, and no other issue number. That section must not call the work shipped, landed, or merged. #216, #257, #258, #281, #283, #284, #307, #320, #335, #367, #374, and #377 are on main and are not in that list.
-- Player-facing files (`README.md`, `CONTRIBUTING.md`, `docs/README.md`, `docs/QUICKSTART.md`, `docs/guides/**/*.md`) must not use the retired game title. `veilweaver_` crate names and the archive directory `projects/veilweaver` are allowed.
+- Player-facing files (`README.md`, `CONTRIBUTING.md`, `docs/README.md`, `docs/QUICKSTART.md`, `docs/current/PROJECT_BRIEF.md`, `docs/guides/**/*.md`) must not use the retired game title. `veilweaver_` crate names and the archive directory `projects/veilweaver` are allowed.
 
 ## Frame-time carve-out (D.3.1) — why `2.70 ms` is NOT in Vocabulary A
 

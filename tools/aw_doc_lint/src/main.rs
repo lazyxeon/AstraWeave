@@ -26,9 +26,9 @@
 //!
 //! A separate front-door check always fails the process, including in `--mode warn`:
 //! `docs/current/ENGINE_STATUS.md` must name every required replay case from
-//! `determinism-replay.yml` and must keep the frame-budget phrases. `README.md`
-//! must list open pulls as in progress. Player-facing docs must not use the
-//! retired game title.
+//! `determinism-replay.yml` and must keep the frame-budget phrases, including
+//! `3.117 ms`. `README.md` must list open pulls as in progress and must not
+//! contain a frame figure. Player-facing docs must not use the retired game title.
 
 use anyhow::{bail, Context, Result};
 use clap::{Parser, ValueEnum};
@@ -288,6 +288,7 @@ fn is_player_facing(path: &str) -> bool {
         || p == "CONTRIBUTING.md"
         || p == "docs/README.md"
         || p == "docs/QUICKSTART.md"
+        || p == "docs/current/PROJECT_BRIEF.md"
         || (p.starts_with("docs/guides/") && p.ends_with(".md"))
 }
 
@@ -444,6 +445,7 @@ fn front_door_errors(
     }
     for phrase in [
         "3.688 ms",
+        "3.117 ms",
         "11 ms",
         "GTX 1660 Ti",
         "CC0",
@@ -482,8 +484,44 @@ fn front_door_errors(
             }
         }
     }
+    errors.extend(readme_frame_figure_errors(readme));
     for (path, text) in player_facing {
         errors.extend(retired_title_hits(path, text));
+    }
+    errors
+}
+
+/// A frame figure is a number followed by `ms`. The landing page must not carry one.
+fn readme_frame_figure_errors(readme: &str) -> Vec<String> {
+    let lower = readme.to_ascii_lowercase();
+    let bytes = lower.as_bytes();
+    let mut errors = Vec::new();
+    let mut i = 0;
+    while i < bytes.len() {
+        if !bytes[i].is_ascii_digit() {
+            i += 1;
+            continue;
+        }
+        let start = i;
+        i += 1;
+        while i < bytes.len() && (bytes[i].is_ascii_digit() || bytes[i] == b'.') {
+            i += 1;
+        }
+        let mut j = i;
+        while j < bytes.len() && bytes[j] == b' ' {
+            j += 1;
+        }
+        if bytes.get(j..j + 2) != Some(b"ms") {
+            continue;
+        }
+        let after = j + 2;
+        if after < bytes.len() && bytes[after].is_ascii_alphanumeric() {
+            continue;
+        }
+        let line = readme[..start].bytes().filter(|&b| b == b'\n').count() + 1;
+        errors.push(format!(
+            "{README_REL}:{line}: frame figure is not allowed on the landing page"
+        ));
     }
     errors
 }
@@ -812,7 +850,7 @@ mod tests {
         [
             "Local LLMs propose. The deterministic simulation validates and executes.",
             "The game is Aravath. Assets are CC0 only.",
-            "under 11 ms per frame on a GTX 1660 Ti-class GPU. The heavy scene measured 3.688 ms.",
+            "under 11 ms per frame on a GTX 1660 Ti-class GPU. The heavy scene measured 3.688 ms. A later sample is 3.117 ms.",
             "planner_pure perception_world gameplay_rng fixed64 combat_resolve",
             "destruction gameplay_qa_aravath_slice nav_reroute causal_bridge scripted_system weaving traversal traversal_deformed worldgen_columns deformed_chunk local_sim greybox_checkpoint quest_ticks persist_replay",
         ]
@@ -885,6 +923,16 @@ mod tests {
         let errors = front_door_errors(&readme, &status, &sample_workflow(), &[]);
         assert!(errors.iter().any(|e| e.contains("nav_reroute")));
         assert!(errors.iter().any(|e| e.contains("shipped")));
+    }
+
+    #[test]
+    fn front_door_rejects_a_frame_figure_on_the_readme() {
+        let readme = format!("{}\nThe frame is 3.688 ms.\n", sample_readme());
+        let errors = front_door_errors(&readme, &sample_status(), &sample_workflow(), &[]);
+        assert!(
+            errors.iter().any(|error| error.contains("frame figure")),
+            "{errors:?}"
+        );
     }
 
     #[test]
