@@ -6,11 +6,11 @@
 //! ```text
 //! cargo run -p astraweave-render --release --features gpu-frame-budget --bin gpu_frame_budget -- --scene heavy --debug-timestamps --glb "assets/The Complete KayKit Collection v4/KayKit Adventurers 2.0/Characters/gltf/Rogue.glb"
 //!
-//! `--atmosphere` is the one gated flag that draws a frame. It replaces
-//! `SkyRenderer`, keeps the HDR and depth clear, and turns on the same fog
-//! and god-ray path Aravath uses. The printed median is that whole frame.
-//! `--atmosphere false` is off. `--ssgi`, `--taa`, `--upscale`, `--dof`,
-//! and `--clouds` are rejected when enabled.
+//! `--atmosphere` and `--clouds` each draw a frame when used alone.
+//! `--atmosphere` replaces `SkyRenderer` and turns on Aravath fog and god rays.
+//! `--clouds` raymarches and copies the composite onto HDR. The default
+//! frame enables neither. `--ssgi`, `--taa`, `--upscale`, and `--dof` are
+//! rejected when enabled.
 //! ```
 
 use anyhow::Context;
@@ -38,7 +38,9 @@ const SAMPLES: usize = 120;
 fn main() -> anyhow::Result<()> {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("warn")).init();
     let args: Vec<String> = std::env::args().skip(1).collect();
-    let atmosphere = astraweave_render::budget_gate::reject_gated_flags(&args)?;
+    let cell = astraweave_render::budget_gate::reject_gated_flags(&args)?;
+    let atmosphere = cell == astraweave_render::budget_gate::GatedCell::Atmosphere;
+    let clouds = cell == astraweave_render::budget_gate::GatedCell::Clouds;
     let glb = glb_path();
     let heavy = scene_is_heavy();
     let debug_timestamps = debug_timestamps();
@@ -189,6 +191,7 @@ fn main() -> anyhow::Result<()> {
     if atmosphere && (!fog || !shafts) {
         anyhow::bail!("degraded atmosphere measurement: {measure}");
     }
+    renderer.set_cloud_raymarch_enabled(clouds);
     renderer.set_gpu_cull_enabled(true);
 
     let device = renderer.device().clone();
