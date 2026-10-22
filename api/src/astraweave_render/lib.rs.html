@@ -285,6 +285,13 @@
 <a href=#285 id=285 data-nosnippet>285</a></span><span class="attr">#[cfg(test)]
 <a href=#286 id=286 data-nosnippet>286</a></span><span class="kw">mod </span>renderer_tests;
 <a href=#287 id=287 data-nosnippet>287</a>
-<a href=#288 id=288 data-nosnippet>288</a><span class="attr">#[cfg(test)]
-<a href=#289 id=289 data-nosnippet>289</a>#[path = <span class="string">"../tests/support/gpu_capability.rs"</span>]
-<a href=#290 id=290 data-nosnippet>290</a></span><span class="kw">mod </span>gpu_capability;</code></pre></div></section></main></body></html>
+<a href=#288 id=288 data-nosnippet>288</a><span class="comment">// libvulkan 1.4.341 SIGSEGVs in vkSetDebugUtilsObjectNameEXT when several
+<a href=#289 id=289 data-nosnippet>289</a>// threads load every Mesa ICD. Lavapipe alone does not. Linux lib tests
+<a href=#290 id=290 data-nosnippet>290</a>// compile this module; integration tests include it from tests/support.
+<a href=#291 id=291 data-nosnippet>291</a>// Other CI images do not ship that loader.
+<a href=#292 id=292 data-nosnippet>292</a></span><span class="attr">#[cfg(all(test, target_os = <span class="string">"linux"</span>))]
+<a href=#293 id=293 data-nosnippet>293</a></span><span class="kw">mod </span>serialize_lib_tests;
+<a href=#294 id=294 data-nosnippet>294</a>
+<a href=#295 id=295 data-nosnippet>295</a><span class="attr">#[cfg(test)]
+<a href=#296 id=296 data-nosnippet>296</a>#[path = <span class="string">"../tests/support/gpu_capability.rs"</span>]
+<a href=#297 id=297 data-nosnippet>297</a></span><span class="kw">mod </span>gpu_capability;</code></pre></div></section></main></body></html>
