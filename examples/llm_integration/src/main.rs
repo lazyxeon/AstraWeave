@@ -216,16 +216,11 @@ async fn test_local_http_client(
         .unwrap_or(false);
     let client = match (allow_remote, env::var("LOCAL_LLM_API_KEY")) {
         (true, Ok(api_key)) => {
-            LocalHttpClient::allowing_remote_with_api_key(url.to_string(), model, api_key)
-                .expect("model client")
+            LocalHttpClient::allowing_remote_with_api_key(url.to_string(), model, api_key)?
         }
-        (true, Err(_)) => {
-            LocalHttpClient::allowing_remote(url.to_string(), model).expect("model client")
-        }
-        (false, Ok(api_key)) => {
-            LocalHttpClient::with_api_key(url.to_string(), model, api_key).expect("model client")
-        }
-        (false, Err(_)) => LocalHttpClient::new(url.to_string(), model).expect("model client"),
+        (true, Err(_)) => LocalHttpClient::allowing_remote(url.to_string(), model)?,
+        (false, Ok(api_key)) => LocalHttpClient::with_api_key(url.to_string(), model, api_key)?,
+        (false, Err(_)) => LocalHttpClient::new(url.to_string(), model)?,
     };
 
     println!("Connecting to local LLM at: {}", url);

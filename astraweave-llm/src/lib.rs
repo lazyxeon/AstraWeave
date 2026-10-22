@@ -35,6 +35,19 @@ pub fn loopback_model_url(url: String, allow_remote: bool) -> String {
     }
 }
 
+/// Keep `url` only when [`loopback_model_url`] would not rewrite it.
+///
+/// Constructors use this so a rejected host or userinfo cannot be stored, and
+/// a bearer token cannot be attached to the loopback fallback. The error does
+/// not include the URL.
+pub fn require_kept_model_url(url: String, allow_remote: bool) -> Result<String> {
+    let kept = loopback_model_url(url.clone(), allow_remote);
+    if kept != url {
+        bail!("model URL was rejected");
+    }
+    Ok(kept)
+}
+
 fn http_url_without_userinfo(url: &str) -> bool {
     let Ok(parsed) = url::Url::parse(url) else {
         return false;
@@ -282,7 +295,7 @@ impl OllamaClient {
 
 #[cfg(feature = "ollama")]
 impl OllamaClient {
-    /// Keep a loopback URL. A non-loopback URL is replaced with `http://127.0.0.1:11434`.
+    /// Keep a loopback URL. A URL that would be rewritten is an error.
     pub fn new(url: impl Into<String>, model: impl Into<String>) -> Result<Self> {
         Self::assemble(url, model, false)
     }
@@ -291,7 +304,7 @@ impl OllamaClient {
     ///
     /// That client honors `HTTP_PROXY`, `HTTPS_PROXY`, and `ALL_PROXY`, and it
     /// follows redirects. A loopback URL still uses [`loopback_http_client`].
-    /// [`Self::new`] replaces a non-loopback URL and always uses that builder.
+    /// Userinfo and any other URL [`loopback_model_url`] would rewrite is an error.
     pub fn allowing_remote(url: impl Into<String>, model: impl Into<String>) -> Result<Self> {
         Self::assemble(url, model, true)
     }
@@ -301,7 +314,7 @@ impl OllamaClient {
         model: impl Into<String>,
         allow_remote: bool,
     ) -> Result<Self> {
-        let url = loopback_model_url(url.into(), allow_remote);
+        let url = require_kept_model_url(url.into(), allow_remote)?;
         let client = build_model_client(&url, allow_remote)?;
         Ok(Self {
             url,
@@ -387,13 +400,13 @@ impl OllamaChatClient {
     ///
     /// That client honors `HTTP_PROXY`, `HTTPS_PROXY`, and `ALL_PROXY`, and it
     /// follows redirects. A loopback URL still uses [`loopback_http_client`].
-    /// [`Self::new`] replaces a non-loopback URL and always uses that builder.
+    /// Userinfo and any other URL [`loopback_model_url`] would rewrite is an error.
     pub fn allowing_remote(url: String, model: String) -> Result<Self> {
         Self::assemble(url, model, true)
     }
 
     fn assemble(url: String, model: String, allow_remote: bool) -> Result<Self> {
-        let url = loopback_model_url(url, allow_remote);
+        let url = require_kept_model_url(url, allow_remote)?;
         let client = build_model_client(&url, allow_remote)?;
 
         let low_latency = std::env::var("OLLAMA_LOW_LATENCY")
@@ -1001,7 +1014,7 @@ impl LocalHttpClient {
         &self.url
     }
 
-    /// Create a client. Non-loopback URLs are replaced with `http://127.0.0.1:11434`.
+    /// Create a client. A URL that would be rewritten is an error, and no key is stored.
     /// Use [`Self::allowing_remote`] to keep a caller-supplied host on reqwest's
     /// default client (proxy env and redirects). A loopback URL still uses
     /// [`loopback_http_client`].
@@ -1010,6 +1023,7 @@ impl LocalHttpClient {
     }
 
     /// Create a client with an API key. The URL is loopback-only, same as [`Self::new`].
+    /// A URL that would be rewritten returns an error and does not store `api_key`.
     pub fn with_api_key(url: String, model: String, api_key: String) -> Result<Self> {
         Self::assemble(url, model, Some(api_key), false)
     }
@@ -1018,12 +1032,12 @@ impl LocalHttpClient {
     ///
     /// A non-loopback URL uses reqwest's default client: `HTTP_PROXY`,
     /// `HTTPS_PROXY`, and `ALL_PROXY` apply, and redirects are followed. A
-    /// loopback URL still uses [`loopback_http_client`].
+    /// loopback URL still uses [`loopback_http_client`]. Userinfo is an error.
     pub fn allowing_remote(url: String, model: String) -> Result<Self> {
         Self::assemble(url, model, None, true)
     }
 
-    /// [`Self::allowing_remote`] plus a bearer token.
+    /// [`Self::allowing_remote`] plus a bearer token. A rejected URL does not store the key.
     pub fn allowing_remote_with_api_key(
         url: String,
         model: String,
@@ -1038,7 +1052,7 @@ impl LocalHttpClient {
         api_key: Option<String>,
         allow_remote: bool,
     ) -> Result<Self> {
-        let url = loopback_model_url(url, allow_remote);
+        let url = require_kept_model_url(url, allow_remote)?;
         let client = build_model_client(&url, allow_remote)?;
         Ok(Self {
             url,
@@ -1740,16 +1754,10 @@ mod tests {
     #[test]
     fn other_ollama_clients_keep_only_loopback_urls() {
         let remote = "https://api.openai.com";
-        let qwen = qwen3_ollama::Qwen3Ollama::new(remote, "qwen").expect("client");
-        let phi = phi3_ollama::Phi3Ollama::new(remote, "phi3").expect("client");
-        let hermes = hermes2pro_ollama::Hermes2ProOllama::new(remote, "hermes").expect("client");
-        let chat = OllamaChatClient::new(remote.to_string(), "chat".to_string()).expect("client");
-        for url in [qwen.url(), phi.url(), hermes.url(), chat.url()] {
-            assert!(
-                is_loopback_http_url(&url),
-                "stored a non-loopback endpoint: {url}"
-            );
-        }
+        assert!(qwen3_ollama::Qwen3Ollama::new(remote, "qwen").is_err());
+        assert!(phi3_ollama::Phi3Ollama::new(remote, "phi3").is_err());
+        assert!(hermes2pro_ollama::Hermes2ProOllama::new(remote, "hermes").is_err());
+        assert!(OllamaChatClient::new(remote.to_string(), "chat".to_string()).is_err());
         let opted = qwen3_ollama::Qwen3Ollama::allowing_remote(remote, "qwen").expect("client");
         assert_eq!(opted.url(), remote);
     }
@@ -1952,14 +1960,16 @@ mod tests {
     #[test]
     fn ollama_generate_client_keeps_only_loopback_urls() {
         let remote = "https://api.openai.com";
-        let client = OllamaClient::new(remote, "llama").expect("client");
-        assert!(
-            is_loopback_http_url(&client.url()),
-            "stored a non-loopback endpoint: {}",
-            client.url()
-        );
+        assert!(OllamaClient::new(remote, "llama").is_err());
         let opted = OllamaClient::allowing_remote(remote, "llama").expect("client");
         assert_eq!(opted.url(), remote);
+        let userinfo = "http://127.0.0.1:11434@evil.example/api";
+        let err = match OllamaClient::allowing_remote(userinfo, "llama") {
+            Ok(_) => panic!("userinfo URL was stored"),
+            Err(err) => err.to_string(),
+        };
+        assert!(err.contains("rejected"), "{err}");
+        assert!(!err.contains("evil.example"), "{err}");
     }
     use astraweave_core::{
         CompanionState, Constraints, EnemyState, IVec2, PlayerState, ToolSpec, WorldSnapshot,
@@ -2263,20 +2273,47 @@ mod tests {
         assert_eq!(plan.steps.len(), 4);
     }
 
-    /// SEC-POC SEC-LLM-1. Constructors must refuse a non-loopback model URL.
-    /// `LocalHttpClient` speaks the chat-completions shape and stores whatever
-    /// string it is given, including a cloud host.
+    /// SEC-POC SEC-LLM-1. Constructors must refuse a URL they would rewrite.
+    /// A bearer token is not stored for that URL.
     #[cfg(feature = "ollama")]
     #[test]
     fn poc_local_http_client_rejects_non_loopback_url() {
-        let client =
-            LocalHttpClient::new("https://api.openai.com".to_string(), "gpt-4".to_string())
-                .expect("client");
-        assert!(
-            is_loopback_http_url(&client.url()),
-            "model client stored a non-loopback endpoint: {}",
-            client.url()
-        );
+        let key = "sk-test";
+        let remote = "https://api.openai.com/v1";
+        let userinfo = "http://user:secret@evil.example/v1";
+        let cases = [
+            LocalHttpClient::new(remote.to_string(), "gpt-4".to_string()),
+            LocalHttpClient::with_api_key(remote.to_string(), "gpt-4".to_string(), key.to_string()),
+            LocalHttpClient::allowing_remote_with_api_key(
+                userinfo.to_string(),
+                "gpt-4".to_string(),
+                key.to_string(),
+            ),
+        ];
+        for result in cases {
+            let err = match result {
+                Ok(_) => panic!("rewritten URL was stored"),
+                Err(err) => err.to_string(),
+            };
+            assert!(err.contains("rejected"), "{err}");
+            assert!(!err.contains(key), "{err}");
+            assert!(!err.contains("secret"), "{err}");
+        }
+        let kept = LocalHttpClient::with_api_key(
+            "http://127.0.0.1:11434".to_string(),
+            "gpt-4".to_string(),
+            key.to_string(),
+        )
+        .expect("loopback");
+        assert_eq!(kept.api_key.as_deref(), Some(key));
+        let remote_key = LocalHttpClient::allowing_remote_with_api_key(
+            remote.to_string(),
+            "gpt-4".to_string(),
+            key.to_string(),
+        )
+        .expect("remote opt-in");
+        assert_eq!(remote_key.url(), remote);
+        assert_eq!(remote_key.api_key.as_deref(), Some(key));
     }
 
     #[cfg(feature = "ollama")]

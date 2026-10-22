@@ -64,12 +64,12 @@ async fn test_custom_streaming_client() {
 
 #[cfg(feature = "ollama")]
 fn ollama_chat_probe(mode: &str) -> std::process::Output {
-    // Timeouts are on the child only. `Command::env` does not call `set_var`.
+    // The default client is low-latency, so `complete` skips the non-stream
+    // attempts and reads `OLLAMA_TIMEOUT_SECS`. `Command::env` does not call `set_var`.
     std::process::Command::new(env!("CARGO_BIN_EXE_ollama_chat_probe"))
         .arg(mode)
+        .env("OLLAMA_LOW_LATENCY", "1")
         .env("OLLAMA_TIMEOUT_SECS", "1")
-        .env("OLLAMA_NONSTREAM_TIMEOUT_SECS", "1")
-        .env("OLLAMA_NONSTREAM_ATTEMPTS", "1")
         .output()
         .expect("spawn ollama chat probe")
 }

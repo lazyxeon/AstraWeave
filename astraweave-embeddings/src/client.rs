@@ -246,9 +246,10 @@ impl EmbeddingClient for CandleEmbeddingClient {
 
 /// Remote API embedding client (OpenAI-compatible).
 ///
-/// [`RemoteEmbeddingClient::new`] keeps a loopback URL and uses
-/// [`astraweave_llm::loopback_http_client`]. [`RemoteEmbeddingClient::allowing_remote`]
-/// is the explicit opt-in: it keeps the caller URL on reqwest's default client.
+/// [`RemoteEmbeddingClient::new`] accepts a loopback URL and uses
+/// [`astraweave_llm::loopback_http_client`]. A URL that would be rewritten is an
+/// error, and the API key is not stored. [`RemoteEmbeddingClient::allowing_remote`]
+/// keeps a caller URL that has no userinfo on reqwest's default client.
 #[cfg(feature = "http")]
 pub struct RemoteEmbeddingClient {
     api_url: String,
@@ -260,12 +261,12 @@ pub struct RemoteEmbeddingClient {
 
 #[cfg(feature = "http")]
 impl RemoteEmbeddingClient {
-    /// Create a loopback embedding client. A non-loopback URL is replaced.
+    /// Create a loopback embedding client. A URL that would be rewritten is an error.
     pub fn new(api_url: String, model: String, dimensions: usize) -> Result<Self> {
         Self::assemble(api_url, model, dimensions, None, false)
     }
 
-    /// Loopback client plus a bearer token.
+    /// Loopback client plus a bearer token. A rejected URL does not store the key.
     pub fn with_api_key(
         api_url: String,
         model: String,
@@ -293,7 +294,7 @@ impl RemoteEmbeddingClient {
         if astraweave_llm::model_url_has_userinfo(&api_url) {
             anyhow::bail!("embedding URL has userinfo");
         }
-        let api_url = astraweave_llm::loopback_model_url(api_url, allow_remote);
+        let api_url = astraweave_llm::require_kept_model_url(api_url, allow_remote)?;
         let client = if allow_remote && !astraweave_llm::is_loopback_http_url(&api_url) {
             reqwest::Client::builder()
         } else {
@@ -567,5 +568,20 @@ mod tests {
             .model_info()
             .description
             .contains("http://127.0.0.1:11434"));
+
+        let key = "sk-test";
+        match RemoteEmbeddingClient::with_api_key(
+            "https://api.openai.com/v1".to_string(),
+            "m".into(),
+            8,
+            key.to_string(),
+        ) {
+            Ok(_) => panic!("rewritten embedding URL stored the API key"),
+            Err(err) => {
+                let msg = err.to_string();
+                assert!(msg.contains("rejected"), "{msg}");
+                assert!(!msg.contains(key), "{msg}");
+            }
+        }
     }
 }

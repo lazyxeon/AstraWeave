@@ -189,12 +189,12 @@ Local models only. No cloud provider crate is a dependency of the engine. The cl
 
 | Client | Default URL | Restricts the host? |
 |---|---|---|
-| `Qwen3Ollama::localhost` / `::fast` | `http://localhost:11434` | Yes. `new` rewrites a non-loopback URL and stores `loopback_http_client` |
-| `OllamaChatClient::new` | Caller-supplied | Yes. Same helper |
+| `Qwen3Ollama::localhost` / `::fast` | `http://localhost:11434` | Yes. `new` returns an error when the URL would be rewritten |
+| `OllamaChatClient::new` | Caller-supplied | Yes. Same error. A bearer token is not stored |
 | `Phi3Ollama`, `Hermes2ProOllama` | `localhost` helpers | Yes. Same helper |
-| `LocalHttpClient` | Caller-supplied | Yes. Posts to `{url}/v1/chat/completions` and can attach `Authorization: Bearer` only through that client |
+| `LocalHttpClient` | Caller-supplied | Yes. A URL that would be rewritten is an error, so the bearer token is not stored. Posts to `{url}/v1/chat/completions` |
 
-`loopback_http_client` is the shared builder. It calls `no_proxy()`, so `HTTP_PROXY`, `HTTPS_PROXY`, and `ALL_PROXY` are ignored. Its redirect policy follows a hop only when `is_loopback_http_url` accepts the next URL, and it stops a chain at 8 hops. The name `localhost` (optional trailing dot, any ASCII case) is a literal match. It is not resolved. The client pins that name to `127.0.0.1` and still uses the URL port. `::1` and `127.0.0.0/8` are accepted as addresses. Userinfo is rejected before `allow_remote` can return the string, including an empty `@`. `RemoteEmbeddingClient::assemble` returns an error when the URL has userinfo. The stored model `url` is private. `ensure_model_request` checks that first hop again before each request.
+`loopback_http_client` is the shared builder. It calls `no_proxy()`, so `HTTP_PROXY`, `HTTPS_PROXY`, and `ALL_PROXY` are ignored. Its redirect policy follows a hop only when `is_loopback_http_url` accepts the next URL, and it stops a chain at 8 hops. The name `localhost` (optional trailing dot, any ASCII case) is a literal match. It is not resolved. The client pins that name to `127.0.0.1` and still uses the URL port. `::1` and `127.0.0.0/8` are accepted as addresses. Userinfo is rejected before `allow_remote` can return the string, including an empty `@`. `RemoteEmbeddingClient::assemble` returns an error when the URL has userinfo or would be rewritten, and does not store the API key. The stored model `url` is private. `ensure_model_request` checks that first hop again before each request.
 
 `allowing_remote` is the explicit opt-in. It keeps the caller URL when that URL has no userinfo. When that URL is not loopback, the stored client is reqwest's default client: the proxy variables apply and redirects are followed. When the URL is still loopback, `allowing_remote` uses `loopback_http_client` anyway. `LOCAL_LLM_ALLOW_REMOTE=1` selects the opt-in in `examples/llm_integration`. The tags probe in that example always uses `loopback_http_client`.
 
@@ -202,7 +202,7 @@ Local models only. No cloud provider crate is a dependency of the engine. The cl
 
 `OLLAMA_MODEL` defaults differ by binary (`phi3:medium` in one path, `qwen3` names in others). That is configuration drift, not a network egress hole.
 
-**SEC-LLM-1.** `poc_local_http_client_rejects_non_loopback_url` (feature `ollama`) stores `http://127.0.0.1:11434` for `https://api.openai.com`. `loopback_http_client_rejects_remote_redirects` covers a redirect to a remote host. `loopback_http_client_ignores_proxy_env` spawns `loopback_http_probe` with `HTTP_PROXY`, `HTTPS_PROXY`, and `ALL_PROXY` and requests `http://localhost:{port}/`. The `forbid(unsafe_code)` library does not call `set_var` or `remove_var`.
+**SEC-LLM-1.** `poc_local_http_client_rejects_non_loopback_url` (feature `ollama`) returns an error for `https://api.openai.com/v1`, including `with_api_key("sk-test")`, and for `allowing_remote_with_api_key` on a userinfo URL. The error text does not contain the key. `loopback_http_client_rejects_remote_redirects` covers a redirect to a remote host. `loopback_http_client_ignores_proxy_env` spawns `loopback_http_probe` with `HTTP_PROXY`, `HTTPS_PROXY`, and `ALL_PROXY` and requests `http://localhost:{port}/`. The `forbid(unsafe_code)` library does not call `set_var` or `remove_var`.
 
 ### Can model text become a path, a shell command, a script, or a sim write?
 

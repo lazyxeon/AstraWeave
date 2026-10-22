@@ -94,7 +94,7 @@ impl Phi3Ollama {
     ///
     /// That client honors `HTTP_PROXY`, `HTTPS_PROXY`, and `ALL_PROXY`, and it
     /// follows redirects. A loopback URL still uses [`crate::loopback_http_client`].
-    /// `new` replaces a non-loopback URL and always uses that builder.
+    /// `new` returns an error when the URL would be rewritten.
     pub fn allowing_remote(url: impl Into<String>, model: impl Into<String>) -> Result<Self> {
         Self::assemble(url, model, true)
     }
@@ -104,7 +104,7 @@ impl Phi3Ollama {
         model: impl Into<String>,
         allow_remote: bool,
     ) -> Result<Self> {
-        let url = crate::loopback_model_url(url.into(), allow_remote);
+        let url = crate::require_kept_model_url(url.into(), allow_remote)?;
         let client = crate::build_model_client(&url, allow_remote)?;
         Ok(Self {
             url,
