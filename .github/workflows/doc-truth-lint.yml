@@ -30,6 +30,9 @@ on:
       - '.github/workflows/doc-truth-lint.yml'
   workflow_dispatch:
 
+# Per pull-request ref. Another PR does not cancel this run. Run 39793896957
+# was cancelled at the 20-minute job timeout while rust-ci-setup was still
+# restoring the shared crate cache. aw_doc_lint is anyhow + clap.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -44,10 +47,10 @@ jobs:
     timeout-minutes: 20
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
-      - name: Rust CI setup
-        uses: ./.github/actions/rust-ci-setup
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@d77020bf130f2e8c39c025bf9c4c3a445fe2b9fa # 1.89.0
 
       - name: Run doc-truth lint (warn-mode)
         run: cargo run -p aw_doc_lint -- --mode warn
