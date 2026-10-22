@@ -399,5 +399,69 @@ fn second_frame_matches_the_uv_delta_and_skips_a_culled_model() {
             (moved_sample.velocity - camera_only).length() > 0.02,
             "object motion collapsed to the camera delta"
         );
+
+        // `cover` was culled by an off-screen AABB while its mesh sat in view.
+        // Bring it on screen, park it off screen, then bring it back one step.
+        // A stale previous matrix shows up as a teleport instead of that step.
+        let cover_here = astraweave_render::Instance::from_pos_scale_color(
+            glam::Vec3::new(0.0, 2.0, 2.0),
+            glam::Vec3::splat(1.0),
+            [1.0, 0.0, 0.0, 1.0],
+        );
+        assert!(renderer.update_model_instances("cover", &[cover_here.clone()]));
+        renderer.set_model_bounds("cover", [-1.0, 1.0, 1.0], [1.0, 3.0, 3.0]);
+        draw(&mut renderer);
+        let cover_away = astraweave_render::Instance::from_pos_scale_color(
+            glam::Vec3::new(30.0, 2.0, 2.0),
+            glam::Vec3::splat(1.0),
+            [1.0, 0.0, 0.0, 1.0],
+        );
+        assert!(renderer.update_model_instances("cover", &[cover_away.clone()]));
+        renderer.set_model_bounds("cover", [29.0, 1.0, 1.0], [31.0, 3.0, 3.0]);
+        draw(&mut renderer);
+        let cover_back = astraweave_render::Instance::from_pos_scale_color(
+            glam::Vec3::new(0.4, 2.0, 2.0),
+            glam::Vec3::splat(1.0),
+            [1.0, 0.0, 0.0, 1.0],
+        );
+        assert!(renderer.update_model_instances("cover", &[cover_back.clone()]));
+        renderer.set_model_bounds("cover", [-0.6, 1.0, 1.0], [1.4, 3.0, 3.0]);
+        let copy_started = std::time::Instant::now();
+        draw(&mut renderer);
+        let copy_ms = copy_started.elapsed().as_secs_f64() * 1e3;
+        let copy_bytes = renderer.scene_vector_last_copy_bytes();
+        eprintln!("scene_vector_copy_bytes={copy_bytes} frame_ms={copy_ms:.3}");
+        assert!(copy_bytes > 0, "previous-instance copy recorded no bytes");
+        let (normal, velocity) = renderer.scene_vector_targets().expect("targets");
+        let normal_tex = normal.clone();
+        let velocity_tex = velocity.clone();
+        encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("read cover normals"),
+        });
+        let normals = read_texture(&device, &queue, encoder, &normal_tex, WIDTH, WIDTH, 8);
+        encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("read cover velocity"),
+        });
+        let velocities = read_texture(&device, &queue, encoder, &velocity_tex, WIDTH, WIDTH, 4);
+        let back = cover_back.transform.transform_point3(glam::Vec3::ZERO);
+        let away = cover_away.transform.transform_point3(glam::Vec3::ZERO);
+        let step = uv_of(second_vp, back) - uv_of(second_vp, away);
+        let stale = uv_of(second_vp, back) - uv_of(second_vp, glam::Vec3::new(0.0, 2.0, 2.0));
+        let px = (uv_of(second_vp, back).x * WIDTH as f32).clamp(0.0, (WIDTH - 1) as f32) as u32;
+        let py = (uv_of(second_vp, back).y * WIDTH as f32).clamp(0.0, (WIDTH - 1) as f32) as u32;
+        let cover_sample = pixel_rg(&normals, &velocities, WIDTH, px, py);
+        assert!(
+            cover_sample.coverage > 0.5,
+            "culled model was not on screen at {px},{py}"
+        );
+        assert!(
+            (cover_sample.velocity - step).length() < 0.08,
+            "cover velocity {} expected one step {step}",
+            cover_sample.velocity
+        );
+        assert!(
+            (cover_sample.velocity - stale).length() > 0.05,
+            "cover velocity matched the stale on-screen pose"
+        );
     });
 }

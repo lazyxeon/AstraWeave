@@ -802,6 +802,9 @@ pub struct TerrainChunkGpu {
     /// frustum culling in the terrain shadow-caster pass.
     pub aabb_min: [f32; 3],
     pub aabb_max: [f32; 3],
+    /// Last frame's vertices. A collapse that rewrites `vertex_buffer` in
+    /// place still has a one-tick object delta.
+    prev_vertex: Option<wgpu::Buffer>,
 }
 
 /// Owns the forward-lit terrain rendering state inside `Renderer`.
@@ -1103,7 +1106,14 @@ pub struct Renderer {
     plane_prev_instances: Option<wgpu::Buffer>,
     sphere_prev_instances: Option<wgpu::Buffer>,
     ext_prev_instances: Option<wgpu::Buffer>,
+    weather_prev_instances: Option<wgpu::Buffer>,
+    /// Previous sphere transforms in `self.instances` order. Compacted with
+    /// the same visibility mask as the current draw, so a sphere that leaves
+    /// the frustum does not hand its matrix to the next slot.
+    sphere_prev_transforms: Vec<glam::Mat4>,
     scene_vectors_prev_valid: bool,
+    /// Bytes copied into previous-instance buffers on the last enabled frame.
+    scene_vector_last_copy_bytes: u64,
     atmosphere: Option<crate::atmosphere::AtmospherePass>,
     cloud_raymarch: Option<crate::volumetric_clouds::VolumetricCloudsPass>,
     ssgi_pass: Option<crate::ssgi::SsgiPass>,
@@ -1129,6 +1139,7 @@ pub struct Renderer {
     instance_uploaded: Vec<u8>,
     /// Reused frustum-visible list filled by [`Self::build_visible_instances`].
     visible_raw_scratch: Vec<InstanceRaw>,
+    visible_prev_scratch: Vec<InstanceRaw>,
 
     /// Optional light direction/intensity override from the editor's world panel.
     /// When Some, `update_camera_matrices` uses this instead of TimeOfDay.
@@ -3946,7 +3957,10 @@ fn vs(input: VSIn) -> VSOut {
             plane_prev_instances: None,
             sphere_prev_instances: None,
             ext_prev_instances: None,
+            weather_prev_instances: None,
+            sphere_prev_transforms: Vec::new(),
             scene_vectors_prev_valid: false,
+            scene_vector_last_copy_bytes: 0,
             atmosphere: None,
             cloud_raymarch: None,
             ssgi_pass: None,
@@ -3963,6 +3977,7 @@ fn vs(input: VSIn) -> VSOut {
             instance_raw_scratch: Vec::new(),
             instance_uploaded: Vec::new(),
             visible_raw_scratch: Vec::new(),
+            visible_prev_scratch: Vec::new(),
             light_override: None,
             instance_buf,
             overlay,
@@ -5791,8 +5806,32 @@ fn vs(input: VSIn) -> VSOut {
     pub fn set_scene_vectors_enabled(&mut self, enabled: bool) {
         self.scene_vectors_on = enabled;
         if !enabled {
+            // Drop the slots. The next enabled frame must not reuse a buffer
+            // that still holds the last enabled pose.
             self.scene_vectors_prev_valid = false;
+            self.scene_vector_last_copy_bytes = 0;
+            self.plane_prev_instances = None;
+            self.sphere_prev_instances = None;
+            self.ext_prev_instances = None;
+            self.weather_prev_instances = None;
+            self.sphere_prev_transforms.clear();
+            for model in self.models.values_mut() {
+                model.scene_prev_instances = None;
+            }
+            #[cfg(feature = "terrain-splat-arrays")]
+            if let Some(tf) = self.terrain_forward.as_mut() {
+                for chunk in tf.chunks.values_mut() {
+                    chunk.prev_vertex = None;
+                }
+            }
         }
+    }
+
+    /// Bytes copied into previous-instance and previous-vertex buffers the
+    /// last time the pass ran. Zero while the pass is off.
+    #[must_use]
+    pub fn scene_vector_last_copy_bytes(&self) -> u64 {
+        self.scene_vector_last_copy_bytes
     }
 
     #[must_use]
@@ -6003,9 +6042,11 @@ fn vs(input: VSIn) -> VSOut {
     /// Clear and redraw the surfaces `draw_into` just wrote.
     ///
     /// Normals are view space in [0, 1]. Velocity is a UV delta, Y down.
-    /// The first enabled frame stores zero motion. Names are sorted. A model
-    /// the color pass culled is not drawn. `set_skinned_mesh` is not drawn
-    /// by `draw_into`, so it is not drawn here.
+    /// The first enabled frame stores zero motion. Named models use the color
+    /// pass order and are drawn in reverse, so `Less` keeps the same
+    /// equal-depth surface. A model the color pass culled is not drawn, but
+    /// its previous matrix is still refreshed. `set_skinned_mesh` is not
+    /// drawn by `draw_into`, so it is not drawn here.
     fn record_scene_vectors(
         &mut self,
         enc: &mut wgpu::CommandEncoder,
@@ -6065,26 +6106,47 @@ fn vs(input: VSIn) -> VSOut {
         };
         let max_draw_dist_sq = max_draw_dist * max_draw_dist;
         let frustum = crate::culling::FrustumPlanes::from_view_proj(&curr);
-        let names: Vec<String> = self
-            .gpu_cull_names
-            .iter()
-            .filter(|name| {
-                self.scene_vector_model_visible(name, cam_pos, max_draw_dist_sq, &frustum)
-            })
-            .cloned()
-            .collect();
+        // Same order as the color pass: sorted names only while GPU cull is
+        // on, otherwise the `models` map order. Drawing that list in reverse
+        // makes the last equal-depth fragment the one `Less` kept in color.
+        let mut names: Vec<String> = if self.gpu_cull_on {
+            self.gpu_cull_names.clone()
+        } else {
+            self.models.keys().cloned().collect()
+        };
+        names.retain(|name| {
+            self.scene_vector_model_visible(name, cam_pos, max_draw_dist_sq, &frustum)
+        });
+        let all_model_names: Vec<String> = self.models.keys().cloned().collect();
         let sphere_count = self.build_visible_instances() as u32;
+        let sphere_stride = std::mem::size_of::<InstanceRaw>() as u64;
+        let sphere_bytes = u64::from(sphere_count) * sphere_stride;
+        if sphere_count > 0 {
+            let fits = self
+                .sphere_prev_instances
+                .as_ref()
+                .is_some_and(|buf| buf.size() >= sphere_bytes);
+            if !fits {
+                self.sphere_prev_instances = Some(device.create_buffer(&wgpu::BufferDescriptor {
+                    label: Some("scene vector previous spheres"),
+                    size: sphere_bytes.max(sphere_stride),
+                    usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+                    mapped_at_creation: false,
+                }));
+            }
+            if let Some(buf) = self.sphere_prev_instances.as_ref() {
+                queue.write_buffer(
+                    buf,
+                    0,
+                    bytemuck::cast_slice(&self.visible_prev_scratch[..sphere_count as usize]),
+                );
+            }
+        }
         let plane_prev = Self::stage_prev_instances(
             &device,
             enc,
             &self.plane_inst_buf,
             &mut self.plane_prev_instances,
-        );
-        let sphere_prev = Self::stage_prev_instances(
-            &device,
-            enc,
-            &self.instance_buf,
-            &mut self.sphere_prev_instances,
         );
         let ext_prev = if let Some(buf) = self.ext_inst_buf.clone() {
             Some(Self::stage_prev_instances(
@@ -6096,7 +6158,7 @@ fn vs(input: VSIn) -> VSOut {
         } else {
             None
         };
-        for name in &names {
+        for name in &all_model_names {
             let Some(model) = self.models.get_mut(name) else {
                 continue;
             };
@@ -6104,11 +6166,43 @@ fn vs(input: VSIn) -> VSOut {
             let _ =
                 Self::stage_prev_instances(&device, enc, &current, &mut model.scene_prev_instances);
         }
+        let weather_count = self.weather.particle_count() as u32;
+        let weather_buf = self.weather.buffer().clone();
+        let weather_prev = if weather_count > 0 {
+            Some(Self::stage_prev_instances(
+                &device,
+                enc,
+                &weather_buf,
+                &mut self.weather_prev_instances,
+            ))
+        } else {
+            None
+        };
+        #[cfg(feature = "terrain-splat-arrays")]
+        let terrain_draw_keys: Vec<u64> = if let Some(tf) = self.terrain_forward.as_mut() {
+            let mut keys: Vec<u64> = tf.chunks.keys().copied().collect();
+            for key in &keys {
+                let Some(chunk) = tf.chunks.get_mut(key) else {
+                    continue;
+                };
+                let current = chunk.vertex_buffer.clone();
+                let _ = Self::stage_prev_instances(&device, enc, &current, &mut chunk.prev_vertex);
+            }
+            keys.reverse();
+            keys
+        } else {
+            Vec::new()
+        };
         let tex_bg = self.tex_bg.clone();
         let stamp = self.begin_named_stamp(enc, "scene_vectors");
-        {
+        if let Some(weather_prev_buf) = weather_prev.as_ref() {
+            if let Some(pass) = self.scene_vectors.as_ref() {
+                // Weather material cutoff is 0. The shared uniform still holds
+                // the mesh cutoff until this write.
+                pass.write_matrices(&queue, curr, prev, view, 0.0);
+            }
             let mut rp = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("scene vectors"),
+                label: Some("scene vectors weather"),
                 color_attachments: &[
                     Some(wgpu::RenderPassColorAttachment {
                         view: &normal_view,
@@ -6141,38 +6235,96 @@ fn vs(input: VSIn) -> VSOut {
             rp.set_pipeline(&pipeline);
             rp.set_bind_group(0, &bind_group, &[]);
             rp.set_bind_group(1, &tex_bg, &[]);
-            rp.set_vertex_buffer(0, self.mesh_plane.vertex_buf.slice(..));
+            rp.set_vertex_buffer(0, self.mesh_sphere.vertex_buf.slice(..));
             rp.set_index_buffer(
-                self.mesh_plane.index_buf.slice(..),
+                self.mesh_sphere.index_buf.slice(..),
                 wgpu::IndexFormat::Uint32,
             );
-            rp.set_vertex_buffer(1, self.plane_inst_buf.slice(..));
-            rp.set_vertex_buffer(2, plane_prev.slice(..));
-            rp.draw_indexed(0..self.mesh_plane.index_count, 0, 0..1);
-            if sphere_count > 0 {
-                rp.set_vertex_buffer(0, self.mesh_sphere.vertex_buf.slice(..));
-                rp.set_index_buffer(
-                    self.mesh_sphere.index_buf.slice(..),
-                    wgpu::IndexFormat::Uint32,
-                );
-                rp.set_vertex_buffer(1, self.instance_buf.slice(..));
-                rp.set_vertex_buffer(2, sphere_prev.slice(..));
-                rp.draw_indexed(0..self.mesh_sphere.index_count, 0, 0..sphere_count);
+            rp.set_vertex_buffer(1, weather_buf.slice(..));
+            rp.set_vertex_buffer(2, weather_prev_buf.slice(..));
+            rp.draw_indexed(0..self.mesh_sphere.index_count, 0, 0..weather_count);
+        }
+        if weather_count > 0 {
+            if let Some(pass) = self.scene_vectors.as_ref() {
+                pass.write_matrices(&queue, curr, prev, view, self.material_alpha_cutoff);
             }
-            if let (Some(mesh), Some(ibuf), Some(prev)) = (
-                self.mesh_external.as_ref(),
-                self.ext_inst_buf.as_ref(),
-                ext_prev.as_ref(),
-            ) {
-                if self.ext_inst_count > 0 {
-                    rp.set_vertex_buffer(0, mesh.vertex_buf.slice(..));
-                    rp.set_index_buffer(mesh.index_buf.slice(..), wgpu::IndexFormat::Uint32);
-                    rp.set_vertex_buffer(1, ibuf.slice(..));
-                    rp.set_vertex_buffer(2, prev.slice(..));
-                    rp.draw_indexed(0..mesh.index_count, 0, 0..self.ext_inst_count);
+        }
+        {
+            #[cfg(feature = "impostor-bake")]
+            let mut impostor_draws = std::mem::take(&mut self.impostor_passes);
+            #[cfg(feature = "impostor-bake")]
+            for ip in impostor_draws.values() {
+                ip.prepare_scene_vectors(&queue, curr, prev, view);
+            }
+            let color_load = if weather_count > 0 {
+                wgpu::LoadOp::Load
+            } else {
+                wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT)
+            };
+            let mut rp = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("scene vectors"),
+                color_attachments: &[
+                    Some(wgpu::RenderPassColorAttachment {
+                        view: &normal_view,
+                        resolve_target: None,
+                        ops: wgpu::Operations {
+                            load: color_load,
+                            store: wgpu::StoreOp::Store,
+                        },
+                    }),
+                    Some(wgpu::RenderPassColorAttachment {
+                        view: &velocity_view,
+                        resolve_target: None,
+                        ops: wgpu::Operations {
+                            load: color_load,
+                            store: wgpu::StoreOp::Store,
+                        },
+                    }),
+                ],
+                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                    view: &depth,
+                    depth_ops: Some(wgpu::Operations {
+                        load: wgpu::LoadOp::Load,
+                        store: wgpu::StoreOp::Store,
+                    }),
+                    stencil_ops: None,
+                }),
+                timestamp_writes: None,
+                occlusion_query_set: None,
+            });
+            // Reverse of the color pass: impostors, terrain, models, external
+            // mesh, spheres, then the ground plane. Less plus the depth bias
+            // lets an equal-depth fragment through, and the last one is the
+            // surface the color pass kept.
+            #[cfg(feature = "impostor-bake")]
+            for ip in impostor_draws.values() {
+                ip.record_scene_vectors(&mut rp);
+            }
+            #[cfg(feature = "terrain-splat-arrays")]
+            if let Some(tf) = self.terrain_forward.as_ref() {
+                if !terrain_draw_keys.is_empty() {
+                    rp.set_pipeline(&terrain_pipeline);
+                    rp.set_bind_group(0, &bind_group, &[]);
+                    for key in &terrain_draw_keys {
+                        let Some(chunk) = tf.chunks.get(key) else {
+                            continue;
+                        };
+                        let Some(prev_verts) = chunk.prev_vertex.as_ref() else {
+                            continue;
+                        };
+                        rp.set_vertex_buffer(0, chunk.vertex_buffer.slice(..));
+                        rp.set_vertex_buffer(1, prev_verts.slice(..));
+                        rp.set_index_buffer(
+                            chunk.index_buffer.slice(..),
+                            wgpu::IndexFormat::Uint32,
+                        );
+                        rp.draw_indexed(0..chunk.index_count, 0, 0..1);
+                    }
                 }
             }
-            for name in &names {
+            rp.set_pipeline(&pipeline);
+            rp.set_bind_group(0, &bind_group, &[]);
+            for name in names.iter().rev() {
                 let Some(model) = self.models.get(name) else {
                     continue;
                 };
@@ -6195,59 +6347,82 @@ fn vs(input: VSIn) -> VSOut {
                     rp.draw_indexed(0..primitive.mesh.index_count, 0, 0..model.instance_count);
                 }
             }
-            #[cfg(feature = "terrain-splat-arrays")]
-            if let Some(tf) = self.terrain_forward.as_ref() {
-                if !tf.chunks.is_empty() {
-                    rp.set_pipeline(&terrain_pipeline);
-                    rp.set_bind_group(0, &bind_group, &[]);
-                    let mut keys: Vec<u64> = tf.chunks.keys().copied().collect();
-                    keys.sort_unstable();
-                    for key in keys {
-                        let Some(chunk) = tf.chunks.get(&key) else {
-                            continue;
-                        };
-                        rp.set_vertex_buffer(0, chunk.vertex_buffer.slice(..));
-                        rp.set_index_buffer(
-                            chunk.index_buffer.slice(..),
-                            wgpu::IndexFormat::Uint32,
-                        );
-                        rp.draw_indexed(0..chunk.index_count, 0, 0..1);
-                    }
+            rp.set_bind_group(1, &tex_bg, &[]);
+            if let (Some(mesh), Some(ibuf), Some(prev_buf)) = (
+                self.mesh_external.as_ref(),
+                self.ext_inst_buf.as_ref(),
+                ext_prev.as_ref(),
+            ) {
+                if self.ext_inst_count > 0 {
+                    rp.set_vertex_buffer(0, mesh.vertex_buf.slice(..));
+                    rp.set_index_buffer(mesh.index_buf.slice(..), wgpu::IndexFormat::Uint32);
+                    rp.set_vertex_buffer(1, ibuf.slice(..));
+                    rp.set_vertex_buffer(2, prev_buf.slice(..));
+                    rp.draw_indexed(0..mesh.index_count, 0, 0..self.ext_inst_count);
                 }
             }
-            let weather_count = self.weather.particle_count() as u32;
-            if weather_count > 0 {
-                rp.set_pipeline(&pipeline);
-                rp.set_bind_group(0, &bind_group, &[]);
-                rp.set_bind_group(1, &tex_bg, &[]);
-                let weather = self.weather.buffer().clone();
-                rp.set_vertex_buffer(0, self.mesh_sphere.vertex_buf.slice(..));
-                rp.set_index_buffer(
-                    self.mesh_sphere.index_buf.slice(..),
-                    wgpu::IndexFormat::Uint32,
-                );
-                rp.set_vertex_buffer(1, weather.slice(..));
-                rp.set_vertex_buffer(2, weather.slice(..));
-                rp.draw_indexed(0..self.mesh_sphere.index_count, 0, 0..weather_count);
+            if sphere_count > 0 {
+                if let Some(sphere_prev) = self.sphere_prev_instances.as_ref() {
+                    rp.set_vertex_buffer(0, self.mesh_sphere.vertex_buf.slice(..));
+                    rp.set_index_buffer(
+                        self.mesh_sphere.index_buf.slice(..),
+                        wgpu::IndexFormat::Uint32,
+                    );
+                    rp.set_vertex_buffer(1, self.instance_buf.slice(..));
+                    rp.set_vertex_buffer(2, sphere_prev.slice(..));
+                    rp.draw_indexed(0..self.mesh_sphere.index_count, 0, 0..sphere_count);
+                }
             }
+            rp.set_vertex_buffer(0, self.mesh_plane.vertex_buf.slice(..));
+            rp.set_index_buffer(
+                self.mesh_plane.index_buf.slice(..),
+                wgpu::IndexFormat::Uint32,
+            );
+            rp.set_vertex_buffer(1, self.plane_inst_buf.slice(..));
+            rp.set_vertex_buffer(2, plane_prev.slice(..));
+            rp.draw_indexed(0..self.mesh_plane.index_count, 0, 0..1);
+        }
+        #[cfg(feature = "impostor-bake")]
+        {
+            self.impostor_passes = impostor_draws;
         }
         self.end_named_stamp(enc, stamp);
+        let mut copy_bytes = sphere_bytes;
+        copy_bytes += plane_prev.size().min(self.plane_inst_buf.size());
         Self::commit_prev_instances(enc, &self.plane_inst_buf, &plane_prev);
-        Self::commit_prev_instances(enc, &self.instance_buf, &sphere_prev);
-        if let (Some(current), Some(prev)) = (self.ext_inst_buf.as_ref(), ext_prev.as_ref()) {
-            Self::commit_prev_instances(enc, current, prev);
+        if let (Some(current), Some(prev_buf)) = (self.ext_inst_buf.as_ref(), ext_prev.as_ref()) {
+            copy_bytes += current.size().min(prev_buf.size());
+            Self::commit_prev_instances(enc, current, prev_buf);
         }
-        for name in &names {
+        if let Some(prev_buf) = weather_prev.as_ref() {
+            copy_bytes += weather_buf.size().min(prev_buf.size());
+            Self::commit_prev_instances(enc, &weather_buf, prev_buf);
+        }
+        for name in &all_model_names {
             let Some(model) = self.models.get(name) else {
                 continue;
             };
-            let Some(prev) = model.scene_prev_instances.as_ref() else {
+            let Some(prev_buf) = model.scene_prev_instances.as_ref() else {
                 continue;
             };
             let current = model.instance_buf.clone();
-            let prev = prev.clone();
-            Self::commit_prev_instances(enc, &current, &prev);
+            copy_bytes += current.size().min(prev_buf.size());
+            let prev_buf = prev_buf.clone();
+            Self::commit_prev_instances(enc, &current, &prev_buf);
         }
+        #[cfg(feature = "terrain-splat-arrays")]
+        if let Some(tf) = self.terrain_forward.as_ref() {
+            for chunk in tf.chunks.values() {
+                if let Some(prev_buf) = chunk.prev_vertex.as_ref() {
+                    copy_bytes += chunk.vertex_buffer.size().min(prev_buf.size());
+                    Self::commit_prev_instances(enc, &chunk.vertex_buffer, prev_buf);
+                }
+            }
+        }
+        self.sphere_prev_transforms.clear();
+        self.sphere_prev_transforms
+            .extend(self.instances.iter().map(|inst| inst.transform));
+        self.scene_vector_last_copy_bytes = copy_bytes;
         self.scene_vectors_prev = curr;
         self.scene_vectors_prev_valid = true;
     }
@@ -6457,6 +6632,22 @@ fn vs(input: VSIn) -> VSOut {
     }
 
     pub fn update_instances(&mut self, instances: &[Instance]) {
+        // Previous pose is the transform currently in this slot, in list
+        // order. A newly appended slot has no history, so its motion is zero.
+        self.sphere_prev_transforms.clear();
+        if self.scene_vectors_prev_valid {
+            for (i, inst) in instances.iter().enumerate() {
+                let prev = self
+                    .instances
+                    .get(i)
+                    .map(|old| old.transform)
+                    .unwrap_or(inst.transform);
+                self.sphere_prev_transforms.push(prev);
+            }
+        } else {
+            self.sphere_prev_transforms
+                .extend(instances.iter().map(|inst| inst.transform));
+        }
         self.instances.clear();
         self.instances.extend_from_slice(instances);
 
@@ -9559,6 +9750,7 @@ fn vs(input: VSIn) -> VSOut {
                 index_count: indices.len() as u32,
                 aabb_min,
                 aabb_max,
+                prev_vertex: None,
             },
         );
         Ok(())
@@ -9927,7 +10119,8 @@ fn vs(input: VSIn) -> VSOut {
             self.visible_raw_scratch.reserve(needed);
         }
         self.visible_raw_scratch.clear();
-        for inst in &self.instances {
+        self.visible_prev_scratch.clear();
+        for (i, inst) in self.instances.iter().enumerate() {
             let center = inst.transform.w_axis.truncate();
             // approximate radius from basis vectors length (half-extents length)
             let sx = inst.transform.x_axis.truncate().length();
@@ -9936,6 +10129,19 @@ fn vs(input: VSIn) -> VSOut {
             let radius = 0.5 * glam::Vec3::new(sx, sy, sz).length();
             if inside_frustum_sphere(center, radius, &norm_planes) {
                 self.visible_raw_scratch.push(inst.raw());
+                let prev_tx = self
+                    .sphere_prev_transforms
+                    .get(i)
+                    .copied()
+                    .unwrap_or(inst.transform);
+                self.visible_prev_scratch.push(
+                    Instance {
+                        transform: prev_tx,
+                        color: inst.color,
+                        material_id: inst.material_id,
+                    }
+                    .raw(),
+                );
             }
         }
         self.visible_raw_scratch.len()

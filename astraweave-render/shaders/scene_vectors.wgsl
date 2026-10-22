@@ -1,5 +1,7 @@
 // View-space normals and UV motion for the gated aux targets.
-// SSGI decodes `normal * 2 - 1` and marches in view space.
+// The view matches perspective_rh (NDC Y up). SSGI, SSR, and GTAO rebuild
+// a view position with ndc.y = -(uv.y * 2 - 1), because uv.y = 0 is the
+// top of the framebuffer. Their project-back to the screen still flips Y.
 // SSGI denoise, TAA, and temporal upscale subtract this velocity from UV
 // (Y down, [0, 1]). NDC is computed in the vertex shader and interpolated
 // without perspective correction. The first frame's previous matrix is the
@@ -122,9 +124,10 @@ fn fs(in: VsOut) -> FsOut {
 fn vs_terrain(
     @location(0) position: vec3<f32>,
     @location(1) normal: vec3<f32>,
+    @location(3) prev_position: vec3<f32>,
 ) -> VsOut {
     let curr_clip = mats.curr_vp * vec4<f32>(position, 1.0);
-    let prev_clip = mats.prev_vp * vec4<f32>(position, 1.0);
+    let prev_clip = mats.prev_vp * vec4<f32>(prev_position, 1.0);
     let n = normalize(normal);
     var out: VsOut;
     out.clip = curr_clip;
