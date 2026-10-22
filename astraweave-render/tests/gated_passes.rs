@@ -1,6 +1,7 @@
 //! Optional presentation passes submit under lavapipe with a real depth view.
-//! They stay off in `draw_into` unless a setter enables them, so the allocation
-//! gate does not count their passes.
+//! The constructor leaves Bruneton off. A caller that turns it on, then
+//! applies no flag or `--atmosphere=false`, draws with Bruneton off. The
+//! other gated passes stay off unless their own setters enable them.
 
 use astraweave_render::Renderer;
 
@@ -36,14 +37,77 @@ fn submit(renderer: &mut Renderer, view: &wgpu::TextureView) {
 }
 
 #[test]
-fn atmosphere_follows_the_measured_default() {
+fn clear_volumetric_passes_drops_a_stored_fog_pass() {
     pollster::block_on(async {
-        let renderer = Renderer::new_headless(64, 64).await.expect("headless");
+        let mut renderer = Renderer::new_headless(64, 64).await.expect("headless");
+        renderer.set_volumetric_fog_config(
+            astraweave_render::volumetric_fog::VolumetricFogPass::gameplay_config(),
+        );
+        renderer.set_god_ray_config(astraweave_render::GodRayConfig {
+            enabled: true,
+            half_res: true,
+            num_samples: 32,
+            exposure: 0.22,
+            ..astraweave_render::GodRayConfig::default()
+        });
+        assert!(
+            renderer.volumetric_fog_enabled(),
+            "gameplay fog should store a pass"
+        );
+        assert!(renderer.god_rays_enabled(), "shafts should store a pass");
+        renderer.set_atmosphere_enabled(true);
+        renderer.clear_volumetric_passes();
+        assert!(!renderer.volumetric_fog_enabled());
+        assert!(!renderer.god_rays_enabled());
+        // The clear does not turn Bruneton off. The caller must.
+        assert!(renderer.atmosphere_enabled());
+        renderer.set_atmosphere_enabled(false);
+        assert!(!renderer.atmosphere_enabled());
+    });
+}
+
+#[test]
+fn constructor_stays_off_while_enum_default_is_atmosphere() {
+    pollster::block_on(async {
+        let mut renderer = Renderer::new_headless(64, 64).await.expect("headless");
         let quality = astraweave_render::PresentationQuality::default();
-        assert_eq!(renderer.atmosphere_enabled(), quality.atmosphere());
-        // The `--atmosphere` cell is blank, so the default stays off.
-        assert!(!quality.atmosphere());
-        assert!(astraweave_render::PresentationQuality::Atmosphere.atmosphere());
+        // The constructor stays off. The game turns Bruneton on after fog builds.
+        assert!(!renderer.atmosphere_enabled());
+        assert!(quality.atmosphere());
+        assert!(!astraweave_render::PresentationQuality::Measured.atmosphere());
+        renderer.set_atmosphere_enabled(false);
+        assert!(!renderer.atmosphere_enabled());
+    });
+}
+
+/// Starts with Bruneton on. No flag and `--atmosphere=false` both turn it
+/// off, and the off frame is drawn. Fog and shafts stay off. This does not
+/// lock the constructor.
+#[test]
+fn false_atmosphere_flag_disables_the_default_sky() {
+    pollster::block_on(async {
+        let mut renderer = Renderer::new_headless(64, 64).await.expect("headless");
+        let device = renderer.device().clone();
+        let view = color_target(&device);
+        renderer.set_atmosphere_enabled(true);
+        assert!(renderer.atmosphere_enabled());
+        assert!(!renderer.volumetric_fog_enabled());
+        assert!(!renderer.god_rays_enabled());
+        for parts in [&[][..], &["--atmosphere=false"], &["--atmosphere", "false"]] {
+            renderer.set_atmosphere_enabled(true);
+            let args = parts
+                .iter()
+                .map(|part| (*part).to_string())
+                .collect::<Vec<_>>();
+            let on = astraweave_render::budget_gate::reject_gated_flags(&args).expect("parse");
+            assert!(!on, "{parts:?}");
+            renderer.set_atmosphere_enabled(on);
+            assert!(!renderer.atmosphere_enabled(), "{parts:?}");
+            assert!(!renderer.volumetric_fog_enabled());
+            assert!(!renderer.god_rays_enabled());
+            submit(&mut renderer, &view);
+            assert!(!renderer.atmosphere_enabled(), "{parts:?}");
+        }
     });
 }
 
