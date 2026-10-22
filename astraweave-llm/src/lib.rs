@@ -688,9 +688,9 @@ impl LlmClient for OllamaChatClient {
                                 );
                             }
                             Err(err) => {
-                                return Err(err.context(format!(
+                                return Err(err).context(format!(
                                     "Ollama non-streaming status {status} body read failed"
-                                )));
+                                ));
                             }
                         }
                     }
