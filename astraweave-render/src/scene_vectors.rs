@@ -1,27 +1,100 @@
 //! Scene normal and motion, written into the gated aux targets.
 //!
-//! Off unless `Renderer::set_scene_vectors_enabled(true)`. The pass does not
-//! enable SSGI, TAA, or temporal upscale, and it does not write simulation
-//! state. `deferred.rs` keeps its own G-buffer; this pass writes the targets
-//! those later passes already sample.
+//! Off unless `Renderer::set_scene_vectors_enabled(true)`, and only `draw_into`
+//! records it. The pass does not enable SSGI, TAA, or temporal upscale, and
+//! it does not write simulation state. `deferred.rs` keeps its own G-buffer.
+//! The stored normal is view space packed into [0, 1]. The stored velocity
+//! is a framebuffer UV delta (Y down). SSGI, TAA, and temporal upscale still
+//! do not copy their output onto the presented HDR target, and their history
+//! textures stay unwired. Enabling this pass does not make those inputs ready.
 
 use bytemuck::{Pod, Zeroable};
 
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable)]
 struct Matrices {
-    curr: [[f32; 4]; 4],
-    prev: [[f32; 4]; 4],
+    curr_vp: [[f32; 4]; 4],
+    prev_vp: [[f32; 4]; 4],
+    view: [[f32; 4]; 4],
+    alpha_cutoff: f32,
+    _pad: [f32; 3],
 }
 
 pub struct SceneVectorsPass {
     pipeline: wgpu::RenderPipeline,
+    terrain_pipeline: wgpu::RenderPipeline,
     bind_group: wgpu::BindGroup,
     matrices: wgpu::Buffer,
 }
 
+fn instance_stride() -> wgpu::BufferAddress {
+    std::mem::size_of::<crate::types::InstanceRaw>() as wgpu::BufferAddress
+}
+
+pub fn current_model_layout() -> wgpu::VertexBufferLayout<'static> {
+    wgpu::VertexBufferLayout {
+        array_stride: instance_stride(),
+        step_mode: wgpu::VertexStepMode::Instance,
+        attributes: &CURRENT_MODEL,
+    }
+}
+
+pub fn prev_instance_layout() -> wgpu::VertexBufferLayout<'static> {
+    wgpu::VertexBufferLayout {
+        array_stride: instance_stride(),
+        step_mode: wgpu::VertexStepMode::Instance,
+        attributes: &PREV_MODEL,
+    }
+}
+
+const CURRENT_MODEL: [wgpu::VertexAttribute; 4] = [
+    wgpu::VertexAttribute {
+        offset: 0,
+        shader_location: 2,
+        format: wgpu::VertexFormat::Float32x4,
+    },
+    wgpu::VertexAttribute {
+        offset: 16,
+        shader_location: 3,
+        format: wgpu::VertexFormat::Float32x4,
+    },
+    wgpu::VertexAttribute {
+        offset: 32,
+        shader_location: 4,
+        format: wgpu::VertexFormat::Float32x4,
+    },
+    wgpu::VertexAttribute {
+        offset: 48,
+        shader_location: 5,
+        format: wgpu::VertexFormat::Float32x4,
+    },
+];
+
+const PREV_MODEL: [wgpu::VertexAttribute; 4] = [
+    wgpu::VertexAttribute {
+        offset: 0,
+        shader_location: 6,
+        format: wgpu::VertexFormat::Float32x4,
+    },
+    wgpu::VertexAttribute {
+        offset: 16,
+        shader_location: 7,
+        format: wgpu::VertexFormat::Float32x4,
+    },
+    wgpu::VertexAttribute {
+        offset: 32,
+        shader_location: 8,
+        format: wgpu::VertexFormat::Float32x4,
+    },
+    wgpu::VertexAttribute {
+        offset: 48,
+        shader_location: 10,
+        format: wgpu::VertexFormat::Float32x4,
+    },
+];
+
 impl SceneVectorsPass {
-    pub fn new(device: &wgpu::Device) -> Self {
+    pub fn new(device: &wgpu::Device, tex_layout: &wgpu::BindGroupLayout) -> Self {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("scene vectors"),
             source: wgpu::ShaderSource::Wgsl(include_str!("../shaders/scene_vectors.wgsl").into()),
@@ -30,7 +103,7 @@ impl SceneVectorsPass {
             label: Some("scene vectors matrices"),
             entries: &[wgpu::BindGroupLayoutEntry {
                 binding: 0,
-                visibility: wgpu::ShaderStages::VERTEX,
+                visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
                 ty: wgpu::BindingType::Buffer {
                     ty: wgpu::BufferBindingType::Uniform,
                     has_dynamic_offset: false,
@@ -55,6 +128,11 @@ impl SceneVectorsPass {
         });
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("scene vectors"),
+            bind_group_layouts: &[&bind_layout, tex_layout],
+            push_constant_ranges: &[],
+        });
+        let terrain_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("scene vectors terrain"),
             bind_group_layouts: &[&bind_layout],
             push_constant_ranges: &[],
         });
@@ -67,7 +145,8 @@ impl SceneVectorsPass {
                 entry_point: Some("vs"),
                 buffers: &[
                     crate::types::Vertex::layout(),
-                    crate::types::InstanceRaw::layout(),
+                    current_model_layout(),
+                    prev_instance_layout(),
                 ],
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
             },
@@ -104,23 +183,81 @@ impl SceneVectorsPass {
             multisample: wgpu::MultisampleState::default(),
             multiview: None,
         });
+        let terrain_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            cache: None,
+            label: Some("scene vectors terrain"),
+            layout: Some(&terrain_layout),
+            vertex: wgpu::VertexState {
+                module: &shader,
+                entry_point: Some("vs_terrain"),
+                buffers: &[crate::terrain_material_manager::TerrainSplatVertex::LAYOUT],
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &shader,
+                entry_point: Some("fs_terrain"),
+                targets: &[
+                    Some(wgpu::ColorTargetState {
+                        format: wgpu::TextureFormat::Rgba16Float,
+                        blend: None,
+                        write_mask: wgpu::ColorWrites::ALL,
+                    }),
+                    Some(wgpu::ColorTargetState {
+                        format: wgpu::TextureFormat::Rg16Float,
+                        blend: None,
+                        write_mask: wgpu::ColorWrites::ALL,
+                    }),
+                ],
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+            }),
+            primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::TriangleList,
+                front_face: wgpu::FrontFace::Ccw,
+                cull_mode: Some(wgpu::Face::Back),
+                ..Default::default()
+            },
+            depth_stencil: Some(wgpu::DepthStencilState {
+                format: wgpu::TextureFormat::Depth32Float,
+                depth_write_enabled: false,
+                depth_compare: wgpu::CompareFunction::LessEqual,
+                stencil: wgpu::StencilState::default(),
+                bias: wgpu::DepthBiasState::default(),
+            }),
+            multisample: wgpu::MultisampleState::default(),
+            multiview: None,
+        });
         Self {
             pipeline,
+            terrain_pipeline,
             bind_group,
             matrices,
         }
     }
 
-    pub fn write_matrices(&self, queue: &wgpu::Queue, curr: glam::Mat4, prev: glam::Mat4) {
+    pub fn write_matrices(
+        &self,
+        queue: &wgpu::Queue,
+        curr: glam::Mat4,
+        prev: glam::Mat4,
+        view: glam::Mat4,
+        alpha_cutoff: f32,
+    ) {
         let matrices = Matrices {
-            curr: curr.to_cols_array_2d(),
-            prev: prev.to_cols_array_2d(),
+            curr_vp: curr.to_cols_array_2d(),
+            prev_vp: prev.to_cols_array_2d(),
+            view: view.to_cols_array_2d(),
+            alpha_cutoff,
+            _pad: [0.0; 3],
         };
         queue.write_buffer(&self.matrices, 0, bytemuck::bytes_of(&matrices));
     }
 
     pub fn pipeline(&self) -> &wgpu::RenderPipeline {
         &self.pipeline
+    }
+
+    pub fn terrain_pipeline(&self) -> &wgpu::RenderPipeline {
+        &self.terrain_pipeline
     }
 
     pub fn bind_group(&self) -> &wgpu::BindGroup {

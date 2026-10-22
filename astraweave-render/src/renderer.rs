@@ -684,6 +684,9 @@ pub struct RenderModel {
     pub instance_buf: wgpu::Buffer,
     /// Number of instances.
     pub instance_count: u32,
+    /// Previous frame's instance buffer for scene-vector object motion.
+    /// `None` until the pass runs. The first frame copies the current buffer.
+    scene_prev_instances: Option<wgpu::Buffer>,
     /// World-space AABB for frustum culling (None = always visible).
     pub aabb: Option<([f32; 3], [f32; 3])>,
     /// GPU memory used by this model's texture (for budget tracking).
@@ -1096,6 +1099,10 @@ pub struct Renderer {
     dof_on: bool,
     scene_vectors_on: bool,
     scene_vectors_prev: glam::Mat4,
+    material_alpha_cutoff: f32,
+    plane_prev_instances: Option<wgpu::Buffer>,
+    sphere_prev_instances: Option<wgpu::Buffer>,
+    ext_prev_instances: Option<wgpu::Buffer>,
     scene_vectors_prev_valid: bool,
     atmosphere: Option<crate::atmosphere::AtmospherePass>,
     cloud_raymarch: Option<crate::volumetric_clouds::VolumetricCloudsPass>,
@@ -3745,7 +3752,9 @@ fn vs(input: VSIn) -> VSOut {
         let plane_inst_buf = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("plane inst"),
             contents: bytemuck::bytes_of(&plane_inst),
-            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+            usage: wgpu::BufferUsages::VERTEX
+                | wgpu::BufferUsages::COPY_DST
+                | wgpu::BufferUsages::COPY_SRC,
         });
 
         let ext_inst_buf = None;
@@ -3933,6 +3942,10 @@ fn vs(input: VSIn) -> VSOut {
             dof_on: false,
             scene_vectors_on: false,
             scene_vectors_prev: glam::Mat4::IDENTITY,
+            material_alpha_cutoff: 0.5,
+            plane_prev_instances: None,
+            sphere_prev_instances: None,
+            ext_prev_instances: None,
             scene_vectors_prev_valid: false,
             atmosphere: None,
             cloud_raymarch: None,
@@ -5355,6 +5368,7 @@ fn vs(input: VSIn) -> VSOut {
     ) {
         let ubo =
             crate::material::MaterialUboData::new(base_color, metallic, roughness, alpha_cutoff);
+        self.material_alpha_cutoff = alpha_cutoff;
         self.queue
             .write_buffer(&self.material_buf, 0, bytemuck::bytes_of(&ubo));
     }
@@ -5766,10 +5780,12 @@ fn vs(input: VSIn) -> VSOut {
         self.dof_on = enabled;
     }
 
-    /// Write world normals and clip-space motion into the gated aux targets.
+    /// Write view-space normals and UV motion into the gated aux targets.
     ///
-    /// The default is off. Turning this on does not enable SSGI, TAA, or
-    /// temporal upscale. Those passes stay on their own setters.
+    /// The default is off. Only [`Self::draw_into`] records the pass.
+    /// [`Self::render`] does not. Turning this on does not enable SSGI, TAA,
+    /// or temporal upscale, and it does not make their history or presented
+    /// frame valid. Those passes stay on their own setters.
     pub fn set_scene_vectors_enabled(&mut self, enabled: bool) {
         self.scene_vectors_on = enabled;
         if !enabled {
@@ -5902,11 +5918,87 @@ fn vs(input: VSIn) -> VSOut {
         );
     }
 
-    /// Clear and draw world normals and clip-space motion after the opaque pass.
+    fn stage_prev_instances(
+        device: &wgpu::Device,
+        enc: &mut wgpu::CommandEncoder,
+        current: &wgpu::Buffer,
+        slot: &mut Option<wgpu::Buffer>,
+    ) -> wgpu::Buffer {
+        let fits = slot
+            .as_ref()
+            .is_some_and(|prev| prev.size() >= current.size());
+        if !fits {
+            let created = device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("scene vector previous instances"),
+                size: current.size(),
+                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            });
+            enc.copy_buffer_to_buffer(current, 0, &created, 0, current.size());
+            *slot = Some(created);
+        }
+        match slot {
+            Some(prev) => prev.clone(),
+            None => current.clone(),
+        }
+    }
+
+    fn commit_prev_instances(
+        enc: &mut wgpu::CommandEncoder,
+        current: &wgpu::Buffer,
+        prev: &wgpu::Buffer,
+    ) {
+        let bytes = current.size().min(prev.size());
+        if bytes > 0 {
+            enc.copy_buffer_to_buffer(current, 0, prev, 0, bytes);
+        }
+    }
+
+    fn scene_vector_model_visible(
+        &self,
+        name: &str,
+        cam_pos: glam::Vec3,
+        max_dist_sq: f32,
+        frustum: &crate::culling::FrustumPlanes,
+    ) -> bool {
+        let Some(model) = self.models.get(name) else {
+            return false;
+        };
+        if model.instance_count == 0 {
+            return false;
+        }
+        let bounds = if self.gpu_cull_on {
+            model
+                .aabb
+                .or_else(|| self.gpu_cull_bounds.get(name).copied())
+        } else {
+            model.aabb
+        };
+        let Some((min, max)) = bounds else {
+            return true;
+        };
+        let center = glam::Vec3::new(
+            (min[0] + max[0]) * 0.5,
+            (min[1] + max[1]) * 0.5,
+            (min[2] + max[2]) * 0.5,
+        );
+        let extent = glam::Vec3::new(
+            (max[0] - min[0]) * 0.5,
+            (max[1] - min[1]) * 0.5,
+            (max[2] - min[2]) * 0.5,
+        );
+        let to_cam = center - cam_pos;
+        let closest_dist_sq = (to_cam.x.abs() - extent.x).max(0.0).powi(2)
+            + (to_cam.z.abs() - extent.z).max(0.0).powi(2);
+        closest_dist_sq <= max_dist_sq && frustum.test_aabb(center, extent)
+    }
+
+    /// Clear and redraw the surfaces `draw_into` just wrote.
     ///
-    /// Off by default. The first enabled frame stores zero motion because the
-    /// previous matrix is the current one. SSGI, TAA, and upscale stay off
-    /// unless their own setters run.
+    /// Normals are view space in [0, 1]. Velocity is a UV delta, Y down.
+    /// The first enabled frame stores zero motion. Names are sorted. A model
+    /// the color pass culled is not drawn. `set_skinned_mesh` is not drawn
+    /// by `draw_into`, so it is not drawn here.
     fn record_scene_vectors(
         &mut self,
         enc: &mut wgpu::CommandEncoder,
@@ -5934,16 +6026,78 @@ fn vs(input: VSIn) -> VSOut {
         };
         let device = self.device.clone();
         let queue = self.queue.clone();
+        let view = self.cached_view;
         if self.scene_vectors.is_none() {
-            self.scene_vectors = Some(crate::scene_vectors::SceneVectorsPass::new(&device));
+            self.scene_vectors = Some(crate::scene_vectors::SceneVectorsPass::new(
+                &device,
+                &self.tex_bgl,
+            ));
         }
-        let (pipeline, bind_group) = {
+        let (pipeline, terrain_pipeline, bind_group) = {
             let Some(pass) = self.scene_vectors.as_ref() else {
                 return;
             };
-            pass.write_matrices(&queue, curr, prev);
-            (pass.pipeline().clone(), pass.bind_group().clone())
+            pass.write_matrices(&queue, curr, prev, view, self.material_alpha_cutoff);
+            (
+                pass.pipeline().clone(),
+                pass.terrain_pipeline().clone(),
+                pass.bind_group().clone(),
+            )
         };
+        #[cfg(not(feature = "terrain-splat-arrays"))]
+        let _ = &terrain_pipeline;
+        let cam_pos = glam::Vec3::new(
+            self.camera_ubo.camera_pos_pad[0],
+            self.camera_ubo.camera_pos_pad[1],
+            self.camera_ubo.camera_pos_pad[2],
+        );
+        let max_draw_dist = if self.max_draw_distance > 0.0 {
+            self.max_draw_distance
+        } else {
+            self.scene_env.visuals.fog_end * 1.2
+        };
+        let max_draw_dist_sq = max_draw_dist * max_draw_dist;
+        let frustum = crate::culling::FrustumPlanes::from_view_proj(&curr);
+        let names: Vec<String> = self
+            .gpu_cull_names
+            .iter()
+            .filter(|name| {
+                self.scene_vector_model_visible(name, cam_pos, max_draw_dist_sq, &frustum)
+            })
+            .cloned()
+            .collect();
+        let sphere_count = self.build_visible_instances() as u32;
+        let plane_prev = Self::stage_prev_instances(
+            &device,
+            enc,
+            &self.plane_inst_buf,
+            &mut self.plane_prev_instances,
+        );
+        let sphere_prev = Self::stage_prev_instances(
+            &device,
+            enc,
+            &self.instance_buf,
+            &mut self.sphere_prev_instances,
+        );
+        let ext_prev = if let Some(buf) = self.ext_inst_buf.clone() {
+            Some(Self::stage_prev_instances(
+                &device,
+                enc,
+                &buf,
+                &mut self.ext_prev_instances,
+            ))
+        } else {
+            None
+        };
+        for name in &names {
+            let Some(model) = self.models.get_mut(name) else {
+                continue;
+            };
+            let current = model.instance_buf.clone();
+            let _ =
+                Self::stage_prev_instances(&device, enc, &current, &mut model.scene_prev_instances);
+        }
+        let tex_bg = self.tex_bg.clone();
         let stamp = self.begin_named_stamp(enc, "scene_vectors");
         {
             let mut rp = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -5979,22 +6133,114 @@ fn vs(input: VSIn) -> VSOut {
             });
             rp.set_pipeline(&pipeline);
             rp.set_bind_group(0, &bind_group, &[]);
-            for model in self.models.values() {
-                if model.instance_count == 0 {
-                    continue;
+            rp.set_bind_group(1, &tex_bg, &[]);
+            rp.set_vertex_buffer(0, self.mesh_plane.vertex_buf.slice(..));
+            rp.set_index_buffer(
+                self.mesh_plane.index_buf.slice(..),
+                wgpu::IndexFormat::Uint32,
+            );
+            rp.set_vertex_buffer(1, self.plane_inst_buf.slice(..));
+            rp.set_vertex_buffer(2, plane_prev.slice(..));
+            rp.draw_indexed(0..self.mesh_plane.index_count, 0, 0..1);
+            if sphere_count > 0 {
+                rp.set_vertex_buffer(0, self.mesh_sphere.vertex_buf.slice(..));
+                rp.set_index_buffer(
+                    self.mesh_sphere.index_buf.slice(..),
+                    wgpu::IndexFormat::Uint32,
+                );
+                rp.set_vertex_buffer(1, self.instance_buf.slice(..));
+                rp.set_vertex_buffer(2, sphere_prev.slice(..));
+                rp.draw_indexed(0..self.mesh_sphere.index_count, 0, 0..sphere_count);
+            }
+            if let (Some(mesh), Some(ibuf), Some(prev)) = (
+                self.mesh_external.as_ref(),
+                self.ext_inst_buf.as_ref(),
+                ext_prev.as_ref(),
+            ) {
+                if self.ext_inst_count > 0 {
+                    rp.set_vertex_buffer(0, mesh.vertex_buf.slice(..));
+                    rp.set_index_buffer(mesh.index_buf.slice(..), wgpu::IndexFormat::Uint32);
+                    rp.set_vertex_buffer(1, ibuf.slice(..));
+                    rp.set_vertex_buffer(2, prev.slice(..));
+                    rp.draw_indexed(0..mesh.index_count, 0, 0..self.ext_inst_count);
                 }
+            }
+            for name in &names {
+                let Some(model) = self.models.get(name) else {
+                    continue;
+                };
+                let Some(prev) = model.scene_prev_instances.as_ref() else {
+                    continue;
+                };
                 for primitive in &model.primitives {
+                    if let Some(tex) = primitive.tex_bind_group.as_ref() {
+                        rp.set_bind_group(1, tex, &[]);
+                    } else {
+                        rp.set_bind_group(1, &tex_bg, &[]);
+                    }
                     rp.set_vertex_buffer(0, primitive.mesh.vertex_buf.slice(..));
                     rp.set_index_buffer(
                         primitive.mesh.index_buf.slice(..),
                         wgpu::IndexFormat::Uint32,
                     );
                     rp.set_vertex_buffer(1, model.instance_buf.slice(..));
+                    rp.set_vertex_buffer(2, prev.slice(..));
                     rp.draw_indexed(0..primitive.mesh.index_count, 0, 0..model.instance_count);
                 }
             }
+            #[cfg(feature = "terrain-splat-arrays")]
+            if let Some(tf) = self.terrain_forward.as_ref() {
+                if !tf.chunks.is_empty() {
+                    rp.set_pipeline(&terrain_pipeline);
+                    rp.set_bind_group(0, &bind_group, &[]);
+                    let mut keys: Vec<u64> = tf.chunks.keys().copied().collect();
+                    keys.sort_unstable();
+                    for key in keys {
+                        let Some(chunk) = tf.chunks.get(&key) else {
+                            continue;
+                        };
+                        rp.set_vertex_buffer(0, chunk.vertex_buffer.slice(..));
+                        rp.set_index_buffer(
+                            chunk.index_buffer.slice(..),
+                            wgpu::IndexFormat::Uint32,
+                        );
+                        rp.draw_indexed(0..chunk.index_count, 0, 0..1);
+                    }
+                }
+            }
+            let weather_count = self.weather.particle_count() as u32;
+            if weather_count > 0 {
+                rp.set_pipeline(&pipeline);
+                rp.set_bind_group(0, &bind_group, &[]);
+                rp.set_bind_group(1, &tex_bg, &[]);
+                let weather = self.weather.buffer().clone();
+                rp.set_vertex_buffer(0, self.mesh_sphere.vertex_buf.slice(..));
+                rp.set_index_buffer(
+                    self.mesh_sphere.index_buf.slice(..),
+                    wgpu::IndexFormat::Uint32,
+                );
+                rp.set_vertex_buffer(1, weather.slice(..));
+                rp.set_vertex_buffer(2, weather.slice(..));
+                rp.draw_indexed(0..self.mesh_sphere.index_count, 0, 0..weather_count);
+            }
         }
         self.end_named_stamp(enc, stamp);
+        Self::commit_prev_instances(enc, &self.plane_inst_buf, &plane_prev);
+        Self::commit_prev_instances(enc, &self.instance_buf, &sphere_prev);
+        if let (Some(current), Some(prev)) = (self.ext_inst_buf.as_ref(), ext_prev.as_ref()) {
+            Self::commit_prev_instances(enc, current, prev);
+        }
+        for name in &names {
+            let Some(model) = self.models.get(name) else {
+                continue;
+            };
+            let Some(prev) = model.scene_prev_instances.as_ref() else {
+                continue;
+            };
+            let current = model.instance_buf.clone();
+            let prev = prev.clone();
+            Self::commit_prev_instances(enc, &current, &prev);
+        }
         self.scene_vectors_prev = curr;
         self.scene_vectors_prev_valid = true;
     }
@@ -10117,7 +10363,9 @@ fn vs(input: VSIn) -> VSOut {
             self.ext_inst_buf = Some(self.device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some("ext-inst-buf"),
                 size: alloc_size,
-                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+                usage: wgpu::BufferUsages::VERTEX
+                    | wgpu::BufferUsages::COPY_DST
+                    | wgpu::BufferUsages::COPY_SRC,
                 mapped_at_creation: false,
             }));
         }
@@ -10253,6 +10501,7 @@ fn vs(input: VSIn) -> VSOut {
             tex_gpu_bytes: 0,
             stream_albedo_id: None,
             stream_resident: false,
+            scene_prev_instances: None,
         };
         let placed = name.into();
         self.insert_model(placed.clone(), model);
@@ -10284,6 +10533,7 @@ fn vs(input: VSIn) -> VSOut {
             tex_gpu_bytes: 0,
             stream_albedo_id: None,
             stream_resident: false,
+            scene_prev_instances: None,
         };
         self.insert_model(name.into(), model);
     }
@@ -10366,6 +10616,7 @@ fn vs(input: VSIn) -> VSOut {
             tex_gpu_bytes,
             stream_albedo_id: None,
             stream_resident: false,
+            scene_prev_instances: None,
         };
         let placed = name.into();
         self.insert_model(placed.clone(), model);
@@ -10385,7 +10636,9 @@ fn vs(input: VSIn) -> VSOut {
         let instance_buf = self.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("model-inst-buf"),
             size: alloc_size,
-            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+            usage: wgpu::BufferUsages::VERTEX
+                | wgpu::BufferUsages::COPY_DST
+                | wgpu::BufferUsages::COPY_SRC,
             mapped_at_creation: false,
         });
         if !raw.is_empty() {
@@ -10782,6 +11035,7 @@ fn vs(input: VSIn) -> VSOut {
             tex_gpu_bytes,
             stream_albedo_id: None,
             stream_resident: false,
+            scene_prev_instances: None,
         };
         self.insert_model(name.into(), model);
     }
@@ -10841,6 +11095,7 @@ fn vs(input: VSIn) -> VSOut {
             tex_gpu_bytes,
             stream_albedo_id: None,
             stream_resident: false,
+            scene_prev_instances: None,
         };
         self.insert_model(name.into(), model);
     }
@@ -10916,6 +11171,7 @@ fn vs(input: VSIn) -> VSOut {
             tex_gpu_bytes: 0, // Don't double-count — source owns the budget
             stream_albedo_id: None,
             stream_resident: false,
+            scene_prev_instances: None,
         };
         self.insert_model(name.into(), model);
         true
@@ -11035,7 +11291,9 @@ fn vs(input: VSIn) -> VSOut {
             model.instance_buf = self.device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some("model-inst-buf (resized)"),
                 size: needed.next_power_of_two(),
-                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+                usage: wgpu::BufferUsages::VERTEX
+                    | wgpu::BufferUsages::COPY_DST
+                    | wgpu::BufferUsages::COPY_SRC,
                 mapped_at_creation: false,
             });
         }
