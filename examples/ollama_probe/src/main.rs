@@ -1,5 +1,4 @@
 use futures_util::StreamExt;
-use reqwest::Client;
 use std::env;
 
 const DEFAULT_OLLAMA_MODEL: &str = "qwen3.5:4b";
@@ -13,7 +12,9 @@ async fn main() -> anyhow::Result<()> {
     let model = env::var("OLLAMA_MODEL").unwrap_or_else(|_| DEFAULT_OLLAMA_MODEL.to_string());
     println!("Probe Ollama {} model {}", url, model);
 
-    let client = Client::new();
+    let client = astraweave_llm::loopback_http_client()
+        .build()
+        .map_err(|err| anyhow::anyhow!("loopback http client: {err}"))?;
     // Build a realistic planning prompt (mirrors astraweave_llm::build_prompt)
     let snapshot = serde_json::json!({
         "t": 1.0,

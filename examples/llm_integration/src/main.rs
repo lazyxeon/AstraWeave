@@ -238,10 +238,19 @@ async fn test_local_http_client(
 }
 
 #[cfg(feature = "ollama")]
+#[cfg(feature = "ollama")]
 async fn probe_ollama_tags(base_url: &str) -> anyhow::Result<()> {
     let url = format!("{}/api/tags", base_url.trim_end_matches('/'));
     println!("Probing Ollama for available models at: {} (GET)", url);
-    let client = reqwest::Client::new();
+    let client = if astraweave_llm::is_loopback_http_url(base_url) {
+        astraweave_llm::loopback_http_client()
+            .build()
+            .map_err(|err| anyhow::anyhow!("loopback http client: {err}"))?
+    } else {
+        // `allowing_remote` kept this URL. The default client honors proxy
+        // environment variables and follows redirects.
+        reqwest::Client::new()
+    };
     let resp = client
         .get(&url)
         .timeout(std::time::Duration::from_secs(5))

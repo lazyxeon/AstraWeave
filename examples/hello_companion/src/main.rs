@@ -990,7 +990,7 @@ fn check_ollama_available() -> Result<()> {
     let rt = tokio::runtime::Runtime::new().context("Failed to create tokio runtime")?;
 
     rt.block_on(async {
-        let client = reqwest::Client::builder()
+        let client = astraweave_llm::loopback_http_client()
             .timeout(std::time::Duration::from_secs(2))
             .build()
             .context("Failed to create HTTP client")?;

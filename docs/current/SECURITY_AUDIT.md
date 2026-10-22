@@ -27,7 +27,7 @@ These are in the caps pull request. Valid fixtures still decode to the same byte
 | SEC-NET-3 | `decode_msg` rejects an LZ4 declared output above 4 MiB. |
 | SEC-ASSET-1 | glTF file URIs and cell asset paths go through `safe_under`. |
 | SEC-MOD-4 | Script load and hot reload go through `safe_under`. |
-| SEC-LLM-1 | `LocalHttpClient::new` and `with_api_key` keep only loopback URLs. The check parses the URL, rejects userinfo, and allows only `127.0.0.0/8`, `::1`, or `localhost`. `allowing_remote` is the explicit opt-in. `LOCAL_LLM_ALLOW_REMOTE=1` selects it in the integration example. |
+| SEC-LLM-1 | Model clients keep a loopback URL only. `loopback_http_client` sets `no_proxy`, follows a redirect only when the next hop is loopback, and pins `localhost` to `127.0.0.1`. `allowing_remote` is the explicit opt-in: it keeps the caller URL and uses reqwest's default client, which honors `HTTP_PROXY`, `HTTPS_PROXY`, and `ALL_PROXY` and follows redirects. `LOCAL_LLM_ALLOW_REMOTE=1` selects it in the integration example. |
 | SEC-NET-1 | `ServerConfig::default` binds `127.0.0.1`. `spawn_server` refuses the published dev key outside debug and test builds. Release CLI requires `--shared-key-hex`. |
 | SEC-NET-2 | The in-engine server ignores client actor ids and hello names. Outside debug/test, hello requires `AW_GAME_TOKEN` (not the literal `dev`). |
 
@@ -47,7 +47,7 @@ Severity is impact if the reachable caller is given a hostile file or socket, no
 | SEC-NET-3 | High | `aw-net-proto` `decode_msg` | Yes, matchmaking server | LZ4 output size is the attacker's `u32` |
 | SEC-ASSET-1 | High | glTF URI + cell `load_asset` | Yes, editor and scene streaming | `../` is opened as a filesystem path |
 | SEC-MOD-1 | High | `astraweave-scripting` `script_system` | Examples only | Script path is an unsandboxed file read; host uses raw pointers |
-| SEC-LLM-1 | High | `LocalHttpClient` / `Qwen3Ollama::new` | Example + any `OLLAMA_URL` | Any URL is stored, including a cloud host, and a bearer key is sent |
+| SEC-LLM-1 | High | `LocalHttpClient` / Ollama constructors | Example + any `OLLAMA_URL` | A loopback URL is not enough: proxy env and redirects can still send the prompt. `loopback_http_client` closes that. `allowing_remote` is the explicit default-client opt-in |
 | SEC-ASSET-2 | Medium | Pack Guard zip + `image` decode | `xtask` and glTF image path | Traversal is rejected; uncompressed size is not |
 | SEC-SAVE-2 | Medium | `decode_vitals` | Public API, tests only | Record count is trusted up to the size of the string |
 | SEC-LLM-2 | Medium | Quest + world-event JSON | Compiled, no production caller | Model JSON is applied to in-memory world flags with no size cap |
@@ -189,16 +189,20 @@ Local models only. No cloud provider crate is a dependency of the engine. The cl
 
 | Client | Default URL | Restricts the host? |
 |---|---|---|
-| `Qwen3Ollama::localhost` / `::fast` | `http://localhost:11434` | No. `new` stores any string (`astraweave-llm/src/qwen3_ollama.rs:180-189`) |
-| `OllamaChatClient::new` | Caller-supplied | No (`astraweave-llm/src/lib.rs:245`) |
-| `Phi3Ollama`, `Hermes2ProOllama` | `localhost` helpers, `new` is open | No |
-| `LocalHttpClient` | Caller-supplied | No. Posts to `{url}/v1/chat/completions` and can attach `Authorization: Bearer` (`astraweave-llm/src/lib.rs:850-913`) |
+| `Qwen3Ollama::localhost` / `::fast` | `http://localhost:11434` | Yes. `new` rewrites a non-loopback URL and stores `loopback_http_client` |
+| `OllamaChatClient::new` | Caller-supplied | Yes. Same helper |
+| `Phi3Ollama`, `Hermes2ProOllama` | `localhost` helpers | Yes. Same helper |
+| `LocalHttpClient` | Caller-supplied | Yes. Posts to `{url}/v1/chat/completions` and can attach `Authorization: Bearer` only through that client |
 
-`examples/llm_integration` builds `LocalHttpClient` from `OLLAMA_URL`, defaulting to `http://127.0.0.1:11434`, and will attach an API key when one is set (`examples/llm_integration/src/main.rs:202-204`). Nothing in the engine binds a listen socket for the model. Ollama is a separate process. The engine is the client. "Binds to localhost" is therefore a property the client must enforce, and it does not.
+`loopback_http_client` is the shared builder. It calls `no_proxy()`, so `HTTP_PROXY`, `HTTPS_PROXY`, and `ALL_PROXY` are ignored. Its redirect policy follows a hop only when `is_loopback_http_url` accepts the next URL, and it stops a chain at 8 hops. The name `localhost` is kept only when every resolved address is loopback, or when the resolver returns no answer. The client pins that name to `127.0.0.1` and still uses the URL port. `::1` and `127.0.0.0/8` are accepted as addresses. Userinfo is rejected.
+
+`allowing_remote` is the explicit opt-in. It keeps the caller URL. When that URL is not loopback, the stored client is reqwest's default client: the proxy variables apply and redirects are followed. When the URL is still loopback, `allowing_remote` uses `loopback_http_client` anyway. `LOCAL_LLM_ALLOW_REMOTE=1` selects the opt-in in `examples/llm_integration`. The tags probe in that example uses the same split.
+
+`examples/llm_integration` builds `LocalHttpClient` from `OLLAMA_URL`, defaulting to `http://127.0.0.1:11434`, and will attach an API key when one is set. Nothing in the engine binds a listen socket for the model. Ollama is a separate process. The engine is the client.
 
 `OLLAMA_MODEL` defaults differ by binary (`phi3:medium` in one path, `qwen3` names in others). That is configuration drift, not a network egress hole.
 
-**SEC-LLM-1.** PoC `poc_local_http_client_rejects_non_loopback_url` (feature `ollama`) fails with `model client stored a non-loopback endpoint: https://api.openai.com`.
+**SEC-LLM-1.** `poc_local_http_client_rejects_non_loopback_url` (feature `ollama`) stores `http://127.0.0.1:11434` for `https://api.openai.com`. `loopback_http_client_ignores_proxy_env_and_rejects_remote_redirects` covers the proxy variables and a redirect to a remote host.
 
 ### Can model text become a path, a shell command, a script, or a sim write?
 
@@ -449,7 +453,7 @@ Not opened by this change. Label `deferred-failure`. Owner is `@lazyxeon` (repos
 | SEC-MOD-2 | `parse_template_toml` truncates ids with `as u16` | `@lazyxeon` | Range-check the `i64` before the cast, on the single branch that owns the function after #214/#252 rebase. | Yes. On main. `mod_queue.rs:231-234` rejects an id outside `u16` before the cast. |
 | SEC-MOD-4 | `ScriptLoader` accepts `..` | `@lazyxeon` | Reject via `safe_under` or `is_safe_relative`. Turn `poc_script_loader_rejects_parent_segments` green. | No |
 | SEC-WEAVE-1 | Weave origin can overflow the milli conversion | `@lazyxeon` | Reject origins outside the island in `queue_weave`. Do not saturate. In-range replay bytes stay. | Yes. #295 is closed. GitHub linked it to #388 |
-| SEC-LLM-1 | Model client accepts a non-loopback URL | `@lazyxeon` | `require_loopback_http_url` on every constructor and on `OLLAMA_URL`. No bearer-key cloud client. Turn `poc_local_http_client_rejects_non_loopback_url` green. | No |
+| SEC-LLM-1 | Model client accepts a non-loopback URL | `@lazyxeon` | `is_loopback_http_url` plus `loopback_http_client` (`no_proxy`, loopback-only redirects, `localhost` pinned to `127.0.0.1`). `allowing_remote` keeps a remote URL on reqwest's default client. | No |
 | SEC-LLM-2 | Quest and world-event JSON is an unbounded in-memory write | `@lazyxeon` | Keep both off the tick. When wiring, cap the model string at 64 KiB and do not eval `validation_script`. | No |
 | SEC-LLM-3 | Full prompts are logged; sanitizer prefixes `SAFE:` | `@lazyxeon` | Delete the prompt dump. Leave the sanitizer dormant or make it actually reject. Drop `openai.com` and `anthropic.com` from the default domain list. | S0-2 |
 | SEC-ASSET-1 | glTF and cell paths accept `..` | `@lazyxeon` | `safe_under` for URIs and `load_asset`. Turn both asset PoCs green. | No |

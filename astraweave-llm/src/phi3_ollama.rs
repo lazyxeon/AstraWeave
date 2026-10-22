@@ -64,6 +64,8 @@ pub struct Phi3Ollama {
 
     /// System prompt for game AI context
     pub system_prompt: Option<String>,
+
+    client: reqwest::Client,
 }
 
 impl Phi3Ollama {
@@ -82,18 +84,25 @@ impl Phi3Ollama {
         Self::assemble(url, model, false)
     }
 
-    /// Keep a non-loopback URL. `new` replaces one with `http://127.0.0.1:11434`.
+    /// Keep a non-loopback URL and use reqwest's default client for it.
+    ///
+    /// That client honors `HTTP_PROXY`, `HTTPS_PROXY`, and `ALL_PROXY`, and it
+    /// follows redirects. A loopback URL still uses [`crate::loopback_http_client`].
+    /// `new` replaces a non-loopback URL and always uses that builder.
     pub fn allowing_remote(url: impl Into<String>, model: impl Into<String>) -> Self {
         Self::assemble(url, model, true)
     }
 
     fn assemble(url: impl Into<String>, model: impl Into<String>, allow_remote: bool) -> Self {
+        let url = crate::loopback_model_url(url.into(), allow_remote);
+        let client = crate::build_model_client(&url, allow_remote);
         Self {
-            url: crate::loopback_model_url(url.into(), allow_remote),
+            url,
             model: model.into(),
             temperature: 0.7,
             max_tokens: 512,
             system_prompt: Some(DEFAULT_SYSTEM_PROMPT.to_string()),
+            client,
         }
     }
 
@@ -166,7 +175,7 @@ impl Phi3Ollama {
 
     /// Check if Ollama server is running and model is available
     pub async fn health_check(&self) -> Result<HealthStatus> {
-        let client = reqwest::Client::new();
+        let client = &self.client;
 
         // Check server is running
         let server_url = format!("{}/api/tags", self.url);
@@ -250,16 +259,7 @@ Always prioritize team survival and tactical advantage."#;
 #[async_trait]
 impl LlmClient for Phi3Ollama {
     async fn complete(&self, prompt: &str) -> Result<String> {
-        // Use a static client with connection pooling for better performance
-        static CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
-        let client = CLIENT.get_or_init(|| {
-            reqwest::Client::builder()
-                .pool_max_idle_per_host(10) // Keep connections alive
-                .pool_idle_timeout(std::time::Duration::from_secs(90))
-                .timeout(std::time::Duration::from_secs(120)) // 2 min timeout
-                .build()
-                .unwrap_or_else(|_| reqwest::Client::new())
-        });
+        let client = &self.client;
 
         let url = format!("{}/api/generate", self.url);
 
@@ -299,6 +299,7 @@ impl LlmClient for Phi3Ollama {
         let response = client
             .post(&url)
             .json(&body)
+            .timeout(std::time::Duration::from_secs(120))
             .send()
             .await
             .context("Failed to send request to Ollama")?;

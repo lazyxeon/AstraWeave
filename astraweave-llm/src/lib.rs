@@ -26,6 +26,78 @@ pub fn loopback_model_url(url: String, allow_remote: bool) -> String {
         "http://127.0.0.1:11434".to_string()
     }
 }
+
+/// Builder for a model HTTP client that cannot leave the machine.
+///
+/// `no_proxy` ignores `HTTP_PROXY`, `HTTPS_PROXY`, and `ALL_PROXY`. Redirects
+/// are followed only when the next hop is still loopback. The name `localhost`
+/// is pinned to `127.0.0.1`; the URL port is kept.
+///
+/// [`allowing_remote`](OllamaClient::allowing_remote) does not use this builder.
+/// It keeps the caller URL and uses reqwest's default client, which honors
+/// those proxy variables and follows redirects.
+#[cfg(feature = "ollama")]
+pub fn loopback_http_client() -> reqwest::ClientBuilder {
+    reqwest::Client::builder()
+        .no_proxy()
+        .redirect(loopback_redirect_policy())
+        .resolve(
+            "localhost",
+            std::net::SocketAddr::from((std::net::Ipv4Addr::LOCALHOST, 0)),
+        )
+        .resolve(
+            "localhost.",
+            std::net::SocketAddr::from((std::net::Ipv4Addr::LOCALHOST, 0)),
+        )
+}
+
+#[cfg(feature = "ollama")]
+fn loopback_redirect_policy() -> reqwest::redirect::Policy {
+    reqwest::redirect::Policy::custom(|attempt| {
+        if attempt.previous().len() >= 8 {
+            attempt.error("too many loopback redirects")
+        } else if is_loopback_http_url(attempt.url().as_str()) {
+            attempt.follow()
+        } else {
+            attempt.error("redirect is not loopback")
+        }
+    })
+}
+
+/// Loopback URLs use [`loopback_http_client`]. `allow_remote` keeps a
+/// non-loopback URL on reqwest's default client (proxy env and redirects).
+#[cfg(feature = "ollama")]
+pub(crate) fn build_model_client(url: &str, allow_remote: bool) -> reqwest::Client {
+    let remote = allow_remote && !is_loopback_http_url(url);
+    let builder = if remote {
+        reqwest::Client::builder()
+    } else {
+        loopback_http_client()
+    };
+    let tuned = builder
+        .tcp_nodelay(true)
+        .pool_idle_timeout(std::time::Duration::from_secs(90))
+        .pool_max_idle_per_host(8)
+        .connect_timeout(std::time::Duration::from_secs(30));
+    match tuned.build() {
+        Ok(client) => client,
+        Err(err) => {
+            tracing::error!("model http client: {err:#}");
+            let fallback = if remote {
+                reqwest::Client::builder()
+            } else {
+                reqwest::Client::builder()
+                    .no_proxy()
+                    .redirect(reqwest::redirect::Policy::none())
+                    .resolve(
+                        "localhost",
+                        std::net::SocketAddr::from((std::net::Ipv4Addr::LOCALHOST, 0)),
+                    )
+            };
+            fallback.build().unwrap_or_else(|_| reqwest::Client::new())
+        }
+    }
+}
 use astraweave_core::{ActionStep, PlanIntent, ToolRegistry, WorldSnapshot};
 use tracing::{debug, info};
 
@@ -181,6 +253,7 @@ impl LlmClient for AlwaysErrMock {
 pub struct OllamaClient {
     pub url: String,
     pub model: String,
+    client: reqwest::Client,
 }
 
 #[cfg(feature = "ollama")]
@@ -190,15 +263,22 @@ impl OllamaClient {
         Self::assemble(url, model, false)
     }
 
-    /// Keep a non-loopback URL. [`Self::new`] replaces one.
+    /// Keep a non-loopback URL and use reqwest's default client for it.
+    ///
+    /// That client honors `HTTP_PROXY`, `HTTPS_PROXY`, and `ALL_PROXY`, and it
+    /// follows redirects. A loopback URL still uses [`loopback_http_client`].
+    /// [`Self::new`] replaces a non-loopback URL and always uses that builder.
     pub fn allowing_remote(url: impl Into<String>, model: impl Into<String>) -> Self {
         Self::assemble(url, model, true)
     }
 
     fn assemble(url: impl Into<String>, model: impl Into<String>, allow_remote: bool) -> Self {
+        let url = loopback_model_url(url.into(), allow_remote);
+        let client = build_model_client(&url, allow_remote);
         Self {
-            url: loopback_model_url(url.into(), allow_remote),
+            url,
             model: model.into(),
+            client,
         }
     }
 }
@@ -224,9 +304,8 @@ impl LlmClient for OllamaClient {
             stream: false,
         };
 
-        let client = reqwest::Client::new();
-
-        let response = client
+        let response = self
+            .client
             .post(format!("{}/api/generate", self.url))
             .json(&body)
             .timeout(std::time::Duration::from_secs(30))
@@ -268,19 +347,18 @@ impl OllamaChatClient {
         Self::assemble(url, model, false)
     }
 
-    /// Keep a non-loopback URL. [`Self::new`] replaces one with `http://127.0.0.1:11434`.
+    /// Keep a non-loopback URL and use reqwest's default client for it.
+    ///
+    /// That client honors `HTTP_PROXY`, `HTTPS_PROXY`, and `ALL_PROXY`, and it
+    /// follows redirects. A loopback URL still uses [`loopback_http_client`].
+    /// [`Self::new`] replaces a non-loopback URL and always uses that builder.
     pub fn allowing_remote(url: String, model: String) -> Self {
         Self::assemble(url, model, true)
     }
 
     fn assemble(url: String, model: String, allow_remote: bool) -> Self {
-        // Build a tuned reqwest client for local low-latency usage
-        let client = reqwest::Client::builder()
-            .tcp_nodelay(true)
-            .pool_idle_timeout(std::time::Duration::from_secs(90))
-            .pool_max_idle_per_host(8)
-            .build()
-            .unwrap_or_else(|_| reqwest::Client::new());
+        let url = loopback_model_url(url, allow_remote);
+        let client = build_model_client(&url, allow_remote);
 
         let low_latency = std::env::var("OLLAMA_LOW_LATENCY")
             .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
@@ -294,7 +372,7 @@ impl OllamaChatClient {
             .unwrap_or(true);
 
         Self {
-            url: loopback_model_url(url, allow_remote),
+            url,
             model,
             client,
             low_latency,
@@ -873,12 +951,15 @@ pub struct LocalHttpClient {
     pub url: String,
     pub model: String,
     pub api_key: Option<String>,
+    client: reqwest::Client,
 }
 
 #[cfg(feature = "ollama")]
 impl LocalHttpClient {
     /// Create a client. Non-loopback URLs are replaced with `http://127.0.0.1:11434`.
-    /// Use [`Self::allowing_remote`] to keep a caller-supplied host.
+    /// Use [`Self::allowing_remote`] to keep a caller-supplied host on reqwest's
+    /// default client (proxy env and redirects). A loopback URL still uses
+    /// [`loopback_http_client`].
     pub fn new(url: String, model: String) -> Self {
         Self::assemble(url, model, None, false)
     }
@@ -889,6 +970,10 @@ impl LocalHttpClient {
     }
 
     /// Keep `url` even when it is not loopback. This is the explicit opt-in.
+    ///
+    /// A non-loopback URL uses reqwest's default client: `HTTP_PROXY`,
+    /// `HTTPS_PROXY`, and `ALL_PROXY` apply, and redirects are followed. A
+    /// loopback URL still uses [`loopback_http_client`].
     pub fn allowing_remote(url: String, model: String) -> Self {
         Self::assemble(url, model, None, true)
     }
@@ -900,10 +985,12 @@ impl LocalHttpClient {
 
     fn assemble(url: String, model: String, api_key: Option<String>, allow_remote: bool) -> Self {
         let url = loopback_model_url(url, allow_remote);
+        let client = build_model_client(&url, allow_remote);
         Self {
             url,
             model,
             api_key,
+            client,
         }
     }
 }
@@ -948,7 +1035,19 @@ fn url_has_userinfo(raw: &str, parsed: &url::Url) -> bool {
 
 fn is_localhost_domain(domain: &str) -> bool {
     let bare = domain.trim_end_matches('.');
-    bare.eq_ignore_ascii_case("localhost") && domain.len() - bare.len() <= 1
+    if !(bare.eq_ignore_ascii_case("localhost") && domain.len() - bare.len() <= 1) {
+        return false;
+    }
+    // A hosts-file or DNS answer that is not 127.0.0.0/8 or ::1 is not loopback.
+    // A resolver failure stays allowed: the client pins the name to 127.0.0.1.
+    use std::net::ToSocketAddrs;
+    match ("localhost", 9u16).to_socket_addrs() {
+        Ok(addrs) => {
+            let ips: Vec<std::net::IpAddr> = addrs.map(|addr| addr.ip()).collect();
+            !ips.is_empty() && ips.iter().all(std::net::IpAddr::is_loopback)
+        }
+        Err(_) => true,
+    }
 }
 
 #[cfg(feature = "ollama")]
@@ -989,7 +1088,8 @@ impl LlmClient for LocalHttpClient {
             temperature: 0.1, // Low temperature for more consistent JSON output
         };
 
-        let mut request = reqwest::Client::new()
+        let mut request = self
+            .client
             .post(format!("{}/v1/chat/completions", self.url))
             .header("Content-Type", "application/json")
             .timeout(std::time::Duration::from_secs(60));
@@ -1686,6 +1786,171 @@ mod tests {
 
         let remote = "http://127.0.0.1:11434@evil.example/api";
         assert_eq!(loopback_model_url(remote.to_string(), true), remote);
+    }
+
+    #[cfg(feature = "ollama")]
+    #[test]
+    fn loopback_http_client_ignores_proxy_env_and_rejects_remote_redirects() {
+        use std::io::{Read, Write};
+        use std::sync::atomic::{AtomicBool, Ordering};
+        use std::sync::Mutex;
+
+        static ENV_LOCK: Mutex<()> = Mutex::new(());
+        let _guard = ENV_LOCK.lock().expect("env lock");
+
+        fn spawn(response: String) -> std::net::SocketAddr {
+            let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+            let addr = listener.local_addr().expect("addr");
+            std::thread::spawn(move || {
+                if let Ok((mut sock, _)) = listener.accept() {
+                    let _ = sock.set_read_timeout(Some(std::time::Duration::from_secs(2)));
+                    let mut buf = [0u8; 4096];
+                    let _ = sock.read(&mut buf);
+                    let _ = sock.write_all(response.as_bytes());
+                }
+            });
+            addr
+        }
+
+        let target = spawn(
+            "HTTP/1.1 200 OK\r\nContent-Length: 6\r\nConnection: close\r\n\r\ndirect".to_string(),
+        );
+        let proxy_hit = std::sync::Arc::new(AtomicBool::new(false));
+        let proxy_flag = std::sync::Arc::clone(&proxy_hit);
+        let proxy_listener = std::net::TcpListener::bind("127.0.0.1:0").expect("proxy bind");
+        let proxy_addr = proxy_listener.local_addr().expect("proxy addr");
+        std::thread::spawn(move || {
+            if let Ok((mut sock, _)) = proxy_listener.accept() {
+                proxy_flag.store(true, Ordering::SeqCst);
+                let _ = sock.set_read_timeout(Some(std::time::Duration::from_secs(2)));
+                let mut buf = [0u8; 4096];
+                let _ = sock.read(&mut buf);
+                let _ = sock.write_all(
+                    b"HTTP/1.1 200 OK\r\nContent-Length: 7\r\nConnection: close\r\n\r\nproxied",
+                );
+            }
+        });
+
+        let keys = [
+            "HTTP_PROXY",
+            "HTTPS_PROXY",
+            "ALL_PROXY",
+            "http_proxy",
+            "https_proxy",
+            "all_proxy",
+            "NO_PROXY",
+            "no_proxy",
+        ];
+        let saved: Vec<(&str, Option<String>)> = keys
+            .iter()
+            .map(|key| (*key, std::env::var(key).ok()))
+            .collect();
+        let proxy_url = format!("http://{proxy_addr}");
+        for key in [
+            "HTTP_PROXY",
+            "HTTPS_PROXY",
+            "ALL_PROXY",
+            "http_proxy",
+            "https_proxy",
+            "all_proxy",
+        ] {
+            std::env::set_var(key, &proxy_url);
+        }
+        std::env::remove_var("NO_PROXY");
+        std::env::remove_var("no_proxy");
+
+        let loopback = loopback_http_client()
+            .timeout(std::time::Duration::from_secs(2))
+            .build()
+            .expect("loopback client");
+        let open = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(2))
+            .build()
+            .expect("default client");
+
+        for (key, value) in &saved {
+            match value {
+                Some(previous) => std::env::set_var(key, previous),
+                None => std::env::remove_var(key),
+            }
+        }
+
+        let direct_url = format!("http://{target}/");
+        let runtime = tokio::runtime::Runtime::new().expect("runtime");
+        let body = runtime.block_on(async {
+            loopback
+                .get(&direct_url)
+                .send()
+                .await
+                .expect("direct send")
+                .text()
+                .await
+                .expect("direct body")
+        });
+        assert_eq!(body, "direct");
+        assert!(
+            !proxy_hit.load(Ordering::SeqCst),
+            "loopback client sent the request to the proxy"
+        );
+
+        let proxied = runtime.block_on(async {
+            open.get(&direct_url)
+                .send()
+                .await
+                .expect("proxy send")
+                .text()
+                .await
+                .expect("proxy body")
+        });
+        assert_eq!(proxied, "proxied");
+        assert!(proxy_hit.load(Ordering::SeqCst));
+
+        let remote = spawn(
+            "HTTP/1.1 302 Found\r\nLocation: http://example.com/steal\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                .to_string(),
+        );
+        let redirect_err = runtime.block_on(async {
+            loopback_http_client()
+                .timeout(std::time::Duration::from_secs(2))
+                .build()
+                .expect("redirect client")
+                .get(format!("http://{remote}/"))
+                .send()
+                .await
+        });
+        let redirect_err = redirect_err.expect_err("remote redirect must fail");
+        let mut redirect_msg = redirect_err.to_string();
+        let mut source = std::error::Error::source(&redirect_err);
+        while let Some(err) = source {
+            redirect_msg.push_str(" | ");
+            redirect_msg.push_str(&err.to_string());
+            source = err.source();
+        }
+        assert!(
+            redirect_msg.contains("redirect is not loopback"),
+            "{redirect_msg}"
+        );
+
+        let next = spawn(
+            "HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok".to_string(),
+        );
+        let hop = spawn(format!(
+            "HTTP/1.1 302 Found\r\nLocation: http://{next}/ok\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+        ));
+        let followed = runtime.block_on(async {
+            loopback_http_client()
+                .timeout(std::time::Duration::from_secs(2))
+                .build()
+                .expect("follow client")
+                .get(format!("http://{hop}/"))
+                .send()
+                .await
+                .expect("loopback redirect")
+                .text()
+                .await
+                .expect("followed body")
+        });
+        assert_eq!(followed, "ok");
     }
 
     #[cfg(feature = "ollama")]

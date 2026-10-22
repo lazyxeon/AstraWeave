@@ -163,6 +163,8 @@ pub struct Qwen3Ollama {
 
     /// Context window length in tokens (default: 32768 for Qwen3-8B native)
     pub context_length: usize,
+
+    client: reqwest::Client,
 }
 
 impl Qwen3Ollama {
@@ -181,20 +183,27 @@ impl Qwen3Ollama {
         Self::assemble(url, model, false)
     }
 
-    /// Keep a non-loopback URL. `new` replaces one with `http://127.0.0.1:11434`.
+    /// Keep a non-loopback URL and use reqwest's default client for it.
+    ///
+    /// That client honors `HTTP_PROXY`, `HTTPS_PROXY`, and `ALL_PROXY`, and it
+    /// follows redirects. A loopback URL still uses [`crate::loopback_http_client`].
+    /// `new` replaces a non-loopback URL and always uses that builder.
     pub fn allowing_remote(url: impl Into<String>, model: impl Into<String>) -> Self {
         Self::assemble(url, model, true)
     }
 
     fn assemble(url: impl Into<String>, model: impl Into<String>, allow_remote: bool) -> Self {
+        let url = crate::loopback_model_url(url.into(), allow_remote);
+        let client = crate::build_model_client(&url, allow_remote);
         Self {
-            url: crate::loopback_model_url(url.into(), allow_remote),
+            url,
             model: model.into(),
             temperature: 0.7,
             max_tokens: 512,
             system_prompt: Some(DEFAULT_SYSTEM_PROMPT.to_string()),
             enable_thinking: false,
             context_length: 32768,
+            client,
         }
     }
 
@@ -379,13 +388,7 @@ impl Qwen3Ollama {
     /// # }
     /// ```
     pub async fn preload(&self) -> Result<()> {
-        static CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
-        let client = CLIENT.get_or_init(|| {
-            reqwest::Client::builder()
-                .timeout(std::time::Duration::from_secs(120))
-                .build()
-                .unwrap_or_else(|_| reqwest::Client::new())
-        });
+        let client = &self.client;
 
         let url = format!("{}/api/chat", self.url);
 
@@ -415,6 +418,7 @@ impl Qwen3Ollama {
         let response = client
             .post(&url)
             .json(&body)
+            .timeout(std::time::Duration::from_secs(120))
             .send()
             .await
             .context("Failed to preload model")?;
@@ -436,16 +440,7 @@ impl Qwen3Ollama {
 
     /// Internal chat method using /api/chat
     async fn chat(&self, messages: &[ChatMessage]) -> Result<String> {
-        // Use a static client with connection pooling for better performance
-        static CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
-        let client = CLIENT.get_or_init(|| {
-            reqwest::Client::builder()
-                .pool_max_idle_per_host(10) // Keep connections alive
-                .pool_idle_timeout(std::time::Duration::from_secs(90))
-                .timeout(std::time::Duration::from_secs(300)) // 5 min timeout for slow hardware
-                .build()
-                .unwrap_or_else(|_| reqwest::Client::new())
-        });
+        let client = &self.client;
 
         let url = format!("{}/api/chat", self.url);
 
@@ -461,6 +456,7 @@ impl Qwen3Ollama {
         let response = client
             .post(&url)
             .json(&body)
+            .timeout(std::time::Duration::from_secs(300))
             .send()
             .await
             .context("Failed to send request to Ollama")?;
@@ -482,7 +478,7 @@ impl Qwen3Ollama {
 
     /// Check if Ollama server is running and model is available
     pub async fn health_check(&self) -> Result<HealthStatus> {
-        let client = reqwest::Client::new();
+        let client = &self.client;
 
         // Check server is running
         let server_url = format!("{}/api/tags", self.url);
@@ -649,16 +645,7 @@ fn extract_ollama_content(response_json: &serde_json::Value) -> Result<String> {
 #[async_trait]
 impl LlmClient for Qwen3Ollama {
     async fn complete(&self, prompt: &str) -> Result<String> {
-        // Use a static client with connection pooling for better performance
-        static CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
-        let client = CLIENT.get_or_init(|| {
-            reqwest::Client::builder()
-                .pool_max_idle_per_host(10) // Keep connections alive
-                .pool_idle_timeout(std::time::Duration::from_secs(90))
-                .timeout(std::time::Duration::from_secs(300)) // 5 min timeout for slow hardware
-                .build()
-                .unwrap_or_else(|_| reqwest::Client::new())
-        });
+        let client = &self.client;
 
         let url = format!("{}/api/chat", self.url);
 
@@ -692,6 +679,7 @@ impl LlmClient for Qwen3Ollama {
         let response = client
             .post(&url)
             .json(&body)
+            .timeout(std::time::Duration::from_secs(300))
             .send()
             .await
             .context("Failed to send request to Ollama")?;
@@ -759,19 +747,9 @@ impl LlmClient for Qwen3Ollama {
     ) -> Result<std::pin::Pin<Box<dyn futures_util::Stream<Item = Result<String>> + Send>>> {
         use futures_util::StreamExt;
 
-        // Use static client with connection pooling
-        // NOTE: No overall `.timeout()` for streaming — the total lifecycle can
-        // be long as chunks arrive incrementally. We only set a connect timeout
-        // so the initial TCP handshake doesn't hang forever.
-        static CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
-        let client = CLIENT.get_or_init(|| {
-            reqwest::Client::builder()
-                .pool_max_idle_per_host(10)
-                .pool_idle_timeout(std::time::Duration::from_secs(90))
-                .connect_timeout(std::time::Duration::from_secs(30))
-                .build()
-                .unwrap_or_else(|_| reqwest::Client::new())
-        });
+        // No overall timeout on the stored client. Streaming can outlive one
+        // generation. The connect timeout is on `build_model_client`.
+        let client = &self.client;
 
         let url = format!("{}/api/chat", self.url);
 
