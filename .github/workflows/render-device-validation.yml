@@ -13,11 +13,15 @@ jobs:
     name: Startup passes (lavapipe)
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    env:
+      # frame_alloc copies return addresses from the frame-pointer chain.
+      # Without this flag the chain is empty and the test cannot see draw_into.
+      RUSTFLAGS: -C force-frame-pointers=yes
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - uses: dtolnay/rust-toolchain@d77020bf130f2e8c39c025bf9c4c3a445fe2b9fa # 1.89.0
       - name: Install lavapipe
-        run: sudo apt-get update && sudo apt-get install -y mesa-vulkan-drivers libvulkan1 pkg-config libudev-dev
+        run: sudo apt-get update && sudo apt-get install -y mesa-vulkan-drivers libvulkan1 pkg-config libudev-dev binutils
       - name: Submit startup passes under validation
         env:
           WGPU_BACKEND: vulkan
