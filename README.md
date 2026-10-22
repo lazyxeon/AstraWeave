@@ -24,10 +24,10 @@ AstraWeave is an AI-native game engine with a deterministic ECS. Companions are 
 | | |
 | --- | --- |
 | Replay | One thread per tick. The required cases hash on Linux, Windows, and macOS. [Workflow](.github/workflows/determinism-replay.yml) |
-| Companions | A local model proposes. The simulation validates and executes. [AI pipeline](docs/architecture/ai_pipeline.md) |
+| Companions | The default tick runs `RuleOrchestrator`. A local model proposes off that tick. The simulation validates and executes. [AI pipeline](docs/architecture/ai_pipeline.md) |
 | ECS | `astraweave-ecs` is the schedule. [Foundation](docs/architecture/ecs_math_core_sdk_foundation.md) |
 | Renderer | The engine and the editor share one wgpu path. [Render](docs/architecture/render_pipeline_material_system_shader_infrastructure.md) |
-| World | Physics, terrain columns, and weaving sit on the tick. [Physics](docs/architecture/physics.md) · [Terrain](docs/architecture/terrain.md) · [Weaving](docs/architecture/weaving.md) |
+| World | Physics and the local field are on the sim tick. Terrain columns are the ground that tick reads. `weave_tick` is the weave example and tests. The `weaving` case hashes `NullField`. [Physics](docs/architecture/physics.md) · [Terrain](docs/architecture/terrain.md) · [Weaving](docs/architecture/weaving.md) |
 | Aravath | A windowed greybox with CC0 props. [Demo](docs/current/ARAVATH_DEMO.md) |
 
 ## Quick start
@@ -71,6 +71,6 @@ These pulls are not on main.
 
 - **What it is.** A Rust game engine. The player-facing game is Aravath. Assets in the tree are CC0.
 - **How a tick works.** One thread. Perception, simulation, planning, physics, then presentation. Replay hashes have to match across operating systems.
-- **How AI fits.** A local model can propose a plan. The simulation validates and executes it. The tick does not call a hosted model.
+- **How AI fits.** The default tick runs `RuleOrchestrator`. A local model proposes off the tick. The simulation validates and executes.
 - **What to run.** The five commands above. `hello_companion` is the headless AI demo. The greybox is the window.
 - **Where the numbers live.** Measurements, commit SHAs, and the replay list are in [engine status](docs/current/ENGINE_STATUS.md), not on this page.

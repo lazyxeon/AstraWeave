@@ -17,7 +17,7 @@
 | **Frame Time** | CPU `profiling_demo`: ~0.97 ms (system) / ~0.71 ms (mimalloc) @ 1,000 entities (2026-06-27). 2.70 ms was the Week-8 target. The heavy-scene GPU frame on a GTX 1660 Ti Max-Q is 3.688 ms, `budget_11ms=pass` (#216). The amortized cloud shadow is 0.323 ms. #371 and #372 stay open. |
 | **Agent Capacity** | 12,700+ is a CPU AI-loop estimate @ a 16.67 ms budget (2026-06-27, i5-10300H). Not a rendered 60 FPS frame. |
 | **Validation Throughput** | 6.48M checks/sec (MoveTo path, 2026-06-27) |
-| **Determinism** | Fifteen required cross-OS SHA-256 cases on `main` at `d0452d3e`, including `worldgen_columns` and `deformed_chunk`. See the repository README. |
+| **Determinism** | Fifteen required cross-OS SHA-256 cases on `main` at `d0452d3e`, including `worldgen_columns` and `deformed_chunk`. The live list is in [engine status](../current/ENGINE_STATUS.md). |
 
 ### First Fluids Baselines Ever Recorded (v5.58, Fluids-Integration F.1)
 

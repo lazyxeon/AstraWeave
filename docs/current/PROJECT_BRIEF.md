@@ -48,17 +48,11 @@ cargo editor
 
 Docs gates: `cargo run -p aw_doc_lint -- --mode warn` and `cargo run -p aw_trace_sync -- --check`.
 
-## In progress
-
-These pulls are not on `main`.
-
-- **#334** — delete `AIArbiter` once benches have a deterministic replacement
-- **#366** — step 2: `egui_kittest` waits on upstream AccessKit and zbus 6
-- **#383** — port advanced GOAP and `AIArbiter` into the deterministic HTN tick
+The live in-progress list is the `## In progress` section of the root [README](../../README.md). `aw_doc_lint` checks that section. This snapshot does not keep a second copy.
 
 ## Docs
 
-- [Engine status](ENGINE_STATUS.md) — the long status page this file used to be
+- [Engine status](ENGINE_STATUS.md) — live status
 - [Project status](PROJECT_STATUS.md)
 - [Architecture map](../architecture/ARCHITECTURE_MAP.md)
 - [CI](CI_ARCHITECTURE.md)
