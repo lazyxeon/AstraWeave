@@ -7,7 +7,9 @@ name: Frame alloc sites
 on:
   pull_request:
     paths:
-      - "astraweave-render/**"
+      - "astraweave-render/tests/frame_alloc.rs"
+      - "astraweave-render/tests/support/lib_backtrace.rs"
+      - "astraweave-ecs/src/counting_alloc.rs"
       - ".github/workflows/frame-alloc-sites.yml"
       - ".github/workflows/pbr-pipeline-ci.yml"
   workflow_dispatch:
@@ -38,6 +40,7 @@ jobs:
       - name: Record one draw_into frame
         env:
           WGPU_BACKEND: vulkan
+          RUSTFLAGS: ${{ env.RUSTFLAGS }} -C force-frame-pointers=yes
         run: |
           echo "RUST_BACKTRACE=${RUST_BACKTRACE:-unset}"
           echo "RUST_LIB_BACKTRACE=${RUST_LIB_BACKTRACE:-unset}"

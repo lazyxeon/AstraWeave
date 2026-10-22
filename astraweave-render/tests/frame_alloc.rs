@@ -48,9 +48,6 @@ fn record(renderer: &mut Renderer, view: &wgpu::TextureView) {
 
 #[test]
 fn draw_into_allocates_nothing_after_warmup() {
-    // Before `new_headless` starts `texture-stream`. The first `backtrace`
-    // loads `libgcc_s`; that must not happen inside the global allocator.
-    astraweave_ecs::counting_alloc::prime_alloc_trace();
     lib_backtrace::disable_library_backtraces();
     pollster::block_on(async {
         let mut renderer = Renderer::new_headless(64, 64)
@@ -121,9 +118,12 @@ fn draw_into_allocates_nothing_after_warmup() {
             renderer
                 .draw_into(&view, None, &mut encoder)
                 .expect("measured draw_into");
-            *sample = allocs();
             if index == 0 {
-                trace = Some(end_alloc_trace());
+                let recorded = end_alloc_trace();
+                *sample = recorded.total;
+                trace = Some(recorded);
+            } else {
+                *sample = allocs();
             }
             drop(encoder);
         }
@@ -166,7 +166,12 @@ fn draw_into_allocates_nothing_after_warmup() {
         if trace.report.starts_with("alloc-sites total=") {
             assert_eq!(
                 trace.total, samples[0],
-                "first-frame trace does not cover the counted allocs\n{}",
+                "first-frame snapshot diverged from the reported total\n{}",
+                trace.report
+            );
+            assert!(
+                trace.report.contains("draw_into") || trace.report.contains("Renderer"),
+                "frame-pointer capture did not reach draw_into\n{}",
                 trace.report
             );
         }

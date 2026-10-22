@@ -96,7 +96,11 @@ pub struct CountingAlloc;
 unsafe impl GlobalAlloc for CountingAlloc {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
         let size = layout.size();
-        if !count_this_alloc(size) {
+        #[cfg(unix)]
+        if trace::TRACE.load(Ordering::Relaxed) {
+            if trace::record_or_reentered(size, trace::TraceKind::Fresh) {
+                astraweave_profiling::counters::record_alloc(size);
+            }
             return INNER.alloc(layout);
         }
         ALLOCS.fetch_add(1, Ordering::Relaxed);
@@ -122,7 +126,11 @@ unsafe impl GlobalAlloc for CountingAlloc {
 
     unsafe fn alloc_zeroed(&self, layout: Layout) -> *mut u8 {
         let size = layout.size();
-        if !count_this_alloc(size) {
+        #[cfg(unix)]
+        if trace::TRACE.load(Ordering::Relaxed) {
+            if trace::record_or_reentered(size, trace::TraceKind::Fresh) {
+                astraweave_profiling::counters::record_alloc(size);
+            }
             return INNER.alloc_zeroed(layout);
         }
         ALLOCS.fetch_add(1, Ordering::Relaxed);
@@ -137,7 +145,11 @@ unsafe impl GlobalAlloc for CountingAlloc {
         // itself so callers can distinguish "growth from existing buffer" from
         // "fresh allocation".
         let old_size = layout.size();
-        if !count_this_alloc(new_size) {
+        #[cfg(unix)]
+        if trace::TRACE.load(Ordering::Relaxed) {
+            if trace::record_or_reentered(new_size, trace::TraceKind::Realloc { old: old_size }) {
+                astraweave_profiling::counters::record_realloc(old_size, new_size);
+            }
             return INNER.realloc(ptr, layout, new_size);
         }
         DEALLOCS.fetch_add(1, Ordering::Relaxed);
@@ -237,25 +249,14 @@ pub struct AllocTrace {
     pub report: String,
 }
 
-/// Load the unwind library before any other thread exists.
-///
-/// `Renderer::new_headless` starts the `texture-stream` thread. The first
-/// `backtrace` `dlopen`s `libgcc_s` under the loader lock. That has to happen
-/// here, on the calling thread, not inside `GlobalAlloc::alloc`.
-pub fn prime_alloc_trace() {
-    #[cfg(unix)]
-    {
-        trace::prime();
-    }
-}
-
 /// Start recording call stacks for counted allocations.
 ///
 /// The table is fixed and reserved before the flag is set, so recording a site
 /// does not allocate. Call [`end_alloc_trace`] on the same thread when the
 /// region ends. Nested or re-entered allocations (the capture itself) are
-/// ignored until the outer allocation returns. Call [`prime_alloc_trace`]
-/// before starting other threads.
+/// ignored until the outer allocation returns. Return addresses are copied
+/// into a fixed buffer. [`end_alloc_trace`] symbolizes them after the flag
+/// is clear.
 pub fn begin_alloc_trace() {
     #[cfg(unix)]
     {
@@ -283,20 +284,6 @@ pub fn end_alloc_trace() -> AllocTrace {
     }
 }
 
-/// `false` means this call is the tracer capturing its own stack. Those
-/// bytes are not part of the measured region.
-#[inline]
-fn count_this_alloc(size: usize) -> bool {
-    #[cfg(unix)]
-    {
-        if trace::TRACE.load(Ordering::Relaxed) {
-            return trace::record_or_reentered(size);
-        }
-    }
-    let _ = size;
-    true
-}
-
 #[cfg(unix)]
 mod trace {
     use super::AllocTrace;
@@ -304,7 +291,7 @@ mod trace {
     use std::cell::UnsafeCell;
     use std::collections::HashMap;
     use std::ffi::{c_char, c_void, CStr};
-    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
     const MAX_FRAMES: usize = 24;
     const MAX_SITES: usize = 512;
@@ -315,7 +302,14 @@ mod trace {
         static IN_TRACE: Cell<bool> = const { Cell::new(false) };
     }
 
-    static PRIMED: AtomicBool = AtomicBool::new(false);
+    /// Count of allocations stored while the flag was set. Incremented in
+    /// the same critical section as the site table.
+    static TRACED: AtomicUsize = AtomicUsize::new(0);
+
+    pub(super) enum TraceKind {
+        Fresh,
+        Realloc { old: usize },
+    }
 
     #[derive(Clone, Copy)]
     struct Site {
@@ -386,49 +380,35 @@ mod trace {
         // Warm the thread-local before the flag is set. Its first access must
         // not be counted as a frame allocation.
         let _ = IN_TRACE.try_with(|_| {});
-        with_table(Table::clear);
+        with_table(|table| {
+            table.clear();
+            TRACED.store(0, Ordering::SeqCst);
+        });
         TRACE.store(true, Ordering::SeqCst);
     }
 
-    /// Load `libgcc_s` on this thread. The first `backtrace` runs
-    /// `__libc_dlopen` of that library and takes the loader lock. Call this
-    /// before any other thread exists. `record` does not call `backtrace`
-    /// until this has run, so the allocator never performs that `dlopen`.
-    pub(super) fn prime() {
-        if PRIMED.swap(true, Ordering::SeqCst) {
-            return;
-        }
-        let mut raw = [std::ptr::null_mut::<c_void>(); 8];
-        // SAFETY: `raw` has 8 slots and that is the length passed in. This
-        // runs outside the allocator, on the thread that calls `prime`.
-        unsafe {
-            backtrace(raw.as_mut_ptr(), 8);
-        }
-    }
-
     pub(super) fn end() -> AllocTrace {
-        let (sites, dropped) = {
-            // Clear the flag while holding the lock so an in-flight recorder
-            // either finishes its insert or observes the flag and skips.
-            with_table(|table| {
-                TRACE.store(false, Ordering::SeqCst);
-                let taken = table.sites[..table.used].to_vec();
-                let dropped = table.dropped;
-                table.clear();
-                (taken, dropped)
-            })
-        };
-        format_sites(&sites, dropped)
+        let (sites, dropped, total) = with_table(|table| {
+            // In-flight recorders block on this lock. They then see the
+            // flag clear and do not increment `TRACED`.
+            TRACE.store(false, Ordering::SeqCst);
+            let total = TRACED.load(Ordering::SeqCst);
+            let taken = table.sites[..table.used].to_vec();
+            let dropped = table.dropped;
+            table.clear();
+            (taken, dropped, total)
+        });
+        format_sites(&sites, dropped, total)
     }
 
     pub(super) fn in_tracer() -> bool {
         IN_TRACE.try_with(|flag| flag.get()).unwrap_or(false)
     }
 
-    /// Record this stack. `false` means do not count the allocation: this
-    /// thread is already inside the tracer, thread-local storage is gone, or
-    /// `end_alloc_trace` cleared the flag before the stack was stored.
-    pub(super) fn record_or_reentered(size: usize) -> bool {
+    /// Record this stack and the counter together. `false` means do not
+    /// count: this thread is already inside the tracer, thread-local storage
+    /// is gone, or `end` cleared the flag before the site was stored.
+    pub(super) fn record_or_reentered(size: usize, kind: TraceKind) -> bool {
         let entered = match IN_TRACE.try_with(|flag| {
             if flag.get() {
                 return false;
@@ -449,57 +429,115 @@ mod trace {
             }
         }
         let _reset = Reset;
-        record(size)
+        record(size, kind)
     }
 
-    fn record(size: usize) -> bool {
+    fn record(size: usize, kind: TraceKind) -> bool {
         let mut frames = [0usize; MAX_FRAMES];
-        let n = if PRIMED.load(Ordering::Relaxed) {
-            capture_with_backtrace(&mut frames)
-        } else {
-            0
-        };
+        let n = capture_return_addresses(&mut frames);
         let nframes = u8::try_from(n).unwrap_or(u8::MAX);
         with_table(|table| {
             if !TRACE.load(Ordering::Relaxed) {
                 return false;
             }
+            let mut stored = false;
             for site in table.sites.iter_mut().take(table.used) {
                 if site.nframes == nframes && site.frames[..n] == frames[..n] {
                     site.count = site.count.saturating_add(1);
                     site.bytes = site.bytes.saturating_add(size as u64);
-                    return true;
+                    stored = true;
+                    break;
                 }
             }
-            if table.used >= MAX_SITES {
-                table.dropped = table.dropped.saturating_add(1);
-                return true;
+            if !stored {
+                if table.used >= MAX_SITES {
+                    table.dropped = table.dropped.saturating_add(1);
+                } else {
+                    table.sites[table.used] = Site {
+                        frames,
+                        nframes,
+                        count: 1,
+                        bytes: size as u64,
+                    };
+                    table.used += 1;
+                }
             }
-            table.sites[table.used] = Site {
-                frames,
-                nframes,
-                count: 1,
-                bytes: size as u64,
-            };
-            table.used += 1;
+            super::ALLOCS.fetch_add(1, Ordering::Relaxed);
+            super::BYTES_ALLOCATED.fetch_add(size, Ordering::Relaxed);
+            TRACED.fetch_add(1, Ordering::Relaxed);
+            if let TraceKind::Realloc { old } = kind {
+                super::DEALLOCS.fetch_add(1, Ordering::Relaxed);
+                super::REALLOCS.fetch_add(1, Ordering::Relaxed);
+                super::BYTES_DEALLOCATED.fetch_add(old, Ordering::Relaxed);
+            }
             true
         })
     }
 
-    fn capture_with_backtrace(out: &mut [usize]) -> usize {
-        let mut raw = [std::ptr::null_mut::<c_void>(); MAX_FRAMES];
-        let slots = i32::try_from(raw.len()).unwrap_or(0);
-        // SAFETY: `raw` has `slots` entries. `libgcc_s` was loaded by `prime`
-        // before any other thread existed, so this call does not `dlopen`.
-        let n = unsafe { backtrace(raw.as_mut_ptr(), slots) };
-        let n = usize::try_from(n).unwrap_or(0).min(out.len());
-        for (slot, ptr) in out.iter_mut().zip(raw.iter()).take(n) {
-            *slot = *ptr as usize;
+    /// Copy saved frame-pointer return addresses into `out`. No heap
+    /// traffic and no call into libgcc. A missing frame pointer ends the
+    /// copy. `end` symbolizes the addresses after the flag is clear.
+    fn capture_return_addresses(out: &mut [usize]) -> usize {
+        let mut fp = read_frame_pointer();
+        let origin = fp;
+        let mut n = 0usize;
+        while n < out.len() {
+            if fp < 0x1_0000 || fp % std::mem::size_of::<usize>() != 0 {
+                break;
+            }
+            if origin != 0 && fp.wrapping_sub(origin) > 8 * 1024 * 1024 {
+                break;
+            }
+            // SAFETY: `fp` is aligned. The first word is the saved frame
+            // pointer and the next is the return address on x86_64 and
+            // aarch64. A zero or non-increasing link stops the copy. This
+            // reads only those two words; it does not call the unwinder.
+            let next = unsafe { std::ptr::read_unaligned(fp as *const usize) };
+            let ra = unsafe { std::ptr::read_unaligned((fp as *const usize).add(1)) };
+            if ra < 0x1_0000 || next <= fp {
+                break;
+            }
+            out[n] = ra;
+            n += 1;
+            fp = next;
         }
         n
     }
 
-    fn format_sites(sites: &[Site], dropped: u32) -> AllocTrace {
+    #[cfg(target_arch = "x86_64")]
+    fn read_frame_pointer() -> usize {
+        let fp: usize;
+        // SAFETY: reads `rbp`. No memory access and no call.
+        unsafe {
+            core::arch::asm!(
+                "mov {}, rbp",
+                out(reg) fp,
+                options(nostack, preserves_flags)
+            );
+        }
+        fp
+    }
+
+    #[cfg(target_arch = "aarch64")]
+    fn read_frame_pointer() -> usize {
+        let fp: usize;
+        // SAFETY: reads `x29`. No memory access and no call.
+        unsafe {
+            core::arch::asm!(
+                "mov {}, x29",
+                out(reg) fp,
+                options(nostack, preserves_flags)
+            );
+        }
+        fp
+    }
+
+    #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
+    fn read_frame_pointer() -> usize {
+        0
+    }
+
+    fn format_sites(sites: &[Site], dropped: u32, total: usize) -> AllocTrace {
         let mut pcs = Vec::new();
         for site in sites {
             pcs.extend_from_slice(&site.frames[..site.nframes as usize]);
@@ -516,9 +554,6 @@ mod trace {
             }
         }
         grouped.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.2.cmp(&b.2)));
-        let total = grouped.iter().fold(0usize, |sum, (count, _, _)| {
-            sum.saturating_add(*count as usize)
-        }) + dropped as usize;
         let mut report = format!(
             "alloc-sites total={total} sites={} dropped={dropped}\n",
             grouped.len()
@@ -651,7 +686,6 @@ mod trace {
     }
 
     extern "C" {
-        fn backtrace(buffer: *mut *mut c_void, size: i32) -> i32;
         fn dladdr(addr: *const c_void, info: *mut DlInfo) -> i32;
     }
 }

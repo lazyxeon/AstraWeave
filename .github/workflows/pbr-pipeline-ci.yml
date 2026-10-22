@@ -108,6 +108,9 @@ jobs:
           libasound2-dev mesa-vulkan-drivers libvulkan1 libudev-dev pkg-config
     
     - name: draw_into allocation floor
+      env:
+        WGPU_BACKEND: vulkan
+        RUSTFLAGS: ${{ env.RUSTFLAGS }} -C force-frame-pointers=yes
       run: |
         echo "::group::draw_into allocation floor"
         cargo test -p astraweave-render --all-features --test frame_alloc -- --nocapture
