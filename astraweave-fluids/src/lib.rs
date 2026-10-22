@@ -271,6 +271,10 @@ pub struct FluidSystem {
     pub objects_buffer: wgpu::Buffer,
     /// Number of valid entries in `objects_buffer` (set by `update_objects`).
     object_count: u32,
+    /// True after `step` has built the SDF for `object_count == 0`. An empty
+    /// field does not change, so later steps reuse it instead of re-running
+    /// the 64³ JFA. `update_objects` clears it.
+    sdf_empty_ready: bool,
     pub default_sampler: wgpu::Sampler,
     secondary_particle_buffer: wgpu::Buffer,
     secondary_counter: wgpu::Buffer,
@@ -825,6 +829,7 @@ impl FluidSystem {
             sdf_system,
             objects_buffer,
             object_count: 0,
+            sdf_empty_ready: false,
             default_sampler,
             secondary_particle_buffer,
             secondary_counter,
@@ -967,6 +972,7 @@ impl FluidSystem {
             );
         }
         self.object_count = count as u32;
+        self.sdf_empty_ready = false;
         self.sdf_system.set_object_count(queue, self.object_count);
     }
 
@@ -1201,12 +1207,21 @@ impl FluidSystem {
         };
         queue.write_buffer(&self.params_buffer, 0, bytemuck::bytes_of(&params));
 
-        // 1. Generate SDF (timing span 0 brackets init -> finalize)
-        self.sdf_system.generate_timed(
-            encoder,
-            queue,
-            self.gpu_timing.as_ref().map(|t| (&t.query_set, 0u32, 1u32)),
-        );
+        // 1. Generate SDF (timing span 0 brackets init -> finalize).
+        // An empty collider set produces the same field every frame. Rebuilding
+        // the 64³ JFA on every step is most of the software-adapter cost, and
+        // 300 of those steps do not finish inside the 240s test budget. A
+        // timing query still needs the passes so its begin/end slots are written.
+        let rebuild_sdf =
+            self.gpu_timing.is_some() || self.object_count > 0 || !self.sdf_empty_ready;
+        if rebuild_sdf {
+            self.sdf_system.generate_timed(
+                encoder,
+                queue,
+                self.gpu_timing.as_ref().map(|t| (&t.query_set, 0u32, 1u32)),
+            );
+            self.sdf_empty_ready = self.object_count == 0;
+        }
 
         let particle_workgroups = self.particle_count.div_ceil(64);
 

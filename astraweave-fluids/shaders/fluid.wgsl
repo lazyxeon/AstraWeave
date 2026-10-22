@@ -215,7 +215,12 @@ fn compute_lambda(@builtin(global_invocation_id) global_id: vec3<u32>) {
                 if (cell_idx < 0) { continue; }
                 
                 var current = atomicLoad(&head_pointers[cell_idx]);
-                while (current >= 0) {
+                // A cyclic next_pointers chain never reaches -1, and the
+                // software adapter then never finishes the dispatch. A real
+                // chain has at most one link per particle.
+                var walk = 0u;
+                while (current >= 0 && walk < params.particle_count) {
+                    walk = walk + 1u;
                     let neighbor_pos = particles[current].predicted_position.xyz;
                     let diff = pos - neighbor_pos;
                     let r = length(diff);
@@ -304,7 +309,12 @@ fn compute_delta_pos(@builtin(global_invocation_id) global_id: vec3<u32>) {
                 if (cell_idx < 0) { continue; }
                 
                 var current = atomicLoad(&head_pointers[cell_idx]);
-                while (current >= 0) {
+                // A cyclic next_pointers chain never reaches -1, and the
+                // software adapter then never finishes the dispatch. A real
+                // chain has at most one link per particle.
+                var walk = 0u;
+                while (current >= 0 && walk < params.particle_count) {
+                    walk = walk + 1u;
                     if (u32(current) != id) {
                         let neighbor_pos = particles[current].predicted_position.xyz;
                         let diff = pos - neighbor_pos;
@@ -427,7 +437,12 @@ fn integrate(@builtin(global_invocation_id) global_id: vec3<u32>) {
                 if (cell_idx < 0) { continue; }
                 
                 var current = atomicLoad(&head_pointers[cell_idx]);
-                while (current >= 0) {
+                // A cyclic next_pointers chain never reaches -1, and the
+                // software adapter then never finishes the dispatch. A real
+                // chain has at most one link per particle.
+                var walk = 0u;
+                while (current >= 0 && walk < params.particle_count) {
+                    walk = walk + 1u;
                     if (u32(current) != id) {
                         let neighbor_pos = particles[current].predicted_position.xyz;
                         let neighbor_vel = (particles[current].predicted_position.xyz - particles[current].position.xyz) / params.dt;
@@ -459,7 +474,12 @@ fn integrate(@builtin(global_invocation_id) global_id: vec3<u32>) {
                 if (cell_idx < 0) { continue; }
                 
                 var current = atomicLoad(&head_pointers[cell_idx]);
-                while (current >= 0) {
+                // A cyclic next_pointers chain never reaches -1, and the
+                // software adapter then never finishes the dispatch. A real
+                // chain has at most one link per particle.
+                var walk = 0u;
+                while (current >= 0 && walk < params.particle_count) {
+                    walk = walk + 1u;
                     if (u32(current) != id) {
                         let neighbor_pos = particles[current].predicted_position.xyz;
                         let neighbor_vel = (particles[current].predicted_position.xyz - particles[current].position.xyz) / params.dt;
@@ -509,7 +529,12 @@ fn mix_dye(@builtin(global_invocation_id) global_id: vec3<u32>) {
                 if (cell_idx < 0) { continue; }
                 
                 var current = atomicLoad(&head_pointers[cell_idx]);
-                while (current >= 0) {
+                // A cyclic next_pointers chain never reaches -1, and the
+                // software adapter then never finishes the dispatch. A real
+                // chain has at most one link per particle.
+                var walk = 0u;
+                while (current >= 0 && walk < params.particle_count) {
+                    walk = walk + 1u;
                     if (u32(current) != id) {
                         let neighbor_pos = particles[current].predicted_position.xyz;
                         let neighbor_temp = particles[current].temperature;

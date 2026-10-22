@@ -51,6 +51,36 @@ impl IblQuality {
         let s = self.spec_size();
         (s.max(1) as f32).log2().floor() as u32 + 1
     }
+
+    /// GGX samples for one specular mip. Mip 0 is roughness 0, and the
+    /// distribution is a delta: every sample is the mirror direction, so one
+    /// sample matches a 128–512 loop. The higher mips are the real integral.
+    fn prefilter_sample_count(self, mip: u32) -> u32 {
+        if mip == 0 {
+            return 1;
+        }
+        match self {
+            IblQuality::Low => 64,
+            IblQuality::Medium => 128,
+            IblQuality::High => 256,
+        }
+    }
+}
+
+fn submit_and_finish(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    encoder: wgpu::CommandEncoder,
+) -> Result<()> {
+    queue.submit(Some(encoder.finish()));
+    // wgpu-core 25 drops the queue after waiting at most 6.3s for the last
+    // fence. The DX12 software adapter does not signal that fence while a
+    // chain of IBL passes is still queued, and `Queue::drop` panics. Retire
+    // each pass before the next one is recorded.
+    device
+        .poll(wgpu::MaintainBase::Wait)
+        .map_err(|err| anyhow::anyhow!("IBL submission did not finish: {err:?}"))?;
+    Ok(())
 }
 
 /// Sky sources supported by the manager
@@ -681,7 +711,7 @@ impl IblManager {
             rp.set_pipeline(&self.brdf_pipeline);
             rp.draw(0..3, 0..1);
             drop(rp);
-            queue.submit(Some(enc.finish()));
+            submit_and_finish(device, queue, enc)?;
         }
 
         // Sky capture into env cube (procedural or HDR-equirect conversion)
@@ -726,7 +756,7 @@ impl IblManager {
                     rp.draw(0..3, 0..1);
                     drop(rp);
                 }
-                queue.submit(Some(enc.finish()));
+                submit_and_finish(device, queue, enc)?;
                 (None, None)
             }
             #[cfg(feature = "textures")]
@@ -811,7 +841,7 @@ impl IblManager {
                     rp.set_bind_group(1, &eqr_face_bg, &[]);
                     rp.draw(0..3, 0..1);
                     drop(rp);
-                    queue.submit(Some(enc.finish()));
+                    submit_and_finish(device, queue, enc)?;
                 }
                 (Some(hdr_tex), Some(hdr_view))
             }
@@ -891,7 +921,7 @@ impl IblManager {
                 rp.draw(0..3, 0..1);
                 drop(rp);
             }
-            queue.submit(Some(enc.finish()));
+            submit_and_finish(device, queue, enc)?;
         }
 
         // Specular prefilter for each mip and face with proper roughness encoding
@@ -916,30 +946,7 @@ impl IblManager {
             for mip in 0..spec_mips {
                 // Calculate roughness from mip level (linear mapping)
                 let roughness = (mip as f32) / ((spec_mips - 1) as f32).max(1.0);
-                // Quality-based sample count: higher for low mips, lower for high mips
-                let sample_count: u32 = match quality {
-                    IblQuality::Low => {
-                        if mip == 0 {
-                            128
-                        } else {
-                            64
-                        }
-                    }
-                    IblQuality::Medium => {
-                        if mip == 0 {
-                            256
-                        } else {
-                            128
-                        }
-                    }
-                    IblQuality::High => {
-                        if mip == 0 {
-                            512
-                        } else {
-                            256
-                        }
-                    }
-                };
+                let sample_count = quality.prefilter_sample_count(mip);
 
                 for face in 0..6u32 {
                     let mut enc = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
@@ -998,7 +1005,7 @@ impl IblManager {
                     rp.set_bind_group(1, &params_bg, &[]);
                     rp.draw(0..3, 0..1);
                     drop(rp);
-                    queue.submit(Some(enc.finish()));
+                    submit_and_finish(device, queue, enc)?;
                 }
             }
         }
@@ -1719,32 +1726,20 @@ mod tests {
 
     #[test]
     fn test_sample_count_by_quality() {
-        // Test sample counts for different quality levels and mip levels
-
-        // Low quality
-        let low_mip0_samples = 128u32;
-        let low_other_samples = 64u32;
+        // Mip 0 is roughness 0: one sample. Rougher mips keep the quality counts.
+        assert_eq!(IblQuality::Low.prefilter_sample_count(0), 1);
+        assert_eq!(IblQuality::Medium.prefilter_sample_count(0), 1);
+        assert_eq!(IblQuality::High.prefilter_sample_count(0), 1);
+        assert_eq!(IblQuality::Low.prefilter_sample_count(1), 64);
+        assert_eq!(IblQuality::Medium.prefilter_sample_count(3), 128);
+        assert_eq!(IblQuality::High.prefilter_sample_count(2), 256);
         assert!(
-            low_mip0_samples > low_other_samples,
-            "Mip 0 should have more samples than other mips"
+            IblQuality::High.prefilter_sample_count(1)
+                > IblQuality::Medium.prefilter_sample_count(1)
         );
-
-        // Medium quality
-        let med_mip0_samples = 256u32;
-        let med_other_samples = 128u32;
-        assert!(med_mip0_samples > med_other_samples);
         assert!(
-            med_mip0_samples > low_mip0_samples,
-            "Medium quality should have more samples than Low"
-        );
-
-        // High quality
-        let high_mip0_samples = 512u32;
-        let high_other_samples = 256u32;
-        assert!(high_mip0_samples > high_other_samples);
-        assert!(
-            high_mip0_samples > med_mip0_samples,
-            "High quality should have more samples than Medium"
+            IblQuality::Medium.prefilter_sample_count(1)
+                > IblQuality::Low.prefilter_sample_count(1)
         );
     }
 

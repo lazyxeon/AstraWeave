@@ -748,8 +748,10 @@ impl FluidRenderer {
     /// `astraweave-fluids` stay independent — only `wgpu` types cross here.
     ///
     /// `depth_view` is the external scene depth (`Depth32Float`) the surface used,
-    /// so accents are occluded by geometry/water (depth-test only, no write — the
-    /// secondary pipeline has `depth_write_enabled: false`). At `secondary_count == 0`
+    /// so accents are occluded by geometry/water. The pass loads that depth and
+    /// does not write it (`depth_write_enabled: false`). It does not bind a
+    /// read-only depth-stencil view: that view never completes on the DX12
+    /// software adapter when this is the texture's first use. At `secondary_count == 0`
     /// this is a no-op: no render pass is begun, so the HDR target is byte-identical
     /// (zero-accent identity).
     #[allow(clippy::too_many_arguments)]
@@ -781,7 +783,15 @@ impl FluidRenderer {
             })],
             depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
                 view: depth_view,
-                depth_ops: None, // test only — occlude by scene/water, no depth write
+                // Load, not a read-only DSV. depth_write_enabled is already
+                // false, so the stored depth is unchanged. A read-only DSV
+                // used as the first view of a Depth32Float texture never
+                // completes on the DX12 software adapter: poll(Wait) sits
+                // until the process is killed.
+                depth_ops: Some(wgpu::Operations {
+                    load: wgpu::LoadOp::Load,
+                    store: wgpu::StoreOp::Store,
+                }),
                 stencil_ops: None,
             }),
             ..Default::default()
