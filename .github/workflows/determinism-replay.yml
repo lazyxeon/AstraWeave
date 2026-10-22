@@ -36,7 +36,12 @@ jobs:
   hash:
     name: hash (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 45
+    # Run 39839010318 (ubuntu, #429): rust-ci-setup took 26 minutes and
+    # Replay hash was still compiling when the 45-minute job timeout
+    # cancelled the step. The log has no higher-priority concurrency
+    # message. A warm ubuntu hash (39838224894) finished in 26 minutes.
+    # 75 leaves room for a cold sccache miss. Windows warm was 40 minutes.
+    timeout-minutes: 75
     strategy:
       fail-fast: false
       matrix:
