@@ -45,11 +45,18 @@ pub fn note_skip(reason: &str) {
         Ok(guard) => guard,
         Err(poisoned) => poisoned.into_inner(),
     };
-    if !guard.insert(reason.to_string()) {
+    let line = skip_line(reason);
+    if !guard.insert(line.clone()) {
         return;
     }
-    eprintln!("SKIP(gpu): {reason}");
-    write_skip_line(&skip_log_path(), reason);
+    eprintln!("SKIP(gpu): {line}");
+    write_skip_line(&skip_log_path(), &line);
+}
+
+fn skip_line(reason: &str) -> String {
+    let current = std::thread::current();
+    let test = current.name().unwrap_or("unnamed-test");
+    format!("{test}: {reason}")
 }
 
 fn write_skip_line(path: &std::path::Path, reason: &str) {
@@ -158,5 +165,16 @@ mod skip_record_tests {
         let text = std::fs::read_to_string(&path).expect("skip log");
         let _ = std::fs::remove_file(&path);
         assert_eq!(text, format!("SKIP(gpu): {reason}\n"));
+    }
+
+    #[test]
+    fn skip_line_names_the_running_test() {
+        let line = super::skip_line("no wgpu adapter for 'named'");
+        let current = std::thread::current();
+        let name = current.name().unwrap_or("unnamed-test");
+        assert!(
+            line.starts_with(name) && line.contains("no wgpu adapter for 'named'"),
+            "{line}"
+        );
     }
 }

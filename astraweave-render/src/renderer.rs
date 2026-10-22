@@ -1521,7 +1521,18 @@ impl Renderer {
 
     pub async fn new_headless(width: u32, height: u32) -> Result<Self> {
         let instance = gpu_instance();
-        let adapter = choose_adapter(&instance, None).await?;
+        let adapter = match choose_adapter(&instance, None).await {
+            Ok(adapter) => adapter,
+            Err(err) => {
+                let text = format!("{err:#}");
+                // macOS Test full sets AW_GPU_SKIP_IF_UNAVAILABLE. Callers that
+                // only check `is_ok()` still need a line in the job summary.
+                if text.contains("No adapter") {
+                    let _ = record_gpu_skip(&text);
+                }
+                return Err(err);
+            }
+        };
 
         let (features, limits) = Self::requested_device(&adapter, false);
         let (device, queue) = adapter
@@ -1566,8 +1577,12 @@ impl Renderer {
         match Self::new_headless(width, height).await {
             Ok(renderer) => Some(renderer),
             Err(err) => {
-                let reason = format!("headless renderer {width}x{height}: {err:#}");
-                if record_gpu_skip(&reason) {
+                let reason = format!("{err:#}");
+                // `new_headless` already appended the skip line for a missing
+                // adapter. A device-creation failure is still a panic.
+                if std::env::var_os("AW_GPU_SKIP_IF_UNAVAILABLE").is_some()
+                    && reason.contains("No adapter")
+                {
                     None
                 } else {
                     panic!("Failed to create headless renderer: {reason}");
@@ -11222,12 +11237,19 @@ fn record_gpu_skip(reason: &str) -> bool {
     if std::env::var_os("AW_GPU_SKIP_IF_UNAVAILABLE").is_none() {
         return false;
     }
-    eprintln!("SKIP(gpu): {reason}");
-    let manifest = std::env::var("CARGO_MANIFEST_DIR").unwrap_or_else(|_| ".".to_string());
-    let path = std::path::PathBuf::from(manifest)
-        .join("..")
-        .join("target")
-        .join("gpu-skip-reasons.txt");
+    let current = std::thread::current();
+    let test = current.name().unwrap_or("unnamed-test");
+    let line = format!("{test}: {reason}");
+    eprintln!("SKIP(gpu): {line}");
+    let path = if let Some(path) = std::env::var_os("AW_GPU_SKIP_LOG") {
+        std::path::PathBuf::from(path)
+    } else {
+        let manifest = std::env::var("CARGO_MANIFEST_DIR").unwrap_or_else(|_| ".".to_string());
+        std::path::PathBuf::from(manifest)
+            .join("..")
+            .join("target")
+            .join("gpu-skip-reasons.txt")
+    };
     if let Some(parent) = path.parent() {
         let _ = std::fs::create_dir_all(parent);
     }
@@ -11238,7 +11260,7 @@ fn record_gpu_skip(reason: &str) -> bool {
     {
         Ok(mut file) => {
             use std::io::Write;
-            let _ = writeln!(file, "SKIP(gpu): {reason}");
+            let _ = writeln!(file, "SKIP(gpu): {line}");
         }
         Err(err) => {
             eprintln!(

@@ -402,7 +402,9 @@ jobs:
 
       - name: macOS runners have no wgpu software adapter
         if: runner.os == 'macOS'
-        run: echo "AW_GPU_SKIP_IF_UNAVAILABLE=1" >> "$GITHUB_ENV"
+        run: |
+          echo "AW_GPU_SKIP_IF_UNAVAILABLE=1" >> "$GITHUB_ENV"
+          echo "AW_GPU_SKIP_LOG=${GITHUB_WORKSPACE}/target/gpu-skip-reasons.txt" >> "$GITHUB_ENV"
 
       - name: Workspace nextest
         env:
@@ -414,7 +416,7 @@ jobs:
         if: always()
         shell: bash
         run: |
-          log="target/gpu-skip-reasons.txt"
+          log="${AW_GPU_SKIP_LOG:-target/gpu-skip-reasons.txt}"
           if [ -s "$log" ]; then
             {
               echo "## GPU tests skipped"
@@ -427,6 +429,9 @@ jobs:
               echo "::warning title=GPU test skipped::$line"
               echo "$line"
             done < "$log"
+          elif [ "${AW_GPU_SKIP_IF_UNAVAILABLE:-}" = "1" ]; then
+            echo "::error title=GPU skips missing::AW_GPU_SKIP_IF_UNAVAILABLE is set but ${log} is empty. A GPU test returned success without recording a skip."
+            exit 1
           fi
 
   # Windows Test full: compile once, then run the same profile-ci set in
