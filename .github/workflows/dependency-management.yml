@@ -73,7 +73,7 @@ jobs:
           cargo install --locked cargo-outdated || echo "cargo-outdated already installed"
 
       # Fails the job. This is not the pull-request gate, and it does not
-      # close the ignore list. The nine IDs stay in deny.toml and
+      # close the ignore list. The eight IDs stay in deny.toml and
       # .cargo/audit.toml. security-audit.yml is the pull-request gate.
       # #423 tracks a check that the ignore count does not rise.
       - name: Run security audit

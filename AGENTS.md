@@ -20,12 +20,12 @@ Every other rule: the owner task instruction, for that task only; then a nearer 
 
 ## ⛔
 
-- Required replay hashes match across Linux, Windows, and macOS. The compare job is [`.github/workflows/determinism-replay.yml`](.github/workflows/determinism-replay.yml). x86_64 pins `target-cpu=x86-64`. `target-cpu=native` is forbidden. If a hash moves, stop. Report the old hash, the new hash, and the suspected cause. Do not update the golden in that pull request.
+- Required replay hashes match across Linux, Windows, and macOS. The compare job is [`.github/workflows/determinism-replay.yml`](.github/workflows/determinism-replay.yml). `x86_64` targets pin `target-cpu=x86-64`. `aarch64` uses the default baseline. `target-cpu=native` is forbidden on both. If a hash moves, stop. Report the old hash, the new hash, and the suspected cause. Do not update the golden in that pull request.
 - Do not weaken a gate to get green: `#[ignore]`, a deleted or skipped test, a wider tolerance, an expected value, snapshot, or golden edited to match new output, `continue-on-error`, an edit to the replay `required` list, a crate- or module-scope `#[allow]`, or a crate dropped from a gate. If the task is changing a gate, the pull request's first line says so.
 - Do not add a `cargo audit` ignore or a `RUSTSEC` ignore.
 - Assets in the tree are CC0 only.
 - Never put `Veilweaver` in player-facing text. The player-facing name is Aravath. A `veilweaver_` identifier and `projects/veilweaver` are not that text.
-- Local LLMs only. `loopback_model_url` keeps the caller URL when `allowing_remote` is set or `is_loopback_http_url` matches the text before the first colon (`localhost`, `127.0.0.1`, `::1`). That helper does not parse userinfo, so `http://127.0.0.1:11434@other-host/` is kept. A security follow-up owns that bypass. Do not describe the helper as a parsed-host check.
+- Local LLMs only. A model URL stays only when the caller uses `allowing_remote`, or `is_loopback_http_url` accepts it. The helper requires `http://` or `https://`. A `[...]` authority uses the bracket interior, so `[::1]` matches `::1`. An unbracketed `::1` is split on `:` and does not match. Otherwise the host is the text before the first colon after the scheme, so `localhost` and `127.0.0.1` match, and `http://127.0.0.1:11434@other-host/` is kept. This is not a parsed-host check. [#429](https://github.com/lazyxeon/AstraWeave/pull/429) owns the fix, including `no_proxy` and loopback-only redirects.
 - The GPU frame budget is under 11 ms on a GTX 1660 Ti. The measured sample is in [`docs/current/ENGINE_STATUS.md`](docs/current/ENGINE_STATUS.md). Do not invent another number. Lavapipe time is not that budget. A cloud agent cannot measure that card. The capture command is `cargo run -p astraweave-render --release --features gpu-frame-budget --bin gpu_frame_budget -- --scene heavy --glb <path>` ([`.github/workflows/gpu-frame-budget.yml`](.github/workflows/gpu-frame-budget.yml), `workflow_dispatch` only).
 - Do not delete a working capability without a replacement.
 - Agents do not merge. The Admin Authorization ruleset blocks agent merges.
@@ -33,7 +33,7 @@ Every other rule: the owner task instruction, for that task only; then a nearer 
 
 ## Sim path
 
-`astraweave-ecs` is the schedule: one thread per tick. The legacy world is `astraweave-core::World`. The hashed crates are the `cargo test -p` lines in the Replay hash step of the workflow above. That step also hashes `astraweave-nav` through `astraweave-core`.
+`astraweave-ecs` is the schedule: one thread per tick. The legacy world is `astraweave-core::World`. The hashed crates are the `cargo test -p` lines in the Replay hash step of the workflow above. `cargo test -p astraweave-core --test replay_hash` also covers the crates named under What to run, including `weaving_case_bytes`.
 
 `World::iter_entities` walks a `HashMap`. A hash, a save, or a plan uses `World::entities`, which sorts by id. Do not feed `HashMap` or `HashSet` iteration order into sim state.
 
@@ -64,7 +64,7 @@ Use this order in the pull request body and the final message:
 
 ## What to run
 
-- Sim crate: `AW_CI_PACKAGES=<crate> bash scripts/ci/run-gate.sh`, then `AW_CI_PROFILE=ci-pr AW_CI_PACKAGES=<crate> bash scripts/ci/run-tests.sh`. If the crate is in the Replay hash step, also run that step's `cargo test` line. A change to `astraweave-nav`, `astraweave-ai`, or `astraweave-destruction` also runs `cargo test -p astraweave-core --test replay_hash`. Those three crates are not `-p` lines in that step. The core replay support compiles them. That `cargo test` has no retry.
+- Sim crate: `AW_CI_PACKAGES=<crate> bash scripts/ci/run-gate.sh`, then `AW_CI_PROFILE=ci-pr AW_CI_PACKAGES=<crate> bash scripts/ci/run-tests.sh`. If the crate is in the Replay hash step, also run that step's `cargo test` line. `cargo test -p astraweave-core --test replay_hash` also hashes `astraweave-ai`, `astraweave-nav`, `astraweave-destruction`, `astraweave-math` (`fixed64_contract_bytes`), `astraweave-gameplay` (`gameplay_rng_bytes`), and `astraweave-weaving` (`weaving_case_bytes`). A change to any of those crates runs that test. It has no retry. The weaving `-p` line in the Replay hash step is `gameplay_qa::tests::replay_aravath_slice_scenario`. It does not run `weaving_case_bytes`.
 - Render crate: the same two scripts with `astraweave-render`. The 1660 Ti capture is the command in the ⛔ list.
 - Docs-only: `bash scripts/ci/player_facing_names.sh` and `cargo run -p aw_doc_lint -- --mode warn`. The Gate job runs the name script on every pull request. `AW_CI_DOCS_ONLY=true bash scripts/ci/run-gate.sh` skips fmt, clippy, and check. When the diff touches `CLAUDE.md`, `docs/architecture/`, or a `Cargo.toml`, run `cargo run -p aw_trace_sync -- --check`.
 
