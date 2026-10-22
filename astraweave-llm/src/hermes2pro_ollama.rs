@@ -334,11 +334,10 @@ impl Hermes2ProOllama {
 
         // Check server is running
         let server_url = format!("{}/api/tags", self.url);
-        let response = client
-            .get(&server_url)
-            .send()
-            .await
-            .context("Failed to connect to Ollama server")?;
+        let response =
+            crate::send_for_headers(crate::stream_read_idle(), client.get(&server_url).send())
+                .await
+                .context("Failed to connect to Ollama server")?;
 
         if !response.status().is_success() {
             anyhow::bail!("Ollama server returned error: {}", response.status());
@@ -536,6 +535,7 @@ impl LlmClient for Hermes2ProOllama {
         crate::ensure_model_request(&self.url, self.allow_remote)?;
         use futures_util::StreamExt;
 
+        let idle = crate::stream_read_idle();
         let client = &self.client;
 
         let url = format!("{}/api/chat", self.url);
@@ -571,11 +571,7 @@ impl LlmClient for Hermes2ProOllama {
 
         tracing::debug!("Sending streaming request to Ollama: {}", self.model);
 
-        let response = client
-            .post(&url)
-            .json(&body)
-            .timeout(std::time::Duration::from_secs(120))
-            .send()
+        let response = crate::send_for_headers(idle, client.post(&url).json(&body).send())
             .await
             .context("Failed to send streaming request to Ollama")?;
 
@@ -586,7 +582,7 @@ impl LlmClient for Hermes2ProOllama {
         // Convert bytes_stream to text chunk stream
         // Ollama streams NDJSON (newline-delimited JSON):
         //   {"message": {"content": "text"}, "done": false}\n
-        let byte_stream = response.bytes_stream();
+        let byte_stream = crate::with_read_idle(Box::pin(response.bytes_stream()), idle);
 
         // Transform bytes → NDJSON lines → text chunks
         // Uses a byte buffer to handle chunks that split UTF-8 characters or JSON lines

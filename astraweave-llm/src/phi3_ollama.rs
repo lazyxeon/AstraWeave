@@ -191,11 +191,10 @@ impl Phi3Ollama {
 
         // Check server is running
         let server_url = format!("{}/api/tags", self.url);
-        let response = client
-            .get(&server_url)
-            .send()
-            .await
-            .context("Failed to connect to Ollama server")?;
+        let response =
+            crate::send_for_headers(crate::stream_read_idle(), client.get(&server_url).send())
+                .await
+                .context("Failed to connect to Ollama server")?;
 
         if !response.status().is_success() {
             anyhow::bail!("Ollama server returned error: {}", response.status());

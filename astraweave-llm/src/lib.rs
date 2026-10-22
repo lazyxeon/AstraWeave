@@ -129,7 +129,7 @@ pub(crate) fn build_model_client(url: &str, allow_remote: bool) -> Result<reqwes
 
 /// Silence allowed between streaming reads, from `OLLAMA_TIMEOUT_SECS` (default 180).
 #[cfg(feature = "ollama")]
-pub(crate) fn stream_read_idle() -> std::time::Duration {
+pub fn stream_read_idle() -> std::time::Duration {
     let secs = std::env::var("OLLAMA_TIMEOUT_SECS")
         .ok()
         .and_then(|s| s.parse::<u64>().ok())
@@ -138,13 +138,29 @@ pub(crate) fn stream_read_idle() -> std::time::Duration {
     std::time::Duration::from_secs(secs)
 }
 
+/// Wait `idle` for response headers. The body is not covered.
+///
+/// `RequestBuilder::timeout` would also cancel a chunked body. Callers that
+/// stream after the headers use [`with_read_idle`] for each read.
+#[cfg(feature = "ollama")]
+pub async fn send_for_headers(
+    idle: std::time::Duration,
+    send: impl std::future::Future<Output = Result<reqwest::Response, reqwest::Error>>,
+) -> Result<reqwest::Response> {
+    match tokio::time::timeout(idle, send).await {
+        Ok(Ok(response)) => Ok(response),
+        Ok(Err(err)) => Err(anyhow::anyhow!("model request: {err}")),
+        Err(_) => Err(anyhow::anyhow!("model headers idle timeout")),
+    }
+}
+
 /// Stop a chunked body on the first read error or on `idle` of silence.
 ///
 /// One error is yielded, then the stream ends, so a caller can keep bytes
 /// already produced. This is not a total deadline: chunks that keep arriving
 /// are not cut off.
 #[cfg(feature = "ollama")]
-pub(crate) fn with_read_idle<S, T, E>(
+pub fn with_read_idle<S, T, E>(
     inner: S,
     idle: std::time::Duration,
 ) -> impl futures_util::Stream<Item = Result<T>>
@@ -694,24 +710,23 @@ impl LlmClient for OllamaChatClient {
                 stream_body["keep_alive"] = serde_json::json!(ka);
             }
 
-            // The stored client already set `connect_timeout` in `build_model_client`.
-            // Do not set `RequestBuilder::timeout`: that deadline also covers the
-            // body, so a slow chunk stream fails mid-read. Silence between reads
-            // is bounded by `idle` below.
+            // The stored client set `connect_timeout` in `build_model_client`.
+            // Header wait is a separate deadline. The body stays on the idle loop.
             let start = std::time::Instant::now();
 
             let stream_url = format!("{}/api/chat", self.url.trim_end_matches('/'));
             println!("[ollama] initiating streaming POST to {}", stream_url);
-            let resp = client
-                .post(&stream_url)
-                .header("Accept", "application/json")
-                .header("Content-Type", "application/json")
-                .json(&stream_body)
-                .send()
-                .await
-                .map_err(|e| {
-                    anyhow::anyhow!("Failed to initiate streaming request to Ollama: {}", e)
-                })?;
+            let resp = send_for_headers(
+                idle,
+                client
+                    .post(&stream_url)
+                    .header("Accept", "application/json")
+                    .header("Content-Type", "application/json")
+                    .json(&stream_body)
+                    .send(),
+            )
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to initiate streaming request to Ollama: {e}"))?;
 
             println!(
                 "[ollama] streaming request returned status {}",
@@ -729,19 +744,21 @@ impl LlmClient for OllamaChatClient {
                         status
                     );
                     let gen_url = format!("{}/api/generate", self.url.trim_end_matches('/'));
-                    let gen_resp = client
-                        .post(&gen_url)
-                        .header("Accept", "application/json")
-                        .header("Content-Type", "application/json")
-                        .json(&stream_body)
-                        .send()
-                        .await
-                        .map_err(|e| {
-                            anyhow::anyhow!(
-                                "Failed to initiate streaming request to Ollama /api/generate: {}",
-                                e
-                            )
-                        })?;
+                    let gen_resp = send_for_headers(
+                        idle,
+                        client
+                            .post(&gen_url)
+                            .header("Accept", "application/json")
+                            .header("Content-Type", "application/json")
+                            .json(&stream_body)
+                            .send(),
+                    )
+                    .await
+                    .map_err(|e| {
+                        anyhow::anyhow!(
+                            "Failed to initiate streaming request to Ollama /api/generate: {e}"
+                        )
+                    })?;
 
                     println!(
                         "[ollama] /api/generate returned status {}",

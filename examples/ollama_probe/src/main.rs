@@ -58,13 +58,20 @@ Return ONLY JSON with no commentary.
             "top_k": 20
         }
     });
-    let resp = client
-        .post(format!("{}/api/chat", url.trim_end_matches('/')))
-        .json(&body)
-        .send()
-        .await?;
+    let idle = astraweave_llm::stream_read_idle();
+    let resp = astraweave_llm::send_for_headers(
+        idle,
+        client
+            .post(format!("{}/api/chat", url.trim_end_matches('/')))
+            .json(&body)
+            .send(),
+    )
+    .await?;
     println!("status {}", resp.status());
-    let mut stream = resp.bytes_stream();
+    let mut stream = Box::pin(astraweave_llm::with_read_idle(
+        Box::pin(resp.bytes_stream()),
+        idle,
+    ));
     let mut buf = String::new();
     let mut acc = String::new();
     while let Some(item) = stream.next().await {

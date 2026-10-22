@@ -352,7 +352,8 @@ impl EmbeddingClient for RemoteEmbeddingClient {
             req = req.header("Authorization", format!("Bearer {}", api_key));
         }
 
-        let response = req.send().await?;
+        let idle = astraweave_llm::stream_read_idle();
+        let response = astraweave_llm::send_for_headers(idle, req.send()).await?;
 
         if !response.status().is_success() {
             return Err(anyhow::anyhow!("API request failed: {}", response.status()));

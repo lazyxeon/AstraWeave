@@ -186,6 +186,84 @@ fn slow_chunks_longer_than_the_timeout_are_kept() {
     }
 }
 
+/// Accept the TCP connection, read the request, and never send headers.
+/// `first_not_found` answers `/api/chat` with 404 so the chat client falls
+/// through to `/api/generate`.
+fn serve_no_headers(first_not_found: bool) -> std::net::SocketAddr {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+    let addr = listener.local_addr().expect("addr");
+    std::thread::spawn(move || {
+        let mut first = true;
+        loop {
+            let Ok((mut sock, _)) = listener.accept() else {
+                return;
+            };
+            read_http_headers(&mut sock);
+            if first && first_not_found {
+                first = false;
+                use std::io::Write;
+                let _ = sock.write_all(
+                    b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+                );
+                let _ = sock.flush();
+                continue;
+            }
+            std::thread::sleep(std::time::Duration::from_secs(30));
+        }
+    });
+    addr
+}
+
+fn assert_headers_fail_near_timeout(mode: &str, first_not_found: bool) {
+    let addr = serve_no_headers(first_not_found);
+    let exe = probe_exe(env!("CARGO_BIN_EXE_ollama_chat_probe"));
+    let started = std::time::Instant::now();
+    let mut child = std::process::Command::new(&exe)
+        .args([mode, &format!("http://{addr}")])
+        .env("OLLAMA_LOW_LATENCY", "1")
+        .env("OLLAMA_TIMEOUT_SECS", "1")
+        .env("OLLAMA_EARLY_EXIT", "0")
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap_or_else(|err| panic!("spawn {}: {err}", exe.display()));
+    let status = loop {
+        if let Some(status) = child.try_wait().expect("wait") {
+            break status;
+        }
+        if started.elapsed() > std::time::Duration::from_secs(4) {
+            let _ = child.kill();
+            panic!(
+                "{mode} still waiting for headers after {:?}",
+                started.elapsed()
+            );
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    };
+    let elapsed = started.elapsed();
+    let output = child.wait_with_output().expect("output");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(!status.success(), "{mode} succeeded: {stdout} {stderr}");
+    assert!(
+        elapsed < std::time::Duration::from_secs(3),
+        "{mode} took {elapsed:?}: {stdout} {stderr}"
+    );
+    let msg = format!("{stdout} {stderr}").to_lowercase();
+    assert!(
+        msg.contains("headers") || msg.contains("timeout"),
+        "{mode}: {stdout} {stderr}"
+    );
+}
+
+#[test]
+fn silent_accept_fails_near_the_header_timeout() {
+    assert_headers_fail_near_timeout("complete", false);
+    assert_headers_fail_near_timeout("complete", true);
+    assert_headers_fail_near_timeout("qwen-stream", false);
+    assert_headers_fail_near_timeout("hermes-stream", false);
+}
+
 #[test]
 fn idle_timeout_keeps_partial_chunks() {
     let addr = serve_slow_chunks(5, Some(5));

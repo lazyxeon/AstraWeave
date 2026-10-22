@@ -498,11 +498,10 @@ impl Qwen3Ollama {
 
         // Check server is running
         let server_url = format!("{}/api/tags", self.url);
-        let response = client
-            .get(&server_url)
-            .send()
-            .await
-            .context("Failed to connect to Ollama server")?;
+        let response =
+            crate::send_for_headers(crate::stream_read_idle(), client.get(&server_url).send())
+                .await
+                .context("Failed to connect to Ollama server")?;
 
         if !response.status().is_success() {
             anyhow::bail!("Ollama server returned error: {}", response.status());
@@ -765,8 +764,8 @@ impl LlmClient for Qwen3Ollama {
         crate::ensure_model_request(&self.url, self.allow_remote)?;
         use futures_util::StreamExt;
 
-        // No total timeout. A chunked body can outlive `OLLAMA_TIMEOUT_SECS`.
-        // That value bounds the connect and the silence between reads.
+        // `OLLAMA_TIMEOUT_SECS` bounds the header wait and each body read.
+        // It is not a total deadline, so a slow chunk stream is not cut off.
         let idle = crate::stream_read_idle();
         let client = &self.client;
 
@@ -799,10 +798,7 @@ impl LlmClient for Qwen3Ollama {
                 self.model
             );
 
-            let response = client
-                .post(&url)
-                .json(&body)
-                .send()
+            let response = crate::send_for_headers(idle, client.post(&url).json(&body).send())
                 .await
                 .context("Failed to send request to Ollama")?;
 
@@ -836,10 +832,7 @@ impl LlmClient for Qwen3Ollama {
 
         tracing::debug!("Sending streaming request to Ollama: {}", self.model);
 
-        let response = client
-            .post(&url)
-            .json(&body)
-            .send()
+        let response = crate::send_for_headers(idle, client.post(&url).json(&body).send())
             .await
             .context("Failed to send streaming request to Ollama")?;
 
