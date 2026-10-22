@@ -3,6 +3,14 @@
 //! The variable is set with `Command::env` on a child process, before that
 //! process starts. `set_var` after libtest has spawned its worker threads is
 //! a data race with `getenv`. The parent does not change its own environment.
+//!
+//! This binary is its own harness, so it includes the Linux one-thread hook
+//! the other render integration tests include. `cfg(test)` on the library
+//! does not apply here.
+
+#[cfg(target_os = "linux")]
+#[path = "support/linux_test_threads.rs"]
+mod linux_test_threads;
 
 use std::ffi::OsStr;
 use std::process::Command;
