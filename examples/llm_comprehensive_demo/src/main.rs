@@ -166,7 +166,8 @@ impl LlmComprehensiveDemo {
                 std::env::var("OLLAMA_MODEL").unwrap_or_else(|_| "llama2".to_string());
 
             println!("🔗 Attempting to connect to Ollama at {}", ollama_url);
-            let ollama_client = OllamaChatClient::new(ollama_url, ollama_model).expect("model client");
+            let ollama_client =
+                OllamaChatClient::new(ollama_url, ollama_model).expect("model client");
 
             // Test connection with warmup
             match ollama_client.warmup(10).await {
