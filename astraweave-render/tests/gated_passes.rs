@@ -60,12 +60,10 @@ fn clear_volumetric_passes_drops_a_stored_fog_pass() {
         );
         assert!(renderer.god_rays_enabled(), "shafts should store a pass");
         renderer.set_atmosphere_enabled(true);
+        assert!(renderer.atmosphere_enabled());
         renderer.clear_volumetric_passes();
         assert!(!renderer.volumetric_fog_enabled());
         assert!(!renderer.god_rays_enabled());
-        // The clear does not turn Bruneton off. The caller must.
-        assert!(renderer.atmosphere_enabled());
-        renderer.set_atmosphere_enabled(false);
         assert!(!renderer.atmosphere_enabled());
     });
 }
@@ -84,9 +82,9 @@ fn constructor_stays_off_while_enum_default_is_atmosphere() {
     });
 }
 
-/// Starts with Bruneton on. No flag and `--atmosphere=false` both turn it
-/// off, and the off frame is drawn. Fog and shafts stay off. This does not
-/// lock the constructor.
+/// Bruneton does not stay on with fog and shafts both off. With shafts
+/// built, no flag and `--atmosphere=false` turn it off, and that frame is
+/// drawn.
 #[test]
 fn false_atmosphere_flag_disables_the_default_sky() {
     pollster::block_on(async {
@@ -94,11 +92,20 @@ fn false_atmosphere_flag_disables_the_default_sky() {
         let device = renderer.device().clone();
         let view = color_target(&device);
         renderer.set_atmosphere_enabled(true);
-        assert!(renderer.atmosphere_enabled());
-        assert!(!renderer.volumetric_fog_enabled());
-        assert!(!renderer.god_rays_enabled());
+        assert!(!renderer.atmosphere_enabled());
+        submit(&mut renderer, &view);
+        assert!(!renderer.atmosphere_enabled());
+        renderer.set_god_ray_config(astraweave_render::GodRayConfig {
+            enabled: true,
+            half_res: true,
+            num_samples: 32,
+            exposure: 0.22,
+            ..astraweave_render::GodRayConfig::default()
+        });
+        assert!(renderer.god_rays_enabled());
         for parts in [&[][..], &["--atmosphere=false"], &["--atmosphere", "false"]] {
             renderer.set_atmosphere_enabled(true);
+            assert!(renderer.atmosphere_enabled(), "{parts:?}");
             let args = parts
                 .iter()
                 .map(|part| (*part).to_string())
@@ -107,8 +114,7 @@ fn false_atmosphere_flag_disables_the_default_sky() {
             assert!(!on, "{parts:?}");
             renderer.set_atmosphere_enabled(on);
             assert!(!renderer.atmosphere_enabled(), "{parts:?}");
-            assert!(!renderer.volumetric_fog_enabled());
-            assert!(!renderer.god_rays_enabled());
+            assert!(renderer.god_rays_enabled());
             submit(&mut renderer, &view);
             assert!(!renderer.atmosphere_enabled(), "{parts:?}");
         }
@@ -262,9 +268,9 @@ fn draw_and_read(renderer: &mut Renderer, atmosphere: bool) -> Vec<u8> {
     pixels
 }
 
-/// A cleared pixel is Bruneton sky. A near red quad stays red. A far red quad
-/// stays geometry (depth is not the clear value) and aerial perspective
-/// changes it relative to the same quad with the pass off.
+/// A cleared pixel is Bruneton sky once a volumetric pass is on. A near red
+/// quad stays red. A far red quad stays the unscattered scene color: Bruneton
+/// with fog and shafts both off is refused, so there is no 50 km aerial tint.
 #[test]
 fn atmosphere_sky_differs_from_geometry_and_aerial_tints_distance() {
     pollster::block_on(async {
@@ -307,6 +313,15 @@ fn atmosphere_sky_differs_from_geometry_and_aerial_tints_distance() {
         );
 
         let off = draw_and_read(&mut renderer, false);
+        renderer.set_god_ray_config(astraweave_render::GodRayConfig {
+            enabled: true,
+            half_res: true,
+            num_samples: 4,
+            weight: 0.0,
+            exposure: 0.0,
+            ..astraweave_render::GodRayConfig::default()
+        });
+        assert!(renderer.god_rays_enabled());
         let on = draw_and_read(&mut renderer, true);
         let near = sample(&on, WIDTH, 10, 32);
         let far = sample(&on, WIDTH, 32, 32);
@@ -340,8 +355,8 @@ fn atmosphere_sky_differs_from_geometry_and_aerial_tints_distance() {
             "far geometry {far:?} was replaced by the sky {sky:?}"
         );
         assert!(
-            channel_distance(far, far_off) > 20,
-            "aerial perspective did not change the far quad: on {far:?} off {far_off:?} sky {sky:?}"
+            channel_distance(far, far_off) < 12,
+            "far geometry was scattered: on {far:?} off {far_off:?} sky {sky:?}"
         );
 
         // Sun inside the shaft margin, on screen, upper right. A black quad
