@@ -295,13 +295,7 @@ impl RemoteEmbeddingClient {
             anyhow::bail!("embedding URL has userinfo");
         }
         let api_url = astraweave_llm::require_kept_model_url(api_url, allow_remote)?;
-        let client = if allow_remote && !astraweave_llm::is_loopback_http_url(&api_url) {
-            reqwest::Client::builder()
-        } else {
-            astraweave_llm::loopback_http_client()
-        }
-        .build()
-        .map_err(|err| anyhow::anyhow!("embedding http client: {err}"))?;
+        let client = astraweave_llm::build_model_client(&api_url, allow_remote)?;
         Ok(Self {
             api_url,
             api_key,

@@ -111,7 +111,7 @@ fn loopback_redirect_policy() -> reqwest::redirect::Policy {
 /// non-loopback URL on reqwest's default client (proxy env and redirects).
 /// A build failure is returned. There is no [`reqwest::Client::new`] fallback.
 #[cfg(feature = "ollama")]
-pub(crate) fn build_model_client(url: &str, allow_remote: bool) -> Result<reqwest::Client> {
+pub fn build_model_client(url: &str, allow_remote: bool) -> Result<reqwest::Client> {
     let remote = allow_remote && !is_loopback_http_url(url);
     let builder = if remote {
         reqwest::Client::builder()
@@ -123,18 +123,24 @@ pub(crate) fn build_model_client(url: &str, allow_remote: bool) -> Result<reqwes
         .pool_idle_timeout(std::time::Duration::from_secs(90))
         .pool_max_idle_per_host(8)
         .connect_timeout(std::time::Duration::from_secs(30))
+        // Per read, reset after each successful read. `.text()` and `.json()`
+        // use it. A chunk stream is not cut off while bytes keep arriving.
+        .read_timeout(stream_read_idle())
         .build()
         .map_err(|err| anyhow::anyhow!("model http client: {err}"))
 }
 
-/// Silence allowed between streaming reads, from `OLLAMA_TIMEOUT_SECS` (default 180).
+/// Silence allowed on one read, from `OLLAMA_TIMEOUT_SECS` (default 180).
+///
+/// Clamped so a later scale to milliseconds cannot overflow `Duration`.
 #[cfg(feature = "ollama")]
 pub fn stream_read_idle() -> std::time::Duration {
+    const MAX_TIMEOUT_SECS: u64 = u64::MAX / 1_000;
     let secs = std::env::var("OLLAMA_TIMEOUT_SECS")
         .ok()
         .and_then(|s| s.parse::<u64>().ok())
         .unwrap_or(180)
-        .max(1);
+        .clamp(1, MAX_TIMEOUT_SECS);
     std::time::Duration::from_secs(secs)
 }
 
@@ -149,7 +155,16 @@ pub async fn send_for_headers(
 ) -> Result<reqwest::Response> {
     match tokio::time::timeout(idle, send).await {
         Ok(Ok(response)) => Ok(response),
-        Ok(Err(err)) => Err(anyhow::anyhow!("model request: {err}")),
+        Ok(Err(err)) => {
+            let mut msg = format!("model request: {err}");
+            let mut source = std::error::Error::source(&err);
+            while let Some(next) = source {
+                msg.push_str(": ");
+                msg.push_str(&next.to_string());
+                source = next.source();
+            }
+            Err(anyhow::anyhow!(msg))
+        }
         Err(_) => Err(anyhow::anyhow!("model headers idle timeout")),
     }
 }

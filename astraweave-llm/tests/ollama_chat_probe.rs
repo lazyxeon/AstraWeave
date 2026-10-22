@@ -251,9 +251,77 @@ fn assert_headers_fail_near_timeout(mode: &str, first_not_found: bool) {
     );
     let msg = format!("{stdout} {stderr}").to_lowercase();
     assert!(
-        msg.contains("headers") || msg.contains("timeout"),
+        msg.contains("headers")
+            || msg.contains("timeout")
+            || msg.contains("timed out")
+            || msg.contains("error sending request"),
         "{mode}: {stdout} {stderr}"
     );
+}
+
+/// Headers arrive, `Content-Length: 64` is declared, and no body bytes follow.
+fn serve_declared_body(status_line: &'static str) -> std::net::SocketAddr {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+    let addr = listener.local_addr().expect("addr");
+    std::thread::spawn(move || {
+        let Ok((mut sock, _)) = listener.accept() else {
+            return;
+        };
+        read_http_headers(&mut sock);
+        use std::io::Write;
+        let _ = sock.write_all(
+            format!("{status_line}\r\nContent-Length: 64\r\nConnection: close\r\n\r\n").as_bytes(),
+        );
+        let _ = sock.flush();
+        std::thread::sleep(std::time::Duration::from_secs(30));
+    });
+    addr
+}
+
+fn assert_body_fails_near_timeout(mode: &str, status_line: &'static str) {
+    let addr = serve_declared_body(status_line);
+    let exe = probe_exe(env!("CARGO_BIN_EXE_ollama_chat_probe"));
+    let started = std::time::Instant::now();
+    let mut child = std::process::Command::new(&exe)
+        .args([mode, &format!("http://{addr}")])
+        .env("OLLAMA_LOW_LATENCY", "1")
+        .env("OLLAMA_TIMEOUT_SECS", "1")
+        .env("OLLAMA_EARLY_EXIT", "0")
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap_or_else(|err| panic!("spawn {}: {err}", exe.display()));
+    let status = loop {
+        if let Some(status) = child.try_wait().expect("wait") {
+            break status;
+        }
+        if started.elapsed() > std::time::Duration::from_secs(4) {
+            let _ = child.kill();
+            panic!(
+                "{mode} still reading a missing body after {:?}",
+                started.elapsed()
+            );
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    };
+    let elapsed = started.elapsed();
+    let output = child.wait_with_output().expect("output");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(!status.success(), "{mode} succeeded: {stdout} {stderr}");
+    assert!(
+        elapsed < std::time::Duration::from_secs(3),
+        "{mode} took {elapsed:?}: {stdout} {stderr}"
+    );
+}
+
+#[test]
+fn declared_body_that_never_arrives_fails_near_the_read_timeout() {
+    assert_body_fails_near_timeout("complete", "HTTP/1.1 500 Internal Server Error");
+    assert_body_fails_near_timeout("qwen-think", "HTTP/1.1 200 OK");
+    assert_body_fails_near_timeout("qwen-health", "HTTP/1.1 200 OK");
+    assert_body_fails_near_timeout("phi-health", "HTTP/1.1 200 OK");
+    assert_body_fails_near_timeout("hermes-health", "HTTP/1.1 200 OK");
 }
 
 #[test]
