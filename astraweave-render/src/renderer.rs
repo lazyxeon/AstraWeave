@@ -6381,10 +6381,11 @@ fn vs(input: VSIn) -> VSOut {
             rp.set_vertex_buffer(1, self.plane_inst_buf.slice(..));
             rp.set_vertex_buffer(2, plane_prev.slice(..));
             rp.draw_indexed(0..self.mesh_plane.index_count, 0, 0..1);
-        }
-        #[cfg(feature = "impostor-bake")]
-        {
-            self.impostor_passes = impostor_draws;
+            drop(rp);
+            #[cfg(feature = "impostor-bake")]
+            {
+                self.impostor_passes = impostor_draws;
+            }
         }
         self.end_named_stamp(enc, stamp);
         let mut copy_bytes = sphere_bytes;
