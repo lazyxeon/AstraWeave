@@ -1,5 +1,5 @@
 #![forbid(unsafe_code)]
-use anyhow::{bail, Result};
+use anyhow::{bail, Context, Result};
 
 /// Model text above this is rejected before `serde_json` allocates a document.
 pub const MAX_MODEL_JSON_BYTES: usize = 64 * 1024;
@@ -674,18 +674,25 @@ impl LlmClient for OllamaChatClient {
                             }
                         }
                     } else {
-                        // Read response body for diagnostics
                         let status = resp.status();
-                        let b = resp.text().await.unwrap_or_default();
-                        println!(
-                            "[ollama] non-streaming request returned non-success status: {}: {}",
-                            status, b
-                        );
-                        let total_ms = ns_attempt_start.elapsed().as_millis();
-                        println!(
-                            "[ollama] timing nonstream attempt {}: total={}ms (non-success)",
-                            attempt, total_ms
-                        );
+                        match resp.text().await {
+                            Ok(b) => {
+                                println!(
+                                    "[ollama] non-streaming request returned non-success status: {}: {}",
+                                    status, b
+                                );
+                                let total_ms = ns_attempt_start.elapsed().as_millis();
+                                println!(
+                                    "[ollama] timing nonstream attempt {}: total={}ms (non-success)",
+                                    attempt, total_ms
+                                );
+                            }
+                            Err(err) => {
+                                return Err(err.context(format!(
+                                    "Ollama non-streaming status {status} body read failed"
+                                )));
+                            }
+                        }
                     }
                 }
                 Err(e) => {
@@ -783,18 +790,16 @@ impl LlmClient for OllamaChatClient {
                         Some(gen_resp)
                     } else {
                         let s = gen_resp.status();
-                        let b = gen_resp.text().await.map_err(|err| {
-                            anyhow::anyhow!(
-                                "Ollama /api/generate status {s} body read failed: {err}"
-                            )
+                        let b = gen_resp.text().await.with_context(|| {
+                            format!("Ollama /api/generate status {s} body read failed")
                         })?;
                         return Err(anyhow::anyhow!(
                             "Ollama /api/generate returned error status {s}: {b}"
                         ));
                     }
                 } else {
-                    let txt = resp.text().await.map_err(|err| {
-                        anyhow::anyhow!("Ollama chat API status {status} body read failed: {err}")
+                    let txt = resp.text().await.with_context(|| {
+                        format!("Ollama chat API status {status} body read failed")
                     })?;
                     return Err(anyhow::anyhow!(
                         "Ollama chat API returned error status {status}: {txt}"

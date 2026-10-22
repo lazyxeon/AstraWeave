@@ -278,13 +278,19 @@ fn serve_declared_body(status_line: &'static str) -> std::net::SocketAddr {
     addr
 }
 
-fn assert_body_fails_near_timeout(mode: &str, status_line: &'static str) {
+fn assert_body_fails_near_timeout(
+    mode: &str,
+    status_line: &'static str,
+    low_latency: &str,
+    needles: &[&str],
+    absent: &[&str],
+) {
     let addr = serve_declared_body(status_line);
     let exe = probe_exe(env!("CARGO_BIN_EXE_ollama_chat_probe"));
     let started = std::time::Instant::now();
     let mut child = std::process::Command::new(&exe)
         .args([mode, &format!("http://{addr}")])
-        .env("OLLAMA_LOW_LATENCY", "1")
+        .env("OLLAMA_LOW_LATENCY", low_latency)
         .env("OLLAMA_TIMEOUT_SECS", "1")
         .env("OLLAMA_EARLY_EXIT", "0")
         .stdout(std::process::Stdio::piped())
@@ -313,15 +319,47 @@ fn assert_body_fails_near_timeout(mode: &str, status_line: &'static str) {
         elapsed < std::time::Duration::from_secs(3),
         "{mode} took {elapsed:?}: {stdout} {stderr}"
     );
+    let msg = format!("{stdout} {stderr}").to_lowercase();
+    for needle in needles {
+        assert!(
+            msg.contains(needle),
+            "{mode} missing {needle}: {stdout} {stderr}"
+        );
+    }
+    for needle in absent {
+        assert!(
+            !msg.contains(needle),
+            "{mode} still contains {needle}: {stdout} {stderr}"
+        );
+    }
 }
 
 #[test]
 fn declared_body_that_never_arrives_fails_near_the_read_timeout() {
-    assert_body_fails_near_timeout("complete", "HTTP/1.1 500 Internal Server Error");
-    assert_body_fails_near_timeout("qwen-think", "HTTP/1.1 200 OK");
-    assert_body_fails_near_timeout("qwen-health", "HTTP/1.1 200 OK");
-    assert_body_fails_near_timeout("phi-health", "HTTP/1.1 200 OK");
-    assert_body_fails_near_timeout("hermes-health", "HTTP/1.1 200 OK");
+    assert_body_fails_near_timeout(
+        "complete",
+        "HTTP/1.1 500 Internal Server Error",
+        "1",
+        &["body read failed", "operation timed out"],
+        &[],
+    );
+    assert_body_fails_near_timeout(
+        "complete",
+        "HTTP/1.1 500 Internal Server Error",
+        "0",
+        &["body read failed", "operation timed out"],
+        &["initiating streaming post"],
+    );
+    for mode in ["qwen-think", "qwen-health", "phi-health", "hermes-health"] {
+        assert_body_fails_near_timeout(mode, "HTTP/1.1 200 OK", "1", &["operation timed out"], &[]);
+    }
+    assert_body_fails_near_timeout(
+        "qwen-preload",
+        "HTTP/1.1 200 OK",
+        "1",
+        &["body read failed", "operation timed out"],
+        &[],
+    );
 }
 
 #[test]

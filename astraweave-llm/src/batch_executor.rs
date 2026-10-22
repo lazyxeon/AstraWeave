@@ -359,7 +359,22 @@ impl BatchInferenceExecutor {
         let mut chunk_count = 0;
 
         while let Some(chunk_result) = stream.next().await {
-            let chunk = chunk_result.context("Failed to receive streaming chunk")?;
+            let chunk = match chunk_result {
+                Ok(chunk) => chunk,
+                Err(err) => {
+                    if accumulated.is_empty() {
+                        return Err(err.context("Failed to receive streaming chunk"));
+                    }
+                    match BatchResponseParser::parse_batch_response(&accumulated, &batch) {
+                        Ok(response) => return Ok(response),
+                        Err(parse_err) => {
+                            return Err(parse_err.context(format!(
+                                "streaming chunk failed after partial text {accumulated}: {err:#}"
+                            )));
+                        }
+                    }
+                }
+            };
 
             accumulated.push_str(&chunk);
             chunk_count += 1;
@@ -762,5 +777,69 @@ mod tests {
 
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("Failed to parse"));
+    }
+
+    /// A chunk error after a complete plan keeps that plan.
+    #[tokio::test]
+    async fn test_execute_batch_keeps_text_when_a_later_chunk_fails() {
+        let mut executor = BatchInferenceExecutor::new();
+        executor.queue_agent(10, create_test_snapshot(1, 1));
+        let llm_client = ChunkThenErr::complete(MockBatchLlm::for_agents(1).response);
+
+        let response = executor
+            .execute_batch(&llm_client, "MoveTo")
+            .await
+            .expect("partial batch");
+        assert_eq!(response.get_plan(10).unwrap().plan_id, "batch-p1");
+    }
+
+    /// A chunk error before a full plan returns the text already received.
+    #[tokio::test]
+    async fn test_execute_batch_error_carries_partial_text() {
+        let mut executor = BatchInferenceExecutor::new();
+        executor.queue_agent(10, create_test_snapshot(1, 1));
+        let llm_client = ChunkThenErr::partial("partial-plan");
+
+        let err = executor
+            .execute_batch(&llm_client, "MoveTo")
+            .await
+            .expect_err("incomplete batch");
+        let msg = err.to_string();
+        assert!(msg.contains("partial-plan"), "dropped partial text: {msg}");
+    }
+
+    struct ChunkThenErr {
+        first: String,
+    }
+
+    impl ChunkThenErr {
+        fn complete(first: String) -> Self {
+            Self { first }
+        }
+
+        fn partial(first: &str) -> Self {
+            Self {
+                first: first.to_string(),
+            }
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl crate::LlmClient for ChunkThenErr {
+        async fn complete(&self, _prompt: &str) -> Result<String> {
+            Ok(self.first.clone())
+        }
+
+        async fn complete_streaming(
+            &self,
+            _prompt: &str,
+        ) -> Result<std::pin::Pin<Box<dyn futures_util::Stream<Item = Result<String>> + Send>>>
+        {
+            let first = self.first.clone();
+            Ok(Box::pin(futures_util::stream::iter([
+                Ok(first),
+                Err(anyhow::anyhow!("stream idle timeout")),
+            ])))
+        }
     }
 }

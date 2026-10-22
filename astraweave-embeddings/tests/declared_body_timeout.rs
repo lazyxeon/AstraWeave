@@ -36,10 +36,52 @@ fn serve_declared_body() -> std::net::SocketAddr {
     addr
 }
 
+fn run_declared_body_child() {
+    let exe = std::env::current_exe().expect("current test executable");
+    let mut child = std::process::Command::new(&exe)
+        .args([
+            "--exact",
+            "embed_batch_fails_when_the_declared_body_never_arrives",
+            "--test-threads=1",
+        ])
+        .env("AW_EMBED_DECLARED_BODY", "1")
+        .env("OLLAMA_TIMEOUT_SECS", "1")
+        .env_remove("NEXTEST")
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap_or_else(|err| panic!("spawn {}: {err}", exe.display()));
+    let started = Instant::now();
+    let status = loop {
+        if let Some(status) = child.try_wait().expect("wait") {
+            break status;
+        }
+        if started.elapsed() > Duration::from_secs(4) {
+            let _ = child.kill();
+            panic!(
+                "embed_batch still reading a missing body after {:?}",
+                started.elapsed()
+            );
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    };
+    let output = child.wait_with_output().expect("output");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        status.success(),
+        "declared-body child failed: {stdout} {stderr}"
+    );
+}
+
 #[tokio::test]
 async fn embed_batch_fails_when_the_declared_body_never_arrives() {
-    // This test process is the only reader. The client copies the value at build.
-    std::env::set_var("OLLAMA_TIMEOUT_SECS", "1");
+    // The client copies `OLLAMA_TIMEOUT_SECS` at build. The parent sets it on
+    // the child with `Command::env` and does not call `set_var`.
+    if std::env::var_os("AW_EMBED_DECLARED_BODY").is_none() {
+        run_declared_body_child();
+        return;
+    }
     let addr = serve_declared_body();
     let client = RemoteEmbeddingClient::new(format!("http://{addr}"), "m".into(), 8)
         .expect("loopback client");

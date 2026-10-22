@@ -6,6 +6,8 @@ use astraweave_llm::qwen3_ollama::DEFAULT_QWEN_INSTRUCT_MODEL;
 // unconditionally. Mirrors the canonical value in `qwen3_ollama.rs`.
 #[cfg(not(feature = "ollama"))]
 const DEFAULT_QWEN_INSTRUCT_MODEL: &str = "qwen3.5:4b";
+#[cfg(feature = "ollama")]
+use anyhow::Context;
 use astraweave_llm::{plan_from_llm, MockLlm, PlanSource};
 #[cfg(feature = "ollama")]
 use astraweave_llm::{LlmClient, LocalHttpClient};
@@ -46,13 +48,8 @@ async fn main() -> anyhow::Result<()> {
     // 2. Test Ollama Chat client with Qwen (default model for this project)
     #[cfg(feature = "ollama")]
     {
-        let allow_remote = env::var("LOCAL_LLM_ALLOW_REMOTE")
-            .map(|value| value == "1" || value.eq_ignore_ascii_case("true"))
-            .unwrap_or(false);
-        let ollama_url = astraweave_llm::loopback_model_url(
-            env::var("OLLAMA_URL").unwrap_or_else(|_| "http://127.0.0.1:11434".to_string()),
-            allow_remote,
-        );
+        let ollama_url =
+            env::var("OLLAMA_URL").unwrap_or_else(|_| "http://127.0.0.1:11434".to_string());
 
         println!("\n2. Testing Ollama Chat Client at {}", ollama_url);
         println!(
@@ -60,14 +57,6 @@ async fn main() -> anyhow::Result<()> {
             DEFAULT_QWEN_INSTRUCT_MODEL
         );
         println!("-------------------------");
-
-        // Quick health check: GET /api/tags is a safe, browser-friendly endpoint that lists available models.
-        // Note: /api/chat and /api/generate are POST-only endpoints. Clicking a browser link to them will
-        // perform a GET and typically return HTTP 405 Method Not Allowed. To inspect models, open the /api/tags URL.
-        if let Err(e) = probe_ollama_tags(&ollama_url).await {
-            println!("Warning: failed to probe Ollama /api/tags: {}", e);
-            println!("Proceeding to attempt a POST to the chat endpoint; this may fail if the model is not loaded.");
-        }
 
         test_ollama_client(&world_snapshot, &tool_registry, &ollama_url).await?;
     }
@@ -146,11 +135,18 @@ async fn test_ollama_client(
         .map(|value| value == "1" || value.eq_ignore_ascii_case("true"))
         .unwrap_or(false);
     let client = if allow_remote {
-        astraweave_llm::OllamaChatClient::allowing_remote(url.to_string(), model)
-            .expect("model client")
+        astraweave_llm::OllamaChatClient::allowing_remote(url.to_string(), model)?
     } else {
-        astraweave_llm::OllamaChatClient::new(url.to_string(), model).expect("model client")
+        astraweave_llm::OllamaChatClient::new(url.to_string(), model)?
     };
+
+    // A rejected URL returns before this GET. /api/tags is the browser-safe probe.
+    if let Err(e) = probe_ollama_tags(url).await {
+        println!("Warning: failed to probe Ollama /api/tags: {}", e);
+        println!(
+            "Proceeding to attempt a POST to the chat endpoint; this may fail if the model is not loaded."
+        );
+    }
 
     // Helpful link guidance: GET /api/tags is safe to open in a browser and will list models.
     // The chat endpoint (/api/chat) requires POST and clicking it in a browser (GET) will return 405 Method Not Allowed.
@@ -254,7 +250,10 @@ async fn probe_ollama_tags(base_url: &str) -> anyhow::Result<()> {
 
     if !resp.status().is_success() {
         let status = resp.status();
-        let txt = resp.text().await.unwrap_or_default();
+        let txt = resp
+            .text()
+            .await
+            .with_context(|| format!("Ollama /api/tags status {status} body read failed"))?;
         return Err(anyhow::anyhow!(
             "Ollama /api/tags returned {}: {}",
             status,
@@ -262,7 +261,10 @@ async fn probe_ollama_tags(base_url: &str) -> anyhow::Result<()> {
         ));
     }
 
-    let body = resp.text().await.unwrap_or_default();
+    let body = resp
+        .text()
+        .await
+        .context("Ollama /api/tags body read failed")?;
     println!("Ollama /api/tags response: {}", body);
     Ok(())
 }

@@ -441,8 +441,12 @@ impl Qwen3Ollama {
             anyhow::bail!("Ollama preload returned error: {}", response.status());
         }
 
-        // Consume the response body to complete the request
-        let _ = response.text().await;
+        // The 120s request timeout moves onto the body after the status line.
+        // A missing body is a failed preload, not a warm model.
+        response
+            .text()
+            .await
+            .context("Ollama preload body read failed")?;
 
         tracing::info!(
             "Model {} preloaded in {:.1}s (KV prefix cached)",

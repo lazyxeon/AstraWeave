@@ -96,6 +96,10 @@ fn main() -> ExitCode {
                 .health_check()
                 .await
                 .map(|_| String::new()),
+            "qwen-preload" => astraweave_llm::qwen3_ollama::Qwen3Ollama::new(url.clone(), "m")?
+                .preload()
+                .await
+                .map(|_| String::new()),
             "phi-health" => astraweave_llm::phi3_ollama::Phi3Ollama::new(url.clone(), "m")?
                 .health_check()
                 .await
