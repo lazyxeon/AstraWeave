@@ -7,9 +7,11 @@ name: Doc-Truth Lint
 #
 # Vocabulary phase: WARN-MODE (D.3.2b). Annotates un-allowlisted occurrences but
 # does not fail the job for those hits. The front-door check always exits
-# nonzero: replay cases and the measured frame phrases (3.688 ms at 939a21bb,
-# 3.117 ms at 3855715e on a GTX 1660 Ti) on ENGINE_STATUS.md, no frame figure
-# on the root README, the in-progress list, and the retired game title.
+# nonzero: replay cases and the measured frame phrases on ENGINE_STATUS.md.
+# The later sample must be a measurement line, not the sentence that names
+# the check. The root README rejects a frame figure, including HTML spacing
+# (&nbsp;, &#32;, tags, newlines, tabs). Also the in-progress list and the
+# retired game title.
 # Baseline at the 2026-06 wiring: K=0 un-allowlisted vocabulary hits.
 #
 # Complementary to trace-sync.yml: that gate owns the CLAUDE.md trace table +

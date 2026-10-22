@@ -27,7 +27,7 @@ AstraWeave is an AI-native game engine with a deterministic ECS. Companions are 
 | Companions | The default tick runs `RuleOrchestrator`. A local model proposes off that tick. The simulation validates and executes. [AI pipeline](docs/architecture/ai_pipeline.md) |
 | ECS | `astraweave-ecs` is the schedule. [Foundation](docs/architecture/ecs_math_core_sdk_foundation.md) |
 | Renderer | The engine and the editor share one wgpu path. [Render](docs/architecture/render_pipeline_material_system_shader_infrastructure.md) |
-| World | Physics and the local field are on the sim tick. Terrain columns are the ground that tick reads. `weave_tick` is the weave example and tests. The `weaving` case hashes `NullField`. [Physics](docs/architecture/physics.md) · [Terrain](docs/architecture/terrain.md) · [Weaving](docs/architecture/weaving.md) |
+| World | Physics and the local field are on the sim tick. The loaded set is `ColumnStream`. The hashed ground is the island heightfield. `weave_tick` is the weave example and tests. The `weaving` case hashes `NullField`. [Physics](docs/architecture/physics.md) · [Terrain](docs/architecture/terrain.md) · [Weaving](docs/architecture/weaving.md) |
 | Aravath | A windowed greybox with CC0 props. [Demo](docs/current/ARAVATH_DEMO.md) |
 
 ## Quick start
