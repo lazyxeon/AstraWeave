@@ -350,6 +350,27 @@ fn declared_body_that_never_arrives_fails_near_the_read_timeout() {
         &["body read failed", "operation timed out"],
         &["initiating streaming post"],
     );
+    assert_body_fails_near_timeout(
+        "complete",
+        "HTTP/1.1 200 OK",
+        "1",
+        &["operation timed out"],
+        &[],
+    );
+    assert_body_fails_near_timeout(
+        "complete",
+        "HTTP/1.1 200 OK",
+        "0",
+        &["body read failed", "operation timed out"],
+        &["initiating streaming post"],
+    );
+    assert_body_fails_near_timeout(
+        "warmup",
+        "HTTP/1.1 200 OK",
+        "1",
+        &["body read failed", "operation timed out"],
+        &[],
+    );
     for mode in ["qwen-think", "qwen-health", "phi-health", "hermes-health"] {
         assert_body_fails_near_timeout(mode, "HTTP/1.1 200 OK", "1", &["operation timed out"], &[]);
     }

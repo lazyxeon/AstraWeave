@@ -550,14 +550,27 @@ impl OllamaChatClient {
         };
 
         let chat_url = format!("{}/api/chat", self.url.trim_end_matches('/'));
-        let _ = self
+        let response = self
             .client
             .post(&chat_url)
             .header("Accept", "application/json")
             .timeout(std::time::Duration::from_secs(timeout_secs))
             .json(&body)
             .send()
-            .await?;
+            .await
+            .context("Ollama warmup request failed")?;
+        let status = response.status();
+        if !status.is_success() {
+            let body = response
+                .text()
+                .await
+                .with_context(|| format!("Ollama warmup status {status} body read failed"))?;
+            bail!("Ollama warmup returned error status {status}: {body}");
+        }
+        response
+            .text()
+            .await
+            .context("Ollama warmup body read failed")?;
         Ok(())
     }
 
@@ -668,11 +681,8 @@ impl LlmClient for OllamaChatClient {
                             Ok(_) => {
                                 println!("[ollama] buffered body was empty on attempt {}, will retry/fallback", attempt);
                             }
-                            Err(e) => {
-                                println!(
-                                    "[ollama] error reading non-streaming response text: {:?}",
-                                    e
-                                );
+                            Err(err) => {
+                                return Err(err).context("Ollama non-streaming body read failed");
                             }
                         }
                     } else {
@@ -829,13 +839,13 @@ impl LlmClient for OllamaChatClient {
             #[allow(unused_mut)]
             let mut last_flush = 0usize;
             let mut first_token_at: Option<std::time::Instant> = None;
-            let mut body_error: Option<String> = None;
+            let mut body_error: Option<anyhow::Error> = None;
             loop {
                 let item = match tokio::time::timeout(idle, stream.next()).await {
                     Ok(Some(item)) => item,
                     Ok(None) => break,
                     Err(_) => {
-                        body_error = Some("streaming read idle timeout".to_string());
+                        body_error = Some(anyhow::anyhow!("streaming read idle timeout"));
                         break;
                     }
                 };
@@ -933,7 +943,7 @@ impl LlmClient for OllamaChatClient {
                         }
                     }
                     Err(e) => {
-                        body_error = Some(format!("streaming body error: {e}"));
+                        body_error = Some(anyhow::Error::new(e).context("streaming body error"));
                         break;
                     }
                 }
@@ -944,7 +954,7 @@ impl LlmClient for OllamaChatClient {
             }
             if text.trim().is_empty() && assistant_acc.trim().is_empty() {
                 if let Some(err) = body_error {
-                    bail!(err);
+                    return Err(err);
                 }
             }
 
@@ -1267,8 +1277,11 @@ impl LlmClient for LocalHttpClient {
 
         if !response.status().is_success() {
             let status = response.status();
-            let text = response.text().await.unwrap_or_default();
-            bail!("Local LLM API returned error status {}: {}", status, text);
+            let text = response
+                .text()
+                .await
+                .with_context(|| format!("Local LLM API status {status} body read failed"))?;
+            bail!("Local LLM API returned error status {status}: {text}");
         }
 
         let parsed: Resp = response

@@ -44,6 +44,11 @@ fn main() -> ExitCode {
                     astraweave_llm::OllamaChatClient::new(url.clone(), "test-model".to_string())?;
                 client.complete("test").await
             }
+            "warmup" => {
+                let client =
+                    astraweave_llm::OllamaChatClient::new(url.clone(), "test-model".to_string())?;
+                client.warmup(120).await.map(|_| String::new())
+            }
             "batch" => {
                 let client =
                     astraweave_llm::OllamaChatClient::new(url.clone(), "test-model".to_string())?;

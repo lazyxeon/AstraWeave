@@ -239,14 +239,15 @@ async fn probe_ollama_tags(base_url: &str) -> anyhow::Result<()> {
     let url = format!("{}/api/tags", base_url.trim_end_matches('/'));
     println!("Probing Ollama for available models at: {} (GET)", url);
     let client = astraweave_llm::loopback_http_client()
+        .read_timeout(astraweave_llm::stream_read_idle())
         .build()
-        .map_err(|err| anyhow::anyhow!("loopback http client: {err}"))?;
+        .context("loopback http client")?;
     let resp = client
         .get(&url)
         .timeout(std::time::Duration::from_secs(5))
         .send()
         .await
-        .map_err(|e| anyhow::anyhow!("Failed to reach Ollama /api/tags: {}", e))?;
+        .context("Failed to reach Ollama /api/tags")?;
 
     if !resp.status().is_success() {
         let status = resp.status();
