@@ -162,13 +162,13 @@ Every KEEP occurrence from the closed-vocabulary triage (D.1.C), **updated by D.
 | `tools/aw_editor/VIEWPORT_ENHANCEMENT_COMPLETE.md` | `production-ready` | historical-dated | permanent |
 | `tools/aw_editor/WORLD_CLASS_EDITOR_PLAN.md` | `production-ready` | historical-dated | permanent |
 | `tools/aw_editor/WORLD_CLASS_EDITOR_PLAN.md` | `world-class` | historical-dated | permanent |
-| `.github/copilot-instructions.md` | `check-all` | honest-dormancy | permanent |
+| `docs/current/COPILOT_FIELD_MANUAL.md` | `check-all` | honest-dormancy | permanent |
 | `.zencoder/rules/repo.md` | `Hermes 2 Pro` | honest-dormancy | permanent |
-| `CLAUDE.md` | `check-all` | honest-dormancy | permanent |
-| `CLAUDE.md` | `QUIC` | honest-dormancy | permanent |
-| `CLAUDE.md` | `qwen3:8b` | honest-dormancy | permanent |
-| `CLAUDE.md` | `99.96%` | honest-dormancy | permanent |
-| `CLAUDE.md` | `production-grade` | honest-dormancy | permanent |
+| `docs/current/AGENT_FIELD_MANUAL.md` | `check-all` | honest-dormancy | permanent |
+| `docs/current/AGENT_FIELD_MANUAL.md` | `QUIC` | honest-dormancy | permanent |
+| `docs/current/AGENT_FIELD_MANUAL.md` | `qwen3:8b` | honest-dormancy | permanent |
+| `docs/current/AGENT_FIELD_MANUAL.md` | `99.96%` | honest-dormancy | permanent |
+| `docs/current/COPILOT_FIELD_MANUAL.md` | `production-grade` | honest-dormancy | permanent |
 | `astraweave-ecs/README.md` | `production-ready` | honest-dormancy | permanent |
 | `astraweave-physics/README.md` | `99.96%` | honest-dormancy | permanent |
 | `docs/architecture/ARCHITECTURE_MAP.md` | `ResearchFluidSystem` | honest-dormancy | permanent |
@@ -255,7 +255,7 @@ Every KEEP occurrence from the closed-vocabulary triage (D.1.C), **updated by D.
 | `docs/current/RENDERING_QUICK_REFERENCE.md` | `production-ready` | production-shipped | permanent |
 | `docs/lessons/PERFORMANCE_PATTERNS.md` | `production-ready` | production-shipped | permanent |
 | `docs/lessons/WHAT_WORKED.md` | `production-ready` | production-shipped | permanent |
-| `.github/copilot-instructions.md` | `production-grade` | project-thesis | permanent |
+| `docs/current/COPILOT_FIELD_MANUAL.md` | `production-grade` | project-thesis | permanent |
 | `docs/audits/COMPREHENSIVE_AUDIT_REPORT.md` | `production-grade` | project-thesis | permanent |
 | `docs/audits/DOCUMENTATION_AUDIT_REPORT.md` | `Hermes 2 Pro` | real-client-mention | permanent |
 | `docs/lessons/TESTING_STRATEGIES.md` | `Hermes 2 Pro` | real-client-mention | permanent |
@@ -293,8 +293,8 @@ Every KEEP occurrence from the closed-vocabulary triage (D.1.C), **updated by D.
 | `docs/current/MASTER_COVERAGE_REPORT.md` | `977` | historical-dated | permanent |
 | `docs/current/PROJECT_STATUS.md` | `977` | historical-dated | permanent |
 | `docs/current/DOCUMENTATION_INDEX.md` | `977` | report-description | permanent |
-| `.github/copilot-instructions.md` | `977` | report-description | permanent |
-| `CLAUDE.md` | `977` | report-description | permanent |
+| `docs/current/COPILOT_FIELD_MANUAL.md` | `977` | report-description | permanent |
+| `docs/current/AGENT_FIELD_MANUAL.md` | `977` | report-description | permanent |
 | `docs/current/CLAUDE_MD_HARDENING_PROPOSAL.md` | `977` | report-description | permanent |
 | `docs/architecture/ARCHITECTURE_MAP.md` | `977` | supersession-context | permanent |
 | `docs/architecture/ecs_math_core_sdk_foundation.md` | `977` | dated-record | permanent |
