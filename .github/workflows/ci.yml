@@ -164,11 +164,11 @@ jobs:
           pkgs=",${AW_CI_PACKAGES},"
           if [ "$AW_CI_FULL" = "true" ] || [[ "$pkgs" == *",astraweave-llm,"* ]]; then
             cargo nextest run --locked --profile ci-pr -p astraweave-llm --features ollama --test loopback_http_proxy --test ollama_chat_probe
-            cargo nextest run --locked --profile ci-pr -p astraweave-llm --features ollama --lib a_saturated_limit_is_refused stops_before_the_rest_of_the_body
+            cargo nextest run --locked --profile ci-pr -p astraweave-llm --features ollama --lib a_saturated_limit_is_refused stops_before_the_rest_of_the_body ndjson_scan_
           fi
           if [ "$AW_CI_FULL" = "true" ] || [[ "$pkgs" == *",astraweave-embeddings,"* ]]; then
             cargo nextest run --locked --profile ci-pr -p astraweave-embeddings --features http --test declared_body_timeout
-            cargo nextest run --locked --profile ci-pr -p astraweave-embeddings --features http --lib embedding_cap_fits_a_normal_batch
+            cargo nextest run --locked --profile ci-pr -p astraweave-embeddings --features http --lib embedding_cap_fits_a_normal_batch embedding_rows_follow_their_index
           fi
           if [ "$AW_CI_FULL" != "true" ] && [[ "$pkgs" != *",astraweave-llm,"* ]] && [[ "$pkgs" != *",astraweave-embeddings,"* ]]; then
             echo "Model crates are not in the affected set; skipping the ollama feature tests"
@@ -239,11 +239,11 @@ jobs:
           pkgs=",${AW_CI_PACKAGES},"
           if [ "$AW_CI_FULL" = "true" ] || [[ "$pkgs" == *",astraweave-llm,"* ]]; then
             cargo nextest run --locked --profile ci -p astraweave-llm --features ollama --test loopback_http_proxy --test ollama_chat_probe
-            cargo nextest run --locked --profile ci -p astraweave-llm --features ollama --lib a_saturated_limit_is_refused stops_before_the_rest_of_the_body
+            cargo nextest run --locked --profile ci -p astraweave-llm --features ollama --lib a_saturated_limit_is_refused stops_before_the_rest_of_the_body ndjson_scan_
           fi
           if [ "$AW_CI_FULL" = "true" ] || [[ "$pkgs" == *",astraweave-embeddings,"* ]]; then
             cargo nextest run --locked --profile ci -p astraweave-embeddings --features http --test declared_body_timeout
-            cargo nextest run --locked --profile ci -p astraweave-embeddings --features http --lib embedding_cap_fits_a_normal_batch
+            cargo nextest run --locked --profile ci -p astraweave-embeddings --features http --lib embedding_cap_fits_a_normal_batch embedding_rows_follow_their_index
           fi
           if [ "$AW_CI_FULL" != "true" ] && [[ "$pkgs" != *",astraweave-llm,"* ]] && [[ "$pkgs" != *",astraweave-embeddings,"* ]]; then
             echo "Model crates are not in the affected set; skipping the model HTTP probes"

@@ -114,6 +114,181 @@ pub async fn read_capped_text_limited(response: reqwest::Response, limit: usize)
     String::from_utf8(buf).context("model body is not utf-8")
 }
 
+/// Read `inner` until `overall` elapses.
+///
+/// Each read waits the silence limit or the time still left, whichever is
+/// shorter. The first error is yielded once. The next poll ends the stream.
+#[cfg(feature = "ollama")]
+pub fn bytes_within_deadline<S, T, E>(
+    inner: S,
+    idle: std::time::Duration,
+    overall: std::time::Duration,
+) -> impl futures_util::Stream<Item = Result<T>> + Send
+where
+    S: futures_util::Stream<Item = Result<T, E>> + Unpin + Send + 'static,
+    T: Send + 'static,
+    E: std::error::Error + Send + Sync + 'static,
+{
+    use futures_util::StreamExt;
+    let started = std::time::Instant::now();
+    futures_util::stream::unfold((inner, false), move |(mut inner, stop)| async move {
+        if stop {
+            return None;
+        }
+        let left = overall.saturating_sub(started.elapsed());
+        if left.is_zero() {
+            return Some((
+                Err(anyhow::anyhow!("streaming overall deadline")),
+                (inner, true),
+            ));
+        }
+        let wait = idle.min(left);
+        match tokio::time::timeout(wait, inner.next()).await {
+            Ok(Some(Ok(chunk))) => Some((Ok(chunk), (inner, false))),
+            Ok(Some(Err(err))) => Some((
+                Err(anyhow::Error::new(err).context("stream body error")),
+                (inner, true),
+            )),
+            Ok(None) => None,
+            Err(_) if wait < idle => Some((
+                Err(anyhow::anyhow!("streaming overall deadline")),
+                (inner, true),
+            )),
+            Err(_) => Some((Err(anyhow::anyhow!("stream idle timeout")), (inner, true))),
+        }
+    })
+}
+
+/// Split a drained NDJSON block into lines. One bad line does not fail the others.
+#[cfg(feature = "ollama")]
+pub(crate) fn ndjson_line_strings(bytes: &[u8]) -> Vec<Result<String>> {
+    let mut out = Vec::new();
+    for mut piece in bytes.split(|b| *b == b'\n') {
+        if piece.last() == Some(&b'\r') {
+            piece = &piece[..piece.len() - 1];
+        }
+        if piece.is_empty() {
+            continue;
+        }
+        match String::from_utf8(piece.to_vec()) {
+            Ok(line) => out.push(Ok(line)),
+            Err(_) => {
+                out.push(Err(anyhow::anyhow!("model stream line is not utf-8")));
+                break;
+            }
+        }
+    }
+    out
+}
+
+/// Text from one NDJSON line. `stop` ends the scan after these pieces.
+#[cfg(feature = "ollama")]
+pub(crate) struct NdjsonYield {
+    pub pieces: Vec<String>,
+    pub stop: bool,
+}
+
+/// Scan NDJSON bytes until one error or until `on_line` says to stop.
+///
+/// Reads wait only the time still left. A bad line does not fail earlier
+/// lines from the same read. After one error the next poll ends the stream,
+/// so a later chunk is not read and the byte cap still applies up to the error.
+#[cfg(feature = "ollama")]
+pub(crate) fn scan_model_ndjson<S, T, E, F>(
+    inner: S,
+    idle: std::time::Duration,
+    overall: std::time::Duration,
+    on_line: F,
+) -> impl futures_util::Stream<Item = Result<String>> + Send
+where
+    S: futures_util::Stream<Item = Result<T, E>> + Unpin + Send + 'static,
+    T: AsRef<[u8]> + Send + 'static,
+    E: std::error::Error + Send + Sync + 'static,
+    F: FnMut(&str) -> NdjsonYield + Send + 'static,
+{
+    use futures_util::StreamExt;
+
+    struct ScanState<B, F> {
+        bytes: B,
+        buf: Vec<u8>,
+        seen: usize,
+        pending: std::vec::IntoIter<Result<String>>,
+        stop: bool,
+        on_line: F,
+    }
+
+    let bytes = Box::pin(bytes_within_deadline(inner, idle, overall));
+    futures_util::stream::unfold(
+        ScanState {
+            bytes,
+            buf: Vec::new(),
+            seen: 0,
+            pending: Vec::new().into_iter(),
+            stop: false,
+            on_line,
+        },
+        |mut state| async move {
+            loop {
+                if let Some(item) = state.pending.next() {
+                    return Some((item, state));
+                }
+                if state.stop {
+                    return None;
+                }
+                match state.bytes.next().await {
+                    None => return None,
+                    Some(Err(err)) => {
+                        state.stop = true;
+                        return Some((Err(err), state));
+                    }
+                    Some(Ok(chunk)) => {
+                        let chunk = chunk.as_ref();
+                        if let Err(err) = note_stream_bytes(&mut state.seen, chunk.len()) {
+                            state.stop = true;
+                            return Some((Err(err), state));
+                        }
+                        state.buf.extend_from_slice(chunk);
+                        let mut batch = Vec::new();
+                        let mut stop_now = false;
+                        if let Some(last_nl) = state.buf.iter().rposition(|&b| b == b'\n') {
+                            let complete: Vec<u8> = state.buf.drain(..=last_nl).collect();
+                            for line in ndjson_line_strings(&complete) {
+                                match line {
+                                    Err(err) => {
+                                        batch.push(Err(err));
+                                        stop_now = true;
+                                        break;
+                                    }
+                                    Ok(line) => {
+                                        let trimmed = line.trim();
+                                        if trimmed.is_empty() {
+                                            continue;
+                                        }
+                                        let yielded = (state.on_line)(trimmed);
+                                        for piece in yielded.pieces {
+                                            if !piece.is_empty() {
+                                                batch.push(Ok(piece));
+                                            }
+                                        }
+                                        if yielded.stop {
+                                            stop_now = true;
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        state.pending = batch.into_iter();
+                        if stop_now {
+                            state.stop = true;
+                        }
+                    }
+                }
+            }
+        },
+    )
+}
+
 /// Bound a one-shot model call, headers and body together.
 #[cfg(feature = "ollama")]
 pub async fn with_call_deadline<T>(
@@ -156,6 +331,160 @@ mod body_limit_tests {
         assert!(err.to_string().contains("ceiling"), "{err}");
         assert!(accept_body_limit(MAX_MODEL_JSON_BYTES).is_ok());
         assert!(accept_body_limit(0).is_err());
+    }
+}
+
+#[cfg(all(test, feature = "ollama"))]
+mod ndjson_scan_tests {
+    use super::*;
+    use futures_util::StreamExt;
+
+    fn content_line(line: &str) -> NdjsonYield {
+        let json: serde_json::Value = serde_json::from_str(line).expect("line");
+        let text = json["message"]["content"]
+            .as_str()
+            .unwrap_or("")
+            .to_string();
+        let stop = json["done"].as_bool() == Some(true);
+        NdjsonYield {
+            pieces: if text.is_empty() {
+                Vec::new()
+            } else {
+                vec![text]
+            },
+            stop,
+        }
+    }
+
+    fn chunk_then_hang(
+        bytes: &'static [u8],
+    ) -> std::pin::Pin<Box<dyn futures_util::Stream<Item = Result<Vec<u8>, std::io::Error>> + Send>>
+    {
+        let first = futures_util::stream::once(async move { Ok(bytes.to_vec()) });
+        let hang = futures_util::stream::pending::<Result<Vec<u8>, std::io::Error>>();
+        Box::pin(first.chain(hang))
+    }
+
+    #[test]
+    fn ndjson_lines_split_before_utf8() {
+        let lines = ndjson_line_strings(b"{\"a\":1}\n\xff\n{\"a\":2}\n");
+        assert_eq!(lines.len(), 2);
+        assert!(lines[0].is_ok());
+        assert!(lines[1]
+            .as_ref()
+            .expect_err("bad")
+            .to_string()
+            .contains("utf-8"));
+    }
+
+    #[tokio::test]
+    async fn ndjson_scan_keeps_a_good_line_and_ends() {
+        let idle = std::time::Duration::from_secs(5);
+        let mut stream = Box::pin(scan_model_ndjson(
+            chunk_then_hang(b"{\"message\":{\"content\":\"hello\"}}\n\xff\n{\"message\":{\"content\":\"later\"}}\n"),
+            idle,
+            idle,
+            content_line,
+        ));
+        let started = std::time::Instant::now();
+        let items = tokio::time::timeout(std::time::Duration::from_millis(500), async {
+            let mut items = Vec::new();
+            while let Some(item) = stream.next().await {
+                items.push(item);
+            }
+            items
+        })
+        .await
+        .expect("scan kept reading after the bad line");
+        assert!(started.elapsed() < std::time::Duration::from_millis(500));
+        assert_eq!(items.len(), 2, "{items:?}");
+        assert_eq!(items[0].as_ref().expect("good"), "hello");
+        assert!(items[1]
+            .as_ref()
+            .expect_err("bad")
+            .to_string()
+            .contains("utf-8"));
+    }
+
+    #[tokio::test]
+    async fn ndjson_scan_waits_only_the_time_left() {
+        let idle = std::time::Duration::from_secs(5);
+        let overall = std::time::Duration::from_millis(250);
+        let mut stream = Box::pin(scan_model_ndjson(
+            chunk_then_hang(b"{"),
+            idle,
+            overall,
+            content_line,
+        ));
+        let started = std::time::Instant::now();
+        let item = tokio::time::timeout(std::time::Duration::from_secs(1), stream.next())
+            .await
+            .expect("drip waited a full idle period")
+            .expect("stream ended before the deadline");
+        let elapsed = started.elapsed();
+        let err = item.expect_err("deadline");
+        assert!(
+            err.to_string().contains("streaming overall deadline"),
+            "{err}"
+        );
+        assert!(elapsed < std::time::Duration::from_secs(1), "{elapsed:?}");
+        assert!(
+            elapsed >= std::time::Duration::from_millis(150),
+            "{elapsed:?}"
+        );
+        let next = tokio::time::timeout(std::time::Duration::from_millis(200), stream.next())
+            .await
+            .expect("stream stayed open after the deadline");
+        assert!(next.is_none());
+    }
+
+    #[tokio::test]
+    async fn ndjson_scan_stops_when_the_line_says_done() {
+        let idle = std::time::Duration::from_secs(5);
+        let mut stream = Box::pin(scan_model_ndjson(
+            chunk_then_hang(
+                b"{\"message\":{\"content\":\"hi\"},\"done\":true}\n{\"message\":{\"content\":\"nope\"}}\n",
+            ),
+            idle,
+            idle,
+            content_line,
+        ));
+        let items = tokio::time::timeout(std::time::Duration::from_millis(500), async {
+            let mut items = Vec::new();
+            while let Some(item) = stream.next().await {
+                items.push(item);
+            }
+            items
+        })
+        .await
+        .expect("done:true left the scan open");
+        assert_eq!(items.len(), 1, "{items:?}");
+        assert_eq!(items[0].as_ref().expect("hi"), "hi");
+    }
+
+    #[tokio::test]
+    async fn ndjson_scan_stops_when_the_byte_cap_fires() {
+        let idle = std::time::Duration::from_secs(5);
+        let mut body = vec![b'\n'; MAX_MODEL_JSON_BYTES + 8];
+        body.extend_from_slice(b"{\"message\":{\"content\":\"later\"}}\n");
+        let first = futures_util::stream::once(async move { Ok::<_, std::io::Error>(body) });
+        let hang = futures_util::stream::pending::<Result<Vec<u8>, std::io::Error>>();
+        let mut stream = Box::pin(scan_model_ndjson(
+            Box::pin(first.chain(hang)),
+            idle,
+            idle,
+            content_line,
+        ));
+        let item = tokio::time::timeout(std::time::Duration::from_millis(500), stream.next())
+            .await
+            .expect("cap left the scan open")
+            .expect("stream ended");
+        let err = item.expect_err("cap");
+        assert!(err.to_string().contains("64 KiB"), "{err}");
+        let next = tokio::time::timeout(std::time::Duration::from_millis(200), stream.next())
+            .await
+            .expect("scan read past the cap");
+        assert!(next.is_none());
     }
 }
 
@@ -1083,8 +1412,15 @@ impl LlmClient for OllamaChatClient {
                             }
                             // Incomplete scalars stay in `raw` until a later chunk
                             // finishes the line, so a split UTF-8 character is kept.
-                            let line = String::from_utf8(line_bytes)
-                                .map_err(|_| anyhow::anyhow!("model stream line is not utf-8"))?;
+                            let line = match String::from_utf8(line_bytes) {
+                                Ok(line) => line,
+                                Err(_) => {
+                                    body_error =
+                                        Some(anyhow::anyhow!("model stream line is not utf-8"));
+                                    capped = true;
+                                    break;
+                                }
+                            };
                             let line = line.trim();
                             if line.is_empty() {
                                 continue;

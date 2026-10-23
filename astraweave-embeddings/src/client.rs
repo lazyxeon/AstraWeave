@@ -319,6 +319,35 @@ fn embedding_response_cap(batch_len: usize, dimensions: usize) -> usize {
     raw.min(astraweave_llm::MAX_MODEL_BODY_LIMIT)
 }
 
+/// Place each row at its `index`. A missing index uses the row position.
+/// A repeated or out-of-range index is an error.
+#[cfg(feature = "http")]
+fn order_embedding_rows(
+    rows: Vec<(Option<usize>, Vec<f32>)>,
+    expected: usize,
+    dimensions: usize,
+) -> Result<Vec<Vec<f32>>> {
+    let mut ordered = vec![None; expected];
+    for (position, (index, embedding)) in rows.into_iter().enumerate() {
+        if embedding.len() != dimensions {
+            anyhow::bail!("embedding length {} is not {dimensions}", embedding.len());
+        }
+        let index = index.unwrap_or(position);
+        if index >= expected {
+            anyhow::bail!("embedding index {index} is outside 0..{expected}");
+        }
+        if ordered[index].is_some() {
+            anyhow::bail!("embedding index {index} is repeated");
+        }
+        ordered[index] = Some(embedding);
+    }
+    ordered
+        .into_iter()
+        .enumerate()
+        .map(|(index, slot)| slot.with_context(|| format!("embedding index {index} is missing")))
+        .collect()
+}
+
 #[cfg(feature = "http")]
 #[async_trait]
 impl EmbeddingClient for RemoteEmbeddingClient {
@@ -342,6 +371,8 @@ impl EmbeddingClient for RemoteEmbeddingClient {
         #[derive(Deserialize)]
         struct EmbeddingData {
             embedding: Vec<f32>,
+            #[serde(default)]
+            index: Option<usize>,
         }
 
         let request = EmbeddingRequest {
@@ -363,7 +394,7 @@ impl EmbeddingClient for RemoteEmbeddingClient {
         let expected = texts.len();
         let dimensions = self.dimensions;
         let cap = embedding_response_cap(expected, dimensions);
-        let response_data = astraweave_llm::with_call_deadline(idle.as_secs().max(1), async move {
+        astraweave_llm::with_call_deadline(idle.as_secs().max(1), async move {
             let response = astraweave_llm::send_for_headers(idle, req.send()).await?;
 
             if !response.status().is_success() {
@@ -379,23 +410,14 @@ impl EmbeddingClient for RemoteEmbeddingClient {
                     response_data.data.len()
                 );
             }
-            for row in &response_data.data {
-                if row.embedding.len() != dimensions {
-                    anyhow::bail!(
-                        "embedding length {} is not {dimensions}",
-                        row.embedding.len()
-                    );
-                }
-            }
-            Ok(response_data)
+            let rows = response_data
+                .data
+                .into_iter()
+                .map(|row| (row.index, row.embedding))
+                .collect();
+            order_embedding_rows(rows, expected, dimensions)
         })
-        .await?;
-
-        Ok(response_data
-            .data
-            .into_iter()
-            .map(|d| d.embedding)
-            .collect())
+        .await
     }
 
     fn dimensions(&self) -> usize {
@@ -428,6 +450,25 @@ mod tests {
             embedding_response_cap(100_000, 1536),
             astraweave_llm::MAX_MODEL_BODY_LIMIT
         );
+    }
+
+    #[cfg(feature = "http")]
+    #[test]
+    fn embedding_rows_follow_their_index() {
+        let ordered = order_embedding_rows(vec![(Some(1), vec![2.0]), (Some(0), vec![1.0])], 2, 1)
+            .expect("swap");
+        assert_eq!(ordered, vec![vec![1.0], vec![2.0]]);
+        let omitted = order_embedding_rows(vec![(None, vec![1.0]), (None, vec![2.0])], 2, 1)
+            .expect("position");
+        assert_eq!(omitted, vec![vec![1.0], vec![2.0]]);
+        let repeated = order_embedding_rows(vec![(Some(0), vec![1.0]), (Some(0), vec![2.0])], 2, 1)
+            .expect_err("repeat");
+        assert!(repeated.to_string().contains("repeated"), "{repeated}");
+        let outside = order_embedding_rows(vec![(Some(2), vec![1.0]), (Some(0), vec![2.0])], 2, 1)
+            .expect_err("outside");
+        assert!(outside.to_string().contains("outside"), "{outside}");
+        let length = order_embedding_rows(vec![(None, vec![1.0, 2.0])], 1, 1).expect_err("length");
+        assert!(length.to_string().contains("length"), "{length}");
     }
 
     #[tokio::test]
