@@ -302,22 +302,23 @@ impl Hermes2ProOllama {
             }
         });
 
-        let response = client
-            .post(&url)
-            .json(&body)
-            .timeout(std::time::Duration::from_secs(120))
-            .send()
+        let response_json: serde_json::Value = crate::with_call_deadline(120, async {
+            let response = crate::send_for_headers(
+                crate::stream_read_idle(),
+                client.post(&url).json(&body).send(),
+            )
             .await
             .context("Failed to send request to Ollama")?;
 
-        if !response.status().is_success() {
-            anyhow::bail!("Ollama returned error: {}", response.status());
-        }
+            if !response.status().is_success() {
+                anyhow::bail!("Ollama returned error: {}", response.status());
+            }
 
-        let response_json: serde_json::Value = response
-            .json()
-            .await
-            .context("Failed to parse Ollama response")?;
+            crate::read_capped_json(response)
+                .await
+                .context("Failed to parse Ollama response")
+        })
+        .await?;
 
         let message = response_json["message"]["content"]
             .as_str()
@@ -344,8 +345,7 @@ impl Hermes2ProOllama {
         }
 
         // Parse available models
-        let body: serde_json::Value = response
-            .json()
+        let body: serde_json::Value = crate::read_capped_json(response)
             .await
             .context("Failed to parse Ollama response")?;
 
@@ -455,22 +455,23 @@ impl LlmClient for Hermes2ProOllama {
         tracing::debug!("Sending request to Ollama: {}", self.model);
         let start = std::time::Instant::now();
 
-        let response = client
-            .post(&url)
-            .json(&body)
-            .timeout(std::time::Duration::from_secs(120))
-            .send()
+        let response_json: serde_json::Value = crate::with_call_deadline(120, async {
+            let response = crate::send_for_headers(
+                crate::stream_read_idle(),
+                client.post(&url).json(&body).send(),
+            )
             .await
             .context("Failed to send request to Ollama")?;
 
-        if !response.status().is_success() {
-            anyhow::bail!("Ollama returned error: {}", response.status());
-        }
+            if !response.status().is_success() {
+                anyhow::bail!("Ollama returned error: {}", response.status());
+            }
 
-        let response_json: serde_json::Value = response
-            .json()
-            .await
-            .context("Failed to parse Ollama response")?;
+            crate::read_capped_json(response)
+                .await
+                .context("Failed to parse Ollama response")
+        })
+        .await?;
 
         let text = response_json["message"]["content"]
             .as_str()
@@ -533,7 +534,6 @@ impl LlmClient for Hermes2ProOllama {
         prompt: &str,
     ) -> Result<std::pin::Pin<Box<dyn futures_util::Stream<Item = Result<String>> + Send>>> {
         crate::ensure_model_request(&self.url, self.allow_remote)?;
-        use futures_util::StreamExt;
 
         let idle = crate::stream_read_idle();
         let client = &self.client;
@@ -579,89 +579,52 @@ impl LlmClient for Hermes2ProOllama {
             anyhow::bail!("Ollama streaming returned error: {}", response.status());
         }
 
-        // Convert bytes_stream to text chunk stream
-        // Ollama streams NDJSON (newline-delimited JSON):
-        //   {"message": {"content": "text"}, "done": false}\n
-        let byte_stream = crate::with_read_idle(Box::pin(response.bytes_stream()), idle);
-
-        // Transform bytes → NDJSON lines → text chunks
-        // Uses a byte buffer to handle chunks that split UTF-8 characters or JSON lines
-        let text_stream = byte_stream
-            .scan(Vec::<u8>::new(), |buffer, chunk_result| {
-                // Handle byte chunk errors
-                let chunk = match chunk_result {
-                    Ok(bytes) => bytes,
-                    Err(e) => {
-                        return futures_util::future::ready(Some(vec![Err(
-                            e.context("Stream error")
-                        )]));
-                    }
-                };
-
-                // Append to buffer
-                buffer.extend_from_slice(&chunk);
-
-                let mut results = Vec::new();
-
-                // Find the last newline character
-                // We only process up to the last newline to ensure we have complete JSON objects
-                if let Some(last_newline_pos) = buffer.iter().rposition(|&b| b == b'\n') {
-                    // Extract complete lines from buffer
-                    let complete_lines: Vec<u8> = buffer.drain(..=last_newline_pos).collect();
-
-                    // Parse extracted lines
-                    if let Ok(text) = String::from_utf8(complete_lines) {
-                        for line in text.lines() {
-                            if line.trim().is_empty() {
-                                continue;
-                            }
-
-                            // Parse NDJSON line
-                            match serde_json::from_str::<serde_json::Value>(line) {
-                                Ok(json) => {
-                                    // Extract "message.content" field (Chat API format)
-                                    if let Some(content) = json["message"]["content"].as_str() {
-                                        if !content.is_empty() {
-                                            results.push(Ok(content.to_string()));
-                                        }
-                                    }
-                                    // Fallback for Generate API format (just in case)
-                                    else if let Some(response) = json["response"].as_str() {
-                                        if !response.is_empty() {
-                                            results.push(Ok(response.to_string()));
-                                        }
-                                    }
-
-                                    // Check if done
-                                    if json["done"].as_bool() == Some(true) {
-                                        tracing::debug!("Streaming complete (done: true)");
-                                    }
-                                }
-                                Err(e) => {
-                                    tracing::warn!(
-                                        "Failed to parse NDJSON line: {} | Line: {}",
-                                        e,
-                                        line
-                                    );
-                                }
-                            }
-                        }
-                    } else {
-                        // This should be rare if we split on newlines, but possible if invalid UTF-8
-                        results.push(Err(anyhow::anyhow!("UTF-8 decode error in stream")));
-                    }
-                }
-
-                // Return extracted results (empty vec if no complete lines yet)
-                if results.is_empty() {
-                    futures_util::future::ready(Some(vec![]))
-                } else {
-                    futures_util::future::ready(Some(results))
-                }
-            })
-            .flat_map(futures_util::stream::iter);
+        // Ollama streams NDJSON. Each read waits only the time still left.
+        // One error, or done:true, ends the stream.
+        let overall = idle.saturating_mul(2);
+        let text_stream = crate::scan_model_ndjson(
+            Box::pin(response.bytes_stream()),
+            idle,
+            overall,
+            hermes_ndjson_line,
+        );
 
         Ok(Box::pin(text_stream))
+    }
+}
+
+fn hermes_ndjson_line(line: &str) -> crate::NdjsonYield {
+    let json = match serde_json::from_str::<serde_json::Value>(line) {
+        Ok(json) => json,
+        Err(err) => {
+            tracing::warn!("Failed to parse NDJSON line: {err} | Line: {line}");
+            return crate::NdjsonYield {
+                pieces: Vec::new(),
+                stop: false,
+            };
+        }
+    };
+    let mut line_content = String::new();
+    if let Some(content) = json["message"]["content"].as_str() {
+        if !content.is_empty() {
+            line_content = content.to_string();
+        }
+    } else if let Some(response) = json["response"].as_str() {
+        if !response.is_empty() {
+            line_content = response.to_string();
+        }
+    }
+    let stop = json["done"].as_bool() == Some(true);
+    if stop {
+        tracing::debug!("Streaming complete (done: true)");
+    }
+    crate::NdjsonYield {
+        pieces: if line_content.is_empty() {
+            Vec::new()
+        } else {
+            vec![line_content]
+        },
+        stop,
     }
 }
 

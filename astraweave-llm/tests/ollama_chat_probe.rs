@@ -448,6 +448,241 @@ fn readable_error_status_does_not_start_streaming() {
     );
 }
 
+fn serve_oversized_ok() -> std::net::SocketAddr {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+    let addr = listener.local_addr().expect("addr");
+    std::thread::spawn(move || {
+        let Ok((mut sock, _)) = listener.accept() else {
+            return;
+        };
+        read_http_headers(&mut sock);
+        let body = vec![b'a'; 70 * 1024];
+        let header = format!(
+            "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+            body.len()
+        );
+        write_and_hold(&mut sock, header.as_bytes(), &body);
+    });
+    addr
+}
+
+/// Finish the response without dropping the socket. Windows turns a drop
+/// with unread data into a connection reset before the cap can fire.
+fn write_and_hold(sock: &mut std::net::TcpStream, header: &[u8], body: &[u8]) {
+    use std::io::Write;
+    let _ = sock.write_all(header);
+    let _ = sock.write_all(body);
+    let _ = sock.flush();
+    let _ = sock.shutdown(std::net::Shutdown::Write);
+    std::thread::sleep(std::time::Duration::from_secs(2));
+}
+
+#[test]
+fn oversized_chat_body_stops_at_64kib() {
+    let addr = serve_oversized_ok();
+    let exe = probe_exe(env!("CARGO_BIN_EXE_ollama_chat_probe"));
+    let started = std::time::Instant::now();
+    let mut child = std::process::Command::new(&exe)
+        .args(["complete", &format!("http://{addr}")])
+        .env("OLLAMA_LOW_LATENCY", "1")
+        .env("OLLAMA_TIMEOUT_SECS", "5")
+        .env("OLLAMA_EARLY_EXIT", "0")
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap_or_else(|err| panic!("spawn {}: {err}", exe.display()));
+    let status = loop {
+        if let Some(status) = child.try_wait().expect("wait") {
+            break status;
+        }
+        if started.elapsed() > std::time::Duration::from_secs(4) {
+            let _ = child.kill();
+            panic!("complete kept reading past 64 KiB");
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    };
+    let output = child.wait_with_output().expect("output");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !status.success(),
+        "oversized body succeeded: {stdout} {stderr}"
+    );
+    assert!(
+        format!("{stdout} {stderr}").contains("64 KiB"),
+        "{stdout} {stderr}"
+    );
+}
+
+fn serve_empty_lines() -> std::net::SocketAddr {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+    let addr = listener.local_addr().expect("addr");
+    std::thread::spawn(move || {
+        let Ok((mut sock, _)) = listener.accept() else {
+            return;
+        };
+        read_http_headers(&mut sock);
+        // Empty NDJSON lines do not grow the kept text. The byte counter must
+        // still stop the read.
+        let body = vec![b'\n'; 70 * 1024];
+        let header = format!(
+            "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+            body.len()
+        );
+        write_and_hold(&mut sock, header.as_bytes(), &body);
+    });
+    addr
+}
+
+#[test]
+fn empty_ndjson_lines_stop_at_64kib() {
+    let addr = serve_empty_lines();
+    let exe = probe_exe(env!("CARGO_BIN_EXE_ollama_chat_probe"));
+    let started = std::time::Instant::now();
+    let mut child = std::process::Command::new(&exe)
+        .args(["complete", &format!("http://{addr}")])
+        .env("OLLAMA_LOW_LATENCY", "1")
+        .env("OLLAMA_TIMEOUT_SECS", "5")
+        .env("OLLAMA_EARLY_EXIT", "0")
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap_or_else(|err| panic!("spawn {}: {err}", exe.display()));
+    let status = loop {
+        if let Some(status) = child.try_wait().expect("wait") {
+            break status;
+        }
+        if started.elapsed() > std::time::Duration::from_secs(4) {
+            let _ = child.kill();
+            panic!("empty NDJSON lines were still streaming");
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    };
+    let output = child.wait_with_output().expect("output");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !status.success(),
+        "empty lines succeeded: {stdout} {stderr}"
+    );
+    assert!(
+        format!("{stdout} {stderr}").contains("64 KiB"),
+        "{stdout} {stderr}"
+    );
+}
+
+fn serve_bad_utf8_line() -> std::net::SocketAddr {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+    let addr = listener.local_addr().expect("addr");
+    std::thread::spawn(move || {
+        let Ok((mut sock, _)) = listener.accept() else {
+            return;
+        };
+        read_http_headers(&mut sock);
+        let body = b"\xff\n";
+        let header = format!(
+            "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+            body.len()
+        );
+        write_and_hold(&mut sock, header.as_bytes(), body);
+    });
+    addr
+}
+
+#[test]
+fn invalid_utf8_line_is_an_error() {
+    let addr = serve_bad_utf8_line();
+    let exe = probe_exe(env!("CARGO_BIN_EXE_ollama_chat_probe"));
+    let started = std::time::Instant::now();
+    let mut child = std::process::Command::new(&exe)
+        .args(["complete", &format!("http://{addr}")])
+        .env("OLLAMA_LOW_LATENCY", "1")
+        .env("OLLAMA_TIMEOUT_SECS", "2")
+        .env("OLLAMA_EARLY_EXIT", "0")
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap_or_else(|err| panic!("spawn {}: {err}", exe.display()));
+    let status = loop {
+        if let Some(status) = child.try_wait().expect("wait") {
+            break status;
+        }
+        if started.elapsed() > std::time::Duration::from_secs(4) {
+            let _ = child.kill();
+            panic!("invalid utf-8 line was still open");
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    };
+    let output = child.wait_with_output().expect("output");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !status.success(),
+        "invalid utf-8 succeeded: {stdout} {stderr}"
+    );
+    assert!(
+        format!("{stdout} {stderr}")
+            .to_lowercase()
+            .contains("utf-8"),
+        "{stdout} {stderr}"
+    );
+}
+
+fn serve_good_line_then_bad_utf8() -> std::net::SocketAddr {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+    let addr = listener.local_addr().expect("addr");
+    std::thread::spawn(move || {
+        let Ok((mut sock, _)) = listener.accept() else {
+            return;
+        };
+        read_http_headers(&mut sock);
+        let body = b"{\"message\":{\"content\":\"hello\"}}\n\xff\n";
+        let header = format!(
+            "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+            body.len()
+        );
+        write_and_hold(&mut sock, header.as_bytes(), body);
+    });
+    addr
+}
+
+#[test]
+fn good_line_before_bad_utf8_is_kept() {
+    let addr = serve_good_line_then_bad_utf8();
+    let exe = probe_exe(env!("CARGO_BIN_EXE_ollama_chat_probe"));
+    let started = std::time::Instant::now();
+    let mut child = std::process::Command::new(&exe)
+        .args(["complete", &format!("http://{addr}")])
+        .env("OLLAMA_LOW_LATENCY", "1")
+        .env("OLLAMA_TIMEOUT_SECS", "2")
+        .env("OLLAMA_EARLY_EXIT", "0")
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap_or_else(|err| panic!("spawn {}: {err}", exe.display()));
+    let status = loop {
+        if let Some(status) = child.try_wait().expect("wait") {
+            break status;
+        }
+        if started.elapsed() > std::time::Duration::from_secs(4) {
+            let _ = child.kill();
+            panic!("good line then bad utf-8 was still open");
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    };
+    let output = child.wait_with_output().expect("output");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        status.success(),
+        "good token was dropped: {stdout} {stderr}"
+    );
+    assert!(
+        stdout.contains("hello"),
+        "kept token missing: {stdout} {stderr}"
+    );
+}
+
 #[test]
 fn silent_accept_fails_near_the_header_timeout() {
     assert_headers_fail_near_timeout("complete", false);

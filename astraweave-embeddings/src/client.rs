@@ -5,6 +5,8 @@ Trait-based abstraction for different embedding model backends.
 Supports mock clients for testing, local models via ONNX/Candle, and remote APIs.
 */
 
+#[cfg(feature = "http")]
+use anyhow::Context;
 use anyhow::Result;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -306,6 +308,46 @@ impl RemoteEmbeddingClient {
     }
 }
 
+/// JSON budget for one embedding response: 32 bytes per component, plus a wrapper.
+#[cfg(feature = "http")]
+fn embedding_response_cap(batch_len: usize, dimensions: usize) -> usize {
+    let raw = batch_len
+        .max(1)
+        .saturating_mul(dimensions.max(1))
+        .saturating_mul(32)
+        .saturating_add(2048);
+    raw.min(astraweave_llm::MAX_MODEL_BODY_LIMIT)
+}
+
+/// Place each row at its `index`. A missing index uses the row position.
+/// A repeated or out-of-range index is an error.
+#[cfg(feature = "http")]
+fn order_embedding_rows(
+    rows: Vec<(Option<usize>, Vec<f32>)>,
+    expected: usize,
+    dimensions: usize,
+) -> Result<Vec<Vec<f32>>> {
+    let mut ordered = vec![None; expected];
+    for (position, (index, embedding)) in rows.into_iter().enumerate() {
+        if embedding.len() != dimensions {
+            anyhow::bail!("embedding length {} is not {dimensions}", embedding.len());
+        }
+        let index = index.unwrap_or(position);
+        if index >= expected {
+            anyhow::bail!("embedding index {index} is outside 0..{expected}");
+        }
+        if ordered[index].is_some() {
+            anyhow::bail!("embedding index {index} is repeated");
+        }
+        ordered[index] = Some(embedding);
+    }
+    ordered
+        .into_iter()
+        .enumerate()
+        .map(|(index, slot)| slot.with_context(|| format!("embedding index {index} is missing")))
+        .collect()
+}
+
 #[cfg(feature = "http")]
 #[async_trait]
 impl EmbeddingClient for RemoteEmbeddingClient {
@@ -329,6 +371,8 @@ impl EmbeddingClient for RemoteEmbeddingClient {
         #[derive(Deserialize)]
         struct EmbeddingData {
             embedding: Vec<f32>,
+            #[serde(default)]
+            index: Option<usize>,
         }
 
         let request = EmbeddingRequest {
@@ -347,19 +391,33 @@ impl EmbeddingClient for RemoteEmbeddingClient {
         }
 
         let idle = astraweave_llm::stream_read_idle();
-        let response = astraweave_llm::send_for_headers(idle, req.send()).await?;
+        let expected = texts.len();
+        let dimensions = self.dimensions;
+        let cap = embedding_response_cap(expected, dimensions);
+        astraweave_llm::with_call_deadline(idle.as_secs().max(1), async move {
+            let response = astraweave_llm::send_for_headers(idle, req.send()).await?;
 
-        if !response.status().is_success() {
-            return Err(anyhow::anyhow!("API request failed: {}", response.status()));
-        }
+            if !response.status().is_success() {
+                anyhow::bail!("API request failed: {}", response.status());
+            }
 
-        let response_data: EmbeddingResponse = response.json().await?;
-
-        Ok(response_data
-            .data
-            .into_iter()
-            .map(|d| d.embedding)
-            .collect())
+            let body = astraweave_llm::read_capped_text_limited(response, cap).await?;
+            let response_data: EmbeddingResponse =
+                serde_json::from_str(&body).context("embedding response")?;
+            if response_data.data.len() != expected {
+                anyhow::bail!(
+                    "embedding row count {} is not {expected}",
+                    response_data.data.len()
+                );
+            }
+            let rows = response_data
+                .data
+                .into_iter()
+                .map(|row| (row.index, row.embedding))
+                .collect();
+            order_embedding_rows(rows, expected, dimensions)
+        })
+        .await
     }
 
     fn dimensions(&self) -> usize {
@@ -380,6 +438,38 @@ impl EmbeddingClient for RemoteEmbeddingClient {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(feature = "http")]
+    #[test]
+    fn embedding_cap_fits_a_normal_batch() {
+        let normal = embedding_response_cap(8, 1536);
+        assert!(normal > 64 * 1024, "{normal}");
+        assert!(normal < astraweave_llm::MAX_MODEL_BODY_LIMIT);
+        assert!(embedding_response_cap(1, 8) < 64 * 1024);
+        assert_eq!(
+            embedding_response_cap(100_000, 1536),
+            astraweave_llm::MAX_MODEL_BODY_LIMIT
+        );
+    }
+
+    #[cfg(feature = "http")]
+    #[test]
+    fn embedding_rows_follow_their_index() {
+        let ordered = order_embedding_rows(vec![(Some(1), vec![2.0]), (Some(0), vec![1.0])], 2, 1)
+            .expect("swap");
+        assert_eq!(ordered, vec![vec![1.0], vec![2.0]]);
+        let omitted = order_embedding_rows(vec![(None, vec![1.0]), (None, vec![2.0])], 2, 1)
+            .expect("position");
+        assert_eq!(omitted, vec![vec![1.0], vec![2.0]]);
+        let repeated = order_embedding_rows(vec![(Some(0), vec![1.0]), (Some(0), vec![2.0])], 2, 1)
+            .expect_err("repeat");
+        assert!(repeated.to_string().contains("repeated"), "{repeated}");
+        let outside = order_embedding_rows(vec![(Some(2), vec![1.0]), (Some(0), vec![2.0])], 2, 1)
+            .expect_err("outside");
+        assert!(outside.to_string().contains("outside"), "{outside}");
+        let length = order_embedding_rows(vec![(None, vec![1.0, 2.0])], 1, 1).expect_err("length");
+        assert!(length.to_string().contains("length"), "{length}");
+    }
 
     #[tokio::test]
     async fn test_mock_embedding_client() {

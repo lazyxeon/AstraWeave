@@ -153,6 +153,27 @@ jobs:
           AW_CI_PROFILE: ci-pr
         run: bash scripts/ci/run-tests.sh
 
+      - name: Model HTTP tests
+        # Affected-crate nextest does not turn on astraweave-llm's ollama
+        # feature unless another selected package already depends on it.
+        # Run that feature only when those crates are in the affected set.
+        env:
+          AW_CI_FULL: ${{ needs.changes.outputs.full }}
+          AW_CI_PACKAGES: ${{ needs.changes.outputs.packages }}
+        run: |
+          pkgs=",${AW_CI_PACKAGES},"
+          if [ "$AW_CI_FULL" = "true" ] || [[ "$pkgs" == *",astraweave-llm,"* ]]; then
+            cargo nextest run --locked --profile ci-pr -p astraweave-llm --features ollama --test loopback_http_proxy --test ollama_chat_probe
+            cargo nextest run --locked --profile ci-pr -p astraweave-llm --features ollama --lib a_saturated_limit_is_refused stops_before_the_rest_of_the_body ndjson_scan_
+          fi
+          if [ "$AW_CI_FULL" = "true" ] || [[ "$pkgs" == *",astraweave-embeddings,"* ]]; then
+            cargo nextest run --locked --profile ci-pr -p astraweave-embeddings --features http --test declared_body_timeout
+            cargo nextest run --locked --profile ci-pr -p astraweave-embeddings --features http --lib embedding_cap_fits_a_normal_batch embedding_rows_follow_their_index
+          fi
+          if [ "$AW_CI_FULL" != "true" ] && [[ "$pkgs" != *",astraweave-llm,"* ]] && [[ "$pkgs" != *",astraweave-embeddings,"* ]]; then
+            echo "Model crates are not in the affected set; skipping the ollama feature tests"
+          fi
+
   test-windows-build:
     name: Test (windows, build archive)
     runs-on: windows-latest
@@ -194,14 +215,6 @@ jobs:
           CARGO_PROFILE_TEST_DEBUG: "0"
         run: cargo nextest run --locked --profile ci -p aw-net-client --test family1_client_binary --test family3_client_binary_wrong_key
 
-      - name: Model HTTP probes on this machine
-        # CARGO_BIN_EXE_loopback_http_probe and CARGO_BIN_EXE_ollama_chat_probe
-        # are this runner's target path. Partition jobs skip both targets.
-        # Keep the archive profile so this follow-up does not rebuild with debug info.
-        env:
-          CARGO_PROFILE_TEST_DEBUG: "0"
-        run: cargo nextest run --locked --profile ci -p astraweave-llm --features ollama --test loopback_http_proxy --test ollama_chat_probe
-
       - name: Upload the archive
         uses: actions/upload-artifact@v4
         with:
@@ -211,6 +224,30 @@ jobs:
           retention-days: 1
           # The archive is already zstd. Skip a second compression pass.
           compression-level: 0
+
+      - name: Model HTTP probes on this machine
+        # After the archive upload so a feature rebuild does not hold the
+        # artifact. Only when those crates are affected: a failure here still
+        # fails the build job, and the partition jobs need that job to succeed.
+        # CARGO_BIN_EXE_* is this runner's target path. Keep the archive profile
+        # so this follow-up does not rebuild with debug info.
+        env:
+          CARGO_PROFILE_TEST_DEBUG: "0"
+          AW_CI_FULL: ${{ needs.changes.outputs.full }}
+          AW_CI_PACKAGES: ${{ needs.changes.outputs.packages }}
+        run: |
+          pkgs=",${AW_CI_PACKAGES},"
+          if [ "$AW_CI_FULL" = "true" ] || [[ "$pkgs" == *",astraweave-llm,"* ]]; then
+            cargo nextest run --locked --profile ci -p astraweave-llm --features ollama --test loopback_http_proxy --test ollama_chat_probe
+            cargo nextest run --locked --profile ci -p astraweave-llm --features ollama --lib a_saturated_limit_is_refused stops_before_the_rest_of_the_body ndjson_scan_
+          fi
+          if [ "$AW_CI_FULL" = "true" ] || [[ "$pkgs" == *",astraweave-embeddings,"* ]]; then
+            cargo nextest run --locked --profile ci -p astraweave-embeddings --features http --test declared_body_timeout
+            cargo nextest run --locked --profile ci -p astraweave-embeddings --features http --lib embedding_cap_fits_a_normal_batch embedding_rows_follow_their_index
+          fi
+          if [ "$AW_CI_FULL" != "true" ] && [[ "$pkgs" != *",astraweave-llm,"* ]] && [[ "$pkgs" != *",astraweave-embeddings,"* ]]; then
+            echo "Model crates are not in the affected set; skipping the model HTTP probes"
+          fi
 
   test-windows:
     name: Test (windows, ${{ matrix.partition }}/3)

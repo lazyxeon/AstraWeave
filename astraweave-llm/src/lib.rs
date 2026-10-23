@@ -6,6 +6,9 @@ use anyhow::{bail, Result};
 /// Model text above this is rejected before `serde_json` allocates a document.
 pub const MAX_MODEL_JSON_BYTES: usize = 64 * 1024;
 
+/// Hard ceiling for any capped body read, including embedding batches.
+pub const MAX_MODEL_BODY_LIMIT: usize = 8 * 1024 * 1024;
+
 /// The prefix of `text` that fits in [`MAX_MODEL_JSON_BYTES`].
 pub fn bounded_model_text(text: &str) -> &str {
     if text.len() <= MAX_MODEL_JSON_BYTES {
@@ -18,6 +21,294 @@ pub fn bounded_model_text(text: &str) -> &str {
     &text[..end]
 }
 
+/// Count `extra` toward the 64 KiB model-body cap. Empty lines and invalid
+/// UTF-8 still count.
+#[cfg(feature = "ollama")]
+pub(crate) fn note_stream_bytes(seen: &mut usize, extra: usize) -> Result<()> {
+    *seen = seen.saturating_add(extra);
+    if *seen > MAX_MODEL_JSON_BYTES {
+        bail!("model text exceeds 64 KiB cap ({} bytes)", *seen);
+    }
+    Ok(())
+}
+
+#[cfg(feature = "ollama")]
+fn append_capped(dst: &mut String, extra: &str) -> Result<()> {
+    let next = dst.len().saturating_add(extra.len());
+    if next > MAX_MODEL_JSON_BYTES {
+        bail!("model text exceeds 64 KiB cap ({next} bytes)");
+    }
+    dst.push_str(extra);
+    Ok(())
+}
+
+/// Take one NDJSON line from the default chat stream.
+#[cfg(feature = "ollama")]
+fn push_stream_line(assistant_acc: &mut String, line: &str, done_flag: &mut bool) -> Result<()> {
+    if let Ok(v) = serde_json::from_str::<serde_json::Value>(line) {
+        if let Some(content) = v
+            .get("message")
+            .and_then(|msg| msg.get("content"))
+            .and_then(|c| c.as_str())
+        {
+            append_capped(assistant_acc, content)?;
+        }
+        if let Some(resp_txt) = v.get("response").and_then(|r| r.as_str()) {
+            append_capped(assistant_acc, resp_txt)?;
+        }
+        if let Some(choices) = v.get("choices").and_then(|c| c.as_array()) {
+            if let Some(first) = choices.first() {
+                if let Some(content) = first
+                    .get("message")
+                    .and_then(|msg| msg.get("content"))
+                    .and_then(|c| c.as_str())
+                {
+                    append_capped(assistant_acc, content)?;
+                }
+            }
+        }
+        if v.get("done").and_then(|d| d.as_bool()) == Some(true) {
+            *done_flag = true;
+        }
+    } else {
+        append_capped(assistant_acc, line)?;
+    }
+    Ok(())
+}
+
+/// Read a model body, stopping at [`MAX_MODEL_JSON_BYTES`].
+#[cfg(feature = "ollama")]
+pub async fn read_capped_text(response: reqwest::Response) -> Result<String> {
+    read_capped_text_limited(response, MAX_MODEL_JSON_BYTES).await
+}
+
+/// Refuse a limit that would make the capped reader fail open.
+#[cfg(feature = "ollama")]
+fn accept_body_limit(limit: usize) -> Result<()> {
+    if limit == 0 || limit > MAX_MODEL_BODY_LIMIT {
+        bail!("model body limit {limit} exceeds the {MAX_MODEL_BODY_LIMIT} byte ceiling");
+    }
+    Ok(())
+}
+
+/// Read a body until `limit` bytes, then stop.
+#[cfg(feature = "ollama")]
+pub async fn read_capped_text_limited(response: reqwest::Response, limit: usize) -> Result<String> {
+    use futures_util::StreamExt;
+    accept_body_limit(limit)?;
+    let mut stream = response.bytes_stream();
+    let mut buf = Vec::new();
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.context("model body read failed")?;
+        let Some(next) = buf.len().checked_add(chunk.len()) else {
+            bail!("model body length overflow");
+        };
+        if next > limit {
+            if limit == MAX_MODEL_JSON_BYTES {
+                bail!("model text exceeds 64 KiB cap ({next} bytes)");
+            }
+            bail!("model text exceeds {limit} byte cap ({next} bytes)");
+        }
+        buf.extend_from_slice(&chunk);
+    }
+    String::from_utf8(buf).context("model body is not utf-8")
+}
+
+/// Read `inner` until `overall` elapses.
+///
+/// Each read waits the silence limit or the time still left, whichever is
+/// shorter. The first error is yielded once. The next poll ends the stream.
+#[cfg(feature = "ollama")]
+pub fn bytes_within_deadline<S, T, E>(
+    inner: S,
+    idle: std::time::Duration,
+    overall: std::time::Duration,
+) -> impl futures_util::Stream<Item = Result<T>> + Send
+where
+    S: futures_util::Stream<Item = Result<T, E>> + Unpin + Send + 'static,
+    T: Send + 'static,
+    E: std::error::Error + Send + Sync + 'static,
+{
+    use futures_util::StreamExt;
+    let started = std::time::Instant::now();
+    futures_util::stream::unfold((inner, false), move |(mut inner, stop)| async move {
+        if stop {
+            return None;
+        }
+        let left = overall.saturating_sub(started.elapsed());
+        if left.is_zero() {
+            return Some((
+                Err(anyhow::anyhow!("streaming overall deadline")),
+                (inner, true),
+            ));
+        }
+        let wait = idle.min(left);
+        match tokio::time::timeout(wait, inner.next()).await {
+            Ok(Some(Ok(chunk))) => Some((Ok(chunk), (inner, false))),
+            Ok(Some(Err(err))) => Some((
+                Err(anyhow::Error::new(err).context("stream body error")),
+                (inner, true),
+            )),
+            Ok(None) => None,
+            Err(_) if wait < idle => Some((
+                Err(anyhow::anyhow!("streaming overall deadline")),
+                (inner, true),
+            )),
+            Err(_) => Some((Err(anyhow::anyhow!("stream idle timeout")), (inner, true))),
+        }
+    })
+}
+
+/// Split a drained NDJSON block into lines. One bad line does not fail the others.
+#[cfg(feature = "ollama")]
+pub(crate) fn ndjson_line_strings(bytes: &[u8]) -> Vec<Result<String>> {
+    let mut out = Vec::new();
+    for mut piece in bytes.split(|b| *b == b'\n') {
+        if piece.last() == Some(&b'\r') {
+            piece = &piece[..piece.len() - 1];
+        }
+        if piece.is_empty() {
+            continue;
+        }
+        match String::from_utf8(piece.to_vec()) {
+            Ok(line) => out.push(Ok(line)),
+            Err(_) => {
+                out.push(Err(anyhow::anyhow!("model stream line is not utf-8")));
+                break;
+            }
+        }
+    }
+    out
+}
+
+/// Text from one NDJSON line. `stop` ends the scan after these pieces.
+#[cfg(feature = "ollama")]
+pub(crate) struct NdjsonYield {
+    pub pieces: Vec<String>,
+    pub stop: bool,
+}
+
+/// Scan NDJSON bytes until one error or until `on_line` says to stop.
+///
+/// Reads wait only the time still left. A bad line does not fail earlier
+/// lines from the same read. After one error the next poll ends the stream,
+/// so a later chunk is not read and the byte cap still applies up to the error.
+#[cfg(feature = "ollama")]
+pub(crate) fn scan_model_ndjson<S, T, E, F>(
+    inner: S,
+    idle: std::time::Duration,
+    overall: std::time::Duration,
+    on_line: F,
+) -> impl futures_util::Stream<Item = Result<String>> + Send
+where
+    S: futures_util::Stream<Item = Result<T, E>> + Unpin + Send + 'static,
+    T: AsRef<[u8]> + Send + 'static,
+    E: std::error::Error + Send + Sync + 'static,
+    F: FnMut(&str) -> NdjsonYield + Send + 'static,
+{
+    use futures_util::StreamExt;
+
+    struct ScanState<B, F> {
+        bytes: B,
+        buf: Vec<u8>,
+        seen: usize,
+        pending: std::vec::IntoIter<Result<String>>,
+        stop: bool,
+        on_line: F,
+    }
+
+    let bytes = Box::pin(bytes_within_deadline(inner, idle, overall));
+    futures_util::stream::unfold(
+        ScanState {
+            bytes,
+            buf: Vec::new(),
+            seen: 0,
+            pending: Vec::new().into_iter(),
+            stop: false,
+            on_line,
+        },
+        |mut state| async move {
+            loop {
+                if let Some(item) = state.pending.next() {
+                    return Some((item, state));
+                }
+                if state.stop {
+                    return None;
+                }
+                match state.bytes.next().await {
+                    None => return None,
+                    Some(Err(err)) => {
+                        state.stop = true;
+                        return Some((Err(err), state));
+                    }
+                    Some(Ok(chunk)) => {
+                        let chunk = chunk.as_ref();
+                        if let Err(err) = note_stream_bytes(&mut state.seen, chunk.len()) {
+                            state.stop = true;
+                            return Some((Err(err), state));
+                        }
+                        state.buf.extend_from_slice(chunk);
+                        let mut batch = Vec::new();
+                        let mut stop_now = false;
+                        if let Some(last_nl) = state.buf.iter().rposition(|&b| b == b'\n') {
+                            let complete: Vec<u8> = state.buf.drain(..=last_nl).collect();
+                            for line in ndjson_line_strings(&complete) {
+                                match line {
+                                    Err(err) => {
+                                        batch.push(Err(err));
+                                        stop_now = true;
+                                        break;
+                                    }
+                                    Ok(line) => {
+                                        let trimmed = line.trim();
+                                        if trimmed.is_empty() {
+                                            continue;
+                                        }
+                                        let yielded = (state.on_line)(trimmed);
+                                        for piece in yielded.pieces {
+                                            if !piece.is_empty() {
+                                                batch.push(Ok(piece));
+                                            }
+                                        }
+                                        if yielded.stop {
+                                            stop_now = true;
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        state.pending = batch.into_iter();
+                        if stop_now {
+                            state.stop = true;
+                        }
+                    }
+                }
+            }
+        },
+    )
+}
+
+/// Bound a one-shot model call, headers and body together.
+#[cfg(feature = "ollama")]
+pub async fn with_call_deadline<T>(
+    secs: u64,
+    fut: impl std::future::Future<Output = Result<T>>,
+) -> Result<T> {
+    match tokio::time::timeout(std::time::Duration::from_secs(secs), fut).await {
+        Ok(result) => result,
+        Err(_) => bail!("model call timed out after {secs}s"),
+    }
+}
+
+/// Read and parse a model JSON body, stopping at [`MAX_MODEL_JSON_BYTES`].
+#[cfg(feature = "ollama")]
+pub async fn read_capped_json<T: serde::de::DeserializeOwned>(
+    response: reqwest::Response,
+) -> Result<T> {
+    parse_bounded_model_json(&read_capped_text(response).await?)
+}
+
 #[cfg(test)]
 mod bounded_model_text_tests {
     use super::*;
@@ -27,6 +318,220 @@ mod bounded_model_text_tests {
         let big = "y".repeat(MAX_MODEL_JSON_BYTES + 10);
         assert_eq!(bounded_model_text(&big).len(), MAX_MODEL_JSON_BYTES);
         assert_eq!(bounded_model_text("short"), "short");
+    }
+}
+
+#[cfg(all(test, feature = "ollama"))]
+mod body_limit_tests {
+    use super::*;
+
+    #[test]
+    fn a_saturated_limit_is_refused() {
+        let err = accept_body_limit(usize::MAX).expect_err("open");
+        assert!(err.to_string().contains("ceiling"), "{err}");
+        assert!(accept_body_limit(MAX_MODEL_JSON_BYTES).is_ok());
+        assert!(accept_body_limit(0).is_err());
+    }
+}
+
+#[cfg(all(test, feature = "ollama"))]
+mod ndjson_scan_tests {
+    use super::*;
+    use futures_util::StreamExt;
+
+    fn content_line(line: &str) -> NdjsonYield {
+        let json: serde_json::Value = serde_json::from_str(line).expect("line");
+        let text = json["message"]["content"]
+            .as_str()
+            .unwrap_or("")
+            .to_string();
+        let stop = json["done"].as_bool() == Some(true);
+        NdjsonYield {
+            pieces: if text.is_empty() {
+                Vec::new()
+            } else {
+                vec![text]
+            },
+            stop,
+        }
+    }
+
+    fn chunk_then_hang(
+        bytes: &'static [u8],
+    ) -> std::pin::Pin<Box<dyn futures_util::Stream<Item = Result<Vec<u8>, std::io::Error>> + Send>>
+    {
+        let first = futures_util::stream::once(async move { Ok(bytes.to_vec()) });
+        let hang = futures_util::stream::pending::<Result<Vec<u8>, std::io::Error>>();
+        Box::pin(first.chain(hang))
+    }
+
+    #[test]
+    fn ndjson_lines_split_before_utf8() {
+        let lines = ndjson_line_strings(b"{\"a\":1}\n\xff\n{\"a\":2}\n");
+        assert_eq!(lines.len(), 2);
+        assert!(lines[0].is_ok());
+        assert!(lines[1]
+            .as_ref()
+            .expect_err("bad")
+            .to_string()
+            .contains("utf-8"));
+    }
+
+    #[tokio::test]
+    async fn ndjson_scan_keeps_a_good_line_and_ends() {
+        let idle = std::time::Duration::from_secs(5);
+        let mut stream = Box::pin(scan_model_ndjson(
+            chunk_then_hang(b"{\"message\":{\"content\":\"hello\"}}\n\xff\n{\"message\":{\"content\":\"later\"}}\n"),
+            idle,
+            idle,
+            content_line,
+        ));
+        let started = std::time::Instant::now();
+        let items = tokio::time::timeout(std::time::Duration::from_millis(500), async {
+            let mut items = Vec::new();
+            while let Some(item) = stream.next().await {
+                items.push(item);
+            }
+            items
+        })
+        .await
+        .expect("scan kept reading after the bad line");
+        assert!(started.elapsed() < std::time::Duration::from_millis(500));
+        assert_eq!(items.len(), 2, "{items:?}");
+        assert_eq!(items[0].as_ref().expect("good"), "hello");
+        assert!(items[1]
+            .as_ref()
+            .expect_err("bad")
+            .to_string()
+            .contains("utf-8"));
+    }
+
+    #[tokio::test]
+    async fn ndjson_scan_waits_only_the_time_left() {
+        let idle = std::time::Duration::from_secs(5);
+        let overall = std::time::Duration::from_millis(250);
+        let mut stream = Box::pin(scan_model_ndjson(
+            chunk_then_hang(b"{"),
+            idle,
+            overall,
+            content_line,
+        ));
+        let started = std::time::Instant::now();
+        let item = tokio::time::timeout(std::time::Duration::from_secs(1), stream.next())
+            .await
+            .expect("drip waited a full idle period")
+            .expect("stream ended before the deadline");
+        let elapsed = started.elapsed();
+        let err = item.expect_err("deadline");
+        assert!(
+            err.to_string().contains("streaming overall deadline"),
+            "{err}"
+        );
+        assert!(elapsed < std::time::Duration::from_secs(1), "{elapsed:?}");
+        assert!(
+            elapsed >= std::time::Duration::from_millis(150),
+            "{elapsed:?}"
+        );
+        let next = tokio::time::timeout(std::time::Duration::from_millis(200), stream.next())
+            .await
+            .expect("stream stayed open after the deadline");
+        assert!(next.is_none());
+    }
+
+    #[tokio::test]
+    async fn ndjson_scan_stops_when_the_line_says_done() {
+        let idle = std::time::Duration::from_secs(5);
+        let mut stream = Box::pin(scan_model_ndjson(
+            chunk_then_hang(
+                b"{\"message\":{\"content\":\"hi\"},\"done\":true}\n{\"message\":{\"content\":\"nope\"}}\n",
+            ),
+            idle,
+            idle,
+            content_line,
+        ));
+        let items = tokio::time::timeout(std::time::Duration::from_millis(500), async {
+            let mut items = Vec::new();
+            while let Some(item) = stream.next().await {
+                items.push(item);
+            }
+            items
+        })
+        .await
+        .expect("done:true left the scan open");
+        assert_eq!(items.len(), 1, "{items:?}");
+        assert_eq!(items[0].as_ref().expect("hi"), "hi");
+    }
+
+    #[tokio::test]
+    async fn ndjson_scan_stops_when_the_byte_cap_fires() {
+        let idle = std::time::Duration::from_secs(5);
+        let mut body = vec![b'\n'; MAX_MODEL_JSON_BYTES + 8];
+        body.extend_from_slice(b"{\"message\":{\"content\":\"later\"}}\n");
+        let first = futures_util::stream::once(async move { Ok::<_, std::io::Error>(body) });
+        let hang = futures_util::stream::pending::<Result<Vec<u8>, std::io::Error>>();
+        let mut stream = Box::pin(scan_model_ndjson(
+            Box::pin(first.chain(hang)),
+            idle,
+            idle,
+            content_line,
+        ));
+        let item = tokio::time::timeout(std::time::Duration::from_millis(500), stream.next())
+            .await
+            .expect("cap left the scan open")
+            .expect("stream ended");
+        let err = item.expect_err("cap");
+        assert!(err.to_string().contains("64 KiB"), "{err}");
+        let next = tokio::time::timeout(std::time::Duration::from_millis(200), stream.next())
+            .await
+            .expect("scan read past the cap");
+        assert!(next.is_none());
+    }
+}
+
+#[cfg(all(test, feature = "ollama"))]
+mod read_capped_tests {
+    use super::*;
+    use std::io::Write;
+
+    #[tokio::test]
+    async fn stops_before_the_rest_of_the_body() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+        let addr = listener.local_addr().expect("addr");
+        std::thread::spawn(move || {
+            let Ok((mut sock, _)) = listener.accept() else {
+                return;
+            };
+            let mut buf = [0u8; 1];
+            let mut seen = Vec::new();
+            let _ = sock.set_read_timeout(Some(std::time::Duration::from_secs(2)));
+            while seen.len() < 8192 {
+                match std::io::Read::read(&mut sock, &mut buf) {
+                    Ok(0) | Err(_) => break,
+                    Ok(_) => {
+                        seen.push(buf[0]);
+                        if seen.ends_with(b"\r\n\r\n") {
+                            break;
+                        }
+                    }
+                }
+            }
+            let body = vec![b'a'; MAX_MODEL_JSON_BYTES + 4096];
+            let header = format!(
+                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                body.len()
+            );
+            let _ = sock.write_all(header.as_bytes());
+            let _ = sock.write_all(&body);
+            let _ = sock.flush();
+        });
+        let client = build_model_client(&format!("http://{addr}"), false).expect("client");
+        let response = client
+            .get(format!("http://{addr}/"))
+            .send()
+            .await
+            .expect("send");
+        let err = read_capped_text(response).await.expect_err("oversize");
+        assert!(err.to_string().contains("64 KiB"), "{err}");
     }
 }
 
@@ -181,16 +686,7 @@ pub async fn send_for_headers(
 ) -> Result<reqwest::Response> {
     match tokio::time::timeout(idle, send).await {
         Ok(Ok(response)) => Ok(response),
-        Ok(Err(err)) => {
-            let mut msg = format!("model request: {err}");
-            let mut source = std::error::Error::source(&err);
-            while let Some(next) = source {
-                msg.push_str(": ");
-                msg.push_str(&next.to_string());
-                source = next.source();
-            }
-            Err(anyhow::anyhow!(msg))
-        }
+        Ok(Err(err)) => Err(anyhow::Error::new(err).context("model request")),
         Err(_) => Err(anyhow::anyhow!("model headers idle timeout")),
     }
 }
@@ -449,21 +945,21 @@ impl LlmClient for OllamaClient {
             stream: false,
         };
 
-        let response = self
-            .client
-            .post(format!("{}/api/generate", self.url))
-            .json(&body)
-            .timeout(std::time::Duration::from_secs(30))
-            .send()
-            .await
-            .map_err(|e| anyhow::anyhow!("Failed to send request to Ollama: {}", e))?;
+        let response = send_for_headers(
+            stream_read_idle(),
+            self.client
+                .post(format!("{}/api/generate", self.url))
+                .json(&body)
+                .send(),
+        )
+        .await
+        .context("Failed to send request to Ollama")?;
 
         if !response.status().is_success() {
             bail!("Ollama API returned error status: {}", response.status());
         }
 
-        let parsed: Resp = response
-            .json()
+        let parsed: Resp = read_capped_json(response)
             .await
             .context("Failed to parse Ollama response")?;
 
@@ -574,29 +1070,35 @@ impl OllamaChatClient {
         };
 
         let chat_url = format!("{}/api/chat", self.url.trim_end_matches('/'));
-        let response = self
-            .client
-            .post(&chat_url)
-            .header("Accept", "application/json")
-            .timeout(std::time::Duration::from_secs(timeout_secs))
-            .json(&body)
-            .send()
+        let deadline = std::time::Duration::from_secs(timeout_secs);
+        let outcome = tokio::time::timeout(deadline, async {
+            let response = send_for_headers(
+                deadline,
+                self.client
+                    .post(&chat_url)
+                    .header("Accept", "application/json")
+                    .json(&body)
+                    .send(),
+            )
             .await
             .context("Ollama warmup request failed")?;
-        let status = response.status();
-        if !status.is_success() {
-            let body = response
-                .text()
+            let status = response.status();
+            if !status.is_success() {
+                let body = read_capped_text(response)
+                    .await
+                    .with_context(|| format!("Ollama warmup status {status} body read failed"))?;
+                bail!("Ollama warmup returned error status {status}: {body}");
+            }
+            read_capped_text(response)
                 .await
-                .with_context(|| format!("Ollama warmup status {status} body read failed"))?;
-            let body = bounded_model_text(&body);
-            bail!("Ollama warmup returned error status {status}: {body}");
+                .context("Ollama warmup body read failed")?;
+            Ok(())
+        })
+        .await;
+        match outcome {
+            Ok(result) => result,
+            Err(_) => bail!("Ollama warmup timed out after {timeout_secs}s"),
         }
-        response
-            .text()
-            .await
-            .context("Ollama warmup body read failed")?;
-        Ok(())
     }
 
     /// Experimental: issue multiple prompts sequentially while reusing the same HTTP client and model residency.
@@ -674,71 +1176,79 @@ impl LlmClient for OllamaChatClient {
             // Use .json() so reqwest sets Content-Length and proper headers. Some servers
             // close the connection or reject raw bodies without length which can cause
             // "error sending request" failures; using .json() is more reliable here.
-            match client
-                .post(&chat_url)
-                .header("Accept", "application/json")
-                .timeout(std::time::Duration::from_secs(nonstream_timeout_secs))
-                .json(&body)
-                .send()
+            let attempt_deadline = std::time::Duration::from_secs(nonstream_timeout_secs);
+            enum Attempt {
+                Text(String),
+                Retry,
+                Fail(anyhow::Error),
+            }
+            let timed = tokio::time::timeout(attempt_deadline, async {
+                let resp = match send_for_headers(
+                    attempt_deadline,
+                    client
+                        .post(&chat_url)
+                        .header("Accept", "application/json")
+                        .json(&body)
+                        .send(),
+                )
                 .await
-            {
-                Ok(resp) => {
-                    println!(
-                        "[ollama] non-streaming request returned status {}",
-                        resp.status()
-                    );
-                    if resp.status().is_success() {
-                        // Try to read as text (this will complete if the server returns a full body)
-                        match resp.text().await {
-                            Ok(t) if !t.trim().is_empty() => {
-                                println!(
-                                    "[ollama] received non-empty buffered body ({} bytes)",
-                                    t.len()
-                                );
-                                text = t;
-                                non_stream_ok = true;
-                                let total_ms = ns_attempt_start.elapsed().as_millis();
-                                println!(
-                                    "[ollama] timing nonstream attempt {}: total={}ms",
-                                    attempt, total_ms
-                                );
-                            }
-                            Ok(_) => {
-                                println!("[ollama] buffered body was empty on attempt {}, will retry/fallback", attempt);
-                            }
-                            Err(err) => {
-                                return Err(err).context("Ollama non-streaming body read failed");
-                            }
+                {
+                    Ok(resp) => resp,
+                    Err(err) => {
+                        println!(
+                            "[ollama] non-streaming request failed on attempt {attempt}: {err:?}"
+                        );
+                        return Attempt::Retry;
+                    }
+                };
+                println!(
+                    "[ollama] non-streaming request returned status {}",
+                    resp.status()
+                );
+                if resp.status().is_success() {
+                    match read_capped_text(resp).await {
+                        Ok(t) if !t.trim().is_empty() => Attempt::Text(t),
+                        Ok(_) => {
+                            println!(
+                                "[ollama] buffered body was empty on attempt {attempt}, will retry/fallback"
+                            );
+                            Attempt::Retry
                         }
-                    } else {
-                        let status = resp.status();
-                        match resp.text().await {
-                            Ok(b) => {
-                                let b = bounded_model_text(&b);
-                                return Err(anyhow::anyhow!(
-                                    "Ollama non-streaming request returned error status {status}: {b}"
-                                ));
-                            }
-                            Err(err) => {
-                                return Err(err).context(format!(
-                                    "Ollama non-streaming status {status} body read failed"
-                                ));
-                            }
-                        }
+                        Err(err) => Attempt::Fail(err.context("Ollama non-streaming body read failed")),
+                    }
+                } else {
+                    let status = resp.status();
+                    match read_capped_text(resp).await {
+                        Ok(b) => Attempt::Fail(anyhow::anyhow!(
+                            "Ollama non-streaming request returned error status {status}: {b}"
+                        )),
+                        Err(err) => Attempt::Fail(err.context(format!(
+                            "Ollama non-streaming status {status} body read failed"
+                        ))),
                     }
                 }
-                Err(e) => {
-                    // Print full debug info for the error to aid diagnosis
+            })
+            .await;
+            match timed {
+                Err(_) => {
                     println!(
-                        "[ollama] non-streaming request failed on attempt {}: {:?}",
-                        attempt, e
-                    );
-                    let total_ms = ns_attempt_start.elapsed().as_millis();
-                    println!(
-                        "[ollama] timing nonstream attempt {}: total={}ms (error)",
-                        attempt, total_ms
+                        "[ollama] non-streaming attempt {attempt} timed out after {nonstream_timeout_secs}s"
                     );
                 }
+                Ok(Attempt::Text(t)) => {
+                    println!(
+                        "[ollama] received non-empty buffered body ({} bytes)",
+                        t.len()
+                    );
+                    text = t;
+                    non_stream_ok = true;
+                    println!(
+                        "[ollama] timing nonstream attempt {attempt}: total={}ms",
+                        ns_attempt_start.elapsed().as_millis()
+                    );
+                }
+                Ok(Attempt::Retry) => {}
+                Ok(Attempt::Fail(err)) => return Err(err),
             }
 
             if !non_stream_ok {
@@ -780,7 +1290,7 @@ impl LlmClient for OllamaChatClient {
                     .send(),
             )
             .await
-            .map_err(|e| anyhow::anyhow!("Failed to initiate streaming request to Ollama: {e}"))?;
+            .context("Failed to initiate streaming request to Ollama")?;
 
             println!(
                 "[ollama] streaming request returned status {}",
@@ -808,11 +1318,7 @@ impl LlmClient for OllamaChatClient {
                             .send(),
                     )
                     .await
-                    .map_err(|e| {
-                        anyhow::anyhow!(
-                            "Failed to initiate streaming request to Ollama /api/generate: {e}"
-                        )
-                    })?;
+                    .context("Failed to initiate streaming request to Ollama /api/generate")?;
 
                     println!(
                         "[ollama] /api/generate returned status {}",
@@ -822,19 +1328,17 @@ impl LlmClient for OllamaChatClient {
                         Some(gen_resp)
                     } else {
                         let s = gen_resp.status();
-                        let b = gen_resp.text().await.with_context(|| {
+                        let b = read_capped_text(gen_resp).await.with_context(|| {
                             format!("Ollama /api/generate status {s} body read failed")
                         })?;
-                        let b = bounded_model_text(&b);
                         return Err(anyhow::anyhow!(
                             "Ollama /api/generate returned error status {s}: {b}"
                         ));
                     }
                 } else {
-                    let txt = resp.text().await.with_context(|| {
+                    let txt = read_capped_text(resp).await.with_context(|| {
                         format!("Ollama chat API status {status} body read failed")
                     })?;
-                    let txt = bounded_model_text(&txt);
                     return Err(anyhow::anyhow!(
                         "Ollama chat API returned error status {status}: {txt}"
                     ));
@@ -852,9 +1356,12 @@ impl LlmClient for OllamaChatClient {
             let mut stream = resp.bytes_stream();
             use futures_util::StreamExt;
 
-            let mut buf = String::new();
+            let mut raw: Vec<u8> = Vec::new();
             let mut assistant_acc = String::new();
+            let mut bytes_seen: usize = 0;
             let mut done_flag = false;
+            let overall = idle.saturating_mul(2);
+            let stream_started = std::time::Instant::now();
 
             // We'll periodically flush partial assembled assistant output to disk so
             // an interrupted run can still be inspected. Track last flush size.
@@ -863,9 +1370,19 @@ impl LlmClient for OllamaChatClient {
             let mut first_token_at: Option<std::time::Instant> = None;
             let mut body_error: Option<anyhow::Error> = None;
             loop {
-                let item = match tokio::time::timeout(idle, stream.next()).await {
+                let left = overall.saturating_sub(stream_started.elapsed());
+                if left.is_zero() {
+                    body_error = Some(anyhow::anyhow!("streaming overall deadline"));
+                    break;
+                }
+                let wait = idle.min(left);
+                let item = match tokio::time::timeout(wait, stream.next()).await {
                     Ok(Some(item)) => item,
                     Ok(None) => break,
+                    Err(_) if stream_started.elapsed() >= overall => {
+                        body_error = Some(anyhow::anyhow!("streaming overall deadline"));
+                        break;
+                    }
                     Err(_) => {
                         body_error = Some(anyhow::anyhow!("streaming read idle timeout"));
                         break;
@@ -873,76 +1390,72 @@ impl LlmClient for OllamaChatClient {
                 };
                 match item {
                     Ok(chunk) => {
-                        if let Ok(schunk) = std::str::from_utf8(&chunk) {
+                        // Count bytes before UTF-8 or line filtering. Empty
+                        // NDJSON lines and invalid UTF-8 must not stream forever.
+                        // A cap error keeps tokens already stored in `assistant_acc`.
+                        if let Err(err) = note_stream_bytes(&mut bytes_seen, chunk.len()) {
+                            body_error = Some(err);
+                            break;
+                        }
+                        raw.extend_from_slice(&chunk);
+                        let mut capped = false;
+                        while let Some(pos) = raw.iter().position(|&b| b == b'\n') {
+                            let mut line_bytes: Vec<u8> = raw.drain(..=pos).collect();
+                            if line_bytes.last() == Some(&b'\n') {
+                                line_bytes.pop();
+                            }
+                            if line_bytes.last() == Some(&b'\r') {
+                                line_bytes.pop();
+                            }
+                            if line_bytes.is_empty() {
+                                continue;
+                            }
+                            // Incomplete scalars stay in `raw` until a later chunk
+                            // finishes the line, so a split UTF-8 character is kept.
+                            let line = match String::from_utf8(line_bytes) {
+                                Ok(line) => line,
+                                Err(_) => {
+                                    body_error =
+                                        Some(anyhow::anyhow!("model stream line is not utf-8"));
+                                    capped = true;
+                                    break;
+                                }
+                            };
+                            let line = line.trim();
+                            if line.is_empty() {
+                                continue;
+                            }
                             if first_token_at.is_none() {
                                 first_token_at = Some(std::time::Instant::now());
                             }
-                            buf.push_str(schunk);
-
-                            // Process complete newline-terminated records
-                            while let Some(pos) = buf.find('\n') {
-                                let line = buf[..pos].trim();
-                                let rest = buf[pos + 1..].to_string();
-
-                                if !line.is_empty() {
-                                    // Try to parse the envelope JSON line
-                                    if let Ok(v) = serde_json::from_str::<serde_json::Value>(line) {
-                                        // Extract nested message.content if present
-                                        if let Some(msg) = v.get("message") {
-                                            if let Some(content) =
-                                                msg.get("content").and_then(|c| c.as_str())
-                                            {
-                                                assistant_acc.push_str(content);
-                                            }
-                                        }
-
-                                        // Some Ollama variants may include a top-level "response" or choices
-                                        if let Some(resp_txt) =
-                                            v.get("response").and_then(|r| r.as_str())
-                                        {
-                                            assistant_acc.push_str(resp_txt);
-                                        }
-
-                                        if let Some(choices) =
-                                            v.get("choices").and_then(|c| c.as_array())
-                                        {
-                                            if let Some(first) = choices.first() {
-                                                if let Some(msg) = first.get("message") {
-                                                    if let Some(content) =
-                                                        msg.get("content").and_then(|c| c.as_str())
-                                                    {
-                                                        assistant_acc.push_str(content);
-                                                    }
-                                                }
-                                            }
-                                        }
-
-                                        if v.get("done").and_then(|d| d.as_bool()) == Some(true) {
-                                            done_flag = true;
-                                        }
-                                    } else {
-                                        // Not valid JSON line; append raw
-                                        assistant_acc.push_str(line);
-                                    }
-                                }
-
-                                buf = rest;
-                                // Periodically persist partial output so it's available if the
-                                // process is interrupted.
-                                // Flush eagerly when we have some new content (>256 bytes)
-                                if assistant_acc.len().saturating_sub(last_flush) > 256 {
-                                    #[cfg(feature = "debug_io")]
-                                    {
-                                        if let Err(e) = std::fs::write(
-                                            "target/ollama_assistant_acc.txt",
-                                            &assistant_acc,
-                                        ) {
-                                            debug!("[ollama] partial write failed: {}", e);
-                                        } else {
-                                            last_flush = assistant_acc.len();
-                                            debug!("[ollama] flushed {} bytes of assistant_acc to disk", last_flush);
-                                        }
-                                    }
+                            if let Err(err) =
+                                push_stream_line(&mut assistant_acc, line, &mut done_flag)
+                            {
+                                body_error = Some(err);
+                                capped = true;
+                                break;
+                            }
+                        }
+                        if capped {
+                            break;
+                        }
+                        // Periodically persist partial output so it's available if the
+                        // process is interrupted.
+                        // Flush eagerly when we have some new content (>256 bytes)
+                        if assistant_acc.len().saturating_sub(last_flush) > 256 {
+                            #[cfg(feature = "debug_io")]
+                            {
+                                if let Err(e) = std::fs::write(
+                                    "target/ollama_assistant_acc.txt",
+                                    &assistant_acc,
+                                ) {
+                                    debug!("[ollama] partial write failed: {}", e);
+                                } else {
+                                    last_flush = assistant_acc.len();
+                                    debug!(
+                                        "[ollama] flushed {} bytes of assistant_acc to disk",
+                                        last_flush
+                                    );
                                 }
                             }
                         }
@@ -1046,7 +1559,7 @@ impl LlmClient for OllamaChatClient {
                     } else {
                         text = strip_code_fences(&candidate);
                     }
-                } else if let Ok(s) = std::str::from_utf8(buf.as_bytes()) {
+                } else if let Ok(s) = std::str::from_utf8(&raw) {
                     if let Some(obj) = extract_json_object(s) {
                         if self.early_exit_on_json {
                             let ttfb_ms = first_token_at
@@ -1284,31 +1797,25 @@ impl LlmClient for LocalHttpClient {
         let mut request = self
             .client
             .post(format!("{}/v1/chat/completions", self.url))
-            .header("Content-Type", "application/json")
-            .timeout(std::time::Duration::from_secs(60));
+            .header("Content-Type", "application/json");
 
         if let Some(api_key) = &self.api_key {
             request = request.header("Authorization", format!("Bearer {}", api_key));
         }
 
-        let response = request
-            .json(&body)
-            .send()
+        let response = send_for_headers(stream_read_idle(), request.json(&body).send())
             .await
-            .map_err(|e| anyhow::anyhow!("Failed to send request to local LLM: {}", e))?;
+            .context("Failed to send request to local LLM")?;
 
         if !response.status().is_success() {
             let status = response.status();
-            let text = response
-                .text()
+            let text = read_capped_text(response)
                 .await
                 .with_context(|| format!("Local LLM API status {status} body read failed"))?;
-            let text = bounded_model_text(&text);
             bail!("Local LLM API returned error status {status}: {text}");
         }
 
-        let parsed: Resp = response
-            .json()
+        let parsed: Resp = read_capped_json(response)
             .await
             .context("Failed to parse local LLM response")?;
 
