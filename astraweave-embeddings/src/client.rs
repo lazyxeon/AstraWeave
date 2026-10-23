@@ -5,9 +5,9 @@ Trait-based abstraction for different embedding model backends.
 Supports mock clients for testing, local models via ONNX/Candle, and remote APIs.
 */
 
-use anyhow::Result;
 #[cfg(feature = "http")]
 use anyhow::Context;
+use anyhow::Result;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
