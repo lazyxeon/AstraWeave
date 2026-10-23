@@ -461,12 +461,20 @@ fn serve_oversized_ok() -> std::net::SocketAddr {
             "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
             body.len()
         );
-        use std::io::Write;
-        let _ = sock.write_all(header.as_bytes());
-        let _ = sock.write_all(&body);
-        let _ = sock.flush();
+        write_and_hold(&mut sock, header.as_bytes(), &body);
     });
     addr
+}
+
+/// Finish the response without dropping the socket. Windows turns a drop
+/// with unread data into a connection reset before the cap can fire.
+fn write_and_hold(sock: &mut std::net::TcpStream, header: &[u8], body: &[u8]) {
+    use std::io::Write;
+    let _ = sock.write_all(header);
+    let _ = sock.write_all(body);
+    let _ = sock.flush();
+    let _ = sock.shutdown(std::net::Shutdown::Write);
+    std::thread::sleep(std::time::Duration::from_secs(2));
 }
 
 #[test]
@@ -521,10 +529,7 @@ fn serve_empty_lines() -> std::net::SocketAddr {
             "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
             body.len()
         );
-        use std::io::Write;
-        let _ = sock.write_all(header.as_bytes());
-        let _ = sock.write_all(&body);
-        let _ = sock.flush();
+        write_and_hold(&mut sock, header.as_bytes(), &body);
     });
     addr
 }
