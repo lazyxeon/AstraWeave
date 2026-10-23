@@ -73,7 +73,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-d28dae47.js";
+            window.path_to_searchindex_js = "../searchindex-683a3195.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-3cd98da5.js"></script>
@@ -426,8 +426,9 @@ cargo run --release --example basic_companion
 rustc --version --verbose | grep host
 # Should show: aarch64-apple-darwin
 
-# Build optimized for Apple Silicon
-RUSTFLAGS="-C target-cpu=native" cargo build --release
+# Release build. Leave RUSTFLAGS unset. aarch64 stays on the default baseline.
+# target-cpu=x86-64 is the x86_64 replay pin, not this section.
+cargo build --release
 </code></pre>
 <h2 id="build-configurations"><a class="header" href="#build-configurations">Build Configurations</a></h2>
 <h3 id="release-vs-debug"><a class="header" href="#release-vs-debug">Release vs Debug</a></h3>
