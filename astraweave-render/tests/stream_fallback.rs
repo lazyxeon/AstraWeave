@@ -2,13 +2,16 @@
 //! The frame that still binds that fallback does not allocate past the
 //! wgpu recording floor.
 //!
-//! `cargo test -p astraweave-render --features alloc-counter --test stream_fallback`
+//! `RUST_LIB_BACKTRACE=0 cargo test -p astraweave-render --features alloc-counter --test stream_fallback`
 
 #![cfg(feature = "alloc-counter")]
 
 #[cfg(target_os = "linux")]
 #[path = "support/linux_test_threads.rs"]
 mod linux_test_threads;
+
+#[path = "support/lib_backtrace.rs"]
+mod lib_backtrace;
 
 use astraweave_ecs::counting_alloc::{allocs, reset_allocs};
 use astraweave_render::{Instance, Renderer};
@@ -57,6 +60,7 @@ fn record(renderer: &mut Renderer, view: &wgpu::TextureView) {
 
 #[test]
 fn fallback_frame_does_not_allocate_before_the_texture_is_resident() {
+    lib_backtrace::require_library_backtraces_off();
     pollster::block_on(async {
         let path = format!("/tmp/aw-stream-{}.png", std::process::id());
         let _ = std::fs::remove_file(&path);
@@ -128,13 +132,24 @@ fn fallback_frame_does_not_allocate_before_the_texture_is_resident() {
                 "measured frame left the fallback"
             );
         }
-        eprintln!("stream fallback draw_into alloc samples: {samples:?}");
+        let adapter = renderer.gpu_adapter_name();
+        eprintln!(
+            "stream fallback draw_into alloc adapter={adapter} backend={} samples={samples:?}",
+            renderer.gpu_backend(),
+        );
+        assert!(
+            adapter.to_lowercase().contains("llvmpipe"),
+            "fallback floor is the lavapipe count, adapter={adapter}"
+        );
         let min = *samples.iter().min().unwrap();
         let max = *samples.iter().max().unwrap();
-        // Same floor as `frame_alloc`: high sample 119, spread 4.
-        // Ceiling 130 leaves 11 of room and still fails one extra pass.
+        // Measured on lavapipe, four samples. Alloc-counter: [119, 116, 115, 116].
+        // `--all-features`: [125, 122, 121, 122]. The PBR step builds
+        // `--all-features`. One pass is about 18, and `121 - 18 = 103` still
+        // passes `min >= 100`. `min >= 110` keeps both steady lows and fails
+        // that drop. Ceiling 130 fails `125 + 18`. Spread inside a run is 4.
         assert!(
-            max <= 130 && min >= 100 && max - min <= 4,
+            max <= 130 && min >= 110 && max - min <= 4,
             "fallback frame left the wgpu pass floor: {samples:?}"
         );
 

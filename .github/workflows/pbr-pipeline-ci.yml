@@ -22,6 +22,10 @@ concurrency:
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
+  # Debug wgpu-core takes a snatch lock with Backtrace::capture. RUST_BACKTRACE
+  # makes that capture allocate (48 per draw_into). Panic backtraces stay on.
+  # Set before main. The floor tests only read this. They do not call set_var.
+  RUST_LIB_BACKTRACE: "0"
 
 jobs:
   build-pbr-components:
@@ -35,7 +39,7 @@ jobs:
     
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v5
+      uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
     
     - name: Rust CI setup
       uses: ./.github/actions/rust-ci-setup
@@ -91,7 +95,7 @@ jobs:
     
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v5
+      uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
     - name: Rust CI setup
       uses: ./.github/actions/rust-ci-setup
@@ -102,6 +106,66 @@ jobs:
         sudo apt-get install -y libx11-dev libxcursor-dev libxrandr-dev libxi-dev \
           libasound2-dev mesa-vulkan-drivers libvulkan1 libudev-dev pkg-config
     
+    - name: CountingAlloc records alloc, alloc_zeroed, and realloc
+      id: quiet
+      run: |
+        echo "::group::alloc_trace_is_quiet"
+        mkdir -p target
+        set -o pipefail
+        cargo test -p astraweave-ecs --features alloc-counter --color never --test alloc_trace_quiet -- --nocapture 2>&1 | tee target/alloc-trace-quiet.txt
+        echo "::endgroup::"
+        grep -E 'test result: ok\. [1-9][0-9]* passed' target/alloc-trace-quiet.txt
+
+    - name: draw_into allocation floor
+      id: floor
+      env:
+        WGPU_BACKEND: vulkan
+      run: |
+        echo "::group::draw_into allocation floor"
+        mkdir -p target
+        unset VK_ADD_DRIVER_FILES
+        if [ -f /usr/share/vulkan/icd.d/lvp_icd.x86_64.json ]; then
+          icd=/usr/share/vulkan/icd.d/lvp_icd.x86_64.json
+        elif [ -f /usr/share/vulkan/icd.d/lvp_icd.json ]; then
+          icd=/usr/share/vulkan/icd.d/lvp_icd.json
+        else
+          echo "lavapipe ICD is not installed" >&2
+          exit 1
+        fi
+        export VK_ICD_FILENAMES="$icd"
+        export VK_DRIVER_FILES="$icd"
+        echo "VK_ICD_FILENAMES=$VK_ICD_FILENAMES"
+        set -o pipefail
+        # eprintln! writes adapter=llvmpipe to stderr. tee must see it.
+        cargo test -p astraweave-render --all-features --color never --test frame_alloc -- --nocapture 2>&1 | tee target/frame-alloc-floor.txt
+        echo "::endgroup::"
+        grep -E 'adapter=llvmpipe' target/frame-alloc-floor.txt
+        grep -E 'test result: ok\. [1-9][0-9]* passed' target/frame-alloc-floor.txt
+
+    - name: streamed fallback allocation floor
+      id: fallback
+      env:
+        WGPU_BACKEND: vulkan
+      run: |
+        echo "::group::streamed fallback floor"
+        mkdir -p target
+        unset VK_ADD_DRIVER_FILES
+        if [ -f /usr/share/vulkan/icd.d/lvp_icd.x86_64.json ]; then
+          icd=/usr/share/vulkan/icd.d/lvp_icd.x86_64.json
+        elif [ -f /usr/share/vulkan/icd.d/lvp_icd.json ]; then
+          icd=/usr/share/vulkan/icd.d/lvp_icd.json
+        else
+          echo "lavapipe ICD is not installed" >&2
+          exit 1
+        fi
+        export VK_ICD_FILENAMES="$icd"
+        export VK_DRIVER_FILES="$icd"
+        set -o pipefail
+        cargo test -p astraweave-render --all-features --color never --test stream_fallback -- --nocapture 2>&1 | tee target/stream-fallback-floor.txt
+        echo "::endgroup::"
+        grep -E 'adapter=llvmpipe' target/stream-fallback-floor.txt
+        grep -E 'test result: ok\. [1-9][0-9]* passed' target/stream-fallback-floor.txt
+
     - name: Test astraweave-render
       id: render
       # A SIGSEGV here must fail the workflow. Do not put continue-on-error
@@ -109,19 +173,16 @@ jobs:
       # several threads load every Mesa ICD, and that exit used to go yellow.
       run: |
         echo "::group::Testing astraweave-render"
-        cargo test -p astraweave-render --all-features -- --nocapture
+        cargo test -p astraweave-render --all-features -- --skip draw_into_allocates_nothing_after_warmup --skip fallback_frame_does_not_allocate_before_the_texture_is_resident --nocapture
         echo "::endgroup::"
-    
+
     - name: Test terrain materials
       id: terrain
       run: |
         echo "::group::Testing terrain material system"
+        mkdir -p target
         set -o pipefail
-        # `--test` runs that binary. A name filter matches nothing in
-        # test_pbr_advanced and only two names in test_terrain_material,
-        # and cargo exits 0. The suite must record at least one pass or
-        # this step fails, so the summary check is not a green empty run.
-        cargo test -p astraweave-render --all-features --color never --test test_terrain_material -- --nocapture | tee target/terrain-material-tests.txt
+        cargo test -p astraweave-render --all-features --color never --test test_terrain_material -- --nocapture 2>&1 | tee target/terrain-material-tests.txt
         echo "::endgroup::"
         grep -E 'test result: ok\. [1-9][0-9]* passed' target/terrain-material-tests.txt
     
@@ -129,8 +190,9 @@ jobs:
       id: advanced
       run: |
         echo "::group::Testing advanced PBR features"
+        mkdir -p target
         set -o pipefail
-        cargo test -p astraweave-render --all-features --color never --test test_pbr_advanced -- --nocapture | tee target/pbr-advanced-tests.txt
+        cargo test -p astraweave-render --all-features --color never --test test_pbr_advanced -- --nocapture 2>&1 | tee target/pbr-advanced-tests.txt
         echo "::endgroup::"
         grep -E 'test result: ok\. [1-9][0-9]* passed' target/pbr-advanced-tests.txt
     
@@ -148,6 +210,9 @@ jobs:
           echo "## PBR Test Summary"
           echo
           echo "### Tested Components:"
+          echo "- $(mark "${{ steps.quiet.outcome }}") CountingAlloc (alloc, alloc_zeroed, realloc)"
+          echo "- $(mark "${{ steps.floor.outcome }}") draw_into allocation floor (lavapipe)"
+          echo "- $(mark "${{ steps.fallback.outcome }}") streamed fallback floor (lavapipe)"
           echo "- $(mark "${{ steps.render.outcome }}") astraweave-render (core PBR)"
           echo "- $(mark "${{ steps.terrain.outcome }}") Terrain material system (Phase PBR-F)"
           echo "- $(mark "${{ steps.advanced.outcome }}") Advanced materials (Phase PBR-E)"
@@ -163,7 +228,7 @@ jobs:
     
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v5
+      uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
     
     - name: Install wgsl-analyzer
       run: |

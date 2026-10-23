@@ -1,0 +1,91 @@
+name: Frame alloc sites
+
+# Opt-in heap profile of one warm draw_into. This is not a pull-request
+# check and it does not assert symbol names. The allocation floor stays in
+# pbr-pipeline-ci.yml and render-device-validation.yml.
+#
+# The profiled binary is the executable cargo just built for target name
+# frame_alloc. find | head can pick a stale deps/frame_alloc-<hash>.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  group: frame-alloc-sites-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  sites:
+    name: heaptrack draw_into
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      CARGO_TERM_COLOR: always
+      RUST_BACKTRACE: "1"
+      # Must be set before main. The floor test reads it and does not call set_var.
+      RUST_LIB_BACKTRACE: "0"
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - uses: ./.github/actions/rust-ci-setup
+
+      - name: Install heaptrack and lavapipe
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y heaptrack mesa-vulkan-drivers libvulkan1 pkg-config libudev-dev
+
+      - name: Record one draw_into frame
+        env:
+          WGPU_BACKEND: vulkan
+        run: |
+          echo "RUST_BACKTRACE=${RUST_BACKTRACE:-unset}"
+          echo "RUST_LIB_BACKTRACE=${RUST_LIB_BACKTRACE:-unset}"
+          unset VK_ADD_DRIVER_FILES
+          if [ -f /usr/share/vulkan/icd.d/lvp_icd.x86_64.json ]; then
+            icd=/usr/share/vulkan/icd.d/lvp_icd.x86_64.json
+          elif [ -f /usr/share/vulkan/icd.d/lvp_icd.json ]; then
+            icd=/usr/share/vulkan/icd.d/lvp_icd.json
+          else
+            echo "lavapipe ICD is not installed" >&2
+            exit 1
+          fi
+          export VK_ICD_FILENAMES="$icd"
+          export VK_DRIVER_FILES="$icd"
+          mkdir -p target
+          cargo test -p astraweave-render --all-features --test frame_alloc --no-run --message-format=json > target/frame-alloc-build.json
+          bin=$(python3 -c '
+import json, sys
+exe = ""
+for line in open(sys.argv[1], encoding="utf-8", errors="replace"):
+    line = line.strip()
+    if not line.startswith("{"):
+        continue
+    try:
+        msg = json.loads(line)
+    except json.JSONDecodeError:
+        continue
+    if msg.get("reason") != "compiler-artifact":
+        continue
+    target = msg.get("target") or {}
+    kinds = target.get("kind") or []
+    if target.get("name") == "frame_alloc" and "test" in kinds and msg.get("executable"):
+        exe = msg["executable"]
+if not exe:
+    sys.exit("frame_alloc executable missing from cargo json")
+print(exe)
+' target/frame-alloc-build.json)
+          test -x "$bin"
+          echo "heaptrack binary=$bin"
+          heaptrack -o target/frame-alloc-heaptrack "$bin" --exact draw_into_allocates_nothing_after_warmup --nocapture
+
+      - name: Upload heaptrack
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: frame-alloc-heaptrack
+          path: target/frame-alloc-heaptrack*
+          if-no-files-found: warn
