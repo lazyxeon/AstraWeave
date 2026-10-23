@@ -68,14 +68,15 @@ jobs:
 
       - name: Install audit tools
         run: |
-          cargo install --locked --version 0.22.2 cargo-audit
-          cargo install --locked --version 0.20.2 cargo-deny
+          bash .github/scripts/install-prebuilt-cargo-tool.sh cargo-audit
+          bash .github/scripts/install-prebuilt-cargo-tool.sh cargo-deny
           cargo install --locked cargo-outdated || echo "cargo-outdated already installed"
 
       # Fails the job. This is not the pull-request gate, and it does not
-      # close the ignore list. The eight IDs stay in deny.toml and
-      # .cargo/audit.toml. security-audit.yml is the pull-request gate.
-      # #423 tracks a check that the ignore count does not rise.
+      # close the ignore list. deny.toml [advisories].ignore and
+      # .cargo/audit.toml [advisories].ignore each list six IDs.
+      # security-audit.yml is the pull-request gate. #423 tracks a check
+      # that the ignore count in those two files does not rise.
       - name: Run security audit
         run: cargo audit
 

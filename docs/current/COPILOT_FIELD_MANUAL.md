@@ -38,7 +38,7 @@ Historical notes. They do not override AGENTS.md. The rendering-architecture pla
 5. Spatial partition is a dynamic sparse voxel DAG or chunk octree. Destruction queries run off the frame path. Compute shaders may accelerate them. A large collapse must not stutter the CPU.
 6. Local simulation is a grid or particle hybrid for fluid, gas, and heat, active only near players and AI.
 7. Traversal follows deformed surfaces: dynamic normals, ledges, climbing, momentum. No snagging on voxel seams.
-8. Rendering uses bindless wgpu where the device supports it, and the current bind-group path where it does not. Pipeline creation is one layer. Particles, frustum culling, and occlusion culling are GPU-driven. Assets stream asynchronously. The frame budget is under 11 ms on a GTX 1660 Ti-class GPU.
+8. Rendering uses bindless wgpu where the device supports it, and the current bind-group path where it does not. Pipeline creation is one layer. Particles, frustum culling, and occlusion culling are GPU-driven. Assets stream asynchronously. The frame budget is under 11 ms on a GTX 1660 Ti Max-Q.
 9. Data-oriented ECS. No heap allocation in a frame update, a hot loop, or a physics tick. No lock contention in multi-threaded jobs.
 
 Determinism does not bend. Simulation state is replay-identical on Windows, Linux, and macOS from fixed ticks and the canonical `SimRng` (Fixed64 or f32 plus libm, per the subsystem contract). No wall clock and no unseeded RNG in the sim. GPU readback does not write sim state. Do not add that write.
@@ -225,10 +225,11 @@ WorldSnapshot  AI Model   PlanIntent  Tool Validation
 1. **PRE_SIMULATION** — Setup, initialization
 2. **PERCEPTION** — Build WorldSnapshots, update AI sensors
 3. **SIMULATION** — Game logic, cooldowns, state updates
-4. **AI_PLANNING** — Generate PlanIntents from orchestrators
-5. **PHYSICS** — Apply forces, resolve collisions
-6. **POST_SIMULATION** — Cleanup, constraint resolution
-7. **PRESENTATION** — Rendering, audio, UI updates
+4. **sync** — ECS→legacy-World propagation. `App::new` registers the string `sync` between `simulation` and `ai_planning`. `SystemStage` has no `SYNC` constant.
+5. **AI_PLANNING** — Generate PlanIntents from orchestrators
+6. **PHYSICS** — Apply forces, resolve collisions
+7. **POST_SIMULATION** — Cleanup, constraint resolution
+8. **PRESENTATION** — Rendering, audio, UI updates
 
 ### Workspace Crates
 

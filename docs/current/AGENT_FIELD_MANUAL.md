@@ -85,7 +85,7 @@ The generated trace table is in `CLAUDE.md` between the `TRACE-TABLE` markers.
 - `DEEP_TRACE_INVESTIGATION_TEMPLATE.md` — close factual Open Questions / enrich decisional ones
 - `SUBSYSTEM_TRACE_EXPANSION_PROMPT_TEMPLATE.md` — additive subsystem expansion within a parent trace
 
-**Automation (`aw_trace_sync`, v1 implemented):** each trace carries YAML front-matter (the single source of truth for `trace_id`/`primary_crate`/`owns`/status). The `tools/aw_trace_sync` tool regenerates the trace table above (between the `TRACE-TABLE` markers) and the `workspace_map.html` per-crate trace links from that front-matter; the CI `trace-sync.yml` gate (`--check`) blocks drift. Workflow: edit a trace's front-matter, run `cargo run -p aw_trace_sync -- --write`, commit. Other commands: `--validate-only`, `--list-untraced`, `--check`. Do NOT hand-edit between the `TRACE-TABLE` markers, nor the per-crate `trace`/`status`/`statusCategory`/`statusEvidence` fields or `runtime` edge flags in `workspace_map.html` (all tool-owned). **v1.1** also syncs the map node status (`lifecycle_status`/`integration_status`/`summary` → the owning trace's primary crate) and renders `runtime_edges` (asserted runtime wiring). Cargo-derived topology + `map_overlay.json` remain deferred (design: `TRACE_SYNC_PROPOSAL.md`).
+**Automation (`aw_trace_sync`, v1 implemented):** each trace carries YAML front-matter (the single source of truth for `trace_id`/`primary_crate`/`owns`/status). The `tools/aw_trace_sync` tool regenerates the trace table in `CLAUDE.md` (between the `TRACE-TABLE` markers) and the `workspace_map.html` per-crate trace links from that front-matter; the CI `trace-sync.yml` gate (`--check`) blocks drift. Workflow: edit a trace's front-matter, run `cargo run -p aw_trace_sync -- --write`, commit. Other commands: `--validate-only`, `--list-untraced`, `--check`. Do NOT hand-edit between the `TRACE-TABLE` markers, nor the per-crate `trace`/`status`/`statusCategory`/`statusEvidence` fields or `runtime` edge flags in `workspace_map.html` (all tool-owned). **v1.1** also syncs the map node status (`lifecycle_status`/`integration_status`/`summary` → the owning trace's primary crate) and renders `runtime_edges` (asserted runtime wiring). Cargo-derived topology + `map_overlay.json` remain deferred (design: `TRACE_SYNC_PROPOSAL.md`).
 
 **Workflow:**
 
@@ -133,7 +133,7 @@ cargo editor-release                # Run editor (full release)
 cargo editor-dev                    # Run editor (debug)
 
 # Examples
-cargo run -p hello_companion --release   # Flagship AI demo (6 modes)
+cargo run -p hello_companion --release   # Flagship AI demo (hello_companion has 7 AI modes)
 # (unified_showcase removed 2026-07-19, director-ratified; a proper showcase
 #  gets built later on finished foundations — use `cargo editor` for rendering)
 
@@ -312,7 +312,7 @@ All crate names are prefixed with `astraweave-`.
 
 | Need | Location |
 |------|----------|
-| **Architecture Traces** | **`docs/architecture/<system>.md`** — per-subsystem forensic reference. See the generated trace table under **Architecture Trace Maintenance** above for the full list. Toolkit at `docs/architecture/_meta/`. |
+| **Architecture Traces** | **`docs/architecture/<system>.md`** — per-subsystem forensic reference. See the generated trace table in `CLAUDE.md` for the full list. Toolkit at `docs/architecture/_meta/`. |
 | **Architecture Map** | **`docs/architecture/ARCHITECTURE_MAP.md`** — dependency graph, API surface, seams, data flows |
 | AI Systems | `astraweave-ai/src/{orchestrator,tool_sandbox,core_loop}.rs` |
 | ECS Internals | `astraweave-ecs/src/{archetype,system_param,events}.rs` |
@@ -420,7 +420,7 @@ Read these when you need deeper context. **Do not ask the user for information t
 
 | File | Contains |
 |------|----------|
-| `docs/architecture/<system>.md` | **Per-subsystem architecture traces** — forensic reference for traced subsystems (full list in the generated trace table under **Architecture Trace Maintenance**). Read the relevant trace before modifying a traced subsystem; update it in the same commit when you do. Toolkit at `docs/architecture/_meta/`. |
+| `docs/architecture/<system>.md` | **Per-subsystem architecture traces** — forensic reference for traced subsystems (full list in the generated trace table in `CLAUDE.md`). Read the relevant trace before modifying a traced subsystem; update it in the same commit when you do. Toolkit at `docs/architecture/_meta/`. |
 | `docs/architecture/ARCHITECTURE_MAP.md` | **START HERE for cross-crate work.** Full dependency graph, public API surface, integration seams, editor viewport pipeline (unified post-Fix-27), data flow paths, unsafe code inventory. |
 | `docs/current/EDITOR_BEHAVIORAL_CORRECTNESS_AUDIT.md` | 37-fix behavioral correctness audit: visual math, data pipeline, undo system, silent failures, integration seams. Completed 2026-04-05. |
 | `docs/current/EDITOR_MULTI_TOOL_ARCHITECTURE_CAMPAIGN.md` | 8-round diagnostic narrowing that elevated the §7.7 wrapped-component resource identity trap to structural axiom. Sub-phases 3 (incl. Real-Fix.A–E) and 4 complete; Sub-phase 5 in flight (5.A/5.B landed 2026-06-06). |
