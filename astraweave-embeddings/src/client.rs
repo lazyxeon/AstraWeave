@@ -311,11 +311,12 @@ impl RemoteEmbeddingClient {
 /// JSON budget for one embedding response: 32 bytes per component, plus a wrapper.
 #[cfg(feature = "http")]
 fn embedding_response_cap(batch_len: usize, dimensions: usize) -> usize {
-    batch_len
+    let raw = batch_len
         .max(1)
         .saturating_mul(dimensions.max(1))
         .saturating_mul(32)
-        .saturating_add(2048)
+        .saturating_add(2048);
+    raw.min(astraweave_llm::MAX_MODEL_BODY_LIMIT)
 }
 
 #[cfg(feature = "http")]
@@ -369,6 +370,15 @@ impl EmbeddingClient for RemoteEmbeddingClient {
         let body = astraweave_llm::read_capped_text_limited(response, cap).await?;
         let response_data: EmbeddingResponse =
             serde_json::from_str(&body).context("embedding response")?;
+        for row in &response_data.data {
+            if row.embedding.len() != self.dimensions {
+                anyhow::bail!(
+                    "embedding length {} is not {}",
+                    row.embedding.len(),
+                    self.dimensions
+                );
+            }
+        }
 
         Ok(response_data
             .data
@@ -401,7 +411,12 @@ mod tests {
     fn embedding_cap_fits_a_normal_batch() {
         let normal = embedding_response_cap(8, 1536);
         assert!(normal > 64 * 1024, "{normal}");
+        assert!(normal < astraweave_llm::MAX_MODEL_BODY_LIMIT);
         assert!(embedding_response_cap(1, 8) < 64 * 1024);
+        assert_eq!(
+            embedding_response_cap(100_000, 1536),
+            astraweave_llm::MAX_MODEL_BODY_LIMIT
+        );
     }
 
     #[tokio::test]

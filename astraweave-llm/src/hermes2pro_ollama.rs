@@ -302,20 +302,23 @@ impl Hermes2ProOllama {
             }
         });
 
-        let response = crate::send_for_headers(
-            crate::stream_read_idle(),
-            client.post(&url).json(&body).send(),
-        )
-        .await
-        .context("Failed to send request to Ollama")?;
-
-        if !response.status().is_success() {
-            anyhow::bail!("Ollama returned error: {}", response.status());
-        }
-
-        let response_json: serde_json::Value = crate::read_capped_json(response)
+        let response_json: serde_json::Value = crate::with_call_deadline(120, async {
+            let response = crate::send_for_headers(
+                crate::stream_read_idle(),
+                client.post(&url).json(&body).send(),
+            )
             .await
-            .context("Failed to parse Ollama response")?;
+            .context("Failed to send request to Ollama")?;
+
+            if !response.status().is_success() {
+                anyhow::bail!("Ollama returned error: {}", response.status());
+            }
+
+            crate::read_capped_json(response)
+                .await
+                .context("Failed to parse Ollama response")
+        })
+        .await?;
 
         let message = response_json["message"]["content"]
             .as_str()
@@ -452,20 +455,23 @@ impl LlmClient for Hermes2ProOllama {
         tracing::debug!("Sending request to Ollama: {}", self.model);
         let start = std::time::Instant::now();
 
-        let response = crate::send_for_headers(
-            crate::stream_read_idle(),
-            client.post(&url).json(&body).send(),
-        )
-        .await
-        .context("Failed to send request to Ollama")?;
-
-        if !response.status().is_success() {
-            anyhow::bail!("Ollama returned error: {}", response.status());
-        }
-
-        let response_json: serde_json::Value = crate::read_capped_json(response)
+        let response_json: serde_json::Value = crate::with_call_deadline(120, async {
+            let response = crate::send_for_headers(
+                crate::stream_read_idle(),
+                client.post(&url).json(&body).send(),
+            )
             .await
-            .context("Failed to parse Ollama response")?;
+            .context("Failed to send request to Ollama")?;
+
+            if !response.status().is_success() {
+                anyhow::bail!("Ollama returned error: {}", response.status());
+            }
+
+            crate::read_capped_json(response)
+                .await
+                .context("Failed to parse Ollama response")
+        })
+        .await?;
 
         let text = response_json["message"]["content"]
             .as_str()

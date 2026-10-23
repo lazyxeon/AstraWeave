@@ -429,22 +429,24 @@ impl Qwen3Ollama {
         );
         let start = std::time::Instant::now();
 
-        let response = crate::send_for_headers(
-            crate::stream_read_idle(),
-            client.post(&url).json(&body).send(),
-        )
-        .await
-        .context("Failed to preload model")?;
-
-        if !response.status().is_success() {
-            anyhow::bail!("Ollama preload returned error: {}", response.status());
-        }
-
-        // A missing body is a failed preload, not a warm model. The read stops
-        // at 64 KiB and at the per-read timeout.
-        crate::read_capped_text(response)
+        crate::with_call_deadline(120, async {
+            let response = crate::send_for_headers(
+                crate::stream_read_idle(),
+                client.post(&url).json(&body).send(),
+            )
             .await
-            .context("Ollama preload body read failed")?;
+            .context("Failed to preload model")?;
+
+            if !response.status().is_success() {
+                anyhow::bail!("Ollama preload returned error: {}", response.status());
+            }
+
+            crate::read_capped_text(response)
+                .await
+                .context("Ollama preload body read failed")?;
+            Ok(())
+        })
+        .await?;
 
         tracing::info!(
             "Model {} preloaded in {:.1}s (KV prefix cached)",
@@ -470,20 +472,23 @@ impl Qwen3Ollama {
             "options": self.build_options(),
         });
 
-        let response = crate::send_for_headers(
-            crate::stream_read_idle(),
-            client.post(&url).json(&body).send(),
-        )
-        .await
-        .context("Failed to send request to Ollama")?;
-
-        if !response.status().is_success() {
-            anyhow::bail!("Ollama returned error: {}", response.status());
-        }
-
-        let response_json: serde_json::Value = crate::read_capped_json(response)
+        let response_json: serde_json::Value = crate::with_call_deadline(120, async {
+            let response = crate::send_for_headers(
+                crate::stream_read_idle(),
+                client.post(&url).json(&body).send(),
+            )
             .await
-            .context("Failed to parse Ollama response")?;
+            .context("Failed to send request to Ollama")?;
+
+            if !response.status().is_success() {
+                anyhow::bail!("Ollama returned error: {}", response.status());
+            }
+
+            crate::read_capped_json(response)
+                .await
+                .context("Failed to parse Ollama response")
+        })
+        .await?;
 
         let message = extract_ollama_content(&response_json)?;
 
@@ -691,20 +696,23 @@ impl LlmClient for Qwen3Ollama {
         );
         let start = std::time::Instant::now();
 
-        let response = crate::send_for_headers(
-            crate::stream_read_idle(),
-            client.post(&url).json(&body).send(),
-        )
-        .await
-        .context("Failed to send request to Ollama")?;
-
-        if !response.status().is_success() {
-            anyhow::bail!("Ollama returned error: {}", response.status());
-        }
-
-        let response_json: serde_json::Value = crate::read_capped_json(response)
+        let response_json: serde_json::Value = crate::with_call_deadline(300, async {
+            let response = crate::send_for_headers(
+                crate::stream_read_idle(),
+                client.post(&url).json(&body).send(),
+            )
             .await
-            .context("Failed to parse Ollama response")?;
+            .context("Failed to send request to Ollama")?;
+
+            if !response.status().is_success() {
+                anyhow::bail!("Ollama returned error: {}", response.status());
+            }
+
+            crate::read_capped_json(response)
+                .await
+                .context("Failed to parse Ollama response")
+        })
+        .await?;
 
         let raw_text = extract_ollama_content(&response_json)?;
 

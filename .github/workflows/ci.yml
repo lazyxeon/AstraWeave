@@ -163,10 +163,10 @@ jobs:
         run: |
           pkgs=",${AW_CI_PACKAGES},"
           if [ "$AW_CI_FULL" = "true" ] || [[ "$pkgs" == *",astraweave-llm,"* ]]; then
-            cargo nextest run --locked --profile ci-pr -p astraweave-llm --features ollama --lib --tests
+            cargo nextest run --locked --profile ci-pr -p astraweave-llm --features ollama --test loopback_http_proxy --test ollama_chat_probe
           fi
           if [ "$AW_CI_FULL" = "true" ] || [[ "$pkgs" == *",astraweave-embeddings,"* ]]; then
-            cargo nextest run --locked --profile ci-pr -p astraweave-embeddings --features http --lib --tests
+            cargo nextest run --locked --profile ci-pr -p astraweave-embeddings --features http --test declared_body_timeout
           fi
           if [ "$AW_CI_FULL" != "true" ] && [[ "$pkgs" != *",astraweave-llm,"* ]] && [[ "$pkgs" != *",astraweave-embeddings,"* ]]; then
             echo "Model crates are not in the affected set; skipping the ollama feature tests"
@@ -225,14 +225,25 @@ jobs:
 
       - name: Model HTTP probes on this machine
         # After the archive upload so a feature rebuild does not hold the
-        # artifact. CARGO_BIN_EXE_* is this runner's target path. Partition
-        # jobs skip both probe targets. Keep the archive profile so this
-        # follow-up does not rebuild with debug info.
+        # artifact. Only when those crates are affected: a failure here still
+        # fails the build job, and the partition jobs need that job to succeed.
+        # CARGO_BIN_EXE_* is this runner's target path. Keep the archive profile
+        # so this follow-up does not rebuild with debug info.
         env:
           CARGO_PROFILE_TEST_DEBUG: "0"
+          AW_CI_FULL: ${{ needs.changes.outputs.full }}
+          AW_CI_PACKAGES: ${{ needs.changes.outputs.packages }}
         run: |
-          cargo nextest run --locked --profile ci -p astraweave-llm --features ollama --lib --test loopback_http_proxy --test ollama_chat_probe
-          cargo nextest run --locked --profile ci -p astraweave-embeddings --features http --lib --test declared_body_timeout
+          pkgs=",${AW_CI_PACKAGES},"
+          if [ "$AW_CI_FULL" = "true" ] || [[ "$pkgs" == *",astraweave-llm,"* ]]; then
+            cargo nextest run --locked --profile ci -p astraweave-llm --features ollama --test loopback_http_proxy --test ollama_chat_probe
+          fi
+          if [ "$AW_CI_FULL" = "true" ] || [[ "$pkgs" == *",astraweave-embeddings,"* ]]; then
+            cargo nextest run --locked --profile ci -p astraweave-embeddings --features http --test declared_body_timeout
+          fi
+          if [ "$AW_CI_FULL" != "true" ] && [[ "$pkgs" != *",astraweave-llm,"* ]] && [[ "$pkgs" != *",astraweave-embeddings,"* ]]; then
+            echo "Model crates are not in the affected set; skipping the model HTTP probes"
+          fi
 
   test-windows:
     name: Test (windows, ${{ matrix.partition }}/3)

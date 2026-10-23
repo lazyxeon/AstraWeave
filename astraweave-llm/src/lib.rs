@@ -6,6 +6,9 @@ use anyhow::{bail, Result};
 /// Model text above this is rejected before `serde_json` allocates a document.
 pub const MAX_MODEL_JSON_BYTES: usize = 64 * 1024;
 
+/// Hard ceiling for any capped body read, including embedding batches.
+pub const MAX_MODEL_BODY_LIMIT: usize = 8 * 1024 * 1024;
+
 /// The prefix of `text` that fits in [`MAX_MODEL_JSON_BYTES`].
 pub fn bounded_model_text(text: &str) -> &str {
     if text.len() <= MAX_MODEL_JSON_BYTES {
@@ -39,21 +42,67 @@ fn append_capped(dst: &mut String, extra: &str) -> Result<()> {
     Ok(())
 }
 
+/// Take one NDJSON line from the default chat stream.
+#[cfg(feature = "ollama")]
+fn push_stream_line(assistant_acc: &mut String, line: &str, done_flag: &mut bool) -> Result<()> {
+    if let Ok(v) = serde_json::from_str::<serde_json::Value>(line) {
+        if let Some(content) = v
+            .get("message")
+            .and_then(|msg| msg.get("content"))
+            .and_then(|c| c.as_str())
+        {
+            append_capped(assistant_acc, content)?;
+        }
+        if let Some(resp_txt) = v.get("response").and_then(|r| r.as_str()) {
+            append_capped(assistant_acc, resp_txt)?;
+        }
+        if let Some(choices) = v.get("choices").and_then(|c| c.as_array()) {
+            if let Some(first) = choices.first() {
+                if let Some(content) = first
+                    .get("message")
+                    .and_then(|msg| msg.get("content"))
+                    .and_then(|c| c.as_str())
+                {
+                    append_capped(assistant_acc, content)?;
+                }
+            }
+        }
+        if v.get("done").and_then(|d| d.as_bool()) == Some(true) {
+            *done_flag = true;
+        }
+    } else {
+        append_capped(assistant_acc, line)?;
+    }
+    Ok(())
+}
+
 /// Read a model body, stopping at [`MAX_MODEL_JSON_BYTES`].
 #[cfg(feature = "ollama")]
 pub async fn read_capped_text(response: reqwest::Response) -> Result<String> {
     read_capped_text_limited(response, MAX_MODEL_JSON_BYTES).await
 }
 
+/// Refuse a limit that would make the capped reader fail open.
+#[cfg(feature = "ollama")]
+fn accept_body_limit(limit: usize) -> Result<()> {
+    if limit == 0 || limit > MAX_MODEL_BODY_LIMIT {
+        bail!("model body limit {limit} exceeds the {MAX_MODEL_BODY_LIMIT} byte ceiling");
+    }
+    Ok(())
+}
+
 /// Read a body until `limit` bytes, then stop.
 #[cfg(feature = "ollama")]
 pub async fn read_capped_text_limited(response: reqwest::Response, limit: usize) -> Result<String> {
     use futures_util::StreamExt;
+    accept_body_limit(limit)?;
     let mut stream = response.bytes_stream();
     let mut buf = Vec::new();
     while let Some(chunk) = stream.next().await {
         let chunk = chunk.context("model body read failed")?;
-        let next = buf.len().saturating_add(chunk.len());
+        let Some(next) = buf.len().checked_add(chunk.len()) else {
+            bail!("model body length overflow");
+        };
         if next > limit {
             if limit == MAX_MODEL_JSON_BYTES {
                 bail!("model text exceeds 64 KiB cap ({next} bytes)");
@@ -63,6 +112,18 @@ pub async fn read_capped_text_limited(response: reqwest::Response, limit: usize)
         buf.extend_from_slice(&chunk);
     }
     String::from_utf8(buf).context("model body is not utf-8")
+}
+
+/// Bound a one-shot model call, headers and body together.
+#[cfg(feature = "ollama")]
+pub async fn with_call_deadline<T>(
+    secs: u64,
+    fut: impl std::future::Future<Output = Result<T>>,
+) -> Result<T> {
+    match tokio::time::timeout(std::time::Duration::from_secs(secs), fut).await {
+        Ok(result) => result,
+        Err(_) => bail!("model call timed out after {secs}s"),
+    }
 }
 
 /// Read and parse a model JSON body, stopping at [`MAX_MODEL_JSON_BYTES`].
@@ -82,6 +143,19 @@ mod bounded_model_text_tests {
         let big = "y".repeat(MAX_MODEL_JSON_BYTES + 10);
         assert_eq!(bounded_model_text(&big).len(), MAX_MODEL_JSON_BYTES);
         assert_eq!(bounded_model_text("short"), "short");
+    }
+}
+
+#[cfg(all(test, feature = "ollama"))]
+mod body_limit_tests {
+    use super::*;
+
+    #[test]
+    fn a_saturated_limit_is_refused() {
+        let err = accept_body_limit(usize::MAX).expect_err("open");
+        assert!(err.to_string().contains("ceiling"), "{err}");
+        assert!(accept_body_limit(MAX_MODEL_JSON_BYTES).is_ok());
+        assert!(accept_body_limit(0).is_err());
     }
 }
 
@@ -953,10 +1027,12 @@ impl LlmClient for OllamaChatClient {
             let mut stream = resp.bytes_stream();
             use futures_util::StreamExt;
 
-            let mut buf = String::new();
+            let mut raw: Vec<u8> = Vec::new();
             let mut assistant_acc = String::new();
             let mut bytes_seen: usize = 0;
             let mut done_flag = false;
+            let overall = idle.saturating_mul(2);
+            let stream_started = std::time::Instant::now();
 
             // We'll periodically flush partial assembled assistant output to disk so
             // an interrupted run can still be inspected. Track last flush size.
@@ -965,9 +1041,19 @@ impl LlmClient for OllamaChatClient {
             let mut first_token_at: Option<std::time::Instant> = None;
             let mut body_error: Option<anyhow::Error> = None;
             loop {
-                let item = match tokio::time::timeout(idle, stream.next()).await {
+                let left = overall.saturating_sub(stream_started.elapsed());
+                if left.is_zero() {
+                    body_error = Some(anyhow::anyhow!("streaming overall deadline"));
+                    break;
+                }
+                let wait = idle.min(left);
+                let item = match tokio::time::timeout(wait, stream.next()).await {
                     Ok(Some(item)) => item,
                     Ok(None) => break,
+                    Err(_) if stream_started.elapsed() >= overall => {
+                        body_error = Some(anyhow::anyhow!("streaming overall deadline"));
+                        break;
+                    }
                     Err(_) => {
                         body_error = Some(anyhow::anyhow!("streaming read idle timeout"));
                         break;
@@ -977,77 +1063,64 @@ impl LlmClient for OllamaChatClient {
                     Ok(chunk) => {
                         // Count bytes before UTF-8 or line filtering. Empty
                         // NDJSON lines and invalid UTF-8 must not stream forever.
-                        note_stream_bytes(&mut bytes_seen, chunk.len())?;
-                        if let Ok(schunk) = std::str::from_utf8(&chunk) {
+                        // A cap error keeps tokens already stored in `assistant_acc`.
+                        if let Err(err) = note_stream_bytes(&mut bytes_seen, chunk.len()) {
+                            body_error = Some(err);
+                            break;
+                        }
+                        raw.extend_from_slice(&chunk);
+                        let mut capped = false;
+                        while let Some(pos) = raw.iter().position(|&b| b == b'\n') {
+                            let mut line_bytes: Vec<u8> = raw.drain(..=pos).collect();
+                            if line_bytes.last() == Some(&b'\n') {
+                                line_bytes.pop();
+                            }
+                            if line_bytes.last() == Some(&b'\r') {
+                                line_bytes.pop();
+                            }
+                            if line_bytes.is_empty() {
+                                continue;
+                            }
+                            // Incomplete scalars stay in `raw` until a later chunk
+                            // finishes the line, so a split UTF-8 character is kept.
+                            let Ok(line) = String::from_utf8(line_bytes) else {
+                                continue;
+                            };
+                            let line = line.trim();
+                            if line.is_empty() {
+                                continue;
+                            }
                             if first_token_at.is_none() {
                                 first_token_at = Some(std::time::Instant::now());
                             }
-                            append_capped(&mut buf, schunk)?;
-
-                            // Process complete newline-terminated records
-                            while let Some(pos) = buf.find('\n') {
-                                let line = buf[..pos].trim();
-                                let rest = buf[pos + 1..].to_string();
-
-                                if !line.is_empty() {
-                                    // Try to parse the envelope JSON line
-                                    if let Ok(v) = serde_json::from_str::<serde_json::Value>(line) {
-                                        // Extract nested message.content if present
-                                        if let Some(msg) = v.get("message") {
-                                            if let Some(content) =
-                                                msg.get("content").and_then(|c| c.as_str())
-                                            {
-                                                append_capped(&mut assistant_acc, content)?;
-                                            }
-                                        }
-
-                                        // Some Ollama variants may include a top-level "response" or choices
-                                        if let Some(resp_txt) =
-                                            v.get("response").and_then(|r| r.as_str())
-                                        {
-                                            append_capped(&mut assistant_acc, resp_txt)?;
-                                        }
-
-                                        if let Some(choices) =
-                                            v.get("choices").and_then(|c| c.as_array())
-                                        {
-                                            if let Some(first) = choices.first() {
-                                                if let Some(msg) = first.get("message") {
-                                                    if let Some(content) =
-                                                        msg.get("content").and_then(|c| c.as_str())
-                                                    {
-                                                        append_capped(&mut assistant_acc, content)?;
-                                                    }
-                                                }
-                                            }
-                                        }
-
-                                        if v.get("done").and_then(|d| d.as_bool()) == Some(true) {
-                                            done_flag = true;
-                                        }
-                                    } else {
-                                        // Not valid JSON line; append raw
-                                        append_capped(&mut assistant_acc, line)?;
-                                    }
-                                }
-
-                                buf = rest;
-                                // Periodically persist partial output so it's available if the
-                                // process is interrupted.
-                                // Flush eagerly when we have some new content (>256 bytes)
-                                if assistant_acc.len().saturating_sub(last_flush) > 256 {
-                                    #[cfg(feature = "debug_io")]
-                                    {
-                                        if let Err(e) = std::fs::write(
-                                            "target/ollama_assistant_acc.txt",
-                                            &assistant_acc,
-                                        ) {
-                                            debug!("[ollama] partial write failed: {}", e);
-                                        } else {
-                                            last_flush = assistant_acc.len();
-                                            debug!("[ollama] flushed {} bytes of assistant_acc to disk", last_flush);
-                                        }
-                                    }
+                            if let Err(err) =
+                                push_stream_line(&mut assistant_acc, line, &mut done_flag)
+                            {
+                                body_error = Some(err);
+                                capped = true;
+                                break;
+                            }
+                        }
+                        if capped {
+                            break;
+                        }
+                        // Periodically persist partial output so it's available if the
+                        // process is interrupted.
+                        // Flush eagerly when we have some new content (>256 bytes)
+                        if assistant_acc.len().saturating_sub(last_flush) > 256 {
+                            #[cfg(feature = "debug_io")]
+                            {
+                                if let Err(e) = std::fs::write(
+                                    "target/ollama_assistant_acc.txt",
+                                    &assistant_acc,
+                                ) {
+                                    debug!("[ollama] partial write failed: {}", e);
+                                } else {
+                                    last_flush = assistant_acc.len();
+                                    debug!(
+                                        "[ollama] flushed {} bytes of assistant_acc to disk",
+                                        last_flush
+                                    );
                                 }
                             }
                         }
@@ -1151,7 +1224,7 @@ impl LlmClient for OllamaChatClient {
                     } else {
                         text = strip_code_fences(&candidate);
                     }
-                } else if let Ok(s) = std::str::from_utf8(buf.as_bytes()) {
+                } else if let Ok(s) = std::str::from_utf8(&raw) {
                     if let Some(obj) = extract_json_object(s) {
                         if self.early_exit_on_json {
                             let ttfb_ms = first_token_at
