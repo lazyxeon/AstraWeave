@@ -78,7 +78,16 @@ async fn main() -> Result<()> {
     let mut time_to_first_chunk = None;
 
     while let Some(chunk_result) = stream.next().await {
-        let chunk = chunk_result?;
+        let chunk = match chunk_result {
+            Ok(chunk) => chunk,
+            Err(err) => {
+                if streaming_response.is_empty() {
+                    return Err(err);
+                }
+                eprintln!("stream stopped after partial text: {err:#}");
+                break;
+            }
+        };
 
         if time_to_first_chunk.is_none() {
             time_to_first_chunk = Some(start.elapsed());
