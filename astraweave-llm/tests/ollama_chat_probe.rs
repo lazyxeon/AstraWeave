@@ -456,7 +456,7 @@ fn serve_oversized_ok() -> std::net::SocketAddr {
             return;
         };
         read_http_headers(&mut sock);
-        let body = vec![b'a'; 70 * 1024];
+        let body = vec![b'a'; astraweave_llm::MAX_MODEL_STREAM_BYTES + 8];
         let header = format!(
             "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
             body.len()
@@ -497,7 +497,7 @@ fn oversized_chat_body_stops_at_64kib() {
         }
         if started.elapsed() > std::time::Duration::from_secs(4) {
             let _ = child.kill();
-            panic!("complete kept reading past 64 KiB");
+            panic!("complete kept reading past the stream budget");
         }
         std::thread::sleep(std::time::Duration::from_millis(20));
     };
@@ -509,7 +509,7 @@ fn oversized_chat_body_stops_at_64kib() {
         "oversized body succeeded: {stdout} {stderr}"
     );
     assert!(
-        format!("{stdout} {stderr}").contains("64 KiB"),
+        format!("{stdout} {stderr}").contains("model stream exceeds"),
         "{stdout} {stderr}"
     );
 }
@@ -524,7 +524,7 @@ fn serve_empty_lines() -> std::net::SocketAddr {
         read_http_headers(&mut sock);
         // Empty NDJSON lines do not grow the kept text. The byte counter must
         // still stop the read.
-        let body = vec![b'\n'; 70 * 1024];
+        let body = vec![b'\n'; astraweave_llm::MAX_MODEL_STREAM_BYTES + 8];
         let header = format!(
             "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
             body.len()
@@ -566,9 +566,85 @@ fn empty_ndjson_lines_stop_at_64kib() {
         "empty lines succeeded: {stdout} {stderr}"
     );
     assert!(
-        format!("{stdout} {stderr}").contains("64 KiB"),
+        format!("{stdout} {stderr}").contains("model stream exceeds"),
         "{stdout} {stderr}"
     );
+}
+
+fn hermes_token_line(token: &str, done: bool) -> String {
+    format!(
+        r#"{{"model":"adrienbrault/nous-hermes2pro:Q4_K_M","created_at":"2026-10-23T00:00:00.000000000Z","message":{{"role":"assistant","content":"{token}"}},"done":{done}}}"#
+    )
+}
+
+fn serve_512_token_reply() -> std::net::SocketAddr {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+    let addr = listener.local_addr().expect("addr");
+    std::thread::spawn(move || {
+        let Ok((mut sock, _)) = listener.accept() else {
+            return;
+        };
+        read_http_headers(&mut sock);
+        let mut body = String::new();
+        for i in 0..512 {
+            let done = i == 511;
+            body.push_str(&hermes_token_line(&format!("t{i:03}"), done));
+            body.push('\n');
+        }
+        let bytes = body.into_bytes();
+        let header = format!(
+            "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+            bytes.len()
+        );
+        write_and_hold(&mut sock, header.as_bytes(), &bytes);
+    });
+    addr
+}
+
+#[test]
+fn a_512_token_reply_is_kept() {
+    let sample = hermes_token_line("t000", false);
+    assert!(
+        sample.len() >= 140 && sample.len() <= 180,
+        "envelope drifted from a Hermes line: {}",
+        sample.len()
+    );
+    assert!(
+        512 * sample.len() > 64 * 1024,
+        "512 tokens fit in the old 64 KiB raw cap"
+    );
+    assert!(512 * (sample.len() + 1) < astraweave_llm::MAX_MODEL_STREAM_BYTES);
+    let addr = serve_512_token_reply();
+    let exe = probe_exe(env!("CARGO_BIN_EXE_ollama_chat_probe"));
+    let started = std::time::Instant::now();
+    let mut child = std::process::Command::new(&exe)
+        .args(["complete", &format!("http://{addr}")])
+        .env("OLLAMA_LOW_LATENCY", "1")
+        .env("OLLAMA_TIMEOUT_SECS", "5")
+        .env("OLLAMA_EARLY_EXIT", "0")
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap_or_else(|err| panic!("spawn {}: {err}", exe.display()));
+    let status = loop {
+        if let Some(status) = child.try_wait().expect("wait") {
+            break status;
+        }
+        if started.elapsed() > std::time::Duration::from_secs(8) {
+            let _ = child.kill();
+            panic!("512-token reply was still open");
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    };
+    let output = child.wait_with_output().expect("output");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        status.success(),
+        "512-token reply was capped: {stdout} {stderr}"
+    );
+    assert!(stdout.contains("t000"), "missing first token: {stdout}");
+    assert!(stdout.contains("t511"), "missing last token: {stdout}");
 }
 
 fn serve_bad_utf8_line() -> std::net::SocketAddr {

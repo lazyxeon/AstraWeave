@@ -319,6 +319,37 @@ fn embedding_response_cap(batch_len: usize, dimensions: usize) -> usize {
     raw.min(astraweave_llm::MAX_MODEL_BODY_LIMIT)
 }
 
+/// Decode an OpenAI-shaped embedding body and place each row at its index.
+#[cfg(feature = "http")]
+fn embeddings_from_json(body: &str, expected: usize, dimensions: usize) -> Result<Vec<Vec<f32>>> {
+    #[derive(Deserialize)]
+    struct EmbeddingResponse {
+        data: Vec<EmbeddingData>,
+    }
+
+    #[derive(Deserialize)]
+    struct EmbeddingData {
+        embedding: Vec<f32>,
+        #[serde(default)]
+        index: Option<usize>,
+    }
+
+    let response_data: EmbeddingResponse =
+        serde_json::from_str(body).context("embedding response")?;
+    if response_data.data.len() != expected {
+        anyhow::bail!(
+            "embedding row count {} is not {expected}",
+            response_data.data.len()
+        );
+    }
+    let rows = response_data
+        .data
+        .into_iter()
+        .map(|row| (row.index, row.embedding))
+        .collect();
+    order_embedding_rows(rows, expected, dimensions)
+}
+
 /// Place each row at its `index`. A missing index uses the row position.
 /// A repeated or out-of-range index is an error.
 #[cfg(feature = "http")]
@@ -363,18 +394,6 @@ impl EmbeddingClient for RemoteEmbeddingClient {
             model: &'a str,
         }
 
-        #[derive(Deserialize)]
-        struct EmbeddingResponse {
-            data: Vec<EmbeddingData>,
-        }
-
-        #[derive(Deserialize)]
-        struct EmbeddingData {
-            embedding: Vec<f32>,
-            #[serde(default)]
-            index: Option<usize>,
-        }
-
         let request = EmbeddingRequest {
             input: texts,
             model: &self.model,
@@ -402,20 +421,7 @@ impl EmbeddingClient for RemoteEmbeddingClient {
             }
 
             let body = astraweave_llm::read_capped_text_limited(response, cap).await?;
-            let response_data: EmbeddingResponse =
-                serde_json::from_str(&body).context("embedding response")?;
-            if response_data.data.len() != expected {
-                anyhow::bail!(
-                    "embedding row count {} is not {expected}",
-                    response_data.data.len()
-                );
-            }
-            let rows = response_data
-                .data
-                .into_iter()
-                .map(|row| (row.index, row.embedding))
-                .collect();
-            order_embedding_rows(rows, expected, dimensions)
+            embeddings_from_json(&body, expected, dimensions)
         })
         .await
     }
@@ -455,19 +461,26 @@ mod tests {
     #[cfg(feature = "http")]
     #[test]
     fn embedding_rows_follow_their_index() {
-        let ordered = order_embedding_rows(vec![(Some(1), vec![2.0]), (Some(0), vec![1.0])], 2, 1)
-            .expect("swap");
+        let swapped = r#"{"data":[{"embedding":[2.0],"index":1},{"embedding":[1.0],"index":0}]}"#;
+        let ordered = embeddings_from_json(swapped, 2, 1).expect("swap");
         assert_eq!(ordered, vec![vec![1.0], vec![2.0]]);
-        let omitted = order_embedding_rows(vec![(None, vec![1.0]), (None, vec![2.0])], 2, 1)
-            .expect("position");
+        let omitted = r#"{"data":[{"embedding":[1.0]},{"embedding":[2.0]}]}"#;
+        let omitted = embeddings_from_json(omitted, 2, 1).expect("position");
         assert_eq!(omitted, vec![vec![1.0], vec![2.0]]);
-        let repeated = order_embedding_rows(vec![(Some(0), vec![1.0]), (Some(0), vec![2.0])], 2, 1)
-            .expect_err("repeat");
+        let repeated = r#"{"data":[{"embedding":[1.0],"index":0},{"embedding":[2.0],"index":0}]}"#;
+        let repeated = embeddings_from_json(repeated, 2, 1).expect_err("repeat");
         assert!(repeated.to_string().contains("repeated"), "{repeated}");
-        let outside = order_embedding_rows(vec![(Some(2), vec![1.0]), (Some(0), vec![2.0])], 2, 1)
-            .expect_err("outside");
+        let outside = r#"{"data":[{"embedding":[1.0],"index":2},{"embedding":[2.0],"index":0}]}"#;
+        let outside = embeddings_from_json(outside, 2, 1).expect_err("outside");
         assert!(outside.to_string().contains("outside"), "{outside}");
-        let length = order_embedding_rows(vec![(None, vec![1.0, 2.0])], 1, 1).expect_err("length");
+        let broken = r#"{"data":[{"embedding":[1.0],"index":"no"},{"embedding":[2.0],"index":0}]}"#;
+        let broken = embeddings_from_json(broken, 2, 1).expect_err("broken index");
+        assert!(
+            broken.to_string().contains("embedding response"),
+            "{broken}"
+        );
+        let length = r#"{"data":[{"embedding":[1.0,2.0]}]}"#;
+        let length = embeddings_from_json(length, 1, 1).expect_err("length");
         assert!(length.to_string().contains("length"), "{length}");
     }
 

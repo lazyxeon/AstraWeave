@@ -9,6 +9,10 @@ pub const MAX_MODEL_JSON_BYTES: usize = 64 * 1024;
 /// Hard ceiling for any capped body read, including embedding batches.
 pub const MAX_MODEL_BODY_LIMIT: usize = 8 * 1024 * 1024;
 
+/// Raw NDJSON budget. Each token repeats the envelope, so this is larger
+/// than the 64 KiB extracted-content cap and still under [`MAX_MODEL_BODY_LIMIT`].
+pub const MAX_MODEL_STREAM_BYTES: usize = MAX_MODEL_JSON_BYTES * 16;
+
 /// The prefix of `text` that fits in [`MAX_MODEL_JSON_BYTES`].
 pub fn bounded_model_text(text: &str) -> &str {
     if text.len() <= MAX_MODEL_JSON_BYTES {
@@ -21,13 +25,18 @@ pub fn bounded_model_text(text: &str) -> &str {
     &text[..end]
 }
 
-/// Count `extra` toward the 64 KiB model-body cap. Empty lines and invalid
-/// UTF-8 still count.
+/// Count `extra` toward the raw NDJSON budget.
+///
+/// Empty lines and invalid UTF-8 still count. Extracted content is capped
+/// separately at [`MAX_MODEL_JSON_BYTES`].
 #[cfg(feature = "ollama")]
-pub(crate) fn note_stream_bytes(seen: &mut usize, extra: usize) -> Result<()> {
+pub fn note_stream_bytes(seen: &mut usize, extra: usize) -> Result<()> {
     *seen = seen.saturating_add(extra);
-    if *seen > MAX_MODEL_JSON_BYTES {
-        bail!("model text exceeds 64 KiB cap ({} bytes)", *seen);
+    if *seen > MAX_MODEL_STREAM_BYTES {
+        bail!(
+            "model stream exceeds {MAX_MODEL_STREAM_BYTES} byte cap ({} bytes)",
+            *seen
+        );
     }
     Ok(())
 }
@@ -159,7 +168,10 @@ where
     })
 }
 
-/// Split a drained NDJSON block into lines. One bad line does not fail the others.
+/// Split a drained NDJSON block into lines.
+///
+/// Lines before a bad byte are kept. That bad line is an error, and lines
+/// after it in the same slice are not decoded.
 #[cfg(feature = "ollama")]
 pub(crate) fn ndjson_line_strings(bytes: &[u8]) -> Vec<Result<String>> {
     let mut out = Vec::new();
@@ -214,6 +226,7 @@ where
         seen: usize,
         pending: std::vec::IntoIter<Result<String>>,
         stop: bool,
+        kept: usize,
         on_line: F,
     }
 
@@ -225,6 +238,7 @@ where
             seen: 0,
             pending: Vec::new().into_iter(),
             stop: false,
+            kept: 0,
             on_line,
         },
         |mut state| async move {
@@ -266,11 +280,21 @@ where
                                         }
                                         let yielded = (state.on_line)(trimmed);
                                         for piece in yielded.pieces {
-                                            if !piece.is_empty() {
-                                                batch.push(Ok(piece));
+                                            if piece.is_empty() {
+                                                continue;
                                             }
+                                            let next = state.kept.saturating_add(piece.len());
+                                            if next > MAX_MODEL_JSON_BYTES {
+                                                batch.push(Err(anyhow::anyhow!(
+                                                    "model text exceeds 64 KiB cap ({next} bytes)"
+                                                )));
+                                                stop_now = true;
+                                                break;
+                                            }
+                                            state.kept = next;
+                                            batch.push(Ok(piece));
                                         }
-                                        if yielded.stop {
+                                        if stop_now || yielded.stop {
                                             stop_now = true;
                                             break;
                                         }
@@ -465,7 +489,7 @@ mod ndjson_scan_tests {
     #[tokio::test]
     async fn ndjson_scan_stops_when_the_byte_cap_fires() {
         let idle = std::time::Duration::from_secs(5);
-        let mut body = vec![b'\n'; MAX_MODEL_JSON_BYTES + 8];
+        let mut body = vec![b'\n'; MAX_MODEL_STREAM_BYTES + 8];
         body.extend_from_slice(b"{\"message\":{\"content\":\"later\"}}\n");
         let first = futures_util::stream::once(async move { Ok::<_, std::io::Error>(body) });
         let hang = futures_util::stream::pending::<Result<Vec<u8>, std::io::Error>>();
@@ -480,11 +504,34 @@ mod ndjson_scan_tests {
             .expect("cap left the scan open")
             .expect("stream ended");
         let err = item.expect_err("cap");
-        assert!(err.to_string().contains("64 KiB"), "{err}");
+        assert!(err.to_string().contains("model stream exceeds"), "{err}");
         let next = tokio::time::timeout(std::time::Duration::from_millis(200), stream.next())
             .await
             .expect("scan read past the cap");
         assert!(next.is_none());
+    }
+
+    #[tokio::test]
+    async fn ndjson_scan_caps_extracted_content_at_64kib() {
+        let idle = std::time::Duration::from_secs(5);
+        let content = "x".repeat(MAX_MODEL_JSON_BYTES + 8);
+        let line = format!("{{\"message\":{{\"content\":\"{content}\"}}}}\n");
+        assert!(line.len() < MAX_MODEL_STREAM_BYTES, "{}", line.len());
+        let first =
+            futures_util::stream::once(async move { Ok::<_, std::io::Error>(line.into_bytes()) });
+        let hang = futures_util::stream::pending::<Result<Vec<u8>, std::io::Error>>();
+        let mut stream = Box::pin(scan_model_ndjson(
+            Box::pin(first.chain(hang)),
+            idle,
+            idle,
+            content_line,
+        ));
+        let item = tokio::time::timeout(std::time::Duration::from_millis(500), stream.next())
+            .await
+            .expect("content cap left the scan open")
+            .expect("stream ended");
+        let err = item.expect_err("content");
+        assert!(err.to_string().contains("64 KiB"), "{err}");
     }
 }
 

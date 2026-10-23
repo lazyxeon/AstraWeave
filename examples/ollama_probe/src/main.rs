@@ -68,48 +68,81 @@ Return ONLY JSON with no commentary.
     )
     .await?;
     println!("status {}", resp.status());
-    let mut stream = Box::pin(astraweave_llm::with_read_idle(
+    let overall = idle.saturating_mul(2);
+    let mut stream = Box::pin(astraweave_llm::bytes_within_deadline(
         Box::pin(resp.bytes_stream()),
         idle,
+        overall,
     ));
+    let mut seen = 0usize;
     let mut buf = String::new();
     let mut acc = String::new();
     while let Some(item) = stream.next().await {
         match item {
             Ok(b) => {
-                if let Ok(s) = std::str::from_utf8(&b) {
-                    buf.push_str(s);
-                    while let Some(pos) = buf.find('\n') {
-                        let line = buf[..pos].trim();
-                        let rest = buf[pos + 1..].to_string();
-                        if !line.is_empty() {
-                            println!("LINE: {}", line);
-                            if let Ok(v) = serde_json::from_str::<serde_json::Value>(line) {
-                                if let Some(msg) = v.get("message") {
-                                    if let Some(c) = msg.get("content").and_then(|x| x.as_str()) {
-                                        acc.push_str(c);
-                                    }
-                                    if let Some(c) = msg.get("thinking").and_then(|x| x.as_str()) {
-                                        if acc.is_empty() {
-                                            acc.push_str(c);
-                                        }
-                                    }
+                if let Err(err) = astraweave_llm::note_stream_bytes(&mut seen, b.len()) {
+                    println!("stream err: {err:#}");
+                    break;
+                }
+                let Ok(s) = std::str::from_utf8(&b) else {
+                    println!("stream err: model stream line is not utf-8");
+                    break;
+                };
+                buf.push_str(s);
+                let mut capped = false;
+                while let Some(pos) = buf.find('\n') {
+                    let line = buf[..pos].trim().to_string();
+                    buf = buf[pos + 1..].to_string();
+                    if line.is_empty() {
+                        continue;
+                    }
+                    println!("LINE: {line}");
+                    if let Ok(v) = serde_json::from_str::<serde_json::Value>(&line) {
+                        if let Some(msg) = v.get("message") {
+                            if let Some(c) = msg.get("content").and_then(|x| x.as_str()) {
+                                if !push_capped(&mut acc, c) {
+                                    capped = true;
+                                    break;
                                 }
-                                if let Some(r) = v.get("response").and_then(|x| x.as_str()) {
-                                    acc.push_str(r);
+                            }
+                            if let Some(c) = msg.get("thinking").and_then(|x| x.as_str()) {
+                                if acc.is_empty() && !push_capped(&mut acc, c) {
+                                    capped = true;
+                                    break;
                                 }
                             }
                         }
-                        buf = rest;
+                        if let Some(r) = v.get("response").and_then(|x| x.as_str()) {
+                            if !push_capped(&mut acc, r) {
+                                capped = true;
+                                break;
+                            }
+                        }
                     }
+                }
+                if capped {
+                    println!("stream err: model text exceeds 64 KiB cap");
+                    break;
                 }
             }
             Err(e) => {
                 println!("stream err: {e:#}");
+                break;
             }
         }
     }
     println!("acc len {}", acc.len());
     std::fs::write("target/ollama_probe_assistant_acc.txt", &acc)?;
     Ok(())
+}
+
+fn push_capped(acc: &mut String, extra: &str) -> bool {
+    if extra.is_empty() {
+        return true;
+    }
+    if acc.len().saturating_add(extra.len()) > astraweave_llm::MAX_MODEL_JSON_BYTES {
+        return false;
+    }
+    acc.push_str(extra);
+    true
 }
