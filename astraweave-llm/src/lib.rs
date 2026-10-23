@@ -18,6 +18,17 @@ pub fn bounded_model_text(text: &str) -> &str {
     &text[..end]
 }
 
+/// Count `extra` toward the 64 KiB model-body cap. Empty lines and invalid
+/// UTF-8 still count.
+#[cfg(feature = "ollama")]
+pub(crate) fn note_stream_bytes(seen: &mut usize, extra: usize) -> Result<()> {
+    *seen = seen.saturating_add(extra);
+    if *seen > MAX_MODEL_JSON_BYTES {
+        bail!("model text exceeds 64 KiB cap ({} bytes)", *seen);
+    }
+    Ok(())
+}
+
 #[cfg(feature = "ollama")]
 fn append_capped(dst: &mut String, extra: &str) -> Result<()> {
     let next = dst.len().saturating_add(extra.len());
@@ -31,14 +42,23 @@ fn append_capped(dst: &mut String, extra: &str) -> Result<()> {
 /// Read a model body, stopping at [`MAX_MODEL_JSON_BYTES`].
 #[cfg(feature = "ollama")]
 pub async fn read_capped_text(response: reqwest::Response) -> Result<String> {
+    read_capped_text_limited(response, MAX_MODEL_JSON_BYTES).await
+}
+
+/// Read a body until `limit` bytes, then stop.
+#[cfg(feature = "ollama")]
+pub async fn read_capped_text_limited(response: reqwest::Response, limit: usize) -> Result<String> {
     use futures_util::StreamExt;
     let mut stream = response.bytes_stream();
     let mut buf = Vec::new();
     while let Some(chunk) = stream.next().await {
         let chunk = chunk.context("model body read failed")?;
         let next = buf.len().saturating_add(chunk.len());
-        if next > MAX_MODEL_JSON_BYTES {
-            bail!("model text exceeds 64 KiB cap ({next} bytes)");
+        if next > limit {
+            if limit == MAX_MODEL_JSON_BYTES {
+                bail!("model text exceeds 64 KiB cap ({next} bytes)");
+            }
+            bail!("model text exceeds {limit} byte cap ({next} bytes)");
         }
         buf.extend_from_slice(&chunk);
     }
@@ -263,16 +283,7 @@ pub async fn send_for_headers(
 ) -> Result<reqwest::Response> {
     match tokio::time::timeout(idle, send).await {
         Ok(Ok(response)) => Ok(response),
-        Ok(Err(err)) => {
-            let mut msg = format!("model request: {err}");
-            let mut source = std::error::Error::source(&err);
-            while let Some(next) = source {
-                msg.push_str(": ");
-                msg.push_str(&next.to_string());
-                source = next.source();
-            }
-            Err(anyhow::anyhow!(msg))
-        }
+        Ok(Err(err)) => Err(anyhow::Error::new(err).context("model request")),
         Err(_) => Err(anyhow::anyhow!("model headers idle timeout")),
     }
 }
@@ -656,27 +667,35 @@ impl OllamaChatClient {
         };
 
         let chat_url = format!("{}/api/chat", self.url.trim_end_matches('/'));
-        let response = send_for_headers(
-            std::time::Duration::from_secs(timeout_secs),
-            self.client
-                .post(&chat_url)
-                .header("Accept", "application/json")
-                .json(&body)
-                .send(),
-        )
-        .await
-        .context("Ollama warmup request failed")?;
-        let status = response.status();
-        if !status.is_success() {
-            let body = read_capped_text(response)
-                .await
-                .with_context(|| format!("Ollama warmup status {status} body read failed"))?;
-            bail!("Ollama warmup returned error status {status}: {body}");
-        }
-        read_capped_text(response)
+        let deadline = std::time::Duration::from_secs(timeout_secs);
+        let outcome = tokio::time::timeout(deadline, async {
+            let response = send_for_headers(
+                deadline,
+                self.client
+                    .post(&chat_url)
+                    .header("Accept", "application/json")
+                    .json(&body)
+                    .send(),
+            )
             .await
-            .context("Ollama warmup body read failed")?;
-        Ok(())
+            .context("Ollama warmup request failed")?;
+            let status = response.status();
+            if !status.is_success() {
+                let body = read_capped_text(response)
+                    .await
+                    .with_context(|| format!("Ollama warmup status {status} body read failed"))?;
+                bail!("Ollama warmup returned error status {status}: {body}");
+            }
+            read_capped_text(response)
+                .await
+                .context("Ollama warmup body read failed")?;
+            Ok(())
+        })
+        .await;
+        match outcome {
+            Ok(result) => result,
+            Err(_) => bail!("Ollama warmup timed out after {timeout_secs}s"),
+        }
     }
 
     /// Experimental: issue multiple prompts sequentially while reusing the same HTTP client and model residency.
@@ -754,72 +773,79 @@ impl LlmClient for OllamaChatClient {
             // Use .json() so reqwest sets Content-Length and proper headers. Some servers
             // close the connection or reject raw bodies without length which can cause
             // "error sending request" failures; using .json() is more reliable here.
-            match send_for_headers(
-                std::time::Duration::from_secs(nonstream_timeout_secs),
-                client
-                    .post(&chat_url)
-                    .header("Accept", "application/json")
-                    .json(&body)
-                    .send(),
-            )
-            .await
-            {
-                Ok(resp) => {
-                    println!(
-                        "[ollama] non-streaming request returned status {}",
-                        resp.status()
-                    );
-                    if resp.status().is_success() {
-                        // Try to read as text (this will complete if the server returns a full body)
-                        match read_capped_text(resp).await {
-                            Ok(t) if !t.trim().is_empty() => {
-                                println!(
-                                    "[ollama] received non-empty buffered body ({} bytes)",
-                                    t.len()
-                                );
-                                text = t;
-                                non_stream_ok = true;
-                                let total_ms = ns_attempt_start.elapsed().as_millis();
-                                println!(
-                                    "[ollama] timing nonstream attempt {}: total={}ms",
-                                    attempt, total_ms
-                                );
-                            }
-                            Ok(_) => {
-                                println!("[ollama] buffered body was empty on attempt {}, will retry/fallback", attempt);
-                            }
-                            Err(err) => {
-                                return Err(err).context("Ollama non-streaming body read failed");
-                            }
+            let attempt_deadline = std::time::Duration::from_secs(nonstream_timeout_secs);
+            enum Attempt {
+                Text(String),
+                Retry,
+                Fail(anyhow::Error),
+            }
+            let timed = tokio::time::timeout(attempt_deadline, async {
+                let resp = match send_for_headers(
+                    attempt_deadline,
+                    client
+                        .post(&chat_url)
+                        .header("Accept", "application/json")
+                        .json(&body)
+                        .send(),
+                )
+                .await
+                {
+                    Ok(resp) => resp,
+                    Err(err) => {
+                        println!(
+                            "[ollama] non-streaming request failed on attempt {attempt}: {err:?}"
+                        );
+                        return Attempt::Retry;
+                    }
+                };
+                println!(
+                    "[ollama] non-streaming request returned status {}",
+                    resp.status()
+                );
+                if resp.status().is_success() {
+                    match read_capped_text(resp).await {
+                        Ok(t) if !t.trim().is_empty() => Attempt::Text(t),
+                        Ok(_) => {
+                            println!(
+                                "[ollama] buffered body was empty on attempt {attempt}, will retry/fallback"
+                            );
+                            Attempt::Retry
                         }
-                    } else {
-                        let status = resp.status();
-                        match read_capped_text(resp).await {
-                            Ok(b) => {
-                                return Err(anyhow::anyhow!(
-                                    "Ollama non-streaming request returned error status {status}: {b}"
-                                ));
-                            }
-                            Err(err) => {
-                                return Err(err).context(format!(
-                                    "Ollama non-streaming status {status} body read failed"
-                                ));
-                            }
-                        }
+                        Err(err) => Attempt::Fail(err.context("Ollama non-streaming body read failed")),
+                    }
+                } else {
+                    let status = resp.status();
+                    match read_capped_text(resp).await {
+                        Ok(b) => Attempt::Fail(anyhow::anyhow!(
+                            "Ollama non-streaming request returned error status {status}: {b}"
+                        )),
+                        Err(err) => Attempt::Fail(err.context(format!(
+                            "Ollama non-streaming status {status} body read failed"
+                        ))),
                     }
                 }
-                Err(e) => {
-                    // Print full debug info for the error to aid diagnosis
+            })
+            .await;
+            match timed {
+                Err(_) => {
                     println!(
-                        "[ollama] non-streaming request failed on attempt {}: {:?}",
-                        attempt, e
-                    );
-                    let total_ms = ns_attempt_start.elapsed().as_millis();
-                    println!(
-                        "[ollama] timing nonstream attempt {}: total={}ms (error)",
-                        attempt, total_ms
+                        "[ollama] non-streaming attempt {attempt} timed out after {nonstream_timeout_secs}s"
                     );
                 }
+                Ok(Attempt::Text(t)) => {
+                    println!(
+                        "[ollama] received non-empty buffered body ({} bytes)",
+                        t.len()
+                    );
+                    text = t;
+                    non_stream_ok = true;
+                    println!(
+                        "[ollama] timing nonstream attempt {attempt}: total={}ms",
+                        ns_attempt_start.elapsed().as_millis()
+                    );
+                }
+                Ok(Attempt::Retry) => {}
+                Ok(Attempt::Fail(err)) => return Err(err),
             }
 
             if !non_stream_ok {
@@ -929,6 +955,7 @@ impl LlmClient for OllamaChatClient {
 
             let mut buf = String::new();
             let mut assistant_acc = String::new();
+            let mut bytes_seen: usize = 0;
             let mut done_flag = false;
 
             // We'll periodically flush partial assembled assistant output to disk so
@@ -948,6 +975,9 @@ impl LlmClient for OllamaChatClient {
                 };
                 match item {
                     Ok(chunk) => {
+                        // Count bytes before UTF-8 or line filtering. Empty
+                        // NDJSON lines and invalid UTF-8 must not stream forever.
+                        note_stream_bytes(&mut bytes_seen, chunk.len())?;
                         if let Ok(schunk) = std::str::from_utf8(&chunk) {
                             if first_token_at.is_none() {
                                 first_token_at = Some(std::time::Instant::now());

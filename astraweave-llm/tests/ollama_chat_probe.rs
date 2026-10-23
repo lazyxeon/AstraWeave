@@ -506,6 +506,66 @@ fn oversized_chat_body_stops_at_64kib() {
     );
 }
 
+fn serve_empty_lines() -> std::net::SocketAddr {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+    let addr = listener.local_addr().expect("addr");
+    std::thread::spawn(move || {
+        let Ok((mut sock, _)) = listener.accept() else {
+            return;
+        };
+        read_http_headers(&mut sock);
+        // Empty NDJSON lines do not grow the kept text. The byte counter must
+        // still stop the read.
+        let body = vec![b'\n'; 70 * 1024];
+        let header = format!(
+            "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+            body.len()
+        );
+        use std::io::Write;
+        let _ = sock.write_all(header.as_bytes());
+        let _ = sock.write_all(&body);
+        let _ = sock.flush();
+    });
+    addr
+}
+
+#[test]
+fn empty_ndjson_lines_stop_at_64kib() {
+    let addr = serve_empty_lines();
+    let exe = probe_exe(env!("CARGO_BIN_EXE_ollama_chat_probe"));
+    let started = std::time::Instant::now();
+    let mut child = std::process::Command::new(&exe)
+        .args(["complete", &format!("http://{addr}")])
+        .env("OLLAMA_LOW_LATENCY", "1")
+        .env("OLLAMA_TIMEOUT_SECS", "5")
+        .env("OLLAMA_EARLY_EXIT", "0")
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap_or_else(|err| panic!("spawn {}: {err}", exe.display()));
+    let status = loop {
+        if let Some(status) = child.try_wait().expect("wait") {
+            break status;
+        }
+        if started.elapsed() > std::time::Duration::from_secs(4) {
+            let _ = child.kill();
+            panic!("empty NDJSON lines were still streaming");
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    };
+    let output = child.wait_with_output().expect("output");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !status.success(),
+        "empty lines succeeded: {stdout} {stderr}"
+    );
+    assert!(
+        format!("{stdout} {stderr}").contains("64 KiB"),
+        "{stdout} {stderr}"
+    );
+}
+
 #[test]
 fn silent_accept_fails_near_the_header_timeout() {
     assert_headers_fail_near_timeout("complete", false);

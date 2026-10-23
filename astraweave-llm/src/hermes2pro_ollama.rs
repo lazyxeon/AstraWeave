@@ -582,7 +582,8 @@ impl LlmClient for Hermes2ProOllama {
         // Transform bytes → NDJSON lines → text chunks
         // Uses a byte buffer to handle chunks that split UTF-8 characters or JSON lines
         let text_stream = byte_stream
-            .scan(Vec::<u8>::new(), |buffer, chunk_result| {
+            .scan((Vec::<u8>::new(), 0usize), |state, chunk_result| {
+                let (buffer, seen) = state;
                 // Handle byte chunk errors
                 let chunk = match chunk_result {
                     Ok(bytes) => bytes,
@@ -593,7 +594,9 @@ impl LlmClient for Hermes2ProOllama {
                     }
                 };
 
-                // Append to buffer
+                if let Err(err) = crate::note_stream_bytes(seen, chunk.len()) {
+                    return futures_util::future::ready(Some(vec![Err(err)]));
+                }
                 buffer.extend_from_slice(&chunk);
 
                 let mut results = Vec::new();

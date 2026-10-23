@@ -156,10 +156,21 @@ jobs:
       - name: Model HTTP tests
         # Affected-crate nextest does not turn on astraweave-llm's ollama
         # feature unless another selected package already depends on it.
-        # These two commands are that feature, on the same machine as the bins.
+        # Run that feature only when those crates are in the affected set.
+        env:
+          AW_CI_FULL: ${{ needs.changes.outputs.full }}
+          AW_CI_PACKAGES: ${{ needs.changes.outputs.packages }}
         run: |
-          cargo nextest run --locked --profile ci-pr -p astraweave-llm --features ollama --lib --tests
-          cargo nextest run --locked --profile ci-pr -p astraweave-embeddings --features http --lib --tests
+          pkgs=",${AW_CI_PACKAGES},"
+          if [ "$AW_CI_FULL" = "true" ] || [[ "$pkgs" == *",astraweave-llm,"* ]]; then
+            cargo nextest run --locked --profile ci-pr -p astraweave-llm --features ollama --lib --tests
+          fi
+          if [ "$AW_CI_FULL" = "true" ] || [[ "$pkgs" == *",astraweave-embeddings,"* ]]; then
+            cargo nextest run --locked --profile ci-pr -p astraweave-embeddings --features http --lib --tests
+          fi
+          if [ "$AW_CI_FULL" != "true" ] && [[ "$pkgs" != *",astraweave-llm,"* ]] && [[ "$pkgs" != *",astraweave-embeddings,"* ]]; then
+            echo "Model crates are not in the affected set; skipping the ollama feature tests"
+          fi
 
   test-windows-build:
     name: Test (windows, build archive)
@@ -202,16 +213,6 @@ jobs:
           CARGO_PROFILE_TEST_DEBUG: "0"
         run: cargo nextest run --locked --profile ci -p aw-net-client --test family1_client_binary --test family3_client_binary_wrong_key
 
-      - name: Model HTTP probes on this machine
-        # CARGO_BIN_EXE_loopback_http_probe and CARGO_BIN_EXE_ollama_chat_probe
-        # are this runner's target path. Partition jobs skip both targets.
-        # Keep the archive profile so this follow-up does not rebuild with debug info.
-        env:
-          CARGO_PROFILE_TEST_DEBUG: "0"
-        run: |
-          cargo nextest run --locked --profile ci -p astraweave-llm --features ollama --lib --test loopback_http_proxy --test ollama_chat_probe
-          cargo nextest run --locked --profile ci -p astraweave-embeddings --features http --lib --test declared_body_timeout
-
       - name: Upload the archive
         uses: actions/upload-artifact@v4
         with:
@@ -221,6 +222,17 @@ jobs:
           retention-days: 1
           # The archive is already zstd. Skip a second compression pass.
           compression-level: 0
+
+      - name: Model HTTP probes on this machine
+        # After the archive upload so a feature rebuild does not hold the
+        # artifact. CARGO_BIN_EXE_* is this runner's target path. Partition
+        # jobs skip both probe targets. Keep the archive profile so this
+        # follow-up does not rebuild with debug info.
+        env:
+          CARGO_PROFILE_TEST_DEBUG: "0"
+        run: |
+          cargo nextest run --locked --profile ci -p astraweave-llm --features ollama --lib --test loopback_http_proxy --test ollama_chat_probe
+          cargo nextest run --locked --profile ci -p astraweave-embeddings --features http --lib --test declared_body_timeout
 
   test-windows:
     name: Test (windows, ${{ matrix.partition }}/3)

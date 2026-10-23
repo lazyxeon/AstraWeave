@@ -6,6 +6,8 @@ Supports mock clients for testing, local models via ONNX/Candle, and remote APIs
 */
 
 use anyhow::Result;
+#[cfg(feature = "http")]
+use anyhow::Context;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -306,6 +308,16 @@ impl RemoteEmbeddingClient {
     }
 }
 
+/// JSON budget for one embedding response: 32 bytes per component, plus a wrapper.
+#[cfg(feature = "http")]
+fn embedding_response_cap(batch_len: usize, dimensions: usize) -> usize {
+    batch_len
+        .max(1)
+        .saturating_mul(dimensions.max(1))
+        .saturating_mul(32)
+        .saturating_add(2048)
+}
+
 #[cfg(feature = "http")]
 #[async_trait]
 impl EmbeddingClient for RemoteEmbeddingClient {
@@ -353,7 +365,10 @@ impl EmbeddingClient for RemoteEmbeddingClient {
             return Err(anyhow::anyhow!("API request failed: {}", response.status()));
         }
 
-        let response_data: EmbeddingResponse = astraweave_llm::read_capped_json(response).await?;
+        let cap = embedding_response_cap(texts.len(), self.dimensions);
+        let body = astraweave_llm::read_capped_text_limited(response, cap).await?;
+        let response_data: EmbeddingResponse =
+            serde_json::from_str(&body).context("embedding response")?;
 
         Ok(response_data
             .data
@@ -380,6 +395,14 @@ impl EmbeddingClient for RemoteEmbeddingClient {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(feature = "http")]
+    #[test]
+    fn embedding_cap_fits_a_normal_batch() {
+        let normal = embedding_response_cap(8, 1536);
+        assert!(normal > 64 * 1024, "{normal}");
+        assert!(embedding_response_cap(1, 8) < 64 * 1024);
+    }
 
     #[tokio::test]
     async fn test_mock_embedding_client() {
