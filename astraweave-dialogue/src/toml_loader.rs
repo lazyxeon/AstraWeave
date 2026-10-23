@@ -148,6 +148,10 @@ pub fn load_dialogue_from_file(path: &std::path::Path) -> Result<LoadedDialogue>
 /// Text files a player can read: dialogue, quests, echoes, voices, recipes,
 /// npc lines, cinematic cards, and cell copy. Walks those directories
 /// recursively. Tooling manifests and binary packs are not included.
+///
+/// The scan is the unit test's closed list. Clippy on the library does not
+/// compile that test, so these helpers are test-only.
+#[cfg(test)]
 const PLAYER_FACING_FILES: &[&str] = &[
     "dialogue_intro.toml",
     "dialogue_audio_map.toml",
@@ -157,10 +161,13 @@ const PLAYER_FACING_FILES: &[&str] = &[
     "recipes.toml",
     "zones.json",
 ];
+#[cfg(test)]
 const PLAYER_FACING_DIRS: &[&str] = &["npc", "cinematics", "cells"];
 /// Below this, a scan of the real asset tree dropped a directory or failed open.
+#[cfg(test)]
 const MIN_PLAYER_FACING_FILES: usize = 20;
 
+#[cfg(test)]
 fn player_facing_asset_files(root: &std::path::Path) -> Result<Vec<std::path::PathBuf>> {
     let mut files = Vec::new();
     for name in PLAYER_FACING_FILES {
@@ -181,6 +188,7 @@ fn player_facing_asset_files(root: &std::path::Path) -> Result<Vec<std::path::Pa
     Ok(files)
 }
 
+#[cfg(test)]
 fn walk_player_text(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) -> Result<()> {
     let entries = std::fs::read_dir(dir)
         .with_context(|| format!("reading player-facing directory {}", dir.display()))?;
@@ -201,6 +209,7 @@ fn walk_player_text(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) ->
     Ok(())
 }
 
+#[cfg(test)]
 fn is_player_text(path: &std::path::Path) -> bool {
     matches!(
         path.extension().and_then(|ext| ext.to_str()),
