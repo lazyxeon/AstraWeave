@@ -8,8 +8,8 @@ domain: core
 lifecycle_status: active
 integration_status: wired
 owns: [astraweave-alloc, astraweave-core, astraweave-ecs, astraweave-math, astraweave-sdk]
-doc_version: "1.13"
-last_verified_commit: b1a0c4c2
+doc_version: "1.14"
+last_verified_commit: d4e1ffab
 ---
 
 # Architecture Trace: ECS Substrate + Math / Core / SDK Primitives
@@ -20,13 +20,15 @@ last_verified_commit: b1a0c4c2
 |---|---|
 | **System name** | ECS substrate + Math / Core / SDK primitives (foundation layer) |
 | **Primary crates** | `astraweave-ecs`, `astraweave-math`, `astraweave-core`, `astraweave-sdk` |
-| **Document version** | 1.13 |
-| **Last verified against commit** | `b1a0c4c2` |
-| **Last verified date** | 2026-10-15 |
+| **Document version** | 1.14 |
+| **Last verified against commit** | `d4e1ffab` |
+| **Last verified date** | 2026-10-23 |
 | **Status** | Active foundation. `astraweave-ecs` and `astraweave-math` are canonical; `astraweave-core` contains a canonical schema **plus** a transitional legacy `World` that bridges to ECS; `astraweave-sdk` is a stable C ABI surface with a single in-tree consumer (`examples/sdk_c_harness`) and an otherwise out-of-tree audience. |
 | **Owner notes** | This trace covers four related-but-distinct foundation crates as one document, per Andrew's request. Note: the doc is a foundation **layer**, not a single tightly-coupled system. Per-crate roles are kept distinct throughout. Deep investigation pass 2026-05-10 resolved the `lib_new.rs` status, corrected the SDK-consumer claim (one in-tree example exists), added the loom-tests + `simd`-feature-no-op findings, and refined Invariant 8 against the actual JSON-serializer code paths.<br><br>**R-series M1 trace-honesty (2026-06-30) — per-crate verified verdicts (the group `active/wired` front-matter syncs to the primary crate `astraweave-core` only):** `astraweave-core`, `astraweave-ecs`, `astraweave-sdk` are **VERIFIED-PRODUCTION** (`sdk` via the R3 island-by-design FFI boundary carve-out). **`astraweave-math` is individually COMPILES-BUT-ORPHANED** — off the v1.0 critical path; its only workspace consumer is `examples/profiling_demo` (the "canonical" framing above is aspirational for `math`). `astraweave-alloc` is **WIRED-BUT-UNTESTED** (0 tests). |
 
-> **Revision notice — 2026-10-22 (v1.13).** `46be9024` and `a0d4a690` are not ancestors after the rebase onto `8938318f`. The same subjects on this branch are `7b7a21e4` (capture the lavapipe floor log) and `93c448d6` (count frames without walking the stack). `last_verified_commit` names the parent `b1a0c4c2`.
+> **Revision notice — 2026-10-23 (v1.14).** The continue-on-error removal is `0784b204`. The log-capture commit is `7b7a21e4`. Its parent is `039b031a`. The counter-only commit is `93c448d6`. `last_verified_commit` names the parent `d4e1ffab`. That parent pairs `46be9024` with `7b7a21e4`, which swaps the continue-on-error removal and the log capture. Its last-verified date is 2026-10-15.
+>
+> **Revision notice — 2026-10-22 (v1.13, historical).** This notice paired `46be9024` with `7b7a21e4` (log capture) and `a0d4a690` with `93c448d6`. That pairing swaps the subjects. `a0d4a690` is the counter-only commit, `93c448d6`. `46be9024` is the continue-on-error removal, which on this branch is `0784b204`. The log-capture commit is `7b7a21e4`. Its parent is `039b031a`. `46be9024` and `a0d4a690` are not ancestors.
 >
 > **Revision notice — 2026-10-22 (v1.12).** `33abffa1` and `36e1e450` are not ancestors. The counter-only allocator on this branch is `93c448d6`. The capture-log commit is `7b7a21e4`.
 >
@@ -571,7 +573,8 @@ There are several distinct flows through this layer. The first is the canonical 
 
 | Version | Date | Change |
 |---|---|---|
-| 1.13 | 2026-10-22 | Stamp names `b1a0c4c2`. Counter-only commit is `93c448d6`. `46be9024` and `a0d4a690` are not ancestors. |
+| 1.14 | 2026-10-23 | Continue-on-error removal is `0784b204`. Log capture is `7b7a21e4` (parent `039b031a`). Stamp names `d4e1ffab`. The date row is 2026-10-23. |
+| 1.13 | 2026-10-22 | That version paired `46be9024` with the log-capture commit. The continue-on-error removal is `0784b204`. `46be9024` and `a0d4a690` are not ancestors. |
 | 1.12 | 2026-10-22 | That version named `46be9024` and `a0d4a690`. Neither is an ancestor. `33abffa1` and `36e1e450` are not ancestors. |
 | 1.11 | 2026-10-22 | That version named `33abffa1`. `c086feb3` is not an ancestor. `alloc_trace_is_quiet` covers `alloc_zeroed` and `realloc` (invariant 18). |
 | 1.10 | 2026-10-22 | The frame-pointer walk is gone. Counters record every alloc and every free (invariant 18). `alloc_trace_is_quiet` installs `CountingAlloc`. |
