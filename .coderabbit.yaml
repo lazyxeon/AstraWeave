@@ -18,19 +18,19 @@ reviews:
         Assets added to the tree are CC0 only.
     - path: "astraweave-render/**"
       instructions: |
-        The frame-time target is under 11 ms per frame on a GTX 1660 Ti-class GPU. That target is not yet measured. Do not treat a change as meeting the budget unless it includes a real GPU timing sample. Flag new per-frame work that has no budget note.
+        The frame-time target is under 11 ms per frame on a GTX 1660 Ti Max-Q. The measured sample is in docs/current/ENGINE_STATUS.md. Do not invent a measurement. Do not treat a change as meeting the budget unless it includes a real GPU timing sample labeled with its commit SHA and adapter. Flag new per-frame work that has no budget note.
     - path: "**/*.wgsl"
       instructions: |
-        Shader changes sit on the frame path. The target is under 11 ms per frame on a GTX 1660 Ti-class GPU and is not yet measured. Flag extra passes or unbounded loops that have no budget note.
+        Shader changes sit on the frame path. The target is under 11 ms per frame on a GTX 1660 Ti Max-Q. The measured sample is in docs/current/ENGINE_STATUS.md. Do not invent a measurement. Flag extra passes or unbounded loops that have no budget note and no SHA-labeled measurement.
     - path: "README.md"
       instructions: |
-        Player-facing text uses Aravath. Flag the string Veilweaver. A crate name ending in veilweaver_ and the archive directory projects/veilweaver are not title uses. Assets are CC0 only. Local LLMs propose and the deterministic simulation validates and executes. The under-11 ms GTX 1660 Ti frame budget is a target, not a measured result.
+        Player-facing text uses Aravath. Flag the string Veilweaver. A crate name ending in veilweaver_ and the archive directory projects/veilweaver are not title uses. Assets are CC0 only. Local LLMs propose and the deterministic simulation validates and executes. The under-11 ms GTX 1660 Ti Max-Q frame budget is the target. The measured sample is in docs/current/ENGINE_STATUS.md. Do not invent a measurement.
     - path: "CONTRIBUTING.md"
       instructions: |
         Player-facing text uses Aravath. Flag the string Veilweaver. A crate name ending in veilweaver_ and the archive directory projects/veilweaver are not title uses. Assets added to the tree are CC0 only. Local LLMs propose and the deterministic simulation validates and executes.
     - path: "docs/guides/**"
       instructions: |
-        Player-facing text uses Aravath. Flag the string Veilweaver. A crate name ending in veilweaver_ and the archive directory projects/veilweaver are not title uses. Assets are CC0 only. Do not describe the under-11 ms GTX 1660 Ti frame budget as measured.
+        Player-facing text uses Aravath. Flag the string Veilweaver. A crate name ending in veilweaver_ and the archive directory projects/veilweaver are not title uses. Assets are CC0 only. The under-11 ms GTX 1660 Ti Max-Q frame budget is the target. The measured sample is in docs/current/ENGINE_STATUS.md. Do not invent a measurement.
     - path: "docs/README.md"
       instructions: |
         Player-facing text uses Aravath. Flag the string Veilweaver. A crate name ending in veilweaver_ and the archive directory projects/veilweaver are not title uses.
