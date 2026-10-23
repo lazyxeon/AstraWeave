@@ -448,6 +448,69 @@ fn readable_error_status_does_not_start_streaming() {
     );
 }
 
+fn serve_body(body: Vec<u8>) -> std::net::SocketAddr {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+    let addr = listener.local_addr().expect("addr");
+    std::thread::spawn(move || {
+        let Ok((mut sock, _)) = listener.accept() else {
+            return;
+        };
+        read_http_headers(&mut sock);
+        let header = format!(
+            "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+            body.len()
+        );
+        write_and_hold(&mut sock, header.as_bytes(), &body);
+    });
+    addr
+}
+
+fn run_complete(addr: std::net::SocketAddr, early_exit: &str) -> std::process::Output {
+    let exe = probe_exe(env!("CARGO_BIN_EXE_ollama_chat_probe"));
+    let started = std::time::Instant::now();
+    let mut child = std::process::Command::new(&exe)
+        .args(["complete", &format!("http://{addr}")])
+        .env("OLLAMA_LOW_LATENCY", "1")
+        .env("OLLAMA_TIMEOUT_SECS", "5")
+        .env("OLLAMA_EARLY_EXIT", early_exit)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap_or_else(|err| panic!("spawn {}: {err}", exe.display()));
+    // Drain while the child runs. A 64 KiB success fills the pipe and blocks
+    // if the parent waits to read until after the child exits.
+    let mut stdout = child.stdout.take().expect("stdout");
+    let mut stderr = child.stderr.take().expect("stderr");
+    let stdout_task = std::thread::spawn(move || {
+        let mut buf = Vec::new();
+        std::io::Read::read_to_end(&mut stdout, &mut buf).expect("read stdout");
+        buf
+    });
+    let stderr_task = std::thread::spawn(move || {
+        let mut buf = Vec::new();
+        std::io::Read::read_to_end(&mut stderr, &mut buf).expect("read stderr");
+        buf
+    });
+    let status = loop {
+        if let Some(status) = child.try_wait().expect("wait") {
+            break status;
+        }
+        if started.elapsed() > std::time::Duration::from_secs(4) {
+            let _ = child.kill();
+            let _ = child.wait();
+            let _ = stdout_task.join();
+            let _ = stderr_task.join();
+            panic!("complete was still open after 4s");
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    };
+    std::process::Output {
+        status,
+        stdout: stdout_task.join().expect("stdout thread"),
+        stderr: stderr_task.join().expect("stderr thread"),
+    }
+}
+
 fn serve_oversized_ok() -> std::net::SocketAddr {
     let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
     let addr = listener.local_addr().expect("addr");
@@ -645,6 +708,96 @@ fn a_512_token_reply_is_kept() {
     );
     assert!(stdout.contains("t000"), "missing first token: {stdout}");
     assert!(stdout.contains("t511"), "missing last token: {stdout}");
+}
+
+#[test]
+fn plain_text_over_64kib_is_rejected() {
+    for early in ["0", "1"] {
+        let addr = serve_body(vec![b'a'; 80 * 1024]);
+        let output = run_complete(addr, early);
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            !output.status.success(),
+            "80 KiB plain text succeeded with early_exit={early}: {stdout} {stderr}"
+        );
+        assert!(
+            format!("{stdout} {stderr}").contains("64 KiB"),
+            "early_exit={early}: {stdout} {stderr}"
+        );
+        assert!(
+            stdout.len() < 4 * 1024,
+            "80 KiB plain text was returned with early_exit={early}: {} bytes",
+            stdout.len()
+        );
+    }
+}
+
+#[test]
+fn plain_text_of_exactly_64kib_is_kept() {
+    let addr = serve_body(vec![b'a'; astraweave_llm::MAX_MODEL_JSON_BYTES]);
+    let output = run_complete(addr, "1");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        output.status.success(),
+        "exactly 64 KiB was rejected: {stderr} stdout_len={}",
+        stdout.len()
+    );
+    let body = stdout.rsplit_once('\n').expect("log line").1;
+    assert_eq!(body.len(), astraweave_llm::MAX_MODEL_JSON_BYTES, "{stderr}");
+    assert!(body.bytes().all(|byte| byte == b'a'), "{stderr}");
+}
+
+#[test]
+fn message_content_over_64kib_without_a_newline_is_rejected() {
+    for early in ["0", "1"] {
+        let mut body = br#"{"message":{"content":""#.to_vec();
+        body.extend(std::iter::repeat(b'q').take(70 * 1024));
+        body.extend(br#""}}"#);
+        assert!(!body.contains(&b'\n'));
+        let addr = serve_body(body);
+        let output = run_complete(addr, early);
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            !output.status.success(),
+            "70 KiB content succeeded with early_exit={early}: {} bytes {stderr}",
+            stdout.len()
+        );
+        assert!(
+            format!("{stdout} {stderr}").contains("64 KiB"),
+            "early_exit={early}: {stdout} {stderr}"
+        );
+        assert!(
+            stdout.len() < 4 * 1024,
+            "70 KiB content was returned with early_exit={early}: {} bytes",
+            stdout.len()
+        );
+    }
+}
+
+#[test]
+fn a_mebibyte_of_newlines_finishes() {
+    let addr = serve_body(vec![b'\n'; astraweave_llm::MAX_MODEL_STREAM_BYTES]);
+    let started = std::time::Instant::now();
+    let output = run_complete(addr, "0");
+    assert!(
+        started.elapsed() < std::time::Duration::from_secs(4),
+        "newline drain took {:?}",
+        started.elapsed()
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !output.status.success(),
+        "newline body succeeded: {stdout} {stderr}"
+    );
+    assert!(
+        !format!("{stdout} {stderr}").contains("model stream exceeds"),
+        "the inclusive raw budget rejected an exact 1 MiB body: {stdout} {stderr}"
+    );
+    assert!(stdout.len() < 4 * 1024, "{}", stdout.len());
 }
 
 fn serve_bad_utf8_line() -> std::net::SocketAddr {

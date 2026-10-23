@@ -75,7 +75,7 @@ Return ONLY JSON with no commentary.
         overall,
     ));
     let mut seen = 0usize;
-    let mut buf = String::new();
+    let mut buf = Vec::new();
     let mut acc = String::new();
     while let Some(item) = stream.next().await {
         match item {
@@ -84,18 +84,15 @@ Return ONLY JSON with no commentary.
                     println!("stream err: {err:#}");
                     break;
                 }
-                let Ok(s) = std::str::from_utf8(&b) else {
-                    println!("stream err: model stream line is not utf-8");
-                    break;
-                };
-                buf.push_str(s);
-                let mut capped = false;
-                while let Some(pos) = buf.find('\n') {
-                    let line = buf[..pos].trim().to_string();
-                    buf = buf[pos + 1..].to_string();
-                    if line.is_empty() {
-                        continue;
+                let lines = match take_complete_lines(&mut buf, &b) {
+                    Ok(lines) => lines,
+                    Err(err) => {
+                        println!("stream err: {err:#}");
+                        break;
                     }
+                };
+                let mut capped = false;
+                for line in lines {
                     println!("LINE: {line}");
                     if let Ok(v) = serde_json::from_str::<serde_json::Value>(&line) {
                         if let Some(msg) = v.get("message") {
@@ -136,6 +133,38 @@ Return ONLY JSON with no commentary.
     Ok(())
 }
 
+/// Append `chunk` and return complete lines.
+///
+/// UTF-8 is checked per line. A multibyte character split across chunks stays
+/// in `buf` until the newline that finishes it.
+fn take_complete_lines(buf: &mut Vec<u8>, chunk: &[u8]) -> anyhow::Result<Vec<String>> {
+    buf.extend_from_slice(chunk);
+    let mut start = 0usize;
+    let mut lines = Vec::new();
+    while let Some(rel) = buf[start..].iter().position(|byte| *byte == b'\n') {
+        let nl = start + rel;
+        let mut end_line = nl;
+        if end_line > start && buf[end_line - 1] == b'\r' {
+            end_line -= 1;
+        }
+        if start < end_line {
+            let line = std::str::from_utf8(&buf[start..end_line])
+                .map_err(|_| anyhow::anyhow!("model stream line is not utf-8"))?;
+            let line = line.trim();
+            if !line.is_empty() {
+                lines.push(line.to_string());
+            }
+        }
+        start = nl + 1;
+    }
+    if start == buf.len() {
+        buf.clear();
+    } else if start > 0 {
+        buf.drain(..start);
+    }
+    Ok(lines)
+}
+
 fn push_capped(acc: &mut String, extra: &str) -> bool {
     if extra.is_empty() {
         return true;
@@ -145,4 +174,22 @@ fn push_capped(acc: &mut String, extra: &str) -> bool {
     }
     acc.push_str(extra);
     true
+}
+
+#[cfg(test)]
+mod tests {
+    use super::take_complete_lines;
+
+    #[test]
+    fn a_multibyte_character_split_across_chunks_stays_one_line() {
+        let mut buf = Vec::new();
+        let first =
+            take_complete_lines(&mut buf, b"{\"message\":{\"content\":\"caf\xc3").expect("first");
+        assert!(first.is_empty(), "{first:?}");
+        assert!(!buf.is_empty(), "the split character was dropped");
+        let second = take_complete_lines(&mut buf, b"\xa9\"}}\n").expect("second");
+        assert_eq!(second.len(), 1, "{second:?}");
+        assert!(second[0].contains("caf\u{e9}"), "{second:?}");
+        assert!(buf.is_empty(), "complete line left a tail: {buf:?}");
+    }
 }

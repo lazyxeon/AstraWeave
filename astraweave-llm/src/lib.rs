@@ -29,6 +29,9 @@ pub fn bounded_model_text(text: &str) -> &str {
 ///
 /// Empty lines and invalid UTF-8 still count. Extracted content is capped
 /// separately at [`MAX_MODEL_JSON_BYTES`].
+///
+/// The budget is inclusive. Exactly [`MAX_MODEL_STREAM_BYTES`] is kept, and
+/// one more byte fails. [`append_capped`] uses the same `>` check.
 #[cfg(feature = "ollama")]
 pub fn note_stream_bytes(seen: &mut usize, extra: usize) -> Result<()> {
     *seen = seen.saturating_add(extra);
@@ -39,6 +42,17 @@ pub fn note_stream_bytes(seen: &mut usize, extra: usize) -> Result<()> {
         );
     }
     Ok(())
+}
+
+/// Keep `text` when it fits in the 64 KiB content cap.
+///
+/// Exactly [`MAX_MODEL_JSON_BYTES`] is returned. One more byte is an error.
+#[cfg(feature = "ollama")]
+fn finish_capped(text: String) -> Result<String> {
+    if text.len() > MAX_MODEL_JSON_BYTES {
+        bail!("model text exceeds 64 KiB cap ({} bytes)", text.len());
+    }
+    Ok(text)
 }
 
 #[cfg(feature = "ollama")]
@@ -532,6 +546,27 @@ mod ndjson_scan_tests {
             .expect("stream ended");
         let err = item.expect_err("content");
         assert!(err.to_string().contains("64 KiB"), "{err}");
+    }
+
+    #[test]
+    fn budgets_keep_exactly_the_cap() {
+        let mut seen = 0usize;
+        assert!(note_stream_bytes(&mut seen, MAX_MODEL_STREAM_BYTES).is_ok());
+        assert_eq!(seen, MAX_MODEL_STREAM_BYTES);
+        let over = note_stream_bytes(&mut seen, 1).expect_err("one past the raw budget");
+        assert!(over.to_string().contains("model stream exceeds"), "{over}");
+
+        let exact = "x".repeat(MAX_MODEL_JSON_BYTES);
+        assert_eq!(
+            finish_capped(exact.clone()).expect("exact").len(),
+            MAX_MODEL_JSON_BYTES
+        );
+        let text_over = finish_capped(format!("{exact}y")).expect_err("one past the content cap");
+        assert!(text_over.to_string().contains("64 KiB"), "{text_over}");
+
+        let mut acc = String::new();
+        assert!(append_capped(&mut acc, &exact).is_ok());
+        assert!(append_capped(&mut acc, "y").is_err());
     }
 }
 
@@ -1445,21 +1480,33 @@ impl LlmClient for OllamaChatClient {
                             break;
                         }
                         raw.extend_from_slice(&chunk);
+                        // One pass over this chunk. `drain(..=pos)` once per
+                        // newline shifts the whole tail each time, which is
+                        // quadratic on a newline-only body.
+                        let mut consumed = 0usize;
                         let mut capped = false;
-                        while let Some(pos) = raw.iter().position(|&b| b == b'\n') {
-                            let mut line_bytes: Vec<u8> = raw.drain(..=pos).collect();
-                            if line_bytes.last() == Some(&b'\n') {
-                                line_bytes.pop();
+                        while consumed < raw.len() {
+                            if stream_started.elapsed() >= overall {
+                                body_error = Some(anyhow::anyhow!("streaming overall deadline"));
+                                capped = true;
+                                break;
                             }
-                            if line_bytes.last() == Some(&b'\r') {
-                                line_bytes.pop();
+                            let Some(rel) = raw[consumed..].iter().position(|&b| b == b'\n') else {
+                                break;
+                            };
+                            let nl = consumed + rel;
+                            let mut end_line = nl;
+                            if end_line > consumed && raw[end_line - 1] == b'\r' {
+                                end_line -= 1;
                             }
+                            let line_bytes = &raw[consumed..end_line];
+                            consumed = nl + 1;
                             if line_bytes.is_empty() {
                                 continue;
                             }
                             // Incomplete scalars stay in `raw` until a later chunk
                             // finishes the line, so a split UTF-8 character is kept.
-                            let line = match String::from_utf8(line_bytes) {
+                            let line = match std::str::from_utf8(line_bytes) {
                                 Ok(line) => line,
                                 Err(_) => {
                                     body_error =
@@ -1482,6 +1529,11 @@ impl LlmClient for OllamaChatClient {
                                 capped = true;
                                 break;
                             }
+                        }
+                        if consumed == raw.len() {
+                            raw.clear();
+                        } else if consumed > 0 {
+                            raw.drain(..consumed);
                         }
                         if capped {
                             break;
@@ -1518,7 +1570,7 @@ impl LlmClient for OllamaChatClient {
                                     "[ollama] timing stream: ttfb={}ms, total={}ms (early-exit)",
                                     ttfb_ms, total_ms
                                 );
-                                return Ok(obj);
+                                return finish_capped(obj);
                             }
                             text = obj;
                             break;
@@ -1600,7 +1652,7 @@ impl LlmClient for OllamaChatClient {
                                 .unwrap_or(0);
                             let total_ms = start.elapsed().as_millis();
                             debug!("[ollama] timing stream: ttfb={}ms, total={}ms (early-exit salvage)", ttfb_ms, total_ms);
-                            return Ok(obj);
+                            return finish_capped(obj);
                         }
                         text = obj;
                     } else {
@@ -1617,7 +1669,7 @@ impl LlmClient for OllamaChatClient {
                                 "[ollama] timing stream: ttfb={}ms, total={}ms (early-exit buffer)",
                                 ttfb_ms, total_ms
                             );
-                            return Ok(obj);
+                            return finish_capped(obj);
                         }
                         text = obj;
                     } else {
@@ -1647,7 +1699,7 @@ impl LlmClient for OllamaChatClient {
         if let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) {
             // 1) { "response": "..." }
             if let Some(resp) = v.get("response").and_then(|r| r.as_str()) {
-                return Ok(resp.to_string());
+                return finish_capped(resp.to_string());
             }
 
             // 2) { "message": { "content": "..." } }
@@ -1656,10 +1708,10 @@ impl LlmClient for OllamaChatClient {
                     // If content contains a fenced code block or an embedded JSON object,
                     // try to extract and return that JSON directly to simplify downstream parsing.
                     if let Some(obj) = extract_json_object(content) {
-                        return Ok(obj);
+                        return finish_capped(obj);
                     }
                     let stripped = strip_code_fences(content);
-                    return Ok(stripped);
+                    return finish_capped(stripped);
                 }
             }
 
@@ -1668,15 +1720,16 @@ impl LlmClient for OllamaChatClient {
                 if let Some(first) = choices.first() {
                     if let Some(msg) = first.get("message") {
                         if let Some(content) = msg.get("content").and_then(|c| c.as_str()) {
-                            return Ok(content.to_string());
+                            return finish_capped(content.to_string());
                         }
                     }
                 }
             }
         }
 
-        // If no recognized JSON shape matched, return the raw text as a last resort
-        Ok(text)
+        // If no recognized JSON shape matched, return the raw text as a last resort.
+        // This covers a body with no newline, which never reached `append_capped`.
+        finish_capped(text)
     }
 }
 
