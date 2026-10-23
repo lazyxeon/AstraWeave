@@ -84,15 +84,16 @@ Return ONLY JSON with no commentary.
                     println!("stream err: {err:#}");
                     break;
                 }
-                let lines = match take_complete_lines(&mut buf, &b) {
-                    Ok(lines) => lines,
-                    Err(err) => {
-                        println!("stream err: {err:#}");
-                        break;
-                    }
-                };
                 let mut capped = false;
-                for line in lines {
+                let mut utf8_error: Option<anyhow::Error> = None;
+                for item in take_complete_lines(&mut buf, &b) {
+                    let line = match item {
+                        Ok(line) => line,
+                        Err(err) => {
+                            utf8_error = Some(err);
+                            break;
+                        }
+                    };
                     println!("LINE: {line}");
                     if let Ok(v) = serde_json::from_str::<serde_json::Value>(&line) {
                         if let Some(msg) = v.get("message") {
@@ -117,6 +118,12 @@ Return ONLY JSON with no commentary.
                         }
                     }
                 }
+                if let Some(err) = utf8_error {
+                    println!("stream err: {err:#}");
+                    println!("acc len {}", acc.len());
+                    std::fs::write("target/ollama_probe_assistant_acc.txt", &acc)?;
+                    return Err(err);
+                }
                 if capped {
                     println!("stream err: model text exceeds 64 KiB cap");
                     break;
@@ -136,8 +143,10 @@ Return ONLY JSON with no commentary.
 /// Append `chunk` and return complete lines.
 ///
 /// UTF-8 is checked per line. A multibyte character split across chunks stays
-/// in `buf` until the newline that finishes it.
-fn take_complete_lines(buf: &mut Vec<u8>, chunk: &[u8]) -> anyhow::Result<Vec<String>> {
+/// in `buf` until the newline that finishes it. A bad line is one error after
+/// the lines already accepted. Lines after it in this chunk are not decoded.
+/// The consumed prefix, including that bad line, is drained.
+fn take_complete_lines(buf: &mut Vec<u8>, chunk: &[u8]) -> Vec<Result<String, anyhow::Error>> {
     buf.extend_from_slice(chunk);
     let mut start = 0usize;
     let mut lines = Vec::new();
@@ -147,22 +156,30 @@ fn take_complete_lines(buf: &mut Vec<u8>, chunk: &[u8]) -> anyhow::Result<Vec<St
         if end_line > start && buf[end_line - 1] == b'\r' {
             end_line -= 1;
         }
-        if start < end_line {
-            let line = std::str::from_utf8(&buf[start..end_line])
-                .map_err(|_| anyhow::anyhow!("model stream line is not utf-8"))?;
-            let line = line.trim();
-            if !line.is_empty() {
-                lines.push(line.to_string());
+        let line_start = start;
+        start = nl + 1;
+        if line_start == end_line {
+            continue;
+        }
+        match std::str::from_utf8(&buf[line_start..end_line]) {
+            Ok(line) => {
+                let line = line.trim();
+                if !line.is_empty() {
+                    lines.push(Ok(line.to_string()));
+                }
+            }
+            Err(_) => {
+                lines.push(Err(anyhow::anyhow!("model stream line is not utf-8")));
+                break;
             }
         }
-        start = nl + 1;
     }
     if start == buf.len() {
         buf.clear();
     } else if start > 0 {
         buf.drain(..start);
     }
-    Ok(lines)
+    lines
 }
 
 fn push_capped(acc: &mut String, extra: &str) -> bool {
@@ -183,13 +200,33 @@ mod tests {
     #[test]
     fn a_multibyte_character_split_across_chunks_stays_one_line() {
         let mut buf = Vec::new();
-        let first =
-            take_complete_lines(&mut buf, b"{\"message\":{\"content\":\"caf\xc3").expect("first");
+        let first = take_complete_lines(&mut buf, b"{\"message\":{\"content\":\"caf\xc3");
         assert!(first.is_empty(), "{first:?}");
         assert!(!buf.is_empty(), "the split character was dropped");
-        let second = take_complete_lines(&mut buf, b"\xa9\"}}\n").expect("second");
+        let second = take_complete_lines(&mut buf, b"\xa9\"}}\n");
         assert_eq!(second.len(), 1, "{second:?}");
-        assert!(second[0].contains("caf\u{e9}"), "{second:?}");
+        assert!(
+            second[0].as_ref().expect("line").contains("caf\u{e9}"),
+            "{second:?}"
+        );
         assert!(buf.is_empty(), "complete line left a tail: {buf:?}");
+    }
+
+    #[test]
+    fn a_good_line_before_bad_utf8_is_kept_and_stops() {
+        let mut buf = Vec::new();
+        let items = take_complete_lines(&mut buf, b"{\"message\":{\"content\":\"hello\"}}\n\xff\n");
+        assert_eq!(items.len(), 2, "{items:?}");
+        let line = items[0].as_ref().expect("good");
+        assert!(line.contains("hello"), "{line}");
+        assert!(
+            items[1]
+                .as_ref()
+                .expect_err("bad")
+                .to_string()
+                .contains("utf-8"),
+            "{items:?}"
+        );
+        assert!(buf.is_empty(), "the good line was not drained: {buf:?}");
     }
 }

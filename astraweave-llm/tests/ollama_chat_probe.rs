@@ -541,7 +541,7 @@ fn write_and_hold(sock: &mut std::net::TcpStream, header: &[u8], body: &[u8]) {
 }
 
 #[test]
-fn oversized_chat_body_stops_at_64kib() {
+fn oversized_chat_body_stops_at_the_stream_budget() {
     let addr = serve_oversized_ok();
     let exe = probe_exe(env!("CARGO_BIN_EXE_ollama_chat_probe"));
     let started = std::time::Instant::now();
@@ -598,7 +598,7 @@ fn serve_empty_lines() -> std::net::SocketAddr {
 }
 
 #[test]
-fn empty_ndjson_lines_stop_at_64kib() {
+fn empty_ndjson_lines_stop_at_the_stream_budget() {
     let addr = serve_empty_lines();
     let exe = probe_exe(env!("CARGO_BIN_EXE_ollama_chat_probe"));
     let started = std::time::Instant::now();
