@@ -571,6 +571,63 @@ fn empty_ndjson_lines_stop_at_64kib() {
     );
 }
 
+fn serve_bad_utf8_line() -> std::net::SocketAddr {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+    let addr = listener.local_addr().expect("addr");
+    std::thread::spawn(move || {
+        let Ok((mut sock, _)) = listener.accept() else {
+            return;
+        };
+        read_http_headers(&mut sock);
+        let body = b"\xff\n";
+        let header = format!(
+            "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+            body.len()
+        );
+        write_and_hold(&mut sock, header.as_bytes(), body);
+    });
+    addr
+}
+
+#[test]
+fn invalid_utf8_line_is_an_error() {
+    let addr = serve_bad_utf8_line();
+    let exe = probe_exe(env!("CARGO_BIN_EXE_ollama_chat_probe"));
+    let started = std::time::Instant::now();
+    let mut child = std::process::Command::new(&exe)
+        .args(["complete", &format!("http://{addr}")])
+        .env("OLLAMA_LOW_LATENCY", "1")
+        .env("OLLAMA_TIMEOUT_SECS", "2")
+        .env("OLLAMA_EARLY_EXIT", "0")
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap_or_else(|err| panic!("spawn {}: {err}", exe.display()));
+    let status = loop {
+        if let Some(status) = child.try_wait().expect("wait") {
+            break status;
+        }
+        if started.elapsed() > std::time::Duration::from_secs(4) {
+            let _ = child.kill();
+            panic!("invalid utf-8 line was still open");
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    };
+    let output = child.wait_with_output().expect("output");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !status.success(),
+        "invalid utf-8 succeeded: {stdout} {stderr}"
+    );
+    assert!(
+        format!("{stdout} {stderr}")
+            .to_lowercase()
+            .contains("utf-8"),
+        "{stdout} {stderr}"
+    );
+}
+
 #[test]
 fn silent_accept_fails_near_the_header_timeout() {
     assert_headers_fail_near_timeout("complete", false);

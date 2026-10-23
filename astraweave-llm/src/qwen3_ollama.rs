@@ -769,8 +769,8 @@ impl LlmClient for Qwen3Ollama {
         crate::ensure_model_request(&self.url, self.allow_remote)?;
         use futures_util::StreamExt;
 
-        // `OLLAMA_TIMEOUT_SECS` bounds the header wait and each body read.
-        // It is not a total deadline, so a slow chunk stream is not cut off.
+        // `OLLAMA_TIMEOUT_SECS` bounds each body read. Thinking mode and the
+        // non-thinking scan also stop at an overall deadline.
         let idle = crate::stream_read_idle();
         let client = &self.client;
 
@@ -803,17 +803,20 @@ impl LlmClient for Qwen3Ollama {
                 self.model
             );
 
-            let response = crate::send_for_headers(idle, client.post(&url).json(&body).send())
-                .await
-                .context("Failed to send request to Ollama")?;
+            let response_json: serde_json::Value = crate::with_call_deadline(300, async {
+                let response = crate::send_for_headers(idle, client.post(&url).json(&body).send())
+                    .await
+                    .context("Failed to send request to Ollama")?;
 
-            if !response.status().is_success() {
-                anyhow::bail!("Ollama returned error: {}", response.status());
-            }
+                if !response.status().is_success() {
+                    anyhow::bail!("Ollama returned error: {}", response.status());
+                }
 
-            let response_json: serde_json::Value = crate::read_capped_json(response)
-                .await
-                .context("Failed to parse Ollama response")?;
+                crate::read_capped_json(response)
+                    .await
+                    .context("Failed to parse Ollama response")
+            })
+            .await?;
 
             let raw_text = extract_ollama_content(&response_json)?;
 
@@ -851,102 +854,112 @@ impl LlmClient for Qwen3Ollama {
 
         // Transform bytes → NDJSON lines → text chunks
         // Uses a byte buffer to handle chunks that split UTF-8 characters or JSON lines
+        let overall = idle.saturating_mul(2);
         let text_stream = byte_stream
-            .scan((Vec::<u8>::new(), 0usize), |state, chunk_result| {
-                let (buffer, seen) = state;
-                // Handle byte chunk errors
-                let chunk = match chunk_result {
-                    Ok(bytes) => bytes,
-                    Err(e) => {
-                        return futures_util::future::ready(Some(vec![Err(
-                            e.context("Stream error")
-                        )]));
+            .scan(
+                (Vec::<u8>::new(), 0usize, std::time::Instant::now()),
+                move |state, chunk_result| {
+                    let (buffer, seen, started) = state;
+                    if started.elapsed() >= overall {
+                        return futures_util::future::ready(Some(vec![Err(anyhow::anyhow!(
+                            "streaming overall deadline"
+                        ))]));
                     }
-                };
-
-                if let Err(err) = crate::note_stream_bytes(seen, chunk.len()) {
-                    return futures_util::future::ready(Some(vec![Err(err)]));
-                }
-                buffer.extend_from_slice(&chunk);
-
-                let mut results = Vec::new();
-
-                // Find the last newline character
-                // We only process up to the last newline to ensure we have complete JSON objects
-                if let Some(last_newline_pos) = buffer.iter().rposition(|&b| b == b'\n') {
-                    // Extract complete lines from buffer
-                    let complete_lines: Vec<u8> = buffer.drain(..=last_newline_pos).collect();
-
-                    // Parse extracted lines
-                    if let Ok(text) = String::from_utf8(complete_lines) {
-                        for line in text.lines() {
-                            if line.trim().is_empty() {
-                                continue;
-                            }
-
-                            // Parse NDJSON line
-                            match serde_json::from_str::<serde_json::Value>(line) {
-                                Ok(json) => {
-                                    // Extract content for this NDJSON line.
-                                    // Priority: message.content > message.thinking > response
-                                    let mut line_content = String::new();
-
-                                    // Primary: "message.content" field (Chat API format)
-                                    if let Some(content) = json["message"]["content"].as_str() {
-                                        if !content.is_empty() {
-                                            line_content = content.to_string();
-                                        }
-                                    }
-                                    // Fallback: Qwen3 may route output to "message.thinking"
-                                    // even with think=false, especially on complex prompts
-                                    if line_content.is_empty() {
-                                        if let Some(thinking) = json["message"]["thinking"].as_str()
-                                        {
-                                            if !thinking.is_empty() {
-                                                line_content = thinking.to_string();
-                                            }
-                                        }
-                                    }
-                                    // Fallback for Generate API format (just in case)
-                                    if line_content.is_empty() {
-                                        if let Some(response) = json["response"].as_str() {
-                                            if !response.is_empty() {
-                                                line_content = response.to_string();
-                                            }
-                                        }
-                                    }
-
-                                    if !line_content.is_empty() {
-                                        results.push(Ok(line_content));
-                                    }
-
-                                    // Check if done
-                                    if json["done"].as_bool() == Some(true) {
-                                        tracing::debug!("Streaming complete (done: true)");
-                                    }
-                                }
-                                Err(e) => {
-                                    tracing::warn!(
-                                        "Failed to parse NDJSON line: {} | Line: {}",
-                                        e,
-                                        line
-                                    );
-                                }
-                            }
+                    // Handle byte chunk errors
+                    let chunk = match chunk_result {
+                        Ok(bytes) => bytes,
+                        Err(e) => {
+                            return futures_util::future::ready(Some(vec![Err(
+                                e.context("Stream error")
+                            )]));
                         }
-                    } else {
-                        // This should be rare if we split on newlines, but possible if invalid UTF-8
-                        results.push(Err(anyhow::anyhow!("UTF-8 decode error in stream")));
-                    }
-                }
+                    };
 
-                // Return extracted results (empty vec if no complete lines yet)
-                if results.is_empty() {
-                    futures_util::future::ready(Some(vec![]))
-                } else {
-                    futures_util::future::ready(Some(results))
-                }
-            })
+                    if let Err(err) = crate::note_stream_bytes(seen, chunk.len()) {
+                        return futures_util::future::ready(Some(vec![Err(err)]));
+                    }
+                    buffer.extend_from_slice(&chunk);
+
+                    let mut results = Vec::new();
+
+                    // Find the last newline character
+                    // We only process up to the last newline to ensure we have complete JSON objects
+                    if let Some(last_newline_pos) = buffer.iter().rposition(|&b| b == b'\n') {
+                        // Extract complete lines from buffer
+                        let complete_lines: Vec<u8> = buffer.drain(..=last_newline_pos).collect();
+
+                        // Parse extracted lines
+                        if let Ok(text) = String::from_utf8(complete_lines) {
+                            for line in text.lines() {
+                                if line.trim().is_empty() {
+                                    continue;
+                                }
+
+                                // Parse NDJSON line
+                                match serde_json::from_str::<serde_json::Value>(line) {
+                                    Ok(json) => {
+                                        // Extract content for this NDJSON line.
+                                        // Priority: message.content > message.thinking > response
+                                        let mut line_content = String::new();
+
+                                        // Primary: "message.content" field (Chat API format)
+                                        if let Some(content) = json["message"]["content"].as_str() {
+                                            if !content.is_empty() {
+                                                line_content = content.to_string();
+                                            }
+                                        }
+                                        // Fallback: Qwen3 may route output to "message.thinking"
+                                        // even with think=false, especially on complex prompts
+                                        if line_content.is_empty() {
+                                            if let Some(thinking) =
+                                                json["message"]["thinking"].as_str()
+                                            {
+                                                if !thinking.is_empty() {
+                                                    line_content = thinking.to_string();
+                                                }
+                                            }
+                                        }
+                                        // Fallback for Generate API format (just in case)
+                                        if line_content.is_empty() {
+                                            if let Some(response) = json["response"].as_str() {
+                                                if !response.is_empty() {
+                                                    line_content = response.to_string();
+                                                }
+                                            }
+                                        }
+
+                                        if !line_content.is_empty() {
+                                            results.push(Ok(line_content));
+                                        }
+
+                                        // Check if done
+                                        if json["done"].as_bool() == Some(true) {
+                                            tracing::debug!("Streaming complete (done: true)");
+                                        }
+                                    }
+                                    Err(e) => {
+                                        tracing::warn!(
+                                            "Failed to parse NDJSON line: {} | Line: {}",
+                                            e,
+                                            line
+                                        );
+                                    }
+                                }
+                            }
+                        } else {
+                            // This should be rare if we split on newlines, but possible if invalid UTF-8
+                            results.push(Err(anyhow::anyhow!("UTF-8 decode error in stream")));
+                        }
+                    }
+
+                    // Return extracted results (empty vec if no complete lines yet)
+                    if results.is_empty() {
+                        futures_util::future::ready(Some(vec![]))
+                    } else {
+                        futures_util::future::ready(Some(results))
+                    }
+                },
+            )
             .flat_map(futures_util::stream::iter);
 
         Ok(Box::pin(text_stream))

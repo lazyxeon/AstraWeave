@@ -360,25 +360,36 @@ impl EmbeddingClient for RemoteEmbeddingClient {
         }
 
         let idle = astraweave_llm::stream_read_idle();
-        let response = astraweave_llm::send_for_headers(idle, req.send()).await?;
+        let expected = texts.len();
+        let dimensions = self.dimensions;
+        let cap = embedding_response_cap(expected, dimensions);
+        let response_data = astraweave_llm::with_call_deadline(idle.as_secs().max(1), async move {
+            let response = astraweave_llm::send_for_headers(idle, req.send()).await?;
 
-        if !response.status().is_success() {
-            return Err(anyhow::anyhow!("API request failed: {}", response.status()));
-        }
+            if !response.status().is_success() {
+                anyhow::bail!("API request failed: {}", response.status());
+            }
 
-        let cap = embedding_response_cap(texts.len(), self.dimensions);
-        let body = astraweave_llm::read_capped_text_limited(response, cap).await?;
-        let response_data: EmbeddingResponse =
-            serde_json::from_str(&body).context("embedding response")?;
-        for row in &response_data.data {
-            if row.embedding.len() != self.dimensions {
+            let body = astraweave_llm::read_capped_text_limited(response, cap).await?;
+            let response_data: EmbeddingResponse =
+                serde_json::from_str(&body).context("embedding response")?;
+            if response_data.data.len() != expected {
                 anyhow::bail!(
-                    "embedding length {} is not {}",
-                    row.embedding.len(),
-                    self.dimensions
+                    "embedding row count {} is not {expected}",
+                    response_data.data.len()
                 );
             }
-        }
+            for row in &response_data.data {
+                if row.embedding.len() != dimensions {
+                    anyhow::bail!(
+                        "embedding length {} is not {dimensions}",
+                        row.embedding.len()
+                    );
+                }
+            }
+            Ok(response_data)
+        })
+        .await?;
 
         Ok(response_data
             .data

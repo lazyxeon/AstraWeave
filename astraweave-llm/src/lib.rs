@@ -1083,9 +1083,8 @@ impl LlmClient for OllamaChatClient {
                             }
                             // Incomplete scalars stay in `raw` until a later chunk
                             // finishes the line, so a split UTF-8 character is kept.
-                            let Ok(line) = String::from_utf8(line_bytes) else {
-                                continue;
-                            };
+                            let line = String::from_utf8(line_bytes)
+                                .map_err(|_| anyhow::anyhow!("model stream line is not utf-8"))?;
                             let line = line.trim();
                             if line.is_empty() {
                                 continue;
