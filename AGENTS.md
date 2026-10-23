@@ -39,7 +39,7 @@ Every other rule: the owner task instruction, for that task only; then a nearer 
 
 `NavMesh::find_path` (`astar_tri`) breaks equal `f` with `partial_cmp` and no node id. The hashed route is `NavTiles::query_path`, which breaks equal `f` by the lower node id. Do not call `find_path` from a replayed tick.
 
-`Greybox::step` calls `BridgeAgent::step`. `BridgeAgent::refresh` calls `NavTiles::query_path` and stores `route_x_milli` from `(point.x * 1000.0) as i32`. `greybox_checkpoint` hashes that state. Do not rewire that tick onto `RuleOrchestrator`.
+`Greybox::step` calls `BridgeAgent::step`. `BridgeAgent::refresh` calls `NavTiles::query_path` and sets `route_x_milli` to the maximum of `(point.x * 1000.0) as i32` over `scratch.waypoints.iter().take(waypoint_len)`. That maximum starts at `i32::MIN`, so an empty path stores `i32::MIN`. `Greybox::state_hash` hashes the field. Do not rewire that tick onto `RuleOrchestrator`.
 
 `RuleOrchestrator` is the planner `ecs_ai_plugin` boxes for every companion, and the `PlannerMode::Rule` arm of `dispatch_planner`. `planner_pure` hashes that plan and `GoapOrchestrator` (`legacy_goap_plan`). Neither calls a model. With `ai-goap`, `dispatch_goap` calls `htn::gather_method(controller.gather)` and ignores the snapshot. That function is not `GoapOrchestrator`. Do not add a model call to a replayed tick.
 

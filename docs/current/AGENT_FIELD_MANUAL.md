@@ -288,7 +288,7 @@ The ECS scheduler is **deterministic single-threaded** per tick. Systems within 
 1. **PRE_SIMULATION** — Setup, initialization
 2. **PERCEPTION** — Build WorldSnapshots, update AI sensors
 3. **SIMULATION** — Game logic, cooldowns, state updates
-4. **SYNC** — ECS→legacy-World propagation (for `astraweave-core::ecs_adapter::build_app` consumers)
+4. **sync** — ECS→legacy-World propagation. `App::new` registers the string `sync` between `simulation` and `ai_planning`. `SystemStage` has no `SYNC` constant.
 5. **AI_PLANNING** — Generate PlanIntents from orchestrators
 6. **PHYSICS** — Apply forces, resolve collisions
 7. **POST_SIMULATION** — Cleanup, constraint resolution
