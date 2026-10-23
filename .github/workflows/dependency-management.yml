@@ -51,6 +51,24 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v5
 
+      # Prebuilt binaries, then the two checks, before rustup, apt, or the
+      # crate cache. A 20-minute setup used to cancel the job first.
+      - name: Install audit tools
+        run: |
+          bash .github/scripts/install-prebuilt-cargo-tool.sh cargo-audit
+          bash .github/scripts/install-prebuilt-cargo-tool.sh cargo-deny
+
+      # Fails the job. This is not the pull-request gate, and it does not
+      # close the ignore list. deny.toml [advisories].ignore and
+      # .cargo/audit.toml [advisories].ignore each list six IDs.
+      # security-audit.yml is the pull-request gate. #423 tracks a check
+      # that the ignore count in those two files does not rise.
+      - name: Run security audit
+        run: cargo audit
+
+      - name: Run cargo-deny check
+        run: cargo deny check
+
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.89.0
 
@@ -66,29 +84,8 @@ jobs:
           cache-targets: false
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
-      - name: Install audit tools
-        run: |
-          cargo install --locked cargo-audit || echo "cargo-audit already installed"
-          cargo install --locked cargo-deny || echo "cargo-deny already installed"
-          cargo install --locked cargo-outdated || echo "cargo-outdated already installed"
-
-      - name: Run security audit
-        run: |
-          echo "Running cargo audit..."
-          if cargo audit --ignore RUSTSEC-2020-0071; then
-            echo "✅ Cargo audit passed"
-          else
-            echo "⚠️  Cargo audit found issues - check output above"
-          fi
-
-      - name: Run cargo-deny check
-        run: |
-          if [ -f "deny.toml" ]; then
-            echo "Running cargo deny check..."
-            cargo deny check || echo "Deny check completed with warnings"
-          else
-            echo "deny.toml not found; skipping cargo-deny"
-          fi
+      - name: Install cargo-outdated
+        run: cargo install --locked --version 0.19.0 cargo-outdated
 
       - name: Check for outdated dependencies
         run: |

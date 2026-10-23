@@ -1,4 +1,4 @@
 ---
 alwaysApply: true
 ---
-always reference .github/copilot-instructions.md for full rules and instructions. update copilot-instructions.md with updates periodically to ensure accuracy over time.
+Follow AGENTS.md.
