@@ -445,7 +445,7 @@ impl ImpostorPass {
                 stencil: wgpu::StencilState::default(),
                 bias: wgpu::DepthBiasState {
                     constant: -2,
-                    slope_scale: -1.0,
+                    slope_scale: 0.0,
                     clamp: 0.0,
                 },
             }),
@@ -536,6 +536,19 @@ impl ImpostorPass {
     /// The facing direction matches the color-pass billboard. Alpha below
     /// 0.05 is discarded, same as the atlas silhouette. Previous positions
     /// are the last `upload_instances` set.
+    /// Write the current instance set into the previous buffer.
+    ///
+    /// The first enabled scene-vector frame uses the current view-projection
+    /// as the previous one, and the mesh slots were cleared. Impostor uploads
+    /// keep a one-frame delta while the pass is off. This drops that delta
+    /// so the first frame back on stores zero object motion, matching meshes.
+    pub fn align_history_to_current(&self, queue: &wgpu::Queue) {
+        if self.prev_cpu.is_empty() {
+            return;
+        }
+        queue.write_buffer(&self.prev_buffer, 0, bytemuck::cast_slice(&self.prev_cpu));
+    }
+
     pub fn prepare_scene_vectors(
         &self,
         queue: &wgpu::Queue,

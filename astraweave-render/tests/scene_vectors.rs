@@ -465,3 +465,112 @@ fn second_frame_matches_the_uv_delta_and_skips_a_culled_model() {
         );
     });
 }
+
+/// Particles and a terrain chunk used to fail at submit: their vertex buffers
+/// had no `COPY_SRC`, and a weather previous slot was whatever particle
+/// swap-remove had parked there last frame.
+#[test]
+fn weather_and_terrain_submit_when_scene_vectors_are_on() {
+    pollster::block_on(async {
+        const WIDTH: u32 = 64;
+        let mut renderer = Renderer::new_headless(WIDTH, WIDTH)
+            .await
+            .expect("headless");
+        let eye = glam::Vec3::new(0.0, 8.0, 16.0);
+        let target = glam::Vec3::new(0.0, 0.0, 0.0);
+        let projection =
+            astraweave_camera::Projection::perspective(60.0_f32.to_radians(), 1.0, 0.1, 80.0);
+        let view = glam::Mat4::look_at_rh(eye, target, glam::Vec3::Y);
+        renderer.update_view(&astraweave_camera::RenderView::new(
+            view,
+            &projection,
+            eye,
+            (target - eye).normalize(),
+        ));
+        renderer.set_scene_vectors_enabled(true);
+        renderer.set_weather(astraweave_render::WeatherKind::Rain);
+        renderer.set_weather_max(24);
+        renderer.tick_weather(0.05);
+        let first: Vec<glam::Vec3> = renderer
+            .weather_mut()
+            .active_motion()
+            .into_iter()
+            .map(|(_, pos)| pos)
+            .collect();
+        assert!(!first.is_empty(), "rain spawned no particles");
+        renderer.tick_weather(0.05);
+        let kept = renderer
+            .weather_mut()
+            .active_motion()
+            .into_iter()
+            .filter(|(prev, _)| first.iter().any(|pos| (*pos - *prev).length() < 1.0e-3))
+            .count();
+        assert!(
+            kept > 0,
+            "no rain particle kept its own previous position across swap-remove"
+        );
+        renderer.init_terrain_forward().expect("terrain");
+        let vertices = [
+            astraweave_render::terrain_material_manager::TerrainSplatVertex {
+                position: [-8.0, 0.0, -8.0],
+                normal: [0.0, 1.0, 0.0],
+                uv: [0.0, 0.0],
+            },
+            astraweave_render::terrain_material_manager::TerrainSplatVertex {
+                position: [8.0, 0.0, -8.0],
+                normal: [0.0, 1.0, 0.0],
+                uv: [1.0, 0.0],
+            },
+            astraweave_render::terrain_material_manager::TerrainSplatVertex {
+                position: [8.0, 0.0, 8.0],
+                normal: [0.0, 1.0, 0.0],
+                uv: [1.0, 1.0],
+            },
+            astraweave_render::terrain_material_manager::TerrainSplatVertex {
+                position: [-8.0, 0.0, 8.0],
+                normal: [0.0, 1.0, 0.0],
+                uv: [0.0, 1.0],
+            },
+        ];
+        let indices = [0u32, 1, 2, 0, 2, 3];
+        let map = [255u8, 0, 0, 255].repeat(16);
+        let maps = vec![map; 8];
+        let refs: Vec<&[u8]> = maps.iter().map(|bytes| bytes.as_slice()).collect();
+        renderer
+            .upload_terrain_chunk(7, &vertices, &indices, &refs, (4, 4))
+            .expect("chunk");
+        renderer
+            .upload_terrain_chunk(7, &vertices, &indices, &refs, (4, 4))
+            .expect("chunk replace");
+        let device = renderer.device().clone();
+        let target = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("weather terrain color"),
+            size: wgpu::Extent3d {
+                width: WIDTH,
+                height: WIDTH,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8UnormSrgb,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+            view_formats: &[],
+        });
+        let color = target.create_view(&wgpu::TextureViewDescriptor::default());
+        device.push_error_scope(wgpu::ErrorFilter::Validation);
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("weather terrain scene vectors"),
+        });
+        renderer
+            .draw_into(&color, None, &mut encoder)
+            .expect("draw_into");
+        renderer.queue().submit(std::iter::once(encoder.finish()));
+        let _ = device.poll(wgpu::MaintainBase::Wait);
+        let validation = device.pop_error_scope().await;
+        assert!(
+            validation.is_none(),
+            "particles or terrain failed validation: {validation:?}"
+        );
+    });
+}

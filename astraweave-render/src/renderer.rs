@@ -1106,7 +1106,6 @@ pub struct Renderer {
     plane_prev_instances: Option<wgpu::Buffer>,
     sphere_prev_instances: Option<wgpu::Buffer>,
     ext_prev_instances: Option<wgpu::Buffer>,
-    weather_prev_instances: Option<wgpu::Buffer>,
     /// Previous sphere transforms in `self.instances` order. Compacted with
     /// the same visibility mask as the current draw, so a sphere that leaves
     /// the frustum does not hand its matrix to the next slot.
@@ -3957,7 +3956,6 @@ fn vs(input: VSIn) -> VSOut {
             plane_prev_instances: None,
             sphere_prev_instances: None,
             ext_prev_instances: None,
-            weather_prev_instances: None,
             sphere_prev_transforms: Vec::new(),
             scene_vectors_prev_valid: false,
             scene_vector_last_copy_bytes: 0,
@@ -5813,7 +5811,6 @@ fn vs(input: VSIn) -> VSOut {
             self.plane_prev_instances = None;
             self.sphere_prev_instances = None;
             self.ext_prev_instances = None;
-            self.weather_prev_instances = None;
             self.sphere_prev_transforms.clear();
             for model in self.models.values_mut() {
                 model.scene_prev_instances = None;
@@ -6085,7 +6082,7 @@ fn vs(input: VSIn) -> VSOut {
             let Some(pass) = self.scene_vectors.as_ref() else {
                 return;
             };
-            pass.write_matrices(&queue, curr, prev, view, self.material_alpha_cutoff);
+            pass.stage_uniforms(&queue, curr, prev, view, self.material_alpha_cutoff);
             (
                 pass.pipeline().clone(),
                 pass.terrain_pipeline().clone(),
@@ -6168,13 +6165,11 @@ fn vs(input: VSIn) -> VSOut {
         }
         let weather_count = self.weather.particle_count() as u32;
         let weather_buf = self.weather.buffer().clone();
+        // Previous poses are uploaded with the particle, in slot order, after
+        // swap-remove. A GPU copy of the current buffer would pair slot i
+        // with whatever particle occupied it last frame.
         let weather_prev = if weather_count > 0 {
-            Some(Self::stage_prev_instances(
-                &device,
-                enc,
-                &weather_buf,
-                &mut self.weather_prev_instances,
-            ))
+            Some(self.weather.previous_buffer().clone())
         } else {
             None
         };
@@ -6197,9 +6192,9 @@ fn vs(input: VSIn) -> VSOut {
         let stamp = self.begin_named_stamp(enc, "scene_vectors");
         if let Some(weather_prev_buf) = weather_prev.as_ref() {
             if let Some(pass) = self.scene_vectors.as_ref() {
-                // Weather material cutoff is 0. The shared uniform still holds
-                // the mesh cutoff until this write.
-                pass.write_matrices(&queue, curr, prev, view, 0.0);
+                // Ordered with this pass. A queue write of cutoff 0 would be
+                // replaced by the mesh cutoff before submit.
+                pass.copy_weather_uniform(enc);
             }
             let mut rp = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("scene vectors weather"),
@@ -6244,16 +6239,21 @@ fn vs(input: VSIn) -> VSOut {
             rp.set_vertex_buffer(2, weather_prev_buf.slice(..));
             rp.draw_indexed(0..self.mesh_sphere.index_count, 0, 0..weather_count);
         }
-        if weather_count > 0 {
-            if let Some(pass) = self.scene_vectors.as_ref() {
-                pass.write_matrices(&queue, curr, prev, view, self.material_alpha_cutoff);
-            }
+        if let Some(pass) = self.scene_vectors.as_ref() {
+            pass.copy_mesh_uniform(enc);
         }
         {
             #[cfg(feature = "impostor-bake")]
             let impostor_draws = std::mem::take(&mut self.impostor_passes);
             #[cfg(feature = "impostor-bake")]
             for ip in impostor_draws.values() {
+                if !self.scene_vectors_prev_valid {
+                    // Meshes report zero object motion on this frame because
+                    // their previous buffers were dropped. Impostor uploads
+                    // keep advancing while the pass is off, so snap that
+                    // history to the current set before the draw.
+                    ip.align_history_to_current(&queue);
+                }
                 ip.prepare_scene_vectors(&queue, curr, prev, view);
             }
             let color_load = if weather_count > 0 {
@@ -6395,9 +6395,9 @@ fn vs(input: VSIn) -> VSOut {
             copy_bytes += current.size().min(prev_buf.size());
             Self::commit_prev_instances(enc, current, prev_buf);
         }
-        if let Some(prev_buf) = weather_prev.as_ref() {
-            copy_bytes += weather_buf.size().min(prev_buf.size());
-            Self::commit_prev_instances(enc, &weather_buf, prev_buf);
+        if weather_count > 0 {
+            let stride = std::mem::size_of::<crate::types::InstanceRaw>() as u64;
+            copy_bytes += u64::from(weather_count) * stride;
         }
         for name in &all_model_names {
             let Some(model) = self.models.get(name) else {
@@ -9718,7 +9718,9 @@ fn vs(input: VSIn) -> VSOut {
             .create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some("terrain-forward-chunk-vertices"),
                 contents: bytemuck::cast_slice(vertices),
-                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+                usage: wgpu::BufferUsages::VERTEX
+                    | wgpu::BufferUsages::COPY_DST
+                    | wgpu::BufferUsages::COPY_SRC,
             });
         let index_buffer = self
             .device
@@ -9743,6 +9745,10 @@ fn vs(input: VSIn) -> VSOut {
             }
         }
 
+        // Keep the buffer this key already had. The next scene-vector frame
+        // samples it as the previous positions instead of copying the new
+        // buffer onto itself.
+        let prev_vertex = tf.chunks.remove(&key).map(|chunk| chunk.vertex_buffer);
         tf.chunks.insert(
             key,
             TerrainChunkGpu {
@@ -9751,7 +9757,7 @@ fn vs(input: VSIn) -> VSOut {
                 index_count: indices.len() as u32,
                 aabb_min,
                 aabb_max,
-                prev_vertex: None,
+                prev_vertex,
             },
         );
         Ok(())
