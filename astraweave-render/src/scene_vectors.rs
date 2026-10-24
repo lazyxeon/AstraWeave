@@ -24,7 +24,11 @@ pub struct SceneVectorsPass {
     pipeline: wgpu::RenderPipeline,
     terrain_pipeline: wgpu::RenderPipeline,
     bind_group: wgpu::BindGroup,
+    /// Bound uniform. Updated by `copy_uniform` so a weather cutoff of 0 and
+    /// the mesh cutoff stay ordered with the passes that read them.
     matrices: wgpu::Buffer,
+    weather_uniform: wgpu::Buffer,
+    mesh_uniform: wgpu::Buffer,
 }
 
 fn instance_stride() -> wgpu::BufferAddress {
@@ -127,12 +131,23 @@ impl SceneVectorsPass {
                 count: None,
             }],
         });
+        let uniform_size = std::mem::size_of::<Matrices>() as u64;
         let matrices = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("scene vectors matrices"),
-            size: std::mem::size_of::<Matrices>() as u64,
+            size: uniform_size,
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
+        let scratch = |label: &str| {
+            device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some(label),
+                size: uniform_size,
+                usage: wgpu::BufferUsages::COPY_SRC | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            })
+        };
+        let weather_uniform = scratch("scene vectors weather uniform");
+        let mesh_uniform = scratch("scene vectors mesh uniform");
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("scene vectors matrices"),
             layout: &bind_layout,
@@ -191,14 +206,16 @@ impl SceneVectorsPass {
             depth_stencil: Some(wgpu::DepthStencilState {
                 format: wgpu::TextureFormat::Depth32Float,
                 depth_write_enabled: false,
-                // Less matches the color pass. A negative bias lets the same
-                // triangles pass against the depth they already wrote.
-                // Equal-depth overlaps are drawn in reverse color order, so
-                // the last fragment here is the one the color pass kept.
+                // Less matches the color pass. A constant bias of -2 lets the
+                // same triangles pass against the depth they already wrote.
+                // slope_scale stays 0: a negative slope pulls in triangles
+                // that are farther than the color pass kept. Equal-depth
+                // overlaps are drawn in reverse color order, so the last
+                // fragment here is the one the color pass kept.
                 depth_compare: wgpu::CompareFunction::Less,
                 bias: wgpu::DepthBiasState {
                     constant: -2,
-                    slope_scale: -1.0,
+                    slope_scale: 0.0,
                     clamp: 0.0,
                 },
                 stencil: wgpu::StencilState::default(),
@@ -245,14 +262,16 @@ impl SceneVectorsPass {
             depth_stencil: Some(wgpu::DepthStencilState {
                 format: wgpu::TextureFormat::Depth32Float,
                 depth_write_enabled: false,
-                // Less matches the color pass. A negative bias lets the same
-                // triangles pass against the depth they already wrote.
-                // Equal-depth overlaps are drawn in reverse color order, so
-                // the last fragment here is the one the color pass kept.
+                // Less matches the color pass. A constant bias of -2 lets the
+                // same triangles pass against the depth they already wrote.
+                // slope_scale stays 0: a negative slope pulls in triangles
+                // that are farther than the color pass kept. Equal-depth
+                // overlaps are drawn in reverse color order, so the last
+                // fragment here is the one the color pass kept.
                 depth_compare: wgpu::CompareFunction::Less,
                 bias: wgpu::DepthBiasState {
                     constant: -2,
-                    slope_scale: -1.0,
+                    slope_scale: 0.0,
                     clamp: 0.0,
                 },
                 stencil: wgpu::StencilState::default(),
@@ -265,12 +284,14 @@ impl SceneVectorsPass {
             terrain_pipeline,
             bind_group,
             matrices,
+            weather_uniform,
+            mesh_uniform,
         }
     }
 
-    pub fn write_matrices(
-        &self,
+    fn fill_uniform(
         queue: &wgpu::Queue,
+        buffer: &wgpu::Buffer,
         curr: glam::Mat4,
         prev: glam::Mat4,
         view: glam::Mat4,
@@ -283,7 +304,36 @@ impl SceneVectorsPass {
             alpha_cutoff,
             _pad: [0.0; 3],
         };
-        queue.write_buffer(&self.matrices, 0, bytemuck::bytes_of(&matrices));
+        queue.write_buffer(buffer, 0, bytemuck::bytes_of(&matrices));
+    }
+
+    /// Queue-write the weather cutoff (0) and the mesh cutoff into staging
+    /// buffers. [`Self::copy_uniform`] puts one of them into the bound
+    /// uniform inside the encoder, so the later write does not replace the
+    /// earlier one before `submit`.
+    pub fn stage_uniforms(
+        &self,
+        queue: &wgpu::Queue,
+        curr: glam::Mat4,
+        prev: glam::Mat4,
+        view: glam::Mat4,
+        mesh_cutoff: f32,
+    ) {
+        Self::fill_uniform(queue, &self.weather_uniform, curr, prev, view, 0.0);
+        Self::fill_uniform(queue, &self.mesh_uniform, curr, prev, view, mesh_cutoff);
+    }
+
+    pub fn copy_weather_uniform(&self, enc: &mut wgpu::CommandEncoder) {
+        self.copy_uniform(enc, &self.weather_uniform);
+    }
+
+    pub fn copy_mesh_uniform(&self, enc: &mut wgpu::CommandEncoder) {
+        self.copy_uniform(enc, &self.mesh_uniform);
+    }
+
+    fn copy_uniform(&self, enc: &mut wgpu::CommandEncoder, src: &wgpu::Buffer) {
+        let bytes = std::mem::size_of::<Matrices>() as u64;
+        enc.copy_buffer_to_buffer(src, 0, &self.matrices, 0, bytes);
     }
 
     pub fn pipeline(&self) -> &wgpu::RenderPipeline {

@@ -21,6 +21,8 @@ pub struct WeatherFx {
     /// Number of currently active particles in the pool.
     active_count: usize,
     buf: wgpu::Buffer,
+    /// Previous pose of `pool[0..active_count]`, in that order.
+    prev_buf: wgpu::Buffer,
     max: usize,
     /// Biome-driven tint multiplied into particle base colours.
     biome_tint: Vec3,
@@ -35,18 +37,63 @@ pub struct WeatherFx {
 #[derive(Clone, Copy, Debug)]
 struct Particle {
     pos: Vec3,
+    /// World position before this tick. Swap-remove moves this with the
+    /// particle, so slot `i` is not some other particle's last pose.
+    prev_pos: Vec3,
     vel: Vec3,
     life: f32,
     color: [f32; 4],
     scale: Vec3,
 }
 
+fn instance_raw(p: &Particle, pos: Vec3, tint: Vec3) -> InstanceRaw {
+    let m = Mat4::from_scale_rotation_translation(p.scale, glam::Quat::IDENTITY, pos);
+    let tinted = [
+        p.color[0] * tint.x,
+        p.color[1] * tint.y,
+        p.color[2] * tint.z,
+        p.color[3],
+    ];
+    InstanceRaw {
+        model: m.to_cols_array_2d(),
+        normal_matrix: [
+            m.inverse().transpose().x_axis.truncate().to_array(),
+            m.inverse().transpose().y_axis.truncate().to_array(),
+            m.inverse().transpose().z_axis.truncate().to_array(),
+        ],
+        color: tinted,
+        material_id: 0,
+        _padding: [0; 3],
+    }
+}
+
+fn particle(pos: Vec3, vel: Vec3, life: f32, color: [f32; 4], scale: Vec3) -> Particle {
+    Particle {
+        pos,
+        prev_pos: pos,
+        vel,
+        life,
+        color,
+        scale,
+    }
+}
+
 impl WeatherFx {
     pub fn new(device: &wgpu::Device, max: usize) -> Self {
+        let usage = wgpu::BufferUsages::VERTEX
+            | wgpu::BufferUsages::COPY_DST
+            | wgpu::BufferUsages::COPY_SRC;
+        let size = (max * std::mem::size_of::<InstanceRaw>()) as u64;
         let buf = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("weather inst"),
-            size: (max * std::mem::size_of::<InstanceRaw>()) as u64,
-            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+            size,
+            usage,
+            mapped_at_creation: false,
+        });
+        let prev_buf = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("weather prev inst"),
+            size,
+            usage,
             mapped_at_creation: false,
         });
         Self {
@@ -54,6 +101,7 @@ impl WeatherFx {
             pool: Vec::with_capacity(max),
             active_count: 0,
             buf,
+            prev_buf,
             max,
             biome_tint: Vec3::ONE, // neutral tint
             density: 1.0,
@@ -110,10 +158,20 @@ impl WeatherFx {
         }
         self.max = new_max;
         // Reallocate GPU buffer to fit the new maximum
+        let usage = wgpu::BufferUsages::VERTEX
+            | wgpu::BufferUsages::COPY_DST
+            | wgpu::BufferUsages::COPY_SRC;
+        let size = (new_max * std::mem::size_of::<InstanceRaw>()) as u64;
         self.buf = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("weather inst"),
-            size: (new_max * std::mem::size_of::<InstanceRaw>()) as u64,
-            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+            size,
+            usage,
+            mapped_at_creation: false,
+        });
+        self.prev_buf = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("weather prev inst"),
+            size,
+            usage,
             mapped_at_creation: false,
         });
         // Trim existing particles if they exceed the new cap
@@ -140,6 +198,20 @@ impl WeatherFx {
         self.active_count
     }
 
+    /// Previous-instance buffer, one [`InstanceRaw`] per active particle, in
+    /// the same order as [`Self::buffer`].
+    pub fn previous_buffer(&self) -> &wgpu::Buffer {
+        &self.prev_buf
+    }
+
+    /// `(previous position, current position)` for each active particle.
+    pub fn active_motion(&self) -> Vec<(Vec3, Vec3)> {
+        self.pool[..self.active_count]
+            .iter()
+            .map(|p| (p.prev_pos, p.pos))
+            .collect()
+    }
+
     pub fn update(&mut self, queue: &wgpu::Queue, dt: f32, camera_pos: Vec3) {
         // Early-out: skip all work (including GPU upload) when weather is off and no particles remain
         if self.kind == WeatherKind::None && self.active_count == 0 {
@@ -157,33 +229,20 @@ impl WeatherFx {
             WeatherKind::Sandstorm => self.tick_sandstorm(dt, effective_max, camera_pos),
             WeatherKind::WindTrails => self.tick_wind(dt, effective_max, camera_pos),
         }
-        // Apply biome tint and upload
+        // Apply biome tint and upload. Previous poses are the positions
+        // captured at the start of this tick, after swap-remove, so each
+        // slot's previous matrix is that particle's own last pose.
         let tint = self.biome_tint;
-        let raws: Vec<InstanceRaw> = self.pool[..self.active_count]
-            .iter()
-            .map(|p| {
-                let m = Mat4::from_scale_rotation_translation(p.scale, glam::Quat::IDENTITY, p.pos);
-                // Mix particle colour with biome tint (RGB only, preserve alpha)
-                let tinted = [
-                    p.color[0] * tint.x,
-                    p.color[1] * tint.y,
-                    p.color[2] * tint.z,
-                    p.color[3],
-                ];
-                InstanceRaw {
-                    model: m.to_cols_array_2d(),
-                    normal_matrix: [
-                        m.inverse().transpose().x_axis.truncate().to_array(),
-                        m.inverse().transpose().y_axis.truncate().to_array(),
-                        m.inverse().transpose().z_axis.truncate().to_array(),
-                    ],
-                    color: tinted,
-                    material_id: 0,
-                    _padding: [0; 3],
-                }
-            })
-            .collect();
-        queue.write_buffer(&self.buf, 0, bytemuck::cast_slice(&raws));
+        let mut raws = Vec::with_capacity(self.active_count);
+        let mut prev_raws = Vec::with_capacity(self.active_count);
+        for p in &self.pool[..self.active_count] {
+            raws.push(instance_raw(p, p.pos, tint));
+            prev_raws.push(instance_raw(p, p.prev_pos, tint));
+        }
+        if !raws.is_empty() {
+            queue.write_buffer(&self.buf, 0, bytemuck::cast_slice(&raws));
+            queue.write_buffer(&self.prev_buf, 0, bytemuck::cast_slice(&prev_raws));
+        }
     }
 
     fn tick_rain(&mut self, dt: f32, max: usize, cam: Vec3) {
@@ -194,23 +253,24 @@ impl WeatherFx {
             let jitter_x = rng.random_range(-0.3..0.3);
             let jitter_z = rng.random_range(-0.3..0.3);
             let speed_var = rng.random_range(0.7..1.3);
-            let p = Particle {
-                pos: vec3(
-                    cam.x + rng.random_range(-30.0..30.0),
-                    cam.y + rng.random_range(8.0..25.0),
-                    cam.z + rng.random_range(-30.0..30.0),
-                ),
-                vel: vec3(
+            let pos = vec3(
+                cam.x + rng.random_range(-30.0..30.0),
+                cam.y + rng.random_range(8.0..25.0),
+                cam.z + rng.random_range(-30.0..30.0),
+            );
+            let p = particle(
+                pos,
+                vec3(
                     (wind_offset.x + jitter_x) * speed_var,
                     -20.0 * speed_var,
                     (wind_offset.z + jitter_z) * speed_var,
                 ),
-                life: rng.random_range(0.5..1.5),
+                rng.random_range(0.5..1.5),
                 // Bright translucent white-blue so rain is visible against dark backgrounds
-                color: [0.85, 0.9, 1.0, 0.6],
+                [0.85, 0.9, 1.0, 0.6],
                 // Thin elongated streaks (stretched in Y for falling rain look)
-                scale: vec3(0.015, 0.6, 0.015),
-            };
+                vec3(0.015, 0.6, 0.015),
+            );
             if self.active_count < self.pool.len() {
                 self.pool[self.active_count] = p;
             } else {
@@ -222,6 +282,7 @@ impl WeatherFx {
         let mut i = 0;
         while i < self.active_count {
             let p = &mut self.pool[i];
+            p.prev_pos = p.pos;
             p.life -= dt;
             // Subtle per-frame turbulence: small random drift
             p.vel.x += rng.random_range(-0.5..0.5) * dt;
@@ -241,21 +302,22 @@ impl WeatherFx {
         let mut rng = rand::rng();
         let wind_offset = self.wind_dir * (self.wind_strength * 2.0);
         while self.active_count < max {
-            let p = Particle {
-                pos: vec3(
-                    cam.x + rng.random_range(-35.0..35.0),
-                    cam.y + rng.random_range(10.0..25.0),
-                    cam.z + rng.random_range(-35.0..35.0),
-                ),
-                vel: vec3(
+            let pos = vec3(
+                cam.x + rng.random_range(-35.0..35.0),
+                cam.y + rng.random_range(10.0..25.0),
+                cam.z + rng.random_range(-35.0..35.0),
+            );
+            let p = particle(
+                pos,
+                vec3(
                     wind_offset.x + rng.random_range(-0.5..0.5),
                     rng.random_range(-2.5..-1.5),
                     wind_offset.z + rng.random_range(-0.5..0.5),
                 ),
-                life: rng.random_range(3.0..6.0),
-                color: [1.0, 1.0, 1.0, 0.85],
-                scale: vec3(0.08, 0.08, 0.08),
-            };
+                rng.random_range(3.0..6.0),
+                [1.0, 1.0, 1.0, 0.85],
+                vec3(0.08, 0.08, 0.08),
+            );
             if self.active_count < self.pool.len() {
                 self.pool[self.active_count] = p;
             } else {
@@ -266,6 +328,7 @@ impl WeatherFx {
         let mut i = 0;
         while i < self.active_count {
             let p = &mut self.pool[i];
+            p.prev_pos = p.pos;
             p.life -= dt;
             let sway = (p.life * 2.0).sin() * 0.3;
             p.vel.x += sway * dt;
@@ -284,21 +347,22 @@ impl WeatherFx {
         let mut rng = rand::rng();
         let wind_speed = self.wind_strength * 15.0;
         while self.active_count < max {
-            let p = Particle {
-                pos: vec3(
-                    cam.x + rng.random_range(-50.0..50.0),
-                    cam.y + rng.random_range(-2.0..8.0),
-                    cam.z + rng.random_range(-50.0..50.0),
-                ),
-                vel: vec3(
+            let pos = vec3(
+                cam.x + rng.random_range(-50.0..50.0),
+                cam.y + rng.random_range(-2.0..8.0),
+                cam.z + rng.random_range(-50.0..50.0),
+            );
+            let p = particle(
+                pos,
+                vec3(
                     self.wind_dir.x * wind_speed + rng.random_range(-2.0..2.0),
                     rng.random_range(-1.0..2.0),
                     self.wind_dir.z * wind_speed + rng.random_range(-2.0..2.0),
                 ),
-                life: rng.random_range(0.8..2.5),
-                color: [0.85, 0.75, 0.55, 0.7],
-                scale: vec3(0.03, 0.03, 0.15),
-            };
+                rng.random_range(0.8..2.5),
+                [0.85, 0.75, 0.55, 0.7],
+                vec3(0.03, 0.03, 0.15),
+            );
             if self.active_count < self.pool.len() {
                 self.pool[self.active_count] = p;
             } else {
@@ -309,6 +373,7 @@ impl WeatherFx {
         let mut i = 0;
         while i < self.active_count {
             let p = &mut self.pool[i];
+            p.prev_pos = p.pos;
             p.life -= dt;
             p.vel.y += (rng.random_range(-1.0..1.0) as f32) * dt * 5.0;
             p.pos += p.vel * dt;
@@ -326,17 +391,18 @@ impl WeatherFx {
         let mut rng = rand::rng();
         let wind_vel = self.wind_dir * (self.wind_strength * 8.0);
         while self.active_count < max {
-            let p = Particle {
-                pos: vec3(
-                    cam.x + rng.random_range(-30.0..30.0),
-                    cam.y + rng.random_range(-1.0..4.0),
-                    cam.z + rng.random_range(-30.0..30.0),
-                ),
-                vel: vec3(wind_vel.x + 2.0, 0.0, wind_vel.z + 0.5),
-                life: rng.random_range(1.0..3.0),
-                color: [1.0, 1.0, 1.0, 0.3],
-                scale: vec3(0.05, 0.05, 0.8),
-            };
+            let pos = vec3(
+                cam.x + rng.random_range(-30.0..30.0),
+                cam.y + rng.random_range(-1.0..4.0),
+                cam.z + rng.random_range(-30.0..30.0),
+            );
+            let p = particle(
+                pos,
+                vec3(wind_vel.x + 2.0, 0.0, wind_vel.z + 0.5),
+                rng.random_range(1.0..3.0),
+                [1.0, 1.0, 1.0, 0.3],
+                vec3(0.05, 0.05, 0.8),
+            );
             if self.active_count < self.pool.len() {
                 self.pool[self.active_count] = p;
             } else {
@@ -347,6 +413,7 @@ impl WeatherFx {
         let mut i = 0;
         while i < self.active_count {
             let p = &mut self.pool[i];
+            p.prev_pos = p.pos;
             p.life -= dt;
             p.pos += p.vel * dt;
             if p.life <= 0.0 {

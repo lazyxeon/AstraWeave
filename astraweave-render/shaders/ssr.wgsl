@@ -161,8 +161,10 @@ fn ssr_main(@builtin(global_invocation_id) gid: vec3<u32>) {
         return;
     }
 
-    // Read depth from Hi-Z mip 0 (= full-resolution depth)
-    let depth = sample_hiz(uv, 0);
+    // `sample_hiz` flips Y for NDC UVs from `project_to_screen`. This pixel
+    // UV already has y = 0 at the top, so load that texel. The reconstruct
+    // maps it to NDC Y up, the same way SSGI does.
+    let depth = textureLoad(hiz_tex, pixel, 0).r;
     if (depth >= 1.0) {
         textureStore(ssr_output, pixel, vec4<f32>(0.0));
         return;
