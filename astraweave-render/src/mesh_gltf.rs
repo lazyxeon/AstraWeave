@@ -1,7 +1,7 @@
 use crate::mesh::CpuMesh;
 #[cfg(feature = "gltf-assets")]
 use crate::mesh::{compute_tangents, CpuImage, MeshVertex};
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Context, Result};
 
 pub struct GltfOptions {
     pub generate_tangents: bool,
@@ -16,20 +16,75 @@ impl Default for GltfOptions {
 }
 
 #[cfg(feature = "gltf-assets")]
+fn is_data_uri(uri: &str) -> bool {
+    uri.split_once(':')
+        .is_some_and(|(scheme, _)| scheme.eq_ignore_ascii_case("data"))
+}
+
+/// Percent-decode, reject a scheme, and return the path `safe_under` checked.
+#[cfg(feature = "gltf-assets")]
+fn jailed_gltf_file(base: &std::path::Path, uri: &str) -> Result<std::path::PathBuf> {
+    let relative = astraweave_asset::gltf_relative_uri(uri)?;
+    astraweave_security::path::safe_under(base, std::path::Path::new(&relative))
+        .map_err(|err| anyhow!("path traversal rejected: {err}"))
+}
+
+#[cfg(feature = "gltf-assets")]
 fn jail_gltf_uri(base: &std::path::Path, uri: &str) -> Result<()> {
-    if uri.starts_with("data:") {
+    if is_data_uri(uri) {
         return Ok(());
     }
-    let path_part = uri.split('?').next().unwrap_or(uri);
-    astraweave_security::path::safe_under(base, std::path::Path::new(path_part))
-        .map_err(|err| anyhow!("path traversal rejected: {err}"))?;
+    jailed_gltf_file(base, uri)?;
     Ok(())
+}
+
+/// Reject a container whose file size or GLB header length is over the buffer cap.
+///
+/// `gltf` allocates `header.length - 12` before this crate can see `byteLength`.
+/// A short file whose header says `u32::MAX` is that allocation. The file length
+/// alone does not stop it.
+#[cfg(feature = "gltf-assets")]
+fn reject_oversized_gltf_container(path: &std::path::Path) -> Result<()> {
+    let cap = astraweave_asset::MAX_GLTF_BUFFER;
+    let meta = std::fs::metadata(path).with_context(|| format!("open {}", path.display()))?;
+    if meta.is_file() && meta.len() > cap {
+        anyhow::bail!("{} is {} bytes, cap is {cap}", path.display(), meta.len());
+    }
+    let mut file = std::fs::File::open(path).with_context(|| format!("open {}", path.display()))?;
+    let mut header = [0u8; 12];
+    let read = std::io::Read::read(&mut file, &mut header)
+        .with_context(|| format!("read {}", path.display()))?;
+    if read >= 4 && &header[..4] == b"glTF" {
+        if read < 12 {
+            anyhow::bail!("glTF header is truncated");
+        }
+        let length = u32::from_le_bytes([header[8], header[9], header[10], header[11]]);
+        if (length as u64) < 12 {
+            anyhow::bail!("glTF header length {length} is shorter than the header");
+        }
+        if length as u64 > cap {
+            anyhow::bail!("glTF header length {length} exceeds {cap}");
+        }
+        if meta.is_file() && (length as u64) > meta.len() {
+            anyhow::bail!(
+                "glTF header length {length} exceeds the {} byte file",
+                meta.len()
+            );
+        }
+    }
+    Ok(())
+}
+
+#[cfg(feature = "gltf-assets")]
+fn open_capped_gltf(path: &std::path::Path) -> Result<gltf::Gltf> {
+    reject_oversized_gltf_container(path)?;
+    gltf::Gltf::open(path).map_err(|err| anyhow!("open glTF: {err}"))
 }
 
 #[cfg(feature = "gltf-assets")]
 fn reject_escaping_gltf_uris(path: &std::path::Path) -> Result<()> {
     let base = path.parent().unwrap_or_else(|| std::path::Path::new("."));
-    let doc = gltf::Gltf::open(path)?;
+    let doc = open_capped_gltf(path)?;
     for buffer in doc.buffers() {
         if let gltf::buffer::Source::Uri(uri) = buffer.source() {
             jail_gltf_uri(base, uri)?;
@@ -44,10 +99,172 @@ fn reject_escaping_gltf_uris(path: &std::path::Path) -> Result<()> {
 }
 
 #[cfg(feature = "gltf-assets")]
+fn dynamic_to_gltf_image(image: image::DynamicImage) -> gltf::image::Data {
+    let width = image.width();
+    let height = image.height();
+    let le = |values: &[u8]| values.to_vec();
+    let (pixels, format) = match &image {
+        image::DynamicImage::ImageLuma8(img) => (le(img.as_raw()), gltf::image::Format::R8),
+        image::DynamicImage::ImageLumaA8(img) => (le(img.as_raw()), gltf::image::Format::R8G8),
+        image::DynamicImage::ImageRgb8(img) => (le(img.as_raw()), gltf::image::Format::R8G8B8),
+        image::DynamicImage::ImageRgba8(img) => (le(img.as_raw()), gltf::image::Format::R8G8B8A8),
+        image::DynamicImage::ImageLuma16(img) => (
+            bytemuck::cast_slice(img.as_raw()).to_vec(),
+            gltf::image::Format::R16,
+        ),
+        image::DynamicImage::ImageLumaA16(img) => (
+            bytemuck::cast_slice(img.as_raw()).to_vec(),
+            gltf::image::Format::R16G16,
+        ),
+        image::DynamicImage::ImageRgb16(img) => (
+            bytemuck::cast_slice(img.as_raw()).to_vec(),
+            gltf::image::Format::R16G16B16,
+        ),
+        image::DynamicImage::ImageRgba16(img) => (
+            bytemuck::cast_slice(img.as_raw()).to_vec(),
+            gltf::image::Format::R16G16B16A16,
+        ),
+        image::DynamicImage::ImageRgb32F(img) => (
+            bytemuck::cast_slice(img.as_raw()).to_vec(),
+            gltf::image::Format::R32G32B32FLOAT,
+        ),
+        image::DynamicImage::ImageRgba32F(img) => (
+            bytemuck::cast_slice(img.as_raw()).to_vec(),
+            gltf::image::Format::R32G32B32A32FLOAT,
+        ),
+        _ => (
+            image.clone().to_rgba8().into_raw(),
+            gltf::image::Format::R8G8B8A8,
+        ),
+    };
+    gltf::image::Data {
+        pixels,
+        format,
+        width,
+        height,
+    }
+}
+
+#[cfg(feature = "gltf-assets")]
+fn load_capped_gltf_images(
+    document: &gltf::Document,
+    base: &std::path::Path,
+    buffers: &[gltf::buffer::Data],
+) -> Result<Vec<gltf::image::Data>> {
+    let cap = astraweave_asset::image_limits::MAX_IMAGE_ALLOC;
+    let mut images = Vec::new();
+    for image in document.images() {
+        let bytes = match image.source() {
+            gltf::image::Source::Uri { uri, .. } if is_data_uri(uri) => {
+                astraweave_asset::read_capped_data_image(uri)?
+            }
+            gltf::image::Source::Uri { uri, .. } => {
+                let path = jailed_gltf_file(base, uri)?;
+                astraweave_asset::read_limited_image_bytes(&path)
+                    .with_context(|| format!("read glTF image {}", path.display()))?
+            }
+            gltf::image::Source::View { view, .. } => {
+                let length = view.length() as u64;
+                if length > cap {
+                    anyhow::bail!("glTF image view is {length} bytes, cap is {cap}");
+                }
+                let parent = buffers
+                    .get(view.buffer().index())
+                    .ok_or_else(|| anyhow!("missing glTF buffer {}", view.buffer().index()))?;
+                let begin = view.offset();
+                let end = begin
+                    .checked_add(view.length())
+                    .ok_or_else(|| anyhow!("glTF image view offset overflows"))?;
+                if end > parent.0.len() {
+                    anyhow::bail!("glTF image view exceeds its buffer");
+                }
+                parent.0[begin..end].to_vec()
+            }
+        };
+        let decoded =
+            astraweave_asset::decode_limited_image(&bytes).context("decode glTF image")?;
+        images.push(dynamic_to_gltf_image(decoded));
+    }
+    Ok(images)
+}
+
+#[cfg(feature = "gltf-assets")]
+fn read_capped_path(path: &std::path::Path, cap: u64) -> Result<Vec<u8>> {
+    let meta = std::fs::metadata(path).with_context(|| format!("open {}", path.display()))?;
+    if meta.is_file() && meta.len() > cap {
+        anyhow::bail!("{} is {} bytes, cap is {cap}", path.display(), meta.len());
+    }
+    let mut file = std::fs::File::open(path).with_context(|| format!("open {}", path.display()))?;
+    let mut bytes = Vec::new();
+    std::io::Read::read_to_end(&mut std::io::Read::take(&mut file, cap), &mut bytes)
+        .with_context(|| format!("read {}", path.display()))?;
+    if !meta.is_file() && bytes.len() as u64 == cap {
+        anyhow::bail!("{} exceeds {cap} bytes", path.display());
+    }
+    Ok(bytes)
+}
+
+#[cfg(feature = "gltf-assets")]
+fn load_capped_gltf_buffers(
+    document: &gltf::Document,
+    base: &std::path::Path,
+    mut blob: Option<Vec<u8>>,
+) -> Result<Vec<gltf::buffer::Data>> {
+    let mut buffers = Vec::new();
+    for buffer in document.buffers() {
+        let declared = buffer.length() as u64;
+        if declared > astraweave_asset::MAX_GLTF_BUFFER {
+            anyhow::bail!(
+                "glTF buffer {} is {declared} bytes, cap is {}",
+                buffer.index(),
+                astraweave_asset::MAX_GLTF_BUFFER
+            );
+        }
+        let mut data = match buffer.source() {
+            gltf::buffer::Source::Bin => blob
+                .take()
+                .ok_or_else(|| anyhow!("missing glTF BIN for buffer {}", buffer.index()))?,
+            gltf::buffer::Source::Uri(uri) if is_data_uri(uri) => {
+                astraweave_asset::read_capped_data_uri(uri, astraweave_asset::MAX_GLTF_BUFFER)?
+            }
+            gltf::buffer::Source::Uri(uri) => {
+                let path = jailed_gltf_file(base, uri)?;
+                read_capped_path(&path, astraweave_asset::MAX_GLTF_BUFFER)?
+            }
+        };
+        if data.len() as u64 > astraweave_asset::MAX_GLTF_BUFFER {
+            anyhow::bail!(
+                "glTF buffer {} is {} bytes, cap is {}",
+                buffer.index(),
+                data.len(),
+                astraweave_asset::MAX_GLTF_BUFFER
+            );
+        }
+        if (data.len() as u64) < declared {
+            anyhow::bail!(
+                "glTF buffer {} is shorter than its declared length {declared}",
+                buffer.index()
+            );
+        }
+        while data.len() % 4 != 0 {
+            data.push(0);
+        }
+        buffers.push(gltf::buffer::Data(data));
+    }
+    Ok(buffers)
+}
+
+#[cfg(feature = "gltf-assets")]
 pub fn load_gltf(path: &std::path::Path, opts: &GltfOptions) -> Result<Vec<CpuMesh>> {
     use gltf::mesh::util::ReadIndices;
     reject_escaping_gltf_uris(path)?;
-    let (doc, buffers, images) = gltf::import(path)?;
+    let base = path.parent().unwrap_or_else(|| std::path::Path::new("."));
+    let gltf::Gltf {
+        document: doc,
+        blob,
+    } = open_capped_gltf(path)?;
+    let buffers = load_capped_gltf_buffers(&doc, base, blob)?;
+    let images = load_capped_gltf_images(&doc, base, &buffers)?;
     let mut meshes_out = Vec::new();
     for mesh in doc.meshes() {
         for prim in mesh.primitives() {
@@ -164,6 +381,285 @@ mod jail_tests {
             msg.contains("traversal") || msg.contains("rejected"),
             "{msg}"
         );
+    }
+
+    #[test]
+    fn load_gltf_reads_a_jailed_external_buffer() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let mut bin = Vec::new();
+        for value in [0.0f32, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0] {
+            bin.extend_from_slice(&value.to_le_bytes());
+        }
+        bin.extend_from_slice(&0u16.to_le_bytes());
+        bin.extend_from_slice(&1u16.to_le_bytes());
+        bin.extend_from_slice(&2u16.to_le_bytes());
+        bin.extend_from_slice(&[0, 0]);
+        std::fs::write(dir.path().join("tri.bin"), &bin).expect("write bin");
+        let path = dir.path().join("tri.gltf");
+        std::fs::write(
+            &path,
+            r#"{
+                "asset": {"version": "2.0"},
+                "buffers": [{"uri": "tri.bin", "byteLength": 44}],
+                "bufferViews": [
+                    {"buffer": 0, "byteOffset": 0, "byteLength": 36},
+                    {"buffer": 0, "byteOffset": 36, "byteLength": 6}
+                ],
+                "accessors": [
+                    {
+                        "bufferView": 0,
+                        "componentType": 5126,
+                        "count": 3,
+                        "type": "VEC3",
+                        "max": [1.0, 1.0, 0.0],
+                        "min": [0.0, 0.0, 0.0]
+                    },
+                    {
+                        "bufferView": 1,
+                        "componentType": 5123,
+                        "count": 3,
+                        "type": "SCALAR"
+                    }
+                ],
+                "meshes": [{
+                    "primitives": [{
+                        "attributes": {"POSITION": 0},
+                        "indices": 1
+                    }]
+                }]
+            }"#,
+        )
+        .expect("write gltf");
+        let meshes = load_gltf(
+            &path,
+            &GltfOptions {
+                generate_tangents: false,
+            },
+        )
+        .expect("load external buffer");
+        assert_eq!(meshes.len(), 1);
+        assert_eq!(meshes[0].vertices.len(), 3);
+        assert_eq!(meshes[0].indices, vec![0, 1, 2]);
+    }
+
+    #[test]
+    fn load_gltf_rejects_an_external_buffer_over_256_mib_from_metadata() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let bin = dir.path().join("big.bin");
+        let file = std::fs::File::create(&bin).expect("create");
+        let cap = astraweave_asset::MAX_GLTF_BUFFER;
+        file.set_len(cap + 1).expect("set_len");
+        drop(file);
+        let path = dir.path().join("big.gltf");
+        std::fs::write(
+            &path,
+            r#"{
+                "asset": {"version": "2.0"},
+                "buffers": [{"uri": "big.bin", "byteLength": 4}]
+            }"#,
+        )
+        .expect("write gltf");
+        let err = load_gltf(
+            &path,
+            &GltfOptions {
+                generate_tangents: false,
+            },
+        )
+        .expect_err("oversized external buffer");
+        let msg = format!("{err:#}");
+        assert!(
+            msg.contains(&cap.to_string()) && msg.contains(&(cap + 1).to_string()),
+            "{msg}"
+        );
+    }
+
+    #[test]
+    fn load_gltf_rejects_a_declared_buffer_over_256_mib() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("declared.gltf");
+        let cap = astraweave_asset::MAX_GLTF_BUFFER;
+        let declared = cap + 1;
+        std::fs::write(
+            &path,
+            format!(
+                r#"{{
+                    "asset": {{"version": "2.0"}},
+                    "buffers": [{{
+                        "uri": "data:application/octet-stream;base64,AAAA",
+                        "byteLength": {declared}
+                    }}]
+                }}"#
+            ),
+        )
+        .expect("write gltf");
+        let err = load_gltf(
+            &path,
+            &GltfOptions {
+                generate_tangents: false,
+            },
+        )
+        .expect_err("declared buffer over the cap");
+        let msg = format!("{err:#}");
+        assert!(
+            msg.contains(&declared.to_string()) && msg.contains(&cap.to_string()),
+            "{msg}"
+        );
+        assert!(!msg.contains("decode"), "{msg}");
+    }
+
+    #[test]
+    fn load_gltf_rejects_a_glb_header_longer_than_the_file() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("bomb.glb");
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(b"glTF");
+        bytes.extend_from_slice(&2u32.to_le_bytes());
+        bytes.extend_from_slice(&u32::MAX.to_le_bytes());
+        bytes.extend_from_slice(&[0u8; 8]);
+        std::fs::write(&path, &bytes).expect("write glb");
+        let started = std::time::Instant::now();
+        let err = load_gltf(
+            &path,
+            &GltfOptions {
+                generate_tangents: false,
+            },
+        )
+        .expect_err("header bomb");
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(2),
+            "GLB header allocated before the cap"
+        );
+        let msg = format!("{err:#}");
+        assert!(
+            msg.contains("header") && msg.contains(&u32::MAX.to_string()),
+            "{msg}"
+        );
+    }
+
+    #[test]
+    fn load_gltf_rejects_a_glb_header_shorter_than_twelve_bytes() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("short.glb");
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(b"glTF");
+        bytes.extend_from_slice(&2u32.to_le_bytes());
+        bytes.extend_from_slice(&8u32.to_le_bytes());
+        std::fs::write(&path, &bytes).expect("write glb");
+        let err = load_gltf(
+            &path,
+            &GltfOptions {
+                generate_tangents: false,
+            },
+        )
+        .expect_err("short header");
+        assert!(
+            format!("{err:#}").contains("shorter than the header"),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn load_gltf_rejects_a_file_scheme_and_an_encoded_parent() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let outside = dir.path().join("secret.bin");
+        std::fs::write(&outside, b"SENTINEL-SECRET").expect("secret");
+        let model = dir.path().join("model");
+        std::fs::create_dir(&model).expect("model dir");
+        let file_uri = format!("file://{}", outside.display());
+        let file_gltf = model.join("file.gltf");
+        std::fs::write(
+            &file_gltf,
+            format!(
+                r#"{{"asset":{{"version":"2.0"}},"buffers":[{{"uri":"{file_uri}","byteLength":15}}]}}"#
+            ),
+        )
+        .expect("write file uri");
+        let file_err = load_gltf(
+            &file_gltf,
+            &GltfOptions {
+                generate_tangents: false,
+            },
+        )
+        .expect_err("file scheme");
+        let file_msg = format!("{file_err:#}");
+        assert!(file_msg.contains("scheme"), "{file_msg}");
+        assert!(!file_msg.contains("SENTINEL-SECRET"), "{file_msg}");
+
+        let encoded = model.join("encoded.gltf");
+        std::fs::write(
+            &encoded,
+            r#"{"asset":{"version":"2.0"},"buffers":[{"uri":"%2e%2e/secret.bin","byteLength":15}]}"#,
+        )
+        .expect("write encoded");
+        let encoded_err = load_gltf(
+            &encoded,
+            &GltfOptions {
+                generate_tangents: false,
+            },
+        )
+        .expect_err("encoded parent");
+        let encoded_msg = format!("{encoded_err:#}").to_lowercase();
+        assert!(
+            encoded_msg.contains("traversal") || encoded_msg.contains("rejected"),
+            "{encoded_msg}"
+        );
+    }
+
+    #[test]
+    fn load_gltf_opens_a_percent_encoded_buffer_name() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let mut bin = Vec::new();
+        for value in [0.0f32, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0] {
+            bin.extend_from_slice(&value.to_le_bytes());
+        }
+        bin.extend_from_slice(&0u16.to_le_bytes());
+        bin.extend_from_slice(&1u16.to_le_bytes());
+        bin.extend_from_slice(&2u16.to_le_bytes());
+        bin.extend_from_slice(&[0, 0]);
+        std::fs::write(dir.path().join("my albedo.bin"), &bin).expect("write bin");
+        let path = dir.path().join("spaced.gltf");
+        std::fs::write(
+            &path,
+            r#"{
+                "asset": {"version": "2.0"},
+                "buffers": [{"uri": "my%20albedo.bin", "byteLength": 44}],
+                "bufferViews": [
+                    {"buffer": 0, "byteOffset": 0, "byteLength": 36},
+                    {"buffer": 0, "byteOffset": 36, "byteLength": 6}
+                ],
+                "accessors": [
+                    {
+                        "bufferView": 0,
+                        "componentType": 5126,
+                        "count": 3,
+                        "type": "VEC3",
+                        "max": [1.0, 1.0, 0.0],
+                        "min": [0.0, 0.0, 0.0]
+                    },
+                    {
+                        "bufferView": 1,
+                        "componentType": 5123,
+                        "count": 3,
+                        "type": "SCALAR"
+                    }
+                ],
+                "meshes": [{
+                    "primitives": [{
+                        "attributes": {"POSITION": 0},
+                        "indices": 1
+                    }]
+                }]
+            }"#,
+        )
+        .expect("write gltf");
+        let meshes = load_gltf(
+            &path,
+            &GltfOptions {
+                generate_tangents: false,
+            },
+        )
+        .expect("percent-decoded buffer");
+        assert_eq!(meshes[0].indices, vec![0, 1, 2]);
     }
 }
 
@@ -518,7 +1014,8 @@ fn sidecar_dirs(model_path: &std::path::Path) -> Vec<std::path::PathBuf> {
 
 #[cfg(all(feature = "gltf-assets", feature = "textures"))]
 fn load_rgba8(path: &std::path::Path) -> Result<crate::mesh::CpuImage> {
-    let image = image::open(path)?.to_rgba8();
+    let bytes = astraweave_asset::read_limited_image_bytes(path)?;
+    let image = astraweave_asset::decode_limited_image(&bytes)?.to_rgba8();
     Ok(crate::mesh::CpuImage {
         width: image.width(),
         height: image.height(),
@@ -601,5 +1098,30 @@ mod tests {
         assert!(meshes[0].normal_image.is_none());
         assert!(meshes[0].metallic_roughness_image.is_none());
         assert!(meshes[0].occlusion_image.is_none());
+    }
+
+    #[test]
+    fn load_gltf_rejects_an_oversized_data_image_before_decode() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("huge.gltf");
+        let payload_len = (astraweave_asset::image_limits::MAX_IMAGE_ALLOC as usize * 4 / 3) + 8;
+        let mut doc = String::from(
+            r#"{"asset":{"version":"2.0"},"images":[{"uri":"data:application/octet-stream;base64,"#,
+        );
+        doc.extend(std::iter::repeat('A').take(payload_len));
+        doc.push_str(r#""}]}"#);
+        std::fs::write(&path, doc).expect("write gltf");
+        let err = load_gltf(
+            &path,
+            &GltfOptions {
+                generate_tangents: false,
+            },
+        )
+        .expect_err("oversized data image");
+        let msg = format!("{err:#}");
+        assert!(
+            msg.contains(&astraweave_asset::image_limits::MAX_IMAGE_ALLOC.to_string()),
+            "{msg}"
+        );
     }
 }

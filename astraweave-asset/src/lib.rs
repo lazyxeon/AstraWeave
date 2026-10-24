@@ -12,9 +12,14 @@ use tokio::sync::watch;
 // Nanite preprocessing module
 pub mod nanite_preprocess;
 
+pub mod data_uri;
 pub mod image_limits;
+pub use data_uri::{
+    gltf_relative_uri, read_capped_data_image, read_capped_data_uri, MAX_GLTF_BUFFER,
+};
 pub use image_limits::{
-    capped_image_limits, decode_limited_image, open_limited_image, read_limited_image_bytes,
+    capped_image_limits, decode_limited_image, open_limited_image, read_capped_file,
+    read_limited_image_bytes,
 };
 
 // World Partition cell loader
@@ -300,7 +305,6 @@ pub mod blend_import {
 #[cfg(feature = "gltf")]
 pub mod gltf_loader {
     use anyhow::{anyhow, bail, Context, Result};
-    use base64::Engine as _;
     use gltf::Gltf;
 
     /// Minimal glTF loader prototype: validates header and detects JSON vs BIN format.
@@ -796,21 +800,18 @@ pub mod gltf_loader {
     }
 
     fn load_uri_bytes(uri: &str) -> Result<Vec<u8>> {
-        if let Some(rest) = uri.strip_prefix("data:") {
-            // data:[<mediatype>][;base64],<data>
-            let parts: Vec<&str> = rest.split(',').collect();
-            if parts.len() != 2 {
-                bail!("Invalid data URI")
-            }
-            let data = base64::engine::general_purpose::STANDARD.decode(parts[1])?;
-            Ok(data)
-        } else {
-            let base = std::env::current_dir().context("asset jail base")?;
-            let path = astraweave_security::path::safe_under(&base, std::path::Path::new(uri))
-                .map_err(|err| anyhow!("path traversal rejected: {err}"))?;
-            let bytes = std::fs::read(&path).with_context(|| format!("Read uri {uri}"))?;
-            Ok(bytes)
+        if uri
+            .split_once(':')
+            .is_some_and(|(scheme, _)| scheme.eq_ignore_ascii_case("data"))
+        {
+            return crate::read_capped_data_uri(uri, crate::MAX_GLTF_BUFFER);
         }
+        let relative = crate::gltf_relative_uri(uri)?;
+        let base = std::env::current_dir().context("asset jail base")?;
+        let path = astraweave_security::path::safe_under(&base, std::path::Path::new(&relative))
+            .map_err(|err| anyhow!("path traversal rejected: {err}"))?;
+        crate::read_capped_file(&path, crate::MAX_GLTF_BUFFER)
+            .with_context(|| format!("Read uri {uri}"))
     }
 
     fn decode_image_from_gltf(
@@ -819,23 +820,38 @@ pub mod gltf_loader {
     ) -> Result<ImageData> {
         match source {
             gltf::image::Source::View { view, mime_type: _ } => {
-                let buf_idx = view.buffer().index();
-                let offset = view.offset();
-                let length = view.length();
-                let data = &buffers
-                    .ok_or_else(|| anyhow!("Missing buffers for buffer view image"))?[buf_idx]
-                    .0
-                    .as_slice()[offset..offset + length];
-                decode_image_bytes(data)
+                let cap = crate::image_limits::MAX_IMAGE_ALLOC;
+                let length = view.length() as u64;
+                if length > cap {
+                    bail!("glTF image view is {length} bytes, cap is {cap}");
+                }
+                let parent = buffers
+                    .ok_or_else(|| anyhow!("Missing buffers for buffer view image"))?
+                    .get(view.buffer().index())
+                    .ok_or_else(|| anyhow!("missing glTF buffer {}", view.buffer().index()))?;
+                let begin = view.offset();
+                let end = begin
+                    .checked_add(view.length())
+                    .ok_or_else(|| anyhow!("glTF image view offset overflows"))?;
+                if end > parent.0.len() {
+                    bail!("glTF image view exceeds its buffer");
+                }
+                decode_image_bytes(&parent.0[begin..end])
             }
             gltf::image::Source::Uri { uri, .. } => {
-                let bytes = if uri.starts_with("data:") {
-                    load_uri_bytes(uri)?
+                let bytes = if uri
+                    .split_once(':')
+                    .is_some_and(|(scheme, _)| scheme.eq_ignore_ascii_case("data"))
+                {
+                    crate::read_capped_data_image(uri)?
                 } else {
+                    let relative = crate::gltf_relative_uri(uri)?;
                     let base = std::env::current_dir().context("asset jail base")?;
-                    let path =
-                        astraweave_security::path::safe_under(&base, std::path::Path::new(uri))
-                            .map_err(|err| anyhow!("path traversal rejected: {err}"))?;
+                    let path = astraweave_security::path::safe_under(
+                        &base,
+                        std::path::Path::new(&relative),
+                    )
+                    .map_err(|err| anyhow!("path traversal rejected: {err}"))?;
                     crate::read_limited_image_bytes(&path)
                         .with_context(|| format!("Read image uri {uri}"))?
                 };
@@ -874,6 +890,40 @@ pub mod gltf_loader {
             assert!(
                 msg.contains("limit") || msg.contains("dimension") || msg.contains("4096"),
                 "{msg}"
+            );
+        }
+
+        #[test]
+        fn image_view_past_the_buffer_is_an_error() {
+            let json = r#"{
+                "asset": {"version": "2.0"},
+                "buffers": [{"byteLength": 4}],
+                "bufferViews": [{"buffer": 0, "byteOffset": 2, "byteLength": 8}],
+                "images": [{"bufferView": 0, "mimeType": "image/png"}]
+            }"#;
+            let doc = gltf::Gltf::from_slice(json.as_bytes()).expect("gltf");
+            let buffers = vec![gltf::buffer::Data(vec![0, 0, 0, 0])];
+            let image = doc.images().next().expect("image");
+            let err = decode_image_from_gltf(image.source(), Some(&buffers))
+                .expect_err("view past the buffer");
+            assert!(format!("{err:#}").contains("exceeds"), "{err}");
+        }
+
+        #[test]
+        fn load_uri_bytes_rejects_a_file_over_the_buffer_cap() {
+            let cwd = std::env::current_dir().expect("cwd");
+            let dir = cwd.join(format!("target-uri-cap-{}", std::process::id()));
+            std::fs::create_dir_all(&dir).expect("dir");
+            let path = dir.join("big.bin");
+            let file = std::fs::File::create(&path).expect("create");
+            file.set_len(crate::MAX_GLTF_BUFFER + 1).expect("len");
+            drop(file);
+            let relative = path.strip_prefix(&cwd).expect("relative").to_path_buf();
+            let err = load_uri_bytes(relative.to_str().expect("utf8")).expect_err("over cap");
+            let _ = std::fs::remove_dir_all(&dir);
+            assert!(
+                format!("{err:#}").contains(&crate::MAX_GLTF_BUFFER.to_string()),
+                "{err}"
             );
         }
     }
