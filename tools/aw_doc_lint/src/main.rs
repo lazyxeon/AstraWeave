@@ -29,6 +29,8 @@
 //! `determinism-replay.yml` and must keep the frame-budget phrases, including
 //! `3.117 ms`. `README.md` must list open pulls as in progress and must not
 //! contain a frame figure. Player-facing docs must not use the retired game title.
+//! A failed read of a scanned file, including `docs/current/PROJECT_BRIEF.md`,
+//! fails the process.
 
 use anyhow::{bail, Context, Result};
 use clap::{Parser, ValueEnum};
@@ -592,14 +594,17 @@ fn resolve_root(cli: &Cli) -> Result<PathBuf> {
     ))
 }
 
+fn read_repo_file(root: &Path, rel: &str) -> Result<String> {
+    std::fs::read_to_string(root.join(rel)).with_context(|| format!("reading {rel}"))
+}
+
 fn main() -> Result<()> {
     let cli = Cli::parse();
     let root = resolve_root(&cli)?;
 
-    let spec = std::fs::read_to_string(root.join(SPEC_REL))
-        .with_context(|| format!("reading spec {SPEC_REL}"))?;
-    let allowlist_doc = std::fs::read_to_string(root.join(ALLOWLIST_REL))
-        .with_context(|| format!("reading allowlist {ALLOWLIST_REL}"))?;
+    let spec = read_repo_file(&root, SPEC_REL).context("reading the closed-vocabulary spec")?;
+    let allowlist_doc =
+        read_repo_file(&root, ALLOWLIST_REL).context("reading the closed-vocabulary allowlist")?;
     let lits = load_literals(&spec)?;
     let allow = load_allowlist(&allowlist_doc)?;
 
@@ -620,10 +625,7 @@ fn main() -> Result<()> {
     let mut scanned = 0usize;
 
     for f in &files {
-        let content = match std::fs::read_to_string(root.join(f)) {
-            Ok(c) => c,
-            Err(_) => continue, // unreadable/binary — skip
-        };
+        let content = read_repo_file(&root, f)?;
         scanned += 1;
         for (i, line) in content.lines().enumerate() {
             for hit in lint_line(line, &lits) {
@@ -657,20 +659,15 @@ fn main() -> Result<()> {
         eprintln!("doc-truth lint: clean (K=0 un-allowlisted).");
     }
 
-    let readme = std::fs::read_to_string(root.join(README_REL))
-        .with_context(|| format!("reading {README_REL}"))?;
-    let status = std::fs::read_to_string(root.join(STATUS_REL))
-        .with_context(|| format!("reading {STATUS_REL}"))?;
-    let workflow = std::fs::read_to_string(root.join(REPLAY_WORKFLOW_REL))
-        .with_context(|| format!("reading {REPLAY_WORKFLOW_REL}"))?;
+    let readme = read_repo_file(&root, README_REL)?;
+    let status = read_repo_file(&root, STATUS_REL)?;
+    let workflow = read_repo_file(&root, REPLAY_WORKFLOW_REL)?;
     let mut player_facing = Vec::new();
     for f in &tracked {
         if !is_player_facing(f) {
             continue;
         }
-        if let Ok(text) = std::fs::read_to_string(root.join(f)) {
-            player_facing.push((f.clone(), text));
-        }
+        player_facing.push((f.clone(), read_repo_file(&root, f)?));
     }
     let front = front_door_errors(&readme, &status, &workflow, &player_facing);
     for e in &front {
@@ -934,6 +931,21 @@ mod tests {
                 .collect::<Vec<_>>(),
             ["greybox_checkpoint", "quest_ticks", "persist_replay"]
         );
+    }
+
+    #[test]
+    fn failed_read_of_project_brief_is_an_error() {
+        assert!(is_player_facing("docs/current/PROJECT_BRIEF.md"));
+        let dir = std::env::temp_dir().join(format!("aw-doc-lint-missing-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir(&dir).unwrap();
+        let err = read_repo_file(&dir, "docs/current/PROJECT_BRIEF.md").unwrap_err();
+        let msg = format!("{err:#}");
+        assert!(
+            msg.contains("reading docs/current/PROJECT_BRIEF.md"),
+            "{msg}"
+        );
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]
