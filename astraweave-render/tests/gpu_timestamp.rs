@@ -25,13 +25,22 @@ fn recorded_pass_timestamp_is_positive() {
             );
             return;
         }
-        assert!(
-            renderer.timestamps_supported(),
-            "lavapipe should expose TIMESTAMP_QUERY with a positive period; adapter={} backend={} features={:?}",
-            renderer.gpu_adapter_name(),
-            renderer.gpu_backend(),
-            renderer.gpu_features()
-        );
+        if !renderer.timestamps_supported() {
+            if gpu_capability::skip_if_unavailable() {
+                gpu_capability::note_skip(&format!(
+                    "TIMESTAMP_QUERY is absent on adapter={} backend={}",
+                    renderer.gpu_adapter_name(),
+                    renderer.gpu_backend()
+                ));
+                return;
+            }
+            panic!(
+                "lavapipe should expose TIMESTAMP_QUERY with a positive period; adapter={} backend={} features={:?}",
+                renderer.gpu_adapter_name(),
+                renderer.gpu_backend(),
+                renderer.gpu_features()
+            );
+        }
         let device = renderer.device().clone();
         let color = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("timestamp color"),
@@ -81,6 +90,21 @@ fn draw_into_heavy_path_timestamps_and_models() {
         if !astraweave_render::gpu_fault::depth_texture_load_supported(renderer.device()) {
             eprintln!("skip draw_into_heavy_path: no depth textureLoad");
             return;
+        }
+        if !renderer.timestamps_supported() {
+            if gpu_capability::skip_if_unavailable() {
+                gpu_capability::note_skip(&format!(
+                    "TIMESTAMP_QUERY is absent on adapter={} backend={}",
+                    renderer.gpu_adapter_name(),
+                    renderer.gpu_backend()
+                ));
+                return;
+            }
+            panic!(
+                "lavapipe should expose TIMESTAMP_QUERY; adapter={} backend={}",
+                renderer.gpu_adapter_name(),
+                renderer.gpu_backend()
+            );
         }
         let device = renderer.device().clone();
         let positions = [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]];
