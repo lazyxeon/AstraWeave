@@ -261,7 +261,9 @@ impl VolumetricCloudsPass {
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
             format: fmt,
-            usage: wgpu::TextureUsages::STORAGE_BINDING | wgpu::TextureUsages::TEXTURE_BINDING,
+            usage: wgpu::TextureUsages::STORAGE_BINDING
+                | wgpu::TextureUsages::TEXTURE_BINDING
+                | wgpu::TextureUsages::COPY_SRC,
             view_formats: &[],
         });
         let composited_view =
@@ -556,7 +558,26 @@ impl VolumetricCloudsPass {
         }
     }
 
+    /// Copy the full-resolution scene-plus-clouds target onto `dst`.
+    ///
+    /// `dst` is the HDR scene. The post pass samples that texture, so the
+    /// presented frame contains the composite only after this copy.
+    pub fn copy_composite_onto(&self, encoder: &mut wgpu::CommandEncoder, dst: &wgpu::Texture) {
+        encoder.copy_texture_to_texture(
+            self.composited_texture.as_image_copy(),
+            dst.as_image_copy(),
+            wgpu::Extent3d {
+                width: self.width,
+                height: self.height,
+                depth_or_array_layers: 1,
+            },
+        );
+    }
+
     /// Copy current cloud output to history for next frame's temporal blend.
+    ///
+    /// The raymarch samples `cloud_history` as the previous frame. This copy
+    /// runs after that sample and stores this frame for the next one.
     pub fn copy_cloud_to_history(&self, encoder: &mut wgpu::CommandEncoder) {
         encoder.copy_texture_to_texture(
             wgpu::TexelCopyTextureInfo {

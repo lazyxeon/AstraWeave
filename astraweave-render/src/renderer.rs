@@ -5866,6 +5866,7 @@ fn vs(input: VSIn) -> VSOut {
     ) {
         let gen = self.resource_generation;
         let hdr = self.hdr_view.clone();
+        let hdr_tex = self.hdr_tex.clone();
         let device = self.device.clone();
         let queue = self.queue.clone();
         let width = self.config.width.max(1);
@@ -5901,6 +5902,7 @@ fn vs(input: VSIn) -> VSOut {
                 );
                 pass.execute(&device, enc, &hdr, depth, gen);
                 pass.copy_cloud_to_history(enc);
+                pass.copy_composite_onto(enc, &hdr_tex);
             }
         }
         if self.ssgi_on || self.taa_on || self.upscale_on {
