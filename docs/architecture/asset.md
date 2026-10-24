@@ -8,8 +8,8 @@ domain: rendering
 lifecycle_status: active
 integration_status: wired
 owns: [astraweave-asset, astraweave-asset-pipeline]
-doc_version: "1.7"
-last_verified_commit: d0539b08
+doc_version: "1.8"
+last_verified_commit: 37abc1d4
 ---
 
 # Architecture Trace: Asset System
@@ -20,9 +20,9 @@ last_verified_commit: d0539b08
 |---|---|
 | **System name** | Asset System (loading, cell loader, Nanite preprocess, asset pipeline) |
 | **Primary crates** | `astraweave-asset`, `astraweave-asset-pipeline` |
-| **Document version** | 1.7 |
-| **Last verified against commit** | `d0539b08` |
-| **Last verified date** | 2026-10-21 |
+| **Document version** | 1.8 |
+| **Last verified against commit** | `37abc1d4` |
+| **Last verified date** | 2026-10-24 |
 | **Status** | Active (mixed): glTF CPU loaders + cell loader + AssetDatabase are wired (`astraweave-asset` is VERIFIED-PRODUCTION); Nanite preprocess and the entire `astraweave-asset-pipeline` crate are in-design / dormant scaffolding. **R-series M1 trace-honesty (2026-06-30):** `astraweave-asset-pipeline` was individually **FALSE-PRODUCTION-READY** (R.0.B) — a present-tense over-claim at `lib.rs:4` over an ISLAND crate (no live caller). **R-series M2/E4 relabel-and-defer (2026-06-30):** E4 **resolved by relabel** — the `lib.rs:4` over-claim was rewritten to honest in-design status and the unused editor dep (`aw_editor/Cargo.toml:99`) was dropped, moving the crate **FALSE-PRODUCTION-READY → DORMANT-HONEST**. The BC7/KTX2 **cook path is NOT a v1.0 blocker** — the v1.0 render path consumes raw PNG→RGBA8 with no GPU-compressed-upload path, so cooking is a deferrable optimization **deferred to a post-v1.0 engine/compression-pipeline owner**. See `docs/audits/e4_cook_path_recon_2026-06.md`. |
 | **Owner notes** | First trace for this subsystem. `astraweave-asset` is one of the most-consumed untraced crates (9+ Cargo consumers). Derived from forensic data-flow analysis on 2026-06-24. |
 
