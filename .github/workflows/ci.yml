@@ -407,6 +407,7 @@ jobs:
           echo "AW_GPU_SKIP_LOG=${GITHUB_WORKSPACE}/target/gpu-skip-reasons.txt" >> "$GITHUB_ENV"
 
       - name: Workspace nextest
+        id: workspace-nextest
         env:
           AW_CI_FULL: "true"
           AW_CI_EXCLUDES: ${{ env.EXCLUDED_PACKAGES }}
@@ -416,6 +417,11 @@ jobs:
         if: always()
         shell: bash
         run: |
+          set -euo pipefail
+          if [ "${{ steps.workspace-nextest.outcome }}" != "success" ]; then
+            echo "::error title=GPU tests failed::Nextest failed. A skip log does not cover a panic or a failed GPU test."
+            exit 1
+          fi
           log="${AW_GPU_SKIP_LOG:-target/gpu-skip-reasons.txt}"
           if [ -s "$log" ]; then
             {
@@ -425,13 +431,13 @@ jobs:
               echo
             } >> "$GITHUB_STEP_SUMMARY"
             while IFS= read -r line; do
-              echo "- ${line}" >> "$GITHUB_STEP_SUMMARY"
-              echo "::warning title=GPU test skipped::$line"
-              echo "$line"
+              safe=${line//$'\r'/ }
+              safe=${safe//$'\n'/ }
+              safe=${safe//%/ }
+              echo "- ${safe}" >> "$GITHUB_STEP_SUMMARY"
+              echo "::warning title=GPU test skipped::${safe}"
+              echo "$safe"
             done < "$log"
-          elif [ "${AW_GPU_SKIP_IF_UNAVAILABLE:-}" = "1" ]; then
-            echo "::error title=GPU skips missing::AW_GPU_SKIP_IF_UNAVAILABLE is set but ${log} is empty. A GPU test returned success without recording a skip."
-            exit 1
           fi
 
   # Windows Test full: compile once, then run the same profile-ci set in

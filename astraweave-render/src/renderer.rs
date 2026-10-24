@@ -1521,18 +1521,7 @@ impl Renderer {
 
     pub async fn new_headless(width: u32, height: u32) -> Result<Self> {
         let instance = gpu_instance();
-        let adapter = match choose_adapter(&instance, None).await {
-            Ok(adapter) => adapter,
-            Err(err) => {
-                let text = format!("{err:#}");
-                // macOS Test full sets AW_GPU_SKIP_IF_UNAVAILABLE. Callers that
-                // only check `is_ok()` still need a line in the job summary.
-                if text.contains("No adapter") {
-                    let _ = record_gpu_skip(&text);
-                }
-                return Err(err);
-            }
-        };
+        let adapter = choose_adapter(&instance, None).await?;
 
         let (features, limits) = Self::requested_device(&adapter, false);
         let (device, queue) = adapter
@@ -1569,20 +1558,19 @@ impl Renderer {
     /// Headless renderer for tests.
     ///
     /// `None` only when `AW_GPU_SKIP_IF_UNAVAILABLE` is set and no adapter
-    /// exists. That skip is written to `target/gpu-skip-reasons.txt`. A
-    /// machine that should have lavapipe or a GPU still panics. The panic
-    /// stays in this function so every call site shares one failure path.
+    /// exists. The skip line is appended under the workspace `target/`
+    /// directory. `new_headless` does not write that file. A machine that
+    /// should have lavapipe or a GPU still panics.
     #[allow(clippy::panic)]
     pub async fn headless_for_tests(width: u32, height: u32) -> Option<Self> {
         match Self::new_headless(width, height).await {
             Ok(renderer) => Some(renderer),
             Err(err) => {
-                let reason = format!("{err:#}");
-                // `new_headless` already appended the skip line for a missing
-                // adapter. A device-creation failure is still a panic.
+                let reason = format!("{err}");
                 if std::env::var_os("AW_GPU_SKIP_IF_UNAVAILABLE").is_some()
                     && reason.contains("No adapter")
                 {
+                    record_gpu_skip_for_tests(&reason);
                     None
                 } else {
                     panic!("Failed to create headless renderer: {reason}");
@@ -11233,43 +11221,79 @@ fn install_device_error_handler(
     }));
 }
 
-fn record_gpu_skip(reason: &str) -> bool {
-    if std::env::var_os("AW_GPU_SKIP_IF_UNAVAILABLE").is_none() {
-        return false;
-    }
-    let current = std::thread::current();
-    let test = current.name().unwrap_or("unnamed-test");
-    let line = format!("{test}: {reason}");
-    eprintln!("SKIP(gpu): {line}");
-    let path = if let Some(path) = std::env::var_os("AW_GPU_SKIP_LOG") {
-        std::path::PathBuf::from(path)
-    } else {
-        let manifest = std::env::var("CARGO_MANIFEST_DIR").unwrap_or_else(|_| ".".to_string());
-        std::path::PathBuf::from(manifest)
-            .join("..")
-            .join("target")
-            .join("gpu-skip-reasons.txt")
+/// Append one skip line for a test that found no adapter.
+///
+/// `new_headless` does not call this. The file has to already live in the
+/// workspace `target/` directory. A missing directory is not created, and a
+/// failed write panics so the test does not pass without a line.
+#[allow(clippy::panic)]
+pub fn record_gpu_skip_for_tests(reason: &str) {
+    let target = existing_workspace_target();
+    let target = target.canonicalize().unwrap_or_else(|err| {
+        panic!(
+            "GPU skip log stays in the workspace target directory, missing at {}: {err}",
+            target.display()
+        )
+    });
+    let path = match std::env::var_os("AW_GPU_SKIP_LOG") {
+        Some(raw) => std::path::PathBuf::from(raw),
+        None => target.join("gpu-skip-reasons.txt"),
     };
-    if let Some(parent) = path.parent() {
-        let _ = std::fs::create_dir_all(parent);
+    let parent = path
+        .parent()
+        .unwrap_or_else(|| panic!("GPU skip log {} has no parent directory", path.display()));
+    let parent = parent.canonicalize().unwrap_or_else(|err| {
+        panic!(
+            "refusing to create a directory for GPU skip log {}: {err}",
+            path.display()
+        )
+    });
+    if parent != target {
+        panic!(
+            "GPU skip log {} is outside {}",
+            path.display(),
+            target.display()
+        );
     }
-    match std::fs::OpenOptions::new()
+    let test = std::thread::current()
+        .name()
+        .unwrap_or("unnamed-test")
+        .to_string();
+    let line = format!("SKIP(gpu): {test}: {}\n", one_skip_line(reason));
+    eprintln!("{}", line.trim_end());
+    let mut file = std::fs::OpenOptions::new()
         .create(true)
         .append(true)
         .open(&path)
-    {
-        Ok(mut file) => {
-            use std::io::Write;
-            let _ = writeln!(file, "SKIP(gpu): {line}");
-        }
-        Err(err) => {
-            eprintln!(
-                "SKIP(gpu): could not record the skip at {}: {err}",
-                path.display()
-            );
+        .unwrap_or_else(|err| panic!("could not record the GPU skip at {}: {err}", path.display()));
+    std::io::Write::write_all(&mut file, line.as_bytes())
+        .unwrap_or_else(|err| panic!("could not record the GPU skip at {}: {err}", path.display()));
+}
+
+fn one_skip_line(reason: &str) -> String {
+    reason
+        .chars()
+        .map(|ch| match ch {
+            '\n' | '\r' | '%' => ' ',
+            other => other,
+        })
+        .collect()
+}
+
+fn existing_workspace_target() -> std::path::PathBuf {
+    if let Some(dir) = std::env::var_os("CARGO_TARGET_DIR") {
+        return std::path::PathBuf::from(dir);
+    }
+    let manifest = std::path::PathBuf::from(
+        std::env::var_os("CARGO_MANIFEST_DIR").unwrap_or_else(|| std::ffi::OsString::from(".")),
+    );
+    for ancestor in manifest.ancestors() {
+        let candidate = ancestor.join("target");
+        if candidate.is_dir() {
+            return candidate;
         }
     }
-    true
+    manifest.join("target")
 }
 
 fn warp_requested() -> bool {

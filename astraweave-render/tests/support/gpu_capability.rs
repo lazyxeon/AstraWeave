@@ -11,7 +11,6 @@
 use std::collections::HashSet;
 use std::fs::OpenOptions;
 use std::io::Write;
-use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
 
 #[allow(dead_code)]
@@ -23,17 +22,6 @@ pub struct HeadlessGpu {
 
 pub fn skip_if_unavailable() -> bool {
     std::env::var_os("AW_GPU_SKIP_IF_UNAVAILABLE").is_some()
-}
-
-fn skip_log_path() -> PathBuf {
-    if let Some(path) = std::env::var_os("AW_GPU_SKIP_LOG") {
-        return PathBuf::from(path);
-    }
-    let manifest = std::env::var("CARGO_MANIFEST_DIR").unwrap_or_else(|_| ".".to_string());
-    PathBuf::from(manifest)
-        .join("..")
-        .join("target")
-        .join("gpu-skip-reasons.txt")
 }
 
 /// Record one skip reason. Repeated reasons from the same process are kept
@@ -49,8 +37,60 @@ pub fn note_skip(reason: &str) {
     if !guard.insert(line.clone()) {
         return;
     }
-    eprintln!("SKIP(gpu): {line}");
-    write_skip_line(&skip_log_path(), &line);
+    drop(guard);
+    write_skip_line(&skip_log_path(), &line).unwrap_or_else(|err| {
+        panic!(
+            "could not record the GPU skip at {}: {err}",
+            skip_log_path().display()
+        )
+    });
+}
+
+fn skip_log_path() -> std::path::PathBuf {
+    let target = existing_target_dir();
+    let target = target.canonicalize().unwrap_or_else(|err| {
+        panic!(
+            "GPU skip log stays in the workspace target directory, missing at {}: {err}",
+            target.display()
+        )
+    });
+    let path = match std::env::var_os("AW_GPU_SKIP_LOG") {
+        Some(raw) => std::path::PathBuf::from(raw),
+        None => target.join("gpu-skip-reasons.txt"),
+    };
+    let parent = path
+        .parent()
+        .unwrap_or_else(|| panic!("GPU skip log {} has no parent", path.display()));
+    let parent = parent.canonicalize().unwrap_or_else(|err| {
+        panic!(
+            "refusing to create a directory for GPU skip log {}: {err}",
+            path.display()
+        )
+    });
+    if parent != target {
+        panic!(
+            "GPU skip log {} is outside {}",
+            path.display(),
+            target.display()
+        );
+    }
+    path
+}
+
+fn existing_target_dir() -> std::path::PathBuf {
+    if let Some(dir) = std::env::var_os("CARGO_TARGET_DIR") {
+        return std::path::PathBuf::from(dir);
+    }
+    let manifest = std::path::PathBuf::from(
+        std::env::var_os("CARGO_MANIFEST_DIR").unwrap_or_else(|| std::ffi::OsString::from(".")),
+    );
+    for ancestor in manifest.ancestors() {
+        let candidate = ancestor.join("target");
+        if candidate.is_dir() {
+            return candidate;
+        }
+    }
+    manifest.join("target")
 }
 
 fn skip_line(reason: &str) -> String {
@@ -59,21 +99,10 @@ fn skip_line(reason: &str) -> String {
     format!("{test}: {reason}")
 }
 
-fn write_skip_line(path: &std::path::Path, reason: &str) {
-    if let Some(parent) = path.parent() {
-        let _ = std::fs::create_dir_all(parent);
-    }
-    match OpenOptions::new().create(true).append(true).open(path) {
-        Ok(mut file) => {
-            let _ = writeln!(file, "SKIP(gpu): {reason}");
-        }
-        Err(err) => {
-            eprintln!(
-                "SKIP(gpu): could not record the skip at {}: {err}",
-                path.display()
-            );
-        }
-    }
+fn write_skip_line(path: &std::path::Path, reason: &str) -> std::io::Result<()> {
+    let mut file = OpenOptions::new().create(true).append(true).open(path)?;
+    let line = format!("SKIP(gpu): {}\n", reason.replace(['\n', '\r', '%'], " "));
+    file.write_all(line.as_bytes())
 }
 
 pub async fn request_headless(
@@ -161,7 +190,7 @@ mod skip_record_tests {
             std::env::temp_dir().join(format!("aw-gpu-skip-{}-record.txt", std::process::id()));
         let _ = std::fs::remove_file(&path);
         let reason = "no wgpu adapter for 'unit' (backends=all). software adapter: none";
-        write_skip_line(&path, reason);
+        write_skip_line(&path, reason).expect("skip log write");
         let text = std::fs::read_to_string(&path).expect("skip log");
         let _ = std::fs::remove_file(&path);
         assert_eq!(text, format!("SKIP(gpu): {reason}\n"));

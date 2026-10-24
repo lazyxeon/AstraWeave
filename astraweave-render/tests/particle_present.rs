@@ -77,19 +77,28 @@ fn same_seed_and_dt_repeat_the_presentation_fingerprint() {
     // atomics, and seed and dt are the only varying uniforms. A second run
     // of the same seed must match bit for bit. Seed 9 must match itself and
     // must differ from seed 7.
-    let Some(seed_7_a) = fingerprint(7) else {
+    let samples = [
+        fingerprint(7),
+        fingerprint(7),
+        fingerprint(9),
+        fingerprint(9),
+    ];
+    if samples.iter().all(Option::is_none) {
         return;
-    };
-    let Some(seed_7_b) = fingerprint(7) else {
-        return;
-    };
+    }
+    let seed_7_a = samples[0]
+        .clone()
+        .expect("seed 7 missed after another fingerprint created a device");
+    let seed_7_b = samples[1]
+        .clone()
+        .expect("seed 7 second run missed after a device was created");
     assert_eq!(seed_7_a, seed_7_b, "seed 7 did not repeat");
-    let Some(seed_9_a) = fingerprint(9) else {
-        return;
-    };
-    let Some(seed_9_b) = fingerprint(9) else {
-        return;
-    };
+    let seed_9_a = samples[2]
+        .clone()
+        .expect("seed 9 missed after a device was created");
+    let seed_9_b = samples[3]
+        .clone()
+        .expect("seed 9 second run missed after a device was created");
     assert_eq!(seed_9_a, seed_9_b, "seed 9 did not repeat");
     assert_ne!(
         seed_7_a, seed_9_a,
