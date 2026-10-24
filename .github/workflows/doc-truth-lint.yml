@@ -6,9 +6,13 @@ name: Doc-Truth Lint
 # CLOSED_VOCABULARY_ALLOWLIST.md) — spec-as-source, no duplication in the tool.
 #
 # Vocabulary phase: WARN-MODE (D.3.2b). Annotates un-allowlisted occurrences but
-# does not fail the job for those hits. The front-door check (replay cases, the
-# unmeasured 11 ms budget, in-progress pulls, retired game title) always exits
-# nonzero. Baseline at the 2026-06 wiring: K=0 un-allowlisted vocabulary hits.
+# does not fail the job for those hits. The front-door check always exits
+# nonzero: replay cases and the measured frame phrases on ENGINE_STATUS.md.
+# The later sample must be a measurement line, not the sentence that names
+# the check. The root README rejects a frame figure, including HTML spacing
+# (&nbsp;, &#32;, tags, newlines, tabs). Also the in-progress list and the
+# retired game title.
+# Baseline at the 2026-06 wiring: K=0 un-allowlisted vocabulary hits.
 #
 # Complementary to trace-sync.yml: that gate owns the CLAUDE.md trace table +
 # workspace_map.html (a disjoint surface); this scans tracked prose for poison.

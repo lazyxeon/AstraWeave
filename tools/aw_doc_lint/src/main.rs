@@ -25,9 +25,12 @@
 //! section documents why frame-time `2.70 ms` is deliberately NOT in Vocab A).
 //!
 //! A separate front-door check always fails the process, including in `--mode warn`:
-//! `README.md` must name every required replay case from `determinism-replay.yml`,
-//! must keep the 11 ms frame budget unmarked as measured, must list open pulls as
-//! in progress, and player-facing docs must not use the retired game title.
+//! `docs/current/ENGINE_STATUS.md` must name every required replay case from
+//! `determinism-replay.yml` and must keep the frame-budget phrases, including
+//! `3.117 ms`. `README.md` must list open pulls as in progress and must not
+//! contain a frame figure. Player-facing docs must not use the retired game title.
+//! A failed read of a scanned file, including `docs/current/PROJECT_BRIEF.md`,
+//! fails the process.
 
 use anyhow::{bail, Context, Result};
 use clap::{Parser, ValueEnum};
@@ -39,6 +42,7 @@ const SPEC_REL: &str = "docs/campaigns/doc-truth/CLOSED_VOCABULARY_LINT.md";
 const ALLOWLIST_REL: &str = "docs/campaigns/doc-truth/CLOSED_VOCABULARY_ALLOWLIST.md";
 const REPLAY_WORKFLOW_REL: &str = ".github/workflows/determinism-replay.yml";
 const README_REL: &str = "README.md";
+const STATUS_REL: &str = "docs/current/ENGINE_STATUS.md";
 
 const IN_PROGRESS_ISSUES: &[&str] = &["#334", "#366", "#383"];
 
@@ -286,6 +290,7 @@ fn is_player_facing(path: &str) -> bool {
         || p == "CONTRIBUTING.md"
         || p == "docs/README.md"
         || p == "docs/QUICKSTART.md"
+        || p == "docs/current/PROJECT_BRIEF.md"
         || (p.starts_with("docs/guides/") && p.ends_with(".md"))
 }
 
@@ -415,6 +420,7 @@ fn retired_title_hits(path: &str, text: &str) -> Vec<String> {
 
 fn front_door_errors(
     readme: &str,
+    status: &str,
     workflow: &str,
     player_facing: &[(String, String)],
 ) -> Vec<String> {
@@ -432,9 +438,9 @@ fn front_door_errors(
     }
     if let Some(cases) = lists.first() {
         for case in cases {
-            if !contains_word(readme, case) {
+            if !contains_word(status, case) {
                 errors.push(format!(
-                    "{README_REL}: missing required replay case `{case}`"
+                    "{STATUS_REL}: missing required replay case `{case}`"
                 ));
             }
         }
@@ -448,11 +454,16 @@ fn front_door_errors(
         "deterministic simulation validates",
         "Aravath",
     ] {
-        if !readme.contains(phrase) {
+        if !status.contains(phrase) {
             errors.push(format!(
-                "{README_REL}: missing front-door phrase `{phrase}`"
+                "{STATUS_REL}: missing front-door phrase `{phrase}`"
             ));
         }
+    }
+    if !status_has_measured_sample(status, "3.117 ms") {
+        errors.push(format!(
+            "{STATUS_REL}: missing front-door phrase `3.117 ms` on a measurement line"
+        ));
     }
     match in_progress_body(readme) {
         None => errors.push(format!("{README_REL}: missing a '## In progress' section")),
@@ -479,10 +490,92 @@ fn front_door_errors(
             }
         }
     }
+    errors.extend(readme_frame_figure_errors(readme));
     for (path, text) in player_facing {
         errors.extend(retired_title_hits(path, text));
     }
     errors
+}
+
+/// The sample must appear as a measurement. A sentence that only names the
+/// phrase for this gate does not count.
+fn status_has_measured_sample(status: &str, phrase: &str) -> bool {
+    status.lines().any(|line| {
+        let lower = line.to_ascii_lowercase();
+        lower.contains(phrase)
+            && !lower.contains("aw_doc_lint")
+            && !lower.contains("front door")
+            && !lower.contains("front-door")
+            && !lower.contains("looks for")
+    })
+}
+
+/// A frame figure is a number whose following text, after tags and the spacing
+/// this README uses, is `ms`.
+fn readme_frame_figure_errors(readme: &str) -> Vec<String> {
+    let lower = readme.to_ascii_lowercase();
+    let bytes = lower.as_bytes();
+    let mut errors = Vec::new();
+    let mut i = 0;
+    while i < bytes.len() {
+        if !bytes[i].is_ascii_digit() {
+            i += 1;
+            continue;
+        }
+        let start = i;
+        i += 1;
+        while i < bytes.len() && (bytes[i].is_ascii_digit() || bytes[i] == b'.') {
+            i += 1;
+        }
+        let j = skip_frame_gap(bytes, i);
+        if bytes.get(j..j + 2) != Some(b"ms") {
+            continue;
+        }
+        let after = j + 2;
+        if after < bytes.len() && bytes[after].is_ascii_alphanumeric() {
+            continue;
+        }
+        let line = readme[..start].bytes().filter(|&b| b == b'\n').count() + 1;
+        errors.push(format!(
+            "{README_REL}:{line}: frame figure is not allowed on the landing page"
+        ));
+    }
+    errors
+}
+
+fn skip_frame_gap(bytes: &[u8], mut j: usize) -> usize {
+    loop {
+        if j >= bytes.len() {
+            return j;
+        }
+        match bytes[j] {
+            b' ' | b'\t' | b'\n' | b'\r' => j += 1,
+            b'<' => {
+                while j < bytes.len() && bytes[j] != b'>' {
+                    j += 1;
+                }
+                if j < bytes.len() {
+                    j += 1;
+                }
+            }
+            b'&' => {
+                let rest = &bytes[j..];
+                let skip = if rest.starts_with(b"&nbsp;") {
+                    6
+                } else if rest.starts_with(b"&#32;") {
+                    5
+                } else if rest.starts_with(b"&#160;") || rest.starts_with(b"&#x20;") {
+                    6
+                } else if rest.starts_with(b"&#xa0;") {
+                    6
+                } else {
+                    return j;
+                };
+                j += skip;
+            }
+            _ => return j,
+        }
+    }
 }
 
 fn resolve_root(cli: &Cli) -> Result<PathBuf> {
@@ -501,14 +594,17 @@ fn resolve_root(cli: &Cli) -> Result<PathBuf> {
     ))
 }
 
+fn read_repo_file(root: &Path, rel: &str) -> Result<String> {
+    std::fs::read_to_string(root.join(rel)).with_context(|| format!("reading {rel}"))
+}
+
 fn main() -> Result<()> {
     let cli = Cli::parse();
     let root = resolve_root(&cli)?;
 
-    let spec = std::fs::read_to_string(root.join(SPEC_REL))
-        .with_context(|| format!("reading spec {SPEC_REL}"))?;
-    let allowlist_doc = std::fs::read_to_string(root.join(ALLOWLIST_REL))
-        .with_context(|| format!("reading allowlist {ALLOWLIST_REL}"))?;
+    let spec = read_repo_file(&root, SPEC_REL).context("reading the closed-vocabulary spec")?;
+    let allowlist_doc =
+        read_repo_file(&root, ALLOWLIST_REL).context("reading the closed-vocabulary allowlist")?;
     let lits = load_literals(&spec)?;
     let allow = load_allowlist(&allowlist_doc)?;
 
@@ -529,10 +625,7 @@ fn main() -> Result<()> {
     let mut scanned = 0usize;
 
     for f in &files {
-        let content = match std::fs::read_to_string(root.join(f)) {
-            Ok(c) => c,
-            Err(_) => continue, // unreadable/binary — skip
-        };
+        let content = read_repo_file(&root, f)?;
         scanned += 1;
         for (i, line) in content.lines().enumerate() {
             for hit in lint_line(line, &lits) {
@@ -566,20 +659,17 @@ fn main() -> Result<()> {
         eprintln!("doc-truth lint: clean (K=0 un-allowlisted).");
     }
 
-    let readme = std::fs::read_to_string(root.join(README_REL))
-        .with_context(|| format!("reading {README_REL}"))?;
-    let workflow = std::fs::read_to_string(root.join(REPLAY_WORKFLOW_REL))
-        .with_context(|| format!("reading {REPLAY_WORKFLOW_REL}"))?;
+    let readme = read_repo_file(&root, README_REL)?;
+    let status = read_repo_file(&root, STATUS_REL)?;
+    let workflow = read_repo_file(&root, REPLAY_WORKFLOW_REL)?;
     let mut player_facing = Vec::new();
     for f in &tracked {
         if !is_player_facing(f) {
             continue;
         }
-        if let Ok(text) = std::fs::read_to_string(root.join(f)) {
-            player_facing.push((f.clone(), text));
-        }
+        player_facing.push((f.clone(), read_repo_file(&root, f)?));
     }
-    let front = front_door_errors(&readme, &workflow, &player_facing);
+    let front = front_door_errors(&readme, &status, &workflow, &player_facing);
     for e in &front {
         println!("{e}");
         if in_ci {
@@ -803,13 +893,19 @@ mod tests {
         assert!(should_fail(Mode::Enforce, 1)); // dirty enforce fails
     }
 
-    fn sample_readme() -> String {
+    fn sample_status() -> String {
         [
             "Local LLMs propose. The deterministic simulation validates and executes.",
             "The game is Aravath. Assets are CC0 only.",
-            "under 11 ms per frame on a GTX 1660 Ti-class GPU. The heavy scene measured 3.688 ms.",
+            "under 11 ms per frame on a GTX 1660 Ti-class GPU. The heavy scene measured 3.688 ms. A later sample is 3.117 ms.",
             "planner_pure perception_world gameplay_rng fixed64 combat_resolve",
             "destruction gameplay_qa_aravath_slice nav_reroute causal_bridge scripted_system weaving traversal traversal_deformed worldgen_columns deformed_chunk local_sim greybox_checkpoint quest_ticks persist_replay",
+        ]
+        .join("\n")
+    }
+
+    fn sample_readme() -> String {
+        [
             "## In progress",
             "#334 are in progress. #366 are in progress. #383 are in progress",
             "## Next",
@@ -838,15 +934,30 @@ mod tests {
     }
 
     #[test]
+    fn failed_read_of_project_brief_is_an_error() {
+        assert!(is_player_facing("docs/current/PROJECT_BRIEF.md"));
+        let dir = std::env::temp_dir().join(format!("aw-doc-lint-missing-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir(&dir).unwrap();
+        let err = read_repo_file(&dir, "docs/current/PROJECT_BRIEF.md").unwrap_err();
+        let msg = format!("{err:#}");
+        assert!(
+            msg.contains("reading docs/current/PROJECT_BRIEF.md"),
+            "{msg}"
+        );
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
     fn front_door_accepts_a_honest_readme() {
-        let errors = front_door_errors(&sample_readme(), &sample_workflow(), &[]);
+        let errors = front_door_errors(&sample_readme(), &sample_status(), &sample_workflow(), &[]);
         assert!(errors.is_empty(), "{errors:?}");
     }
 
     #[test]
     fn front_door_rejects_a_suffixed_issue_token() {
         let readme = sample_readme().replace("#383 are in progress", "#383foo are in progress");
-        let errors = front_door_errors(&readme, &sample_workflow(), &[]);
+        let errors = front_door_errors(&readme, &sample_status(), &sample_workflow(), &[]);
         assert!(
             errors.iter().any(|error| error.contains("missing #383")),
             "{errors:?}"
@@ -856,7 +967,7 @@ mod tests {
     #[test]
     fn front_door_rejects_an_extra_in_progress_issue() {
         let readme = sample_readme().replace("#366 are in progress", "#366 #999 are in progress");
-        let errors = front_door_errors(&readme, &sample_workflow(), &[]);
+        let errors = front_door_errors(&readme, &sample_status(), &sample_workflow(), &[]);
         assert!(
             errors.iter().any(|error| error.contains("#999")),
             "{errors:?}"
@@ -869,12 +980,44 @@ mod tests {
 
     #[test]
     fn front_door_rejects_a_missing_case_and_a_shipped_label() {
-        let readme = sample_readme()
-            .replace("nav_reroute", "nav")
-            .replace("are in progress", "are shipped");
-        let errors = front_door_errors(&readme, &sample_workflow(), &[]);
+        let readme = sample_readme().replace("are in progress", "are shipped");
+        let status = sample_status().replace("nav_reroute", "nav");
+        let errors = front_door_errors(&readme, &status, &sample_workflow(), &[]);
         assert!(errors.iter().any(|e| e.contains("nav_reroute")));
         assert!(errors.iter().any(|e| e.contains("shipped")));
+    }
+
+    #[test]
+    fn front_door_rejects_a_frame_figure_on_the_readme() {
+        for figure in [
+            "3.688 ms",
+            "3.117&nbsp;ms",
+            "3.117&#32;ms",
+            "3.117<br>ms",
+            "3.117\nms",
+            "3.117\tms",
+            "<span>3.117</span> ms",
+        ] {
+            let readme = format!("{}\nThe frame is {figure}.\n", sample_readme());
+            let errors = front_door_errors(&readme, &sample_status(), &sample_workflow(), &[]);
+            assert!(
+                errors.iter().any(|error| error.contains("frame figure")),
+                "{figure}: {errors:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn front_door_does_not_count_the_gate_sentence_as_the_sample() {
+        let status = sample_status().replace(
+            "A later sample is 3.117 ms.",
+            "aw_doc_lint looks for 3.117 ms.",
+        );
+        let errors = front_door_errors(&sample_readme(), &status, &sample_workflow(), &[]);
+        assert!(
+            errors.iter().any(|error| error.contains("3.117 ms")),
+            "{errors:?}"
+        );
     }
 
     #[test]
