@@ -41,7 +41,8 @@ struct SsrParams {
 
 // Reconstruct view-space position from texture UV and depth
 fn reconstruct_view_pos(uv: vec2<f32>, depth: f32) -> vec3<f32> {
-    let ndc = vec4<f32>(uv * 2.0 - 1.0, depth, 1.0);
+    // uv.y = 0 is the top of the framebuffer. perspective_rh NDC Y is up.
+    let ndc = vec4<f32>(uv.x * 2.0 - 1.0, -(uv.y * 2.0 - 1.0), depth, 1.0);
     let view_pos = params.inv_proj * ndc;
     return view_pos.xyz / view_pos.w;
 }
@@ -160,8 +161,10 @@ fn ssr_main(@builtin(global_invocation_id) gid: vec3<u32>) {
         return;
     }
 
-    // Read depth from Hi-Z mip 0 (= full-resolution depth)
-    let depth = sample_hiz(uv, 0);
+    // `sample_hiz` flips Y for NDC UVs from `project_to_screen`. This pixel
+    // UV already has y = 0 at the top, so load that texel. The reconstruct
+    // maps it to NDC Y up, the same way SSGI does.
+    let depth = textureLoad(hiz_tex, pixel, 0).r;
     if (depth >= 1.0) {
         textureStore(ssr_output, pixel, vec4<f32>(0.0));
         return;

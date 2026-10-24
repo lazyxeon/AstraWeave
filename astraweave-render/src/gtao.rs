@@ -28,7 +28,8 @@ pub struct GtaoParams {
     pub num_steps: u32,
     /// Frame index for temporal noise rotation.
     pub frame_index: u32,
-    pub _pad: u32,
+    /// `tan(fov_y / 2)`. View Y is `ndc.y * z * tan_half_fov`.
+    pub tan_half_fov: f32,
 }
 
 impl GtaoParams {
@@ -45,7 +46,7 @@ impl GtaoParams {
             num_directions: 8,
             num_steps: 6,
             frame_index: 0,
-            _pad: 0,
+            tan_half_fov: (fov_y * 0.5).tan(),
         }
     }
 }
