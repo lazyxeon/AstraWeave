@@ -77,7 +77,9 @@ fn draw(renderer: &mut Renderer) {
 #[test]
 fn bind_group_path_draws_when_bindless_is_forced_off() {
     pollster::block_on(async {
-        let mut renderer = Renderer::new_headless(64, 64).await.expect("renderer");
+        let Some(mut renderer) = Renderer::headless_for_tests(64, 64).await else {
+            return;
+        };
         renderer.set_bindless_enabled(false);
         let instance = Instance::from_pos_scale_color(glam::Vec3::ZERO, glam::Vec3::ONE, [1.0; 4]);
         renderer.add_composite_model("forced-off", vec![triangle()], &[instance]);
@@ -90,7 +92,9 @@ fn bind_group_path_draws_when_bindless_is_forced_off() {
 #[test]
 fn bindless_registration_records_an_ssbo_index_when_supported() {
     pollster::block_on(async {
-        let mut renderer = Renderer::new_headless(64, 64).await.expect("renderer");
+        let Some(mut renderer) = Renderer::headless_for_tests(64, 64).await else {
+            return;
+        };
         let instance = Instance::from_pos_scale_color(glam::Vec3::ZERO, glam::Vec3::ONE, [1.0; 4]);
         renderer.add_composite_model("surfaced", vec![triangle()], &[instance]);
         if renderer.bindless_supported() {

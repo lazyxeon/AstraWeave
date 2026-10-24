@@ -190,11 +190,76 @@ pub fn image_delta(a: &[u8], b: &[u8]) -> (u8, f32) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn skip_missing_adapter(err: &anyhow::Error) -> bool {
+        let text = format!("{err:?} {err}");
+        let missing = text.contains("No adapter") || text.contains("NotFound");
+        if std::env::var_os("AW_GPU_SKIP_IF_UNAVAILABLE").is_none() || !missing {
+            return false;
+        }
+        let target = std::env::var_os("CARGO_TARGET_DIR")
+            .map(std::path::PathBuf::from)
+            .or_else(|| {
+                let manifest = std::path::PathBuf::from(
+                    std::env::var_os("CARGO_MANIFEST_DIR").unwrap_or_else(|| ".".into()),
+                );
+                manifest
+                    .ancestors()
+                    .map(|dir| dir.join("target"))
+                    .find(|dir| dir.is_dir())
+            })
+            .unwrap_or_else(|| std::path::PathBuf::from("target"));
+        let target = target
+            .canonicalize()
+            .unwrap_or_else(|io| panic!("GPU skip log target is missing: {io}"));
+        let path = std::env::var_os("AW_GPU_SKIP_LOG")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| target.join("gpu-skip-reasons.txt"));
+        let parent = path
+            .parent()
+            .unwrap_or_else(|| panic!("GPU skip log {} has no parent", path.display()))
+            .canonicalize()
+            .unwrap_or_else(|io| {
+                panic!(
+                    "refusing to create a directory for {}: {io}",
+                    path.display()
+                )
+            });
+        assert_eq!(
+            parent,
+            target,
+            "GPU skip log {} is outside {}",
+            path.display(),
+            target.display()
+        );
+        let line = format!(
+            "SKIP(gpu): renders_gradient: {}\n",
+            text.replace(['\n', '\r', '%'], " ")
+        );
+        eprintln!("{}", line.trim_end());
+        let mut file = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&path)
+            .unwrap_or_else(|io| panic!("could not record GPU skip at {}: {io}", path.display()));
+        std::io::Write::write_all(&mut file, line.as_bytes())
+            .unwrap_or_else(|io| panic!("could not record GPU skip at {}: {io}", path.display()));
+        true
+    }
+
     #[test]
     fn renders_gradient() {
         let fs = r#"@fragment fn fs_main(i: VSOut) -> @location(0) vec4<f32> { return vec4<f32>(i.uv, 0.0, 1.0); }"#;
         let wgsl = wrap_fs_into_fullscreen(fs);
-        let img = pollster::block_on(render_wgsl_to_image(&wgsl, 32, 16)).expect("render");
+        let img = match pollster::block_on(render_wgsl_to_image(&wgsl, 32, 16)) {
+            Ok(img) => img,
+            Err(err) => {
+                if skip_missing_adapter(&err) {
+                    return;
+                }
+                panic!("render: {err}");
+            }
+        };
         assert_eq!(img.len(), 32 * 16 * 4);
         assert!(img.iter().any(|&b| b != 0));
     }

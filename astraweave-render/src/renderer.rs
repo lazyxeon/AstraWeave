@@ -1555,6 +1555,30 @@ impl Renderer {
         Ok(renderer)
     }
 
+    /// Headless renderer for tests.
+    ///
+    /// `None` only when `AW_GPU_SKIP_IF_UNAVAILABLE` is set and no adapter
+    /// exists. The skip line is appended under the workspace `target/`
+    /// directory. `new_headless` does not write that file. A machine that
+    /// should have lavapipe or a GPU still panics.
+    #[allow(clippy::panic)]
+    pub async fn headless_for_tests(width: u32, height: u32) -> Option<Self> {
+        match Self::new_headless(width, height).await {
+            Ok(renderer) => Some(renderer),
+            Err(err) => {
+                let reason = format!("{err}");
+                if std::env::var_os("AW_GPU_SKIP_IF_UNAVAILABLE").is_some()
+                    && reason.contains("No adapter")
+                {
+                    record_gpu_skip_for_tests(&reason);
+                    None
+                } else {
+                    panic!("Failed to create headless renderer: {reason}");
+                }
+            }
+        }
+    }
+
     pub async fn new_from_device(
         device: wgpu::Device,
         queue: wgpu::Queue,
@@ -11197,6 +11221,81 @@ fn install_device_error_handler(
     }));
 }
 
+/// Append one skip line for a test that found no adapter.
+///
+/// `new_headless` does not call this. The file has to already live in the
+/// workspace `target/` directory. A missing directory is not created, and a
+/// failed write panics so the test does not pass without a line.
+#[allow(clippy::panic)]
+pub fn record_gpu_skip_for_tests(reason: &str) {
+    let target = existing_workspace_target();
+    let target = target.canonicalize().unwrap_or_else(|err| {
+        panic!(
+            "GPU skip log stays in the workspace target directory, missing at {}: {err}",
+            target.display()
+        )
+    });
+    let path = match std::env::var_os("AW_GPU_SKIP_LOG") {
+        Some(raw) => std::path::PathBuf::from(raw),
+        None => target.join("gpu-skip-reasons.txt"),
+    };
+    let parent = path
+        .parent()
+        .unwrap_or_else(|| panic!("GPU skip log {} has no parent directory", path.display()));
+    let parent = parent.canonicalize().unwrap_or_else(|err| {
+        panic!(
+            "refusing to create a directory for GPU skip log {}: {err}",
+            path.display()
+        )
+    });
+    if parent != target {
+        panic!(
+            "GPU skip log {} is outside {}",
+            path.display(),
+            target.display()
+        );
+    }
+    let test = std::thread::current()
+        .name()
+        .unwrap_or("unnamed-test")
+        .to_string();
+    let line = format!("SKIP(gpu): {test}: {}\n", one_skip_line(reason));
+    eprintln!("{}", line.trim_end());
+    let mut file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+        .unwrap_or_else(|err| panic!("could not record the GPU skip at {}: {err}", path.display()));
+    std::io::Write::write_all(&mut file, line.as_bytes())
+        .unwrap_or_else(|err| panic!("could not record the GPU skip at {}: {err}", path.display()));
+}
+
+fn one_skip_line(reason: &str) -> String {
+    reason
+        .chars()
+        .map(|ch| match ch {
+            '\n' | '\r' | '%' => ' ',
+            other => other,
+        })
+        .collect()
+}
+
+fn existing_workspace_target() -> std::path::PathBuf {
+    if let Some(dir) = std::env::var_os("CARGO_TARGET_DIR") {
+        return std::path::PathBuf::from(dir);
+    }
+    let manifest = std::path::PathBuf::from(
+        std::env::var_os("CARGO_MANIFEST_DIR").unwrap_or_else(|| std::ffi::OsString::from(".")),
+    );
+    for ancestor in manifest.ancestors() {
+        let candidate = ancestor.join("target");
+        if candidate.is_dir() {
+            return candidate;
+        }
+    }
+    manifest.join("target")
+}
+
 fn warp_requested() -> bool {
     matches!(
         std::env::var("ARAVATH_WARP").ok().as_deref(),
@@ -11881,9 +11980,9 @@ mod tests {
     #[test]
     fn gpu_cull_indirect_instance_count_matches_the_cpu_frustum() {
         pollster::block_on(async {
-            let mut renderer = Renderer::new_headless(64, 64)
-                .await
-                .expect("headless renderer");
+            let Some(mut renderer) = Renderer::headless_for_tests(64, 64).await else {
+                return;
+            };
             let eye = Vec3::new(0.0, 0.0, 8.0);
             let view = Mat4::look_at_rh(eye, Vec3::ZERO, Vec3::Y);
             let projection =
@@ -11963,9 +12062,9 @@ mod tests {
     #[test]
     fn gpu_cull_grow_keeps_equal_slots_and_vertex_rewrite_moves_the_box() {
         pollster::block_on(async {
-            let mut renderer = Renderer::new_headless(64, 64)
-                .await
-                .expect("headless renderer");
+            let Some(mut renderer) = Renderer::headless_for_tests(64, 64).await else {
+                return;
+            };
             let eye = Vec3::new(0.0, 0.0, 8.0);
             let view = Mat4::look_at_rh(eye, Vec3::ZERO, Vec3::Y);
             let projection =

@@ -82,9 +82,9 @@ fn fallback_frame_does_not_allocate_before_the_texture_is_resident() {
             file.write_all(PNG).expect("write png");
         });
 
-        let mut renderer = Renderer::new_headless(64, 64)
-            .await
-            .expect("headless renderer");
+        let Some(mut renderer) = Renderer::headless_for_tests(64, 64).await else {
+            return;
+        };
         // An assert before the explicit release still opens the fifo, so the
         // decode read is not stuck in `open` when the renderer drops.
         let mut release = ReleaseWriter { tx: Some(go_tx) };
