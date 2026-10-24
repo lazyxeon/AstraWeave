@@ -8,8 +8,8 @@ domain: rendering
 lifecycle_status: active
 integration_status: wired
 owns: [astraweave-asset, astraweave-asset-pipeline]
-doc_version: "1.7"
-last_verified_commit: d0539b08
+doc_version: "1.8"
+last_verified_commit: f98ed65c
 ---
 
 # Architecture Trace: Asset System
@@ -20,9 +20,9 @@ last_verified_commit: d0539b08
 |---|---|
 | **System name** | Asset System (loading, cell loader, Nanite preprocess, asset pipeline) |
 | **Primary crates** | `astraweave-asset`, `astraweave-asset-pipeline` |
-| **Document version** | 1.7 |
-| **Last verified against commit** | `d0539b08` |
-| **Last verified date** | 2026-10-21 |
+| **Document version** | 1.8 |
+| **Last verified against commit** | `f98ed65c` (parent of this restamp; that parent checks the GLB header before `Gltf::open`. The pre-rebase stamp `ba088116` is not an ancestor). |
+| **Last verified date** | 2026-10-24 |
 | **Status** | Active (mixed): glTF CPU loaders + cell loader + AssetDatabase are wired (`astraweave-asset` is VERIFIED-PRODUCTION); Nanite preprocess and the entire `astraweave-asset-pipeline` crate are in-design / dormant scaffolding. **R-series M1 trace-honesty (2026-06-30):** `astraweave-asset-pipeline` was individually **FALSE-PRODUCTION-READY** (R.0.B) — a present-tense over-claim at `lib.rs:4` over an ISLAND crate (no live caller). **R-series M2/E4 relabel-and-defer (2026-06-30):** E4 **resolved by relabel** — the `lib.rs:4` over-claim was rewritten to honest in-design status and the unused editor dep (`aw_editor/Cargo.toml:99`) was dropped, moving the crate **FALSE-PRODUCTION-READY → DORMANT-HONEST**. The BC7/KTX2 **cook path is NOT a v1.0 blocker** — the v1.0 render path consumes raw PNG→RGBA8 with no GPU-compressed-upload path, so cooking is a deferrable optimization **deferred to a post-v1.0 engine/compression-pipeline owner**. See `docs/audits/e4_cook_path_recon_2026-06.md`. |
 | **Owner notes** | First trace for this subsystem. `astraweave-asset` is one of the most-consumed untraced crates (9+ Cargo consumers). Derived from forensic data-flow analysis on 2026-06-24. |
 
@@ -425,4 +425,4 @@ The crate carries explicit "Phase 0 / Phase 2 foundations" markers (lib.rs:302, 
 | 1.1 | 2026-06-25 | Verification pass; §11 pipeline-default-feature note; R-series M1 trace-honesty FALSE-PRODUCTION-READY annotation for `astraweave-asset-pipeline`. |
 | 1.2 | 2026-06-30 | **R-series M2/E4 — relabel-and-defer.** Recorded E4 resolution: `astraweave-asset-pipeline` `lib.rs:4` over-claim relabeled to honest in-design status; the unused `aw_editor` dep (`Cargo.toml:99`) dropped; verdict **FALSE-PRODUCTION-READY → DORMANT-HONEST**; BC7/KTX2 cook build **deferred post-v1.0** (the v1.0 render path consumes raw PNG→RGBA8, no GPU-compressed-upload path — cooking is a non-blocking optimization). Closed §11 Q1 (asset-pipeline-vs-CLI duplication — found 3 fragmented cook impls) + Q2 (unused editor dep — dropped). Updated Metadata Status. Source: `docs/audits/e4_cook_path_recon_2026-06.md`. |
 | 1.7 | 2026-10-21 | `data:` decode moved to `data_uri.rs` so `image_limits.rs` stays free of base64. Editor external mesh buffers are capped at 256 MiB in the render loader. The parent SHA from the pre-rebase branch is not an ancestor after the rebase onto main. |
-| 1.8 | 2026-10-24 | `load_uri_bytes` stops at 256 MiB. Image URIs are percent-decoded before the jail. A buffer-view image uses `checked_add`. A texture cell read uses `spawn_blocking`. |
+| 1.8 | 2026-10-24 | `load_uri_bytes` stops at 256 MiB. Image URIs are percent-decoded before the jail. A buffer-view image uses `checked_add`. A texture cell read uses `spawn_blocking`. The parent `f98ed65c` contains that read. The pre-rebase stamp `ba088116` is not an ancestor. |
