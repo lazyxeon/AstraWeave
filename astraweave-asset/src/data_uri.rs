@@ -7,6 +7,47 @@ use base64::Engine as _;
 
 use crate::image_limits::MAX_IMAGE_ALLOC;
 
+/// One glTF mesh buffer, BIN chunk, or `data:` buffer.
+/// Four times the image cap. A mesh can be larger than 64 MiB. It cannot be unbounded.
+pub const MAX_GLTF_BUFFER: u64 = 256 * 1024 * 1024;
+
+/// Percent-decode a glTF file URI and reject any scheme.
+///
+/// `data:` URIs are handled by [`read_capped_data_uri`] before this runs.
+/// A bad percent sequence is an error. Decoding happens before the path jail,
+/// so `%2e%2e` is `..` when the jail runs.
+pub fn gltf_relative_uri(uri: &str) -> Result<String> {
+    let without_query = uri.split('?').next().unwrap_or(uri);
+    let decoded = percent_decode(without_query)?;
+    if decoded.contains(':') {
+        bail!("glTF URI scheme is not a relative file");
+    }
+    Ok(decoded)
+}
+
+fn percent_decode(input: &str) -> Result<String> {
+    let bytes = input.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut index = 0;
+    while index < bytes.len() {
+        if bytes[index] == b'%' {
+            if index + 2 >= bytes.len() {
+                bail!("bad percent encoding in glTF URI");
+            }
+            let hex = std::str::from_utf8(&bytes[index + 1..index + 3])
+                .map_err(|_| anyhow::anyhow!("bad percent encoding in glTF URI"))?;
+            let value = u8::from_str_radix(hex, 16)
+                .map_err(|_| anyhow::anyhow!("bad percent encoding in glTF URI"))?;
+            out.push(value);
+            index += 3;
+        } else {
+            out.push(bytes[index]);
+            index += 1;
+        }
+    }
+    String::from_utf8(out).context("glTF URI is not utf-8")
+}
+
 /// Decode a `data:` URI without allocating a payload over `cap`.
 ///
 /// The base64 length is checked before `decode`. The scheme match is
@@ -55,6 +96,22 @@ mod tests {
         let err = read_capped_data_image(&uri).expect_err("over cap");
         let msg = format!("{err:#}");
         assert!(msg.contains(&MAX_IMAGE_ALLOC.to_string()), "{msg}");
+    }
+
+    #[test]
+    fn relative_uri_decodes_a_space_and_rejects_a_scheme() {
+        assert_eq!(
+            gltf_relative_uri("textures/my%20albedo.png").expect("space"),
+            "textures/my albedo.png"
+        );
+        assert_eq!(
+            gltf_relative_uri("%2e%2e/%2e%2e/secret.bin").expect("dots"),
+            "../../secret.bin"
+        );
+        let scheme = gltf_relative_uri("file:///etc/passwd").expect_err("scheme");
+        assert!(format!("{scheme:#}").contains("scheme"), "{scheme}");
+        let bad = gltf_relative_uri("%zz").expect_err("percent");
+        assert!(format!("{bad:#}").contains("percent"), "{bad}");
     }
 
     #[test]

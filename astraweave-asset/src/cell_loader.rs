@@ -234,9 +234,14 @@ pub async fn load_asset(asset_ref: &AssetRef, assets_root: &Path) -> Result<Vec<
             Ok(bytes)
         }
         AssetKind::Texture => {
-            let bytes = crate::read_limited_image_bytes(&asset_path)
-                .with_context(|| format!("Failed to load texture: {}", asset_path.display()))?;
-            // Additional validation for texture formats
+            // `load_asset` runs on a tokio worker. The capped read is
+            // synchronous, so it must not occupy that worker.
+            let path = asset_path.clone();
+            let label = asset_path.display().to_string();
+            let bytes = tokio::task::spawn_blocking(move || crate::read_limited_image_bytes(&path))
+                .await
+                .context("texture read task")?
+                .with_context(|| format!("Failed to load texture: {label}"))?;
             validate_texture_format(&bytes, &asset_ref.path)?;
             Ok(bytes)
         }
