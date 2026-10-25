@@ -1,4 +1,4 @@
-> This page moved from the repository root README on 2026-10-21. The root [README](../../README.md) is the short summary. The claims below were checked against `main` at `556a305c`, except the weave-origin notes, which were checked at `43b1b48f` (#388), and the #394, #397, #389, and #393 notes, which were checked at `49d289eb`. #390 (`5a52b039`) removed the Clippy unwrap-prevention badge: that workflow was deleted in #223. `astraweave-ai` mutants run as 8 round-robin shards. The 70% gate is caught / (caught + missed). Timeouts are not caught. `cargo-mutants` is 27.1.0. #388 closed #295. `queue_weave` rejects an origin outside ±2048 cells and does not saturate. The `weaving` replay case still hashes `NullField`.
+> This page moved from the repository root README on 2026-10-21. The root [README](../../README.md) is the short summary. The claims below were checked against `main` at `556a305c`, except the weave-origin notes, which were checked at `43b1b48f` (#388), the #394, #397, #389, and #393 notes, which were checked at `49d289eb`, and the 3.117 ms GTX 1660 Ti Max-Q capture, which was checked at `3855715ea6fd4649a144ee72d2e851956ed1ad3f`. #390 (`5a52b039`) removed the Clippy unwrap-prevention badge: that workflow was deleted in #223. `astraweave-ai` mutants run as 8 round-robin shards. The 70% gate is caught / (caught + missed). Timeouts are not caught. `cargo-mutants` is 27.1.0. #388 closed #295. `queue_weave` rejects an origin outside ±2048 cells and does not saturate. The `weaving` replay case still hashes `NullField`.
 
 <p align="center">
   <img src="../../assets/Astraweave_logo.jpg" alt="AstraWeave nebula logomark" width="360" />
@@ -30,7 +30,7 @@ The game this engine is being built for is **Aravath**.
 
 ## Current state (2026-10-20)
 
-Checked against `main` at `556a305c`, except the #388 weave-origin sentences, which were checked at `43b1b48f`, and the #394, #397, #389, and #393 bullets, which were checked at `49d289eb`. The trace-version clause in the #397 bullet names `79122e78`. Numbers that were not re-measured in this pass are dated below. This page does not assign a letter grade.
+Checked against `main` at `556a305c`, except the #388 weave-origin sentences, which were checked at `43b1b48f`, the #394, #397, #389, and #393 bullets, which were checked at `49d289eb`, and the 3.117 ms GTX 1660 Ti Max-Q capture, which was checked at `3855715ea6fd4649a144ee72d2e851956ed1ad3f`. The trace-version clause in the #397 bullet names `79122e78`. Numbers that were not re-measured in this pass are dated below. This page does not assign a letter grade.
 
 | Topic | What is true on this commit |
 | --- | --- |
@@ -184,7 +184,7 @@ cargo run -p aw_trace_sync -- --check
 
 Pull-request Rust work is tiered. The required replay check is `determinism-replay / compare`. Docs-only diffs skip the workspace compile; they still run the replay hashes. The full job list is [CI_ARCHITECTURE.md](CI_ARCHITECTURE.md). #217 and #327 are on `main`. #326 is closed.
 
-`aw_doc_lint` reads the closed vocabulary in [CLOSED_VOCABULARY_LINT.md](../campaigns/doc-truth/CLOSED_VOCABULARY_LINT.md). The front door checks this page for every required replay case and for the frame phrases, including the earlier capture and the later median frame sample. A sentence that only names the sample for this check does not count. It checks the root README for the in-progress list and rejects a frame figure there (a number followed by `ms`). It also rejects the retired game title in player-facing docs, including `docs/current/PROJECT_BRIEF.md`. That check fails the process even while the vocabulary scan is still in warn mode.
+`aw_doc_lint` reads the closed vocabulary in [CLOSED_VOCABULARY_LINT.md](../campaigns/doc-truth/CLOSED_VOCABULARY_LINT.md). The front door checks this page for every required replay case and for the frame phrases, including the earlier capture and the later median frame sample. A sentence that only names the sample for this check does not count. It checks the root README for the in-progress list and rejects a frame figure there: a number followed by `ms` or `milliseconds`, after character references, tags, and markdown emphasis are decoded. It also rejects the retired game title in player-facing docs, including `docs/current/PROJECT_BRIEF.md`. That check fails the process even while the vocabulary scan is still in warn mode.
 
 ---
 

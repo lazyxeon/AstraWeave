@@ -27,10 +27,12 @@
 //! A separate front-door check always fails the process, including in `--mode warn`:
 //! `docs/current/ENGINE_STATUS.md` must name every required replay case from
 //! `determinism-replay.yml` and must keep the frame-budget phrases, including
-//! `3.117 ms`. `README.md` must list open pulls as in progress and must not
-//! contain a frame figure. Player-facing docs must not use the retired game title.
-//! A failed read of a scanned file, including `docs/current/PROJECT_BRIEF.md`,
-//! fails the process.
+//! `3.117 ms` on a measurement sentence. `README.md` must list open pulls as in
+//! progress and must not contain a frame figure. A frame figure is a number
+//! followed by `ms` or `milliseconds` after character references, tags, and
+//! markdown emphasis are decoded. Player-facing docs must not use the retired
+//! game title. A failed read of a scanned file, including
+//! `docs/current/PROJECT_BRIEF.md`, fails the process.
 
 use anyhow::{bail, Context, Result};
 use clap::{Parser, ValueEnum};
@@ -236,6 +238,10 @@ fn tracked_files(root: &Path) -> Result<Vec<String>> {
 
 fn is_word_byte(b: u8) -> bool {
     b.is_ascii_alphanumeric() || b == b'_'
+}
+
+fn ascii_word(ch: char) -> bool {
+    ch.is_ascii_alphanumeric() || ch == '_'
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -497,84 +503,227 @@ fn front_door_errors(
     errors
 }
 
-/// The sample must appear as a measurement. A sentence that only names the
-/// phrase for this gate does not count.
+/// The sample must be its own token on a measurement sentence. `13.117 ms` is
+/// not `3.117 ms`. A sentence that only names the phrase for this gate does
+/// not count. Other sentences on the same line still can.
 fn status_has_measured_sample(status: &str, phrase: &str) -> bool {
     status.lines().any(|line| {
-        let lower = line.to_ascii_lowercase();
-        lower.contains(phrase)
-            && !lower.contains("aw_doc_lint")
-            && !lower.contains("front door")
-            && !lower.contains("front-door")
-            && !lower.contains("looks for")
+        line.split(". ").any(|sentence| {
+            contains_phrase_token(sentence, phrase) && sentence_is_measurement(sentence)
+        })
     })
 }
 
-/// A frame figure is a number whose following text, after tags and the spacing
-/// this README uses, is `ms`.
-fn readme_frame_figure_errors(readme: &str) -> Vec<String> {
-    let lower = readme.to_ascii_lowercase();
+fn contains_phrase_token(haystack: &str, phrase: &str) -> bool {
+    let lower = haystack.to_ascii_lowercase();
+    let phrase = phrase.to_ascii_lowercase();
     let bytes = lower.as_bytes();
+    let needle = phrase.as_bytes();
+    if needle.is_empty() {
+        return false;
+    }
+    let mut from = 0;
+    while let Some(rel) = lower[from..].find(phrase.as_str()) {
+        let idx = from + rel;
+        let end = idx + needle.len();
+        let prev_ok = idx == 0 || !is_word_byte(bytes[idx - 1]);
+        let next_ok = end == bytes.len() || !is_word_byte(bytes[end]);
+        if prev_ok && next_ok {
+            return true;
+        }
+        from = idx + 1;
+    }
+    false
+}
+
+fn sentence_is_measurement(sentence: &str) -> bool {
+    let lower = sentence.to_ascii_lowercase();
+    if lower.contains("aw_doc_lint")
+        || lower.contains("front door")
+        || lower.contains("front-door")
+        || lower.contains("looks for")
+    {
+        return false;
+    }
+    lower.contains("median")
+        || lower.contains("measured")
+        || lower.contains("sample")
+        || lower.contains("capture")
+}
+
+/// A frame figure is a number followed by `ms` or `milliseconds`. Character
+/// references, tags, and markdown emphasis are decoded first.
+fn readme_frame_figure_errors(readme: &str) -> Vec<String> {
+    let pieces = frame_pieces(readme);
     let mut errors = Vec::new();
     let mut i = 0;
-    while i < bytes.len() {
-        if !bytes[i].is_ascii_digit() {
+    while i < pieces.len() {
+        if !pieces[i].0.is_ascii_digit() {
             i += 1;
             continue;
         }
-        let start = i;
+        if i > 0 && ascii_word(pieces[i - 1].0) {
+            i += 1;
+            continue;
+        }
+        let line = pieces[i].1;
         i += 1;
-        while i < bytes.len() && (bytes[i].is_ascii_digit() || bytes[i] == b'.') {
+        while i < pieces.len() && (pieces[i].0.is_ascii_digit() || pieces[i].0 == '.') {
             i += 1;
         }
-        let j = skip_frame_gap(bytes, i);
-        if bytes.get(j..j + 2) != Some(b"ms") {
+        while i < pieces.len() && pieces[i].0 == ' ' {
+            i += 1;
+        }
+        let unit = frame_unit(&pieces[i..]);
+        if unit == 0 {
             continue;
         }
-        let after = j + 2;
-        if after < bytes.len() && bytes[after].is_ascii_alphanumeric() {
+        let after = i + unit;
+        if after < pieces.len() && pieces[after].0.is_ascii_alphanumeric() {
             continue;
         }
-        let line = readme[..start].bytes().filter(|&b| b == b'\n').count() + 1;
         errors.push(format!(
             "{README_REL}:{line}: frame figure is not allowed on the landing page"
         ));
+        i = after;
     }
     errors
 }
 
-fn skip_frame_gap(bytes: &[u8], mut j: usize) -> usize {
-    loop {
-        if j >= bytes.len() {
-            return j;
-        }
-        match bytes[j] {
-            b' ' | b'\t' | b'\n' | b'\r' => j += 1,
+fn frame_unit(pieces: &[(char, usize)]) -> usize {
+    const MS: &[char] = &['m', 's'];
+    const MILLISECONDS: &[char] = &['m', 'i', 'l', 'l', 'i', 's', 'e', 'c', 'o', 'n', 'd', 's'];
+    if pieces_start(pieces, MILLISECONDS) {
+        MILLISECONDS.len()
+    } else if pieces_start(pieces, MS) {
+        MS.len()
+    } else {
+        0
+    }
+}
+
+fn pieces_start(pieces: &[(char, usize)], prefix: &[char]) -> bool {
+    pieces.len() >= prefix.len() && pieces.iter().zip(prefix).all(|(piece, ch)| piece.0 == *ch)
+}
+
+fn frame_pieces(input: &str) -> Vec<(char, usize)> {
+    let bytes = input.as_bytes();
+    let mut out = Vec::new();
+    let mut i = 0;
+    let mut line = 1usize;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'\n' => {
+                line += 1;
+                push_frame_char(&mut out, ' ', line);
+                i += 1;
+            }
             b'<' => {
-                while j < bytes.len() && bytes[j] != b'>' {
-                    j += 1;
+                i += 1;
+                while i < bytes.len() && bytes[i] != b'>' {
+                    if bytes[i] == b'\n' {
+                        line += 1;
+                    }
+                    i += 1;
                 }
-                if j < bytes.len() {
-                    j += 1;
+                if i < bytes.len() {
+                    i += 1;
                 }
             }
             b'&' => {
-                let rest = &bytes[j..];
-                let skip = if rest.starts_with(b"&nbsp;") {
-                    6
-                } else if rest.starts_with(b"&#32;") {
-                    5
-                } else if rest.starts_with(b"&#160;") || rest.starts_with(b"&#x20;") {
-                    6
-                } else if rest.starts_with(b"&#xa0;") {
-                    6
+                if let Some((ch, next)) = decode_char_ref(bytes, i) {
+                    push_frame_char(&mut out, ch, line);
+                    i = next;
                 } else {
-                    return j;
-                };
-                j += skip;
+                    push_frame_char(&mut out, '&', line);
+                    i += 1;
+                }
             }
-            _ => return j,
+            b'*' | b'`' => i += 1,
+            _ => {
+                let Some(ch) = input[i..].chars().next() else {
+                    break;
+                };
+                push_frame_char(&mut out, ch, line);
+                i += ch.len_utf8();
+            }
         }
+    }
+    out
+}
+
+fn push_frame_char(out: &mut Vec<(char, usize)>, ch: char, line: usize) {
+    let ch = if ch.is_whitespace() {
+        ' '
+    } else {
+        ch.to_ascii_lowercase()
+    };
+    out.push((ch, line));
+}
+
+fn decode_char_ref(bytes: &[u8], i: usize) -> Option<(char, usize)> {
+    if bytes.get(i) != Some(&b'&') {
+        return None;
+    }
+    let rest = &bytes[i + 1..];
+    if rest.first() == Some(&b'#') {
+        let hex = matches!(rest.get(1), Some(b'x' | b'X'));
+        let digits_at = if hex { 2 } else { 1 };
+        let mut n: u32 = 0;
+        let mut len = 0usize;
+        for &b in rest.get(digits_at..)? {
+            let dig = if hex {
+                match b {
+                    b'0'..=b'9' => b - b'0',
+                    b'a'..=b'f' => b - b'a' + 10,
+                    b'A'..=b'F' => b - b'A' + 10,
+                    _ => break,
+                }
+            } else if b.is_ascii_digit() {
+                b - b'0'
+            } else {
+                break;
+            };
+            len += 1;
+            if len > 7 {
+                return None;
+            }
+            n = n
+                .checked_mul(if hex { 16 } else { 10 })?
+                .checked_add(u32::from(dig))?;
+        }
+        if len == 0 {
+            return None;
+        }
+        let mut end = i + 1 + digits_at + len;
+        if bytes.get(end) == Some(&b';') {
+            end += 1;
+        }
+        Some((char::from_u32(n)?, end))
+    } else {
+        let mut len = 0usize;
+        while rest.get(len).is_some_and(|b| b.is_ascii_alphabetic()) {
+            len += 1;
+            if len > 32 {
+                return None;
+            }
+        }
+        if len == 0 {
+            return None;
+        }
+        let name = std::str::from_utf8(&rest[..len]).ok()?.to_ascii_lowercase();
+        let ch = match name.as_str() {
+            "nbsp" => '\u{00A0}',
+            "thinsp" => '\u{2009}',
+            "ensp" => '\u{2002}',
+            "emsp" => '\u{2003}',
+            _ => return None,
+        };
+        let mut end = i + 1 + len;
+        if bytes.get(end) == Some(&b';') {
+            end += 1;
+        }
+        Some((ch, end))
     }
 }
 
@@ -598,23 +747,36 @@ fn read_repo_file(root: &Path, rel: &str) -> Result<String> {
     std::fs::read_to_string(root.join(rel)).with_context(|| format!("reading {rel}"))
 }
 
+fn load_player_facing(root: &Path, tracked: &[String]) -> Result<Vec<(String, String)>> {
+    let mut player_facing = Vec::new();
+    for f in tracked {
+        if !is_player_facing(f) {
+            continue;
+        }
+        player_facing.push((f.clone(), read_repo_file(root, f)?));
+    }
+    Ok(player_facing)
+}
+
 fn main() -> Result<()> {
     let cli = Cli::parse();
-    let root = resolve_root(&cli)?;
+    lint_repo(&resolve_root(&cli)?, cli.mode)
+}
 
-    let spec = read_repo_file(&root, SPEC_REL).context("reading the closed-vocabulary spec")?;
+fn lint_repo(root: &Path, mode: Mode) -> Result<()> {
+    let spec = read_repo_file(root, SPEC_REL).context("reading the closed-vocabulary spec")?;
     let allowlist_doc =
-        read_repo_file(&root, ALLOWLIST_REL).context("reading the closed-vocabulary allowlist")?;
+        read_repo_file(root, ALLOWLIST_REL).context("reading the closed-vocabulary allowlist")?;
     let lits = load_literals(&spec)?;
     let allow = load_allowlist(&allowlist_doc)?;
 
-    let tracked = tracked_files(&root)?;
+    let tracked = tracked_files(root)?;
     let files: Vec<String> = tracked.iter().filter(|f| in_scope(f)).cloned().collect();
 
     let in_ci = std::env::var("GITHUB_ACTIONS")
         .map(|v| v == "true")
         .unwrap_or(false);
-    let level = match cli.mode {
+    let level = match mode {
         Mode::Warn => "warning",
         Mode::Enforce => "error",
     };
@@ -625,7 +787,7 @@ fn main() -> Result<()> {
     let mut scanned = 0usize;
 
     for f in &files {
-        let content = read_repo_file(&root, f)?;
+        let content = read_repo_file(root, f)?;
         scanned += 1;
         for (i, line) in content.lines().enumerate() {
             for hit in lint_line(line, &lits) {
@@ -659,16 +821,10 @@ fn main() -> Result<()> {
         eprintln!("doc-truth lint: clean (K=0 un-allowlisted).");
     }
 
-    let readme = read_repo_file(&root, README_REL)?;
-    let status = read_repo_file(&root, STATUS_REL)?;
-    let workflow = read_repo_file(&root, REPLAY_WORKFLOW_REL)?;
-    let mut player_facing = Vec::new();
-    for f in &tracked {
-        if !is_player_facing(f) {
-            continue;
-        }
-        player_facing.push((f.clone(), read_repo_file(&root, f)?));
-    }
+    let readme = read_repo_file(root, README_REL)?;
+    let status = read_repo_file(root, STATUS_REL)?;
+    let workflow = read_repo_file(root, REPLAY_WORKFLOW_REL)?;
+    let player_facing = load_player_facing(root, &tracked)?;
     let front = front_door_errors(&readme, &status, &workflow, &player_facing);
     for e in &front {
         println!("{e}");
@@ -683,7 +839,7 @@ fn main() -> Result<()> {
             front.len()
         );
     }
-    if should_fail(cli.mode, k) {
+    if should_fail(mode, k) {
         bail!("{k} un-allowlisted closed-vocabulary occurrence(s) (enforce mode)");
     }
     Ok(())
@@ -936,14 +1092,57 @@ mod tests {
     #[test]
     fn failed_read_of_project_brief_is_an_error() {
         assert!(is_player_facing("docs/current/PROJECT_BRIEF.md"));
-        let dir = std::env::temp_dir().join(format!("aw-doc-lint-missing-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!(
+            "aw-doc-lint-missing-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
         let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir(&dir).unwrap();
-        let err = read_repo_file(&dir, "docs/current/PROJECT_BRIEF.md").unwrap_err();
+        std::fs::create_dir_all(dir.join("docs/current")).unwrap();
+        std::fs::create_dir_all(dir.join("docs/campaigns/doc-truth")).unwrap();
+        std::fs::create_dir_all(dir.join(".github/workflows")).unwrap();
+        std::fs::write(
+            dir.join(SPEC_REL),
+            format!("{VOCAB_A_START}\n{VOCAB_A_END}\n{VOCAB_B_START}\n{VOCAB_B_END}\n"),
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join(ALLOWLIST_REL),
+            format!("{ALLOWLIST_START}\n{ALLOWLIST_END}\n"),
+        )
+        .unwrap();
+        std::fs::write(dir.join(README_REL), sample_readme()).unwrap();
+        std::fs::write(dir.join(STATUS_REL), sample_status()).unwrap();
+        std::fs::write(dir.join(REPLAY_WORKFLOW_REL), sample_workflow()).unwrap();
+        let brief = dir.join("docs/current/PROJECT_BRIEF.md");
+        std::fs::write(&brief, "The game is Aravath.\n").unwrap();
+        let init = std::process::Command::new("git")
+            .args(["init"])
+            .current_dir(&dir)
+            .status()
+            .unwrap();
+        assert!(init.success());
+        let add = std::process::Command::new("git")
+            .args(["add", "."])
+            .current_dir(&dir)
+            .status()
+            .unwrap();
+        assert!(add.success());
+        std::fs::remove_file(&brief).unwrap();
+        let err = lint_repo(&dir, Mode::Warn).unwrap_err();
         let msg = format!("{err:#}");
         assert!(
             msg.contains("reading docs/current/PROJECT_BRIEF.md"),
             "{msg}"
+        );
+        let direct = load_player_facing(&dir, &["docs/current/PROJECT_BRIEF.md".to_string()]);
+        let direct_msg = format!("{:#}", direct.unwrap_err());
+        assert!(
+            direct_msg.contains("reading docs/current/PROJECT_BRIEF.md"),
+            "{direct_msg}"
         );
         std::fs::remove_dir_all(&dir).unwrap();
     }
@@ -997,6 +1196,17 @@ mod tests {
             "3.117\nms",
             "3.117\tms",
             "<span>3.117</span> ms",
+            "3.117&#x00020;ms",
+            "3.117&#00032;ms",
+            "3.117&thinsp;ms",
+            "3.11&#55; ms",
+            "3.117 **ms**",
+            "3.117 `ms`",
+            "3.117&nbsp;**ms**",
+            "11 milliseconds",
+            "3.117\u{00a0}ms",
+            "3.117&#109;&#115;",
+            "3.117&nbsp ms",
         ] {
             let readme = format!("{}\nThe frame is {figure}.\n", sample_readme());
             let errors = front_door_errors(&readme, &sample_status(), &sample_workflow(), &[]);
@@ -1016,6 +1226,42 @@ mod tests {
         let errors = front_door_errors(&sample_readme(), &status, &sample_workflow(), &[]);
         assert!(
             errors.iter().any(|error| error.contains("3.117 ms")),
+            "{errors:?}"
+        );
+    }
+
+    #[test]
+    fn measured_sample_rejects_a_longer_number_and_a_bare_mention() {
+        let longer = sample_status().replace("3.117 ms", "13.117 ms");
+        let errors = front_door_errors(&sample_readme(), &longer, &sample_workflow(), &[]);
+        assert!(
+            errors.iter().any(|error| error.contains("3.117 ms")),
+            "{errors:?}"
+        );
+        let bare =
+            sample_status().replace("A later sample is 3.117 ms.", "Keep 3.117 ms written here.");
+        let errors = front_door_errors(&sample_readme(), &bare, &sample_workflow(), &[]);
+        assert!(
+            errors.iter().any(|error| error.contains("3.117 ms")),
+            "{errors:?}"
+        );
+        let both = sample_status().replace(
+            "A later sample is 3.117 ms.",
+            "The median GPU frame is 3.117 ms. aw_doc_lint looks for 3.117 ms.",
+        );
+        let errors = front_door_errors(&sample_readme(), &both, &sample_workflow(), &[]);
+        assert!(
+            !errors.iter().any(|error| error.contains("3.117 ms")),
+            "{errors:?}"
+        );
+    }
+
+    #[test]
+    fn readme_frame_figure_ignores_a_word_that_only_starts_with_ms() {
+        let readme = format!("{}\nShip 3.117 messages.\n", sample_readme());
+        let errors = front_door_errors(&readme, &sample_status(), &sample_workflow(), &[]);
+        assert!(
+            !errors.iter().any(|error| error.contains("frame figure")),
             "{errors:?}"
         );
     }

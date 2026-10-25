@@ -857,7 +857,7 @@ Sub-nanosecond operations discovered: 998 ps, 999 ps, 929 ps. DOF focus plane op
 
 ## Known Limitations
 
-- **Rendering**: The heavy-scene GPU frame on a GTX 1660 Ti Max-Q is 3.688 ms, `budget_11ms=pass` (#216). The amortized cloud shadow is 0.323 ms. #371 and #372 stay open. CPU `profiling_demo` times are not that measurement.
+- **Rendering**: The `939a21bb` heavy-scene GPU frame on a GTX 1660 Ti Max-Q is 3.688 ms, `budget_11ms=pass` (#216). The amortized cloud shadow is 0.323 ms. The later sample and the #372 state are in [engine status](../current/ENGINE_STATUS.md). #371 stays open. CPU `profiling_demo` times are not that measurement.
 - **LLM latency**: Older blocking-latency rows in this report name a specific local model and machine. They are not a current frame budget. The orchestrator default when `OLLAMA_MODEL` is unset is `phi3:medium`.
 - **Terrain 10K triangles**: 473 ms navmesh bake — must be async/precomputed (dated bench; not re-run 2026-10-16).
 - **Compile exclusions**: A June 2026 audit recorded `ui_controls_demo`, `debug_overlay`, `astraweave-author`, `rhai_authoring`, and `astraweave-llm` as compiling. This pass did not re-run `cargo check --workspace`. Do not treat the older "won't compile" sentences as current.
