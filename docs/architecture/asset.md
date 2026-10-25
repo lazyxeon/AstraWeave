@@ -8,8 +8,8 @@ domain: rendering
 lifecycle_status: active
 integration_status: wired
 owns: [astraweave-asset, astraweave-asset-pipeline]
-doc_version: "1.8"
-last_verified_commit: f98ed65c
+doc_version: "1.9"
+last_verified_commit: 0408f086
 ---
 
 # Architecture Trace: Asset System
@@ -20,9 +20,9 @@ last_verified_commit: f98ed65c
 |---|---|
 | **System name** | Asset System (loading, cell loader, Nanite preprocess, asset pipeline) |
 | **Primary crates** | `astraweave-asset`, `astraweave-asset-pipeline` |
-| **Document version** | 1.8 |
-| **Last verified against commit** | `f98ed65c` (parent of this restamp; that parent checks the GLB header before `Gltf::open`. The pre-rebase stamp `ba088116` is not an ancestor). |
-| **Last verified date** | 2026-10-24 |
+| **Document version** | 1.9 |
+| **Last verified against commit** | `0408f086` (parent of the mesh cap and the colon-before-slash rule; that parent still rejects any decoded colon, and a mesh `load_asset` is not yet read with `read_capped_file`. The pre-rebase stamp `bfd94fe9` is not an ancestor). |
+| **Last verified date** | 2026-10-25 |
 | **Status** | Active (mixed): glTF CPU loaders + cell loader + AssetDatabase are wired (`astraweave-asset` is VERIFIED-PRODUCTION); Nanite preprocess and the entire `astraweave-asset-pipeline` crate are in-design / dormant scaffolding. **R-series M1 trace-honesty (2026-06-30):** `astraweave-asset-pipeline` was individually **FALSE-PRODUCTION-READY** (R.0.B) — a present-tense over-claim at `lib.rs:4` over an ISLAND crate (no live caller). **R-series M2/E4 relabel-and-defer (2026-06-30):** E4 **resolved by relabel** — the `lib.rs:4` over-claim was rewritten to honest in-design status and the unused editor dep (`aw_editor/Cargo.toml:99`) was dropped, moving the crate **FALSE-PRODUCTION-READY → DORMANT-HONEST**. The BC7/KTX2 **cook path is NOT a v1.0 blocker** — the v1.0 render path consumes raw PNG→RGBA8 with no GPU-compressed-upload path, so cooking is a deferrable optimization **deferred to a post-v1.0 engine/compression-pipeline owner**. See `docs/audits/e4_cook_path_recon_2026-06.md`. |
 | **Owner notes** | First trace for this subsystem. `astraweave-asset` is one of the most-consumed untraced crates (9+ Cargo consumers). Derived from forensic data-flow analysis on 2026-06-24. |
 
@@ -141,7 +141,7 @@ The system is three loosely-coupled data paths. They share the `astraweave-asset
 **Role:** (De)serialize `CellData` to/from RON, async (`tokio::fs`) and sync variants.
 **Inputs:** RON cell file path.
 **Outputs:** `CellData { coord:[i32;3], entities:Vec<EntityData>, assets:Vec<AssetRef>, metadata:Option<CellMetadata> }` (cell_loader.rs:104-115).
-**Notes:** `EntityData` carries a transform (`position`/`rotation` quaternion/`scale`), an optional `mesh` path, an optional `material` layer index, and extensible `Vec<ComponentData>` (cell_loader.rs:49-66). `add_asset` deduplicates by `path` (cell_loader.rs:133-138). `cell_path_from_coord` formats `"{}_{}_{}.ron"` (cell_loader.rs:311). A texture `AssetKind` uses `read_limited_image_bytes` on `spawn_blocking`.
+**Notes:** `EntityData` carries a transform (`position`/`rotation` quaternion/`scale`), an optional `mesh` path, an optional `material` layer index, and extensible `Vec<ComponentData>` (cell_loader.rs:49-66). `add_asset` deduplicates by `path` (cell_loader.rs:133-138). `cell_path_from_coord` formats `"{}_{}_{}.ron"` (cell_loader.rs:311). A texture `AssetKind` uses `read_limited_image_bytes` on `spawn_blocking`. A mesh `AssetKind` uses `read_capped_file` at 256 MiB on `spawn_blocking`. `gltf_relative_uri` rejects a colon only when it comes before the first `/` or `\`.
 
 #### Stage B2: Per-asset byte load + magic validation
 **File:** `astraweave-asset/src/cell_loader.rs:223-308`.
@@ -426,3 +426,4 @@ The crate carries explicit "Phase 0 / Phase 2 foundations" markers (lib.rs:302, 
 | 1.2 | 2026-06-30 | **R-series M2/E4 — relabel-and-defer.** Recorded E4 resolution: `astraweave-asset-pipeline` `lib.rs:4` over-claim relabeled to honest in-design status; the unused `aw_editor` dep (`Cargo.toml:99`) dropped; verdict **FALSE-PRODUCTION-READY → DORMANT-HONEST**; BC7/KTX2 cook build **deferred post-v1.0** (the v1.0 render path consumes raw PNG→RGBA8, no GPU-compressed-upload path — cooking is a non-blocking optimization). Closed §11 Q1 (asset-pipeline-vs-CLI duplication — found 3 fragmented cook impls) + Q2 (unused editor dep — dropped). Updated Metadata Status. Source: `docs/audits/e4_cook_path_recon_2026-06.md`. |
 | 1.7 | 2026-10-21 | `data:` decode moved to `data_uri.rs` so `image_limits.rs` stays free of base64. Editor external mesh buffers are capped at 256 MiB in the render loader. The parent SHA from the pre-rebase branch is not an ancestor after the rebase onto main. |
 | 1.8 | 2026-10-24 | `load_uri_bytes` stops at 256 MiB. Image URIs are percent-decoded before the jail. A buffer-view image uses `checked_add`. A texture cell read uses `spawn_blocking`. The parent `f98ed65c` contains that read. The pre-rebase stamp `ba088116` is not an ancestor. |
+| 1.9 | 2026-10-25 | `gltf_relative_uri` rejects a colon only when it is before the first slash. A mesh `load_asset` reads at most 256 MiB on `spawn_blocking`. The parent `0408f086` still rejects any decoded colon, and a mesh `load_asset` is not yet read with `read_capped_file`. The pre-rebase stamp `bfd94fe9` is not an ancestor. |

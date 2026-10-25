@@ -188,9 +188,15 @@ impl WorldPartitionManager {
                     // Load referenced assets
                     let assets_root = std::path::Path::new("assets");
                     for asset_ref in &cell_data.assets {
-                        // Load asset asynchronously (fire and forget for now)
-                        // In production, integrate with asset manager
-                        let _ = Self::load_asset_data(asset_ref, assets_root).await;
+                        // Bytes are not stored. A failed read, including a
+                        // texture over the cap, must not mark the cell loaded.
+                        if let Err(err) = Self::load_asset_data(asset_ref, assets_root).await {
+                            let mut partition = partition_clone.write().await;
+                            if let Some(cell) = partition.get_cell_mut(coord_clone) {
+                                cell.state = CellState::Unloaded;
+                            }
+                            return Err(err);
+                        }
                     }
 
                     let entity_blueprints: Vec<CellEntityBlueprint> = cell_data
