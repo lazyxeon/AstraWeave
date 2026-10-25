@@ -1102,6 +1102,7 @@ pub struct Renderer {
     dof_on: bool,
     scene_vectors_on: bool,
     scene_vectors_prev: glam::Mat4,
+    scene_vectors_prev_view: glam::Mat4,
     material_alpha_cutoff: f32,
     plane_prev_instances: Option<wgpu::Buffer>,
     sphere_prev_instances: Option<wgpu::Buffer>,
@@ -3952,6 +3953,7 @@ fn vs(input: VSIn) -> VSOut {
             dof_on: false,
             scene_vectors_on: false,
             scene_vectors_prev: glam::Mat4::IDENTITY,
+            scene_vectors_prev_view: glam::Mat4::IDENTITY,
             material_alpha_cutoff: 0.5,
             plane_prev_instances: None,
             sphere_prev_instances: None,
@@ -5824,8 +5826,9 @@ fn vs(input: VSIn) -> VSOut {
         }
     }
 
-    /// Bytes copied into previous-instance and previous-vertex buffers the
-    /// last time the pass ran. Zero while the pass is off.
+    /// Bytes `copy_buffer_to_buffer` wrote into previous-instance and
+    /// previous-vertex buffers the last time the pass ran. Weather previous
+    /// poses are a queue upload and are not included. Zero while the pass is off.
     #[must_use]
     pub fn scene_vector_last_copy_bytes(&self) -> u64 {
         self.scene_vector_last_copy_bytes
@@ -5974,10 +5977,24 @@ fn vs(input: VSIn) -> VSOut {
             let created = device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some("scene vector previous instances"),
                 size: current.size(),
-                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+                usage: wgpu::BufferUsages::VERTEX
+                    | wgpu::BufferUsages::COPY_DST
+                    | wgpu::BufferUsages::COPY_SRC,
                 mapped_at_creation: false,
             });
-            enc.copy_buffer_to_buffer(current, 0, &created, 0, current.size());
+            // A larger upload keeps the old prefix. Copying `current` over
+            // the whole previous buffer would zero that frame's motion.
+            if let Some(old) = slot.take() {
+                let keep = old.size().min(current.size());
+                if keep > 0 {
+                    enc.copy_buffer_to_buffer(&old, 0, &created, 0, keep);
+                }
+                if current.size() > keep {
+                    enc.copy_buffer_to_buffer(current, keep, &created, keep, current.size() - keep);
+                }
+            } else if current.size() > 0 {
+                enc.copy_buffer_to_buffer(current, 0, &created, 0, current.size());
+            }
             *slot = Some(created);
         }
         match slot {
@@ -6072,6 +6089,12 @@ fn vs(input: VSIn) -> VSOut {
         let device = self.device.clone();
         let queue = self.queue.clone();
         let view = self.cached_view;
+        #[cfg(feature = "impostor-bake")]
+        let prev_view = if self.scene_vectors_prev_valid {
+            self.scene_vectors_prev_view
+        } else {
+            view
+        };
         if self.scene_vectors.is_none() {
             self.scene_vectors = Some(crate::scene_vectors::SceneVectorsPass::new(
                 &device,
@@ -6254,7 +6277,7 @@ fn vs(input: VSIn) -> VSOut {
                     // history to the current set before the draw.
                     ip.align_history_to_current(&queue);
                 }
-                ip.prepare_scene_vectors(&queue, curr, prev, view);
+                ip.prepare_scene_vectors(&queue, curr, prev, view, prev_view);
             }
             let color_load = if weather_count > 0 {
                 wgpu::LoadOp::Load
@@ -6295,10 +6318,15 @@ fn vs(input: VSIn) -> VSOut {
             // Reverse of the color pass: impostors, terrain, models, external
             // mesh, spheres, then the ground plane. Less plus the depth bias
             // lets an equal-depth fragment through, and the last one is the
-            // surface the color pass kept.
+            // surface the color pass kept. HashMap `values` is the color
+            // order; the reverse makes the earlier card the last draw.
             #[cfg(feature = "impostor-bake")]
-            for ip in impostor_draws.values() {
-                ip.record_scene_vectors(&mut rp);
+            {
+                let mut impostor_order: Vec<_> = impostor_draws.values().collect();
+                impostor_order.reverse();
+                for ip in impostor_order {
+                    ip.record_scene_vectors(&mut rp);
+                }
             }
             #[cfg(feature = "terrain-splat-arrays")]
             if let Some(tf) = self.terrain_forward.as_ref() {
@@ -6395,10 +6423,8 @@ fn vs(input: VSIn) -> VSOut {
             copy_bytes += current.size().min(prev_buf.size());
             Self::commit_prev_instances(enc, current, prev_buf);
         }
-        if weather_count > 0 {
-            let stride = std::mem::size_of::<crate::types::InstanceRaw>() as u64;
-            copy_bytes += u64::from(weather_count) * stride;
-        }
+        // Weather previous poses are a CPU upload in `WeatherFx::update`.
+        // They are not an encoder copy, so they stay out of this total.
         for name in &all_model_names {
             let Some(model) = self.models.get(name) else {
                 continue;
@@ -6425,6 +6451,7 @@ fn vs(input: VSIn) -> VSOut {
             .extend(self.instances.iter().map(|inst| inst.transform));
         self.scene_vector_last_copy_bytes = copy_bytes;
         self.scene_vectors_prev = curr;
+        self.scene_vectors_prev_view = view;
         self.scene_vectors_prev_valid = true;
     }
 

@@ -144,6 +144,8 @@ fn vs_terrain(
 @fragment
 fn fs_terrain(in: VsOut) -> FsOut {
     var out: FsOut;
+    // Geometric normal from `vs_terrain`. The color pass shades the splat
+    // normal (`NORMAL_XY_STRENGTH` 1.4). That sample is deferred issue #428.
     out.normal = pack_view_normal(in.world_n);
     out.velocity = uv_delta(in.curr_ndc, in.prev_ndc);
     return out;

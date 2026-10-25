@@ -572,5 +572,158 @@ fn weather_and_terrain_submit_when_scene_vectors_are_on() {
             validation.is_none(),
             "particles or terrain failed validation: {validation:?}"
         );
+        let with_particles = renderer.scene_vector_last_copy_bytes();
+        assert!(renderer.weather_mut().particle_count() > 0);
+        renderer.set_weather_max(0);
+        renderer.tick_weather(10.0);
+        assert_eq!(renderer.weather_mut().particle_count(), 0);
+        device.push_error_scope(wgpu::ErrorFilter::Validation);
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("terrain without weather"),
+        });
+        renderer
+            .draw_into(&color, None, &mut encoder)
+            .expect("draw_into");
+        renderer.queue().submit(std::iter::once(encoder.finish()));
+        let _ = device.poll(wgpu::MaintainBase::Wait);
+        let validation = device.pop_error_scope().await;
+        assert!(validation.is_none(), "{validation:?}");
+        assert_eq!(
+            renderer.scene_vector_last_copy_bytes(),
+            with_particles,
+            "weather bytes were counted though they were not copied"
+        );
+    });
+}
+
+/// A larger second upload must keep the old vertex prefix as previous
+/// positions. Copying the new buffer over that prefix stores a zero delta.
+#[test]
+fn larger_terrain_upload_keeps_motion() {
+    pollster::block_on(async {
+        const WIDTH: u32 = 64;
+        let mut renderer = Renderer::new_headless(WIDTH, WIDTH)
+            .await
+            .expect("headless");
+        let eye = glam::Vec3::new(0.0, 2.0, 8.0);
+        let target = glam::Vec3::new(0.0, 2.0, 0.0);
+        let projection =
+            astraweave_camera::Projection::perspective(60.0_f32.to_radians(), 1.0, 0.1, 40.0);
+        let view = glam::Mat4::look_at_rh(eye, target, glam::Vec3::Y);
+        renderer.update_view(&astraweave_camera::RenderView::new(
+            view,
+            &projection,
+            eye,
+            (target - eye).normalize(),
+        ));
+        let vp = renderer.current_view_proj();
+        renderer.set_scene_vectors_enabled(true);
+        renderer.init_terrain_forward().expect("terrain");
+        let quad =
+            |shift: f32| -> Vec<astraweave_render::terrain_material_manager::TerrainSplatVertex> {
+                [
+                    [-2.0, 0.0, 0.0],
+                    [2.0, 0.0, 0.0],
+                    [2.0, 4.0, 0.0],
+                    [-2.0, 4.0, 0.0],
+                ]
+                .into_iter()
+                .map(
+                    |position| astraweave_render::terrain_material_manager::TerrainSplatVertex {
+                        position: [position[0] + shift, position[1], position[2]],
+                        normal: [0.0, 0.0, 1.0],
+                        uv: [0.0, 0.0],
+                    },
+                )
+                .collect()
+            };
+        let indices = [0u32, 1, 2, 0, 2, 3];
+        let map = [255u8, 0, 0, 255].repeat(16);
+        let maps = vec![map; 8];
+        let refs: Vec<&[u8]> = maps.iter().map(|bytes| bytes.as_slice()).collect();
+        let first = quad(0.0);
+        renderer
+            .upload_terrain_chunk(3, &first, &indices, &refs, (4, 4))
+            .expect("first chunk");
+        let device = renderer.device().clone();
+        let queue = renderer.queue().clone();
+        let color_tex = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("terrain motion color"),
+            size: wgpu::Extent3d {
+                width: WIDTH,
+                height: WIDTH,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8UnormSrgb,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+            view_formats: &[],
+        });
+        let color = color_tex.create_view(&wgpu::TextureViewDescriptor::default());
+        let draw = |renderer: &mut Renderer, label: &'static str| {
+            device.push_error_scope(wgpu::ErrorFilter::Validation);
+            let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some(label),
+            });
+            renderer
+                .draw_into(&color, None, &mut encoder)
+                .expect("draw_into");
+            queue.submit(std::iter::once(encoder.finish()));
+            let _ = device.poll(wgpu::MaintainBase::Wait);
+            label
+        };
+        let first_label = draw(&mut renderer, "first terrain");
+        let first_validation = device.pop_error_scope().await;
+        assert!(
+            first_validation.is_none(),
+            "{first_label}: {first_validation:?}"
+        );
+        let moved = quad(2.0);
+        let mut grown = moved.clone();
+        grown.push(
+            astraweave_render::terrain_material_manager::TerrainSplatVertex {
+                position: [2.0, 2.0, 0.0],
+                normal: [0.0, 0.0, 1.0],
+                uv: [0.5, 0.5],
+            },
+        );
+        assert!(grown.len() > first.len());
+        renderer
+            .upload_terrain_chunk(3, &grown, &indices, &refs, (4, 4))
+            .expect("larger chunk");
+        let second_label = draw(&mut renderer, "grown terrain");
+        let second_validation = device.pop_error_scope().await;
+        assert!(
+            second_validation.is_none(),
+            "{second_label}: {second_validation:?}"
+        );
+        let (normal, velocity) = renderer.scene_vector_targets().expect("targets");
+        let encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("read terrain normal"),
+        });
+        let normals = read_texture(&device, &queue, encoder, &normal, WIDTH, WIDTH, 8);
+        let encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("read terrain velocity"),
+        });
+        let velocities = read_texture(&device, &queue, encoder, &velocity, WIDTH, WIDTH, 4);
+        let here = glam::Vec3::new(2.0, 2.0, 0.0);
+        let was = glam::Vec3::new(0.0, 2.0, 0.0);
+        let expected = uv_of(vp, here) - uv_of(vp, was);
+        let curr = uv_of(vp, here);
+        let px = (curr.x * WIDTH as f32).clamp(1.0, (WIDTH - 2) as f32) as u32;
+        let py = (curr.y * WIDTH as f32).clamp(1.0, (WIDTH - 2) as f32) as u32;
+        let sample = pixel_rg(&normals, &velocities, WIDTH, px, py);
+        assert!(
+            sample.coverage > 0.5 && sample.velocity.length() > 0.01,
+            "larger upload zeroed motion at {px},{py}: velocity {} expected about {expected}",
+            sample.velocity
+        );
+        assert!(
+            (sample.velocity - expected).length() < 0.08,
+            "velocity {} left the shifted quad {expected}",
+            sample.velocity
+        );
     });
 }

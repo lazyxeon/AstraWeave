@@ -130,6 +130,7 @@ struct ImpostorVectorMats {
     curr_vp: [[f32; 4]; 4],
     prev_vp: [[f32; 4]; 4],
     view: [[f32; 4]; 4],
+    prev_view: [[f32; 4]; 4],
 }
 
 const IMPOSTOR_VECTOR_WGSL: &str = r#"
@@ -137,6 +138,7 @@ struct Mats {
     curr_vp: mat4x4<f32>,
     prev_vp: mat4x4<f32>,
     view: mat4x4<f32>,
+    prev_view: mat4x4<f32>,
 }
 struct SpeciesRow {
     cell_0_uv: vec4<f32>,
@@ -155,12 +157,12 @@ struct VsOut {
     @location(3) @interpolate(linear) prev_ndc: vec2<f32>,
 }
 
-fn camera_pos() -> vec3<f32> {
-    let t = mats.view[3].xyz;
+fn camera_from(view: mat4x4<f32>) -> vec3<f32> {
+    let t = view[3].xyz;
     return -vec3<f32>(
-        dot(mats.view[0].xyz, t),
-        dot(mats.view[1].xyz, t),
-        dot(mats.view[2].xyz, t),
+        dot(view[0].xyz, t),
+        dot(view[1].xyz, t),
+        dot(view[2].xyz, t),
     );
 }
 
@@ -175,7 +177,8 @@ fn vs_main(
     let instance_pos = position_scale.xyz;
     let prev_pos = prev_position_scale.xyz;
     let scale = position_scale.w;
-    let to_cam = camera_pos() - instance_pos;
+    let prev_scale = prev_position_scale.w;
+    let to_cam = camera_from(mats.view) - instance_pos;
     let horiz = vec3<f32>(to_cam.x, 0.0, to_cam.z);
     let horiz_len = max(length(horiz), 1.0e-4);
     let forward = horiz / horiz_len;
@@ -183,7 +186,13 @@ fn vs_main(
     let up = vec3<f32>(0.0, 1.0, 0.0);
     let world_offset = right * (local_pos.x * scale) + up * (local_pos.y * scale);
     let world_pos = instance_pos + world_offset;
-    let prev_world = prev_pos + world_offset;
+    let prev_to_cam = camera_from(mats.prev_view) - prev_pos;
+    let prev_horiz = vec3<f32>(prev_to_cam.x, 0.0, prev_to_cam.z);
+    let prev_horiz_len = max(length(prev_horiz), 1.0e-4);
+    let prev_forward = prev_horiz / prev_horiz_len;
+    let prev_right = normalize(cross(vec3<f32>(0.0, 1.0, 0.0), prev_forward));
+    let prev_offset = prev_right * (local_pos.x * prev_scale) + up * (local_pos.y * prev_scale);
+    let prev_world = prev_pos + prev_offset;
     let species_idx = u32(species_and_params.x + 0.5);
     let row = rows[species_idx];
     let tau = 6.28318530718;
@@ -555,6 +564,7 @@ impl ImpostorPass {
         curr_vp: Mat4,
         prev_vp: Mat4,
         view: Mat4,
+        prev_view: Mat4,
     ) {
         if self.instance_count == 0 {
             return;
@@ -563,6 +573,7 @@ impl ImpostorPass {
             curr_vp: curr_vp.to_cols_array_2d(),
             prev_vp: prev_vp.to_cols_array_2d(),
             view: view.to_cols_array_2d(),
+            prev_view: prev_view.to_cols_array_2d(),
         };
         queue.write_buffer(&self.vector_uniform, 0, bytemuck::bytes_of(&mats));
     }
@@ -578,7 +589,13 @@ impl ImpostorPass {
         pass.set_vertex_buffer(1, self.instance_buffer.slice(..));
         pass.set_vertex_buffer(2, self.prev_buffer.slice(..));
         pass.set_index_buffer(self.quad_ibuf.slice(..), wgpu::IndexFormat::Uint16);
-        pass.draw_indexed(0..6, 0, 0..self.instance_count);
+        // Color draws `0..count` with unbiased `Less`, so the earlier card
+        // wins an equal-depth tie. This pass is biased, so draw from the
+        // tail and let that earlier card replace the later ones.
+        let count = self.instance_count;
+        for instance in (0..count).rev() {
+            pass.draw_indexed(0..6, 0, instance..instance + 1);
+        }
     }
 
     /// Number of instances recorded by the most recent
