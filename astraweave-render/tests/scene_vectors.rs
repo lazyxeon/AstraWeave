@@ -664,9 +664,8 @@ fn larger_terrain_upload_keeps_motion() {
         let color = color_tex.create_view(&wgpu::TextureViewDescriptor::default());
         let draw = |renderer: &mut Renderer, label: &'static str| {
             device.push_error_scope(wgpu::ErrorFilter::Validation);
-            let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some(label),
-            });
+            let mut encoder = device
+                .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some(label) });
             renderer
                 .draw_into(&color, None, &mut encoder)
                 .expect("draw_into");
