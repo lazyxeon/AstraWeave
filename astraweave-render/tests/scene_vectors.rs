@@ -558,6 +558,22 @@ fn weather_and_terrain_submit_when_scene_vectors_are_on() {
             view_formats: &[],
         });
         let color = target.create_view(&wgpu::TextureViewDescriptor::default());
+        // The first enabled frame also copies the plane into an empty previous
+        // slot. The comparison below is the steady encoder total.
+        device.push_error_scope(wgpu::ErrorFilter::Validation);
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("weather terrain warmup"),
+        });
+        renderer
+            .draw_into(&color, None, &mut encoder)
+            .expect("draw_into");
+        renderer.queue().submit(std::iter::once(encoder.finish()));
+        let _ = device.poll(wgpu::MaintainBase::Wait);
+        let validation = device.pop_error_scope().await;
+        assert!(
+            validation.is_none(),
+            "warmup failed validation: {validation:?}"
+        );
         device.push_error_scope(wgpu::ErrorFilter::Validation);
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("weather terrain scene vectors"),
@@ -698,6 +714,7 @@ fn larger_terrain_upload_keeps_motion() {
             second_validation.is_none(),
             "{second_label}: {second_validation:?}"
         );
+        let grown_bytes = renderer.scene_vector_last_copy_bytes();
         let (normal, velocity) = renderer.scene_vector_targets().expect("targets");
         let encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("read terrain normal"),
@@ -723,6 +740,254 @@ fn larger_terrain_upload_keeps_motion() {
             (sample.velocity - expected).length() < 0.08,
             "velocity {} left the shifted quad {expected}",
             sample.velocity
+        );
+        // Five vertices is not a square grid, so the growth frame keeps the
+        // prefix and copies it in `stage_prev_instances` as well as the commit.
+        let steady_label = draw(&mut renderer, "steady terrain");
+        let steady_validation = device.pop_error_scope().await;
+        assert!(
+            steady_validation.is_none(),
+            "{steady_label}: {steady_validation:?}"
+        );
+        let steady_bytes = renderer.scene_vector_last_copy_bytes();
+        let vertex_bytes = (grown.len() * std::mem::size_of_val(&grown[0])) as u64;
+        assert!(
+            grown_bytes > steady_bytes && grown_bytes - steady_bytes == vertex_bytes,
+            "growth frame copied {grown_bytes}, steady frame {steady_bytes}, vertex buffer {vertex_bytes}"
+        );
+    });
+}
+
+fn splat_maps() -> Vec<Vec<u8>> {
+    vec![[255u8, 0, 0, 255].repeat(16); 8]
+}
+
+fn look_at_vertical_quad(renderer: &mut Renderer) -> glam::Mat4 {
+    let eye = glam::Vec3::new(0.0, 2.0, 8.0);
+    let target = glam::Vec3::new(0.0, 2.0, 0.0);
+    let projection =
+        astraweave_camera::Projection::perspective(60.0_f32.to_radians(), 1.0, 0.1, 40.0);
+    let view = glam::Mat4::look_at_rh(eye, target, glam::Vec3::Y);
+    renderer.update_view(&astraweave_camera::RenderView::new(
+        view,
+        &projection,
+        eye,
+        (target - eye).normalize(),
+    ));
+    renderer.current_view_proj()
+}
+
+/// Row-major `i = gy * n + gx` over x [-2, 2] and y [0, 4], normal +Z.
+/// Winding is CCW when viewed from +Z.
+fn row_major_grid(
+    n: u32,
+    shift: f32,
+) -> (
+    Vec<astraweave_render::terrain_material_manager::TerrainSplatVertex>,
+    Vec<u32>,
+) {
+    let step = 4.0 / (n - 1) as f32;
+    let mut vertices = Vec::with_capacity((n * n) as usize);
+    for gy in 0..n {
+        for gx in 0..n {
+            vertices.push(
+                astraweave_render::terrain_material_manager::TerrainSplatVertex {
+                    position: [-2.0 + gx as f32 * step + shift, gy as f32 * step, 0.0],
+                    normal: [0.0, 0.0, 1.0],
+                    uv: [0.0, 0.0],
+                },
+            );
+        }
+    }
+    let mut indices = Vec::new();
+    for gy in 0..n - 1 {
+        for gx in 0..n - 1 {
+            let i = gy * n + gx;
+            indices.extend_from_slice(&[i, i + 1, i + n + 1, i, i + n + 1, i + n]);
+        }
+    }
+    (vertices, indices)
+}
+
+fn draw_scene(renderer: &mut Renderer, label: &'static str) {
+    let device = renderer.device().clone();
+    let color_tex = device.create_texture(&wgpu::TextureDescriptor {
+        label: Some("scene vector color"),
+        size: wgpu::Extent3d {
+            width: 64,
+            height: 64,
+            depth_or_array_layers: 1,
+        },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: wgpu::TextureFormat::Rgba8UnormSrgb,
+        usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+        view_formats: &[],
+    });
+    let color = color_tex.create_view(&wgpu::TextureViewDescriptor::default());
+    device.push_error_scope(wgpu::ErrorFilter::Validation);
+    let mut encoder =
+        device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some(label) });
+    renderer
+        .draw_into(&color, None, &mut encoder)
+        .expect("draw_into");
+    renderer.queue().submit(std::iter::once(encoder.finish()));
+    let _ = device.poll(wgpu::MaintainBase::Wait);
+}
+
+async fn pop_ok(device: &wgpu::Device, label: &str) {
+    let validation = device.pop_error_scope().await;
+    assert!(validation.is_none(), "{label}: {validation:?}");
+}
+
+/// A larger `N` reindexes `i = gy * N + gx`. The prefix must not pair those
+/// points, so the frame stores zero motion.
+#[test]
+fn larger_grid_dimension_zeroes_motion() {
+    pollster::block_on(async {
+        const WIDTH: u32 = 64;
+        let mut renderer = Renderer::new_headless(WIDTH, WIDTH)
+            .await
+            .expect("headless");
+        let vp = look_at_vertical_quad(&mut renderer);
+        renderer.set_scene_vectors_enabled(true);
+        renderer.init_terrain_forward().expect("terrain");
+        let maps = splat_maps();
+        let refs: Vec<&[u8]> = maps.iter().map(|bytes| bytes.as_slice()).collect();
+        let (coarse, coarse_indices) = row_major_grid(2, 0.0);
+        assert_eq!(coarse.len(), 4);
+        renderer
+            .upload_terrain_chunk(11, &coarse, &coarse_indices, &refs, (4, 4))
+            .expect("2x2");
+        let device = renderer.device().clone();
+        draw_scene(&mut renderer, "coarse grid");
+        pop_ok(&device, "coarse grid").await;
+        let (fine, fine_indices) = row_major_grid(3, 2.0);
+        assert_eq!(fine.len(), 9);
+        renderer
+            .upload_terrain_chunk(11, &fine, &fine_indices, &refs, (4, 4))
+            .expect("3x3");
+        draw_scene(&mut renderer, "grown grid");
+        pop_ok(&device, "grown grid").await;
+        let (normal, velocity) = renderer.scene_vector_targets().expect("targets");
+        let queue = renderer.queue().clone();
+        let encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("read grown grid normal"),
+        });
+        let normals = read_texture(&device, &queue, encoder, &normal, WIDTH, WIDTH, 8);
+        let encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("read grown grid velocity"),
+        });
+        let velocities = read_texture(&device, &queue, encoder, &velocity, WIDTH, WIDTH, 4);
+        // Index 2 of the 3x3 is (gx=2, gy=0). A prefix copy pairs it with
+        // index 2 of the 2x2, which is (gx=0, gy=1).
+        let here = glam::Vec3::new(3.6, 0.8, 0.0);
+        let curr = uv_of(vp, here);
+        let px = (curr.x * WIDTH as f32).clamp(1.0, (WIDTH - 2) as f32) as u32;
+        let py = (curr.y * WIDTH as f32).clamp(1.0, (WIDTH - 2) as f32) as u32;
+        let sample = pixel_rg(&normals, &velocities, WIDTH, px, py);
+        assert!(
+            sample.coverage > 0.5 && sample.velocity.length() < 1.0e-3,
+            "grid growth kept a prefix delta at {px},{py}: coverage {} velocity {}",
+            sample.coverage,
+            sample.velocity
+        );
+    });
+}
+
+/// An upload while the pass is off must not become the first enabled frame's
+/// previous positions.
+#[test]
+fn upload_while_scene_vectors_are_off_stores_zero_motion() {
+    pollster::block_on(async {
+        const WIDTH: u32 = 64;
+        let mut renderer = Renderer::new_headless(WIDTH, WIDTH)
+            .await
+            .expect("headless");
+        let vp = look_at_vertical_quad(&mut renderer);
+        assert!(!renderer.scene_vectors_enabled());
+        renderer.init_terrain_forward().expect("terrain");
+        let quad =
+            |shift: f32| -> Vec<astraweave_render::terrain_material_manager::TerrainSplatVertex> {
+                [
+                    [-2.0, 0.0, 0.0],
+                    [2.0, 0.0, 0.0],
+                    [2.0, 4.0, 0.0],
+                    [-2.0, 4.0, 0.0],
+                ]
+                .into_iter()
+                .map(
+                    |position| astraweave_render::terrain_material_manager::TerrainSplatVertex {
+                        position: [position[0] + shift, position[1], position[2]],
+                        normal: [0.0, 0.0, 1.0],
+                        uv: [0.0, 0.0],
+                    },
+                )
+                .collect()
+            };
+        let indices = [0u32, 1, 2, 0, 2, 3];
+        let maps = splat_maps();
+        let refs: Vec<&[u8]> = maps.iter().map(|bytes| bytes.as_slice()).collect();
+        renderer
+            .upload_terrain_chunk(5, &quad(0.0), &indices, &refs, (4, 4))
+            .expect("first upload");
+        renderer
+            .upload_terrain_chunk(5, &quad(2.0), &indices, &refs, (4, 4))
+            .expect("replace while off");
+        renderer.set_scene_vectors_enabled(true);
+        let device = renderer.device().clone();
+        draw_scene(&mut renderer, "first enabled frame");
+        pop_ok(&device, "first enabled frame").await;
+        let (normal, velocity) = renderer.scene_vector_targets().expect("targets");
+        let queue = renderer.queue().clone();
+        let encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("read off-upload normal"),
+        });
+        let normals = read_texture(&device, &queue, encoder, &normal, WIDTH, WIDTH, 8);
+        let encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("read off-upload velocity"),
+        });
+        let velocities = read_texture(&device, &queue, encoder, &velocity, WIDTH, WIDTH, 4);
+        let here = glam::Vec3::new(2.0, 2.0, 0.0);
+        let curr = uv_of(vp, here);
+        let px = (curr.x * WIDTH as f32).clamp(1.0, (WIDTH - 2) as f32) as u32;
+        let py = (curr.y * WIDTH as f32).clamp(1.0, (WIDTH - 2) as f32) as u32;
+        let sample = pixel_rg(&normals, &velocities, WIDTH, px, py);
+        assert!(
+            sample.coverage > 0.5 && sample.velocity.length() < 1.0e-3,
+            "upload while off kept a delta at {px},{py}: coverage {} velocity {}",
+            sample.coverage,
+            sample.velocity
+        );
+    });
+}
+
+/// Sphere previous poses are `queue.write_buffer`, not an encoder copy.
+#[test]
+fn sphere_queue_write_is_not_an_encoder_copy() {
+    pollster::block_on(async {
+        let mut renderer = Renderer::new_headless(64, 64).await.expect("headless");
+        look_at_vertical_quad(&mut renderer);
+        renderer.set_scene_vectors_enabled(true);
+        let device = renderer.device().clone();
+        draw_scene(&mut renderer, "sphere warmup");
+        pop_ok(&device, "sphere warmup").await;
+        draw_scene(&mut renderer, "sphere steady");
+        pop_ok(&device, "sphere steady").await;
+        let steady = renderer.scene_vector_last_copy_bytes();
+        assert!(steady > 0, "steady frame recorded no encoder copy");
+        renderer.update_instances(&[astraweave_render::Instance::from_pos_scale_color(
+            glam::Vec3::new(0.0, 2.0, 0.0),
+            glam::Vec3::splat(0.5),
+            [1.0, 0.0, 0.0, 1.0],
+        )]);
+        draw_scene(&mut renderer, "sphere visible");
+        pop_ok(&device, "sphere visible").await;
+        assert_eq!(
+            renderer.scene_vector_last_copy_bytes(),
+            steady,
+            "sphere queue write was counted as an encoder copy"
         );
     });
 }

@@ -5827,8 +5827,12 @@ fn vs(input: VSIn) -> VSOut {
     }
 
     /// Bytes `copy_buffer_to_buffer` wrote into previous-instance and
-    /// previous-vertex buffers the last time the pass ran. Weather previous
-    /// poses are a queue upload and are not included. Zero while the pass is off.
+    /// previous-vertex buffers the last time the pass ran. Sphere previous
+    /// poses and weather previous poses are queue uploads and are not
+    /// included. A growth frame includes the stage copy and the later commit
+    /// copy. A square terrain grid whose side length changed copies the new
+    /// vertices over the previous buffer, so that frame's delta is zero.
+    /// Zero while the pass is off.
     #[must_use]
     pub fn scene_vector_last_copy_bytes(&self) -> u64 {
         self.scene_vector_last_copy_bytes
@@ -5964,12 +5968,32 @@ fn vs(input: VSIn) -> VSOut {
         );
     }
 
+    /// `N` when `byte_len` is `N * N` vertices of `stride` bytes.
+    #[cfg(feature = "terrain-splat-arrays")]
+    fn square_grid_side(byte_len: u64, stride: u64) -> Option<u64> {
+        if stride == 0 || byte_len % stride != 0 {
+            return None;
+        }
+        let count = byte_len / stride;
+        if count == 0 {
+            return None;
+        }
+        let side = count.isqrt();
+        if side * side == count {
+            Some(side)
+        } else {
+            None
+        }
+    }
+
+    /// Returns the previous buffer and the bytes this call passed to
+    /// `copy_buffer_to_buffer`. A slot that already fits copies nothing here.
     fn stage_prev_instances(
         device: &wgpu::Device,
         enc: &mut wgpu::CommandEncoder,
         current: &wgpu::Buffer,
         slot: &mut Option<wgpu::Buffer>,
-    ) -> wgpu::Buffer {
+    ) -> (wgpu::Buffer, u64) {
         let fits = slot
             .as_ref()
             .is_some_and(|prev| prev.size() >= current.size());
@@ -5984,33 +6008,96 @@ fn vs(input: VSIn) -> VSOut {
             });
             // A larger upload keeps the old prefix. Copying `current` over
             // the whole previous buffer would zero that frame's motion.
+            // A square terrain grid whose side changed does not use this path.
+            let mut copied = 0u64;
             if let Some(old) = slot.take() {
                 let keep = old.size().min(current.size());
                 if keep > 0 {
                     enc.copy_buffer_to_buffer(&old, 0, &created, 0, keep);
+                    copied += keep;
                 }
                 if current.size() > keep {
-                    enc.copy_buffer_to_buffer(current, keep, &created, keep, current.size() - keep);
+                    let tail = current.size() - keep;
+                    enc.copy_buffer_to_buffer(current, keep, &created, keep, tail);
+                    copied += tail;
                 }
             } else if current.size() > 0 {
                 enc.copy_buffer_to_buffer(current, 0, &created, 0, current.size());
+                copied = current.size();
             }
-            *slot = Some(created);
+            *slot = Some(created.clone());
+            return (created, copied);
         }
         match slot {
-            Some(prev) => prev.clone(),
-            None => current.clone(),
+            Some(prev) => (prev.clone(), 0),
+            None => (current.clone(), 0),
         }
+    }
+
+    /// Editor terrain is row-major `i = gy * N + gx`. A new `N` makes a byte
+    /// prefix a different point, including a shrink whose old buffer still
+    /// fits. Copy the new vertices over the previous buffer so the delta is
+    /// zero. Any other size change keeps the prefix.
+    #[cfg(feature = "terrain-splat-arrays")]
+    fn stage_terrain_prev(
+        device: &wgpu::Device,
+        enc: &mut wgpu::CommandEncoder,
+        current: &wgpu::Buffer,
+        slot: &mut Option<wgpu::Buffer>,
+    ) -> (wgpu::Buffer, u64) {
+        let stride =
+            std::mem::size_of::<crate::terrain_material_manager::TerrainSplatVertex>() as u64;
+        let old_side = slot
+            .as_ref()
+            .and_then(|prev| Self::square_grid_side(prev.size(), stride));
+        let new_side = Self::square_grid_side(current.size(), stride);
+        let side_changed = match (old_side, new_side) {
+            (Some(old_side), Some(new_side)) => old_side != new_side,
+            _ => false,
+        };
+        if !side_changed {
+            return Self::stage_prev_instances(device, enc, current, slot);
+        }
+        let created = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("scene vector previous terrain"),
+            size: current.size(),
+            usage: wgpu::BufferUsages::VERTEX
+                | wgpu::BufferUsages::COPY_DST
+                | wgpu::BufferUsages::COPY_SRC,
+            mapped_at_creation: false,
+        });
+        let copied = if current.size() > 0 {
+            enc.copy_buffer_to_buffer(current, 0, &created, 0, current.size());
+            current.size()
+        } else {
+            0
+        };
+        *slot = Some(created.clone());
+        (created, copied)
     }
 
     fn commit_prev_instances(
         enc: &mut wgpu::CommandEncoder,
         current: &wgpu::Buffer,
         prev: &wgpu::Buffer,
-    ) {
+    ) -> u64 {
         let bytes = current.size().min(prev.size());
         if bytes > 0 {
             enc.copy_buffer_to_buffer(current, 0, prev, 0, bytes);
+        }
+        bytes
+    }
+
+    /// Color draws `0..count` with unbiased `Less`, so the earlier instance
+    /// wins an equal-depth tie. This pass is biased, so the earlier instance
+    /// is the last draw.
+    fn draw_indexed_color_winner(
+        rp: &mut wgpu::RenderPass<'_>,
+        index_count: u32,
+        instance_count: u32,
+    ) {
+        for instance in (0..instance_count).rev() {
+            rp.draw_indexed(0..index_count, 0, instance..instance + 1);
         }
     }
 
@@ -6057,10 +6144,12 @@ fn vs(input: VSIn) -> VSOut {
     ///
     /// Normals are view space in [0, 1]. Velocity is a UV delta, Y down.
     /// The first enabled frame stores zero motion. Named models use the color
-    /// pass order and are drawn in reverse, so `Less` keeps the same
-    /// equal-depth surface. A model the color pass culled is not drawn, but
-    /// its previous matrix is still refreshed. `set_skinned_mesh` is not
-    /// drawn by `draw_into`, so it is not drawn here.
+    /// pass order and are drawn in reverse. Each model's primitives, and the
+    /// instances of a model, sphere batch, or weather batch, draw from the
+    /// tail, so biased `Less` keeps the earlier color-pass surface. A model
+    /// the color pass culled is not drawn, but its previous matrix is still
+    /// refreshed. `set_skinned_mesh` is not drawn by `draw_into`, so it is
+    /// not drawn here.
     fn record_scene_vectors(
         &mut self,
         enc: &mut wgpu::CommandEncoder,
@@ -6162,19 +6251,19 @@ fn vs(input: VSIn) -> VSOut {
                 );
             }
         }
-        let plane_prev = Self::stage_prev_instances(
+        let mut copy_bytes = 0u64;
+        let (plane_prev, staged) = Self::stage_prev_instances(
             &device,
             enc,
             &self.plane_inst_buf,
             &mut self.plane_prev_instances,
         );
+        copy_bytes += staged;
         let ext_prev = if let Some(buf) = self.ext_inst_buf.clone() {
-            Some(Self::stage_prev_instances(
-                &device,
-                enc,
-                &buf,
-                &mut self.ext_prev_instances,
-            ))
+            let (prev, staged) =
+                Self::stage_prev_instances(&device, enc, &buf, &mut self.ext_prev_instances);
+            copy_bytes += staged;
+            Some(prev)
         } else {
             None
         };
@@ -6183,8 +6272,9 @@ fn vs(input: VSIn) -> VSOut {
                 continue;
             };
             let current = model.instance_buf.clone();
-            let _ =
+            let (_, staged) =
                 Self::stage_prev_instances(&device, enc, &current, &mut model.scene_prev_instances);
+            copy_bytes += staged;
         }
         let weather_count = self.weather.particle_count() as u32;
         let weather_buf = self.weather.buffer().clone();
@@ -6204,7 +6294,9 @@ fn vs(input: VSIn) -> VSOut {
                     continue;
                 };
                 let current = chunk.vertex_buffer.clone();
-                let _ = Self::stage_prev_instances(&device, enc, &current, &mut chunk.prev_vertex);
+                let (_, staged) =
+                    Self::stage_terrain_prev(&device, enc, &current, &mut chunk.prev_vertex);
+                copy_bytes += staged;
             }
             keys.reverse();
             keys
@@ -6260,7 +6352,7 @@ fn vs(input: VSIn) -> VSOut {
             );
             rp.set_vertex_buffer(1, weather_buf.slice(..));
             rp.set_vertex_buffer(2, weather_prev_buf.slice(..));
-            rp.draw_indexed(0..self.mesh_sphere.index_count, 0, 0..weather_count);
+            Self::draw_indexed_color_winner(&mut rp, self.mesh_sphere.index_count, weather_count);
         }
         if let Some(pass) = self.scene_vectors.as_ref() {
             pass.copy_mesh_uniform(enc);
@@ -6320,6 +6412,8 @@ fn vs(input: VSIn) -> VSOut {
             // lets an equal-depth fragment through, and the last one is the
             // surface the color pass kept. HashMap `values` is the color
             // order; the reverse makes the earlier card the last draw.
+            // Inside one model the primitives reverse too, and each instance
+            // range is drawn from the tail.
             #[cfg(feature = "impostor-bake")]
             {
                 let mut impostor_order: Vec<_> = impostor_draws.values().collect();
@@ -6359,7 +6453,7 @@ fn vs(input: VSIn) -> VSOut {
                 let Some(prev) = model.scene_prev_instances.as_ref() else {
                     continue;
                 };
-                for primitive in &model.primitives {
+                for primitive in model.primitives.iter().rev() {
                     if let Some(tex) = primitive.tex_bind_group.as_ref() {
                         rp.set_bind_group(1, tex, &[]);
                     } else {
@@ -6372,7 +6466,11 @@ fn vs(input: VSIn) -> VSOut {
                     );
                     rp.set_vertex_buffer(1, model.instance_buf.slice(..));
                     rp.set_vertex_buffer(2, prev.slice(..));
-                    rp.draw_indexed(0..primitive.mesh.index_count, 0, 0..model.instance_count);
+                    Self::draw_indexed_color_winner(
+                        &mut rp,
+                        primitive.mesh.index_count,
+                        model.instance_count,
+                    );
                 }
             }
             rp.set_bind_group(1, &tex_bg, &[]);
@@ -6386,7 +6484,7 @@ fn vs(input: VSIn) -> VSOut {
                     rp.set_index_buffer(mesh.index_buf.slice(..), wgpu::IndexFormat::Uint32);
                     rp.set_vertex_buffer(1, ibuf.slice(..));
                     rp.set_vertex_buffer(2, prev_buf.slice(..));
-                    rp.draw_indexed(0..mesh.index_count, 0, 0..self.ext_inst_count);
+                    Self::draw_indexed_color_winner(&mut rp, mesh.index_count, self.ext_inst_count);
                 }
             }
             if sphere_count > 0 {
@@ -6398,7 +6496,11 @@ fn vs(input: VSIn) -> VSOut {
                     );
                     rp.set_vertex_buffer(1, self.instance_buf.slice(..));
                     rp.set_vertex_buffer(2, sphere_prev.slice(..));
-                    rp.draw_indexed(0..self.mesh_sphere.index_count, 0, 0..sphere_count);
+                    Self::draw_indexed_color_winner(
+                        &mut rp,
+                        self.mesh_sphere.index_count,
+                        sphere_count,
+                    );
                 }
             }
             rp.set_vertex_buffer(0, self.mesh_plane.vertex_buf.slice(..));
@@ -6416,15 +6518,12 @@ fn vs(input: VSIn) -> VSOut {
             }
         }
         self.end_named_stamp(enc, stamp);
-        let mut copy_bytes = sphere_bytes;
-        copy_bytes += plane_prev.size().min(self.plane_inst_buf.size());
-        Self::commit_prev_instances(enc, &self.plane_inst_buf, &plane_prev);
+        copy_bytes += Self::commit_prev_instances(enc, &self.plane_inst_buf, &plane_prev);
         if let (Some(current), Some(prev_buf)) = (self.ext_inst_buf.as_ref(), ext_prev.as_ref()) {
-            copy_bytes += current.size().min(prev_buf.size());
-            Self::commit_prev_instances(enc, current, prev_buf);
+            copy_bytes += Self::commit_prev_instances(enc, current, prev_buf);
         }
-        // Weather previous poses are a CPU upload in `WeatherFx::update`.
-        // They are not an encoder copy, so they stay out of this total.
+        // Sphere and weather previous poses are queue uploads. They are not
+        // encoder copies, so they stay out of this total.
         for name in &all_model_names {
             let Some(model) = self.models.get(name) else {
                 continue;
@@ -6433,16 +6532,14 @@ fn vs(input: VSIn) -> VSOut {
                 continue;
             };
             let current = model.instance_buf.clone();
-            copy_bytes += current.size().min(prev_buf.size());
             let prev_buf = prev_buf.clone();
-            Self::commit_prev_instances(enc, &current, &prev_buf);
+            copy_bytes += Self::commit_prev_instances(enc, &current, &prev_buf);
         }
         #[cfg(feature = "terrain-splat-arrays")]
         if let Some(tf) = self.terrain_forward.as_ref() {
             for chunk in tf.chunks.values() {
                 if let Some(prev_buf) = chunk.prev_vertex.as_ref() {
-                    copy_bytes += chunk.vertex_buffer.size().min(prev_buf.size());
-                    Self::commit_prev_instances(enc, &chunk.vertex_buffer, prev_buf);
+                    copy_bytes += Self::commit_prev_instances(enc, &chunk.vertex_buffer, prev_buf);
                 }
             }
         }
@@ -9772,10 +9869,16 @@ fn vs(input: VSIn) -> VSOut {
             }
         }
 
-        // Keep the buffer this key already had. The next scene-vector frame
-        // samples it as the previous positions instead of copying the new
-        // buffer onto itself.
-        let prev_vertex = tf.chunks.remove(&key).map(|chunk| chunk.vertex_buffer);
+        // While the pass is on, keep the buffer this key already had. The
+        // next scene-vector frame samples it as the previous positions.
+        // While the pass is off, drop it. The first enabled frame must store
+        // zero object motion, the same as an empty mesh slot.
+        let previous = tf.chunks.remove(&key);
+        let prev_vertex = if self.scene_vectors_on {
+            previous.map(|chunk| chunk.vertex_buffer)
+        } else {
+            None
+        };
         tf.chunks.insert(
             key,
             TerrainChunkGpu {
