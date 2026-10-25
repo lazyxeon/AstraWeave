@@ -23,7 +23,7 @@ struct GtaoParams {
     num_directions: u32,        // Number of angular sectors (typically 8)
     num_steps: u32,             // Steps per direction (typically 4-8)
     frame_index: u32,           // For temporal noise rotation
-    _pad: u32,
+    tan_half_fov: f32,          // tan(fov_y / 2), the view-Y scale
 };
 
 @group(0) @binding(0) var depth_tex: texture_depth_2d;
@@ -44,11 +44,11 @@ fn linearize_depth(d: f32) -> f32 {
 // Reconstruct view-space position from UV + depth
 fn reconstruct_view_pos(uv: vec2<f32>, depth: f32) -> vec3<f32> {
     let linear_z = linearize_depth(depth);
-    // Assumes standard perspective: x = (uv.x * 2 - 1) * z / proj_x, etc.
-    let ndc = uv * 2.0 - 1.0;
+    // uv.y = 0 is the top of the framebuffer. perspective_rh NDC Y is up.
+    let ndc = vec2<f32>(uv.x * 2.0 - 1.0, -(uv.y * 2.0 - 1.0));
     return vec3<f32>(
-        ndc.x * linear_z * params.proj_info.w, // proj_info.w reused as aspect*tan(fov/2)
-        ndc.y * linear_z,
+        ndc.x * linear_z * params.proj_info.w, // proj_info.w is aspect*tan(fov_y/2)
+        ndc.y * linear_z * params.tan_half_fov,
         -linear_z
     );
 }
