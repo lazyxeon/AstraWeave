@@ -25,9 +25,14 @@
 //! section documents why frame-time `2.70 ms` is deliberately NOT in Vocab A).
 //!
 //! A separate front-door check always fails the process, including in `--mode warn`:
-//! `README.md` must name every required replay case from `determinism-replay.yml`,
-//! must keep the 11 ms frame budget unmarked as measured, must list open pulls as
-//! in progress, and player-facing docs must not use the retired game title.
+//! `docs/current/ENGINE_STATUS.md` must name every required replay case from
+//! `determinism-replay.yml` and must keep the frame-budget phrases, including
+//! `3.117 ms` on a measurement sentence. `README.md` must list open pulls as in
+//! progress and must not contain a frame figure. A frame figure is a number
+//! followed by `ms` or `milliseconds` after character references, tags, and
+//! markdown emphasis are decoded. Player-facing docs must not use the retired
+//! game title. A failed read of a scanned file, including
+//! `docs/current/PROJECT_BRIEF.md`, fails the process.
 
 use anyhow::{bail, Context, Result};
 use clap::{Parser, ValueEnum};
@@ -39,6 +44,7 @@ const SPEC_REL: &str = "docs/campaigns/doc-truth/CLOSED_VOCABULARY_LINT.md";
 const ALLOWLIST_REL: &str = "docs/campaigns/doc-truth/CLOSED_VOCABULARY_ALLOWLIST.md";
 const REPLAY_WORKFLOW_REL: &str = ".github/workflows/determinism-replay.yml";
 const README_REL: &str = "README.md";
+const STATUS_REL: &str = "docs/current/ENGINE_STATUS.md";
 
 const IN_PROGRESS_ISSUES: &[&str] = &["#334", "#366", "#383"];
 
@@ -234,6 +240,10 @@ fn is_word_byte(b: u8) -> bool {
     b.is_ascii_alphanumeric() || b == b'_'
 }
 
+fn ascii_word(ch: char) -> bool {
+    ch.is_ascii_alphanumeric() || ch == '_'
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct Hit {
     col: usize,
@@ -286,6 +296,7 @@ fn is_player_facing(path: &str) -> bool {
         || p == "CONTRIBUTING.md"
         || p == "docs/README.md"
         || p == "docs/QUICKSTART.md"
+        || p == "docs/current/PROJECT_BRIEF.md"
         || (p.starts_with("docs/guides/") && p.ends_with(".md"))
 }
 
@@ -415,6 +426,7 @@ fn retired_title_hits(path: &str, text: &str) -> Vec<String> {
 
 fn front_door_errors(
     readme: &str,
+    status: &str,
     workflow: &str,
     player_facing: &[(String, String)],
 ) -> Vec<String> {
@@ -432,9 +444,9 @@ fn front_door_errors(
     }
     if let Some(cases) = lists.first() {
         for case in cases {
-            if !contains_word(readme, case) {
+            if !contains_word(status, case) {
                 errors.push(format!(
-                    "{README_REL}: missing required replay case `{case}`"
+                    "{STATUS_REL}: missing required replay case `{case}`"
                 ));
             }
         }
@@ -448,11 +460,16 @@ fn front_door_errors(
         "deterministic simulation validates",
         "Aravath",
     ] {
-        if !readme.contains(phrase) {
+        if !status.contains(phrase) {
             errors.push(format!(
-                "{README_REL}: missing front-door phrase `{phrase}`"
+                "{STATUS_REL}: missing front-door phrase `{phrase}`"
             ));
         }
+    }
+    if !status_has_measured_sample(status, "3.117 ms") {
+        errors.push(format!(
+            "{STATUS_REL}: missing front-door phrase `3.117 ms` on a measurement line"
+        ));
     }
     match in_progress_body(readme) {
         None => errors.push(format!("{README_REL}: missing a '## In progress' section")),
@@ -479,10 +496,235 @@ fn front_door_errors(
             }
         }
     }
+    errors.extend(readme_frame_figure_errors(readme));
     for (path, text) in player_facing {
         errors.extend(retired_title_hits(path, text));
     }
     errors
+}
+
+/// The sample must be its own token on a measurement sentence. `13.117 ms` is
+/// not `3.117 ms`. A sentence that only names the phrase for this gate does
+/// not count. Other sentences on the same line still can.
+fn status_has_measured_sample(status: &str, phrase: &str) -> bool {
+    status.lines().any(|line| {
+        line.split(". ").any(|sentence| {
+            contains_phrase_token(sentence, phrase) && sentence_is_measurement(sentence)
+        })
+    })
+}
+
+fn contains_phrase_token(haystack: &str, phrase: &str) -> bool {
+    let lower = haystack.to_ascii_lowercase();
+    let phrase = phrase.to_ascii_lowercase();
+    let bytes = lower.as_bytes();
+    let needle = phrase.as_bytes();
+    if needle.is_empty() {
+        return false;
+    }
+    let mut from = 0;
+    while let Some(rel) = lower[from..].find(phrase.as_str()) {
+        let idx = from + rel;
+        let end = idx + needle.len();
+        let prev_ok = idx == 0 || !is_word_byte(bytes[idx - 1]);
+        let next_ok = end == bytes.len() || !is_word_byte(bytes[end]);
+        if prev_ok && next_ok {
+            return true;
+        }
+        from = idx + 1;
+    }
+    false
+}
+
+fn sentence_is_measurement(sentence: &str) -> bool {
+    let lower = sentence.to_ascii_lowercase();
+    if lower.contains("aw_doc_lint")
+        || lower.contains("front door")
+        || lower.contains("front-door")
+        || lower.contains("looks for")
+    {
+        return false;
+    }
+    lower.contains("median")
+        || lower.contains("measured")
+        || lower.contains("sample")
+        || lower.contains("capture")
+}
+
+/// A frame figure is a number followed by `ms` or `milliseconds`. Character
+/// references, tags, and markdown emphasis are decoded first.
+fn readme_frame_figure_errors(readme: &str) -> Vec<String> {
+    let pieces = frame_pieces(readme);
+    let mut errors = Vec::new();
+    let mut i = 0;
+    while i < pieces.len() {
+        if !pieces[i].0.is_ascii_digit() {
+            i += 1;
+            continue;
+        }
+        if i > 0 && ascii_word(pieces[i - 1].0) {
+            i += 1;
+            continue;
+        }
+        let line = pieces[i].1;
+        i += 1;
+        while i < pieces.len() && (pieces[i].0.is_ascii_digit() || pieces[i].0 == '.') {
+            i += 1;
+        }
+        while i < pieces.len() && pieces[i].0 == ' ' {
+            i += 1;
+        }
+        let unit = frame_unit(&pieces[i..]);
+        if unit == 0 {
+            continue;
+        }
+        let after = i + unit;
+        if after < pieces.len() && pieces[after].0.is_ascii_alphanumeric() {
+            continue;
+        }
+        errors.push(format!(
+            "{README_REL}:{line}: frame figure is not allowed on the landing page"
+        ));
+        i = after;
+    }
+    errors
+}
+
+fn frame_unit(pieces: &[(char, usize)]) -> usize {
+    const MS: &[char] = &['m', 's'];
+    const MILLISECONDS: &[char] = &['m', 'i', 'l', 'l', 'i', 's', 'e', 'c', 'o', 'n', 'd', 's'];
+    if pieces_start(pieces, MILLISECONDS) {
+        MILLISECONDS.len()
+    } else if pieces_start(pieces, MS) {
+        MS.len()
+    } else {
+        0
+    }
+}
+
+fn pieces_start(pieces: &[(char, usize)], prefix: &[char]) -> bool {
+    pieces.len() >= prefix.len() && pieces.iter().zip(prefix).all(|(piece, ch)| piece.0 == *ch)
+}
+
+fn frame_pieces(input: &str) -> Vec<(char, usize)> {
+    let bytes = input.as_bytes();
+    let mut out = Vec::new();
+    let mut i = 0;
+    let mut line = 1usize;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'\n' => {
+                line += 1;
+                push_frame_char(&mut out, ' ', line);
+                i += 1;
+            }
+            b'<' => {
+                i += 1;
+                while i < bytes.len() && bytes[i] != b'>' {
+                    if bytes[i] == b'\n' {
+                        line += 1;
+                    }
+                    i += 1;
+                }
+                if i < bytes.len() {
+                    i += 1;
+                }
+            }
+            b'&' => {
+                if let Some((ch, next)) = decode_char_ref(bytes, i) {
+                    push_frame_char(&mut out, ch, line);
+                    i = next;
+                } else {
+                    push_frame_char(&mut out, '&', line);
+                    i += 1;
+                }
+            }
+            b'*' | b'`' => i += 1,
+            _ => {
+                let Some(ch) = input[i..].chars().next() else {
+                    break;
+                };
+                push_frame_char(&mut out, ch, line);
+                i += ch.len_utf8();
+            }
+        }
+    }
+    out
+}
+
+fn push_frame_char(out: &mut Vec<(char, usize)>, ch: char, line: usize) {
+    let ch = if ch.is_whitespace() {
+        ' '
+    } else {
+        ch.to_ascii_lowercase()
+    };
+    out.push((ch, line));
+}
+
+fn decode_char_ref(bytes: &[u8], i: usize) -> Option<(char, usize)> {
+    if bytes.get(i) != Some(&b'&') {
+        return None;
+    }
+    let rest = &bytes[i + 1..];
+    if rest.first() == Some(&b'#') {
+        let hex = matches!(rest.get(1), Some(b'x' | b'X'));
+        let digits_at = if hex { 2 } else { 1 };
+        let mut n: u32 = 0;
+        let mut len = 0usize;
+        for &b in rest.get(digits_at..)? {
+            let dig = if hex {
+                match b {
+                    b'0'..=b'9' => b - b'0',
+                    b'a'..=b'f' => b - b'a' + 10,
+                    b'A'..=b'F' => b - b'A' + 10,
+                    _ => break,
+                }
+            } else if b.is_ascii_digit() {
+                b - b'0'
+            } else {
+                break;
+            };
+            len += 1;
+            if len > 7 {
+                return None;
+            }
+            n = n
+                .checked_mul(if hex { 16 } else { 10 })?
+                .checked_add(u32::from(dig))?;
+        }
+        if len == 0 {
+            return None;
+        }
+        let mut end = i + 1 + digits_at + len;
+        if bytes.get(end) == Some(&b';') {
+            end += 1;
+        }
+        Some((char::from_u32(n)?, end))
+    } else {
+        let mut len = 0usize;
+        while rest.get(len).is_some_and(|b| b.is_ascii_alphabetic()) {
+            len += 1;
+            if len > 32 {
+                return None;
+            }
+        }
+        if len == 0 {
+            return None;
+        }
+        let name = std::str::from_utf8(&rest[..len]).ok()?.to_ascii_lowercase();
+        let ch = match name.as_str() {
+            "nbsp" => '\u{00A0}',
+            "thinsp" => '\u{2009}',
+            "ensp" => '\u{2002}',
+            "emsp" => '\u{2003}',
+            _ => return None,
+        };
+        let mut end = i + 1 + len;
+        if bytes.get(end) == Some(&b';') {
+            end += 1;
+        }
+        Some((ch, end))
+    }
 }
 
 fn resolve_root(cli: &Cli) -> Result<PathBuf> {
@@ -501,24 +743,40 @@ fn resolve_root(cli: &Cli) -> Result<PathBuf> {
     ))
 }
 
+fn read_repo_file(root: &Path, rel: &str) -> Result<String> {
+    std::fs::read_to_string(root.join(rel)).with_context(|| format!("reading {rel}"))
+}
+
+fn load_player_facing(root: &Path, tracked: &[String]) -> Result<Vec<(String, String)>> {
+    let mut player_facing = Vec::new();
+    for f in tracked {
+        if !is_player_facing(f) {
+            continue;
+        }
+        player_facing.push((f.clone(), read_repo_file(root, f)?));
+    }
+    Ok(player_facing)
+}
+
 fn main() -> Result<()> {
     let cli = Cli::parse();
-    let root = resolve_root(&cli)?;
+    lint_repo(&resolve_root(&cli)?, cli.mode)
+}
 
-    let spec = std::fs::read_to_string(root.join(SPEC_REL))
-        .with_context(|| format!("reading spec {SPEC_REL}"))?;
-    let allowlist_doc = std::fs::read_to_string(root.join(ALLOWLIST_REL))
-        .with_context(|| format!("reading allowlist {ALLOWLIST_REL}"))?;
+fn lint_repo(root: &Path, mode: Mode) -> Result<()> {
+    let spec = read_repo_file(root, SPEC_REL).context("reading the closed-vocabulary spec")?;
+    let allowlist_doc =
+        read_repo_file(root, ALLOWLIST_REL).context("reading the closed-vocabulary allowlist")?;
     let lits = load_literals(&spec)?;
     let allow = load_allowlist(&allowlist_doc)?;
 
-    let tracked = tracked_files(&root)?;
+    let tracked = tracked_files(root)?;
     let files: Vec<String> = tracked.iter().filter(|f| in_scope(f)).cloned().collect();
 
     let in_ci = std::env::var("GITHUB_ACTIONS")
         .map(|v| v == "true")
         .unwrap_or(false);
-    let level = match cli.mode {
+    let level = match mode {
         Mode::Warn => "warning",
         Mode::Enforce => "error",
     };
@@ -529,10 +787,7 @@ fn main() -> Result<()> {
     let mut scanned = 0usize;
 
     for f in &files {
-        let content = match std::fs::read_to_string(root.join(f)) {
-            Ok(c) => c,
-            Err(_) => continue, // unreadable/binary — skip
-        };
+        let content = read_repo_file(root, f)?;
         scanned += 1;
         for (i, line) in content.lines().enumerate() {
             for hit in lint_line(line, &lits) {
@@ -566,20 +821,11 @@ fn main() -> Result<()> {
         eprintln!("doc-truth lint: clean (K=0 un-allowlisted).");
     }
 
-    let readme = std::fs::read_to_string(root.join(README_REL))
-        .with_context(|| format!("reading {README_REL}"))?;
-    let workflow = std::fs::read_to_string(root.join(REPLAY_WORKFLOW_REL))
-        .with_context(|| format!("reading {REPLAY_WORKFLOW_REL}"))?;
-    let mut player_facing = Vec::new();
-    for f in &tracked {
-        if !is_player_facing(f) {
-            continue;
-        }
-        if let Ok(text) = std::fs::read_to_string(root.join(f)) {
-            player_facing.push((f.clone(), text));
-        }
-    }
-    let front = front_door_errors(&readme, &workflow, &player_facing);
+    let readme = read_repo_file(root, README_REL)?;
+    let status = read_repo_file(root, STATUS_REL)?;
+    let workflow = read_repo_file(root, REPLAY_WORKFLOW_REL)?;
+    let player_facing = load_player_facing(root, &tracked)?;
+    let front = front_door_errors(&readme, &status, &workflow, &player_facing);
     for e in &front {
         println!("{e}");
         if in_ci {
@@ -593,7 +839,7 @@ fn main() -> Result<()> {
             front.len()
         );
     }
-    if should_fail(cli.mode, k) {
+    if should_fail(mode, k) {
         bail!("{k} un-allowlisted closed-vocabulary occurrence(s) (enforce mode)");
     }
     Ok(())
@@ -803,13 +1049,19 @@ mod tests {
         assert!(should_fail(Mode::Enforce, 1)); // dirty enforce fails
     }
 
-    fn sample_readme() -> String {
+    fn sample_status() -> String {
         [
             "Local LLMs propose. The deterministic simulation validates and executes.",
             "The game is Aravath. Assets are CC0 only.",
-            "under 11 ms per frame on a GTX 1660 Ti-class GPU. The heavy scene measured 3.688 ms.",
+            "under 11 ms per frame on a GTX 1660 Ti-class GPU. The heavy scene measured 3.688 ms. A later sample is 3.117 ms.",
             "planner_pure perception_world gameplay_rng fixed64 combat_resolve",
             "destruction gameplay_qa_aravath_slice nav_reroute causal_bridge scripted_system weaving traversal traversal_deformed worldgen_columns deformed_chunk local_sim greybox_checkpoint quest_ticks persist_replay",
+        ]
+        .join("\n")
+    }
+
+    fn sample_readme() -> String {
+        [
             "## In progress",
             "#334 are in progress. #366 are in progress. #383 are in progress",
             "## Next",
@@ -838,15 +1090,73 @@ mod tests {
     }
 
     #[test]
+    fn failed_read_of_project_brief_is_an_error() {
+        assert!(is_player_facing("docs/current/PROJECT_BRIEF.md"));
+        let dir = std::env::temp_dir().join(format!(
+            "aw-doc-lint-missing-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("docs/current")).unwrap();
+        std::fs::create_dir_all(dir.join("docs/campaigns/doc-truth")).unwrap();
+        std::fs::create_dir_all(dir.join(".github/workflows")).unwrap();
+        std::fs::write(
+            dir.join(SPEC_REL),
+            format!("{VOCAB_A_START}\n{VOCAB_A_END}\n{VOCAB_B_START}\n{VOCAB_B_END}\n"),
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join(ALLOWLIST_REL),
+            format!("{ALLOWLIST_START}\n{ALLOWLIST_END}\n"),
+        )
+        .unwrap();
+        std::fs::write(dir.join(README_REL), sample_readme()).unwrap();
+        std::fs::write(dir.join(STATUS_REL), sample_status()).unwrap();
+        std::fs::write(dir.join(REPLAY_WORKFLOW_REL), sample_workflow()).unwrap();
+        let brief = dir.join("docs/current/PROJECT_BRIEF.md");
+        std::fs::write(&brief, "The game is Aravath.\n").unwrap();
+        let init = std::process::Command::new("git")
+            .args(["init"])
+            .current_dir(&dir)
+            .status()
+            .unwrap();
+        assert!(init.success());
+        let add = std::process::Command::new("git")
+            .args(["add", "."])
+            .current_dir(&dir)
+            .status()
+            .unwrap();
+        assert!(add.success());
+        std::fs::remove_file(&brief).unwrap();
+        let err = lint_repo(&dir, Mode::Warn).unwrap_err();
+        let msg = format!("{err:#}");
+        assert!(
+            msg.contains("reading docs/current/PROJECT_BRIEF.md"),
+            "{msg}"
+        );
+        let direct = load_player_facing(&dir, &["docs/current/PROJECT_BRIEF.md".to_string()]);
+        let direct_msg = format!("{:#}", direct.unwrap_err());
+        assert!(
+            direct_msg.contains("reading docs/current/PROJECT_BRIEF.md"),
+            "{direct_msg}"
+        );
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
     fn front_door_accepts_a_honest_readme() {
-        let errors = front_door_errors(&sample_readme(), &sample_workflow(), &[]);
+        let errors = front_door_errors(&sample_readme(), &sample_status(), &sample_workflow(), &[]);
         assert!(errors.is_empty(), "{errors:?}");
     }
 
     #[test]
     fn front_door_rejects_a_suffixed_issue_token() {
         let readme = sample_readme().replace("#383 are in progress", "#383foo are in progress");
-        let errors = front_door_errors(&readme, &sample_workflow(), &[]);
+        let errors = front_door_errors(&readme, &sample_status(), &sample_workflow(), &[]);
         assert!(
             errors.iter().any(|error| error.contains("missing #383")),
             "{errors:?}"
@@ -856,7 +1166,7 @@ mod tests {
     #[test]
     fn front_door_rejects_an_extra_in_progress_issue() {
         let readme = sample_readme().replace("#366 are in progress", "#366 #999 are in progress");
-        let errors = front_door_errors(&readme, &sample_workflow(), &[]);
+        let errors = front_door_errors(&readme, &sample_status(), &sample_workflow(), &[]);
         assert!(
             errors.iter().any(|error| error.contains("#999")),
             "{errors:?}"
@@ -869,12 +1179,91 @@ mod tests {
 
     #[test]
     fn front_door_rejects_a_missing_case_and_a_shipped_label() {
-        let readme = sample_readme()
-            .replace("nav_reroute", "nav")
-            .replace("are in progress", "are shipped");
-        let errors = front_door_errors(&readme, &sample_workflow(), &[]);
+        let readme = sample_readme().replace("are in progress", "are shipped");
+        let status = sample_status().replace("nav_reroute", "nav");
+        let errors = front_door_errors(&readme, &status, &sample_workflow(), &[]);
         assert!(errors.iter().any(|e| e.contains("nav_reroute")));
         assert!(errors.iter().any(|e| e.contains("shipped")));
+    }
+
+    #[test]
+    fn front_door_rejects_a_frame_figure_on_the_readme() {
+        for figure in [
+            "3.688 ms",
+            "3.117&nbsp;ms",
+            "3.117&#32;ms",
+            "3.117<br>ms",
+            "3.117\nms",
+            "3.117\tms",
+            "<span>3.117</span> ms",
+            "3.117&#x00020;ms",
+            "3.117&#00032;ms",
+            "3.117&thinsp;ms",
+            "3.11&#55; ms",
+            "3.117 **ms**",
+            "3.117 `ms`",
+            "3.117&nbsp;**ms**",
+            "11 milliseconds",
+            "3.117\u{00a0}ms",
+            "3.117&#109;&#115;",
+            "3.117&nbsp ms",
+        ] {
+            let readme = format!("{}\nThe frame is {figure}.\n", sample_readme());
+            let errors = front_door_errors(&readme, &sample_status(), &sample_workflow(), &[]);
+            assert!(
+                errors.iter().any(|error| error.contains("frame figure")),
+                "{figure}: {errors:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn front_door_does_not_count_the_gate_sentence_as_the_sample() {
+        let status = sample_status().replace(
+            "A later sample is 3.117 ms.",
+            "aw_doc_lint looks for 3.117 ms.",
+        );
+        let errors = front_door_errors(&sample_readme(), &status, &sample_workflow(), &[]);
+        assert!(
+            errors.iter().any(|error| error.contains("3.117 ms")),
+            "{errors:?}"
+        );
+    }
+
+    #[test]
+    fn measured_sample_rejects_a_longer_number_and_a_bare_mention() {
+        let longer = sample_status().replace("3.117 ms", "13.117 ms");
+        let errors = front_door_errors(&sample_readme(), &longer, &sample_workflow(), &[]);
+        assert!(
+            errors.iter().any(|error| error.contains("3.117 ms")),
+            "{errors:?}"
+        );
+        let bare =
+            sample_status().replace("A later sample is 3.117 ms.", "Keep 3.117 ms written here.");
+        let errors = front_door_errors(&sample_readme(), &bare, &sample_workflow(), &[]);
+        assert!(
+            errors.iter().any(|error| error.contains("3.117 ms")),
+            "{errors:?}"
+        );
+        let both = sample_status().replace(
+            "A later sample is 3.117 ms.",
+            "The median GPU frame is 3.117 ms. aw_doc_lint looks for 3.117 ms.",
+        );
+        let errors = front_door_errors(&sample_readme(), &both, &sample_workflow(), &[]);
+        assert!(
+            !errors.iter().any(|error| error.contains("3.117 ms")),
+            "{errors:?}"
+        );
+    }
+
+    #[test]
+    fn readme_frame_figure_ignores_a_word_that_only_starts_with_ms() {
+        let readme = format!("{}\nShip 3.117 messages.\n", sample_readme());
+        let errors = front_door_errors(&readme, &sample_status(), &sample_workflow(), &[]);
+        assert!(
+            !errors.iter().any(|error| error.contains("frame figure")),
+            "{errors:?}"
+        );
     }
 
     #[test]
