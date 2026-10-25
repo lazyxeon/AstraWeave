@@ -694,17 +694,25 @@ mod tests {
         mgr.pending_ids.contains(id)
     }
 
-    /// Test-only helper to inject a fake Resident entry without requiring GPU.
-    /// Uses pollster + wgpu's built-in test adapter to create a minimal device.
-    fn inject_resident(mgr: &mut TextureStreamingManager, id: &str, memory_bytes: usize) {
+    /// Insert a resident texture, or record a missing adapter and return false.
+    ///
+    /// `NotFound` with `AW_GPU_SKIP_IF_UNAVAILABLE` writes one skip line. Any
+    /// other adapter error panics. A device refusal panics.
+    fn inject_resident(mgr: &mut TextureStreamingManager, id: &str, memory_bytes: usize) -> bool {
         let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
         let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
             power_preference: wgpu::PowerPreference::LowPower,
             compatible_surface: None,
             force_fallback_adapter: false,
         }));
-        // If no adapter available (e.g., headless CI), skip by silently returning.
-        let Ok(adapter) = adapter else { return };
+        let adapter = match adapter {
+            Ok(adapter) => adapter,
+            Err(err) => {
+                let reason = format!("inject_resident found no adapter for '{id}': {err}");
+                crate::gpu_capability::skip_missing_adapter(&err, &reason);
+                return false;
+            }
+        };
         let (device, _queue) =
             pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default())).unwrap();
 
@@ -741,6 +749,7 @@ mod tests {
         mgr.assets.insert(id.into(), AssetState::Resident(handle));
         mgr.lru_queue.push_back(id.into());
         mgr.current_memory_bytes += memory_bytes;
+        true
     }
 
     // ——— Core state machine tests (no GPU required) ———
@@ -871,11 +880,7 @@ mod tests {
     fn resident_texture_is_returned_and_lru_updated() {
         let mut mgr = TextureStreamingManager::new(64).expect("texture streaming runtime");
 
-        inject_resident(&mut mgr, "tex_resident", 4);
-
-        // If inject_resident silently skipped (no adapter), skip this test
-        if !mgr.is_resident(&"tex_resident".to_string()) {
-            eprintln!("Skipping: no GPU adapter available");
+        if !inject_resident(&mut mgr, "tex_resident", 4) {
             return;
         }
 
@@ -892,12 +897,7 @@ mod tests {
     fn evict_lru_removes_oldest() {
         let mut mgr = TextureStreamingManager::new(64).expect("texture streaming runtime");
 
-        inject_resident(&mut mgr, "oldest", 100);
-        inject_resident(&mut mgr, "newest", 100);
-
-        // If no adapter, skip
-        if !mgr.is_resident(&"oldest".to_string()) {
-            eprintln!("Skipping: no GPU adapter available");
+        if !inject_resident(&mut mgr, "oldest", 100) || !inject_resident(&mut mgr, "newest", 100) {
             return;
         }
 
@@ -921,10 +921,7 @@ mod tests {
         // Add some pending requests
         mgr.request_texture("a".into(), 1, 10.0);
 
-        inject_resident(&mut mgr, "c", 4);
-
-        if !mgr.is_resident(&String::from("c")) {
-            eprintln!("Skipping: no GPU adapter available");
+        if !inject_resident(&mut mgr, "c", 4) {
             return;
         }
 

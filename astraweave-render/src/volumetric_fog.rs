@@ -1538,9 +1538,15 @@ mod tests {
             compatible_surface: None,
             force_fallback_adapter: true,
         }));
-        let Ok(adapter) = adapter else {
-            eprintln!("veil fog timing: no adapter");
-            return;
+        let adapter = match adapter {
+            Ok(adapter) => adapter,
+            Err(err) => {
+                let reason = format!(
+                    "scar_upload_is_timed_on_the_low_froxel_grid_when_the_device_can: {err}"
+                );
+                crate::gpu_capability::skip_missing_adapter(&err, &reason);
+                return;
+            }
         };
         let mut features = wgpu::Features::empty();
         if adapter.features().contains(wgpu::Features::TIMESTAMP_QUERY) {

@@ -268,42 +268,9 @@ mod tests {
         #[cfg(unix)]
         {
             use std::os::unix::fs::OpenOptionsExt;
-            options.custom_flags(o_nofollow());
+            options.custom_flags(libc::O_NOFOLLOW);
         }
         options.open(path)
-    }
-
-    #[cfg(all(unix, any(target_os = "linux", target_os = "android")))]
-    fn o_nofollow() -> i32 {
-        0x20000
-    }
-
-    #[cfg(all(
-        unix,
-        any(
-            target_os = "macos",
-            target_os = "ios",
-            target_os = "tvos",
-            target_os = "watchos"
-        )
-    ))]
-    fn o_nofollow() -> i32 {
-        0x100
-    }
-
-    #[cfg(all(
-        unix,
-        not(any(
-            target_os = "linux",
-            target_os = "android",
-            target_os = "macos",
-            target_os = "ios",
-            target_os = "tvos",
-            target_os = "watchos"
-        ))
-    ))]
-    fn o_nofollow() -> i32 {
-        0
     }
 
     fn wgpu25_not_found() -> wgpu::RequestAdapterError {
@@ -332,6 +299,12 @@ mod tests {
         assert!(is_missing_adapter(&wrapped));
         let other: anyhow::Error = wgpu::RequestAdapterError::EnvNotSet.into();
         assert!(!is_missing_adapter(&other));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn o_nofollow_is_the_libc_constant() {
+        assert_ne!(libc::O_NOFOLLOW, 0);
     }
 
     #[cfg(unix)]

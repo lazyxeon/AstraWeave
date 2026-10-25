@@ -1,14 +1,13 @@
 //! Headless wgpu probe shared by render unit tests and integration tests.
 //!
-//! `prefer_fallback` requests only `force_fallback_adapter: true`. It does
-//! not continue to a hardware adapter. `prefer_fallback: false` tries any
-//! adapter, then a software adapter. A host with neither (macOS GitHub
-//! runners, which have Metal and no software adapter) must not panic and
-//! must not look like a GPU pass: the skip reason is printed and appended
-//! to `target/gpu-skip-reasons.txt`. That path is a skip only when
-//! `AW_GPU_SKIP_IF_UNAVAILABLE` is set. Otherwise the probe still panics
-//! with `Failed to find adapter`, which is what a machine that should have
-//! lavapipe or a GPU is required to do.
+//! `prefer_fallback` tries a software adapter and then a hardware adapter.
+//! That is the order main used. When `AW_GPU_SKIP_IF_UNAVAILABLE` is set,
+//! `prefer_fallback` stays on the software adapter and does not continue to
+//! hardware, so a macOS runner does not treat Apple Paravirtual Metal as the
+//! software probe. `prefer_fallback: false` tries any adapter, then software,
+//! with or without that variable. A host with neither records a skip only
+//! when the variable is set. Otherwise the probe panics with `Failed to find
+//! adapter`.
 
 use std::collections::HashSet;
 use std::fs::OpenOptions;
@@ -24,6 +23,19 @@ pub struct HeadlessGpu {
 
 pub fn skip_if_unavailable() -> bool {
     std::env::var_os("AW_GPU_SKIP_IF_UNAVAILABLE").is_some()
+}
+
+/// Record `NotFound` and return, or panic.
+///
+/// The caller returns after this call. `NotFound` writes one skip line when
+/// `AW_GPU_SKIP_IF_UNAVAILABLE` is set. Every other adapter error panics, and
+/// `NotFound` panics when that variable is unset. This is not a device error.
+pub fn skip_missing_adapter(err: &wgpu::RequestAdapterError, reason: &str) {
+    if skip_if_unavailable() && matches!(err, wgpu::RequestAdapterError::NotFound { .. }) {
+        note_skip(reason);
+    } else {
+        panic!("Failed to find adapter: {reason}");
+    }
 }
 
 /// Record one skip reason. Repeated reasons from the same process are kept
@@ -124,47 +136,16 @@ fn open_append_nofollow(path: &std::path::Path) -> std::io::Result<std::fs::File
     #[cfg(unix)]
     {
         use std::os::unix::fs::OpenOptionsExt;
-        options.custom_flags(o_nofollow());
+        options.custom_flags(libc::O_NOFOLLOW);
     }
     options.open(path)
 }
 
-#[cfg(all(unix, any(target_os = "linux", target_os = "android")))]
-fn o_nofollow() -> i32 {
-    0x20000
-}
-
-#[cfg(all(
-    unix,
-    any(
-        target_os = "macos",
-        target_os = "ios",
-        target_os = "tvos",
-        target_os = "watchos"
-    )
-))]
-fn o_nofollow() -> i32 {
-    0x100
-}
-
-#[cfg(all(
-    unix,
-    not(any(
-        target_os = "linux",
-        target_os = "android",
-        target_os = "macos",
-        target_os = "ios",
-        target_os = "tvos",
-        target_os = "watchos"
-    ))
-))]
-fn o_nofollow() -> i32 {
-    0
-}
-
-fn fallback_probes(prefer_fallback: bool) -> &'static [bool] {
-    if prefer_fallback {
+fn fallback_probes(prefer_fallback: bool, software_only: bool) -> &'static [bool] {
+    if prefer_fallback && software_only {
         &[true]
+    } else if prefer_fallback {
+        &[true, false]
     } else {
         &[false, true]
     }
@@ -182,7 +163,7 @@ pub async fn request_headless(
         ..Default::default()
     });
     let mut attempts = Vec::new();
-    for &fallback in fallback_probes(prefer_fallback) {
+    for &fallback in fallback_probes(prefer_fallback, skip_if_unavailable()) {
         let which = if fallback {
             "software adapter (force_fallback_adapter)"
         } else {
@@ -257,9 +238,17 @@ mod skip_record_tests {
     }
 
     #[test]
-    fn prefer_fallback_requests_only_the_software_adapter() {
-        assert_eq!(super::fallback_probes(true), &[true]);
-        assert_eq!(super::fallback_probes(false), &[false, true]);
+    fn prefer_fallback_keeps_hardware_unless_the_skip_gate_is_set() {
+        assert_eq!(super::fallback_probes(true, false), &[true, false]);
+        assert_eq!(super::fallback_probes(true, true), &[true]);
+        assert_eq!(super::fallback_probes(false, false), &[false, true]);
+        assert_eq!(super::fallback_probes(false, true), &[false, true]);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn o_nofollow_is_the_libc_constant() {
+        assert_ne!(libc::O_NOFOLLOW, 0);
     }
 
     #[cfg(unix)]

@@ -416,32 +416,9 @@ jobs:
       - name: Report GPU skips
         if: always()
         shell: bash
-        run: |
-          set -euo pipefail
-          if [ "${{ steps.workspace-nextest.outcome }}" != "success" ]; then
-            echo "::error title=GPU tests failed::Nextest failed. A skip log does not cover a panic or a failed GPU test."
-            exit 1
-          fi
-          log="${AW_GPU_SKIP_LOG:-target/gpu-skip-reasons.txt}"
-          # `[ -s ]` only sees lines that were written. A test that returns
-          # success without a line is invisible here. Nextest's outcome above
-          # is what fails the job. The log is the recorded skips, not a census.
-          if [ -s "$log" ]; then
-            {
-              echo "## GPU tests skipped"
-              echo
-              echo "Each line was recorded by that test. A missing line is not visible to this step."
-              echo
-            } >> "$GITHUB_STEP_SUMMARY"
-            while IFS= read -r line; do
-              safe=${line//$'\r'/ }
-              safe=${safe//$'\n'/ }
-              safe=${safe//%/ }
-              echo "- ${safe}" >> "$GITHUB_STEP_SUMMARY"
-              echo "::warning title=GPU test skipped::${safe}"
-              echo "$safe"
-            done < "$log"
-          fi
+        env:
+          NEXTEST_OUTCOME: ${{ steps.workspace-nextest.outcome }}
+        run: bash scripts/ci/check-gpu-skip-log.sh
 
   # Windows Test full: compile once, then run three partitions. Each job
   # keeps timeout-minutes at 60. Partitions use profile ci-full-archive

@@ -5741,7 +5741,10 @@ fn test_renderer_internal_methods() {
     use astraweave_render::Renderer;
 
     // Create headless renderer (async)
-    if let Ok(mut renderer) = pollster::block_on(Renderer::new_headless(800, 600)) {
+    let Some(mut renderer) = pollster::block_on(Renderer::headless_for_tests(800, 600)) else {
+        return;
+    };
+    {
         // Test device and queue accessors
         let _dev = renderer.device();
         let _q = renderer.queue();
@@ -6228,7 +6231,12 @@ fn test_ibl_edge_cases_extended_wave14() {
     let _high = IblQuality::High;
 
     // Create headless renderer to get device
-    if let Ok(renderer) = pollster::block_on(astraweave_render::Renderer::new_headless(100, 100)) {
+    let Some(renderer) =
+        pollster::block_on(astraweave_render::Renderer::headless_for_tests(100, 100))
+    else {
+        return;
+    };
+    {
         let device = renderer.device();
 
         // Test IblManager with each quality
@@ -6319,8 +6327,11 @@ fn test_graph_more_paths_wave14() {
 #[test]
 fn test_renderer_more_accessors_wave14() {
     // Create headless renderer
-    if let Ok(mut renderer) =
-        pollster::block_on(astraweave_render::Renderer::new_headless(640, 480))
+    let Some(mut renderer) =
+        pollster::block_on(astraweave_render::Renderer::headless_for_tests(640, 480))
+    else {
+        return;
+    };
     {
         // Test all accessors
         let _dev = renderer.device();
@@ -6382,8 +6393,11 @@ fn test_renderer_mesh_methods_wave16() {
     use astraweave_render::types::Instance;
     use glam::{Mat4, Vec3};
 
-    if let Ok(mut renderer) =
-        pollster::block_on(astraweave_render::Renderer::new_headless(640, 480))
+    let Some(mut renderer) =
+        pollster::block_on(astraweave_render::Renderer::headless_for_tests(640, 480))
+    else {
+        return;
+    };
     {
         // Test create_mesh_from_arrays with raw arrays
         let positions: [[f32; 3]; 3] = [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.5, 1.0, 0.0]];
@@ -6436,8 +6450,11 @@ fn test_renderer_mesh_methods_wave16() {
 /// Wave 16 Test 2: Renderer shadow and material params
 #[test]
 fn test_renderer_shadow_material_params_wave16() {
-    if let Ok(mut renderer) =
-        pollster::block_on(astraweave_render::Renderer::new_headless(640, 480))
+    let Some(mut renderer) =
+        pollster::block_on(astraweave_render::Renderer::headless_for_tests(640, 480))
+    else {
+        return;
+    };
     {
         // Test cascade split settings
         renderer.set_cascade_splits(0.1, 0.3);
@@ -6460,8 +6477,11 @@ fn test_renderer_timeline_cinematics_wave16() {
     use astraweave_camera::FreeFly as Camera;
     use glam::Vec3;
 
-    if let Ok(mut renderer) =
-        pollster::block_on(astraweave_render::Renderer::new_headless(640, 480))
+    let Some(mut renderer) =
+        pollster::block_on(astraweave_render::Renderer::headless_for_tests(640, 480))
+    else {
+        return;
+    };
     {
         // Test save_timeline_json on empty
         let saved = renderer.save_timeline_json();
@@ -6499,8 +6519,11 @@ fn test_renderer_timeline_cinematics_wave16() {
 /// Wave 16 Test 4: Renderer texture setting methods (renamed)
 #[test]
 fn test_renderer_texture_methods_wave16() {
-    if let Ok(mut renderer) =
-        pollster::block_on(astraweave_render::Renderer::new_headless(640, 480))
+    let Some(mut renderer) =
+        pollster::block_on(astraweave_render::Renderer::headless_for_tests(640, 480))
+    else {
+        return;
+    };
     {
         // Test set_albedo_from_rgba8
         let rgba_data: Vec<u8> = (0..256 * 256 * 4).map(|i| (i % 256) as u8).collect();
@@ -6524,8 +6547,11 @@ fn test_renderer_skinned_mesh_wave16() {
     use astraweave_render::SkinnedVertex;
     use glam::Mat4;
 
-    if let Ok(mut renderer) =
-        pollster::block_on(astraweave_render::Renderer::new_headless(640, 480))
+    let Some(mut renderer) =
+        pollster::block_on(astraweave_render::Renderer::headless_for_tests(640, 480))
+    else {
+        return;
+    };
     {
         // Create skinned vertices with correct field names
         let vertices = vec![
@@ -6572,8 +6598,11 @@ fn test_renderer_skinned_mesh_wave16() {
 fn test_renderer_weather_wave16() {
     use astraweave_render::effects::WeatherKind;
 
-    if let Ok(mut renderer) =
-        pollster::block_on(astraweave_render::Renderer::new_headless(640, 480))
+    let Some(mut renderer) =
+        pollster::block_on(astraweave_render::Renderer::headless_for_tests(640, 480))
+    else {
+        return;
+    };
     {
         // Test available weather kinds
         renderer.set_weather(WeatherKind::None);
@@ -6595,8 +6624,11 @@ fn test_renderer_update_camera_wave16() {
     use astraweave_camera::FreeFly as Camera;
     use glam::Vec3;
 
-    if let Ok(mut renderer) =
-        pollster::block_on(astraweave_render::Renderer::new_headless(640, 480))
+    let Some(mut renderer) =
+        pollster::block_on(astraweave_render::Renderer::headless_for_tests(640, 480))
+    else {
+        return;
+    };
     {
         // Create camera struct directly
         let camera = Camera {
@@ -6621,8 +6653,11 @@ fn test_renderer_update_camera_wave16() {
 fn test_renderer_bake_environment_wave16() {
     use astraweave_render::ibl::IblQuality;
 
-    if let Ok(mut renderer) =
-        pollster::block_on(astraweave_render::Renderer::new_headless(640, 480))
+    let Some(mut renderer) =
+        pollster::block_on(astraweave_render::Renderer::headless_for_tests(640, 480))
+    else {
+        return;
+    };
     {
         // Test bake_environment with each quality
         let _ = renderer.bake_environment(IblQuality::Low);
@@ -6665,7 +6700,12 @@ fn test_prefilter_poll_finishes() {
 /// Wave 16 Test 9: Renderer create_mesh_from_full_arrays
 #[test]
 fn test_renderer_full_mesh_creation_wave16() {
-    if let Ok(renderer) = pollster::block_on(astraweave_render::Renderer::new_headless(640, 480)) {
+    let Some(renderer) =
+        pollster::block_on(astraweave_render::Renderer::headless_for_tests(640, 480))
+    else {
+        return;
+    };
+    {
         // Test create_mesh_from_full_arrays with raw arrays
         let positions: [[f32; 3]; 3] = [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.5, 1.0, 0.0]];
         let normals: [[f32; 3]; 3] = [[0.0, 0.0, 1.0], [0.0, 0.0, 1.0], [0.0, 0.0, 1.0]];
@@ -6869,8 +6909,11 @@ fn test_texture_streaming_wave18() {
 /// Wave 18 Test 4: renderer.rs additional method coverage
 #[test]
 fn test_renderer_additional_methods_wave18() {
-    if let Ok(mut renderer) =
-        pollster::block_on(astraweave_render::Renderer::new_headless(640, 480))
+    let Some(mut renderer) =
+        pollster::block_on(astraweave_render::Renderer::headless_for_tests(640, 480))
+    else {
+        return;
+    };
     {
         use astraweave_camera::FreeFly as Camera;
         use glam::Vec3;
@@ -6908,7 +6951,12 @@ fn test_renderer_additional_methods_wave18() {
 fn test_ibl_extended_wave18() {
     use astraweave_render::ibl::{IblManager, IblQuality};
 
-    if let Ok(renderer) = pollster::block_on(astraweave_render::Renderer::new_headless(640, 480)) {
+    let Some(renderer) =
+        pollster::block_on(astraweave_render::Renderer::headless_for_tests(640, 480))
+    else {
+        return;
+    };
+    {
         let device = renderer.device();
 
         // Test IblManager creation (returns Result)
@@ -7030,7 +7078,12 @@ fn test_environment_weather_sky_wave18() {
 fn test_texture_loading_paths_wave18() {
     use astraweave_render::texture::Texture;
 
-    if let Ok(renderer) = pollster::block_on(astraweave_render::Renderer::new_headless(640, 480)) {
+    let Some(renderer) =
+        pollster::block_on(astraweave_render::Renderer::headless_for_tests(640, 480))
+    else {
+        return;
+    };
+    {
         let device = renderer.device();
         let queue = renderer.queue();
 

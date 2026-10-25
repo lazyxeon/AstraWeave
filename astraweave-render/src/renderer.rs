@@ -12101,42 +12101,9 @@ fn open_append_nofollow(path: &std::path::Path) -> std::io::Result<std::fs::File
     #[cfg(unix)]
     {
         use std::os::unix::fs::OpenOptionsExt;
-        options.custom_flags(o_nofollow());
+        options.custom_flags(libc::O_NOFOLLOW);
     }
     options.open(path)
-}
-
-#[cfg(all(unix, any(target_os = "linux", target_os = "android")))]
-fn o_nofollow() -> i32 {
-    0x20000
-}
-
-#[cfg(all(
-    unix,
-    any(
-        target_os = "macos",
-        target_os = "ios",
-        target_os = "tvos",
-        target_os = "watchos"
-    )
-))]
-fn o_nofollow() -> i32 {
-    0x100
-}
-
-#[cfg(all(
-    unix,
-    not(any(
-        target_os = "linux",
-        target_os = "android",
-        target_os = "macos",
-        target_os = "ios",
-        target_os = "tvos",
-        target_os = "watchos"
-    ))
-))]
-fn o_nofollow() -> i32 {
-    0
 }
 
 fn one_skip_line(reason: &str) -> String {
@@ -12193,6 +12160,12 @@ fn clip_planes(proj: glam::Mat4) -> (f32, f32) {
 #[cfg(test)]
 mod skip_log_tests {
     use super::open_append_nofollow;
+
+    #[cfg(unix)]
+    #[test]
+    fn o_nofollow_is_the_libc_constant() {
+        assert_ne!(libc::O_NOFOLLOW, 0);
+    }
 
     #[cfg(unix)]
     #[test]

@@ -87,10 +87,16 @@ fn depth_copy_stays_uniform_for_ssr_and_ssgi() {
         let device = gpu.device;
         let queue = gpu.queue;
         if !astraweave_render::gpu_fault::depth_texture_load_supported(&device) {
-            eprintln!(
-                "skip depth_copy_stays_uniform_for_ssr_and_ssgi: this adapter does not support textureLoad on depth textures"
+            let info = gpu.adapter.get_info();
+            let reason = format!(
+                "depth_copy_stays_uniform_for_ssr_and_ssgi: depth textureLoad is absent on adapter={} backend={:?}",
+                info.name, info.backend
             );
-            return;
+            if gpu_capability::skip_if_unavailable() {
+                gpu_capability::note_skip(&reason);
+                return;
+            }
+            panic!("{reason}");
         }
         let depth = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("depth"),

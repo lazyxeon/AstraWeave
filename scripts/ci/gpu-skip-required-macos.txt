@@ -1,0 +1,38 @@
+# Tests that request only a software adapter while AW_GPU_SKIP_IF_UNAVAILABLE
+# is set. macOS Test full sets that variable and has no software adapter, so
+# each name must appear in the skip log. A log that contains some other line
+# does not cover a missing name. Hardware probes are not listed: Metal still
+# runs them. Ignored tests are not listed: nextest does not run them.
+scar_upload_is_timed_on_the_low_froxel_grid_when_the_device_can
+test_memory_accounting_overwrite
+test_render_systems_logic
+test_render_extra_systems
+test_instancing_system
+test_texture_module
+test_msaa_module
+test_render_graph_module
+test_sky_and_time_comprehensive
+test_ibl_manager_methods
+test_deferred_gbuffer_formats
+test_texture_creation_variants
+test_clustered_renderer_extensive
+test_culling_pipeline_extensive
+test_shadow_csm_extensive
+test_culling_node_module
+test_ibl_additional_coverage
+test_texture_more_variants
+test_deferred_renderer_comprehensive
+test_ibl_capture_and_bake
+test_gpu_particles_comprehensive
+test_decal_system_comprehensive
+test_advanced_post_processing
+test_texture_streaming_detailed
+test_environment_sky_renderer_detailed
+test_ibl_manager_detailed
+test_culling_node_detailed
+test_graph_adapter_detailed
+test_texture_extended_coverage
+test_deferred_renderer_more_coverage
+test_ibl_manager_edge_cases
+test_texture_remaining_coverage
+test_culling_node_comprehensive_wave19

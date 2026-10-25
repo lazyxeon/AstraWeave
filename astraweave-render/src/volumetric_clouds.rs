@@ -1112,9 +1112,10 @@ mod tests {
             force_fallback_adapter: false,
         }));
         let adapter = match adapter {
-            Ok(a) => a,
-            Err(_) => {
-                eprintln!("SKIP: no GPU adapter available");
+            Ok(adapter) => adapter,
+            Err(err) => {
+                let reason = format!("cloud_pass_creation: {err}");
+                crate::gpu_capability::skip_missing_adapter(&err, &reason);
                 return;
             }
         };
@@ -1213,8 +1214,9 @@ mod tests {
         }));
         let adapter = match adapter {
             Ok(adapter) => adapter,
-            Err(_) => {
-                eprintln!("SKIP: no GPU adapter available");
+            Err(err) => {
+                let reason = format!("cloud_shadow_slices_match_a_full_bake: {err}");
+                crate::gpu_capability::skip_missing_adapter(&err, &reason);
                 return;
             }
         };
