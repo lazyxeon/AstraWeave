@@ -8,8 +8,8 @@ domain: physics-world
 lifecycle_status: active
 integration_status: partial
 owns: [astraweave-scene]
-doc_version: "1.1"
-last_verified_commit: 7c29b8182
+doc_version: "1.2"
+last_verified_commit: 0408f086
 ---
 
 # Architecture Trace: Scene System (Scene Graph, World Partition, Streaming, GPU Resources)
@@ -20,9 +20,9 @@ last_verified_commit: 7c29b8182
 |---|---|
 | **System name** | Scene System (scene graph, world partition, cell streaming, GPU resource manager) |
 | **Primary crates** | `astraweave-scene` (with `astraweave-asset` for cell loading, `astraweave-ecs` for the ECS scene-graph layer) |
-| **Document version** | 1.1 |
-| **Last verified against commit** | `7c29b8182` |
-| **Last verified date** | 2026-06-24 |
+| **Document version** | 1.2 |
+| **Last verified against commit** | `0408f086` (parent of the asset-failure arm; that parent still drops the `load_asset_data` result. The pre-rebase stamp `bfd94fe9` is not an ancestor). |
+| **Last verified date** | 2026-10-25 |
 | **Status** | Mixed. Some surfaces are wired into runtime consumers; the streaming + GPU-budget + PartitionedScene + ECS scene-graph layers are in-design-but-tested (production callers only in `examples/` and tests). See §6 and §11. |
 | **Owner notes** | Derived from forensic data-flow analysis of `astraweave-scene` on 2026-06-24. The crate is a single member but is best understood as five loosely-coupled sub-layers (see §1). |
 
@@ -151,7 +151,7 @@ GPU resources are a **separate, parallel** lifecycle (`GpuResourceBudget`) that 
 **Outputs:** mutates `loading_cells`/`active_cells`, mutates the `Cell` state behind the `Arc<RwLock<WorldPartition>>`, emits `StreamingEvent`s.
 **Notes (non-obvious behavior):**
 - The async file path is **fire-and-forget**: `start_load_cell` spawns a task and returns `Ok(())` immediately (`streaming.rs:254-256`). The manager's `active_cells`/`loading_cells` are **not** updated when the spawned task completes — only the `Cell.state` inside the `RwLock` is. `finish_load_cell` (streaming.rs:276-289), which would move the coord from `loading_cells` to `active_cells`, is annotated `#[allow(dead_code)]` and is never invoked. The cell-load-fail handler `handle_load_failure` (streaming.rs:293-303) is likewise `#[allow(dead_code)]`.
-- Asset bytes from `load_asset_data` are loaded then discarded (`let _ = Self::load_asset_data(...)`, `streaming.rs:193`) with a comment "fire and forget for now / In production, integrate with asset manager." This is a deliberate placeholder, not a wired asset pipeline. Verified: `load_asset_data` (streaming.rs:267) has exactly one call site (streaming.rs:193), where its `Result<Vec<u8>>` is dropped; the returned bytes are never stored on the `Cell` or surfaced to any consumer. The only consumer of streaming output (`examples/world_partition_demo`) reads `cell.assets` (the `AssetRef` metadata it itself pushed, main.rs:40-49), never the loaded bytes. No consumer expects the bytes. (The intended asset-manager hand-off remains an Open Question — see §11.)
+- A failed `load_asset_data` sets that cell back to `Unloaded` and does not copy its asset refs. The `Ok` bytes are still not stored on the `Cell`: no consumer reads them. The spawned task's `Result` is not joined. `handle_load_failure` stays unused. The asset-manager hand-off remains an Open Question — see §11.
 - The hard-coded path template is `assets/cells/{x}_{y}_{z}.ron` (`streaming.rs:180-183`).
 
 #### Stage: `astraweave-asset::cell_loader`
@@ -200,7 +200,7 @@ GPU resources are a **separate, parallel** lifecycle (`GpuResourceBudget`) that 
 
 | Source system | Interface | Data | Notes |
 |---|---|---|---|
-| `astraweave-asset` (cell loader) | `cell_loader::load_cell_from_ron(path)`, `cell_loader::load_asset(ref, root)` | `CellData`, asset bytes | Called in the spawned task in `streaming.rs:263,271`. Asset bytes currently discarded (`streaming.rs:193`). Cross-link: see [asset cell-loading] (no dedicated trace yet; lives in `astraweave-asset/src/cell_loader.rs`). |
+| `astraweave-asset` (cell loader) | `cell_loader::load_cell_from_ron(path)`, `cell_loader::load_asset(ref, root)` | `CellData`, asset bytes | Called in the spawned task. A failed asset read leaves the cell `Unloaded`. Successful bytes are not stored. |
 | `astraweave-ecs` | `World::insert/get/get_mut/each_mut/each_changed/change_tick` | ECS component storage | The `feature = "ecs"` systems read/write components via these `astraweave_ecs::World` methods (`lib.rs:639-1025`). |
 | Camera (caller-supplied) | `WorldPartitionManager::update(camera_position: Vec3)` | camera world position | Drives streaming. Caller is the host loop (currently only demos/tests). |
 | Gameplay / worldgen authoring | direct construction of `WorldPartition` + `Cell` | zone cell data | `veilweaver_slice_runtime::VeilweaverSliceRuntime::new(config, partition)` (`veilweaver_slice_runtime/src/lib.rs:403`) takes a pre-built `WorldPartition`. |
@@ -357,7 +357,7 @@ GPU resources are a **separate, parallel** lifecycle (`GpuResourceBudget`) that 
 - **Is the streaming layer (`WorldPartitionManager`), the GPU budget (`GpuResourceBudget`), `PartitionedScene`, and the ECS scene-graph/animation systems intended to be wired into a runtime, or are they reference/demo scaffolding?** Verified 2026-06-24: zero non-test/non-example production callers for any of these. Resolving this determines whether they should be marked Active (after wiring), kept as demo references, or pruned.
 - **Should `WorldPartitionManager`'s active/loading bookkeeping reconcile with disk-loaded cells?** `finish_load_cell` and `handle_load_failure` are `#[allow(dead_code)]` (`streaming.rs:275,292`); the async path never advances `active_cells`. Is this intentional (consumers poll `Cell.state` via `partition.get_cell`) or a gap?
 - **`PartitionedScene::update_streaming` adds a new event listener on every call** (`partitioned_scene.rs:94`), so listeners accumulate. Is this intended, or should the listener be registered once at construction?
-- **Asset bytes loaded then discarded** (`streaming.rs:193`, "fire and forget for now / integrate with asset manager"). What is the intended hand-off to an asset manager, and which one?
+- **Successful asset bytes are still not stored.** A failed read leaves the cell `Unloaded`. What is the intended hand-off of the bytes to an asset manager, and which one?
 - **`SceneError`/`SceneResult` vs `anyhow::Result`:** the typed error exists and is tested, but streaming/partition code returns `anyhow::Result`. Is `SceneError` meant to replace `anyhow` on the fallible scene paths, or is it for a future API surface?
 - **Terrain's `PartitionCoord` duplicates scene's `GridCoord`** (`partition_integration.rs:30`). Should terrain depend on `astraweave-scene::world_partition::GridCoord` instead of re-implementing it, or is the duplication deliberate to avoid a terrain→scene dependency?
 - **`compute_poses_stub`:** when (if) is the renderer-integrated pose computation expected to land, and where will it live given scene must not depend on render?

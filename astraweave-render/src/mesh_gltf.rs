@@ -38,53 +38,51 @@ fn jail_gltf_uri(base: &std::path::Path, uri: &str) -> Result<()> {
     Ok(())
 }
 
-/// Reject a container whose file size or GLB header length is over the buffer cap.
+/// Reject a GLB whose header would make `Glb::from_reader` allocate.
 ///
-/// `gltf` allocates `header.length - 12` before this crate can see `byteLength`.
-/// A short file whose header says `u32::MAX` is that allocation. The file length
-/// alone does not stop it.
+/// `from_slice` refuses a length past the slice. This check runs first so a
+/// short file with `header.length == u32::MAX`, or a length under 12, fails
+/// here instead of inside that allocator. JSON containers skip it.
 #[cfg(feature = "gltf-assets")]
-fn reject_oversized_gltf_container(path: &std::path::Path) -> Result<()> {
-    let cap = astraweave_asset::MAX_GLTF_BUFFER;
-    let meta = std::fs::metadata(path).with_context(|| format!("open {}", path.display()))?;
-    if meta.is_file() && meta.len() > cap {
-        anyhow::bail!("{} is {} bytes, cap is {cap}", path.display(), meta.len());
+fn reject_glb_header(bytes: &[u8]) -> Result<()> {
+    if bytes.len() < 4 || &bytes[..4] != b"glTF" {
+        return Ok(());
     }
-    let mut file = std::fs::File::open(path).with_context(|| format!("open {}", path.display()))?;
-    let mut header = [0u8; 12];
-    let read = std::io::Read::read(&mut file, &mut header)
-        .with_context(|| format!("read {}", path.display()))?;
-    if read >= 4 && &header[..4] == b"glTF" {
-        if read < 12 {
-            anyhow::bail!("glTF header is truncated");
-        }
-        let length = u32::from_le_bytes([header[8], header[9], header[10], header[11]]);
-        if (length as u64) < 12 {
-            anyhow::bail!("glTF header length {length} is shorter than the header");
-        }
-        if length as u64 > cap {
-            anyhow::bail!("glTF header length {length} exceeds {cap}");
-        }
-        if meta.is_file() && (length as u64) > meta.len() {
-            anyhow::bail!(
-                "glTF header length {length} exceeds the {} byte file",
-                meta.len()
-            );
-        }
+    if bytes.len() < 12 {
+        anyhow::bail!("glTF header is truncated");
+    }
+    let length = u32::from_le_bytes([bytes[8], bytes[9], bytes[10], bytes[11]]);
+    if (length as u64) < 12 {
+        anyhow::bail!("glTF header length {length} is shorter than the header");
+    }
+    let cap = astraweave_asset::MAX_GLTF_BUFFER;
+    if length as u64 > cap {
+        anyhow::bail!("glTF header length {length} exceeds {cap}");
+    }
+    if (length as u64) > bytes.len() as u64 {
+        anyhow::bail!(
+            "glTF header length {length} exceeds the {} byte file",
+            bytes.len()
+        );
     }
     Ok(())
 }
 
+/// Read the container once, under the buffer cap, and parse that slice.
+///
+/// `Gltf::from_slice` uses `Glb::from_slice`, which does not allocate
+/// `header.length`. `Gltf::open` would call `Glb::from_reader` and parse a
+/// second time.
 #[cfg(feature = "gltf-assets")]
 fn open_capped_gltf(path: &std::path::Path) -> Result<gltf::Gltf> {
-    reject_oversized_gltf_container(path)?;
-    gltf::Gltf::open(path).map_err(|err| anyhow!("open glTF: {err}"))
+    let bytes = astraweave_asset::read_capped_file(path, astraweave_asset::MAX_GLTF_BUFFER)
+        .with_context(|| format!("open {}", path.display()))?;
+    reject_glb_header(&bytes)?;
+    gltf::Gltf::from_slice(&bytes).map_err(|err| anyhow!("open glTF: {err}"))
 }
 
 #[cfg(feature = "gltf-assets")]
-fn reject_escaping_gltf_uris(path: &std::path::Path) -> Result<()> {
-    let base = path.parent().unwrap_or_else(|| std::path::Path::new("."));
-    let doc = open_capped_gltf(path)?;
+fn reject_escaping_gltf_uris(doc: &gltf::Document, base: &std::path::Path) -> Result<()> {
     for buffer in doc.buffers() {
         if let gltf::buffer::Source::Uri(uri) = buffer.source() {
             jail_gltf_uri(base, uri)?;
@@ -257,12 +255,12 @@ fn load_capped_gltf_buffers(
 #[cfg(feature = "gltf-assets")]
 pub fn load_gltf(path: &std::path::Path, opts: &GltfOptions) -> Result<Vec<CpuMesh>> {
     use gltf::mesh::util::ReadIndices;
-    reject_escaping_gltf_uris(path)?;
     let base = path.parent().unwrap_or_else(|| std::path::Path::new("."));
     let gltf::Gltf {
         document: doc,
         blob,
     } = open_capped_gltf(path)?;
+    reject_escaping_gltf_uris(&doc, base)?;
     let buffers = load_capped_gltf_buffers(&doc, base, blob)?;
     let images = load_capped_gltf_images(&doc, base, &buffers)?;
     let mut meshes_out = Vec::new();
@@ -362,6 +360,20 @@ pub fn load_gltf(path: &std::path::Path, opts: &GltfOptions) -> Result<Vec<CpuMe
 #[cfg(all(test, feature = "gltf-assets"))]
 mod jail_tests {
     use super::*;
+
+    /// Embed a path in JSON. Windows `display()` uses `\` which is not a JSON escape.
+    fn json_string(value: &str) -> String {
+        let mut out = String::from("\"");
+        for c in value.chars() {
+            match c {
+                '\\' => out.push_str("\\\\"),
+                '"' => out.push_str("\\\""),
+                c => out.push(c),
+            }
+        }
+        out.push('"');
+        out
+    }
 
     #[test]
     fn gltf_buffer_parent_uri_is_rejected() {
@@ -565,12 +577,12 @@ mod jail_tests {
         std::fs::write(&outside, b"SENTINEL-SECRET").expect("secret");
         let model = dir.path().join("model");
         std::fs::create_dir(&model).expect("model dir");
-        let file_uri = format!("file://{}", outside.display());
+        let file_uri = json_string(&format!("file://{}", outside.display()));
         let file_gltf = model.join("file.gltf");
         std::fs::write(
             &file_gltf,
             format!(
-                r#"{{"asset":{{"version":"2.0"}},"buffers":[{{"uri":"{file_uri}","byteLength":15}}]}}"#
+                r#"{{"asset":{{"version":"2.0"}},"buffers":[{{"uri":{file_uri},"byteLength":15}}]}}"#
             ),
         )
         .expect("write file uri");

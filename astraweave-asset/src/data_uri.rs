@@ -11,18 +11,28 @@ use crate::image_limits::MAX_IMAGE_ALLOC;
 /// Four times the image cap. A mesh can be larger than 64 MiB. It cannot be unbounded.
 pub const MAX_GLTF_BUFFER: u64 = 256 * 1024 * 1024;
 
-/// Percent-decode a glTF file URI and reject any scheme.
+/// Percent-decode a glTF file URI and reject a scheme or a drive letter.
 ///
+/// A scheme is a colon before the first `/` or `\`: `file:`, `http:`, `C:`.
+/// A colon after that slash is a filename character (`textures/my:file.bin`).
 /// `data:` URIs are handled by [`read_capped_data_uri`] before this runs.
 /// A bad percent sequence is an error. Decoding happens before the path jail,
 /// so `%2e%2e` is `..` when the jail runs.
 pub fn gltf_relative_uri(uri: &str) -> Result<String> {
     let without_query = uri.split('?').next().unwrap_or(uri);
     let decoded = percent_decode(without_query)?;
-    if decoded.contains(':') {
+    if colon_before_first_slash(&decoded) {
         bail!("glTF URI scheme is not a relative file");
     }
     Ok(decoded)
+}
+
+/// `true` when `:` appears before the first path separator.
+fn colon_before_first_slash(uri: &str) -> bool {
+    match uri.find([':', '/', '\\']) {
+        Some(index) => uri.as_bytes()[index] == b':',
+        None => false,
+    }
 }
 
 fn percent_decode(input: &str) -> Result<String> {
@@ -108,8 +118,19 @@ mod tests {
             gltf_relative_uri("%2e%2e/%2e%2e/secret.bin").expect("dots"),
             "../../secret.bin"
         );
+        assert_eq!(
+            gltf_relative_uri("textures/my%3afile.bin").expect("colon in the name"),
+            "textures/my:file.bin"
+        );
         let scheme = gltf_relative_uri("file:///etc/passwd").expect_err("scheme");
         assert!(format!("{scheme:#}").contains("scheme"), "{scheme}");
+        let drive = gltf_relative_uri("C:/Windows/system32").expect_err("drive");
+        assert!(format!("{drive:#}").contains("scheme"), "{drive}");
+        let drive_backslash = gltf_relative_uri(r"D:\Windows").expect_err("drive slash");
+        assert!(
+            format!("{drive_backslash:#}").contains("scheme"),
+            "{drive_backslash}"
+        );
         let bad = gltf_relative_uri("%zz").expect_err("percent");
         assert!(format!("{bad:#}").contains("percent"), "{bad}");
     }
