@@ -8,10 +8,11 @@
 //!
 //! `--atmosphere` and `--clouds` each draw a frame when used alone.
 //! `--atmosphere` replaces `SkyRenderer` and turns on Aravath fog and god rays.
-//! `--clouds` raymarches and copies the composite onto HDR. That print is
-//! `gated_measure=clouds` and does not decide the 11 ms cell. The default
-//! frame enables neither. `--ssgi`, `--taa`, `--upscale`, and `--dof` are
-//! rejected when enabled.
+//! `--clouds` raymarches and copies the composite onto HDR. It pins the clock
+//! to 16.4 with `time_scale` 0 and leaves fog and shafts off. The cell is the
+//! 16.4 afternoon sun. That print is `gated_measure=clouds` and does
+//! not decide the 11 ms cell. The default frame enables neither. `--ssgi`,
+//! `--taa`, `--upscale`, and `--dof` are rejected when enabled.
 //! ```
 
 use anyhow::Context;
@@ -162,14 +163,18 @@ fn main() -> anyhow::Result<()> {
     // The constructor leaves Bruneton off. It does not read PresentationQuality.
     // This write applies the parse both ways. A no-flag run and
     // `--atmosphere false` stay on the HDRI sky with Hi-Z off, which is not
-    // the 939a21bb 3.688 ms row. Fog and shafts are built only when the flag
-    // is on. If either setter fails, the bail below happens before draw_into.
-    if atmosphere || clouds {
-        {
-            let clock = renderer.time_of_day_mut();
-            clock.current_time = 16.4;
-            clock.time_scale = 0.0;
-        }
+    // the 939a21bb 3.688 ms row. `--clouds` pins that same clock and leaves
+    // fog and shafts off. The sun is `get_light_direction()`, which
+    // `update_view` writes from the time of day. Fog and shafts are built
+    // only for `--atmosphere`. If either setter fails, the bail below
+    // happens before draw_into.
+    let (pin_clock, build_volumetrics) = cell_clock_and_volumetrics(atmosphere, clouds);
+    if pin_clock {
+        let clock = renderer.time_of_day_mut();
+        clock.current_time = 16.4;
+        clock.time_scale = 0.0;
+    }
+    if build_volumetrics {
         renderer.set_volumetric_fog_config(
             astraweave_render::volumetric_fog::VolumetricFogPass::gameplay_config(),
         );
@@ -833,6 +838,12 @@ fn renderer_limits(limits: &wgpu::Limits) -> [(&'static str, u64); 15] {
     ]
 }
 
+/// `--atmosphere` and `--clouds` pin the afternoon clock. Fog and shafts
+/// belong to the atmosphere cell, so `--clouds` raymarches at the 16.4 afternoon sun.
+fn cell_clock_and_volumetrics(atmosphere: bool, clouds: bool) -> (bool, bool) {
+    (atmosphere || clouds, atmosphere)
+}
+
 fn gated_measure_label(atmosphere: bool, fog: bool, shafts: bool, clouds: bool) -> &'static str {
     if clouds {
         return "clouds";
@@ -982,7 +993,14 @@ fn median(values: &mut [f64]) -> f64 {
 
 #[cfg(test)]
 mod measure_label_tests {
-    use super::gated_measure_label;
+    use super::{cell_clock_and_volumetrics, gated_measure_label};
+
+    #[test]
+    fn clouds_pin_the_clock_and_leave_fog_and_shafts_off() {
+        assert_eq!(cell_clock_and_volumetrics(false, true), (true, false));
+        assert_eq!(cell_clock_and_volumetrics(true, false), (true, true));
+        assert_eq!(cell_clock_and_volumetrics(false, false), (false, false));
+    }
 
     #[test]
     fn degraded_volumetrics_are_not_the_aravath_fog_frame() {
