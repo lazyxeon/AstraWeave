@@ -4887,6 +4887,8 @@ fn vs(input: VSIn) -> VSOut {
         };
         self.queue
             .write_buffer(&self.clustered_params_buf, 0, bytemuck::bytes_of(&data));
+        // A failed pass resize clears `config.enabled` and returns to the caller.
+        self.clamp_atmosphere_to_volumetrics();
     }
 
     /// Set the camera's true world-space position in double precision.
@@ -5714,13 +5716,13 @@ fn vs(input: VSIn) -> VSOut {
 
     pub fn set_atmosphere_enabled(&mut self, enabled: bool) {
         self.atmosphere_on = enabled;
+        self.clamp_atmosphere_to_volumetrics();
     }
 
-    /// Bruneton sky plus aerial perspective. The field starts false.
-    /// Turning it on with fog and shafts off makes `record_bruneton` scatter
-    /// geometry out to 50 km. The 4.474 ms cell builds both passes, so that
-    /// distance is 0. The game sets the field only after those passes build.
-    /// `PresentationQuality::Measured` is the off value a caller can apply.
+    /// Bruneton with fog and shafts both off scatters geometry to 50 km.
+    /// That pair is not a frame. The flag stays on only while at least one
+    /// of those passes is enabled. The 4.474 ms cell has both, so aerial
+    /// `max_distance` is 0. `PresentationQuality::Measured` is the off value.
     #[must_use]
     pub fn atmosphere_enabled(&self) -> bool {
         self.atmosphere_on
@@ -5788,6 +5790,11 @@ fn vs(input: VSIn) -> VSOut {
     /// already on, geometry is not scattered a second time.
     fn record_bruneton(&mut self, enc: &mut wgpu::CommandEncoder, depth: &wgpu::TextureView) {
         if !self.atmosphere_on {
+            return;
+        }
+        // The setter refuses this pair. A stale flag still must not scatter
+        // geometry out to 50 km.
+        if !self.volumetric_fog_enabled() && !self.god_rays_enabled() {
             return;
         }
         let gen = self.resource_generation;
@@ -6288,6 +6295,7 @@ fn vs(input: VSIn) -> VSOut {
                     log::error!("volumetric fog disabled: {err}");
                     self.volumetric_fog = None;
                     self.note_scope_device_loss();
+                    self.clamp_atmosphere_to_volumetrics();
                     return;
                 }
             }
@@ -6302,6 +6310,7 @@ fn vs(input: VSIn) -> VSOut {
             if rebuild { "built" } else { "updated" },
             started.elapsed().as_millis()
         );
+        self.clamp_atmosphere_to_volumetrics();
     }
 
     pub fn volumetric_fog_enabled(&self) -> bool {
@@ -6377,6 +6386,7 @@ fn vs(input: VSIn) -> VSOut {
                     log::error!("light shafts disabled: {err}");
                     self.god_rays = None;
                     self.note_scope_device_loss();
+                    self.clamp_atmosphere_to_volumetrics();
                     return;
                 }
             }
@@ -6388,6 +6398,7 @@ fn vs(input: VSIn) -> VSOut {
             if rebuild { "built" } else { "updated" },
             started.elapsed().as_millis()
         );
+        self.clamp_atmosphere_to_volumetrics();
     }
 
     pub fn god_rays_enabled(&self) -> bool {
@@ -6399,13 +6410,36 @@ fn vs(input: VSIn) -> VSOut {
     /// Drop froxel fog and light shafts.
     ///
     /// `catch_unwind` does not undo a setter that already stored its pass.
-    /// A panic between the two builds can leave fog enabled. This drops both.
-    /// It does not change `atmosphere_on`. With fog and shafts gone, Bruneton
-    /// scatters geometry out to 50 km. The caller must also call
-    /// `set_atmosphere_enabled(false)` to stay on the HDRI sky.
+    /// A panic between the two builds can leave fog enabled. This drops both
+    /// and turns Bruneton off. Atmosphere with neither pass would scatter
+    /// geometry out to 50 km, and that pair is not recorded.
     pub fn clear_volumetric_passes(&mut self) {
         self.volumetric_fog = None;
         self.god_rays = None;
+        self.atmosphere_on = false;
+    }
+
+    fn clamp_atmosphere_to_volumetrics(&mut self) {
+        if self.atmosphere_on && !self.volumetric_fog_enabled() && !self.god_rays_enabled() {
+            self.atmosphere_on = false;
+        }
+    }
+
+    /// A fog or shaft pass can clear `config.enabled` from inside execute or
+    /// resize without clamping Bruneton to those passes. Tests use this to
+    /// enter the next frame with that stale flag.
+    #[doc(hidden)]
+    pub fn mark_volumetric_passes_disabled_for_test(&mut self) {
+        if let Some(fog) = self.volumetric_fog.as_mut() {
+            let mut config = fog.config().clone();
+            config.enabled = false;
+            fog.set_config(config);
+        }
+        if let Some(rays) = self.god_rays.as_mut() {
+            let mut config = rays.config().clone();
+            config.enabled = false;
+            rays.set_config(config);
+        }
     }
 
     /// Composite engine volumetric fog, then screen-space light shafts, into HDR.
@@ -6519,6 +6553,8 @@ fn vs(input: VSIn) -> VSOut {
                 );
             }
         }
+        // execute and add_into can clear `config.enabled` inside this call.
+        self.clamp_atmosphere_to_volumetrics();
     }
 
     pub fn set_shadows_enabled(&mut self, enabled: bool) {
@@ -7906,7 +7942,10 @@ fn vs(input: VSIn) -> VSOut {
             .and_then(|resources| resources.hdr_equirect.clone());
 
         // Bruneton replaces the HDRI sky. The sky pass is also the clear of
-        // HDR and of scene depth, so that clear still has to run.
+        // HDR and of scene depth, so that clear still has to run. A pass can
+        // clear its own config after the last setter; clamp before this branch
+        // so a stale flag does not replace the HDRI sky with the clear color.
+        self.clamp_atmosphere_to_volumetrics();
         if self.atmosphere_on {
             self.close_timing_gap(enc);
             let sky_stamp = self.begin_named_stamp(enc, "sky");
