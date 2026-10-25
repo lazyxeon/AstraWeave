@@ -1,9 +1,4 @@
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/brand/wordmark-dark.svg">
-    <img alt="AstraWeave" src="docs/assets/brand/wordmark-light.svg" width="320">
-  </picture>
-</p>
+<h1 align="center">AstraWeave</h1>
 
 <p align="center">A deterministic game engine. The game is Aravath.</p>
 
