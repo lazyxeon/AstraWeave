@@ -8,7 +8,8 @@
 //!
 //! `--atmosphere` and `--clouds` each draw a frame when used alone.
 //! `--atmosphere` replaces `SkyRenderer` and turns on Aravath fog and god rays.
-//! `--clouds` raymarches and copies the composite onto HDR. The default
+//! `--clouds` raymarches and copies the composite onto HDR. That print is
+//! `gated_measure=clouds` and does not decide the 11 ms cell. The default
 //! frame enables neither. `--ssgi`, `--taa`, `--upscale`, and `--dof` are
 //! rejected when enabled.
 //! ```
@@ -163,7 +164,7 @@ fn main() -> anyhow::Result<()> {
     // `--atmosphere false` stay on the HDRI sky with Hi-Z off, which is not
     // the 939a21bb 3.688 ms row. Fog and shafts are built only when the flag
     // is on. If either setter fails, the bail below happens before draw_into.
-    if atmosphere {
+    if atmosphere || clouds {
         {
             let clock = renderer.time_of_day_mut();
             clock.current_time = 16.4;
@@ -185,7 +186,7 @@ fn main() -> anyhow::Result<()> {
     // Bruneton with neither pass scatters to 50 km. The setter refuses that
     // pair, so the flag is written after the builds.
     renderer.set_atmosphere_enabled(atmosphere && fog && shafts);
-    let measure = gated_measure_label(atmosphere, fog, shafts);
+    let measure = gated_measure_label(atmosphere, fog, shafts, clouds);
     println!("gated_atmosphere={}", if atmosphere { "on" } else { "off" });
     println!("gated_measure={measure}");
     if atmosphere && (!fog || !shafts) {
@@ -460,6 +461,13 @@ fn main() -> anyhow::Result<()> {
         anyhow::bail!("no GPU frame bracket, so the 11 ms comparison was not made");
     }
     let frame_median = median(&mut gpu_frame);
+    if clouds {
+        println!("budget_11ms=not_decided");
+        println!(
+            "budget_11ms_note=clouds prints gated_measure=clouds. Lavapipe time is not the 11 ms cell, and no GTX 1660 Ti heavy-scene median is recorded here."
+        );
+        return Ok(());
+    }
     let verdict = if frame_median <= BUDGET_MS {
         "pass"
     } else {
@@ -825,7 +833,10 @@ fn renderer_limits(limits: &wgpu::Limits) -> [(&'static str, u64); 15] {
     ]
 }
 
-fn gated_measure_label(atmosphere: bool, fog: bool, shafts: bool) -> &'static str {
+fn gated_measure_label(atmosphere: bool, fog: bool, shafts: bool, clouds: bool) -> &'static str {
+    if clouds {
+        return "clouds";
+    }
     if !atmosphere {
         return "baseline";
     }
@@ -975,26 +986,27 @@ mod measure_label_tests {
 
     #[test]
     fn degraded_volumetrics_are_not_the_aravath_fog_frame() {
-        assert_eq!(gated_measure_label(false, false, false), "baseline");
+        assert_eq!(gated_measure_label(false, false, false, false), "baseline");
+        assert_eq!(gated_measure_label(false, false, false, true), "clouds");
         assert_eq!(
-            gated_measure_label(true, true, true),
+            gated_measure_label(true, true, true, false),
             "atmosphere_with_aravath_fog"
         );
         assert_eq!(
-            gated_measure_label(true, false, true),
+            gated_measure_label(true, false, true, false),
             "atmosphere_without_fog"
         );
         assert_eq!(
-            gated_measure_label(true, true, false),
+            gated_measure_label(true, true, false, false),
             "atmosphere_without_shafts"
         );
         assert_eq!(
-            gated_measure_label(true, false, false),
+            gated_measure_label(true, false, false, false),
             "atmosphere_without_volumetrics"
         );
         for (fog, shafts) in [(false, true), (true, false), (false, false)] {
             assert_ne!(
-                gated_measure_label(true, fog, shafts),
+                gated_measure_label(true, fog, shafts, false),
                 "atmosphere_with_aravath_fog"
             );
         }

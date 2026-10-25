@@ -228,7 +228,7 @@ impl VolumetricCloudsPass {
         let fmt = wgpu::TextureFormat::Rgba16Float;
 
         // --- Half-res textures ---
-        let make_half = |label: &str| {
+        let make_half = |label: &str, usage: wgpu::TextureUsages| {
             let tex = device.create_texture(&wgpu::TextureDescriptor {
                 label: Some(label),
                 size: wgpu::Extent3d {
@@ -240,14 +240,26 @@ impl VolumetricCloudsPass {
                 sample_count: 1,
                 dimension: wgpu::TextureDimension::D2,
                 format: fmt,
-                usage: wgpu::TextureUsages::STORAGE_BINDING | wgpu::TextureUsages::TEXTURE_BINDING,
+                usage,
                 view_formats: &[],
             });
             let view = tex.create_view(&wgpu::TextureViewDescriptor::default());
             (tex, view)
         };
-        let (cloud_texture, cloud_view) = make_half("cloud_raymarch");
-        let (cloud_history, cloud_history_view) = make_half("cloud_history");
+        // The history copy needs `COPY_SRC` on the march and `COPY_DST` on
+        // history. History is cleared to the miss color before the first sample.
+        let (cloud_texture, cloud_view) = make_half(
+            "cloud_raymarch",
+            wgpu::TextureUsages::STORAGE_BINDING
+                | wgpu::TextureUsages::TEXTURE_BINDING
+                | wgpu::TextureUsages::COPY_SRC,
+        );
+        let (cloud_history, cloud_history_view) = make_half(
+            "cloud_history",
+            wgpu::TextureUsages::TEXTURE_BINDING
+                | wgpu::TextureUsages::COPY_DST
+                | wgpu::TextureUsages::RENDER_ATTACHMENT,
+        );
 
         // --- Full-res composited output ---
         let composited_texture = device.create_texture(&wgpu::TextureDescriptor {
@@ -386,6 +398,34 @@ impl VolumetricCloudsPass {
         (self.width, self.height)
     }
 
+    /// Frames since the pass was created or resized. Zero skips the history blend.
+    pub fn frame_index(&self) -> u32 {
+        self.frame_index
+    }
+
+    /// Clear history to the miss color `(0, 0, 0, 1)` before the first sample.
+    pub fn clear_history(&self, encoder: &mut wgpu::CommandEncoder) {
+        let _pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("cloud history clear"),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view: &self.cloud_history_view,
+                resolve_target: None,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(wgpu::Color {
+                        r: 0.0,
+                        g: 0.0,
+                        b: 0.0,
+                        a: 1.0,
+                    }),
+                    store: wgpu::StoreOp::Store,
+                },
+            })],
+            depth_stencil_attachment: None,
+            timestamp_writes: None,
+            occlusion_query_set: None,
+        });
+    }
+
     /// Update uniform buffers for the current frame.
     #[allow(clippy::too_many_arguments)]
     pub fn prepare_frame(
@@ -426,7 +466,12 @@ impl VolumetricCloudsPass {
             extinction_coeff: self.config.extinction_coeff,
             scatter_coeff: self.config.scatter_coeff,
             ambient_intensity: self.config.ambient_intensity,
-            temporal_blend: self.config.temporal_blend,
+            // The first sample must not mix in an unwritten history.
+            temporal_blend: if self.frame_index == 0 {
+                0.0
+            } else {
+                self.config.temporal_blend
+            },
             frame_index: self.frame_index,
             _pad0: 0.0,
             _pad1: 0.0,
