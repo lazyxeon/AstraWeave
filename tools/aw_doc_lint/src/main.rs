@@ -26,12 +26,23 @@
 //!
 //! A separate front-door check always fails the process, including in `--mode warn`:
 //! `docs/current/ENGINE_STATUS.md` must name every required replay case from
-//! `determinism-replay.yml` and must keep the frame-budget phrases, including
-//! `3.117 ms` on a measurement sentence. `README.md` must list open pulls as in
-//! progress and must not contain a frame figure. A frame figure is a number
-//! followed by `ms` or `milliseconds` after character references, tags, and
-//! markdown emphasis are decoded. Player-facing docs must not use the retired
-//! game title. A failed read of a scanned file, including
+//! `determinism-replay.yml` and must keep the frame-budget phrases. `3.117 ms`
+//! has to be its own token on a sentence with whole-word `median`, `measured`,
+//! or `capture`, or whole-word `sample` with whole-word `is` or `was`.
+//! Whole-word `not`, `never`, or `cannot`, or an `n't` contraction (ASCII or a
+//! typographic apostrophe), keeps that sentence off the set. A sentence that
+//! only names the check does not count.
+//! `README.md` must list open pulls as in progress and must not contain a frame
+//! figure: a number followed by `ms`, `msec`, `millisecond`, or `milliseconds`.
+//! The scan drops markdown emphasis (`*`, `_`, backticks, and `~`), keeps quoted
+//! `alt` text, treats a `<` that does not start a tag as text, decodes numeric
+//! character references (any run of leading zeros; at most six significant
+//! hexadecimal digits or seven significant decimal digits), and decodes `nbsp`,
+//! `NonBreakingSpace`, `thinsp`, `ThinSpace`, `ensp`, `emsp`, `zwnj`, `zwj`,
+//! `lrm`, `rlm`, `ZeroWidthSpace`, `NewLine`, and `Tab`. Soft hyphen, zero-width
+//! and bidi marks (U+200B through U+200F, U+2060, U+FEFF), and other control
+//! characters are dropped. Player-facing docs must not use the retired game
+//! title. A failed read of a scanned file, including
 //! `docs/current/PROJECT_BRIEF.md`, fails the process.
 
 use anyhow::{bail, Context, Result};
@@ -468,7 +479,7 @@ fn front_door_errors(
     }
     if !status_has_measured_sample(status, "3.117 ms") {
         errors.push(format!(
-            "{STATUS_REL}: missing front-door phrase `3.117 ms` on a measurement line"
+            "{STATUS_REL}: missing front-door phrase `3.117 ms` on a measurement sentence"
         ));
     }
     match in_progress_body(readme) {
@@ -504,8 +515,11 @@ fn front_door_errors(
 }
 
 /// The sample must be its own token on a measurement sentence. `13.117 ms` is
-/// not `3.117 ms`. A sentence that only names the phrase for this gate does
-/// not count. Other sentences on the same line still can.
+/// not `3.117 ms`. The sentence needs whole-word `median`, `measured`, or
+/// `capture`, or whole-word `sample` together with whole-word `is` or `was`.
+/// Whole-word `not`, `never`, or `cannot`, or an `n't` contraction (ASCII or a
+/// typographic apostrophe), does not count. A sentence that only names this
+/// gate does not count. Other sentences on the same line still can.
 fn status_has_measured_sample(status: &str, phrase: &str) -> bool {
     status.lines().any(|line| {
         line.split(". ").any(|sentence| {
@@ -545,14 +559,27 @@ fn sentence_is_measurement(sentence: &str) -> bool {
     {
         return false;
     }
-    lower.contains("median")
-        || lower.contains("measured")
-        || lower.contains("sample")
-        || lower.contains("capture")
+    if negated_measurement(&lower) {
+        return false;
+    }
+    contains_phrase_token(&lower, "median")
+        || contains_phrase_token(&lower, "measured")
+        || contains_phrase_token(&lower, "capture")
+        || (contains_phrase_token(&lower, "sample")
+            && (contains_phrase_token(&lower, "is") || contains_phrase_token(&lower, "was")))
 }
 
-/// A frame figure is a number followed by `ms` or `milliseconds`. Character
-/// references, tags, and markdown emphasis are decoded first.
+fn negated_measurement(lower: &str) -> bool {
+    contains_phrase_token(lower, "not")
+        || contains_phrase_token(lower, "never")
+        || contains_phrase_token(lower, "cannot")
+        || lower.contains("n't")
+        || lower.contains("n\u{2019}t")
+}
+
+/// A frame figure is a number followed by `ms`, `msec`, `millisecond`, or
+/// `milliseconds`. Emphasis, alt text, tags, character references, and
+/// zero-width characters are decoded first.
 fn readme_frame_figure_errors(readme: &str) -> Vec<String> {
     let pieces = frame_pieces(readme);
     let mut errors = Vec::new();
@@ -591,10 +618,16 @@ fn readme_frame_figure_errors(readme: &str) -> Vec<String> {
 }
 
 fn frame_unit(pieces: &[(char, usize)]) -> usize {
-    const MS: &[char] = &['m', 's'];
     const MILLISECONDS: &[char] = &['m', 'i', 'l', 'l', 'i', 's', 'e', 'c', 'o', 'n', 'd', 's'];
+    const MILLISECOND: &[char] = &['m', 'i', 'l', 'l', 'i', 's', 'e', 'c', 'o', 'n', 'd'];
+    const MSEC: &[char] = &['m', 's', 'e', 'c'];
+    const MS: &[char] = &['m', 's'];
     if pieces_start(pieces, MILLISECONDS) {
         MILLISECONDS.len()
+    } else if pieces_start(pieces, MILLISECOND) {
+        MILLISECOND.len()
+    } else if pieces_start(pieces, MSEC) {
+        MSEC.len()
     } else if pieces_start(pieces, MS) {
         MS.len()
     } else {
@@ -607,58 +640,193 @@ fn pieces_start(pieces: &[(char, usize)], prefix: &[char]) -> bool {
 }
 
 fn frame_pieces(input: &str) -> Vec<(char, usize)> {
-    let bytes = input.as_bytes();
     let mut out = Vec::new();
+    push_frame_pieces(input, 1, &mut out);
+    out
+}
+
+fn push_frame_pieces(input: &str, mut line: usize, out: &mut Vec<(char, usize)>) {
+    let bytes = input.as_bytes();
     let mut i = 0;
-    let mut line = 1usize;
     while i < bytes.len() {
         match bytes[i] {
             b'\n' => {
                 line += 1;
-                push_frame_char(&mut out, ' ', line);
+                push_frame_char(out, ' ', line);
                 i += 1;
             }
             b'<' => {
-                i += 1;
-                while i < bytes.len() && bytes[i] != b'>' {
-                    if bytes[i] == b'\n' {
-                        line += 1;
+                if !starts_tag(bytes, i) {
+                    push_frame_char(out, '<', line);
+                    i += 1;
+                    continue;
+                }
+                let (alts, next, line_after) = take_tag(input, i, line);
+                for (alt, alt_line) in alts {
+                    if alt.is_empty() {
+                        continue;
                     }
-                    i += 1;
+                    push_frame_char(out, ' ', alt_line);
+                    push_frame_pieces(alt, alt_line, out);
+                    push_frame_char(out, ' ', alt_line);
                 }
-                if i < bytes.len() {
-                    i += 1;
-                }
+                i = next;
+                line = line_after;
             }
             b'&' => {
                 if let Some((ch, next)) = decode_char_ref(bytes, i) {
-                    push_frame_char(&mut out, ch, line);
+                    push_frame_char(out, ch, line);
                     i = next;
                 } else {
-                    push_frame_char(&mut out, '&', line);
+                    push_frame_char(out, '&', line);
                     i += 1;
                 }
             }
-            b'*' | b'`' => i += 1,
+            b'*' | b'`' | b'_' | b'~' => i += 1,
             _ => {
                 let Some(ch) = input[i..].chars().next() else {
                     break;
                 };
-                push_frame_char(&mut out, ch, line);
+                push_frame_char(out, ch, line);
                 i += ch.len_utf8();
             }
         }
     }
-    out
+}
+
+/// A tag starts with `<` plus a letter, `/`, or `!`. A bare `<` is text.
+fn starts_tag(bytes: &[u8], i: usize) -> bool {
+    matches!(
+        bytes.get(i + 1),
+        Some(b'a'..=b'z' | b'A'..=b'Z' | b'/' | b'!')
+    )
+}
+
+/// Skip one tag. Quoted `alt` values on an opening tag are returned for the
+/// same decoder. Comments and closing tags contribute no text.
+fn take_tag(input: &str, i: usize, mut line: usize) -> (Vec<(&str, usize)>, usize, usize) {
+    let bytes = input.as_bytes();
+    let opening = bytes.get(i + 1).is_some_and(u8::is_ascii_alphabetic);
+    let mut alts = Vec::new();
+    let mut j = i + 1;
+    let mut quote: Option<u8> = None;
+    while j < bytes.len() {
+        let b = bytes[j];
+        if let Some(q) = quote {
+            if b == q {
+                quote = None;
+            } else if b == b'\n' {
+                line += 1;
+            }
+            j += 1;
+            continue;
+        }
+        if b == b'"' || b == b'\'' {
+            quote = Some(b);
+            j += 1;
+            continue;
+        }
+        if b == b'\n' {
+            line += 1;
+            j += 1;
+            continue;
+        }
+        if b == b'>' {
+            j += 1;
+            break;
+        }
+        if opening {
+            if let Some((start, end, alt_line)) = alt_at(bytes, j, line) {
+                if let Some(text) = input.get(start..end) {
+                    alts.push((text, alt_line));
+                }
+            }
+        }
+        j += 1;
+    }
+    (alts, j, line)
+}
+
+fn alt_at(bytes: &[u8], j: usize, line: usize) -> Option<(usize, usize, usize)> {
+    if !is_attr_name(bytes, j, b"alt") {
+        return None;
+    }
+    let mut p = j + 3;
+    let mut value_line = line;
+    while p < bytes.len() && bytes[p].is_ascii_whitespace() {
+        if bytes[p] == b'\n' {
+            value_line += 1;
+        }
+        p += 1;
+    }
+    if bytes.get(p) != Some(&b'=') {
+        return None;
+    }
+    p += 1;
+    while p < bytes.len() && bytes[p].is_ascii_whitespace() {
+        if bytes[p] == b'\n' {
+            value_line += 1;
+        }
+        p += 1;
+    }
+    let quote = *bytes.get(p)?;
+    if quote != b'"' && quote != b'\'' {
+        return None;
+    }
+    let start = p + 1;
+    let mut end = start;
+    while end < bytes.len() && bytes[end] != quote {
+        end += 1;
+    }
+    Some((start, end, value_line))
+}
+
+fn is_attr_name(bytes: &[u8], j: usize, name: &[u8]) -> bool {
+    if j == 0 || !bytes[j - 1].is_ascii_whitespace() {
+        return false;
+    }
+    let end = j + name.len();
+    let Some(got) = bytes.get(j..end) else {
+        return false;
+    };
+    if !got.eq_ignore_ascii_case(name) {
+        return false;
+    }
+    match bytes.get(end) {
+        None => true,
+        Some(b) => !b.is_ascii_alphanumeric() && *b != b'_' && *b != b'-' && *b != b':',
+    }
 }
 
 fn push_frame_char(out: &mut Vec<(char, usize)>, ch: char, line: usize) {
+    if is_invisible_frame_char(ch) {
+        return;
+    }
     let ch = if ch.is_whitespace() {
         ' '
     } else {
         ch.to_ascii_lowercase()
     };
     out.push((ch, line));
+}
+
+/// Characters GitHub does not draw between a number and its unit.
+fn is_invisible_frame_char(ch: char) -> bool {
+    if ch.is_whitespace() {
+        return false;
+    }
+    ch.is_control()
+        || matches!(
+            ch,
+            '\u{00AD}'
+                | '\u{200B}'
+                | '\u{200C}'
+                | '\u{200D}'
+                | '\u{200E}'
+                | '\u{200F}'
+                | '\u{2060}'
+                | '\u{FEFF}'
+        )
 }
 
 fn decode_char_ref(bytes: &[u8], i: usize) -> Option<(char, usize)> {
@@ -669,8 +837,11 @@ fn decode_char_ref(bytes: &[u8], i: usize) -> Option<(char, usize)> {
     if rest.first() == Some(&b'#') {
         let hex = matches!(rest.get(1), Some(b'x' | b'X'));
         let digits_at = if hex { 2 } else { 1 };
+        let base: u32 = if hex { 16 } else { 10 };
+        let max_significant = if hex { 6 } else { 7 };
         let mut n: u32 = 0;
-        let mut len = 0usize;
+        let mut seen = 0usize;
+        let mut significant = 0usize;
         for &b in rest.get(digits_at..)? {
             let dig = if hex {
                 match b {
@@ -684,18 +855,20 @@ fn decode_char_ref(bytes: &[u8], i: usize) -> Option<(char, usize)> {
             } else {
                 break;
             };
-            len += 1;
-            if len > 7 {
+            seen += 1;
+            if n == 0 && dig == 0 {
+                continue;
+            }
+            significant += 1;
+            if significant > max_significant {
                 return None;
             }
-            n = n
-                .checked_mul(if hex { 16 } else { 10 })?
-                .checked_add(u32::from(dig))?;
+            n = n.checked_mul(base)?.checked_add(u32::from(dig))?;
         }
-        if len == 0 {
+        if seen == 0 {
             return None;
         }
-        let mut end = i + 1 + digits_at + len;
+        let mut end = i + 1 + digits_at + seen;
         if bytes.get(end) == Some(&b';') {
             end += 1;
         }
@@ -713,10 +886,17 @@ fn decode_char_ref(bytes: &[u8], i: usize) -> Option<(char, usize)> {
         }
         let name = std::str::from_utf8(&rest[..len]).ok()?.to_ascii_lowercase();
         let ch = match name.as_str() {
-            "nbsp" => '\u{00A0}',
-            "thinsp" => '\u{2009}',
+            "nbsp" | "nonbreakingspace" => '\u{00A0}',
+            "thinsp" | "thinspace" => '\u{2009}',
             "ensp" => '\u{2002}',
             "emsp" => '\u{2003}',
+            "zwnj" => '\u{200C}',
+            "zwj" => '\u{200D}',
+            "lrm" => '\u{200E}',
+            "rlm" => '\u{200F}',
+            "zerowidthspace" => '\u{200B}',
+            "newline" => '\n',
+            "tab" => '\t',
             _ => return None,
         };
         let mut end = i + 1 + len;
@@ -1207,6 +1387,28 @@ mod tests {
             "3.117\u{00a0}ms",
             "3.117&#109;&#115;",
             "3.117&nbsp ms",
+            "3.117 __ms__",
+            "3.117 _ms_",
+            "3.117 ~~ms~~",
+            "<img alt=\"3.117 ms\" src=\"x\">",
+            "<img alt='3.117 ms' src='x'>",
+            "see < 3.117 ms later <img alt=\"x\">",
+            "<3.117 ms>",
+            "3.117&#x00000020;ms",
+            "3.117&#00000032;ms",
+            "3.117&#x200B;ms",
+            "3.117&#8203;ms",
+            "3.117&#xfeff;ms",
+            "3.117&#x2060;ms",
+            "3.117&#x00ad;ms",
+            "3.117&zwnj;ms",
+            "3.117&zwj;ms",
+            "3.117&ZeroWidthSpace;ms",
+            "3.117&NewLine;ms",
+            "3.117&Tab;ms",
+            "3.117&NonBreakingSpace;ms",
+            "3.117 millisecond",
+            "3.117 msec",
         ] {
             let readme = format!("{}\nThe frame is {figure}.\n", sample_readme());
             let errors = front_door_errors(&readme, &sample_status(), &sample_workflow(), &[]);
@@ -1264,6 +1466,58 @@ mod tests {
             !errors.iter().any(|error| error.contains("frame figure")),
             "{errors:?}"
         );
+    }
+
+    #[test]
+    fn readme_frame_figure_ignores_hidden_text_and_a_continued_unit() {
+        for prose in [
+            "Ship 3.117 msecs.",
+            "<!-- 3.117 ms -->",
+            "<img alt=\"diagram\" src=\"x\">",
+            "<img data-alt=\"3.117 ms\" src=\"x\">",
+            "see <img alt=\"x\"> later",
+        ] {
+            let readme = format!("{}\n{prose}\n", sample_readme());
+            let errors = front_door_errors(&readme, &sample_status(), &sample_workflow(), &[]);
+            assert!(
+                !errors.iter().any(|error| error.contains("frame figure")),
+                "{prose}: {errors:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn measured_sample_rejects_a_sentence_that_is_not_a_measurement() {
+        for sentence in [
+            "The unmeasured target is 3.117 ms.",
+            "Copy this sample: 3.117 ms.",
+            "Not a capture of 3.117 ms.",
+            "Never a capture of 3.117 ms.",
+            "This cannot be a capture of 3.117 ms.",
+            "It wasn't a capture of 3.117 ms.",
+            "It wasn\u{2019}t a capture of 3.117 ms.",
+        ] {
+            let status = sample_status().replace("A later sample is 3.117 ms.", sentence);
+            let errors = front_door_errors(&sample_readme(), &status, &sample_workflow(), &[]);
+            assert!(
+                errors.iter().any(|error| error.contains("3.117 ms")),
+                "{sentence}: {errors:?}"
+            );
+        }
+        for sentence in [
+            "A later sample is 3.117 ms.",
+            "A later sample was 3.117 ms.",
+            "The median GPU frame is 3.117 ms.",
+            "The heavy scene measured a frame of 3.117 ms.",
+            "The capture recorded 3.117 ms.",
+        ] {
+            let status = sample_status().replace("A later sample is 3.117 ms.", sentence);
+            let errors = front_door_errors(&sample_readme(), &status, &sample_workflow(), &[]);
+            assert!(
+                !errors.iter().any(|error| error.contains("3.117 ms")),
+                "{sentence}: {errors:?}"
+            );
+        }
     }
 
     #[test]

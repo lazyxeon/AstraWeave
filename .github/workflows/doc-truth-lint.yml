@@ -8,10 +8,14 @@ name: Doc-Truth Lint
 # Vocabulary phase: WARN-MODE (D.3.2b). Annotates un-allowlisted occurrences but
 # does not fail the job for those hits. The front-door check always exits
 # nonzero: replay cases and the measured frame phrases on ENGINE_STATUS.md.
-# The later sample must be a measurement line, not the sentence that names
-# the check. The root README rejects a frame figure, including HTML spacing
-# (&nbsp;, &#32;, tags, newlines, tabs). Also the in-progress list and the
-# retired game title.
+# The later `3.117 ms` sample must be its own token on a sentence with
+# whole-word median, measured, or capture, or sample with is or was.
+# not, never, cannot, and an n't contraction (ASCII or a typographic
+# apostrophe) keep that sentence off the set. The root README
+# rejects a frame figure as CLOSED_VOCABULARY_LINT.md defines it: ms, msec,
+# millisecond, or milliseconds, after emphasis, alt text, a non-tag `<`,
+# character references, and zero-width characters are decoded. Also the
+# in-progress list and the retired game title.
 # Baseline at the 2026-06 wiring: K=0 un-allowlisted vocabulary hits.
 #
 # Complementary to trace-sync.yml: that gate owns the CLAUDE.md trace table +
