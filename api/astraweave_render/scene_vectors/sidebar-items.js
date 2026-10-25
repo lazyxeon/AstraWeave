@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["current_model_layout","prev_instance_layout"],"struct":["SceneVectorsPass"]};
