@@ -1,9 +1,4 @@
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/brand/wordmark-dark.svg">
-    <img alt="AstraWeave" src="docs/assets/brand/wordmark-light.svg" width="320">
-  </picture>
-</p>
+<h1 align="center">AstraWeave</h1>
 
 <p align="center">A deterministic game engine. The game is Aravath.</p>
 
@@ -16,7 +11,8 @@
 AstraWeave is an AI-native game engine with a deterministic ECS. Companions are part of the simulation. Local LLMs propose. The deterministic simulation validates and executes. Assets in the tree are CC0.
 
 <p align="center">
-  <img alt="Placeholder. No Aravath greybox screenshot is in the repository yet." src="docs/assets/brand/screenshot-placeholder.svg" width="720">
+  <!-- Replace this hero with a greybox demo capture when one is ready. -->
+  <img alt="AstraWeave nebula logomark" src="assets/Astraweave_logo.jpg" width="480">
 </p>
 
 ## Features
