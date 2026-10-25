@@ -188,10 +188,12 @@ fn tonemapped_clear(rgb: [f32; 3]) -> [i32; 3] {
     ]
 }
 
-fn draw_and_read(renderer: &mut Renderer, atmosphere: bool) -> Vec<u8> {
+fn draw_and_read(renderer: &mut Renderer, atmosphere: Option<bool>) -> Vec<u8> {
     const WIDTH: u32 = 64;
     const HEIGHT: u32 = 64;
-    renderer.set_atmosphere_enabled(atmosphere);
+    if let Some(atmosphere) = atmosphere {
+        renderer.set_atmosphere_enabled(atmosphere);
+    }
     let device = renderer.device().clone();
     let queue = renderer.queue().clone();
     device.push_error_scope(wgpu::ErrorFilter::Validation);
@@ -268,11 +270,100 @@ fn draw_and_read(renderer: &mut Renderer, atmosphere: bool) -> Vec<u8> {
     pixels
 }
 
+fn assert_hdri_sky(frame: &[u8], off: &[u8], width: u32, x: u32, y: u32) {
+    let sky = sample(frame, width, x, y);
+    let sky_off = sample(off, width, x, y);
+    let magenta = tonemapped_clear([1.0, 0.0, 1.0]);
+    let grey = tonemapped_clear([0.05, 0.05, 0.05]);
+    assert!(
+        channel_distance(sky, sky_off) < 12,
+        "sky {sky:?} left the HDRI frame {sky_off:?}"
+    );
+    assert!(
+        channel_distance(sky, magenta) > 40,
+        "sky {sky:?} is the debug magenta clear {magenta:?}"
+    );
+    assert!(
+        channel_distance(sky, grey) > 40,
+        "sky {sky:?} is the release grey clear {grey:?}"
+    );
+}
+
+fn enable_shafts(renderer: &mut Renderer) {
+    renderer.set_god_ray_config(astraweave_render::GodRayConfig {
+        enabled: true,
+        half_res: true,
+        num_samples: 32,
+        exposure: 0.22,
+        ..astraweave_render::GodRayConfig::default()
+    });
+    assert!(renderer.god_rays_enabled(), "shafts should store a pass");
+}
+
+/// `set_atmosphere_enabled(true)` with neither pass stays false, and that
+/// frame is the HDRI sky rather than the atmosphere clear color.
+#[test]
+fn atmosphere_both_off_draws_the_hdri_sky() {
+    pollster::block_on(async {
+        const WIDTH: u32 = 64;
+        let mut renderer = Renderer::new_headless(WIDTH, WIDTH)
+            .await
+            .expect("headless");
+        let off = draw_and_read(&mut renderer, Some(false));
+        let requested = draw_and_read(&mut renderer, Some(true));
+        assert!(!renderer.atmosphere_enabled());
+        assert!(!renderer.volumetric_fog_enabled());
+        assert!(!renderer.god_rays_enabled());
+        assert_hdri_sky(&requested, &off, WIDTH, 32, 32);
+    });
+}
+
+/// A pass can clear `config.enabled` without the renderer clamp. The next
+/// frame still draws the HDRI sky and then stores the flag as off.
+#[test]
+fn stale_atmosphere_flag_draws_the_hdri_sky() {
+    pollster::block_on(async {
+        const WIDTH: u32 = 64;
+        let mut renderer = Renderer::new_headless(WIDTH, WIDTH)
+            .await
+            .expect("headless");
+        let off = draw_and_read(&mut renderer, Some(false));
+        enable_shafts(&mut renderer);
+        renderer.set_atmosphere_enabled(true);
+        assert!(renderer.atmosphere_enabled());
+        renderer.mark_volumetric_passes_disabled_for_test();
+        assert!(!renderer.god_rays_enabled());
+        assert!(!renderer.volumetric_fog_enabled());
+        assert!(
+            renderer.atmosphere_enabled(),
+            "the flag stays stale until the frame clamps it"
+        );
+        let stale = draw_and_read(&mut renderer, None);
+        assert!(!renderer.atmosphere_enabled());
+        assert_hdri_sky(&stale, &off, WIDTH, 32, 32);
+    });
+}
+
+/// Resize clamps a flag that a failed pass rebuild would have left set.
+#[test]
+fn resize_clears_a_stale_atmosphere_flag() {
+    pollster::block_on(async {
+        let mut renderer = Renderer::new_headless(64, 64).await.expect("headless");
+        enable_shafts(&mut renderer);
+        renderer.set_atmosphere_enabled(true);
+        renderer.mark_volumetric_passes_disabled_for_test();
+        assert!(renderer.atmosphere_enabled());
+        renderer.resize(48, 48);
+        assert!(!renderer.god_rays_enabled());
+        assert!(!renderer.atmosphere_enabled());
+    });
+}
+
 /// A cleared pixel is Bruneton sky once a volumetric pass is on. A near red
 /// quad stays red. A far red quad stays the unscattered scene color: Bruneton
 /// with fog and shafts both off is refused, so there is no 50 km aerial tint.
 #[test]
-fn atmosphere_sky_differs_from_geometry_and_aerial_tints_distance() {
+fn atmosphere_sky_differs_from_geometry_and_the_far_quad_stays_unscattered() {
     pollster::block_on(async {
         const WIDTH: u32 = 64;
         let mut renderer = Renderer::new_headless(WIDTH, WIDTH)
@@ -312,7 +403,7 @@ fn atmosphere_sky_differs_from_geometry_and_aerial_tints_distance() {
             )],
         );
 
-        let off = draw_and_read(&mut renderer, false);
+        let off = draw_and_read(&mut renderer, Some(false));
         renderer.set_god_ray_config(astraweave_render::GodRayConfig {
             enabled: true,
             half_res: true,
@@ -322,7 +413,7 @@ fn atmosphere_sky_differs_from_geometry_and_aerial_tints_distance() {
             ..astraweave_render::GodRayConfig::default()
         });
         assert!(renderer.god_rays_enabled());
-        let on = draw_and_read(&mut renderer, true);
+        let on = draw_and_read(&mut renderer, Some(true));
         let near = sample(&on, WIDTH, 10, 32);
         let far = sample(&on, WIDTH, 32, 32);
         let sky = sample(&on, WIDTH, 60, 32);
@@ -442,7 +533,7 @@ fn atmosphere_sky_differs_from_geometry_and_aerial_tints_distance() {
             exposure: 0.0,
         });
         assert!(renderer.god_rays_enabled(), "shaft pipeline did not build");
-        let frame_only = draw_and_read(&mut renderer, true);
+        let frame_only = draw_and_read(&mut renderer, Some(true));
         let up_only = sample(&frame_only, WIDTH, upper.0, upper.1);
         let lo_only = sample(&frame_only, WIDTH, lower.0, lower.1);
         assert!(
@@ -458,7 +549,7 @@ fn atmosphere_sky_differs_from_geometry_and_aerial_tints_distance() {
             decay: 0.9,
             exposure: 4.0,
         });
-        let frame_shaft = draw_and_read(&mut renderer, true);
+        let frame_shaft = draw_and_read(&mut renderer, Some(true));
         let up_shaft = sample(&frame_shaft, WIDTH, upper.0, upper.1);
         let lo_shaft = sample(&frame_shaft, WIDTH, lower.0, lower.1);
         let up_luma = up_shaft[0] + up_shaft[1] + up_shaft[2];
@@ -508,7 +599,7 @@ fn atmosphere_sky_differs_from_geometry_and_aerial_tints_distance() {
             renderer.volumetric_fog_enabled(),
             "fog pipeline did not build"
         );
-        let frame_fog = draw_and_read(&mut renderer, true);
+        let frame_fog = draw_and_read(&mut renderer, Some(true));
         let up_fog = sample(&frame_fog, WIDTH, upper.0, upper.1);
         let lo_fog = sample(&frame_fog, WIDTH, lower.0, lower.1);
         let fog_upper =

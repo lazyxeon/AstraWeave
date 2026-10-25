@@ -4887,6 +4887,8 @@ fn vs(input: VSIn) -> VSOut {
         };
         self.queue
             .write_buffer(&self.clustered_params_buf, 0, bytemuck::bytes_of(&data));
+        // A failed pass resize clears `config.enabled` and returns to the caller.
+        self.clamp_atmosphere_to_volumetrics();
     }
 
     /// Set the camera's true world-space position in double precision.
@@ -6423,6 +6425,23 @@ fn vs(input: VSIn) -> VSOut {
         }
     }
 
+    /// A fog or shaft pass can clear `config.enabled` from inside execute or
+    /// resize without clamping Bruneton to those passes. Tests use this to
+    /// enter the next frame with that stale flag.
+    #[doc(hidden)]
+    pub fn mark_volumetric_passes_disabled_for_test(&mut self) {
+        if let Some(fog) = self.volumetric_fog.as_mut() {
+            let mut config = fog.config().clone();
+            config.enabled = false;
+            fog.set_config(config);
+        }
+        if let Some(rays) = self.god_rays.as_mut() {
+            let mut config = rays.config().clone();
+            config.enabled = false;
+            rays.set_config(config);
+        }
+    }
+
     /// Composite engine volumetric fog, then screen-space light shafts, into HDR.
     ///
     /// Runs after Bruneton has copied its sky into HDR, so fog and shafts
@@ -6534,6 +6553,8 @@ fn vs(input: VSIn) -> VSOut {
                 );
             }
         }
+        // execute and add_into can clear `config.enabled` inside this call.
+        self.clamp_atmosphere_to_volumetrics();
     }
 
     pub fn set_shadows_enabled(&mut self, enabled: bool) {
@@ -7921,7 +7942,10 @@ fn vs(input: VSIn) -> VSOut {
             .and_then(|resources| resources.hdr_equirect.clone());
 
         // Bruneton replaces the HDRI sky. The sky pass is also the clear of
-        // HDR and of scene depth, so that clear still has to run.
+        // HDR and of scene depth, so that clear still has to run. A pass can
+        // clear its own config after the last setter; clamp before this branch
+        // so a stale flag does not replace the HDRI sky with the clear color.
+        self.clamp_atmosphere_to_volumetrics();
         if self.atmosphere_on {
             self.close_timing_gap(enc);
             let sky_stamp = self.begin_named_stamp(enc, "sky");
