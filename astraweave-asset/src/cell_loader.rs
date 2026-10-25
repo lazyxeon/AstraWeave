@@ -815,6 +815,25 @@ mod tests {
         assert!(result.is_err());
     }
 
+    #[tokio::test]
+    async fn load_asset_rejects_a_texture_over_64_mib() {
+        let root = TempDir::new().expect("tempdir");
+        let cap = crate::image_limits::MAX_IMAGE_ALLOC;
+        let path = root.path().join("huge.bin");
+        let file = std::fs::File::create(&path).expect("create");
+        file.set_len(cap + 1).expect("set_len");
+        drop(file);
+        let asset = AssetRef::new("huge.bin", AssetKind::Texture);
+        let err = load_asset(&asset, root.path())
+            .await
+            .expect_err("texture over 64 MiB must be rejected");
+        let msg = format!("{err:#}");
+        assert!(
+            msg.contains(&cap.to_string()) && msg.contains(&(cap + 1).to_string()),
+            "{msg}"
+        );
+    }
+
     #[test]
     fn test_mesh_validation_glb() {
         let valid_glb = b"glTF\x02\x00\x00\x00";
