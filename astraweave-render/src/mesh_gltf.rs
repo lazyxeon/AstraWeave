@@ -187,22 +187,6 @@ fn load_capped_gltf_images(
 }
 
 #[cfg(feature = "gltf-assets")]
-fn read_capped_path(path: &std::path::Path, cap: u64) -> Result<Vec<u8>> {
-    let meta = std::fs::metadata(path).with_context(|| format!("open {}", path.display()))?;
-    if meta.is_file() && meta.len() > cap {
-        anyhow::bail!("{} is {} bytes, cap is {cap}", path.display(), meta.len());
-    }
-    let mut file = std::fs::File::open(path).with_context(|| format!("open {}", path.display()))?;
-    let mut bytes = Vec::new();
-    std::io::Read::read_to_end(&mut std::io::Read::take(&mut file, cap), &mut bytes)
-        .with_context(|| format!("read {}", path.display()))?;
-    if !meta.is_file() && bytes.len() as u64 == cap {
-        anyhow::bail!("{} exceeds {cap} bytes", path.display());
-    }
-    Ok(bytes)
-}
-
-#[cfg(feature = "gltf-assets")]
 fn load_capped_gltf_buffers(
     document: &gltf::Document,
     base: &std::path::Path,
@@ -227,7 +211,7 @@ fn load_capped_gltf_buffers(
             }
             gltf::buffer::Source::Uri(uri) => {
                 let path = jailed_gltf_file(base, uri)?;
-                read_capped_path(&path, astraweave_asset::MAX_GLTF_BUFFER)?
+                astraweave_asset::read_capped_file(&path, astraweave_asset::MAX_GLTF_BUFFER)?
             }
         };
         if data.len() as u64 > astraweave_asset::MAX_GLTF_BUFFER {
