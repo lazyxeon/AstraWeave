@@ -20,10 +20,16 @@ fn recorded_pass_timestamp_is_positive() {
             return;
         };
         if !astraweave_render::gpu_fault::depth_texture_load_supported(renderer.device()) {
-            eprintln!(
-                "skip recorded_pass_timestamp_is_positive: GL cannot textureLoad depth, so this frame is not the lavapipe measurement"
+            let reason = format!(
+                "recorded_pass_timestamp_is_positive: depth textureLoad is absent on adapter={} backend={}",
+                renderer.gpu_adapter_name(),
+                renderer.gpu_backend()
             );
-            return;
+            if gpu_capability::skip_if_unavailable() {
+                gpu_capability::note_skip(&reason);
+                return;
+            }
+            panic!("{reason}");
         }
         if !renderer.timestamps_supported() {
             if gpu_capability::skip_if_unavailable() {
@@ -88,8 +94,16 @@ fn draw_into_heavy_path_timestamps_and_models() {
             return;
         };
         if !astraweave_render::gpu_fault::depth_texture_load_supported(renderer.device()) {
-            eprintln!("skip draw_into_heavy_path: no depth textureLoad");
-            return;
+            let reason = format!(
+                "draw_into_heavy_path_timestamps_and_models: depth textureLoad is absent on adapter={} backend={}",
+                renderer.gpu_adapter_name(),
+                renderer.gpu_backend()
+            );
+            if gpu_capability::skip_if_unavailable() {
+                gpu_capability::note_skip(&reason);
+                return;
+            }
+            panic!("{reason}");
         }
         if !renderer.timestamps_supported() {
             if gpu_capability::skip_if_unavailable() {
@@ -377,8 +391,16 @@ fn aravath_draw_into_has_no_depth_conflict() {
             return;
         };
         if !astraweave_render::gpu_fault::depth_texture_load_supported(renderer.device()) {
-            eprintln!("skip aravath_draw_into_has_no_depth_conflict: no depth textureLoad");
-            return;
+            let reason = format!(
+                "aravath_draw_into_has_no_depth_conflict: depth textureLoad is absent on adapter={} backend={}",
+                renderer.gpu_adapter_name(),
+                renderer.gpu_backend()
+            );
+            if gpu_capability::skip_if_unavailable() {
+                gpu_capability::note_skip(&reason);
+                return;
+            }
+            panic!("{reason}");
         }
         renderer.set_shadows_enabled(true);
         renderer.set_volumetric_fog_config(astraweave_render::VolumetricFogPass::gameplay_config());

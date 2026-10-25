@@ -423,11 +423,14 @@ jobs:
             exit 1
           fi
           log="${AW_GPU_SKIP_LOG:-target/gpu-skip-reasons.txt}"
+          # `[ -s ]` only sees lines that were written. A test that returns
+          # success without a line is invisible here. Nextest's outcome above
+          # is what fails the job. The log is the recorded skips, not a census.
           if [ -s "$log" ]; then
             {
               echo "## GPU tests skipped"
               echo
-              echo "These tests did not execute. A line here is a skip, not a pass."
+              echo "Each line was recorded by that test. A missing line is not visible to this step."
               echo
             } >> "$GITHUB_STEP_SUMMARY"
             while IFS= read -r line; do

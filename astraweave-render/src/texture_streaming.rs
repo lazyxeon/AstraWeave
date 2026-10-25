@@ -967,16 +967,23 @@ mod tests {
         file.set_len(cap + 1).expect("set_len");
         drop(file);
         let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
-        let Ok(adapter) =
-            pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
+        let adapter =
+            match pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
                 power_preference: wgpu::PowerPreference::LowPower,
                 compatible_surface: None,
                 force_fallback_adapter: false,
-            }))
-        else {
-            eprintln!("skip load_texture_async cap: no wgpu adapter");
-            return;
-        };
+            })) {
+                Ok(adapter) => adapter,
+                Err(err @ wgpu::RequestAdapterError::NotFound { .. })
+                    if std::env::var_os("AW_GPU_SKIP_IF_UNAVAILABLE").is_some() =>
+                {
+                    crate::renderer::record_gpu_skip_for_tests(&format!(
+                        "load_texture_async_rejects_a_file_over_the_cap: {err}"
+                    ));
+                    return;
+                }
+                Err(err) => panic!("load_texture_async cap: {err}"),
+            };
         let (device, queue) =
             pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
                 .expect("device");
@@ -1009,16 +1016,23 @@ mod tests {
         file.set_len(cap + 1).expect("set_len");
         drop(file);
         let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
-        let Ok(adapter) =
-            pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
+        let adapter =
+            match pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
                 power_preference: wgpu::PowerPreference::LowPower,
                 compatible_surface: None,
                 force_fallback_adapter: false,
-            }))
-        else {
-            eprintln!("skip from_file_with_usage cap: no wgpu adapter");
-            return;
-        };
+            })) {
+                Ok(adapter) => adapter,
+                Err(err @ wgpu::RequestAdapterError::NotFound { .. })
+                    if std::env::var_os("AW_GPU_SKIP_IF_UNAVAILABLE").is_some() =>
+                {
+                    crate::renderer::record_gpu_skip_for_tests(&format!(
+                        "from_file_with_usage_rejects_a_file_over_the_cap: {err}"
+                    ));
+                    return;
+                }
+                Err(err) => panic!("from_file_with_usage cap: {err}"),
+            };
         let (device, queue) =
             pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
                 .expect("device");

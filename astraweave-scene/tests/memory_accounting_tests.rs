@@ -3,39 +3,37 @@ use astraweave_scene::world_partition::GridCoord;
 
 async fn create_device() -> Option<(wgpu::Device, wgpu::Queue)> {
     let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
-    let mut misses = Vec::new();
-    for fallback in [true, false] {
-        let requested = instance
-            .request_adapter(&wgpu::RequestAdapterOptions {
-                power_preference: wgpu::PowerPreference::LowPower,
-                force_fallback_adapter: fallback,
-                compatible_surface: None,
-            })
-            .await;
-        let adapter = match requested {
-            Ok(adapter) => adapter,
-            Err(err) => {
-                misses.push(format!("force_fallback={fallback}: {err}"));
-                continue;
-            }
-        };
-        match adapter
-            .request_device(&wgpu::DeviceDescriptor::default())
-            .await
+    // The old test unwrapped a software adapter only. A hardware adapter is
+    // not a substitute, and a device refusal is not a missing adapter.
+    let requested = instance
+        .request_adapter(&wgpu::RequestAdapterOptions {
+            power_preference: wgpu::PowerPreference::LowPower,
+            force_fallback_adapter: true,
+            compatible_surface: None,
+        })
+        .await;
+    let adapter = match requested {
+        Ok(adapter) => adapter,
+        Err(err @ wgpu::RequestAdapterError::NotFound { .. })
+            if std::env::var_os("AW_GPU_SKIP_IF_UNAVAILABLE").is_some() =>
         {
-            Ok(device) => return Some(device),
-            Err(err) => misses.push(format!("force_fallback={fallback} device: {err}")),
+            astraweave_render::renderer::record_gpu_skip_for_tests(&format!(
+                "test_memory_accounting_overwrite found no software adapter: {err}"
+            ));
+            return None;
         }
-    }
-    let reason = format!(
-        "test_memory_accounting_overwrite found no adapter. {}",
-        misses.join("; ")
-    );
-    if std::env::var_os("AW_GPU_SKIP_IF_UNAVAILABLE").is_some() {
-        astraweave_render::renderer::record_gpu_skip_for_tests(&reason);
-        None
-    } else {
-        panic!("{reason}");
+        Err(err) => {
+            panic!("test_memory_accounting_overwrite found no software adapter: {err}")
+        }
+    };
+    match adapter
+        .request_device(&wgpu::DeviceDescriptor::default())
+        .await
+    {
+        Ok(device) => Some(device),
+        Err(err) => {
+            panic!("test_memory_accounting_overwrite software adapter refused the device: {err}")
+        }
     }
 }
 

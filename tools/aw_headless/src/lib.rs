@@ -191,10 +191,17 @@ pub fn image_delta(a: &[u8], b: &[u8]) -> (u8, f32) {
 mod tests {
     use super::*;
 
+    fn is_missing_adapter(err: &anyhow::Error) -> bool {
+        err.chain().any(|cause| {
+            matches!(
+                cause.downcast_ref::<wgpu::RequestAdapterError>(),
+                Some(wgpu::RequestAdapterError::NotFound { .. })
+            )
+        })
+    }
+
     fn skip_missing_adapter(err: &anyhow::Error) -> bool {
-        let text = format!("{err:?} {err}");
-        let missing = text.contains("No adapter") || text.contains("NotFound");
-        if std::env::var_os("AW_GPU_SKIP_IF_UNAVAILABLE").is_none() || !missing {
+        if std::env::var_os("AW_GPU_SKIP_IF_UNAVAILABLE").is_none() || !is_missing_adapter(err) {
             return false;
         }
         let target = std::env::var_os("CARGO_TARGET_DIR")
@@ -234,17 +241,113 @@ mod tests {
         );
         let line = format!(
             "SKIP(gpu): renders_gradient: {}\n",
-            text.replace(['\n', '\r', '%'], " ")
+            format!("{err}").replace(['\n', '\r', '%'], " ")
         );
         eprintln!("{}", line.trim_end());
-        let mut file = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&path)
+        let mut file = open_append_nofollow(&path)
             .unwrap_or_else(|io| panic!("could not record GPU skip at {}: {io}", path.display()));
         std::io::Write::write_all(&mut file, line.as_bytes())
             .unwrap_or_else(|io| panic!("could not record GPU skip at {}: {io}", path.display()));
         true
+    }
+
+    fn open_append_nofollow(path: &std::path::Path) -> std::io::Result<std::fs::File> {
+        match std::fs::symlink_metadata(path) {
+            Ok(meta) if meta.file_type().is_symlink() => {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::AlreadyExists,
+                    format!("GPU skip log {} is a symlink", path.display()),
+                ));
+            }
+            Ok(_) => {}
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
+            Err(err) => return Err(err),
+        }
+        let mut options = std::fs::OpenOptions::new();
+        options.create(true).append(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.custom_flags(o_nofollow());
+        }
+        options.open(path)
+    }
+
+    #[cfg(all(unix, any(target_os = "linux", target_os = "android")))]
+    fn o_nofollow() -> i32 {
+        0x20000
+    }
+
+    #[cfg(all(
+        unix,
+        any(
+            target_os = "macos",
+            target_os = "ios",
+            target_os = "tvos",
+            target_os = "watchos"
+        )
+    ))]
+    fn o_nofollow() -> i32 {
+        0x100
+    }
+
+    #[cfg(all(
+        unix,
+        not(any(
+            target_os = "linux",
+            target_os = "android",
+            target_os = "macos",
+            target_os = "ios",
+            target_os = "tvos",
+            target_os = "watchos"
+        ))
+    ))]
+    fn o_nofollow() -> i32 {
+        0
+    }
+
+    fn wgpu25_not_found() -> wgpu::RequestAdapterError {
+        wgpu::RequestAdapterError::NotFound {
+            active_backends: wgpu::Backends::all(),
+            requested_backends: wgpu::Backends::all(),
+            supported_backends: wgpu::Backends::all(),
+            no_fallback_backends: wgpu::Backends::empty(),
+            no_adapter_backends: wgpu::Backends::all(),
+            incompatible_surface_backends: wgpu::Backends::empty(),
+        }
+    }
+
+    #[test]
+    fn wgpu25_not_found_is_not_the_display_needles() {
+        let wrapped: anyhow::Error = wgpu25_not_found().into();
+        let text = format!("{wrapped:?} {wrapped}");
+        assert!(
+            !text.contains("No adapter") && !text.contains("NotFound"),
+            "the old matcher would have treated this as a hit: {text}"
+        );
+        assert!(
+            text.contains("No suitable graphics adapter found"),
+            "{text}"
+        );
+        assert!(is_missing_adapter(&wrapped));
+        let other: anyhow::Error = wgpu::RequestAdapterError::EnvNotSet.into();
+        assert!(!is_missing_adapter(&other));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn skip_log_rejects_a_symlink() {
+        let dir = std::env::temp_dir().join(format!("aw-headless-skip-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        let outside = dir.join("outside.txt");
+        std::fs::write(&outside, b"outside").expect("outside file");
+        let link = dir.join("gpu-skip-reasons.txt");
+        std::os::unix::fs::symlink(&outside, &link).expect("symlink");
+        let err = open_append_nofollow(&link).expect_err("symlink");
+        assert!(err.to_string().contains("symlink"), "{err}");
+        assert_eq!(std::fs::read(&outside).expect("outside bytes"), b"outside");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

@@ -6640,9 +6640,9 @@ fn test_renderer_bake_environment_wave16() {
 fn test_prefilter_poll_finishes() {
     use astraweave_render::ibl::IblQuality;
 
-    let Ok(mut renderer) = pollster::block_on(astraweave_render::Renderer::new_headless(64, 64))
+    let Some(mut renderer) =
+        pollster::block_on(astraweave_render::Renderer::headless_for_tests(64, 64))
     else {
-        eprintln!("SKIPPED (no GPU adapter): test_prefilter_poll_finishes did NOT bake");
         return;
     };
     renderer

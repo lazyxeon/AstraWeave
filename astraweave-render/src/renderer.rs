@@ -1579,10 +1579,11 @@ impl Renderer {
 
     /// Headless renderer for tests.
     ///
-    /// `None` only when `AW_GPU_SKIP_IF_UNAVAILABLE` is set and no adapter
-    /// exists. The skip line is appended under the workspace `target/`
-    /// directory. `new_headless` does not write that file. A machine that
-    /// should have lavapipe or a GPU still panics.
+    /// `None` only when `AW_GPU_SKIP_IF_UNAVAILABLE` is set and the error
+    /// chain contains `RequestAdapterError::NotFound`. The match is the
+    /// variant, not Display text. The skip line is created under the
+    /// workspace `target/` directory. `new_headless` does not write that
+    /// file. A device refusal still panics.
     #[allow(clippy::panic)]
     pub async fn headless_for_tests(width: u32, height: u32) -> Option<Self> {
         match Self::new_headless(width, height).await {
@@ -1590,7 +1591,7 @@ impl Renderer {
             Err(err) => {
                 let reason = format!("{err}");
                 if std::env::var_os("AW_GPU_SKIP_IF_UNAVAILABLE").is_some()
-                    && reason.contains("No adapter")
+                    && is_missing_adapter(&err)
                 {
                     record_gpu_skip_for_tests(&reason);
                     None
@@ -12011,9 +12012,11 @@ fn install_device_error_handler(
 
 /// Append one skip line for a test that found no adapter.
 ///
-/// `new_headless` does not call this. The file has to already live in the
-/// workspace `target/` directory. A missing directory is not created, and a
-/// failed write panics so the test does not pass without a line.
+/// `new_headless` does not call this. The parent directory has to already
+/// exist and canonicalize to the workspace `target/` directory. The file
+/// itself is created. A symlink at the final path is refused, and the open
+/// does not follow one. A failed write panics so the test does not pass
+/// without a line.
 #[allow(clippy::panic)]
 pub fn record_gpu_skip_for_tests(reason: &str) {
     let target = existing_workspace_target();
@@ -12049,13 +12052,91 @@ pub fn record_gpu_skip_for_tests(reason: &str) {
         .to_string();
     let line = format!("SKIP(gpu): {test}: {}\n", one_skip_line(reason));
     eprintln!("{}", line.trim_end());
-    let mut file = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(&path)
+    let mut file = open_append_nofollow(&path)
         .unwrap_or_else(|err| panic!("could not record the GPU skip at {}: {err}", path.display()));
     std::io::Write::write_all(&mut file, line.as_bytes())
         .unwrap_or_else(|err| panic!("could not record the GPU skip at {}: {err}", path.display()));
+}
+
+fn is_missing_adapter(err: &anyhow::Error) -> bool {
+    err.chain().any(|cause| {
+        matches!(
+            cause.downcast_ref::<wgpu::RequestAdapterError>(),
+            Some(wgpu::RequestAdapterError::NotFound { .. })
+        )
+    })
+}
+
+/// Refuse a symlink, then open with `O_NOFOLLOW` so a replaced path is not
+/// followed either. The parent check happens before this call.
+fn open_append_nofollow(path: &std::path::Path) -> std::io::Result<std::fs::File> {
+    match std::fs::symlink_metadata(path) {
+        Ok(meta) if meta.file_type().is_symlink() => {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::AlreadyExists,
+                format!("GPU skip log {} is a symlink", path.display()),
+            ));
+        }
+        Ok(_) => {
+            if let (Ok(canonical), Some(parent)) = (path.canonicalize(), path.parent()) {
+                if let Ok(parent) = parent.canonicalize() {
+                    if canonical.parent() != Some(parent.as_path()) {
+                        return Err(std::io::Error::new(
+                            std::io::ErrorKind::AlreadyExists,
+                            format!(
+                                "GPU skip log {} canonicalizes outside {}",
+                                path.display(),
+                                parent.display()
+                            ),
+                        ));
+                    }
+                }
+            }
+        }
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
+        Err(err) => return Err(err),
+    }
+    let mut options = std::fs::OpenOptions::new();
+    options.create(true).append(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.custom_flags(o_nofollow());
+    }
+    options.open(path)
+}
+
+#[cfg(all(unix, any(target_os = "linux", target_os = "android")))]
+fn o_nofollow() -> i32 {
+    0x20000
+}
+
+#[cfg(all(
+    unix,
+    any(
+        target_os = "macos",
+        target_os = "ios",
+        target_os = "tvos",
+        target_os = "watchos"
+    )
+))]
+fn o_nofollow() -> i32 {
+    0x100
+}
+
+#[cfg(all(
+    unix,
+    not(any(
+        target_os = "linux",
+        target_os = "android",
+        target_os = "macos",
+        target_os = "ios",
+        target_os = "tvos",
+        target_os = "watchos"
+    ))
+))]
+fn o_nofollow() -> i32 {
+    0
 }
 
 fn one_skip_line(reason: &str) -> String {
@@ -12107,6 +12188,52 @@ fn clip_planes(proj: glam::Mat4) -> (f32, f32) {
         (c * near / denom).abs()
     };
     (near, far)
+}
+
+#[cfg(test)]
+mod skip_log_tests {
+    use super::open_append_nofollow;
+
+    #[cfg(unix)]
+    #[test]
+    fn skip_log_rejects_a_symlink() {
+        let dir = std::env::temp_dir().join(format!("aw-gpu-skip-link-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        let outside = dir.join("outside.txt");
+        std::fs::write(&outside, b"outside").expect("outside file");
+        let link = dir.join("gpu-skip-reasons.txt");
+        std::os::unix::fs::symlink(&outside, &link).expect("symlink");
+        let err = open_append_nofollow(&link).expect_err("symlink must be refused");
+        assert!(err.to_string().contains("symlink"), "open error was {err}");
+        assert_eq!(std::fs::read(&outside).expect("outside bytes"), b"outside");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn wgpu25_not_found_is_a_missing_adapter() {
+        let err = wgpu::RequestAdapterError::NotFound {
+            active_backends: wgpu::Backends::all(),
+            requested_backends: wgpu::Backends::all(),
+            supported_backends: wgpu::Backends::all(),
+            no_fallback_backends: wgpu::Backends::empty(),
+            no_adapter_backends: wgpu::Backends::all(),
+            incompatible_surface_backends: wgpu::Backends::empty(),
+        };
+        let wrapped: anyhow::Error = err.into();
+        let text = format!("{wrapped:?} {wrapped}");
+        assert!(
+            !text.contains("No adapter") && !text.contains("NotFound"),
+            "Display/Debug still contains a needle the old matcher used: {text}"
+        );
+        assert!(
+            text.contains("No suitable graphics adapter found"),
+            "{text}"
+        );
+        assert!(super::is_missing_adapter(&wrapped));
+        let other: anyhow::Error = wgpu::RequestAdapterError::EnvNotSet.into();
+        assert!(!super::is_missing_adapter(&other));
+    }
 }
 
 #[cfg(test)]

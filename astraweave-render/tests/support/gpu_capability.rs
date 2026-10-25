@@ -1,9 +1,11 @@
 //! Headless wgpu probe shared by render unit tests and integration tests.
 //!
-//! Software adapter first when the caller asks for it, then any adapter.
-//! A host with neither (macOS GitHub runners) must not panic and must not
-//! look like a GPU pass: the skip reason is printed and appended to
-//! `target/gpu-skip-reasons.txt`. That path is a skip only when
+//! `prefer_fallback` requests only `force_fallback_adapter: true`. It does
+//! not continue to a hardware adapter. `prefer_fallback: false` tries any
+//! adapter, then a software adapter. A host with neither (macOS GitHub
+//! runners, which have Metal and no software adapter) must not panic and
+//! must not look like a GPU pass: the skip reason is printed and appended
+//! to `target/gpu-skip-reasons.txt`. That path is a skip only when
 //! `AW_GPU_SKIP_IF_UNAVAILABLE` is set. Otherwise the probe still panics
 //! with `Failed to find adapter`, which is what a machine that should have
 //! lavapipe or a GPU is required to do.
@@ -100,9 +102,72 @@ fn skip_line(reason: &str) -> String {
 }
 
 fn write_skip_line(path: &std::path::Path, reason: &str) -> std::io::Result<()> {
-    let mut file = OpenOptions::new().create(true).append(true).open(path)?;
+    let mut file = open_append_nofollow(path)?;
     let line = format!("SKIP(gpu): {}\n", reason.replace(['\n', '\r', '%'], " "));
     file.write_all(line.as_bytes())
+}
+
+fn open_append_nofollow(path: &std::path::Path) -> std::io::Result<std::fs::File> {
+    match std::fs::symlink_metadata(path) {
+        Ok(meta) if meta.file_type().is_symlink() => {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::AlreadyExists,
+                format!("GPU skip log {} is a symlink", path.display()),
+            ));
+        }
+        Ok(_) => {}
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
+        Err(err) => return Err(err),
+    }
+    let mut options = OpenOptions::new();
+    options.create(true).append(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.custom_flags(o_nofollow());
+    }
+    options.open(path)
+}
+
+#[cfg(all(unix, any(target_os = "linux", target_os = "android")))]
+fn o_nofollow() -> i32 {
+    0x20000
+}
+
+#[cfg(all(
+    unix,
+    any(
+        target_os = "macos",
+        target_os = "ios",
+        target_os = "tvos",
+        target_os = "watchos"
+    )
+))]
+fn o_nofollow() -> i32 {
+    0x100
+}
+
+#[cfg(all(
+    unix,
+    not(any(
+        target_os = "linux",
+        target_os = "android",
+        target_os = "macos",
+        target_os = "ios",
+        target_os = "tvos",
+        target_os = "watchos"
+    ))
+))]
+fn o_nofollow() -> i32 {
+    0
+}
+
+fn fallback_probes(prefer_fallback: bool) -> &'static [bool] {
+    if prefer_fallback {
+        &[true]
+    } else {
+        &[false, true]
+    }
 }
 
 pub async fn request_headless(
@@ -116,13 +181,8 @@ pub async fn request_headless(
         backends: wgpu::Backends::all(),
         ..Default::default()
     });
-    let order = if prefer_fallback {
-        [true, false]
-    } else {
-        [false, true]
-    };
     let mut attempts = Vec::new();
-    for fallback in order {
+    for &fallback in fallback_probes(prefer_fallback) {
         let which = if fallback {
             "software adapter (force_fallback_adapter)"
         } else {
@@ -194,6 +254,28 @@ mod skip_record_tests {
         let text = std::fs::read_to_string(&path).expect("skip log");
         let _ = std::fs::remove_file(&path);
         assert_eq!(text, format!("SKIP(gpu): {reason}\n"));
+    }
+
+    #[test]
+    fn prefer_fallback_requests_only_the_software_adapter() {
+        assert_eq!(super::fallback_probes(true), &[true]);
+        assert_eq!(super::fallback_probes(false), &[false, true]);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn skip_line_refuses_a_symlink() {
+        let dir = std::env::temp_dir().join(format!("aw-gpu-skip-note-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        let outside = dir.join("outside.txt");
+        std::fs::write(&outside, b"outside").expect("outside file");
+        let link = dir.join("log.txt");
+        std::os::unix::fs::symlink(&outside, &link).expect("symlink");
+        let err = super::write_skip_line(&link, "should not land").expect_err("symlink");
+        assert!(err.to_string().contains("symlink"), "{err}");
+        assert_eq!(std::fs::read(&outside).expect("outside bytes"), b"outside");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
