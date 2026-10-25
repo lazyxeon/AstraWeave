@@ -64,7 +64,7 @@ fn enabling_sample_hiz_rebinds_to_the_current_depth_view() {
         let Some(mut renderer) = Renderer::headless_for_tests(64, 64).await else {
             return;
         };
-        if astraweave_render::gpu_fault::skip_without_depth_texture_load(
+        if astraweave_render::gpu_fault::skip_or_panic_without_depth_texture_load(
             renderer.device(),
             "enabling_sample_hiz_rebinds_to_the_current_depth_view",
         ) {

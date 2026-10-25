@@ -200,10 +200,26 @@ mod tests {
         })
     }
 
+    fn gpu_skip_line(test: &str, detail: &str) -> String {
+        format!(
+            "SKIP(gpu): {test}: {}\n",
+            detail.replace(['\n', '\r', '%'], " ")
+        )
+    }
+
+    fn not_found_records_a_skip(missing: bool, gate: bool) -> bool {
+        missing && gate
+    }
+
     fn skip_missing_adapter(err: &anyhow::Error) -> bool {
-        if std::env::var_os("AW_GPU_SKIP_IF_UNAVAILABLE").is_none() || !is_missing_adapter(err) {
+        if !not_found_records_a_skip(
+            is_missing_adapter(err),
+            std::env::var_os("AW_GPU_SKIP_IF_UNAVAILABLE").is_some(),
+        ) {
             return false;
         }
+        let current = std::thread::current();
+        let test = current.name().unwrap_or("unnamed-test");
         let target = std::env::var_os("CARGO_TARGET_DIR")
             .map(std::path::PathBuf::from)
             .or_else(|| {
@@ -239,10 +255,7 @@ mod tests {
             path.display(),
             target.display()
         );
-        let line = format!(
-            "SKIP(gpu): renders_gradient: {}\n",
-            format!("{err}").replace(['\n', '\r', '%'], " ")
-        );
+        let line = gpu_skip_line(test, &format!("{err}"));
         eprintln!("{}", line.trim_end());
         let mut file = open_append_nofollow(&path)
             .unwrap_or_else(|io| panic!("could not record GPU skip at {}: {io}", path.display()));
@@ -301,6 +314,23 @@ mod tests {
         assert!(!is_missing_adapter(&other));
     }
 
+    #[test]
+    fn golden_skip_line_names_that_test() {
+        let line = gpu_skip_line("golden_gradient_matches_with_tolerance", "no adapter");
+        assert!(
+            line.contains("golden_gradient_matches_with_tolerance:"),
+            "{line}"
+        );
+        assert!(!line.contains("renders_gradient:"), "{line}");
+    }
+
+    #[test]
+    fn not_found_records_only_when_the_gate_is_set() {
+        assert!(not_found_records_a_skip(true, true));
+        assert!(!not_found_records_a_skip(true, false));
+        assert!(!not_found_records_a_skip(false, true));
+    }
+
     #[cfg(unix)]
     #[test]
     fn o_nofollow_is_the_libc_constant() {
@@ -353,7 +383,15 @@ mod tests {
         let h = 32u32;
         let fs = r#"@fragment fn fs_main(i: VSOut) -> @location(0) vec4<f32> { return vec4<f32>(i.uv, 0.0, 1.0); }"#;
         let wgsl = wrap_fs_into_fullscreen(fs);
-        let img = pollster::block_on(render_wgsl_to_image(&wgsl, w, h)).expect("render");
+        let img = match pollster::block_on(render_wgsl_to_image(&wgsl, w, h)) {
+            Ok(img) => img,
+            Err(err) => {
+                if skip_missing_adapter(&err) {
+                    return;
+                }
+                panic!("render: {err}");
+            }
+        };
         // Build expected sRGB RGBA8 gradient
         let mut exp = vec![0u8; (w * h * 4) as usize];
         for y in 0..h {

@@ -117,6 +117,48 @@ pub fn skip_without_depth_texture_load(device: &wgpu::Device, test_name: &str) -
     true
 }
 
+/// What a depth `textureLoad` probe does for the three tests that must not
+/// return success with no skip line.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DepthTextureLoadGate {
+    Run,
+    RecordSkip,
+    Panic,
+}
+
+pub fn depth_texture_load_gate(supported: bool, skip_gate: bool) -> DepthTextureLoadGate {
+    if supported {
+        DepthTextureLoadGate::Run
+    } else if skip_gate {
+        DepthTextureLoadGate::RecordSkip
+    } else {
+        DepthTextureLoadGate::Panic
+    }
+}
+
+/// Record a skip when depth `textureLoad` is absent and
+/// `AW_GPU_SKIP_IF_UNAVAILABLE` is set. Panic when it is absent and that
+/// variable is unset. Return `false` when the device accepts the load.
+///
+/// `skip_without_depth_texture_load` still prints and returns. Call this from
+/// `upscale_pass_creation`, `cloud_pass_creation`, and
+/// `enabling_sample_hiz_rebinds_to_the_current_depth_view`.
+#[allow(clippy::panic)]
+pub fn skip_or_panic_without_depth_texture_load(device: &wgpu::Device, test_name: &str) -> bool {
+    let reason = format!("{test_name}: depth textureLoad is absent. GL rejects that load.");
+    match depth_texture_load_gate(
+        depth_texture_load_supported(device),
+        std::env::var_os("AW_GPU_SKIP_IF_UNAVAILABLE").is_some(),
+    ) {
+        DepthTextureLoadGate::Run => false,
+        DepthTextureLoadGate::RecordSkip => {
+            crate::renderer::record_gpu_skip_for_tests(&reason);
+            true
+        }
+        DepthTextureLoadGate::Panic => panic!("{reason}"),
+    }
+}
+
 pub fn depth_texture_load_supported(device: &wgpu::Device) -> bool {
     const SHADER: &str = r#"
 @group(0) @binding(0) var t_depth: texture_depth_2d;
@@ -196,5 +238,30 @@ pub fn scope<T>(device: &wgpu::Device, label: &str, body: impl FnOnce() -> T) ->
     match finish_scope(device) {
         Some(err) => Err(format!("{label}: {err}")),
         None => Ok(value),
+    }
+}
+
+#[cfg(test)]
+mod depth_texture_load_gate_tests {
+    use super::{depth_texture_load_gate, DepthTextureLoadGate};
+
+    #[test]
+    fn depth_texture_load_gate_records_or_panics() {
+        assert_eq!(
+            depth_texture_load_gate(true, true),
+            DepthTextureLoadGate::Run
+        );
+        assert_eq!(
+            depth_texture_load_gate(true, false),
+            DepthTextureLoadGate::Run
+        );
+        assert_eq!(
+            depth_texture_load_gate(false, true),
+            DepthTextureLoadGate::RecordSkip
+        );
+        assert_eq!(
+            depth_texture_load_gate(false, false),
+            DepthTextureLoadGate::Panic
+        );
     }
 }

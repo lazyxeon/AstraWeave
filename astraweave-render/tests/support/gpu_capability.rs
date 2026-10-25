@@ -38,16 +38,22 @@ pub fn skip_missing_adapter(err: &wgpu::RequestAdapterError, reason: &str) {
     }
 }
 
-/// Record one skip reason. Repeated reasons from the same process are kept
-/// once. The line is also written to stderr.
+/// Record one skip reason under the current thread name. Repeated reasons
+/// from the same process are kept once. The line is also written to stderr.
 pub fn note_skip(reason: &str) {
+    let current = std::thread::current();
+    let test = current.name().unwrap_or("unnamed-test");
+    note_skip_named(test, reason);
+}
+
+fn note_skip_named(test: &str, reason: &str) {
     static SEEN: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
     let seen = SEEN.get_or_init(|| Mutex::new(HashSet::new()));
     let mut guard = match seen.lock() {
         Ok(guard) => guard,
         Err(poisoned) => poisoned.into_inner(),
     };
-    let line = skip_line(reason);
+    let line = skip_line(test, reason);
     if !guard.insert(line.clone()) {
         return;
     }
@@ -107,10 +113,30 @@ fn existing_target_dir() -> std::path::PathBuf {
     manifest.join("target")
 }
 
-fn skip_line(reason: &str) -> String {
-    let current = std::thread::current();
-    let test = current.name().unwrap_or("unnamed-test");
+fn skip_line(test: &str, reason: &str) -> String {
     format!("{test}: {reason}")
+}
+
+/// What `request_headless` does after every probe has failed.
+///
+/// A device refusal panics even when `AW_GPU_SKIP_IF_UNAVAILABLE` is set. That
+/// variable only covers `RequestAdapterError::NotFound`. Any other adapter
+/// error panics as well.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ProbeStop {
+    SkipMissing,
+    PanicMissing,
+    PanicRefusal,
+}
+
+fn probe_stop(saw_refusal: bool, saw_other: bool, skip_gate: bool) -> ProbeStop {
+    if saw_refusal {
+        ProbeStop::PanicRefusal
+    } else if saw_other || !skip_gate {
+        ProbeStop::PanicMissing
+    } else {
+        ProbeStop::SkipMissing
+    }
 }
 
 fn write_skip_line(path: &std::path::Path, reason: &str) -> std::io::Result<()> {
@@ -158,11 +184,15 @@ pub async fn request_headless(
     power: wgpu::PowerPreference,
     prefer_fallback: bool,
 ) -> Option<HeadlessGpu> {
+    let caller = std::thread::current();
+    let caller = caller.name().unwrap_or("unnamed-test").to_string();
     let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
         backends: wgpu::Backends::all(),
         ..Default::default()
     });
     let mut attempts = Vec::new();
+    let mut saw_refusal = false;
+    let mut saw_other = false;
     for &fallback in fallback_probes(prefer_fallback, skip_if_unavailable()) {
         let which = if fallback {
             "software adapter (force_fallback_adapter)"
@@ -180,6 +210,9 @@ pub async fn request_headless(
             Ok(adapter) => adapter,
             Err(err) => {
                 attempts.push(format!("{which}: {err}"));
+                if !matches!(err, wgpu::RequestAdapterError::NotFound { .. }) {
+                    saw_other = true;
+                }
                 continue;
             }
         };
@@ -206,6 +239,7 @@ pub async fn request_headless(
                     "{which} '{}' ({:?}) refused the device: {err}",
                     info.name, info.backend
                 ));
+                saw_refusal = true;
             }
         }
     }
@@ -213,11 +247,13 @@ pub async fn request_headless(
         "no wgpu adapter for '{label}' (backends=all). {}",
         attempts.join("; ")
     );
-    if skip_if_unavailable() {
-        note_skip(&reason);
-        None
-    } else {
-        panic!("Failed to find adapter: {reason}");
+    match probe_stop(saw_refusal, saw_other, skip_if_unavailable()) {
+        ProbeStop::SkipMissing => {
+            note_skip_named(&caller, &reason);
+            None
+        }
+        ProbeStop::PanicRefusal => panic!("adapter refused the device: {reason}"),
+        ProbeStop::PanicMissing => panic!("Failed to find adapter: {reason}"),
     }
 }
 
@@ -269,12 +305,81 @@ mod skip_record_tests {
 
     #[test]
     fn skip_line_names_the_running_test() {
-        let line = super::skip_line("no wgpu adapter for 'named'");
         let current = std::thread::current();
         let name = current.name().unwrap_or("unnamed-test");
+        let line = super::skip_line(name, "no wgpu adapter for 'named'");
         assert!(
             line.starts_with(name) && line.contains("no wgpu adapter for 'named'"),
             "{line}"
         );
+    }
+
+    #[test]
+    fn device_refusal_panics_even_when_the_skip_gate_is_set() {
+        assert_eq!(
+            super::probe_stop(true, false, true),
+            super::ProbeStop::PanicRefusal
+        );
+        assert_eq!(
+            super::probe_stop(true, true, true),
+            super::ProbeStop::PanicRefusal
+        );
+        assert_eq!(
+            super::probe_stop(false, true, true),
+            super::ProbeStop::PanicMissing
+        );
+        assert_eq!(
+            super::probe_stop(false, false, true),
+            super::ProbeStop::SkipMissing
+        );
+        assert_eq!(
+            super::probe_stop(false, false, false),
+            super::ProbeStop::PanicMissing
+        );
+    }
+
+    #[test]
+    fn required_macos_list_names_the_software_only_tests_profile_ci_runs() {
+        let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../scripts/ci/gpu-skip-required-macos.txt");
+        let text = std::fs::read_to_string(&path).expect("required names");
+        let lines: std::collections::BTreeSet<&str> = text
+            .lines()
+            .filter(|line| !line.is_empty() && !line.starts_with('#'))
+            .collect();
+        for name in [
+            "test_camera_buffer_creation",
+            "test_depth_create",
+            "test_weather_fx_new",
+            "test_mesh_registry_pruning",
+            "test_buffer_create_and_write",
+            "test_camera_uniform_buffer_creation",
+            "test_create_default_white",
+            "test_overlay_fx_new",
+        ] {
+            assert!(lines.contains(name), "{name} missing from {path:?}");
+        }
+        for name in [
+            "test_backend_detection",
+            "golden_triangle_render",
+            "golden_determinism_check",
+            "terrain_manager_creation_allocates_gpu_resources",
+            "impostor_baker_creation_allocates_atlas",
+            "lod3_pipeline_builds_on_headless_device",
+            "impostor_pass_new_builds_with_valid_inputs",
+            "upload_instances_grows_buffer_geometrically",
+            "record_writes_red_pixels_for_red_atlas",
+            "upscale_pass_creation",
+            "cloud_pass_creation",
+            "enabling_sample_hiz_rebinds_to_the_current_depth_view",
+            "golden_gradient_matches_with_tolerance",
+            "renders_gradient",
+        ] {
+            assert!(
+                !lines.contains(name),
+                "{name} is not a profile-ci software-only test"
+            );
+        }
+        assert_eq!(lines.len(), 128, "required-name census changed");
     }
 }

@@ -722,7 +722,10 @@ mod tests {
             .unwrap_or_else(|err| {
                 panic!("upscale_pass_creation: adapter refused the device: {err}")
             });
-        if crate::gpu_fault::skip_without_depth_texture_load(&device, "upscale_pass_creation") {
+        if crate::gpu_fault::skip_or_panic_without_depth_texture_load(
+            &device,
+            "upscale_pass_creation",
+        ) {
             return;
         }
 

@@ -1125,7 +1125,10 @@ mod tests {
                 ..Default::default()
             }))
             .unwrap();
-        if crate::gpu_fault::skip_without_depth_texture_load(&device, "cloud_pass_creation") {
+        if crate::gpu_fault::skip_or_panic_without_depth_texture_load(
+            &device,
+            "cloud_pass_creation",
+        ) {
             return;
         }
 
