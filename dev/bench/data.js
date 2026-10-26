@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1792968123347,
+  "lastUpdate": 1792976121071,
   "repoUrl": "https://github.com/lazyxeon/AstraWeave",
   "entries": {
     "AstraWeave Performance Benchmarks": [
@@ -365244,6 +365244,13005 @@ window.BENCHMARK_DATA = {
           {
             "name": "astraweave-nav::tile_commits_per_tick",
             "value": 7714.712956955387,
+            "unit": "ns"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "79929721+lazyxeon@users.noreply.github.com",
+            "name": "Andrew Brown",
+            "username": "lazyxeon"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "3209fa1f0be58a738a901813dc60c6f7b80de3e0",
+          "message": "feat(render): draw scene normals and motion when enabled (#416)\n\n* feat(render): draw scene normals and motion when enabled\n\nThe pass stays off. An enabled frame clears the gated aux targets and\nstores the drawn world normal plus clip-space motion. SSGI and TAA\nstay on their own setters. There is no heavy-scene median yet.\n\nCo-authored-by: Andrew Brown <lazyxeon@users.noreply.github.com>\n\n* fix(render): match scene-vector encoding to the consumers\n\nStore view-space normals packed into [0, 1] and a Y-down UV motion\ndelta, including object motion from the previous instance matrix.\nRedraw the surfaces draw_into actually wrote, in sorted order, with\nthe same cull and the material alpha cut. The wiring notes no longer\ntreat that fill as a valid SSGI or TAA input.\n\nCo-authored-by: Andrew Brown <lazyxeon@users.noreply.github.com>\n\n* fix(render): match scene-vector depth and previous positions to the color pass\n\nSSGI, SSR, and GTAO rebuild view position with NDC Y up. The aux pass uses Less with a small bias and draws equal-depth surfaces in reverse color order. Previous matrices follow the stable instance list, including models the frustum culls, and weather keeps its own previous buffer and cutoff. Terrain motion reads the previous vertex buffer. Impostor billboards write the facing normal. The pass stays off.\n\nCo-authored-by: Andrew Brown <lazyxeon@users.noreply.github.com>\n\n* fix(render): return impostor passes before the scene-vector scope ends\n\nThe previous-instance map was moved out of the render-pass block and assigned back after that block had closed, so the impostor-bake build could not see it.\n\nCo-authored-by: Andrew Brown <lazyxeon@users.noreply.github.com>\n\n* fix(render): drop the unused mut on the impostor pass map\n\nCo-authored-by: Andrew Brown <lazyxeon@users.noreply.github.com>\n\n* fix(render): keep scene-vector copies and history valid\n\nWeather and terrain vertex buffers include COPY_SRC. Weather previous\nposes travel with the particle across swap-remove. The weather cutoff\nand the mesh cutoff are copied into the bound uniform in encoder order.\nDepth slope bias is 0. SSR loads the pixel's depth, and GTAO scales\nview Y by tan of half the vertical field of view. The first enabled\nframe snaps impostor history to the current set. The trace stamp names\n60a70cd9, which does not contain these fixes.\n\nCo-authored-by: Andrew Brown <lazyxeon@users.noreply.github.com>\n\n* fix(render): keep impostor order and terrain motion on a grown upload\n\nScene-vector impostors draw in reverse color-pass order, and the previous billboard uses the previous view. A larger terrain upload keeps the old vertex prefix, so that frame's motion stays. The copy-byte counter no longer includes weather poses that were never copied. fs_terrain still stores the geometric normal; the splat normal stays with #428.\n\nCo-authored-by: Andrew Brown <lazyxeon@users.noreply.github.com>\n\n* style(render): format the terrain motion encoder\n\nrustfmt wants the command-encoder descriptor on one line. The Gate job failed on that diff.\n\nCo-authored-by: Andrew Brown <lazyxeon@users.noreply.github.com>\n\n* fix(render): match scene-vector ties, grid motion, and copy bytes\n\nDraw model, sphere, weather, and external instances from the tail, and\nreverse a model's primitives, so biased Less keeps the color-pass winner.\nZero terrain motion when a square grid's side changes. Count encoder\ncopies only, including the growth-frame stage copy. Drop a terrain\nprevious buffer uploaded while the pass is off.\n\nCo-authored-by: Andrew Brown <lazyxeon@users.noreply.github.com>\n\n---------\n\nCo-authored-by: Cursor Agent <cursoragent@cursor.com>\nCo-authored-by: Andrew Brown <lazyxeon@users.noreply.github.com>",
+          "timestamp": "2026-10-25T18:47:11-04:00",
+          "tree_id": "1ed3a62ef9ed5def78063d8fc304b83dd8d988fb",
+          "url": "https://github.com/lazyxeon/AstraWeave/commit/3209fa1f0be58a738a901813dc60c6f7b80de3e0"
+        },
+        "date": 1792976097620,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "astraweave-net::batch_operations/batch_filter/10",
+            "value": 22980.81081819144,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net::batch_operations/batch_filter/100",
+            "value": 256758.18830595855,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net::batch_operations/batch_filter/50",
+            "value": 127760.0437909748,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net::batch_operations/delta_chain/10",
+            "value": 100822.27279915156,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net::batch_operations/delta_chain/20",
+            "value": 296112.9043616777,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net::batch_operations/delta_chain/5",
+            "value": 38805.426795470616,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net::delta_compression/apply_delta/100",
+            "value": 3103.078150245114,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net::delta_compression/apply_delta/1000",
+            "value": 38809.234762825035,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net::delta_compression/apply_delta/500",
+            "value": 18523.449617948394,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net::delta_compression/compression_ratio/100e_20%",
+            "value": 9264.913967311184,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net::delta_compression/compression_ratio/100e_5%",
+            "value": 8655.669062409157,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net::delta_compression/compression_ratio/100e_50%",
+            "value": 10455.797938516065,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net::delta_compression/diff_snapshots/1000e_10%",
+            "value": 191732.8120003079,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net::delta_compression/diff_snapshots/100e_10%",
+            "value": 8927.204236554844,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net::delta_compression/diff_snapshots/100e_50%",
+            "value": 10370.401920739243,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net::delta_compression/diff_snapshots/500e_10%",
+            "value": 66688.55079454817,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net::delta_compression/diff_snapshots/500e_50%",
+            "value": 80257.75235890201,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net::entity_operations/clone_entity",
+            "value": 5.614534848542499,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net::entity_operations/compare_entities",
+            "value": 1.5604585589651412,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net::entity_operations/create_entity",
+            "value": 14.26629563163586,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net::entity_operations/distance_squared",
+            "value": 0.6237459965449912,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net::hash_computation/hash_entities/100",
+            "value": 1601.6763158689585,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net::hash_computation/hash_entities/1000",
+            "value": 16041.992600934556,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net::hash_computation/hash_entities/50",
+            "value": 809.7200238374047,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net::hash_computation/hash_entities/500",
+            "value": 8031.755890221633,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net::interest_filtering/fov_interest/1000e_90deg",
+            "value": 15527.082920191335,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net::interest_filtering/fov_interest/100e_45deg",
+            "value": 1270.3376769299048,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net::interest_filtering/fov_interest/500e_60deg",
+            "value": 6048.911585898005,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net::interest_filtering/full_interest/100",
+            "value": 3150.8973036409675,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net::interest_filtering/full_interest/1000",
+            "value": 24311.476875887405,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net::interest_filtering/full_interest/500",
+            "value": 12360.334851589641,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net::interest_filtering/radius_interest/1000e_r30",
+            "value": 9007.064385560587,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net::interest_filtering/radius_interest/100e_r10",
+            "value": 1108.1577493783007,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net::interest_filtering/radius_interest/500e_r20",
+            "value": 4672.330900314592,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net::net_serialization/delta_to_json/100",
+            "value": 4633.2214456791135,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net::net_serialization/delta_to_json/50",
+            "value": 2494.903863718166,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net::net_serialization/snapshot_from_json/10",
+            "value": 2140.522030203618,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net::net_serialization/snapshot_from_json/100",
+            "value": 19766.34327290474,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net::net_serialization/snapshot_from_json/50",
+            "value": 9449.083187560906,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net::net_serialization/snapshot_to_json/10",
+            "value": 1571.5000628822336,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net::net_serialization/snapshot_to_json/100",
+            "value": 15145.882347632563,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net::net_serialization/snapshot_to_json/50",
+            "value": 7138.965631104306,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net::snapshot_operations/clone_snapshot/100",
+            "value": 70.77125950586439,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net::snapshot_operations/clone_snapshot/50",
+            "value": 50.73119888070195,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net::snapshot_operations/clone_snapshot/500",
+            "value": 162.44886909184277,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net::snapshot_operations/create_snapshot/10",
+            "value": 43.31686006494605,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net::snapshot_operations/create_snapshot/100",
+            "value": 384.01699042044675,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net::snapshot_operations/create_snapshot/1000",
+            "value": 3485.0888441798224,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net::snapshot_operations/create_snapshot/50",
+            "value": 216.4166219177237,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net::snapshot_operations/create_snapshot/500",
+            "value": 1765.13766573729,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-profiling::profiling_adversarial_frame_marking/frame_budget_tracking_5000",
+            "value": 183970.42711178138,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-profiling::profiling_adversarial_frame_marking/frame_marks_10000",
+            "value": 0.9344868181824648,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-profiling::profiling_adversarial_frame_marking/frame_marks_with_zones_5000",
+            "value": 1369438.302066419,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-profiling::profiling_adversarial_frame_marking/frame_time_calculation_1000",
+            "value": 29975.70836007652,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-profiling::profiling_adversarial_lock_profiling/contention_analysis_20000",
+            "value": 920794.59908618,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-profiling::profiling_adversarial_lock_profiling/deadlock_detection_1000",
+            "value": 292769.17105719144,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-profiling::profiling_adversarial_lock_profiling/hold_time_calculation_10000",
+            "value": 565480.1033538455,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-profiling::profiling_adversarial_lock_profiling/lock_event_recording_50000",
+            "value": 2825819.15,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-profiling::profiling_adversarial_memory_profiling/allocation_tracking_50000",
+            "value": 4786139.328181819,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-profiling::profiling_adversarial_memory_profiling/category_tracking_20000",
+            "value": 398398.3124680702,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-profiling::profiling_adversarial_memory_profiling/fragmentation_analysis_5000",
+            "value": 13102.507797811004,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-profiling::profiling_adversarial_memory_profiling/leak_detection_10000",
+            "value": 194302.58731865045,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-profiling::profiling_adversarial_message_logging/formatted_messages_10000",
+            "value": 2180176.99375,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-profiling::profiling_adversarial_message_logging/message_creation_50000",
+            "value": 3533304.412666666,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-profiling::profiling_adversarial_message_logging/message_filtering_20000",
+            "value": 31716.85771497963,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-profiling::profiling_adversarial_message_logging/message_ring_buffer_100000",
+            "value": 3484707.814666665,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-profiling::profiling_adversarial_plot_data/multiple_plots_10_x_5000",
+            "value": 765836.2547519244,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-profiling::profiling_adversarial_plot_data/plot_downsampling_100000",
+            "value": 281192.53827046155,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-profiling::profiling_adversarial_plot_data/plot_recording_50000",
+            "value": 946520.4455829123,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-profiling::profiling_adversarial_plot_data/plot_statistics_10000",
+            "value": 261899.6549274565,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-profiling::profiling_adversarial_zone_operations/nested_zones_depth_20",
+            "value": 1567124.6966666665,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-profiling::profiling_adversarial_zone_operations/push_pop_cycle_50000",
+            "value": 7749792.726,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-profiling::profiling_adversarial_zone_operations/zone_creation_100000",
+            "value": 2834263.6755555556,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-profiling::profiling_adversarial_zone_operations/zone_data_collection_10000",
+            "value": 784042.1876923081,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-water::query_fleet_per_tick/1",
+            "value": 753.6342619497871,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-water::query_fleet_per_tick/16",
+            "value": 4839.352794060886,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-water::query_fleet_per_tick/256",
+            "value": 56826.96810864375,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-water::query_fleet_per_tick/64",
+            "value": 16209.634464453242,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-water::query_one_body_8_volumes",
+            "value": 10.908667096424363,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-localsim::localsim_tick_32_busy",
+            "value": 7798956.072857144,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-localsim::localsim_tick_32_regions",
+            "value": 1795307.420673396,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-cinematics::Camera Keyframes/batch_creation/100",
+            "value": 125.37793534806202,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-cinematics::Camera Keyframes/batch_creation/20",
+            "value": 17.125516066773333,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-cinematics::Camera Keyframes/batch_creation/5",
+            "value": 8.65180429242571,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-cinematics::Camera Keyframes/batch_creation/50",
+            "value": 85.96472527374439,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-cinematics::Camera Keyframes/clone",
+            "value": 0.8725409106411238,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-cinematics::Camera Keyframes/single_creation",
+            "value": 0.8706901451504052,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-cinematics::Edge Cases/exact_event_time",
+            "value": 30.021184375805763,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-cinematics::Edge Cases/large_step",
+            "value": 5523.919908585812,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-cinematics::Edge Cases/out_of_range_error",
+            "value": 85.70346522328455,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-cinematics::Edge Cases/repeated_seeks",
+            "value": 0.31304127527189046,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-cinematics::Edge Cases/sub_ms_step",
+            "value": 81.27242074241288,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-cinematics::Edge Cases/zero_duration_step",
+            "value": 11.819676807198336,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-cinematics::Event Creation/anim_start_event",
+            "value": 6.342184634320112,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-cinematics::Event Creation/audio_play_event",
+            "value": 7.418236631279444,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-cinematics::Event Creation/camera_key_event",
+            "value": 6.113625268321008,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-cinematics::Event Creation/event_clone_complex",
+            "value": 147.5064677814715,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-cinematics::Event Creation/fx_trigger_event",
+            "value": 47.470061354199686,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-cinematics::Event Emission/animation_event",
+            "value": 33.31392083640029,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-cinematics::Event Emission/audio_event",
+            "value": 34.38090861709292,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-cinematics::Event Emission/camera_event",
+            "value": 26.85333726973283,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-cinematics::Event Emission/fx_event",
+            "value": 53.25616936960293,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-cinematics::Event Emission/multiple_events_step",
+            "value": 273.58536948965644,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-cinematics::JSON Serialization/deserialize_complex",
+            "value": 5986.759622951816,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-cinematics::JSON Serialization/deserialize_simple",
+            "value": 1018.7683765685679,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-cinematics::JSON Serialization/roundtrip_complex",
+            "value": 12984.780600528251,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-cinematics::JSON Serialization/serialize_complex",
+            "value": 6607.014954937275,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-cinematics::JSON Serialization/serialize_complex_pretty",
+            "value": 13415.619821848579,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-cinematics::JSON Serialization/serialize_empty",
+            "value": 69.33182929710313,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-cinematics::JSON Serialization/serialize_simple",
+            "value": 1241.429845712688,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-cinematics::Sequencer Operations/creation",
+            "value": 0.5496779954646849,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-cinematics::Sequencer Operations/default",
+            "value": 0.55076928601706,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-cinematics::Sequencer Operations/seek",
+            "value": 0.615376229720572,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-cinematics::Sequencer Operations/step_empty_timeline",
+            "value": 11.288661877847924,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-cinematics::Sequencer Operations/step_no_events",
+            "value": 12.157893891876336,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-cinematics::Timeline Clone/100_tracks",
+            "value": 5273.228078198914,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-cinematics::Timeline Clone/complex",
+            "value": 373.9461960653323,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-cinematics::Timeline Clone/empty",
+            "value": 18.66827356126076,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-cinematics::Timeline Clone/simple",
+            "value": 37.75023217666868,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-cinematics::Timeline Creation/empty",
+            "value": 7.64496857737274,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-cinematics::Timeline Creation/time_struct",
+            "value": 0.6117257027410207,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-cinematics::Timeline Creation/with_long_name",
+            "value": 8.900611493909624,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-cinematics::Timeline Playback/60fps_1sec/100",
+            "value": 19724.963214649077,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-cinematics::Timeline Playback/60fps_1sec/20",
+            "value": 3250.483367563837,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-cinematics::Timeline Playback/60fps_1sec/5",
+            "value": 696.8836770959657,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-cinematics::Timeline Playback/60fps_1sec/50",
+            "value": 8870.57761623181,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-cinematics::Timeline Playback/complex_30sec_full",
+            "value": 80841.12235435391,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-cinematics::Timeline Playback/complex_single_frame",
+            "value": 46.24687445341608,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-cinematics::Timeline Scaling/camera_keyframes_step/10",
+            "value": 111.21318383808745,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-cinematics::Timeline Scaling/camera_keyframes_step/100",
+            "value": 552.7258500626998,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-cinematics::Timeline Scaling/camera_keyframes_step/50",
+            "value": 317.64092121721757,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-cinematics::Timeline Scaling/camera_keyframes_step/500",
+            "value": 2393.189970726236,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-cinematics::Timeline Scaling/creation/10",
+            "value": 397.3089845650515,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-cinematics::Timeline Scaling/creation/100",
+            "value": 7043.697006558302,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-cinematics::Timeline Scaling/creation/1000",
+            "value": 88793.03814258614,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-cinematics::Timeline Scaling/creation/50",
+            "value": 2784.6128910219636,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-cinematics::Timeline Scaling/creation/500",
+            "value": 42841.90794718163,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-cinematics::Timeline Scaling/step/10",
+            "value": 29.01621451676886,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-cinematics::Timeline Scaling/step/100",
+            "value": 329.85749235872646,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-cinematics::Timeline Scaling/step/50",
+            "value": 155.92523322453897,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-cinematics::Timeline Scaling/step/500",
+            "value": 1680.6705656303948,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-cinematics::Track Creation/animation",
+            "value": 7.355620740561875,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-cinematics::Track Creation/audio",
+            "value": 10.163562056126386,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-cinematics::Track Creation/camera_5_keyframes",
+            "value": 6.876030814766831,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-cinematics::Track Creation/fx_complex_params",
+            "value": 430.1699873824411,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-cinematics::Track Creation/fx_simple_params",
+            "value": 46.81658822616183,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-quests::batch_operations/check_completion_batch/10",
+            "value": 40.93318190286066,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-quests::batch_operations/check_completion_batch/100",
+            "value": 288.0187905700001,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-quests::batch_operations/check_completion_batch/50",
+            "value": 149.72509346653905,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-quests::batch_operations/check_completion_batch/500",
+            "value": 1649.90348208482,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-quests::batch_operations/validate_batch/10",
+            "value": 8.513771333786464,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-quests::batch_operations/validate_batch/100",
+            "value": 59.75821322398692,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-quests::batch_operations/validate_batch/50",
+            "value": 31.133872548151906,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-quests::batch_operations/validate_batch/500",
+            "value": 303.6300981658684,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-quests::component_operations/add_recent_activity",
+            "value": 11.462358438260074,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-quests::component_operations/add_remove_active_quest",
+            "value": 10.544635470567068,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-quests::component_operations/can_generate_quest",
+            "value": 0.6989444238520538,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-quests::component_operations/create_quest_generator",
+            "value": 57.02346177458298,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-quests::component_operations/update_context",
+            "value": 24.130028068175985,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-quests::quest_completion/check_complete_all_done",
+            "value": 4.934853068751676,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-quests::quest_completion/check_complete_none",
+            "value": 0.7319183110935334,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-quests::quest_completion/check_complete_partial",
+            "value": 2.9912436991695177,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-quests::quest_completion/is_complete_steps/1",
+            "value": 1.2673606543202987,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-quests::quest_completion/is_complete_steps/10",
+            "value": 4.132752957309314,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-quests::quest_completion/is_complete_steps/100",
+            "value": 30.688539612828198,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-quests::quest_completion/is_complete_steps/50",
+            "value": 15.770892171107457,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-quests::quest_serialization/deserialize_json/1",
+            "value": 124.57429600457142,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-quests::quest_serialization/deserialize_json/10",
+            "value": 668.3704337496533,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-quests::quest_serialization/deserialize_json/20",
+            "value": 1430.136664067493,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-quests::quest_serialization/deserialize_json/5",
+            "value": 383.70603609021055,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-quests::quest_serialization/deserialize_json/50",
+            "value": 3912.2376470525905,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-quests::quest_serialization/roundtrip_json/1",
+            "value": 198.73979878098982,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-quests::quest_serialization/roundtrip_json/10",
+            "value": 1270.4913403050539,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-quests::quest_serialization/roundtrip_json/20",
+            "value": 2494.0942847723145,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-quests::quest_serialization/roundtrip_json/5",
+            "value": 699.7994781589988,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-quests::quest_serialization/roundtrip_json/50",
+            "value": 6270.815060932356,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-quests::quest_serialization/serialize_json/1",
+            "value": 85.15773970475647,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-quests::quest_serialization/serialize_json/10",
+            "value": 537.4379720795066,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-quests::quest_serialization/serialize_json/20",
+            "value": 987.1805210584519,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-quests::quest_serialization/serialize_json/5",
+            "value": 316.53071062686456,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-quests::quest_serialization/serialize_json/50",
+            "value": 2253.790441179917,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-quests::quest_validation/validate_empty_title",
+            "value": 5.559129441865781,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-quests::quest_validation/validate_no_steps",
+            "value": 6.069263050119845,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-quests::quest_validation/validate_steps/1",
+            "value": 27.320451292551333,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-quests::quest_validation/validate_steps/10",
+            "value": 27.688084184842296,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-quests::quest_validation/validate_steps/20",
+            "value": 27.648857251515683,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-quests::quest_validation/validate_steps/5",
+            "value": 27.594420239330603,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-quests::quest_validation/validate_steps/50",
+            "value": 28.539417344190632,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-quests::quest_validation/validate_valid_quest",
+            "value": 1.0368450174142299,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-quests::terrain_quests/archetypes_for/Cave",
+            "value": 15.736960502612295,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-quests::terrain_quests/archetypes_for/Desert",
+            "value": 15.49561292160805,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-quests::terrain_quests/archetypes_for/Forest",
+            "value": 16.643424088624162,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-quests::terrain_quests/archetypes_for/Lake",
+            "value": 15.690216764363447,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-quests::terrain_quests/archetypes_for/Mountain",
+            "value": 16.589279156077552,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-quests::terrain_quests/create_terrain_context",
+            "value": 28.503598269532855,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-quests::terrain_quests/get_difficulty_modifier",
+            "value": 7.350973354728715,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-quests::terrain_quests/get_quest_archetypes",
+            "value": 15.826366562215288,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-quests::terrain_quests/should_trigger_check",
+            "value": 3.1472121609589174,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-quests::terrain_quests/should_trigger_no_match",
+            "value": 2.2311187379880653,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-context::context_window_add_message/10",
+            "value": 4103.597663260567,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-context::context_window_add_message/100",
+            "value": 45865.29840873692,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-context::context_window_add_message/50",
+            "value": 22684.68818963828,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-context::context_window_creation",
+            "value": 206.12177369811903,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-context::context_window_with_stats",
+            "value": 27.998177958872883,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-context::conversation_history_creation",
+            "value": 205.00585554767315,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-context::get_recent_messages/100",
+            "value": 107.85901186473934,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-context::get_recent_messages/200",
+            "value": 108.20305765415989,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-context::get_recent_messages/50",
+            "value": 107.92228858323585,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-context::message_batch_creation/10",
+            "value": 1444.3125068753122,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-context::message_batch_creation/100",
+            "value": 18597.02423475314,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-context::message_batch_creation/50",
+            "value": 9171.90212861082,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-context::message_batch_creation/500",
+            "value": 92410.6993600748,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-context::message_batch_formatting/10",
+            "value": 769.1757081004805,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-context::message_batch_formatting/100",
+            "value": 9292.396298304304,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-context::message_batch_formatting/50",
+            "value": 4493.3436287298655,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-context::message_creation",
+            "value": 102.20838567257078,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-context::message_format_for_prompt",
+            "value": 29.86098169114724,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-context::window_types/add_50_messages/Fixed",
+            "value": 22103.234539188285,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-context::window_types/add_50_messages/Sliding",
+            "value": 23182.668150031055,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-terrain::chunk_climate_sampling",
+            "value": 1691520.9983909335,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-terrain::climate_sampling",
+            "value": 278.6209270440718,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-terrain::heightmap_generation_128x128",
+            "value": 6310114.505,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-terrain::heightmap_generation_128x128_simd",
+            "value": 6573266.55,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-terrain::heightmap_generation_64x64",
+            "value": 1863990.7670563213,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-terrain::heightmap_generation_64x64_simd",
+            "value": 1931643.6813062227,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-terrain::world_chunk_generation",
+            "value": 9017911.720000003,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-terrain::world_chunk_generation_with_erosion",
+            "value": 9210863.531666666,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-sdk::batch_operations/batched_create/10",
+            "value": 693.5573411193916,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-sdk::batch_operations/batched_create/100",
+            "value": 5324.2018070370295,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-sdk::batch_operations/batched_create/50",
+            "value": 2737.2795595833654,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-sdk::batch_operations/batched_create/500",
+            "value": 32376.178430827556,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-sdk::batch_operations/mixed_batch/10",
+            "value": 611.3526686185166,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-sdk::batch_operations/mixed_batch/100",
+            "value": 5659.545478198421,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-sdk::batch_operations/mixed_batch/50",
+            "value": 2899.9709587398766,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-sdk::batch_operations/mixed_batch/500",
+            "value": 29501.300765137366,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-sdk::callback_invocation/heavy_callback_100",
+            "value": 36886.466600632055,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-sdk::callback_invocation/invoke_update_callbacks/10",
+            "value": 28.432603415751743,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-sdk::callback_invocation/invoke_update_callbacks/100",
+            "value": 226.9198523679509,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-sdk::callback_invocation/invoke_update_callbacks/1000",
+            "value": 2233.840006756269,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-sdk::data_marshalling/transform_round_trip_1000",
+            "value": 2541.727833626099,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-sdk::data_marshalling/vec3_round_trip/100",
+            "value": 722.7552225891902,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-sdk::data_marshalling/vec3_round_trip/1000",
+            "value": 8100.85425851541,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-sdk::data_marshalling/vec3_round_trip/10000",
+            "value": 82801.29053314684,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-sdk::entity_lifecycle/create_destroy_cycle/100",
+            "value": 7859.946510819326,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-sdk::entity_lifecycle/create_destroy_cycle/1000",
+            "value": 82414.72669337661,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-sdk::entity_lifecycle/create_destroy_cycle/500",
+            "value": 41048.62118584068,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-sdk::entity_lifecycle/transform_update_cycle/100",
+            "value": 3480.4332268255234,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-sdk::entity_lifecycle/transform_update_cycle/1000",
+            "value": 34570.75732051574,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-sdk::entity_lifecycle/transform_update_cycle/500",
+            "value": 17457.45759585734,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-sdk::error_handling/error_code_to_string_1000",
+            "value": 1291.0384797287338,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-sdk::error_handling/error_propagation_chain",
+            "value": 189.4843332096716,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-sdk::error_handling/error_vs_success_1000",
+            "value": 18662.88024782242,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-sdk::ffi_overhead/ffi_with_marshalling",
+            "value": 3.182745096281155,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-sdk::ffi_overhead/ffi_with_ptr_arg",
+            "value": 0.6226093113248417,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-sdk::ffi_overhead/minimal_ffi_call",
+            "value": 25.36083064135369,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-sdk::handle_operations/handle_creation_10000",
+            "value": 1587.8937934323653,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-sdk::handle_operations/handle_lookup_10000",
+            "value": 167138.0359759671,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-sdk::handle_operations/handle_validation_10000",
+            "value": 3997.551273477733,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-sdk::json_serialization/snapshot_after_tick",
+            "value": 825.1830972834765,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-sdk::json_serialization/snapshot_json_copy",
+            "value": 770.8997765199314,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-sdk::json_serialization/snapshot_size_query",
+            "value": 759.6573593509191,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-sdk::string_marshalling/cached_string_lookup_1000",
+            "value": 27023.804219327,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-sdk::string_marshalling/cstring_creation",
+            "value": 12.588481306975133,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-sdk::string_marshalling/cstring_to_string_1000",
+            "value": 37736.43043897827,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-sdk::string_marshalling/cstring_with_format",
+            "value": 26.76753818119953,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-sdk::string_marshalling/long_string_marshal_100",
+            "value": 12840.711818104233,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-sdk::string_marshalling/string_from_c_buffer",
+            "value": 14.965123553216944,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-sdk::string_marshalling/string_to_cstring_1000",
+            "value": 39178.581415289504,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-sdk::vector_operations/vec3_length_10000",
+            "value": 6855.581500672636,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-sdk::vector_operations/vec3_normalize_10000",
+            "value": 18256.039216658763,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-sdk::vector_operations/vec3_operations_combined_10000",
+            "value": 19270.228684879832,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-sdk::version_operations/aw_version",
+            "value": 24.754495094240745,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-sdk::version_operations/aw_version_string_copy",
+            "value": 3.1936578525430184,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-sdk::version_operations/aw_version_string_size",
+            "value": 0.6227464436567732,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-sdk::world_lifecycle/world_create_destroy",
+            "value": 551.4704254422828,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-sdk::world_lifecycle/world_create_only",
+            "value": 1825.3611112842639,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-sdk::world_lifecycle/world_destroy",
+            "value": 218.94787844971532,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-sdk::world_tick/tick_10_frames",
+            "value": 82.21660208074964,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-sdk::world_tick/tick_world",
+            "value": 8.459188805059505,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-coordination::coordination_adversarial_communication/gossip_protocol_100_rounds",
+            "value": 25077.356786685414,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-coordination::coordination_adversarial_communication/message_broadcast_1000",
+            "value": 1339.6902622624207,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-coordination::coordination_adversarial_communication/message_queue_processing_5000",
+            "value": 7857.6682119437355,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-coordination::coordination_adversarial_communication/range_communication_500",
+            "value": 835.3864062125151,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-coordination::coordination_adversarial_decision_making/coalition_formation_200",
+            "value": 43930.16417013415,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-coordination::coordination_adversarial_decision_making/consensus_building_100_agents",
+            "value": 2167.042527172239,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-coordination::coordination_adversarial_decision_making/resource_allocation_50_agents",
+            "value": 591.8358145490955,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-coordination::coordination_adversarial_decision_making/utility_action_selection_500",
+            "value": 13891.620401196675,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-coordination::coordination_adversarial_narrative_coherence/coherence_calculation_50",
+            "value": 25049.304813098483,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-coordination::coordination_adversarial_narrative_coherence/conflict_detection_100",
+            "value": 6228.622618186077,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-coordination::coordination_adversarial_narrative_coherence/thread_creation_100",
+            "value": 10211.968128146054,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-coordination::coordination_adversarial_narrative_coherence/thread_merging_20",
+            "value": 5341.669335493266,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-coordination::coordination_adversarial_social_graph/faction_clustering_1000",
+            "value": 14580.12917063974,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-coordination::coordination_adversarial_social_graph/graph_construction/100",
+            "value": 22697.084417124992,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-coordination::coordination_adversarial_social_graph/graph_construction/1000",
+            "value": 235491.13306259472,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-coordination::coordination_adversarial_social_graph/graph_construction/500",
+            "value": 117471.26791183931,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-coordination::coordination_adversarial_social_graph/relationship_decay_10000",
+            "value": 7498.526862626432,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-coordination::coordination_adversarial_social_graph/relationship_lookup_10000",
+            "value": 172433.72202998053,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-coordination::coordination_adversarial_social_graph/social_path_finding_100",
+            "value": 349556.0167705606,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-coordination::coordination_adversarial_squad_coordination/communication_propagation",
+            "value": 2540.8974204666597,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-coordination::coordination_adversarial_squad_coordination/formation_positions_20",
+            "value": 81.01179503490313,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-coordination::coordination_adversarial_squad_coordination/objective_assignment_50_squads",
+            "value": 0.6237960296932658,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-coordination::coordination_adversarial_squad_coordination/squad_formation/10",
+            "value": 0.6231470007199477,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-coordination::coordination_adversarial_squad_coordination/squad_formation/20",
+            "value": 0.6238352397749151,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-coordination::coordination_adversarial_squad_coordination/squad_formation/5",
+            "value": 0.6228630503802669,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-coordination::coordination_adversarial_world_events/agent_involvement_tracking",
+            "value": 66293.83947944337,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-coordination::coordination_adversarial_world_events/event_creation_1000",
+            "value": 32383.038278731212,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-coordination::coordination_adversarial_world_events/event_filtering_5000",
+            "value": 3496.3377680998697,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-coordination::coordination_adversarial_world_events/spatial_event_query_1000",
+            "value": 878.9053820676781,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-coordination::coordination_adversarial_world_events/timeline_ordering_2000",
+            "value": 1308.9133923852798,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persona::episode_creation",
+            "value": 118.98953206147553,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persona::fact_creation",
+            "value": 29.06401317813004,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persona::persona_creation",
+            "value": 121.67317642613227,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persona::persona_default",
+            "value": 14.524436984026654,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persona::profile_add_facts/10",
+            "value": 1091.7096950073978,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persona::profile_add_facts/100",
+            "value": 12535.696716147451,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persona::profile_add_facts/50",
+            "value": 6339.057360209154,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persona::profile_add_skills/10",
+            "value": 849.5686905432475,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persona::profile_add_skills/100",
+            "value": 9089.460131745269,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persona::profile_add_skills/50",
+            "value": 4429.211371151227,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persona::profile_clone",
+            "value": 7448.544256913431,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persona::profile_creation_comprehensive/profile/f100_s20_e20",
+            "value": 26061.07887315698,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persona::profile_creation_comprehensive/profile/f10_s5_e5",
+            "value": 4334.568329184378,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persona::profile_creation_comprehensive/profile/f50_s10_e10",
+            "value": 13201.662660561025,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persona::profile_creation_default",
+            "value": 29.14559071175881,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persona::profile_deserialize_json",
+            "value": 16877.88072352163,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persona::profile_distill/10",
+            "value": 584.738642176906,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persona::profile_distill/100",
+            "value": 3933.869214021434,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persona::profile_distill/50",
+            "value": 2136.7313518507813,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persona::profile_serialize_json",
+            "value": 6111.693627497098,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persona::profile_sign",
+            "value": 31.92943485741411,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persona::profile_verify",
+            "value": 0.6248212336399018,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persona::skill_creation",
+            "value": 84.49354149108359,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-behavior::behavior_tree_10_nodes",
+            "value": 108.17227281329741,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-behavior::behavior_tree_20_nodes",
+            "value": 367.5198116844401,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-behavior::behavior_tree_condition_evaluation",
+            "value": 50.38428695092048,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-behavior::behavior_tree_decorator",
+            "value": 33.006934389523366,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-behavior::behavior_tree_sequence_evaluation",
+            "value": 95.8085253559397,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-behavior::behavior_tree_simple_3_nodes",
+            "value": 56.063915232252704,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-behavior::goap_action_preconditions",
+            "value": 11.88663481075792,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-behavior::goap_cache_comparison/cache_hit",
+            "value": 383.9920760220479,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-behavior::goap_cache_comparison/cache_miss",
+            "value": 9623.637206804398,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-behavior::goap_caching_cold_cache",
+            "value": 73500.73033252913,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-behavior::goap_caching_warm_cache_90pct",
+            "value": 361.55898903333923,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-behavior::goap_goal_evaluation",
+            "value": 8.711876135257421,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-behavior::goap_planning_10_actions",
+            "value": 627511.5583689896,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-behavior::goap_planning_20_actions",
+            "value": 4270119.201666666,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-behavior::goap_planning_simple",
+            "value": 989.9186883723586,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ui::audio_settings/settings_creation",
+            "value": 1.2465662936124062,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ui::audio_settings/volume_adjustment",
+            "value": 8.574408422862659,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ui::controls_settings/key_binding_update",
+            "value": 7.635288079803217,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ui::controls_settings/mouse_sensitivity_adjustment",
+            "value": 2.680748240883077,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ui::controls_settings/settings_creation",
+            "value": 88.03183477984189,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ui::dialogue_system/dialogue_node_creation",
+            "value": 52.651585042963944,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ui::dialogue_system/dialogue_tree_traversal",
+            "value": 3.902648989438968,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ui::graphics_settings/quality_preset_change",
+            "value": 2.1782843876286244,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ui::graphics_settings/resolution_update",
+            "value": 6.226935285410751,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ui::graphics_settings/settings_creation",
+            "value": 6.226260422151699,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ui::hud_manager/damage_number_spawn",
+            "value": 189.75655839569987,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ui::hud_manager/enemy_data_update/1",
+            "value": 30.61676304515959,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ui::hud_manager/enemy_data_update/10",
+            "value": 176.9846200286841,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ui::hud_manager/enemy_data_update/20",
+            "value": 279.5159800282336,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ui::hud_manager/enemy_data_update/5",
+            "value": 102.88430251958978,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ui::hud_manager/enemy_data_update/50",
+            "value": 484.32507960609337,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ui::hud_manager/hud_creation",
+            "value": 19.501037464863025,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ui::hud_manager/player_stats_update",
+            "value": 8.232951011778626,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ui::menu_manager/menu_creation",
+            "value": 3003.5143337839922,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ui::menu_manager/settings_navigation",
+            "value": 0.31238436414900933,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ui::menu_manager/state_transitions",
+            "value": 70406.28166848414,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ui::poi_markers/poi_creation/1",
+            "value": 51.5386146979844,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ui::poi_markers/poi_creation/10",
+            "value": 461.5383082134515,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ui::poi_markers/poi_creation/20",
+            "value": 1027.4233651682644,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ui::poi_markers/poi_creation/5",
+            "value": 247.37362296992924,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ui::poi_markers/poi_creation/50",
+            "value": 2525.979027410333,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ui::quest_system/quest_creation",
+            "value": 36.13050894083173,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ui::quest_system/quest_progress_update",
+            "value": 3.7324253211104637,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ui::settings_persistence/settings_load",
+            "value": 18029.2962047073,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ui::settings_persistence/settings_save",
+            "value": 281843.33431930694,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ui::tooltip_operations/tooltip_creation",
+            "value": 58.400375226632804,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ui::tooltip_operations/tooltip_with_stats/1",
+            "value": 101.34764343652161,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ui::tooltip_operations/tooltip_with_stats/10",
+            "value": 1140.7937596043407,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ui::tooltip_operations/tooltip_with_stats/20",
+            "value": 2197.172912195583,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ui::tooltip_operations/tooltip_with_stats/5",
+            "value": 479.89444933754646,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ui::ui_adversarial_damage_numbers/arc_motion_100",
+            "value": 0.6235329997573484,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ui::ui_adversarial_damage_numbers/lifetime_filter_200",
+            "value": 424.64967375465596,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ui::ui_adversarial_damage_numbers/shake_calculation_100",
+            "value": 0.6223202602034198,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ui::ui_adversarial_damage_numbers/spawn_burst_50",
+            "value": 207.93308963353257,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ui::ui_adversarial_damage_numbers/spawn_single",
+            "value": 0.9343195422236356,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ui::ui_adversarial_health_animation/easing_calculations_1000",
+            "value": 2285.861892867887,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ui::ui_adversarial_health_animation/flash_alpha_100",
+            "value": 98.76536259617413,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ui::ui_adversarial_health_animation/multiple_animations/10",
+            "value": 11.104448136460244,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ui::ui_adversarial_health_animation/multiple_animations/100",
+            "value": 99.20148660418809,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ui::ui_adversarial_health_animation/multiple_animations/50",
+            "value": 52.79468928339202,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ui::ui_adversarial_health_animation/rapid_target_changes_100",
+            "value": 356.6492897892164,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ui::ui_adversarial_health_animation/single_update",
+            "value": 0.940233767422552,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ui::ui_adversarial_layout_calculations/health_bar_width_100",
+            "value": 108.42115556239001,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ui::ui_adversarial_layout_calculations/minimap_transform_100",
+            "value": 79.49065163023816,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ui::ui_adversarial_layout_calculations/screen_space_position_100",
+            "value": 104.47150438680808,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ui::ui_adversarial_layout_calculations/text_size_estimation_50",
+            "value": 36.54393805210982,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ui::ui_adversarial_layout_calculations/visibility_culling_200",
+            "value": 651.5895444375371,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ui::ui_adversarial_menu_state_transitions/equality_checks_1000",
+            "value": 0.622646167035241,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ui::ui_adversarial_menu_state_transitions/rapid_state_changes_100",
+            "value": 43.58873108371526,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ui::ui_adversarial_menu_state_transitions/state_history_50",
+            "value": 93.39663450003358,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ui::ui_adversarial_menu_state_transitions/state_validation_checks",
+            "value": 0.6226453254730678,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ui::ui_adversarial_quest_tracker/active_quest_filter_50",
+            "value": 266.73825915948345,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ui::ui_adversarial_quest_tracker/completion_calculation_10",
+            "value": 41.162378550787395,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ui::ui_adversarial_quest_tracker/objective_progress_update_100",
+            "value": 81.43097329162217,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ui::ui_adversarial_quest_tracker/quest_lookup_100",
+            "value": 56.319952667591814,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ui::ui_adversarial_settings_validation/audio_validation",
+            "value": 2.0354639520708537,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ui::ui_adversarial_settings_validation/controls_validation",
+            "value": 31.500880899695645,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ui::ui_adversarial_settings_validation/duplicate_key_detection",
+            "value": 479.12525679049935,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ui::ui_adversarial_settings_validation/graphics_validation",
+            "value": 1.1091087800510029,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ui::ui_adversarial_settings_validation/settings_serialization_sim",
+            "value": 398.55082844934367,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-pcg::encounter_generation/generate_100_encounters",
+            "value": 18159.481403717728,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-pcg::encounter_generation/generate_10_encounters",
+            "value": 1015.6486298436807,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-pcg::encounter_generation/generate_200_encounters",
+            "value": 52154.25635927114,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-pcg::encounter_generation/generate_50_encounters",
+            "value": 6726.817294095888,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-pcg::encounter_generation/spacing_check_100",
+            "value": 40.534015943986674,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-pcg::full_dungeon_pipeline/huge_dungeon_100r_300e",
+            "value": 121470.65756868971,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-pcg::full_dungeon_pipeline/large_dungeon_50r_150e",
+            "value": 38775.300245714876,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-pcg::full_dungeon_pipeline/medium_dungeon_20r_50e",
+            "value": 8946.770534318828,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-pcg::full_dungeon_pipeline/small_dungeon_5r_10e",
+            "value": 1620.57937663028,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-pcg::rng_operations/choose_from_10",
+            "value": 5.10999918554863,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-pcg::rng_operations/create_rng",
+            "value": 36.313818262718776,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-pcg::rng_operations/fork_rng",
+            "value": 106.60186525424784,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-pcg::rng_operations/gen_bool",
+            "value": 2.725939904084908,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-pcg::rng_operations/gen_range_f32",
+            "value": 3.7038381957502873,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-pcg::rng_operations/gen_range_i32",
+            "value": 2.311952375579039,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-pcg::rng_operations/shuffle_100",
+            "value": 333.36843870434643,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-pcg::room_generation/generate_100_rooms",
+            "value": 12381.9397728675,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-pcg::room_generation/generate_10_rooms",
+            "value": 730.3053582407193,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-pcg::room_generation/generate_20_rooms",
+            "value": 1206.2586171511737,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-pcg::room_generation/generate_50_rooms",
+            "value": 4535.924270316061,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-pcg::room_generation/generate_5_rooms",
+            "value": 339.94649904621014,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-pcg::room_generation/room_center",
+            "value": 0.623082281199897,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-pcg::room_generation/room_overlap_check",
+            "value": 0.6227447018568083,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-pcg::scaling/encounter_generation/100_encounters",
+            "value": 16568.57130720834,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-pcg::scaling/encounter_generation/10_encounters",
+            "value": 930.6407466215138,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-pcg::scaling/encounter_generation/200_encounters",
+            "value": 51115.922273861266,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-pcg::scaling/encounter_generation/25_encounters",
+            "value": 2603.289559953401,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-pcg::scaling/encounter_generation/500_encounters",
+            "value": 246157.4561324189,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-pcg::scaling/encounter_generation/50_encounters",
+            "value": 6292.604105167572,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-pcg::scaling/room_generation/100_rooms",
+            "value": 10304.140768517738,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-pcg::scaling/room_generation/10_rooms",
+            "value": 560.9488281136479,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-pcg::scaling/room_generation/1_rooms",
+            "value": 143.34109402253384,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-pcg::scaling/room_generation/20_rooms",
+            "value": 1194.565014282892,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-pcg::scaling/room_generation/50_rooms",
+            "value": 3703.934757506572,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-pcg::scaling/room_generation/5_rooms",
+            "value": 336.4503582600926,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-security::security_adversarial_access_control/permission_caching_20000",
+            "value": 1494276.450429569,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-security::security_adversarial_access_control/rbac_check_50000",
+            "value": 1614157.1098391446,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-security::security_adversarial_anti_cheat/anomaly_detection_5000",
+            "value": 873672.8951032481,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-security::security_adversarial_anti_cheat/cross_reference_check_10000",
+            "value": 1695478.3641576362,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-security::security_adversarial_anti_cheat/event_logging_50000",
+            "value": 15538962.4225,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-security::security_adversarial_anti_cheat/metrics_analysis_10000",
+            "value": 25071.523167521114,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-security::security_adversarial_anti_cheat/movement_validation_20000",
+            "value": 854866.7087647532,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-security::security_adversarial_content_filtering/content_sanitization_5000",
+            "value": 3237667.8341176463,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-security::security_adversarial_content_filtering/multi_category_filter_10000",
+            "value": 1271558.4350009763,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-security::security_adversarial_content_filtering/pattern_matching/10",
+            "value": 53601.01690804692,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-security::security_adversarial_content_filtering/pattern_matching/100",
+            "value": 522181.19661376474,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-security::security_adversarial_content_filtering/pattern_matching/50",
+            "value": 266260.630428527,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-security::security_adversarial_content_filtering/pattern_matching/500",
+            "value": 2580723.166,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-security::security_adversarial_content_filtering/pii_detection_5000",
+            "value": 290175.6301009762,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-security::security_adversarial_input_validation/numeric_validation_50000",
+            "value": 47922.06754877979,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-security::security_adversarial_input_validation/path_traversal_check_10000",
+            "value": 1270531.2639601633,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-security::security_adversarial_input_validation/schema_validation_5000",
+            "value": 376423.1014930643,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-security::security_adversarial_input_validation/string_sanitization_10000",
+            "value": 4262002.445833333,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-security::security_adversarial_llm_validation/injection_detection_10000",
+            "value": 705751.0041942312,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-security::security_adversarial_llm_validation/rate_limiting_20000",
+            "value": 671943.140902733,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-security::security_adversarial_llm_validation/risk_scoring_10000",
+            "value": 1014999.7909044911,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-security::security_adversarial_llm_validation/token_budget_enforcement_10000",
+            "value": 660193.097133644,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-security::security_adversarial_script_sandboxing/call_depth_tracking_50000",
+            "value": 280448.3831509584,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-security::security_adversarial_script_sandboxing/memory_tracking_10000",
+            "value": 2376065.8931818176,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-security::security_adversarial_script_sandboxing/module_access_check_50000",
+            "value": 819441.4795699901,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-security::security_adversarial_script_sandboxing/operation_counting_100000",
+            "value": 5.664823896450115,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-security::security_adversarial_script_sandboxing/sandbox_config_creation_10000",
+            "value": 3036097.0670588254,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-stress-test::ecs_performance",
+            "value": 324181.58481977874,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-stress-test::network_stress",
+            "value": 159214.55793192846,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-stress-test::persistence_stress",
+            "value": 641961.9966756019,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ai::GOAP Planning/1 enemy (simple)",
+            "value": 54.456846766078385,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ai::GOAP Planning/10 enemies + 5 POIs (complex)",
+            "value": 54.591024190225056,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ai::GOAP Planning/3 enemies + 2 POIs (moderate)",
+            "value": 55.70224546410908,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ai::Multi-Agent Throughput/10",
+            "value": 533.5802356682708,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ai::Multi-Agent Throughput/100",
+            "value": 5336.61464772782,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ai::Multi-Agent Throughput/50",
+            "value": 2789.189371929025,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ai::Multi-Agent Throughput/500",
+            "value": 26664.709248978634,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ai::Orchestrator Comparison/GOAP",
+            "value": 56.34310578610999,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ai::Orchestrator Comparison/Rule-based",
+            "value": 66.22781424906044,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ai::Orchestrator Comparison/Utility",
+            "value": 61.61691955072905,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ai::Planning Conditions/low ammo (3 enemies)",
+            "value": 55.617619863688745,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ai::Planning Conditions/low morale (5 enemies)",
+            "value": 55.515167088001746,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ai::Planning Conditions/no enemies (idle)",
+            "value": 47.40287643861031,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ai::Rule-Based Planning/1 enemy",
+            "value": 71.98627192631548,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ai::Rule-Based Planning/3 enemies",
+            "value": 73.24504737570435,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ai::Tool Validation/validate CoverFire",
+            "value": 92.90836037569565,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ai::Tool Validation/validate MoveTo",
+            "value": 56.384772796083986,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ai::Utility AI Planning/1 enemy",
+            "value": 63.762133134281314,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ai::Utility AI Planning/complex scenario",
+            "value": 62.19151768156319,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ai::WorldSnapshot Operations/clone complex snapshot",
+            "value": 181.47877151526552,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ai::WorldSnapshot Operations/clone large snapshot (100 enemies)",
+            "value": 1484.083002614529,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ai::WorldSnapshot Operations/clone simple snapshot",
+            "value": 59.85241494802909,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ai::ai_loop_full_end_to_end_complex",
+            "value": 817.5618065608423,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ai::ai_loop_full_end_to_end_moderate",
+            "value": 235.37274433839514,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ai::ai_loop_full_end_to_end_simple",
+            "value": 63.95779211911424,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ai::ai_loop_plan_validation",
+            "value": 75.32430786267801,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ai::ai_loop_rule_planner_complex",
+            "value": 81.48479430496894,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ai::ai_loop_rule_planner_moderate",
+            "value": 76.34369254881828,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ai::ai_loop_rule_planner_simple",
+            "value": 43.63066631234564,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ai::ai_loop_snapshot_creation_complex",
+            "value": 741.9675466277031,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ai::ai_loop_snapshot_creation_moderate",
+            "value": 160.70935130799188,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ai::ai_loop_snapshot_creation_simple",
+            "value": 26.244506769208883,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ai::feedback_phase/100_agents",
+            "value": 71.5040138915866,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ai::full_multi_agent_pipeline/large_100a_5e",
+            "value": 26226.71726426673,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ai::full_multi_agent_pipeline/medium_50a_5e",
+            "value": 12808.591588175708,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ai::full_multi_agent_pipeline/small_10a_3e",
+            "value": 1857.549970743322,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ai::full_multi_agent_pipeline/stress_500a_5e",
+            "value": 133401.8157766139,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ai::goap_feature_disabled",
+            "value": 0.7036529018006082,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ai::goap_next_action_close",
+            "value": 4.233478108094258,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ai::goap_next_action_far",
+            "value": 4.934028757345901,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ai::goap_next_action_no_enemies",
+            "value": 3.874459610146546,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ai::goap_propose_plan_close",
+            "value": 46.81013084122667,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ai::goap_propose_plan_far",
+            "value": 47.85565088174472,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ai::htn_expansions_per_tick",
+            "value": 12986.053637790352,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ai::integration_pipeline_rule/rule_full_pipeline/1",
+            "value": 70.79277443378368,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ai::integration_pipeline_rule/rule_full_pipeline/10",
+            "value": 70.735385712908,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ai::integration_pipeline_rule/rule_full_pipeline/100",
+            "value": 71.5012235363706,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ai::integration_pipeline_rule/rule_full_pipeline/50",
+            "value": 70.72287815699121,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ai::integration_pipeline_rule/rule_full_pipeline/500",
+            "value": 70.78357977447489,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ai::multi_agent_scaling/1",
+            "value": 190.88080173993794,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ai::multi_agent_scaling/10",
+            "value": 2036.8506479016503,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ai::multi_agent_scaling/100",
+            "value": 27125.97142358696,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ai::multi_agent_scaling/1000",
+            "value": 278151.9141608655,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ai::multi_agent_scaling/200",
+            "value": 54142.95123668889,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ai::multi_agent_scaling/50",
+            "value": 13591.54504545477,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ai::multi_agent_scaling/500",
+            "value": 135038.24791905814,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ai::per_agent_latency/1000_agents",
+            "value": 3.5931235953958067,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ai::per_agent_latency/100_agents",
+            "value": 0.379766269460539,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ai::per_agent_latency/10_agents",
+            "value": 0.02253244977036665,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ai::per_agent_pipeline_overhead",
+            "value": 70.66209665689102,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ai::perception_phase/100_agents_5_enemies",
+            "value": 13967.733722134919,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ai::perception_phase/10_agents_3_enemies",
+            "value": 933.9496263762552,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ai::perception_phase/500_agents_5_enemies",
+            "value": 70778.49318888746,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ai::perception_phase/50_agents_5_enemies",
+            "value": 6688.514273917302,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ai::planner_advanced_feature_disabled",
+            "value": 0.7116599119132527,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ai::planning_phase/100_agents",
+            "value": 12038.884609386534,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ai::planning_phase/10_agents",
+            "value": 811.1666022006834,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ai::planning_phase/500_agents",
+            "value": 62710.08913296528,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ai::planning_phase/50_agents",
+            "value": 5960.4732063072815,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ai::scalability_analysis/rule_scaling/10",
+            "value": 73.74670694940511,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ai::scalability_analysis/rule_scaling/100",
+            "value": 70.99540200133305,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ai::scalability_analysis/rule_scaling/200",
+            "value": 70.89475264104254,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ai::scalability_analysis/rule_scaling/50",
+            "value": 70.56524285486654,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ai::scalability_analysis/rule_scaling/500",
+            "value": 70.84100066443156,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ai::snapshot_creation_scalable/create_snapshot/10",
+            "value": 406.29747395106676,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ai::snapshot_creation_scalable/create_snapshot/100",
+            "value": 770.7361048018854,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ai::snapshot_creation_scalable/create_snapshot/50",
+            "value": 652.7628795221194,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ai::snapshot_creation_scalable/create_snapshot/500",
+            "value": 1803.14119009329,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ai::validation_phase/100_plans",
+            "value": 29.763687604892024,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::AABB Construction/aabb_from_transform_identity",
+            "value": 10.336133754629516,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::AABB Construction/aabb_from_transform_rotated",
+            "value": 10.279515857404823,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::AABB Construction/aabb_new",
+            "value": 12.504476972715043,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::AABB Construction/batch/100",
+            "value": 1110.5030707708142,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::AABB Construction/batch/1000",
+            "value": 10749.883391692205,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::AABB Construction/batch/10000",
+            "value": 107896.10888379793,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::AABB-Frustum Test/single_boundary",
+            "value": 17.83865353231511,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::AABB-Frustum Test/single_culled",
+            "value": 13.278776333091075,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::AABB-Frustum Test/single_visible",
+            "value": 17.84486663410206,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::CPU Frustum Culling/10pct_visible/100",
+            "value": 549.9487729910223,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::CPU Frustum Culling/10pct_visible/1000",
+            "value": 5364.931196290223,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::CPU Frustum Culling/10pct_visible/10000",
+            "value": 53613.10891800021,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::CPU Frustum Culling/10pct_visible/50000",
+            "value": 272276.35997692845,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::CPU Frustum Culling/50pct_visible/100",
+            "value": 545.2025534013624,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::CPU Frustum Culling/50pct_visible/1000",
+            "value": 5355.847103039155,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::CPU Frustum Culling/50pct_visible/10000",
+            "value": 53755.092305859405,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::CPU Frustum Culling/50pct_visible/50000",
+            "value": 270144.52825198136,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::CPU Frustum Culling/90pct_visible/100",
+            "value": 1196.3864938358895,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::CPU Frustum Culling/90pct_visible/1000",
+            "value": 10134.75721120015,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::CPU Frustum Culling/90pct_visible/10000",
+            "value": 99069.81103872316,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::CPU Frustum Culling/90pct_visible/50000",
+            "value": 490853.4668999868,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::Edge Collapses/build/1000v_1500t",
+            "value": 97781.12995778462,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::Edge Collapses/build/100v_150t",
+            "value": 7894.747206616663,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::Edge Collapses/build/500v_750t",
+            "value": 46586.35018415502,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::Frustum Extraction/from_view_proj",
+            "value": 18.006601242396133,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::Full Culling Pipeline/cull_and_batch/1000",
+            "value": 5085.4037296013175,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::Full Culling Pipeline/cull_and_batch/10000",
+            "value": 50456.15065866616,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::Full Culling Pipeline/cull_and_batch/5000",
+            "value": 25189.643601070187,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::Indirect Commands/build_commands/10",
+            "value": 13.726047765666666,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::Indirect Commands/build_commands/100",
+            "value": 118.81053049836652,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::Indirect Commands/build_commands/50",
+            "value": 45.04071176315558,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::Indirect Commands/build_commands/500",
+            "value": 437.79876650370346,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::Mesh Simplification/25pct/1000v",
+            "value": 137076.69632385945,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::Mesh Simplification/25pct/2000v",
+            "value": 298308.87902668724,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::Mesh Simplification/25pct/500v",
+            "value": 65355.87328518255,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::Mesh Simplification/50pct/1000v",
+            "value": 126673.36204080988,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::Mesh Simplification/50pct/2000v",
+            "value": 272531.3730292598,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::Mesh Simplification/50pct/500v",
+            "value": 61036.952060139236,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::Mesh Simplification/75pct/1000v",
+            "value": 115997.1549343353,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::Mesh Simplification/75pct/2000v",
+            "value": 245316.74207047137,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::Mesh Simplification/75pct/500v",
+            "value": 56472.30688239358,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::Quadric Operations/add",
+            "value": 2.370286980107477,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::Quadric Operations/evaluate",
+            "value": 3.9846741314742413,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::Quadric Operations/from_plane",
+            "value": 2.8070733951306686,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::Vertex Quadrics/compute/1000v_1500t",
+            "value": 7314.522117520416,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::Vertex Quadrics/compute/100v_150t",
+            "value": 760.0671007543376,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::Vertex Quadrics/compute/5000v_7500t",
+            "value": 36561.72293097486,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::Vertex Quadrics/compute/500v_750t",
+            "value": 3669.438571162239,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::biome_pipeline/1000_biome_lookups",
+            "value": 126539.17443641918,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::biome_pipeline/biome_change_with_weather",
+            "value": 48.16882457769566,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::biome_pipeline/per_frame_during_transition",
+            "value": 18.247063781372113,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::biome_pipeline/per_frame_steady_state",
+            "value": 4.0695034633989255,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::biome_scaling/parallel_zones/1",
+            "value": 50.08396982205512,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::biome_scaling/parallel_zones/16",
+            "value": 799.6967296272253,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::biome_scaling/parallel_zones/4",
+            "value": 199.97335888113733,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::biome_scaling/parallel_zones/64",
+            "value": 3198.1780855511724,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::biome_visuals/for_biome_all_8",
+            "value": 126.37769339596034,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::biome_visuals/for_biome_single",
+            "value": 15.73066925374008,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::biome_visuals/lerp_full_transition_100_steps",
+            "value": 1312.7325699010953,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::biome_visuals/lerp_single",
+            "value": 13.59856167636267,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::bloom_mip/downsample/mip0",
+            "value": 61016648.43,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::bloom_mip/downsample/mip1",
+            "value": 15243834.815,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::bloom_mip/downsample/mip2",
+            "value": 3807411.066428572,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::bloom_mip/downsample/mip3",
+            "value": 954246.0148490347,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::bloom_mip/downsample/mip4",
+            "value": 236914.9698036468,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::bloom_mip/upsample/mip0",
+            "value": 102914836.67,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::bloom_mip/upsample/mip1",
+            "value": 25836951.055,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::bloom_mip/upsample/mip2",
+            "value": 6439261.0825,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::bloom_mip/upsample/mip3",
+            "value": 1616807.6755013086,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::bloom_mip/upsample/mip4",
+            "value": 397675.81746673246,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::bloom_threshold/extract/1080p",
+            "value": 3672026.115,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::bloom_threshold/extract/1440p",
+            "value": 6525841.46125,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::bloom_threshold/extract/4K",
+            "value": 14661270.1,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::bloom_threshold/extract/720p",
+            "value": 1636340.3914505383,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::camera_controller/new",
+            "value": 11.58967899762835,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::camera_controller/process_keyboard",
+            "value": 3.114669299939852,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::camera_controller/process_mouse_delta",
+            "value": 1.6556466884850163,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::camera_controller/process_scroll_freefly",
+            "value": 1.558217172708211,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::camera_controller/process_scroll_orbit",
+            "value": 1.9054330282526935,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::camera_controller/toggle_mode",
+            "value": 0.7788698494738571,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::camera_controller/update_freefly",
+            "value": 41.68092519736095,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::camera_controller/update_orbit",
+            "value": 17.37595240690237,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::camera_operations/direction_batch_16",
+            "value": 231.53402171109707,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::camera_operations/direction_calc",
+            "value": 11.619509363748032,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::camera_operations/proj_matrix",
+            "value": 2.4968346324186728,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::camera_operations/view_matrix",
+            "value": 2.4929711462807917,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::camera_operations/view_projection",
+            "value": 41.63314436963496,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::combined_scenarios/atlas_populate_terrain_set",
+            "value": 246.13136752286377,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::combined_scenarios/cinematic_camera_sequence",
+            "value": 5717.566497825248,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::combined_scenarios/full_pipeline_init",
+            "value": 22042.833882180756,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::combined_scenarios/large_forest_10k_trees",
+            "value": 347707.7717488789,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::combined_scenarios/material_batch_load_24",
+            "value": 5248.250030547069,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::combined_scenarios/mesh_batch_generate_lod_chain",
+            "value": 105608.81258503401,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::combined_scenarios/scene_setup_mixed",
+            "value": 6155.826136148158,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::combined_scenarios/spawn_wave_32x32_grid",
+            "value": 3141.261039133172,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::combined_scenarios/typical_frame_100_instances",
+            "value": 656.5419523228356,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::combined_scenarios/typical_frame_setup",
+            "value": 349.53950567581364,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::cpu_cluster_binning_1k_lights",
+            "value": 145544.95302790473,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::csm_cascade/split_calculation/2",
+            "value": 43.95066529106607,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::csm_cascade/split_calculation/4",
+            "value": 57.580235635522385,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::csm_cascade/split_calculation/6",
+            "value": 79.75296215045095,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::csm_cascade/split_calculation/8",
+            "value": 91.81782157965563,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::csm_matrix/ortho_projection/cascade0",
+            "value": 7.478179884748488,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::csm_matrix/ortho_projection/cascade1",
+            "value": 7.474773717919189,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::csm_matrix/ortho_projection/cascade2",
+            "value": 7.480101845064041,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::csm_matrix/ortho_projection/cascade3",
+            "value": 7.480110809475868,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::culling_performance/with_backface_culling",
+            "value": 0.3124696009655491,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::culling_performance/without_backface_culling",
+            "value": 0.3117495783223435,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::instance_batching/add_instances/10",
+            "value": 141.04710395106633,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::instance_batching/add_instances/100",
+            "value": 414.76538680199644,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::instance_batching/add_instances/1000",
+            "value": 2757.395985719507,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::instance_batching/add_instances/5000",
+            "value": 12897.479683342204,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::instance_batching/batch_new",
+            "value": 2.808958198444143,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::instance_batching/to_raw_data/100",
+            "value": 566.4526616808505,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::instance_batching/to_raw_data/1000",
+            "value": 5317.180003294351,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::instance_batching/to_raw_data/5000",
+            "value": 27033.819994484285,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::instance_manager/add/1000meshes_x_1",
+            "value": 103388.70136125655,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::instance_manager/add/100meshes_x_10",
+            "value": 34454.210672853835,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::instance_manager/add/10meshes_x_100",
+            "value": 21233.748061846687,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::instance_manager/add/1meshes_x_1000",
+            "value": 17875.611628334867,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::instance_manager/calculate_savings_1000_instances_10_meshes",
+            "value": 0.6524029386643704,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::instance_manager/clear_1000_instances",
+            "value": 277.47110593713626,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::instance_manager/new",
+            "value": 5.644677617961445,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::instance_patterns/circle/128",
+            "value": 2199.7730208169946,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::instance_patterns/circle/32",
+            "value": 653.1999495626553,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::instance_patterns/circle/512",
+            "value": 8109.921819678881,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::instance_patterns/circle/8",
+            "value": 225.25539186144618,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::instance_patterns/grid/100x100",
+            "value": 41217.80404234842,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::instance_patterns/grid/10x10",
+            "value": 488.34679021828,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::instance_patterns/grid/32x32",
+            "value": 3037.2870401516775,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::instance_patterns/random_scatter/100",
+            "value": 2409.3184232178924,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::instance_patterns/random_scatter/1000",
+            "value": 21615.409365290725,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::instance_patterns/random_scatter/5000",
+            "value": 115823.08630806844,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::instance_transforms/new_identity",
+            "value": 7.428091675332527,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::instance_transforms/new_positioned",
+            "value": 8.384752914907427,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::instance_transforms/raw_from_matrix",
+            "value": 5.30542774445526,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::instance_transforms/raw_from_transform",
+            "value": 10.31387703120899,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::instance_transforms/to_raw",
+            "value": 2.4952823447685892,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::instancing_draw_call_reduction/calculate_savings/100x10",
+            "value": 43363.31015723969,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::instancing_draw_call_reduction/calculate_savings/10x100",
+            "value": 22532.186671748674,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::instancing_draw_call_reduction/calculate_savings/1x1000",
+            "value": 18472.17832362164,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::instancing_instance_manager/add_instances/100",
+            "value": 2119.866356417151,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::instancing_instance_manager/add_instances/1000",
+            "value": 18437.520466832382,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::instancing_instance_manager/add_instances/10000",
+            "value": 180921.76349770566,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::instancing_pattern_generation/circle_100",
+            "value": 1845.9183463989425,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::instancing_pattern_generation/grid_10x10",
+            "value": 468.1915009716074,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::instancing_pattern_generation/grid_with_variations",
+            "value": 2859.8901350313954,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::instancing_transformation/instance_to_raw",
+            "value": 2.4936257988879844,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::integrated_full_pipeline/compress_generate_lods_instance",
+            "value": 214363.16121848737,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::integrated_memory_savings/vertex_compression/1000",
+            "value": 0.6243110777746694,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::integrated_memory_savings/vertex_compression/10000",
+            "value": 0.6239384732182537,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::integrated_memory_savings/vertex_compression/100000",
+            "value": 0.6254842245468637,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::lod_generation_multi_level/generate_3_lods",
+            "value": 447742.43917717086,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::lod_generation_simplification/sphere_50_percent/1089",
+            "value": 1586194.3088314175,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::lod_generation_simplification/sphere_50_percent/289",
+            "value": 209382.66154316952,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::lod_generation_simplification/sphere_50_percent/81",
+            "value": 38880.382998925794,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::material_compile_64_nodes",
+            "value": 7882.379036701988,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::material_system/array_layout_add_10",
+            "value": 915.8385159140696,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::material_system/array_layout_lookup/10",
+            "value": 95.61978960167306,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::material_system/array_layout_lookup/100",
+            "value": 94.02673926349561,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::material_system/array_layout_lookup/50",
+            "value": 95.87632499193474,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::material_system/batch_to_gpu/10",
+            "value": 37.880850627735754,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::material_system/batch_to_gpu/100",
+            "value": 235.68150632207667,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::material_system/batch_to_gpu/50",
+            "value": 148.2123438552214,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::material_system/batch_to_gpu/500",
+            "value": 1150.9582875894987,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::material_system/load_stats_summary",
+            "value": 351.32746348647424,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::material_system/material_gpu_full_config",
+            "value": 4.98084387482856,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::material_system/material_gpu_neutral",
+            "value": 5.915618429573838,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::material_system/material_layer_new",
+            "value": 18.407346832525736,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::material_system/material_layer_to_gpu",
+            "value": 8.722924234438926,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::mesh_operations/compute_aabb/100",
+            "value": 220.71821003018113,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::mesh_operations/compute_aabb/1000",
+            "value": 2316.3574108465173,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::mesh_operations/compute_aabb/10000",
+            "value": 23515.952138394998,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::mesh_operations/compute_tangents/100",
+            "value": 4476.905489628108,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::mesh_operations/compute_tangents/1000",
+            "value": 42656.54252461951,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::mesh_operations/compute_tangents/500",
+            "value": 21818.05015743073,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::mesh_operations/generate_grid/128",
+            "value": 78294.89721311475,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::mesh_operations/generate_grid/16",
+            "value": 1396.9934022358152,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::mesh_operations/generate_grid/32",
+            "value": 5249.899289275486,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::mesh_operations/generate_grid/64",
+            "value": 19735.080524419533,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::mesh_operations/generate_grid/8",
+            "value": 519.9331760865559,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::mesh_operations/generate_quad",
+            "value": 38.586130870711195,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::mesh_operations/mesh_memory_size",
+            "value": 0.6222868244338017,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::mesh_operations/vertex_from_arrays",
+            "value": 2.491742732955216,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::mesh_operations/vertex_new",
+            "value": 6.84738457754928,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::mesh_registry/registry_lookup_existing",
+            "value": 91.45291325585531,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::mesh_registry/registry_lookup_missing",
+            "value": 31.05550374462975,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::mesh_registry/registry_new",
+            "value": 10.321064823273488,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::mesh_registry/registry_register/10",
+            "value": 1978.0752949087414,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::mesh_registry/registry_register/100",
+            "value": 27846.896604086145,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::mesh_registry/registry_register/50",
+            "value": 13364.178140837557,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::mesh_registry/registry_total_stats",
+            "value": 114.38101709083621,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::overlay_params/cinematic",
+            "value": 1.249898042820523,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::overlay_params/fade_to_black",
+            "value": 1.2687489302352444,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::overlay_params/interpolate_fade",
+            "value": 1.9676506110624292,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::overlay_params/new",
+            "value": 2.5005830504354263,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::overlay_params/none",
+            "value": 0.6240320549145009,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::pcf_shadow/3x3_samples",
+            "value": 0.6232701208654469,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::pcf_shadow/5x5_samples",
+            "value": 0.6230663362254277,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::pcf_shadow/shadow_pass_1k_pixels_3x3",
+            "value": 5624.696255709698,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::pcf_shadow/shadow_pass_1k_pixels_5x5",
+            "value": 15273.509465006986,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::primitive_generation/cube",
+            "value": 390.2251247640679,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::primitive_generation/cube_per_vertex",
+            "value": 409.79605241612126,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::primitive_generation/plane",
+            "value": 28.715317892445007,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::primitive_generation/sphere/16x16",
+            "value": 3910.3937904838067,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::primitive_generation/sphere/32x32",
+            "value": 14389.704996368917,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::primitive_generation/sphere/64x64",
+            "value": 55096.35637883008,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::primitive_generation/sphere/8x8",
+            "value": 1177.4738020007392,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::primitive_generation/sphere_16x16_per_vertex",
+            "value": 3932.9884919999995,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::render_graph/clear_node_new",
+            "value": 14.351753135573635,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::render_graph/full_pipeline_3_passes",
+            "value": 64.86368065106636,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::render_graph/graph_context_new",
+            "value": 5.309220206539967,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::render_graph/graph_execute/10",
+            "value": 241.49748564913108,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::render_graph/graph_execute/20",
+            "value": 446.6460476140934,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::render_graph/graph_execute/3",
+            "value": 30.6024352336618,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::render_graph/graph_execute/5",
+            "value": 70.93315948900508,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::render_graph/post_process_node_new",
+            "value": 32.098469387052475,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::render_graph/resource_table_insert",
+            "value": 210.86168378950165,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::render_graph/resource_table_lookup",
+            "value": 139.74542228699048,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::render_graph/scene_node_new",
+            "value": 31.57712602444003,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::rendering_frame_time/mock_full_render_pass",
+            "value": 0.3121600501644673,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::scene_environment/apply_weather/None",
+            "value": 0.6234846286149918,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::scene_environment/apply_weather/Rain",
+            "value": 0.6234170359710429,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::scene_environment/apply_weather/Sandstorm",
+            "value": 0.6240983129226018,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::scene_environment/apply_weather/Snow",
+            "value": 0.6232776236974535,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::scene_environment/apply_weather/WindTrails",
+            "value": 0.6238509272089275,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::scene_environment/default",
+            "value": 13.010514711633766,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::scene_environment/set_biome",
+            "value": 16.55885049013459,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::scene_environment/to_ubo",
+            "value": 8.882968467152764,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::shader_compilation/shader_parse_and_validate",
+            "value": 18405.807633508997,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::ssao_blur/bilateral_3x3",
+            "value": 2.63039715248803,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::ssao_blur/bilateral_5x5",
+            "value": 6.1925107663704875,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::ssao_blur/bilateral_7x7",
+            "value": 15.818183839356767,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::ssao_kernel/generate/16",
+            "value": 262.60730391103743,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::ssao_kernel/generate/32",
+            "value": 548.9915213987272,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::ssao_kernel/generate/64",
+            "value": 1156.5483340243597,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::ssao_kernel/generate/8",
+            "value": 130.8756591597261,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::ssao_occlusion/high_32_samples",
+            "value": 41.96199277300054,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::ssao_occlusion/low_8_samples",
+            "value": 12.11572691685881,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::ssao_occlusion/medium_16_samples",
+            "value": 19.53873669325879,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::ssao_occlusion/ultra_64_samples",
+            "value": 76.179061798005,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::taa_blend/full_taa_pixel",
+            "value": 107.6323188937311,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::taa_blend/neighborhood_clamp",
+            "value": 109.44782519958875,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::taa_blend/temporal_blend",
+            "value": 1.2467729060037933,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::taa_jitter/halton_sequence_16",
+            "value": 100.70762748244502,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::texture_operations/atlas_allocate/10",
+            "value": 150.65112618303252,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::texture_operations/atlas_allocate/100",
+            "value": 388.8153978789899,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::texture_operations/atlas_allocate/50",
+            "value": 274.2484598230423,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::texture_operations/atlas_allocate/500",
+            "value": 1313.779951135956,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::texture_operations/atlas_create",
+            "value": 6.847793380331105,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::texture_operations/atlas_occupied_count",
+            "value": 39.69973724435066,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::texture_operations/calculate_mip_levels/1024x1024",
+            "value": 1.8666867895121455,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::texture_operations/calculate_mip_levels/2048x2048",
+            "value": 1.870595552028071,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::texture_operations/calculate_mip_levels/256x256",
+            "value": 1.8670589879973387,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::texture_operations/calculate_mip_levels/4096x4096",
+            "value": 1.8714621921692545,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::texture_operations/calculate_mip_levels/512x512",
+            "value": 1.868651094699229,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::texture_operations/mip_size_chain",
+            "value": 16.530906222849445,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::texture_operations/mipmap_levels/1",
+            "value": 0.31213457317265925,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::texture_operations/mipmap_levels/3",
+            "value": 0.31312146827601256,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::texture_operations/mipmap_levels/7",
+            "value": 0.3123450130152197,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::texture_operations/texture_desc_full",
+            "value": 13.16168974343428,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::texture_operations/texture_desc_new",
+            "value": 6.544448329727324,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::texture_operations/texture_memory_size/1024x1024",
+            "value": 0.6235448288679795,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::texture_operations/texture_memory_size/256x256",
+            "value": 0.6226001572937923,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::texture_operations/texture_memory_size/4096x4096",
+            "value": 0.6225129986201511,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::texture_operations/texture_usage_format",
+            "value": 9.041637190185634,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::texture_operations/texture_usage_mipmaps",
+            "value": 7.472369837728858,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::transition_effect/full_transition_90_frames",
+            "value": 1562.5588544784682,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::transition_effect/new",
+            "value": 15.812879040933051,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::transition_effect/start",
+            "value": 27.458281731818214,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::transition_effect/update_per_frame",
+            "value": 8.995206830425646,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::vertex_compression_half_float/decode_vec2",
+            "value": 16.845811102898747,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::vertex_compression_half_float/encode_vec2",
+            "value": 33.159954655701,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::vertex_compression_memory_savings/calculate_savings/1000",
+            "value": 7.17075806745657,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::vertex_compression_memory_savings/calculate_savings/10000",
+            "value": 7.167646524915984,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::vertex_compression_memory_savings/calculate_savings/100000",
+            "value": 7.172301903312473,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::vertex_compression_memory_savings/calculate_savings/1000000",
+            "value": 7.168016102792133,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::vertex_compression_octahedral/decode",
+            "value": 24.491884834405383,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::vertex_compression_octahedral/encode",
+            "value": 38.77036973333048,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::vertex_compression_throughput/compress_batch/100",
+            "value": 736.2825663041159,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::vertex_compression_throughput/compress_batch/1000",
+            "value": 6738.223684438065,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::vertex_compression_throughput/compress_batch/10000",
+            "value": 67487.39639172179,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@a::vertex_compression_throughput/compress_batch/100000",
+            "value": 681633.7584894508,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::Blend_Mode_Filter/filter_additive",
+            "value": 1653.0098789313947,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::Blend_Mode_Filter/filter_all_modes",
+            "value": 4957.161790938279,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::Blend_Mode_Filter/filter_alpha",
+            "value": 1652.76529347863,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::Depth_Sorting/update_and_sort/100",
+            "value": 1755.2509745368716,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::Depth_Sorting/update_and_sort/1000",
+            "value": 22746.102639570196,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::Depth_Sorting/update_and_sort/10000",
+            "value": 356437.1479999999,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::Depth_Sorting/update_and_sort/2000",
+            "value": 51239.09823691459,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::Depth_Sorting/update_and_sort/500",
+            "value": 10850.753264873314,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::Depth_Sorting/update_and_sort/5000",
+            "value": 162415.16485507245,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::Full_Environment_Frame/storm_frame_5000_particles",
+            "value": 15242.682971506109,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::Full_Environment_Frame/transparency_with_weather_1000",
+            "value": 22785.40519418632,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::Full_Environment_Frame/typical_frame",
+            "value": 112.82079948963899,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::MSAA/memory_calc_1080p",
+            "value": 1.1528394878772903,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::MSAA/memory_calc_1440p",
+            "value": 1.157508760487653,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::MSAA/memory_calc_4K",
+            "value": 1.1532023103031341,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::MSAA/memory_calc_720p",
+            "value": 1.1529169896295945,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::MSAA/mode_is_enabled",
+            "value": 0.29847128094758363,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::MSAA/mode_sample_count",
+            "value": 0.3592739910623252,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::MSAA/render_target_new",
+            "value": 6.049468127476816,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::MSAA/render_target_set_mode",
+            "value": 0.5765627568121003,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::MSAA/resize_1080p",
+            "value": 0.5762911620768665,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::MSAA/resize_1440p",
+            "value": 0.5766460023287663,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::MSAA/resize_4K",
+            "value": 0.5770261452018164,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::MSAA/resize_720p",
+            "value": 0.5782754241210297,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::Streaming_Stress/high_churn_100_cycles",
+            "value": 376938.21330306365,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::Streaming_Stress/large_atlas_1000_textures",
+            "value": 795981.5669935837,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::Streaming_Stress/mixed_sizes_200_textures",
+            "value": 34032.29127529471,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::Texture_Streaming/evict_lru/100",
+            "value": 24015.335693347206,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::Texture_Streaming/evict_lru/1000",
+            "value": 220780.94513514356,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::Texture_Streaming/evict_lru/500",
+            "value": 128408.7010469989,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::Texture_Streaming/get_stats_500_textures",
+            "value": 553.2858844790592,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::Texture_Streaming/lru_touch_1000",
+            "value": 74.50550691820872,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::Texture_Streaming/manager_create/1024MB",
+            "value": 10.423204905792012,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::Texture_Streaming/manager_create/2048MB",
+            "value": 10.396106473104265,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::Texture_Streaming/manager_create/256MB",
+            "value": 10.39906175299096,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::Texture_Streaming/manager_create/512MB",
+            "value": 10.40580765725238,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::Texture_Streaming/priority_queue_push_pop_100",
+            "value": 8292.965232701372,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::Texture_Streaming/request_queue",
+            "value": 262.20002465373057,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::Texture_Streaming/request_resident",
+            "value": 73.85990703074775,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::Texture_Streaming/simulate_load/128MB_budget",
+            "value": 8654.19785631476,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::Texture_Streaming/simulate_load/2048MB_budget",
+            "value": 11122.298977429724,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::Texture_Streaming/simulate_load/512MB_budget",
+            "value": 11092.971966502944,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::Time_Of_Day/full_lighting_query",
+            "value": 6.910248616602686,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::Time_Of_Day/get_ambient_color",
+            "value": 0.7633592089595538,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::Time_Of_Day/get_light_color",
+            "value": 5.760789100802614,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::Time_Of_Day/get_light_direction",
+            "value": 0.763187222186014,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::Time_Of_Day/get_moon_position",
+            "value": 0.7625522619151257,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::Time_Of_Day/get_sun_position",
+            "value": 0.762936152646037,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::Time_Of_Day/new",
+            "value": 0.8638813218866364,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::Time_Of_Day/time_cycle_24h",
+            "value": 6.924086282532757,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::Transparency_Manager/add_instances/100",
+            "value": 1209.8354038402927,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::Transparency_Manager/add_instances/1000",
+            "value": 21917.760228034876,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::Transparency_Manager/add_instances/500",
+            "value": 9999.533015518817,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::Transparency_Manager/add_instances/5000",
+            "value": 130145.89133333333,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::Transparency_Manager/new",
+            "value": 2.9846222847773896,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::Transparency_Manager/with_capacity_1000",
+            "value": 92.50784733691165,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::VXGI_Cone_Tracing/generate_directions/1",
+            "value": 17.098307432981436,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::VXGI_Cone_Tracing/generate_directions/12",
+            "value": 293.003712187314,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::VXGI_Cone_Tracing/generate_directions/32",
+            "value": 761.5933343826295,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::VXGI_Cone_Tracing/generate_directions/4",
+            "value": 18.799110691306453,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::VXGI_Cone_Tracing/generate_directions/6",
+            "value": 18.473736937969953,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::VXGI_Cone_Tracing/indirect_batch/100",
+            "value": 158068.66134251622,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::VXGI_Cone_Tracing/indirect_batch/1000",
+            "value": 1577895.805361454,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::VXGI_Cone_Tracing/indirect_lighting/1_cones",
+            "value": 243.05968093593003,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::VXGI_Cone_Tracing/indirect_lighting/4_cones",
+            "value": 825.5558705497721,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::VXGI_Cone_Tracing/indirect_lighting/6_cones",
+            "value": 1202.1636393448111,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::VXGI_Cone_Tracing/single_cone_trace/100m",
+            "value": 446.40151678015906,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::VXGI_Cone_Tracing/single_cone_trace/25m",
+            "value": 193.02464685582422,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::VXGI_Cone_Tracing/single_cone_trace/50m",
+            "value": 256.3221519673139,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::VXGI_Grid/create/128_3",
+            "value": 16984024.56,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::VXGI_Grid/create/256_3",
+            "value": 138334648.92,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::VXGI_Grid/create/64_3",
+            "value": 158507.8700395839,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::VXGI_Grid/get_voxel",
+            "value": 1.6102936406862438,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::VXGI_Grid/set_voxel",
+            "value": 2.465519892768802,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::VXGI_Grid/trilinear_batch/100",
+            "value": 3917.006455447602,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::VXGI_Grid/trilinear_batch/1000",
+            "value": 39264.56995077614,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::VXGI_Grid/trilinear_batch/10000",
+            "value": 392696.54863722884,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::VXGI_Grid/trilinear_sample/128_3",
+            "value": 63.61331282708462,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::VXGI_Grid/trilinear_sample/256_3",
+            "value": 64.00778530960578,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::VXGI_Grid/trilinear_sample/64_3",
+            "value": 63.61231884678683,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::VXGI_Grid/world_to_voxel",
+            "value": 29.731614739835813,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::VXGI_Voxelization/voxelize_mesh/1000_tris",
+            "value": 1028229.9800258637,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::VXGI_Voxelization/voxelize_mesh/100_tris",
+            "value": 226546.4745988296,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::VXGI_Voxelization/voxelize_mesh/500_tris",
+            "value": 801180.8874714669,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::VXGI_Voxelization/voxelize_triangle_large",
+            "value": 1401.6237836276973,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::VXGI_Voxelization/voxelize_triangle_small",
+            "value": 39.987757600643036,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::Weather_Particles/new_1000",
+            "value": 90.62391777595703,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::Weather_Particles/new_10000",
+            "value": 90.233513278181,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::Weather_Particles/spawn_rain/100",
+            "value": 2858.0275970403427,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::Weather_Particles/spawn_rain/1000",
+            "value": 101188.26901734102,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::Weather_Particles/spawn_rain/500",
+            "value": 16161.679068262698,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::Weather_Particles/spawn_rain/5000",
+            "value": 663260.5,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::Weather_Particles/spawn_snow/100",
+            "value": 2936.350660622148,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::Weather_Particles/spawn_snow/1000",
+            "value": 106858.0789034565,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::Weather_Particles/spawn_snow/500",
+            "value": 16928.481546707502,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::Weather_Particles/spawn_snow/5000",
+            "value": 685976.0587412588,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::Weather_Particles/update_rain/100",
+            "value": 1.4430378079329749,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::Weather_Particles/update_rain/1000",
+            "value": 1.4426882900333122,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::Weather_Particles/update_rain/500",
+            "value": 1.4423508531139044,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::Weather_Particles/update_rain/5000",
+            "value": 1.6622129055778345,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::Weather_Particles/update_snow/100",
+            "value": 1.7311220191883205,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::Weather_Particles/update_snow/1000",
+            "value": 62.99231485312369,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::Weather_Particles/update_snow/500",
+            "value": 14.250970297029705,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::Weather_Particles/update_snow/5000",
+            "value": 1256.97052064632,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::Weather_System/all_weather_types_query",
+            "value": 119.63792359076584,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::Weather_System/get_all_intensities",
+            "value": 6.048291719186944,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::Weather_System/get_light_attenuation",
+            "value": 0.33823371321736106,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::Weather_System/get_terrain_modifier",
+            "value": 0.8644798055592876,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::Weather_System/new",
+            "value": 23.33155862716897,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::Weather_System/set_weather_instant",
+            "value": 17.385333135291418,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::Weather_System/set_weather_transition",
+            "value": 17.291525309867055,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::Weather_System/update",
+            "value": 79.31024637669444,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::animation_blending/crossfade_20_joints",
+            "value": 168.95356912366876,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::animation_blending/crossfade_stress/100",
+            "value": 803.6289853541327,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::animation_blending/crossfade_stress/200",
+            "value": 1528.3306162713075,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::animation_blending/crossfade_stress/50",
+            "value": 438.9190157291665,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::animation_full_frame/characters/1",
+            "value": 1608.2927799192746,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::animation_full_frame/characters/10",
+            "value": 15573.469827044217,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::animation_full_frame/characters/100",
+            "value": 152930.859141074,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::animation_full_frame/characters/50",
+            "value": 75868.44238016088,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::animation_hierarchy/forward_kinematics/100",
+            "value": 1936.426452463157,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::animation_hierarchy/forward_kinematics/20",
+            "value": 419.82301454668345,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::animation_hierarchy/forward_kinematics/200",
+            "value": 3840.994405820167,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::animation_hierarchy/forward_kinematics/50",
+            "value": 983.5489123911909,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::animation_joint_palette/humanoid_20_joints",
+            "value": 930.7178789541367,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::animation_joint_palette/stress/100",
+            "value": 3621.6667492105353,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::animation_joint_palette/stress/200",
+            "value": 6067.691271139034,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::animation_joint_palette/stress/50",
+            "value": 1937.9459431940104,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::animation_keyframe_search/binary/16",
+            "value": 8.074465460329787,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::animation_keyframe_search/binary/256",
+            "value": 10.184005600117052,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::animation_keyframe_search/binary/4",
+            "value": 7.498205423339637,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::animation_keyframe_search/binary/64",
+            "value": 8.644131880035964,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::animation_keyframe_search/linear/16",
+            "value": 12.335040594839711,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::animation_keyframe_search/linear/256",
+            "value": 203.6540267141987,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::animation_keyframe_search/linear/4",
+            "value": 7.203952968091687,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::animation_keyframe_search/linear/64",
+            "value": 47.89990274401244,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::animation_matrix/multiply",
+            "value": 6.66761047449251,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::animation_matrix/quat_to_rotation",
+            "value": 1.187656857181652,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::animation_sample/humanoid_20_joints",
+            "value": 546.6574515781232,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::animation_sample/stress/100",
+            "value": 2635.6334495505766,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::animation_sample/stress/200",
+            "value": 5416.2262641606085,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::animation_sample/stress/50",
+            "value": 1364.3844209987265,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::animation_transform/lerp",
+            "value": 31.89533439749726,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::animation_transform/quat_slerp",
+            "value": 27.31219695058276,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::animation_transform/to_matrix",
+            "value": 7.489610703369917,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::animation_transform/vec3_lerp",
+            "value": 1.204063626610928,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::cpu_light_culling/bin_lights_cpu/100",
+            "value": 287233.87335478055,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::cpu_light_culling/bin_lights_cpu/1000",
+            "value": 3023575.064705882,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::cpu_light_culling/bin_lights_cpu/2000",
+            "value": 5842651.301111113,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::cpu_light_culling/bin_lights_cpu/250",
+            "value": 610733.2374726005,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::cpu_light_culling/bin_lights_cpu/500",
+            "value": 1428688.0545183402,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::gpu_particles_culling/frustum_cull/10000",
+            "value": 12576.041605951123,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::gpu_particles_culling/frustum_cull/100000",
+            "value": 235068.0860357615,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::gpu_particles_culling/frustum_cull/50000",
+            "value": 114198.3040748256,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::gpu_particles_emission/emit_particles/100",
+            "value": 465.1901960176469,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::gpu_particles_emission/emit_particles/1000",
+            "value": 4491.510760440233,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::gpu_particles_emission/emit_particles/500",
+            "value": 2264.9621219165465,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::gpu_particles_emission/emit_particles/5000",
+            "value": 22332.55629094872,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::gpu_particles_full_frame/update_cull_sort/10000",
+            "value": 895213.7727459186,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::gpu_particles_full_frame/update_cull_sort/100000",
+            "value": 12752607.4075,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::gpu_particles_full_frame/update_cull_sort/50000",
+            "value": 5670107.80777778,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::gpu_particles_sorting/depth_sort/1000",
+            "value": 2246.1980648915605,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::gpu_particles_sorting/depth_sort/10000",
+            "value": 22758.988731662175,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::gpu_particles_sorting/depth_sort/5000",
+            "value": 11159.84997882551,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::gpu_particles_sorting/depth_sort/50000",
+            "value": 182220.29643821839,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::gpu_particles_update/update_particles/1000",
+            "value": 1954.9202728503137,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::gpu_particles_update/update_particles/10000",
+            "value": 20596.70365580372,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::gpu_particles_update/update_particles/100000",
+            "value": 231224.836733693,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::gpu_particles_update/update_particles/50000",
+            "value": 115880.90190911078,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::ibl_deferred_brdf_lut/generate_full_lut/128x128",
+            "value": 25002576.4,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::ibl_deferred_brdf_lut/generate_full_lut/64x64",
+            "value": 6294964.775,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::ibl_deferred_brdf_lut/generate_row/128",
+            "value": 198775.24016563143,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::ibl_deferred_brdf_lut/generate_row/256",
+            "value": 395843.66831275716,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::ibl_deferred_brdf_lut/generate_row/64",
+            "value": 100032.84716981131,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::ibl_deferred_brdf_lut/integrate_single_sample/1024",
+            "value": 0.3294344084385691,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::ibl_deferred_brdf_lut/integrate_single_sample/256",
+            "value": 0.3172213695244901,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::ibl_deferred_brdf_lut/integrate_single_sample/64",
+            "value": 0.31606905781311806,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::ibl_deferred_cubemap_sampling/batch_sample_1k_directions",
+            "value": 9905.266659900539,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::ibl_deferred_cubemap_sampling/bilinear_sample/1024x1024",
+            "value": 8.81347123777633,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::ibl_deferred_cubemap_sampling/bilinear_sample/128x128",
+            "value": 8.837113902250582,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::ibl_deferred_cubemap_sampling/bilinear_sample/256x256",
+            "value": 8.810422702058677,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::ibl_deferred_cubemap_sampling/bilinear_sample/512x512",
+            "value": 8.800178324875146,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::ibl_deferred_cubemap_sampling/bilinear_sample/64x64",
+            "value": 8.813705522941277,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::ibl_deferred_cubemap_sampling/direction_to_uv_1k",
+            "value": 2462.631266778734,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::ibl_deferred_deferred_lighting/accumulate_lights/1000",
+            "value": 24402.267983316975,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::ibl_deferred_deferred_lighting/accumulate_lights/128",
+            "value": 3129.8622089739565,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::ibl_deferred_deferred_lighting/accumulate_lights/32",
+            "value": 784.9986224390244,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::ibl_deferred_deferred_lighting/accumulate_lights/512",
+            "value": 12505.867439808393,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::ibl_deferred_deferred_lighting/accumulate_lights/8",
+            "value": 198.36763652357212,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::ibl_deferred_deferred_lighting/process_1k_pixels/32lights",
+            "value": 799411.3376,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::ibl_deferred_deferred_lighting/process_1k_pixels/8lights",
+            "value": 198778.08505050506,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::ibl_deferred_deferred_lighting/single_point_light",
+            "value": 24.622831744023426,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::ibl_deferred_gbuffer_operations/gbuffer_fill_simulation/1280x720",
+            "value": 533746.3994565217,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::ibl_deferred_gbuffer_operations/gbuffer_fill_simulation/1920x1080",
+            "value": 1195450.922891566,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::ibl_deferred_gbuffer_operations/gbuffer_fill_simulation/2560x1440",
+            "value": 2125523.3333333335,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::ibl_deferred_gbuffer_operations/gbuffer_fill_simulation/3840x2160",
+            "value": 4876275.038095238,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::ibl_deferred_gbuffer_operations/pack_gbuffer_pixel_1k",
+            "value": 7985.913025384936,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::ibl_deferred_gbuffer_operations/pack_normal_octahedral_1k",
+            "value": 4978.933662617811,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::ibl_deferred_gbuffer_operations/unpack_gbuffer_pixel_1k",
+            "value": 7710.290703264324,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::ibl_deferred_gbuffer_operations/unpack_normal_octahedral_1k",
+            "value": 5094.3049554166255,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::ibl_deferred_ggx_importance_sampling/hammersley_sequence/1024",
+            "value": 9285.47281691476,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::ibl_deferred_ggx_importance_sampling/hammersley_sequence/256",
+            "value": 1863.1689375643546,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::ibl_deferred_ggx_importance_sampling/hammersley_sequence/4096",
+            "value": 44488.472538392045,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::ibl_deferred_ggx_importance_sampling/hammersley_sequence/64",
+            "value": 349.20608754766687,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::ibl_deferred_ggx_importance_sampling/prefilter_kernel/n1024_r0.25",
+            "value": 21046.03578880136,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::ibl_deferred_ggx_importance_sampling/prefilter_kernel/n1024_r0.50",
+            "value": 21055.371795980114,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::ibl_deferred_ggx_importance_sampling/prefilter_kernel/n1024_r0.75",
+            "value": 21043.35657421131,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::ibl_deferred_ggx_importance_sampling/prefilter_kernel/n256_r0.25",
+            "value": 4859.500940438871,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::ibl_deferred_ggx_importance_sampling/prefilter_kernel/n256_r0.50",
+            "value": 4856.027873177045,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::ibl_deferred_ggx_importance_sampling/prefilter_kernel/n256_r0.75",
+            "value": 4862.113751979415,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::ibl_deferred_ggx_importance_sampling/prefilter_kernel/n64_r0.25",
+            "value": 1087.4450962884573,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::ibl_deferred_ggx_importance_sampling/prefilter_kernel/n64_r0.50",
+            "value": 1088.2652508238739,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::ibl_deferred_ggx_importance_sampling/prefilter_kernel/n64_r0.75",
+            "value": 1088.5804030215554,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::ibl_deferred_ggx_importance_sampling/single_sample/r0.10",
+            "value": 18.18270767841042,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::ibl_deferred_ggx_importance_sampling/single_sample/r0.25",
+            "value": 18.19222611878495,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::ibl_deferred_ggx_importance_sampling/single_sample/r0.50",
+            "value": 18.210400849258182,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::ibl_deferred_ggx_importance_sampling/single_sample/r0.75",
+            "value": 18.24272126039832,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::ibl_deferred_ggx_importance_sampling/single_sample/r1.00",
+            "value": 18.177019061251688,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::ibl_deferred_spherical_harmonics/evaluate_basis/SH16",
+            "value": 20.458659889390383,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::ibl_deferred_spherical_harmonics/evaluate_basis/SH25",
+            "value": 40.9476074804995,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::ibl_deferred_spherical_harmonics/evaluate_basis/SH9",
+            "value": 17.552611785118813,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::ibl_deferred_spherical_harmonics/generate_coefficients/SH16",
+            "value": 22580656.52,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::ibl_deferred_spherical_harmonics/generate_coefficients/SH25",
+            "value": 33313246.9,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::ibl_deferred_spherical_harmonics/generate_coefficients/SH9",
+            "value": 17012570.83,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::ibl_deferred_spherical_harmonics/reconstruct_irradiance_sh16",
+            "value": 23.16061515887752,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::ibl_deferred_spherical_harmonics/reconstruct_irradiance_sh25",
+            "value": 47.998458173738975,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::ibl_deferred_spherical_harmonics/reconstruct_irradiance_sh9",
+            "value": 15.866517059755497,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::water_full_frame/animate_full/128",
+            "value": 1492986.8302046263,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::water_full_frame/animate_full/256",
+            "value": 5923657.15111111,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::water_full_frame/animate_full/64",
+            "value": 379684.0833804793,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::water_gerstner_combined/displacement_4waves",
+            "value": 38.43007588176984,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::water_gerstner_combined/foam_calculation",
+            "value": 39.876765544414624,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::water_gerstner_combined/fresnel",
+            "value": 0.9220083498111218,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::water_gerstner_combined/normal_4waves",
+            "value": 45.35938323253565,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::water_gerstner_single/displacement",
+            "value": 8.926289293266365,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::water_gerstner_single/normal",
+            "value": 8.956853477475942,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::water_grid_generation/generate_indices/128",
+            "value": 72090.57565386765,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::water_grid_generation/generate_indices/256",
+            "value": 296404.25118357467,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::water_grid_generation/generate_indices/32",
+            "value": 3737.1027970925306,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::water_grid_generation/generate_indices/64",
+            "value": 18298.01151701295,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::water_grid_generation/generate_vertices/128",
+            "value": 31687.360195750407,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::water_grid_generation/generate_vertices/256",
+            "value": 131880.28860404022,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::water_grid_generation/generate_vertices/32",
+            "value": 1835.5456809507443,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::water_grid_generation/generate_vertices/64",
+            "value": 8435.521888130917,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::water_surface/animate_grid/128",
+            "value": 659087.0158136869,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::water_surface/animate_grid/256",
+            "value": 2619140.986842105,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::water_surface/animate_grid/32",
+            "value": 43581.92431013825,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::water_surface/animate_grid/64",
+            "value": 168177.1709829265,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::water_surface/calculate_normals/128",
+            "value": 744153.7528205751,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::water_surface/calculate_normals/256",
+            "value": 2968314.5558823524,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::water_surface/calculate_normals/32",
+            "value": 49198.22543648876,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@b::water_surface/calculate_normals/64",
+            "value": 190029.23299136225,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::Cascade_Splitting/build_cascades/2",
+            "value": 211.08999972394977,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::Cascade_Splitting/build_cascades/4",
+            "value": 377.9879327699769,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::Cascade_Splitting/build_cascades/6",
+            "value": 569.160653142582,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::Cascade_Splitting/build_cascades/8",
+            "value": 734.2258351605941,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::Cascade_Splitting/calculate_splits_4_cascades",
+            "value": 42.53277676928061,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::Cascade_Splitting/calculate_splits_8_cascades",
+            "value": 75.76582453484257,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::Cascade_Splitting/select_cascade_far",
+            "value": 3.0909155289587193,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::Cascade_Splitting/select_cascade_mid",
+            "value": 1.8740661602561772,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::Cascade_Splitting/select_cascade_near",
+            "value": 1.2486826201564023,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::Cluster_Grid/create/16x9x24",
+            "value": 8303.976872315969,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::Cluster_Grid/create/32x18x48",
+            "value": 64228.42672314465,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::Cluster_Grid/create/64x36x96",
+            "value": 520652.0169304926,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::Cluster_Grid/single_cluster_access",
+            "value": 0.9345237184304864,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::Cull_Stats/visibility/10%",
+            "value": 52007.59475008089,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::Cull_Stats/visibility/50%",
+            "value": 167588.46598767088,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::Cull_Stats/visibility/90%",
+            "value": 283264.5266248618,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::Full_Shadow_Pass/2_cascades/10000",
+            "value": 271303.5832224801,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::Full_Shadow_Pass/2_cascades/100000",
+            "value": 2787926.1221052622,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::Full_Shadow_Pass/4_cascades/10000",
+            "value": 280151.2347625628,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::Full_Shadow_Pass/4_cascades/100000",
+            "value": 2854156.0666666673,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::GpuCamera/from_matrix_1080p",
+            "value": 51.30053197978198,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::GpuCamera/from_matrix_4K",
+            "value": 50.95094670085341,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::HiZ_Pyramid/build/1920x1080",
+            "value": 2644444.807368421,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::HiZ_Pyramid/build/2560x1440",
+            "value": 4935043.419999999,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::HiZ_Pyramid/build/3840x2160",
+            "value": 11849036.939999992,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::HiZ_Pyramid/downsample_single_level",
+            "value": 1819208.4266517183,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::HiZ_Pyramid/sample_mip0",
+            "value": 2.6017667483054,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::HiZ_Pyramid/sample_mip4",
+            "value": 2.80880173495874,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::Light_Binning/cpu_full_pipeline/100",
+            "value": 1950848.416021947,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::Light_Binning/cpu_full_pipeline/1000",
+            "value": 16682095.647279726,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::Light_Binning/cpu_full_pipeline/2000",
+            "value": 32757570.883333333,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::Light_Binning/cpu_full_pipeline/500",
+            "value": 8609693.033397524,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::Light_Binning/cpu_full_pipeline/5000",
+            "value": 81127369.38888888,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::Light_Binning/density/high_density",
+            "value": 132560253.21666667,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::Light_Binning/density/low_density",
+            "value": 2798689.1491004312,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::Light_Binning/density/standard",
+            "value": 16689315.011667777,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::Light_Intersection/cone_sphere_hit",
+            "value": 5.992132331598867,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::Light_Intersection/cone_sphere_miss",
+            "value": 5.97827774676787,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::Light_Intersection/sphere_aabb_hit",
+            "value": 2.8847718576529844,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::Light_Intersection/sphere_aabb_miss",
+            "value": 3.512177220534168,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::Light_Intersection/sphere_sphere_hit",
+            "value": 3.3182265771021844,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::Light_Intersection/sphere_sphere_miss",
+            "value": 3.3309828788024403,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::MegaLights_Scaling/intersection_density/16x9x24",
+            "value": 7537933.287899865,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::MegaLights_Scaling/intersection_density/32x18x48",
+            "value": 60246712.929999985,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::MegaLights_Scaling/intersection_density/64x36x96",
+            "value": 478822310.45,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::MegaLights_Scaling/workgroup_calc/16x9x24",
+            "value": 5.916559930986655,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::MegaLights_Scaling/workgroup_calc/32x18x48",
+            "value": 5.9268663937542065,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::MegaLights_Scaling/workgroup_calc/64x36x96",
+            "value": 5.92609242892723,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::Meshlet_Culling/backface_single",
+            "value": 10.949226582247961,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::Meshlet_Culling/frustum_single_culled",
+            "value": 2.810590213496773,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::Meshlet_Culling/frustum_single_visible",
+            "value": 5.5313373911794566,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::Meshlet_Culling/full_cull/1000",
+            "value": 12989.478963370177,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::Meshlet_Culling/full_cull/10000",
+            "value": 155432.89814422117,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::Meshlet_Culling/full_cull/5000",
+            "value": 65072.553150478176,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::Meshlet_Culling/full_cull/50000",
+            "value": 1523250.307587381,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::Meshlet_Culling/occlusion_single",
+            "value": 24.568426298468452,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::PCF_Sampling/batch_5x5/1000",
+            "value": 38646.36316838797,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::PCF_Sampling/batch_5x5/10000",
+            "value": 473084.6143765348,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::PCF_Sampling/batch_5x5/100000",
+            "value": 4821622.316363634,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::PCF_Sampling/kernel/3x3",
+            "value": 35.18423137937475,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::PCF_Sampling/kernel/5x5",
+            "value": 79.75895778644146,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::PCF_Sampling/kernel/7x7",
+            "value": 149.6332127942075,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::PCF_Sampling/kernel/9x9",
+            "value": 238.5190506661448,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::Prefix_Sum/blelloch/1024",
+            "value": 1841.7479764228756,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::Prefix_Sum/blelloch/16384",
+            "value": 30518.553261487214,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::Prefix_Sum/blelloch/4096",
+            "value": 6910.057403708186,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::Prefix_Sum/blelloch/65536",
+            "value": 127035.24765269531,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::Prefix_Sum/sequential/1024",
+            "value": 726.9563629650116,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::Prefix_Sum/sequential/16384",
+            "value": 11040.654850064395,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::Prefix_Sum/sequential/4096",
+            "value": 2789.722524893253,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::Prefix_Sum/sequential/65536",
+            "value": 44478.17584574055,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::Residency_Manager/create",
+            "value": 8.114973701523308,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::Residency_Manager/evict_by_priority",
+            "value": 2288375.8638095227,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::Residency_Manager/evict_lru",
+            "value": 9101.211433229839,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::Residency_Manager/hot_reload",
+            "value": 52082.00797196723,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::Residency_Manager/load_new_asset",
+            "value": 157.7312480809594,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::Residency_Manager/touch_asset",
+            "value": 73.41802065238035,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::Residency_Stress/frame_simulation_100_frames",
+            "value": 211131.75282770346,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::Residency_Stress/high_churn/100",
+            "value": 19102.790166682975,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::Residency_Stress/high_churn/1000",
+            "value": 172776.97904226676,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::Residency_Stress/high_churn/500",
+            "value": 87784.66193599279,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::Residency_Stress/large_assets_pressure",
+            "value": 16510.408157446753,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::Shadow_Matrix/calculate_projection",
+            "value": 62.471537451290395,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::Shadow_Matrix/to_gpu_cascade",
+            "value": 3.7418390507964903,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::VSM_Sampling/batch/1000",
+            "value": 2124.0947868448316,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::VSM_Sampling/batch/10000",
+            "value": 21264.911176855112,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::VSM_Sampling/batch/100000",
+            "value": 212282.55976810187,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::VSM_Sampling/calculate_moments",
+            "value": 0.9202390826657227,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::VSM_Sampling/chebyshev_bound",
+            "value": 2.076211589335248,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::advanced_post_processing/color_grading_apply",
+            "value": 3.523845111472327,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::advanced_post_processing/color_grading_config_default",
+            "value": 8.099847299066091,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::advanced_post_processing/dof_calculate_coc",
+            "value": 1.7288994227270593,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::advanced_post_processing/dof_coc_at_depth/10m",
+            "value": 1.2521761445375743,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::advanced_post_processing/dof_coc_at_depth/15m",
+            "value": 1.8727047609769538,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::advanced_post_processing/dof_coc_at_depth/20m",
+            "value": 1.8779395949324058,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::advanced_post_processing/dof_coc_at_depth/50m",
+            "value": 1.8735051746028628,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::advanced_post_processing/dof_coc_at_depth/5m",
+            "value": 1.9992037691046995,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::advanced_post_processing/dof_config_default",
+            "value": 6.233621858899637,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::advanced_post_processing/full_post_process_setup",
+            "value": 1.2459338593440037,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::advanced_post_processing/halton_sequence",
+            "value": 16.841971890848438,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::advanced_post_processing/motion_blur_config_default",
+            "value": 2.4906559441975658,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::advanced_post_processing/post_process_config_default",
+            "value": 10.280703589282433,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::advanced_post_processing/taa_config_default",
+            "value": 8.094971783126107,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::advanced_post_processing/taa_halton_jitter",
+            "value": 15.386921364263282,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::combined_scenarios/depth_overlay_frame",
+            "value": 9.347049842463946,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::combined_scenarios/full_render_frame_setup",
+            "value": 598.9229166005572,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::combined_scenarios/memory_allocation_batch",
+            "value": 3.740514548233583,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::combined_scenarios/multi_skeleton_batch_10",
+            "value": 8378.067674498963,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::combined_scenarios/resolution_change",
+            "value": 6.5384254625024765,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::combined_scenarios/skeletal_frame_64_joints",
+            "value": 1366.2676183497401,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::combined_scenarios/terrain_full_setup",
+            "value": 21.86501937118091,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::decals/atlas_uv_lookup",
+            "value": 13.002183951971238,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::decals/fade_update/100",
+            "value": 78.53578241764454,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::decals/fade_update/1000",
+            "value": 821.2855423925312,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::decals/fade_update/500",
+            "value": 398.13184197463903,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::decals/full_update/200",
+            "value": 952.3649580049729,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::decals/full_update/50",
+            "value": 255.07348285927478,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::decals/full_update/500",
+            "value": 2412.061053741698,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::decals/gpu_decal_size",
+            "value": 0.6249334008573587,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::decals/to_gpu_batch/10",
+            "value": 100.82511979569719,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::decals/to_gpu_batch/100",
+            "value": 659.7615752438559,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::decals/to_gpu_batch/1000",
+            "value": 6309.832678310439,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::decals/to_gpu_batch/500",
+            "value": 3177.317823102546,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::decals/to_gpu_single",
+            "value": 10.603941547239069,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::depth_buffer/buffer_creation",
+            "value": 7.275520388529141,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::depth_buffer/buffer_memory_size",
+            "value": 0.6238784543168602,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::depth_buffer/buffer_resize",
+            "value": 1.2451691070698874,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::depth_buffer/desc_aspect_ratio",
+            "value": 0.6376170384487978,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::depth_buffer/desc_creation",
+            "value": 3.737995454300962,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::depth_buffer/desc_memory_size",
+            "value": 0.6233281064342389,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::depth_buffer/desc_with_msaa",
+            "value": 2.491173369079858,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::depth_buffer/format_bytes_per_pixel",
+            "value": 0.6230339690577431,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::depth_buffer/format_has_stencil",
+            "value": 0.6228264770653283,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::depth_buffer/memory_size_resolution/1280x720",
+            "value": 0.6234119363821533,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::depth_buffer/memory_size_resolution/1920x1080",
+            "value": 0.6236689051102572,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::depth_buffer/memory_size_resolution/2560x1440",
+            "value": 0.6237317156199174,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::depth_buffer/memory_size_resolution/3840x2160",
+            "value": 0.6256181344761531,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::gpu_memory_budget/allocation_throughput/10",
+            "value": 17.78760987660221,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::gpu_memory_budget/allocation_throughput/100",
+            "value": 114.02636343445594,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::gpu_memory_budget/allocation_throughput/1000",
+            "value": 1035.6308594245152,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::gpu_memory_budget/can_allocate_check",
+            "value": 0.9341738723172035,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::gpu_memory_budget/category_all_iteration",
+            "value": 0.6228731671961414,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::gpu_memory_budget/category_remaining",
+            "value": 0.623686832374926,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::gpu_memory_budget/category_report",
+            "value": 19.569089064250015,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::gpu_memory_budget/free",
+            "value": 1.2384526331019976,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::gpu_memory_budget/manager_creation_custom_4gb",
+            "value": 14.437101429894872,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::gpu_memory_budget/manager_creation_default",
+            "value": 14.357256915487781,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::gpu_memory_budget/pressure_level",
+            "value": 0.6389518905068015,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::gpu_memory_budget/try_allocate",
+            "value": 1.8536567345655999,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::gpu_memory_budget/usage_ratio",
+            "value": 0.6257330941797362,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::overlay_effects/animation_sequence_10_frames",
+            "value": 0.6235188095447701,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::overlay_effects/as_bytes",
+            "value": 0.6236797224722922,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::overlay_effects/is_active",
+            "value": 0.6226583561798238,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::overlay_effects/params_default",
+            "value": 0.6235302192103895,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::overlay_effects/params_lerp",
+            "value": 1.645274717227645,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::overlay_effects/set_fade",
+            "value": 2.1810584789419645,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::overlay_effects/set_letterbox",
+            "value": 2.1831815314706975,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::overlay_effects/set_vignette",
+            "value": 6.225834015423368,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::overlay_effects/size_constant",
+            "value": 0.6226109494251284,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::skinning_gpu/get_matrix",
+            "value": 11.378589996108817,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::skinning_gpu/handle_creation",
+            "value": 0.9343663848036192,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::skinning_gpu/manager_allocate",
+            "value": 18840.273015733495,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::skinning_gpu/manager_creation",
+            "value": 8.962308218409365,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::skinning_gpu/manager_free",
+            "value": 866.1507644637244,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::skinning_gpu/manager_get",
+            "value": 13.117578300802908,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::skinning_gpu/manager_upload",
+            "value": 575.2501410060273,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::skinning_gpu/palette_as_bytes",
+            "value": 0.6288124495489527,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::skinning_gpu/palette_default",
+            "value": 335.73772113746566,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::skinning_gpu/palette_from_identity/128",
+            "value": 677.562594552412,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::skinning_gpu/palette_from_identity/16",
+            "value": 527.5075823765367,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::skinning_gpu/palette_from_identity/256",
+            "value": 833.9232779732699,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::skinning_gpu/palette_from_identity/64",
+            "value": 587.1972160247735,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::skinning_gpu/palette_size_constant",
+            "value": 0.6227046180853846,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::skinning_gpu/set_matrix",
+            "value": 3.116800103956385,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::ssr/binary_refine/16",
+            "value": 278.67145094019514,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::ssr/binary_refine/4",
+            "value": 55.76625075998232,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::ssr/binary_refine/8",
+            "value": 130.9135393269715,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::ssr/cone_trace_r/0",
+            "value": 190.95219854554148,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::ssr/cone_trace_r/100",
+            "value": 1725.2627200142012,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::ssr/cone_trace_r/25",
+            "value": 576.3440316282353,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::ssr/cone_trace_r/50",
+            "value": 957.9605118671752,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::ssr/fullscreen/1280x720",
+            "value": 1452798.3058632864,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::ssr/fullscreen/320x180",
+            "value": 89070.17478073087,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::ssr/fullscreen/640x360",
+            "value": 359467.83114561776,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::ssr/ray_march/128",
+            "value": 596.401991242206,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::ssr/ray_march/16",
+            "value": 81.72357367526438,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::ssr/ray_march/32",
+            "value": 156.96097230721875,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::ssr/ray_march/64",
+            "value": 307.8601513095777,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::terrain_materials/compute_layer_weight",
+            "value": 1.4220509826583156,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::terrain_materials/get_layer",
+            "value": 0.968493434686177,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::terrain_materials/layer_gpu_default",
+            "value": 2.5307379185138927,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::terrain_materials/layer_gpu_new",
+            "value": 7.164965286559688,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::terrain_materials/layer_set_height_blend",
+            "value": 8.4533804774912,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::terrain_materials/layer_set_material",
+            "value": 3.7489324358093112,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::terrain_materials/normalize_weights",
+            "value": 10.67215089679188,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::terrain_materials/set_splat_map",
+            "value": 19.339253573657025,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::terrain_materials/set_triplanar",
+            "value": 20.89049353610835,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::terrain_materials/size_constant_layer",
+            "value": 0.6225189715477664,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::terrain_materials/size_constant_material",
+            "value": 0.6223764420591763,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::terrain_materials/terrain_material_default",
+            "value": 20.118511736239512,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::terrain_materials/terrain_material_with_layers",
+            "value": 24.34999508230961,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::weather/full_frame/1000",
+            "value": 11695.95701616592,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::weather/full_frame/2000",
+            "value": 23223.339933374635,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::weather/full_frame/500",
+            "value": 5912.3956506260765,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::weather/spawn_rain",
+            "value": 8.728038939507911,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::weather/spawn_rain_batch/100",
+            "value": 547.6665707116601,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::weather/spawn_rain_batch/1000",
+            "value": 5122.391256413051,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::weather/spawn_rain_batch/500",
+            "value": 2602.3474667240434,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::weather/spawn_rain_batch/5000",
+            "value": 25391.89330965301,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::weather/spawn_wind",
+            "value": 8.726922280370841,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::weather/to_instance_batch/100",
+            "value": 410.7432152081898,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::weather/to_instance_batch/1000",
+            "value": 3862.664041046024,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::weather/to_instance_batch/500",
+            "value": 1957.6231763602698,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::weather/to_instance_batch/5000",
+            "value": 19616.372461677176,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::weather/to_instance_single",
+            "value": 13.010556533512883,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::weather/update_batch/100",
+            "value": 166.1297107095982,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::weather/update_batch/1000",
+            "value": 1706.2231116807054,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::weather/update_batch/500",
+            "value": 815.8921145551535,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::weather/update_batch/5000",
+            "value": 8778.90270105268,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-render@c::weather/update_single",
+            "value": 3.747259639742756,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-dialogue::dialogue_clone/clone_graph/10",
+            "value": 1126.6112283629634,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-dialogue::dialogue_clone/clone_graph/100",
+            "value": 23914.440386475828,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-dialogue::dialogue_clone/clone_graph/200",
+            "value": 49441.09126119097,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-dialogue::dialogue_clone/clone_graph/50",
+            "value": 10919.67708557669,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-dialogue::dialogue_clone/clone_node",
+            "value": 51.47172051490143,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-dialogue::dialogue_construction/branching_construction/d3_b3",
+            "value": 7557.104106183318,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-dialogue::dialogue_construction/branching_construction/d4_b2",
+            "value": 5653.0623693066345,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-dialogue::dialogue_construction/branching_construction/d5_b2",
+            "value": 13775.435859142952,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-dialogue::dialogue_construction/complex_construction/100",
+            "value": 40962.857869418796,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-dialogue::dialogue_construction/complex_construction/25",
+            "value": 8970.748301142214,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-dialogue::dialogue_construction/complex_construction/50",
+            "value": 19292.356101484078,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-dialogue::dialogue_construction/linear_construction/10",
+            "value": 1191.2745593178167,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-dialogue::dialogue_construction/linear_construction/100",
+            "value": 21530.398753879985,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-dialogue::dialogue_construction/linear_construction/50",
+            "value": 10097.62718992243,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-dialogue::dialogue_construction/linear_construction/500",
+            "value": 109349.24046067534,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-dialogue::dialogue_node_lookup/lookup_first/10",
+            "value": 1.4664004238173063,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-dialogue::dialogue_node_lookup/lookup_first/100",
+            "value": 1.50597621867399,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-dialogue::dialogue_node_lookup/lookup_first/1000",
+            "value": 1.2190689498956981,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-dialogue::dialogue_node_lookup/lookup_first/50",
+            "value": 1.4738389076370957,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-dialogue::dialogue_node_lookup/lookup_first/500",
+            "value": 1.2349500143763184,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-dialogue::dialogue_node_lookup/lookup_last/10",
+            "value": 15.20805209640912,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-dialogue::dialogue_node_lookup/lookup_last/100",
+            "value": 151.0777251974155,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-dialogue::dialogue_node_lookup/lookup_last/1000",
+            "value": 1318.7822449476141,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-dialogue::dialogue_node_lookup/lookup_last/50",
+            "value": 74.52079994816808,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-dialogue::dialogue_node_lookup/lookup_last/500",
+            "value": 634.1890446227687,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-dialogue::dialogue_node_lookup/lookup_middle/10",
+            "value": 9.46060151366717,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-dialogue::dialogue_node_lookup/lookup_middle/100",
+            "value": 74.22776643915027,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-dialogue::dialogue_node_lookup/lookup_middle/1000",
+            "value": 713.3562469885863,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-dialogue::dialogue_node_lookup/lookup_middle/50",
+            "value": 25.808627340906927,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-dialogue::dialogue_node_lookup/lookup_middle/500",
+            "value": 287.4541504412594,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-dialogue::dialogue_node_lookup/lookup_nonexistent/10",
+            "value": 2.9634342263970166,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-dialogue::dialogue_node_lookup/lookup_nonexistent/100",
+            "value": 24.961103767137384,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-dialogue::dialogue_node_lookup/lookup_nonexistent/1000",
+            "value": 387.2759441890139,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-dialogue::dialogue_node_lookup/lookup_nonexistent/50",
+            "value": 13.367796663659199,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-dialogue::dialogue_node_lookup/lookup_nonexistent/500",
+            "value": 147.9667947781147,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-dialogue::dialogue_serialization/from_json/10",
+            "value": 3043.6188402699427,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-dialogue::dialogue_serialization/from_json/100",
+            "value": 42575.177936600725,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-dialogue::dialogue_serialization/from_json/50",
+            "value": 20817.55397107897,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-dialogue::dialogue_serialization/roundtrip/10",
+            "value": 4924.535534316715,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-dialogue::dialogue_serialization/roundtrip/100",
+            "value": 61114.01583538126,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-dialogue::dialogue_serialization/roundtrip/50",
+            "value": 29956.04628994181,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-dialogue::dialogue_serialization/to_json/10",
+            "value": 1670.2076012453288,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-dialogue::dialogue_serialization/to_json/100",
+            "value": 16447.416951347983,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-dialogue::dialogue_serialization/to_json/200",
+            "value": 32541.903503482325,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-dialogue::dialogue_serialization/to_json/50",
+            "value": 8043.500815466384,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-dialogue::dialogue_serialization/to_json_pretty/10",
+            "value": 2316.067720453559,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-dialogue::dialogue_serialization/to_json_pretty/100",
+            "value": 23595.094102765946,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-dialogue::dialogue_serialization/to_json_pretty/200",
+            "value": 41821.649556358134,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-dialogue::dialogue_serialization/to_json_pretty/50",
+            "value": 11689.628835996615,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-dialogue::dialogue_traversal/count_responses/100",
+            "value": 15.829628919979005,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-dialogue::dialogue_traversal/count_responses/200",
+            "value": 40.14393752556952,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-dialogue::dialogue_traversal/count_responses/50",
+            "value": 6.488574681646316,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-dialogue::dialogue_traversal/follow_linear_path_100",
+            "value": 7151.447113140095,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-dialogue::dialogue_traversal/iterate_all_nodes/100",
+            "value": 34.125607395690196,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-dialogue::dialogue_traversal/iterate_all_nodes/1000",
+            "value": 371.3693460840579,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-dialogue::dialogue_traversal/iterate_all_nodes/50",
+            "value": 17.186394813504506,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-dialogue::dialogue_traversal/iterate_all_nodes/500",
+            "value": 186.98712327372243,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-dialogue::dialogue_validation/branching_graph/d3_b3",
+            "value": 1074.2270374746386,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-dialogue::dialogue_validation/branching_graph/d3_b4",
+            "value": 2399.3641869436306,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-dialogue::dialogue_validation/branching_graph/d4_b2",
+            "value": 837.7926299408213,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-dialogue::dialogue_validation/branching_graph/d5_b2",
+            "value": 1750.4782684508154,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-dialogue::dialogue_validation/complex_graph/100",
+            "value": 4512.048803481634,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-dialogue::dialogue_validation/complex_graph/200",
+            "value": 8872.340405326644,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-dialogue::dialogue_validation/complex_graph/25",
+            "value": 1116.853264218091,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-dialogue::dialogue_validation/complex_graph/50",
+            "value": 2201.799535262302,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-dialogue::dialogue_validation/cyclic_graph/10",
+            "value": 240.48662135283735,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-dialogue::dialogue_validation/cyclic_graph/100",
+            "value": 2686.5812811929623,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-dialogue::dialogue_validation/cyclic_graph/200",
+            "value": 5335.671030690853,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-dialogue::dialogue_validation/cyclic_graph/50",
+            "value": 1354.9676942178892,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-dialogue::dialogue_validation/linear_graph/10",
+            "value": 228.33359830395875,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-dialogue::dialogue_validation/linear_graph/100",
+            "value": 2643.8988226948804,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-dialogue::dialogue_validation/linear_graph/50",
+            "value": 1329.8656665402345,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-dialogue::dialogue_validation/linear_graph/500",
+            "value": 12245.741328144079,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-llm::cache_capacity_impact/cap_10",
+            "value": 47467.57876148049,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-llm::cache_capacity_impact/cap_100",
+            "value": 47875.30341128346,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-llm::cache_capacity_impact/cap_200",
+            "value": 50660.35284300783,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-llm::cache_capacity_impact/cap_50",
+            "value": 48138.35086515144,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-llm::cache_capacity_impact/cap_500",
+            "value": 47175.722128218964,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-llm::cache_hit_latency",
+            "value": 46.74567969375128,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-llm::cache_hit_rate_validation",
+            "value": 47437.92320308561,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-llm::cache_key_generation",
+            "value": 2217.0709441509957,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-llm::cache_miss_latency/100ms_llm",
+            "value": 101148560.21,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-llm::cache_miss_latency/10ms_llm",
+            "value": 11099761.882000001,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-llm::cache_miss_latency/200ms_llm",
+            "value": 201096496.68,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-llm::cache_miss_latency/50ms_llm",
+            "value": 51060239.29,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-llm::cache_stress_1000_requests",
+            "value": 47456.78749933117,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-llm::circuit_breaker_chaos/10%_failures",
+            "value": 2329.351195951481,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-llm::circuit_breaker_chaos/30%_failures",
+            "value": 2421.317659117294,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-llm::circuit_breaker_chaos/50%_failures",
+            "value": 2430.9882950210153,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-llm::circuit_breaker_chaos/70%_failures",
+            "value": 2505.912123998426,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-llm::circuit_breaker_opening",
+            "value": 109.34729579953007,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-llm::circuit_breaker_per_model_isolation",
+            "value": 266.1904570727858,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-llm::circuit_breaker_recovery",
+            "value": 16105186.4475,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-llm::circuit_breaker_state_check",
+            "value": 10.904783244285777,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-llm::concurrent_cache_access",
+            "value": 79258.12888051441,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-llm::end_to_end_plan_generation/cache_hit",
+            "value": 2246280.319225816,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-llm::end_to_end_plan_generation/cache_miss_fast",
+            "value": 52220227.66,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-llm::end_to_end_plan_generation/cache_miss_slow",
+            "value": 202224835.1,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-llm::lru_eviction_overhead",
+            "value": 47703.82737270324,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-llm::prompt_normalization",
+            "value": 443.1672940011558,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-llm::retry_backoff_calculation",
+            "value": 52.69573228950608,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-llm::retry_execution_3_attempts",
+            "value": 152312938.72,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-llm::retry_with_circuit_breaker",
+            "value": 35.39539111771155,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-llm::telemetry_record_request",
+            "value": 14.440464791787933,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-steam::steam_adversarial_achievements/filter_achievements_5000",
+            "value": 13329.788566009867,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-steam::steam_adversarial_achievements/load_achievements_500",
+            "value": 45452.329298503035,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-steam::steam_adversarial_achievements/progress_update_10000",
+            "value": 394181.52849451586,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-steam::steam_adversarial_achievements/unlock_achievements_1000",
+            "value": 40771.72167035602,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-steam::steam_adversarial_cloud_saves/conflict_resolution_1000",
+            "value": 2778.8569353388175,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-steam::steam_adversarial_cloud_saves/create_save/1024",
+            "value": 17.089461853068492,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-steam::steam_adversarial_cloud_saves/create_save/16384",
+            "value": 99.3897920492019,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-steam::steam_adversarial_cloud_saves/create_save/262144",
+            "value": 1114.9545112879343,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-steam::steam_adversarial_cloud_saves/create_save/65536",
+            "value": 373.56443129529003,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-steam::steam_adversarial_cloud_saves/file_management_5000",
+            "value": 1351096.1617197392,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-steam::steam_adversarial_cloud_saves/serialize_save_data_1000",
+            "value": 195861.51697638087,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-steam::steam_adversarial_leaderboards/query_leaderboard_5000",
+            "value": 4378217.386666667,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-steam::steam_adversarial_leaderboards/score_deduplication_5000",
+            "value": 79676.68730497365,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-steam::steam_adversarial_leaderboards/submit_scores_10000",
+            "value": 337782.94044042355,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-steam::steam_adversarial_leaderboards/time_leaderboard_processing_2000",
+            "value": 67866.8942813371,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-steam::steam_adversarial_platform_api/api_call_batching_10000",
+            "value": 670746.5402234495,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-steam::steam_adversarial_platform_api/callback_processing_10000",
+            "value": 689329.9358138789,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-steam::steam_adversarial_platform_api/rate_limiting_20000",
+            "value": 963255.4337342476,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-steam::steam_adversarial_platform_api/session_management_5000",
+            "value": 71028.52949344675,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-steam::steam_adversarial_statistics/init_stats_200",
+            "value": 9302.5755568198,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-steam::steam_adversarial_statistics/stat_aggregation_10000",
+            "value": 11738.940175578506,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-steam::steam_adversarial_statistics/stat_updates_50000",
+            "value": 2013987.1392,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-steam::steam_adversarial_statistics/stat_validation_20000",
+            "value": 1101171.6853621658,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-steam::steam_adversarial_workshop/download_queue_1000",
+            "value": 12257.05480498267,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-steam::steam_adversarial_workshop/filter_sort_workshop_5000",
+            "value": 364214.0965521043,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-steam::steam_adversarial_workshop/load_workshop_items_1000",
+            "value": 254197.20997174244,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-steam::steam_adversarial_workshop/subscription_management_2000",
+            "value": 31495.701803005188,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-embeddings::batch_operations/batch_insert/10",
+            "value": 4672.122891963037,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-embeddings::batch_operations/batch_insert/100",
+            "value": 58068.04104345624,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-embeddings::batch_operations/batch_insert/50",
+            "value": 27788.727597037177,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-embeddings::batch_operations/batch_insert/500",
+            "value": 314689.65865475585,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-embeddings::batch_operations/get_all_ids/100",
+            "value": 5258.8840789042515,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-embeddings::batch_operations/get_all_ids/1000",
+            "value": 50088.952384026255,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-embeddings::batch_operations/get_all_ids/2000",
+            "value": 98781.87094693167,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-embeddings::batch_operations/get_all_ids/500",
+            "value": 25085.64540479187,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-embeddings::batch_operations/prune_vectors/1000_to_500",
+            "value": 143496.15999999997,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-embeddings::batch_operations/prune_vectors/100_to_50",
+            "value": 16534.292109613853,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-embeddings::batch_operations/prune_vectors/500_to_250",
+            "value": 73826.43450000003,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-embeddings::distance_calculations/cosine_distance/1024",
+            "value": 1427.7807079946506,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-embeddings::distance_calculations/cosine_distance/128",
+            "value": 115.21658582574706,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-embeddings::distance_calculations/cosine_distance/384",
+            "value": 477.07567201622317,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-embeddings::distance_calculations/cosine_distance/768",
+            "value": 1025.3852811048441,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-embeddings::distance_calculations/dot_product/1024",
+            "value": 480.8399024314687,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-embeddings::distance_calculations/dot_product/128",
+            "value": 37.88172826206133,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-embeddings::distance_calculations/dot_product/384",
+            "value": 159.52280725523894,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-embeddings::distance_calculations/dot_product/768",
+            "value": 347.01903670719156,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-embeddings::distance_calculations/euclidean_distance/1024",
+            "value": 485.015449702446,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-embeddings::distance_calculations/euclidean_distance/128",
+            "value": 43.80094449157464,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-embeddings::distance_calculations/euclidean_distance/384",
+            "value": 162.81637326665586,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-embeddings::distance_calculations/euclidean_distance/768",
+            "value": 348.65064351771355,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-embeddings::distance_calculations/manhattan_distance/1024",
+            "value": 483.9845618178034,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-embeddings::distance_calculations/manhattan_distance/128",
+            "value": 42.26552582466491,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-embeddings::distance_calculations/manhattan_distance/384",
+            "value": 162.93971788808778,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-embeddings::distance_calculations/manhattan_distance/768",
+            "value": 354.765125744749,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-embeddings::embedding_client/batch_embed/1",
+            "value": 267.86218294295105,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-embeddings::embedding_client/batch_embed/10",
+            "value": 2064.224589177276,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-embeddings::embedding_client/batch_embed/20",
+            "value": 4129.451348573057,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-embeddings::embedding_client/batch_embed/5",
+            "value": 1073.4456857339626,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-embeddings::embedding_client/batch_embed/50",
+            "value": 10636.590678404878,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-embeddings::embedding_client/model_info",
+            "value": 23.588719988661975,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-embeddings::embedding_client/single_embed",
+            "value": 237.92760995544205,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-embeddings::memory_operations/create_combat_memory",
+            "value": 175.6046460851546,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-embeddings::memory_operations/create_exploration_memory",
+            "value": 126.06380118661232,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-embeddings::memory_operations/create_memory",
+            "value": 131.18865600753838,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-embeddings::memory_operations/create_social_memory",
+            "value": 133.55187487688374,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-embeddings::serialization/from_json/10",
+            "value": 81094.07171759475,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-embeddings::serialization/from_json/100",
+            "value": 928953.7602805966,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-embeddings::serialization/from_json/50",
+            "value": 450834.8792970423,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-embeddings::serialization/to_json/10",
+            "value": 59404.501099786256,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-embeddings::serialization/to_json/100",
+            "value": 938456.0388119214,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-embeddings::serialization/to_json/50",
+            "value": 445477.92360227904,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-embeddings::serialization/to_json/500",
+            "value": 4855065.068181818,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-embeddings::text_preprocessing/chunk_text/10000_1000",
+            "value": 216.09493025124007,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-embeddings::text_preprocessing/chunk_text/1000_200",
+            "value": 91.68853113930464,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-embeddings::text_preprocessing/chunk_text/5000_500",
+            "value": 182.58494765705058,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-embeddings::text_preprocessing/extract_keyphrases",
+            "value": 772.3826715126027,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-embeddings::text_preprocessing/preprocess/100",
+            "value": 119.21131101342144,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-embeddings::text_preprocessing/preprocess/1000",
+            "value": 869.0326690588244,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-embeddings::text_preprocessing/preprocess/500",
+            "value": 505.01684442456076,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-embeddings::text_preprocessing/preprocess/5000",
+            "value": 3941.8127407370944,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-embeddings::vector_search/brute_force_k10/100",
+            "value": 63455.50666368122,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-embeddings::vector_search/brute_force_k10/1000",
+            "value": 710720.2261499789,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-embeddings::vector_search/brute_force_k10/2000",
+            "value": 1461204.2938451082,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-embeddings::vector_search/brute_force_k10/500",
+            "value": 346104.1431161686,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-embeddings::vector_search/search_k_variation/1",
+            "value": 721499.3655974434,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-embeddings::vector_search/search_k_variation/10",
+            "value": 725699.1847343339,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-embeddings::vector_search/search_k_variation/20",
+            "value": 728849.3842056482,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-embeddings::vector_search/search_k_variation/5",
+            "value": 717346.0824657861,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-embeddings::vector_search/search_k_variation/50",
+            "value": 736599.6945720133,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-embeddings::vector_store_operations/get_by_id/100",
+            "value": 119.11850931214687,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-embeddings::vector_store_operations/get_by_id/1000",
+            "value": 137.7485260582592,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-embeddings::vector_store_operations/get_by_id/5000",
+            "value": 151.17905482123862,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-embeddings::vector_store_operations/insert_single",
+            "value": 4394.161114813669,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-embeddings::vector_store_operations/insert_with_metadata",
+            "value": 4375.011289608633,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-embeddings::vector_store_operations/remove_single",
+            "value": 10706.874495226,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ecs::archetype_transitions/add_remove_cycle",
+            "value": 698262.3599198344,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ecs::archetype_transitions/multi_component_transitions",
+            "value": 2801299.331111111,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ecs::component_add/multiple_components/100",
+            "value": 113892.78058979056,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ecs::component_add/multiple_components/1000",
+            "value": 1075621.0067852894,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ecs::component_add/multiple_components/10000",
+            "value": 10570351.223999998,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ecs::component_add/single_component/100",
+            "value": 23103.707264007466,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ecs::component_add/single_component/1000",
+            "value": 214040.0134205436,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ecs::component_add/single_component/10000",
+            "value": 2080392.059523809,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ecs::component_iteration/position_write/100",
+            "value": 3968.4149103582076,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ecs::component_iteration/position_write/1000",
+            "value": 36615.4691939002,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ecs::component_iteration/position_write/10000",
+            "value": 371006.78546807746,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ecs::component_remove/multiple_components/100",
+            "value": 111219.47637814349,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ecs::component_remove/multiple_components/1000",
+            "value": 1029875.1045833328,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ecs::component_remove/multiple_components/10000",
+            "value": 10327095.069999998,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ecs::component_remove/single_component/100",
+            "value": 26917.35127880334,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ecs::component_remove/single_component/1000",
+            "value": 247686.4590428901,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ecs::component_remove/single_component/10000",
+            "value": 2455924.811818181,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ecs::entity_despawn/empty/100",
+            "value": 2107.3784768666337,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ecs::entity_despawn/empty/1000",
+            "value": 16812.377862684083,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ecs::entity_despawn/empty/10000",
+            "value": 198728.9898630538,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ecs::entity_despawn/with_components/100",
+            "value": 15444.370603019932,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ecs::entity_despawn/with_components/1000",
+            "value": 132202.55133513059,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ecs::entity_despawn/with_components/10000",
+            "value": 1306730.5971428573,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ecs::entity_insert/BTreeMap/100",
+            "value": 2709.8287832304736,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ecs::entity_insert/BTreeMap/1000",
+            "value": 45955.889804448634,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ecs::entity_insert/BTreeMap/10000",
+            "value": 560161.631400025,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ecs::entity_insert/SparseSet/100",
+            "value": 710.6133951429578,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ecs::entity_insert/SparseSet/1000",
+            "value": 3649.8601220614514,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ecs::entity_insert/SparseSet/10000",
+            "value": 33055.81776318111,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ecs::entity_lookup/BTreeMap/100",
+            "value": 1006.1452545298432,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ecs::entity_lookup/BTreeMap/1000",
+            "value": 13762.052517325801,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ecs::entity_lookup/BTreeMap/10000",
+            "value": 327809.97162087524,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ecs::entity_lookup/SparseSet/100",
+            "value": 69.25821069025449,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ecs::entity_lookup/SparseSet/1000",
+            "value": 631.258411312462,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ecs::entity_lookup/SparseSet/10000",
+            "value": 6323.75955636035,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ecs::entity_remove/BTreeMap/100",
+            "value": 2241.381784788537,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ecs::entity_remove/BTreeMap/1000",
+            "value": 24726.70255967838,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ecs::entity_remove/BTreeMap/10000",
+            "value": 269928.49641270115,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ecs::entity_remove/SparseSet/100",
+            "value": 321.59323152258946,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ecs::entity_remove/SparseSet/1000",
+            "value": 1637.9818628385476,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ecs::entity_remove/SparseSet/10000",
+            "value": 18989.780820167492,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ecs::entity_spawn/empty/100",
+            "value": 2873.787803421896,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ecs::entity_spawn/empty/1000",
+            "value": 17939.70388404925,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ecs::entity_spawn/empty/10000",
+            "value": 169722.61081909764,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ecs::entity_spawn/with_position/100",
+            "value": 25287.08269696798,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ecs::entity_spawn/with_position/1000",
+            "value": 226388.2526979678,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ecs::entity_spawn/with_position/10000",
+            "value": 2243270.6052173916,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ecs::entity_spawn/with_position_velocity/100",
+            "value": 65659.87981036147,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ecs::entity_spawn/with_position_velocity/1000",
+            "value": 608407.6473693748,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ecs::entity_spawn/with_position_velocity/10000",
+            "value": 6014945.313333335,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ecs::sparseset_data/insert/100",
+            "value": 1109.377025408666,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ecs::sparseset_data/insert/1000",
+            "value": 6070.353672151744,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ecs::sparseset_data/insert/10000",
+            "value": 50084.07677296638,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ecs::sparseset_data/iterate/100",
+            "value": 70.1944581988148,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ecs::sparseset_data/iterate/1000",
+            "value": 913.970053844833,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ecs::sparseset_data/iterate/10000",
+            "value": 9324.794518391824,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ecs::sparseset_data/mutate/100",
+            "value": 73.28456308934744,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ecs::sparseset_data/mutate/1000",
+            "value": 740.414385783624,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ecs::sparseset_data/mutate/10000",
+            "value": 7401.364705678,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ecs::storage_iteration/BlobVec_slice/100",
+            "value": 80.11876148751054,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ecs::storage_iteration/BlobVec_slice/1000",
+            "value": 925.4692457911499,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ecs::storage_iteration/BlobVec_slice/10000",
+            "value": 9347.619670209991,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ecs::storage_iteration/Vec_Box_downcast/100",
+            "value": 350.29965026522535,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ecs::storage_iteration/Vec_Box_downcast/1000",
+            "value": 3723.9599287647206,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ecs::storage_iteration/Vec_Box_downcast/10000",
+            "value": 37692.080784111226,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ecs::storage_mutation/BlobVec_slice_mut/100",
+            "value": 62.34655469141759,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ecs::storage_mutation/BlobVec_slice_mut/1000",
+            "value": 628.8961564600869,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ecs::storage_mutation/BlobVec_slice_mut/10000",
+            "value": 6267.7385425739085,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ecs::storage_mutation/Vec_Box_downcast_mut/100",
+            "value": 194.58431892545056,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ecs::storage_mutation/Vec_Box_downcast_mut/1000",
+            "value": 1883.5094765902668,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ecs::storage_mutation/Vec_Box_downcast_mut/10000",
+            "value": 19167.01784835666,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ecs::storage_push/BlobVec/100",
+            "value": 305.34138787200203,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ecs::storage_push/BlobVec/1000",
+            "value": 1337.0824044794833,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ecs::storage_push/BlobVec/10000",
+            "value": 9935.965992421505,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ecs::storage_push/Vec_Box/100",
+            "value": 2963.502718847465,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ecs::storage_push/Vec_Box/1000",
+            "value": 29284.81291741519,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ecs::storage_push/Vec_Box/10000",
+            "value": 294576.5097358554,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-math::mat4_inverse_scalar",
+            "value": 2.497321954058121,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-math::mat4_inverse_simd",
+            "value": 2.4964449769365076,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-math::mat4_multiply_scalar",
+            "value": 2.4932222370749484,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-math::mat4_multiply_simd",
+            "value": 8.616866666544013,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-math::mat4_transpose_scalar",
+            "value": 2.4937035958612452,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-math::mat4_transpose_simd",
+            "value": 2.502719573359719,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-math::movement/naive/100",
+            "value": 125.19686510060326,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-math::movement/naive/1000",
+            "value": 1207.508294867404,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-math::movement/naive/10000",
+            "value": 12163.527402468622,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-math::movement/simd/100",
+            "value": 51.63790423795136,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-math::movement/simd/1000",
+            "value": 479.34194400992124,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-math::movement/simd/10000",
+            "value": 4766.482447138082,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-math::physics_tick_scalar",
+            "value": 2004.812854735613,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-math::physics_tick_simd",
+            "value": 3343.123610846444,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-math::quat_dot_scalar",
+            "value": 0.6258525896236197,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-math::quat_dot_simd",
+            "value": 0.6279626491673205,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-math::quat_multiply_scalar",
+            "value": 0.6391590820625653,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-math::quat_multiply_simd",
+            "value": 0.6381626301217506,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-math::quat_normalize_batch_scalar",
+            "value": 42.771518542481964,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-math::quat_normalize_batch_simd",
+            "value": 44.84867573946361,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-math::quat_normalize_scalar",
+            "value": 0.6259026001225003,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-math::quat_normalize_simd",
+            "value": 0.6368639888713017,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-math::quat_slerp_batch_scalar",
+            "value": 327.16373422814263,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-math::quat_slerp_batch_simd",
+            "value": 388.66661109035107,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-math::quat_slerp_scalar",
+            "value": 0.6371329377803253,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-math::quat_slerp_simd",
+            "value": 23.017153757666264,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-math::transform_point_scalar",
+            "value": 1.2472849048880676,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-math::transform_point_simd",
+            "value": 1.2465188203841548,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-math::transform_points_batch_scalar",
+            "value": 23.92828571748466,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-math::transform_points_batch_simd",
+            "value": 24.82913360622254,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-math::vec3_cross_scalar",
+            "value": 12.301132565317145,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-math::vec3_cross_simd",
+            "value": 14.69835007923213,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-math::vec3_dot_scalar",
+            "value": 12.539919403916718,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-math::vec3_dot_simd",
+            "value": 15.451396048222094,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-math::vec3_dot_throughput/scalar",
+            "value": 12255.95762635064,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-math::vec3_dot_throughput/simd",
+            "value": 13073.26993718992,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-math::vec3_length_scalar",
+            "value": 16.653865665003117,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-math::vec3_length_simd",
+            "value": 19.457455990644867,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-math::vec3_normalize_scalar",
+            "value": 5.935500424195608,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-math::vec3_normalize_simd",
+            "value": 23.744820082171856,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ipc::ipc_adversarial_compression/delta_compress_5000",
+            "value": 3784.6478250339133,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ipc::ipc_adversarial_compression/dictionary_compress_1000",
+            "value": 22008.42148897245,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ipc::ipc_adversarial_compression/position_quantize_5000",
+            "value": 0.6232836554908784,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ipc::ipc_adversarial_compression/rle_encode_10000",
+            "value": 7459.50183105593,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ipc::ipc_adversarial_connection_management/broadcast_optimization_1000_clients",
+            "value": 1128.8789596591787,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ipc::ipc_adversarial_connection_management/channel_management_100",
+            "value": 14450.25100750956,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ipc::ipc_adversarial_connection_management/client_tracking_500",
+            "value": 48175.06031400666,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ipc::ipc_adversarial_connection_management/reconnection_handling_100",
+            "value": 416.40560745080006,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ipc::ipc_adversarial_deserialization/binary_deserialize_1000",
+            "value": 3032.534790206168,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ipc::ipc_adversarial_deserialization/entity_parse_500",
+            "value": 132197.44196018574,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ipc::ipc_adversarial_deserialization/message_type_detection_1000",
+            "value": 77851.17420605026,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ipc::ipc_adversarial_flow_control/backpressure_handling",
+            "value": 516.6112333305052,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ipc::ipc_adversarial_flow_control/congestion_window_1000",
+            "value": 4847.456336760313,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ipc::ipc_adversarial_flow_control/priority_scheduling_500",
+            "value": 4716.059198463493,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ipc::ipc_adversarial_flow_control/rate_limiting_10000",
+            "value": 289393.72148374503,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ipc::ipc_adversarial_message_handling/duplicate_detection_1000",
+            "value": 16838.462086928208,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ipc::ipc_adversarial_message_handling/message_batching_2000",
+            "value": 1304.791126332256,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ipc::ipc_adversarial_message_handling/priority_queue_1000",
+            "value": 754.2153025865222,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ipc::ipc_adversarial_message_handling/queue_processing_5000",
+            "value": 7839.253118626612,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ipc::ipc_adversarial_serialization/binary_serialize_1000",
+            "value": 3416.9926483202803,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ipc::ipc_adversarial_serialization/delta_serialize_1000",
+            "value": 1979.4451196467123,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ipc::ipc_adversarial_serialization/plan_serialize_100",
+            "value": 11161.593265922218,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ipc::ipc_adversarial_serialization/snapshot_serialize/100",
+            "value": 19100.817234502596,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ipc::ipc_adversarial_serialization/snapshot_serialize/1000",
+            "value": 216564.37774173106,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-ipc::ipc_adversarial_serialization/snapshot_serialize/500",
+            "value": 106691.56323058944,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-memory::memory_access_tracking/10",
+            "value": 1171.3369207091216,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-memory::memory_access_tracking/25",
+            "value": 2929.940203048567,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-memory::memory_access_tracking/50",
+            "value": 5812.9796824516325,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-memory::memory_creation",
+            "value": 169.74447529778502,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-memory::memory_importance_update",
+            "value": 123.29582456525968,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-memory::memory_retrieval_by_id",
+            "value": 3348.86116449741,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-memory::memory_storage/10",
+            "value": 3508.907095506019,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-memory::memory_storage/25",
+            "value": 12396.61924555925,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-memory::memory_storage/50",
+            "value": 36197.03780687842,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-destruction::brush_remesh",
+            "value": 2880576.346666666,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-destruction::debris_step",
+            "value": 228.22494678896916,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-destruction::fracture_cut/planar",
+            "value": 29.546298150470257,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-destruction::fracture_cut/voronoi_16",
+            "value": 456.951414137184,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-destruction::graph_solve/1024",
+            "value": 13692062.6875,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-destruction::graph_solve/256",
+            "value": 893152.1641112099,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-destruction::graph_solve/64",
+            "value": 60839.00870291946,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-fluids::fluid_system_step/step_submit_wait/10000",
+            "value": 93384806.88333334,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-fluids::fluid_system_step/step_submit_wait/20000",
+            "value": 188975252.03333333,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-fluids::fluid_system_step/step_submit_wait/50000",
+            "value": 490994733.3,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-fluids::fluids_adversarial_adaptive_iterations/decision_boundary_stress",
+            "value": 257484.7933202266,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-fluids::fluids_adversarial_adaptive_iterations/error_tracking_1000",
+            "value": 4477.198119450006,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-fluids::fluids_adversarial_adaptive_iterations/iteration_update_10000",
+            "value": 213093.4454422119,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-fluids::fluids_adversarial_density_pressure/density_computation_5000",
+            "value": 3288990.807999999,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-fluids::fluids_adversarial_density_pressure/pressure_computation_5000",
+            "value": 4066.299021280966,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-fluids::fluids_adversarial_density_pressure/pressure_force_2000",
+            "value": 1860260.3538538364,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-fluids::fluids_adversarial_density_pressure/viscosity_force_2000",
+            "value": 1722237.3724027341,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-fluids::fluids_adversarial_gpu_data_prep/cell_index_buffer_10000",
+            "value": 0.23718993649966852,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-fluids::fluids_adversarial_gpu_data_prep/combined_buffer_10000",
+            "value": 0.2366386469865419,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-fluids::fluids_adversarial_gpu_data_prep/position_buffer_10000",
+            "value": 0.23507603302326957,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-fluids::fluids_adversarial_gpu_data_prep/sort_prep_10000",
+            "value": 93324.93644361303,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-fluids::fluids_adversarial_gpu_data_prep/uniform_buffer_prep",
+            "value": 3.762097224631031,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-fluids::fluids_adversarial_gpu_data_prep/velocity_buffer_10000",
+            "value": 0.23276563346131,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-fluids::fluids_adversarial_lod_system/distance_calculation_100000",
+            "value": 116871.20597798961,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-fluids::fluids_adversarial_lod_system/lod_transition_tracking",
+            "value": 51756.93204331562,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-fluids::fluids_adversarial_lod_system/lod_update_10000",
+            "value": 12443.182445193874,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-fluids::fluids_adversarial_lod_system/reduction_factor_lookup_10000",
+            "value": 7184.174867720559,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-fluids::fluids_adversarial_optimization_controller/auto_tune_decision_10000",
+            "value": 49500.6213470225,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-fluids::fluids_adversarial_optimization_controller/budget_check_10000",
+            "value": 110802.99333679827,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-fluids::fluids_adversarial_optimization_controller/controller_creation",
+            "value": 0.23129715383666027,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-fluids::fluids_adversarial_optimization_controller/frame_recording_1000",
+            "value": 34638.95460665966,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-fluids::fluids_adversarial_optimization_controller/full_frame_cycle_1000",
+            "value": 34592.91219510213,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-fluids::fluids_adversarial_optimization_controller/gpu_config_parsing_1000",
+            "value": 215913.3163663322,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-fluids::fluids_adversarial_optimization_controller/headroom_calculation_10000",
+            "value": 120773.06880888369,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-fluids::fluids_adversarial_optimization_controller/iteration_recommendation_10000",
+            "value": 0.3415316135903586,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-fluids::fluids_adversarial_particle_operations/boundary_collision_10000",
+            "value": 10005.304366008608,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-fluids::fluids_adversarial_particle_operations/force_accumulation_10000",
+            "value": 3361.76860260209,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-fluids::fluids_adversarial_particle_operations/particle_creation/1000",
+            "value": 1819.7679761717227,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-fluids::fluids_adversarial_particle_operations/particle_creation/10000",
+            "value": 17210.92662757318,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-fluids::fluids_adversarial_particle_operations/particle_creation/5000",
+            "value": 8807.331840511893,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-fluids::fluids_adversarial_particle_operations/position_update_10000",
+            "value": 5881.435951709823,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-fluids::fluids_adversarial_particle_operations/velocity_update_10000",
+            "value": 9076.930535576847,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-fluids::fluids_adversarial_simd_optimizations/aos_access_pattern_10000",
+            "value": 4716.674111790724,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-fluids::fluids_adversarial_simd_optimizations/density_4x_unroll_10000",
+            "value": 2376.676067760487,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-fluids::fluids_adversarial_simd_optimizations/density_8x_unroll_10000",
+            "value": 18980.28064262627,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-fluids::fluids_adversarial_simd_optimizations/distance_squared_only_100000",
+            "value": 479153.2617837084,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-fluids::fluids_adversarial_simd_optimizations/distance_with_sqrt_100000",
+            "value": 107764.97445768921,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-fluids::fluids_adversarial_simd_optimizations/kernel_with_early_out_10000",
+            "value": 7543.35831073125,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-fluids::fluids_adversarial_simd_optimizations/kernel_without_early_out_10000",
+            "value": 11091.978745223187,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-fluids::fluids_adversarial_simd_optimizations/morton_code_generation_100000",
+            "value": 266273.9940857929,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-fluids::fluids_adversarial_simd_optimizations/soa_access_pattern_10000",
+            "value": 13963.495004317343,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-fluids::fluids_adversarial_simd_optimizations/weighted_centroid_fma_1000",
+            "value": 5639.445591831121,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-fluids::fluids_adversarial_simd_optimizations/weighted_centroid_naive_1000",
+            "value": 519.2585897116442,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-fluids::fluids_adversarial_simulation_step/adaptive_timestep_1000",
+            "value": 1832.4379946982706,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-fluids::fluids_adversarial_simulation_step/multi_step_500_x10",
+            "value": 123939.47628691967,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-fluids::fluids_adversarial_simulation_step/single_step_1000",
+            "value": 790285.0944530265,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-fluids::fluids_adversarial_spatial_hashing/cell_density_analysis",
+            "value": 11854.581726674736,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-fluids::fluids_adversarial_spatial_hashing/grid_construction/1000",
+            "value": 57231.32435698278,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-fluids::fluids_adversarial_spatial_hashing/grid_construction/10000",
+            "value": 602214.0138454507,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-fluids::fluids_adversarial_spatial_hashing/grid_construction/5000",
+            "value": 300327.7571514747,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-fluids::fluids_adversarial_spatial_hashing/grid_rebuild_5000",
+            "value": 243620.74566106594,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-fluids::fluids_adversarial_spatial_hashing/neighbor_query_10000",
+            "value": 5322066.459000001,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-fluids::fluids_adversarial_sph_kernels/combined_kernels_10000",
+            "value": 14825.514830923754,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-fluids::fluids_adversarial_sph_kernels/poly6_kernel_100000",
+            "value": 57272.09976723572,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-fluids::fluids_adversarial_sph_kernels/spiky_gradient_100000",
+            "value": 62730.18338740975,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-fluids::fluids_adversarial_sph_kernels/viscosity_laplacian_100000",
+            "value": 59760.874283307276,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scripting::script_execution/ecs_script_system_1000_entities",
+            "value": 659894.2092437899,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scripting::script_execution/rhai_raw_execution",
+            "value": 215.34848569186985,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scripting::scripting_adversarial_callback_events/batch_events_100",
+            "value": 2.5037606364884346,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scripting::scripting_adversarial_callback_events/empty_event_queue",
+            "value": 0.24401841093074406,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scripting::scripting_adversarial_callback_events/event_filtering_by_entity",
+            "value": 94.32638422080059,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scripting::scripting_adversarial_callback_events/high_freq_collisions_500",
+            "value": 6903.498107060366,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scripting::scripting_adversarial_callback_events/single_event_dispatch",
+            "value": 3.8351832277939906,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scripting::scripting_adversarial_command_processing/batch_commands_100",
+            "value": 2737.539604353389,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scripting::scripting_adversarial_command_processing/command_validation_100",
+            "value": 81.19723351513166,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scripting::scripting_adversarial_command_processing/empty_command_list",
+            "value": 0.23950453883574827,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scripting::scripting_adversarial_command_processing/mixed_commands_50",
+            "value": 237.6122907325017,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scripting::scripting_adversarial_command_processing/single_spawn_command",
+            "value": 10.848391216146712,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scripting::scripting_adversarial_compilation_stress/deeply_nested_100",
+            "value": 31.531033804385665,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scripting::scripting_adversarial_compilation_stress/empty_script_compile",
+            "value": 5.767234356430283,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scripting::scripting_adversarial_compilation_stress/large_script_compile/100",
+            "value": 76.8433774029496,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scripting::scripting_adversarial_compilation_stress/large_script_compile/1000",
+            "value": 390.44482459117893,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scripting::scripting_adversarial_compilation_stress/large_script_compile/500",
+            "value": 215.11777328005152,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scripting::scripting_adversarial_compilation_stress/many_functions_50",
+            "value": 77.01419565768924,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scripting::scripting_adversarial_compilation_stress/syntax_error_handling",
+            "value": 8.482584872568694,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scripting::scripting_adversarial_execution_stress/loop_heavy_1000_iterations",
+            "value": 42026.139322264426,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scripting::scripting_adversarial_execution_stress/many_commands_100",
+            "value": 3706.952422787675,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scripting::scripting_adversarial_execution_stress/noop_execution",
+            "value": 8.189931736251019,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scripting::scripting_adversarial_execution_stress/simple_execution",
+            "value": 102.49584971143179,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scripting::scripting_adversarial_execution_stress/state_persistence_stress",
+            "value": 42.91038843358863,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scripting::scripting_adversarial_hot_reload/cache_hit_no_reload",
+            "value": 11.105248736000563,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scripting::scripting_adversarial_hot_reload/cache_invalidation_100",
+            "value": 102.11867046887474,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scripting::scripting_adversarial_hot_reload/modification_detection",
+            "value": 0.23647885207219996,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scripting::scripting_adversarial_hot_reload/recompilation_cycle",
+            "value": 32.85912636883484,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scripting::scripting_adversarial_hot_reload/state_preservation",
+            "value": 29.539464424091896,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scripting::scripting_adversarial_security_limits/array_size_limit",
+            "value": 13.460269608756674,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scripting::scripting_adversarial_security_limits/combined_limits_check",
+            "value": 0.7972512942666006,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scripting::scripting_adversarial_security_limits/expr_depth_check",
+            "value": 16.173894756859273,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scripting::scripting_adversarial_security_limits/operation_limit_check",
+            "value": 0.2442122138877112,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scripting::scripting_adversarial_security_limits/operation_limit_exceeded",
+            "value": 0.23474086501035474,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scripting::scripting_adversarial_security_limits/string_size_limit",
+            "value": 152.89053563306595,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-author::author_adversarial_conversion/map_to_json_100",
+            "value": 10588.407018628985,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-author::author_adversarial_conversion/nested_structure_50",
+            "value": 28607.66554443446,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-author::author_adversarial_conversion/toml_parsing_200_lines",
+            "value": 17993.98765831161,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-author::author_adversarial_conversion/value_serialization_500",
+            "value": 24852.990863861534,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-author::author_adversarial_integration/event_dispatching_500",
+            "value": 5187.703092331624,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-author::author_adversarial_integration/full_map_pipeline",
+            "value": 1617.2396226982441,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-author::author_adversarial_integration/script_entity_spawning_100",
+            "value": 2655.441261172962,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-author::author_adversarial_map_generation/biome_distribution_1024",
+            "value": 4367.958221263416,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-author::author_adversarial_map_generation/director_budget_calculation",
+            "value": 0.24497957291832656,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-author::author_adversarial_map_generation/map_meta_creation/128x128",
+            "value": 264.836024354706,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-author::author_adversarial_map_generation/map_meta_creation/256x256",
+            "value": 286.9263719724378,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-author::author_adversarial_map_generation/map_meta_creation/64x64",
+            "value": 216.92889879873223,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-author::author_adversarial_map_generation/spawn_zone_generation_100",
+            "value": 10829.967069759505,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-author::author_adversarial_sandboxing/forbidden_api_detection",
+            "value": 2966.7305026848608,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-author::author_adversarial_sandboxing/memory_tracking_allocations",
+            "value": 8279.419460376514,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-author::author_adversarial_sandboxing/operation_counting_10000",
+            "value": 0.2400461007575177,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-author::author_adversarial_sandboxing/stack_depth_limit_recursive",
+            "value": 0.23854685056885422,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-author::author_adversarial_sandboxing/time_limit_check_1000",
+            "value": 351.47112936290665,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-author::author_adversarial_script_execution/context_switching_100",
+            "value": 0.3005682260487567,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-author::author_adversarial_script_execution/function_calls_500",
+            "value": 6457.718538625573,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-author::author_adversarial_script_execution/loop_execution_10000_iterations",
+            "value": 149670.71055826586,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-author::author_adversarial_script_execution/variable_operations_1000",
+            "value": 50864.066796739884,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-author::author_adversarial_script_parsing/malicious_detection_50",
+            "value": 2702.770173709785,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-author::author_adversarial_script_parsing/parse_expressions_1000",
+            "value": 19238.487448253818,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-author::author_adversarial_script_parsing/token_counting_large_script",
+            "value": 6784.875349709864,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-author::author_adversarial_script_parsing/validate_scripts_100",
+            "value": 16825.38116859951,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-core::entity_spawning",
+            "value": 18599.25263154181,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-core::full_game_loop/large_1000e_100a",
+            "value": 1136815.2787178773,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-core::full_game_loop/medium_500e_50a",
+            "value": 292583.45277957,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-core::full_game_loop/small_100e_10a",
+            "value": 17012.228549308773,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-core::full_game_loop/stress_5000e_500a",
+            "value": 28640428.795,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-core::full_game_loop_multi_frame/1000e_60f",
+            "value": 3059442.6664705887,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-core::full_game_loop_multi_frame/100e_60f",
+            "value": 305079.43924375676,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-core::full_game_loop_multi_frame/500e_60f",
+            "value": 1509349.822368094,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-core::full_game_loop_scaling/100",
+            "value": 4474.756159704533,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-core::full_game_loop_scaling/1000",
+            "value": 45225.29082574373,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-core::full_game_loop_scaling/2000",
+            "value": 95646.63398143122,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-core::full_game_loop_scaling/250",
+            "value": 10842.596129559843,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-core::full_game_loop_scaling/50",
+            "value": 2288.8093931014105,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-core::full_game_loop_scaling/500",
+            "value": 22681.43117696529,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-core::full_game_loop_scaling/5000",
+            "value": 327498.14684562595,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-core::full_game_loop_single_frame/1000_entities",
+            "value": 47394.38895966135,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-core::full_game_loop_single_frame/100_entities",
+            "value": 4269.568583808046,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-core::full_game_loop_single_frame/5000_entities",
+            "value": 325731.04483293445,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-core::full_game_loop_single_frame/500_entities",
+            "value": 22643.9617311022,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-core::perception_stage/100_agents",
+            "value": 1049618.3089743063,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-core::perception_stage/10_agents",
+            "value": 10941.166740017801,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-core::perception_stage/50_agents",
+            "value": 261593.95406700327,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-core::physics_stage/100_agents",
+            "value": 74.16633632070972,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-core::planning_stage/100_agents",
+            "value": 9819.293902203462,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-core::rendering_prep/1000_entities",
+            "value": 13460.856867828259,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-core::rendering_prep/100_entities",
+            "value": 1206.6422458287873,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-core::rendering_prep/500_entities",
+            "value": 6375.1512001902975,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-core::world_creation",
+            "value": 24.317189065126026,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-core::world_tick",
+            "value": 25.571662904282185,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net-ecs::bandwidth_delta_size/compressed/10",
+            "value": 135.84429154747266,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net-ecs::bandwidth_delta_size/compressed/100",
+            "value": 464.5131539710733,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net-ecs::bandwidth_delta_size/compressed/1000",
+            "value": 2258.8559109084667,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net-ecs::bandwidth_delta_size/compressed/50",
+            "value": 291.26349813552554,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net-ecs::bandwidth_delta_size/compressed/500",
+            "value": 1273.7275463630986,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net-ecs::bandwidth_delta_size/uncompressed/10",
+            "value": 55.580560847202506,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net-ecs::bandwidth_delta_size/uncompressed/100",
+            "value": 187.58247563380826,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net-ecs::bandwidth_delta_size/uncompressed/1000",
+            "value": 863.8338950249708,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net-ecs::bandwidth_delta_size/uncompressed/50",
+            "value": 128.2260618022227,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net-ecs::bandwidth_delta_size/uncompressed/500",
+            "value": 522.6809762953751,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net-ecs::bandwidth_snapshot_size/compressed/10",
+            "value": 445.9440014956149,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net-ecs::bandwidth_snapshot_size/compressed/100",
+            "value": 2015.736365860975,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net-ecs::bandwidth_snapshot_size/compressed/1000",
+            "value": 15598.761731727001,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net-ecs::bandwidth_snapshot_size/compressed/50",
+            "value": 1185.753230184038,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net-ecs::bandwidth_snapshot_size/compressed/500",
+            "value": 9820.749367896366,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net-ecs::bandwidth_snapshot_size/uncompressed/10",
+            "value": 148.18756887857035,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net-ecs::bandwidth_snapshot_size/uncompressed/100",
+            "value": 853.0326745527939,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net-ecs::bandwidth_snapshot_size/uncompressed/1000",
+            "value": 8547.469821093953,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net-ecs::bandwidth_snapshot_size/uncompressed/50",
+            "value": 512.4629987737615,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net-ecs::bandwidth_snapshot_size/uncompressed/500",
+            "value": 4146.918346193219,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net-ecs::client_server_input_processing/1",
+            "value": 61387.93198628767,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net-ecs::client_server_input_processing/10",
+            "value": 260483.4281439592,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net-ecs::client_server_input_processing/100",
+            "value": 1314195.8922304776,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net-ecs::client_server_input_processing/50",
+            "value": 1055467.9597494854,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net-ecs::client_server_reconciliation/1",
+            "value": 398.8015493939279,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net-ecs::client_server_reconciliation/10",
+            "value": 3635.855388600411,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net-ecs::client_server_reconciliation/100",
+            "value": 36040.388121843425,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net-ecs::client_server_reconciliation/50",
+            "value": 18313.85945829959,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net-ecs::client_server_snapshot_generation/1",
+            "value": 230.69383846375356,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net-ecs::client_server_snapshot_generation/10",
+            "value": 600.8978524558274,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net-ecs::client_server_snapshot_generation/100",
+            "value": 5767.711349663341,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net-ecs::client_server_snapshot_generation/50",
+            "value": 3020.8419595192936,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net-ecs::compression/compress_entity_batch",
+            "value": 3458.9488533384165,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net-ecs::compression/compression_ratio_analysis",
+            "value": 3405.396191863823,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net-ecs::compression/decompress_entity_batch",
+            "value": 2928.60003515252,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net-ecs::compression/delta_then_compress_100",
+            "value": 4049.124887563324,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net-ecs::compression_snapshot/lz4_compress/10",
+            "value": 218.80604420035735,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net-ecs::compression_snapshot/lz4_compress/100",
+            "value": 1288.5325720622761,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net-ecs::compression_snapshot/lz4_compress/50",
+            "value": 825.4082181097762,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net-ecs::compression_snapshot/lz4_compress/500",
+            "value": 6317.097417322864,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net-ecs::compression_snapshot/lz4_decompress/10",
+            "value": 40.287404810404084,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net-ecs::compression_snapshot/lz4_decompress/100",
+            "value": 216.21130741385502,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net-ecs::compression_snapshot/lz4_decompress/50",
+            "value": 137.14225563995805,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net-ecs::compression_snapshot/lz4_decompress/500",
+            "value": 858.5849955015026,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net-ecs::delta_encoding/apply_delta/10",
+            "value": 32.208774618143025,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net-ecs::delta_encoding/apply_delta/100",
+            "value": 237.87991524289967,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net-ecs::delta_encoding/apply_delta/50",
+            "value": 133.0255472376569,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net-ecs::delta_encoding/apply_delta/500",
+            "value": 1071.2586209734118,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net-ecs::delta_encoding/compute_delta/10",
+            "value": 118.62260146917032,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net-ecs::delta_encoding/compute_delta/100",
+            "value": 1257.0402944071884,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net-ecs::delta_encoding/compute_delta/50",
+            "value": 609.4958886533994,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net-ecs::delta_encoding/compute_delta/500",
+            "value": 6720.714491831862,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net-ecs::delta_encoding/serialize_delta/10",
+            "value": 70.43475296496145,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net-ecs::delta_encoding/serialize_delta/100",
+            "value": 208.92010024352555,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net-ecs::delta_encoding/serialize_delta/50",
+            "value": 146.34347656439883,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net-ecs::delta_encoding/serialize_delta/500",
+            "value": 532.9743775237698,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net-ecs::deserialization/deserialize_transforms_1000",
+            "value": 689.1452569994041,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net-ecs::deserialization/parse_packet_header",
+            "value": 0.6436466406423565,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net-ecs::entity_serialization/delta_compression_1000",
+            "value": 5981.535195991621,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net-ecs::entity_serialization/dirty_serialize/10",
+            "value": 897.3185681620085,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net-ecs::entity_serialization/dirty_serialize/100",
+            "value": 9423.27542693066,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net-ecs::entity_serialization/dirty_serialize/1000",
+            "value": 91582.32043271279,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net-ecs::entity_serialization/dirty_serialize/10000",
+            "value": 906987.0024945983,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net-ecs::entity_serialization/full_serialize/10",
+            "value": 270.246272554766,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net-ecs::entity_serialization/full_serialize/100",
+            "value": 4831.823185155917,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net-ecs::entity_serialization/full_serialize/1000",
+            "value": 49861.635265207515,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net-ecs::entity_serialization/full_serialize/10000",
+            "value": 535476.9220781445,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net-ecs::full_pipeline_delta_cycle/10",
+            "value": 342.2368940574082,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net-ecs::full_pipeline_delta_cycle/100",
+            "value": 2406.08137906023,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net-ecs::full_pipeline_delta_cycle/50",
+            "value": 1228.8603372120024,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net-ecs::full_pipeline_delta_cycle/500",
+            "value": 11074.57788700931,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net-ecs::full_pipeline_sync_cycle/10",
+            "value": 663.1634953587029,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net-ecs::full_pipeline_sync_cycle/100",
+            "value": 4684.167443689601,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net-ecs::full_pipeline_sync_cycle/50",
+            "value": 2487.578719143155,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net-ecs::full_pipeline_sync_cycle/500",
+            "value": 19613.38581129489,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net-ecs::interest_management/get_relevant/100",
+            "value": 131.3936799851619,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net-ecs::interest_management/get_relevant/1000",
+            "value": 1232.7567027642099,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net-ecs::interest_management/get_relevant/10000",
+            "value": 15273.6825392289,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net-ecs::interest_management/multi_client_interest_1000_entities_16_clients",
+            "value": 60268.13949863806,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net-ecs::packet_batching/create_packet/10",
+            "value": 877.8843353710216,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net-ecs::packet_batching/create_packet/100",
+            "value": 6714.660905722908,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net-ecs::packet_batching/create_packet/50",
+            "value": 3595.3404604446555,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net-ecs::packet_batching/create_packet/500",
+            "value": 31042.112471032942,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net-ecs::packet_batching/multi_packet_frame_100_entities_4_clients",
+            "value": 21418.903594,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net-ecs::serialization_entity_state/deserialize_postcard",
+            "value": 18.719928503579357,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net-ecs::serialization_entity_state/serialize_postcard",
+            "value": 33.70188639315785,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net-ecs::serialization_snapshot/postcard/10",
+            "value": 222.27929278453735,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net-ecs::serialization_snapshot/postcard/100",
+            "value": 885.7963059337408,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net-ecs::serialization_snapshot/postcard/50",
+            "value": 571.345414940051,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net-ecs::serialization_snapshot/postcard/500",
+            "value": 4324.866478473143,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net-ecs::snapshot_interpolation/interpolate_100_entities/10",
+            "value": 7458.412027374022,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net-ecs::snapshot_interpolation/interpolate_100_entities/128",
+            "value": 123481.0927810253,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net-ecs::snapshot_interpolation/interpolate_100_entities/32",
+            "value": 28285.952475402773,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net-ecs::snapshot_interpolation/interpolate_100_entities/64",
+            "value": 56527.686086277485,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net-ecs::state_synchronization/full_world_sync/100",
+            "value": 11362.135364549027,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net-ecs::state_synchronization/full_world_sync/1000",
+            "value": 111472.01202988812,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net-ecs::state_synchronization/full_world_sync/500",
+            "value": 56592.36140158289,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net-ecs::state_synchronization/partial_update_20pct/100",
+            "value": 1607.5511678265311,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net-ecs::state_synchronization/partial_update_20pct/1000",
+            "value": 13154.261748033814,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-net-ecs::state_synchronization/partial_update_20pct/500",
+            "value": 6799.524526248852,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-asset-pipeline::pipeline_adversarial_batch_processing/memory_budget_tracking",
+            "value": 4395.95802154649,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-asset-pipeline::pipeline_adversarial_batch_processing/parallel_compression_20",
+            "value": 10953.132330777484,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-asset-pipeline::pipeline_adversarial_batch_processing/parallel_mesh_opt_20",
+            "value": 336504.5215499975,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-asset-pipeline::pipeline_adversarial_batch_processing/pipeline_scheduling_100",
+            "value": 66247.94089848136,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-asset-pipeline::pipeline_adversarial_format_conversion/index_delta_encoding_30000",
+            "value": 17270.543922237914,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-asset-pipeline::pipeline_adversarial_format_conversion/normal_octahedral_10000",
+            "value": 28102.444570873882,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-asset-pipeline::pipeline_adversarial_format_conversion/tangent_compression_5000",
+            "value": 12137.354224183995,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-asset-pipeline::pipeline_adversarial_format_conversion/vertex_format_conversion_10000",
+            "value": 0.23906395198078154,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-asset-pipeline::pipeline_adversarial_lod_generation/edge_collapse_selection",
+            "value": 222928.77980562512,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-asset-pipeline::pipeline_adversarial_lod_generation/lod_level_generation_4",
+            "value": 8264.443077925882,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-asset-pipeline::pipeline_adversarial_lod_generation/quadric_error_5000_verts",
+            "value": 75274.62222719553,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-asset-pipeline::pipeline_adversarial_lod_generation/screen_space_error_100",
+            "value": 454.3748842283008,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-asset-pipeline::pipeline_adversarial_mesh_optimization/index_buffer_opt_10000",
+            "value": 112767.33687626502,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-asset-pipeline::pipeline_adversarial_mesh_optimization/overdraw_analysis_1000_tris",
+            "value": 1391.1200992559427,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-asset-pipeline::pipeline_adversarial_mesh_optimization/vertex_cache_opt/1000",
+            "value": 8157.413082346411,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-asset-pipeline::pipeline_adversarial_mesh_optimization/vertex_cache_opt/10000",
+            "value": 82517.06486770177,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-asset-pipeline::pipeline_adversarial_mesh_optimization/vertex_cache_opt/5000",
+            "value": 40173.74550035595,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-asset-pipeline::pipeline_adversarial_mesh_optimization/vertex_deduplication_5000",
+            "value": 148851.5362186387,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-asset-pipeline::pipeline_adversarial_texture_compression/astc_compression/Astc4x4",
+            "value": 1157.8432416014323,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-asset-pipeline::pipeline_adversarial_texture_compression/astc_compression/Astc6x6",
+            "value": 554.0238340264051,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-asset-pipeline::pipeline_adversarial_texture_compression/astc_compression/Astc8x8",
+            "value": 365.1589840294328,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-asset-pipeline::pipeline_adversarial_texture_compression/bc7_compression/1024x1024",
+            "value": 0.2320304566407851,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-asset-pipeline::pipeline_adversarial_texture_compression/bc7_compression/256x256",
+            "value": 0.23541444930858862,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-asset-pipeline::pipeline_adversarial_texture_compression/bc7_compression/512x512",
+            "value": 0.23676582909245325,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-asset-pipeline::pipeline_adversarial_texture_compression/bc7_compression/64x64",
+            "value": 0.23466500494020534,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-asset-pipeline::pipeline_adversarial_texture_compression/mipmap_generation_1024",
+            "value": 55047.91215188688,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-asset-pipeline::pipeline_adversarial_texture_compression/npot_texture_300x200",
+            "value": 38370.721889665125,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-asset-pipeline::pipeline_adversarial_texture_compression/quality_preset_selection",
+            "value": 0.23635623404347192,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-asset-pipeline::pipeline_adversarial_validation/animation_validation_20",
+            "value": 1884.1384459017145,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-asset-pipeline::pipeline_adversarial_validation/material_ref_validation",
+            "value": 3579.5058848007443,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-asset-pipeline::pipeline_adversarial_validation/mesh_validation_50",
+            "value": 25007.97673178389,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-asset-pipeline::pipeline_adversarial_validation/texture_validation_100",
+            "value": 992.2011355545162,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-prompts::batch_render/10",
+            "value": 64296.916984403535,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-prompts::batch_render/100",
+            "value": 638609.432828554,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-prompts::batch_render/50",
+            "value": 315696.3224074326,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-prompts::context_add_variables/10",
+            "value": 676.0354876384815,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-prompts::context_add_variables/20",
+            "value": 1496.8745072921347,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-prompts::context_add_variables/5",
+            "value": 307.6617917398744,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-prompts::context_clone",
+            "value": 372.10433074713234,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-prompts::context_creation_complex",
+            "value": 1008.8825823090224,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-prompts::context_creation_simple",
+            "value": 62.32498047298269,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-prompts::context_to_string_map",
+            "value": 602.574030052447,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-prompts::engine_creation",
+            "value": 2071.637270597457,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-prompts::engine_register_template/1",
+            "value": 31579.356533465954,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-prompts::engine_register_template/10",
+            "value": 316109.05207085627,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-prompts::engine_register_template/50",
+            "value": 1614408.0636737617,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-prompts::engine_render",
+            "value": 693.3164112318836,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-prompts::template_clone",
+            "value": 85.72303468662656,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-prompts::template_creation_complex",
+            "value": 31860.17432203359,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-prompts::template_creation_dialogue",
+            "value": 29565.119208582946,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-prompts::template_creation_simple",
+            "value": 28473.83254085543,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-prompts::template_render_complex",
+            "value": 24732.3790035671,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-prompts::template_render_dialogue",
+            "value": 13721.33992159661,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-prompts::template_render_map",
+            "value": 6650.8124180660925,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-prompts::template_render_simple",
+            "value": 6522.520338979546,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-audio::audio_engine_new",
+            "value": 307.93101285956635,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-audio::audio_tick/0_sources",
+            "value": 4.86758482669586,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-audio::audio_tick/100_sources",
+            "value": 4.8698350566576645,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-audio::audio_tick/10_sources",
+            "value": 4.864476686842891,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-audio::audio_tick/50_sources",
+            "value": 4.828128234368301,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-audio::beep_generation/3d_beep",
+            "value": 20.092726992295823,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-audio::beep_generation/sfx_beep",
+            "value": 2.445759808713086,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-audio::beep_generation/voice_beep",
+            "value": 4.450839990267198,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-audio::spatial_audio/listener_movement_10_emitters",
+            "value": 39.43320665249734,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-audio::spatial_audio/listener_movement_single_emitter",
+            "value": 36.765705655705034,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-audio::spatial_audio/pan_mode_switching",
+            "value": 0.12099666260578086,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-audio::volume_control/master_volume_set",
+            "value": 5.03630079158347,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-audio::volume_control/master_volume_with_active_sounds",
+            "value": 10.39188470995669,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persistence-ecs::blob_size/10",
+            "value": 6491.183819222835,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persistence-ecs::blob_size/100",
+            "value": 54260.66594759462,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persistence-ecs::blob_size/1000",
+            "value": 539798.4525546607,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persistence-ecs::blob_size/2000",
+            "value": 1077619.2943057783,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persistence-ecs::blob_size/500",
+            "value": 271715.0925081849,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persistence-ecs::calculate_hash/10",
+            "value": 2470.565886744445,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persistence-ecs::calculate_hash/100",
+            "value": 24817.20457246416,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persistence-ecs::calculate_hash/1000",
+            "value": 485866.9942077653,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persistence-ecs::calculate_hash/2000",
+            "value": 1500517.4253291849,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persistence-ecs::calculate_hash/500",
+            "value": 176013.95448608394,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persistence-ecs::checksum_verification/crc32_compute/102400bytes",
+            "value": 796812.5625202496,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persistence-ecs::checksum_verification/crc32_compute/10240bytes",
+            "value": 79727.62056375411,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persistence-ecs::checksum_verification/crc32_compute/1024bytes",
+            "value": 7955.156779391347,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persistence-ecs::checksum_verification/crc32_compute/1048576bytes",
+            "value": 8185425.194285716,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persistence-ecs::checksum_verification/verify_snapshot_integrity_1000",
+            "value": 478866.3781379525,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persistence-ecs::component_deserialization/deserialize_healths_1000",
+            "value": 1053.7883002532274,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persistence-ecs::component_deserialization/deserialize_inventories_100",
+            "value": 40707.183028979445,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persistence-ecs::component_deserialization/deserialize_transforms_1000",
+            "value": 1408.254483159216,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persistence-ecs::compression_efficiency/compress/102400bytes",
+            "value": 148189.4533113188,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persistence-ecs::compression_efficiency/compress/10240bytes",
+            "value": 14884.207488034868,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persistence-ecs::compression_efficiency/compress/1024bytes",
+            "value": 1610.8277004558945,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persistence-ecs::compression_efficiency/compress/1048576bytes",
+            "value": 1524159.8684921875,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persistence-ecs::compression_efficiency/decompress/102400bytes",
+            "value": 140092.53088182816,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persistence-ecs::compression_efficiency/decompress/10240bytes",
+            "value": 14513.671549301944,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persistence-ecs::compression_efficiency/decompress/1024bytes",
+            "value": 1623.751461178688,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persistence-ecs::compression_efficiency/decompress/1048576bytes",
+            "value": 1434536.4965798662,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persistence-ecs::compression_efficiency/ratio_analysis/102400bytes",
+            "value": 147865.82227968593,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persistence-ecs::compression_efficiency/ratio_analysis/10240bytes",
+            "value": 14823.74301429585,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persistence-ecs::compression_efficiency/ratio_analysis/1024bytes",
+            "value": 1490.2858439538288,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persistence-ecs::compression_efficiency/ratio_analysis/1048576bytes",
+            "value": 1516729.1667252898,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persistence-ecs::deserialize_world/10",
+            "value": 17508.061374096847,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persistence-ecs::deserialize_world/100",
+            "value": 117453.78889053751,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persistence-ecs::deserialize_world/1000",
+            "value": 1026015.0429898257,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persistence-ecs::deserialize_world/2000",
+            "value": 2001670.0491999995,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persistence-ecs::deserialize_world/500",
+            "value": 526390.7180862186,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persistence-ecs::ecs_serialization_entity_batch/deserialize/10",
+            "value": 963.105430641147,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persistence-ecs::ecs_serialization_entity_batch/deserialize/100",
+            "value": 14028.278963761795,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persistence-ecs::ecs_serialization_entity_batch/deserialize/1000",
+            "value": 146709.36461339056,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persistence-ecs::ecs_serialization_entity_batch/deserialize/50",
+            "value": 6908.458540620294,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persistence-ecs::ecs_serialization_entity_batch/deserialize/500",
+            "value": 72824.07232284368,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persistence-ecs::ecs_serialization_entity_batch/serialize/10",
+            "value": 659.3211070793357,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persistence-ecs::ecs_serialization_entity_batch/serialize/100",
+            "value": 4734.211872146745,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persistence-ecs::ecs_serialization_entity_batch/serialize/1000",
+            "value": 44084.09561198445,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persistence-ecs::ecs_serialization_entity_batch/serialize/50",
+            "value": 2518.9423306722115,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persistence-ecs::ecs_serialization_entity_batch/serialize/500",
+            "value": 22832.77815779581,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persistence-ecs::ecs_serialization_single_component/deserialize_health",
+            "value": 9.650666779626986,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persistence-ecs::ecs_serialization_single_component/deserialize_position",
+            "value": 9.907575128764018,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persistence-ecs::ecs_serialization_single_component/serialize_health",
+            "value": 37.865001937721345,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persistence-ecs::ecs_serialization_single_component/serialize_position",
+            "value": 36.44321944367298,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persistence-ecs::entity_serialization/serialize_entities/100",
+            "value": 14100.195526067857,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persistence-ecs::entity_serialization/serialize_entities/1000",
+            "value": 165337.76760233135,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persistence-ecs::entity_serialization/serialize_entities/10000",
+            "value": 1439256.7052111288,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persistence-ecs::entity_serialization/serialize_with_compression/100",
+            "value": 44017.858645735505,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persistence-ecs::entity_serialization/serialize_with_compression/1000",
+            "value": 452267.98606379435,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persistence-ecs::entity_serialization/serialize_with_compression/10000",
+            "value": 4567133.994545454,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persistence-ecs::incremental_delta/compute_delta/10pct_change",
+            "value": 5539.309660190913,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persistence-ecs::incremental_delta/compute_delta/1pct_change",
+            "value": 671.3516992008801,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persistence-ecs::incremental_delta/compute_delta/25pct_change",
+            "value": 13244.738733014889,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persistence-ecs::incremental_delta/compute_delta/50pct_change",
+            "value": 25566.334721421463,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persistence-ecs::incremental_delta/compute_delta/5pct_change",
+            "value": 2505.406987779455,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persistence-ecs::incremental_delta/delta_vs_full_comparison",
+            "value": 215267.53208237726,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persistence-ecs::persistence_manager_operations/list_saves",
+            "value": 7804.330449957468,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persistence-ecs::persistence_manager_operations/load_game",
+            "value": 20299.391848369934,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persistence-ecs::persistence_manager_operations/save_game",
+            "value": 62275.24169249998,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persistence-ecs::replay_operations/deserialize/10",
+            "value": 1082.7493447260788,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persistence-ecs::replay_operations/deserialize/100",
+            "value": 14025.962084458415,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persistence-ecs::replay_operations/deserialize/50",
+            "value": 6795.71429165059,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persistence-ecs::replay_operations/deserialize/500",
+            "value": 70557.10877557722,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persistence-ecs::replay_operations/serialize/10",
+            "value": 737.5916531998374,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persistence-ecs::replay_operations/serialize/100",
+            "value": 5613.049709669291,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persistence-ecs::replay_operations/serialize/50",
+            "value": 2904.9351577883454,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persistence-ecs::replay_operations/serialize/500",
+            "value": 28236.751418045045,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persistence-ecs::replay_tick_advance/advance_tick",
+            "value": 37.89723336741338,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persistence-ecs::roundtrip_world/10",
+            "value": 24623.192179418296,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persistence-ecs::roundtrip_world/100",
+            "value": 175160.17932617548,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persistence-ecs::roundtrip_world/1000",
+            "value": 1575432.6392394123,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persistence-ecs::roundtrip_world/2000",
+            "value": 3098946.6229411764,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persistence-ecs::roundtrip_world/500",
+            "value": 805952.692373817,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persistence-ecs::save_load_cycle_full_pipeline/load/10",
+            "value": 11227.324116468955,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persistence-ecs::save_load_cycle_full_pipeline/load/100",
+            "value": 19408.804397799326,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persistence-ecs::save_load_cycle_full_pipeline/load/50",
+            "value": 14871.523619876725,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persistence-ecs::save_load_cycle_full_pipeline/load/500",
+            "value": 54588.15060552385,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persistence-ecs::save_load_cycle_full_pipeline/save/10",
+            "value": 44777.33918889569,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persistence-ecs::save_load_cycle_full_pipeline/save/100",
+            "value": 57744.61450781567,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persistence-ecs::save_load_cycle_full_pipeline/save/50",
+            "value": 51271.724586491844,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persistence-ecs::save_load_cycle_full_pipeline/save/500",
+            "value": 120480.34766683094,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persistence-ecs::scaling_entity_count/full_load/100",
+            "value": 17854.561129768488,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persistence-ecs::scaling_entity_count/full_load/1000",
+            "value": 125315.86023887392,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persistence-ecs::scaling_entity_count/full_load/500",
+            "value": 52819.95362938936,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persistence-ecs::scaling_entity_count/full_load/5000",
+            "value": 453629.34924640844,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persistence-ecs::scaling_entity_count/full_save/100",
+            "value": 55522.43705698436,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persistence-ecs::scaling_entity_count/full_save/1000",
+            "value": 195286.2695802718,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persistence-ecs::scaling_entity_count/full_save/500",
+            "value": 117690.58787158638,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persistence-ecs::scaling_entity_count/full_save/5000",
+            "value": 835116.9650193696,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persistence-ecs::serialize_world/10",
+            "value": 6491.25544060595,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persistence-ecs::serialize_world/100",
+            "value": 53177.02114094208,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persistence-ecs::serialize_world/1000",
+            "value": 533309.0031425097,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persistence-ecs::serialize_world/2000",
+            "value": 1074264.236350027,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persistence-ecs::serialize_world/500",
+            "value": 266564.58629776345,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persistence-ecs::version_migration/migrate_transforms_add_field_1000",
+            "value": 60514.403546184934,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persistence-ecs::version_migration/version_check_1000",
+            "value": 695.9610882035523,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persistence-ecs::world_hash_calculation/10",
+            "value": 273.33258499541904,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persistence-ecs::world_hash_calculation/100",
+            "value": 2635.9944417615543,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persistence-ecs::world_hash_calculation/1000",
+            "value": 26540.731474224693,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persistence-ecs::world_hash_calculation/50",
+            "value": 1323.2506431642964,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persistence-ecs::world_hash_calculation/500",
+            "value": 13159.067935385958,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persistence-ecs::world_snapshot/checksum_1000_entities",
+            "value": 478289.0362379908,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persistence-ecs::world_snapshot/create_snapshot/100",
+            "value": 74442.60635204685,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persistence-ecs::world_snapshot/create_snapshot/1000",
+            "value": 736366.2618439922,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persistence-ecs::world_snapshot/create_snapshot/500",
+            "value": 366093.5500318081,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-persistence-ecs::world_snapshot/create_snapshot/5000",
+            "value": 3653753.7064285697,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-weaving::adjudication/adjudicate_10_intents",
+            "value": 632.922415136385,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-weaving::adjudication/adjudicate_5_intents",
+            "value": 123.75537035134624,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-weaving::adjudication/adjudicate_with_cooldowns",
+            "value": 156.4359468772288,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-weaving::adjudication/begin_tick",
+            "value": 8.122249677148314,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-weaving::adjudication/budget_check",
+            "value": 0.6226673118196977,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-weaving::adjudication/cooldown_check",
+            "value": 0.6251326779991224,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-weaving::configuration/config_creation",
+            "value": 261.81922116136656,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-weaving::configuration/config_from_toml",
+            "value": 2861.120485348989,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-weaving::configuration/config_to_toml",
+            "value": 1340.1058823134556,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-weaving::enemy_spawner/determine_archetype/1",
+            "value": 5.8101547040545345,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-weaving::enemy_spawner/determine_archetype/10",
+            "value": 5.815962448351116,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-weaving::enemy_spawner/determine_archetype/15",
+            "value": 5.819952377491782,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-weaving::enemy_spawner/determine_archetype/20",
+            "value": 5.803826065548569,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-weaving::enemy_spawner/determine_archetype/5",
+            "value": 5.8141260886686235,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-weaving::full_pipeline/full_weave_cycle",
+            "value": 623.6597039821205,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-weaving::full_pipeline/pipeline_scaling/10",
+            "value": 248.2303169269272,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-weaving::full_pipeline/pipeline_scaling/100",
+            "value": 415.4314950334057,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-weaving::full_pipeline/pipeline_scaling/50",
+            "value": 409.98810510415433,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-weaving::integrated_systems/10",
+            "value": 54.61043401209814,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-weaving::integrated_systems/100",
+            "value": 598.2287194682484,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-weaving::integrated_systems/50",
+            "value": 276.8184715118712,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-weaving::intent_proposal/aid_event_proposal",
+            "value": 90.31807697222253,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-weaving::intent_proposal/intent_builder",
+            "value": 134.18350109034355,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-weaving::intent_proposal/multiple_proposers",
+            "value": 303.993284782319,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-weaving::intent_proposal/supply_drop_proposal",
+            "value": 197.2314537874011,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-weaving::pattern_detection/low_health_cluster",
+            "value": 36.724839640224886,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-weaving::pattern_detection/multiple_detectors",
+            "value": 133.799969538694,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-weaving::pattern_detection/pattern_strength_categorization",
+            "value": 1.2465644497340223,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-weaving::pattern_detection/resource_scarcity",
+            "value": 79.09825517476638,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-weaving::player_abilities/1",
+            "value": 3.7426468352816444,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-weaving::player_abilities/10",
+            "value": 22.872591416711092,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-weaving::player_abilities/100",
+            "value": 227.4889325819292,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-weaving::player_abilities/1000",
+            "value": 2296.2771257097975,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-weaving::player_ability_activation/dash_activation",
+            "value": 142.7866809444198,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-weaving::player_ability_activation/shield_activation",
+            "value": 137.08201465580132,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-weaving::quest_objectives/1",
+            "value": 154.43113464589314,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-weaving::quest_objectives/10",
+            "value": 1484.357123355912,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-weaving::quest_objectives/100",
+            "value": 14726.736800158315,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-weaving::quest_objectives/50",
+            "value": 7384.119743711306,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-observability::observability_adversarial_crash_reporting/backtrace_generation_100",
+            "value": 1059794.2363945532,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-observability::observability_adversarial_crash_reporting/crash_report_creation_500",
+            "value": 2991507.2017647056,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-observability::observability_adversarial_crash_reporting/report_serialization_200",
+            "value": 48036.71882253011,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-observability::observability_adversarial_crash_reporting/symbolication_1000",
+            "value": 55448.472355527396,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-observability::observability_adversarial_logging/log_entry_creation/1000",
+            "value": 392932.5979237421,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-observability::observability_adversarial_logging/log_entry_creation/10000",
+            "value": 3892849.5530769234,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-observability::observability_adversarial_logging/log_entry_creation/5000",
+            "value": 1951736.650184281,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-observability::observability_adversarial_logging/log_formatting_5000",
+            "value": 1352545.7095325335,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-observability::observability_adversarial_logging/log_level_filtering_10000",
+            "value": 14802.447281098785,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-observability::observability_adversarial_logging/target_matching_10000",
+            "value": 86823.81355683166,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-observability::observability_adversarial_metrics_collection/counter_increments_100000",
+            "value": 5777056.226666665,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-observability::observability_adversarial_metrics_collection/gauge_updates_50000",
+            "value": 1151741.830583367,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-observability::observability_adversarial_metrics_collection/histogram_observations_10000",
+            "value": 72311.5308123369,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-observability::observability_adversarial_metrics_collection/metric_aggregation_5000",
+            "value": 371421.80386828363,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-observability::observability_adversarial_metrics_collection/metric_tagging_10000",
+            "value": 4338704.456666666,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-observability::observability_adversarial_performance_monitoring/cpu_profile_aggregation_5000",
+            "value": 187422.64544580714,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-observability::observability_adversarial_performance_monitoring/fps_calculation_600",
+            "value": 8952.320499381569,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-observability::observability_adversarial_performance_monitoring/gpu_timing_aggregation_1000",
+            "value": 25528.210672515448,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-observability::observability_adversarial_performance_monitoring/memory_tracking_1000",
+            "value": 19867.025482500776,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-observability::observability_adversarial_span_operations/nested_span_tree_depth_20",
+            "value": 483635.1483428087,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-observability::observability_adversarial_span_operations/span_attributes_20000",
+            "value": 1593812.2032985506,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-observability::observability_adversarial_span_operations/span_creation_10000",
+            "value": 899879.8633165382,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-observability::observability_adversarial_span_operations/span_lifecycle_5000",
+            "value": 1516112.5875506878,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-observability::observability_adversarial_trace_context/baggage_propagation_2000",
+            "value": 606349.9972886811,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-observability::observability_adversarial_trace_context/context_creation_10000",
+            "value": 0.6231081638910696,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-observability::observability_adversarial_trace_context/header_encoding_5000",
+            "value": 1210636.7482842957,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-observability::observability_adversarial_trace_context/header_parsing_5000",
+            "value": 604144.527204779,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-input::action_insertion",
+            "value": 689.8910645949867,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-input::binding_creation",
+            "value": 5.967612637015275,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-input::binding_deserialization",
+            "value": 141.2743455849188,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-input::binding_lookup",
+            "value": 14.249603925701805,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-input::binding_serialization",
+            "value": 65.2362778244483,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-input::binding_set_clone",
+            "value": 51.34147256388268,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-input::binding_set_creation",
+            "value": 665.49780007669,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-input::clear_frame",
+            "value": 0.31221925641264375,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-input::context_switching",
+            "value": 1.5566187655574426,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-input::input_manager_creation",
+            "value": 67.20748716313201,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-input::is_down_query",
+            "value": 0.623129228940721,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-input::just_pressed_query",
+            "value": 0.6227459393866717,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-input::multiple_queries",
+            "value": 1.2498143633592516,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-input::sensitivity_access",
+            "value": 0.6375104685258685,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-rag::memory_batch_clone/10",
+            "value": 443.5649096645676,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-rag::memory_batch_clone/100",
+            "value": 6813.187444642052,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-rag::memory_batch_clone/50",
+            "value": 3516.7667341731985,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-rag::memory_batch_creation/10",
+            "value": 1808.8964856440164,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-rag::memory_batch_creation/100",
+            "value": 21597.21177035707,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-rag::memory_batch_creation/50",
+            "value": 10597.03848311094,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-rag::memory_batch_creation/500",
+            "value": 104269.97213846272,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-rag::memory_clone",
+            "value": 39.57190364912154,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-rag::memory_creation",
+            "value": 83.84963423393941,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-rag::memory_deserialize_json",
+            "value": 368.09755375807794,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-rag::memory_serialize_json",
+            "value": 263.78295104823906,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-rag::query_creation_complex",
+            "value": 141.19845481738932,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-rag::query_creation_simple",
+            "value": 20.766752615691694,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-rag::rag_adversarial_context_injection/empty_memories_injection",
+            "value": 224.1334338711638,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-rag::rag_adversarial_context_injection/multiple_memories_10",
+            "value": 1516.447015657713,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-rag::rag_adversarial_context_injection/single_memory_injection",
+            "value": 227.51279369166292,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-rag::rag_adversarial_context_injection/token_limit_enforcement",
+            "value": 355.32299912053793,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-rag::rag_adversarial_diversity_sampling/category_diversity_100",
+            "value": 2426.874401574012,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-rag::rag_adversarial_diversity_sampling/mmr_sampling_50",
+            "value": 87240.77219162276,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-rag::rag_adversarial_diversity_sampling/temporal_diversity_100",
+            "value": 2510.848108794227,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-rag::rag_adversarial_forgetting_mechanisms/access_count_forgetting",
+            "value": 299.18824211164485,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-rag::rag_adversarial_forgetting_mechanisms/combined_forgetting_policy",
+            "value": 534.835453579929,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-rag::rag_adversarial_forgetting_mechanisms/importance_forgetting_100",
+            "value": 281.30111087607594,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-rag::rag_adversarial_forgetting_mechanisms/time_decay_100",
+            "value": 3421.541706368106,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-rag::rag_adversarial_memory_consolidation/consolidate_similar_20",
+            "value": 12658.278562447995,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-rag::rag_adversarial_memory_consolidation/consolidation_priority_100",
+            "value": 3257.0066100859563,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-rag::rag_adversarial_memory_consolidation/no_consolidation_unique_50",
+            "value": 442688.3091791812,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-rag::rag_adversarial_query_processing/empty_query_handling",
+            "value": 0.6227256898817053,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-rag::rag_adversarial_query_processing/long_query_5k_chars",
+            "value": 35.91213414384858,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-rag::rag_adversarial_query_processing/multi_query_batch_10",
+            "value": 206.48996130982067,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-rag::rag_adversarial_query_processing/query_expansion",
+            "value": 225.4267977386911,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-rag::rag_adversarial_query_processing/query_normalization",
+            "value": 325.7392985545263,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-rag::rag_adversarial_retrieval_stress/empty_store_retrieval",
+            "value": 7.4830297592622355,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-rag::rag_adversarial_retrieval_stress/high_threshold_100",
+            "value": 43418.85031540096,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-rag::rag_adversarial_retrieval_stress/store_retrieval/100",
+            "value": 50523.676583499735,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-rag::rag_adversarial_retrieval_stress/store_retrieval/1000",
+            "value": 527339.8966630257,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-rag::rag_adversarial_retrieval_stress/store_retrieval/500",
+            "value": 261794.7582762368,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-rag::rag_adversarial_retrieval_stress/zero_threshold_100",
+            "value": 52071.985397003016,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-rag::rag_config_creation",
+            "value": 42.07668339741782,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-rag::rag_config_custom",
+            "value": 30.73287761613009,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-rag::result_ranking/100",
+            "value": 36770.110227606936,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-rag::result_ranking/200",
+            "value": 72653.01592748048,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-rag::result_ranking/50",
+            "value": 18083.738425888016,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-rag::retrieval_category_filtering",
+            "value": 9484.913781542624,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-rag::retrieval_engine_creation",
+            "value": 2.488202819084491,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-rag::retrieval_search_scaling/100",
+            "value": 8958.395031870636,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-rag::retrieval_search_scaling/1000",
+            "value": 90641.0063066174,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-rag::retrieval_search_scaling/50",
+            "value": 3826.262774963651,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-rag::retrieval_search_scaling/500",
+            "value": 46005.16563863989,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-rag::retrieval_simple_search",
+            "value": 4828.811310959411,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-rag::similarity_calculation",
+            "value": 348.92601149745053,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-llm-eval::batch_processing/concurrent_batches_10x100",
+            "value": 599839.844899215,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-llm-eval::batch_processing/process_batch/10",
+            "value": 18139.97666320798,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-llm-eval::batch_processing/process_batch/100",
+            "value": 180091.82296842348,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-llm-eval::batch_processing/process_batch/50",
+            "value": 94224.3584460334,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-llm-eval::batch_processing/process_batch/500",
+            "value": 871251.2437267811,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-llm-eval::config_operations/config_cloning_1000",
+            "value": 221678.90815245226,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-llm-eval::config_operations/config_creation_100",
+            "value": 13898.590116648833,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-llm-eval::evaluation_edge_cases/empty_responses",
+            "value": 4754.1518959564155,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-llm-eval::evaluation_edge_cases/long_prompts_10k_chars",
+            "value": 203300.76824473953,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-llm-eval::evaluation_edge_cases/score_variance_computation",
+            "value": 4393.148200222349,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-llm-eval::evaluation_edge_cases/unicode_heavy_prompts",
+            "value": 27186.00426125603,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-llm-eval::metric_aggregation/aggregate_scores/100",
+            "value": 563.8647216908743,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-llm-eval::metric_aggregation/aggregate_scores/1000",
+            "value": 4407.747527079703,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-llm-eval::metric_aggregation/aggregate_scores/10000",
+            "value": 41627.128147838426,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-llm-eval::metric_aggregation/aggregate_scores/100000",
+            "value": 416793.2737258535,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-llm-eval::metric_aggregation/compute_percentiles/100",
+            "value": 739.1876941527073,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-llm-eval::metric_aggregation/compute_percentiles/1000",
+            "value": 5845.231022687705,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-llm-eval::metric_aggregation/compute_percentiles/10000",
+            "value": 55962.512915921034,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-llm-eval::metric_aggregation/compute_percentiles/100000",
+            "value": 558324.6498730268,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-llm-eval::metric_aggregation/multi_metric_1000_samples",
+            "value": 170148.37880192723,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-llm-eval::prompt_generation/complex_prompt_templates",
+            "value": 843272.1547174088,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-llm-eval::prompt_generation/create_prompts/100",
+            "value": 29715.397166290524,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-llm-eval::prompt_generation/create_prompts/1000",
+            "value": 309586.64833217306,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-llm-eval::prompt_generation/create_prompts/10000",
+            "value": 3064507.3952941173,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-llm-eval::response_evaluation/full_pipeline_100",
+            "value": 66278.8317876244,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-llm-eval::response_evaluation/score_responses/10",
+            "value": 413.8129735016344,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-llm-eval::response_evaluation/score_responses/100",
+            "value": 4288.810526567993,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-llm-eval::response_evaluation/score_responses/1000",
+            "value": 45961.16801261559,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-llm-eval::similarity_calculations/cosine_long_text",
+            "value": 631671.6732534324,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-llm-eval::similarity_calculations/cosine_similarity_100",
+            "value": 233208.55438348828,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-llm-eval::similarity_calculations/jaccard_long_text",
+            "value": 483457.04030560196,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-llm-eval::similarity_calculations/jaccard_similarity_100",
+            "value": 248596.75689939145,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-llm-eval::similarity_calculations/levenshtein_distance_100",
+            "value": 1568620.5154571596,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-llm-eval::similarity_calculations/normalized_edit_distance_100",
+            "value": 1573406.2491742917,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-secrets::secrets_adversarial_audit_logging/audit_entry_creation_50000",
+            "value": 10370947.642000003,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-secrets::secrets_adversarial_audit_logging/audit_filter_by_actor_20000",
+            "value": 102511.90770419547,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-secrets::secrets_adversarial_audit_logging/failed_operation_tracking_10000",
+            "value": 54660.5620179312,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-secrets::secrets_adversarial_audit_logging/time_range_queries_10000",
+            "value": 39078.97899568859,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-secrets::secrets_adversarial_caching/cache_expiration_check_5000",
+            "value": 525720.1384044745,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-secrets::secrets_adversarial_caching/cache_hits_10000",
+            "value": 1163586.5863424053,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-secrets::secrets_adversarial_caching/cache_population_5000",
+            "value": 1260632.6789122594,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-secrets::secrets_adversarial_caching/lru_eviction_simulation_10000",
+            "value": 86025088.41,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-secrets::secrets_adversarial_encryption/bulk_encrypt_1000_secrets",
+            "value": 238231.67323472112,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-secrets::secrets_adversarial_encryption/key_derivation_iterations",
+            "value": 74456.86079207208,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-secrets::secrets_adversarial_encryption/key_rotation_500_secrets",
+            "value": 39000.24928336401,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-secrets::secrets_adversarial_encryption/xor_encrypt/1024",
+            "value": 3827.3728144161846,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-secrets::secrets_adversarial_encryption/xor_encrypt/256",
+            "value": 957.5856336841478,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-secrets::secrets_adversarial_encryption/xor_encrypt/4096",
+            "value": 15386.589226268372,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-secrets::secrets_adversarial_encryption/xor_encrypt/64",
+            "value": 239.23244818790678,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-secrets::secrets_adversarial_key_management/key_generation_1000",
+            "value": 82553.66205337663,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-secrets::secrets_adversarial_key_management/key_hierarchy_1000",
+            "value": 205692.2673868502,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-secrets::secrets_adversarial_key_management/key_lookup_10000",
+            "value": 692507.9684834494,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-secrets::secrets_adversarial_key_management/key_rotation_tracking_500",
+            "value": 42455.12199774555,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-secrets::secrets_adversarial_keyring_operations/lock_unlock_cycles_1000",
+            "value": 62016.23056825606,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-secrets::secrets_adversarial_keyring_operations/multi_service_lookup_10000",
+            "value": 93366.62859789282,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-secrets::secrets_adversarial_keyring_operations/retrieve_credentials_5000",
+            "value": 706281.5602680166,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-secrets::secrets_adversarial_keyring_operations/store_credentials_5000",
+            "value": 1570107.7492752322,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-secrets::secrets_adversarial_secret_storage/delete_secrets_5000",
+            "value": 1304329.5695485605,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-secrets::secrets_adversarial_secret_storage/list_filter_20000",
+            "value": 922327.9479641067,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-secrets::secrets_adversarial_secret_storage/retrieve_secrets_10000",
+            "value": 996028.5595419641,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-secrets::secrets_adversarial_secret_storage/store_secrets_10000",
+            "value": 2543427.5255000005,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-physics::bone_def_default",
+            "value": 10.086377634118458,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-physics::bone_shape_volume/box",
+            "value": 0.6374391251489459,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-physics::bone_shape_volume/capsule",
+            "value": 0.6244142008994,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-physics::bone_shape_volume/sphere",
+            "value": 0.6256301980142956,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-physics::character_full_tick",
+            "value": 4890.398551900594,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-physics::character_move_batch/1",
+            "value": 132.77926934743311,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-physics::character_move_batch/10",
+            "value": 1440.8325892166051,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-physics::character_move_batch/100",
+            "value": 24360.960855917518,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-physics::character_move_batch/50",
+            "value": 9647.344715592668,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-physics::character_move_diagonal",
+            "value": 100.57364097063117,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-physics::character_move_straight",
+            "value": 102.88469097480454,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-physics::character_move_with_obstacles",
+            "value": 108.11795860808674,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-physics::character_step_climbing",
+            "value": 90.83287146723873,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-physics::character_transform_lookup",
+            "value": 18.93527567314155,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-physics::cloth_creation/16",
+            "value": 3634.5761731819684,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-physics::cloth_creation/32",
+            "value": 13000.793042025614,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-physics::cloth_creation/4",
+            "value": 410.45662629927097,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-physics::cloth_creation/8",
+            "value": 1171.7120384007449,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-physics::cloth_multiple/1",
+            "value": 14368.542957422917,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-physics::cloth_multiple/10",
+            "value": 144059.9659311503,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-physics::cloth_multiple/20",
+            "value": 288363.08166523266,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-physics::cloth_multiple/5",
+            "value": 71993.95920193096,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-physics::cloth_stiffness/0.3",
+            "value": 64626.035552118075,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-physics::cloth_stiffness/0.6",
+            "value": 65026.776159199275,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-physics::cloth_stiffness/0.9",
+            "value": 64739.78051467865,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-physics::cloth_update_16x16",
+            "value": 64697.1872660829,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-physics::cloth_update_32x32",
+            "value": 273811.549881632,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-physics::cloth_update_8x8",
+            "value": 14353.44818345745,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-physics::engine_torque_curve",
+            "value": 106.7981187392404,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-physics::friction_curve/gravel",
+            "value": 221.7990157265418,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-physics::friction_curve/ice",
+            "value": 191.98012569515177,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-physics::friction_curve/mud",
+            "value": 236.1700033541846,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-physics::friction_curve/tarmac",
+            "value": 201.6588471021519,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-physics::ragdoll_add_ball_bone",
+            "value": 56.50606339865683,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-physics::ragdoll_add_hinge_bone",
+            "value": 56.44124130526201,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-physics::ragdoll_builder/10",
+            "value": 787.8600087123701,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-physics::ragdoll_builder/20",
+            "value": 1925.6175077390972,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-physics::ragdoll_builder/30",
+            "value": 3055.2788371341285,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-physics::ragdoll_builder/5",
+            "value": 347.3436153278357,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-physics::ragdoll_config_default",
+            "value": 3.728962789481017,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-physics::ragdoll_config_variations/floppy",
+            "value": 91.20213818939673,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-physics::ragdoll_config_variations/heavy",
+            "value": 90.7251578292786,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-physics::ragdoll_config_variations/stiff",
+            "value": 90.95464998460076,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-physics::ragdoll_humanoid_skeleton",
+            "value": 882.9450822982234,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-physics::raycast_batch_8_rays",
+            "value": 2266.9407061457355,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-physics::raycast_empty_scene",
+            "value": 25.16483401030073,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-physics::raycast_ground_plane",
+            "value": 188.69084953265866,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-physics::raycast_normal_retrieval/with_normal",
+            "value": 180.41060839856334,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-physics::raycast_normal_retrieval/without_normal",
+            "value": 149.51975659041747,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-physics::raycast_obstacle_density/0",
+            "value": 94.6762106990413,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-physics::raycast_obstacle_density/10",
+            "value": 181.5058341446759,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-physics::raycast_obstacle_density/100",
+            "value": 247.88040960052848,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-physics::raycast_obstacle_density/50",
+            "value": 250.78562689389412,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-physics::rigid_body_batch_step/1",
+            "value": 907.58266417637,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-physics::rigid_body_batch_step/10",
+            "value": 2374.8352833460394,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-physics::rigid_body_batch_step/100",
+            "value": 13776.810152452694,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-physics::rigid_body_batch_step/200",
+            "value": 21711.71536416138,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-physics::rigid_body_batch_step/50",
+            "value": 7092.368616790065,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-physics::rigid_body_creation",
+            "value": 3971.1829912300914,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-physics::rigid_body_destructible_creation",
+            "value": 4033.350033996762,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-physics::rigid_body_ground_creation",
+            "value": 3802.8992558889922,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-physics::rigid_body_mixed_simulation",
+            "value": 6988.563913341553,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-physics::rigid_body_single_step",
+            "value": 1320.198549199101,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-physics::rigid_body_stacked_simulation",
+            "value": 4279.925361444572,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-physics::rigid_body_transform_lookup",
+            "value": 20.22979353244741,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-physics::rigid_body_trimesh_creation",
+            "value": 4192.801311862323,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-physics::transmission_effective_ratio",
+            "value": 8.13065884465482,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-physics::vehicle_creation",
+            "value": 150722.66446505414,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-physics::vehicle_multiple/1",
+            "value": 104.78461347285293,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-physics::vehicle_multiple/10",
+            "value": 1081.838948598663,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-physics::vehicle_multiple/20",
+            "value": 2399.329775885451,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-physics::vehicle_multiple/5",
+            "value": 530.5313803743,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-physics::vehicle_shifting",
+            "value": 3.1147719436228956,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-physics::vehicle_update_single",
+            "value": 103.86698398453277,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-physics::vehicle_update_with_input",
+            "value": 158.83441268740273,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-npc::npc_adversarial_behavior_systems/behavior_tree_eval_1000",
+            "value": 2321.4513437823525,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-npc::npc_adversarial_behavior_systems/goap_planning_200",
+            "value": 105910.68162657013,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-npc::npc_adversarial_behavior_systems/state_transitions_5000",
+            "value": 16509.88874163715,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-npc::npc_adversarial_behavior_systems/utility_scoring_500",
+            "value": 2373.4930617471396,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-npc::npc_adversarial_dialogue_systems/dialogue_tree_traversal_500",
+            "value": 12578.227950941504,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-npc::npc_adversarial_dialogue_systems/emotion_blending_1000",
+            "value": 0.29867743716114736,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-npc::npc_adversarial_dialogue_systems/keyword_matching_2000",
+            "value": 268030.34331603325,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-npc::npc_adversarial_dialogue_systems/response_selection_500",
+            "value": 169351.6958787946,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-npc::npc_adversarial_llm_integration/context_building_200",
+            "value": 95795.57814470658,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-npc::npc_adversarial_llm_integration/conversation_history_500",
+            "value": 131753.4734386661,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-npc::npc_adversarial_llm_integration/prompt_formatting_500",
+            "value": 34648.49697951104,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-npc::npc_adversarial_llm_integration/response_parsing_1000",
+            "value": 332048.4495950397,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-npc::npc_adversarial_profile_management/personality_compatibility_1000",
+            "value": 8015.087111478703,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-npc::npc_adversarial_profile_management/profile_creation_500",
+            "value": 280601.8267735778,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-npc::npc_adversarial_profile_management/relationship_updates_5000",
+            "value": 57979.018128293974,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-npc::npc_adversarial_profile_management/schedule_lookup_10000",
+            "value": 64525.23370352751,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-npc::npc_adversarial_runtime_systems/action_queue_processing_1000",
+            "value": 29.67132513860934,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-npc::npc_adversarial_runtime_systems/lod_management_2000",
+            "value": 4887.7539092222,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-npc::npc_adversarial_runtime_systems/path_following_500",
+            "value": 157.9244493341581,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-npc::npc_adversarial_runtime_systems/tick_update/1000",
+            "value": 1413.2120623158114,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-npc::npc_adversarial_runtime_systems/tick_update/2000",
+            "value": 2825.239941874103,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-npc::npc_adversarial_runtime_systems/tick_update/500",
+            "value": 706.0720973527887,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-npc::npc_adversarial_sense_systems/memory_decay_2000",
+            "value": 120.03265665975225,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-npc::npc_adversarial_sense_systems/sound_propagation_1000",
+            "value": 69560.2356840177,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-npc::npc_adversarial_sense_systems/threat_assessment_500",
+            "value": 1055.7836883642947,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-npc::npc_adversarial_sense_systems/vision_cone_5000",
+            "value": 745407.6886604357,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-materials::materials_adversarial_graph_construction/highly_connected_graph_100",
+            "value": 10190.045224148738,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-materials::materials_adversarial_graph_construction/layered_material_5_layers",
+            "value": 216.75012675169845,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-materials::materials_adversarial_graph_construction/procedural_material/100",
+            "value": 714.6459950427202,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-materials::materials_adversarial_graph_construction/procedural_material/200",
+            "value": 1083.0886068585446,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-materials::materials_adversarial_graph_construction/procedural_material/50",
+            "value": 555.3644097691929,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-materials::materials_adversarial_graph_construction/simple_pbr_material",
+            "value": 46.78862830569797,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-materials::materials_adversarial_graph_optimization/constant_folding_100",
+            "value": 157.13763442592114,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-materials::materials_adversarial_graph_optimization/cse_detection_500",
+            "value": 13078.760302055405,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-materials::materials_adversarial_graph_optimization/dead_code_elimination_200",
+            "value": 1425.2899394413532,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-materials::materials_adversarial_graph_optimization/gpu_reorder_200",
+            "value": 508.4024959086949,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-materials::materials_adversarial_material_instances/create_instances_100",
+            "value": 24629.994933734466,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-materials::materials_adversarial_material_instances/parameter_lookup_10000",
+            "value": 148236.34731962168,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-materials::materials_adversarial_material_instances/sort_by_shader_1000",
+            "value": 30534.571513124014,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-materials::materials_adversarial_material_instances/update_parameters_500",
+            "value": 14970.080598863111,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-materials::materials_adversarial_node_evaluation/constant_evaluation_1000",
+            "value": 908.2489755948644,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-materials::materials_adversarial_node_evaluation/fresnel_evaluation_500",
+            "value": 0.531563090588055,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-materials::materials_adversarial_node_evaluation/math_chain_evaluation_500",
+            "value": 1003.794473346842,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-materials::materials_adversarial_node_evaluation/trig_evaluation_1000",
+            "value": 8317.977749326068,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-materials::materials_adversarial_node_evaluation/vector_operations_1000",
+            "value": 0.561408795676968,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-materials::materials_adversarial_texture_binding/binding_layout_generation",
+            "value": 16850.093871352306,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-materials::materials_adversarial_texture_binding/sampler_deduplication_200",
+            "value": 574.8580316070794,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-materials::materials_adversarial_texture_binding/slot_assignment_100",
+            "value": 929.190121140497,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-materials::materials_adversarial_texture_binding/texture_array_packing_50",
+            "value": 1225.3480190144603,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-materials::materials_adversarial_wgsl_compilation/batch_compile_50_materials",
+            "value": 17511.778420781076,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-materials::materials_adversarial_wgsl_compilation/compile_10_textures",
+            "value": 2934.6725456919153,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-materials::materials_adversarial_wgsl_compilation/compile_complex_material/100",
+            "value": 8911.796918300694,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-materials::materials_adversarial_wgsl_compilation/compile_complex_material/200",
+            "value": 17764.47961871815,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-materials::materials_adversarial_wgsl_compilation/compile_complex_material/50",
+            "value": 4458.20303622353,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-materials::materials_adversarial_wgsl_compilation/compile_simple_material",
+            "value": 307.6104835445205,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-gameplay::attack_scaling/1",
+            "value": 40.41424631605866,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-gameplay::attack_scaling/10",
+            "value": 565.3328727202054,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-gameplay::attack_scaling/100",
+            "value": 18425.43929942603,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-gameplay::attack_scaling/25",
+            "value": 2028.3371794105683,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-gameplay::attack_scaling/5",
+            "value": 185.2534200269489,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-gameplay::attack_scaling/50",
+            "value": 5774.0893827688205,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-gameplay::large_battle/100v100_battle",
+            "value": 20065.34761388324,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-gameplay::multi_attacker_scenario/100_attackers_20_targets",
+            "value": 17158.505086527464,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-gameplay::multi_attacker_scenario/10_attackers_5_targets",
+            "value": 348.46594977596453,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-gameplay::multi_attacker_scenario/50_attackers_10_targets",
+            "value": 4462.860800909811,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-gameplay::single_attack/5_targets_no_defense",
+            "value": 26.066273560823266,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-gameplay::single_attack_iframe/5_targets_50%_iframe",
+            "value": 12.727826936306224,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-gameplay::single_attack_parry/5_targets_50%_parry",
+            "value": 12.928487544457013,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-combat::resolve_hit",
+            "value": 203.84933043077507,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-combat::resolve_hit_batch_10k",
+            "value": 1978599.1084615379,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scene::AABB/center_computation",
+            "value": 1.2477244986014069,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scene::AABB/contains_point_inside",
+            "value": 0.6235253680180132,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scene::AABB/contains_point_outside",
+            "value": 0.6224626004996971,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scene::AABB/from_center_half_extents",
+            "value": 6.693888090279232,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scene::AABB/half_extents_computation",
+            "value": 1.2461049450921406,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scene::AABB/intersects_overlapping",
+            "value": 0.6235498553785767,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scene::AABB/intersects_separate",
+            "value": 0.624999271660832,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scene::AABB/new_creation",
+            "value": 7.159129448712995,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scene::AABB/overlapping_cells/1x1x1",
+            "value": 93.52665344094571,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scene::AABB/overlapping_cells/4x4x4",
+            "value": 441.66689715066684,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scene::AABB/overlapping_cells/8x8x8",
+            "value": 1494.0803602861824,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scene::CellEntities/add_entities_batch/10",
+            "value": 127.67718731987243,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scene::CellEntities/add_entities_batch/100",
+            "value": 1352.8453315715974,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scene::CellEntities/add_entities_batch/50",
+            "value": 502.2207285205828,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scene::CellEntities/add_entity_dedup",
+            "value": 0.9379706594413775,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scene::CellEntities/add_entity_first",
+            "value": 1.2556825139732914,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scene::CellEntities/creation",
+            "value": 6.228614502159064,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scene::CellEntities/remove_entity_absent",
+            "value": 6.549524043792243,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scene::CellEntities/remove_entity_present",
+            "value": 11.538804415813324,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scene::FrustumCulling/batch_cull_aabbs/10",
+            "value": 110.70237266261566,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scene::FrustumCulling/batch_cull_aabbs/100",
+            "value": 467.5638698436371,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scene::FrustumCulling/batch_cull_aabbs/50",
+            "value": 319.0735265852069,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scene::FrustumCulling/batch_cull_aabbs/500",
+            "value": 1678.9128335848427,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scene::FrustumCulling/from_orthographic_matrix",
+            "value": 37.20505418370249,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scene::FrustumCulling/from_perspective_matrix",
+            "value": 37.069442248514775,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scene::FrustumCulling/intersects_aabb_inside",
+            "value": 0.6225883910873007,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scene::FrustumCulling/intersects_aabb_outside",
+            "value": 0.6226202742313651,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scene::FrustumCulling/intersects_aabb_partial",
+            "value": 0.6253519507243671,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scene::GpuResourceBudget/can_allocate_no",
+            "value": 0.6227641221494836,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scene::GpuResourceBudget/can_allocate_yes",
+            "value": 0.6229595939370692,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scene::GpuResourceBudget/creation_500mb",
+            "value": 5.621206700403461,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scene::GpuResourceBudget/find_furthest_cell_100",
+            "value": 366.0359960734262,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scene::GpuResourceBudget/find_furthest_cell_25",
+            "value": 74.71003542869708,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scene::GpuResourceBudget/get_or_create_cell",
+            "value": 80.5485704818583,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scene::GpuResourceBudget/stats_computation",
+            "value": 6.541905591316759,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scene::GpuResourceBudget/unload_cell",
+            "value": 84.354822082919,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scene::GpuResourceBudget/update_usage_25_cells",
+            "value": 24.51127907709572,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scene::GridCoord/from_world_pos_negative",
+            "value": 5.914679038116231,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scene::GridCoord/from_world_pos_origin",
+            "value": 5.916374185730129,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scene::GridCoord/from_world_pos_positive",
+            "value": 5.916289655681243,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scene::GridCoord/hash_lookup",
+            "value": 19.99411705248648,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scene::GridCoord/manhattan_distance",
+            "value": 0.622763080528932,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scene::GridCoord/neighbors_2d_8",
+            "value": 22.17746421864802,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scene::GridCoord/neighbors_3d_26",
+            "value": 51.914534492170716,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scene::GridCoord/new_creation",
+            "value": 1.245657887460193,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scene::GridCoord/to_world_center",
+            "value": 1.2877175911732979,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scene::LRUCache/contains_absent",
+            "value": 4.727352015877946,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scene::LRUCache/contains_present",
+            "value": 2.379938571308081,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scene::LRUCache/creation/100",
+            "value": 34.040057669890444,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scene::LRUCache/creation/25",
+            "value": 7.231577932481292,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scene::LRUCache/creation/5",
+            "value": 7.271948187419209,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scene::LRUCache/lru_retrieval",
+            "value": 1.8743006466333165,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scene::LRUCache/remove_existing",
+            "value": 24.49808819391282,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scene::LRUCache/touch_existing_entry",
+            "value": 13.087084010388145,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scene::LRUCache/touch_new_entry",
+            "value": 11.135113823273384,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scene::LRUCache/touch_with_eviction",
+            "value": 7.633673912424512,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scene::SceneGraph/node_creation_str",
+            "value": 19.170471668255367,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scene::SceneGraph/node_creation_string",
+            "value": 19.243774800871808,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scene::SceneGraph/scene_creation",
+            "value": 18.736336083014745,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scene::SceneGraph/traverse_linear_depth/1",
+            "value": 18.909233842578008,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scene::SceneGraph/traverse_linear_depth/10",
+            "value": 139.08414126404327,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scene::SceneGraph/traverse_linear_depth/20",
+            "value": 275.2479600083871,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scene::SceneGraph/traverse_linear_depth/5",
+            "value": 68.80599444586717,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scene::SceneGraph/traverse_tree_3x3x3",
+            "value": 276.4998943749002,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scene::SceneGraph/traverse_wide_children/10",
+            "value": 53.99776358033139,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scene::SceneGraph/traverse_wide_children/2",
+            "value": 19.699505359534804,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scene::SceneGraph/traverse_wide_children/20",
+            "value": 95.26796581408671,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scene::SceneGraph/traverse_wide_children/5",
+            "value": 32.10300921043325,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scene::SceneGraph/traverse_with_transform_extraction",
+            "value": 115.38417917503212,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scene::SpatialQueries/entity_cell_lookup",
+            "value": 13.959098596365216,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scene::SpatialQueries/query_entities_5_cells",
+            "value": 289.5308870375742,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scene::SpatialQueries/query_radius_entities",
+            "value": 1354.9461888503868,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scene::Transform/default_creation",
+            "value": 7.478453606627256,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scene::Transform/from_trs_creation",
+            "value": 7.185197309862104,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scene::Transform/matrix_chain_2",
+            "value": 2.5062481390149762,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scene::Transform/matrix_chain_5",
+            "value": 52.36147583603143,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scene::Transform/matrix_decompose_trs",
+            "value": 7.160204059803671,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scene::Transform/matrix_full_trs",
+            "value": 2.4943802411432365,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scene::Transform/matrix_identity",
+            "value": 2.5154150380790905,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scene::Transform/matrix_translation_only",
+            "value": 2.4937962187485603,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scene::WorldPartition/assign_entity_single",
+            "value": 335.4491860056156,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scene::WorldPartition/cells_in_radius/100m",
+            "value": 53.95497967272318,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scene::WorldPartition/cells_in_radius/300m",
+            "value": 307.1817838271113,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scene::WorldPartition/cells_in_radius/500m",
+            "value": 536.5773646697085,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scene::WorldPartition/cells_in_radius_populated",
+            "value": 275.35068731304153,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scene::WorldPartition/creation_default",
+            "value": 8.732799155391483,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scene::WorldPartition/get_or_create_cell_existing",
+            "value": 23.01915789401499,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-scene::WorldPartition/get_or_create_cell_new",
+            "value": 69.05326679560898,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-optimization::optimization_adversarial_batch_inference/batch_padding_1000",
+            "value": 20724.90351064105,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-optimization::optimization_adversarial_batch_inference/dynamic_batch_sizing_2000",
+            "value": 1485.1878569878465,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-optimization::optimization_adversarial_batch_inference/priority_sorting_5000",
+            "value": 4834.988878342534,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-optimization::optimization_adversarial_batch_inference/request_batching/16",
+            "value": 43450.429237163524,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-optimization::optimization_adversarial_batch_inference/request_batching/32",
+            "value": 44294.797318638564,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-optimization::optimization_adversarial_batch_inference/request_batching/64",
+            "value": 40666.29450494281,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-optimization::optimization_adversarial_compression/embedding_quantization_1000",
+            "value": 2328274.730454545,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-optimization::optimization_adversarial_compression/kv_cache_compression_500",
+            "value": 95265.82488842154,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-optimization::optimization_adversarial_compression/sparse_attention_1000",
+            "value": 169449.96354378882,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-optimization::optimization_adversarial_compression/token_compression_10000",
+            "value": 3994734.6461538468,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-optimization::optimization_adversarial_load_balancing/health_checking_5000",
+            "value": 68566.06568096236,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-optimization::optimization_adversarial_load_balancing/load_rebalancing_1000",
+            "value": 1133.0175190474818,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-optimization::optimization_adversarial_load_balancing/request_routing_10000",
+            "value": 107568.77793903407,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-optimization::optimization_adversarial_load_balancing/worker_selection/LatencyAware",
+            "value": 86524.88934498305,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-optimization::optimization_adversarial_load_balancing/worker_selection/LeastLoaded",
+            "value": 87411.43568356342,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-optimization::optimization_adversarial_load_balancing/worker_selection/RoundRobin",
+            "value": 23541.317768354602,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-optimization::optimization_adversarial_load_balancing/worker_selection/WeightedRandom",
+            "value": 51775.32950171739,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-optimization::optimization_adversarial_model_optimization/activation_checkpointing_500",
+            "value": 831.8190383246952,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-optimization::optimization_adversarial_model_optimization/distillation_prep_1000",
+            "value": 510333997.56,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-optimization::optimization_adversarial_model_optimization/gradient_accumulation_2000",
+            "value": 222524.31751933426,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-optimization::optimization_adversarial_model_optimization/weight_pruning_10000",
+            "value": 5524.715583363077,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-optimization::optimization_adversarial_prompt_caching/cache_eviction_5000",
+            "value": 3382496.9159999993,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-optimization::optimization_adversarial_prompt_caching/cache_lookup_10000",
+            "value": 293394.84623321204,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-optimization::optimization_adversarial_prompt_caching/cache_statistics_1000",
+            "value": 1954.2376505108625,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-optimization::optimization_adversarial_prompt_caching/prefix_matching_5000",
+            "value": 5015685.861000002,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-optimization::optimization_adversarial_token_optimization/budget_allocation_500",
+            "value": 4435.722924684427,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-optimization::optimization_adversarial_token_optimization/context_packing_1000",
+            "value": 10450.99356414761,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-optimization::optimization_adversarial_token_optimization/token_merging_2000",
+            "value": 95839.01220874386,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-optimization::optimization_adversarial_token_optimization/tokenization_5000",
+            "value": 1101007.9819455438,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-director::director_adversarial_boss_planning/enrage_calculation_1000",
+            "value": 1643.7264683029007,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-director::director_adversarial_boss_planning/operation_selection_500",
+            "value": 34645.178561984234,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-director::director_adversarial_boss_planning/phase_determination_1000",
+            "value": 4920.4942273054985,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-director::director_adversarial_boss_planning/plan_generation_100",
+            "value": 28279.169709409194,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-director::director_adversarial_boss_planning/threat_assessment_200",
+            "value": 725.8853509105943,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-director::director_adversarial_difficulty_scaling/dynamic_difficulty_adjustment",
+            "value": 115.48405469221292,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-director::director_adversarial_difficulty_scaling/loot_quality_adjustment_200",
+            "value": 6459.700663374358,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-director::director_adversarial_difficulty_scaling/skill_assessment_50",
+            "value": 825.5798520639805,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-director::director_adversarial_difficulty_scaling/stat_scaling_1000",
+            "value": 1897.4372490538194,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-director::director_adversarial_encounter_metrics/dps_calculation_100",
+            "value": 20981.570744027806,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-director::director_adversarial_encounter_metrics/metrics_aggregation_1000",
+            "value": 474.92260242243674,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-director::director_adversarial_encounter_metrics/performance_rating",
+            "value": 117.5336039176359,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-director::director_adversarial_encounter_metrics/phase_timing_analysis",
+            "value": 18.784775278333115,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-director::director_adversarial_llm_director/action_validation_200",
+            "value": 1262.6466354815318,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-director::director_adversarial_llm_director/fallback_decision_100",
+            "value": 4733.26830497922,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-director::director_adversarial_llm_director/llm_context_building",
+            "value": 556.864612020248,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-director::director_adversarial_llm_director/llm_response_parsing_100",
+            "value": 33005.60881741767,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-director::director_adversarial_minion_management/minion_coordination_100",
+            "value": 3105.1597764492863,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-director::director_adversarial_minion_management/minion_death_tracking_500",
+            "value": 7222.718548157002,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-director::director_adversarial_minion_management/minion_spawning_200",
+            "value": 8454.102702960383,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-director::director_adversarial_minion_management/reinforcement_waves_20",
+            "value": 1650.8695116813165,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-director::director_adversarial_phase_transitions/ability_unlock_50",
+            "value": 3776.284385641806,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-director::director_adversarial_phase_transitions/intermission_handling_50",
+            "value": 279.82599982177317,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-director::director_adversarial_phase_transitions/transition_animation_scheduling",
+            "value": 7811.127057526884,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-director::director_adversarial_phase_transitions/transition_detection_1000",
+            "value": 9036.28083931878,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-nav::bake_100_triangles",
+            "value": 43517.869869682996,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-nav::bake_10k_triangles",
+            "value": 373997027.61,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-nav::bake_1k_triangles",
+            "value": 3947832.3561538453,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-nav::baking_scaling/100",
+            "value": 42226.38419871664,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-nav::baking_scaling/1000",
+            "value": 3533422.961333333,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-nav::baking_scaling/10000",
+            "value": 359442720.89,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-nav::baking_scaling/2000",
+            "value": 13777033.685,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-nav::baking_scaling/500",
+            "value": 783236.1559913808,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-nav::baking_scaling/5000",
+            "value": 93038606.88,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-nav::pathfind_long_50_100_hops",
+            "value": 14396.489083574721,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-nav::pathfind_medium_10_20_hops",
+            "value": 49206.48028516547,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-nav::pathfind_short_2_5_hops",
+            "value": 1977.7353756335533,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-nav::pathfinding_scaling/10",
+            "value": 31536.31406205285,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-nav::pathfinding_scaling/100",
+            "value": 4231841.9625,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-nav::pathfinding_scaling/20",
+            "value": 135347.35907367358,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-nav::pathfinding_scaling/50",
+            "value": 955884.8746462516,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-nav::throughput_100_triangles/queries_per_second",
+            "value": 6261.434617787177,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-nav::throughput_10k_triangles/queries_per_second",
+            "value": 658166.9840701639,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-nav::throughput_1k_triangles/queries_per_second",
+            "value": 64746.63489143978,
+            "unit": "ns"
+          },
+          {
+            "name": "astraweave-nav::tile_commits_per_tick",
+            "value": 7754.854514992034,
             "unit": "ns"
           }
         ]
