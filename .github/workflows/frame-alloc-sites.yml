@@ -57,27 +57,30 @@ jobs:
           export VK_DRIVER_FILES="$icd"
           mkdir -p target
           cargo test -p astraweave-render --all-features --test frame_alloc --no-run --message-format=json > target/frame-alloc-build.json
+          # Indented with the shell script. A column-0 line ends the YAML
+          # block, so GitHub cannot parse `on:` and records a failed push
+          # run with no jobs.
           bin=$(python3 -c '
-import json, sys
-exe = ""
-for line in open(sys.argv[1], encoding="utf-8", errors="replace"):
-    line = line.strip()
-    if not line.startswith("{"):
-        continue
-    try:
-        msg = json.loads(line)
-    except json.JSONDecodeError:
-        continue
-    if msg.get("reason") != "compiler-artifact":
-        continue
-    target = msg.get("target") or {}
-    kinds = target.get("kind") or []
-    if target.get("name") == "frame_alloc" and "test" in kinds and msg.get("executable"):
-        exe = msg["executable"]
-if not exe:
-    sys.exit("frame_alloc executable missing from cargo json")
-print(exe)
-' target/frame-alloc-build.json)
+          import json, sys
+          exe = ""
+          for line in open(sys.argv[1], encoding="utf-8", errors="replace"):
+              line = line.strip()
+              if not line.startswith("{"):
+                  continue
+              try:
+                  msg = json.loads(line)
+              except json.JSONDecodeError:
+                  continue
+              if msg.get("reason") != "compiler-artifact":
+                  continue
+              target = msg.get("target") or {}
+              kinds = target.get("kind") or []
+              if target.get("name") == "frame_alloc" and "test" in kinds and msg.get("executable"):
+                  exe = msg["executable"]
+          if not exe:
+              sys.exit("frame_alloc executable missing from cargo json")
+          print(exe)
+          ' target/frame-alloc-build.json)
           test -x "$bin"
           echo "heaptrack binary=$bin"
           heaptrack -o target/frame-alloc-heaptrack "$bin" --exact draw_into_allocates_nothing_after_warmup --nocapture
