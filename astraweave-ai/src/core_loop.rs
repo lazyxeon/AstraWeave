@@ -92,6 +92,7 @@ impl PlannerMode {
 /// # Example
 /// ```
 /// use astraweave_ai::core_loop::{CAiController, PlannerMode};
+/// use astraweave_ai::htn::GatherGoal;
 ///
 /// let controller = CAiController {
 ///     mode: PlannerMode::GOAP,
