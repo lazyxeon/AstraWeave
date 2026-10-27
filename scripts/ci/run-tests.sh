@@ -20,6 +20,10 @@ case "$profile" in
     echo "Profile $profile excludes scripts/ci/deferred_pr_tests.txt (issue #254, owner PR #217)."
     echo "Profile ci on main and the nightly schedule still runs those tests."
     ;;
+  ci-full-archive)
+    echo "Profile ci-full-archive is profile ci without the four CARGO_BIN_EXE binaries."
+    echo "The Test full archive job runs those binaries on the machine that compiled them."
+    ;;
 esac
 if [ "$profile" = "ci-pr-archive" ]; then
   echo "Archive partitions also apply scripts/ci/archive_only_skips.txt."

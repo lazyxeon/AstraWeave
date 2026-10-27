@@ -51,9 +51,24 @@ not (
 )
 """
 
-# Windows partition runs. Same exclusions as ci-pr, plus the archive-only
-# skips in scripts/ci/archive_only_skips.txt (Windows GPU hangs, and the
-# tests whose CARGO_BIN_EXE path is on the build machine).
+# Nightly Windows partitions. Inherits profile ci, so the deferred PR list
+# still runs. The four binaries below spawn CARGO_BIN_EXE paths from the
+# archive build machine. The Test full archive job runs them there. A
+# partition only has the extracted archive, so it does not run them again.
+[profile.ci-full-archive]
+inherits = "ci"
+default-filter = """
+not (
+  (package(=aw-net-client) & binary(=family1_client_binary))
+  |   (package(=aw-net-client) & binary(=family3_client_binary_wrong_key))
+  |   (package(=astraweave-llm) & binary(=loopback_http_proxy))
+  |   (package(=astraweave-llm) & binary(=ollama_chat_probe))
+)
+"""
+
+# Windows pull-request partitions. Same exclusions as ci-pr, plus the
+# archive-only skips in scripts/ci/archive_only_skips.txt (Windows GPU hangs,
+# and the tests whose CARGO_BIN_EXE path is on the build machine).
 [profile.ci-pr-archive]
 inherits = "ci"
 default-filter = """
