@@ -967,16 +967,12 @@ mod tests {
         file.set_len(cap + 1).expect("set_len");
         drop(file);
         let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
-        let Ok(adapter) =
-            pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
-                power_preference: wgpu::PowerPreference::LowPower,
-                compatible_surface: None,
-                force_fallback_adapter: false,
-            }))
-        else {
-            eprintln!("skip load_texture_async cap: no wgpu adapter");
-            return;
-        };
+        let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
+            power_preference: wgpu::PowerPreference::LowPower,
+            compatible_surface: None,
+            force_fallback_adapter: false,
+        }))
+        .expect("wgpu adapter required to lock load_texture_async");
         let (device, queue) =
             pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
                 .expect("device");
@@ -1009,16 +1005,12 @@ mod tests {
         file.set_len(cap + 1).expect("set_len");
         drop(file);
         let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
-        let Ok(adapter) =
-            pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
-                power_preference: wgpu::PowerPreference::LowPower,
-                compatible_surface: None,
-                force_fallback_adapter: false,
-            }))
-        else {
-            eprintln!("skip from_file_with_usage cap: no wgpu adapter");
-            return;
-        };
+        let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
+            power_preference: wgpu::PowerPreference::LowPower,
+            compatible_surface: None,
+            force_fallback_adapter: false,
+        }))
+        .expect("wgpu adapter required to lock from_file_with_usage");
         let (device, queue) =
             pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
                 .expect("device");

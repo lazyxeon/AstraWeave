@@ -29,6 +29,33 @@ pub fn decode_limited_image(bytes: &[u8]) -> Result<image::DynamicImage> {
     reader.decode().context("decode image")
 }
 
+/// Read a file without exceeding `cap`.
+///
+/// A regular file longer than `cap` is rejected from its metadata before the
+/// read. A non-regular file stops at `cap`.
+pub fn read_capped_file(path: &Path, cap: u64) -> Result<Vec<u8>> {
+    let meta = std::fs::metadata(path).with_context(|| format!("open {}", path.display()))?;
+    let file = std::fs::File::open(path).with_context(|| format!("open {}", path.display()))?;
+    if meta.is_file() {
+        if meta.len() > cap {
+            bail!("{} is {} bytes, cap is {cap}", path.display(), meta.len());
+        }
+        let mut bytes = Vec::new();
+        file.take(meta.len())
+            .read_to_end(&mut bytes)
+            .with_context(|| format!("read {}", path.display()))?;
+        return Ok(bytes);
+    }
+    let mut bytes = Vec::new();
+    file.take(cap)
+        .read_to_end(&mut bytes)
+        .with_context(|| format!("read {}", path.display()))?;
+    if bytes.len() as u64 == cap {
+        bail!("{} exceeds {cap} bytes", path.display());
+    }
+    Ok(bytes)
+}
+
 /// Read an image file without exceeding [`MAX_IMAGE_ALLOC`].
 ///
 /// A regular file longer than the cap is rejected from its metadata, before

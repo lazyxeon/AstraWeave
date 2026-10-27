@@ -6,8 +6,14 @@
 use crate::world_partition::{CellEntityBlueprint, CellState, GridCoord, LRUCache, WorldPartition};
 use anyhow::Result;
 use std::collections::HashSet;
+use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::Arc;
 use tokio::sync::RwLock;
+
+struct LoadFailure {
+    coord: GridCoord,
+    error: String,
+}
 
 /// Events emitted by the streaming system
 #[derive(Debug, Clone)]
@@ -66,10 +72,13 @@ pub struct WorldPartitionManager {
     loading_cells: HashSet<GridCoord>,
     metrics: StreamingMetrics,
     event_listeners: Vec<Box<dyn Fn(StreamingEvent) + Send + Sync>>,
+    load_failure_tx: Sender<LoadFailure>,
+    load_failures: Receiver<LoadFailure>,
 }
 
 impl WorldPartitionManager {
     pub fn new(partition: Arc<RwLock<WorldPartition>>, config: StreamingConfig) -> Self {
+        let (load_failure_tx, load_failures) = mpsc::channel();
         Self {
             partition,
             lru_cache: LRUCache::new(config.lru_cache_size),
@@ -78,6 +87,8 @@ impl WorldPartitionManager {
             loading_cells: HashSet::new(),
             metrics: StreamingMetrics::default(),
             event_listeners: Vec::new(),
+            load_failure_tx,
+            load_failures,
         }
     }
 
@@ -98,6 +109,7 @@ impl WorldPartitionManager {
 
     /// Update streaming based on camera position
     pub async fn update(&mut self, camera_position: glam::Vec3) -> Result<()> {
+        self.take_load_failures().await;
         let partition = self.partition.read().await;
 
         // Determine which cells should be active based on camera position
@@ -173,6 +185,7 @@ impl WorldPartitionManager {
 
         // Spawn actual async loading task
         let partition_clone = Arc::clone(&self.partition);
+        let failure_tx = self.load_failure_tx.clone();
         let coord_clone = coord;
 
         tokio::spawn(async move {
@@ -188,9 +201,16 @@ impl WorldPartitionManager {
                     // Load referenced assets
                     let assets_root = std::path::Path::new("assets");
                     for asset_ref in &cell_data.assets {
-                        // Load asset asynchronously (fire and forget for now)
-                        // In production, integrate with asset manager
-                        let _ = Self::load_asset_data(asset_ref, assets_root).await;
+                        // Bytes are not stored. A failed read, including a
+                        // texture over the cap, must not mark the cell loaded.
+                        // The manager applies the failure on its next update.
+                        if let Err(err) = Self::load_asset_data(asset_ref, assets_root).await {
+                            let _ = failure_tx.send(LoadFailure {
+                                coord: coord_clone,
+                                error: format!("{err:#}"),
+                            });
+                            return Err(err);
+                        }
                     }
 
                     let entity_blueprints: Vec<CellEntityBlueprint> = cell_data
@@ -241,11 +261,10 @@ impl WorldPartitionManager {
                     Ok::<(), anyhow::Error>(())
                 }
                 Err(e) => {
-                    // Handle load failure
-                    let mut partition = partition_clone.write().await;
-                    if let Some(cell) = partition.get_cell_mut(coord_clone) {
-                        cell.state = CellState::Unloaded;
-                    }
+                    let _ = failure_tx.send(LoadFailure {
+                        coord: coord_clone,
+                        error: format!("{e:#}"),
+                    });
                     Err(e)
                 }
             }
@@ -271,6 +290,16 @@ impl WorldPartitionManager {
         astraweave_asset::cell_loader::load_asset(asset_ref, assets_root).await
     }
 
+    /// Apply load failures the spawned task reported.
+    ///
+    /// The task cannot touch `loading_cells`. Leaving a failed coord there
+    /// holds a `max_concurrent_loads` slot until the manager is rebuilt.
+    async fn take_load_failures(&mut self) {
+        while let Ok(failure) = self.load_failures.try_recv() {
+            self.handle_load_failure(failure.coord, failure.error).await;
+        }
+    }
+
     /// Finish loading a cell (called after async load completes)
     #[allow(dead_code)]
     async fn finish_load_cell(&mut self, coord: GridCoord) -> Result<()> {
@@ -289,7 +318,6 @@ impl WorldPartitionManager {
     }
 
     /// Handle load failure
-    #[allow(dead_code)]
     async fn handle_load_failure(&mut self, coord: GridCoord, error: String) {
         self.loading_cells.remove(&coord);
 
@@ -728,5 +756,90 @@ mod tests {
 
         assert!(*count1.lock().unwrap() > 0);
         assert!(*count2.lock().unwrap() > 0);
+    }
+
+    #[tokio::test]
+    async fn failed_cell_load_releases_the_streaming_slot() {
+        let root = std::env::current_dir().expect("cwd");
+        let cells = root.join("assets/cells");
+        std::fs::create_dir_all(&cells).expect("cells dir");
+        let cell_path = cells.join("9001_0_0.ron");
+        let _cleanup = FileCleanup(cell_path.clone());
+        std::fs::write(
+            &cell_path,
+            r#"(
+                coord: [9001, 0, 0],
+                entities: [],
+                assets: [
+                    (path: "missing_9001.gltf", kind: Mesh, guid: None),
+                ],
+                metadata: None,
+            )"#,
+        )
+        .expect("cell ron");
+
+        let partition = Arc::new(RwLock::new(WorldPartition::new(GridConfig::default())));
+        let mut mgr = WorldPartitionManager::new(
+            Arc::clone(&partition),
+            StreamingConfig {
+                streaming_radius: 0.0,
+                max_concurrent_loads: 1,
+                ..Default::default()
+            },
+        );
+        let events: Arc<Mutex<Vec<StreamingEvent>>> = Arc::new(Mutex::new(Vec::new()));
+        let events_clone = Arc::clone(&events);
+        mgr.add_event_listener(move |event| {
+            events_clone.lock().unwrap().push(event);
+        });
+
+        let coord = GridCoord::new(9001, 0, 0);
+        mgr.force_load_cell(coord).await.unwrap();
+        assert!(mgr.is_cell_loading(coord));
+
+        let mut released = false;
+        for _ in 0..50 {
+            mgr.update(glam::Vec3::ZERO).await.unwrap();
+            if mgr.metrics().failed_loads == 1 && !mgr.is_cell_loading(coord) {
+                released = true;
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
+        assert!(released, "failed load kept the streaming slot");
+        {
+            let partition = partition.read().await;
+            assert_eq!(
+                partition.get_cell(coord).unwrap().state,
+                CellState::Unloaded
+            );
+        }
+        let captured = events.lock().unwrap().clone();
+        assert!(captured.iter().any(|event| matches!(
+            event,
+            StreamingEvent::CellLoadFailed(failed, _) if *failed == coord
+        )));
+
+        mgr.update(glam::Vec3::ZERO).await.unwrap();
+        assert_eq!(mgr.metrics().failed_loads, 1);
+        assert!(!mgr.is_cell_loading(coord));
+    }
+
+    struct FileCleanup(std::path::PathBuf);
+
+    impl Drop for FileCleanup {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_file(&self.0);
+            let mut dir = self.0.parent();
+            for _ in 0..2 {
+                let Some(path) = dir else {
+                    break;
+                };
+                if std::fs::remove_dir(path).is_err() {
+                    break;
+                }
+                dir = path.parent();
+            }
+        }
     }
 }
