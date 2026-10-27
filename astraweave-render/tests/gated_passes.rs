@@ -10,11 +10,15 @@ mod linux_test_threads;
 use astraweave_render::Renderer;
 
 fn color_target(device: &wgpu::Device) -> wgpu::TextureView {
+    color_target_sized(device, 64, 64)
+}
+
+fn color_target_sized(device: &wgpu::Device, width: u32, height: u32) -> wgpu::TextureView {
     let target = device.create_texture(&wgpu::TextureDescriptor {
         label: Some("gated color"),
         size: wgpu::Extent3d {
-            width: 64,
-            height: 64,
+            width,
+            height,
             depth_or_array_layers: 1,
         },
         mip_level_count: 1,
@@ -111,13 +115,49 @@ fn false_atmosphere_flag_disables_the_default_sky() {
                 .map(|part| (*part).to_string())
                 .collect::<Vec<_>>();
             let on = astraweave_render::budget_gate::reject_gated_flags(&args).expect("parse");
-            assert!(!on, "{parts:?}");
-            renderer.set_atmosphere_enabled(on);
+            assert!(
+                matches!(on, astraweave_render::budget_gate::GatedCell::Baseline),
+                "{parts:?}"
+            );
+            renderer.set_atmosphere_enabled(false);
             assert!(!renderer.atmosphere_enabled(), "{parts:?}");
             assert!(renderer.god_rays_enabled());
             submit(&mut renderer, &view);
             assert!(!renderer.atmosphere_enabled(), "{parts:?}");
         }
+    });
+}
+
+fn submit_scoped(renderer: &mut Renderer, view: &wgpu::TextureView) {
+    let device = renderer.device().clone();
+    let queue = renderer.queue().clone();
+    device.push_error_scope(wgpu::ErrorFilter::Validation);
+    let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+        label: Some("gated scoped"),
+    });
+    renderer
+        .draw_into(view, None, &mut encoder)
+        .expect("draw_into");
+    queue.submit(std::iter::once(encoder.finish()));
+    let _ = device.poll(wgpu::MaintainBase::Wait);
+    let err = pollster::block_on(device.pop_error_scope());
+    assert!(err.is_none(), "validation rejected the frame: {err:?}");
+}
+
+/// Clouds-only submits with an empty validation scope, including after a
+/// smaller resize. The history copy and the HDR copy both have to be in range.
+#[test]
+fn clouds_only_submit_has_an_empty_validation_scope() {
+    pollster::block_on(async {
+        let mut renderer = Renderer::new_headless(64, 64).await.expect("headless");
+        renderer.set_cloud_raymarch_enabled(true);
+        let device = renderer.device().clone();
+        let view = color_target(&device);
+        submit_scoped(&mut renderer, &view);
+        submit_scoped(&mut renderer, &view);
+        renderer.resize(32, 32);
+        let view = color_target_sized(&device, 32, 32);
+        submit_scoped(&mut renderer, &view);
     });
 }
 

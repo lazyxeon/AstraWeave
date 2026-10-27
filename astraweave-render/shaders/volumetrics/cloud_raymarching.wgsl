@@ -345,7 +345,8 @@ fn cloud_raymarch_main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let uv = (vec2<f32>(gid.xy) + 0.5) * params.inv_resolution;
 
     // Reconstruct view ray from screen UV
-    let ndc = uv * 2.0 - 1.0;
+    // Match fog, scatter, and aerial: texture y 0 is NDC y +1.
+    let ndc = vec2<f32>(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0);
     let clip_near = vec4<f32>(ndc.x, ndc.y, 0.0, 1.0);
     let clip_far = vec4<f32>(ndc.x, ndc.y, 1.0, 1.0);
     let world_near_h = params.inv_view_proj * clip_near;

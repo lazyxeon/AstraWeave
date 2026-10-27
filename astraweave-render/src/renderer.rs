@@ -4849,6 +4849,9 @@ fn vs(input: VSIn) -> VSOut {
         if let Some(atmosphere) = self.atmosphere.as_mut() {
             atmosphere.resize(&self.device, self.config.width, self.config.height);
         }
+        if let Some(clouds) = self.cloud_raymarch.as_mut() {
+            clouds.resize(&self.device, self.config.width, self.config.height);
+        }
         // W.2b — keep the scene-color snapshot sized to the surface.
         self.water_scene_color = self.device.create_texture(&wgpu::TextureDescriptor {
             label: Some("water scene color"),
@@ -6561,6 +6564,7 @@ fn vs(input: VSIn) -> VSOut {
     ) {
         let gen = self.resource_generation;
         let hdr = self.hdr_view.clone();
+        let hdr_tex = self.hdr_tex.clone();
         let device = self.device.clone();
         let queue = self.queue.clone();
         let width = self.config.width.max(1);
@@ -6582,20 +6586,45 @@ fn vs(input: VSIn) -> VSOut {
                 ));
             }
             if let Some(pass) = self.cloud_raymarch.as_mut() {
+                let (pass_w, pass_h) = pass.dimensions();
+                if pass_w != width || pass_h != height {
+                    pass.resize(&device, width, height);
+                }
+                if pass.frame_index() == 0 {
+                    pass.clear_history(enc);
+                }
+                let light = glam::Vec3::new(
+                    self.camera_ubo.light_dir_pad[0],
+                    self.camera_ubo.light_dir_pad[1],
+                    self.camera_ubo.light_dir_pad[2],
+                );
+                let toward_sun = if light.length_squared() > 1e-6 {
+                    -light.normalize()
+                } else {
+                    self.sky.time_of_day().get_sun_position()
+                };
+                let (near, far) = clip_planes(self.cached_proj);
+                let sun_color = self.sky.time_of_day().get_light_color();
+                let intensity = self.camera_ubo.light_dir_pad[3].max(0.15);
                 pass.prepare_frame(
                     &queue,
                     inv,
                     eye,
-                    glam::Vec3::Y,
-                    glam::Vec3::ONE,
-                    1.0,
+                    toward_sun,
+                    sun_color,
+                    intensity,
                     0.2,
-                    0.1,
-                    200.0,
+                    near,
+                    far,
                     1.0 / 60.0,
                 );
-                pass.execute(&device, enc, &hdr, depth, gen);
-                pass.copy_cloud_to_history(enc);
+                // A disabled config returns from execute and must not copy an
+                // unwritten storage texture over the scene.
+                if pass.config().enabled {
+                    pass.execute(&device, enc, &hdr, depth, gen);
+                    pass.copy_cloud_to_history(enc);
+                    pass.copy_composite_onto(enc, &hdr_tex);
+                }
             }
         }
         if self.ssgi_on || self.taa_on || self.upscale_on {
