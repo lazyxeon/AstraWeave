@@ -5,15 +5,20 @@
 # name. Hardware probes are not listed: Metal still runs them. Ignored tests
 # are not listed: nextest does not run them.
 #
+# golden_backend_tests compiles under profile ci. An integration test sets
+# cfg(test), so test_backend_detection, golden_triangle_render, and
+# golden_determinism_check run. Each requests a software adapter and returns
+# after recording a skip when AW_GPU_SKIP_IF_UNAVAILABLE is set.
+#
 # Not listed, because profile ci does not compile them:
-# - golden_backend_tests wraps its tests in #[cfg(test)]. An integration test
-#   does not set cfg(test), so test_backend_detection, golden_triangle_render,
-#   and golden_determinism_check are absent from the binary.
 # - impostor_bake_pipeline, impostor_lod3_pipeline, and impostor_pass_pipeline
 #   need features impostor-bake and gpu-tests.
 # - terrain_splat_pipeline needs terrain-splat-arrays and gpu-tests.
 #   Test full does not pass --all-features, and gpu-tests is not a default.
 # Duplicate function names share one line. The check matches the function name.
+test_backend_detection
+golden_triangle_render
+golden_determinism_check
 scar_upload_is_timed_on_the_low_froxel_grid_when_the_device_can
 test_memory_accounting_overwrite
 test_render_systems_logic

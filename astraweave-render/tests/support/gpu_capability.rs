@@ -356,13 +356,13 @@ mod skip_record_tests {
             "test_camera_uniform_buffer_creation",
             "test_create_default_white",
             "test_overlay_fx_new",
+            "test_backend_detection",
+            "golden_triangle_render",
+            "golden_determinism_check",
         ] {
             assert!(lines.contains(name), "{name} missing from {path:?}");
         }
         for name in [
-            "test_backend_detection",
-            "golden_triangle_render",
-            "golden_determinism_check",
             "terrain_manager_creation_allocates_gpu_resources",
             "impostor_baker_creation_allocates_atlas",
             "lod3_pipeline_builds_on_headless_device",
@@ -380,6 +380,6 @@ mod skip_record_tests {
                 "{name} is not a profile-ci software-only test"
             );
         }
-        assert_eq!(lines.len(), 128, "required-name census changed");
+        assert_eq!(lines.len(), 131, "required-name census changed");
     }
 }
