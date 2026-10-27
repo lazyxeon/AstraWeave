@@ -5832,7 +5832,8 @@ fn vs(input: VSIn) -> VSOut {
     /// included. A growth frame includes the stage copy and the later commit
     /// copy. A square terrain grid whose side length changed copies the new
     /// vertices over the previous buffer, so that frame's delta is zero.
-    /// Zero while the pass is off.
+    /// A same-size upload before the first recorded frame drops the replaced
+    /// vertices, so that frame's delta is zero too. Zero while the pass is off.
     #[must_use]
     pub fn scene_vector_last_copy_bytes(&self) -> u64 {
         self.scene_vector_last_copy_bytes
@@ -9869,12 +9870,13 @@ fn vs(input: VSIn) -> VSOut {
             }
         }
 
-        // While the pass is on, keep the buffer this key already had. The
+        // After a recorded frame, keep the buffer this key already had. The
         // next scene-vector frame samples it as the previous positions.
-        // While the pass is off, drop it. The first enabled frame must store
-        // zero object motion, the same as an empty mesh slot.
+        // Before that first record, including an upload after the setter,
+        // drop it. A same-size upload would otherwise keep a delta. The
+        // pass-off path drops it for the same reason.
         let previous = tf.chunks.remove(&key);
-        let prev_vertex = if self.scene_vectors_on {
+        let prev_vertex = if self.scene_vectors_on && self.scene_vectors_prev_valid {
             previous.map(|chunk| chunk.vertex_buffer)
         } else {
             None
