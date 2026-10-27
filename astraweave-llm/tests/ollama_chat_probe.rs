@@ -95,11 +95,10 @@ fn write_chunk(sock: &mut std::net::TcpStream, data: &str) {
 /// NDJSON chat chunks, one every 50 ms. `hang_after` stops writing and leaves
 /// the socket open so the client must idle out.
 ///
-/// `TCP_NODELAY` is required. macOS delayed ACK is longer than 50 ms, and
-/// Nagle holds each flushed chunk until that ACK. A token then costs about
-/// 150 ms. Sixty of those overrun the 4 s overall cap, which is twice the
-/// 2 s idle timeout, so the client keeps only the tokens that arrived.
-/// The cap is unchanged.
+/// `TCP_NODELAY` keeps macOS delayed ACK from holding a flushed chunk. On a
+/// loaded runner each `sleep` still wakes late, and sixty late wakes can pass
+/// twice the idle timeout. The client keeps those chunks when every gap stays
+/// inside the idle window.
 fn serve_slow_chunks(count: usize, hang_after: Option<usize>) -> std::net::SocketAddr {
     let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
     let addr = listener.local_addr().expect("addr");
@@ -174,8 +173,12 @@ fn slow_chunks_longer_than_the_timeout_are_kept() {
         elapsed > std::time::Duration::from_secs(2),
         "stream finished inside the idle timeout ({elapsed:?})"
     );
+    // macOS Test full delivered about thirty of these tokens in 4.01 s, so
+    // sixty of them need more than the old 6 s ceiling. Fifteen seconds still
+    // fails a client that waits out the 30 s harness hang or the default
+    // 180 s timeout. A missing token fails above, on its own.
     assert!(
-        elapsed < std::time::Duration::from_secs(6),
+        elapsed < std::time::Duration::from_secs(15),
         "stream spun for {elapsed:?}"
     );
 

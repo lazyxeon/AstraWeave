@@ -579,8 +579,9 @@ impl LlmClient for Hermes2ProOllama {
             anyhow::bail!("Ollama streaming returned error: {}", response.status());
         }
 
-        // Ollama streams NDJSON. Each read waits only the time still left.
-        // One error, or done:true, ends the stream.
+        // Ollama streams NDJSON. Each read waits the idle limit or the time
+        // left in the gap since the last byte. One error, or done:true, ends
+        // the stream.
         let overall = idle.saturating_mul(2);
         let text_stream = crate::scan_model_ndjson(
             Box::pin(response.bytes_stream()),

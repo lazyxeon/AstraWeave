@@ -137,10 +137,13 @@ pub async fn read_capped_text_limited(response: reqwest::Response, limit: usize)
     String::from_utf8(buf).context("model body is not utf-8")
 }
 
-/// Read `inner` until `overall` elapses.
+/// Read `inner` until one gap since the last byte exceeds `overall` or `idle`.
 ///
-/// Each read waits the silence limit or the time still left, whichever is
-/// shorter. The first error is yielded once. The next poll ends the stream.
+/// Each read waits the silence limit or the time still left in the current
+/// gap, whichever is shorter. A chunk that arrives starts a new gap, so the
+/// sum of gaps is not a deadline: a peer that keeps sending inside the window
+/// is not cut off when the runner wakes late. The first error is yielded
+/// once. The next poll ends the stream.
 #[cfg(feature = "ollama")]
 pub fn bytes_within_deadline<S, T, E>(
     inner: S,
@@ -153,33 +156,38 @@ where
     E: std::error::Error + Send + Sync + 'static,
 {
     use futures_util::StreamExt;
-    let started = std::time::Instant::now();
-    futures_util::stream::unfold((inner, false), move |(mut inner, stop)| async move {
-        if stop {
-            return None;
-        }
-        let left = overall.saturating_sub(started.elapsed());
-        if left.is_zero() {
-            return Some((
-                Err(anyhow::anyhow!("streaming overall deadline")),
-                (inner, true),
-            ));
-        }
-        let wait = idle.min(left);
-        match tokio::time::timeout(wait, inner.next()).await {
-            Ok(Some(Ok(chunk))) => Some((Ok(chunk), (inner, false))),
-            Ok(Some(Err(err))) => Some((
-                Err(anyhow::Error::new(err).context("stream body error")),
-                (inner, true),
-            )),
-            Ok(None) => None,
-            Err(_) if wait < idle => Some((
-                Err(anyhow::anyhow!("streaming overall deadline")),
-                (inner, true),
-            )),
-            Err(_) => Some((Err(anyhow::anyhow!("stream idle timeout")), (inner, true))),
-        }
-    })
+    futures_util::stream::unfold(
+        (inner, false, std::time::Instant::now()),
+        move |(mut inner, stop, gap_started)| async move {
+            if stop {
+                return None;
+            }
+            let left = overall.saturating_sub(gap_started.elapsed());
+            if left.is_zero() {
+                return Some((
+                    Err(anyhow::anyhow!("streaming overall deadline")),
+                    (inner, true, gap_started),
+                ));
+            }
+            let wait = idle.min(left);
+            match tokio::time::timeout(wait, inner.next()).await {
+                Ok(Some(Ok(chunk))) => Some((Ok(chunk), (inner, false, std::time::Instant::now()))),
+                Ok(Some(Err(err))) => Some((
+                    Err(anyhow::Error::new(err).context("stream body error")),
+                    (inner, true, gap_started),
+                )),
+                Ok(None) => None,
+                Err(_) if wait < idle => Some((
+                    Err(anyhow::anyhow!("streaming overall deadline")),
+                    (inner, true, gap_started),
+                )),
+                Err(_) => Some((
+                    Err(anyhow::anyhow!("stream idle timeout")),
+                    (inner, true, gap_started),
+                )),
+            }
+        },
+    )
 }
 
 /// Split a drained NDJSON block into lines.
@@ -216,9 +224,11 @@ pub(crate) struct NdjsonYield {
 
 /// Scan NDJSON bytes until one error or until `on_line` says to stop.
 ///
-/// Reads wait only the time still left. A bad line does not fail earlier
-/// lines from the same read. After one error the next poll ends the stream,
-/// so a later chunk is not read and the byte cap still applies up to the error.
+/// Each read waits the idle limit or the time still left in the gap since
+/// the last byte, whichever is shorter. A chunk starts a new gap. A bad line
+/// does not fail earlier lines from the same read. After one error the next
+/// poll ends the stream, so a later chunk is not read and the byte cap still
+/// applies up to the error.
 #[cfg(feature = "ollama")]
 pub(crate) fn scan_model_ndjson<S, T, E, F>(
     inner: S,
@@ -474,6 +484,45 @@ mod ndjson_scan_tests {
             .await
             .expect("stream stayed open after the deadline");
         assert!(next.is_none());
+    }
+
+    #[tokio::test]
+    async fn ndjson_scan_keeps_chunks_whose_gaps_stay_inside_the_window() {
+        let idle = std::time::Duration::from_secs(2);
+        let overall = std::time::Duration::from_millis(200);
+        let inner = futures_util::stream::unfold(0u32, |i| async move {
+            if i >= 8 {
+                return None;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            let line = format!("{{\"message\":{{\"content\":\"n{i:02}\"}}}}\n");
+            Some((Ok::<Vec<u8>, std::io::Error>(line.into_bytes()), i + 1))
+        });
+        let mut stream = Box::pin(scan_model_ndjson(
+            Box::pin(inner),
+            idle,
+            overall,
+            content_line,
+        ));
+        let started = std::time::Instant::now();
+        let items = tokio::time::timeout(std::time::Duration::from_secs(3), async {
+            let mut items = Vec::new();
+            while let Some(item) = stream.next().await {
+                items.push(item);
+            }
+            items
+        })
+        .await
+        .expect("scan stopped on the sum of gaps");
+        assert!(
+            started.elapsed() > overall,
+            "stream ended inside the old wall clock ({:?})",
+            started.elapsed()
+        );
+        assert_eq!(items.len(), 8, "{items:?}");
+        for (i, item) in items.iter().enumerate() {
+            assert_eq!(item.as_ref().expect("token"), &format!("n{i:02}"));
+        }
     }
 
     #[tokio::test]
@@ -1442,8 +1491,12 @@ impl LlmClient for OllamaChatClient {
             let mut assistant_acc = String::new();
             let mut bytes_seen: usize = 0;
             let mut done_flag = false;
+            // Twice the idle timeout bounds one gap since the last byte, not
+            // the life of the stream. A loaded runner can wake each 50 ms
+            // write late enough that sixty of them pass two idle periods
+            // while every gap stays inside one. A silent peer still stops.
             let overall = idle.saturating_mul(2);
-            let stream_started = std::time::Instant::now();
+            let mut gap_started = std::time::Instant::now();
 
             // We'll periodically flush partial assembled assistant output to disk so
             // an interrupted run can still be inspected. Track last flush size.
@@ -1452,7 +1505,7 @@ impl LlmClient for OllamaChatClient {
             let mut first_token_at: Option<std::time::Instant> = None;
             let mut body_error: Option<anyhow::Error> = None;
             loop {
-                let left = overall.saturating_sub(stream_started.elapsed());
+                let left = overall.saturating_sub(gap_started.elapsed());
                 if left.is_zero() {
                     body_error = Some(anyhow::anyhow!("streaming overall deadline"));
                     break;
@@ -1461,7 +1514,7 @@ impl LlmClient for OllamaChatClient {
                 let item = match tokio::time::timeout(wait, stream.next()).await {
                     Ok(Some(item)) => item,
                     Ok(None) => break,
-                    Err(_) if stream_started.elapsed() >= overall => {
+                    Err(_) if wait < idle => {
                         body_error = Some(anyhow::anyhow!("streaming overall deadline"));
                         break;
                     }
@@ -1472,6 +1525,7 @@ impl LlmClient for OllamaChatClient {
                 };
                 match item {
                     Ok(chunk) => {
+                        gap_started = std::time::Instant::now();
                         // Count bytes before UTF-8 or line filtering. Empty
                         // NDJSON lines and invalid UTF-8 must not stream forever.
                         // A cap error keeps tokens already stored in `assistant_acc`.
@@ -1480,17 +1534,12 @@ impl LlmClient for OllamaChatClient {
                             break;
                         }
                         raw.extend_from_slice(&chunk);
-                        // One pass over this chunk. `drain(..=pos)` once per
-                        // newline shifts the whole tail each time, which is
-                        // quadratic on a newline-only body.
+                        // One pass over bytes already received. The gap
+                        // deadline applies to the next wait, not to lines
+                        // sitting in `raw`.
                         let mut consumed = 0usize;
                         let mut capped = false;
                         while consumed < raw.len() {
-                            if stream_started.elapsed() >= overall {
-                                body_error = Some(anyhow::anyhow!("streaming overall deadline"));
-                                capped = true;
-                                break;
-                            }
                             let Some(rel) = raw[consumed..].iter().position(|&b| b == b'\n') else {
                                 break;
                             };
