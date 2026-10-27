@@ -963,6 +963,72 @@ fn upload_while_scene_vectors_are_off_stores_zero_motion() {
     });
 }
 
+/// A same-size upload after the setter, and before the first record, must
+/// not become that frame's previous positions.
+#[test]
+fn upload_after_enable_before_first_record_stores_zero_motion() {
+    pollster::block_on(async {
+        const WIDTH: u32 = 64;
+        let mut renderer = Renderer::new_headless(WIDTH, WIDTH)
+            .await
+            .expect("headless");
+        let vp = look_at_vertical_quad(&mut renderer);
+        renderer.init_terrain_forward().expect("terrain");
+        let quad =
+            |shift: f32| -> Vec<astraweave_render::terrain_material_manager::TerrainSplatVertex> {
+                [
+                    [-2.0, 0.0, 0.0],
+                    [2.0, 0.0, 0.0],
+                    [2.0, 4.0, 0.0],
+                    [-2.0, 4.0, 0.0],
+                ]
+                .into_iter()
+                .map(
+                    |position| astraweave_render::terrain_material_manager::TerrainSplatVertex {
+                        position: [position[0] + shift, position[1], position[2]],
+                        normal: [0.0, 0.0, 1.0],
+                        uv: [0.0, 0.0],
+                    },
+                )
+                .collect()
+            };
+        let indices = [0u32, 1, 2, 0, 2, 3];
+        let maps = splat_maps();
+        let refs: Vec<&[u8]> = maps.iter().map(|bytes| bytes.as_slice()).collect();
+        renderer
+            .upload_terrain_chunk(5, &quad(0.0), &indices, &refs, (4, 4))
+            .expect("first upload");
+        renderer.set_scene_vectors_enabled(true);
+        renderer
+            .upload_terrain_chunk(5, &quad(2.0), &indices, &refs, (4, 4))
+            .expect("same-size upload before the first record");
+        let device = renderer.device().clone();
+        draw_scene(&mut renderer, "first record after same-size upload");
+        pop_ok(&device, "first record after same-size upload").await;
+        let (normal, velocity) = renderer.scene_vector_targets().expect("targets");
+        let queue = renderer.queue().clone();
+        let encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("read same-size normal"),
+        });
+        let normals = read_texture(&device, &queue, encoder, &normal, WIDTH, WIDTH, 8);
+        let encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("read same-size velocity"),
+        });
+        let velocities = read_texture(&device, &queue, encoder, &velocity, WIDTH, WIDTH, 4);
+        let here = glam::Vec3::new(2.0, 2.0, 0.0);
+        let curr = uv_of(vp, here);
+        let px = (curr.x * WIDTH as f32).clamp(1.0, (WIDTH - 2) as f32) as u32;
+        let py = (curr.y * WIDTH as f32).clamp(1.0, (WIDTH - 2) as f32) as u32;
+        let sample = pixel_rg(&normals, &velocities, WIDTH, px, py);
+        assert!(
+            sample.coverage > 0.5 && sample.velocity.length() < 1.0e-3,
+            "same-size upload before the first record kept a delta at {px},{py}: coverage {} velocity {}",
+            sample.coverage,
+            sample.velocity
+        );
+    });
+}
+
 /// Sphere previous poses are `queue.write_buffer`, not an encoder copy.
 #[test]
 fn sphere_queue_write_is_not_an_encoder_copy() {
