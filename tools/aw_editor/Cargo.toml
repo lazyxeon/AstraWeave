@@ -100,7 +100,10 @@ astraweave-pcg = { path = "../../astraweave-pcg" }
 clap = { version = "4", features = ["derive"] }
 env_logger = "0.11"
 log = "0.4"
-zstd = "0.14.3"
+# Defaults pull `legacy`, `arrays`, and `zdict_builder` into the one zstd
+# 0.14.3 that zip also links. The editor only calls `encode_all` and
+# `stream::Decoder::new`, which are available with the defaults off.
+zstd = { version = "0.14.3", default-features = false }
 lz4_flex = "0.11"
 crc32fast = "1.4"
 # astraweave-asset-pipeline: dep removed 2026-06-30 (R-series M2/E4, relabel-and-defer) —
