@@ -142,14 +142,16 @@ fn sample_planar(
 }
 
 // Height-based blending: sharpen weights using per-layer height map values.
-fn height_blend(weights: array<f32, 8>, heights: array<f32, 8>, count: u32) -> array<f32, 8> {
+// The splat path stores 32 layers (`raw_weights`, `layer_heights`). Naga
+// rejects a call that passes those arrays into an 8-element parameter.
+fn height_blend(weights: array<f32, 32>, heights: array<f32, 32>, count: u32) -> array<f32, 32> {
     var max_h: f32 = -999.0;
     for (var i: u32 = 0u; i < count; i++) {
         let h = heights[i] + weights[i];
         max_h = max(max_h, h);
     }
 
-    var result: array<f32, 8>;
+    var result: array<f32, 32>;
     var total: f32 = 0.0;
     let blend_range: f32 = 0.2;
     for (var i: u32 = 0u; i < count; i++) {
