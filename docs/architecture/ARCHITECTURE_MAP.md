@@ -686,7 +686,7 @@ ECS World (Vec3 positions)
   → server_snapshot_system OR standalone server build_snapshot
   → ClientToServer/ServerToClient enums via Codec::PostcardLz4 (standalone) or Codec::Bincode (ECS Plugin)
   → WebSocket over TLS (wss://) [standalone] or plain TCP (ws://) [ECS Plugin]
-  → Matchmaking: room cap 4, tick_hz 30 (hardcoded); shared 32-byte SigningKey (AW_SHARED_KEY / --shared-key-hex / dev_default)
+  → Matchmaking: room cap 4, tick_hz 30 (hardcoded); shared 32-byte SigningKey (client: AW_SHARED_KEY or dev_default() on every build; debug server keeps dev_default() when --shared-key-hex is absent; only the release CLI requires the flag; release spawn_server refuses the published key at boot; a wrong key still joins; only InputFrame is verified)
   → InputFrame { seq, tick_ms, input_blob, sig: [u8; 32] }
     → Client signs HMAC-SHA256 over input_frame_sig_payload; Server verifies FIRST (constant-time), kicks by default (Close 1008) per SignatureFailurePolicy
   → Token-bucket rate limit: 8 tokens/sec refill, 60-bucket capacity, 1 cost/msg
