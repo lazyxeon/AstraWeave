@@ -397,3 +397,31 @@ fn test_pbr_terrain_forward_validates_with_prefix() {
         .validate(&module)
         .unwrap_or_else(|e| panic!("forward-lit terrain shader failed to validate: {e}"));
 }
+
+/// `TERRAIN_SPLAT_SHADER` is `pbr_terrain.wgsl` then `pbr_terrain_vs.wgsl`.
+/// `height_blend` has to take the same 32-element arrays the fragment stores.
+#[test]
+fn test_pbr_terrain_splat_validates() {
+    let current_dir = std::env::current_dir().unwrap();
+    let workspace_root = if current_dir.ends_with("astraweave-render") {
+        current_dir.parent().unwrap().to_path_buf()
+    } else {
+        current_dir
+    };
+    let shaders_dir = workspace_root.join("astraweave-render").join("shaders");
+    let fragment = std::fs::read_to_string(shaders_dir.join("pbr_terrain.wgsl"))
+        .expect("read pbr_terrain.wgsl");
+    let vertex = std::fs::read_to_string(shaders_dir.join("pbr_terrain_vs.wgsl"))
+        .expect("read pbr_terrain_vs.wgsl");
+    let concatenated = format!("{fragment}{vertex}");
+
+    let module = wgsl::parse_str(&concatenated)
+        .unwrap_or_else(|e| panic!("terrain splat shader failed to parse: {e}"));
+    let mut validator = naga::valid::Validator::new(
+        naga::valid::ValidationFlags::all(),
+        naga::valid::Capabilities::all(),
+    );
+    validator
+        .validate(&module)
+        .unwrap_or_else(|e| panic!("terrain splat shader failed to validate: {e}"));
+}
