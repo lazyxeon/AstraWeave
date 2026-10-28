@@ -295,6 +295,28 @@ class WorkflowPolicyTest(unittest.TestCase):
         self.assertIn("--head HEAD", changes)
         self.assertIn("reason=missing-merge-parent", changes)
 
+    def test_toolchain_push_keeps_the_pinned_compiler(self) -> None:
+        text = (WORKFLOWS / "toolchain-management.yml").read_text(encoding="utf-8")
+        pin, extra = text.split("toolchain-validation-extra:", 1)
+        self.assertIn("branches: [ main ]", text)
+        self.assertIn('cron: "40 5 * * *"', text)
+        self.assertIn('toolchain: ["1.89.0"]', pin)
+        self.assertNotIn("toolchain: stable", pin)
+        self.assertIn("if: github.event_name != 'push'", extra)
+        self.assertIn("toolchain: stable", extra)
+        self.assertIn('toolchain: "1.88.0"', extra)
+        self.assertIn("toolchain: beta", extra)
+        self.assertIn("toolchain: nightly", extra)
+        self.assertIn("experimental: true", extra)
+        self.assertIn("continue-on-error: ${{ matrix.experimental || false }}", extra)
+        self.assertIn("name: Minimum Supported Rust Version Check", text)
+        self.assertIn(
+            "needs: [toolchain-validation, toolchain-validation-extra, msrv-check]",
+            text,
+        )
+        self.assertIn("github.event_name == 'schedule'", text)
+        self.assertNotIn("github.event_name == 'push'", text)
+
     def test_allocation_measurement_is_a_real_gate_off_prs(self) -> None:
         text = (WORKFLOWS / "allocation-measurement.yml").read_text(encoding="utf-8")
         self.assertIn("schedule:", text)
