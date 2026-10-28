@@ -7,6 +7,12 @@ rustflags = ["-C", "link-args=/STACK:16777216"]
 [target.x86_64-pc-windows-gnu]
 rustflags = ["-C", "link-args=-Wl,--stack,16777216"]
 
+# Same baseline the replay hash pins on x86_64. A separate target table so
+# this flag is not applied by replacing the Windows stack rustflags.
+# aarch64 stays on the compiler default (target-cpu=native is forbidden).
+[target.x86_64-unknown-linux-gnu]
+rustflags = ["-C", "target-cpu=x86-64"]
+
 # Convenience aliases for the editor
 [alias]
 editor = "run --bin aw_editor --profile release-fast"
