@@ -233,6 +233,53 @@ class WorkflowPolicyTest(unittest.TestCase):
         aravath = (WORKFLOWS / "aravath-determinism.yml").read_text(encoding="utf-8")
         self.assertIn("-C target-feature=-fma", aravath)
 
+    def test_scoped_workflows_keep_their_checks_and_fail_closed(self) -> None:
+        scoped = {
+            "aravath-windows.yml": "aravath",
+            "aravath-determinism.yml": "aravath-determinism",
+            "render-device-validation.yml": "render-device",
+            "net-tests.yml": "net",
+        }
+        texts = workflow_texts()
+        for name, scope in scoped.items():
+            text = texts[name]
+            self.assertIn(f"--scope {scope}", text)
+            self.assertIn("Fail closed when scope detection fails", text)
+            if name == "aravath-determinism.yml":
+                # The matrix job always starts so each OS check name exists.
+                # The first step fails the job when classify did not succeed.
+                self.assertIn("needs.scope.result != 'success'", text)
+            else:
+                self.assertIn("needs.scope.result == 'failure'", text)
+            self.assertNotIn("paths-ignore:", text)
+            self.assertNotIn("\n    paths:", text)
+        # The matrix must keep expanding so the per-OS check names exist.
+        det = texts["aravath-determinism.yml"]
+        self.assertIn("name: Replay hash (${{ matrix.os }})", det)
+        self.assertIn("if: ${{ !cancelled() }}", det)
+        self.assertIn("replay_matches_golden_hash", det)
+        self.assertNotIn("needs.scope.outputs.run == 'true'\n    runs-on:", det)
+        windows = texts["aravath-windows.yml"]
+        self.assertIn("name: cargo-audit, cargo-deny, SBOM", windows)
+        self.assertIn("name: Volumetrics validation on lavapipe", windows)
+        self.assertIn("name: Build, test, and upload greybox", windows)
+        self.assertIn("cargo audit", windows)
+        self.assertIn("cargo deny check", windows)
+        self.assertIn("cargo cyclonedx", windows)
+        render = texts["render-device-validation.yml"]
+        self.assertIn("name: Startup passes (lavapipe)", render)
+        self.assertIn("name: Startup passes (Windows)", render)
+        self.assertIn("created_pass_validation", render)
+        self.assertIn("frame_alloc", render)
+        self.assertIn("stream_fallback", render)
+        self.assertIn("gpu_timestamp", render)
+        net = texts["net-tests.yml"]
+        self.assertIn("name: net-tests", net)
+        self.assertIn("cargo test -p astraweave-net --all-features --verbose", net)
+        replay = texts["determinism-replay.yml"]
+        self.assertNotIn("--scope", replay)
+        self.assertNotIn("Affected scope", replay)
+
     def test_allocation_measurement_is_a_real_gate_off_prs(self) -> None:
         text = (WORKFLOWS / "allocation-measurement.yml").read_text(encoding="utf-8")
         self.assertIn("schedule:", text)

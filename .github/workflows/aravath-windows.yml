@@ -11,8 +11,8 @@ on:
   pull_request:
 
 concurrency:
-  group: aravath-windows-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # Read at the workflow root. The release job overrides this with contents:
 # write, which `gh release` needs for the rolling prerelease.
@@ -29,13 +29,57 @@ env:
   RUST_BACKTRACE: short
 
 jobs:
+  scope:
+    name: Affected scope
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      run: ${{ steps.detect.outputs.run }}
+      reason: ${{ steps.detect.outputs.reason }}
+      full: ${{ steps.detect.outputs.full }}
+      packages: ${{ steps.detect.outputs.packages }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          # Full history. A numeric 0 in `&& 0 || 1` is falsy and becomes
+          # fetch-depth 1, which cannot see the base commit.
+          fetch-depth: 0
+
+      - name: Classify the diff
+        id: detect
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            {
+              echo "run=true"
+              echo "reason=non-pull-request"
+              echo "full=true"
+              echo "packages="
+            } >> "$GITHUB_OUTPUT"
+          else
+            git fetch --no-tags origin "${{ github.base_ref }}"
+            python3 scripts/ci/affected_crates.py \
+              --base "origin/${{ github.base_ref }}" \
+              --head HEAD \
+              --scope aravath \
+              --github-output "$GITHUB_OUTPUT"
+          fi
+          cat "$GITHUB_OUTPUT"
+
   vulkan-validation:
     name: Volumetrics validation on lavapipe
+    needs: scope
+    if: ${{ !cancelled() && (needs.scope.result == 'failure' || needs.scope.outputs.run == 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 90
     permissions:
       contents: read
     steps:
+      - name: Fail closed when scope detection fails
+        if: needs.scope.result != 'success'
+        run: exit 1
+
       - name: Checkout
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
@@ -60,11 +104,17 @@ jobs:
 
   supply-chain:
     name: cargo-audit, cargo-deny, SBOM
+    needs: scope
+    if: ${{ !cancelled() && (needs.scope.result == 'failure' || needs.scope.outputs.run == 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:
       contents: read
     steps:
+      - name: Fail closed when scope detection fails
+        if: needs.scope.result != 'success'
+        run: exit 1
+
       - name: Checkout
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
@@ -138,12 +188,18 @@ jobs:
 
   windows:
     name: Build, test, and upload greybox
+    needs: scope
+    if: ${{ !cancelled() && (needs.scope.result == 'failure' || needs.scope.outputs.run == 'true') }}
     runs-on: windows-latest
     timeout-minutes: 180
     permissions:
       contents: read
 
     steps:
+      - name: Fail closed when scope detection fails
+        if: needs.scope.result != 'success'
+        run: exit 1
+
       - name: Checkout
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
@@ -225,6 +281,7 @@ jobs:
     needs: [windows, supply-chain]
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/heads/cursor/aravath-')
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: write
     steps:

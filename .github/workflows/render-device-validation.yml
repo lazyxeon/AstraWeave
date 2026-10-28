@@ -5,18 +5,65 @@ on:
   push:
     branches: [main]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 permissions:
   contents: read
 
 jobs:
+  scope:
+    name: Affected scope
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      run: ${{ steps.detect.outputs.run }}
+      reason: ${{ steps.detect.outputs.reason }}
+      full: ${{ steps.detect.outputs.full }}
+      packages: ${{ steps.detect.outputs.packages }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          # Full history. A numeric 0 in `&& 0 || 1` is falsy and becomes
+          # fetch-depth 1, which cannot see the base commit.
+          fetch-depth: 0
+
+      - name: Classify the diff
+        id: detect
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            {
+              echo "run=true"
+              echo "reason=non-pull-request"
+              echo "full=true"
+              echo "packages="
+            } >> "$GITHUB_OUTPUT"
+          else
+            git fetch --no-tags origin "${{ github.base_ref }}"
+            python3 scripts/ci/affected_crates.py \
+              --base "origin/${{ github.base_ref }}" \
+              --head HEAD \
+              --scope render-device \
+              --github-output "$GITHUB_OUTPUT"
+          fi
+          cat "$GITHUB_OUTPUT"
+
   lavapipe:
     name: Startup passes (lavapipe)
+    needs: scope
+    if: ${{ !cancelled() && (needs.scope.result == 'failure' || needs.scope.outputs.run == 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
       # Floor tests read this. They do not call set_var.
       RUST_LIB_BACKTRACE: "0"
     steps:
+      - name: Fail closed when scope detection fails
+        if: needs.scope.result != 'success'
+        run: exit 1
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - uses: dtolnay/rust-toolchain@d77020bf130f2e8c39c025bf9c4c3a445fe2b9fa # 1.89.0
       - name: Install lavapipe
@@ -98,9 +145,14 @@ jobs:
 
   windows:
     name: Startup passes (Windows)
+    needs: scope
+    if: ${{ !cancelled() && (needs.scope.result == 'failure' || needs.scope.outputs.run == 'true') }}
     runs-on: windows-latest
     timeout-minutes: 45
     steps:
+      - name: Fail closed when scope detection fails
+        if: needs.scope.result != 'success'
+        run: exit 1
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - uses: dtolnay/rust-toolchain@d77020bf130f2e8c39c025bf9c4c3a445fe2b9fa # 1.89.0
       - name: Submit startup passes under validation
