@@ -57,23 +57,21 @@ jobs:
         continue-on-error: true
       
       - name: Install PowerShell
-        # Ubuntu 26.04 has no `powershell` apt package (packages.microsoft.com
-        # resolute is already configured and apt still returns "Unable to locate
-        # package powershell"). Pin the upstream linux-x64 tarball. The export
-        # and threshold steps below still call `pwsh`.
+        # ubuntu-latest already has pwsh on PATH (7.6.6 in
+        # /opt/microsoft/powershell/7). apt has no `powershell` package on
+        # 26.04, which is why run 40438097478 failed. Do not extract a
+        # tarball over that prefix: it downgrades the image binary and
+        # leaves the newer files in place.
         run: |
           set -euo pipefail
-          ver=7.5.4
-          url="https://github.com/PowerShell/PowerShell/releases/download/v${ver}/powershell-${ver}-linux-x64.tar.gz"
-          tmp="$(mktemp)"
-          curl -fsSL -L -o "$tmp" "$url"
-          echo "1fd7983fe56ca9e6233f126925edb24bf6b6b33e356b69996d925c4db94e2fef  $tmp" | sha256sum -c -
-          sudo mkdir -p /opt/microsoft/powershell/7
-          sudo tar -xzf "$tmp" -C /opt/microsoft/powershell/7
-          sudo chmod +x /opt/microsoft/powershell/7/pwsh
-          sudo ln -sf /opt/microsoft/powershell/7/pwsh /usr/local/bin/pwsh
+          if command -v pwsh >/dev/null; then
+            pwsh -NoLogo -Command '$PSVersionTable.PSVersion.ToString()'
+            exit 0
+          fi
+          sudo apt-get update
+          sudo apt-get install -y powershell
+          command -v pwsh
           pwsh -NoLogo -Command '$PSVersionTable.PSVersion.ToString()'
-          rm -f "$tmp"
       
       - name: Export Benchmark JSONL
         run: |
