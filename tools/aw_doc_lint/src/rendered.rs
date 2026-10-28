@@ -5,15 +5,16 @@
 //! fence stays. A fenced or indented code block is `Text` inside `CodeBlock`,
 //! and those characters stay too. Other `Text` decodes a numeric character
 //! reference that ends in `;`, including any run of leading zeros. A value
-//! in 0x80–0x9F becomes U+FFFD. C0 controls other than tab, line feed, and
-//! carriage return, and DEL, also become U+FFFD, whether this pass decoded
-//! the reference or the parser already emitted the scalar. The fold keeps
-//! that U+FFFD. A named reference stays as pulldown emitted
+//! in 0x80–0x9F becomes U+FFFD. C0 controls other than tab, line feed, form
+//! feed, and carriage return, and DEL, also become U+FFFD, whether this pass
+//! decoded the reference or the parser already emitted the scalar. The fold
+//! keeps that U+FFFD. Form feed stays whitespace. A named reference stays as pulldown emitted
 //! it.
 //! A named reference pulldown already decoded is not decoded again. HTML
 //! events are the only place a comment is removed. There a numeric reference
 //! follows the HTML tokenizer: the semicolon is optional, 0 is U+FFFD, and
-//! 0x80–0x9F use the Windows-1252 row. The five undefined slots (0x81, 0x8D,
+//! 0x80–0x9F use the Windows-1252 row. C0 other than tab, line feed, form
+//! feed, and carriage return, and DEL, are U+FFFD there too. The five undefined slots (0x81, 0x8D,
 //! 0x8F, 0x90, 0x9D) are U+FFFD. A semicolon name is decoded, and so
 //! is an HTML5 legacy name with no semicolon. Alt text uses that numeric
 //! rule and that legacy set, except a legacy name is not consumed when the
@@ -247,8 +248,9 @@ fn push_text_numeric(out: &mut String, raw: &str) {
             break;
         };
         // pulldown-cmark already decoded a short numeric reference. A C1
-        // control, a C0 control other than tab, line feed, and carriage
-        // return, and DEL are U+FFFD there. The fold keeps that scalar.
+        // control, a C0 control other than tab, line feed, form feed, and
+        // carriage return, and DEL are U+FFFD there. The fold keeps that
+        // scalar. Form feed stays.
         out.push(markdown_text_char(ch));
         i += ch.len_utf8();
     }
@@ -624,7 +626,13 @@ fn html_numeric_char(n: u32) -> char {
         '\u{2022}', '\u{2013}', '\u{2014}', '\u{02DC}', '\u{2122}', '\u{0161}', '\u{203A}',
         '\u{0153}', '\u{FFFD}', '\u{017E}', '\u{0178}',
     ];
-    if n == 0 || (0xD800..=0xDFFF).contains(&n) {
+    // Tab, line feed, form feed, and carriage return stay. Other C0 controls
+    // and DEL are U+FFFD, so the fold cannot join the letters around them.
+    if n == 0
+        || n == 0x7F
+        || (n < 0x20 && !matches!(n, 0x9 | 0xA | 0xC | 0xD))
+        || (0xD800..=0xDFFF).contains(&n)
+    {
         return '\u{FFFD}';
     }
     if (0x80..=0x9F).contains(&n) {
@@ -635,7 +643,7 @@ fn html_numeric_char(n: u32) -> char {
 
 /// Markdown `Text`. A semicolon is required. Leading zeros do not count
 /// toward the six hex or seven decimal digits. 0x80–0x9F, C0 other than tab,
-/// line feed, and carriage return, and DEL become U+FFFD.
+/// line feed, form feed, and carriage return, and DEL become U+FFFD.
 fn decode_numeric_ref(bytes: &[u8], i: usize) -> Option<(String, usize)> {
     if bytes.get(i) != Some(&b'&') || bytes.get(i + 1) != Some(&b'#') {
         return None;
@@ -681,13 +689,16 @@ fn decode_numeric_ref(bytes: &[u8], i: usize) -> Option<(String, usize)> {
     Some((markdown_text_char(char::from_u32(n)?).to_string(), end + 1))
 }
 
-/// Markdown text. C1, C0 other than tab, line feed, and carriage return, and
-/// DEL are U+FFFD. That covers a decoded reference and a raw scalar. Tab,
-/// line feed, and carriage return stay. The fold keeps U+FFFD, so U+000B does
-/// not become a space.
+/// Markdown text. C1, C0 other than tab, line feed, form feed, and carriage
+/// return, and DEL are U+FFFD. That covers a decoded reference and a raw
+/// scalar. Tab, line feed, form feed, and carriage return stay. The fold
+/// keeps U+FFFD, so U+000B does not become a space. Form feed does.
 fn markdown_text_char(ch: char) -> char {
     let n = u32::from(ch);
-    if (0x80..=0x9F).contains(&n) || n == 0x7F || (n < 0x20 && !matches!(ch, '\t' | '\n' | '\r')) {
+    if (0x80..=0x9F).contains(&n)
+        || n == 0x7F
+        || (n < 0x20 && !matches!(ch, '\t' | '\n' | '\u{000C}' | '\r'))
+    {
         '\u{FFFD}'
     } else {
         ch

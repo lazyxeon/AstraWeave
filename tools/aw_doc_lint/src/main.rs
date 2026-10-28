@@ -77,9 +77,10 @@
 //! optional, leading zeros do not count, 0 is U+FFFD, and 0x80–0x9F use the
 //! Windows-1252 row. The five undefined slots (0x81, 0x8D, 0x8F, 0x90, 0x9D)
 //! are U+FFFD. A markdown numeric reference in 0x80–0x9F is U+FFFD, not that
-//! row. C0 controls other than tab, line feed, and carriage return, and DEL,
-//! are U+FFFD in that text too, for a decoded reference and for a raw scalar.
-//! The fold keeps U+FFFD. Named references are the HTML5 table in `html_entities`, and
+//! row. C0 controls other than tab, line feed, form feed, and carriage
+//! return, and DEL, are U+FFFD in that text and in raw HTML, for a decoded
+//! reference and for a raw scalar. The fold keeps U+FFFD. Form feed stays
+//! whitespace. Named references are the HTML5 table in `html_entities`, and
 //! the 106 legacy names in `html_legacy` need no semicolon. Markdown text
 //! keeps that semicolon rule for names.
 //! Invisible characters are the
@@ -2443,13 +2444,31 @@ In progress
             "3.117\tms",
             "3.117&#10;ms",
             "3.117&#xA;ms",
+            "3.117&#12;ms",
+            "3.117&#xC;ms",
+            "3.117&#x0C;ms",
+            "3.117\u{000C}ms",
             "3.117&#13;ms",
             "3.117&#xD;ms",
         ] {
             let rendered = rendered::render_visible(&format!("The frame is {prose}."));
             assert!(
                 !rendered.contains('\u{FFFD}'),
-                "tab, line feed, and carriage return stay: {prose}: {rendered:?}"
+                "tab, line feed, form feed, and carriage return stay: {prose}: {rendered:?}"
+            );
+            let kept = if prose.contains('\t') || prose.contains("&#9;") || prose.contains("&#x9;")
+            {
+                '\t'
+            } else if prose.contains("&#10;") || prose.contains("&#xA;") {
+                '\n'
+            } else if prose.contains("&#13;") || prose.contains("&#xD;") {
+                '\r'
+            } else {
+                '\u{000C}'
+            };
+            assert!(
+                rendered.contains(kept),
+                "the whitespace scalar stays: {prose}: {rendered:?}"
             );
             let readme = format!("{}\nThe frame is {prose}.\n", sample_readme());
             let errors = front_door_errors(&readme, &sample_status(), &sample_workflow(), &[]);
@@ -2458,11 +2477,103 @@ In progress
                 "{prose}: {errors:?}"
             );
         }
+        for heading in ["## &#12;\n", "## &#xC;\n", "## &#x0C;\n"] {
+            let rendered = rendered::render_visible(heading);
+            assert!(
+                rendered.contains('\u{000C}'),
+                "a form-feed heading stays whitespace: {heading:?}: {rendered:?}"
+            );
+        }
+        for heading in ["## &#12;\n", "## &#xC;\n", "## &#x0C;\n", "## \u{000C}\n"] {
+            let readme = format!(
+                "## In progress\n#334 are in progress. #366 are in progress. #383 are in progress.\n{heading}#999 this shipped\n"
+            );
+            let errors = front_door_errors(&readme, &sample_status(), &sample_workflow(), &[]);
+            assert!(
+                errors.iter().any(|error| error.contains("#999")),
+                "{heading:?}: {errors:?}"
+            );
+            assert!(
+                errors.iter().any(|error| error.contains("shipped")),
+                "{heading:?}: {errors:?}"
+            );
+        }
+        let spaced = "The median GPU frame is n&#12;ot 3.117 ms.";
+        let status = sample_status().replace("A later sample is 3.117 ms.", spaced);
+        let errors = front_door_errors(&sample_readme(), &status, &sample_workflow(), &[]);
+        assert!(
+            !errors.iter().any(|error| error.contains("3.117 ms")),
+            "form feed does not join not: {errors:?}"
+        );
         let code = rendered::render_visible("The frame is `n&#1;ot` and `3.117&#xB;ms`.");
         assert!(
             code.contains("&#1;") && code.contains("&#xB;"),
             "code keeps the reference: {code:?}"
         );
+    }
+
+    #[test]
+    fn html_c0_and_del_become_replacement_characters() {
+        for sentence in [
+            "<div>The median GPU frame is n&#1;ot 3.117 ms.</div>",
+            "<div>The median GPU frame is n&#x1;ot 3.117 ms.</div>",
+            "<div>The median GPU frame is n&#127;ot 3.117 ms.</div>",
+            "<div>The median GPU frame is n&#x7F;ot 3.117 ms.</div>",
+        ] {
+            let rendered = rendered::render_visible(sentence);
+            assert!(rendered.contains('\u{FFFD}'), "{sentence}: {rendered:?}");
+            assert!(!rendered.contains("not"), "{sentence}: {rendered:?}");
+            let folded = fold_visible_text(&rendered);
+            assert!(folded.contains('\u{FFFD}'), "{sentence}: {folded:?}");
+            let status = sample_status().replace("A later sample is 3.117 ms.", sentence);
+            let errors = front_door_errors(&sample_readme(), &status, &sample_workflow(), &[]);
+            assert!(
+                !errors.iter().any(|error| error.contains("3.117 ms")),
+                "{sentence}: {errors:?}"
+            );
+        }
+        let readme = "\
+## In progress
+#334 are in progress. #366 are in progress. #383 are in progress.
+<div>ship&#1;ped</div>
+## Docs
+";
+        let errors = front_door_errors(readme, &sample_status(), &sample_workflow(), &[]);
+        assert!(
+            !errors.iter().any(|error| error.contains("shipped")),
+            "{errors:?}"
+        );
+        for prose in [
+            "<div>\n3.117&#1;ms\n</div>",
+            "<div>\n3.117&#xB;ms\n</div>",
+            "<div>\n3.117&#11;ms\n</div>",
+            "<div>\n3.117&#127;ms\n</div>",
+        ] {
+            let rendered = rendered::render_visible(prose);
+            assert!(rendered.contains('\u{FFFD}'), "{prose}: {rendered:?}");
+            let readme = format!("{}\n{prose}\n", sample_readme());
+            let errors = front_door_errors(&readme, &sample_status(), &sample_workflow(), &[]);
+            assert!(
+                !errors.iter().any(|error| error.contains("frame figure")),
+                "{prose}: {errors:?}"
+            );
+        }
+        for prose in [
+            "<div>\n3.117&#9;ms\n</div>",
+            "<div>\n3.117&#10;ms\n</div>",
+            "<div>\n3.117&#12;ms\n</div>",
+            "<div>\n3.117&#xC;ms\n</div>",
+            "<div>\n3.117&#13;ms\n</div>",
+        ] {
+            let rendered = rendered::render_visible(prose);
+            assert!(!rendered.contains('\u{FFFD}'), "{prose}: {rendered:?}");
+            let readme = format!("{}\n{prose}\n", sample_readme());
+            let errors = front_door_errors(&readme, &sample_status(), &sample_workflow(), &[]);
+            assert!(
+                errors.iter().any(|error| error.contains("frame figure")),
+                "{prose}: {errors:?}"
+            );
+        }
     }
 
     #[test]
