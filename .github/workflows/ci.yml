@@ -66,9 +66,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
         with:
-          # Full history. A numeric 0 in `&& 0 || 1` is falsy and becomes
-          # fetch-depth 1, which cannot see the base commit.
-          fetch-depth: 0
+          # Depth 2 is the merge commit and both parents. Depth 1 cannot
+          # see the base parent. Depth 0 makes actions/checkout fetch every
+          # branch and every tag; run 40747800523 was cancelled at 10 minutes
+          # in that fetch, before classify ran.
+          fetch-depth: 2
+          fetch-tags: false
 
       - name: Classify the diff
         id: detect
@@ -81,10 +84,21 @@ jobs:
               echo "packages="
               echo "reason=non-pull-request"
             } >> "$GITHUB_OUTPUT"
+          elif ! git rev-parse --verify --quiet 'HEAD^1' >/dev/null; then
+            # Unsure which files changed. A full run is the safe result.
+            {
+              echo "docs_only=false"
+              echo "full=true"
+              echo "packages="
+              echo "reason=missing-merge-parent"
+            } >> "$GITHUB_OUTPUT"
           else
-            git fetch --no-tags origin "${{ github.base_ref }}"
+            # pull_request checks out refs/pull/N/merge. The first parent is
+            # the base commit GitHub merged, so three-dot against it is the
+            # pull request diff. Fetching the base branch would pull that
+            # branch's whole history.
             python3 scripts/ci/affected_crates.py \
-              --base "origin/${{ github.base_ref }}" \
+              --base "HEAD^1" \
               --head HEAD \
               --github-output "$GITHUB_OUTPUT"
           fi

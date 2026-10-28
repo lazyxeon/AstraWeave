@@ -86,6 +86,9 @@ When the same tests also run under nextest (an affected crate on a pull request,
 | A file that is not docs, not under `.github/`, and not inside a crate | `full=true` (a wrong narrow selection is worse than a full run). |
 | Other `.github/**` only (for example `CODEOWNERS`) | fmt gate only. No crate tests. |
 | Push, schedule, or `workflow_dispatch` | `full=true` without consulting the diff. |
+| Pull request whose checkout has no first parent | `full=true`, `reason=missing-merge-parent`. |
+
+`Detect affected crates` checks out with `fetch-depth: 2` and `fetch-tags: false`. On a pull request that checkout is `refs/pull/N/merge`, and the classifier diffs `HEAD^1...HEAD`. The first parent is the base commit of the merge GitHub built. `actions/checkout` treats depth 0 as every branch and every tag, including when `fetch-tags` is false. Run `40747800523` (pull request #484, head `710d84a3`) spent 600s in that fetch. Classify was skipped, and `PR Rust checks` failed because `changes=cancelled`.
 
 `--scope` on the same script sets `run=true` or `run=false` for one heavy workflow. `run=false` only when the diff is known and the expanded crate set misses that scope. An empty diff, any full trigger above, or a scope package missing from metadata sets `run=true`.
 
