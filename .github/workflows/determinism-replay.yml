@@ -78,6 +78,10 @@ jobs:
         run: git lfs pull --include "assets/aravath/models/nature/*.glb"
 
       - name: Replay hash
+        env:
+          # Debuginfo is link time. The replay hash is the sim digest, and
+          # debug assertions stay on. The same value on every OS.
+          CARGO_PROFILE_TEST_DEBUG: "0"
         run: |
           cargo test -p astraweave-core --test replay_hash -- --nocapture
           cargo test -p astraweave-combat --test replay_hash -- --nocapture
