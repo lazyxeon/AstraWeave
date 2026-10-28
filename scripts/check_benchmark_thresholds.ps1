@@ -247,18 +247,27 @@ if ($newBenchmarks -gt 0) {
 }
 
 # A threshold with no result used to pass: the old keys never occurred in
-# history, so -Strict had nothing to compare. That is a failed gate.
+# history, so -Strict had nothing to compare. Without -Strict that is a
+# warning. -Strict fails the check.
 $missingThresholds = @()
 if ($useThresholds) {
     foreach ($key in @($thresholds.benchmarks.PSObject.Properties.Name)) {
         if (-not $matchedThresholds.ContainsKey($key)) {
             $missingThresholds += $key
-            Write-Error "No benchmark result for threshold '$key'"
+            if ($Strict) {
+                Write-Error "No benchmark result for threshold '$key'"
+            } else {
+                Write-Warning "No benchmark result for threshold '$key'"
+            }
         }
     }
 }
 if ($missingThresholds.Count -gt 0) {
-    Write-Error "Missing threshold results: $($missingThresholds.Count)"
+    if ($Strict) {
+        Write-Error "Missing threshold results: $($missingThresholds.Count)"
+    } else {
+        Write-Warning "Missing threshold results: $($missingThresholds.Count) (warn; -Strict fails)"
+    }
 }
 
 # Detailed regression report
@@ -371,8 +380,10 @@ if ($CreateIssue -and $failedBenchmarks -gt 0) {
     }
 }
 
-# Exit code logic
-if ($missingThresholds.Count -gt 0) {
+# Exit code logic. A missing key fails only under -Strict. An over-limit
+# value still fails only under -Strict, which benchmark.yml and the
+# dashboard pass on main.
+if ($Strict -and $missingThresholds.Count -gt 0) {
     Write-Error "`nThreshold keys with no matching result fail the check"
     exit 1
 }

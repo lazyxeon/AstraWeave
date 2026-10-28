@@ -10,11 +10,11 @@
   },
   "benchmarks": {
     "world_creation": {
-      "baseline": 25.8,
-      "max_allowed": 38.7,
-      "warn_threshold": 32.25,
+      "baseline": 42.87,
+      "max_allowed": 64.31,
+      "warn_threshold": 53.59,
       "unit": "ns",
-      "description": "ECS World creation time (Week 2 Action 2)",
+      "description": "ECS World creation on ubuntu-latest. The 25.8 ns laptop figure is not this runner. Three healthy aggregates on 2026-10-28 were 41.47, 42.62, and 42.87 ns. Cap is 1.5x the slowest of those.",
       "created": "2025-10-08T00:00:00Z",
       "last_updated": "2025-10-09T00:00:00Z"
     },
@@ -177,20 +177,20 @@
       "last_updated": "2025-10-09T00:00:00Z"
     },
     "raycast_ground_plane": {
-      "baseline": 44,
-      "max_allowed": 66,
-      "warn_threshold": 55,
+      "baseline": 194.61,
+      "max_allowed": 291.92,
+      "warn_threshold": 243.26,
       "unit": "ns",
-      "description": "Raycast vs ground plane (Week 3 Action 12)",
+      "description": "Raycast vs a stepped ground plane on ubuntu-latest. The 44 ns cap measured a query pipeline that had not been stepped, so the ray missed. The bench now calls world.step() and asserts a hit. ubuntu-latest means: 194.61 ns (run 39532631733), 186.55, 173.12, 191.1, 184.9, 156. Cap is 1.5x the slowest. Empty-scene on the same runners stays near 13 ns, under its old cap.",
       "created": "2025-10-09T00:00:00Z",
       "last_updated": "2025-10-09T00:00:00Z"
     },
     "raycast_batch_8_rays": {
-      "baseline": 273,
-      "max_allowed": 409.5,
-      "warn_threshold": 341.25,
+      "baseline": 2309.9,
+      "max_allowed": 3464.85,
+      "warn_threshold": 2887.38,
       "unit": "ns",
-      "description": "8 raycasts in circle (vision simulation, Week 3 Action 12)",
+      "description": "Eight hitting raycasts on ubuntu-latest. The 273 ns cap matched eight misses. The bench now steps the world, so each ray hits. ubuntu-latest means: 2309.9 ns (run 39532631733), 2189.8, 1987.3, 2286, 2167, 2156. Cap is 1.5x the slowest. Windows and macOS do not run this workflow.",
       "created": "2025-10-09T00:00:00Z",
       "last_updated": "2025-10-09T00:00:00Z"
     },

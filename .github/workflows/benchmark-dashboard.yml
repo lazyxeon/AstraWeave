@@ -143,6 +143,7 @@ jobs:
           pwsh -File scripts/check_benchmark_thresholds.ps1 -BenchmarkJsonPath "$out" -ShowDetails -Strict
       
       - name: Prepare Dashboard Assets
+        if: ${{ !cancelled() }}
         run: |
           mkdir -p gh-pages
           cp tools/benchmark-dashboard/index.html gh-pages/
@@ -177,6 +178,7 @@ jobs:
           fi
 
       - name: Verify deployed assets
+        if: ${{ !cancelled() }}
         run: |
           echo "=== gh-pages contents ==="
           find gh-pages -type f | head -30
@@ -224,6 +226,7 @@ jobs:
           EOF
       
       - name: Deploy to GitHub Pages
+        if: ${{ !cancelled() }}
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
@@ -245,7 +248,7 @@ jobs:
             **Commit**: ${context.sha}
             **Branch**: ${context.ref}
             
-            One or more benchmarks exceeded the 10% regression threshold.
+            The regression check failed. The log names each over-limit benchmark and, under -Strict, each threshold key with no result. This is not a fixed 10% rule. max_allowed is 1.5 times the baseline.
             
             ### Next Steps
             1. Review benchmark results: [View Dashboard](https://lazyxeon.github.io/AstraWeave/dashboard/benchmark_dashboard/)
