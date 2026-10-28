@@ -174,6 +174,25 @@ class WorkflowPolicyTest(unittest.TestCase):
             self.assertNotIn(replay, profile)
             self.assertNotIn(replay, (ROOT / "scripts" / "ci" / "deferred_pr_tests.txt").read_text(encoding="utf-8"))
 
+    def test_aravath_supply_chain_uses_prebuilt_tools(self) -> None:
+        text = (WORKFLOWS / "aravath-windows.yml").read_text(encoding="utf-8")
+        self.assertNotIn("cargo install cargo-audit", text)
+        self.assertNotIn("cargo install cargo-deny", text)
+        self.assertNotIn("cargo install cargo-cyclonedx", text)
+        script = (ROOT / ".github" / "scripts" / "install-prebuilt-cargo-tool.sh").read_text(encoding="utf-8")
+        for tool in ("cargo-audit", "cargo-deny", "cargo-cyclonedx"):
+            self.assertIn(f"install-prebuilt-cargo-tool.sh {tool}", text)
+            self.assertIn(f"  {tool})", script)
+        self.assertIn("cargo audit", text)
+        self.assertIn("cargo deny check", text)
+        self.assertIn("cargo cyclonedx", text)
+        # Versions stay the ones the job used to cargo-install.
+        self.assertIn("0.22.2", script)
+        self.assertIn("0.20.2", script)
+        self.assertIn("0.5.9", script)
+        self.assertIn("9bd3e599314f50810c9d98b8b68a617ff9d3cc20873968d90b29d121f6b226ff", script)
+        self.assertIn('"$tool" cyclonedx --version', script)
+
     def test_allocation_measurement_is_a_real_gate_off_prs(self) -> None:
         text = (WORKFLOWS / "allocation-measurement.yml").read_text(encoding="utf-8")
         self.assertIn("schedule:", text)
