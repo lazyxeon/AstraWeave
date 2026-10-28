@@ -46,7 +46,8 @@
 //! `&amp;not;`, `\&not;`, and `&not ` keep the word `not`, and
 //! `3.117&amp;nbsp;ms` does not become U+00A0. Raw HTML and alt text also
 //! accept an HTML5 legacy name with no semicolon. In alt text that name is
-//! not consumed when the next byte is `=` or an ASCII alphanumeric. The fold
+//! not consumed when the next byte is `=` or an ASCII alphanumeric. A `/` or
+//! any ASCII whitespace before `alt` starts that attribute. The fold
 //! maps U+FF01–U+FF5E into ASCII and U+3000 into a space, and drops
 //! non-whitespace controls, the Cf and Mn characters
 //! `unicode_categories` 0.1.1 classifies, the Unicode 15 gaps in `unicode_gaps`,
@@ -63,16 +64,20 @@
 //! frame figure: a number followed by `ms`, `msec`, `millisecond`, or
 //! `milliseconds`, including the fullwidth block U+FF01–U+FF5E. The same
 //! render supplies that scan. The in-progress section is the rendered h2
-//! whose folded text is exactly `in progress`, setext or ATX, and it ends
-//! at the next rendered h2. Its issue numbers are read from that section
-//! after the same fold. The
+//! whose folded text is exactly `in progress`, setext or ATX. It ends at the
+//! next rendered h2 after that heading is finished, unless the heading's
+//! folded text, with every run of Unicode spaces mapped to one ASCII space
+//! and trimmed, is `in progress` or empty. Its issue numbers are read from
+//! that section after the same fold. The
 //! in-progress words and the retired title are read from that render after
 //! the fold. Quoted and unquoted `alt` text stays. A
 //! non-comment `<` that never reaches `>` is text. A backslash immediately
 //! before a newline is a hard break. In raw HTML and in alt text, a numeric
 //! character reference follows the HTML tokenizer: the semicolon is
 //! optional, leading zeros do not count, 0 is U+FFFD, and 0x80–0x9F use the
-//! Windows-1252 row. Named references are the HTML5 table in `html_entities`, and
+//! Windows-1252 row. The five undefined slots (0x81, 0x8D, 0x8F, 0x90, 0x9D)
+//! are U+FFFD. A markdown numeric reference in 0x80–0x9F is U+FFFD, not that
+//! row. Named references are the HTML5 table in `html_entities`, and
 //! the 106 legacy names in `html_legacy` need no semicolon. Markdown text
 //! keeps that semicolon rule for names.
 //! Invisible characters are the
@@ -2249,6 +2254,142 @@ In progress
             assert!(
                 errors.iter().any(|error| error.contains("#999")),
                 "{spelling}: {errors:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn slash_or_ascii_whitespace_starts_an_alt_attribute() {
+        for gap in ["/", " ", "\t", "\n", "\r", "\u{000c}"] {
+            let prose = format!("<div>\n<img{gap}alt=\"3.117 ms\">\n</div>");
+            let rendered = rendered::render_visible(&prose);
+            assert!(rendered.contains("3.117 ms"), "{gap:?}: {rendered:?}");
+            let readme = format!("{}\n{prose}\n", sample_readme());
+            let errors = front_door_errors(&readme, &sample_status(), &sample_workflow(), &[]);
+            assert!(
+                errors.iter().any(|error| error.contains("frame figure")),
+                "{gap:?}: {errors:?}"
+            );
+        }
+        let hidden = "<div>\n<imgxalt=\"3.117 ms\">\n</div>";
+        let rendered = rendered::render_visible(hidden);
+        assert!(
+            !rendered.contains("3.117"),
+            "a letter is not an attribute boundary: {rendered:?}"
+        );
+    }
+
+    #[test]
+    fn c1_numeric_refs_become_replacement_characters() {
+        for n in 0x80u32..=0x9F {
+            for prose in [format!("3.117&#x{n:X};ms"), format!("3.117&#{n};ms")] {
+                let rendered = rendered::render_visible(&format!("The frame is {prose}."));
+                assert!(
+                    rendered.contains('\u{FFFD}'),
+                    "markdown {prose}: {rendered:?}"
+                );
+                assert!(
+                    !rendered.contains('\u{20AC}'),
+                    "markdown does not use the Windows-1252 row: {rendered:?}"
+                );
+                let readme = format!("{}\nThe frame is {prose}.\n", sample_readme());
+                let errors = front_door_errors(&readme, &sample_status(), &sample_workflow(), &[]);
+                assert!(
+                    !errors.iter().any(|error| error.contains("frame figure")),
+                    "markdown {prose}: {errors:?}"
+                );
+            }
+        }
+        let padded = rendered::render_visible("The frame is 3.117&#x000080;ms.");
+        assert!(padded.contains('\u{FFFD}'), "{padded:?}");
+        let code = rendered::render_visible("The frame is `3.117&#x80;ms`.");
+        assert!(
+            code.contains("&#x80;"),
+            "code keeps the reference: {code:?}"
+        );
+        for (n, ch) in [
+            (0x80u32, '\u{20AC}'),
+            (0x85, '\u{2026}'),
+            (0x92, '\u{2019}'),
+            (0x9F, '\u{0178}'),
+        ] {
+            let rendered = rendered::render_visible(&format!("<div>&#x{n:X};</div>"));
+            assert!(rendered.contains(ch), "HTML &#x{n:X}; -> {rendered:?}");
+        }
+        for n in [0x81u32, 0x8D, 0x8F, 0x90, 0x9D] {
+            for prose in [
+                format!("<div>\n3.117&#x{n:X};ms\n</div>"),
+                format!("<div>\n3.117&#x{n:X}ms\n</div>"),
+                format!("<img alt=\"3.117&#{n};ms\">"),
+            ] {
+                let rendered = rendered::render_visible(&prose);
+                assert!(rendered.contains('\u{FFFD}'), "{prose}: {rendered:?}");
+                let readme = format!("{}\n{prose}\n", sample_readme());
+                let errors = front_door_errors(&readme, &sample_status(), &sample_workflow(), &[]);
+                assert!(
+                    !errors.iter().any(|error| error.contains("frame figure")),
+                    "{prose}: {errors:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn in_progress_section_finishes_the_next_heading() {
+        let head = "\
+## In progress
+#334 are in progress. #366 are in progress. #383 are in progress.
+";
+        let tail = "\
+#999 still here
+## Docs
+";
+        let setext_br: Vec<_> = pulldown_cmark::Parser::new("In<br>progress\n---\n").collect();
+        assert!(
+            setext_br.iter().any(|event| matches!(
+                event,
+                pulldown_cmark::Event::Start(pulldown_cmark::Tag::Heading {
+                    level: pulldown_cmark::HeadingLevel::H2,
+                    ..
+                })
+            )),
+            "setext In<br>progress is an h2: {setext_br:?}"
+        );
+        for heading in [
+            "## In progress\n",
+            "## In  progress\n",
+            "## In\u{00A0}progress\n",
+            "## In\u{2003}progress\n",
+            "## In\tprogress\n",
+            "## \u{200B}\n",
+            "In<br>progress\n---\n",
+        ] {
+            let readme = format!("{head}\n{heading}\n{tail}");
+            let errors = front_door_errors(&readme, &sample_status(), &sample_workflow(), &[]);
+            assert!(
+                errors.iter().any(|error| error.contains("#999")),
+                "{heading:?}: {errors:?}"
+            );
+            assert!(
+                !errors.iter().any(|error| error.contains("missing #334")),
+                "{heading:?}: {errors:?}"
+            );
+        }
+        for readme in [
+            "\
+## In  progress
+#334 are in progress. #366 are in progress. #383 are in progress.
+",
+            "\
+In<br>progress
+---
+#334 are in progress. #366 are in progress. #383 are in progress.
+",
+        ] {
+            let errors = front_door_errors(readme, &sample_status(), &sample_workflow(), &[]);
+            assert!(
+                errors.iter().any(|error| error.contains("missing")),
+                "collapsed spaces do not open the section: {readme:?}: {errors:?}"
             );
         }
     }

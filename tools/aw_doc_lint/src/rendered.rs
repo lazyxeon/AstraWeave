@@ -4,15 +4,18 @@
 //! emitted it, so a comment or a character reference inside a code span or a
 //! fence stays. A fenced or indented code block is `Text` inside `CodeBlock`,
 //! and those characters stay too. Other `Text` decodes a numeric character
-//! reference that ends in `;`, including any run of leading zeros, and
-//! leaves a named reference as pulldown emitted it.
+//! reference that ends in `;`, including any run of leading zeros. A value
+//! in 0x80–0x9F becomes U+FFFD. A named reference stays as pulldown emitted
+//! it.
 //! A named reference pulldown already decoded is not decoded again. HTML
 //! events are the only place a comment is removed. There a numeric reference
 //! follows the HTML tokenizer: the semicolon is optional, 0 is U+FFFD, and
-//! 0x80–0x9F use the Windows-1252 row. A semicolon name is decoded, and so
+//! 0x80–0x9F use the Windows-1252 row. The five undefined slots (0x81, 0x8D,
+//! 0x8F, 0x90, 0x9D) are U+FFFD. A semicolon name is decoded, and so
 //! is an HTML5 legacy name with no semicolon. Alt text uses that numeric
 //! rule and that legacy set, except a legacy name is not consumed when the
-//! next byte is `=` or an ASCII alphanumeric. `<!-->` and `<!--->` are empty closed comments, and an
+//! next byte is `=` or an ASCII alphanumeric. A `/` or any ASCII whitespace
+//! before `alt` starts that attribute. `<!-->` and `<!--->` are empty closed comments, and an
 //! unclosed `<!--` consumes the rest of that HTML chunk. A block comment's
 //! chunk runs through EOF, including a blank line. A `br` tag becomes
 //! U+2028, which splits the word around it and still leaves the surrounding
@@ -34,8 +37,11 @@ pub(crate) fn render_visible(input: &str) -> String {
 
 /// Visible text from the rendered h2 whose folded text is exactly
 /// `in progress` through the next rendered h2. Setext and ATX both count.
-/// A heading that only contains those words does not open the section. A
-/// `## ` line inside a fence or a comment is not a heading.
+/// That next h2 is finished before the section ends. The section continues
+/// when its folded text, with every run of Unicode spaces mapped to one
+/// ASCII space and trimmed, is `in progress` or empty. A heading that only
+/// contains those words does not open the section. A `## ` line inside a
+/// fence or a comment is not a heading.
 pub(crate) fn in_progress_section(input: &str) -> Option<String> {
     let walked = drive(input, true);
     walked.found.then_some(walked.body)
@@ -64,6 +70,7 @@ fn drive(input: &str, track: bool) -> Walk {
         skip_footnote: 0,
         found: false,
         done: false,
+        hold_end: false,
         track,
     };
     for event in events {
@@ -90,6 +97,8 @@ struct Walk {
     skip_footnote: u32,
     found: bool,
     done: bool,
+    /// The h2 now being collected is a candidate end, not the opener.
+    hold_end: bool,
     track: bool,
 }
 
@@ -130,12 +139,9 @@ impl Walk {
                 ..
             }) = &event
             {
-                if self.found {
-                    self.done = true;
-                    return;
-                }
                 self.heading.clear();
                 self.sink = Sink::Heading;
+                self.hold_end = self.found;
             }
         }
         if self.html_block.is_some() {
@@ -157,14 +163,24 @@ impl Walk {
             self.push_event(event);
         }
         if self.track && ended_h2 && matches!(self.sink, Sink::Heading) {
-            let folded = crate::fold_visible_text(&self.heading);
-            if folded.trim().eq_ignore_ascii_case("in progress") {
-                self.body.push_str(&self.heading);
-                self.sink = Sink::Body;
-                self.found = true;
+            if self.hold_end {
+                self.hold_end = false;
+                if heading_keeps_section(&self.heading) {
+                    self.heading.clear();
+                    self.sink = Sink::Body;
+                } else {
+                    self.done = true;
+                }
             } else {
-                self.heading.clear();
-                self.sink = Sink::Discard;
+                let folded = crate::fold_visible_text(&self.heading);
+                if folded.trim().eq_ignore_ascii_case("in progress") {
+                    self.body.push_str(&self.heading);
+                    self.sink = Sink::Body;
+                    self.found = true;
+                } else {
+                    self.heading.clear();
+                    self.sink = Sink::Discard;
+                }
             }
         }
     }
@@ -226,7 +242,9 @@ fn push_text_numeric(out: &mut String, raw: &str) {
         let Some(ch) = raw[i..].chars().next() else {
             break;
         };
-        out.push(ch);
+        // pulldown-cmark already decoded a short numeric reference. 0x80–0x9F
+        // is a C1 control there. CommonMark replaces that reference with U+FFFD.
+        out.push(markdown_text_char(ch));
         i += ch.len_utf8();
     }
 }
@@ -447,8 +465,10 @@ fn alt_at(bytes: &[u8], j: usize) -> Option<(usize, usize)> {
     Some((start, end))
 }
 
+/// `name` starts at `j`. The byte before it is `/` or ASCII whitespace
+/// (tab, line feed, form feed, carriage return, or space).
 fn is_attr_name(bytes: &[u8], j: usize, name: &[u8]) -> bool {
-    if j == 0 || !bytes[j - 1].is_ascii_whitespace() {
+    if j == 0 || !is_attr_boundary(bytes[j - 1]) {
         return false;
     }
     let end = j + name.len();
@@ -462,6 +482,10 @@ fn is_attr_name(bytes: &[u8], j: usize, name: &[u8]) -> bool {
         None => true,
         Some(b) => !b.is_ascii_alphanumeric() && !matches!(*b, b'_' | b'-' | b':'),
     }
+}
+
+fn is_attr_boundary(b: u8) -> bool {
+    b == b'/' || b.is_ascii_whitespace()
 }
 
 fn push_decoded_text(out: &mut String, raw: &str) {
@@ -530,7 +554,7 @@ fn decode_char_ref(bytes: &[u8], i: usize) -> Option<(String, usize)> {
 
 /// HTML numeric character reference. The semicolon is optional. Zero and a
 /// value that is not a scalar become U+FFFD. 0x80–0x9F use the Windows-1252
-/// row from the HTML numeric end state.
+/// row from the HTML numeric end state. The five undefined slots are U+FFFD.
 fn decode_html_numeric_ref(bytes: &[u8], i: usize) -> Option<(String, usize)> {
     if bytes.get(i) != Some(&b'&') || bytes.get(i + 1) != Some(&b'#') {
         return None;
@@ -583,12 +607,14 @@ fn decode_html_numeric_ref(bytes: &[u8], i: usize) -> Option<(String, usize)> {
 }
 
 fn html_numeric_char(n: u32) -> char {
+    // HTML numeric character reference end state. The five Windows-1252 slots
+    // with no character (0x81, 0x8D, 0x8F, 0x90, 0x9D) are U+FFFD.
     const WINDOWS_1252: [char; 32] = [
-        '\u{20AC}', '\u{0081}', '\u{201A}', '\u{0192}', '\u{201E}', '\u{2026}', '\u{2020}',
-        '\u{2021}', '\u{02C6}', '\u{2030}', '\u{0160}', '\u{2039}', '\u{0152}', '\u{008D}',
-        '\u{017D}', '\u{008F}', '\u{0090}', '\u{2018}', '\u{2019}', '\u{201C}', '\u{201D}',
+        '\u{20AC}', '\u{FFFD}', '\u{201A}', '\u{0192}', '\u{201E}', '\u{2026}', '\u{2020}',
+        '\u{2021}', '\u{02C6}', '\u{2030}', '\u{0160}', '\u{2039}', '\u{0152}', '\u{FFFD}',
+        '\u{017D}', '\u{FFFD}', '\u{FFFD}', '\u{2018}', '\u{2019}', '\u{201C}', '\u{201D}',
         '\u{2022}', '\u{2013}', '\u{2014}', '\u{02DC}', '\u{2122}', '\u{0161}', '\u{203A}',
-        '\u{0153}', '\u{009D}', '\u{017E}', '\u{0178}',
+        '\u{0153}', '\u{FFFD}', '\u{017E}', '\u{0178}',
     ];
     if n == 0 || (0xD800..=0xDFFF).contains(&n) {
         return '\u{FFFD}';
@@ -600,7 +626,7 @@ fn html_numeric_char(n: u32) -> char {
 }
 
 /// Markdown `Text`. A semicolon is required. Leading zeros do not count
-/// toward the six hex or seven decimal digits.
+/// toward the six hex or seven decimal digits. 0x80–0x9F become U+FFFD.
 fn decode_numeric_ref(bytes: &[u8], i: usize) -> Option<(String, usize)> {
     if bytes.get(i) != Some(&b'&') || bytes.get(i + 1) != Some(&b'#') {
         return None;
@@ -643,5 +669,42 @@ fn decode_numeric_ref(bytes: &[u8], i: usize) -> Option<(String, usize)> {
     if bytes.get(end) != Some(&b';') {
         return None;
     }
-    Some((char::from_u32(n)?.to_string(), end + 1))
+    Some((markdown_text_char(char::from_u32(n)?).to_string(), end + 1))
+}
+
+/// Markdown text. A C1 control, including one a numeric reference decoded to,
+/// is U+FFFD. Other scalars stay.
+fn markdown_text_char(ch: char) -> char {
+    if (0x80..=0x9F).contains(&u32::from(ch)) {
+        '\u{FFFD}'
+    } else {
+        ch
+    }
+}
+
+/// The next h2 does not end the section when its folded text, after every
+/// run of Unicode spaces becomes one ASCII space and the ends are trimmed,
+/// is `in progress` or empty.
+fn heading_keeps_section(heading: &str) -> bool {
+    let folded = crate::fold_visible_text(heading);
+    let collapsed = collapse_unicode_spaces(&folded);
+    let trimmed = collapsed.trim();
+    trimmed.is_empty() || trimmed.eq_ignore_ascii_case("in progress")
+}
+
+fn collapse_unicode_spaces(text: &str) -> String {
+    let mut out = String::new();
+    let mut in_space = false;
+    for ch in text.chars() {
+        if ch.is_whitespace() {
+            if !in_space {
+                out.push(' ');
+                in_space = true;
+            }
+        } else {
+            in_space = false;
+            out.push(ch);
+        }
+    }
+    out
 }
