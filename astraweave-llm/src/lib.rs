@@ -1031,6 +1031,41 @@ pub async fn send_for_headers(
     }
 }
 
+/// POST an Ollama JSON body. A schema `format` that the server rejects is removed
+/// and the request is sent once more. A body with no schema object keeps the
+/// status-only error string.
+#[cfg(feature = "ollama")]
+pub(crate) async fn post_ollama_json_value(
+    client: &reqwest::Client,
+    url: &str,
+    mut body: serde_json::Value,
+) -> Result<serde_json::Value> {
+    loop {
+        let response = send_for_headers(stream_read_idle(), client.post(url).json(&body).send())
+            .await
+            .context("Failed to send request to Ollama")?;
+        if response.status().is_success() {
+            return read_capped_json(response)
+                .await
+                .context("Failed to parse Ollama response");
+        }
+        let status = response.status();
+        let had_schema = body.get("format").is_some_and(|value| value.is_object());
+        if had_schema {
+            let txt = read_capped_text(response)
+                .await
+                .with_context(|| format!("Ollama status {status} body read failed"))?;
+            if plan_format::schema_format_rejected(status.as_u16(), &txt)
+                && plan_format::take_schema_format(&mut body)
+            {
+                continue;
+            }
+            bail!("Ollama returned error: {status}: {txt}");
+        }
+        bail!("Ollama returned error: {status}");
+    }
+}
+
 /// Header wait: the idle limit, or the time still left in the stream
 /// lifetime, whichever is shorter.
 #[cfg(feature = "ollama")]
@@ -1096,6 +1131,7 @@ pub mod fallback_system;
 pub mod few_shot;
 pub mod heuristics;
 pub mod llm_adapter;
+pub mod plan_format;
 pub mod plan_parser;
 pub mod production_hardening;
 pub mod prompt_template;
@@ -1168,6 +1204,21 @@ pub enum PlanSource {
 pub trait LlmClient: Send + Sync {
     /// Complete a prompt and return the full response (blocking until complete)
     async fn complete(&self, prompt: &str) -> Result<String>;
+
+    /// Complete `prompt` and send `format` as Ollama's JSON Schema `format` field.
+    ///
+    /// The default ignores `format` and calls [`complete`](Self::complete).
+    /// Ollama clients attach the object. A 400 that names the schema retries
+    /// once without it. [`parse_llm_plan`] and [`plan_parser::parse_llm_response`]
+    /// still reject a tool that is not in the registry.
+    async fn complete_with_format(
+        &self,
+        prompt: &str,
+        format: &serde_json::Value,
+    ) -> Result<String> {
+        let _ = format;
+        self.complete(prompt).await
+    }
 
     /// Complete a prompt with streaming support (progressive response delivery)
     ///
@@ -1324,6 +1375,27 @@ impl LlmClient for OllamaClient {
 
         Ok(parsed.response)
     }
+
+    async fn complete_with_format(
+        &self,
+        prompt: &str,
+        schema: &serde_json::Value,
+    ) -> Result<String> {
+        ensure_model_request(&self.url, self.allow_remote)?;
+        let mut body = serde_json::json!({
+            "model": self.model,
+            "prompt": prompt,
+            "stream": false,
+        });
+        plan_format::insert_schema_format(&mut body, schema);
+        let parsed: serde_json::Value =
+            post_ollama_json_value(&self.client, &format!("{}/api/generate", self.url), body)
+                .await?;
+        parsed["response"]
+            .as_str()
+            .map(str::to_string)
+            .context("Missing 'response' field in Ollama output")
+    }
 }
 
 // New Ollama chat client that targets the local Ollama chat endpoint (e.g. http://127.0.0.1:11434/api/chat)
@@ -1472,10 +1544,14 @@ impl OllamaChatClient {
 }
 
 #[cfg(feature = "ollama")]
-#[async_trait::async_trait]
-impl LlmClient for OllamaChatClient {
-    async fn complete(&self, prompt: &str) -> Result<String> {
+impl OllamaChatClient {
+    async fn complete_with_optional_format(
+        &self,
+        prompt: &str,
+        format_schema: Option<&serde_json::Value>,
+    ) -> Result<String> {
         ensure_model_request(&self.url, self.allow_remote)?;
+        let mut schema_owned = format_schema.cloned();
         #[derive(serde::Serialize)]
         struct Msg<'a> {
             role: &'a str,
@@ -1486,16 +1562,9 @@ impl LlmClient for OllamaChatClient {
             model: &'a str,
             messages: Vec<Msg<'a>>,
             stream: bool,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            format: Option<&'a serde_json::Value>,
         }
-
-        let body = Req {
-            model: &self.model,
-            messages: vec![Msg {
-                role: "user",
-                content: prompt,
-            }],
-            stream: false,
-        };
 
         let client = self.client.clone();
         // Build a non-chunked JSON body string and set Connection: close so the server
@@ -1526,6 +1595,16 @@ impl LlmClient for OllamaChatClient {
         let mut attempt = 0u32;
         while attempt < max_nonstream_attempts && !non_stream_ok && !self.low_latency {
             attempt += 1;
+            let schema_on_this_attempt = schema_owned.is_some();
+            let body = Req {
+                model: &self.model,
+                messages: vec![Msg {
+                    role: "user",
+                    content: prompt,
+                }],
+                stream: false,
+                format: schema_owned.as_ref(),
+            };
             let backoff = std::time::Duration::from_millis(250 * (1 << (attempt - 1)));
             println!(
                 "[ollama] non-stream attempt {}/{} to {} (timeout {}s)",
@@ -1539,6 +1618,7 @@ impl LlmClient for OllamaChatClient {
             enum Attempt {
                 Text(String),
                 Retry,
+                SchemaRejected,
                 Fail(anyhow::Error),
             }
             let timed = tokio::time::timeout(attempt_deadline, async {
@@ -1578,6 +1658,9 @@ impl LlmClient for OllamaChatClient {
                 } else {
                     let status = resp.status();
                     match read_capped_text(resp).await {
+                        Ok(b) if schema_on_this_attempt && plan_format::schema_format_rejected(status.as_u16(), &b) => {
+                            Attempt::SchemaRejected
+                        }
                         Ok(b) => Attempt::Fail(anyhow::anyhow!(
                             "Ollama non-streaming request returned error status {status}: {b}"
                         )),
@@ -1607,6 +1690,9 @@ impl LlmClient for OllamaChatClient {
                     );
                 }
                 Ok(Attempt::Retry) => {}
+                Ok(Attempt::SchemaRejected) => {
+                    schema_owned = None;
+                }
                 Ok(Attempt::Fail(err)) => return Err(err),
             }
 
@@ -1620,15 +1706,18 @@ impl LlmClient for OllamaChatClient {
         // accumulate incoming bytes and try to extract the assistant content as it arrives.
         if text.trim().is_empty() || self.low_latency {
             // Build a streaming request (request the server to stream if it supports it)
+            let mut send_schema = schema_owned.clone();
             let mut stream_body = serde_json::json!({
                 "model": &self.model,
                 "messages": [{ "role": "user", "content": prompt }],
                 "stream": true,
                 "options": { "temperature": 0.1, "num_predict": 512 }
             });
-            if self.force_format_json {
-                stream_body["format"] = serde_json::json!("json");
-            }
+            plan_format::apply_chat_format(
+                &mut stream_body,
+                send_schema.as_ref(),
+                self.force_format_json,
+            );
             if let Some(ka) = &self.keep_alive {
                 stream_body["keep_alive"] = serde_json::json!(ka);
             }
@@ -1714,9 +1803,49 @@ impl LlmClient for OllamaChatClient {
                             .with_context(|| {
                                 format!("Ollama chat API status {status} body read failed")
                             })?;
-                    return Err(anyhow::anyhow!(
-                        "Ollama chat API returned error status {status}: {txt}"
-                    ));
+                    if send_schema.take().is_some()
+                        && plan_format::schema_format_rejected(status.as_u16(), &txt)
+                    {
+                        if self.force_format_json {
+                            stream_body["format"] = serde_json::json!("json");
+                        } else if let Some(map) = stream_body.as_object_mut() {
+                            map.remove("format");
+                        }
+                        let retry = send_headers_for_call(
+                            idle,
+                            lifetime.saturating_sub(start.elapsed()),
+                            client
+                                .post(&stream_url)
+                                .header("Accept", "application/json")
+                                .header("Content-Type", "application/json")
+                                .json(&stream_body)
+                                .send(),
+                        )
+                        .await
+                        .context("Failed to initiate streaming request to Ollama")?;
+                        if retry.status().is_success() {
+                            Some(retry)
+                        } else {
+                            let retry_status = retry.status();
+                            let retry_txt = read_capped_text_within(
+                                retry,
+                                lifetime.saturating_sub(start.elapsed()),
+                            )
+                            .await
+                            .with_context(|| {
+                                format!(
+                                    "Ollama chat API status {retry_status} body read failed"
+                                )
+                            })?;
+                            return Err(anyhow::anyhow!(
+                                "Ollama chat API returned error status {retry_status}: {retry_txt}"
+                            ));
+                        }
+                    } else {
+                        return Err(anyhow::anyhow!(
+                            "Ollama chat API returned error status {status}: {txt}"
+                        ));
+                    }
                 }
             };
 
@@ -2035,6 +2164,23 @@ impl LlmClient for OllamaChatClient {
         // If no recognized JSON shape matched, return the raw text as a last resort.
         // This covers a body with no newline, which never reached `append_capped`.
         finish_capped(text)
+    }
+}
+
+#[cfg(feature = "ollama")]
+#[async_trait::async_trait]
+impl LlmClient for OllamaChatClient {
+    async fn complete(&self, prompt: &str) -> Result<String> {
+        self.complete_with_optional_format(prompt, None).await
+    }
+
+    async fn complete_with_format(
+        &self,
+        prompt: &str,
+        format: &serde_json::Value,
+    ) -> Result<String> {
+        self.complete_with_optional_format(prompt, Some(format))
+            .await
     }
 }
 
@@ -2456,11 +2602,12 @@ fn validate_plan(plan: &PlanIntent, reg: &ToolRegistry) -> Result<()> {
                     bail!("LLM used disallowed tool Revive");
                 }
             }
-            // Phase 7: For new tools, validate generically
-            // TODO: Add specific validation for each tool type
+            // The four arms above stay. Every other variant is the same registry check.
             _ => {
-                // Generic validation for Phase 7 tools - check if tool is registered
-                // More specific validation can be added later per tool
+                let name = s.action_name();
+                if !reg.tools.iter().any(|t| t.name == name) {
+                    bail!("LLM used disallowed tool {name}");
+                }
             }
         }
     }
@@ -4066,7 +4213,7 @@ Done!"#;
     }
 
     #[test]
-    fn test_validate_plan_allows_generic_steps() {
+    fn test_validate_plan_rejects_unregistered_generic_steps() {
         let reg = create_test_registry();
 
         let plan = PlanIntent {
@@ -4078,9 +4225,21 @@ Done!"#;
             ],
         };
 
-        // These should pass because they match the _ => {} arm
         let result = validate_plan(&plan, &reg);
-        assert!(result.is_ok());
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("disallowed tool Reload"));
+
+        let mut allowed = create_test_registry();
+        for name in ["Reload", "Scan", "Wait"] {
+            allowed.tools.push(ToolSpec {
+                name: name.into(),
+                args: std::collections::BTreeMap::new(),
+            });
+        }
+        assert!(validate_plan(&plan, &allowed).is_ok());
     }
 
     #[test]

@@ -453,13 +453,22 @@ impl FallbackOrchestrator {
 
         let prompt = build_enhanced_prompt(snap, reg, &config);
 
-        let response = circuit_breaker_execute!(
-            self.circuit_breaker,
-            "full_llm",
-            client.complete(&prompt).await
-        )
-        .result
-        .context("LLM request failed (circuit breaker)")?;
+        let response = match crate::plan_format::plan_format_for_request(reg) {
+            Some(format) => circuit_breaker_execute!(
+                self.circuit_breaker,
+                "full_llm",
+                client.complete_with_format(&prompt, &format).await
+            )
+            .result
+            .context("LLM request failed (circuit breaker)")?,
+            None => circuit_breaker_execute!(
+                self.circuit_breaker,
+                "full_llm",
+                client.complete(&prompt).await
+            )
+            .result
+            .context("LLM request failed (circuit breaker)")?,
+        };
 
         let parse_result =
             parse_llm_response(&response, reg).context("Failed to parse LLM response")?;
@@ -501,13 +510,22 @@ impl FallbackOrchestrator {
         // let prompt = build_simplified_prompt(snap, &simplified_reg);
 
         let prompt_len = prompt.len();
-        let response = circuit_breaker_execute!(
-            self.circuit_breaker,
-            "simplified_llm",
-            client.complete(&prompt).await
-        )
-        .result
-        .context("Simplified LLM request failed (circuit breaker)")?;
+        let response = match crate::plan_format::plan_format_for_request(&simplified_reg) {
+            Some(format) => circuit_breaker_execute!(
+                self.circuit_breaker,
+                "simplified_llm",
+                client.complete_with_format(&prompt, &format).await
+            )
+            .result
+            .context("Simplified LLM request failed (circuit breaker)")?,
+            None => circuit_breaker_execute!(
+                self.circuit_breaker,
+                "simplified_llm",
+                client.complete(&prompt).await
+            )
+            .result
+            .context("Simplified LLM request failed (circuit breaker)")?,
+        };
 
         let parse_result = parse_llm_response(&response, &simplified_reg)
             .context("Failed to parse simplified LLM response")?;
