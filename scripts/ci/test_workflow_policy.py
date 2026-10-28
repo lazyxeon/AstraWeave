@@ -311,9 +311,24 @@ class WorkflowPolicyTest(unittest.TestCase):
         self.assertIn("workflow_dispatch:", text)
         self.assertIn("scripts/ci/fuzz_targets.py", text)
         self.assertIn("-max_total_time=120", text)
-        self.assertIn("actions/cache/restore@v4", text)
-        self.assertIn("actions/cache/save@v4", text)
-        self.assertIn("actions/upload-artifact@v4", text)
+        self.assertIn(
+            "actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0",
+            text,
+        )
+        self.assertIn(
+            "actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0",
+            text,
+        )
+        self.assertIn(
+            "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2",
+            text,
+        )
+        self.assertNotIn("actions/checkout@v5", text)
+        self.assertNotIn("actions/cache@v4", text)
+        top, _, _ = text.partition("\njobs:")
+        self.assertIn("contents: read", top)
+        self.assertNotIn("actions: write", top)
+        self.assertIn("actions: write", text)
         self.assertIn("artifacts/**", text)
         self.assertNotIn("continue-on-error", text)
         self.assertNotIn("pull_request:", text)

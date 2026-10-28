@@ -2,8 +2,10 @@
 /target/
 target/
 # cargo-fuzz output. Nightly corpora live in the Actions cache.
-fuzz/artifacts/
-fuzz/corpus/
+# A leading slash would anchor these at the repo root; the corpora live
+# under each crate's fuzz/ directory.
+**/fuzz/artifacts/
+**/fuzz/corpus/
 target-*/
 /target-*/
 Cargo.lock.bak

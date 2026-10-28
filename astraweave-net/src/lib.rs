@@ -123,8 +123,8 @@ impl Interest for FovInterest {
         if viewer.team == e.team {
             return true;
         }
-        let dx = (e.pos.x - viewer.pos.x) as f32;
-        let dy = (e.pos.y - viewer.pos.y) as f32;
+        let dx = (i128::from(e.pos.x) - i128::from(viewer.pos.x)) as f32;
+        let dy = (i128::from(e.pos.y) - i128::from(viewer.pos.y)) as f32;
         let dist2 = dx * dx + dy * dy;
         if dist2 > radius_sq_f32(self.radius) {
             return false;
@@ -157,9 +157,10 @@ fn has_los(a: IVec2, b: IVec2, obstacles: &BTreeSet<(i32, i32)>) -> bool {
     // Bresenham's line algorithm; return false if any obstacle cell intersects
     let (mut x0, mut y0) = (a.x, a.y);
     let (x1, y1) = (b.x, b.y);
-    let dx = (x1 - x0).abs();
+    // `i32::abs` panics in debug when the delta is `i32::MIN`.
+    let dx = (i64::from(x1) - i64::from(x0)).abs();
     let sx = if x0 < x1 { 1 } else { -1 };
-    let dy = -(y1 - y0).abs();
+    let dy = -(i64::from(y1) - i64::from(y0)).abs();
     let sy = if y0 < y1 { 1 } else { -1 };
     let mut err = dx + dy;
     loop {
@@ -190,8 +191,8 @@ impl Interest for FovLosInterest {
         if viewer.team == e.team {
             return true;
         }
-        let dx = (e.pos.x - viewer.pos.x) as f32;
-        let dy = (e.pos.y - viewer.pos.y) as f32;
+        let dx = (i128::from(e.pos.x) - i128::from(viewer.pos.x)) as f32;
+        let dy = (i128::from(e.pos.y) - i128::from(viewer.pos.y)) as f32;
         let dist2 = dx * dx + dy * dy;
         if dist2 > radius_sq_f32(self.radius) {
             return false;
@@ -998,11 +999,12 @@ pub fn replay_from(mut world: World, events: &[ReplayEvent]) -> Result<u64> {
 #[cfg(test)]
 mod interest_and_delta_regressions {
     use super::{
-        apply_delta, diff_snapshots, radius_sq_f32, EntityState, FullInterest, RadiusTeamInterest,
-        Snapshot,
+        apply_delta, diff_snapshots, has_los, radius_sq_f32, EntityState, FovInterest,
+        FovLosInterest, FullInterest, RadiusTeamInterest, Snapshot,
     };
     use crate::Interest;
     use astraweave_core::IVec2;
+    use std::collections::BTreeSet;
 
     fn entity(id: u32, x: i32, team: u8) -> EntityState {
         EntityState {
@@ -1057,5 +1059,70 @@ mod interest_and_delta_regressions {
         };
         assert!(!interest.include(&viewer, &target));
         assert!(radius_sq_f32(i32::MAX).is_finite());
+    }
+
+    fn far_pair() -> (EntityState, EntityState) {
+        (
+            entity(1, i32::MIN, 1),
+            EntityState {
+                id: 2,
+                pos: IVec2 {
+                    x: i32::MAX,
+                    y: i32::MAX,
+                },
+                hp: 1,
+                team: 2,
+                ammo: 0,
+            },
+        )
+    }
+
+    #[test]
+    fn fov_interest_does_not_overflow_on_distant_tiles() {
+        let interest = FovInterest {
+            radius: 1,
+            half_angle_deg: 180.0,
+            facing: IVec2 { x: 1, y: 0 },
+        };
+        let (viewer, target) = far_pair();
+        assert!(!interest.include(&viewer, &target));
+
+        let near = FovInterest {
+            radius: 5,
+            half_angle_deg: 45.0,
+            facing: IVec2 { x: 1, y: 0 },
+        };
+        assert!(near.include(&entity(1, 0, 1), &entity(2, 2, 2)));
+    }
+
+    #[test]
+    fn fov_los_interest_does_not_overflow_on_distant_tiles() {
+        let interest = FovLosInterest {
+            radius: 1,
+            half_angle_deg: 180.0,
+            facing: IVec2 { x: 1, y: 0 },
+            obstacles: BTreeSet::new(),
+        };
+        let (viewer, target) = far_pair();
+        assert!(!interest.include(&viewer, &target));
+
+        let near = FovLosInterest {
+            radius: 5,
+            half_angle_deg: 45.0,
+            facing: IVec2 { x: 1, y: 0 },
+            obstacles: BTreeSet::new(),
+        };
+        assert!(near.include(&entity(1, 0, 1), &entity(2, 2, 2)));
+    }
+
+    #[test]
+    fn has_los_abs_does_not_overflow_at_i32_min() {
+        let mut obstacles = BTreeSet::new();
+        obstacles.insert((-1, 0));
+        assert!(!has_los(
+            IVec2 { x: 0, y: 0 },
+            IVec2 { x: i32::MIN, y: 0 },
+            &obstacles,
+        ));
     }
 }

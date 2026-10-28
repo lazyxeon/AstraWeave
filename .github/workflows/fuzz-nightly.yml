@@ -16,7 +16,6 @@ concurrency:
 
 permissions:
   contents: read
-  actions: write
 
 jobs:
   targets:
@@ -27,7 +26,7 @@ jobs:
       matrix: ${{ steps.list.outputs.matrix }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
       - name: List cargo-fuzz bins
         id: list
@@ -43,21 +42,26 @@ jobs:
     needs: targets
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    # Cache save is the only step that writes. The list job stays read-only.
+    permissions:
+      contents: read
+      actions: write
     strategy:
       fail-fast: false
       matrix:
         include: ${{ fromJson(needs.targets.outputs.matrix) }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
       - name: Install nightly toolchain
-        uses: dtolnay/rust-toolchain@nightly
+        uses: dtolnay/rust-toolchain@2c76c034f9e32a5d6e2c104dc4df23a22476db04 # nightly
         with:
+          toolchain: nightly
           components: llvm-tools-preview
 
       - name: Cache cargo registry
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: |
             ~/.cargo/registry/index
@@ -68,7 +72,7 @@ jobs:
             fuzz-registry-${{ runner.os }}-
 
       - name: Cache cargo-fuzz
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ~/.cargo/bin/cargo-fuzz
           key: cargo-fuzz-0.13.1-${{ runner.os }}
@@ -82,7 +86,7 @@ jobs:
           fi
 
       - name: Restore corpus
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ${{ matrix.dir }}/corpus/${{ matrix.target }}
           key: fuzz-corpus-${{ matrix.target }}-${{ github.run_id }}-${{ github.run_attempt }}
@@ -90,16 +94,21 @@ jobs:
             fuzz-corpus-${{ matrix.target }}-
 
       - name: Prepare corpus directory
-        run: mkdir -p "${{ matrix.dir }}/corpus/${{ matrix.target }}"
+        env:
+          FUZZ_DIR: ${{ matrix.dir }}
+          FUZZ_TARGET: ${{ matrix.target }}
+        run: mkdir -p "$FUZZ_DIR/corpus/$FUZZ_TARGET"
 
-      - name: Fuzz ${{ matrix.target }} for two minutes
+      - name: Fuzz for two minutes
         working-directory: ${{ matrix.dir }}
+        env:
+          FUZZ_TARGET: ${{ matrix.target }}
         # cargo-fuzz passes -Z, which stable rejects.
-        run: cargo +nightly fuzz run ${{ matrix.target }} -- -max_total_time=120
+        run: cargo +nightly fuzz run "$FUZZ_TARGET" -- -max_total_time=120
 
       - name: Upload crash artifacts
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: fuzz-crash-${{ matrix.target }}-${{ github.run_id }}
           path: ${{ matrix.dir }}/artifacts/**
@@ -108,7 +117,7 @@ jobs:
 
       - name: Save corpus
         if: always() && !cancelled()
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ${{ matrix.dir }}/corpus/${{ matrix.target }}
           key: fuzz-corpus-${{ matrix.target }}-${{ github.run_id }}-${{ github.run_attempt }}
