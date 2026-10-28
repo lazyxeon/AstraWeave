@@ -4,7 +4,7 @@
 //! lives under `target/`, so that case falls back to the repo assets.
 
 use std::fs::{self, File, OpenOptions};
-use std::io::{self, Write};
+use std::io::{self, Read, Write};
 use std::path::{Component, Path, PathBuf};
 
 use anyhow::{bail, Context, Result};
@@ -213,8 +213,38 @@ pub fn import_model(
     Vec<gltf::image::Data>,
 )> {
     let path = confine_existing(&asset_dir(), path)?;
-    validate_model_file(&path)?;
-    gltf::import(&path).with_context(|| format!("import {}", path.display()))
+    import_validated_model(&path)
+}
+
+fn import_validated_model(
+    path: &Path,
+) -> Result<(
+    gltf::Document,
+    Vec<gltf::buffer::Data>,
+    Vec<gltf::image::Data>,
+)> {
+    validate_model_file(path)?;
+    // `validate_model_file` accepts a file longer than 20 bytes whose JSON
+    // chunk parses, even when the GLB header declares a length below 12.
+    // `gltf::import` then calls `Glb::from_reader`, which wraps that
+    // subtraction as `u32` and allocates the wrapped length.
+    reject_short_glb_declared_length(path)?;
+    gltf::import(path).with_context(|| format!("import {}", path.display()))
+}
+
+fn reject_short_glb_declared_length(path: &Path) -> Result<()> {
+    let mut file = File::open(path).with_context(|| format!("open {}", path.display()))?;
+    let mut header = [0u8; 12];
+    let n = file
+        .read(&mut header)
+        .with_context(|| format!("read {}", path.display()))?;
+    if n >= 12 && header.starts_with(b"glTF") {
+        let declared = u32::from_le_bytes([header[8], header[9], header[10], header[11]]);
+        if (declared as usize) < 12 {
+            bail!("GLB declared length {declared} is shorter than the 12-byte header");
+        }
+    }
+    Ok(())
 }
 
 pub fn validate_model_file(path: &Path) -> Result<()> {
@@ -574,6 +604,29 @@ mod tests {
             validate_model_file(&path).is_ok(),
             "{}",
             validate_model_file(&path).unwrap_err()
+        );
+    }
+
+    #[test]
+    fn padded_short_glb_is_rejected_before_import() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("short.glb");
+        let mut bytes = b"glTF".to_vec();
+        bytes.extend_from_slice(&2u32.to_le_bytes());
+        bytes.extend_from_slice(&8u32.to_le_bytes());
+        bytes.extend_from_slice(&2u32.to_le_bytes());
+        bytes.extend_from_slice(b"JSON");
+        bytes.extend_from_slice(b"{}");
+        fs::write(&path, &bytes).unwrap();
+        assert!(
+            validate_model_file(&path).is_ok(),
+            "{}",
+            validate_model_file(&path).unwrap_err()
+        );
+        let err = import_validated_model(&path).unwrap_err();
+        assert!(
+            err.to_string().contains("shorter than the 12-byte header"),
+            "{err}"
         );
     }
 

@@ -28,6 +28,7 @@ fn jail_gltf_uri(base: &std::path::Path, uri: &str) -> Result<()> {
 
 #[cfg(feature = "gltf-assets")]
 fn reject_escaping_gltf_uris(path: &std::path::Path) -> Result<()> {
+    astraweave_asset::gltf_loader::reject_short_glb_file(path)?;
     let base = path.parent().unwrap_or_else(|| std::path::Path::new("."));
     let doc = gltf::Gltf::open(path)?;
     for buffer in doc.buffers() {
@@ -164,6 +165,22 @@ mod jail_tests {
             msg.contains("traversal") || msg.contains("rejected"),
             "{msg}"
         );
+    }
+
+    #[test]
+    fn short_glb_declared_length_does_not_reach_from_reader() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("short.glb");
+        let mut bytes = b"glTF".to_vec();
+        bytes.extend_from_slice(&2u32.to_le_bytes());
+        bytes.extend_from_slice(&8u32.to_le_bytes());
+        bytes.extend_from_slice(&2u32.to_le_bytes());
+        bytes.extend_from_slice(b"JSON");
+        bytes.extend_from_slice(b"{}");
+        std::fs::write(&path, &bytes).expect("write");
+        let err = load_gltf(&path, &GltfOptions::default()).expect_err("short header");
+        let msg = err.to_string();
+        assert!(msg.contains("shorter than the 12-byte header"), "{msg}");
     }
 }
 
