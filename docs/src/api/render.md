@@ -9,7 +9,7 @@ Modern wgpu-based rendering with PBR materials, shadows, post-processing, GPU sk
 ## Quick Links
 
 - [rustdoc](https://docs.rs/astraweave-render) (when published)
-- [Source](https://github.com/astraweave/astraweave/tree/main/astraweave-render)
+- [Source](https://github.com/lazyxeon/AstraWeave/tree/main/astraweave-render)
 - [Rendering Guide](../core-systems/rendering.md)
 
 ---
@@ -273,7 +273,7 @@ post_fx.process(&mut render_context, &scene_texture);
 
 ## Camera
 
-Camera types live in the [`astraweave-camera`](./camera.md) crate as of the
+Camera types live in the [`astraweave-camera`](../core-systems/rendering.md) crate as of the
 Unified Camera campaign's C.3.A sub-phase. The renderer consumes the
 canonical `RenderView` upload contract exclusively via
 `Renderer::update_view`; the historical `Renderer::update_camera(&Camera)`
@@ -394,6 +394,6 @@ graph.execute(&mut renderer);
 ## See Also
 
 - [Rendering Guide](../core-systems/rendering.md)
-- [Materials System](./materials.md)
-- [GPU Skinning](../core-systems/animation.md#gpu-skinning)
+- [Materials System](../core-systems/rendering.md)
+- [GPU Skinning](../core-systems/rendering.md)
 - [Performance Optimization](../performance/optimization.md#rendering)

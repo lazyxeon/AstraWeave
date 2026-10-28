@@ -1,6 +1,6 @@
 # Fluids Demo
 
-Interactive demonstration of AstraWeave's PCISPH-based fluid simulation system with real-time rendering, multiple scenarios, and egui-powered controls.
+Windowed example `fluids_demo`. It constructs `astraweave_fluids::FluidSystem`. The crate has no `PCISPHSystem`. Scenarios registered in `main` are laboratory and ocean.
 
 ```admonish info title="Run This Example"
 cargo run -p fluids_demo --release
@@ -10,11 +10,9 @@ cargo run -p fluids_demo --release
 
 The fluids demo showcases:
 
-- **Real-time particle-based fluid simulation** using PCISPH solver
-- **Multiple simulation scenarios** (laboratory, ocean, waterfall, splash)
-- **Interactive controls** for spawning particles and adjusting parameters
-- **Advanced rendering** with caustics, foam, and refraction effects
-- **LOD optimization** for performance scaling
+- `FluidSystem` from `astraweave-fluids` (not a PCISPH type; that solver was removed)
+- Two scenarios: `LaboratoryScenario` and `OceanScenario`
+- WASD moves the camera. Q and E are read. Space advances the scenario (`scenario_manager.next`). Particle spawn is rejected outside the laboratory scenario.
 
 ## Quick Start
 
@@ -22,20 +20,15 @@ The fluids demo showcases:
 # Run the demo
 cargo run -p fluids_demo --release
 
-# Controls:
-# WASD      - Move camera
-# Mouse     - Rotate camera
-# LMB       - Spawn particles at cursor
-# RMB       - Apply force to particles
-# Tab       - Switch scenario
-# F3        - Toggle debug panel
+# WASD moves. Q and E are read. Space advances the scenario.
+# Spawn is laboratory-only. See examples/fluids_demo/src/main.rs.
 ```
 
 ## Architecture
 
 ```mermaid
 graph TD
-    A[FluidSystem] --> B[PCISPH Solver]
+    A[FluidSystem] --> B[Compute pipelines in lib.rs]
     A --> C[FluidRenderer]
     A --> D[ScenarioManager]
     
@@ -160,7 +153,7 @@ Right-click and drag to apply forces:
 
 ### Debug Panel
 
-Press F3 to toggle the debug panel (egui-based):
+The source reads F1, F2, and F12. It does not mention F3 in the key handler this page used to describe:
 
 - Real-time particle count
 - FPS / frame time graph
@@ -276,8 +269,8 @@ egui-winit = { workspace = true }
 **Symptom**: Scene renders but no fluid particles
 
 **Solutions**:
-1. Check scenario is initialized (Tab to switch)
-2. Click LMB to spawn particles manually
+1. Space advances the scenario. Spawn runs only in the laboratory scenario.
+2. Read `examples/fluids_demo/src/main.rs` for the pointer path. This page does not document a Tab or LMB binding.
 3. Verify camera position (reset with R key)
 
 ### Skybox Not Loading

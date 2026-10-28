@@ -9,7 +9,7 @@ Spatial audio with mixer buses, crossfading, reverb zones, and audio occlusion.
 ## Quick Links
 
 - [rustdoc](https://docs.rs/astraweave-audio) (when published)
-- [Source](https://github.com/astraweave/astraweave/tree/main/astraweave-audio)
+- [Source](https://github.com/lazyxeon/AstraWeave/tree/main/astraweave-audio)
 - [Audio Guide](../core-systems/audio.md)
 
 ---
@@ -150,4 +150,4 @@ source.set_volume(base_volume * factor);
 ## See Also
 
 - [Audio Guide](../core-systems/audio.md)
-- [Cinematics Integration](./cinematics.md#audio-tracks)
+- [Cinematics Integration](../core-systems/cinematics.md)

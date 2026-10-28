@@ -9,8 +9,8 @@ The AI system provides the core perception-reasoning-planning-action loop, orche
 ## Quick Links
 
 - [rustdoc](https://docs.rs/astraweave-ai) (when published)
-- [Source](https://github.com/astraweave/astraweave/tree/main/astraweave-ai)
-- [AI Core Concepts](../core-systems/ai-core.md)
+- [Source](https://github.com/lazyxeon/AstraWeave/tree/main/astraweave-ai)
+- [AI Core Concepts](../core-systems/ai/index.md)
 - [Arbiter System](../core-systems/ai/arbiter.md)
 
 ---
@@ -105,60 +105,28 @@ Hybrid GOAP+LLM system with zero user-facing latency.
 
 ```rust
 #[cfg(feature = "llm_orchestrator")]
-use astraweave_ai::{AIArbiter, LlmExecutor, GoapOrchestrator, RuleOrchestrator};
+use astraweave_ai::AIArbiter;
 
-let mut arbiter = AIArbiter::new(llm_executor, goap, bt);
-
-// Game loop - returns instantly (101.7 ns)
+let arbiter = AIArbiter::new(strategic_executor, Some(fast_executor), goap, bt);
+let arbiter = AIArbiter::with_single_executor(strategic_executor, goap, bt);
 let action = arbiter.update(&snapshot);
 ```
 
-**Performance**: 101.7 ns GOAP control, 575 ns LLM polling
-
-See [Arbiter System](../core-systems/ai/arbiter.md) for full documentation.
+`new` takes `Option<LlmExecutor>` as the second argument. Nanosecond timings are not repeated here. The type is not on the sim tick. See [AI Arbiter](../core-systems/ai/arbiter.md).
 
 ---
 
 ### goap
 
-Goal-Oriented Action Planning implementation.
+The `goap` module compiles only with `planner_advanced`. The planner struct in `planner.rs` is `AdvancedGOAP`. There is no `GoapPlanner` type. `Goal::new` takes a name and a `BTreeMap<String, StateValue>`.
 
-```rust
-use astraweave_ai::goap::{GoapPlanner, Goal, Action, WorldState};
-
-let mut planner = GoapPlanner::new();
-
-// Define goals
-planner.add_goal(Goal::new("kill_enemy")
-    .with_precondition("enemy_visible", true)
-    .with_effect("enemy_dead", true));
-
-// Define actions
-planner.add_action(Action::new("attack")
-    .with_precondition("has_weapon", true)
-    .with_precondition("in_range", true)
-    .with_effect("enemy_dead", true)
-    .with_cost(1.0));
-
-// Plan
-let plan = planner.plan(&current_state, &goal_state)?;
-```
+`GoapOrchestrator` in `orchestrator.rs` is a different type. It is always compiled, and `propose_plan` calls `htn::legacy_goap_plan`. The deterministic tick uses `RuleOrchestrator`, not either of these.
 
 ---
 
-### veilweaver
+### veilweaver_slice
 
-Integration for the Veilweaver game mechanics (fate-weaving).
-
-```rust
-use astraweave_ai::veilweaver::{FateThread, Prophecy, ThreadWeaver};
-
-let mut weaver = ThreadWeaver::new();
-let thread = weaver.create_thread(prophecy);
-
-// Weave fate during gameplay
-weaver.weave(&mut world, thread)?;
-```
+The feature `veilweaver_slice` compiles `astraweave_ai::veilweaver` and exports `VeilweaverCompanionOrchestrator`. `FateThread`, `Prophecy`, and `ThreadWeaver` are not types in that module. Weaving on the sim path is `astraweave-weaving`, described on the engine status page. The identifier is not the player-facing game name.
 
 ---
 
@@ -251,8 +219,8 @@ astraweave-ai = { version = "0.4", features = ["llm_orchestrator"] }
 
 ## See Also
 
-- [AI Core System](../core-systems/ai-core.md)
+- [AI Core System](../core-systems/ai/index.md)
 - [Arbiter System](../core-systems/ai/arbiter.md)
-- [GOAP Guide](../core-systems/goap.md)
-- [Behavior Trees](../core-systems/behavior-trees.md)
-- [LLM Integration](./llm.md)
+- [GOAP Guide](../core-systems/ai/planning.md)
+- [Behavior Trees](../core-systems/ai/behavior-trees.md)
+- [LLM Integration](../core-systems/ai/index.md)

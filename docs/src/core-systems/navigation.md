@@ -660,10 +660,10 @@ debug_renderer.draw_offmesh_links(&navmesh, Color::CYAN);
 
 ## Related Documentation
 
-- [AI System](../ai/behavior-trees.md) - Behavior trees and decision making
-- [Physics Integration](../physics/character-controller.md) - Character controllers
-- [Level Design](../editor/navigation-tools.md) - Navigation editing tools
-- [Performance Guide](../optimization/navigation.md) - Navigation optimization
+- [AI System](./ai/behavior-trees.md) - Behavior trees and decision making
+- [Physics Integration](./physics.md) - Character controllers
+- [Level Design](../examples/navmesh-demo.md) - Navigation editing tools
+- [Performance Guide](../performance/optimization.md) - Navigation optimization
 
 ## API Reference
 

@@ -9,7 +9,7 @@ This guide covers detailed installation instructions for AstraWeave on different
 - **Memory**: 4GB RAM (8GB+ recommended for AI models)
 - **GPU**: Vulkan 1.0 compatible graphics card
 - **Storage**: 2GB free space (more for AI models)
-- **Rust**: 1.89.0+ (managed via rust-toolchain.toml)
+- **Rust**: 1.89.0, pinned in `rust-toolchain.toml` (managed via rust-toolchain.toml)
 
 ### Recommended Requirements  
 - **CPU**: Multi-core x64 processor (4+ cores)

@@ -1,7 +1,7 @@
 [book]
 title = "AstraWeave: AI-Native Game Engine Documentation"
 authors = ["AstraWeave Team"]
-description = "Comprehensive documentation for AstraWeave, the first AI-native game engine built in Rust with deterministic ECS architecture."
+description = "Documentation for AstraWeave, an AI-native game engine in Rust with a deterministic ECS."
 src = "src"
 language = "en"
 

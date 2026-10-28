@@ -172,7 +172,7 @@ system_profiler SPDisplaysDataType
 
 #### Required
 
-- **Rust**: Version 1.75.0 or later
+- **Rust**: 1.89.0, pinned in `rust-toolchain.toml`
   - Install via [rustup](https://rustup.rs/)
   - Verify: `rustc --version`
 
@@ -360,7 +360,7 @@ Run this command to verify your setup:
 
 ```bash
 # Clone and run the system check example
-git clone https://github.com/verdentlabs/astraweave.git
+git clone https://github.com/lazyxeon/AstraWeave.git
 cd astraweave
 cargo run --example system_check
 ```
@@ -401,4 +401,4 @@ Once your system meets the requirements:
 2. [Build from source](../dev/building.md)
 3. [Create your first companion](first-companion.md)
 
-If you have questions about requirements, join our [Discord community](https://discord.gg/astraweave).
+Questions go to [GitHub issues](https://github.com/lazyxeon/AstraWeave/issues). Hardware tables on this page are not a measured minimum. The pinned fact is Rust 1.89.0. The frame sample is on the engine status page.

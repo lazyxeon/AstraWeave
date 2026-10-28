@@ -16,7 +16,7 @@ This guide covers how to build AstraWeave from source on all supported platforms
 
 #### Rust Toolchain
 
-AstraWeave requires Rust 1.75.0 or later.
+AstraWeave requires Rust 1.89.0, pinned in `rust-toolchain.toml`.
 
 ```bash
 # Install Rust via rustup
@@ -29,12 +29,7 @@ rustc --version
 cargo --version
 ```
 
-```admonish tip
-Keep Rust updated for the latest performance improvements and bug fixes:
-\`\`\`bash
-rustup update
-\`\`\`
-```
+The repository pins 1.89.0. `rustup update` does not move the toolchain inside this directory. `rustc --version` here should print 1.89.0.
 
 #### Git
 
@@ -87,7 +82,7 @@ Older GPUs may work but are not officially supported and may have reduced perfor
 
 ```powershell
 # Clone the repository
-git clone https://github.com/verdentlabs/astraweave.git
+git clone https://github.com/lazyxeon/AstraWeave.git
 cd astraweave
 
 # Build (release mode recommended)
@@ -169,7 +164,7 @@ sudo pacman -S --needed \
 
 ```bash
 # Clone the repository
-git clone https://github.com/verdentlabs/astraweave.git
+git clone https://github.com/lazyxeon/AstraWeave.git
 cd astraweave
 
 # Build
@@ -227,7 +222,7 @@ vulkaninfo | grep "deviceName"
 
 ```bash
 # Clone the repository
-git clone https://github.com/verdentlabs/astraweave.git
+git clone https://github.com/lazyxeon/AstraWeave.git
 cd astraweave
 
 # Build
@@ -465,9 +460,9 @@ cargo update
 After successfully building AstraWeave:
 
 1. **Run the test suite**: See [Testing Guide](testing.md)
-2. **Try the examples**: `cargo run --release --example <name>`
-3. **Read the tutorials**: [Getting Started](../getting-started/index.md)
-4. **Join the community**: [Discord](https://discord.gg/astraweave)
+2. **Try the examples**: `cargo run -p hello_companion --release`
+3. **Read the tutorials**: [Quick start](../getting-started/quick-start.md)
+4. **Questions**: [GitHub issues](https://github.com/lazyxeon/AstraWeave/issues). See [Community](../resources/community.md).
 
 ```admonish success
 Congratulations! You've successfully built AstraWeave from source. You're ready to start developing AI-native games.

@@ -156,27 +156,18 @@ Many examples have known compilation issues. Use only the working examples:
 
 **Working Examples:**
 ```bash
-cargo build -p hello_companion      # ✅ Works (expected panic)
-cargo build -p ipc_loopback        # ✅ Should work  
-cargo test -p astraweave-input      # ✅ Tests pass
+cargo build -p hello_companion
+cargo build -p ipc_loopback
+cargo test -p astraweave-input
 ```
 
-**Known Broken Examples:**
-```bash
-# ❌ These have compilation issues:
-# cargo build -p debug_toolkit_demo  # egui/winit/renderer API mismatches
-# cargo build -p aw_editor           # eframe/glutin sync/send trait issues  
-# cargo build -p aw_debug            # eframe API mismatches
-# cargo build -p visual_3d           # clippy deny-level errors
-# cargo build -p navmesh_demo        # clippy deny-level errors (approx_constant)
-# cargo build -p physics_demo3d      # clippy deny-level errors (approx_constant)
-```
+This page does not keep a broken-example list. `aw_editor` is run with `cargo editor`. `navmesh_demo` and `physics_demo3d` are workspace members. Their compile status was not re-run for this edit.
 
 **Workaround:**
 Focus on the working core components and use the provided aliases:
 ```bash
 cargo build -p astraweave-core -p astraweave-ecs -p astraweave-math -p astraweave-ai  # Build core components only
-cargo check --workspace             # Check workspace (130/130 members, 0 errors)
+cargo check --workspace             # Check one crate with `cargo check -p <crate>`
 cargo clippy --workspace --all-features -- -D warnings  # Run clippy across the workspace
 ```
 

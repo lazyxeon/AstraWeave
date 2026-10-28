@@ -9,7 +9,7 @@ Navmesh-based pathfinding with A*, portal graphs, and dynamic obstacle avoidance
 ## Quick Links
 
 - [rustdoc](https://docs.rs/astraweave-nav) (when published)
-- [Source](https://github.com/astraweave/astraweave/tree/main/astraweave-nav)
+- [Source](https://github.com/lazyxeon/AstraWeave/tree/main/astraweave-nav)
 - [Navigation Guide](../core-systems/navigation.md)
 
 ---
@@ -194,5 +194,5 @@ let agent = crowd.get_agent(agent_id);
 ## See Also
 
 - [Navigation Guide](../core-systems/navigation.md)
-- [AI Integration](../core-systems/ai-core.md)
+- [AI Integration](../core-systems/ai/index.md)
 - [Terrain Integration](../core-systems/terrain.md#navigation)

@@ -9,7 +9,7 @@ Physics simulation built on Rapier3D with character controllers, vehicles, destr
 ## Quick Links
 
 - [rustdoc](https://docs.rs/astraweave-physics) (when published)
-- [Source](https://github.com/astraweave/astraweave/tree/main/astraweave-physics)
+- [Source](https://github.com/lazyxeon/AstraWeave/tree/main/astraweave-physics)
 - [Physics System Guide](../core-systems/physics.md)
 
 ---
@@ -103,22 +103,13 @@ vehicle.set_brake(brake);
 Efficient broad-phase collision detection.
 
 ```rust
-use astraweave_physics::SpatialHash;
+use astraweave_physics::{SpatialHash, AABB};
 
-let mut spatial = SpatialHash::new(10.0); // Cell size
-
-// Insert objects
+let mut spatial = SpatialHash::new(10.0);
 spatial.insert(entity_a, aabb_a);
-spatial.insert(entity_b, aabb_b);
-
-// Query nearby objects
-let nearby = spatial.query_sphere(position, radius);
-
-// Query potential collisions
-let pairs = spatial.get_collision_pairs();
 ```
 
-**Performance**: 99.96% collision check reduction vs brute force
+`SpatialHash::new` and `insert` exist. `query_sphere` and `get_collision_pairs` do not. `PhysicsWorld.broad_phase` is Rapier's `DefaultBroadPhase`. The 99.96% figure is a doc comment, not the live broadphase.
 
 ---
 
@@ -350,6 +341,6 @@ assert_eq!(physics_a.checksum(), physics_b.checksum());
 ## See Also
 
 - [Physics System Guide](../core-systems/physics.md)
-- [Character Controller](../core-systems/character-controller.md)
+- [Character Controller](../core-systems/physics.md)
 - [Fluids System](./fluids.md)
 - [Terrain Integration](../core-systems/terrain.md#physics-integration)

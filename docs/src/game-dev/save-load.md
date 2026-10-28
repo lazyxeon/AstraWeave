@@ -1,31 +1,13 @@
 # Save & Load Systems
 
-> **Crates**: `astraweave-persistence-ecs`, `astraweave-core`  
-> **Status**: Production Ready
+> **Crate**: `astraweave-persistence-ecs`  
+> **Status**: see the save and replay rows on the [engine status](https://github.com/lazyxeon/AstraWeave/blob/main/docs/current/ENGINE_STATUS.md) page.
 
-AstraWeave provides deterministic save/load with full ECS state serialization, player profiles, and versioned migrations.
+`CPersistenceManager::save_game` takes a slot, world tick, world hash, and an ECS blob. `SaveSystem` and `SaveConfig` are not the types in `lib.rs`. Samples further down this page that name those types are stale. The engine status page is the behavior description, including which replay events are applied.
 
-## Quick Start
+## Quick start
 
-```rust
-use astraweave_persistence_ecs::{SaveSystem, LoadSystem, SaveConfig};
-use astraweave_ecs::World;
-
-let config = SaveConfig {
-    path: "saves/",
-    compression: true,
-    encryption: false,
-    ..Default::default()
-};
-
-let save_system = SaveSystem::new(config);
-
-// Save world state
-save_system.save(&world, "quicksave")?;
-
-// Load world state
-let loaded_world = save_system.load("quicksave")?;
-```
+Call `CPersistenceManager::save_game` (or `save_game_with_replay`). Required replay cases `greybox_checkpoint` and `persist_replay` are named on the engine status page. This chapter's later diagrams were not rechecked against `lib.rs`.
 
 ---
 
@@ -330,4 +312,4 @@ handle.await?;
 
 - [ECS Architecture](../architecture/ecs.md)
 - [Deterministic Simulation](../architecture/deterministic.md)
-- [Player Profiles](./player-profiles.md)
+- [Player Profiles](../examples/index.md)

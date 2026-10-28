@@ -20,12 +20,13 @@ In AstraWeave, AI agents cannot cheat. They must use the same validated game sys
 The architecture trace campaign documented eight AI subsystems (per
 [`ai_pipeline.md`](https://github.com/lazyxeon/AstraWeave/blob/main/docs/architecture/ai_pipeline.md) §13). Wired in the runtime today:
 
-* **`astraweave-ai`** — `AIArbiter`, `Orchestrator` trait, `LlmExecutor`, `tool_sandbox`.
-  Validated at 12,700+ agents @ 60 FPS.
+* **`astraweave-ai`** — `Orchestrator`, `RuleOrchestrator` on the default tick, `tool_sandbox`.
+  `AIArbiter` and `LlmExecutor` compile only with `llm_orchestrator` (default off) and are not on `sys_ai_planning`.
+  Agent-capacity figures are dated on the engine status page. This line does not repeat them.
 * **`astraweave-behavior`** — canonical GOAP (`BTreeMap<u32, bool>` `WorldState`,
   interned keys, LRU plan cache) and Behavior Trees.
 * **`astraweave-llm`** — Ollama client adapters. Runtime model default is
-  **`phi3:medium`** (`orchestrator.rs:488-490`), set via the `OLLAMA_MODEL` env var.
+  **`phi3:medium`** (`SystemOrchestratorConfig::default` in `astraweave-ai/src/orchestrator.rs`), set via the `OLLAMA_MODEL` env var.
   Three clients (Phi3, Hermes2Pro, Qwen3) coexist; Qwen3 is supported but is not
   the runtime default despite doc-comment phrasing like "GOAP+Qwen3 Hybrid."
 

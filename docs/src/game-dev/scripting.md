@@ -383,5 +383,5 @@ fn on_update(entity, dt) {
 
 - [Behavior Trees](../core-systems/ai/behavior-trees.md)
 - [AI System](../core-systems/ai/index.md)
-- [Modding Guide](./modding.md)
+- [Modding Guide](../dev/contributing.md)
 - [Rhai Language Reference](https://rhai.rs/book/)

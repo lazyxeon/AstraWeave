@@ -9,8 +9,8 @@ The Entity Component System is the foundation of AstraWeave, providing determini
 ## Quick Links
 
 - [rustdoc](https://docs.rs/astraweave-ecs) (when published)
-- [Source](https://github.com/astraweave/astraweave/tree/main/astraweave-ecs)
-- [ECS Core Concepts](../core-systems/ecs.md)
+- [Source](https://github.com/lazyxeon/AstraWeave/tree/main/astraweave-ecs)
+- [ECS Core Concepts](../architecture/ecs.md)
 
 ---
 
@@ -329,7 +329,7 @@ astraweave-ecs = { version = "0.4", features = ["serde"] }
 
 ## See Also
 
-- [ECS Architecture](../core-systems/ecs.md)
-- [System Ordering](../core-systems/ecs.md#system-ordering)
+- [ECS Architecture](../architecture/ecs.md)
+- [System Ordering](../architecture/ecs.md)
 - [Parallel Systems](../performance/optimization.md#ecs-optimization)
-- [Core API](./core.md)
+- [Core API](../architecture/ecs.md)

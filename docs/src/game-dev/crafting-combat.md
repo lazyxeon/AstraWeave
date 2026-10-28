@@ -1043,5 +1043,5 @@ fn calculate_luck_bonus(performance: &CombatPerformance) -> f32 {
 
 - [AI Companions](companions.md) - Combat companion behaviors
 - [Adaptive Bosses](bosses.md) - Advanced boss combat AI
-- [Physics Integration](../core-systems/physics/index.md) - Combat physics
+- [Physics Integration](../core-systems/physics.md) - Combat physics
 - [Configuration Reference](../reference/configuration.md) - Combat tuning parameters
