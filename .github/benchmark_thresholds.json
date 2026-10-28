@@ -93,13 +93,13 @@
       "last_updated": "2025-10-09T00:00:00Z"
     },
     "behavior_tree_20_nodes": {
-      "baseline": 253,
-      "max_allowed": 379.5,
-      "warn_threshold": 316.25,
+      "baseline": 369.66,
+      "max_allowed": 554.49,
+      "warn_threshold": 462.08,
       "unit": "ns",
-      "description": "Complex behavior tree (Week 2 Action 3)",
+      "description": "Complex behavior tree on ubuntu-latest. The 253 ns baseline left max_allowed at 379.5, about 10 ns above the high cluster: 369.66 ns on run 40165571400 and 369.56 ns on run 40455623588. The same commit also measured 185.87 ns (run 40274704065). Cap is 1.5x 369.66 ns, the slower of those samples. warn_threshold is 1.25x.",
       "created": "2025-10-08T00:00:00Z",
-      "last_updated": "2025-10-09T00:00:00Z"
+      "last_updated": "2026-10-28T00:00:00Z"
     },
     "ai_loop_full_end_to_end_simple": {
       "baseline": 184,
@@ -190,9 +190,9 @@
       "max_allowed": 3464.85,
       "warn_threshold": 2887.38,
       "unit": "ns",
-      "description": "Eight hitting raycasts on ubuntu-latest. The 273 ns cap matched eight misses. The bench now steps the world, so each ray hits. ubuntu-latest means: 2309.9 ns (run 39532631733), 2189.8, 1987.3, 2286, 2167, 2156. Cap is 1.5x the slowest. Windows and macOS do not run this workflow.",
+      "description": "Eight hitting raycasts on ubuntu-latest. The bench does not call world.step(). It calls query_pipeline.update so the boxes are in the broad phase, and the loop asserts hit_count >= 2. The 273 ns cap was eight misses. The cap is 1.5x 2309.9 ns from run 39532631733 (max_allowed 3464.85). Later ubuntu-latest means are higher and still under that cap: 2388.78 ns (run 40455623588), 2385.60 ns (run 40647488491), 2316.25 ns (run 40066299246). Windows and macOS do not run this workflow.",
       "created": "2025-10-09T00:00:00Z",
-      "last_updated": "2025-10-09T00:00:00Z"
+      "last_updated": "2026-10-28T00:00:00Z"
     },
     "character_move_straight": {
       "baseline": 114,
