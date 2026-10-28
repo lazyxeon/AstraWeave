@@ -86,7 +86,7 @@ Push to `main` of Comprehensive CI in this window, all failures:
 | [40228431072](https://github.com/lazyxeon/AstraWeave/actions/runs/40228431072) | 139.3 min | Test full (macos-latest) |
 | [40576777318](https://github.com/lazyxeon/AstraWeave/actions/runs/40576777318) | 126.5 min | Test full (windows-latest) aggregator |
 
-`Test full (macos-latest)` duration p50 is 50.5 min, p95 60.2 min, max 60.6 min (n=10, push and schedule). Nine conclusions are `failure`, one is `cancelled`. The cancelled job is schedule run [40451173602](https://github.com/lazyxeon/AstraWeave/actions/runs/40451173602): the job ran 60.6 min and `Workspace nextest` ran 50.0 min before the 60 minute job timeout. Other macOS failures die inside `Workspace nextest` at 16.9 to 50.6 min, so some are test failures rather than the timeout. Ubuntu `Test full` succeeds in this window (duration p50 24.7 min, n=10). Windows archive build succeeds (p50 31.6 min). All 10 `Test full (windows, 1/3)`, `2/3`, and `3/3` jobs fail, and the aggregator `Test full (windows-latest)` fails with them. Those windows partition failures are the subject of PR #467. The macOS GPU failures are the subject of PR #439. This profile does not change those jobs.
+`Test full (macos-latest)` duration p50 is 50.5 min, p95 60.2 min, max 60.6 min (n=10, push and schedule). Nine conclusions are `failure`, one is `cancelled`. The cancelled job is schedule run [40451173602](https://github.com/lazyxeon/AstraWeave/actions/runs/40451173602): the job ran 60.6 min and `Workspace nextest` ran 50.0 min before the 60 minute job timeout. Other macOS failures die inside `Workspace nextest` at 16.9 to 50.6 min, so some are test failures rather than the timeout. Ubuntu `Test full` succeeds in this window (duration p50 24.7 min, n=10). Windows archive build succeeds (p50 31.6 min). All 10 `Test full (windows, 1/3)`, `2/3`, and `3/3` jobs fail, and the aggregator `Test full (windows-latest)` fails with them. Those windows partition failures are the subject of PR #467. The macOS GPU failures in this window are what #439 fixed (`447a878c`). This profile does not change those jobs.
 
 Other main-only heavy workflows, job duration p50 / p95:
 
@@ -131,7 +131,7 @@ Hit rate was not sampled across the window. These two are not a miss spike on on
 | Job | Cap | What happened |
 |---|---:|---|
 | Test full (macos-latest) | 60 | p95 60.2 min, one cancel at 60.6 min. See main table. |
-| Test (ubuntu, affected) | 60 | p95 duration 45.0 min. The comment in `ci.yml` records an older 45 min cancel after 27,057 passes. Not the current cap. |
+| Test (ubuntu, affected) | 60 | p95 duration 45.0 min in this window. #477 replaced that job with `Test (ubuntu, build archive)` (cap 60) and three partitions (cap 30). The comment in `ci.yml` records an older 45 min cancel after 27,057 passes. |
 | Test (windows, build archive) | 75 | p95 39.1 min on pull requests. Under the cap. |
 | Test full (windows, build archive) | 60 | p95 33.1 min. Under the cap. The partitions then fail for the reason in #467, not for this timeout. |
 | hash (windows-latest) in determinism-replay | 75 | duration p95 36.4 min. The comment records an older 45 min cancel (run 39839010318). |

@@ -6,6 +6,8 @@ Source: [pipeline_profile.md](pipeline_profile.md). Rank is by pull-request wall
 
 PRs #439 and #466–#472 are the other CI agent's main-red fixes. Rows that name those PRs are not work for this series to edit.
 
+#439, #477, #480, and #481 merged after this window. #439 (`447a878c`) records a skip when macOS has no GPU adapter. #481 (`581841ee`) sets `CARGO_PROFILE_TEST_DEBUG=0` on the replay hash builds. #480 (`0762c8ae`) sets sccache read-only on pull requests. #477 (`a802aca2`) archives Linux nextest once and runs three partitions. The p50 numbers below are the window, not those heads.
+
 ## 1. Code pull requests wait ~92 minutes on Comprehensive CI
 
 p50 wall is 92.1 min when ubuntu tests run (n=29), p95 121.0 min. The tail is `Test (ubuntu, affected)` (duration p50 32.0 min) racing `Test (windows, build archive)` (duration p50 30.6 min, archive step 28.8 min) and then three partition jobs of about 5 min that start several minutes after the archive upload. `PR Rust checks` is only the aggregator.
@@ -18,7 +20,7 @@ Do not start test jobs before the gate. `test_workflow_policy.py` requires `need
 
 `Test full (macos-latest)` p50 50.5 min, p95 60.2 min, max 60.6 min (n=10). One schedule run was cancelled at the job cap. The other failures are inside `Workspace nextest`. Every main push of Comprehensive CI in the window failed, on this job or on the Windows Test full aggregator.
 
-Not edited here. #439 is the macOS GPU skip. #467 is the Windows archive `CARGO_BIN_EXE` failure. Moving Test full off `main` would hide those failures. Raising the timeout without splitting or skipping a hang does not make the suite finish, and a wider cap is the wrong first move while #439 is in flight.
+Not edited here. #439 is the macOS GPU skip and has merged as `447a878c`. #467 is the Windows archive `CARGO_BIN_EXE` failure. Moving Test full off `main` would hide those failures. Raising the timeout without splitting or skipping a hang does not make the suite finish.
 
 ## 3. Heavy workflows run on diffs that cannot affect them
 
