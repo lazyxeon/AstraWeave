@@ -768,9 +768,10 @@ impl LlmClient for Qwen3Ollama {
     ) -> Result<std::pin::Pin<Box<dyn futures_util::Stream<Item = Result<String>> + Send>>> {
         crate::ensure_model_request(&self.url, self.allow_remote)?;
 
-        // `OLLAMA_TIMEOUT_SECS` bounds each body read. Thinking mode has its
-        // own call deadline. The non-thinking scan restarts its gap when a
-        // chunk arrives.
+        // `OLLAMA_TIMEOUT_SECS` bounds each silent gap. Thinking mode has
+        // its own 300s call deadline. The non-thinking scan restarts that
+        // gap on a non-empty chunk and stops at `QWEN_STREAM_LIFETIME`
+        // from this call.
         let idle = crate::stream_read_idle();
         let client = &self.client;
 
@@ -839,6 +840,7 @@ impl LlmClient for Qwen3Ollama {
 
         tracing::debug!("Sending streaming request to Ollama: {}", self.model);
 
+        let requested = std::time::Instant::now();
         let response = crate::send_for_headers(idle, client.post(&url).json(&body).send())
             .await
             .context("Failed to send streaming request to Ollama")?;
@@ -847,14 +849,17 @@ impl LlmClient for Qwen3Ollama {
             anyhow::bail!("Ollama streaming returned error: {}", response.status());
         }
 
-        // Ollama streams NDJSON. Each read waits the idle limit or the time
-        // left in the gap since the last byte. One error, or done:true, ends
-        // the stream.
+        // Ollama streams NDJSON. Silence stops after one idle period. A
+        // non-empty chunk starts a new gap. The 300s lifetime is the time
+        // still left since `requested`. One error, or done:true, ends the
+        // stream.
         let overall = idle.saturating_mul(2);
+        let lifetime = crate::QWEN_STREAM_LIFETIME.saturating_sub(requested.elapsed());
         let text_stream = crate::scan_model_ndjson(
             Box::pin(response.bytes_stream()),
             idle,
             overall,
+            lifetime,
             qwen_ndjson_line,
         );
 

@@ -59,6 +59,7 @@ Return ONLY JSON with no commentary.
         }
     });
     let idle = astraweave_llm::stream_read_idle();
+    let requested = std::time::Instant::now();
     let resp = astraweave_llm::send_for_headers(
         idle,
         client
@@ -69,10 +70,12 @@ Return ONLY JSON with no commentary.
     .await?;
     println!("status {}", resp.status());
     let overall = idle.saturating_mul(2);
+    let lifetime = astraweave_llm::DEFAULT_STREAM_LIFETIME.saturating_sub(requested.elapsed());
     let mut stream = Box::pin(astraweave_llm::bytes_within_deadline(
         Box::pin(resp.bytes_stream()),
         idle,
         overall,
+        lifetime,
     ));
     let mut seen = 0usize;
     let mut buf = Vec::new();

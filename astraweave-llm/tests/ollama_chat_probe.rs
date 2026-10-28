@@ -96,9 +96,9 @@ fn write_chunk(sock: &mut std::net::TcpStream, data: &str) {
 /// the socket open so the client must idle out.
 ///
 /// `TCP_NODELAY` keeps macOS delayed ACK from holding a flushed chunk. On a
-/// loaded runner each `sleep` still wakes late, and sixty late wakes can pass
-/// twice the idle timeout. The client keeps those chunks when every gap stays
-/// inside the idle window.
+/// loaded runner each `sleep` still wakes late. The client keeps those
+/// chunks when every gap stays inside the idle window. Silence still stops
+/// after one idle period.
 fn serve_slow_chunks(count: usize, hang_after: Option<usize>) -> std::net::SocketAddr {
     let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
     let addr = listener.local_addr().expect("addr");
@@ -201,6 +201,10 @@ fn slow_chunks_longer_than_the_timeout_are_kept() {
     assert!(
         elapsed > std::time::Duration::from_secs(2),
         "qwen stream finished inside the idle timeout ({elapsed:?})"
+    );
+    assert!(
+        elapsed < std::time::Duration::from_secs(15),
+        "qwen stream spun for {elapsed:?}"
     );
 }
 

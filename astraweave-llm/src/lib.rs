@@ -137,53 +137,122 @@ pub async fn read_capped_text_limited(response: reqwest::Response, limit: usize)
     String::from_utf8(buf).context("model body is not utf-8")
 }
 
-/// Read `inner` until one gap since the last byte exceeds `overall` or `idle`.
+/// How long the next body read may block, and which deadline a timeout is.
+struct ReadWait {
+    wait: std::time::Duration,
+    on_timeout: &'static str,
+}
+
+/// Silence, the current gap, and the stream lifetime.
 ///
-/// Each read waits the silence limit or the time still left in the current
-/// gap, whichever is shorter. A chunk that arrives starts a new gap, so the
-/// sum of gaps is not a deadline: a peer that keeps sending inside the window
-/// is not cut off when the runner wakes late. The first error is yielded
-/// once. The next poll ends the stream.
+/// `idle` is the silence limit. `overall` caps the same gap: when it is
+/// longer than `idle`, the wait is `idle`, so a caller that passes twice
+/// the idle limit does not get two idle periods. `lifetime` is measured
+/// from `life_started` and does not move when a chunk arrives.
+/// `idle_timeout` is the silence error. The other errors are
+/// `streaming overall deadline` and `streaming lifetime deadline`.
+#[cfg(feature = "ollama")]
+fn next_read_wait(
+    idle: std::time::Duration,
+    overall: std::time::Duration,
+    gap_started: std::time::Instant,
+    lifetime: std::time::Duration,
+    life_started: std::time::Instant,
+    idle_timeout: &'static str,
+) -> Result<ReadWait> {
+    let gap_left = overall.saturating_sub(gap_started.elapsed());
+    let life_left = lifetime.saturating_sub(life_started.elapsed());
+    if life_left.is_zero() {
+        bail!("streaming lifetime deadline");
+    }
+    if gap_left.is_zero() {
+        bail!("streaming overall deadline");
+    }
+    let wait = idle.min(gap_left).min(life_left);
+    let on_timeout = if life_left <= gap_left && life_left < idle {
+        "streaming lifetime deadline"
+    } else if wait < idle {
+        "streaming overall deadline"
+    } else {
+        idle_timeout
+    };
+    Ok(ReadWait { wait, on_timeout })
+}
+
+/// Same length as the 120s [`with_call_deadline`] wrappers.
+///
+/// Default chat, Hermes streaming, and `examples/ollama_probe` use it as
+/// the stream lifetime measured from the request start.
+#[cfg(feature = "ollama")]
+pub const DEFAULT_STREAM_LIFETIME: std::time::Duration = std::time::Duration::from_secs(120);
+
+/// Same length as Qwen's 300s [`with_call_deadline`] wrapper.
+#[cfg(feature = "ollama")]
+pub const QWEN_STREAM_LIFETIME: std::time::Duration = std::time::Duration::from_secs(300);
+
+/// Read `inner` until silence, the current gap, or `lifetime` ends.
+///
+/// Each read waits the silence limit, the time still left in the current
+/// gap, or the time still left in `lifetime`, whichever is shortest.
+/// `lifetime` starts when this stream is built and does not reset. A
+/// non-empty chunk starts a new gap, so late wakes whose gaps stay inside
+/// `idle` are kept. An empty chunk does not start a gap: an HTTP/2 DATA
+/// frame with no bytes must not postpone the deadline. The first error is
+/// yielded once. The next poll ends the stream.
 #[cfg(feature = "ollama")]
 pub fn bytes_within_deadline<S, T, E>(
     inner: S,
     idle: std::time::Duration,
     overall: std::time::Duration,
+    lifetime: std::time::Duration,
 ) -> impl futures_util::Stream<Item = Result<T>> + Send
 where
     S: futures_util::Stream<Item = Result<T, E>> + Unpin + Send + 'static,
-    T: Send + 'static,
+    T: AsRef<[u8]> + Send + 'static,
     E: std::error::Error + Send + Sync + 'static,
 {
     use futures_util::StreamExt;
     futures_util::stream::unfold(
-        (inner, false, std::time::Instant::now()),
-        move |(mut inner, stop, gap_started)| async move {
+        (
+            inner,
+            false,
+            std::time::Instant::now(),
+            std::time::Instant::now(),
+        ),
+        move |(mut inner, stop, gap_started, life_started)| async move {
             if stop {
                 return None;
             }
-            let left = overall.saturating_sub(gap_started.elapsed());
-            if left.is_zero() {
-                return Some((
-                    Err(anyhow::anyhow!("streaming overall deadline")),
-                    (inner, true, gap_started),
-                ));
-            }
-            let wait = idle.min(left);
-            match tokio::time::timeout(wait, inner.next()).await {
-                Ok(Some(Ok(chunk))) => Some((Ok(chunk), (inner, false, std::time::Instant::now()))),
+            let decision = match next_read_wait(
+                idle,
+                overall,
+                gap_started,
+                lifetime,
+                life_started,
+                "stream idle timeout",
+            ) {
+                Ok(decision) => decision,
+                Err(err) => {
+                    return Some((Err(err), (inner, true, gap_started, life_started)));
+                }
+            };
+            match tokio::time::timeout(decision.wait, inner.next()).await {
+                Ok(Some(Ok(chunk))) => {
+                    let gap_started = if chunk.as_ref().is_empty() {
+                        gap_started
+                    } else {
+                        std::time::Instant::now()
+                    };
+                    Some((Ok(chunk), (inner, false, gap_started, life_started)))
+                }
                 Ok(Some(Err(err))) => Some((
                     Err(anyhow::Error::new(err).context("stream body error")),
-                    (inner, true, gap_started),
+                    (inner, true, gap_started, life_started),
                 )),
                 Ok(None) => None,
-                Err(_) if wait < idle => Some((
-                    Err(anyhow::anyhow!("streaming overall deadline")),
-                    (inner, true, gap_started),
-                )),
                 Err(_) => Some((
-                    Err(anyhow::anyhow!("stream idle timeout")),
-                    (inner, true, gap_started),
+                    Err(anyhow::anyhow!(decision.on_timeout)),
+                    (inner, true, gap_started, life_started),
                 )),
             }
         },
@@ -224,16 +293,19 @@ pub(crate) struct NdjsonYield {
 
 /// Scan NDJSON bytes until one error or until `on_line` says to stop.
 ///
-/// Each read waits the idle limit or the time still left in the gap since
-/// the last byte, whichever is shorter. A chunk starts a new gap. A bad line
-/// does not fail earlier lines from the same read. After one error the next
-/// poll ends the stream, so a later chunk is not read and the byte cap still
-/// applies up to the error.
+/// Each read waits the idle limit, the time still left in the gap since
+/// the last non-empty chunk, or the time still left in `lifetime`,
+/// whichever is shortest. `lifetime` starts when this scan is built.
+/// A non-empty chunk starts a new gap. An empty chunk does not. A bad
+/// line does not fail earlier lines from the same read. After one error
+/// the next poll ends the stream, so a later chunk is not read and the
+/// byte cap still applies up to the error.
 #[cfg(feature = "ollama")]
 pub(crate) fn scan_model_ndjson<S, T, E, F>(
     inner: S,
     idle: std::time::Duration,
     overall: std::time::Duration,
+    lifetime: std::time::Duration,
     on_line: F,
 ) -> impl futures_util::Stream<Item = Result<String>> + Send
 where
@@ -254,7 +326,7 @@ where
         on_line: F,
     }
 
-    let bytes = Box::pin(bytes_within_deadline(inner, idle, overall));
+    let bytes = Box::pin(bytes_within_deadline(inner, idle, overall, lifetime));
     futures_util::stream::unfold(
         ScanState {
             bytes,
@@ -432,6 +504,7 @@ mod ndjson_scan_tests {
             chunk_then_hang(b"{\"message\":{\"content\":\"hello\"}}\n\xff\n{\"message\":{\"content\":\"later\"}}\n"),
             idle,
             idle,
+            std::time::Duration::from_secs(30),
             content_line,
         ));
         let started = std::time::Instant::now();
@@ -462,6 +535,7 @@ mod ndjson_scan_tests {
             chunk_then_hang(b"{"),
             idle,
             overall,
+            std::time::Duration::from_secs(30),
             content_line,
         ));
         let started = std::time::Instant::now();
@@ -502,10 +576,11 @@ mod ndjson_scan_tests {
             Box::pin(inner),
             idle,
             overall,
+            std::time::Duration::from_secs(30),
             content_line,
         ));
         let started = std::time::Instant::now();
-        let items = tokio::time::timeout(std::time::Duration::from_secs(3), async {
+        let items = tokio::time::timeout(std::time::Duration::from_secs(2), async {
             let mut items = Vec::new();
             while let Some(item) = stream.next().await {
                 items.push(item);
@@ -514,15 +589,104 @@ mod ndjson_scan_tests {
         })
         .await
         .expect("scan stopped on the sum of gaps");
+        let elapsed = started.elapsed();
         assert!(
-            started.elapsed() > overall,
-            "stream ended inside the old wall clock ({:?})",
-            started.elapsed()
+            elapsed > overall,
+            "stream ended inside the old wall clock ({elapsed:?})"
+        );
+        // Eight 50 ms gaps are 400 ms. Two seconds still fails a scan that
+        // waits out the 2 s idle limit, and it leaves room for a late wake.
+        assert!(
+            elapsed < std::time::Duration::from_secs(2),
+            "eight 50 ms chunks took {elapsed:?}"
         );
         assert_eq!(items.len(), 8, "{items:?}");
         for (i, item) in items.iter().enumerate() {
             assert_eq!(item.as_ref().expect("token"), &format!("n{i:02}"));
         }
+    }
+
+    #[tokio::test]
+    async fn ndjson_scan_errors_when_a_drip_passes_the_lifetime() {
+        let idle = std::time::Duration::from_secs(2);
+        let overall = idle.saturating_mul(2);
+        let lifetime = std::time::Duration::from_millis(220);
+        let inner = futures_util::stream::unfold(0u32, |i| async move {
+            if i >= 15 {
+                return None;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(80)).await;
+            Some((Ok::<Vec<u8>, std::io::Error>(vec![b'x']), i + 1))
+        });
+        let mut stream = Box::pin(scan_model_ndjson(
+            Box::pin(inner),
+            idle,
+            overall,
+            lifetime,
+            content_line,
+        ));
+        let started = std::time::Instant::now();
+        let outcome = tokio::time::timeout(std::time::Duration::from_secs(2), async {
+            let mut err = None;
+            while let Some(item) = stream.next().await {
+                if let Err(item) = item {
+                    err = Some(item.to_string());
+                    break;
+                }
+            }
+            err
+        })
+        .await
+        .expect("drip ran past the lifetime");
+        let err = outcome.expect("stream ended without an error");
+        assert!(err.contains("streaming lifetime deadline"), "{err}");
+        let elapsed = started.elapsed();
+        assert!(
+            elapsed >= std::time::Duration::from_millis(150),
+            "{elapsed:?}"
+        );
+        assert!(elapsed < std::time::Duration::from_secs(2), "{elapsed:?}");
+    }
+
+    #[tokio::test]
+    async fn ndjson_scan_does_not_reset_the_gap_on_an_empty_chunk() {
+        let idle = std::time::Duration::from_secs(2);
+        let overall = std::time::Duration::from_millis(150);
+        let inner = futures_util::stream::unfold(0u32, |i| async move {
+            if i >= 12 {
+                return None;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(40)).await;
+            Some((Ok::<Vec<u8>, std::io::Error>(Vec::new()), i + 1))
+        });
+        let mut stream = Box::pin(scan_model_ndjson(
+            Box::pin(inner),
+            idle,
+            overall,
+            std::time::Duration::from_secs(5),
+            content_line,
+        ));
+        let started = std::time::Instant::now();
+        let outcome = tokio::time::timeout(std::time::Duration::from_secs(2), async {
+            let mut err = None;
+            while let Some(item) = stream.next().await {
+                if let Err(item) = item {
+                    err = Some(item.to_string());
+                    break;
+                }
+            }
+            err
+        })
+        .await
+        .expect("empty chunks postponed the gap deadline");
+        let err = outcome.expect("stream ended without an error");
+        assert!(err.contains("streaming overall deadline"), "{err}");
+        let elapsed = started.elapsed();
+        assert!(
+            elapsed >= std::time::Duration::from_millis(80),
+            "{elapsed:?}"
+        );
+        assert!(elapsed < std::time::Duration::from_secs(1), "{elapsed:?}");
     }
 
     #[tokio::test]
@@ -534,6 +698,7 @@ mod ndjson_scan_tests {
             ),
             idle,
             idle,
+            std::time::Duration::from_secs(30),
             content_line,
         ));
         let items = tokio::time::timeout(std::time::Duration::from_millis(500), async {
@@ -560,6 +725,7 @@ mod ndjson_scan_tests {
             Box::pin(first.chain(hang)),
             idle,
             idle,
+            std::time::Duration::from_secs(30),
             content_line,
         ));
         let item = tokio::time::timeout(std::time::Duration::from_millis(500), stream.next())
@@ -587,6 +753,7 @@ mod ndjson_scan_tests {
             Box::pin(first.chain(hang)),
             idle,
             idle,
+            std::time::Duration::from_secs(30),
             content_line,
         ));
         let item = tokio::time::timeout(std::time::Duration::from_millis(500), stream.next())
@@ -1406,7 +1573,7 @@ impl LlmClient for OllamaChatClient {
             }
 
             // The stored client set `connect_timeout` in `build_model_client`.
-            // Header wait is a separate deadline. The body stays on the idle loop.
+            // Header wait is a separate deadline. The body lifetime starts here.
             let start = std::time::Instant::now();
 
             let stream_url = format!("{}/api/chat", self.url.trim_end_matches('/'));
@@ -1491,10 +1658,12 @@ impl LlmClient for OllamaChatClient {
             let mut assistant_acc = String::new();
             let mut bytes_seen: usize = 0;
             let mut done_flag = false;
-            // Twice the idle timeout bounds one gap since the last byte, not
-            // the life of the stream. A loaded runner can wake each 50 ms
-            // write late enough that sixty of them pass two idle periods
-            // while every gap stays inside one. A silent peer still stops.
+            // Silence stops after one idle period. `overall` caps that same
+            // gap, and when it is longer than `idle` the wait is `idle`.
+            // A non-empty chunk starts a new gap, so late macOS wakes whose
+            // gaps stay inside the idle window are kept. An empty chunk does
+            // not. `DEFAULT_STREAM_LIFETIME` is measured from `start` and is
+            // not reset, so a one-byte drip stops there instead of at 1 MiB.
             let overall = idle.saturating_mul(2);
             let mut gap_started = std::time::Instant::now();
 
@@ -1505,27 +1674,33 @@ impl LlmClient for OllamaChatClient {
             let mut first_token_at: Option<std::time::Instant> = None;
             let mut body_error: Option<anyhow::Error> = None;
             loop {
-                let left = overall.saturating_sub(gap_started.elapsed());
-                if left.is_zero() {
-                    body_error = Some(anyhow::anyhow!("streaming overall deadline"));
-                    break;
-                }
-                let wait = idle.min(left);
-                let item = match tokio::time::timeout(wait, stream.next()).await {
-                    Ok(Some(item)) => item,
-                    Ok(None) => break,
-                    Err(_) if wait < idle => {
-                        body_error = Some(anyhow::anyhow!("streaming overall deadline"));
+                let decision = match next_read_wait(
+                    idle,
+                    overall,
+                    gap_started,
+                    DEFAULT_STREAM_LIFETIME,
+                    start,
+                    "streaming read idle timeout",
+                ) {
+                    Ok(decision) => decision,
+                    Err(err) => {
+                        body_error = Some(err);
                         break;
                     }
+                };
+                let item = match tokio::time::timeout(decision.wait, stream.next()).await {
+                    Ok(Some(item)) => item,
+                    Ok(None) => break,
                     Err(_) => {
-                        body_error = Some(anyhow::anyhow!("streaming read idle timeout"));
+                        body_error = Some(anyhow::anyhow!(decision.on_timeout));
                         break;
                     }
                 };
                 match item {
                     Ok(chunk) => {
-                        gap_started = std::time::Instant::now();
+                        if !chunk.is_empty() {
+                            gap_started = std::time::Instant::now();
+                        }
                         // Count bytes before UTF-8 or line filtering. Empty
                         // NDJSON lines and invalid UTF-8 must not stream forever.
                         // A cap error keeps tokens already stored in `assistant_acc`.
