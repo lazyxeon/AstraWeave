@@ -84,7 +84,7 @@ The standalone server/client binaries are functional and tested by hand (`net/RE
     │ recv_tls::<ClientToServer> or recv::<ClientToServer>
     │ Branches on hello.protocol:
     │   == 1   → ServerToClient::HelloAck { protocol }                    (TLS lib.rs:422-423; plain :654-655)
-    │   != 1   → ServerToClient::ProtocolError { msg }; return            (TLS :425-445; plain :657-677)
+    │   != 1   → ServerToClient::ProtocolError { msg }; return            (TLS :425-434; plain :657-666)
     │
     ▼
 [Matchmaking phase]
@@ -114,7 +114,7 @@ The standalone server/client binaries are functional and tested by hand (`net/RE
     │ tokio::select! biased:
     │
     ├── ws.next() → ClientToServer::InputFrame { seq, tick_ms, input_blob, sig: [u8;32] }
-    │     ↓ on_client_msg_tls / on_client_msg                             (lib.rs:913; TLS :1051)
+    │     ↓ on_client_msg / on_client_msg_tls                             (plain lib.rs:913; TLS :1051)
     │     ↓ VERIFY FIRST (before any state mutation):                     (verify lib.rs:932; TLS :1074)
     │       · payload = aw_net_proto::input_frame_sig_payload(seq, tick_ms, &input_blob)
     │       · aw_net_proto::verify(&signing_key, &payload, &sig)  (constant-time)
@@ -226,7 +226,7 @@ The standalone server/client binaries are functional and tested by hand (`net/RE
 **Notes:**
 - `PROTOCOL_VERSION` is `u16 = 1` (proto/lib.rs:7).
 - `Codec` is `#[non_exhaustive]` (proto/lib.rs:258). PostcardLz4 is the recommended path (smaller payloads); Bincode is "Fallback / compatibility" per the doc comment at proto/lib.rs:261.
-- **Canonical signing surface** (Net-Trio-Remediation `561b20957`): `SigningKey` (private 32-byte field; `from_hex` / `from_bytes` / `as_bytes` / `dev_default`; redacted `Debug`) at proto/lib.rs:31-94; `sign(key, payload) -> [u8;32]` (proto/lib.rs:134), `verify(key, payload, tag) -> bool` (constant-time via `Mac::verify_slice`, proto/lib.rs:143-149), `hmac_sha256(key, payload)` (proto/lib.rs:123), `input_frame_sig_payload(seq, tick_ms, blob)` — the canonical MAC'd byte range (`seq.to_le_bytes() ++ tick_ms.to_le_bytes() ++ input_blob`, proto/lib.rs:161-167), and `SIG_LEN = 32` (proto/lib.rs:13). `InputFrame.sig` is `[u8; 32]` (proto/lib.rs:195). **The former `sign16` XOR stub and `SessionKey` type are DELETED.**
+- **Canonical signing surface** (Net-Trio-Remediation `561b20957`): `SigningKey` (private 32-byte field; `from_hex` / `from_bytes` / `as_bytes` / `dev_default`; redacted `Debug`) at proto/lib.rs:31-96; `sign(key, payload) -> [u8;32]` (proto/lib.rs:134), `verify(key, payload, tag) -> bool` (constant-time via `Mac::verify_slice`, proto/lib.rs:143-149), `hmac_sha256(key, payload)` (proto/lib.rs:123), `input_frame_sig_payload(seq, tick_ms, blob)` — the canonical MAC'd byte range (`seq.to_le_bytes() ++ tick_ms.to_le_bytes() ++ input_blob`, proto/lib.rs:161-167), and `SIG_LEN = 32` (proto/lib.rs:13). `InputFrame.sig` is `[u8; 32]` (proto/lib.rs:195). **The former `sign16` XOR stub and `SessionKey` type are DELETED.**
 - `new_room_id()` returns 8 alphanumeric characters (proto/lib.rs:315).
 
 > **Layout note (revision 1.3):** the standalone server was split into lib+bin (`066cd6cfd`). All server logic now lives in `net/aw-net-server/src/lib.rs` (~1167 lines: `ServerConfig`, `run_server`, `spawn_server`, `accept_loop_{tls,plain}`, `handle_socket{,_tls}`, `on_client_msg{,_tls}`, `build_snapshot`, the `send`/`recv` helpers); `src/main.rs` (129 lines) is a thin CLI wrapper that parses args into a `ServerConfig` and calls `run_server`. The pre-remediation single-file `server/main.rs` layout is gone; Stages 2–7 below cite `lib.rs` / `main.rs` at the lines read for commit `28ef548c`.
@@ -245,7 +245,7 @@ The standalone server/client binaries are functional and tested by hand (`net/RE
 **Role:** Per-connection handshake, matchmaking, per-tick snapshot loop.
 **Inputs:** A `WebSocketStream<...>` (TLS-wrapped or plain).
 **Outputs:** Mutations to `AppState.rooms`; outbound `ServerToClient` messages.
-**Notes:** `handle_socket_tls` (`lib.rs:413-645`) and `handle_socket` (`lib.rs:647-877`) are **near-identical** — same matchmaking logic, same per-tick loop, same cleanup, differing only in the `WebSocketStream` type parameter (TLS vs plain). The helper functions `send`/`send_tls`, `recv`/`recv_tls`, `on_client_msg`/`on_client_msg_tls` form three more duplicated pairs (`lib.rs:913-1049`). Total duplication: roughly 400 lines.
+**Notes:** `handle_socket_tls` (`lib.rs:413-645`) and `handle_socket` (`lib.rs:647-877`) are **near-identical** — same matchmaking logic, same per-tick loop, same cleanup, differing only in the `WebSocketStream` type parameter (TLS vs plain). The helper functions `send`/`send_tls`, `recv`/`recv_tls`, `on_client_msg`/`on_client_msg_tls` form three more duplicated pairs (`lib.rs:913-1132`). Total duplication: roughly 400 lines.
 
 #### Stage 4: Matchmaking + room allocation (`lib.rs:449-568`, `:681-800`)
 **Role:** On first non-Hello message, either find an existing room or create a new one; allocate the player into it; send `MatchResult` and `JoinAccepted`.
@@ -306,9 +306,9 @@ The standalone server/client binaries are functional and tested by hand (`net/RE
 |---|---|---|
 | **PROTOCOL_VERSION** | `u16 = 1` — wire-format version check on `Hello`. | `aw-net-proto/lib.rs:7` |
 | **ClientToServer** | `#[non_exhaustive]` enum of 6 wire messages: `Hello`, `FindOrCreate`, `JoinRoom`, `InputFrame`, `Ping`, `Ack`. `InputFrame.sig` is `[u8; 32]`. | `aw-net-proto/lib.rs:172-205` |
-| **ServerToClient** | `#[non_exhaustive]` enum of 8 wire messages: `HelloAck`, `MatchResult { room_id }`, `JoinAccepted { room_id, player_id, tick_hz }`, `Snapshot`, `Reconcile`, `Pong`, `RateLimited`, `ProtocolError`. (No `session_key_hint` on `MatchResult`/`JoinAccepted` — deleted in `561b20957`.) | `aw-net-proto/lib.rs:209-245` |
+| **ServerToClient** | `#[non_exhaustive]` enum of 8 wire messages: `HelloAck`, `MatchResult { room_id }`, `JoinAccepted { room_id, player_id, tick_hz }`, `Snapshot`, `Reconcile`, `Pong`, `RateLimited`, `ProtocolError`. (No `session_key_hint` on `MatchResult`/`JoinAccepted` — deleted in `561b20957`.) | `aw-net-proto/lib.rs:209-242` |
 | **Codec** | `#[non_exhaustive]` enum: `PostcardLz4` (default), `Bincode` (compat). | `aw-net-proto/lib.rs:258-262` |
-| **SigningKey** | Shared symmetric 32-byte HMAC key. Private `[u8; 32]` field (no tuple `.0` access); constructors `from_hex` (64 hex chars) / `from_bytes` / `dev_default`; accessor `as_bytes`; `Debug` is redacted to `SigningKey(<redacted>)`. Never transmitted on the wire — both ends hold it out-of-band (client: `AW_SHARED_KEY`, or `dev_default()` when unset, on every build; server: a debug build keeps `dev_default()` when `--shared-key-hex` is absent (`net/aw-net-server/src/main.rs:111-117`); only the release CLI requires that flag (`:103-109`); release `spawn_server` refuses the published key at boot (`lib.rs:281-286`). The server does not see the client's key; a published-key client joins and the first `InputFrame` is Close 1008 under Kick, or the connection stays up under `--sig-failure-policy warn`). | `aw-net-proto/lib.rs:31-94` |
+| **SigningKey** | Shared symmetric 32-byte HMAC key. Private `[u8; 32]` field (no tuple `.0` access); constructors `from_hex` (64 hex chars) / `from_bytes` / `dev_default`; accessor `as_bytes`; `Debug` is redacted to `SigningKey(<redacted>)`. Never transmitted on the wire — both ends hold it out-of-band (client: `AW_SHARED_KEY`, or `dev_default()` when unset, on every build; server: a debug build keeps `dev_default()` when `--shared-key-hex` is absent (`net/aw-net-server/src/main.rs:111-117`); only the release CLI requires that flag (`:103-109`); release `spawn_server` refuses the published key at boot (`lib.rs:281-286`). The server does not see the client's key; a published-key client joins and the first `InputFrame` is Close 1008 under Kick, or the connection stays up under `--sig-failure-policy warn`). | `aw-net-proto/lib.rs:31-96` |
 | **sign / verify** | `sign(key: &SigningKey, payload: &[u8]) -> [u8; 32]` (HMAC-SHA256); `verify(key, payload, tag: &[u8; 32]) -> bool` (constant-time via `Mac::verify_slice`). Backed by `hmac_sha256(key, payload)`. | `aw-net-proto/lib.rs:123-149` |
 | **input_frame_sig_payload** | THE canonical MAC'd byte range for `InputFrame`: `seq.to_le_bytes() ++ tick_ms.to_le_bytes() ++ input_blob`. Both client (signing) and server (verifying) MUST build the payload via this function — the single shared definition is what prevents signed-byte-range divergence. | `aw-net-proto/lib.rs:161-167` |
 | **SIG_LEN** | `usize = 32` — length of an HMAC-SHA256 signature tag. | `aw-net-proto/lib.rs:13` |
@@ -318,7 +318,7 @@ The standalone server/client binaries are functional and tested by hand (`net/RE
 | **AppState** | Server-wide state: `{ rooms: Arc<parking_lot::Mutex<HashMap<RoomId, Room>>>, db: sled::Db, codec: Codec, signing_key: SigningKey, sig_failure_policy: SignatureFailurePolicy }`. Uses `parking_lot::Mutex` (`lib.rs:25`), not `std::sync::Mutex`. | `aw-net-server/lib.rs:226-234` |
 | **ServerConfig / run_server / spawn_server** | `ServerConfig` (CLI-derived: listen addrs, TLS paths, db path, `signing_key`, `sig_failure_policy`) → `run_server(config)` (binary entry after arg-parse) → `spawn_server(config)` (binds listeners FIRST — the `127.0.0.1:0` ephemeral-port test seam — then spawns accept loops). | `aw-net-server/lib.rs:131-166, 263-274, 280-359` |
 | **MsgOutcome** | Internal result of handling one in-session message: `Continue` (keep open) or `Kick(&'static str)` (close with 1008 + run shared cleanup). | `aw-net-server/lib.rs:189-196` |
-| **WireError** | `#[non_exhaustive]` + `#[must_use]` decode error enum: `ProtocolMismatch`, `Decode`, `InvalidSigningKey`. | `aw-net-proto/lib.rs:247-255` |
+| **WireError** | `#[non_exhaustive]` + `#[must_use]` decode error enum: `ProtocolMismatch`, `Decode`, `InvalidSigningKey`. | `aw-net-proto/lib.rs:247-254` |
 | **CNetworkClient** | ECS component: `{ player_id, last_acknowledged_input, pending_inputs }`. | `astraweave-net-ecs/lib.rs:13-19` |
 | **CClientPrediction** | ECS component: `{ predicted_position: Vec3, prediction_error: Vec3 }`. | `astraweave-net-ecs/lib.rs:21-26` |
 | **CNetworkAuthority** | ECS component: `{ authoritative_tick, connected_clients: HashMap<String, mpsc::UnboundedSender<ServerToClient>> }`. | `astraweave-net-ecs/lib.rs:28-33` |
