@@ -20,6 +20,9 @@ jobs:
   terrain-bit-locks:
     name: Terrain bits (${{ matrix.os }}, release)
     runs-on: ${{ matrix.os }}
+    # Nightly workflow wall in the profile window was about 6 minutes.
+    # 45 covers a cold release compile of the terrain crate and its deps.
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
