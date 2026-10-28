@@ -301,7 +301,10 @@ pub fn decode_msg<T: for<'de> Deserialize<'de>>(
         Codec::Bincode => {
             use bincode::config::standard;
             use bincode::serde::decode_from_slice;
-            let (val, _len) = decode_from_slice(bytes, standard())
+            // Same 4 MiB bound as the LZ4 declared size. `standard()` has no
+            // limit, so a length prefix allocates before the bytes exist.
+            let config = standard().with_limit::<MAX_LZ4_DECLARED_OUTPUT>();
+            let (val, _len) = decode_from_slice(bytes, config)
                 .map_err(|e| WireError::Decode(format!("bincode: {e}")))?;
             Ok(val)
         }
