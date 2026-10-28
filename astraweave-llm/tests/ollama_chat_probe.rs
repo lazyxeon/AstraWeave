@@ -95,11 +95,10 @@ fn write_chunk(sock: &mut std::net::TcpStream, data: &str) {
 /// NDJSON chat chunks, one every 50 ms. `hang_after` stops writing and leaves
 /// the socket open so the client must idle out.
 ///
-/// `TCP_NODELAY` is required. macOS delayed ACK is longer than 50 ms, and
-/// Nagle holds each flushed chunk until that ACK. A token then costs about
-/// 150 ms. Sixty of those overrun the 4 s overall cap, which is twice the
-/// 2 s idle timeout, so the client keeps only the tokens that arrived.
-/// The cap is unchanged.
+/// `TCP_NODELAY` keeps macOS delayed ACK from holding a flushed chunk. On a
+/// loaded runner each `sleep` still wakes late. The client keeps those
+/// chunks when every gap stays inside the idle window. Silence still stops
+/// after one idle period.
 fn serve_slow_chunks(count: usize, hang_after: Option<usize>) -> std::net::SocketAddr {
     let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
     let addr = listener.local_addr().expect("addr");
@@ -174,8 +173,12 @@ fn slow_chunks_longer_than_the_timeout_are_kept() {
         elapsed > std::time::Duration::from_secs(2),
         "stream finished inside the idle timeout ({elapsed:?})"
     );
+    // macOS Test full delivered about thirty of these tokens in 4.01 s, so
+    // sixty of them need more than the old 6 s ceiling. Fifteen seconds still
+    // fails a client that waits out the 30 s harness hang or the default
+    // 180 s timeout. A missing token fails above, on its own.
     assert!(
-        elapsed < std::time::Duration::from_secs(6),
+        elapsed < std::time::Duration::from_secs(15),
         "stream spun for {elapsed:?}"
     );
 
@@ -198,6 +201,10 @@ fn slow_chunks_longer_than_the_timeout_are_kept() {
     assert!(
         elapsed > std::time::Duration::from_secs(2),
         "qwen stream finished inside the idle timeout ({elapsed:?})"
+    );
+    assert!(
+        elapsed < std::time::Duration::from_secs(15),
+        "qwen stream spun for {elapsed:?}"
     );
 }
 
@@ -933,6 +940,211 @@ fn silent_accept_fails_near_the_header_timeout() {
     assert_headers_fail_near_timeout("complete", true);
     assert_headers_fail_near_timeout("qwen-stream", false);
     assert_headers_fail_near_timeout("hermes-stream", false);
+}
+
+fn run_until(
+    mode: &str,
+    addr: std::net::SocketAddr,
+    idle_secs: &str,
+    lifetime_ms: &str,
+    kill_after: std::time::Duration,
+) -> (std::time::Duration, std::process::Output) {
+    let exe = probe_exe(env!("CARGO_BIN_EXE_ollama_chat_probe"));
+    let started = std::time::Instant::now();
+    let mut child = std::process::Command::new(&exe)
+        .args([mode, &format!("http://{addr}")])
+        .env("OLLAMA_LOW_LATENCY", "1")
+        .env("OLLAMA_TIMEOUT_SECS", idle_secs)
+        .env("OLLAMA_STREAM_LIFETIME_MS", lifetime_ms)
+        .env("OLLAMA_EARLY_EXIT", "0")
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap_or_else(|err| panic!("spawn {}: {err}", exe.display()));
+    let status = loop {
+        if let Some(status) = child.try_wait().expect("wait") {
+            break status;
+        }
+        if started.elapsed() > kill_after {
+            let _ = child.kill();
+            panic!("{mode} still running after {kill_after:?}");
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    };
+    let elapsed = started.elapsed();
+    let mut output = child.wait_with_output().expect("output");
+    output.status = status;
+    (elapsed, output)
+}
+
+/// Headers arrive and the declared body never does.
+/// `first_not_found` answers `/api/chat` with an empty 404 so `complete`
+/// reads the withheld body from `/api/generate`.
+fn serve_withheld_body(status_line: &'static str, first_not_found: bool) -> std::net::SocketAddr {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+    let addr = listener.local_addr().expect("addr");
+    std::thread::spawn(move || {
+        let mut first = true;
+        loop {
+            let Ok((mut sock, _)) = listener.accept() else {
+                return;
+            };
+            read_http_headers(&mut sock);
+            use std::io::Write;
+            if first && first_not_found {
+                first = false;
+                let _ = sock.write_all(
+                    b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+                );
+                let _ = sock.flush();
+                continue;
+            }
+            let _ = write!(
+                sock,
+                "{status_line}\r\nContent-Length: 64\r\nConnection: close\r\n\r\n"
+            );
+            let _ = sock.flush();
+            std::thread::sleep(std::time::Duration::from_secs(30));
+        }
+    });
+    addr
+}
+
+#[test]
+fn withheld_error_body_ends_at_the_lifetime() {
+    // Thinking mode reads the JSON body only after a success status, so
+    // that path withholds a 200. `complete` withholds the 500, including
+    // the `/api/generate` fallback.
+    for (mode, status_line, first_not_found) in [
+        ("complete", "HTTP/1.1 500 Internal Server Error", false),
+        ("complete", "HTTP/1.1 500 Internal Server Error", true),
+        ("qwen-think", "HTTP/1.1 200 OK", false),
+    ] {
+        let addr = serve_withheld_body(status_line, first_not_found);
+        let (elapsed, out) = run_until(mode, addr, "20", "400", std::time::Duration::from_secs(3));
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert!(
+            !out.status.success(),
+            "{mode} first_not_found={first_not_found} succeeded: {stdout} {stderr}"
+        );
+        assert!(
+            elapsed >= std::time::Duration::from_millis(250),
+            "{mode} returned before the lifetime ({elapsed:?}): {stdout} {stderr}"
+        );
+        assert!(
+            elapsed < std::time::Duration::from_secs(2),
+            "{mode} waited out the idle timeout ({elapsed:?}): {stdout} {stderr}"
+        );
+        let msg = format!("{stdout} {stderr}");
+        assert!(msg.contains("streaming lifetime deadline"), "{mode}: {msg}");
+        assert!(
+            !msg.contains("operation timed out"),
+            "{mode} used the idle read timeout: {msg}"
+        );
+    }
+}
+
+#[test]
+fn withheld_headers_end_at_the_lifetime() {
+    for (mode, first_not_found) in [
+        ("complete", false),
+        ("complete", true),
+        ("hermes-stream", false),
+        ("qwen-stream", false),
+    ] {
+        let addr = serve_no_headers(first_not_found);
+        let (elapsed, out) = run_until(mode, addr, "20", "400", std::time::Duration::from_secs(3));
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert!(
+            !out.status.success(),
+            "{mode} first_not_found={first_not_found} succeeded: {stdout} {stderr}"
+        );
+        assert!(
+            elapsed >= std::time::Duration::from_millis(250),
+            "{mode} returned before the lifetime ({elapsed:?}): {stdout} {stderr}"
+        );
+        assert!(
+            elapsed < std::time::Duration::from_secs(2),
+            "{mode} waited out the idle timeout ({elapsed:?}): {stdout} {stderr}"
+        );
+        let msg = format!("{stdout} {stderr}");
+        assert!(msg.contains("streaming lifetime deadline"), "{mode}: {msg}");
+    }
+}
+
+/// Headers and a token arrive after the lifetime. The call fails on the
+/// header wait and does not accept the body.
+fn serve_late_headers() -> std::net::SocketAddr {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+    let addr = listener.local_addr().expect("addr");
+    std::thread::spawn(move || {
+        let Ok((mut sock, _)) = listener.accept() else {
+            return;
+        };
+        read_http_headers(&mut sock);
+        std::thread::sleep(std::time::Duration::from_secs(4));
+        use std::io::Write;
+        let body = "{\"message\":{\"content\":\"late-token\"},\"done\":true}\n";
+        let _ = write!(
+            sock,
+            "HTTP/1.1 200 OK\r\nContent-Type: application/x-ndjson\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+            body.len()
+        );
+        let _ = sock.flush();
+    });
+    addr
+}
+
+#[test]
+fn late_headers_fail_cleanly() {
+    for mode in ["complete", "qwen-stream"] {
+        let addr = serve_late_headers();
+        let (elapsed, out) = run_until(mode, addr, "10", "300", std::time::Duration::from_secs(3));
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert!(
+            !out.status.success(),
+            "{mode} accepted late headers: {stdout} {stderr}"
+        );
+        assert!(
+            !stdout.contains("late-token"),
+            "{mode} kept the late body: {stdout} {stderr}"
+        );
+        assert!(
+            elapsed < std::time::Duration::from_secs(2),
+            "{mode} waited for the late headers ({elapsed:?}): {stdout} {stderr}"
+        );
+        let msg = format!("{stdout} {stderr}");
+        assert!(msg.contains("streaming lifetime deadline"), "{mode}: {msg}");
+    }
+}
+
+#[test]
+fn lifetime_after_a_token_returns_the_token() {
+    let addr = serve_slow_chunks(1, Some(1));
+    let (elapsed, out) = run_until(
+        "complete",
+        addr,
+        "10",
+        "400",
+        std::time::Duration::from_secs(3),
+    );
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        out.status.success(),
+        "token before the lifetime was dropped: {stdout} {stderr}"
+    );
+    assert!(
+        stdout.contains("n00"),
+        "kept token missing: {stdout} {stderr}"
+    );
+    assert!(
+        elapsed < std::time::Duration::from_secs(2),
+        "lifetime after a token waited out the idle timeout ({elapsed:?})"
+    );
 }
 
 #[test]

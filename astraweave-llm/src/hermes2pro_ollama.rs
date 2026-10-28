@@ -571,21 +571,31 @@ impl LlmClient for Hermes2ProOllama {
 
         tracing::debug!("Sending streaming request to Ollama: {}", self.model);
 
-        let response = crate::send_for_headers(idle, client.post(&url).json(&body).send())
-            .await
-            .context("Failed to send streaming request to Ollama")?;
+        let requested = std::time::Instant::now();
+        let lifetime_total = crate::stream_call_lifetime(crate::DEFAULT_STREAM_LIFETIME);
+        let response = crate::send_headers_for_call(
+            idle,
+            lifetime_total.saturating_sub(requested.elapsed()),
+            client.post(&url).json(&body).send(),
+        )
+        .await
+        .context("Failed to send streaming request to Ollama")?;
 
         if !response.status().is_success() {
             anyhow::bail!("Ollama streaming returned error: {}", response.status());
         }
 
-        // Ollama streams NDJSON. Each read waits only the time still left.
-        // One error, or done:true, ends the stream.
+        // The header wait is the idle limit or the time still left in the
+        // 120s lifetime, whichever is shorter. Silence on the body stops
+        // after one idle period. A non-empty chunk starts a new gap. An
+        // empty chunk does not. One error, or done:true, ends the stream.
         let overall = idle.saturating_mul(2);
+        let lifetime = lifetime_total.saturating_sub(requested.elapsed());
         let text_stream = crate::scan_model_ndjson(
             Box::pin(response.bytes_stream()),
             idle,
             overall,
+            lifetime,
             hermes_ndjson_line,
         );
 

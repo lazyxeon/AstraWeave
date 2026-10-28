@@ -768,9 +768,15 @@ impl LlmClient for Qwen3Ollama {
     ) -> Result<std::pin::Pin<Box<dyn futures_util::Stream<Item = Result<String>> + Send>>> {
         crate::ensure_model_request(&self.url, self.allow_remote)?;
 
-        // `OLLAMA_TIMEOUT_SECS` bounds each body read. Thinking mode and the
-        // non-thinking scan also stop at an overall deadline.
+        // `OLLAMA_TIMEOUT_SECS` bounds each silent gap. Header waits and
+        // the thinking JSON body are that idle limit or the time still
+        // left in the 300s lifetime, whichever is shorter, including when
+        // the idle limit is longer than 300s. The JSON body also stops at
+        // 64 KiB. Thinking mode still has `with_call_deadline(300)`.
+        // The non-thinking scan restarts its gap on a non-empty chunk.
         let idle = crate::stream_read_idle();
+        let requested = std::time::Instant::now();
+        let lifetime_total = crate::stream_call_lifetime(crate::QWEN_STREAM_LIFETIME);
         let client = &self.client;
 
         let url = format!("{}/api/chat", self.url);
@@ -803,17 +809,24 @@ impl LlmClient for Qwen3Ollama {
             );
 
             let response_json: serde_json::Value = crate::with_call_deadline(300, async {
-                let response = crate::send_for_headers(idle, client.post(&url).json(&body).send())
-                    .await
-                    .context("Failed to send request to Ollama")?;
+                let response = crate::send_headers_for_call(
+                    idle,
+                    lifetime_total.saturating_sub(requested.elapsed()),
+                    client.post(&url).json(&body).send(),
+                )
+                .await
+                .context("Failed to send request to Ollama")?;
 
                 if !response.status().is_success() {
                     anyhow::bail!("Ollama returned error: {}", response.status());
                 }
 
-                crate::read_capped_json(response)
-                    .await
-                    .context("Failed to parse Ollama response")
+                crate::read_capped_json_within(
+                    response,
+                    lifetime_total.saturating_sub(requested.elapsed()),
+                )
+                .await
+                .context("Failed to parse Ollama response")
             })
             .await?;
 
@@ -838,21 +851,29 @@ impl LlmClient for Qwen3Ollama {
 
         tracing::debug!("Sending streaming request to Ollama: {}", self.model);
 
-        let response = crate::send_for_headers(idle, client.post(&url).json(&body).send())
-            .await
-            .context("Failed to send streaming request to Ollama")?;
+        let response = crate::send_headers_for_call(
+            idle,
+            lifetime_total.saturating_sub(requested.elapsed()),
+            client.post(&url).json(&body).send(),
+        )
+        .await
+        .context("Failed to send streaming request to Ollama")?;
 
         if !response.status().is_success() {
             anyhow::bail!("Ollama streaming returned error: {}", response.status());
         }
 
-        // Ollama streams NDJSON. Each read waits only the time still left.
-        // One error, or done:true, ends the stream.
+        // Ollama streams NDJSON. The header wait used the time still left
+        // in the 300s lifetime. Silence on the body stops after one idle
+        // period. A non-empty chunk starts a new gap. An empty chunk does
+        // not. One error, or done:true, ends the stream.
         let overall = idle.saturating_mul(2);
+        let lifetime = lifetime_total.saturating_sub(requested.elapsed());
         let text_stream = crate::scan_model_ndjson(
             Box::pin(response.bytes_stream()),
             idle,
             overall,
+            lifetime,
             qwen_ndjson_line,
         );
 
