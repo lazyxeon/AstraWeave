@@ -40,9 +40,10 @@ fn bincode_refuses_a_32_mib_protocol_error_prefix() {
     assert_limit_exceeded(err);
 }
 
-/// The length prefix claims 8 bytes, and each payload byte claims 1 more.
-/// This fixture asks for 4_194_297 payload bytes. The decoder fills 4,194,296
-/// of them and then returns `LimitExceeded`. The capacity is 4,194,304.
+/// The decoder claims 8 bytes for the length prefix. The wire prefix is 5
+/// bytes. Each payload byte claims 1 more. This fixture asks for 4_194_297
+/// payload bytes. The decoder fills 4,194,296 of them and then returns
+/// `LimitExceeded`. The capacity is 4,194,304.
 /// The bytes are present, so this is the cap and not a short read.
 #[test]
 fn bincode_refuses_a_vec_longer_than_the_cap() {

@@ -446,21 +446,21 @@ Not opened by this change. Label `deferred-failure`. Owner is `@lazyxeon` (repos
 
 | ID | Title to open | Owner | Plan | Already tracked? |
 |---|---|---|---|---|
-| SEC-SAVE-1 | Cap `.awsv` declared length and LZ4 output | `@lazyxeon` | Reject `data_len` and the LZ4 `u32` before allocation. Schema stays 2. Turn `poc_awsv_rejects_oversized_declared_payload` green. | No |
-| SEC-SAVE-2 | Cap `combat_vitals` record count at 4_096 | `@lazyxeon` | Reject in `decode_vitals` after the stride check. Raise the constant only if a real fixture is larger. Turn `poc_vitals_rejects_more_than_4096_records` green. | No |
+| SEC-SAVE-1 | Cap `.awsv` declared length and LZ4 output | `@lazyxeon` | Reject `data_len` and the LZ4 `u32` before allocation. Schema stays 2. Turn `poc_awsv_rejects_oversized_declared_payload` green. | Yes. The proof is green. |
+| SEC-SAVE-2 | Cap `combat_vitals` record count at 4_096 | `@lazyxeon` | Reject in `decode_vitals` after the stride check. Raise the constant only if a real fixture is larger. Turn `poc_vitals_rejects_more_than_4096_records` green. | Yes. The proof is green. |
 | SEC-SAVE-3 | Cap scar-field cells on PR #205 | `@lazyxeon` | Cap `wire.cells` in `from_postcard` on the greybox branch. Do not copy the parser to `main`. | No |
 | SEC-MOD-1 | Script path read and raw host pointers | `@lazyxeon` | On #214, keep fuel and `timeout_ms = 0`. Stop the old `script_system` from reading `script_path`. Leave `PhysicsProxy` off the mod tick. | S0-3 is the dormant allowlist; this row is the live scripting crate |
 | SEC-MOD-2 | `parse_template_toml` truncates ids with `as u16` | `@lazyxeon` | Range-check the `i64` before the cast, on the single branch that owns the function after #214/#252 rebase. | Yes. On main. `mod_queue.rs:231-234` rejects an id outside `u16` before the cast. |
-| SEC-MOD-4 | `ScriptLoader` accepts `..` | `@lazyxeon` | Reject via `safe_under` or `is_safe_relative`. Turn `poc_script_loader_rejects_parent_segments` green. | No |
+| SEC-MOD-4 | `ScriptLoader` accepts `..` | `@lazyxeon` | Reject via `safe_under` or `is_safe_relative`. Turn `poc_script_loader_rejects_parent_segments` green. | Yes. The proof is green. |
 | SEC-WEAVE-1 | Weave origin can overflow the milli conversion | `@lazyxeon` | Reject origins outside the island in `queue_weave`. Do not saturate. In-range replay bytes stay. | Yes. #295 is closed. GitHub linked it to #388 |
-| SEC-LLM-1 | Model client accepts a non-loopback URL | `@lazyxeon` | `is_loopback_http_url` plus `loopback_http_client` (`no_proxy`, loopback-only redirects, `localhost` pinned to `127.0.0.1`). `allowing_remote` keeps a remote URL on reqwest's default client. | No |
+| SEC-LLM-1 | Model client accepts a non-loopback URL | `@lazyxeon` | `is_loopback_http_url` plus `loopback_http_client` (`no_proxy`, loopback-only redirects, `localhost` pinned to `127.0.0.1`). `allowing_remote` keeps a remote URL on reqwest's default client. | Yes. The proof is green. |
 | SEC-LLM-2 | Quest and world-event JSON is an unbounded in-memory write | `@lazyxeon` | Keep both off the tick. When wiring, cap the model string at 64 KiB and do not eval `validation_script`. | No |
 | SEC-LLM-3 | Full prompts are logged; sanitizer prefixes `SAFE:` | `@lazyxeon` | Delete the prompt dump. Leave the sanitizer dormant or make it actually reject. Drop `openai.com` and `anthropic.com` from the default domain list. | S0-2 |
-| SEC-ASSET-1 | glTF and cell paths accept `..` | `@lazyxeon` | `safe_under` for URIs and `load_asset`. Turn both asset PoCs green. | No |
+| SEC-ASSET-1 | glTF and cell paths accept `..` | `@lazyxeon` | `safe_under` for URIs and `load_asset`. Turn both asset PoCs green. | Yes. The proof is green. |
 | SEC-ASSET-2 | Zip and image bombs have no tight budget | `@lazyxeon` | Uncompressed and entry caps on `unpack_zip` and persona zips. Explicit `image::Limits` after measuring CC0 pack sizes. | No |
 | SEC-NET-1 | Server default is `0.0.0.0` plus the published dev key | `@lazyxeon` | Loopback unless flagged. Refuse `dev_default` unless `--dev-key`. | Extends the 2025 plan's admin-port note |
 | SEC-NET-2 | In-engine server trusts the client | `@lazyxeon` | Authenticate, bind `actor_id`, 1 MiB message cap. Remove the `"dev"` print. | S0-1 |
-| SEC-NET-3 | `decode_msg` honors the attacker's LZ4 size | `@lazyxeon` | Same uncompressed cap as `aw-save`. Turn `poc_postcard_lz4_rejects_oversized_declared_output` green. | Yes. The proof is green. |
+| SEC-NET-3 | `decode_msg` honors the attacker's LZ4 size | `@lazyxeon` | The proof is green at 4 MiB. `aw-save`'s uncompressed cap stays 16 MiB. | Yes. The proof is green. |
 | SEC-SUPPLY-1 | Advisory and license `cargo deny` failures were warnings | `@lazyxeon` | `security-audit.yml` fails the job on bans, sources, advisories, and licenses. `unknown-git` is `deny`. `unknown-registry` is `warn`. #219 is closed. | #219 covered the openssl ban failure |
 | SEC-SUPPLY-2 | Secret scanning and push protection | `@lazyxeon` | Enabled on the repository. No code change. Do not refile. | Done |
 | — | `llm_dialogue.rs` was an orphan and named `thread_rng` | #331 on main | The module compiles. `recorded_line` is an unwired pure helper and does not draw. `generate_response` stays off the tick. #225 stays open. | [#225](https://github.com/lazyxeon/AstraWeave/issues/225) |
@@ -472,7 +472,7 @@ The six PoCs in this pull request no longer fail on purpose. They are the regres
 
 ## Proof-of-concept tests
 
-Run from the repo root. Each one is expected to fail until the matching cap exists.
+Run from the repo root. Each one is a regression test. The matching cap is on main.
 
 ```text
 cargo test -p aw-save --lib poc_awsv_rejects_oversized_declared_payload -- --nocapture
@@ -487,12 +487,12 @@ Observed on 2026-10-15:
 
 | Test | Failure |
 |---|---|
-| `poc_awsv_rejects_oversized_declared_payload` | `declared payload length was not rejected by a size cap: failed to fill whole buffer` |
-| `poc_vitals_rejects_more_than_4096_records` | `decoded 4097 vitals records with no record cap` |
+| `poc_awsv_rejects_oversized_declared_payload` | Historical. On 2026-10-15 this was `declared payload length was not rejected by a size cap: failed to fill whole buffer`. |
+| `poc_vitals_rejects_more_than_4096_records` | Historical. On 2026-10-15 this was `decoded 4097 vitals records with no record cap`. |
 | `poc_postcard_lz4_rejects_oversized_declared_output` | Historical. On 2026-10-15 this was `decode error: lz4: expected another byte, found none`. |
-| `poc_gltf_buffer_uri_rejects_parent_segments` | `Read uri ../secret.bin: No such file or directory (os error 2)` |
-| `poc_cell_asset_path_rejects_parent_segments` | `Failed to load mesh: .../../outside.bin: No such file or directory (os error 2)` |
-| `poc_script_loader_rejects_parent_segments` | `Failed to read script file: ../secret.rhai: No such file or directory (os error 2)` |
-| `poc_local_http_client_rejects_non_loopback_url` | `model client stored a non-loopback endpoint: https://api.openai.com` |
+| `poc_gltf_buffer_uri_rejects_parent_segments` | Historical. On 2026-10-15 this was `Read uri ../secret.bin: No such file or directory (os error 2)`. |
+| `poc_cell_asset_path_rejects_parent_segments` | Historical. On 2026-10-15 this was `Failed to load mesh: .../../outside.bin: No such file or directory (os error 2)`. |
+| `poc_script_loader_rejects_parent_segments` | Historical. On 2026-10-15 this was `Failed to read script file: ../secret.rhai: No such file or directory (os error 2)`. |
+| `poc_local_http_client_rejects_non_loopback_url` | Historical. On 2026-10-15 this was `model client stored a non-loopback endpoint: https://api.openai.com`. |
 
 No other test in those crates was run as a suite. Pre-existing red CI already tracked elsewhere (#218 audio, #220 clippy, #242 terrain goldens, #254 nextest, #219 cargo-deny) was not re-run and is not claimed fixed.
