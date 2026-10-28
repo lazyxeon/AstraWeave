@@ -1,6 +1,8 @@
 # CI bottlenecks, ranked
 
-Source: [pipeline_profile.md](pipeline_profile.md). Rank is by pull-request wall clock first, then runner time that feeds the queue, then main-only cost. Payoff is estimated from the measured p50, not from a change that has landed.
+Source: [pipeline_profile.md](pipeline_profile.md). Rank is by pull-request wall clock first, then runner time that feeds the queue, then main-only cost. Payoff is estimated from the measured p50, not from a change that had landed when the window closed.
+
+Two of those changes are on `main` now. #476 (`a94e6838`) installs `cargo-audit` 0.22.2, `cargo-deny` 0.20.2, and `cargo-cyclonedx` 0.5.9 in the Aravath supply-chain job from sha256-pinned musl builds. The 6.4 min figure in row 5 is the `cargo install` measurement. #478 (`a817c3a3`) gives nightly `terrain-bit-locks` `timeout-minutes: 45`. The current job list is [CI_ARCHITECTURE.md](../current/CI_ARCHITECTURE.md).
 
 PRs #439 and #466–#472 are the other CI agent's main-red fixes. Rows that name those PRs are not work for this series to edit.
 
@@ -34,7 +36,7 @@ Skipping a job with `on.paths` leaves a required check pending. A job-level `if`
 
 ## 5. Aravath supply-chain compiles tools that already have prebuilt binaries
 
-`Install audit tools` p50 6.4 min (n=38) is `cargo install` of audit 0.22.2, deny 0.20.2, and cyclonedx 0.5.9. `security-audit.yml` and `dependency-management.yml` already install audit and deny from pinned prebuilt tarballs with sha256 checks. The same versions are hardcoded in the Aravath job. The CycloneDX 0.5.9 release publishes `cargo-cyclonedx-x86_64-unknown-linux-musl.tar.xz`.
+`Install audit tools` p50 6.4 min (n=38) was `cargo install` of audit 0.22.2, deny 0.20.2, and cyclonedx 0.5.9. `security-audit.yml` and `dependency-management.yml` already installed audit and deny from pinned prebuilt tarballs with sha256 checks. The same versions were hardcoded in the Aravath job. #476 now installs all three with `.github/scripts/install-prebuilt-cargo-tool.sh`. The CycloneDX 0.5.9 release publishes `cargo-cyclonedx-x86_64-unknown-linux-musl.tar.xz`.
 
 The deny and audit invocations must stay. The SBOM and the network-client check must stay. Deleting the Aravath deny/audit steps because Security Audit also runs them would drop a required-looking job name (`cargo-audit, cargo-deny, SBOM`) onto a different workflow, and branch protection is not readable with this token (403 on branch protection). Speeding the install keeps the job name and the commands.
 
