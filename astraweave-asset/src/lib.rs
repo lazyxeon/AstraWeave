@@ -642,6 +642,48 @@ pub mod gltf_loader {
             let err = reject_short_glb_file(&path).expect_err("file header");
             assert_short_header(err);
         }
+
+        /// 22 bytes on disk, declared length 2_000_012. `Glb::from_reader`
+        /// would allocate 2_000_000 bytes and then hit EOF.
+        #[test]
+        fn oversized_declared_length_is_an_error() {
+            let mut bytes = b"glTF".to_vec();
+            bytes.extend_from_slice(&2u32.to_le_bytes());
+            bytes.extend_from_slice(&2_000_012u32.to_le_bytes());
+            bytes.extend_from_slice(&2u32.to_le_bytes());
+            bytes.extend_from_slice(b"JSON");
+            bytes.extend_from_slice(b"{}");
+            assert_eq!(bytes.len(), 22);
+            let err = load_first_mesh_and_material(&bytes)
+                .expect_err("oversized declared length must not allocate");
+            let msg = err.to_string();
+            assert!(msg.contains("exceeds the 22 bytes available"), "{msg}");
+
+            let dir = tempfile::tempdir().expect("tempdir");
+            let path = dir.path().join("over.glb");
+            std::fs::write(&path, &bytes).expect("write");
+            let err = reject_short_glb_file(&path).expect_err("file length");
+            let msg = err.to_string();
+            assert!(msg.contains("exceeds the 22 bytes available"), "{msg}");
+        }
+
+        /// Declared length equal to the file is the bytes `from_reader` may allocate.
+        #[test]
+        fn declared_length_matching_the_file_is_not_rejected() {
+            let mut bytes = b"glTF".to_vec();
+            bytes.extend_from_slice(&2u32.to_le_bytes());
+            let declared_at = bytes.len();
+            bytes.extend_from_slice(&0u32.to_le_bytes());
+            bytes.extend_from_slice(&4u32.to_le_bytes());
+            bytes.extend_from_slice(b"JSON");
+            bytes.extend_from_slice(b"{}  ");
+            let declared = bytes.len() as u32;
+            bytes[declared_at..declared_at + 4].copy_from_slice(&declared.to_le_bytes());
+            let dir = tempfile::tempdir().expect("tempdir");
+            let path = dir.path().join("fit.glb");
+            std::fs::write(&path, &bytes).expect("write");
+            reject_short_glb_file(&path).expect("declared length matches the file");
+        }
     }
 
     /// Extract extended PBR material properties from a glTF material.
@@ -732,26 +774,45 @@ pub mod gltf_loader {
     /// declared length is below 12. `Gltf::from_slice` calls that when the
     /// slice starts with `glTF`, including a GLB JSON chunk.
     /// `Glb::from_reader` (used by `Gltf::open` and `gltf::import`) subtracts
-    /// 12 as `u32`, so a declared length of 8 wraps to 4_294_967_292 and the
-    /// reader allocates that many bytes. Refuse the header before either call.
-    pub fn reject_short_glb_header(bytes: &[u8]) -> Result<()> {
+    /// 12 as `u32` and allocates that many bytes before `read_exact`. A
+    /// declared length below 12 wraps to about 4 GiB. A declared length above
+    /// the bytes on hand still allocates `declared - 12` and can return after
+    /// the short read. `available` is the container length, header included.
+    fn reject_declared_glb_length(bytes: &[u8], available: u64) -> Result<()> {
         if bytes.len() >= 12 && bytes.starts_with(b"glTF") {
             let declared = u32::from_le_bytes([bytes[8], bytes[9], bytes[10], bytes[11]]);
             if (declared as usize) < 12 {
                 bail!("GLB declared length {declared} is shorter than the 12-byte header");
             }
+            if u64::from(declared) > available {
+                bail!("GLB declared length {declared} exceeds the {available} bytes available");
+            }
         }
         Ok(())
     }
 
-    /// Same check as [`reject_short_glb_header`] on the first 12 bytes of `path`.
+    /// Refuse a `glTF` header whose declared length is below 12 or past `bytes`.
+    pub fn reject_short_glb_header(bytes: &[u8]) -> Result<()> {
+        reject_declared_glb_length(bytes, bytes.len() as u64)
+    }
+
+    /// Same check as [`reject_short_glb_header`], with the file length as the
+    /// hint. `Glb::from_reader` would allocate `declared - 12` before it
+    /// learns the file is shorter, so this fails closed first.
     pub fn reject_short_glb_file(path: &std::path::Path) -> Result<()> {
         let mut file =
             std::fs::File::open(path).with_context(|| format!("open {}", path.display()))?;
+        let meta = file
+            .metadata()
+            .with_context(|| format!("stat {}", path.display()))?;
+        if !meta.is_file() {
+            bail!("GLB {} is not a regular file", path.display());
+        }
+        let available = meta.len();
         let mut header = [0u8; 12];
         let n = std::io::Read::read(&mut file, &mut header)
             .with_context(|| format!("read {}", path.display()))?;
-        reject_short_glb_header(&header[..n])
+        reject_declared_glb_length(&header[..n], available)
     }
 
     fn read_glb(bytes: &[u8]) -> Result<gltf::binary::Glb<'_>> {
