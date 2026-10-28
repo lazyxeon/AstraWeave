@@ -96,9 +96,48 @@ jobs:
       
       - name: Check for Regressions
         id: regression-check
+        # benchmark.yml writes benchmark_results/benchmarks.json. This job
+        # writes target/benchmark-data/history.jsonl. Run 39532631733 logged
+        # "Benchmark results not found" and continue-on-error hid the exit.
         run: |
-          pwsh -File scripts/check_benchmark_thresholds.ps1 -ShowDetails
-        continue-on-error: true
+          set -euo pipefail
+          hist="target/benchmark-data/history.jsonl"
+          out="target/benchmark-data/threshold-input.json"
+          if [ ! -s "$hist" ]; then
+            echo "Benchmark results not found: $hist"
+            exit 1
+          fi
+          python3 - "$hist" "$out" <<'PY'
+          import json
+          import sys
+
+          hist, out = sys.argv[1], sys.argv[2]
+          latest = {}
+          with open(hist, encoding="utf-8") as handle:
+              for line in handle:
+                  line = line.strip()
+                  if not line:
+                      continue
+                  row = json.loads(line)
+                  name = row.get("benchmark_name")
+                  if not name or "value" not in row:
+                      continue
+                  latest[name] = row
+          payload = [
+              {
+                  "name": row["benchmark_name"],
+                  "value": row["value"],
+                  "unit": row.get("unit") or "ns",
+              }
+              for row in latest.values()
+          ]
+          if not payload:
+              sys.exit("Benchmark results not found: " + hist)
+          with open(out, "w", encoding="utf-8") as handle:
+              json.dump(payload, handle)
+          print(f"Checking {len(payload)} benchmark result(s) from {hist}")
+          PY
+          pwsh -File scripts/check_benchmark_thresholds.ps1 -BenchmarkJsonPath "$out" -ShowDetails -Strict
       
       - name: Prepare Dashboard Assets
         run: |
@@ -192,7 +231,7 @@ jobs:
           commit_message: 'Update benchmark dashboard: ${{ github.sha }}'
       
       - name: Create Regression Issue (if needed)
-        if: steps.regression-check.outcome == 'failure'
+        if: failure() && steps.regression-check.outcome == 'failure'
         uses: actions/github-script@v8
         with:
           script: |
