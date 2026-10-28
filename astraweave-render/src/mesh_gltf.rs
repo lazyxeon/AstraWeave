@@ -182,6 +182,23 @@ mod jail_tests {
         let msg = err.to_string();
         assert!(msg.contains("shorter than the 12-byte header"), "{msg}");
     }
+
+    #[test]
+    fn oversized_declared_length_does_not_reach_from_reader() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("over.glb");
+        let mut bytes = b"glTF".to_vec();
+        bytes.extend_from_slice(&2u32.to_le_bytes());
+        bytes.extend_from_slice(&2_000_012u32.to_le_bytes());
+        bytes.extend_from_slice(&2u32.to_le_bytes());
+        bytes.extend_from_slice(b"JSON");
+        bytes.extend_from_slice(b"{}");
+        assert_eq!(bytes.len(), 22);
+        std::fs::write(&path, &bytes).expect("write");
+        let err = load_gltf(&path, &GltfOptions::default()).expect_err("oversized header");
+        let msg = err.to_string();
+        assert!(msg.contains("exceeds the 22 bytes available"), "{msg}");
+    }
 }
 
 #[cfg(feature = "gltf-assets")]

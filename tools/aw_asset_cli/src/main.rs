@@ -726,4 +726,23 @@ mod gltf_jail_tests {
         assert!(msg.contains("shorter than the 12-byte header"), "{msg}");
         let _ = fs::remove_dir_all(&dir);
     }
+
+    #[test]
+    fn cli_oversized_declared_length_is_rejected() {
+        let dir = std::env::temp_dir().join(format!("aw-gltf-over-{}", std::process::id()));
+        fs::create_dir_all(&dir).expect("tempdir");
+        let src = dir.join("over.glb");
+        let mut bytes = b"glTF".to_vec();
+        bytes.extend_from_slice(&2u32.to_le_bytes());
+        bytes.extend_from_slice(&2_000_012u32.to_le_bytes());
+        bytes.extend_from_slice(&2u32.to_le_bytes());
+        bytes.extend_from_slice(b"JSON");
+        bytes.extend_from_slice(b"{}");
+        assert_eq!(bytes.len(), 22);
+        fs::write(&src, &bytes).expect("write");
+        let err = process_model(&src, dir.to_str().unwrap(), false).expect_err("oversized header");
+        let msg = err.to_string();
+        assert!(msg.contains("exceeds the 22 bytes available"), "{msg}");
+        let _ = fs::remove_dir_all(&dir);
+    }
 }

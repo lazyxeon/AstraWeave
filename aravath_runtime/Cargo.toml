@@ -13,6 +13,7 @@ glam = { workspace = true, features = ["libm"] }
 libm = { version = "0.2", default-features = false }
 winit.workspace = true
 pollster.workspace = true
+astraweave-asset = { path = "../astraweave-asset" }
 astraweave-causality = { workspace = true }
 astraweave-destruction = { workspace = true }
 astraweave-math = { workspace = true }
