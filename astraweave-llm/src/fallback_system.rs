@@ -388,11 +388,23 @@ impl FallbackOrchestrator {
             _ => unreachable!("try_batch_llm_tier called with non-LLM tier"),
         };
 
-        // Execute batch
-        let batch_response = executor
-            .execute_batch(client, &tool_list)
-            .await
-            .context("Batch LLM execution failed")?;
+        // The schema uses the same registry the single-agent tier would send.
+        let schema_reg = match tier {
+            FallbackTier::FullLlm => reg.clone(),
+            FallbackTier::SimplifiedLlm => self.create_simplified_registry(reg),
+            _ => unreachable!("try_batch_llm_tier called with non-LLM tier"),
+        };
+        let format = crate::plan_format::batch_format_schema(&schema_reg, agents.len());
+        let batch_response = match &format {
+            Some(schema) => executor
+                .execute_batch_formatted(client, &tool_list, Some(schema))
+                .await
+                .context("Batch LLM execution failed")?,
+            None => executor
+                .execute_batch(client, &tool_list)
+                .await
+                .context("Batch LLM execution failed")?,
+        };
 
         let duration_ms = start.elapsed().as_millis() as u64;
 

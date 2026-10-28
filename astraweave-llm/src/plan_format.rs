@@ -13,8 +13,9 @@ static PLAN_FORMAT_CACHE: OnceLock<DashMap<String, Value>> = OnceLock::new();
 
 /// JSON Schema for a `PlanIntent` whose `act` values are `reg`'s tool names.
 ///
-/// Cached by a stable key of tool names and argument types, in registry order.
-/// Argument maps are `BTreeMap`s, so the key does not depend on hash order.
+/// Cached by a length-prefixed key of tool names and argument types, in
+/// registry order. Argument maps are `BTreeMap`s, so the key does not depend
+/// on hash order. The length prefix keeps `A{}|B` distinct from tools `A` and `B`.
 pub fn plan_format_schema(reg: &ToolRegistry) -> Value {
     let key = registry_cache_key(reg);
     let cache = PLAN_FORMAT_CACHE.get_or_init(DashMap::new);
@@ -28,8 +29,8 @@ pub fn plan_format_schema(reg: &ToolRegistry) -> Value {
 
 /// Schema to send as Ollama `format`, or `None` when the registry names no tool.
 ///
-/// An empty `steps` array is a successful parse. Forcing that shape would skip
-/// the heuristic tier, so a registry with no named tools leaves `format` unset.
+/// A named registry requires `steps.minItems` of 1. A registry with no named
+/// tools leaves `format` unset, so the request does not force an empty plan.
 pub fn plan_format_for_request(reg: &ToolRegistry) -> Option<Value> {
     if reg.tools.iter().any(|tool| !tool.name.is_empty()) {
         Some(plan_format_schema(reg))
@@ -58,13 +59,67 @@ pub fn take_schema_format(body: &mut Value) -> bool {
     }
 }
 
-/// `true` when a 400 body is about the schema grammar rather than the model.
+/// `true` when Ollama rejected the JSON Schema in `format`.
+///
+/// A 400 that merely mentions the word format, such as a model-file error,
+/// stays a hard failure. A match is logged before the caller retries once
+/// without the schema object.
 pub fn schema_format_rejected(status: u16, body: &str) -> bool {
     if status != 400 {
         return false;
     }
     let lower = body.to_ascii_lowercase();
-    lower.contains("format") || lower.contains("schema") || lower.contains("grammar")
+    let rejected = lower.contains("invalid format")
+        || lower.contains("unsupported format")
+        || lower.contains("unknown format")
+        || lower.contains("format not supported")
+        || lower.contains("does not support format")
+        || lower.contains("failed to parse format")
+        || lower.contains("invalid json schema")
+        || lower.contains("grammar compilation");
+    if rejected {
+        let shown = if body.len() <= 180 {
+            body
+        } else {
+            let mut end = 180;
+            while end > 0 && !body.is_char_boundary(end) {
+                end -= 1;
+            }
+            &body[..end]
+        };
+        tracing::warn!(
+            status,
+            body = shown,
+            "Ollama rejected the JSON schema format; retrying without it"
+        );
+    }
+    rejected
+}
+
+/// Batch schema: exactly `count` plans, each using `reg`'s tools.
+///
+/// `None` when `count` is 0 or the registry names no tool.
+pub fn batch_format_schema(reg: &ToolRegistry, count: usize) -> Option<Value> {
+    if count == 0 {
+        return None;
+    }
+    let plan = plan_format_for_request(reg)?;
+    let steps = plan.get("properties")?.get("steps")?.clone();
+    Some(json!({
+        "type": "array",
+        "minItems": count,
+        "maxItems": count,
+        "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["agent_id", "plan_id", "steps"],
+            "properties": {
+                "agent_id": { "type": "integer" },
+                "plan_id": { "type": "string" },
+                "steps": steps
+            }
+        }
+    }))
 }
 
 /// Set `format` to `schema`, or to `"json"` when `force_json` and there is no schema.
@@ -76,19 +131,21 @@ pub fn apply_chat_format(body: &mut Value, schema: Option<&Value>, force_json: b
     }
 }
 
+fn push_prefixed(key: &mut String, value: &str) {
+    key.push_str(&value.len().to_string());
+    key.push(':');
+    key.push_str(value);
+}
+
 fn registry_cache_key(reg: &ToolRegistry) -> String {
     let mut key = String::new();
     for tool in &reg.tools {
-        key.push_str(&tool.name);
-        key.push('{');
+        push_prefixed(&mut key, &tool.name);
         for (arg, ty) in &tool.args {
-            key.push_str(arg);
-            key.push(':');
-            key.push_str(ty);
-            key.push(',');
+            push_prefixed(&mut key, arg);
+            push_prefixed(&mut key, ty);
         }
-        key.push('}');
-        key.push('|');
+        push_prefixed(&mut key, "\n");
     }
     key
 }
@@ -109,6 +166,7 @@ fn build_plan_format_schema(reg: &ToolRegistry) -> Value {
     } else {
         json!({
             "type": "array",
+            "minItems": 1,
             "items": { "oneOf": branches }
         })
     };
@@ -138,12 +196,43 @@ fn tool_branch(tool: &ToolSpec) -> Value {
             required.push(name.clone());
         }
     }
+    match_parser_fields(&tool.name, &mut properties, &mut required);
     json!({
         "type": "object",
         "additionalProperties": false,
         "required": required,
         "properties": Value::Object(properties)
     })
+}
+
+/// Fields the plan parser accepts that a short registry entry omits or misspells.
+///
+/// `MovementSpeed` and `StrafeDirection` deserialize as lowercase. `MoveTo.speed`
+/// is optional (`#[serde(default)]`). `Strafe` and `Dodge` require `direction`.
+fn match_parser_fields(
+    name: &str,
+    properties: &mut serde_json::Map<String, Value>,
+    required: &mut Vec<String>,
+) {
+    match name {
+        "MoveTo" => {
+            properties.insert(
+                "speed".to_string(),
+                json!({ "type": "string", "enum": ["walk", "run", "sprint"] }),
+            );
+            required.retain(|field| field != "speed");
+        }
+        "Strafe" | "Dodge" => {
+            properties.insert(
+                "direction".to_string(),
+                json!({ "type": "string", "enum": ["left", "right"] }),
+            );
+            if !required.iter().any(|field| field == "direction") {
+                required.push("direction".to_string());
+            }
+        }
+        _ => {}
+    }
 }
 
 fn is_optional_type(ty: &str) -> bool {
@@ -163,10 +252,11 @@ fn arg_json_schema(ty: &str) -> Value {
         .strip_prefix("enum[")
         .and_then(|rest| rest.strip_suffix(']'))
     {
-        let variants: Vec<&str> = inner
+        let variants: Vec<String> = inner
             .split(',')
             .map(str::trim)
             .filter(|part| !part.is_empty())
+            .map(str::to_ascii_lowercase)
             .collect();
         return json!({ "type": "string", "enum": variants });
     }
@@ -211,6 +301,43 @@ mod tests {
         }
     }
 
+    fn example_value(schema: &Value) -> Value {
+        if let Some(branches) = schema.get("oneOf").and_then(Value::as_array) {
+            return branches
+                .first()
+                .map(example_value)
+                .unwrap_or_else(|| json!({}));
+        }
+        if let Some(variants) = schema.get("enum").and_then(Value::as_array) {
+            return variants.first().cloned().unwrap_or_else(|| json!(""));
+        }
+        match schema.get("type").and_then(Value::as_str) {
+            Some("object") => {
+                let mut object = serde_json::Map::new();
+                if let Some(properties) = schema.get("properties").and_then(Value::as_object) {
+                    for (name, property) in properties {
+                        object.insert(name.clone(), example_value(property));
+                    }
+                }
+                Value::Object(object)
+            }
+            Some("array") => {
+                if schema.get("maxItems") == Some(&json!(0)) {
+                    return json!([]);
+                }
+                let item = schema
+                    .get("items")
+                    .map(example_value)
+                    .unwrap_or_else(|| json!({}));
+                json!([item])
+            }
+            Some("integer") => json!(1),
+            Some("number") => json!(1.0),
+            Some("boolean") => json!(true),
+            _ => json!("x"),
+        }
+    }
+
     fn registry(tools: Vec<ToolSpec>) -> ToolRegistry {
         ToolRegistry {
             tools,
@@ -234,6 +361,7 @@ mod tests {
         let schema = plan_format_schema(&reg);
         let again = plan_format_schema(&reg);
         assert_eq!(schema, again);
+        assert_eq!(schema["properties"]["steps"]["minItems"], 1);
 
         let branches = schema["properties"]["steps"]["items"]["oneOf"]
             .as_array()
@@ -295,8 +423,69 @@ mod tests {
     #[test]
     fn schema_rejection_detects_a_format_400() {
         assert!(schema_format_rejected(400, "invalid format schema"));
+        assert!(schema_format_rejected(
+            400,
+            "unsupported format: json schema"
+        ));
         assert!(!schema_format_rejected(400, "model not found"));
-        assert!(!schema_format_rejected(500, "format exploded"));
+        assert!(!schema_format_rejected(
+            400,
+            "the model file format is gguf"
+        ));
+        assert!(!schema_format_rejected(500, "invalid format"));
+    }
+
+    #[test]
+    fn cache_key_does_not_merge_distinct_tool_lists() {
+        let one = registry(vec![tool("A{}|B", &[])]);
+        let two = registry(vec![tool("A", &[]), tool("B", &[])]);
+        let first = plan_format_schema(&one);
+        let second = plan_format_schema(&two);
+        assert_ne!(first, second);
+        assert_eq!(plan_format_schema(&one), first);
+        assert_eq!(plan_format_schema(&two), second);
+    }
+
+    #[test]
+    fn generated_schema_instances_parse() {
+        let reg = registry(vec![
+            tool("MoveTo", &[("x", "i32"), ("y", "i32")]),
+            tool(
+                "Strafe",
+                &[("target_id", "Entity"), ("direction", "enum[Left,Right]")],
+            ),
+        ]);
+        let schema = plan_format_schema(&reg);
+        let branches = schema["properties"]["steps"]["items"]["oneOf"]
+            .as_array()
+            .expect("oneOf");
+        let strafe = branches
+            .iter()
+            .find(|branch| branch["properties"]["act"]["enum"][0] == "Strafe")
+            .expect("strafe");
+        assert_eq!(
+            strafe["properties"]["direction"]["enum"],
+            json!(["left", "right"])
+        );
+        let move_to = branches
+            .iter()
+            .find(|branch| branch["properties"]["act"]["enum"][0] == "MoveTo")
+            .expect("move");
+        assert_eq!(
+            move_to["properties"]["speed"]["enum"],
+            json!(["walk", "run", "sprint"])
+        );
+        let required = move_to["required"].as_array().expect("required");
+        assert!(required.iter().all(|field| field != "speed"));
+
+        let steps: Vec<Value> = branches.iter().map(example_value).collect();
+        let plan = json!({ "plan_id": "generated", "steps": steps });
+        let text = serde_json::to_string(&plan).expect("plan json");
+        let parsed = crate::parse_llm_plan(&text, &reg).expect("schema instance parses");
+        assert_eq!(parsed.steps.len(), 2);
+        assert!(text.contains("\"left\""));
+        assert!(text.contains("\"walk\""));
+        assert!(!text.contains("\"Left\""));
     }
 
     #[test]

@@ -338,6 +338,17 @@ impl BatchInferenceExecutor {
         llm_client: &dyn LlmClient,
         tool_list: &str,
     ) -> Result<BatchResponse> {
+        self.execute_batch_formatted(llm_client, tool_list, None)
+            .await
+    }
+
+    /// Same as [`execute_batch`](Self::execute_batch), with an Ollama `format` schema.
+    pub async fn execute_batch_formatted(
+        &mut self,
+        llm_client: &dyn LlmClient,
+        tool_list: &str,
+        format: Option<&serde_json::Value>,
+    ) -> Result<BatchResponse> {
         let batch = self.flush_batch().context("No batch to execute")?;
 
         // Build batch prompt
@@ -348,6 +359,15 @@ impl BatchInferenceExecutor {
             batch.size(),
             prompt.len()
         );
+
+        if let Some(schema) = format {
+            let accumulated = llm_client
+                .complete_with_format(&prompt, schema)
+                .await
+                .context("Failed to complete formatted batch request")?;
+            return BatchResponseParser::parse_batch_response(&accumulated, &batch)
+                .context("Failed to parse batch response");
+        }
 
         // Stream LLM response and accumulate chunks
         let mut stream = llm_client

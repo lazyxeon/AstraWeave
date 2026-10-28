@@ -1790,9 +1790,52 @@ impl OllamaChatClient {
                         .with_context(|| {
                             format!("Ollama /api/generate status {s} body read failed")
                         })?;
-                        return Err(anyhow::anyhow!(
-                            "Ollama /api/generate returned error status {s}: {b}"
-                        ));
+                        if send_schema.is_some()
+                            && plan_format::schema_format_rejected(s.as_u16(), &b)
+                        {
+                            let _ = send_schema.take();
+                            if self.force_format_json {
+                                stream_body["format"] = serde_json::json!("json");
+                            } else if let Some(map) = stream_body.as_object_mut() {
+                                map.remove("format");
+                            }
+                            let retry = send_headers_for_call(
+                                idle,
+                                lifetime.saturating_sub(start.elapsed()),
+                                client
+                                    .post(&gen_url)
+                                    .header("Accept", "application/json")
+                                    .header("Content-Type", "application/json")
+                                    .json(&stream_body)
+                                    .send(),
+                            )
+                            .await
+                            .context(
+                                "Failed to retry Ollama /api/generate without the schema format",
+                            )?;
+                            if retry.status().is_success() {
+                                Some(retry)
+                            } else {
+                                let retry_status = retry.status();
+                                let retry_txt = read_capped_text_within(
+                                    retry,
+                                    lifetime.saturating_sub(start.elapsed()),
+                                )
+                                .await
+                                .with_context(|| {
+                                    format!(
+                                        "Ollama /api/generate status {retry_status} body read failed"
+                                    )
+                                })?;
+                                return Err(anyhow::anyhow!(
+                                    "Ollama /api/generate returned error status {retry_status}: {retry_txt}"
+                                ));
+                            }
+                        } else {
+                            return Err(anyhow::anyhow!(
+                                "Ollama /api/generate returned error status {s}: {b}"
+                            ));
+                        }
                     }
                 } else {
                     // The error body shares `start`. Stop at the time
@@ -1833,9 +1876,7 @@ impl OllamaChatClient {
                             )
                             .await
                             .with_context(|| {
-                                format!(
-                                    "Ollama chat API status {retry_status} body read failed"
-                                )
+                                format!("Ollama chat API status {retry_status} body read failed")
                             })?;
                             return Err(anyhow::anyhow!(
                                 "Ollama chat API returned error status {retry_status}: {retry_txt}"
@@ -2650,8 +2691,8 @@ pub fn sanitize_plan(
             // Check ally exists (simplified: allow any ally for now, or validate against known ally IDs)
             reg.tools.iter().any(|t| t.name == "Revive")
         }
-        // Phase 7: Accept all new tool types (validation happens in execution layer)
-        _ => true,
+        // Unknown actions stay out unless the registry names them.
+        _ => reg.tools.iter().any(|t| t.name == step.action_name()),
     });
     Ok(())
 }
@@ -4113,7 +4154,7 @@ Done!"#;
     #[test]
     fn test_sanitize_plan_allows_other_steps() {
         let snap = create_test_world_snapshot();
-        let reg = create_test_registry();
+        let mut reg = create_test_registry();
 
         let mut plan = PlanIntent {
             plan_id: "other-test".to_string(),
@@ -4125,7 +4166,23 @@ Done!"#;
         };
 
         sanitize_plan(&mut plan, &snap, &reg).unwrap();
-        // All these steps should be retained (matched by _ => true)
+        assert!(
+            plan.steps.is_empty(),
+            "Reload, Scan, and Wait are not in this registry"
+        );
+
+        for name in ["Reload", "Scan", "Wait"] {
+            reg.tools.push(ToolSpec {
+                name: name.into(),
+                args: std::collections::BTreeMap::new(),
+            });
+        }
+        plan.steps = vec![
+            ActionStep::Reload,
+            ActionStep::Scan { radius: 10.0 },
+            ActionStep::Wait { duration: 1.0 },
+        ];
+        sanitize_plan(&mut plan, &snap, &reg).unwrap();
         assert_eq!(plan.steps.len(), 3);
     }
 
