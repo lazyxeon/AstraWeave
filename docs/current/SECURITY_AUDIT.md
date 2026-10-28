@@ -33,7 +33,7 @@ These are in the caps pull request. Valid fixtures still decode to the same byte
 
 The compressed save cap is 4 MiB, not the 16 MiB sketch below, because the proof claims 8 MiB and must fail closed. The LZ4 message cap is 4 MiB for the same reason (the proof claims 16 MiB).
 
-Nightly fuzzing is `.github/workflows/fuzz-nightly.yml`. It is not on pull requests. Each target runs for 120 seconds: `fuzz_awsv`, `fuzz_vitals`, `fuzz_gltf_json`, `fuzz_cell_ron`, `fuzz_decode_msg`.
+Nightly fuzzing is `.github/workflows/fuzz-nightly.yml`. It is not on pull requests. Every cargo-fuzz `[[bin]]` runs for 120 seconds. Each target's corpus is restored and saved across nights. Crash files under that target's `artifacts/` directory are uploaded.
 
 ## Findings, ranked
 

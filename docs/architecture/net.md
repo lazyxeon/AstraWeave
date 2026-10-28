@@ -9,8 +9,8 @@ lifecycle_status: active
 integration_status: example_only
 summary: "FALSE-PRODUCTION-READY (R.0.B 2026-06-30): the prior active/wired front-matter was example-only reality — astraweave-net::GameServer/Msg/Snapshot has no non-example engine/tool caller (ex-only). Real multiplayer wire-up is DEFERRED to v1.1 (a conscious deferral, not a drop). net.md §1"
 owns: [astraweave-net]
-doc_version: "1.6"
-last_verified_commit: a2474c5b7
+doc_version: "1.7"
+last_verified_commit: 8d76a0b2
 ---
 
 # Architecture Trace: Net (Snapshot-Based Game Server)
@@ -27,11 +27,11 @@ last_verified_commit: a2474c5b7
 |---|---|
 | **System name** | Net (snapshot-based game server) |
 | **Primary crates** | `astraweave-net` (sole crate in this subsystem) |
-| **Document version** | 1.6 |
-| **Last verified against commit** | `a2474c5b7` |
-| **Last verified date** | 2026-05-12 |
+| **Document version** | 1.7 |
+| **Last verified against commit** | `8d76a0b2` |
+| **Last verified date** | 2026-10-28 |
 | **Status** | Active |
-| **Revision history** | 1.6 (2026-10-16): Workspace `tokio` does not enable `net`. This crate opts in with `features = ["net"]`.<br><br>1.5 (2026-10-15): The `tls` feature parses PEM with `rustls-pki-types`. `rustls-pemfile` is not a dependency.<br><br>1.4 (2026-10-15): `GameServer` accepts WebSocket connections with `engine_ws_config` (`max_message_size` and `max_frame_size` 1 MiB). `astraweave-ipc` uses the same 1 MiB cap on accept and connect. 1.3 (2026-10-15): Hello requires a real token outside debug/test, and input uses the server player id. 1.2 (2026-05-12): Deep investigation pass. **Major new finding**: the aspirational `docs/src/core-systems/networking.md` doc claims AstraWeave uses **QUIC (via Quinn)** for transport — but the actual implementation uses **WebSocket (tokio-tungstenite over TCP)**. This is an architectural-class mismatch beyond the type-name mismatches already documented; added to §6. Enriched §11 Q2, Q6, Q8, Q9 with concrete factual context (test counts, call-site counts, exact line refs). Q6 (replay log) factually closed at the code level: 2 push sites (`lib.rs:837, 868`), 0 remove sites anywhere — confirmed truly unbounded. Q9 (webpki-roots) clarified as **client-side-only** — `TLS_SERVER_ROOTS` is imported only at `tls.rs:33, 119`, both inside `TlsClientConfig::default_connector`. Q8 (Box<dyn Interest>) quantified — 2 allocation sites per broadcast per connection. Added note that `tls.rs` exports **5 public methods** (not the 2 the §1 summary highlights): `TlsServerConfig::{from_pem_files, acceptor}`, `TlsClientConfig::{default_connector, with_custom_ca, insecure_connector}`.<br><br>1.1 (2026-05-12): Verification pass. **Corrected §4 / Appendix B**: the prior `[INFERRED]` claim of "no aspirational doc tree" was wrong — `docs/src/core-systems/networking.md` exists and references 7+ nonexistent submodules (`replication`, `state`, `delta`, `serialization`, `prediction`, plus types `Server`/`ServerConfig`/`Client`/`ClientConfig`/`ClientEvent`). Same `28bc94f21` "Create comprehensive bespoke wiki" sweep that created the aspirational audio/input docs. Added new §6 row. Resolved §10 sanitizer `[INFERRED]` — `astraweave-net` is explicitly listed in the `P1_CRATES` array at `sanitizers.yml:205`. Corrected Appendix B creation date: first commit was 2025-09-04 (`ba52548b3`), not 2025-09-05. |
+| **Revision history** | 1.7 (2026-10-28): The four cargo-fuzz targets run from `.github/workflows/fuzz-nightly.yml` for 120 seconds each. Corpora are cached. Crash artifacts are uploaded. Pull-request CI does not run them. `RadiusTeamInterest` measures distance in `i128`. `diff_snapshots` keeps the last copy of a repeated id.<br><br>1.6 (2026-10-16): Workspace `tokio` does not enable `net`. This crate opts in with `features = ["net"]`.<br><br>1.5 (2026-10-15): The `tls` feature parses PEM with `rustls-pki-types`. `rustls-pemfile` is not a dependency.<br><br>1.4 (2026-10-15): `GameServer` accepts WebSocket connections with `engine_ws_config` (`max_message_size` and `max_frame_size` 1 MiB). `astraweave-ipc` uses the same 1 MiB cap on accept and connect. 1.3 (2026-10-15): Hello requires a real token outside debug/test, and input uses the server player id. 1.2 (2026-05-12): Deep investigation pass. **Major new finding**: the aspirational `docs/src/core-systems/networking.md` doc claims AstraWeave uses **QUIC (via Quinn)** for transport — but the actual implementation uses **WebSocket (tokio-tungstenite over TCP)**. This is an architectural-class mismatch beyond the type-name mismatches already documented; added to §6. Enriched §11 Q2, Q6, Q8, Q9 with concrete factual context (test counts, call-site counts, exact line refs). Q6 (replay log) factually closed at the code level: 2 push sites (`lib.rs:837, 868`), 0 remove sites anywhere — confirmed truly unbounded. Q9 (webpki-roots) clarified as **client-side-only** — `TLS_SERVER_ROOTS` is imported only at `tls.rs:33, 119`, both inside `TlsClientConfig::default_connector`. Q8 (Box<dyn Interest>) quantified — 2 allocation sites per broadcast per connection. Added note that `tls.rs` exports **5 public methods** (not the 2 the §1 summary highlights): `TlsServerConfig::{from_pem_files, acceptor}`, `TlsClientConfig::{default_connector, with_custom_ca, insecure_connector}`.<br><br>1.1 (2026-05-12): Verification pass. **Corrected §4 / Appendix B**: the prior `[INFERRED]` claim of "no aspirational doc tree" was wrong — `docs/src/core-systems/networking.md` exists and references 7+ nonexistent submodules (`replication`, `state`, `delta`, `serialization`, `prediction`, plus types `Server`/`ServerConfig`/`Client`/`ClientConfig`/`ClientEvent`). Same `28bc94f21` "Create comprehensive bespoke wiki" sweep that created the aspirational audio/input docs. Added new §6 row. Resolved §10 sanitizer `[INFERRED]` — `astraweave-net` is explicitly listed in the `P1_CRATES` array at `sanitizers.yml:205`. Corrected Appendix B creation date: first commit was 2025-09-04 (`ba52548b3`), not 2025-09-05. |
 | **Owner notes** | Self-contained snapshot-server library. Three direct production consumers (`examples/coop_server`, `examples/coop_client`, `examples/net_headless_sim`). Optional `tls` feature for secure WebSocket. Dedicated `.github/workflows/net-tests.yml` workflow. Not an ECS-Plugin — `astraweave-net` predates and operates parallel to the ECS-Plugin networking in `astraweave-net-ecs`. |
 
 ---
@@ -182,17 +182,17 @@ Optional TLS path (feature = "tls")
 **Outputs:** `Snapshot { version: SNAPSHOT_VERSION (=1), tick, t: world.t, seq, world_hash, entities }`.
 **Notes:** `world_to_entities` (lib.rs:263-287) sorts entity ids and collects `(pos, hp, team, ammo)` for each. `stable_hash_snapshot` (lib.rs:228-243) feeds the entity list AND the obstacle set into `DefaultHasher` to produce `world_hash` — both pieces must be stable-ordered. Used by both the broadcast loop and the replay determinism check.
 
-#### Stage 2: Interest filtering (`lib.rs:85-208, 307-322`)
+#### Stage 2: Interest filtering (`lib.rs:85-214, 313-328`)
 **Role:** Restrict the entity set seen by one viewer to those that pass an `Interest` policy.
 **Inputs:** Head snapshot, an `Interest` trait object, the viewer's own `EntityState`.
-**Outputs:** Filtered `Snapshot` with `world_hash` recomputed via `subset_hash` (lib.rs:245-256) over the *filtered* entity set (note: this is a *different* hash from `stable_hash_snapshot`, since `subset_hash` omits the obstacles).
+**Outputs:** Filtered `Snapshot` with `world_hash` recomputed via `subset_hash` (lib.rs:251) over the *filtered* entity set (note: this is a *different* hash from `stable_hash_snapshot`, since `subset_hash` omits the obstacles).
 **Notes:** Four `Interest` impls exist:
 - `FullInterest` (lib.rs:89-94): always include.
-- `RadiusTeamInterest { radius }` (lib.rs:96-108): same team OR within euclidean grid radius.
-- `FovInterest { radius, half_angle_deg, facing }` (lib.rs:110-141): same team OR within radius AND within FoV cone.
-- `FovLosInterest { radius, half_angle_deg, facing, obstacles }` (lib.rs:143-208): adds Bresenham line-of-sight check (lib.rs:150-180) against an obstacle `BTreeSet`.
+- `RadiusTeamInterest { radius }` (lib.rs:101-114): same team OR within euclidean grid radius. The distance is `i128`, so a pair at opposite `i32` corners does not overflow.
+- `FovInterest { radius, half_angle_deg, facing }` (lib.rs:116-147): same team OR within radius AND within FoV cone. The radius square is an `i64` cast to `f32`.
+- `FovLosInterest { radius, half_angle_deg, facing, obstacles }` (lib.rs:149-214): adds Bresenham line-of-sight check (lib.rs:156) against an obstacle `BTreeSet`.
 
-The runtime selects via the `InterestPolicy` enum (lib.rs:212-226): `Radius | Fov | FovLos`. `FovLos` pulls obstacles from `GameServer.obstacles` (an `Arc<Mutex<BTreeSet<(i32, i32)>>>`) which is refreshed each tick from `world.obstacles`.
+`diff_snapshots` (lib.rs:330) keeps the last copy of a repeated entity id. The runtime selects via the `InterestPolicy` enum (lib.rs:218): `Radius | Fov | FovLos`. `FovLos` pulls obstacles from `GameServer.obstacles` (an `Arc<Mutex<BTreeSet<(i32, i32)>>>`) which is refreshed each tick from `world.obstacles`.
 
 #### Stage 3: Delta diffing (`lib.rs:324-401`)
 **Role:** Compute the minimal per-entity diff between two snapshots.
@@ -282,7 +282,7 @@ The runtime selects via the `InterestPolicy` enum (lib.rs:212-226): `Radius | Fo
 | `examples/coop_server` (`Cargo.toml:10`) | `astraweave_net::GameServer::new()`, `.run_ws(addr)` (`coop_server/src/main.rs:1`) | Stand-up of a running server | The flagship server demo. |
 | `examples/coop_client` (`Cargo.toml:15`) | `astraweave_net::{Msg, Snapshot, apply_delta}` (`coop_client/src/main.rs:3`) | Receives JSON `Msg` frames; applies `Delta` to a maintained `Snapshot` | The flagship client demo. |
 | `examples/net_headless_sim` (`Cargo.toml:12`) | `build_snapshot`, `replay_from`, `ReplayEvent` (`net_headless_sim/src/main.rs:3`) | Determinism check: replay a fixed event log and compare `world_hash`. | Headless smoke test, not a true game client. |
-| Fuzz harness (`astraweave-net/fuzz/`) | 4 fuzz targets: `fuzz_delta_compression`, `fuzz_interest_management`, `fuzz_packet_parsing`, `fuzz_snapshot_serialization` | Random byte streams interpreted as `Msg` / `Snapshot` / `Delta` | cargo-fuzz. Not run in standard CI. |
+| Fuzz harness (`astraweave-net/fuzz/`) | 4 fuzz targets: `fuzz_delta_compression`, `fuzz_interest_management`, `fuzz_packet_parsing`, `fuzz_snapshot_serialization` | Random byte streams interpreted as `Msg` / `Snapshot` / `Delta` | cargo-fuzz. `.github/workflows/fuzz-nightly.yml` runs each for 120 seconds. Not on pull requests. |
 
 ### Bidirectional / Coupled
 
@@ -319,7 +319,7 @@ The runtime selects via the `InterestPolicy` enum (lib.rs:212-226): `Radius | Fo
 | `astraweave-net/tests/integration/auth_tests.rs` | Authentication tests (using the "dev" token convention). | Active (tests) | 30 tests. |
 | `astraweave-net/tests/integration/mod.rs` | Integration submodule glue. | Active (tests) | 0 tests. |
 | `astraweave-net/benches/net_bench.rs` | Criterion benches: snapshot construction, delta diff/apply, interest filtering. | Active | Run via `cargo bench -p astraweave-net`. |
-| `astraweave-net/fuzz/Cargo.toml` + `fuzz/fuzz_targets/*.rs` | 4 cargo-fuzz targets: `fuzz_delta_compression`, `fuzz_interest_management`, `fuzz_packet_parsing`, `fuzz_snapshot_serialization`. | Active (off-CI) | Run on demand with `cargo +nightly fuzz run <target>`. Not in any GitHub Actions workflow as of `a2474c5b7` (verified via `grep -l fuzz .github/workflows/*.yml`). |
+| `astraweave-net/fuzz/Cargo.toml` + `fuzz/fuzz_targets/*.rs` | 4 cargo-fuzz targets: `fuzz_delta_compression`, `fuzz_interest_management`, `fuzz_packet_parsing`, `fuzz_snapshot_serialization`. | Active | `.github/workflows/fuzz-nightly.yml` runs each target for 120 seconds, restores and saves its corpus, and uploads crash artifacts. Not on pull requests. |
 
 **Status definitions:**
 - **Active**: Canonical, load-bearing, edit freely with care.
@@ -521,7 +521,7 @@ The runtime selects via the `InterestPolicy` enum (lib.rs:212-226): `Radius | Fo
   - `tests/integration/auth_tests.rs`: 30 tests.
 - **Total tests:** **377** in this crate.
 - **Mutation testing:** Two dedicated suites — `src/mutation_tests.rs` (50 tests, 1087 lines) and `tests/mutation_resistant_comprehensive_tests.rs` (129 tests). The crate is **not** present in `.github/workflows/mutation-testing.yml` as of `a2474c5b7` (verified via workspace grep) — the tests are owned by the crate, not by a centralized mutation-testing run.
-- **Fuzz targets:** 4 in `astraweave-net/fuzz/fuzz_targets/`: `fuzz_delta_compression`, `fuzz_interest_management`, `fuzz_packet_parsing`, `fuzz_snapshot_serialization`. Run on demand with `cargo +nightly fuzz run <target>`. **Not** present in any `.github/workflows/*.yml` as of `a2474c5b7`.
+- **Fuzz targets:** 4 in `astraweave-net/fuzz/fuzz_targets/`: `fuzz_delta_compression`, `fuzz_interest_management`, `fuzz_packet_parsing`, `fuzz_snapshot_serialization`. `.github/workflows/fuzz-nightly.yml` runs each for 120 seconds. The corpus is cached across nights. Crash reproducers are uploaded as artifacts. The workflow is not on pull requests.
 - **Property tests:** 37 (proptest 1.5). Checked-in regressions file at `tests/property_tests_extended.proptest-regressions` preserves shrunk failing inputs.
 - **Benchmarks:** `benches/net_bench.rs` (criterion 0.5 with `html_reports`). Run via `cargo bench -p astraweave-net`.
 - **Sanitizer CI:** `astraweave-net` is explicitly listed in the `P1_CRATES` array at `.github/workflows/sanitizers.yml:205` (alongside `astraweave-asset`, `astraweave-memory`, `astraweave-context`). Verified by direct read 2026-05-12.
@@ -546,7 +546,7 @@ The runtime selects via the `InterestPolicy` enum (lib.rs:212-226): `Radius | Fo
 
 - **Replay log has no bound or rotation.** `GameServer.replay: Mutex<Vec<ReplayEvent>>` grows monotonically. **Investigation (2026-05-12):** Comprehensive grep confirms exactly **2 push sites** (`lib.rs:837, 868`, in the `ClientProposePlan` and `ClientInput` handlers) and **0 remove/drain/clear/truncate sites** anywhere in `astraweave-net/src/`. The replay log is truly unbounded — once a server runs long enough, the `Vec` will exhaust memory. For long-running servers this is unbounded memory growth. Is rotation a parked feature, or is replay only intended for short-session tests? Andrew's call.
 
-- **Fuzz targets exist but are not in CI.** Four cargo-fuzz targets at `astraweave-net/fuzz/fuzz_targets/` cover delta, interest, packet, and snapshot — but no workflow runs them. Are they intended to be opportunistic local-only checks, or should a nightly fuzz workflow be added?
+- **Fuzz targets run nightly.** Four cargo-fuzz targets at `astraweave-net/fuzz/fuzz_targets/` cover delta, interest, packet, and snapshot. `.github/workflows/fuzz-nightly.yml` runs them with the other cargo-fuzz bins. Pull-request CI does not.
 
 - **`Box<dyn Interest>` allocated per snapshot per client.** Each broadcast triggers a fresh `Box::new(...)` for each connected client. **Investigation (2026-05-12):** Two allocation sites (the `ForceSnapshot` branch at `lib.rs:625-656` and the `Snapshot` branch at `lib.rs:676-707`). With M connected players and N broadcasts/sec (~20 Hz delta + 1 Hz full = ~21 broadcasts/sec), the workspace allocates `M × 21` boxes/sec at steady state. For M=2 (typical demo) that's ~42 allocations/sec — negligible. For M=64 (production hypothetical) that's ~1,344/sec — still modest but worth noting at higher scales. Is this hot-path allocation acceptable at current player counts, or worth caching the policy → interest object map?
 

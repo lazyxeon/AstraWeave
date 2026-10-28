@@ -836,10 +836,10 @@ Frame Start
 
 `aw_editor`: **9,425 `#[test]` annotations** total (4,103 inline + 5,322 in `tests/`; live count 2026-06-10, superseding the ~9,397 of 2026-05-12 per `aw_editor.md` §10). 66 files in `tools/aw_editor/tests/` including 46+ `wave2_*` suites and 16 `mutation_resistant_*.rs` per-subsystem files.
 
-### Fuzz Targets (off-CI)
+### Fuzz Targets
 
-- `astraweave-net/fuzz/fuzz_targets/`: 4 cargo-fuzz targets (`fuzz_delta_compression`, `fuzz_interest_management`, `fuzz_packet_parsing`, `fuzz_snapshot_serialization`). Not in any workflow as of `a2474c5b7` (`net.md` §10).
-- `astraweave-ecs/fuzz`: excluded from workspace.
+- `.github/workflows/fuzz-nightly.yml` runs every cargo-fuzz `[[bin]]` for 120 seconds. It is not on pull requests. Each target's corpus is cached across nights, and crash files are uploaded (`net.md` §10).
+- `astraweave-ecs/fuzz`: excluded from the workspace build. The nightly workflow builds it on its own.
 
 ---
 

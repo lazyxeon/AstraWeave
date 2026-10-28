@@ -1,6 +1,9 @@
 # Build artifacts
 /target/
 target/
+# cargo-fuzz output. Nightly corpora live in the Actions cache.
+fuzz/artifacts/
+fuzz/corpus/
 target-*/
 /target-*/
 Cargo.lock.bak

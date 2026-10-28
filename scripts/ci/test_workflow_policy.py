@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import importlib.util
 import unittest
 from pathlib import Path
 
@@ -302,6 +303,52 @@ class WorkflowPolicyTest(unittest.TestCase):
         self.assertIn('--base "HEAD^1"', changes)
         self.assertIn("--head HEAD", changes)
         self.assertIn("reason=missing-merge-parent", changes)
+
+    def test_fuzz_nightly_runs_every_bin_off_pull_requests(self) -> None:
+        text = (WORKFLOWS / "fuzz-nightly.yml").read_text(encoding="utf-8")
+        self.assertFalse(has_pull_request(text), "fuzz-nightly.yml")
+        self.assertIn("schedule:", text)
+        self.assertIn("workflow_dispatch:", text)
+        self.assertIn("scripts/ci/fuzz_targets.py", text)
+        self.assertIn("-max_total_time=120", text)
+        self.assertIn("actions/cache/restore@v4", text)
+        self.assertIn("actions/cache/save@v4", text)
+        self.assertIn("actions/upload-artifact@v4", text)
+        self.assertIn("artifacts/**", text)
+        self.assertNotIn("continue-on-error", text)
+        self.assertNotIn("pull_request:", text)
+
+        spec = importlib.util.spec_from_file_location(
+            "fuzz_targets", ROOT / "scripts" / "ci" / "fuzz_targets.py"
+        )
+        assert spec is not None and spec.loader is not None
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        rows = module.matrix()
+        declared = 0
+        for cargo in ROOT.glob("**/fuzz/Cargo.toml"):
+            if "target" in cargo.parts:
+                continue
+            for line in cargo.read_text(encoding="utf-8").splitlines():
+                if line.strip() == "[[bin]]":
+                    declared += 1
+        self.assertEqual(len(rows), declared)
+        self.assertGreaterEqual(len(rows), 28)
+        targets = [row["target"] for row in rows]
+        self.assertEqual(len(targets), len(set(targets)))
+        for required in (
+            "fuzz_awsv",
+            "fuzz_vitals",
+            "fuzz_gltf_json",
+            "fuzz_cell_ron",
+            "fuzz_decode_msg",
+            "fuzz_json_plan_parsing",
+            "fuzz_packet_parsing",
+            "fuzz_event_system",
+            "fuzz_asset_headers",
+            "fuzz_path",
+        ):
+            self.assertIn(required, targets)
 
     def test_allocation_measurement_is_a_real_gate_off_prs(self) -> None:
         text = (WORKFLOWS / "allocation-measurement.yml").read_text(encoding="utf-8")

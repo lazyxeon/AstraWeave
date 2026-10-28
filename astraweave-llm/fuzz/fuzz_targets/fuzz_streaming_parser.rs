@@ -30,18 +30,18 @@ impl StreamingJsonParser {
             escape_next: false,
         }
     }
-    
+
     fn feed(&mut self, chunk: &str) -> Vec<String> {
         let mut complete_objects = Vec::new();
-        
+
         for c in chunk.chars() {
             self.buffer.push(c);
-            
+
             if self.escape_next {
                 self.escape_next = false;
                 continue;
             }
-            
+
             match c {
                 '\\' if self.in_string => {
                     self.escape_next = true;
@@ -53,9 +53,12 @@ impl StreamingJsonParser {
                     self.depth += 1;
                 }
                 '}' if !self.in_string => {
+                    // A close brace with no open brace is not an object.
+                    if self.depth == 0 {
+                        continue;
+                    }
                     self.depth -= 1;
                     if self.depth == 0 {
-                        // Complete object found
                         complete_objects.push(self.buffer.clone());
                         self.buffer.clear();
                     }
@@ -63,10 +66,10 @@ impl StreamingJsonParser {
                 _ => {}
             }
         }
-        
+
         complete_objects
     }
-    
+
     fn is_complete(&self) -> bool {
         self.depth == 0 && !self.buffer.is_empty()
     }
@@ -75,7 +78,7 @@ impl StreamingJsonParser {
 fuzz_target!(|input: FuzzStreamInput| {
     let mut parser = StreamingJsonParser::new();
     let mut all_objects = Vec::new();
-    
+
     // Feed chunks incrementally
     for chunk in &input.chunks {
         if let Ok(s) = std::str::from_utf8(chunk) {
@@ -83,15 +86,18 @@ fuzz_target!(|input: FuzzStreamInput| {
             all_objects.extend(objects);
         }
     }
-    
+
     // Verify parser state is consistent
-    assert!(parser.depth >= 0 || parser.in_string, "Parser depth went negative unexpectedly");
-    
+    assert!(
+        parser.depth >= 0 || parser.in_string,
+        "Parser depth went negative unexpectedly"
+    );
+
     // Try to parse extracted objects
     for obj in &all_objects {
         let _ = serde_json::from_str::<serde_json::Value>(obj);
     }
-    
+
     // Test progressive buffer growth
     let mut buffer_sizes: VecDeque<usize> = VecDeque::with_capacity(10);
     for chunk in &input.chunks {

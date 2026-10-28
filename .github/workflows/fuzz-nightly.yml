@@ -1,5 +1,7 @@
-# Nightly parser fuzzing. Not on pull requests: each target is capped at
-# two minutes so this job cannot stretch pull-request CI.
+# Nightly parser fuzzing. Not on pull requests.
+# The matrix is every [[bin]] in a fuzz/Cargo.toml (scripts/ci/fuzz_targets.py).
+# Each target is capped at 120 seconds. Corpora are restored and saved so
+# coverage compounds across nights. Crash reproducers are uploaded.
 
 name: Fuzz nightly
 
@@ -14,26 +16,37 @@ concurrency:
 
 permissions:
   contents: read
+  actions: write
 
 jobs:
+  targets:
+    name: List fuzz targets
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.list.outputs.matrix }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: List cargo-fuzz bins
+        id: list
+        run: |
+          {
+            echo "matrix<<EOF"
+            python3 scripts/ci/fuzz_targets.py
+            echo EOF
+          } >> "$GITHUB_OUTPUT"
+
   fuzz:
     name: ${{ matrix.target }}
+    needs: targets
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - dir: persistence/aw-save/fuzz
-            target: fuzz_awsv
-          - dir: astraweave-combat/fuzz
-            target: fuzz_vitals
-          - dir: astraweave-asset/fuzz
-            target: fuzz_gltf_json
-          - dir: astraweave-asset/fuzz
-            target: fuzz_cell_ron
-          - dir: net/aw-net-proto/fuzz
-            target: fuzz_decode_msg
+        include: ${{ fromJson(needs.targets.outputs.matrix) }}
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -43,20 +56,59 @@ jobs:
         with:
           components: llvm-tools-preview
 
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: fuzz-registry-${{ runner.os }}-${{ hashFiles('**/Cargo.lock', '**/fuzz/Cargo.toml') }}
+          restore-keys: |
+            fuzz-registry-${{ runner.os }}-
+
       - name: Cache cargo-fuzz
         uses: actions/cache@v4
         with:
           path: ~/.cargo/bin/cargo-fuzz
-          key: cargo-fuzz-0.13.1
+          key: cargo-fuzz-0.13.1-${{ runner.os }}
 
       - name: Install cargo-fuzz
+        # rust-toolchain.toml pins 1.89.0, so a bare `cargo` is stable.
+        # cargo-fuzz 0.13.1 does not build on current nightly (rustix).
         run: |
           if ! command -v cargo-fuzz >/dev/null; then
             cargo install cargo-fuzz --version 0.13.1 --locked
           fi
 
+      - name: Restore corpus
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ matrix.dir }}/corpus/${{ matrix.target }}
+          key: fuzz-corpus-${{ matrix.target }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            fuzz-corpus-${{ matrix.target }}-
+
+      - name: Prepare corpus directory
+        run: mkdir -p "${{ matrix.dir }}/corpus/${{ matrix.target }}"
+
       - name: Fuzz ${{ matrix.target }} for two minutes
         working-directory: ${{ matrix.dir }}
-        # rust-toolchain.toml pins 1.89.0, so a bare `cargo` is stable.
         # cargo-fuzz passes -Z, which stable rejects.
         run: cargo +nightly fuzz run ${{ matrix.target }} -- -max_total_time=120
+
+      - name: Upload crash artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-crash-${{ matrix.target }}-${{ github.run_id }}
+          path: ${{ matrix.dir }}/artifacts/**
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Save corpus
+        if: always() && !cancelled()
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ matrix.dir }}/corpus/${{ matrix.target }}
+          key: fuzz-corpus-${{ matrix.target }}-${{ github.run_id }}-${{ github.run_attempt }}

@@ -1,10 +1,10 @@
 #![no_main]
 
+use astraweave_ecs::{CommandBuffer, World};
 use libfuzzer_sys::fuzz_target;
-use astraweave_ecs::{World, CommandBuffer};
 
 /// Fuzz Target 4: Command Buffer Operations
-/// 
+///
 /// Tests deferred command sequences to find:
 /// - Panics during command queuing
 /// - Command ordering violations
@@ -49,7 +49,7 @@ fuzz_target!(|data: &[u8]| {
             255 => {
                 // Flush commands and get spawned entities
                 cmd.flush(&mut world);
-                
+
                 // Track entities with our tag component
                 tracked_entities = world.entities_with::<FuzzTag>();
             }
@@ -58,7 +58,7 @@ fuzz_target!(|data: &[u8]| {
 
     // Final flush
     cmd.flush(&mut world);
-    
+
     // Validate that we didn't panic
     // Entity consistency is validated by the ECS itself
 });

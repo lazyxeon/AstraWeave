@@ -93,6 +93,11 @@ impl Interest for FullInterest {
     }
 }
 
+fn radius_sq_f32(radius: i32) -> f32 {
+    let sq = i64::from(radius) * i64::from(radius);
+    sq as f32
+}
+
 pub struct RadiusTeamInterest {
     pub radius: i32,
 }
@@ -101,9 +106,10 @@ impl Interest for RadiusTeamInterest {
         if viewer.team == e.team {
             return true;
         }
-        let dx = e.pos.x - viewer.pos.x;
-        let dy = e.pos.y - viewer.pos.y;
-        (dx * dx + dy * dy) <= self.radius * self.radius
+        let dx = i128::from(e.pos.x) - i128::from(viewer.pos.x);
+        let dy = i128::from(e.pos.y) - i128::from(viewer.pos.y);
+        let radius = i128::from(self.radius);
+        dx * dx + dy * dy <= radius * radius
     }
 }
 
@@ -120,7 +126,7 @@ impl Interest for FovInterest {
         let dx = (e.pos.x - viewer.pos.x) as f32;
         let dy = (e.pos.y - viewer.pos.y) as f32;
         let dist2 = dx * dx + dy * dy;
-        if dist2 > (self.radius * self.radius) as f32 {
+        if dist2 > radius_sq_f32(self.radius) {
             return false;
         }
         let fx = self.facing.x as f32;
@@ -187,7 +193,7 @@ impl Interest for FovLosInterest {
         let dx = (e.pos.x - viewer.pos.x) as f32;
         let dy = (e.pos.y - viewer.pos.y) as f32;
         let dist2 = dx * dx + dy * dy;
-        if dist2 > (self.radius * self.radius) as f32 {
+        if dist2 > radius_sq_f32(self.radius) {
             return false;
         }
         let fx = self.facing.x as f32;
@@ -333,8 +339,17 @@ pub fn diff_snapshots(
     }
     let mut changed = Vec::new();
     let mut present: BTreeSet<u32> = BTreeSet::new();
-    for e in &head.entities {
-        if !interest.include(viewer, e) {
+    // One row per id. A repeated id keeps the last copy so apply_delta
+    // does not merge fields from earlier copies.
+    let mut last_index: BTreeMap<u32, usize> = BTreeMap::new();
+    for (index, entity) in head.entities.iter().enumerate() {
+        if interest.include(viewer, entity) {
+            last_index.insert(entity.id, index);
+        }
+    }
+    let emit_at: BTreeSet<usize> = last_index.into_values().collect();
+    for (index, e) in head.entities.iter().enumerate() {
+        if !emit_at.contains(&index) {
             continue;
         }
         present.insert(e.id);
@@ -978,4 +993,69 @@ pub fn replay_from(mut world: World, events: &[ReplayEvent]) -> Result<u64> {
     }
     let snap = build_snapshot(&world, current_tick, 0);
     Ok(snap.world_hash)
+}
+
+#[cfg(test)]
+mod interest_and_delta_regressions {
+    use super::{
+        apply_delta, diff_snapshots, radius_sq_f32, EntityState, FullInterest, RadiusTeamInterest,
+        Snapshot,
+    };
+    use crate::Interest;
+    use astraweave_core::IVec2;
+
+    fn entity(id: u32, x: i32, team: u8) -> EntityState {
+        EntityState {
+            id,
+            pos: IVec2 { x, y: 0 },
+            hp: 1,
+            team,
+            ammo: 0,
+        }
+    }
+
+    fn snap(entities: Vec<EntityState>) -> Snapshot {
+        Snapshot {
+            version: 1,
+            tick: 1,
+            t: 0.0,
+            seq: 1,
+            world_hash: 0,
+            entities,
+        }
+    }
+
+    #[test]
+    fn duplicate_head_id_keeps_the_last_entity() {
+        let base = snap(vec![entity(1, 0, 0)]);
+        let head = snap(vec![entity(1, 5, 9), entity(1, 7, 0)]);
+        let viewer = entity(1, 0, 0);
+        let delta = diff_snapshots(&base, &head, &FullInterest, &viewer);
+        assert_eq!(delta.changed.len(), 1);
+        assert_eq!(delta.changed[0].pos, Some(IVec2 { x: 7, y: 0 }));
+        assert_eq!(delta.changed[0].team, None);
+        let mut applied = base.clone();
+        apply_delta(&mut applied, &delta);
+        assert_eq!(applied.entities.len(), 1);
+        assert_eq!(applied.entities[0].pos, IVec2 { x: 7, y: 0 });
+        assert_eq!(applied.entities[0].team, 0);
+    }
+
+    #[test]
+    fn radius_interest_does_not_overflow_on_distant_tiles() {
+        let interest = RadiusTeamInterest { radius: 1 };
+        let viewer = entity(1, i32::MIN, 1);
+        let target = EntityState {
+            id: 2,
+            pos: IVec2 {
+                x: i32::MAX,
+                y: i32::MAX,
+            },
+            hp: 1,
+            team: 2,
+            ammo: 0,
+        };
+        assert!(!interest.include(&viewer, &target));
+        assert!(radius_sq_f32(i32::MAX).is_finite());
+    }
 }

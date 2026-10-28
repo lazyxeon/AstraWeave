@@ -49,7 +49,7 @@ fuzz_target!(|input: FuzzInterestInput| {
 
     // RadiusTeamInterest should not panic with any inputs
     let radius_interest = RadiusTeamInterest {
-        radius: input.radius.abs().max(1), // Ensure positive radius
+        radius: input.radius.saturating_abs().max(1),
     };
     let _ = radius_interest.include(&viewer, &target);
 
