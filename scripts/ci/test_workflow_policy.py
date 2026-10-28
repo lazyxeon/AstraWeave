@@ -100,6 +100,10 @@ class WorkflowPolicyTest(unittest.TestCase):
         self.assertIn("macos-latest", text)
         self.assertNotIn("cargo nextest", text)
         self.assertIn("no-retry", text)
+        self.assertEqual(text.count("Fetch Aravath nature models"), 2)
+        self.assertIn('CARGO_PROFILE_TEST_DEBUG: "0"', text)
+        self.assertIn("cargo test -p astraweave-core --test replay_hash", text)
+        self.assertIn('echo "RUSTFLAGS=-C target-cpu=x86-64" >> "$GITHUB_ENV"', text)
 
     def test_benchmarks_do_not_run_on_every_pull_request(self) -> None:
         text = (WORKFLOWS / "benchmark.yml").read_text(encoding="utf-8")
