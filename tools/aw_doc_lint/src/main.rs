@@ -28,7 +28,8 @@
 //! `docs/current/ENGINE_STATUS.md` must name every required replay case from
 //! `determinism-replay.yml` and must keep the frame-budget phrases. Phrases
 //! are matched on the visible text of a pulldown-cmark render (tables,
-//! strikethrough, and task lists; smart punctuation stays off). `3.117 ms` and
+//! strikethrough, task lists, and footnotes; smart punctuation stays off).
+//! `3.117 ms` and
 //! `3.688 ms` have to be their own tokens on a sentence with whole-word
 //! `median` or `measured`, or whole-word `sample` with whole-word `is` or
 //! `was`. `11 ms` is its own token. `13.688 ms`, `3.688 msec`, and `111 ms`
@@ -39,25 +40,31 @@
 //! off the set. Link labels join the surrounding letters. An autolink keeps
 //! its URL. A link reference definition is omitted. The apostrophe may be
 //! ASCII, U+2018, U+2019, U+02BC, or U+FF07, including a character reference
-//! that decodes to one of those. Status text decodes every numeric and HTML5
-//! named character reference, folds U+FF01–U+FF5E into ASCII and U+3000 into
-//! a space, and drops non-whitespace controls, the Cf and Mn characters
+//! that decodes to one of those. `Text` and `Code` stay as pulldown-cmark
+//! emitted them. A character reference is decoded only in a raw HTML event,
+//! and only when it ends in `;`, so `&amp;not;`, `\&not;`, and `&not ` keep
+//! the word `not`, and `3.117&amp;nbsp;ms` does not become U+00A0. The fold
+//! maps U+FF01–U+FF5E into ASCII and U+3000 into a space, and drops
+//! non-whitespace controls, the Cf and Mn characters
 //! `unicode_categories` 0.1.1 classifies, the Unicode 15 gaps in `unicode_gaps`,
 //! and U+115F, U+1160, U+3164, and U+FFA0. U+1734 stays: Unicode 15 classifies
 //! it as Mc, and the crate calls it Mn. An HTML comment is hidden. An unclosed
 //! `<!--` hides through the end of that block, including a blank line.
 //! `<!-->` and `<!--->` close the comment. A comment inside a code span or a
 //! fence stays. A `script` or `style` body stays. A `br` tag inserts a break.
-//! Naming the capture is not a measurement. A sentence that only names the
-//! check does not count. `README.md` must list open pulls as in progress and
-//! must not contain a frame figure: a number followed by `ms`, `msec`,
-//! `millisecond`, or `milliseconds`, including the fullwidth block
-//! U+FF01–U+FF5E. The same render supplies that scan. Quoted and unquoted
-//! `alt` text stays. A non-comment `<` that never reaches `>` is text. A
-//! backslash immediately before a newline is a hard break. Numeric character
+//! A referenced footnote definition is scanned. An unreferenced one is
+//! omitted. Naming the capture is not a measurement. A sentence that only
+//! names the check does not count. `README.md` must list open pulls as in
+//! progress and must not contain a frame figure: a number followed by `ms`,
+//! `msec`, `millisecond`, or `milliseconds`, including the fullwidth block
+//! U+FF01–U+FF5E. The same render supplies that scan, the in-progress words,
+//! and the retired-title scan. Quoted and unquoted `alt` text stays. A
+//! non-comment `<` that never reaches `>` is text. A backslash immediately
+//! before a newline is a hard break. In raw HTML, numeric character
 //! references allow any run of leading zeros, up to six significant
-//! hexadecimal digits or seven significant decimal digits. Named references
-//! are the HTML5 table in `html_entities`. Invisible characters are the
+//! hexadecimal digits or seven significant decimal digits, and they require
+//! a semicolon. Named references are the HTML5 table in `html_entities`.
+//! Invisible characters are the
 //! crate's Cf and Mn, except U+1734, the gaps in `unicode_gaps`, those four
 //! Default_Ignorable letters, and non-whitespace controls, in
 //! `is_invisible_frame_char`. Player-facing docs must not use the retired game
@@ -528,8 +535,9 @@ fn front_door_errors(
                     ));
                 }
             }
+            let visible_body = rendered::render_visible(&body);
             for word in ["shipped", "landed", "merged"] {
-                if has_bare_word(&body, word) {
+                if has_bare_word(&visible_body, word) {
                     errors.push(format!(
                         "{README_REL}: in-progress section marks work {word}"
                     ));
@@ -539,7 +547,7 @@ fn front_door_errors(
     }
     errors.extend(readme_frame_figure_errors(readme));
     for (path, text) in player_facing {
-        errors.extend(retired_title_hits(path, text));
+        errors.extend(retired_title_hits(path, &rendered::render_visible(text)));
     }
     errors
 }
@@ -567,27 +575,13 @@ fn status_front_door_text(status: &str) -> String {
     fold_visible_text(&rendered::render_visible(status))
 }
 
-/// Decode every character reference, fold fullwidth forms, drop invisible
-/// characters, and fold apostrophes to ASCII `'`.
+/// Fold fullwidth forms, drop invisible characters, and fold apostrophes to
+/// ASCII `'`. `Text` and `Code` are already decoded by pulldown-cmark, so
+/// this pass does not read character references.
 fn fold_visible_text(input: &str) -> String {
-    let bytes = input.as_bytes();
     let mut out = String::new();
-    let mut i = 0;
-    while i < bytes.len() {
-        if bytes[i] == b'&' {
-            if let Some((text, next)) = decode_char_ref(bytes, i) {
-                for ch in text.chars() {
-                    push_visible_char(&mut out, ch);
-                }
-                i = next;
-                continue;
-            }
-        }
-        let Some(ch) = input[i..].chars().next() else {
-            break;
-        };
+    for ch in input.chars() {
         push_visible_char(&mut out, ch);
-        i += ch.len_utf8();
     }
     out
 }
@@ -794,71 +788,6 @@ fn is_invisible_frame_char(ch: char) -> bool {
         || ch.is_mark_nonspacing()
         || ch.is_other_control()
         || unicode_gaps::is_gap(ch)
-}
-
-fn decode_char_ref(bytes: &[u8], i: usize) -> Option<(String, usize)> {
-    if bytes.get(i) != Some(&b'&') {
-        return None;
-    }
-    let rest = &bytes[i + 1..];
-    if rest.first() == Some(&b'#') {
-        let hex = matches!(rest.get(1), Some(b'x' | b'X'));
-        let digits_at = if hex { 2 } else { 1 };
-        let base: u32 = if hex { 16 } else { 10 };
-        let max_significant = if hex { 6 } else { 7 };
-        let mut n: u32 = 0;
-        let mut seen = 0usize;
-        let mut significant = 0usize;
-        for &b in rest.get(digits_at..)? {
-            let dig = if hex {
-                match b {
-                    b'0'..=b'9' => b - b'0',
-                    b'a'..=b'f' => b - b'a' + 10,
-                    b'A'..=b'F' => b - b'A' + 10,
-                    _ => break,
-                }
-            } else if b.is_ascii_digit() {
-                b - b'0'
-            } else {
-                break;
-            };
-            seen += 1;
-            if n == 0 && dig == 0 {
-                continue;
-            }
-            significant += 1;
-            if significant > max_significant {
-                return None;
-            }
-            n = n.checked_mul(base)?.checked_add(u32::from(dig))?;
-        }
-        if seen == 0 {
-            return None;
-        }
-        let mut end = i + 1 + digits_at + seen;
-        if bytes.get(end) == Some(&b';') {
-            end += 1;
-        }
-        Some((char::from_u32(n)?.to_string(), end))
-    } else {
-        if !rest.first().is_some_and(|b| b.is_ascii_alphabetic()) {
-            return None;
-        }
-        let mut len = 1usize;
-        while rest.get(len).is_some_and(|b| b.is_ascii_alphanumeric()) {
-            len += 1;
-            if len > 64 {
-                return None;
-            }
-        }
-        let name = std::str::from_utf8(&rest[..len]).ok()?.to_ascii_lowercase();
-        let expanded = html_entities::html_entity(&name)?;
-        let mut end = i + 1 + len;
-        if bytes.get(end) == Some(&b';') {
-            end += 1;
-        }
-        Some((expanded.to_string(), end))
-    }
 }
 
 fn resolve_root(cli: &Cli) -> Result<PathBuf> {
@@ -1340,7 +1269,7 @@ mod tests {
             "11 milliseconds",
             "3.117\u{00a0}ms",
             "3.117&#109;&#115;",
-            "3.117&nbsp ms",
+            "<div>\n3.117&nbsp;ms\n</div>",
             "3.117 __ms__",
             "3.117 _ms_",
             "3.117 ~~ms~~",
@@ -1348,8 +1277,6 @@ mod tests {
             "<img alt='3.117 ms' src='x'>",
             "see < 3.117 ms later <img alt=\"x\">",
             "<3.117 ms>",
-            "3.117&#x00000020;ms",
-            "3.117&#00000032;ms",
             "3.117&#x200B;ms",
             "3.117&#8203;ms",
             "3.117&#xfeff;ms",
@@ -1497,6 +1424,12 @@ mod tests {
             "3.117_ms",
             "3.117~ms",
             "3.117&nbspms",
+            "3.117&nbsp ms",
+            "3.117&amp;nbsp;ms",
+            "3.117&#x00000020;ms",
+            "3.117&#00000032;ms",
+            "<div>\n3.117&amp;nbsp;ms\n</div>",
+            "<div>\n3.117&nbsp ms\n</div>",
             "<!-- 3.117 ms still hidden -->\nShip messages.",
             "<!-- keep this\n3.117 ms",
             "VISIBLE\n\n<!-- unclosed\n\n3.117 ms",
@@ -1908,5 +1841,104 @@ mod tests {
         let hits = retired_title_hits("docs/guides/x.md", text);
         assert_eq!(hits.len(), 1);
         assert!(hits[0].contains(":2:"));
+    }
+
+    #[test]
+    fn second_entity_decode_does_not_drop_not_or_invent_a_space() {
+        for sentence in [
+            "The median GPU frame is &amp;not; 3.117 ms.",
+            "The median GPU frame is \\&not; 3.117 ms.",
+            "The median GPU frame is &not 3.117 ms.",
+        ] {
+            let status = sample_status().replace("A later sample is 3.117 ms.", sentence);
+            let errors = front_door_errors(&sample_readme(), &status, &sample_workflow(), &[]);
+            assert!(
+                errors.iter().any(|error| error.contains("3.117 ms")),
+                "{sentence}: {errors:?}"
+            );
+        }
+        for prose in ["3.117&amp;nbsp;ms", "3.117&nbsp ms"] {
+            let readme = format!("{}\nThe frame is {prose}.\n", sample_readme());
+            let errors = front_door_errors(&readme, &sample_status(), &sample_workflow(), &[]);
+            assert!(
+                !errors.iter().any(|error| error.contains("frame figure")),
+                "{prose}: {errors:?}"
+            );
+        }
+        for prose in [
+            "<div>\n3.117&#x00000020;ms\n</div>",
+            "<div>\n3.117&#00000032;ms\n</div>",
+        ] {
+            let readme = format!("{}\n{prose}\n", sample_readme());
+            let errors = front_door_errors(&readme, &sample_status(), &sample_workflow(), &[]);
+            assert!(
+                errors.iter().any(|error| error.contains("frame figure")),
+                "{prose}: {errors:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn referenced_footnote_is_scanned_and_an_unreferenced_one_is_not() {
+        let referenced = format!(
+            "{}\nSee the note[^1].\n\n[^1]: http://example.com \"3.117 ms\"\n",
+            sample_readme()
+        );
+        let errors = front_door_errors(&referenced, &sample_status(), &sample_workflow(), &[]);
+        assert!(
+            errors.iter().any(|error| error.contains("frame figure")),
+            "{errors:?}"
+        );
+        let unreferenced = format!(
+            "{}\n[^1]: http://example.com \"3.117 ms\"\n",
+            sample_readme()
+        );
+        let errors = front_door_errors(&unreferenced, &sample_status(), &sample_workflow(), &[]);
+        assert!(
+            !errors.iter().any(|error| error.contains("frame figure")),
+            "{errors:?}"
+        );
+    }
+
+    #[test]
+    fn retired_title_and_in_progress_words_use_the_render() {
+        for prose in ["The Veil<!-- -->weaver game", "Veil<b></b>weaver"] {
+            let errors = front_door_errors(
+                &sample_readme(),
+                &sample_status(),
+                &sample_workflow(),
+                &[("docs/guides/x.md".to_string(), prose.to_string())],
+            );
+            assert!(
+                errors
+                    .iter()
+                    .any(|error| error.contains("retired game title")),
+                "{prose}: {errors:?}"
+            );
+        }
+        let allowed = "see veilweaver_demo and projects/veilweaver only";
+        let errors = front_door_errors(
+            &sample_readme(),
+            &sample_status(),
+            &sample_workflow(),
+            &[("docs/guides/x.md".to_string(), allowed.to_string())],
+        );
+        assert!(
+            !errors
+                .iter()
+                .any(|error| error.contains("retired game title")),
+            "{errors:?}"
+        );
+        let readme = sample_readme().replace(
+            "#334 are in progress. #366 are in progress. #383 are in progress",
+            "#334 are ship<!-- -->ped. #366 are land<b></b>ed. #383 are mer<!-- -->ged",
+        );
+        let errors = front_door_errors(&readme, &sample_status(), &sample_workflow(), &[]);
+        for word in ["shipped", "landed", "merged"] {
+            assert!(
+                errors.iter().any(|error| error.contains(word)),
+                "{word}: {errors:?}"
+            );
+        }
     }
 }

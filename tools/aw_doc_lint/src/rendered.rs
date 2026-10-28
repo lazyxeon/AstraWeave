@@ -1,24 +1,54 @@
 //! Visible text from a CommonMark/GFM parse.
 //!
 //! `pulldown-cmark` owns the markdown structure. This walk keeps `Text` and
-//! `Code` as written, so a comment inside a code span or a fence stays.
-//! HTML events are the only place a comment is removed: `<!-->` and `<!--->`
-//! are empty closed comments, and an unclosed `<!--` consumes the rest of
-//! that HTML chunk. A block comment's chunk runs through EOF, including a
-//! blank line. A `br` tag becomes U+2028, which splits the word around it
-//! and still leaves the surrounding sentence on one `str::lines` line.
-//! Link labels are the link's own text. Reference definitions are not events.
+//! `Code` as that parser emitted them, so a comment inside a code span or a
+//! fence stays, and a character reference pulldown already decoded is not
+//! decoded again. HTML events are the only place a comment is removed, and
+//! the only place a character reference is decoded. The reference must end
+//! in `;`. `<!-->` and `<!--->` are empty closed comments, and an unclosed
+//! `<!--` consumes the rest of that HTML chunk. A block comment's chunk runs
+//! through EOF, including a blank line. A `br` tag becomes U+2028, which
+//! splits the word around it and still leaves the surrounding sentence on
+//! one `str::lines` line. Link labels are the link's own text. Reference
+//! definitions are not events. Footnotes are on: a referenced definition is
+//! included, and an unreferenced one is omitted.
+
+use std::collections::HashSet;
 
 use pulldown_cmark::{Event, Options, Parser, Tag, TagEnd};
 
 const LINE_BREAK: char = '\u{2028}';
 
 pub(crate) fn render_visible(input: &str) -> String {
-    let options =
-        Options::ENABLE_TABLES | Options::ENABLE_STRIKETHROUGH | Options::ENABLE_TASKLISTS;
+    let options = Options::ENABLE_TABLES
+        | Options::ENABLE_STRIKETHROUGH
+        | Options::ENABLE_TASKLISTS
+        | Options::ENABLE_FOOTNOTES;
+    let events: Vec<Event> = Parser::new_ext(input, options).collect();
+    let mut referenced = HashSet::new();
+    for event in &events {
+        if let Event::FootnoteReference(label) = event {
+            referenced.insert(label.to_string());
+        }
+    }
     let mut out = String::new();
     let mut html_block: Option<String> = None;
-    for event in Parser::new_ext(input, options) {
+    let mut skip_footnote = 0u32;
+    for event in events {
+        if skip_footnote > 0 {
+            match &event {
+                Event::Start(Tag::FootnoteDefinition(_)) => skip_footnote += 1,
+                Event::End(TagEnd::FootnoteDefinition) => skip_footnote -= 1,
+                _ => {}
+            }
+            continue;
+        }
+        if let Event::Start(Tag::FootnoteDefinition(label)) = &event {
+            if !referenced.contains(label.as_ref()) {
+                skip_footnote = 1;
+                continue;
+            }
+        }
         if let Some(buf) = html_block.as_mut() {
             match event {
                 Event::Html(html) => buf.push_str(&html),
@@ -91,6 +121,13 @@ fn push_html_visible(out: &mut String, html: &str) {
         if bytes.get(i..i + 4) == Some(b"<!--") {
             i = comment_end(bytes, i);
             continue;
+        }
+        if bytes[i] == b'&' {
+            if let Some((text, next)) = decode_char_ref(bytes, i) {
+                out.push_str(&text);
+                i = next;
+                continue;
+            }
         }
         if bytes[i] == b'<' && tag_starter(bytes, i) {
             if let Some(end) = tag_end(bytes, i) {
@@ -192,7 +229,7 @@ fn push_alts(out: &mut String, tag: &str) {
         if let Some((start, end)) = alt_at(bytes, j) {
             if start < end {
                 out.push(' ');
-                out.push_str(&tag[start..end]);
+                push_decoded_text(out, &tag[start..end]);
                 out.push(' ');
             }
             j = end.max(j + 1);
@@ -258,5 +295,91 @@ fn is_attr_name(bytes: &[u8], j: usize, name: &[u8]) -> bool {
     match bytes.get(end) {
         None => true,
         Some(b) => !b.is_ascii_alphanumeric() && !matches!(*b, b'_' | b'-' | b':'),
+    }
+}
+
+fn push_decoded_text(out: &mut String, raw: &str) {
+    let bytes = raw.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'&' {
+            if let Some((text, next)) = decode_char_ref(bytes, i) {
+                out.push_str(&text);
+                i = next;
+                continue;
+            }
+        }
+        let Some(ch) = raw[i..].chars().next() else {
+            break;
+        };
+        out.push(ch);
+        i += ch.len_utf8();
+    }
+}
+
+/// A numeric or HTML5 named character reference that ends in `;`.
+/// Leading zeros do not count toward the six hex or seven decimal digits.
+/// A name without `;`, including `&nbsp`, is not a reference.
+fn decode_char_ref(bytes: &[u8], i: usize) -> Option<(String, usize)> {
+    if bytes.get(i) != Some(&b'&') {
+        return None;
+    }
+    let rest = &bytes[i + 1..];
+    if rest.first() == Some(&b'#') {
+        let hex = matches!(rest.get(1), Some(b'x' | b'X'));
+        let digits_at = if hex { 2 } else { 1 };
+        let base: u32 = if hex { 16 } else { 10 };
+        let max_significant = if hex { 6 } else { 7 };
+        let mut n: u32 = 0;
+        let mut seen = 0usize;
+        let mut significant = 0usize;
+        for &b in rest.get(digits_at..)? {
+            let dig = if hex {
+                match b {
+                    b'0'..=b'9' => b - b'0',
+                    b'a'..=b'f' => b - b'a' + 10,
+                    b'A'..=b'F' => b - b'A' + 10,
+                    _ => break,
+                }
+            } else if b.is_ascii_digit() {
+                b - b'0'
+            } else {
+                break;
+            };
+            seen += 1;
+            if n == 0 && dig == 0 {
+                continue;
+            }
+            significant += 1;
+            if significant > max_significant {
+                return None;
+            }
+            n = n.checked_mul(base)?.checked_add(u32::from(dig))?;
+        }
+        if seen == 0 {
+            return None;
+        }
+        let end = i + 1 + digits_at + seen;
+        if bytes.get(end) != Some(&b';') {
+            return None;
+        }
+        Some((char::from_u32(n)?.to_string(), end + 1))
+    } else {
+        if !rest.first().is_some_and(|b| b.is_ascii_alphabetic()) {
+            return None;
+        }
+        let mut len = 1usize;
+        while rest.get(len).is_some_and(|b| b.is_ascii_alphanumeric()) {
+            len += 1;
+            if len > 64 {
+                return None;
+            }
+        }
+        if rest.get(len) != Some(&b';') {
+            return None;
+        }
+        let name = std::str::from_utf8(&rest[..len]).ok()?.to_ascii_lowercase();
+        let expanded = crate::html_entities::html_entity(&name)?;
+        Some((expanded.to_string(), i + 1 + len + 1))
     }
 }

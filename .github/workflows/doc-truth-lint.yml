@@ -16,7 +16,10 @@ name: Doc-Truth Lint
 # that sentence off the set. That negation also covers `11 ms`, the two prose
 # phrases, CC0, GTX 1660 Ti, and Aravath. Inline tags and emphasis are stripped
 # before the word scan. Replay names are read from the pulldown-cmark render.
-# An unclosed <!-- hides through EOF, including a blank line. A comment inside
+# Text and code stay as that parser emitted them. A character reference is
+# decoded only in raw HTML, and only with a semicolon. Footnotes are on: a
+# referenced definition is scanned, and an unreferenced one is omitted. An
+# unclosed <!-- hides through EOF, including a blank line. A comment inside
 # a code span or a fence stays. <!--> and <!---> close the comment. Link labels
 # join the surrounding letters. Reference definitions are omitted. Autolink
 # text stays. A br tag is a break. U+1734 is Mc and is not dropped. The root
@@ -26,7 +29,8 @@ name: Doc-Truth Lint
 # unicode_categories 0.1.1, and the Unicode 15 Cf and Mn gaps that crate misses.
 # A non-comment < that never reaches > stays text. A backslash before a newline
 # is a hard break. A single tilde and an underscore between word characters
-# stay. Also the in-progress list and the retired game title.
+# stay. The in-progress words and the retired game title are read from that
+# render.
 # Baseline at the 2026-06 wiring: K=0 un-allowlisted vocabulary hits.
 #
 # Complementary to trace-sync.yml: that gate owns the CLAUDE.md trace table +
