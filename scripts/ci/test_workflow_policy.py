@@ -11,6 +11,17 @@ WORKFLOWS = ROOT / ".github" / "workflows"
 
 CONCURRENCY_GROUP = "group: ${{ github.workflow }}-${{ github.ref }}"
 CONCURRENCY_CANCEL = "cancel-in-progress: ${{ github.event_name == 'pull_request' }}"
+# Short checks that are not on the CI critical path. One runner per ref.
+# cancel-in-progress stays false: true would cancel a sibling workflow.
+SIDE_GROUP = "group: fast-side-${{ github.ref }}"
+SIDE_CANCEL = "cancel-in-progress: false"
+SIDE_WORKFLOWS = {
+    "pack-guard.yml",
+    "scorecard.yml",
+    "docs.yml",
+    "doc-truth-lint.yml",
+    "trace-sync.yml",
+}
 
 
 def workflow_texts() -> dict[str, str]:
@@ -76,6 +87,12 @@ class WorkflowPolicyTest(unittest.TestCase):
         offenders = []
         for name, text in workflow_texts().items():
             if not has_pull_request(text):
+                continue
+            if name in SIDE_WORKFLOWS:
+                if SIDE_GROUP not in text or SIDE_CANCEL not in text:
+                    offenders.append(name)
+                if "cancel-in-progress: true" in text or CONCURRENCY_CANCEL in text:
+                    offenders.append(f"{name}:cancels-siblings")
                 continue
             if CONCURRENCY_GROUP not in text or CONCURRENCY_CANCEL not in text:
                 offenders.append(name)

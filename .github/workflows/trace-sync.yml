@@ -24,9 +24,12 @@ on:
       - '.github/workflows/trace-sync.yml'
   workflow_dispatch:
 
+# Shared with the other short checks that are not on the CI critical path.
+# One of them holds a runner per ref. cancel-in-progress is false so a
+# sibling workflow in this group is not cancelled. A newer push waits.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: fast-side-${{ github.ref }}
+  cancel-in-progress: false
 
 permissions:
   contents: read
