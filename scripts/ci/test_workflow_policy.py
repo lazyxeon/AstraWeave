@@ -574,6 +574,42 @@ class WorkflowPolicyTest(unittest.TestCase):
         self.assertIn("--head HEAD", changes)
         self.assertIn("reason=missing-merge-parent", changes)
 
+    def test_toolchain_push_keeps_the_pinned_compiler(self) -> None:
+        text = (WORKFLOWS / "toolchain-management.yml").read_text(encoding="utf-8")
+        pin, extra = text.split("toolchain-validation-extra:", 1)
+        self.assertIn("branches: [ main ]", text)
+        self.assertIn('cron: "40 5 * * *"', text)
+        self.assertIn('default: ""', text)
+        self.assertNotIn("default: 'stable'", text)
+        self.assertNotIn("github.event_name == 'push'", text)
+        self.assertIn('toolchain: ["1.89.0"]', pin)
+        self.assertNotIn("toolchain: stable", pin)
+        self.assertNotIn("continue-on-error:", pin)
+        self.assertNotIn("|| true", pin)
+        self.assertIn(
+            'echo "RUSTUP_TOOLCHAIN=${{ matrix.toolchain }}" >> "$GITHUB_ENV"',
+            pin,
+        )
+        self.assertIn("if: github.event_name != 'push'", extra)
+        self.assertIn("toolchain: stable", extra)
+        self.assertIn('toolchain: "1.88.0"', extra)
+        self.assertIn("toolchain: beta", extra)
+        self.assertIn("toolchain: pinned-nightly", extra)
+        self.assertIn("experimental: true", extra)
+        self.assertIn("continue-on-error: ${{ matrix.experimental || false }}", extra)
+        self.assertIn(
+            "RUSTUP_TOOLCHAIN=${{ github.event.inputs.toolchain_version || matrix.toolchain }}",
+            extra,
+        )
+        self.assertIn('echo "RUSTUP_TOOLCHAIN=$AW_NIGHTLY" >> "$GITHUB_ENV"', extra)
+        self.assertEqual(extra.count("cargo check --all-features || true"), 1)
+        self.assertIn("github.event_name == 'schedule'", extra)
+        self.assertIn("name: Minimum Supported Rust Version Check", text)
+        self.assertIn(
+            "needs: [toolchain-validation, toolchain-validation-extra, msrv-check]",
+            text,
+        )
+
     def test_nightly_failure_issue_serializes_per_upstream_run(self) -> None:
         text = (WORKFLOWS / "nightly-failure-issue.yml").read_text(encoding="utf-8")
         self.assertIn(
