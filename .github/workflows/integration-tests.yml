@@ -43,7 +43,7 @@ jobs:
         uses: dtolnay/rust-toolchain@1.89.0
 
       - name: Install sccache
-        uses: mozilla-actions/sccache-action@v0.0.9
+        uses: mozilla-actions/sccache-action@v0.0.11
 
       - name: Enable sccache
         run: |
@@ -87,7 +87,7 @@ jobs:
         uses: dtolnay/rust-toolchain@1.89.0
 
       - name: Install sccache
-        uses: mozilla-actions/sccache-action@v0.0.9
+        uses: mozilla-actions/sccache-action@v0.0.11
 
       - name: Enable sccache
         run: |
@@ -125,7 +125,7 @@ jobs:
         uses: dtolnay/rust-toolchain@1.89.0
 
       - name: Install sccache
-        uses: mozilla-actions/sccache-action@v0.0.9
+        uses: mozilla-actions/sccache-action@v0.0.11
 
       - name: Enable sccache
         run: |
@@ -163,7 +163,7 @@ jobs:
         uses: dtolnay/rust-toolchain@1.89.0
 
       - name: Install sccache
-        uses: mozilla-actions/sccache-action@v0.0.9
+        uses: mozilla-actions/sccache-action@v0.0.11
 
       - name: Enable sccache
         run: |
@@ -196,7 +196,7 @@ jobs:
         uses: dtolnay/rust-toolchain@1.89.0
 
       - name: Install sccache
-        uses: mozilla-actions/sccache-action@v0.0.9
+        uses: mozilla-actions/sccache-action@v0.0.11
 
       - name: Enable sccache
         run: |
