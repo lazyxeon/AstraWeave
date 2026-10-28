@@ -30,31 +30,43 @@
 //! and `3.688 ms` have to be their own tokens on a sentence with whole-word
 //! `median` or `measured`, or whole-word `sample` with whole-word `is` or
 //! `was`. `11 ms` is its own token. `13.688 ms`, `3.688 msec`, and `111 ms` do
-//! not match. Whole-word `not`, `no`, `nobody`, `nothing`, `never`, or
-//! `cannot`, or an `n't` contraction, keeps that sentence off the set. The
-//! apostrophe may be ASCII, U+2019, U+02BC, or `&apos;`, `&rsquo;`, `&#39;`, or
-//! `&#8217;`. A closed HTML comment is not a sentence and does not supply a
-//! phrase. Naming the capture is not a measurement. A sentence that only names
+//! not match. Whole-word `not`, `no`, `nobody`, `nothing`, `never`, `cannot`,
+//! `neither`, or `nor`, or an `n't` contraction, keeps that sentence off the
+//! set. The same negation keeps `CC0`, `GTX 1660 Ti`, and `Aravath` off the
+//! set. `11 ms` and the two prose phrases stay on the visible text. The
+//! apostrophe may be ASCII, U+2018, U+2019, U+02BC, or U+FF07, including a
+//! character reference that decodes to one of those. Status text decodes every
+//! numeric and HTML5 named character reference, folds U+FF01–U+FF5E into ASCII
+//! and U+3000 into a space, and drops every Unicode Cf and Mn character and
+//! every non-whitespace control. A closed HTML comment, an unclosed `<!--`, and
+//! a `script` or `style` element are hidden through their end and do not supply
+//! a phrase. Naming the capture is not a measurement. A sentence that only names
 //! the check does not count.
 //! `README.md` must list open pulls as in progress and must not contain a frame
 //! figure: a number followed by `ms`, `msec`, `millisecond`, or `milliseconds`,
-//! including fullwidth digits and U+FF0E. The scan drops `*`, backticks, paired
-//! `__` and `~~`, and a single `_` that is not between two word characters. A
-//! single `~` stays. It keeps quoted and unquoted `alt` text. A `<` that never
-//! reaches `>` is text. A comment ends at `-->` and does not hide the next
-//! sentence. An autolink (`http://`, `https://`, `mailto:`) is scanned. Numeric
-//! character references allow any run of leading zeros, up to six significant
-//! hexadecimal digits or seven significant decimal digits. Named references are
-//! the list in `decode_char_ref`. Invisible characters are the list in
+//! including the fullwidth block U+FF01–U+FF5E. The scan drops `*`, backticks,
+//! paired `__` and `~~`, and a single `_` that is not between two word
+//! characters. A single `~` stays. It keeps quoted and unquoted `alt` text. A
+//! non-comment `<` that never reaches `>` is text. An unclosed `<!--` and a
+//! `script` or `style` element hide through their end. A comment ends at `-->`
+//! and does not hide the next sentence. A backslash immediately before a
+//! newline is a hard break. An autolink (`http://`, `https://`, `mailto:`) is
+//! scanned. Numeric character references allow any run of leading zeros, up to
+//! six significant hexadecimal digits or seven significant decimal digits.
+//! Named references are the HTML5 table in `html_entities`. Invisible characters
+//! are every Cf and Mn character, plus non-whitespace controls, in
 //! `is_invisible_frame_char`. Player-facing docs must not use the retired game
 //! title. A failed read of a scanned file, including
 //! `docs/current/PROJECT_BRIEF.md`, fails the process.
+
+mod html_entities;
 
 use anyhow::{bail, Context, Result};
 use clap::{Parser, ValueEnum};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use unicode_categories::UnicodeCategories;
 
 const SPEC_REL: &str = "docs/campaigns/doc-truth/CLOSED_VOCABULARY_LINT.md";
 const ALLOWLIST_REL: &str = "docs/campaigns/doc-truth/CLOSED_VOCABULARY_ALLOWLIST.md";
@@ -477,12 +489,11 @@ fn front_door_errors(
         "deterministic simulation validates",
         "Aravath",
     ] {
-        let present = if phrase == "3.688 ms" {
-            status_has_measured_sample(status, phrase)
-        } else if phrase == "11 ms" {
-            contains_phrase_token(&visible, phrase)
-        } else {
-            visible.contains(phrase)
+        let present = match phrase {
+            "3.688 ms" => measured_sentence_has_token(&visible, phrase),
+            "11 ms" => contains_phrase_token(&visible, phrase),
+            "CC0" | "GTX 1660 Ti" | "Aravath" => non_negated_sentence_contains(&visible, phrase),
+            _ => visible.contains(phrase),
         };
         if !present {
             errors.push(format!(
@@ -531,8 +542,10 @@ fn front_door_errors(
 /// not `3.117 ms`. The sentence needs whole-word `median` or `measured`, or
 /// whole-word `sample` together with whole-word `is` or `was`. Naming a
 /// `capture` does not count. Whole-word `not`, `no`, `nobody`, `nothing`,
-/// `never`, or `cannot`, or an `n't` contraction, does not count. Closed HTML
-/// comments are removed first. Other sentences on the same line still can.
+/// `never`, `cannot`, `neither`, or `nor`, or an `n't` contraction, does not
+/// count. Comments and `script` or `style` elements are removed first, including
+/// an unclosed `<!--` through the end of the text. Other sentences on the same
+/// line still can.
 fn status_has_measured_sample(status: &str, phrase: &str) -> bool {
     measured_sentence_has_token(&status_front_door_text(status), phrase)
 }
@@ -546,36 +559,26 @@ fn measured_sentence_has_token(visible: &str, phrase: &str) -> bool {
 }
 
 fn status_front_door_text(status: &str) -> String {
-    normalize_apostrophes(&strip_html_comments(status))
+    fold_visible_text(&hide_markup(status))
 }
 
-fn strip_html_comments(input: &str) -> String {
-    let mut rest = input;
-    let mut out = String::new();
-    while let Some(start) = rest.find("<!--") {
-        out.push_str(&rest[..start]);
-        let after = &rest[start + 4..];
-        if let Some(end) = after.find("-->") {
-            rest = &after[end + 3..];
-        } else {
-            out.push_str(&rest[start..]);
-            return out;
-        }
-    }
-    out.push_str(rest);
-    out
-}
-
-fn normalize_apostrophes(input: &str) -> String {
+/// Drop closed comments, an unclosed `<!--` through EOF, and `script` / `style`
+/// elements through their closing tag or EOF. A non-comment `<` that never
+/// reaches `>` stays in the text.
+fn hide_markup(input: &str) -> String {
     let bytes = input.as_bytes();
     let mut out = String::new();
     let mut i = 0;
     while i < bytes.len() {
-        if bytes[i] == b'&' {
-            if let Some((ch, next)) = decode_char_ref(bytes, i) {
-                if is_apostrophe(ch) {
-                    out.push('\'');
-                    i = next;
+        if bytes[i] == b'<' {
+            if bytes.get(i..i + 4) == Some(b"<!--") {
+                let (end, _) = comment_end(bytes, i, 1);
+                i = end;
+                continue;
+            }
+            if let Some(name) = raw_block_kind(bytes, i) {
+                if let Some((end, _)) = take_raw_block(bytes, i, 1, name) {
+                    i = end;
                     continue;
                 }
             }
@@ -583,10 +586,51 @@ fn normalize_apostrophes(input: &str) -> String {
         let Some(ch) = input[i..].chars().next() else {
             break;
         };
-        out.push(if is_apostrophe(ch) { '\'' } else { ch });
+        out.push(ch);
         i += ch.len_utf8();
     }
     out
+}
+
+/// Decode every character reference, fold fullwidth forms, drop invisible
+/// characters, and fold apostrophes to ASCII `'`.
+fn fold_visible_text(input: &str) -> String {
+    let bytes = input.as_bytes();
+    let mut out = String::new();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'&' {
+            if let Some((text, next)) = decode_char_ref(bytes, i) {
+                for ch in text.chars() {
+                    push_visible_char(&mut out, ch);
+                }
+                i = next;
+                continue;
+            }
+        }
+        let Some(ch) = input[i..].chars().next() else {
+            break;
+        };
+        push_visible_char(&mut out, ch);
+        i += ch.len_utf8();
+    }
+    out
+}
+
+fn push_visible_char(out: &mut String, ch: char) {
+    let ch = fold_fullwidth(ch);
+    if is_invisible_frame_char(ch) {
+        return;
+    }
+    out.push(if is_apostrophe(ch) { '\'' } else { ch });
+}
+
+fn non_negated_sentence_contains(visible: &str, phrase: &str) -> bool {
+    visible.lines().any(|line| {
+        line.split(". ").any(|sentence| {
+            sentence.contains(phrase) && !negated_measurement(&sentence.to_ascii_lowercase())
+        })
+    })
 }
 
 fn is_apostrophe(ch: char) -> bool {
@@ -640,6 +684,8 @@ fn negated_measurement(lower: &str) -> bool {
         || contains_phrase_token(lower, "nothing")
         || contains_phrase_token(lower, "never")
         || contains_phrase_token(lower, "cannot")
+        || contains_phrase_token(lower, "neither")
+        || contains_phrase_token(lower, "nor")
         || lower.contains("n't")
 }
 
@@ -744,11 +790,23 @@ fn push_frame_pieces(input: &str, mut line: usize, out: &mut Vec<(char, usize)>)
                 line = line_after;
             }
             b'&' => {
-                if let Some((ch, next)) = decode_char_ref(bytes, i) {
-                    push_frame_char(out, ch, line);
+                if let Some((text, next)) = decode_char_ref(bytes, i) {
+                    for ch in text.chars() {
+                        push_frame_char(out, ch, line);
+                    }
                     i = next;
                 } else {
                     push_frame_char(out, '&', line);
+                    i += 1;
+                }
+            }
+            b'\\' => {
+                let hard_break = bytes.get(i + 1) == Some(&b'\n')
+                    || (bytes.get(i + 1) == Some(&b'\r') && bytes.get(i + 2) == Some(&b'\n'));
+                if hard_break {
+                    i += 1;
+                } else {
+                    push_frame_char(out, '\\', line);
                     i += 1;
                 }
             }
@@ -802,15 +860,21 @@ fn starts_tag(bytes: &[u8], i: usize) -> bool {
     )
 }
 
-/// Skip one closed tag. `None` means the `<` never reaches `>` (or `-->` for a
-/// comment), so the caller leaves `<` in the text. Quoted and unquoted `alt`
-/// values, and autolink URL text, are returned for the same decoder. Comments
-/// end at `-->` before quotes are considered. Closing tags contribute no text.
+/// Skip one tag. `None` means a non-comment `<` never reaches `>`, so the caller
+/// leaves `<` in the text. An unclosed `<!--` and a `script` or `style` element
+/// are hidden through their end. Quoted and unquoted `alt` values, and autolink
+/// URL text, are returned for the same decoder. Comments end at `-->` before
+/// quotes are considered. Closing tags contribute no text.
 fn take_tag(input: &str, i: usize, line: usize) -> Option<TagScan<'_>> {
     let bytes = input.as_bytes();
     if bytes.get(i..i + 4) == Some(b"<!--") {
-        return closed_comment(bytes, i, line)
-            .map(|(next, line_after)| (Vec::new(), next, line_after));
+        let (next, line_after) = comment_end(bytes, i, line);
+        return Some((Vec::new(), next, line_after));
+    }
+    if let Some(name) = raw_block_kind(bytes, i) {
+        if let Some((next, line_after)) = take_raw_block(bytes, i, line, name) {
+            return Some((Vec::new(), next, line_after));
+        }
     }
     if is_autolink_scheme(bytes, i + 1) {
         return take_autolink(input, i, line);
@@ -863,19 +927,118 @@ fn take_tag(input: &str, i: usize, line: usize) -> Option<TagScan<'_>> {
 }
 
 /// A comment ends at `-->`. Quotes inside it do not change that. An unclosed
-/// comment returns `None`.
-fn closed_comment(bytes: &[u8], i: usize, mut line: usize) -> Option<(usize, usize)> {
+/// `<!--` hides through EOF, which is where GitHub stops rendering.
+fn comment_end(bytes: &[u8], i: usize, mut line: usize) -> (usize, usize) {
     let mut j = i + 4;
     while j + 2 < bytes.len() {
         if bytes[j] == b'-' && bytes[j + 1] == b'-' && bytes[j + 2] == b'>' {
-            return Some((j + 3, line));
+            return (j + 3, line);
         }
         if bytes[j] == b'\n' {
             line += 1;
         }
         j += 1;
     }
+    while j < bytes.len() {
+        if bytes[j] == b'\n' {
+            line += 1;
+        }
+        j += 1;
+    }
+    (bytes.len(), line)
+}
+
+/// `script` and `style` are raw elements. A longer name such as `scripting` is
+/// not one of them. `None` means the opening `<` never reaches `>`.
+fn raw_block_kind(bytes: &[u8], i: usize) -> Option<&'static [u8]> {
+    let rest = bytes.get(i + 1..)?;
+    [b"script".as_slice(), b"style".as_slice()]
+        .into_iter()
+        .find(|name| {
+            starts_with_ignore_ascii_case(rest, name)
+                && raw_name_boundary(rest.get(name.len()).copied())
+        })
+}
+
+fn raw_name_boundary(after: Option<u8>) -> bool {
+    match after {
+        None => true,
+        Some(b) => !b.is_ascii_alphanumeric() && b != b'_' && b != b'-' && b != b':',
+    }
+}
+
+fn take_raw_block(bytes: &[u8], i: usize, mut line: usize, name: &[u8]) -> Option<(usize, usize)> {
+    let mut j = i + 1 + name.len();
+    let mut quote: Option<u8> = None;
+    while j < bytes.len() {
+        let b = bytes[j];
+        if let Some(q) = quote {
+            if b == q {
+                quote = None;
+            } else if b == b'\n' {
+                line += 1;
+            }
+            j += 1;
+            continue;
+        }
+        match b {
+            b'"' | b'\'' => {
+                quote = Some(b);
+                j += 1;
+            }
+            b'\n' => {
+                line += 1;
+                j += 1;
+            }
+            b'>' => {
+                j += 1;
+                return Some(skip_until_raw_close(bytes, j, line, name));
+            }
+            _ => j += 1,
+        }
+    }
     None
+}
+
+fn skip_until_raw_close(
+    bytes: &[u8],
+    mut j: usize,
+    mut line: usize,
+    name: &[u8],
+) -> (usize, usize) {
+    while j < bytes.len() {
+        if bytes[j] == b'<' && closing_raw_at(bytes, j, name) {
+            let mut k = j + 2 + name.len();
+            while k < bytes.len() && bytes[k].is_ascii_whitespace() {
+                if bytes[k] == b'\n' {
+                    line += 1;
+                }
+                k += 1;
+            }
+            if bytes.get(k) == Some(&b'>') {
+                return (k + 1, line);
+            }
+        }
+        if bytes[j] == b'\n' {
+            line += 1;
+        }
+        j += 1;
+    }
+    (bytes.len(), line)
+}
+
+fn closing_raw_at(bytes: &[u8], j: usize, name: &[u8]) -> bool {
+    let Some(rest) = bytes.get(j + 1..) else {
+        return false;
+    };
+    if rest.first() != Some(&b'/') {
+        return false;
+    }
+    let rest = &rest[1..];
+    if !starts_with_ignore_ascii_case(rest, name) {
+        return false;
+    }
+    raw_name_boundary(rest.get(name.len()).copied())
 }
 
 fn is_autolink_scheme(bytes: &[u8], i: usize) -> bool {
@@ -976,49 +1139,44 @@ fn is_attr_name(bytes: &[u8], j: usize, name: &[u8]) -> bool {
 }
 
 fn push_frame_char(out: &mut Vec<(char, usize)>, ch: char, line: usize) {
+    let ch = fold_fullwidth(ch);
     if is_invisible_frame_char(ch) {
         return;
     }
-    let ch = match ch {
-        '\u{FF10}'..='\u{FF19}' => {
-            char::from_u32(u32::from('0') + (u32::from(ch) - 0xFF10)).unwrap_or(ch)
-        }
-        '\u{FF0E}' => '.',
-        ch if ch.is_whitespace() => ' ',
-        ch => ch.to_ascii_lowercase(),
+    let ch = if ch.is_whitespace() {
+        ' '
+    } else {
+        ch.to_ascii_lowercase()
     };
     out.push((ch, line));
 }
 
+/// Map the fullwidth block U+FF01–U+FF5E onto ASCII, and U+3000 onto a space.
+/// This is that block only, not every NFKC compatibility character.
+fn fold_fullwidth(ch: char) -> char {
+    match ch {
+        '\u{FF01}'..='\u{FF5E}' => char::from_u32(u32::from(ch) - 0xFEE0).unwrap_or(ch),
+        '\u{3000}' => ' ',
+        other => other,
+    }
+}
+
 /// Characters GitHub does not draw between a number and its unit.
 ///
-/// Whitespace, including U+200A, stays and becomes a normal space. Dropped
-/// format and mark characters: U+00AD, U+034F, U+180E, U+200B–U+200F,
-/// U+202A–U+202E (the override is dropped so it cannot split the figure),
-/// U+2060–U+2064, U+2066–U+206F, U+FE00–U+FE0F, and U+FEFF. Other
-/// non-whitespace controls are dropped too.
+/// Whitespace, including U+200A and U+00A0, stays and becomes a normal space.
+/// Every Unicode format character (Cf) and nonspacing mark (Mn) is dropped, as
+/// is every other non-whitespace control (Cc). That covers U+00AD, U+034F,
+/// U+061C, U+180B–U+180E, U+200B–U+200F, U+202A–U+202E, U+2060–U+2064,
+/// U+2066–U+206F, U+FE00–U+FE0F, U+FEFF, and U+E0001. The bidi override is
+/// dropped so it cannot split the figure.
 fn is_invisible_frame_char(ch: char) -> bool {
-    if matches!(
-        ch,
-        '\u{00AD}'
-            | '\u{034F}'
-            | '\u{180E}'
-            | '\u{200B}'..='\u{200F}'
-            | '\u{202A}'..='\u{202E}'
-            | '\u{2060}'..='\u{2064}'
-            | '\u{2066}'..='\u{206F}'
-            | '\u{FE00}'..='\u{FE0F}'
-            | '\u{FEFF}'
-    ) {
-        return true;
-    }
     if ch.is_whitespace() {
         return false;
     }
-    ch.is_control()
+    ch.is_other_format() || ch.is_mark_nonspacing() || ch.is_other_control()
 }
 
-fn decode_char_ref(bytes: &[u8], i: usize) -> Option<(char, usize)> {
+fn decode_char_ref(bytes: &[u8], i: usize) -> Option<(String, usize)> {
     if bytes.get(i) != Some(&b'&') {
         return None;
     }
@@ -1061,7 +1219,7 @@ fn decode_char_ref(bytes: &[u8], i: usize) -> Option<(char, usize)> {
         if bytes.get(end) == Some(&b';') {
             end += 1;
         }
-        Some((char::from_u32(n)?, end))
+        Some((char::from_u32(n)?.to_string(), end))
     } else {
         if !rest.first().is_some_and(|b| b.is_ascii_alphabetic()) {
             return None;
@@ -1069,43 +1227,17 @@ fn decode_char_ref(bytes: &[u8], i: usize) -> Option<(char, usize)> {
         let mut len = 1usize;
         while rest.get(len).is_some_and(|b| b.is_ascii_alphanumeric()) {
             len += 1;
-            if len > 32 {
+            if len > 64 {
                 return None;
             }
         }
         let name = std::str::from_utf8(&rest[..len]).ok()?.to_ascii_lowercase();
-        let ch = match name.as_str() {
-            "nbsp" | "nonbreakingspace" => '\u{00A0}',
-            "thinsp" | "thinspace" => '\u{2009}',
-            "ensp" => '\u{2002}',
-            "emsp" => '\u{2003}',
-            "emsp13" => '\u{2004}',
-            "emsp14" => '\u{2005}',
-            "numsp" => '\u{2007}',
-            "puncsp" => '\u{2008}',
-            "hairsp" | "verythinspace" => '\u{200A}',
-            "mediumspace" | "thickspace" => '\u{205F}',
-            "negativemediumspace" | "negativeverythinspace" | "zerowidthspace" => '\u{200B}',
-            "zwnj" => '\u{200C}',
-            "zwj" => '\u{200D}',
-            "lrm" => '\u{200E}',
-            "rlm" => '\u{200F}',
-            "shy" => '\u{00AD}',
-            "nobreak" => '\u{2060}',
-            "af" | "applyfunction" => '\u{2061}',
-            "it" | "invisibletimes" => '\u{2062}',
-            "ic" | "invisiblecomma" => '\u{2063}',
-            "apos" => '\'',
-            "rsquo" => '\u{2019}',
-            "newline" => '\n',
-            "tab" => '\t',
-            _ => return None,
-        };
+        let expanded = html_entities::html_entity(&name)?;
         let mut end = i + 1 + len;
         if bytes.get(end) == Some(&b';') {
             end += 1;
         }
-        Some((ch, end))
+        Some((expanded.to_string(), end))
     }
 }
 
@@ -1640,7 +1772,22 @@ mod tests {
             "3.117&#x034F;ms",
             "３.１１７ ms",
             "３．１１７ ms",
+            "3.117&NegativeThickSpace;ms",
+            "3.117&NegativeThinSpace;ms",
+            "3.117&DotDot;ms",
+            "3.117&tdot;ms",
+            "3.117&TripleDot;ms",
+            "3.117&DownBreve;ms",
+            "3.117&#x061C;ms",
+            "3.117&#x180B;ms",
+            "3.117&#x180C;ms",
+            "3.117&#x180D;ms",
+            "3.117&#xE0001;ms",
+            "3.117\\\nms",
+            "3.117\\\r\nms",
+            "3.117\u{FF4D}\u{FF53}",
             "<div 3.117 ms.",
+            "<script 3.117 ms.",
             "<img alt=3.117ms>",
             "<img alt=3.117ms />",
             "<http://example.com/3.117ms>",
@@ -1716,6 +1863,10 @@ mod tests {
             "3.117_ms",
             "3.117~ms",
             "3.117&nbspms",
+            "<!-- keep this\nThe frame is 3.117 ms.",
+            "<script>The frame is 3.117 ms.</script>",
+            "<style>The frame is 3.117 ms.</style>",
+            "<SCRIPT type=\"text/javascript\">3.117 ms</script>",
         ] {
             let readme = format!("{}\n{prose}\n", sample_readme());
             let errors = front_door_errors(&readme, &sample_status(), &sample_workflow(), &[]);
@@ -1745,6 +1896,15 @@ mod tests {
             "It wasn&#8217;t a capture of 3.117 ms.",
             "It wasn\u{02BC}t a capture of 3.117 ms.",
             "The capture recorded 3.117 ms.",
+            "The median GPU frame is n&#x200B;ot 3.117 ms.",
+            "The median GPU frame is n&zwnj;ot 3.117 ms.",
+            "The median GPU frame is n&#x00AD;ot 3.117 ms.",
+            "The median GPU frame is n&#x2060;ot 3.117 ms.",
+            "The median GPU frame is n\u{200B}ot 3.117 ms.",
+            "The median GPU frame is &#110;ot 3.117 ms.",
+            "The median GPU frame is n&#111;t 3.117 ms.",
+            "It wasn\u{FF07}t a measured frame of 3.117 ms.",
+            "Neither the median nor the later sample is 3.117 ms.",
         ] {
             let status = sample_status().replace("A later sample is 3.117 ms.", sentence);
             let errors = front_door_errors(&sample_readme(), &status, &sample_workflow(), &[]);
@@ -1855,11 +2015,68 @@ mod tests {
     }
 
     #[test]
+    fn hidden_markup_does_not_supply_front_door_phrases() {
+        let good = sample_status();
+        for status in [
+            format!("<!--\n{good}"),
+            format!("<script>\n{good}\n</script>"),
+            format!("<style type=\"text/css\">\n{good}\n</style>"),
+            format!("<script>\n{good}"),
+        ] {
+            let errors = front_door_errors(&sample_readme(), &status, &sample_workflow(), &[]);
+            for needle in [
+                "3.688 ms",
+                "`11 ms`",
+                "3.117 ms",
+                "GTX 1660 Ti",
+                "CC0",
+                "Local LLMs propose",
+                "deterministic simulation validates",
+                "Aravath",
+            ] {
+                assert!(
+                    errors.iter().any(|error| error.contains(needle)),
+                    "{needle} in {status:?}: {errors:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn negated_sentence_does_not_satisfy_cc0_gpu_or_aravath() {
+        for (from, to, needle) in [
+            ("Assets are CC0 only.", "Assets are not CC0.", "CC0"),
+            ("GTX 1660 Ti", "not a GTX 1660 Ti", "GTX 1660 Ti"),
+            (
+                "The game is Aravath.",
+                "The game is not Aravath.",
+                "Aravath",
+            ),
+        ] {
+            let status = sample_status().replace(from, to);
+            let errors = front_door_errors(&sample_readme(), &status, &sample_workflow(), &[]);
+            assert!(
+                errors.iter().any(|error| error.contains(needle)),
+                "{from} -> {to}: {errors:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn negation_words_stay_whole_words() {
+        assert!(!negated_measurement("the note is normal"));
+        assert!(!negated_measurement("unmeasured"));
+        assert!(negated_measurement("neither nor"));
+        assert!(negated_measurement("not"));
+        assert!(negated_measurement("wasn't"));
+    }
+
+    #[test]
     fn comment_apostrophe_does_not_hide_the_next_figure() {
         for prose in [
             "<!-- Don't edit this section -->\nThe frame is 3.117 ms.",
             "<!-- \"keep this -->\nThe frame is 3.117 ms.",
-            "<!-- keep this\nThe frame is 3.117 ms.",
+            "The frame is 3.117 ms.\n<!-- keep this",
         ] {
             let readme = format!("{}\n{prose}\n", sample_readme());
             let errors = front_door_errors(&readme, &sample_status(), &sample_workflow(), &[]);
