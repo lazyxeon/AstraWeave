@@ -270,9 +270,9 @@ None in `astraweave-asset`. `meshopt` is C++ and is why the asset test binary li
 
 **SEC-NET-1.** `ServerConfig::default` listens on `0.0.0.0:8788` and `0.0.0.0:8789` and uses `SigningKey::dev_default` (`net/aw-net-server/src/lib.rs:68-103`). The key is the ASCII constant `ASTRAWEAVE-DEV-KEY-NOT-FOR-PROD!` (`net/aw-net-proto/src/lib.rs:90-92`). The comment says it is not for production. The `Default` impl still installs it, and `spawn_server` is the real server entry. A peer who can reach the port can produce a valid tag. HTTP admin on `:8789` is still unauthenticated (the 2025 plan's P0 item 5).
 
-**SEC-NET-3.** `decode_msg` for `Codec::PostcardLz4` (`net/aw-net-proto/src/lib.rs:257-266`) calls `lz4_flex::decompress_size_prepended` with no application cap, then postcard-decodes. The WebSocket layer's own cap is tungstenite 0.28's default `max_message_size` of 64 MiB (`tungstenite-0.28.0/src/protocol/mod.rs:101`). The uncompressed claim inside those 64 MiB can be a `u32`. The server does not set a tighter `WebSocketConfig`.
+**SEC-NET-3.** `decode_msg` for `Codec::PostcardLz4` (`net/aw-net-proto/src/lib.rs:296-300`) calls `decompress_lz4_capped`. A declared uncompressed size above `MAX_LZ4_DECLARED_OUTPUT` (4 MiB, the same bound as the bincode limit below) is rejected before decompression. The WebSocket layer's own cap is tungstenite 0.28's default `max_message_size` of 64 MiB (`tungstenite-0.28.0/src/protocol/mod.rs:101`). The server does not set a tighter `WebSocketConfig`.
 
-PoC `poc_postcard_lz4_rejects_oversized_declared_output` fails with `decode error: lz4: expected another byte, found none`. The library noticed the stream was short. It did not notice that the claimed output was 16 MiB.
+PoC `poc_postcard_lz4_rejects_oversized_declared_output` gets `declared uncompressed size exceeds cap (16777216 > 4194304)` from `decompress_lz4_capped`.
 
 `Codec::Bincode` (`net/aw-net-proto/src/lib.rs:301-309`) decodes with `standard().with_limit::<MAX_LZ4_DECLARED_OUTPUT>()`. The limit is 4 MiB, the same bound as the LZ4 declared size (#470).
 
@@ -460,13 +460,13 @@ Not opened by this change. Label `deferred-failure`. Owner is `@lazyxeon` (repos
 | SEC-ASSET-2 | Zip and image bombs have no tight budget | `@lazyxeon` | Uncompressed and entry caps on `unpack_zip` and persona zips. Explicit `image::Limits` after measuring CC0 pack sizes. | No |
 | SEC-NET-1 | Server default is `0.0.0.0` plus the published dev key | `@lazyxeon` | Loopback unless flagged. Refuse `dev_default` unless `--dev-key`. | Extends the 2025 plan's admin-port note |
 | SEC-NET-2 | In-engine server trusts the client | `@lazyxeon` | Authenticate, bind `actor_id`, 1 MiB message cap. Remove the `"dev"` print. | S0-1 |
-| SEC-NET-3 | `decode_msg` honors the attacker's LZ4 size | `@lazyxeon` | Same uncompressed cap as `aw-save`. Turn `poc_postcard_lz4_rejects_oversized_declared_output` green. | No |
+| SEC-NET-3 | `decode_msg` honors the attacker's LZ4 size | `@lazyxeon` | Same uncompressed cap as `aw-save`. Turn `poc_postcard_lz4_rejects_oversized_declared_output` green. | Yes. The proof is green. |
 | SEC-SUPPLY-1 | Advisory and license `cargo deny` failures were warnings | `@lazyxeon` | `security-audit.yml` fails the job on bans, sources, advisories, and licenses. `unknown-git` is `deny`. `unknown-registry` is `warn`. #219 is closed. | #219 covered the openssl ban failure |
 | SEC-SUPPLY-2 | Secret scanning and push protection | `@lazyxeon` | Enabled on the repository. No code change. Do not refile. | Done |
 | — | `llm_dialogue.rs` was an orphan and named `thread_rng` | #331 on main | The module compiles. `recorded_line` is an unwired pure helper and does not draw. `generate_response` stays off the tick. #225 stays open. | [#225](https://github.com/lazyxeon/AstraWeave/issues/225) |
 | — | `cargo deny` failed on `native-tls` / `openssl` | closed | #217 switched TLS to rustls and dropped the `ort` download feature. The ban stayed. | [#219](https://github.com/lazyxeon/AstraWeave/issues/219) |
 
-The six PoCs in this pull request fail on purpose. They are the regression net for SEC-SAVE-1, SEC-SAVE-2, SEC-NET-3, SEC-ASSET-1, SEC-MOD-4, and SEC-LLM-1. Deleting them is not the fix.
+The six PoCs in this pull request no longer fail on purpose. They are the regression net for SEC-SAVE-1, SEC-SAVE-2, SEC-NET-3, SEC-ASSET-1, SEC-MOD-4, and SEC-LLM-1. Deleting them is not the fix.
 
 ---
 
@@ -489,7 +489,7 @@ Observed on 2026-10-15:
 |---|---|
 | `poc_awsv_rejects_oversized_declared_payload` | `declared payload length was not rejected by a size cap: failed to fill whole buffer` |
 | `poc_vitals_rejects_more_than_4096_records` | `decoded 4097 vitals records with no record cap` |
-| `poc_postcard_lz4_rejects_oversized_declared_output` | `decode error: lz4: expected another byte, found none` |
+| `poc_postcard_lz4_rejects_oversized_declared_output` | Historical. On 2026-10-15 this was `decode error: lz4: expected another byte, found none`. |
 | `poc_gltf_buffer_uri_rejects_parent_segments` | `Read uri ../secret.bin: No such file or directory (os error 2)` |
 | `poc_cell_asset_path_rejects_parent_segments` | `Failed to load mesh: .../../outside.bin: No such file or directory (os error 2)` |
 | `poc_script_loader_rejects_parent_segments` | `Failed to read script file: ../secret.rhai: No such file or directory (os error 2)` |

@@ -17,8 +17,8 @@ fn poc_postcard_lz4_rejects_oversized_declared_output() {
 }
 
 /// Both callers must return `LimitExceeded`. A `String` length prefix is
-/// refused before that buffer is filled. A `Vec<u8>` decode reaches 4,194,304
-/// bytes and then returns `LimitExceeded`.
+/// refused before that buffer is filled. A `Vec<u8>` decode fills 4,194,296
+/// bytes and then returns `LimitExceeded`. The capacity is 4,194,304.
 fn assert_limit_exceeded(err: aw_net_proto::WireError) {
     let msg = err.to_string();
     assert!(
@@ -40,8 +40,9 @@ fn bincode_refuses_a_32_mib_protocol_error_prefix() {
     assert_limit_exceeded(err);
 }
 
-/// usize claims 8 bytes before the varint, then each payload byte claims 1.
-/// 4_194_297 payload bytes make the claim 4_194_305, one past the 4 MiB cap.
+/// The length prefix claims 8 bytes, and each payload byte claims 1 more.
+/// This fixture asks for 4_194_297 payload bytes. The decoder fills 4,194,296
+/// of them and then returns `LimitExceeded`. The capacity is 4,194,304.
 /// The bytes are present, so this is the cap and not a short read.
 #[test]
 fn bincode_refuses_a_vec_longer_than_the_cap() {
