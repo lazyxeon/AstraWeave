@@ -94,10 +94,10 @@ When the same tests also run under nextest (an affected crate on a pull request,
 
 - pinned toolchain (default 1.89.0) via `dtolnay/rust-toolchain`
 - Linux build dependencies, including `libudev-dev` and `libasound2-dev` (this is what Editor CI was missing on PR #212)
-- `sccache` with `SCCACHE_GHA_ENABLED=true` and `RUSTC_WRAPPER=sccache`
+- `sccache` 0.19.0 with `SCCACHE_GHA_ENABLED=true` and `RUSTC_WRAPPER=sccache`. `CARGO_INCREMENTAL=0` is set in this action and in `ci.yml`. Pull requests and non-main refs set `SCCACHE_GHA_RW_MODE=READ_ONLY`. Pushes and schedules on `refs/heads/main` set `READ_WRITE`. The action does not set `RUSTFLAGS`: Cargo 1.89 replaces every `rustflags` entry in `.cargo/config.toml` when that variable is set. The Linux CPU pin is `[target.x86_64-unknown-linux-gnu] rustflags = ["-C", "target-cpu=x86-64"]`, beside the Windows 16 MiB stack flags. aarch64 keeps the default baseline. sccache 0.19 does not cache `bin`, `cdylib`, or `proc-macro` crate types.
 - Swatinem `rust-cache` v2 with `shared-key: ${{ runner.os }}-astraweave`, `cache-targets: false`, `save-if` only on `refs/heads/main`
 
-Registry and git caches are shared across jobs and workflows on the same OS. Compilation artifacts stay in sccache, so the two caches do not both wrap `target/`. Pull requests restore the cache and do not save it.
+Registry and git caches are shared across jobs and workflows on the same OS. Compilation artifacts stay in sccache, so the two caches do not both wrap `target/`. Pull requests restore both caches and do not save them. Job `121303738868` (run `40235303264`) recorded rust hit rate 11.01%, 263 cache write errors, and 826 non-cacheable calls (621 `crate-type`, 113 `bin`, 66 `proc-macro`) while `effective_cache_mode` was `ReadWrite`. Gate samples from the same window were 24.34% and 38.52% overall.
 
 Sanitizer, Miri, and mutation workflows keep their own `actions/cache` keys. They use nightly or sanitizer instrumentation; sharing stable sccache objects with them is the failure mode the sanitizer workflow already documented (stale nightly ABI in `target/`).
 

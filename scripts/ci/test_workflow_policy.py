@@ -193,6 +193,27 @@ class WorkflowPolicyTest(unittest.TestCase):
         self.assertIn("9bd3e599314f50810c9d98b8b68a617ff9d3cc20873968d90b29d121f6b226ff", script)
         self.assertIn('"$tool" cyclonedx --version', script)
 
+    def test_sccache_pull_requests_are_read_only(self) -> None:
+        action = (ROOT / ".github" / "actions" / "rust-ci-setup" / "action.yml").read_text(encoding="utf-8")
+        self.assertIn("CARGO_INCREMENTAL=0", action)
+        self.assertIn("SCCACHE_GHA_RW_MODE=READ_ONLY", action)
+        self.assertIn("SCCACHE_GHA_RW_MODE=READ_WRITE", action)
+        self.assertIn("refs/heads/main", action)
+        # RUSTFLAGS replaces every rustflags entry. The pin is in cargo config.
+        self.assertNotIn("RUSTFLAGS=", action)
+        config = (ROOT / ".cargo" / "config.toml").read_text(encoding="utf-8")
+        self.assertIn("[target.x86_64-unknown-linux-gnu]", config)
+        self.assertIn('"-C", "target-cpu=x86-64"', config)
+        self.assertIn("[target.x86_64-pc-windows-msvc]", config)
+        self.assertIn("link-args=/STACK:16777216", config)
+        self.assertIn("[target.x86_64-pc-windows-gnu]", config)
+        self.assertIn("link-args=-Wl,--stack,16777216", config)
+        replay = (WORKFLOWS / "determinism-replay.yml").read_text(encoding="utf-8")
+        self.assertIn('echo "RUSTFLAGS=-C target-cpu=x86-64" >> "$GITHUB_ENV"', replay)
+        self.assertIn("target-cpu=native is forbidden", replay)
+        aravath = (WORKFLOWS / "aravath-determinism.yml").read_text(encoding="utf-8")
+        self.assertIn("-C target-feature=-fma", aravath)
+
     def test_allocation_measurement_is_a_real_gate_off_prs(self) -> None:
         text = (WORKFLOWS / "allocation-measurement.yml").read_text(encoding="utf-8")
         self.assertIn("schedule:", text)

@@ -61,6 +61,19 @@ runs:
         echo "CARGO_INCREMENTAL=0" >> "$GITHUB_ENV"
         echo "SCCACHE_CACHE_SIZE=10G" >> "$GITHUB_ENV"
         echo "SCCACHE_IDLE_TIMEOUT=0" >> "$GITHUB_ENV"
+        # sccache 0.19 writes through the Actions cache. A pull request that
+        # also writes hits the service rate limit (cache write errors) and
+        # evicts the shared cache. Main pushes and schedules populate it.
+        # CARGO_INCREMENTAL=0 is already required; sccache still refuses bins,
+        # cdylibs, and proc-macros.
+        if [ "${{ github.ref }}" = "refs/heads/main" ] && [ "${{ github.event_name }}" != "pull_request" ]; then
+          echo "SCCACHE_GHA_RW_MODE=READ_WRITE" >> "$GITHUB_ENV"
+        else
+          echo "SCCACHE_GHA_RW_MODE=READ_ONLY" >> "$GITHUB_ENV"
+        fi
+        # Do not set RUSTFLAGS here. Cargo 1.89 replaces every rustflags
+        # entry in .cargo/config.toml when that variable is set. The Linux
+        # CPU pin lives in that file next to the Windows stack flags.
 
     - name: Cache cargo registry (one key per OS, save on main only)
       uses: Swatinem/rust-cache@v2
