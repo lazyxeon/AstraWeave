@@ -3,10 +3,9 @@ name: Performance Benchmarks
 on:
   push:
     branches: ["main", "develop"]
-  schedule:
-    # Nightly. Not on every pull request. A PR runs this only when it is labeled
-    # run-benchmarks (pull_request types: [labeled] below).
-    - cron: "17 5 * * *"
+  # No nightly cron. Push to main already runs these 16 shards, and the
+  # 05:17 UTC cron ran them again (run 40637628179, 34625s of runner time).
+  # A pull request runs this only when it is labeled run-benchmarks.
   workflow_dispatch:
   pull_request:
     types: [labeled]

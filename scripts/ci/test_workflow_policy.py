@@ -109,7 +109,11 @@ class WorkflowPolicyTest(unittest.TestCase):
         text = (WORKFLOWS / "benchmark.yml").read_text(encoding="utf-8")
         self.assertIn("types: [labeled]", text)
         self.assertIn("run-benchmarks", text)
-        self.assertIn("schedule:", text)
+        self.assertIn('branches: ["main", "develop"]', text)
+        self.assertIn("workflow_dispatch:", text)
+        # Push already runs the shards. The 05:17 cron was a second run.
+        self.assertNotIn("schedule:", text)
+        self.assertNotIn("17 5 * * *", text)
         self.assertNotIn("pull_request:\n    branches:", text)
 
     def test_duplicate_workflows_are_gone(self) -> None:

@@ -18,7 +18,7 @@ With about eight agent branches open, most of those jobs queued. The same worksp
 
 ## What changed
 
-1. **Benchmarks are off unlabeled pull requests.** `Performance Benchmarks` runs on push to `main` and `develop`, nightly at 05:17 UTC, `workflow_dispatch`, and a pull request whose `run-benchmarks` label was just added (`pull_request` types: `[labeled]`). A later push does not rerun benches; remove and re-add the label, or use `workflow_dispatch`. The 600s per-package cap in `.github/scripts/benchmark-runner.sh` is unchanged. See issue #221.
+1. **Benchmarks are off unlabeled pull requests.** `Performance Benchmarks` runs on push to `main` and `develop`, `workflow_dispatch`, and a pull request whose `run-benchmarks` label was just added (`pull_request` types: `[labeled]`). There is no nightly cron. Push to `main` already runs the 16 shards, and the 05:17 UTC cron ran them again (run `40637628179` used 34625s of runner time). A failure on `main` still opens the nightly-failure issue, because that workflow reports a failed `workflow_run` whose head branch is `main`. A later push does not rerun benches; remove and re-add the label, or use `workflow_dispatch`. The 600s per-package cap in `.github/scripts/benchmark-runner.sh` is unchanged. See issue #221.
 2. **Concurrency on every pull-request workflow.**
 
 ```yaml
