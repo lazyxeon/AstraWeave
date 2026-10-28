@@ -12,12 +12,11 @@ ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "scripts" / "ci" / "affected_crates.py"
 
 
-def run_files(files: str) -> dict[str, str]:
-    out = subprocess.check_output(
-        [sys.executable, str(SCRIPT), "--files", files],
-        cwd=ROOT,
-        text=True,
-    )
+def run_files(files: str, scope: str | None = None) -> dict[str, str]:
+    cmd = [sys.executable, str(SCRIPT), "--files", files]
+    if scope:
+        cmd.extend(["--scope", scope])
+    out = subprocess.check_output(cmd, cwd=ROOT, text=True)
     result = {}
     for line in out.splitlines():
         key, value = line.split("=", 1)
@@ -41,11 +40,22 @@ class AffectedCratesTest(unittest.TestCase):
         result = run_files("Cargo.lock")
         self.assertEqual(result["full"], "true")
 
-    def test_workflow_only_does_not_select_crates(self) -> None:
-        result = run_files(".github/workflows/ci.yml")
-        self.assertEqual(result["docs_only"], "false")
+    def test_workflow_action_and_github_scripts_are_full(self) -> None:
+        for path in (
+            ".github/workflows/ci.yml",
+            ".github/actions/rust-ci-setup/action.yml",
+            ".github/scripts/install-prebuilt-cargo-tool.sh",
+        ):
+            result = run_files(path)
+            self.assertEqual(result["full"], "true", path)
+            self.assertEqual(result["docs_only"], "false", path)
+            self.assertEqual(result["reason"], "workflow", path)
+
+    def test_other_github_metadata_is_not_a_full_trigger(self) -> None:
+        result = run_files(".github/CODEOWNERS")
         self.assertEqual(result["full"], "false")
         self.assertEqual(result["packages"], "")
+        self.assertEqual(result["reason"], "no-crate-files")
 
     def test_one_crate_includes_reverse_deps(self) -> None:
         result = run_files("astraweave-prompts/src/lib.rs")
@@ -97,6 +107,69 @@ class AffectedCratesTest(unittest.TestCase):
         excluded = {text[i + 1] for i in exclude_at}
         self.assertIn("hello_companion", excluded)
         self.assertIn("aw_editor", excluded)
+
+
+class AffectedScopeTest(unittest.TestCase):
+    def test_lockfile_and_workflow_run_every_scope(self) -> None:
+        for scope in ("aravath", "aravath-determinism", "render-device", "net"):
+            for files in ("Cargo.lock", "rust-toolchain.toml", ".github/workflows/ci.yml"):
+                result = run_files(files, scope)
+                self.assertEqual(result["run"], "true", f"{scope} {files}")
+                self.assertEqual(result["full"], "true", f"{scope} {files}")
+
+    def test_empty_diff_runs(self) -> None:
+        result = run_files("", "net")
+        self.assertEqual(result["reason"], "empty-diff")
+        self.assertEqual(result["run"], "true")
+
+    def test_docs_only_skips_scopes(self) -> None:
+        result = run_files("docs/current/CI_ARCHITECTURE.md", "net")
+        self.assertEqual(result["docs_only"], "true")
+        self.assertEqual(result["run"], "false")
+
+    def test_prompts_do_not_select_heavy_scopes(self) -> None:
+        for scope in ("aravath", "aravath-determinism", "render-device", "net"):
+            result = run_files("astraweave-prompts/src/lib.rs", scope)
+            self.assertEqual(result["full"], "false", scope)
+            self.assertEqual(result["run"], "false", scope)
+            self.assertIn("astraweave-prompts", result["packages"])
+
+    def test_direct_crates_select_their_scope(self) -> None:
+        net = run_files("astraweave-net/src/lib.rs", "net")
+        self.assertEqual(net["run"], "true")
+        render = run_files("astraweave-render/src/lib.rs", "render-device")
+        self.assertEqual(render["run"], "true")
+        ecs = run_files("astraweave-ecs/src/lib.rs", "render-device")
+        self.assertEqual(ecs["run"], "true")
+        golden = run_files("aravath_runtime/src/lib.rs", "aravath-determinism")
+        self.assertEqual(golden["run"], "true")
+        save = run_files("persistence/aw-save/src/lib.rs", "aravath")
+        self.assertEqual(save["run"], "true")
+
+    def test_core_runs_net_scope_and_proto_does_not(self) -> None:
+        # astraweave-net sits downstream of core, so a core edit still runs
+        # the all-features net job. aw-net-proto is not a dependency of
+        # astraweave-net; CI's own affected set still tests the proto crate.
+        core = run_files("astraweave-core/src/lib.rs", "net")
+        self.assertEqual(core["run"], "true")
+        proto = run_files("net/aw-net-proto/src/lib.rs", "net")
+        self.assertEqual(proto["run"], "false")
+        self.assertIn("aw-net-proto", proto["packages"])
+        self.assertNotIn("astraweave-net", proto["packages"].split(","))
+
+    def test_render_change_runs_aravath_windows_scope(self) -> None:
+        result = run_files("astraweave-render/src/lib.rs", "aravath")
+        self.assertEqual(result["run"], "true")
+
+    def test_unknown_scope_fails(self) -> None:
+        proc = subprocess.run(
+            [sys.executable, str(SCRIPT), "--files", "Cargo.lock", "--scope", "nope"],
+            cwd=ROOT,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        self.assertNotEqual(proc.returncode, 0)
 
 
 if __name__ == "__main__":

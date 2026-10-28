@@ -7,9 +7,15 @@ workspace manifest, the lockfile, or the toolchain test the full workspace.
 Markdown and docs-only diffs do not select any crate.
 
 Unmapped files (scripts, deny.toml, and anything else outside a crate and
-outside docs or .github/) select the full workspace. A wrong narrow selection
-is worse than an extra nightly-sized run; main and the nightly schedule always
-pass --full from the workflow and do not consult this mapping.
+outside docs or .github/) select the full workspace. Workflow files, composite
+actions, and `.github/scripts/` do too: a CI change that is not tested is a
+wrong narrow selection. A wrong narrow selection is worse than an extra
+nightly-sized run; main and the nightly schedule always pass --full from the
+workflow and do not consult this mapping.
+
+`--scope` answers whether one heavy workflow has to run. `run=false` only when
+the diff is known and the expanded crate set misses that scope. An empty diff,
+a full trigger, or a scope package missing from metadata sets `run=true`.
 """
 
 from __future__ import annotations
@@ -29,8 +35,23 @@ FULL_EXACT = {
     ".config/nextest.toml",
 }
 FULL_PREFIXES = (".cargo/",)
+# A workflow or composite-action edit can change what gets tested. Fail safe.
+WORKFLOW_PREFIXES = (
+    ".github/workflows/",
+    ".github/actions/",
+    ".github/scripts/",
+)
 DOC_PREFIXES = ("docs/", "gh-pages/")
 LIB_KINDS = {"lib", "rlib", "dylib", "cdylib", "staticlib", "proc-macro"}
+# Crates whose tests those workflows actually invoke. Reverse dependencies of
+# a changed crate are already in the expanded set, so a dependency edit still
+# selects the workflow.
+SCOPES: dict[str, frozenset[str]] = {
+    "aravath": frozenset({"aravath_runtime", "aw-save", "astraweave-render"}),
+    "aravath-determinism": frozenset({"aravath_runtime"}),
+    "render-device": frozenset({"astraweave-render", "astraweave-ecs"}),
+    "net": frozenset({"astraweave-net"}),
+}
 
 
 def repo_root() -> Path:
@@ -112,11 +133,15 @@ def is_ci_meta(path: str) -> bool:
     return normalize(path).startswith(".github/")
 
 
+def is_workflow_trigger(path: str) -> bool:
+    return normalize(path).startswith(WORKFLOW_PREFIXES)
+
+
 def is_full_trigger(path: str) -> bool:
     name = normalize(path)
     if name in FULL_EXACT or name.startswith(FULL_PREFIXES):
         return True
-    return False
+    return is_workflow_trigger(path)
 
 
 def package_for(path: str, dirs: list[tuple[str, str]]) -> str | None:
@@ -143,12 +168,18 @@ def classify(files: list[str], by_name: dict[str, dict], dirs: list[tuple[str, s
             "packages": "",
             "reason": "docs-only",
         }
-    if any(is_full_trigger(path) for path in cleaned):
+    triggers = [path for path in cleaned if is_full_trigger(path)]
+    if triggers:
+        reason = (
+            "workflow"
+            if all(is_workflow_trigger(path) for path in triggers)
+            else "workspace-or-toolchain"
+        )
         return {
             "docs_only": "false",
             "full": "true",
             "packages": "",
-            "reason": "workspace-or-toolchain",
+            "reason": reason,
         }
 
     seeds: set[str] = set()
@@ -209,6 +240,25 @@ def diff_files(root: Path, base: str, head: str) -> list[str]:
     return [line for line in out.splitlines() if line.strip()]
 
 
+def with_scope(result: dict[str, str], scope: str, by_name: dict[str, dict]) -> dict[str, str]:
+    if scope not in SCOPES:
+        raise SystemExit(f"unknown scope: {scope}")
+    needed = SCOPES[scope]
+    missing = sorted(needed - set(by_name))
+    out = dict(result)
+    if missing:
+        out["run"] = "true"
+        out["reason"] = "scope-package-missing:" + ",".join(missing)
+        return out
+    # Empty diffs and full triggers are not a proven miss. Run the workflow.
+    if result["full"] == "true" or result["reason"] == "empty-diff":
+        out["run"] = "true"
+        return out
+    packages = {name for name in result["packages"].split(",") if name}
+    out["run"] = "true" if packages & needed else "false"
+    return out
+
+
 def write_output(result: dict[str, str], github_output: str | None) -> None:
     text = "".join(f"{key}={value}\n" for key, value in result.items())
     if github_output:
@@ -252,6 +302,11 @@ def main(argv: list[str]) -> int:
     )
     parser.add_argument("--github-output", help="Append KEY=VALUE lines to this file")
     parser.add_argument(
+        "--scope",
+        choices=sorted(SCOPES),
+        help="Also print run=true|false for this heavy workflow",
+    )
+    parser.add_argument(
         "--clippy-workspace-args",
         action="store_true",
         help="Print cargo clippy args for every lib crate, one per line",
@@ -283,6 +338,8 @@ def main(argv: list[str]) -> int:
         return 2
 
     result = classify(files, by_name, dirs)
+    if args.scope:
+        result = with_scope(result, args.scope, by_name)
     write_output(result, args.github_output)
     return 0
 
