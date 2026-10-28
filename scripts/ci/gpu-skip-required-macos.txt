@@ -1,0 +1,149 @@
+# Tests that request only a software adapter while AW_GPU_SKIP_IF_UNAVAILABLE
+# is set. Profile ci has no default-filter, and macOS Test full does not set
+# AW_CI_PROFILE, so it runs these default-feature tests. Each name must appear
+# in the skip log. A log that contains some other line does not cover a missing
+# name. Hardware probes are not listed: Metal still runs them. Ignored tests
+# are not listed: nextest does not run them.
+#
+# golden_backend_tests compiles under profile ci. An integration test sets
+# cfg(test), so test_backend_detection, golden_triangle_render, and
+# golden_determinism_check run. Each requests a software adapter and returns
+# after recording a skip when AW_GPU_SKIP_IF_UNAVAILABLE is set.
+#
+# Not listed, because profile ci does not compile them:
+# - impostor_bake_pipeline, impostor_lod3_pipeline, and impostor_pass_pipeline
+#   need features impostor-bake and gpu-tests.
+# - terrain_splat_pipeline needs terrain-splat-arrays and gpu-tests.
+#   Test full does not pass --all-features, and gpu-tests is not a default.
+# Duplicate function names share one line. The check matches the function name.
+test_backend_detection
+golden_triangle_render
+golden_determinism_check
+scar_upload_is_timed_on_the_low_froxel_grid_when_the_device_can
+test_memory_accounting_overwrite
+test_render_systems_logic
+test_render_extra_systems
+test_instancing_system
+test_texture_module
+test_msaa_module
+test_render_graph_module
+test_sky_and_time_comprehensive
+test_ibl_manager_methods
+test_deferred_gbuffer_formats
+test_texture_creation_variants
+test_clustered_renderer_extensive
+test_culling_pipeline_extensive
+test_shadow_csm_extensive
+test_culling_node_module
+test_ibl_additional_coverage
+test_texture_more_variants
+test_deferred_renderer_comprehensive
+test_ibl_capture_and_bake
+test_gpu_particles_comprehensive
+test_decal_system_comprehensive
+test_advanced_post_processing
+test_texture_streaming_detailed
+test_environment_sky_renderer_detailed
+test_ibl_manager_detailed
+test_culling_node_detailed
+test_graph_adapter_detailed
+test_texture_extended_coverage
+test_deferred_renderer_more_coverage
+test_ibl_manager_edge_cases
+test_texture_remaining_coverage
+test_culling_node_comprehensive_wave19
+test_camera_buffer_creation
+test_material_buffer_creation
+test_instance_buffer_creation
+test_shadow_light_buffer
+test_camera_bind_group_layout
+test_material_bind_group_layout
+test_texture_bind_group_layout
+test_shadow_bind_group_layout
+test_hdr_texture_creation
+test_shadow_texture_creation
+test_shadow_texture_array_views
+test_linear_sampler_creation
+test_shadow_comparison_sampler
+test_repeat_sampler_creation
+test_shader_module_creation
+test_render_pipeline_creation
+test_pipeline_with_depth_stencil
+test_pipeline_with_blending
+test_command_encoder_creation
+test_render_pass_descriptor
+test_render_pass_with_depth
+test_bind_group_with_uniform_buffer
+test_bind_group_with_texture_and_sampler
+test_multiple_bind_groups
+test_queue_write_buffer
+test_queue_write_texture
+test_queue_submit
+test_depth_create
+test_depth_create_different_sizes
+test_depth_format_consistent
+test_weather_fx_new
+test_weather_fx_set_kind
+test_weather_fx_update_none
+test_weather_fx_update_rain
+test_weather_fx_update_wind
+test_weather_fx_rain_spawns_up_to_max
+test_weather_fx_particles_despawn
+test_weather_fx_switch_kind_clears
+test_weather_fx_buffer_exists
+test_biome_tint_defaults_to_one
+test_biome_tint_set_and_get
+test_biome_tint_applied_to_particles
+test_weather_fx_update_snow
+test_weather_fx_update_sandstorm
+test_density_defaults_to_one
+test_density_set_and_get
+test_density_clamped
+test_density_affects_particle_count
+test_wind_defaults
+test_wind_set_and_get
+test_create_default_white
+test_create_default_normal
+test_white_and_normal_different_labels
+test_from_bytes_valid_png
+test_from_bytes_invalid_data
+test_overlay_fx_new
+test_overlay_fx_update
+test_overlay_fx_multiple_updates
+test_overlay_fx_different_formats
+test_buffer_create_and_write
+test_buffer_readback
+test_buffer_queue_write
+test_buffer_partial_write
+test_texture_create_rgba8
+test_texture_create_depth32
+test_texture_upload_and_readback
+test_texture_view_creation
+test_texture_hdr_format
+test_clear_render_target
+test_depth_clear
+test_vertex_shader_compilation
+test_fragment_shader_compilation
+test_compute_shader_compilation
+test_compute_pipeline_creation
+test_compute_shader_doubles_values
+test_adapter_info
+test_buffer_hash_determinism
+test_sampler_creation
+test_bind_group_creation
+test_camera_uniform_buffer_creation
+test_light_uniform_buffer
+test_light_bind_group_layout
+test_metallic_material
+test_dielectric_material
+test_vertex_buffer_creation
+test_index_buffer_creation
+test_shadow_map_texture_array
+test_shadow_cascade_views
+test_cascade_splits_buffer
+test_draw_triangle
+test_indexed_draw
+test_instanced_draw
+test_depth_buffer_creation
+test_depth_stencil_buffer
+test_mesh_registry_pruning

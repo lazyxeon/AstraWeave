@@ -51,6 +51,7 @@ astraweave-profiling = { path = "../astraweave-profiling", optional = true }
 astraweave-alloc = { workspace = true, optional = true }
 tracy-client = { version = "0.18", optional = true }
 log = "0.4"
+libc = "0.2"
 egui = { workspace = true }
 egui-winit = { workspace = true }
 egui-wgpu = { workspace = true }

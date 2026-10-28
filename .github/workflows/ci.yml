@@ -402,9 +402,12 @@ jobs:
 
       - name: macOS runners have no wgpu software adapter
         if: runner.os == 'macOS'
-        run: echo "AW_GPU_SKIP_IF_UNAVAILABLE=1" >> "$GITHUB_ENV"
+        run: |
+          echo "AW_GPU_SKIP_IF_UNAVAILABLE=1" >> "$GITHUB_ENV"
+          echo "AW_GPU_SKIP_LOG=${GITHUB_WORKSPACE}/target/gpu-skip-reasons.txt" >> "$GITHUB_ENV"
 
       - name: Workspace nextest
+        id: workspace-nextest
         env:
           AW_CI_FULL: "true"
           AW_CI_EXCLUDES: ${{ env.EXCLUDED_PACKAGES }}
@@ -413,21 +416,9 @@ jobs:
       - name: Report GPU skips
         if: always()
         shell: bash
-        run: |
-          log="target/gpu-skip-reasons.txt"
-          if [ -s "$log" ]; then
-            {
-              echo "## GPU tests skipped"
-              echo
-              echo "These tests did not execute. A line here is a skip, not a pass."
-              echo
-            } >> "$GITHUB_STEP_SUMMARY"
-            while IFS= read -r line; do
-              echo "- ${line}" >> "$GITHUB_STEP_SUMMARY"
-              echo "::warning title=GPU test skipped::$line"
-              echo "$line"
-            done < "$log"
-          fi
+        env:
+          NEXTEST_OUTCOME: ${{ steps.workspace-nextest.outcome }}
+        run: bash scripts/ci/check-gpu-skip-log.sh
 
   # Windows Test full: compile once, then run three partitions. Each job
   # keeps timeout-minutes at 60. Partitions use profile ci-full-archive

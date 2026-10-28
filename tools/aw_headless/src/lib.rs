@@ -190,11 +190,182 @@ pub fn image_delta(a: &[u8], b: &[u8]) -> (u8, f32) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn is_missing_adapter(err: &anyhow::Error) -> bool {
+        err.chain().any(|cause| {
+            matches!(
+                cause.downcast_ref::<wgpu::RequestAdapterError>(),
+                Some(wgpu::RequestAdapterError::NotFound { .. })
+            )
+        })
+    }
+
+    fn gpu_skip_line(test: &str, detail: &str) -> String {
+        format!(
+            "SKIP(gpu): {test}: {}\n",
+            detail.replace(['\n', '\r', '%'], " ")
+        )
+    }
+
+    fn not_found_records_a_skip(missing: bool, gate: bool) -> bool {
+        missing && gate
+    }
+
+    fn skip_missing_adapter(err: &anyhow::Error) -> bool {
+        if !not_found_records_a_skip(
+            is_missing_adapter(err),
+            std::env::var_os("AW_GPU_SKIP_IF_UNAVAILABLE").is_some(),
+        ) {
+            return false;
+        }
+        let current = std::thread::current();
+        let test = current.name().unwrap_or("unnamed-test");
+        let target = std::env::var_os("CARGO_TARGET_DIR")
+            .map(std::path::PathBuf::from)
+            .or_else(|| {
+                let manifest = std::path::PathBuf::from(
+                    std::env::var_os("CARGO_MANIFEST_DIR").unwrap_or_else(|| ".".into()),
+                );
+                manifest
+                    .ancestors()
+                    .map(|dir| dir.join("target"))
+                    .find(|dir| dir.is_dir())
+            })
+            .unwrap_or_else(|| std::path::PathBuf::from("target"));
+        let target = target
+            .canonicalize()
+            .unwrap_or_else(|io| panic!("GPU skip log target is missing: {io}"));
+        let path = std::env::var_os("AW_GPU_SKIP_LOG")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| target.join("gpu-skip-reasons.txt"));
+        let parent = path
+            .parent()
+            .unwrap_or_else(|| panic!("GPU skip log {} has no parent", path.display()))
+            .canonicalize()
+            .unwrap_or_else(|io| {
+                panic!(
+                    "refusing to create a directory for {}: {io}",
+                    path.display()
+                )
+            });
+        assert_eq!(
+            parent,
+            target,
+            "GPU skip log {} is outside {}",
+            path.display(),
+            target.display()
+        );
+        let line = gpu_skip_line(test, &format!("{err}"));
+        eprintln!("{}", line.trim_end());
+        let mut file = open_append_nofollow(&path)
+            .unwrap_or_else(|io| panic!("could not record GPU skip at {}: {io}", path.display()));
+        std::io::Write::write_all(&mut file, line.as_bytes())
+            .unwrap_or_else(|io| panic!("could not record GPU skip at {}: {io}", path.display()));
+        true
+    }
+
+    fn open_append_nofollow(path: &std::path::Path) -> std::io::Result<std::fs::File> {
+        match std::fs::symlink_metadata(path) {
+            Ok(meta) if meta.file_type().is_symlink() => {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::AlreadyExists,
+                    format!("GPU skip log {} is a symlink", path.display()),
+                ));
+            }
+            Ok(_) => {}
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
+            Err(err) => return Err(err),
+        }
+        let mut options = std::fs::OpenOptions::new();
+        options.create(true).append(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.custom_flags(libc::O_NOFOLLOW);
+        }
+        options.open(path)
+    }
+
+    fn wgpu25_not_found() -> wgpu::RequestAdapterError {
+        wgpu::RequestAdapterError::NotFound {
+            active_backends: wgpu::Backends::all(),
+            requested_backends: wgpu::Backends::all(),
+            supported_backends: wgpu::Backends::all(),
+            no_fallback_backends: wgpu::Backends::empty(),
+            no_adapter_backends: wgpu::Backends::all(),
+            incompatible_surface_backends: wgpu::Backends::empty(),
+        }
+    }
+
+    #[test]
+    fn wgpu25_not_found_is_not_the_display_needles() {
+        let wrapped: anyhow::Error = wgpu25_not_found().into();
+        let text = format!("{wrapped:?} {wrapped}");
+        assert!(
+            !text.contains("No adapter") && !text.contains("NotFound"),
+            "the old matcher would have treated this as a hit: {text}"
+        );
+        assert!(
+            text.contains("No suitable graphics adapter found"),
+            "{text}"
+        );
+        assert!(is_missing_adapter(&wrapped));
+        let other: anyhow::Error = wgpu::RequestAdapterError::EnvNotSet.into();
+        assert!(!is_missing_adapter(&other));
+    }
+
+    #[test]
+    fn golden_skip_line_names_that_test() {
+        let line = gpu_skip_line("golden_gradient_matches_with_tolerance", "no adapter");
+        assert!(
+            line.contains("golden_gradient_matches_with_tolerance:"),
+            "{line}"
+        );
+        assert!(!line.contains("renders_gradient:"), "{line}");
+    }
+
+    #[test]
+    fn not_found_records_only_when_the_gate_is_set() {
+        assert!(not_found_records_a_skip(true, true));
+        assert!(!not_found_records_a_skip(true, false));
+        assert!(!not_found_records_a_skip(false, true));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn o_nofollow_is_the_libc_constant() {
+        assert_ne!(libc::O_NOFOLLOW, 0);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn skip_log_rejects_a_symlink() {
+        let dir = std::env::temp_dir().join(format!("aw-headless-skip-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        let outside = dir.join("outside.txt");
+        std::fs::write(&outside, b"outside").expect("outside file");
+        let link = dir.join("gpu-skip-reasons.txt");
+        std::os::unix::fs::symlink(&outside, &link).expect("symlink");
+        let err = open_append_nofollow(&link).expect_err("symlink");
+        assert!(err.to_string().contains("symlink"), "{err}");
+        assert_eq!(std::fs::read(&outside).expect("outside bytes"), b"outside");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[test]
     fn renders_gradient() {
         let fs = r#"@fragment fn fs_main(i: VSOut) -> @location(0) vec4<f32> { return vec4<f32>(i.uv, 0.0, 1.0); }"#;
         let wgsl = wrap_fs_into_fullscreen(fs);
-        let img = pollster::block_on(render_wgsl_to_image(&wgsl, 32, 16)).expect("render");
+        let img = match pollster::block_on(render_wgsl_to_image(&wgsl, 32, 16)) {
+            Ok(img) => img,
+            Err(err) => {
+                if skip_missing_adapter(&err) {
+                    return;
+                }
+                panic!("render: {err}");
+            }
+        };
         assert_eq!(img.len(), 32 * 16 * 4);
         assert!(img.iter().any(|&b| b != 0));
     }
@@ -212,7 +383,15 @@ mod tests {
         let h = 32u32;
         let fs = r#"@fragment fn fs_main(i: VSOut) -> @location(0) vec4<f32> { return vec4<f32>(i.uv, 0.0, 1.0); }"#;
         let wgsl = wrap_fs_into_fullscreen(fs);
-        let img = pollster::block_on(render_wgsl_to_image(&wgsl, w, h)).expect("render");
+        let img = match pollster::block_on(render_wgsl_to_image(&wgsl, w, h)) {
+            Ok(img) => img,
+            Err(err) => {
+                if skip_missing_adapter(&err) {
+                    return;
+                }
+                panic!("render: {err}");
+            }
+        };
         // Build expected sRGB RGBA8 gradient
         let mut exp = vec![0u8; (w * h * 4) as usize];
         for y in 0..h {

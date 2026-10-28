@@ -4,6 +4,9 @@
 #[path = "support/linux_test_threads.rs"]
 mod linux_test_threads;
 
+#[path = "support/gpu_capability.rs"]
+mod gpu_capability;
+
 use astraweave_render::gpu_particles::{EmitterParams, GpuParticleSystem};
 
 fn params(seed: u32) -> EmitterParams {
@@ -22,17 +25,18 @@ fn params(seed: u32) -> EmitterParams {
     }
 }
 
-fn fingerprint(seed: u32) -> Vec<u8> {
+fn fingerprint(seed: u32) -> Option<Vec<u8>> {
     pollster::block_on(async {
-        let instance = wgpu::Instance::default();
-        let adapter = instance
-            .request_adapter(&wgpu::RequestAdapterOptions::default())
-            .await
-            .expect("adapter");
-        let (device, queue) = adapter
-            .request_device(&wgpu::DeviceDescriptor::default())
-            .await
-            .expect("device");
+        let gpu = gpu_capability::request_headless(
+            "particle_present",
+            wgpu::Features::empty(),
+            wgpu::Limits::default(),
+            wgpu::PowerPreference::HighPerformance,
+            false,
+        )
+        .await?;
+        let device = gpu.device;
+        let queue = gpu.queue;
         let mut system = GpuParticleSystem::new(&device, 64).expect("particles");
         let step = params(seed);
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
@@ -62,7 +66,7 @@ fn fingerprint(seed: u32) -> Vec<u8> {
         let _ = device.poll(wgpu::MaintainBase::Wait);
         rx.recv().expect("recv").expect("mapped");
         let bytes = slice.get_mapped_range().to_vec();
-        bytes
+        Some(bytes)
     })
 }
 
@@ -73,11 +77,28 @@ fn same_seed_and_dt_repeat_the_presentation_fingerprint() {
     // atomics, and seed and dt are the only varying uniforms. A second run
     // of the same seed must match bit for bit. Seed 9 must match itself and
     // must differ from seed 7.
-    let seed_7_a = fingerprint(7);
-    let seed_7_b = fingerprint(7);
+    let samples = [
+        fingerprint(7),
+        fingerprint(7),
+        fingerprint(9),
+        fingerprint(9),
+    ];
+    if samples.iter().all(Option::is_none) {
+        return;
+    }
+    let seed_7_a = samples[0]
+        .clone()
+        .expect("seed 7 missed after another fingerprint created a device");
+    let seed_7_b = samples[1]
+        .clone()
+        .expect("seed 7 second run missed after a device was created");
     assert_eq!(seed_7_a, seed_7_b, "seed 7 did not repeat");
-    let seed_9_a = fingerprint(9);
-    let seed_9_b = fingerprint(9);
+    let seed_9_a = samples[2]
+        .clone()
+        .expect("seed 9 missed after a device was created");
+    let seed_9_b = samples[3]
+        .clone()
+        .expect("seed 9 second run missed after a device was created");
     assert_eq!(seed_9_a, seed_9_b, "seed 9 did not repeat");
     assert_ne!(
         seed_7_a, seed_9_a,
@@ -88,9 +109,10 @@ fn same_seed_and_dt_repeat_the_presentation_fingerprint() {
 #[test]
 fn emitter_draw_into_submits() {
     pollster::block_on(async {
-        let mut renderer = astraweave_render::Renderer::new_headless(64, 64)
-            .await
-            .expect("headless");
+        let Some(mut renderer) = astraweave_render::Renderer::headless_for_tests(64, 64).await
+        else {
+            return;
+        };
         renderer
             .set_particle_emitter(Some(params(7)))
             .expect("emitter");

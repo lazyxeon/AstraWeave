@@ -694,17 +694,25 @@ mod tests {
         mgr.pending_ids.contains(id)
     }
 
-    /// Test-only helper to inject a fake Resident entry without requiring GPU.
-    /// Uses pollster + wgpu's built-in test adapter to create a minimal device.
-    fn inject_resident(mgr: &mut TextureStreamingManager, id: &str, memory_bytes: usize) {
+    /// Insert a resident texture, or record a missing adapter and return false.
+    ///
+    /// `NotFound` with `AW_GPU_SKIP_IF_UNAVAILABLE` writes one skip line. Any
+    /// other adapter error panics. A device refusal panics.
+    fn inject_resident(mgr: &mut TextureStreamingManager, id: &str, memory_bytes: usize) -> bool {
         let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
         let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
             power_preference: wgpu::PowerPreference::LowPower,
             compatible_surface: None,
             force_fallback_adapter: false,
         }));
-        // If no adapter available (e.g., headless CI), skip by silently returning.
-        let Ok(adapter) = adapter else { return };
+        let adapter = match adapter {
+            Ok(adapter) => adapter,
+            Err(err) => {
+                let reason = format!("inject_resident found no adapter for '{id}': {err}");
+                crate::gpu_capability::skip_missing_adapter(&err, &reason);
+                return false;
+            }
+        };
         let (device, _queue) =
             pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default())).unwrap();
 
@@ -741,6 +749,7 @@ mod tests {
         mgr.assets.insert(id.into(), AssetState::Resident(handle));
         mgr.lru_queue.push_back(id.into());
         mgr.current_memory_bytes += memory_bytes;
+        true
     }
 
     // ——— Core state machine tests (no GPU required) ———
@@ -871,11 +880,7 @@ mod tests {
     fn resident_texture_is_returned_and_lru_updated() {
         let mut mgr = TextureStreamingManager::new(64).expect("texture streaming runtime");
 
-        inject_resident(&mut mgr, "tex_resident", 4);
-
-        // If inject_resident silently skipped (no adapter), skip this test
-        if !mgr.is_resident(&"tex_resident".to_string()) {
-            eprintln!("Skipping: no GPU adapter available");
+        if !inject_resident(&mut mgr, "tex_resident", 4) {
             return;
         }
 
@@ -892,12 +897,7 @@ mod tests {
     fn evict_lru_removes_oldest() {
         let mut mgr = TextureStreamingManager::new(64).expect("texture streaming runtime");
 
-        inject_resident(&mut mgr, "oldest", 100);
-        inject_resident(&mut mgr, "newest", 100);
-
-        // If no adapter, skip
-        if !mgr.is_resident(&"oldest".to_string()) {
-            eprintln!("Skipping: no GPU adapter available");
+        if !inject_resident(&mut mgr, "oldest", 100) || !inject_resident(&mut mgr, "newest", 100) {
             return;
         }
 
@@ -921,10 +921,7 @@ mod tests {
         // Add some pending requests
         mgr.request_texture("a".into(), 1, 10.0);
 
-        inject_resident(&mut mgr, "c", 4);
-
-        if !mgr.is_resident(&String::from("c")) {
-            eprintln!("Skipping: no GPU adapter available");
+        if !inject_resident(&mut mgr, "c", 4) {
             return;
         }
 
@@ -967,16 +964,23 @@ mod tests {
         file.set_len(cap + 1).expect("set_len");
         drop(file);
         let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
-        let Ok(adapter) =
-            pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
+        let adapter =
+            match pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
                 power_preference: wgpu::PowerPreference::LowPower,
                 compatible_surface: None,
                 force_fallback_adapter: false,
-            }))
-        else {
-            eprintln!("skip load_texture_async cap: no wgpu adapter");
-            return;
-        };
+            })) {
+                Ok(adapter) => adapter,
+                Err(err @ wgpu::RequestAdapterError::NotFound { .. })
+                    if std::env::var_os("AW_GPU_SKIP_IF_UNAVAILABLE").is_some() =>
+                {
+                    crate::renderer::record_gpu_skip_for_tests(&format!(
+                        "load_texture_async_rejects_a_file_over_the_cap: {err}"
+                    ));
+                    return;
+                }
+                Err(err) => panic!("load_texture_async cap: {err}"),
+            };
         let (device, queue) =
             pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
                 .expect("device");
@@ -1009,16 +1013,23 @@ mod tests {
         file.set_len(cap + 1).expect("set_len");
         drop(file);
         let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
-        let Ok(adapter) =
-            pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
+        let adapter =
+            match pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
                 power_preference: wgpu::PowerPreference::LowPower,
                 compatible_surface: None,
                 force_fallback_adapter: false,
-            }))
-        else {
-            eprintln!("skip from_file_with_usage cap: no wgpu adapter");
-            return;
-        };
+            })) {
+                Ok(adapter) => adapter,
+                Err(err @ wgpu::RequestAdapterError::NotFound { .. })
+                    if std::env::var_os("AW_GPU_SKIP_IF_UNAVAILABLE").is_some() =>
+                {
+                    crate::renderer::record_gpu_skip_for_tests(&format!(
+                        "from_file_with_usage_rejects_a_file_over_the_cap: {err}"
+                    ));
+                    return;
+                }
+                Err(err) => panic!("from_file_with_usage cap: {err}"),
+            };
         let (device, queue) =
             pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
                 .expect("device");
@@ -1045,8 +1056,10 @@ mod tests {
         let cap = astraweave_asset::image_limits::MAX_IMAGE_ALLOC;
         file.set_len(cap + 1).expect("set_len");
         drop(file);
-        let mut renderer =
-            pollster::block_on(crate::Renderer::new_headless(64, 64)).expect("headless renderer");
+        let Some(mut renderer) = pollster::block_on(crate::Renderer::headless_for_tests(64, 64))
+        else {
+            return;
+        };
         let path_string = path.to_string_lossy().into_owned();
         let panicked = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             renderer.set_smoke_test_texture(&path_string);

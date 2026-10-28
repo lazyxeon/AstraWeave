@@ -1473,14 +1473,26 @@ mod tests {
     fn test_water_renderer_new_and_update() {
         pollster::block_on(async {
             let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
-            let adapter = instance
+            let adapter = match instance
                 .request_adapter(&wgpu::RequestAdapterOptions::default())
-                .await;
-            if let Ok(adapter) = adapter {
+                .await
+            {
+                Ok(adapter) => adapter,
+                Err(err) => {
+                    let reason = format!("test_water_renderer_new_and_update: {err}");
+                    crate::gpu_capability::skip_missing_adapter(&err, &reason);
+                    return;
+                }
+            };
+            {
                 let (device, queue) = adapter
                     .request_device(&wgpu::DeviceDescriptor::default())
                     .await
-                    .unwrap();
+                    .unwrap_or_else(|err| {
+                        panic!(
+                            "test_water_renderer_new_and_update: adapter refused the device: {err}"
+                        )
+                    });
                 let mut renderer = WaterRenderer::new(
                     &device,
                     wgpu::TextureFormat::Rgba8UnormSrgb,

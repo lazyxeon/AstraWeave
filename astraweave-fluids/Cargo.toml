@@ -67,6 +67,7 @@ rayon = { version = "1.10", optional = true }
 toml = "0.8"
 
 [dev-dependencies]
+libc = "0.2"
 winit = { workspace = true }
 pollster = { workspace = true }
 env_logger = "0.11"

@@ -61,10 +61,10 @@ fn draw(renderer: &mut Renderer, color: &wgpu::TextureView, depth: Option<&wgpu:
 #[test]
 fn enabling_sample_hiz_rebinds_to_the_current_depth_view() {
     pollster::block_on(async {
-        let mut renderer = Renderer::new_headless(64, 64)
-            .await
-            .expect("headless renderer");
-        if astraweave_render::gpu_fault::skip_without_depth_texture_load(
+        let Some(mut renderer) = Renderer::headless_for_tests(64, 64).await else {
+            return;
+        };
+        if astraweave_render::gpu_fault::skip_or_panic_without_depth_texture_load(
             renderer.device(),
             "enabling_sample_hiz_rebinds_to_the_current_depth_view",
         ) {

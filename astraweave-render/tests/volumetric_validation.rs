@@ -13,13 +13,20 @@ use astraweave_render::{GodRayConfig, Renderer};
 #[test]
 fn volumetrics_on_submits_two_frames_without_validation_errors() {
     std::env::set_var("WGPU_VALIDATION", "1");
-    let mut renderer = pollster::block_on(Renderer::new_headless(64, 64))
-        .expect("headless renderer with validation");
-    if !astraweave_render::gpu_fault::depth_texture_load_supported(renderer.device()) {
-        eprintln!(
-            "skip volumetrics_on_submits_two_frames_without_validation_errors: this adapter does not support textureLoad on depth textures. GL rejects that load. The lavapipe job still runs this test."
-        );
+    let Some(mut renderer) = pollster::block_on(Renderer::headless_for_tests(64, 64)) else {
         return;
+    };
+    if !astraweave_render::gpu_fault::depth_texture_load_supported(renderer.device()) {
+        let reason = format!(
+            "volumetrics_on_submits_two_frames_without_validation_errors: depth textureLoad is absent on adapter={} backend={}",
+            renderer.gpu_adapter_name(),
+            renderer.gpu_backend()
+        );
+        if std::env::var_os("AW_GPU_SKIP_IF_UNAVAILABLE").is_some() {
+            astraweave_render::renderer::record_gpu_skip_for_tests(&reason);
+            return;
+        }
+        panic!("{reason}");
     }
     renderer.set_volumetric_fog_config(
         astraweave_render::volumetric_fog::VolumetricFogPass::gameplay_config(),

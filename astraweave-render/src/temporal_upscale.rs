@@ -707,24 +707,25 @@ mod tests {
             force_fallback_adapter: false,
         }));
         let adapter = match adapter {
-            Ok(a) => a,
-            Err(_) => {
-                eprintln!("skipping GPU test — no adapter");
+            Ok(adapter) => adapter,
+            Err(err) => {
+                let reason = format!("upscale_pass_creation: {err}");
+                crate::gpu_capability::skip_missing_adapter(&err, &reason);
                 return;
             }
         };
         let (device, _queue) =
-            match pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
+            pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
                 label: Some("upscale_test"),
                 ..Default::default()
-            })) {
-                Ok(pair) => pair,
-                Err(_) => {
-                    eprintln!("skipping GPU test — no device");
-                    return;
-                }
-            };
-        if crate::gpu_fault::skip_without_depth_texture_load(&device, "upscale_pass_creation") {
+            }))
+            .unwrap_or_else(|err| {
+                panic!("upscale_pass_creation: adapter refused the device: {err}")
+            });
+        if crate::gpu_fault::skip_or_panic_without_depth_texture_load(
+            &device,
+            "upscale_pass_creation",
+        ) {
             return;
         }
 

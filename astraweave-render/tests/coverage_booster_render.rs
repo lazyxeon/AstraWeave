@@ -17,6 +17,25 @@
 #[path = "support/linux_test_threads.rs"]
 mod linux_test_threads;
 
+#[path = "support/gpu_capability.rs"]
+mod gpu_capability;
+
+async fn headless_or_skip(
+    label: &'static str,
+    power: wgpu::PowerPreference,
+    prefer_fallback: bool,
+) -> Option<(wgpu::Device, wgpu::Queue)> {
+    gpu_capability::request_headless(
+        label,
+        wgpu::Features::empty(),
+        wgpu::Limits::default(),
+        power,
+        prefer_fallback,
+    )
+    .await
+    .map(|gpu| (gpu.device, gpu.queue))
+}
+
 use astraweave_camera::{CameraController, CameraMode, CameraProducer, FreeFly as Camera};
 use astraweave_materials::{Graph, MaterialPackage, Node};
 use astraweave_render::{
@@ -58,26 +77,15 @@ use wgpu::util::DeviceExt;
 #[tokio::test]
 #[ignore = "GPU/wgpu test - not available in CI/mutation testing"]
 async fn test_render_advanced_features() {
-    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
-    let adapter = instance
-        .request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::HighPerformance,
-            compatible_surface: None,
-            force_fallback_adapter: true,
-        })
-        .await
-        .unwrap();
-
-    let (device, queue) = adapter
-        .request_device(&wgpu::DeviceDescriptor {
-            label: None,
-            required_features: wgpu::Features::empty(),
-            required_limits: wgpu::Limits::default(),
-            memory_hints: Default::default(),
-            trace: Default::default(),
-        })
-        .await
-        .unwrap();
+    let Some((device, queue)) = headless_or_skip(
+        "test_render_advanced_features",
+        wgpu::PowerPreference::HighPerformance,
+        true,
+    )
+    .await
+    else {
+        return;
+    };
 
     let config = wgpu::SurfaceConfiguration {
         usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
@@ -175,26 +183,15 @@ async fn test_render_advanced_features() {
 
 #[tokio::test]
 async fn test_render_systems_logic() {
-    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
-    let adapter = instance
-        .request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::HighPerformance,
-            compatible_surface: None,
-            force_fallback_adapter: true,
-        })
-        .await
-        .unwrap();
-
-    let (device, queue) = adapter
-        .request_device(&wgpu::DeviceDescriptor {
-            label: None,
-            required_features: wgpu::Features::empty(),
-            required_limits: wgpu::Limits::default(),
-            memory_hints: Default::default(),
-            trace: Default::default(),
-        })
-        .await
-        .unwrap();
+    let Some((device, queue)) = headless_or_skip(
+        "test_render_systems_logic",
+        wgpu::PowerPreference::HighPerformance,
+        true,
+    )
+    .await
+    else {
+        return;
+    };
 
     let width = 1024;
     let height = 768;
@@ -324,9 +321,9 @@ async fn test_renderer_full_pipeline() {
     use glam::vec3;
 
     // Initialize headless renderer
-    let mut renderer = Renderer::new_headless(800, 600)
-        .await
-        .expect("Failed to create headless renderer");
+    let Some(mut renderer) = Renderer::headless_for_tests(800, 600).await else {
+        return;
+    };
 
     // 1. Add a model and instances to exercise model rendering loop
     let (v, i) = astraweave_render::primitives::cube();
@@ -595,26 +592,15 @@ async fn test_render_extra_systems() {
         water::WaterRenderer,
     };
 
-    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
-    let adapter = instance
-        .request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::HighPerformance,
-            compatible_surface: None,
-            force_fallback_adapter: true,
-        })
-        .await
-        .unwrap();
-
-    let (device, queue) = adapter
-        .request_device(&wgpu::DeviceDescriptor {
-            label: None,
-            required_features: wgpu::Features::empty(),
-            required_limits: wgpu::Limits::default(),
-            memory_hints: Default::default(),
-            trace: Default::default(),
-        })
-        .await
-        .unwrap();
+    let Some((device, queue)) = headless_or_skip(
+        "test_render_extra_systems",
+        wgpu::PowerPreference::HighPerformance,
+        true,
+    )
+    .await
+    else {
+        return;
+    };
 
     let width = 1024;
     let height = 768;
@@ -721,26 +707,15 @@ async fn test_render_extra_systems() {
 
 #[tokio::test]
 async fn test_render_core_systems() {
-    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
-    let adapter = instance
-        .request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::HighPerformance,
-            compatible_surface: None,
-            force_fallback_adapter: false,
-        })
-        .await
-        .unwrap();
-
-    let (device, queue) = adapter
-        .request_device(&wgpu::DeviceDescriptor {
-            label: None,
-            required_features: wgpu::Features::empty(),
-            required_limits: wgpu::Limits::default(),
-            memory_hints: wgpu::MemoryHints::default(),
-            trace: Default::default(),
-        })
-        .await
-        .unwrap();
+    let Some((device, queue)) = headless_or_skip(
+        "test_render_core_systems",
+        wgpu::PowerPreference::HighPerformance,
+        false,
+    )
+    .await
+    else {
+        return;
+    };
 
     // 1. CSM Renderer
     let mut csm = CsmRenderer::new(&device).unwrap();
@@ -890,26 +865,15 @@ async fn test_render_core_systems() {
 #[tokio::test]
 #[ignore = "GPU/wgpu test - not available in CI/mutation testing"]
 async fn test_render_loop_and_materials() {
-    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
-    let adapter = instance
-        .request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::HighPerformance,
-            compatible_surface: None,
-            force_fallback_adapter: true,
-        })
-        .await
-        .unwrap();
-
-    let (device, queue) = adapter
-        .request_device(&wgpu::DeviceDescriptor {
-            label: None,
-            required_features: wgpu::Features::empty(),
-            required_limits: wgpu::Limits::default(),
-            memory_hints: Default::default(),
-            trace: Default::default(),
-        })
-        .await
-        .unwrap();
+    let Some((device, queue)) = headless_or_skip(
+        "test_render_loop_and_materials",
+        wgpu::PowerPreference::HighPerformance,
+        true,
+    )
+    .await
+    else {
+        return;
+    };
 
     let config = wgpu::SurfaceConfiguration {
         usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
@@ -1132,26 +1096,15 @@ fn test_camera_and_controller() {
 
 #[tokio::test]
 async fn test_instancing_system() {
-    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
-    let adapter = instance
-        .request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::HighPerformance,
-            compatible_surface: None,
-            force_fallback_adapter: true,
-        })
-        .await
-        .unwrap();
-
-    let (device, _queue) = adapter
-        .request_device(&wgpu::DeviceDescriptor {
-            label: None,
-            required_features: wgpu::Features::empty(),
-            required_limits: wgpu::Limits::default(),
-            memory_hints: Default::default(),
-            trace: Default::default(),
-        })
-        .await
-        .unwrap();
+    let Some((device, _queue)) = headless_or_skip(
+        "test_instancing_system",
+        wgpu::PowerPreference::HighPerformance,
+        true,
+    )
+    .await
+    else {
+        return;
+    };
 
     // Test InstanceRaw
     let raw = InstanceRaw::from_transform(Vec3::ONE, Quat::IDENTITY, Vec3::splat(2.0));
@@ -1425,20 +1378,15 @@ async fn test_texture_module() {
     }
 
     // Get device and queue for texture creation
-    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
-    let adapter = instance
-        .request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::HighPerformance,
-            compatible_surface: None,
-            force_fallback_adapter: true,
-        })
-        .await
-        .unwrap();
-
-    let (device, queue) = adapter
-        .request_device(&wgpu::DeviceDescriptor::default())
-        .await
-        .unwrap();
+    let Some((device, queue)) = headless_or_skip(
+        "test_texture_module",
+        wgpu::PowerPreference::HighPerformance,
+        true,
+    )
+    .await
+    else {
+        return;
+    };
 
     // Test Texture::create_default_white
     let white_tex = Texture::create_default_white(&device, &queue, "white_test").unwrap();
@@ -1606,26 +1554,15 @@ fn test_terrain_renderer_module() {
 async fn test_msaa_module() {
     use astraweave_render::msaa::{create_msaa_depth_texture, MsaaMode, MsaaRenderTarget};
 
-    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
-    let adapter = instance
-        .request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::HighPerformance,
-            compatible_surface: None,
-            force_fallback_adapter: true,
-        })
-        .await
-        .unwrap();
-
-    let (device, _queue) = adapter
-        .request_device(&wgpu::DeviceDescriptor {
-            label: None,
-            required_features: wgpu::Features::empty(),
-            required_limits: wgpu::Limits::default(),
-            memory_hints: Default::default(),
-            trace: Default::default(),
-        })
-        .await
-        .unwrap();
+    let Some((device, _queue)) = headless_or_skip(
+        "test_msaa_module",
+        wgpu::PowerPreference::HighPerformance,
+        true,
+    )
+    .await
+    else {
+        return;
+    };
 
     // Test MsaaMode basics
     assert_eq!(MsaaMode::Off.sample_count(), 1);
@@ -1721,26 +1658,15 @@ async fn test_render_graph_module() {
         ClearNode, GraphContext, RenderGraph, RenderNode, RendererMainNode, ResourceTable,
     };
 
-    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
-    let adapter = instance
-        .request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::HighPerformance,
-            compatible_surface: None,
-            force_fallback_adapter: true,
-        })
-        .await
-        .unwrap();
-
-    let (device, queue) = adapter
-        .request_device(&wgpu::DeviceDescriptor {
-            label: None,
-            required_features: wgpu::Features::empty(),
-            required_limits: wgpu::Limits::default(),
-            memory_hints: Default::default(),
-            trace: Default::default(),
-        })
-        .await
-        .unwrap();
+    let Some((device, queue)) = headless_or_skip(
+        "test_render_graph_module",
+        wgpu::PowerPreference::HighPerformance,
+        true,
+    )
+    .await
+    else {
+        return;
+    };
 
     // Test ResourceTable operations
     let mut resources = ResourceTable::default();
@@ -2049,26 +1975,15 @@ async fn test_weather_system_comprehensive() {
 async fn test_sky_and_time_comprehensive() {
     use astraweave_render::environment::{SkyConfig, SkyRenderer, TimeOfDay};
 
-    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
-    let adapter = instance
-        .request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::HighPerformance,
-            compatible_surface: None,
-            force_fallback_adapter: true,
-        })
-        .await
-        .unwrap();
-
-    let (device, _queue) = adapter
-        .request_device(&wgpu::DeviceDescriptor {
-            label: None,
-            required_features: wgpu::Features::empty(),
-            required_limits: wgpu::Limits::default(),
-            memory_hints: Default::default(),
-            trace: Default::default(),
-        })
-        .await
-        .unwrap();
+    let Some((device, _queue)) = headless_or_skip(
+        "test_sky_and_time_comprehensive",
+        wgpu::PowerPreference::HighPerformance,
+        true,
+    )
+    .await
+    else {
+        return;
+    };
 
     // Test TimeOfDay creation and updates
     let mut tod = TimeOfDay::new(6.0, 1.0); // Start at 6am, 1x speed
@@ -2272,20 +2187,15 @@ async fn test_renderer_extensive_methods() {
     use astraweave_render::renderer::Renderer;
     use astraweave_render::types::Instance;
 
-    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
-    let adapter = instance
-        .request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::HighPerformance,
-            compatible_surface: None,
-            force_fallback_adapter: true,
-        })
-        .await
-        .unwrap();
-
-    let (device, queue) = adapter
-        .request_device(&wgpu::DeviceDescriptor::default())
-        .await
-        .unwrap();
+    let Some((device, queue)) = headless_or_skip(
+        "test_renderer_extensive_methods",
+        wgpu::PowerPreference::HighPerformance,
+        true,
+    )
+    .await
+    else {
+        return;
+    };
 
     let config = wgpu::SurfaceConfiguration {
         usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
@@ -2480,20 +2390,15 @@ async fn test_texture_streaming_eviction_and_stats() {
 async fn test_ibl_manager_methods() {
     use astraweave_render::ibl::{IblManager, IblQuality};
 
-    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
-    let adapter = instance
-        .request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::HighPerformance,
-            compatible_surface: None,
-            force_fallback_adapter: true,
-        })
-        .await
-        .unwrap();
-
-    let (device, _queue) = adapter
-        .request_device(&wgpu::DeviceDescriptor::default())
-        .await
-        .unwrap();
+    let Some((device, _queue)) = headless_or_skip(
+        "test_ibl_manager_methods",
+        wgpu::PowerPreference::HighPerformance,
+        true,
+    )
+    .await
+    else {
+        return;
+    };
 
     // Test IblQuality enum - Low, Medium, High only
     let qualities = [IblQuality::Low, IblQuality::Medium, IblQuality::High];
@@ -2585,20 +2490,15 @@ async fn test_environment_weather_comprehensive() {
 async fn test_deferred_gbuffer_formats() {
     use astraweave_render::deferred::{DeferredRenderer, GBuffer, GBufferFormats};
 
-    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
-    let adapter = instance
-        .request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::HighPerformance,
-            compatible_surface: None,
-            force_fallback_adapter: true,
-        })
-        .await
-        .unwrap();
-
-    let (device, _queue) = adapter
-        .request_device(&wgpu::DeviceDescriptor::default())
-        .await
-        .unwrap();
+    let Some((device, _queue)) = headless_or_skip(
+        "test_deferred_gbuffer_formats",
+        wgpu::PowerPreference::HighPerformance,
+        true,
+    )
+    .await
+    else {
+        return;
+    };
 
     // Test GBufferFormats
     let formats = GBufferFormats::default();
@@ -2634,20 +2534,15 @@ async fn test_texture_creation_variants() {
     use astraweave_render::texture::{Texture, TextureUsage};
     use image::DynamicImage;
 
-    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
-    let adapter = instance
-        .request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::HighPerformance,
-            compatible_surface: None,
-            force_fallback_adapter: true,
-        })
-        .await
-        .unwrap();
-
-    let (device, queue) = adapter
-        .request_device(&wgpu::DeviceDescriptor::default())
-        .await
-        .unwrap();
+    let Some((device, queue)) = headless_or_skip(
+        "test_texture_creation_variants",
+        wgpu::PowerPreference::HighPerformance,
+        true,
+    )
+    .await
+    else {
+        return;
+    };
 
     // Create test images with various sizes
     let sizes = [(64, 64), (128, 128), (256, 256)];
@@ -2782,20 +2677,15 @@ async fn test_vxgi_additional_coverage() {
 async fn test_clustered_renderer_extensive() {
     use astraweave_render::clustered_forward::{ClusterConfig, ClusteredForwardRenderer};
 
-    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
-    let adapter = instance
-        .request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::HighPerformance,
-            compatible_surface: None,
-            force_fallback_adapter: true,
-        })
-        .await
-        .unwrap();
-
-    let (device, _queue) = adapter
-        .request_device(&wgpu::DeviceDescriptor::default())
-        .await
-        .unwrap();
+    let Some((device, _queue)) = headless_or_skip(
+        "test_clustered_renderer_extensive",
+        wgpu::PowerPreference::HighPerformance,
+        true,
+    )
+    .await
+    else {
+        return;
+    };
 
     // Test various cluster configurations with correct fields
     let configs = [
@@ -2886,20 +2776,15 @@ async fn test_lod_generator_extensive() {
 async fn test_culling_pipeline_extensive() {
     use astraweave_render::culling::{CullingPipeline, FrustumPlanes, InstanceAABB};
 
-    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
-    let adapter = instance
-        .request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::HighPerformance,
-            compatible_surface: None,
-            force_fallback_adapter: true,
-        })
-        .await
-        .unwrap();
-
-    let (device, _queue) = adapter
-        .request_device(&wgpu::DeviceDescriptor::default())
-        .await
-        .unwrap();
+    let Some((device, _queue)) = headless_or_skip(
+        "test_culling_pipeline_extensive",
+        wgpu::PowerPreference::HighPerformance,
+        true,
+    )
+    .await
+    else {
+        return;
+    };
 
     // Test InstanceAABB creation with correct fields
     let aabbs = vec![
@@ -2956,20 +2841,15 @@ async fn test_culling_pipeline_extensive() {
 async fn test_shadow_csm_extensive() {
     use astraweave_render::shadow_csm::CsmRenderer;
 
-    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
-    let adapter = instance
-        .request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::HighPerformance,
-            compatible_surface: None,
-            force_fallback_adapter: true,
-        })
-        .await
-        .unwrap();
-
-    let (device, queue) = adapter
-        .request_device(&wgpu::DeviceDescriptor::default())
-        .await
-        .unwrap();
+    let Some((device, queue)) = headless_or_skip(
+        "test_shadow_csm_extensive",
+        wgpu::PowerPreference::HighPerformance,
+        true,
+    )
+    .await
+    else {
+        return;
+    };
 
     let mut csm = CsmRenderer::new(&device).unwrap();
 
@@ -3150,20 +3030,15 @@ async fn test_culling_node_module() {
     use astraweave_render::culling::{FrustumPlanes, InstanceAABB};
     use astraweave_render::culling_node::CullingNode;
 
-    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
-    let adapter = instance
-        .request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::HighPerformance,
-            compatible_surface: None,
-            force_fallback_adapter: true,
-        })
-        .await
-        .unwrap();
-
-    let (device, queue) = adapter
-        .request_device(&wgpu::DeviceDescriptor::default())
-        .await
-        .unwrap();
+    let Some((device, queue)) = headless_or_skip(
+        "test_culling_node_module",
+        wgpu::PowerPreference::HighPerformance,
+        true,
+    )
+    .await
+    else {
+        return;
+    };
 
     // Create CullingNode
     let mut node = CullingNode::new(&device, "test_culling_node");
@@ -3302,20 +3177,15 @@ async fn test_voxelization_mesh_and_config() {
 async fn test_renderer_more_coverage() {
     use astraweave_render::renderer::Renderer;
 
-    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
-    let adapter = instance
-        .request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::HighPerformance,
-            compatible_surface: None,
-            force_fallback_adapter: true,
-        })
-        .await
-        .unwrap();
-
-    let (device, queue) = adapter
-        .request_device(&wgpu::DeviceDescriptor::default())
-        .await
-        .unwrap();
+    let Some((device, queue)) = headless_or_skip(
+        "test_renderer_more_coverage",
+        wgpu::PowerPreference::HighPerformance,
+        true,
+    )
+    .await
+    else {
+        return;
+    };
 
     let config = wgpu::SurfaceConfiguration {
         usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
@@ -3370,20 +3240,15 @@ async fn test_renderer_more_coverage() {
 async fn test_ibl_additional_coverage() {
     use astraweave_render::ibl::{IblManager, IblQuality};
 
-    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
-    let adapter = instance
-        .request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::HighPerformance,
-            compatible_surface: None,
-            force_fallback_adapter: true,
-        })
-        .await
-        .unwrap();
-
-    let (device, _queue) = adapter
-        .request_device(&wgpu::DeviceDescriptor::default())
-        .await
-        .unwrap();
+    let Some((device, _queue)) = headless_or_skip(
+        "test_ibl_additional_coverage",
+        wgpu::PowerPreference::HighPerformance,
+        true,
+    )
+    .await
+    else {
+        return;
+    };
 
     // Test all quality levels
     for quality in [IblQuality::Low, IblQuality::Medium, IblQuality::High] {
@@ -3404,20 +3269,15 @@ async fn test_texture_more_variants() {
     use astraweave_render::texture::{Texture, TextureUsage};
     use image::{DynamicImage, Rgba, RgbaImage};
 
-    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
-    let adapter = instance
-        .request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::HighPerformance,
-            compatible_surface: None,
-            force_fallback_adapter: true,
-        })
-        .await
-        .unwrap();
-
-    let (device, queue) = adapter
-        .request_device(&wgpu::DeviceDescriptor::default())
-        .await
-        .unwrap();
+    let Some((device, queue)) = headless_or_skip(
+        "test_texture_more_variants",
+        wgpu::PowerPreference::HighPerformance,
+        true,
+    )
+    .await
+    else {
+        return;
+    };
 
     // Test checkerboard pattern
     let mut img = RgbaImage::new(64, 64);
@@ -3485,20 +3345,15 @@ async fn test_graph_adapter_integration() {
     use astraweave_render::graph::{GraphContext, RenderGraph, RenderNode};
     use astraweave_render::renderer::Renderer;
 
-    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
-    let adapter = instance
-        .request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::HighPerformance,
-            compatible_surface: None,
-            force_fallback_adapter: true,
-        })
-        .await
-        .unwrap();
-
-    let (device, queue) = adapter
-        .request_device(&wgpu::DeviceDescriptor::default())
-        .await
-        .unwrap();
+    let Some((device, queue)) = headless_or_skip(
+        "test_graph_adapter_integration",
+        wgpu::PowerPreference::HighPerformance,
+        true,
+    )
+    .await
+    else {
+        return;
+    };
 
     let config = wgpu::SurfaceConfiguration {
         usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
@@ -3600,20 +3455,15 @@ async fn test_environment_extensive() {
 async fn test_deferred_renderer_comprehensive() {
     use astraweave_render::deferred::{DeferredRenderer, GBuffer, GBufferFormats};
 
-    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
-    let adapter = instance
-        .request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::HighPerformance,
-            compatible_surface: None,
-            force_fallback_adapter: true,
-        })
-        .await
-        .unwrap();
-
-    let (device, _queue) = adapter
-        .request_device(&wgpu::DeviceDescriptor::default())
-        .await
-        .unwrap();
+    let Some((device, _queue)) = headless_or_skip(
+        "test_deferred_renderer_comprehensive",
+        wgpu::PowerPreference::HighPerformance,
+        true,
+    )
+    .await
+    else {
+        return;
+    };
 
     // Test GBuffer at various resolutions
     let formats = GBufferFormats::default();
@@ -3653,20 +3503,15 @@ async fn test_deferred_renderer_comprehensive() {
 async fn test_renderer_timeline_methods() {
     use astraweave_render::Renderer;
 
-    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
-    let adapter = instance
-        .request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::HighPerformance,
-            compatible_surface: None,
-            force_fallback_adapter: true,
-        })
-        .await
-        .unwrap();
-
-    let (device, queue) = adapter
-        .request_device(&wgpu::DeviceDescriptor::default())
-        .await
-        .unwrap();
+    let Some((device, queue)) = headless_or_skip(
+        "test_renderer_timeline_methods",
+        wgpu::PowerPreference::HighPerformance,
+        true,
+    )
+    .await
+    else {
+        return;
+    };
 
     let config = wgpu::SurfaceConfiguration {
         usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
@@ -3705,20 +3550,15 @@ async fn test_renderer_timeline_methods() {
 async fn test_renderer_cascade_and_shadow_methods() {
     use astraweave_render::Renderer;
 
-    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
-    let adapter = instance
-        .request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::HighPerformance,
-            compatible_surface: None,
-            force_fallback_adapter: true,
-        })
-        .await
-        .unwrap();
-
-    let (device, queue) = adapter
-        .request_device(&wgpu::DeviceDescriptor::default())
-        .await
-        .unwrap();
+    let Some((device, queue)) = headless_or_skip(
+        "test_renderer_cascade_and_shadow_methods",
+        wgpu::PowerPreference::HighPerformance,
+        true,
+    )
+    .await
+    else {
+        return;
+    };
 
     let config = wgpu::SurfaceConfiguration {
         usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
@@ -3752,20 +3592,15 @@ async fn test_renderer_cascade_and_shadow_methods() {
 async fn test_renderer_mesh_creation_methods() {
     use astraweave_render::Renderer;
 
-    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
-    let adapter = instance
-        .request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::HighPerformance,
-            compatible_surface: None,
-            force_fallback_adapter: true,
-        })
-        .await
-        .unwrap();
-
-    let (device, queue) = adapter
-        .request_device(&wgpu::DeviceDescriptor::default())
-        .await
-        .unwrap();
+    let Some((device, queue)) = headless_or_skip(
+        "test_renderer_mesh_creation_methods",
+        wgpu::PowerPreference::HighPerformance,
+        true,
+    )
+    .await
+    else {
+        return;
+    };
 
     let config = wgpu::SurfaceConfiguration {
         usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
@@ -3807,20 +3642,15 @@ async fn test_renderer_mesh_creation_methods() {
 async fn test_renderer_texture_methods() {
     use astraweave_render::Renderer;
 
-    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
-    let adapter = instance
-        .request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::HighPerformance,
-            compatible_surface: None,
-            force_fallback_adapter: true,
-        })
-        .await
-        .unwrap();
-
-    let (device, queue) = adapter
-        .request_device(&wgpu::DeviceDescriptor::default())
-        .await
-        .unwrap();
+    let Some((device, queue)) = headless_or_skip(
+        "test_renderer_texture_methods",
+        wgpu::PowerPreference::HighPerformance,
+        true,
+    )
+    .await
+    else {
+        return;
+    };
 
     let config = wgpu::SurfaceConfiguration {
         usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
@@ -3864,20 +3694,15 @@ async fn test_renderer_weather_and_environment() {
     use astraweave_render::effects::WeatherKind;
     use astraweave_render::Renderer;
 
-    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
-    let adapter = instance
-        .request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::HighPerformance,
-            compatible_surface: None,
-            force_fallback_adapter: true,
-        })
-        .await
-        .unwrap();
-
-    let (device, queue) = adapter
-        .request_device(&wgpu::DeviceDescriptor::default())
-        .await
-        .unwrap();
+    let Some((device, queue)) = headless_or_skip(
+        "test_renderer_weather_and_environment",
+        wgpu::PowerPreference::HighPerformance,
+        true,
+    )
+    .await
+    else {
+        return;
+    };
 
     let config = wgpu::SurfaceConfiguration {
         usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
@@ -3920,20 +3745,15 @@ async fn test_renderer_weather_and_environment() {
 async fn test_renderer_resize_and_accessors() {
     use astraweave_render::Renderer;
 
-    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
-    let adapter = instance
-        .request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::HighPerformance,
-            compatible_surface: None,
-            force_fallback_adapter: true,
-        })
-        .await
-        .unwrap();
-
-    let (device, queue) = adapter
-        .request_device(&wgpu::DeviceDescriptor::default())
-        .await
-        .unwrap();
+    let Some((device, queue)) = headless_or_skip(
+        "test_renderer_resize_and_accessors",
+        wgpu::PowerPreference::HighPerformance,
+        true,
+    )
+    .await
+    else {
+        return;
+    };
 
     let config = wgpu::SurfaceConfiguration {
         usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
@@ -3971,20 +3791,15 @@ async fn test_renderer_skinned_mesh() {
     use astraweave_render::Renderer;
     use glam::Mat4;
 
-    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
-    let adapter = instance
-        .request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::HighPerformance,
-            compatible_surface: None,
-            force_fallback_adapter: true,
-        })
-        .await
-        .unwrap();
-
-    let (device, queue) = adapter
-        .request_device(&wgpu::DeviceDescriptor::default())
-        .await
-        .unwrap();
+    let Some((device, queue)) = headless_or_skip(
+        "test_renderer_skinned_mesh",
+        wgpu::PowerPreference::HighPerformance,
+        true,
+    )
+    .await
+    else {
+        return;
+    };
 
     let config = wgpu::SurfaceConfiguration {
         usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
@@ -4088,20 +3903,15 @@ async fn test_material_loader_comprehensive() {
 async fn test_ibl_capture_and_bake() {
     use astraweave_render::ibl::{IblManager, IblQuality};
 
-    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
-    let adapter = instance
-        .request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::HighPerformance,
-            compatible_surface: None,
-            force_fallback_adapter: true,
-        })
-        .await
-        .unwrap();
-
-    let (device, _queue) = adapter
-        .request_device(&wgpu::DeviceDescriptor::default())
-        .await
-        .unwrap();
+    let Some((device, _queue)) = headless_or_skip(
+        "test_ibl_capture_and_bake",
+        wgpu::PowerPreference::HighPerformance,
+        true,
+    )
+    .await
+    else {
+        return;
+    };
 
     // Test all quality levels (Low, Medium, High - no Ultra)
     let qualities = [IblQuality::Low, IblQuality::Medium, IblQuality::High];
@@ -4156,20 +3966,15 @@ async fn test_graph_adapter_full_path() {
     use astraweave_render::graph_adapter::run_graph_on_renderer;
     use astraweave_render::Renderer;
 
-    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
-    let adapter = instance
-        .request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::HighPerformance,
-            compatible_surface: None,
-            force_fallback_adapter: true,
-        })
-        .await
-        .unwrap();
-
-    let (device, queue) = adapter
-        .request_device(&wgpu::DeviceDescriptor::default())
-        .await
-        .unwrap();
+    let Some((device, queue)) = headless_or_skip(
+        "test_graph_adapter_full_path",
+        wgpu::PowerPreference::HighPerformance,
+        true,
+    )
+    .await
+    else {
+        return;
+    };
 
     let config = wgpu::SurfaceConfiguration {
         usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
@@ -4203,20 +4008,15 @@ async fn test_graph_adapter_full_path() {
 async fn test_renderer_model_management() {
     use astraweave_render::{Instance, Renderer};
 
-    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
-    let adapter = instance
-        .request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::HighPerformance,
-            compatible_surface: None,
-            force_fallback_adapter: true,
-        })
-        .await
-        .unwrap();
-
-    let (device, queue) = adapter
-        .request_device(&wgpu::DeviceDescriptor::default())
-        .await
-        .unwrap();
+    let Some((device, queue)) = headless_or_skip(
+        "test_renderer_model_management",
+        wgpu::PowerPreference::HighPerformance,
+        true,
+    )
+    .await
+    else {
+        return;
+    };
 
     let config = wgpu::SurfaceConfiguration {
         usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
@@ -4282,20 +4082,15 @@ async fn test_renderer_water_system() {
     use astraweave_render::Renderer;
     use glam::{Mat4, Vec3};
 
-    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
-    let adapter = instance
-        .request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::HighPerformance,
-            compatible_surface: None,
-            force_fallback_adapter: true,
-        })
-        .await
-        .unwrap();
-
-    let (device, queue) = adapter
-        .request_device(&wgpu::DeviceDescriptor::default())
-        .await
-        .unwrap();
+    let Some((device, queue)) = headless_or_skip(
+        "test_renderer_water_system",
+        wgpu::PowerPreference::HighPerformance,
+        true,
+    )
+    .await
+    else {
+        return;
+    };
 
     let config = wgpu::SurfaceConfiguration {
         usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
@@ -4333,20 +4128,15 @@ async fn test_renderer_water_system() {
 async fn test_renderer_material_params() {
     use astraweave_render::Renderer;
 
-    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
-    let adapter = instance
-        .request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::HighPerformance,
-            compatible_surface: None,
-            force_fallback_adapter: true,
-        })
-        .await
-        .unwrap();
-
-    let (device, queue) = adapter
-        .request_device(&wgpu::DeviceDescriptor::default())
-        .await
-        .unwrap();
+    let Some((device, queue)) = headless_or_skip(
+        "test_renderer_material_params",
+        wgpu::PowerPreference::HighPerformance,
+        true,
+    )
+    .await
+    else {
+        return;
+    };
 
     let config = wgpu::SurfaceConfiguration {
         usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
@@ -4379,20 +4169,15 @@ async fn test_renderer_material_params() {
 async fn test_renderer_bake_environment() {
     use astraweave_render::Renderer;
 
-    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
-    let adapter = instance
-        .request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::HighPerformance,
-            compatible_surface: None,
-            force_fallback_adapter: true,
-        })
-        .await
-        .unwrap();
-
-    let (device, queue) = adapter
-        .request_device(&wgpu::DeviceDescriptor::default())
-        .await
-        .unwrap();
+    let Some((device, queue)) = headless_or_skip(
+        "test_renderer_bake_environment",
+        wgpu::PowerPreference::HighPerformance,
+        true,
+    )
+    .await
+    else {
+        return;
+    };
 
     let config = wgpu::SurfaceConfiguration {
         usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
@@ -4488,20 +4273,15 @@ async fn test_gpu_memory_module() {
 async fn test_gpu_particles_comprehensive() {
     use astraweave_render::gpu_particles::{EmitterParams, GpuParticle, GpuParticleSystem};
 
-    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
-    let adapter = instance
-        .request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::HighPerformance,
-            compatible_surface: None,
-            force_fallback_adapter: true,
-        })
-        .await
-        .unwrap();
-
-    let (device, queue) = adapter
-        .request_device(&wgpu::DeviceDescriptor::default())
-        .await
-        .unwrap();
+    let Some((device, queue)) = headless_or_skip(
+        "test_gpu_particles_comprehensive",
+        wgpu::PowerPreference::HighPerformance,
+        true,
+    )
+    .await
+    else {
+        return;
+    };
 
     // Test GpuParticle struct with correct fields
     let particle = GpuParticle {
@@ -4559,20 +4339,15 @@ async fn test_decal_system_comprehensive() {
     use astraweave_render::decals::{Decal, DecalBlendMode, DecalSystem};
     use glam::{Quat, Vec3};
 
-    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
-    let adapter = instance
-        .request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::HighPerformance,
-            compatible_surface: None,
-            force_fallback_adapter: true,
-        })
-        .await
-        .unwrap();
-
-    let (device, queue) = adapter
-        .request_device(&wgpu::DeviceDescriptor::default())
-        .await
-        .unwrap();
+    let Some((device, queue)) = headless_or_skip(
+        "test_decal_system_comprehensive",
+        wgpu::PowerPreference::HighPerformance,
+        true,
+    )
+    .await
+    else {
+        return;
+    };
 
     // Create decal system
     let mut system = DecalSystem::new(&device, 100, 2048, 8);
@@ -4632,20 +4407,15 @@ async fn test_advanced_post_processing() {
         AdvancedPostFx, ColorGradingConfig, DofConfig, MotionBlurConfig, TaaConfig,
     };
 
-    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
-    let adapter = instance
-        .request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::HighPerformance,
-            compatible_surface: None,
-            force_fallback_adapter: true,
-        })
-        .await
-        .unwrap();
-
-    let (device, _queue) = adapter
-        .request_device(&wgpu::DeviceDescriptor::default())
-        .await
-        .unwrap();
+    let Some((device, _queue)) = headless_or_skip(
+        "test_advanced_post_processing",
+        wgpu::PowerPreference::HighPerformance,
+        true,
+    )
+    .await
+    else {
+        return;
+    };
     if !astraweave_render::gpu_fault::depth_texture_load_supported(&device) {
         eprintln!(
             "skip test_advanced_post_processing: this adapter does not support textureLoad on depth textures"
@@ -4781,20 +4551,15 @@ async fn test_texture_streaming_detailed() {
     use astraweave_render::texture_streaming::TextureStreamingManager;
     use std::sync::Arc;
 
-    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
-    let adapter = instance
-        .request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::HighPerformance,
-            compatible_surface: None,
-            force_fallback_adapter: true,
-        })
-        .await
-        .unwrap();
-
-    let (device, queue) = adapter
-        .request_device(&wgpu::DeviceDescriptor::default())
-        .await
-        .unwrap();
+    let Some((device, queue)) = headless_or_skip(
+        "test_texture_streaming_detailed",
+        wgpu::PowerPreference::HighPerformance,
+        true,
+    )
+    .await
+    else {
+        return;
+    };
 
     let device = Arc::new(device);
     let queue = Arc::new(queue);
@@ -4889,20 +4654,15 @@ async fn test_environment_time_of_day_detailed() {
 async fn test_environment_sky_renderer_detailed() {
     use astraweave_render::environment::{SkyConfig, SkyRenderer};
 
-    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
-    let adapter = instance
-        .request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::HighPerformance,
-            compatible_surface: None,
-            force_fallback_adapter: true,
-        })
-        .await
-        .unwrap();
-
-    let (device, queue) = adapter
-        .request_device(&wgpu::DeviceDescriptor::default())
-        .await
-        .unwrap();
+    let Some((device, queue)) = headless_or_skip(
+        "test_environment_sky_renderer_detailed",
+        wgpu::PowerPreference::HighPerformance,
+        true,
+    )
+    .await
+    else {
+        return;
+    };
 
     // Create sky config with custom values
     let config = SkyConfig {
@@ -4952,20 +4712,15 @@ async fn test_environment_sky_renderer_detailed() {
 async fn test_ibl_manager_detailed() {
     use astraweave_render::ibl::{IblManager, IblQuality};
 
-    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
-    let adapter = instance
-        .request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::HighPerformance,
-            compatible_surface: None,
-            force_fallback_adapter: true,
-        })
-        .await
-        .unwrap();
-
-    let (device, queue) = adapter
-        .request_device(&wgpu::DeviceDescriptor::default())
-        .await
-        .unwrap();
+    let Some((device, queue)) = headless_or_skip(
+        "test_ibl_manager_detailed",
+        wgpu::PowerPreference::HighPerformance,
+        true,
+    )
+    .await
+    else {
+        return;
+    };
 
     // Test with all quality levels
     for quality in [IblQuality::Low, IblQuality::Medium, IblQuality::High] {
@@ -5055,20 +4810,15 @@ async fn test_renderer_more_methods() {
     use astraweave_render::Renderer;
     use glam::Vec3;
 
-    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
-    let adapter = instance
-        .request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::HighPerformance,
-            compatible_surface: None,
-            force_fallback_adapter: true,
-        })
-        .await
-        .unwrap();
-
-    let (device, queue) = adapter
-        .request_device(&wgpu::DeviceDescriptor::default())
-        .await
-        .unwrap();
+    let Some((device, queue)) = headless_or_skip(
+        "test_renderer_more_methods",
+        wgpu::PowerPreference::HighPerformance,
+        true,
+    )
+    .await
+    else {
+        return;
+    };
 
     let config = wgpu::SurfaceConfiguration {
         usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
@@ -5199,20 +4949,15 @@ async fn test_culling_node_detailed() {
     use astraweave_render::culling_node::CullingNode;
     use glam::{Mat4, Vec3};
 
-    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
-    let adapter = instance
-        .request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::HighPerformance,
-            compatible_surface: None,
-            force_fallback_adapter: true,
-        })
-        .await
-        .unwrap();
-
-    let (device, queue) = adapter
-        .request_device(&wgpu::DeviceDescriptor::default())
-        .await
-        .unwrap();
+    let Some((device, queue)) = headless_or_skip(
+        "test_culling_node_detailed",
+        wgpu::PowerPreference::HighPerformance,
+        true,
+    )
+    .await
+    else {
+        return;
+    };
 
     // Test CullingNode creation
     let mut node = CullingNode::new(&device, "test_culling_node");
@@ -5296,20 +5041,15 @@ async fn test_graph_adapter_detailed() {
     use astraweave_render::graph::{GraphContext, RenderGraph, RenderNode};
     use std::sync::atomic::{AtomicBool, Ordering};
 
-    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
-    let adapter = instance
-        .request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::HighPerformance,
-            compatible_surface: None,
-            force_fallback_adapter: true,
-        })
-        .await
-        .unwrap();
-
-    let (_device, _queue) = adapter
-        .request_device(&wgpu::DeviceDescriptor::default())
-        .await
-        .unwrap();
+    let Some((_device, _queue)) = headless_or_skip(
+        "test_graph_adapter_detailed",
+        wgpu::PowerPreference::HighPerformance,
+        true,
+    )
+    .await
+    else {
+        return;
+    };
 
     // Test render graph creation
     let mut graph = RenderGraph::new();
@@ -5346,20 +5086,15 @@ async fn test_graph_adapter_detailed() {
 async fn test_texture_extended_coverage() {
     use astraweave_render::texture::Texture;
 
-    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
-    let adapter = instance
-        .request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::HighPerformance,
-            compatible_surface: None,
-            force_fallback_adapter: true,
-        })
-        .await
-        .unwrap();
-
-    let (device, queue) = adapter
-        .request_device(&wgpu::DeviceDescriptor::default())
-        .await
-        .unwrap();
+    let Some((device, queue)) = headless_or_skip(
+        "test_texture_extended_coverage",
+        wgpu::PowerPreference::HighPerformance,
+        true,
+    )
+    .await
+    else {
+        return;
+    };
 
     // Test Texture::create_default_white multiple times with different labels
     let white1 = Texture::create_default_white(&device, &queue, "white_test_1").unwrap();
@@ -5570,20 +5305,15 @@ async fn test_material_loader_more_coverage() {
 async fn test_deferred_renderer_more_coverage() {
     use astraweave_render::deferred::DeferredRenderer;
 
-    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
-    let adapter = instance
-        .request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::HighPerformance,
-            compatible_surface: None,
-            force_fallback_adapter: true,
-        })
-        .await
-        .unwrap();
-
-    let (device, _queue) = adapter
-        .request_device(&wgpu::DeviceDescriptor::default())
-        .await
-        .unwrap();
+    let Some((device, _queue)) = headless_or_skip(
+        "test_deferred_renderer_more_coverage",
+        wgpu::PowerPreference::HighPerformance,
+        true,
+    )
+    .await
+    else {
+        return;
+    };
 
     // Test various resolutions
     let resolutions = [
@@ -5779,28 +5509,13 @@ fn test_material_loader_full_workflow() {
 fn test_ibl_manager_edge_cases() {
     use astraweave_render::ibl::{IblManager, IblQuality};
 
-    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
-        backends: wgpu::Backends::all(),
-        ..Default::default()
-    });
-
-    let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
-        power_preference: wgpu::PowerPreference::LowPower,
-        compatible_surface: None,
-        force_fallback_adapter: true,
-    }));
-
-    let adapter = match adapter {
-        Ok(a) => a,
-        Err(_) => {
-            println!("No adapter available, skipping IBL edge cases test");
-            return;
-        }
+    let Some((device, _queue)) = pollster::block_on(headless_or_skip(
+        "test_ibl_manager_edge_cases",
+        wgpu::PowerPreference::LowPower,
+        true,
+    )) else {
+        return;
     };
-
-    let (device, _queue) =
-        pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
-            .expect("Failed to get device");
 
     // Test IblQuality enum variants
     let _low = IblQuality::Low;
@@ -5920,28 +5635,13 @@ fn test_environment_additional_features() {
 fn test_texture_remaining_coverage() {
     use astraweave_render::texture::{validate_texture_assets, Texture, TextureUsage};
 
-    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
-        backends: wgpu::Backends::all(),
-        ..Default::default()
-    });
-
-    let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
-        power_preference: wgpu::PowerPreference::LowPower,
-        compatible_surface: None,
-        force_fallback_adapter: true,
-    }));
-
-    let adapter = match adapter {
-        Ok(a) => a,
-        Err(_) => {
-            println!("No adapter available, skipping texture remaining coverage test");
-            return;
-        }
+    let Some((device, queue)) = pollster::block_on(headless_or_skip(
+        "test_texture_remaining_coverage",
+        wgpu::PowerPreference::LowPower,
+        true,
+    )) else {
+        return;
     };
-
-    let (device, queue) =
-        pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
-            .expect("Failed to get device");
 
     // Test TextureUsage enum
     let usages = [
@@ -6041,7 +5741,10 @@ fn test_renderer_internal_methods() {
     use astraweave_render::Renderer;
 
     // Create headless renderer (async)
-    if let Ok(mut renderer) = pollster::block_on(Renderer::new_headless(800, 600)) {
+    let Some(mut renderer) = pollster::block_on(Renderer::headless_for_tests(800, 600)) else {
+        return;
+    };
+    {
         // Test device and queue accessors
         let _dev = renderer.device();
         let _q = renderer.queue();
@@ -6528,7 +6231,12 @@ fn test_ibl_edge_cases_extended_wave14() {
     let _high = IblQuality::High;
 
     // Create headless renderer to get device
-    if let Ok(renderer) = pollster::block_on(astraweave_render::Renderer::new_headless(100, 100)) {
+    let Some(renderer) =
+        pollster::block_on(astraweave_render::Renderer::headless_for_tests(100, 100))
+    else {
+        return;
+    };
+    {
         let device = renderer.device();
 
         // Test IblManager with each quality
@@ -6619,8 +6327,11 @@ fn test_graph_more_paths_wave14() {
 #[test]
 fn test_renderer_more_accessors_wave14() {
     // Create headless renderer
-    if let Ok(mut renderer) =
-        pollster::block_on(astraweave_render::Renderer::new_headless(640, 480))
+    let Some(mut renderer) =
+        pollster::block_on(astraweave_render::Renderer::headless_for_tests(640, 480))
+    else {
+        return;
+    };
     {
         // Test all accessors
         let _dev = renderer.device();
@@ -6682,8 +6393,11 @@ fn test_renderer_mesh_methods_wave16() {
     use astraweave_render::types::Instance;
     use glam::{Mat4, Vec3};
 
-    if let Ok(mut renderer) =
-        pollster::block_on(astraweave_render::Renderer::new_headless(640, 480))
+    let Some(mut renderer) =
+        pollster::block_on(astraweave_render::Renderer::headless_for_tests(640, 480))
+    else {
+        return;
+    };
     {
         // Test create_mesh_from_arrays with raw arrays
         let positions: [[f32; 3]; 3] = [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.5, 1.0, 0.0]];
@@ -6736,8 +6450,11 @@ fn test_renderer_mesh_methods_wave16() {
 /// Wave 16 Test 2: Renderer shadow and material params
 #[test]
 fn test_renderer_shadow_material_params_wave16() {
-    if let Ok(mut renderer) =
-        pollster::block_on(astraweave_render::Renderer::new_headless(640, 480))
+    let Some(mut renderer) =
+        pollster::block_on(astraweave_render::Renderer::headless_for_tests(640, 480))
+    else {
+        return;
+    };
     {
         // Test cascade split settings
         renderer.set_cascade_splits(0.1, 0.3);
@@ -6760,8 +6477,11 @@ fn test_renderer_timeline_cinematics_wave16() {
     use astraweave_camera::FreeFly as Camera;
     use glam::Vec3;
 
-    if let Ok(mut renderer) =
-        pollster::block_on(astraweave_render::Renderer::new_headless(640, 480))
+    let Some(mut renderer) =
+        pollster::block_on(astraweave_render::Renderer::headless_for_tests(640, 480))
+    else {
+        return;
+    };
     {
         // Test save_timeline_json on empty
         let saved = renderer.save_timeline_json();
@@ -6799,8 +6519,11 @@ fn test_renderer_timeline_cinematics_wave16() {
 /// Wave 16 Test 4: Renderer texture setting methods (renamed)
 #[test]
 fn test_renderer_texture_methods_wave16() {
-    if let Ok(mut renderer) =
-        pollster::block_on(astraweave_render::Renderer::new_headless(640, 480))
+    let Some(mut renderer) =
+        pollster::block_on(astraweave_render::Renderer::headless_for_tests(640, 480))
+    else {
+        return;
+    };
     {
         // Test set_albedo_from_rgba8
         let rgba_data: Vec<u8> = (0..256 * 256 * 4).map(|i| (i % 256) as u8).collect();
@@ -6824,8 +6547,11 @@ fn test_renderer_skinned_mesh_wave16() {
     use astraweave_render::SkinnedVertex;
     use glam::Mat4;
 
-    if let Ok(mut renderer) =
-        pollster::block_on(astraweave_render::Renderer::new_headless(640, 480))
+    let Some(mut renderer) =
+        pollster::block_on(astraweave_render::Renderer::headless_for_tests(640, 480))
+    else {
+        return;
+    };
     {
         // Create skinned vertices with correct field names
         let vertices = vec![
@@ -6872,8 +6598,11 @@ fn test_renderer_skinned_mesh_wave16() {
 fn test_renderer_weather_wave16() {
     use astraweave_render::effects::WeatherKind;
 
-    if let Ok(mut renderer) =
-        pollster::block_on(astraweave_render::Renderer::new_headless(640, 480))
+    let Some(mut renderer) =
+        pollster::block_on(astraweave_render::Renderer::headless_for_tests(640, 480))
+    else {
+        return;
+    };
     {
         // Test available weather kinds
         renderer.set_weather(WeatherKind::None);
@@ -6895,8 +6624,11 @@ fn test_renderer_update_camera_wave16() {
     use astraweave_camera::FreeFly as Camera;
     use glam::Vec3;
 
-    if let Ok(mut renderer) =
-        pollster::block_on(astraweave_render::Renderer::new_headless(640, 480))
+    let Some(mut renderer) =
+        pollster::block_on(astraweave_render::Renderer::headless_for_tests(640, 480))
+    else {
+        return;
+    };
     {
         // Create camera struct directly
         let camera = Camera {
@@ -6921,8 +6653,11 @@ fn test_renderer_update_camera_wave16() {
 fn test_renderer_bake_environment_wave16() {
     use astraweave_render::ibl::IblQuality;
 
-    if let Ok(mut renderer) =
-        pollster::block_on(astraweave_render::Renderer::new_headless(640, 480))
+    let Some(mut renderer) =
+        pollster::block_on(astraweave_render::Renderer::headless_for_tests(640, 480))
+    else {
+        return;
+    };
     {
         // Test bake_environment with each quality
         let _ = renderer.bake_environment(IblQuality::Low);
@@ -6940,9 +6675,9 @@ fn test_renderer_bake_environment_wave16() {
 fn test_prefilter_poll_finishes() {
     use astraweave_render::ibl::IblQuality;
 
-    let Ok(mut renderer) = pollster::block_on(astraweave_render::Renderer::new_headless(64, 64))
+    let Some(mut renderer) =
+        pollster::block_on(astraweave_render::Renderer::headless_for_tests(64, 64))
     else {
-        eprintln!("SKIPPED (no GPU adapter): test_prefilter_poll_finishes did NOT bake");
         return;
     };
     renderer
@@ -6965,7 +6700,12 @@ fn test_prefilter_poll_finishes() {
 /// Wave 16 Test 9: Renderer create_mesh_from_full_arrays
 #[test]
 fn test_renderer_full_mesh_creation_wave16() {
-    if let Ok(renderer) = pollster::block_on(astraweave_render::Renderer::new_headless(640, 480)) {
+    let Some(renderer) =
+        pollster::block_on(astraweave_render::Renderer::headless_for_tests(640, 480))
+    else {
+        return;
+    };
+    {
         // Test create_mesh_from_full_arrays with raw arrays
         let positions: [[f32; 3]; 3] = [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.5, 1.0, 0.0]];
         let normals: [[f32; 3]; 3] = [[0.0, 0.0, 1.0], [0.0, 0.0, 1.0], [0.0, 0.0, 1.0]];
@@ -7169,8 +6909,11 @@ fn test_texture_streaming_wave18() {
 /// Wave 18 Test 4: renderer.rs additional method coverage
 #[test]
 fn test_renderer_additional_methods_wave18() {
-    if let Ok(mut renderer) =
-        pollster::block_on(astraweave_render::Renderer::new_headless(640, 480))
+    let Some(mut renderer) =
+        pollster::block_on(astraweave_render::Renderer::headless_for_tests(640, 480))
+    else {
+        return;
+    };
     {
         use astraweave_camera::FreeFly as Camera;
         use glam::Vec3;
@@ -7208,7 +6951,12 @@ fn test_renderer_additional_methods_wave18() {
 fn test_ibl_extended_wave18() {
     use astraweave_render::ibl::{IblManager, IblQuality};
 
-    if let Ok(renderer) = pollster::block_on(astraweave_render::Renderer::new_headless(640, 480)) {
+    let Some(renderer) =
+        pollster::block_on(astraweave_render::Renderer::headless_for_tests(640, 480))
+    else {
+        return;
+    };
+    {
         let device = renderer.device();
 
         // Test IblManager creation (returns Result)
@@ -7330,7 +7078,12 @@ fn test_environment_weather_sky_wave18() {
 fn test_texture_loading_paths_wave18() {
     use astraweave_render::texture::Texture;
 
-    if let Ok(renderer) = pollster::block_on(astraweave_render::Renderer::new_headless(640, 480)) {
+    let Some(renderer) =
+        pollster::block_on(astraweave_render::Renderer::headless_for_tests(640, 480))
+    else {
+        return;
+    };
+    {
         let device = renderer.device();
         let queue = renderer.queue();
 
@@ -7916,21 +7669,13 @@ fn test_culling_node_comprehensive_wave19() {
     use glam::Vec3;
 
     // Create headless device for testing
-    let (device, queue) = pollster::block_on(async {
-        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
-        let adapter = instance
-            .request_adapter(&wgpu::RequestAdapterOptions {
-                power_preference: wgpu::PowerPreference::LowPower,
-                force_fallback_adapter: true,
-                compatible_surface: None,
-            })
-            .await
-            .unwrap();
-        adapter
-            .request_device(&wgpu::DeviceDescriptor::default())
-            .await
-            .unwrap()
-    });
+    let Some((device, queue)) = pollster::block_on(headless_or_skip(
+        "test_culling_node_comprehensive_wave19",
+        wgpu::PowerPreference::LowPower,
+        true,
+    )) else {
+        return;
+    };
 
     // Create culling node
     let mut culling_node = CullingNode::new(&device, "test_culling_node_w19");

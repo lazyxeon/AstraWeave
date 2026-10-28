@@ -32,14 +32,17 @@ const BOUNDS_XZ: f32 = 29.5;
 const BOUNDS_Y: f32 = 59.5;
 const EPS: f32 = 1e-3;
 
-/// Create a wgpu device + queue, or skip LOUDLY.
+/// Create a wgpu device + queue, or record a skip, or panic.
 ///
-/// Skips when `SKIP_GPU_TESTS` is set or no adapter exists. The skip is
-/// printed to stderr so a green run on a headless machine is visibly
-/// distinguishable from a run that actually exercised the GPU.
+/// `SKIP_GPU_TESTS` and a `NotFound` adapter while `AW_GPU_SKIP_IF_UNAVAILABLE`
+/// is set each append one `SKIP(gpu)` line and return `None`. Any other
+/// adapter error panics. A device refusal panics instead of being reported as
+/// a missing adapter.
 fn try_create_test_device(test_name: &str) -> Option<(wgpu::Device, wgpu::Queue)> {
-    if std::env::var("SKIP_GPU_TESTS").is_ok() {
-        eprintln!("SKIPPED (SKIP_GPU_TESTS set): {test_name} did NOT exercise the GPU");
+    if std::env::var_os("SKIP_GPU_TESTS").is_some() {
+        record_gpu_skip(&format!(
+            "SKIP_GPU_TESTS set: {test_name} did not exercise the GPU"
+        ));
         return None;
     }
     let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
@@ -48,10 +51,16 @@ fn try_create_test_device(test_name: &str) -> Option<(wgpu::Device, wgpu::Queue)
         compatible_surface: None,
         force_fallback_adapter: false,
     })) {
-        Ok(a) => a,
-        Err(_) => {
-            eprintln!("SKIPPED (no GPU adapter): {test_name} did NOT exercise the GPU");
-            return None;
+        Ok(adapter) => adapter,
+        Err(err) => {
+            let reason = format!("{test_name}: {err}");
+            if std::env::var_os("AW_GPU_SKIP_IF_UNAVAILABLE").is_some()
+                && matches!(err, wgpu::RequestAdapterError::NotFound { .. })
+            {
+                record_gpu_skip(&reason);
+                return None;
+            }
+            panic!("Failed to find adapter: {reason}");
         }
     };
     match pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
@@ -64,12 +73,84 @@ fn try_create_test_device(test_name: &str) -> Option<(wgpu::Device, wgpu::Queue)
         memory_hints: wgpu::MemoryHints::default(),
         trace: wgpu::Trace::Off,
     })) {
-        Ok((d, q)) => Some((d, q)),
-        Err(e) => {
-            eprintln!("SKIPPED (device request failed: {e}): {test_name} did NOT exercise the GPU");
-            None
+        Ok((device, queue)) => Some((device, queue)),
+        Err(err) => panic!("{test_name}: adapter refused the device: {err}"),
+    }
+}
+
+fn record_gpu_skip(reason: &str) {
+    let current = std::thread::current();
+    let test = current.name().unwrap_or("unnamed-test");
+    let line = format!(
+        "SKIP(gpu): {test}: {}\n",
+        reason.replace(['\n', '\r', '%'], " ")
+    );
+    eprintln!("{}", line.trim_end());
+    let target = existing_target_dir()
+        .canonicalize()
+        .unwrap_or_else(|err| panic!("GPU skip log target is missing: {err}"));
+    let path = std::env::var_os("AW_GPU_SKIP_LOG")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| target.join("gpu-skip-reasons.txt"));
+    let parent = path
+        .parent()
+        .unwrap_or_else(|| panic!("GPU skip log {} has no parent", path.display()))
+        .canonicalize()
+        .unwrap_or_else(|err| {
+            panic!(
+                "refusing to create a directory for {}: {err}",
+                path.display()
+            )
+        });
+    assert_eq!(
+        parent,
+        target,
+        "GPU skip log {} is outside {}",
+        path.display(),
+        target.display()
+    );
+    let mut file = open_append_nofollow(&path)
+        .unwrap_or_else(|err| panic!("could not record GPU skip at {}: {err}", path.display()));
+    std::io::Write::write_all(&mut file, line.as_bytes())
+        .unwrap_or_else(|err| panic!("could not record GPU skip at {}: {err}", path.display()));
+}
+
+fn existing_target_dir() -> std::path::PathBuf {
+    if let Some(dir) = std::env::var_os("CARGO_TARGET_DIR") {
+        return std::path::PathBuf::from(dir);
+    }
+    let manifest = std::path::PathBuf::from(
+        std::env::var_os("CARGO_MANIFEST_DIR").unwrap_or_else(|| std::ffi::OsString::from(".")),
+    );
+    for ancestor in manifest.ancestors() {
+        let candidate = ancestor.join("target");
+        if candidate.is_dir() {
+            return candidate;
         }
     }
+    manifest.join("target")
+}
+
+fn open_append_nofollow(path: &std::path::Path) -> std::io::Result<std::fs::File> {
+    match std::fs::symlink_metadata(path) {
+        Ok(meta) if meta.file_type().is_symlink() => {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::AlreadyExists,
+                format!("GPU skip log {} is a symlink", path.display()),
+            ));
+        }
+        Ok(_) => {}
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
+        Err(err) => return Err(err),
+    }
+    let mut options = std::fs::OpenOptions::new();
+    options.create(true).append(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.custom_flags(libc::O_NOFOLLOW);
+    }
+    options.open(path)
 }
 
 /// Apply the demo's canonical simulation parameters

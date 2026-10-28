@@ -54,9 +54,9 @@ fn record(renderer: &mut Renderer, view: &wgpu::TextureView) {
 fn draw_into_allocates_nothing_after_warmup() {
     lib_backtrace::require_library_backtraces_off();
     pollster::block_on(async {
-        let mut renderer = Renderer::new_headless(64, 64)
-            .await
-            .expect("headless renderer");
+        let Some(mut renderer) = Renderer::headless_for_tests(64, 64).await else {
+            return;
+        };
         let positions = [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]];
         let normals = [[0.0, 0.0, 1.0]; 3];
         let indices = [0, 1, 2];
