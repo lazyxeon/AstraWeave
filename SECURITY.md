@@ -46,8 +46,8 @@ We request a 72-hour window before public disclosure to coordinate fixes and rel
 1. Confirm and reproduce the report in a secure environment.
 2. Prioritize remediation based on severity using CVSS.
 3. Develop patches and add regression tests when applicable.
-4. Coordinate release notes in `CHANGELOG.md`, and publish the GitHub security advisory when the fix is ready. A code-of-conduct report submitted through the form above is not a vulnerability advisory. Conduct reports filed this way are kept as drafts, never published, and closed privately.
-5. Notify the reporter once the fix is released.
+4. For a vulnerability, coordinate release notes in `CHANGELOG.md`, and publish the GitHub security advisory when the fix is ready. A code-of-conduct report submitted through the form above is not a vulnerability advisory. Submitting that form attaches the reporter's GitHub account to the advisory as a collaborator, with a pending credit visible to maintainers. The report opens in the Triage state. Click **Close security advisory**. Do not click **Accept and open as draft**, and do not publish the advisory. Accepting it opens a draft that can still be published.
+5. Notify the reporter once a vulnerability fix is released.
 
 ## Scope
 
