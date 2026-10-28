@@ -14,7 +14,9 @@
 //! events are the only place a comment is removed. There a numeric reference
 //! follows the HTML tokenizer: the semicolon is optional, 0 is U+FFFD, and
 //! 0x80–0x9F use the Windows-1252 row. C0 other than tab, line feed, form
-//! feed, and carriage return, and DEL, are U+FFFD there too. The five undefined slots (0x81, 0x8D,
+//! feed, and carriage return, and DEL, are U+FFFD there too. A raw scalar in
+//! that HTML, including alt text, uses the markdown replacement, so a raw C1
+//! scalar is U+FFFD rather than a Windows-1252 character. The five undefined slots (0x81, 0x8D,
 //! 0x8F, 0x90, 0x9D) are U+FFFD. A semicolon name is decoded, and so
 //! is an HTML5 legacy name with no semicolon. Alt text uses that numeric
 //! rule and that legacy set, except a legacy name is not consumed when the
@@ -340,7 +342,10 @@ fn push_html_visible(out: &mut String, html: &str) {
         let Some(ch) = html[i..].chars().next() else {
             break;
         };
-        out.push(ch);
+        // A raw scalar, not a numeric reference. C1, C0 other than tab, line
+        // feed, form feed, and carriage return, and DEL are U+FFFD. A numeric
+        // reference in 0x80–0x9F still uses the Windows-1252 row.
+        out.push(markdown_text_char(ch));
         i += ch.len_utf8();
     }
 }
@@ -511,7 +516,7 @@ fn push_decoded_text(out: &mut String, raw: &str) {
         let Some(ch) = raw[i..].chars().next() else {
             break;
         };
-        out.push(ch);
+        out.push(markdown_text_char(ch));
         i += ch.len_utf8();
     }
 }

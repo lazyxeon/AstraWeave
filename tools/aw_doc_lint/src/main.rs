@@ -2574,6 +2574,69 @@ In progress
                 "{prose}: {errors:?}"
             );
         }
+        for sentence in [
+            "<div>The median GPU frame is n\u{0000}ot 3.117 ms.</div>",
+            "<div>The median GPU frame is n\u{0001}ot 3.117 ms.</div>",
+            "<div>The median GPU frame is n\u{000B}ot 3.117 ms.</div>",
+            "<div>The median GPU frame is n\u{007F}ot 3.117 ms.</div>",
+            "<div>The median GPU frame is n\u{0085}ot 3.117 ms.</div>",
+            "<div>The median GPU frame is n\u{0092}ot 3.117 ms.</div>",
+        ] {
+            let rendered = rendered::render_visible(sentence);
+            assert!(rendered.contains('\u{FFFD}'), "{sentence:?}: {rendered:?}");
+            assert!(
+                !rendered.contains('\u{2026}') && !rendered.contains('\u{2019}'),
+                "a raw C1 scalar is not Windows-1252: {sentence:?}: {rendered:?}"
+            );
+            let folded = fold_visible_text(&rendered);
+            assert!(folded.contains('\u{FFFD}'), "{sentence:?}: {folded:?}");
+            let status = sample_status().replace("A later sample is 3.117 ms.", sentence);
+            let errors = front_door_errors(&sample_readme(), &status, &sample_workflow(), &[]);
+            assert!(
+                !errors.iter().any(|error| error.contains("3.117 ms")),
+                "{sentence:?}: {errors:?}"
+            );
+        }
+        let shipped = "\
+## In progress
+#334 are in progress. #366 are in progress. #383 are in progress.
+<div>ship\u{0001}ped</div>
+## Docs
+";
+        let errors = front_door_errors(shipped, &sample_status(), &sample_workflow(), &[]);
+        assert!(
+            !errors.iter().any(|error| error.contains("shipped")),
+            "{errors:?}"
+        );
+        for prose in [
+            "<div>3.117\u{0001}ms</div>",
+            "<div>3.117\u{000B}ms</div>",
+            "<div><img alt=\"3.117\u{0001}ms\"></div>",
+            "<div><img alt=\"3.117\u{000B}ms\"></div>",
+        ] {
+            let rendered = rendered::render_visible(prose);
+            assert!(rendered.contains('\u{FFFD}'), "{prose:?}: {rendered:?}");
+            let readme = format!("{}\n{prose}\n", sample_readme());
+            let errors = front_door_errors(&readme, &sample_status(), &sample_workflow(), &[]);
+            assert!(
+                !errors.iter().any(|error| error.contains("frame figure")),
+                "{prose:?}: {errors:?}"
+            );
+        }
+        for prose in [
+            "<div>3.117\u{000C}ms</div>",
+            "<div><img alt=\"3.117\u{000C}ms\"></div>",
+        ] {
+            let rendered = rendered::render_visible(prose);
+            assert!(rendered.contains('\u{000C}'), "{prose:?}: {rendered:?}");
+            assert!(!rendered.contains('\u{FFFD}'), "{prose:?}: {rendered:?}");
+            let readme = format!("{}\n{prose}\n", sample_readme());
+            let errors = front_door_errors(&readme, &sample_status(), &sample_workflow(), &[]);
+            assert!(
+                errors.iter().any(|error| error.contains("frame figure")),
+                "{prose:?}: {errors:?}"
+            );
+        }
     }
 
     #[test]
