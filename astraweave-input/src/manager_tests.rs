@@ -938,7 +938,9 @@ mod save_tests {
     #[test]
     fn test_save_load_roundtrip() {
         let bindings = create_test_bindings();
-        let path = "test_output/bindings_roundtrip.json";
+        let dir = tempfile::tempdir().expect("temp dir");
+        let path = dir.path().join("bindings_roundtrip.json");
+        let path = path.to_str().expect("utf8 path");
 
         // Save bindings
         save_bindings(path, &bindings).expect("Failed to save bindings");
@@ -949,27 +951,21 @@ mod save_tests {
         // Verify they match
         assert_eq!(loaded.actions.len(), bindings.actions.len());
         assert!(loaded.actions.contains_key(&Action::Jump));
-
-        // Cleanup
-        let _ = fs::remove_file(path);
-        let _ = fs::remove_dir("test_output");
     }
 
     // Save Test 2: Save to nested directory
     #[test]
     fn test_save_nested_directory() {
         let bindings = create_test_bindings();
-        let path = "test_output/nested/dir/bindings.json";
+        let dir = tempfile::tempdir().expect("temp dir");
+        let path = dir.path().join("nested").join("dir").join("bindings.json");
+        let path_str = path.to_str().expect("utf8 path");
 
         // Should create directories automatically
-        save_bindings(path, &bindings).expect("Failed to save to nested dir");
+        save_bindings(path_str, &bindings).expect("Failed to save to nested dir");
 
         // Verify file exists
-        assert!(std::path::Path::new(path).exists());
-
-        // Cleanup
-        let _ = fs::remove_file(path);
-        let _ = fs::remove_dir_all("test_output");
+        assert!(path.exists());
     }
 
     // Save Test 3: Load non-existent file returns None
