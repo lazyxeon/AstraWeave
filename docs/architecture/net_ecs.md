@@ -52,7 +52,7 @@ Per `net/README.md:1-12`, the goal was a "production-ready multiplayer capabilit
 - `net/aw-net-proto/src/lib.rs` — 285 lines. `ClientToServer` / `ServerToClient` enums, `Codec` (PostcardLz4 / Bincode), `encode_msg` / `decode_msg`, the **canonical signing surface** (`SigningKey`, `sign`, `verify`, `hmac_sha256`, `input_frame_sig_payload`, `SIG_LEN = 32`), `new_room_id`, `PROTOCOL_VERSION = 1`, `WireError`. **The `sign16` XOR stub, the `SessionKey` type, and the `session_key_hint` fields are DELETED** (Net-Trio-Remediation `561b20957`).
 - `net/aw-net-server/src/lib.rs` — ~1080 lines. All server logic: `ServerConfig` / `run_server` / `spawn_server`, TLS+plain dual paths, matchmaking, rooms, sled DB, axum HTTP admin, **HMAC-SHA256 verification via the canonical proto surface (verify-FIRST)**, `SignatureFailurePolicy { Kick, Warn }`, token-bucket rate limiting.
 - `net/aw-net-server/src/main.rs` — 116 lines. Thin CLI wrapper: parse args (`--shared-key-hex`, `--sig-failure-policy`, `--disable-tls`, `--tls-cert`/`--tls-key`, `--ws-listen`/`--http-listen`/`--db-path`) into a `ServerConfig`, then `run_server`.
-- `net/aw-net-client/src/main.rs` — 193 lines. Standalone CLI client demo. Signs each `InputFrame` with `aw_net_proto::sign` over `input_frame_sig_payload`; key from `AW_SHARED_KEY` (64 hex) or `SigningKey::dev_default()`.
+- `net/aw-net-client/src/main.rs` — 193 lines. Standalone CLI client demo. Signs each `InputFrame` with `aw_net_proto::sign` over `input_frame_sig_payload`; key from `AW_SHARED_KEY` (64 hex), or `SigningKey::dev_default()` when that variable is unset, on every build (`:19-25`). A release server rejects that key.
 - `net/aw-net-server/tests/`, `net/aw-net-client/tests/` — regression families (see §5, §10).
 - `aw_net_server_db/` — Runtime artifact directory containing sled DB files (`conf` 62 B + `db` 96 B + empty `blobs/`). Not code; not git-ignored.
 
@@ -103,7 +103,7 @@ The standalone server/client binaries are functional and tested by hand (`net/RE
     │                                  players: HashMap::new(),
     │                                  tick: 0, snap_id: 0 }
     │   (no per-room session_key — input signing keys off the process-wide
-    │    shared SigningKey from --shared-key-hex / AW_SHARED_KEY / dev_default)
+    │    shared SigningKey. The client uses AW_SHARED_KEY or dev_default() on every build. The server uses --shared-key-hex. A release server refuses dev_default().)
     │
     ├── ServerToClient::MatchResult { room_id }
     └── ServerToClient::JoinAccepted { room_id, player_id: Uuid::v4(), tick_hz }
@@ -235,7 +235,7 @@ The standalone server/client binaries are functional and tested by hand (`net/RE
 **Outputs:** Long-running tokio tasks; tracing logs.
 **Notes:**
 - `--disable-tls` is `cfg(not(debug_assertions))`-rejected (server/main.rs:120-123) — release builds cannot disable TLS.
-- HTTP admin defaults to `127.0.0.1:8789`. `/healthz` and `/regions` require a bearer token equal to `ServerConfig.admin_token` (`admin_router`). Missing token, empty token, or a wrong token returns 401. With the token, `/healthz` returns `"ok"` and `/regions` returns hardcoded `["us-east","us-west","eu-central"]`. No real region-resolution logic; the string list is decorative. Release builds refuse `SigningKey::dev_default`.
+- HTTP admin defaults to `127.0.0.1:8789`. `/healthz` and `/regions` require a bearer token equal to `ServerConfig.admin_token` (`admin_router`). Missing token, empty token, or a wrong token returns 401. With the token, `/healthz` returns `"ok"` and `/regions` returns hardcoded `["us-east","us-west","eu-central"]`. No real region-resolution logic; the string list is decorative. `ServerConfig::default` assigns `SigningKey::dev_default()` on every build (`net/aw-net-server/src/lib.rs:161`). The release CLI refuses to start without `--shared-key-hex` (`main.rs:103-109`). Release `spawn_server` refuses the published key (`lib.rs:281-286`).
 - sled DB opened at `aw_net_server_db/` (server/main.rs:149) but **never read or written** in this file's surface (`grep -n "app.db" server/main.rs` returns nothing). The `db` field on `AppState` is `#[allow(dead_code)]` (server/main.rs:62-63).
 
 #### Stage 3: TLS vs plain handler split (`server/main.rs:261-624`)
@@ -305,7 +305,7 @@ The standalone server/client binaries are functional and tested by hand (`net/RE
 | **ClientToServer** | `#[non_exhaustive]` enum of 6 wire messages: `Hello`, `FindOrCreate`, `JoinRoom`, `InputFrame`, `Ping`, `Ack`. `InputFrame.sig` is `[u8; 32]`. | `aw-net-proto/lib.rs:150-183` |
 | **ServerToClient** | `#[non_exhaustive]` enum of 8 wire messages: `HelloAck`, `MatchResult { room_id }`, `JoinAccepted { room_id, player_id, tick_hz }`, `Snapshot`, `Reconcile`, `Pong`, `RateLimited`, `ProtocolError`. (No `session_key_hint` on `MatchResult`/`JoinAccepted` — deleted in `561b20957`.) | `aw-net-proto/lib.rs:185-220` |
 | **Codec** | `#[non_exhaustive]` enum: `PostcardLz4` (default), `Bincode` (compat). | `aw-net-proto/lib.rs:234-241` |
-| **SigningKey** | Shared symmetric 32-byte HMAC key. Private `[u8; 32]` field (no tuple `.0` access); constructors `from_hex` (64 hex chars) / `from_bytes` / `dev_default`; accessor `as_bytes`; `Debug` is redacted to `SigningKey(<redacted>)`. Never transmitted on the wire — both ends hold it out-of-band (client: `AW_SHARED_KEY` or `dev_default`; server: `--shared-key-hex` or `dev_default`). | `aw-net-proto/lib.rs:28-94` |
+| **SigningKey** | Shared symmetric 32-byte HMAC key. Private `[u8; 32]` field (no tuple `.0` access); constructors `from_hex` (64 hex chars) / `from_bytes` / `dev_default`; accessor `as_bytes`; `Debug` is redacted to `SigningKey(<redacted>)`. Never transmitted on the wire — both ends hold it out-of-band (client: `AW_SHARED_KEY`, or `dev_default()` when unset, on every build; server: `--shared-key-hex`. A release server refuses `dev_default()` and rejects a client still using it). | `aw-net-proto/lib.rs:28-94` |
 | **sign / verify** | `sign(key: &SigningKey, payload: &[u8]) -> [u8; 32]` (HMAC-SHA256); `verify(key, payload, tag: &[u8; 32]) -> bool` (constant-time via `Mac::verify_slice`). Backed by `hmac_sha256(key, payload)`. | `aw-net-proto/lib.rs:101-127` |
 | **input_frame_sig_payload** | THE canonical MAC'd byte range for `InputFrame`: `seq.to_le_bytes() ++ tick_ms.to_le_bytes() ++ input_blob`. Both client (signing) and server (verifying) MUST build the payload via this function — the single shared definition is what prevents signed-byte-range divergence. | `aw-net-proto/lib.rs:139-145` |
 | **SIG_LEN** | `usize = 32` — length of an HMAC-SHA256 signature tag. | `aw-net-proto/lib.rs:10` |
@@ -356,7 +356,7 @@ The standalone server/client binaries are functional and tested by hand (`net/RE
 
 ### Bidirectional / Coupled
 
-- **Shared `SigningKey` (client ⟷ server):** A single 32-byte symmetric key is held by both ends out-of-band (never transmitted): the client loads it from `AW_SHARED_KEY` (64 hex) or `SigningKey::dev_default()`; the server from `--shared-key-hex` or `dev_default()`. The client signs each `InputFrame` (`aw_net_proto::sign`) and the server verifies (`aw_net_proto::verify`, constant-time) over the same `input_frame_sig_payload(seq, tick_ms, &input_blob)` bytes. A bad tag is kicked by default (Close 1008). (No per-room `session_key`/`session_key_hint` remains — deleted in `561b20957`; see §6 / Stage 6.)
+- **Shared `SigningKey` (client ⟷ server):** A single 32-byte symmetric key is held by both ends out-of-band (never transmitted): the client loads it from `AW_SHARED_KEY` (64 hex) or `SigningKey::dev_default()` when that variable is unset, on every build (`net/aw-net-client/src/main.rs:19-25`); the server loads it from `--shared-key-hex`. The release CLI refuses to start without that flag (`net/aw-net-server/src/main.rs:103-109`), and release spawn_server refuses the published key (`lib.rs:281-286`), so a release server rejects a client that is still on `dev_default()`. The client signs each `InputFrame` (`aw_net_proto::sign`) and the server verifies (`aw_net_proto::verify`, constant-time) over the same `input_frame_sig_payload(seq, tick_ms, &input_blob)` bytes. A bad tag is kicked by default (Close 1008). (No per-room `session_key`/`session_key_hint` remains — deleted in `561b20957`; see §6 / Stage 6.)
 
 ### Documentation references with no code backing
 
@@ -376,7 +376,7 @@ The standalone server/client binaries are functional and tested by hand (`net/RE
 | `net/aw-net-proto/src/lib.rs` | Wire-protocol types + `encode_msg`/`decode_msg` + **canonical signing surface** (`SigningKey`, `sign`, `verify`, `hmac_sha256`, `input_frame_sig_payload`, `SIG_LEN`) + `new_room_id` + `WireError` | Active | 285 lines. `#![forbid(unsafe_code)]`. **`sign16`/`SessionKey` deleted** (`561b20957`); `InputFrame.sig` is now `[u8; 32]`. |
 | `net/aw-net-proto/tests/mutation_resistant_comprehensive_tests.rs` | Mutation-resistance harness + RFC 4231 HMAC known-answer vectors | Active (tests) | 59 tests. |
 | `net/aw-net-proto/benches/proto_bench.rs` | Criterion benches for codec encode/decode | Active | 13 `bench_function` call sites. |
-| `net/aw-net-client/src/main.rs` | Standalone CLI client binary | Active | 193 lines. Demo input loop at 33 ms tick (~30 Hz). Signs each `InputFrame` via `aw_net_proto::sign` over `input_frame_sig_payload`; key from `AW_SHARED_KEY`/`dev_default`. Uses `tokio-tungstenite` with `native-tls` feature for wss. Carries the S2C-unsigned design note (`561b20957`/`eb9977b88`). |
+| `net/aw-net-client/src/main.rs` | Standalone CLI client binary | Active | 193 lines. Demo input loop at 33 ms tick (~30 Hz). Signs each `InputFrame` via `aw_net_proto::sign` over `input_frame_sig_payload`; key from `AW_SHARED_KEY`, or `dev_default()` when unset, on every build. A release server rejects that key. Uses `tokio-tungstenite` with `native-tls` feature for wss. Carries the S2C-unsigned design note (`561b20957`/`eb9977b88`). |
 | `net/aw-net-client/Cargo.toml` | Binary crate metadata | Active | Pulls `tokio-tungstenite = { version = "0.28", features = ["native-tls"] }` (line 9). |
 | `net/aw-net-server/src/lib.rs` | **Server library**: `ServerConfig`/`run_server`/`spawn_server`, TLS+plain dual paths, matchmaking, sled, rate limiting, **HMAC verify-FIRST via the canonical proto surface**, `SignatureFailurePolicy { Kick, Warn }` | Active | ~1080 lines. Dual TLS/plain handlers (Stage 3 — ~400 lines of duplicated code). The verify/kick logic lives in `on_client_msg{,_tls}`. |
 | `net/aw-net-server/src/main.rs` | Thin CLI wrapper: parse args (`--shared-key-hex`, `--sig-failure-policy`, `--disable-tls`, `--tls-cert`/`--tls-key`, `--ws-listen`/`--http-listen`/`--db-path`) → `ServerConfig` → `run_server` | Active | 116 lines. No logic beyond arg-parse (`066cd6cfd` lib/bin split). |
@@ -581,7 +581,7 @@ The standalone server/client binaries are functional and tested by hand (`net/RE
 
 - **TLS handshake** (`server/main.rs:217-223`) — milliseconds per connection.
 - **Matchmaking room scan** (`server/main.rs:309-310, 490-491`) — linear scan of `rooms` HashMap; rooms cap not enforced; current scale assumed small.
-- **Signing-key load** — the 32-byte `SigningKey` is parsed once at process startup (`from_hex` of `AW_SHARED_KEY` / `--shared-key-hex`, or `dev_default()`); there is no per-room key generation anymore (the former per-room `SessionKey::random()` was removed in `561b20957`).
+- **Signing-key load** — the 32-byte `SigningKey` is parsed once at process startup. The client uses `AW_SHARED_KEY` or `dev_default()` on every build. The server uses `--shared-key-hex`. A release server refuses `dev_default()`. There is no per-room key generation anymore (the former per-room `SessionKey::random()` was removed in `561b20957`).
 - **`net_ecs_adversarial.rs`** (921 lines, 11 bench cases) — explicitly worst-case payload shapes for serialization.
 
 ### Resource ownership
