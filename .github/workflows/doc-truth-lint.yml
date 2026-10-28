@@ -10,15 +10,39 @@ name: Doc-Truth Lint
 # nonzero: replay cases and the measured frame phrases on ENGINE_STATUS.md.
 # `3.117 ms` and `3.688 ms` must be their own tokens on a sentence with
 # whole-word median or measured, or sample with is or was. `11 ms` is its
-# own token. capture is not a measurement. not, no, nobody, nothing, never,
-# cannot, and an n't contraction (ASCII, U+2019, U+02BC, or an apostrophe
-# character reference) keep that sentence off the set. A closed HTML comment
-# does not supply a phrase. The root README rejects a frame figure as
-# CLOSED_VOCABULARY_LINT.md defines it: ms, msec, millisecond, or
-# milliseconds, including fullwidth digits, after paired emphasis, alt text,
-# autolink text, an unclosed `<`, character references, and invisible
-# characters are decoded. A single tilde and an underscore between word
-# characters stay. Also the in-progress list and the retired game title.
+# own token. capture is not a measurement. not, no, none, nobody, nothing,
+# never, cannot, neither, nor, and an n't contraction (ASCII, U+2018, U+2019,
+# U+02BC, U+FF07, or a character reference that decodes to one of those) keep
+# that sentence off the set. That negation also covers `11 ms`, the two prose
+# phrases, CC0, GTX 1660 Ti, and Aravath. Inline tags and emphasis are stripped
+# before the word scan. Replay names are read from the pulldown-cmark render.
+# Code stays as that parser emitted it. A numeric character reference in
+# text is decoded when it ends in a semicolon, including any run of leading
+# zeros. A value in 0x80-0x9F is U+FFFD. A named reference in markdown text
+# still needs a semicolon. Raw HTML
+# and alt text decode a numeric reference with an optional semicolon: 0 is
+# U+FFFD, and 0x80-0x9F use the Windows-1252 row. They also accept an HTML5
+# legacy name with no semicolon. Footnotes are on: a referenced
+# definition is scanned, an unreferenced one is omitted, and a defined
+# reference writes a superscript digit. An
+# unclosed <!-- hides through EOF, including a blank line. A comment inside
+# a code span or a fence stays. <!-->, <!--->, and --!> close the comment. Link labels
+# join the surrounding letters. A link or image title, and an HTML title
+# attribute, are scanned on their own line at the end of the enclosing
+# block. Reference definitions are omitted. Autolink
+# text stays. A br tag is a break. U+1734 is Mc and is not dropped. The root
+# README rejects a frame figure as CLOSED_VOCABULARY_LINT.md defines it: ms,
+# msec, millisecond, or milliseconds, including the fullwidth block
+# U+FF01–U+FF5E, after that render, alt text, character references,
+# unicode_categories 0.1.1, and the Unicode 15 Cf and Mn gaps that crate misses.
+# A non-comment < that never reaches > stays text. A backslash before a newline
+# is a hard break. A single tilde and an underscore between word characters
+# stay. The in-progress heading is the rendered h2 whose folded text is
+# exactly "in progress", setext or ATX. The section ends at the next rendered
+# h2 that does not collapse to "in progress" or empty. Its issue numbers are
+# read from that section after the same fold. The in-progress words and the retired
+# game title are read from that render after the same fold as the frame gate,
+# including U+200B, U+200D, U+00AD, and fullwidth forms.
 # Baseline at the 2026-06 wiring: K=0 un-allowlisted vocabulary hits.
 #
 # Complementary to trace-sync.yml: that gate owns the CLAUDE.md trace table +
@@ -43,7 +67,7 @@ on:
 
 # Per pull-request ref. Another PR does not cancel this run. Run 39793896957
 # was cancelled at the 20-minute job timeout while rust-ci-setup was still
-# restoring the shared crate cache. aw_doc_lint is anyhow + clap.
+# restoring the shared crate cache. aw_doc_lint is anyhow, clap, unicode_categories, and pulldown-cmark.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
