@@ -4,6 +4,9 @@
 from __future__ import annotations
 
 import importlib.util
+import json
+import subprocess
+import sys
 import unittest
 from pathlib import Path
 
@@ -310,25 +313,19 @@ class WorkflowPolicyTest(unittest.TestCase):
         self.assertIn("schedule:", text)
         self.assertIn("workflow_dispatch:", text)
         self.assertIn("scripts/ci/fuzz_targets.py", text)
+        self.assertIn("scripts/ci/fuzz_corpus_artifact.py", text)
         self.assertIn("-max_total_time=120", text)
-        self.assertIn(
-            "actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0",
-            text,
-        )
-        self.assertIn(
-            "actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0",
-            text,
-        )
         self.assertIn(
             "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2",
             text,
         )
         self.assertNotIn("actions/checkout@v5", text)
-        self.assertNotIn("actions/cache@v4", text)
+        self.assertNotIn("actions/cache", text)
+        self.assertNotIn("actions: write", text)
         top, _, _ = text.partition("\njobs:")
         self.assertIn("contents: read", top)
+        self.assertIn("actions: read", top)
         self.assertNotIn("actions: write", top)
-        self.assertIn("actions: write", text)
         self.assertIn("artifacts/**", text)
         self.assertNotIn("continue-on-error", text)
         self.assertNotIn("pull_request:", text)
@@ -364,6 +361,93 @@ class WorkflowPolicyTest(unittest.TestCase):
             "fuzz_path",
         ):
             self.assertIn(required, targets)
+
+    def test_corpus_artifact_picks_the_newest_previous_run(self) -> None:
+        script = ROOT / "scripts" / "ci" / "fuzz_corpus_artifact.py"
+        spec = importlib.util.spec_from_file_location("fuzz_corpus_artifact", script)
+        assert spec is not None and spec.loader is not None
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        payload = {
+            "artifacts": [
+                {
+                    "expired": True,
+                    "created_at": "2026-10-28T03:00:00Z",
+                    "workflow_run": {"id": 9},
+                },
+                {
+                    "expired": False,
+                    "created_at": "2026-10-27T00:00:00Z",
+                    "workflow_run": {"id": 3},
+                },
+                {
+                    "expired": False,
+                    "created_at": "2026-10-28T01:00:00Z",
+                    "workflow_run": {"id": 5},
+                },
+                {
+                    "expired": False,
+                    "created_at": "2026-10-28T02:00:00Z",
+                    "workflow_run": {"id": 7},
+                },
+                {
+                    "created_at": "2026-10-28T04:00:00Z",
+                    "workflow_run": {"id": "not-a-run"},
+                },
+            ]
+        }
+        self.assertEqual(module.select_corpus_run([payload], "7"), "5")
+        self.assertIsNone(module.select_corpus_run([{"artifacts": []}], "1"))
+        self.assertIsNone(
+            module.select_corpus_run(
+                [
+                    {
+                        "artifacts": [
+                            {
+                                "created_at": "2026-10-28T00:00:00Z",
+                                "workflow_run": {"id": 4},
+                            }
+                        ]
+                    }
+                ],
+                "4",
+            )
+        )
+        tied = {
+            "artifacts": [
+                {"created_at": "2026-10-28T00:00:00Z", "workflow_run": {"id": 2}},
+                {"created_at": "2026-10-28T00:00:00Z", "workflow_run": {"id": 8}},
+            ]
+        }
+        self.assertEqual(module.select_corpus_run([tied], "1"), "8")
+
+        older = {
+            "artifacts": [
+                {"created_at": "2026-10-01T00:00:00Z", "workflow_run": {"id": 11}}
+            ]
+        }
+        newer = {
+            "artifacts": [
+                {"created_at": "2026-10-02T00:00:00Z", "workflow_run": {"id": 12}}
+            ]
+        }
+        proc = subprocess.run(
+            [sys.executable, str(script), "12"],
+            input=json.dumps(older) + "\n" + json.dumps(newer),
+            text=True,
+            capture_output=True,
+            check=True,
+        )
+        self.assertEqual(proc.stdout, "11\n")
+        empty = subprocess.run(
+            [sys.executable, str(script), "1"],
+            input='{"artifacts":[]}',
+            text=True,
+            capture_output=True,
+            check=True,
+        )
+        self.assertEqual(empty.stdout, "")
 
     def test_allocation_measurement_is_a_real_gate_off_prs(self) -> None:
         text = (WORKFLOWS / "allocation-measurement.yml").read_text(encoding="utf-8")
