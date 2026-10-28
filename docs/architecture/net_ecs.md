@@ -44,7 +44,7 @@ Provides two coexisting integration paths over a shared binary wire protocol (`a
 2. **ECS Plugin layer** (`astraweave-net-ecs`): A library that registers `NetworkClientPlugin` / `NetworkServerPlugin` with the `astraweave-ecs::App` and adds four systems (`client_input_system`, `client_reconciliation_system`, `server_snapshot_system`, `server_input_processing_system`) plus three components (`CNetworkClient`, `CClientPrediction`, `CNetworkAuthority`) and async helpers (`connect_to_server`, `start_network_server`). The systems contain simulation stubs (e.g., literal `prediction.predicted_position.x += 0.1` placeholder for prediction).
 
 **Why it exists:**
-Per `net/README.md:1-12`, the goal was a "production-ready multiplayer capabilities" path layered on top of (not replacing) the older `astraweave-net` snapshot system. The standalone trio is the user-facing artifact; `astraweave-net-ecs` is the ECS adaptation layer intended to plug the protocol into a game's ECS world.
+Per `net/README.md:5-9`, the three crates provide multiplayer capabilities, layered on the older `astraweave-net` snapshot system. The standalone trio is the user-facing artifact; `astraweave-net-ecs` is the ECS adaptation layer intended to plug the protocol into a game's ECS world.
 
 **Where it primarily lives:**
 - `astraweave-net-ecs/src/lib.rs` — 437 lines. ECS Plugin + components + four systems + two async helpers + 4 inline tests.
@@ -105,7 +105,7 @@ The standalone server/client binaries are functional and tested by hand (`net/RE
     │   (no per-room session_key — input signing keys off the process-wide
     │    shared SigningKey. The client uses AW_SHARED_KEY or dev_default() on every build. A debug server keeps dev_default() when --shared-key-hex is absent (net/aw-net-server/src/main.rs:111-117); only the release CLI requires that flag (:103-109). Release spawn_server refuses the published key at boot (lib.rs:281-286; `published_dev_key_allowed` at aw-net-proto/lib.rs:114-116). `--sig-failure-policy` parses on every build (main.rs:72-77).)
     │
-    │ Unsigned player insert (before MatchResult / JoinAccepted)          (TLS lib.rs:518-524; plain :750-756)
+    │ Unsigned player insert (before MatchResult / JoinAccepted)          (TLS lib.rs:518-528; plain :750-760)
     ├── ServerToClient::MatchResult { room_id }                             (TLS :551-557; plain :783-789)
     └── ServerToClient::JoinAccepted { room_id, player_id, tick_hz }        (TLS :562; plain :794)
 
@@ -129,7 +129,7 @@ The standalone server/client binaries are functional and tested by hand (`net/RE
     │
     ├── ws.next() → ClientToServer::Ack { .. }       (ignored / commented)
     │
-    └── sleep(tick_dt = 1000/tick_hz ms) → build_snapshot(&app, &rid)      (lib.rs:879-910)
+    └── sleep(tick_dt = 1000/tick_hz ms) → build_snapshot(&app, &rid)      (lib.rs:879-911)
           ↓ room.tick += 1; room.snap_id += 1
           ↓ Encode DemoState { tick: server_tick } as postcard
           ↓ Wrap with lz4_flex::compress_prepend_size
@@ -198,21 +198,21 @@ The standalone server/client binaries are functional and tested by hand (`net/RE
 ──────────────────────────────────────────────────────────────────────
 [server_input_processing_system(world)]                                   (net-ecs/lib.rs:196-214)
     │
-    │ Query2<CNetworkClient, CNetworkAuthority>
+    │ Query2<CNetworkClient, CNetworkAuthority>                            (net-ecs/lib.rs:201)
     │ TODO comment: "Apply input validation, anti-cheat checks, etc."     (net-ecs/lib.rs:209)
     └── world.insert(entity, client)    ← no-op (client cloned, written back unchanged)
 
 ──────────────────────────────────────────────────────────────────────
 [Async helpers — never called by the ECS systems]
     │
-    ├── connect_to_server(addr) → mpsc::UnboundedReceiver<ServerToClient> (net-ecs/lib.rs:217-248)
+    ├── connect_to_server(addr) → mpsc::UnboundedReceiver<ServerToClient> (net-ecs/lib.rs:217-249)
     │     · connect_async(ws://) (NOT wss://)
     │     · Spawn task reading Message::Binary frames
     │     · decode_msg::<ServerToClient>(Codec::Bincode, ...)             ← note Bincode, not PostcardLz4
     │     · Forward via mpsc::UnboundedSender
     │
-    └── start_network_server(bind_addr) → mpsc::UnboundedReceiver<ClientToServer>  (net-ecs/lib.rs:252-293)
-          · TcpListener::bind + accept_async (plain TCP, no TLS)
+    └── start_network_server(bind_addr) → mpsc::UnboundedReceiver<ClientToServer>  (net-ecs/lib.rs:252-294)
+          · TcpListener::bind + accept_async (plain TCP, no TLS)      (net-ecs/lib.rs:259, :264)
           · Same Bincode codec
           · No matchmaking, no room logic, no auth
 ```
@@ -239,7 +239,7 @@ The standalone server/client binaries are functional and tested by hand (`net/RE
 - `spawn_server` refuses the published dev signing key outside debug and test builds (`lib.rs:281-286`; `published_dev_key_allowed` at `aw-net-proto/lib.rs:114-116`). `--sig-failure-policy` is parsed on every build (`main.rs:72-77`).
 - `--disable-tls` is `cfg(not(debug_assertions))`-rejected (`net/aw-net-server/src/main.rs:36-42`) — release builds cannot disable TLS.
 - HTTP admin defaults to `127.0.0.1:8789`. `/healthz` and `/regions` require a bearer token equal to `ServerConfig.admin_token` (`admin_router`). Missing token, empty token, or a wrong token returns 401. With the token, `/healthz` returns `"ok"` and `/regions` returns hardcoded `["us-east","us-west","eu-central"]`. No real region-resolution logic; the string list is decorative. `ServerConfig::default` assigns `SigningKey::dev_default()` on every build (`net/aw-net-server/src/lib.rs:161`). The release CLI refuses to start without `--shared-key-hex` (`main.rs:103-109`). Release `spawn_server` refuses the published key (`lib.rs:281-286`).
-- sled DB opened at `aw_net_server_db/` (`lib.rs:287-288`) but **never read or written** in the visible server surface. The `db` field on `AppState` is `#[allow(dead_code)]` (`lib.rs:229-230`).
+- sled opens `config.db_path` (`lib.rs:287-288`). `ServerConfig::default` sets that path to `aw_net_server_db` (`:160`). The handle is **never read or written** in the visible server surface. The `db` field on `AppState` is `#[allow(dead_code)]` (`lib.rs:229-230`).
 
 #### Stage 3: TLS vs plain handler split (`lib.rs:413-645`, `:647-877`)
 **Role:** Per-connection handshake, matchmaking, per-tick snapshot loop.
@@ -259,7 +259,7 @@ The standalone server/client binaries are functional and tested by hand (`net/RE
 - `tick_hz` is currently hardcoded to 30 in `Room::new`-equivalent literal (`lib.rs:452`, `:684`: `tick_hz` binding starts at 30u32 before room creation; player insert copies `room.tick_hz` at `:529`, `:761`).
 - New `Room.tick` starts at 0 and `snap_id` starts at 0 (lib.rs:472-473, 704-705).
 
-#### Stage 5: Per-tick snapshot construction (`lib.rs:879-910`)
+#### Stage 5: Per-tick snapshot construction (`lib.rs:879-911`)
 **Role:** Build a `ServerToClient::Snapshot` for one room.
 **Inputs:** `&AppState`, `rid: &str` (room id).
 **Outputs:** `(ServerToClient::Snapshot, snap_id)`.
@@ -307,7 +307,7 @@ The standalone server/client binaries are functional and tested by hand (`net/RE
 | **PROTOCOL_VERSION** | `u16 = 1` — wire-format version check on `Hello`. | `aw-net-proto/lib.rs:7` |
 | **ClientToServer** | `#[non_exhaustive]` enum of 6 wire messages: `Hello`, `FindOrCreate`, `JoinRoom`, `InputFrame`, `Ping`, `Ack`. `InputFrame.sig` is `[u8; 32]`. | `aw-net-proto/lib.rs:172-205` |
 | **ServerToClient** | `#[non_exhaustive]` enum of 8 wire messages: `HelloAck`, `MatchResult { room_id }`, `JoinAccepted { room_id, player_id, tick_hz }`, `Snapshot`, `Reconcile`, `Pong`, `RateLimited`, `ProtocolError`. (No `session_key_hint` on `MatchResult`/`JoinAccepted` — deleted in `561b20957`.) | `aw-net-proto/lib.rs:209-242` |
-| **Codec** | `#[non_exhaustive]` enum: `PostcardLz4` (default), `Bincode` (compat). | `aw-net-proto/lib.rs:258-262` |
+| **Codec** | `#[non_exhaustive]` enum: `PostcardLz4` (default), `Bincode` (compat). | `aw-net-proto/lib.rs:258-263` |
 | **SigningKey** | Shared symmetric 32-byte HMAC key. Private `[u8; 32]` field (no tuple `.0` access); constructors `from_hex` (64 hex chars) / `from_bytes` / `dev_default`; accessor `as_bytes`; `Debug` is redacted to `SigningKey(<redacted>)`. Never transmitted on the wire — both ends hold it out-of-band (client: `AW_SHARED_KEY`, or `dev_default()` when unset, on every build; server: a debug build keeps `dev_default()` when `--shared-key-hex` is absent (`net/aw-net-server/src/main.rs:111-117`); only the release CLI requires that flag (`:103-109`); release `spawn_server` refuses the published key at boot (`lib.rs:281-286`). The server does not see the client's key; a published-key client joins and the first `InputFrame` is Close 1008 under Kick, or the connection stays up under `--sig-failure-policy warn`). | `aw-net-proto/lib.rs:31-96` |
 | **sign / verify** | `sign(key: &SigningKey, payload: &[u8]) -> [u8; 32]` (HMAC-SHA256); `verify(key, payload, tag: &[u8; 32]) -> bool` (constant-time via `Mac::verify_slice`). Backed by `hmac_sha256(key, payload)`. | `aw-net-proto/lib.rs:123-149` |
 | **input_frame_sig_payload** | THE canonical MAC'd byte range for `InputFrame`: `seq.to_le_bytes() ++ tick_ms.to_le_bytes() ++ input_blob`. Both client (signing) and server (verifying) MUST build the payload via this function — the single shared definition is what prevents signed-byte-range divergence. | `aw-net-proto/lib.rs:161-167` |
@@ -316,7 +316,7 @@ The standalone server/client binaries are functional and tested by hand (`net/RE
 | **Room** | Server-side state: `{ id, region, game_mode, tick_hz, players: HashMap<PlayerId, Player>, tick, snap_id }`. (No `session_key` field — removed.) | `aw-net-server/lib.rs:212-223` |
 | **Player** | Server-side per-player state: `{ id, display, last_input_seq, last_seen, tokens, last_refill }`. | `aw-net-server/lib.rs:199-209` |
 | **AppState** | Server-wide state: `{ rooms: Arc<parking_lot::Mutex<HashMap<RoomId, Room>>>, db: sled::Db, codec: Codec, signing_key: SigningKey, sig_failure_policy: SignatureFailurePolicy }`. Uses `parking_lot::Mutex` (`lib.rs:25`), not `std::sync::Mutex`. | `aw-net-server/lib.rs:226-234` |
-| **ServerConfig / run_server / spawn_server** | `ServerConfig` (CLI-derived: listen addrs, TLS paths, db path, `signing_key`, `sig_failure_policy`) → `run_server(config)` (binary entry after arg-parse) → `spawn_server(config)` (binds listeners FIRST — the `127.0.0.1:0` ephemeral-port test seam — then spawns accept loops). | `aw-net-server/lib.rs:131-166, 263-274, 280-359` |
+| **ServerConfig / run_server / spawn_server** | `ServerConfig` (CLI-derived: listen addrs, TLS paths, db path, `signing_key`, `sig_failure_policy`) → `run_server(config)` (binary entry after arg-parse) → `spawn_server(config)` (binds listeners FIRST — the `127.0.0.1:0` ephemeral-port test seam — then spawns accept loops). | `aw-net-server/lib.rs:131-166, 263-275, 280-359` |
 | **MsgOutcome** | Internal result of handling one in-session message: `Continue` (keep open) or `Kick(&'static str)` (close with 1008 + run shared cleanup). | `aw-net-server/lib.rs:189-196` |
 | **WireError** | `#[non_exhaustive]` + `#[must_use]` decode error enum: `ProtocolMismatch`, `Decode`, `InvalidSigningKey`. | `aw-net-proto/lib.rs:247-254` |
 | **CNetworkClient** | ECS component: `{ player_id, last_acknowledged_input, pending_inputs }`. | `astraweave-net-ecs/lib.rs:13-19` |
@@ -329,7 +329,7 @@ The standalone server/client binaries are functional and tested by hand (`net/RE
 - **`Snapshot` (aw-net-proto wire variant) vs. `NetworkSnapshot` (astraweave-net-ecs)**: The wire-format snapshot is `ServerToClient::Snapshot { id, server_tick, base_id, compressed, payload }` carrying an opaque byte payload. The ECS-layer `NetworkSnapshot` is what's *inside* the payload — it deserializes per-entity state. Distinct types in distinct crates.
 - **`SigningKey` (32 bytes, both ends) vs. `[u8; 32]` sig vs. `input_frame_sig_payload` (the signed bytes)**: One shared symmetric `SigningKey` keys the HMAC at both client and server (held out-of-band, never on the wire). The `sig` field is the 32-byte HMAC-SHA256 tag the client puts on each `InputFrame`. `input_frame_sig_payload(seq, tick_ms, &input_blob)` is the byte range that is MAC'd — NOT the raw `input_blob` alone; the `seq` and `tick_ms` fields are inside the signed bytes. (Historical note: there was formerly a per-room 32-byte `SessionKey`, an 8-byte `session_key_hint` sent to the client, and a 16-byte XOR `sign16` tag — all three deleted in `561b20957`.)
 - **HMAC sign vs. verify (one algorithm, both ends agree)**: The client computes `aw_net_proto::sign(&signing_key, &payload)` (`client/main.rs:100-101`) and the server computes `aw_net_proto::verify(&app.signing_key, &payload, &sig)` (`lib.rs:932, 1074`), where `payload = input_frame_sig_payload(seq, tick_ms, &input_blob)` on both sides. **These produce/check the same bytes.** A valid frame verifies; a forged or wrong-key frame is rejected and (default policy) kicked. (Historical note: pre-remediation the client signed with XOR `sign16` while the server verified HMAC-SHA256, so every verification failed — RESOLVED.)
-- **`Codec::Bincode` (proto) vs. `Codec::PostcardLz4` (proto)**: Both are members of the same enum. `PostcardLz4` is used by both standalone binaries (client/main.rs:190, lib.rs:292-293). `Bincode` is used by `astraweave-net-ecs` (lib.rs:179, 237, 279). The two integration paths thus serialize incompatibly even though they share the protocol crate.
+- **`Codec::Bincode` (proto) vs. `Codec::PostcardLz4` (proto)**: Both are members of the same enum. `PostcardLz4` is used by both standalone binaries (client/main.rs:190, lib.rs:292). `Bincode` is used by `astraweave-net-ecs` (lib.rs:179, 237, 279). The two integration paths thus serialize incompatibly even though they share the protocol crate.
 - **`astraweave-net::Snapshot` (older subsystem) vs. anything in this subsystem**: Separate crate, different data model, JSON-text wire format. Documented in `docs/architecture/net.md`.
 
 ---
@@ -340,13 +340,13 @@ The standalone server/client binaries are functional and tested by hand (`net/RE
 
 | Source system | Interface | Data | Notes |
 |---|---|---|---|
-| `astraweave-ecs` (Plugin layer dep) | `App`, `Plugin`, `Query`, `Query2`, `World` (`net-ecs/lib.rs:7`) | Component query/insert/get; `app.add_system(stage, fn)`; `app.add_plugin(Plugin)` | The four ECS systems take `&mut World`. Plugin builders register them in `"simulation"` or `"presentation"` stages. |
-| `astraweave-core` (workspace dep) | (declared in `net-ecs/Cargo.toml:16`) | none directly imported in `net-ecs/src/lib.rs` | The dep is declared but workspace grep shows no `use astraweave_core` in `astraweave-net-ecs/src/`. The dependency may exist for future use or has been left from a prior version. |
+| `astraweave-ecs` (Plugin layer dep) | `App`, `Plugin`, `Query`, `World` (`net-ecs/lib.rs:7`); `Query2` is `astraweave_ecs::Query2` at `:201` | Component query/insert/get; `app.add_system_known_stage`; `app.add_plugin(Plugin)` | The four ECS systems take `&mut World`. Plugin builders register them in `"simulation"` or `"presentation"` stages. |
+| `astraweave-core` (workspace dep) | (declared in `net-ecs/Cargo.toml:17`) | none directly imported in `net-ecs/src/lib.rs` | The dep is declared but workspace grep shows no `use astraweave_core` in `astraweave-net-ecs/src/`. The dependency may exist for future use or has been left from a prior version. |
 | `glam` (ECS data) | `Vec3` (in `CClientPrediction.predicted_position`, `EntityState.position`) | 3D position component | Used by the ECS Plugin layer only; the standalone binaries operate on opaque `Vec<u8>` blobs. |
-| Filesystem (sled) | `sled::open("aw_net_server_db")` (`lib.rs:287-288`) | KV store | `AppState.db` field is `#[allow(dead_code)]` — opened but unused. The directory exists at workspace root with a `conf` file (62 B) and `db` file (96 B) — sled's tiny housekeeping artifacts. |
-| Filesystem (TLS certs) | `load_certs` / `load_private_key` (`lib.rs:237-251`) | PEM-encoded cert chain + key | Defaults to `net/certs/dev/dev-cert.pem` and `dev-key.pem`. Generation script: `net/certs/dev/generate_dev_cert.sh` (referenced in warning at `lib.rs:331-332`). |
+| Filesystem (sled) | `sled::open(&config.db_path)` (`lib.rs:287-288`; default `aw_net_server_db` at `:160`) | KV store | `AppState.db` field is `#[allow(dead_code)]` — opened but unused. The directory exists at workspace root with a `conf` file (62 B) and `db` file (96 B) — sled's tiny housekeeping artifacts. |
+| Filesystem (TLS certs) | `load_certs` / `load_private_key` (`lib.rs:237-247`) | PEM-encoded cert chain + key | Defaults to `net/certs/dev/dev-cert.pem` and `dev-key.pem`. Generation script: `net/certs/dev/generate_dev_cert.sh` (referenced in warning at `lib.rs:331-332`). |
 | Environment | `AW_WS_URL`, `AW_REGION` (`client/main.rs:14-15`) | Server URL and region string | Client defaults: `wss://127.0.0.1:8788`, region `us-east`. |
-| WebSocket client connections | `accept_hdr_async`, `accept_async` (`lib.rs:380`, `:399`; TLS accept at `:372-377`) | Postcard-LZ4 binary frames | Server expects `Message::Binary` and silently drops `Message::Text` and other variants. |
+| WebSocket client connections | `accept_hdr_async` (TLS `lib.rs:380`, plain `:399`; TLS handshake `:372-378`) | Postcard-LZ4 binary frames | Server expects `Message::Binary` and silently drops `Message::Text` and other variants. |
 
 ### Downstream (what consumes this system's output)
 
@@ -359,7 +359,7 @@ The standalone server/client binaries are functional and tested by hand (`net/RE
 
 ### Bidirectional / Coupled
 
-- **Shared `SigningKey` (client ⟷ server):** A single 32-byte symmetric key is held by both ends out-of-band (never transmitted): the client loads it from `AW_SHARED_KEY` (64 hex) or `SigningKey::dev_default()` when that variable is unset, on every build (`net/aw-net-client/src/main.rs:19-25`); the server loads it from `--shared-key-hex`. A debug server keeps `dev_default()` when `--shared-key-hex` is absent (`net/aw-net-server/src/main.rs:111-117`); only the release CLI requires that flag (`:103-109`); release `spawn_server` refuses the published key at boot (`lib.rs:281-286`). The server never sees the client's key. `Hello`, `FindOrCreate`, and `JoinRoom` are unsigned. `HelloAck` is plain `lib.rs:654-655` and TLS `:422-423`. The unsigned player insert is plain `:750-756` and TLS `:518-524`, before `MatchResult` and `JoinAccepted` (plain `:794`, TLS `:562`). Only `InputFrame` is verified (`:932`, `:1074`). A client using the published key against a release server is a wrong-key client: it joins, is kicked with Close 1008 on its first input under the default Kick policy, and stays connected under `--sig-failure-policy warn` (parsed on every build at `main.rs:72-77`). Under warn, `last_input_seq` and `last_seen` are written only when the token bucket stays non-negative after deduct (`:973-974`, `:1115-1116`); a drained bucket sends `RateLimited` and continues without updating those fields (`:979-980`, `:1121-1122`). The client signs each `InputFrame` (`aw_net_proto::sign`) and the server verifies (`aw_net_proto::verify`, constant-time) over the same `input_frame_sig_payload(seq, tick_ms, &input_blob)` bytes. A bad tag is kicked by default (Close 1008). (No per-room `session_key`/`session_key_hint` remains — deleted in `561b20957`; see §6 / Stage 6.)
+- **Shared `SigningKey` (client ⟷ server):** A single 32-byte symmetric key is held by both ends out-of-band (never transmitted): the client loads it from `AW_SHARED_KEY` (64 hex) or `SigningKey::dev_default()` when that variable is unset, on every build (`net/aw-net-client/src/main.rs:19-25`); the server loads it from `--shared-key-hex`. A debug server keeps `dev_default()` when `--shared-key-hex` is absent (`net/aw-net-server/src/main.rs:111-117`); only the release CLI requires that flag (`:103-109`); release `spawn_server` refuses the published key at boot (`lib.rs:281-286`). The server never sees the client's key. `Hello`, `FindOrCreate`, and `JoinRoom` are unsigned. `HelloAck` is plain `lib.rs:654-655` and TLS `:422-423`. The unsigned player insert is plain `:750-760` and TLS `:518-528`, before `MatchResult` and `JoinAccepted` (plain `:794`, TLS `:562`). Only `InputFrame` is verified (`:932`, `:1074`). A client using the published key against a release server is a wrong-key client: it joins, is kicked with Close 1008 on its first input under the default Kick policy, and stays connected under `--sig-failure-policy warn` (parsed on every build at `main.rs:72-77`). Under warn, `last_input_seq` and `last_seen` are written only when the token bucket stays non-negative after deduct (`:973-974`, `:1115-1116`); a drained bucket sends `RateLimited` and continues without updating those fields (`:979-980`, `:1121-1122`). The client signs each `InputFrame` (`aw_net_proto::sign`) and the server verifies (`aw_net_proto::verify`, constant-time) over the same `input_frame_sig_payload(seq, tick_ms, &input_blob)` bytes. A bad tag is kicked by default (Close 1008). (No per-room `session_key`/`session_key_hint` remains — deleted in `561b20957`; see §6 / Stage 6.)
 
 ### Documentation references with no code backing
 
@@ -417,10 +417,10 @@ The standalone server/client binaries are functional and tested by hand (`net/RE
 | `astraweave-net-ecs/src/lib_temp.rs` vs. `astraweave-net-ecs/src/lib.rs` | both files in same crate `src/` | Orphan duplicate | `lib_temp.rs` (436 lines) is a near-identical copy of `lib.rs` (437 lines) minus the `#![forbid(unsafe_code)]` attribute. `diff astraweave-net-ecs/src/lib.rs astraweave-net-ecs/src/lib_temp.rs` shows the only structural difference is the missing crate attribute on line 1. Created in commit `54d15c9f2` (2025-11-19); not declared as `mod lib_temp` anywhere, not the crate's lib entry, so it doesn't compile into the crate. |
 | Third copy of net-ecs-shaped lib.rs in archive | `archive/temp_files/temp/temp_lib.rs` | Archived | An additional near-copy of `lib.rs`'s import/struct surface (`use aw_net_proto::{decode_msg, ClientToServer, Codec, ServerToClient}`, `CNetworkClient`, `CClientPrediction`, `CNetworkAuthority`) lives under `archive/temp_files/temp/`. Not part of the active crate; presumably checked in during a refactor archive sweep. Worth noting alongside `lib_temp.rs` as a forensic indicator that this code has been duplicated several times during its history. |
 | `sign16` (XOR) vs. HMAC-SHA256 — client/server signature mismatch | (historical) `aw-net-proto` `sign16` vs. inline server HMAC | **RESOLVED** (`561b20957`+`79424389e`+`066cd6cfd`; refute `eb9977b88`) | *Historical:* the client computed the XOR `sign16` (16-byte tag) while the server verified HMAC-SHA256 (32-byte tag), so every verification failed (length + algorithm) and the server only `warn!`ed. *Now:* both ends sign/verify HMAC-SHA256 via the single canonical `aw-net-proto` surface (`SigningKey` + `sign`/`verify` over `input_frame_sig_payload`); the server verifies FIRST and kicks by default (`SignatureFailurePolicy::Kick` → Close 1008). `sign16`, `SessionKey`, and `session_key_hint` are deleted. See §7 Decision Log and Stage 6. |
-| `Codec::PostcardLz4` (standalone binaries) vs. `Codec::Bincode` (ECS Plugin layer) | `client/main.rs:190`, `lib.rs:292-293` vs. `astraweave-net-ecs/lib.rs:179, 237, 279` | Two parallel wire formats sharing one enum | The standalone trio uses PostcardLz4 end-to-end. The ECS Plugin layer's `connect_to_server` / `start_network_server` / `server_snapshot_system` all hardcode `Codec::Bincode`. If a future game tries to wire the Plugin layer to talk to the standalone server, codec mismatch will cause every decode to fail. |
+| `Codec::PostcardLz4` (standalone binaries) vs. `Codec::Bincode` (ECS Plugin layer) | `client/main.rs:190`, `lib.rs:292` vs. `astraweave-net-ecs/lib.rs:179, 237, 279` | Two parallel wire formats sharing one enum | The standalone trio uses PostcardLz4 end-to-end. The ECS Plugin layer's `connect_to_server` / `start_network_server` / `server_snapshot_system` all hardcode `Codec::Bincode`. If a future game tries to wire the Plugin layer to talk to the standalone server, codec mismatch will cause every decode to fail. |
 | `tokio-rustls 0.25` + `rustls 0.22` (historical server pin) vs. `tokio-rustls 0.26` + `rustls 0.23` | `net/aw-net-server/Cargo.toml` and `astraweave-net/Cargo.toml` | **RESOLVED** | Both crates now depend on tokio-rustls 0.26 and rustls 0.23 with the ring provider. `Cargo.lock` contains one `rustls` (0.23) and one `tokio-rustls` (0.26). Certificate PEM is parsed with `rustls-pki-types`, not `rustls-pemfile`. |
 | `astraweave-net-ecs::EntityState` vs. `astraweave-net::EntityState` (in the other networking subsystem) | `net-ecs/lib.rs:43-47` vs. `astraweave-net/src/lib.rs:38-44` | Same name, disjoint shapes | `net-ecs::EntityState { position: Vec3, health: i32 }` vs. `net::EntityState { id: u32, pos: IVec2, hp: i32, team: u8, ammo: i32 }`. Cross-imports require qualification. (Already noted in `docs/architecture/net.md`.) |
-| `connect_to_server` / `start_network_server` (ECS layer) vs. `aw-net-server`'s `handle_socket` (standalone) | `astraweave-net-ecs/lib.rs:217-293` vs. `aw-net-server/lib.rs:647-877` | Two independent WebSocket handlers | The ECS layer's `start_network_server` is a minimal `accept_async` loop with no matchmaking, no auth, no rate limiting — it just decodes `ClientToServer` frames into an mpsc channel. The standalone `aw-net-server` is the production-grade path. They share no code beyond the `aw-net-proto` types. |
+| `connect_to_server` / `start_network_server` (ECS layer) vs. `aw-net-server`'s `handle_socket` (standalone) | `astraweave-net-ecs/lib.rs:217-294` vs. `aw-net-server/lib.rs:647-877` | Two independent WebSocket handlers | The ECS layer's `start_network_server` is a minimal `accept_async` loop with no matchmaking, no auth, no rate limiting — it just decodes `ClientToServer` frames into an mpsc channel. The standalone `aw-net-server` is the production-grade path. They share no code beyond the `aw-net-proto` types. |
 | `handle_socket_tls` vs. `handle_socket` in the server | `aw-net-server/lib.rs:413-645` vs. `:647-877` | Active code duplication | Two 180-line functions differ only in their `WebSocketStream` type parameter. Same matchmaking, same per-tick loop, same cleanup. Helper functions `send_tls`/`send`, `recv_tls`/`recv`, `on_client_msg_tls`/`on_client_msg` are also duplicated. ~400 lines total. |
 | `sled::Db` field on `AppState` is opened but unused | `lib.rs:229-230` (#[allow(dead_code)]), `:287-288` (open) | Active (declared, no read/write call sites) | `grep` over `lib.rs` for `app.db` / `state.db` read/write returns no read or write call sites after the `open` call. The sled directory at `aw_net_server_db/` exists but contains only sled's own initialization artifacts. |
 | `NetworkClientPlugin::server_addr` and `NetworkServerPlugin::bind_addr` | `net-ecs/lib.rs:50-52, 70-72 (#[allow(dead_code)])` | Stored, never read | The plugin builders use neither field. The async helpers take the address as a separate parameter. The fields exist only as placeholders for a future wiring. |
@@ -468,7 +468,7 @@ The standalone server/client binaries are functional and tested by hand (`net/RE
 ### Decision: Two integration paths (standalone trio + ECS Plugin layer) sharing one protocol crate
 - **Date:** Standalone trio: 2025-09-09 commit `cc9a7e3e3` ("Implement production-ready enhanced networking layer with server authority, client prediction, and matchmaking (#58)"). ECS Plugin layer: 2025-10-01 commit `08befc6ec` ("phase 6 implementation").
 - **Status:** Accepted (live in three workspace crates).
-- **Context:** Per `net/README.md:90-92`, "This enhanced networking layer runs alongside the existing `astraweave-net` and coop examples without conflicts. The original examples continue to work for simple scenarios, while this provides production-grade capabilities for serious multiplayer games."
+- **Context:** Per `net/README.md:181`, "This enhanced networking layer runs alongside the existing `astraweave-net` and coop examples without conflicts. The original examples continue to work for simple scenarios, while this provides capabilities for serious multiplayer games."
 - **Decision:** Build a new networking layer instead of refactoring `astraweave-net`. Share types only through the new `aw-net-proto` crate.
 - **Alternatives considered:** [Reasoning not recovered from available sources]
 - **Consequences:**
@@ -478,8 +478,8 @@ The standalone server/client binaries are functional and tested by hand (`net/RE
 
 ### Decision: PostcardLz4 as default codec; Bincode for fallback
 - **Date:** 2025-09-09 commit `cc9a7e3e3`.
-- **Status:** Accepted (`aw-net-proto/lib.rs:258-262`).
-- **Context:** The README mentions "60-80% size reduction on typical game state" from compression (`net/README.md:81`).
+- **Status:** Accepted (`aw-net-proto/lib.rs:258-263`).
+- **Context:** The README mentions "60-80% size reduction on typical game state" from compression (`net/README.md:170`).
 - **Decision:** PostcardLz4 (postcard serialize + lz4 compress) as the wire codec; Bincode as "Fallback / compatibility" (per doc comment at `aw-net-proto/lib.rs:261`).
 - **Alternatives considered:** [Reasoning not recovered from available sources]
 - **Consequences:**
@@ -558,8 +558,8 @@ The standalone server/client binaries are functional and tested by hand (`net/RE
 | 4 | `new_room_id()` returns 8 alphanumeric characters | Yes | `aw-net-proto/lib.rs:315`. |
 | 5 | A `SigningKey` is exactly 32 bytes | Yes (compile-time) | Field type is a private `[u8; 32]` (`aw-net-proto/lib.rs:31`); `from_hex` rejects anything ≠ 64 hex chars (`:72-77`). |
 | 6 | Room cap is 4 players (per region+game_mode) | Yes | `lib.rs:461`, `:693`. |
-| 7 | Empty room is removed on player disconnect | Yes | `lib.rs:638-640`, `:870-872`: `if room.players.is_empty() { rooms.remove(&rid); }`. |
-| 8 | `aw_net_proto::encode_msg(Codec::PostcardLz4, ...)` is followed by `decode_msg(Codec::PostcardLz4, ...)` | Test-enforced | Server (`lib.rs:292-293`) and client (`client/main.rs:190`) both pin PostcardLz4. ECS Plugin layer (`net-ecs/lib.rs:179, 237, 279`) pins Bincode independently. Codec mismatch produces `WireError::Decode`. |
+| 7 | Empty room is removed on player disconnect | Yes | `lib.rs:639-641`, `:871-873`: `if room.players.is_empty() { rooms.remove(&rid); }`. |
+| 8 | `aw_net_proto::encode_msg(Codec::PostcardLz4, ...)` is followed by `decode_msg(Codec::PostcardLz4, ...)` | Test-enforced | Server (`lib.rs:292`) and client (`client/main.rs:190`) both pin PostcardLz4. ECS Plugin layer (`net-ecs/lib.rs:179, 237, 279`) pins Bincode independently. Codec mismatch produces `WireError::Decode`. |
 | 9 | Per-connection ticking advances `room.tick` per connection (not per tick globally) | Yes (current behavior) | `lib.rs:885` inside `build_snapshot` increments `room.tick += 1` per call. Each `handle_socket{,_tls}` runs its own `sleep(tick_dt)` loop and calls `build_snapshot` independently. With N connected players in one room, `room.tick` advances N times per real second per Hz unit. [INFERRED — this is what the code reads; whether the design intends per-room or per-connection tick semantics is decisional.] |
 | 10 | HMAC-SHA256 verification runs FIRST and gates processing per `SignatureFailurePolicy`: under `Kick` (DEFAULT) a failed tag rejects the packet and disconnects (Close 1008); under `Warn` it logs and processes anyway | Yes | `lib.rs:932-945` (plain), `:1074-1087` (TLS): verify precedes rate-limit deduction; `last_input_seq`/`last_seen` only in the non-drained bucket branch (`:973-974`, `:1115-1116`). (Was previously `warn!`-only and did NOT terminate; changed in `066cd6cfd`.) |
 | 11 | Token bucket refill rate is 8 tokens/sec; bucket capacity is 60; cost per message is 1 | Yes (compile-time) | `lib.rs:957-959`, `:1099-1101` constants. |
@@ -575,14 +575,14 @@ The standalone server/client binaries are functional and tested by hand (`net/RE
 
 ### Hot paths
 
-- **Per-connection per-tick `build_snapshot`** (`lib.rs:879-910`) — runs `tick_dt` apart (default ~33 ms). Cost: mutex acquire on `app.rooms`, increment two `u32`/`u64` fields, postcard serialize a tiny `DemoState { tick: u64 }`, lz4 compress. Sub-millisecond by inspection.
+- **Per-connection per-tick `build_snapshot`** (`lib.rs:879-911`) — runs `tick_dt` apart (default ~33 ms). Cost: mutex acquire on `app.rooms`, increment two `u32`/`u64` fields, postcard serialize a tiny `DemoState { tick: u64 }`, lz4 compress. Sub-millisecond by inspection.
 - **Per-message `decode_msg`** in the per-connection select loop (`lib.rs:582`, `:814`) — lz4 decompress + postcard deserialize.
 - **HMAC-SHA256 verify** per `InputFrame` (`aw_net_proto::verify`, called at `lib.rs:932`, `:1074`) — runs FIRST, before rate-limit/state updates; fast for small payloads but allocates a fresh `Hmac<Sha256>` and the `input_frame_sig_payload` `Vec` per message.
 - **ECS systems run once per stage tick.** None hit the network synchronously; all encode/decode work in the ECS path is in-process (`encode_msg(Codec::Bincode, &snapshot)` at `net-ecs/lib.rs:179`, with no I/O).
 
 ### Cold paths
 
-- **TLS handshake** (TLS handshake in `accept_loop_tls` at `lib.rs:372-377`) — milliseconds per connection.
+- **TLS handshake** (TLS handshake in `accept_loop_tls` at `lib.rs:372-378`) — milliseconds per connection.
 - **Matchmaking room scan** (`lib.rs:460-461`, `:692-693`) — linear scan of `rooms` HashMap; rooms cap not enforced; current scale assumed small.
 - **Signing-key load** — the 32-byte `SigningKey` is parsed once at process startup. The client uses `AW_SHARED_KEY` or `dev_default()` on every build. A debug server keeps `dev_default()` when `--shared-key-hex` is absent (`net/aw-net-server/src/main.rs:111-117`); only the release CLI requires that flag (`:103-109`); release `spawn_server` refuses the published key at boot (`lib.rs:281-286`). There is no per-room key generation anymore (the former per-room `SessionKey::random()` was removed in `561b20957`).
 - **`net_ecs_adversarial.rs`** (921 lines, 11 bench cases) — explicitly worst-case payload shapes for serialization.
@@ -616,10 +616,7 @@ The standalone server/client binaries are functional and tested by hand (`net/RE
 - **CI presence:** **None as of `a2474c5b7`.** Workspace grep `grep -l "aw-net\|astraweave-net-ecs" .github/workflows/*.yml` returns no matches. No dedicated workflow runs `cargo test` for any of these four crates. Compare with the older `astraweave-net` crate which has `.github/workflows/net-tests.yml`.
 - **Mutation testing:** Per-crate inline mutation-resistance test suites (27 in `astraweave-net-ecs`, 53 in `aw-net-proto`); not run from a centralized workflow.
 - **Miri / Kani validation:** Not in `.github/workflows/miri.yml` or `kani.yml`. The library crates carry `#![forbid(unsafe_code)]`; the binaries do not but contain no observable unsafe blocks.
-- **Manual validation:** `net/README.md:13-30` documents the manual smoke-test workflow:
-  1. `cargo run -p aw-net-server`
-  2. `cargo run -p aw-net-client`
-  3. Observe tracing output for `joined; tick_hz=30`.
+- **Manual validation:** `net/README.md:13-30` is the smoke-test workflow: `cargo run -p aw-net-server` (`:17`) then `cargo run -p aw-net-client` (`:29`). The client logs `joined; tick_hz=` at `net/aw-net-client/src/main.rs:67`.
 
 ---
 
@@ -699,7 +696,7 @@ The standalone server/client binaries are functional and tested by hand (`net/RE
 
 **Common mistakes when changing this system:**
 - **Adding a `ClientToServer` variant without updating both `handle_socket` and `handle_socket_tls` (and their `on_client_msg` / `on_client_msg_tls` helpers).** The duplication is wide.
-- **Adding a `ServerToClient` variant without updating the client's match arms in `net/aw-net-client/src/main.rs:59-74` and the per-tick read loop.**
+- **Adding a `ServerToClient` variant without updating the client's match arms in `net/aw-net-client/src/main.rs:63-75` and the per-tick read loop.**
 - **Changing `Codec` choice in one path without changing the other.** The Plugin layer's Bincode and the standalone binaries' PostcardLz4 must agree if you want them to talk.
 - **Assuming the HMAC verification is observed-only.** It isn't anymore — under the default `Kick` policy a bad signature rejects the packet and closes the connection (1008). It only logs-and-continues under the explicit `Warn` policy. Verification also runs FIRST, before any state mutation, so don't reorder it after the rate-limit/`last_input_seq` updates.
 - **Trusting `app.db` to persist anything.** It doesn't — no reads or writes go through it.
@@ -715,6 +712,6 @@ The ECS Plugin layer (`astraweave-net-ecs`) was added on **2025-10-01** in commi
 
 The `lib_temp.rs` orphan was added on **2025-11-19** in commit `54d15c9f2` ("added forest biome textures and assets, worked on renderer"). The commit title gives no clue about why a temp file was added to the netcode crate — likely an unintentional checkin during a renderer-focused commit.
 
-The older `astraweave-net` snapshot subsystem (documented separately in `docs/architecture/net.md`) was created 2025-09-05 and remains in place. Per `net/README.md:90-92`, the two networking systems are intended to coexist long-term.
+The older `astraweave-net` snapshot subsystem (documented separately in `docs/architecture/net.md`) was created 2025-09-05 and remains in place. Per `net/README.md:181`, the two networking systems are intended to coexist long-term.
 
 The `aw_net_server_db/` directory is created on first server run by sled's `Db::open` call. Its presence in git (`conf` 62 B, `db` 96 B) indicates someone ran the server locally and committed the artifacts; the directory is not in any `.gitignore`.
