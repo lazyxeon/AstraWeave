@@ -684,6 +684,49 @@ pub mod gltf_loader {
             std::fs::write(&path, &bytes).expect("write");
             reject_short_glb_file(&path).expect("declared length matches the file");
         }
+
+        /// `Read::read` may return one byte. The declared length is still checked.
+        struct OneByteReader<'a> {
+            data: &'a [u8],
+            pos: usize,
+        }
+
+        impl std::io::Read for OneByteReader<'_> {
+            fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+                if self.pos >= self.data.len() || buf.is_empty() {
+                    return Ok(0);
+                }
+                buf[0] = self.data[self.pos];
+                self.pos += 1;
+                Ok(1)
+            }
+        }
+
+        #[test]
+        fn one_byte_reads_still_see_the_declared_length() {
+            let mut bytes = b"glTF".to_vec();
+            bytes.extend_from_slice(&2u32.to_le_bytes());
+            bytes.extend_from_slice(&2_000_012u32.to_le_bytes());
+            let mut reader = OneByteReader {
+                data: &bytes,
+                pos: 0,
+            };
+            let err = reject_glb_reader(&mut reader, 22).expect_err("one-byte reads");
+            let msg = err.to_string();
+            assert!(msg.contains("exceeds the 22 bytes available"), "{msg}");
+
+            let mut tiny = OneByteReader {
+                data: b"glTF",
+                pos: 0,
+            };
+            reject_glb_reader(&mut tiny, 4).expect("eof before a 12-byte header");
+
+            let mut fit = b"glTF".to_vec();
+            fit.extend_from_slice(&2u32.to_le_bytes());
+            fit.extend_from_slice(&12u32.to_le_bytes());
+            let mut fit_reader = OneByteReader { data: &fit, pos: 0 };
+            reject_glb_reader(&mut fit_reader, 12).expect("declared length equals the prefix");
+        }
     }
 
     /// Extract extended PBR material properties from a glTF material.
@@ -796,9 +839,39 @@ pub mod gltf_loader {
         reject_declared_glb_length(bytes, bytes.len() as u64)
     }
 
+    /// Read until `buf` is full or the reader hits EOF.
+    ///
+    /// One `Read::read` can return fewer than 12 bytes while the file is
+    /// longer. `read_exact` reports that short file as `UnexpectedEof` and
+    /// does not say how many bytes landed, so a `.gltf` that ends before the
+    /// header would become an error. This loop still returns `Ok` for that
+    /// file, and it assembles all 12 bytes when each `read` returns one.
+    fn read_header_or_eof(
+        reader: &mut impl std::io::Read,
+        buf: &mut [u8],
+    ) -> std::io::Result<usize> {
+        let mut filled = 0;
+        while filled < buf.len() {
+            match reader.read(&mut buf[filled..]) {
+                Ok(0) => break,
+                Ok(n) => filled += n,
+                Err(err) if err.kind() == std::io::ErrorKind::Interrupted => continue,
+                Err(err) => return Err(err),
+            }
+        }
+        Ok(filled)
+    }
+
+    fn reject_glb_reader(reader: &mut impl std::io::Read, available: u64) -> Result<()> {
+        let mut header = [0u8; 12];
+        let n = read_header_or_eof(reader, &mut header).context("read GLB header")?;
+        reject_declared_glb_length(&header[..n], available)
+    }
+
     /// Same check as [`reject_short_glb_header`], with the file length as the
     /// hint. `Glb::from_reader` would allocate `declared - 12` before it
-    /// learns the file is shorter, so this fails closed first.
+    /// learns the file is shorter, so this fails closed first. The header is
+    /// filled until 12 bytes or EOF, so a short `read` cannot skip the check.
     pub fn reject_short_glb_file(path: &std::path::Path) -> Result<()> {
         let mut file =
             std::fs::File::open(path).with_context(|| format!("open {}", path.display()))?;
@@ -810,7 +883,7 @@ pub mod gltf_loader {
         }
         let available = meta.len();
         let mut header = [0u8; 12];
-        let n = std::io::Read::read(&mut file, &mut header)
+        let n = read_header_or_eof(&mut file, &mut header)
             .with_context(|| format!("read {}", path.display()))?;
         reject_declared_glb_length(&header[..n], available)
     }
