@@ -429,6 +429,35 @@ pub async fn read_capped_json<T: serde::de::DeserializeOwned>(
     parse_bounded_model_json(&read_capped_text(response).await?)
 }
 
+/// Read a model body until [`MAX_MODEL_JSON_BYTES`] or `lifetime_left`.
+///
+/// The 64 KiB cap is the same one [`read_capped_text`] uses. A silent read
+/// still ends at the client read timeout when that is shorter. A timeout
+/// on `lifetime_left` is `streaming lifetime deadline`.
+#[cfg(feature = "ollama")]
+pub async fn read_capped_text_within(
+    response: reqwest::Response,
+    lifetime_left: std::time::Duration,
+) -> Result<String> {
+    if lifetime_left.is_zero() {
+        bail!("streaming lifetime deadline");
+    }
+    match tokio::time::timeout(lifetime_left, read_capped_text(response)).await {
+        Ok(result) => result,
+        Err(_) => bail!("streaming lifetime deadline"),
+    }
+}
+
+/// Read and parse a model JSON body until [`MAX_MODEL_JSON_BYTES`] or
+/// `lifetime_left`.
+#[cfg(feature = "ollama")]
+pub async fn read_capped_json_within<T: serde::de::DeserializeOwned>(
+    response: reqwest::Response,
+    lifetime_left: std::time::Duration,
+) -> Result<T> {
+    parse_bounded_model_json(&read_capped_text_within(response, lifetime_left).await?)
+}
+
 #[cfg(test)]
 mod bounded_model_text_tests {
     use super::*;
@@ -1662,7 +1691,14 @@ impl LlmClient for OllamaChatClient {
                         Some(gen_resp)
                     } else {
                         let s = gen_resp.status();
-                        let b = read_capped_text(gen_resp).await.with_context(|| {
+                        // The error body shares `start`. Stop at the time
+                        // still left, or at 64 KiB, whichever comes first.
+                        let b = read_capped_text_within(
+                            gen_resp,
+                            lifetime.saturating_sub(start.elapsed()),
+                        )
+                        .await
+                        .with_context(|| {
                             format!("Ollama /api/generate status {s} body read failed")
                         })?;
                         return Err(anyhow::anyhow!(
@@ -1670,9 +1706,14 @@ impl LlmClient for OllamaChatClient {
                         ));
                     }
                 } else {
-                    let txt = read_capped_text(resp).await.with_context(|| {
-                        format!("Ollama chat API status {status} body read failed")
-                    })?;
+                    // The error body shares `start`. Stop at the time
+                    // still left, or at 64 KiB, whichever comes first.
+                    let txt =
+                        read_capped_text_within(resp, lifetime.saturating_sub(start.elapsed()))
+                            .await
+                            .with_context(|| {
+                                format!("Ollama chat API status {status} body read failed")
+                            })?;
                     return Err(anyhow::anyhow!(
                         "Ollama chat API returned error status {status}: {txt}"
                     ));

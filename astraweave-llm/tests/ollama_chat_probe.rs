@@ -977,6 +977,74 @@ fn run_until(
     (elapsed, output)
 }
 
+/// Headers arrive and the declared body never does.
+/// `first_not_found` answers `/api/chat` with an empty 404 so `complete`
+/// reads the withheld body from `/api/generate`.
+fn serve_withheld_body(status_line: &'static str, first_not_found: bool) -> std::net::SocketAddr {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+    let addr = listener.local_addr().expect("addr");
+    std::thread::spawn(move || {
+        let mut first = true;
+        loop {
+            let Ok((mut sock, _)) = listener.accept() else {
+                return;
+            };
+            read_http_headers(&mut sock);
+            use std::io::Write;
+            if first && first_not_found {
+                first = false;
+                let _ = sock.write_all(
+                    b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+                );
+                let _ = sock.flush();
+                continue;
+            }
+            let _ = write!(
+                sock,
+                "{status_line}\r\nContent-Length: 64\r\nConnection: close\r\n\r\n"
+            );
+            let _ = sock.flush();
+            std::thread::sleep(std::time::Duration::from_secs(30));
+        }
+    });
+    addr
+}
+
+#[test]
+fn withheld_error_body_ends_at_the_lifetime() {
+    // Thinking mode reads the JSON body only after a success status, so
+    // that path withholds a 200. `complete` withholds the 500, including
+    // the `/api/generate` fallback.
+    for (mode, status_line, first_not_found) in [
+        ("complete", "HTTP/1.1 500 Internal Server Error", false),
+        ("complete", "HTTP/1.1 500 Internal Server Error", true),
+        ("qwen-think", "HTTP/1.1 200 OK", false),
+    ] {
+        let addr = serve_withheld_body(status_line, first_not_found);
+        let (elapsed, out) = run_until(mode, addr, "20", "400", std::time::Duration::from_secs(3));
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert!(
+            !out.status.success(),
+            "{mode} first_not_found={first_not_found} succeeded: {stdout} {stderr}"
+        );
+        assert!(
+            elapsed >= std::time::Duration::from_millis(250),
+            "{mode} returned before the lifetime ({elapsed:?}): {stdout} {stderr}"
+        );
+        assert!(
+            elapsed < std::time::Duration::from_secs(2),
+            "{mode} waited out the idle timeout ({elapsed:?}): {stdout} {stderr}"
+        );
+        let msg = format!("{stdout} {stderr}");
+        assert!(msg.contains("streaming lifetime deadline"), "{mode}: {msg}");
+        assert!(
+            !msg.contains("operation timed out"),
+            "{mode} used the idle read timeout: {msg}"
+        );
+    }
+}
+
 #[test]
 fn withheld_headers_end_at_the_lifetime() {
     for (mode, first_not_found) in [

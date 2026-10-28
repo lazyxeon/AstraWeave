@@ -768,10 +768,11 @@ impl LlmClient for Qwen3Ollama {
     ) -> Result<std::pin::Pin<Box<dyn futures_util::Stream<Item = Result<String>> + Send>>> {
         crate::ensure_model_request(&self.url, self.allow_remote)?;
 
-        // `OLLAMA_TIMEOUT_SECS` bounds each silent gap. Header waits are
-        // that idle limit or the time still left in the 300s lifetime,
-        // whichever is shorter, including when the idle limit is longer
-        // than 300s. Thinking mode also has `with_call_deadline(300)`.
+        // `OLLAMA_TIMEOUT_SECS` bounds each silent gap. Header waits and
+        // the thinking JSON body are that idle limit or the time still
+        // left in the 300s lifetime, whichever is shorter, including when
+        // the idle limit is longer than 300s. The JSON body also stops at
+        // 64 KiB. Thinking mode still has `with_call_deadline(300)`.
         // The non-thinking scan restarts its gap on a non-empty chunk.
         let idle = crate::stream_read_idle();
         let requested = std::time::Instant::now();
@@ -820,9 +821,12 @@ impl LlmClient for Qwen3Ollama {
                     anyhow::bail!("Ollama returned error: {}", response.status());
                 }
 
-                crate::read_capped_json(response)
-                    .await
-                    .context("Failed to parse Ollama response")
+                crate::read_capped_json_within(
+                    response,
+                    lifetime_total.saturating_sub(requested.elapsed()),
+                )
+                .await
+                .context("Failed to parse Ollama response")
             })
             .await?;
 
