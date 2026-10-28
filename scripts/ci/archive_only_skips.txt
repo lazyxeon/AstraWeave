@@ -20,3 +20,7 @@ binary aw-net-client family3_client_binary_wrong_key
 # and `CARGO_BIN_EXE_ollama_chat_probe`).
 binary astraweave-llm loopback_http_proxy
 binary astraweave-llm ollama_chat_probe
+#
+# Test full partitions use profile ci-full-archive, which drops only these
+# four binaries. The archive job runs them with profile ci. The GPU rows
+# above stay on profile ci, so nightly Windows still runs them.

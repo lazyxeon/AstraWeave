@@ -429,9 +429,11 @@ jobs:
             done < "$log"
           fi
 
-  # Windows Test full: compile once, then run the same profile-ci set in
-  # three partitions. Each job keeps timeout-minutes at 60. Profile ci has
-  # no default-filter, so this is the same test set as the old single job.
+  # Windows Test full: compile once, then run three partitions. Each job
+  # keeps timeout-minutes at 60. Partitions use profile ci-full-archive
+  # (profile ci without the four CARGO_BIN_EXE binaries). The archive job
+  # runs those four on the machine that compiled them. The GPU rows in
+  # archive_only_skips.txt stay on profile ci, so nightly still runs them.
   test-full-windows-build:
     name: Test full (windows, build archive)
     runs-on: windows-latest
@@ -459,6 +461,14 @@ jobs:
           CARGO_PROFILE_TEST_DEBUG: "0"
         run: bash scripts/ci/run-tests.sh
 
+      - name: Net client binaries on this machine
+        # CARGO_BIN_EXE_aw-net-client is this runner's target path. Partition
+        # jobs only have the extracted archive. Profile ci-full-archive does
+        # not run these two targets again.
+        env:
+          CARGO_PROFILE_TEST_DEBUG: "0"
+        run: cargo nextest run --locked --profile ci -p aw-net-client --test family1_client_binary --test family3_client_binary_wrong_key
+
       - name: Upload the archive
         uses: actions/upload-artifact@v4
         with:
@@ -467,6 +477,16 @@ jobs:
           if-no-files-found: error
           retention-days: 1
           compression-level: 0
+
+      - name: Model HTTP probes on this machine
+        # After the upload so a feature rebuild does not hold the artifact.
+        # CARGO_BIN_EXE_* is this runner's target path. Partition jobs do not
+        # run these targets. Keep the archive profile so this does not rebuild
+        # with debug info.
+        env:
+          CARGO_PROFILE_TEST_DEBUG: "0"
+        run: |
+          cargo nextest run --locked --profile ci -p astraweave-llm --features ollama --test loopback_http_proxy --test ollama_chat_probe
 
   test-full-windows-part:
     name: Test full (windows, ${{ matrix.partition }}/3)
@@ -502,7 +522,10 @@ jobs:
         env:
           AW_CI_ARCHIVE_RUN: target/nextest-archive.tar.zst
           AW_CI_PARTITION: count:${{ matrix.partition }}/3
-          AW_CI_PROFILE: ci
+          # ci would spawn CARGO_BIN_EXE paths that exist only on the archive
+          # runner. ci-full-archive is profile ci without those four binaries.
+          # The archive job runs them. This is not the pull-request filter.
+          AW_CI_PROFILE: ci-full-archive
           AW_AUDIO_PROBE_BIN: ${{ github.workspace }}/target/debug/aw_audio_probe.exe
         run: bash scripts/ci/run-tests.sh
 
